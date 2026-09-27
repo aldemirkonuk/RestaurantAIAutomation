@@ -291,6 +291,11 @@ export class ReportsService {
           : report.periodEnd,
         p_limit: 1,
         p_offset: 0,
+        // Said, not inherited from the RPC's default (PR #476 audit at
+        // e2cd28578): a report's count of conversations with vendors leaves
+        // out credit-claim letters that were never sent (HOUSE_DRAFT /
+        // HOUSE_CANCELLED, ADR 0230), for every role alike.
+        p_withhold_house_letters: true,
       }),
     ]);
 

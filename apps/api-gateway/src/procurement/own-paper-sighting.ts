@@ -249,18 +249,36 @@ function positiveInt(v: unknown): number | null {
  * `vendor-comparison.service.ts`'s manual writer already does. A caller that
  * omits it gets `outlier_reason: null` (this file's own field goes unwritten,
  * not a guessed sentence) rather than a claim this function cannot back up —
- * and the caller MUST omit it when its register read failed, never pass 0.
- * A row with no `masterWineId` is never judged: there is no group, so any
- * `priorCount` is ignored and the row is stored unflagged with no reason.
+ * and the caller MUST omit it whenever it has no real count to report: its
+ * register read failed, OR the sighting names no product identity at all
+ * (`masterWineId` null), in which case there is no group to have counted
+ * sightings of. Never pass 0 for either case (PR #473 audit round 2,
+ * 2026-09-26: the null-identity case used to arrive here as 0, and this
+ * function itself never refuses on it — the caller is where it is prevented).
  *
  * The sentence names the population the caller really reads: this house's
- * rows plus the public register's, every source type. It does NOT copy the
- * manual writer's "same comparison class" — that writer filters by class and
+ * rows plus the public register's, every source type, in this sighting's own
+ * currency only (`priorsCurrency`). It does NOT copy the manual writer's "same
+ * comparison class" — that writer filters by class and
  * `priorSightingUnitPrices` does not.
  */
 export function decideOwnPaperSighting(
   input: OwnPaperSightingInput,
-  opts: { isOutlier?: boolean; priorCount?: number } = {},
+  opts: {
+    isOutlier?: boolean;
+    priorCount?: number;
+    /**
+     * The ONE currency every counted prior was stated in. ADR 0117 rule 3:
+     * "Nothing converts... A reader that would compare or sum figures in
+     * different currencies refuses in words instead." A verdict is written
+     * only when this equals the sighting's own currency; absent or different,
+     * `outlier_reason`/`outlier_basis`/`outlier_judged_at` stay null exactly
+     * as for a failed read. The caller attests it because only the caller
+     * read the priors (PR #473 audit rounds 4-5: the pool used to be
+     * currency-blind, so a TRY invoice was judged against USD rows).
+     */
+    priorsCurrency?: string | null;
+  } = {},
 ): OwnPaperSightingDecision {
   const where = `${input.source} on order ${input.orderId ?? "(no id)"}`;
 
@@ -445,22 +463,31 @@ export function decideOwnPaperSighting(
   // distinction the same way the manual writer already draws it.
   //
   // No product identity means no group: there is nothing this row could be
-  // compared with, so nothing was counted and no count may be stated. A
-  // `priorCount` for an unidentified row is ignored, whatever the caller
-  // passes — otherwise the register would store "Not judged: only 0 earlier
+  // compared with, so nothing was counted and no count may be stated. And a
+  // verdict needs priors in this sighting's own currency too — nothing
+  // converts (ADR 0117 rule 3), so a reader that would compare or sum
+  // figures in different currencies refuses in words instead. Either
+  // condition failing, `priorCount` is ignored, whatever the caller passes —
+  // otherwise the register would store "Not judged: only 0 earlier
   // sighting(s) of this product" beside a sheet that says the product is
-  // "Unidentified" (PR #473 audit at 81f7a6abf, PR #482 audit at cd2dc58f6).
-  const priorCount = input.masterWineId ? opts.priorCount : undefined;
+  // "Unidentified", or a verdict comparing prices across currencies (PR #473
+  // audit at 81f7a6abf and audit round 2 2026-09-26; PR #482 audit at
+  // cd2dc58f6).
+  const priorCount =
+    input.masterWineId && opts.priorCount !== undefined && opts.priorsCurrency === currency
+      ? opts.priorCount
+      : undefined;
   const judged =
     priorCount !== undefined && priorCount + 1 >= MIN_OUTLIER_SAMPLE;
+  const population = `earlier sighting(s) of this product priced in ${currency} on this house's register and the public one (every source type counted; sightings in any other currency were left out, since nothing converts)`;
   const outlierReason =
     priorCount === undefined
       ? null
       : !judged
-        ? `Not judged: only ${priorCount} earlier sighting(s) of this product exist on this house's register and the public one (every source type counted), below the floor of ${MIN_OUTLIER_SAMPLE} at which a deviation test means anything. The row is stored as entered; it is not claimed to be clean.`
+        ? `Not judged: only ${priorCount} ${population}, below the floor of ${MIN_OUTLIER_SAMPLE} at which a deviation test means anything. The row is stored as entered; it is not claimed to be clean.`
         : opts.isOutlier
-          ? `Flagged at write time against ${priorCount} earlier sighting(s) of this product on this house's register and the public one (every source type counted): it sits more than 3.5 robust deviations from their median. The price is stored exactly as entered and stays visible; it is kept out of the "cheaper than usual" ladder until it is corrected at source or the nightly re-judge clears it.`
-          : `Judged clean at write time against ${priorCount} earlier sighting(s) of this product on this house's register and the public one (every source type counted).`;
+          ? `Flagged at write time against ${priorCount} ${population}: it sits more than 3.5 robust deviations from their median. The price is stored exactly as entered and stays visible; it is kept out of the "cheaper than usual" ladder until it is corrected at source or the nightly re-judge clears it.`
+          : `Judged clean at write time against ${priorCount} ${population}.`;
   const judgedAt = priorCount === undefined ? null : new Date().toISOString();
 
   // Fork 6(a). Deliberately NOT part of `contentHash` above: the hash answers
@@ -493,8 +520,10 @@ export function decideOwnPaperSighting(
       normalized_unit_price: normalized,
       normalization_note: note,
       content_hash: contentHash,
-      // An unidentified row has no group to sit outside of.
-      is_outlier: input.masterWineId ? opts.isOutlier === true : false,
+      // priorCount is undefined for an unidentified row or a currency
+      // mismatch, so this is false in both cases — an unidentified row has
+      // no group to sit outside of.
+      is_outlier: priorCount !== undefined && opts.isOutlier === true,
       outlier_reason: outlierReason,
       outlier_basis: priorCount === undefined ? null : "write_time",
       outlier_judged_at: judgedAt,

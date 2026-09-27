@@ -42,6 +42,14 @@ merge; the founder flips it per house, the same as the other seventeen
 Mudavym-gated pages. This was found and fixed by an independent verifier's
 NOT READY finding, same day.
 
+**[Superseded 2026-09-26, founder answer 53; recorded 2026-09-27, PR #473 audit
+round 5]** "The founder flips it per house" (here and in the open question
+below) is no longer the plan. Answer 53: *"Promotions and vendor-prices go live
+in code at cutover (flags-to-code PR, every house incl. new ones)"* (memory
+`founder-answers-2026-09-25-web-rebuild.md`, round 8). The flag still ships OFF
+in this PR; what turns the page on is the cutover's flags-to-code PR, for every
+house at once, and answer 30 keeps fork 6(a) provenance (#482) ahead of that.
+
 **[Renamed 2026-09-21, must-fix closure pass, wt-r5-vprices]** The migration
 named above shipped as `20260919110000_mudavym_design_vendor_prices.sql`.
 That version was older than `origin/main`'s
@@ -98,6 +106,53 @@ settled version until the next sweep proves otherwise.
   `scripts/check_migration_order.py` (ADR 0212) fails. `20260926170000` is the
   first version of this lane's assigned range `20260926170000`-`20260926179999`.
   The brackets above stay as history.
+
+**[2026-09-27, merge-train update for PR #473]** Renamed a fourth time,
+`20260926170000` → `20260929000000`: origin/main gained
+`20260928000000_a_promotion_remembers_being_alerted.sql` after this lane's
+range was assigned, so the reserved `20260926170000`-`20260926179999` band no
+longer sorts ahead of main's ceiling. `20260929000000` is comfortably past it
+(a full day, not one step, per the guard's own advice on how earlier renames
+lost this race). `feature-flag-registry.ts`, `App.tsx` and
+`useMudavymDesign.ts` re-cited; the two brackets above stay as history.
+
+**[2026-09-27, second merge-train update for PR #473 (train 6)]** Renamed a
+fifth time, `20260929000000` → `20261001000000`: `check_migration_order.py`
+found origin/main's ceiling had moved again, to `20260930100100`
+(three more migrations landed: `20260929020000`, `20260930100000`,
+`20260930100100`), which sorts ahead of the fourth rename above.
+`20261001000000` clears both origin/main's ceiling and the highest version
+queued across the other 42 open PRs (`20260930240000`, from
+`check_migration_versions_unique.py`), by a full day rather than one step —
+the same reasoning as the fourth rename, applied again because the ceiling
+moved a second time between renames. `feature-flag-registry.ts`, `App.tsx`
+and `useMudavymDesign.ts` re-cited again; all three brackets above stay as
+history.
+
+**[2026-09-27, third merge-train update for PR #473 (train 6)]** Renamed a
+sixth time, `20261001000000` → `20261002000000`: the uniqueness check, re-run
+right after the fifth rename landed, found `20261001000000` had since been
+claimed by open PR #483 (`feat/recs-round6-direction-b`,
+`20261001000000_a_briefing_names_who_marked_it.sql`) — the cross-PR sweep the
+fifth rename ran caught main and the 42 PRs open at that moment, not one
+opened or moved to that exact version afterward. `20261002000000` re-clears
+the sweep with nothing else queued past it. `feature-flag-registry.ts`,
+`App.tsx` and `useMudavymDesign.ts` re-cited a third time; all four brackets
+above stay as history.
+
+**[2026-09-27, train-6 pre-merge fix for PR #473]** Renamed a seventh time,
+`20261002000000` → `20261022000000`: the train-6 adjudication PASSED #473 at
+`86cb8895d` on the condition that the migration line match the code, and by
+then origin/main's ceiling was `20261021150000`
+(`20261021150000_a_never_arrived_cancel_can_claim_a_refund.sql`), which sorts
+ahead of the sixth rename. `20261022000000` clears that ceiling and every
+migration queued in the other open PRs except #438's `20261031174523` /
+`20261031174623` (a different lane; order against main is what the guard
+checks). Content unchanged — a pure rename. The same merge moved the
+registry's `readBy` anchors for every `mudavym_design_*` key to
+`useMudavymDesign.ts:236` (the `.checkFeatureFlag(restaurantId,
+flagKeyFor(page))` line once `promotions` and `vendor_prices` both sit in
+`MUDAVYM_PAGES`). All five brackets above stay as history.
 - **Fork 6, as answered 2026-09-18 ("Always on the record, loaded fresh"), is
   now built.** Every price record draws C's paper trail (`PaperTrail.tsx`)
   under the ladders: every sighting, newest first, across classes, with the
@@ -369,6 +424,20 @@ single-purpose schema-plus-writer changes (e.g. ADR 0124 Q5's `identity_id` back
 not like a same-lane touch-up. This is a recommendation on ORDER, not on the outcome —
 it does not reopen "not deferred," which this lane treats as binding; it asks the
 founder to confirm the sequencing rather than assuming it.
+
+**[Answered 2026-09-25, founder answer 30; recorded 2026-09-27]** The
+follow-on-lane reading: *"provenance = follow-on lane that must land before the
+flag goes live for any house"*, and answer 60 lets #482 merge right after #473.
+Answer 53 (2026-09-26) then made "goes live" the cutover's flags-to-code PR,
+every house at once, rather than a per-house flip.
+
+**[2026-09-27, PR #473 audit round 5 fix]** The own-paper writer's write-time
+outlier sentence was judged against a currency-blind pool (this house's rows
+plus the public register, any currency). It now compares only priors in the
+sighting's own currency and says so in the stored sentence (ADR 0117 rule 3,
+"Nothing converts"); `v3.0-TECH-DEBT.md` "Vendor-price compare pools
+currencies..." records it, and the manual writer's older copy (item 3), which
+stays open.
 
 **Open founder questions (not decided here):**
 1. Should recording a price attach the conversation it came from (a message/thread id

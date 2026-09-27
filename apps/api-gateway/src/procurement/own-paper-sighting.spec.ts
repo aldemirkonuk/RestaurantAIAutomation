@@ -43,6 +43,8 @@ interface Calls {
   priceHistoryInserts: Row[];
   /** Every settled read, with the equality filters it carried. */
   reads: Array<{ table: string; filters: Record<string, any> }>;
+  /** The `.eq` filters each outlier-population read was issued with. */
+  priorReadFilters: Row[];
 }
 
 function makeDb(opts: {
@@ -62,10 +64,21 @@ function makeDb(opts: {
   dealRows?: Row[];
   /** The outlier population read fails (supabase resolves with an error). */
   priorReadFails?: boolean;
-  /** `restaurant_inventory.master_wine_id` for the shelf slot; default WINE. */
-  inventoryMasterWineId?: string | null;
+  /**
+   * `restaurant_inventory.master_wine_id` as this shelf slot really resolves.
+   * Defaults to `WINE`. Set to `null` to simulate an inventory row whose
+   * identity never resolved — the column is NOT NULL by schema, but
+   * `resolveOrderShelfItem`'s `asUuid(row?.master_wine_id)` still returns null
+   * on a lookup failure or an unreadable value (PR #473 audit round 2).
+   */
+  masterWineId?: string | null;
 }) {
-  const calls: Calls = { sightingInserts: [], priceHistoryInserts: [], reads: [] };
+  const calls: Calls = {
+    sightingInserts: [],
+    priceHistoryInserts: [],
+    reads: [],
+    priorReadFilters: [],
+  };
   const existing = opts.existingSightings ?? [];
 
   const supabase: any = {
@@ -104,7 +117,7 @@ function makeDb(opts: {
           return {
             data: {
               master_wine_id:
-                "inventoryMasterWineId" in opts ? opts.inventoryMasterWineId : WINE,
+                "masterWineId" in opts ? opts.masterWineId : WINE,
               bottle_size_ml:
                 "bottleSizeMl" in opts ? opts.bottleSizeMl : 750,
               wine_name: "Barolo Riserva",
@@ -125,12 +138,22 @@ function makeDb(opts: {
             );
             return { data: hit ? { id: "existing" } : null, error: null };
           }
-          // The outlier population read.
+          // The outlier population read. `filters.master_wine_id` is undefined
+          // when the caller never resolved an identity — `priorSightingUnitPrices`
+          // refuses to call this at all in that case (it returns null before the
+          // query runs), so reaching this branch with no identity would itself be
+          // a test bug, not a real path.
+          if (op === "select") calls.priorReadFilters.push({ ...filters });
           if (opts.priorReadFails)
             return {
               data: null,
               error: { message: "canceling statement due to statement timeout" },
             };
+          // Deliberately NOT narrowed by `filters.currency`: this stands for a
+          // read that handed back rows in another currency anyway, so the
+          // per-row check in `priorSightingUnitPrices` is what these tests
+          // exercise. The query-side filter is asserted from
+          // `calls.priorReadFilters` instead.
           return {
             data: existing.filter((r) => r.master_wine_id === WINE),
             error: null,
@@ -268,7 +291,7 @@ describe("own paper reaches vendor_price_observations", () => {
     // sightings exist here, so the honest reason is "not judged", not
     // "clean".
     expect(row.outlier_reason).toMatch(
-      /^Not judged: only 0 earlier sighting\(s\) of this product exist on this house's register and the public one \(every source type counted\), below the floor of 5/,
+      /^Not judged: only 0 earlier sighting\(s\) of this product priced in TRY on this house's register and the public one \(every source type counted; sightings in any other currency were left out, since nothing converts\), below the floor of 5/,
     );
     expect(row.outlier_basis).toBe("write_time");
     expect(typeof row.outlier_judged_at).toBe("string");
@@ -420,6 +443,7 @@ describe("own paper reaches vendor_price_observations", () => {
       pack_size: 1,
       unit_volume_ml: 750,
       yield_factor: 1,
+      currency: "TRY",
     }));
     const { db, calls } = makeDb({
       orderRow: { ...deliveredOrder, final_price: 380 },
@@ -439,7 +463,7 @@ describe("own paper reaches vendor_price_observations", () => {
     // writer already uses (`vendor-comparison.service.ts`) — a struck row is
     // never a bare boolean on this register.
     expect(calls.sightingInserts[0].outlier_reason).toMatch(
-      /^Flagged at write time against 5 earlier sighting\(s\) of this product on this house's register and the public one \(every source type counted\)/,
+      /^Flagged at write time against 5 earlier sighting\(s\) of this product priced in TRY on this house's register and the public one \(every source type counted; sightings in any other currency were left out, since nothing converts\)/,
     );
   });
 
@@ -452,6 +476,7 @@ describe("own paper reaches vendor_price_observations", () => {
       pack_size: 1,
       unit_volume_ml: 750,
       yield_factor: 1,
+      currency: "TRY",
     }));
     const { db, calls } = makeDb({
       orderRow: { ...deliveredOrder, final_price: 18.4 },
@@ -468,7 +493,7 @@ describe("own paper reaches vendor_price_observations", () => {
     // from a row nobody had judged at all — the exact defect this test now
     // guards (its own review finding, not ADR 0160 §112 fork 6(a)).
     expect(calls.sightingInserts[0].outlier_reason).toMatch(
-      /^Judged clean at write time against 5 earlier sighting\(s\) of this product on this house's register and the public one \(every source type counted\)\.$/,
+      /^Judged clean at write time against 5 earlier sighting\(s\) of this product priced in TRY on this house's register and the public one \(every source type counted; sightings in any other currency were left out, since nothing converts\)\.$/,
     );
   });
 
@@ -486,6 +511,7 @@ describe("own paper reaches vendor_price_observations", () => {
       pack_size: 1,
       unit_volume_ml: 750,
       yield_factor: 1,
+      currency: "TRY",
     }));
     const warn = jest
       .spyOn(Logger.prototype, "warn")
@@ -515,13 +541,18 @@ describe("own paper reaches vendor_price_observations", () => {
     warn.mockRestore();
   });
 
-  // PR #473 audit (81f7a6abf) and PR #482 audit (cd2dc58f6): a line with no
-  // product identity used to get `[]` from `priorSightingUnitPrices` without
-  // any read, and was stored as "Not judged: only 0 earlier sighting(s) of
-  // this product exist..." — a count nobody took, next to a sighting sheet
-  // that says the product is "Unidentified". Five priors are seeded so a
-  // count, had one been taken, could not honestly be 0.
-  it("a line with no product identity writes no flag and NO reason, never 'only 0'", async () => {
+  // PR #473 audit (81f7a6abf), PR #473 audit round 2 (2026-09-26, unresolved
+  // at 6c83ea2fa0f8), and PR #482 audit (cd2dc58f6): a line with no product
+  // identity used to get `[]` from `priorSightingUnitPrices` without any
+  // read — an identity-resolution failure (`resolveOrderShelfItem` returning
+  // null, despite `restaurant_inventory.master_wine_id` being NOT NULL by
+  // schema) read back as "zero rows for this product", not "no product to
+  // check". It was stored as "Not judged: only 0 earlier sighting(s) of this
+  // product exist..." — a count nobody took, next to a sighting sheet that
+  // says the product is "Unidentified". Five priors are seeded so a count,
+  // had one been taken, could not honestly be 0; the register is not
+  // actually empty, there is simply no wine to have counted sightings of.
+  it("an unresolved identity writes no flag and NO reason, never 'only 0'", async () => {
     const seeded = [18, 18.5, 19, 18.2, 18.8].map((p, i) => ({
       master_wine_id: WINE,
       raw_price: p,
@@ -530,12 +561,13 @@ describe("own paper reaches vendor_price_observations", () => {
       pack_size: 1,
       unit_volume_ml: 750,
       yield_factor: 1,
+      currency: "TRY",
     }));
     const decide = jest.spyOn(ownPaperSighting, "decideOwnPaperSighting");
     const { db, calls } = makeDb({
       orderRow: { ...deliveredOrder, final_price: 380 },
       existingSightings: seeded,
-      inventoryMasterWineId: null,
+      masterWineId: null,
     });
 
     await service(db).verifyReceipt(REST, ORDER, USER, {
@@ -543,11 +575,16 @@ describe("own paper reaches vendor_price_observations", () => {
       invoiceUnitPrice: 380,
     });
 
-    // Still evidence of what this vendor charged, so still written...
+    // The sighting is still written — ADR 0117's five things a sighting must
+    // name do not include a product identity, so an unresolved one is not by
+    // itself a refusal.
     expect(calls.sightingInserts).toHaveLength(1);
     const row = calls.sightingInserts[0];
     expect(row.master_wine_id).toBeNull();
-    // ...but no judgement is claimed: no flag, no count, no basis, no time.
+    // ...but nothing is claimed about it: not flagged, not "judged", no count.
+    // Before this fix `priorCount` arrived here as `0` and this row stored
+    // "Not judged: only 0 earlier sighting(s)... exist" — false, since there
+    // were five, just not countable against an identity nobody resolved.
     expect(row.is_outlier).toBe(false);
     expect(row.outlier_reason).toBeNull();
     expect(row.outlier_basis).toBeNull();
@@ -558,6 +595,108 @@ describe("own paper reaches vendor_price_observations", () => {
     expect(withOpts).toHaveLength(1);
     expect(withOpts[0][1]).toEqual({ isOutlier: false, priorCount: undefined });
     decide.mockRestore();
+  });
+});
+
+// PR #473 audit rounds 4-5 (BLOCK at 34b1de4aa): `priorSightingUnitPrices`
+// pooled every currency on this house's register and the public one, then ran
+// the MAD test over the raw numbers. Five TRY priors near 750 and six USD priors
+// near 18.5: blind, the pool's median is a dollar figure and a TRY 750 invoice is
+// "Flagged at write time"; scoped, it is judged clean against the five TRY rows.
+// Main's nightly re-judge refuses mixed-currency groups, so the blind verdict
+// would have stood for good.
+describe("the write-time judge compares one currency only (ADR 0117 rule 3)", () => {
+  const at = (i: number) => `2026-08-${String(i + 1).padStart(2, "0")}T00:00:00.000Z`;
+  const prior = (raw_price: number, currency: string, i: number) => ({
+    master_wine_id: WINE,
+    raw_price,
+    source_type: "invoice",
+    observed_at: at(i),
+    pack_size: 1,
+    unit_volume_ml: 750,
+    yield_factor: 1,
+    currency,
+  });
+  const tryPriors = [740, 760, 750, 745, 755].map((p, i) => prior(p, "TRY", i));
+  const usdPriors = [18, 18.5, 19, 18.2, 18.8, 18.4].map((p, i) =>
+    prior(p, "USD", i + 5),
+  );
+
+  it("judges a TRY invoice against the TRY priors only, never the USD ones", async () => {
+    const { db, calls } = makeDb({
+      orderRow: { ...deliveredOrder, final_price: 750 },
+      existingSightings: [...tryPriors, ...usdPriors],
+    });
+
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      ...verifyBody,
+      invoiceUnitPrice: 750,
+    });
+
+    // The read asked for this sighting's currency...
+    expect(calls.priorReadFilters).toHaveLength(1);
+    expect(calls.priorReadFilters[0].currency).toBe("TRY");
+    // ...and a read that returned USD rows anyway still did not count them.
+    expect(calls.sightingInserts).toHaveLength(1);
+    const row = calls.sightingInserts[0];
+    expect(row.currency).toBe("TRY");
+    expect(row.is_outlier).toBe(false);
+    expect(row.outlier_reason).toMatch(
+      /^Judged clean at write time against 5 earlier sighting\(s\) of this product priced in TRY /,
+    );
+  });
+
+  it("with only other-currency priors says 'only 0 in TRY', never a verdict", async () => {
+    const { db, calls } = makeDb({
+      orderRow: { ...deliveredOrder, final_price: 750 },
+      existingSightings: usdPriors,
+    });
+
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      ...verifyBody,
+      invoiceUnitPrice: 750,
+    });
+
+    const row = calls.sightingInserts[0];
+    expect(row.is_outlier).toBe(false);
+    expect(row.outlier_reason).toMatch(
+      /^Not judged: only 0 earlier sighting\(s\) of this product priced in TRY .*sightings in any other currency were left out/,
+    );
+  });
+
+  it("decideOwnPaperSighting writes no verdict when the priors' currency is not the row's", () => {
+    const input = {
+      restaurantId: REST,
+      orderId: ORDER,
+      providerId: "prov-1",
+      masterWineId: WINE,
+      source: "receipt_verified" as const,
+      unitPrice: 750,
+      unitLabel: "bottle",
+      packSize: 1,
+      unitVolumeMl: 750,
+      observedAt: "2026-09-01T00:00:00.000Z",
+      currency: "TRY",
+    };
+    for (const priorsCurrency of [undefined, null, "USD"]) {
+      const d = decideOwnPaperSighting(input as any, {
+        isOutlier: true,
+        priorCount: 11,
+        priorsCurrency,
+      });
+      expect(d.write).toBe(true);
+      if (!d.write) continue;
+      expect(d.row.is_outlier).toBe(false);
+      expect(d.row.outlier_reason).toBeNull();
+      expect(d.row.outlier_basis).toBeNull();
+      expect(d.row.outlier_judged_at).toBeNull();
+    }
+    const same = decideOwnPaperSighting(input as any, {
+      isOutlier: true,
+      priorCount: 11,
+      priorsCurrency: "TRY",
+    });
+    expect(same.write && same.row.outlier_basis).toBe("write_time");
   });
 });
 

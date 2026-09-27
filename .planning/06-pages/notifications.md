@@ -2469,3 +2469,54 @@ this repository's own committed 40-month FAO fixture has a **negative lift at ev
 cadence** and a **0 % hit rate at once a year**. Thirty-six years say the rule beats a
 coin; three and a half say it does not. Nothing further that could be measured settles
 which of the two is the future.
+
+### 13.41 The held low-stock queue moves onto the Mudavym page (2026-09-26, founder round 8)
+
+**The founder, 2026-09-26, round 8** (recorded in ADR 0149, Consequences (b)): the
+three legacy-only features are built into the new pages before the cutover. For this
+page that is the held low-stock queue — `GET /notifications/low-stock/held/:restaurantId`
+was read only by legacy `pages/Notifications.tsx:221-223`.
+
+**What "held" means, end to end** (`low-stock-alerts.service.ts`): a wine crossed
+below par, the ledger recorded the crossing, and nobody was told — another instant
+alert fired inside 15 minutes (`instant_cooldown`), or the house's preferences save
+non-critical crossings for the daily digest (`prefs`). The legacy strip offered **no
+actions** on held items: a count, eight chips, "+N more" that could not be opened, and
+the reason only in a hover `title`.
+
+**What the page now has** (`next/HeldBand.tsx`, `next/useHeldLowStock.ts`,
+`next/nt-held.ts`): a band above "Needs a hand" with loading / unreadable (refusal told
+apart from breakage, retry only when a retry can help) / ready-empty (a stated fact,
+not a missing strip); the reason written on every line; every held wine listable
+(first 5, then "Show all N", `aria-expanded` + `aria-controls`); **when they will be
+told** — the digest hour the cron actually keeps, or that they will not be sent
+because the digest or low-stock alerts are off, or that this could not be read; each
+wine opens in inventory (`/inventory?wine=`); the preferences that cause the hold are
+one link away (`/settings?tab=notifications`); "Read it now" re-reads the queue too.
+
+**Four ways the queue lied, fixed in the gateway in the same PR** (pinned in
+`held-low-stock-queue.spec.ts`, each mutation-checked):
+
+1. The instant path returned `Boolean(persisted)`, true for every
+   `persistForRestaurant` answer (a failed insert is `{ inserted: 0 }`, never falsy),
+   so a failed inbox write was stamped *alerted* and left the queue. It now counts
+   `inserted`, and a failed write is held with **no reason** (NULL) rather than
+   `prefs`, which the page would have read aloud as "your settings".
+2. The digest stamped `last_digest_at` and never cleared the hold — and stamped even
+   when its inbox write was deduped or failed. It now clears the holds it covered,
+   and only when its row was written.
+3. Both recovery paths reset the level to `ok` and left `last_held_at` — a wine back
+   above par still read "nobody told". Both now clear the hold.
+4. The read listed rows in cases 2 and 3; it now skips `ok` rows and rows whose
+   `last_digest_at` is at or after `last_held_at` (for rows written before the fix;
+   nothing is backfilled). A preferences read that fails is `digest: null`, never
+   the 12:00 defaults the senders fall back to.
+
+**Tenant scope:** the path id was already refused unless it is the token's house
+(`scopeOwnRestaurant`, 2026-09-12, `[REVERT-FAILS]` spec); the read now uses the
+token's id rather than the path's spelling of it.
+
+**Not built, and why:** "send the held alerts now" and "dismiss a hold" — neither
+exists in the gateway or on the legacy page, and a send-now is a new outbound act
+(the founder's call; reported as a candidate, not built). Browser-preview verification
+was not available to the lane that built this; coverage is unit + DOM.

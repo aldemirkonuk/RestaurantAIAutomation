@@ -58,7 +58,7 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     // flipping that on existing restaurants would silently stop vendor replies
     // being analysed at all.
     defaultValue: true,
-    readBy: "common/orchestrator/inbound-responder.service.ts:1003",
+    readBy: "common/orchestrator/inbound-responder.service.ts:1024",
   },
   {
     key: "enable_ai_autonomous_send",
@@ -66,19 +66,13 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     // leaves for a vendor with no human approval. A restaurant gets that only
     // by deliberately asking for it.
     defaultValue: false,
-    readBy: "common/orchestrator/inbound-responder.service.ts:1027",
+    readBy: "common/orchestrator/inbound-responder.service.ts:1048",
   },
   {
     key: "mudavym_design_receiving",
     // OFF by default: the Mudavym redesign of `/receiving` (ADR 0044 P2).
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:205",
-  },
-  {
-    key: "mudavym_design_recommendations",
-    // OFF by default: the Mudavym redesign of `/recommendations` (ADR 0044 p4 wave, REWORK verdict — "more structure and uniqueness"; also the first authenticated build of the page).
-    defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:205",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:236",
   },
   {
     key: "enable_house_inbox_read",
@@ -100,7 +94,7 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     // Settings `.select()` of every ACTIVE key cannot 42703 before the
     // migration has applied (the failure mode that blocked PR #414).
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:205",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:236",
   },
   {
     key: "mudavym_design_vendor_prices",
@@ -111,11 +105,25 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     // specific 2026-09-19 ~09:20Z answer (memory
     // founder-sketch-decisions-106-115.md, "19-lane blocking answers")
     // overrides that and requires exactly this gate. Column added by
-    // 20260926170000 (renamed a third time on 2026-09-25 into the W2 lane's
-    // reserved range — every earlier version sorted below main's ceiling;
-    // see vendor-prices.md's dated brackets for the rename history).
+    // 20261022000000 (renamed a seventh time, 2026-09-27 train-6 pre-merge
+    // fix for PR #473 — every earlier version sorted below main's ceiling or
+    // collided with another open PR; see vendor-prices.md's dated brackets
+    // for the rename history).
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:205",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:236",
+  },
+  {
+    key: "mudavym_design_promotions",
+    // OFF by default: `/promotions` on Mudavym (ADR 0160 §113, sketch 113
+    // direction B with C's density; ADR 0165's sizing rule). Held back from
+    // LIVE_PAGES so every house keeps today's three-tab Promotions page until
+    // the founder turns this on — and it should not be turned on before
+    // "Who is writing" (PR #470) is live on /communications, because the
+    // legacy page is today's only home for Trusted senders and Prospects.
+    // Column added by 20261015000000, in the same change as this entry, so
+    // the Settings `.select()` of every ACTIVE key cannot 42703.
+    defaultValue: false,
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:236",
   },
 ];
 
@@ -149,6 +157,18 @@ export function isActiveFeatureFlag(name: string): boolean {
  * move and "eighteen" before `cellar`/`menu`, both kept as written. `menu`,
  * like `help`, never had a column. The three moved keys' columns
  * (20260921114300, 20260922210200, 20260922220200) stay, unread.]
+ *
+ * [2026-09-25, ADR 0145's 2026-09-25 amendment: `mudavym_design_ask` joins —
+ * `/ask` is live in code for every house from its first day, on the same Q2.
+ * Like `help` and `menu` it never had a column. Twenty-four keys.]
+ *
+ * [2026-09-25, lane W3-recs, ADR 0160 §108's round-5 bracket:
+ * `mudavym_design_recommendations` moved here from ACTIVE_FEATURE_FLAGS —
+ * twenty-five keys, with `mudavym_design_ask` above. §108 held the page dark
+ * "pending sketch 122"; the founder picked sketch 122's direction B
+ * (2026-09-25, item 24) and answered its questions 2-10 the same day (round
+ * 5), so §108 is fully answered and the same Q2/Q4 page-gap rule as the three
+ * keys above applies. Its column stays, unread.]
  *
  * Deliberately NOT in ACTIVE_FEATURE_FLAGS:
  *  - `GET /settings/feature-flags` returns only ACTIVE_FEATURE_FLAG_KEYS
@@ -196,6 +216,8 @@ export const LIVE_IN_CODE_FLAGS: readonly string[] = [
   "mudavym_design_shell",
   "mudavym_design_admin",
   "mudavym_design_authorize_integration",
+  "mudavym_design_ask",
+  "mudavym_design_recommendations",
 ];
 
 export function defaultActiveFlags(): Record<string, boolean> {

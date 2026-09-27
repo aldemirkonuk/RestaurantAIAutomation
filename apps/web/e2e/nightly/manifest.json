@@ -128,8 +128,7 @@
       ],
       "failed_read": [
         "The conversation book could not be refreshed",
-        "The conversation book could not be reached",
-        "Saved schedules could not be loaded"
+        "The conversation book could not be reached"
       ]
     },
     {
@@ -253,6 +252,19 @@
       ],
       "present_testids": [
         "rc-entry"
+      ]
+    },
+    {
+      "slug": "promotions",
+      "flag": "mudavym_design_promotions",
+      "route": "/promotions",
+      "legacy": "page",
+      "source": "apps/web/src/pages/promotions/next",
+      "empty": [
+        "No offers are on the table right now."
+      ],
+      "failed_read": [
+        "The offers could not be read."
       ]
     },
     {
@@ -453,7 +465,42 @@
         "This agent's counters could not be read",
         "re-read failed, showing the last reading",
         "The final receipt could not be saved",
-        "no record of this request any more"
+        "no record of this request any more",
+        "The Gmail watch status could not be read",
+        "Gmail watch re-read failed, showing the last reading"
+      ]
+    },
+    {
+      "slug": "vendor_prices",
+      "flag": "mudavym_design_vendor_prices",
+      "route": "/vendor-prices",
+      "legacy": "page",
+      "source": "apps/web/src/pages/vendor-prices/next",
+      "empty": [
+        "Search for a bottle above to open its price register.",
+        "Newest below the earlier mean: none in the"
+      ],
+      "failed_read": [
+        "Newest below the earlier mean: could not be read",
+        "The register could not be read"
+      ]
+    },
+    {
+      "slug": "ask",
+      "flag": "mudavym_design_ask",
+      "route": "/ask",
+      "legacy": "page",
+      "source": "apps/web/src/pages/ask/next",
+      "empty": [
+        "No asks yet in this house."
+      ],
+      "failed_read": [
+        "The book could not be read",
+        "The shelf could not be read"
+      ],
+      "failed_read_testids": [
+        "ak-book-failure",
+        "ak-shelf-failure"
       ]
     },
     {
@@ -575,22 +622,10 @@
   ],
   "pending_pages": [
     {
-      "slug": "promotions",
-      "route": "/promotions",
-      "file": "apps/web/src/pages/Promotions.tsx",
-      "held_by": "ADR 0143 (open fork)"
-    },
-    {
       "slug": "recommendations_catalog",
       "route": "/recommendations/catalog",
       "file": "apps/web/src/pages/InsightCatalog.tsx",
       "held_by": "ADR 0143 (open fork)"
-    },
-    {
-      "slug": "ask",
-      "route": "/ask",
-      "file": null,
-      "held_by": "ADR 0145 (not shipped until its readings pass a per-reading fixture test)"
     }
   ]
 }

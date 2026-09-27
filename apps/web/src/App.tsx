@@ -121,6 +121,8 @@ const Recommendations = lazyWithRefresh(() => import('./pages/Recommendations'))
 const InsightCatalog = lazyWithRefresh(() => import('./pages/InsightCatalog'))
 const WineLibrary = lazyWithRefresh(() => import('./pages/wine-library'))
 const SommelierAI = lazyWithRefresh(() => import('./pages/SommelierAI'))
+// ADR 0145 — `/ask`, live for every house in code (LIVE_PAGES).
+const AskNext = lazyWithRefresh(() => import('./pages/ask/next/AskNext'))
 const AdminPanel = lazyWithRefresh(() => import('./pages/AdminPanel'))
 const AuthorizeIntegrationNext = lazyWithRefresh(() => import('./pages/authorize-integration/next/AuthorizeIntegrationNext'))
 const CompleteIntegrationConsent = lazyWithRefresh(() => import('./pages/authorize-integration/CompleteIntegrationConsent'))
@@ -130,6 +132,10 @@ const AdminHealth = lazyWithRefresh(() => import('./pages/AdminHealth'))
 // Standard pages (lazy loaded)
 const Providers = lazyWithRefresh(() => import('./pages/Providers'))
 const Promotions = lazyWithRefresh(() => import('./pages/Promotions'))
+// Sketch 113 direction B (ADR 0160 §113 / ADR 0165), behind
+// `mudavym_design_promotions` — OFF by default, so `Promotions` above stays
+// every house's page until the founder turns it on.
+const PromotionsNext = lazyWithRefresh(() => import('./pages/promotions/next/PromotionsNext'))
 const Communications = lazyWithRefresh(() => import('./pages/Communications'))
 const DocumentsPage = lazyWithRefresh(() => import('./pages/DocumentsPage'))
 const ReceiptsPage = lazyWithRefresh(() => import('./pages/ReceiptsPage'))
@@ -440,7 +446,7 @@ function App() {
                       "vendor-prices = behind a flag (vendor_prices
                       mudavym_design_* column migration, he flips it; NOT
                       live on merge)". Gated on mudavym_design_vendor_prices
-                      (migration 20260926170000, renamed three times — see
+                      (migration 20261022000000, renamed seven times — see
                       vendor-prices.md), OFF by default. Role gate
                       is enforced server-side too (owner/manager on
                       /vendor-intel/*, staff on the identity routes) — a
@@ -458,7 +464,10 @@ function App() {
                     path="/distributors"
                     element={<Navigate to="/providers?tab=discover" replace />}
                   />
-                  <Route path="/promotions" element={<Promotions />} />
+                  {/* Flag-gated and held back from LIVE_PAGES (2026-09-25):
+                      legacy keeps Trusted senders / Prospects until "Who is
+                      writing" is live on /communications (PR #470). */}
+                  <Route path="/promotions" element={<PageGate page="promotions" legacy={<Promotions />} next={<PromotionsNext />} />} />
                   {/* Both halves split by role INSIDE the element: the legacy
                       entry always did (TeamCommandPage.tsx:36-37) and TeamNext
                       now does too. Routed straight to the manager surface, a
@@ -517,9 +526,15 @@ function App() {
                       `/wine-agent` and `/wineagent` are retired (ADR 0019 §B): both
                       rendered the same under-construction placeholder with no
                       behaviour behind it. Everything that said "Wine Agent" in the
-                      UI already navigated to `/sommelier`, which is the real
-                      inventory & ordering help surface. */}
-                  <Route path="/sommelier" element={<SommelierAI />} />
+                      UI already navigated to `/sommelier`.
+                      [2026-09-25, ADR 0145: `/ask` is the page now — the
+                      founder's 2026-09-12 answer "/sommelier redirects here".
+                      `ask` is in LIVE_PAGES, so every house gets `AskNext`; the
+                      old chat stays mounted only as `legacy` (a per-browser QA
+                      override) until the ADR 0149 cutover deletes it.] */}
+                  <Route path="/ask" element={<PageGate page="ask" legacy={<SommelierAI />} next={<AskNext />} />} />
+                  <Route path="/ask/f/:folioId" element={<PageGate page="ask" legacy={<SommelierAI />} next={<AskNext />} />} />
+                  <Route path="/sommelier" element={<Navigate to="/ask" replace state={{ from: 'sommelier' }} />} />
                   <Route path="/services" element={<Navigate to="/settings?tab=services" replace />} />
                   
                   {/* Dev/Test Pages */}

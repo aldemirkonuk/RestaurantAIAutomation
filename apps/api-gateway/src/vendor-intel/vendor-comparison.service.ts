@@ -1097,6 +1097,11 @@ export class VendorComparisonService {
         email: c.email ?? null,
         role: c.role ?? null,
       })),
+      // `loadObservations` caps at 500 rows, newest first (see its own
+      // comment). Hitting the cap means older sightings within the window
+      // were left out — the counts above are then a floor.
+      complete: rows.length < 500,
+      windowDays: params.windowDays ?? 365,
     };
   }
 }

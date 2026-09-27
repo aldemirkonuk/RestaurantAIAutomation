@@ -249,6 +249,119 @@ def _age_in_words(age_seconds: Optional[float]) -> str:
     return f"about {hours // 24} days"
 
 
+# =============================================================================
+# provider_promotions — the row this agent writes
+# =============================================================================
+#
+# The table's columns are the baseline CREATE TABLE
+# (supabase/migrations/20260805000000_baseline_from_production.sql:4808), plus
+# one additive column: `alerted_at timestamptz` from migration
+# 20260928000000_a_promotion_remembers_being_alerted (founder item 54,
+# 2026-09-26 round 8) -- no later migration alters any other column. Until
+# 2026-09-26 this agent wrote `status`, `is_recurring` and
+# `source_message_text` — none of which exist — and read `status` to dedupe,
+# so PostgREST refused every call, the `except` logged it, and not one offer a
+# vendor wrote in conversation ever reached the house. `_check_expiring_promos`
+# read `status` and `alerted_at` too (the latter did not exist until the
+# migration above); it is fixed the same day to read `is_active` and the real
+# `alerted_at` column, setting it only after a successful alert.
+#
+# The reference writer is the gateway's PromotionExtractorService
+# (apps/api-gateway/src/common/orchestrator/promotion-extractor.service.ts):
+# `is_active` is the lifecycle, `discount_value` carries `percent` / `amount` /
+# `free_shipping`, thresholds go in `conditions` as `min_qty` / `min_amount`.
+# The /promotions page and the digest read exactly those keys.
+
+PROMO_TYPES = (
+    "volume_discount",
+    "seasonal",
+    "bundle",
+    "loyalty",
+    "closeout",
+    "new_vintage",
+    "free_shipping",
+    "sample",
+    "early_payment",
+    "referral",
+)
+
+
+def _promo_number(value: Any) -> Optional[float]:
+    """A model-extracted number ("15", "15%", 15.0) as a float, else None."""
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    try:
+        return float(str(value).strip().rstrip("%").strip())
+    except ValueError:
+        return None
+
+
+def _promo_date(value: Any) -> Optional[str]:
+    """An ISO date (YYYY-MM-DD) or None. `date` columns refuse free text."""
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(str(value).strip()[:10]).date().isoformat()
+    except ValueError:
+        return None
+
+
+def promotion_terms(promo: Dict[str, Any]) -> Tuple[str, Dict, Dict]:
+    """(promo_type, discount_value, conditions) in the reference writer's shape."""
+    promo_type = promo.get("type") or "volume_discount"
+    if promo_type not in PROMO_TYPES:
+        promo_type = "volume_discount"
+
+    discount_value: Dict[str, Any] = {}
+    percent = _promo_number(promo.get("discount_percentage"))
+    amount = _promo_number(promo.get("discount_fixed"))
+    if percent is not None:
+        discount_value["percent"] = percent
+    if amount is not None:
+        discount_value["amount"] = amount
+    if promo_type == "free_shipping":
+        discount_value["free_shipping"] = True
+
+    raw_conditions = promo.get("conditions")
+    if isinstance(raw_conditions, dict):
+        conditions: Dict[str, Any] = dict(raw_conditions)
+    elif raw_conditions:
+        conditions = {"text": str(raw_conditions)[:500]}
+    else:
+        conditions = {}
+    min_qty = _promo_number(promo.get("min_quantity"))
+    min_amount = _promo_number(promo.get("min_spend"))
+    if min_qty is not None:
+        conditions["min_qty"] = min_qty
+    if min_amount is not None:
+        conditions["min_amount"] = min_amount
+    return promo_type, discount_value, conditions
+
+
+def promotion_insert_row(
+    provider_id: str, restaurant_id: str, promo: Dict[str, Any]
+) -> Dict[str, Any]:
+    """The provider_promotions row for one extracted offer, for one house."""
+    promo_type, discount_value, conditions = promotion_terms(promo)
+    wines = promo.get("applicable_wines")
+    return {
+        "provider_id": provider_id,
+        "restaurant_id": restaurant_id,
+        "name": str(promo.get("name") or "Unnamed Promotion")[:200],
+        "promo_type": promo_type,
+        "description": promo.get("description"),
+        "conditions": conditions,
+        "discount_value": discount_value,
+        "applicable_wines": [str(w) for w in wines] if isinstance(wines, list) else [],
+        "start_date": _promo_date(promo.get("start_date"))
+        or datetime.utcnow().date().isoformat(),
+        "end_date": _promo_date(promo.get("end_date")),
+        "is_active": True,
+    }
+
+
 SUMMARY_PROMPT = """Summarize this conversation session in exactly 3 lines:
 Line 1: What was discussed
 Line 2: What was agreed or decided
@@ -1830,81 +1943,51 @@ class ProviderConversationAgent(BaseAgent):
         promos: List[Dict[str, Any]],
         source_message: str,
     ) -> None:
-        """Process promotions discovered from conversation."""
+        """Process promotions discovered from conversation.
+
+        Every read and write is the house's own: provider rows are per house
+        (ADR 0221), and the dedupe, the insert and the update all carry
+        `restaurant_id`. Columns are the table's real ones — see
+        promotion_insert_row. The source message is not copied onto the row;
+        the conversation itself is stored by _store_conversation_embedding.
+        """
+        if not restaurant_id:
+            self.logger.warning(
+                "Promotions from provider %s not stored: no house on the message",
+                provider_id,
+            )
+            return
         for promo in promos:
-            promo_name = promo.get("name", "Unnamed Promotion")
-            promo_type = promo.get("type", "volume_discount")
-            valid_types = [
-                "volume_discount",
-                "seasonal",
-                "bundle",
-                "loyalty",
-                "closeout",
-                "new_vintage",
-                "free_shipping",
-                "sample",
-                "early_payment",
-                "referral",
-            ]
-            if promo_type not in valid_types:
-                promo_type = "volume_discount"
+            row = promotion_insert_row(provider_id, restaurant_id, promo)
+            promo_name = row["name"]
+            promo_type = row["promo_type"]
 
             try:
-                # Check if promo already exists
+                # Same house, same vendor, same offer name, still running.
                 existing = (
                     self.database.supabase.table("provider_promotions")
-                    .select("id, status")
+                    .select("id")
+                    .eq("restaurant_id", restaurant_id)
                     .eq("provider_id", provider_id)
                     .eq("name", promo_name)
-                    .eq("status", "active")
+                    .eq("is_active", True)
                     .limit(1)
                     .execute()
                 )
 
                 if existing.data:
-                    # Update existing promo
                     self.database.supabase.table("provider_promotions").update(
                         {
-                            "conditions": promo.get("conditions", {}),
-                            "discount_value": {
-                                "type": (
-                                    "percentage"
-                                    if promo.get("discount_percentage")
-                                    else "fixed"
-                                ),
-                                "value": promo.get("discount_percentage")
-                                or promo.get("discount_fixed"),
-                            },
-                            "source_message_text": source_message[:500],
+                            "conditions": row["conditions"],
+                            "discount_value": row["discount_value"],
+                            "updated_at": datetime.utcnow().isoformat(),
                         }
-                    ).eq("id", existing.data[0]["id"]).execute()
+                    ).eq("id", existing.data[0]["id"]).eq(
+                        "restaurant_id", restaurant_id
+                    ).execute()
                 else:
-                    # Insert new promo
-                    insert_data = {
-                        "provider_id": provider_id,
-                        "restaurant_id": restaurant_id,
-                        "name": promo_name,
-                        "promo_type": promo_type,
-                        "description": promo.get("description"),
-                        "conditions": promo.get("conditions", {}),
-                        "discount_value": {
-                            "type": (
-                                "percentage"
-                                if promo.get("discount_percentage")
-                                else "fixed"
-                            ),
-                            "value": promo.get("discount_percentage")
-                            or promo.get("discount_fixed"),
-                        },
-                        "applicable_wines": promo.get("applicable_wines", []),
-                        "start_date": promo.get("start_date"),
-                        "end_date": promo.get("end_date"),
-                        "is_recurring": False,
-                        "status": "active",
-                        "source_message_text": source_message[:500],
-                    }
                     self.database.supabase.table("provider_promotions").insert(
-                        insert_data
+                        row
                     ).execute()
 
                     # Publish promo discovered event
@@ -1918,7 +2001,7 @@ class ProviderConversationAgent(BaseAgent):
                                 "restaurant_id": restaurant_id,
                                 "promo_name": promo_name,
                                 "promo_type": promo_type,
-                                "end_date": promo.get("end_date"),
+                                "end_date": row["end_date"],
                             },
                         },
                     )
@@ -1945,13 +2028,16 @@ class ProviderConversationAgent(BaseAgent):
     async def _get_active_promos(
         self, provider_id: str, restaurant_id: str
     ) -> List[Dict[str, Any]]:
-        """Get all active promotions for a provider."""
+        """Get this house's running promotions from one provider."""
+        if not restaurant_id:
+            return []
         try:
             result = (
                 self.database.supabase.table("provider_promotions")
                 .select("*")
+                .eq("restaurant_id", restaurant_id)
                 .eq("provider_id", provider_id)
-                .eq("status", "active")
+                .eq("is_active", True)
                 .execute()
             )
             return result.data or []
@@ -1959,7 +2045,36 @@ class ProviderConversationAgent(BaseAgent):
             return []
 
     async def _check_expiring_promos(self) -> None:
-        """Check for promotions expiring soon and alert manager."""
+        """Alert each house once per promo that is about to expire.
+
+        `is_active` is the table's lifecycle column; there is no `status`
+        (see the header note above `_process_extracted_promos`). The dedupe
+        is `alerted_at IS NULL`, a real column added by migration
+        20260928000000_a_promotion_remembers_being_alerted (founder item 54,
+        2026-09-26 round 8) -- until then this read `status` and `alerted_at`,
+        neither of which existed, so PostgREST refused the query and every
+        expiring promo silently never alerted.
+
+        Each promo is alerted independently: a publish failure on one promo
+        is logged and skipped, never abandoning the rest of the sweep, and
+        `alerted_at` is written only after BOTH alerts for that promo
+        succeeded -- a failed publish leaves it NULL so the next sweep
+        retries it, rather than marking a notice sent when it was not.
+        `MessageBus.publish`/`publish_event` returns `False` on a
+        `CircuitOpenError` or any other publish exception instead of
+        raising, so both `self.publish(...)` calls below have their return
+        value checked explicitly and turned into a raise -- otherwise a
+        broker hiccup would fall through to the `alerted_at` write and
+        permanently lose the alert with no retry.
+
+        Filter has no lower bound on `end_date` on purpose: `is_active`
+        rows already past their end date belong to `_expire_old_promos`,
+        which the proactive-monitor loop runs first specifically so this
+        query never sees them (see that loop's ordering note) -- otherwise
+        the first run after this migration would alert on every already-
+        expired row left `is_active=true` by `_expire_old_promos`'s prior
+        `status`/`expired` no-op.
+        """
         try:
             cutoff = (
                 (datetime.utcnow() + timedelta(days=self.promo_alert_days))
@@ -1969,14 +2084,24 @@ class ProviderConversationAgent(BaseAgent):
             result = (
                 self.database.supabase.table("provider_promotions")
                 .select("*, providers(name)")
-                .eq("status", "active")
+                .eq("is_active", True)
                 .lte("end_date", cutoff)
                 .is_("alerted_at", "null")
                 .execute()
             )
+        except Exception as e:
+            self.logger.error(f"Error checking expiring promos: {e}")
+            return
 
-            for promo in result.data or []:
-                await self.publish(
+        for promo in result.data or []:
+            try:
+                # MessageBus.publish/publish_event does not raise on a
+                # broker hiccup (CircuitOpenError or any other publish
+                # exception) -- it logs it and returns False. Both calls
+                # below must be inspected explicitly, or a broker outage
+                # would fall straight through to the alerted_at write
+                # below and permanently lose the alert with no retry.
+                promo_event_sent = await self.publish(
                     exchange_name="provider.events",
                     routing_key="provider.promo.expiring_soon",
                     message_body={
@@ -1990,8 +2115,13 @@ class ProviderConversationAgent(BaseAgent):
                         },
                     },
                 )
+                if not promo_event_sent:
+                    raise RuntimeError(
+                        "publish provider.promo.expiring_soon returned False "
+                        f"for promo {promo.get('id')}"
+                    )
 
-                await self.publish(
+                notification_sent = await self.publish(
                     exchange_name="notification.events",
                     routing_key="notification.promo_alert",
                     message_body={
@@ -2005,14 +2135,22 @@ class ProviderConversationAgent(BaseAgent):
                         },
                     },
                 )
+                if not notification_sent:
+                    raise RuntimeError(
+                        "publish notification.promo_alert returned False "
+                        f"for promo {promo.get('id')}"
+                    )
 
-                # Mark as alerted
+                # Both alerts sent: mark alerted so this promo is not
+                # re-alerted on the next sweep.
                 self.database.supabase.table("provider_promotions").update(
                     {"alerted_at": datetime.utcnow().isoformat()}
                 ).eq("id", promo["id"]).execute()
 
-        except Exception as e:
-            self.logger.error(f"Error checking expiring promos: {e}")
+            except Exception as e:
+                self.logger.error(
+                    f"Error alerting on expiring promo {promo.get('id')}: {e}"
+                )
 
     # =========================================================================
     # 7. RESPONSE GENERATOR
@@ -2737,6 +2875,28 @@ class ProviderConversationAgent(BaseAgent):
     # already happened". A claim must never be granted over one of these.
     _SEND_TERMINAL_STATUSES = ("SENDING", "SENT", "AUTO_SENT", "SEND_UNCONFIRMED")
 
+    # A house letter (`outbound_email_type = 'HOUSE_LETTER'`: the ADR 0118
+    # composer, or an ADR 0230 credit-claim draft) is sent only by the
+    # gateway's own dispatcher (apps/api-gateway/src/communications/letters/
+    # house-letters.service.ts), which reads HOUSE_QUEUED after the undo
+    # window. This agent must never claim one: a HOUSE_QUEUED claim would send
+    # the letter a second time, and a HOUSE_DRAFT / HOUSE_CANCELLED /
+    # HOUSE_FAILED claim would send something nobody asked to send (PR #476
+    # audit, round 6). These are LETTER_STATUS's four HOUSE_* words; its fifth,
+    # SENT, is already terminal above. The gateway refuses the same rows at
+    # POST /conversations/:id/approve (conversations.service.ts
+    # HOUSE_LETTER_STATUSES); this is the backstop for any other publisher of
+    # conversation.approved.
+    _HOUSE_LETTER_STATUSES = (
+        "HOUSE_DRAFT",
+        "HOUSE_QUEUED",
+        "HOUSE_CANCELLED",
+        "HOUSE_FAILED",
+    )
+
+    # Every status a send claim — or a return to the manager — must not touch.
+    _CLAIM_REFUSED_STATUSES = _SEND_TERMINAL_STATUSES + _HOUSE_LETTER_STATUSES
+
     def _mint_rfc822_message_id(self) -> str:
         """Mint an RFC822 Message-ID BEFORE the send.
 
@@ -2825,7 +2985,7 @@ class ProviderConversationAgent(BaseAgent):
         and its send would be refused forever. That direction is fail-safe but
         it is still wrong, so NULL is matched explicitly.
         """
-        blocked = ",".join(self._SEND_TERMINAL_STATUSES)
+        blocked = ",".join(self._CLAIM_REFUSED_STATUSES)
         try:
             claimed = (
                 self.database.supabase.table("procurement_conversations")
@@ -3531,7 +3691,7 @@ class ProviderConversationAgent(BaseAgent):
                 f"Held {routing_key} for {conversation_id}, but no such draft exists."
             )
             return
-        if row.get("status") in self._SEND_TERMINAL_STATUSES:
+        if row.get("status") in self._CLAIM_REFUSED_STATUSES:
             self.logger.info(
                 f"Held {routing_key} for {conversation_id}; the draft is already "
                 f"{row.get('status')}, so there is nothing to return."
@@ -3549,7 +3709,7 @@ class ProviderConversationAgent(BaseAgent):
             ),
             "held_at": datetime.now(timezone.utc).isoformat(),
         }
-        blocked = ",".join(self._SEND_TERMINAL_STATUSES)
+        blocked = ",".join(self._CLAIM_REFUSED_STATUSES)
         updated = (
             table("procurement_conversations")
             .update({"status": "PENDING_APPROVAL", "constraint_flags": flags})
@@ -3652,14 +3812,23 @@ class ProviderConversationAgent(BaseAgent):
 
         while not self._shutdown_event.is_set():
             try:
+                # Expire old promotions FIRST. _check_expiring_promos has no
+                # lower bound on end_date (see its docstring), so any row
+                # still is_active=true past its end_date would otherwise be
+                # read as "expiring soon" and alerted on. This matters most
+                # on the first run after 20260928000000_a_promotion_remembers_being_alerted
+                # ships: _expire_old_promos was a no-op before this PR (it
+                # wrote a `status` column that does not exist), so
+                # already-expired rows accumulated across every house with
+                # `alerted_at` NULL -- running this first prevents a false
+                # alert burst on all of them.
+                await self._expire_old_promos()
+
                 # Check expiring promos
                 await self._check_expiring_promos()
 
                 # Check relationship health (providers with no recent contact)
                 await self._check_relationship_health()
-
-                # Expire old promotions
-                await self._expire_old_promos()
 
             except Exception as e:
                 self.logger.error(f"Proactive monitor error: {e}")
@@ -3735,12 +3904,15 @@ class ProviderConversationAgent(BaseAgent):
             self.logger.error(f"Error checking relationship health: {e}")
 
     async def _expire_old_promos(self) -> None:
-        """Mark expired promotions."""
+        """Close promotions past their end date (every house: a system sweep).
+
+        `is_active` is the table's lifecycle column; there is no `status`.
+        """
         try:
-            today = datetime.utcnow().date().isoformat()
+            now = datetime.utcnow()
             self.database.supabase.table("provider_promotions").update(
-                {"status": "expired"}
-            ).eq("status", "active").lt("end_date", today).execute()
+                {"is_active": False, "updated_at": now.isoformat()}
+            ).eq("is_active", True).lt("end_date", now.date().isoformat()).execute()
         except Exception as e:
             self.logger.error(f"Error expiring promos: {e}")
 

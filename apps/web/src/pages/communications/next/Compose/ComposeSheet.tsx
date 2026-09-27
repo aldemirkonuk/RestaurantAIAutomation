@@ -80,12 +80,39 @@ export interface ComposeSheetProps {
   open: boolean;
   onClose: () => void;
   /** Prefill from a recommendation's "Write to the vendor", when there is one. */
-  prefill?: { providerId?: string; subject?: string; body?: string } | null;
+  prefill?: {
+    providerId?: string;
+    subject?: string;
+    body?: string;
+    /**
+     * The draft this letter is (ADR 0230) — a credit claim asked for leaves one.
+     * Send turns THAT row into the queued letter; nothing leaves before it.
+     */
+    draftId?: string;
+    /** The booked address the draft was written to, when it had one. */
+    to?: string | null;
+  } | null;
+  /** Called once a draft was discarded, so the page can drop it. */
+  onDiscarded?: () => void;
 }
 
-export function ComposeSheet({ open, onClose, prefill }: ComposeSheetProps) {
+export function ComposeSheet({ open, onClose, prefill, onDiscarded }: ComposeSheetProps) {
   const data = useComposeData();
   const [to, setTo] = useState<Recipient | null>(null);
+  const draftId = prefill?.draftId;
+  const [discarded, setDiscarded] = useState<string | null>(null);
+
+  // A draft's recipient is the book entry it was written to, found once the
+  // book answers. An address the book no longer holds is left unchosen rather
+  // than typed in — the composer never addresses a string.
+  const booked = prefill?.to && prefill.providerId ? { id: prefill.providerId, email: prefill.to } : null;
+  useEffect(() => {
+    if (to || !booked || !data.book) return;
+    const hit = data.book.find(
+      (e) => e.providerId === booked.id && e.email.toLowerCase() === booked.email.toLowerCase(),
+    );
+    if (hit) setTo({ providerId: hit.providerId, providerName: hit.providerName, email: hit.email });
+  }, [to, booked?.id, booked?.email, data.book]); // eslint-disable-line react-hooks/exhaustive-deps
   const [subject, setSubject] = useState(prefill?.subject ?? '');
   const [body, setBody] = useState(prefill?.body ?? '');
   const [chosen, setChosen] = useState<InsightSentence[]>([]);
@@ -117,7 +144,9 @@ export function ComposeSheet({ open, onClose, prefill }: ComposeSheetProps) {
     to !== null &&
     subject.trim().length > 0 &&
     body.trim().length > 0 &&
-    send.kind !== 'queueing';
+    send.kind !== 'queueing' &&
+    // A draft that has been queued or discarded is not sent again from here.
+    !(draftId && (send.kind === 'queued' || send.kind === 'cancelled' || discarded !== null));
 
   const applyTemplate = useCallback(
     (t: LetterTemplate | undefined) => {
@@ -156,6 +185,7 @@ export function ComposeSheet({ open, onClose, prefill }: ComposeSheetProps) {
         to: to.email,
         subject: subject.trim(),
         body,
+        draftId: draftId || undefined,
         templateId: templateId || undefined,
         insights: chosen.map((c) => ({
           candidateKey: c.candidateKey,
@@ -178,7 +208,20 @@ export function ComposeSheet({ open, onClose, prefill }: ComposeSheetProps) {
         guardrails: guardrailsFrom(e),
       });
     }
-  }, [to, subject, body, templateId, chosen, data]);
+  }, [to, subject, body, draftId, templateId, chosen, data]);
+
+  const discard = useCallback(async () => {
+    if (!draftId) return;
+    try {
+      const { data: result } = await apiClient.post<{ says: string }>(
+        `/communications/letters/${draftId}/discard`,
+      );
+      setDiscarded(result.says);
+      onDiscarded?.();
+    } catch (e) {
+      setSend({ kind: 'refused', message: `It was NOT discarded — ${errText(e)}`, guardrails: [] });
+    }
+  }, [draftId, onDiscarded]);
 
   const cancel = useCallback(async () => {
     if (send.kind !== 'queued') return;
@@ -210,9 +253,9 @@ export function ComposeSheet({ open, onClose, prefill }: ComposeSheetProps) {
       open={open}
       onClose={onClose}
       wide
-      label="Write a letter from the house"
-      eyebrow="The house writes"
-      title="A letter from the house"
+      label={draftId ? 'A drafted letter from the house, not sent' : 'Write a letter from the house'}
+      eyebrow={draftId ? 'Drafted · not sent' : 'The house writes'}
+      title={draftId ? 'A drafted letter' : 'A letter from the house'}
     >
       <style>{`
         .cmp-pick { transition: background ${ink.ms}ms ${ink.easing}, border-color ${ink.ms}ms ${ink.easing} }
@@ -444,6 +487,15 @@ export function ComposeSheet({ open, onClose, prefill }: ComposeSheetProps) {
           </div>
         )}
 
+        {draftId && (
+          <p data-testid="letter-draft-note" style={{ margin: 0, fontSize: 11.5, lineHeight: 1.45, color: 'var(--ink-2, #4F473C)' }}>
+            {discarded ??
+              (prefill?.to
+                ? 'Mudavym drafted this letter; it has not been sent. Read it, change what you want, and send it — sending is the approval.'
+                : 'Mudavym drafted this letter; it has not been sent. The vendor had no address in the book when it was drafted — choose or add one below before it can go.')}
+          </p>
+        )}
+
         {send.kind === 'cancelled' && (
           <p role="status" style={{ margin: 0, fontSize: 12, color: 'var(--ink-2, #4F473C)' }}>
             {send.says}
@@ -481,6 +533,25 @@ export function ComposeSheet({ open, onClose, prefill }: ComposeSheetProps) {
               }}
             >
               {send.kind === 'queueing' ? 'Queueing…' : 'Send'}
+            </button>
+          )}
+          {draftId && send.kind !== 'queued' && discarded === null && (
+            <button
+              type="button"
+              data-testid="letter-discard"
+              onClick={discard}
+              style={{
+                fontSize: 12,
+                fontWeight: 600,
+                padding: '7px 12px',
+                borderRadius: 9,
+                border: '1px solid var(--paper-2, #EAE4D8)',
+                background: 'transparent',
+                color: 'var(--ink-2, #4F473C)',
+                cursor: 'pointer',
+              }}
+            >
+              Discard the draft
             </button>
           )}
           <p style={{ margin: 0, fontSize: 11, lineHeight: 1.45, color: 'var(--ink-3, #7C7365)', maxWidth: '52ch' }}>
