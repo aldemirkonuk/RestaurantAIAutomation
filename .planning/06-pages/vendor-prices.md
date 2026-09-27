@@ -115,6 +115,19 @@ longer sorts ahead of main's ceiling. `20260929000000` is comfortably past it
 (a full day, not one step, per the guard's own advice on how earlier renames
 lost this race). `feature-flag-registry.ts`, `App.tsx` and
 `useMudavymDesign.ts` re-cited; the two brackets above stay as history.
+
+**[2026-09-27, second merge-train update for PR #473 (train 6)]** Renamed a
+fifth time, `20260929000000` → `20261001000000`: `check_migration_order.py`
+found origin/main's ceiling had moved again, to `20260930100100`
+(three more migrations landed: `20260929020000`, `20260930100000`,
+`20260930100100`), which sorts ahead of the fourth rename above.
+`20261001000000` clears both origin/main's ceiling and the highest version
+queued across the other 42 open PRs (`20260930240000`, from
+`check_migration_versions_unique.py`), by a full day rather than one step —
+the same reasoning as the fourth rename, applied again because the ceiling
+moved a second time between renames. `feature-flag-registry.ts`, `App.tsx`
+and `useMudavymDesign.ts` re-cited again; all three brackets above stay as
+history.
 - **Fork 6, as answered 2026-09-18 ("Always on the record, loaded fresh"), is
   now built.** Every price record draws C's paper trail (`PaperTrail.tsx`)
   under the ladders: every sighting, newest first, across classes, with the

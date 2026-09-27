@@ -72,13 +72,13 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     key: "mudavym_design_receiving",
     // OFF by default: the Mudavym redesign of `/receiving` (ADR 0044 P2).
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:205",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:215",
   },
   {
     key: "mudavym_design_recommendations",
     // OFF by default: the Mudavym redesign of `/recommendations` (ADR 0044 p4 wave, REWORK verdict — "more structure and uniqueness"; also the first authenticated build of the page).
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:205",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:215",
   },
   {
     key: "enable_house_inbox_read",
@@ -100,7 +100,7 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     // Settings `.select()` of every ACTIVE key cannot 42703 before the
     // migration has applied (the failure mode that blocked PR #414).
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:205",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:215",
   },
   {
     key: "mudavym_design_vendor_prices",
@@ -111,11 +111,11 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     // specific 2026-09-19 ~09:20Z answer (memory
     // founder-sketch-decisions-106-115.md, "19-lane blocking answers")
     // overrides that and requires exactly this gate. Column added by
-    // 20260929000000 (renamed a third time on 2026-09-25 into the W2 lane's
-    // reserved range — every earlier version sorted below main's ceiling;
+    // 20261001000000 (renamed a fifth time, 2026-09-27 merge-train update for
+    // PR #473 — every earlier version sorted below main's ceiling;
     // see vendor-prices.md's dated brackets for the rename history).
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:205",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:215",
   },
 ];
 
@@ -149,6 +149,10 @@ export function isActiveFeatureFlag(name: string): boolean {
  * move and "eighteen" before `cellar`/`menu`, both kept as written. `menu`,
  * like `help`, never had a column. The three moved keys' columns
  * (20260921114300, 20260922210200, 20260922220200) stay, unread.]
+ *
+ * [2026-09-25, ADR 0145's 2026-09-25 amendment: `mudavym_design_ask` joins —
+ * `/ask` is live in code for every house from its first day, on the same Q2.
+ * Like `help` and `menu` it never had a column. Twenty-four keys.]
  *
  * Deliberately NOT in ACTIVE_FEATURE_FLAGS:
  *  - `GET /settings/feature-flags` returns only ACTIVE_FEATURE_FLAG_KEYS
@@ -196,6 +200,7 @@ export const LIVE_IN_CODE_FLAGS: readonly string[] = [
   "mudavym_design_shell",
   "mudavym_design_admin",
   "mudavym_design_authorize_integration",
+  "mudavym_design_ask",
 ];
 
 export function defaultActiveFlags(): Record<string, boolean> {

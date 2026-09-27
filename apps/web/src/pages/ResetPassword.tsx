@@ -104,7 +104,8 @@ export function ResetPassword() {
             </Link>
           ) : success ? (
             <p role="status">
-              Your password has changed. Redirecting you to sign in…
+              Your password has changed, and every session on Mudavym has
+              been signed out. Redirecting you to sign in…
             </p>
           ) : (
             <form
@@ -218,7 +219,8 @@ export function ResetPassword() {
                 Password updated
               </p>
               <p className="mt-1.5 text-sm text-gray-500 leading-relaxed">
-                Redirecting you to sign in…
+                Every session on Mudavym has been signed out. Redirecting
+                you to sign in…
               </p>
             </div>
           </div>
