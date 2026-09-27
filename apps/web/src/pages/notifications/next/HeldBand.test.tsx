@@ -21,7 +21,13 @@ import type { HeldLowStockCrossing } from '@/services/api/notifications';
 import { HELD_FIRST, HeldBand } from './HeldBand';
 import { reasonWords, whenTold } from './nt-held';
 
-const DAILY = { low_stock_enabled: true, frequency: 'daily' as const, hour: 12, timezone: 'America/New_York' };
+const DAILY = {
+  low_stock_enabled: true,
+  frequency: 'daily' as const,
+  hour: 12,
+  timezone: 'America/Los_Angeles',
+  zone_source: 'house' as const,
+};
 
 function crossing(i: number, over: Partial<HeldLowStockCrossing> = {}): HeldLowStockCrossing {
   return {
@@ -105,7 +111,7 @@ describe('HeldBand — the held wines', () => {
     draw(ready([crossing(1, { level: 'critical' }), crossing(2)]));
     expect(screen.getByText(/2 wines are below par and nobody has been told yet/)).toBeInTheDocument();
     expect(screen.getByText(/· 1 critical/)).toBeInTheDocument();
-    expect(screen.getByText(/daily digest at 12 PM, New York time/)).toBeInTheDocument();
+    expect(screen.getByText(/daily digest at 12 PM, Los Angeles time/)).toBeInTheDocument();
   });
 
   it('writes the reason on every line, in words (not only in a hover title)', () => {
@@ -176,6 +182,23 @@ describe('whenTold / reasonWords', () => {
     expect(whenTold({ ...DAILY, frequency: 'off' })).toMatch(/will not be sent on their own/);
     expect(whenTold({ ...DAILY, low_stock_enabled: false })).toMatch(/turned off for everyone/);
     expect(whenTold({ ...DAILY, hour: 17 })).toMatch(/5 PM/);
+  });
+
+  it('names the zone the gateway reports, and says UTC in item 61\'s words when the house has none (PR #488)', () => {
+    expect(whenTold(DAILY)).toBe('They go out together in the daily digest at 12 PM, Los Angeles time.');
+    expect(whenTold({ ...DAILY, timezone: 'Europe/Istanbul' })).toMatch(/12 PM, Istanbul time\.$/);
+    expect(whenTold({ ...DAILY, timezone: 'UTC', zone_source: 'fallback' })).toBe(
+      'They go out together in the daily digest at 12 PM UTC — this house has no time zone set yet.',
+    );
+  });
+
+  it('does not tell a house that chose UTC it has no time zone (PR #488 train-6 BLOCK)', () => {
+    // `zone_source: 'house'` with `UTC` is a house that set UTC on purpose.
+    // Item 61's sentence is for a house with no zone set, and only that one.
+    const chose = whenTold({ ...DAILY, timezone: 'UTC', zone_source: 'house' });
+    expect(chose).toBe('They go out together in the daily digest at 12 PM, UTC time.');
+    expect(chose).not.toMatch(/no time zone set/);
+    expect(whenTold({ ...DAILY, timezone: 'Etc/UTC', zone_source: 'house' })).not.toMatch(/no time zone set/);
   });
 
   it('names an unknown reason as unrecorded', () => {
