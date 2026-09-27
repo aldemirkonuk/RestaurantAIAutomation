@@ -64,7 +64,7 @@ export function InviteLanding() {
   const publicDesign = usePublicDesign()
   const { code } = useParams<{ code: string }>()
   const navigate = useNavigate()
-  const { isAuthenticated, refreshBranches } = useAuth()
+  const { isAuthenticated, refreshBranches, setActiveRestaurantId } = useAuth()
   const [previewError, setPreviewError] = useState<string | null>(null)
   const [preview, setPreview] = useState<Preview | null>(null)
   const [loadingPreview, setLoadingPreview] = useState(true)
@@ -102,10 +102,14 @@ export function InviteLanding() {
     setAcceptError(null)
     setAccepting(true)
     try {
-      const { data } = await apiClient.post<{ restaurant?: string }>(
+      const { data } = await apiClient.post<{ restaurant?: string; restaurantId?: string }>(
         `/auth/invite/${encodeURIComponent(code)}/accept`,
       )
       toast.success(`You've joined ${data.restaurant || 'the restaurant'}!`)
+      // Accepting lands the person in the house they just joined (ADR 0164,
+      // R1). The accept route mints nothing, so without this the session kept
+      // naming the house it was in before, or none.
+      if (data.restaurantId) await setActiveRestaurantId(data.restaurantId)
       await refreshBranches()
       navigate('/', { replace: true })
     } catch (e) {

@@ -15,7 +15,9 @@
  * Hiding a row is not the boundary; the gateway is. So a room is hidden only
  * where the gateway refuses the person anyway (Vendor prices is owner/manager
  * at `vendor-intel.controller.ts`), or where the route itself is role-gated
- * (The desk, `/admin`, owner — App.tsx `ProtectedRoute requiredRole="owner"`),
+ * (The desk, `/admin`, owner — `AdminDesk`'s own owner-or-operator check;
+ * App.tsx's legacy slot says `['owner', 'manager']` since ADR 0164 made
+ * `ProtectedRoute` exact, which is what its old widened "owner" admitted),
  * or where the route does not exist for this house (Connections with its flag
  * off redirects to /profile, so a visible link would lead somewhere else —
  * the legacy Sidebar's rule).

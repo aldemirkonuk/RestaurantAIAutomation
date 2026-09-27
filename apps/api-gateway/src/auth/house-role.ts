@@ -11,21 +11,23 @@
  * house A, and a person with no membership in B at all carried their house-A
  * role into it (PR #393's round-3 audit, finding 1; v3.0-TECH-DEBT 44.1q).
  *
- * The role is read the way `MembersService.assertMembership` reads a member
- * (`restaurants/members.service.ts`): an active `user_restaurant_access` row in
- * the house decides, and its role is the answer, so a NULL role is no role.
- * With no such row, a `users` row whose `restaurant_id` names the house is read
- * at `users.role || "staff"`. Anything else is no role, and every `@Roles` route
- * refuses it. This is the seventh site that reads the `users` row that way;
- * it retires with the other six (v3.0-TECH-DEBT 44.1i), and not before
- * migration 20260918153000 is applied in production.
+ * Membership only (ADR 0164, the founder, 2026-09-18: *"Membership only"*): an
+ * active `user_restaurant_access` row in the house is the ONLY thing that makes
+ * a person a member of it, and its role is the answer, so a NULL role is no
+ * role. With no such row the session is refused outright
+ * (`AuthService.validateJwtPayload`, 401 `HOUSE_ACCESS_ENDED`); it never gets
+ * this far. [Until 2026-09-18 a `users` row whose `restaurant_id` named the
+ * house was also read here, at `users.role || "staff"`: the seventh users-row
+ * fallback site (44.1i). Retired with ADR 0164. Its precondition held:
+ * migration 20260918153000 is applied, and no production `users` row names a
+ * house without an active row there (read-only, 2026-09-18/19).]
  */
 
 /**
  * The house a token names, or null for a token that names none.
  *
  * Exactly the test `JwtStrategy.validate` has always used to decide whether
- * the token's `restaurantId` wins over the `users` row's.
+ * the token names a house at all.
  */
 export function tokenHouse(payload: {
   restaurantId?: string | null;
@@ -35,19 +37,10 @@ export function tokenHouse(payload: {
 }
 
 /**
- * The role in `house`, from the active access row read there (or null when
- * there is none) and the person's `users` row. Null means no role.
+ * The role an active access row gives, or null. Null means no role.
  */
 export function roleInHouse(
   access: { role?: string | null } | null,
-  user: { restaurant_id?: string | null; role?: string | null } | null,
-  house: string,
 ): string | null {
-  if (access) {
-    return access.role ?? null;
-  }
-  if (user && user.restaurant_id === house) {
-    return user.role || "staff";
-  }
-  return null;
+  return access ? (access.role ?? null) : null;
 }

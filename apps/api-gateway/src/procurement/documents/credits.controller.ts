@@ -27,6 +27,8 @@ import {
   Min,
 } from "class-validator";
 import { JwtAuthGuard } from "../../auth/guards/jwt-auth.guard";
+import { RolesGuard } from "../../auth/guards/roles.guard";
+import { Roles } from "../../auth/decorators/roles.decorator";
 import { CurrentUser } from "../../auth/decorators/current-user.decorator";
 import { DatabaseService } from "../../database/database.service";
 import {
@@ -83,10 +85,19 @@ export class TransitionCreditDto {
  * A restaurant that has asked for $4,200 has recovered nothing. Recovery means a
  * credit memo exists. Those are different fields, different states, and only one
  * of them appears as `recovered`.
+ *
+ * OWNER OR MANAGER ONLY, on every route here (ADR 0167, founder 2026-09-19:
+ * "Refuse staff on all four"). Until then the class carried `JwtAuthGuard` alone,
+ * so any signed-in member of the house, staff included, could read the chase list
+ * and the recovery figures the staff view deliberately omits, and could move a
+ * claim to `rejected` or `written_off`. `RolesGuard` reads `req.user.role`, which
+ * for a token that names a house is the role IN THAT HOUSE (ADR 0162, answer A),
+ * so this is decided per house and a role held elsewhere does not carry over.
  */
 @ApiTags("procurement-credits")
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles("owner", "manager")
 @Controller("procurement/credits")
 export class CreditsController {
   constructor(private readonly db: DatabaseService) {}

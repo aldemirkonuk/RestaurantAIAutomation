@@ -16,6 +16,16 @@ dependencies: the AMQP connection and the Supabase/Redis client. What it proves
 is instantiation and subscription — that every CORE agent is constructed, starts
 without raising, and binds a queue for each key it declares. What it cannot
 prove is anything requiring a live broker or database.
+
+The bus is fake, but the frames are not. Until 2026-09-25 the fake accepted any
+queue name, and this file passed while provider_conversation_agent failed every
+production boot with "Invalid value for queue": pamqp, the codec under
+aio-pika, refuses `*` in a queue name, and the agent subscribes to
+`system.provider_conversation.*`. The fake now builds the same pamqp frames the
+real client sends, so a name the codec refuses fails here first. It also keeps
+MessageBus.declare_queue's rule that a queue name it has already declared is
+returned without a new binding, because a fake that binds more than the real bus
+reports keys as bound that production never receives.
 """
 
 from __future__ import annotations
@@ -23,6 +33,7 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from pamqp import commands
 
 from config.settings import Settings
 from core.agent_registry import AgentTier
@@ -35,13 +46,27 @@ class RecordingMessageBus:
     def __init__(self):
         self.bindings: list[tuple[str, str, str]] = []  # (queue, exchange, routing_key)
         self.consumed: list[str] = []
+        self._declared: set[str] = set()
 
     async def declare_queue(
         self, queue_name, exchange_name, routing_key, durable=True, max_priority=10
     ):
+        # MessageBus.declare_queue returns a queue it already holds by name
+        # before declaring or binding anything, so a second exchange that
+        # resolves to the same name is never bound.
+        if queue_name in self._declared:
+            return
+        # pamqp validates each frame in its constructor: these raise the same
+        # ValueError the real client raises before anything reaches the broker.
+        commands.Queue.Declare(queue=queue_name, durable=durable)
+        commands.Queue.Bind(
+            queue=queue_name, exchange=exchange_name, routing_key=routing_key
+        )
+        self._declared.add(queue_name)
         self.bindings.append((queue_name, exchange_name, routing_key))
 
     async def consume(self, queue_name, callback, auto_ack=False):
+        commands.Basic.Consume(queue=queue_name)
         self.consumed.append(queue_name)
 
     async def publish(self, *args, **kwargs):
@@ -144,6 +169,27 @@ class TestSubscriptionsAreActuallyBound:
             == "queue.provider_communication_agent.procurement_order_created"
         )
 
+    # The one known exception, pinned at its exact size so it cannot grow and so
+    # fixing it fails this test until the pin is removed. state_invariant_enforcer
+    # subscribes `#` on eight exchanges. The queue name carries only the routing
+    # key, so all eight resolve to queue.state_invariant_enforcer.#, and
+    # MessageBus binds only the first (pos.events). Production logs one
+    # "Queue bound" and eight "Started consuming" for that queue. Renaming it
+    # strands a durable queue bound to pos.events with no consumer, so the fix
+    # needs a broker step: v3.0-TECH-DEBT.md, "state_invariant_enforcer hears
+    # one exchange of the eight it subscribes to".
+    KNOWN_UNBOUND = {
+        "state_invariant_enforcer": [
+            ("broadcast", "#"),
+            ("menu.events", "#"),
+            ("notification.events", "#"),
+            ("procurement.events", "#"),
+            ("report.events", "#"),
+            ("stock.events", "#"),
+            ("system.control", "#"),
+        ],
+    }
+
     async def test_every_declared_key_of_every_core_agent_is_bound(self, booted):
         orch, bus = booted
 
@@ -154,7 +200,9 @@ class TestSubscriptionsAreActuallyBound:
             if declared - bound:
                 unbound[name] = sorted(declared - bound)
 
-        assert not unbound, f"agents started without binding their keys: {unbound}"
+        assert (
+            unbound == self.KNOWN_UNBOUND
+        ), f"agents started without binding their keys: {unbound}"
 
     async def test_every_bound_queue_is_being_consumed(self, booted):
         _, bus = booted

@@ -43,13 +43,39 @@ function insight(over: Partial<Record<string, unknown>> = {}) {
 
 function makeService(opts: {
   dismissed?: string[];
+  /** Any other state rows — snoozed (with an instant) or done. */
+  rows?: Array<{
+    key: string;
+    status: "snoozed" | "done" | "active";
+    snoozeUntil?: string | null;
+  }>;
   dispositionsReadable?: boolean;
   impressions?: Record<string, string>;
 }) {
   const map = new Map<string, RecommendationActionRow>();
+  for (const r of opts.rows ?? [])
+    map.set(r.key, {
+      ruleKey: r.key,
+      ruleWide: false,
+      status: r.status,
+      reason: null,
+      snoozeUntil: r.snoozeUntil ?? null,
+      pinned: false,
+      actedAt: null,
+      feedback: null,
+      assignedTo: null,
+      assignedName: null,
+      assignedAt: null,
+      observation: null,
+      recommendation: null,
+      category: null,
+      urgency: null,
+      updatedAt: "2026-09-02T10:00:00.000Z",
+    });
   for (const key of opts.dismissed ?? [])
     map.set(key, {
       ruleKey: key,
+      ruleWide: false,
       status: "dismissed",
       reason: "not_relevant",
       snoozeUntil: null,
@@ -250,6 +276,83 @@ describe("a dismissal the feed honours, at the scope it was made", () => {
     const { svc } = makeService({ dispositionsReadable: false });
     const out = await svc.getRecommendations(RID);
     expect(out.suppressionsReadable).toBe(false);
+  });
+});
+
+/**
+ * The ONE shared per-item state on the feed (ADR 0191; founder, 2026-09-21:
+ * "Build it right, in order"). The feed read snooze and done off the rule's
+ * bare row only, so a snooze or a done written at the finding's own key —
+ * the key the generator, Reports and the rails resolve — did nothing here.
+ */
+describe("snooze and done hold on the feed at the scope they were written", () => {
+  const LATER = new Date(Date.now() + 7 * 86_400_000).toISOString();
+  const EARLIER = new Date(Date.now() - 60_000).toISOString();
+  const finding = buildSuppressionKey(keysFor(), "insight");
+
+  it("a snooze on this finding hides it, and the entry reads snoozed", async () => {
+    const { svc } = makeService({
+      rows: [{ key: finding, status: "snoozed", snoozeUntil: LATER }],
+    });
+    const out = await svc.getRecommendations(RID);
+    expect(out.recommendations.map((r) => r.ruleKey)).not.toContain(
+      WEEKDAY_RULE,
+    );
+    const all = await svc.getRecommendations(RID, { includeHidden: true });
+    const entry = all.recommendations.find((r) => r.ruleKey === WEEKDAY_RULE)!;
+    expect(entry.status).toBe("snoozed");
+    expect(entry.snoozeUntil).toBe(LATER);
+    expect(out.stateCounts.snoozed).toBe(1);
+    expect(out.stateCounts.active).toBe(0);
+    // A snooze is not a dismissal.
+    expect(out.suppressed).toBe(0);
+  });
+
+  it("an elapsed snooze is back on the book", async () => {
+    // `readDispositions` reports an elapsed snooze as active; the resolver
+    // must not hide it either way.
+    const { svc } = makeService({
+      rows: [{ key: finding, status: "snoozed", snoozeUntil: EARLIER }],
+    });
+    const out = await svc.getRecommendations(RID);
+    expect(out.recommendations.map((r) => r.ruleKey)).toContain(WEEKDAY_RULE);
+  });
+
+  it("done on this finding hides it; next week's finding is another item", async () => {
+    const { svc } = makeService({ rows: [{ key: finding, status: "done" }] });
+    const out = await svc.getRecommendations(RID);
+    expect(out.recommendations.map((r) => r.ruleKey)).not.toContain(
+      WEEKDAY_RULE,
+    );
+    expect(out.stateCounts.done).toBe(1);
+
+    const other = makeService({
+      rows: [
+        {
+          key: buildSuppressionKey(keysFor("d:2026-08-26"), "insight"),
+          status: "done",
+        },
+      ],
+    });
+    const stands = await other.svc.getRecommendations(RID);
+    expect(stands.recommendations.map((r) => r.ruleKey)).toContain(
+      WEEKDAY_RULE,
+    );
+  });
+
+  it("a scoped row for another subject is counted on its own leaf, once", async () => {
+    const { svc } = makeService({
+      dismissed: [
+        buildSuppressionKey(
+          { ruleId: WEEKDAY_RULE, subject: "Friday" },
+          "subject",
+        ),
+      ],
+    });
+    const out = await svc.getRecommendations(RID);
+    expect(out.recommendations.map((r) => r.ruleKey)).toContain(WEEKDAY_RULE);
+    expect(out.stateCounts.active).toBe(1);
+    expect(out.stateCounts.dismissed).toBe(1);
   });
 });
 

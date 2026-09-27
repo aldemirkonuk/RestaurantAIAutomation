@@ -1,6 +1,7 @@
 import { UnauthorizedException } from "@nestjs/common";
 import * as bcrypt from "bcrypt";
 import { AuthService } from "./auth.service";
+import { asDatabaseService, makeStubDb } from "../team/testing/supabase-stub";
 
 /**
  * `POST /auth/join` — account takeover, closed 2026-08-26.
@@ -16,47 +17,46 @@ import { AuthService } from "./auth.service";
  * flow and still works; it now costs that account's own password.
  */
 
+const ISSUER = "issuer-1";
+const HOUSE = "rest-1";
+const FUTURE = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
 function makeService(opts: {
   invite?: any;
   existingUser?: any;
-  existingAccess?: any;
+  /** The issuer's own active access row. Defaults to a standing owner — the
+   * account-takeover cases below are about the PASSWORD check, not this
+   * newer one (item 5, and Path A's own copy of it, round 2 2026-09-19), so
+   * every case needs a legitimate issuer unless it says otherwise. */
+  issuerAccess?: any;
 }) {
   const invite = opts.invite ?? {
     id: "inv-1",
-    restaurant_id: "rest-1",
+    code: "INVITE",
+    restaurant_id: HOUSE,
+    invited_by: ISSUER,
     role: "staff",
     email: null,
+    used_at: null,
+    expires_at: FUTURE,
   };
+  const issuerAccess =
+    opts.issuerAccess === undefined
+      ? { user_id: ISSUER, restaurant_id: HOUSE, role: "owner", is_active: true }
+      : opts.issuerAccess;
 
-  const chain = (result: any): any => {
-    const c: any = {
-      select: () => c,
-      update: () => c,
-      insert: () => c,
-      upsert: () => c,
-      delete: () => c,
-      order: () => c,
-      limit: () => c,
-      eq: () => c,
-      is: () => c,
-      gt: () => c,
-      maybeSingle: jest.fn().mockResolvedValue(result),
-      single: jest.fn().mockResolvedValue(result),
-    };
-    return c;
-  };
-
-  const supabase = {
-    from: (table: string) => {
-      if (table === "organization_invites")
-        return chain({ data: invite, error: null });
-      if (table === "users")
-        return chain({ data: opts.existingUser ?? null, error: null });
-      if (table === "user_restaurant_access")
-        return chain({ data: opts.existingAccess ?? null, error: null });
-      return chain({ data: null, error: null });
-    },
-  };
+  // The real, filter-applying stub (not a chain that replays one canned
+  // answer for every query against a table): `joinViaInvite` now makes TWO
+  // different `user_restaurant_access` reads in the existing-user branch —
+  // the issuer's own standing, and whether the JOINER already has access at
+  // this house — and they must be able to answer differently, which a
+  // one-result-per-table stub cannot do.
+  const db = makeStubDb({
+    organization_invites: [invite],
+    users: opts.existingUser ? [opts.existingUser] : [],
+    user_restaurant_access: issuerAccess ? [issuerAccess] : [],
+    organization_members: [],
+  });
 
   // Order matters: (jwtService, configService, databaseService,
   // tokenBlacklistService, gmailService) — auth.service.ts:58-64.
@@ -66,7 +66,7 @@ function makeService(opts: {
       get: (k: string) =>
         k === "JWT_SECRET" ? "test-secret-value" : undefined,
     } as any,
-    { supabase } as any,
+    asDatabaseService(db),
     {
       isBlacklisted: async () => false,
       blacklist: async () => undefined,
