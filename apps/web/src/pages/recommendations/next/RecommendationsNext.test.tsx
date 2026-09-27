@@ -35,6 +35,15 @@ const navigate = vi.hoisted(() => vi.fn());
 vi.mock('./useRecommendationsNextData', () => ({
   useRecommendationsNextData: () => mockData.current,
 }));
+/**
+ * The reader's own copy (sketch 122 Q8/Q9): the page reads it for the delta
+ * cutting and the house's send count. Controlled per test; default "ready,
+ * nothing sent yet".
+ */
+const mockSub = vi.hoisted(() => ({ current: {} as Record<string, unknown> }));
+vi.mock('./useDigestSubscription', () => ({
+  useDigestSubscription: () => mockSub.current,
+}));
 vi.mock('react-router-dom', async (orig) => ({
   ...(await orig<typeof import('react-router-dom')>()),
   useNavigate: () => navigate,
@@ -222,6 +231,19 @@ const base = {
   personalSnoozesReadable: true,
   personalProblem: null,
   wake,
+  // Sketch 122 (round 6): every source answered; the house holds no goal.
+  sourcesUnread: [] as unknown,
+  goalBook: { goals: [], total: 0, truncated: false } as unknown,
+};
+
+const SUB_READY_NOTHING_SENT = {
+  phase: 'ready',
+  status: { lastLetter: null, houseLastPost: null, blockers: [] },
+  failure: null,
+  looksUnmerged: false,
+  refresh: vi.fn(),
+  subscribe: vi.fn(),
+  unsubscribe: vi.fn(),
 };
 
 const draw = (path = '/recommendations') =>
@@ -244,6 +266,7 @@ beforeEach(() => {
   loadGoals.mockClear();
   createGoal.mockClear();
   mockData.current = { ...base, entries: [] };
+  mockSub.current = { ...SUB_READY_NOTHING_SENT };
 });
 
 describe('RecommendationsNext — the standing book', () => {
@@ -365,17 +388,18 @@ describe('RecommendationsNext — the standing book', () => {
     draw();
     const row = screen.getByTestId('rc-entry');
 
+    // Sketch 122 Q2/Q3 (the founder, 2026-09-25, round 5): a hand-off only
+    // opens the page where the work is done. Nothing is written here — "Order
+    // it" is the honest two-step, drafted by hand in Orders.
     fireEvent.click(within(row).getByText('Draft the PO →'));
-    expect(setDisposition).toHaveBeenCalledWith(
-      expect.objectContaining({ ruleKey: 'stockout_imminent' }),
-      { acted: true },
-      expect.any(String),
-      false,
-    );
     await waitFor(() =>
       expect(navigate).toHaveBeenCalledWith(
         expect.stringContaining('/orders?rec=stockout_imminent'),
       ),
+    );
+    expect(setDisposition).not.toHaveBeenCalled();
+    expect(within(row).getByTestId('rc-handoff')).toHaveTextContent(
+      'Opens Orders to draft it by hand — nothing is recorded here, and the order is sealed there with the hold.',
     );
 
     fireEvent.click(within(row).getByText('Snooze'));
@@ -394,11 +418,15 @@ describe('RecommendationsNext — the standing book', () => {
     );
 
     fireEvent.click(within(row).getByText('Pin'));
+    // …and a pin is undo-after (ADR 0112 F10, amended by sketch 122 Q2): the
+    // write carries the patch that takes it back.
     expect(setDisposition).toHaveBeenCalledWith(
       expect.anything(),
       { pinned: true },
       expect.any(String),
       false,
+      undefined,
+      { pinned: false },
     );
 
     // the seal is rationed to one act: ruling the entry off, inside the working
@@ -409,19 +437,16 @@ describe('RecommendationsNext — the standing book', () => {
     expect(screen.queryByRole('button', { name: /Hold to dismiss/ })).not.toBeInTheDocument();
   });
 
-  it('does not leave the page when the "acted" write did not land', async () => {
-    // `navigate()` unmounts this page synchronously, so a fire-and-forget write
-    // rolled back and apologised on a component nobody was looking at. The
-    // audit trail of "I followed this" is the whole point of the write, and
-    // leaving with it silently unrecorded is the failure the page refuses.
-    setDisposition.mockResolvedValueOnce(false);
+  it('[superseded 2026-09-25, sketch 122 Q2] a hand-off writes nothing, so there is no "acted" write to wait for', async () => {
+    // Until 2026-09-25 this test proved the page did not leave when the
+    // "acted" write failed. The founder's round-5 answer removed the write:
+    // "A hand-off that only opens another page records nothing." The page
+    // now navigates at once and never posts.
     mockData.current = { ...base, entries: [entry()] };
     draw();
     fireEvent.click(within(screen.getByTestId('rc-entry')).getByText('Draft the PO →'));
-    await waitFor(() => expect(setDisposition).toHaveBeenCalled());
-    expect(navigate).not.toHaveBeenCalled();
-    // …and the control is still there to try again.
-    expect(within(screen.getByTestId('rc-entry')).getByText('Draft the PO →')).toBeInTheDocument();
+    await waitFor(() => expect(navigate).toHaveBeenCalledTimes(1));
+    expect(setDisposition).not.toHaveBeenCalled();
   });
 
   it('renders the acted-agent control disabled with its reason, and the post as a live control', () => {
@@ -459,6 +484,8 @@ describe('RecommendationsNext — the standing book', () => {
       { pinned: true },
       expect.any(String),
       false,
+      undefined,
+      { pinned: false },
     );
     expect(screen.queryByRole('button', { name: 'Hold to rule off' })).not.toBeInTheDocument();
     fireEvent.keyDown(window, { key: 'e' });
@@ -1755,5 +1782,259 @@ describe('round 3: the dismiss list, the snooze audience and the firing', () => 
     fireEvent.click(screen.getByText('Undo'));
     expect(wake).toHaveBeenCalledWith(FIRING);
     expect(restore).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * ROUND 6 — sketch 122 direction B, "Goals in the Masthead" (the founder,
+ * 2026-09-25, item 24: "direction B is better") and his round-5 answers to the
+ * sketch's questions 2-10, all "Recommended" (ADR 0160 §108's bracket; ADR
+ * 0112 F10 amended for Q2).
+ */
+describe('round 6 — the masthead, the one-tap acts, the delta and the post count', () => {
+  const goalRow = (over: Record<string, unknown> = {}) => ({
+    id: 'g-spend',
+    name: 'Purchase spend ≤ 9,500',
+    metricKey: 'purchase_spend',
+    unit: 'currency',
+    direction: 'at_most',
+    current: 6180,
+    target: 9500,
+    progressPct: 6180 / 9500,
+    onTrack: false,
+    daysLeft: 14,
+    unreadable: null,
+    ...over,
+  });
+
+  it('B: the goals sit in the masthead beside the letter, and the day strip follows both', () => {
+    mockData.current = {
+      ...base,
+      entries: [entry()],
+      goalBook: {
+        goals: [
+          goalRow(),
+          goalRow({ id: 'g-b', name: 'Bottles sold ≥ 340', metricKey: 'bottles_sold', unit: 'units', direction: 'at_least', current: 210, target: 340, progressPct: 210 / 340, onTrack: true }),
+        ],
+        total: 2,
+        truncated: false,
+      },
+    };
+    draw();
+    const mast = screen.getByTestId('rc-mast');
+    expect(within(mast).getByText('The Morning Letter')).toBeInTheDocument();
+    expect(within(mast).getByRole('heading', { name: 'Recommendations' })).toBeInTheDocument();
+    const rows = within(mast).getAllByTestId('rc-mgoal');
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toHaveAttribute('data-pace', 'behind');
+    expect(within(rows[0]).getByText('6,180 of 9,500')).toBeInTheDocument();
+    expect(within(rows[0]).getByText('Behind')).toBeInTheDocument();
+    expect(within(rows[1]).getByText('On pace')).toBeInTheDocument();
+    // No currency symbol is invented: the progress read carries none.
+    expect(within(mast).queryByText(/\$/)).not.toBeInTheDocument();
+    // "Keep the days rail on top": the ribbon comes after the masthead and
+    // before the leaves.
+    const nav = screen.getByRole('navigation', { name: 'Leaves of the book' });
+    const ribbon = document.querySelector('.rc-ribbon');
+    expect(ribbon).not.toBeNull();
+    expect(mast.compareDocumentPosition(ribbon!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(ribbon!.compareDocumentPosition(nav) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('says every goal state in words: reading, unread, none, a goal whose figure failed, and more than the column holds', () => {
+    mockData.current = { ...base, goalBook: undefined };
+    const { unmount } = draw();
+    expect(screen.getByText('Reading the house’s goals…')).toBeInTheDocument();
+    unmount();
+
+    mockData.current = { ...base, goalBook: null };
+    const second = draw();
+    expect(screen.getByTestId('rc-mast-goals-unread')).toHaveTextContent('Your goals could not be read');
+    second.unmount();
+
+    mockData.current = { ...base, goalBook: { goals: [], total: 0, truncated: false } };
+    const third = draw();
+    expect(screen.getByTestId('rc-mast-goals-none')).toBeInTheDocument();
+    third.unmount();
+
+    mockData.current = {
+      ...base,
+      goalBook: {
+        goals: [
+          goalRow({ id: 'a', unreadable: 'metric query failed', current: null, progressPct: null, onTrack: null }),
+          goalRow({ id: 'b' }),
+          goalRow({ id: 'c' }),
+          goalRow({ id: 'd' }),
+        ],
+        total: 4,
+        truncated: false,
+      },
+    };
+    draw();
+    const rows = screen.getAllByTestId('rc-mgoal');
+    expect(rows).toHaveLength(3);
+    expect(within(rows[0]).getByText(/could not be read \(metric query failed\)/)).toBeInTheDocument();
+    expect(within(rows[0]).queryByRole('img')).not.toBeInTheDocument();
+    expect(screen.getByText('1 more goal is in Reports.')).toBeInTheDocument();
+  });
+
+  it('suggests a goal on a figure no goal watches — and "Set a goal" opens that entry’s own sheet with the target blank', () => {
+    mockData.current = { ...base, entries: [weekdayEntry()], goals: [] };
+    draw();
+    const suggest = screen.getByTestId('rc-mgoal-suggest');
+    expect(within(suggest).getByText('Wednesday wine revenue back to baseline')).toBeInTheDocument();
+    fireEvent.click(within(suggest).getByText('Set a goal →'));
+    const sheet = screen.getByRole('group', { name: 'Make this a goal' });
+    expect(within(sheet).getByLabelText('Target in $')).toHaveValue(null);
+    expect(within(sheet).getByRole('button', { name: 'Set the goal' })).toBeDisabled();
+  });
+
+  it('suggests nothing when the house already holds a goal on that figure, or when the goal list could not be read', () => {
+    mockData.current = {
+      ...base,
+      entries: [weekdayEntry()],
+      goals: [{ id: 'g', name: 'x', metricKey: 'wine_revenue', targetValue: 1, currentValue: 0, deadline: null, status: 'active', sourceRuleKey: null }],
+    };
+    const { unmount } = draw();
+    expect(screen.queryByTestId('rc-mgoal-suggest')).not.toBeInTheDocument();
+    unmount();
+    mockData.current = { ...base, entries: [weekdayEntry()], goals: null };
+    draw();
+    expect(screen.queryByTestId('rc-mgoal-suggest')).not.toBeInTheDocument();
+  });
+
+  it('Q4, the quiet tier as its substitute: names the sources that did not answer, and never reads an absent field as "all answered"', () => {
+    mockData.current = { ...base, sourcesUnread: ['cashflow', 'goals'] };
+    const { unmount } = draw();
+    expect(screen.getByTestId('rc-quiet-tier')).toHaveTextContent(
+      'The engine could not read 2 of its sources (cashflow and goals), so entries that depend on them could not fire.',
+    );
+    unmount();
+    mockData.current = { ...base, sourcesUnread: [] };
+    const second = draw();
+    expect(screen.getByTestId('rc-quiet-tier')).toHaveTextContent(/Every source the engine reads answered/);
+    second.unmount();
+    mockData.current = { ...base, sourcesUnread: null };
+    draw();
+    expect(screen.getByTestId('rc-quiet-tier')).toHaveTextContent(/does not say which of the engine’s sources answered/);
+  });
+
+  it('Q2 + Q7: a floor entry is briefed with one tap — recorded at once, undo-after, and it does not leave the page', () => {
+    mockData.current = { ...base, entries: [weekdayEntry()] };
+    draw();
+    const row = screen.getByTestId('rc-entry');
+    const tap = within(row).getByTestId('rc-brief');
+    expect(tap).toHaveTextContent('Mark as briefed');
+    expect(tap).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(tap);
+    expect(setDisposition).toHaveBeenCalledWith(
+      expect.objectContaining({ ruleKey: 'sales_below_weekday_baseline' }),
+      { acted: true },
+      'Marked as briefed — still standing.',
+      false,
+      undefined,
+      { acted: false },
+    );
+    expect(navigate).not.toHaveBeenCalled();
+    // Q7 "Keep both verbs": the hand-off is still there, and records nothing.
+    fireEvent.click(within(row).getByText('Open Reports →'));
+    expect(navigate).toHaveBeenCalledWith(expect.stringContaining('/reports?rec=sales_below_weekday_baseline'));
+    expect(setDisposition).toHaveBeenCalledTimes(1);
+  });
+
+  it('a briefed entry says so, stays standing, and the tap takes it back', () => {
+    mockData.current = { ...base, entries: [weekdayEntry({ acted: true })] };
+    draw();
+    const row = screen.getByTestId('rc-entry');
+    expect(within(row).getByTestId('rc-brief')).toHaveAttribute('aria-pressed', 'true');
+    expect(within(row).getByTestId('rc-receipt')).toHaveTextContent('Marked as briefed. Still standing');
+    fireEvent.click(within(row).getByTestId('rc-brief'));
+    expect(setDisposition).toHaveBeenCalledWith(
+      expect.anything(),
+      { acted: false },
+      'Briefing taken back.',
+      false,
+      undefined,
+      { acted: true },
+    );
+  });
+
+  it('the a key briefs a floor entry and hands off everything else', async () => {
+    mockData.current = { ...base, entries: [weekdayEntry()] };
+    const { unmount } = draw();
+    fireEvent.keyDown(window, { key: 'j' });
+    fireEvent.keyDown(window, { key: 'a' });
+    expect(setDisposition).toHaveBeenCalledWith(expect.anything(), { acted: true }, expect.any(String), false, undefined, { acted: false });
+    expect(navigate).not.toHaveBeenCalled();
+    unmount();
+    setDisposition.mockClear();
+    mockData.current = { ...base, entries: [entry()] };
+    draw();
+    fireEvent.keyDown(window, { key: 'j' });
+    fireEvent.keyDown(window, { key: 'a' });
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith(expect.stringContaining('/orders?')));
+    expect(setDisposition).not.toHaveBeenCalled();
+  });
+
+  it('Undo on a one-tap act that stays on the leaf posts its inverse, not a restore', () => {
+    const e = weekdayEntry({ acted: true });
+    const clearUndo = vi.fn();
+    mockData.current = {
+      ...base,
+      entries: [e],
+      note: 'Marked as briefed — still standing.',
+      undo: { ruleKey: e.ruleKey, label: 'x', inverse: { entry: e, patch: { acted: false } } },
+      clearUndo,
+    };
+    draw();
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(clearUndo).toHaveBeenCalled();
+    expect(setDisposition).toHaveBeenCalledWith(e, { acted: false }, 'Undone.', false);
+    expect(restore).not.toHaveBeenCalled();
+    expect(wake).not.toHaveBeenCalled();
+  });
+
+  it('Q9, per reader: the delta is measured from THIS reader’s last letter, and never calls an uncarried entry "new"', () => {
+    const a = entry();
+    const b = weekdayEntry();
+    mockData.current = { ...base, entries: [a, b] };
+    mockSub.current = {
+      ...SUB_READY_NOTHING_SENT,
+      status: {
+        lastLetter: { periodKey: '2026-09-16', sentAt: '2026-09-16T04:00:00Z', ruleKeys: [a.ruleKey, 'weekday_gap'] },
+        houseLastPost: { periodKey: '2026-09-16', sent: 2, atCap: false },
+        blockers: [],
+      },
+    };
+    draw();
+    const cut = screen.getByTestId('rc-delta');
+    expect(cut).toHaveTextContent('Since your letter of Wed 16 Sep');
+    expect(cut).toHaveTextContent('1 entry stands that it did not carry · 1 it carried no longer stands.');
+    expect(cut).not.toHaveTextContent(/\bnew\b/i);
+    // Q8, count not who — beside the post.
+    expect(screen.getByTestId('rc-post-count')).toHaveTextContent(
+      'Last sent Wed 16 Sep: 2 letters. Who received one is not shown.',
+    );
+  });
+
+  it('Q8 + Q9: says there is no letter yet, an unread copy, and a letter that did not record what it carried — each in words', () => {
+    mockData.current = { ...base, entries: [entry()] };
+    const { unmount } = draw();
+    expect(screen.getByTestId('rc-delta-none')).toBeInTheDocument();
+    expect(screen.getByTestId('rc-post-count')).toHaveTextContent('No letter has gone out from this house yet.');
+    unmount();
+
+    mockSub.current = { ...SUB_READY_NOTHING_SENT, phase: 'unreachable', status: null, failure: { message: 'boom', expired: false } };
+    const second = draw();
+    expect(screen.getByTestId('rc-delta-unread')).toHaveTextContent('could not be read (boom)');
+    expect(screen.queryByTestId('rc-post-count')).not.toBeInTheDocument();
+    second.unmount();
+
+    mockSub.current = {
+      ...SUB_READY_NOTHING_SENT,
+      status: { lastLetter: { periodKey: '2026-09-16', sentAt: 'x', ruleKeys: null }, houseLastPost: null, blockers: [] },
+    };
+    draw();
+    expect(screen.getByTestId('rc-delta-unknown')).toBeInTheDocument();
   });
 });
