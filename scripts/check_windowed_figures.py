@@ -238,6 +238,17 @@ class PageSpec:
     # cache actually lives in. Named by FUNCTION so a shared file's other hooks,
     # which belong to other pages, are not judged here.
     imported_query_hooks: tuple[tuple[Path, str], ...] = ()
+    # W6's "no local query at all" exemption below is opt-in per page, not
+    # automatic from `imported_query_hooks` alone. /receipts also declares an
+    # imported hook (useProviders, for vendor names on the credit ledger's
+    # rows) while still having real page-local reads every day; the exemption
+    # is for a page whose OWN shape moved every bucket external, like
+    # /communications after the ADR 0083 amendment, not for "no local call
+    # happened to be found this run" (which a mutation — or a genuine future
+    # regression that silently deletes a page's own reads — can produce just
+    # as well as a deliberate shape). True only where that IS the page's real,
+    # everyday shape.
+    all_queries_imported: bool = False
 
 
 _RECEIVING = Path("apps/web/src/pages/receiving/next")
@@ -284,7 +295,10 @@ PAGES = (
     PageSpec(
         name="/receipts",
         hooks=_RECEIPTS / "useReceiptsNextData.ts",
-        renderers=(_RECEIPTS / "ReceiptsNext.tsx",),
+        # The credit ledger lane (ADR 0149 row 22, 2026-09-25) renders the
+        # list, the recovery figures and the memo picker behind three windows
+        # of its own; its reads live in the same hooks file so W6 sees them.
+        renderers=(_RECEIPTS / "ReceiptsNext.tsx", _RECEIPTS / "ReceiptsCredits.tsx"),
         register="RECEIPTS_SERVER_WINDOWS",
         floor_markers=("GE",),
         nullable_contract={
@@ -292,9 +306,16 @@ PAGES = (
             # renders identically to a caught-up door. It must be able to say
             # it does not know.
             "ReceiptsNextData": ["deliveriesWithoutPaper", "verifiedCount"],
+            # The ledger's list, figures and memos must each be able to say
+            # they have not answered; `[]` would read as "no claims".
+            "ReceiptsCreditsData": ["claims", "stats", "memos"],
         },
         tenant_tokens=("rid", "restaurantId"),
         tenant_keyed=True,
+        imported_query_hooks=(
+            # Vendor names on the credit ledger's rows.
+            (Path("apps/web/src/hooks/queries/useProviderQueries.ts"), "useProviders"),
+        ),
     ),
     PageSpec(
         name="/communications",
@@ -329,6 +350,11 @@ PAGES = (
             (_CMS_SENDERS, "useSenderRegister"),
             (_CMS_SENDERS, "useStrangers"),
         ),
+        # This page's real, everyday shape since the ADR 0083 amendment: every
+        # cache bucket lives in one of the shared hooks above, never a local
+        # `useQuery`. See the field's own docstring for why this is not the
+        # default for a page that merely imports one shared hook.
+        all_queries_imported=True,
     ),
     PageSpec(
         name="/documents-reports",
@@ -841,14 +867,19 @@ def run_page(root: Path, page: PageSpec, rep: Report) -> None:
     # reads those hooks' keys and raises CannotCheck itself when one holds none.
     # /communications took this shape on 2026-09-25 (ADR 0083 amendment), when
     # its two page-local reads — the report schedules and the Gmail watch —
-    # left the page. The exemption needs BOTH halves: no query call anywhere in
-    # the page's files (so an unparseable one still refuses below) AND at least
-    # one declared shared hook (so a page with no reads at all still refuses).
+    # left the page, and its PageSpec says so with `all_queries_imported=True`.
+    # The exemption needs THREE things: no query call anywhere in the page's
+    # files (so an unparseable one still refuses below), the page's own word
+    # that this is its everyday shape (so declaring an imported hook for one
+    # incidental lookup — /receipts' useProviders, for vendor names on the
+    # credit ledger's rows, while the page still has real local reads every
+    # day — does not also excuse it), and at least one declared shared hook
+    # (so a page with no reads at all still refuses).
     local_query_call = any(
         ANY_QUERY_HOOK_CALL.search(src)
         for src in [hooks_src, *renderer_src.values()]
     )
-    if not keys and not local_query_call and page.imported_query_hooks:
+    if not keys and not local_query_call and page.all_queries_imported:
         pass
     elif not keys:
         raise CannotCheck(
@@ -961,6 +992,12 @@ export interface ReceiptsNextData {
   verifiedCount: number | null;
 }
 
+export interface ReceiptsCreditsData {
+  claims: ProcurementCredit[] | null;
+  stats: CreditStats | null;
+  memos: ProcurementDocument[] | null;
+}
+
 export function useReceiptsNextData() {
   const rid = useActiveRestaurantId();
   const queueQ = useQuery({
@@ -978,6 +1015,17 @@ import { RECEIPTS_SERVER_WINDOWS } from './useReceiptsNextData';
 export function R() {
   const q = useQuery({ queryKey: ['receipts-next', 'doc', rid, id], queryFn: f });
   return <span title={`${RECEIPTS_SERVER_WINDOWS.QUEUE_ITEMS}`}>{cap ? GE : ''}{n}</span>;
+}
+"""
+
+# The shared vendor-name hook the credit ledger lane imports (W7).
+_PROVIDER_HOOKS = Path("apps/web/src/hooks/queries/useProviderQueries.ts")
+CLEAN_PROVIDER_HOOKS = """
+export function useProviders(restaurantId: string, filters?: ProviderFilters) {
+  return useQuery({
+    queryKey: queryKeys.providers.list(restaurantId, filters),
+    queryFn: () => fetchProviders(restaurantId, filters),
+  });
 }
 """
 
@@ -1381,6 +1429,7 @@ def _scaffold(tmp: Path) -> None:
         (tmp / r).write_text(CLEAN_SO_RENDERER, encoding="utf-8")
     (tmp / _QUERY_HOOKS).write_text(CLEAN_QUERY_HOOKS, encoding="utf-8")
     (tmp / _DRAFT_HOOKS).write_text(CLEAN_DRAFT_HOOKS, encoding="utf-8")
+    (tmp / _PROVIDER_HOOKS).write_text(CLEAN_PROVIDER_HOOKS, encoding="utf-8")
     (tmp / GATEWAY_ROOT / "procurement" / "receiving.service.ts").write_text(
         CLEAN_GATEWAY, encoding="utf-8"
     )
@@ -1609,6 +1658,30 @@ def self_test() -> int:
             encoding="utf-8",
         ),
         "violation",
+    )
+    case(
+        "W4 the credit ledger's claims widened away from | null",
+        lambda t: (t / _RCP.hooks).write_text(
+            CLEAN_RECEIPTS_HOOKS.replace(
+                "claims: ProcurementCredit[] | null;",
+                "claims: ProcurementCredit[];",
+            ),
+            encoding="utf-8",
+        ),
+        "violation",
+        "ReceiptsCreditsData.claims",
+    )
+    case(
+        "W7 the vendor-name hook the credit ledger imports lost its tenant",
+        lambda t: (t / _PROVIDER_HOOKS).write_text(
+            CLEAN_PROVIDER_HOOKS.replace(
+                "queryKeys.providers.list(restaurantId, filters)",
+                "queryKeys.providers.all",
+            ),
+            encoding="utf-8",
+        ),
+        "violation",
+        "useProviders",
     )
     case(
         "W1 the documents controller's clamp fell below the declared cap",
@@ -1991,9 +2064,14 @@ def self_test() -> int:
             (t / _RCP.hooks).write_text(
                 CLEAN_RECEIPTS_HOOKS.replace("useQuery({", "notAQuery({"), encoding="utf-8"
             ),
-            (t / _RCP.renderers[0]).write_text(
-                CLEAN_RECEIPTS_RENDERER.replace("useQuery({", "notAQuery({"), encoding="utf-8"
-            ),
+            # EVERY renderer: the page has two since the credit ledger lane,
+            # and one left holding a useQuery would keep the matcher fed.
+            [
+                (t / r).write_text(
+                    CLEAN_RECEIPTS_RENDERER.replace("useQuery({", "notAQuery({"), encoding="utf-8"
+                )
+                for r in _RCP.renderers
+            ],
         )
         and None,
         "cannot-check",

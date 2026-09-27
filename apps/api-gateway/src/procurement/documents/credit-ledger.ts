@@ -40,6 +40,11 @@ export interface Credit {
   creditDocumentId: string | null;
   openedAt: string;
   selfEvidenced: boolean;
+  /**
+   * The claim's own ISO 4217 code (`procurement_credits.currency`). Optional
+   * because `transition` never reads it; `recoveryStatsByCurrency` does.
+   */
+  currency?: string | null;
 }
 
 /**
@@ -265,4 +270,44 @@ export function recoveryStats(
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
+}
+
+/**
+ * The key a claim with no stated currency is grouped under. Not an ISO 4217
+ * code on purpose: a renderer that formats it as money finds no code and says
+ * the currency was not recorded, instead of borrowing one.
+ */
+export const CURRENCY_UNRECORDED = "UNRECORDED";
+
+/**
+ * `recoveryStats`, once per currency.
+ *
+ * `recoveryStats` adds every claim's amount into one figure. A house that
+ * claims in two currencies gets a sum of lira and euros printed as if it were
+ * one number, and nothing in this system converts (founder, 2026-09-06, batch
+ * 63: the house states its currency; nothing is converted). So the figures are
+ * also kept apart by the claim's own code, and a screen that has more than one
+ * group shows them side by side rather than added up. The combined figures stay
+ * where they were for the callers that already read them.
+ */
+export function recoveryStatsByCurrency(
+  credits: Credit[],
+  now = new Date(),
+): Record<string, RecoveryStats> {
+  const groups = new Map<string, Credit[]>();
+  for (const c of credits) {
+    const code =
+      typeof c.currency === "string" && c.currency.trim() !== ""
+        ? c.currency.trim().toUpperCase()
+        : CURRENCY_UNRECORDED;
+    const list = groups.get(code);
+    if (list) list.push(c);
+    else groups.set(code, [c]);
+  }
+  const out: Record<string, RecoveryStats> = {};
+  for (const [code, list] of [...groups.entries()].sort(([a], [b]) =>
+    a.localeCompare(b),
+  ))
+    out[code] = recoveryStats(list, now);
+  return out;
 }
