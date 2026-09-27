@@ -146,7 +146,9 @@ interface Fixture {
   mailArchive: Reg;
   catalog: Reg;
   tally: Tally;
+  createFeed: unknown;
   regenerateFeed: unknown;
+  revokeFeed: unknown;
   setHouseGrantAccess: unknown;
   setConsent: unknown;
   /** Mints the one-time seal when a re-consent hold begins. */
@@ -169,7 +171,27 @@ interface Fixture {
 const setHouseGrantAccess = { mutate: vi.fn(), isPending: false };
 const setConsent = { mutate: vi.fn(), isPending: false };
 const probeServer = { mutate: vi.fn(), isPending: false };
+const createFeed = { mutate: vi.fn(), isPending: false };
 const regenerateFeed = { mutate: vi.fn(), isPending: false };
+const revokeFeed = { mutate: vi.fn(), isPending: false };
+
+/** The reader's own calendar link as the read returns it — never an address. */
+function myLink(over: Record<string, unknown> = {}) {
+  return {
+    connected: true,
+    createdAt: '2026-09-21T12:00:00Z',
+    issuedAt: '2026-09-21T12:00:00Z',
+    lastFetchedAt: null,
+    role: 'manager',
+    scope: 'Your link shows the house calendar and every shift.',
+    categories: null,
+    canPickCategories: false,
+    areasModelled: false,
+    houseLinkRetired: false,
+    ...over,
+  };
+}
+const ISSUED_ADDRESS = `https://api.mudavym.test/api/v1/calendar/feed/${'e'.repeat(64)}.ics`;
 const reloadTextSenders = vi.fn();
 
 function base(): Fixture {
@@ -277,7 +299,7 @@ function base(): Fixture {
       myConsent: { consent: null, readable: true, reason: null },
     }),
     reloadTextSenders,
-    ical: reg({ token: 'abc123' }),
+    ical: reg(myLink()),
     mcp: reg([]),
     mcpRuntime: reg({
       secretStorage: { configured: true, reason: null },
@@ -296,7 +318,9 @@ function base(): Fixture {
       publicToAnyone: 1,
       houseHasLetGoOf: 0,
     },
+    createFeed,
     regenerateFeed,
+    revokeFeed,
     setHouseGrantAccess,
     setConsent,
     // Resolves a token by default, so a test that completes the gesture without
@@ -644,6 +668,23 @@ describe('no operator internals in front of a restaurant user', () => {
       grants: [grant({ scopes: ['https://www.googleapis.com/auth/drive.file'] })],
       unattributed: 0,
     });
+    // Calendar links are personal since ADR 0111 (2026-09-21, #438): the
+    // address is drawn only on the answer to the click that made it, so this
+    // test issues one to put the address on the page it scans.
+    d.createFeed = {
+      mutate: vi.fn(),
+      isPending: false,
+      isSuccess: true,
+      submittedAt: 3,
+      data: myLink({
+        issued: {
+          feedUrl: '/api/v1/calendar/feed/x.ics',
+          absoluteFeedUrl: ISSUED_ADDRESS,
+          webcalUrl: null,
+          originSource: 'config',
+        },
+      }),
+    };
     mockData.current = d;
     const { container } = render(<ConnectionsNext />);
     const text = container.textContent ?? '';
@@ -677,8 +718,8 @@ describe('no operator internals in front of a restaurant user', () => {
       expect(text).not.toMatch(leak);
     }
     expect(container.querySelector('#deployment')).toBeNull();
-    // The calendar feed address is the house's own subscribe link, and stays —
-    // marked as a credential so the nightly walk masks it (ADR 0135).
+    // The calendar address is the reader's own subscribe link (ADR 0111), and
+    // stays — marked as a credential so the nightly walk masks it (ADR 0135).
     const feed = screen.getByText(/\/api\/v1\/calendar\/feed\//);
     expect(feed.getAttribute('data-secret')).toBe('credential');
     // The till row is still drawn: only its internals are hidden.
@@ -728,10 +769,89 @@ describe('the one row, four columns and no fifth', () => {
     expect(screen.queryByText(/vendor_portal_pages/)).not.toBeInTheDocument();
   });
 
-  it('offers the calendar feed as a real address and a real regenerate', () => {
+  it('offers the reader their OWN link: a real "Get a new link" and a real "Stop my link"', () => {
     render(<ConnectionsNext />);
-    fireEvent.click(screen.getByRole('button', { name: 'Regenerate' }));
+    expect(screen.getByText('My calendar link')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Get a new link' }));
     expect(regenerateFeed.mutate).toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Stop my link' }));
+    expect(revokeFeed.mutate).toHaveBeenCalled();
+  });
+
+  it('never shows an address the read did not issue — only the answer to the act that made it carries one', () => {
+    render(<ConnectionsNext />);
+    expect(screen.queryByText(/api\/v1\/calendar\/feed/)).toBeNull();
+    expect(screen.queryByRole('button', { name: /Copy address/ })).toBeNull();
+  });
+
+  it('shows the address once after a connect, marked as a secret', () => {
+    const d = base();
+    d.createFeed = {
+      mutate: vi.fn(),
+      isPending: false,
+      isSuccess: true,
+      submittedAt: 3,
+      data: myLink({
+        issued: {
+          feedUrl: '/api/v1/calendar/feed/x.ics',
+          absoluteFeedUrl: ISSUED_ADDRESS,
+          webcalUrl: null,
+          originSource: 'config',
+        },
+      }),
+    };
+    mockData.current = d;
+    const { container } = render(<ConnectionsNext />);
+    expect(screen.getByRole('button', { name: /Copy address/ })).toBeInTheDocument();
+    expect(container.querySelector('[data-secret]')?.textContent).toContain(ISSUED_ADDRESS);
+  });
+
+  it('offers Connect, not an address, to a reader with no link — a GET never mints one (ADR 0111, 2026-09-21)', () => {
+    const d = base();
+    d.ical = reg(myLink({ connected: false, createdAt: null, issuedAt: null }));
+    mockData.current = d;
+    render(<ConnectionsNext />);
+
+    const row = screen.getByText('My calendar link').closest('.cx-row') as HTMLElement;
+    expect(within(row).getByText(/^not connected$/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Get a new link' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Stop my link' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Connect my calendar' }));
+    expect(createFeed.mutate).toHaveBeenCalled();
+  });
+
+  it('tells a manager the shared house link was switched off, until they connect their own', () => {
+    const d = base();
+    d.ical = reg(myLink({ connected: false, houseLinkRetired: true }));
+    mockData.current = d;
+    render(<ConnectionsNext />);
+    expect(screen.getByText(/shared calendar link for this house was switched off/i)).toBeInTheDocument();
+  });
+
+  it('a REFUSED calendar-link act says so on its row, and only the latest attempt speaks', () => {
+    const d = base();
+    d.ical = reg(myLink({ connected: false }));
+    d.createFeed = {
+      mutate: vi.fn(),
+      isPending: false,
+      isError: true,
+      submittedAt: 2,
+      error: { response: { data: { message: 'You are not a member of this house.' } } },
+    };
+    // An older failure on a different act must not be the sentence shown.
+    d.revokeFeed = {
+      mutate: vi.fn(),
+      isPending: false,
+      isError: true,
+      submittedAt: 1,
+      error: { message: 'stale revoke failure' },
+    };
+    mockData.current = d;
+    render(<ConnectionsNext />);
+
+    expect(screen.getByText(/you are not a member of this house/i)).toBeInTheDocument();
+    expect(screen.queryByText(/stale revoke failure/i)).not.toBeInTheDocument();
   });
 });
 
@@ -1088,11 +1208,11 @@ describe('house declares, each person consents', () => {
     // ordinary click, so the seal meant "this matters" on one row and "this was
     // proven" on another. Only a hold-to-approve renders the seal now.
     const d = base();
-    d.ical = reg({ token: 'tok-abc' });
+    d.ical = reg(myLink());
     mockData.current = d;
     render(<ConnectionsNext />);
 
-    const regenerate = screen.getByRole('button', { name: /^Regenerate/ });
+    const regenerate = screen.getByRole('button', { name: /^Get a new link/ });
     expect(regenerate.className).not.toContain('is-seal');
   });
 
@@ -1130,8 +1250,14 @@ describe('a manager may see, not approve', () => {
     mockData.current = d;
     render(<ConnectionsNext />);
 
-    expect(screen.queryByRole('button', { name: /^revoke/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /approve/i })).not.toBeInTheDocument();
+    // Scoped to the grant's OWN row, not the whole page: the calendar feed
+    // row two registers up has a legitimate "Revoke" control of its own
+    // (2026-09-21, ADR 0111 §5 bracket) — a page-wide `/^revoke/i` query would
+    // collide with it and no longer test what this case is about, which is
+    // Selin Kara's personal grant specifically.
+    const grantRow = screen.getByText(/selin kara's/i).closest('.cx-row') as HTMLElement;
+    expect(within(grantRow).queryByRole('button', { name: /^revoke/i })).not.toBeInTheDocument();
+    expect(within(grantRow).queryByRole('button', { name: /approve/i })).not.toBeInTheDocument();
     expect(
       screen.getByText(/only selin kara can revoke the grant itself/i),
     ).toBeInTheDocument();

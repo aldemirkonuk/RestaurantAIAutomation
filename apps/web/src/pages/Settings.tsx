@@ -48,6 +48,8 @@ import {
 import { cn } from '../lib/utils';
 import { ServicesPermissions } from '../components/settings/ServicesPermissions';
 import { apiClient, getErrorMessage } from '../services/api/client';
+import { useMyCalendarLink } from '../components/calendar-link/useMyCalendarLink';
+import { ON_LEAVING, SHOWN_ONCE } from '../components/calendar-link/calendar-link-copy';
 import {
   CURRENCY_CODES,
   CURRENCY_NOT_RECORDED,
@@ -281,110 +283,135 @@ export function ReportingCurrencySection() {
 
 // ─── Calendar subscription section ───────────────────────────────────────────
 
-function CalendarSubscriptionSection() {
-  const [token, setToken] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [tokenError, setTokenError] = useState<string | null>(null);
-  const [regenerating, setRegenerating] = useState(false);
-
-  const fullFeedUrl = token
-    ? `${window.location.origin}/api/v1/calendar/feed/${token}.ics`
-    : null;
-
-  useEffect(() => {
-    fetchToken();
-  }, []);
-
-  async function fetchToken() {
-    setTokenError(null);
-    try {
-      const { data } = await apiClient.get<{ token: string }>('/calendar/ical-token');
-      setToken(data.token);
-    } catch (e) {
-      // Silently showing the empty state read as "no feed configured".
-      setTokenError(getErrorMessage(e));
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleRegenerate() {
-    if (!confirm('Regenerating the token will break all existing calendar subscriptions. Continue?')) return;
-    setRegenerating(true);
-    try {
-      const { data } = await apiClient.post<{ token: string }>(
-        '/calendar/ical-token/regenerate',
-      );
-      setToken(data.token);
-      toast.success('Token regenerated. Update your calendar subscription URL.');
-    } catch {
-      toast.error('Failed to regenerate token');
-    } finally {
-      setRegenerating(false);
-    }
-  }
+// Exported so it can be asserted on its own — same reason
+// `ReportingCurrencySection` above is exported.
+//
+// Personal calendar links (ADR 0111, review trail 2026-09-21). The founder:
+// "every manager, staff and their labeled taskforces/areas, owners have
+// different calendar subscriptions, they can connect their own." This
+// section used to show the HOUSE's link and, before that, mint it on a bare
+// page open. It now shows the reader's OWN link through the same hook the
+// calendar page uses: it reads on open, makes a link only on a click, and
+// shows the address once. The category pick and who-has-connected live on
+// the calendar page.
+export function CalendarSubscriptionSection() {
+  const cal = useMyCalendarLink();
+  const { link, loading, readError, justIssued, alreadyMade, busy, actError } = cal;
 
   async function handleCopy() {
-    if (!fullFeedUrl) return;
+    if (!justIssued) return;
     try {
-      await navigator.clipboard.writeText(fullFeedUrl);
-      toast.success('Subscription URL copied to clipboard');
+      await navigator.clipboard.writeText(justIssued.address);
+      toast.success('Calendar link copied. Paste it into your calendar app.');
     } catch {
-      toast.error('Failed to copy URL');
+      toast.error('Failed to copy the link — select it and copy it by hand.');
     }
   }
 
-  if (loading) return <div className="py-4 text-sm text-gray-500">Loading subscription URL...</div>;
+  function handleRenew() {
+    if (!confirm('Your current calendar link stops at once. Any calendar using it shows "Calendar link expired - connect again". Continue?')) return;
+    void cal.renew();
+  }
+
+  function handleStop() {
+    if (!confirm('Stop your calendar link? Your calendar app shows "Calendar link expired - connect again". You can connect again any time.')) return;
+    void cal.stop();
+  }
+
+  if (loading && !link) return <div className="py-4 text-sm text-gray-500">Reading your calendar link...</div>;
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-gray-600">
-        Subscribe to your Mudavym calendar in Outlook, Apple Calendar, or Google Calendar using the URL below. No login required — the URL includes a secure token.
-      </p>
-      {tokenError && (
+      {readError && (
         <div className="text-sm text-red-700">
-          Couldn't load your subscription URL — {tokenError}
+          Couldn't read your calendar link — {readError}
           <button
-            onClick={() => void fetchToken()}
+            onClick={cal.reload}
             className="ml-1 font-medium underline hover:no-underline"
           >
             Retry
           </button>
         </div>
       )}
-      {fullFeedUrl && (
-        <div className="flex items-center gap-2">
-          <div
-            data-secret="credential"
-            className="flex-1 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs text-gray-700 font-mono truncate"
-          >
-            {fullFeedUrl}
-          </div>
-          <button
-            onClick={handleCopy}
-            className="flex items-center gap-1 px-3 py-2 text-xs bg-wine-600 text-white rounded-lg hover:bg-wine-700 transition-colors"
-          >
-            <Copy className="w-3 h-3" />
-            Copy
-          </button>
-        </div>
+      {link && (
+        <>
+          {link.houseLinkRetired && !link.connected && (
+            <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+              The shared calendar link for this house was switched off. Everyone now connects their own.
+            </p>
+          )}
+          <p className="text-sm text-gray-600">{link.scope}</p>
+          <p className="text-xs text-gray-500">
+            Your link is yours alone and needs no login, so treat it like a key. {ON_LEAVING}
+          </p>
+          {!link.connected && (
+            <button
+              onClick={() => void cal.connect()}
+              disabled={busy !== null}
+              className="flex items-center gap-1 px-3 py-2 text-xs bg-wine-600 text-white rounded-lg hover:bg-wine-700 transition-colors disabled:opacity-50"
+            >
+              <Link2 className="w-3 h-3" />
+              {busy === 'connect' ? 'Connecting…' : 'Connect my calendar'}
+            </button>
+          )}
+          {justIssued && (
+            <>
+              <p className="text-xs text-gray-600">Copy it now. {SHOWN_ONCE}</p>
+              <div className="flex items-center gap-2">
+                <div
+                  data-secret="credential"
+                  className="flex-1 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs text-gray-700 font-mono truncate"
+                >
+                  {justIssued.address}
+                </div>
+                <button
+                  onClick={handleCopy}
+                  className="flex items-center gap-1 px-3 py-2 text-xs bg-wine-600 text-white rounded-lg hover:bg-wine-700 transition-colors"
+                >
+                  <Copy className="w-3 h-3" />
+                  Copy
+                </button>
+              </div>
+              <div className="text-xs text-gray-500 space-y-1">
+                <p><strong>Outlook:</strong> Add Calendar → Subscribe from web → paste the link</p>
+                <p><strong>Apple Calendar:</strong> File → New Calendar Subscription → paste the link</p>
+                <p><strong>Google Calendar:</strong> Other Calendars (+) → From URL → paste the link</p>
+              </div>
+            </>
+          )}
+          {alreadyMade && !justIssued && (
+            <p className="text-xs text-gray-600">
+              You already had a link, made in another window. It cannot be shown again — get a new link to see one.
+            </p>
+          )}
+          {link.connected && (
+            <div className="pt-2 border-t border-gray-100 space-y-3">
+              {!justIssued && (
+                <p className="text-xs text-gray-500">Connected. {SHOWN_ONCE}</p>
+              )}
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={handleRenew}
+                  disabled={busy !== null}
+                  className="flex items-center gap-1 px-3 py-2 text-xs text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-3 h-3 ${busy === 'renew' ? 'animate-spin' : ''}`} />
+                  {busy === 'renew' ? 'Making a new link…' : 'Get a new link'}
+                </button>
+                <button
+                  onClick={handleStop}
+                  disabled={busy !== null}
+                  className="flex items-center gap-1 px-3 py-2 text-xs text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-50"
+                >
+                  <Trash2 className="w-3 h-3" />
+                  {busy === 'stop' ? 'Stopping…' : 'Stop my link'}
+                </button>
+              </div>
+            </div>
+          )}
+          {actError && <p className="text-xs text-red-700">That did not work — {actError}</p>}
+        </>
       )}
-      <div className="text-xs text-gray-500 space-y-1">
-        <p><strong>Outlook:</strong> Add Calendar → Subscribe from web → paste URL</p>
-        <p><strong>Apple Calendar:</strong> File → New Calendar Subscription → paste URL</p>
-        <p><strong>Google Calendar:</strong> Other Calendars (+) → From URL → paste URL</p>
-      </div>
-      <div className="pt-2 border-t border-gray-100">
-        <button
-          onClick={handleRegenerate}
-          disabled={regenerating}
-          className="flex items-center gap-1 px-3 py-2 text-xs text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-50"
-        >
-          <RefreshCw className={`w-3 h-3 ${regenerating ? 'animate-spin' : ''}`} />
-          {regenerating ? 'Regenerating...' : 'Regenerate Token'}
-        </button>
-        <p className="mt-1 text-xs text-gray-400">Warning: regenerating invalidates all existing subscriptions.</p>
-      </div>
     </div>
   );
 }
