@@ -317,7 +317,10 @@ the current restaurants or users, or tables, dbs or such"*. So:
     clearing holds; accept the re-send on restart) were not taken; their
     verbatim labels are not in the memory record. Built on
     `fix/low-stock-digest-house-timezone` (PR #488).]
-    - **Where.** Migration `20261021173000_a_low_stock_digest_is_fenced_once_a_house_day.sql`:
+    - **Where.** Migration `20261021173000_a_low_stock_digest_is_fenced_once_a_house_day.sql`
+      [renamed 2026-09-27, PR #488 merge-train, to `20261102110000_...`: origin/main
+      had landed a newer migration (`20261022000000`) while this PR sat open, so
+      `check_migration_order.py` required a version after it]:
       `low_stock_digest_fence`, one row per house (`sent_on date`,
       `attempted_at timestamptz`), RLS on, service_role only, backfilled from
       each house's newest `last_digest_at`. A one-row-per-house table, not a

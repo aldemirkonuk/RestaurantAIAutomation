@@ -32,7 +32,9 @@ type AlertLevel = "ok" | "low" | "critical";
 
 /**
  * The once-a-day digest fence (founder item 74), one row per house:
- * migration 20261021173000_a_low_stock_digest_is_fenced_once_a_house_day.sql.
+ * migration 20261102110000_a_low_stock_digest_is_fenced_once_a_house_day.sql
+ * (renamed 2026-09-27 from 20261021173000 to sort after origin/main's newer
+ * migrations — the check_migration_order.py merge-train rename, PR #488).
  */
 export const LOW_STOCK_DIGEST_FENCE_TABLE = "low_stock_digest_fence";
 

@@ -123,7 +123,9 @@ describe('useMudavymDesign precedence', () => {
  * `mudavym_design_promotions` on.]
  */
 describe('LIVE_PAGES (ADR 0149 row 36, go-live 2026-09-17)', () => {
-  const HELD_BACK = ['arrival', 'receiving', 'promotions'] as const;
+  // vendor_prices (ADR 0160 §112) ships dark: the founder flips it per house
+  // (his 2026-09-19 lane answer), so it is held back like the others.
+  const HELD_BACK = ['arrival', 'receiving', 'promotions', 'vendor_prices'] as const;
   const PROMOTED_2026_09_25 = [
     'shell',
     'admin',
@@ -136,10 +138,10 @@ describe('LIVE_PAGES (ADR 0149 row 36, go-live 2026-09-17)', () => {
     const expected = MUDAVYM_PAGES.filter((p) => !held.has(p));
     expect([...LIVE_PAGES].sort()).toEqual([...expected].sort());
     expect(LIVE_PAGES.size).toBe(25);
-    expect(MUDAVYM_PAGES.length).toBe(28);
+    expect(MUDAVYM_PAGES.length).toBe(29);
   });
 
-  it('holds back arrival, receiving and promotions', () => {
+  it('holds back arrival, receiving, promotions and vendor_prices', () => {
     for (const page of HELD_BACK) {
       expect(LIVE_PAGES.has(page)).toBe(false);
       expect(MUDAVYM_PAGES).toContain(page); // still a real page, just gated

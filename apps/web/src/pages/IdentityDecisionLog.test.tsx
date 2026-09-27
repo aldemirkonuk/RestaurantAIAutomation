@@ -59,6 +59,8 @@ const ONE = {
   note: 'checked the label',
   linkWritten: 'restaurant_inventory.identity_id',
   undoesDecisionId: null,
+  // ADR 0149 answer 17: this house decided it, so the person is shown and
+  // undo is offered — the case every pre-existing test below assumes.
   decidedIn: 'this_house' as const,
   personShown: true,
   undoRefusal: null,
