@@ -35,6 +35,7 @@
   (both added 2026-09-25, round 4),
   **[Renumbered 2026-09-25, merging `origin/main` 059169a5 into #440: the four files were `20260921170200`, `20260921170900`, `20260921170910` and `20260922013000`, all below main's newest `20260922231300`, which ADR 0212's `check_migration_order.py` refuses. Moved by `git mv` to `20260925180000`, `…180100`, `…180110`, `…180200`, same order, content unchanged except the version numbers they cite; every citation in this ADR, CLAIMS and the code was rewritten to the new numbers. No main migration after `20260921170200` touches `team_members`, `shifts`, `leave_requests` or `team_member_*`, so the later apply position changes nothing they depend on.]**
   **[Renumbered again 2026-09-26, merging `origin/main` into #440 for the merge train (train/pr-440): all six files (the four above plus the two round-4 files, `…180210` and `…180220`) were `20260925180000`/`…180100`/`…180110`/`…180200`/`…180210`/`…180220`, behind main's newest `20260926120000` (#471, sessions-follow-membership). Moved by `git mv` to `20260927150000`/`…150100`/`…150110`/`…150200`/`…150210`/`…150220` (same relative spacing, chosen past every version any other open PR branch claimed at the time), same order, content unchanged except the version numbers they cite; every citation in this ADR, CLAIMS and the code was rewritten to the new numbers. Re-verified with `check_migration_order.py` and `check_decision_claims.sh` on the merged tree.]**
+  **[Corrected 2026-09-26, ADR 0090 audit of 583184b7: the previous bracket's "every citation" claim was false — `git grep 20260925180 -- supabase/migrations` found eight surviving references to the retired `…180xxx` numbers inside the renamed files' own header comments and one `COMMENT ON FUNCTION` string (`20260927150110` lines 9, 34, 207; `20260927150200` lines 22, 29, 39; `20260927150210` lines 15, 21), none of them in this ADR or CLAIMS. All eight are now rewritten to the `20260927150xxx` numbers in place; `git grep 20260925180 -- supabase/migrations` returns nothing as of this bracket.]**
   `apps/api-gateway/src/team/pay-rules.ts`,
   `apps/api-gateway/src/team/wage-record-retention.service.ts`,
   `apps/api-gateway/src/team/team-pay.spec.ts`,
@@ -662,7 +663,14 @@ questions round 2 left open (see "Answered, 2026-09-22 (round 6y)" below):
   (`notifications/producers/roster.ts`), which names who the schedule had on
   shift at an instant, still reads every shift: a removed person's kept
   shift at that instant is named with the em dash its "member row is gone"
-  case already renders, where before this change it was absent.
+  case already renders, where before this change it was absent. (n) **Found
+  2026-09-26, ADR 0090 audit of 583184b7:** `restaurants/members.service.ts`
+  `updateMemberRole` writes only `{ role: newRole }`; `team_pay_access` is
+  otherwise cleared only by `deleteMember`, so a manager demoted to staff and
+  later re-promoted silently regains their prior pay access with no new
+  `team_pay_access_changed` row and no fresh owner decision. Owner-gated and
+  house-scoped throughout — not a cross-house or auth hole. Filed as
+  [OD-165](OPEN-DECISIONS.md), not decided here.
 - **Revisit when** the labour page lands (it will own pay basis and confirmed
   hours), or if a second role is ever meant to see pay.
 
@@ -754,6 +762,15 @@ switched-on manager may set their OWN wage (built: refused), and — only if
 the founder meant it — the literal "and off" of item 16.]** **[2026-09-25,
 round 5 item 32: the own-wage question is answered — allowed, owner notified
 (item 21's bracket). The literal "and off" of item 16 is still his.]**
+
+6. **[Added 2026-09-26, ADR 0090 audit of 583184b7, filed as
+   [OD-165](OPEN-DECISIONS.md).]** Should `team_pay_access` reset when a
+   manager is demoted to staff, or stay sticky through a demote-then-re-promote
+   round trip? As built: sticky — `updateMemberRole` never touches the
+   column, so a re-promotion silently restores the prior grant with no fresh
+   owner decision and no new audit row. Not answered by item 21 (the initial
+   grant) or item 32/round-5 (a manager's own-wage write), which cover a
+   different moment.
 
 ## Answered, 2026-09-22 (round 6y)
 
