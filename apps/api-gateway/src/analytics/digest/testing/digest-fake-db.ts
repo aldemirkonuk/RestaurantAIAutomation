@@ -227,6 +227,11 @@ export class FakeQuery {
     this.filters.push((r) => values.includes(r[col]));
     return this;
   }
+  /** ADR 0218: the Away read asks for windows ending on or after a day. */
+  gte(col: string, value: unknown) {
+    this.filters.push((r) => r[col] !== null && r[col] !== undefined && (r[col] as any) >= (value as any));
+    return this;
+  }
   order(col: string, opts?: { ascending?: boolean }) {
     this.orderKey = col;
     this.orderAsc = opts?.ascending !== false;
