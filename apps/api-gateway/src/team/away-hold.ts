@@ -11,7 +11,7 @@
 
 export type HeldKind = "team_message" | "team_note";
 
-/** One row of `house_away_held` (migration 20260926150900). */
+/** One row of `house_away_held` (migration 20260930100100). */
 export interface HeldRow {
   id: string;
   restaurant_id: string;

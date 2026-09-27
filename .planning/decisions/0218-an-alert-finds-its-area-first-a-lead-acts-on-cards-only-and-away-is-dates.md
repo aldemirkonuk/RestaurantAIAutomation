@@ -275,7 +275,7 @@ bundled — not his own words for each. What each one is, and where it is:
      funnel routes it (see **Owed** for its push leg). [Superseded
      2026-09-22 by round 3 answer 1, "Wait like named": a message to
      everyone now holds an Away person the same way; see **Round 3**.]
-   - *Where it waits.* `house_away_held` (migration `20260926150900` [renumbered 2026-09-25 from `20260921171000`, ADR 0212], RLS on,
+   - *Where it waits.* `house_away_held` (migration `20260930100100` [renumbered 2026-09-27 from `20260926150900`, renumbered 2026-09-25 from `20260921171000`, ADR 0212], RLS on,
      service_role only). A note's words stay on `team_notes`; a message has no
      record of its own, so its title and body are kept in the hold **only
      until it is delivered**, then the row is deleted.
@@ -352,7 +352,7 @@ bundled — not his own words for each. What each one is, and where it is:
    window (owners and managers still see it there before it starts).
 6. **Away lasts at most 366 days.** Confirmed built in the gateway, and now also
    in the table: `ck_house_away_at_most_366_days` (`away_until - away_from <=
-   365`, both days inclusive), added in `20260926150900` [renumbered 2026-09-25 from `20260921171000`, ADR 0212].
+   365`, both days inclusive), added in `20260930100100` [renumbered 2026-09-27 from `20260926150900`, renumbered 2026-09-25 from `20260921171000`, ADR 0212].
 7. **Only an owner can set or end another owner's Away; a manager can no
    longer.** Built: `mayChangeAway` in `house-areas.service.ts`, asked by both
    `setAway` and `endAway` about the target's role **in this house** (read the
@@ -663,7 +663,7 @@ hold there too.]
   calendar suites 588 passing; `tsc` clean; `check_gateway_boots.sh` PASS.
 - Web: `AwayMarker.test.tsx` (9), `AreasAway.test.tsx` (8); team/mudavym/
   settings suites passing; `tsc` clean; eslint 0 errors on the changed files.
-- Migration `20260926150800` [renumbered 2026-09-25 from `20260921170300`, ADR 0212]: all 193 migrations build in PGlite and the file
+- Migration `20260930100000` [renumbered 2026-09-27 from `20260926150800`, renumbered 2026-09-25 from `20260921170300`, ADR 0212]: all 193 migrations build in PGlite and the file
   re-runs cleanly; cross-house membership → 23503, duplicate → 23505, unknown
   kind / blank name / backwards dates → 23514, an `auth.users`-only id → 23503,
   a roster delete cascades, anon/authenticated hold no grant. Not Supabase:
@@ -678,7 +678,7 @@ hold there too.]
     passing, 8 skipped;
   - gateway `tsc` (source and specs) and web `tsc` clean; eslint clean on every
     changed file; `check_gateway_boots.sh` PASS.
-- Migration `20260926150900` [renumbered 2026-09-25 from `20260921171000`, ADR 0212], round 2 (probe
+- Migration `20260930100100` [renumbered 2026-09-27 from `20260926150900`, renumbered 2026-09-25 from `20260921171000`, ADR 0212], round 2 (probe
   `p4-scratch/pglite-probe/AREAS2-held-for-away.mjs`): 194/194 migrations build
   and the file re-runs cleanly. 27 checks pass:
   - cross-house note or roster row → 23503; duplicate hold → 23505;
@@ -796,3 +796,4 @@ hold there too.]
 | 2026-09-22 | areas lane, round 4 | Built answer 2: `/logs` now withholds `away_set_for_member` and `away_ended_for_member` from a staff reader, filtered in the `system_audit_log` query (`LogsTimelineService.fetchAuditLog`) before the window, role read off `LogsController`'s existing `MembersService.assertMembership` call. Recorded, no code change: answers 1 and 3 (both already matched what was built). CLAIMS `ADR-0218-LOGS-WITHHOLD-AWAY-FROM-STAFF` added and mutation-tested |
 | 2026-09-25 | settings-b lane (web-rebuild wave 1) | Merged origin/main (`059169a5`). Brought over the round-4 `/logs` build, which until now lived only uncommitted in the `wt-areas` worktree. Renumbered the two migrations past main's ceiling (ADR 0212): `20260921170300` became `20260926150800`, and `20260921171000` became `20260926150900`. `AwayReleaseService.deliver` now passes `skipMobilePush: true`. Before this, the funnel's own fan-out pushed a released message a second time at priority "high", ignored the person's push switch, and pushed an inbox-only message as well. This is the same defect #448 closed for `TeamController.broadcast`, and #448's funnel option is carried here verbatim. Three real-funnel tests are marked `[REVERT-FAILS]`; dropping the option turns four red |
 | 2026-09-26 | audit fix, PR #441 at 6f036c90f | Closed the legacy-pointer carve-out in round 2 answer 7: `assertHouseMember` admits only an active access row (ADR 0164), `endAway` asks it as `setAway` does, and `roleOf` is gone. The spec that accepted a manager changing a legacy-only owner's Away now asserts 404 for owner and manager with nothing written; two mutations (pointer re-admitted, `endAway` membership skipped) turn it red. The fix no longer rests on the 2026-09-18 zero-row measurement. CLAIMS `ADR-0218-ONLY-AN-OWNER-CHANGES-AN-OWNERS-AWAY` now checks the membership test too |
+| 2026-09-27 | merge-train, PR #441 onto main after #448 | Merged origin/main (past `059169a5`, now including #448's team-broadcast one-push-path fix and other lanes' migrations through `20260928000000`). Renumbered the two migrations past that new ceiling (ADR 0212): `20260926150800` became `20260930100000`, and `20260926150900` became `20260930100100` — every citation updated with them (this doc, `away-hold.ts`, CLAIMS). `team.controller.ts` broadcast's inbox write folded from #448's two-branch `named ? {...} : {...}` into one unconditional `inboxOpts.skipMobilePush = true` alongside `onlyUserIds: userIds`, because ADR 0218's `reachNow` (held people excluded) is now the right inbox audience for BOTH `named` and `audience:'everyone'` sends, not only the named one; three spec assertions that had checked the write's opts by strict `toEqual` were widened to include `skipMobilePush: true`. CLAIMS `PR-448-TEAM-BROADCAST-ONE-PUSH-PATH`'s verify, pinned to the old two-branch shape, was rewritten to check the new unconditional one; all 563 claims hold and all 31 broadcast spec tests (including the real-funnel `[REVERT-FAILS]` cases) pass on the merged tree |

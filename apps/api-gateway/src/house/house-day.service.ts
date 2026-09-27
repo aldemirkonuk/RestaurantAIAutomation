@@ -151,8 +151,9 @@ export class HouseDayService {
       DayRegisterKey,
       () => Promise<Answer>
     > = {
-      // The receiving routes carry no role gate (house-counter.service.ts's
-      // own note) — every member reads this.
+      // The door and unverified receiving routes carry no role gate (only the
+      // decision queue does, ADR 0167; house-counter.service.ts's own note) —
+      // every member reads this.
       //
       // Sourced from `arrivedToday`, not `listUnverified`: this line's label
       // is "Deliveries that arrived", and `listUnverified` drops an order the
