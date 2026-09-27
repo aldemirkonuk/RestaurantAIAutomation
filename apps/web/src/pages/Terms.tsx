@@ -35,6 +35,15 @@ const SUPPORT_EMAIL = import.meta.env.VITE_SUPPORT_EMAIL || 'support@mudavym.com
  * and a broader "never used for training" claim (ADR 0145 round 6y wording),
  * so a by-reference clause would import that broader claim here.
  *
+ * [PR 478 audit of 57d8cddc6, fix round 2 of 2, 2026-09-27] Narrowed to
+ * what the code proves: owner-only write (house-ask-training.service.ts
+ * role check); the per-question mark is the insert trigger
+ * ask_reading_folios_opt_out_is_derived (migration 20260922220600); nothing
+ * outside migrations reads ask_folio_training_export (`git grep`). Dropped
+ * "asking and answering keep working the same", an absence claim about the
+ * ask path. The acceptance sentence names the gate's real condition,
+ * activeRole === 'owner' (DataTermsSignInGate.tsx:52), not "each owner".
+ *
  * "Changes" makes no promise about an agreement: nothing in apps/web,
  * api-gateway or supabase/migrations records acceptance of THIS page.
  *
@@ -120,12 +129,12 @@ export default function Terms() {
         <section className="mdv-pub__plate">
           <h2>Questions you ask Mudavym</h2>
           <p>
-            A house&apos;s owner controls whether that house&apos;s questions may be
-            used to improve Mudavym, in Settings → Questions and training, and asking and
-            answering keep working the same either way. A question asked while that
-            choice is off is kept out of Mudavym&apos;s training export permanently,
-            even if the owner later turns it back on — and no training on these
-            questions has started.
+            Only a house&apos;s owner can change whether that house&apos;s questions
+            may be used to improve Mudavym, in Settings → Questions and training.
+            Each question records whether that choice was off when it was asked.
+            A question asked while it was off is kept out of Mudavym&apos;s training
+            export permanently, even if the owner later turns it back on. Nothing
+            reads that export yet.
           </p>
         </section>
         <section className="mdv-pub__plate">
@@ -134,9 +143,10 @@ export default function Terms() {
             This page will change as it is reviewed and as the product changes
             with it. Mudavym does not ask anyone to accept this page, and does
             not record acceptance of it. This page is separate from a
-            house&apos;s data and privacy terms. Each owner of a house is asked
-            to accept those inside Mudavym, and Mudavym records that
-            acceptance: which version was accepted, when, and by whom.
+            house&apos;s data and privacy terms. An owner signed in as the
+            house&apos;s owner is asked to accept those inside Mudavym, and
+            Mudavym records that acceptance: which version was accepted, when,
+            and by whom.
           </p>
         </section>
         <section className="mdv-pub__plate">

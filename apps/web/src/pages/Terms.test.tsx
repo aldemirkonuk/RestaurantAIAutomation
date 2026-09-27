@@ -43,6 +43,12 @@ describe('Terms page', () => {
     // than the one export filter the code has.
     expect(screen.queryByText(/same notice/i)).toBeNull()
     expect(screen.queryByText(/never used for training/i)).toBeNull()
+    // [PR 478 audit of 57d8cddc6] Owner-only write, stated as such; no
+    // absence claim about the ask path; no claim beyond "nothing reads the
+    // export yet" (ask_folio_training_export has no reader outside migrations).
+    expect(screen.getByText(/only a house's owner can change/i)).toBeInTheDocument()
+    expect(screen.queryByText(/keep working the same/i)).toBeNull()
+    expect(screen.getByText(/nothing\s+reads that export yet/i)).toBeInTheDocument()
   })
 
   it('does not assume an acceptance the product never records', () => {
@@ -56,5 +62,9 @@ describe('Terms page', () => {
     expect(screen.queryByText(/accept this text/i)).toBeNull()
     expect(screen.getByText(/data and privacy terms/i)).toBeInTheDocument()
     expect(screen.getByText(/mudavym records that\s+acceptance/i)).toBeInTheDocument()
+    // [PR 478 audit of 57d8cddc6] The gate asks only while activeRole is
+    // 'owner' (DataTermsSignInGate.tsx:52), so the page says so.
+    expect(screen.getByText(/signed in as the\s+house's owner is asked/i)).toBeInTheDocument()
+    expect(screen.queryByText(/each owner of a house/i)).toBeNull()
   })
 })
