@@ -300,7 +300,7 @@ export interface StateWriteIn {
   assignedTo?: string | null;
   assignedName?: string | null;
   /**
-   * `true` stamps that the act was carried out (`acted_at`, and since
+   * `true` is the "Mark as briefed" stamp (`acted_at`, and since
    * 2026-09-25 `acted_by`); `false` takes that stamp back. BOTH are a note
    * change, exactly like `pinned`: sketch 122 Q2 (the founder, 2026-09-25,
    * round 5, "Add all three (Recommended)") puts "Mark as briefed" on ADR

@@ -1666,7 +1666,9 @@ execution, no first-fired timestamp — in the same way.
     retired. **094c (the case ledger) remains the roadmap:** opened → acted → watching → closed,
     with *refused* as a state that keeps its reason. `source_rule_key` was its first prerequisite
     and is now in place; what it still needs is a stored `acted_at`-to-outcome link and a way to
-    close a case with a result rather than only with a seal.
+    close a case with a result rather than only with a seal. *[2026-09-27, PR #483 audit R4:
+    `acted_at` now records a "Mark as briefed" stamp only — no Act hand-off writes it (ADR 0112
+    F10, amended) — so a case's "acted" state needs its own record, not `acted_at`.]*
 25. **Let the ribbon draw a range, and a lineage hairline.** Sketch 094a drew shift-click for a
     range (Fri to Sun) and a hairline from an entry back to the day it was first shown. Neither is
     built: the range needs the docket's filter to take an interval rather than a day, and the
