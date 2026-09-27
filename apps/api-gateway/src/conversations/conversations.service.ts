@@ -472,6 +472,12 @@ export class ConversationsService {
         p_date_to: window.to,
         p_limit: limit,
         p_offset: (page - 1) * limit,
+        // ADR 0167/0230: withheld INSIDE the RPC (migration 20260929200000),
+        // so the thread count, first/last times, search and paging never see
+        // a HOUSE_DRAFT/HOUSE_CANCELLED letter a non-owner/manager may not.
+        // Filtering the messages below alone would still let `search` find a
+        // draft's amount and count draft-only threads (PR #476 audit, 9d04c0fb6).
+        p_withhold_house_letters: !isOwnerOrManager(options.callerRole),
       });
 
     if (threadError) {
@@ -494,7 +500,7 @@ export class ConversationsService {
       };
     }
 
-    const { data, error } = await this.databaseService.supabase
+    let messagesQuery = this.databaseService.supabase
       .from("procurement_conversations")
       .select(
         `
@@ -504,8 +510,18 @@ export class ConversationsService {
       `,
       )
       .eq("restaurant_id", options.restaurantId)
-      .in("thread_key", keys)
-      .order("created_at", { ascending: false });
+      .in("thread_key", keys);
+    // A thread the RPC returned may still hold a withheld letter (a vendor
+    // reply beside a draft): every message of the thread is fetched here, so
+    // the same rule is applied again to the messages themselves.
+    if (!isOwnerOrManager(options.callerRole)) {
+      messagesQuery = messagesQuery
+        .or(WITHHOLD_HOUSE_DRAFT)
+        .or(WITHHOLD_HOUSE_CANCELLED);
+    }
+    const { data, error } = await messagesQuery.order("created_at", {
+      ascending: false,
+    });
 
     if (error) {
       this.logger.error(`List thread messages error: ${error.message}`);
@@ -531,9 +547,18 @@ export class ConversationsService {
   }
 
   /**
-   * Get a full conversation thread by threadId
+   * Get a full conversation thread by threadId.
+   *
+   * `callerRole` is the role in THIS house (ADR 0162). A caller who is not
+   * owner or manager never receives a `HOUSE_DRAFT`/`HOUSE_CANCELLED`
+   * credit-claim letter's message (ADR 0167/0230; PR #476 audit, 9d04c0fb6);
+   * omitting it is the least trusted case, never the most.
    */
-  async getThread(threadId: string, restaurantId: string) {
+  async getThread(
+    threadId: string,
+    restaurantId: string,
+    callerRole?: string | null,
+  ) {
     try {
       const select = `
           *,
@@ -544,11 +569,16 @@ export class ConversationsService {
       // Tenant scope is mandatory: thread keys are derived from Gmail thread ids, so
       // without this any authenticated user could read another restaurant's entire
       // negotiation history by guessing or replaying a key.
-      const scoped = () =>
-        this.databaseService.supabase
+      const withhold = !isOwnerOrManager(callerRole);
+      const scoped = () => {
+        const q = this.databaseService.supabase
           .from("procurement_conversations")
           .select(select)
           .eq("restaurant_id", restaurantId);
+        return withhold
+          ? q.or(WITHHOLD_HOUSE_DRAFT).or(WITHHOLD_HOUSE_CANCELLED)
+          : q;
+      };
 
       // thread_key is the durable identity. Older callers (and saved links) may still
       // pass an order UUID, so fall back to order_id when the key matches nothing.
@@ -599,19 +629,32 @@ export class ConversationsService {
   }
 
   /**
-   * Regenerate summary for a conversation's thread
+   * Regenerate summary for a conversation's thread.
+   *
+   * A caller who is not owner or manager is answered "not found" for a
+   * `HOUSE_DRAFT`/`HOUSE_CANCELLED` credit-claim letter, exactly as
+   * `getConversation` answers (ADR 0167/0230; PR #476 audit, 9d04c0fb6).
    */
-  async regenerateSummary(conversationId: string, restaurantId: string) {
+  async regenerateSummary(
+    conversationId: string,
+    restaurantId: string,
+    callerRole?: string | null,
+  ) {
     this.requireHouse(restaurantId);
     try {
       // Get the thread_id for this conversation — this house's only.
       if (!UUID_RE.test(conversationId)) throw this.notFound();
-      const { data: conv, error } = await this.databaseService.supabase
+      let convQuery = this.databaseService.supabase
         .from("procurement_conversations")
         .select("id, order_id")
         .eq("id", conversationId)
-        .eq("restaurant_id", restaurantId)
-        .maybeSingle();
+        .eq("restaurant_id", restaurantId);
+      if (!isOwnerOrManager(callerRole)) {
+        convQuery = convQuery
+          .or(WITHHOLD_HOUSE_DRAFT)
+          .or(WITHHOLD_HOUSE_CANCELLED);
+      }
+      const { data: conv, error } = await convQuery.maybeSingle();
 
       if (error) throw new Error(error.message);
       if (!conv) throw this.notFound();

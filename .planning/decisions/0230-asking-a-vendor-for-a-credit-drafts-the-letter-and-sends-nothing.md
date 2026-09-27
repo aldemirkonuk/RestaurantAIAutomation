@@ -188,7 +188,12 @@ caller is refused sending or cancelling a credit-linked letter; a non-credit
 letter is unaffected either way), `conversation-routes-belong-to-the-callers-house.spec.ts`
 and `conversation-lists-belong-to-the-callers-house.spec.ts` (a staff caller
 reads 404 / an empty slot on every read route for a HOUSE_DRAFT/HOUSE_CANCELLED
-row; owner and manager still see it; an ordinary message is untouched),
+row; owner and manager still see it; an ordinary message is untouched)
+**[corrected 2026-09-27, PR #476 audit at 9d04c0fb6: "every read route" was
+broader than the code and the tests. Both specs covered `GET /conversations`,
+`by-order`, `by-provider`, `pending/list` and `/:id` only; `GET /threads`,
+`GET /thread/:threadId` and `POST /:id/summarize` took no role and still
+showed the letter. See round 3 below.]**,
 `inbound-responder.service.spec.ts` (`buildTranscript` drops both statuses,
 keeps a real inbound reply alongside), and `conversation-ledger.spec.ts`
 (`getConversationHistory` withholds both, keeps a real `HOUSE_QUEUED`/`SENT`
@@ -199,6 +204,80 @@ status filter in `buildTranscript`, the two `.or()` calls in
 `getConversationHistory`) turns exactly the tests named for it red, and
 nothing else.
 
+## Reconciliation with ADR 0167, round 3 (2026-09-27, PR #476 audit at 9d04c0fb6)
+
+Round 2 fixed four `conversations.controller.ts` routes by name and said
+"every read route". Three more on the same controller were missed:
+`GET /conversations/threads` and `GET /conversations/thread/:threadId`
+(both used by the Communications page:
+`apps/web/src/hooks/queries/useConversationQueries.ts:202,217`) and
+`POST /conversations/:id/summarize`. None of the three took a role. The
+thread list goes through the `list_conversation_threads` RPC, and its
+`p_status` filters `delivery_status`, not `status` (baseline
+`20260805000000`, lines 695-742), so no caller could leave a letter out.
+Filtering the fetched messages alone would not have been enough either. The
+RPC's `p_search` matched a draft's `message_text`, so a staff search for an
+amount would still have found the thread. `total_threads` would also have
+counted threads that hold only a letter.
+
+This is the same ADR 0167 rule again, not a new choice for the founder:
+
+- **Migration `20260929200000`** re-creates `list_conversation_threads`
+  with `p_withhold_house_letters boolean DEFAULT true`, applied inside
+  `matched`. Counts, first and last times, search and paging then only see
+  what the caller may see. The default fails closed: a caller that passes
+  nothing gets the staff view. That caller is `reports.service.ts`
+  `getReportCrossFile`, which passes nothing, so its "conversation threads in
+  this period" count now leaves out letters that were never sent. The old
+  13-argument overload is dropped rather than kept beside the new one. A
+  named call with only those 13 arguments would match both and fail as
+  ambiguous.
+- **`conversations.service.ts`:** `listConversationThreads` passes
+  `!isOwnerOrManager(callerRole)` to the RPC. It also applies the two
+  null-safe `.or()` filters to the thread's fetched messages, because a
+  thread can hold a vendor reply next to a letter. `getThread` and
+  `regenerateSummary` take `callerRole` and apply the same filters. A staff
+  caller now gets a thread with the letter left out, and summarize answers
+  404 on a letter, the same answer `getConversation` gives.
+- **`conversations.controller.ts`:** the three routes read
+  `@CurrentUser("role")` and pass it down. There is still no decorator-level
+  `@Roles`, for the same reason as in round 1.
+
+Proof. The SQL was run on a PGlite build of all 230 migrations (2026-09-27;
+superuser, no Supabase platform). In the default and staff views, threads
+holding only a letter disappear and a mixed thread counts 1 message, not 2. A
+staff `p_search` for a draft's amount returns nothing. The owner and manager
+view still shows all 4 threads. The `reports.service.ts`-style named call
+resolves to exactly one overload. With the withholding clause removed, 4 of
+the 7 checks fail. The HTTP proof is
+`conversation-routes-belong-to-the-callers-house.spec.ts`, where staff,
+owner and manager each call `/threads`, `/threads?search=`,
+`/thread/:threadId` and `/:id/summarize`. Six mutations were run, each on its
+own: the role dropped from either route, the RPC flag forced false, the
+message filter removed, `getThread`'s filter removed, and summarize's filter
+removed. Each one turns 1-2 tests red. The static pin is CLAIMS
+`ADR-0167-CONVERSATION-THREADS-WITHHOLD-CREDIT-DRAFTS`.
+
+**Checked in this round, and what was not.** Every other non-test gateway
+file that runs `.from("procurement_conversations")` was read for this rule:
+
+- `communications.controller.ts:1057` reads inbound messages only.
+- `communications.controller.ts:1190` reads no `message_text`.
+- `house-mail-archive.service.ts` reads mirrored inbound mail only.
+- `whatsapp-book.service.ts` reads inbound WhatsApp only.
+- `communications.service.ts` selects `id` only.
+- `providers.service.ts` only inserts.
+
+None of these returns a letter's text. The following were **not** checked in
+this round:
+
+- The Python agents in `services/agent-orchestrator`.
+- The rest of `rabbitmq-bridge.service.ts`, `raw-mail-retention.service.ts`,
+  `scheduled-tasks.service.ts`, `whatsapp-inbound.service.ts` and
+  `whatsapp-send.service.ts`. These are background or send paths, not
+  HTTP reads.
+- Direct Supabase or RLS access.
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
@@ -207,3 +286,4 @@ nothing else.
 | 2026-09-25 | W3-credits-team lane | Built on PR #476 |
 | 2026-09-26 | PR #476 audit fix (BLOCK at 37a89291e, round 1, R1) | `drafts`/`discard` gated owner-or-manager, reconciling with ADR 0167 (see above) |
 | 2026-09-26 | PR #476 audit fix (BLOCK at 032e5a43e, round 2, R1b/R2b) | Conversation reads, `queue`/`cancel` on a credit-linked letter, the LLM transcript and the procurement history ledger all withhold a `HOUSE_DRAFT`/`HOUSE_CANCELLED` row from anyone who is not owner or manager (see round 2 reconciliation above) |
+| 2026-09-27 | PR #476 audit fix (BLOCK at 9d04c0fb6) | `GET /conversations/threads`, `GET /conversations/thread/:threadId` and `POST /conversations/:id/summarize` withhold the same rows from staff. The `list_conversation_threads` RPC gains `p_withhold_house_letters` (default true, migration `20260929200000`). Round 2's "every read route" is corrected in place (see round 3 above). |

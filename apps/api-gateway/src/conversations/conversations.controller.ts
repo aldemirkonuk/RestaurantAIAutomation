@@ -190,6 +190,7 @@ export class ConversationsController {
   @ApiQuery({ name: "limit", required: false })
   async listConversationThreads(
     @CurrentUser() user: AuthUser,
+    @CurrentUser("role") role: string | null,
     @Query("providerId") providerId?: string,
     @Query("orderNumber") orderNumber?: string,
     @Query("threadKey") threadKey?: string,
@@ -223,6 +224,10 @@ export class ConversationsController {
         quarter,
         year,
         month,
+        // The role IN THIS HOUSE (ADR 0162). ADR 0167/0230: a caller who is
+        // not owner or manager never sees a HOUSE_DRAFT/HOUSE_CANCELLED
+        // credit-claim letter here (PR #476 audit, 9d04c0fb6).
+        callerRole: role,
         page: page ? parseInt(page, 10) : 1,
         limit: limit ? parseInt(limit, 10) : 20,
         sortBy: "created_at",
@@ -247,11 +252,18 @@ export class ConversationsController {
   @ApiOperation({ summary: "Get all messages in a conversation thread" })
   async getThread(
     @CurrentUser() user: AuthUser,
+    @CurrentUser("role") role: string | null,
     @Param("threadId") threadId: string,
   ) {
     const restaurantId = houseOf(user);
     try {
-      return await this.conversationsService.getThread(threadId, restaurantId);
+      // ADR 0167/0230: the role in this house decides whether a credit-claim
+      // letter's message is in the thread (PR #476 audit, 9d04c0fb6).
+      return await this.conversationsService.getThread(
+        threadId,
+        restaurantId,
+        role,
+      );
     } catch (error) {
       this.logger.error(`Failed to get thread: ${error.message}`, error.stack);
       throw new HttpException(
@@ -343,6 +355,7 @@ export class ConversationsController {
   @ApiOperation({ summary: "Regenerate AI summary for a conversation thread" })
   async regenerateSummary(
     @CurrentUser() user: AuthUser,
+    @CurrentUser("role") role: string | null,
     @Param("conversationId") conversationId: string,
   ) {
     const restaurantId = houseOf(user);
@@ -350,6 +363,7 @@ export class ConversationsController {
       return await this.conversationsService.regenerateSummary(
         conversationId,
         restaurantId,
+        role,
       );
     } catch (error) {
       if (error instanceof HttpException) throw error;
