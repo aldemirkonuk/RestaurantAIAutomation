@@ -198,3 +198,17 @@ Seams:
   (S09), and a CI job that runs a seeded day against a throwaway database.
 - Retiring it is downstream of `pi.merchant_backed_providers` going 0 → 1: until a real
   venue is connected, this is the only producer the bridge has.
+
+## §9 Capacity and coverage — measured 2026-09-19
+
+**Capacity.** Thin spec coverage relative to its surface: 2 specs across 18 endpoints.
+
+**Coverage.** 70.1%/49.1%.
+
+**Runs in production.** UI is dev-only in production by design (`App.tsx` PROD gate); backed by heavy synthetic data.
+
+**Promised vs. built.** `partial` holds.
+
+**Gaps.** Low spec count for the endpoint surface.
+
+*Evidence:* Supabase `simpos_catalog`=403, `simpos_checks`=84; `apps/web/src/App.tsx:254,262,276`.

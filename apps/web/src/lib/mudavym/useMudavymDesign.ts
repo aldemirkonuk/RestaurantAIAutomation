@@ -105,7 +105,7 @@ export const MUDAVYM_PAGES = [
   // code; the 20260922220200 column stays, unread.]
   'authorize_integration',
   // ADR 0160 §112 (/vendor-prices). Flag-gated, OFF by default, NOT in
-  // LIVE_PAGES — the founder flips it per house (column: 20260926170000).
+  // LIVE_PAGES — the founder flips it per house (column: 20260929000000).
   'vendor_prices',
 ] as const;
 

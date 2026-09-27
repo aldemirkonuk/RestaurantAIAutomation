@@ -98,6 +98,15 @@ settled version until the next sweep proves otherwise.
   `scripts/check_migration_order.py` (ADR 0212) fails. `20260926170000` is the
   first version of this lane's assigned range `20260926170000`-`20260926179999`.
   The brackets above stay as history.
+
+**[2026-09-27, merge-train update for PR #473]** Renamed a fourth time,
+`20260926170000` → `20260929000000`: origin/main gained
+`20260928000000_a_promotion_remembers_being_alerted.sql` after this lane's
+range was assigned, so the reserved `20260926170000`-`20260926179999` band no
+longer sorts ahead of main's ceiling. `20260929000000` is comfortably past it
+(a full day, not one step, per the guard's own advice on how earlier renames
+lost this race). `feature-flag-registry.ts`, `App.tsx` and
+`useMudavymDesign.ts` re-cited; the two brackets above stay as history.
 - **Fork 6, as answered 2026-09-18 ("Always on the record, loaded fresh"), is
   now built.** Every price record draws C's paper trail (`PaperTrail.tsx`)
   under the ladders: every sighting, newest first, across classes, with the

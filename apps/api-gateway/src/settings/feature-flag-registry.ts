@@ -111,7 +111,7 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     // specific 2026-09-19 ~09:20Z answer (memory
     // founder-sketch-decisions-106-115.md, "19-lane blocking answers")
     // overrides that and requires exactly this gate. Column added by
-    // 20260926170000 (renamed a third time on 2026-09-25 into the W2 lane's
+    // 20260929000000 (renamed a third time on 2026-09-25 into the W2 lane's
     // reserved range — every earlier version sorted below main's ceiling;
     // see vendor-prices.md's dated brackets for the rename history).
     defaultValue: false,
