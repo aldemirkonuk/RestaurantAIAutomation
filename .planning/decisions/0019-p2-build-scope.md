@@ -35,7 +35,7 @@ leaf or a missing connection; proposed verdicts:
 | `/calendar-classic`, `/inventory-legacy` | **Retire after parity check** — superseded by [[calendar]] and [[inventory]]; keeping two calendars and two inventories doubles every future change. ⛔ **Parity check 2026-08-26: both FAILED — retirement blocked**, see §B-parity below. ✅ **Both retired 2026-08-26** after their blockers were ported onto [[inventory]] and [[calendar]]. |
 | [[calendar]] | **Wire** — today's dates should link to [[orders]] / [[promotions]] they reference |
 | [[documents-reports]], [[receipts]] | **Wire** — each document row should link to its [[orders]] order and vendor page; receipts ↔ credits transition exists as API only |
-| [[sommelier]], [[team]], [[vendor-prices]], [[vendor-public-page]] | **Bless as leaves** — self-contained tools; revisit if usage says otherwise |
+| [[06-pages/RETIRED\|sommelier]] [2026-09-27: page note retired 2026-09-25, tombstone in [[06-pages/RETIRED]]; `/sommelier` now redirects to [[06-pages/ask\|/ask]]], [[team]], [[vendor-prices]], [[vendor-public-page]] | **Bless as leaves** — self-contained tools; revisit if usage says otherwise |
 
 ### B-parity — the check the founder attached to the two "retire" verdicts
 

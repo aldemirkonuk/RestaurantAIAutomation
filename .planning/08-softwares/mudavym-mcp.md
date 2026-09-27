@@ -256,7 +256,7 @@ behind each fronted module — but none claims this. Recorded as a gap row in
   (`.planning/06-pages/PAGES-MAP.md:105-109`; `apps/web/src/App.tsx:354-358`). The live
   general chat surface is **[[06-pages/RETIRED|/sommelier]]** [retired 2026-09-25], whose own backend route
   is unregistered and falls back to a local rules answer
-  (`.planning/06-pages/sommelier.md:38,55`). So the comparison is not "MCP vs. the
+  (`git show e754b3a27:.planning/06-pages/sommelier.md` lines 38, 55 — the note is retired, recovery commit per [[06-pages/RETIRED]]). So the comparison is not "MCP vs. the
   chatbot": **`/sommelier` is one client, inside our UI, with one model we chose; the MCP
   server is the same capability offered to a client the house chose.** If both ship, the
   chat page should call the MCP tools rather than grow a second, divergent action set.

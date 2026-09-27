@@ -1678,6 +1678,14 @@ Rejected, with reasons:
   header's Ask; `AskAiSurface.tsx` is now the legacy layout's overlay mount.
 - `AskAiBar.tsx` and `AskAiBar.test.tsx` deleted; its tests moved to
   `AskPanel.test.tsx` (the seal ceremony, refusals, candidates, context).
+  [2026-09-27, PR #475 audit fix: three of them were in fact dropped, not
+  moved -- "will not offer to seal a locally impossible quantity", "gives no
+  control that could change the family or action type" and "leaves the ask
+  box and the seal gate working when candidates fail" (origin/main
+  `AskAiBar.test.tsx:258,289,317`) had no successor under `apps/web/src`. All
+  three are now ported into `AskPanel.test.tsx` under "a proposal applies only
+  through the seal"; the quantity one fails when `ProposalCard.tsx:313` drops
+  its `n < 1` check.]
 - `shellOverlays.test.tsx`: the pinned legacy chrome of the bar is gone with
   it (its provenance row removed).
 - `/help`'s assistant guide and the palette row describe one panel.
@@ -1752,6 +1760,17 @@ gateway change.
   `'ask'`, never a crash. The other writes `{ askLastMode: mode }` back only
   once `mode` has moved past the value that was hydrated (or last written),
   so the ordinary session that never leaves Ask spends no write at all.
+  [2026-09-27, PR #475 audit fix: as first built the hydrate effect had no
+  guard for a mode the person had already picked -- the switch is live
+  before the account's read resolves, so a click into Propose in that window
+  was flipped back to the stored Ask when the read landed (and Enter then
+  sent the wrong kind of request). Every person-initiated mode change now
+  goes through `chooseMode`, which sets `personChoseRef`; hydrate still
+  adopts the stored value as the write baseline but no longer overrides a
+  choice already made, so that choice is written back when it differs.
+  Three tests pin it ("keeps a Propose chosen while the read was loading…",
+  "keeps an Ask chosen…", "writes nothing when the choice…already matches");
+  the first two fail with the `!personChoseRef.current` guard removed.]
 - The write is `updatePreferences` (fire-and-forget), the same call
   `TeamGoalsSettings.tsx` and the Quick Actions hook already make for a
   preference that is a convenience, not a correctness fact -- unlike

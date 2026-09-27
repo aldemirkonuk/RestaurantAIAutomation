@@ -359,6 +359,52 @@ describe('a proposal applies only through the seal', () => {
     expect(api.apply).not.toHaveBeenCalled()
   })
 
+  // The next three are AskAiBar's, carried over from origin/main
+  // AskAiBar.test.tsx:258/289/317 when the bar was folded into this panel.
+  it('will not offer to seal a locally impossible quantity', async () => {
+    const user = userEvent.setup()
+    api.list.mockResolvedValue([reorder])
+    renderPanel()
+    await screen.findByTestId('askai-proposal-card')
+
+    const qty = screen.getByLabelText(/quantity/i)
+    await user.clear(qty)
+    await user.type(qty, '0')
+
+    expect(hold()).toBeDisabled()
+    expect(api.mint).not.toHaveBeenCalled()
+    expect(api.apply).not.toHaveBeenCalled()
+  })
+
+  it('gives no control that could change the family or action type', async () => {
+    api.list.mockResolvedValue([reorder])
+    renderPanel()
+    await screen.findByTestId('askai-proposal-card')
+
+    // The gateway rejects such an edit outright; the panel must not invite it.
+    for (const field of screen.getAllByRole('textbox')) {
+      expect(field).not.toHaveValue('procurement')
+      expect(field).not.toHaveValue('reorder')
+    }
+    expect(screen.queryByLabelText(/family/i)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/action type/i)).not.toBeInTheDocument()
+  })
+
+  it('leaves the ask box and the seal gate working when candidates fail', async () => {
+    // A broken candidate query costs the pickers, nothing else.
+    api.candidates.mockRejectedValue(new Error('down'))
+    api.list.mockResolvedValue([reorder])
+    api.apply.mockResolvedValue({ executed: true, actionId: reorder.actionId, executionRef: 'order-9', edited: false })
+    renderPanel()
+
+    await screen.findByTestId('askai-proposal-card')
+    expect(screen.queryByLabelText('Item')).toBeNull()
+    expect(screen.getByLabelText(/your question for the books/i)).toBeEnabled()
+
+    completeHold(hold())
+    await waitFor(() => expect(api.apply).toHaveBeenCalledWith(reorder.actionId, 'seal-1', undefined))
+  })
+
   it('shows proposals already waiting, whichever mode it opens in, and fetches candidates once', async () => {
     api.list.mockResolvedValue([reorder, vendorDraft])
     renderPanel()
@@ -489,6 +535,67 @@ describe('opens on the person’s last used mode (ADR 0145, founder round 7)', (
       </AuthContext.Provider>,
     )
     await waitFor(() => expect(screen.getByRole('radio', { name: /propose an action/i })).toHaveAttribute('aria-checked', 'true'))
+  })
+
+  // The hydrate race (PR #475 audit): the switch is live before the account's
+  // read resolves, so a choice made in that window must survive the read.
+  function renderLoading() {
+    const tree = () => (
+      <AuthContext.Provider value={{ activeRole: 'owner', activeRestaurantId: 'r-1' } as never}>
+        <MemoryRouter initialEntries={['/inventory']}>
+          <AskPanel placement="overlay" open onClose={() => {}} />
+        </MemoryRouter>
+      </AuthContext.Provider>
+    )
+    const view = render(tree())
+    return { resolve: () => view.rerender(tree()) }
+  }
+
+  it('keeps a Propose chosen while the read was loading, and remembers it over the stored Ask', async () => {
+    const user = userEvent.setup()
+    prefsState.isPlaceholderData = true
+    const { resolve } = renderLoading()
+    await user.click(modeRadio(/propose an action/i))
+
+    prefsState.isPlaceholderData = false
+    prefsState.preferences = { askLastMode: 'ask' }
+    resolve()
+
+    await waitFor(() => expect(prefsState.updatePreferences).toHaveBeenCalledWith({ askLastMode: 'propose' }))
+    expect(modeRadio(/propose an action/i)).toHaveAttribute('aria-checked', 'true')
+    api.propose.mockResolvedValue({ proposed: true, proposal: reorder })
+    await user.type(screen.getByLabelText(/the action to propose/i), 'reorder barolo{Enter}')
+    await waitFor(() => expect(api.propose).toHaveBeenCalledTimes(1))
+    expect(api.submit).not.toHaveBeenCalled()
+  })
+
+  it('keeps an Ask chosen while the read was loading, over a stored Propose', async () => {
+    const user = userEvent.setup()
+    prefsState.isPlaceholderData = true
+    const { resolve } = renderLoading()
+    await user.click(modeRadio(/propose an action/i))
+    await user.click(modeRadio(/ask the books/i))
+
+    prefsState.isPlaceholderData = false
+    prefsState.preferences = { askLastMode: 'propose' }
+    resolve()
+
+    await waitFor(() => expect(prefsState.updatePreferences).toHaveBeenCalledWith({ askLastMode: 'ask' }))
+    expect(modeRadio(/ask the books/i)).toHaveAttribute('aria-checked', 'true')
+  })
+
+  it('writes nothing when the choice made while loading already matches the stored mode', async () => {
+    const user = userEvent.setup()
+    prefsState.isPlaceholderData = true
+    const { resolve } = renderLoading()
+    await user.click(modeRadio(/propose an action/i))
+
+    prefsState.isPlaceholderData = false
+    prefsState.preferences = { askLastMode: 'propose' }
+    resolve()
+
+    await waitFor(() => expect(modeRadio(/propose an action/i)).toHaveAttribute('aria-checked', 'true'))
+    expect(prefsState.updatePreferences).not.toHaveBeenCalled()
   })
 
   it('remembers a switch to Propose, for the next open', async () => {

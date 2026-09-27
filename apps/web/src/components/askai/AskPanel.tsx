@@ -199,12 +199,27 @@ function AskPanelBody({
    *  when `mode` has moved past this, so the ordinary all-Ask session never
    *  spends one. */
   const baselineModeRef = useRef<AskMode>('ask')
+  /**
+   * Set the moment the person picks a mode themselves (the switch, the
+   * suggestion, a verdict's "instead"). The account's stored mode is only a
+   * starting point: if it arrives AFTER the person has already chosen, it
+   * must not overwrite that choice — otherwise a click into Propose during
+   * the first-open read is silently flipped back and Enter sends the wrong
+   * kind of request (PR #475 audit, hydrate race).
+   */
+  const personChoseRef = useRef(false)
+  const chooseMode = useCallback((m: AskMode) => {
+    personChoseRef.current = true
+    setMode(m)
+  }, [])
 
   useEffect(() => {
     if (hydratedMode || prefsUnknown) return
     const stored: AskMode = preferences.askLastMode === 'propose' ? 'propose' : 'ask'
+    // Baseline is what the account holds, so a choice made before the read
+    // resolved is written back only when it differs from it.
     baselineModeRef.current = stored
-    if (stored !== mode) setMode(stored)
+    if (!personChoseRef.current && stored !== mode) setMode(stored)
     setHydratedMode(true)
   }, [hydratedMode, prefsUnknown, preferences.askLastMode, mode])
 
@@ -353,20 +368,20 @@ function AskPanelBody({
   // The backends' own verdicts, offered as the other mode — a click each.
   const proposeInstead = useCallback(
     (words: string) => {
-      setMode('propose')
+      chooseMode('propose')
       setText(words)
       void sendPropose(words)
     },
-    [sendPropose],
+    [chooseMode, sendPropose],
   )
   const askInstead = useCallback(
     (words: string) => {
-      setMode('ask')
+      chooseMode('ask')
       setRefusal(null)
       setText(words)
       void askTheBooks(words)
     },
-    [askTheBooks],
+    [askTheBooks, chooseMode],
   )
 
   const suggestion = suggestAskMode(text)
@@ -377,7 +392,7 @@ function AskPanelBody({
       <ModeSwitch
         mode={mode}
         onMode={(m) => {
-          setMode(m)
+          chooseMode(m)
           inputRef.current?.focus()
         }}
       />
@@ -410,7 +425,7 @@ function AskPanelBody({
       {suggest && (
         <p className="mdv-askp__suggest" role="status" data-testid="askpanel-suggestion" data-suggests={suggest}>
           {suggest === 'propose' ? 'This reads like a request to do something.' : 'This reads like a question for the books.'}{' '}
-          <button type="button" className="mdv-link" onClick={() => setMode(suggest)}>
+          <button type="button" className="mdv-link" onClick={() => chooseMode(suggest)}>
             {suggest === 'propose' ? 'Switch to Propose an action' : 'Switch to Ask the books'}
           </button>{' '}
           <span className="mdv-askp__quiet">Enter still does what is selected above.</span>
