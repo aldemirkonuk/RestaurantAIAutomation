@@ -121,7 +121,7 @@ in `InboundResponderService`, not the client (`procurement.controller.ts:279-635
 Seams:
 1. **`Orders.tsx` is 3,616 lines** and fuses five concerns: order CRUD, the AI vendor-email
    layer, provider records, inventory lookups, and wine mapping. The co-located
-   `pages/orders/` split is partial ([[orders]] §9). Nothing here extracts cleanly.
+   `pages/orders/` split is partial ([[06-pages/orders|the page note]] §9). Nothing here extracts cleanly.
 2. **`POST /inventory/add-from-order` does not exist and never has.** The delivered-order
    handler fires it with raw `axios`, then swallows the failure
    (`pages/Orders.tsx:686-696`); the inventory controller's full route list
@@ -142,5 +142,19 @@ Seams:
 - **E1** is the live one: unify the POS pipeline so `procurement_agent` feeds the live NestJS
   path instead of the dormant Python one ([[ECOSYSTEM-PLAN]] §7.1, locked 2026-08-28).
 - The god-file split and the phantom `add-from-order` call are **unscheduled** — neither has
-  an OD row nor an agenda item; they are recorded in [[orders]] §9 only.
+  an OD row nor an agenda item; they are recorded in [[06-pages/orders|the page note]] §9 and
+  seams 1–2 above only.
 
+## §9 Capacity and coverage — measured 2026-09-19
+
+**Capacity.** 8 loop+`await` files in the shared procurement module are flagged as N+1 candidates — not line-by-line confirmed.
+
+**Coverage.** 79.0%/66.2% at the (shared) procurement-module level (heavy.sh jest, 2026-09-18).
+
+**Runs in production.** Yes, flag ON; only 2 `procurement_orders` rows have ever existed.
+
+**Promised vs. built.** `partial` holds; real order volume is very light.
+
+**Gaps.** N+1 candidates are unverified line-by-line — a lead, not a confirmed defect.
+
+*Evidence:* Supabase `procurement_orders`=2; `coverage-summary.json` (procurement module aggregate, shared across 4 softwares — see [[receipts-invoice-match]], [[receiving]], [[recurring-orders]]).

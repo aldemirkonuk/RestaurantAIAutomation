@@ -4,10 +4,24 @@
  * same live sources (no new endpoints, no invented figures), and each glance
  * figure stays null until its query has actually answered.
  *
- * Sources: useProcurementConversationHistory (the outbound negotiation book),
- * useConversationThreads (inbound/outbound thread summaries), the drafts
- * awaiting action, the report schedules the legacy page managed, and the
- * gateway's own Gmail watch status.
+ * Sources — the THREE this page owns (ADR 0083, amended 2026-09-25):
+ * useProcurementConversationHistory (the outbound negotiation book),
+ * useConversationThreads (inbound/outbound thread summaries), and the drafts
+ * awaiting action.
+ *
+ * Two sources left this page on that date, by the founder's answer
+ * ("amend ADR 0083", option a):
+ *   - the report schedules. `public.scheduled_reports` is created by no
+ *     migration in `supabase/migrations/`, so `GET /reports/schedules` failed
+ *     for every house and the banner below alarmed on every visit. The card
+ *     returns when a real table exists (v3.0-TECH-DEBT, "Scheduled reports
+ *     is a dead feature"); `check_queried_tables_exist.py` KNOWN_MISSING keeps
+ *     the missing table visible to CI without this page having to say it.
+ *   - the Gmail watch status. It is one deployment-wide Pub/Sub credential,
+ *     not a fact about this house; it now reads on the admin desk
+ *     (`pages/admin/next/AdminDesk.tsx`, ADR 0143).
+ * Neither query is issued from here any more: a read this page cannot show
+ * is a read it should not make.
  *
  * THREE STATES, NEVER TWO (ADR 0051 clause 3). Every source here can be
  * unanswered, failed, or answered, and this hook keeps all three apart:
@@ -18,20 +32,16 @@
  *
  * The rebuild originally collapsed the first two — `schedulesKnown = data !==
  * undefined` and `isError = historyQ.isError` — so a permanent 500 rendered as
- * latency forever and four of five sources had no failure surface at all.
+ * latency forever and four of the then five sources had no failure surface.
  */
 
 import { useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { useAuth } from '../../../contexts/AuthContext';
 import {
   useConversationThreads,
   useProcurementConversationHistory,
   type ProcurementHistoryItem,
 } from '../../../hooks/queries/useConversationQueries';
 import { useActiveConversations } from '../../../hooks/queries/useDraftEmailQueries';
-import { apiClient } from '../../../services/api/client';
-import { listReportSchedules, type ScheduledReport } from '../../../services/api/reports';
 import { sendState } from './cm-format';
 
 /**
@@ -66,16 +76,13 @@ export interface CommsGlance {
   sentLast30: number | null;
   /** True when the history window hit its server cap — the figure is a floor. */
   sentLast30Truncated: boolean;
-  schedules: number | null;
 }
 
-/** Which of the five sources returned a failure. Never merged with "unknown". */
+/** Which of the three owned sources returned a failure. Never merged with "unknown". */
 export interface CommsFailures {
   history: boolean;
   threads: boolean;
   drafts: boolean;
-  schedules: boolean;
-  gmail: boolean;
 }
 
 /** Reader-facing names, in strip order, for the sentence the banner prints. */
@@ -83,8 +90,6 @@ const SOURCE_LABELS: Array<[keyof CommsFailures, string]> = [
   ['history', 'the conversation book'],
   ['threads', 'the thread index'],
   ['drafts', 'the drafts awaiting action'],
-  ['schedules', 'the report schedules'],
-  ['gmail', 'the Gmail watch status'],
 ];
 
 function errText(e: unknown): string {
@@ -92,11 +97,9 @@ function errText(e: unknown): string {
 }
 
 export function useCommsNextData() {
-  const { user, activeRestaurantId } = useAuth();
-  // The gateway scopes every endpoint below from the JWT alone; the key literal
-  // is the only thing keeping one tenant's cache out of another's.
-  const restaurantId = activeRestaurantId ?? user?.restaurantId ?? '';
-
+  // Every query this page reads lives in a shared hook whose key carries the
+  // house (`scripts/check_windowed_figures.py` W7 reads those keys). The two
+  // page-local keys that also carried it left with their sources, 2026-09-25.
   const historyQ = useProcurementConversationHistory();
   const threadsQ = useConversationThreads();
   // Drafts awaiting action come from the same live source the orders DraftRail
@@ -104,22 +107,6 @@ export function useCommsNextData() {
   // deriving "drafts waiting" from it was a structurally guaranteed false
   // zero (communications-audit.md, BLOCKER 2).
   const activeQ = useActiveConversations();
-  const schedulesQ = useQuery<ScheduledReport[]>({
-    queryKey: ['report-schedules', restaurantId],
-    queryFn: listReportSchedules,
-    staleTime: 60_000,
-  });
-  // The rail's integration line must report REAL state, not assert a
-  // connection nothing checked (opus-fidelity C-1). The gateway's Gmail
-  // watch status is the honest source for the inbound mail channel.
-  const gmailQ = useQuery<{ configured: boolean }>({
-    queryKey: ['comms-gmail-watch-status', restaurantId],
-    queryFn: async () => {
-      const { data } = await apiClient.get('/communications/webhooks/gmail/status');
-      return data;
-    },
-    staleTime: 5 * 60_000,
-  });
 
   const rows: ProcurementHistoryItem[] = useMemo(() => {
     const items = historyQ.data ?? [];
@@ -147,16 +134,13 @@ export function useCommsNextData() {
       // when the window is full the 30-day figure is a floor, and the strip
       // says so with GE.
       sentLast30Truncated: (historyQ.data?.length ?? 0) >= COMMS_SERVER_WINDOWS.HISTORY_ROWS,
-      schedules: schedulesQ.data === undefined ? null : schedulesQ.data.length,
     };
-  }, [historyQ.data, threadsQ.data, activeQ.data, schedulesQ.data]);
+  }, [historyQ.data, threadsQ.data, activeQ.data]);
 
   const failed: CommsFailures = {
     history: historyQ.isError,
     threads: threadsQ.isError,
     drafts: activeQ.isError,
-    schedules: schedulesQ.isError,
-    gmail: gmailQ.isError,
   };
 
   const failedSources = SOURCE_LABELS.filter(([k]) => failed[k]).map(([, label]) => label);
@@ -164,24 +148,6 @@ export function useCommsNextData() {
   return {
     rows,
     glance,
-    /** null = unanswered or failed; boolean = the gateway's own word. */
-    gmailWatchConfigured: gmailQ.data === undefined ? null : gmailQ.data.configured,
-    schedules: schedulesQ.data ?? [],
-    /** True only when the schedule register actually answered. */
-    schedulesKnown: schedulesQ.data !== undefined,
-    /**
-     * The schedule register's failure, kept SEPARATE from `schedulesKnown` —
-     * the distinction the legacy page held (Communications.tsx:269, 293-299)
-     * and the rebuild deleted.
-     *
-     * This is not hypothetical latency. `public.scheduled_reports` is created
-     * by no migration in `supabase/migrations/`; a later migration
-     * (20260826170000_integration_oauth_tables.sql:26) names it as one of five
-     * tables "living outside supabase/migrations/ that production never saw".
-     * So `GET /reports/schedules` fails 100% of the time, and a page that can
-     * only say "hasn't answered yet" says it forever.
-     */
-    schedulesError: schedulesQ.isError ? errText(schedulesQ.error) : null,
     hasData: historyQ.data !== undefined,
     isError: historyQ.isError,
     errorMessage: errText(historyQ.error),
@@ -197,10 +163,6 @@ export function useCommsNextData() {
       void historyQ.refetch();
       void threadsQ.refetch();
       void activeQ.refetch();
-      void schedulesQ.refetch();
-      // The Gmail line is a fifth source and was previously unreachable from
-      // "Try again", which made the button's promise partly false.
-      void gmailQ.refetch();
     },
   };
 }

@@ -74,6 +74,15 @@ twice: on 2026-09-25 to `20260925160000` and `…160100`, and on 2026-09-26 to
 right-hand column, which measures what happens after #429 merges, describes files that no
 longer exist.]
 
+[2026-09-27, merge-train update on PR #429: renamed a third time, to `20260928130000` and
+`…130100`, past main's new ceiling `20260928000000` (added by #394's promotions migration
+while #429 was in flight — the same guard, `check_migration_order.py`, caught it before
+merge, then caught a version COLLISION against #440's own new migration at the first
+choice, `…120000`/`…120100`, which is why the final pair sits one hour later). Every
+citation of the prior `20260927140000`/`…140100` pair, including this ADR's own line
+above and the CLAIMS row that asserts each migration cites its sibling by name, was
+repointed in the same commit.]
+
 The same day, one lane renamed its migration to one step past the ceiling. That was
 checked by hand against every branch it could see, and it still lost the race twice.
 
