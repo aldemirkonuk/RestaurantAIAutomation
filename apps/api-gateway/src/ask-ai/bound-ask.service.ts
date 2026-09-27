@@ -177,10 +177,17 @@ export class BoundAskService {
     // a future edit could accidentally get past.
     // [2026-09-25, ADR 0145's 2026-09-25 amendment: the caller now exists --
     // the `/ask` page (`apps/web/src/pages/ask/next/`), live in code for every
-    // house. The flag was NOT flipped in that change: ASK_LAUNCHED is an
-    // environment value on the deployed gateway, set by the founder, not by a
-    // commit. Until it reads "true" the page says "Ask has not opened yet"
-    // and nothing is written or spent, exactly as before.]
+    // house. This change does not touch ASK_LAUNCHED's value; it is an
+    // environment value on the deployed gateway, set by the founder's own
+    // keystroke, not by a commit -- so this diff cannot make that keystroke
+    // true or false. The mechanism above is unconditional: whatever the
+    // value reads, every caller gets it, with no branch a future edit could
+    // get past. What it currently reads in Railway is NOT settled by this
+    // file, this PR, or this record: the founder's own words, same date,
+    // are "aded to the railway" (he says he already set it), unverified by
+    // any lane (`founder-answers-2026-09-25-web-rebuild.md:48`, ADR 0145's
+    // "Amendment, 2026-09-25, round 5"). Do not read this comment as
+    // evidence either way; read Railway.]
     if (this.config.get<string>("ASK_LAUNCHED") !== "true") {
       throw new ServiceUnavailableException("Ask has not launched yet.");
     }
