@@ -6,8 +6,10 @@ import {
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { hashWineIdentity, wineDisplayLabel } from "./wine-identity";
+import { isIso4217 } from "../common/iso-4217";
 import {
   BelowAverageResult,
+  ComparisonClass,
   ObservationRow,
   comparisonClassOf,
   priceBelowAverage,
@@ -44,19 +46,98 @@ import {
 export interface VendorComparison {
   productKey: { masterWineId?: string; signatureHash?: string };
   productName: string | null;
+  /**
+   * Pooled across every comparison class. Kept exactly as it was — the
+   * legacy `/vendor-prices` page (`VendorPriceCompare.tsx`) reads this field
+   * and nothing here may change its shape. `consensusByClass` below is the
+   * additive figure the Mudavym ladder uses instead (ADR 0160 §112, fork 1:
+   * "Quoted to this house" and "Public pages" are two figures that never
+   * average).
+   */
   consensus: ConsensusResult;
   trends: PriceTrend[];
-  /** Every observation behind the ladder, for the "show your working" panel. */
+  /**
+   * The same consensus math, run once per comparison class rather than once
+   * pooled. A class with too few admitted rows to judge still gets an entry
+   * (`vendorPriceConsensus` on an empty/short array already returns nulls and
+   * says why, never a thrown error) — so a caller can print "not enough
+   * quoted rows yet" for one class while another class has a real number.
+   */
+  consensusByClass: Record<string, ConsensusResult>;
+  /**
+   * The 7/30/90-day trend chips, run once per comparison class — the same
+   * reason `consensusByClass` exists rather than one pooled `trends`. A trend
+   * that blended a quoted-price movement with a public-page movement would
+   * report the exact class-crossing the founder ruled out for the consensus
+   * figure (ADR 0160 §112 fork 1); `trends` above stays pooled ONLY because
+   * the legacy page reads it and its shape may not change.
+   */
+  trendsByClass: Record<string, PriceTrend[]>;
+  /**
+   * Every observation behind the ladder, for the "show your working" panel.
+   * Additive fields carry what direction A's ladder needs — id to key rows
+   * and open the sighting sheet, currency and trust tier per row (a bottle
+   * quoted in two currencies must never average across them), the STORED
+   * outlier verdict (never re-derived client-side, so the ladder agrees with
+   * the write-time judgement `own-paper-sighting.ts` and
+   * `outlier-rejudge.ts` keep current), the comparison class so the ladder
+   * can badge and group without re-deriving it, and sourceRef so an
+   * own-paper row (`receipt_verified:<orderId>` / `order_confirmed:<orderId>`)
+   * can carry a link to the order/receipt it came from — fork 6(b), the
+   * sighted A build. A hand-recorded row has no sourceRef, which is the
+   * signal the ladder prints "No paper attached" on rather than a broken
+   * link.
+   */
   observations: Array<{
+    id: string;
     vendorName: string | null;
+    providerId: string | null;
     sourceType: PriceSourceType;
     sourceUrl: string | null;
+    sourceRef: string | null;
+    comparisonClass: ComparisonClass;
     rawPrice: number;
+    currency: string;
+    trustTier: number | null;
     packSize: number;
     unitVolumeMl: number | null;
     observedAt: string;
     parseConfidence: number | null;
+    isOutlier: boolean;
+    outlierReason: string | null;
+    /** The note recorded with this sighting, own-paper or hand-typed —
+     * null when none was written. */
+    note: string | null;
+    identityId: string | null;
+    /** The identity's own name (`beverage_identities.display_label`), best
+     * effort — null when the row is unidentified or the label could not be
+     * read; `identityId` is still returned either way, never swapped out. */
+    identityLabel: string | null;
+    /**
+     * Per-750ml, pack- and yield-adjusted — the SAME `normalizeUnitPrice` the
+     * consensus and the write-time outlier test both use, run once per row
+     * here rather than re-implemented in the client. Null when the row
+     * cannot be normalised (a non-positive pack, an out-of-range yield); the
+     * ladder ranks a null last within its class rather than treating it as
+     * free or infinite.
+     */
+    normalizedUnitPrice: number | null;
   }>;
+  /**
+   * False when the 500-row window this read is capped at (`loadObservations`)
+   * was hit — the counts and consensus above are then a FLOOR, not a total,
+   * the same rule `identity/candidates` and `identity/decisions` already
+   * hold to.
+   */
+  complete: boolean;
+  /**
+   * How many days back `loadObservations` actually looked (365 by default,
+   * `?windowDays=` otherwise) — silently dropping an older rung is a defect
+   * this field exists so the page can state instead of hiding (ADR 0160
+   * §112 review, minor: "the page never says the ladder covers the last N
+   * days only").
+   */
+  windowDays: number;
 }
 
 /**
@@ -154,7 +235,7 @@ export class VendorComparisonService {
       this.databaseService.supabase
         .from("vendor_price_observations")
         .select(
-          "provider_id, vendor_name_raw, product_name_raw, source_type, source_url, raw_price, currency, pack_size, unit_volume_ml, yield_factor, parse_confidence, observed_at",
+          "id, provider_id, vendor_name_raw, product_name_raw, source_type, source_url, source_ref, raw_price, currency, trust_tier, pack_size, unit_volume_ml, yield_factor, parse_confidence, observed_at, is_outlier, outlier_reason, identity_id, raw",
         ),
       VENDOR_PRICE_OBSERVATIONS,
       restaurantId
@@ -245,6 +326,7 @@ export class VendorComparisonService {
     note?: string;
     restaurantId: string;
     userId?: string;
+    currency?: string;
   }) {
     const sourceType = params.sourceType ?? "manual";
     const TRUST_BY_SOURCE: Record<string, number> = {
@@ -253,6 +335,23 @@ export class VendorComparisonService {
       social: 6,
       manual: 7,
     };
+
+    // Checked here rather than in the DTO so the message can be specific
+    // (`common/iso-4217.ts#isIso4217` — real membership, not "three capital
+    // letters"). A caller that sends nothing keeps the long-standing USD
+    // default (the legacy page never sends this field); a caller that sends
+    // something wrong is refused rather than silently filed under a code
+    // that is not a currency.
+    let currency = "USD";
+    if (params.currency !== undefined && params.currency !== null) {
+      const trimmed = String(params.currency).trim().toUpperCase();
+      if (!isIso4217(trimmed)) {
+        throw new BadRequestException(
+          `"${params.currency}" is not a currency code. Use the ISO 4217 code the price was actually quoted in (e.g. USD, TRY, EUR).`,
+        );
+      }
+      currency = trimmed;
+    }
 
     const wine = params.masterWineId
       ? await this.resolveWine(params.masterWineId)
@@ -360,7 +459,7 @@ export class VendorComparisonService {
         source_url: params.sourceUrl ?? null,
         observed_at: observedAt,
         raw_price: params.price,
-        currency: "USD",
+        currency,
         pack_size: params.packSize ?? 1,
         unit_volume_ml: params.unitVolumeMl ?? null,
         // Null, not 1. parse_confidence answers "how well did we read this",
@@ -553,6 +652,53 @@ export class VendorComparisonService {
       currency: r.currency ?? "USD",
     }));
 
+    // Direction A (ADR 0160 §112, fork 1): a consensus never crosses a
+    // comparison class — "Quoted to this house $30.20" and "Public pages
+    // $40.49" are two figures, not one blend. `observations` and `rows` are
+    // the same array mapped in place, so index `i` names the same sighting
+    // in both; grouping by that index (rather than re-deriving the class
+    // from `PriceObservation`, which does not carry `sourceType` under the
+    // same key `comparisonClassOf` expects) keeps the two in lockstep by
+    // construction instead of by convention.
+    const byClass = new Map<ComparisonClass, PriceObservation[]>();
+    rows.forEach((r: any, i: number) => {
+      const cls = comparisonClassOf(r.source_type);
+      const bucket = byClass.get(cls);
+      if (bucket) bucket.push(observations[i]);
+      else byClass.set(cls, [observations[i]]);
+    });
+    const consensusByClass: Record<string, ConsensusResult> = {};
+    const trendsByClass: Record<string, PriceTrend[]> = {};
+    for (const [cls, obs] of byClass) {
+      consensusByClass[cls] = vendorPriceConsensus(obs);
+      trendsByClass[cls] = standardTrends(obs);
+    }
+
+    // A confirmed identity's own name, not its id — a person reads "Krug
+    // Grande Cuvée (750ml)", never a UUID (ADR 0160 §112 review, minor: "the
+    // sheet prints a raw identity UUID to the person"). Best-effort: a failed
+    // or empty lookup leaves `identityLabel` null and the row still carries
+    // `identityId`, so nothing is hidden — only the label is missing.
+    const identityIds = [
+      ...new Set(rows.map((r: any) => r.identity_id).filter(Boolean)),
+    ];
+    const identityLabels: Record<string, string> = {};
+    if (identityIds.length > 0) {
+      const { data: idRows, error: idErr } = await this.databaseService.supabase
+        .from("beverage_identities")
+        .select("id, display_label")
+        .in("id", identityIds);
+      if (idErr) {
+        this.logger.warn(
+          `Could not read identity labels for the compare panel (${idErr.message}); rows will show the identity id instead.`,
+        );
+      } else {
+        for (const idRow of (idRows ?? []) as Array<{ id: string; display_label: string | null }>) {
+          if (idRow.display_label) identityLabels[idRow.id] = idRow.display_label;
+        }
+      }
+    }
+
     return {
       productKey: {
         masterWineId: params.masterWineId,
@@ -565,12 +711,23 @@ export class VendorComparisonService {
       // told which wine they are looking at.
       productName: wine.label ?? rows[0]?.product_name_raw ?? null,
       consensus: vendorPriceConsensus(observations),
+      consensusByClass,
       trends: standardTrends(observations),
-      observations: rows.map((r: any) => ({
+      trendsByClass,
+      observations: rows.map((r: any, i: number) => ({
+        id: r.id,
         vendorName: r.vendor_name_raw ?? null,
+        providerId: r.provider_id ?? null,
         sourceType: r.source_type,
         sourceUrl: r.source_url ?? null,
+        sourceRef: r.source_ref ?? null,
+        comparisonClass: comparisonClassOf(r.source_type),
         rawPrice: Number(r.raw_price),
+        currency: r.currency ?? "USD",
+        trustTier:
+          r.trust_tier === null || r.trust_tier === undefined
+            ? null
+            : Number(r.trust_tier),
         packSize: r.pack_size ?? 1,
         unitVolumeMl: r.unit_volume_ml ?? null,
         observedAt: r.observed_at,
@@ -578,7 +735,30 @@ export class VendorComparisonService {
           r.parse_confidence === null || r.parse_confidence === undefined
             ? null
             : Number(r.parse_confidence),
+        isOutlier: r.is_outlier === true,
+        outlierReason: r.outlier_reason ?? null,
+        // The own-paper writer stores `raw.notes` (`own-paper-sighting.ts`);
+        // the hand-typed writer stores `raw.note` (this file, `record()`) —
+        // two writers, two keys, read defensively rather than made to agree
+        // here (an unrelated rename is not this fix's job). Review finding:
+        // the sighting sheet never showed a row's recorded note at all
+        // because this mapping dropped `raw` on the floor before it reached
+        // the client (ADR 0160 §112).
+        note:
+          typeof r.raw?.note === "string"
+            ? r.raw.note
+            : typeof r.raw?.notes === "string"
+              ? r.raw.notes
+              : null,
+        identityId: r.identity_id ?? null,
+        identityLabel: r.identity_id ? (identityLabels[r.identity_id] ?? null) : null,
+        normalizedUnitPrice: normalizeUnitPrice(observations[i]).unitPrice,
       })),
+      // `loadObservations` caps at 500 rows, newest first (see its own
+      // comment). Hitting the cap means older sightings within the window
+      // were left out — the counts above are then a floor.
+      complete: rows.length < 500,
+      windowDays: params.windowDays ?? 365,
     };
   }
 }
