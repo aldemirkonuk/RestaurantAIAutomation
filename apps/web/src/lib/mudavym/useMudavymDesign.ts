@@ -105,7 +105,7 @@ export const MUDAVYM_PAGES = [
   // code; the 20260922220200 column stays, unread.]
   'authorize_integration',
   // ADR 0160 §112 (/vendor-prices). Flag-gated, OFF by default, NOT in
-  // LIVE_PAGES — the founder flips it per house (column: 20261001000000).
+  // LIVE_PAGES — the founder flips it per house (column: 20261002000000).
   'vendor_prices',
   // ADR 0145 `/ask` (2026-09-25 amendment): live in code from day one (Q2); no
   // column exists. `legacy` is the retired /sommelier chat, until the cutover.

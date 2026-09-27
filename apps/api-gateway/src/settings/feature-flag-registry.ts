@@ -111,9 +111,10 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     // specific 2026-09-19 ~09:20Z answer (memory
     // founder-sketch-decisions-106-115.md, "19-lane blocking answers")
     // overrides that and requires exactly this gate. Column added by
-    // 20261001000000 (renamed a fifth time, 2026-09-27 merge-train update for
-    // PR #473 — every earlier version sorted below main's ceiling;
-    // see vendor-prices.md's dated brackets for the rename history).
+    // 20261002000000 (renamed a sixth time, 2026-09-27 merge-train update for
+    // PR #473 — every earlier version sorted below main's ceiling or
+    // collided with another open PR; see vendor-prices.md's dated brackets
+    // for the rename history).
     defaultValue: false,
     readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:215",
   },

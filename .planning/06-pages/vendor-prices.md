@@ -128,6 +128,17 @@ the same reasoning as the fourth rename, applied again because the ceiling
 moved a second time between renames. `feature-flag-registry.ts`, `App.tsx`
 and `useMudavymDesign.ts` re-cited again; all three brackets above stay as
 history.
+
+**[2026-09-27, third merge-train update for PR #473 (train 6)]** Renamed a
+sixth time, `20261001000000` → `20261002000000`: the uniqueness check, re-run
+right after the fifth rename landed, found `20261001000000` had since been
+claimed by open PR #483 (`feat/recs-round6-direction-b`,
+`20261001000000_a_briefing_names_who_marked_it.sql`) — the cross-PR sweep the
+fifth rename ran caught main and the 42 PRs open at that moment, not one
+opened or moved to that exact version afterward. `20261002000000` re-clears
+the sweep with nothing else queued past it. `feature-flag-registry.ts`,
+`App.tsx` and `useMudavymDesign.ts` re-cited a third time; all four brackets
+above stay as history.
 - **Fork 6, as answered 2026-09-18 ("Always on the record, loaded fresh"), is
   now built.** Every price record draws C's paper trail (`PaperTrail.tsx`)
   under the ladders: every sighting, newest first, across classes, with the
