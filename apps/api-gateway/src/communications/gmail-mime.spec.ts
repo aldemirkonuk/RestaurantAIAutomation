@@ -50,6 +50,22 @@ describe("htmlToText — block boundaries become newlines, not spaces", () => {
   });
 });
 
+describe("htmlToText — double-escaping (CodeQL js/double-escaping, round-2 BLOCK)", () => {
+  it("does not resolve a literal, doubly-escaped entity into a real character", () => {
+    // "&amp;lt;" is literal text meaning the two characters "&lt;" — it must
+    // NOT decode further into "<", which is what a chained, ordered
+    // .replace(/&amp;/).replace(/&lt;/) does: &amp;lt; -> &lt; -> <.
+    expect(htmlToText("&amp;lt;script&amp;gt;")).toBe("&lt;script&gt;");
+    expect(htmlToText("&amp;lt;script&amp;gt;")).not.toContain("<script>");
+  });
+
+  it("still decodes a genuinely single-escaped entity", () => {
+    expect(htmlToText("Price &amp; terms &lt;ok&gt;")).toBe(
+      "Price & terms <ok>",
+    );
+  });
+});
+
 describe("extractEmailContent — HTML-only message (no text/plain part)", () => {
   it("renders a plain HTML body down to text unchanged in substance", () => {
     const { text } = extractEmailContent(

@@ -88,6 +88,20 @@ export function extractEmailContent(payload: GmailPayloadPart | null | undefined
 }
 
 /**
+ * Named entities this parser recognizes, decoded in a single non-cascading
+ * pass (see the audit note on `htmlToText` below for why chained replaces are
+ * unsafe here).
+ */
+const GMAIL_MIME_ENTITIES: Record<string, string> = {
+  nbsp: " ",
+  amp: "&",
+  lt: "<",
+  gt: ">",
+  quot: '"',
+  "#39": "'",
+};
+
+/**
  * HTML -> plain text, keeping the source's line breaks.
  *
  * [Audit of PR #435 at a229848f3, 2026-09-26, security review: the previous
@@ -104,6 +118,20 @@ export function extractEmailContent(payload: GmailPayloadPart | null | undefined
  * feeds `latestPart()` with, so an HTML-only message gets the same
  * newline-delimited shape a plain-text one always had, and the existing cut
  * logic applies unchanged. See `gmail-mime.spec.ts` for the reproduction.]
+ *
+ * [Audit of PR #435 at ca5b82d9b, round 2, 2026-09-26, both reviewers BLOCK:
+ * the entity decode used to be five chained `.replace()` calls run in a fixed
+ * order (`&amp;` first, then `&lt;`/`&gt;`/`&quot;`/`&#39;`). That is exactly
+ * the anti-pattern `common/html/html-to-text.ts`'s own docstring names and was
+ * written to retire: decoding `&amp;` before `&lt;` turns the literal,
+ * doubly-escaped text `&amp;lt;` into `&lt;` and then into an actual `<` — a
+ * tag character that was never in the source. CodeQL's `js/double-escaping`
+ * flagged this line by line number. The decode below is ONE regex pass with a
+ * replacer callback: every entity is matched against the ORIGINAL string in a
+ * single left-to-right scan, so a character produced by decoding one entity is
+ * never re-offered to the regex as the start of another. `&amp;lt;` now stays
+ * `&lt;` (a literal, safe string), never resolving to `<`. See the
+ * "double-escaping" describe block in `gmail-mime.spec.ts` for the pin.]
  */
 export function htmlToText(html: string): string {
   return html
@@ -114,12 +142,11 @@ export function htmlToText(html: string): string {
     // Every remaining tag (including opening tags with attributes) becomes a
     // space, not nothing — "Hello<b>world</b>" must not become "Helloworld".
     .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
+    // Single non-cascading pass — see the audit note above.
+    .replace(
+      /&(nbsp|amp|lt|gt|quot|#39);/g,
+      (_match, name: string) => GMAIL_MIME_ENTITIES[name],
+    )
     // Collapse horizontal whitespace only — newlines are load-bearing here.
     .replace(/[ \t]+/g, " ")
     .replace(/ *\n */g, "\n")
