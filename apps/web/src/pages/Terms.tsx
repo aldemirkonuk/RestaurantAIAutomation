@@ -24,9 +24,19 @@ const SUPPORT_EMAIL = import.meta.env.VITE_SUPPORT_EMAIL || 'support@mudavym.com
  * placeholder for the Terms half — clearly labelled as one, not dressed up
  * as a reviewed contract.
  *
- * Once the training notice's other half exists (round 6r wanted it on
- * `/ask` too; `/ask` itself is still unbuilt per G9), it lands there as its
- * own section — nothing here should be read as already covering `/ask`.
+ * Round 6r's other half, the notice on `/ask`, already exists: App.tsx
+ * routes `/ask` to `AskNext` for every house, and AskNext.tsx carries its own
+ * training notice. This page does not stand in for it.
+ *
+ * [PR 478 audit round 3] The training section below states only what the
+ * code enforces (asked_while_opted_out + ask_folio_training_export,
+ * migration 20260922220600). It deliberately does NOT say it is "the same
+ * notice" as /privacy: Privacy.tsx's section names a different Settings label
+ * and a broader "never used for training" claim (ADR 0145 round 6y wording),
+ * so a by-reference clause would import that broader claim here.
+ *
+ * "Changes" makes no promise about an agreement: nothing in apps/web,
+ * api-gateway or supabase/migrations records acceptance of these terms.
  */
 export default function Terms() {
   const { user } = useAuth()
@@ -97,13 +107,8 @@ export default function Terms() {
         <section className="mdv-pub__plate">
           <h2>Questions you ask Mudavym</h2>
           <p>
-            The same notice as{' '}
-            <Link className="mdv-link" to="/privacy">
-              Privacy &amp; data
-            </Link>
-            &apos;s &quot;Questions you ask Mudavym&quot; section applies here: a
-            house's owner controls whether that house's questions may be used to
-            improve Mudavym, in Settings → Questions and training, and asking and
+            A house&apos;s owner controls whether that house&apos;s questions may be
+            used to improve Mudavym, in Settings → Questions and training, and asking and
             answering keep working the same either way. A question asked while that
             choice is off is kept out of Mudavym&apos;s training export permanently,
             even if the owner later turns it back on — and no training on these
@@ -114,8 +119,8 @@ export default function Terms() {
           <h2>Changes</h2>
           <p>
             This page will change as it is reviewed and as the product changes
-            with it. We do not expect to change it silently for anything that
-            affects what you have already agreed to.
+            with it. Mudavym does not yet ask anyone to accept this text, and
+            does not record acceptance of it.
           </p>
         </section>
         <section className="mdv-pub__plate">

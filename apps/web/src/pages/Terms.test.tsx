@@ -27,7 +27,7 @@ describe('Terms page', () => {
     expect(links.some((a) => a.getAttribute('href') === '/privacy')).toBe(true)
   })
 
-  it('states the training-use notice consistently with /privacy', () => {
+  it('states the training notice only as far as the code enforces it', () => {
     renderWithProviders(<Terms />)
     expect(screen.getByRole('heading', { name: /questions you ask mudavym/i })).toBeInTheDocument()
     // [PR 478 audit round 2] Names the section the owner actually finds
@@ -38,5 +38,16 @@ describe('Terms page', () => {
     expect(screen.getByText(/kept out of mudavym's training export permanently/i)).toBeInTheDocument()
     expect(screen.queryByText(/training use,/i)).toBeNull()
     expect(screen.queryByText(/any training export/i)).toBeNull()
+    // [PR 478 audit round 3] No by-reference clause to /privacy's section,
+    // whose wording ("Training use", "never used for training") is broader
+    // than the one export filter the code has.
+    expect(screen.queryByText(/same notice/i)).toBeNull()
+    expect(screen.queryByText(/never used for training/i)).toBeNull()
+  })
+
+  it('does not assume an acceptance the product never records', () => {
+    renderWithProviders(<Terms />)
+    expect(screen.queryByText(/already agreed/i)).toBeNull()
+    expect(screen.getByText(/does not record acceptance of it/i)).toBeInTheDocument()
   })
 })

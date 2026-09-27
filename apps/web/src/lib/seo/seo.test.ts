@@ -101,19 +101,20 @@ describe('head block', () => {
 });
 
 describe('registry', () => {
-  it('every public route is indexable and canonical to itself, except one held noindex on purpose', () => {
+  it('every public route is indexable and canonical to itself, except /terms, held noindex on purpose', () => {
     for (const r of PUBLIC_ROUTES) {
       // OD-170: /terms is held noindex, out of the sitemap, until its final
       // legal text and subprocessor list exist. A held route carries no
       // canonical (renderHeadBlock only emits one for an indexable head) and
       // must also be out of the sitemap, or the two flags would disagree.
-      if (r.head.robots === 'noindex, nofollow') {
+      if (r.path === '/terms') {
+        expect(r.head.robots, r.path).toBe('noindex, nofollow');
         expect(r.sitemap, r.path).toBe(false);
         expect(r.head.canonical, r.path).toBeUndefined();
-        continue;
+      } else {
+        expect(r.head.robots, r.path).toBe('index, follow');
+        expect(r.head.canonical, r.path).toBe(`${SITE.origin}${r.path}`);
       }
-      expect(r.head.robots).toBe('index, follow');
-      expect(r.head.canonical).toBe(`${SITE.origin}${r.path}`);
       expect(`${r.head.title} ${r.head.description}`).not.toContain('—');
       expect(r.head.description.length).toBeLessThanOrEqual(160);
     }
