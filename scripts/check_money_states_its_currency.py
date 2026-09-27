@@ -80,6 +80,13 @@ ALLOWLIST: dict[str, str] = {
     # asserts the page prints `TRY` and NOT `$412.50` — which is the assertion
     # this literal exists to make possible (2026-09-06, p4bp).
     "apps/web/src/pages/receipts/next/ReceiptsNext.test.tsx": "a fixture that states the document's own currency so the assertion can check the page prints the stated one and never a default",
+    # Same shape again: `fmtPrice`/`fmtEstimate` (promotions-format.ts) never
+    # default a currency — a null one renders "currency not recorded"
+    # (asserted directly by this file's own test), so every fixture LedgerLine/
+    # WineWorth states the currency it is testing rather than letting one be
+    # assumed (2026-09-18).
+    "apps/web/src/pages/promotions/next/promotions-format.test.ts": "fixtures state each line's own currency (USD/EUR) so the null-currency and mismatched-currency assertions have a premise; the formatter itself takes currency from data, never a literal",
+    "apps/web/src/pages/promotions/next/PromotionsNext.test.tsx": "same fixtures one layer up, for the page-level render assertions (the −4.6% figure, the code chip) that need a real currency to format against",
     # The table itself: naming USD is what it is for.
     "apps/web/src/lib/currency.ts": "the ISO 4217 table and the formatter that refuses to assume one",
     "apps/web/src/lib/countries.ts": "the one country table: `currency: 'USD'` there is Ecuador, El Salvador and the United States, which is the fact the table exists to hold",
