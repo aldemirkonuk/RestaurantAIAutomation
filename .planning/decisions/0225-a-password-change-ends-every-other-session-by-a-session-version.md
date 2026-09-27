@@ -4,7 +4,7 @@
 - **Date:** 2026-09-25
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** password reset, change password, sign out, sessions, revocation, JWT, refresh token, websocket, session_version, sv
-- **Links:** [[0174-email-is-a-paper-sheet-and-the-house-signs-it]] D8 (the reset mail says so), [[0175-one-tap-from-the-notification-is-staged]] decision 2, [[0164-sessions-follow-membership-and-several-houses-choose]] (PR #471), `v3.0-TECH-DEBT.md` "A password reset or change signs no other session out" (2026-09-19), migration `20260926120500_a_password_change_ends_the_other_sessions.sql`, `apps/api-gateway/src/auth/session-version.ts`
+- **Links:** [[0174-email-is-a-paper-sheet-and-the-house-signs-it]] D8 (the reset mail says so), [[0175-one-tap-from-the-notification-is-staged]] decision 2, [[0164-sessions-follow-membership-and-several-houses-choose]] (PR #471), `v3.0-TECH-DEBT.md` "A password reset or change signs no other session out" (2026-09-19), migration `20260928120000_a_password_change_ends_the_other_sessions.sql`, `apps/api-gateway/src/auth/session-version.ts`
 
 ## Context
 
