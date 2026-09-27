@@ -299,7 +299,9 @@ agent resolving its own threads — that claim did not survive re-fetch; the rul
   owners and managers anyone's, the platform admin none — and the stamp itself is gated the same
   way (a first stamp anyone's but the admin's, a re-stamp over someone else's theirs or an owner's
   or manager's; PR #483 audit R2, 2026-09-26), which needed a new `acted_by` column
-  (migration `20260928000100`). That column joins the two-year author sweep ADR 0191 round 6 put
+  (migration `20260928000100` *[renamed 2026-09-27, PR #483 merge-train: now `20261001000000`,
+  past origin/main's tip and every earlier-queued open PR's migrations]*). That column joins the
+  two-year author sweep ADR 0191 round 6 put
   `created_by`/`pinned_by`/`rated_by`/`assigned_by` on; that is the lane's reading of round 6 for
   a column that did not exist when it was answered, not a separate founder answer.
   *[Scope, 2026-09-27, PR #483 audit R4: "records nothing" holds for every hand-off in the product,

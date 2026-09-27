@@ -1,11 +1,11 @@
 -- Sketch 122 Q2 (the founder, 2026-09-25, round 5): "Mark as briefed" is
 -- undo-after, so its stamp names who made it (`acted_by`), and the two-year
--- sweep forgets that name with the other four. Migration 20260928000100.
+-- sweep forgets that name with the other four. Migration 20261001000000.
 --
 -- Self-asserting: every block raises on a failure (assert -> P0004, or the
 -- error itself), so `psql -v ON_ERROR_STOP=1 -f` or the PGlite harness stops
 -- at the first one. Run it on a database built from supabase/migrations. It
--- must FAIL on a build without 20260928000100 (no acted_by column; the
+-- must FAIL on a build without 20261001000000 (no acted_by column; the
 -- round-6 function leaves it alone) and PASS with it. One transaction,
 -- rolled back: it leaves nothing behind.
 

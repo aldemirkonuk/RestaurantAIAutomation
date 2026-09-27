@@ -474,7 +474,7 @@ export class RecommendationActionsService {
       row.pinned = patch.pinned;
       row.pinned_by = createdBy ?? null;
     }
-    // The stamp names who made it (migration 20260928000100), so its Undo can
+    // The stamp names who made it (migration 20261001000000), so its Undo can
     // be gated like a pin's — the founder, 2026-09-25, sketch 122 Q2: "Mark as
     // briefed" joins ADR 0112 F10's undo-after list. `false` is that Undo:
     // the stamp and its author go together. Both directions pass the note

@@ -206,7 +206,9 @@ the masthead margin reads `GET /analytics/goals/:rid/progress` (recomputed progr
 said, no currency symbol invented); one suggested goal from a standing entry whose rule maps to a
 metric no active goal holds, opening that entry's own goal sheet with the target blank; hand-offs
 no longer write `acted`; *Mark as briefed* stamps `acted_at` + a new `acted_by` (migration
-`20260928000100`), and the stamp is a note gated like a pin both ways — its Undo like clearing a
+`20260928000100` *[renamed 2026-09-27, PR #483 merge-train: now `20261001000000`, past
+origin/main's tip and every earlier-queued open PR's migrations]*), and the stamp is a note gated
+like a pin both ways — its Undo like clearing a
 pin, a re-stamp over someone else's like re-pinning theirs, the platform admin making neither
 (PR #483 audit R2, 2026-09-26); the delta cutting and the house's
 send count read two new fields of `GET /recommendations/digest/subscription` (`lastLetter`,
