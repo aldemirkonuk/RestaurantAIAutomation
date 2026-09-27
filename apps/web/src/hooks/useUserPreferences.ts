@@ -82,8 +82,9 @@ export interface UserPreferences {
   ground?: 'paper' | 'charcoal'
   /**
    * The Ask panel's LAST USED mode — founder, 2026-09-26 round 7 (ADR 0145,
-   * "the Ask panel opens in the person's last used mode; a person's first
-   * open is 'Ask the books'"). Absent means either they have never chosen a
+   * `AskUserQuestion` "/ask panel: which mode does it open in?", his pick
+   * verbatim "Last used, first time Ask (Recommended)"; "Always Ask"
+   * rejected). Absent means either they have never chosen a
    * mode, or every open so far has run in `'ask'` (the default), which is
    * never written back — see `AskPanel.tsx`'s hydrate/persist effects.
    *

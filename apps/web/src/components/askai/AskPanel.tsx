@@ -22,8 +22,9 @@
  * Each offer is a click.
  *
  * WHICH MODE IT OPENS ON. The person's LAST USED mode (ADR 0145, founder,
- * 2026-09-26 round 7: "the Ask panel opens in the person's last used mode; a
- * person's first open is 'Ask the books'"). Kept as `askLastMode` in the
+ * 2026-09-26 round 7, `AskUserQuestion` "/ask panel: which mode does it open
+ * in?" -- his pick verbatim: "Last used, first time Ask (Recommended)";
+ * rejected: "Always Ask"). Kept as `askLastMode` in the
  * account's `user_preferences` row (`useUserPreferences`) — the same
  * server-side store `ground` already rides in, not a device-only
  * `localStorage` key, so the choice follows the person to another device. A

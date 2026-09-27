@@ -1696,16 +1696,25 @@ Rejected, with reasons:
 
 ### The founder's answer
 
-Founder item 45, recorded verbatim in the founder's-answers session memory
+This was put to him as an `AskUserQuestion` A/B choice, "/ask panel: which
+mode does it open in?", verified against the raw session transcript
+(`~/.claude/projects/-Users-aldemirkonuk-Projects-restaurant-ai-automation/6c6d8b93-b4e8-4e9d-9960-2820ac9a07f4.jsonl`,
+round 7, 2026-09-26 morning, after Wave 4):
+
+- **Picked: "Last used, first time Ask (Recommended)."** *"Remembers each
+  person's last mode; a new person starts on 'Ask the books', which never
+  writes anything."*
+- **Rejected: "Always Ask."** *"Every open starts in the read-only mode (as
+  built)."*
+
+Founder item 45 in the session memory
 `founder-answers-2026-09-25-web-rebuild.md` (not a repo file -- it lives in
 this account's `~/.claude/projects/` memory store, outside version control,
-so it is cited by name rather than linked) -- round 7, 2026-09-26 morning,
-after Wave 4 -- the whole of item 45, quoted in full because nothing else is
-on record for it: *"/ask panel opens in the person's LAST USED mode; first
-time = Ask the books."* No rejected alternative is on record for this item
--- unlike the round-6 and fork-3 entries above, this one was not put to him
-as an A/B choice; it is recorded here as a plain instruction, and this
-amendment does not invent an option he never saw.
+so it is cited by name rather than linked) -- *"/ask panel opens in the
+person's LAST USED mode; first time = Ask the books"* -- is the orchestrating
+session's summary of that pick, not his verbatim words and not a separate,
+un-choiced instruction. The A/B choice above is the record of what he was
+actually asked and what he rejected.
 
 ### Where the choice is kept, and why
 
@@ -1810,6 +1819,6 @@ and `AskPanel.test.tsx`, `AskPanel.shortcut.test.tsx`, `HouseShell.test.tsx`,
 | 2026-09-25 | Aldemir (founder), round 5, relayed by the orchestrating session | Fork 3, his pick verbatim: "Lie over it (Recommended)" (rejected: "Push the page"). `ASK_LAUNCHED`, his words verbatim: "aded to the railway" (offered: "After fixture proof (Recommended)", "Right after #475 merges"). See "Amendment, 2026-09-25, round 5". |
 | 2026-09-25 | W3-ask lane (build, PR #475) | Fork 3 pinned on the built ⌘⇧K panel by vitest (mutation-tested); the Ask face stays unbuilt. Build task 4 audited: sixteen of sixteen readings have both tests; a per-source block forces all thirty (Reading, relation) pairs and ties them to the shelves (jest mutation on the receipts' linked order lines caught only by it). Guard `check_ask_readings_have_fixtures.py` added, self-test 11/11, wired through `check_ask_field_classes.py` and a CLAIMS row; on-disk mutations flip it to exit 1 (a deleted `known` row, a narrowed fixture loop) and exit 2 (spec missing), files restored byte-identically. `ASK_LAUNCHED` in production not verified. |
 | 2026-09-26 | Aldemir (founder), round 6, relayed by the orchestrating session | ⌘⇧K and the Ask panel, his pick verbatim: "One panel, two modes (Recommended)" (rejected: "Two surfaces"). See "Amendment, 2026-09-26, round 6". |
-| 2026-09-26 | Aldemir (founder), round 7, item 45, relayed by the orchestrating session | His words verbatim: "/ask panel opens in the person's LAST USED mode; first time = Ask the books." No rejected alternative on record. See "Amendment, 2026-09-26, round 7". |
+| 2026-09-26 | Aldemir (founder), round 7, `AskUserQuestion` "/ask panel: which mode does it open in?" | His pick, verbatim: "Last used, first time Ask (Recommended)" (rejected: "Always Ask"). Item 45 in the session memory ("/ask panel opens in the person's LAST USED mode; first time = Ask the books") is the orchestrating session's summary of this pick, not his verbatim words. See "Amendment, 2026-09-26, round 7". |
 | 2026-09-26 | W5-ask lane (build, PR #475) | Built `askLastMode` in the existing `user_preferences` blob (no new store, no migration -- the lane brief's own fallback, a `localStorage` key, did not apply once this was found); hydrate/persist effects in `AskPanel.tsx`. `AskPanel.test.tsx` +6 tests; three other suites that render `AskPanel` with no `QueryClientProvider` gained the same `useUserPreferences` mock `GroundChoiceSync.test.tsx` already uses. Measured: affected suites 14 files / 168 tests, the lane's wider run 125 files / 1305 tests, web `tsc` and eslint (6 changed files) both exit 0 -- all green. Not built: optimistic rollback on a failed write (a stated shortcut; see the amendment); no browser render. |
 | 2026-09-26 | W4-ask lane (build, PR #475) | Built one Ask panel with an explicit mode switch and a suggestion that never acts; docked in the counter slot at ≥ ~1280 px, lying over below; `AskAiBar` retired; build task 14 closed. Measured in the section above and in the PR. |
