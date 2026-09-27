@@ -11,6 +11,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { apiClient } from '../services/api/client'
 import { importMenu, type MenuImportResult } from '../services/api/menus'
 import { currencyForCountry } from '../lib/currency'
+import { getBrowserTimezone } from '../lib/browserTimezone'
 import { writeProof } from '../lib/firstProof'
 import { isMapsConfigured } from '../lib/googleMaps'
 
@@ -78,7 +79,10 @@ export default function GetStarted() {
   const [dropping, setDropping] = useState(false)
 
   const currency = useMemo(() => currencyForCountry(country), [country])
-  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone
+  // The browser's own zone, or undefined if it will not say (item 62,
+  // 2026-09-27) — never a made-up default. `createHouse` sends exactly this;
+  // omitted, the gateway stores NULL rather than inventing a clock.
+  const timezone = useMemo(() => getBrowserTimezone(), [])
 
   useEffect(() => {
     if (step !== 'reading' || !pendingResult) return
@@ -315,7 +319,7 @@ export default function GetStarted() {
             </div>
           </div>
           <div className="border-y border-[#211f1b]/15 py-4 text-sm">
-            <span className="mr-6">Timezone · {timezone}</span>
+            <span className="mr-6">Timezone · {timezone ?? 'Not detected'}</span>
             <span>Currency · {currency ?? 'Not inferred yet'}</span>
           </div>
         </div>
