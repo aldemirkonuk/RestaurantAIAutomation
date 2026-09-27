@@ -451,6 +451,41 @@ describe("queueing a letter", () => {
     expect(recorded[0].candidate_key).toBe("weekday.baseline.wednesday");
     expect(recorded[0].computed_at).toBe("2026-09-01T06:00:00Z");
   });
+
+  // PR #476 audit round 1, R2: a discarded (or still-undecided) HOUSE_DRAFT
+  // must not inflate the composer's "message N on this order" round count.
+  it("round_count excludes discarded and undecided drafts, and counts every real round", async () => {
+    const { rec, service: svc } = service({
+      ...BOOK_ROWS,
+      integration_oauth_connections: [GRANT_WITH_SEND],
+      analytics_insights: [],
+      // This fake store returns every seeded row for the table verbatim
+      // (its `.eq`/`.in` are pass-throughs — see `build()` above), so only
+      // outbound rows are seeded here; the real `.eq("direction","outbound")`
+      // is exercised for real against the in-memory store in
+      // `credit-letter.spec.ts`'s "closes a concurrent double-draft race" and
+      // its siblings.
+      procurement_conversations: [
+        { id: "c1", status: "SENT", direction: "outbound" },
+        { id: "c2", status: "HOUSE_QUEUED", direction: "outbound" },
+        { id: "c3", status: "HOUSE_FAILED", direction: "outbound" },
+        // A discarded draft: never reached the vendor, must not count.
+        { id: "c4", status: "HOUSE_CANCELLED", direction: "outbound" },
+        // A draft nobody has decided yet: also never reached the vendor.
+        { id: "c5", status: "HOUSE_DRAFT", direction: "outbound" },
+      ],
+    });
+
+    const out = await svc.queue({
+      restaurantId: HOUSE,
+      userId: PERSON,
+      dto: { ...draft, orderId: "order-1" },
+    });
+
+    expect(out.status).toBe(LETTER_STATUS.QUEUED);
+    // Three real rounds (SENT, HOUSE_QUEUED, HOUSE_FAILED) preceded this one.
+    expect(rec.inserts[0].round_count).toBe(4);
+  });
 });
 
 // ===========================================================================
