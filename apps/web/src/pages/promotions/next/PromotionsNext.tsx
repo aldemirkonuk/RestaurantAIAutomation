@@ -20,7 +20,7 @@
  * DARK, BEHIND `PageGate` (2026-09-25): routed as
  * `<PageGate page="promotions" …>` and held back from LIVE_PAGES, so it
  * renders only where `mudavym_design_promotions` is on (OFF by default,
- * 20260926160000). The gate claims the shell and carries the header, as for
+ * 20260929010000). The gate claims the shell and carries the header, as for
  * every other rebuilt page — this component no longer does either itself.
  * The ground follows the person's choice (ADR 0169); nothing here forces
  * charcoal any more.

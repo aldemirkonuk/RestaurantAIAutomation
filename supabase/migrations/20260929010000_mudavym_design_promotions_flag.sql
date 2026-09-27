@@ -14,6 +14,11 @@
 -- legacy page is today's only screen for trusting a sender or acting on a
 -- prospect, and the rebuilt page holds offers only (ADR 0160 §113, open
 -- item 3, answered 2026-09-18).
+--
+-- Renamed 2026-09-27 (PR #474 merge-train update, train 4): main added
+-- 20260928000000_a_promotion_remembers_being_alerted.sql (#485) while this PR
+-- was in flight; re-versioned from 20260926160000 past that ceiling, keeping
+-- order with the dismissal column that follows it. Body unchanged.
 
 alter table public.restaurant_feature_flags
   add column if not exists mudavym_design_promotions boolean not null default false;

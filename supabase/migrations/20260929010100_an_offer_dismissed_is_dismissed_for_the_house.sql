@@ -30,6 +30,15 @@
 -- into the range assigned to this lane (20260926160000-20260926169999), one
 -- step after the page's own flag column (20260926160000). Body unchanged.
 --
+-- Renamed a fourth time 2026-09-27 (PR #474 merge-train update, train 4):
+-- main added 20260928000000_a_promotion_remembers_being_alerted.sql (#485)
+-- while this PR was in flight, moving the ceiling past both of this lane's
+-- migrations. Re-versioned this file and the flag column
+-- (20260926160000 -> 20260929010000) past that ceiling and past every open
+-- PR's migrations measured at rename time (`gh pr list --json number,files`,
+-- highest seen: #473's 20260929000000), keeping their relative order. Body
+-- unchanged. See CLAUDE.md §5b: never reuse a migration version.
+--
 -- Why a timestamp and not a boolean: a boolean cannot say WHEN, and a
 -- dismissal with no date cannot be reviewed or expired. `dismissed_at IS NULL`
 -- is the single fact "on the table"; there is no second column to disagree

@@ -106,7 +106,7 @@ export const MUDAVYM_PAGES = [
   'authorize_integration',
   // ADR 0160 §113 / ADR 0165 (2026-09-25). `/promotions`, sketch 113
   // direction B with C's density. Held back from LIVE_PAGES: flag-gated on
-  // `mudavym_design_promotions`, OFF by default (20260926160000), `legacy`
+  // `mudavym_design_promotions`, OFF by default (20260929010000), `legacy`
   // is today's three-tab Promotions page, unchanged. Dark until the founder
   // turns it on — the two drawings ADR 0160 still owes (the bundle shape,
   // B's sized boxes at C's 10+ density) are sketch 124, not built.
