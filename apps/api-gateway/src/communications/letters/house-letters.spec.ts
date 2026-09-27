@@ -722,10 +722,18 @@ describe("pulling a letter back", () => {
   // Every call here also passes `userId: CALLER`, matching the row's own
   // `written_by` (2026-09-27, PR #429 merge-train, composing this ADR 0230
   // gate with THIS branch's own ADR 0149 row 43 author-only check, which
-  // main does not carry — `cancel()` here refuses first on authorship, so a
-  // test of the ROLE gate alone must hold authorship constant-satisfied or
-  // it is testing the author check instead). The last case still varies who
-  // writes it, per its own name.
+  // main does not carry — both checks must pass, so a test of the ROLE gate
+  // alone must hold authorship constant-satisfied or it is testing the
+  // author check instead).
+  // [CORRECTED 2026-09-27, PR #429 audit round at 2b97a7563: this said
+  // `cancel()` "refuses first on authorship" and that "the last case still
+  // varies who writes it". Neither was true: `cancel()` checks the credit
+  // role gate FIRST (house-letters.service.ts:564) and authorship second
+  // (:570), and no case here varied the author. The composition is AND —
+  // two independent throws — and the case "a caller with role %s who did
+  // not write it still cannot pull it back" below now pins that: without it,
+  // a mutant letting an owner/manager skip authorship on a credit letter
+  // survived.]
   describe("a credit claim's queued letter", () => {
     const CALLER = "cccccccc-0000-4000-8000-cccccccccccc";
 
@@ -778,6 +786,22 @@ describe("pulling a letter back", () => {
       });
       expect(out.status).toBe(LETTER_STATUS.CANCELLED);
     });
+
+    it.each(["owner", "manager"])(
+      "a caller with role %s who did not write it still cannot pull it back (ADR 0149 row 43 composes with the role gate: AND, not OR)",
+      async (role) => {
+        const { rec, service } = svcWithCreditLetter();
+        await expect(
+          service.cancel({
+            restaurantId: HOUSE,
+            userId: "dddddddd-0000-4000-8000-dddddddddddd",
+            id: "letter-1",
+            role,
+          }),
+        ).rejects.toThrow(/Only the person who wrote this letter/);
+        expect(rec.updates).toHaveLength(0);
+      },
+    );
 
     it("does not gate a letter with no claim behind it", async () => {
       const { service } = svcWith({

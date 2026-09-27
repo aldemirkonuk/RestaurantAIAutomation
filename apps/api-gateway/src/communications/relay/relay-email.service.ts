@@ -898,8 +898,15 @@ export class RelayEmailService {
       // (`ProcurementService.sendVendorEmail`); it does not apply here. See
       // `RelayRejectedByProviderError` (send-failure.ts) for the full ruling.
       // `"credentials"` (401/OAuth) and `"no-transport"` are deliberately NOT
-      // re-thrown here and fall through to the plain `Error` below, staying
-      // ambiguous on this path exactly as before (ADR 0099: "401 parks").
+      // re-thrown here and fall through to the plain `Error` below, which
+      // the caller answers as 200 `success:false`.
+      // [CORRECTED 2026-09-27, PR #429 audit round at 2b97a7563: this comment
+      // said they stay "ambiguous on this path exactly as before (ADR 0099:
+      // '401 parks')". They do not park: the orchestrator's
+      // `_is_definite_send_refusal` matches `invalid_grant` / "no email
+      // delivery method available" in that 200's text and RELEASES the draft
+      // for retry. ADR 0099's "401 parks" is the relay DOOR's own 401. Open
+      // as OD-175 (OPEN-DECISIONS.md:24); code unchanged here.]
       // Founder, 2026-09-27 (item 69, "Park quota/delegation 403
       // (Recommended)", narrowing item 66): a 403 whose typed Gmail reason is
       // a fault of THIS shared mailbox (quota, rate limit, domain policy, API
