@@ -1,6 +1,6 @@
 # 0042 — İznik is the seal; Warm Charcoal is the dark ground
 
-- **Status:** Locked (palette) · canvas re-skinned 2026-08-29 · live on dev.mudavym.com 2026-08-30 (`feat/mudavym-brand`) · **[AMENDED 2026-09-16 by the founder, in the ADR 0149 session — answers OD-112 (the caption sweep is build work, so the OD row stays open until it lands): captions on the paper ground use `--ink-4`; `--ink-3` is decorative only. No value in the table below changes. Answered, sweep not yet done.]**
+- **Status:** Locked (palette) · canvas re-skinned 2026-08-29 · live on dev.mudavym.com 2026-08-30 (`feat/mudavym-brand`) · **[AMENDED 2026-09-16 by the founder, in the ADR 0149 session — answers OD-112: captions on the paper ground use `--ink-4`; `--ink-3` is decorative only. No value in the table below changes.]** · **[Sweep landed 2026-09-27, PR #478 — OD-112 moved to Resolved. `mudavym-ground.test.ts`'s static scan pins the caption ink against regression; see `CLAIMS.jsonl:ADR-0042-OD-112-GUARD-COVERS-TERNARY-FG-FILL`.]**
 - **Date:** 2026-08-29
 - **Decider:** Aldemir (founder), 2026-08-29
 - **Keywords:** palette, seal, İznik, 1A5E6B, 5FB0BC, warm charcoal, 15130F, re-skin, CD2D5B, OD-106, sketch 083
@@ -120,3 +120,4 @@ comparison was not run for them.
 | 2026-08-29 | Aldemir (founder) | "Re-skin into İznik, and Warm Charcoal as well" — palette locked, execution held |
 | 2026-08-30 | — | `--info` vs seal measured + rendered; hunch confirmed, `--info` retired for ink+underline |
 | 2026-09-16 | Aldemir (founder), in session | OD-112 answered: captions on the paper ground use `--ink-4`, `--ink-3` is decorative only. Amendment only; the caption sweep is build work. ADR 0149 row 6 retired the theme toggle the same day, so the light column now reaches only declared paper surfaces (see ADR 0138) |
+| 2026-09-27 | PR #478 audit round 1 | Sweep landed: 578 `color`/`-webkit-text-fill-color` call sites moved `--ink-3` → `--ink-4`. OD-112 moved to Resolved. `mudavym-ground.test.ts`'s static scan widened to also catch a ternary `color` branch, a `fg:`-keyed map value and an SVG `fill` (the audit found the original scan zero-matched all three); 8 mutation cases and `CLAIMS.jsonl:ADR-0042-OD-112-GUARD-COVERS-TERNARY-FG-FILL` pin the fix |

@@ -363,9 +363,11 @@ export default function HelpNext({ ground }: HelpNextProps) {
 .mudavym .hp-focus:focus-visible { outline: 2px solid var(--seal); outline-offset: 3px; border-radius: 8px }
 .mudavym .hp-link { color: var(--seal-deep); text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px }
 .mudavym .hp-link:hover { color: var(--seal) }
-.mudavym .hp-btn { font: 500 13px/1 ${SANS}; color: var(--ink-1); background: transparent; border: 1px solid var(--ink-4); border-radius: 8px; padding: 9px 13px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 6px }
+.mudavym .hp-btn { font: 500 13px/1 ${SANS}; color: var(--ink-1); background: transparent; border: 1px solid var(--ink-3); border-radius: 8px; padding: 9px 13px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 6px }
 .mudavym .hp-btn:hover { background: var(--paper-1); border-color: var(--ink-2) }
-.mudavym .hp-btn:disabled { color: var(--ink-4); cursor: default; background: transparent; border-color: var(--paper-2) }
+/* ink-3, deliberately, only on :disabled: WCAG 1.4.3 exempts inactive-control
+   text from the 4.5:1 caption minimum (same convention as HoursSection.tsx). */
+.mudavym .hp-btn:disabled { color: var(--ink-3); cursor: default; background: transparent; border-color: var(--paper-2) }
 .mudavym .hp-btn--seal { color: var(--seal-deep); border-color: var(--seal-ring) }
 .mudavym .hp-btn--seal:hover { background: var(--seal-tint); border-color: var(--seal) }
 .mudavym .hp-card { border: 1px solid var(--paper-2); border-radius: 12px; padding: 15px 17px; background: var(--paper-0) }

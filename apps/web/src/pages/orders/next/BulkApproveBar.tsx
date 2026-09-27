@@ -297,7 +297,7 @@ export function BulkApproveBar({ selectedRows, onClear, onApproved, onRunningCha
               fontFamily: MONO,
               fontSize: 11,
               fontVariantNumeric: 'tabular-nums',
-              color: 'var(--ink-4, #7C7365)',
+              color: 'var(--ink-4, #665D50)',
             }}
           >
             {phase === 'done' && result
@@ -384,7 +384,7 @@ export function BulkApproveBar({ selectedRows, onClear, onApproved, onRunningCha
           }}
           style={{
             fontSize: 12,
-            color: 'var(--ink-4, #7C7365)',
+            color: 'var(--ink-4, #665D50)',
             textDecoration: 'underline',
             background: 'none',
             border: 'none',
@@ -395,7 +395,7 @@ export function BulkApproveBar({ selectedRows, onClear, onApproved, onRunningCha
         </button>
       </div>
 
-      <div aria-live="polite" style={{ minHeight: 16, marginTop: 2, fontSize: 11, color: 'var(--ink-4, #7C7365)' }}>
+      <div aria-live="polite" style={{ minHeight: 16, marginTop: 2, fontSize: 11, color: 'var(--ink-4, #665D50)' }}>
         {sealNote ?? note ?? (phase === 'armed' ? 'Press Enter again to approve — Esc cancels.' : '')}
       </div>
 

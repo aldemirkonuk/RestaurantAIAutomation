@@ -104,8 +104,8 @@ export default function Terms() {
             &apos;s &quot;Questions you ask Mudavym&quot; section applies here: a
             house's owner controls whether that house's questions may be used to
             improve Mudavym, asking and answering work the same either way, and a
-            question asked while that choice is off is never used even after it
-            is turned back on.
+            question asked while that choice is off is never used for training,
+            even if the owner turns it back on afterward.
           </p>
         </section>
         <section className="mdv-pub__plate">

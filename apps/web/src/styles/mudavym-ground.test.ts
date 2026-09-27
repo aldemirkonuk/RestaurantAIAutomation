@@ -395,7 +395,13 @@ describe('every .mudavym scope root says what ground it is on', () => {
  * palette edit that quietly re-darkens `--ink-4`, or the paper/charcoal
  * grounds, below AA), and the SOURCE (a future PR that reaches for `--ink-3`
  * to paint a caption again, the exact defect this sweep just closed 578
- * call sites of).
+ * call sites of) — for the shapes the static scan below actually covers.
+ * [2026-09-27, PR 478 audit round 1: that "cannot regress" claim was false
+ * for three shapes present in this same codebase — a ternary branch, a
+ * `fg:`-keyed map, and an SVG `fill` — each demonstrated with a node repro
+ * against the regex as shipped. The mutation cases right below the scan
+ * (`JS_HIT`/`CSS_HIT` regressions it must now catch) are the check that the
+ * fix actually closed those three gaps, not just a restated claim.]
  */
 describe('OD-112 — the caption ink (--ink-4) clears AA on both grounds', () => {
   it.each([
@@ -440,14 +446,30 @@ describe('OD-112 — the caption ink (--ink-4) clears AA on both grounds', () =>
       return e.isFile() && exts.some((ext) => e.name.endsWith(ext)) ? [full] : [];
     });
 
-  /** Matches a `color` / `-webkit-text-fill-color` (CSS) or `color` /
-   *  `WebkitTextFillColor` (JS object key) declaration whose value contains
-   *  `--ink-3` — but not `background-color`, `border(-*)-color`,
-   *  `outline-color`, `caret-color` or `text-decoration-color`, which stay
-   *  decorative. `[{;]` / start-of-line anchors the property name so
-   *  `background-color:` can never be mistaken for a bare `color:`. */
-  const CSS_HIT = /(?:^|[{;])\s*(color|-webkit-text-fill-color)\s*:\s*[^;{}]*--ink-3\b/gm;
-  const JS_HIT = /(?<![\w$])(color|WebkitTextFillColor)\s*[:=]\s*[`'"][^`'"]*--ink-3\b/g;
+  /** Matches a `color` / `-webkit-text-fill-color` / `fill` (CSS) or `color` /
+   *  `WebkitTextFillColor` / `fg` / `fill` (JS object key or JSX attribute)
+   *  declaration whose value contains `--ink-3` — but not `background-color`,
+   *  `border(-*)-color`, `outline-color`, `caret-color` or
+   *  `text-decoration-color`, which stay decorative. `[{;]` / start-of-line
+   *  anchors the property name so `background-color:` can never be mistaken
+   *  for a bare `color:`.
+   *
+   *  [2026-09-27, PR 478 audit round 1: the prior JS_HIT required the value
+   *  to START with a quote right after the `:`/`=`, so it matched
+   *  `color: 'var(--ink-3)'` but not a ternary branch
+   *  (`color: cond ? 'var(--ink-3)' : 'var(--ink-1)'`) — confirmed with a
+   *  node repro against the shipped ternary at
+   *  `pages/profile/next/PaymentRegister.tsx:171`, which is the exact shape
+   *  a regression would reach for. It also recognised only `color` /
+   *  `WebkitTextFillColor`, missing the `fg:`-keyed tone maps
+   *  (`pages/providers/next/TermsSection.tsx`) and the `fill=`/`fill:`
+   *  SVG attribute this same PR swept on three Recharts call sites. JS_HIT
+   *  now scans everything up to the next `,`/`;`/brace after the property
+   *  name (bounded to 300 chars so one file can't make the regex walk the
+   *  whole rest of the source) instead of requiring an immediate quote, and
+   *  CSS_HIT/JS_HIT both add `fill` to the property alternation.] */
+  const CSS_HIT = /(?:^|[{;])\s*(color|-webkit-text-fill-color|fill)\s*:\s*[^;{}]*--ink-3\b/gm;
+  const JS_HIT = /(?<![\w$])(color|WebkitTextFillColor|fg|fill)\s*[:=]\s*[^,;{}]{0,300}?--ink-3\b/g;
 
   it('no shipped color declaration paints the decorative-only --ink-3', () => {
     const files = [
@@ -472,6 +494,67 @@ describe('OD-112 — the caption ink (--ink-4) clears AA on both grounds', () =>
       }
     }
     expect(hits).toEqual([]);
+  });
+
+  /**
+   * Mutation cases for the scan itself. [2026-09-27, PR 478 audit round 1]
+   * confirmed these four shapes with a direct node repro against the
+   * regex as shipped: the first three gave zero matches although each is a
+   * real caption-ink regression, and the fourth (unchanged) is the shape
+   * the original guard already caught. This pins the fix, not just the
+   * claim — each `it` runs the exact regex objects the scan above uses
+   * against a synthetic snippet, so a future edit that narrows JS_HIT back
+   * down cannot pass silently.
+   */
+  const jsHitCount = (src: string): number => {
+    JS_HIT.lastIndex = 0;
+    let n = 0;
+    while (JS_HIT.exec(src)) n++;
+    return n;
+  };
+  const cssHitCount = (src: string): number => {
+    CSS_HIT.lastIndex = 0;
+    let n = 0;
+    while (CSS_HIT.exec(src)) n++;
+    return n;
+  };
+
+  it('JS_HIT catches --ink-3 in a ternary branch', () => {
+    expect(jsHitCount(`color: unknown ? 'var(--ink-3)' : 'var(--ink-1)',`)).toBe(1);
+  });
+
+  it('JS_HIT catches --ink-3 in a multi-line ternary branch', () => {
+    expect(
+      jsHitCount(`color: unknown\n            ? 'var(--ink-3)'\n            : 'var(--ink-1)',`),
+    ).toBe(1);
+  });
+
+  it('JS_HIT catches --ink-3 on a `fg:`-keyed map value', () => {
+    expect(jsHitCount(`fg: 'var(--ink-3)',`)).toBe(1);
+  });
+
+  it('JS_HIT catches --ink-3 on an SVG `fill=` JSX attribute', () => {
+    expect(jsHitCount(`<Cell fill="var(--ink-3)" />`)).toBe(1);
+  });
+
+  it('JS_HIT still catches the original direct-quote shape', () => {
+    expect(jsHitCount(`color: 'var(--ink-3)',`)).toBe(1);
+  });
+
+  it('JS_HIT still leaves --ink-4 alone', () => {
+    expect(jsHitCount(`color: unknown ? 'var(--ink-4)' : 'var(--ink-1)',`)).toBe(0);
+  });
+
+  it('CSS_HIT catches --ink-3 on a `fill:` CSS declaration', () => {
+    expect(cssHitCount(`.icon { fill: var(--ink-3); }`)).toBe(1);
+  });
+
+  it('CSS_HIT still leaves border/background/outline/caret --ink-3 alone', () => {
+    expect(
+      cssHitCount(
+        `.x { border-color: var(--ink-3); background-color: var(--ink-3); outline-color: var(--ink-3); caret-color: var(--ink-3); }`,
+      ),
+    ).toBe(0);
   });
 });
 
