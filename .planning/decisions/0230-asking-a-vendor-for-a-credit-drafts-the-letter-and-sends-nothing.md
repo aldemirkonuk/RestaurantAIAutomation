@@ -222,7 +222,7 @@ counted threads that hold only a letter.
 
 This is the same ADR 0167 rule again, not a new choice for the founder:
 
-- **Migration `20260929200000`** re-creates `list_conversation_threads`
+- **Migration `20260929200000`** **[renamed to `20260930250000` in the 2026-09-27 merge-train update — it landed BEHIND a migration already on `origin/main`; see `CLAIMS.jsonl`]** re-creates `list_conversation_threads`
   with `p_withhold_house_letters boolean DEFAULT true`, applied inside
   `matched`. Counts, first and last times, search and paging then only see
   what the caller may see. The default fails closed: a caller that passes
@@ -291,7 +291,7 @@ list did not mention function grants.
 
 The withholding is `p_withhold_house_letters`, a flag the caller supplies. So
 any client that can execute the RPC can pass false. The fix, at the end of
-migration `20260929200000`:
+migration `20260929200000` **[renamed to `20260930250000`, 2026-09-27 merge-train update]**:
 
 - `REVOKE ALL ... FROM PUBLIC, anon, authenticated` and
   `GRANT EXECUTE ... TO service_role` only. Unlike the archived original,
@@ -329,5 +329,6 @@ measurement also records that the product does not use Supabase Auth
 | 2026-09-25 | W3-credits-team lane | Built on PR #476 |
 | 2026-09-26 | PR #476 audit fix (BLOCK at 37a89291e, round 1, R1) | `drafts`/`discard` gated owner-or-manager, reconciling with ADR 0167 (see above) |
 | 2026-09-26 | PR #476 audit fix (BLOCK at 032e5a43e, round 2, R1b/R2b) | Conversation reads, `queue`/`cancel` on a credit-linked letter, the LLM transcript and the procurement history ledger all withhold a `HOUSE_DRAFT`/`HOUSE_CANCELLED` row from anyone who is not owner or manager (see round 2 reconciliation above) |
-| 2026-09-27 | PR #476 audit fix (BLOCK at 9d04c0fb6) | `GET /conversations/threads`, `GET /conversations/thread/:threadId` and `POST /conversations/:id/summarize` withhold the same rows from staff. The `list_conversation_threads` RPC gains `p_withhold_house_letters` (default true, migration `20260929200000`). Round 2's "every read route" is corrected in place (see round 3 above). |
-| 2026-09-27 | PR #476 audit fix (BLOCK at e2cd28578) | Migration `20260929200000` revokes `list_conversation_threads` from PUBLIC, anon and authenticated, and grants EXECUTE to service_role only. `reports.service.ts` passes `p_withhold_house_letters: true` explicitly (see round 4 above). |
+| 2026-09-27 | PR #476 audit fix (BLOCK at 9d04c0fb6) | `GET /conversations/threads`, `GET /conversations/thread/:threadId` and `POST /conversations/:id/summarize` withhold the same rows from staff. The `list_conversation_threads` RPC gains `p_withhold_house_letters` (default true, migration `20260929200000` **[renamed to `20260930250000`, 2026-09-27 merge-train update]**). Round 2's "every read route" is corrected in place (see round 3 above). |
+| 2026-09-27 | PR #476 audit fix (BLOCK at e2cd28578) | Migration `20260929200000` **[renamed to `20260930250000`, 2026-09-27 merge-train update]** revokes `list_conversation_threads` from PUBLIC, anon and authenticated, and grants EXECUTE to service_role only. `reports.service.ts` passes `p_withhold_house_letters: true` explicitly (see round 4 above). |
+| 2026-09-27 | merge-train update | Migration renamed `20260929200000` → `20260930250000`: it was BEHIND a migration (`20260930100100`) that landed on `origin/main` first, which `check_migration_order.py` flags to keep `supabase db reset` from replaying it out of order. Citations updated in `CLAIMS.jsonl`, the two conversations source files, and this record (bracketed, not rewritten). |

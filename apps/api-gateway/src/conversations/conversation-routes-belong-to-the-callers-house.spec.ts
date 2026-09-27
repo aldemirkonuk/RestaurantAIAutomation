@@ -171,7 +171,7 @@ function makeBuilder() {
 /**
  * `list_conversation_threads`, as far as these routes lean on it: the house,
  * `p_thread_key`, `p_search` and `p_withhold_house_letters` (DEFAULT TRUE,
- * as in migration 20260929200000). The SQL itself is proven against a real
+ * as in migration 20260930250000). The SQL itself is proven against a real
  * Postgres build of every migration, not here; this stand-in only lets the
  * HTTP seam run, and records the arguments the service passed.
  */
