@@ -360,6 +360,25 @@
     "owner",
     "manager"
   ],
+  "GET /procurement/credits (CreditsController.list)": [
+    "owner",
+    "manager"
+  ],
+  "GET /procurement/credits/stats (CreditsController.stats)": [
+    "owner",
+    "manager"
+  ],
+  "POST /procurement/credits/:id/transition (CreditsController.transition)": [
+    "owner",
+    "manager"
+  ],
+  "POST /procurement/receiving/orders/:id/door (ReceivingController.door)": "open",
+  "GET /procurement/receiving/orders/:id/received (ReceivingController.receivedSoFar)": "open",
+  "GET /procurement/receiving/queue (ReceivingController.queue)": [
+    "owner",
+    "manager"
+  ],
+  "GET /procurement/receiving/unverified (ReceivingController.unverified)": "open",
   "POST /reports/exports (ReportExportsController.request)": [
     "owner",
     "manager"
