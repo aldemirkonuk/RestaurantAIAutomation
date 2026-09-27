@@ -207,7 +207,7 @@ export class WineSubmissionsService {
    * (procurement/documents/document-intake.service.ts,
    * `"procurement-document-intake-sweep"`, every five minutes). A submission
    * sitting a few minutes before it is merged, accepted, or settles the
-   * house_item_research chain (20261101101200) blocks nobody: contrast
+   * house_item_research chain (20261103101200) blocks nobody: contrast
    * `house-letters.cron.ts`'s `"* * * * *"`, which is every minute because a
    * RELEASED letter waiting to send IS the thing the house is watching for.
    * Every-two-minutes (`low-stock-alerts.service.ts`'s edge sweep) was the

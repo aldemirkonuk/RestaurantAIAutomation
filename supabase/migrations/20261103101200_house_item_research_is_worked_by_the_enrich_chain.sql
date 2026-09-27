@@ -6,7 +6,7 @@
 --
 -- WHAT (1) MEANS HERE
 -- -------------------
--- A `queued` row of house_item_research (20261101101000) is filed as ONE
+-- A `queued` row of house_item_research (20261103101000) is filed as ONE
 -- `master_wine_library_submissions` row, whose id is kept on the queue row
 -- (`submission_id`), and the submission is handed to the existing chain
 -- (`haiku_enrich_task` -> `web_verify_task`, both keyed by the submission's
@@ -51,9 +51,9 @@
 -- -------------
 -- The receiving door now queues research for the items it books
 -- (`queued_from = 'receiving'`), once per item id: the unique index on
--- inventory_id from 20261101101000 is the "once".
+-- inventory_id from 20261103101000 is the "once".
 --
--- No production row exists yet: 20261101101000 lands in the same PR as this
+-- No production row exists yet: 20261103101000 lands in the same PR as this
 -- file, so the backfill below touches only local databases.
 --
 -- Additive (nullable columns, a defaulted counter, a widened CHECK, a new

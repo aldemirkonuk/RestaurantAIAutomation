@@ -252,7 +252,7 @@ never renders. Shared layout chrome applies (see dashboard.md §7).
   start: `inventory_lots` carried `unit_cost` and `cost_provenance` and nothing
   else about where a bottle came from, so the auction house, the lot number and
   the sale date were taken, used to work out the cost, and then dropped. Now
-  written to `auction_lot_records` (`20260930150400_an_auction_lot_keeps_its_own_details.sql` [renumbered `20261101100400`, 2026-09-27])
+  written to `auction_lot_records` (`20260930150400_an_auction_lot_keeps_its_own_details.sql` [renumbered `20261101100400`, 2026-09-27] [renumbered again `20261103100400`, 2026-09-27])
   — auction house, lot number, sale date, hammer price and buyer's premium WITH
   an ISO-4217 currency, never inferred — linked to the `restaurant_inventory`
   row the carry produced, and shown on the row-expand detail

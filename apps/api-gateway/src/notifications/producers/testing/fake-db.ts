@@ -89,7 +89,7 @@ const UNIQUE_KEYS: Record<string, string[]> = {
     "dedupe_key",
     "user_id",
   ],
-  // uniq_delivery_item_to_name_order (20261101101300): one ask per order.
+  // uniq_delivery_item_to_name_order (20261103101300): one ask per order.
   delivery_item_to_name: ["order_id"],
 };
 
