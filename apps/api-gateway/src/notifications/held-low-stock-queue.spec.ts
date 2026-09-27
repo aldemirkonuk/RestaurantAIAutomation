@@ -43,13 +43,6 @@ function makeHarness(
      * shape every other test in this file relies on.
      */
     guardCurrentHeldAt?: string | null;
-    /**
-     * Whether the guarded update (`.update(row).eq(...).eq(...).eq(
-     * "last_held_at", guardCurrentHeldAt).select(...)`) reports a matching
-     * row, i.e. whether `last_held_at` was STILL `guardCurrentHeldAt` at
-     * write time. Only meaningful together with `guardCurrentHeldAt`.
-     */
-    guardUpdateMatches?: boolean;
   } = {},
 ) {
   const upserts: Row[] = [];
@@ -60,11 +53,35 @@ function makeHarness(
     const chain: any = {
       select: () => {
         if (chain.__updated && table === "inventory_alert_state") {
-          // Terminal for the guarded clear-hold update: resolve with a
-          // matching row (guard held) or none (guard failed — a fresher
-          // hold was recorded after the digest's snapshot).
+          // Terminal for the guarded clear-hold update. This simulates real
+          // Postgres row-filtering, not an injected outcome: it derives
+          // "does the WHERE clause match" from whichever comparison the
+          // production code actually issued, checked against the row's
+          // CURRENT `last_held_at` (`guardCurrentHeldAt`, standing in for
+          // whatever the edge sweep last wrote) --
+          //   - `.lte("last_held_at", cutoff)` (round-2 fix): matches only
+          //     when the current value is AT OR BEFORE that external cutoff;
+          //   - `.eq("last_held_at", X)` (round-1's shape): matches iff the
+          //     current value equals X -- and because round-1 code always
+          //     passes the value it JUST read as X, this is a self-compare
+          //     that matches unconditionally, faithfully reproducing why
+          //     that guard could never actually block a clobber.
+          // Round 1's harness took "does it match" as its own injectable
+          // boolean, independent of `guardCurrentHeldAt` -- which is exactly
+          // how it let a self-referential guard pass as a real
+          // compare-and-swap. This harness computes it instead.
+          const currentHeldAt =
+            "guardCurrentHeldAt" in opts ? opts.guardCurrentHeldAt : null;
+          let matches: boolean;
+          if (chain.__eqLastHeldAt !== undefined) {
+            matches = currentHeldAt === chain.__eqLastHeldAt;
+          } else if (chain.__lte !== undefined) {
+            matches = currentHeldAt != null && currentHeldAt <= chain.__lte;
+          } else {
+            matches = false;
+          }
           return Promise.resolve(
-            opts.guardUpdateMatches
+            matches
               ? {
                   data: [{ inventory_id: chain.__patch?.inventory_id }],
                   error: null,
@@ -74,12 +91,27 @@ function makeHarness(
         }
         return chain;
       },
-      eq: () => chain,
+      eq: (col: string, val: string) => {
+        if (
+          chain.__updated &&
+          table === "inventory_alert_state" &&
+          col === "last_held_at"
+        ) {
+          chain.__eqLastHeldAt = val;
+        }
+        return chain;
+      },
       neq: () => chain,
       not: () => chain,
       in: () => chain,
       order: () => chain,
       limit: () => chain,
+      lte: (col: string, val: string) => {
+        if (table === "inventory_alert_state" && col === "last_held_at") {
+          chain.__lte = val;
+        }
+        return chain;
+      },
       update: (patch: Row) => {
         updates.push({ table, patch: { ...patch } });
         if (table === "inventory_alert_state") {
@@ -185,6 +217,40 @@ describe("the instant path counts an inbox row, not an answer", () => {
     expect(last.last_alerted_at).toEqual(expect.any(String));
     expect(last.last_held_at).toBeNull();
   });
+
+  /**
+   * PR #486 round-2 audit, secondary finding (2026-09-26): `recordAlertOutcome`
+   * awaited `upsertState` in a loop but never checked its boolean return. If
+   * the clear-hold guard skips a write for a wine that WAS actually alerted
+   * (a fresher hold raced in, or the guard's own read failed), the row keeps
+   * reading "held" on `listHeldCrossings` even though the alert went out --
+   * over-reporting a hold, never under-alerting, but exactly the class of
+   * fault this file exists to close, on this call site. Fixed by checking
+   * the return value and logging when it happens, since there is nothing
+   * else to do (the alert already went out and will not be resent).
+   */
+  it("[REVERT-FAILS] a guard-skipped clear-hold after a delivered alert is logged, not silently swallowed", async () => {
+    const { service, upserts, guardedUpdates } = makeHarness({
+      // A hold recorded after the instant path's own snapshot (evaluateRestaurant's
+      // `nowIso`, captured at real test-run time) -- a genuinely fresh, still-
+      // unnotified crossing that must survive this delivered alert's clear-hold.
+      guardCurrentHeldAt: "2099-01-01T00:00:00.000Z",
+    });
+    const warnSpy = jest.spyOn((service as any).logger, "warn");
+    await service.evaluateRestaurant("r1", [row()], "House");
+    // `evaluateRestaurant` writes the level unconditionally (plain upsert,
+    // no `alertedAt`) BEFORE deciding whether to alert -- that row is in
+    // `upserts`, but the alertedAt+clearHold write is a separate call that
+    // goes through the guarded-update path (a hold currently exists to
+    // protect), never through `upsert()`.
+    expect(ledgerFor(upserts, "inv-1")?.last_alerted_at).toBeUndefined();
+    expect(guardedUpdates).toHaveLength(1);
+    expect(
+      warnSpy.mock.calls.some((call) =>
+        String(call[0]).includes("was skipped after a delivered alert"),
+      ),
+    ).toBe(true);
+  });
 });
 
 describe("the digest ends the holds it answered", () => {
@@ -217,16 +283,34 @@ describe("the digest ends the holds it answered", () => {
    * and can record a FRESH, unnotified hold on the same wine in that window.
    * The old clear-hold write was a blind, unconditioned `.upsert()`, which
    * would silently clobber that fresher hold and roll `last_alert_level`
-   * back to the stale snapshot value. The fix reads the CURRENT
-   * `last_held_at` immediately before writing and only clears through a
-   * `.update()` guarded by that exact value — never the blind upsert —
-   * whenever a hold currently exists to protect.
+   * back to the stale snapshot value.
+   *
+   * Round 1's fix read the CURRENT `last_held_at` immediately before writing
+   * and conditioned the write on THAT SAME just-read value — a compare
+   * against itself, which only protects the read-to-write gap (a single
+   * round trip), never the multi-minute gap the finding actually named. Both
+   * an independent correctness pass and an independent security pass
+   * converged on this exact defect at the round-2 audit (2026-09-26): the
+   * harness that "proved" the fix let `guardUpdateMatches` be set
+   * independently of `guardCurrentHeldAt`, which the production code could
+   * never actually produce.
+   *
+   * Round 2's fix (below) passes `sendDigest`'s OWN pre-slow-work snapshot
+   * (`rowsSnapshotAt`, defaulted to sendDigest's entry time when the caller
+   * omits it, as these tests do) down as `clearHoldNotAfter`, and the
+   * production code's `.lte("last_held_at", cutoff)` is exercised for real
+   * here — the harness only supplies `guardCurrentHeldAt` (what the row
+   * currently holds) and computes the match from the cutoff the code itself
+   * passed in, not from a second, independently-set boolean.
    */
   it("never falls back to a blind upsert when a hold currently exists — it always goes through the guarded update", async () => {
     const { service, upserts, guardedUpdates } = makeHarness({
-      guardCurrentHeldAt: "2026-09-26T09:58:00.000Z",
-      guardUpdateMatches: true,
+      // Long before sendDigest's own snapshot (its entry time, "now" at test
+      // run) -- an ordinary hold recorded well before the digest ran, with
+      // nothing writing in between.
+      guardCurrentHeldAt: "2000-01-01T00:00:00.000Z",
     });
+    const warnSpy = jest.spyOn((service as any).logger, "warn");
     await service.sendDigest("r1", [row({ inventoryId: "a" })]);
     expect(upserts.find((u) => u.inventory_id === "a")).toBeUndefined();
     expect(guardedUpdates).toHaveLength(1);
@@ -236,21 +320,75 @@ describe("the digest ends the holds it answered", () => {
       last_held_reason: null,
       last_digest_at: expect.any(String),
     });
+    // The guard actually MATCHED (not merely "was attempted") -- no
+    // "skipped" warning was logged for this row.
+    expect(
+      warnSpy.mock.calls.some((c) =>
+        String(c[0]).includes("clear-hold skipped"),
+      ),
+    ).toBe(false);
   });
 
   it("[REVERT-FAILS] a hold that changed after the digest's snapshot is NOT cleared — the guard blocks the clobber", async () => {
     const { service, upserts, guardedUpdates } = makeHarness({
-      // The edge sweep recorded (or re-recorded) a hold between the digest's
-      // `rows` snapshot and this write, so the guarded update's `last_held_at`
-      // filter no longer matches what is actually on the row.
-      guardCurrentHeldAt: "2026-09-26T10:01:00.000Z",
-      guardUpdateMatches: false,
+      // After sendDigest's own snapshot (its entry time) -- the edge sweep
+      // recorded a FRESH hold during the digest's email send / write loop,
+      // so `last_held_at` is now newer than the cutoff the guarded update
+      // compares against.
+      guardCurrentHeldAt: "2099-01-01T00:00:00.000Z",
     });
+    const warnSpy = jest.spyOn((service as any).logger, "warn");
     await service.sendDigest("r1", [row({ inventoryId: "a" })]);
     // No fallback to the blind upsert -- the fresher hold this digest never
     // told anyone about is left exactly as the edge sweep wrote it.
     expect(upserts.find((u) => u.inventory_id === "a")).toBeUndefined();
     expect(guardedUpdates).toHaveLength(1);
+    // The guard must have reported NO match (a genuinely skipped write), not
+    // merely "an update was issued" -- `guardedUpdates` records the PATCH
+    // object regardless of whether Postgres' WHERE clause matched anything,
+    // so this is the assertion that actually distinguishes "blocked" from
+    // "blindly succeeded". A guard reverted to comparing a value against
+    // itself (round 1's shape) always matches and never logs this.
+    expect(
+      warnSpy.mock.calls.some((c) =>
+        String(c[0]).includes("clear-hold skipped"),
+      ),
+    ).toBe(true);
+  });
+
+  it("[REVERT-FAILS] a snapshot passed in by the caller (the real digest sweep), not sendDigest's own entry time, is what the guard compares against", async () => {
+    // Simulates the real `runDailyDigest`/`triggerDailyDigest` call shape: the
+    // snapshot is taken once, BEFORE this restaurant's (and every other
+    // restaurant's) sendDigest call, and handed down explicitly. Chosen so
+    // the two possible cutoffs disagree: `guardCurrentHeldAt` (2050) is
+    // AFTER real "now" (2026, what sendDigest would default to if it ever
+    // ignored its argument) but BEFORE the explicit `rowsSnapshotAt` (2099)
+    // passed below -- so only a build that actually threads the parameter
+    // through clears the hold; one that silently fell back to its own entry
+    // time would leave it in place, and this test would catch that.
+    const { service, upserts, guardedUpdates } = makeHarness({
+      guardCurrentHeldAt: "2050-01-01T00:00:00.000Z",
+    });
+    const warnSpy = jest.spyOn((service as any).logger, "warn");
+    await service.sendDigest(
+      "r1",
+      [row({ inventoryId: "a" })],
+      "House",
+      "2099-01-01T00:00:00.000Z", // rowsSnapshotAt
+    );
+    expect(upserts.find((u) => u.inventory_id === "a")).toBeUndefined();
+    expect(guardedUpdates).toHaveLength(1);
+    expect(guardedUpdates[0]).toMatchObject({
+      inventory_id: "a",
+      last_held_at: null,
+    });
+    // Confirms the guard actually matched using the PASSED-IN snapshot, not
+    // just that an update was attempted (see the previous test's comment).
+    expect(
+      warnSpy.mock.calls.some((c) =>
+        String(c[0]).includes("clear-hold skipped"),
+      ),
+    ).toBe(false);
   });
 });
 

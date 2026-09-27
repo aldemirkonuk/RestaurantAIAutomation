@@ -190,6 +190,12 @@ export class LowStockAlertsService {
     try {
       const etHour = this.currentEtHour();
       const byRestaurant = await this.getLowStockByRestaurant();
+      // Captured once, right after the read `rows` itself comes from — the
+      // true "we observed these holds as of here" instant, before ANY
+      // restaurant's email send or writes below (PR #486 round-2 audit,
+      // 2026-09-26). Every restaurant in this sweep shares it, which is
+      // correct: they all came from the same `getLowStockByRestaurant` call.
+      const rowsSnapshotAt = new Date().toISOString();
       const names = await this.getRestaurantNames([...byRestaurant.keys()]);
       for (const [restaurantId, rows] of byRestaurant) {
         const prefs = await this.getEffectiveLowStockPrefs(restaurantId);
@@ -199,7 +205,12 @@ export class LowStockAlertsService {
           10,
         );
         if (etHour !== digestHour) continue;
-        await this.sendDigest(restaurantId, rows, names.get(restaurantId));
+        await this.sendDigest(
+          restaurantId,
+          rows,
+          names.get(restaurantId),
+          rowsSnapshotAt,
+        );
       }
     } catch (e: any) {
       this.logger.error(`low-stock digest failed: ${e?.message}`);
@@ -223,11 +234,17 @@ export class LowStockAlertsService {
   }
   async triggerDailyDigest(): Promise<void> {
     const byRestaurant = await this.getLowStockByRestaurant();
+    const rowsSnapshotAt = new Date().toISOString();
     const names = await this.getRestaurantNames([...byRestaurant.keys()]);
     for (const [restaurantId, rows] of byRestaurant) {
       const prefs = await this.getEffectiveLowStockPrefs(restaurantId);
       if (!prefs.enabled || prefs.digestFrequency === "off") continue;
-      await this.sendDigest(restaurantId, rows, names.get(restaurantId));
+      await this.sendDigest(
+        restaurantId,
+        rows,
+        names.get(restaurantId),
+        rowsSnapshotAt,
+      );
     }
   }
 
@@ -440,14 +457,38 @@ export class LowStockAlertsService {
       | { heldAt: string; reason: "instant_cooldown" | "prefs" | null },
   ): Promise<void> {
     for (const w of wines) {
-      await this.upsertState(restaurantId, {
+      const persisted = await this.upsertState(restaurantId, {
         inventoryId: w.inventoryId,
         wineName: w.wineName,
         level: w.severity,
         ...("alertedAt" in outcome
-          ? { bumpAlert: true, alertedAt: outcome.alertedAt, clearHold: true }
+          ? {
+              bumpAlert: true,
+              alertedAt: outcome.alertedAt,
+              clearHold: true,
+              // `outcome.alertedAt` is `evaluateRestaurant`'s `nowIso` --
+              // captured before `getAlertState`, before the per-row writes,
+              // and before `fireInstantAlert`'s own persist + email send --
+              // so it is a valid pre-slow-work cutoff for the same guard
+              // `sendDigest` uses (PR #486 round-2 audit, 2026-09-26).
+              clearHoldNotAfter: outcome.alertedAt,
+            }
           : { heldAt: outcome.heldAt, heldReason: outcome.reason }),
       });
+      // (PR #486 round-2 audit, secondary finding, 2026-09-26) This return
+      // value used to be discarded. When the clear-hold guard skips a write
+      // for a wine that WAS actually alerted (a fresher hold arrived in the
+      // gap, or the guard's own read failed), `last_held_at` is left set, so
+      // `listHeldCrossings` keeps reporting a told wine as still waiting --
+      // over-reporting a hold, never under-alerting, but still the exact
+      // fault this file exists to close, one call site over. There is
+      // nothing more to DO here (the alert already went out and will not be
+      // resent), so this is surfaced rather than silently swallowed.
+      if ("alertedAt" in outcome && !persisted) {
+        this.logger.warn(
+          `inventory_alert_state clear-hold for ${restaurantId}/${w.inventoryId} was skipped after a delivered alert -- it will keep reading "held" on the queue until this wine crosses again or the digest covers it.`,
+        );
+      }
     }
   }
 
@@ -599,13 +640,23 @@ export class LowStockAlertsService {
   /**
    * The batched daily reminder — every currently-low wine in one email + one
    * grouped inbox row. Deduped so a double cron fire won't repeat it.
+   *
+   * `rowsSnapshotAt` is when `rows` was actually read (`getLowStockByRestaurant`
+   * in the caller, before this restaurant's — or any restaurant's — digest
+   * started sending). It defaults to "now" for a caller with no such instant
+   * to hand down (there is currently none — every real caller passes it), but
+   * "now" at entry is itself an equally valid, if slightly looser, cutoff:
+   * either way it is captured HERE, before the email send and the N writes
+   * below, which is the gap the round-2 audit finding named.
    */
   async sendDigest(
     restaurantId: string,
     rows: LowStockRow[],
     restaurantName?: string,
+    rowsSnapshotAt?: string,
   ): Promise<void> {
     if (rows.length === 0) return;
+    const snapshotAt = rowsSnapshotAt ?? new Date().toISOString();
     const criticalCount = rows.filter((w) => w.severity === "critical").length;
     const dateStr = new Date().toISOString().slice(0, 10);
 
@@ -667,6 +718,12 @@ export class LowStockAlertsService {
         level: row.severity,
         digestAt: nowIso,
         clearHold: true,
+        // The pre-slow-work cutoff (see the doc comment above), NOT `nowIso`
+        // above -- `nowIso` is stamped after the email send and after every
+        // sibling row in this same loop, so using it here would recreate the
+        // round-1 defect (comparing a value to something captured after the
+        // gap it needs to protect).
+        clearHoldNotAfter: snapshotAt,
       });
     }
   }
@@ -1036,6 +1093,18 @@ export class LowStockAlertsService {
       heldReason?: "instant_cooldown" | "prefs" | null;
       /** Something was sent, so the hold is over. */
       clearHold?: boolean;
+      /**
+       * ONLY meaningful with `clearHold`: the instant the caller observed
+       * "this wine is being told about now", captured BEFORE the slow work
+       * (an email send, N sibling writes) that separates that decision from
+       * this write actually landing. A hold currently on the row that is
+       * NEWER than this instant was written by someone else (the edge sweep)
+       * DURING that gap, describes a crossing THIS call never told anyone
+       * about, and must survive. Omit only when the caller has no slow work
+       * between deciding and writing (there is currently no such caller);
+       * the guard then falls back to protecting only the read-to-write gap.
+       */
+      clearHoldNotAfter?: string;
     },
   ): Promise<boolean> {
     const nowIso = new Date().toISOString();
@@ -1082,12 +1151,25 @@ export class LowStockAlertsService {
         // "absence reported as health" fault this PR exists to close, one
         // layer down (PR #486 round-1 audit finding 2, 2026-09-26).
         //
-        // This narrows the race window to a single read-then-conditional-
-        // write instead of the whole digest run, and the write below only
-        // takes effect if nothing changed `last_held_at` in between — not a
-        // full transactional guarantee, but the write is a single
-        // Postgres UPDATE ... WHERE, so the check-then-act is atomic against
-        // any OTHER writer, including the edge sweep.
+        // ROUND 1's fix read `last_held_at` immediately before this write and
+        // conditioned the write on THAT SAME just-read value. That compares
+        // a number to itself: it only protects the read-to-write gap (a
+        // single Postgres round trip), never the multi-minute gap between
+        // the digest's OWN snapshot and this call, which is the gap the
+        // finding actually named. Both an independent correctness pass and
+        // an independent security pass converged on this exact defect during
+        // the PR #486 round-2 audit (2026-09-26) and the test that claimed to
+        // prove the fix exercised a scenario the production code path could
+        // not produce under that race.
+        //
+        // ROUND 2 fix: the caller now hands down `clearHoldNotAfter` — an
+        // instant it captured BEFORE its own slow work began, not something
+        // read fresh in here. The guard compares the CURRENT `last_held_at`
+        // against that externally supplied cutoff. A hold timestamped after
+        // the cutoff was written by someone else during the caller's slow
+        // work and is left alone; the write itself is a single
+        // `UPDATE ... WHERE last_held_at <= cutoff`, so the compare-and-swap
+        // is atomic against any other writer, including the edge sweep.
         const { data: current, error: guardReadError } = await this.db.supabase
           .from("inventory_alert_state")
           .select("last_held_at")
@@ -1105,12 +1187,19 @@ export class LowStockAlertsService {
         }
         const guardHeldAt = current?.last_held_at ?? null;
         if (guardHeldAt) {
+          // The cutoff every caller now supplies. Falling back to `nowIso`
+          // (captured at the very top of this call) is strictly narrower
+          // than round 1's blind upsert -- it still only protects the gap
+          // between this read and this write -- but there is currently no
+          // caller that omits `clearHoldNotAfter`, so this is a belt-and-
+          // braces default, not a load-bearing path.
+          const cutoff = p.clearHoldNotAfter ?? nowIso;
           const { data: updated, error } = await this.db.supabase
             .from("inventory_alert_state")
             .update(row)
             .eq("restaurant_id", restaurantId)
             .eq("inventory_id", p.inventoryId)
-            .eq("last_held_at", guardHeldAt)
+            .lte("last_held_at", cutoff)
             .select("inventory_id");
           if (error) {
             this.logger.warn(
@@ -1120,7 +1209,7 @@ export class LowStockAlertsService {
           }
           if (!updated || updated.length === 0) {
             this.logger.warn(
-              `inventory_alert_state clear-hold skipped for restaurant ${restaurantId} / ${p.inventoryId}: the hold changed after this write's snapshot -- leaving the newer one in place.`,
+              `inventory_alert_state clear-hold skipped for restaurant ${restaurantId} / ${p.inventoryId}: last_held_at (${guardHeldAt}) is newer than this call's snapshot (${cutoff}) -- a fresher, unnotified crossing was recorded in between and is left in place.`,
             );
             return false;
           }
