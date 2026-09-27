@@ -162,6 +162,61 @@ bar; the letter as the page's identity; the quiet tier as proof of what is withh
 **Decision:** direction A with C's quiet tier, and a fourth round (sketch 120) that adds
 function without disturbing the experience Wave Four already earns.
 
+**[ANSWERED 2026-09-25, founder, round 5 (`AskUserQuestion`, session 6c6d8b93) — sketch 122 is
+decided, so this row is fully answered and the page goes live in code for every house
+(`LIVE_PAGES`, `LIVE_IN_CODE_FLAGS`; lane W3-recs, branch `feat/recs-round6-direction-b`).**
+
+- **Q1, the placement (item 24).** His words: *"direction B is better"*. Asked which "direction B"
+  he meant, he chose *"Recommendations (sketch 122)"* over *"Promotions (sketch 124)"*, *"Vendor
+  prices (§112)"* and *"Something you're viewing"*. So: **B — Goals in the Masthead** — the
+  house's goals as a narrow margin column at the masthead's right under "The Morning Letter", the
+  day strip spanning below both. Rejected: **A — Goals Rail** (the README's recommendation: a
+  second rail under the day strip). The cost README Q1 named is accepted with the pick: below
+  640px the masthead stacks, letter then goals, and the day strip follows both.
+- **Q2 (item 25), "Add all three (Recommended)":** snooze, pin and mark-as-briefed are one tap
+  with Undo and no seal — recorded as an amendment to ADR 0112 F10, where the list lives. The
+  question's own words carry the second half: *"A hand-off that only opens another page records
+  nothing."* Rejected: *"Keep F10 closed"*; *"Add snooze + pin only"*. *[2026-09-27, PR #483
+  audit R4: that half is held on every surface — the older "Act" hand-offs on the Orders /
+  Vendors / Inventory rail, Reports' panel and the legacy page stopped posting `acted: true` in
+  the same PR; see ADR 0112 F10's bracket.]*
+- **Q3, "Two-step now (Recommended)":** the Order-it control opens Orders and the PO is drafted by
+  hand there, where the hold seals it; the in-place draft is a later round. Rejected: *"Build
+  in-place draft now"*.
+- **Q4, "Substitute now, field next (Recommended)":** the quiet tier ships as the engine's own
+  `sourcesUnread` (which sources did not answer); the per-rule `reading · threshold · state` field
+  is the next build. Rejected: *"Real field this round"*.
+- **Q5, "Keep it on the two (Recommended)":** the account door stays on the two baseline rules the
+  gateway can key (`sales_below_weekday_baseline`, `weekly_demand_slide` — the only rules that set
+  `subject`, `recommendations.service.ts`). Rejected: *"Every rule that could carry one"*.
+- **Q6, "(a) Side sheet (Recommended)":** the house's post is edited in the side sheet already
+  built (`DigestPost.tsx`). Rejected: *"(c) Read-only /settings tile"*; *"(b) Popover modal"*
+  (would reopen ADR 0112 F2).
+- **Q7, "Keep both verbs (Recommended)":** *Mark as briefed* (records, stays) on floor entries;
+  the hand-off (navigates, records nothing) everywhere else. Rejected: *"Force one verb"*.
+- **Q8, "Count, not who (Recommended)":** every member sees that the house's post went out and how
+  many letters — never to whom. Rejected: *"Nothing"*; *"Count and who"*.
+- **Q9, "Per reader (Recommended)":** the delta is measured from THIS reader's own last sent
+  letter. Rejected: *"One house clock"*.
+- **Q10, "Keep trimmed (Recommended)":** refusal copy stays on the entries actually refused; no
+  "not refused" line on every entry. Rejected: *"Explain every entry"*.
+
+Built, and what each answer became (page note `.planning/06-pages/recommendations.md`, "Round 6"):
+the masthead margin reads `GET /analytics/goals/:rid/progress` (recomputed progress; every state
+said, no currency symbol invented); one suggested goal from a standing entry whose rule maps to a
+metric no active goal holds, opening that entry's own goal sheet with the target blank; hand-offs
+no longer write `acted`; *Mark as briefed* stamps `acted_at` + a new `acted_by` (migration
+`20260928000100` *[renamed 2026-09-27, PR #483 merge-train: now `20261001000000`, past
+origin/main's tip and every earlier-queued open PR's migrations]*), and the stamp is a note gated
+like a pin both ways — its Undo like clearing a
+pin, a re-stamp over someone else's like re-pinning theirs, the platform admin making neither
+(PR #483 audit R2, 2026-09-26); the delta cutting and the house's
+send count read two new fields of `GET /recommendations/digest/subscription` (`lastLetter`,
+`houseLastPost`). Not built here, by these answers: the in-place PO draft (Q3), the per-rule
+quiet-tier field (Q4), the account door on more rules (Q5). The one-line confirmation of the
+"fifth/sixth" reading in README's non-blocking flag is answered: the founder's 2026-09-25 answers,
+item 43, "Sketch 122 fifth/sixth reading confirmed".]**
+
 **[ADDED 2026-09-19, PR #391 audit M2 — his 2026-09-19 sketch-120 feedback (memory
 `founder-sketch-decisions-106-115.md`, lane-answers batch 3, "RECOMMENDATIONS"), the
 brief for the next round (sketch 122). He said only the first part below is a
@@ -545,6 +600,13 @@ if the sections stay on `/promotions`).]**
 records his 2026-09-18 `AskUserQuestion` answer (move to `/communications`) and its
 2026-09-19 build (`WhoIsWriting.tsx` + `SenderActs.tsx`, gated on
 `mudavym_design_communications`).]**
+**[COMMITTED 2026-09-25, branch `fix/comms-house-sources`: the 2026-09-19 build,
+byte-identical to its only copy (`origin/wip/2026-09-19/others/reverent-lamarr-4a8be2`
+`5b575e403`, which matches the live `reverent-lamarr-4a8be2` worktree file for file),
+lands on `/communications` with the ADR 0083 amendment. The flag caveat is moot:
+`communications` is in `LIVE_PAGES` (`apps/web/src/lib/mudavym/useMudavymDesign.ts`),
+so every house renders the section. The `/promotions` cut (`wt-pg-promos`) is still
+separate and must merge after this.]**
 
 **Owed:** decide and draw how a bundle is graded and shown (his open question, *"If
 bundles, well, how would you react? How should we react? Maybe add another part for
@@ -614,6 +676,108 @@ written rule under ADR 0020 before it ships. Open item 8 is closed; ads become o
 - **Drawings owed before their builds can start:** the wine detail surface (110, Owed
   #4), the bundle shape (113), the guide collection for `/help` (111, must-have), B's
   sized boxes at C's 10+ density (113), and — if it wins — sketch 119's shell.
+  **[2026-09-25, lane W2-promos: both 113 drawings are drawn — sketch 124
+  (`.planning/sketches/124-promotions-bundles-and-density/`, three directions each
+  answering both). Still owed: the founder's pick. The `/promotions` build on
+  `feat/promotions-mudavym` ships dark behind `mudavym_design_promotions` and builds
+  neither part until he picks (CLAIMS `PROMOTIONS-OWED-DRAWINGS-NOT-BUILT`).]**
+  **[ANSWERED and BUILT 2026-09-25 — founder, 2026-09-25, round 5 (`AskUserQuestion`,
+  session 6c6d8b93; recorded in memory `founder-answers-2026-09-25-web-rebuild.md` item 35).
+  The option text below is sketch 124's README question text
+  (`.planning/sketches/124-promotions-bundles-and-density/README.md`, "Founder
+  questions"); the question-round wording itself is not stored in the repo, so where the
+  two could differ the README's is the one quoted. Built on `feat/promotions-mudavym`
+  (PR #474, lane W3-promos), CLAIMS `PROMOTIONS-BAND-AND-TRAY-BUILT` supersedes
+  `PROMOTIONS-OWED-DRAWINGS-NOT-BUILT`.**
+  1. **Density — chosen: "A · The Band" ("A row per tier: hero band full width, three
+     large across, compact tiles five across"; rank order "Strict, top to bottom").**
+     Rejected: "B · The Span Grid" (tier = span in a packed 6-column grid — reading order
+     can differ from visual order) and "C · Lead and Ledger" (only the hero is a box;
+     "'Bigger box' becomes 'heavier row' — the founder's words were boxes"). Also not
+     taken: "a mix".
+  2. **Bundle — chosen: "tray" ("one card, its bottles set in as a small table; takes the
+     tier its total earns").** Rejected: "tied cells" (B) and "group row" (C).
+  3. **Where a bundle ranks — chosen: "At the tier its rolled-up worth earns (A and B as
+     drawn)".** Rejected: "always after the single offers". Built as: `rankOffers` ranks
+     bundles and single offers in one list; the separate bundle fold is gone.
+  4. **A bundle whose worth is withheld — chosen: "compact (as drawn)".** Rejected:
+     "sized by the best of its own bottles' worths" (the README's own note: "contradicts
+     nothing in ADR 0165 but is a new rule" — not adopted). Built as: `rankWorthOf`
+     returns the rollup or nothing for a bundle, so a withheld total (a bottle with no
+     worth, or ADR 0165's `unit_unknown` minimum) is a compact tray that names why.
+  5. **Sketch 113 question 6 ("Is an offer with no end date an offer?") — chosen: undated
+     offers stay on the table, labelled "no end date"** (directions A and B of sketch 113;
+     every sketch 124 direction drew it so). Rejected: sketch 113 direction C's "Filed as
+     a price, not an offer" (DESIGN-FOUNDATION.md's "an offer with no end date is not an
+     offer", bracketed there the same day). The service's `undated` state and the page's
+     `offerStateWord` already did this; the answer makes it a decision, not a default.
+  **Not built, on purpose:** filters. His words the same round — the owner searching
+  vendors/promotions "must see certain filters per their restaurant first … first filter
+  as everything you see on the menu at the moment. Bigger search for all the items they
+  use" — are under a research pass; the page leaves one seam for a scope bar
+  (`PromotionsNext.tsx`, the `scoped` list and the "scope bar" slot above the Offers
+  section). Still open from ADR 0165: items 2 (adaptive recency) and 3 (per-wine versus
+  mixed minimums), not asked this round.]**
+  **[ANSWERED and BUILT 2026-09-26 — house-first filters and the tray's length. Founder,
+  2026-09-25/26, rounds 5-6 (`AskUserQuestion`, session 6c6d8b93; recorded in memory
+  `founder-answers-2026-09-25-web-rebuild.md` items 35, 36 and 43 — the question-round
+  wording is not stored in the repo, so the text quoted here is that memory's, the only
+  record). Research behind it: session scratchpad `research-filters.md`, whose ADVERSARIAL
+  pass overturned its own first synthesis in six places (F1 menu versions, F2/F12 silent
+  caps, F3 generic names, F4 vintages, F6 uncounted stock, F9 coverage, F11 the fold); where
+  the two disagree, the adversary's corrected recommendation was built. Built on
+  `feat/promotions-mudavym` (PR #474, lane W4-promos-filters); CLAIMS
+  `PROMOTIONS-HOUSE-FIRST-LADDER`, `PROMOTIONS-RUNNING-LOW-COUNTED-ONLY`,
+  `PROMOTIONS-NO-SILENT-CAPS`, `PROMOTIONS-TRAY-FIRST-FIVE`.**
+  1. **Opening scope — chosen: "/promotions opens on On my menu (CURRENT active menu(s)
+     only, paged reads; tag shows the matched menu line) → Everything I stock → All
+     offers"** (he added the third rung). Rejected: the adversary's "two rungs plus the
+     existing fold, not three computed rungs"; opening on everything. Built as: the gateway
+     tags each offer with the narrowest rung (`offer-scope.ts` `scopeOffer`) — "menu" when
+     ANY shelf row whose folded `wine_name` equals the offer's wine has a `master_wine_id`
+     on a live line of an ACTIVE menu (drafts and archived versions excluded; several
+     active menus unioned; every line paged by `MenusService.readCurrentMenus`); "stock"
+     when the wine is on an active, undeleted shelf row; else "other". The card says only
+     "names a wine on your menu: <that menu line>", never more (F3).
+  2. **Facets — chosen: vendor, ends soon, search, "coarse product categories" (his words:
+     "fruit … drinks … soft drinks … whiskeys, maybe not that deep") and "Running low"
+     ("also works").** Rejected: the adversary's "Menu section" facet (the menu's own
+     serving styles, e.g. "By the glass") — his "not that deep" and the brief's "NOT
+     serving styles"; region/grape (the research's own "only past about 30 offers").
+     Categories come from `master_wine_library.beverage_kind` (the database's own
+     classifier, 20260817060000) folded to Wine / Beer / Spirits / Soft drinks / Other
+     drinks / Not classified. **Not built, and why:** a whiskey chip (`beverage_kind` has
+     no whiskey value — cellar-registers `NAME_ONLY_REGISTERS` — and "not that deep");
+     fruit & produce (the extractor only ever names shelf rows, so no offer could carry
+     it). Running low is built only over COUNTED stock: every active shelf row of that
+     wine has `last_counted_at` (stamped only by `record_stock_count`,
+     20260902190000:305-312) and is below par by `isBelowPar`; an uncounted row makes the
+     wine "not known", never low — the 0-vs-3 default (F6) cannot fire it.
+  3. **Box sizes across scopes — chosen: FIXED (rank once over everything; a scope only
+     hides).** Rejected: "re-rank inside each scope" (the research's fork A(b): the hero
+     changes with every tap and a small offer becomes a hero because the big ones were
+     hidden). Built as: `rankOffers(offers)` over every offer, then `visible(...)` filters
+     the ranked list; the "cannot be graded" fold is scoped the same way (F11); the
+     put-away fold is not.
+  4. **No menu read — chosen: open on Everything I stock with the banner "No menu read yet —
+     showing everything you stock".** Rejected: "open on Menu anyway, with an empty state"
+     (fork D(a)). A menu that IS read but has nothing on offer keeps its own empty state
+     ("Nothing on your menu is on offer right now" → one tap to everything stocked).
+  5. **Bundles — chosen: shown if any bottle is on the menu, tagged "n of m on your
+     menu".** Rejected: "only if all bottles are" (fork B(b)). The bundle's worth stays
+     all-or-nothing (ADR 0165), so nothing is overstated.
+  6. **State and phone width — the URL holds it** (`?scope=`, `?vendor=`, `?cat=`,
+     `?soon=1`, `?low=1`, `?q=`); at ≤ 780px the facets fold behind "Filters" and apply
+     only on **"Show N offers"** (the apply step); verified at 390px in the Browser pane
+     (no horizontal scroll, 390 = 390).
+  7. **Tray length — chosen: "first 5 bottles + 'n more' (sheet shows all)"** (item 43).
+     Rejected: every bottle on the card (as built in round 5). `TRAY_BOTTLES_SHOWN = 5`
+     in `OfferCard.tsx`; the offer sheet still lists every named bottle.
+  **Still open, not decided here:** `/vendors`' own ladder (lane W4-vendors-filters, on
+  PR #481); the grader's `bridgeKeyFor` still takes the first shelf row of a name when it
+  grades (F4 is fixed for the SCOPE, not for the price comparison); the extractor's
+  generic-name false positives and its 500-row unordered shelf read (candidate ODs for
+  lane L1).]**
 - **Two of his notes are deliberately not built now:** ~~the non-alcoholic heat map (110,
   Owed #9)~~ **[built 2026-09-22, Q9]** and A's register itself under live data (113).
 - **Open items — the founder's call, not decided here (CLAUDE.md §0.1):**
@@ -699,3 +863,5 @@ written rule under ADR 0020 before it ships. Open item 8 is closed; ads become o
 | 2026-09-21 | Aldemir (founder), round 6k answers relayed verbatim in the shell lane's round-2 brief (this session did not re-read the question-round transcript) + Claude (Opus 5; branch `feat/shell-counter`, round 2, uncommitted at this row) | Answered and built — two forks this record's 2026-09-21 rows had left open. (a) On /ask, **"Never without the seal"**: the Ask panel's `ProposalCard` no longer applies a proposal with a click on the unsealed `POST /ask-ai/actions/:id/confirm`. It applies only through `HoldToApprove` bound to a server seal minted when the hold begins, after any edits: `POST /ask-ai/actions/:id/seal-challenge` now takes the operator's edited `payload`, checks it through the same allowlist and grounding an apply runs, and binds it into the seal (`args.edit`); `sealed-confirm` carries the same payload back and redeems before anything is written, so an edit made after the hold began, an untouched seal spent on an edit, or an edited seal spent untouched are all refused as "changed after the seal was issued" (the card also refuses the first case locally, before any request). The unsealed route answers **410** with a sentence naming both sealed routes and calls nothing; the service's public `confirm` is now the private `applyAfterSeal`, reached only from `confirmSealed`. Callers swept: the web client's `confirmAction` is deleted, `CounterActSheet` already used the seal (its "from the counter" copy scoping is removed), no other caller exists in `apps/`, `services/` or `scripts/`. Held by `scripts/check_ask_ai_is_gated.py` section 4 (rewritten; 10 guard mutations killed, one of which, a cast-spelled `(this.askAi as any).confirm(`, first survived and the guard was hardened for it) and the rewritten CLAIMS row SHELL-PROPOSAL-IS-APPLIED-ONLY-BY-THE-SEAL (13 of 13 mutations killed). (b) On the day line, **"Count what's built"**: the head stays "N of 3", the three registers this build reads, with no placeholder row for deliveries expected, shifts or the market; `house-day.spec.ts` and `DayLine.test.tsx` now pin it (a fourth register and a six denominator each fail a test). Merge note: `'shell'` joins the held-back list of `useMudavymDesign.test.tsx` beside settings, cellar, recommendations and receiving, never `LIVE_PAGES`; the shell stays flag-gated, default off. |
 | 2026-09-25 | Records lane L1 (Opus 5.5), web-rebuild census | Bracketed in place — §107 and Open item 4 answered 2026-09-22 (Approach 1), with the new fork against the 2026-09-21 verdict-ledger strip; §108 sketch 122's location and its number collision; Open item 3's precondition met. Nothing re-decided |
 | 2026-09-25 | Aldemir (founder, `AskUserQuestion`, session 6c6d8b93) + records lane W1 (Opus 5.5) | Answered — census F7: the receiving history is built from the door receipts already recorded; the 2026-09-21 verdict-ledger strip (`8ea44f527`) stands (§107, Open item 4) |
+| 2026-09-25 | Aldemir (founder, `AskUserQuestion`, session 6c6d8b93, items 24-25) + lane W3-recs (Opus 5.5) | Answered — §108: sketch 122 direction B ("direction B is better"), questions 2-10 all "Recommended" (verbatim options and rejected alternatives in §108's bracket); `/recommendations` joins `LIVE_PAGES` for every house |
+| 2026-09-26 | Aldemir (founder), rounds 5-6 items 36 and 43, as recorded in memory `founder-answers-2026-09-25-web-rebuild.md` (the question-round wording is not in the repo) + Claude (Opus 5.5; lane W4-promos-filters, PR #474) | Answered and built — `/promotions`' house-first ladder (On my menu → Everything I stock → All offers, live counts, box sizes fixed), its facets (vendor, ends soon, search, coarse category, running low over counted stock only), the no-menu banner, bundles tagged n of m, URL state, the 390px apply step, and the tray's first five bottles. See §113's round-6 bracket. |

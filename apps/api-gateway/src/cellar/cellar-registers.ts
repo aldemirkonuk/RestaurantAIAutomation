@@ -313,18 +313,34 @@ export interface MenuLineTally {
 }
 
 /**
+ * The lines `placeMenuLine` could not put on any register — the rows behind
+ * `notPlaced`.
+ *
+ * OD-140, founder 2026-09-25: "Separate list endpoint" — the reveal's "Show me
+ * the N it could not place" reads these through
+ * `GET /cellar/:restaurantId/registers/unplaced`. The count and the list must
+ * never disagree, so the count below is DEFINED as this list's length rather
+ * than computed beside it: there is one filter, and `tallyMenuLines` is a
+ * reading of its output. Order is kept as given.
+ */
+export function unplacedMenuLines<T extends MenuLine>(lines: readonly T[]): T[] {
+  return lines.filter((line) => placeMenuLine(line).length === 0);
+}
+
+/**
  * Tally lines by whether `placeMenuLine` could place them.
  *
  * A line that lands on three registers is ONE placed line, not three — the same
  * rule the per-register counts already enforce in the other direction
  * (`readInventoryKinds`: "two signals about one bottle are not two bottles").
+ *
+ * `notPlaced` is `unplacedMenuLines(lines).length` — the same filter the list
+ * endpoint returns, so "17 not placed" and the 17 rows behind the control are
+ * one computation (OD-140).
  */
 export function tallyMenuLines(lines: readonly MenuLine[]): MenuLineTally {
-  let placed = 0;
-  for (const line of lines) {
-    if (placeMenuLine(line).length > 0) placed += 1;
-  }
-  return { read: lines.length, placed, notPlaced: lines.length - placed };
+  const notPlaced = unplacedMenuLines(lines).length;
+  return { read: lines.length, placed: lines.length - notPlaced, notPlaced };
 }
 
 /* ── the readout ───────────────────────────────────────────────────────── */

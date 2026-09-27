@@ -50,14 +50,23 @@ describe("LogsController", () => {
     await expect(
       controller.getTimeline(user, "someone-elses-house"),
     ).rejects.toMatchObject({ status: HttpStatus.FORBIDDEN });
-    expect(members.assertMembership).toHaveBeenCalledWith("user-1", "someone-elses-house");
+    expect(members.assertMembership).toHaveBeenCalledWith(
+      "user-1",
+      "someone-elses-house",
+    );
     // The registers are never touched for a caller who was refused.
     expect(timeline.getTimeline).not.toHaveBeenCalled();
   });
 
-  it("reads the timeline for a member, passing the correlation id, the parsed limit and the cursor", async () => {
+  it("reads the timeline for a member, passing the correlation id, the parsed limit, the cursor and the membership role", async () => {
     members.assertMembership.mockResolvedValue({ role: "owner" });
-    const page = { events: [], correlationId: null, window: 100, hasMore: false, nextCursor: null };
+    const page = {
+      events: [],
+      correlationId: null,
+      window: 100,
+      hasMore: false,
+      nextCursor: null,
+    };
     timeline.getTimeline.mockResolvedValue(page);
 
     const res = await controller.getTimeline(
@@ -73,7 +82,33 @@ describe("LogsController", () => {
       correlationId: "corr-1",
       limit: 100,
       before: "2026-09-01T08:00:00.000Z",
+      role: "owner",
     });
+  });
+
+  /**
+   * ADR 0218 round 4 (founder round 6z, 2026-09-22), "Hide Away events from
+   * staff (Recommended)". The role passed to the timeline is the fresh
+   * membership row `assertMembership` just read, not a value the caller
+   * supplied — a staff member cannot widen their own read by any request
+   * parameter, because there is no parameter that carries it.
+   */
+  it("passes a staff caller's own membership role, never anything the caller could supply", async () => {
+    members.assertMembership.mockResolvedValue({ role: "staff" });
+    timeline.getTimeline.mockResolvedValue({
+      events: [],
+      correlationId: null,
+      window: 50,
+      hasMore: false,
+      nextCursor: null,
+    });
+
+    await controller.getTimeline(user, "r1");
+
+    expect(timeline.getTimeline).toHaveBeenCalledWith(
+      "r1",
+      expect.objectContaining({ role: "staff" }),
+    );
   });
 
   it("lets a 400 for a malformed cursor through as a 400", async () => {

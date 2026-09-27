@@ -870,11 +870,59 @@ own report is not re-verified beyond what is cited.
 
 | # | Answer (short) | Lands in | State, verified |
 |---|---|---|---|
-| 51 | Build, not waive, the three capability gaps the deletion manifest found (G0.3): vendor branch-locations CRUD, the held low-stock queue, team coverage-template delete + hand-entered sales | Held low-stock: a **new W7 lane PR, not yet opened**. Vendor locations: **#484** (`/vendors`, lane W4-vendors-filters). Team ops: **#436** (seal/grants, lane W3-receiving's sibling) | #484 OPEN `84901e5231`: no `Location` file or string under `apps/web/src/pages/vendors` on this head (`git ls-tree -r pr-484-check -- apps/web/src/pages/vendors`) — gap confirmed, owed. #436 OPEN `068434fd39`: the gateway endpoints exist (`team.controller.ts:293,298,307` coverage-templates, `:326,335` sales/sales-batch) but `team/next/` has no caller of them (`git grep coverage-templates\|sales/batch` on `pr-436-check -- apps/web/src/pages/team/next` = no hits) — gap confirmed, owed, matches `deletion-manifest-draft.md:46`. Held low-stock has no PR at all yet (manifest's own line 45: "`NotificationsNext` has no reader") |
+| 51 | Build, not waive, the three capability gaps the deletion manifest found (G0.3): vendor branch-locations CRUD, the held low-stock queue, team coverage-template delete + hand-entered sales | Held low-stock: **#486** (merged). Vendor locations: **#484** (`/vendors`, lane W4-vendors-filters). Team ops: **#436** (seal/grants, lane W3-receiving's sibling) | #484 OPEN `84901e5231`: no `Location` file or string under `apps/web/src/pages/vendors` on this head (`git ls-tree -r pr-484-check -- apps/web/src/pages/vendors`) — gap confirmed, owed. #436 OPEN `068434fd39`: the gateway endpoints exist (`team.controller.ts:293,298,307` coverage-templates, `:326,335` sales/sales-batch) but `team/next/` has no caller of them (`git grep coverage-templates\|sales/batch` on `pr-436-check -- apps/web/src/pages/team/next` = no hits) — gap confirmed, owed, matches `deletion-manifest-draft.md:46`. **[2026-09-27, this PR's records lane: held low-stock landed and merged as #486 (`gh pr view 486 --json state,mergedAt` → MERGED 2026-09-27T19:21:33Z), the third of the three gaps this row named. Vendor locations and team ops are still owed, both still OPEN.]** |
 | 52 | The legacy vendor world map (G8, `distributors/command/*`) is deleted at cutover, not ported or held; its replacement is a later, separate build — his words, "a more futuristic globe draw, and tab" (its own tab on the vendors page) | [FUTURES.md](../FUTURES.md) §9 "Vendors map — a more futuristic globe draw" (new entry, this PR); resolves `deletion-manifest-draft.md`'s G8 fork in favor of option (A) | Recorded only — no lane builds the new map now. Confirms the manifest's own recommendation (`deletion-manifest-draft.md:667`, "Recommendation: A") with his word; G8's 8 files / 2,346 lines (`:669`) proceed to the cutover PR's deletion set |
-| 53 | Promotions (#474) and vendor-prices (#473/#482) both go live in code at cutover, for every house including new ones, via one flags-to-code PR | **The flags-to-code PR — not yet opened** (`deletion-manifest-draft.md:41`: "No such PR exists" for receiving; the same gap applies to promotions and vendor-prices) | Not built. Preconditions per the manifest: promotions waits on #470 ("Who is writing") being live; vendor-prices waits on #482 (provenance) merging, per his earlier item 30 ("provenance … must land before the flag goes live for any house") |
-| 54 | Fix the promo-expiring alert: add an additive `alerted_at` column to `provider_promotions` and fix `_check_expiring_promos` to use it | **#485** (`fix/conversation-agent-promotions-columns`) | OPEN `8fb484476b`. #485's own CLAIMS row (`CLAIMS.jsonl:544`, `PROVIDER-PROMOTIONS-AGENT-REAL-COLUMNS`) already names this gap: "Not covered: `_check_expiring_promos` still reads `status` and `alerted_at` (strict xfail in that file) pending a decision on the alert ledger" — `_check_expiring_promos` at `provider_conversation_agent.py:2041`, the xfail at `test_conversation_agent_promotions_columns.py:335,342`. No `alerted_at` column exists yet: `provider_promotions`' only definition is the 2026-08-05 baseline (`20260805000000_baseline_from_production.sql:4808-4826`), which has none |
+| 53 | Promotions (#474) and vendor-prices (#473/#482) both go live in code at cutover, for every house including new ones, via one flags-to-code PR | **The flags-to-code PR — not yet opened** (`deletion-manifest-draft.md:41`: "No such PR exists" for receiving; the same gap applies to promotions and vendor-prices) | Not built. Preconditions per the manifest: promotions waits on #470 ("Who is writing") being live; vendor-prices waits on #482 (provenance) merging, per his earlier item 30 ("provenance … must land before the flag goes live for any house"). **[2026-09-27, this PR's records lane: #474 (promotions) MERGED 2026-09-27T18:57:44Z and #470 MERGED 2026-09-27T03:28:26Z — promotions' precondition is met. #473 (vendor-prices base) and #482 (provenance) are both still OPEN, so vendor-prices' precondition is not; the flags-to-code cutover PR itself is still not opened.]** |
+| 54 | Fix the promo-expiring alert: add an additive `alerted_at` column to `provider_promotions` and fix `_check_expiring_promos` to use it | **#485** (`fix/conversation-agent-promotions-columns`) | OPEN `8fb484476b` at the time this row was written. **[2026-09-27, this PR's records lane: #485 MERGED 2026-09-27T03:46:38Z (`gh pr view 485 --json state,mergedAt`). `provider_conversation_agent.py` now carries the 2026-09-26 fix comment (lines ~259-263: "Until 2026-09-26 this agent wrote `status`, `is_recurring` and `source_message_text` — none of which exist") and no longer writes `is_recurring`; CLAIMS row OD-157 (`CLAIMS.jsonl`) flipped from `open` to `resolved` to match, and the corresponding OPEN-DECISIONS.md row still reads open as a known loose end this PR does not close — see §17 below.]** |
 
 None of 51-54 resolves an existing register row or closes a CLAIMS entry; each names
 work still owed to a lane (three to an open PR, one to a PR not yet opened) — matching
 CLAUDE.md §5b, nothing here is written as done until its lane's own citation says so.
+
+## 17. Founder answers, rounds 9-12 (2026-09-26/27) — PR status, verified 2026-09-27
+
+Items 55-70 copied **verbatim** (short form) from project memory
+`founder-answers-2026-09-25-web-rebuild.md` lines 85-104 (its "Round 9" through
+"Round 12" headings). This section records only where each lands and its PR's
+merge state — `gh pr view <n> --json state,mergedAt`, re-read 2026-09-27, this
+PR's own records lane. A lane's own report is not re-verified beyond what is
+cited here.
+
+| # | Answer (short) | Lands in | State, verified 2026-09-27 |
+|---|---|---|---|
+| 55 | Held low-stock band stays READ-ONLY (no send-now, no dismiss) | **#486** | **MERGED** 2026-09-27T19:21:33Z |
+| 56 | Low-stock digest hour follows EACH HOUSE'S timezone (today hard-coded `America/New_York` in `low-stock-alerts.service.ts`) | **#488** (`low-stock-digest-house-clock.spec.ts`, `low-stock-digest-clock.ts`) | OPEN — touches exactly this file (`gh pr diff 488 --name-only`) |
+| 57 | Vendor branches as built in #484: last branch removable; primary passes to oldest remaining | **#484** | OPEN |
+| 58 | Coverage-rule removal keeps a two-step confirm (no undo) | **#436** | OPEN |
+| 59 | #470 #477 #440 #476 may merge after audit; standing rule on README.md index rows | #470, #477, #440, #476 | **#470 MERGED** 2026-09-27T03:28:26Z. **#477 MERGED** 2026-09-27T16:42:34Z. **#440 OPEN.** **#476 OPEN.** The standing rule itself (a PR whose only README.md change is its own ADR's index row needs no separate founder word) is the exception this PR's own merge-train step applies to §1 of its census update (see the §16 gate-owned-paths note below) |
+| 60 | #482 may merge right after #473 merges | #482, #473 | Both **OPEN** — the precondition (#473 merging) has not yet happened, so #482 has not merged either |
+| 61 | Low-stock digest for a house with no readable timezone uses UTC, stated on `/notifications` | **#488** (same PR as item 56/70 — `low-stock-digest-clock.ts`) | OPEN — not yet merged, so the on-page UTC line is not yet live |
+| 62 | Sign-up timezone: send the browser's zone, else save nothing | **#489** (`fix: a new house's timezone is the browser's, else none — never New York (item 62)`) — not named in the founder-answers memory itself, found by following the code | **MERGED** 2026-09-27T16:24:29Z. `apps/api-gateway/src/auth/sign-up-timezone.ts` and `resolveSignUpTimezone()` are on `origin/main`; `auth.service.ts:1343-1344,1474-1475` calls it in place of the old `dto.timezone \|\| 'America/New_York'` fallback |
+| 63 | LOCK ADR 0222 and ADR 0229 as built (#479 flips Status to Locked) | **#479** | OPEN — the ADRs' Status fields are not yet flipped on `main` |
+| 64 | #436's ci.yml edit ALLOWED (4 added steps, add-only) | **#436** (gate-owned: `.github/workflows/ci.yml`) | OPEN. Not this PR's concern to edit — ci.yml stays gate-owned per the founder's own round-10 standing rule (item 59) |
+| 65 | /terms NOINDEX until final legal text + subprocessor list; resolves OD-170 | **#478** | OPEN |
+| 66 | Gmail 403/404 through the RELAY path closes the draft as RELAY_REFUSED | **#429** | OPEN |
+| 67 | #479 fork 6 (pre-account-takeover): drop unproven password_hash on first code verification + end every other session | **#479** (interim (b) moot since #477's `sv` already merged) | #479 **OPEN**. **#477 MERGED** 2026-09-27T16:42:34Z (the interim half) |
+| 68 | #429 OD-174(a): keep the retry for the older-gateway whitelist 400 | **#429** | OPEN |
+| 69 | #429 OD-174(b): park quota/delegation 403 like a 401; other 403/404 still close RELAY_REFUSED | **#429** | OPEN |
+| 70 | #488 digest catch-up: send once house-local time is past today's hour and no digest sent today; a failed dedupe read skips | **#488** (same PR as items 56/61) | OPEN |
+
+**Model-split decision, dated note (2026-09-27):** the founder chose the judge's
+mix for the Opus/Sonnet role split (memory `sonnet-default-opus-for-judgment.md`,
+measured 2026-09-27) — Opus builds and fixes (max 2 attempts) and has final say;
+Sonnet verifies, updates and reviews; PRs stay ≤15 files. This is a model-routing
+call, not an architecture decision with a dedicated ADR slot of its own; it
+belongs in **ADR 0050** (agent dispatch hardness threshold), which is
+**gate-owned** (`.planning/decisions/0050-*.md` is on the merge gate's protected-path
+list) and is **not edited by this PR**. Recorded here as owed: ADR 0050 needs a
+dated bracket for the 2026-09-27 judge's-mix ruling, to be added by a session
+that goes through the gate-owned path's own review, not by a records-lane docs PR.
+
+**Loose end, named per CLAUDE.md §5b:** OD-157's `CLAIMS.jsonl` row was flipped
+`open` → `resolved` in this PR's merge (item 54's fix, #485, already merged and
+verified against `provider_conversation_agent.py`'s own 2026-09-26 comment), but
+`.planning/decisions/OPEN-DECISIONS.md`'s OD-157 row still shows it in the Open
+table. Moving it to the Resolved table is a §0.1 fork this PR does not take —
+OD-157 is a filed defect, not a founder-decision fork, and the register's own
+convention reserves the Resolved table for founder calls — so it is named here
+as owed rather than moved.

@@ -13,9 +13,30 @@ import { WebsocketGateway } from "./websocket.gateway";
  * house's socket room exactly as before it was removed.
  */
 
+/**
+ * `handleConnection` reads `users` (ADR 0225's session-version check) before
+ * it reads `user_restaurant_access` (this file's membership check), so every
+ * stub here must answer both tables: `users` with a session that is always
+ * current (these tests are about the house, not the session — that gate is
+ * `password-change-ends-sessions.spec.ts`'s job), and `user_restaurant_access`
+ * with what the test actually cares about.
+ */
+function currentUsersRow(): any {
+  const builder: any = {
+    select: jest.fn(() => builder),
+    eq: jest.fn(() => builder),
+    maybeSingle: jest.fn(async () => ({
+      data: { session_version: 0 },
+      error: null,
+    })),
+  };
+  return builder;
+}
+
 function makeSupabaseStub(activeRows: Record<string, boolean>) {
   return {
-    from: jest.fn(() => {
+    from: jest.fn((table: string) => {
+      if (table === "users") return currentUsersRow();
       let userId: string | undefined;
       let restaurantId: string | undefined;
       const builder: any = {
@@ -38,10 +59,15 @@ function makeSupabaseStub(activeRows: Record<string, boolean>) {
   };
 }
 
-/** A read that fails must refuse the house, never admit it. */
+/**
+ * A read that fails must refuse the house, never admit it. Only the
+ * `user_restaurant_access` read fails — `users` stays current, so this
+ * exercises the membership read's own failure, not the session check's.
+ */
 function makeFailingSupabaseStub(message: string) {
   return {
-    from: jest.fn(() => {
+    from: jest.fn((table: string) => {
+      if (table === "users") return currentUsersRow();
       const builder: any = {
         select: jest.fn(() => builder),
         eq: jest.fn(() => builder),

@@ -350,8 +350,16 @@ function YourCopySheet({ onClose }: { onClose: () => void }) {
 export default function DigestPost({
   digest,
   onSaveHouse,
+  houseLastPost,
 }: {
   digest: DigestPref | null | undefined;
+  /**
+   * The house's latest post and how many letters went out on it — never who
+   * (sketch 122 Q8, the founder 2026-09-25, round 5, "Count, not who
+   * (Recommended)"). Shown to every member, recipient or not. undefined =
+   * not read (or this gateway does not send it): nothing is said about it.
+   */
+  houseLastPost?: { periodKey: string; sent: number; atCap: boolean } | null;
   onSaveHouse: (patch: {
     digestEnabled?: boolean;
     digestHour?: number;
@@ -386,6 +394,15 @@ export default function DigestPost({
         The house's post arms a scheduled send for everyone; your copy is whether you
         personally receive one, on your own cadence.
       </p>
+      {houseLastPost !== undefined && (
+        <p className="rc-plain" data-testid="rc-post-count">
+          {houseLastPost === null
+            ? 'No letter has gone out from this house yet.'
+            : `Last sent ${fmtDay(houseLastPost.periodKey)}: ${houseLastPost.atCap ? 'at least ' : ''}${
+                houseLastPost.sent
+              } ${houseLastPost.sent === 1 ? 'letter' : 'letters'}. Who received one is not shown.`}
+        </p>
+      )}
 
       {open === 'house' && (
         <HousePostSheet digest={digest} onClose={() => setOpen(null)} onSave={onSaveHouse} />
