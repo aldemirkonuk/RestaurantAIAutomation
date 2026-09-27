@@ -2,6 +2,7 @@ import { ForbiddenException } from "@nestjs/common";
 import { JwtAuthGuard } from "./jwt-auth.guard";
 import { ALLOW_UNVERIFIED_KEY } from "../decorators/allow-unverified.decorator";
 import { IS_PUBLIC_KEY } from "../decorators/public.decorator";
+import { ALLOWS_NO_HOUSE_KEY } from "../../common/tenant/allows-no-house.decorator";
 
 /**
  * OD-79 — the wiring test, and the reason it exists.
@@ -56,7 +57,9 @@ describe("JwtAuthGuard — email verification is actually reached", () => {
     stubPassport(guard);
 
     await expect(
-      guard.canActivate(makeContext({ userId: "u1", emailVerified: true })),
+      guard.canActivate(
+        makeContext({ userId: "u1", emailVerified: true, restaurantId: "r1" }),
+      ),
     ).resolves.toBe(true);
   });
 
@@ -65,7 +68,9 @@ describe("JwtAuthGuard — email verification is actually reached", () => {
     stubPassport(guard);
 
     await expect(
-      guard.canActivate(makeContext({ userId: "u1", emailVerified: false })),
+      guard.canActivate(
+        makeContext({ userId: "u1", emailVerified: false, restaurantId: "r1" }),
+      ),
     ).resolves.toBe(true);
   });
 
@@ -75,5 +80,56 @@ describe("JwtAuthGuard — email verification is actually reached", () => {
 
     await expect(guard.canActivate(makeContext(null))).resolves.toBe(true);
     expect(passport).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * ADR 0164, R4: a session in no house reaches only the routes that say it may.
+ * The wiring test, for the reason the email one above exists: a check that is
+ * present but never called would pass its own unit test.
+ */
+describe("JwtAuthGuard — a session in no house is held to @AllowsNoHouse routes", () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  it("refuses a session in no house on an ordinary route, with HOUSE_REQUIRED", async () => {
+    const guard = makeGuard({});
+    stubPassport(guard);
+
+    const err = await guard
+      .canActivate(makeContext({ userId: "u1", emailVerified: true, restaurantId: null }))
+      .then(
+        () => null,
+        (e: unknown) => e,
+      );
+    expect(err).toBeInstanceOf(ForbiddenException);
+    expect((err as ForbiddenException).getResponse()).toMatchObject({
+      code: "HOUSE_REQUIRED",
+    });
+  });
+
+  it("admits a session in no house on an @AllowsNoHouse route", async () => {
+    const guard = makeGuard({ [ALLOWS_NO_HOUSE_KEY]: true });
+    stubPassport(guard);
+
+    await expect(
+      guard.canActivate(
+        makeContext({ userId: "u1", emailVerified: true, restaurantId: null }),
+      ),
+    ).resolves.toBe(true);
+  });
+
+  it("sends an unverified person in no house to verify first", async () => {
+    const guard = makeGuard({});
+    stubPassport(guard);
+
+    const err = await guard
+      .canActivate(makeContext({ userId: "u1", emailVerified: false, restaurantId: null }))
+      .then(
+        () => null,
+        (e: unknown) => e,
+      );
+    expect((err as ForbiddenException).getResponse()).toMatchObject({
+      code: "EMAIL_NOT_VERIFIED",
+    });
   });
 });

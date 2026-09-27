@@ -9,6 +9,7 @@ import { Button } from '../components/ui'
 import { toast } from 'sonner'
 import { getOnboardingProgress } from '../services/api/menus'
 import { apiClient, getErrorMessage } from '../services/api/client'
+import { storeSession } from '../lib/houseMemory'
 
 export function VerifyEmail() {
   const publicDesign = usePublicDesign()
@@ -35,13 +36,18 @@ export function VerifyEmail() {
         refreshToken: string
       }>('/auth/verify-email', { token })
 
-      // Store new tokens that include emailVerified: true in JWT payload
-      localStorage.setItem('accessToken', data.accessToken)
-      localStorage.setItem('refreshToken', data.refreshToken)
+      // Store new tokens that include emailVerified: true in JWT payload.
+      // One helper stores every session, so `activeRestaurantId` follows the
+      // token's house (ADR 0164).
+      const house = storeSession(data.accessToken, data.refreshToken)
       setVerified(true)
       toast.success('Email verified! Redirecting...')
-      // Check if menu already uploaded (re-verification flows) → skip /get-started
-      const progress = await getOnboardingProgress().catch(() => null)
+      // An account-only signup (ADR 0213) has no house yet: its next step is
+      // opening one, and every house-scoped read would answer 403
+      // HOUSE_REQUIRED and send it to the chooser (ADR 0164). Only a session
+      // in a house asks whether the menu is already uploaded (re-verification
+      // flows) and skips /get-started.
+      const progress = house ? await getOnboardingProgress().catch(() => null) : null
       const destination = progress?.menu_uploaded ? '/' : '/get-started'
       setTimeout(() => {
         window.location.href = destination
