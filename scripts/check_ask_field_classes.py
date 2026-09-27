@@ -564,10 +564,27 @@ def self_test() -> int:
     return 0
 
 
+def _with_fixture_floor(code: int, self_testing: bool) -> int:
+    """Also run ADR 0145 build task 4's fixture floor (2026-09-25).
+
+    `check_ask_readings_have_fixtures.py` holds that every Reading the bound
+    ask can run keeps both of its tests. It rides on this guard because this
+    guard's two CI steps already run on every PR, and CI's workflow file is
+    gate-owned; the combined exit is the worse of the two (2 over 1 over 0),
+    so a fixture floor that cannot be checked is never a pass.
+    """
+    import check_ask_readings_have_fixtures as fixtures
+
+    print("-- ADR 0145 build task 4: the fixture floor --")
+    other = fixtures.self_test() if self_testing else fixtures.run()
+    return max(code, other)
+
+
 if __name__ == "__main__":
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
     args = sys.argv[1:]
     if args == ["--self-test"]:
-        sys.exit(self_test())
+        sys.exit(_with_fixture_floor(self_test(), True))
     expect = None
     if args[:1] == ["--expect-restricted"] and len(args) == 2:
         expect = [x for x in args[1].split(",") if x]
@@ -576,4 +593,4 @@ if __name__ == "__main__":
             "usage: check_ask_field_classes.py [--expect-restricted a,b,c | --self-test]"
         )
         sys.exit(2)
-    sys.exit(run(expect))
+    sys.exit(_with_fixture_floor(run(expect), False))
