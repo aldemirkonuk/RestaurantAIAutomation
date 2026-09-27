@@ -29,12 +29,12 @@
   leave outlive removal, member_id foreign key dropped
 - **Links:** [[0088-a-team-change-is-recorded-and-a-wage-is-not-invented]],
   [[0051-rebuilt-pages-show-live-data-only]], ADR 0117 (Q25, a house names its
-  money), `supabase/migrations/20261021110000_a_wage_is_the_owners_and_every_change_is_kept.sql`,
-  `supabase/migrations/20261021110100_a_shift_over_four_hours_has_a_break.sql`,
-  `supabase/migrations/20261021110110_a_wage_record_is_kept_five_years_after_leaving.sql`,
-  `supabase/migrations/20261021110200_a_persons_shifts_and_leave_outlive_their_removal.sql`,
-  `supabase/migrations/20261021110210_a_removed_persons_credentials_are_kept_their_availability_is_not.sql`,
-  `supabase/migrations/20261021110220_an_owner_may_let_a_manager_see_and_set_pay.sql`
+  money), `supabase/migrations/20261101100000_a_wage_is_the_owners_and_every_change_is_kept.sql`,
+  `supabase/migrations/20261101100100_a_shift_over_four_hours_has_a_break.sql`,
+  `supabase/migrations/20261101100110_a_wage_record_is_kept_five_years_after_leaving.sql`,
+  `supabase/migrations/20261101100200_a_persons_shifts_and_leave_outlive_their_removal.sql`,
+  `supabase/migrations/20261101100210_a_removed_persons_credentials_are_kept_their_availability_is_not.sql`,
+  `supabase/migrations/20261101100220_an_owner_may_let_a_manager_see_and_set_pay.sql`
   (both added 2026-09-25, round 4),
   **[Renumbered 2026-09-25, merging `origin/main` 059169a5 into #440: the four files were `20260921170200`, `20260921170900`, `20260921170910` and `20260922013000`, all below main's newest `20260922231300`, which ADR 0212's `check_migration_order.py` refuses. Moved by `git mv` to `20260925180000`, `…180100`, `…180110`, `…180200`, same order, content unchanged except the version numbers they cite; every citation in this ADR, CLAIMS and the code was rewritten to the new numbers. No main migration after `20260921170200` touches `team_members`, `shifts`, `leave_requests` or `team_member_*`, so the later apply position changes nothing they depend on.]**
   **[Renumbered again 2026-09-26, merging `origin/main` into #440 for the merge train (train/pr-440): all six files (the four above plus the two round-4 files, `…180210` and `…180220`) were `20260925180000`/`…180100`/`…180110`/`…180200`/`…180210`/`…180220`, behind main's newest `20260926120000` (#471, sessions-follow-membership). Moved by `git mv` to `20260927150000`/`…150100`/`…150110`/`…150200`/`…150210`/`…150220` (same relative spacing, chosen past every version any other open PR branch claimed at the time), same order, content unchanged except the version numbers they cite; every citation in this ADR, CLAIMS and the code was rewritten to the new numbers. Re-verified with `check_migration_order.py` and `check_decision_claims.sh` on the merged tree.]**
@@ -43,6 +43,7 @@
   **[Renumbered a fourth time, 2026-09-27 (round 2), merge-train update of PR #440: the branch was behind `origin/main` (new ceiling `20260930100100`, #441's Away migration), which `check_migration_versions_unique.py` also flagged as a direct version collision with open PR #479's `20260929030000_user_passkeys.sql`. Moved by `git mv` to `20260930110000`/`…110100`/`…110110`/`…110200`/`…110210`/`…110220`, same relative spacing, past both ceilings. Every live citation (the file paths above, the Decision-section prose, `OPEN-DECISIONS.md`, `README.md`'s index row, `CLAIMS.jsonl`, and the six `apps/api-gateway/src/team/*.ts`/`*.spec.ts` files) rewritten with the old→new pairs; the changelog rows and rename brackets ABOVE this one, which narrate what earlier rounds renamed FROM and TO, were left citing the numbers true at the time they describe — sweeping them forward would misstate which round did which rename, the exact defect the 2026-09-27 (round 1) bracket above corrected once already. `CLAIMS.jsonl` row `ADR-0215-NO-STALE-180XXX-MIGRATION-CITATIONS` amended again: verify now greps three retired prefixes (`20260925180`, `20260927150`, `20260929030`), not two. `git grep 20260929030 -- supabase/migrations` returns nothing as of this bracket.]**
   **[Corrected 2026-09-27, ADR 0090 audit of #440 at 25e55b2c: the bracket above is the FIFTH renumber, not the fourth. Between the c093e731 bracket and it, commit `84debc021` (merging #477's `20260929020000`) moved the six files `20260928120xxx` → `20260929030xxx` and swept citations without a bracket here — which is why the 583184b7 correction bracket above now reads `20260929030110`/`…030200`/`…030210` for files that were `20260927150xxx` when it was written. `CLAIMS.jsonl` `ADR-0215-NO-STALE-180XXX-MIGRATION-CITATIONS` now also greps the retired `20260928120` prefix.]**
   **[Renumbered a sixth time, 2026-09-27, same fix round (merge of `origin/main` 922150404, #483, whose `20261001000000_a_briefing_names_who_marked_it.sql` put the six files behind main's newest again — `check_migration_order.py` refused all six): moved by `git mv` `20260930110xxx` → `20261021110000`/`…110100`/`…110110`/`…110200`/`…110210`/`…110220`, past every version an open PR branch claimed at the time (highest `20261020000100`), same order and spacing, content unchanged except the versions they cite. Every live citation (the Links list above, the Decision/Consequences/Evidence prose, the gateway team files, `CLAIMS.jsonl`, `OPEN-DECISIONS.md`, `README.md`'s index row, the three migrations' own comments) rewritten; the two brackets above and the changelog rows that narrate the fifth renumber keep the numbers true when they were written. `ADR-0215-NO-STALE-180XXX-MIGRATION-CITATIONS` greps the retired `20260930110` prefix too.]**
+  **[Renumbered a seventh time, 2026-09-27, founder item 71 round (merge of `origin/main` ef8ecdf30, #435, whose ADR 0207 migrations run up to `20261021150000` — `check_migration_order.py` put the six files behind it again): moved by `git mv` `20261021110xxx` → `20261101100000`/`…100100`/`…100110`/`…100200`/`…100210`/`…100220`, past every version an open PR branch claimed at the time (highest `20261031174623`, `fix/ical-token-minted-on-act`), same order and spacing, content unchanged except the versions they cite. Every live citation rewritten; the sixth-renumber bracket above and the changelog rows keep the numbers true when they were written. `ADR-0215-NO-STALE-180XXX-MIGRATION-CITATIONS` greps the retired `20261021110` prefix too.]**
   `apps/api-gateway/src/team/pay-rules.ts`,
   `apps/api-gateway/src/team/wage-record-retention.service.ts`,
   `apps/api-gateway/src/team/team-pay.spec.ts`,
@@ -206,7 +207,7 @@ of the work" is measured on:
 
 **Where a recorded break lives.** `shift_breaks` (baseline) holds planned
 breaks with a start time and a cover; no product path writes it. A new nullable
-`shifts.recorded_break_min` (migration `20261021110100`) is written in the same
+`shifts.recorded_break_min` (migration `20261101100100`) is written in the same
 UPDATE as the re-priced cost, so the record and the price commit or fail
 together: `NULL` nothing recorded (assumed if over 4 hours), `0` recorded as no
 break taken, `n` minutes. Rejected: writing `shift_breaks` rows (a second
@@ -437,7 +438,7 @@ questions round 2 left open (see "Answered, 2026-09-22 (round 6y)" below):
     delete their shifts and leave requests straight away; they are kept and
     end with the wage record (same five-year clock, same deletion job)" (open
     question 5, "Keep them 5 years (Recommended)"). Migration
-    `20261021110200`:
+    `20261101100200`:
     - `shifts.member_id` and `time_off_requests.member_id` drop their foreign
       key to `team_members` (the same reason `team_member_wage_changes.member_id`
       already carries none: a row that must outlive its person's removal
@@ -507,7 +508,7 @@ questions round 2 left open (see "Answered, 2026-09-22 (round 6y)" below):
 21. **A manager's pay switch (round 4, 2026-09-25).** Founder pick: "Pay
     visibility only (Recommended)" — "The switch decides whether that manager
     can see and edit pay; their other rights are unchanged."
-    `user_restaurant_access.team_pay_access` (migration `20261021110220`,
+    `user_restaurant_access.team_pay_access` (migration `20261101100220`,
     `BOOLEAN NOT NULL DEFAULT false`) is the switch, per manager, per house,
     on the membership row that already decides the role here — so it goes
     when the membership goes. `seesMoney` takes a viewer: the owner always; a
@@ -578,7 +579,7 @@ questions round 2 left open (see "Answered, 2026-09-22 (round 6y)" below):
     from the removal's own audit row (`team_member_removed`,
     `changes.display_name`, written by `deleteMember` since ADR 0088); the
     departure row holds no name on purpose (KVKK: the minimum,
-    `20261021110110`), so none was added — a missing audit row reads "Name not
+    `20261101100110`), so none was added — a missing audit row reads "Name not
     recorded". A total is `null` when any worked shift had no cost on file,
     never a partial. Every read binds its error: a failed read is a 500 in
     words, never an empty list that would read as "nobody has left". The team
@@ -589,7 +590,7 @@ questions round 2 left open (see "Answered, 2026-09-22 (round 6y)" below):
 23. **Credentials are kept, availability is not (round 4, 2026-09-25).**
     Founder pick: "Credentials yes, availability no (Recommended)" —
     "Certificates can matter for audits; availability has no value once
-    someone leaves." Migration `20261021110210` drops
+    someone leaves." Migration `20261101100210` drops
     `team_certifications_member_id_fkey`; a departure is stamped for a
     person with a credential; `purge_expired_credential_records()` (SECURITY
     INVOKER, service_role only) deletes a departed person's credentials past
@@ -636,7 +637,7 @@ questions round 2 left open (see "Answered, 2026-09-22 (round 6y)" below):
   money-currency baseline (4 sites) for a follow-up; the house currency is
   sent only with the owner's money today. (g) The gateway now names
   `shifts.recorded_break_min` in its shift reads: served before migration
-  `20261021110100` has applied, those reads fail and answer a 500 in words,
+  `20261101100100` has applied, those reads fail and answer a 500 in words,
   not a wrong figure. (h) Only the redesigned shift sheet has the break field;
   the legacy desk (`pages/team/command/**`) saves shifts without one, which
   leaves a recorded break as it was. (i) The retention job runs in every
@@ -657,7 +658,7 @@ questions round 2 left open (see "Answered, 2026-09-22 (round 6y)" below):
   one.] **[Resolved 2026-09-25, round 4 item 19, "Credentials yes,
   availability no (Recommended)": credentials are now kept on the same clock
   (`team_certifications_member_id_fkey` dropped, migration
-  `20261021110210`); availability still cascades, on purpose — item 23.]** (k) A departure is stamped once
+  `20261101100210`); availability still cascades, on purpose — item 23.]** (k) A departure is stamped once
   (`ON CONFLICT DO NOTHING`): a roster row removed, re-inserted under the SAME
   id and removed again would keep the first date. No product path re-inserts
   an id (every insert takes a generated one), so this is noted, not guarded.
@@ -767,7 +768,7 @@ shows what was asked and that nothing was silently dropped (CLAUDE.md §5b):**
    the same five years, or is the wage record alone what the pick meant?
    As built, only the wage record is kept.~~ **Answered: "Keep them 5 years
    (Recommended)" — built (item 20): the same five-year clock, the same job,
-   migration `20261021110200`.**
+   migration `20261101100200`.**
 
 Nothing from rounds 1 and 2 is open. The round-3 last call (2026-09-22)
 returned two new questions to the orchestrator, not filed as OD rows and not
@@ -883,7 +884,7 @@ silently; making the new wage wait for an owner's approval.
   credential purged then the departure cleared past five years, a live
   person's credential untouched, the purge service_role only, the pay column
   NOT NULL default false, no client write grant on `user_restaurant_access`.
-  Control (build stopped before `20261021110210`): 3 failures, as it must.
+  Control (build stopped before `20261101100210`): 3 failures, as it must.
   Two SQL mutations (the credential clause removed from `tmd_guard`, and from
   the wage purge's departure cleanup) each fail the probe. Probe:
   `scratchpad/w2ct440/probe.mjs` of session 6c6d8b93 (not committed; the
