@@ -14,7 +14,7 @@ import {
  * Built 2026-09-21 (founder answer 2, "Build all now") to close the gap ADR
  * 0111 already named: `handleMemoSave` in `CalendarPage.tsx` has collected
  * this note and thrown it away since the prompt shipped ("Future: persist to
- * documents API"). See `20260930150300_a_meeting_note_gets_its_own_table.sql`
+ * documents API"). See `20261101100300_a_meeting_note_gets_its_own_table.sql`
  * for why this is its own table rather than a write into
  * `calendar_events.description`.
  *
