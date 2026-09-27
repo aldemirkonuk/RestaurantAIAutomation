@@ -159,9 +159,11 @@ export function isDigestDueFromReading(
  * SAME-DAY CATCH-UP (founder item 70, 2026-09-27, verbatim "Catch up same day
  * (Recommended)"). A house's digest is DUE on every hourly tick from the one
  * that first reaches its local digest hour until local midnight. The sweep
- * sends on a due tick only when `last_digest_at` is not already on (or after)
- * that house-local date (`digestAlreadySentOn`), so the first due tick that is
- * actually evaluated sends and every later one that day is a no-op.
+ * sends on a due tick only when the house's digest fence
+ * (`low_stock_digest_fence.attempted_at`, founder item 74; `last_digest_at`
+ * before it) is not already on (or after) that house-local date
+ * (`digestAlreadySentOn`), so the first due tick that is actually evaluated
+ * sends and every later one that day is a no-op.
  *
  * This replaced a crossing-only rule (true only on the one tick that crossed
  * the hour), under which a crossing tick that was never evaluated — a failed

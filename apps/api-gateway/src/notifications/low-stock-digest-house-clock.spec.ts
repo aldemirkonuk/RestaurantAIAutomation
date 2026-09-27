@@ -6,10 +6,16 @@ import { hourTick } from "./low-stock-digest-clock";
  * `makeDbMock` because that one returns the SAME rows for every table
  * (`v_low_stock_items`, `restaurants`, `notification_preferences`,
  * `inventory_alert_state`), which cannot express "an Istanbul house and an LA
- * house with different digest hours" or "restaurants has no zone but
- * inventory_alert_state has a last_digest_at". This mock varies by table AND
- * (for `restaurants` / `notification_preferences` / `inventory_alert_state`)
- * by the restaurant_id in the query.
+ * house with different digest hours" or "restaurants has no zone but the
+ * house was already sent today". This mock varies by table AND (for
+ * `restaurants` / `notification_preferences` / `low_stock_digest_fence`) by
+ * the restaurant_id in the query.
+ *
+ * `low_stock_digest_fence` (founder item 74) is kept the way PostgREST keeps
+ * it: `attempted_at` is stored and returned as `…+00:00`, and the claim's
+ * UPDATE matches only when its `attempted_at` filter is that exact string —
+ * so a claim that compared a re-formatted instant would never match, and a
+ * claim racing a newer row loses, as the WHERE does in Postgres.
  */
 function makeDigestDbMock(opts: {
   lowStockRows: any[];
@@ -20,10 +26,26 @@ function makeDigestDbMock(opts: {
     country?: string | null;
   }>;
   prefsByRestaurant: Record<string, any[]>;
-  /** Seed `inventory_alert_state.last_digest_at`, per restaurant. */
-  initialLastDigestAt?: Record<string, string>;
-  /** Force the `last_digest_at` read itself to error (network/DB failure). */
-  lastDigestAtReadError?: boolean;
+  /**
+   * Seed `low_stock_digest_fence`, per restaurant: the tick of the last
+   * attempt (ISO) and, optionally, the house date it was for.
+   */
+  initialFence?: Record<string, { attempted_at: string; sent_on?: string }>;
+  /** Force the batched fence read itself to error (network/DB failure). */
+  fenceReadError?: boolean;
+  /** Force every fence claim (insert or compare-and-set update) to error. */
+  fenceWriteError?: boolean;
+  /**
+   * What the fence READ returns for a house instead of the stored row —
+   * a replica that read the fence before another run claimed it. `null`
+   * reads as "no row". The claim still meets the stored row.
+   */
+  staleFenceRead?: Record<
+    string,
+    { attempted_at: string; sent_on: string } | null
+  >;
+  /** Rows the held-queue read (`listHeldCrossings`) returns (spec q). */
+  heldRows?: any[];
   /**
    * Force the `restaurants` read itself to error (network/DB failure) —
    * exercised by getRestaurantHouses' `ok` flag, distinct from a house that
@@ -44,18 +66,80 @@ function makeDigestDbMock(opts: {
    */
   memberIdsReadError?: boolean;
 }) {
-  const lastDigestAt: Record<string, string> = {
-    ...(opts.initialLastDigestAt ?? {}),
-  };
+  const lastDigestAt: Record<string, string> = {};
   const upsertRows: any[] = [];
+  /** PostgREST's text for a timestamptz: `2026-09-26T09:00:00+00:00`. */
+  const pgTs = (iso: string) =>
+    new Date(iso).toISOString().replace(/\.000Z$/, "+00:00");
+  const fence: Record<string, { sent_on: string; attempted_at: string }> = {};
+  for (const [rid, f] of Object.entries(opts.initialFence ?? {})) {
+    fence[rid] = {
+      sent_on: f.sent_on ?? f.attempted_at.slice(0, 10),
+      attempted_at: pgTs(f.attempted_at),
+    };
+  }
+  const fenceClaims: Array<{ restaurant_id: string; sent_on: string }> = [];
+  const FENCE = "low_stock_digest_fence";
+
+  function claimInsert(row: any): Promise<any> {
+    if (opts.fenceWriteError) {
+      return Promise.resolve({
+        data: null,
+        error: { message: "write failed" },
+      });
+    }
+    if (fence[row.restaurant_id]) {
+      return Promise.resolve({
+        data: null,
+        error: { code: "23505", message: "duplicate key" },
+      });
+    }
+    fence[row.restaurant_id] = {
+      sent_on: row.sent_on,
+      attempted_at: pgTs(row.attempted_at),
+    };
+    fenceClaims.push({
+      restaurant_id: row.restaurant_id,
+      sent_on: row.sent_on,
+    });
+    return Promise.resolve({
+      data: [{ restaurant_id: row.restaurant_id }],
+      error: null,
+    });
+  }
+
+  function claimUpdate(row: any, eqs: Array<[string, any]>): Promise<any> {
+    if (opts.fenceWriteError) {
+      return Promise.resolve({
+        data: null,
+        error: { message: "write failed" },
+      });
+    }
+    const rid = eqs.find(([c]) => c === "restaurant_id")?.[1];
+    const expected = eqs.find(([c]) => c === "attempted_at")?.[1];
+    const cur = rid ? fence[rid] : undefined;
+    if (!cur || expected === undefined || cur.attempted_at !== expected) {
+      return Promise.resolve({ data: [], error: null });
+    }
+    fence[rid] = { sent_on: row.sent_on, attempted_at: pgTs(row.attempted_at) };
+    fenceClaims.push({ restaurant_id: rid, sent_on: row.sent_on });
+    return Promise.resolve({ data: [{ restaurant_id: rid }], error: null });
+  }
 
   function chainFor(table: string): any {
     const chain: any = {
       _eqs: [] as Array<[string, any]>,
       _in: undefined as string[] | undefined,
       // `select` also ends the digest stamp's conditional clear-hold write
-      // (`update(row)...or(...).select(...)`, upsertState since #486).
-      select: () => (chain._update ? writeStamp(chain._update) : chain),
+      // (`update(row)...or(...).select(...)`, upsertState since #486), and
+      // the fence's compare-and-set update.
+      select: () =>
+        chain._update
+          ? table === FENCE
+            ? claimUpdate(chain._update, chain._eqs)
+            : writeStamp(chain._update)
+          : chain,
+      insert: (row: any) => ({ select: () => claimInsert(row) }),
       or: () => chain,
       eq: (col: string, val: any) => {
         chain._eqs.push([col, val]);
@@ -78,23 +162,7 @@ function makeDigestDbMock(opts: {
         // Awaited bare, or ended with `.select()` (the clear-hold insert).
         return { then: (r: any) => result.then(r), select: () => result };
       },
-      maybeSingle: () => {
-        if (table === "inventory_alert_state") {
-          if (opts.lastDigestAtReadError) {
-            return Promise.resolve({
-              data: null,
-              error: { message: "fetch failed" },
-            });
-          }
-          const rid = chain._eqs.find(([c]: any) => c === "restaurant_id")?.[1];
-          const at = rid ? lastDigestAt[rid] : undefined;
-          return Promise.resolve({
-            data: at ? { last_digest_at: at } : null,
-            error: null,
-          });
-        }
-        return Promise.resolve({ data: null, error: null });
-      },
+      maybeSingle: () => Promise.resolve({ data: null, error: null }),
       then: (resolve: any) => {
         if (table === "v_low_stock_items") {
           return resolve({ data: opts.lowStockRows, error: null });
@@ -124,6 +192,32 @@ function makeDigestDbMock(opts: {
         }
         if (table === "notifications") {
           return resolve({ data: [], error: null });
+        }
+        if (table === FENCE) {
+          if (opts.fenceReadError) {
+            return resolve({ data: null, error: { message: "fetch failed" } });
+          }
+          const ids = (chain._in as string[] | undefined) ?? [];
+          const stale = opts.staleFenceRead;
+          const rows = ids.flatMap((rid) => {
+            if (stale && rid in stale) {
+              const r = stale[rid];
+              return r
+                ? [
+                    {
+                      restaurant_id: rid,
+                      sent_on: r.sent_on,
+                      attempted_at: pgTs(r.attempted_at),
+                    },
+                  ]
+                : [];
+            }
+            return fence[rid] ? [{ restaurant_id: rid, ...fence[rid] }] : [];
+          });
+          return resolve({ data: rows, error: null });
+        }
+        if (table === "inventory_alert_state" && opts.heldRows) {
+          return resolve({ data: opts.heldRows, error: null });
         }
         return resolve({ data: [], error: null });
       },
@@ -158,6 +252,8 @@ function makeDigestDbMock(opts: {
     } as any,
     upsertRows,
     lastDigestAt,
+    fence,
+    fenceClaims,
   };
 }
 
@@ -320,8 +416,8 @@ describe("LowStockAlertsService digest sweep — each house's own clock", () => 
     expect(gmail.sendLowStockDigest).toHaveBeenCalledTimes(1);
   });
 
-  describe("e. durable gate on last_digest_at", () => {
-    it("a last_digest_at on the SAME house date suppresses a second send at the same tick", async () => {
+  describe("e. durable gate on the digest fence (founder item 74)", () => {
+    it("a fence on the SAME house date suppresses a second send at the same tick", async () => {
       const tick = hourTick(new Date());
       const zone = "America/New_York";
       const hour = Math.floor(
@@ -349,30 +445,34 @@ describe("LowStockAlertsService digest sweep — each house's own clock", () => 
       expect(gmail.sendLowStockDigest).toHaveBeenCalledTimes(1); // unchanged
     });
 
-    it("a last_digest_at on a PREVIOUS house date still sends", async () => {
-      const { mock } = makeDigestDbMock({
+    it("a fence on a PREVIOUS house date still sends, and the claim moves it to today", async () => {
+      const { mock, fence } = makeDigestDbMock({
         lowStockRows: [makeLowStockRow({ restaurant_id: "ny" })],
         restaurantsRows: [
           { id: "ny", name: "NY House", timezone: "America/New_York" },
         ],
         prefsByRestaurant: { ny: dailyPrefs("12:00") },
-        initialLastDigestAt: { ny: "2026-09-01T16:00:00.000Z" }, // 2026-09-01 12:00 EDT
+        initialFence: { ny: { attempted_at: "2026-09-01T16:00:00.000Z" } }, // 2026-09-01 12:00 EDT
       });
       const svc = build(mock);
 
       // 2026-09-26T16:00Z = 2026-09-26 12:00 EDT — a later house date.
       await svc.runDigestSweepAt(new Date("2026-09-26T16:00:00Z"));
       expect(gmail.sendLowStockDigest).toHaveBeenCalledTimes(1);
+      expect(fence.ny).toEqual({
+        sent_on: "2026-09-26",
+        attempted_at: "2026-09-26T16:00:00+00:00",
+      });
     });
 
-    it("a read error on last_digest_at SKIPS the send (never risks a double) and warns", async () => {
+    it("a read error on the fence SKIPS the send (never risks a double) and warns", async () => {
       const { mock } = makeDigestDbMock({
         lowStockRows: [makeLowStockRow({ restaurant_id: "ny" })],
         restaurantsRows: [
           { id: "ny", name: "NY House", timezone: "America/New_York" },
         ],
         prefsByRestaurant: { ny: dailyPrefs("12:00") },
-        lastDigestAtReadError: true,
+        fenceReadError: true,
       });
       const svc = build(mock);
       const warnSpy = jest.spyOn((svc as any).logger, "warn");
@@ -545,8 +645,8 @@ describe("LowStockAlertsService digest sweep — each house's own clock", () => 
       ],
       prefsByRestaurant: { ny: dailyPrefs("12:00") },
       // Already sent today at 12:00 EDT by another replica / a prior run.
-      initialLastDigestAt: { ny: "2026-09-26T16:00:00.000Z" },
-      lastDigestAtReadError: true,
+      initialFence: { ny: { attempted_at: "2026-09-26T16:00:00.000Z" } },
+      fenceReadError: true,
     };
     const { mock } = makeDigestDbMock(opts);
     const svc = build(mock);
@@ -564,16 +664,16 @@ describe("LowStockAlertsService digest sweep — each house's own clock", () => 
     expect(unreadable).toHaveLength(2);
     expect(String(unreadable[0][0])).toContain("skipping this tick");
 
-    // The read works again: today's stamp is seen, still no send today.
-    opts.lastDigestAtReadError = false;
+    // The read works again: today's claim is seen, still no send today.
+    opts.fenceReadError = false;
     await svc.runDigestSweepAt(new Date("2026-09-26T19:00:00Z"));
     expect(gmail.sendLowStockDigest).not.toHaveBeenCalled();
 
     // Next day: the read fails at the hour, then works — sent once, late.
-    opts.lastDigestAtReadError = true;
+    opts.fenceReadError = true;
     await svc.runDigestSweepAt(new Date("2026-09-27T16:00:00Z"));
     expect(gmail.sendLowStockDigest).not.toHaveBeenCalled();
-    opts.lastDigestAtReadError = false;
+    opts.fenceReadError = false;
     await svc.runDigestSweepAt(new Date("2026-09-27T17:00:00Z"));
     await svc.runDigestSweepAt(new Date("2026-09-27T18:00:00Z"));
     expect(gmail.sendLowStockDigest).toHaveBeenCalledTimes(1);
@@ -583,14 +683,19 @@ describe("LowStockAlertsService digest sweep — each house's own clock", () => 
   });
 
   it("l. restart: a gateway down across the house's hour sends on its first tick after restart, and a second restart that day does not send again", async () => {
-    const { mock, lastDigestAt } = makeDigestDbMock({
+    const { mock, lastDigestAt, fence } = makeDigestDbMock({
       lowStockRows: [makeLowStockRow({ restaurant_id: "ist" })],
       restaurantsRows: [
         { id: "ist", name: "Istanbul House", timezone: "Europe/Istanbul" },
       ],
       prefsByRestaurant: { ist: dailyPrefs("12:00") },
       // Yesterday's digest, 2026-09-25 12:00 Istanbul.
-      initialLastDigestAt: { ist: "2026-09-25T09:00:00.000Z" },
+      initialFence: {
+        ist: {
+          attempted_at: "2026-09-25T09:00:00.000Z",
+          sent_on: "2026-09-25",
+        },
+      },
     });
 
     // Down from 08:00Z to 12:00Z (11:00-15:00 Istanbul) — the 09:00Z tick
@@ -603,9 +708,13 @@ describe("LowStockAlertsService digest sweep — each house's own clock", () => 
       "low_stock_digest:2026-09-26",
     );
     expect(lastDigestAt.ist).toBe("2026-09-26T12:00:00.000Z");
+    expect(fence.ist).toEqual({
+      sent_on: "2026-09-26",
+      attempted_at: "2026-09-26T12:00:00+00:00",
+    });
 
     // Another restart the same day: the new process has no memory of the
-    // send; only last_digest_at stops a second one.
+    // send; only the fence stops a second one.
     const second = build(mock);
     for (let h = 14; h <= 20; h++) {
       await runAt(second, `2026-09-26T${h}:00:00Z`);
@@ -613,7 +722,7 @@ describe("LowStockAlertsService digest sweep — each house's own clock", () => 
     expect(gmail.sendLowStockDigest).toHaveBeenCalledTimes(1);
   });
 
-  it("m. an unwritten last_digest_at stamp warns, and this process still does not send again that day", async () => {
+  it("m. an unwritten last_digest_at stamp warns, and the fence still stops a second send that day — by a restarted process too", async () => {
     const { mock } = makeDigestDbMock({
       lowStockRows: [makeLowStockRow({ restaurant_id: "ny" })],
       restaurantsRows: [
@@ -627,10 +736,20 @@ describe("LowStockAlertsService digest sweep — each house's own clock", () => 
 
     for (
       let t = Date.parse("2026-09-26T16:00:00Z");
-      t <= Date.parse("2026-09-27T03:00:00Z");
+      t <= Date.parse("2026-09-26T20:00:00Z");
       t += 3_600_000
     ) {
       await svc.runDigestSweepAt(new Date(t));
+    }
+    // A restart: before item 74 only this process's memory fenced an
+    // unwritten stamp, and a fresh one sent again.
+    const restarted = build(mock);
+    for (
+      let t = Date.parse("2026-09-26T21:00:00Z");
+      t <= Date.parse("2026-09-27T03:00:00Z");
+      t += 3_600_000
+    ) {
+      await restarted.runDigestSweepAt(new Date(t));
     }
     expect(gmail.sendLowStockDigest).toHaveBeenCalledTimes(1);
     expect(
@@ -642,9 +761,10 @@ describe("LowStockAlertsService digest sweep — each house's own clock", () => 
 
   describe("n. the house's zone changes mid-day", () => {
     // "Today" is always the house-local date in the zone the house has at
-    // the tick. Both fences (last_digest_at and the in-process one) hold an
-    // instant and are re-read in that zone, so each date of the NEW zone gets
-    // at most one digest. Counted in the OLD zone, a change can put two on
+    // the tick. The fence's `attempted_at` is an instant re-read in that
+    // zone (founder item 74; before it, last_digest_at and an in-process
+    // map did the same), so each date of the NEW zone gets at most one
+    // digest. Counted in the OLD zone, a change can put two on
     // one date. Reachable once a house's zone can be edited (#435).
     it("forward (UTC -> Pacific/Kiritimati, hour 9): two sends on one UTC date, one per Kiritimati date", async () => {
       const house = { id: "kir", name: "Moving House", timezone: "UTC" };
@@ -671,13 +791,13 @@ describe("LowStockAlertsService digest sweep — each house's own clock", () => 
       expect(gmail.sendLowStockDigest).toHaveBeenCalledTimes(2);
     });
 
-    it("backward (Pacific/Kiritimati -> UTC, hour 9): the new zone's next date is still sent, by this process too", async () => {
+    it("backward (Pacific/Kiritimati -> UTC, hour 9): the new zone's next date is still sent, though sent_on already reads that date", async () => {
       const house = {
         id: "kir",
         name: "Moving House",
         timezone: "Pacific/Kiritimati",
       };
-      const { mock, lastDigestAt } = makeDigestDbMock({
+      const { mock, lastDigestAt, fenceClaims } = makeDigestDbMock({
         lowStockRows: [makeLowStockRow({ restaurant_id: "kir" })],
         restaurantsRows: [house],
         prefsByRestaurant: { kir: dailyPrefs("09:00") },
@@ -701,11 +821,17 @@ describe("LowStockAlertsService digest sweep — each house's own clock", () => 
       ).toEqual(["low_stock_digest:2026-09-26", "low_stock_digest:2026-09-26"]);
       expect(gmail.sendLowStockDigest).toHaveBeenCalledTimes(2);
       expect(lastDigestAt.kir).toBe("2026-09-26T09:00:00.000Z");
+      // Both claims read "2026-09-26": the compare is on the instant, not
+      // on sent_on, or UTC's 26th would have been lost.
+      expect(fenceClaims.map((c) => c.sent_on)).toEqual([
+        "2026-09-26",
+        "2026-09-26",
+      ]);
     });
   });
 
   it("j2. a late run before local midnight and the on-time run for the same tick send an hour-0 house exactly once", async () => {
-    const { mock, lastDigestAt } = makeDigestDbMock({
+    const { mock, lastDigestAt, fence } = makeDigestDbMock({
       lowStockRows: [makeLowStockRow({ restaurant_id: "h0" })],
       restaurantsRows: [{ id: "h0", name: "Midnight House", timezone: "UTC" }],
       prefsByRestaurant: { h0: dailyPrefs("00:00") },
@@ -720,8 +846,14 @@ describe("LowStockAlertsService digest sweep — each house's own clock", () => 
     expect(notifications.persistForRestaurant.mock.calls[0][1].groupKey).toBe(
       "low_stock_digest:2026-09-27",
     );
-    // The stamp is the tick, on the date the digest belongs to.
-    expect(lastDigestAt.h0).toBe("2026-09-27T00:00:00.000Z");
+    // The FENCE holds the tick, on the date the digest belongs to — that is
+    // what stops the on-time run. last_digest_at holds when the rows were
+    // read (23:31Z), no longer the tick (founder item 74; spec q).
+    expect(fence.h0).toEqual({
+      sent_on: "2026-09-27",
+      attempted_at: "2026-09-27T00:00:00+00:00",
+    });
+    expect(lastDigestAt.h0).toBe("2026-09-26T23:31:00.000Z");
   });
 
   // o. PR #488 audit at 7b2ab8d3f: a failed preferences read used to fall
@@ -830,6 +962,162 @@ describe("LowStockAlertsService digest sweep — each house's own clock", () => 
       await svc.runDigestSweepAt(new Date("2026-09-26T18:00:00Z"));
       expect(gmail.sendLowStockDigest).toHaveBeenCalledTimes(1);
     });
+  });
+
+  // p, q and r pin the digest fence (founder item 74, 2026-09-27, verbatim
+  // "Own fence column (Recommended)"): `low_stock_digest_fence`, claimed
+  // compare-and-set before the email, independent of the inbox row and of
+  // last_digest_at.
+  describe("p. the fence is claimed compare-and-set before the send; a lost or failed claim never sends", () => {
+    const nyHouse = () => ({
+      lowStockRows: [makeLowStockRow({ restaurant_id: "ny" })],
+      restaurantsRows: [
+        { id: "ny", name: "NY House", timezone: "America/New_York" },
+      ],
+      prefsByRestaurant: { ny: dailyPrefs("12:00") },
+    });
+
+    it("a fence write that fails SKIPS the tick and warns; the next tick claims and sends once", async () => {
+      const opts: any = { ...nyHouse(), fenceWriteError: true };
+      const { mock } = makeDigestDbMock(opts);
+      const svc = build(mock);
+      const warnSpy = jest.spyOn((svc as any).logger, "warn");
+
+      await svc.runDigestSweepAt(new Date("2026-09-26T16:00:00Z"));
+      expect(gmail.sendLowStockDigest).not.toHaveBeenCalled();
+      expect(notifications.persistForRestaurant).not.toHaveBeenCalled();
+      const unwritten = warnSpy.mock.calls.filter((c) =>
+        String(c[0]).includes("LOW_STOCK_DIGEST_FENCE_UNWRITTEN"),
+      );
+      expect(unwritten).toHaveLength(1);
+      expect(String(unwritten[0][0])).toContain("skipping this tick");
+
+      opts.fenceWriteError = false;
+      for (const iso of [
+        "2026-09-26T17:00:00Z",
+        "2026-09-26T18:00:00Z",
+        "2026-09-26T19:00:00Z",
+      ]) {
+        await svc.runDigestSweepAt(new Date(iso));
+      }
+      expect(gmail.sendLowStockDigest).toHaveBeenCalledTimes(1);
+    });
+
+    it("a second replica that read NO row before the first claimed loses the insert (23505) and does not send", async () => {
+      const opts: any = nyHouse();
+      const { mock, fenceClaims } = makeDigestDbMock(opts);
+      const warnSpy = jest.fn();
+
+      await build(mock).runDigestSweepAt(new Date("2026-09-26T16:00:00Z"));
+      expect(gmail.sendLowStockDigest).toHaveBeenCalledTimes(1);
+
+      opts.staleFenceRead = { ny: null };
+      const replica = build(mock);
+      jest.spyOn((replica as any).logger, "warn").mockImplementation(warnSpy);
+      await replica.runDigestSweepAt(new Date("2026-09-26T16:00:00Z"));
+      expect(gmail.sendLowStockDigest).toHaveBeenCalledTimes(1);
+      expect(fenceClaims).toHaveLength(1);
+      // Lost, not failed: no FENCE_UNWRITTEN warn for a claim another run holds.
+      expect(
+        warnSpy.mock.calls.some((c) =>
+          String(c[0]).includes("LOW_STOCK_DIGEST_FENCE_UNWRITTEN"),
+        ),
+      ).toBe(false);
+    });
+
+    it("a second replica that read YESTERDAY's row before the first claimed loses the compare-and-set and does not send", async () => {
+      const yesterday = {
+        attempted_at: "2026-09-25T16:00:00.000Z",
+        sent_on: "2026-09-25",
+      };
+      const opts: any = { ...nyHouse(), initialFence: { ny: yesterday } };
+      const { mock, fenceClaims, fence } = makeDigestDbMock(opts);
+
+      await build(mock).runDigestSweepAt(new Date("2026-09-26T16:00:00Z"));
+      expect(gmail.sendLowStockDigest).toHaveBeenCalledTimes(1);
+
+      opts.staleFenceRead = { ny: yesterday };
+      await build(mock).runDigestSweepAt(new Date("2026-09-26T17:00:00Z"));
+      expect(gmail.sendLowStockDigest).toHaveBeenCalledTimes(1);
+      expect(fenceClaims).toHaveLength(1);
+      expect(fence.ny.attempted_at).toBe("2026-09-26T16:00:00+00:00");
+    });
+
+    it("two replicas running the same tick at once send exactly once", async () => {
+      const { mock, fenceClaims } = makeDigestDbMock(nyHouse());
+      await Promise.all([
+        build(mock).runDigestSweepAt(new Date("2026-09-26T16:00:00Z")),
+        build(mock).runDigestSweepAt(new Date("2026-09-26T16:00:00Z")),
+      ]);
+      expect(gmail.sendLowStockDigest).toHaveBeenCalledTimes(1);
+      expect(fenceClaims).toHaveLength(1);
+    });
+  });
+
+  it("q. a hold written after a late run read its rows but before its tick stays on the held band", async () => {
+    // The 10:00Z run fires 31 minutes late and is judged as the 11:00Z
+    // tick. Before item 74, last_digest_at was stamped with that tick
+    // (11:00Z), and listHeldCrossings hides a hold that is not after
+    // last_digest_at — so a crossing the edge sweep held at 10:40Z, which
+    // this digest never told, vanished from the held band.
+    const opts: any = {
+      lowStockRows: [makeLowStockRow({ id: "inv-1", restaurant_id: "h10" })],
+      restaurantsRows: [{ id: "h10", name: "Ten House", timezone: "UTC" }],
+      prefsByRestaurant: { h10: dailyPrefs("10:00") },
+    };
+    const { mock, lastDigestAt, fence } = makeDigestDbMock(opts);
+    const svc = build(mock);
+
+    await runAt(svc, "2026-09-26T10:31:00Z");
+    expect(gmail.sendLowStockDigest).toHaveBeenCalledTimes(1);
+    expect(fence.h10.attempted_at).toBe("2026-09-26T11:00:00+00:00");
+    expect(lastDigestAt.h10).toBe("2026-09-26T10:31:00.000Z");
+
+    opts.heldRows = [
+      {
+        inventory_id: "inv-late",
+        wine_name: "Late Wine",
+        last_alert_level: "low",
+        last_held_at: "2026-09-26T10:40:00.000Z",
+        last_held_reason: "instant_cooldown",
+        last_digest_at: lastDigestAt.h10,
+      },
+    ];
+    const view = await svc.listHeldCrossings("h10");
+    expect(view.held.map((h) => h.inventory_id)).toEqual(["inv-late"]);
+  });
+
+  it("r. a digest that wrote no inbox row is still fenced for the day — a restart or a second replica does not email it again", async () => {
+    // TD-2026-09-27-LOW-STOCK-DIGEST-UNTOLD-NOT-FENCED: #486 returns before
+    // stamping last_digest_at when the inbox write inserted nothing, after
+    // the email was attempted. Only this process's memory fenced the day.
+    notifications.persistForRestaurant.mockResolvedValue({
+      inserted: 0,
+      ids: [],
+    });
+    const { mock, lastDigestAt } = makeDigestDbMock({
+      lowStockRows: [makeLowStockRow({ restaurant_id: "ny" })],
+      restaurantsRows: [
+        { id: "ny", name: "NY House", timezone: "America/New_York" },
+      ],
+      prefsByRestaurant: { ny: dailyPrefs("12:00") },
+    });
+
+    await build(mock).runDigestSweepAt(new Date("2026-09-26T16:00:00Z"));
+    expect(gmail.sendLowStockDigest).toHaveBeenCalledTimes(1);
+    expect(lastDigestAt.ny).toBeUndefined();
+
+    const restarted = build(mock);
+    const replica = build(mock);
+    for (
+      let t = Date.parse("2026-09-26T17:00:00Z");
+      t <= Date.parse("2026-09-27T03:00:00Z");
+      t += 3_600_000
+    ) {
+      await restarted.runDigestSweepAt(new Date(t));
+      await replica.runDigestSweepAt(new Date(t));
+    }
+    expect(gmail.sendLowStockDigest).toHaveBeenCalledTimes(1);
   });
 
   describe("g. regressions — no send when preferences say not to", () => {

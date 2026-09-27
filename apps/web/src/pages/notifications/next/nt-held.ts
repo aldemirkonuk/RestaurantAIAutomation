@@ -30,8 +30,10 @@ export function whenTold(digest: HeldLowStockResponse['digest']): string {
   const at = `They go out together in the daily digest at ${hourWords(digest.hour)}`;
   // Founder item 61 (2026-09-27, "UTC, said on the page (Recommended)"): a
   // house with no time zone this server can read gets its digest on UTC, and
-  // the page says so in these words.
-  if (digest.zone_source === 'fallback' || digest.timezone === 'UTC') {
+  // the page says so in these words. Keyed on `zone_source` alone: a house
+  // that deliberately set `UTC` (`zone_source: 'house'`) HAS a zone, and
+  // telling it "no time zone set yet" would be false (PR #488 train-6 BLOCK).
+  if (digest.zone_source === 'fallback') {
     return `${at} UTC — this house has no time zone set yet.`;
   }
   return `${at}, ${zoneWords(digest.timezone)}.`;

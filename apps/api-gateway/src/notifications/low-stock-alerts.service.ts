@@ -30,6 +30,21 @@ import {
 
 type AlertLevel = "ok" | "low" | "critical";
 
+/**
+ * The once-a-day digest fence (founder item 74), one row per house:
+ * migration 20261021173000_a_low_stock_digest_is_fenced_once_a_house_day.sql.
+ */
+export const LOW_STOCK_DIGEST_FENCE_TABLE = "low_stock_digest_fence";
+
+interface DigestFence {
+  /** `YYYY-MM-DD`, the house-local date claimed, in the zone of that attempt. */
+  sentOn: string;
+  /** The sweep tick that claimed it — re-read in the house's zone per tick. */
+  attemptedAt: Date;
+  /** `attempted_at` exactly as read — the compare-and-set's expected value. */
+  attemptedAtRaw: string;
+}
+
 interface EffectiveLowStockPrefs {
   enabled: boolean;
   instantFirstAlert: boolean;
@@ -177,23 +192,6 @@ export class LowStockAlertsService {
   private readonly INSTANT_COOLDOWN_MS = 15 * 60_000;
   private readonly lastInstantAt = new Map<string, number>();
 
-  /**
-   * The tick this process last SENT (or found stamped) each restaurant's
-   * digest for. The durable fence is `inventory_alert_state.last_digest_at`;
-   * this is the in-process backstop for when that stamp could not be
-   * written. Under same-day catch-up (founder item 70) every tick after the
-   * digest hour is due, so an unwritten stamp with no second fence would
-   * re-send every hour until local midnight. A restart empties it;
-   * `last_digest_at` is then the only fence, as it is across gateway
-   * replicas.
-   *
-   * It holds an instant, not a date string, and is read in the house's zone
-   * at each tick — exactly as `last_digest_at` is — so a house whose zone
-   * changes mid-day is judged the same by this process as by a restarted
-   * one (spec n, backward).
-   */
-  private readonly digestSentOn = new Map<string, Date>();
-
   constructor(
     private readonly db: DatabaseService,
     private readonly notifications: NotificationsService,
@@ -260,12 +258,14 @@ export class LowStockAlertsService {
    *
    * SAME-DAY CATCH-UP (founder item 70, 2026-09-27, verbatim "Catch up same
    * day (Recommended)"): a house is sent when its local time has reached
-   * today's digest hour (`isDigestDue`) AND `last_digest_at` is not on today's
-   * house-local date (`digestAlreadySentOn`). A tick that was skipped, late or
+   * today's digest hour (`isDigestDue`) AND the house's digest fence
+   * (`low_stock_digest_fence`, founder item 74; before it, `last_digest_at`)
+   * is not on today's house-local date (`digestAlreadySentOn`). A tick that was skipped, late or
    * never run is therefore made up by the next evaluated tick that day. The
-   * price of that is that the dedupe read now carries the whole weight of
-   * "once a day": when it fails, the house is SKIPPED this tick — never sent
-   * blind — and the next tick tries again (spec k). The same holds for the
+   * price of that is that the fence carries the whole weight of "once a
+   * day": when its read or its compare-and-set write fails, the house is
+   * SKIPPED this tick — never sent blind — and the next tick tries again
+   * (specs k, p). The same holds for the
    * two reads that decide WHETHER and WHEN a house is due: a failed
    * preferences read (spec o) or restaurants read (specs h, i) skips the
    * house this tick; none of the three falls back to a default.
@@ -284,6 +284,10 @@ export class LowStockAlertsService {
       const ids = [...byRestaurant.keys()];
       const names = await this.getRestaurantNames(ids);
       const houses = await this.getRestaurantHouses(ids);
+      // The once-a-day fence (founder item 74), read once for the tick. A
+      // failed read is checked per house below, and only for a house that is
+      // due — it SKIPS that house, never sends it blind.
+      const fences = await this.readDigestFences(ids);
 
       for (const [restaurantId, rows] of byRestaurant) {
         // The THROWING prefs read, not `getEffectiveLowStockPrefs`: that one
@@ -334,40 +338,35 @@ export class LowStockAlertsService {
 
         const periodKey = houseWallAt(tick, clock.zone).dateKey;
 
-        // In-process fence first (see `digestSentOn`): it also saves the
-        // dedupe read on every due tick after today's send.
-        const fenced = this.digestSentOn.get(restaurantId);
-        if (
-          fenced &&
-          digestAlreadySentOn(
-            houseWallAt(fenced, clock.zone).dateKey,
-            periodKey,
-          )
-        ) {
-          continue;
-        }
-
-        const last = await this.readLastDigestAt(restaurantId);
-        if (!last.ok) {
-          // The read failed rather than coming back empty. SKIP, never send:
-          // under catch-up this read is the only thing between the house and
-          // a digest every hour until midnight (founder item 70: "a failed
-          // dedupe read SKIPS (never double-send)"). The next tick reads
-          // again, so one failed read delays today's digest, it does not
-          // lose it (spec k).
+        // THE FENCE (founder item 74, 2026-09-27, verbatim "Own fence column
+        // (Recommended)"): `low_stock_digest_fence`, one row per house,
+        // written BEFORE the email is attempted and independent of the inbox
+        // row and of `inventory_alert_state.last_digest_at`. It replaced the
+        // `last_digest_at` read (item 70's dedupe) and the in-process
+        // `digestSentOn` map, which together could not fence a digest that
+        // wrote no inbox row across a restart or a second replica.
+        if (!fences.ok) {
+          // SKIP, never send: under catch-up this read is the only thing
+          // between the house and a digest every hour until midnight
+          // (founder item 70: "a failed dedupe read SKIPS (never
+          // double-send)"). The next tick reads again, so one failed read
+          // delays today's digest, it does not lose it (spec k).
           this.logger.warn(
-            `LOW_STOCK_DIGEST_DEDUPE_UNREADABLE restaurant=${restaurantId} date=${periodKey} — last_digest_at could not be read; skipping this tick so it cannot send twice, a later tick today retries.`,
+            `LOW_STOCK_DIGEST_DEDUPE_UNREADABLE restaurant=${restaurantId} date=${periodKey} — the digest fence could not be read; skipping this tick so it cannot send twice, a later tick today retries.`,
           );
           continue;
         }
+        const fence = fences.map.get(restaurantId) ?? null;
+        // The last attempt's INSTANT, read in the house's zone at this tick,
+        // so a house whose zone changed mid-day is judged in its new zone
+        // (spec n). `sent_on` is the same date in the zone of the attempt.
         if (
-          last.at &&
+          fence &&
           digestAlreadySentOn(
-            houseWallAt(last.at, clock.zone).dateKey,
+            houseWallAt(fence.attemptedAt, clock.zone).dateKey,
             periodKey,
           )
         ) {
-          this.digestSentOn.set(restaurantId, last.at);
           continue;
         }
 
@@ -377,16 +376,37 @@ export class LowStockAlertsService {
           );
         }
 
-        // Fence before the send: if sendDigest throws part-way, this process
-        // must still not send again today (a failed email is recorded on the
-        // notification row by sendDigest, and is not retried — as before).
-        this.digestSentOn.set(restaurantId, tick);
+        // Claim the date BEFORE the send, compare-and-set: of two replicas
+        // (or two runs) that both read the same fence, exactly one claims
+        // it. A claim that is lost or cannot be written SKIPS — never sends
+        // (spec p). Once claimed, the date is spent whatever the send does:
+        // a send that throws part-way, writes no inbox row (#486's early
+        // return) or fails its email is not repeated that day by any process
+        // (a failed email is recorded on the notification row, as before).
+        const claim = await this.claimDigestFence(
+          restaurantId,
+          fence,
+          periodKey,
+          tick,
+        );
+        if (claim !== "claimed") {
+          if (claim === "taken") {
+            this.logger.log(
+              `Low-stock digest for ${restaurantId} date=${periodKey}: another run claimed today's fence first — not sending.`,
+            );
+          } else {
+            this.logger.warn(
+              `LOW_STOCK_DIGEST_FENCE_UNWRITTEN restaurant=${restaurantId} date=${periodKey} — the digest fence could not be written; skipping this tick so it cannot send twice, a later tick today retries.`,
+            );
+          }
+          continue;
+        }
         await this.sendDigest(
           restaurantId,
           rows,
           names.get(restaurantId),
           rowsSnapshotAt,
-          { periodKey, digestAt: tick.toISOString() },
+          { periodKey },
         );
       }
     } catch (e: any) {
@@ -847,16 +867,18 @@ export class LowStockAlertsService {
      * `periodKey` is the house-local date (`YYYY-MM-DD`) this digest belongs
      * to, from the sweep's `houseWallAt(tick, clock.zone)`.
      *
-     * `digestAt` is the instant stamped on `inventory_alert_state.last_digest_at`.
-     * The sweep passes its hour TICK, not the wall-clock run time, because the
-     * sweep's dedupe converts this stamp to a house-local date and compares it
-     * with the tick's date (`periodKey`). A run up to 30 minutes late is judged
-     * as the next hour's tick (`hourTick`); stamping the run time instead would
-     * put the stamp on the PREVIOUS house date whenever that late run falls
-     * before local midnight, and the on-time run for the same tick would then
-     * send the digest a second time (spec j2).
+     * (2026-09-27, founder item 74) The sweep no longer passes a `digestAt`.
+     * It stamped `last_digest_at` with its hour TICK, because that stamp was
+     * the once-a-day dedupe and had to sit on the tick's house date (spec
+     * j2). The tick runs up to 29 minutes ahead of the clock on a late run,
+     * and `listHeldCrossings` hides a hold whose `last_held_at` is not after
+     * `last_digest_at` — so a hold written in that window was hidden from the
+     * held band though this digest never told anyone about it. The dedupe
+     * now lives in `low_stock_digest_fence` (which holds the tick), so
+     * `last_digest_at` is stamped with `snapshotAt`: the instant the rows
+     * this digest tells were read (spec j2, spec q).
      */
-    sweep?: { periodKey: string; digestAt: string },
+    sweep?: { periodKey: string },
   ): Promise<void> {
     if (rows.length === 0) return;
     const snapshotAt = rowsSnapshotAt ?? new Date().toISOString();
@@ -907,21 +929,22 @@ export class LowStockAlertsService {
     // "a digest went out" a claim about an intention. Both halves now follow
     // the same rule as the instant path: only a written inbox row counts.
     //
-    // (2026-09-27, PR #488 merge with #486) Under same-day catch-up
-    // `last_digest_at` is also the durable once-a-day fence. On this early
-    // return nothing is stamped, so only the sweep's in-process
-    // `digestSentOn` fence holds for the rest of the day: a restart or a
-    // second replica can send that house's digest email again the same day.
-    // Disclosed in v3.0-TECH-DEBT (TD-2026-09-27-LOW-STOCK-DIGEST-UNTOLD-NOT-FENCED).
+    // (2026-09-27, PR #488 merge with #486) On this early return nothing is
+    // stamped. That no longer leaves the day unfenced: the sweep claimed
+    // `low_stock_digest_fence` for this house date BEFORE calling here
+    // (founder item 74), so no restart or second replica sends it again
+    // (TD-2026-09-27-LOW-STOCK-DIGEST-UNTOLD-NOT-FENCED, resolved; spec r).
     const told = (persisted?.inserted ?? 0) > 0;
     if (!told) {
       this.logger.warn(
-        `Low-stock digest for ${restaurantId} wrote no inbox row — holds are left in place, and last_digest_at is not stamped (only this process fences today's send).`,
+        `Low-stock digest for ${restaurantId} wrote no inbox row — holds are left in place and last_digest_at is not stamped; the sweep's digest fence already holds today.`,
       );
       return;
     }
-    // The sweep's tick when given (see `sweep` above), else now.
-    const stampIso = sweep?.digestAt ?? new Date().toISOString();
+    // When the rows were read (see `sweep` above) — not the sweep's tick,
+    // which can run up to 29 minutes ahead and would hide a hold written in
+    // that window from the held band.
+    const stampIso = snapshotAt;
     let stamped = 0;
     for (const row of rows) {
       const ok = await this.upsertState(restaurantId, {
@@ -930,21 +953,22 @@ export class LowStockAlertsService {
         level: row.severity,
         digestAt: stampIso,
         clearHold: true,
-        // The pre-slow-work cutoff (see the doc comment above), NOT the stamp
-        // -- a now-stamp is taken after the email send and after every
-        // sibling row in this same loop, and the sweep's tick stamp can be up
-        // to 30 minutes AHEAD of the read, so using either here would clear a
-        // hold this digest never told anyone about (round-1 defect of #486).
+        // The pre-slow-work cutoff (see the doc comment above) — the same
+        // instant as the stamp since founder item 74. Never a now-stamp
+        // taken after the email send and after every sibling row in this
+        // loop, and never the sweep's tick (up to 29 minutes AHEAD of the
+        // read): either would clear a hold this digest never told anyone
+        // about (round-1 defect of #486).
         clearHoldNotAfter: snapshotAt,
       });
       if (ok) stamped++;
     }
-    // `readLastDigestAt` takes the newest stamp across the house's rows, so
-    // one written row is enough to fence today. None written means only the
-    // in-process `digestSentOn` fence stands until the next restart.
+    // None written: the holds this digest answered stay listed as held.
+    // The day itself is fenced by `low_stock_digest_fence`, not by this
+    // stamp (founder item 74), so nothing is sent again (spec m).
     if (stamped === 0) {
       this.logger.warn(
-        `LOW_STOCK_DIGEST_STAMP_UNWRITTEN restaurant=${restaurantId} date=${dateStr} — last_digest_at could not be written; only this process remembers today's send.`,
+        `LOW_STOCK_DIGEST_STAMP_UNWRITTEN restaurant=${restaurantId} date=${dateStr} — last_digest_at could not be written; the held queue keeps these wines until the next digest, and the digest fence still holds today.`,
       );
     }
   }
@@ -1491,7 +1515,7 @@ export class LowStockAlertsService {
    * without a second round trip per restaurant.
    *
    * `ok: false` means the read itself failed (network/DB error) — the same
-   * shape as `readLastDigestAt`, and the same reason: this is a batched read
+   * shape as `readDigestFences`, and the same reason: this is a batched read
    * for every low-stock restaurant in the tick, so a failure here cannot be
    * attributed to one house. An unreadable row must never be silently read
    * as "no timezone → UTC" (that would make a transient DB failure look like
@@ -1555,35 +1579,97 @@ export class LowStockAlertsService {
   }
 
   /**
-   * The most recent `last_digest_at` written for this restaurant (any wine —
-   * one send stamps every wine in the digest the same instant, see
-   * `sendDigest`). `ok: false` means the read itself failed (network/DB
-   * error), distinct from `ok: true, at: null` (never sent before).
+   * Every due house's digest fence for one tick, batched like
+   * `getRestaurantHouses` (founder item 74, 2026-09-27, verbatim "Own fence
+   * column (Recommended)": a "digest sent on <house date>" record stamped
+   * whenever a digest email is attempted, independent of the inbox row and
+   * of `inventory_alert_state.last_digest_at`).
    *
-   * This is a NEW read: `last_digest_at` was write-only on main (written at
-   * `upsertState`'s `digestAt`, never selected anywhere — confirmed by grep
-   * before this lane). The per-house-date gate below is what makes the
-   * column's name true.
+   * `ok: false` means the read itself failed, distinct from `ok: true` with
+   * no row for a house (never attempted). A house missing from `map` has
+   * never been claimed. `attemptedAtRaw` is the value exactly as PostgREST
+   * returned it: `claimDigestFence` compares against it, and a round trip
+   * through `Date` would drop microseconds and never match again.
    */
-  private async readLastDigestAt(
-    restaurantId: string,
-  ): Promise<{ ok: boolean; at: Date | null }> {
+  private async readDigestFences(ids: string[]): Promise<{
+    ok: boolean;
+    map: Map<string, DigestFence>;
+  }> {
+    const map = new Map<string, DigestFence>();
+    if (ids.length === 0) return { ok: true, map };
     try {
       const { data, error } = await this.db.supabase
-        .from("inventory_alert_state")
-        .select("last_digest_at")
+        .from(LOW_STOCK_DIGEST_FENCE_TABLE)
+        .select("restaurant_id, sent_on, attempted_at")
+        .in("restaurant_id", ids);
+      if (error) {
+        this.logger.warn(
+          `${LOW_STOCK_DIGEST_FENCE_TABLE} read failed: ${error.message}`,
+        );
+        return { ok: false, map };
+      }
+      for (const r of data || []) {
+        const attemptedAt = new Date(r.attempted_at);
+        // A row this code cannot read as an instant is a failed read for
+        // that house, never "no row" (which would send).
+        if (Number.isNaN(attemptedAt.getTime())) return { ok: false, map };
+        map.set(r.restaurant_id, {
+          sentOn: r.sent_on,
+          attemptedAt,
+          attemptedAtRaw: r.attempted_at,
+        });
+      }
+      return { ok: true, map };
+    } catch (e: any) {
+      this.logger.warn(
+        `${LOW_STOCK_DIGEST_FENCE_TABLE} read threw: ${e?.message}`,
+      );
+      return { ok: false, map };
+    }
+  }
+
+  /**
+   * Claim one house's digest for `periodKey`, compare-and-set, BEFORE the
+   * email is attempted (founder item 74).
+   *
+   * - No row read (`prior === null`): INSERT. The primary key on
+   *   `restaurant_id` lets exactly one of two concurrent inserts win; the
+   *   loser gets 23505 and is `taken`.
+   * - A row read: UPDATE ... WHERE `attempted_at` still equals the value
+   *   read. Every claim writes a new tick, so a row another run claimed
+   *   after this run's read no longer matches, and Postgres re-checks the
+   *   WHERE on the committed row before updating (READ COMMITTED), so two
+   *   concurrent updates cannot both match.
+   *
+   * `failed` (any other error, or a write that reports nothing) SKIPS the
+   * house like `taken`: never send on a fence this run does not hold.
+   */
+  private async claimDigestFence(
+    restaurantId: string,
+    prior: DigestFence | null,
+    periodKey: string,
+    tick: Date,
+  ): Promise<"claimed" | "taken" | "failed"> {
+    const row = { sent_on: periodKey, attempted_at: tick.toISOString() };
+    try {
+      if (!prior) {
+        const { data, error } = await this.db.supabase
+          .from(LOW_STOCK_DIGEST_FENCE_TABLE)
+          .insert({ restaurant_id: restaurantId, ...row })
+          .select("restaurant_id");
+        if (error) return error.code === "23505" ? "taken" : "failed";
+        return (data?.length ?? 0) === 1 ? "claimed" : "failed";
+      }
+      const { data, error } = await this.db.supabase
+        .from(LOW_STOCK_DIGEST_FENCE_TABLE)
+        .update(row)
         .eq("restaurant_id", restaurantId)
-        .not("last_digest_at", "is", null)
-        .order("last_digest_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (error) return { ok: false, at: null };
-      return {
-        ok: true,
-        at: data?.last_digest_at ? new Date(data.last_digest_at) : null,
-      };
+        .eq("attempted_at", prior.attemptedAtRaw)
+        .select("restaurant_id");
+      if (error) return "failed";
+      return (data?.length ?? 0) === 1 ? "claimed" : "taken";
     } catch {
-      return { ok: false, at: null };
+      return "failed";
     }
   }
 

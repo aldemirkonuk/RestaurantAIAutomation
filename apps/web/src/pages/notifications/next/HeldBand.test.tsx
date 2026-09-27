@@ -192,6 +192,15 @@ describe('whenTold / reasonWords', () => {
     );
   });
 
+  it('does not tell a house that chose UTC it has no time zone (PR #488 train-6 BLOCK)', () => {
+    // `zone_source: 'house'` with `UTC` is a house that set UTC on purpose.
+    // Item 61's sentence is for a house with no zone set, and only that one.
+    const chose = whenTold({ ...DAILY, timezone: 'UTC', zone_source: 'house' });
+    expect(chose).toBe('They go out together in the daily digest at 12 PM, UTC time.');
+    expect(chose).not.toMatch(/no time zone set/);
+    expect(whenTold({ ...DAILY, timezone: 'Etc/UTC', zone_source: 'house' })).not.toMatch(/no time zone set/);
+  });
+
   it('names an unknown reason as unrecorded', () => {
     expect(reasonWords(null)).toMatch(/not recorded/);
   });

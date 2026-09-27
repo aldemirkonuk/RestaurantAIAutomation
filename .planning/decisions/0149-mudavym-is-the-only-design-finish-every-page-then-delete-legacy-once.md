@@ -262,7 +262,9 @@ the current restaurants or users, or tables, dbs or such"*. So:
       `LOW_STOCK_DIGEST_STAMP_UNWRITTEN` when no row was stamped. The fence is
       set before `sendDigest` runs, so a send that throws part-way is also not
       repeated by this process. As before, a failed email is recorded on the
-      notification row and is not retried.
+      notification row and is not retried. [Superseded 2026-09-27, founder
+      item 74: `digestSentOn` is gone; the durable `low_stock_digest_fence`
+      does this for every process. See the item 74 bracket below.]
     - **Consequence, stated.** A house with no low wine at its hour but one
       going low later that day now gets that day's digest on the next tick.
       Before, it waited for the next day's hour. The founder's rule ("no
@@ -298,11 +300,55 @@ the current restaurants or users, or tables, dbs or such"*. So:
     (`digestClockForRestaurant`: `timezone` + `zone_source`; `digest: null`
     when that read fails) instead of the New York literal, and `nt-held.ts`
     says it, with item 61's "UTC — this house has no time zone set yet" for
-    the fallback; (3) #486's rule that a digest writing no inbox row stamps
+    the fallback [2026-09-27, train-6 BLOCK: the line keyed on
+    `zone_source === 'fallback' || timezone === 'UTC'`, so a house that
+    deliberately set UTC was told it had no zone. It now keys on
+    `zone_source` alone; that house reads "…, UTC time."]; (3) #486's rule that a digest writing no inbox row stamps
     nothing now also means no durable once-a-day fence for that date. See
     v3.0-TECH-DEBT "a digest that wrote no inbox row is not fenced", which
     also records the tick stamp running up to 29 minutes ahead of the
-    held-queue read filter.
+    held-queue read filter. [Both closed 2026-09-27 by founder item 74, next
+    bracket.]
+  - **[2026-09-27, founder, item 74 — the digest's own fence.** Chosen: "Own
+    fence column (Recommended)" (`founder-answers-2026-09-25-web-rebuild.md:109`:
+    a separate "digest sent on <house date>" record stamped whenever an email
+    is attempted, independent of inbox/held rows; one additive migration). The
+    other options in v3.0-TECH-DEBT's fork (stamp `last_digest_at` without
+    clearing holds; accept the re-send on restart) were not taken; their
+    verbatim labels are not in the memory record. Built on
+    `fix/low-stock-digest-house-timezone` (PR #488).]
+    - **Where.** Migration `20261021173000_a_low_stock_digest_is_fenced_once_a_house_day.sql`:
+      `low_stock_digest_fence`, one row per house (`sent_on date`,
+      `attempted_at timestamptz`), RLS on, service_role only, backfilled from
+      each house's newest `last_digest_at`. A one-row-per-house table, not a
+      column on `restaurants`, because `restaurants` has a `BEFORE UPDATE`
+      trigger on `updated_at`, which the gateway returns as the operating
+      hours' `updatedAt`; a daily write there would say the house changed.
+    - **Rule.** The sweep reads every house's fence once per tick. A house is
+      already done today when `attempted_at`, read in its current zone, is on
+      (or after) today's house date. Otherwise it claims the date
+      compare-and-set BEFORE `sendDigest`: INSERT when no row was read (the
+      primary key makes one of two inserts lose with 23505), else `UPDATE …
+      WHERE attempted_at = <the raw value read>`. Only the claim holder sends.
+      A failed read, or a failed claim write, SKIPS the house for that tick
+      (item 70's "never double-send"), and the next tick retries. A lost claim
+      skips too.
+    - **Why the compare is on `attempted_at`, not `sent_on`.** `sent_on` is
+      the date in the zone the house had at the attempt. After a westward zone
+      change it can equal the new zone's next date (spec n, backward: both
+      claims read 2026-09-26), and comparing it would lose that date.
+      `attempted_at` re-read in the current zone keeps spec n's rule: each
+      date of the new zone gets at most one digest.
+    - **Held band.** `last_digest_at` is no longer the dedupe, so it is
+      stamped with `snapshotAt` (when the rows were read), not the tick that
+      can run 29 minutes ahead. A hold written in that window stays listed
+      (spec q).
+    - **Specs** p, q, r are new; e, k, l, m, n, j2 moved to the fence. Each
+      new branch was mutation-checked (PR #488 body).
+    - **Not covered.** The migration/deploy cutover (an old-code send after
+      the backfill and before the new gateway starts is not in the fence);
+      `triggerDailyDigest` (no production caller) neither reads nor claims it;
+      a claimed date whose send fails is not retried that day, as before.
   - **CLAIMS:** `ADR-0149-LOW-STOCK-DIGEST-FOLLOWS-THE-HOUSE-CLOCK`,
     `ADR-0149-LOW-STOCK-DIGEST-PREFS-READ-SKIPS` (7b2ab8d3f audit),
     `ADR-0149-LOW-STOCK-DIGEST-DST-TESTED` [narrowed 2026-09-27, f835811bc
@@ -310,7 +356,10 @@ the current restaurants or users, or tables, dbs or such"*. So:
     verify held with the full-year test deleted; it now pins both property
     tests by title and their per-date assertion],
     `TD-2026-09-27-LOW-STOCK-DIGEST-NO-CATCH-UP` (open) [resolved 2026-09-27,
-    item 70]; item 61's page half: `ITEM-61-NOTIFICATIONS-SAYS-UTC-FALLBACK`
+    item 70], `TD-2026-09-27-LOW-STOCK-DIGEST-UNTOLD-NOT-FENCED` and
+    `ADR-0149-LOW-STOCK-DIGEST-STAMPS-THE-READ-NOT-THE-TICK` [2026-09-27,
+    item 74], `ITEM-61-UTC-LINE-ONLY-WHEN-NO-ZONE` [2026-09-27, train-6
+    BLOCK: a house that set UTC itself is not told it has no zone]; item 61's page half: `ITEM-61-NOTIFICATIONS-SAYS-UTC-FALLBACK`
     (open, owed by #486) [resolved 2026-09-27 on the #486 merge, in the held
     band only] and `ITEM-61-NOTIFICATIONS-NEVER-SAYS-NEW-YORK-TIME`
     (v3.0-TECH-DEBT 2026-09-27).
