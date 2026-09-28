@@ -508,7 +508,13 @@ questions round 2 left open (see "Answered, 2026-09-22 (round 6y)" below):
       (past week included) shows them, and the owner reads them in the
       former-staff history — item 22. A removed person's unworked future
       shifts are kept and shown there like any other kept shift; nothing
-      reassigns them.]** `team-pay.spec.ts` K1, 10 of 10 targeted mutations
+      reassigns them.]** **[2026-09-27, ADR 0090 audit of #440 at
+      `ea4cc38d0`: "no page reads" them held for the week, copy and leave
+      lists above but not for the by-id routes — a removed person's kept
+      shift could still be edited, called out, offered, assigned or deleted
+      by its id, and a kept leave request reviewed. Those routes now answer
+      404 for it, for everyone (`TeamService.assertOnTheRoster`; item 24's
+      second correction bracket).]** `team-pay.spec.ts` K1, 10 of 10 targeted mutations
       killed; CLAIMS row
       `ADR-0215-TEAM-A-REMOVED-PERSONS-KEPT-ROWS-ARE-NOT-IN-THE-WEEK`.
     - Additive and idempotent: two constraints dropped (`IF EXISTS`,
@@ -680,6 +686,31 @@ questions round 2 left open (see "Answered, 2026-09-22 (round 6y)" below):
     other writer already priced an open shift as `null` (`createShift`,
     `copyWeek`, `reportCallout`'s new open shift). R6 gains three cases;
     CLAIMS `ADR-0215-R6-AN-UNASSIGNED-SHIFT-CARRIES-NO-ONES-WAGE`.]**
+    **[Corrected 2026-09-27, ADR 0090 audit of #440 at `ea4cc38d0`: "every
+    read path that carries pay goes through it" held for the rows of people
+    still on the roster, not for a REMOVED owner's kept shift. `deleteMember`
+    deletes a removed co-owner's access row and roster row (it is a removal,
+    not a deactivation); item 20 keeps their shifts; `ownerMemberIds` is a
+    live read and so no longer names the gone roster row; `seesMoneyOf` then
+    read the kept shift as a colleague's. The by-id shift routes checked no
+    roster, so a switched-on manager's note-only `PATCH` of that shift
+    answered with its stored `labor_cost` beside its hours — the owner's wage
+    (reproduced end to end through the real `deleteMember`: 300 over an
+    8-hour shift) — and any manager could `DELETE` a record item 20 keeps five
+    years. Fixed by applying round 4 item 19's answer ("Hidden from the team
+    views; the owner can open a 'former staff' history") to the by-id routes:
+    `TeamService.assertOnTheRoster` answers 404 for a row whose `member_id`
+    names nobody on the live roster (an open row passes; a failed roster read
+    raises, never passes), called by `updateShift`, `deleteShift`,
+    `reportCallout`, `offerCover`, `assignCover` and `reviewTimeOff` before
+    any write, for a manager AND an owner — the kept row is history, read in
+    the former-staff history and ended only by the retention job. The
+    owner-set reads themselves are unchanged: the gate keeps a removed
+    person's row from ever reaching `seesMoneyOf` through these routes.
+    `deleteShift` now reads the shift first; a missing shift is 404 and a
+    failed read or delete is 500, where both used to be answered as done.
+    Residual (s). CLAIMS
+    `ADR-0215-R6-A-REMOVED-PERSONS-KEPT-ROW-IS-NOT-REACHABLE-BY-ID`.]**
 
 ## Consequences
 
@@ -777,7 +808,12 @@ questions round 2 left open (see "Answered, 2026-09-22 (round 6y)" below):
   export leaves an owner's shift cost blank for them; neither shows the
   figure. (r) A switched-on manager's week total is the total of the shifts
   that are not an owner's, and the page says so; their labour-target
-  comparison (if one is drawn) is against that total.
+  comparison (if one is drawn) is against that total. (s) **Found
+  2026-09-27, ADR 0090 audit of `ea4cc38d0`:** the by-id gate
+  (`assertOnTheRoster`) reads the roster once, between reading the row and
+  writing it; a removal landing inside that window is written through, as
+  in (l). A race of one request's width, noted, not guarded. `rosterAt`
+  (residual (m)) names people, not money, and is unchanged.
 - **Revisit when** the labour page lands (it will own pay basis and confirmed
   hours), or if a second role is ever meant to see pay.
 
@@ -1009,6 +1045,34 @@ keeping it as built.
   `ADR-0215-R6-THE-OWNER-SET-IS-READ-AND-PINNED-END-TO-END`, its verify
   mutated 4 ways and failing each. Not changed: residual (p), an owner's
   roster row with no linked account, is still invisible to both reads.
+  **[2026-09-27, ADR 0090 audit of PR #440 at `ea4cc38d0`: these 15 cases
+  drove the read surfaces with an INACTIVE owner membership (the row still
+  exists), never a REMOVED owner, and none of the by-id shift routes, which
+  is where the leak was (item 24's second correction bracket). Closed in the
+  same file, `describe("item 71 + item 20 — a removed owner's kept shift is
+  not reachable by id")`, 8 cases: the other owner removes the owner through
+  the real `deleteMember` (both rows deleted, the shift and a leave request
+  kept), then a pay-access manager's note-only `PATCH`, `DELETE`, call-out,
+  offer and assign, the remaining owner's `PATCH` and `DELETE`, and a review
+  of the kept leave request all answer 404 with no write, no push and no
+  notification; a colleague's live shift is still patched (with its cost),
+  assigned and deleted; `deleteShift` says a missing shift (404) and a failed
+  read or delete (500); an unreadable roster refuses. `jest src/team` 268 of
+  268 (11 files). 11 of 11 mutations killed: each of the six call sites
+  removed alone, the helper passing every row, ignoring the roster, or
+  passing on a failed roster read, the delete's error swallowed, and a
+  missing shift deleted as done. With the `updateShift` call removed, the
+  first case's reply is the kept row with `labor_cost: 300`. CLAIMS
+  `ADR-0215-R6-A-REMOVED-PERSONS-KEPT-ROW-IS-NOT-REACHABLE-BY-ID`, its verify
+  mutated 9 ways and failing each. The same audit's minor finding:
+  `team_member_wage_recorded()` (migration `20261116000000`) now pins
+  `SET search_path = ''` (its body already named every object by schema);
+  PGlite full corpus 251 of 251, the pin read back from `pg_proc`, the
+  trigger still records an insert and an update run under a foreign
+  `search_path`, and the probe fails with the pin removed
+  (`p4-scratch/pglite-probe/PR440-r3-wage-trigger-search-path.mjs`). Not
+  run: a browser pass; `check_definer_functions_closed.py` (needs a DB URL;
+  the function is not SECURITY DEFINER in any case).]**
 
 - **Round 4 (2026-09-25).** Gateway `team-pay-round4.spec.ts` 29 cases (PA
   pay switch 13, FS former-staff history 12, CR credentials 4) and R1 in
@@ -1261,3 +1325,4 @@ Round 3 Opus last call, 2026-09-22, on the index tree (`wt-labor`):
 | 2026-09-27 | Merge-train update of PR #440 (round 4), CLAUDE.md-directed sync to `origin/main` | Branch fell one commit behind `origin/main` again (#488, `20261102110000_a_low_stock_digest_is_fenced_once_a_house_day.sql`) while CI ran on the item-71 unassign fix; `check_migration_order.py` refused the six migrations again. Merged `origin/main` in a worktree (no conflicts outside `CLAIMS.jsonl`, which took the disjoint #488 rows cleanly — no `(id, verify)` duplicates, verified by set-compare). Renumbered a ninth time (bracket above, Links section) to `20261103110xxx`, past main's new ceiling; every live citation swept (this ADR's Links list and body prose, `CLAIMS.jsonl`, `OPEN-DECISIONS.md`, `README.md`'s index row, the eleven `apps/api-gateway/src/team/*.ts`/`*.spec.ts` files, and the three migrations' own cross-referencing comments), the nine historical rename brackets and changelog rows above left citing the numbers true when they were written. `CLAIMS.jsonl`'s `ADR-0215-NO-STALE-180XXX-MIGRATION-CITATIONS` amended to grep an eighth retired prefix (`20261101110`). `check_migration_order.py`, `check_migration_versions_unique.py` and `check_decision_claims.sh` (645/645) re-run clean on the merged tree; `jest src/team` 245/245 unaffected (renumber touches only version strings). |
 | 2026-09-27 | Merge-train update of PR #440 (round 5), CLAUDE.md-directed sync to `origin/main` | Branch fell one commit behind `origin/main` again (#482, `bc7121ccf`, `20261115000000_a_price_names_its_paper_and_its_messenger.sql`) while the required checks settled on the round-4 head; `check_migration_order.py` refused the six migrations again. Merged `origin/main` in the same worktree (one conflict, `CLAIMS.jsonl`: this branch's `ADR-0215-NO-STALE-180XXX-MIGRATION-CITATIONS` row versus `main`'s disjoint `ADR-0160-112-FORK-6A-*`/`PR-482-*` rows — union, both kept, no `(id, verify)` duplicate; verified by set-compare and a full-file `(id, verify)` Counter). Renumbered a tenth time (bracket above, Links section) to `20261116000xxx`, past main's new ceiling; every live citation swept (this ADR's Links list and body prose, `CLAIMS.jsonl`, `OPEN-DECISIONS.md`, `README.md`'s index row, the seven `apps/api-gateway/src/team/*.ts`/`*.spec.ts` files, and the three migrations' own cross-referencing comments), the nine historical rename brackets and changelog rows above left citing the numbers true when they were written. `CLAIMS.jsonl`'s `ADR-0215-NO-STALE-180XXX-MIGRATION-CITATIONS` amended to grep a ninth retired prefix (`20261103110`). `check_migration_order.py`, `check_migration_versions_unique.py`, `check_citation_pairing.py` and `check_decision_claims.sh` re-run clean on the merged tree; `apps/web` vitest team suites + `mudavym-ground.test.ts` 206/206, gateway `jest src/team` 245/245, unaffected (renumber touches only version strings). |
 | 2026-09-27 | ADR 0090 audit of #440 at 42c43d1bf (BLOCK; train 7) | Both reviewers confirmed the item-71 wage masking correct and fail-closed; the BLOCK was the PR body alone (it still named the ninth renumber's `20261103110xxx` files as shipped, and carried branch-sync sentences that went stale on the next merge). The body was rewritten to the current state with the six `20261116000xxx` files named once and no branch-sync statement. The security reviewer's gap (no end-to-end test of `ownerMemberIds`) closed with `team-pay-owner-rows.spec.ts` (Evidence, "the owner set end to end"): 15 cases, 8 of 8 mutations killed, 4 of which the earlier 245 cases let through. Nothing was merged or renumbered in this round: `main`'s newest migration, `20261115000000`, sorts before all six. |
+| 2026-09-27 | ADR 0090 audit of #440 at ea4cc38d0 (BLOCK, fix round 1 of 2) | Both reviewers found the same leak: a co-owner REMOVED by `deleteMember` keeps their shifts (item 20), `ownerMemberIds` (a live read) no longer names their gone roster row, and the by-id shift routes checked no roster, so a pay-access manager's note-only `PATCH` answered with the owner's stored cost beside the hours (the wage), and any manager could `DELETE` a record kept five years. Fixed by round 4 item 19's own answer (a removed person's kept rows are owner-only history, hidden from the team views): `TeamService.assertOnTheRoster`, 404 for a kept row on `updateShift`, `deleteShift`, `reportCallout`, `offerCover`, `assignCover` and `reviewTimeOff`, for managers and owners alike; `deleteShift` reads first and says a missing shift or a failed read/delete. Correction brackets on item 24, item 20 and the item-71 evidence (whose "end to end" covered an inactive owner, never a removed one); residual (s) added. 8 new cases through the real `deleteMember`, 11 of 11 mutations killed, `jest src/team` 268/268; new CLAIMS row mutated 9 ways; the owner-set CLAIMS row bracketed. Minor finding fixed too: the wage trigger pins `search_path` (PGlite probe, mutation-checked). |

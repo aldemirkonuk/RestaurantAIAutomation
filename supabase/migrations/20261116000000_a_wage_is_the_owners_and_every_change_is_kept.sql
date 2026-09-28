@@ -179,6 +179,7 @@ COMMENT ON COLUMN public.team_members.wage_changed_by IS
 CREATE OR REPLACE FUNCTION public.team_member_wage_recorded()
 RETURNS trigger
 LANGUAGE plpgsql
+SET search_path = ''
 AS $function$
 DECLARE
   v_role CHARACTER VARYING(50);

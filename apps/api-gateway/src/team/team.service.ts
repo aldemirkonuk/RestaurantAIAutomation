@@ -285,6 +285,30 @@ export class TeamService {
     return new Set((data ?? []).map((m: any) => m.id as string));
   }
 
+  /**
+   * A row naming a removed person — a kept shift or leave request (ADR 0215
+   * item 20, migration 20261116000200 dropped the foreign keys that used to
+   * delete them) — is owner-only former-staff history (round 4 item 19:
+   * "Hidden from the team views; the owner can open a 'former staff' history
+   * for pay and legal records"). No by-id /team route reads, changes or
+   * deletes one, for anyone: it answers 404, as it did when the removal
+   * deleted the row. Reachable, a removed OWNER's kept shift was priced at
+   * their wage and `ownerMemberIds` (a live read) no longer names their gone
+   * roster row, so a switched-on manager was shown the cost (founder item 71,
+   * ADR 0090 audit of PR #440 at ea4cc38d0). An open row (no person) passes;
+   * a failed roster read raises (`rosterMemberIds`), never passes.
+   */
+  async assertOnTheRoster(
+    restaurantId: string,
+    row: { member_id?: string | null },
+    notFound: string,
+  ): Promise<void> {
+    if (!row.member_id) return;
+    const roster = await this.rosterMemberIds(restaurantId);
+    if (onTheRoster([row], roster).length === 0)
+      throw new NotFoundException(notFound);
+  }
+
   async listMembers(userId: string, restaurantId: string): Promise<any[]> {
     // Manager-gated: the roster exposes linked accounts. Its wages are the
     // owner's alone (ADR 0215).
@@ -1493,6 +1517,25 @@ export class TeamService {
     dto: ReviewRequestDto,
   ): Promise<any> {
     await this.assertAccess(userId, restaurantId, "manager");
+    // A removed person's request is kept, not reviewed (ADR 0215 item 20;
+    // `assertOnTheRoster`). A failed read is an error, not a missing request.
+    const { data: cur, error: curErr } = await this.sb
+      .from("time_off_requests")
+      .select("member_id")
+      .eq("id", requestId)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (curErr) {
+      this.logger.error(
+        `reviewTimeOff: could not read request ${requestId} in ` +
+          `${restaurantId}: ${curErr.message}`,
+      );
+      throw new InternalServerErrorException(
+        "Could not read this request, so it was not reviewed.",
+      );
+    }
+    if (!cur) throw new NotFoundException("Request not found");
+    await this.assertOnTheRoster(restaurantId, cur, "Request not found");
     const leaveType: LeaveType | undefined = dto.leaveType;
     const { data, error } = await this.sb
       .from("time_off_requests")

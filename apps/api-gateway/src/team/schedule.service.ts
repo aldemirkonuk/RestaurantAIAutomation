@@ -754,6 +754,9 @@ export class ScheduleService {
       );
     }
     if (!cur) throw new NotFoundException("Shift not found");
+    // A removed person's kept shift is owner-only history, not reachable here
+    // (ADR 0215 item 20; `TeamService.assertOnTheRoster`, founder item 71).
+    await this.team.assertOnTheRoster(restaurantId, cur, "Shift not found");
 
     // The break, as whoever edits the shift records it (ADR 0215): a number of
     // minutes records it (0 = no break taken); `null` clears the record, so
@@ -843,11 +846,39 @@ export class ScheduleService {
 
   async deleteShift(userId: string, restaurantId: string, shiftId: string) {
     await this.team.assertAccess(userId, restaurantId, "manager");
-    await this.sb
+    // A removed person's kept shift is kept five years and ended only by the
+    // retention job (ADR 0215 item 20); no manager or owner deletes it here
+    // (`TeamService.assertOnTheRoster`). So the shift is read first, and a
+    // failed read or delete is said, not answered as done.
+    const { data: cur, error: curErr } = await this.sb
+      .from("shifts")
+      .select("member_id")
+      .eq("id", shiftId)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (curErr) {
+      this.logger.error(
+        `deleteShift: could not read shift ${shiftId} in ${restaurantId}: ` +
+          curErr.message,
+      );
+      throw new InternalServerErrorException(
+        "Could not read this shift, so it was not deleted.",
+      );
+    }
+    if (!cur) throw new NotFoundException("Shift not found");
+    await this.team.assertOnTheRoster(restaurantId, cur, "Shift not found");
+    const { error } = await this.sb
       .from("shifts")
       .delete()
       .eq("id", shiftId)
       .eq("restaurant_id", restaurantId);
+    if (error) {
+      this.logger.error(
+        `deleteShift: could not delete shift ${shiftId} in ${restaurantId}: ` +
+          error.message,
+      );
+      throw new InternalServerErrorException("Failed to delete shift");
+    }
   }
 
   // ── Call-out → find & assign cover ───────────────────────────────────────
@@ -872,6 +903,11 @@ export class ScheduleService {
       .eq("restaurant_id", restaurantId)
       .maybeSingle();
     if (!original) throw new NotFoundException("Shift not found");
+    await this.team.assertOnTheRoster(
+      restaurantId,
+      original,
+      "Shift not found",
+    );
 
     // Keep the original on the caller's row as "callout" (strike-through),
     // and open a fresh unassigned cover slot for the same window.
@@ -945,6 +981,7 @@ export class ScheduleService {
       .eq("restaurant_id", restaurantId)
       .maybeSingle();
     if (!shift) throw new NotFoundException("Shift not found");
+    await this.team.assertOnTheRoster(restaurantId, shift, "Shift not found");
 
     const { data: members } = await this.sb
       .from("team_members")
@@ -994,6 +1031,7 @@ export class ScheduleService {
       .eq("restaurant_id", restaurantId)
       .maybeSingle();
     if (!shift) throw new NotFoundException("Shift not found");
+    await this.team.assertOnTheRoster(restaurantId, shift, "Shift not found");
 
     if (role === "staff") {
       const { data: me } = await this.sb

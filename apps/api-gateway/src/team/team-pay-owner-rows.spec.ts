@@ -1,4 +1,8 @@
-import { ForbiddenException } from "@nestjs/common";
+import {
+  ForbiddenException,
+  InternalServerErrorException,
+  NotFoundException,
+} from "@nestjs/common";
 import { ScheduleService } from "./schedule.service";
 import { TeamService } from "./team.service";
 import { asDatabaseService, makeStubDb, StubDb } from "./testing/supabase-stub";
@@ -499,5 +503,210 @@ describe("item 71 end to end — ownerMemberIds decides whose pay a pay-access m
       const rows = await teamOf(db).listMembers(OWNER, RID);
       expect(by(rows, "m-owner").hourly_wage).toBe(40);
     });
+  });
+});
+
+/**
+ * The ADR 0090 audit of PR #440 at ea4cc38d0: a co-owner REMOVED by
+ * `deleteMember` (both their access row and roster row deleted, not made
+ * inactive) keeps their shifts (item 20, migration 20261116000200 dropped the
+ * foreign key), but `ownerMemberIds` is a live read and no longer names the
+ * gone roster row — so `seesMoneyOf` read the kept shift as a colleague's.
+ * The by-id shift routes checked no roster, so a switched-on manager's
+ * note-only PATCH answered with the owner's stored cost, and any manager could
+ * delete a record kept five years. A removed person's kept rows are owner-only
+ * former-staff history (round 4 item 19): no by-id route reaches them.
+ */
+describe("item 71 + item 20 — a removed owner's kept shift is not reachable by id", () => {
+  const OWNER2 = "user-owner-2";
+
+  async function afterRemoval() {
+    const db = house();
+    db.tables.user_restaurant_access.push({
+      id: "a8",
+      user_id: OWNER2,
+      restaurant_id: RID,
+      role: "owner",
+      is_active: true,
+      team_pay_access: false,
+    });
+    db.tables.users.push({
+      user_id: OWNER2,
+      restaurant_id: RID,
+      role: "owner",
+      name: "Oz",
+      email: "oz@example.test",
+    });
+    db.tables.team_members.push({
+      id: "m-owner-2",
+      restaurant_id: RID,
+      user_id: OWNER2,
+      display_name: "Oz",
+      hourly_wage: 50,
+      created_at: "2026-01-07",
+    });
+    db.tables.time_off_requests.push(
+      {
+        id: "to-owner",
+        restaurant_id: RID,
+        member_id: "m-owner",
+        status: "pending",
+      },
+      {
+        id: "to-staff",
+        restaurant_id: RID,
+        member_id: "m-staff",
+        status: "pending",
+      },
+    );
+    // The real removal, by the other owner.
+    await teamOf(db).deleteMember(OWNER2, RID, "m-owner");
+    // It is a removal, not a deactivation: both rows are gone, the shift and
+    // the leave request are kept.
+    expect(by(db.tables.team_members, "m-owner")).toBeUndefined();
+    expect(
+      db.tables.user_restaurant_access.some(
+        (a: any) => a.user_id === OWNER && a.restaurant_id === RID,
+      ),
+    ).toBe(false);
+    expect(by(db.tables.shifts, "sh-owner").labor_cost).toBe(300);
+    expect(by(db.tables.time_off_requests, "to-owner")).toBeDefined();
+    const push = { sendToUsers: jest.fn(async () => undefined) } as any;
+    const notifications = {
+      persistForRestaurant: jest.fn(async () => ({ inserted: 0 })),
+    } as any;
+    const svc = new ScheduleService(
+      asDatabaseService(db),
+      teamOf(db),
+      notifications,
+      push,
+    );
+    db.ops.length = 0;
+    return { db, svc, push, notifications };
+  }
+
+  const kept = (db: StubDb) => by(db.tables.shifts, "sh-owner");
+  const shiftWrites = (db: StubDb) =>
+    db.ops.filter((o) => o.table === "shifts" && o.op !== "select");
+
+  it("a note-only PATCH by a switched-on manager answers 404, with no cost and no write", async () => {
+    const { db, svc } = await afterRemoval();
+    const reply = svc.updateShift(MANAGER, RID, "sh-owner", {
+      note: "x",
+    } as any);
+    await expect(reply).rejects.toBeInstanceOf(NotFoundException);
+    await expect(reply).rejects.not.toHaveProperty("response.labor_cost");
+    expect(shiftWrites(db)).toHaveLength(0);
+    expect(kept(db).note).toBeUndefined();
+    expect(kept(db).labor_cost).toBe(300);
+  });
+
+  it("delete answers 404 and keeps the record, for a manager and for the remaining owner", async () => {
+    const { db, svc } = await afterRemoval();
+    for (const who of [MANAGER, OWNER2]) {
+      await expect(
+        svc.deleteShift(who, RID, "sh-owner"),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    }
+    expect(db.opsOn("shifts", "delete")).toHaveLength(0);
+    expect(kept(db)).toBeDefined();
+  });
+
+  it("call-out, offer and assign answer 404: nothing opened, nobody pushed, nothing reassigned", async () => {
+    const { db, svc, push, notifications } = await afterRemoval();
+    await expect(
+      svc.reportCallout(MANAGER, RID, "sh-owner", {} as any),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    await expect(
+      svc.offerCover(MANAGER, RID, "sh-owner", {
+        memberIds: ["m-staff"],
+      } as any),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    await expect(
+      svc.assignCover(MANAGER, RID, "sh-owner", { memberId: "m-staff" } as any),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(shiftWrites(db)).toHaveLength(0);
+    expect(push.sendToUsers).not.toHaveBeenCalled();
+    expect(notifications.persistForRestaurant).not.toHaveBeenCalled();
+    expect(kept(db).member_id).toBe("m-owner");
+    expect(kept(db).state).toBe("scheduled");
+  });
+
+  it("the remaining owner cannot edit it by id either: it is history, read in former staff", async () => {
+    const { db, svc } = await afterRemoval();
+    await expect(
+      svc.updateShift(OWNER2, RID, "sh-owner", { note: "x" } as any),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(shiftWrites(db)).toHaveLength(0);
+  });
+
+  it("the removed person's kept leave request is not reviewed by id; a colleague's is", async () => {
+    const { db } = await afterRemoval();
+    const team = teamOf(db);
+    await expect(
+      team.reviewTimeOff(MANAGER, RID, "to-owner", {
+        status: "approved",
+      } as any),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(by(db.tables.time_off_requests, "to-owner").status).toBe("pending");
+    const ok = await team.reviewTimeOff(MANAGER, RID, "to-staff", {
+      status: "approved",
+    } as any);
+    expect(ok.status).toBe("approved");
+  });
+
+  it("a colleague's live shift is unchanged: PATCHed with its cost, deleted, an open shift assigned", async () => {
+    const { db, svc } = await afterRemoval();
+    const reply = await svc.updateShift(MANAGER, RID, "sh-staff", {
+      note: "y",
+    } as any);
+    expect(reply.labor_cost).toBe(150);
+    db.tables.shifts.push(
+      shift({
+        id: "sh-open",
+        member_id: null,
+        state: "open",
+        labor_cost: null,
+      }),
+    );
+    const assigned = await svc.assignCover(MANAGER, RID, "sh-open", {
+      memberId: "m-staff",
+    } as any);
+    expect(assigned.member_id).toBe("m-staff");
+    await svc.deleteShift(MANAGER, RID, "sh-staff");
+    expect(by(db.tables.shifts, "sh-staff")).toBeUndefined();
+  });
+
+  it("delete says what happened: a missing shift is 404, a failed read or delete is 500, never done", async () => {
+    const { db, svc } = await afterRemoval();
+    await expect(
+      svc.deleteShift(MANAGER, RID, "sh-nope"),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    db.errors["shifts:delete"] = { message: "boom" };
+    await expect(
+      svc.deleteShift(MANAGER, RID, "sh-staff"),
+    ).rejects.toBeInstanceOf(InternalServerErrorException);
+    delete db.errors["shifts:delete"];
+    db.errors["shifts:select"] = { message: "boom" };
+    await expect(
+      svc.deleteShift(MANAGER, RID, "sh-staff"),
+    ).rejects.toBeInstanceOf(InternalServerErrorException);
+    expect(db.opsOn("shifts", "delete")).toHaveLength(1); // the failed one
+    expect(by(db.tables.shifts, "sh-staff")).toBeDefined();
+  });
+
+  it("an unreadable roster refuses, never passes the kept shift through", async () => {
+    const { db, svc } = await afterRemoval();
+    failRead(
+      db,
+      (table, filters) =>
+        table === "team_members" &&
+        filters.length === 1 &&
+        filters[0].column === "restaurant_id",
+    );
+    await expect(
+      svc.updateShift(MANAGER, RID, "sh-owner", { note: "x" } as any),
+    ).rejects.toBeInstanceOf(InternalServerErrorException);
+    expect(shiftWrites(db)).toHaveLength(0);
   });
 });
