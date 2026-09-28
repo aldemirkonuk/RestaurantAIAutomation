@@ -1,4 +1,8 @@
-import { Injectable, Logger } from "@nestjs/common";
+import {
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from "@nestjs/common";
 import { DatabaseService } from "../../database/database.service";
 
 export type ReputationSignal = "injection" | "spam" | "bounce";
@@ -10,7 +14,7 @@ export type ReputationSignal = "injection" | "spam" | "bounce";
  * certainly spoofed/compromised) or sustained spam. Exposes a 0..1 score for D4 priority.
  *
  * Trust never overrides the other guardrails — it only lifts the "sender unverified" gate.
- * Best-effort: never throws.
+ * Best-effort: never throws — except setTrust, which a manager calls and must hear fail.
  */
 @Injectable()
 export class SenderReputationService {
@@ -52,7 +56,14 @@ export class SenderReputationService {
     }
   }
 
-  /** Manager trusts/untrusts a sender domain. Re-trusting clears any auto-suspension. */
+  /**
+   * Manager trusts/untrusts a sender domain. Re-trusting clears any auto-suspension.
+   *
+   * Unlike the rest of this service this is NOT best-effort: the caller is a manager asking for a
+   * change, and the Supabase client reports a failed write as a returned `{ error }`, not a throw.
+   * A write that did not land is a 503 (the store said no; nothing changed), so the request
+   * cannot answer success for a trust that was never saved.
+   */
   async setTrust(
     restaurantId: string,
     emailOrDomain: string,
@@ -61,23 +72,33 @@ export class SenderReputationService {
   ): Promise<string> {
     const domain = this.domainOf(emailOrDomain);
     if (!restaurantId || !domain) return "";
+    let failure: { message?: string } | null = null;
     try {
-      await this.databaseService.supabase.from("sender_reputation").upsert(
-        {
-          restaurant_id: restaurantId,
-          domain,
-          provider_id: providerId ?? null,
-          trusted,
-          trusted_at: trusted ? new Date().toISOString() : null,
-          suspended: false,
-          suspended_reason: null,
-          suspended_at: null,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "restaurant_id,domain" },
-      );
+      const { error } = await this.databaseService.supabase
+        .from("sender_reputation")
+        .upsert(
+          {
+            restaurant_id: restaurantId,
+            domain,
+            provider_id: providerId ?? null,
+            trusted,
+            trusted_at: trusted ? new Date().toISOString() : null,
+            suspended: false,
+            suspended_reason: null,
+            suspended_at: null,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "restaurant_id,domain" },
+        );
+      failure = error ?? null;
     } catch (e: any) {
-      this.logger.warn(`setTrust failed for ${domain}: ${e?.message}`);
+      failure = { message: e?.message ?? String(e) };
+    }
+    if (failure) {
+      this.logger.warn(`setTrust failed for ${domain}: ${failure.message}`);
+      throw new ServiceUnavailableException(
+        "Could not save sender trust; it was not changed",
+      );
     }
     return domain;
   }
