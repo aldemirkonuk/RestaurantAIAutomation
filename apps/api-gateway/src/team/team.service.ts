@@ -15,6 +15,7 @@ import {
   onTheRoster,
   seesMoney,
   TeamRole,
+  todayDateString,
 } from "./pay-rules";
 import {
   ChannelPreferences,
@@ -524,6 +525,17 @@ export class TeamService {
    * 44.1n). And the removal now also stops the person's `users` row naming this
    * house, so the `users`-row fallback no longer counts them as a member here
    * (44.1j).
+   *
+   * PAST SHOWN, FUTURE OPEN (ADR 0215, founder 2026-09-22 round 6z): this
+   * also turns every one of the person's UNWORKED shifts (today or later)
+   * into an open shift — `member_id: null`, `state: "open"` — so a week that
+   * has not happened yet is not short-staffed by someone gone. Their PAST
+   * shifts, and their leave requests either way, are untouched: kept, per
+   * item 20. This write runs LAST among the guards and FIRST among the
+   * writes — after every ForbiddenException above has had its chance to
+   * refuse the removal outright, and before the roster row itself is
+   * deleted — so a refused removal opens nothing, and a failed reopen
+   * removes nobody.
    */
   async deleteMember(
     userId: string,
@@ -534,6 +546,8 @@ export class TeamService {
     audited: boolean;
     notified: boolean;
     accessRevoked: boolean;
+    /** Future unworked shifts turned into open shifts by this removal (ADR 0215 round 6z). */
+    shiftsOpened: number;
   }> {
     const actor = await this.assertAccess(userId, restaurantId, "manager");
 
@@ -647,6 +661,43 @@ export class TeamService {
       accessRevoked = true;
     }
 
+    // PAST SHOWN, FUTURE OPEN (ADR 0215, founder 2026-09-22 round 6z, "Past
+    // shown, future open (Recommended)"). Every guard above — owners manage
+    // owners, the last-owner refusal — has already run and, if it was going
+    // to refuse this removal, already thrown: nothing here can run for a
+    // removal that was not going to happen. This person's PAST shifts are
+    // left untouched — kept, and still theirs, so the week they worked keeps
+    // its true hours and cost (item 20's five-year keep). Every UNWORKED
+    // shift — today or later; this schema has no finer clock than the
+    // calendar day — is handed back to the open pool before the roster row
+    // itself is gone, so a week that has not happened yet does not read as
+    // short-staffed by someone who no longer works here. A failed reopen
+    // refuses the whole removal: the roster row below is not deleted.
+    const { data: opened, error: openErr } = await this.sb
+      .from("shifts")
+      .update({
+        member_id: null,
+        state: "open",
+        shift_type: "open",
+        labor_cost: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("restaurant_id", restaurantId)
+      .eq("member_id", memberId)
+      .gte("shift_date", todayDateString())
+      .neq("state", "open")
+      .select("id");
+    if (openErr) {
+      this.logger.error(
+        `deleteMember could not reopen ${memberId}'s future shifts in ` +
+          `${restaurantId}: ${openErr.message}`,
+      );
+      throw new InternalServerErrorException(
+        "Could not reopen this person's unworked future shifts, so nobody was removed.",
+      );
+    }
+    const shiftsOpened = opened?.length ?? 0;
+
     // Remove from team_members roster.
     const { error } = await this.sb
       .from("team_members")
@@ -668,6 +719,9 @@ export class TeamService {
         user_id: member?.user_id ?? null,
         display_name: member?.display_name ?? null,
         position: member?.position ?? null,
+        // ADR 0215 round 6z: how many of this person's future shifts were
+        // turned into open shifts by this same removal.
+        shifts_opened: shiftsOpened,
       },
       notice: {
         title: "Your access to this restaurant was removed",
@@ -677,7 +731,7 @@ export class TeamService {
       },
     });
 
-    return { removed: true, accessRevoked, ...receipt };
+    return { removed: true, accessRevoked, shiftsOpened, ...receipt };
   }
 
   /** A member whose role here cannot be read is not removed. */

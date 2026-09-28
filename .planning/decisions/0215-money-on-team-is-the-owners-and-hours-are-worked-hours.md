@@ -1,16 +1,15 @@
 # 0215 — Money on /team is the owner's, and hours are worked hours
 
 - **Status:** Locked (the founder's four picks, 2026-09-21, his answer the same
-  day to the five forks this record first left open, "Take all five", and his
+  day to the five forks this record first left open, "Take all five", his
   answers 2026-09-22, round 6y, to the five questions round 2 in turn left
-  open — see "Answered, 2026-09-22 (round 6y)"). All five of "Open, for the
-  founder"'s questions are answered; the round-3 last call returned two new
-  ones, listed there and not decided here.
+  open, and his answers 2026-09-22, round 6z, to the two questions the round-3
+  last call returned — see "Answered, 2026-09-22 (round 6z)"). Nothing is open.
 - **Date:** 2026-09-21 (round 2 answers 2026-09-21; round 6y answers
-  2026-09-22)
+  2026-09-22; round 6z answers 2026-09-22, PR #440)
 - **Decider:** Aldemir (founder) — four picks and one answer to five forks
-  (2026-09-21), and five more answers (2026-09-22, round 6y), quoted verbatim
-  below
+  (2026-09-21), five more answers (2026-09-22, round 6y), and three more
+  answers (2026-09-22, round 6z), quoted verbatim below
 - **Keywords:** team, wage, hourly_wage, labor_cost, wage_visible, owner only,
   money rule, breaks, 4857 Art. 68, assumed break, recorded_break_min, 45 hours,
   overtime review, copy week, re-price, paid leave, leave_type,
@@ -18,7 +17,9 @@
   years, team_member_departures, purge_expired_wage_records,
   purge_expired_shift_and_leave_records, labour settings, owner only
   switch-off, house currency, Intl, KVKK, labour page, shifts outlive removal,
-  leave outlive removal, member_id foreign key dropped
+  leave outlive removal, member_id foreign key dropped, past shown future
+  open, onRosterOrPastShift, deleteMember opens future shifts, availability
+  and credentials still delete at removal
 - **Links:** [[0088-a-team-change-is-recorded-and-a-wage-is-not-invented]],
   [[0051-rebuilt-pages-show-live-data-only]], ADR 0117 (Q25, a house names its
   money), `supabase/migrations/20260921170200_a_wage_is_the_owners_and_every_change_is_kept.sql`,
@@ -26,6 +27,8 @@
   `supabase/migrations/20260921170910_a_wage_record_is_kept_five_years_after_leaving.sql`,
   `supabase/migrations/20260922013000_a_persons_shifts_and_leave_outlive_their_removal.sql`,
   `apps/api-gateway/src/team/pay-rules.ts`,
+  `apps/api-gateway/src/team/schedule.service.ts`,
+  `apps/api-gateway/src/team/team.service.ts`,
   `apps/api-gateway/src/team/wage-record-retention.service.ts`,
   `apps/api-gateway/src/team/team-pay.spec.ts`,
   `apps/web/src/pages/team/next/TeamPay.test.tsx`,
@@ -453,10 +456,110 @@ questions round 2 left open (see "Answered, 2026-09-22 (round 6y)" below):
       not decided here. `team-pay.spec.ts` K1, 10 of 10 targeted mutations
       killed; CLAIMS row
       `ADR-0215-TEAM-A-REMOVED-PERSONS-KEPT-ROWS-ARE-NOT-IN-THE-WEEK`.
+      **[Answered 2026-09-22, round 6z, item 22 below: "Past shown, future
+      open (Recommended)" — for SHIFTS this "kept, not shown" rule is now
+      "kept, and shown once the shift is past" (`onRosterOrPastShift`); a
+      FUTURE shift does not wait to be hidden here at all, because
+      `deleteMember` converts it to an open shift at removal. `onTheRoster`
+      stays exactly this rule, unchanged, for LEAVE requests and for a
+      COPY's source and target-in-the-way checks. The CLAIMS row above is
+      re-scoped with it — see item 22's Evidence.]**
     - Additive and idempotent: two constraints dropped (`IF EXISTS`,
       re-dropping a no-op), three functions replaced/added
       (`CREATE OR REPLACE`), no row written or deleted by the migration
       itself.
+
+And, from the founder's three answers 2026-09-22 (round 6z) to the two
+questions the round-3 last call returned (see "Answered, 2026-09-22 (round
+6z)" below):
+
+21. **A manager may switch labour-cost tracking ON only; only the owner may
+    switch it OFF — the literal "and off" reading returned at the round-3
+    last call is answered NO.** Founder pick: "Manager: on only
+    (Recommended)". This is item 16 confirmed, not changed: `labourSettingsMayChange`
+    and `labourSettingsRefusal` (pay-rules.ts) already refused only a
+    manager's attempt to turn tracking OFF or change the target, never a
+    manager's attempt to turn it ON — no code changed. What changed is the
+    record: item 16's "as built" is now the founder's own words, not a
+    reading the orchestrator returned for him to confirm.
+22. **A removed person's PAST shifts keep the hours and cost they always had;
+    their unworked FUTURE shifts become open shifts to refill the moment they
+    are removed — not deleted, and not kept as theirs, hidden.** Founder,
+    verbatim: "Past shown, future open (Recommended)". This replaces the
+    "kept, not shown" reading item 20 built for shifts (leave requests are
+    unchanged by this item — still kept, still not shown, per item 20 as
+    built; the founder's pick named shifts only, both times it was asked):
+    - **Past shown.** `onTheRoster` (pay-rules.ts) stops being the rule for a
+      shift in `getWeek`: a new `onRosterOrPastShift` leaves a row out only
+      when it is BOTH off the roster AND dated today or later. A past
+      week's `labor.totalHours` and (to the owner) `labor.totalCost` are true
+      again — a departed person's worked week is a fact of that week, not a
+      fact about who is on the roster today — and `week.shifts` carries the
+      row itself, through the same `shiftForViewer` money gate every other
+      shift goes through (owner sees the cost, a manager the hours, exactly
+      as if the person were still on the roster). Leave requests keep using
+      `onTheRoster` unchanged (`leaveThisWeek`), and so does a shift COPY —
+      `copyWeek`'s source read and its target "in the way" check both still
+      call `onTheRoster`: a copy must never write or count a departed
+      person's row, past or future.
+    - **Future open.** `TeamService.deleteMember` now converts every one of
+      the removed person's UNWORKED shifts — `shift_date` today or later;
+      this schema has no finer clock than the calendar day, so "today or
+      later" is the whole of "not yet happened" — to an open shift:
+      `member_id: null`, `state: "open"`, `shift_type: "open"`,
+      `labor_cost: null`, the same shape `createShift` gives an unassigned
+      shift and `reportCallout` gives a cover slot. A shift already `"open"`
+      is left alone (nothing to convert); every other state — `"scheduled"`,
+      `"covered"`, and a future `"callout"` marker — is, because all three
+      are shifts nobody is going to work as scheduled once this person is
+      gone. This is one `UPDATE`, not a loop: `restaurant_id`, `member_id`,
+      `shift_date >= today`, `state <> 'open'`. It runs AFTER every guard
+      that can refuse the removal outright (owners manage owners, the
+      last-owner refusal — ADR 0162) and BEFORE the roster row itself is
+      deleted: a refused removal opens nothing, and if the reopen write
+      itself fails, the whole removal is refused and nobody is removed — the
+      same "every read before the first write binds its error" discipline
+      this function already applied to its reads, extended to its first
+      write. The count is returned (`shiftsOpened`) and audited
+      (`system_audit_log.changes.shifts_opened`), so "how many shifts came
+      back to the open pool" is measured, not assumed.
+    - **A stray future-dated row is still hidden, defensively.** A legacy row
+      from before this shipped, or the write/removal race residual (l)
+      already records, is not expected to exist going forward — `deleteMember`
+      is what stops one from existing — but `onRosterOrPastShift` still
+      leaves it out of the week exactly as `onTheRoster` always did. Nothing
+      backfills an existing removed person's already-kept future shifts
+      retroactively (no production writes this session; residual, below).
+    - Tests: `team-pay.spec.ts` K1 (rewritten for "past shown": WEEK, a fixed
+      calendar date, is a real past date under the pinned clock, so the
+      existing fixture proves the new rule rather than needing a new one; a
+      second case pins the future-stray-row fallback) and a new K2 (`deleteMember`
+      opens every unworked shift, leaves the past alone, reports and audits
+      the count, fails closed on a write error, and — the correctness check
+      that matters most — never opens a shift before a refused removal's
+      `ForbiddenException` has already been thrown). Pure-rule cases for
+      `onRosterOrPastShift`/`todayDateString` in the `pay-rules` block.
+23. **Availability and credentials are still deleted the same second a person
+    is removed — unchanged, and this is now a decision, not a residual.**
+    Founder, verbatim: "Delete those (Recommended)". `team_availability` and
+    `team_certifications` keep their `ON DELETE CASCADE` foreign keys to
+    `team_members` (baseline, unchanged by this ADR). Why, as this record
+    reads it (the founder's pick names the outcome; this is the rationale for
+    it, not his words): shifts and leave requests are kept because they carry
+    the WORKED, HISTORICAL fact a wage claim or a labour audit can still turn
+    on — the same reason the wage record itself is kept five years. A
+    person's WEEKLY AVAILABILITY PATTERN and their CERTIFICATION DOCUMENTS
+    (`team_certifications.doc_url`) describe their ongoing CAPACITY to work
+    here, not a fact about a week that already happened; once they are gone,
+    neither has a use this schema serves, and a certification's `doc_url` is
+    closer to a personal/compliance document than to a financial record —
+    keeping it serves no wage-claim purpose the retained shifts and leave
+    already serve, and only extends how long a departed person's personal
+    data sits in the database, the opposite of KVKK's "no longer than
+    needed" this record already invokes for the wage record's five-year
+    limit (rather than forever). This was ADR 0215 residual (j)'s other half,
+    struck there as "unchanged" without a stated reason; the reason is
+    recorded here.
 
 ## Consequences
 
@@ -505,7 +608,11 @@ questions round 2 left open (see "Answered, 2026-09-22 (round 6y)" below):
   UNCHANGED by item 20 (the founder's pick, verbatim, named shifts and leave
   requests only): a removal still deletes those two the same second. That is
   a residual of item 20, not a decision — restated so it is not mistaken for
-  one.] (k) A departure is stamped once
+  one.] **[No longer a bare residual as of 2026-09-22, round 6z, item 23:
+  the founder was asked directly and picked "Delete those (Recommended)" —
+  availability and credentials keeping their immediate cascade-delete is now
+  a decision, with the rationale item 23 records, not merely an unresolved
+  question.]** (k) A departure is stamped once
   (`ON CONFLICT DO NOTHING`): a roster row removed, re-inserted under the SAME
   id and removed again would keep the first date. No product path re-inserts
   an id (every insert takes a generated one), so this is noted, not guarded.
@@ -519,6 +626,26 @@ questions round 2 left open (see "Answered, 2026-09-22 (round 6y)" below):
   shift at an instant, still reads every shift: a removed person's kept
   shift at that instant is named with the em dash its "member row is gone"
   case already renders, where before this change it was absent.
+  (n) Added 2026-09-22, round 6z: `deleteMember`'s new open-the-future-shifts
+  write only runs going forward, from the day it ships. Anyone removed
+  BEFORE this shipped whose future shifts were kept-but-hidden under item
+  20's original rule keeps that shape — their future rows stay assigned to
+  them and hidden (`onRosterOrPastShift`'s future-date fallback), not
+  retroactively opened. No production write was made to convert them (no
+  production access this session; "no production writes" also governs). A
+  house with any such removal before this ships is a candidate for a
+  one-time backfill, named here, not run. (o) Added 2026-09-22, round 6z:
+  "past shown" makes a departed person's shift readable again
+  (`week.shifts`, `labor.totalHours`/`totalCost`), but nothing NAMES them —
+  `team_members` is a hard DELETE at removal (unlike `shifts`/`time_off_requests`,
+  it carries no five-year keep of its own), so a past shift's `member_id`
+  resolves to nobody. `WeekGrid.tsx` draws one row per entry in `members`
+  (the live roster) and so draws no row for a removed person at all, on a
+  past week or otherwise — the same gap residual (m) already names for
+  `rosterAt`'s em dash. The week's AGGREGATE hours and cost are true (the
+  founder's ask); a labelled line item for the departed person specifically
+  is not built this round — a presentation question (what does an unnamed
+  past row read as?) rather than one round 6z's three answers settled.
 - **Revisit when** the labour page lands (it will own pay basis and confirmed
   hours), or if a second role is ever meant to see pay.
 
@@ -600,10 +727,12 @@ shows what was asked and that nothing was silently dropped (CLAUDE.md §5b):**
 
 Nothing from rounds 1 and 2 is open. The round-3 last call (2026-09-22)
 returned two new questions to the orchestrator, not filed as OD rows and not
-decided here: whether "Yes, on and off" means a manager may also switch
+decided here: ~~whether "Yes, on and off" means a manager may also switch
 tracking OFF (item 16's reading note), and how a removed person's kept rows
 should appear, if at all — their hours on a past week, their unworked future
-shifts (item 20, "Kept, not shown").
+shifts (item 20, "Kept, not shown").~~ **Both answered 2026-09-22, round 6z —
+see "Answered, 2026-09-22 (round 6z)" below and Decision items 21–23. Nothing
+is open.**
 
 ## Answered, 2026-09-22 (round 6y)
 
@@ -628,6 +757,30 @@ trigger function broadened, one new purge function, one existing purge
 function's departure cleanup broadened, one service reordered to call both,
 in that order, for the reason given in item 20 and the file header of
 `wage-record-retention.service.ts`.
+
+## Answered, 2026-09-22 (round 6z)
+
+The round-3 last call returned two new questions (above); PR #440
+(branch `fix/team-pay-defects`) also put a third to the founder that round 2
+had left as a bare, unexplained residual. He answered all three, verbatim,
+per-item picks relayed as options with a recommended default:
+
+| # | Question | Pick |
+|---|---|---|
+| 1 | Does "Yes, on and off" (round 6y, item 16) mean a manager may also switch tracking OFF? | **"Manager: on only (Recommended)"** — item 21: no, as built; the literal "and off" reading is answered NO |
+| 2 | How should a removed person's kept rows appear — their hours on a past week, their unworked future shifts? | **"Past shown, future open (Recommended)"** — item 22 |
+| 3 | Should availability and credentials be kept five years too, or still deleted at removal? | **"Delete those (Recommended)"** — item 23: unchanged, now a decision with a stated reason |
+
+One (1) closed a reading question with no code change, the same shape as
+three of round 6y's five. One (2) was the substantial change: a new
+`onRosterOrPastShift` (pay-rules.ts) replaces `onTheRoster` for a SHIFT in
+`getWeek` only (leave and copy keep `onTheRoster`, unchanged), and
+`TeamService.deleteMember` gained a new write — the first of its kind in this
+ADR, all of which until now only changed what was READ. One (3) closed a
+residual with a reason rather than changing anything: the founder was never
+asked before PR #440 whether availability and credentials should join the
+five-year keep; asked directly, he declined, and residual (j)'s other half
+becomes item 23.
 
 ## Evidence
 
@@ -832,6 +985,58 @@ Round 3 Opus last call, 2026-09-22, on the index tree (`wt-labor`):
 - The new CLAIMS row fails against each of 7 mutants of its anchors, run in
   a scratch copy of the three files, never the tree.
 
+Round 6z (the founder's three answers 2026-09-22), measured 2026-09-22 on the
+index tree (`wt-labor`, lane team4, PR #440):
+
+- Gateway: `team-pay.spec.ts` 78 of 78 (71 + 7: K1's rewritten "past shown"
+  case plus a new future-stray-row case, 2 pure-rule cases for
+  `onRosterOrPastShift`/`todayDateString`, and K2's 4 `deleteMember` cases).
+  The full `apps/api-gateway/src/team` suite: **147 of 147 (7 files)**.
+  `gw_tsc`, `gw_tsc_spec`, `gw_eslint` (the 4 changed files): exit 0.
+- **5 of 5 targeted mutations killed**, files snapshotted first and restored
+  byte-identical after each (memory: unstaged-file-mutation-snapshot-first):
+  1. `onRosterOrPastShift`'s past-date clause removed entirely (falls back to
+     exactly `onTheRoster`'s rule) — killed by 2 tests (K1's "past shown"
+     case and the pure-rule boundary case).
+  2. The boundary loosened from `<` to `<=` (today would count as past) —
+     killed by the pure-rule boundary case (`gone-today` wrongly kept).
+  3. `deleteMember`'s `.gte("shift_date", todayDateString())` filter
+     dropped (would also open PAST shifts) — killed by K2 (the kept "past"
+     fixture's `member_id`/`state`/`labor_cost` would have changed).
+  4. The reopen write moved back to BEFORE the owner-authorization guards
+     (this round's own fix, reverted) — killed by the new K2 case proving a
+     manager's refused attempt to remove an owner opens nothing first.
+  5. The audited `shifts_opened` count hardcoded to `0` — killed by K2's
+     count assertion on `system_audit_log`.
+- Register: the existing `ADR-0215-TEAM-A-REMOVED-PERSONS-KEPT-ROWS-ARE-NOT-IN-THE-WEEK`
+  row narrowed to LEAVE and COPY only (its `getWeek`-shifts assertion is no
+  longer true and was removed, not left to rot — CLAUDE.md §5b); two new
+  rows, `ADR-0215-TEAM-PAST-SHOWN-FUTURE-SHIFTS-OPEN-AT-REMOVAL` (item 22)
+  and `ADR-0215-TEAM-AVAILABILITY-AND-CREDENTIALS-STILL-CASCADE-AT-REMOVAL`
+  (item 23, a regression guard: fails if any migration ever names either
+  FK). The narrowed row keeps its existing id (416 rows before this round,
+  +2 new = 418). `scripts/check_decision_claims.sh` run directly against
+  the worktree (not a repo copy — disk ~5GB free): **418 of 418 claims
+  hold**, 0 regressed, 0 stale.
+- Guards, run directly in the worktree (a real `.git` here; per
+  `fix439b-build.md`'s precedent this round, `verify_index.sh`'s own
+  archive-and-copy step was also run once, separately, to confirm parity —
+  see below): `check_no_conflict_markers.py` PASS (5518 tracked files / 1466
+  planning docs), `check_od_ids_exist.py` PASS (1427 docs / 120 rows, 2
+  retired), `check_citation_pairing.py` PASS (180 citations / 121 rows),
+  `check_adr_numbers_unique.py` OK (0215 introduced by this ref, checked
+  against 1130 refs — this round edited an EXISTING ADR, so "introduced by"
+  names the ref this session's own citation added, not a new number).
+  `boots` and `prefixes`: exit 0 (unaffected by this round's files; last
+  measured green with the full check set, `verify_index.sh` on the index
+  tree, in the same run as `gw_tsc`/`gw_tsc_spec`/`jest`).
+- Not run: `check_migration_ledger.py` and `check_definer_functions_closed.py`
+  (no database URL, as every prior round); no browser pass (no page a person
+  looks at reads any differently this round — `week.shifts` carries the same
+  shape it always did, just more rows on a past week; `WeekGrid.tsx` still
+  draws no row for a removed person at all, past or present — residual (o)).
+  Ruff/black not run: no `services/agent-orchestrator` files touched.
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
@@ -842,3 +1047,4 @@ Round 3 Opus last call, 2026-09-22, on the index tree (`wt-labor`):
 | 2026-09-21 | Round 2 Opus last call | The sheet's under-minimum warning said "60 minutes for this shift" on an 8-hour shift whose minimum it also said was 30; it now names the minimum owed for the work the typed break leaves (fixed, test + killed mutation). The ADR's "safer side" sentence read as if the chosen break were the larger one (reworded). `assignCover`'s price read (`recomputeCostForMember`, whose select this round had widened) swallowed its error and wrote the cover as unpriced, which also made residual (g) untrue for that path (fixed: a 500 in words, nothing assigned; test + killed mutation). Found and recorded, not changed: a removal still cascades a person's shifts and leave (residual (j), question 5), and a departure is stamped once (residual (k)). Re-run: `team-pay.spec.ts` 63 of 63, one new mutation (an empty `shift_breaks` embed read as a recorded 0) killed by 4 cases, the PGlite probe ALL PASS |
 | 2026-09-22 | Round 3 build (founder round 6y, five answers, verbatim in "Answered, 2026-09-22") | Items 16–20 built or recorded; the "Open, for the founder" section's five questions are all struck, answered. Item 10 corrected in place (the "over 4 hours" gate removed; `ASSUME_BREAK_OVER_MIN` deleted from `pay-rules.ts` and its `tm-format.ts` mirror; boundary tests at 4h00/4h01/7h30/7h31 the founder named). Item 20 is the substantial change: `shifts.member_id` and `time_off_requests.member_id` drop their foreign key to `team_members` (migration `20260922013000`); `team_member_departure_recorded()` broadened to shifts and leave, not wage records alone; a new `purge_expired_shift_and_leave_records()` (service_role only, SECURITY INVOKER); `purge_expired_wage_records()`'s departure cleanup broadened the same way; `tmd_guard()` broadened identically; `WageRecordRetentionService` reordered to call the new purge first, then the wage purge, with a short-circuit on the first's failure (this was the one piece left unfinished from an earlier, interrupted pass of this session — found via `grep purge_expired_shift_and_leave_records apps/**/*.ts` turning up only the migration and comments, never a call site). Residual (j) struck (resolved), not deleted. New PGlite probe `teamfix-r3-shifts-and-leave-outlive-removal.mjs`, 31 checks, reproduces the pre-migration cascade defect first, then proves the fix and isolates the broadened `tmd_guard` from the purge functions (a departure with no wage row at all, past five years, with a live shift, refused). 8 of 8 migration mutations and 3 of 3 service mutations killed. Full `/team` suites re-measured: gateway 135 of 135 (7 files), web 105 of 105 (9 files). |
 | 2026-09-22 | Round 3 Opus last call | Item 20 dropped the foreign keys but nothing read the week any differently, so a removed person's kept rows entered it: their next week counted as covered and costed, "Copy last week" wrote them into new weeks, replacing a week deleted their kept shifts, and a pending leave request waited in the manager's list. Fixed as "kept, not shown" (`onTheRoster`; K1, 10 of 10 mutations killed; new CLAIMS row), the week reading as it did before the change; how kept rows should appear is returned to the founder. Records corrected in place: "never had a grant" (OD-72 revoked them), the retention job's header said the other order could clear a departure on live rows (it cannot; the order finishes the job in one night) and that "the tables refuse" an early delete of shifts and leave (no guard on them; the purge's clause is the rule), the Answered table's question 1 carried an "(and off)" the question never had, and "changed no page a person looks at". Returned: the literal reading of "on and off". Residuals (l) and (m) added. |
+| 2026-09-22 | Round 4 build (founder round 6z, three answers, PR #440, lane team4) | Items 21–23 built or recorded, closing every question this ADR had left open. Item 21: the "on and off" literal reading answered NO — no code change, `labourSettingsMayChange`/`labourSettingsRefusal` already matched. Item 22, the substantial change: `onRosterOrPastShift` (pay-rules.ts) replaces `onTheRoster` in `getWeek`'s shift read only — a removed person's PAST shift now carries its true hours and cost again, while a stray FUTURE one is still left out, defensively; `TeamService.deleteMember` gained its first WRITE in this ADR (every prior change here only changed what was read) — every one of the removed person's unworked shifts (today or later) becomes an open shift, placed AFTER every guard that can refuse the removal (owners manage owners, the last-owner rule) and BEFORE the roster row is deleted, so a refused removal opens nothing and a failed reopen removes nobody; the count is returned and audited. Item 23: availability and credentials confirmed unchanged (still cascade-delete at removal), with the founder's rationale now recorded rather than left as a bare residual. The existing K1 CLAIMS row was narrowed in place (its `getWeek`-shifts assertion was no longer true) rather than left to silently pass on stale grounds; two new rows added, one of them a regression guard on the two FKs item 23 leaves untouched. Tests: `team-pay.spec.ts` 78 of 78; full `/team` gateway suite 147 of 147 (7 files); 5 of 5 targeted mutations killed, including one that reproduces this round's OWN authorization-ordering bug (the reopen write first landed before the owner-manages-owner guard in an earlier pass of this session, caught before it reached the tree) and one that proves the audited count is measured, not asserted. Claims: 418 of 418 holding (416 + 2 new). No new migration — no schema change was needed; the migration band `20260922022000`–`20260922022099` reserved for this lane was not used. |

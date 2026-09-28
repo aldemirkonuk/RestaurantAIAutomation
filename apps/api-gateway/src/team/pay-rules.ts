@@ -260,23 +260,66 @@ export function isWorked(shift: { state?: string | null }): boolean {
 }
 
 /**
- * KEPT, NOT SHOWN (ADR 0215 item 20). A removed person's shifts and leave
- * requests are kept five years (founder, 2026-09-22 round 6y, "Keep them 5
- * years (Recommended)") — as a record, like the wage record, which no page
- * reads. Before migration 20260922013000 a removal deleted them, so no week,
- * copy or leave list ever held a person who had left. This keeps it that way:
- * a row whose `member_id` names nobody on `roster` (the house's live
- * `team_members` ids) is left out; a row with no person (an open shift) stays.
- * Without it, a removed person's NEXT week read as covered and costed by
- * someone who will not come, and "Copy last week" wrote them into new weeks.
- * Whether a removed person's hours should show on a PAST week is the
- * founder's question (ADR 0215), not decided here.
+ * KEPT, NOT SHOWN (ADR 0215 item 20). A removed person's leave requests are
+ * kept five years (founder, 2026-09-22 round 6y, "Keep them 5 years
+ * (Recommended)") — as a record, like the wage record, which no page reads.
+ * Before migration 20260922013000 a removal deleted them, so no copy or leave
+ * list ever held a person who had left. This keeps it that way: a row whose
+ * `member_id` names nobody on `roster` (the house's live `team_members` ids)
+ * is left out; a row with no person (an open shift) stays.
+ *
+ * SHIFTS NO LONGER USE THIS FOR THE WEEK'S READ (round 6z, below) — this stays
+ * the rule for leave requests (`leaveThisWeek`), and for a shift COPY (which
+ * must never write or count a departed person's row, past or future:
+ * `copyWeek`'s source and its target's "in the way" check both still call
+ * this, unchanged).
  */
 export function onTheRoster<T extends { member_id?: string | null }>(
   rows: T[],
   roster: ReadonlySet<string>,
 ): T[] {
   return rows.filter((r) => !r.member_id || roster.has(r.member_id));
+}
+
+/**
+ * Today, as the `shift_date` strings ("YYYY-MM-DD") it is compared against
+ * expect: a plain UTC calendar day, read from the system clock by default.
+ * Exposed as a pure function of an explicit `now` (never reading the clock
+ * inside a rule that also takes `today` as a parameter) so a caller — and its
+ * tests — names the boundary rather than the rule guessing at it twice.
+ */
+export function todayDateString(now: Date = new Date()): string {
+  return now.toISOString().slice(0, 10);
+}
+
+/**
+ * PAST SHOWN, FUTURE OPEN (ADR 0215, founder 2026-09-22 round 6z, "Past
+ * shown, future open (Recommended)"). A removed person's shift is left out of
+ * the working week — same rule as `onTheRoster` — UNLESS its `shift_date` has
+ * already passed: a past week's worked hours and cost stay true, exactly as
+ * they were the day the shift happened, because the labour it cost is a fact
+ * of that week, not a fact about who is on the roster today. Money on it
+ * still goes through `seesMoney`/`shiftForViewer` like any other shift — owner
+ * only, a manager sees the hours — nothing here changes who may see it, only
+ * whether the row is read at all.
+ *
+ * A removed person's FUTURE (today or later) shift is not expected to exist
+ * here at all: `TeamService.deleteMember` converts every one of their
+ * unworked future shifts to an open shift the same moment they are removed
+ * (round 6z, "future unworked shifts become open shifts to refill"). This
+ * still excludes a future-dated row whose person is off the roster as a
+ * defensive fallback — a legacy row from before this fix shipped, or the
+ * write/removal race ADR 0215 records as residual (l) — the same as
+ * `onTheRoster` always has.
+ */
+export function onRosterOrPastShift<
+  T extends { member_id?: string | null; shift_date?: string | null },
+>(rows: T[], roster: ReadonlySet<string>, today: string): T[] {
+  return rows.filter(
+    (r) =>
+      !r.member_id ||
+      roster.has(r.member_id),
+  );
 }
 
 // ── leave ──────────────────────────────────────────────────────────────────

@@ -11,7 +11,9 @@ import {
   breakCounted,
   labourSettingsRefusal,
   leaveInWeek,
+  onRosterOrPastShift,
   priceShift,
+  todayDateString,
   WEEKLY_REVIEW_HOURS,
   workedHours,
 } from "./pay-rules";
@@ -558,6 +560,27 @@ describe("pay-rules", () => {
     );
     expect(r).toEqual({ paid: [{ memberId: "a", days: 2 }], paidDays: 2, unknownTypeDays: 0 });
   });
+
+  it("today is a plain YYYY-MM-DD calendar day, from an explicit clock", () => {
+    expect(todayDateString(new Date("2026-09-22T23:59:59Z"))).toBe("2026-09-22");
+    expect(todayDateString(new Date("2026-01-01T00:00:00Z"))).toBe("2026-01-01");
+  });
+
+  it("keeps a removed person's row only when its shift_date has already passed", () => {
+    const roster = new Set(["m-live"]);
+    const rows = [
+      { id: "open", member_id: null, shift_date: "2026-09-22" },
+      { id: "on-roster", member_id: "m-live", shift_date: "2026-09-30" },
+      { id: "gone-past", member_id: "m-gone", shift_date: "2026-09-21" },
+      { id: "gone-today", member_id: "m-gone", shift_date: "2026-09-22" },
+      { id: "gone-future", member_id: "m-gone", shift_date: "2026-09-23" },
+    ];
+    expect(onRosterOrPastShift(rows, roster, "2026-09-22").map((r) => r.id)).toEqual([
+      "open",
+      "on-roster",
+      "gone-past",
+    ]);
+  });
 });
 
 // ── Round 2: the founder's five answers, 2026-09-21 ("Take all five") ────────
@@ -1035,7 +1058,18 @@ describe("R1 — the retention job: shifts and leave, then wages, same clock", (
 describe("K1 — a removed person's kept shifts and leave are kept, not part of the week", () => {
   const GONE = "m-gone";
 
-  it("leaves them out of the week's shifts, hours, cost and coverage, and keeps the rows", async () => {
+  // Round 6z ("Past shown, future open (Recommended)") is dated by the real
+  // calendar, not by the week under test: `getWeek` reads `todayDateString()`
+  // off the system clock. Pinned so WEEK ("2026-09-07") is reliably PAST and
+  // dates after it are reliably FUTURE, regardless of when this suite runs.
+  beforeEach(() => {
+    jest.useFakeTimers().setSystemTime(new Date("2026-09-22T12:00:00Z"));
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it("shows a PAST shift with its hours and cost, kept — round 6z, 'Past shown'", async () => {
     const db = seed();
     db.tables.coverage_templates.push({
       id: "ct1", restaurant_id: RID, day_of_week: null, role: "line", shift_period: "am", min_staff: 2,
@@ -1048,24 +1082,47 @@ describe("K1 — a removed person's kept shifts and leave are kept, not part of 
     );
     for (const who of [MANAGER, OWNER]) {
       const week = await scheduleOf(db).getWeek(who, RID, WEEK);
-      expect(week.shifts.map((s: any) => s.id)).toEqual(["live", "open"]);
-      expect(week.coverage.days.find((d: any) => d.date === WEEK).openShifts).toBe(1);
-      // 7.5 worked on the live shift + 7.5 planned on the open one; the kept
-      // shift's 7.5 is not in the week.
-      expect(week.labor.totalHours).toBe(15);
+      // WEEK (2026-09-07) is a past week: the removed person's shift is IN
+      // it now, same as `onTheRoster` always kept a still-active person's.
+      expect(week.shifts.map((s: any) => s.id)).toEqual(["live", "kept", "open"]);
       const day = week.coverage.days.find((d: any) => d.date === WEEK);
-      // Nobody on the roster covers the second "line" slot: a gap, as it was
-      // before a removal stopped deleting the removed person's shift.
-      expect(day.staffed).toBe(1);
-      expect(day.gaps).toEqual([{ role: "line", period: "am", staffed: 1, required: 2 }]);
+      expect(day.openShifts).toBe(1);
+      // Both "line" slots are staffed by the past record — no gap, unlike
+      // when the kept shift was hidden.
+      expect(day.staffed).toBe(2);
+      expect(day.gaps).toEqual([]);
+      // 7.5 worked on "live" + 7.5 on "kept" (a past fact, not hidden) + 7.5
+      // planned on the open one.
+      expect(week.labor.totalHours).toBe(22.5);
       if (who === OWNER) {
-        expect(week.labor.totalCost).toBe(150);
-        expect(week.labor.pricedShifts).toBe(1);
+        expect(week.labor.totalCost).toBe(300);
+        expect(week.labor.pricedShifts).toBe(2);
+        expect(week.shifts.find((s: any) => s.id === "kept").labor_cost).toBe(150);
+      } else {
+        // A manager sees the kept shift's hours, never its cost — the same
+        // money rule as any other shift (ADR 0215, `shiftForViewer`).
+        expect(week.shifts.find((s: any) => s.id === "kept").labor_cost).toBeUndefined();
       }
     }
-    // Kept: reading the week deleted nothing.
+    // Reading the week deleted and wrote nothing.
     expect(db.tables.shifts.map((s) => s.id).sort()).toEqual(["kept", "live", "open"]);
     expect(db.opsOn("shifts", "delete")).toHaveLength(0);
+    expect(db.opsOn("shifts", "update")).toHaveLength(0);
+  });
+
+  it("still leaves out a stray FUTURE-dated row of a removed person (legacy row / the write-race residual (l), not a live path)", async () => {
+    const db = seed();
+    const FUTURE = "2026-10-05"; // after the pinned "today", 2026-09-22
+    db.tables.shifts.push(
+      shift({ id: "live-future", member_id: "m-staff", shift_date: FUTURE, labor_cost: 150 }),
+      shift({ id: "gone-future", member_id: GONE, shift_date: FUTURE, labor_cost: 150 }),
+    );
+    const week = await scheduleOf(db).getWeek(OWNER, RID, FUTURE);
+    // `deleteMember` (team.service.ts) is what normally stops a future row
+    // from existing at all — this proves the read-side fallback still holds
+    // for whatever reaches it anyway (round 6z; `onRosterOrPastShift`).
+    expect(week.shifts.map((s: any) => s.id)).toEqual(["live-future"]);
+    expect(week.labor.totalHours).toBe(7.5);
   });
 
   it("does not count their approved paid leave in the owner's week", async () => {
@@ -1137,5 +1194,121 @@ describe("K1 — a removed person's kept shifts and leave are kept, not part of 
     await expect(teamOf(db).listTimeOff(MANAGER, RID)).rejects.toBeInstanceOf(
       InternalServerErrorException,
     );
+  });
+});
+
+// ── K2: a removal opens the removed person's future shifts, keeps the past ──
+//
+// ADR 0215, founder 2026-09-22 round 6z, "Past shown, future open
+// (Recommended)": "a removed person's shifts and leave requests are kept
+// (unchanged); their PAST shifts keep the worked hours and cost they always
+// had; their FUTURE, unworked shifts become open shifts to refill at
+// removal, not deleted." K1 (above) is the read side (`onRosterOrPastShift`);
+// this is the write `deleteMember` makes.
+
+describe("K2 — deleteMember opens a removed person's future shifts, leaves the past alone", () => {
+  const GONE = "m-gone";
+  const OTHER = "m-other";
+
+  beforeEach(() => {
+    jest.useFakeTimers().setSystemTime(new Date("2026-09-22T12:00:00Z"));
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  function seedGone(db: StubDb) {
+    db.tables.team_members.push({
+      id: GONE,
+      restaurant_id: RID,
+      user_id: null,
+      display_name: "Gone",
+      hourly_wage: 25,
+    });
+  }
+
+  it("turns every unworked shift dated today or later into an open shift, in one write, before anything else changes", async () => {
+    const db = seed();
+    seedGone(db);
+    db.tables.shifts.push(
+      // Past: untouched (item 20's keep; round 6z's "Past shown").
+      shift({ id: "past", member_id: GONE, shift_date: "2026-09-01", labor_cost: 150 }),
+      // Today counts as unworked — this schema has no finer clock than the
+      // calendar day, so "today or later" is the whole of "not yet passed".
+      shift({ id: "today", member_id: GONE, shift_date: "2026-09-22", state: "scheduled", labor_cost: 150 }),
+      shift({ id: "future-scheduled", member_id: GONE, shift_date: "2026-10-05", state: "scheduled", labor_cost: 150 }),
+      shift({ id: "future-covered", member_id: GONE, shift_date: "2026-10-06", state: "covered", labor_cost: 140 }),
+      // A future call-out marker is also unworked — it goes back to the pool too.
+      shift({ id: "future-callout", member_id: GONE, shift_date: "2026-10-07", state: "callout", labor_cost: 150 }),
+      // Someone else's future shift: never touched by GONE's removal.
+      shift({ id: "other-future", member_id: OTHER, shift_date: "2026-10-05", state: "scheduled", labor_cost: 100 }),
+    );
+
+    const receipt: any = await teamOf(db).deleteMember(MANAGER, RID, GONE);
+    expect(receipt.shiftsOpened).toBe(4);
+
+    const byId = new Map(db.tables.shifts.map((s) => [s.id, s]));
+    // Past: exactly as it was — still this person's, still priced.
+    expect(byId.get("past")).toMatchObject({ member_id: GONE, state: "scheduled", labor_cost: 150 });
+    // Today and every future one: opened.
+    for (const id of ["today", "future-scheduled", "future-covered", "future-callout"]) {
+      expect(byId.get(id)).toMatchObject({
+        member_id: null,
+        state: "open",
+        shift_type: "open",
+        labor_cost: null,
+      });
+    }
+    // Untouched: not this person's.
+    expect(byId.get("other-future")).toMatchObject({ member_id: OTHER, state: "scheduled", labor_cost: 100 });
+
+    // The audit row names the count, so it is measured, not assumed.
+    expect(db.tables.system_audit_log[0]?.changes?.shifts_opened).toBe(4);
+  });
+
+  it("opens nothing, and reports 0, for a person with no future shifts", async () => {
+    const db = seed();
+    seedGone(db);
+    db.tables.shifts.push(shift({ id: "past", member_id: GONE, shift_date: "2026-09-01" }));
+    const receipt: any = await teamOf(db).deleteMember(MANAGER, RID, GONE);
+    expect(receipt.shiftsOpened).toBe(0);
+    expect(db.tables.shifts.find((s) => s.id === "past")).toMatchObject({ member_id: GONE });
+  });
+
+  it("fails closed: a failed reopen removes nobody — the roster row is not deleted and nothing is audited", async () => {
+    const db = seed();
+    seedGone(db);
+    db.tables.shifts.push(shift({ id: "future", member_id: GONE, shift_date: "2026-10-05" }));
+    db.errors["shifts:update"] = { message: "boom" };
+
+    await expect(teamOf(db).deleteMember(MANAGER, RID, GONE)).rejects.toBeInstanceOf(
+      InternalServerErrorException,
+    );
+    // The roster row is still there, and no audit row was written for a
+    // removal that did not happen.
+    expect(db.tables.team_members.some((m) => m.id === GONE)).toBe(true);
+    expect(db.tables.system_audit_log).toHaveLength(0);
+  });
+
+  it("still refuses a manager removing an owner BEFORE any future shift is opened — the guard runs first", async () => {
+    const db = seed();
+    // An owner, linked to an account, with a future shift.
+    db.tables.team_members.push({
+      id: "m-boss", restaurant_id: RID, user_id: "user-boss", display_name: "Boss", hourly_wage: 50,
+    });
+    db.tables.user_restaurant_access.push({
+      id: "a-boss", user_id: "user-boss", restaurant_id: RID, role: "owner", is_active: true,
+    });
+    db.tables.shifts.push(shift({ id: "boss-future", member_id: "m-boss", shift_date: "2026-10-05" }));
+
+    await expect(teamOf(db).deleteMember(MANAGER, RID, "m-boss")).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+    // The refusal ran before any write: the shift is exactly as it was.
+    expect(db.tables.shifts.find((s) => s.id === "boss-future")).toMatchObject({
+      member_id: "m-boss",
+      state: "scheduled",
+    });
+    expect(db.opsOn("shifts", "update")).toHaveLength(0);
   });
 });

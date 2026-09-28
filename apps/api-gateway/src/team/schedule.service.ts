@@ -16,6 +16,7 @@ import {
   hoursBetween,
   isWorked,
   leaveInWeek,
+  onRosterOrPastShift,
   onTheRoster,
   priceShift,
   recordedBreakMinutes,
@@ -23,6 +24,7 @@ import {
   shiftForViewer,
   ShiftLike,
   TeamRole,
+  todayDateString,
   WEEKLY_REVIEW_HOURS,
   workedHours,
 } from "./pay-rules";
@@ -143,11 +145,16 @@ export class ScheduleService {
       );
     }
 
-    // A removed person's shifts are kept five years, not shown (ADR 0215 item
-    // 20, `onTheRoster`): read as they were before the removal stopped
-    // deleting them, so a removed person's next week is not "covered" by them.
+    // A removed person's shifts are kept five years. Round 6z ("Past shown,
+    // future open (Recommended)"): a PAST shift stays in the week — its
+    // worked hours and cost are a fact of the week it happened in, not of
+    // who is on the roster today. A FUTURE one is not expected here at all
+    // (`deleteMember` converts it to an open shift the moment the person is
+    // removed); `onRosterOrPastShift` still leaves out a stray future-dated
+    // row as the same defensive fallback `onTheRoster` always was.
     const roster = await this.team.rosterMemberIds(restaurantId);
-    const shiftRows = onTheRoster(shifts ?? [], roster);
+    const today = todayDateString();
+    const shiftRows = onRosterOrPastShift(shifts ?? [], roster, today);
     const receipts = schedule
       ? ((
           await this.sb
