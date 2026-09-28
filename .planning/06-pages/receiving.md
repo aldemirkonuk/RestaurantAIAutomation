@@ -832,7 +832,7 @@ By convention only, not by enforcement.** Measured on this branch (`main` + #436
   `authenticated` hold no privilege (`20260825200000_od73_close_anon_dml.sql:204-208`).
 - **Nothing in the database refuses a change.** No migration defines a trigger on the table, and
   the service role can `UPDATE` or `DELETE` any row. **[Superseded 2026-09-25 by [ADR 0227](../decisions/0227-the-door-record-is-append-only-in-the-database.md)
-  (founder, round 5: *"Trigger, no cascade"*): migration `20261130120000` refuses UPDATE, DELETE and
+  (founder, round 5: *"Trigger, no cascade"*): migration `the_door_record_is_append_only` refuses UPDATE, DELETE and
   TRUNCATE by trigger.]** A migration has already rewritten rows once:
   the `rejected_qty_bottles` backfill (`20260901220000_door_facts_are_columns.sql:64`).
 - **The history dies with its parent.** `order_id` and `restaurant_id` are `ON DELETE CASCADE`

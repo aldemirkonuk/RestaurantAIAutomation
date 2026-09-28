@@ -1,6 +1,6 @@
 # 0227 — The door record is append-only in the database
 
-- **Status:** Locked (founder, 2026-09-25, round 5) on the option he chose, *"Trigger, no cascade (Recommended)"*. Built on `feat/receiving-desk-approach1` (#480), migration `20261130120000_the_door_record_is_append_only.sql`.
+- **Status:** Locked (founder, 2026-09-25, round 5) on the option he chose, *"Trigger, no cascade (Recommended)"*. Built on `feat/receiving-desk-approach1` (#480), migration `the_door_record_is_append_only`.
 - **Date:** 2026-09-25
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** receiving, door receipt, procurement_receipt_events, append-only, trigger, ON DELETE RESTRICT, cascade, house deletion, soft delete, desk history
@@ -79,7 +79,7 @@ How the deletions that remain possible were designed (the brief's "soft delete, 
 ## Decision
 
 `procurement_receipt_events` is append-only by construction, and nothing it points at can be
-hard-deleted from under it. Migration `20261130120000`:
+hard-deleted from under it. Migration `the_door_record_is_append_only`:
 
 1. `procurement_receipt_events_are_append_only()` raises `restrict_violation` naming ADR 0227; it
    runs `BEFORE UPDATE OR DELETE FOR EACH ROW` and `BEFORE TRUNCATE FOR EACH STATEMENT` (a row
@@ -95,7 +95,7 @@ The migration asserts its own end state from the catalogue (both triggers enable
 
 ## Evidence
 
-- `supabase/tests/20261130120000_the_door_record_is_append_only_test.sql`, 11 tests, run in PGlite
+- The `the_door_record_is_append_only` test, 11 tests, run in PGlite
   over all 236 migrations (one transaction, rolled back; 0 rows left): UPDATE, DELETE and TRUNCATE
   refused by the trigger (T1-T3); an INSERT still appends (T4); an order and a house with receipts
   refused whole by the RESTRICT keys, everything intact (T5, T6); an order with no receipts deletes
