@@ -183,7 +183,9 @@ def _agent(*, autonomy=None, flag_rows=None, status="PENDING_APPROVAL", raise_on
                 }
             ],
             "procurement_orders": [],
-            "user_restaurant_access": [{"restaurant_id": REST_ID, "user_id": "u-1"}],
+            "user_restaurant_access": [
+                {"restaurant_id": REST_ID, "user_id": "u-1", "is_active": True}
+            ],
         },
         raise_on=raise_on,
     )

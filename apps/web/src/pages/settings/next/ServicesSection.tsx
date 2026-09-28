@@ -15,6 +15,12 @@
  * never mounted was already true; this is that same call applied to the
  * rebuild's own honest-but-present echo of it.
  *
+ * [2026-09-25, ADR 0222: the founder's round-6r pick "Bring back, real
+ * switches (Recommended)" (ADR 0134 fork 14) supersedes row 14's deletion for
+ * switches the product READS. The panel is back as `ConsentPanel.tsx`, opened
+ * from the Questions and training section; the four dead consents above stay
+ * deleted, because nothing reads them.]
+ *
  * The connected apps beneath are the opposite: real OAuth connections with
  * real dates, and the disconnect really disconnects.
  */
@@ -35,7 +41,8 @@ export function ServicesSection({ data }: { data: SettingsNextData }) {
         access, product analytics and partner sharing — is deleted (2026-09-17, ADR 0149 row 14): nothing in the
         product reads a consent, so nothing was asked and nothing was recorded, and a switch here would have been a
         promise the panel could not keep. When something does read a consent, it becomes a real question on this page
-        first, not a record with an already-decided answer.
+        first, not a record with an already-decided answer. The one consent Mudavym does read — whether this
+        house’s questions may help improve it — is on the consent panel, under Questions and training.
       </Note>
 
       <div style={{ margin: '20px 0 0' }}><Micro tone="seal">Connected apps</Micro></div>

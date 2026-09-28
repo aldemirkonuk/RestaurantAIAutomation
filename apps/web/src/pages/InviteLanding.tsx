@@ -1,7 +1,8 @@
 import { PublicShell } from '../components/mudavym/PublicShell'
 import { usePublicDesign } from '../lib/mudavym/publicDesign'
 import { useState, useEffect, useCallback } from 'react'
-import { useNavigate, useParams, Link } from 'react-router-dom'
+import { useNavigate, useParams, useLocation, Link } from 'react-router-dom'
+import { readInviteMailSecret, withInviteMailSecret } from '../lib/inviteMailSecret'
 import { useAuth } from '../contexts/AuthContext'
 import { AlertCircle, RefreshCw } from 'lucide-react'
 import { AuthShell, AuthCard } from '../components/brand/AuthShell'
@@ -64,6 +65,9 @@ export function InviteLanding() {
   const publicDesign = usePublicDesign()
   const { code } = useParams<{ code: string }>()
   const navigate = useNavigate()
+  // The secret the invite mail's link carries (ADR 0229 fork 9, item 77),
+  // handed on to /register as a fragment: only a join from the mail verifies.
+  const mailSecret = readInviteMailSecret(useLocation().hash)
   const { isAuthenticated, refreshBranches, setActiveRestaurantId } = useAuth()
   const [previewError, setPreviewError] = useState<string | null>(null)
   const [preview, setPreview] = useState<Preview | null>(null)
@@ -213,7 +217,10 @@ export function InviteLanding() {
                   </Link>
                   <Link
                     className="mdv-btn"
-                    to={`/register?invite=${encodeURIComponent(code ?? '')}`}
+                    to={withInviteMailSecret(
+                      `/register?invite=${encodeURIComponent(code ?? '')}`,
+                      mailSecret,
+                    )}
                   >
                     Create account to accept
                   </Link>
@@ -302,7 +309,7 @@ export function InviteLanding() {
                 Sign in to accept
               </Link>
               <Link
-                to={`/register?invite=${code}`}
+                to={withInviteMailSecret(`/register?invite=${code}`, mailSecret)}
                 className="block w-full text-center border border-gray-200 text-gray-700 rounded-xl py-3 text-sm font-medium hover:bg-gray-50"
               >
                 Create account to accept
