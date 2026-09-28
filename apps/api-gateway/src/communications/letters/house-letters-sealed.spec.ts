@@ -515,7 +515,7 @@ describe("decline, withdraw, and an undone release waits again (founder, 2026-09
       return q;
     };
     await expect(t.letters.cancel({ restaurantId: HOUSE, id: queued.id, userId: MANAGER })).rejects.toThrow(
-      /left the queue a moment ago/,
+      /claimed by the dispatcher/,
     );
     expect(request(t).state).toBe("released");
   });

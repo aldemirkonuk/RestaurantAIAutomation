@@ -969,7 +969,7 @@ export class HouseLettersService {
     // "pulled back" then would be a claim about a letter that may have gone.
     if (!Array.isArray(cancelled) || cancelled.length === 0) {
       throw new ConflictException(
-        "That letter left the queue a moment ago (the dispatcher may hold it), so it was NOT cancelled. The conversation book will say what happened to it.",
+        "That letter was claimed by the dispatcher the instant before this reached it, so it was NOT cancelled. The conversation book will say what happened to it.",
       );
     }
 

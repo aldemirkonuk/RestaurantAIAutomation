@@ -2887,8 +2887,8 @@ class ProviderConversationAgent(BaseAgent):
         "SENT",
         "AUTO_SENT",
         "SEND_UNCONFIRMED",
-        "SEND_REFUSED",
         "RELAY_REFUSED",
+        "SEND_REFUSED",
     )
 
     # A house letter (`outbound_email_type = 'HOUSE_LETTER'`: the ADR 0118

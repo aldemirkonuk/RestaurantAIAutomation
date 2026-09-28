@@ -1357,6 +1357,7 @@ describe("a queue that cannot be read is not a quiet minute", () => {
       sent: 0,
       failed: 0,
       skipped: 0,
+      rewaited: 0,
     });
     await cron.run();
     expect(cron.lastRun()).toMatchObject({ considered: 0, error: null });
