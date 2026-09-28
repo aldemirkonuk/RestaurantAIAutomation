@@ -14,28 +14,40 @@
  * (lib/wine-library.ts:32, useWineLibraryPage.ts:204-206).
  */
 
-import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { useQueryClient } from '@tanstack/react-query';
-import { animate, turn } from '../../../lib/mudavym/motion';
-import { queryKeys } from '../../../lib/query-keys';
-import BottleLeaf from './BottleLeaf';
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
+import { animate, turn } from "../../../lib/mudavym/motion";
+import { queryKeys } from "../../../lib/query-keys";
+import BottleLeaf from "./BottleLeaf";
 import {
   BOOK_READ_LIMIT,
   useInkOnChange,
   type BottleVM,
   type CellarData,
-} from './useCellarNextData';
-import { EM, houseNamingFor, money, volume, year } from './cellar-format';
+} from "./useCellarNextData";
+import { EM, houseNamingFor, money, volume, year } from "./cellar-format";
+import IsThisTheBottlePanel, {
+  type BottleReading,
+} from "./IsThisTheBottlePanel";
+import { readingsFrom } from "./readings";
 
 /**
- * The menu scanner ships today and its detection half is real (`scanMenuImage`
- * → the orchestrator's 4-layer pipeline). Its *add* half is not: both the
- * scanner tab's approve handler and the legacy page's `onWinesDetected` only
- * move rows around in component state — nothing is written to the library
- * (MenuScannerTab.tsx:160-172, WineLibrary.tsx:1813-1822). So the control here
- * is called "Read a menu", not "add wines", and says exactly what did not
- * happen when it finishes.
+ * The menu scanner's detection half was always real (`scanMenuImage` → the
+ * orchestrator's 4-layer pipeline). Its *add* half was not: both the scanner
+ * tab's approve handler and the legacy page's `onWinesDetected` only moved rows
+ * around in component state (MenuScannerTab.tsx:160-172,
+ * WineLibrary.tsx:1813-1822), so this control was called "Read a menu" rather
+ * than "add wines" and said exactly what had not happened when it finished.
+ *
+ * BUILT 2026-09-06 (packet 1, census 102 /cellar row). `MenuScannerModal`'s
+ * house branch now carries what it read, through the same bulk door
+ * /inventory's scan and manual receipt already use
+ * (`persistBatchToInventory` → `POST /inventory/:restaurantId/items/bulk`).
+ * The control keeps its honest name — reading is still reading — but the
+ * sentence it prints afterwards is now the outcome of a real write, not a
+ * report that no path exists. With the cellar flag OFF this page does not
+ * render at all, so the legacy `/wines` opener is untouched.
  *
  * DISCLOSED EXCEPTION — framer-motion. This is the ONE import on the page that
  * reaches a motion library, and it is deliberate and bounded:
@@ -58,38 +70,56 @@ import { EM, houseNamingFor, money, volume, year } from './cellar-format';
  * note §9.8 rather than patched over with CSS overrides.
  */
 const MenuScannerModal = lazy(() =>
-  import('../../../components/wines/MenuScannerModal').then((m) => ({ default: m.MenuScannerModal })),
+  import("../../../components/wines/MenuScannerModal").then((m) => ({
+    default: m.MenuScannerModal,
+  })),
 );
 
-type SortKey = 'name' | 'style' | 'vintage' | 'country' | 'format' | 'list' | 'market' | 'onhand';
-type Cellar = 'all' | 'in' | 'out' | 'par';
+type SortKey =
+  | "name"
+  | "style"
+  | "vintage"
+  | "country"
+  | "format"
+  | "list"
+  | "market"
+  | "onhand";
+type Cellar = "all" | "in" | "out" | "par";
 
 /**
  * The register's columns. A UI vocabulary, not a table of rows — `kind` says
  * whether the cell is a figure (right-aligned, tabular mono) or a word.
  */
-const COLUMNS: { id: SortKey; label: string; kind: 'figure' | 'word' }[] = [
-  { id: 'name', label: 'Bottle', kind: 'word' },
-  { id: 'style', label: 'Style', kind: 'word' },
-  { id: 'vintage', label: 'Vintage', kind: 'figure' },
-  { id: 'country', label: 'Origin', kind: 'word' },
-  { id: 'format', label: 'Format', kind: 'figure' },
-  { id: 'list', label: 'List', kind: 'figure' },
-  { id: 'market', label: 'Market', kind: 'figure' },
-  { id: 'onhand', label: 'On hand', kind: 'figure' },
+const COLUMNS: { id: SortKey; label: string; kind: "figure" | "word" }[] = [
+  { id: "name", label: "Bottle", kind: "word" },
+  { id: "style", label: "Style", kind: "word" },
+  { id: "vintage", label: "Vintage", kind: "figure" },
+  { id: "country", label: "Origin", kind: "word" },
+  { id: "format", label: "Format", kind: "figure" },
+  { id: "list", label: "List", kind: "figure" },
+  { id: "market", label: "Market", kind: "figure" },
+  { id: "onhand", label: "On hand", kind: "figure" },
 ];
 
 /** Sort value, or null for unknown. Unknowns sink in BOTH directions. */
 function sortValue(b: BottleVM, key: SortKey): string | number | null {
   switch (key) {
-    case 'style': return b.style?.toLowerCase() ?? null;
-    case 'vintage': return b.vintage;
-    case 'country': return b.country?.toLowerCase() ?? null;
-    case 'format': return b.bottleSizeMl;
-    case 'list': return b.listPrice;
-    case 'market': return b.marketPrice;
-    case 'onhand': return b.cellar ? b.cellar.stockLive : null;
-    default: return b.name.toLowerCase();
+    case "style":
+      return b.style?.toLowerCase() ?? null;
+    case "vintage":
+      return b.vintage;
+    case "country":
+      return b.country?.toLowerCase() ?? null;
+    case "format":
+      return b.bottleSizeMl;
+    case "list":
+      return b.listPrice;
+    case "market":
+      return b.marketPrice;
+    case "onhand":
+      return b.cellar ? b.cellar.stockLive : null;
+    default:
+      return b.name.toLowerCase();
   }
 }
 
@@ -124,11 +154,11 @@ function LiveRow({
       ref={setEl}
       key={bottle.id}
       data-selected={selected}
-      data-live={stamp === undefined ? undefined : 'true'}
+      data-live={stamp === undefined ? undefined : "true"}
       tabIndex={0}
       onClick={onChoose}
       onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
+        if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
           onChoose();
         }
@@ -139,7 +169,10 @@ function LiveRow({
   );
 }
 
-function distinct(bottles: BottleVM[], pick: (b: BottleVM) => string | null): string[] {
+function distinct(
+  bottles: BottleVM[],
+  pick: (b: BottleVM) => string | null,
+): string[] {
   const s = new Set<string>();
   for (const b of bottles) {
     const v = pick(b);
@@ -162,11 +195,16 @@ function Sift({
   onChange: (v: string) => void;
 }) {
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
       <label htmlFor={id} className="cl-dim" style={{ fontSize: 11 }}>
         {label}
       </label>
-      <select id={id} className="cl-field cl-focus" value={value} onChange={(e) => onChange(e.target.value)}>
+      <select
+        id={id}
+        className="cl-field cl-focus"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      >
         {options.map((o) => (
           <option key={o.value} value={o.value}>
             {o.label}
@@ -177,22 +215,28 @@ function Sift({
   );
 }
 
-const ANY = { value: 'all', label: 'Any' };
+const ANY = { value: "all", label: "Any" };
 
 export default function WineRegister({ data }: { data: CellarData }) {
-  const [query, setQuery] = useState('');
-  const [style, setStyle] = useState('all');
-  const [country, setCountry] = useState('all');
-  const [region, setRegion] = useState('all');
-  const [vintage, setVintage] = useState('all');
-  const [format, setFormat] = useState('all');
-  const [cellarFilter, setCellarFilter] = useState<Cellar>('all');
-  const [sortKey, setSortKey] = useState<SortKey>('name');
+  const [query, setQuery] = useState("");
+  const [style, setStyle] = useState("all");
+  const [country, setCountry] = useState("all");
+  const [region, setRegion] = useState("all");
+  const [vintage, setVintage] = useState("all");
+  const [format, setFormat] = useState("all");
+  const [cellarFilter, setCellarFilter] = useState<Cellar>("all");
+  const [sortKey, setSortKey] = useState<SortKey>("name");
   const [asc, setAsc] = useState(true);
   const [shelf, setShelf] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
   const [scanSaid, setScanSaid] = useState<string | null>(null);
+  /* THE QUEUE THE SCANNER NEVER HAD. Detection was real and the add half did
+     not exist anywhere (see the header). The readings are asked about ONE AT A
+     TIME — 'Is this the bottle?' — and each answer is its own write. */
+  const [readings, setReadings] = useState<BottleReading[]>([]);
+  const [carried, setCarried] = useState(0);
+  const [turnedAway, setTurnedAway] = useState(0);
 
   const queryClient = useQueryClient();
   const bottles = data.bottles;
@@ -204,7 +248,10 @@ export default function WineRegister({ data }: { data: CellarData }) {
     if (openId && leafRef.current) {
       animate(
         leafRef.current,
-        [{ opacity: 0.2, transform: 'translateY(4px)' }, { opacity: 1, transform: 'none' }],
+        [
+          { opacity: 0.2, transform: "translateY(4px)" },
+          { opacity: 1, transform: "none" },
+        ],
         turn,
       );
     }
@@ -215,11 +262,15 @@ export default function WineRegister({ data }: { data: CellarData }) {
     return {
       styles: distinct(bs, (b) => b.style),
       countries: distinct(bs, (b) => b.country),
-      regions: distinct(bs, (b) => (country === 'all' || b.country === country ? b.region : null)),
-      vintages: distinct(bs, (b) => (b.vintage === null ? null : String(b.vintage))).reverse(),
-      formats: distinct(bs, (b) => (b.bottleSizeMl === null ? null : String(b.bottleSizeMl))).sort(
-        (a, z) => Number(a) - Number(z),
+      regions: distinct(bs, (b) =>
+        country === "all" || b.country === country ? b.region : null,
       ),
+      vintages: distinct(bs, (b) =>
+        b.vintage === null ? null : String(b.vintage),
+      ).reverse(),
+      formats: distinct(bs, (b) =>
+        b.bottleSizeMl === null ? null : String(b.bottleSizeMl),
+      ).sort((a, z) => Number(a) - Number(z)),
     };
   }, [bottles, country]);
 
@@ -228,22 +279,31 @@ export default function WineRegister({ data }: { data: CellarData }) {
     const q = query.trim().toLowerCase();
     const rows = bottles.filter((b) => {
       if (q) {
-        const hay = [b.name, b.producer, b.grape, b.region, b.country, b.appellation, b.style]
+        const hay = [
+          b.name,
+          b.producer,
+          b.grape,
+          b.region,
+          b.country,
+          b.appellation,
+          b.style,
+        ]
           .filter(Boolean)
-          .join(' ')
+          .join(" ")
           .toLowerCase();
         if (!hay.includes(q)) return false;
       }
-      if (style !== 'all' && b.style !== style) return false;
-      if (country !== 'all' && b.country !== country) return false;
-      if (region !== 'all' && b.region !== region) return false;
-      if (vintage !== 'all' && String(b.vintage) !== vintage) return false;
-      if (format !== 'all' && String(b.bottleSizeMl) !== format) return false;
-      if (cellarFilter === 'in' && !b.cellar) return false;
-      if (cellarFilter === 'out' && b.cellar) return false;
-      if (cellarFilter === 'par') {
+      if (style !== "all" && b.style !== style) return false;
+      if (country !== "all" && b.country !== country) return false;
+      if (region !== "all" && b.region !== region) return false;
+      if (vintage !== "all" && String(b.vintage) !== vintage) return false;
+      if (format !== "all" && String(b.bottleSizeMl) !== format) return false;
+      if (cellarFilter === "in" && !b.cellar) return false;
+      if (cellarFilter === "out" && b.cellar) return false;
+      if (cellarFilter === "par") {
         const c = b.cellar;
-        if (!c || c.thresholdMin === null || c.stockLive > c.thresholdMin) return false;
+        if (!c || c.thresholdMin === null || c.stockLive > c.thresholdMin)
+          return false;
       }
       return true;
     });
@@ -254,10 +314,23 @@ export default function WineRegister({ data }: { data: CellarData }) {
       if (av === null) return 1; // unknowns sink in both directions
       if (zv === null) return -1;
       const c =
-        typeof av === 'number' && typeof zv === 'number' ? av - zv : String(av).localeCompare(String(zv));
+        typeof av === "number" && typeof zv === "number"
+          ? av - zv
+          : String(av).localeCompare(String(zv));
       return asc ? c : -c;
     });
-  }, [bottles, query, style, country, region, vintage, format, cellarFilter, sortKey, asc]);
+  }, [
+    bottles,
+    query,
+    style,
+    country,
+    region,
+    vintage,
+    format,
+    cellarFilter,
+    sortKey,
+    asc,
+  ]);
 
   const open = shown?.find((b) => b.id === openId) ?? null;
   const choose = (id: string) => setOpenId((cur) => (cur === id ? null : id));
@@ -277,22 +350,29 @@ export default function WineRegister({ data }: { data: CellarData }) {
       <p className="cl-crumb">
         <Link to="/cellar" className="cl-focus">
           {houseNamingFor(data.registers).name}
-        </Link>{' '}
+        </Link>{" "}
         · register
       </p>
-      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: 12 }}>
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          alignItems: "baseline",
+          gap: 12,
+        }}
+      >
         <h1 className="cl-h1">Wines</h1>
         <p className="cl-dim" style={{ margin: 0, fontSize: 12.5 }}>
           {shown === null
-            ? 'Opening the book…'
-            : `${shown.length.toLocaleString('en-US')} of ${(bottles?.length ?? 0).toLocaleString('en-US')} titles`}
+            ? "Opening the book…"
+            : `${shown.length.toLocaleString("en-US")} of ${(bottles?.length ?? 0).toLocaleString("en-US")} titles`}
           {data.bookTruncated
             ? ` · this read is capped at ${BOOK_READ_LIMIT}, so a title past that is not on this page`
-            : ''}
+            : ""}
         </p>
       </div>
 
-      <hr className="cl-rule" style={{ margin: '14px 0' }} />
+      <hr className="cl-rule" style={{ margin: "14px 0" }} />
 
       {/* ── the control rail ─────────────────────────────────────────────── */}
       <div className="cl-row-controls">
@@ -306,7 +386,7 @@ export default function WineRegister({ data }: { data: CellarData }) {
           placeholder="Search bottle, producer, grape, region…"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          style={{ minWidth: 240, flex: '1 1 240px' }}
+          style={{ minWidth: 240, flex: "1 1 240px" }}
         />
         <Sift
           id="cl-f-style"
@@ -321,30 +401,45 @@ export default function WineRegister({ data }: { data: CellarData }) {
           value={country}
           onChange={(v) => {
             setCountry(v);
-            setRegion('all');
+            setRegion("all");
           }}
-          options={[ANY, ...facets.countries.map((v) => ({ value: v, label: v }))]}
+          options={[
+            ANY,
+            ...facets.countries.map((v) => ({ value: v, label: v })),
+          ]}
         />
         <Sift
           id="cl-f-region"
           label="Region"
           value={region}
           onChange={setRegion}
-          options={[ANY, ...facets.regions.map((v) => ({ value: v, label: v }))]}
+          options={[
+            ANY,
+            ...facets.regions.map((v) => ({ value: v, label: v })),
+          ]}
         />
         <Sift
           id="cl-f-vintage"
           label="Vintage"
           value={vintage}
           onChange={setVintage}
-          options={[ANY, ...facets.vintages.map((v) => ({ value: v, label: v }))]}
+          options={[
+            ANY,
+            ...facets.vintages.map((v) => ({ value: v, label: v })),
+          ]}
         />
         <Sift
           id="cl-f-format"
           label="Format"
           value={format}
           onChange={setFormat}
-          options={[ANY, ...facets.formats.map((v) => ({ value: v, label: volume(Number(v)) }))]}
+          options={[
+            ANY,
+            ...facets.formats.map((v) => ({
+              value: v,
+              label: volume(Number(v)),
+            })),
+          ]}
         />
         <Sift
           id="cl-f-cellar"
@@ -352,20 +447,34 @@ export default function WineRegister({ data }: { data: CellarData }) {
           value={cellarFilter}
           onChange={(v) => setCellarFilter(v as Cellar)}
           options={[
-            { value: 'all', label: 'Everything' },
-            { value: 'in', label: 'In the building' },
-            { value: 'out', label: 'Not in the building' },
-            { value: 'par', label: 'At or under par' },
+            { value: "all", label: "Everything" },
+            { value: "in", label: "In the building" },
+            { value: "out", label: "Not in the building" },
+            { value: "par", label: "At or under par" },
           ]}
         />
-        <span style={{ display: 'inline-flex', gap: 4, marginLeft: 'auto' }}>
-          <button type="button" className="cl-btn cl-focus" onClick={() => setScanning(true)}>
+        <span style={{ display: "inline-flex", gap: 4, marginLeft: "auto" }}>
+          <button
+            type="button"
+            className="cl-btn cl-focus"
+            onClick={() => setScanning(true)}
+          >
             Read a menu
           </button>
-          <button type="button" className="cl-btn cl-focus" data-on={!shelf} onClick={() => setShelf(false)}>
+          <button
+            type="button"
+            className="cl-btn cl-focus"
+            data-on={!shelf}
+            onClick={() => setShelf(false)}
+          >
             Register
           </button>
-          <button type="button" className="cl-btn cl-focus" data-on={shelf} onClick={() => setShelf(true)}>
+          <button
+            type="button"
+            className="cl-btn cl-focus"
+            data-on={shelf}
+            onClick={() => setShelf(true)}
+          >
             Shelf
           </button>
         </span>
@@ -382,42 +491,94 @@ export default function WineRegister({ data }: { data: CellarData }) {
             isOpen
             onClose={() => setScanning(false)}
             onWinesDetected={(detected: unknown[]) => {
+              const rows = readingsFrom(detected);
               const n = Array.isArray(detected) ? detected.length : 0;
+              setCarried(0);
+              setTurnedAway(0);
+              setReadings(rows);
               setScanSaid(
-                `The scanner read ${n} ${n === 1 ? 'title' : 'titles'} off that menu. Nothing was written: ` +
-                  'the scanner detects, and no path from a detected title into the library or the cellar ' +
-                  'exists on this page yet. The book has been re-read in case something landed elsewhere.',
+                rows.length === 0
+                  ? `The scanner read ${n} ${n === 1 ? "title" : "titles"} off that menu and none of them ` +
+                      "carried a name and a producer, so there is nothing to ask about. Nothing was written."
+                  : `The scanner read ${n} ${n === 1 ? "title" : "titles"} off that menu. ` +
+                      `${rows.length} can be asked about one at a time — nothing is written until you answer.`,
               );
-              void queryClient.invalidateQueries({ queryKey: queryKeys.wines.all });
+              setScanning(false);
+              void queryClient.invalidateQueries({
+                queryKey: queryKeys.wines.all,
+              });
             }}
           />
         </Suspense>
       ) : null}
 
+      {/* THE QUESTION, one reading at a time. The panel is the only path from a
+          detected title into the house library, and it says exactly what "yes"
+          does: the reading enters the library's staging, and no bottle reaches
+          a shelf. (MERGE POINT: packet 1 is moving the menu scan onto the carry
+          sheet. This panel takes a plain `BottleReading` and knows nothing
+          about the scanner, so it re-points at the sheet's detection output by
+          changing the two lines below and nothing else.) */}
+      <IsThisTheBottlePanel
+        open={readings.length > 0}
+        reading={readings[0] ?? null}
+        onClose={() => setReadings([])}
+        onRejected={() => {
+          setTurnedAway((n) => n + 1);
+          setReadings((rows) => rows.slice(1));
+        }}
+        onConfirmed={() => {
+          setCarried((n) => n + 1);
+          setReadings((rows) => rows.slice(1));
+          void queryClient.invalidateQueries({ queryKey: queryKeys.wines.all });
+        }}
+      />
+      {readings.length === 0 && carried + turnedAway > 0 ? (
+        <p role="status" className="cl-note" data-testid="cl-reading-tally">
+          {`${carried} added to the library, ${turnedAway} turned away. A bottle in the library is ` +
+            "not a bottle on a shelf — carrying stock is its own act."}
+        </p>
+      ) : null}
+
       {/* ── honesty notices ──────────────────────────────────────────────── */}
       {data.bookError ? (
-        <div role="alert" className="cl-panel" style={{ marginTop: 12, padding: '10px 14px' }}>
+        <div
+          role="alert"
+          className="cl-panel"
+          style={{ marginTop: 12, padding: "10px 14px" }}
+        >
           <span className="cl-said">
-            The book could not be read ({data.bookError}) — nothing below is claimed, and an empty
-            register here would be a lie.
-          </span>{' '}
-          <button type="button" className="cl-btn cl-focus" onClick={data.refetch}>
+            The book could not be read ({data.bookError}) — nothing below is
+            claimed, and an empty register here would be a lie.
+          </span>{" "}
+          <button
+            type="button"
+            className="cl-btn cl-focus"
+            onClick={data.refetch}
+          >
             Try again
           </button>
         </div>
       ) : null}
       {!data.cellarKnown && !data.cellarError && bottles ? (
-        <p className="cl-note">The cellar has not answered yet — every “on hand” reads {EM} until it does.</p>
+        <p className="cl-note">
+          The cellar has not answered yet — every “on hand” reads {EM} until it
+          does.
+        </p>
       ) : null}
       {data.cellarError ? (
         <p role="status" className="cl-note">
-          The cellar could not be read ({data.cellarError}) — “on hand” is unknown for every title
-          below, not zero.
+          The cellar could not be read ({data.cellarError}) — “on hand” is
+          unknown for every title below, not zero.
         </p>
       ) : null}
 
       {/* ── the reading stand ────────────────────────────────────────────── */}
-      <div className="cl-stand" data-open={open ? 'true' : 'false'} style={{ marginTop: open ? 14 : 0 }}>
+      <div
+        className="cl-stand"
+        data-open={open ? "true" : "false"}
+        style={{ marginTop: open ? 14 : 0 }}
+      >
         <div>
           <div ref={leafRef}>
             {open ? (
@@ -436,12 +597,14 @@ export default function WineRegister({ data }: { data: CellarData }) {
       {/* ── the register itself ──────────────────────────────────────────── */}
       <div style={{ marginTop: 14 }}>
         {shown === null ? (
-          <p className="cl-said cl-dim">{data.bookError ? 'The register is unread.' : 'Opening the book…'}</p>
+          <p className="cl-said cl-dim">
+            {data.bookError ? "The register is unread." : "Opening the book…"}
+          </p>
         ) : shown.length === 0 ? (
           <p className="cl-said cl-dim">
             {(bottles?.length ?? 0) === 0
-              ? 'The book is open and empty — the library holds no titles.'
-              : 'No title in the book matches this reading. Widen the filters.'}
+              ? "The book is open and empty — the library holds no titles."
+              : "No title in the book matches this reading. Widen the filters."}
           </p>
         ) : shelf ? (
           <div className="cl-shelf">
@@ -453,13 +616,24 @@ export default function WineRegister({ data }: { data: CellarData }) {
                 data-selected={b.id === openId}
                 onClick={() => choose(b.id)}
               >
-                <span className="cl-serif" style={{ fontSize: 14.5, fontWeight: 600, lineHeight: 1.25 }}>
+                <span
+                  className="cl-serif"
+                  style={{ fontSize: 14.5, fontWeight: 600, lineHeight: 1.25 }}
+                >
                   {b.name}
                 </span>
                 <span className="cl-dim" style={{ fontSize: 11 }}>
-                  {[b.producer, b.style].filter(Boolean).join(' · ') || 'unattributed'}
+                  {[b.producer, b.style].filter(Boolean).join(" · ") ||
+                    "unattributed"}
                 </span>
-                <span className="cl-num" style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
+                <span
+                  className="cl-num"
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    fontSize: 11,
+                  }}
+                >
                   <span>{year(b.vintage)}</span>
                   <span>{money(b.listPrice)}</span>
                   <span>{b.cellar ? `${b.cellar.stockLive} on hand` : EM}</span>
@@ -468,28 +642,40 @@ export default function WineRegister({ data }: { data: CellarData }) {
             ))}
           </div>
         ) : (
-          <div style={{ overflowX: 'auto', border: '1px solid var(--paper-2)', borderRadius: 10 }}>
+          <div
+            style={{
+              overflowX: "auto",
+              border: "1px solid var(--paper-2)",
+              borderRadius: 10,
+            }}
+          >
             <table className="cl-table">
               <thead>
                 <tr>
                   {COLUMNS.map((c) => (
-                    <th key={c.id} style={{ textAlign: c.kind === 'figure' ? 'right' : 'left' }}>
+                    <th
+                      key={c.id}
+                      style={{
+                        textAlign: c.kind === "figure" ? "right" : "left",
+                      }}
+                    >
                       <button
                         type="button"
                         className="cl-focus"
                         onClick={() => toggleSort(c.id)}
                         aria-label={`Sort by ${c.label}`}
                         style={{
-                          background: 'none',
+                          background: "none",
                           border: 0,
                           padding: 0,
-                          font: 'inherit',
-                          cursor: 'pointer',
-                          color: sortKey === c.id ? 'var(--seal-deep)' : 'inherit',
+                          font: "inherit",
+                          cursor: "pointer",
+                          color:
+                            sortKey === c.id ? "var(--seal-deep)" : "inherit",
                         }}
                       >
                         {c.label}
-                        {sortKey === c.id ? (asc ? ' ▲' : ' ▼') : ''}
+                        {sortKey === c.id ? (asc ? " ▲" : " ▼") : ""}
                       </button>
                     </th>
                   ))}
@@ -502,31 +688,43 @@ export default function WineRegister({ data }: { data: CellarData }) {
                     bottle={b}
                     selected={b.id === openId}
                     stamp={
-                      b.cellar ? data.live.touched[b.cellar.inventoryId] : undefined
+                      b.cellar
+                        ? data.live.touched[b.cellar.inventoryId]
+                        : undefined
                     }
                     onChoose={() => choose(b.id)}
                   >
                     <td>
-                      <span style={{ display: 'block', fontWeight: 600 }}>{b.name}</span>
+                      <span style={{ display: "block", fontWeight: 600 }}>
+                        {b.name}
+                      </span>
                       <span className="cl-dim" style={{ fontSize: 11 }}>
-                        {[b.producer, b.grape].filter(Boolean).join(' · ') || 'unattributed'}
+                        {[b.producer, b.grape].filter(Boolean).join(" · ") ||
+                          "unattributed"}
                       </span>
                     </td>
                     <td>{b.style ?? <span className="cl-dim">{EM}</span>}</td>
-                    <td className="cl-num" style={{ textAlign: 'right' }}>
+                    <td className="cl-num" style={{ textAlign: "right" }}>
                       {year(b.vintage)}
                     </td>
-                    <td>{[b.region, b.country].filter(Boolean).join(', ') || <span className="cl-dim">{EM}</span>}</td>
-                    <td className="cl-num" style={{ textAlign: 'right' }}>
+                    <td>
+                      {[b.region, b.country].filter(Boolean).join(", ") || (
+                        <span className="cl-dim">{EM}</span>
+                      )}
+                    </td>
+                    <td className="cl-num" style={{ textAlign: "right" }}>
                       {volume(b.bottleSizeMl)}
                     </td>
-                    <td className="cl-num" style={{ textAlign: 'right' }}>
+                    <td className="cl-num" style={{ textAlign: "right" }}>
                       {money(b.listPrice)}
                     </td>
-                    <td className="cl-num cl-dim" style={{ textAlign: 'right' }}>
+                    <td
+                      className="cl-num cl-dim"
+                      style={{ textAlign: "right" }}
+                    >
                       {money(b.marketPrice)}
                     </td>
-                    <td className="cl-num" style={{ textAlign: 'right' }}>
+                    <td className="cl-num" style={{ textAlign: "right" }}>
                       {!data.cellarKnown ? (
                         <span className="cl-dim">{EM}</span>
                       ) : b.cellar ? (
@@ -546,7 +744,7 @@ export default function WineRegister({ data }: { data: CellarData }) {
             does not say what it measured is claiming, not reporting. */}
         <p className="cl-note" data-testid="wine-live-note">
           {data.live.lastApplyMs === null
-            ? 'Stock moves arrive on the socket (stock:updated → restaurant:<id>) and are written straight into the row that changed; the read behind them reconciles afterwards. Nothing has moved since this page opened, so no time has been measured.'
+            ? "Stock moves arrive on the socket (stock:updated → restaurant:<id>) and are written straight into the row that changed; the read behind them reconciles afterwards. Nothing has moved since this page opened, so no time has been measured."
             : `A stock move landed and was on screen ${data.live.lastApplyMs} ms later — measured in this tab, from the event to the painted frame. The transport leg is separate and is stated in MOTIONS.md.`}
         </p>
       </div>

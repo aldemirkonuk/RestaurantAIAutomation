@@ -1,3 +1,6 @@
+import { PublicShell } from '../components/mudavym/PublicShell'
+import { usePublicDesign } from '../lib/mudavym/publicDesign'
+import '../components/mudavym/public-pages.css'
 import { useState } from 'react'
 import { useSearchParams, Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
@@ -8,8 +11,8 @@ import { toast } from 'sonner'
 import { getOnboardingProgress } from '../services/api/menus'
 import { apiClient, getErrorMessage } from '../services/api/client'
 
-
 export function VerifyEmail() {
+  const publicDesign = usePublicDesign()
   const [searchParams] = useSearchParams()
   const { user } = useAuth()
   const [verifying, setVerifying] = useState(false)
@@ -58,22 +61,113 @@ export function VerifyEmail() {
       return
     }
     setResending(true)
+    setError(null)
     try {
       await apiClient.post('/auth/resend-verification')
       setLastResent(new Date())
-      toast.success('Verification email resent! Check your inbox.')
+      toast.success('Verification email requested. Check your inbox.')
     } catch (err: unknown) {
+      setError(getErrorMessage(err))
       toast.error(getErrorMessage(err))
     } finally {
       setResending(false)
     }
   }
 
+  if (publicDesign) {
+    return (
+      <PublicShell
+        title={
+          verified
+            ? 'Email verified'
+            : token
+              ? 'Verify your email'
+              : 'Check your email'
+        }
+        eyebrow="Account access"
+        voice={
+          verified
+            ? 'Opening your workspace…'
+            : token
+              ? 'Confirm this address to continue.'
+              : 'Look for the verification email from Mudavym.'
+        }
+        homeHref="/login"
+        footer={
+          <Link className="mdv-link" to="/login">
+            Back to sign in
+          </Link>
+        }
+      >
+        <div className="mdv-pub__plate mdv-public-stack">
+          {verified ? (
+            <p role="status">Your address is verified. Redirecting you now…</p>
+          ) : (
+            <>
+              {error && (
+                <p className="mdv-alert" role="alert">
+                  {error}
+                </p>
+              )}
+              {token ? (
+                <button
+                  className="mdv-btn mdv-btn--seal"
+                  onClick={handleVerify}
+                  disabled={verifying}
+                >
+                  {verifying ? 'Verifying…' : 'Verify my email'}
+                </button>
+              ) : (
+                <>
+                  {user?.email && (
+                    <p className="mdv-public-address">
+                      Account: <strong>{user.email}</strong>
+                    </p>
+                  )}
+                  <p>
+                    Open the verification link in your inbox. If it is missing,
+                    check your spam folder.
+                  </p>
+                  {user ? (
+                    <button
+                      className="mdv-btn mdv-btn--seal"
+                      onClick={handleResend}
+                      disabled={resending}
+                    >
+                      {resending ? 'Requesting…' : 'Resend verification email'}
+                    </button>
+                  ) : (
+                    <Link
+                      className="mdv-btn mdv-btn--seal"
+                      to="/login?redirect=%2Fverify-email"
+                    >
+                      Sign in to resend
+                    </Link>
+                  )}
+                  {lastResent && (
+                    <p role="status" className="mdv-note">
+                      Another verification email was requested at{' '}
+                      {lastResent.toLocaleTimeString()}. Wait one minute before
+                      requesting again.
+                    </p>
+                  )}
+                </>
+              )}
+            </>
+          )}
+        </div>
+      </PublicShell>
+    )
+  }
+
   if (verified) {
     return (
       <AuthShell title="Email Verified!" subtitle="Redirecting you now…">
         <AuthCard className="text-center py-10">
-          <CheckCircle className="w-14 h-14 text-emerald-500 mx-auto" strokeWidth={1.5} />
+          <CheckCircle
+            className="w-14 h-14 text-emerald-500 mx-auto"
+            strokeWidth={1.5}
+          />
         </AuthCard>
       </AuthShell>
     )
@@ -97,7 +191,10 @@ export function VerifyEmail() {
 
         {error && (
           <div className="mb-4 p-3 bg-red-50 border border-red-100 rounded-xl flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" strokeWidth={1.75} />
+            <AlertCircle
+              className="w-4 h-4 text-red-500 flex-shrink-0"
+              strokeWidth={1.75}
+            />
             <p className="text-sm text-red-700">{error}</p>
           </div>
         )}
@@ -108,7 +205,10 @@ export function VerifyEmail() {
             'Click "Verify My Email"',
             `You'll be guided through setting up your wine list`,
           ].map((text, i) => (
-            <div key={i} className="flex items-start gap-3 bg-wine-50/50 rounded-xl p-3">
+            <div
+              key={i}
+              className="flex items-start gap-3 bg-wine-50/50 rounded-xl p-3"
+            >
               <div className="w-5 h-5 rounded-full bg-wine-600 text-white text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
                 {i + 1}
               </div>
@@ -122,10 +222,18 @@ export function VerifyEmail() {
             <p className="text-sm text-gray-600 text-center">
               Click below to verify your email address.
             </p>
-            <Button className="w-full" size="lg" onClick={handleVerify} disabled={verifying}>
+            <Button
+              className="w-full"
+              size="lg"
+              onClick={handleVerify}
+              disabled={verifying}
+            >
               {verifying ? (
                 <>
-                  <Loader2 className="w-4 h-4 animate-spin mr-2" strokeWidth={1.75} />
+                  <Loader2
+                    className="w-4 h-4 animate-spin mr-2"
+                    strokeWidth={1.75}
+                  />
                   Verifying...
                 </>
               ) : (
@@ -136,7 +244,8 @@ export function VerifyEmail() {
         ) : (
           <div className="space-y-4">
             <p className="text-sm text-gray-600 text-center">
-              Didn&apos;t receive the email? Check your spam folder or resend below.
+              Didn&apos;t receive the email? Check your spam folder or resend
+              below.
             </p>
             <Button
               variant="outline"
@@ -147,7 +256,10 @@ export function VerifyEmail() {
             >
               {resending ? (
                 <>
-                  <Loader2 className="w-4 h-4 animate-spin mr-2" strokeWidth={1.75} />
+                  <Loader2
+                    className="w-4 h-4 animate-spin mr-2"
+                    strokeWidth={1.75}
+                  />
                   Resending...
                 </>
               ) : (
@@ -156,14 +268,18 @@ export function VerifyEmail() {
             </Button>
             {lastResent && (
               <p className="text-xs text-center text-gray-400">
-                Resent at {lastResent.toLocaleTimeString()}. Wait 1 minute before resending again.
+                Resent at {lastResent.toLocaleTimeString()}. Wait 1 minute
+                before resending again.
               </p>
             )}
           </div>
         )}
 
         <div className="mt-6 pt-4 border-t border-gray-100 text-center">
-          <Link to="/login" className="text-sm text-wine-600 hover:text-wine-700 font-semibold">
+          <Link
+            to="/login"
+            className="text-sm text-wine-600 hover:text-wine-700 font-semibold"
+          >
             Back to Sign In
           </Link>
         </div>

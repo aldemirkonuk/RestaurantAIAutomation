@@ -12,6 +12,16 @@ disagrees with the tree, the tree wins. Re-measure before acting on any line her
 marked "agent died" has partial or no edits in its worktree. Inspect `git status` there
 before continuing.
 
+## 0b. Founder-authorized page finalization, 2026-09-13
+
+This update supersedes older audit-only and queue-status instructions where they differ; it preserves their evidence below. The founder has now requested complete Wave Four and successor page finalization, thorough research, detailed documentation in the existing Obsidian vault, and the associated commits, pushes, merges and deployments. Work begins from main `60ed83a7`; PR373's endpoint repairs are already merged, so the older statement that they follow in another PR is historical.
+
+The dated review and its final PDF are now indexed at [[MUDAVYM-TRANSITION-2026-09-13]]. Its findings remain tied to the audited SHA; completion of a later fix must be recorded with its own tests and commit. Current canonical host is `mudavym.com`, with `www` redirecting to it. New chat progress is three or four bracketed words; the detailed account belongs here and in the owning page/ADR.
+
+Product choices already answered in ADR0143–0145 are carried forward. Genuine unresolved choices remain questions, not inferred permission: especially page-specific visibility/content, first Ask readings, notification recipient authority and remaining motion/overlay proposals. The broader execution authorization permits finishing decided work without repeatedly asking to commit or deploy; it does not turn historical scratch suggestions into founder decisions or authorize undisclosed vendor sends/charges during verification.
+
+The vault import is complete. All seven public pages now have a shared-shell path behind the existing public switch; page dossiers record their behavior and remaining decisions. Isolated checks: 108 unique web tests (14 optional capture cases skipped), ten gateway tests and both TypeScript checks passed using the source checkout's installed dependencies through ignored local symlinks. No package lock or dependency version was changed. Actual browser coverage and its limits are recorded in [[handoff/evidence/public-pages-2026-09-13/IMPLEMENTATION-AND-VALIDATION]]. No production deployment has been performed by this group.
+
 ## 0a. Final state, 2026-09-13 (supersedes sections 0 and 3 wherever they differ)
 
 **On main:** #363, #366, #361, and merge train 2 (#372). The train carried #367 parity,
@@ -273,3 +283,17 @@ validated and tenant-scoped. Sources: `/Users/aldemirkonuk/Projects/p4-scratch/w
 *This document adds a file under `.planning/handoff/` without naming a document to
 retire (CLAUDE.md section 4). The founder asked for it explicitly. That is named here as
 the exception, not assumed.*
+
+
+## 2026-09-13 — active page-finalization integration
+
+The founder authorized the complete Wave Four/successor page implementation, commit/push/merge and deployment. The goal remains active; the deployed website has not yet been claimed updated. Canonical domain stays mudavym.com, www redirecting to it. Current branch is codex/page-finalization, based on main60ed83a7.
+
+- Foundation commit6ab500a0 is pushed:19 files, shared overlay/keyboard/focus stack, loading/denied states and asynchronous approval receipts, plus the web's previously undeclared Tailwind plugin dependency.197 foundation/team tests passed in the root integration checkout. No production flag changed.
+- Action integrity40 files and public entry/vault plus inventory overlay85 files are integrated but not committed at this checkpoint. Their source manifests and isolated test results are in the task's execution directory. The action tranche passed1,627 gateway tests and246 native tests; public entry passed108 web/10gateway tests, typechecks and build; foundation+inventory overlays passed2,840webtests and typecheck. Integrated checks are now running; those isolated numbers are not claims about an untested combined tree.
+- The operations desk is implemented behind its false-by-default admin flag. It has SQL-only plus Studio-developer platform authority, a reviewed3-route registry, data-free shared health, pre-dispatch receipts and explicit unknown remote outcomes.19gateway,12Pythonhealth,5deskbehavior tests and isolatedPG17 migration checks passed. Independent review found pre-existing lifecycle restart/consumer cleanup defects, now being repaired before operator controls are eligible for rollout.
+- The founder-supplied browser email matched one verified Mudavym manager account with no current Studio developer grant. No role or platform grant has been created. Support contact remains unanswered. All unfinished product decisions remain in OPEN-DECISIONS and the page notes.
+- The public audit PDF and detailed reports are imported into the existing07-reference vault index. No second vault was created. New public pages use the shared shell and /login home link; Safari visual checks so far cover forgot-password at1080/375px, charcoal/paper, and missing-token reset at375px. Other visual cases remain to be checked.
+- Arrival work continues in the public-pages worktree from the exact sketch104C: Currency; What we pour; Whom we buy from; What we hear about; The assistant. Backend folio/proposal persistence, seven-day undo and local-only speech constraints remain under implementation. Other new pages, full Ask readings, calendar/text/remaining overlay/motion/security/E2E ports, complete rollout and live verification remain required.
+
+Local runner issue: unchanged files sometimes block in read/mmap after filesystem metadata-only ctime updates. No output timeout is called success. Two pending commits were interrupted and confirmed exit130 before retry. One old Obsidian metadata inode was preserved; exact base bytes were restored. Using Git's per-command core.trustctime=false retainedmtime/size and exact staged objects and allowed the regular commit to complete. No global setting, hook orCI gate was disabled. The evidence note is in the task execution directory and will be archived with the final rollout records.

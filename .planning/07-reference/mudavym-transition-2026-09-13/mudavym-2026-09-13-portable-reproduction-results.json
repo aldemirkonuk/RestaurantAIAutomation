@@ -1,0 +1,26 @@
+[
+  {
+    "script": "mudavym-2026-09-13-reproduce-native-receipt-currency.cjs",
+    "exit_code": 0,
+    "output": "{\n  \"revision\": \"60ed83a7e6d5eb8b8e0e631783a598cd0f562bff\",\n  \"results\": [\n    {\n      \"scenario\": \"native shaped priced receipt\",\n      \"errors\": [\n        {\n          \"property\": \"invoiceUnitPrice\",\n          \"constraints\": {\n            \"priceStatesItsCurrency\": \"A unit price of 10 was submitted with no currency, so nothing was recorded. A price without a currency is not a price: it cannot be compared with the agreed price, cannot join the price ladder, and prints on every screen as a number with a caveat. The receiving screen offers four ways to state it: the code the matched invoice is filed in, the currency this order was placed in, this house's own reporting currency, or a code typed on the spot. Everything else on this receipt still stands: submit it without a price and the count, the rejection and the stock movement all record exactly as they would have. State the code and send it again.\"\n          }\n        }\n      ]\n    },\n    {\n      \"scenario\": \"same receipt with stated currency\",\n      \"errors\": []\n    },\n    {\n      \"scenario\": \"count only\",\n      \"errors\": []\n    }\n  ]\n}",
+    "stderr": ""
+  },
+  {
+    "script": "mudavym-2026-09-13-reproduce-receipt-unit-delta.cjs",
+    "exit_code": 0,
+    "output": "{\n  \"revision\": \"60ed83a7e6d5eb8b8e0e631783a598cd0f562bff\",\n  \"scenario\": \"5 cases, 12 bottles/case; door has already recorded quantity_received=60 bottles; desk submits accepted=5 with no countedUom\",\n  \"results\": [\n    {\n      \"invoicePresent\": false,\n      \"acceptedBottles\": 60,\n      \"interpretedStockedBottles\": 720,\n      \"verdict\": \"unmatched\",\n      \"ledgerDelta\": -660,\n      \"requiresOverride\": false\n    },\n    {\n      \"invoicePresent\": true,\n      \"acceptedBottles\": 60,\n      \"interpretedStockedBottles\": 720,\n      \"verdict\": \"matched\",\n      \"ledgerDelta\": -660,\n      \"requiresOverride\": false\n    }\n  ]\n}",
+    "stderr": ""
+  },
+  {
+    "script": "mudavym-2026-09-13-reproduce-dashboard-month-cache.cjs",
+    "exit_code": 0,
+    "output": "{\n  \"revision\": \"60ed83a7e6d5eb8b8e0e631783a598cd0f562bff\",\n  \"mountedHook\": true,\n  \"initialHouse\": \"A\",\n  \"initialSpend\": 100,\n  \"selectedHouse\": \"B\",\n  \"displayedSpend\": 100,\n  \"apiRequestsForHouses\": [\n    \"A\"\n  ]\n}",
+    "stderr": ""
+  },
+  {
+    "script": "mudavym-2026-09-13-reproduce-mobile-outbox.cjs",
+    "exit_code": 0,
+    "output": "{\n  \"scenario\": \"locked\",\n  \"queuedBy\": \"A\",\n  \"apiCalls\": [\n    {\n      \"path\": \"/synthetic-audit-action\",\n      \"user\": \"A\",\n      \"restaurant\": \"A\",\n      \"status\": \"locked\"\n    }\n  ],\n  \"backendAcceptance\": \"not tested; API mocked\"\n}\n{\n  \"scenario\": \"account_changed\",\n  \"queuedBy\": \"A\",\n  \"apiCalls\": [\n    {\n      \"path\": \"/synthetic-audit-action\",\n      \"user\": \"B\",\n      \"restaurant\": \"B\",\n      \"status\": \"signedIn\"\n    }\n  ],\n  \"backendAcceptance\": \"not tested; API mocked\"\n}",
+    "stderr": ""
+  }
+]

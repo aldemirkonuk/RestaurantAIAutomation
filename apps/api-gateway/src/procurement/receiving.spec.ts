@@ -60,6 +60,17 @@ function makeDb(opts: {
           return q;
         },
         limit: () => q,
+        range: async () => ({
+          data: opts.order?.quantity_received
+            ? [
+                {
+                  quantity_change: opts.order.quantity_received,
+                  idempotency_key: "order-delivered-live:o1",
+                },
+              ]
+            : [],
+          error: null,
+        }),
         maybeSingle: async () => {
           if (tableName === "procurement_orders")
             return { data: opts.order ?? null, error: null };
@@ -82,9 +93,7 @@ function makeDb(opts: {
               // The real unique index on idempotency_key, modelled.
               if (
                 payload.idempotency_key &&
-                table.some(
-                  (r) => r.idempotency_key === payload.idempotency_key,
-                )
+                table.some((r) => r.idempotency_key === payload.idempotency_key)
               )
                 return {
                   data: null,
@@ -139,7 +148,9 @@ function makeDb(opts: {
     },
     rpc: async (name: string, args: Row) => {
       calls.rpc.push({ name, args });
-      return rpcError ? { data: null, error: rpcError } : { data: null, error: null };
+      return rpcError
+        ? { data: null, error: rpcError }
+        : { data: null, error: null };
     },
     storage: { from: () => ({}) },
   };
@@ -946,7 +957,11 @@ describe("listUnverified", () => {
         },
       ],
       orders: [
-        { id: "new-order", order_number: "PO-NEW", status: "PARTIALLY_RECEIVED" },
+        {
+          id: "new-order",
+          order_number: "PO-NEW",
+          status: "PARTIALLY_RECEIVED",
+        },
       ],
     });
 
@@ -971,7 +986,9 @@ describe("listUnverified", () => {
           occurred_at: hoursAgo(1),
         },
       ],
-      orders: [{ id: "o1", order_number: "PO-1", status: "PARTIALLY_RECEIVED" }],
+      orders: [
+        { id: "o1", order_number: "PO-1", status: "PARTIALLY_RECEIVED" },
+      ],
     });
 
     const items = await new ReceivingService(db).listUnverified("r1");

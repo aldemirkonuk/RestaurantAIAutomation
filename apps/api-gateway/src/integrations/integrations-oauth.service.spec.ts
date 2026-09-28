@@ -83,6 +83,7 @@ describe("integration OAuth tables are backed by an applied migration", () => {
     //   user_restaurant_access — counting the live grants of people who work
     //     here that carry no recorded restaurant, so an incomplete list says so.
     expect(queriedTables).toEqual([
+      "integration_consent_receipts",
       "integration_oauth_connections",
       "integration_oauth_states",
       "restaurant_personal_grant_access",
@@ -92,6 +93,7 @@ describe("integration OAuth tables are backed by an applied migration", () => {
   });
 
   it.each([
+    ["integration_consent_receipts"],
     ["integration_oauth_connections"],
     ["integration_oauth_states"],
   ])(
@@ -106,6 +108,7 @@ describe("integration OAuth tables are backed by an applied migration", () => {
   );
 
   it.each([
+    ["integration_consent_receipts"],
     ["integration_oauth_connections"],
     ["integration_oauth_states"],
   ])(
@@ -121,7 +124,7 @@ describe("integration OAuth tables are backed by an applied migration", () => {
       // publishable anon key. See OD-72 / OD-73.
       expect(appliedSql).toMatch(
         new RegExp(
-          `revoke\\s+all\\s+on\\s+(public\\.)?${table}\\s+from\\s+anon,\\s*authenticated`,
+          `revoke\\s+all\\s+on\\s+(public\\.)?${table}\\s+from\\s+(?:PUBLIC,\\s*)?anon,\\s*authenticated`,
           "i",
         ),
       );
@@ -198,6 +201,7 @@ function makeService(opts: {
 
   const chain = {
     update: () => chain,
+    then: (resolve: any) => Promise.resolve({ data: opts.stateRow ? [opts.stateRow] : [], error: null }).then(resolve),
     eq: () => chain,
     is: () => chain,
     gt: () => chain,
@@ -240,6 +244,12 @@ function makeService(opts: {
   return new IntegrationsOauthService(db, config, crypto);
 }
 
+const consentFixture = {
+  sealId: "11111111-1111-4111-8111-111111111111", snapshot: { words: "Reviewed words" },
+  digest: "d".repeat(64), browserProofHash: "a".repeat(64),
+  browserRequestId: "22222222-2222-4222-8222-222222222222", frontendOrigin: "https://app.example.test",
+};
+
 describe("createAuthorizationUrl", () => {
   it("refuses a protocol-relative returnPath instead of storing it", async () => {
     // `//evil.test` is a valid URL to a foreign origin. Storing it would make
@@ -250,12 +260,14 @@ describe("createAuthorizationUrl", () => {
 
     await service.createAuthorizationUrl({
       userId: "u1",
+      restaurantId: "r1",
+      consent: consentFixture,
       integrationId: "google_drive",
       returnPath: "//evil.test/steal",
     });
 
-    expect(captured[0].table).toBe("integration_oauth_states");
-    expect(captured[0].payload.return_path).toBe("/settings");
+    expect(captured.find(row => row.table === "integration_oauth_states")!.table).toBe("integration_oauth_states");
+    expect(captured.find(row => row.table === "integration_oauth_states")!.payload.return_path).toBe("/settings");
   });
 
   it.each([
@@ -268,11 +280,13 @@ describe("createAuthorizationUrl", () => {
 
     await service.createAuthorizationUrl({
       userId: "u1",
+      restaurantId: "r1",
+      consent: consentFixture,
       integrationId: "google_drive",
       returnPath: input as string,
     });
 
-    expect(captured[0].payload.return_path).toBe(expected);
+    expect(captured.find(row => row.table === "integration_oauth_states")!.payload.return_path).toBe(expected);
   });
 
   it("persists a state row whose columns match the migration", async () => {
@@ -282,22 +296,28 @@ describe("createAuthorizationUrl", () => {
     const { authorizationUrl } = await service.createAuthorizationUrl({
       userId: "u1",
       restaurantId: "r1",
+      consent: consentFixture,
       integrationId: "google_drive",
     });
 
     // Column names here are the contract the migration has to satisfy; a
     // rename on either side should fail loudly rather than 400 at runtime.
-    expect(Object.keys(captured[0].payload).sort()).toEqual([
+    expect(Object.keys(captured.find(row => row.table === "integration_oauth_states")!.payload).sort()).toEqual([
+      "browser_proof_hash",
+      "browser_request_id",
+      "consent_receipt_id",
       "expires_at",
+      "frontend_origin",
       "integration_id",
+      "pkce_verifier_encrypted",
       "provider",
       "restaurant_id",
       "return_path",
       "state",
       "user_id",
     ]);
-    expect(captured[0].payload.provider).toBe("google");
-    expect(captured[0].payload.integration_id).toBe("google_drive");
+    expect(captured.find(row => row.table === "integration_oauth_states")!.payload.provider).toBe("google");
+    expect(captured.find(row => row.table === "integration_oauth_states")!.payload.integration_id).toBe("google_drive");
 
     const url = new URL(authorizationUrl);
     expect(url.origin + url.pathname).toBe(
@@ -306,7 +326,7 @@ describe("createAuthorizationUrl", () => {
     // Google only returns a refresh token with both of these set.
     expect(url.searchParams.get("access_type")).toBe("offline");
     expect(url.searchParams.get("prompt")).toBe("consent");
-    expect(url.searchParams.get("state")).toBe(captured[0].payload.state);
+    expect(url.searchParams.get("state")).toBe(captured.find(row => row.table === "integration_oauth_states")!.payload.state);
   });
 
   it("refuses to start the flow when token encryption is unconfigured", async () => {
@@ -314,6 +334,8 @@ describe("createAuthorizationUrl", () => {
     await expect(
       service.createAuthorizationUrl({
         userId: "u1",
+      restaurantId: "r1",
+      consent: consentFixture,
         integrationId: "google_drive",
       }),
     ).rejects.toThrow(/encryption/i);
@@ -347,43 +369,46 @@ describe("handleCallback", () => {
     expect(url.searchParams.get("integration_reason")).toBe("invalid_state");
   });
 
-  it("reports a denied consent as a normal outcome on the stored return path", async () => {
+  it("parks a denied consent for the sealing browser before reporting its outcome", async () => {
     const service = makeService({
       stateRow: {
-        state: "s1",
+        state: "s".repeat(43),
         user_id: "u1",
         restaurant_id: null,
         provider: "google",
         integration_id: "google_drive",
         return_path: "/settings/integrations",
+        consent_receipt_id: consentFixture.sealId, browser_proof_hash: consentFixture.browserProofHash,
+        browser_request_id: consentFixture.browserRequestId, frontend_origin: consentFixture.frontendOrigin,
       },
     });
 
     const url = new URL(
       await service.handleCallback({
         provider: "google",
-        state: "s1",
+        state: "s".repeat(43),
         error: "access_denied",
       }),
     );
 
     expect(url.origin + url.pathname).toBe(
-      "https://app.example.test/settings/integrations",
+      "https://app.example.test/authorize/complete",
     );
-    expect(url.searchParams.get("integration_status")).toBe("error");
-    expect(url.searchParams.get("integration_reason")).toBe("denied");
-    expect(url.searchParams.get("integration")).toBe("google_drive");
+    expect(url.hash).toContain("state=");
+    expect(url.hash).not.toContain("access_denied");
   });
 
   it("rejects a callback whose provider does not match the state row", async () => {
     const service = makeService({
       stateRow: {
-        state: "s1",
+        state: "s".repeat(43),
         user_id: "u1",
         restaurant_id: null,
         provider: "google",
         integration_id: "google_drive",
         return_path: "/settings",
+        consent_receipt_id: consentFixture.sealId, browser_proof_hash: consentFixture.browserProofHash,
+        browser_request_id: consentFixture.browserRequestId, frontend_origin: consentFixture.frontendOrigin,
       },
     });
 
@@ -391,7 +416,7 @@ describe("handleCallback", () => {
       await service.handleCallback({
         provider: "microsoft",
         code: "abc",
-        state: "s1",
+        state: "s".repeat(43),
       }),
     );
     expect(url.searchParams.get("integration_reason")).toBe("invalid_callback");

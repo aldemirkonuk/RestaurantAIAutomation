@@ -23,7 +23,7 @@ export function passwordResetEmailTemplate(
       Reset your password
     </h2>
     <p style="margin: 0 0 24px; color: #6b7280; font-size: 15px; line-height: 1.6;">
-      Hi ${firstName}, we received a request to reset the password on your WineOps AI account.
+      Hi ${firstName}, we received a request to reset the password on your Mudavym account.
       This link is valid for <strong>1 hour</strong>.
     </p>
 
@@ -46,12 +46,15 @@ export function passwordResetEmailTemplate(
     <p style="margin: 0; color: #9ca3af; font-size: 13px; line-height: 1.6; border-top: 1px solid #f3f4f6; padding-top: 20px; margin-top: 16px;">
       Didn't request this? You can safely ignore this email — your password will not change
       unless you open the link above and choose a new one.
-      <br>— The WineOps AI team
+      <br>— The Mudavym team
     </p>
   `;
 
   return baseTemplate({
-    title: "Reset your WineOps AI password",
+    branding: { brandName: "Mudavym" },
+    footerAutomated: "This is an automated message from Mudavym.",
+    footerCopyright: `© ${new Date().getFullYear()} Mudavym. All rights reserved.`,
+    title: "Reset your Mudavym password",
     preheader: "This link expires in 1 hour.",
     content,
     showFooter: true,

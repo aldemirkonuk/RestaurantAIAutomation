@@ -1,65 +1,137 @@
-import { useState, useEffect, useRef } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
-import { CheckCircle, XCircle, Edit2, Eye, X, Mail, Clock, Hash, Plus } from 'lucide-react'
+import { useState, useEffect, useRef } from "react";
+import { HoldToApprove } from "@/components/mudavym";
+import { issueDraftSendChallenge } from "@/hooks/queries/useDraftEmailQueries";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  XCircle,
+  Edit2,
+  Eye,
+  X,
+  Mail,
+  Clock,
+  Hash,
+  Plus,
+} from "lucide-react";
 
 interface ConstraintWarning {
-  code: string
-  message: string
-  severity: 'annotating' | 'soft'
+  code: string;
+  message: string;
+  severity: "annotating" | "soft";
 }
 
 interface DraftEmailData {
-  conversationId: string
-  orderId: string
-  orderNumber?: string
-  restaurantName?: string
-  wineName: string
-  quantity?: number
-  providerName: string
-  providerEmail: string
+  conversationId: string;
+  orderId: string;
+  orderNumber?: string;
+  restaurantName?: string;
+  wineName: string;
+  quantity?: number;
+  providerName: string;
+  providerEmail: string;
   // Free-form: the backend emits a growing set of outbound_email_type values
   // (negotiation replies, confirmations, manual replies). Unknown values fall
   // back to a neutral badge rather than crashing.
-  emailType: string
-  draftContent: string
-  disclaimer: string
-  constraintWarnings: ConstraintWarning[]
-  roundCount: number
-  timestamp: string
+  emailType: string;
+  draftContent: string;
+  disclaimer: string;
+  constraintWarnings: ConstraintWarning[];
+  roundCount: number;
+  timestamp: string;
 }
 
 interface DraftEmailApprovalPanelProps {
-  isOpen: boolean
-  draftData: DraftEmailData | null
-  managerName?: string
-  onApprove: (modifiedContent?: string, managerNotes?: string, ccEmails?: string[]) => void
-  onDiscard: () => void
-  onClose: (dirtyContent?: string) => void
-  isSubmitting?: boolean
+  isOpen: boolean;
+  draftData: DraftEmailData | null;
+  managerName?: string;
+  onApprove: (
+    modifiedContent: string,
+    managerNotes: string | undefined,
+    ccEmails: string[] | undefined,
+    challenge: string,
+  ) => void | Promise<unknown>;
+  onDiscard: () => void;
+  onClose: (dirtyContent?: string) => void;
+  isSubmitting?: boolean;
 }
 
-type EmailBadge = { label: string; bg: string; text: string; dot: string }
+type EmailBadge = { label: string; bg: string; text: string; dot: string };
 
-const EMAIL_TYPE_FALLBACK: EmailBadge = { label: 'Email', bg: 'bg-gray-50', text: 'text-gray-700', dot: 'bg-gray-400' }
+const EMAIL_TYPE_FALLBACK: EmailBadge = {
+  label: "Email",
+  bg: "bg-gray-50",
+  text: "text-gray-700",
+  dot: "bg-gray-400",
+};
 
 const emailTypeBadge: Record<string, EmailBadge> = {
-  PRICE_INQUIRY: { label: 'Price Inquiry', bg: 'bg-blue-50', text: 'text-blue-700', dot: 'bg-blue-400' },
-  DEMAND_OFFER: { label: 'Demand Offer', bg: 'bg-orange-50', text: 'text-orange-700', dot: 'bg-orange-400' },
-  PROMO_INQUIRY: { label: 'Promo Inquiry', bg: 'bg-purple-50', text: 'text-purple-700', dot: 'bg-purple-400' },
-  WINE_INQUIRY: { label: 'Wine Inquiry', bg: 'bg-teal-50', text: 'text-teal-700', dot: 'bg-teal-400' },
-  COUNTER_OFFER: { label: 'Counter Offer', bg: 'bg-amber-50', text: 'text-amber-700', dot: 'bg-amber-400' },
-  CLARIFICATION: { label: 'Clarification', bg: 'bg-sky-50', text: 'text-sky-700', dot: 'bg-sky-400' },
-  ACCEPTANCE_CONFIRM_REQUEST: { label: 'Acceptance', bg: 'bg-green-50', text: 'text-green-700', dot: 'bg-green-400' },
-  ESCALATION: { label: 'Escalation', bg: 'bg-red-50', text: 'text-red-700', dot: 'bg-red-400' },
-  ORDER_CONFIRMATION: { label: 'Order Confirmation', bg: 'bg-green-50', text: 'text-green-700', dot: 'bg-green-400' },
-  MANUAL_REPLY: { label: 'Manual Reply', bg: 'bg-gray-50', text: 'text-gray-700', dot: 'bg-gray-400' },
-}
+  PRICE_INQUIRY: {
+    label: "Price Inquiry",
+    bg: "bg-blue-50",
+    text: "text-blue-700",
+    dot: "bg-blue-400",
+  },
+  DEMAND_OFFER: {
+    label: "Demand Offer",
+    bg: "bg-orange-50",
+    text: "text-orange-700",
+    dot: "bg-orange-400",
+  },
+  PROMO_INQUIRY: {
+    label: "Promo Inquiry",
+    bg: "bg-purple-50",
+    text: "text-purple-700",
+    dot: "bg-purple-400",
+  },
+  WINE_INQUIRY: {
+    label: "Wine Inquiry",
+    bg: "bg-teal-50",
+    text: "text-teal-700",
+    dot: "bg-teal-400",
+  },
+  COUNTER_OFFER: {
+    label: "Counter Offer",
+    bg: "bg-amber-50",
+    text: "text-amber-700",
+    dot: "bg-amber-400",
+  },
+  CLARIFICATION: {
+    label: "Clarification",
+    bg: "bg-sky-50",
+    text: "text-sky-700",
+    dot: "bg-sky-400",
+  },
+  ACCEPTANCE_CONFIRM_REQUEST: {
+    label: "Acceptance",
+    bg: "bg-green-50",
+    text: "text-green-700",
+    dot: "bg-green-400",
+  },
+  ESCALATION: {
+    label: "Escalation",
+    bg: "bg-red-50",
+    text: "text-red-700",
+    dot: "bg-red-400",
+  },
+  ORDER_CONFIRMATION: {
+    label: "Order Confirmation",
+    bg: "bg-green-50",
+    text: "text-green-700",
+    dot: "bg-green-400",
+  },
+  MANUAL_REPLY: {
+    label: "Manual Reply",
+    bg: "bg-gray-50",
+    text: "text-gray-700",
+    dot: "bg-gray-400",
+  },
+};
 
-const badgeFor = (emailType: string): EmailBadge => emailTypeBadge[emailType] ?? EMAIL_TYPE_FALLBACK
+const badgeFor = (emailType: string): EmailBadge =>
+  emailTypeBadge[emailType] ?? EMAIL_TYPE_FALLBACK;
 
 function derivedSubject(data: DraftEmailData): string {
-  const typeLabel = badgeFor(data.emailType).label
-  return `${data.wineName} — ${typeLabel}`
+  const typeLabel = badgeFor(data.emailType).label;
+  return `${data.wineName} — ${typeLabel}`;
 }
 
 export function DraftEmailApprovalPanel({
@@ -71,54 +143,53 @@ export function DraftEmailApprovalPanel({
   onClose,
   isSubmitting = false,
 }: DraftEmailApprovalPanelProps) {
-  const [isEditing, setIsEditing] = useState(false)
-  const [editedContent, setEditedContent] = useState('')
-  const [editedSubject, setEditedSubject] = useState('')
-  const [ccEmails, setCcEmails] = useState<string[]>([])
-  const [ccInput, setCcInput] = useState('')
-  const ccInputRef = useRef<HTMLInputElement>(null)
-  const sendingRef = useRef(false)
+  const [isEditing, setIsEditing] = useState(false);
+  const [editedContent, setEditedContent] = useState("");
+  const [editedSubject, setEditedSubject] = useState("");
+  const [ccEmails, setCcEmails] = useState<string[]>([]);
+  const [ccInput, setCcInput] = useState("");
+  const ccInputRef = useRef<HTMLInputElement>(null);
 
   const resolveManagerName = (content: string) =>
-    managerName ? content.replace(/\[Manager Name\]/g, managerName) : content
+    managerName ? content.replace(/\[Manager Name\]/g, managerName) : content;
 
   useEffect(() => {
     if (draftData) {
-      setEditedContent(resolveManagerName(draftData.draftContent))
-      setEditedSubject(derivedSubject(draftData))
-      setIsEditing(false)
-      setCcEmails([])
-      setCcInput('')
-      sendingRef.current = false
+      setEditedContent(resolveManagerName(draftData.draftContent));
+      setEditedSubject(derivedSubject(draftData));
+      setIsEditing(false);
+      setCcEmails([]);
+      setCcInput("");
     }
-  }, [draftData, managerName])
+  }, [draftData, managerName]);
 
   const addCcEmail = (raw: string) => {
-    const email = raw.trim().toLowerCase()
-    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return
-    if (ccEmails.includes(email)) return
-    setCcEmails((prev) => [...prev, email])
-    setCcInput('')
-  }
+    const email = raw.trim().toLowerCase();
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return;
+    if (ccEmails.includes(email)) return;
+    setCcEmails((prev) => [...prev, email]);
+    setCcInput("");
+  };
 
   const removeCcEmail = (email: string) =>
-    setCcEmails((prev) => prev.filter((e) => e !== email))
+    setCcEmails((prev) => prev.filter((e) => e !== email));
 
   const isDirty = draftData
-    ? editedContent !== resolveManagerName(draftData.draftContent) || editedSubject !== derivedSubject(draftData)
-    : false
+    ? editedContent !== resolveManagerName(draftData.draftContent) ||
+      editedSubject !== derivedSubject(draftData)
+    : false;
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose(isDirty ? editedContent : undefined)
-    }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [onClose, isDirty, editedContent])
+      if (e.key === "Escape") onClose(isDirty ? editedContent : undefined);
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onClose, isDirty, editedContent]);
 
-  if (!draftData && !isOpen) return null
+  if (!draftData && !isOpen) return null;
 
-  const badge = draftData ? badgeFor(draftData.emailType) : null
+  const badge = draftData ? badgeFor(draftData.emailType) : null;
 
   return (
     <AnimatePresence>
@@ -134,7 +205,7 @@ export function DraftEmailApprovalPanel({
             initial={{ scale: 0.96, opacity: 0, y: 16 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0.96, opacity: 0, y: 16 }}
-            transition={{ type: 'spring', stiffness: 320, damping: 30 }}
+            transition={{ type: "spring", stiffness: 320, damping: 30 }}
             onClick={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal="true"
@@ -176,28 +247,38 @@ export function DraftEmailApprovalPanel({
 
             {/* ── Two-panel body ── */}
             <div className="flex flex-1 min-h-0 overflow-hidden">
-
               {/* LEFT — meta strip */}
               <div className="w-52 flex-shrink-0 bg-gray-50 border-r border-gray-200 px-4 py-5 flex flex-col gap-5 overflow-y-auto">
-
                 {/* From */}
                 {draftData.restaurantName && (
                   <div>
-                    <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1">From</p>
-                    <p className="text-sm font-semibold text-gray-800 leading-tight">{draftData.restaurantName}</p>
+                    <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1">
+                      From
+                    </p>
+                    <p className="text-sm font-semibold text-gray-800 leading-tight">
+                      {draftData.restaurantName}
+                    </p>
                   </div>
                 )}
 
                 {/* To */}
                 <div>
-                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1">To</p>
-                  <p className="text-sm font-semibold text-gray-800 leading-tight">{draftData.providerName}</p>
-                  <p className="text-xs text-gray-500 truncate">{draftData.providerEmail}</p>
+                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1">
+                    To
+                  </p>
+                  <p className="text-sm font-semibold text-gray-800 leading-tight">
+                    {draftData.providerName}
+                  </p>
+                  <p className="text-xs text-gray-500 truncate">
+                    {draftData.providerEmail}
+                  </p>
                 </div>
 
                 {/* CC */}
                 <div>
-                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1.5">CC</p>
+                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1.5">
+                    CC
+                  </p>
                   <div className="flex flex-wrap gap-1 mb-1.5">
                     {ccEmails.map((email) => (
                       <span
@@ -223,9 +304,9 @@ export function DraftEmailApprovalPanel({
                       value={ccInput}
                       onChange={(e) => setCcInput(e.target.value)}
                       onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ',') {
-                          e.preventDefault()
-                          addCcEmail(ccInput)
+                        if (e.key === "Enter" || e.key === ",") {
+                          e.preventDefault();
+                          addCcEmail(ccInput);
                         }
                       }}
                       placeholder="Add email…"
@@ -244,24 +325,38 @@ export function DraftEmailApprovalPanel({
 
                 {/* Wine */}
                 <div>
-                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1">Wine</p>
-                  <p className="text-sm text-gray-700 leading-snug">{draftData.wineName}</p>
+                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1">
+                    Wine
+                  </p>
+                  <p className="text-sm text-gray-700 leading-snug">
+                    {draftData.wineName}
+                  </p>
                 </div>
 
                 {/* Quantity */}
                 {draftData.quantity != null && (
                   <div>
-                    <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1">Quantity</p>
-                    <p className="text-sm text-gray-700">{draftData.quantity} bottles</p>
+                    <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1">
+                      Quantity
+                    </p>
+                    <p className="text-sm text-gray-700">
+                      {draftData.quantity} bottles
+                    </p>
                   </div>
                 )}
 
                 {/* Type */}
                 <div>
-                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1">Type</p>
+                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1">
+                    Type
+                  </p>
                   {badge && (
-                    <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs font-medium ${badge.bg} ${badge.text}`}>
-                      <span className={`w-1.5 h-1.5 rounded-full ${badge.dot}`} />
+                    <span
+                      className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs font-medium ${badge.bg} ${badge.text}`}
+                    >
+                      <span
+                        className={`w-1.5 h-1.5 rounded-full ${badge.dot}`}
+                      />
                       {badge.label}
                     </span>
                   )}
@@ -269,14 +364,20 @@ export function DraftEmailApprovalPanel({
 
                 {/* Round */}
                 <div>
-                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1">Round</p>
-                  <p className="text-sm text-gray-700">#{draftData.roundCount}</p>
+                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1">
+                    Round
+                  </p>
+                  <p className="text-sm text-gray-700">
+                    #{draftData.roundCount}
+                  </p>
                 </div>
 
                 {/* Order ref */}
                 {draftData.orderNumber && (
                   <div>
-                    <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1">Order</p>
+                    <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1">
+                      Order
+                    </p>
                     <div className="flex items-center gap-1 text-xs text-gray-600">
                       <Hash className="w-3 h-3" />
                       {draftData.orderNumber}
@@ -286,10 +387,15 @@ export function DraftEmailApprovalPanel({
 
                 {/* Drafted at */}
                 <div>
-                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1">Drafted</p>
+                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1">
+                    Drafted
+                  </p>
                   <div className="flex items-center gap-1 text-xs text-gray-500">
                     <Clock className="w-3 h-3" />
-                    {new Date(draftData.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    {new Date(draftData.timestamp).toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
                   </div>
                 </div>
 
@@ -309,7 +415,6 @@ export function DraftEmailApprovalPanel({
 
               {/* RIGHT — compose area */}
               <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
-
                 {/* Subject row */}
                 <div className="px-5 pt-4 pb-3 border-b border-gray-100 flex-shrink-0">
                   <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1">
@@ -324,7 +429,9 @@ export function DraftEmailApprovalPanel({
                       aria-label="Edit email subject"
                     />
                   ) : (
-                    <p className="text-sm font-medium text-gray-800">{editedSubject}</p>
+                    <p className="text-sm font-medium text-gray-800">
+                      {editedSubject}
+                    </p>
                   )}
                 </div>
 
@@ -383,34 +490,50 @@ export function DraftEmailApprovalPanel({
                     className="flex items-center gap-1.5 h-9 px-3 rounded-xl border border-gray-300 bg-white hover:bg-gray-50 text-xs font-medium text-gray-600 transition-all"
                   >
                     {isEditing ? (
-                      <><Eye className="w-3.5 h-3.5" /> Preview</>
+                      <>
+                        <Eye className="w-3.5 h-3.5" /> Preview
+                      </>
                     ) : (
-                      <><Edit2 className="w-3.5 h-3.5" /> Edit</>
+                      <>
+                        <Edit2 className="w-3.5 h-3.5" /> Edit
+                      </>
                     )}
                   </button>
 
                   {/* Spacer */}
                   <div className="flex-1" />
 
-                  {/* Send */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (sendingRef.current || isSubmitting) return
-                      sendingRef.current = true
-                      onApprove(
-                        isDirty ? editedContent : undefined,
+                  <HoldToApprove
+                    label={
+                      isDirty
+                        ? "Hold to send edited draft"
+                        : "Hold to send draft"
+                    }
+                    approvedLabel="Sent"
+                    disabled={
+                      isSubmitting ||
+                      !editedContent.trim() ||
+                      !draftData.providerEmail
+                    }
+                    onChallenge={() =>
+                      issueDraftSendChallenge({
+                        orderId: draftData.orderId,
+                        body: editedContent,
+                        to: draftData.providerEmail,
+                        ccEmails,
+                      })
+                    }
+                    onApprove={async (challenge) => {
+                      if (!challenge)
+                        throw new Error("No draft seal was issued.");
+                      await onApprove(
+                        editedContent,
                         isDirty ? `Subject: ${editedSubject}` : undefined,
                         ccEmails.length ? ccEmails : undefined,
-                      )
+                        challenge,
+                      );
                     }}
-                    disabled={isSubmitting}
-                    aria-disabled={isSubmitting}
-                    className="flex items-center gap-2 h-11 px-6 bg-wine-700 hover:bg-wine-800 active:bg-wine-900 disabled:opacity-50 text-white font-bold text-sm rounded-xl shadow-lg shadow-wine-200 transition-all"
-                  >
-                    <CheckCircle className="w-4 h-4" />
-                    {isDirty ? 'Send Edited' : 'Send Draft'}
-                  </button>
+                  />
                 </div>
 
                 {/* Footer */}
@@ -423,5 +546,5 @@ export function DraftEmailApprovalPanel({
         </motion.div>
       )}
     </AnimatePresence>
-  )
+  );
 }

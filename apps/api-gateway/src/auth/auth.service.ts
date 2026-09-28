@@ -1,3 +1,4 @@
+import { currentRestaurantRole } from './current-restaurant-access';
 import {
   Injectable,
   UnauthorizedException,
@@ -504,61 +505,17 @@ export class AuthService {
       throw new UnauthorizedException("User not found");
     }
 
-    const { data: uraAccess } = await this.databaseService.supabase
-      .from("user_restaurant_access")
-      .select("role")
-      .eq("user_id", userId)
-      .eq("restaurant_id", targetRestaurantId)
-      .eq("is_active", true)
-      .maybeSingle();
-
-    if (uraAccess) {
-      return this.generateTokens({
-        ...user,
-        restaurant_id: targetRestaurantId,
-      });
-    }
-
-    // Legacy fallback: org-level check for users who have no URA row yet
-    // Also handles legacy users (no org row) by checking via restaurant → org path.
-    const { data: orgMemberships } = await this.databaseService.supabase
-      .from("organization_members")
-      .select("organization_id")
-      .eq("user_id", userId);
-
-    let orgIds: string[] = (orgMemberships ?? []).map(
-      (m: any) => m.organization_id,
+    // The token is minted only after the same current membership check used
+    // when it is spent. A shared organisation is not a branch membership.
+    const role = await this.resolveCurrentRestaurantRole(
+      user,
+      targetRestaurantId,
     );
-
-    if (orgIds.length === 0) {
-      // Legacy fallback: derive org from the user's own restaurant
-      const { data: ownRestaurant } = await this.databaseService.supabase
-        .from("restaurants")
-        .select("organization_id")
-        .eq("id", user.restaurant_id)
-        .maybeSingle();
-      if (ownRestaurant?.organization_id) {
-        orgIds = [ownRestaurant.organization_id];
-      }
-    }
-
-    if (orgIds.length === 0) {
-      throw new ForbiddenException("No organisation membership found");
-    }
-
-    const { data: targetRestaurant } = await this.databaseService.supabase
-      .from("restaurants")
-      .select("id, organization_id")
-      .eq("id", targetRestaurantId)
-      .in("organization_id", orgIds)
-      .maybeSingle();
-
-    if (!targetRestaurant) {
-      throw new ForbiddenException("Access denied to requested restaurant");
-    }
-
-    // Issue new tokens with the switched restaurant_id
-    return this.generateTokens({ ...user, restaurant_id: targetRestaurantId });
+    return this.generateTokens({
+      ...user,
+      role,
+      restaurant_id: targetRestaurantId,
+    });
   }
 
   /**
@@ -583,21 +540,9 @@ export class AuthService {
       // Non-critical — studio endpoints will just reject with 403
     }
 
-    let restaurantRole = user.role as string;
-    if (user.restaurant_id) {
-      try {
-        const { data: membership } = await this.databaseService.supabase
-          .from("user_restaurant_access")
-          .select("role")
-          .eq("user_id", user.user_id)
-          .eq("restaurant_id", user.restaurant_id)
-          .eq("is_active", true)
-          .maybeSingle();
-        if (membership?.role) restaurantRole = membership.role;
-      } catch {
-        // Legacy fallback
-      }
-    }
+    const restaurantRole = user.restaurant_id
+      ? await this.resolveCurrentRestaurantRole(user, user.restaurant_id)
+      : (user.role as string);
 
     const payload = {
       sub: user.user_id,
@@ -724,17 +669,28 @@ export class AuthService {
    * Validate JWT payload
    */
   async validateJwtPayload(payload: JwtPayload): Promise<any> {
-    const { data: user } = await this.databaseService.supabase
+    const { data: user, error: userError } = await this.databaseService.supabase
       .from("users")
       .select("*")
       .eq("user_id", payload.sub)
       .single();
 
-    if (!user) {
-      throw new UnauthorizedException("User not found");
-    }
+    if (userError)
+      throw new ServiceUnavailableException("User could not be verified");
+    if (!user) throw new UnauthorizedException("User not found");
+    const restaurantId = payload.restaurantId || user.restaurant_id;
+    if (!restaurantId) return user;
+    return {
+      ...user,
+      role: await this.resolveCurrentRestaurantRole(user, restaurantId),
+    };
+  }
 
-    return user;
+  private async resolveCurrentRestaurantRole(
+    user: any,
+    restaurantId: string,
+  ): Promise<string> {
+    return currentRestaurantRole(this.databaseService.supabase, user, restaurantId);
   }
 
   /**
@@ -984,7 +940,8 @@ export class AuthService {
       // Always call sendEmail() — it handles lazy-init and falls back to mock if OAuth unconfigured
       const result = await this.gmailService.sendEmail({
         to: [email],
-        subject: "Verify your WineOps AI account",
+        senderName: "Mudavym",
+        subject: "Verify your Mudavym account",
         html: this.buildVerificationEmailHtml(verifyUrl),
       });
 
@@ -1005,16 +962,16 @@ export class AuthService {
   private buildVerificationEmailHtml(verifyUrl: string): string {
     return `<!DOCTYPE html>
 <html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>Verify your WineOps AI account</title></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>Verify your Mudavym account</title></head>
 <body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f3f4f6;">
   <div style="max-width:560px;margin:40px auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.1);">
     <div style="background:#7c2d12;padding:28px 32px;text-align:center;">
-      <h1 style="margin:0;color:#fff;font-size:22px;font-weight:700;">WineOps AI</h1>
+      <h1 style="margin:0;color:#fff;font-size:22px;font-weight:700;">Mudavym</h1>
       <p style="margin:6px 0 0;color:rgba(255,255,255,.8);font-size:14px;">Verify your email address</p>
     </div>
     <div style="padding:32px;">
       <p style="margin:0 0 20px;color:#374151;font-size:15px;line-height:1.6;">
-        You're almost there! Click the button below to verify your email address and activate your WineOps account.
+        You're almost there! Click the button below to verify your email address and activate your Mudavym account.
       </p>
       <div style="text-align:center;margin:28px 0;">
         <a href="${verifyUrl}" style="display:inline-block;padding:14px 36px;background:#7c2d12;color:#fff;text-decoration:none;font-weight:600;border-radius:8px;font-size:16px;">
@@ -1022,7 +979,7 @@ export class AuthService {
         </a>
       </div>
       <p style="margin:20px 0 0;color:#6b7280;font-size:13px;line-height:1.6;">
-        This link expires in <strong>24 hours</strong>. If you didn't create a WineOps account, you can safely ignore this email.
+        This link expires in <strong>24 hours</strong>. If you didn't create a Mudavym account, you can safely ignore this email.
       </p>
       <hr style="margin:24px 0;border:none;border-top:1px solid #e5e7eb;" />
       <p style="margin:0;color:#9ca3af;font-size:12px;">
@@ -1031,7 +988,7 @@ export class AuthService {
       </p>
     </div>
     <div style="padding:16px 32px;background:#f9fafb;border-top:1px solid #e5e7eb;text-align:center;">
-      <p style="margin:0;color:#9ca3af;font-size:11px;">© ${new Date().getFullYear()} WineOps AI. Automated message — please do not reply.</p>
+      <p style="margin:0;color:#9ca3af;font-size:11px;">© ${new Date().getFullYear()} Mudavym. Automated message — please do not reply.</p>
     </div>
   </div>
 </body>
@@ -2100,7 +2057,8 @@ export class AuthService {
         await import("../communications/email-templates");
       const result = await this.gmailService.sendEmail({
         to: [normalizedEmail],
-        subject: "Reset your WineOps AI password",
+        senderName: "Mudavym",
+        subject: "Reset your Mudavym password",
         html: passwordResetEmailTemplate({ name: user.name, resetUrl }),
       });
       if (!result.success) {

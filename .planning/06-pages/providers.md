@@ -559,3 +559,8 @@ nobody did.
    `null`: the minimum-order field is labelled "(currency not recorded)" and
    `fmtMoney` prints the number unsymboled. Nothing here can SET the currency;
    today the only place it is asked is the sign-up form ([[register]] §1a).
+
+
+## Execution reconciliation — 2026-09-13
+
+Phone reachability is now stated beside provider contacts. A WhatsApp reply rechecks the current phone book and binds its 24-hour window to the current business sender; replacing/removing numbers cannot inherit stale conversation permission. See ADR 0121 for local safety and migration evidence.

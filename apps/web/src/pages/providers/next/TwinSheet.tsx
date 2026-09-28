@@ -28,6 +28,7 @@ import { Sheet } from '../../../components/mudavym/Sheet';
 import { EM, MONO, SANS, fmtDays, fmtLastContact } from './pv-format';
 import { TermsSection } from './TermsSection';
 import { UsualCurrencySection } from './UsualCurrencySection';
+import { ContactsSection } from './ContactsSection';
 
 const ProviderIntelligencePanel = lazy(() =>
   import('../../../components/providers/ProviderIntelligencePanel').then((m) => ({
@@ -109,6 +110,13 @@ export function TwinSheet({ provider, onClose, focusUsualCurrency }: Props) {
           /settings, read on open, one row of it */}
       <div className="px-4 pb-2" style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
         <TermsSection providerId={provider.id} providerName={provider.name} />
+      </div>
+
+      {/* the numbers, and whether a text can reach any of them — ADR 0121 P0
+          item 2. The verdict is the gateway's; this section only shows it and
+          lets a manager answer the question nobody has answered. */}
+      <div className="px-4 pb-2" style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
+        <ContactsSection providerId={provider.id} providerName={provider.name} />
       </div>
 
       {/* the twin — fetched on open, never on the grid */}

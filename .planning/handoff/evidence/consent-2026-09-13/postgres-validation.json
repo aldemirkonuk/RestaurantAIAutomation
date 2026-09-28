@@ -1,0 +1,6 @@
+{
+  "checked_at_utc": "2026-09-13T21:13:39.700686+00:00",
+  "environment": "Disposable PostgreSQL17; network none; tmpfs only",
+  "assertions": "Append-only receipts under actual service role; client read denied; duplicate seal refusal; CAS state replay refusal; account deletion cascade; dark page flag",
+  "limit": "Minimal matching schema, not full production migration history; no production writes"
+}

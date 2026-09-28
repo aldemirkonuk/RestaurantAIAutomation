@@ -9,11 +9,25 @@
  *
  * ADMIN_API_KEY never reaches frontend JS — it stays in api-gateway server env only.
  */
-import { Controller, Get, Param, UseGuards } from "@nestjs/common";
+import { Controller, Get, Param, ServiceUnavailableException, UseGuards } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { JwtAuthGuard } from "../../auth/guards/jwt-auth.guard";
 import { TenantBypass } from "../tenant/tenant.decorator";
 import { OrchestratorService } from "./orchestrator.service";
+import { CurrentUser } from "../../auth/decorators/current-user.decorator";
+import { PlatformOperatorGuard, PlatformOperatorService } from "./platform-operator.service";
+
+/** Shared runtime health is visible; payloads, last errors and house records are not. */
+export function publicAgentHealth(value: unknown) {
+  const row = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const statuses = ["active", "idle", "starting", "stopping", "stopped", "error", "initializing", "paused"];
+  return {
+    agent_name: typeof row.agent_name === "string" ? row.agent_name : "Unnamed agent",
+    version: typeof row.version === "string" ? row.version : null,
+    status: typeof row.status === "string" && statuses.includes(row.status) ? row.status : "unknown",
+    healthy: typeof row.healthy === "boolean" ? row.healthy : null,
+  };
+}
 
 @Controller("health")
 @UseGuards(JwtAuthGuard)
@@ -22,16 +36,32 @@ export class HealthProxyController {
   constructor(
     private readonly orchestratorService: OrchestratorService,
     private readonly config: ConfigService,
+    private readonly operators: PlatformOperatorService,
   ) {}
 
   @Get("agents")
-  getAllAgentsHealth() {
-    return this.orchestratorService.getAgentHealthAll();
+  async getAllAgentsHealth() {
+    try {
+      const result = await this.orchestratorService.getAgentHealthAll();
+      if (!Array.isArray(result?.agents)) throw new Error("Invalid health response");
+      return { agents: result.agents.map(publicAgentHealth), count: result.agents.length, observedAt: new Date().toISOString(), scope: "platform" };
+    } catch {
+      throw new ServiceUnavailableException("Agent health could not be read.");
+    }
   }
 
   @Get("agents/:name")
-  getAgentHealth(@Param("name") name: string) {
-    return this.orchestratorService.getAgentHealthByName(name);
+  async getAgentHealth(@Param("name") name: string) {
+    try {
+      return publicAgentHealth(await this.orchestratorService.getAgentHealthByName(name));
+    } catch {
+      throw new ServiceUnavailableException("Agent health could not be read.");
+    }
+  }
+
+  @Get("access")
+  async access(@CurrentUser("userId") userId: string) {
+    return { platformOperator: await this.operators.isOperator(userId) };
   }
 
   /**
@@ -59,22 +89,25 @@ export class HealthProxyController {
           id: "supabase",
           name: "Database",
           desc: "Supabase PostgreSQL",
-          status: supabaseUrl ? "Connected" : "Not configured",
-          healthy: Boolean(supabaseUrl),
+          status: supabaseUrl ? "Configured · not probed" : "Not configured",
+          healthy: null,
+          configured: Boolean(supabaseUrl),
         },
         {
           id: "gemini",
           name: "AI Engine",
           desc: "Gemini Pro",
-          status: geminiKey ? "Ready" : "Key missing",
-          healthy: Boolean(geminiKey),
+          status: geminiKey ? "Configured · not probed" : "Key missing",
+          healthy: null,
+          configured: Boolean(geminiKey),
         },
         {
           id: "claude",
           name: "Studio Vision",
           desc: "Claude API (Haiku / Sonnet — /studio extract)",
-          status: claudeKey ? "Ready" : "Key missing",
-          healthy: Boolean(claudeKey),
+          status: claudeKey ? "Configured · not probed" : "Key missing",
+          healthy: null,
+          configured: Boolean(claudeKey),
           purpose: "studio",
         },
       ],
@@ -83,7 +116,7 @@ export class HealthProxyController {
 }
 
 @Controller("metrics")
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PlatformOperatorGuard)
 @TenantBypass()
 export class MetricsProxyController {
   constructor(private readonly orchestratorService: OrchestratorService) {}

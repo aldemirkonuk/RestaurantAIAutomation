@@ -10,7 +10,7 @@
  *
  * `login` and `register` are NOT in that set and this component is not for
  * them: the founder rejected their redrawn versions and asked for today's
- * pages improved instead, so their treatment is still open.
+ * pages improved instead, so their in-place treatment remains separate from this shell.
  *
  * WHAT THE SEVEN ACTUALLY CONTAIN (read 2026-09-12, not idealised)
  * ---------------------------------------------------------------
@@ -47,17 +47,12 @@
  * The one import from `lib/` is `import type { MudavymGround }`, which is
  * erased at compile time: one vocabulary for the ground, zero runtime coupling.
  *
- * BOTH GROUNDS, THE ADR 0042 WAY
- * ------------------------------
- * Every colour is a `.mudavym` token (`styles/mudavym.css`); `public-shell.css`
- * contains no hex literal, no `prefers-color-scheme` block and no
- * `[data-theme]` block, and the test asserts all three. The ground turns by the
- * three routes ADR 0042 already defines — the app's `.dark` class, an explicit
- * `data-ground="charcoal"`, and the pre-hydration media query in `mudavym.css`.
- * When a page forces charcoal, `data-ground` goes on the SAME element that
- * carries `.mudavym`: a custom property declared on a descendant beats one
- * inherited from an ancestor, which is the trap `PageGate.tsx:10-21` documents
- * at length. There is exactly one `.mudavym` node here, and it carries both.
+ * GROUNDS FOLLOW THE CURRENT SHARED TOKEN CONTRACT
+ * ------------------------------------------------
+ * `mudavym.css` now defaults to the founder-decided Warm Charcoal, independent
+ * of the legacy app theme. An explicit paper prop puts data-ground="paper" on
+ * the SAME .mudavym node so the shared paper exception can take effect. This
+ * shell defines no competing palette or media-query override.
  *
  * THE VOCABULARY IS `sheet.css`'s, NOT A SECOND ONE
  * -------------------------------------------------
@@ -135,8 +130,8 @@ export interface PublicShellProps {
   /** Default `door`. See {@link PublicShellMeasure}. */
   measure?: PublicShellMeasure;
   /**
-   * Force a ground. Left off, the shell follows the app's theme and the
-   * pre-hydration media query — which is what six of the seven want.
+   * Force a ground. Left off, the shared charcoal default applies.
+   * An explicit paper value uses the shared token stylesheet’s paper exception.
    */
   ground?: MudavymGround;
   /**
@@ -204,7 +199,7 @@ export function PublicShell({
   return (
     <div
       className={`mudavym mdv-pub${className ? ` ${className}` : ''}`}
-      data-ground={ground === 'charcoal' ? 'charcoal' : undefined}
+      data-ground={ground}
       data-measure={measure}
     >
       {signatureTakesFocus ? (

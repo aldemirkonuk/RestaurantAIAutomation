@@ -65,6 +65,8 @@ individually while what they don't cover reaches production — this gate exists
    `.github/workflows/pr-audit-gate.yml`, `.claude/agents/pr-merge-*.md`,
    `.claude/skills/pr-audit-gate/`, `.claude/settings.json`, `CLAUDE.md`,
    `.planning/decisions/0090-*.md`/`.planning/decisions/README.md`,
+   `.trivyignore`, `scripts/check_security_gate_can_fail.py`,
+   `scripts/trivy-baseline-2026-09-12.txt`,
    `.github/workflows/ci.yml` (carries the `workflow_dispatch:` trigger the
    CI-side merge step depends on — added fifth audit, correctness angle), or
    `.github/workflows/deploy.yml` (the post-merge production-deploy-

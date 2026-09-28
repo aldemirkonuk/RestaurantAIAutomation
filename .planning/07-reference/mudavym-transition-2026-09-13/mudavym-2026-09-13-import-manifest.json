@@ -1,0 +1,161 @@
+{
+  "date": "2026-09-13",
+  "audited_commit": "60ed83a7e6d5eb8b8e0e631783a598cd0f562bff",
+  "files": [
+    {
+      "source_name": "Mudavym-Company-Product-and-Migration-Report.md",
+      "imported_name": "mudavym-2026-09-13-mudavym-company-product-and-migration-report.md",
+      "source_sha256": "29e3e422f08045516d5d64f9034a9f4c031cdfa70bccd7a6c8db1d870b960231",
+      "import_sha256": "098f889daf9cecb82fba703edafe28bd4f6c822006d86d44bba2715b51b62cb8",
+      "source_bytes": 43240
+    },
+    {
+      "source_name": "product-code-audit.md",
+      "imported_name": "mudavym-2026-09-13-product-code-audit.md",
+      "source_sha256": "acafcd70a0068344a71672e0af261a4fb060640402e4903f156439ecaf391a30",
+      "import_sha256": "1da59e8596989238b2f6534b93376db3d10de3723694602a8a0aa5a3185aa00f",
+      "source_bytes": 44133
+    },
+    {
+      "source_name": "infrastructure-audit.md",
+      "imported_name": "mudavym-2026-09-13-infrastructure-audit.md",
+      "source_sha256": "601385a3d66039138318944663d0325bc79d97c2bd1e8b6dec37d7debd420b4c",
+      "import_sha256": "114095433ba6cec95246994361f6f42a2f938b53de862e73896d9193686b6de5",
+      "source_bytes": 41527
+    },
+    {
+      "source_name": "handoff-corpus-audit.md",
+      "imported_name": "mudavym-2026-09-13-handoff-corpus-audit.md",
+      "source_sha256": "4adb5d33810118ec59693a936dcdc8b6bb2ad2dba5e65bb62622206fc115abf3",
+      "import_sha256": "a9821f6268d7c8b1a613493ab5644e012b793076278b310660d358e44d5f5b5c",
+      "source_bytes": 43574
+    },
+    {
+      "source_name": "artifact-design-audit.md",
+      "imported_name": "mudavym-2026-09-13-artifact-design-audit.md",
+      "source_sha256": "1290cf5608b4e8ec629612943fb160512ba8b5235528d92b6e8fcd7d51ef25df",
+      "import_sha256": "af0c21d8c9bf46980d5f54642fff54dd1fb6efb5c1f85976378691226627d8aa",
+      "source_bytes": 14833
+    },
+    {
+      "source_name": "current-documentation-delta.md",
+      "imported_name": "mudavym-2026-09-13-current-documentation-delta.md",
+      "source_sha256": "1ac4e8db10df947fbbe0b95c0cf6d19ee6354dcbfc31763b13b64ee756b7c0c1",
+      "import_sha256": "e1b08d2738a3f3d966bfef22c3557ddcc88c417be9c3149705317636b3163f93",
+      "source_bytes": 31670
+    },
+    {
+      "source_name": "screen-capability-matrix.md",
+      "imported_name": "mudavym-2026-09-13-screen-capability-matrix.md",
+      "source_sha256": "66ddc9c981585e7d37d61038fc73b0de3279c276132d1cdcb5b7517307c322bc",
+      "import_sha256": "fc52ff6b6dda8d33b0e3b7e5d094dfed7ed912d847e31e1dbc6cbcbd74b0e760",
+      "source_bytes": 31345
+    },
+    {
+      "source_name": "surface-capability-matrix.md",
+      "imported_name": "mudavym-2026-09-13-surface-capability-matrix.md",
+      "source_sha256": "bd3387df369af52c7e523aa9b722af2529c601c042cb8f00a178eaff086bc1b6",
+      "import_sha256": "09fd523c6aabb4de21c5dd12a482acc35d847f1ac657675fe2fb53a8223d11ae",
+      "source_bytes": 46509
+    },
+    {
+      "source_name": "safari-artifact-source-map.md",
+      "imported_name": "mudavym-2026-09-13-safari-artifact-source-map.md",
+      "source_sha256": "b6febd1bcd35fdf5d5c32ef82b6b0f01d4b6e121ef8691012b111a5d457aa525",
+      "import_sha256": "3c7946a93ef6fbc4076ea12fb138a29f73c82609beffe5ba6cde70ce9f00d3d6",
+      "source_bytes": 8881
+    },
+    {
+      "source_name": "documentation-inventory.csv",
+      "imported_name": "mudavym-2026-09-13-documentation-inventory.csv",
+      "source_sha256": "bf0daa45ee43d89fcfec8f69bfbd578de12410d2181a57e5378157e2c88a91c4",
+      "import_sha256": "920b33e9c8bdcd75155160f5943154e818b1914a169150a51596bc836d5db64a",
+      "source_bytes": 486403
+    },
+    {
+      "source_name": "current-documentation-manifest.csv",
+      "imported_name": "mudavym-2026-09-13-current-documentation-manifest.csv",
+      "source_sha256": "70303936bd331209ea66bbd56df0eaf98e305b30c08997db5da1b84252ffe68e",
+      "import_sha256": "70303936bd331209ea66bbd56df0eaf98e305b30c08997db5da1b84252ffe68e",
+      "source_bytes": 38302
+    },
+    {
+      "source_name": "surface-capability-matrix.csv",
+      "imported_name": "mudavym-2026-09-13-surface-capability-matrix.csv",
+      "source_sha256": "3f44710a51186cb0795e64134bf272e932ccc788642f2437b86fd11b97996951",
+      "import_sha256": "3ac9e0d445d0534347703612699b2ec6876d7d06e9080706ccb488e2673eeb9f",
+      "source_bytes": 38796
+    },
+    {
+      "source_name": "web-route-inventory.tsv",
+      "imported_name": "mudavym-2026-09-13-web-route-inventory.tsv",
+      "source_sha256": "8f119fc6f0befba2d61a0af4fc6082a528816f823dfd2d19c4a92fe5b646f161",
+      "import_sha256": "8f119fc6f0befba2d61a0af4fc6082a528816f823dfd2d19c4a92fe5b646f161",
+      "source_bytes": 4835
+    },
+    {
+      "source_name": "documentation-inventory-summary.json",
+      "imported_name": "mudavym-2026-09-13-documentation-inventory-summary.json",
+      "source_sha256": "819b7765eb54d3ee43a057e07873f4a7c0d26c2c3a227cae3eccb4e98affc1ea",
+      "import_sha256": "819b7765eb54d3ee43a057e07873f4a7c0d26c2c3a227cae3eccb4e98affc1ea",
+      "source_bytes": 2425
+    },
+    {
+      "source_name": "current-documentation-summary.json",
+      "imported_name": "mudavym-2026-09-13-current-documentation-summary.json",
+      "source_sha256": "331f1792b140378b17db365e498f828166bcc0891477095622d9dafc69ea860a",
+      "import_sha256": "331f1792b140378b17db365e498f828166bcc0891477095622d9dafc69ea860a",
+      "source_bytes": 419
+    },
+    {
+      "source_name": "documentation-link-qa.json",
+      "imported_name": "mudavym-2026-09-13-documentation-link-qa.json",
+      "source_sha256": "e3413d833e49827f0f3ddc794868d8f10280f9bb248ffeea7ebea3ea8c83053a",
+      "import_sha256": "e3413d833e49827f0f3ddc794868d8f10280f9bb248ffeea7ebea3ea8c83053a",
+      "source_bytes": 387
+    },
+    {
+      "source_name": "pdf-qa-evidence.json",
+      "imported_name": "mudavym-2026-09-13-pdf-qa-evidence.json",
+      "source_sha256": "dce047f3e8bdfc6ad3987938aa54c9e618c860576880cb42bfaf3381b3add427",
+      "import_sha256": "e9625492700181449d1ec87a5a6e7c9971521a749603fbd876f9d2c88bc6c6ed",
+      "source_bytes": 4764
+    },
+    {
+      "source_name": "reproduce-native-receipt-currency.cjs",
+      "imported_name": "mudavym-2026-09-13-reproduce-native-receipt-currency.cjs",
+      "source_sha256": "13e9a9fc584d161eaa9acfb11c4b99b777e6fcf60dccf3e704edf223f8175395",
+      "import_sha256": "dd50c4ef664a58f858c149101a714fbaee70fe17b5a2dc2be564679b38f09501",
+      "source_bytes": 1803
+    },
+    {
+      "source_name": "reproduce-mobile-outbox.cjs",
+      "imported_name": "mudavym-2026-09-13-reproduce-mobile-outbox.cjs",
+      "source_sha256": "37d286a027b8b2ed7fd5bfa3c74a778883f0d410b118d808e1e3e6524a6c94ba",
+      "import_sha256": "de0dcace54fe2436a82f1e0291ddbc4de2a0942dc8860d04933f42b1bffb4993",
+      "source_bytes": 2779
+    },
+    {
+      "source_name": "reproduce-receipt-unit-delta.cjs",
+      "imported_name": "mudavym-2026-09-13-reproduce-receipt-unit-delta.cjs",
+      "source_sha256": "e1c2964fffe23ae8f69ad40e18d6096bc5bc7fdbaebc735d8063e22a32fe190f",
+      "import_sha256": "b46f55d817dbe68797f28313438c0cea18f4b1dc79f74ee0931d7d9c555996af",
+      "source_bytes": 1857
+    },
+    {
+      "source_name": "reproduce-dashboard-month-cache.cjs",
+      "imported_name": "mudavym-2026-09-13-reproduce-dashboard-month-cache.cjs",
+      "source_sha256": "fc870574fc5ea7bd9c24b7c5e83db3f0e3630769dc426555280e173ec6965175",
+      "import_sha256": "ad276f0411437f467c14220335f386fd5fb4f2ab033f2230b6cc89b99c05ac4d",
+      "source_bytes": 2400
+    },
+    {
+      "source_name": "Mudavym-Company-Product-and-Migration-Review.pdf",
+      "imported_name": "mudavym-2026-09-13-company-product-and-migration-review.pdf",
+      "source_sha256": "ab9df11adaa01cb77186e7de0ab7a8944a9a8b1d8bdad75360d9b5e7d6880afe",
+      "import_sha256": "ab9df11adaa01cb77186e7de0ab7a8944a9a8b1d8bdad75360d9b5e7d6880afe",
+      "source_bytes": 163276
+    }
+  ],
+  "sanitization": "Local user/worktree paths replaced with durable versioned repository links where available; unnecessary local metadata omitted. Original PDF retained as dated rendered artifact. No credentials or customer data retrieved for this import. Isolated reproduction scripts resolve this repository dynamically; their source revision remains pinned to the audit."
+}

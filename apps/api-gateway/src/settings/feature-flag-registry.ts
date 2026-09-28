@@ -218,6 +218,16 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     defaultValue: false,
     readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:105",
   },
+  {
+    key: "mudavym_design_admin",
+    defaultValue: false,
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:105",
+  },
+  {
+    key: "mudavym_design_authorize_integration",
+    defaultValue: false,
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts",
+  },
 ];
 
 export const ACTIVE_FEATURE_FLAG_KEYS: readonly string[] =

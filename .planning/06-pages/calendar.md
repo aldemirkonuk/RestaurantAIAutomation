@@ -1330,3 +1330,8 @@ ADR's; the order is not preference — each slice earns the trust the next one s
     `GET /calendar/reminders/status` is the shape to copy.
 
 - **Correction to a commit message (recorded 2026-09-05).** Commit `bf6d57e9` (`?new=` opens the sheet prefilled) said "4 of 6 new tests fail" against the pre-fix code; its audit rebuilt the pre-fix copies and measured 6 of 6 failing. The real number is stronger evidence than claimed; the claim itself was wrong.
+
+
+### Codex execution — overlay packet, 2026-09-13
+
+The recovered calendar overlays and their interaction regressions were reconciled with current main. The cross-page seal, partial-result and validation account is appended to ADR 0118 under “overlay commitments”; the workspace immutable manifest records exactly what was integrated. This is implementation evidence, not a new design decision.

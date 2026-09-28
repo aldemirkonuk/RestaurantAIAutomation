@@ -503,6 +503,9 @@ def _run_audit_inner(pr_number: str) -> int:
                                             # angle -- keep .claude/skills/pr-audit-gate/SKILL.md
                                             # step 4's list in sync with this one; they drifted
                                             # once already over CLAUDE.md.)
+        ".trivyignore",  # ADR 0142: the vulnerability baseline is gate-owned.
+        "scripts/check_security_gate_can_fail.py",
+        "scripts/trivy-baseline-2026-09-12.txt",
         ".github/workflows/ci.yml",  # carries the workflow_dispatch: trigger the merge step
                                        # below depends on to re-enter the CI/deploy chain a
                                        # GITHUB_TOKEN merge would otherwise silently skip -- a

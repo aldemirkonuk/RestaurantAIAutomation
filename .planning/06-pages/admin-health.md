@@ -178,3 +178,8 @@ Drawn in sketch 102 (`.planning/sketches/102-modal-census/index.html`); the poli
 5. **Add restart/drain once the orchestrator exposes control** — the sheet already
    reserves the space and explains its absence (`:251`). *Blocked: same missing
    orchestrator control endpoint as [[admin]] §13.3.*
+
+
+## Consolidation implementation — 2026-09-13
+
+ADR 0143 is implemented by the new `mudavym_design_admin` gate: this bookmark redirects to `/admin` when enabled. Its false branch retains the old page during rollout. The current implementation, platform permission boundary, evidence and remaining rollout work are recorded in [[admin#Page finalization implementation — 2026-09-13]]. There is no separately switchable redesigned health page.

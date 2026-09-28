@@ -11,7 +11,7 @@ signals_today: none
 rebrand_strings: 4
 maturity: complete
 status: documented
-updated: 2026-08-26
+updated: 2026-09-13
 links: ["[[PAGE-CONTRACT]]", "[[help]]", "[[settings]]", "[[profile]]"]
 ---
 
@@ -136,3 +136,12 @@ The four-state question does not bite here, and saying so is more useful than in
 2. Add the guard §9 says is missing — a test that fails when `VITE_UX_OPTIMIZER` defaults to enabled while this text stands, plus a comment reference at `lib/uxSignals.ts:15` pointing back here. Cheapest possible binding between a promise and its implementation.
 3. Register the coupling in `v3.0-TECH-DEBT.md` — §9 notes it is absent from the register, which is why it is invisible to anyone not reading this page.
 4. Rebrand the 4 strings alongside the auth screens and the verification email, not separately — a notice under one brand describing a product under another is worse than either. *Blocked:* OD-27, deferred by founder pending the full Mudavym migration (OD-27, `.planning/decisions/OPEN-DECISIONS.md:145`).
+
+
+### PublicShell implementation — 2026-09-13
+
+Implemented in the page-finalization working branch from `60ed83a7`; this is a code/test record, not a production-deployment claim. The new public treatment uses the shared `PublicShell` and `usePublicDesign()` (`VITE_MUDAVYM_PUBLIC`, overridden by the existing `mudavym.design.public` browser preference). The legacy rendering remains available with that switch off. No new server authorization or public endpoint is introduced by the visual port.
+
+The new document uses one h1, seven prose sections and links to Profile/Connections/legacy Settings. Its copy corrects the old universal “only app-created files” claim: Microsoft Excel's `Files.ReadWrite` is broader OneDrive access. It no longer promises that a local disconnect revokes provider-side consent or that an old preferences checkbox controls all telemetry. Google Fonts requests and public vendor catalogue visibility are disclosed. This is a factual product description, not a new retention schedule, processor agreement or legal policy. The flag-off notice receives the same factual scope/revocation/reporting corrections; current contact, retention and legal-entity details still need owner input.
+
+Verification: `apps/web/src/pages/__tests__/publicPages.recovery.test.tsx` (ten behavior tests across the seven pages), existing PublicShell/public-switch tests (34), web/gateway TypeScript checks. Vendor read/JSON-LD tests (five) and account email body/sender identity tests (five) are isolated and perform no real sends or database writes. Remaining product choices are recorded under [[OPEN-DECISIONS#Public-page completion — 2026-09-13]]. The earlier audit is available from [[MUDAVYM-TRANSITION-2026-09-13]].

@@ -966,3 +966,8 @@ re-deriving it.
    work, they are what the founder actually praised, and none of them can be
    wrong about a house that has no data.
 13. **The crew-text senders read was keyed without the house.** `TeamOverlays.tsx` `CrewTextLeg` cached `GET /team/text-senders` under `['team-next-text-senders']` alone; the gateway scopes that read by restaurant through a header the key never sees, so after a house switch the control would have said the PREVIOUS house's sender was connected (ADR 0051 clause 2 — the exact shape `check_windowed_figures.py` exists for, and it caught it: the only FAIL in the 2026-09-05 full verification). Fixed 2026-09-05: `useActiveRestaurantId()` is in the key and the read is disabled until a house is active; `CrewTextLeg.test.tsx` now mocks `AuthContext` like the page's other tests. Measured: guard PASS (`python3 scripts/check_windowed_figures.py`), `npx vitest run src/pages/team/next/CrewTextLeg.test.tsx` 5 passed / 5. The cb67d154 message's "every guard PASS" was wrong on this one guard; corrected here.
+
+
+### Codex execution — overlay packet, 2026-09-13
+
+The recovered team overlays and their interaction regressions were reconciled with current main. The cross-page seal, partial-result and validation account is appended to ADR 0118 under “overlay commitments”; the workspace immutable manifest records exactly what was integrated. This is implementation evidence, not a new design decision.

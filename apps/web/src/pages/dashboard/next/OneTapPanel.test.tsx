@@ -423,11 +423,11 @@ describe('OneTapPanel — the desk on the dashboard rail', () => {
     serve([]);
     draw();
     await waitFor(() => expect(api.get).toHaveBeenCalled());
-    fireEvent.click(screen.getByText('Write a new one'));
-    fireEvent.change(screen.getByPlaceholderText(/Bodega Álvaro/), {
+    fireEvent.click(screen.getByTestId('one-tap-open-sheet'));
+    fireEvent.change(screen.getByTestId('one-tap-title'), {
       target: { value: 'Chase the Chablis invoice' },
     });
-    fireEvent.click(screen.getByText('Write it into the book'));
+    fireEvent.click(screen.getByTestId('one-tap-save'));
     await waitFor(() =>
       expect(api.post).toHaveBeenCalledWith(
         '/one-tap-actions',

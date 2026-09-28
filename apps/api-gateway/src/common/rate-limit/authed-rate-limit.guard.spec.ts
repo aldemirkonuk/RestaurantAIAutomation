@@ -128,6 +128,14 @@ describe("AuthedRateLimitGuard", () => {
     expect(retry).toBeLessThanOrEqual(60);
   });
 
+  it("shares a declared spend bucket across old and new Ask routes", () => {
+    const g = guard();
+    const rules = [{ limit: 1, windowSeconds: 60, bucket: "mudavym-ask" }];
+    expect(g.canActivate(ctx(rules, { userId: "u1" }, "legacyPropose").context)).toBe(true);
+    expect(() => g.canActivate(ctx(rules, { userId: "u1" }, "boundReading").context)).toThrow();
+    expect(g.canActivate(ctx(rules, { userId: "u2" }, "boundReading").context)).toBe(true);
+  });
+
   it("uses the caller's words when the rule supplies a message", () => {
     const g = guard();
     const rules = [

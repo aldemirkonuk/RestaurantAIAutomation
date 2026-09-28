@@ -5,6 +5,9 @@ import { AuthModule } from "../auth/auth.module";
 import { ProcurementModule } from "../procurement/procurement.module";
 import { AskAiController } from "./ask-ai.controller";
 import { AskAiService } from "./ask-ai.service";
+import { ReadingsModule } from "../ask-readings/readings.module";
+import { BoundAskController } from "./bound-ask.controller";
+import { BoundAskService } from "./bound-ask.service";
 
 /**
  * AuthModule is required, not optional: AskAiController is guarded by
@@ -22,9 +25,9 @@ import { AskAiService } from "./ask-ai.service";
  * no import line.
  */
 @Module({
-  imports: [DatabaseModule, ConfigModule, AuthModule, ProcurementModule],
-  controllers: [AskAiController],
-  providers: [AskAiService],
+  imports: [DatabaseModule, ConfigModule, AuthModule, ProcurementModule, ReadingsModule],
+  controllers: [AskAiController, BoundAskController],
+  providers: [AskAiService, BoundAskService],
   exports: [AskAiService],
 })
 export class AskAiModule {}

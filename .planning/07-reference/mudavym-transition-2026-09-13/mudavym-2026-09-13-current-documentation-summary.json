@@ -1,0 +1,20 @@
+{
+  "commit": "60ed83a7e6d5eb8b8e0e631783a598cd0f562bff",
+  "files": 85,
+  "bytes": 2525033,
+  "counts_by_type": {
+    "support": 10,
+    "page": 49,
+    "software": 26
+  },
+  "read_status": {
+    "inventoried_only": 7,
+    "read_targeted_current": 19,
+    "read_diff_current": 18,
+    "unchanged_baseline_narratives_read": 40,
+    "read_full": 1
+  },
+  "changed_files": 38,
+  "insertions": 18088,
+  "deletions": 322
+}

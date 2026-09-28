@@ -4,6 +4,7 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
   Logger,
   Param,
   Post,
@@ -18,6 +19,8 @@ import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { Public } from "../auth/decorators/public.decorator";
 import { OrganizationsService } from "../organizations/organizations.service";
 import { IntegrationsOauthService } from "./integrations-oauth.service";
+import { IntegrationConsentService } from "./integration-consent.service";
+import { IntegrationConsentAuthorizeDto, IntegrationConsentChallengeDto, IntegrationConsentCompleteDto } from "./integration-consent.dto";
 import {
   INTEGRATION_DEFINITIONS,
   MIRRORING_INTEGRATION_IDS,
@@ -35,6 +38,7 @@ export class IntegrationsOauthController {
   constructor(
     private readonly service: IntegrationsOauthService,
     private readonly organizations: OrganizationsService,
+    private readonly consent: IntegrationConsentService,
   ) {}
 
   private house(req: AuthedRequest): { userId: string; restaurantId: string } {
@@ -179,17 +183,14 @@ export class IntegrationsOauthController {
   async authorize(
     @Req() req: AuthedRequest,
     @Param("integrationId") integrationId: string,
-    @Query("returnPath") returnPath?: string,
+    @Body() body: IntegrationConsentAuthorizeDto,
   ) {
     if (!isIntegrationId(integrationId)) {
       throw new BadRequestException("Unknown integration");
     }
 
-    const { authorizationUrl } = await this.service.createAuthorizationUrl({
-      userId: req.user.userId,
-      restaurantId: req.user.restaurantId ?? null,
-      integrationId,
-      returnPath,
+    const { authorizationUrl } = await this.consent.authorize({
+      ...this.house(req), integrationId, body, browserOrigin: req.get("origin"),
     });
 
     this.logger.log(
@@ -197,6 +198,31 @@ export class IntegrationsOauthController {
     );
 
     return { success: true, authorizationUrl };
+  }
+
+  @Get(":integrationId/disclosure")
+  @UseGuards(JwtAuthGuard)
+  async disclosure(@Req() req: AuthedRequest, @Param("integrationId") integrationId: string) {
+    if (!isIntegrationId(integrationId)) throw new BadRequestException("Unknown integration");
+    return { success: true, disclosure: await this.consent.disclosure(integrationId, this.house(req).restaurantId) };
+  }
+
+  @Post(":integrationId/seal-challenge")
+  @UseGuards(JwtAuthGuard)
+  async consentChallenge(@Req() req: AuthedRequest, @Param("integrationId") integrationId: string, @Body() body: IntegrationConsentChallengeDto) {
+    if (!isIntegrationId(integrationId)) throw new BadRequestException("Unknown integration");
+    return { success: true, ...(await this.consent.challenge({
+      ...this.house(req), integrationId, body, browserOrigin: req.get("origin"),
+    })) };
+  }
+
+  // Browser proof + single-use state replace a JWT on this continuation. The
+  // provider round trip may outlast a session; no identity comes from the body.
+  @Post("complete")
+  @HttpCode(200)
+  @Public()
+  async complete(@Body() body: IntegrationConsentCompleteDto) {
+    return { success: true, ...(await this.service.completeCallback(body)) };
   }
 
   /**
@@ -213,6 +239,8 @@ export class IntegrationsOauthController {
     @Query("state") state?: string,
     @Query("error") error?: string,
   ) {
+    res.setHeader("Cache-Control", "no-store");
+    res.setHeader("Referrer-Policy", "no-referrer");
     const destination = await this.service.handleCallback({
       provider,
       code,

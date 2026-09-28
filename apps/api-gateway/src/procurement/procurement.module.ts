@@ -1,4 +1,5 @@
 import { Module, forwardRef } from "@nestjs/common";
+import { ReadingsModule } from "../ask-readings/readings.module";
 import { ProcurementController } from "./procurement.controller";
 import { ProcurementService } from "./procurement.service";
 import { RecurringOrdersService } from "./recurring-orders.service";
@@ -62,6 +63,7 @@ import { DeliveryClockService } from "./canonical/delivery-clock.service";
 @Module({
   imports: [
     DatabaseModule,
+    ReadingsModule,
     AuthModule,
     EventsModule,
     InventoryLedgerModule,

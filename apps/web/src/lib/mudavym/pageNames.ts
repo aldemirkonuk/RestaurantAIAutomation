@@ -75,6 +75,8 @@ export const PAGE_NAMES: Record<MudavymPage, string> = {
   // The canonical document at /documents/:id (ADR 0104 slice 2, merged from main 2026-09-05).
   document: 'Document',
   logs: 'Logs',
+  admin: 'Operations desk',
+  authorize_integration: 'Permission to connect',
 };
 
 /**
@@ -86,7 +88,7 @@ export const PAGE_NAMES: Record<MudavymPage, string> = {
  * taps that comment removes. It also forces the charcoal ground
  * (`DoorNext.tsx:380`), which is the one surface a header would have to fight.
  */
-export const NO_CHROME: ReadonlySet<MudavymPage> = new Set<MudavymPage>(['receiving_door']);
+export const NO_CHROME: ReadonlySet<MudavymPage> = new Set<MudavymPage>(['receiving_door', 'authorize_integration']);
 
 /** The name to print for `page`, given the route actually open. */
 export function pageNameFor(page: MudavymPage, pathname?: string | null): string {

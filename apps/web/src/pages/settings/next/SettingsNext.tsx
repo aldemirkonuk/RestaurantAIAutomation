@@ -1,3 +1,4 @@
+import { IntegrationReturnNotice } from '../../authorize-integration/IntegrationReturnNotice'
 /**
  * SettingsNext — the Mudavym redesign of `/settings`, behind
  * `mudavym_design_settings` (ADR 0044 p4 wave).
@@ -219,6 +220,7 @@ export default function SettingsNext({ ground }: SettingsNextProps) {
     >
       <style>{CSS}</style>
       <div style={{ maxWidth: 1080, margin: '0 auto', padding: '26px 18px 64px' }}>
+        <IntegrationReturnNotice />
         {/* ── The opening — Fraunces speaks ───────────────────────────── */}
         <header>
           <Wordmark size={13} />

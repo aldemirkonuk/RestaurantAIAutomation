@@ -5,12 +5,15 @@ import { CryptoModule } from "../common/crypto/crypto.module";
 import { AuthModule } from "../auth/auth.module";
 import { OrganizationsModule } from "../organizations/organizations.module";
 import { RetentionModule } from "../communications/retention/retention.module";
+import { SealModule } from "../common/seal/seal.module";
+import { IntegrationConsentService } from "./integration-consent.service";
 import { IntegrationsOauthController } from "./integrations-oauth.controller";
 import { IntegrationsOauthService } from "./integrations-oauth.service";
 
 @Module({
   imports: [
     ConfigModule,
+    SealModule,
     DatabaseModule,
     CryptoModule,
     AuthModule,
@@ -26,7 +29,7 @@ import { IntegrationsOauthService } from "./integrations-oauth.service";
     RetentionModule,
   ],
   controllers: [IntegrationsOauthController],
-  providers: [IntegrationsOauthService],
+  providers: [IntegrationsOauthService, IntegrationConsentService],
   exports: [IntegrationsOauthService],
 })
 export class IntegrationsModule {}

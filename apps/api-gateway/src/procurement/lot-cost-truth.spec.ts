@@ -143,7 +143,6 @@ function migrationSql(): string {
 // D3 — the enum cast that made every receipt verification 422
 // ---------------------------------------------------------------------------
 
-
 /*
  * `invoiceCurrency: "USD"` appears beside every `invoiceUnitPrice` below since
  * 2026-09-06 (founder batch 67): `verifyReceipt` refuses a unit price with no
@@ -234,13 +233,18 @@ describe("D1 — no price is promoted to 'invoice' by silence", () => {
     // guard `scripts/check_lot_cost_provenance.py:83` keys on the path alone
     // for the same reason, and this is the same mistake the stock-writes
     // allowlist was re-keyed off file:line to escape.
-    expect(offenders.some((o) => o.startsWith(`${OWNED_ELSEWHERE}:`))).toBe(true);
+    expect(offenders.some((o) => o.startsWith(`${OWNED_ELSEWHERE}:`))).toBe(
+      true,
+    );
   });
 
   it("markDelivered books the delivery at a stated, non-invoice provenance", async () => {
     // A delivery that has NOT yet happened: the goods-arrived guard refuses a
     // second one, and this test is about what the first one costs the lot.
-    const { db, calls } = makeDb({ status: "APPROVED", quantity_received: null });
+    const { db, calls } = makeDb({
+      status: "APPROVED",
+      quantity_received: null,
+    });
     await service(db).markDelivered(REST, ORDER, USER, 10);
 
     const live = calls.rpc.find(
@@ -408,6 +412,11 @@ function makeDb(orderOverrides: Record<string, any> = {}) {
               ...orderOverrides,
               inventory: { wine_name: "Barolo" },
             },
+            error: null,
+          };
+        if (table === "inventory_transactions")
+          return {
+            data: [{ id: "received", quantity_change: 10 }],
             error: null,
           };
         if (table === "restaurant_inventory") {

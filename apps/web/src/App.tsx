@@ -107,6 +107,9 @@ const InsightCatalog = lazyWithRefresh(() => import('./pages/InsightCatalog'))
 const WineLibrary = lazyWithRefresh(() => import('./pages/wine-library'))
 const SommelierAI = lazyWithRefresh(() => import('./pages/SommelierAI'))
 const AdminPanel = lazyWithRefresh(() => import('./pages/AdminPanel'))
+const AdminDesk = lazyWithRefresh(() => import('./pages/admin/next/AdminDesk'))
+const AuthorizeIntegrationNext = lazyWithRefresh(() => import('./pages/authorize-integration/next/AuthorizeIntegrationNext'))
+const CompleteIntegrationConsent = lazyWithRefresh(() => import('./pages/authorize-integration/CompleteIntegrationConsent'))
 const AdminHealth = lazyWithRefresh(() => import('./pages/AdminHealth'))
 
 // Standard pages (lazy loaded)
@@ -285,10 +288,14 @@ function App() {
                   ways to wander off mid-grant.
                 */}
                 <Route
+                  path="/authorize/complete"
+                  element={<CompleteIntegrationConsent />}
+                />
+                <Route
                   path="/authorize/:integrationId"
                   element={
                     <ProtectedRoute>
-                      <AuthorizeIntegration />
+                      <PageGate page="authorize_integration" legacy={<AuthorizeIntegration />} next={<AuthorizeIntegrationNext />} />
                     </ProtectedRoute>
                   }
                 />
@@ -397,8 +404,8 @@ function App() {
                   <Route path="/help" element={<Help />} />
                   {/* Gated: the sidebar link is owner-only, but the URL was not —
                       any authenticated staff member could open the admin UI. */}
-                  <Route path="/admin" element={<ProtectedRoute requiredRole="owner"><AdminPanel /></ProtectedRoute>} />
-                  <Route path="/admin/health" element={<ProtectedRoute requiredRole="owner"><AdminHealth /></ProtectedRoute>} />
+                  <Route path="/admin" element={<PageGate page="admin" legacy={<ProtectedRoute requiredRole="owner"><AdminPanel /></ProtectedRoute>} next={<AdminDesk />} />} />
+                  <Route path="/admin/health" element={<PageGate page="admin" legacy={<ProtectedRoute requiredRole="owner"><AdminHealth /></ProtectedRoute>} next={<Navigate to="/admin" replace />} />} />
                   
                   {/* AI Assistants.
                       `/wine-agent` and `/wineagent` are retired (ADR 0019 §B): both

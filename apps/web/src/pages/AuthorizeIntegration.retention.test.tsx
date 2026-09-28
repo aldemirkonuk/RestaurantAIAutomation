@@ -36,14 +36,11 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import AuthorizeIntegration from './AuthorizeIntegration'
+import { consentFixture } from './authorize-integration/__tests__/consent-fixture'
 import { integrationsApi } from '../services/api/integrations'
 
 vi.mock('../services/api/integrations', () => ({
-  integrationsApi: {
-    getCatalog: vi.fn(),
-    authorize: vi.fn(),
-    getRetentionDisclosure: vi.fn(),
-  },
+  integrationsApi: { getConsent: vi.fn(), consentChallenge: vi.fn(), authorize: vi.fn() },
 }))
 
 const READ_ENTRY = {
@@ -159,12 +156,8 @@ function renderAt(id: string) {
 
 describe('the consent screen states how long the mail is kept', () => {
   beforeEach(() => {
-    vi.mocked(integrationsApi.getCatalog).mockResolvedValue([
-      SEND_ENTRY,
-      READ_ENTRY,
-    ] as never)
-    vi.mocked(integrationsApi.getRetentionDisclosure).mockResolvedValue(
-      TR_DISCLOSURE as never,
+    vi.mocked(integrationsApi.getConsent).mockImplementation(async id =>
+      consentFixture((id === 'gmail_send' ? SEND_ENTRY : READ_ENTRY) as never, id === 'gmail_send' ? null : TR_DISCLOSURE),
     )
   })
 
@@ -194,9 +187,7 @@ describe('the consent screen states how long the mail is kept', () => {
   })
 
   it('says WHY the strictest rule applies when no country is recorded', async () => {
-    vi.mocked(integrationsApi.getRetentionDisclosure).mockResolvedValue(
-      UNKNOWN_DISCLOSURE as never,
-    )
+    vi.mocked(integrationsApi.getConsent).mockResolvedValue(consentFixture(READ_ENTRY as never, UNKNOWN_DISCLOSURE))
     renderAt('gmail_read')
     await screen.findByTestId('retention-disclosure')
     expect(screen.getByText(/no country recorded/)).toBeTruthy()
@@ -220,23 +211,22 @@ describe('the consent screen states how long the mail is kept', () => {
     renderAt('gmail_send')
     expect(await screen.findByText(/Connect Gmail — sending only to Mudavym/)).toBeTruthy()
     expect(screen.queryByTestId('retention-disclosure')).toBeNull()
-    const button = screen.getByRole('button', { name: /Continue to Google/ })
+    const button = screen.getByRole('button', { name: /Hold to continue to Google/ })
     expect((button as HTMLButtonElement).disabled).toBe(false)
   })
 
   it('refuses the grant when the figure could not be read', async () => {
-    vi.mocked(integrationsApi.getRetentionDisclosure).mockRejectedValue(
+    vi.mocked(integrationsApi.getConsent).mockRejectedValue(
       new Error('the retention window could not be read'),
     )
     renderAt('gmail_read')
-    await screen.findByTestId('retention-disclosure')
     await waitFor(() => {
       expect(
-        screen.getByText(/retention figure could not be read/),
+        screen.getByText(/retention window could not be read/),
       ).toBeTruthy()
     })
-    const button = screen.getByRole('button', { name: /Continue to Google/ })
-    expect((button as HTMLButtonElement).disabled).toBe(true)
+    expect(screen.queryByRole('button', { name: /Hold to continue to Google/ })).toBeNull()
+    expect(integrationsApi.consentChallenge).not.toHaveBeenCalled()
   })
 
   it('offers both ways of keeping the mail, with the paid tier NOT on', async () => {
@@ -272,14 +262,14 @@ describe('the consent screen states how long the mail is kept', () => {
   })
 
   it('still renders the archive section when the setting could not be read', async () => {
-    vi.mocked(integrationsApi.getRetentionDisclosure).mockResolvedValue({
+    vi.mocked(integrationsApi.getConsent).mockResolvedValue(consentFixture(READ_ENTRY as never, {
       ...TR_DISCLOSURE,
       archive: {
         ...TR_DISCLOSURE.archive,
         says: 'Whether this restaurant keeps its own copy of the mail could not be read.',
         unavailableBecause: 'connection reset',
       },
-    } as never)
+    }))
     renderAt('gmail_read')
     await screen.findByTestId('archive-disclosure')
     expect(screen.getByText(/could not be read/)).toBeTruthy()
@@ -288,9 +278,7 @@ describe('the consent screen states how long the mail is kept', () => {
 
   it('shows no archive section on a gateway that does not send one', async () => {
     const { archive: _dropped, ...withoutArchive } = TR_DISCLOSURE
-    vi.mocked(integrationsApi.getRetentionDisclosure).mockResolvedValue(
-      withoutArchive as never,
-    )
+    vi.mocked(integrationsApi.getConsent).mockResolvedValue(consentFixture(READ_ENTRY as never, withoutArchive))
     renderAt('gmail_read')
     await screen.findByTestId('retention-disclosure')
     expect(screen.queryByTestId('archive-disclosure')).toBeNull()

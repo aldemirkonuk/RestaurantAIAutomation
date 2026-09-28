@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
@@ -6,7 +6,6 @@ import {
   ArrowLeft,
   Check,
   Clock,
-  ExternalLink,
   Loader2,
   CloudUpload,
   Lock,
@@ -15,11 +14,9 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
-import {
-  integrationsApi,
-  type IntegrationCatalogEntry,
-  type RetentionDisclosure,
-} from '../services/api/integrations'
+import { HoldToApprove } from '../components/mudavym/HoldToApprove'
+import { useIntegrationConsent } from './authorize-integration/useIntegrationConsent'
+import { sameSiteReturnPath } from './authorize-integration/consent-browser'
 import { BrandMark } from '../components/brand/BrandMark'
 
 /**
@@ -54,102 +51,16 @@ export default function AuthorizeIntegration() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
 
-  const [catalog, setCatalog] = useState<IntegrationCatalogEntry[] | null>(null)
-  const [loadError, setLoadError] = useState<string | null>(null)
-  const [redirecting, setRedirecting] = useState(false)
-  const [actionError, setActionError] = useState<string | null>(null)
-  const [retention, setRetention] = useState<RetentionDisclosure | null>(null)
-  /**
-   * Why the retention read has its OWN error state instead of joining
-   * `loadError`. A catalogue that will not load leaves nothing to consent to,
-   * so the page stops. A retention figure that will not load leaves a page that
-   * could still send somebody to Google without telling them how long their
-   * mail is kept — which is the silence ADR 0118 named as the fault. So the
-   * failure is shown in the retention section's own place, in words, and the
-   * Continue button is refused for a grant that mirrors mail until the figure
-   * is there to read.
-   */
-  const [retentionError, setRetentionError] = useState<string | null>(null)
-
-  const returnPath = useMemo(() => {
-    const raw = searchParams.get('returnPath')
-    // Only same-site paths; the server enforces this too, but no reason to send
-    // an off-site value in the first place.
-    return raw && raw.startsWith('/') && !raw.startsWith('//') ? raw : '/settings'
-  }, [searchParams])
-
-  useEffect(() => {
-    let cancelled = false
-    integrationsApi
-      .getCatalog()
-      .then((entries) => {
-        if (!cancelled) setCatalog(entries)
-      })
-      .catch((e: any) =>
-        setLoadError(
-          e?.response?.data?.message || e?.message || 'Could not load integration details',
-        ),
-      )
-    integrationsApi
-      .getRetentionDisclosure()
-      .then((r) => {
-        if (!cancelled) setRetention(r)
-      })
-      .catch((e: any) => {
-        if (cancelled) return
-        setRetentionError(
-          e?.response?.data?.message ||
-            e?.message ||
-            'The retention figure could not be read.',
-        )
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  const entry = useMemo(
-    () => catalog?.find((c) => c.id === integrationId) ?? null,
-    [catalog, integrationId],
-  )
-
-  /**
-   * Does THIS grant mirror mail into the house's book? The SERVER says so, on
-   * the catalogue entry, and the page never decides it from the id — a page
-   * that hard-codes `gmail_read` is the same fault as the `VALID_IDS` array
-   * this file used to carry, and it would get `gmail_send` wrong (a sending
-   * grant reads nothing and mirrors nothing).
-   *
-   * `?? false` rather than a guess: a gateway deployed before 2026-09-05 does
-   * not send the field, and on such a deployment there is no retention rule to
-   * describe either, so "does not mirror" is the true answer for it.
-   */
+  const returnPath = useMemo(() => sameSiteReturnPath(searchParams.get('returnPath')), [searchParams])
+  const consent = useIntegrationConsent(integrationId, returnPath)
+  const entry = consent.disclosure?.integration ?? null
+  const loadError = consent.error
+  const actionError = consent.actionError
+  const redirecting = consent.redirecting
+  const retention = consent.disclosure?.retention ?? null
+  const retentionError: string | null = null
   const mirrorsMail = entry?.mirrorsMail ?? false
-
-  /**
-   * A grant that mirrors mail may not be consented to while its retention
-   * disclosure is missing. Deliberately a REFUSAL and not a warning: ADR 0118's
-   * own finding was that the consent screen answered the retention question
-   * with silence, and a Continue button that still works when the answer could
-   * not be loaded is that silence with an extra step.
-   */
   const retentionBlocks = mirrorsMail && retention === null
-
-  const handleAllow = async () => {
-    if (!entry) return
-    setActionError(null)
-    setRedirecting(true)
-    try {
-      const url = await integrationsApi.authorize(entry.id, returnPath)
-      // Full navigation, not react-router: the destination is the provider.
-      window.location.assign(url)
-    } catch (e: any) {
-      setActionError(
-        e?.response?.data?.message || e?.message || 'Could not start authorization',
-      )
-      setRedirecting(false)
-    }
-  }
 
   if (!integrationId) {
     return (
@@ -171,7 +82,7 @@ export default function AuthorizeIntegration() {
     )
   }
 
-  if (!catalog) {
+  if (!entry) {
     return (
       <Shell>
         <div className="flex items-center justify-center gap-2 py-16 text-sm text-gray-500">
@@ -182,20 +93,9 @@ export default function AuthorizeIntegration() {
     )
   }
 
-  if (!entry) {
-    return (
-      <Shell>
-        <EmptyState
-          title="Unknown integration"
-          body={`This deployment's integration catalogue does not include "${integrationId}", so there is nothing to consent to. Pick one from Connections instead.`}
-          returnPath={returnPath}
-        />
-      </Shell>
-    )
-  }
 
   return (
-    <Shell>
+    <Shell personalAccount={consent.disclosure?.statements.personalAccount}>
       <motion.div
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
@@ -328,8 +228,7 @@ export default function AuthorizeIntegration() {
                         {retention.storedAt && (
                           <p className="mt-1.5 text-[11px] text-gray-400">
                             Worked out on{' '}
-                            {retention.storedAt.slice(0, 10)}; worked out again
-                            every quarter.
+                            {retention.storedAt.slice(0, 10)}. {consent.disclosure?.statements.retentionCadence}
                           </p>
                         )}
                       </div>
@@ -470,9 +369,9 @@ export default function AuthorizeIntegration() {
               <div className="flex items-start gap-3">
                 <Lock className="mt-0.5 h-4 w-4 shrink-0 text-gray-400" />
                 <p className="text-xs leading-relaxed text-gray-500">
-                  {entry.providerLabel} will ask you to confirm on their own screen next. Access
-                  tokens are encrypted before they are stored, and you can revoke this at any
-                  time from Settings — see our{' '}
+                  {consent.disclosure?.statements.providerNext}{' '}
+                  {consent.disclosure?.statements.tokenStorage}{' '}
+                  {consent.disclosure?.statements.revocation}{' '}
                   <Link
                     to="/privacy"
                     className="font-medium text-wine-600 hover:text-wine-700"
@@ -502,29 +401,15 @@ export default function AuthorizeIntegration() {
               >
                 Cancel
               </button>
-              <button
-                type="button"
-                onClick={handleAllow}
+              <HoldToApprove
+                key={`${entry.id}:${consent.disclosure?.digest}`}
+                onChallenge={consent.challenge}
+                onApprove={consent.approve}
                 disabled={redirecting || retentionBlocks}
-                title={
-                  retentionBlocks
-                    ? 'This grant copies mail out of your mailbox. You cannot agree to it until this page can tell you how long that copy is kept.'
-                    : undefined
-                }
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-wine-600 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_10px_28px_-10px_rgba(26,94,107,0.55)] transition-colors hover:bg-wine-700 disabled:opacity-60"
-              >
-                {redirecting ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Redirecting to {entry.providerLabel}…
-                  </>
-                ) : (
-                  <>
-                    Continue to {entry.providerLabel}
-                    <ExternalLink className="h-4 w-4" />
-                  </>
-                )}
-              </button>
+                label={`Hold to continue to ${entry.providerLabel}`}
+                approvedLabel={`Opening ${entry.providerLabel}`}
+                boundSummary={`Permission for ${entry.label}, with the words and retention facts shown above.`}
+              />
             </div>
           </>
         )}
@@ -543,7 +428,7 @@ export default function AuthorizeIntegration() {
   )
 }
 
-function Shell({ children }: { children: React.ReactNode }) {
+function Shell({ children, personalAccount }: { children: React.ReactNode; personalAccount?: string }) {
   return (
     <div className="relative min-h-screen overflow-hidden bg-[#FAF7F5] px-4 py-12">
       <div
@@ -555,7 +440,7 @@ function Shell({ children }: { children: React.ReactNode }) {
           <BrandMark size={26} />
           <p className="mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-gray-500">
             <ShieldCheck className="h-3.5 w-3.5 text-wine-500" />
-            You are granting access to your own account
+            {personalAccount ?? 'Permission review'}
           </p>
         </div>
         {children}

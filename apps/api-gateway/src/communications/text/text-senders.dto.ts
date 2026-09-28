@@ -189,3 +189,34 @@ export class TextConsentDto {
   @IsIn(["whatsapp", "sms", "any"])
   channel: "whatsapp" | "sms" | "any";
 }
+
+/**
+ * A WhatsApp reply, inside the open window.
+ *
+ * NO RECIPIENT FIELD, AND THAT IS THE POINT. ADR 0118 D3 has no free-text To,
+ * and ADR 0121 founder question 5 warns that a phone number is easier to type
+ * from memory than an email address so the pressure to allow one is higher.
+ * The number is the one the vendor wrote from, read off the mirrored inbound
+ * row; a body that named a number would be a route out of the book.
+ *
+ * NO TEMPLATE FIELD EITHER. A template is the only WhatsApp outbound that can
+ * arrive unprompted and the only one Meta charges for, and ADR 0121 puts it in
+ * P2 behind the seal.
+ */
+export class WhatsAppReplyDto {
+  @ApiProperty({
+    description:
+      "The vendor being replied to. Their WhatsApp number is taken from the conversation, never from this body.",
+  })
+  @IsUUID()
+  providerId: string;
+
+  @ApiProperty({
+    description:
+      "The message. WhatsApp's limit is 4096 characters and the adapter refuses a longer one rather than truncating: a silently shortened message is a message the house did not write.",
+  })
+  @IsString()
+  @MinLength(1)
+  @MaxLength(4096)
+  body: string;
+}

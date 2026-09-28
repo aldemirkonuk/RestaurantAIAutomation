@@ -1,3 +1,4 @@
+import { currentRestaurantRole } from '../auth/current-restaurant-access';
 import {
   BadRequestException,
   ForbiddenException,
@@ -9,7 +10,8 @@ import {
   ServiceUnavailableException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { randomBytes } from "crypto";
+import { createHash, randomBytes } from "crypto";
+import { digestsMatch, hashSealToken } from "../common/seal/seal-token";
 import { DatabaseService } from "../database/database.service";
 import { TokenCryptoService } from "../common/crypto/token-crypto.service";
 // The SERVICE file, not `retention.module`. Importing the module here would put
@@ -29,6 +31,18 @@ import {
 } from "./integrations-oauth.constants";
 
 const STATE_TTL_MS = 10 * 60 * 1000;
+
+export interface RedeemedIntegrationConsent {
+  sealId: string;
+  snapshot: Record<string, unknown>;
+  digest: string;
+  browserProofHash: string;
+  browserRequestId: string;
+  frontendOrigin: string;
+}
+
+const BROWSER_STATE_COLUMNS =
+  "state, user_id, restaurant_id, provider, integration_id, return_path, consent_receipt_id, browser_proof_hash, browser_request_id, frontend_origin, pkce_verifier_encrypted, callback_payload_encrypted, callback_received_at";
 
 /** Refresh a little early so a call never races the expiry boundary. */
 const EXPIRY_SKEW_MS = 60 * 1000;
@@ -220,11 +234,28 @@ export class IntegrationsOauthService {
     restaurantId?: string | null;
     integrationId: IntegrationId;
     returnPath?: string;
+    consent: RedeemedIntegrationConsent;
   }): Promise<{ authorizationUrl: string }> {
     const definition = INTEGRATION_DEFINITIONS[params.integrationId];
     this.assertAvailable(definition);
 
+    const consent = params.consent;
+    if (!consent?.sealId || !params.restaurantId || !/^[a-f0-9]{64}$/.test(consent.browserProofHash)) {
+      throw new ForbiddenException("Read and seal the integration permission in this browser first.");
+    }
+    const frontendOrigin = this.consentFrontendOrigin(consent.frontendOrigin);
+    const { error: receiptError } = await this.db.client
+      .from("integration_consent_receipts")
+      .insert({
+        seal_id: consent.sealId, user_id: params.userId, restaurant_id: params.restaurantId,
+        integration_id: params.integrationId, disclosure_digest: consent.digest,
+        disclosure_snapshot: consent.snapshot,
+      });
+    if (receiptError) {
+      throw new ServiceUnavailableException("The consent receipt could not be filed. No provider flow was opened; read and hold again.");
+    }
     const state = randomBytes(32).toString("base64url");
+    const verifier = randomBytes(32).toString("base64url");
     const { error } = await this.db.client
       .from("integration_oauth_states")
       .insert({
@@ -235,6 +266,11 @@ export class IntegrationsOauthService {
         integration_id: definition.id,
         return_path: this.safeReturnPath(params.returnPath),
         expires_at: new Date(Date.now() + STATE_TTL_MS).toISOString(),
+        consent_receipt_id: consent.sealId,
+        browser_proof_hash: consent.browserProofHash,
+        browser_request_id: consent.browserRequestId,
+        frontend_origin: frontendOrigin,
+        pkce_verifier_encrypted: this.crypto.encrypt(verifier),
       });
 
     if (error) {
@@ -245,22 +281,39 @@ export class IntegrationsOauthService {
     }
 
     return {
-      authorizationUrl: this.buildProviderUrl(definition, state),
+      authorizationUrl: this.buildProviderUrl(definition, state, verifier),
     };
   }
 
   /** Only same-site paths may be used as a post-callback destination. */
-  private safeReturnPath(returnPath?: string): string {
-    if (!returnPath) return "/settings";
-    if (!returnPath.startsWith("/") || returnPath.startsWith("//")) {
-      return "/settings";
+  safeReturnPath(returnPath?: string): string {
+    if (!returnPath || !returnPath.startsWith("/") || returnPath.startsWith("//") || /[\\\x00-\x20\x7f]/.test(returnPath)) return "/settings";
+    const base = new URL(this.webAppUrl()).origin;
+    try {
+      const parsed = new URL(returnPath, base);
+      return parsed.origin === base ? `${parsed.pathname}${parsed.search}${parsed.hash}` : "/settings";
+    } catch { return "/settings"; }
+  }
+
+  consentFrontendOrigin(origin: string | undefined): string {
+    const allowed = (this.config.get<string>("FRONTEND_URL") ?? "http://localhost:3000")
+      .split(",").map((entry) => new URL(entry.trim()).origin);
+    if (!origin || !allowed.includes(origin)) {
+      throw new ForbiddenException("Open this permission in a configured Mudavym browser origin.");
     }
-    return returnPath;
+    return origin;
+  }
+
+  authorizationTarget(integrationId: IntegrationId): string {
+    const url = new URL(this.buildProviderUrl(INTEGRATION_DEFINITIONS[integrationId], ""));
+    url.searchParams.delete("state");
+    return url.toString();
   }
 
   private buildProviderUrl(
     definition: IntegrationDefinition,
     state: string,
+    verifier?: string,
   ): string {
     const { clientId } = this.credentialsFor(definition.provider);
     const redirectUri = this.redirectUriFor(definition.provider);
@@ -273,6 +326,10 @@ export class IntegrationsOauthService {
       url.searchParams.set("response_type", "code");
       url.searchParams.set("scope", scope);
       url.searchParams.set("state", state);
+      if (verifier) {
+        url.searchParams.set("code_challenge", createHash("sha256").update(verifier).digest("base64url"));
+        url.searchParams.set("code_challenge_method", "S256");
+      }
       // access_type=offline is the only way to get a refresh token from Google,
       // and it only returns one when prompt=consent forces the consent screen.
       url.searchParams.set("access_type", "offline");
@@ -291,100 +348,83 @@ export class IntegrationsOauthService {
     url.searchParams.set("response_mode", "query");
     url.searchParams.set("scope", scope);
     url.searchParams.set("state", state);
+    if (verifier) {
+      url.searchParams.set("code_challenge", createHash("sha256").update(verifier).digest("base64url"));
+      url.searchParams.set("code_challenge_method", "S256");
+    }
     url.searchParams.set("prompt", "consent");
     return url.toString();
   }
 
   // ── callback ────────────────────────────────────────────────────────────
 
-  /**
-   * Completes the handshake and returns the browser destination.
-   *
-   * Never throws for provider-side failures: the user is mid-redirect in a
-   * browser, so problems have to come back as a status on the return URL
-   * rather than a JSON error they would never see.
-   */
-  async handleCallback(params: {
-    provider: string;
-    code?: string;
-    state?: string;
-    error?: string;
-  }): Promise<string> {
+  /** Provider redirects only park an encrypted result. They never exchange a code.
+   * The initiating tab supplies its separately held proof on the completion POST.
+   * No cross-site cookie assumption and no provider code in the frontend URL. */
+  async handleCallback(params: { provider: string; code?: string; state?: string; error?: string }): Promise<string> {
     const fallback = `${this.webAppUrl()}/settings`;
-
-    if (!params.state) {
-      return this.resultUrl(fallback, "error", "missing_state");
-    }
-
-    const stateRow = await this.consumeState(params.state);
-    if (!stateRow) {
+    if (!params.state) return this.resultUrl(fallback, "error", "missing_state");
+    if (!/^[A-Za-z0-9_-]{43}$/.test(params.state)) return this.resultUrl(fallback, "error", "invalid_state");
+    const { data: stateRow, error } = await this.db.client.from("integration_oauth_states")
+      .select(BROWSER_STATE_COLUMNS).eq("state", params.state).is("consumed_at", null)
+      .gt("expires_at", new Date().toISOString()).maybeSingle();
+    if (error || !stateRow?.consent_receipt_id || !stateRow.browser_proof_hash) {
       return this.resultUrl(fallback, "error", "invalid_state");
     }
-
-    const returnBase = `${this.webAppUrl()}${stateRow.return_path ?? "/settings"}`;
-
-    if (params.error) {
-      // The user clicking "Deny" lands here; it is a normal outcome.
-      const reason = params.error === "access_denied" ? "denied" : params.error;
-      return this.resultUrl(
-        returnBase,
-        "error",
-        reason,
-        stateRow.integration_id,
-      );
+    if (params.provider !== stateRow.provider || (!params.code && !params.error)) {
+      return this.resultUrl(fallback, "error", "invalid_callback");
     }
+    let frontendOrigin: string;
+    try { frontendOrigin = this.consentFrontendOrigin(stateRow.frontend_origin); }
+    catch { return this.resultUrl(fallback, "error", "invalid_browser_origin"); }
+    // Provider prose is untrusted and may contain tokens. Keep only the code and
+    // a fixed denial/failure code, encrypted until the same browser claims it.
+    const payload = this.crypto.encrypt(JSON.stringify({
+      code: params.error ? null : params.code,
+      error: params.error ? (params.error === "access_denied" ? "denied" : "provider_error") : null,
+    }));
+    const { data: parked, error: parkError } = await this.db.client.from("integration_oauth_states")
+      .update({ callback_payload_encrypted: payload, callback_received_at: new Date().toISOString() })
+      .eq("state", params.state).is("consumed_at", null).is("callback_received_at", null)
+      .gt("expires_at", new Date().toISOString()).select("state");
+    if (parkError || !parked?.length) return this.resultUrl(fallback, "error", "invalid_state");
+    const destination = new URL("/authorize/complete", frontendOrigin);
+    destination.hash = new URLSearchParams({ state: params.state, request: stateRow.browser_request_id }).toString();
+    return destination.toString();
+  }
 
-    if (!params.code || params.provider !== stateRow.provider) {
-      return this.resultUrl(
-        returnBase,
-        "error",
-        "invalid_callback",
-        stateRow.integration_id,
-      );
-    }
-
-    const definition =
-      INTEGRATION_DEFINITIONS[stateRow.integration_id as IntegrationId];
-    if (!definition) {
-      return this.resultUrl(returnBase, "error", "unknown_integration");
-    }
-
+  async completeCallback(params: { state: string; browserProof: string }): Promise<{ destination: string }> {
+    const stateRow = await this.consumeBrowserState(params.state, params.browserProof);
+    if (!stateRow) throw new ForbiddenException("This permission must finish in the tab that sealed it, before it expires. Start again from Connections.");
+    const returnBase = `${stateRow.frontend_origin}${this.safeReturnPath(stateRow.return_path)}`;
     try {
-      const tokens = await this.exchangeCode(definition, params.code);
-
-      if (!tokens.access_token) {
-        throw new Error(
-          tokens.error_description ||
-            tokens.error ||
-            "No access token returned",
-        );
-      }
-
-      const account = await this.fetchAccountEmail(
-        definition.provider,
-        tokens.access_token,
-      );
-
-      await this.storeConnection({
-        userId: stateRow.user_id,
-        restaurantId: stateRow.restaurant_id,
-        definition,
-        tokens,
-        account,
-      });
-
-      return this.resultUrl(returnBase, "connected", undefined, definition.id);
-    } catch (err) {
-      this.logger.error(
-        `Integration OAuth callback failed for ${definition.id}: ${(err as Error).message}`,
-      );
-      return this.resultUrl(
-        returnBase,
-        "error",
-        "exchange_failed",
-        definition.id,
-      );
+      const payload = JSON.parse(this.crypto.decrypt(stateRow.callback_payload_encrypted));
+      if (payload.error) return { destination: this.resultUrl(returnBase, "error", payload.error, stateRow.integration_id) };
+      const definition = INTEGRATION_DEFINITIONS[stateRow.integration_id as IntegrationId];
+      if (!definition || !payload.code) throw new Error("Invalid callback payload");
+      await this.assertConsentMembership(stateRow.user_id, stateRow.restaurant_id);
+      const tokens = await this.exchangeCode(definition, payload.code, this.crypto.decrypt(stateRow.pkce_verifier_encrypted));
+      if (!tokens.access_token) throw new Error("No access token returned");
+      const namesAccount = definition.scopes.some(({ scope }) =>
+        ['email', 'https://www.googleapis.com/auth/userinfo.email', 'User.Read'].includes(scope));
+      const account = namesAccount ? await this.fetchAccountEmail(definition.provider, tokens.access_token) : null;
+      await this.assertConsentMembership(stateRow.user_id, stateRow.restaurant_id);
+      await this.storeConnection({ userId: stateRow.user_id, restaurantId: stateRow.restaurant_id,
+        definition, tokens, account, consentReceiptId: stateRow.consent_receipt_id });
+      return { destination: this.resultUrl(returnBase, "connected", undefined, definition.id) };
+    } catch {
+      this.logger.warn(`Integration exchange could not be completed for ${stateRow.integration_id}`);
+      return { destination: this.resultUrl(returnBase, "error", "exchange_failed", stateRow.integration_id) };
     }
+  }
+
+  private async assertConsentMembership(userId: string, restaurantId: string) {
+    const { data: user, error } = await this.db.client.from("users")
+      .select("user_id, restaurant_id, email_verified").eq("user_id", userId).maybeSingle();
+    if (error || !user || user.email_verified !== true || !restaurantId) {
+      throw new ForbiddenException("The account's current permission could not be verified.");
+    }
+    await currentRestaurantRole(this.db.client, user, restaurantId);
   }
 
   private resultUrl(
@@ -400,29 +440,28 @@ export class IntegrationsOauthService {
     return url.toString();
   }
 
-  /** Atomically claims the state row so a replayed callback finds nothing. */
-  private async consumeState(state: string) {
-    const { data, error } = await this.db.client
-      .from("integration_oauth_states")
-      .update({ consumed_at: new Date().toISOString() })
-      .eq("state", state)
-      .is("consumed_at", null)
-      .gt("expires_at", new Date().toISOString())
-      .select(
-        "state, user_id, restaurant_id, provider, integration_id, return_path",
-      )
-      .maybeSingle();
-
-    if (error) {
-      this.logger.error(`Failed to consume OAuth state: ${error.message}`);
-      return null;
-    }
-    return data;
+  /** Read the encrypted payload, then atomically claim and erase it. Racing
+   * completions can read the same row, but only one may perform an exchange. */
+  private async consumeBrowserState(state: string, browserProof: string) {
+    if (!/^[A-Za-z0-9_-]{43}$/.test(state) || !/^[a-f0-9]{64}$/.test(browserProof)) return null;
+    const proofHash = hashSealToken(browserProof);
+    const { data, error } = await this.db.client.from("integration_oauth_states")
+      .select(BROWSER_STATE_COLUMNS).eq("state", state).eq("browser_proof_hash", proofHash)
+      .is("consumed_at", null).gt("expires_at", new Date().toISOString()).maybeSingle();
+    if (error || !data?.consent_receipt_id || !data.callback_payload_encrypted || !data.pkce_verifier_encrypted ||
+      !digestsMatch(data.browser_proof_hash ?? "", proofHash)) return null;
+    try { this.consentFrontendOrigin(data.frontend_origin); } catch { return null; }
+    const { data: claimed, error: claimError } = await this.db.client.from("integration_oauth_states")
+      .update({ consumed_at: new Date().toISOString(), callback_payload_encrypted: null, pkce_verifier_encrypted: null })
+      .eq("state", state).eq("browser_proof_hash", proofHash).is("consumed_at", null)
+      .gt("expires_at", new Date().toISOString()).select("state");
+    return !claimError && claimed?.length === 1 ? data : null;
   }
 
   private async exchangeCode(
     definition: IntegrationDefinition,
     code: string,
+    verifier: string,
   ): Promise<TokenResponse> {
     const { clientId, clientSecret } = this.credentialsFor(definition.provider);
     const body = new URLSearchParams({
@@ -431,6 +470,7 @@ export class IntegrationsOauthService {
       client_secret: clientSecret!,
       redirect_uri: this.redirectUriFor(definition.provider),
       grant_type: "authorization_code",
+      code_verifier: verifier,
     });
 
     return this.postToken(definition.provider, body);
@@ -448,6 +488,7 @@ export class IntegrationsOauthService {
 
     const response = await fetch(url, {
       method: "POST",
+      signal: AbortSignal.timeout(10_000),
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: body.toString(),
     });
@@ -474,6 +515,7 @@ export class IntegrationsOauthService {
           : "https://graph.microsoft.com/v1.0/me";
 
       const response = await fetch(url, {
+        signal: AbortSignal.timeout(10_000),
         headers: { Authorization: `Bearer ${accessToken}` },
       });
       if (!response.ok) return null;
@@ -494,6 +536,7 @@ export class IntegrationsOauthService {
     definition: IntegrationDefinition;
     tokens: TokenResponse;
     account: string | null;
+    consentReceiptId: string;
   }) {
     const { tokens, definition } = params;
 
@@ -508,11 +551,12 @@ export class IntegrationsOauthService {
     // Google omits refresh_token when the user already granted these scopes to
     // an earlier connection; keeping the stored one avoids downgrading a
     // working connection to access-token-only.
-    const existingRefresh = await this.storedRefreshToken(
+    const refreshToken = tokens.refresh_token ?? await this.storedRefreshToken(
       params.userId,
       definition.id,
+      params.restaurantId,
+      params.account,
     );
-    const refreshToken = tokens.refresh_token ?? existingRefresh;
 
     const { error } = await this.db.client
       .from("integration_oauth_connections")
@@ -523,6 +567,7 @@ export class IntegrationsOauthService {
           provider: definition.provider,
           integration_id: definition.id,
           account_email: params.account,
+          consent_receipt_id: params.consentReceiptId,
           scopes: grantedScopes,
           access_token_encrypted: this.crypto.encrypt(tokens.access_token!),
           refresh_token_encrypted: refreshToken
@@ -543,13 +588,20 @@ export class IntegrationsOauthService {
   private async storedRefreshToken(
     userId: string,
     integrationId: IntegrationId,
+    restaurantId: string | null,
+    account: string | null,
   ): Promise<string | null> {
-    const { data } = await this.db.client
+    if (!restaurantId || !account) return null;
+    const { data, error } = await this.db.client
       .from("integration_oauth_connections")
       .select("refresh_token_encrypted")
       .eq("user_id", userId)
       .eq("integration_id", integrationId)
+      .eq("restaurant_id", restaurantId)
+      .eq("account_email", account)
+      .is("revoked_at", null)
       .maybeSingle();
+    if (error) throw new ServiceUnavailableException("The prior connection could not be read.");
 
     return this.crypto.tryDecrypt(data?.refresh_token_encrypted);
   }

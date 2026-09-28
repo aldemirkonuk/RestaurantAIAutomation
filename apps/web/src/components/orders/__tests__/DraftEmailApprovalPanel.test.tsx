@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { DraftEmailApprovalPanel } from '../DraftEmailApprovalPanel'
+vi.mock('@/hooks/queries/useDraftEmailQueries', () => ({ issueDraftSendChallenge: vi.fn().mockResolvedValue('draft-proof') }))
 
 function makeDraft(overrides = {}) {
   return {
@@ -47,8 +48,7 @@ describe('DraftEmailApprovalPanel', () => {
     expect(screen.getByText('Penfolds Grange 2019')).toBeInTheDocument()
   })
 
-  it('calls onApprove with no modified content when Send Draft is clicked', async () => {
-    const user = userEvent.setup()
+  it('holds over the displayed body and passes its one-use challenge', async () => {
     render(
       <DraftEmailApprovalPanel
         isOpen={true}
@@ -60,11 +60,13 @@ describe('DraftEmailApprovalPanel', () => {
     )
 
     const sendBtn = screen.getByRole('button', { name: /send draft/i })
-    await user.click(sendBtn)
+    fireEvent.keyDown(sendBtn, { key: 'Enter' })
+    fireEvent.keyDown(sendBtn, { key: 'Enter' })
+    await waitFor(() => expect(onApprove).toHaveBeenCalledOnce(), { timeout: 1500 })
 
     expect(onApprove).toHaveBeenCalledOnce()
     // Not dirty → undefined for content/notes; no CC → undefined for ccEmails
-    expect(onApprove).toHaveBeenCalledWith(undefined, undefined, undefined)
+    expect(onApprove).toHaveBeenCalledWith(makeDraft().draftContent, undefined, undefined, 'draft-proof')
   })
 
   it('calls onApprove with edited content when Send Edited is clicked', async () => {
@@ -90,7 +92,9 @@ describe('DraftEmailApprovalPanel', () => {
 
     // Send the edited draft
     const sendBtn = screen.getByRole('button', { name: /send edited/i })
-    await user.click(sendBtn)
+    fireEvent.keyDown(sendBtn, { key: 'Enter' })
+    fireEvent.keyDown(sendBtn, { key: 'Enter' })
+    await waitFor(() => expect(onApprove).toHaveBeenCalledOnce(), { timeout: 1500 })
 
     expect(onApprove).toHaveBeenCalledOnce()
     expect(onApprove.mock.calls[0][0]).toContain('Custom edited email content')
@@ -136,9 +140,11 @@ describe('DraftEmailApprovalPanel', () => {
 
     // Approve with CC — ccEmails non-empty so passed as array
     const sendBtn = screen.getByRole('button', { name: /send draft/i })
-    await user.click(sendBtn)
+    fireEvent.keyDown(sendBtn, { key: 'Enter' })
+    fireEvent.keyDown(sendBtn, { key: 'Enter' })
+    await waitFor(() => expect(onApprove).toHaveBeenCalledOnce(), { timeout: 1500 })
 
-    expect(onApprove).toHaveBeenCalledWith(undefined, undefined, ['manager@restaurant.com'])
+    expect(onApprove).toHaveBeenCalledWith(makeDraft().draftContent, undefined, ['manager@restaurant.com'], 'draft-proof')
   })
 
   it('rejects invalid CC email addresses', async () => {

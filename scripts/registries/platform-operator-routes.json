@@ -1,0 +1,5 @@
+[
+  { "method": "GET", "path": "/api/v1/health/agent-operations", "controller": "AgentOperationsController", "handler": "recent" },
+  { "method": "POST", "path": "/api/v1/health/agent-operations/:name/:action", "controller": "AgentOperationsController", "handler": "operate" },
+  { "method": "GET", "path": "/api/v1/metrics", "controller": "MetricsProxyController", "handler": "getMetrics" }
+]

@@ -72,7 +72,9 @@ function makeFakeClient(tables: Record<string, Row[]>, asked: Asked[] = []) {
             const m = /^([a-z_]+)\.lte\.(.+),\1\.is\.null$/.exec(expr);
             if (!m) throw new Error(`fake client cannot parse or(${expr})`);
             const [, col, iso] = m;
-            rows = rows.filter((r) => r[col] === null || r[col] === undefined || r[col] <= iso);
+            rows = rows.filter(
+              (r) => r[col] === null || r[col] === undefined || r[col] <= iso,
+            );
           }
           // Newest first, NULLs last — what `nullsFirst: false` under DESC does.
           for (const [col, opts] of rec.order) {
@@ -84,7 +86,9 @@ function makeFakeClient(tables: Record<string, Row[]>, asked: Asked[] = []) {
               if (av === null && bv === null) return 0;
               if (av === null) return nullsFirst ? -1 : 1;
               if (bv === null) return nullsFirst ? 1 : -1;
-              return desc ? String(bv).localeCompare(String(av)) : String(av).localeCompare(String(bv));
+              return desc
+                ? String(bv).localeCompare(String(av))
+                : String(av).localeCompare(String(bv));
             });
           }
           if (rec.limit !== null) rows = rows.slice(0, rec.limit);
@@ -96,7 +100,11 @@ function makeFakeClient(tables: Record<string, Row[]>, asked: Asked[] = []) {
   };
 }
 
-function decision(id: string, createdAt: string | null, restaurantId = "r1"): Row {
+function decision(
+  id: string,
+  createdAt: string | null,
+  restaurantId = "r1",
+): Row {
   return {
     id,
     restaurant_id: restaurantId,
@@ -109,7 +117,11 @@ function decision(id: string, createdAt: string | null, restaurantId = "r1"): Ro
   };
 }
 
-function document(id: string, createdAt: string | null, restaurantId = "r1"): Row {
+function document(
+  id: string,
+  createdAt: string | null,
+  restaurantId = "r1",
+): Row {
   return {
     id,
     restaurant_id: restaurantId,
@@ -215,6 +227,59 @@ describe("LogsTimelineService.getTimeline", () => {
     expect(events).toHaveLength(1);
     expect(events[0].id).toBe("tx-1");
     expect(events[0].correlationId).toBe("corr-1");
+  });
+
+  it("only returns attributed house events even when another house shares the correlation", async () => {
+    const event = (id: string, payload: Row, correlation = "shared") => ({
+      event_id: id,
+      aggregate_type: "inventory",
+      aggregate_id: `${id}-item`,
+      event_type: "StockUpdated",
+      correlation_id: correlation,
+      created_at: "2026-09-13T12:00:00Z",
+      payload,
+    });
+    const client = makeFakeClient({
+      ...EMPTY,
+      event_store: [
+        event("foreign", { restaurant_id: "r2" }),
+        event("unattributed", { inventory_id: "unknown" }),
+        event("own", { restaurant_id: "r1" }),
+        event("other-thread", { restaurant_id: "r1" }, "elsewhere"),
+      ],
+    });
+    const service = new LogsTimelineService({
+      getClient: () => client,
+    } as unknown as DatabaseService);
+    const result = await service.getTimeline("r1", {
+      correlationId: "shared",
+      limit: 1,
+    });
+    expect(result.events.map((e) => e.id)).toEqual(["own"]);
+    expect(result.hasMore).toBe(false);
+    expect(result.failedSources).toEqual([]);
+    expect(result.sourcesQueried).toContain("event_store");
+  });
+
+  it("a foreign correlation gives no event-store metadata to another house", async () => {
+    const client = makeFakeClient({
+      ...EMPTY,
+      event_store: [
+        {
+          event_id: "foreign",
+          correlation_id: "foreign-thread",
+          created_at: "2026-09-13T12:00:00Z",
+          payload: { restaurant_id: "r2" },
+        },
+      ],
+    });
+    const service = new LogsTimelineService({
+      getClient: () => client,
+    } as unknown as DatabaseService);
+    expect(
+      (await service.getTimeline("r1", { correlationId: "foreign-thread" }))
+        .events,
+    ).toEqual([]);
   });
 
   it("does not query event_store without a correlation_id", async () => {
@@ -450,11 +515,17 @@ describe("LogsTimelineService.getTimeline", () => {
 
       // The boundary row is RE-READ (inclusive), the newer one is not, and the
       // undated row is still there — sorted last, never dropped.
-      expect(page.events.map((e) => e.id)).toEqual(["boundary", "older", "undated"]);
+      expect(page.events.map((e) => e.id)).toEqual([
+        "boundary",
+        "older",
+        "undated",
+      ]);
       expect(page.hasMore).toBe(false);
       for (const a of asked) {
         expect(a.or).toHaveLength(1);
-        expect(a.or[0]).toMatch(/^[a-z_]+\.lte\.2026-09-01T08:00:00\.000Z,[a-z_]+\.is\.null$/);
+        expect(a.or[0]).toMatch(
+          /^[a-z_]+\.lte\.2026-09-01T08:00:00\.000Z,[a-z_]+\.is\.null$/,
+        );
       }
     });
 

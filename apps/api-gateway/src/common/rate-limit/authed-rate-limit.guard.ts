@@ -47,6 +47,8 @@ export const AUTHED_RATE_LIMIT_KEY = "authedRateLimit";
 export type AuthedRateLimitScope = "user" | "restaurant";
 
 export interface AuthedRateLimitRule {
+  /** Server-declared routes sharing one spend budget. Never read from a request. */
+  bucket?: string;
   /** Requests admitted per window. */
   limit: number;
   /** Window length in seconds, matching RateLimitConfig's unit. */
@@ -144,7 +146,7 @@ export class AuthedRateLimitGuard implements CanActivate {
         scope === "restaurant" && user.restaurantId
           ? `r:${String(user.restaurantId)}`
           : `u:${String(user.userId)}`;
-      const key = `${route}|${scope}|${subject}`;
+      const key = `${rule.bucket ? `shared:${rule.bucket}` : route}|${scope}|${subject}`;
       const windowMs = rule.windowSeconds * 1000;
       const entry = byKey.get(key);
       if (entry) {

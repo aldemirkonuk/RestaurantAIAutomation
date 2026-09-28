@@ -12,6 +12,44 @@ from unittest.mock import AsyncMock, MagicMock, patch
 ADMIN_KEY = "test-admin-key-99999"
 
 
+async def test_agent_operation_requires_admin_key(health_client):
+    response = await health_client.post("/api/v1/health/agents/inventory/stop", json={"request_id": "cdd19719-0dd8-41e2-8dda-f0d16d5869ce"})
+    assert response.status_code == 401
+
+
+@pytest.mark.parametrize("action", ["restart", "stop"])
+async def test_agent_operation_calls_only_named_lifecycle(health_client, action):
+    orchestrator = MagicMock()
+    orchestrator.agents = {"inventory": object()}
+    orchestrator.restart_agent = AsyncMock(return_value={"success": True, "private": "not returned"})
+    orchestrator.stop_agent = AsyncMock(return_value={"success": True})
+    with patch("api.health_routes.get_orchestrator", return_value=orchestrator):
+        response = await health_client.post(f"/api/v1/health/agents/inventory/{action}", headers={"X-Admin-Key": ADMIN_KEY}, json={"request_id": "cdd19719-0dd8-41e2-8dda-f0d16d5869ce"})
+    assert response.status_code == 200
+    assert response.json() == {"success": True, "agent": "inventory", "action": action, "request_id": "cdd19719-0dd8-41e2-8dda-f0d16d5869ce"}
+    getattr(orchestrator, f"{action}_agent").assert_awaited_once_with("inventory")
+
+
+async def test_agent_failure_does_not_disclose_exception(health_client):
+    orchestrator = MagicMock()
+    orchestrator.agents = {"inventory": object()}
+    orchestrator.stop_agent = AsyncMock(side_effect=RuntimeError("another house secret"))
+    with patch("api.health_routes.get_orchestrator", return_value=orchestrator):
+        response = await health_client.post("/api/v1/health/agents/inventory/stop", headers={"X-Admin-Key": ADMIN_KEY}, json={"request_id": "cdd19719-0dd8-41e2-8dda-f0d16d5869ce"})
+    assert response.json()["success"] is False
+    assert "secret" not in response.text
+
+
+async def test_agent_operation_unknown_name_never_dispatches(health_client):
+    orchestrator = MagicMock()
+    orchestrator.agents = {}
+    orchestrator.stop_agent = AsyncMock()
+    with patch("api.health_routes.get_orchestrator", return_value=orchestrator):
+        response = await health_client.post("/api/v1/health/agents/missing/stop", headers={"X-Admin-Key": ADMIN_KEY}, json={"request_id": "cdd19719-0dd8-41e2-8dda-f0d16d5869ce"})
+    assert response.status_code == 404
+    orchestrator.stop_agent.assert_not_awaited()
+
+
 def _make_health_app() -> FastAPI:
     """Minimal FastAPI app with only health_routes registered."""
     from api.health_routes import router

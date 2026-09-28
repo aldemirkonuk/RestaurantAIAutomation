@@ -1190,3 +1190,8 @@ emailed file has no uploader identity and no sender key, so it could be stored b
 priced, and admitting prices from a channel that cannot name who handed the file over is the
 shape ADR 0126 §7 exists to prevent. A manager uploads the file on this page with the sender
 named. Rejected: store emailed 832s unpriced.
+
+
+## Execution reconciliation — 2026-09-13
+
+The text sender/reachability/allowance surfaces are recovered from the accepted text port. The sender routes now read signed userId, and a revoked sender cannot continue receiving through a credential row that remains. No live registration or traffic was initiated. See ADR 0121 for local safety and migration evidence.

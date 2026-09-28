@@ -19,6 +19,8 @@ import { StudioProxyController } from "./studio-proxy.controller";
 import { StudioInviteController } from "./studio-invite.controller";
 import { OnboardingProxyController } from "./onboarding-proxy.controller";
 import { CommunicationsModule } from "../../communications/communications.module";
+import { PlatformOperatorGuard, PlatformOperatorService } from "./platform-operator.service";
+import { AgentOperationsController } from "./agent-operations.controller";
 
 @Module({
   imports: [
@@ -27,6 +29,7 @@ import { CommunicationsModule } from "../../communications/communications.module
     forwardRef(() => CommunicationsModule),
   ],
   controllers: [
+    AgentOperationsController,
     HealthProxyController,
     MetricsProxyController,
     // MUST precede StudioProxyController: that controller's @Post("*") on the same
@@ -39,6 +42,8 @@ import { CommunicationsModule } from "../../communications/communications.module
     InboundEmailController,
   ],
   providers: [
+    PlatformOperatorService,
+    PlatformOperatorGuard,
     OrchestratorService,
     RabbitMqBridgeService,
     InboundResponderService,

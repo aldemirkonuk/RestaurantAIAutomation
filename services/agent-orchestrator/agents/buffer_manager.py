@@ -133,6 +133,7 @@ class BufferManagerAgent(BaseAgent):
 
         # Background task for periodic evaluation
         self.evaluation_task: Optional[asyncio.Task] = None
+        self._persistence_tasks: set = set()
 
     async def initialize(self) -> None:
         """Initialize buffer manager"""
@@ -220,7 +221,9 @@ class BufferManagerAgent(BaseAgent):
 
         # Persist to Redis (async, non-blocking)
         if self.redis_client:
-            asyncio.create_task(self._persist_buffer_to_redis(buffer))
+            task = asyncio.create_task(self._persist_buffer_to_redis(buffer))
+            self._persistence_tasks.add(task)
+            task.add_done_callback(self._persistence_tasks.discard)
 
     async def _handle_manual_override(self, message: Dict[str, Any]) -> None:
         """
@@ -331,9 +334,15 @@ class BufferManagerAgent(BaseAgent):
             f"Started periodic buffer evaluation (interval={self.evaluation_interval}s)"
         )
 
-        while True:
+        while not self._shutdown_event.is_set():
             try:
-                await asyncio.sleep(self.evaluation_interval)
+                try:
+                    await asyncio.wait_for(
+                        self._shutdown_event.wait(), timeout=self.evaluation_interval
+                    )
+                    return
+                except asyncio.TimeoutError:
+                    pass
 
                 # Find expired buffers
                 expired_buffers = [
@@ -525,14 +534,15 @@ class BufferManagerAgent(BaseAgent):
 
     async def cleanup(self) -> None:
         """Cleanup resources"""
+        # Finish an evaluation/persistence already in progress before closing
+        # its Redis connection. A timeout propagates instead of cancelling work.
+        deadline = asyncio.get_running_loop().time() + self.config.task_timeout_seconds
         if self.evaluation_task:
-            self.evaluation_task.cancel()
-            try:
-                await self.evaluation_task
-            except asyncio.CancelledError:
-                pass
-
+            await self._drain_tasks({self.evaluation_task}, deadline)
+            self.evaluation_task = None
+        await self._drain_tasks(set(self._persistence_tasks), deadline)
         if self.redis_client:
             await self.redis_client.close()
+            self.redis_client = None
 
         self.logger.info("✓ Buffer Manager cleaned up")
