@@ -2,6 +2,47 @@
 
 ## ▶ PICK-UP CARD — read this first (updated 2026-09-28T22:30Z, cloud session c98bb6c5)
 
+**▶▶ Latest (23:30Z). Read this block first. Where it disagrees with the blocks below, this one wins.**
+- **Merged:** #499, and #500 (5e876f39d). I merged main into #490 again (fd002fb3b, pushed). Locally, the ADR guard passes, 741 of 741 claims hold, and citation pairing passes.
+  - **Founder next:** run `gh pr diff 490`, then `bash ~/merge-audited-pr.sh 490 --gate-owned` once CI is green.
+- **Lane re-run: done.** Every verify passed. None of these PRs has had its ADR 0090 audit yet:
+  - #501 deal scope. It is security work, so audit it first.
+  - #502 removed shifts. A fix round is running.
+  - #503 ask 6z.
+  - #504 register. Merge it LAST of the ledger PRs.
+  - #505 ADR 0235.
+  - #506 gitignore.
+  - #507 mobile FAB.
+  - #509 flag DTO. ADR 0236 is Proposed. This PR also fixes sweep #24, which F7 approves.
+  - sketch-123 stopped because it is 20 files, over the 15-file cap. Fork: (a) raise the cap for this one docs-only PR (recommended), or (b) split it.
+  - Most of these PRs conflict with main on CLAIMS appends. Resolve each as the union.
+- **Running:**
+  - Sweep fix wave 1 (wf_0f980332-6a7): B storage writes, E provider terms, F calendar recurrence, H comms prefix, J thresholds DTO, L DevTruth.
+  - The #502 fix round: SOTA time-zone resolution, and a split when someone is removed mid-shift.
+  - **Incident:** a wave-1 agent checked out origin/fix/provider-create-payment-terms in the MAIN checkout (/home/user/RestaurantAIAutomation, now a detached HEAD). Once the wave finishes, run `git checkout main-1ll9rp` there. Handoff edits now go through the worktree at scratchpad/wh.
+- **Queued:**
+  - The "replace with" picker on top of #502: refuse overlap, warn on the rest, and an owner setting that switches to warn on all four.
+  - Sweep wave 2: A, C, D2, I, M, N2, O, P.
+  - F5: server-side totals, complete.
+  - F6: staff see only their own row.
+  - F3: devs can approve and certify; contributors see only their own metrics. The founder picked (a).
+  - F2: hide "Send a test" from customers, founder verbatim: "hide for customers that test is only for devs not customer".
+  - F4: "Build the endpoint".
+  - F7: "Allow it now".
+  - The AI-provider sentence on /privacy, /terms and /ask. The founder chose "Yes, all three pages (Recommended)".
+  - OD-182: "Add when thumbs ships (Recommended)".
+- **F1, adding to an existing order:**
+  - The draft is at evidence/F1-ORDER-ADDITIONS-DRAFT-ADR-2026-09-28.md. The adversary killed the first design, and the draft carries its 11 required changes.
+  - Founder verbatim on the model: "research industry identicals, and you decide with my intuition knowing this feature of adding to existing order must live. also make sure to add a double clcik to the order to add to existing order (maybe this as only)?"
+  - Founder verbatim on the cut-off: "my guess says vendor has shipped, but why until first foorcount?"
+  - Founder on commitment: "At approval (Recommended)". On numbering: "'ORD-x rev 2' (Recommended)".
+  - **Next steps:**
+    - Research industry equivalents for the entry point (double-click as the only way in?) and for the cut-off.
+    - Answer "why the first door count": nothing records "shipped" today (IN_TRANSIT is never written, procurement.service.ts:3296-3298), so the door count was the only event we can observe.
+    - Lean: close at "vendor has shipped" (a despatch note, or a person marks it), with the first door count as the backstop.
+    - Then lock the ADR with the founder.
+- **Other open forks:** whether to lock ADR 0236; retiring the arrival flag later; the sketch-123 file cap.
+
 **▶▶ Latest (22:50Z).** This block supersedes the 22:30Z block below.
 - **#499** is merged (2ba1326e3).
 - **#500** has an audit PASS at f30ee5d (planner HOLDS after a round-1 BLOCK on §0.2, fixed by the ADR 0085 amendment). The marker is posted once CI is green, then the founder runs `bash ~/merge-audited-pr.sh 500`. After it lands, merge main into #490 again.
