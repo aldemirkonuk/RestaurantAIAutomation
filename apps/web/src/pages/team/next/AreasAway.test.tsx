@@ -270,6 +270,7 @@ describe('the roster list', () => {
           onClose={() => undefined}
           onEdit={() => undefined}
           onAdd={() => undefined}
+          onCertificates={() => undefined}
         />,
       ),
     );
@@ -348,6 +349,7 @@ describe('only an owner sets or ends an owner’s Away (round-2 answer 7)', () =
             onClose={() => undefined}
             onEdit={() => undefined}
             onAdd={() => undefined}
+            onCertificates={() => undefined}
           />,
         ),
       );

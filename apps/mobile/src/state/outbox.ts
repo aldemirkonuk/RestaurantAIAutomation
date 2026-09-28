@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { useSession } from "./session";
 import { api, ApiError } from "@/api/client";
 import {
   alreadyDeliveredRefusal,
@@ -22,6 +23,8 @@ export type OutboxStatus = "holding" | "pending" | "inflight" | "failed";
 
 export interface OutboxEntry {
   id: string;
+  actorUserId?: string;
+  restaurantId?: string;
   path: string;
   method: "POST" | "PATCH" | "PUT" | "DELETE";
   body?: unknown;
@@ -88,7 +91,18 @@ export const useOutbox = create<OutboxState>((set, get) => ({
         ...e,
         // Anything mid-flight when the app died goes back to pending;
         // idempotency keys make the re-send safe.
-        status: e.status === "inflight" ? ("pending" as const) : e.status,
+        status:
+          !e.actorUserId || !e.restaurantId
+            ? ("failed" as const)
+            : e.status === "inflight"
+              ? ("pending" as const)
+              : e.status,
+        ...(!e.actorUserId || !e.restaurantId
+          ? {
+              lastError:
+                "Saved by an older app without an account and branch. Review the original action before submitting it again.",
+            }
+          : {}),
       }));
       set({ entries });
       scheduleDispatch(0);
@@ -98,9 +112,21 @@ export const useOutbox = create<OutboxState>((set, get) => ({
   },
 
   enqueue: (input) => {
+    const session = useSession.getState();
+    if (
+      session.status !== "signedIn" ||
+      !session.user?.id ||
+      !session.user.restaurantId
+    ) {
+      throw new Error(
+        "Unlock your account and select a branch before saving an action.",
+      );
+    }
     const graceMs = input.graceMs ?? 0;
     const entry: OutboxEntry = {
       id: makeId(),
+      actorUserId: session.user.id,
+      restaurantId: session.user.restaurantId,
       path: input.path,
       method: input.method ?? "POST",
       body: input.body,
@@ -136,7 +162,9 @@ export const useOutbox = create<OutboxState>((set, get) => ({
 
   retryFailed: (id) => {
     const entries = get().entries.map((e) =>
-      e.id === id ? { ...e, status: "pending" as const, attempts: 0 } : e,
+      e.id === id && e.actorUserId && e.restaurantId
+        ? { ...e, status: "pending" as const, attempts: 0 }
+        : e,
     );
     set({ entries });
     persist(entries);
@@ -151,7 +179,19 @@ function scheduleDispatch(delayMs: number) {
   dispatchTimer = setTimeout(runDispatch, delayMs);
 }
 
+let dispatching = false;
 async function runDispatch() {
+  if (dispatching) return;
+  const session = useSession.getState();
+  if (
+    session.status !== "signedIn" ||
+    !session.user?.id ||
+    !session.user.restaurantId
+  )
+    return;
+  const belongsHere = (e: OutboxEntry) =>
+    e.actorUserId === session.user!.id &&
+    e.restaurantId === session.user!.restaurantId;
   const state = useOutbox.getState();
   const now = Date.now();
 
@@ -164,22 +204,24 @@ async function runDispatch() {
   useOutbox.setState({ entries });
   persist(entries);
 
-  const next = entries.find((e) => e.status === "pending");
+  const next = entries.find((e) => e.status === "pending" && belongsHere(e));
   if (!next) {
     // Nothing sendable; wake up when the earliest hold expires.
     const holding = entries
-      .filter((e) => e.status === "holding")
+      .filter((e) => e.status === "holding" && belongsHere(e))
       .sort((a, b) => a.holdUntil - b.holdUntil)[0];
     if (holding) scheduleDispatch(Math.max(50, holding.holdUntil - now + 50));
     return;
   }
 
+  dispatching = true;
   mark(next.id, { status: "inflight" });
   try {
     await api(next.path, {
       method: next.method,
       body: next.body,
       idempotencyKey: next.id,
+      scope: { userId: next.actorUserId!, restaurantId: next.restaurantId! },
     });
     remove(next.id);
     for (const key of next.invalidate ?? []) {
@@ -188,7 +230,10 @@ async function runDispatch() {
     scheduleDispatch(0); // keep draining in order
   } catch (err) {
     const isPermanent =
-      err instanceof ApiError && err.status >= 400 && err.status < 500 && err.status !== 429;
+      err instanceof ApiError &&
+      err.status >= 400 &&
+      err.status < 500 &&
+      err.status !== 429;
     if (isPermanent) {
       // ALREADY DELIVERED IS NOT "didn't go through".
       //
@@ -219,8 +264,13 @@ async function runDispatch() {
       // Offline or server down: back off, cap at 30s between rounds.
       scheduleDispatch(Math.min(30_000, 2 ** attempts * 1000));
     }
+  } finally {
+    dispatching = false;
   }
 }
+
+// Unlock/sign-in resumes only the queue belonging to the now-active principal.
+useSession.subscribe(() => scheduleDispatch(0));
 
 function mark(id: string, patch: Partial<OutboxEntry>) {
   const entries = useOutbox

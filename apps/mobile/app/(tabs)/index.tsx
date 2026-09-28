@@ -10,7 +10,11 @@ import { AppText } from "@/components/ui/AppText";
 import { PressableScale } from "@/components/ui/PressableScale";
 import { Screen } from "@/components/ui/Screen";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { EmptyState, ErrorState, FreshnessLabel } from "@/components/ui/StateViews";
+import {
+  EmptyState,
+  ErrorState,
+  FreshnessLabel,
+} from "@/components/ui/StateViews";
 import { PulseStrip } from "@/components/today/PulseStrip";
 import { DecisionCard } from "@/components/today/DecisionCard";
 import { FeedZero } from "@/components/today/FeedZero";
@@ -56,7 +60,8 @@ export default function TodayScreen() {
       router.replace("/choose-house" as never);
     }
   }, [status, user, router]);
-  const { data, isLoading, isError, refetch, isRefetching, dataUpdatedAt } = useFeed();
+  const { data, isLoading, isError, refetch, isRefetching, dataUpdatedAt } =
+    useFeed();
   const unread = useUnreadCount().data ?? 0;
   const showActivateBanner =
     !!guidance &&
@@ -74,7 +79,15 @@ export default function TodayScreen() {
   }, []);
 
   // A permanent server rejection resurrects its card with a warning row.
-  const failed = entries.filter((e) => e.status === "failed");
+  const legacyQueueCount = entries.filter(
+    (e) => !e.actorUserId || !e.restaurantId,
+  ).length;
+  const failed = entries.filter(
+    (e) =>
+      e.status === "failed" &&
+      e.actorUserId === user?.id &&
+      e.restaurantId === user?.restaurantId,
+  );
   useEffect(() => {
     if (!failed.length) return;
     setLocallyGone((prev) => {
@@ -131,7 +144,9 @@ export default function TodayScreen() {
           <AppText variant="title">{greeting}</AppText>
           <FreshnessLabel updatedAt={dataUpdatedAt || null} />
         </View>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: space.sm }}>
+        <View
+          style={{ flexDirection: "row", alignItems: "center", gap: space.sm }}
+        >
           <PressableScale
             onPress={() => router.push("/notifications")}
             accessibilityLabel={
@@ -191,7 +206,11 @@ export default function TodayScreen() {
               justifyContent: "center",
             }}
           >
-            <Ionicons name="book-outline" size={18} color={color.inkSecondary} />
+            <Ionicons
+              name="book-outline"
+              size={18}
+              color={color.inkSecondary}
+            />
           </PressableScale>
           <PressableScale
             onPress={() => router.push("/settings")}
@@ -225,6 +244,14 @@ export default function TodayScreen() {
         }
         ListHeaderComponent={
           <>
+            {legacyQueueCount > 0 ? (
+              <AppText variant="caption" tone="warning">
+                {legacyQueueCount} saved actions from an older app are held
+                because their account and branch were not recorded. They have
+                not been sent; review the original records before submitting
+                again.
+              </AppText>
+            ) : null}
             {showActivateBanner ? (
               <PressableScale
                 onPress={() => router.push("/get-started")}
@@ -241,20 +268,34 @@ export default function TodayScreen() {
                   gap: space.sm,
                 }}
               >
-                <Ionicons name="rocket-outline" size={20} color={color.wineStrong} />
+                <Ionicons
+                  name="rocket-outline"
+                  size={20}
+                  color={color.wineStrong}
+                />
                 <View style={{ flex: 1 }}>
                   <AppText variant="bodyMedium">Finish setup</AppText>
                   <AppText variant="caption" tone="secondary">
                     Import your wine list and learn the app — optional, anytime.
                   </AppText>
                 </View>
-                <Ionicons name="chevron-forward" size={18} color={color.inkQuaternary} />
+                <Ionicons
+                  name="chevron-forward"
+                  size={18}
+                  color={color.inkQuaternary}
+                />
               </PressableScale>
             ) : null}
             <TipStrip pageId="dashboard" />
             <PulseStrip />
             {failed.length > 0 ? (
-              <View style={{ marginHorizontal: space.lg, marginBottom: space.md, gap: space.sm }}>
+              <View
+                style={{
+                  marginHorizontal: space.lg,
+                  marginBottom: space.md,
+                  gap: space.sm,
+                }}
+              >
                 {failed.map((f) => (
                   <View
                     key={f.id}
@@ -290,8 +331,14 @@ export default function TodayScreen() {
                         </AppText>
                       ) : null}
                     </View>
-                    <PressableScale onPress={() => useOutbox.getState().dismissFailed(f.id)}>
-                      <Ionicons name="close" size={18} color={color.inkTertiary} />
+                    <PressableScale
+                      onPress={() => useOutbox.getState().dismissFailed(f.id)}
+                    >
+                      <Ionicons
+                        name="close"
+                        size={18}
+                        color={color.inkTertiary}
+                      />
                     </PressableScale>
                   </View>
                 ))}
@@ -300,7 +347,9 @@ export default function TodayScreen() {
           </>
         }
         renderItem={({ item, index }) => (
-          <Animated.View entering={FadeInDown.delay(Math.min(index * 40, 240)).duration(300)}>
+          <Animated.View
+            entering={FadeInDown.delay(Math.min(index * 40, 240)).duration(300)}
+          >
             <DecisionCard item={item} onHidden={onHidden} />
           </Animated.View>
         )}
@@ -343,7 +392,10 @@ export default function TodayScreen() {
       />
 
       {showZero ? (
-        <FeedZero clearedCount={clearedThisSession} onDone={() => setShowZero(false)} />
+        <FeedZero
+          clearedCount={clearedThisSession}
+          onDone={() => setShowZero(false)}
+        />
       ) : null}
     </Screen>
   );

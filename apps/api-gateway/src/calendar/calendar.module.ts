@@ -14,6 +14,7 @@ import { NwsWeatherProvider } from "../weather/nws.provider";
 import { WeatherPrefetchService } from "../weather/weather-prefetch.service";
 import { RecordedDaysService } from "./recorded-days.service";
 import { DayRecordService } from "./day-record.service";
+import { CalendarDayNotesService } from "./calendar-day-notes.service";
 import { OrganizationsModule } from "../organizations/organizations.module";
 
 @Module({
@@ -56,6 +57,7 @@ import { OrganizationsModule } from "../organizations/organizations.module";
     WeatherPrefetchService,
     RecordedDaysService,
     DayRecordService,
+    CalendarDayNotesService,
   ],
   exports: [CalendarService, CalendarRemindersService, WeatherService],
 })

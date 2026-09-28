@@ -25,6 +25,10 @@ links: ["[[PAGE-CONTRACT]]", "[[orders]]"]
 - **Finish** (success panel) → [[orders]] `/orders`
 - **Back** (header) → browser history back
 
+## Action integrity — 2026-09-13 (pending release)
+
+The first legacy door receipt reconciles against immutable live order movements instead of the mixed-unit `quantity_received` cache. Its own door-event movements are excluded from that comparison, preserving event-key retries and subsequent truck counts. The desktop verification path reads booked bottles independently, so a five-case door count no longer becomes 720 stocked bottles at the desk.
+
 ## 1. Purpose
 
 "What happens when the truck arrives" (`DoorReceipt.tsx:1-20`): a full-screen,

@@ -50,7 +50,7 @@ type Role = "owner" | "manager" | "staff";
 
 /**
  * How long a removed person's records are kept: `wage_record_retention()` in
- * the database (migration `20261116000110`, founder 2026-09-21/22, five years).
+ * the database (migration `20261116110110`, founder 2026-09-21/22, five years).
  * Stated here only to print "kept until"; the database's clock is the one that
  * deletes.
  */
@@ -315,7 +315,7 @@ export class TeamService {
    * Whether an owner switched this manager's pay access on
    * (`user_restaurant_access.team_pay_access`, ADR 0215, founder 2026-09-25
    * round 4 item 19: "Pay visibility only"). Read on its own, never folded
-   * into `assertAccess`'s membership read: until migration `20261116000220`
+   * into `assertAccess`'s membership read: until migration `20261116110220`
    * applies, the column does not exist, and a membership read that failed on
    * it would lock every manager and owner out of /team. A failed read here is
    * logged and answers OFF — the money is withheld, never shown on a guess —
@@ -404,7 +404,7 @@ export class TeamService {
 
   /**
    * A row naming a removed person — a kept shift or leave request (ADR 0215
-   * item 20, migration 20261116000200 dropped the foreign keys that used to
+   * item 20, migration 20261116110200 dropped the foreign keys that used to
    * delete them) — is owner-only former-staff history (round 4 item 19:
    * "Hidden from the team views; the owner can open a 'former staff' history
    * for pay and legal records"). No by-id /team route reads, changes or
@@ -530,7 +530,7 @@ export class TeamService {
 
   /**
    * Every membership's pay switch in this house, or `null` when it could not
-   * be read (before migration `20261116000220`, or a failed read). Read apart
+   * be read (before migration `20261116110220`, or a failed read). Read apart
    * from the roster's own membership read for the same reason as
    * `managerPayAccess`: a missing column must not take the roster down.
    */
@@ -1211,7 +1211,7 @@ export class TeamService {
    * THE NAME comes from the removal's own audit row
    * (`system_audit_log`, `team_member_removed`, `changes.display_name`),
    * which `deleteMember` has written since ADR 0088. The departure row holds
-   * no name, on purpose (KVKK: the minimum; `20261116000110`), so none is
+   * no name, on purpose (KVKK: the minimum; `20261116110110`), so none is
    * added here: when the audit row is missing, the entry says the name was
    * not recorded rather than inventing one.
    *
@@ -1581,7 +1581,7 @@ export class TeamService {
     const { data } = await q.order("created_at", { ascending: false });
     if (role === "staff") return data ?? [];
     // A removed person's requests are kept five years, not listed (ADR 0215
-    // item 20): before 20261116000200 the removal deleted them, and a
+    // item 20): before 20261116110200 the removal deleted them, and a
     // pending one would otherwise wait for a decision about someone gone.
     return onTheRoster(data ?? [], await this.rosterMemberIds(restaurantId));
   }
@@ -1694,10 +1694,22 @@ export class TeamService {
     restaurantId: string,
   ): Promise<any[]> {
     await this.assertAccess(userId, restaurantId);
-    const { data } = await this.sb
+    // A failed read used to answer `[]`, which the page reads as "no coverage
+    // rule exists — the engine is idle" and offers to create the first rule.
+    // An unreadable rule file is not an empty one ([[absence-reported-as-health]]):
+    // the page has its own "could not be read" sentence for exactly this.
+    const { data, error } = await this.sb
       .from("coverage_templates")
       .select("*")
       .eq("restaurant_id", restaurantId);
+    if (error) {
+      this.logger.error(
+        `coverage_templates read failed for r=${restaurantId}: ${error.code ?? "?"} ${error.message}`,
+      );
+      throw new InternalServerErrorException(
+        "The coverage rules could not be read.",
+      );
+    }
     return data ?? [];
   }
 
@@ -1723,17 +1735,42 @@ export class TeamService {
     return data;
   }
 
+  /**
+   * Remove one coverage rule of THIS house and return the row that went.
+   *
+   * This used to await the delete and discard its answer, so a failed write,
+   * or an id belonging to another house (scoped out by the restaurant filter),
+   * both returned 200 with nothing removed — and the page said "Rule removed"
+   * over a rule still in force. Now: a write error is a 500 that says the
+   * rule is still in force; no row of this house by that id is a 404; and the
+   * removed row comes back so the client can name what went (founder,
+   * 2026-09-26, round 8, item 51).
+   */
   async deleteCoverageTemplate(
     userId: string,
     restaurantId: string,
     id: string,
-  ): Promise<void> {
+  ): Promise<Record<string, unknown>> {
     await this.assertAccess(userId, restaurantId, "manager");
-    await this.sb
+    const { data, error } = await this.sb
       .from("coverage_templates")
       .delete()
       .eq("id", id)
-      .eq("restaurant_id", restaurantId);
+      .eq("restaurant_id", restaurantId)
+      .select();
+    if (error) {
+      this.logger.error(
+        `coverage_templates delete failed for r=${restaurantId} id=${id}: ${error.code ?? "?"} ${error.message}`,
+      );
+      throw new InternalServerErrorException(
+        "The coverage rule was not removed — it is still in force.",
+      );
+    }
+    const removed = Array.isArray(data) ? data[0] : data;
+    if (!removed) {
+      throw new NotFoundException("No such coverage rule in this restaurant.");
+    }
+    return removed;
   }
 
   // ── Settings (labor toggle) ──────────────────────────────────────────────

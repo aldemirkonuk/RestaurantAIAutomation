@@ -9,13 +9,14 @@ const navigate = vi.hoisted(() => vi.fn())
 const getItemActivity = vi.hoisted(() => vi.fn())
 const getOrders = vi.hoisted(() => vi.fn())
 const transferStock = vi.hoisted(() => vi.fn())
+const fetchAuctionLotRecords = vi.hoisted(() => vi.fn())
 
 vi.mock('react-router-dom', () => ({ useNavigate: () => navigate }))
 vi.mock('../../../services/api/inventory', async () => {
   const actual = await vi.importActual<typeof import('../../../services/api/inventory')>(
     '../../../services/api/inventory',
   )
-  return { ...actual, getItemActivity, transferStock }
+  return { ...actual, getItemActivity, transferStock, fetchAuctionLotRecords }
 })
 vi.mock('../../../services/api/orders', async () => {
   const actual = await vi.importActual<typeof import('../../../services/api/orders')>(
@@ -70,6 +71,7 @@ describe('RowExpansion — View ledger', () => {
     vi.clearAllMocks()
     getItemActivity.mockResolvedValue({ daily: [], heat: [], totalOut28d: 0, totalIn28d: 0, includes: { out: '', in: '', window: '' } })
     getOrders.mockResolvedValue([])
+    fetchAuctionLotRecords.mockResolvedValue([])
   })
 
   /**
@@ -118,6 +120,7 @@ describe('RowExpansion — moving bottles between locations', () => {
     vi.clearAllMocks()
     getItemActivity.mockResolvedValue({ daily: [], heat: [], totalOut28d: 0, totalIn28d: 0, includes: { out: '', in: '', window: '' } })
     getOrders.mockResolvedValue([])
+    fetchAuctionLotRecords.mockResolvedValue([])
     transferStock.mockResolvedValue({})
   })
 

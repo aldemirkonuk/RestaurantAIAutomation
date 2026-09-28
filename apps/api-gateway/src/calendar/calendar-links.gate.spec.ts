@@ -7,6 +7,7 @@ import { WeatherService } from "../weather/weather.service";
 import { DayRecordService } from "./day-record.service";
 import { OrganizationsService } from "../organizations/organizations.service";
 import { CalendarLinksService } from "./calendar-links.service";
+import { CalendarDayNotesService } from "./calendar-day-notes.service";
 
 /**
  * Who may act on which calendar link (ADR 0111, review trail 2026-09-21).
@@ -62,6 +63,7 @@ function controller(role: "owner" | "manager" | "staff" | null) {
     { statusFor: jest.fn() } as unknown as CalendarRemindersService,
     { windowFor: jest.fn() } as unknown as WeatherService,
     { windowFor: jest.fn() } as unknown as DayRecordService,
+    { create: jest.fn(), listForDay: jest.fn() } as unknown as CalendarDayNotesService,
     links as unknown as CalendarLinksService,
     organizations,
   );

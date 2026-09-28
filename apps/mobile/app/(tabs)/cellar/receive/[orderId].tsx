@@ -16,6 +16,7 @@ import { haptic } from "@/design/haptics";
 import { feedKey, pulseKey, useOrder } from "@/api/queries";
 import { useOutbox } from "@/state/outbox";
 import { useFeedLocal } from "@/state/feedLocal";
+import { receivingCountBasis } from "@/lib/receivingCountBasis";
 import { computeMatch, money, verdictTone } from "@/lib/invoiceMatch";
 
 /**
@@ -37,44 +38,18 @@ export default function ReceivingScreen() {
   }>();
   const { data: order, isLoading, isError, refetch } = useOrder(orderId);
 
-  const orderedQty: number = order?.quantity ?? 0;
-  const poUnitPrice: number | null =
+  const countBasis = receivingCountBasis(order);
+  const orderedQty = countBasis.orderedBottles ?? 0;
+  // Detail responses can omit the agreement's price unit. An unlabelled
+  // header price cannot serve as a per-bottle comparison on this phone.
+  const rawAgreedPrice =
     order?.finalPrice ?? order?.negotiatedPrice ?? order?.quotedPrice ?? null;
-  // WHAT WAS ACTUALLY BOOKED, when the wire can say so in this screen's unit.
-  //
-  // `quantityReceived` used to be a COLUMN and not a wire key, so this read
-  // fell through to the ORDERED quantity and a partially-received order
-  // pre-filled the receiver's count with the whole delivery. `mapOrderRow` now
-  // sends it (2026-09-05) — WITH ITS UNIT, which is the half that makes it
-  // usable: `procurement_orders.quantity_received` is written in the order's
-  // own unit by the desk and in BOTTLES by the receiving door, so on an order
-  // placed in cases the gateway sends `quantityReceivedUom: null` rather than
-  // guess. This screen counts in the order's own unit (`countedUom` defaults
-  // to it), so the pre-fill is taken ONLY when the wire states a unit and that
-  // unit is this order's. Otherwise it falls back to the ordered quantity and
-  // says why, out loud, under the count — a wrong default that looks right is
-  // worse than an honest one that is high.
-  const orderUom = (order?.unitType ?? "").trim().toLowerCase();
-  const receivedUom = (order?.quantityReceivedUom ?? "").trim().toLowerCase();
-  const receivedIsUsable =
-    typeof order?.quantityReceived === "number" &&
-    order.quantityReceived > 0 &&
-    receivedUom !== "" &&
-    // An absent order unit means bottles on both sides — the column's own
-    // default — so an empty `orderUom` matches a stated "bottle".
-    (receivedUom === orderUom || (orderUom === "" && receivedUom === "bottle"));
-  const stockedQty: number = receivedIsUsable
-    ? (order?.quantityReceived as number)
-    : (order?.quantity ?? 0);
-  const stockedNote: string | null = receivedIsUsable
-    ? `Pre-filled from ${order?.quantityReceived} already received on this order.`
-    : typeof order?.quantityReceived === "number" &&
-        order.quantityReceived > 0 &&
-        receivedUom === ""
-      ? "Something has already been received against this order, but the wire " +
-        "cannot say in which unit — the door records bottles and the desk " +
-        "records the order's unit. Counting from the ordered quantity instead."
+  const poUnitPrice =
+    rawAgreedPrice != null && order?.pricePackSize && order?.priceUom
+      ? rawAgreedPrice / order.pricePackSize
       : null;
+  const stockedQty = countBasis.prefillBottles;
+  const stockedNote = countBasis.note;
 
   const [permission, requestPermission] = useCameraPermissions();
   const [scanning, setScanning] = useState(false);
@@ -86,18 +61,23 @@ export default function ReceivingScreen() {
   const [rejectedQty, setRejectedQty] = useState(0);
   const [rejectedReason, setRejectedReason] = useState("");
 
-  // The invoice is expected to agree with the PO, so it starts pre-filled.
-  // Opening the disclosure is how a vendor deviation gets recorded.
+  // Only figures explicitly copied from the vendor paper count as an invoice.
   const [invoiceOpen, setInvoiceOpen] = useState(false);
   const [invoiceQtyRaw, setInvoiceQtyRaw] = useState<number | null>(null);
-  const invoiceQty = invoiceQtyRaw ?? stockedQty;
+  const invoiceQty = invoiceQtyRaw;
   const [priceText, setPriceText] = useState<string | null>(null);
   const invoiceUnitPrice =
-    priceText == null
-      ? poUnitPrice
-      : priceText.trim() === ""
-        ? null
-        : Math.max(0, Number(priceText.replace(",", ".")) || 0);
+    priceText == null || priceText.trim() === ""
+      ? null
+      : Number(priceText.replace(",", "."));
+  const [invoiceCurrency, setInvoiceCurrency] = useState("");
+  const priceIsValid =
+    invoiceUnitPrice == null ||
+    (Number.isFinite(invoiceUnitPrice) && invoiceUnitPrice >= 0);
+  const invoiceNeedsCurrency =
+    invoiceUnitPrice != null && !/^[A-Z]{3}$/.test(invoiceCurrency);
+  const canCommit =
+    countBasis.orderedBottles != null && priceIsValid && !invoiceNeedsCurrency;
   const [priceOverrideReason, setPriceOverrideReason] = useState("");
   const [note, setNote] = useState("");
 
@@ -116,7 +96,15 @@ export default function ReceivingScreen() {
         rejectedQty,
         priceOverrideReason,
       }),
-    [orderedQty, poUnitPrice, invoiceQty, invoiceUnitPrice, acceptedQty, rejectedQty, priceOverrideReason],
+    [
+      orderedQty,
+      poUnitPrice,
+      invoiceQty,
+      invoiceUnitPrice,
+      acceptedQty,
+      rejectedQty,
+      priceOverrideReason,
+    ],
   );
   const tone = verdictTone(match.verdict);
   const priceDiffers =
@@ -144,26 +132,29 @@ export default function ReceivingScreen() {
   }, [permission, requestPermission]);
 
   const commit = useCallback(() => {
-    if (!order || sealed || match.requiresOverride) return;
+    if (!order || sealed || match.requiresOverride || !canCommit) return;
     useOutbox.getState().enqueue({
       path: `/procurement/orders/${orderId}/verify-receipt`,
       body: {
-        // Unit-declaring names. No unit is sent, which means "the order's own
-        // unit" — correct here, because the count starts from the order's own
-        // quantity. Payloads already sitting in the outbox from an older build
-        // still carry the unitless names; the gateway accepts those as
-        // deprecated aliases, which is the whole reason this was not a bare
-        // rename.
-        invoiceQuantityInInvoiceUom: invoiceQty,
+        // Steppers and camera both count individual bottles. Invoice figures
+        // are also explicitly entered as bottles; no order-unit fallback.
+        countedUom: "bottle",
+        invoiceUom: "bottle",
+        invoiceCurrency: invoiceUnitPrice != null ? invoiceCurrency : undefined,
+        invoiceQuantityInInvoiceUom: invoiceQty ?? undefined,
         invoiceUnitPrice: invoiceUnitPrice ?? undefined,
         acceptedQuantityInCountedUom: acceptedQty,
         rejectedQuantityInCountedUom: rejectedQty,
         rejectedReason:
-          rejectedQty > 0 ? rejectedReason.trim() || "damaged on arrival" : undefined,
-        priceOverrideReason: priceDiffers ? priceOverrideReason.trim() : undefined,
+          rejectedQty > 0
+            ? rejectedReason.trim() || "damaged on arrival"
+            : undefined,
+        priceOverrideReason: priceDiffers
+          ? priceOverrideReason.trim()
+          : undefined,
         note: note.trim() || undefined,
       },
-      label: match.backorderQty > 0 ? "Received, order held open" : "Receipt verified",
+      label: "Receipt verification",
       graceMs: 0,
       invalidate: [
         [...feedKey],
@@ -192,6 +183,8 @@ export default function ReceivingScreen() {
     orderId,
     invoiceQty,
     invoiceUnitPrice,
+    invoiceCurrency,
+    canCommit,
     acceptedQty,
     rejectedQty,
     rejectedReason,
@@ -205,18 +198,27 @@ export default function ReceivingScreen() {
   if (isError && !order) {
     return (
       <Screen>
-        <ErrorState title="Couldn't load this delivery" onAction={() => refetch()} />
+        <ErrorState
+          title="Couldn't load this delivery"
+          onAction={() => refetch()}
+        />
       </Screen>
     );
   }
 
-  const primaryLabel = match.requiresOverride
-    ? "Reason required"
-    : match.backorderQty > 0
-      ? "Accept & keep open"
-      : priceDiffers
-        ? "Accept with override"
-        : "Accept & complete";
+  const primaryLabel = !canCommit
+    ? invoiceNeedsCurrency
+      ? "State the invoice currency"
+      : "Check the stated quantities and price"
+    : match.requiresOverride
+      ? "Reason required"
+      : match.backorderQty > 0
+        ? "Accept & keep open"
+        : priceDiffers
+          ? "Accept with override"
+          : invoiceQty == null
+            ? "Record count — invoice pending"
+            : "Submit for verification";
 
   return (
     <Screen>
@@ -229,7 +231,11 @@ export default function ReceivingScreen() {
           gap: space.sm,
         }}
       >
-        <PressableScale onPress={() => router.back()} accessibilityLabel="Back" style={{ padding: space.sm }}>
+        <PressableScale
+          onPress={() => router.back()}
+          accessibilityLabel="Back"
+          style={{ padding: space.sm }}
+        >
           <Ionicons name="chevron-back" size={24} color={color.inkSecondary} />
         </PressableScale>
         <AppText variant="caption" tone="tertiary">
@@ -237,7 +243,13 @@ export default function ReceivingScreen() {
         </AppText>
       </View>
 
-      <ScrollView contentContainerStyle={{ padding: space.lg, gap: space.md, paddingBottom: space.huge }}>
+      <ScrollView
+        contentContainerStyle={{
+          padding: space.lg,
+          gap: space.md,
+          paddingBottom: space.huge,
+        }}
+      >
         {isLoading && !order ? (
           <Card style={{ gap: space.md }}>
             <Skeleton width={220} height={22} />
@@ -252,10 +264,13 @@ export default function ReceivingScreen() {
                     {order?.wineName ? (
                       <AppText variant="wineName">{order.wineName}</AppText>
                     ) : (
-                      <AppText variant="headline">{order?.orderNumber ?? "Delivery"}</AppText>
+                      <AppText variant="headline">
+                        {order?.orderNumber ?? "Delivery"}
+                      </AppText>
                     )}
                     <AppText variant="footnote" tone="secondary">
-                      Agreed: {orderedQty} {orderedQty === 1 ? "bottle" : "bottles"}
+                      Agreed: {orderedQty}{" "}
+                      {orderedQty === 1 ? "bottle" : "bottles"}
                       {poUnitPrice != null ? ` @ ${money(poUnitPrice)}` : ""}
                     </AppText>
                   </View>
@@ -263,7 +278,13 @@ export default function ReceivingScreen() {
                   <Hairline />
 
                   {/* ACCEPTED — the hero count */}
-                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                    }}
+                  >
                     <View>
                       <AppText variant="body" tone="secondary">
                         Accepted
@@ -272,19 +293,35 @@ export default function ReceivingScreen() {
                         good bottles into stock
                       </AppText>
                     </View>
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: space.lg }}>
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: space.lg,
+                      }}
+                    >
                       <Stepper
                         label="−"
-                        onPress={() => setAcceptedRaw(Math.max(0, acceptedQty - 1))}
+                        onPress={() =>
+                          setAcceptedRaw(Math.max(0, acceptedQty - 1))
+                        }
                         disabled={sealed || acceptedQty <= 0}
                       />
                       <AppText
                         variant="display"
-                        style={{ fontVariant: ["tabular-nums"], minWidth: 56, textAlign: "center" }}
+                        style={{
+                          fontVariant: ["tabular-nums"],
+                          minWidth: 56,
+                          textAlign: "center",
+                        }}
                       >
                         {acceptedQty}
                       </AppText>
-                      <Stepper label="+" onPress={() => setAcceptedRaw(acceptedQty + 1)} disabled={sealed} />
+                      <Stepper
+                        label="+"
+                        onPress={() => setAcceptedRaw(acceptedQty + 1)}
+                        disabled={sealed}
+                      />
                     </View>
                   </View>
 
@@ -301,7 +338,13 @@ export default function ReceivingScreen() {
                   ) : null}
 
                   {/* REJECTED */}
-                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                    }}
+                  >
                     <View>
                       <AppText variant="body" tone="secondary">
                         Rejected
@@ -310,20 +353,36 @@ export default function ReceivingScreen() {
                         arrived broken or wrong
                       </AppText>
                     </View>
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: space.lg }}>
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: space.lg,
+                      }}
+                    >
                       <Stepper
                         label="−"
-                        onPress={() => setRejectedQty((n) => Math.max(0, n - 1))}
+                        onPress={() =>
+                          setRejectedQty((n) => Math.max(0, n - 1))
+                        }
                         disabled={sealed || rejectedQty <= 0}
                       />
                       <AppText
                         variant="title"
                         tone={rejectedQty > 0 ? "warning" : "primary"}
-                        style={{ fontVariant: ["tabular-nums"], minWidth: 56, textAlign: "center" }}
+                        style={{
+                          fontVariant: ["tabular-nums"],
+                          minWidth: 56,
+                          textAlign: "center",
+                        }}
                       >
                         {rejectedQty}
                       </AppText>
-                      <Stepper label="+" onPress={() => setRejectedQty((n) => n + 1)} disabled={sealed} />
+                      <Stepper
+                        label="+"
+                        onPress={() => setRejectedQty((n) => n + 1)}
+                        disabled={sealed}
+                      />
                     </View>
                   </View>
 
@@ -331,7 +390,12 @@ export default function ReceivingScreen() {
                     <Animated.View
                       entering={FadeIn.duration(200)}
                       exiting={FadeOut.duration(150)}
-                      style={{ backgroundColor: color.warningTint, borderRadius: 12, padding: space.md, gap: space.xs }}
+                      style={{
+                        backgroundColor: color.warningTint,
+                        borderRadius: 12,
+                        padding: space.md,
+                        gap: space.xs,
+                      }}
                     >
                       <AppText variant="caption" tone="warning">
                         Why were {rejectedQty} rejected?
@@ -352,7 +416,8 @@ export default function ReceivingScreen() {
                         }}
                       />
                       <AppText variant="caption" tone="tertiary">
-                        They arrived but never entered stock — tracked as a credit, not a short ship.
+                        They arrived but never entered stock — tracked as a
+                        credit, not a short ship.
                       </AppText>
                     </Animated.View>
                   ) : null}
@@ -362,11 +427,24 @@ export default function ReceivingScreen() {
 
             {/* Camera scan-to-count */}
             {scanning && permission?.granted ? (
-              <View style={{ borderRadius: radius.card, overflow: "hidden", height: 240 }}>
+              <View
+                style={{
+                  borderRadius: radius.card,
+                  overflow: "hidden",
+                  height: 240,
+                }}
+              >
                 <CameraView
                   style={{ flex: 1 }}
                   barcodeScannerSettings={{
-                    barcodeTypes: ["ean13", "ean8", "upc_a", "upc_e", "code128", "qr"],
+                    barcodeTypes: [
+                      "ean13",
+                      "ean8",
+                      "upc_a",
+                      "upc_e",
+                      "code128",
+                      "qr",
+                    ],
                   }}
                   onBarcodeScanned={onScan}
                 />
@@ -382,7 +460,7 @@ export default function ReceivingScreen() {
                   }}
                 >
                   <AppText variant="caption" tone="onWine">
-                    Each barcode read accepts one bottle
+                    Each read adds one bottle. Confirm it belongs to this order.
                   </AppText>
                 </View>
               </View>
@@ -407,22 +485,35 @@ export default function ReceivingScreen() {
                 size={19}
                 color={color.ink}
               />
-              <AppText variant="bodyMedium">{scanning ? "Stop scanning" : "Scan bottles"}</AppText>
+              <AppText variant="bodyMedium">
+                {scanning ? "Stop scanning" : "Scan bottles"}
+              </AppText>
             </PressableScale>
 
             {/* Invoice disclosure — folded until the paper disagrees */}
-            <Card style={{ gap: invoiceOpen ? space.md : 0, paddingVertical: invoiceOpen ? space.lg : space.md }}>
+            <Card
+              style={{
+                gap: invoiceOpen ? space.md : 0,
+                paddingVertical: invoiceOpen ? space.lg : space.md,
+              }}
+            >
               <PressableScale
                 onPress={() => setInvoiceOpen((v) => !v)}
                 disabled={sealed}
-                style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}
               >
                 <View>
-                  <AppText variant="bodyMedium">Invoice differs from the order?</AppText>
+                  <AppText variant="bodyMedium">Record the invoice</AppText>
                   <AppText variant="caption" tone="tertiary">
                     {invoiceOpen
                       ? "Record what the vendor actually billed"
-                      : `Assuming ${invoiceQty} billed${invoiceUnitPrice != null ? ` @ ${money(invoiceUnitPrice)}` : ""}`}
+                      : invoiceQty == null
+                        ? "No invoice quantities recorded"
+                        : `${invoiceQty} bottles billed${invoiceUnitPrice != null ? ` at ${invoiceCurrency || "currency not stated"} ${invoiceUnitPrice.toFixed(2)}` : ""}`}
                   </AppText>
                 </View>
                 <Ionicons
@@ -433,50 +524,89 @@ export default function ReceivingScreen() {
               </PressableScale>
 
               {invoiceOpen ? (
-                <Animated.View entering={FadeIn.duration(200)} style={{ gap: space.md }}>
+                <Animated.View
+                  entering={FadeIn.duration(200)}
+                  style={{ gap: space.md }}
+                >
                   <Hairline />
-                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                    }}
+                  >
                     <AppText variant="body" tone="secondary">
                       Bottles billed
                     </AppText>
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: space.lg }}>
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: space.lg,
+                      }}
+                    >
                       <Stepper
                         label="−"
-                        onPress={() => setInvoiceQtyRaw(Math.max(0, invoiceQty - 1))}
-                        disabled={sealed || invoiceQty <= 0}
+                        onPress={() =>
+                          setInvoiceQtyRaw(Math.max(0, (invoiceQty ?? 0) - 1))
+                        }
+                        disabled={sealed || (invoiceQty ?? 0) <= 0}
                       />
                       <AppText
                         variant="title"
-                        style={{ fontVariant: ["tabular-nums"], minWidth: 56, textAlign: "center" }}
+                        style={{
+                          fontVariant: ["tabular-nums"],
+                          minWidth: 56,
+                          textAlign: "center",
+                        }}
                       >
-                        {invoiceQty}
+                        {invoiceQty ?? "—"}
                       </AppText>
-                      <Stepper label="+" onPress={() => setInvoiceQtyRaw(invoiceQty + 1)} disabled={sealed} />
+                      <Stepper
+                        label="+"
+                        onPress={() => setInvoiceQtyRaw((invoiceQty ?? 0) + 1)}
+                        disabled={sealed}
+                      />
                     </View>
                   </View>
 
-                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                    }}
+                  >
                     <View>
                       <AppText variant="body" tone="secondary">
                         Billed unit price
                       </AppText>
                       {poUnitPrice == null ? (
                         <AppText variant="caption" tone="tertiary">
-                          No agreed price on this order
+                          Agreed bottle price not available here
                         </AppText>
                       ) : priceDiffers ? (
                         <AppText variant="caption" tone="danger">
-                          {money(Math.abs((invoiceUnitPrice ?? 0) - poUnitPrice))}/btl{" "}
-                          {(invoiceUnitPrice ?? 0) > poUnitPrice ? "over" : "under"} agreed
+                          {money(
+                            Math.abs((invoiceUnitPrice ?? 0) - poUnitPrice),
+                          )}
+                          /btl{" "}
+                          {(invoiceUnitPrice ?? 0) > poUnitPrice
+                            ? "over"
+                            : "under"}{" "}
+                          agreed
                         </AppText>
                       ) : (
                         <AppText variant="caption" tone="success">
-                          Matches agreed price
+                          {invoiceUnitPrice == null
+                            ? "No invoice price recorded"
+                            : "Matches stated bottle price"}
                         </AppText>
                       )}
                     </View>
                     <TextInput
-                      value={priceText ?? (poUnitPrice != null ? String(poUnitPrice) : "")}
+                      value={priceText ?? ""}
                       onChangeText={setPriceText}
                       editable={!sealed}
                       keyboardType="decimal-pad"
@@ -497,8 +627,46 @@ export default function ReceivingScreen() {
                     />
                   </View>
 
+                  <View style={{ gap: space.xs }}>
+                    <AppText variant="caption" tone="secondary">
+                      Currency printed on the invoice
+                    </AppText>
+                    <TextInput
+                      value={invoiceCurrency}
+                      onChangeText={(value) =>
+                        setInvoiceCurrency(
+                          value
+                            .toUpperCase()
+                            .replace(/[^A-Z]/g, "")
+                            .slice(0, 3),
+                        )
+                      }
+                      autoCapitalize="characters"
+                      maxLength={3}
+                      placeholder="USD, TRY, GBP…"
+                      editable={!sealed}
+                      accessibilityLabel="Invoice currency code"
+                      style={{
+                        padding: space.md,
+                        color: color.ink,
+                        backgroundColor: color.fill,
+                        borderRadius: radius.control,
+                      }}
+                    />
+                    <AppText variant="caption" tone="tertiary">
+                      Copy the currency from the vendor's paper. It is required
+                      when recording a price.
+                    </AppText>
+                  </View>
                   {priceDiffers && !sealed ? (
-                    <View style={{ backgroundColor: color.dangerTint, borderRadius: 12, padding: space.md, gap: space.xs }}>
+                    <View
+                      style={{
+                        backgroundColor: color.dangerTint,
+                        borderRadius: 12,
+                        padding: space.md,
+                        gap: space.xs,
+                      }}
+                    >
                       <AppText variant="caption" tone="danger">
                         Why accept this price?
                       </AppText>
@@ -518,7 +686,8 @@ export default function ReceivingScreen() {
                         }}
                       />
                       <AppText variant="caption" tone="tertiary">
-                        Recorded against the order. The price stays marked unverified either way.
+                        Recorded against the order. The price stays marked
+                        unverified either way.
                       </AppText>
                     </View>
                   ) : null}
@@ -527,8 +696,21 @@ export default function ReceivingScreen() {
             </Card>
 
             {/* Live verdict */}
-            <View style={{ backgroundColor: tone.bg, borderRadius: radius.card, padding: space.lg, gap: space.xs }}>
-              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+            <View
+              style={{
+                backgroundColor: tone.bg,
+                borderRadius: radius.card,
+                padding: space.lg,
+                gap: space.xs,
+              }}
+            >
+              <View
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                }}
+              >
                 <AppText variant="bodyMedium" style={{ color: tone.text }}>
                   {tone.label}
                 </AppText>
@@ -539,17 +721,18 @@ export default function ReceivingScreen() {
                 ) : null}
               </View>
               <AppText variant="footnote" tone="secondary">
-                {match.summary}
+                {match.summary} The server verifies the documents when this
+                receipt is sent.
               </AppText>
               {match.creditDue ? (
                 <AppText variant="caption" tone="warning">
                   Credit due from the vendor.
                 </AppText>
               ) : null}
-              {receivedQty !== invoiceQty ? (
+              {invoiceQty != null && receivedQty !== invoiceQty ? (
                 <AppText variant="caption" tone="tertiary">
-                  {receivedQty} physically arrived ({acceptedQty} accepted + {rejectedQty} rejected)
-                  against {invoiceQty} billed.
+                  {receivedQty} physically arrived ({acceptedQty} accepted +{" "}
+                  {rejectedQty} rejected) against {invoiceQty} billed.
                 </AppText>
               ) : null}
             </View>
@@ -576,8 +759,8 @@ export default function ReceivingScreen() {
 
             {match.backorderQty > 0 ? (
               <AppText variant="caption" tone="warning" align="center">
-                {match.backorderQty} bottle{match.backorderQty === 1 ? "" : "s"} stay on backorder —
-                the order holds open.
+                {match.backorderQty} bottle{match.backorderQty === 1 ? "" : "s"}{" "}
+                stay on backorder — the order holds open.
               </AppText>
             ) : (
               <AppText variant="caption" tone="tertiary" align="center">
@@ -587,17 +770,24 @@ export default function ReceivingScreen() {
 
             <PressableScale
               onPress={commit}
-              disabled={sealed || !order || match.requiresOverride}
+              disabled={
+                sealed || !order || match.requiresOverride || !canCommit
+              }
               style={{
-                backgroundColor: match.requiresOverride ? color.fillStrong : color.wine,
+                backgroundColor: match.requiresOverride
+                  ? color.fillStrong
+                  : color.wine,
                 borderRadius: radius.control,
                 paddingVertical: 15,
                 alignItems: "center",
                 opacity: sealed ? 0.6 : 1,
               }}
             >
-              <AppText variant="bodyMedium" tone={match.requiresOverride ? "tertiary" : "onWine"}>
-                {sealed ? "Sealed" : primaryLabel}
+              <AppText
+                variant="bodyMedium"
+                tone={match.requiresOverride ? "tertiary" : "onWine"}
+              >
+                {sealed ? "Saved on this phone" : primaryLabel}
               </AppText>
             </PressableScale>
           </>

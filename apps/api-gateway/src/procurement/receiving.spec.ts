@@ -27,11 +27,15 @@ function makeDb(opts: {
   orders?: Row[];
   /** Fail apply_stock_movement, to prove a failed booking is not reported. */
   rpcError?: { message: string } | null;
+  /** The order's house item, as `restaurant_inventory` answers a read by id. */
+  item?: Row | null;
 }) {
   const calls = {
     rpc: [] as any[],
     eventInserts: [] as any[],
     orderUpdates: [] as any[],
+    /** Every insert with its table (the research queue included). */
+    tableInserts: [] as Array<{ table: string; payload: Row }>,
   };
 
   // The stored table. Seeded from `opts.events` so listUnverified's fixtures
@@ -72,9 +76,22 @@ function makeDb(opts: {
           return q;
         },
         limit: () => q,
+        range: async () => ({
+          data: opts.order?.quantity_received
+            ? [
+                {
+                  quantity_change: opts.order.quantity_received,
+                  idempotency_key: "order-delivered-live:o1",
+                },
+              ]
+            : [],
+          error: null,
+        }),
         maybeSingle: async () => {
           if (tableName === "procurement_orders")
             return { data: opts.order ?? null, error: null };
+          if (tableName === "restaurant_inventory")
+            return { data: opts.item ?? null, error: null };
           if (tableName === "procurement_receipt_events") {
             // The idempotency-key read-back on the 23505 path.
             const hit = table.find((r) =>
@@ -85,6 +102,8 @@ function makeDb(opts: {
           return { data: null, error: null };
         },
         insert(payload: Row) {
+          calls.tableInserts.push({ table: tableName, payload });
+          if (tableName === "house_item_research") return Promise.resolve({ data: null, error: null });
           calls.eventInserts.push(payload);
           const chain: any = {
             select: () => chain,
@@ -94,9 +113,7 @@ function makeDb(opts: {
               // The real unique index on idempotency_key, modelled.
               if (
                 payload.idempotency_key &&
-                table.some(
-                  (r) => r.idempotency_key === payload.idempotency_key,
-                )
+                table.some((r) => r.idempotency_key === payload.idempotency_key)
               )
                 return {
                   data: null,
@@ -156,7 +173,9 @@ function makeDb(opts: {
     },
     rpc: async (name: string, args: Row) => {
       calls.rpc.push({ name, args });
-      return rpcError ? { data: null, error: rpcError } : { data: null, error: null };
+      return rpcError
+        ? { data: null, error: rpcError }
+        : { data: null, error: null };
     },
     storage: { from: () => ({}) },
   };
@@ -473,7 +492,8 @@ describe("recordDoorReceipt", () => {
     expect(r.alreadyRecorded).toBe(true);
     expect(r.stockBooked).toBe(true);
     expect(r.stockDelta).toBe(24);
-    expect(shared.calls.orderUpdates[0].quantity_received).toBe(24);
+    // ADR 0192: the order is not told a received count; the ledger holds it.
+    expect("quantity_received" in shared.calls.orderUpdates[0]).toBe(false);
   });
 
   // ==========================================================================
@@ -482,9 +502,10 @@ describe("recordDoorReceipt", () => {
 
   it("adds a second truck to the first instead of replacing it", async () => {
     // Truck one brings 8 boxes, truck two brings 6. The order used to record 6
-    // received, not 14, because quantity_received was set ABSOLUTELY — and the
-    // match line called truck two short against the full PO while the driver
-    // waited.
+    // received, not 14, because its received column was set ABSOLUTELY — and
+    // the match line called truck two short against the full PO while the
+    // driver waited. The running total is the events' sum; the column is not
+    // written at all (ADR 0192).
     const shared = makeDb({ order: packTwelve });
     const service = new ReceivingService(shared.db);
 
@@ -496,7 +517,7 @@ describe("recordDoorReceipt", () => {
     });
     expect(first.receivedQtyBottles).toBe(96);
     expect(shared.calls.rpc[0].args.p_delta).toBe(96);
-    expect(shared.calls.orderUpdates[0].quantity_received).toBe(96);
+    expect("quantity_received" in shared.calls.orderUpdates[0]).toBe(false);
 
     const second = await service.recordDoorReceipt({
       ...base,
@@ -510,7 +531,7 @@ describe("recordDoorReceipt", () => {
     expect(shared.calls.rpc[1].args.p_idempotency_key).not.toBe(
       shared.calls.rpc[0].args.p_idempotency_key,
     );
-    expect(shared.calls.orderUpdates[1].quantity_received).toBe(168);
+    expect("quantity_received" in shared.calls.orderUpdates[1]).toBe(false);
   });
 
   it("does not swallow a second truck that happens to bring the same count", async () => {
@@ -963,7 +984,11 @@ describe("listUnverified", () => {
         },
       ],
       orders: [
-        { id: "new-order", order_number: "PO-NEW", status: "PARTIALLY_RECEIVED" },
+        {
+          id: "new-order",
+          order_number: "PO-NEW",
+          status: "PARTIALLY_RECEIVED",
+        },
       ],
     });
 
@@ -988,13 +1013,72 @@ describe("listUnverified", () => {
           occurred_at: hoursAgo(1),
         },
       ],
-      orders: [{ id: "o1", order_number: "PO-1", status: "PARTIALLY_RECEIVED" }],
+      orders: [
+        { id: "o1", order_number: "PO-1", status: "PARTIALLY_RECEIVED" },
+      ],
     });
 
     const items = await new ReceivingService(db).listUnverified("r1");
 
     expect(items).toHaveLength(1);
     expect(items[0].countedQtyBottles).toBe(10);
+  });
+});
+
+// Founder, 2026-09-22, verbatim pick: "Yes, same rule (Recommended)" — stock
+// the door books for a wine the library lacks queues research, by the item's
+// id, once per item.
+describe("recordDoorReceipt — the same research rule at the door", () => {
+  const base = { restaurantId: "r1", orderId: "o1", userId: "u1" };
+  const order = { id: "o1", order_number: "PO-1", inventory_id: "inv1", quantity: 12, bottles_total: 12, quantity_received: 0 };
+  const researchInserts = (calls: { tableInserts: Array<{ table: string; payload: any }> }) =>
+    calls.tableInserts.filter((i) => i.table === "house_item_research");
+
+  it("a wine the library lacks is queued by its item id after the door booked it", async () => {
+    const { db, calls } = makeDb({ order, item: { master_wine_id: null, wine_name: "Kavaklıdere Yakut 2019" } });
+    const r = await new ReceivingService(db).recordDoorReceipt({ ...base, countedQty: 12, countedUom: "bottle" });
+    expect(r.stockBooked).toBe(true);
+    expect(r.research).toBe("queued");
+    expect(researchInserts(calls)).toEqual([
+      {
+        table: "house_item_research",
+        payload: expect.objectContaining({ inventory_id: "inv1", restaurant_id: "r1", status: "queued", queued_from: "receiving", source_order_id: "o1", queued_by: "u1" }),
+      },
+    ]);
+  });
+
+  it("a library wine is not queued", async () => {
+    const { db, calls } = makeDb({ order, item: { master_wine_id: "mw-1", wine_name: "Barolo" } });
+    const r = await new ReceivingService(db).recordDoorReceipt({ ...base, countedQty: 12, countedUom: "bottle" });
+    expect(r.research).toBeUndefined();
+    expect(researchInserts(calls)).toHaveLength(0);
+  });
+
+  it("an item that cannot be found is said; the stock stands", async () => {
+    const { db } = makeDb({ order, item: null });
+    const r = await new ReceivingService(db).recordDoorReceipt({ ...base, countedQty: 12, countedUom: "bottle" });
+    expect(r.stockBooked).toBe(true);
+    expect(r.researchIssue).toBe(
+      "The stock is booked, but whether this wine needs research could not be recorded: the item is not an item of this house.",
+    );
+  });
+
+  it("a receipt that moved no bottles (a retry, already booked) queues nothing", async () => {
+    const { db, calls } = makeDb({
+      order: { ...order, quantity_received: 12 },
+      item: { master_wine_id: null, wine_name: "Barolo" },
+    });
+    const r = await new ReceivingService(db).recordDoorReceipt({ ...base, countedQty: 12, countedUom: "bottle" });
+    expect(calls.rpc).toHaveLength(0);
+    expect(r.stockBooked).toBe(true);
+    expect(researchInserts(calls)).toHaveLength(0);
+    expect(r.research).toBeUndefined();
+  });
+
+  it("a movement that failed queues nothing", async () => {
+    const { db, calls } = makeDb({ order, item: { master_wine_id: null, wine_name: "Barolo" }, rpcError: { message: "boom" } });
+    await expect(new ReceivingService(db).recordDoorReceipt({ ...base, countedQty: 12, countedUom: "bottle" })).rejects.toThrow();
+    expect(researchInserts(calls)).toHaveLength(0);
   });
 });
 

@@ -478,6 +478,89 @@ export async function unmapToastItem(
   return response.data;
 }
 
+// ── Auction lot records — an auction lot's own details, kept. Built
+// 2026-09-21 (founder answer 2), closing the gap AuctionLotStart.tsx and
+// inventory.md §9 named 2026-09-06 (ADR 0083). ──────────────────────────────
+
+export interface AuctionLotRecord {
+  id: string;
+  inventoryId: string;
+  auctionHouse: string;
+  /** Optional since 2026-09-21 (founder answer 11): null is "not stated". */
+  lotNumber: string | null;
+  saleDate: string;
+  hammerPrice: number;
+  buyersPremium: number;
+  currency: string;
+  bottles: number;
+  /** The house's currency when recorded; null on a record from before 2026-09-21. */
+  houseCurrency?: string | null;
+  exchangeRate?: number | null;
+  houseUnitCost?: number | null;
+  /** What the book was given per bottle, in houseCurrency; null on an older record. */
+  bookedUnitCost?: number | null;
+  recordedByName: string;
+  createdAt: string;
+}
+
+export interface CreateAuctionLotRecordInput {
+  inventoryId: string;
+  auctionHouse: string;
+  /** null or absent = not stated (optional since 2026-09-21, founder answer 11). */
+  lotNumber?: string | null;
+  saleDate: string;
+  hammerPrice: number;
+  buyersPremium: number;
+  /** ISO-4217, never inferred — exactly what the sheet's currency picker held. */
+  currency: string;
+  bottles: number;
+  /** What the person said one unit of the lot's currency was worth in the house's (founder answer 10). */
+  exchangeRate?: number | null;
+  /** What the person typed as each bottle's cost in the house's currency; wins when present. */
+  houseUnitCost?: number | null;
+  /** The per-bottle cost the bottles were carried in at, in the house's currency. */
+  bookedUnitCost: number;
+}
+
+export async function createAuctionLotRecord(
+  data: CreateAuctionLotRecordInput
+): Promise<AuctionLotRecord> {
+  const response = await apiClient.post<AuctionLotRecord>(
+    `${INVENTORY_PATH}/auction-lots`,
+    data
+  );
+  return response.data;
+}
+
+export async function fetchAuctionLotRecords(inventoryId: string): Promise<AuctionLotRecord[]> {
+  const params = new URLSearchParams({ inventoryId });
+  const response = await apiClient.get<AuctionLotRecord[]>(
+    `${INVENTORY_PATH}/auction-lots?${params.toString()}`
+  );
+  return response.data;
+}
+
+/**
+ * A house item the wine library does not have, and where it stands on the
+ * research queue (founder, 2026-09-21, ADR 0192's amendment). `flag` is set
+ * only for an item whose name cannot identify a wine.
+ */
+export interface HouseItemResearch {
+  inventoryId: string;
+  status: 'queued' | 'matched' | 'not_findable';
+  reason: string;
+  flag: string | null;
+  updatedAt: string;
+  /** True once the enrich chain has been handed this item (founder, 2026-09-22). */
+  researchStarted?: boolean;
+}
+
+/** This house's research rows; the house comes from the sign-in. A failed read throws. */
+export async function fetchHouseItemResearch(): Promise<HouseItemResearch[]> {
+  const response = await apiClient.get<{ items: HouseItemResearch[] }>(`${INVENTORY_PATH}/research`);
+  return response.data.items;
+}
+
 // ==================== Export all functions ====================
 
 export const inventoryApi = {
@@ -497,6 +580,8 @@ export const inventoryApi = {
   mapToastItem,
   bulkMapToastItems,
   unmapToastItem,
+  createAuctionLotRecord,
+  fetchAuctionLotRecords,
 };
 
 export default inventoryApi;

@@ -7,7 +7,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { getItemActivity, recordPour, reconcileItem, transferStock } from '../../../services/api/inventory'
+import { getItemActivity, recordPour, reconcileItem, transferStock, fetchAuctionLotRecords } from '../../../services/api/inventory'
 import { getOrders } from '../../../services/api/orders'
 import type { StorageLocation } from '../../../hooks/useStorageLocations'
 import { useNotificationStore } from '../../../stores'
@@ -21,6 +21,7 @@ import { useMudavymDesign } from '../../../lib/mudavym/useMudavymDesign'
 import { fmtMoneyExact, marketDeltaPct, daysSinceCounted, HoursHeatmap, runwayDays } from './bits'
 import { ReceiptDepth } from './ReceiptDepth'
 import { SpotCountPanel } from './SpotCountPanel'
+import { NameThisWine } from './NameThisWine'
 
 function Card({ title, right, children }: { title: string; right?: React.ReactNode; children: React.ReactNode }) {
   return (
@@ -91,6 +92,15 @@ export function RowExpansion({
     select: (all) => (all || []).filter((o: any) => o.inventoryId === inventoryId).slice(0, 4),
   })
 
+  // An auction lot's own details, kept (founder, 2026-09-21) — see
+  // AuctionLotStart.tsx's header for the full case.
+  const { data: auctionLots = [] } = useQuery({
+    queryKey: ['inventory', 'auction-lots', inventoryId],
+    queryFn: () => fetchAuctionLotRecords(inventoryId),
+    enabled: !!inventoryId,
+    staleTime: 60_000,
+  })
+
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['inventory'] })
   }
@@ -152,6 +162,8 @@ export function RowExpansion({
 
   return (
     <div className="bg-gray-50/70 border-b border-gray-100 px-6 py-4">
+      {/* A wine whose name cannot say which wine it is (founder, 2026-09-21). */}
+      <NameThisWine inventoryId={item.inventoryId} currentName={item.name} />
       {/* info strip */}
       <div className="flex flex-wrap items-center gap-x-6 gap-y-2 pb-3.5 mb-3.5 border-b border-gray-100">
         {[
@@ -304,6 +316,39 @@ export function RowExpansion({
             </div>
           )}
         </Card>
+
+        {/* auction lot records — only when this wine actually has one; most never do */}
+        {auctionLots.length > 0 && (
+          <Card title="Auction lots">
+            {auctionLots.map((lot) => (
+              <div key={lot.id} className="py-1.5 border-t border-gray-50 first:border-t-0 text-xs">
+                <div className="flex items-center gap-2.5">
+                  <span className="font-semibold text-gray-700 truncate">{lot.auctionHouse}</span>
+                  {/* Optional since 2026-09-21 (founder answer 11): not stated is said, not blank. */}
+                  <span className="text-gray-400">{lot.lotNumber ? `lot ${lot.lotNumber}` : 'lot number not stated'}</span>
+                  <span className="flex-1 text-gray-500 truncate text-right">{lot.saleDate}</span>
+                </div>
+                <div className="text-[11px] text-gray-500 mt-0.5">
+                  {lot.hammerPrice} + {lot.buyersPremium} premium {lot.currency}, {lot.bottles} bottles — recorded by {lot.recordedByName}
+                </div>
+                {/* What the book was given, in the house's money (founder answer 10). */}
+                {lot.bookedUnitCost != null && lot.houseCurrency && (
+                  <div className="text-[11px] text-gray-500 mt-0.5" data-testid={`auction-lot-booked-${lot.id}`}>
+                    Booked at {lot.bookedUnitCost} {lot.houseCurrency} a bottle
+                    {lot.houseUnitCost != null
+                      ? ', as typed'
+                      : lot.exchangeRate != null
+                        ? ` (1 ${lot.currency} = ${lot.exchangeRate} ${lot.houseCurrency}, as stated)`
+                        : ''}
+                    {lot.houseUnitCost != null && lot.exchangeRate != null
+                      ? `; rate stated: 1 ${lot.currency} = ${lot.exchangeRate} ${lot.houseCurrency}`
+                      : ''}
+                  </div>
+                )}
+              </div>
+            ))}
+          </Card>
+        )}
 
         {receiptDepthOn && <ReceiptDepth orders={orders} />}
       </div>

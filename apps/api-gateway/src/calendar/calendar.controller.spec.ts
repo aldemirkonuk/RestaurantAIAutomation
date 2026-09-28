@@ -6,6 +6,7 @@ import { CalendarRemindersService } from "./calendar-reminders.service";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { WeatherService } from "../weather/weather.service";
 import { DayRecordService } from "./day-record.service";
+import { CalendarDayNotesService } from "./calendar-day-notes.service";
 import { OrganizationsService } from "../organizations/organizations.service";
 import { CalendarLinksService } from "./calendar-links.service";
 import {
@@ -65,6 +66,13 @@ describe("CalendarController", () => {
           // calendar/day-record.spec.ts; here it only has to resolve.
           provide: DayRecordService,
           useValue: { windowFor: jest.fn() },
+        },
+        {
+          // Day notes (POST/GET /calendar/day-notes), built 2026-09-21.
+          // Specified in calendar-day-notes.service.spec.ts; here it only
+          // has to resolve.
+          provide: CalendarDayNotesService,
+          useValue: { create: jest.fn(), listForDay: jest.fn() },
         },
         {
           // Personal calendar links (ADR 0111, 2026-09-21). Specified in

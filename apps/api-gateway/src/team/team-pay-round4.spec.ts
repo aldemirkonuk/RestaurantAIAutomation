@@ -28,7 +28,7 @@ import { asDatabaseService, makeStubDb, StubDb } from "./testing/supabase-stub";
  *   CR  "Credentials yes, availability no (Recommended)" — a removed person's
  *       credentials are kept (and hidden from team views like their shifts
  *       and leave); availability is not kept (the database's cascade, proved
- *       in migration 20261116000210, not here).
+ *       in migration 20261116110210, not here).
  */
 
 const RID = "restaurant-1";

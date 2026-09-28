@@ -516,7 +516,7 @@ describe("item 71 end to end — ownerMemberIds decides whose pay a pay-access m
 /**
  * The ADR 0090 audit of PR #440 at ea4cc38d0: a co-owner REMOVED by
  * `deleteMember` (both their access row and roster row deleted, not made
- * inactive) keeps their shifts (item 20, migration 20261116000200 dropped the
+ * inactive) keeps their shifts (item 20, migration 20261116110200 dropped the
  * foreign key), but `ownerMemberIds` is a live read and no longer names the
  * gone roster row — so `seesMoneyOf` read the kept shift as a colleague's.
  * The by-id shift routes checked no roster, so a switched-on manager's
