@@ -139,6 +139,18 @@ decided.]** **Open (see Consequences, Open item 4):** what the desk does when on
 more operations than the drawing shows (long line counts, repeated partial receipts, many
 verdict records on one line) — paging or grouping is proposed, not decided. **[answered 2026-09-22 — see Open item 4's bracket.]** **[F7 answered 2026-09-25 — see Open item 4's second bracket: the history is built from the door receipts already recorded; the 2026-09-21 ledger strip stands.]**
 
+**[The deliveries-domain fork (register row 125; the row is filed by the records lane, PR #466,
+and is not on `main` yet, so it is named here by its row number) answered 2026-09-26, founder,
+round 6 (`AskUserQuestion`, session 6c6d8b93). Asked: *"Receiving desk: keep it keyed on purchase
+orders (built), or move it to the separate 'deliveries' model ADR 0104 describes?"* (the question
+ended with the row's id). He chose, verbatim: *"Stay on orders now
+(Recommended) — Works today with real data. Moving to deliveries is its own migration, done when
+deliveries without an order (walk-ins, samples) need handling."* Rejected: *"Move to deliveries
+now — Handles deliveries with no order; delays the desk."* So the desk (Approach 1, PR #480) stays
+keyed on `procurement_orders`, and ADR 0104 D13's `deliveries` spine does not bind `/receiving`
+now. Re-keying is its own later migration, triggered when deliveries with no order (walk-ins,
+samples) need handling. Recorded by lane W4-receiving; the register row is the records lane's.]** **[2026-09-28, PR #480's merge of `main`: #466 has landed, and the row is filed on `main` as OD-125, marked resolved with this answer; founder item 38's record reads *"Receiving stays keyed on procurement_orders (OD-125 resolved: stay on orders now)."*]**
+
 ### 108 — recommendations · A with C's quiet tier, and one more round
 
 > Question round: *"A with C's quiet tier (Recommended)"*. From the same 2026-09-17
@@ -902,3 +914,4 @@ written rule under ADR 0020 before it ships. Open item 8 is closed; ads become o
 | 2026-09-25 | Aldemir (founder, `AskUserQuestion`, session 6c6d8b93) + records lane W1 (Opus 5.5) | Answered — census F7: the receiving history is built from the door receipts already recorded; the 2026-09-21 verdict-ledger strip (`8ea44f527`) stands (§107, Open item 4) |
 | 2026-09-25 | Aldemir (founder, `AskUserQuestion`, session 6c6d8b93, items 24-25) + lane W3-recs (Opus 5.5) | Answered — §108: sketch 122 direction B ("direction B is better"), questions 2-10 all "Recommended" (verbatim options and rejected alternatives in §108's bracket); `/recommendations` joins `LIVE_PAGES` for every house |
 | 2026-09-26 | Aldemir (founder), rounds 5-6 items 36 and 43, as recorded in memory `founder-answers-2026-09-25-web-rebuild.md` (the question-round wording is not in the repo) + Claude (Opus 5.5; lane W4-promos-filters, PR #474) | Answered and built — `/promotions`' house-first ladder (On my menu → Everything I stock → All offers, live counts, box sizes fixed), its facets (vendor, ends soon, search, coarse category, running low over counted stock only), the no-menu banner, bundles tagged n of m, URL state, the 390px apply step, and the tray's first five bottles. See §113's round-6 bracket. |
+| 2026-09-26 | Aldemir (founder, `AskUserQuestion`, session 6c6d8b93, round 6) + lane W4-receiving (Opus 5.5) | Answered — register row 125 (the deliveries-domain fork): the receiving desk stays keyed on purchase orders now (*"Stay on orders now (Recommended)"*); moving to `deliveries` is a later migration (§107 bracket) |

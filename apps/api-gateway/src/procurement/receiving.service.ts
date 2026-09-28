@@ -13,6 +13,32 @@ import { normalizeUom, toBottles, Uom } from "./documents/document-types";
 import { readBookedOrderBottles } from "./booked-order-quantity";
 import { packsAndLoose, readOneShelfReceived, readShelfReceived } from "./shelf-received";
 import { ORDER_UNIT_TYPES } from "./order-units";
+import {
+  LINE_HISTORY_PAGE,
+  formatLineHistoryCursor,
+  lineHistoryCursorFilter,
+  parseLineHistoryCursor,
+  toLineHistoryEntry,
+  type LineHistoryCursor,
+  type LineHistoryEntry,
+} from "./receiving-line-history";
+import type { ShelfReceived } from "./shelf-received";
+
+export interface LineHistoryPage {
+  orderId: string;
+  orderNumber: string | null;
+  /** Newest first, at most LINE_HISTORY_PAGE. */
+  entries: LineHistoryEntry[];
+  /** Every event this line holds; null when the count could not be read. */
+  total: number | null;
+  hasMore: boolean;
+  /** Pass back as `before` for the next, older page; null on the last page. */
+  nextBefore: string | null;
+  recordedByUnavailable: boolean;
+  matchVerifiedAt: string | null;
+  /** The first page only (ADR 0192); null on an older page. */
+  received: ShelfReceived | null;
+}
 
 /**
  * ReceivingService — the door stage of a two-stage delivery.
@@ -712,6 +738,121 @@ export class ReceivingService {
   }
 
   /**
+   * One line's history, newest first, ten at a time — built from the door
+   * receipts already recorded (founder, 2026-09-25, answer 2), never from a
+   * table of its own. See `receiving-line-history.ts` for what each entry is.
+   *
+   * The line must be this house's: an order id from another house answers 404,
+   * exactly like an id that does not exist, so the route cannot be used to
+   * learn that a foreign order exists.
+   *
+   * Every read binds its error (ADR 0051). A failed event read is an error,
+   * never an empty history — "nothing happened to this line" and "the history
+   * could not be read" are opposite facts. A failed NAME read is not fatal: the
+   * entries still stand, `recordedByUnavailable` says the names are missing,
+   * and each `recordedBy` is null rather than a guess.
+   *
+   * `total` is an exact count of the line's events, read beside the page. It is
+   * null when that count could not be read, never 0.
+   *
+   * The received block (ADR 0192: the stock ledger's count, the door's
+   * refusals, the desk's latest verification) rides on the FIRST page only; an
+   * older page is only more entries.
+   */
+  async lineHistory(
+    restaurantId: string,
+    orderId: string,
+    before: string | null,
+  ): Promise<LineHistoryPage> {
+    let cursor: LineHistoryCursor | null = null;
+    if (before !== null) {
+      cursor = parseLineHistoryCursor(before);
+      if (!cursor) throw new BadRequestException("That page marker is not one this history gave out.");
+    }
+
+    const { data: order, error: orderErr } = await this.db
+      .getClient()
+      .from("procurement_orders")
+      .select("id, order_number, inventory_id, provider_id, quantity, bottles_total, unit_type, match_verified_at")
+      .eq("restaurant_id", restaurantId)
+      .eq("id", orderId)
+      .maybeSingle();
+    if (orderErr) throw new Error(`This line could not be read (${orderErr.message}).`);
+    if (!order) throw new NotFoundException("Order not found");
+
+    let q = this.db
+      .getClient()
+      .from("procurement_receipt_events")
+      // A literal, so check_read_columns_exist.py can hold every column to
+      // the schema. Every one is written by the door or the desk.
+      .select(
+        "id, stage, occurred_at, outcome, refusal_reason, counted_qty, counted_uom, counted_qty_bottles, rejected_qty, rejected_qty_bottles, expected_qty_bottles, invoice_qty_bottles, notes, driver_name, signed_by_initials, received_by",
+      )
+      .eq("restaurant_id", restaurantId)
+      .eq("order_id", orderId);
+    if (cursor) q = q.or(lineHistoryCursorFilter(cursor));
+    // One more than a page: its presence is the evidence that an older page
+    // exists, without a second round trip.
+    const { data: rows, error: rowsErr } = await q
+      .order("occurred_at", { ascending: false })
+      .order("id", { ascending: false })
+      .limit(LINE_HISTORY_PAGE + 1);
+    if (rowsErr) throw new Error(`This line's history could not be read (${rowsErr.message}).`);
+
+    const { count, error: countErr } = await this.db
+      .getClient()
+      .from("procurement_receipt_events")
+      .select("id", { count: "exact", head: true })
+      .eq("restaurant_id", restaurantId)
+      .eq("order_id", orderId);
+
+    const all = (rows ?? []) as unknown as Array<Record<string, unknown>>;
+    const page = all.slice(0, LINE_HISTORY_PAGE);
+    const hasMore = all.length > LINE_HISTORY_PAGE;
+
+    const userIds = Array.from(
+      new Set(page.map((r) => r.received_by).filter((v): v is string => typeof v === "string" && v !== "")),
+    );
+    let names = new Map<string, string>();
+    let recordedByUnavailable = false;
+    if (userIds.length > 0) {
+      const { data: people, error: peopleErr } = await this.db
+        .getClient()
+        .from("users")
+        .select("user_id, name")
+        .in("user_id", userIds);
+      if (peopleErr) {
+        recordedByUnavailable = true;
+      } else {
+        names = new Map(
+          (people ?? [])
+            .filter((p: any) => typeof p.name === "string" && p.name.trim() !== "")
+            .map((p: any) => [p.user_id as string, p.name as string]),
+        );
+      }
+    }
+
+    const last = page[page.length - 1];
+    return {
+      orderId: order.id,
+      orderNumber: order.order_number ?? null,
+      entries: page.map((r) => toLineHistoryEntry(r, names)),
+      total: countErr ? null : (count ?? null),
+      hasMore,
+      nextBefore: hasMore && last ? formatLineHistoryCursor(last as { occurred_at: string; id: string }) : null,
+      recordedByUnavailable,
+      // Verified before #436 made a verification write its own event: the
+      // order carries the date, the history has no entry for it. Sent so the
+      // desk can say so instead of implying no one ever checked.
+      matchVerifiedAt: order.match_verified_at ?? null,
+      received:
+        cursor === null
+          ? await readOneShelfReceived(this.db.getClient(), restaurantId, order)
+          : null,
+    };
+  }
+
+  /**
    * Deliveries counted by case and never counted by bottle.
    *
    * This is the whole safety net for booking stock at the door. The approximate
@@ -942,7 +1083,7 @@ export class ReceivingService {
         .getClient()
         .from("procurement_orders")
         .select(
-          "id, order_number, match_status, discrepancy_notes, quantity, unit_type, bottles_total, inventory_id, match_verified_at, provider_id",
+          "id, order_number, match_status, discrepancy_notes, quantity, unit_type, bottles_total, inventory_id, match_verified_at, provider_id, currency",
         )
         .eq("restaurant_id", restaurantId)
         .not("match_status", "is", null)
@@ -971,6 +1112,60 @@ export class ReceivingService {
     // and never moved by a later truck. A failed ledger read reads as
     // unknown on each row it covered, never as zero owed.
     const shelf = await readShelfReceived(this.db.getClient(), restaurantId, (orders ?? []) as any[]);
+
+    // The vendor box (sketch 107, direction A) needs a name to group by — F2 in
+    // 06-pages/receiving.md §15: the old hook read `providerName`, which
+    // `mapOrderRow` never emitted. A failed lookup here is named, not silently
+    // dropped: `providerNamesUnavailable` lets the grid say so instead of
+    // grouping every row under "unknown vendor" as if that were measured.
+    const providerIds = Array.from(
+      new Set((orders ?? []).map((o) => o.provider_id).filter(Boolean)),
+    ) as string[];
+    let providerNameById = new Map<string, string>();
+    let providerNamesUnavailable = false;
+    if (providerIds.length > 0) {
+      const { data: providers, error: providersErr } = await this.db
+        .getClient()
+        .from("providers")
+        .select("id, name")
+        .in("id", providerIds);
+      if (providersErr) {
+        providerNamesUnavailable = true;
+      } else {
+        providerNameById = new Map(
+          (providers ?? []).map((p: any) => [p.id as string, p.name as string]),
+        );
+      }
+    }
+
+    // One row per LINE (sketch 107 Approach 1, 2026-09-22): a line is named
+    // by what was ordered, not only by its order number. Same failure rule
+    // as the vendor names: a failed lookup is said once
+    // (`itemNamesUnavailable`), and each row's name is null, never a guess.
+    const inventoryIds = Array.from(
+      new Set((orders ?? []).map((o) => o.inventory_id).filter(Boolean)),
+    ) as string[];
+    let itemNameById = new Map<string, string>();
+    let itemNamesUnavailable = false;
+    if (inventoryIds.length > 0) {
+      const { data: invRows, error: invErr } = await this.db
+        .getClient()
+        .from("restaurant_inventory")
+        .select("id, wine_name, display_name")
+        .eq("restaurant_id", restaurantId)
+        .in("id", inventoryIds);
+      if (invErr) {
+        itemNamesUnavailable = true;
+      } else {
+        const named = (v: unknown) =>
+          typeof v === "string" && v.trim() !== "" ? v.trim() : null;
+        itemNameById = new Map(
+          (invRows ?? [])
+            .map((r: any) => [r.id as string, named(r.wine_name) ?? named(r.display_name)] as const)
+            .filter((e): e is readonly [string, string] => e[1] !== null),
+        );
+      }
+    }
 
     const creditsByOrder = new Map<string, any[]>();
     for (const c of credits ?? []) {
@@ -1008,6 +1203,17 @@ export class ReceivingService {
         dollarsAtRisk: Math.round(atRisk * 100) / 100,
         selfEvidenced: linked.some((c) => c.self_evidenced),
         openClaims: linked.length,
+        providerId: o.provider_id ?? null,
+        providerName: o.provider_id
+          ? (providerNameById.get(o.provider_id) ?? null)
+          : null,
+        itemName: o.inventory_id
+          ? (itemNameById.get(o.inventory_id) ?? null)
+          : null,
+        // Fixer review, 2026-09-18: a vendor box's subtotal must never sum
+        // across currencies — `procurement_orders.currency` (20260906170000)
+        // lets the client group by it instead of assuming every row is USD.
+        currency: o.currency ?? null,
       };
     });
 
@@ -1019,11 +1225,37 @@ export class ReceivingService {
         Number(b.selfEvidenced) - Number(a.selfEvidenced),
     );
 
+    // Confirmer review, 2026-09-18: this used to be one number summed across
+    // every item's currency (a €40 order added straight into a USD total, so
+    // "AT RISK $711" was not any real amount of any real currency). Grouped
+    // per currency instead — the same rule the vendor boxes already apply to
+    // their own subtotals (RcManagerQueue.tsx groupByVendor) — so the header
+    // never fabricates a cross-currency sum.
+    const byCurrency = new Map<string, number>();
+    for (const i of items) {
+      const ccy = i.currency ?? "";
+      byCurrency.set(
+        ccy,
+        Math.round(((byCurrency.get(ccy) ?? 0) + i.dollarsAtRisk) * 100) / 100,
+      );
+    }
+    const totalAtRiskByCurrency = Array.from(byCurrency, ([currency, amount]) => ({
+      currency: currency || null,
+      amount,
+    }));
+
     return {
       items,
       unverified,
+      // Kept for the legacy /receiving desk (ReceivingHome.tsx), which reads
+      // this as a single USD-formatted number and is retired, not rebuilt
+      // (ADR 0149) — still summed across currencies, exactly as it always
+      // was. The next-gen desk below reads totalAtRiskByCurrency instead.
       totalAtRisk:
         Math.round(items.reduce((n, i) => n + i.dollarsAtRisk, 0) * 100) / 100,
+      totalAtRiskByCurrency,
+      providerNamesUnavailable,
+      itemNamesUnavailable,
     };
   }
 

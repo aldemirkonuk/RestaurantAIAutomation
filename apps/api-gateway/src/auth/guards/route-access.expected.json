@@ -398,6 +398,10 @@
     "manager"
   ],
   "POST /procurement/receiving/orders/:id/door (ReceivingController.door)": "open",
+  "GET /procurement/receiving/orders/:id/history (ReceivingController.lineHistory)": [
+    "owner",
+    "manager"
+  ],
   "GET /procurement/receiving/orders/:id/received (ReceivingController.receivedSoFar)": "open",
   "GET /procurement/receiving/queue (ReceivingController.queue)": [
     "owner",

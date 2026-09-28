@@ -117,6 +117,11 @@ describe("no route's access changed except as decided (ADR 0164)", () => {
     // (sender, book, queued, templates, queue, cancel) is unchanged and
     // stays "open": writing and sending a letter by hand was never gated by
     // ADR 0167, which named only the credit ledger's own four routes.
+    // PR #480 (the receiving desk, merged with this table 2026-09-28) adds one
+    // route to ReceivingController, not a controller: GET
+    // orders/:id/history, a line's history on the desk, with
+    // @Roles("owner", "manager") on the method, the queue's rule (ADR 0167)
+    // applied to the desk's newest route. It admits no admin, like the queue.
     expect(controllersWithRoles()).toEqual([
       "analytics/analytics.controller.ts",
       "ask-ai/ask-ai.controller.ts",
