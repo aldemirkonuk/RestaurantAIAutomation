@@ -61,6 +61,8 @@
  * price.
  */
 
+import { resolveZone, zoneOffsetMs } from "../calendar/zoned-time";
+
 /** The three roles `user_restaurant_access_role_check` allows. */
 export type TeamRole = "owner" | "manager" | "staff";
 
@@ -86,7 +88,28 @@ export type MoneyViewer =
        * a guess about whose it is.
        */
       ownerMembers?: ReadonlySet<string> | null;
+      /**
+       * The days each roster person who is NOT an owner now was one, keyed
+       * by `team_members.id` (founder item 80, 2026-09-28, ADR 0215 question
+       * 8: "Hide owner-period pay (Recommended)"). Derived from the
+       * `member_role_changed` audit rows (`formerOwnerPeriods`). Someone
+       * absent from the map was never an owner here on the record. `null` or
+       * missing = not known, and then every dated shift of every person is
+       * withheld from a non-owner, as with `ownerMembers`.
+       */
+      formerOwnerPeriods?: ReadonlyMap<string, readonly OwnerPeriod[]> | null;
     };
+
+/**
+ * A stretch of house-local calendar days one person held an owner membership
+ * here, inclusive at both ends. `from: null` = since before anything on the
+ * record (they were an owner before any role change was filed); `to: null` =
+ * the end could not be dated, so it is read as not ended.
+ */
+export interface OwnerPeriod {
+  from: string | null;
+  to: string | null;
+}
 
 function viewerRole(v: MoneyViewer): TeamRole {
   return typeof v === "string" ? v : v.role;
@@ -130,6 +153,137 @@ export function seesMoneyOf(
   const owners = typeof viewer === "string" ? null : viewer.ownerMembers;
   if (!owners) return false;
   return !owners.has(memberId);
+}
+
+/**
+ * Whether this viewer sees the cost of ONE shift: `seesMoneyOf` for its
+ * person, and — for a non-owner — not a shift dated inside a stretch that
+ * person was an owner here and is not now. The founder, 2026-09-28 (item 80,
+ * ADR 0215 question 8, residual (t)), verbatim: "Hide owner-period pay
+ * (Recommended)" — shifts dated inside the owner period stay masked from
+ * managers; from the demotion onward their pay is treated like any manager's.
+ * The WAGE on their roster row is not dated and is a manager's now (path (a):
+ * "their wage from the change on is a manager's like any other, and an owner
+ * re-sets it"), so `memberForViewer` keeps using `seesMoneyOf`.
+ *
+ * A former owner's shift with no readable date is withheld: it cannot be
+ * shown to fall outside the owner period. Periods not known withhold.
+ */
+export function seesShiftMoneyOf(
+  viewer: MoneyViewer,
+  memberId: string | null | undefined,
+  shiftDate: string | null | undefined,
+): boolean {
+  if (!seesMoneyOf(viewer, memberId)) return false;
+  if (viewerRole(viewer) === "owner" || !memberId) return true;
+  const periods =
+    typeof viewer === "string" ? null : viewer.formerOwnerPeriods;
+  if (!periods) return false;
+  const mine = periods.get(memberId);
+  if (!mine || mine.length === 0) return true;
+  const day = typeof shiftDate === "string" ? shiftDate.slice(0, 10) : "";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return false;
+  return !mine.some(
+    (p) => (p.from == null || day >= p.from) && (p.to == null || day <= p.to),
+  );
+}
+
+/** One `member_role_changed` audit row, as `formerOwnerPeriods` reads it. */
+export interface RoleChangeRow {
+  /** The person whose role changed: their user id (`recordAccessChange`). */
+  entity_id: string | null;
+  changes: { role?: { from?: string | null; to?: string | null } } | null;
+  created_at: string | null;
+}
+
+const HOUR_MS = 3_600_000;
+
+/**
+ * The house-local calendar day an instant falls on. With no zone stated for
+ * the house (or one this server cannot resolve) the day is not known, so the
+ * widest the day could be is taken, on the side that withholds: the start of a
+ * period is its day at UTC-12 (the earliest any house could call it), the end
+ * its day at UTC+14 (the latest). `null` for an instant that does not parse.
+ */
+export function houseDay(
+  instant: string | null | undefined,
+  zone: string | null | undefined,
+  side: "start" | "end",
+): string | null {
+  const ms = Date.parse(String(instant ?? ""));
+  if (!Number.isFinite(ms)) return null;
+  const tz = resolveZone(zone ?? null);
+  const shift = tz
+    ? zoneOffsetMs(new Date(ms), tz)
+    : side === "start"
+      ? -12 * HOUR_MS
+      : 14 * HOUR_MS;
+  return new Date(ms + shift).toISOString().slice(0, 10);
+}
+
+/**
+ * The owner periods of everyone who is not an owner here now, from the
+ * house's `member_role_changed` audit rows (founder item 80). Per person, in
+ * time order: a change TO owner opens a period on its day; a change FROM owner
+ * closes the open one on its day — the demotion day itself stays inside, since
+ * they were an owner for part of it — or, with no opening change on the
+ * record, closes one that ran from before the record began (`from: null`: an
+ * owner from the start, whose owner-ness no change filed). A closing change
+ * whose time does not parse closes nothing: the period is read as not ended.
+ *
+ * `memberIdsByUser` maps an account to its roster rows here; `currentOwners`
+ * are roster rows that are an owner's now — every figure of theirs is already
+ * the owners' (`seesMoneyOf`), so they get no periods.
+ */
+export function formerOwnerPeriods(
+  rows: readonly RoleChangeRow[],
+  memberIdsByUser: ReadonlyMap<string, readonly string[]>,
+  currentOwners: ReadonlySet<string>,
+  zone: string | null,
+): Map<string, OwnerPeriod[]> {
+  const byUser = new Map<string, RoleChangeRow[]>();
+  for (const r of rows ?? []) {
+    const role = r?.changes?.role;
+    if (!r?.entity_id || !role) continue;
+    if (role.from !== "owner" && role.to !== "owner") continue;
+    if (role.from === role.to) continue;
+    const list = byUser.get(r.entity_id) ?? [];
+    list.push(r);
+    byUser.set(r.entity_id, list);
+  }
+  const out = new Map<string, OwnerPeriod[]>();
+  for (const [userId, changes] of byUser) {
+    const memberIds = (memberIdsByUser.get(userId) ?? []).filter(
+      (id) => !currentOwners.has(id),
+    );
+    if (memberIds.length === 0) continue;
+    // An unparseable time sorts last, so it cannot reorder the dated ones.
+    const at = (r: RoleChangeRow) => {
+      const ms = Date.parse(String(r.created_at ?? ""));
+      return Number.isFinite(ms) ? ms : Number.POSITIVE_INFINITY;
+    };
+    changes.sort((a, b) => at(a) - at(b));
+    const periods: OwnerPeriod[] = [];
+    let open: { from: string | null } | null = null;
+    for (const c of changes) {
+      const role = c.changes!.role!;
+      if (role.to === "owner") {
+        open = { from: houseDay(c.created_at, zone, "start") };
+      } else if (role.from === "owner") {
+        periods.push({
+          from: open ? open.from : null,
+          to: houseDay(c.created_at, zone, "end"),
+        });
+        open = null;
+      }
+    }
+    // Still open: made an owner and not an owner now, with no change on the
+    // record saying when that ended. Not ended, on the side that withholds.
+    if (open) periods.push({ from: open.from, to: null });
+    if (periods.length === 0) continue;
+    for (const id of memberIds) out.set(id, periods);
+  }
+  return out;
 }
 
 /**
@@ -227,7 +381,9 @@ export const OWNER_PAY_WITHHELD = "owner" as const;
  * A shift as this viewer may receive it. The key is REMOVED, not nulled: `null`
  * on `labor_cost` already means "no wage on file", and a withheld figure is not
  * an unknown one. An owner's shift, to a manager with pay access, loses its
- * cost too (`labor_cost / worked hours` IS the owner's wage) and says why.
+ * cost too (`labor_cost / worked hours` IS the owner's wage) and says why —
+ * and so does a shift dated while its person was an owner here, though they
+ * are not one now (founder item 80, `seesShiftMoneyOf`).
  */
 export function shiftForViewer<T extends Record<string, any>>(
   row: T,
@@ -245,7 +401,8 @@ export function shiftForViewer<T extends Record<string, any>>(
     row && typeof row === "object" && !row.member_id && row.labor_cost != null
       ? ({ ...row, labor_cost: null } as T)
       : row;
-  if (seesMoneyOf(viewer, shift?.member_id)) return shift;
+  if (seesShiftMoneyOf(viewer, shift?.member_id, shift?.shift_date))
+    return shift;
   const out = without(shift, SHIFT_MONEY);
   return seesMoney(viewer) && out && typeof out === "object"
     ? ({ ...out, pay_withheld: OWNER_PAY_WITHHELD } as T)

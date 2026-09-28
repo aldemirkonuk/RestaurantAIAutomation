@@ -6,6 +6,12 @@ import {
 import { MembersService } from "../restaurants/members.service";
 import { ScheduleService } from "./schedule.service";
 import { TeamService } from "./team.service";
+import {
+  formerOwnerPeriods,
+  houseDay,
+  seesShiftMoneyOf,
+  shiftForViewer,
+} from "./pay-rules";
 import { asDatabaseService, makeStubDb, StubDb } from "./testing/supabase-stub";
 
 /**
@@ -725,10 +731,21 @@ describe("item 71 + item 20 — a removed owner's kept shift is not reachable by
  * founder" question 8. These cases fail the day it is answered and built —
  * flip them to the answer then, as R6 was flipped for question 7.
  */
-describe("residual (t), pinned as built — an owner demoted to manager in place", () => {
+/**
+ * Residual (t), answered. The founder, 2026-09-28 (item 80, ADR 0215 question
+ * 8), verbatim: "Hide owner-period pay (Recommended)" — when an owner is
+ * demoted to manager in place, shifts dated inside their owner period (read
+ * from the `member_role_changed` audit rows) stay masked from managers, per
+ * row and in the week total; from the demotion onward their pay is treated
+ * like any manager's. Driven through the real `updateMemberRole`, whose audit
+ * row is the one read; only that row's time is pinned, so the week straddles
+ * the demotion.
+ */
+describe("item 80 — an owner demoted to manager in place: owner-period pay stays the owners'", () => {
   const OWNER2 = "user-owner-2";
+  const DEMOTED_AT = "2026-09-08T12:00:00.000Z"; // 15:00 in Istanbul
 
-  async function afterDemotion() {
+  function twoOwners(opts: { zone?: string | null } = {}) {
     const db = house();
     db.tables.user_restaurant_access.push({
       id: "a8",
@@ -745,16 +762,39 @@ describe("residual (t), pinned as built — an owner demoted to manager in place
       name: "Oz",
       email: "oz@example.test",
     });
-    // Before: the owner's pay is withheld from the switched-on manager.
-    const before = await teamOf(db).listMembers(MANAGER, RID);
-    expect("hourly_wage" in by(before, "m-owner")).toBe(false);
-    // The real role change, by the other owner: an ordinary, allowed action.
+    const zone = opts.zone === undefined ? "Europe/Istanbul" : opts.zone;
+    if (zone !== null) db.tables.restaurants[0].timezone = zone;
+    // The owner's week: before, on, and after the day of the demotion.
+    db.tables.shifts.push(
+      shift({ id: "sh-owner-day", member_id: "m-owner", shift_date: "2026-09-08", labor_cost: 300 }),
+      shift({ id: "sh-owner-after", member_id: "m-owner", shift_date: "2026-09-09", labor_cost: 300 }),
+      shift({ id: "sh-owner-late", member_id: "m-owner", shift_date: "2026-09-10", labor_cost: 300 }),
+    );
+    return db;
+  }
+
+  /** The real role change; then its audit row's time is pinned to `at`. */
+  async function changeRole(db: StubDb, to: "manager" | "owner", at: string) {
+    const before = db.tables.system_audit_log.length;
     await new MembersService(asDatabaseService(db)).updateMemberRole(
       OWNER2,
       RID,
       OWNER,
-      "manager",
+      to,
     );
+    const filed = db.tables.system_audit_log.slice(before);
+    expect(filed).toHaveLength(1);
+    expect(filed[0]).toMatchObject({
+      action: "member_role_changed",
+      entity_id: OWNER,
+      restaurant_id: RID,
+    });
+    filed[0].created_at = at;
+  }
+
+  async function afterDemotion(opts: { zone?: string | null } = {}) {
+    const db = twoOwners(opts);
+    await changeRole(db, "manager", DEMOTED_AT);
     expect(
       db.tables.user_restaurant_access.find(
         (a: any) => a.user_id === OWNER && a.restaurant_id === RID,
@@ -763,19 +803,98 @@ describe("residual (t), pinned as built — an owner demoted to manager in place
     return db;
   }
 
-  it("the former owner's wage is shown to a pay-access manager, unmarked", async () => {
+  const costOf = (week: any, id: string) => by(week.shifts, id);
+
+  it("shifts dated inside the owner period are withheld, marked the owner's; later ones carry their cost", async () => {
+    const db = await afterDemotion();
+    const week = await scheduleOf(db).getWeek(MANAGER, RID, WEEK);
+    for (const id of ["sh-owner", "sh-owner-day"]) {
+      expect("labor_cost" in costOf(week, id)).toBe(false);
+      expect(costOf(week, id).pay_withheld).toBe("owner");
+    }
+    for (const id of ["sh-owner-after", "sh-owner-late"]) {
+      expect(costOf(week, id).labor_cost).toBe(300);
+      expect("pay_withheld" in costOf(week, id)).toBe(false);
+    }
+  });
+
+  it("the week total leaves the owner-period shifts out and says how many", async () => {
+    const db = await afterDemotion();
+    const week = await scheduleOf(db).getWeek(MANAGER, RID, WEEK);
+    // staff 150 + dual 187.5 + the two post-demotion shifts at 300.
+    expect(week.labor.totalCost).toBe(937.5);
+    expect(week.labor.ownerShiftsLeftOut).toBe(2);
+    expect(week.labor.pricedShifts).toBe(4);
+  });
+
+  it("the owners still see every figure, the owner-period ones included", async () => {
+    const db = await afterDemotion();
+    const week = await scheduleOf(db).getWeek(OWNER2, RID, WEEK);
+    expect(costOf(week, "sh-owner").labor_cost).toBe(300);
+    expect(costOf(week, "sh-owner-day").labor_cost).toBe(300);
+    expect(week.labor.totalCost).toBe(150 + 187.5 + 4 * 300);
+    expect(week.labor.ownerShiftsLeftOut).toBe(0);
+  });
+
+  it("the wage on their row is a manager's from the demotion on: shown to a pay-access manager, unmarked", async () => {
     const db = await afterDemotion();
     const rows = await teamOf(db).listMembers(MANAGER, RID);
     expect(by(rows, "m-owner").hourly_wage).toBe(40);
     expect("pay_withheld" in by(rows, "m-owner")).toBe(false);
   });
 
-  it("a shift priced while they owned the house carries its cost, and the total holds it", async () => {
+  it("the by-id replies follow the same line: an owner-period shift's PATCH reply has no cost, a later one's has", async () => {
     const db = await afterDemotion();
+    const svc = scheduleOf(db);
+    const inside = await svc.updateShift(MANAGER, RID, "sh-owner", { note: "x" } as any);
+    expect("labor_cost" in inside).toBe(false);
+    expect(inside.pay_withheld).toBe("owner");
+    const after = await svc.updateShift(MANAGER, RID, "sh-owner-after", { note: "x" } as any);
+    expect(after.labor_cost).toBe(300);
+  });
+
+  it("with no clock stated for the house, the demotion day is read at its widest — withholding more, never less", async () => {
+    const db = await afterDemotion({ zone: null });
     const week = await scheduleOf(db).getWeek(MANAGER, RID, WEEK);
-    expect(by(week.shifts, "sh-owner").labor_cost).toBe(300);
-    expect(week.labor.totalCost).toBe(637.5);
-    expect(week.labor.ownerShiftsLeftOut ?? 0).toBe(0);
+    // 12:00 UTC is already 09-09 at UTC+14, so 09-09 stays inside too.
+    for (const id of ["sh-owner", "sh-owner-day", "sh-owner-after"])
+      expect("labor_cost" in costOf(week, id)).toBe(false);
+    expect(costOf(week, "sh-owner-late").labor_cost).toBe(300);
+    expect(week.labor.totalCost).toBe(150 + 187.5 + 300);
+    expect(week.labor.ownerShiftsLeftOut).toBe(3);
+  });
+
+  it("demoted, made an owner again, demoted again: two owner periods, the manager days between them shown", async () => {
+    const db = twoOwners();
+    await changeRole(db, "manager", "2026-09-07T20:00:00.000Z"); // 23:00 on 09-07
+    await changeRole(db, "owner", "2026-09-09T21:30:00.000Z"); // 00:30 on 09-10
+    // While an owner again, every figure of theirs is the owners'.
+    const whileOwner = await scheduleOf(db).getWeek(MANAGER, RID, WEEK);
+    for (const id of ["sh-owner", "sh-owner-day", "sh-owner-after", "sh-owner-late"])
+      expect("labor_cost" in costOf(whileOwner, id)).toBe(false);
+    await changeRole(db, "manager", "2026-09-10T12:00:00.000Z");
+    const week = await scheduleOf(db).getWeek(MANAGER, RID, WEEK);
+    expect("labor_cost" in costOf(week, "sh-owner")).toBe(false); // 09-07, owner
+    expect(costOf(week, "sh-owner-day").labor_cost).toBe(300); // 09-08, manager
+    expect(costOf(week, "sh-owner-after").labor_cost).toBe(300); // 09-09, manager
+    expect("labor_cost" in costOf(week, "sh-owner-late")).toBe(false); // 09-10, owner again
+    expect(week.labor.totalCost).toBe(150 + 187.5 + 600);
+    expect(week.labor.ownerShiftsLeftOut).toBe(2);
+  });
+
+  it("the role changes unreadable: a switched-on manager is shown no pay at all, not a guess", async () => {
+    const db = await afterDemotion();
+    failRead(
+      db,
+      (table, filters) =>
+        table === "system_audit_log" &&
+        filters.some((f: any) => f.column === "action" && f.value === "member_role_changed"),
+    );
+    const week = await scheduleOf(db).getWeek(MANAGER, RID, WEEK);
+    expect(week.labor.moneyVisible).toBe(false);
+    for (const s of week.shifts) expect("labor_cost" in s).toBe(false);
+    const rows = await teamOf(db).listMembers(MANAGER, RID);
+    for (const r of rows) expect("hourly_wage" in r).toBe(false);
   });
 
   it("a manager without pay access still sees none of it", async () => {
@@ -786,5 +905,82 @@ describe("residual (t), pinned as built — an owner demoted to manager in place
     acc.team_pay_access = false;
     const rows = await teamOf(db).listMembers(MANAGER, RID);
     for (const r of rows) expect("hourly_wage" in r).toBe(false);
+    const week = await scheduleOf(db).getWeek(MANAGER, RID, WEEK);
+    for (const s of week.shifts) expect("labor_cost" in s).toBe(false);
+  });
+
+  it("the wage history stays the owner's former-staff history: a switched-on manager is refused it", async () => {
+    const db = await afterDemotion();
+    await expect(
+      teamOf(db).listFormerStaff(MANAGER, RID),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(db.opsOn("team_member_wage_changes")).toHaveLength(0);
+  });
+});
+
+describe("item 80 — the owner-period rule itself", () => {
+  const change = (user: string, from: string, to: string, at: string | null) => ({
+    entity_id: user,
+    changes: { role: { from, to } },
+    created_at: at,
+  });
+  const users = new Map([["u1", ["m1"]]]);
+
+  it("an owner from the start, demoted: one period from before the record to the demotion day", () => {
+    const p = formerOwnerPeriods(
+      [change("u1", "owner", "manager", "2026-09-08T12:00:00Z")],
+      users,
+      new Set(),
+      "Europe/Istanbul",
+    );
+    expect(p.get("m1")).toEqual([{ from: null, to: "2026-09-08" }]);
+  });
+
+  it("a current owner gets no periods (everything of theirs is the owners' already); a non-owner change is ignored", () => {
+    const rows = [
+      change("u1", "owner", "manager", "2026-09-08T12:00:00Z"),
+      change("u1", "manager", "owner", "2026-09-09T12:00:00Z"),
+    ];
+    expect(formerOwnerPeriods(rows, users, new Set(["m1"]), null).size).toBe(0);
+    expect(
+      formerOwnerPeriods([change("u1", "staff", "manager", "2026-09-08T12:00:00Z")], users, new Set(), null).size,
+    ).toBe(0);
+  });
+
+  it("a demotion whose time does not parse is not ended; one made owner and never demoted on the record is open", () => {
+    expect(
+      formerOwnerPeriods([change("u1", "owner", "manager", "not a time")], users, new Set(), null).get("m1"),
+    ).toEqual([{ from: null, to: null }]);
+    expect(
+      formerOwnerPeriods([change("u1", "staff", "owner", "2026-09-08T12:00:00Z")], users, new Set(), "UTC").get("m1"),
+    ).toEqual([{ from: "2026-09-08", to: null }]);
+  });
+
+  it("the day with no zone is the widest: a start at UTC-12, an end at UTC+14", () => {
+    expect(houseDay("2026-09-08T11:00:00Z", null, "start")).toBe("2026-09-07");
+    expect(houseDay("2026-09-08T12:00:00Z", null, "end")).toBe("2026-09-09");
+    expect(houseDay("2026-09-08T22:00:00Z", "Europe/Istanbul", "end")).toBe("2026-09-09");
+    expect(houseDay("garbage", "UTC", "end")).toBeNull();
+  });
+
+  it("a non-owner viewer: inside withheld, outside shown, undated withheld, unknown periods withhold everyone's", () => {
+    const periods = new Map([["m1", [{ from: null, to: "2026-09-08" }]]]);
+    const on = {
+      role: "manager" as const,
+      payAccess: true,
+      ownerMembers: new Set<string>(),
+      formerOwnerPeriods: periods,
+    };
+    expect(seesShiftMoneyOf(on, "m1", "2026-09-08")).toBe(false);
+    expect(seesShiftMoneyOf(on, "m1", "2026-09-09")).toBe(true);
+    expect(seesShiftMoneyOf(on, "m1", null)).toBe(false);
+    expect(seesShiftMoneyOf(on, "m2", "2026-09-01")).toBe(true);
+    expect(seesShiftMoneyOf(on, null, "2026-09-01")).toBe(true);
+    const unknown = { role: "manager" as const, payAccess: true, ownerMembers: new Set<string>() };
+    expect(seesShiftMoneyOf(unknown, "m2", "2026-09-01")).toBe(false);
+    expect(seesShiftMoneyOf("owner", "m1", "2026-09-08")).toBe(true);
+    const row = shiftForViewer({ id: "x", member_id: "m1", shift_date: "2026-09-07", labor_cost: 300 }, on);
+    expect("labor_cost" in row).toBe(false);
+    expect((row as any).pay_withheld).toBe("owner");
   });
 });

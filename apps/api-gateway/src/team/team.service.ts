@@ -16,8 +16,11 @@ import { markMembershipLeft } from "../auth/membership-ended";
 import { recordAccessChange } from "./access-audit";
 import { recordOwnWageChange, type OwnWageReceipt } from "./own-wage-notice";
 import {
+  formerOwnerPeriods,
   LeaveType,
   labourSettingsRefusal,
+  OwnerPeriod,
+  RoleChangeRow,
   memberForViewer,
   onTheRoster,
   seesMoney,
@@ -99,6 +102,7 @@ export class TeamService {
     role: Role;
     payAccess: boolean;
     ownerMembers?: ReadonlySet<string>;
+    formerOwnerPeriods?: ReadonlyMap<string, readonly OwnerPeriod[]>;
   }> {
     let accessRole: string | null = null;
 
@@ -151,7 +155,102 @@ export class TeamService {
     // switch — rather than shown on a guess about whose it is.
     const ownerMembers = await this.ownerMemberIds(restaurantId);
     if (!ownerMembers) return { role, payAccess: false };
-    return { role, payAccess, ownerMembers };
+    // Nor the pay of a shift dated while its person was an owner here, though
+    // they are a manager or staff now (founder item 80, 2026-09-28: "Hide
+    // owner-period pay (Recommended)"). Unreadable, pay is withheld the same
+    // way: a figure is never shown on a guess about whose it was.
+    const periods = await this.formerOwnerPeriodsOf(restaurantId, ownerMembers);
+    if (!periods) return { role, payAccess: false };
+    return { role, payAccess, ownerMembers, formerOwnerPeriods: periods };
+  }
+
+  /**
+   * Who was an owner here and is not now, and on which house-local days
+   * (founder item 80, ADR 0215 question 8, residual (t)). Read from the
+   * house's `member_role_changed` rows in `system_audit_log` — the one record
+   * `MembersService.updateMemberRole` files for a role change, with the
+   * person's user id and `{ role: { from, to } }` — mapped to their roster
+   * rows here, with the day read on the house's stated clock
+   * (`restaurants.timezone`; none stated, or unreadable, is the widest day,
+   * which only withholds more: `houseDay`). `null` when the audit rows or the
+   * roster rows cannot be read; the caller withholds.
+   *
+   * A demotion with no audit row — the write failed after the role changed
+   * (`recordAccessChange` logs it and the change stands), or it was made
+   * outside the gateway — is not seen: that person reads as never having been
+   * an owner. Stated in ADR 0215 residual (t), not guarded.
+   */
+  private async formerOwnerPeriodsOf(
+    restaurantId: string,
+    currentOwners: ReadonlySet<string>,
+  ): Promise<Map<string, OwnerPeriod[]> | null> {
+    const { data: changes, error: changesError } = await this.sb
+      .from("system_audit_log")
+      .select("entity_id, changes, created_at")
+      .eq("restaurant_id", restaurantId)
+      .eq("action", "member_role_changed");
+    if (changesError) {
+      this.logger.warn(
+        `formerOwnerPeriodsOf: could not read the role changes of ` +
+          `${restaurantId}, so pay is withheld from managers: ${changesError.message}`,
+      );
+      return null;
+    }
+    const rows = (changes ?? []) as RoleChangeRow[];
+    const userIds = [
+      ...new Set(
+        rows
+          .filter(
+            (r) =>
+              r?.changes?.role?.from === "owner" ||
+              r?.changes?.role?.to === "owner",
+          )
+          .map((r) => r.entity_id)
+          .filter((id): id is string => !!id),
+      ),
+    ];
+    if (userIds.length === 0) return new Map();
+    const [{ data: members, error: membersError }, { data: house, error: houseError }] =
+      await Promise.all([
+        this.sb
+          .from("team_members")
+          .select("id, user_id")
+          .eq("restaurant_id", restaurantId)
+          .in("user_id", userIds),
+        this.sb
+          .from("restaurants")
+          .select("timezone")
+          .eq("id", restaurantId)
+          .maybeSingle(),
+      ]);
+    if (membersError) {
+      this.logger.warn(
+        `formerOwnerPeriodsOf: could not read the roster rows of former ` +
+          `owners of ${restaurantId}, so pay is withheld from managers: ${membersError.message}`,
+      );
+      return null;
+    }
+    if (houseError) {
+      // Not a reason to withhold everything: with no clock the day is taken
+      // at its widest, which withholds more, never less.
+      this.logger.warn(
+        `formerOwnerPeriodsOf: could not read the time zone of ${restaurantId}; ` +
+          `owner periods are read at their widest: ${houseError.message}`,
+      );
+    }
+    const byUser = new Map<string, string[]>();
+    for (const m of (members ?? []) as any[]) {
+      if (!m?.user_id || !m?.id) continue;
+      const list = byUser.get(m.user_id) ?? [];
+      list.push(m.id);
+      byUser.set(m.user_id, list);
+    }
+    return formerOwnerPeriods(
+      rows,
+      byUser,
+      currentOwners,
+      houseError ? null : (house?.timezone ?? null),
+    );
   }
 
   /**

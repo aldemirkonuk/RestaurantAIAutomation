@@ -20,7 +20,7 @@ import {
   priceShift,
   recordedBreakMinutes,
   seesMoney,
-  seesMoneyOf,
+  seesShiftMoneyOf,
   MoneyViewer,
   shiftForViewer,
   ShiftLike,
@@ -1252,8 +1252,13 @@ export class ScheduleService {
     // other shift's cost beside it, a total that held the owner's would give
     // the owner's figure back by subtraction. The block says how many were
     // left out, so the total is never read as the whole week's.
+    // So are a former owner's shifts dated while they owned the house
+    // (founder item 80, 2026-09-28: "Hide owner-period pay (Recommended)"),
+    // for the same reason: left in, the total would give them back.
     const assignedAll = worked.filter((sh) => !!sh.member_id);
-    const assigned = assignedAll.filter((sh) => seesMoneyOf(viewer, sh.member_id));
+    const assigned = assignedAll.filter((sh) =>
+      seesShiftMoneyOf(viewer, sh.member_id, sh.shift_date),
+    );
     const ownerShiftsLeftOut = assignedAll.length - assigned.length;
     const priced = assigned.filter((sh) => sh.labor_cost != null);
     const unpricedShifts = assigned.length - priced.length;
@@ -1289,7 +1294,9 @@ export class ScheduleService {
       costCovers: "scheduled_shifts",
       /**
        * How many worked shifts are an OWNER's and so not in this viewer's
-       * total (item 71). Always 0 for an owner; a manager's page says it.
+       * total (item 71) — a current owner's, or a former owner's dated
+       * inside their owner period (item 80). Always 0 for an owner; a
+       * manager's page says it.
        */
       ownerShiftsLeftOut,
       leave: await this.leaveThisWeek(restaurantId, weekStart, roster),

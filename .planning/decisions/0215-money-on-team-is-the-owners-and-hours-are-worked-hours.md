@@ -22,7 +22,12 @@
   #440 at `78125580a`: one more question returned, not decided here — does a
   former owner's pay stay the owners' once another owner changes their role
   to manager ("Open, for the founder" question 8, residual (t)). Item 24
-  holds for a current owner membership only.]**
+  holds for a current owner membership only.]** **[2026-09-28, founder item 80: question 8
+  answered, verbatim: "Hide owner-period pay (Recommended)" — a former owner's shifts dated inside
+  their owner period stay the owners', per row and in the week total; from
+  the demotion on their pay is a manager's. Built as item 25; see
+  "Answered, 2026-09-28 (item 80)". Nothing from this record is open for the
+  founder except OD-165 (question 6) and the literal "and off" of item 16.]**
 - **Date:** 2026-09-21 (round 2 answers 2026-09-21; round 6y answers
   2026-09-22; round 4 answers 2026-09-25)
 - **Decider:** Aldemir (founder) — four picks and one answer to five forks
@@ -734,6 +739,56 @@ questions round 2 left open (see "Answered, 2026-09-22 (round 6y)" below):
     pay-access switch. Returned as "Open, for the founder" question 8;
     residual (t); pinned as built. CLAIMS
     `ADR-0215-R6-AN-OWNERS-PAY-IS-THE-OWNERS` narrowed in place.]**
+    **[2026-09-28, founder item 80: the correction above is answered —
+    "Hide owner-period pay (Recommended)". A former owner's owner-period shift is withheld
+    from a manager as a current owner's is; item 25.]**
+25. **A former owner's owner-period pay stays the owners' (founder item 80,
+    2026-09-28, ADR 0215 question 8 / residual (t)), verbatim: "Hide owner-period pay (Recommended)".**
+    When one owner changes another owner's role in place
+    (`restaurants/members.service.ts` `updateMemberRole`), the shifts dated
+    inside that person's owner period stay masked from managers exactly like
+    a current owner's: no `labor_cost` on the row (it carries
+    `pay_withheld: "owner"` instead), and none in the week total, whose
+    `ownerShiftsLeftOut` counts them. From the demotion on, their pay is a
+    manager's like any other. How it is built:
+    - **The owner period is read from the record the role change already
+      files**: `system_audit_log` rows with `action = 'member_role_changed'`
+      and `changes.role.from/to` (`recordAccessChange`, ADR 0088), read by
+      `TeamService.formerOwnerPeriodsOf` for a switched-on manager's viewer
+      and turned into days by `pay-rules.ts` `formerOwnerPeriods`: a change
+      TO owner opens a period on its day, a change FROM owner closes it on
+      its day (inclusive — they were an owner for part of it); with no
+      opening change on the record the period runs from before the record
+      (an owner from the start). Only people who are not an owner now get
+      periods; a current owner's every figure is already the owners'.
+    - **The day is the house's**: the instant is read on
+      `restaurants.timezone` when it names a zone this server resolves. With
+      none stated (the real tenant's today) or an unreadable one, the day is
+      taken at its widest on the side that withholds — a period starts on its
+      day at UTC-12 and ends on its day at UTC+14 (`houseDay`) — so a shift
+      the day after a demotion may stay withheld; it is never shown early.
+    - **One test, every pay read**: `seesShiftMoneyOf(viewer, memberId,
+      shiftDate)` is `seesMoneyOf` plus the period, used by `shiftForViewer`
+      (the `getWeek` rows and every by-id shift reply: `createShift`,
+      `updateShift`, `reportCallout`, `assignCover`) and by `computeLabor`'s
+      manager total. A former owner's shift with no readable date is
+      withheld. An unreadable audit or roster read turns the manager's pay
+      access off for the request, as an unreadable owner set does (item 24).
+    - **The wage**: the roster's `hourly_wage` is not dated, and from the
+      demotion on it is a manager's (path (a), as put to the founder: "their
+      wage from the change on is a manager's like any other, and an owner
+      re-sets it"), so `memberForViewer` and `wageWriteRefusal` still use
+      `seesMoneyOf` and a pay-access manager sees and may set it. Until an
+      owner re-sets it, the figure shown is the one set while they owned the
+      house — path (a)'s stated cost, not a new leak. The wage HISTORY
+      (`team_member_wage_changes`) has one reader, the former-staff history,
+      which is owner-gated (`listFormerStaff`), so no manager reads an
+      owner-period wage change.
+    - **Not seen**: a demotion whose audit row failed to write
+      (`recordAccessChange` logs it and the change stands) or one made
+      outside the gateway; that person reads as never having been an owner.
+      Residual (t)'s remainder, stated, not guarded.
+    CLAIMS `ADR-0215-R7-A-FORMER-OWNERS-OWNER-PERIOD-PAY-IS-THE-OWNERS`.
 
 ## Consequences
 
@@ -847,7 +902,12 @@ questions round 2 left open (see "Answered, 2026-09-22 (round 6y)" below):
   `team-pay-owner-rows.spec.ts`, `describe("residual (t), pinned as built —
   an owner demoted to manager in place")`, 3 cases through the real
   `updateMemberRole`; returned as "Open, for the founder" question 8, not
-  decided here.
+  decided here. **[Answered 2026-09-28, founder item 80, verbatim: "Hide owner-period pay (Recommended)".
+  Built as item 25: the owner-period shifts are withheld per row and in the
+  total, the wage is a manager's from the demotion on. What remains of (t):
+  a demotion with no `member_role_changed` row (its audit write failed, or
+  it was made outside the gateway) is not seen, and until an owner re-sets
+  the wage, the wage shown is the one set while they owned the house.]**
 - **Revisit when** the labour page lands (it will own pay basis and confirmed
   hours), or if a second role is ever meant to see pay.
 
@@ -962,7 +1022,7 @@ round 5 item 32: the own-wage question is answered — allowed, owner notified
    owners see and set an owner's wage. Built as item 24. See "Answered,
    2026-09-27 (item 71)".]**
 
-8. **[Added 2026-09-27, ADR 0090 audit of #440 at `78125580a`; residual
+8. ~~**[Added 2026-09-27, ADR 0090 audit of #440 at `78125580a`; residual
    (t).]** When one owner changes another owner's role to manager, does the
    former owner's pay stay the owners'? As built: no — from that moment a
    pay-access manager sees their wage and the stored cost of every shift
@@ -981,7 +1041,9 @@ round 5 item 32: the own-wage question is answered — allowed, owner notified
    `ownerMemberIds` but hides a working manager's pay for good; (c) is the
    smallest change and closes the path, but takes a power owners have
    today; (d) is no work and leaves the leak. Recommended to the founder:
-   (a). Not filed as an OD row, as question 7 was not.
+   (a). Not filed as an OD row, as question 7 was not.~~
+   **[Answered 2026-09-28, founder item 80, verbatim: "Hide owner-period pay (Recommended)"
+   — path (a). Built as item 25. See "Answered, 2026-09-28 (item 80)".]**
 
 ## Answered, 2026-09-22 (round 6y)
 
@@ -1053,6 +1115,16 @@ settable, even with pay access); only owners see and set an owner's wage —
 stronger than the offered "Refuse it", which named the write alone. Built as
 item 24. Rejected by the answer: (b) allowing it with the owners told; (c)
 keeping it as built.
+
+## Answered, 2026-09-28 (item 80)
+
+Question 8 (residual (t)), put to the founder with the four paths above and
+(a) recommended. His pick, verbatim: **"Hide owner-period pay (Recommended)"** — path
+(a). The founder-answers record reads it as: shifts dated inside the owner
+period (from `member_role_changed` audit rows) stay masked from managers;
+wage from the demotion onward is treated like any manager's. Built as item
+25. Rejected by the pick: (b) once an owner, always the owners'; (c)
+refusing one owner's demotion of another; (d) keeping it as built.
 
 ## Evidence
 
@@ -1366,7 +1438,37 @@ Round 3 Opus last call, 2026-09-22, on the index tree (`wt-labor`):
   wage. 2 of 2 mutations fail it (refusing a demotion of another owner:
   3 cases; the owner set widened to managers: 2 cases). `jest src/team
   src/restaurants` 346 of 346 (14 files); `tsc --noEmit` clean;
-  `check_decision_claims.sh` PASS. Not run: a browser pass.
+  `check_decision_claims.sh` PASS. Not run: a browser pass. **[Superseded 2026-09-28 by
+  item 80: the three pinned-as-built cases are replaced by the answer's;
+  next bullet.]**
+- **Item 80 (2026-09-28).** `team-pay-owner-rows.spec.ts` `describe("item
+  80 — an owner demoted to manager in place ...")`, 10 cases through the
+  real `MembersService.updateMemberRole` (its own `member_role_changed` row
+  is the one read; only that row's time is pinned, 12:00 UTC on 09-08, so
+  the week straddles it), then the real `getWeek`, `listMembers`,
+  `updateShift` and `listFormerStaff`: with the house on Europe/Istanbul the
+  09-07 and 09-08 shifts are withheld and marked the owner's, 09-09 and
+  09-10 carry 300; the manager's total is 937.5 with `ownerShiftsLeftOut:
+  2`, the owner's 1537.5 with 0; the roster wage (40) is shown unmarked;
+  the note-only `PATCH` reply of an owner-period shift has no cost, a later
+  one's has; with no zone stated 09-09 stays withheld too (637.5, 3 left
+  out); demoted, made an owner again and demoted again gives two periods
+  with the manager days between shown; an unreadable audit read shows the
+  manager no pay at all; a switched-off manager sees none; the former-staff
+  history refuses a switched-on manager. Plus 5 cases on the pure rule
+  (`formerOwnerPeriods`, `houseDay`, `seesShiftMoneyOf`). 9 of 9 mutations
+  fail them (the total ignoring the date: 3; the row ignoring the period:
+  5; the periods dropped from the viewer: 5; the demotion day outside: 5;
+  unknown periods failing open: 1; an unreadable audit read failing open:
+  1; no zone read as UTC: 2; a re-promotion not opening a period: 2; an
+  undated shift shown: 1). `jest src/team src/restaurants` 358 of 358 (14
+  files); `tsc --noEmit` clean; `check_decision_claims.sh` PASS, the new
+  CLAIMS row's verify failing each of 12 anchor mutants and the re-pointed
+  item-71 row's each of 11. Confirmed on the same head: the by-id gate
+  (`assertOnTheRoster` on `updateShift`, `deleteShift`, `reportCallout`,
+  `offerCover`, `assignCover` and `reviewTimeOff`) and the
+  `team_member_wage_recorded()` `search_path` pin. Not run: a browser pass;
+  a PGlite pass (no SQL changed).
 
 ## Review trail
 
@@ -1393,3 +1495,4 @@ Round 3 Opus last call, 2026-09-22, on the index tree (`wt-labor`):
 | 2026-09-27 | ADR 0090 audit of #440 at 42c43d1bf (BLOCK; train 7) | Both reviewers confirmed the item-71 wage masking correct and fail-closed; the BLOCK was the PR body alone (it still named the ninth renumber's `20261103110xxx` files as shipped, and carried branch-sync sentences that went stale on the next merge). The body was rewritten to the current state with the six `20261116000xxx` files named once and no branch-sync statement. The security reviewer's gap (no end-to-end test of `ownerMemberIds`) closed with `team-pay-owner-rows.spec.ts` (Evidence, "the owner set end to end"): 15 cases, 8 of 8 mutations killed, 4 of which the earlier 245 cases let through. Nothing was merged or renumbered in this round: `main`'s newest migration, `20261115000000`, sorts before all six. |
 | 2026-09-27 | ADR 0090 audit of #440 at ea4cc38d0 (BLOCK, fix round 1 of 2) | Both reviewers found the same leak: a co-owner REMOVED by `deleteMember` keeps their shifts (item 20), `ownerMemberIds` (a live read) no longer names their gone roster row, and the by-id shift routes checked no roster, so a pay-access manager's note-only `PATCH` answered with the owner's stored cost beside the hours (the wage), and any manager could `DELETE` a record kept five years. Fixed by round 4 item 19's own answer (a removed person's kept rows are owner-only history, hidden from the team views): `TeamService.assertOnTheRoster`, 404 for a kept row on `updateShift`, `deleteShift`, `reportCallout`, `offerCover`, `assignCover` and `reviewTimeOff`, for managers and owners alike; `deleteShift` reads first and says a missing shift or a failed read/delete. Correction brackets on item 24, item 20 and the item-71 evidence (whose "end to end" covered an inactive owner, never a removed one); residual (s) added. 8 new cases through the real `deleteMember`, 11 of 11 mutations killed, `jest src/team` 268/268; new CLAIMS row mutated 9 ways; the owner-set CLAIMS row bracketed. Minor finding fixed too: the wage trigger pins `search_path` (PGlite probe, mutation-checked). |
 | 2026-09-27 | ADR 0090 audit of #440 at 78125580a (BLOCK, fix round 2 of 2) | Both reviewers found an undisclosed path around item 24: one owner changes another owner's role to manager in place (`updateMemberRole`), `ownerMemberIds` reads the current role, and a pay-access manager is shown the former owner's wage and owner-period shift costs, per row and in the week total. Not fixed in code: which part of a former owner's pay stays the owners' is the founder's call (question 8, four paths, (a) recommended). Recorded: residual (t), item 24 correction bracket, Status bracket, CLAIMS `ADR-0215-R6-AN-OWNERS-PAY-IS-THE-OWNERS` narrowed; 3 cases pin it as built through the real `updateMemberRole`, 2 of 2 mutations fail them; `jest src/team src/restaurants` 346/346. |
+| 2026-09-28 | Founder item 80; built on #440 (Opus builder) | Question 8 answered, verbatim: "Hide owner-period pay (Recommended)". Built as item 25: `formerOwnerPeriods` from the house's `member_role_changed` rows, `seesShiftMoneyOf` on every shift reply and the manager total, fail-closed on an unreadable read, the wage a manager's from the demotion on. 15 cases, 9 of 9 mutations killed; `jest src/team src/restaurants` 358/358; new CLAIMS row `ADR-0215-R7-A-FORMER-OWNERS-OWNER-PERIOD-PAY-IS-THE-OWNERS` (12 of 12 anchor mutants fail it); the item-71 row re-pointed. |
