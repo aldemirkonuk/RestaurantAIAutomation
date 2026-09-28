@@ -24,13 +24,15 @@ WHAT IT CHECKS (each line of output is one check)
   token-route each link that carries a secret (/reset-password, /verify-email,
               /invite/*, /studio/invite/*), with and without a trailing slash,
               answers 200 with noindex and nofollow (exactly those two on
-              mudavym.com) and exactly Referrer-Policy: no-referrer. It probes
-              the base host only, not --duplicate-host (ADR 0158, Known limits)
+              mudavym.com) and exactly Referrer-Policy: no-referrer. On the base
+              host, and on --duplicate-host when given (X-Robots-Tag as a
+              superset there; ADR 0158, Known limits)
   vendor      the first published catalogue (if any) serves its title, one
               parseable JSON-LD block and a listing row; a bad slug is 404
   old-host    (--old-host) pages 308 to mudavym.com keeping path and query,
               /api does not redirect
-  duplicate   (--duplicate-host) every response carries X-Robots-Tag noindex
+  duplicate   (--duplicate-host) every response carries X-Robots-Tag noindex,
+              and its token routes are probed like the base host's
 
 Metrics printed for the team's census record: seo.soft_404_rate and
 seo.title_in_source_pct. seo.soft_404_rate only samples unknown FIRST path
@@ -448,6 +450,14 @@ def check_duplicate(c: Census, dup: str) -> None:
         r = fetch(dup.rstrip("/") + path)
         tag = r.headers.get("x-robots-tag", "")
         c.check("duplicate", "noindex" in tag, f"{path}: {r.status} x-robots-tag={tag!r}")
+    # It serves the same shell, so a token link that reaches it needs no-referrer as much as one on
+    # mudavym.com. Its site-wide rule adds a plain noindex beside the token rule's, so X-Robots-Tag
+    # is read as a superset here.
+    dup_census = Census(dup)
+    check_token_routes(dup_census)
+    host = urllib.parse.urlparse(dup).hostname
+    for _, ok, detail in dup_census.results:
+        c.check("token-route", ok, f"[{host}] {detail}")
 
 
 def main() -> int:

@@ -68,6 +68,12 @@ const CANONICAL_HOST = 'mudavym.com';
 // The canonical host, the retired alias, and any other host a deployment answers on.
 const HOSTS = [CANONICAL_HOST, 'restaurant-ai-automation-web.vercel.app', 'preview-abc.vercel.app'];
 
+// The token paths both header guards evaluate: slashless, with a trailing slash (Vercel matches
+// strictly, so /reset-password/ is a different path) and, for the two exact routes, nested.
+const TOKEN_PATHS = TOKEN_PREFIXES.flatMap((p) =>
+  p.endsWith('/') ? [`${p}abc123`, `${p}abc123/`] : [p, `${p}/`, `${p}/abc123`],
+);
+
 /**
  * Does one `has`/`missing` entry hold for a request to `host`? Only host equality is modelled, and
  * only for the hosts in HOSTS: a rule gated on any other host would be skipped for every host this
@@ -85,85 +91,115 @@ function conditionHolds(cond: { type: string; value: unknown }, host: string): b
 }
 
 /**
- * `{` and `}` outside a `(...)` group are path-to-regexp's own group delimiters: Vercel compiles
- * `/{(.*)}` to `^/(.*)$`, while a plain RegExp reads the braces as literal characters.
+ * Why this test cannot read `source` the way Vercel does, or null. Both kinds are thrown on, so a
+ * rule is never passed unexamined.
+ *
+ * Syntax path-to-regexp gives a meaning a plain RegExp does not, which is not modelled here: a `:`
+ * (a named parameter) or a `{` / `}` (its own group: `/{(.*)}` compiles to `^/(.*)$`) outside a
+ * `(...)` group; a modifier right after a group (it applies to the preceding `/` and the group, so
+ * `/(a)?` matches the empty path and not `/`); a character class (path-to-regexp counts the
+ * parentheses inside one).
+ *
+ * Shapes path-to-regexp 6.1.0, the version `@vercel/routing-utils` pins, REFUSES: a modifier that
+ * does not follow a group, a group that starts with `?`, an empty group, a capturing group inside a
+ * group (only `(?...)` may nest), an unclosed `(`. A refused source fails `vercel build`, so nothing
+ * deploys, while every other test here would stay green (found by the merge-train session with
+ * `/legal*`). A stray `)` is a literal to the library, so it is left to `new RegExp`, which rejects it.
+ *
+ * What is read: literal text, and `(...)` groups of plain regular expression with `(?:` and
+ * lookaheads inside. Text outside a group is literal to path-to-regexp, which `sourceToRegExp`
+ * reproduces.
+ *
+ * Compared with path-to-regexp 6.1.0, compiled with Vercel's options (a scratch script, not
+ * committed), in two exhaustive runs over sources that start with `/`: every string of up to 6
+ * characters from `a / . ( ) ? : * | \` (111,111), and up to 5 from those plus `1 + [ ] { } ^ $ - #`
+ * (168,421). In both, no source the library refuses was read silently, no source was called refused
+ * that the library accepts, and on every source read, this test's RegExp and the library's regex
+ * gave the same answer on 19 probe paths. `vercel build` stays the authority (ADR 0158, Known
+ * limits).
  */
-function hasPathToRegexpBraces(source: string): boolean {
-  let depth = 0;
-  for (let i = 0; i < source.length; i += 1) {
-    const ch = source[i];
-    if (ch === '\\') i += 1;
-    else if (ch === '(') depth += 1;
-    else if (ch === ')') depth -= 1;
-    else if ((ch === '{' || ch === '}') && depth === 0) return true;
-  }
-  return false;
-}
-
-/**
- * Why path-to-regexp 6.1.0 (the version `@vercel/routing-utils` pins) would refuse `source`, or
- * null. A refused source fails `vercel build`, so nothing deploys, while every test here would
- * otherwise stay green (found by the merge-train session with `/legal*`). These are its lexer's
- * own rules: a modifier (`*`, `+`, `?`) must directly follow a group's closing `)` at the top
- * level; a group cannot start with `?`, cannot be empty, and cannot hold a capturing group (only
- * `(?...)`); an opening `(` must be closed. A stray `)` at the top level is a literal character to
- * it, so it is not refused (and this test then cannot read it as a regular expression). Checked
- * once (a scratch script, not committed) against path-to-regexp 6.1.0, which decides, compiled
- * with Vercel's options, over 76 sources: nothing this accepts is refused by it and nothing this
- * refuses is accepted, apart from `:name` and `{...}` sources, which are thrown on before this.
- * `vercel build` stays the authority.
- */
-function pathToRegexpRefuses(source: string): string | null {
+function unreadableSource(source: string): string | null {
   let depth = 0;
   let afterGroup = false;
   for (let i = 0; i < source.length; i += 1) {
     const ch = source[i];
     if (ch === '\\') {
+      const next = source[i + 1];
+      if (next === undefined) return 'a trailing backslash is not modelled';
+      if (depth === 0 && /[A-Za-z0-9]/.test(next)) return 'an escaped letter or digit outside a group is not modelled: it is a plain letter to path-to-regexp';
       i += 1;
       afterGroup = false;
     } else if (ch === '(') {
-      if (depth === 0 && source[i + 1] === '?') return 'a group cannot start with ?';
-      if (depth === 0 && source[i + 1] === ')') return 'an empty group';
-      if (depth > 0 && source[i + 1] !== '?') return 'a capturing group inside a group';
+      if (depth === 0 && source[i + 1] === '?') return 'path-to-regexp refuses a group that starts with ?, so vercel build would fail';
+      if (depth === 0 && source[i + 1] === ')') return 'path-to-regexp refuses an empty group, so vercel build would fail';
+      if (depth > 0 && source[i + 1] !== '?') return 'path-to-regexp refuses a capturing group inside a group, so vercel build would fail';
       depth += 1;
       afterGroup = false;
     } else if (ch === ')') {
       // Only a `)` that closes a group can be followed by a modifier; a stray one is a literal.
       afterGroup = depth === 1;
       if (depth > 0) depth -= 1;
+    } else if (ch === '[') {
+      return 'a character class is not modelled: path-to-regexp counts parentheses inside it';
     } else if (depth === 0 && (ch === '*' || ch === '+' || ch === '?')) {
-      if (!afterGroup) return `a modifier ${ch} that does not follow a group`;
-      afterGroup = false;
+      return afterGroup
+        ? `a modifier ${ch} after a group is not modelled: path-to-regexp applies it to the preceding / and the group`
+        : `path-to-regexp refuses a modifier ${ch} that does not follow a group, so vercel build would fail`;
+    } else if (depth === 0 && ch === ':') {
+      return 'a : outside a group is path-to-regexp parameter syntax, which is not modelled';
+    } else if (depth === 0 && (ch === '{' || ch === '}')) {
+      return 'a {...} group is path-to-regexp syntax, which is not modelled';
     } else {
       afterGroup = false;
     }
   }
-  return depth === 0 ? null : 'an unbalanced (';
+  return depth === 0 ? null : 'path-to-regexp refuses an unclosed group, so vercel build would fail';
+}
+
+/**
+ * The RegExp for a source `unreadableSource` accepted. Text outside a `(...)` group is literal to
+ * path-to-regexp (a `.`, `|`, `^`, `$` or stray `)` there matches itself), and inside a group it is
+ * regular expression, so only the outside is escaped.
+ */
+function sourceToRegExp(source: string): RegExp {
+  let depth = 0;
+  let out = '';
+  for (let i = 0; i < source.length; i += 1) {
+    const ch = source[i];
+    if (ch === '\\') {
+      out += ch + source[i + 1];
+      i += 1;
+    } else if (ch === '(') {
+      depth += 1;
+      out += ch;
+    } else if (ch === ')' && depth > 0) {
+      depth -= 1;
+      out += ch;
+    } else {
+      out += depth === 0 && '.|^$)'.includes(ch) ? `\\${ch}` : ch;
+    }
+  }
+  return new RegExp(`^${out}$`);
 }
 
 /**
  * Every value that a `headers` rule of `config` sets for `key` on a request to `pathname` on
- * `host`, in file order. A condition or source this does not model throws rather than pass
- * unexamined: a cookie or query condition, a host outside HOSTS, a `:name` parameter, a `{...}`
- * group, a source path-to-regexp refuses. Sources are read as JavaScript regular expressions,
- * anchored and case-sensitive, which is what Vercel compiles them to for the syntax the repo uses
- * (`strict` and `sensitive` path-to-regexp options, ADR 0158 Known limits); a literal `.` is a
- * literal dot to Vercel and any character here.
+ * `host`, in file order. A condition or source this cannot read the way Vercel does throws rather
+ * than pass unexamined: a cookie or query condition, a host outside HOSTS, or any source
+ * `unreadableSource` names. The rest are read as Vercel compiles them: anchored and case-sensitive
+ * (`strict` and `sensitive` path-to-regexp options, ADR 0158 Known limits), text outside a group
+ * literal, groups as regular expression.
  */
 function headerValuesFor(config: VercelConfig, key: string, pathname: string, host: string): string[] {
   const values: string[] = [];
   for (const rule of config.headers) {
-    // `:name` is path-to-regexp's named parameter; `(?:` is a plain regex group and is fine.
-    if (/(^|[^?]):[A-Za-z_]/.test(rule.source) || hasPathToRegexpBraces(rule.source)) {
-      throw new Error(`crawl-surface: cannot evaluate header source ${rule.source}; extend headerValuesFor()`);
-    }
-    const refused = pathToRegexpRefuses(rule.source);
-    if (refused) {
-      throw new Error(`crawl-surface: cannot evaluate header source ${rule.source}: path-to-regexp refuses it (${refused}), so vercel build would fail`);
+    const unreadable = unreadableSource(rule.source);
+    if (unreadable) {
+      throw new Error(`crawl-surface: cannot evaluate header source ${rule.source}: ${unreadable}`);
     }
     let pattern: RegExp;
     try {
-      pattern = new RegExp(`^${rule.source}$`);
+      pattern = sourceToRegExp(rule.source);
     } catch {
       throw new Error(`crawl-surface: cannot evaluate header source ${rule.source}: not a JavaScript regular expression`);
     }
@@ -249,15 +285,10 @@ describe('apps/web/vercel.json serves every App.tsx route and nothing else', () 
     // set the same key, so this does not lean on order: a rule that matches a token route and
     // sets one of these keys differently fails, before or after the token rule. Give a site-wide
     // Referrer-Policy a source that leaves the token routes out.
-    // Limits (ADR 0158, Known limits): three hosts (a rule gated on another host throws), sources
-    // read as JS regular expressions, and only the paths built below: slashless, with a trailing
-    // slash (Vercel matches strictly, so /reset-password/ is a different path) and, for the two
-    // exact routes, nested.
-    const tokenPaths = TOKEN_PREFIXES.flatMap((p) =>
-      p.endsWith('/') ? [`${p}abc123`, `${p}abc123/`] : [p, `${p}/`, `${p}/abc123`],
-    );
+    // Limits (ADR 0158, Known limits): three hosts (a rule gated on another host throws), and only
+    // the paths in TOKEN_PATHS.
     for (const host of HOSTS) {
-      for (const path of tokenPaths) {
+      for (const path of TOKEN_PATHS) {
         const at = `${host}${path}`;
         expect(new Set(headerValuesFor(web, 'Referrer-Policy', path, host)), `${at} Referrer-Policy`).toEqual(
           new Set(['no-referrer']),
@@ -280,40 +311,80 @@ describe('apps/web/vercel.json serves every App.tsx route and nothing else', () 
       headers: [{ source, headers: [{ key: 'Referrer-Policy', value: 'origin' }] }],
     });
     const values = (source: string, path = '/a') => headerValuesFor(rule(source), 'Referrer-Policy', path, CANONICAL_HOST);
-    for (const source of ['/legal*', '/(.*)/?', '/a(b', '/(?a)', '/()', '/((a)b)', '/a+', '/a?', '/a)*', '/(a)??']) {
-      expect(() => values(source), source).toThrow(/path-to-regexp refuses it/);
+    // path-to-regexp 6.1.0 refuses each of these, so vercel build fails and nothing deploys. The
+    // last is a nested capturing group, the shape that looks like a fix for a `(?:` false alarm.
+    for (const source of [
+      '/legal*',
+      '/(.*)/?',
+      '/a(b',
+      '/(?a)',
+      '/(?:a|b)',
+      '/(?!x).*',
+      '/()',
+      '/((a)b)',
+      '/a+',
+      '/a?',
+      '/a)*',
+      '/((reset-password|verify-email)(/.*)?|invite/.*)',
+    ]) {
+      expect(() => values(source), source).toThrow(/path-to-regexp refuses/);
     }
-    // A stray `)` is a literal to path-to-regexp, so it is not refused, but it is not a regular
-    // expression either: it is reported as unreadable rather than crashing on a SyntaxError.
-    expect(() => values('/a)')).toThrow(/not a JavaScript regular expression/);
-    // The shapes the repo uses, and their neighbours, are accepted.
+    // A group whose contents are not a regular expression is reported, not left to a SyntaxError.
+    expect(() => values('/(*)')).toThrow(/not a JavaScript regular expression/);
+    // The shapes the repo uses, and their neighbours, are read.
     for (const [source, path] of [
       ['/(.*)', '/a'],
-      ['/(a)?', '/a'],
-      ['/(a)*', '/aa'],
+      ['/assets/(.*)', '/assets/x'],
       ['/((?!x/).*)', '/a'],
+      ['/(a|a/.*|b)', '/a/x'],
       ['/((?:a|b)(?:/.*)?|c/.*)', '/a/'],
+      ['/(reset-password|reset-password/.*|verify-email|verify-email/.*|invite/.*)', '/verify-email/'],
       ['/a\\?b', '/a?b'],
+      ['/(a:b)', '/a:b'],
+      ['/(a{2})', '/aa'],
     ]) {
       expect(values(source, path), source).toEqual(['origin']);
     }
   });
 
-  it('the header evaluator refuses a cookie condition, a host outside HOSTS, a :name source or a {...} group', () => {
+  it('text outside a group is literal, as path-to-regexp reads it, so a rule is not matched by a look-alike path', () => {
+    const values = (source: string, path: string) =>
+      headerValuesFor(
+        { rewrites: [], headers: [{ source, headers: [{ key: 'Referrer-Policy', value: 'origin' }] }] },
+        'Referrer-Policy',
+        path,
+        CANONICAL_HOST,
+      );
+    // A `.` outside a group is a dot, not any character; `|`, `^`, `$` and a stray `)` match themselves.
+    expect(values('/index.html', '/index.html')).toEqual(['origin']);
+    expect(values('/index.html', '/indexXhtml')).toEqual([]);
+    expect(values('/a|b', '/a|b')).toEqual(['origin']);
+    expect(values('/a|b', '/a')).toEqual([]);
+    expect(values('/a)', '/a)')).toEqual(['origin']);
+    expect(values('/a$', '/a$')).toEqual(['origin']);
+    // Inside a group it is regular expression: a dot is any character and | is alternation.
+    expect(values('/(a.b|c)', '/aXb')).toEqual(['origin']);
+    expect(values('/(a.b|c)', '/c')).toEqual(['origin']);
+    // An escape of a letter or digit outside a group is a plain letter to path-to-regexp, so it is refused.
+    expect(() => values('/a\\d', '/a1')).toThrow(/not modelled/);
+    expect(() => values('/a\\', '/a')).toThrow(/not modelled/);
+  });
+
+  it('the header evaluator refuses what it cannot read as path-to-regexp does, and a condition it does not model', () => {
     const rule = (extra: Partial<Rule>): VercelConfig => ({
       rewrites: [],
       headers: [{ source: '/(.*)', headers: [{ key: 'Referrer-Policy', value: 'origin' }], ...extra }],
     });
     const values = (extra: Partial<Rule>, path = '/a') => headerValuesFor(rule(extra), 'Referrer-Policy', path, CANONICAL_HOST);
+    // Read differently by path-to-regexp (a named parameter, its own {...} group, a modifier that
+    // applies to the preceding / and the group, a character class), so not modelled.
+    for (const source of ['/:path*', '/:0', '/a:', '/{(.*)}', '/a{b}', '/(a)?', '/(a)*', '/a[b]', '/([)])']) {
+      expect(() => values({ source }), source).toThrow(/not modelled/);
+    }
     expect(() => values({ has: [{ type: 'cookie', value: 'x' }] })).toThrow(/cannot evaluate header condition/);
     expect(() => values({ has: [{ type: 'host', value: { eq: 'www.mudavym.com' } }] })).toThrow(/not in HOSTS/);
     expect(() => values({ missing: [{ type: 'host', value: { eq: 'www.mudavym.com' } }] })).toThrow(/not in HOSTS/);
-    expect(() => values({ source: '/:path*' })).toThrow(/cannot evaluate header source/);
-    expect(() => values({ source: '/{(.*)}' })).toThrow(/cannot evaluate header source/);
-    // A non-capturing group is ordinary regex, not a named parameter; a brace or a quantifier
-    // inside a (...) group is ordinary regex too; a host in HOSTS is evaluated, not refused.
-    expect(values({ source: '/((?:a|b)x)' }, '/ax')).toEqual(['origin']);
-    expect(values({ source: '/(a{2})' }, '/aa')).toEqual(['origin']);
+    // A host in HOSTS is evaluated, not refused.
     expect(values({ has: [{ type: 'host', value: { eq: CANONICAL_HOST } }] })).toEqual(['origin']);
   });
 
@@ -324,9 +395,7 @@ describe('apps/web/vercel.json serves every App.tsx route and nothing else', () 
     // The made-up token differs (abc123 here, zz-census there); the shape of each path must not.
     const shape = (p: string) => p.replace(/abc123|zz-census/, 'TOKEN');
     const censusShapes = [...list.matchAll(/"([^"]+)"/g)].map((m) => shape(m[1])).sort();
-    const guardShapes = TOKEN_PREFIXES.flatMap((p) =>
-      p.endsWith('/') ? [`${p}TOKEN`, `${p}TOKEN/`] : [p, `${p}/`, `${p}/TOKEN`],
-    ).sort();
+    const guardShapes = TOKEN_PATHS.map(shape).sort();
     expect(censusShapes).toEqual(guardShapes);
   });
 
@@ -354,6 +423,24 @@ describe('the shell and the second Vercel project', () => {
     const block = indexHtml.slice(start, end);
     expect(block).toContain('<meta name="robots" content="noindex, nofollow" />');
     expect(block).not.toContain('canonical');
+  });
+
+  it('the repo-root vercel.json gives every token path no-referrer and noindex, nofollow, wherever the rule sits', () => {
+    // The duplicate project has no host conditions. Its site-wide rule adds a plain `noindex` to the
+    // token paths beside the token rule's `noindex, nofollow`, so two X-Robots-Tag values reach
+    // them (which one Vercel sends is not measured): each must say noindex and one must say nofollow.
+    for (const path of TOKEN_PATHS) {
+      expect(new Set(headerValuesFor(root, 'Referrer-Policy', path, CANONICAL_HOST)), `root ${path} Referrer-Policy`).toEqual(
+        new Set(['no-referrer']),
+      );
+      const robots = headerValuesFor(root, 'X-Robots-Tag', path, CANONICAL_HOST);
+      expect(robots.length, `root ${path} X-Robots-Tag is not set`).toBeGreaterThan(0);
+      for (const value of robots) expect(value, `root ${path} X-Robots-Tag`).toMatch(/\bnoindex\b/);
+      expect(
+        robots.some((v) => /\bnofollow\b/.test(v)),
+        `root ${path} X-Robots-Tag never says nofollow`,
+      ).toBe(true);
+    }
   });
 
   it('the repo-root vercel.json (the api-gateway project duplicate) is noindex everywhere and serves the closed shell', () => {

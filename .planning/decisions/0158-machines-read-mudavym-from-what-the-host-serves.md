@@ -199,13 +199,17 @@ by default.**
 5. When `/privacy` or `/login` copy changes, change its registry entry in `routes.ts`.
 6. Security headers for mudavym.com go in `apps/web/vercel.json`, not the repo root. A site-wide
    `Referrer-Policy` rule must not match the token routes: give its `source` the UNNAMED lookahead
-   form `/((?!reset-password|verify-email|invite/|studio/invite/).*)` (the named form
-   `/:path((?!...).*)` is valid on Vercel, but the guard cannot read a `:name` parameter and throws),
-   or leave that key out of it. A site-wide `X-Robots-Tag` rule may reach the token routes only
-   off `mudavym.com`, as the existing missing-host `noindex` rule does; on `mudavym.com` the token
-   rule's value is the only one allowed. `crawl-surface.test.ts` checks ten token paths (each with
-   and without a trailing slash, plus a nested path under the two exact routes) against every
-   header rule of `apps/web/vercel.json` on three hosts, wherever the rule sits; what it does not see is listed under "Known limits",
+   form inside a capture group, `/((?!reset-password|verify-email|invite/|studio/invite/).*)` (the
+   named form `/:path((?!...).*)` is valid on Vercel, but the guard cannot read a `:` outside a group
+   and throws; a top-level `(?!...)` group is refused by path-to-regexp), or leave that key out of
+   it. The lookahead also excludes any path that merely starts with those words
+   (`/reset-passwordx`), which the token rule does not match either: they are not routes (the host
+   answers them 404), so they get no `Referrer-Policy`. A site-wide `X-Robots-Tag` rule may reach
+   the token routes only off `mudavym.com`, as the existing missing-host `noindex` rule does; on
+   `mudavym.com` the token rule's value is the only one allowed. `crawl-surface.test.ts` checks ten
+   token paths (each with and without a trailing slash, plus a nested path under the two exact
+   routes) against every header rule of `apps/web/vercel.json` on three hosts and of the repo-root
+   `vercel.json`, wherever the rule sits; what it does not see is listed under "Known limits",
    overlapping header rules.
 
 ## Known limits, found by two adversarial passes and left as stated
@@ -369,73 +373,89 @@ fixed; the rest are named here rather than silently accepted.
   A typical `strict-origin-when-cross-origin` is far milder than `no-referrer` (it sends only the
   origin across sites); the rule is `no-referrer` because this ADR chose it, not because the
   common alternative leaks a token.
-  What the guard and the census read, and do not (named by the gate's reviewers on #417, then
-  closed or narrowed by the follow-up, 2026-09-21):
-    - **Hosts.** The guard evaluates `mudavym.com`, the retired alias and one preview-shaped host.
-      A rule gated on any other host throws ("not in HOSTS") instead of being skipped; add the
-      host to `HOSTS` to have the rule evaluated.
-    - **Sources.** Rules are read as JavaScript regular expressions, anchored and case-sensitive.
-      `@vercel/routing-utils@6.6.0` compiles a source with
+  What the guard and the census read, and do not (named by the gate's reviewers on #417 and #423,
+  then closed or narrowed, 2026-09-21):
+    - **Hosts.** For `apps/web/vercel.json` the guard evaluates `mudavym.com`, the retired alias and
+      one preview-shaped host. A rule gated on any other host throws ("not in HOSTS") instead of
+      being skipped; add the host to `HOSTS` to have the rule evaluated. The repo-root
+      `vercel.json` has no host conditions and is read for every token path.
+    - **Sources.** `@vercel/routing-utils@6.6.0` compiles a source with
       `pathToRegexp(source, keys, { strict: true, sensitive: true, delimiter: "/" })`
       (`dist/superstatic.js:266-271`; `path-to-regexp@6.1.0` produces the result, `6.3.0` is
-      compiled alongside it and only logged when it differs), so those two options make the reading faithful for the plain group syntax this repo uses:
-      matching is case-sensitive (measured: `/Reset-Password` answers 404 without the token
-      headers) and strict (no optional trailing delimiter). A `:name` parameter, a `{...}` group
-      (`/{(.*)}` compiles to `^/(.*)$`, while a plain RegExp reads the braces literally), a
-      cookie, query, regular-expression or string-valued host condition, and a host outside
-      `HOSTS` all throw, and so does a source path-to-regexp refuses: a bare `*` or a trailing
-      `/?` after a literal (`Unexpected MODIFIER`), an unclosed or empty group, a capturing group
-      inside a group. Such a source fails `vercel build`, so nothing deploys, while every test here
-      would otherwise stay green (found by the merge-train session with `/legal*`). That check was
-      compared once with `path-to-regexp@6.1.0` over 76 sources (a scratch script, not
-      committed); `vercel build` stays the authority, and the Vercel build check on a PR is not one
-      of main's required contexts. One difference remains: a literal `.` outside a group is a literal dot to Vercel and any
-      character to the guard, which errs stricter for a weakening rule and looser for the token
-      rule's own coverage (the token rule has none). A model of Vercel must pass those options: compiling a source
-      with the library's DEFAULT options is wrong twice (case-insensitive, and an optional
-      trailing delimiter, so the old token source would match `/reset-password/` while
-      production does not; two sessions were misled by exactly that).
-    - **Trailing slash (fixed in the source).** `/reset-password/`, `/reset-password/?token=x`
-      and `/verify-email/` answered 200 on production with neither `Referrer-Policy` nor
-      `X-Robots-Tag` (measured 2026-09-21; the HTML `noindex, nofollow` meta was present and the
-      app's emails link the slashless form, `auth.service.ts:980` and `:2145`). The token rule's
-      source, from #385, had no optional trailing slash and Vercel matches strictly. The optional
-      slash now sits inside the capture group. Run through `@vercel/routing-utils@6.6.0`'s
-      `getTransformedRoutes`, the transformer the build uses, the whole file has no error and the
-      token rule compiles to `^(?:/((?:reset-password|verify-email)(?:/.*)?|invite/.*|studio/invite/.*))$`
-      (before: no optional slash). The guard and the census probe each token path
-      with and without a trailing slash, and the resolved CLAIMS row
-      `ADR-0158-TOKEN-ROUTES-MATCH-TRAILING-SLASH` checks the source. Before the change the census
-      failed on exactly the four unmatched samples (measured), so the deployed answer is read by
-      its `token-route` lines. What the gap cost is narrower than a token in the gateway's Referer
-      header. In the production bundle (measured 2026-09-21) the axios clients found in the entry
-      bundle are created with the absolute
-      gateway URL as their base (`baseURL: "https://wineopsapi-gateway-production.up.railway.app"`),
-      the reset-password page posts to that URL explicitly, and the WebSocket goes to the same
-      host, so those requests are cross-origin and the default of current browsers,
-      `strict-origin-when-cross-origin`, sends the gateway only the origin. The one relative
-      `fetch("/api/...")` found (the studio-invite redeem chunk) is on a route the token rule
-      already covered. The full URL, token included, went to same-origin requests only, chiefly
-      the page's own assets. The scan covered the entry bundle and 60 of its lazy chunks, not
-      every chunk. What the gap removed is the `no-referrer` guarantee this ADR states and the
-      header layer of `noindex`; the HTML meta stayed.
+      compiled alongside it and only logged when it differs). Matching is therefore case-sensitive
+      (measured: `/Reset-Password` answers 404 without the token headers) and strict (no optional
+      trailing delimiter). The guard reads a source the same way for what it accepts: anchored,
+      case-sensitive, text outside a `(...)` group literal (a `.`, `|`, `^`, `$` or stray `)` there
+      matches itself), a group's contents regular expression. It throws on the rest, in two kinds.
+      Read differently by path-to-regexp, so not modelled: a `:` (a named parameter) or a `{...}`
+      group outside a group (`/{(.*)}` compiles to `^/(.*)$`), a modifier right after a group
+      (path-to-regexp applies it to the preceding `/` and the group, so `/(a)?` matches the empty
+      path and not `/`), a character class (it counts parentheses inside one), and an escaped
+      letter or digit outside a group. Refused by `path-to-regexp@6.1.0`: a modifier that does not
+      follow a group (a bare `*`, a trailing `/?` after a literal: `Unexpected MODIFIER`), a group
+      that starts with `?` (a top-level `(?!...)`), an empty group, a capturing group inside a
+      group, an unclosed `(`. A refused source fails `vercel build`, so nothing deploys, while every
+      test here would otherwise stay green (found by the merge-train session with `/legal*`); the
+      Vercel build check on a PR is not one of main's required contexts. The reader was compared
+      with the library (a scratch script, not committed) in two exhaustive runs over sources that
+      start with `/`: every string of up to 6 characters from `a / . ( ) ? : * | \` (111,111), and up
+      to 5 from those plus `1 + [ ] { } ^ $ - #` (168,421). In both, it read no source the library
+      refuses silently, called none refused that the library accepts, and on every source it read,
+      its RegExp and the library's regex gave the same answer on 19 probe paths. `vercel build`
+      stays the authority. A model of Vercel must pass the options above: compiling a source with
+      the library's DEFAULT options is wrong twice (case-insensitive, and an optional trailing
+      delimiter, so the old token source would match `/reset-password/` while production does not;
+      two sessions were misled by exactly that).
+    - **Trailing slash (fixed in the source, in both projects).** `/reset-password/`,
+      `/reset-password/?token=x` and `/verify-email/` answered 200 on production with neither
+      `Referrer-Policy` nor `X-Robots-Tag` (measured 2026-09-21; the HTML `noindex, nofollow` meta
+      was present and the app's emails link the slashless form, `auth.service.ts:980` and `:2145`).
+      The token rule's source, from #385, had no optional trailing slash and Vercel matches
+      strictly; #418 copied it into the repo-root `vercel.json`. Both now list the slash forms as
+      alternatives inside the capture group,
+      `/(reset-password|reset-password/.*|verify-email|verify-email/.*|invite/.*|studio/invite/.*)`,
+      flat, because a capturing group inside a group is refused and an equivalent `(?:...)` form
+      tripped #418's colon assertion in `security-headers.test.ts`. Run through
+      `@vercel/routing-utils@6.6.0`'s `getTransformedRoutes`, the transformer the build uses, both
+      files have no error and the rule compiles to
+      `^(?:/(reset-password|reset-password/.*|verify-email|verify-email/.*|invite/.*|studio/invite/.*))$`
+      (before: no slash alternatives). The guard and the census probe each token path (slashless,
+      trailing slash, nested), and the resolved CLAIMS row
+      `ADR-0158-TOKEN-ROUTES-MATCH-TRAILING-SLASH` checks both sources. Before the change the
+      census failed on exactly the four unmatched samples of `mudavym.com` (measured), so the
+      deployed answer is read by its `token-route` lines. What the gap cost is narrower than a
+      token in the gateway's Referer header. In the production bundle (measured 2026-09-21) the
+      axios clients found in the entry bundle are created with the absolute gateway URL as their
+      base (`baseURL: "https://wineopsapi-gateway-production.up.railway.app"`), the reset-password
+      page posts to that URL explicitly, and the WebSocket goes to the same host, so those requests
+      are cross-origin and the default of current browsers, `strict-origin-when-cross-origin`,
+      sends the gateway only the origin. The one relative `fetch("/api/...")` found (the
+      studio-invite redeem chunk) is on a route the token rule already covered. The full URL, token
+      included, went to same-origin requests only, chiefly the page's own assets. The scan covered
+      the entry bundle and 60 of its lazy chunks, not every chunk. What the gap removed is the
+      `no-referrer` guarantee this ADR states and the header layer of `noindex`; the HTML meta
+      stayed.
     - **`X-Robots-Tag` off the canonical host.** On the retired alias and the preview-shaped
       host the guard requires `noindex` in every value and `nofollow` in at least one; only
       `mudavym.com` is held to exactly `noindex, nofollow`. A rule adding `noindex, follow`
       on another host passes, which is low risk because those hosts are already `noindex`.
-    - **What the census reads.** The base host only, not `--duplicate-host`. `X-Robots-Tag` is
-      exact (`noindex` and `nofollow`, nothing else) when the base is `mudavym.com` and a
-      superset elsewhere, where a second rule adds its own `noindex`. `--self-test` drives the
-      check through a local server over 12 answers in both modes, and the resolved CLAIMS row
-      `ADR-0158-TOKEN-ROUTES-ARE-CHECKED-LIVE` runs it, so a gutted predicate or a last-wins
-      header dict fails the build. Nothing in CI probes production: the claims job runs only the
-      offline `--self-test`.
+    - **What the census reads.** `X-Robots-Tag` is exact (`noindex` and `nofollow`, nothing else)
+      when the base is `mudavym.com` and a superset elsewhere, where a second rule adds its own
+      `noindex`. With `--duplicate-host` it probes that host's token routes too (a superset read).
+      `--self-test` drives the check through a local server over 12 answers in both modes, and the
+      resolved CLAIMS row `ADR-0158-TOKEN-ROUTES-ARE-CHECKED-LIVE` runs it, so a gutted predicate
+      or a last-wins header dict fails the build. Nothing in CI probes production: the claims job
+      runs only the offline `--self-test`.
     - **The second Vercel project.** The repo-root `vercel.json` (the api-gateway duplicate,
-      `restaurant-ai-automation-api-gatewa.vercel.app`) answers the token routes with the
-      site-wide `X-Robots-Tag: noindex` only and no `Referrer-Policy` (measured 2026-09-21),
-      which item 10's unconditional wording does not reflect. Another session's PR #418
-      (ADR 0185) adds a token rule to that file; until it lands and is read here, neither the
-      guard (it evaluates `apps/web/vercel.json` only) nor the census (base host only) covers it.
+      `restaurant-ai-automation-api-gatewa.vercel.app`) had no `Referrer-Policy` on the token
+      routes until #418 (ADR 0185, merged 2026-09-21 as `2bf07c6dc`) added a token rule to it, with
+      #385's slashless-only source, which this change fixes too. Two `X-Robots-Tag` values reach
+      those paths there (its site-wide `noindex` and the token rule's `noindex, nofollow`); which
+      one Vercel sends is not measured, and the guard and the census accept either as long as each
+      says `noindex` and one says `nofollow`. When measured (2026-09-21) that project had not
+      deployed #418's merge commit (none was listed for it): the duplicate host answered all ten
+      token samples with `x-robots-tag: noindex` and no `Referrer-Policy`. Once it deploys, one
+      `curl -sI` on a token route there shows which value wins.
 - **The ADR number.** `scripts/check_adr_numbers_unique.py` reports the next free number as
   0150, not 0158, because it sweeps git refs and cannot see an uncommitted file in another
   worktree: ADR 0149 is unpushed in `/Users/aldemirkonuk/Projects/wt-finish` (the main finish
@@ -483,3 +503,4 @@ Vercel API for this team's two projects. Parser behaviour measured locally: Pyth
 | 2026-09-17 | `pr-audit-gate` skill, PR #385 | 3 parallel Opus auditor angles (correctness, CLAUDE.md/ADR compliance, security/blast-radius), each APPROVE WITH NOTES — findings applied: the `ADR_SEO` placeholder, a `CLAIMS.jsonl` UTF-8 re-encode, this ADR's own stale cross-references, a missing `decisions/README.md` row, and the PR description's inaccurate "additive" claim. A mandatory adversarial pass over all three reports then found and OVERTURNED the consensus: robots.txt disallowed its own advertised sitemap (see "Known limits"). Fixed and guarded (a test proven against the exact regression; a census check proven against both the buggy and fixed file as fixtures, catching a bug in the check itself along the way) |
 | 2026-09-21 | Self-review after the merge (session 83e90bf2), ahead of the site-wide security-headers block | The token-route guard was order-blind, and the census had no token-route check. Made the guard order-agnostic and added a live `token-route` census check; both mutation-tested (7 `vercel.json` mutations against old and new guard, 10 census fixtures, a parity mutation, a claim mutation). Production census at `79dfea023`: 28 PASS, 0 FAIL |
 | 2026-09-21 | `pr-audit-gate` skill, PR #417, first head `17a5a3ca8` | Opus planner PLAN: READY; two Sonnet reviewers (correctness and compliance; security and adversarial) APPROVE WITH NOTES; the resumed Opus planner **OVERTURNED**: the sentences the PR had written (cutover item 6 and the `resolved` CLAIMS row) said the guard fails on any disagreeing rule, true only for slashless token paths on three hosts. Both reviewers reproduced a live trailing-slash gap (`/reset-password/` answers with neither header; the HTML `noindex` meta is present). Wording narrowed, the limits recorded under "Known limits", the CLAIMS row's greps hardened against three mutations, and the gap tracked by an `open` CLAIMS row; the code follow-up is a separate PR |
+| 2026-09-21 | `pr-audit-gate` skill, PR #423, first head `07a67bddc` | Opus planner READY; correctness reviewer APPROVE WITH NOTES; security reviewer **BLOCK**: #418 merged while the audit ran, and its guard (`security-headers.test.ts:51`, no colon in any header source) rejected the token source's `(?:`; a clean textual merge, a red composite, measured three times and again here. The fix is a flat alternation with no nested group, since a capturing group inside a group is refused by path-to-regexp; the guard was rebuilt to read what it can and throw on the rest, compared with the library in two exhaustive runs (111,111 and 168,421 sources); the repo-root `vercel.json` got the same fix. Second run to follow on the PR thread |
