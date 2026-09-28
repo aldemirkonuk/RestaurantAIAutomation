@@ -7,6 +7,7 @@ import { BrandMark } from '../components/brand/BrandMark'
 import { PhoneNumberInput } from '../components/ui/PhoneNumberInput'
 import { countryToPhoneDefault, isValidPhone, toE164 } from '../lib/phone'
 import { currencyForCountry, currencyToRecord } from '../lib/currency'
+import { getBrowserTimezone } from '../lib/browserTimezone'
 import { CurrencyStep } from '../components/onboarding/CurrencyStep'
 import { EndpaperShell } from '../components/brand/EndpaperShell'
 import { Button } from '../components/ui'
@@ -1075,7 +1076,9 @@ export function Register() {
         neighborhood: neighborhood || undefined,
         phone: phone ? toE164(phone, countryToPhoneDefault(country)) : undefined,
         cuisineType: cuisineType || undefined,
-        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        // The browser's own zone, or omitted if it will not say (item 62,
+        // 2026-09-27) — never a made-up default. See lib/browserTimezone.ts.
+        timezone: getBrowserTimezone(),
         // Sent only when the currency step produced an answer — the stated
         // default the manager left standing, or the code they picked. Omitted
         // when they chose "not now", and the gateway then writes NULL rather

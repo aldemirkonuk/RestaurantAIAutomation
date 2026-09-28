@@ -76,9 +76,11 @@ import { composerGuardrails, type GuardrailHit } from "./composer-guardrails";
 import { IntegrationsOauthService } from "../../integrations/integrations-oauth.service";
 import type { IntegrationId } from "../../integrations/integrations-oauth.constants";
 import { HouseSenderService } from "./house-sender.service";
+import { composeCreditLetter } from "./credit-letter";
 import {
   addressListHeader,
   base64Body,
+  threadingHeader,
   unstructuredHeader,
 } from "../mime-headers";
 import type {
@@ -114,11 +116,27 @@ export function houseLetterSealArgs(dto: {
 
 /** The lifecycle words this path owns. Chosen so no other cron can claim them. */
 export const LETTER_STATUS = {
+  /**
+   * Written by Mudavym, decided by nobody yet (ADR 0230). A credit claim moved
+   * to `requested` leaves one of these; it becomes QUEUED only when a person
+   * sends it from the composer. No cron selects this word — the dispatcher
+   * reads QUEUED alone — so a draft cannot leave on its own.
+   */
+  DRAFT: "HOUSE_DRAFT",
   QUEUED: "HOUSE_QUEUED",
   CANCELLED: "HOUSE_CANCELLED",
   FAILED: "HOUSE_FAILED",
   SENT: "SENT",
 } as const;
+
+const OWNER_MANAGER_ROLES = new Set(["owner", "manager"]);
+
+/** The role ADR 0167 already admits to a credit claim's own figures. */
+function isOwnerOrManager(role: string | null | undefined): boolean {
+  return (
+    typeof role === "string" && OWNER_MANAGER_ROLES.has(role.toLowerCase())
+  );
+}
 
 /**
  * `processScheduledAutoSends` in `procurement.service.ts` selects on the literal
@@ -153,6 +171,23 @@ export const LETTER_TEMPLATE_TYPE = "letter";
 
 export type { GuardrailHit } from "./composer-guardrails";
 
+/** A claim's letter, as the credits lane shows it (ADR 0230). */
+export interface CreditLetterRef {
+  id: string;
+  status: string;
+  to: string | null;
+  sentAt: string | null;
+  createdAt: string | null;
+}
+
+/** What asking a vendor for a credit did to the letter book (ADR 0230). */
+export interface CreditLetter {
+  state: "drafted" | "drafted_no_address" | "no_vendor" | "existing" | "failed";
+  id: string | null;
+  to: string | null;
+  says: string;
+}
+
 export interface BookEntry {
   providerId: string;
   providerName: string;
@@ -160,7 +195,6 @@ export interface BookEntry {
   email: string;
   source: "provider" | "contact";
 }
-
 
 @Injectable()
 export class HouseLettersService {
@@ -566,6 +600,8 @@ export class HouseLettersService {
     dto: QueueLetterDto;
     /** The seal minted by `issueQueueSeal` at the start of the hold. */
     challenge?: string | null;
+    /** The caller's role in this house (ADR 0162). See the R1b check below. */
+    role?: string | null;
   }): Promise<{
     id: string;
     status: string;
@@ -591,6 +627,41 @@ export class HouseLettersService {
     const standing = await gates.authority.assertMaySend(userId, restaurantId, "send this letter", {
       canAsk: true,
     });
+
+    // ── 0a. a letter sent FROM a draft must still be that house's draft ────
+    // Sending a draft is the approval (ADR 0230). It is refused when the row is
+    // not a draft any more (already sent, discarded, or another tab sent it),
+    // so one draft can never leave twice.
+    const draft = dto.draftId
+      ? await this.readDraft(restaurantId, dto.draftId)
+      : null;
+
+    // ── 0b. a credit claim's draft is owner/manager territory ──────────────
+    // ADR 0167 already refuses staff `POST /procurement/credits/:id/transition`
+    // — the move that drafts this letter in the first place — the same
+    // claimed dollar amount, reason and invoice/order numbers this draft's
+    // body carries. Completing that same claim by sending its letter through
+    // THIS route is the same act with a different door, and must answer the
+    // same way (PR #476 audit round 2, R1b: staff could read a manager's
+    // draft id via the ungated `/conversations` routes, then `queue()` it
+    // under their own subject/body to hijack and send a credit letter as the
+    // house). A letter with no `draftId`, or one that answers no claim, is
+    // unaffected — "writing and sending a letter by hand" stays open to every
+    // role, exactly as ADR 0230's reconciliation with ADR 0167 intended.
+    // [#436 merging main ef8ecdf30, 2026-09-27: on #436 "every role" reads
+    // "everyone step 0 admits" — an owner, a manager or a grantee (ADR 0175
+    // D10); a staff member without a grant asks instead. This check runs after
+    // WHO, so a grant to send never opens a credit claim's letter to staff.]
+    if (draft?.creditId && !isOwnerOrManager(params.role)) {
+      throw new ForbiddenException(
+        "This draft answers a credit claim. Only an owner or manager may send it, the same rule the claim's own ledger already enforces. Nothing was queued and nothing was sent.",
+      );
+    }
+    if (draft && draft.providerId !== dto.providerId) {
+      throw new UnprocessableEntityException(
+        "That draft was written to a different vendor. Nothing was queued and nothing was sent.",
+      );
+    }
 
     // A release of a staff member's request names it (founder answer 3). The
     // request must be this house's, waiting, and to the same vendor: a
@@ -698,44 +769,71 @@ export class HouseLettersService {
     const now = Date.now();
     const dispatchAt = new Date(now + (identity.undoMs ?? 0)).toISOString();
 
-    const { data, error } = await this.db.client
-      .from("procurement_conversations")
-      .insert({
-        order_id: dto.orderId ?? null,
-        restaurant_id: restaurantId,
-        provider_id: dto.providerId,
-        direction: "outbound",
-        channel: "email",
-        content: dto.body,
-        message_text: dto.body,
-        ai_generated: false,
-        status: LETTER_STATUS.QUEUED,
-        scheduled_send_at: dispatchAt,
-        outbound_email_type: "HOUSE_LETTER",
-        round_count: (priorOutbound ?? 0) + 1,
-        inserted_insights: verified.length > 0 ? verified : null,
-        // Who released it, and under which grant (ADR 0175 D9/D10).
-        sent_by_user_id: userId,
-        sent_under_grant_id: standing.basis === "grant" ? standing.grant.id : null,
-        email_headers: {
-          subject: dto.subject,
-          to: match.email,
-          sender_address: identity.address,
-          sender_kind: identity.kind,
-          written_by: userId,
-          template_id: dto.templateId ?? null,
-          // The staff request this release took, by its id, on the letter
-          // itself: a pull-back finds the request from here even when the
-          // best-effort `linkConversation` below did not land (founder,
-          // 2026-09-21: "undo re-waits"). [Last call, 2026-09-21: that request
-          // was found only through the link, so a failed link left it
-          // released, silently, after its letter was pulled back.]
-          request_id: claimed && dto.requestId ? dto.requestId : null,
-        },
-      })
-      .select("id")
-      .single();
+    const letter = {
+      order_id: dto.orderId ?? draft?.orderId ?? null,
+      restaurant_id: restaurantId,
+      provider_id: dto.providerId,
+      direction: "outbound",
+      channel: "email",
+      content: dto.body,
+      message_text: dto.body,
+      ai_generated: false,
+      status: LETTER_STATUS.QUEUED,
+      scheduled_send_at: dispatchAt,
+      outbound_email_type: "HOUSE_LETTER",
+      round_count: (priorOutbound ?? 0) + 1,
+      inserted_insights: verified.length > 0 ? verified : null,
+      // Who released it, and under which grant (ADR 0175 D9/D10).
+      sent_by_user_id: userId,
+      sent_under_grant_id: standing.basis === "grant" ? standing.grant.id : null,
+      email_headers: {
+        subject: dto.subject,
+        to: match.email,
+        sender_address: identity.address,
+        sender_kind: identity.kind,
+        written_by: userId,
+        template_id: dto.templateId ?? null,
+        // The staff request this release took, by its id, on the letter
+        // itself: a pull-back finds the request from here even when the
+        // best-effort `linkConversation` below did not land (founder,
+        // 2026-09-21: "undo re-waits"). [Last call, 2026-09-21: that request
+        // was found only through the link, so a failed link left it
+        // released, silently, after its letter was pulled back.]
+        request_id: claimed && dto.requestId ? dto.requestId : null,
+        // The claim this letter asks about stays on the row once it is sent,
+        // so the credit can still name its letter (ADR 0230).
+        ...(draft?.creditId ? { credit_id: draft.creditId } : {}),
+        ...(draft ? { drafted_by: draft.draftedBy } : {}),
+      },
+    };
 
+    // From a draft, the draft row BECOMES the letter — conditional on it still
+    // being a draft, so a second send of the same draft finds nothing to claim.
+    const { data, error } = draft
+      ? await this.db.client
+          .from("procurement_conversations")
+          .update(letter)
+          .eq("id", draft.id)
+          .eq("restaurant_id", restaurantId)
+          .eq("status", LETTER_STATUS.DRAFT)
+          .select("id")
+          .maybeSingle()
+      : await this.db.client
+          .from("procurement_conversations")
+          .insert(letter)
+          .select("id")
+          .single();
+
+    if (draft && !error && !data) {
+      // A release that took a staff request gives it back here too: no letter
+      // was queued, so the request is still asking (#436 merging main, 2026-09-27).
+      if (claimed && dto.requestId && this.requests) {
+        await this.requests.unclaim(restaurantId, dto.requestId, userId);
+      }
+      throw new ConflictException(
+        "That draft is no longer a draft — it was sent or discarded while this letter was open. Nothing was queued and nothing was sent.",
+      );
+    }
     if (error || !data) {
       if (claimed && dto.requestId && this.requests) {
         await this.requests.unclaim(restaurantId, dto.requestId, userId);
@@ -782,12 +880,22 @@ export class HouseLettersService {
    * cancelled; a row past its window is refused rather than marked cancelled,
    * because the dispatcher may already hold it and "cancelled" would then be a
    * claim about a letter that went.
+   *
+   * Author-only (founder, 2026-09-18, ADR 0149 row 43 — "only author is the
+   * best option"; answers this ADR's own open question 4, "should a queued
+   * letter be visible to the whole house, or only its author?"): the row's
+   * own `email_headers.written_by` is who queued it, and only that person may
+   * pull it back. A pooled inbox other owners could also cancel from was
+   * raised in the same answer and recorded as a direction, not built — see
+   * `.planning/06-pages/communications.md`'s relay section.
    */
   async cancel(params: {
     restaurantId: string;
-    id: string;
     /** Who pulled it back — named on the staff request it re-opens, if any. */
-    userId?: string | null;
+    userId: string;
+    id: string;
+    /** The caller's role in this house (ADR 0162). See the R1b check below. */
+    role?: string | null;
   }): Promise<{ id: string; status: string; says: string; requestWaitsAgain?: boolean }> {
     const { data, error } = await this.db.client
       .from("procurement_conversations")
@@ -804,6 +912,23 @@ export class HouseLettersService {
     if (!data) throw new NotFoundException("No such letter in this house.");
 
     const row = data as unknown as Record<string, unknown>;
+    const headers = (row.email_headers ?? {}) as Record<string, unknown>;
+
+    // Same ADR 0167 reconciliation as `queue()` above: a queued letter that
+    // answers a credit claim (`email_headers.credit_id`) is owner/manager
+    // territory, pulling it back included. A letter with no claim behind it
+    // is unaffected (PR #476 audit round 2, R1b).
+    if (headers.credit_id && !isOwnerOrManager(params.role)) {
+      throw new ForbiddenException(
+        "This letter answers a credit claim. Only an owner or manager may pull it back, the same rule the claim's own ledger already enforces. It is still queued.",
+      );
+    }
+    const writtenBy = (headers.written_by as string | null) ?? null;
+    if (writtenBy !== params.userId) {
+      throw new ForbiddenException(
+        "Only the person who wrote this letter can pull it back. Ask them to cancel it, or let it go and follow up once it has left.",
+      );
+    }
     if (String(row.status) !== LETTER_STATUS.QUEUED) {
       throw new ConflictException(
         `That letter is "${String(row.status)}", not queued, so it was not cancelled. Only a letter still inside its window can be pulled back.`,
@@ -818,6 +943,13 @@ export class HouseLettersService {
       );
     }
 
+    // `.select("id")` so a letter `dispatchDue` claimed between the read
+    // above and this update — QUEUED -> SENDING, the same race
+    // `RelayEmailService.cancelQueued` guards against on its own queue — is
+    // not silently reported as pulled back. Zero rows means the guard
+    // (`status = QUEUED`) matched nothing, which the read above cannot rule
+    // out: it is a snapshot, not a lock. (Wave5 confirmer residual: this
+    // mirrors relay's own B1 fix one-for-one.)
     const { data: cancelled, error: updateError } = await this.db.client
       .from("procurement_conversations")
       .update({ status: LETTER_STATUS.CANCELLED, scheduled_send_at: null })
@@ -836,7 +968,7 @@ export class HouseLettersService {
     // "pulled back" then would be a claim about a letter that may have gone.
     if (!Array.isArray(cancelled) || cancelled.length === 0) {
       throw new ConflictException(
-        "That letter left the queue a moment ago (the dispatcher may hold it), so it was NOT cancelled. The conversation book will say what happened to it.",
+        "That letter was claimed by the dispatcher the instant before this reached it, so it was NOT cancelled. The conversation book will say what happened to it.",
       );
     }
 
@@ -850,8 +982,8 @@ export class HouseLettersService {
     let requestWaitsAgain = false;
     let requestNote = "";
     // The request this letter's release took, as the letter records it (null
-    // for a letter queued before the id was stamped, or one no request asked for).
-    const headers = (row.email_headers ?? {}) as Record<string, unknown>;
+    // for a letter queued before the id was stamped, or one no request asked for);
+    // `headers` is the row's, read above for the credit-claim check.
     const stampedRequestId =
       typeof headers.request_id === "string" && headers.request_id.trim() ? headers.request_id.trim() : null;
     if (this.requests) {
@@ -933,6 +1065,385 @@ export class HouseLettersService {
         dispatchAt: (row.scheduled_send_at as string | null) ?? null,
       };
     });
+  }
+
+  // ==========================================================================
+  // Drafts — letters Mudavym wrote and nobody has sent (ADR 0230)
+  // ==========================================================================
+
+  /** One draft of this house, or a refusal that says why it is not one. */
+  private async readDraft(
+    restaurantId: string,
+    id: string,
+  ): Promise<{
+    id: string;
+    providerId: string;
+    orderId: string | null;
+    creditId: string | null;
+    draftedBy: string | null;
+  }> {
+    const { data, error } = await this.db.client
+      .from("procurement_conversations")
+      .select("id, status, provider_id, order_id, email_headers")
+      .eq("id", id)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (error) {
+      throw new BadRequestException(
+        `The draft could not be read (${error.message}). Nothing was queued and nothing was sent.`,
+      );
+    }
+    if (!data) throw new NotFoundException("No such draft in this house.");
+    const row = data as unknown as Record<string, unknown>;
+    if (String(row.status) !== LETTER_STATUS.DRAFT) {
+      throw new ConflictException(
+        `That letter is "${String(row.status)}", not a draft, so it was not sent again. Nothing was queued.`,
+      );
+    }
+    const headers = (row.email_headers ?? {}) as Record<string, unknown>;
+    return {
+      id: String(row.id),
+      providerId: String(row.provider_id),
+      orderId: (row.order_id as string | null) ?? null,
+      creditId: (headers.credit_id as string | null) ?? null,
+      draftedBy: (headers.drafted_by as string | null) ?? null,
+    };
+  }
+
+  /** Every unsent draft of this house, newest first. */
+  async drafts(restaurantId: string) {
+    const { data, error } = await this.db.client
+      .from("procurement_conversations")
+      .select(
+        "id, provider_id, order_id, email_headers, message_text, created_at, providers!left(name)",
+      )
+      .eq("restaurant_id", restaurantId)
+      .eq("status", LETTER_STATUS.DRAFT)
+      .order("created_at", { ascending: false })
+      .limit(50);
+    if (error) {
+      throw new BadRequestException(
+        `The drafts could not be read (${error.message}).`,
+      );
+    }
+    return (data ?? []).map((r) => {
+      const row = r as unknown as Record<string, unknown>;
+      const headers = (row.email_headers ?? {}) as Record<string, unknown>;
+      const provider = row.providers as { name?: string } | null;
+      return {
+        id: String(row.id),
+        providerId: String(row.provider_id),
+        providerName: provider?.name ?? null,
+        orderId: (row.order_id as string | null) ?? null,
+        subject: (headers.subject as string | null) ?? null,
+        to: (headers.to as string | null) ?? null,
+        category: (headers.category as string | null) ?? null,
+        creditId: (headers.credit_id as string | null) ?? null,
+        body: String(row.message_text ?? ""),
+        createdAt: (row.created_at as string | null) ?? null,
+      };
+    });
+  }
+
+  /**
+   * Throw a draft away. The row stays, as HOUSE_CANCELLED — "we drafted this
+   * and killed it" is part of the record with a vendor, the same as a queued
+   * letter pulled back.
+   */
+  async discardDraft(params: {
+    restaurantId: string;
+    id: string;
+  }): Promise<{ id: string; status: string; says: string }> {
+    await this.readDraft(params.restaurantId, params.id);
+    const { data, error } = await this.db.client
+      .from("procurement_conversations")
+      .update({ status: LETTER_STATUS.CANCELLED })
+      .eq("id", params.id)
+      .eq("restaurant_id", params.restaurantId)
+      .eq("status", LETTER_STATUS.DRAFT)
+      .select("id")
+      .maybeSingle();
+    if (error) {
+      throw new BadRequestException(
+        `The draft was NOT discarded (${error.message}). It is still a draft.`,
+      );
+    }
+    if (!data) {
+      throw new ConflictException(
+        "That draft stopped being a draft before it could be discarded — it may have been sent. The conversation book says what happened to it.",
+      );
+    }
+    return {
+      id: params.id,
+      status: LETTER_STATUS.CANCELLED,
+      says: "Discarded. It was never sent, and the book keeps it as cancelled rather than deleting it.",
+    };
+  }
+
+  /**
+   * Draft the letter that asks a vendor for a credit (founder, 2026-09-25,
+   * round 5; ADR 0230). Called when a claim moves to `requested`.
+   *
+   * It DRAFTS. It never queues and never sends: the row is HOUSE_DRAFT, which
+   * no cron reads, and it leaves only when a person sends it from the composer
+   * through `queue()` — every refusal there (book, guardrails, sender, grant,
+   * undo window) applies to it exactly as to a letter typed by hand.
+   *
+   * The honest outcomes, each its own state rather than one "failed":
+   *   drafted             — a draft addressed to the vendor's booked address
+   *   drafted_no_address  — a draft kept, but the vendor has no address in the
+   *                         book (or the book could not be read), so it cannot
+   *                         go until one is added
+   *   no_vendor           — the claim names no vendor; there is nobody to write
+   *                         to, and no row is written
+   *   existing            — this claim already has an unsent draft; that one is
+   *                         returned, so asking twice never makes two
+   */
+  async draftForCredit(params: {
+    restaurantId: string;
+    userId: string;
+    creditId: string;
+  }): Promise<CreditLetter> {
+    const { restaurantId, creditId } = params;
+    const userId = assertNamedActor(params.userId, "drafted");
+
+    const { data: credit, error: creditError } = await this.db.client
+      .from("procurement_credits")
+      .select(
+        "id, provider_id, order_id, document_id, reason, summary, claimed_amount, claimed_qty, currency, opened_at",
+      )
+      .eq("id", creditId)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (creditError) {
+      throw new BadRequestException(
+        `The claim could not be read (${creditError.message}), so no letter was drafted.`,
+      );
+    }
+    if (!credit) throw new NotFoundException("No such claim in this house.");
+    const c = credit as unknown as Record<string, unknown>;
+
+    const providerId = (c.provider_id as string | null) ?? null;
+    if (!providerId) {
+      return {
+        state: "no_vendor",
+        id: null,
+        to: null,
+        says: "This claim names no vendor, so there is nobody to write to and no letter was drafted. Ask the vendor yourself; the claim still records that it was asked for.",
+      };
+    }
+
+    const existing = await this.lettersForCredits(restaurantId, [creditId]);
+    const open = existing.byCredit[creditId]?.find(
+      (l) => l.status === LETTER_STATUS.DRAFT,
+    );
+    if (open) {
+      return {
+        state: "existing",
+        id: open.id,
+        to: open.to,
+        says: "This claim already has a drafted letter that has not been sent. That draft is the one to open — no second one was made.",
+      };
+    }
+
+    const [vendor, order, invoice] = await Promise.all([
+      this.db.client
+        .from("providers")
+        .select("name")
+        .eq("id", providerId)
+        .eq("restaurant_id", restaurantId)
+        .maybeSingle(),
+      c.order_id
+        ? this.db.client
+            .from("procurement_orders")
+            .select("order_number")
+            .eq("id", String(c.order_id))
+            .eq("restaurant_id", restaurantId)
+            .maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
+      c.document_id
+        ? this.db.client
+            .from("procurement_documents")
+            .select("doc_number")
+            .eq("id", String(c.document_id))
+            .eq("restaurant_id", restaurantId)
+            .maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
+    ]);
+
+    let to: string | null = null;
+    let bookRead = true;
+    try {
+      const book = await this.book(restaurantId);
+      to = book.find((e) => e.providerId === providerId)?.email ?? null;
+    } catch {
+      bookRead = false;
+    }
+
+    const letter = composeCreditLetter({
+      reason: (c.reason as string | null) ?? null,
+      summary: (c.summary as string | null) ?? null,
+      claimedAmount: Number(c.claimed_amount ?? 0),
+      currency: (c.currency as string | null) ?? null,
+      claimedQty: c.claimed_qty == null ? null : Number(c.claimed_qty),
+      openedAt: (c.opened_at as string | null) ?? null,
+      vendorName:
+        ((vendor.data as Record<string, unknown> | null)?.name as
+          | string
+          | null) ?? null,
+      orderNumber:
+        ((order.data as Record<string, unknown> | null)?.order_number as
+          | string
+          | null) ?? null,
+      invoiceNumber:
+        ((invoice.data as Record<string, unknown> | null)?.doc_number as
+          | string
+          | null) ?? null,
+    });
+
+    const { data, error } = await this.db.client
+      .from("procurement_conversations")
+      .insert({
+        order_id: (c.order_id as string | null) ?? null,
+        restaurant_id: restaurantId,
+        provider_id: providerId,
+        direction: "outbound",
+        channel: "email",
+        content: letter.body,
+        message_text: letter.body,
+        ai_generated: false,
+        status: LETTER_STATUS.DRAFT,
+        scheduled_send_at: null,
+        outbound_email_type: "HOUSE_LETTER",
+        email_headers: {
+          subject: letter.subject,
+          to,
+          category: letter.category,
+          credit_id: creditId,
+          drafted_by: userId,
+        },
+      })
+      .select("id")
+      .single();
+    if (error || !data) {
+      throw new BadRequestException(
+        `The letter was NOT drafted — the conversation book refused the row (${error?.message ?? "no row returned"}). The claim still records that it was asked for.`,
+      );
+    }
+    const id = String((data as Record<string, unknown>).id);
+
+    // ── close the TOCTOU race, after the fact (audit round 1, R5, low severity) ──
+    // The "no open draft" check above and this insert are two round trips, so
+    // two concurrent `→ requested` (or `request-letter`) calls on the same
+    // claim can both pass the check and both insert — there is no unique
+    // constraint on (restaurant, credit_id, DRAFT) to stop it. Rather than add
+    // one (a migration, on a table many lanes touch, for a low-severity race),
+    // this re-reads every open draft for the claim right after inserting and
+    // keeps exactly one: the OLDEST by created_at (ties broken by id, so the
+    // order is total and every racer agrees on the same winner without
+    // coordinating). Every other one — including this call's own row, if it
+    // lost — is cancelled immediately, before it is ever shown to anyone.
+    // Double-SEND is a separate, already-closed door: `queue()`'s
+    // status-guarded UPDATE only ever promotes one draft, whichever survives
+    // here.
+    const afterInsert = await this.lettersForCredits(restaurantId, [creditId]);
+    const openAfterInsert = (afterInsert.byCredit[creditId] ?? []).filter(
+      (l) => l.status === LETTER_STATUS.DRAFT,
+    );
+    if (openAfterInsert.length > 1) {
+      const [canonical] = [...openAfterInsert].sort(
+        (a, b) =>
+          (a.createdAt ?? "").localeCompare(b.createdAt ?? "") ||
+          a.id.localeCompare(b.id),
+      );
+      for (const dup of openAfterInsert) {
+        if (dup.id === canonical.id) continue;
+        await this.db.client
+          .from("procurement_conversations")
+          .update({ status: LETTER_STATUS.CANCELLED })
+          .eq("id", dup.id)
+          .eq("restaurant_id", restaurantId)
+          .eq("status", LETTER_STATUS.DRAFT);
+      }
+      if (canonical.id !== id) {
+        return {
+          state: "existing",
+          id: canonical.id,
+          to: canonical.to,
+          says: "This claim already has a drafted letter that has not been sent (a concurrent request drafted it first). That draft is the one to open — no second one was kept.",
+        };
+      }
+    }
+
+    if (!to) {
+      return {
+        state: "drafted_no_address",
+        id,
+        to: null,
+        says: bookRead
+          ? "Drafted, not sent. This vendor has no address in the house's book, so the letter cannot go until one is added to the vendor."
+          : "Drafted, not sent. The vendor book could not be read, so the letter has no recipient yet — open it in Communications to choose one.",
+      };
+    }
+    return {
+      state: "drafted",
+      id,
+      to,
+      says: `Drafted to ${to}, not sent. It waits in Communications until someone here sends it.`,
+    };
+  }
+
+  /**
+   * The house letters that belong to each claim, newest first — the credit's
+   * link to its draft, and what became of it after. A failed read throws: a
+   * claim shown with no letter because the read failed would say "nothing was
+   * drafted" about a draft that exists.
+   *
+   * `capped` (PR #476 audit round 1, R4): the read stops at 500 rows across
+   * the WHOLE batch of `creditIds`, not per claim, and the window is not
+   * registered anywhere else. Once a house's letters for these claims exceed
+   * it, the oldest ones fall out of `data`, and a claim whose only letter fell
+   * out would otherwise get `[]` here — indistinguishable from a claim that
+   * was never asked for. The caller (`credits.controller.ts`) reads `capped`
+   * and renders a claim ABSENT from `byCredit` as unknown, never as none,
+   * whenever this is true; a claim present in `byCredit` is unaffected — its
+   * letter survived the window, so it is known regardless. Registered as
+   * `RECEIPTS_SERVER_WINDOWS.CREDIT_LETTERS` in `useReceiptsNextData.ts`, so
+   * `scripts/check_windowed_figures.py` proves the 500 below still matches.
+   */
+  async lettersForCredits(
+    restaurantId: string,
+    creditIds: string[],
+  ): Promise<{ byCredit: Record<string, CreditLetterRef[]>; capped: boolean }> {
+    const byCredit: Record<string, CreditLetterRef[]> = {};
+    if (creditIds.length === 0) return { byCredit, capped: false };
+    const { data, error } = await this.db.client
+      .from("procurement_conversations")
+      .select("id, status, email_headers, sent_at, created_at")
+      .eq("restaurant_id", restaurantId)
+      .eq("outbound_email_type", "HOUSE_LETTER")
+      .in("email_headers->>credit_id", creditIds)
+      .order("created_at", { ascending: false })
+      .limit(500);
+    if (error) {
+      throw new BadRequestException(
+        `The claims' letters could not be read (${error.message}).`,
+      );
+    }
+    const rows = (data ?? []) as unknown as Record<string, unknown>[];
+    for (const r of rows) {
+      const headers = (r.email_headers ?? {}) as Record<string, unknown>;
+      const creditId = headers.credit_id as string | undefined;
+      if (!creditId) continue;
+      (byCredit[creditId] ??= []).push({
+        id: String(r.id),
+        status: String(r.status ?? ""),
+        to: (headers.to as string | null) ?? null,
+        sentAt: (r.sent_at as string | null) ?? null,
+        createdAt: (r.created_at as string | null) ?? null,
+      });
+    }
+    return { byCredit, capped: rows.length >= 500 };
   }
 
   // ==========================================================================
@@ -1082,6 +1593,12 @@ export class HouseLettersService {
    * A send that fails is recorded as failed, in words. It is never left as
    * QUEUED (the next run would try again forever and the page would show a
    * letter perpetually about to leave) and never marked SENT.
+   *
+   * A queue that cannot be READ throws. It does not return the zero-shape:
+   * `{ considered: 0, sent: 0, ... }` is what a quiet minute looks like, and a
+   * database outage that reported it would read as "nothing was due" for as
+   * long as the outage lasted, on the one surface (`lastRun`) that exists to
+   * say whether letters can still leave. ADR 0161.
    */
   async dispatchDue(nowMs = Date.now()): Promise<{
     considered: number;
@@ -1106,10 +1623,10 @@ export class HouseLettersService {
       .limit(50);
 
     if (error) {
-      this.logger.error(
+      // The cron logs this and records it as `lastRun().error`.
+      throw new Error(
         `letter dispatch could not read the queue: ${error.message}`,
       );
-      return { considered: 0, sent: 0, failed: 0, skipped: 0, rewaited };
     }
 
     const rows = (data ?? []) as unknown as Record<string, unknown>[];
@@ -1285,14 +1802,32 @@ export class HouseLettersService {
   // helpers
   // ==========================================================================
 
+  /**
+   * How many outbound messages this order has already had — the round count
+   * the composer's guardrail and `round_count` read.
+   *
+   * A `HOUSE_DRAFT` nobody has decided has not reached the vendor, and a
+   * `HOUSE_CANCELLED` one never will (PR #476 audit round 1, R2): before this
+   * fix, discarding a draft still left it counted, so the composer told a
+   * human "this is message 4 on this order" about a conversation that had
+   * only had three. Both statuses are excluded here; every other status this
+   * table holds — `HOUSE_QUEUED`, `SENT`, `HOUSE_FAILED`, and every AI-path
+   * value outside the `LETTER_STATUS` enum — is a round that did, or at least
+   * tried to, leave, and still counts.
+   */
   private async countOutboundOnOrder(orderId: string): Promise<number> {
     const { data, error } = await this.db.client
       .from("procurement_conversations")
-      .select("id")
+      .select("id, status")
       .eq("order_id", orderId)
       .eq("direction", "outbound");
     if (error) return 0;
-    return (data ?? []).length;
+    return (data ?? []).filter((r) => {
+      const status = String((r as Record<string, unknown>).status ?? "");
+      return (
+        status !== LETTER_STATUS.DRAFT && status !== LETTER_STATUS.CANCELLED
+      );
+    }).length;
   }
 
   /**
@@ -1353,8 +1888,6 @@ export function sameAddress(a: string, b: string): boolean {
   return a.trim().toLowerCase() === b.trim().toLowerCase();
 }
 
-
-
 /** The merge fields a template body actually declares, in order of appearance. */
 export function mergeFieldsIn(
   body: string,
@@ -1388,14 +1921,39 @@ export function mergeFieldsIn(
  * shared with every other house. A bearer token from the house's own grant is
  * the whole point.
  *
+ * `to` stays a single string for the composer's own caller (`dispatchDue`,
+ * above); `cc`/`bcc`/`replyTo`/`threadId`/`inReplyTo`/`references` are new
+ * (ADR 0149 #19's person door, relay-email.service.ts) and all optional, so
+ * the composer's call is unchanged.
+ *
+ * NO HEADER VALUE CAN START A NEW HEADER. This function has no DTO in front
+ * of it the way `GmailService.createMimeMessage` has (`SINGLE_HEADER_LINE`,
+ * communication.dto.ts): a letter's `subject` comes from
+ * `email_headers.subject` on a queued row, and `to`/`cc`/`bcc`/`replyTo`/
+ * `inReplyTo`/`references` reach it from the relay's person door. A subject
+ * of `"hi\r\nBcc: someone@elsewhere"` once added a header nothing here checked
+ * (found 2026-09-17, adversarial review of the relay lane). Every header now
+ * goes through mime-headers.ts (ADR 0172), the same encoder GmailService
+ * uses: free text collapses CR/LF and is RFC 2047 encoded, an address with a
+ * control character inside it is REFUSED (throws `MimeHeaderError` before any
+ * fetch, so nothing is sent), and the threading values are rebuilt from their
+ * `<msg-id>` tokens. The relay lane's own CR/LF stripper was retired for it
+ * when main's encoder landed (2026-09-21), so there is one rule, not two.
+ *
  * Exported so the spec can prove the request shape without a network.
  */
 export async function sendThroughGrant(params: {
   token: string;
   from: string;
-  to: string;
+  to: string | string[];
+  cc?: string[];
+  bcc?: string[];
   subject: string;
   text: string;
+  replyTo?: string;
+  threadId?: string;
+  inReplyTo?: string;
+  references?: string;
   fetchImpl?: typeof fetch;
 }): Promise<string | null> {
   // `From` is emitted only when we actually know the address. The `gmail_send`
@@ -1408,11 +1966,24 @@ export async function sendThroughGrant(params: {
   // Headers go through mime-headers.ts (ADR 0172): a Turkish subject is RFC
   // 2047 encoded rather than sent as raw bytes, a line break in the subject
   // cannot start a new header, and the body is base64 under its UTF-8 charset.
+  // The person door's cc/bcc/reply-to and threading go through the same
+  // encoder (see the doc comment above); a threading value with no usable
+  // <msg-id> writes no header, and the reply is still sent.
   const from = params.from.trim();
+  const to = Array.isArray(params.to) ? params.to : [params.to];
+  const inReplyTo = threadingHeader("In-Reply-To", params.inReplyTo);
+  const references = threadingHeader("References", params.references);
   const mime = [
     ...(from ? [addressListHeader("From", [from])] : []),
-    addressListHeader("To", [params.to]),
+    addressListHeader("To", to),
+    ...(params.cc?.length ? [addressListHeader("Cc", params.cc)] : []),
+    ...(params.bcc?.length ? [addressListHeader("Bcc", params.bcc)] : []),
     unstructuredHeader("Subject", params.subject),
+    ...(params.replyTo
+      ? [addressListHeader("Reply-To", [params.replyTo])]
+      : []),
+    ...(inReplyTo ? [inReplyTo] : []),
+    ...(references ? [references] : []),
     "MIME-Version: 1.0",
     'Content-Type: text/plain; charset="UTF-8"',
     "Content-Transfer-Encoding: base64",
@@ -1429,7 +2000,10 @@ export async function sendThroughGrant(params: {
         Authorization: `Bearer ${params.token}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ raw: Buffer.from(mime).toString("base64url") }),
+      body: JSON.stringify({
+        raw: Buffer.from(mime).toString("base64url"),
+        ...(params.threadId ? { threadId: params.threadId } : {}),
+      }),
     },
   );
 

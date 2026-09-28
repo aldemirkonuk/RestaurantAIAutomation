@@ -9,7 +9,7 @@ import {
   AuthShell,
 } from "@/components/auth/AuthShell";
 import { haptic } from "@/design/haptics";
-import { useSession } from "@/state/session";
+import { requestThenAdopt, useSession } from "@/state/session";
 import { verifyTokenFromPaste } from "@/auth/deepLink";
 import {
   authErrorMessage,
@@ -71,16 +71,13 @@ export default function VerifyEmailScreen() {
       setBusy(true);
       setError(null);
       try {
-        const result = await verifyEmail(candidate);
         // verify-email returns a fresh pair; adopting it is what turns an
-        // unverified session into a usable one without a second sign-in.
-        if (result.accessToken) {
-          await useSession
-            .getState()
-            .adoptTokens(result.accessToken, result.refreshToken);
-        } else {
-          await refreshUser();
-        }
+        // unverified session into a usable one without a second sign-in. A
+        // sign-out pressed while this was in flight wins: the pair is dropped
+        // and nothing more happens here.
+        const { outcome } = await requestThenAdopt(() => verifyEmail(candidate));
+        if (outcome === "superseded") return;
+        if (outcome === "noTokens") await refreshUser();
         haptic.confirm();
         const progress = await fetchOnboardingProgress().catch(() => null);
         router.replace(routeAfterVerification(progress) as never);

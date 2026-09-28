@@ -229,7 +229,7 @@ export function LetterRequestsPanel({
               {r.payload.body ?? ''}
             </p>
             {(r.undoneCount ?? 0) > 0 && (
-              <p data-testid="letter-request-undone" style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--ink-3, #7C7365)' }}>
+              <p data-testid="letter-request-undone" style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--ink-4, #665D50)' }}>
                 It was released and then pulled back before it left, so it is waiting again. Nothing was sent.
               </p>
             )}
@@ -250,7 +250,7 @@ export function LetterRequestsPanel({
                 />
               </div>
             ) : (
-              <p style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--ink-3, #7C7365)' }}>
+              <p style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--ink-4, #665D50)' }}>
                 Waiting for an owner or a manager. Nothing has been sent.
               </p>
             )}

@@ -124,7 +124,7 @@ export function handOf(ruleKey: string, category: string): Hand {
     dead_stock_capital: { href: `/promotions?${q}`, label: 'Create the promo', where: 'Promotions' },
     plowhorse_repricing: { href: `/reports?${q}`, label: 'Open the menu report', where: 'Reports' },
     puzzle_activation: { href: `/promotions?${q}`, label: 'Feature by-the-glass', where: 'Promotions' },
-    vendor_concentration: { href: `/providers?${q}`, label: 'Compare vendors', where: 'Providers' },
+    vendor_concentration: { href: `/vendors?${q}`, label: 'Compare vendors', where: 'Vendors' },
     revenue_concentration: { href: `/inventory?${q}`, label: 'Protect top sellers', where: 'Inventory' },
     spend_acceleration: { href: `/orders?${q}`, label: 'Audit open orders', where: 'Orders' },
     pairing_promotion: { href: `/promotions?${q}`, label: 'Promote the pairing', where: 'Promotions' },
@@ -346,6 +346,8 @@ export function receiptFor(
     snoozeUntil?: string | null;
   },
   watching: boolean,
+  /** A *Brief the floor* entry — its "acted" is the briefing (sketch 122 Q7). */
+  briefing = false,
 ): string[] {
   const lines: string[] = [];
   if (e.status === 'snoozed') {
@@ -353,7 +355,11 @@ export function receiptFor(
   } else if (e.status === 'done') {
     lines.push('Sealed as ruled off. No outcome is measured yet — 094c’s roadmap.');
   } else if (e.acted) {
-    lines.push('Recorded as acted. Still standing — acting does not remove it from the book.');
+    lines.push(
+      briefing
+        ? 'Marked as briefed. Still standing — briefing does not remove it from the book.'
+        : 'Recorded as acted. Still standing — acting does not remove it from the book.',
+    );
   }
   if (watching) lines.push('Watched by a goal.');
   if (e.pinned) {

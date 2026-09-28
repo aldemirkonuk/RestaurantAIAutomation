@@ -154,7 +154,7 @@ const legend: React.CSSProperties = {
   fontWeight: 600,
   letterSpacing: '0.11em',
   textTransform: 'uppercase',
-  color: 'var(--ink-3, #7C7365)',
+  color: 'var(--ink-4, #665D50)',
   marginBottom: 3,
 };
 
@@ -373,7 +373,7 @@ export function DraftedReplyPanel({
       closeLabel="Leave it waiting"
       footer={
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <span style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-3, #7C7365)' }}>
+          <span style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-4, #665D50)' }}>
             {/* Scoped to this letter (lane E audit D8): a house with the
                 autonomy switch on still auto-sends replies with no hold
                 (processScheduledAutoSends), so the claim cannot be made for
@@ -408,11 +408,11 @@ export function DraftedReplyPanel({
           </span>{' '}
           — the house is {kindWords(reply.emailType)}.
         </p>
-        <p style={{ margin: '3px 0 0', fontSize: 11.5, color: 'var(--ink-3, #7C7365)' }} data-testid="draft-to">
+        <p style={{ margin: '3px 0 0', fontSize: 11.5, color: 'var(--ink-4, #665D50)' }} data-testid="draft-to">
           To {reply.providerName ?? 'the vendor'}
           {reply.providerEmail ? ` · ${reply.providerEmail}` : ' · no address on file'}
         </p>
-        <p style={{ margin: '2px 0 0', fontSize: 11.5, color: 'var(--ink-3, #7C7365)' }} data-testid="draft-subject">
+        <p style={{ margin: '2px 0 0', fontSize: 11.5, color: 'var(--ink-4, #665D50)' }} data-testid="draft-subject">
           Subject: {reply.subject}
         </p>
 
@@ -433,7 +433,7 @@ export function DraftedReplyPanel({
                 }}
               >
                 {w.message}{' '}
-                <span style={{ fontFamily: MONO, fontSize: 9.5, color: 'var(--ink-3, #7C7365)' }}>
+                <span style={{ fontFamily: MONO, fontSize: 9.5, color: 'var(--ink-4, #665D50)' }}>
                   rule {w.code}
                   {w.severity ? ` · ${w.severity}` : ''}
                 </span>
@@ -459,7 +459,7 @@ export function DraftedReplyPanel({
             // Grey while they are the engine's words; ink once a person has
             // taken them. A draft never looks sent, and the hand that wrote it
             // stays visible until a person changes it.
-            color: edited ? 'var(--ink-1, #211C16)' : 'var(--ink-3, #7C7365)',
+            color: edited ? 'var(--ink-1, #211C16)' : 'var(--ink-4, #665D50)',
           }}
         />
         {empty && (
@@ -575,7 +575,7 @@ export function DraftedReplyPanel({
             error={standingQuery.isError ? getErrorMessage(standingQuery.error) : null}
             testId="draft-standing"
           />
-          <p style={{ margin: '5px 0 0', fontSize: 11, color: 'var(--ink-3, #7C7365)' }}>
+          <p style={{ margin: '5px 0 0', fontSize: 11, color: 'var(--ink-4, #665D50)' }}>
             {!reply.providerEmail
               ? 'No address is on file for this vendor, so there is nowhere to send it. Nothing can be held.'
               : act === 'ask'

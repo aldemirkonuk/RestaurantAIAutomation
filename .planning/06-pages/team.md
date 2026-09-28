@@ -389,9 +389,9 @@ nothing in the repository writes), :516 (`restaurants/members`), :87 (`calendar`
 | POST/PATCH/DELETE | `…/shifts` (+ `/callout`, `/offer-cover`, `/assign`) | `team.ts:206-228` |
 | GET/POST/PATCH/DELETE | `…/certifications` | OpsRulesPanel → `team.ts:231-245` |
 | GET/POST/PATCH | `…/time-off` | MyShifts/desk → `team.ts:248-259` |
-| GET/POST/DELETE | `…/coverage-templates` | OpsRulesPanel → `team.ts:262-272` |
+| GET/POST/DELETE | `…/coverage-templates` | OpsRulesPanel; Mudavym `next/CoverageRulesSheet.tsx` (2026-09-26) → `team.ts` `getCoverageTemplates`/`createCoverageTemplate`/`deleteCoverageTemplate` |
 | GET | `…/members/:id/performance` | PerformancePanel → `team.ts:275` |
-| POST | `…/sales`, `…/sales/batch` | PerformancePanel → `team.ts:279-286` |
+| POST | `…/sales`, `…/sales/batch` | PerformancePanel; Mudavym `next/SalesSheet.tsx` (2026-09-26) → `team.ts` `ingestSales`/`ingestSalesBatch` |
 | POST | `…/broadcast` | ManagerShiftDesk → `team.ts:289-305` |
 | GET/PATCH | `…/settings` | `team.ts:308-315` |
 | GET | `/calendar/events` | desk overlays events — `ManagerShiftDesk.tsx:17` → `services/api/calendar.ts:221` (legacy half only; the Mudavym grid does not overlay calendar events — §13.9) |
@@ -864,6 +864,11 @@ re-deriving it.
    a service" form and CSV import were deliberately not carried onto the
    expander (§1b, "the two directions not built"). They need a surface of their
    own before the legacy desk retires.
+   **[BUILT 2026-09-26, founder round 8 item 51 — ADR 0088 amendment.]** "Log
+   sales" in the header opens `next/SalesSheet.tsx`: one service, or several at
+   once (a night typed for the active floor, or a CSV previewed row by row). The
+   coverage-rule file, with remove, is `next/CoverageRulesSheet.tsx`, opened
+   from "Coverage rules · N" on the Unfilled panel. No browser-preview run yet.
 9. **Calendar events on the Mudavym grid.** The legacy header printed the day's
    first event; the rebuilt one prints coverage. Both are worth having and they
    need two lines, not one.

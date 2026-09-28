@@ -22,6 +22,7 @@ import { OrchestratorService } from "../common/orchestrator/orchestrator.service
 import { InboundResponderService } from "../common/orchestrator/inbound-responder.service";
 import { InboundAddressService } from "../common/orchestrator/inbound-address.service";
 import { GmailService } from "../communications/gmail.service";
+import type { SendRefusalKind } from "../communications/send-failure";
 import { WebsocketGateway } from "../websocket/websocket.gateway";
 import { NotificationsService } from "../notifications/notifications.service";
 import { deliveryHasBookedOrder } from "./canonical/delivery-stock.service";
@@ -79,9 +80,15 @@ import {
   resolveOrderUnits,
 } from "./order-units";
 import {
+  DealMessageCandidate,
+  OwnPaperProvenance,
+  PaperCandidate,
+  PaperLineCandidate,
   decideOwnPaperSighting,
   isOutlierAgainstPriors,
   isOwnPaperSource,
+  pickDealMessage,
+  pickReceiptPaper,
 } from "./own-paper-sighting";
 import { Uom } from "./documents/document-types";
 import {
@@ -171,6 +178,13 @@ import {
   refuseUnreadableStatus,
 } from "./order-transitions";
 import { toPostgrestInList } from "./order-status";
+import {
+  CANCEL_REASON_REFUSAL_WORDS,
+  CancelReasonCode,
+  verdictFor as cancelReasonVerdictFor,
+} from "./cancel-reason";
+import { deadlineOf } from "./delivery-deadline";
+import { houseFrame } from "../common/house-frame";
 import {
   DELIVERY_REFUSED_ALREADY_ARRIVED,
   DELIVERY_REFUSED_STATE_UNREADABLE,
@@ -500,19 +514,53 @@ export interface SendRequestView {
 }
 
 /**
- * GmailService refused to build the message (ADR 0172: `refusedBeforeSend`),
- * so Gmail was never called and the vendor provably has nothing. A distinct
- * type so `isDefiniteSendRefusal` can recognise it by `instanceof` — never by
- * its text, which embeds the vendor's own contact address.
+ * GmailService PROVED the vendor has nothing (`EmailResult.refusal`, typed —
+ * see communications/send-failure.ts): the message was never built (ADR 0172),
+ * no transport was configured, or the provider rejected the request outright.
+ * A distinct type so `isDefiniteSendRefusal` recognises it by `instanceof` and
+ * nothing else — never by the error text, which embeds the vendor's own
+ * contact address.
  */
-export class SendRefusedBeforeSendError extends BadRequestException {}
+export class SendRefusedBeforeSendError extends BadRequestException {
+  /**
+   * Which proven refusal this was (send-failure.ts). Only `"header"` refuses
+   * the SAME letter identically on every retry, so only it closes the draft as
+   * `SEND_REFUSED` (founder answer 6, 2026-09-21); the other kinds release it
+   * for another approval once the mailbox or address is fixed (ADR 0172
+   * addendum, #405). Defaults to "header" for the pre-#405 construction.
+   */
+  constructor(
+    message: string,
+    readonly refusalKind: SendRefusalKind = "header",
+  ) {
+    super(message);
+  }
+}
 
 /**
  * The `reason` a 422 carries when the in-process send refused a draft before
  * anything left and the draft was closed as `SEND_REFUSED` (founder, answer 6,
- * 2026-09-21; 20260926140800).
+ * 2026-09-21; 20261116100800).
  */
 export const DRAFT_SEND_REFUSED = "draft_send_refused";
+
+/**
+ * The result of the founder's box on a never-arrived cancel (ADR 0207 round
+ * 5, question 20): "We paid for this, we are owed {total}." `opened` is true
+ * only the FIRST time this order's claim is raised; a repeat of the box on
+ * the same order reports `alreadyOpen: true` with that SAME claim, never a
+ * second row.
+ */
+export interface NeverArrivedCreditClaimResult {
+  opened: boolean;
+  alreadyOpen: boolean;
+  claim: {
+    id: string;
+    claimedAmount: number;
+    currency: string | null;
+    state: string;
+  };
+}
 
 @Injectable()
 export class ProcurementService {
@@ -1631,6 +1679,12 @@ export class ProcurementService {
       observedAt?: string | null;
       currency?: string | null;
     };
+    /**
+     * ADR 0160 §112 fork 6(a): the paper and/or message the sighting was read
+     * from, as `receiptPaperFor` / `dealMessageFor` found them. Rides on the
+     * sighting only — `price_history` keeps its order-level `order_id`.
+     */
+    provenance?: OwnPaperProvenance | null;
   }): Promise<void> {
     // The register mirror runs first and on its own operands: a price_history
     // row that cannot be written must not silently take the sighting down with
@@ -1954,6 +2008,12 @@ export class ProcurementService {
       observedAt?: string | null;
       currency?: string | null;
     };
+    /**
+     * ADR 0160 §112 fork 6(a): the paper and/or message the sighting was read
+     * from, as `receiptPaperFor` / `dealMessageFor` found them. Rides on the
+     * sighting only — `price_history` keeps its order-level `order_id`.
+     */
+    provenance?: OwnPaperProvenance | null;
   }): Promise<void> {
     if (!isOwnPaperSource(args.source)) return;
 
@@ -1994,6 +2054,7 @@ export class ProcurementService {
       observedAt: s.observedAt,
       currency: s.currency ?? null,
       notes: args.notes ?? null,
+      provenance: args.provenance ?? null,
     });
 
     // The refusal is a logged SENTENCE, not a silent return. A register that
@@ -2032,13 +2093,28 @@ export class ProcurementService {
         return;
       }
 
-      const isOutlier = isOutlierAgainstPriors(
-        await this.priorSightingUnitPrices(
-          args.restaurantId,
-          args.masterWineId,
-        ),
-        provisional.normalizedUnitPrice,
+      // Priors in THIS sighting's currency only (ADR 0117 rule 3: nothing
+      // converts). `provisional.row.currency` is already a checked ISO 4217
+      // code — `decideOwnPaperSighting` refuses the row otherwise.
+      const priorsCurrency = provisional.row.currency;
+      const priorUnitPrices = await this.priorSightingUnitPrices(
+        args.restaurantId,
+        args.masterWineId,
+        priorsCurrency,
       );
+      // `null` is a register we could not read, or a row with no product
+      // identity to read one for. Neither is an empty register: no
+      // flag, and no reason either — `priorCount: undefined` leaves
+      // `outlier_reason`/`outlier_basis`/`outlier_judged_at` null, so the row
+      // reads "No judge has looked at this row", which is the truth. Passing
+      // `0` here would store "Not judged: only 0 sightings" against a
+      // register that may hold hundreds (PR #473 audit, 2026-09-26).
+      const isOutlier =
+        priorUnitPrices !== null &&
+        isOutlierAgainstPriors(
+          priorUnitPrices,
+          provisional.normalizedUnitPrice,
+        );
 
       const decision = decideOwnPaperSighting(
         {
@@ -2056,8 +2132,14 @@ export class ProcurementService {
           observedAt: s.observedAt,
           currency: s.currency ?? null,
           notes: args.notes ?? null,
+          provenance: args.provenance ?? null,
         },
-        { isOutlier },
+        // `priorUnitPrices.length` — not just the boolean — so the row can
+        // say WHY it was or was not flagged (its own review finding, not
+        // ADR 0160 §112 fork 6(a): the own-paper writer judged but never
+        // recorded a reason, so a judged-clean row and a never-judged one
+        // both read "No judge has looked at this row").
+        { isOutlier, priorCount: priorUnitPrices?.length, priorsCurrency },
       );
       if (!decision.write) {
         this.logger.warn(decision.reason);
@@ -2089,6 +2171,15 @@ export class ProcurementService {
           normalization_note: row.normalization_note,
           content_hash: row.content_hash,
           is_outlier: row.is_outlier,
+          outlier_reason: row.outlier_reason,
+          outlier_basis: row.outlier_basis,
+          outlier_judged_at: row.outlier_judged_at,
+          // ADR 0160 §112 fork 6(a). The database refuses another house's
+          // document or message here on its own (composite keys,
+          // `20261115000000_a_price_names_its_paper_and_its_messenger.sql`).
+          document_id: row.document_id,
+          document_line_id: row.document_line_id,
+          conversation_message_id: row.conversation_message_id,
           raw: row.raw,
         });
 
@@ -2106,6 +2197,8 @@ export class ProcurementService {
 
       this.logger.log("Price sighting written to the register", {
         orderId: args.orderId,
+        documentId: row.document_id,
+        conversationMessageId: row.conversation_message_id,
         sourceRef: row.source_ref,
         sourceType: row.source_type,
         trustTier: row.trust_tier,
@@ -2128,22 +2221,52 @@ export class ProcurementService {
    * The scope matches `belowTrailingAverage` exactly (`restaurant_id IS NULL OR
    * = this tenant`, `vendor-comparison.service.ts:341`) so the MAD test is run
    * over the same population the ladder will later read. `master_wine_id` is
-   * the key `priceBelowAverage` groups on (`price-below-average.ts:141-144`);
-   * with no identity there is no group, so there is nothing to be an outlier
-   * against and the answer is an empty list.
+   * the key `priceBelowAverage` groups on (`price-below-average.ts:141-144`).
+   *
+   * The population is every source type — invoices, quotes, scrapes, typed
+   * prices — on this house's rows and the public register's. There is no
+   * `source_type` filter, and the reason `decideOwnPaperSighting` writes says
+   * exactly that rather than "own-paper trail".
+   *
+   * It is ONE currency: the sighting's own. ADR 0117 rule 3 — "Nothing
+   * converts" — and the public register carries rows in whatever currency
+   * each source stated, so a currency-blind pool set a TRY invoice beside USD
+   * rows and ran the MAD test over raw numbers on different scales (PR #473
+   * audit rounds 4-5). The filter is applied twice: in the query, so the
+   * 200-row limit counts only comparable rows, and again per row here, so a
+   * row that reaches this loop in another currency is dropped rather than
+   * compared. Main's nightly re-judge refuses a mixed-currency group outright
+   * (`outlier-rejudge.ts` `mixed_currency`), so a verdict written here across
+   * currencies would never be corrected.
+   *
+   * `null` means NO JUDGEMENT IS POSSIBLE, for either of two reasons: the read
+   * FAILED, or there is no identity to read against in the first place
+   * (`masterWineId` is null — `resolveOrderShelfItem` returns that whenever the
+   * inventory lookup fails or the row's `master_wine_id` cannot be read as a
+   * uuid, despite the column being NOT NULL by schema). Neither is folded into
+   * `[]`: an empty list becomes a stored "only 0 sightings of this PRODUCT"
+   * sentence, and both "the read failed" and "there is no product to count
+   * sightings of" are worse than silence, not zero (PR #473 audit at
+   * 81f7a6abf and audit round 2 2026-09-26 — the null-identity branch used to
+   * return `[]` here and was the one case this docblock's own contract didn't
+   * cover; PR #482 audit at cd2dc58f6 closed the same gap independently in
+   * `decideOwnPaperSighting`, which also ignores a count for an unidentified
+   * row, so neither layer alone can write that sentence).
    */
   private async priorSightingUnitPrices(
     restaurantId: string,
     masterWineId: string | null,
-  ): Promise<number[]> {
-    if (!masterWineId) return [];
+    currency: string,
+  ): Promise<number[] | null> {
+    if (!masterWineId) return null;
     try {
       const { data, error } = await this.databaseService.supabase
         .from("vendor_price_observations")
         .select(
-          "raw_price, source_type, observed_at, pack_size, unit_volume_ml, yield_factor",
+          "raw_price, currency, source_type, observed_at, pack_size, unit_volume_ml, yield_factor",
         )
         .eq("master_wine_id", masterWineId)
+        .eq("currency", currency)
         .or(`restaurant_id.is.null,restaurant_id.eq.${restaurantId}`)
         .order("observed_at", { ascending: false })
         .limit(200);
@@ -2151,6 +2274,7 @@ export class ProcurementService {
 
       const out: number[] = [];
       for (const r of (data ?? []) as any[]) {
+        if (r.currency !== currency) continue;
         const { unitPrice } = normalizeUnitPrice({
           price: Number(r.raw_price),
           sourceType: r.source_type,
@@ -2165,11 +2289,12 @@ export class ProcurementService {
       return out;
     } catch (e: any) {
       // A register we could not read is not a register with nothing in it. Say
-      // so, and decline to flag rather than flagging against an empty list.
+      // so, and return `null` — the caller declines to flag AND declines to
+      // write a reason, rather than recording "only 0 sightings".
       this.logger.warn(
-        `Could not read the price register to screen for outliers: ${e?.message}`,
+        `Could not read the price register to screen for outliers: ${e?.message}. Nothing was flagged, and no reason is recorded.`,
       );
-      return [];
+      return null;
     }
   }
 
@@ -2584,6 +2709,125 @@ export class ProcurementService {
   }
 
   /**
+   * ADR 0160 §112 fork 6(a), writer change 1 — the paper a verified receipt's
+   * price was read from. Reads are house-scoped on every table; the choice is
+   * `pickReceiptPaper`'s (pure, tested).
+   *
+   * A FAILED READ NAMES NO PAPER AND SAYS SO. It is never "no document
+   * attached": that sentence would be a claim about the order the read could
+   * not make. Best-effort like the sighting it rides on — a delivery that has
+   * been counted is not failed over provenance.
+   */
+  private async receiptPaperFor(
+    restaurantId: string,
+    orderId: string,
+    orderLineId: string | null,
+  ): Promise<OwnPaperProvenance> {
+    const failed = (what: string, message: string): OwnPaperProvenance => {
+      this.logger.warn(
+        `Price provenance for order ${orderId}: ${what} could not be read (${message}); the sighting names no paper.`,
+      );
+      return {
+        documentId: null,
+        documentLineId: null,
+        sentence: `The paper for order ${orderId} could not be read when this price was recorded (${what}), so none is named. That is a failed read, not an order without paper.`,
+      };
+    };
+
+    const { data: links, error: linkError } = await this.databaseService.supabase
+      .from("procurement_document_links")
+      .select("document_id")
+      .eq("restaurant_id", restaurantId)
+      .eq("order_id", orderId);
+    if (linkError) return failed("the order's document links", linkError.message);
+    const ids = [
+      ...new Set(
+        (links ?? []).map((l: any) => l.document_id).filter(Boolean) as string[],
+      ),
+    ];
+
+    let documents: PaperCandidate[] = [];
+    if (ids.length) {
+      const { data: docs, error: docError } = await this.databaseService.supabase
+        .from("procurement_documents")
+        .select("id, doc_type, doc_number, status")
+        .eq("restaurant_id", restaurantId)
+        .in("id", ids);
+      if (docError) return failed("the order's documents", docError.message);
+      documents = (docs ?? []) as PaperCandidate[];
+    }
+
+    let lines: PaperLineCandidate[] = [];
+    const invoiceIds = documents
+      .filter((d) => d.doc_type === "invoice")
+      .map((d) => d.id);
+    if (orderLineId && invoiceIds.length === 1) {
+      const { data: lineRows, error: lineError } =
+        await this.databaseService.supabase
+          .from("procurement_document_lines")
+          .select("id, document_id, line_no, order_line_id")
+          .eq("restaurant_id", restaurantId)
+          .eq("document_id", invoiceIds[0])
+          .eq("order_line_id", orderLineId);
+      if (lineError) {
+        // The document read worked; only the line did not. Name the paper,
+        // and say the line could not be read.
+        const paper = pickReceiptPaper({ orderId, orderLineId: null, documents, lines: [] });
+        this.logger.warn(
+          `Price provenance for order ${orderId}: the invoice's lines could not be read (${lineError.message}); the paper is named without a line.`,
+        );
+        return {
+          ...paper,
+          sentence: `${paper.documentId ? "Read from the invoice attached to this order." : paper.sentence} Its lines could not be read when this price was recorded, so no line is named — a failed read, not an unpaired line.`,
+        };
+      }
+      lines = (lineRows ?? []) as PaperLineCandidate[];
+    }
+
+    return pickReceiptPaper({ orderId, orderLineId, documents, lines });
+  }
+
+  /**
+   * ADR 0160 §112 fork 6(a), writer change 2 — the vendor message a confirmed
+   * deal was read from. House-scoped (`restaurant_id`), newest inbound first,
+   * picked by `pickDealMessage` — the rule `resolveLatestDealProposal` marks
+   * the same row resolved by.
+   */
+  private async dealMessageFor(
+    restaurantId: string,
+    orderId: string,
+  ): Promise<OwnPaperProvenance> {
+    const { data: rows, error } = await this.databaseService.supabase
+      .from("procurement_conversations")
+      .select("id, conversation_context")
+      .eq("restaurant_id", restaurantId)
+      .eq("order_id", orderId)
+      .eq("direction", "inbound")
+      .order("created_at", { ascending: false })
+      .limit(6);
+    if (error) {
+      this.logger.warn(
+        `Price provenance for order ${orderId}: the vendor's messages could not be read (${error.message}); the sighting names no message.`,
+      );
+      return {
+        conversationMessageId: null,
+        sentence: `The vendor's messages on order ${orderId} could not be read when this price was confirmed, so no message is named. That is a failed read, not a deal without a message.`,
+      };
+    }
+    const row = pickDealMessage((rows ?? []) as DealMessageCandidate[]);
+    return row
+      ? {
+          conversationMessageId: row.id,
+          sentence: "Read from the vendor's reply this deal was confirmed from.",
+        }
+      : {
+          conversationMessageId: null,
+          sentence:
+            "No open deal proposal was found among the vendor's recent replies on this order, so no message is named — the price was confirmed without one on record.",
+        };
+  }
+
+  /**
    * The invoice attached to this order whose money is NOT filed, if there is
    * one — item A's precondition.
    *
@@ -2944,7 +3188,9 @@ export class ProcurementService {
   ): Promise<{ from: ProcurementOrderStatus; row: Record<string, any> }> {
     const { data, error } = await this.databaseService.supabase
       .from("procurement_orders")
-      .select("id, status, total_cost, provider_id, inventory_id, quantity")
+      .select(
+        "id, status, total_cost, provider_id, inventory_id, quantity, expected_delivery_date",
+      )
       .eq("restaurant_id", restaurantId)
       .eq("id", orderId)
       .maybeSingle();
@@ -2984,7 +3230,17 @@ export class ProcurementService {
      * caller that sets it without having checked is writing an unchecked state
      * change, and there is exactly one such caller, named here.
      */
-    opts?: { statusTransitionAlreadyChecked?: boolean },
+    opts?: {
+      statusTransitionAlreadyChecked?: boolean;
+      /**
+       * ADR 0207 round 4. Set only by `cancelOrder`, which has already run
+       * `cancel-reason.ts`'s `verdictFor` against this order's real state and
+       * deadline — never accepted from a request body.
+       */
+      cancelReasonCode?: CancelReasonCode;
+      cancelledFromStatus?: ProcurementOrderStatus;
+      cancelledAt?: string;
+    },
   ): Promise<OrderResponseDto> {
     // ADR 0192 — WHAT AN ORDER RECEIVED IS NOT TYPED IN. This route used to
     // write `procurement_orders.quantity_received` from the body with no stock
@@ -3006,6 +3262,23 @@ export class ProcurementService {
     // from any other: a DELIVERED order back to PENDING, a COMPLETED one to
     // CANCELLED, an order to IN_TRANSIT or FAILED which nothing in this
     // codebase ever writes.
+    // ADR 0207 round 4 — a cancellation says whose failure it was, and that
+    // category is proven by `cancelOrder` (the sealed act, `DELETE
+    // orders/:id`) against the order's real state and deadline. `PATCH
+    // orders/:id` carrying `status: CANCELLED` wrote the status with no seal,
+    // no role check and no category, so a never-arrived order cancelled that
+    // way vanished from every vendor figure. It is refused here; the one
+    // caller that sets the category is `cancelOrder`. [Last call, 2026-09-22.]
+    if (
+      dto.status === ProcurementOrderStatus.CANCELLED &&
+      !opts?.cancelReasonCode
+    ) {
+      throw new UnprocessableEntityException({
+        reason: "cancel_through_the_sealed_act",
+        message:
+          "An order is cancelled through its own act, which asks whose failure it was and is held to confirm — not by editing its status. Nothing was changed.",
+      });
+    }
     if (dto.status !== undefined && !opts?.statusTransitionAlreadyChecked) {
       await this.assertStatusTransition(restaurantId, orderId, dto.status);
     }
@@ -3051,6 +3324,15 @@ export class ProcurementService {
       invoice_image_url: dto.invoiceImageUrl ?? undefined,
       discrepancy_notes: dto.discrepancyNotes ?? undefined,
       location_id: dto.locationId ?? undefined,
+      // Whose failure a cancellation was (ADR 0207 round 4). NOT on
+      // UpdateOrderDto: that class is bound to the public `PATCH orders/:id`
+      // body, and these three columns are proven, not asserted — a client
+      // sending them there could write a category the order-transition and
+      // deadline rules never checked. They travel only through `opts`, which
+      // only `cancelOrder` (this file) sets, in the SAME UPDATE as the status.
+      cancel_reason_code: opts?.cancelReasonCode ?? undefined,
+      cancelled_from_status: opts?.cancelledFromStatus ?? undefined,
+      cancelled_at: opts?.cancelledAt ?? undefined,
     };
 
     const { data, error } = await this.databaseService.supabase
@@ -3276,12 +3558,12 @@ export class ProcurementService {
     userId: string,
     reason?: string,
     challenge?: string | null,
+    reasonCode?: string,
   ): Promise<OrderResponseDto> {
     const spokenReason = (reason ?? "").trim();
     if (spokenReason === "") {
       throw new BadRequestException(ProcurementService.CANCEL_NEEDS_A_REASON);
     }
-
     // Checked again here, not only at the mint (ADR 0125 Q1). A seal minted
     // while the person was a manager must not be spendable after they stop
     // being one.
@@ -3289,11 +3571,46 @@ export class ProcurementService {
 
     // The state, read once and refused here rather than inside `updateOrder`:
     // this caller needs `from` for the shadow-stock decision and the audit row.
-    const { from: preStatus } = await this.assertStatusTransition(
+    const { from: preStatus, row: preRow } = await this.assertStatusTransition(
       restaurantId,
       orderId,
       ProcurementOrderStatus.CANCELLED,
     );
+
+    // The category rule (ADR 0207 round 4, cancel-reason.ts): which category
+    // this cancel may carry, from this order's current state and — for
+    // never_arrived — only once its deadline has passed on the house's clock.
+    // Checked BEFORE the seal is redeemed, same reasoning as the transition
+    // check above: a refusal must not burn a one-time token.
+    const houseZone = await this.readHouseZoneForCancel(restaurantId);
+    const deadline = deadlineOf(
+      (preRow as { expected_delivery_date?: string | null })
+        .expected_delivery_date,
+      houseZone,
+    );
+    const verdict = cancelReasonVerdictFor(
+      reasonCode ?? "",
+      preStatus,
+      deadline,
+      Date.now(),
+    );
+    if (!verdict.ok) {
+      // A missing or unknown category is a 400 (the caller sent nothing
+      // usable, like the bare-reason check above); a category that does not
+      // fit THIS order's state or deadline is a 422, the same status the
+      // transition check above answers with — it names the state, not the
+      // request shape.
+      if (verdict.reason === "unknown_code") {
+        throw new BadRequestException(
+          CANCEL_REASON_REFUSAL_WORDS[verdict.reason],
+        );
+      }
+      throw new UnprocessableEntityException({
+        reason: "cancel_needs_a_category",
+        message: CANCEL_REASON_REFUSAL_WORDS[verdict.reason],
+      });
+    }
+    const cancelReasonCode = reasonCode as CancelReasonCode;
 
     // AFTER the transition check, so a person whose order cannot be cancelled
     // at all is told that rather than having their seal burned by a request
@@ -3301,6 +3618,7 @@ export class ProcurementService {
     // written on an unproven seal.
     await this.redeemOrderCancelSeal(restaurantId, orderId, userId, challenge);
 
+    const cancelledAtIso = new Date().toISOString();
     const order = await this.updateOrder(
       restaurantId,
       orderId,
@@ -3308,7 +3626,12 @@ export class ProcurementService {
         status: ProcurementOrderStatus.CANCELLED,
         rejectionReason: spokenReason,
       },
-      { statusTransitionAlreadyChecked: true },
+      {
+        statusTransitionAlreadyChecked: true,
+        cancelReasonCode,
+        cancelledFromStatus: preStatus,
+        cancelledAt: cancelledAtIso,
+      },
     );
 
     // D-10: Cascade PENDING_APPROVAL conversations to CANCELLED so they don't
@@ -3380,12 +3703,33 @@ export class ProcurementService {
       actorUserId: userId,
       from: preStatus,
       reason: spokenReason,
+      reasonCode: cancelReasonCode,
     });
 
     // Emit order_change event for cross-page sync
     await this.emitOrderChangeEvent(restaurantId, userId, order, "cancelled");
 
     return order;
+  }
+
+  /**
+   * The house's time zone, for the `never_arrived` category's past-due check
+   * only. A failed or missing read degrades to `null` (the span rule,
+   * `delivery-deadline.ts`) rather than refusing the cancel outright — the
+   * category rule already requires the span to have closed at BOTH ends, so a
+   * house with no zone on record is not blocked from cancelling, only held to
+   * the more conservative (later) instant.
+   */
+  private async readHouseZoneForCancel(
+    restaurantId: string,
+  ): Promise<string | null> {
+    const { data, error } = await this.databaseService.supabase
+      .from("restaurants")
+      .select("timezone, country")
+      .eq("id", restaurantId)
+      .maybeSingle();
+    if (error || !data) return null;
+    return houseFrame(data as { timezone?: string; country?: string }).zone;
   }
 
   /** Spend the cancellation seal. Throws with the whole sentence on refusal. */
@@ -3429,6 +3773,7 @@ export class ProcurementService {
     actorUserId: string;
     from: ProcurementOrderStatus;
     reason: string;
+    reasonCode: CancelReasonCode;
   }): Promise<void> {
     try {
       const { error } = await this.databaseService.supabase
@@ -3447,6 +3792,7 @@ export class ProcurementService {
             act: ORDER_CANCEL_ACT,
             sealed: true,
             reason: record.reason,
+            reason_code: record.reasonCode,
           },
           restaurant_id: record.restaurantId,
           reason: record.reason,
@@ -5291,33 +5637,50 @@ export class ProcurementService {
    * vendor error) and for any discrepancy whose amount cannot be computed. A $0
    * claim in a distributor's inbox costs more credibility than it recovers.
    */
+  /**
+   * @param order The order row this claim is against, when the caller already
+   *   has it (`verifyReceipt` selects `*`) — read here only for `provider_id`
+   *   and `currency`, so the claim states the vendor and money it is against
+   *   instead of leaving both silently unset. [ADR 0207 round 5, named as a
+   *   round-4 gap: "openCreditClaim ... records neither provider_id nor
+   *   currency, and the column defaults to 'USD'."] `currency` is left unset
+   *   (the column's own DEFAULT 'USD' stands) rather than written explicitly
+   *   when the order records none — writing 'USD' for an unknown currency
+   *   would be the same silent guess the design names as the fault, moved
+   *   one line down.
+   */
   private async openCreditClaim(
     restaurantId: string,
     orderId: string,
     userId: string,
     match: MatchResult,
+    order?: { provider_id?: string | null; currency?: string | null } | null,
   ): Promise<void> {
     try {
       const claim = draftClaimFromMatch(match);
       if (!claim) return;
 
+      const insertRow: Record<string, unknown> = {
+        restaurant_id: restaurantId,
+        order_id: orderId,
+        provider_id: order?.provider_id ?? null,
+        reason: claim.reason,
+        summary: claim.summary,
+        claimed_amount: claim.claimedAmount,
+        // True only when the vendor's own packing slip proves the overbill.
+        // Worth knowing which claims are winnable before spending a call.
+        self_evidenced: claim.selfEvidenced,
+        state: "open",
+        opened_by: userId,
+        // Snapshot: the order can be corrected later, and the claim must still
+        // be able to say what it was based on when it was raised.
+        evidence: match as unknown as Record<string, unknown>,
+      };
+      if (order?.currency) insertRow.currency = order.currency;
+
       const { error } = await this.databaseService.supabase
         .from("procurement_credits")
-        .insert({
-          restaurant_id: restaurantId,
-          order_id: orderId,
-          reason: claim.reason,
-          summary: claim.summary,
-          claimed_amount: claim.claimedAmount,
-          // True only when the vendor's own packing slip proves the overbill.
-          // Worth knowing which claims are winnable before spending a call.
-          self_evidenced: claim.selfEvidenced,
-          state: "open",
-          opened_by: userId,
-          // Snapshot: the order can be corrected later, and the claim must still
-          // be able to say what it was based on when it was raised.
-          evidence: match as unknown as Record<string, unknown>,
-        });
+        .insert(insertRow);
 
       // 23505 = a claim for this line and reason is already open. Re-running the
       // match must not manufacture a second claim for money already being
@@ -5329,6 +5692,184 @@ export class ProcurementService {
     } catch (err: any) {
       this.logger.warn(`openCreditClaim threw for ${orderId}: ${err?.message}`);
     }
+  }
+
+  /**
+   * The founder's box on the never-arrived cancel (ADR 0207 round 5, question
+   * 20, round 6z, verbatim): "Add the box (Recommended)" — "We paid for
+   * this, we are owed {total}", opening a credit claim with the order's
+   * vendor and currency so the Credits line chases it.
+   *
+   * Only after the order has actually been cancelled `never_arrived` — this
+   * is not a general "claim a credit" act, it is the one box that follows
+   * that specific cancellation, so it re-reads the order rather than trusting
+   * whatever the caller last knew. Idempotent: a second call for the same
+   * order finds its own open claim (`uq_pc_order_never_arrived` proves it at
+   * the database) and returns it rather than opening a second one.
+   */
+  async openNeverArrivedCreditClaim(
+    restaurantId: string,
+    orderId: string,
+    userId: string,
+  ): Promise<NeverArrivedCreditClaimResult> {
+    if (!this.organizations) {
+      throw new InternalServerErrorException(
+        "Who may claim this refund could not be established (the organizations service is not " +
+          "wired into procurement), so nothing was opened. This is a gateway fault, not a " +
+          "decision about this order.",
+      );
+    }
+    await this.organizations.assertCanManageRestaurant(
+      userId,
+      restaurantId,
+      "claim a credit for an order that never arrived",
+    );
+
+    const { data, error } = await this.databaseService.supabase
+      .from("procurement_orders")
+      .select("id, status, cancel_reason_code, provider_id, currency, total_cost")
+      .eq("restaurant_id", restaurantId)
+      .eq("id", orderId)
+      .maybeSingle();
+    if (error) {
+      throw new InternalServerErrorException(
+        `This order could not be read (${error.message}), so no claim was opened.`,
+      );
+    }
+    if (!data) {
+      throw new NotFoundException(
+        "No order with that id belongs to this restaurant, so no claim was opened.",
+      );
+    }
+    const row = data as {
+      status: string | null;
+      cancel_reason_code: string | null;
+      provider_id: string | null;
+      currency: string | null;
+      total_cost: string | number | null;
+    };
+    if (row.status !== "CANCELLED" || row.cancel_reason_code !== "never_arrived") {
+      throw new UnprocessableEntityException(
+        "A refund claim follows a never-arrived cancellation. Cancel this order as " +
+          "never arrived first, then claim the refund.",
+      );
+    }
+    const total =
+      typeof row.total_cost === "string"
+        ? parseFloat(row.total_cost)
+        : row.total_cost;
+    if (total == null || Number.isNaN(total) || !(total > 0)) {
+      throw new UnprocessableEntityException(
+        "This order has no positive total on record, so there is nothing to claim back.",
+      );
+    }
+
+    // Idempotent before the insert: a live open/requested/promised claim for
+    // this order and this reason is returned as-is. The database's own
+    // uq_pc_order_never_arrived is the proof this cannot be raced into two.
+    const existing = await this.databaseService.supabase
+      .from("procurement_credits")
+      .select("id, claimed_amount, currency, state")
+      .eq("restaurant_id", restaurantId)
+      .eq("order_id", orderId)
+      .eq("reason", "never_arrived")
+      .neq("state", "written_off")
+      .maybeSingle();
+    if (existing.error) {
+      throw new InternalServerErrorException(
+        `Whether a claim already existed could not be read (${existing.error.message}), so nothing was opened.`,
+      );
+    }
+    if (existing.data) {
+      const already = existing.data as {
+        id: string;
+        claimed_amount: number;
+        currency: string | null;
+        state: string;
+      };
+      return {
+        opened: false,
+        alreadyOpen: true,
+        claim: {
+          id: already.id,
+          claimedAmount: already.claimed_amount,
+          currency: already.currency,
+          state: already.state,
+        },
+      };
+    }
+
+    const insertRow: Record<string, unknown> = {
+      restaurant_id: restaurantId,
+      order_id: orderId,
+      provider_id: row.provider_id,
+      reason: "never_arrived",
+      summary:
+        "Paid in advance; the order was cancelled as never arrived. Chasing a refund.",
+      claimed_amount: total,
+      self_evidenced: false,
+      state: "open",
+      opened_by: userId,
+    };
+    if (row.currency) insertRow.currency = row.currency;
+
+    const { data: inserted, error: insertError } = await this.databaseService.supabase
+      .from("procurement_credits")
+      .insert(insertRow)
+      .select("id, claimed_amount, currency, state")
+      .single();
+    if (insertError) {
+      if (insertError.code === "23505") {
+        // Raced with another request that won first — read back what it
+        // opened rather than telling this caller nothing happened.
+        const raced = await this.databaseService.supabase
+          .from("procurement_credits")
+          .select("id, claimed_amount, currency, state")
+          .eq("restaurant_id", restaurantId)
+          .eq("order_id", orderId)
+          .eq("reason", "never_arrived")
+          .neq("state", "written_off")
+          .maybeSingle();
+        if (raced.data) {
+          const won = raced.data as {
+            id: string;
+            claimed_amount: number;
+            currency: string | null;
+            state: string;
+          };
+          return {
+            opened: false,
+            alreadyOpen: true,
+            claim: {
+              id: won.id,
+              claimedAmount: won.claimed_amount,
+              currency: won.currency,
+              state: won.state,
+            },
+          };
+        }
+      }
+      throw new InternalServerErrorException(
+        `The claim could not be recorded (${insertError.message}), so nothing was opened.`,
+      );
+    }
+
+    const won = inserted as {
+      id: string;
+      claimed_amount: number;
+      currency: string | null;
+      state: string;
+    };
+    return {
+      opened: true,
+      alreadyOpen: false,
+      claim: {
+        id: won.id,
+        claimedAmount: won.claimed_amount,
+        currency: won.currency,
+        state: won.state,
+      },
+    };
   }
 
   /**
@@ -6166,7 +6707,14 @@ export class ProcurementService {
     // Raise a vendor credit claim when the match found money owed back.
     // Best-effort: a failure here must not strand a delivery that has already
     // been counted, and the claim can be raised again from the discrepancy queue.
-    if (match) await this.openCreditClaim(restaurantId, orderId, userId, match);
+    if (match)
+      await this.openCreditClaim(
+        restaurantId,
+        orderId,
+        userId,
+        match,
+        orderRow as { provider_id?: string | null; currency?: string | null },
+      );
 
     const { data, error } = await this.databaseService.supabase
       .from("procurement_orders")
@@ -6202,6 +6750,15 @@ export class ProcurementService {
         restaurantId,
         (orderRow as any).inventory_id,
       );
+      // ADR 0160 §112 fork 6(a), writer change 1: the invoice (and its line)
+      // this verified price was read from, found house-scoped. Never a
+      // refusal — a price with no paper found is still a verified price, and
+      // the row says why no paper is named.
+      const receiptPaper = await this.receiptPaperFor(
+        restaurantId,
+        orderId,
+        agreedLine.id,
+      );
       await this.recordPriceHistory({
         restaurantId,
         orderId,
@@ -6209,6 +6766,7 @@ export class ProcurementService {
         masterWineId: shelfItem.masterWineId,
         price: match.effectiveUnitCost ?? body.invoiceUnitPrice,
         source: "receipt_verified",
+        provenance: receiptPaper,
         // BOTTLES. It used to be the raw invoice number: on an order billed in
         // cases of 12, a 2 was written into a column labelled BOTTLE, and
         // `effectiveUnitCost` — a per-bottle amount divided by a case count —
@@ -7184,7 +7742,10 @@ export class ProcurementService {
       // (6) of 2026-09-21, the in-process twin of the relay's RELAY_REFUSED.
       // Handing it back as PENDING_APPROVAL invited a tap that fails the same
       // way. 422: the request was well formed; this letter cannot be sent.
-      if (sendError instanceof SendRefusedBeforeSendError) {
+      if (
+        sendError instanceof SendRefusedBeforeSendError &&
+        sendError.refusalKind === "header"
+      ) {
         const reason = String(sendError.message ?? "").trim() || "The message could not be built.";
         const closed = await this.closeRefusedDraft(conversationId, reason);
         throw new UnprocessableEntityException({
@@ -7365,43 +7926,12 @@ export class ProcurementService {
    * refusals: anything unrecognised is ambiguous, because guessing wrong in
    * that direction sends a real vendor a second purchase order.
    */
-  private isDefiniteSendRefusal(error: any): boolean {
-    // A header refusal (ADR 0172) is identified by TYPE, not by text: the
-    // message embeds the vendor's contact address, which a vendor controls.
-    if (error instanceof SendRefusedBeforeSendError) return true;
-
-    const text = `${error?.message ?? ""} ${error?.response?.data ? JSON.stringify(error.response.data) : ""}`;
-    if (!text.trim()) return false;
-
-    // No transport was ever attempted — GmailService says so in as many words.
-    if (/No email delivery method available/i.test(text)) return true;
-
-    // Credentials refused: the request never became a message.
-    if (
-      /invalid_grant|invalid_client|unauthorized_client|authentication failed|invalid credentials|Username and Password not accepted/i.test(
-        text,
-      )
-    ) {
-      return true;
-    }
-
-    // SMTP permanent failures (5xx) and the recipient rejections they carry.
-    // Explicitly NOT 4xx — those are transient and may still have been queued.
-    if (
-      /\b5\d{2}[ -]/.test(text) ||
-      /\b5\.\d\.\d\b/.test(text) ||
-      /user unknown|no such user|recipient address rejected|mailbox unavailable|address rejected|does not exist/i.test(
-        text,
-      )
-    ) {
-      return true;
-    }
-
-    // A malformed request we built — nothing deliverable left the process.
-    if (/invalid recipient|no recipients defined|invalid to header/i.test(text))
-      return true;
-
-    return false;
+  private isDefiniteSendRefusal(error: unknown): boolean {
+    // By TYPE, never by text. GmailService.sendEmail classifies from typed
+    // error fields (send-failure.ts) and sendProviderEmail turns a proven
+    // refusal into this class; the message embeds the vendor's contact address,
+    // which a vendor controls, so no phrase in it may ever decide this.
+    return error instanceof SendRefusedBeforeSendError;
   }
 
   /**
@@ -7632,12 +8162,21 @@ export class ProcurementService {
       replyTo,
     });
     if (!result.success) {
-      // A header refusal (ADR 0172) happens before Gmail is called: the data is
-      // wrong, not the credentials, so do not send anyone to re-auth Gmail.
-      if (result.refusedBeforeSend) {
+      // A proven refusal (typed by GmailService, never read from text) means the
+      // vendor has nothing, so the draft may go back for another approval.
+      if (result.refusal) {
+        // A header refusal (ADR 0172) happens before Gmail is called: the data
+        // is wrong, not the credentials, so do not send anyone to re-auth Gmail.
         throw new SendRefusedBeforeSendError(
-          `Email could not be delivered to ${params.to}: ${result.error ?? "unknown error"}. ` +
-            "Nothing was sent — Gmail was never called. Fix the header named above (usually the vendor's address).",
+          result.refusal.kind === "header"
+            ? `Email could not be delivered to ${params.to}: ${result.error ?? "unknown error"}. ` +
+              "Nothing was sent — Gmail was never called. Fix the header named above (usually the vendor's address)."
+            : result.refusal.kind === "rejected"
+              ? `Email could not be delivered to ${params.to}: ${result.error ?? "unknown error"}. ` +
+                "The mail service rejected the request, so nothing was sent. Check the vendor's address and approve again."
+              : `Email could not be delivered to ${params.to}: ${result.error ?? "unknown error"}. ` +
+                "Nothing was sent. Check Gmail credentials (GMAIL_REFRESH_TOKEN may be expired — run scripts/gmail-reauth.js).",
+          result.refusal.kind,
         );
       }
       throw new BadRequestException(
@@ -7712,15 +8251,19 @@ export class ProcurementService {
       if (!claimed) continue;
 
       try {
-        const { data: order, error: orderError } = await this.databaseService.supabase
-          .from("procurement_orders")
-          .select(
-            "id, status, ai_autonomy_paused, providers!left(contact_email, name, contact_first_name, primary_contact), restaurant_inventory:inventory_id(wine_name)",
-          )
-          .eq("id", row.order_id)
-          .eq("restaurant_id", row.restaurant_id)
-          .single();
-        if (orderError || !order) throw new Error("The scheduled reply's owned order could not be checked.");
+        const { data: order, error: orderError } =
+          await this.databaseService.supabase
+            .from("procurement_orders")
+            .select(
+              "id, status, ai_autonomy_paused, providers!left(contact_email, name, contact_first_name, primary_contact), restaurant_inventory:inventory_id(wine_name)",
+            )
+            .eq("id", row.order_id)
+            .eq("restaurant_id", row.restaurant_id)
+            .single();
+        if (orderError || !order)
+          throw new Error(
+            "The scheduled reply's owned order could not be checked.",
+          );
         const providerEmail = (order as any)?.providers?.contact_email ?? null;
         const wineName =
           (order as any)?.restaurant_inventory?.wine_name ?? "Wine Order";
@@ -8383,11 +8926,9 @@ export class ProcurementService {
       .eq("direction", "inbound")
       .order("created_at", { ascending: false })
       .limit(6);
-    const row = (rows || []).find(
-      (r: any) =>
-        r.conversation_context?.deal_proposal &&
-        !r.conversation_context?.deal_resolved_at,
-    );
+    // The same rule `dealMessageFor` names the confirmed price's message by —
+    // one function, so the two can never pick different rows.
+    const row = pickDealMessage((rows || []) as DealMessageCandidate[]);
     if (!row) return;
     const ctx = { ...((row as any).conversation_context || {}) };
     ctx.deal_resolved_at = new Date().toISOString();
@@ -8828,6 +9369,11 @@ export class ProcurementService {
     // the two reads to disagree about the same row.
     const statedPriceUnit = agreedLine.stated;
 
+    // ADR 0160 §112 fork 6(a), writer change 2: the vendor reply this deal
+    // was read out of — read BEFORE `resolveLatestDealProposal` below marks it
+    // resolved, and by the same rule (`pickDealMessage`), so the message the
+    // price names is the one the manager confirmed.
+    const dealMessage = await this.dealMessageFor(restaurantId, orderId);
     await this.recordPriceHistory({
       restaurantId,
       orderId,
@@ -8835,6 +9381,7 @@ export class ProcurementService {
       masterWineId: shelfItem.masterWineId,
       price: agreedPrice,
       source: "order_confirmed",
+      provenance: dealMessage,
       quantity: (order as any).bottles_total ?? quantity ?? 1,
       notes: `Agreed on order confirmation${finalPrice != null ? "" : " (price unchanged from the order)"}.`,
       // ADR 0119 Q4: the series takes the unit the AGREEMENT states, and a
@@ -9318,16 +9865,27 @@ export class ProcurementService {
    * is invisible, so every value the workflow gains — `DISCARDED` and
    * `CANCELLED` both post-date the list — disappears silently and nothing
    * reports that it did. A ledger must fail toward showing too much, so the
-   * filter is inverted. Exactly two things are withheld, and both are withheld
-   * because they are LIVE ELSEWHERE, never because they are uninteresting:
+   * filter is inverted. Four things are withheld, and every one of them is
+   * withheld because it is LIVE ELSEWHERE, never because it is uninteresting:
    *
    *   status = PENDING_APPROVAL       — the approval queue on /orders
    *                                     (`getActiveConversations`, which
    *                                     selects exactly this status)
    *   status = DRAFT AND outbound     — an unsent draft of ours, same queue
+   *   status = HOUSE_DRAFT            — a credit claim's letter nobody has
+   *                                     decided (ADR 0230); live in
+   *                                     `GET /communications/letters/drafts`
+   *   status = HOUSE_CANCELLED        — that same letter, discarded
    *
-   * Showing either in the history ledger would put the same row in two live
-   * places and invite a second send of an email already awaiting approval.
+   * Showing any of these in the history ledger would put the same row in two
+   * live places and invite a second send of an email already awaiting
+   * approval. The last two are also owner/manager-only figures elsewhere
+   * (ADR 0167: the claimed dollar amount, reason and invoice/order numbers a
+   * `HOUSE_DRAFT`/`HOUSE_CANCELLED` row's body carries), and this route has
+   * no role gate of its own (`JwtAuthGuard` alone) — so unlike `DISCARDED`/
+   * `CANCELLED` below, these two are withheld from every caller, not shown
+   * with a lowercase chip (PR #476 audit round 2, R2b: this was a third,
+   * ungated door onto a manager's credit draft).
    *
    * `DRAFT` inbound is NOT excluded. `procurement_conversations.status`
    * defaults to `'DRAFT'` at the column level, and the inbound path does not
@@ -9335,8 +9893,9 @@ export class ProcurementService {
    * describes us rather than them — 10 of the 27 rows. They are received mail,
    * not drafts, and they were the largest single thing missing from the page.
    *
-   * DISCARDED (3) and CANCELLED (1) are shown. "We drafted this and killed it"
-   * is part of the record of what happened with a vendor; the page renders an
+   * DISCARDED (3) and CANCELLED (1) — the LEGACY AI-path statuses, never
+   * `HOUSE_CANCELLED` — are shown. "We drafted this and killed it" is part of
+   * the record of what happened with a vendor; the page renders an
    * unrecognised status as its own lowercase chip, so they arrive labelled.
    */
   async getConversationHistory(restaurantId: string): Promise<any[]> {
@@ -9358,6 +9917,7 @@ export class ProcurementService {
         message_text,
         constraint_flags,
         rolling_summary,
+        relay_refusal_reason,
         procurement_orders!left(
           id, order_number, quantity,
           inventory:inventory_id(wine_name)
@@ -9366,7 +9926,7 @@ export class ProcurementService {
       `,
       )
       .eq("restaurant_id", restaurantId)
-      // The two exclusions, as filters rather than a post-fetch drop, so
+      // The four exclusions, as filters rather than a post-fetch drop, so
       // `limit` counts rows the manager can actually see.
       //
       // Each is written `status.is.null,<test>` because `neq` against a NULL
@@ -9374,10 +9934,18 @@ export class ProcurementService {
       // deny-list ledger is backwards: an unrecognised or absent status is the
       // case we most want on screen. `status` is nullable (it only has a
       // DEFAULT), so this is reachable, and it is the same shape as
-      // `one-tap-actions.service.ts:90`. Two separate `.or()` calls are ANDed.
+      // `one-tap-actions.service.ts:90`. Every `.or()` call here is ANDed with
+      // the rest.
       .or("status.is.null,status.neq.PENDING_APPROVAL")
       // NOT (status = DRAFT AND direction = outbound), by De Morgan.
       .or("status.is.null,status.neq.DRAFT,direction.eq.inbound")
+      // PR #476 audit round 2, R2b: this route carries no role gate
+      // (`JwtAuthGuard` alone), so a `HOUSE_DRAFT`/`HOUSE_CANCELLED` row —
+      // a credit claim's letter, carrying the same claimed dollar amount,
+      // reason and invoice/order numbers ADR 0167 refuses staff on the
+      // ledger itself — must not read through it at all, for any caller.
+      .or("status.is.null,status.neq.HOUSE_DRAFT")
+      .or("status.is.null,status.neq.HOUSE_CANCELLED")
       .order("created_at", { ascending: false })
       .limit(100);
 
@@ -9416,6 +9984,12 @@ export class ProcurementService {
       draftContent: row.content ?? row.message_text ?? null,
       constraintFlags: row.constraint_flags,
       rollingSummary: row.rolling_summary,
+      // The relay gateway's own sentence for a RELAY_REFUSED row (ADR 0099,
+      // founder 2026-09-21). Null for every other status — the column is
+      // scoped to that status by
+      // procurement_conversations_relay_refusal_reason_scoped (migration
+      // 20261115100100).
+      relayRefusalReason: row.relay_refusal_reason ?? null,
       orderNumber: row.procurement_orders?.order_number ?? null,
       quantity: row.procurement_orders?.quantity ?? null,
       wineName: row.procurement_orders?.inventory?.wine_name ?? null,
@@ -9454,6 +10028,7 @@ export class ProcurementService {
         sent_by_user_id,
         sent_under_grant_id,
         send_refusal_reason,
+        relay_refusal_reason,
         procurement_orders!inner(
           id, order_number, quantity, quoted_price, status, ai_autonomy_paused,
           inventory:inventory_id(wine_name)
@@ -9542,6 +10117,10 @@ export class ProcurementService {
       // Sender authentication (DKIM/DMARC) captured on inbound rows in Phase 0; null on
       // outbound rows and on inbound rows that predate transport capture.
       senderVerified: row.email_headers?.transport?.senderVerified ?? null,
+      // The relay gateway's own sentence for a RELAY_REFUSED row (ADR 0099,
+      // founder 2026-09-21) — the order's thread drawer is the other panel a
+      // relay draft is read on, beside getConversationHistory's ledger.
+      relayRefusalReason: row.relay_refusal_reason ?? null,
     }));
   }
 

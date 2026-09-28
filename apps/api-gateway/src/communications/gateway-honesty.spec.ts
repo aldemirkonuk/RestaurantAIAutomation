@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { BadRequestException } from "@nestjs/common";
 import { PATH_METADATA } from "@nestjs/common/constants";
 import { CommunicationsController } from "./communications.controller";
+import { RelayEmailController } from "./relay/relay-email.controller";
 import { SmsService } from "./sms.service";
 import * as dto from "./dto/communication.dto";
 
@@ -84,12 +85,17 @@ describe("C1 — POST /communications/sms is gone", () => {
     // authenticated now (ServiceKeyGuard, see vendor-email-gateway-auth.spec),
     // which is what makes "keep it" a defensible answer rather than a
     // restatement of the assumption.
+    //
+    // ADR 0149 #19 (2026-09-17): the route moved to RelayEmailController, with
+    // two locked doors (relay/relay-email.doors.spec.ts). Still kept, still at
+    // `email`, and no longer on this controller.
     expect(
       Reflect.getMetadata(
         PATH_METADATA,
-        (CommunicationsController.prototype as any).sendEmail,
+        (RelayEmailController.prototype as any).sendEmail,
       ),
     ).toBe("email");
+    expect((CommunicationsController.prototype as any).sendEmail).toBeUndefined();
   });
 });
 

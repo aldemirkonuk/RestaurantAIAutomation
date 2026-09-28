@@ -10,9 +10,26 @@ import {
 import { ConfigService } from "@nestjs/config";
 import { WebsocketGateway } from "../websocket/websocket.gateway";
 import { CommunicationsService } from "../communications/communications.service";
-import { GmailService } from "../communications/gmail.service";
 import { DatabaseService } from "../database/database.service";
 import { ExpoPushService } from "../push/expo-push.service";
+import { AreaRoutingService } from "../areas/area-routing.service";
+import { type AreaLabel, readAreaLabel } from "../areas/area-label";
+import type { RouteStep } from "../areas/area-routing";
+import type { DeliveryMode, DigestFrequency } from "./dto/notifications.dto";
+
+/**
+ * How a broadcast was routed (ADR 0218), returned so a caller and a spec can
+ * see it rather than infer it from a row count. Counts only — never ids.
+ */
+export interface PersistRouting {
+  label: AreaLabel;
+  step: RouteStep;
+  alerted: number;
+  inboxOnly: number;
+  heldAway: number;
+  /** Non-null: the area registers were unreadable and everyone was written to. */
+  degraded: string | null;
+}
 
 export interface NotificationPayload {
   type: string;
@@ -49,10 +66,12 @@ export class NotificationsService {
     @Inject(forwardRef(() => CommunicationsService))
     private readonly communicationsService?: CommunicationsService,
     @Optional()
-    @Inject(forwardRef(() => GmailService))
-    private readonly gmailService?: GmailService,
-    @Optional()
     private readonly expoPushService?: ExpoPushService,
+    // ADR 0218. Optional so the specs that construct this service by hand keep
+    // their behaviour; the one Nest provider (NotificationsModule) always has
+    // it, because that module imports AreaRoutingModule.
+    @Optional()
+    private readonly areaRouting?: AreaRoutingService,
   ) {
     this.initWebPush();
   }
@@ -117,7 +136,14 @@ export class NotificationsService {
   }
 
   /**
-   * Send Web Push notification to a user's registered push subscriptions
+   * Send Web Push notification to every device a user has registered.
+   *
+   * Reads `notification_push_devices`, not `notification_preferences`
+   * (ADR 0149 row 39, 2026-09-18). A push subscription is a property of a
+   * BROWSER, not of a house: `notification_preferences` is now per
+   * (restaurant, user), and a device has no restaurant to belong to. The old
+   * column, `notification_preferences.push_subscription`, is left in place
+   * but unread — see `20260925160500_a_preference_is_kept_once_per_person_per_house.sql`.
    */
   async sendWebPush(
     userId: string,
@@ -128,14 +154,13 @@ export class NotificationsService {
     }
 
     try {
-      // Fetch push subscriptions for this user from DB
-      const { data: subscriptions, error } = await this.databaseService.supabase
-        .from("notification_preferences")
-        .select("push_subscription")
-        .eq("user_id", userId)
-        .not("push_subscription", "is", null);
+      // Fetch every device this user has registered.
+      const { data: devices, error } = await this.databaseService.supabase
+        .from("notification_push_devices")
+        .select("id, endpoint, subscription")
+        .eq("user_id", userId);
 
-      if (error || !subscriptions || subscriptions.length === 0) {
+      if (error || !devices || devices.length === 0) {
         return; // No subscriptions found
       }
 
@@ -149,8 +174,8 @@ export class NotificationsService {
         actions: payload.actions,
       });
 
-      for (const row of subscriptions) {
-        const sub = row.push_subscription as PushSubscription;
+      for (const device of devices) {
+        const sub = device.subscription as PushSubscription;
         if (!sub?.endpoint) continue;
 
         try {
@@ -160,15 +185,15 @@ export class NotificationsService {
           );
         } catch (pushErr: any) {
           if (pushErr?.statusCode === 410 || pushErr?.statusCode === 404) {
-            // Subscription expired or invalid - clean up
+            // Subscription expired or invalid - clean up that one device.
             this.logger.warn(
               `Push subscription expired for user ${userId}, cleaning up`,
             );
             await this.databaseService.supabase
-              .from("notification_preferences")
-              .update({ push_subscription: null })
+              .from("notification_push_devices")
+              .delete()
               .eq("user_id", userId)
-              .eq("push_subscription->>endpoint", sub.endpoint);
+              .eq("endpoint", device.endpoint);
           } else {
             this.logger.warn(`Web push failed: ${pushErr?.message}`);
           }
@@ -180,23 +205,35 @@ export class NotificationsService {
   }
 
   /**
-   * Register a push subscription for a user
+   * Register a push subscription for a user's device.
+   *
+   * Upserts into `notification_push_devices` on `(user_id, endpoint)` — a
+   * real unique index (`20260925160500_a_preference_is_kept_once_per_person_per_house.sql`),
+   * unlike the old target (`notification_preferences`, `onConflict:
+   * "user_id"`), which named no index at all and 42P10'd on every call
+   * (ADR 0149 row 39).
    */
   async registerPushSubscription(
     userId: string,
     subscription: PushSubscription,
   ): Promise<{ success: boolean }> {
+    if (!subscription?.endpoint) {
+      this.logger.error(
+        `registerPushSubscription: subscription has no endpoint for user ${userId}`,
+      );
+      return { success: false };
+    }
     try {
       const { error } = await this.databaseService.supabase
-        .from("notification_preferences")
+        .from("notification_push_devices")
         .upsert(
           {
             user_id: userId,
-            push_subscription: subscription,
-            push_enabled: true,
+            endpoint: subscription.endpoint,
+            subscription,
             updated_at: new Date().toISOString(),
           },
-          { onConflict: "user_id" },
+          { onConflict: "user_id,endpoint" },
         );
 
       if (error) {
@@ -470,48 +507,6 @@ export class NotificationsService {
   }
 
   /**
-   * Send email via GmailService (OAuth2).
-   * Falls back to a logged mock when GmailService is not injected (e.g. isolated unit tests).
-   */
-  async sendEmail(data: {
-    to: string[];
-    subject: string;
-    bodyHtml: string;
-    bodyText?: string;
-    cc?: string[];
-    bcc?: string[];
-  }): Promise<{ success: boolean; messageId: string }> {
-    this.logger.log(
-      `Sending email to: ${data.to.join(", ")} — ${data.subject}`,
-    );
-
-    if (this.gmailService) {
-      const result = await this.gmailService.sendEmail({
-        to: data.to,
-        subject: data.subject,
-        html: data.bodyHtml,
-        text: data.bodyText,
-        cc: data.cc,
-        bcc: data.bcc,
-      });
-      this.logger.log(
-        `Email ${result.success ? "sent" : "failed"} — MessageID: ${result.messageId}`,
-      );
-      return {
-        success: result.success,
-        messageId: result.messageId ?? `err-${Date.now()}`,
-      };
-    }
-
-    // Fallback mock (no GmailService available)
-    const messageId = `mock-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    this.logger.warn(
-      `GmailService not available — email mocked. MessageID: ${messageId}`,
-    );
-    return { success: true, messageId };
-  }
-
-  /**
    * Create a persistent notification row in the notifications table.
    * Called by the frontend reminder-scheduler and backend cron jobs so the
    * notification appears in the in-app notification center.
@@ -641,16 +636,63 @@ export class NotificationsService {
        * restaurant through this default (team-audit.md, BLOCKER 4).
        */
       onlyUserIds?: string[];
+      /**
+       * The item's AREA LABEL (ADR 0218). `null` or absent is house-wide.
+       *
+       * A broadcast (no `onlyUserIds`) is ROUTED: the labelled area's members
+       * who are not Away are alerted, owners and managers still get the row
+       * without the push, and a person who is Away gets nothing — see
+       * `areas/area-routing.ts` for the whole ladder. With nobody in any area
+       * and nobody Away, the audience is exactly what it was before.
+       *
+       * A targeted write (`onlyUserIds`) is NOT routed: its caller already
+       * chose the people (a message to one person, a producer's claimed
+       * audience that has already set Away aside).
+       */
+      area?: AreaLabel;
+      /**
+       * Set by a caller that already sends its OWN push, with its own
+       * opt-out and audience filtering: team broadcast
+       * (`team.controller.ts` `broadcast()`, "One push path") and the Away
+       * release (`away-release.service.ts` `deliver`, ADR 0218) — the only
+       * two setters, enumerated by CLAIMS PR-448-TEAM-BROADCAST-ONE-PUSH-PATH.
+       * Without this, this funnel's own "Mobile fan-out" below fired a SECOND push at
+       * every non-`"low"` priority, to the full write audience, reading no
+       * preference at all: an inbox-only send still pushed, and a push
+       * opt-out was ignored.
+       * Two push paths for one message; this keeps it to one.
+       */
+      skipMobilePush?: boolean;
     } = {},
-  ): Promise<{ inserted: number; ids: string[] }> {
+  ): Promise<{ inserted: number; ids: string[]; routing?: PersistRouting }> {
     const { broadcast = true, dedupeWithinMinutes } = opts;
     try {
       let userIds = await this.resolveRestaurantMemberIds(restaurantId);
+      // Who gets the push and the live ping. Equal to `userIds` except when
+      // routing puts someone in the inbox only.
+      let alertIds: string[] | null = null;
+      let routing: PersistRouting | undefined;
+      // Only the typed option is read — never a `metadata.area` some caller
+      // may already use for something else. An unknown value reads as
+      // house-wide, the direction that cannot lose an alert.
+      const label = readAreaLabel(opts.area);
       if (opts.onlyUserIds) {
         const allow = new Set(opts.onlyUserIds);
         userIds = userIds.filter((id) => allow.has(id));
+      } else if (this.areaRouting && userIds.length) {
+        const decision = await this.areaRouting.route(restaurantId, userIds, label);
+        userIds = [...new Set([...decision.alert, ...decision.inboxOnly])];
+        alertIds = decision.alert;
+        routing = {
+          label: decision.label,
+          step: decision.step,
+          alerted: decision.alert.length,
+          inboxOnly: decision.inboxOnly.length,
+          heldAway: decision.heldAway,
+          degraded: decision.degraded,
+        };
       }
-      if (!userIds.length) return { inserted: 0, ids: [] };
+      if (!userIds.length) return { inserted: 0, ids: [], routing };
 
       // Optional dedupe: skip if an identical group_key was already written for
       // this restaurant inside the window (prevents a re-alert on every sweep).
@@ -686,7 +728,8 @@ export class NotificationsService {
         action_url: payload.actionUrl ?? null,
         action_label: payload.actionLabel ?? null,
         group_key: payload.groupKey ?? null,
-        metadata: payload.metadata ?? {},
+        metadata:
+          label !== null ? { ...(payload.metadata ?? {}), area: label } : (payload.metadata ?? {}),
         created_at: now,
       }));
 
@@ -719,10 +762,21 @@ export class NotificationsService {
         // the socket either — DB rows and push were narrowed by onlyUserIds,
         // and the live emit follows the same addressing (Opus correctness
         // review, BLOCKER 2). Every client already joins its user:<id> room.
-        const emitTo = opts.onlyUserIds
-          ? this.websocketGateway.server.to(userIds.map((id) => `user:${id}`))
+        //
+        // A ROUTED write that did not simply reach everyone (ADR 0218) is
+        // addressed the same way: the restaurant room would ping a person who
+        // is Away. Inbox-only rows get no live ping in the last-resort step,
+        // because those owners are Away.
+        const narrowed =
+          routing !== undefined && (routing.step !== "everyone" || routing.heldAway > 0);
+        const liveIds =
+          routing?.step === "owners_inbox_only" ? [] : userIds;
+        const emitTo = opts.onlyUserIds || narrowed
+          ? liveIds.length
+            ? this.websocketGateway.server.to(liveIds.map((id) => `user:${id}`))
+            : null
           : this.websocketGateway.server.to(`restaurant:${restaurantId}`);
-        emitTo.emit("notification:new", {
+        emitTo?.emit("notification:new", {
           event: "NewNotification",
           data: {
             title: payload.title,
@@ -739,8 +793,17 @@ export class NotificationsService {
       // Mobile fan-out: whatever lands in the notification center lands on
       // members' phones too, except low priority which stays in-app only.
       // Batching happens upstream of this funnel, so a digest is one push.
-      if (this.expoPushService && (payload.priority ?? "medium") !== "low") {
-        await this.expoPushService.sendToUsers(userIds, {
+      // Routed writes push only to the people routing ALERTED (ADR 0218).
+      // `skipMobilePush` opts a caller OUT of this leg entirely, for when it
+      // is running its own — see the option's doc comment.
+      const pushTo = alertIds ?? userIds;
+      if (
+        this.expoPushService &&
+        !opts.skipMobilePush &&
+        (payload.priority ?? "medium") !== "low" &&
+        pushTo.length > 0
+      ) {
+        await this.expoPushService.sendToUsers(pushTo, {
           title: payload.title,
           body: payload.message,
           priority: payload.priority === "critical" ? "high" : "default",
@@ -752,7 +815,7 @@ export class NotificationsService {
         });
       }
 
-      return { inserted: rows.length, ids };
+      return { inserted: rows.length, ids, routing };
     } catch (e: any) {
       this.logger.warn(
         `persistForRestaurant failed for restaurant ${restaurantId}: ${e?.message}`,
@@ -1123,12 +1186,19 @@ export class NotificationsService {
     };
   }
 
-  async getPreferences(userId: string) {
-    const { data, error } = await this.databaseService.supabase
+  /**
+   * `restaurantId` is optional only so existing callers that have not yet
+   * been re-checked (outside this lane's scope — see ADR 0149 row 39) keep
+   * compiling; every caller this lane owns (the controller) always supplies
+   * it, taken from the verified token, never from the request.
+   */
+  async getPreferences(userId: string, restaurantId?: string) {
+    let query = this.databaseService.supabase
       .from("notification_preferences")
       .select("*")
-      .eq("user_id", userId)
-      .maybeSingle();
+      .eq("user_id", userId);
+    if (restaurantId) query = query.eq("restaurant_id", restaurantId);
+    const { data, error } = await query.maybeSingle();
 
     if (error) {
       this.logger.error(`getPreferences error: ${error.message}`);
@@ -1171,6 +1241,13 @@ export class NotificationsService {
 
   async updatePreferences(params: {
     userId: string;
+    /**
+     * The house this preference is for (ADR 0149 row 39, 2026-09-18):
+     * preferences are per person PER HOUSE, upserted on
+     * `(restaurant_id, user_id)` — the real unique index — never on
+     * `user_id` alone, which named no index and 42P10'd on every save.
+     */
+    restaurantId: string;
     email?: boolean;
     push?: boolean;
     sms?: boolean;
@@ -1180,14 +1257,18 @@ export class NotificationsService {
       enabled?: boolean;
       instantFirstAlert?: boolean;
       criticalImmediate?: boolean;
-      digestFrequency?: string;
+      digestFrequency?: DigestFrequency;
       digestTime?: string;
     };
-    ordersMode?: string;
-    reportsMode?: string;
+    // Narrowed 2026-09-16 (ADR 0147 "Named, not fixed"): the DTO now refuses
+    // anything outside these, so the column only ever receives a value a
+    // sender actually reads.
+    ordersMode?: DeliveryMode;
+    reportsMode?: DeliveryMode;
   }) {
     const updateData: Record<string, any> = {
       user_id: params.userId,
+      restaurant_id: params.restaurantId,
       updated_at: new Date().toISOString(),
     };
 
@@ -1219,7 +1300,7 @@ export class NotificationsService {
 
     const { data, error } = await this.databaseService.supabase
       .from("notification_preferences")
-      .upsert(updateData, { onConflict: "user_id" })
+      .upsert(updateData, { onConflict: "restaurant_id,user_id" })
       .select()
       .single();
 
@@ -1235,17 +1316,29 @@ export class NotificationsService {
   // PUSH SUBSCRIPTION MANAGEMENT
   // =========================================================================
 
+  /**
+   * Remove every device this user has registered for push.
+   *
+   * Deletes from `notification_push_devices`, not `notification_preferences`
+   * (ADR 0149 row 39). This no longer also flips `push_enabled` to `false`:
+   * that column is a per-HOUSE preference now, and this route (like its
+   * `subscribeToPush` sibling) carries no restaurant to scope it to. Turning
+   * push off for a house is `PATCH /notifications/preferences`.
+   *
+   * Scope: EVERY device this user registered, not only the browser that
+   * called — `PushUnsubscribeDto` carries no endpoint, so the delete keys on
+   * `user_id` alone. Only the caller's own rows (the controller takes the
+   * user from the verified token). Narrowing it to one device needs the
+   * client to send its endpoint; until then "unsubscribe" signs out every
+   * browser this person has (PR #422 audit, 2026-09-26).
+   */
   async unregisterPushSubscription(
     userId: string,
   ): Promise<{ success: boolean }> {
     try {
       const { error } = await this.databaseService.supabase
-        .from("notification_preferences")
-        .update({
-          push_subscription: null,
-          push_enabled: false,
-          updated_at: new Date().toISOString(),
-        })
+        .from("notification_push_devices")
+        .delete()
         .eq("user_id", userId);
 
       if (error) {

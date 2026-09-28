@@ -73,7 +73,7 @@ const HOST_CONFIG: Record<InsightHost, HostConfig> = {
     title: "Vendor insights",
     categories: ["purchasing", "risk"],
     browseDims: ["vendor"],
-    actRoute: "/providers",
+    actRoute: "/vendors",
   },
 };
 
@@ -303,8 +303,16 @@ export function ContextualInsights({
       );
   };
 
+  /*
+   * A hand-off: it only opens the page where the work is done, so it records
+   * nothing (ADR 0112 F10, amended 2026-09-25 — the founder, sketch 122 Q2:
+   * "A hand-off that only opens another page records nothing"). It used to
+   * post an `acted` stamp fire-and-forget; since PR #483 that field is the
+   * gated, audited "Mark as briefed" stamp, so the post would have named the
+   * clicker as the briefer, or been refused (403 `not_your_note`) unseen
+   * while the page navigated away (PR #483 audit, R4).
+   */
   const act = (ins: Insight) => {
-    action(ins, { acted: true });
     window.location.href = `${cfg.actRoute}?insight=${encodeURIComponent(ins.ruleKey)}&from=${host}`;
   };
 

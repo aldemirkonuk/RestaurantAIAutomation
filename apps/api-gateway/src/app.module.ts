@@ -30,6 +30,7 @@ import { EventsModule } from "./events/events.module";
 import { CalendarModule } from "./calendar/calendar.module";
 import { InventoryLedgerModule } from "./inventory-ledger/inventory-ledger.module";
 import { ProvidersModule } from "./providers/providers.module";
+import { PromotionsModule } from "./promotions/promotions.module";
 import { CommunicationsModule } from "./communications/communications.module";
 import { SettingsModule } from "./settings/settings.module";
 import { IntegrationsModule } from "./integrations/integrations.module";
@@ -51,6 +52,7 @@ import { PaymentMethodsModule } from "./payment-methods/payment-methods.module";
 import { BillingModule } from "./billing/billing.module";
 import { RestaurantsModule } from "./restaurants/restaurants.module";
 import { TeamModule } from "./team/team.module";
+import { HouseAreasModule } from "./areas/house-areas.module";
 import { VendorCatalogueModule } from "./vendor-catalogue/vendor-catalogue.module";
 import { DistributorDiscoveryModule } from "./distributor-discovery/distributor-discovery.module";
 import { MenusModule } from "./menus/menus.module";
@@ -122,6 +124,7 @@ import { HouseModule } from "./house/house.module";
     ReportsModule,
     EventsModule,
     ProvidersModule,
+    PromotionsModule,
     WinesModule,
     StorageLocationsModule, // Storage locations and wine-to-location mappings
     CellarModule, // Which cellar registers a house carries (inferred → confirmed)
@@ -142,6 +145,7 @@ import { HouseModule } from "./house/house.module";
     BillingModule, // Stripe: SetupIntents, reconcile, signed webhook (ADR 0110)
     RestaurantsModule, // Per-restaurant membership (URA roster + invites)
     TeamModule, // Team ops: schedules, shifts, coverage, labor, certs, performance
+    HouseAreasModule, // Areas, lead marks and Away dates (ADR 0218)
     VendorCatalogueModule, // Admin-curated vendor catalogue with search/detail endpoints
     DistributorDiscoveryModule, // Territory-gated distributor map search (geo + portfolio facets)
     MenusModule, // Menu import (scan/CSV/manual) + onboarding progress

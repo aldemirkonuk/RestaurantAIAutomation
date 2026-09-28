@@ -11,6 +11,12 @@
     note here: the two legacy template builders this ADR wired to
     `POST /restaurants/:rid/templates` are **retired from the rebuilt page** by
     0118 D7 — they are untouched, and the legacy page still mounts them.
+  - **2026-09-25 — AMENDED: the house page names the three sources it owns.**
+    Founder, answering census fork F1 ("amend ADR 0083", option a). P3 and P4
+    are narrowed on the Mudavym `/communications`: the schedules card and the
+    Gmail inbound-watch line leave the house page, and the banner names three
+    sources, not five. The rule itself is unchanged. See "Amendment,
+    2026-09-25" below.
 - **Date:** 2026-09-02
 - **Decider:** Aldemir (founder)
 - **Keywords:** communications, templates, persistence, save, no-op, tenant key, query key, cache, failure, latency, em dash, SMS, honesty, page rebuild
@@ -201,6 +207,95 @@ all — the same vacuity class as the `useQuery<T>({` bug a prior extension foun
   then the choice is whether to give it a real document store with a re-open
   round trip, not whether the current one is honest about its limits.
 
+## Amendment, 2026-09-25 — the house page names the three sources it owns
+
+**The fork.** P3 and P4 above made the Mudavym `/communications` page name all
+five of its sources in one banner, the report schedules among them. Defect 4
+already said why that source could never answer: `public.scheduled_reports` is
+created by no migration in `supabase/migrations/` (it exists only in
+`supabase/migrations_archive/20260208024921_baseline_schema.sql:408`; production
+`to_regclass('public.scheduled_reports')` returned null on 2026-09-25, census
+ADVERSARY.md §4). So from the day `communications` joined `LIVE_PAGES` the
+banner fired for **every house, on every visit**, naming "the report
+schedules". The Gmail inbound-watch line printed "NOT configured" wherever the
+deployment's one Pub/Sub credential was missing, which no house can act on.
+PR #457 (`feat/preview-notes-followthrough`) removed both from the house page
+and was BLOCKed on 2026-09-23T03:02Z, correctly: it worked around this locked
+ADR in a code comment instead of amending it (CLAUDE.md §5).
+
+**The answer (founder, 2026-09-25, via AskUserQuestion; recorded in memory
+`founder-answers-2026-09-25-web-rebuild.md` item 1).** He took option (a),
+"amend ADR 0083". The option as it was put to him (census `SYNTHESIS.md` F1):
+
+> **(a) Amend ADR 0083.** The house page names the three sources it owns (book,
+> threads, drafts). The schedules card leaves `/communications` until a
+> `scheduled_reports` table exists, with a `v3.0-TECH-DEBT` row for the dead
+> feature. The Gmail-watch line moves to `/admin`.
+
+The question's own wording was not saved verbatim; the option text above is the
+census record it was asked from, and the memory records the pick.
+
+**Rejected.**
+
+- **(b) Keep ADR 0083 and make the source real** — build `scheduled_reports` and
+  the scheduled-reports feature so the read stops failing. Rejected: new scope
+  for a feature no house has used in production, and it runs into two open
+  forks it would have to settle first, OD-91 (do tenants get scheduled
+  communications by default) and OD-92 (the crons are pinned to New York time).
+- **(c) Keep five sources and render the missing table as "not set up".**
+  Rejected: it weakens the rule this ADR exists for. A read that 500s is a
+  failure, and calling it "not set up" is exactly the "failure called a wait"
+  in this ADR's title, pointed at a different word.
+
+**What changes, exactly.**
+
+1. **P3 on the Mudavym page is withdrawn with its card.** The "Scheduled
+   reports" card and the "Report schedules" glance figure are gone from
+   `pages/communications/next/`, and so is the request behind them:
+   `useCommsNextData` no longer calls `GET /reports/schedules`, because a read
+   the page cannot show is a read it should not make (#457 left both queries
+   firing; its audit noted it). The legacy page's `schedulesError` is untouched
+   and still pinned by CLAIMS row OD-81.
+2. **P4 becomes "one banner, three sources".** The conversation book, the
+   thread index and the drafts awaiting action. A real failure of any one of
+   them still raises the banner and names it, and "Try again" refetches all
+   three (ADR 0051: a read failure is never swallowed). Proof:
+   `useCommsNextData.test.tsx` fails each owned source alone and asserts it is
+   the one named; mutation-tested by forcing `failed.drafts` to `false` (two
+   tests red) and by re-adding a Gmail-status query (two tests red).
+3. **The Gmail inbound watch moves to the admin desk** (`/admin`, ADR 0143 §2's
+   one operations desk), as a row under "Behind the desk", with the same three
+   states (configured, not configured, could not be read) and a caption saying
+   what "configured" does and does not prove: `GmailWatchService.isReady()` is
+   true once the gateway obtained a Gmail access token at boot
+   (`gmail-watch.service.ts:76,279`), which is not proof that a reply arrived.
+   Owners and platform operators see it; managers and staff do not, as for the
+   rest of the desk.
+4. **The dead feature stays visible to a check that does not need the page.**
+   This is the second half of #457's "To clear". `scripts/check_queried_tables_exist.py`
+   already lists `scheduled_reports` in `KNOWN_MISSING`, and that list is a
+   ratchet: CI exits 1 the day a migration creates the table (prune the entry)
+   and the day nothing queries it any more. `reports.service.ts` still queries
+   it, so the entry stands. `v3.0-TECH-DEBT.md` gains the entry "Scheduled
+   reports is a dead feature", naming what returning the card would take.
+5. **The guard learned the new shape.** `scripts/check_windowed_figures.py` W6
+   refused a page with no page-local query key ("W6 would pass vacuously"). The
+   page now has none: every bucket lives in a declared shared hook, which W7
+   reads. W6 now accepts that shape only when BOTH hold: no query call anywhere
+   in the page's files, and at least one declared shared hook. Each half is
+   killed by a self-test case (a keyless local read; the existing /logs and
+   /receipts "no query at all" cases). `CommsGlance`'s contract lost
+   `schedules`.
+6. **The nightly manifest follows the page.** "Saved schedules could not be
+   loaded" left `/communications`' `failed_read`; the admin desk gained "The
+   Gmail watch status could not be read" and "Gmail watch re-read failed,
+   showing the last reading" (`check_nightly_manifest.py` passes, and fails
+   when the old sentence is put back).
+
+**Revisit when:** a migration in `supabase/migrations/` creates
+`scheduled_reports` (the `KNOWN_MISSING` ratchet will say so). Then the card can
+return with P3's three states, and this page owns four sources.
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
@@ -210,6 +305,7 @@ all — the same vacuity class as the `useQuery<T>({` bug a prior extension foun
 | 2026-09-21 | lane E-limits last-call review | Four gaps the first pass left, closed before merge: the edit dialog could not show or choose "Not stated"; the rebuilt calendar listed meetings already noted as "without a note" after a reload; an auction lot could be carried with a record the table would refuse; and a record said a refusal was a silent strip. See "Last-call review" at the end of the addendum |
 | 2026-09-21 | Aldemir (founder), answers 10, 11 and 12 (relayed in the round-2 lane brief) | A foreign-currency lot records the stated rate AND a per-bottle cost typed in the house's currency; a typed house cost wins, both recorded, nothing inferred. The lot number is optional; the auction house and the sale date stay required. The rebuilt /providers sheet gets an edit path, type first, and cards say "Not stated" |
 | 2026-09-21 | Claude (Opus 5), lane E round 2 | Built all three (second addendum below) |
+| 2026-09-25 | Aldemir | Amended (census F1, option a): the house page names the three sources it owns; schedules card off the page until a real table exists; Gmail watch to `/admin` |
 
 ## Addendum — 2026-09-21: three more pages that collected an answer and dropped it
 
@@ -237,7 +333,7 @@ app's global `ValidationPipe({ whitelist: true, forbidNonWhitelisted: true })`
 `AddProviderModal.tsx`) additionally defaulted their local state to `'Distributor'`, so a
 vendor added by clicking straight through read back, on screen, as a distributor nobody
 said it was — the exact fault this ADR names, one layer up from the database.
-Closed: migration `20260926140200_a_vendors_business_type_is_stated_or_not_stated.sql`
+Closed: migration `20260930150200_a_vendors_business_type_is_stated_or_not_stated.sql` [renumbered `20261101100200`, 2026-09-27] [renumbered again `20261103100200`, 2026-09-27] [renumbered once more `20261116100200`, 2026-09-27]
 adds `providers.primary_business_type` (nullable, no default — same rule as
 [[0116-a-threshold-stops-an-order-and-a-default-is-not-an-answer]]'s `payment_terms`
 fix on the same table). `CreateProviderDto`/`UpdateProviderDto` now carry
@@ -266,7 +362,7 @@ appending the note into `calendar_events.description` under a dated heading. [[0
 §1 had already named this exact design and its own replacement ("the note gets its own
 table … rather than waiting on documents") before today; the founder's answer today
 locks that design in against the shipped code that had gone the other way. Closed:
-migration `20260926140300_a_meeting_note_gets_its_own_table.sql` creates
+migration `20260930150300_a_meeting_note_gets_its_own_table.sql` [renumbered `20261101100300`, 2026-09-27] [renumbered again `20261103100300`, 2026-09-27] [renumbered once more `20261116100300`, 2026-09-27] creates
 `calendar_day_notes` (`restaurant_id, business_date, doc_type, event_title, body,
 author, author_name, created_at`) — `event_title` a plain display snapshot, never a
 foreign key, so editing or deleting the event a note was written against cannot destroy
@@ -291,7 +387,7 @@ collected.** `AuctionLotStart.tsx`'s own header, `inventory.md` §9 and the shee
 were used only to compute `(hammer + premium) / bottles`, and were printed back "to be
 copied somewhere that keeps them" — this ADR's own second sentence, "nor call a failure
 a wait," applies in spirit: the honesty was real, but the gap it was honest about was
-still a gap. Closed: migration `20260926140400_an_auction_lot_keeps_its_own_details.sql`
+still a gap. Closed: migration `20260930150400_an_auction_lot_keeps_its_own_details.sql` [renumbered `20261101100400`, 2026-09-27] [renumbered again `20261103100400`, 2026-09-27] [renumbered once more `20261116100400`, 2026-09-27]
 creates `auction_lot_records`, linked to `restaurant_inventory` (never to a specific
 `inventory_lots` row — `apply_stock_movement` creates that row internally and hands the
 caller no id for it). Currency is `NOT NULL`, shape-checked in Postgres and
@@ -383,14 +479,14 @@ lane brief (round 2); the wording is the relay's, not a verbatim quotation.
    sheet asks for the rate and the typed cost only when the lot's currency is not the
    house's, carries the stock at the booked cost, and the record keeps
    `house_currency`, `exchange_rate`, `house_unit_cost` and `booked_unit_cost`
-   (`20260926140900`, with a CHECK that a foreign lot states one of the two). The
+   (`20260930150900` [renumbered `20261101100900`, 2026-09-27] [renumbered again `20261103100900`, 2026-09-27] [renumbered once more `20261116100900`, 2026-09-27], with a CHECK that a foreign lot states one of the two). The
    gateway reads the house's currency itself and refuses a record whose booked cost is
    not the rule's. **A consequence, stated:** a house that has not stated its currency
    (or whose currency could not be read) cannot book an auction lot until it does — the
    sheet cannot tell a foreign lot from a home one without it, and nothing is inferred.
    The item's card shows what was booked and how.
 2. **The lot number is optional; the auction house and the sale date stay required**
-   (answer 11). `20260926140900` drops its NOT NULL (the non-blank CHECK stays, so a blank
+   (answer 11). `20260930150900` [renumbered `20261101100900`, 2026-09-27] [renumbered again `20261103100900`, 2026-09-27] [renumbered once more `20261116100900`, 2026-09-27] drops its NOT NULL (the non-blank CHECK stays, so a blank
    is refused and NULL is "not stated") and asserts the other two are still required; the
    gateway records a blank as NULL; the sheet no longer holds the carry for it, and the
    item's card says "lot number not stated".

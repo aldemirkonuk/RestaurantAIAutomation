@@ -27,6 +27,8 @@ import { Interval } from "@nestjs/schedule";
 import { JwtService } from "@nestjs/jwt";
 import { ConfigService } from "@nestjs/config";
 import { resolveJwtSecret } from "../auth/jwt-secret";
+import { DatabaseService } from "../database/database.service";
+import { sessionIsCurrent, tokenSessionVersion } from "../auth/session-version";
 
 // =============================================================================
 // TYPES & INTERFACES
@@ -41,6 +43,11 @@ interface ClientMetadata {
   subscribedRooms: Set<string>;
   messageCount: number;
   rateLimitTokens: number;
+  /**
+   * The session version of the token the socket connected with (ADR 0225),
+   * or null for a non-production socket that presented no token.
+   */
+  sessionVersion: number | null;
 }
 
 /** Server event types */
@@ -176,6 +183,7 @@ export class WebsocketGateway
   constructor(
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    private readonly databaseService: DatabaseService,
   ) {}
 
   // Client management
@@ -204,12 +212,59 @@ export class WebsocketGateway
     // Adapter error handling can be added here if needed for distributed deployments
   }
 
-  handleConnection(client: Socket): void {
-    const { userId, restaurantId } = this.extractAuthContext(client);
+  async handleConnection(client: Socket): Promise<void> {
+    const { userId, restaurantId: claimedRestaurantId, sessionVersion } =
+      this.extractAuthContext(client);
     if (!userId) {
       client.emit("error", "Unauthorized");
       client.disconnect(true);
       return;
+    }
+
+    // ADR 0225: a token from a session a password reset or change signed out
+    // opens no socket, even inside its 15 minutes. A read that fails refuses
+    // too: the client reconnects, and "could not check" is never "yes".
+    if (sessionVersion !== null) {
+      let current: boolean;
+      try {
+        current = await this.sessionStillCurrent(userId, sessionVersion);
+      } catch (error) {
+        this.logger.error(
+          `⚠️ Connect could not read ${userId}'s session version, refusing: ${error?.message || error}`,
+        );
+        current = false;
+      }
+      if (!current) {
+        client.emit("error", "Unauthorized");
+        client.disconnect(true);
+        return;
+      }
+    }
+
+    // The token names a house; only seat the socket in that house's room if
+    // an active `user_restaurant_access` row still says so. A removed member
+    // keeps a token naming the old house until it expires — the token alone
+    // must never be enough to read that house's live channel again. A failed
+    // read refuses the house (does not admit it); it does not drop the whole
+    // socket, since `user:${userId}` (DMs, notifications) does not depend on
+    // any one house.
+    let restaurantId: string | null = null;
+    if (claimedRestaurantId) {
+      try {
+        restaurantId = (await this.isActiveMember(userId, claimedRestaurantId))
+          ? claimedRestaurantId
+          : null;
+        if (restaurantId === null) {
+          this.logger.warn(
+            `⚠️ Connect refused house ${claimedRestaurantId} for ${userId}: no active membership`,
+          );
+        }
+      } catch (error) {
+        this.logger.error(
+          `⚠️ Connect could not verify ${userId}'s membership in ${claimedRestaurantId}, refusing the house: ${error?.message || error}`,
+        );
+        restaurantId = null;
+      }
     }
 
     // Initialize client metadata
@@ -221,6 +276,7 @@ export class WebsocketGateway
       subscribedRooms: new Set(),
       messageCount: 0,
       rateLimitTokens: this.RATE_LIMIT_TOKENS,
+      sessionVersion,
     });
 
     // Initialize rate limiter
@@ -268,6 +324,120 @@ export class WebsocketGateway
   }
 
   // =========================================================================
+  // SESSIONS (ADR 0225)
+  // =========================================================================
+
+  /**
+   * Whether a token minted under `sessionVersion` still belongs to a live
+   * session of `userId`. Throws on a read failure so the caller refuses.
+   */
+  private async sessionStillCurrent(
+    userId: string,
+    sessionVersion: number,
+  ): Promise<boolean> {
+    const { data, error } = await this.databaseService.supabase
+      .from("users")
+      .select("*")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (error) {
+      throw new Error(`users read failed: ${error.message}`);
+    }
+    if (!data) return false;
+    return sessionIsCurrent({ sv: sessionVersion }, data);
+  }
+
+  /**
+   * Called by `AuthService` once a password reset or change has moved the
+   * person's session version to `currentVersion`: every socket of theirs that
+   * connected under an older version is told why and closed. That includes
+   * the socket of the session that made a change; its client reconnects with
+   * the new pair it was just given (web: `lib/sessionRenewed.ts`). Returns how
+   * many were closed.
+   *
+   * This instance's sockets only. A socket held by another gateway instance
+   * stays open until it reconnects or idles out; it can read nothing new that
+   * needs a request, and its handshake is refused when it tries again.
+   */
+  endStaleSessions(userId: string, currentVersion: number): number {
+    let closed = 0;
+    for (const [clientId, metadata] of this.clients.entries()) {
+      if (metadata.userId !== userId) continue;
+      if (
+        metadata.sessionVersion === null ||
+        metadata.sessionVersion >= currentVersion
+      ) {
+        continue;
+      }
+      const socket = this.server?.sockets?.sockets?.get(clientId);
+      if (socket) {
+        socket.emit("session:ended", { reason: "password_changed" });
+        socket.disconnect(true);
+        closed++;
+      }
+    }
+    if (closed > 0) {
+      this.logger.log(
+        `🔒 Closed ${closed} socket(s) of ${userId}: session version moved to ${currentVersion}`,
+      );
+    }
+    return closed;
+  }
+
+  // =========================================================================
+  // MEMBERSHIP (ADR 0164's websocket sibling)
+  // =========================================================================
+
+  /**
+   * Whether `userId` currently holds an active `user_restaurant_access` row
+   * in `restaurantId`. Throws on a read failure so the caller can refuse
+   * rather than admit (never treat "could not check" as "yes").
+   */
+  private async isActiveMember(
+    userId: string,
+    restaurantId: string,
+  ): Promise<boolean> {
+    const { data, error } = await this.databaseService.supabase
+      .from("user_restaurant_access")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("restaurant_id", restaurantId)
+      .eq("is_active", true)
+      .limit(1);
+    if (error) {
+      throw new Error(
+        `user_restaurant_access read failed: ${error.message}`,
+      );
+    }
+    return (data?.length ?? 0) > 0;
+  }
+
+  /**
+   * Called by removal paths (`MembersService.removeMember`,
+   * `TeamService.deleteMember`, `AuthService.leaveRestaurant`, and
+   * `AuthService.deleteAccount`, once per house it removes — wired
+   * 2026-09-19, round 3, P9; it was the only one of the four not wired at
+   * first) once a membership row is gone. Takes every socket this user has
+   * open out of that house's room immediately, and forgets the house in our
+   * own metadata too — otherwise a later `subscribe:restaurant` for the same
+   * id would pass (metadata still named it) even though the socket.io room
+   * membership was just revoked.
+   */
+  evictFromHouse(userId: string, restaurantId: string): void {
+    const room = `restaurant:${restaurantId}`;
+    this.server?.in(`user:${userId}`).socketsLeave(room);
+
+    for (const metadata of this.clients.values()) {
+      if (metadata.userId === userId && metadata.restaurantId === restaurantId) {
+        metadata.restaurantId = null;
+        metadata.subscribedRooms.delete(room);
+      }
+    }
+
+    this.logger.log(`🚪 Evicted ${userId} from ${room} (membership ended)`);
+  }
+
+  // =========================================================================
   // SUBSCRIPTION HANDLERS
   // =========================================================================
 
@@ -291,8 +461,13 @@ export class WebsocketGateway
       return { success: false, error: "Client not registered" };
     }
 
-    // Enforce tenant scope
-    if (metadata.restaurantId && metadata.restaurantId !== data.restaurantId) {
+    // Enforce tenant scope. A socket whose token names no house (or whose
+    // claimed house failed its connect-time membership check) has
+    // `metadata.restaurantId === null` and is refused outright — it must
+    // never be let in just because the request supplies a restaurantId
+    // itself. This is the one check that stood between any signed-in socket
+    // and any restaurant's live room (44.1r's websocket sibling).
+    if (!metadata.restaurantId || metadata.restaurantId !== data.restaurantId) {
       return { success: false, error: "Unauthorized restaurant subscription" };
     }
 
@@ -648,6 +823,7 @@ export class WebsocketGateway
   private extractAuthContext(client: Socket): {
     userId: string | null;
     restaurantId: string | null;
+    sessionVersion: number | null;
   } {
     const token = this.extractAuthToken(client);
     if (token) {
@@ -656,11 +832,12 @@ export class WebsocketGateway
           secret: resolveJwtSecret(
             this.configService.get<string>("JWT_SECRET"),
           ),
-        }) as { sub?: string; restaurantId?: string };
+        }) as { sub?: string; restaurantId?: string; sv?: number };
 
         return {
           userId: payload?.sub || null,
           restaurantId: payload?.restaurantId || null,
+          sessionVersion: tokenSessionVersion(payload),
         };
       } catch (error) {
         this.logger.warn(
@@ -674,10 +851,14 @@ export class WebsocketGateway
         client.handshake.auth?.userId ||
         client.handshake.query?.userId?.toString() ||
         client.id;
-      return { userId: fallbackUserId, restaurantId: null };
+      return {
+        userId: fallbackUserId,
+        restaurantId: null,
+        sessionVersion: null,
+      };
     }
 
-    return { userId: null, restaurantId: null };
+    return { userId: null, restaurantId: null, sessionVersion: null };
   }
 
   private extractAuthToken(client: Socket): string | null {

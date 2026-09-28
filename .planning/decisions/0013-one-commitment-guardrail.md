@@ -3,13 +3,13 @@ type: adr
 id: 0013
 title: One commitment guardrail, generated into every runtime
 status: proposed
-updated: 2026-08-25
+updated: 2026-09-25
 links: []
 ---
 
 # 0013 — The UCC commitment guardrail has one canon; every other copy is generated and CI-checked
 
-- **Status:** Proposed — resolves [OD-44](OPEN-DECISIONS.md)
+- **Status:** Proposed — resolves [OD-44](OPEN-DECISIONS.md) **[2026-09-25, PR #464: the guardrail is no longer the only thing between `_handle_scarcity_auto_reply` and a vendor. Founder ruling for #464, "gate, clear, then merge": the hold now also needs the house's `enable_ai_autonomous_send`, and no send runs from a message older than 24 hours. See "Addendum 2026-09-25" below. No ADR governed this agent's autonomy before; this is the record that named its auto-send path, so the bracket lives here.]**
 - **Keywords:** UCC, contract formation, commitment language, guardrail, auto-send, drift, codegen
 - **Date:** 2026-08-25
 - **Decider:** Aldemir (founder) — recorded by a session; not binding until locked
@@ -109,8 +109,55 @@ Nothing was dropped from the TypeScript list.
   such that both services share a filesystem — then option 1 becomes available and the
   generator can be retired.
 
+## Addendum 2026-09-25 — the auto-send path also needs the house's switch, and a fresh message
+
+**Why now.** `provider_conversation_agent` had never processed a message in production
+(PR #464 fixes the boot failure that kept it off). Merging #464 turns it on. Two things
+had to hold first, and the founder set the order on 2026-09-25: *"Gate, clear, then merge."*
+
+1. **The hold obeys the house.** `_handle_scarcity_auto_reply` emails a vendor "please hold
+   those for us" with no approval, and its fixed text clears this record's guardrail. It
+   now also reads `restaurant_feature_flags.enable_ai_autonomous_send` on the house's
+   `restaurant_settings` row, right before the send, with the gateway's rule
+   (`inbound-responder.service.ts`, `isAutonomousSendEnabled`): only a stored literal
+   `true` sends. No row, no restaurant, a read error or a thrown client send nothing, and
+   the manager is told which of those it was.
+2. **No send from an old message.** `conversation.approved`, `conversation.modified` and
+   `conversation.auto_reply.urgency` are held when their publish time is more than 24 hours
+   old, or cannot be proven. The window is `APPROVAL_MAX_AGE_SECONDS` in
+   `services/plivo_voice_client.py`, reused rather than invented. A held approval goes back
+   to `PENDING_APPROVAL` with `constraint_flags.reapproval_required.reason` set to a
+   sentence the manager reads, a `conversation_reapproval_needed` notification carries the
+   same sentence, and the hold is logged at WARNING. Keys that only draft are not held.
+   The publish time is the Python envelope `timestamp`, or the AMQP `timestamp` property,
+   which the gateway's `publishEvent` now stamps and `MessageBus.consume` forwards; the
+   bus's retry re-publish keeps the original.
+
+**Clear.** No broker purge was done. The queues were read on 2026-09-25 22:59 UTC through
+the broker's management API, read-only: all 14 `queue.provider_conversation_agent.*` queues
+held 0 messages, as did every other queue on the vhost (84). The code guard stays as the
+standing rule rather than a one-off.
+
+**Rejected.** A manual purge before merge (one-off, leaves nothing behind for the next
+backlog, and deletes non-send messages too). Trusting a message with no publish time
+(that is exactly the backlog case). Measuring age from the draft row (production's
+`procurement_conversations` has no approval-time column; see `v3.0-TECH-DEBT.md`,
+2026-09-25).
+
+**Open.** Whether 24 hours is the right window for a vendor email, rather than the voice
+call it was set for, is the founder's; it is reported as a candidate open decision, not filed.
+**[2026-09-25, founder round 4 item 20 — answered, no longer open: "#464 stale-send limit
+24 hours." The window stays at 24 hours for the vendor-email send path as built. It is still
+borrowed from `APPROVAL_MAX_AGE_SECONDS` (`services/plivo_voice_client.py`), so a change to the
+voice-call window would move this one too; `test_conversation_agent_send_gates.py` pins
+`SEND_MESSAGE_MAX_AGE_SECONDS == APPROVAL_MAX_AGE_SECONDS == 24 * 3600`, which fails the build
+if either moves without the other being decided. Source: founder answers recorded in session
+6c6d8b93, memory `founder-answers-2026-09-25-web-rebuild.md` item 20.]**
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
 |---|---|---|
 | 2026-08-25 | — | Created; counts re-verified (19/8/3, not 20/8) |
+| 2026-09-25 | PR #464 lane | Addendum: autonomy switch + 24h send-age guard on the auto-send path |
+| 2026-09-25 | W2-fix-cellar-team lane | Bracket: founder confirmed the 24-hour stale-send limit (round 4 item 20) |

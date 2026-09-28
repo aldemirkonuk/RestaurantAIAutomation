@@ -20,7 +20,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 
 const api = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), put: vi.fn() }));
 const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), info: vi.fn() }));
@@ -380,5 +380,28 @@ describe('legacy /recommendations — round 5, answer 2: someone else’s note',
     expect(actionPosts()[0][1]).toMatchObject({ assignedTo: null, assignedName: null });
     expect(toast.success).not.toHaveBeenCalledWith('Assignment cleared');
     expect(await screen.findByText('Cook')).toBeInTheDocument();
+  });
+});
+
+/**
+ * ADR 0112 F10, amended 2026-09-25 (the founder, sketch 122 Q2): a hand-off
+ * that only opens another page records nothing. `acted` is now the gated,
+ * audited "Mark as briefed" stamp (PR #483), so Act posting it would name the
+ * clicker as the briefer, or be refused unseen as the page left (audit R4).
+ */
+describe('legacy /recommendations — Act is a hand-off and records nothing', () => {
+  it('Act navigates and posts no acted stamp', async () => {
+    render(
+      <MemoryRouter initialEntries={['/recommendations']}>
+        <Routes>
+          <Route path="/recommendations" element={<Recommendations />} />
+          <Route path="/vendors" element={<p>vendors page</p>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await screen.findByText(REC.observation);
+    fireEvent.click(screen.getByRole('button', { name: /Compare vendors/ }));
+    expect(await screen.findByText('vendors page')).toBeInTheDocument();
+    expect(api.post.mock.calls.filter(([, body]) => body && 'acted' in body)).toEqual([]);
   });
 });

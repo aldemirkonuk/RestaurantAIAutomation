@@ -98,7 +98,7 @@ const mainNavItems: NavItem[] = [
   // the only way in was an Orders row, which is the wrong end of the flow for a
   // porter holding a phone next to a driver who will not wait. `PackageCheck`
   // pairs with Inventory's `Package` (same goods, one step earlier) and stays
-  // clear of `Truck`, which Providers already owns.
+  // clear of `Truck`, which Vendors already owns.
   {
     name: 'Receiving',
     href: '/receiving',
@@ -111,13 +111,13 @@ const mainNavItems: NavItem[] = [
     icon: Wine,
     description: 'Your full wine catalog with pricing and tasting details.',
   },
-  // Distributor discovery is a tab inside Providers (/providers?tab=discover)
+  // Vendor discovery is a tab inside Vendors (/vendors?tab=discover)
   // rather than its own nav item — same subject, and the sidebar is already full.
   {
-    name: 'Providers',
-    href: '/providers',
+    name: 'Vendors',
+    href: '/vendors',
     icon: Truck,
-    description: 'Suppliers, contacts, and distributor discovery.',
+    description: 'Vendors, contacts, and vendor discovery.',
   },
   {
     name: 'Promotions',
@@ -183,12 +183,13 @@ const secondaryNavItems: NavItem[] = [
 // The Wine Agent FAB, Help card and Learn panel all open `/sommelier` already,
 // so the concept keeps its entry points — this nav row was the only link that
 // actually landed on the dead page.
+// [2026-09-25, ADR 0145: the row opens `/ask`; `/sommelier` redirects there.]
 const aiNavItems: NavItem[] = [
   {
-    name: 'Sommelier AI',
-    href: '/sommelier',
+    name: 'Ask Mudavym',
+    href: '/ask',
     icon: Sparkles,
-    description: 'Ask about pairings, pricing, and what to reorder.',
+    description: 'Ask the house: stock, orders, receipts, and general questions.',
   },
 ]
 

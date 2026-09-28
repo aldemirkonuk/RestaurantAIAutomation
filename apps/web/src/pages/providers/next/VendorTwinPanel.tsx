@@ -115,7 +115,7 @@ export function VendorTwinPanel({
       /* Above the sheet it interrupts (the sheet is 100). */
       zIndex={140}
       footer={
-        <span style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-3, #7C7365)' }}>
+        <span style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-4, #665D50)' }}>
           Two records are never merged here. Orders, invoices and letters all point at one
           vendor, and repointing them is not something a warning may do.
         </span>
@@ -124,7 +124,7 @@ export function VendorTwinPanel({
       <div style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-2, #4F473C)' }}>
         <p
           data-testid="twin-confidence"
-          style={{ fontFamily: MONO, fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--ink-3, #7C7365)', margin: 0 }}
+          style={{ fontFamily: MONO, fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--ink-4, #665D50)', margin: 0 }}
         >
           {pct}% alike {basis}
         </p>
@@ -135,7 +135,7 @@ export function VendorTwinPanel({
         >
           {record.name}
         </h3>
-        <p style={{ margin: '2px 0 0', fontSize: 11.5, color: 'var(--ink-3, #7C7365)' }}>
+        <p style={{ margin: '2px 0 0', fontSize: 11.5, color: 'var(--ink-4, #665D50)' }}>
           {isCatalogue ? 'A verified entry in the shared catalogue' : 'Already in this house’s book'}
         </p>
 
@@ -155,7 +155,7 @@ export function VendorTwinPanel({
                     fontSize: 9,
                     letterSpacing: '0.1em',
                     textTransform: 'uppercase',
-                    color: 'var(--ink-3, #7C7365)',
+                    color: 'var(--ink-4, #665D50)',
                     minWidth: 68,
                     paddingTop: 2,
                   }}
@@ -194,7 +194,7 @@ export function VendorTwinPanel({
                 borderRadius: 3,
                 border: '1px solid var(--seal, #1A5E6B)',
                 background: adding ? 'transparent' : 'var(--seal, #1A5E6B)',
-                color: adding ? 'var(--ink-3, #7C7365)' : 'var(--paper-0, #FBF8F1)',
+                color: adding ? 'var(--ink-4, #665D50)' : 'var(--paper-0, #FBF8F1)',
                 cursor: adding ? 'not-allowed' : 'pointer',
               }}
             >

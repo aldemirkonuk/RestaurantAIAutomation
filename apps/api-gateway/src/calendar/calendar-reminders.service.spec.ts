@@ -391,6 +391,28 @@ describe("CalendarRemindersService — quiet hours", () => {
     expect(db.tables.calendar_events[0].reminder_sent).toBe(true);
   });
 
+  it("(D5, 2026-09-19) does not apply a DIFFERENT house's preference row to a member with none here", async () => {
+    // notification_preferences is per (restaurant_id, user_id) since ADR 0149
+    // row 39. user-1 turned reminders off at a SECOND house and has no row at
+    // all for rest-1 -- readPreferences used to read `.in("user_id", …)` with
+    // no restaurant_id filter, so this foreign row was the only one found and
+    // was applied here too.
+    const { db, service, notifications } = build(["user-1", "user-2"]);
+    db.tables.calendar_events.push(event());
+    db.tables.notification_preferences.push({
+      user_id: "user-1",
+      restaurant_id: "rest-2",
+      calendar_reminders_enabled: false,
+      quiet_hours_enabled: false,
+    });
+
+    await service.sweepTenant(TENANT, DUE);
+
+    expect(
+      notifications.persistForRestaurant.mock.calls[0][2].onlyUserIds.sort(),
+    ).toEqual(["user-1", "user-2"]);
+  });
+
   it("treats a member with no preferences row as reminders-on, quiet-hours-off", async () => {
     const { db, service, notifications } = build(["user-1"]);
     db.tables.calendar_events.push(event({ reminder_days_before: 2 }));
@@ -637,6 +659,26 @@ describe("CalendarRemindersService.statusFor — what the page is allowed to say
       start: "23:00",
       end: "07:30",
     });
+  });
+
+  it("(D5, 2026-09-19) does not report a DIFFERENT house's quiet window for this one", async () => {
+    // This read used `.eq("user_id", userId).limit(1)` with no restaurant_id
+    // filter, so a member of two houses got an arbitrary one of their rows —
+    // here, the other house's quiet hours reported for rest-1's status page.
+    const { db, service } = build(["user-1"]);
+    db.tables.notification_preferences.push({
+      user_id: "user-1",
+      restaurant_id: "rest-2",
+      calendar_reminders_enabled: true,
+      quiet_hours_enabled: true,
+      quiet_hours_start: "23:00",
+      quiet_hours_end: "07:30",
+    });
+
+    const status = await service.statusFor("rest-1", "user-1");
+
+    expect(status.viewer.usingDefaults).toBe(true);
+    expect(status.viewer.quietHours.enabled).toBe(false);
   });
 
   it("returns null — not zero — for a count the database refused", async () => {

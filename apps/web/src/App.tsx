@@ -54,6 +54,7 @@ import { ToastProvider } from './contexts/ToastContext'
 import { ThemeProvider } from './contexts/ThemeContext'
 import { HousePageLoader } from './components/mudavym/HousePageLoader'
 import { RouteHead } from './lib/seo/RouteHead'
+import { RenamedRoute } from './lib/renamedRoute'
 // SyncStatus disabled — floating bottom-right sync widget (re-enable when needed)
 import { AppOfflineBanner } from './components/mudavym/AppOfflineBanner'
 
@@ -70,6 +71,7 @@ import { ResetPassword } from './pages/ResetPassword'
 import { VerifyEmail } from './pages/VerifyEmail'
 import { InviteLanding } from './pages/InviteLanding'
 import { NoAccess } from './pages/NoAccess'
+import { ChooseHouse } from './pages/ChooseHouse'
 import { InventoryCommandPage } from './pages/inventory/command/InventoryCommandPage'
 import { Orders } from './pages/Orders'
 import { PageGate } from './components/mudavym'
@@ -120,6 +122,8 @@ const Recommendations = lazyWithRefresh(() => import('./pages/Recommendations'))
 const InsightCatalog = lazyWithRefresh(() => import('./pages/InsightCatalog'))
 const WineLibrary = lazyWithRefresh(() => import('./pages/wine-library'))
 const SommelierAI = lazyWithRefresh(() => import('./pages/SommelierAI'))
+// ADR 0145 — `/ask`, live for every house in code (LIVE_PAGES).
+const AskNext = lazyWithRefresh(() => import('./pages/ask/next/AskNext'))
 const AdminPanel = lazyWithRefresh(() => import('./pages/AdminPanel'))
 const AuthorizeIntegrationNext = lazyWithRefresh(() => import('./pages/authorize-integration/next/AuthorizeIntegrationNext'))
 const CompleteIntegrationConsent = lazyWithRefresh(() => import('./pages/authorize-integration/CompleteIntegrationConsent'))
@@ -129,6 +133,10 @@ const AdminHealth = lazyWithRefresh(() => import('./pages/AdminHealth'))
 // Standard pages (lazy loaded)
 const Providers = lazyWithRefresh(() => import('./pages/Providers'))
 const Promotions = lazyWithRefresh(() => import('./pages/Promotions'))
+// Sketch 113 direction B (ADR 0160 §113 / ADR 0165), behind
+// `mudavym_design_promotions` — OFF by default, so `Promotions` above stays
+// every house's page until the founder turns it on.
+const PromotionsNext = lazyWithRefresh(() => import('./pages/promotions/next/PromotionsNext'))
 const Communications = lazyWithRefresh(() => import('./pages/Communications'))
 const DocumentsPage = lazyWithRefresh(() => import('./pages/DocumentsPage'))
 const ReceiptsPage = lazyWithRefresh(() => import('./pages/ReceiptsPage'))
@@ -142,10 +150,14 @@ const HelpNext = lazyWithRefresh(() => import('./pages/help/next/HelpNext'))
 const Profile = lazyWithRefresh(() => import('./pages/Profile'))
 const AuthorizeIntegration = lazyWithRefresh(() => import('./pages/AuthorizeIntegration'))
 const Privacy = lazyWithRefresh(() => import('./pages/Privacy'))
+const Terms = lazyWithRefresh(() => import('./pages/Terms'))
 // Public vendor catalogue — resolved by slug, also served on a vendors.* subdomain.
 const VendorPortal = lazyWithRefresh(() => import('./pages/VendorPortal'))
 // Owner/manager only — vendor pricing is the restaurant's negotiating position.
+// `VendorPriceCompare.tsx` is routed as PageGate's `legacy` branch — see the
+// route comment below for the flag this page ships behind.
 const VendorPriceCompare = lazyWithRefresh(() => import('./pages/VendorPriceCompare'))
+const VendorPricesNext = lazyWithRefresh(() => import('./pages/vendor-prices/next/VendorPricesNext'))
 const DevTruth = lazyWithRefresh(() => import('./pages/DevTruth'))
 
 // Dev/Test pages
@@ -206,9 +218,15 @@ function App() {
                 <Route path="/verify-email" element={<VerifyEmail />} />
                 <Route path="/invite/:code" element={<InviteLanding />} />
                 <Route path="/no-access" element={<NoAccess />} />
+                <Route path="/choose-house" element={<ChooseHouse />} />
                 {/* Public: linked from the auth screens and the consent page, so
                     it must be readable before you have an account. */}
                 <Route path="/privacy" element={<Privacy />} />
+                {/* Public, same reason as /privacy. G9 (census, 2026-09-25):
+                    required by ADR 0145's round-6r notice and the owner
+                    data-terms acceptance work; placeholder text per OD-132/
+                    OD-124 until a lawyer reviews it (founder Q11, 2026-09-22). */}
+                <Route path="/terms" element={<Terms />} />
                 {/* Public vendor catalogue. No auth: this is what a vendor chose
                     to publish, and our own ingester reads it back as structured data. */}
                 <Route path="/v/:slug" element={<VendorPortal />} />
@@ -427,24 +445,44 @@ function App() {
                       />
                     }
                   />
-                  <Route path="/providers" element={<PageGate page="providers" legacy={<Providers />} next={<ProvidersNext />} />} />
-                  {/* Vendor price comparison. Role gate is enforced server-side
-                      too (owner/manager on /vendor-intel/*) — a hidden route is
-                      not access control. */}
-                  <Route path="/vendor-prices" element={<VendorPriceCompare />} />
+                  {/* ADR 0221: the word is "vendors". The page slug and flag stay
+                      `providers` (mudavym_design_providers), as do the gateway's
+                      /providers API paths; only the address and the words moved. */}
+                  <Route path="/vendors" element={<PageGate page="providers" legacy={<Providers />} next={<ProvidersNext />} />} />
+                  {/* The old address, kept for good: stored notifications, bookmarks
+                      and mail carry it. The rest of the path, the query
+                      (`?vendor=<id>` opens that card) and the hash come along. */}
+                  <Route path="/providers/*" element={<RenamedRoute from="/providers" to="/vendors" />} />
+                  {/* Vendor price comparison — ADR 0160 §112, direction A,
+                      behind a per-house flag like every other Mudavym page.
+                      Memory founder-sketch-decisions-106-115.md, "19-lane
+                      blocking answers (AskUserQuestion, 2026-09-19 ~09:20Z)":
+                      "vendor-prices = behind a flag (vendor_prices
+                      mudavym_design_* column migration, he flips it; NOT
+                      live on merge)". Gated on mudavym_design_vendor_prices
+                      (migration 20261022000000, renamed seven times — see
+                      vendor-prices.md), OFF by default. Role gate
+                      is enforced server-side too (owner/manager on
+                      /vendor-intel/*, staff on the identity routes) — a
+                      hidden route is not access control. */}
+                  <Route path="/vendor-prices" element={<PageGate page="vendor_prices" legacy={<VendorPriceCompare />} next={<VendorPricesNext />} />} />
                   {/* dev/truth — three instruments that make the product's own
                       numbers checkable (reach · as-of · swallow). The gateway
                       routes behind them 404 in production, so this renders its
                       own failure there rather than a blank screen. Throwaway:
                       delete when the claims stop needing checking. */}
                   <Route path="/dev/truth" element={<DevTruth />} />
-                  {/* Discovery moved into Providers as a tab; keep the old path
-                      working so existing links and bookmarks land in the right place. */}
+                  {/* Discovery moved into Vendors as a tab; keep the old path
+                      working so existing links and bookmarks land in the right place
+                      (ADR 0221 renamed the target from /providers to /vendors). */}
                   <Route
-                    path="/distributors"
-                    element={<Navigate to="/providers?tab=discover" replace />}
+                    path="/distributors/*"
+                    element={<RenamedRoute from="/distributors" to="/vendors" defaults={{ tab: 'discover' }} />}
                   />
-                  <Route path="/promotions" element={<Promotions />} />
+                  {/* Flag-gated and held back from LIVE_PAGES (2026-09-25):
+                      legacy keeps Trusted senders / Prospects until "Who is
+                      writing" is live on /communications (PR #470). */}
+                  <Route path="/promotions" element={<PageGate page="promotions" legacy={<Promotions />} next={<PromotionsNext />} />} />
                   {/* Both halves split by role INSIDE the element: the legacy
                       entry always did (TeamCommandPage.tsx:36-37) and TeamNext
                       now does too. Routed straight to the manager surface, a
@@ -496,20 +534,26 @@ function App() {
                   <Route path="/help" element={<PageGate page="help" legacy={<Help />} next={<HelpNext />} />} />
                   {/* Gated: the sidebar link is owner-only, but the URL was not —
                       any authenticated staff member could open the admin UI. */}
-                  <Route path="/admin" element={<PageGate page="admin" legacy={<ProtectedRoute requiredRole="owner"><AdminPanel /></ProtectedRoute>} next={<AdminDesk />} />} />
-                  <Route path="/admin/health" element={<PageGate page="admin" legacy={<ProtectedRoute requiredRole="owner"><AdminHealth /></ProtectedRoute>} next={<Navigate to="/admin" replace />} />} />
+                  <Route path="/admin" element={<PageGate page="admin" legacy={<ProtectedRoute requiredRole={['owner', 'manager']}><AdminPanel /></ProtectedRoute>} next={<AdminDesk />} />} />
+                  <Route path="/admin/health" element={<PageGate page="admin" legacy={<ProtectedRoute requiredRole={['owner', 'manager']}><AdminHealth /></ProtectedRoute>} next={<Navigate to="/admin" replace />} />} />
                   
                   {/* AI Assistants.
                       `/wine-agent` and `/wineagent` are retired (ADR 0019 §B): both
                       rendered the same under-construction placeholder with no
                       behaviour behind it. Everything that said "Wine Agent" in the
-                      UI already navigated to `/sommelier`, which is the real
-                      inventory & ordering help surface. */}
-                  <Route path="/sommelier" element={<SommelierAI />} />
+                      UI already navigated to `/sommelier`.
+                      [2026-09-25, ADR 0145: `/ask` is the page now — the
+                      founder's 2026-09-12 answer "/sommelier redirects here".
+                      `ask` is in LIVE_PAGES, so every house gets `AskNext`; the
+                      old chat stays mounted only as `legacy` (a per-browser QA
+                      override) until the ADR 0149 cutover deletes it.] */}
+                  <Route path="/ask" element={<PageGate page="ask" legacy={<SommelierAI />} next={<AskNext />} />} />
+                  <Route path="/ask/f/:folioId" element={<PageGate page="ask" legacy={<SommelierAI />} next={<AskNext />} />} />
+                  <Route path="/sommelier" element={<Navigate to="/ask" replace state={{ from: 'sommelier' }} />} />
                   <Route path="/services" element={<Navigate to="/settings?tab=services" replace />} />
                   
                   {/* Dev/Test Pages */}
-                  <Route path="/dev-sandbox" element={<ProtectedRoute requiredRole="owner"><DevSandbox /></ProtectedRoute>} />
+                  <Route path="/dev-sandbox" element={<ProtectedRoute requiredRole={['owner', 'manager']}><DevSandbox /></ProtectedRoute>} />
 
                   {/*
                     Catch-all, NESTED under DashboardLayout on purpose (sketch

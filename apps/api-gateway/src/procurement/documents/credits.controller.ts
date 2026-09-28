@@ -27,12 +27,19 @@ import {
   Min,
 } from "class-validator";
 import { JwtAuthGuard } from "../../auth/guards/jwt-auth.guard";
+import { RolesGuard } from "../../auth/guards/roles.guard";
+import { Roles } from "../../auth/decorators/roles.decorator";
 import { CurrentUser } from "../../auth/decorators/current-user.decorator";
 import { DatabaseService } from "../../database/database.service";
+import {
+  HouseLettersService,
+  type CreditLetter,
+} from "../../communications/letters/house-letters.service";
 import {
   Credit,
   CreditState,
   recoveryStats,
+  recoveryStatsByCurrency,
   transition,
 } from "./credit-ledger";
 
@@ -77,19 +84,55 @@ export class TransitionCreditDto {
 }
 
 /**
+ * Draft the claim's letter, and say what happened in words rather than failing
+ * the move (ADR 0230). The claim IS requested by the time this runs; a letter
+ * that could not be drafted is reported beside it, and
+ * `POST :id/request-letter` drafts it again. A module function rather than a
+ * method so the controller's handler list stays its routes.
+ */
+async function draftLetter(
+  letters: HouseLettersService,
+  user: AuthedUser,
+  creditId: string,
+): Promise<CreditLetter> {
+  try {
+    return await letters.draftForCredit({
+      restaurantId: user.restaurantId,
+      userId: user.userId,
+      creditId,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { state: "failed", id: null, to: null, says: message };
+  }
+}
+
+/**
  * Vendor credit claims — the money a distributor owes back.
  *
  * The one thing this surface exists to keep honest: CLAIMED IS NOT RECOVERED.
  * A restaurant that has asked for $4,200 has recovered nothing. Recovery means a
  * credit memo exists. Those are different fields, different states, and only one
  * of them appears as `recovered`.
+ *
+ * OWNER OR MANAGER ONLY, on every route here (ADR 0167, founder 2026-09-19:
+ * "Refuse staff on all four"). Until then the class carried `JwtAuthGuard` alone,
+ * so any signed-in member of the house, staff included, could read the chase list
+ * and the recovery figures the staff view deliberately omits, and could move a
+ * claim to `rejected` or `written_off`. `RolesGuard` reads `req.user.role`, which
+ * for a token that names a house is the role IN THAT HOUSE (ADR 0162, answer A),
+ * so this is decided per house and a role held elsewhere does not carry over.
  */
 @ApiTags("procurement-credits")
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles("owner", "manager")
 @Controller("procurement/credits")
 export class CreditsController {
-  constructor(private readonly db: DatabaseService) {}
+  constructor(
+    private readonly db: DatabaseService,
+    private readonly letters: HouseLettersService,
+  ) {}
 
   @Get()
   @ApiOperation({
@@ -117,7 +160,68 @@ export class CreditsController {
     const { data, error } = await q;
     if (error)
       throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
-    return { items: data ?? [] };
+    const items = data ?? [];
+
+    // Each claim's letters (ADR 0230): the draft it links to, and what became
+    // of it. Read separately so a failure here is named rather than printed as
+    // "no letter" — `letters: null` + `lettersError` is unknown, never none.
+    let byCredit: Record<string, unknown[]> | null = null;
+    let lettersError: string | null = null;
+    let lettersCapped = false;
+    try {
+      const result = await this.letters.lettersForCredits(
+        user.restaurantId,
+        items.map((r: { id: string }) => r.id),
+      );
+      byCredit = result.byCredit;
+      lettersCapped = result.capped;
+    } catch (err) {
+      lettersError = err instanceof Error ? err.message : String(err);
+    }
+    return {
+      items: items.map((r: { id: string }) => ({
+        ...r,
+        // A claim PRESENT in `byCredit` keeps its letters even when the read
+        // was capped — its own letter survived the window, so it is known
+        // either way. A claim ABSENT from a capped read is unknown, not
+        // none (audit round 1, R4): the window may have cut it, not the
+        // vendor conversation. Only an uncapped absence is a real "[]".
+        letters: byCredit
+          ? byCredit[r.id] ?? (lettersCapped ? null : [])
+          : null,
+      })),
+      lettersError,
+      lettersCapped,
+    };
+  }
+
+  @Post(":id/request-letter")
+  @ApiOperation({
+    summary:
+      "Draft the letter asking the vendor for this credit, for a claim already asked for (ADR 0230)",
+    description:
+      "Drafts only — nothing is sent until someone sends the draft from Communications. Returns the claim's existing unsent draft instead of making a second one.",
+  })
+  async requestLetter(
+    @Param("id") id: string,
+    @CurrentUser() user: AuthedUser,
+  ) {
+    const { data: row, error } = await this.db
+      .getClient()
+      .from("procurement_credits")
+      .select("id, state")
+      .eq("id", id)
+      .eq("restaurant_id", user.restaurantId)
+      .maybeSingle();
+    if (error)
+      throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+    if (!row) throw new HttpException("Claim not found", HttpStatus.NOT_FOUND);
+    if (!["requested", "promised"].includes(row.state))
+      throw new HttpException(
+        `This claim is "${row.state}". A letter is drafted when the claim is asked for — move it to requested first.`,
+        HttpStatus.CONFLICT,
+      );
+    return { letter: await draftLetter(this.letters, user, id) };
   }
 
   @Get("stats")
@@ -131,7 +235,7 @@ export class CreditsController {
       .getClient()
       .from("procurement_credits")
       .select(
-        "state, claimed_amount, credited_amount, credit_document_id, opened_at, self_evidenced",
+        "state, claimed_amount, credited_amount, credit_document_id, opened_at, self_evidenced, currency",
       )
       .eq("restaurant_id", user.restaurantId)
       .limit(5000);
@@ -146,10 +250,20 @@ export class CreditsController {
       creditDocumentId: r.credit_document_id,
       openedAt: r.opened_at,
       selfEvidenced: !!r.self_evidenced,
+      currency: r.currency ?? null,
     }));
 
     return {
       ...recoveryStats(credits),
+      // The same figures kept apart by the claim's own currency. The combined
+      // ones above add lira to euros when a house claims in both; nothing here
+      // converts, so a screen reads these and shows each currency on its own.
+      byCurrency: recoveryStatsByCurrency(credits),
+      // How many rows the figures were computed from, and whether that filled
+      // the `.limit()` above. At the cap every figure is a floor, and only the
+      // server can know it reached the cap.
+      rowsCounted: credits.length,
+      capped: credits.length >= 5000,
       // Claims the vendor's own paperwork proves. Worth separating: these are
       // the ones worth a phone call, and a low settlement rate on them says
       // something about the distributor rather than about the claim.
@@ -237,6 +351,13 @@ export class CreditsController {
 
     if (updErr)
       throw new HttpException(updErr.message, HttpStatus.INTERNAL_SERVER_ERROR);
+
+    // Asking the vendor drafts the letter that asks them (founder, 2026-09-25,
+    // round 5; ADR 0230). Drafted, never sent: it waits in /communications
+    // until a person sends it.
+    if (outcome.next.state === "requested") {
+      return { ...data, letter: await draftLetter(this.letters, user, id) };
+    }
     return data;
   }
 }

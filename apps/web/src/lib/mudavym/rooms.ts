@@ -15,7 +15,9 @@
  * Hiding a row is not the boundary; the gateway is. So a room is hidden only
  * where the gateway refuses the person anyway (Vendor prices is owner/manager
  * at `vendor-intel.controller.ts`), or where the route itself is role-gated
- * (The desk, `/admin`, owner — App.tsx `ProtectedRoute requiredRole="owner"`),
+ * (The desk, `/admin`, owner — `AdminDesk`'s own owner-or-operator check;
+ * App.tsx's legacy slot says `['owner', 'manager']` since ADR 0164 made
+ * `ProtectedRoute` exact, which is what its old widened "owner" admitted),
  * or where the route does not exist for this house (Connections with its flag
  * off redirects to /profile, so a visible link would lead somewhere else —
  * the legacy Sidebar's rule).
@@ -52,7 +54,7 @@ export const ROOM_GROUPS: readonly RoomGroup[] = [
     rooms: [
       { name: 'Orders', path: '/orders' },
       { name: 'Receiving', path: '/receiving' },
-      { name: 'Providers', path: '/providers' },
+      { name: 'Vendors', path: '/vendors' },
       { name: 'Promotions', path: '/promotions' },
       // The gateway refuses staff every /vendor-intel read (owner/manager).
       { name: 'Vendor prices', path: '/vendor-prices', minRole: 'manager' },
@@ -96,7 +98,7 @@ export const INTERNAL_PATHS: readonly string[] = ['/studio', '/simpos', '/dev/tr
 /**
  * Names for routes that are not rooms but are pages a person stands on — the
  * cellar's registers (`pageNames.ts` CELLAR_BY_PATH, the titles the page
- * itself prints), the account's own page, and one record.
+ * itself prints), the account's own page, `/ask`, and one record.
  */
 const OTHER_NAMES: ReadonlyArray<[string, string]> = [
   ['/wines', 'Wines'],
@@ -107,6 +109,9 @@ const OTHER_NAMES: ReadonlyArray<[string, string]> = [
   ['/non-alcoholic', 'Non-alcoholic'],
   ['/soft-drinks', 'Soft drinks'],
   ['/profile', 'Profile'],
+  // ADR 0145 — the page that answers out of a reading; its door is the rail's
+  // "Ask Mudavym." row, so it is not a room of its own.
+  ['/ask', 'Ask'],
 ];
 
 /** One incoming document (`/documents/:id`, ADR 0104 D12) — a record, not a room. */

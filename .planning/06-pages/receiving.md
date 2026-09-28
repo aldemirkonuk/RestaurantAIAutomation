@@ -832,7 +832,7 @@ By convention only, not by enforcement.** Measured on this branch (`main` + #436
   `authenticated` hold no privilege (`20260825200000_od73_close_anon_dml.sql:204-208`).
 - **Nothing in the database refuses a change.** No migration defines a trigger on the table, and
   the service role can `UPDATE` or `DELETE` any row. **[Superseded 2026-09-25 by [ADR 0227](../decisions/0227-the-door-record-is-append-only-in-the-database.md)
-  (founder, round 5: *"Trigger, no cascade"*): migration `20260927120000` refuses UPDATE, DELETE and
+  (founder, round 5: *"Trigger, no cascade"*): migration `20261130120000` refuses UPDATE, DELETE and
   TRUNCATE by trigger.]** A migration has already rewritten rows once:
   the `rejected_qty_bottles` backfill (`20260901220000_door_facts_are_columns.sql:64`).
 - **The history dies with its parent.** `order_id` and `restaurant_id` are `ON DELETE CASCADE`
@@ -859,7 +859,7 @@ and not yet recorded in that ADR.
 eleven rows at one instant, house scoping of every events read, 404 for a foreign order, 400 for a
 foreign marker before any read, bound errors, names, queue item names) and
 `receiving-line-history-route.spec.ts` (11: real Nest pipeline, staff/none 403 with no read,
-owner/manager/admin 200, marker and uuid validation, the gate's metadata). Web:
+owner/manager/admin 200 **[2026-09-28, merging `main`: owner/manager 200 and admin 403 — `RolesGuard` is exact since ADR 0164, and this route does not list admin, the same as the queue]**, marker and uuid validation, the gate's metadata). Web:
 `RcLineHistory.test.tsx` (17). Each guard was mutation-checked: removing the house filter, the id
 half of the cursor, the ownership 404, the `@Roles` gate, the box-opening on highlight, or the
 answered-before-empty rule turns at least one test red.

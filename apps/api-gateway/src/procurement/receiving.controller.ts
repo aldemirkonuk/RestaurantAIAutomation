@@ -344,7 +344,14 @@ export class ReceivingController {
     }
   }
 
+  // Owner or manager only (ADR 0167, founder 2026-09-19). Method-level, not
+  // class-level, on purpose: the door routes above are what staff do all day,
+  // and this list carries the dollars at risk that the staff view leaves out.
+  // Nest runs the class guard (JwtAuthGuard) first, so `req.user` is set when
+  // RolesGuard reads it.
   @Get("queue")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
   @ApiOperation({
     summary: "Deliveries that need a decision, worst money first",
     description:

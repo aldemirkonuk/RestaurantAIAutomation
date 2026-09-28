@@ -106,7 +106,7 @@ outbound-email audit trail, labelled by `outbound_email_type`).
 
 ### Redesign feature summary (behind the flag)
 
-- **Mudavym redesign behind `mudavym_design_communications` (OFF)**: four-figure glance strip (threads · drafts waiting · sent-30d · report schedules), the conversation book as a short-row ledger with prose inside the expansion, honest channel-state line (Gmail inbound watch queried, never asserted), scheduled-reports rail
+- **Mudavym redesign behind `mudavym_design_communications` (OFF)**: four-figure glance strip (threads · drafts waiting · sent-30d · report schedules), the conversation book as a short-row ledger with prose inside the expansion, honest channel-state line (Gmail inbound watch queried, never asserted), scheduled-reports rail **[2026-09-25, ADR 0083 amendment: now a THREE-figure strip — the report-schedules figure, the scheduled-reports rail card and the Gmail inbound-watch line left this page; the watch line reads on `/admin`. See "The house page names the three sources it owns" below.]**
 - **The house email composer** (flag ON, ADR 0118): a wide sheet that writes one
   letter — the sender line first, a recipient chosen **from the vendor book only**
   with "add to the book" inline, a house template picker, a body, and a merge
@@ -268,6 +268,10 @@ outbound-email audit trail, labelled by `outbound_email_type`).
   duty is the restaurant's own. A GB or US house is never shown that sentence
 - **RETIRED — the two legacy template workshops are gone from the rebuilt page** (ADR
   0118 D7). They are untouched and the legacy page still mounts them
+
+### Who is writing, 2026-09-19 (ADR 0160 §113 Open item 3 · sketch 113 direction A, frames 2a and 4c)
+
+Moved here from `/promotions` (founder, 2026-09-18: *"they move to /communications, and the hold-to-trust and add-vendor acts go with them; /promotions holds offers only"*). A section under the conversation book, two columns: **Trusted senders** (a ledger of the sender register — state, orders, injection and spam signals, updated; **Trust…** opens a centred panel that takes the `HoldToApprove`, **Untrust** is a plain button) and **Strangers** (mail from senders matching no vendor, with the reason it was kept; **Add as a vendor…** opens the plain-create ask and trusts nothing, **Put away** has an eight-second undo; a *this house / all houses* switch when the account has more than one). A trust is read back from the register before it is called saved; a failed read is a sentence, never an empty register; a full 100-row strangers window prints as a floor. **[2026-09-25: committed on `fix/comms-house-sources`. The flag gate this sentence described is moot — `communications` is in `LIVE_PAGES`, so every house renders the section.]** It sat, uncommitted, behind `mudavym_design_communications` when written.
 
 ## 1b. Motions used — Mudavym redesign (flag `mudavym_design_communications`)
 
@@ -475,6 +479,7 @@ Drawn in sketch 102 (`.planning/sketches/102-modal-census/index.html`); the poli
 - `apps/web/src/components/mudavym/Sheet.tsx` — extended with the `wide` prop (640px) this composer is the only user of
 - Gateway: `apps/api-gateway/src/communications/letters/` — `house-sender.service.ts`, `house-letters.service.ts`, `house-letters.controller.ts`, `house-letters.cron.ts`, `house-letters.dto.ts`, `house-letters.spec.ts`
 - Migration: `supabase/migrations/20260904150000_the_house_writes_its_own_mail.sql`
+- `apps/web/src/pages/communications/next/WhoIsWriting.tsx` · `SenderActs.tsx` · `useSendersDeskData.ts` · `senders-format.ts` — Trusted senders and Strangers with the hold-to-trust and add-vendor acts (ADR 0160 §113 Open item 3, 2026-09-19)
 
 ## 4. Endpoints
 
@@ -489,6 +494,10 @@ Atlas rows: [ENDPOINTS](../foundation/ENDPOINTS.md):495 (`reports`), :180
 | DELETE | `/reports/schedules/:id` | `Communications.tsx:325` → `reports.ts:84` |
 | GET | `/conversations/threads`, `/conversations/thread/:id`, `/conversations/stats/overview` | `ClassifiedConversationList` → `hooks/queries/useConversationQueries.ts:194,209,225` |
 | POST | `/conversations/:id/summarize` | `useRegenerateSummary` → `useConversationQueries.ts:240` |
+| GET | `/senders/reputation` | `useSendersDeskData.ts` (`useSenderRegister`) — owner/manager (`sender-trust.controller.ts`) |
+| POST | `/senders/trust` | `useSetSenderTrust` — owner/manager; the page reads the register back, the gateway ignores a failed upsert |
+| GET | `/prospects[?scope=all]` | `useStrangers` — any member; capped at 100 rows server-side |
+| POST | `/prospects/:id/promote` · `/dismiss` · `/restore` | `usePromoteStranger` (owner/manager) · `usePutAwayStranger` · `useRestoreStranger` |
 | GET | `/procurement/conversations/history` | `useProcurementConversationHistory` (Communications.tsx:28) → `useConversationQueries.ts:284` |
 
 | POST | `/procurement/orders/:id/draft-seal-challenge` | **NEW 2026-09-06** (packet 2) — `pages/communications/next/DraftedReplyPanel.tsx`, at the moment the hold begins. Mints over the letter, the recipient and the copies; 404 when no draft is waiting |
@@ -824,6 +833,148 @@ to close the hole also stops vendor mail. Giving the orchestrator a caller
 identity is a service-to-service auth decision, filed for the founder. Until it
 lands, this route is open.
 
+[CLOSED 2026-09-17, ADR 0149 #19 "Two doors, both locked" — the caller identity
+came first, in ADR 0099 (`X-Admin-Key`, 2026-09-02), which still let a key holder
+mail any address for no house. The route now lives in
+`apps/api-gateway/src/communications/relay/`, and `RelayDoorGuard` picks one
+door from the credential. **Service door:** the existing `X-Admin-Key`; the send
+must name `restaurantId`, `providerId` and `conversationId` or `orderId`; the
+conversation and order must be that house's, and every to/cc/bcc must be one of
+that vendor's addresses in `HouseLettersService.book`. **Person door:** the full
+`JwtAuthGuard` check, owner or manager of the session's house (read from the
+database for that house), recipients limited to its members and its vendors'
+contacts, the body sent as escaped `bodyText` (raw HTML refused), and a letter to
+a vendor runs the two blocking house-letter guardrails. [CORRECTED 2026-09-17,
+same day, after the lane's adversarial review: the person door runs every check
+above and then REFUSES 409 — nothing a person writes leaves this route. The one
+mailbox it can send from is the deployment's shared one, which ADR 0118 D1/D2
+rule out for a house's own mail (and D2 rules out a send with no undo window);
+#19 did not decide which mailbox a person's mail leaves from, so that fork is
+the founder's and is not defaulted. A letter to a vendor already leaves from the
+house's own mailbox through `POST /communications/letters`. The role is read by
+`OrganizationsService.readRestaurantRole`, so an unreadable role is a 503, not
+"no role". "Sent as escaped `bodyText`" was also false while it stood: the MIME
+boundary was `boundary_${Date.now()}` and both bodies went out unencoded, so a
+body carrying guessed `--boundary_<ms>` lines closed the text part and injected
+its own HTML part or attachment. Fixed for every sender in
+`GmailService.createMimeMessage` (128-bit random boundary, both parts base64),
+and both bodies are bounded (`bodyText` 100,000, `bodyHtml` 500,000 characters).
+An order-only service send is now also refused 403 when the order's vendor is
+not the one named.] [SUPERSEDED 2026-09-17, later the same day — the founder
+answered the fork the correction above left open: a person's mail leaves through
+the house's OWN connected mailbox (`HouseSenderService.resolve`'s `gmail_send`
+grant, the same one the letters composer already resolves — never the
+deployment's shared one), sent with `HouseLettersService`'s `sendThroughGrant`,
+naming the acting person as author (a signature line, since the grant may ride
+on a different member's mailbox than the one who wrote the words). A house with
+no connected mailbox — nobody has consented, or the read failed — still gets no
+send: the door refuses with the resolver's own sentence and a machine-readable
+`code: "house_mailbox_not_connected"`, never a bare 409. ADR 0114's house
+cutoff on the grant still applies and surfaces as 403, not this refusal. Also
+found and fixed the same day, out of this lane's own diff: `sendThroughGrant`
+(`house-letters.service.ts`, shared by both the composer's dispatcher and this
+door) wrote `Subject:` straight into the MIME header block with no line-break
+guard, unlike `GmailService`'s DTO-guarded subject — a subject carrying a line
+break could add a header (`Bcc:`) no recipient check ever saw. Fixed with a
+`sanitizeHeaderValue` applied to every header line the function writes.]
+[CORRECTED 2026-09-21, merging `origin/main`: `sanitizeHeaderValue` is gone.
+Main's ADR 0172 encoder (`mime-headers.ts`) now writes every header
+`sendThroughGrant` builds, this door's Cc/Bcc/Reply-To/In-Reply-To/References
+included. A line break in the subject still folds to a space; one inside an
+address is now refused before any fetch rather than folded and sent.]
+[SUPERSEDED 2026-09-17, later the same day — the founder closed one more fork
+the paragraph above left open: `GET /communications/letters/sender` already
+promises this mailbox a server-side 2-minute undo window (ADR 0118 D2), and
+an immediate send from the person door made that promise false for its own
+callers. Founder: **the person door queues like every other send from this
+mailbox** — D2's window is a property of the mailbox, not of any one
+composer. Built the same day: `sendAsPerson` now inserts a
+`relay_email_queue` row (`status: HOUSE_QUEUED`, `scheduled_send_at = now +
+undoMs`, the already-signed body) and answers **202**, not 200, carrying the
+row id, `dispatchAt`, `undoMs` and the resolver's own sentence — never a
+`messageId`, since nothing has been sent. `RelayEmailCron` (once a minute,
+same shape as `HouseLettersCron`) → `dispatchQueued` claims due rows
+(`HOUSE_QUEUED` → `HOUSE_SENDING`, so two ticks or two instances cannot both
+claim one), RE-RESOLVES the sending identity from the row's own actor rather
+than trusting the grant captured at queue time, and sends through the same
+`sendThroughHouseGrant`. `POST /communications/email/:id/cancel`
+(`cancelQueued`, a plain JWT route, not behind `RelayDoorGuard`) pulls a
+still-`HOUSE_QUEUED` row back before its window closes; a row already claimed,
+sent, failed or another house's is refused (409/404), never silently
+no-opped. New table `relay_email_queue`
+(`20261001090000_a_persons_mail_queues_like_the_houses_own.sql`) [renamed
+2026-09-27, PR #429 merge-train, to `20261025000000_a_persons_mail_queues_like_the_houses_own.sql`
+— ADR 0212] [renamed again 2026-09-27, PR #429 audit fix round after 2b97a7563, to `20261105000000_a_persons_mail_queues_like_the_houses_own.sql` — ADR 0212; main's ceiling had moved to `20261031174623` (#438)] [renamed again 2026-09-27, PR #429 item-76 round, to `20261115100000_a_persons_mail_queues_like_the_houses_own.sql` — ADR 0212; main's ceiling had moved to `20261115000000` (#482)] — a
+door-agnostic sibling of this page's own `HOUSE_QUEUED` rows on
+`procurement_conversations`, not the same table, because that table's
+`provider_id` is `NOT NULL` and the person door also reaches this house's own
+members with no vendor at all. Proved by the four cases
+`relay-email.doors.spec.ts` names: queued not sent, the undo cancels inside
+the window, dispatch after the window through the re-resolved grant, and the
+mailbox-not-connected refusal is unchanged and still synchronous.] **Record:**
+every send writes `relay_email_attempted` to `system_audit_log` before the
+provider is called (unwritable → 503, nothing sent), then `relay_email_sent` or
+`relay_email_failed`; refusals where a house is known write `relay_email_refused`.
+[CORRECTED 2026-09-17, review: a check that could not be made (a 5xx) writes
+`relay_email_unavailable`, not a refusal; a person not shown to be owner or
+manager gets a refusal row with the status and the gateway's reason only, never
+the subject, recipients or ids they typed; the row no longer carries a
+`letterId` that was really the conversation id.] [CORRECTED 2026-09-17, the
+queuing answer above: a person-door send writes a fifth row first,
+`relay_email_queued`, at queue time, before any attempt row exists — nothing
+is attempted with a provider until the window closes and the cron claims the
+row.]
+A subject or threading header with a line break is refused 400 (it would add a
+`Bcc:`). No web or mobile caller exists; the orchestrator now sends the house,
+vendor, conversation and order. Proved by `relay-email.doors.spec.ts` and
+`test_vendor_email_gateway_auth.py`, which share the orchestrator's body as a
+fixture. Still open: whether a relay 4xx should release a vendor conversation
+for retry or park it (ADR 0099's rejected alternative, never decided). [Which
+mailbox a person's mail leaves from — the other question this paragraph
+originally left open — was answered by the founder 2026-09-17, above; only the
+4xx-release-vs-park fork remains open and unfiled.]] [DECIDED 2026-09-19,
+founder, lane answers batch 4: that fork is closed; 400, 403 and 422 release
+the vendor conversation's claim as definite send refusals, 401 still parks it
+as SEND_UNCONFIRMED, and 404 and 429 are unchanged. ADR 0099 is now Locked,
+see its bracket.] [CORRECTED 2026-09-18,
+relay3 confirmer: the migration declared `scheduled_send_at NOT NULL`, and
+`cancelQueued` and both of `dispatchQueued`'s terminal writes all set it to
+`null` — Postgres rejected every one of the three with 23502. The undo could
+never cancel anything (a 400, then the mail left anyway two minutes later),
+and every dispatched row — sent or failed — stayed `HOUSE_SENDING` forever.
+The in-memory spec double did not enforce `NOT NULL`, so the four required
+tests passed while none of this held against the real schema. Fixed: the
+column is now nullable (unshipped when found, so editing the migration was
+safe; matches `procurement_conversations`' own column), re-proved by a PGlite
+replay of the migration and every write the service makes, printing `PROBE:
+all held`. Also fixed the same pass: `dispatchQueued`'s SENT/HOUSE_FAILED
+writes now check their own update for an error instead of discarding it (a
+failure is counted separately, `statusUpdateErrors`, never folded into `sent`
+or `failed`); and `cancelQueued`'s update now carries `.select("id")` and
+answers 409 if it matched no row, so a cancel racing the dispatcher's own
+claim can no longer be told "pulled back" for a mail that is leaving.] **Who
+may cancel (founder, 2026-09-18, ADR 0149 row 43 — his words, typo kept:
+"only author is the best option but I also belirve the pool inbox is a good
+idea"):** pulling a
+queued send back is the author's alone, on both queues —
+`RelayEmailService.cancelQueued` (this door) and `HouseLettersService.cancel`
+(the letters composer's own queue, answering ADR 0118's open question 4 on
+`procurement_conversations`). Either refuses a non-author with 403 and a
+plain sentence before any state or window check runs, proved by
+`relay-email.doors.spec.ts` and `house-letters.spec.ts`. **Direction, not
+built:** the same answer named a pooled inbox — several owners of a house
+sharing one view of what left and what is still queued, while each still
+sends from and is named as the author of their own mailbox grant — as "a good
+idea" worth having alongside the author-only rule, not instead of it. Nothing
+here changes for it: no shared cancel right, no shared queue view, no new
+table. If it is built, the natural seam is a read — a new `GET
+.../email/queued` alongside the letters composer's own `GET
+.../letters/queued`, which is tenant-scoped already (`house-letters.controller.ts:93`);
+this door has no such route yet — rather than
+a write — showing every member the house's own queue without widening who
+may act on someone else's row — but that is a design the founder has not
+been asked to choose yet, only floated.
+
 ## 11. Data flow
 
 ### Calls out
@@ -1069,3 +1220,18 @@ WhatsApp reply and no rendering of the 24-hour window state; a grep of `apps/web
 for `whatsapp/reply` or `whatsapp/window` returns nothing. That is on the pages build
 backlog, not shipped. See ADR 0121's 2026-09-17 review-trail row for what was fixed and
 what still needs a founder answer.
+
+## The house page names the three sources it owns — 2026-09-25 (ADR 0083 amendment)
+
+Founder, census fork F1, option (a) "amend ADR 0083". The Mudavym page's banner
+names three sources — the conversation book, the thread index, the drafts
+awaiting action — and a real failure of any of them still raises it
+(`useCommsNextData.test.tsx` fails each alone). Off the page, with their
+requests: the **report schedules** (glance figure + rail card; `public.scheduled_reports`
+is created by no migration, so the banner fired for every house) — back when a
+real table exists, tracked in v3.0-TECH-DEBT "Scheduled reports is a dead
+feature" and by `check_queried_tables_exist.py` KNOWN_MISSING; and the **Gmail
+inbound-watch line**, now a row on the admin desk ([[admin]]). The legacy page's
+Scheduled Reports tab (§1a) is unchanged and leaves at the ADR 0149 cutover.
+Nightly manifest: "Saved schedules could not be loaded" removed from this page's
+`failed_read`. Supersedes #457's blocked attempt.

@@ -26,7 +26,20 @@ vi.mock('../layout/ThemeMenu', () => ({ ThemeMenu: () => null }));
 vi.mock('../command/CommandProvider', () => ({
   CommandProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
-vi.mock('../askai/AskAiSurface', () => ({ AskAiSurface: () => <div data-testid="ask-surface" /> }));
+// The Ask panel is the shell's own (it docks in the counter's slot), so it is
+// mounted for real; only its network is mocked. `useUserPreferences` is
+// react-query underneath and this file has no `QueryClientProvider` — mocked
+// to a fixed no-preference-yet shape (this file is about docking, not the
+// panel's remembered mode; `AskPanel.test.tsx` covers that).
+vi.mock('../../services/api/askAi', async (orig) => ({
+  ...(await orig<typeof import('../../services/api/askAi')>()),
+  listOpenProposals: vi.fn(async () => []),
+  listCandidates: vi.fn(async () => null),
+  proposeAction: vi.fn(),
+}));
+vi.mock('../../hooks/useUserPreferences', () => ({
+  useUserPreferences: () => ({ preferences: {}, isPlaceholderData: false, updatePreferences: vi.fn() }),
+}));
 vi.mock('../../guidance/GuidanceProvider', () => ({
   GuidanceProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
@@ -104,9 +117,11 @@ describe('the shell at 1440', () => {
     expect(screen.getByText('page')).toBeTruthy();
     // No Wine Agent button anywhere (ADR 0149 row 33) — the component is
     // deleted, not merely unmounted, so there is nothing to query for.
-    // The two doors to the assistant: the rail's first row opens the ⌘⇧K panel.
-    expect(screen.getByTestId('ask-surface')).toBeTruthy();
+    // The doors to the assistant: the rail's first row and the header's Ask
+    // open the one ⌘⇧K panel (closed until asked).
     expect(screen.getByRole('button', { name: /Ask Mudavym\./ })).toBeTruthy();
+    expect(within(screen.getByRole('banner')).getByRole('button', { name: /^Ask Mudavym/ })).toBeTruthy();
+    expect(screen.queryByRole('complementary', { name: 'Ask Mudavym' })).toBeNull();
   });
 
   it("names the page by its room in the one header", () => {
@@ -271,5 +286,51 @@ describe('The house said belongs to one person in one house', () => {
       </AuthContext.Provider>,
     );
     await waitFor(() => expect(getHouseSaid()).toHaveLength(0));
+  });
+});
+
+// ADR 0145: the 2026-09-21 layout (one right-hand slot, counter or Ask), fork
+// 3 of 2026-09-25 ("Lie over it" below ~1280 px) and "One panel, two modes"
+// of 2026-09-26 (every door opens the same panel).
+describe('the Ask panel in the counter slot', () => {
+  it('at 1440 the rail door swaps the counter column for the Ask face, beside a live page', async () => {
+    mount('/orders');
+    expect(await screen.findByRole('complementary', { name: 'The counter' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /Ask Mudavym\./ }));
+
+    const face = await screen.findByRole('complementary', { name: 'Ask Mudavym' });
+    expect(face.closest('.mdv-shell__body')).not.toBeNull();
+    // Not modal: no dialog, the page still there and live.
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.getByText('page')).toBeTruthy();
+    // The counter folds to its counted strip, and its control gives the slot back.
+    expect(screen.queryByRole('complementary', { name: 'The counter' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Open the counter' }));
+    expect(screen.queryByRole('complementary', { name: 'Ask Mudavym' })).toBeNull();
+    expect(screen.getByRole('complementary', { name: 'The counter' })).toBeTruthy();
+  });
+
+  it("the header's Ask opens the same panel, and the counter's width choice is not overwritten", async () => {
+    mount('/orders');
+    fireEvent.click(within(screen.getByRole('banner')).getByRole('button', { name: /^Ask Mudavym/ }));
+    expect(await screen.findByRole('complementary', { name: 'Ask Mudavym' })).toBeTruthy();
+    expect(window.localStorage.getItem(prefsKeyFor('u-1'))).toBeNull();
+  });
+
+  it('below ~1280 px the same panel lies over the page, and the counter keeps its place', async () => {
+    setWidth(1180);
+    mount('/orders');
+    fireEvent.click(screen.getByRole('button', { name: /Ask Mudavym\./ }));
+    const dialog = await screen.findByRole('dialog', { name: /Ask Mudavym/ });
+    expect(dialog.closest('.mdv-shell__body')).toBeNull();
+    expect(screen.queryByRole('complementary', { name: 'Ask Mudavym' })).toBeNull();
+    expect(screen.getByRole('complementary', { name: 'The counter, tucked' })).toBeTruthy();
+  });
+
+  it("the phone's Ask door opens the overlay panel", async () => {
+    setWidth(390);
+    mount('/orders');
+    fireEvent.click(screen.getByRole('button', { name: /^Ask$/ }));
+    expect(await screen.findByRole('dialog', { name: /Ask Mudavym/ })).toBeTruthy();
   });
 });

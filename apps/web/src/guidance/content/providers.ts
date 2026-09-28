@@ -2,7 +2,7 @@ import type { TourDefinition } from '../tours/registry'
 
 export const providersTip = {
   pageId: 'providers' as const,
-  title: 'Providers',
+  title: 'Vendors',
   body: 'Search, filter, and open vendor cards — or add a new supplier to unlock ordering.',
 }
 
@@ -11,7 +11,7 @@ export const providersTour: TourDefinition = {
   steps: [
     {
       element: '[data-tour="providers-search"]',
-      title: 'Search providers',
+      title: 'Search vendors',
       description:
         'Find vendors by name, portfolio, or region. Press / to focus the search field.',
     },
@@ -19,7 +19,7 @@ export const providersTour: TourDefinition = {
       element: '[data-tour="providers-filters"]',
       title: 'Filter the directory',
       description:
-        'Slice by distributor type, favorites, or rating, then switch Grid / Compact / List.',
+        'Slice by vendor type, favorites, or rating, then switch Grid / Compact / List.',
     },
     {
       element: '[data-tour="providers-list"]',

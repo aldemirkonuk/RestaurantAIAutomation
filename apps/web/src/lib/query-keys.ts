@@ -147,7 +147,13 @@ export const queryKeys = {
       [...queryKeys.notifications.lists(), userId, filters] as const,
     unread: (userId: string) => [...queryKeys.notifications.all, 'unread', userId] as const,
     count: (userId: string) => [...queryKeys.notifications.all, 'count', userId] as const,
-    preferences: (userId: string) => [...queryKeys.notifications.all, 'preferences', userId] as const,
+    // (2026-09-19, D5) preferences are per (restaurant_id, user_id) since ADR
+    // 0149 row 39 -- the key used to be userId-only, so switching the active
+    // house in the same session kept serving the previous house's cached
+    // preferences under the same React Query key. restaurantId defaults to
+    // null only while the active house has not resolved yet.
+    preferences: (userId: string, restaurantId?: string | null) =>
+      [...queryKeys.notifications.all, 'preferences', userId, restaurantId ?? null] as const,
   },
   
   // Reports

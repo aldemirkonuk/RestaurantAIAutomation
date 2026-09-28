@@ -215,7 +215,9 @@ export class PriceIndexController {
    * to put its numbers on their screens.
    */
   @Post("uploads/:reviewId/reopen-challenge")
-  @Roles("owner")
+  // ADR 0164, "Keep managers in" (founder, 2026-09-18): this route has always
+  // admitted managers; the label now says so. A lone "owner" now means owner.
+  @Roles("owner", "manager")
   @ApiOperation({
     summary:
       "Issue the one-time seal that reopening a refused price book must carry back. Owner only",
@@ -235,14 +237,20 @@ export class PriceIndexController {
   /**
    * Put a refused book back in front of the jurisdiction.
    *
-   * `@Roles("owner")` narrows the class-level owner/manager: the founder's
-   * answer to Q3 is *"Owner reopens with a stated reason"*. The guard checks the
-   * caller's role in their OWN house; the service additionally checks that they
-   * are an owner of a house in the BOOK's jurisdiction, because those are two
-   * different questions and only the second one is about this book.
+   * The founder's answer to Q3 is *"Owner reopens with a stated reason"*. The
+   * guard checks the caller's role in their OWN house; the service checks that
+   * they are an owner of a house in the BOOK's jurisdiction, because those are
+   * two different questions and only the second one is about this book.
+   * [Corrected 2026-09-18, ADR 0164: this used to say an owner-only decorator
+   * "narrows the class-level owner/manager". It never did: `RolesGuard` let a
+   * manager through any route naming owner. What makes this route owner-only
+   * is the service's check (`price-index-review.service.ts`, `reopen`), and the
+   * decorator now says owner-or-manager, which is what it always admitted.]
    */
   @Post("uploads/:reviewId/reopen")
-  @Roles("owner")
+  // ADR 0164, "Keep managers in" (founder, 2026-09-18): this route has always
+  // admitted managers; the label now says so. A lone "owner" now means owner.
+  @Roles("owner", "manager")
   @ApiOperation({
     summary:
       "Reopen a refused price book. Owner only, never the refuser, once per set of bytes, sealed, and a reason is required",

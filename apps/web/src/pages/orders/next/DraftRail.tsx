@@ -207,7 +207,7 @@ function ThreadLine({ row }: { row: OrderConversationDto }) {
           fontFamily: MONO,
           fontSize: 9,
           letterSpacing: "0.08em",
-          color: "var(--ink-3, #7C7365)",
+          color: "var(--ink-4, #665D50)",
           flex: "none",
         }}
       >
@@ -220,7 +220,7 @@ function ThreadLine({ row }: { row: OrderConversationDto }) {
         style={{
           fontFamily: MONO,
           fontSize: 10,
-          color: "var(--ink-3, #7C7365)",
+          color: "var(--ink-4, #665D50)",
           flex: "none",
         }}
       >
@@ -333,7 +333,7 @@ function DraftDetail({ draft }: { draft: ActiveConversationDto }) {
               fontWeight: 600,
               letterSpacing: "0.14em",
               textTransform: "uppercase",
-              color: "var(--ink-3, #7C7365)",
+              color: "var(--ink-4, #665D50)",
               border: "1px dashed var(--ink-3, #7C7365)",
               borderRadius: 3,
               padding: "2px 6px",
@@ -345,7 +345,7 @@ function DraftDetail({ draft }: { draft: ActiveConversationDto }) {
             style={{
               fontFamily: MONO,
               fontSize: 10,
-              color: "var(--ink-3, #7C7365)",
+              color: "var(--ink-4, #665D50)",
             }}
           >
             round {draft.roundCount ?? EM}
@@ -378,7 +378,7 @@ function DraftDetail({ draft }: { draft: ActiveConversationDto }) {
               style={{
                 fontFamily: MONO,
                 fontSize: 10,
-                color: "var(--ink-3, #7C7365)",
+                color: "var(--ink-4, #665D50)",
                 paddingLeft: 8,
               }}
             >
@@ -388,7 +388,7 @@ function DraftDetail({ draft }: { draft: ActiveConversationDto }) {
         </div>
       )}
       {conversations.isError && (
-        <p style={{ fontSize: 11, color: "var(--ink-3, #7C7365)", margin: 0 }}>
+        <p style={{ fontSize: 11, color: "var(--ink-4, #665D50)", margin: 0 }}>
           The thread could not be fetched — what is shown above is the draft
           alone.
         </p>
@@ -475,7 +475,7 @@ function DraftDetail({ draft }: { draft: ActiveConversationDto }) {
             justifySelf: "end",
             fontFamily: SANS,
             fontSize: 11.5,
-            color: "var(--ink-3, #7C7365)",
+            color: "var(--ink-4, #665D50)",
             textDecoration: "underline",
             background: "none",
             border: "none",
@@ -535,7 +535,7 @@ function DraftCard({ draft }: { draft: ActiveConversationDto }) {
           </span>
           <span
             className="block truncate"
-            style={{ fontSize: 11, color: "var(--ink-3, #7C7365)" }}
+            style={{ fontSize: 11, color: "var(--ink-4, #665D50)" }}
           >
             {draft.providerName ?? EM} · drafted {fmtDate(draft.createdAt)}
             {draft.sendRequest
@@ -562,7 +562,7 @@ function DraftCard({ draft }: { draft: ActiveConversationDto }) {
           aria-hidden
           style={{
             flex: "none",
-            color: "var(--ink-3, #7C7365)",
+            color: "var(--ink-4, #665D50)",
             fontSize: 11,
             transform: expanded ? "rotate(90deg)" : "rotate(0deg)",
             transition: `transform ${settle.ms}ms ${settle.easing}`,
@@ -613,7 +613,7 @@ export function DraftRail() {
           style={{
             fontFamily: MONO,
             fontSize: 11,
-            color: "var(--ink-3, #7C7365)",
+            color: "var(--ink-4, #665D50)",
           }}
         >
           {known ? list.length : EM} awaiting your hand
@@ -623,7 +623,7 @@ export function DraftRail() {
         style={{
           fontFamily: SANS,
           fontSize: 11,
-          color: "var(--ink-3, #7C7365)",
+          color: "var(--ink-4, #665D50)",
           margin: "0 0 10px",
         }}
       >
@@ -645,7 +645,7 @@ export function DraftRail() {
           style={{
             fontFamily: SANS,
             fontSize: 12,
-            color: "var(--ink-3, #7C7365)",
+            color: "var(--ink-4, #665D50)",
           }}
         >
           Reaching the gateway…
@@ -655,7 +655,7 @@ export function DraftRail() {
           style={{
             fontFamily: SANS,
             fontSize: 12,
-            color: "var(--ink-3, #7C7365)",
+            color: "var(--ink-4, #665D50)",
           }}
         >
           No drafts waiting. When the house writes to a vendor, it stages the

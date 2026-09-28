@@ -94,7 +94,7 @@ default restaurant, and the table is empty in production.
 
 From `calendar/calendar.service.ts`: `calendar_events`, `calendar_event_types`,
 `calendar_recurrence_rules`, `calendar_recurrence_exceptions`, and `restaurants` (read,
-for the iCal token). `events/events.service.ts` writes `events` — **shared, not owned**.
+for the iCal token). *[corrected 2026-09-21: calendar links are personal (ADR 0111 review trail) — the feed moved to `calendar/calendar-links.service.ts`, which owns `calendar_feed_links` (migration `20261031174523`) and no longer reads `restaurants.calendar_ical_token`]* `events/events.service.ts` writes `events` — **shared, not owned**.
 
 Owned outright: the four `calendar_*` tables.
 
@@ -165,3 +165,17 @@ Seams:
   current state collects input and discards it, which is worse than not asking.
 - `calendar_agent`'s two dead routing keys are a decision, not a bug: publish them, or
   retire the agent. Nothing records which.
+
+## §9 Capacity and coverage — measured 2026-09-19
+
+**Capacity.** Legacy `CalendarModular` is the live surface for the one tenant (flag OFF); `calendar_agent` is registered but has no confirmed publisher on either of its two routing keys.
+
+**Coverage.** `calendar` module 74.7%/60.6% stmt/branch; `events` module 93.8%/79.6% (heavy.sh jest, 2026-09-18).
+
+**Runs in production.** Yes, on the legacy branch; `calendar_events` = 7 rows (Supabase).
+
+**Promised vs. built.** This note's `partial` status holds against the measurement.
+
+**Gaps.** `calendar_agent` is named in frontmatter as automation but is not confirmed as a real publisher — see §4's own dormant-agent finding, now independently reconfirmed.
+
+*Evidence:* `apps/api-gateway/src/calendar/calendar-reminders.service.ts` (`@Cron` REMINDER_CRON); this note's own §4.

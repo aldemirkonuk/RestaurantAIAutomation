@@ -78,11 +78,6 @@ export const PROVENANCE_UNKNOWN = {
   memberChange: 'no column records a later change to this access',
   /** localStorage keeps a value, never a history. */
   browser: 'this browser keeps the value, not a history of it',
-  /** The token is a column on the restaurant row; that row's date is not its own. */
-  icalToken:
-    'the token has no date of its own — it is a column on the restaurant row, whose date moves for any change to the branch',
-  /** A regeneration is not recorded anywhere. */
-  icalRegen: 'no table records a regeneration',
   /** A test send writes no row. */
   testSend: 'a test send is not recorded',
   /** The preference row has never been written for this account. */
@@ -127,6 +122,10 @@ export const SECTION_IDS = [
   'hours',
   'digest',
   'ask-training',
+  // ADR 0207, round 3 (the founder, 2026-09-21): the house's clock, and
+  // whether Jev reads its vendor mail. Appended, never inserted.
+  'time-zone',
+  'mail-reading',
 ] as const;
 
 export type SectionId = (typeof SECTION_IDS)[number];
@@ -163,7 +162,7 @@ export const SECTIONS: SectionSpec[] = [
   { id: 'measurement', label: 'Measurement', title: 'Measurement & recipes', kind: 'browser', group: 'yours', order: 3,
     description: 'Units, the default glass pour, and whether recipes are tracked.' },
   { id: 'map', label: 'Map', title: 'Map', kind: 'account', group: 'yours', order: 2,
-    description: 'How wide Find distributors frames you when it opens.' },
+    description: 'How wide vendor discovery frames you when it opens.' },
   { id: 'features', label: 'Features', title: 'Features', kind: 'restaurant', group: 'autonomy', order: 1,
     description: 'The switches that change what the system does on its own.' },
   { id: 'pos', label: 'POS', title: 'Point of sale', kind: 'restaurant', group: 'buying', order: 3,
@@ -197,6 +196,14 @@ export const SECTIONS: SectionSpec[] = [
   // The house's consent for its /ask questions (ADR 0145, founder 2026-09-21,
   // "Same as the wine pool (Recommended)": an owner opt-out per house). Under
   // The house because it is the house's answer, given by its owner.
+  // The founder, 2026-09-21: "Add it to Settings". Its own register because
+  // it decides where midnight falls for every on-time verdict (ADR 0207).
+  { id: 'time-zone', label: 'Time zone', title: 'Time zone', kind: 'restaurant', group: 'house', order: 7,
+    description: 'The clock this house keeps. A delivery is on time when it lands before midnight at the end of its expected day, on this clock.' },
+  // The founder, 2026-09-21: "this feature can also be disabled", and the mail
+  // leaves "Only with names removed". Off by default (ADR 0207).
+  { id: 'mail-reading', label: 'Mail reading', title: 'How vendor mail is read', kind: 'restaurant', group: 'autonomy', order: 3,
+    description: 'Whether Jev reads this house’s vendor mail, with names removed first, to put one word on each message.' },
 ];
 
 /* ── Sketch 109A — the interview, organised by certainty ──────────────────
@@ -299,6 +306,10 @@ export const TAB_TO_ANCHOR: Record<SectionId, string> = {
   hours: 'a-house',
   digest: 'a-own',
   'ask-training': 'a-house',
+  // ADR 0207: the house's clock is a fact about the house; whether Jev reads
+  // its vendor mail is a mandate the house gives the system.
+  'time-zone': 'a-house',
+  'mail-reading': 'a-own',
 };
 
 /* ── THE COLLAPSE (founder, 2026-09-04) ──────────────────────────────────

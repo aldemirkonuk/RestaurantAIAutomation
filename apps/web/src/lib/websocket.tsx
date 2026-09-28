@@ -26,6 +26,7 @@ import { toast } from 'sonner'
 import { useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../contexts/AuthContext'
 import { queryKeys } from './query-keys'
+import { onSessionRenewed } from './sessionRenewed'
 
 // =============================================================================
 // TYPES & INTERFACES
@@ -414,6 +415,15 @@ export function WebSocketProvider({
   )
   const resolvedUserId = userId || user?.userId
   const resolvedRestaurantId = restaurantId || activeRestaurantId
+  // ADR 0225: a password change closes this session's socket (it was opened
+  // with a token the change ended) and hands the session a new pair. Re-render
+  // on that renewal, so `authToken` below is re-read and the connection effect
+  // opens a socket with the new token.
+  const [, setSessionRenewals] = useState(0)
+  useEffect(
+    () => onSessionRenewed(() => setSessionRenewals((n) => n + 1)),
+    [],
+  )
   const authToken = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null
   
   const queryClient = useQueryClient()
@@ -951,10 +961,22 @@ export function WebSocketProvider({
   unsubscribeRef.current = unsubscribeFromRestaurant
 
   useEffect(() => {
-    if (!resolvedRestaurantId) return
+    if (!resolvedRestaurantId) {
+      // No active house: forget every remembered subscription outright, not
+      // just skip adding a new one. `connect` below resubscribes to whatever
+      // is still in this ref, so leaving an old id in it would let a
+      // reconnect rejoin a house that just ended.
+      subscriptionsRef.current.clear()
+      return
+    }
     subscribeRef.current(resolvedRestaurantId)
     return () => {
       unsubscribeRef.current(resolvedRestaurantId)
+      // Clear the whole set, not only this one id, on every transition away
+      // from the active house (a switch or an end) — ADR 0164's websocket
+      // sibling. A reconnect that lands between this cleanup and the next
+      // subscribe must never find a stale house still waiting to be rejoined.
+      subscriptionsRef.current.clear()
     }
   }, [resolvedRestaurantId])
   

@@ -141,7 +141,9 @@ export class ArrivalService {
             reason:
               "Vendor terms are available to this house's owner or manager.",
           }),
-      this.source(() => this.notifications.getPreferences(actor.userId)),
+      this.source(() =>
+        this.notifications.getPreferences(actor.userId, actor.restaurantId),
+      ),
       this.source(() =>
         this.checked(
           this.db.client
@@ -345,9 +347,13 @@ export class ArrivalService {
         .from("notification_preferences")
         .select("*")
         .eq("user_id", actor.userId)
+        .eq("restaurant_id", actor.restaurantId)
         .maybeSingle(),
     );
-    const read = await this.notifications.getPreferences(actor.userId);
+    const read = await this.notifications.getPreferences(
+      actor.userId,
+      actor.restaurantId,
+    );
     const [group, key] = field.split(".");
     const value = key ? (read as any)[group]?.[key] : (read as any)[group];
     // A persisted preferences row is treated conservatively as stated; an
@@ -408,10 +414,19 @@ export class ArrivalService {
     // existing categories so a one-field answer cannot reset sibling choices.
     const siblings =
       group === "categories"
-        ? (await this.notifications.getPreferences(actor.userId)).categories
+        ? (
+            await this.notifications.getPreferences(
+              actor.userId,
+              actor.restaurantId,
+            )
+          ).categories
         : {};
+    // Preferences are kept once per person PER HOUSE (ADR 0149 row 39): the
+    // upsert keys on (restaurant_id, user_id), and a read without the house
+    // would match one row per house the person belongs to.
     return this.notifications.updatePreferences({
       userId: actor.userId,
+      restaurantId: actor.restaurantId,
       ...(key
         ? { [group]: { ...siblings, [key]: value } }
         : { [field]: value }),

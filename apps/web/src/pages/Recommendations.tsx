@@ -166,7 +166,7 @@ function actTarget(rec: Card): { href: string; label: string } {
     dead_stock_capital: { href: `/promotions?${q}`, label: "Create promo" },
     plowhorse_repricing: { href: `/reports?${q}`, label: "Open menu report" },
     puzzle_activation: { href: `/promotions?${q}`, label: "Feature by-the-glass" },
-    vendor_concentration: { href: `/providers?${q}`, label: "Compare vendors" },
+    vendor_concentration: { href: `/vendors?${q}`, label: "Compare vendors" },
     revenue_concentration: { href: `/inventory?${q}`, label: "Protect top sellers" },
     spend_acceleration: { href: `/orders?${q}`, label: "Audit open orders" },
     pairing_promotion: { href: `/promotions?${q}`, label: "Promote pairing" },
@@ -508,9 +508,10 @@ export default function Recommendations() {
     toast.success(member ? `Assigned to ${member.display_name}` : "Assignment cleared");
   };
 
+  // A hand-off records nothing (ADR 0112 F10, amended 2026-09-25, sketch 122
+  // Q2); `acted` is now the gated "Mark as briefed" stamp (PR #483 audit, R4).
   const doAct = (rec: Card) => {
     const { href } = actTarget(rec);
-    patchAction(rec.ruleKey, { acted: true }, snapshotOf(rec));
     navigate(href);
   };
 

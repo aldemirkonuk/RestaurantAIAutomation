@@ -219,7 +219,7 @@ export function IsThisTheBottlePanel({
       closeLabel="Not now"
       footer={
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <span style={{ fontSize: 11.5, color: 'var(--ink-3)' }}>
+          <span style={{ fontSize: 11.5, color: 'var(--ink-4)' }}>
             Confirming adds it to the house library. It puts no bottle on a shelf.
           </span>
           <span style={{ display: 'inline-flex', gap: 6 }}>
@@ -280,7 +280,7 @@ export function IsThisTheBottlePanel({
                   fontWeight: 600,
                   letterSpacing: '0.11em',
                   textTransform: 'uppercase',
-                  color: 'var(--ink-3)',
+                  color: 'var(--ink-4)',
                 }}
               >
                 {label}
@@ -321,7 +321,7 @@ export function IsThisTheBottlePanel({
                       fontSize: 13,
                       // The engine's hand is grey and stays grey; a value a
                       // person chose is ink. Permanently, not until save.
-                      color: isMine ? 'var(--ink-1)' : 'var(--ink-3)',
+                      color: isMine ? 'var(--ink-1)' : 'var(--ink-4)',
                     }}
                   >
                     {shown === '' ? EM : shown}

@@ -15,7 +15,13 @@ updated: 2026-08-26
 links: ["[[PAGE-CONTRACT]]", "[[providers]]"]
 ---
 
-# /distributors — legacy redirect → /providers?tab=discover
+# /distributors — legacy redirect → /vendors?tab=discover
+
+> [2026-09-25, lane W3-vendors, ADR 0221: the target is now `/vendors` (was
+> `/providers?tab=discover`). The route is `<Route path="/distributors/*">` with
+> `RenamedRoute` (`apps/web/src/lib/renamedRoute.tsx`): the incoming query and
+> hash are kept and `tab=discover` is added only when the link names no tab. The
+> `§3 Files` citation below is the pre-rename shape.]
 
 > **Part of** [[08-softwares/global-vendor-search|Global Vendor Search]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
 

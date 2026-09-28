@@ -152,12 +152,41 @@ export class VendorIntelController {
   }
 
   /**
+   * What "Record a price" may name as where a price came from, for one of this
+   * house's vendors: the house's recent messages with them and their contacts
+   * (ADR 0160 §112 fork 6(a)). Owner/manager, like the write it feeds.
+   */
+  @Get("observation-sources")
+  @ApiOperation({
+    summary:
+      "This house's recent messages with one vendor and that vendor's contacts, for naming where a recorded price came from",
+  })
+  async observationSources(
+    @CurrentUser() user: { restaurantId: string },
+    @Query("providerId") providerId?: string,
+    @Query("limit") limit?: string,
+  ) {
+    if (!providerId || !UUID_RE.test(providerId)) {
+      throw new BadRequestException("providerId must be a vendor id.");
+    }
+    const n = limit === undefined ? undefined : Number(limit);
+    const result = await this.comparison.observationSources({
+      restaurantId: user.restaurantId,
+      providerId,
+      limit: n !== undefined && Number.isFinite(n) ? Math.trunc(n) : undefined,
+    });
+    return { success: true, ...result };
+  }
+
+  /**
    * Kick a scrape manually. Owner-only: it makes outbound requests in the
    * restaurant's name and costs model tokens, so it should not be a
    * one-click action for every manager.
    */
   @Post("scrape")
-  @Roles("owner")
+  // ADR 0164, "Keep managers in" (founder, 2026-09-18): this route has always
+  // admitted managers; the label now says so. A lone "owner" now means owner.
+  @Roles("owner", "manager")
   @ApiOperation({ summary: "Extract prices from one vendor page" })
   async scrape(
     @CurrentUser() user: { restaurantId: string },
@@ -186,7 +215,9 @@ export class VendorIntelController {
   }
 
   @Post("sweep")
-  @Roles("owner")
+  // ADR 0164, "Keep managers in" (founder, 2026-09-18): this route has always
+  // admitted managers; the label now says so. A lone "owner" now means owner.
+  @Roles("owner", "manager")
   @ApiOperation({
     summary:
       "Sweep active vendor_catalogue websites (sequential, rate-limited)",
@@ -226,7 +257,9 @@ export class VendorIntelController {
    * vendors and what their public pages say.
    */
   @Get("site-sweep/status")
-  @Roles("owner")
+  // ADR 0164, "Keep managers in" (founder, 2026-09-18): this route has always
+  // admitted managers; the label now says so. A lone "owner" now means owner.
+  @Roles("owner", "manager")
   @ApiOperation({
     summary:
       "Per-vendor state of the scheduled site sweep: last fetch, rows written, refusals by reason, and why a vendor is silent",
@@ -246,7 +279,9 @@ export class VendorIntelController {
    * the sentence saying so rather than an empty result.
    */
   @Post("site-sweep/run")
-  @Roles("owner")
+  // ADR 0164, "Keep managers in" (founder, 2026-09-18): this route has always
+  // admitted managers; the label now says so. A lone "owner" now means owner.
+  @Roles("owner", "manager")
   @ApiOperation({ summary: "Run the vendor-site sweep now for this house" })
   async runSiteSweep(
     @CurrentUser() user: { restaurantId: string },
@@ -277,7 +312,9 @@ export class VendorIntelController {
    * on rows the market box reads.
    */
   @Get("outlier-rejudge/status")
-  @Roles("owner")
+  // ADR 0164, "Keep managers in" (founder, 2026-09-18): this route has always
+  // admitted managers; the label now says so. A lone "owner" now means owner.
+  @Roles("owner", "manager")
   @ApiOperation({
     summary:
       "State of the nightly is_outlier re-judge: armed or not, last run, rows judged, flags set and cleared, and why it is silent",
@@ -294,7 +331,9 @@ export class VendorIntelController {
    * returns the status sentence saying so and writes nothing.
    */
   @Post("outlier-rejudge/run")
-  @Roles("owner")
+  // ADR 0164, "Keep managers in" (founder, 2026-09-18): this route has always
+  // admitted managers; the label now says so. A lone "owner" now means owner.
+  @Roles("owner", "manager")
   @ApiOperation({ summary: "Run the outlier re-judge now over the whole register" })
   async runOutlierRejudge(@Body() body: { dryRun?: boolean; windowDays?: number }) {
     if (!this.rejudge.armed()) {
@@ -322,7 +361,9 @@ export class VendorIntelController {
    * fetched, each with the reason and the day it was measured.
    */
   @Get("shop-sweep/status")
-  @Roles("owner")
+  // ADR 0164, "Keep managers in" (founder, 2026-09-18): this route has always
+  // admitted managers; the label now says so. A lone "owner" now means owner.
+  @Roles("owner", "manager")
   @ApiOperation({
     summary:
       "Per-shop state of the merchant-shop (class D) sweep: armed or not, last fetch, postings written, refusals by reason, and why a shop is silent",
@@ -340,7 +381,9 @@ export class VendorIntelController {
    * see the service's header for why.
    */
   @Post("shop-sweep/run")
-  @Roles("owner")
+  // ADR 0164, "Keep managers in" (founder, 2026-09-18): this route has always
+  // admitted managers; the label now says so. A lone "owner" now means owner.
+  @Roles("owner", "manager")
   @ApiOperation({
     summary: "Run the merchant-shop sweep now over the named pages",
   })
@@ -459,15 +502,26 @@ export class VendorIntelController {
    */
   @Get("identity/candidates")
   @Roles("owner", "manager", "staff")
-  @ApiOperation({ summary: "Identity links proposed and waiting for a person" })
+  @ApiOperation({
+    summary:
+      "Identity links proposed and waiting for a person, optionally narrowed to one bottle",
+  })
   async identityCandidates(
     @CurrentUser() user: { restaurantId: string },
     @Query("limit") limit?: string,
+    @Query("identityId") identityId?: string,
   ) {
     const n = limit ? Number(limit) : undefined;
     const capped =
       Number.isFinite(n) && (n as number) > 0 ? Math.min(n as number, 200) : 50;
-    const items = await this.identity.pending(user?.restaurantId ?? null, capped);
+    if (identityId && !UUID_RE.test(identityId)) {
+      throw new BadRequestException("identityId must be an identity id.");
+    }
+    const items = await this.identity.pending(
+      user?.restaurantId ?? null,
+      capped,
+      identityId || undefined,
+    );
     return {
       success: true,
       items,
@@ -571,17 +625,25 @@ export class VendorIntelController {
    */
   @Get("identity/decisions")
   @Roles("owner", "manager", "staff")
-  @ApiOperation({ summary: "Every identity decision this house has taken" })
+  @ApiOperation({
+    summary:
+      "Every identity decision this house has taken, optionally narrowed to one bottle",
+  })
   async identityDecisions(
     @CurrentUser() user: { restaurantId: string },
     @Query("limit") limit?: string,
+    @Query("identityId") identityId?: string,
   ) {
     const n = limit ? Number(limit) : undefined;
+    if (identityId && !UUID_RE.test(identityId)) {
+      throw new BadRequestException("identityId must be an identity id.");
+    }
     return {
       success: true,
       ...(await this.identity.decisions(
         user?.restaurantId ?? null,
         Number.isFinite(n) && (n as number) > 0 ? (n as number) : 50,
+        identityId || undefined,
       )),
     };
   }

@@ -11,7 +11,7 @@
  *   Inventory              Sidebar.tsx:83
  *   Orders                 Sidebar.tsx:89
  *   Receiving              Sidebar.tsx:102
- *   Providers              Sidebar.tsx:116
+ *   Vendors                Sidebar.tsx:117
  *   Reports                Sidebar.tsx:128
  *   Calendar               Sidebar.tsx:137
  *   Team                   Sidebar.tsx:143
@@ -23,10 +23,14 @@
  *   Settings               Sidebar.tsx:202
  *   Connections            Sidebar.tsx:208
  *
- * Two slugs have no sidebar entry, so their name is taken from the page's own
+ * Three slugs have no sidebar entry, so their name is taken from the page's own
  * head instead and cited there: `recommendations`
- * (`pages/recommendations/next/RecommendationsNext.tsx:453`) and `cellar`
- * (`pages/cellar/next/cellar-format.ts:157-165`).
+ * (`pages/recommendations/next/RecommendationsNext.tsx:453`), `cellar`
+ * (`pages/cellar/next/cellar-format.ts:157-165`) and, added 2026-09-19 (repair
+ * pass, wt-pg-vprices) when `vendor_prices` joined `MUDAVYM_PAGES`,
+ * `vendor_prices` (`pages/vendor-prices/next/VendorPricesNext.tsx:807`, its
+ * own `<h1>`) — this page is cold-URL only (§2 of its dossier), no sidebar
+ * entry exists to name it instead.
  *
  * The map is an exhaustive `Record<MudavymPage, …>`: adding a slug to
  * `MUDAVYM_PAGES` without naming it here fails `tsc`, so a new rebuilt page
@@ -58,7 +62,9 @@ export const PAGE_NAMES: Record<MudavymPage, string> = {
   receiving: 'Receiving',
   // Named for completeness; the door never renders chrome — see NO_CHROME.
   receiving_door: 'Receiving door',
-  providers: 'Providers',
+  // The slug stays `providers` (its flag is mudavym_design_providers); the
+  // word is "Vendors" (ADR 0221).
+  providers: 'Vendors',
   communications: 'Communications',
   team: 'Team',
   inventory: 'Inventory',
@@ -89,6 +95,16 @@ export const PAGE_NAMES: Record<MudavymPage, string> = {
   // ADR 0160 sec110 item 7 — a new route with no sidebar entry yet; named
   // directly, same footing as `recommendations` and `cellar` above.
   menu: 'Menu',
+  // Added 2026-09-19 (repair pass, wt-pg-vprices): matches the page's own
+  // <h1> (VendorPricesNext.tsx:807) — no sidebar entry exists for this
+  // cold-URL-only page (see the file header note above).
+  vendor_prices: 'Vendor prices',
+  // ADR 0160 §113 / ADR 0165 — /promotions (sketch 113 direction B),
+  // flag-gated on `mudavym_design_promotions`, held back from LIVE_PAGES.
+  promotions: 'Promotions',
+  // ADR 0145 — `/ask`, the page that answers out of a reading. Reached by
+  // the command palette, /help and the redirect from `/sommelier`.
+  ask: 'Ask',
 };
 
 /**

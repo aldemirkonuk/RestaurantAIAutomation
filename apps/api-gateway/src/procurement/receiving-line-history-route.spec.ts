@@ -78,13 +78,15 @@ describe("GET /procurement/receiving/orders/:id/history", () => {
   const get = (path: string, role?: string) =>
     fetch(`${base}${path}`, { headers: role ? { "x-test-role": role } : {} });
 
-  it.each(["staff", "none"])("refuses a %s caller with 403 and reads nothing", async (role) => {
+  // admin is refused too: RolesGuard is exact since ADR 0164, and this route
+  // does not list admin (the same as the queue and the credit ledger).
+  it.each(["staff", "none", "admin"])("refuses a %s caller with 403 and reads nothing", async (role) => {
     const res = await get(`/procurement/receiving/orders/${ORDER}/history`, role);
     expect(res.status).toBe(403);
     expect(calls).toHaveLength(0);
   });
 
-  it.each(["owner", "manager", "admin"])("lets a %s through, scoped to the token's house", async (role) => {
+  it.each(["owner", "manager"])("lets a %s through, scoped to the token's house", async (role) => {
     const res = await get(`/procurement/receiving/orders/${ORDER}/history`, role);
     expect(res.status).toBe(200);
     expect(calls).toEqual([{ restaurantId: HOUSE, orderId: ORDER, before: null }]);

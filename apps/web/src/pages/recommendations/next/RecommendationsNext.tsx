@@ -93,6 +93,10 @@ import { animate, tuck } from '@/lib/mudavym/motion';
 import Entry from './Entry';
 import Ribbon from './Ribbon';
 import DigestPost from './DigestPost';
+import GoalsMargin from './GoalsMargin';
+import LetterDelta from './LetterDelta';
+import { quietTierWords, suggestGoal, type GoalSuggestion } from './rec-masthead';
+import { useDigestSubscription } from './useDigestSubscription';
 import {
   ACT_LABEL,
   ACT_ORDER,
@@ -204,8 +208,16 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
   const [focusedIdx, setFocusedIdx] = useState(-1);
   /** The entry whose dismissal sheet the `d` key asked to open. */
   const [sheetFor, setSheetFor] = useState<string | null>(null);
+  /** The entry whose goal sheet the masthead's suggestion asked to open. */
+  const [goalFor, setGoalFor] = useState<string | null>(null);
   const docketRef = useRef<HTMLElement | null>(null);
   const { leaf, setLeaf } = data;
+  /**
+   * This reader's own copy of the post — read on the standing leaf for the
+   * delta cutting (sketch 122 Q9, per reader) and the house's send count
+   * (Q8, count not who). The "Your copy" sheet keeps its own read.
+   */
+  const sub = useDigestSubscription(leaf === 'standing');
 
   // Changing leaf clears what belonged to the old one: no selection survives
   // into rows it was never made against.
@@ -358,18 +370,40 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
    * this", and leaving with it silently unrecorded is the failure this page
    * exists to refuse.
    */
+  /*
+   * [2026-09-25, sketch 122 Q2 — the founder, round 5, "Add all three
+   * (Recommended)", whose question read: "A hand-off that only opens another
+   * page records nothing." The comment above describes the write this page
+   * made until then; it is kept for the record. A hand-off now only
+   * navigates: nothing has happened at the moment of the tap, whether the
+   * destination is Orders or a phone call, so nothing is written and there
+   * is nothing to undo. The one act this page records is the briefing
+   * (`brief` below), whose tap IS the act.]
+   */
   const act = useCallback(
     async (e: EntryVM) => {
-      const landed = await data.setDisposition(
-        e,
-        { acted: true },
-        `Followed “${e.hand.label}” to ${e.hand.where}.`,
-        false,
-      );
-      if (landed) navigate(e.hand.href);
+      navigate(e.hand.href);
     },
-    [data, navigate],
+    [navigate],
   );
+
+  /**
+   * "Mark as briefed" — sketch 122 Q2 and Q7 (the founder, 2026-09-25, round
+   * 5: "Add all three (Recommended)", "Keep both verbs (Recommended)"). The
+   * self-contained act on a *Brief the floor* entry: recorded at once, still
+   * standing, and undone from the note line for a few seconds (ADR 0112 F10,
+   * amended). Taking back someone else's briefing is refused by the gateway
+   * the way clearing their pin is, and the entry is put back with its sentence.
+   */
+  const brief = (e: EntryVM, on: boolean) =>
+    void data.setDisposition(
+      e,
+      { acted: on },
+      on ? 'Marked as briefed — still standing.' : 'Briefing taken back.',
+      false,
+      undefined,
+      { acted: !on },
+    );
 
   /**
    * Dismiss is the only write on this page that is a STANDING INSTRUCTION
@@ -412,12 +446,15 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
   const done = (e: EntryVM) =>
     void data.setDisposition(e, { status: 'done' }, 'Ruled off, and sealed.', true, itemKeyOf(e));
 
+  // Sketch 122 Q2: a pin is undo-after too (ADR 0112 F10, amended 2026-09-25).
   const pin = (e: EntryVM) =>
     void data.setDisposition(
       e,
       { pinned: !e.pinned },
       e.pinned ? 'Unpinned.' : 'Pinned to the top of the book.',
       false,
+      undefined,
+      { pinned: e.pinned },
     );
 
   const rate = (e: EntryVM, value: 'helpful' | 'not_helpful') =>
@@ -463,7 +500,12 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
           if (e && leaf === 'standing') setSelected((prev) => toggle(prev, e.ruleKey));
           break;
         case 'a':
-          if (e && leaf === 'standing') void act(e);
+          // The first control, whatever it is: the briefing on a floor entry
+          // (Q7), the hand-off everywhere else.
+          if (e && leaf === 'standing') {
+            if (actOf(e.ruleKey).act === 'floor') brief(e, !e.acted);
+            else void act(e);
+          }
           break;
         case 'd':
           // The key opens the sheet rather than dismissing: a dismissal now
@@ -526,6 +568,28 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
    * WHOLE standing book: "the insight feed for this goal's category" is a set
    * of other entries, and an entry cannot see its siblings.
    */
+  /** The masthead's one suggested goal (sketch 122 direction B). */
+  const suggestion = useMemo(
+    () => (leaf === 'standing' && data.phase === 'ready' ? suggestGoal(data.entries, data.goals) : null),
+    [leaf, data.phase, data.entries, data.goals],
+  );
+  /**
+   * "Set a goal →" in the margin opens the suggested entry's OWN goal sheet,
+   * target blank. The docket is widened first, so the entry is on screen.
+   */
+  const openSuggested = (s: GoalSuggestion) => {
+    setStake('all');
+    setDay(null);
+    setGoalFor(s.entry.ruleKey);
+  };
+  useEffect(() => {
+    if (!goalFor) return;
+    const idx = shown.findIndex((e) => e.ruleKey === goalFor);
+    if (idx >= 0) setFocusedIdx(idx);
+  }, [goalFor, shown]);
+
+  const clearGoalFor = useCallback(() => setGoalFor(null), []);
+
   const slipFor = (e: EntryVM) => {
     const slip = goalSlipFor(e, data.goals);
     if (!slip) return null;
@@ -539,11 +603,36 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
         {/* ── the head ─────────────────────────────────────────────────── */}
         <header className="rc-head">
           <Wordmark size={13} />
-          <h1 className="rc-serif rc-title">Recommendations</h1>
-          <p className="rc-serif rc-voice">{voice}</p>
-          <p className="rc-micro rc-readat">
-            Read at {fmtReadAt(data.generatedAt)} · one entry = one deterministic rule that fired
-          </p>
+          {/*
+            THE MASTHEAD — sketch 122 direction B, "Goals in the Masthead"
+            (the founder, 2026-09-25: "direction B is better"). The letter
+            keeps its identity as ONE unit; the house's goals are its margin.
+            Below 640px the two stack, letter first, and the day strip follows
+            both (the cost README Q1 named, accepted with the pick).
+          */}
+          <div className="rc-mast" data-testid="rc-mast">
+            <div className="rc-mast-letter">
+              <div className="rc-kicker">The Morning Letter</div>
+              <h1 className="rc-serif rc-title">Recommendations</h1>
+              <p className="rc-serif rc-voice">{voice}</p>
+              <p className="rc-micro rc-readat">
+                Read at {fmtReadAt(data.generatedAt)} · one entry = one deterministic rule that fired
+              </p>
+              {/*
+                The quiet tier, as its substitute (sketch 122 Q4, the founder
+                2026-09-25: "Substitute now, field next (Recommended)"). Which
+                sources did not answer — so a short book is not read as a
+                quiet week. The per-rule reading · threshold · state field is
+                the next build, not this one.
+              */}
+              {data.phase === 'ready' && leaf === 'standing' && (
+                <p className="rc-said rc-quiet-tier" data-testid="rc-quiet-tier">
+                  {quietTierWords(data.sourcesUnread)}
+                </p>
+              )}
+            </div>
+            <GoalsMargin book={data.goalBook} suggestion={suggestion} onSuggest={openSuggested} />
+          </div>
           <DoubleRule />
           {/*
             The denominator's second half. "17 rules were read, 4 stand" is only
@@ -587,6 +676,32 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
           )}
         </header>
 
+        {/*
+          The ribbon. Above the docket and never instead of it: the founder
+          liked the day strip, and the shape decision was that a calendar is a
+          SELECTOR over a book of work, not the axis the work is filed by.
+          [2026-09-25, sketch 122 B: directly under the masthead, spanning
+          both its columns — "keep the days rail on top".]
+        */}
+        {leaf === 'standing' && data.phase === 'ready' && (
+          <Ribbon
+            days={days}
+            month={month}
+            onMonth={setMonth}
+            today={utcToday}
+            selected={day}
+            onSelect={setDay}
+            pos={data.pos}
+            posProblem={data.posProblem}
+            exclusionsReadable={data.exclusions === undefined ? undefined : data.exclusions.readable}
+            exclusionsProblem={data.exclusions?.problem ?? null}
+            onExclude={(date, reason) => void data.ruleOutDay(date, reason)}
+            onInclude={(date) => void data.includeDay(date)}
+            undated={undated}
+            matching={dayScoped.length}
+          />
+        )}
+
         {/* ── the leaves ───────────────────────────────────────────────── */}
         <nav className="rc-leaves" aria-label="Leaves of the book">
           {LEAVES.map((l) => {
@@ -621,30 +736,6 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
               {data.failure.expired ? 'Try again' : 'Read it again'}
             </button>
           </div>
-        )}
-
-        {/*
-          The ribbon. Above the docket and never instead of it: the founder
-          liked the day strip, and the shape decision was that a calendar is a
-          SELECTOR over a book of work, not the axis the work is filed by.
-        */}
-        {leaf === 'standing' && data.phase === 'ready' && (
-          <Ribbon
-            days={days}
-            month={month}
-            onMonth={setMonth}
-            today={utcToday}
-            selected={day}
-            onSelect={setDay}
-            pos={data.pos}
-            posProblem={data.posProblem}
-            exclusionsReadable={data.exclusions === undefined ? undefined : data.exclusions.readable}
-            exclusionsProblem={data.exclusions?.problem ?? null}
-            onExclude={(date, reason) => void data.ruleOutDay(date, reason)}
-            onInclude={(date) => void data.includeDay(date)}
-            undated={undated}
-            matching={dayScoped.length}
-          />
         )}
 
         <div className="rc-shell">
@@ -711,7 +802,13 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
             </div>
 
             {/* the post — sketch 120 §2, bound into the rail where the disabled placeholder stood */}
-            <DigestPost digest={data.digest} onSaveHouse={data.setHouseDigest} />
+            <DigestPost
+              digest={data.digest}
+              onSaveHouse={data.setHouseDigest}
+              houseLastPost={
+                sub.phase === 'ready' && sub.status ? (sub.status.houseLastPost ?? null) : undefined
+              }
+            />
 
             {/* the margin — the keys */}
             <div className="rc-aside-block">
@@ -766,6 +863,14 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
             )}
 
             {/*
+              The delta cutting (sketch 120 item 1, 1A: above the docket) —
+              measured from THIS reader's last letter (sketch 122 Q9).
+            */}
+            {data.phase === 'ready' && leaf === 'standing' && (
+              <LetterDelta sub={sub} entries={data.entries} />
+            )}
+
+            {/*
               The docket's one standing caveat, said once above the sections
               rather than in five places: what a section is WORTH cannot be
               totalled, and every heading shows an em dash instead of a zero.
@@ -813,6 +918,9 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
                         openDismiss={sheetFor === e.ruleKey}
                         onDismissOpened={() => setSheetFor(null)}
                         onAct={() => void act(e)}
+                        onBrief={(on) => brief(e, on)}
+                        openGoal={goalFor === e.ruleKey}
+                        onGoalOpened={clearGoalFor}
                         onDismiss={(choice) => dismiss(e, choice)}
                         onSnooze={(inDays, label, forWhom) => snooze(e, inDays, label, forWhom)}
                         onWake={() => void data.wake(e.ruleKey)}
@@ -882,11 +990,17 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
             <button
               type="button"
               className="rc-undo"
-              onClick={() =>
-                void (data.undo!.personal
-                  ? data.wake(data.undo!.ruleKey)
-                  : data.restore(data.undo!.ruleKey))
-              }
+              onClick={() => {
+                const u = data.undo!;
+                // Sketch 122 Q2: a pin or a briefing stays on the leaf, so its
+                // Undo posts the inverse patch rather than a restore.
+                if (u.inverse) {
+                  data.clearUndo();
+                  void data.setDisposition(u.inverse.entry, u.inverse.patch, 'Undone.', false);
+                  return;
+                }
+                void (u.personal ? data.wake(u.ruleKey) : data.restore(u.ruleKey));
+              }}
             >
               Undo
             </button>

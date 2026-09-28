@@ -45,6 +45,8 @@ import {
   sameAddress,
   sendThroughGrant,
 } from "./house-letters.service";
+import { HouseLettersController } from "./house-letters.controller";
+import { HouseLettersCron } from "./house-letters.cron";
 
 /**
  * The composer's two gates (ADR 0175 D9/D10, 2026-09-21), as stand-ins that
@@ -467,6 +469,41 @@ describe("queueing a letter", () => {
     expect(recorded[0].candidate_key).toBe("weekday.baseline.wednesday");
     expect(recorded[0].computed_at).toBe("2026-09-01T06:00:00Z");
   });
+
+  // PR #476 audit round 1, R2: a discarded (or still-undecided) HOUSE_DRAFT
+  // must not inflate the composer's "message N on this order" round count.
+  it("round_count excludes discarded and undecided drafts, and counts every real round", async () => {
+    const { rec, service: svc } = service({
+      ...BOOK_ROWS,
+      integration_oauth_connections: [GRANT_WITH_SEND],
+      analytics_insights: [],
+      // This fake store returns every seeded row for the table verbatim
+      // (its `.eq`/`.in` are pass-throughs — see `build()` above), so only
+      // outbound rows are seeded here; the real `.eq("direction","outbound")`
+      // is exercised for real against the in-memory store in
+      // `credit-letter.spec.ts`'s "closes a concurrent double-draft race" and
+      // its siblings.
+      procurement_conversations: [
+        { id: "c1", status: "SENT", direction: "outbound" },
+        { id: "c2", status: "HOUSE_QUEUED", direction: "outbound" },
+        { id: "c3", status: "HOUSE_FAILED", direction: "outbound" },
+        // A discarded draft: never reached the vendor, must not count.
+        { id: "c4", status: "HOUSE_CANCELLED", direction: "outbound" },
+        // A draft nobody has decided yet: also never reached the vendor.
+        { id: "c5", status: "HOUSE_DRAFT", direction: "outbound" },
+      ],
+    });
+
+    const out = await svc.queue({
+      restaurantId: HOUSE,
+      userId: PERSON,
+      dto: { ...draft, orderId: "order-1" },
+    });
+
+    expect(out.status).toBe(LETTER_STATUS.QUEUED);
+    // Three real rounds (SENT, HOUSE_QUEUED, HOUSE_FAILED) preceded this one.
+    expect(rec.inserts[0].round_count).toBe(4);
+  });
 });
 
 // ===========================================================================
@@ -486,8 +523,9 @@ describe("pulling a letter back", () => {
       status: LETTER_STATUS.QUEUED,
       scheduled_send_at: new Date(Date.now() + 60_000).toISOString(),
       restaurant_id: HOUSE,
+      email_headers: { written_by: PERSON },
     });
-    const out = await service.cancel({ restaurantId: HOUSE, id: "letter-1" });
+    const out = await service.cancel({ restaurantId: HOUSE, userId: PERSON, id: "letter-1" });
     expect(out.status).toBe(LETTER_STATUS.CANCELLED);
     expect(rec.updates[0].status).toBe("HOUSE_CANCELLED");
     expect(out.says).toContain("never sent");
@@ -499,13 +537,16 @@ describe("pulling a letter back", () => {
       status: LETTER_STATUS.QUEUED,
       scheduled_send_at: new Date(Date.now() - 1_000).toISOString(),
       restaurant_id: HOUSE,
+      email_headers: { written_by: PERSON },
     });
     await expect(
-      service.cancel({ restaurantId: HOUSE, id: "letter-1" }),
+      service.cancel({ restaurantId: HOUSE, userId: PERSON, id: "letter-1" }),
     ).rejects.toThrow(ConflictException);
-    await service.cancel({ restaurantId: HOUSE, id: "letter-1" }).catch((e) => {
-      expect(String(e.message)).toContain("was NOT cancelled");
-    });
+    await service
+      .cancel({ restaurantId: HOUSE, userId: PERSON, id: "letter-1" })
+      .catch((e) => {
+        expect(String(e.message)).toContain("was NOT cancelled");
+      });
   });
 
   it("refuses a letter that is not queued at all", async () => {
@@ -514,10 +555,317 @@ describe("pulling a letter back", () => {
       status: "SENT",
       scheduled_send_at: null,
       restaurant_id: HOUSE,
+      email_headers: { written_by: PERSON },
     });
     await expect(
-      service.cancel({ restaurantId: HOUSE, id: "letter-1" }),
+      service.cancel({ restaurantId: HOUSE, userId: PERSON, id: "letter-1" }),
     ).rejects.toThrow(ConflictException);
+  });
+
+  it("is 403, not a state check, when someone other than the author tries to pull it back (founder, 2026-09-18, ADR 0149 row 43: cancel is the author's alone)", async () => {
+    const SOMEONE_ELSE = "eeeeeeee-0000-4000-8000-eeeeeeeeeeee";
+    const { rec, service } = svcWith({
+      id: "letter-1",
+      status: LETTER_STATUS.QUEUED,
+      scheduled_send_at: new Date(Date.now() + 60_000).toISOString(),
+      restaurant_id: HOUSE,
+      email_headers: { written_by: PERSON },
+    });
+    await expect(
+      service.cancel({ restaurantId: HOUSE, userId: SOMEONE_ELSE, id: "letter-1" }),
+    ).rejects.toThrow(ForbiddenException);
+    await service
+      .cancel({ restaurantId: HOUSE, userId: SOMEONE_ELSE, id: "letter-1" })
+      .catch((e) => {
+        expect(String(e.message)).toMatch(/Only the person who wrote this letter/);
+      });
+    // Refused before any write, and before the state/window checks run —
+    // a non-author gets the same 403 whether the letter is still queued,
+    // already sent, or past its window.
+    expect(rec.updates).toHaveLength(0);
+  });
+
+  it("a cancel that reaches the letter after the dispatcher's own claim is refused, not answered as pulled back (wave5 confirmer residual, mirrors relay's B1)", async () => {
+    // The read sees a still-QUEUED row, but the guarded update matches
+    // nothing because dispatchDue's own claim (QUEUED -> SENDING) landed
+    // first — the same TOCTOU window RelayEmailService.cancelQueued guards
+    // on its own queue. build()'s stub resolves every update against its
+    // fixed seed row, which cannot express "the read and the update
+    // disagree", so this is a purpose-built double, same reasoning as
+    // relay-email.doors.spec.ts's own race test.
+    //
+    // (wave5 REPAIR, 2026-09-19: an independent verifier confirmed this
+    // double did not track whether `.select()` was chained after
+    // `.update()`. postgrest-js 2.103.0 only attaches
+    // `Prefer: return=representation` when `.select()` runs, so a real
+    // UNSELECTED update always answers `data: null`, whether it matched a
+    // row or not — but this double always resolved `data: []` regardless of
+    // `.select()`, which happens to still throw ConflictException here
+    // (`[]` and `null` both fail the `!cancelled || length === 0` guard) and
+    // so cannot tell "the guard correctly saw zero rows" apart from "the
+    // guard was deleted". Mutation-tested: deleting `.select("id")` from
+    // HouseLettersService.cancel left this test, and all 31 others then in
+    // this file, passing unchanged. Now tracked the same way
+    // relay-email.doors.spec.ts's shared `client()` tracks it; the test
+    // directly below is the one that actually discriminates on that
+    // tracking — this one still only proves the race is refused.)
+    const row = {
+      id: "letter-1",
+      status: LETTER_STATUS.QUEUED,
+      scheduled_send_at: new Date(Date.now() + 60_000).toISOString(),
+      restaurant_id: HOUSE,
+      email_headers: { written_by: PERSON },
+    };
+    const raceDb = {
+      client: {
+        from: () => {
+          let updating = false;
+          let updateSelected = false;
+          const chain: Record<string, unknown> = {};
+          chain.select = () => {
+            if (updating) updateSelected = true;
+            return chain;
+          };
+          chain.eq = () => chain;
+          chain.maybeSingle = async () => ({ data: { ...row }, error: null });
+          chain.update = () => {
+            updating = true;
+            return chain;
+          };
+          chain.then = (
+            resolve: (v: unknown) => unknown,
+            reject: (e: unknown) => unknown,
+          ) =>
+            Promise.resolve({
+              // The dispatcher's claim landed first, so the guarded update
+              // matches nothing — selected, that is `[]`; unselected, real
+              // postgrest-js would answer `null`. Either way cancel() must
+              // refuse, which is all this specific test proves.
+              data: updating ? (updateSelected ? [] : null) : [row],
+              error: null,
+            }).then(resolve, reject);
+          return chain;
+        },
+      },
+    } as unknown as DatabaseService;
+    const none = {} as never;
+    const raced = new HouseLettersService(raceDb, none, none);
+
+    await expect(
+      raced.cancel({ restaurantId: HOUSE, userId: PERSON, id: "letter-1" }),
+    ).rejects.toThrow(ConflictException);
+    await raced
+      .cancel({ restaurantId: HOUSE, userId: PERSON, id: "letter-1" })
+      .catch((e) => {
+        expect(String(e.message)).toMatch(/claimed by the dispatcher/);
+      });
+  });
+
+  it('the .select("id") guard is what lets a genuine cancel succeed — a select-aware double proves that without it, every cancel would be misreported as raced (wave5 repair, 2026-09-19: this is the test that actually discriminates)', async () => {
+    // Same select-after-update tracking as the race double above, but this
+    // update genuinely matches its row (no second actor claims it first).
+    // With `.select("id")` present in the source, postgrest-js hands back
+    // the matched row and cancel() succeeds. Delete `.select("id")` from
+    // the source and this SAME double truthfully answers `data: null` for
+    // that update — which cancel()'s `!cancelled || cancelled.length === 0`
+    // guard cannot tell apart from "matched nothing", so it would wrongly
+    // throw ConflictException on a cancel that never raced anyone. That is
+    // the regression `.select("id")` exists to prevent, and precisely what
+    // the race test above cannot see, because it resolves an empty result
+    // either way `.select()` is chained or not.
+    const row = {
+      id: "letter-2",
+      status: LETTER_STATUS.QUEUED,
+      scheduled_send_at: new Date(Date.now() + 60_000).toISOString(),
+      restaurant_id: HOUSE,
+      email_headers: { written_by: PERSON },
+    };
+    const selectAwareDb = {
+      client: {
+        from: () => {
+          let updating = false;
+          let updateSelected = false;
+          const chain: Record<string, unknown> = {};
+          chain.select = () => {
+            if (updating) updateSelected = true;
+            return chain;
+          };
+          chain.eq = () => chain;
+          chain.maybeSingle = async () => ({ data: { ...row }, error: null });
+          chain.update = () => {
+            updating = true;
+            return chain;
+          };
+          chain.then = (
+            resolve: (v: unknown) => unknown,
+            reject: (e: unknown) => unknown,
+          ) =>
+            Promise.resolve({
+              data: updating
+                ? updateSelected
+                  ? [{ id: row.id }]
+                  : null
+                : [row],
+              error: null,
+            }).then(resolve, reject);
+          return chain;
+        },
+      },
+    } as unknown as DatabaseService;
+    const none = {} as never;
+    const genuine = new HouseLettersService(selectAwareDb, none, none);
+
+    await expect(
+      genuine.cancel({ restaurantId: HOUSE, userId: PERSON, id: "letter-2" }),
+    ).resolves.toMatchObject({
+      id: "letter-2",
+      status: LETTER_STATUS.CANCELLED,
+    });
+  });
+
+  // PR #476 audit round 2, R1b: a queued letter answering a credit claim
+  // (`email_headers.credit_id`, set by `queue()` when it comes from a
+  // credit's draft) is the same ADR 0167 territory as sending it — pulling it
+  // back is owner/manager only too. A letter with no claim behind it stays
+  // open to every role.
+  //
+  // Moved here (2026-09-27, PR #429 merge-train) from inside the
+  // "HouseLettersController.cancel passes the SIGNED token's userId" describe,
+  // where the merge first landed it: these tests call the SERVICE directly
+  // through `svcWith`, which this describe block defines, not the controller,
+  // so they belong beside it rather than beside the controller-level test.
+  //
+  // Every call here also passes `userId: CALLER`, matching the row's own
+  // `written_by` (2026-09-27, PR #429 merge-train, composing this ADR 0230
+  // gate with THIS branch's own ADR 0149 row 43 author-only check, which
+  // main does not carry — both checks must pass, so a test of the ROLE gate
+  // alone must hold authorship constant-satisfied or it is testing the
+  // author check instead).
+  // [CORRECTED 2026-09-27, PR #429 audit round at 2b97a7563: this said
+  // `cancel()` "refuses first on authorship" and that "the last case still
+  // varies who writes it". Neither was true: `cancel()` checks the credit
+  // role gate FIRST (house-letters.service.ts:564) and authorship second
+  // (:570), and no case here varied the author. The composition is AND —
+  // two independent throws — and the case "a caller with role %s who did
+  // not write it still cannot pull it back" below now pins that: without it,
+  // a mutant letting an owner/manager skip authorship on a credit letter
+  // survived.]
+  describe("a credit claim's queued letter", () => {
+    const CALLER = "cccccccc-0000-4000-8000-cccccccccccc";
+
+    function svcWithCreditLetter() {
+      return svcWith({
+        id: "letter-1",
+        status: LETTER_STATUS.QUEUED,
+        scheduled_send_at: new Date(Date.now() + 60_000).toISOString(),
+        restaurant_id: HOUSE,
+        email_headers: {
+          credit_id: "credit-1",
+          to: "vendor@example.com",
+          written_by: CALLER,
+        },
+      });
+    }
+
+    it("refuses a staff caller, and cancels nothing", async () => {
+      const { rec, service } = svcWithCreditLetter();
+      await expect(
+        service.cancel({
+          restaurantId: HOUSE,
+          userId: CALLER,
+          id: "letter-1",
+          role: "staff",
+        }),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(rec.updates).toHaveLength(0);
+    });
+
+    it("refuses a session with no role in this house", async () => {
+      const { service } = svcWithCreditLetter();
+      await expect(
+        service.cancel({
+          restaurantId: HOUSE,
+          userId: CALLER,
+          id: "letter-1",
+          role: null,
+        }),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it.each(["owner", "manager"])("lets a %s pull it back", async (role) => {
+      const { service } = svcWithCreditLetter();
+      const out = await service.cancel({
+        restaurantId: HOUSE,
+        userId: CALLER,
+        id: "letter-1",
+        role,
+      });
+      expect(out.status).toBe(LETTER_STATUS.CANCELLED);
+    });
+
+    it.each(["owner", "manager"])(
+      "a caller with role %s who did not write it still cannot pull it back (ADR 0149 row 43 composes with the role gate: AND, not OR)",
+      async (role) => {
+        const { rec, service } = svcWithCreditLetter();
+        await expect(
+          service.cancel({
+            restaurantId: HOUSE,
+            userId: "dddddddd-0000-4000-8000-dddddddddddd",
+            id: "letter-1",
+            role,
+          }),
+        ).rejects.toThrow(/Only the person who wrote this letter/);
+        expect(rec.updates).toHaveLength(0);
+      },
+    );
+
+    it("does not gate a letter with no claim behind it", async () => {
+      const { service } = svcWith({
+        id: "letter-1",
+        status: LETTER_STATUS.QUEUED,
+        scheduled_send_at: new Date(Date.now() + 60_000).toISOString(),
+        restaurant_id: HOUSE,
+        email_headers: { written_by: CALLER },
+      });
+      const out = await service.cancel({
+        restaurantId: HOUSE,
+        userId: CALLER,
+        id: "letter-1",
+        role: "staff",
+      });
+      expect(out.status).toBe(LETTER_STATUS.CANCELLED);
+    });
+  });
+});
+
+describe("HouseLettersController.cancel passes the SIGNED token's userId, not the house id (confirmer M8, wave5)", () => {
+  it("calls the service with the JWT's own userId — mutated to the house id, this must fail", async () => {
+    const cancel = jest.fn().mockResolvedValue({
+      id: "letter-1",
+      status: LETTER_STATUS.CANCELLED,
+      says: "Pulled back.",
+    });
+    const none = {} as never;
+    const controller = new HouseLettersController(
+      { cancel } as unknown as HouseLettersService,
+      none,
+      none,
+      none,
+      none,
+    );
+    const TOKEN_USER_ID = "ffffffff-0000-4000-8000-ffffffffffff";
+    const user = { userId: TOKEN_USER_ID, restaurantId: HOUSE } as never;
+
+    await controller.cancel(user, "letter-1");
+
+    expect(cancel).toHaveBeenCalledWith({
+      restaurantId: HOUSE,
+      userId: TOKEN_USER_ID,
+      id: "letter-1",
+    });
+    // Pinned down explicitly: a controller that swapped in the house id
+    // (the exact M8 mutation the wave5 confirmer named) must not pass this.
+    expect(cancel.mock.calls[0][0].userId).not.toBe(HOUSE);
   });
 });
 
@@ -585,6 +933,134 @@ describe("sending through the house's own grant", () => {
       }),
     ).rejects.toThrow(/gmail\.send/);
   });
+
+  // Found 2026-09-17, adversarial review of the relay lane (out of that
+  // lane's own diff): `Subject: ${params.subject}` went straight into the
+  // header block with no single-line check anywhere on the way — unlike
+  // `GmailService.createMimeMessage`, which sits behind the DTO's
+  // `SINGLE_HEADER_LINE` guard. A subject carrying a line break could add a
+  // header — here, a `Bcc:` — that no recipient check ever saw.
+  it("cannot add a header through a line break in the subject", async () => {
+    const calls: Array<[string, RequestInit]> = [];
+    const fetchImpl = (async (url: string, init: RequestInit) => {
+      calls.push([url, init]);
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ id: "gmail-2" }),
+        text: async () => "",
+      };
+    }) as unknown as typeof fetch;
+
+    await sendThroughGrant({
+      token: "ya29.token",
+      from: "siparis@lokantamudavim.com",
+      to: "fikri@fikritarim.com",
+      subject: "Standing order\r\nBcc: attacker@evil.example",
+      text: "Merhaba,",
+      fetchImpl,
+    });
+
+    const [, init] = calls[0];
+    const raw = JSON.parse(String(init.body)).raw as string;
+    const decoded = Buffer.from(raw, "base64url").toString("utf8");
+    const headerBlock = decoded.slice(0, decoded.indexOf("\r\n\r\n"));
+    const headerLines = headerBlock.split("\r\n");
+    // The whole point: no line in the header block is an injected Bcc, and
+    // the subject line — whatever it now reads — is exactly one line. The
+    // attacker's address is still IN the subject text (sanitizing folds the
+    // line break, it does not drop content) — it just never becomes its own
+    // header line.
+    expect(headerLines.some((l) => /^Bcc:/i.test(l))).toBe(false);
+    expect(headerLines.filter((l) => /^Subject:/i.test(l))).toHaveLength(1);
+    expect(headerLines[2]).toBe(
+      "Subject: Standing order Bcc: attacker@evil.example",
+    );
+  });
+
+  it("carries cc, bcc, reply-to and threading when the caller supplies them", async () => {
+    const calls: Array<[string, RequestInit]> = [];
+    const fetchImpl = (async (url: string, init: RequestInit) => {
+      calls.push([url, init]);
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ id: "gmail-3" }),
+        text: async () => "",
+      };
+    }) as unknown as typeof fetch;
+
+    await sendThroughGrant({
+      token: "ya29.token",
+      from: "owner@house-a.example",
+      to: ["a@b.example", "c@d.example"],
+      cc: ["cc@b.example"],
+      bcc: ["bcc@b.example"],
+      subject: "Rota",
+      text: "See you at six.",
+      replyTo: "owner@house-a.example",
+      threadId: "gmail-thread-9",
+      inReplyTo: "<msg-1@mail.gmail.com>",
+      references: "<msg-0@mail.gmail.com>",
+      fetchImpl,
+    });
+
+    const [, init] = calls[0];
+    const body = JSON.parse(String(init.body)) as { raw: string; threadId?: string };
+    expect(body.threadId).toBe("gmail-thread-9");
+    const decoded = Buffer.from(body.raw, "base64url").toString("utf8");
+    expect(decoded).toContain("To: a@b.example, c@d.example");
+    expect(decoded).toContain("Cc: cc@b.example");
+    expect(decoded).toContain("Bcc: bcc@b.example");
+    expect(decoded).toContain("Reply-To: owner@house-a.example");
+    expect(decoded).toContain("In-Reply-To: <msg-1@mail.gmail.com>");
+    expect(decoded).toContain("References: <msg-0@mail.gmail.com>");
+  });
+
+  // 2026-09-21, when origin/main's ADR 0172 encoder met the relay lane's
+  // person-door parameters: the lane's own stripper folded a line break in an
+  // ADDRESS into a space and sent anyway; mime-headers.ts refuses it, because
+  // repairing a corrupt address sends mail somewhere nobody chose. The refusal
+  // is thrown before any fetch, so the relay's dispatch() records a failed
+  // outcome for a mail that provably never left.
+  const corruptAddresses: Array<
+    [string, Partial<Parameters<typeof sendThroughGrant>[0]>]
+  > = [
+    ["Cc", { cc: ["cc@b.example\r\nBcc: attacker@evil.example"] }],
+    ["Bcc", { bcc: ["bcc@b.example\nX-Injected: 1"] }],
+    [
+      "Reply-To",
+      { replyTo: "owner@house-a.example\r\nBcc: attacker@evil.example" },
+    ],
+    [
+      "To",
+      { to: ["a@b.example", "c@d.example\r\nBcc: attacker@evil.example"] },
+    ],
+  ];
+  it.each(corruptAddresses)(
+    "refuses a line break inside a %s address before anything is sent",
+    async (headerName, extra) => {
+      const fetchImpl = jest.fn(async () => ({
+        ok: true,
+        status: 200,
+        json: async () => ({ id: "gmail-4" }),
+        text: async () => "",
+      })) as unknown as typeof fetch;
+
+      await expect(
+        sendThroughGrant({
+          token: "ya29.token",
+          from: "owner@house-a.example",
+          to: "a@b.example",
+          subject: "Rota",
+          text: "See you at six.",
+          fetchImpl,
+          ...extra,
+        }),
+      ).rejects.toThrow(`Refusing to write the ${headerName} header`);
+      expect(fetchImpl).not.toHaveBeenCalled();
+    },
+  );
 });
 
 // ===========================================================================
@@ -659,18 +1135,18 @@ describe("the gmail_send grant, end to end", () => {
 
   it("sends the due letter through Gmail and records the id Google returned", async () => {
     const calls: Array<[string, RequestInit]> = [];
-    const { rec, svc } = dispatcher([GRANT_WITH_SEND], async (
-      url: string,
-      init: RequestInit,
-    ) => {
-      calls.push([url, init]);
-      return {
-        ok: true,
-        status: 200,
-        json: async () => ({ id: "18f0c0ffee" }),
-        text: async () => "",
-      };
-    });
+    const { rec, svc } = dispatcher(
+      [GRANT_WITH_SEND],
+      async (url: string, init: RequestInit) => {
+        calls.push([url, init]);
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ id: "18f0c0ffee" }),
+          text: async () => "",
+        };
+      },
+    );
 
     const result = await svc.dispatchDue(Date.parse("2026-09-04T10:00:00Z"));
     expect(result).toMatchObject({ considered: 1, sent: 1, failed: 0 });
@@ -722,13 +1198,14 @@ describe("the gmail_send grant, end to end", () => {
     const result = await svc.dispatchDue(Date.parse("2026-09-04T10:00:00Z"));
     expect(result).toMatchObject({ sent: 0, failed: 1 });
 
-    expect(
-      rec.updates.some((u) => u.status === LETTER_STATUS.SENT),
-    ).toBe(false);
+    expect(rec.updates.some((u) => u.status === LETTER_STATUS.SENT)).toBe(
+      false,
+    );
     const failed = rec.updates.find((u) => u.status === LETTER_STATUS.FAILED);
     expect(failed).toBeDefined();
     const said = String(
-      (failed!.constraint_flags as Record<string, unknown>).house_letter_failure,
+      (failed!.constraint_flags as Record<string, unknown>)
+        .house_letter_failure,
     );
     // In words, with Google's own status and Google's own sentence in it.
     expect(said).toContain("Google refused the send (429)");
@@ -778,18 +1255,18 @@ describe("the gmail_send grant, end to end", () => {
       scopes: [GMAIL_SEND_SCOPE],
     };
     const calls: RequestInit[] = [];
-    const { svc } = dispatcher([sendOnly], async (
-      _url: string,
-      init: RequestInit,
-    ) => {
-      calls.push(init);
-      return {
-        ok: true,
-        status: 200,
-        json: async () => ({ id: "x" }),
-        text: async () => "",
-      };
-    });
+    const { svc } = dispatcher(
+      [sendOnly],
+      async (_url: string, init: RequestInit) => {
+        calls.push(init);
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ id: "x" }),
+          text: async () => "",
+        };
+      },
+    );
 
     await svc.dispatchDue(Date.parse("2026-09-04T10:00:00Z"));
     const decoded = Buffer.from(
@@ -833,5 +1310,56 @@ describe("the gmail_send grant, end to end", () => {
     );
     expect(identity.missing.join(" ")).toContain(GMAIL_SEND_DEFINITION.label);
     expect(identity.words).toContain(GMAIL_SEND_DEFINITION.label);
+  });
+});
+
+/**
+ * ADR 0161. `dispatchDue` used to answer an unreadable queue with
+ * `{ considered: 0, sent: 0, failed: 0, skipped: 0 }` — byte for byte what it
+ * answers when nothing is due — so the cron recorded `error: null` and
+ * `GET /communications/letters/sender` said "the dispatcher ran, nothing to send" through a
+ * database outage. The two cases below are the same call with one difference:
+ * whether the read failed.
+ */
+describe("a queue that cannot be read is not a quiet minute", () => {
+  const NOW = Date.parse("2026-09-04T10:00:00Z");
+
+  function cronOver(rows: Parameters<typeof build>[0]) {
+    const { db } = build(rows);
+    const sender = new HouseSenderService(db, configWith({}));
+    const svc = new HouseLettersService(db, sender, OAUTH_OK);
+    return { svc, cron: new HouseLettersCron(svc) };
+  }
+
+  it("throws, naming the read, when the queue read fails", async () => {
+    const { svc } = cronOver({
+      procurement_conversations: { error: { message: "connection refused" } },
+    });
+    await expect(svc.dispatchDue(NOW)).rejects.toThrow(
+      /could not read the queue: connection refused/,
+    );
+  });
+
+  it("records the failure on the cron's lastRun, never as error: null", async () => {
+    const { cron } = cronOver({
+      procurement_conversations: { error: { message: "connection refused" } },
+    });
+    await cron.run();
+    const last = cron.lastRun();
+    expect(last).not.toBeNull();
+    expect(last?.error).toMatch(/could not read the queue: connection refused/);
+  });
+
+  it("still records a genuinely empty queue as a completed run with error: null", async () => {
+    const { svc, cron } = cronOver({ procurement_conversations: [] });
+    await expect(svc.dispatchDue(NOW)).resolves.toEqual({
+      considered: 0,
+      sent: 0,
+      failed: 0,
+      skipped: 0,
+      rewaited: 0,
+    });
+    await cron.run();
+    expect(cron.lastRun()).toMatchObject({ considered: 0, error: null });
   });
 });

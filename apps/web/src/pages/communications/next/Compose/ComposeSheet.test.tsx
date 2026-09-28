@@ -412,3 +412,89 @@ describe('the composer is a vendor send: sealed, and only for those who may send
     expect(screen.getByText(/You send under a grant from Olcay/)).toBeInTheDocument();
   });
 });
+
+describe('a drafted letter (ADR 0230)', () => {
+  const DRAFT = {
+    draftId: 'D1',
+    providerId: 'p1',
+    to: 'fikri@fikritarim.com',
+    subject: 'Credit request — invoice INV-77',
+    body: 'We are asking for a credit of 84.50 EUR.',
+  };
+
+  it('says it is a draft, not sent, and sends THAT draft when Send is pressed', async () => {
+    mockData.current = { ...base, sender: HOUSE_MAILBOX };
+    // A draft is a vendor send like any other letter (#436 merging main,
+    // 2026-09-27): the seal is minted over it first, then it is queued with it.
+    mockPost.mockImplementation((path: string) =>
+      Promise.resolve(
+        path === '/communications/letters/seal-challenge'
+          ? { data: { challenge: 'seal-D1' } }
+          : {
+              data: {
+                id: 'D1',
+                dispatchAt: new Date(Date.now() + 120000).toISOString(),
+                says: 'Queued to leave. It has not been sent.',
+                undoMs: 120000,
+                notices: [],
+                insightsRecorded: 0,
+              },
+            },
+      ),
+    );
+    render(<ComposeSheet open onClose={() => {}} prefill={DRAFT} />);
+    expect(screen.getByTestId('letter-draft-note')).toHaveTextContent('it has not been sent');
+    expect(screen.getByLabelText('Subject')).toHaveValue('Credit request — invoice INV-77');
+    // The recipient is the booked entry the draft was written to.
+    await waitFor(() => expect(screen.getByTestId('letter-send')).not.toBeDisabled());
+    fireEvent.click(screen.getByTestId('letter-send'));
+    await waitFor(() =>
+      expect(mockPost).toHaveBeenCalledWith(
+        '/communications/letters',
+        expect.objectContaining({ draftId: 'D1', providerId: 'p1', to: 'fikri@fikritarim.com' }),
+        { headers: { 'X-Seal-Challenge': 'seal-D1' } },
+      ),
+    );
+    // The seal was minted over the same letter, draft id included.
+    expect(mockPost.mock.calls[0][0]).toBe('/communications/letters/seal-challenge');
+    expect(mockPost.mock.calls[0][1]).toEqual(mockPost.mock.calls[1][1]);
+    await waitFor(() => expect(screen.getByTestId('letter-queued')).toBeInTheDocument());
+    // Queued: it is not offered again, and cannot be discarded any more.
+    expect(screen.getByTestId('letter-send')).toBeDisabled();
+    expect(screen.queryByTestId('letter-discard')).toBeNull();
+  });
+
+  it('a draft with no booked address leaves the recipient unchosen and says so', () => {
+    mockData.current = { ...base, sender: HOUSE_MAILBOX };
+    render(<ComposeSheet open onClose={() => {}} prefill={{ ...DRAFT, to: null }} />);
+    expect(screen.getByTestId('letter-draft-note')).toHaveTextContent('no address in the book');
+    expect(screen.getByTestId('letter-send')).toBeDisabled();
+  });
+
+  it('discards the draft on the gateway and says it was never sent', async () => {
+    mockData.current = { ...base, sender: HOUSE_MAILBOX };
+    mockPost.mockResolvedValue({
+      data: { says: 'Discarded. It was never sent, and the book keeps it as cancelled rather than deleting it.' },
+    });
+    const onDiscarded = vi.fn();
+    render(<ComposeSheet open onClose={() => {}} prefill={DRAFT} onDiscarded={onDiscarded} />);
+    fireEvent.click(screen.getByTestId('letter-discard'));
+    await waitFor(() => expect(mockPost).toHaveBeenCalledWith('/communications/letters/D1/discard'));
+    await waitFor(() => expect(screen.getByTestId('letter-draft-note')).toHaveTextContent('never sent'));
+    expect(onDiscarded).toHaveBeenCalled();
+    expect(screen.getByTestId('letter-send')).toBeDisabled();
+  });
+
+  it('a plain letter sends no draftId and offers no discard', async () => {
+    mockData.current = { ...base, sender: HOUSE_MAILBOX };
+    mockPost.mockResolvedValue({
+      data: { id: 'L1', dispatchAt: new Date(Date.now() + 120000).toISOString(), says: 'Queued.', undoMs: 120000, notices: [], insightsRecorded: 0 },
+    });
+    open();
+    expect(screen.queryByTestId('letter-discard')).toBeNull();
+    pickRecipient();
+    fireEvent.click(screen.getByTestId('letter-send'));
+    await waitFor(() => expect(mockPost).toHaveBeenCalled());
+    expect(mockPost.mock.calls[0][1].draftId).toBeUndefined();
+  });
+});

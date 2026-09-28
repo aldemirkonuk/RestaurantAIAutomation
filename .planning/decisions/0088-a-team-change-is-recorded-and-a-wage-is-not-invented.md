@@ -315,8 +315,69 @@ Verified on `main` that the source is genuinely gone before clearing, since othe
 the next team read would refill it: `team.service.ts:255` now writes `hourly_wage: null`,
 `:322` writes the caller's value or null, and `:186` gates the figure by permission.
 
+## Amendment — the legacy-only team acts move onto the page (2026-09-26)
+
+**[founder, 2026-09-26, round 8, item 51.]** The record of his answer is the session memory
+`founder-answers-2026-09-25-web-rebuild.md`, item 51, verbatim: *"Three legacy-only features
+are BUILT into the new pages before cutover: vendor branch-locations edit, held low-stock
+queue on notifications, team coverage-template delete + hand-entered sales."* The choice put
+to him was the deletion manifest's for each capability gap (census scratchpad
+`deletion-manifest-draft.md`, the "Team ops" row): **build it into the Mudavym page, or waive
+it and let it go with the legacy desk at cutover** — he chose *build*; *waive* is the option
+rejected. The AskUserQuestion option labels themselves were not written down anywhere this
+lane can read, so this bracket quotes the memory line, not the button text. This amendment
+records only the team third; the vendor-locations and held-queue thirds belong to their own
+lanes' records.
+
+What was built (PR #436, lane W7-team):
+
+- **Removing a coverage rule** — `CoverageRulesSheet` (`apps/web/src/pages/team/next/`),
+  opened from "Coverage rules · N" on the Unfilled panel: the whole rule file, add, and
+  remove through the page's two-step inline confirm (the shape of `ShiftSheet` and
+  `RosterSheet`), which names what the engine stops asking for. Not a hold-to-seal: a rule
+  is configuration that re-adding restores exactly.
+- **Sales by hand** — `SalesSheet`, opened from "Log sales" in the header: one service
+  (`POST …/team/sales`, source `manual`), or several at once — a night typed in for the
+  active floor (`POST …/team/sales/batch`, source `manual`) or a CSV shown row by row before
+  sending (source `csv`). The written row is the legacy `PerformancePanel`'s, field for
+  field; a figure the legacy panel turned into a silent 0 (`Number(x) || 0`) now refuses its
+  row with the reason. The orchestrator was traced first: no Python code reads or writes
+  `server_sales`; the only `/sales` strings in `services/agent-orchestrator` are the Toast
+  POS route `GET /api/v1/toast/sales` (`api/toast_routes.py:545`) and its tests — a
+  different table and direction.
+
+Four gateway answers that were silent are now said, in the spirit of T2 and T6 above:
+
+1. `DELETE …/coverage-templates/:id` discarded its write result, so a failed delete or an
+   id of another house answered 200 over nothing removed. It now answers the removed row,
+   **404** when this house has no rule by that id, **500** "still in force" on a write
+   error, and **400** for a non-uuid id (`ParseUUIDPipe`).
+2. `GET …/coverage-templates` answered `[]` on a failed read — which the page reads as "the
+   engine is idle, add the first rule". It is a 500 now, and the page's existing "could not
+   be read" sentence is what shows.
+3. `POST …/sales/batch` dropped rows naming people outside the house inside a smaller
+   `inserted`; answered `{ inserted: 0 }` when the roster read failed; and let two rows for
+   one person-day reach PostgREST, whose upsert then failed whole as a bare 500. It now
+   returns `skipped` + `skippedRows`, 500s on the failed roster read, and 400s the
+   duplicate pair before writing.
+4. `GET …/members/:id/performance` answered `hasData: false` ("no service attributed yet")
+   on a failed `server_sales` read. It is a 500; the card's unreadable state shows.
+
+Tenant guard, checked per route: each takes its house from the path and admits the caller
+through `TeamService.assertAccess(userId, rid, "manager")` (an active access row in THAT
+house); each write filters on `restaurant_id` = the path's house; a sales row naming a
+member of another house is refused (single: 404 via `assertMemberInRestaurant`; batch:
+skipped and named). Pinned by `apps/api-gateway/src/team/team-ops-entry.spec.ts` (15),
+mutation-checked (tenant filter removed, 404 removed, duplicate/roster checks removed, uuid
+pipe removed: each fails the suite). Three `read_error_baseline.json` rows retire with
+items 2-4.
+
+Not done here: an audit row for a coverage-rule change (page note §13.10 still stands — a
+rule removal is not yet in `system_audit_log`), and no browser-preview run of either sheet.
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
 |---|---|---|
 | 2026-09-02 | Aldemir | T1 and T2 decided directly; T3/T5/T7 delegated with the brief "make the unsafe call impossible or loud, and justify whichever you choose" |
+| 2026-09-26 | Aldemir (founder, round 8 item 51); lane W7-team | Coverage-rule remove and hand-entered sales built onto the Mudavym page; four silent gateway answers made loud (amendment above) |

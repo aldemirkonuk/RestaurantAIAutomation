@@ -290,7 +290,7 @@ describe("getConversationHistory — the ledger sees its own rows (ADR 0084)", (
     expect(out.every((r) => r.draftContent !== null)).toBe(true);
   });
 
-  it("withholds the approval queue, and only the approval queue", async () => {
+  it("withholds the approval queue, and only the approval queue, among production's own statuses", async () => {
     const { service } = serviceOver(productionShapedRows());
     const out = await service.getConversationHistory(REST);
     const statuses = out.map((r) => r.status);
@@ -301,6 +301,73 @@ describe("getConversationHistory — the ledger sees its own rows (ADR 0084)", (
     expect(statuses.filter((s) => s === "DISCARDED")).toHaveLength(3);
     expect(statuses.filter((s) => s === "CANCELLED")).toHaveLength(1);
     expect(statuses.filter((s) => s === "APPROVED")).toHaveLength(2);
+  });
+
+  // PR #476 audit round 2, R2b: this route has no role gate at all
+  // (`JwtAuthGuard` alone), so unlike legacy `DISCARDED`/`CANCELLED` above, a
+  // credit claim's letter must not read through here for ANY caller — the
+  // same figures ADR 0167 already refuses staff on the ledger itself.
+  it("withholds HOUSE_DRAFT — an undecided credit-claim letter, live in /communications", async () => {
+    const rows = productionShapedRows();
+    rows.push({
+      id: "credit-draft-0",
+      restaurant_id: REST,
+      order_id: null,
+      provider_id: "prov-1",
+      direction: "outbound",
+      status: "HOUSE_DRAFT",
+      content: "Asking for a credit on invoice INV-77.",
+      message_text: "Asking for a credit on invoice INV-77.",
+      created_at: new Date(2026, 8, 5).toISOString(),
+      outbound_email_type: "HOUSE_LETTER",
+      round_count: 1,
+    });
+
+    const { service } = serviceOver(rows);
+    const out = await service.getConversationHistory(REST);
+    expect(out.map((r) => r.id)).not.toContain("credit-draft-0");
+  });
+
+  it("withholds HOUSE_CANCELLED — a discarded credit-claim letter, same figures", async () => {
+    const rows = productionShapedRows();
+    rows.push({
+      id: "credit-draft-1",
+      restaurant_id: REST,
+      order_id: null,
+      provider_id: "prov-1",
+      direction: "outbound",
+      status: "HOUSE_CANCELLED",
+      content: "Asking for a credit on invoice INV-88.",
+      message_text: "Asking for a credit on invoice INV-88.",
+      created_at: new Date(2026, 8, 6).toISOString(),
+      outbound_email_type: "HOUSE_LETTER",
+      round_count: 1,
+    });
+
+    const { service } = serviceOver(rows);
+    const out = await service.getConversationHistory(REST);
+    expect(out.map((r) => r.id)).not.toContain("credit-draft-1");
+  });
+
+  it("still shows a real, sent house letter (HOUSE_QUEUED/SENT are not withheld)", async () => {
+    const rows = productionShapedRows();
+    rows.push({
+      id: "credit-sent-0",
+      restaurant_id: REST,
+      order_id: null,
+      provider_id: "prov-1",
+      direction: "outbound",
+      status: "HOUSE_QUEUED",
+      content: "Asking for a credit on invoice INV-99.",
+      message_text: "Asking for a credit on invoice INV-99.",
+      created_at: new Date(2026, 8, 7).toISOString(),
+      outbound_email_type: "HOUSE_LETTER",
+      round_count: 1,
+    });
+
+    const { service } = serviceOver(rows);
+    const out = await service.getConversationHistory(REST);
+    expect(out.map((r) => r.id)).toContain("credit-sent-0");
   });
 
   it("withholds an OUTBOUND draft but not an INBOUND one", async () => {
@@ -417,5 +484,64 @@ describe("getConversationHistory — the ledger sees its own rows (ADR 0084)", (
     expect(new Set(out.map((r) => r.direction))).toEqual(
       new Set(["INBOUND", "OUTBOUND"]),
     );
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ADR 0099, founder 2026-09-21: a 400/403/422 relay refusal CLOSES the draft
+// as RELAY_REFUSED ("Close, no retry") and the manager sees why on the draft.
+// Both reads that put a relay draft in front of a manager — the ledger on
+// /communications and the order's thread drawer on /orders — must carry the
+// gateway's own sentence. The stub returns every column whatever is selected,
+// so each test also pins the select: dropping the column from either query
+// would otherwise pass here and ship a panel with no reason on it.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("a relay refusal carries its reason to both panels (ADR 0099)", () => {
+  const SENTENCE =
+    "gateway refused the send: HTTP 403 — Conversation refused-0 is not one of this house's conversations. Nothing was sent.";
+
+  function withRefusal(): Row[] {
+    const rows = productionShapedRows();
+    rows.push({
+      id: "refused-0",
+      restaurant_id: REST,
+      order_id: "ord-0",
+      provider_id: "prov-0",
+      direction: "outbound",
+      status: "RELAY_REFUSED",
+      relay_refusal_reason: SENTENCE,
+      content: "Could you hold 6 at 18.40?",
+      message_text: "Could you hold 6 at 18.40?",
+      created_at: new Date(2026, 8, 21).toISOString(),
+      outbound_email_type: "PRICE_INQUIRY",
+      round_count: 1,
+    });
+    return rows;
+  }
+
+  it("the ledger shows the closed row with the gateway's sentence", async () => {
+    const { service, captured } = serviceOver(withRefusal());
+    const out = await service.getConversationHistory(REST);
+
+    expect(captured.select).toContain("relay_refusal_reason");
+    const refused = out.find((r) => r.id === "refused-0");
+    expect(refused).toBeDefined();
+    expect(refused!.status).toBe("RELAY_REFUSED");
+    expect(refused!.relayRefusalReason).toBe(SENTENCE);
+    // Every other row names no reason — null, never an invented one.
+    expect(
+      out.filter((r) => r.id !== "refused-0").every((r) => r.relayRefusalReason === null),
+    ).toBe(true);
+  });
+
+  it("the order's thread drawer read carries the same sentence", async () => {
+    const { service, captured } = serviceOver(withRefusal());
+    const out = await service.getOrderConversations(REST, "ord-0");
+
+    expect(captured.select).toContain("relay_refusal_reason");
+    const refused = out.find((r) => r.id === "refused-0");
+    expect(refused).toBeDefined();
+    expect(refused!.relayRefusalReason).toBe(SENTENCE);
   });
 });

@@ -121,7 +121,7 @@
   font-family: var(--rp-mono);
   font-size: 9px;
   letter-spacing: 0.06em;
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 
 /* The two questions a cutting is asked while the sheet is being arranged:
@@ -220,7 +220,7 @@
   font-size: 9px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 .rp-tip__row {
   font-size: 11.5px;
@@ -248,7 +248,7 @@
   color: var(--ink-1);
 }
 .rp-big__value[data-unknown='true'] {
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 
 /* ── the heat map: a real table, so a header is a header ────────────────
@@ -266,7 +266,7 @@
   border-spacing: 2px;
   font-family: var(--rp-mono);
   font-size: 9px;
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 .rp-heat__col,
 .rp-heat__row {
@@ -322,7 +322,7 @@
   font-weight: 600;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--ink-3);
+  color: var(--ink-4);
   background: var(--paper-1);
   padding: 2px 6px 3px 0;
   border-bottom: 1px solid var(--paper-2);
@@ -340,7 +340,7 @@
   font-variant-numeric: tabular-nums lining-nums;
 }
 .rp-table td[data-unknown='true'] {
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 
 /* The double rule — "the account is ruled off" (059 / 057 Ledger). */
@@ -438,12 +438,12 @@
   margin: 0;
   font-size: 10.5px;
   line-height: 1.45;
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 .rp-quiet {
   margin: 6px 0 0;
   font-size: 12px;
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 /* The one `.rp-*` rule that also renders OUTSIDE `.rp-page`: the palette's
    rows are portalled to `document.body` inside the house Panel, where
@@ -456,7 +456,7 @@
   font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 .rp-tag {
   font-family: var(--rp-mono);
@@ -496,7 +496,7 @@
 }
 .rp-fig dt {
   font-size: 11.5px;
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 .rp-fig dd {
   margin: 0;
@@ -506,7 +506,7 @@
   color: var(--ink-1);
 }
 .rp-fig dd[data-unknown='true'] {
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 .rp-sentence {
   margin: 0;
@@ -535,7 +535,7 @@
 }
 .rp-btn[disabled] {
   border-style: dashed;
-  color: var(--ink-3);
+  color: var(--ink-4);
   cursor: not-allowed;
 }
 .rp-mini {
@@ -612,7 +612,7 @@
   align-items: center;
   gap: 6px;
   font-size: 11.5px;
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 .rp-foot {
   margin-top: 28px;
@@ -627,7 +627,7 @@
 .rp-foot p {
   margin: 0;
   font-size: 10.5px;
-  color: var(--ink-3);
+  color: var(--ink-4);
   max-width: 620px;
   text-align: right;
 }
@@ -782,7 +782,7 @@
 .rp-mini[disabled],
 .rp-step[disabled] {
   border-style: dashed;
-  color: var(--ink-3);
+  color: var(--ink-4);
   cursor: not-allowed;
 }
 
@@ -984,7 +984,7 @@
 }
 .rp-tag[data-status='queued'] {
   border-style: dashed;
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 .rp-tag[data-status='failed'] {
   color: var(--ink-1);

@@ -43,6 +43,12 @@ export interface LetterDispatchRun {
   skipped: number;
   /** Staff requests put back to waiting because their letter was not sent (founder, 2026-09-22). */
   rewaited?: number;
+  /**
+   * `null` means the run COMPLETED, so `considered: 0` is a real quiet minute.
+   * A string means it did not — the queue could not be read, or the dispatcher
+   * threw — and the counts beside it are zeros by default, not a measurement.
+   * Read this before the counts. ADR 0161.
+   */
   error: string | null;
 }
 

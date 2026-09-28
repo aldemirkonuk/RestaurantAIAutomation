@@ -214,7 +214,7 @@ function LaneSpine({
                 fontSize: 11,
                 fontVariantNumeric: 'tabular-nums',
                 marginLeft: 6,
-                color: selected ? 'var(--seal, #1A5E6B)' : 'var(--ink-3, #7C7365)',
+                color: selected ? 'var(--seal, #1A5E6B)' : 'var(--ink-4, #665D50)',
                 transition: `color ${ink.ms}ms ${ink.easing}`,
               }}
             >
@@ -420,7 +420,7 @@ function QueueRow({
               width: 0,
               minWidth: '100%',
               fontSize: 11.5,
-              color: 'var(--ink-3, #7C7365)',
+              color: 'var(--ink-4, #665D50)',
               marginTop: 3,
               overflow: 'hidden',
               textOverflow: 'ellipsis',
@@ -453,7 +453,7 @@ function QueueRow({
             color:
               item.atRisk !== null && item.atRisk > 0
                 ? 'var(--ink-1, #211C16)'
-                : 'var(--ink-3, #7C7365)',
+                : 'var(--ink-4, #665D50)',
             minWidth: 76,
             textAlign: 'right',
           }}
@@ -464,7 +464,7 @@ function QueueRow({
           aria-hidden
           style={{
             flex: 'none',
-            color: 'var(--ink-3, #7C7365)',
+            color: 'var(--ink-4, #665D50)',
             fontSize: 11,
             transform: expanded ? 'rotate(90deg)' : 'rotate(0deg)',
             transition: `transform ${settle.ms}ms ${settle.easing}`,
@@ -533,7 +533,7 @@ function QueueRow({
                   <br />
                   matched {fmtDate(item.verifiedAt)}
                 </p>
-                <p style={{ fontSize: 10.5, color: 'var(--ink-3, #7C7365)', margin: '6px 0 0' }}>
+                <p style={{ fontSize: 10.5, color: 'var(--ink-4, #665D50)', margin: '6px 0 0' }}>
                   Claim counts are lower bounds: the gateway links at most{' '}
                   {SERVER_WINDOWS.LINKED_CREDITS} credit rows per restaurant and does not order
                   them, so a claim can sit outside the window.
@@ -805,7 +805,7 @@ export function RcManagerQueue({
                 display: 'block',
                 fontFamily: MONO,
                 fontSize: 10.5,
-                color: 'var(--ink-3, #7C7365)',
+                color: 'var(--ink-4, #665D50)',
                 marginTop: 4,
               }}
             >
@@ -835,13 +835,13 @@ export function RcManagerQueue({
       )}
 
       {!data.hasData && !data.isError && (
-        <p style={{ fontSize: 12.5, color: 'var(--ink-3, #7C7365)', marginTop: 12 }}>
+        <p style={{ fontSize: 12.5, color: 'var(--ink-4, #665D50)', marginTop: 12 }}>
           Reaching the gateway…
         </p>
       )}
 
       {data.hasData && visible.length === 0 && (
-        <p style={{ fontSize: 12.5, color: 'var(--ink-3, #7C7365)', marginTop: 12 }}>
+        <p style={{ fontSize: 12.5, color: 'var(--ink-4, #665D50)', marginTop: 12 }}>
           {lane === null
             ? 'Nothing to chase. Every verified delivery matched its paperwork.'
             : `Nothing sits at ${LANE_LABEL[lane].toLowerCase()} right now.`}

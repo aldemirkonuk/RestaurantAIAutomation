@@ -12,7 +12,7 @@ import {
 } from "@/components/auth/AuthShell";
 import { color, radius, space } from "@/design/tokens";
 import { haptic } from "@/design/haptics";
-import { useSession } from "@/state/session";
+import { requestThenAdopt } from "@/state/session";
 import {
   emailError,
   nameError,
@@ -65,7 +65,6 @@ export default function RegisterScreen() {
     type?: string;
     redirect?: string;
   }>();
-  const adoptTokens = useSession((s) => s.adoptTokens);
 
   const presetCode = inviteCodeFromPaste(params.invite ?? "");
   const [path, setPath] = useState<Path>(
@@ -181,31 +180,38 @@ export default function RegisterScreen() {
     setBusy(true);
     setError(null);
     try {
-      const tokens =
-        path === "join"
-          ? await joinViaInvite({
-              code: normalizeInviteCode(code),
-              name: name.trim(),
-              email: address_,
-              password,
-            })
-          : await registerRestaurant({
-              name: name.trim(),
-              email: address_,
-              password,
-              restaurantName: restaurantName.trim(),
-              address: address.trim(),
-              city: city.trim(),
-              country: country.trim(),
-            });
-
       // Path A lands on the dashboard, or wherever the user was headed; Path B
       // ends at email verification (`register.md` §1a). Left for the layout
       // rather than navigated to here — both fire on the same session
       // transition, and whichever ran second would win. See
-      // `src/auth/pendingRoute.ts`.
-      setPendingRoute(path === "join" ? (redirect ?? "/") : "/verify-email");
-      await adoptTokens(tokens.accessToken, tokens.refreshToken);
+      // `src/auth/pendingRoute.ts`. A sign-out or sign-in while the request was
+      // in flight wins: the new pair is dropped (`requestThenAdopt`).
+      const { outcome } = await requestThenAdopt(async () => {
+        const tokens =
+          path === "join"
+            ? await joinViaInvite({
+                code: normalizeInviteCode(code),
+                name: name.trim(),
+                email: address_,
+                password,
+              })
+            : await registerRestaurant({
+                name: name.trim(),
+                email: address_,
+                password,
+                restaurantName: restaurantName.trim(),
+                address: address.trim(),
+                city: city.trim(),
+                country: country.trim(),
+              });
+        setPendingRoute(path === "join" ? (redirect ?? "/") : "/verify-email");
+        return tokens;
+      });
+      if (outcome === "noTokens") throw new Error("No session was returned.");
+      if (outcome === "superseded") {
+        clearPendingRoute();
+        return;
+      }
       haptic.confirm();
     } catch (e) {
       clearPendingRoute();

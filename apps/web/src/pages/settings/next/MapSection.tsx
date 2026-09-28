@@ -2,7 +2,7 @@
  * Map — one setting, and it is real.
  *
  * `mapDefaultScope` is read by `pages/distributors/command/DistributorMapPage.tsx:36`
- * and decides how wide Find distributors frames the restaurant when it opens.
+ * and decides how wide vendor discovery frames the restaurant when it opens.
  * The date is the preference record's own, kept by
  * `user_preferences_updated_at BEFORE UPDATE` (baseline_from_production.sql:12342),
  * and it belongs to the whole record rather than to this one field — which the
@@ -33,7 +33,7 @@ export function MapSection({ data }: { data: SettingsNextData }) {
               kept: 'account', when: reg.updatedAt, whenUnknown: PROVENANCE_UNKNOWN.neverWritten,
               readBy: <code style={{ fontFamily: MONO }}>pages/distributors/command/DistributorMapPage.tsx:36</code>,
             }}
-            consequence="How wide Find distributors frames your restaurant when it opens. Zooming on the map never changes this — it is the frame you come back to."
+            consequence="How wide vendor discovery frames your restaurant when it opens. Zooming on the map never changes this — it is the frame you come back to."
             control={
               <Choice
                 label="Default map view"
@@ -44,7 +44,7 @@ export function MapSection({ data }: { data: SettingsNextData }) {
             }
           />
           <SaveFailure failed={writer.failed} what="The frame above is still the server’s." />
-          <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-3)', margin: '12px 0 0' }}>
+          <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-4)', margin: '12px 0 0' }}>
             That date belongs to your whole preference record, not to this one field — the gateway dates the row
             (<code>user_preferences.updated_at</code>), and every setting kept on your account shares it.
           </p>

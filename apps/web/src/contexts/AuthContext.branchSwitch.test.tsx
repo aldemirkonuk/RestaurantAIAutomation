@@ -56,6 +56,21 @@ import { AuthProvider, useAuth } from "./AuthContext";
 const BRANCH_A = "11111111-1111-4111-8111-111111111111";
 const BRANCH_B = "22222222-2222-4222-8222-222222222222";
 
+const USER = "33333333-3333-4333-8333-333333333333";
+
+// A session token naming its house: since ADR 0164 (#471) the page takes the
+// house from the TOKEN, never from what it asked for.
+function jwt(claims: Record<string, unknown>): string {
+  const b64 = (o: unknown) =>
+    btoa(JSON.stringify(o))
+      .replace(/=+$/, "")
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_");
+  return `${b64({ alg: "HS256" })}.${b64(claims)}.sig`;
+}
+const TOKEN_A = jwt({ sub: USER, restaurantId: BRANCH_A });
+const TOKEN_B = jwt({ sub: USER, restaurantId: BRANCH_B });
+
 function deferred<T>() {
   let resolve!: (value: T) => void;
   let reject!: (reason?: unknown) => void;
@@ -70,6 +85,11 @@ beforeEach(() => {
   localStorage.clear();
   mockApi.post.mockReset();
   mockApi.get.mockReset();
+  mockApi.get.mockImplementation(async (url: string) =>
+    url === "/api/v1/auth/me"
+      ? { data: { user: { id: USER, email: "a@example.com", role: "manager" } } }
+      : { data: [] },
+  );
 });
 
 afterEach(() => {
@@ -86,7 +106,7 @@ describe("AuthContext — setActiveRestaurantId keeps the current branch on fail
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     mockApi.post.mockResolvedValueOnce({
-      data: { accessToken: "token-a", refreshToken: "refresh-a" },
+      data: { accessToken: TOKEN_A, refreshToken: "refresh-a" },
     });
     await act(async () => {
       await result.current.setActiveRestaurantId(BRANCH_A);
@@ -94,15 +114,17 @@ describe("AuthContext — setActiveRestaurantId keeps the current branch on fail
     expect(result.current.activeRestaurantId).toBe(BRANCH_A);
 
     mockApi.post.mockRejectedValueOnce(new Error("network down"));
+    let switched: boolean | undefined;
     await act(async () => {
-      await result.current.setActiveRestaurantId(BRANCH_B);
+      switched = await result.current.setActiveRestaurantId(BRANCH_B);
     });
+    // The refusal is reported to the caller (ADR 0164, #471), which says so.
+    expect(switched).toBe(false);
 
     // The must_fix's exact claim: a failed switch keeps the PREVIOUS branch —
     // not BRANCH_B (the one that just failed) and not null (the pre-fix
     // fallthrough set the new id anyway with no new token behind it).
     expect(result.current.activeRestaurantId).toBe(BRANCH_A);
-    expect(result.current.error).toMatch(/branch could not be switched/i);
     expect(localStorage.getItem("activeRestaurantId")).toBe(BRANCH_A);
   });
 
@@ -116,8 +138,8 @@ describe("AuthContext — setActiveRestaurantId keeps the current branch on fail
       .mockImplementationOnce(() => first.promise)
       .mockImplementationOnce(() => second.promise);
 
-    let pendingA!: Promise<void>;
-    let pendingB!: Promise<void>;
+    let pendingA!: Promise<boolean>;
+    let pendingB!: Promise<boolean>;
     act(() => {
       pendingA = result.current.setActiveRestaurantId(BRANCH_A);
     });
@@ -128,7 +150,7 @@ describe("AuthContext — setActiveRestaurantId keeps the current branch on fail
     // B — the LATER selection — resolves first.
     await act(async () => {
       second.resolve({
-        data: { accessToken: "token-b", refreshToken: "refresh-b" },
+        data: { accessToken: TOKEN_B, refreshToken: "refresh-b" },
       });
       await pendingB;
     });
@@ -138,7 +160,7 @@ describe("AuthContext — setActiveRestaurantId keeps the current branch on fail
     // above is not what is guarding this case. A stale sequence number is.
     await act(async () => {
       first.resolve({
-        data: { accessToken: "token-a", refreshToken: "refresh-a" },
+        data: { accessToken: TOKEN_A, refreshToken: "refresh-a" },
       });
       await pendingA;
     });
@@ -148,6 +170,6 @@ describe("AuthContext — setActiveRestaurantId keeps the current branch on fail
     // it finished last on the network.
     expect(result.current.activeRestaurantId).toBe(BRANCH_B);
     expect(localStorage.getItem("activeRestaurantId")).toBe(BRANCH_B);
-    expect(localStorage.getItem("accessToken")).toBe("token-b");
+    expect(localStorage.getItem("accessToken")).toBe(TOKEN_B);
   });
 });

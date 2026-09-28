@@ -71,7 +71,10 @@ export const GOTO_MAP: Record<string, { href: string; label: string }> = {
   o: { href: "/orders", label: "Orders" },
   w: { href: "/wines", label: "Wine Library" },
   r: { href: "/reports", label: "Reports" },
-  p: { href: "/providers", label: "Providers" },
+  // `v` is the vendors letter; `p` (providers) keeps working so nobody's habit
+  // breaks (founder, 2026-09-26, round 6: "'g v', keep 'g p' working").
+  v: { href: "/vendors", label: "Vendors" },
+  p: { href: "/vendors", label: "Vendors" },
   c: { href: "/calendar", label: "Calendar" },
   t: { href: "/team", label: "Team" },
   n: { href: "/notifications", label: "Notifications" },
@@ -88,7 +91,7 @@ const NAVIGATION: Command[] = [
   // breadcrumb rendering the raw segment.
   { id: "nav-receiving", title: "Receiving", section: "Navigation", icon: PackageCheck, href: "/receiving", keywords: "delivery deliveries door goods in receive truck arrived packing slip" },
   { id: "nav-wines", title: "Wine Library", section: "Navigation", icon: Wine, href: "/wines", shortcut: "g w", keywords: "catalog bottles list" },
-  { id: "nav-providers", title: "Providers", section: "Navigation", icon: Truck, href: "/providers", shortcut: "g p", keywords: "vendors suppliers distributors" },
+  { id: "nav-providers", title: "Vendors", section: "Navigation", icon: Truck, href: "/vendors", shortcut: "g v", keywords: "providers suppliers distributors" },
   { id: "nav-promotions", title: "Promotions", section: "Navigation", icon: Tag, href: "/promotions", keywords: "offers deals prospects" },
   { id: "nav-reports", title: "Reports", section: "Navigation", icon: BarChart3, href: "/reports", shortcut: "g r", keywords: "analytics charts dashboard kpi" },
   { id: "nav-recs", title: "Recommendations", section: "Navigation", icon: Lightbulb, href: "/recommendations", keywords: "actions insights suggestions" },
@@ -98,7 +101,7 @@ const NAVIGATION: Command[] = [
   { id: "nav-comms", title: "Communications", section: "Navigation", icon: Mail, href: "/communications", keywords: "email sms templates" },
   { id: "nav-docs", title: "Documents & Reports", section: "Navigation", icon: FileText, href: "/documents-reports", keywords: "files pdf" },
   { id: "nav-notifications", title: "Notifications", section: "Navigation", icon: Bell, href: "/notifications", shortcut: "g n", keywords: "alerts" },
-  { id: "nav-sommelier", title: "Sommelier AI", section: "Navigation", icon: Sparkles, href: "/sommelier", keywords: "assistant chat pairing" },
+  { id: "nav-ask", title: "Ask Mudavym", section: "Navigation", icon: Sparkles, href: "/ask", keywords: "ask assistant question reading sommelier pairing" },
   { id: "nav-settings", title: "Settings", section: "Navigation", icon: SettingsIcon, href: "/settings", shortcut: "g s", keywords: "preferences config team locations" },
   { id: "nav-profile", title: "Profile", section: "Navigation", icon: User, href: "/profile", keywords: "account password email linked oauth theme" },
   { id: "nav-help", title: "Help & Support", section: "Navigation", icon: HelpCircle, href: "/help", keywords: "support docs slack email faq" },
@@ -108,7 +111,7 @@ const CREATE: Command[] = [
   { id: "new-order", title: "New order", section: "Create", icon: Plus, href: "/orders?new=1", keywords: "create purchase po add" },
   { id: "new-wine", title: "Add wine", section: "Create", icon: Wine, href: "/wines?add=1", keywords: "create bottle scan label" },
   { id: "new-event", title: "Add calendar event", section: "Create", icon: CalendarPlus, href: "/calendar?openModal=true", keywords: "create schedule meeting" },
-  { id: "new-provider", title: "Add provider", section: "Create", icon: UserPlus, href: "/providers?add=1", keywords: "create vendor supplier" },
+  { id: "new-provider", title: "Add vendor", section: "Create", icon: UserPlus, href: "/vendors?add=1", keywords: "create provider supplier distributor" },
   { id: "new-report", title: "Generate report", section: "Create", icon: BarChart3, href: "/reports", keywords: "export pdf" },
 ];
 

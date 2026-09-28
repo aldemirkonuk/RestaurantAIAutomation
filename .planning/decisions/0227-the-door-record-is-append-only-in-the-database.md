@@ -1,6 +1,6 @@
 # 0227 — The door record is append-only in the database
 
-- **Status:** Locked (founder, 2026-09-25, round 5) on the option he chose, *"Trigger, no cascade (Recommended)"*. Built on `feat/receiving-desk-approach1` (#480), migration `20260927120000_the_door_record_is_append_only.sql`.
+- **Status:** Locked (founder, 2026-09-25, round 5) on the option he chose, *"Trigger, no cascade (Recommended)"*. Built on `feat/receiving-desk-approach1` (#480), migration `20261130120000_the_door_record_is_append_only.sql`.
 - **Date:** 2026-09-25
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** receiving, door receipt, procurement_receipt_events, append-only, trigger, ON DELETE RESTRICT, cascade, house deletion, soft delete, desk history
@@ -79,7 +79,7 @@ How the deletions that remain possible were designed (the brief's "soft delete, 
 ## Decision
 
 `procurement_receipt_events` is append-only by construction, and nothing it points at can be
-hard-deleted from under it. Migration `20260927120000`:
+hard-deleted from under it. Migration `20261130120000`:
 
 1. `procurement_receipt_events_are_append_only()` raises `restrict_violation` naming ADR 0227; it
    runs `BEFORE UPDATE OR DELETE FOR EACH ROW` and `BEFORE TRUNCATE FOR EACH STATEMENT` (a row
@@ -95,7 +95,7 @@ The migration asserts its own end state from the catalogue (both triggers enable
 
 ## Evidence
 
-- `supabase/tests/20260927120000_the_door_record_is_append_only_test.sql`, 11 tests, run in PGlite
+- `supabase/tests/20261130120000_the_door_record_is_append_only_test.sql`, 11 tests, run in PGlite
   over all 236 migrations (one transaction, rolled back; 0 rows left): UPDATE, DELETE and TRUNCATE
   refused by the trigger (T1-T3); an INSERT still appends (T4); an order and a house with receipts
   refused whole by the RESTRICT keys, everything intact (T5, T6); an order with no receipts deletes
@@ -135,3 +135,4 @@ The migration asserts its own end state from the catalogue (both triggers enable
 |---|---|---|
 | 2026-09-25 | Aldemir (founder), round 5 | Chose *"Trigger, no cascade (Recommended)"* (verbatim above, with the two rejected options) |
 | 2026-09-25 | Claude (Opus 5), lane W3-receiving | Measured every house/order delete path first (table above: none meets a receipt), built the migration, the SQL proof (11/11, control 3/11, three mutants each red) and the CLAIMS row; document key moved to RESTRICT and stated |
+| 2026-09-28 | Claude (Opus 5.5), PR #480 merging `main` after #436's squash | Founder item 34, verbatim: *"Receiving: door record append-only enforced = trigger refusing UPDATE/DELETE + FK no cascade"*. The migration (`the_door_record_is_append_only`, cited by slug) was renumbered past `main`'s newest so it runs after every migration `main` holds, #436's eighteen included. Re-ran the SQL proof in PGlite over the merged corpus (266 migrations): 11/11; control without it 3/11. Re-measured the delete paths on the merged tree: still only the three new-house rollbacks (`auth.service.ts` twice, `organizations.service.ts` createLocation), none meets a receipt |
