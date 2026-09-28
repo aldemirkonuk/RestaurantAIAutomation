@@ -1,125 +1,132 @@
 # Handoff: the merge queue and the page wave, 2026-09-12
 
-## ▶ PICK-UP CARD — read this first (2026-09-28T18:55Z, cloud session c98bb6c5)
+## ▶ PICK-UP CARD — read this first (updated 2026-09-28T19:20Z, cloud session c98bb6c5)
 
 Any account can continue from here. **Re-measure before acting** (CLAUDE.md §5b): every
-state below was true at the time above; re-read each PR with the GitHub API before
-touching it. Detail and verbatim founder answers are in **§0f** below; this card is the
-index.
+state below was true at the time above; re-read each PR through the GitHub API before
+touching it. Verbatim founder answers and the full reasoning are in **§0f** below. This
+card is the index.
+
+**⚠ Agent capacity.** The cloud session's subagents hit the weekly usage limit, which
+**resets 2026-10-02 15:00 UTC**. Everything that needs subagents waits on that reset:
+- ADR 0090 audits (Opus planner, two Sonnet reviewers, planner resumed);
+- the lane builds.
+
+Several lanes stopped partway through; they are listed below. Another account with its
+own capacity can pick any of them up now.
 
 **Rules that hold today.**
-- **The founder merges.** Sessions do not. The auto-mode classifier refused a session's
-  follow-up as "self-approval". Before every merge a session:
+- **The founder merges; sessions do not.** The auto-mode classifier refused a session's
+  follow-up as "self-approval".
+- **Before each merge, a session:**
   1. brings the PR to green CI on its current head;
-  2. runs `/pr-audit-gate <n>` (an Opus planner, two Sonnet reviewers, then the same
-     planner resumed);
+  2. runs `/pr-audit-gate <n>`;
   3. posts the report as a PR comment whose first line is
-     `<!-- pr-audit-gate: pr=<n> sha=<full head sha> verdict=PASS|BLOCK -->`;
-  4. hands the founder `bash ~/merge-audited-pr.sh <n>` (script: `.planning/handoff/merge-audited-pr.sh`).
-- **A PR that edits a gate-owned path** (the skill's step-4 list) never gets an
-  automatic PASS. The founder reads it and runs `--gate-owned`.
-- **Model dispatch (founder item 86; ADR 0231, PR #490).** Opus for anything that needs
-  judgment. Sonnet for fast, direct, checkable work (verify, review, update, merge-train
-  chores).
-- **Branches.** One operation per branch. Merge `origin/main` in; never rebase or
-  force-push. At most 15 files per PR.
-- **Ids.** Next free ADR is **0236**, next free OD is **OD-183**, and new migration
-  versions go above **20261202100000**. Reserved ids are listed in §0f; git merges
-  duplicate ids without a sound, so check before taking one.
+     `<!-- pr-audit-gate: pr=<n> sha=<full sha> verdict=PASS|BLOCK -->`;
+  4. hands the founder `bash ~/merge-audited-pr.sh <n>` (the script is
+     `.planning/handoff/merge-audited-pr.sh`; the founder re-fetches it from `main-1ll9rp`).
+- **Gate-owned PRs** (anything in the skill's step-4 list) never get an automatic PASS.
+  The founder reads the diff and runs `--gate-owned`.
+- **Model dispatch** (founder item 86 / ADR 0231, PR #490): Opus for judgment, Sonnet
+  for fast, direct, checkable work.
+- **Branch discipline:**
+  - one operation per branch;
+  - merge `origin/main` in, never rebase or force-push;
+  - at most 15 files per PR.
+- **Ids.** Git merges duplicate ids silently, so check before you take one.
+  - Next free ADR: **0237**. 0236 is assigned to the feature-flag DTO ADR below.
+  - Next free OD: **OD-183**.
+  - New migration versions go above **20261202100000**.
+  - All reservations are in §0f.
 
 **`main` = `0d7af2975`.** Merged and live today:
-- #487 (`dcdb6d5e9`): the flags go to code, and receiving, promotions and vendor prices
-  are live for every house.
-- #491 (`46c3fdb5d`): an order books only its own house's vendor, and a send failure is
-  read by its type.
-- #493 (`0d7af2975`): Promotions is shown to owners and managers only; OD-176, item 87.
 
-Production was verified for #487 and #491 through the Vercel `mudavym.com` alias and the
-READY deployments.
+| PR | Merge commit | What |
+|---|---|---|
+| #487 | `dcdb6d5e9` | Flags to code: the receiving desk, promotions and vendor prices are live for every house |
+| #491 | `46c3fdb5d` | An order books only its own house's vendor; a send failure is read by its type |
+| #493 | `0d7af2975` | Promotions shows for owners and managers only, and Promotions cards hand off to a manager (item 87 / OD-176) |
 
-**Open PRs — next action for each.**
+Production was verified for #487 and #491 against Vercel's `mudavym.com` alias and the
+READY deploys. #493's deploy was not yet checked when this was written.
 
-| PR | What | State @18:55Z | Next action |
+**Open PRs, and the next action on each:**
+
+| PR | What | State | Next action |
 |---|---|---|---|
-| **#490** | ADR 0231 supersedes ADR 0050 (founder item 86) | fix round done at `e46fa2f7c` | Gate-owned: the founder reads `gh pr diff 490`, then runs `bash ~/merge-audited-pr.sh 490 --gate-owned`. It must be brought up to date with `main` first. |
-| **#492** | Records refresh: census §18, STATE, LIVE-CHECKLIST | `a15b47329`; two audit plans' findings fixed | Once CI is green: `/pr-audit-gate 492` (re-plan, reviewers, adjudicate), then hand it to the founder. Merge `main` in first, since #493 landed. |
-| **#494** | Cutover: deletes 24 legacy groups, 236 files (draft) | `1e94bfc08`; founder items 88–92 approve every group | Waits on the guard PR below. Its lane is also adding the shell off-branch removal (item 91), the ADR 0149 records and tombstone, and `archive-legacy-web.sh` (item 92: tag plus Release `.tar.gz`). Un-draft, audit, then the founder merges. After merge the founder runs the archive script. |
-| #445, #443, #433, #432, #431, #409, #362 | Older open PRs (see census §3 L2) | untouched today | #432 is gate-owned. Its one local-only commit `c59d8f71b` is saved in `wip/preserve-20260928T1629Z/Projects--wt-r5-gate-fdf4281`, and the founder decides whether it lands. |
+| **#497** | **SECURITY**, websocket role gate. Six leaks to staff are fixed: the promotions toast and digest; the Python `promo_alert`; the market-price producer (vendor quote pushed to phones); `POST /notifications` fanned out to the house **and** its `javascript:` link injection (possible account takeover), now `safeActionPath`; password change not closing sockets | built at `7a24d450e`; its Sonnet verify did not run (limit) | **Highest priority.** Verify, then `/pr-audit-gate 497`. Its not-done list is in the PR body: the web sinks still navigate to stored links; some row writers are still role-blind; `provider-intelligence` promotions routes are ungated. It raises **OD-180 forks 1–3** (below). |
+| **#495** | CI guard: `check_windowed_figures.py` watches the rebuilt /team (founder item 89) | built at `746f82f32`; guard 116/116 self-test; web vitest 5223 passed; verify did not run | Verify, audit, then the founder merges. **Must merge before #494.** After it lands, #494 must drop its open twin CLAIMS row and its tech-debt (TD) entry. |
+| **#496** | A new location's timezone follows item 62: the browser's zone, else none | built at `a7b20e53b`; tests first; gateway 131/131, web 27/27; verify did not run | Verify, audit, then the founder merges |
+| **#492** | Records refresh: census §18, STATE, LIVE-CHECKLIST | `a15b47329`; two audit plans' findings fixed; a sweep finds no merged PR still called OPEN | Merge `main` in (#493 landed), then `/pr-audit-gate 492` |
+| **#490** | ADR 0231 supersedes ADR 0050 (item 86) | `e46fa2f7c`, behind `main` | Gate-owned. Merge `main` in; the founder reads `gh pr diff 490`, then `--gate-owned` |
+| **#494** | Cutover: 24 legacy groups, 236 files, draft | `1e94bfc08`. Items 88–92 approve every group. Its update lane **failed (limit), nothing pushed** | After #495: merge `main` in; drop the twin row and TD. Remove the old shell's off-branch (item 91; the triage names the work, from snapshot `c69fafec1`). Record items 88–92 and the /inventory exception in ADR 0149, and OD-177/178 as Resolved. Add a tombstone and `archive-legacy-web.sh` (item 92: tag plus Release `.tar.gz`, with a test). Un-draft, audit, then the founder merges and runs the archive script. |
+| #445, #443, #433, #432, #431, #409, #362 | Older (census §3 L2) | untouched | #432 is gate-owned; its local-only commit `c59d8f71b` is saved in `wip/preserve-…/Projects--wt-r5-gate-fdf4281`. The founder decides. |
 
-**Pushed branches with no PR yet** (check each for a PR first):
-- `fix/websocket-role-gate` (`7a24d450e`), **security**. The house-wide websocket sends
-  the promotions digest (vendor names plus discounts) to staff. That is live today and
-  is the carried merge condition from #493's audit.
-- `fix/windowed-guard-team-rebuilt` (`746f82f32`): the CI guard change that founder
-  item 89 approved. It must merge before #494.
-- `fix/create-location-timezone` (`a7b20e53b`): carried from a Mac snapshot.
+**Lanes that failed at the limit, with nothing pushed.** Rebuild each from its brief:
+workflow script `carry-preserved-work` (§0f) plus the triage record §3.
 
-**Branches that were building when this card was written, not yet on origin.** If one is
-still missing when you read this, rebuild it from the brief in §0f and the triage record:
-- `fix/deal-proposal-house-scope` (security)
-- `fix/team-removed-shifts-open-pool` (item 93, plus its FAQ entry and the replacement-step brainstorm)
-- `fix/ask-round-6z`
-- `docs/adr-migrations-numbered-at-merge` (ADR 0235, Locked, item 94)
-- `docs/register-od-133-140-152` (item 95; merges last)
-- `docs/sketch-123-drawing`
-- `chore/gitignore-coverage`
-- The #494 update commits
+| Branch to create | What | Carry from |
+|---|---|---|
+| `fix/deal-proposal-house-scope` | **Security**: deal proposals answer only for the caller's house | snapshot `a34b28aee`, hunks 3–7 of `procurement.service.ts` plus `vendor-doors-are-sealed.spec.ts` |
+| `fix/team-removed-shifts-open-pool` | Item 93: a removed person's future shifts go back to the open pool, plus an FAQ entry and a brainstorm of a replacement step (founder options). OD-181, Resolved | `4d299b231` (`shiftsOpened` and the K2 tests) |
+| `fix/ask-round-6z` | Privacy sentence in both copies; label opt-out migration `20261202100000`; ADR 0145 round-6z amendment; OD-182 filed as open | `2f9a1e0d3` |
+| `docs/adr-migrations-numbered-at-merge` | ADR **0235**, Locked (item 94) | `446b05aa2` |
+| `docs/register-od-133-140-152` | OD-133/140/152 Resolved (item 95); anchors regenerated with `--fix`; merges last | `b21a9bdfc` |
+| `docs/sketch-123-drawing` | Sketch 123 | `d0f0b88f8` |
+| `chore/gitignore-coverage` | Add `coverage/` to `.gitignore` | — |
+| `fix/mobile-no-wine-agent-fab` | **New from triage 2**: the mobile half of ADR 0149 row 33 (remove the Wine Agent floating action button (FAB)); strike TD `:5505` | `254aa76ef` (brave-swartz), 7 files |
+| `fix/feature-flag-dto-follows-registry` | **New from triage 2**: live defect, `PUT /settings/feature-flags` answers **400** for `mudavym_design_arrival` (reproduced with the real ValidationPipe). DTO follows the registry. ADR **0236** (renumbered from 0159) | `3e370ce60` (kind-goldberg), 5 files |
 
-Research that was running:
-- The vendor sheet's ProviderIntelligencePanel must be rebuilt before DONE (item 90).
-  Check whether ADR 0160 requires a sketch review first.
-- A fact sheet on the other legacy-styled pieces, so the founder can decide each one
-  (item 90).
+Research that also failed: a fact sheet on OD-177's remaining legacy-styled pieces, which
+must be looked at in a browser (item 90). Re-run it.
 
-**Founder decisions still owed.**
-- Retiring the now-inert `mudavym_design_arrival` gateway flag: now, or later in its own
-  gateway PR.
-- The replacement step for a removed person's shifts, from the item 93 brainstorm.
-- OD-182, the /ask person-label gap.
-- OD-177's remaining pieces, after the browser look.
-- The public doors' off-branch PR, which follows #494 (item 91).
-- Whether #432 lands.
-- Two gate-owned findings (§0f):
-  - the merge hook lets a PASS win over a BLOCK on the same SHA;
-  - `deploy.yml`'s `verify-frontend` has no `ref:` pin.
+**Founder decisions owed.** Ask each with `AskUserQuestion`; file an OD row if none
+exists.
+- **OD-180 forks, from #497:**
+  1. Should staff see vendor-negotiation toasts and rows?
+  2. The receipt-discrepancy notice ("Billed $X against an agreed $Y"): whole house,
+     owner and manager only, or a staff copy with no figures? Recommended: the staff copy.
+  3. Money figures in the bell and push when no HTTP gate refuses them.
+- **Vendor intelligence panel rebuild (item 90; no sketch review needed, per the research
+  lane).** Forks F1–F8:
+  - F1: who reads each part, enforced by the server;
+  - F2: this vendor's offers as a list, a link, or a count plus link;
+  - F3: conversation memory and sessions;
+  - F4: the Actions menu;
+  - F5: who may verify a fact;
+  - F6: how confidence is shown;
+  - F7: fact provenance, and the empty state;
+  - F8: land before the item 92 archive tag, or after it.
 
-**Local work on the founder's Mac.**
-- It is fully saved: 56 branches under `wip/preserve-20260928T1629Z/` on origin, with
-  none refused or failed on the resumed run.
-- The judged triage is in `.planning/handoff/evidence/PRESERVE-TRIAGE-2026-09-28.md`.
-- Five more snapshots (21 files) were being judged by workflow `wf_004116be-9e8`, and
-  their addendum is not landed. Re-derive them with `classify-preserved.sh 20260928T1629Z`
-  plus `classify-preserved-lines.py` if needed.
-- Nothing is deleted. The founder's main checkout holds no unique work and can be reset
-  to `main` when he chooses.
+  Full text is in workflow `wf_ca16d61f-070`'s vendor-panel result. Re-derive it if lost:
+  ADR 0207, `TwinSheet.tsx:42-46,202`.
+- **Other open calls:**
+  - retire `mudavym_design_arrival` now or later;
+  - item 93's replacement step;
+  - OD-182;
+  - OD-177's remaining pieces, after the browser look;
+  - the public-doors off-branch PR, which follows #494 (item 91);
+  - #432;
+  - two gate-owned findings: the merge hook lets a PASS beat a BLOCK on the same SHA, and
+    `deploy.yml` `verify-frontend` has no `ref:` pin.
 
-**Definition of DONE for the web rebuild** (census §2, as narrowed by items 88–92):
-- #494 and the guard PR merged and deployed;
+**The founder's Mac.** All local work is saved: 56 `wip/preserve-20260928T1629Z/*`
+branches. Both triages are done: `evidence/PRESERVE-TRIAGE-2026-09-28.md`, plus the
+second pass summarised in the table above. What must still land is exactly the table of
+failed lanes above. His main checkout holds nothing unique and can be reset to `main`.
+Snapshot branches trigger Vercel previews, so future snapshots should use
+`refs/preserve/…` (§0f).
+
+**DONE for the web rebuild.** The finish line is census §2, as narrowed by items 88–92:
+- #495 and #494 merged and deployed;
 - the old shell's off-branch removed;
 - the public doors' off-branch PR merged;
-- the vendor intelligence panel rebuilt;
-- OD-177's remaining pieces decided;
-- the archive tag and Release made;
+- the vendor panel rebuilt;
+- OD-177 decided;
+- the archive tag and Release created;
 - production verified at that commit.
 
-After that comes the founder's next goal: specializing each software.
-
-
-The orchestrating Claude session (b3992196) wrote this on the founder's instruction:
-*"finish the pages and put everything into documents for other LLMs to work with ...
-finish (merge push main = live prod) all branches and sessions' work before the api
-credit turns 0"*. It is updated as work lands; this file's git log is its history. When it
-disagrees with the tree, the tree wins. Re-measure before acting on any line here
-(CLAUDE.md section 5b).
-
-**Why this exists now:** subagents hit the weekly Anthropic limit (it resets
-2026-09-18 11:00 America/Detroit) twice today, in the middle of the work. Anything below
-marked "agent died" has partial or no edits in its worktree. Inspect `git status` there
-before continuing.
-
-**2026-09-28 — read [§0f](#0f-cloud-session-c98bb6c5-2026-09-28--state-merge-runbook-what-a-resumed-session-does-supersedes-0e-and-the-censuss-pr-state-cells-wherever-they-differ) first** (state after #487, the lanes in flight, the founder's merge runbook).
-
-**2026-09-25 — read the [web-rebuild census](../07-reference/deploy/WEB-REBUILD-CENSUS-2026-09-25.md) first.** It is the current record of the finish goal: every route's state at `059169a59` (what production serves), the 17-lane plan with corrected lane bases (`origin/wip/2026-09-21/<lane>`, not the dirty `wt-pg-*` and `wt-sessions` trees), the open founder forks, and his 2026-09-22 answers that had lived only in memory. It retires `07-reference/deploy/PAGE-WAVE-BLOCKERS-2026-09-22.md`. Every section below is the record of its own date; where one disagrees with the census, the census wins, and the tree wins over both.
+Next goal after that: specialize each software.
 
 ## 0f. Cloud session c98bb6c5, 2026-09-28 — state, merge runbook, what a resumed session does (supersedes 0e and the census's PR-state cells wherever they differ)
 
