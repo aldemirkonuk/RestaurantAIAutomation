@@ -29,12 +29,21 @@ own capacity can pick any of them up now.
   The founder reads the diff and runs `--gate-owned`.
 - **Model dispatch** (founder item 86 / ADR 0231, PR #490): Opus for judgment, Sonnet
   for fast, direct, checkable work.
+- **Effort** (ADR 0237, PR #499, Locked 2026-09-28; the ADR wins on any conflict):
+  - Every agent call sets both model and effort, because a blank one inherits the session.
+  - Opus medium: builds, plans, ADRs and research drafts.
+  - Opus high: security, login, tenant or migration builds, fix rounds, and final rulings.
+  - Sonnet medium: checkable lanes, plus two prompt lines (run a real check before "done"; keep going until finished).
+  - Sonnet high: verify, refute passes, and the audit reviewers.
+  - Sonnet low: single-fact lookups only.
+  - No Haiku, and no max.
+  - A limit reset restores the five-hour **or** the weekly window, not both. Check `/usage` before a big fan-out.
 - **Branch discipline:**
   - one operation per branch;
   - merge `origin/main` in, never rebase or force-push;
   - at most 15 files per PR.
 - **Ids.** Git merges duplicate ids silently, so check before you take one.
-  - Next free ADR: **0237**. 0236 is assigned to the feature-flag DTO ADR below.
+  - Next free ADR: **0238**. 0237 is taken by the effort ADR (#499); 0236 is assigned to the feature-flag DTO ADR below.
   - Next free OD: **OD-183**.
   - New migration versions go above **20261202100000**.
   - All reservations are in §0f.
