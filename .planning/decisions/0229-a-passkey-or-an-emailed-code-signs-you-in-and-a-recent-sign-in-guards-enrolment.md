@@ -1,6 +1,6 @@
 # 0229 — A passkey or an emailed code signs you in, and a recent sign-in guards enrolment
 
-- **Status:** Locked **[2026-09-27, the founder, round 11, item 63, verbatim: "Lock both as built (Recommended)" — ADR 0222 and ADR 0229 locked as built on PR #479. Fork 6 below was found by the ADR 0090 audit and was not in front of him when he answered, so it is recorded open rather than folded into the lock]** **[Amended 2026-09-27, the founder, item 67, verbatim: "option 1 + do what industry do for these, for security ops do what the industry leaders do" (the label he chose: "Drop pwd + (b) interim (Recommended)") — fork 6 RESOLVED as path (a), built on PR #479 with the industry-leader defences in § Fork 6; (b) is moot because #477 (ADR 0225) merged first. Two new forks (7, 8) found by that research are open. The ADR stays Locked]** **[Amended 2026-09-27, the founder, items 72 and 73, verbatim labels "Bind invite to address (Recommended)" and "Expire the password, 7 days (Recommended)" — forks 7 and 8 RESOLVED and built on PR #479 (§ Forks 7 and 8). Building them found two more, forks 9 and 10, open. The ADR stays Locked]** **[Amended 2026-09-27, the founder, items 77 and 78, verbatim labels "Email invite + (c) interim (Recommended)" and "Refresh refuses lapsed (Recommended)" — forks 9 and 10 RESOLVED and built on PR #479 (§ Forks 9 and 10). Building them found fork 11 (the invite-mail limit is per house), open. The ADR stays Locked]** — the founder answered WHAT on 2026-09-25 (item 29, below), answered forks 1-3 on 2026-09-26 (round 6, item 37, § Open forks), and the same day (round 7, item 44) ordered industry practice for a reset AND a change — which **supersedes round 6's "reset RETIRES every passkey"** and answers forks 4 and 5 (§ Round 7); this record is the HOW
+- **Status:** Locked **[2026-09-27, the founder, round 11, item 63, verbatim: "Lock both as built (Recommended)" — ADR 0222 and ADR 0229 locked as built on PR #479. Fork 6 below was found by the ADR 0090 audit and was not in front of him when he answered, so it is recorded open rather than folded into the lock]** **[Amended 2026-09-27, the founder, item 67, verbatim: "option 1 + do what industry do for these, for security ops do what the industry leaders do" (the label he chose: "Drop pwd + (b) interim (Recommended)") — fork 6 RESOLVED as path (a), built on PR #479 with the industry-leader defences in § Fork 6; (b) is moot because #477 (ADR 0225) merged first. Two new forks (7, 8) found by that research are open. The ADR stays Locked]** **[Amended 2026-09-27, the founder, items 72 and 73, verbatim labels "Bind invite to address (Recommended)" and "Expire the password, 7 days (Recommended)" — forks 7 and 8 RESOLVED and built on PR #479 (§ Forks 7 and 8). Building them found two more, forks 9 and 10, open. The ADR stays Locked]** **[Amended 2026-09-27, the founder, items 77 and 78, verbatim labels "Email invite + (c) interim (Recommended)" and "Refresh refuses lapsed (Recommended)" — forks 9 and 10 RESOLVED and built on PR #479 (§ Forks 9 and 10). Building them found fork 11 (the invite-mail limit is per house), open. The ADR stays Locked]** **[Amended 2026-09-28, the founder, round 15, items 81, 82 and 83, verbatim labels "Link needs sign-in (Recommended)" (fork 12), "Hold until accepted (Recommended)" (fork 13) and "Per address + per sender" (fork 11) — forks 11, 12 and 13 RESOLVED and built on PR #479 (§ Forks 11, 12 and 13). No new fork was found. The ADR stays Locked]** — the founder answered WHAT on 2026-09-25 (item 29, below), answered forks 1-3 on 2026-09-26 (round 6, item 37, § Open forks), and the same day (round 7, item 44) ordered industry practice for a reset AND a change — which **supersedes round 6's "reset RETIRES every passkey"** and answers forks 4 and 5 (§ Round 7); this record is the HOW
 - **Date:** 2026-09-25
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** passkey sign-in, discoverable credential, user handle, WebAuthn authentication, one-time code, OTP, email code, step-up, re-authentication, auth_time, freshness, enumeration, rate limit, HMAC, session_version, membership, recovery, lost device
@@ -332,7 +332,7 @@ this codebase's routes:
 |---|---|---|
 | Classic-Federated Merge | not open: OAuth sign-in never resolves an account by address alone | `findOrCreateOAuthUser` requires a subject-bound link (`oauthAccountIsLinked`, ADR 0024; `oauth-provider-binding.spec.ts`) |
 | Unexpired Session | **was open through the code** (fork 6); through a reset, closed by #477 | **built here**, below |
-| Trojan Identifier | not open: a second sign-in method cannot be attached before the address is proved | OAuth linking and passkey enrolment need a verified session; only six `AuthController` routes are `@AllowUnverified` (CLAIMS `ADR-0229-FORK-6-UNVERIFIED-REACHES-ONLY-THE-ESCAPE-HATCHES`) |
+| Trojan Identifier | not open: a second sign-in method cannot be attached before the address is proved | OAuth linking and passkey enrolment need a verified session; only six `AuthController` routes are `@AllowUnverified` (CLAIMS `ADR-0229-FORK-6-UNVERIFIED-REACHES-ONLY-THE-ESCAPE-HATCHES`) **[2026-09-28, fork 12: seven — `POST /auth/verify-email` left `@Public` for `JwtAuthGuard` + `@AllowUnverified`; it attaches no sign-in method]** |
 | Unexpired Email Change | not applicable: there is no email-change flow (`updateProfile` writes name and phone only) | — |
 | Non-verifying IdP | Google refuses an unverified `email_verified`; Microsoft needs a subject link. **The invitation door is a non-verifying source** | **fork 7, open** |
 
@@ -402,7 +402,20 @@ that bound verified the account, and `holdsUnprovenPassword` and
 password and every refresh token fork 10 had refused came back, permanently
 and with no notice. A click after the lapse now removes the password and ends
 every session (§ Forks 8 and 10 after a link); a click inside the seven days
-still keeps both, which is fork 12, open]**); a "this wasn't me" link in the verification mail (Instagram does it;
+still keeps both, which is fork 12, open]** **[Corrected again 2026-09-28,
+PR #479, building fork 12: the bracket above still read as if fork 8 did
+some narrowing. It did not. Fork 8 contributes only the seven days of that
+bound; a click INSIDE them verified the stranger's password and made their
+sessions verified in full, so the residual was time-limited, never narrowed
+in effect, and nothing before fork 12 closed it. It is closed now, not
+narrowed: the founder's item 81, "Link needs sign-in (Recommended)", makes the
+link verify only for a session of its own account (`verifyEmail`: 401
+`SIGN_IN_TO_VERIFY` signed out, 403 `LINK_FOR_ANOTHER_ACCOUNT` for another
+account), so an owner holding only the mailbox is sent to the emailed code and
+fork 6 removes the stranger's password and sessions. What the founder adopted
+is neither of the options this paragraph weighed (ending sessions at the
+link, as Firebase and Auth0 do not; pruning): it is § Open forks 12 path (b).
+§ Forks 11, 12 and 13]**); a "this wasn't me" link in the verification mail (Instagram does it;
 the paper calls it "some services", not consensus; it would be a new flow);
 a cap on verification-link resends (the paper states it for email-change
 capabilities, which this codebase has no flow for; the resend has a 60 s
@@ -630,7 +643,8 @@ verify that pins the refusal; `ADR-0229-FORK-7-...` and
 mutants red, a comment-only control green on all four rows.
 
 **Found while building, open:** fork 11 (the limit is per house, as item 77
-says, and anyone can open a house). No independent Workflow fan-out ran (a
+says, and anyone can open a house). **[Resolved 2026-09-28, item 83, "Per
+address + per sender"; § Forks 11, 12 and 13]** No independent Workflow fan-out ran (a
 builder subagent has no Workflow tool); the adversarial pass was the mutation
 run and walking each attack against the code.
 
@@ -672,7 +686,12 @@ door verifies without ending the sessions and the password. The six
 `@AllowUnverified` routes are unchanged (CLAIMS
 `ADR-0229-FORK-6-UNVERIFIED-REACHES-ONLY-THE-ESCAPE-HATCHES`). `resendVerification`
 has no lapse check; it needs a session, which fork 10 ends at the lapse, and a
-late click now removes the password, so no cap was added.
+late click now removes the password, so no cap was added. **[2026-09-28, fork
+12 (item 81, whose build order includes "resendVerification must honour the
+fork 8 lapse"): it now has one -- a lapsed unproven password's session is
+refused a resend with the refresh's own `SESSION_ENDED` refusal; and the
+`@AllowUnverified` routes are seven, `POST /auth/verify-email` being the
+seventh. § Forks 11, 12 and 13]**
 
 **Tests** -- `unproven-address.spec.ts`, block "forks 8 and 10 hold after a
 verification link" (6 cases: the attack end to end through the real
@@ -689,9 +708,157 @@ filter dropped -- those two are killed by the mock case pinning the filter,
 since the behavioural race moves both -- and the link spent before the
 write). CLAIMS `ADR-0229-FORK-8-A-LINK-CANNOT-REVIVE-A-LAPSED-PASSWORD`.
 
-**Found, open:** forks 12 and 13 (§ Open forks). No independent Workflow
+**Found, open:** forks 12 and 13 (§ Open forks). **[Resolved 2026-09-28,
+items 81 and 82; § Forks 11, 12 and 13]** No independent Workflow
 fan-out ran (a builder subagent has no Workflow tool); the adversarial pass
 was the audit's own walk plus the mutation run.
+
+### Forks 11, 12 and 13 (the founder, 2026-09-28, round 15, items 81, 82 and 83)
+
+Answered together: item 81, fork 12, "Link needs sign-in (Recommended)"; item
+82, fork 13, "Hold until accepted (Recommended)"; item 83, fork 11, "Per
+address + per sender". Built on PR #479 after merging `origin/main`
+(`20838c551`). One additive migration,
+`an_unproven_join_waits_and_invite_mail_is_capped_per_address_and_sender`
+(cited by slug: its version is assigned at merge, founder item 79).
+
+**Fork 12 -- the link needs a session of its own account.**
+`POST /auth/verify-email` was `@Public` ("the one-time token in the body is the
+credential", ADR 0096). It now runs under `JwtAuthGuard` with
+`@AllowUnverified` (it is how an unverified session verifies) and
+`@AllowsNoHouse` (a held joiner's session names no house, fork 13), and hands
+the session's user and house to `AuthService.verifyEmail`:
+
+- no session: 401 `SIGN_IN_TO_VERIFY`, before any read (the guard answers 401
+  first in production; the service refuses again for any other caller);
+- a session of another account: 403 `LINK_FOR_ANOTHER_ACCOUNT`, before the
+  link's state (used, expired) is said and before anything is written;
+- neither spends the link.
+
+So the link verifies only for someone holding the account's password (its
+session) and its mailbox. The owner of an address a stranger registered holds
+only the mailbox: the web page (`VerifyEmail`) shows "Sign in to verify" with
+the link as `redirect`, and names the sign-in page's "Email me a sign-in
+code"; the code verifies the address and fork 6 removes the stranger's
+password and ends their sessions. A real registrant clicking on the device
+they registered on is signed in, and nothing changes for them; on another
+device they sign in first (the cost § Open forks 12 named). The mobile screen
+says the same in words (no screen test covers it). The verification mail now
+says to open it where you are signed in, or to use an emailed code if you did
+not choose the password. The new pair names the session's house, else the
+`users` row's, through `generateTokens`' membership check as before. The
+after-the-lapse removal (§ Forks 8 and 10 after a link) stays: after fork 12
+it is reached only by an access token minted in the last minutes before the
+lapse, and it still removes that password.
+
+`resendVerification` now reads the account first and refuses a lapsed
+unproven password with the refresh's own refusal (`SESSION_ENDED`, "This
+session was signed out because its password was never confirmed. Sign in
+with a code emailed to you."), exempting a dev-bypass session exactly where a
+refresh does; a row that cannot be read is a 503, never a mail.
+
+**Fork 13 -- an unproven join is held.** `joinViaInvite` decides
+`membershipIsHeld` from whether the joining account's address is proved at
+the join: a new account only by the mailed secret (fork 9), an existing
+account only by `email_verified`. A held join writes its
+`user_restaurant_access` row `is_active = false` with `held_since` (the new
+column; the check `user_restaurant_access_held_is_never_active` keeps a row
+from being both), leaves a new account's `users.restaurant_id` NULL (so the
+legacy users-row fallbacks in `assertMembership`, `assertAccess`,
+`resolveRestaurantRole` and `generateInvite` admit nothing), writes no
+`organization_members` row and no team claim, and mints a pair naming no
+house (`membershipHeld: true`). Every gateway read that admits someone to a
+house filters `is_active` (walked: the four reads that do not are "is there
+already a row?" checks, which should see a held row); the orchestrator's
+notification recipients (`core/notifications.py`) did not, and now do, so a
+held or former member is not sent a house's notifications. The baseline's
+older client RLS policies join `auth.uid()` without `is_active`, but
+`auth.uid()` is an `auth.users` id, disjoint from `public.users`. Inserting
+an inactive row fires neither membership-ended trigger, so a held row never
+reads as a removal. No row is deleted, ever.
+
+`GET /auth/houses` answers `held` (`AuthService.heldMemberships`: inactive
+and `held_since` set, with the house's name and city and the role in fixed
+words). `POST /auth/held-memberships/accept` takes the held row's id -- not a
+house id, so ADR 0019's single `@AllowsTenantChange` route stays single; it
+acts on the person's own row the way `POST /auth/invite/:code/accept` acts on
+an invite -- needs a verified account (the guard, and the row re-read),
+re-checks the issuer's standing through the invite (ADR 0162's ceiling at
+acceptance, as `acceptInviteAsExistingUser` does; an invite that can no longer
+be read refuses), and activates in ONE compare-and-set on `is_active = false`
+AND `held_since` set; then writes the organisation row (insert-only), the team
+claim, and `users.restaurant_id` when it names none. A refusal leaves the row
+held. The web chooser shows held rows under "Waiting for you" with "Join
+<house>" and stays on the page while any are held, instead of sending a
+person with no house to /get-started.
+
+**Fork 11 -- invite mail per address and per sender.** `sendInviteEmail`
+counts three allowances in one loop, each after the invite's own claim, house
+first: the house (20 per 24 h, unchanged, `rate_limited`), the minting person
+across their houses (`INVITE_EMAILS_PER_SENDER`, `rate_limited_sender`) and
+the address across all houses (`INVITE_EMAILS_PER_ADDRESS` = 3, his number,
+`rate_limited_address`). Past any, the invite is made, its claim released and
+its hash cleared (it can never verify anyone, and a released claim counts
+against none of the three), and the minter is told which (the web dialog's
+sentence names it). Two partial indexes serve the new counts.
+
+The per-person number, chosen as industry leaders choose it (item 67): the
+two published caps of this shape are GitHub's, 50 organization invitations
+per 24 hours for an organization under a month old or on the free plan (500
+after; GitHub Docs, "Inviting users to join your organization"), and Google
+Groups', 500 external invitations per user per day across all their groups
+(Google Workspace Admin Help, "Understand groups policies and limits"). An
+account opening houses to mail a victim is new by construction, so the
+stricter, new-account figure is taken: **50 a day, changeable** -- it is a
+constant, not a rule. A person running three houses can mail 50 of their 60
+house allowances.
+
+**Stated, not decided (no new fork):** telling the minter
+`rate_limited_address` discloses that this address already received three
+invite mails today; the minter typed the address, and the founder's answer
+says the minter is told. A held house's name is shown in-app as its minter
+typed it (text, never markup), as the chooser shows every house name; the
+invite mail still carries none. There is no decline control: not accepting
+leaves the row held and granting nothing. A person who already has an active
+house is not sent to the chooser at sign-in, so they see a held membership
+only by opening it (a sign-in nudge is not built). Existing memberships were
+not re-examined: a row an unverified existing account joined before this
+deploys stays active (not measured in production).
+
+**Tests** -- `unproven-address.spec.ts` blocks "fork 12 (item 81)" (5 cases:
+the attack end to end, the owner signed out then by code; the registrant
+signed in keeps their password; another account refused; the resend lapse
+with the dev-bypass exemption; an unreadable account), "fork 11 (item 83)"
+(6: the address cap across four houses and people; the window and released
+claims; the person cap across three houses while a house has room; the house
+cap still first; unreadable address and person counts fail closed; the
+minter told through the controller) and "fork 13 (item 82)" (10: the held
+write; a held row grants nothing -- `memberHouses`, `switchRestaurant`,
+`generateTokens`, `assertMembership`, `assertAccess`, `getUserRoleAtRestaurant`
+-- even after the owner's code; the attack end to end on the chooser, with a
+former membership never offered and another person's row not acceptable;
+acceptance through the controller; an unproven account cannot accept; the
+issuer re-check; a race answered in between; both compare-and-set filters
+pinned; a mailed-secret join active at once; an existing unverified account
+held, a verified one active); `verify-email-and-invite-read-errors.spec.ts`
+(3 mock cases), `verify-email-dto.spec.ts`, `no-house-session.spec.ts`,
+`join-via-invite.spec.ts`, `invite-issuer-must-still-stand.spec.ts`,
+`sessions-follow-membership.spec.ts`, `resend-verification-lockout.spec.ts`
+updated; web `ChooseHouse.test.tsx` (4), `publicPages.recovery.test.tsx` (2),
+`inviteMailSecret.test.ts`; orchestrator `test_agent_notifications.py` (1).
+PGlite full corpus 252/252 plus 13 checks on the migration (superuser,
+platform stubbed). **Mutation check**: 27 gateway source mutants, 27 red
+(three first survived -- the two compare-and-set filters and the held list's
+database filter -- and were killed by a filter-pinning case and by removing a
+redundant in-memory filter); 7 web mutants and 1 orchestrator mutant, all red;
+sources restored from snapshots. CLAIMS
+`ADR-0229-FORK-11-INVITE-MAIL-CAPPED-PER-ADDRESS-AND-SENDER`,
+`ADR-0229-FORK-12-THE-LINK-NEEDS-A-SESSION-OF-ITS-ACCOUNT`,
+`ADR-0229-FORK-13-AN-UNPROVEN-JOIN-IS-HELD` (12 claim mutants red, 3
+comment-only controls green); eight existing rows re-pinned with dated
+brackets. No independent Workflow fan-out ran (a builder subagent has no
+Workflow tool); the adversarial pass was the mutation run and walking each
+admission path for a held row.
 
 ## Decision
 
@@ -898,8 +1065,12 @@ mint should stamp `signedInNow()` (the password was just typed).
    `ADR-0229-FORK-10-A-LAPSED-ACCOUNT-STILL-REFRESHES`, which fails the build
    the day it is built so the fork is struck. Not built: item 73 names the
    password, not the session.
-11. **[OPEN — found 2026-09-27 building item 77; not yet put to the
-   founder.]** **The invite-mail limit is per house, and anyone can open a
+11. **[RESOLVED 2026-09-28, the founder, round 15, item 83, verbatim label
+   "Per address + per sender" → path (c): (b) plus a cap per minting person;
+   his number for the address (3 a day), the person's number chosen as
+   industry leaders choose it (50 a day, § Forks 11, 12 and 13). Rejected:
+   (a) as built; (b) alone, which was the recommendation. Built.]** **[OPEN —
+   found 2026-09-27 building item 77; not yet put to the founder.]** **The invite-mail limit is per house, and anyone can open a
    house.** Item 77 says "rate-limit invite emails per house", built as 20 a
    day per house. One person who opens several houses can send one address
    20 invite mails a day per house. This is mail volume at a victim, not
@@ -912,7 +1083,10 @@ mint should stamp `signedInNow()` (the password was just typed).
    on the same index shape. Not built: a cap across houses is beyond "per
    house".
 
-12. **[OPEN -- found 2026-09-27 by the ADR 0090 audit of PR #479 at
+12. **[RESOLVED 2026-09-28, the founder, round 15, item 81, verbatim label
+   "Link needs sign-in (Recommended)" → path (b); with it, `resendVerification`
+   honours the fork 8 lapse. Rejected: (a), (c), (d). Built: § Forks 11, 12
+   and 13.]** **[OPEN -- found 2026-09-27 by the ADR 0090 audit of PR #479 at
    `09b712d29`; not yet put to the founder.]** **A verification link clicked
    inside the seven days keeps a stranger's password and sessions.** Someone
    registers the owner's address with their own password
@@ -934,8 +1108,11 @@ mint should stamp `signedInNow()` (the password was just typed).
    away. Cost: a registrant who opens the link signed out (another device)
    signs in first. Not re-researched this round; not built: it changes the
    link flow every registrant uses.
-13. **[OPEN -- found 2026-09-27 walking the invite join for the same audit;
-   not yet put to the founder.]** **A join from a copied invite link plants
+13. **[RESOLVED 2026-09-28, the founder, round 15, item 82, verbatim label
+   "Hold until accepted (Recommended)" → path (b). Rejected: (a), (c). No row
+   is deleted. Built: § Forks 11, 12 and 13.]** **[OPEN -- found 2026-09-27
+   walking the invite join for the same audit; not yet put to the
+   founder.]** **A join from a copied invite link plants
    a house membership on an address nobody has proved.** Since fork 9 such a
    join creates an unverified account, but `joinViaInvite` still inserts its
    `user_restaurant_access` row in the minter's house. When the address's
@@ -1004,6 +1181,16 @@ mint should stamp `signedInNow()` (the password was just typed).
   session; for the 2 production accounts above none can be asked for (their
   password no longer signs in and fork 10 refuses their refresh), and a code
   sign-in verifies them first (fork 6).
+- **[2026-09-28, forks 11-13, items 81-83]** A verification link opened
+  signed out, or on a device signed in to another account, asks the person to
+  sign in first (or to use an emailed code); every registrant who opens the
+  mail on another device pays that step. An invited person who joins from a
+  copied link, or with an account not yet verified, is in no house until they
+  verify and choose "Join" on the chooser. One address receives at most 3
+  invite mails a day and one person sends at most 50; past either the invite
+  is made and not mailed. Migration
+  `an_unproven_join_waits_and_invite_mail_is_capped_per_address_and_sender`:
+  one nullable column, one check, two partial indexes.
 - Revisit when: #471 or #477 merges (the merge notes above); F11 lands (a
   passkey at the point of action); conditional UI is wanted; ~~fork 4 is
   answered~~ **[answered, round 7]**; a surveyed provider starts revoking
@@ -1021,3 +1208,4 @@ mint should stamp `signedInNow()` (the password was just typed).
 | 2026-09-27 | the founder (items 72, 73) + PR #479 builder (Opus agent) | Forks 7 and 8 **resolved**, verbatim labels "Bind invite to address (Recommended)" and "Expire the password, 7 days (Recommended)"; built as § Forks 7 and 8 (new `unproven-address.ts`, migration `20261102100200` adding `organization_invites.target_email`). Merged `origin/main` at `ef8ecdf30` (#435) first; the PR's two migrations renumbered again, `20261020000000`/`20261020000100` → `20261102100000`/`20261102100100`, because main's ceiling moved to `20261021150000` (`check_migration_order.py`); `@simplewebauthn/server` classified LOCAL for ADR 0224's host guard (its CRL fetch is filed in v3.0-TECH-DEBT). `unproven-address.spec.ts` 15/15; gateway `src/auth src/passkeys src/communications/email-templates src/restaurants src/team` 51 suites / 721 tests green; 15 source mutants 15 red; CLAIMS 627/627. Forks 9 and 10 found and left open for the founder. No independent Workflow fan-out ran |
 | 2026-09-27 | the founder (items 77, 78) + PR #479 builder (Opus agent) | Forks 9 and 10 **resolved**, verbatim labels "Email invite + (c) interim (Recommended)" and "Refresh refuses lapsed (Recommended)"; built as § Forks 9 and 10 (invite mail with a secret only it carries, `team-invite.template.ts`, migration `20261125100300`; the refresh refusal). Merged `origin/main` at `bc7121ccf` first (CLAIMS conflict: ADR-0164-SIGN-IN-HOUSE-RULE kept this branch's authTime amendment, ADR-0164-ROLES-EXACT-MANAGERS-KEPT took main's 191); the PR's migrations renumbered `20261102100000/100100/100200` → `20261125100000/100100/100200` (`check_migration_order.py`: main's ceiling `20261116000220`). `unproven-address.spec.ts` 36/36; gateway `src/auth src/passkeys src/communications/email-templates src/restaurants src/team src/websocket` 52 suites green; web touched suites green; PGlite full corpus 249/249 plus 10 checks on `20261125100300` (a raw secret or upper-case hex refused by the shape check, the partial index present, re-run idempotent; superuser, platform stubbed); `check_gateway_boots.sh` PASS; 21 gateway + 4 web source mutants red; CLAIMS 647/647 with 10 claim mutants red. Fork 11 (per-house limit, anyone can open houses) found and left open for the founder. No independent Workflow fan-out ran |
 | 2026-09-27 | PR #479 audit-fix round (Opus agent; ADR 0090 BLOCK at `09b712d29`, fix round 1 of 2) | The link path completed (§ Forks 8 and 10 after a link): `verifyEmailProvedByLink` removes a lapsed unproven password and bumps `sv` in one compare-and-set; the "fork 8 narrows" sentence corrected in place; fork 10 bracketed. Forks 12 (a link inside the seven days keeps a stranger's password and sessions) and 13 (a copied-link join plants a membership) filed open, with v3.0-TECH-DEBT rows. `unproven-address.spec.ts` + `verify-email-and-invite-read-errors.spec.ts` + `sessions-follow-membership.spec.ts` + `pre-hijack.spec.ts` green; 14 source mutants 14 red; CLAIMS `ADR-0229-FORK-8-A-LINK-CANNOT-REVIVE-A-LAPSED-PASSWORD` added: 4 claim mutants red, a comment-only control green; `check_decision_claims.sh` all holding. No independent Workflow fan-out ran |
+| 2026-09-28 | the founder (items 81, 82, 83) + PR #479 builder (Opus agent) | Forks 12, 13 and 11 **resolved**, verbatim labels "Link needs sign-in (Recommended)", "Hold until accepted (Recommended)" and "Per address + per sender"; built as § Forks 11, 12 and 13 (the link needs a session of its account and the resend honours the lapse; an unproven join is held until accepted, accepted by membership id; 3 invite mails per address and 50 per person a day, GitHub's new-organization figure). Merged `origin/main` at `20838c551` first (CLAIMS conflict: both sides kept, the ADR-0225 row from this branch). The 389-397 "narrows" characterisation corrected again in place (bracket). Gateway `src/auth src/passkeys src/restaurants src/team src/communications src/websocket src/organizations` 99 suites green; web 347 files green; mobile auth green; orchestrator notifications green; PGlite 252/252 + 13 checks; `check_gateway_boots.sh` PASS; 27 gateway + 7 web + 1 orchestrator source mutants red; three new CLAIMS rows, eight re-pinned. No new fork. No independent Workflow fan-out ran |

@@ -5,6 +5,7 @@ import {
   BadRequestException,
   ForbiddenException,
   ConflictException,
+  NotFoundException,
   ServiceUnavailableException,
   InternalServerErrorException,
   Logger,
@@ -43,11 +44,14 @@ import { resolveJwtSecret, INSECURE_DEFAULT_JWT_SECRET } from "./jwt-secret";
 import { devBypassEnvEnabled } from "./dev-bypass.util";
 import { grantRefusal } from "./role-grant";
 import {
+  INVITE_EMAILS_PER_ADDRESS,
   INVITE_EMAILS_PER_HOUSE,
+  INVITE_EMAILS_PER_SENDER,
   INVITE_EMAIL_WINDOW_MS,
   hashInviteEmailSecret,
   holdsUnprovenPassword,
   inviteVerifiesAddress,
+  membershipIsHeld,
   newInviteEmailSecret,
   unprovenPasswordHasLapsed,
 } from "./unproven-address";
@@ -175,6 +179,27 @@ export interface TokenPair {
   restaurantId: string | null;
 }
 
+/**
+ * A membership waiting for the person to accept it (ADR 0229 fork 13): the
+ * house as the chooser shows it, plus the role it would grant, in the words
+ * `roleWord` allows.
+ */
+export interface HeldMembership {
+  /** The held `user_restaurant_access` row, which the accept route names. */
+  membershipId: string;
+  id: string;
+  name: string;
+  city: string | null;
+  role: "owner" | "manager" | "staff" | null;
+}
+
+/** Only the three known roles are ever printed; anything else is none. */
+function roleWord(role: unknown): HeldMembership["role"] {
+  return role === "owner" || role === "manager" || role === "staff"
+    ? role
+    : null;
+}
+
 /** One of the person's houses, as the chooser shows it: no role, no numbers. */
 export interface HouseSummary {
   id: string;
@@ -199,14 +224,22 @@ export interface SignInResult extends TokenPair {
  */
 /**
  * What happened to the mail of a freshly minted invite (ADR 0229 fork 9,
- * item 77): `sent`; `not_sent` (the mailer or the count read failed);
- * `rate_limited` (the house is past `INVITE_EMAILS_PER_HOUSE`); `no_address`
- * (the invite named none). Only `sent` can lead to a verified join.
+ * item 77): `sent`; `not_sent` (the mailer or a count read failed);
+ * `rate_limited` (the house is past `INVITE_EMAILS_PER_HOUSE`);
+ * `rate_limited_sender` (the minting person is past
+ * `INVITE_EMAILS_PER_SENDER` across their houses) and `rate_limited_address`
+ * (the address is past `INVITE_EMAILS_PER_ADDRESS` across all houses) -- fork
+ * 11, item 83, "Per address + per sender"; `no_address` (the invite named
+ * none). Only `sent` can lead to a verified join. Every refused outcome is
+ * returned to the minter, so they are told the invite was made and not
+ * mailed.
  */
 export type InvitationEmailOutcome =
   | "sent"
   | "not_sent"
   | "rate_limited"
+  | "rate_limited_sender"
+  | "rate_limited_address"
   | "no_address";
 
 export interface RefreshResult extends TokenPair {
@@ -1966,6 +1999,9 @@ export class AuthService {
       <p style="margin:0 0 20px;color:#374151;font-size:15px;line-height:1.6;">
         You're almost there! Click the button below to verify your email address and activate your Mudavym account.
       </p>
+      <p style="margin:0 0 20px;color:#374151;font-size:15px;line-height:1.6;">
+        Open it where you are signed in to this account. If you did not choose this account's password, sign in with a code emailed to this address instead: that confirms the address and removes any password you did not set.
+      </p>
       <div style="text-align:center;margin:28px 0;">
         <a href="${verifyUrl}" style="display:inline-block;padding:14px 36px;background:#7c2d12;color:#fff;text-decoration:none;font-weight:600;border-radius:8px;font-size:16px;">
           Verify My Email
@@ -2209,6 +2245,7 @@ export class AuthService {
         ? await this.sendInviteEmail({
             inviteId: invite.id,
             restaurantId,
+            invitedBy: userId,
             to: targetEmail,
             url: `${inviteUrl}#k=${emailSecret}`,
             role: grantedRole,
@@ -2231,15 +2268,19 @@ export class AuthService {
    * its second secret (ADR 0229 fork 9; the founder, 2026-09-27, item 77,
    * "Email invite + (c) interim (Recommended)").
    *
-   * Rate-limited per house (item 77): at most `INVITE_EMAILS_PER_HOUSE` in any
-   * `INVITE_EMAIL_WINDOW_MS`. The count is read AFTER this invite's own claim
-   * (`emailed_at`, written by the insert), so parallel mints over the limit
-   * each see the others and none squeezes past; the conservative direction
-   * (two at the edge may both refuse) is accepted. A failed count read sends
-   * nothing (fails closed). A refused or unread claim is released and the
-   * secret's hash cleared, so that invite can never verify anyone. A send
-   * that fails keeps its claim: a mailer that is down does not refill the
-   * allowance.
+   * Rate-limited three ways, each over `INVITE_EMAIL_WINDOW_MS`: per house
+   * (item 77, `INVITE_EMAILS_PER_HOUSE`), per minting person across all their
+   * houses (`INVITE_EMAILS_PER_SENDER`) and per target address across all
+   * houses (`INVITE_EMAILS_PER_ADDRESS`) -- the last two are ADR 0229 fork
+   * 11 (the founder, 2026-09-28, item 83, "Per address + per sender"). Each
+   * count is read AFTER this invite's own claim (`emailed_at`, written by the
+   * insert), so parallel mints over a limit each see the others and none
+   * squeezes past; the conservative direction (two at the edge may both
+   * refuse) is accepted. A failed count read sends nothing (fails closed). A
+   * refused or unread claim is released and the secret's hash cleared, so
+   * that invite can never verify anyone, and a released claim no longer
+   * counts against any of the three. A send that fails keeps its claim: a
+   * mailer that is down does not refill the allowances.
    *
    * The invite itself is never undone here: its copied link still joins, as
    * an unverified account.
@@ -2247,6 +2288,7 @@ export class AuthService {
   private async sendInviteEmail(params: {
     inviteId: string;
     restaurantId: string;
+    invitedBy: string;
     to: string;
     url: string;
     role: string;
@@ -2265,33 +2307,66 @@ export class AuthService {
     };
 
     const since = new Date(Date.now() - INVITE_EMAIL_WINDOW_MS).toISOString();
-    let claims: unknown = null;
-    let countError: { message: string } | null = null;
-    try {
-      const read = await this.databaseService.supabase
-        .from("organization_invites")
-        .select("id")
-        .eq("restaurant_id", params.restaurantId)
-        .gte("emailed_at", since)
-        .limit(INVITE_EMAILS_PER_HOUSE + 1);
-      claims = read.data;
-      countError = read.error;
-    } catch (err: any) {
-      countError = { message: err?.message ?? String(err) };
-    }
-    if (countError || !Array.isArray(claims)) {
-      this.logger.error(
-        `sendInviteEmail could not count this house's invite mails: ${countError?.message ?? "no rows"}`,
-      );
-      await release();
-      return "not_sent";
-    }
-    if (claims.length > INVITE_EMAILS_PER_HOUSE) {
-      this.logger.warn(
-        `sendInviteEmail: house ${params.restaurantId} is past ${INVITE_EMAILS_PER_HOUSE} invite mails in the window; invite ${params.inviteId} not mailed`,
-      );
-      await release();
-      return "rate_limited";
+    // House first (item 77), then the person, then the address (item 83).
+    const limits: Array<{
+      column: "restaurant_id" | "invited_by" | "target_email";
+      value: string;
+      cap: number;
+      outcome: InvitationEmailOutcome;
+      what: string;
+    }> = [
+      {
+        column: "restaurant_id",
+        value: params.restaurantId,
+        cap: INVITE_EMAILS_PER_HOUSE,
+        outcome: "rate_limited",
+        what: `house ${params.restaurantId}`,
+      },
+      {
+        column: "invited_by",
+        value: params.invitedBy,
+        cap: INVITE_EMAILS_PER_SENDER,
+        outcome: "rate_limited_sender",
+        what: `minter ${params.invitedBy}`,
+      },
+      {
+        column: "target_email",
+        value: params.to,
+        cap: INVITE_EMAILS_PER_ADDRESS,
+        outcome: "rate_limited_address",
+        // Never the address itself in a log line.
+        what: "the invite's address",
+      },
+    ];
+    for (const limit of limits) {
+      let claims: unknown = null;
+      let countError: { message: string } | null = null;
+      try {
+        const read = await this.databaseService.supabase
+          .from("organization_invites")
+          .select("id")
+          .eq(limit.column, limit.value)
+          .gte("emailed_at", since)
+          .limit(limit.cap + 1);
+        claims = read.data;
+        countError = read.error;
+      } catch (err: any) {
+        countError = { message: err?.message ?? String(err) };
+      }
+      if (countError || !Array.isArray(claims)) {
+        this.logger.error(
+          `sendInviteEmail could not count invite mails by ${limit.column}: ${countError?.message ?? "no rows"}`,
+        );
+        await release();
+        return "not_sent";
+      }
+      if (claims.length > limit.cap) {
+        this.logger.warn(
+          `sendInviteEmail: ${limit.what} is past ${limit.cap} invite mails in the window; invite ${params.inviteId} not mailed`,
+        );
+        await release();
+        return limit.outcome;
+      }
     }
 
     try {
@@ -2620,8 +2695,19 @@ export class AuthService {
    * address, or a join with another address, creates the account unverified
    * and mails the verification link, like any registration. Until 2026-09-27
    * every new account made here was verified for whatever address was typed.
+   *
+   * A join whose address is not proved at this moment (that unverified new
+   * account, or an existing account still unverified) gets its membership
+   * HELD (ADR 0229 fork 13; the founder, 2026-09-28, item 82, "Hold until
+   * accepted (Recommended)"): the access row is written inactive with
+   * `held_since`, the new account's `users.restaurant_id` stays NULL (so the
+   * legacy users-row fallback admits nothing), no organisation row and no
+   * team claim are written, and the pair names no house. The person, once
+   * proven, accepts it (`acceptHeldMembership`). `membershipHeld` says so.
    */
-  async joinViaInvite(dto: JoinViaInviteDto): Promise<TokenPair> {
+  async joinViaInvite(
+    dto: JoinViaInviteDto,
+  ): Promise<TokenPair & { membershipHeld: boolean }> {
     // One spelling of the address for every read and write below: the
     // spelling registerAccount stores and the emailed code looks up.
     const email = normalizeEmail(dto.email);
@@ -2685,6 +2771,8 @@ export class AuthService {
       .maybeSingle();
 
     let user: any;
+    // Whether the joining account's address is proved right now (fork 13).
+    let addressProved: boolean;
 
     if (existingUser) {
       const { data: existingAccess } = await this.databaseService.supabase
@@ -2737,6 +2825,7 @@ export class AuthService {
       }
 
       user = existingUser;
+      addressProved = existingUser.email_verified === true;
     } else {
       const passwordHash = await bcrypt.hash(dto.password, this.SALT_ROUNDS);
       // ADR 0229 fork 7, item 72, and fork 9, item 77: verified only when the
@@ -2757,7 +2846,10 @@ export class AuthService {
             email,
             password_hash: passwordHash,
             name: dto.name,
-            restaurant_id: invite.restaurant_id,
+            // Fork 13: an unproven joiner's account names no house, or the
+            // legacy users-row fallback (assertMembership, assertAccess, ...)
+            // would admit it to the house its held row does not.
+            restaurant_id: addressProvedByInvite ? invite.restaurant_id : null,
             role: invite.role,
             email_verified: addressProvedByInvite,
           })
@@ -2774,6 +2866,7 @@ export class AuthService {
         );
       }
       user = newUser;
+      addressProved = addressProvedByInvite;
       if (!addressProvedByInvite) {
         // The person proves the address once, as every registrant does.
         this.queueEmailVerification(user.user_id, email).catch((err) =>
@@ -2784,6 +2877,7 @@ export class AuthService {
       }
     }
 
+    const held = membershipIsHeld(addressProved);
     const { error: uraErr } = await this.databaseService.supabase
       .from("user_restaurant_access")
       .insert({
@@ -2791,7 +2885,8 @@ export class AuthService {
         restaurant_id: invite.restaurant_id,
         role: invite.role,
         invited_via: invite.id,
-        is_active: true,
+        is_active: !held,
+        held_since: held ? new Date().toISOString() : null,
       });
 
     if (uraErr) {
@@ -2802,6 +2897,18 @@ export class AuthService {
       throw new BadRequestException(
         "Failed to grant restaurant access: " + uraErr.message,
       );
+    }
+
+    if (held) {
+      // Fork 13: nothing else is granted until the proven person accepts;
+      // `acceptHeldMembership` writes the organisation row and the team claim
+      // then. The session names no house.
+      this.logger.log(
+        `joinViaInvite: ${user.user_id} joined ${invite.restaurant_id} before ` +
+          "proving the address; the membership is held until accepted",
+      );
+      const pair = await this.generateTokens(user, false, null, signedInNow());
+      return { ...pair, membershipHeld: true };
     }
 
     // Insert-only, and never `owner` (organizations/org-role.ts, ADR 0164).
@@ -2833,19 +2940,278 @@ export class AuthService {
     });
 
     // Joining lands in the house the invite names (ADR 0164, R1).
-    return this.generateTokens(
+    const pair = await this.generateTokens(
       user,
       false,
       invite.restaurant_id,
       signedInNow(),
     );
+    return { ...pair, membershipHeld: false };
+  }
+
+  /**
+   * The memberships waiting for this person to accept (ADR 0229 fork 13; the
+   * founder, 2026-09-28, item 82, "Hold until accepted (Recommended)"): their
+   * held `user_restaurant_access` rows, with the house's name and city, as
+   * the chooser shows a house. A failed read is a 503, never an empty list.
+   */
+  async heldMemberships(userId: string): Promise<HeldMembership[]> {
+    const { data: rows, error } = await this.databaseService.supabase
+      .from("user_restaurant_access")
+      .select("id, restaurant_id, role, held_since")
+      .eq("user_id", userId)
+      .eq("is_active", false)
+      .not("held_since", "is", null);
+    if (error) {
+      this.logger.error(
+        `heldMemberships could not read ${userId}'s held memberships: ${error.message}`,
+      );
+      throw new ServiceUnavailableException(
+        "Could not read your houses. Nothing was done; try again.",
+      );
+    }
+    const held = (rows ?? []).filter(
+      (r: { restaurant_id?: unknown }) => typeof r.restaurant_id === "string",
+    );
+    if (held.length === 0) return [];
+    const { data: restaurants, error: restaurantsError } =
+      await this.databaseService.supabase
+        .from("restaurants")
+        .select("id, name, city")
+        .in(
+          "id",
+          held.map((r: { restaurant_id: string }) => r.restaurant_id),
+        );
+    if (restaurantsError) {
+      this.logger.error(
+        `heldMemberships could not read house names for ${userId}: ${restaurantsError.message}`,
+      );
+      throw new ServiceUnavailableException(
+        "Could not read your houses. Nothing was done; try again.",
+      );
+    }
+    const byId = new Map(
+      (restaurants ?? []).map(
+        (r: { id: string; name?: string | null; city?: string | null }) => [
+          r.id,
+          r,
+        ],
+      ),
+    );
+    return held
+      .filter((r: { restaurant_id: string }) => byId.has(r.restaurant_id))
+      .map((r: { id: string; restaurant_id: string; role?: string | null }) => {
+        const house = byId.get(r.restaurant_id)!;
+        return {
+          membershipId: r.id,
+          id: r.restaurant_id,
+          name: house.name ?? "",
+          city: house.city ?? null,
+          role: roleWord(r.role),
+        };
+      })
+      .sort((a: HeldMembership, b: HeldMembership) =>
+        a.name.localeCompare(b.name),
+      );
+  }
+
+  /**
+   * Accept a held membership (ADR 0229 fork 13, item 82): the person, with a
+   * VERIFIED session (JwtAuthGuard refuses an unverified one; the row is
+   * re-read here too), turns the held row into an ordinary active
+   * membership. The issuer must still be able to grant that role in that
+   * house (ADR 0162's ceiling holds at acceptance, as in
+   * `acceptInviteAsExistingUser`), read through the invite the row was
+   * granted by; an invite that can no longer be read refuses. The row
+   * changes in ONE compare-and-set (`is_active = false` and `held_since` set
+   * -> active, `held_since` NULL); the organisation row and the team claim
+   * the join skipped are written after it, and the account's
+   * `users.restaurant_id` is pointed at the house only when it names none.
+   * Nothing is ever deleted; a refusal leaves the row held.
+   */
+  async acceptHeldMembership(
+    userId: string,
+    membershipId: string,
+  ): Promise<{ restaurantId: string; role: string }> {
+    const { data: account, error: accountErr } =
+      await this.databaseService.supabase
+        .from("users")
+        .select("user_id, email, name, email_verified, restaurant_id")
+        .eq("user_id", userId)
+        .maybeSingle();
+    if (accountErr || !account) {
+      throw new ServiceUnavailableException(
+        "Could not read your account. Nothing was done; try again.",
+      );
+    }
+    if (account.email_verified !== true) {
+      throw new ForbiddenException({
+        message: "Verify your email address before joining a house.",
+        code: "EMAIL_NOT_VERIFIED",
+      });
+    }
+
+    const { data: row, error: rowErr } = await this.databaseService.supabase
+      .from("user_restaurant_access")
+      .select("id, restaurant_id, role, invited_via, is_active, held_since")
+      .eq("id", membershipId)
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (rowErr) {
+      throw new ServiceUnavailableException(
+        "Could not read that invitation. Nothing was done; try again.",
+      );
+    }
+    if (!row || row.is_active === true || row.held_since == null) {
+      throw new NotFoundException("Nothing is waiting for you in that house.");
+    }
+    const restaurantId: string = row.restaurant_id;
+
+    let invite: {
+      id: string;
+      organization_id: string | null;
+      invited_by: string | null;
+    } | null = null;
+    if (typeof row.invited_via === "string") {
+      const { data, error } = await this.databaseService.supabase
+        .from("organization_invites")
+        .select("id, organization_id, invited_by")
+        .eq("id", row.invited_via)
+        .maybeSingle();
+      if (error) {
+        throw new ServiceUnavailableException(
+          "Could not confirm this invite is still good. Nothing was done; try again.",
+        );
+      }
+      invite = data ?? null;
+    }
+    if (!invite || typeof invite.invited_by !== "string") {
+      throw new BadRequestException(
+        "This invitation can no longer be confirmed. Ask the house for a new invite.",
+      );
+    }
+    const { data: issuerAccess, error: issuerErr } =
+      await this.databaseService.supabase
+        .from("user_restaurant_access")
+        .select("role")
+        .eq("user_id", invite.invited_by)
+        .eq("restaurant_id", restaurantId)
+        .eq("is_active", true)
+        .maybeSingle();
+    if (issuerErr) {
+      throw new ServiceUnavailableException(
+        "Could not confirm this invite is still good. Nothing was done; try again.",
+      );
+    }
+    if (grantRefusal(roleInHouse(issuerAccess), row.role, "invite")) {
+      throw new BadRequestException(
+        "This invite's issuer can no longer grant that role in this house. Ask them for a new invite.",
+      );
+    }
+
+    const { data: written, error: writeErr } =
+      await this.databaseService.supabase
+        .from("user_restaurant_access")
+        .update({
+          is_active: true,
+          held_since: null,
+          valid_from: new Date().toISOString(),
+        })
+        .eq("id", row.id)
+        .eq("is_active", false)
+        .not("held_since", "is", null)
+        .select("id")
+        .maybeSingle();
+    if (writeErr) {
+      this.logger.error(
+        `acceptHeldMembership could not activate ${userId} in ${restaurantId}: ${writeErr.message}`,
+      );
+      throw new ServiceUnavailableException(
+        "Could not join that house right now. Nothing was done; try again.",
+      );
+    }
+    if (!written) {
+      throw new ConflictException("That invitation was already answered.");
+    }
+
+    if (!account.restaurant_id) {
+      const { error } = await this.databaseService.supabase
+        .from("users")
+        .update({ restaurant_id: restaurantId })
+        .eq("user_id", userId)
+        .is("restaurant_id", null);
+      if (error) {
+        this.logger.warn(
+          `acceptHeldMembership could not point ${userId}'s account at ${restaurantId} (non-fatal): ${error.message}`,
+        );
+      }
+    }
+
+    if (invite.organization_id) {
+      // Insert-only, and never `owner` (organizations/org-role.ts, ADR 0164).
+      const { error: orgRowError } = await this.databaseService.supabase
+        .from("organization_members")
+        .upsert(
+          {
+            organization_id: invite.organization_id,
+            user_id: userId,
+            role: orgRoleForHouseGrant(row.role),
+            invited_via: invite.id,
+          },
+          ORG_ROW_INSERT_ONLY,
+        );
+      if (orgRowError) {
+        this.logger.error(
+          `acceptHeldMembership could not add ${userId} to organisation ` +
+            `${invite.organization_id}: ${orgRowError.message}`,
+        );
+      }
+    }
+
+    await this.claimTeamMemberFromInvite({
+      restaurantId,
+      inviteId: invite.id,
+      userId,
+      email: account.email ?? null,
+      name: account.name ?? null,
+      role: row.role,
+    });
+
+    this.logger.log(
+      `acceptHeldMembership: ${userId} accepted the held membership in ${restaurantId}`,
+    );
+    return { restaurantId, role: row.role };
   }
 
   /**
    * Verify email using the token from the verification email.
    * Returns a new token pair with emailVerified: true in the payload.
+   *
+   * The link verifies only for a caller signed in to the account it was sent
+   * for (ADR 0229 fork 12; the founder, 2026-09-28, item 81, "Link needs
+   * sign-in (Recommended)"): `callerUserId` is the session's user
+   * (`JwtAuthGuard`, which also proves the session is live). A link proves
+   * the mailbox, not who chose the password, so on its own it would verify a
+   * stranger's password the moment the real owner clicked. Needing both the
+   * session (the password) and the mailbox closes that: someone holding only
+   * the mailbox is sent to the emailed code, which verifies the address and,
+   * by fork 6, removes a password nobody proved and ends its sessions. No
+   * session: 401 `SIGN_IN_TO_VERIFY`. Another account's session: 403
+   * `LINK_FOR_ANOTHER_ACCOUNT`, before anything about the link is said. In
+   * both the link is not spent.
    */
-  async verifyEmail(token: string): Promise<TokenPair> {
+  async verifyEmail(
+    token: string,
+    callerUserId: string | null,
+    sessionHouse: string | null = null,
+  ): Promise<TokenPair> {
+    if (!callerUserId) {
+      throw new UnauthorizedException({
+        message:
+          "Sign in to finish verifying. If this account's password is not yours, sign in with a code emailed to this address instead.",
+        code: "SIGN_IN_TO_VERIFY",
+      });
+    }
     const { data: verif, error: verifError } =
       await this.databaseService.supabase
         .from("email_verifications")
@@ -2867,6 +3233,13 @@ export class AuthService {
     }
 
     if (!verif) throw new BadRequestException("Invalid verification token");
+    if (verif.user_id !== callerUserId) {
+      throw new ForbiddenException({
+        message:
+          "This link is for a different account. Sign out, then sign in to the account it was sent to, or sign in with a code emailed to that address.",
+        code: "LINK_FOR_ANOTHER_ACCOUNT",
+      });
+    }
     if (verif.verified_at)
       throw new BadRequestException("Email already verified");
     if (new Date(verif.expires_at) < new Date()) {
@@ -2882,10 +3255,14 @@ export class AuthService {
       .update({ verified_at: new Date().toISOString() })
       .eq("id", verif.id);
 
-    // The house the person signed up into, membership-checked like every
-    // other mint (ADR 0164): verifying follows a register or a join, which
-    // name their house.
-    return this.generateTokens(user, false, user.restaurant_id ?? null);
+    // The house the session names, else the one the person signed up into;
+    // membership-checked like every other mint (ADR 0164), so a held
+    // membership (fork 13) names nothing.
+    return this.generateTokens(
+      user,
+      false,
+      sessionHouse ?? user.restaurant_id ?? null,
+    );
   }
 
   /**
@@ -2893,9 +3270,10 @@ export class AuthService {
    *
    * Inside the seven days (ADR 0229 fork 8) the password on the account is
    * kept: the link is how a real registrant proves the address their password
-   * was set for (Firebase and Auth0 keep it too). That a stranger's password
-   * is kept as well when the real owner clicks inside the seven days is ADR
-   * 0229 fork 12, open for the founder.
+   * was set for (Firebase and Auth0 keep it too). Since fork 12 (item 81) the
+   * caller must be signed in to this account (`verifyEmail`), so the password
+   * kept is one the caller holds; a stranger's password can no longer be kept
+   * by the real owner's click, because the owner has no session to click with.
    *
    * Once that password has LAPSED (item 73: "after 7 days unverified the
    * unproven password cannot sign in (code sign-in still works, fork 6 handles
@@ -2999,7 +3377,39 @@ export class AuthService {
   async resendVerification(
     userId: string,
     email: string,
+    devBypassSession = false,
   ): Promise<{ sent: boolean }> {
+    // ADR 0229 fork 12 (item 81): a resend honours the fork 8 lapse, as a
+    // refresh does (fork 10). Past the seven days an unproven password opens
+    // nothing, and the session that password opened asks for no more links:
+    // the same refusal `refreshAccessToken` gives, so the person signs in by
+    // emailed code (fork 6). Read from the row, never the token.
+    const { data: account, error: accountErr } =
+      await this.databaseService.supabase
+        .from("users")
+        .select("email_verified, password_hash, created_at")
+        .eq("user_id", userId)
+        .maybeSingle();
+    if (accountErr || !account) {
+      this.logger.error(
+        `resendVerification could not read ${userId}: ${accountErr?.message ?? "no row"}`,
+      );
+      throw new ServiceUnavailableException(
+        "Could not send a verification email right now. Please try again.",
+      );
+    }
+    if (
+      !devBypassSession &&
+      holdsUnprovenPassword(account) &&
+      unprovenPasswordHasLapsed(account, Date.now())
+    ) {
+      throw new UnauthorizedException({
+        message:
+          "This session was signed out because its password was never confirmed. Sign in with a code emailed to you.",
+        code: SESSION_ENDED,
+      });
+    }
+
     const { data: verif } = await this.databaseService.supabase
       .from("email_verifications")
       .select("id, resend_count, last_resent_at, token")

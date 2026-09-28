@@ -33,6 +33,13 @@ describe('invitationEmailSentence', () => {
       'We emailed this invite to a@b.co. Joining from that email confirms their address.',
     )
     expect(invitationEmailSentence({ invitationEmail: 'rate_limited' })).toMatch(/^Not emailed/)
+    // ADR 0229 fork 11 (item 83): the minter is told which allowance ran out.
+    expect(invitationEmailSentence({ invitationEmail: 'rate_limited_sender' })).toMatch(
+      /^Not emailed: you have sent as many invite emails as you may today, across your houses\./,
+    )
+    expect(invitationEmailSentence({ invitationEmail: 'rate_limited_address' })).toMatch(
+      /^Not emailed: this address has received as many invite emails as it may today\./,
+    )
     expect(invitationEmailSentence({ invitationEmail: 'not_sent' })).toMatch(/^We could not email/)
     expect(invitationEmailSentence({ invitationEmail: 'no_address' })).toBeNull()
     expect(invitationEmailSentence({})).toBeNull()

@@ -28,6 +28,19 @@
  * `AuthService.refreshAccessToken` refuses an account whose unproven password
  * has lapsed (`holdsUnprovenPassword` and `unprovenPasswordHasLapsed`), so the
  * session ends with the password and the person signs in by emailed code.
+ *
+ * Fork 11, item 83, "Per address + per sender": besides the house's 20 a day,
+ * invite mails are capped per target address across all houses and per
+ * minting person (`INVITE_EMAILS_PER_ADDRESS`, `INVITE_EMAILS_PER_SENDER`).
+ *
+ * Fork 12, item 81, "Link needs sign-in (Recommended)": the /verify-email link
+ * verifies only for a caller signed in to that same account
+ * (`AuthService.verifyEmail`); someone holding only the mailbox signs in with
+ * an emailed code, and fork 6 removes a password they never set.
+ *
+ * Fork 13, item 82, "Hold until accepted (Recommended)": a house membership an
+ * invite join grants before the address is proved is written held
+ * (`membershipIsHeld`), and grants nothing until the proven person accepts it.
  */
 import { createHash, randomBytes, timingSafeEqual } from "crypto";
 import { normalizeEmail } from "../passkeys/sign-in-codes.service";
@@ -43,6 +56,32 @@ export const UNPROVEN_PASSWORD_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
  */
 export const INVITE_EMAILS_PER_HOUSE = 20;
 export const INVITE_EMAIL_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * How many invite mails one ADDRESS may receive in `INVITE_EMAIL_WINDOW_MS`,
+ * whichever houses send them (ADR 0229 fork 11; the founder, 2026-09-28,
+ * item 83, "Per address + per sender": "cap invite mails per target address
+ * across all houses (3/day)"). The founder's number. Past it the invite is
+ * made, not mailed, and the minter is told.
+ */
+export const INVITE_EMAILS_PER_ADDRESS = 3;
+
+/**
+ * How many invite mails one MINTING PERSON may send in
+ * `INVITE_EMAIL_WINDOW_MS`, across every house they run (item 83, "AND per
+ * minting person"; the number chosen as industry leaders choose it, item 67).
+ * The two published figures for the same shape: Google Groups caps the
+ * external invitations one user sends across all their groups at 500 a day
+ * ("External member invitations per day, per user", Google Workspace Admin
+ * Help, "Understand groups policies and limits"), and GitHub caps a new or
+ * free organization at 50 invitations per 24 hours (500 once it is a month
+ * old or paid; GitHub Docs, "Inviting users to join your organization"). An
+ * account that opens houses to mail a victim is new by construction, so the
+ * stricter, new-account figure is taken: 50. A person running several
+ * houses still gets more than one house's 20. Changeable: it is a number in
+ * ADR 0229 § Fork 11, not a rule.
+ */
+export const INVITE_EMAILS_PER_SENDER = 50;
 
 /** A fresh 256-bit secret for one invite mail, URL-safe. */
 export function newInviteEmailSecret(): string {
@@ -120,4 +159,17 @@ export function unprovenPasswordHasLapsed(
     typeof user.created_at === "string" ? Date.parse(user.created_at) : NaN;
   if (!Number.isFinite(registered)) return true;
   return now - registered > UNPROVEN_PASSWORD_WINDOW_MS;
+}
+
+/**
+ * Whether a membership an invite join grants is HELD (ADR 0229 fork 13; the
+ * founder, 2026-09-28, item 82, "Hold until accepted (Recommended)"): true
+ * when the joining account's address is not proved at the moment of the
+ * join. A new account is proved only by the mailed secret
+ * (`inviteVerifiesAddress`); an existing account only by `email_verified`.
+ * A held row is written inactive with `held_since` set, and becomes active
+ * only when the person, once proven, accepts it.
+ */
+export function membershipIsHeld(addressProved: boolean): boolean {
+  return addressProved !== true;
 }

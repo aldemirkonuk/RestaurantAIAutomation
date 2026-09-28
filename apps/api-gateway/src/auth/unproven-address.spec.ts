@@ -1,5 +1,9 @@
 import "reflect-metadata";
 import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
   ServiceUnavailableException,
   UnauthorizedException,
 } from "@nestjs/common";
@@ -7,8 +11,13 @@ import { JwtService } from "@nestjs/jwt";
 import { AuthService, JwtPayload } from "./auth.service";
 import { JwtStrategy } from "./strategies/jwt.strategy";
 import { SESSION_ENDED } from "./session-version";
+import { AuthController } from "./auth.controller";
+import { MembersService } from "../restaurants/members.service";
+import { TeamService } from "../team/team.service";
 import {
+  INVITE_EMAILS_PER_ADDRESS,
   INVITE_EMAILS_PER_HOUSE,
+  INVITE_EMAILS_PER_SENDER,
   INVITE_EMAIL_WINDOW_MS,
   UNPROVEN_PASSWORD_WINDOW_MS,
   hashInviteEmailSecret,
@@ -808,6 +817,11 @@ describe("fork 10 (item 78): a refresh refuses an account whose unproven passwor
 });
 
 describe("forks 8 and 10 hold after a verification link: a link cannot bring a lapsed password or its sessions back", () => {
+  // Since fork 12 (item 81) a link verifies only for a session of its own
+  // account, so every click below is made with one (the account's user id,
+  // as JwtAuthGuard would hand it over). After the lapse such a session can
+  // only be an access token minted in the last minutes before it (fork 10
+  // refuses the refresh); the removal below stays as the defence for it.
   const LINK = "5f0c7d2e-8b1a-4c3d-9e4f-6a7b8c9d0e1f";
 
   /** The stranger registers the victim's address and signs in on day one;
@@ -842,7 +856,7 @@ describe("forks 8 and 10 hold after a verification link: a link cannot bring a l
       .map((c) => c[0])
       .filter((m) => /a password nobody confirmed was removed/.test(m.subject));
 
-  it("the attack end to end: the stranger's password has lapsed and their refresh is refused; the owner clicks the link -- the password is removed, every earlier session stays ended, and the address is told", async () => {
+  it("the attack end to end (as found at 09b712d29): the unproven password has lapsed and its refresh is refused; a click after the lapse removes the password, every earlier session stays ended, and the address is told", async () => {
     const w = world();
     const s = await strangerRegistered(w);
     age(w, 6 * DAY);
@@ -853,7 +867,7 @@ describe("forks 8 and 10 hold after a verification link: a link cannot bring a l
       (await refusal(w.auth.refreshAccessToken(again.refreshToken))).body,
     ).toMatchObject({ code: SESSION_ENDED });
 
-    const owner = await w.auth.verifyEmail(LINK);
+    const owner = await w.auth.verifyEmail(LINK, w.row(VICTIM)!.user_id);
 
     const r = w.row(VICTIM)!;
     expect(r.email_verified).toBe(true);
@@ -895,12 +909,12 @@ describe("forks 8 and 10 hold after a verification link: a link cannot bring a l
     ).toEqual(expect.any(String));
   });
 
-  it("inside the seven days a link keeps the password and every session (the registrant's own proof; whether a stranger's is kept too is fork 12, open)", async () => {
+  it("inside the seven days the account's own session keeps its password and every session: the registrant proving their address (fork 12: nobody else can click)", async () => {
     const w = world();
     const s = await strangerRegistered(w);
     age(w, 7 * DAY - 60_000);
 
-    await w.auth.verifyEmail(LINK);
+    await w.auth.verifyEmail(LINK, w.row(VICTIM)!.user_id);
 
     const r = w.row(VICTIM)!;
     expect(r.email_verified).toBe(true);
@@ -921,7 +935,7 @@ describe("forks 8 and 10 hold after a verification link: a link cannot bring a l
     w.row(VICTIM)!.password_hash = null;
     age(w, 30 * DAY);
 
-    await w.auth.verifyEmail(LINK);
+    await w.auth.verifyEmail(LINK, w.row(VICTIM)!.user_id);
 
     expect(w.row(VICTIM)!.email_verified).toBe(true);
     expect(w.row(VICTIM)!.session_version).toBe(0);
@@ -939,7 +953,7 @@ describe("forks 8 and 10 hold after a verification link: a link cannot bring a l
     r.email_verified = true;
     r.password_hash = "a password the owner set after proving the address";
 
-    await w.auth.verifyEmail(LINK);
+    await w.auth.verifyEmail(LINK, w.row(VICTIM)!.user_id);
 
     expect(w.row(VICTIM)!.password_hash).toBe(
       "a password the owner set after proving the address",
@@ -954,9 +968,9 @@ describe("forks 8 and 10 hold after a verification link: a link cannot bring a l
     age(w, 30 * DAY);
     w.db.failUpdateOn = "users";
 
-    await expect(w.auth.verifyEmail(LINK)).rejects.toBeInstanceOf(
-      ServiceUnavailableException,
-    );
+    await expect(
+      w.auth.verifyEmail(LINK, w.row(VICTIM)!.user_id),
+    ).rejects.toBeInstanceOf(ServiceUnavailableException);
 
     const r = w.row(VICTIM)!;
     expect(r.email_verified).toBe(false);
@@ -990,7 +1004,7 @@ describe("forks 8 and 10 hold after a verification link: a link cannot bring a l
       return q;
     }) as any;
 
-    const pair = await w.auth.verifyEmail(LINK);
+    const pair = await w.auth.verifyEmail(LINK, w.row(VICTIM)!.user_id);
 
     expect(raced).toBe(true);
     // Minted from the row read again, so the version the reset moved to.
@@ -1000,6 +1014,601 @@ describe("forks 8 and 10 hold after a verification link: a link cannot bring a l
     expect(w.row(VICTIM)!.password_hash).toBe("the owner's reset password");
     expect(w.row(VICTIM)!.session_version).toBe(1);
     expect(noticeMails(w)).toHaveLength(0);
+  });
+});
+
+/* ── fork 12 ────────────────────────────────────────────────────────────── */
+
+describe("fork 12 (item 81): the verification link verifies only for a session of its own account", () => {
+  const LINK = "6a1d8e3f-9c2b-4d4e-8f5a-7b8c9d0e1f2a";
+
+  /** A stranger registers the owner's address with their own password and
+   * signs in; the link that registration mailed goes to the owner. */
+  async function strangerRegistered(w: ReturnType<typeof world>) {
+    await w.auth.registerAccount({
+      email: VICTIM,
+      password: ATTACKER_PASSWORD,
+      name: "Not the owner",
+    } as any);
+    await w.settle();
+    const s = (await w.auth.login({
+      email: VICTIM,
+      password: ATTACKER_PASSWORD,
+    })) as { accessToken: string; refreshToken: string };
+    const link = w.db.tables.email_verifications.find(
+      (v) => v.user_id === w.row(VICTIM)!.user_id,
+    )!;
+    link.token = LINK;
+    link.expires_at = new Date(Date.now() + DAY).toISOString();
+    link.verified_at = null;
+    return s;
+  }
+  const linkRow = (w: ReturnType<typeof world>) =>
+    w.db.tables.email_verifications.find((v) => v.token === LINK)!;
+
+  it("the attack end to end: inside the seven days the owner clicks the link signed out -- nothing is verified and the link is not spent; the owner's emailed code then verifies, removes the stranger's password and ends their sessions", async () => {
+    const w = world();
+    const s = await strangerRegistered(w);
+    w.row(VICTIM)!.created_at = new Date(Date.now() - 2 * DAY).toISOString();
+
+    // The owner holds only the mailbox: no session to click with.
+    const signedOut = await w.auth.verifyEmail(LINK, null).then(
+      () => null,
+      (e) => e,
+    );
+    expect(signedOut).toBeInstanceOf(UnauthorizedException);
+    expect(signedOut.getResponse()).toMatchObject({
+      code: "SIGN_IN_TO_VERIFY",
+    });
+    expect(w.row(VICTIM)!.email_verified).toBe(false);
+    expect(w.row(VICTIM)!.password_hash).toEqual(expect.any(String));
+    expect(linkRow(w).verified_at).toBeNull();
+    // The stranger's session is still an unverified one: before fork 12 the
+    // click made it a verified session with the stranger's password kept.
+    expect((await w.guard(s.accessToken)).emailVerified).toBe(false);
+
+    // The page sends the owner to the emailed code (fork 6).
+    const owner = await w.codeSignIn(VICTIM);
+    const r = w.row(VICTIM)!;
+    expect(r.email_verified).toBe(true);
+    expect(r.password_hash).toBeNull();
+    expect(
+      (await refusal(w.auth.refreshAccessToken(s.refreshToken))).body,
+    ).toMatchObject({ code: SESSION_ENDED });
+    await expect(w.guard(s.accessToken)).rejects.toBeInstanceOf(
+      UnauthorizedException,
+    );
+    await expect(
+      w.auth.login({ email: VICTIM, password: ATTACKER_PASSWORD }),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+    expect((await w.guard(owner.accessToken)).emailVerified).toBe(true);
+  });
+
+  it("the registrant, signed in on this device, verifies with the link and keeps their own password", async () => {
+    const w = world();
+    const s = await strangerRegistered(w); // here: the real registrant
+    const me = (await w.guard(s.accessToken)) as { userId: string };
+
+    const pair = await w.auth.verifyEmail(LINK, me.userId);
+
+    expect(w.row(VICTIM)!.email_verified).toBe(true);
+    expect(w.row(VICTIM)!.password_hash).toEqual(expect.any(String));
+    expect((await w.guard(pair.accessToken)).emailVerified).toBe(true);
+    expect(linkRow(w).verified_at).toEqual(expect.any(String));
+  });
+
+  it("a session of ANOTHER account is refused, verifies nobody and does not spend the link", async () => {
+    const w = world();
+    await strangerRegistered(w);
+
+    const err = await w.auth.verifyEmail(LINK, MINTER).then(
+      () => null,
+      (e) => e,
+    );
+    expect(err).toBeInstanceOf(ForbiddenException);
+    expect(err.getResponse()).toMatchObject({
+      code: "LINK_FOR_ANOTHER_ACCOUNT",
+    });
+    expect(w.row(VICTIM)!.email_verified).toBe(false);
+    expect(linkRow(w).verified_at).toBeNull();
+  });
+
+  it("a resend honours the fork 8 lapse: past the seven days the session asks for no more links (the refresh's own refusal), inside them it sends", async () => {
+    const w = world();
+    await strangerRegistered(w);
+    const id = w.row(VICTIM)!.user_id;
+    const sent = () => w.verificationMails().length;
+
+    w.row(VICTIM)!.created_at = new Date(
+      Date.now() - 7 * DAY - 60_000,
+    ).toISOString();
+    const before = sent();
+    const refused = await refusal(w.auth.resendVerification(id, VICTIM));
+    expect(refused.body).toMatchObject({ code: SESSION_ENDED });
+    await w.settle();
+    expect(sent()).toBe(before);
+
+    // Where dev bypass is honoured the session is exempt, as at a refresh.
+    await expect(w.auth.resendVerification(id, VICTIM, true)).resolves.toEqual({
+      sent: true,
+    });
+
+    // Inside the window it sends (the cooldown is the only other gate).
+    const w2 = world();
+    await strangerRegistered(w2);
+    const id2 = w2.row(VICTIM)!.user_id;
+    w2.db.tables.email_verifications.forEach(
+      (v) => (v.last_resent_at = new Date(Date.now() - 120_000).toISOString()),
+    );
+    await expect(w2.auth.resendVerification(id2, VICTIM)).resolves.toEqual({
+      sent: true,
+    });
+  });
+
+  it("an account whose row cannot be read gets no resend (503), never a mail on a guess", async () => {
+    const w = world();
+    await strangerRegistered(w);
+    const id = w.row(VICTIM)!.user_id;
+    w.db.failReadOn = "users";
+    await expect(w.auth.resendVerification(id, VICTIM)).rejects.toBeInstanceOf(
+      ServiceUnavailableException,
+    );
+  });
+});
+
+/* ── fork 11 ────────────────────────────────────────────────────────────── */
+
+describe("fork 11 (item 83): invite mails are capped per address across houses and per minting person", () => {
+  /** Another house, owned by `owner` (a new person unless given). */
+  function addHouse(w: ReturnType<typeof world>, house: string, owner: string) {
+    w.db.tables.restaurants.push({
+      id: house,
+      organization_id: ORG,
+      name: "H",
+    });
+    if (!w.db.tables.users.some((u) => u.user_id === owner)) {
+      w.db.tables.users.push({
+        user_id: owner,
+        email: `${owner.slice(0, 4)}@example.com`,
+        name: "Owner",
+        password_hash: null,
+        email_verified: true,
+        session_version: 0,
+        created_at: new Date(Date.now() - 90 * DAY).toISOString(),
+      });
+    }
+    w.db.tables.user_restaurant_access.push({
+      user_id: owner,
+      restaurant_id: house,
+      role: "owner",
+      is_active: true,
+    });
+  }
+  const H = (n: number) => `5555555${n}-5555-4555-8555-555555555555`;
+  const P = (n: number) => `6666666${n}-6666-4666-8666-666666666666`;
+
+  it(`one address receives at most ${INVITE_EMAILS_PER_ADDRESS} invite mails a day, whichever houses and people send them; the next invite is made, not mailed, the minter is told, and it can never verify`, async () => {
+    const w = world();
+    for (let i = 1; i <= 4; i++) addHouse(w, H(i), P(i));
+    // Three different people in three different houses: all mailed.
+    for (let i = 1; i <= INVITE_EMAILS_PER_ADDRESS; i++) {
+      expect((await w.mint(VICTIM, H(i), P(i))).invitationEmail).toBe("sent");
+    }
+    // A fourth house, a fourth person, the same address (any spelling).
+    const over = await w.mint("  Victim@Example.com ", H(4), P(4));
+    expect(over.invitationEmail).toBe("rate_limited_address");
+    expect(w.inviteMails().filter((m) => m.to[0] === VICTIM)).toHaveLength(
+      INVITE_EMAILS_PER_ADDRESS,
+    );
+    const row = w.db.tables.organization_invites.find(
+      (i) => i.code === over.code,
+    )!;
+    expect(row.email_secret_hash).toBeNull();
+    expect(row.emailed_at).toBeNull();
+    // The invite exists and its copied link joins, unverified.
+    await w.join(over.code, VICTIM, ATTACKER_PASSWORD);
+    expect(w.row(VICTIM)!.email_verified).toBe(false);
+
+    // Another address from the same house is unaffected.
+    expect(
+      (await w.mint("someone.else@example.com", H(4), P(4))).invitationEmail,
+    ).toBe("sent");
+  });
+
+  it("address mails older than the window do not count, and a refused (released) invite does not count either", async () => {
+    const w = world();
+    for (let i = 1; i <= 3; i++) addHouse(w, H(i), P(i));
+    for (let i = 1; i <= INVITE_EMAILS_PER_ADDRESS; i++)
+      await w.mint(VICTIM, H(i), P(i));
+    expect((await w.mint(VICTIM)).invitationEmail).toBe("rate_limited_address");
+    expect((await w.mint(VICTIM)).invitationEmail).toBe("rate_limited_address");
+    // The two refusals were released: only the three mailed claims remain.
+    const claimed = w.db.tables.organization_invites.filter(
+      (i) => i.target_email === VICTIM && i.emailed_at != null,
+    );
+    expect(claimed).toHaveLength(INVITE_EMAILS_PER_ADDRESS);
+    claimed[0].emailed_at = new Date(
+      Date.now() - INVITE_EMAIL_WINDOW_MS - 60_000,
+    ).toISOString();
+    expect((await w.mint(VICTIM)).invitationEmail).toBe("sent");
+  });
+
+  it(`one person mails at most ${INVITE_EMAILS_PER_SENDER} invites a day across every house they run, even where a house has room`, async () => {
+    const w = world();
+    // MINTER owns HOUSE already; two more houses make 3 x 20 of house room.
+    addHouse(w, H(1), MINTER);
+    addHouse(w, H(2), MINTER);
+    const houses = [HOUSE, H(1), H(2)];
+    let n = 0;
+    for (const house of houses) {
+      for (
+        let i = 0;
+        i < INVITE_EMAILS_PER_HOUSE && n < INVITE_EMAILS_PER_SENDER;
+        i++, n++
+      ) {
+        expect((await w.mint(`s${n}@example.com`, house)).invitationEmail).toBe(
+          "sent",
+        );
+      }
+    }
+    expect(n).toBe(INVITE_EMAILS_PER_SENDER);
+    // H(2) has sent only 10 of its 20; the person is out of allowance.
+    const over = await w.mint("one.more@example.com", H(2));
+    expect(over.invitationEmail).toBe("rate_limited_sender");
+    expect(w.inviteMails()).toHaveLength(INVITE_EMAILS_PER_SENDER);
+    expect(
+      w.db.tables.organization_invites.find((i) => i.code === over.code)!
+        .email_secret_hash,
+    ).toBeNull();
+    // Another person in that same house still has theirs.
+    addHouse(w, H(3), P(3));
+    w.db.tables.user_restaurant_access.push({
+      user_id: P(3),
+      restaurant_id: H(2),
+      role: "manager",
+      is_active: true,
+    });
+    expect(
+      (await w.mint("other@example.com", H(2), P(3))).invitationEmail,
+    ).toBe("sent");
+  });
+
+  it("the house limit is still checked first and still says rate_limited", async () => {
+    const w = world();
+    for (let i = 0; i < INVITE_EMAILS_PER_HOUSE; i++)
+      await w.mint(`h${i}@example.com`);
+    expect((await w.mint("x@example.com")).invitationEmail).toBe(
+      "rate_limited",
+    );
+  });
+
+  it("an address or a person count that cannot be read mails nothing and clears the hash (fails closed)", async () => {
+    for (const column of ["target_email", "invited_by"]) {
+      const w = world();
+      const from = w.db.from.bind(w.db);
+      w.db.from = ((table: string) => {
+        const q: any = from(table);
+        if (table !== "organization_invites") return q;
+        const eq = q.eq.bind(q);
+        q.eq = (k: string, v: unknown) => {
+          const r = eq(k, v);
+          if (k === column) {
+            r.then = (ok: any) =>
+              Promise.resolve({ data: null, error: { message: "down" } }).then(
+                ok,
+              );
+          }
+          return r;
+        };
+        return q;
+      }) as any;
+      const made = await w.mint("alice@example.com");
+      expect(made.invitationEmail).toBe("not_sent");
+      expect(w.inviteMails()).toHaveLength(0);
+      expect(w.db.tables.organization_invites[0].email_secret_hash).toBeNull();
+    }
+  });
+
+  it("the minter is told through POST /auth/invite's answer", async () => {
+    const w = world();
+    for (let i = 0; i < INVITE_EMAILS_PER_ADDRESS; i++) await w.mint(VICTIM);
+    const controller = new AuthController(w.auth);
+    const answer = await controller.generateInvite(
+      { user: { userId: MINTER } } as any,
+      { restaurantId: HOUSE, role: "staff", targetEmail: VICTIM } as any,
+    );
+    expect(answer).toMatchObject({
+      success: true,
+      invitationEmail: "rate_limited_address",
+    });
+  });
+});
+
+/* ── fork 13 ────────────────────────────────────────────────────────────── */
+
+describe("fork 13 (item 82): a membership granted before the address is proved is held until the proven person accepts it", () => {
+  const access = (w: ReturnType<typeof world>, email: string) =>
+    w.db.tables.user_restaurant_access.find(
+      (r) => r.user_id === w.row(email)!.user_id && r.restaurant_id === HOUSE,
+    );
+  const members = (w: ReturnType<typeof world>) =>
+    new MembersService({ supabase: w.db } as any);
+  const team = (w: ReturnType<typeof world>) =>
+    new TeamService({ supabase: w.db } as any);
+  const houses = (w: ReturnType<typeof world>, userId: string) =>
+    new AuthController(w.auth).houses({ user: { userId } } as any);
+
+  it("a join from the copied link writes the row HELD: inactive, stamped, no house on the account, no organisation row, and the session names no house", async () => {
+    const w = world();
+    const made = await w.mint(VICTIM);
+    const s = await w.join(made.code, VICTIM, ATTACKER_PASSWORD);
+
+    expect(s.membershipHeld).toBe(true);
+    expect(s.restaurantId).toBeNull();
+    expect(access(w, VICTIM)).toMatchObject({
+      is_active: false,
+      held_since: expect.any(String),
+      role: "staff",
+    });
+    expect(w.row(VICTIM)!.restaurant_id).toBeNull();
+    expect(w.db.tables.organization_members).toHaveLength(0);
+    expect((await w.guard(s.accessToken)).restaurantId ?? null).toBeNull();
+    // No row was deleted and nothing reads as a removal.
+    expect(w.db.tables.user_restaurant_access).toHaveLength(2);
+  });
+
+  it("a held membership grants nothing: no house to choose, no switch into it, no token names it, and neither users-row fallback admits it", async () => {
+    const w = world();
+    const made = await w.mint(VICTIM);
+    await w.join(made.code, VICTIM, ATTACKER_PASSWORD);
+    const id = w.row(VICTIM)!.user_id;
+    // Even once the address is proved (the owner's code), the row stays held.
+    await w.codeSignIn(VICTIM);
+    expect(w.row(VICTIM)!.email_verified).toBe(true);
+
+    expect(await w.auth.memberHouses(id)).toEqual([]);
+    await expect(w.auth.switchRestaurant(id, HOUSE)).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+    const pair = await (w.auth as any).generateTokens(
+      w.row(VICTIM),
+      false,
+      HOUSE,
+    );
+    expect(pair.restaurantId).toBeNull();
+    await expect(members(w).assertMembership(id, HOUSE)).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+    await expect(team(w).assertAccess(id, HOUSE)).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+    expect(await w.auth.getUserRoleAtRestaurant(id, HOUSE)).toBeNull();
+  });
+
+  it("the attack end to end: a minter joins with the victim's address from the copied link; the victim's code takes the account back, and the minter's house waits on the chooser until the victim chooses it", async () => {
+    const w = world();
+    const made = await w.mint(VICTIM);
+    await w.join(made.code, VICTIM, ATTACKER_PASSWORD);
+
+    const owner = await w.codeSignIn(VICTIM);
+    const id = w.row(VICTIM)!.user_id;
+    // Fork 6 fired; the owner's session is in no house (none is active).
+    expect(w.row(VICTIM)!.password_hash).toBeNull();
+    expect((await w.guard(owner.accessToken)).restaurantId ?? null).toBeNull();
+    // The chooser shows it as waiting, not as a house of theirs.
+    const answer = await houses(w, id);
+    expect(answer.houses).toEqual([]);
+    expect(answer.held).toEqual([
+      {
+        membershipId: access(w, VICTIM)!.id,
+        id: HOUSE,
+        name: "Evil <b>House</b> Pay Here",
+        city: null,
+        role: "staff",
+      },
+    ]);
+    // Declining is simply not accepting: it stays held and grants nothing.
+    expect(access(w, VICTIM)!.is_active).toBe(false);
+    // An inactive row that is NOT held (a former membership) is never offered.
+    const OTHER = "77777777-7777-4777-8777-777777777777";
+    w.db.tables.restaurants.push({
+      id: OTHER,
+      organization_id: ORG,
+      name: "Old",
+    });
+    w.db.tables.user_restaurant_access.push({
+      user_id: id,
+      restaurant_id: OTHER,
+      role: "manager",
+      is_active: false,
+      held_since: null,
+    });
+    expect((await houses(w, id)).held.map((h: { id: string }) => h.id)).toEqual(
+      [HOUSE],
+    );
+    const former = w.db.tables.user_restaurant_access.find(
+      (r) => r.restaurant_id === OTHER,
+    )!;
+    former.id = "88888888-8888-4888-8888-888888888888";
+    await expect(
+      w.auth.acceptHeldMembership(id, former.id),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    // Another person's held row is not this person's to accept.
+    await expect(
+      w.auth.acceptHeldMembership(MINTER, access(w, VICTIM)!.id),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it("the proven person accepts: the row becomes active, the organisation row and the team claim are written, and the house opens", async () => {
+    const w = world();
+    const made = await w.mint(VICTIM);
+    await w.join(made.code, VICTIM, "the invitee's own password");
+    await w.codeSignIn(VICTIM); // proves the address (the invitee's own mailbox)
+    const id = w.row(VICTIM)!.user_id;
+
+    const controller = new AuthController(w.auth);
+    await expect(
+      controller.acceptHeldMembership(
+        { user: { userId: id } } as any,
+        { membershipId: access(w, VICTIM)!.id } as any,
+      ),
+    ).resolves.toEqual({ success: true, restaurantId: HOUSE, role: "staff" });
+
+    expect(access(w, VICTIM)).toMatchObject({
+      is_active: true,
+      held_since: null,
+    });
+    expect(w.row(VICTIM)!.restaurant_id).toBe(HOUSE);
+    expect(w.db.tables.organization_members).toEqual([
+      expect.objectContaining({ organization_id: ORG, user_id: id }),
+    ]);
+    expect((await w.auth.memberHouses(id)).map((h) => h.id)).toEqual([HOUSE]);
+    const inside = await w.auth.switchRestaurant(id, HOUSE);
+    expect(inside.restaurantId).toBe(HOUSE);
+    expect((await houses(w, id)).held).toEqual([]);
+
+    // Twice is not twice: nothing is waiting any more.
+    await expect(
+      w.auth.acceptHeldMembership(id, access(w, VICTIM)!.id),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it("an unproven account cannot accept its own held membership", async () => {
+    const w = world();
+    const made = await w.mint(VICTIM);
+    await w.join(made.code, VICTIM, ATTACKER_PASSWORD);
+    const id = w.row(VICTIM)!.user_id;
+
+    await expect(
+      w.auth.acceptHeldMembership(id, access(w, VICTIM)!.id),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(access(w, VICTIM)!.is_active).toBe(false);
+  });
+
+  it("acceptance re-checks the issuer: one demoted or removed since leaves the row held", async () => {
+    const w = world();
+    const made = await w.mint(VICTIM);
+    await w.join(made.code, VICTIM, ATTACKER_PASSWORD);
+    await w.codeSignIn(VICTIM);
+    const id = w.row(VICTIM)!.user_id;
+    // The minter is no longer a member of the house.
+    w.db.tables.user_restaurant_access.find(
+      (r) => r.user_id === MINTER,
+    )!.is_active = false;
+
+    await expect(
+      w.auth.acceptHeldMembership(id, access(w, VICTIM)!.id),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(access(w, VICTIM)).toMatchObject({
+      is_active: false,
+      held_since: expect.any(String),
+    });
+  });
+
+  it("a row answered in between is not activated twice (compare-and-set)", async () => {
+    const w = world();
+    const made = await w.mint(VICTIM);
+    await w.join(made.code, VICTIM, ATTACKER_PASSWORD);
+    await w.codeSignIn(VICTIM);
+    const id = w.row(VICTIM)!.user_id;
+    const from = w.db.from.bind(w.db);
+    let raced = false;
+    w.db.from = ((table: string) => {
+      const q: any = from(table);
+      if (table !== "user_restaurant_access") return q;
+      const update = q.update.bind(q);
+      q.update = (payload: any) => {
+        if (!raced) {
+          raced = true;
+          Object.assign(access(w, VICTIM)!, {
+            is_active: true,
+            held_since: null,
+          });
+        }
+        return update(payload);
+      };
+      return q;
+    }) as any;
+    await expect(
+      w.auth.acceptHeldMembership(id, access(w, VICTIM)!.id),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(w.db.tables.organization_members).toHaveLength(0);
+  });
+
+  it("the activation is ONE compare-and-set on both held markers (inactive AND held_since set)", async () => {
+    const w = world();
+    const made = await w.mint(VICTIM);
+    await w.join(made.code, VICTIM, ATTACKER_PASSWORD);
+    await w.codeSignIn(VICTIM);
+    const id = w.row(VICTIM)!.user_id;
+    const filters: Array<[string, string, unknown]> = [];
+    const from = w.db.from.bind(w.db);
+    w.db.from = ((table: string) => {
+      const q: any = from(table);
+      if (table !== "user_restaurant_access") return q;
+      const update = q.update.bind(q);
+      q.update = (payload: any) => {
+        const r = update(payload);
+        const eq = r.eq.bind(r);
+        const not = r.not.bind(r);
+        r.eq = (k: string, v: unknown) => {
+          filters.push(["eq", k, v]);
+          return eq(k, v);
+        };
+        r.not = (k: string, op: string, v: unknown) => {
+          filters.push(["not", k, v]);
+          return not(k, op, v);
+        };
+        return r;
+      };
+      return q;
+    }) as any;
+    await w.auth.acceptHeldMembership(id, access(w, VICTIM)!.id);
+    expect(filters).toEqual(
+      expect.arrayContaining([
+        ["eq", "is_active", false],
+        ["not", "held_since", null],
+      ]),
+    );
+  });
+
+  it("a join from the mail (address proved) is active at once, as before", async () => {
+    const w = world();
+    await w.mint(VICTIM);
+    const [mail] = w.inviteMails();
+    const s = await w.join(
+      mail.code,
+      VICTIM,
+      "the owner's password",
+      mail.secret,
+    );
+    expect(s.membershipHeld).toBe(false);
+    expect(s.restaurantId).toBe(HOUSE);
+    expect(access(w, VICTIM)).toMatchObject({
+      is_active: true,
+      held_since: null,
+    });
+    expect(w.row(VICTIM)!.restaurant_id).toBe(HOUSE);
+  });
+
+  it("an EXISTING account still unverified joins held; a verified one joins active", async () => {
+    for (const verified of [false, true]) {
+      const w = world();
+      await w.auth.registerAccount({
+        email: VICTIM,
+        password: "their password",
+        name: "Existing",
+      } as any);
+      await w.settle();
+      w.row(VICTIM)!.email_verified = verified;
+      const made = await w.mint();
+      const s = await w.join(made.code, VICTIM, "their password");
+      expect(s.membershipHeld).toBe(!verified);
+      expect(access(w, VICTIM)).toMatchObject({
+        is_active: verified,
+        held_since: verified ? null : expect.any(String),
+      });
+    }
   });
 });
 

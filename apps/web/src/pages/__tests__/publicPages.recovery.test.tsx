@@ -104,6 +104,52 @@ it('gives signed-out verification a sign-in path instead of an authenticated res
   ).not.toBeInTheDocument()
   expect(h.post).not.toHaveBeenCalled()
 })
+// ADR 0229 fork 12 (the founder, 2026-09-28, item 81, "Link needs sign-in
+// (Recommended)"): the link verifies only for a session of its own account.
+it('a signed-out click on a verification link is sent to sign in (or the emailed code) and calls nothing', () => {
+  mount(
+    <VerifyEmail />,
+    '/verify-email?token=3f2b8c1e-9a4d-4c7b-8e2f-1a2b3c4d5e6f',
+  )
+  expect(screen.getByRole('link', { name: 'Sign in to verify' })).toHaveAttribute(
+    'href',
+    '/login?redirect=%2Fverify-email%3Ftoken%3D3f2b8c1e-9a4d-4c7b-8e2f-1a2b3c4d5e6f',
+  )
+  expect(screen.getByText(/Email me a sign-in code/)).toBeInTheDocument()
+  expect(
+    screen.queryByRole('button', { name: 'Verify my email' }),
+  ).not.toBeInTheDocument()
+  expect(h.post).not.toHaveBeenCalled()
+})
+it('a signed-in click whose session the server refuses turns into the sign-in path, and another account is told to switch', async () => {
+  h.auth.user = { email: 'someone@house.test' }
+  h.auth.isAuthenticated = true
+  h.post.mockRejectedValueOnce({ response: { status: 401, data: {} } })
+  const first = mount(
+    <VerifyEmail />,
+    '/verify-email?token=3f2b8c1e-9a4d-4c7b-8e2f-1a2b3c4d5e6f',
+  )
+  fireEvent.click(screen.getByRole('button', { name: 'Verify my email' }))
+  expect(
+    await screen.findByRole('link', { name: 'Sign in to verify' }),
+  ).toBeInTheDocument()
+  first.unmount()
+
+  h.post.mockRejectedValueOnce({
+    response: { status: 403, data: { code: 'LINK_FOR_ANOTHER_ACCOUNT' } },
+  })
+  mount(
+    <VerifyEmail />,
+    '/verify-email?token=3f2b8c1e-9a4d-4c7b-8e2f-1a2b3c4d5e6f',
+  )
+  fireEvent.click(screen.getByRole('button', { name: 'Verify my email' }))
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    'This link is for a different account',
+  )
+  expect(
+    screen.getByRole('button', { name: 'Sign out and sign in to that account' }),
+  ).toBeInTheDocument()
+})
 it('does not call a failed invite preview expired and permits retry', async () => {
   h.get
     .mockRejectedValueOnce(new Error('offline'))

@@ -45,6 +45,19 @@ export class FakeDb {
   }
 }
 
+/** The check `user_restaurant_access_held_is_never_active` declares
+ * (migration an_unproven_join_waits_and_invite_mail_is_capped_per_address_and_sender). */
+const heldAndActive = (r: Row) =>
+  (r.held_since ?? null) !== null && r.is_active !== false;
+const heldAndActiveRefusal = {
+  data: null,
+  error: {
+    code: "23514",
+    message:
+      "violates check constraint user_restaurant_access_held_is_never_active",
+  },
+};
+
 class Query implements PromiseLike<{ data: any; error: any }> {
   private op: "select" | "insert" | "update" | "delete" | "upsert" = "select";
   private payload: Row | null = null;
@@ -90,6 +103,13 @@ class Query implements PromiseLike<{ data: any; error: any }> {
   }
   is(k: string, v: unknown) {
     this.filters.push((r) => (r[k] ?? null) === v);
+    return this;
+  }
+  /** PostgREST `not(column, "is", null)`: the only `not` shape used. */
+  not(k: string, op: string, v: unknown) {
+    if (op !== "is")
+      throw new Error(`FakeDb.not supports only "is", got ${op}`);
+    this.filters.push((r) => (r[k] ?? null) !== v);
     return this;
   }
   lt(k: string, v: string) {
@@ -168,6 +188,9 @@ class Query implements PromiseLike<{ data: any; error: any }> {
           : {}),
         ...this.payload,
       };
+      // user_restaurant_access_held_is_never_active (ADR 0229 fork 13).
+      if (this.table === "user_restaurant_access" && heldAndActive(row))
+        return heldAndActiveRefusal;
       if (
         this.table === "user_passkeys" &&
         rows.some((r) => r.credential_id === row.credential_id)
@@ -183,6 +206,11 @@ class Query implements PromiseLike<{ data: any; error: any }> {
       if (this.db.failUpdateOn === this.table)
         return { data: null, error: { message: "update refused" } };
       out = rows.filter(match);
+      if (
+        this.table === "user_restaurant_access" &&
+        out.some((r) => heldAndActive({ ...r, ...this.payload }))
+      )
+        return heldAndActiveRefusal;
       out.forEach((r) => Object.assign(r, this.payload));
     } else if (this.op === "delete") {
       out = rows.filter(match);

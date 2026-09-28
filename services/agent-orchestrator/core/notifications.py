@@ -50,6 +50,10 @@ async def resolve_restaurant_member_ids(database: Any, restaurant_id: str) -> Li
             database.supabase.table("user_restaurant_access")
             .select("user_id")
             .eq("restaurant_id", restaurant_id)
+            # Active members only: an inactive row is a former member, or a
+            # membership HELD until its proven person accepts it (ADR 0229
+            # fork 13), and neither may receive the house's notifications.
+            .eq("is_active", True)
             .execute()
         )
         ids = [r["user_id"] for r in (access.data or []) if r.get("user_id")]

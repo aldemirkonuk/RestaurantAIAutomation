@@ -154,7 +154,13 @@ describe("AuthService#joinViaInvite — existing account branch", () => {
         name: "Owner",
         password,
       } as any),
-    ).resolves.toEqual({ accessToken: "a", refreshToken: "r" });
+    ).resolves.toEqual({
+      accessToken: "a",
+      refreshToken: "r",
+      // A verified account's membership is granted at once (ADR 0229 fork 13
+      // holds only a join whose address is unproven).
+      membershipHeld: false,
+    });
     expect((svc as any).generateTokens).toHaveBeenCalled();
   });
 });
