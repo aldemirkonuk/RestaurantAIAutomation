@@ -5,7 +5,7 @@
 -- writes is inside one transaction that is ROLLED BACK at the end, so it
 -- leaves nothing behind. It prints one row per test: id, ok, detail.
 -- Every "ok" must be true. Against the corpus WITHOUT
--- 20261130120000_the_door_record_is_append_only.sql, T1-T3, T5, T6 and T9 must
+-- 20261201120000_the_door_record_is_append_only.sql, T1-T3, T5, T6 and T9 must
 -- come out false (the control that shows the tests can fail); T10 and T11 then
 -- fail too, because the control's cascades already removed their rows.
 -- Measured 2026-09-25: with the migration 11/11; control 3/11; the migration
