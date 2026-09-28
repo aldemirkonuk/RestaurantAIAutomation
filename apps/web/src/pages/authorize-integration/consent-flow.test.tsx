@@ -126,3 +126,40 @@ describe('completion and return status', () => {
     expect(screen.queryByText(/connection is confirmed/)).toBeNull()
   })
 })
+
+// Founder, batch 4, 2026-09-19, ADR 0144's "Still open" bullet 3: `/authorize`
+// and `/authorize/complete` rendered on PublicShell, which "ignores the
+// house's design flag and the ADR 0133 public-door switch." This is that
+// regression, proven at the actual PAGE component (not just at AuthorizeShell
+// in isolation, which AuthorizeShell.test.tsx already covers) -- so this
+// stays proof the two are actually wired together.
+//
+// FAILING BEFORE THIS FIX: `CompleteIntegrationConsent.tsx` imported and
+// rendered `PublicShell` directly, calling neither `useMudavymDesign` nor
+// `usePublicDesign` anywhere -- the public-door switch had no effect on this
+// page at all. Reverting this file's import back to `PublicShell` (undoing
+// this change alone) reproduces that: the assertion below fails, because
+// nothing on the page would then produce a `.mdv-auth-shell` marker
+// regardless of the switch.
+vi.mock('../../lib/mudavym/publicDesign', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../lib/mudavym/publicDesign')>()
+  return { ...actual, usePublicDesign: () => true }
+})
+
+describe('CompleteIntegrationConsent honours the ADR 0133 public-door switch (founder, batch 4, 2026-09-19)', () => {
+  beforeEach(() => { vi.clearAllMocks(); vi.stubGlobal('crypto', webcrypto); sessionStorage.clear() })
+  afterEach(() => { vi.unstubAllGlobals(); window.history.replaceState(null, '', '/') })
+
+  it('with the public-door switch ON and no house context, the page renders through the signed-in-capable frame, not always-PublicShell', async () => {
+    render(<MemoryRouter><CompleteIntegrationConsent /></MemoryRouter>)
+    // No hash carries a sealed proof, so this lands on the page's error
+    // branch -- irrelevant to what is under test here, which is the SHELL
+    // wrapping either branch, not which branch renders.
+    expect(await screen.findByRole('alert')).toHaveTextContent('This tab does not hold')
+    // `.mdv-auth-shell` only exists on AuthorizeShell's own two ON branches
+    // (see AuthorizeShell.tsx) -- PublicShell's root never carries it. Before
+    // this fix, this page rendered PublicShell unconditionally and this
+    // assertion could never pass no matter how the switch was set.
+    expect(document.querySelector('.mudavym')).toHaveClass('mdv-auth-shell')
+  })
+})

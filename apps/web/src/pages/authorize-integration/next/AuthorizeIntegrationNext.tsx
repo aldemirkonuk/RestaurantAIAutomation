@@ -1,5 +1,5 @@
 import { useParams, useSearchParams } from 'react-router-dom'
-import { PublicShell } from '../../../components/mudavym/PublicShell'
+import { AuthorizeShell } from '../AuthorizeShell'
 import { HoldToApprove } from '../../../components/mudavym/HoldToApprove'
 import type { StatuteCitation } from '../../../services/api/integrations'
 import { useIntegrationConsent } from '../useIntegrationConsent'
@@ -23,10 +23,13 @@ export default function AuthorizeIntegrationNext() {
   const retention = doc?.retention
   // A single exit: the Cancel button below already returns to `returnPath`
   // (and disables itself mid-redirect); a second footer link doing the same
-  // thing was a duplicate exit (KL audit J12). `homeHref` stays -- it is
-  // PublicShell's own "leave the flow entirely" affordance, not this page's.
-  return <PublicShell title={entry ? `Connect ${entry.label}` : 'Permission to connect'}
-    eyebrow="A personal permission" voice={doc?.statements.personalAccount} measure="document" seal={false}
+  // thing was a duplicate exit (KL audit J12). `homeHref` stays -- it is the
+  // shell's own "leave the flow entirely" affordance, not this page's.
+  //
+  // `chrome="ambient"`: `PageGate` (App.tsx) already wraps this component in
+  // a `HouseHeader` whenever it is mounted at all -- see AuthorizeShell.tsx.
+  return <AuthorizeShell chrome="ambient" title={entry ? `Connect ${entry.label}` : 'Permission to connect'}
+    eyebrow="A personal permission" voice={doc?.statements.personalAccount} measure="document"
     homeHref="/profile">
     <div className="mdv-consent">
       {consent.error ? <div role="alert" className="mdv-alert"><p>{consent.error}</p><button className="mdv-btn" onClick={consent.reload}>Read again</button></div>
@@ -87,5 +90,5 @@ export default function AuthorizeIntegrationNext() {
           </>}
         </>}
     </div>
-  </PublicShell>
+  </AuthorizeShell>
 }

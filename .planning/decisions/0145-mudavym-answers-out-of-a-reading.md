@@ -1,6 +1,6 @@
 # 0145 — Mudavym answers out of a reading, and only the query that ran may mint one
 
-- **Status:** Locked on the founder's call, 2026-09-12 — the deferred half of [[0133-a-public-page-has-no-house-so-the-public-door-has-one-switch]] decision 2. Five forks named below are deliberately NOT defaulted and remain open. **[2026-09-17, ADR 0149 row 33: the launch floor is Codex's fifteen house readings after audit; standing questions are not in v1 and get their own record; the floating "Wine Agent" button (`WineAgentFab`) is removed, so `/ask` and the palette panel are the two doors — this answers build item 15.]**
+- **Status:** Locked on the founder's call, 2026-09-12 — the deferred half of [[0133-a-public-page-has-no-house-so-the-public-door-has-one-switch]] decision 2. Five forks named below are deliberately NOT defaulted and remain open. **[2026-09-17, ADR 0149 row 33: the launch floor is Codex's fifteen house readings after audit; standing questions are not in v1 and get their own record; the floating "Wine Agent" button (`WineAgentFab`) is removed, so `/ask` and the palette panel are the two doors — this answers build item 15.]** **[2026-09-19, founder batch 4, KL lane — a NEW rule not among this record's original 15 build tasks: price, vendor, open-order and sales readings are owner/manager only, server-enforced per reading. Built. The cell picker is confirmed as a future `/ask` direction, not yet specified in this repo. Two questions stay OPEN, to be settled with the `/ask` sketch: whether staff reach `/ask` at all, and what `/ask`'s date handling is. See "Amendment, 2026-09-19" below.]**
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Date:** 2026-09-12
 - **Keywords:** ask, /ask, Mudavym, assistant, reading, finding, provenance, hollow build, refusal shapes, seal, ask-ai, sommelier
@@ -350,3 +350,128 @@ build task 5 (the un-gated shelf endpoint), tasks 9, 11, 14 and 15, and the
 step has the Sonnet-5 call select up to 8 cell ids and write no prose of its
 own — narrower than Fork 1's "answer on Sonnet 5" — a question this amendment
 repeats rather than answers, since no row in ADR 0149 covers it.
+
+---
+
+## Amendment, 2026-09-19 — role-gated readings, and the still-open `/ask` questions (founder batch 4)
+
+Not one of this record's original 15 build tasks — a new rule the founder
+gave the KL lane in the same session as the `/authorize` frame fix (see
+[[0144-the-book-opens-on-evidence-and-three-pages-get-a-job]]'s matching
+2026-09-19 amendment). His words, on `/ask` roles: *"do not give money or
+sensitive incentives like sales etc to the staff, maybe we should exclude
+staff from this equation."*
+
+### Built: per-reading role enforcement
+
+Price, vendor, open-order and sales readings are **owner and manager only**,
+enforced on the SERVER, PER READING — not a blanket gate on the `/ask`
+endpoint, because most of the fifteen readings are not money- or
+sales-shaped and this rule does not touch them:
+
+- `ReadingDescriptor` (`reading.types.ts`) gained a required `allowedRoles`
+  field — required, never defaulted, the same discipline this record's own
+  `Provenance`/`ReadingOutcome` types already hold to (an omitted field
+  silently meaning "open to everyone" is exactly the unstated assumption
+  R8's statedness rule exists to forbid).
+- Five readings carry `OWNER_MANAGER_ONLY` (`reading-catalogue.ts`):
+  `receipts.verified_line` (price — the only reading carrying a price
+  basis), `vendors.active` (vendor), `orders.open` (open-order, the
+  founder's own word), `sales.check_activity` and `sales.consumption`
+  (sales). The other ten keep `ALL_ROLES`, unchanged from today.
+- `isReadingAllowedForRole(id, role)` mirrors `RolesGuard`'s own
+  admin-equivalence rule (`auth/guards/roles.guard.ts`) rather than
+  reimplementing role logic a second time: owner/manager/admin pass a
+  restricted reading, staff and a null/unrecognised role do not; every role
+  passes an open reading, exactly as before this change (a null role is
+  NOT newly blocked from the ten open readings — only the five restricted
+  ones are newly gated).
+- `BoundAskService.submit` checks this AFTER the question is classified to a
+  reading (by the page's own choice or the Haiku pick call) but BEFORE
+  `ReadingRunner` is ever constructed — zero DB reads, zero compose-model
+  cost for a refused ask, the same zero-cost-refusal shape this record's own
+  `ASK_LAUNCHED` gate uses. A refusal is minted by `notPermittedReply`
+  (`bound-reply.ts`), a new `BoundReply` member — `{ kind: "not_permitted",
+  reason: "owner_manager_only", readingId }` — deliberately its OWN kind
+  rather than folded into `ReadingOutcome`: a role refusal is never a fact
+  about the house's books (`not_in_your_books` / `could_not_read`) and never
+  a model-side failure (`could_not_answer`), the same reasoning this
+  record's Fork-adjacent `could_not_answer` split already established for
+  the model side. It never carries a `Finding` — the books were never
+  queried — and `ReadingFolioStore.finish` was extended to back-fill
+  `reading_id` from the refusal itself (the one non-`finding` outcome that
+  DOES name a real reading), so a naturally-worded question that got refused
+  still records WHICH reading it was refused for, not just that it was.
+  `GET /ask/catalogue` is filtered by the same predicate — a menu should not
+  list a dish the kitchen will refuse to serve — though the execution gate is
+  the one that actually matters, since the catalogue carries no house data.
+- **Tests, failing before / passing after (shown in this session, not
+  merely written):** `reading-catalogue.spec.ts` (the exhaustive
+  role-by-reading matrix, all fifteen readings), `bound-reply.spec.ts`
+  (`notPermittedReply` and `isBoundReply`'s new branch), and seven new cases
+  in `bound-ask.service.spec.ts` proving the gate at the actual dispatch
+  boundary — including that a role refusal costs zero DB reads (`getClient`,
+  a jest spy, is asserted never called) and that the ten open readings are
+  provably untouched. Disabling the gate
+  (`else if (false && !isReadingAllowedForRole(...))`) reproduces three
+  failing assertions before restoring it; all 82 tests across the four
+  touched files pass after. `apps/api-gateway`'s full `tsc --noEmit -p
+  tsconfig.spec.json` is clean.
+
+### Confirmed, recorded, not built: the cell picker
+
+Founder batch 4, his words: *"/ask = cell picker confirmed."* Recorded as
+his direction for whatever `/ask` sketch is drawn next. **Honestly: this
+session could not find a prior specification of "the cell picker" anywhere
+in this repository** — no `.planning/06-pages/ask.md` exists yet (per this
+record's own 2026-09-17 amendment), no sketch file, no code under that name,
+and no other ADR names it. It is recorded here as a confirmed FOUNDER
+INTENT for the page's eventual designer to pick up, not as a built or even
+fully specified feature — do not treat this bracket as describing a UI that
+exists. If the concept lived in a workflow scratchpad or a verbal pitch this
+session did not have access to, whoever draws the `/ask` sketch should
+recover its actual shape from the founder rather than reverse-engineering it
+from this paragraph.
+
+### Still open, deliberately not decided here: staff reach, and dates
+
+Two items the founder was explicit about deferring to the `/ask` sketch
+itself, recorded as OPEN rather than defaulted (CLAUDE.md §0.1) — **no new
+`OPEN-DECISIONS.md` row was filed for either, because this session's OD
+numbers (125-131) were pre-allocated to other lanes' topics and no lane may
+file outside its allocation this round; recording the fork here, at the
+decision it belongs to, is the substitute for this round only.** A future
+session should still give each its own OD row when numbers are next
+allocated, rather than leaving them findable only by reading this ADR.
+
+- **Whether staff reach `/ask` at all.** His words: *"do not give money or
+  sensitive incentives like sales etc to the staff, maybe we should exclude
+  staff from this equation."* His LEANING is to exclude staff from `/ask`
+  entirely, not only from the five restricted readings — but he named this
+  as something to confirm with the `/ask` page sketch, not a standing
+  decision. Nothing in this session narrows `/ask` access by role beyond the
+  five readings above; a staff caller can still reach `/ask` itself and every
+  one of the ten open readings today.
+- **`/ask`'s date handling.** His words: *"/ask dates = decide with the
+  `/ask` sketch."* `ReadingArgs.from`/`to` (`reading.types.ts`) exist and
+  several readings already declare `window: true`, but how a person actually
+  picks or types a date range on the page itself is undecided and unbuilt.
+
+**Founder question this session could not settle, with options and a
+recommendation, for whoever runs the `/ask` sketch session:** given the
+founder's stated leaning (exclude staff from `/ask` outright) sits ONE STEP
+past what is actually built (staff excluded only from five readings), should
+an interim, pre-sketch state (a) leave `/ask` reachable by staff for the ten
+open readings, as built here — cheapest, matches his literal instruction
+("money or sensitive... readings"), but staff can still use the page in the
+meantime; or (b) gate the whole `/ask` route to owner/manager now, ahead of
+the sketch, matching his stated leaning more closely but pre-empting a
+question he explicitly asked to answer later and potentially reversing a
+UI decision (staff `/ask` access) before its sketch exists? **Recommendation:
+(a)** — the built state is the literal, narrower thing he confirmed
+("readings... owner and manager only"); his broader leaning is explicitly
+provisional ("to be confirmed with the /ask page sketch"), and `/ask` itself
+is not yet reachable by anyone (`ASK_LAUNCHED` unset, no page, no route) so
+(a) vs (b) has no live effect until the page ships — the sketch session
+should decide it with the page in front of the founder, not this one
+pre-empting it from a text amendment.

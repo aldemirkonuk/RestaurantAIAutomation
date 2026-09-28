@@ -133,6 +133,7 @@ not restated.
 **Files:**
 - `apps/web/src/pages/authorize-integration/next/AuthorizeIntegrationNext.tsx` — the consent card
 - `apps/web/src/pages/authorize-integration/CompleteIntegrationConsent.tsx` — the return leg
+- `apps/web/src/pages/authorize-integration/AuthorizeShell.tsx` — [ADDED 2026-09-19] the signed-in-capable frame both of the above render through, replacing `PublicShell`; see the protocol note below
 - `apps/web/src/pages/authorize-integration/consent-browser.ts` — the tab-held proof (`sessionStorage`, never the delivery secret)
 - `apps/api-gateway/src/integrations/integration-consent.service.ts`, `integrations-oauth.service.ts`, `integrations-oauth.controller.ts`
 - `supabase/migrations/20260913191200_integration_consent_receipts.sql`, `20260913191300_mudavym_design_flag_authorize.sql`
@@ -143,7 +144,7 @@ not restated.
 3. **Completion** — `POST /integrations/oauth/complete` (also `@Public()`, by the same necessity: the round trip can outlast a session) requires BOTH the sealing tab's proof and the delivery secret from step 2, claimed atomically. Either alone poisons the state (KL audit D1) — closing the case where a dishonest sealer forwards the bare provider URL to someone else and later completes with only her own proof, which would otherwise bind a stranger's provider account into her house.
 4. **Return** — `IntegrationReturnNotice` reads `integration_status`/`integration_reason` on the return path (default `/profile`, sanitised same-site) for both the manager and non-manager branch.
 
-**Still open** (none settled by ADR 0149's rows; full list in ADR 0144's amendment): the design's words bind to "the browser that sealed it", the build binds to the TAB — a second tab of the same browser is refused, which is a narrower promise than stated; `/authorize` and `/authorize/complete` render on `PublicShell`, built for signed-OUT pages; consent copy still says "WineOps" (a repo-wide rename question, not scoped here); `integration_consent_receipts` cascades with the user/house, so a consent record cannot outlive the account.
+**Still open** (none settled by ADR 0149's rows; full list in ADR 0144's amendment): ~~the design's words bind to "the browser that sealed it", the build binds to the TAB — a second tab of the same browser is refused, which is a narrower promise than stated~~ **[CONFIRMED 2026-09-19, founder batch 4: "tab scope OK" — no longer open]**; ~~`/authorize` and `/authorize/complete` render on `PublicShell`, built for signed-OUT pages~~ **[BUILT 2026-09-19: both now render on `AuthorizeShell` (`apps/web/src/pages/authorize-integration/AuthorizeShell.tsx`), which honours the per-house design flag and the ADR 0133 public-door switch — see ADR 0144's 2026-09-19 amendment]**; consent copy still says "WineOps" (a repo-wide rename question, not scoped here, still open); ~~`integration_consent_receipts` cascades with the user/house, so a consent record cannot outlive the account~~ **[CONFIRMED 2026-09-19, founder batch 4: "delete with the account" — the existing cascade is correct, no longer open]**.
 
 ## 15. The reading engine and `/ask` — page owed
 
