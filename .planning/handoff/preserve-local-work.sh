@@ -33,8 +33,13 @@ MAX_BYTES=${PRESERVE_MAX_BYTES:-$((50 * 1024 * 1024))}   # override only for its
 saved=0; clean=0; refused=0; missing=0
 report=""
 
+trees=$(git -C "$root" worktree list --porcelain | sed -n 's/^worktree //p')
+total=$(printf '%s\n' "$trees" | grep -c .)
+echo "Checking $total tree(s) — the clone and each git worktree. Progress below; the summary prints at the end." >&2
+i=0
 while IFS= read -r wt; do
   [[ -n "$wt" ]] || continue
+  i=$((i + 1)); printf '  [%d/%d] %s\n' "$i" "$total" "$wt" >&2
   if [[ ! -d "$wt" ]]; then
     missing=$((missing + 1)); report+="MISSING   $wt (listed by git worktree, not on disk — 'git worktree prune' clears it)"$'\n'; continue
   fi
@@ -45,9 +50,14 @@ while IFS= read -r wt; do
 
   head=$(git -C "$wt" rev-parse HEAD)
   branch=$(git -C "$wt" symbolic-ref --short -q HEAD || echo "detached")
+  # Start from a COPY of the tree's own index: its stat cache lets `add -A` re-read
+  # only the files that changed (a fresh read-tree index made git re-hash every file
+  # in every tree, which looked like a hang on a large clone). The copy is ours; the
+  # real index is only read. git replaces an index by atomic rename, so the copy is
+  # consistent even while another session is writing.
   idx=$(mktemp)
-  rm -f "$idx"
-  GIT_INDEX_FILE="$idx" git -C "$wt" read-tree HEAD
+  src_idx="$(git -C "$wt" rev-parse --absolute-git-dir)/index"
+  if [[ -f "$src_idx" ]]; then cp "$src_idx" "$idx"; else rm -f "$idx"; GIT_INDEX_FILE="$idx" git -C "$wt" read-tree HEAD; fi
   GIT_INDEX_FILE="$idx" git -C "$wt" add -A -- . ':(exclude).claude/worktrees' 2>/dev/null
   tree=$(GIT_INDEX_FILE="$idx" git -C "$wt" write-tree)
   rm -f "$idx"
@@ -88,7 +98,7 @@ Unreviewed. Classify against origin/main before using any of it."
   else
     refused=$((refused + 1)); report+="FAILED    $wt — push of $ref failed (network/auth?) — nothing lost, re-run"$'\n'
   fi
-done < <(git -C "$root" worktree list --porcelain | sed -n 's/^worktree //p')
+done <<<"$trees"
 
 printf '%s' "$report"
 if [[ "$MODE" == "--push" ]]; then

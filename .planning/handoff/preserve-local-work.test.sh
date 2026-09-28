@@ -86,5 +86,9 @@ grep -q "REFUSED   $T/wt-big — files over" <<<"$out" && grep -q "blob.bin" <<<
   && ! git --git-dir="$R" for-each-ref --format='%(refname:short)' refs/heads/wip | grep -q '/wt-big$' \
   && ok "file over the limit refused, tree not pushed" || { no "size refusal"; echo "$out"; }
 
+# progress goes to stderr as each tree is visited (no silent wait on a large clone)
+err=$(cd "$T/clone" && bash "$S" 2>&1 >/dev/null)
+grep -q "Checking .* tree(s)" <<<"$err" && grep -q "\[1/" <<<"$err" && ok "progress printed per tree" || { no "progress"; echo "$err"; }
+
 echo "== $pass passed, $fail failed"
 [[ $fail -eq 0 ]]
