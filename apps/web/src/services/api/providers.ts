@@ -528,14 +528,14 @@ export async function updateProviderLocation(
 
 /**
  * What the gateway says after a branch is removed. Removing the primary hands
- * the mark to the oldest remaining branch (`promotedId`); `promotionFailed`
- * means the branch is gone but that second write did not land, so no branch
- * is primary. An id that is not this vendor's branch is a 404, never success.
+ * the mark to the oldest remaining branch (`promotedId`), in the same
+ * transaction as the delete: a hand-off that fails is an error and nothing is
+ * removed (audit of #484, 2026-09-28). An id that is not this vendor's branch
+ * is a 404, never success.
  */
 export interface DeletedProviderLocation {
   success: true
   promotedId: string | null
-  promotionFailed: boolean
 }
 
 export async function deleteProviderLocation(

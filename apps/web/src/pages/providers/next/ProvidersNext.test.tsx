@@ -111,7 +111,6 @@ vi.mock('./useVendorBranches', async () => {
       busy: null,
       saveError: null,
       notice: null,
-      warning: null,
       add: vi.fn(),
       update: vi.fn(),
       makePrimary: vi.fn(),

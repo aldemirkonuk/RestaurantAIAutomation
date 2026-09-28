@@ -344,6 +344,41 @@ function makeWorld() {
     return q;
   };
 
+  // The two branch functions of migration a_vendor_has_one_primary_branch,
+  // modelled by their WHERE clauses: every statement in them is filtered on
+  // p_restaurant_id AND p_provider_id, so a foreign id matches nothing.
+  const rpc = (name: string, args: Record<string, string>) => {
+    queried.push(`rpc:${name}`);
+    writes.push({ table: "rpc", op: name, payload: args });
+    const rows = tables.provider_locations;
+    const target = rows.find(
+      (r) =>
+        r.id === args.p_location_id &&
+        r.provider_id === args.p_provider_id &&
+        r.restaurant_id === args.p_restaurant_id,
+    );
+    if (name === "provider_location_make_primary") {
+      if (target) {
+        for (const r of rows) {
+          if (
+            r.provider_id === args.p_provider_id &&
+            r.restaurant_id === args.p_restaurant_id
+          )
+            r.is_primary = r === target;
+        }
+      }
+      return Promise.resolve({ data: Boolean(target), error: null });
+    }
+    if (name === "provider_location_remove") {
+      if (target) tables.provider_locations = rows.filter((r) => r !== target);
+      return Promise.resolve({
+        data: { removed: Boolean(target), promotedId: null },
+        error: null,
+      });
+    }
+    throw new Error(`fake has no function ${name}`);
+  };
+
   /** House B's rows, exactly as seeded. */
   const houseB = (t: Record<string, Row[]>) =>
     JSON.stringify(
@@ -363,7 +398,7 @@ function makeWorld() {
 
   const controller = new ProvidersController(
     new ProvidersService(
-      { supabase: { from } } as never,
+      { supabase: { from, rpc } } as never,
       { createEvent: async () => ({}), track: async () => undefined } as never,
       forbidden("ProcurementService"),
     ),

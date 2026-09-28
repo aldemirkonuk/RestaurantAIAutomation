@@ -1272,30 +1272,43 @@ export class ProvidersService {
   }
 
   /**
-   * Clear the primary mark on every OTHER branch of this vendor in this house.
+   * Move the primary mark to one branch of this vendor in this house, in ONE
+   * transaction (`provider_location_make_primary`, migration
+   * a_vendor_has_one_primary_branch). It takes a per-vendor-per-house advisory
+   * lock, demotes the others and marks this one, so two concurrent promotions
+   * cannot both land and leave two primaries; a partial unique index on
+   * `(provider_id, restaurant_id) WHERE is_primary` refuses two primaries
+   * whatever the writer. [Audit of #484 at d44056b42, R4: this used to be two
+   * PostgREST calls — demote, then set — each its own transaction.]
    *
-   * Runs before the write that sets the new primary, and its error is read:
-   * the old code ignored it, so a failed demotion left two primaries and the
-   * sheet reported success.
+   * A 404 when the branch is not this vendor's in this house (it was removed
+   * in the meantime): the function answers false and writes nothing.
    */
-  private async demoteOtherPrimaries(
+  private async makeLocationPrimary(
     providerId: string,
     restaurantId: string,
-    exceptId?: string,
-  ) {
-    let q = this.databaseService.supabase
-      .from("provider_locations")
-      .update({ is_primary: false })
-      .eq("provider_id", providerId)
-      .eq("restaurant_id", restaurantId);
-    if (exceptId) q = q.neq("id", exceptId);
-    const { error } = await q;
+    locationId: string,
+  ): Promise<void> {
+    const { data, error } = await this.databaseService.supabase.rpc(
+      "provider_location_make_primary",
+      {
+        p_restaurant_id: restaurantId,
+        p_provider_id: providerId,
+        p_location_id: locationId,
+      },
+    );
     if (error) {
-      this.logger.error("Failed to clear the other primary branches", {
+      this.logger.error("Failed to move the primary branch mark", {
         providerId,
+        locationId,
         error: error.message,
       });
       throw error;
+    }
+    if (data !== true) {
+      throw new NotFoundException(
+        `No location with id ${locationId} belongs to this vendor.`,
+      );
     }
   }
 
@@ -1307,10 +1320,9 @@ export class ProvidersService {
     // The row is stamped with the caller's house either way, but without this
     // a house could hang a location off ANOTHER house's provider id.
     await this.getProvider(providerId, restaurantId);
-    if (dto.isPrimary) {
-      await this.demoteOtherPrimaries(providerId, restaurantId);
-    }
 
+    // Inserted as NOT primary, always: the mark only ever moves through
+    // `makeLocationPrimary`, the one transaction that demotes the others.
     const { data, error } = await this.databaseService.supabase
       .from("provider_locations")
       .insert({
@@ -1319,7 +1331,7 @@ export class ProvidersService {
         name: dto.name,
         type: dto.type || "office",
         address: dto.address || null,
-        is_primary: dto.isPrimary ?? false,
+        is_primary: false,
         // Only stamp geocode metadata when a real pair arrived. The DB CHECK
         // rejects half a coordinate, so sending one alone fails loudly rather
         // than storing an unplottable row.
@@ -1343,7 +1355,33 @@ export class ProvidersService {
       throw error;
     }
 
-    return this.mapLocationRow(data as any);
+    const row = data as any;
+    if (!dto.isPrimary) return this.mapLocationRow(row);
+
+    try {
+      await this.makeLocationPrimary(providerId, restaurantId, row.id);
+    } catch (moveError) {
+      // The mark did not move (one transaction), so the old primary stands.
+      // Take the new branch back out, so the person's "add it as primary"
+      // either happened whole or not at all.
+      const { error: undoError } = await this.databaseService.supabase
+        .from("provider_locations")
+        .delete()
+        .eq("id", row.id)
+        .eq("provider_id", providerId)
+        .eq("restaurant_id", restaurantId);
+      if (undoError) {
+        this.logger.error(
+          "A branch added as primary could not be made primary, and could not be taken back out",
+          { providerId, locationId: row.id, error: undoError.message },
+        );
+        throw new ServiceUnavailableException(
+          `The branch "${row.name}" was added but could not be made primary, and could not be taken back out; the previous primary branch is unchanged.`,
+        );
+      }
+      throw moveError;
+    }
+    return { ...this.mapLocationRow(row), isPrimary: true };
   }
 
   async updateProviderLocation(
@@ -1378,8 +1416,10 @@ export class ProvidersService {
       );
     }
 
-    if (dto.isPrimary) {
-      await this.demoteOtherPrimaries(providerId, restaurantId, locationId);
+    // Marking primary is its own transaction (see `makeLocationPrimary`), run
+    // first so that a refused move writes nothing at all.
+    if (dto.isPrimary === true) {
+      await this.makeLocationPrimary(providerId, restaurantId, locationId);
     }
 
     const hasPair = dto.latitude !== undefined && dto.longitude !== undefined;
@@ -1387,39 +1427,53 @@ export class ProvidersService {
     const addressMoved =
       newAddress !== undefined &&
       newAddress !== ((found as { address?: string | null }).address ?? null);
-    const { data, error } = await this.databaseService.supabase
-      .from("provider_locations")
-      .update({
-        ...(dto.name !== undefined && { name: dto.name }),
-        ...(dto.type !== undefined && { type: dto.type }),
-        ...(newAddress !== undefined && { address: newAddress }),
-        ...(dto.isPrimary !== undefined && { is_primary: dto.isPrimary }),
-        ...(hasPair
-          ? {
-              latitude: dto.latitude,
-              longitude: dto.longitude,
-              geocoded_at: new Date().toISOString(),
-              geocode_source: "google_places",
+    const patch: Record<string, unknown> = {
+      ...(dto.name !== undefined && { name: dto.name }),
+      ...(dto.type !== undefined && { type: dto.type }),
+      ...(newAddress !== undefined && { address: newAddress }),
+      // Only an explicit UNmark is written here; a mark went through the
+      // transaction above.
+      ...(dto.isPrimary === false && { is_primary: false }),
+      ...(hasPair
+        ? {
+            latitude: dto.latitude,
+            longitude: dto.longitude,
+            geocoded_at: new Date().toISOString(),
+            geocode_source: "google_places",
+          }
+        : addressMoved
+          ? // A different address with no point of its own. The old point
+            // was resolved for the OLD address; keeping it would pin this
+            // branch where it no longer is and still say Google placed it
+            // there. The same address sent again (the legacy sheet resends
+            // every field) keeps its point.
+            {
+              latitude: null,
+              longitude: null,
+              geocoded_at: null,
+              geocode_source: null,
             }
-          : addressMoved
-            ? // A different address with no point of its own. The old point
-              // was resolved for the OLD address; keeping it would pin this
-              // branch where it no longer is and still say Google placed it
-              // there. The same address sent again (the legacy sheet resends
-              // every field) keeps its point.
-              {
-                latitude: null,
-                longitude: null,
-                geocoded_at: null,
-                geocode_source: null,
-              }
-            : {}),
-      })
-      .eq("id", locationId)
-      .eq("provider_id", providerId)
-      .eq("restaurant_id", restaurantId)
-      .select("*")
-      .maybeSingle();
+          : {}),
+    };
+    // A PATCH that only marked the branch primary has nothing left to write;
+    // it reads the row back instead of sending an empty update.
+    const { data, error } =
+      Object.keys(patch).length > 0
+        ? await this.databaseService.supabase
+            .from("provider_locations")
+            .update(patch)
+            .eq("id", locationId)
+            .eq("provider_id", providerId)
+            .eq("restaurant_id", restaurantId)
+            .select("*")
+            .maybeSingle()
+        : await this.databaseService.supabase
+            .from("provider_locations")
+            .select("*")
+            .eq("id", locationId)
+            .eq("provider_id", providerId)
+            .eq("restaurant_id", restaurantId)
+            .maybeSingle();
 
     if (error) {
       this.logger.error("Failed to update provider location", {
@@ -1447,22 +1501,28 @@ export class ProvidersService {
    * Removing the primary hands the mark to the oldest remaining branch — the
    * rule the legacy sheet applied in its own state before syncing
    * (`EditProviderModal.tsx`, `removeLocation`), moved here so there is one
-   * place that decides it. If that second write fails the branch is still
-   * gone and `promotionFailed` says the mark went nowhere.
+   * place that decides it (founder item 57). Delete and hand-off are ONE
+   * transaction (`provider_location_remove`, under the same lock as
+   * `makeLocationPrimary`): a hand-off that fails rolls the delete back, so a
+   * vendor is never left with branches and no primary, and a concurrent
+   * create-as-primary cannot land between the read and the promote.
+   * [Audit of #484 at d44056b42, R4: these were three PostgREST calls, and a
+   * failed promote was reported as `promotionFailed` after the fact.]
    */
   async deleteProviderLocation(
     providerId: string,
     locationId: string,
     restaurantId: string,
-  ): Promise<{ promotedId: string | null; promotionFailed: boolean }> {
+  ): Promise<{ promotedId: string | null }> {
     await this.getProvider(providerId, restaurantId);
-    const { data, error } = await this.databaseService.supabase
-      .from("provider_locations")
-      .delete()
-      .eq("id", locationId)
-      .eq("provider_id", providerId)
-      .eq("restaurant_id", restaurantId)
-      .select("id, is_primary");
+    const { data, error } = await this.databaseService.supabase.rpc(
+      "provider_location_remove",
+      {
+        p_restaurant_id: restaurantId,
+        p_provider_id: providerId,
+        p_location_id: locationId,
+      },
+    );
 
     if (error) {
       this.logger.error("Failed to delete provider location", {
@@ -1471,52 +1531,13 @@ export class ProvidersService {
       });
       throw error;
     }
-    const removed = (data ?? []) as { id: string; is_primary: boolean }[];
-    if (removed.length === 0) {
+    const out = (data ?? {}) as { removed?: boolean; promotedId?: string | null };
+    if (out.removed !== true) {
       throw new NotFoundException(
         `No location with id ${locationId} belongs to this vendor.`,
       );
     }
-
-    // Only one branch holds the mark at a time (every primary write demotes
-    // the others first), so removing a branch that did not hold it changes
-    // nothing about which one does.
-    if (!removed[0].is_primary) {
-      return { promotedId: null, promotionFailed: false };
-    }
-
-    const { data: next, error: nextError } = await this.databaseService.supabase
-      .from("provider_locations")
-      .select("id")
-      .eq("provider_id", providerId)
-      .eq("restaurant_id", restaurantId)
-      .order("created_at")
-      .limit(1)
-      .maybeSingle();
-    if (nextError) {
-      this.logger.warn("Branch removed; could not read what remains", {
-        providerId,
-        error: nextError.message,
-      });
-      return { promotedId: null, promotionFailed: true };
-    }
-    if (!next) return { promotedId: null, promotionFailed: false };
-
-    const nextId = (next as { id: string }).id;
-    const { error: promoteError } = await this.databaseService.supabase
-      .from("provider_locations")
-      .update({ is_primary: true })
-      .eq("id", nextId)
-      .eq("provider_id", providerId)
-      .eq("restaurant_id", restaurantId);
-    if (promoteError) {
-      this.logger.warn("Branch removed; the next branch was not made primary", {
-        providerId,
-        error: promoteError.message,
-      });
-      return { promotedId: null, promotionFailed: true };
-    }
-    return { promotedId: nextId, promotionFailed: false };
+    return { promotedId: out.promotedId ?? null };
   }
 
   private mapLocationRow(row: Record<string, any>) {

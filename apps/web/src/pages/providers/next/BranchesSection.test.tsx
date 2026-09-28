@@ -273,7 +273,7 @@ describe('BranchesSection — writing', () => {
     api.get
       .mockResolvedValueOnce({ data: [HQ, DEPOT] })
       .mockResolvedValueOnce({ data: [{ ...DEPOT, isPrimary: true }] });
-    api.delete.mockResolvedValue({ data: { success: true, promotedId: 'depot', promotionFailed: false } });
+    api.delete.mockResolvedValue({ data: { success: true, promotedId: 'depot' } });
     renderSection();
     fireEvent.click(await screen.findByRole('button', { name: 'Remove Head office' }));
     expect(api.delete).not.toHaveBeenCalled();
@@ -290,14 +290,20 @@ describe('BranchesSection — writing', () => {
     await waitFor(() => expect(screen.queryByText('Head office')).toBeNull());
   });
 
-  it('a removal whose hand-off failed says no branch is primary now', async () => {
-    api.get.mockResolvedValueOnce({ data: [HQ, DEPOT] }).mockResolvedValueOnce({ data: [DEPOT] });
-    api.delete.mockResolvedValue({ data: { success: true, promotedId: null, promotionFailed: true } });
+  // Delete and hand-off are one transaction on the gateway (audit of #484):
+  // a failed hand-off refuses the whole removal, so the branch is still there.
+  it('a refused removal keeps the branch and says nothing changed', async () => {
+    api.get.mockResolvedValue({ data: [HQ, DEPOT] });
+    api.delete.mockRejectedValue({ response: { data: { message: 'provider_location_remove refused' } } });
     renderSection();
     fireEvent.click(await screen.findByRole('button', { name: 'Remove Head office' }));
     fireEvent.click(screen.getByRole('button', { name: 'Yes, remove Head office' }));
     const alert = await screen.findByRole('alert');
-    expect(alert).toHaveTextContent(/no other branch could be made primary, so none is marked now/);
+    expect(alert).toHaveTextContent(
+      'That was not saved, so the book still holds what it held: provider_location_remove refused',
+    );
+    expect(api.get).toHaveBeenCalledTimes(1);
+    expect(screen.getByText('Head office')).toBeInTheDocument();
   });
 
   it('a refused write says the book still holds what it held, and keeps the list', async () => {

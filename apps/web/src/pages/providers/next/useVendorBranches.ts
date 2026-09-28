@@ -59,8 +59,6 @@ export interface VendorBranchesState {
   saveError: string | null;
   /** A fact the last write produced that the person did not ask for. */
   notice: string | null;
-  /** A write that landed but whose follow-on did not. */
-  warning: string | null;
   add: (draft: BranchDraft) => Promise<boolean>;
   update: (id: string, draft: BranchDraft) => Promise<boolean>;
   makePrimary: (id: string) => Promise<boolean>;
@@ -110,7 +108,6 @@ export function useVendorBranches(providerId: string | null): VendorBranchesStat
   const [busy, setBusy] = useState<BranchBusy>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [warning, setWarning] = useState<string | null>(null);
   const [nonce, setNonce] = useState(0);
   const alive = useRef(true);
 
@@ -157,18 +154,16 @@ export function useVendorBranches(providerId: string | null): VendorBranchesStat
   const write = useCallback(
     async (
       target: BranchBusy,
-      run: () => Promise<{ notice?: string | null; warning?: string | null } | void>,
+      run: () => Promise<{ notice?: string | null } | void>,
     ): Promise<boolean> => {
       if (!providerId) return false;
       setBusy(target);
       setSaveError(null);
       setNotice(null);
-      setWarning(null);
       try {
         const said = await run();
         if (!alive.current) return true;
         if (said && said.notice) setNotice(said.notice);
-        if (said && said.warning) setWarning(said.warning);
         reload();
         return true;
       } catch (e) {
@@ -219,13 +214,9 @@ export function useVendorBranches(providerId: string | null): VendorBranchesStat
   const remove = useCallback(
     (id: string) =>
       write(id, async () => {
+        // Delete and hand-off are one transaction on the gateway: either the
+        // branch is gone and the mark moved, or this throws and nothing did.
         const out = await deleteProviderLocation(providerId as string, id);
-        if (out?.promotionFailed) {
-          return {
-            warning:
-              'The branch was removed, but no other branch could be made primary, so none is marked now. Choose one below.',
-          };
-        }
         if (out?.promotedId) {
           const next = branches?.find((b) => b.id === out.promotedId);
           return {
@@ -244,7 +235,6 @@ export function useVendorBranches(providerId: string | null): VendorBranchesStat
     busy,
     saveError,
     notice,
-    warning,
     add,
     update,
     makePrimary,

@@ -361,7 +361,6 @@ export interface BranchesListProps {
   busy: BranchBusy;
   saveError: string | null;
   notice: string | null;
-  warning: string | null;
   onAdd: (draft: BranchDraft) => Promise<boolean>;
   onUpdate: (id: string, draft: BranchDraft) => Promise<boolean>;
   onMakePrimary: (id: string) => void;
@@ -381,7 +380,6 @@ export function BranchesList({
   busy,
   saveError,
   notice,
-  warning,
   onAdd,
   onUpdate,
   onMakePrimary,
@@ -524,12 +522,6 @@ export function BranchesList({
         </p>
       )}
 
-      {warning && (
-        <p role="alert" style={REFUSAL}>
-          {warning}
-        </p>
-      )}
-
       {saveError && (
         <p role="alert" style={REFUSAL}>
           That was not saved, so the book still holds what it held: {saveError}
@@ -556,7 +548,6 @@ export function BranchesSection({
       busy={s.busy}
       saveError={s.saveError}
       notice={s.notice}
-      warning={s.warning}
       onAdd={s.add}
       onUpdate={s.update}
       onMakePrimary={(id) => void s.makePrimary(id)}
