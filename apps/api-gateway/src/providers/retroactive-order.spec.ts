@@ -76,6 +76,16 @@ function makeDb(opts: {
                   : opts.ownedProvider,
               error: null,
             };
+          // createOrder's own vendor-ownership probe (`select("id")`) answers
+          // the same way `getProvider` does: the same row, or none.
+          if (lastSelect.trim() === "id" && shape === "one")
+            return {
+              data:
+                opts.ownedProvider === undefined
+                  ? { id: PROVIDER }
+                  : opts.ownedProvider,
+              error: null,
+            };
           return { data: null, count: opts.providerCount ?? 1, error: null };
         }
         if (table === "restaurant_inventory") {

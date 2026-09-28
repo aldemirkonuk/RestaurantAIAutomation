@@ -43,6 +43,7 @@ import {
   type RaiseOutcome,
 } from "./delivery-item-to-name";
 import { assertInventoryBelongsToRestaurant } from "../common/tenant/assert-inventory-belongs-to-restaurant";
+import { assertProviderBelongsToRestaurant } from "../common/tenant/assert-provider-belongs-to-restaurant";
 import { EventType, SourcePage } from "../events/dto/event.dto";
 import {
   CreateOrderDto,
@@ -923,6 +924,21 @@ export class ProcurementService {
         redirect: "/providers",
       });
     }
+
+    // THE VENDOR IS THIS HOUSE'S, BEFORE THE ORDER EXISTS.
+    //
+    // `dto.providerId` is the caller's choice exactly as `dto.inventoryId` is,
+    // and it reaches further: the vendor draft, the deal confirmation mailed to
+    // `providers.contact_email`, and the price register all read the order's
+    // vendor. Checked AFTER the no-vendors guard so a house with none still gets
+    // the "add a vendor first" answer rather than a refusal naming an id.
+    await assertProviderBelongsToRestaurant(
+      this.databaseService.supabase,
+      restaurantId,
+      dto.providerId,
+      "createOrder",
+      this.logger,
+    );
 
     // Units first: everything downstream — bottles booked, total cost, the line
     // row, the pack size the receiving door will back-derive — is wrong if this
@@ -8674,6 +8690,7 @@ export class ProcurementService {
     await this.databaseService.supabase
       .from("procurement_conversations")
       .update({ status: "DISCARDED", scheduled_send_at: null })
+      .eq("restaurant_id", restaurantId)
       .eq("order_id", orderId)
       .in("status", ["PENDING_APPROVAL", "AUTO_SEND_SCHEDULED"]);
 
@@ -8916,12 +8933,17 @@ export class ProcurementService {
 
   /** Mark the latest deal proposal on an order resolved so the modal stops showing it. */
   private async resolveLatestDealProposal(
+    restaurantId: string,
     orderId: string,
     resolution: string,
   ): Promise<void> {
+    // House-scoped like `dealMessageFor`, which this must agree with row for
+    // row: without the filter the two reads saw different candidate sets, and
+    // this one could mark another house's message on the same order id.
     const { data: rows } = await this.databaseService.supabase
       .from("procurement_conversations")
       .select("id, conversation_context")
+      .eq("restaurant_id", restaurantId)
       .eq("order_id", orderId)
       .eq("direction", "inbound")
       .order("created_at", { ascending: false })
@@ -8936,7 +8958,8 @@ export class ProcurementService {
     await this.databaseService.supabase
       .from("procurement_conversations")
       .update({ conversation_context: ctx })
-      .eq("id", (row as any).id);
+      .eq("id", (row as any).id)
+      .eq("restaurant_id", restaurantId);
   }
 
   /** The order a deal confirmation commits, read the same way for the mint and the act. */
@@ -9543,10 +9566,11 @@ export class ProcurementService {
     }
 
     // Resolve the proposal + clear any waiting drafts; the deal is done.
-    await this.resolveLatestDealProposal(orderId, "confirmed");
+    await this.resolveLatestDealProposal(restaurantId, orderId, "confirmed");
     await this.databaseService.supabase
       .from("procurement_conversations")
       .update({ status: "DISCARDED", scheduled_send_at: null })
+      .eq("restaurant_id", restaurantId)
       .eq("order_id", orderId)
       .in("status", ["PENDING_APPROVAL", "AUTO_SEND_SCHEDULED"]);
 
@@ -9581,7 +9605,7 @@ export class ProcurementService {
     const requestsClosed = this.vendorSendRequests
       ? await this.vendorSendRequests.closeWaitingDeal(restaurantId, orderId, "deal_dismissed")
       : 0;
-    await this.resolveLatestDealProposal(orderId, "dismissed");
+    await this.resolveLatestDealProposal(restaurantId, orderId, "dismissed");
     this.emitConvUpdate(restaurantId, orderId, null, orderId);
     return { dismissed: true, requestsClosed };
   }

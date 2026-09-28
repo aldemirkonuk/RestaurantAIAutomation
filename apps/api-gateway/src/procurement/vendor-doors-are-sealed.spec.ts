@@ -445,3 +445,58 @@ describe("a waiting deal request may be declined or withdrawn, exactly like a le
     await expect(t.service.withdrawDealRequest(HOUSE, ORDER, STAFF)).rejects.toMatchObject({ status: 404 });
   });
 });
+
+describe("a deal proposal is resolved only inside the caller's house (#482 merge-audit follow-up)", () => {
+  // `resolveLatestDealProposal` read and wrote `procurement_conversations` by
+  // order id alone, while `dealMessageFor` — which must pick the same row —
+  // filtered by house too. A row carrying the same order id under another
+  // house must be neither marked resolved nor discarded.
+  const FOREIGN = "house-2";
+  const proposal = (id: string, house: string, created_at: string) => ({
+    id,
+    order_id: ORDER,
+    restaurant_id: house,
+    direction: "inbound",
+    created_at,
+    conversation_context: { deal_proposal: { finalPrice: 190, quantity: 6 } },
+  });
+
+  it("dismissDeal marks this house's proposal and leaves another house's untouched", async () => {
+    const t = build();
+    // The foreign row is NEWER, so an unscoped read would pick it first.
+    t.db.tables.procurement_conversations.push(
+      proposal("conv-own", HOUSE, "2026-09-20T10:00:00Z"),
+      proposal("conv-foreign", FOREIGN, "2026-09-21T10:00:00Z"),
+    );
+    await t.service.dismissDeal(HOUSE, ORDER);
+    const byId = (id: string) => t.db.tables.procurement_conversations.find((r) => r.id === id);
+    expect(byId("conv-own")?.conversation_context).toMatchObject({ deal_resolution: "dismissed" });
+    expect(byId("conv-foreign")?.conversation_context?.deal_resolved_at).toBeUndefined();
+    expect(byId("conv-foreign")?.conversation_context?.deal_resolution).toBeUndefined();
+  });
+
+  it("dismissDeal resolves nothing when the only proposal on the order id is another house's", async () => {
+    const t = build();
+    t.db.tables.procurement_conversations.push(proposal("conv-foreign", FOREIGN, "2026-09-21T10:00:00Z"));
+    await t.service.dismissDeal(HOUSE, ORDER);
+    expect(t.db.tables.procurement_conversations[0].conversation_context?.deal_resolved_at).toBeUndefined();
+  });
+
+  it("confirmDeal resolves and discards only this house's rows", async () => {
+    const t = build();
+    const terms = { finalPrice: 190, quantity: 6, sendConfirmation: false };
+    t.db.tables.procurement_conversations.push(
+      proposal("conv-own", HOUSE, "2026-09-20T10:00:00Z"),
+      proposal("conv-foreign", FOREIGN, "2026-09-21T10:00:00Z"),
+      { id: "draft-own", order_id: ORDER, restaurant_id: HOUSE, direction: "outbound", status: "PENDING_APPROVAL", created_at: "2026-09-20T11:00:00Z" },
+      { id: "draft-foreign", order_id: ORDER, restaurant_id: FOREIGN, direction: "outbound", status: "PENDING_APPROVAL", created_at: "2026-09-21T11:00:00Z" },
+    );
+    const { challenge } = await t.service.issueConfirmDealSeal(HOUSE, ORDER, MANAGER, terms);
+    await t.service.confirmDeal(HOUSE, ORDER, MANAGER, terms, challenge);
+    const byId = (id: string) => t.db.tables.procurement_conversations.find((r) => r.id === id);
+    expect(byId("conv-own")?.conversation_context).toMatchObject({ deal_resolution: "confirmed" });
+    expect(byId("conv-foreign")?.conversation_context?.deal_resolved_at).toBeUndefined();
+    expect(byId("draft-own")?.status).toBe("DISCARDED");
+    expect(byId("draft-foreign")?.status).toBe("PENDING_APPROVAL");
+  });
+});

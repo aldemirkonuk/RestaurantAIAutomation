@@ -534,8 +534,10 @@ function makeDb() {
     from(table: string) {
       let op: "select" | "insert" | "update" | "delete" = "select";
       const settle = (shape: "one" | "many") => {
+        // `shape === "one"` is createOrder's vendor-ownership probe: this
+        // house's vendor. Every other providers read here is a count.
         if (table === "providers")
-          return { data: null, count: 1, error: null };
+          return { data: shape === "one" ? { id: "prov-1" } : null, count: 1, error: null };
         if (table === "restaurant_inventory")
           return { data: INVENTORY_ROW, error: null };
         if (table === "procurement_orders") {

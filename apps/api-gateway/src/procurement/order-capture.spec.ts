@@ -1,3 +1,7 @@
+import {
+  ForbiddenException,
+  UnprocessableEntityException,
+} from "@nestjs/common";
 import { ProcurementService } from "./procurement.service";
 import { DatabaseService } from "../database/database.service";
 import { EventsService } from "../events/events.service";
@@ -30,6 +34,8 @@ interface Calls {
   lineUpdates: Row[];
   lineDeletes: number;
   priceHistoryInserts: Row[];
+  /** The `.eq` filters of every vendor-ownership probe, in order. */
+  providerProbeFilters: Array<Array<[string, unknown]>>;
 }
 
 /**
@@ -55,6 +61,11 @@ function makeDb(opts: {
   /** ADR 0141: what the ownership probe (`select("id")`) sees. `null` = the
    *  item is not this restaurant's, which is a 403 and not a missing wine. */
   ownedInventory?: Row | null;
+  /** What createOrder's vendor-ownership probe (`providers`, `select("id")`)
+   *  sees. `null` = the vendor is not this restaurant's (or has no house). */
+  ownedProvider?: Row | null;
+  /** A failed vendor-ownership read, which must refuse rather than pass. */
+  providerProbeError?: { message: string };
 }) {
   const calls: Calls = {
     orderInserts: [],
@@ -63,6 +74,7 @@ function makeDb(opts: {
     lineUpdates: [],
     lineDeletes: 0,
     priceHistoryInserts: [],
+    providerProbeFilters: [],
   };
 
   const supabase: any = {
@@ -70,8 +82,23 @@ function makeDb(opts: {
       let op: "select" | "insert" | "update" | "delete" = "select";
 
       const settle = (shape: "one" | "many") => {
-        if (table === "providers")
+        if (table === "providers") {
+          // `select("id")` + one row is createOrder's vendor-ownership probe;
+          // every other providers read on this path is a count or a column.
+          if (lastSelect.trim() === "id" && shape === "one") {
+            calls.providerProbeFilters.push(filters);
+            if (opts.providerProbeError)
+              return { data: null, error: opts.providerProbeError };
+            return {
+              data:
+                opts.ownedProvider === undefined
+                  ? { id: "prov-1" }
+                  : opts.ownedProvider,
+              error: null,
+            };
+          }
           return { data: null, count: opts.providerCount ?? 1, error: null };
+        }
         if (table === "restaurant_inventory") {
           // ADR 0141 split this table into TWO reads on the createOrder path,
           // and the mock has to tell them apart or the test cannot say what it
@@ -108,12 +135,16 @@ function makeDb(opts: {
       };
 
       let lastSelect = "";
+      const filters: Array<[string, unknown]> = [];
       const q: any = {
         select: (cols?: string) => {
           lastSelect = cols ?? "";
           return q;
         },
-        eq: () => q,
+        eq: (col: string, val: unknown) => {
+          filters.push([col, val]);
+          return q;
+        },
         neq: () => q,
         not: () => q,
         in: () => q,
@@ -332,6 +363,75 @@ describe("createOrder — unit arithmetic", () => {
     expect(h.bottles_total).toBe(6);
     expect(h.total_cost).toBe(150);
     expect(h.unit_type).toBe("bottle");
+  });
+});
+
+describe("createOrder — the vendor is this house's, or nothing is written", () => {
+  // The #412 merge-audit follow-up: `dto.providerId` came from the request
+  // body and reached `procurement_orders.provider_id` unchecked, so an order
+  // could be booked against another house's vendor row.
+  it("refuses another house's vendor with a 403 and writes no order and no line", async () => {
+    const { db, calls } = makeDb({
+      insertedOrder,
+      inventory: inventoryRow,
+      ownedProvider: null,
+    });
+    const err = await service(db)
+      .createOrder("rest-1", USER, { ...caseOrder, providerId: "prov-other-house" })
+      .then(
+        () => null,
+        (e) => e,
+      );
+    expect(err).toBeInstanceOf(ForbiddenException);
+    expect(String(err.message)).toMatch(/does not belong to this restaurant/);
+    expect(calls.orderInserts).toHaveLength(0);
+    expect(calls.orderUpdates).toHaveLength(0);
+    expect(calls.lineInserts).toHaveLength(0);
+  });
+
+  it("asks with the caller's house and the named vendor, not one of them alone", async () => {
+    const { db, calls } = makeDb({ insertedOrder, inventory: inventoryRow });
+    await service(db).createOrder("rest-1", USER, caseOrder);
+    expect(calls.providerProbeFilters).toHaveLength(1);
+    expect(calls.providerProbeFilters[0]).toEqual(
+      expect.arrayContaining([
+        ["restaurant_id", "rest-1"],
+        ["id", "prov-1"],
+      ]),
+    );
+  });
+
+  it("refuses when the ownership read fails — a failed read is not a yes", async () => {
+    const { db, calls } = makeDb({
+      insertedOrder,
+      inventory: inventoryRow,
+      providerProbeError: { message: "connection reset" },
+    });
+    await expect(
+      service(db).createOrder("rest-1", USER, caseOrder),
+    ).rejects.toBeInstanceOf(UnprocessableEntityException);
+    expect(calls.orderInserts).toHaveLength(0);
+    expect(calls.lineInserts).toHaveLength(0);
+  });
+
+  it("still answers a house with no vendors with 'add a vendor first'", async () => {
+    const { db, calls } = makeDb({
+      insertedOrder,
+      inventory: inventoryRow,
+      providerCount: 0,
+      ownedProvider: null,
+    });
+    const err = await service(db)
+      .createOrder("rest-1", USER, caseOrder)
+      .then(
+        () => null,
+        (e) => e,
+      );
+    expect(err).toBeInstanceOf(ForbiddenException);
+    expect((err as ForbiddenException).getResponse()).toMatchObject({
+      reason: "no_vendors",
+    });
+    expect(calls.providerProbeFilters).toHaveLength(0);
   });
 });
 
