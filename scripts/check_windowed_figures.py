@@ -121,9 +121,10 @@ W7  AN IMPORTED QUERY HOOK THE PAGE DEPENDS ON IS ALSO TENANT-KEYED. W6 reads
 SCOPE. Six pages: `apps/web/src/pages/receiving/next`,
 `apps/web/src/pages/receipts/next`, `apps/web/src/pages/communications/next`,
 `apps/web/src/pages/documents-reports/next`, `apps/web/src/pages/team`
-(that one BOTH halves — the `next/` redesign and the `command/` legacy
-desk are one route behind one flag, and the tenant leak this guard's W6 exists
-for was on the redesigned half while the legacy half had it right) and
+(that one BOTH halves for as long as both exist — the `next/` redesign and the
+`command/` legacy desk are one route behind one flag, and the tenant leak this
+guard's W6 exists for was on the redesigned half while the legacy half had it
+right; see "/team's LEGACY HALF RETIRES" below) and
 `apps/web/src/pages/logs/next`, plus the gateway files their registers cite and
 the shared query hooks they name. Each page declares its own register,
 renderers and nullable contract in PAGES below; adding a seventh page means
@@ -148,6 +149,47 @@ mark on a statistic drawn from a capped sample is a ceiling on the sample
 ("over <=200 services"), never a floor on a total, so /team's marker is `LE`
 and not `GE`. Forcing a floor there to satisfy a guard would have produced a
 precise-looking falsehood, which is the class this file exists to stop.
+
+/team's LEGACY HALF RETIRES, AND THE GUARD MUST NOT GO BLIND WHILE IT DOES
+(founder item 89, 2026-09-28: "Guard PR first, then delete")
+--------------------------------------------------------------------------
+ADR 0149's cutover (PR #494) deletes `pages/team/command/` whole. Its four
+query files used to be named as ordinary renderers, so that deletion made this
+guard exit 2. That was correct: a missing anchor is a refusal, never a skip.
+There were two easy fixes and both were wrong. Dropping the four before the
+deletion lands leaves the legacy half live on `main` with nothing reading its
+keys. Softening a missing renderer to a skip is the vacuity that "NEVER VACUOUS"
+below forbids on every page.
+
+So a page may name a `retiring` half under one `retiring_root`. That half is in
+exactly one of two states:
+  - PRESENT: some .ts/.tsx file is still under the root, a lone test
+    included, since a test still imports the half it tests. Every retiring
+    file is then an anchor, the same as a renderer: it is read, W2/W3/W6 check
+    it, and a missing one exits 2. A half-deleted legacy desk is an anchor that
+    moved.
+  - RETIRED: no .ts/.tsx file is left under the root. Nothing there can
+    render a figure or hold a cache bucket, and every run SAYS it read none.
+
+/team ALSO REFUSES A QUERY FILE IT DOES NOT NAME. The parity build of
+2026-09-04 split the redesign into files. Three of them call `useQuery` and were
+never listed here: `FormerStaff.tsx`, `SendGrantsSection.tsx` and
+`useHouseAreas.ts`. All the while, the comment beside the tuple said every /team
+query was in the files it named (v3.0-TECH-DEBT.md, 2026-09-28). A sentence
+nothing re-reads is how that happened, so it is a check now. `query_tree` names
+the page's directory. Every non-test source file under it that calls a
+react-query hook must be named by the PageSpec, or the run exits 2.
+
+Two matcher gaps had to close along with it. Two of those three files key their
+caches through an undotted factory call (`grantKeys(restaurantId)`,
+`areasKey(rid)`), and QUERY_KEY_CALL could not see that form. Listing the files
+without widening the matcher would have been a green tick over two files W6
+still could not read. `every_query_read` closes the second gap: every query
+call on the page must parse, and must yield a key W6 can judge. Without it, a
+key held in a bare local would pass unread, as long as some other query on the
+page had a readable key. A third gap closed for every page: W6 and W7 used to
+find a tenant token as a SUBSTRING, so `rid` inside `week-grid` counted
+(`names_tenant`).
 
 The Sorting Office (`/documents-reports`) was added after it shipped a routine
 count out of a 100-row timeline window with no `≥` on it, twelve lines below a
@@ -206,6 +248,7 @@ from __future__ import annotations
 
 import argparse
 import re
+import shutil
 import sys
 import tempfile
 from dataclasses import dataclass, field
@@ -249,14 +292,33 @@ class PageSpec:
     # as well as a deliberate shape). True only where that IS the page's real,
     # everyday shape.
     all_queries_imported: bool = False
+    # A half of the page that is being deleted (ADR 0149's cutover), all of it
+    # under `retiring_root`. PRESENT while any source file is left under the
+    # root: then every file here is an anchor, read and checked like a
+    # renderer. RETIRED once none is left: then none is read, and the clean run
+    # says so. There is no third state, so a half-deleted desk exits 2. See the
+    # header, "/team's LEGACY HALF RETIRES".
+    retiring: tuple[Path, ...] = ()
+    retiring_root: Path | None = None
+    # When set, every non-test .ts/.tsx under this directory (recursively) that
+    # calls a react-query hook must be `hooks`, a renderer, a retiring file or a
+    # declared imported hook's file. Otherwise the run exits 2, because W6
+    # cannot see a file this spec does not name. This is the check that stops
+    # the tuple falling behind the page's files again.
+    query_tree: Path | None = None
+    # When True, every query-hook CALL in the page's files must parse to a
+    # body, and every body must yield a key expression W6 can judge. False is
+    # never silent: the clean run names every page that does not enforce it.
+    every_query_read: bool = False
 
 
 _RECEIVING = Path("apps/web/src/pages/receiving/next")
 _RECEIPTS = Path("apps/web/src/pages/receipts/next")
 _COMMS = Path("apps/web/src/pages/communications/next")
 _SORTING_OFFICE = Path("apps/web/src/pages/documents-reports/next")
-_TEAM_NEXT = Path("apps/web/src/pages/team/next")
-_TEAM_CMD = Path("apps/web/src/pages/team/command")
+_TEAM_TREE = Path("apps/web/src/pages/team")
+_TEAM_NEXT = _TEAM_TREE / "next"
+_TEAM_CMD = _TEAM_TREE / "command"
 _LOGS = Path("apps/web/src/pages/logs/next")
 _QUERY_HOOKS = Path("apps/web/src/hooks/queries/useConversationQueries.ts")
 _DRAFT_HOOKS = Path("apps/web/src/hooks/queries/useDraftEmailQueries.ts")
@@ -401,10 +463,14 @@ PAGES = (
         # replaces it shipped three bare keys. Listing only the half being
         # rebuilt would have made a green run mean "the half that was already
         # right is still right".
-        # The parity build (2026-09-04) split the redesigned half into files;
-        # every one of them is listed, because W6 can only see the files this
-        # tuple names and a query in an unlisted renderer would be a bucket
-        # nobody checks while the run still prints "clean".
+        # The rebuilt half: every file that calls a query hook or renders one
+        # of the two windowed figures (`PerformanceCard.tsx`, `TeamRecord.tsx`),
+        # plus the four renderers listed since the 2026-09-04 parity build.
+        # `FormerStaff.tsx`, `SendGrantsSection.tsx` and `useHouseAreas.ts` were
+        # added 2026-09-28 (founder item 89). They had called `useQuery` since
+        # they landed, with W6 never reading their keys. `query_tree` below is
+        # what keeps this list from falling behind again: it refuses any
+        # query-calling file under `pages/team` that is not named here.
         renderers=(
             _TEAM_NEXT / "TeamNext.tsx",
             _TEAM_NEXT / "WeekGrid.tsx",
@@ -414,11 +480,26 @@ PAGES = (
             _TEAM_NEXT / "TeamRecord.tsx",
             _TEAM_NEXT / "PerformanceCard.tsx",
             _TEAM_NEXT / "MyShiftsNext.tsx",
+            _TEAM_NEXT / "FormerStaff.tsx",
+            _TEAM_NEXT / "SendGrantsSection.tsx",
+            _TEAM_NEXT / "useHouseAreas.ts",
+        ),
+        # The legacy half. ADR 0149's cutover (PR #494) deletes
+        # `pages/team/command/` whole, per founder items 88 and 89. Until then
+        # the legacy half ships on `main` behind the same flag, so these four
+        # stay anchors and are checked like any renderer. Once no source file
+        # is left under `command/`, none is read, and the clean run says so.
+        retiring=(
             _TEAM_CMD / "ManagerShiftDesk.tsx",
             _TEAM_CMD / "MyShifts.tsx",
             _TEAM_CMD / "OpsRulesPanel.tsx",
             _TEAM_CMD / "PerformancePanel.tsx",
         ),
+        retiring_root=_TEAM_CMD,
+        # Both halves, recursively, so a legacy desk that was MOVED rather than
+        # deleted shows up as an unlisted query file instead of retiring quietly.
+        query_tree=_TEAM_TREE,
+        every_query_read=True,
         register="TEAM_SERVER_WINDOWS",
         # A ceiling, not a floor — see the header note. /team's one window caps
         # the SAMPLE a median is computed over, not a count being reported.
@@ -437,12 +518,13 @@ PAGES = (
         tenant_tokens=("rid", "restaurantId", "activeRestaurantId"),
         tenant_keyed=True,
         # W7 checks shared hooks a page DECLARES. /team declares none: every
-        # query it reads is a `useQuery` in one of the TWELVE files above —
-        # eight on the rebuilt half since the 2026-09-04 parity build split it,
-        # four on the legacy one — so W6 sees all of them. That is a
-        # measurement, not an omission, and it is printed on every clean run so
-        # it cannot be read as "checked and fine". Keep this count honest: it is
-        # the sentence a reader trusts instead of counting the tuple.
+        # query it reads is a query-hook call in one of the files named above,
+        # so W6 sees all of them. The sentence this used to be ("one of the
+        # TWELVE files above") was false for weeks, with three query files
+        # unlisted, because nothing re-read it. It is not a count to keep
+        # honest by hand any more: `query_tree` refuses the run when it stops
+        # being true. The empty tuple is printed on every clean run so it
+        # cannot be read as "checked and fine".
         imported_query_hooks=(),
     ),
     PageSpec(
@@ -517,6 +599,10 @@ class Report:
     lost_null: list[str] = field(default_factory=list)
     discarded_count: list[str] = field(default_factory=list)
     untenanted_key: list[str] = field(default_factory=list)
+    # NOT violations. These are things a run deliberately did not read, such
+    # as a retired half. They are printed with every verdict, so "not read"
+    # can never pass for "read and fine".
+    notes: list[str] = field(default_factory=list)
 
     def violations(self) -> list[str]:
         return (
@@ -551,9 +637,51 @@ QUERY_KEY = re.compile(r"queryKey:\s*\[([^\]]*)\]")
 # `useQuery<T>({` bug above, and the reason both are tested below. At least one
 # dot is required so a bare local (`queryKey: key`) still trips the
 # no-keys-found CannotCheck rather than being judged on its variable name.
+#
+# An UNDOTTED CALL counts too (`queryKey: grantKeys(restaurantId)`,
+# `queryKey: areasKey(rid)`), because a call is not a bare local: it has an
+# argument list for the tenant to be in, or not. Until 2026-09-28 this form was
+# invisible. Two of the three /team files added that day key every cache
+# through it, so listing them without this would have been a green tick over
+# two files W6 never read. The arguments are what gets judged. The factory's
+# own body is not, which is the same boundary as a dotted factory: a factory
+# that ignores its argument passes.
 QUERY_KEY_CALL = re.compile(
-    r"queryKey:\s*([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)+(?:\s*\([^()]*\))?)"
+    r"queryKey:\s*("
+    r"[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*\s*\([^()]*\)"
+    r"|[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)+"
+    r")"
 )
+
+# A query-hook CALL SITE: every form ANY_QUERY_HOOK_CALL detects, followed by
+# its argument list (generics allowed). An import names the hook without a
+# paren, so it is not counted. `every_query_read` compares this count to the
+# bodies USE_QUERY parsed, file by file. A `useQueries` or `useSuspenseQuery`
+# call, or options that are not a brace literal, parse to nothing, and a file
+# with one of those next to an ordinary `useQuery` would still "have a body".
+QUERY_HOOK_CALL_SITE = re.compile(
+    r"\buse(?:Suspense)?(?:Infinite)?Quer(?:y|ies)\s*"
+    r"(?:<[^()<>]*(?:<[^()<>]*>[^()<>]*)*>)?\s*\("
+)
+
+# Test files never render a page. `query_tree` skips them, and only them.
+TEST_SOURCE = re.compile(r"\.(?:test|spec|stories)\.tsx?$")
+
+
+def names_tenant(flat_key: str, tokens: tuple[str, ...]) -> bool:
+    """
+    True when a tenant token appears in the key as a whole IDENTIFIER.
+
+    Until 2026-09-28 this was `tok in flat`, a substring test. `rid` is a
+    substring of `grid`, `bridge` and `ride`, so `['team-next-week-grid',
+    weekStart]` named the tenant as far as W6 could tell. /team has a file
+    called WeekGrid. That is this file's `"GE" in src` vacuity a second time,
+    and it is tested below. Measured 2026-09-28: none of the 51 keys the
+    amended guard reads on `main` changes verdict under the stricter test.
+    """
+    return any(
+        re.search(rf"(?<![\w$]){re.escape(tok)}(?![\w$])", flat_key) for tok in tokens
+    )
 
 
 # Whole `import … from '…'` statements, single- or multi-line, WITH OR WITHOUT
@@ -710,9 +838,93 @@ def run(root: Path) -> Report:
     return rep
 
 
+def _source_files(base: Path) -> list[Path]:
+    """Every non-test .ts/.tsx file under `base`, recursively."""
+    return sorted(
+        p
+        for p in base.rglob("*")
+        if p.is_file()
+        and p.suffix in (".ts", ".tsx")
+        and not TEST_SOURCE.search(p.name)
+        and "__tests__" not in p.relative_to(base).parts
+    )
+
+
+def retiring_present(root: Path, page: PageSpec) -> bool:
+    """
+    PRESENT (True) or RETIRED (False). Never a third answer.
+
+    Present means some source file is still under `retiring_root`, test files
+    included. A lone test left behind still imports the half it tests, so that
+    half has not gone. Once present, every retiring file is read through
+    `read()`, which raises CannotCheck on a missing one.
+    """
+    if not page.retiring:
+        return False
+    if page.retiring_root is None or any(
+        page.retiring_root not in r.parents for r in page.retiring
+    ):
+        raise CannotCheck(
+            f"{page.name}: every `retiring` file must sit under `retiring_root`. "
+            "Otherwise deleting the root could retire a file that still exists."
+        )
+    base = root / page.retiring_root
+    if not base.is_dir():
+        return False
+    return any(p.is_file() and p.suffix in (".ts", ".tsx") for p in base.rglob("*"))
+
+
+def unlisted_query_files(root: Path, page: PageSpec) -> list[Path]:
+    """Files under `query_tree` that call a query hook and that this spec does not name."""
+    assert page.query_tree is not None
+    base = root / page.query_tree
+    if not base.is_dir():
+        raise CannotCheck(
+            f"{page.name}: `query_tree` {page.query_tree} does not exist. The check "
+            "that every query file is named has nothing to walk."
+        )
+    named = {
+        page.hooks,
+        *page.renderers,
+        *page.retiring,
+        # W7 reads a declared hook's function in this file, so the spec does name it.
+        *(rel for rel, _fn in page.imported_query_hooks),
+    }
+    return [
+        p.relative_to(root)
+        for p in _source_files(base)
+        if p.relative_to(root) not in named
+        and ANY_QUERY_HOOK_CALL.search(p.read_text(encoding="utf-8"))
+    ]
+
+
 def run_page(root: Path, page: PageSpec, rep: Report) -> None:
     hooks_src = read(root, page.hooks)
     renderer_src = {r: read(root, r) for r in page.renderers}
+
+    # The retiring half is read exactly like a renderer while it is present.
+    # Once it is retired, the run SAYS it read none of it.
+    if page.retiring:
+        if retiring_present(root, page):
+            renderer_src.update({r: read(root, r) for r in page.retiring})
+        else:
+            rep.notes.append(
+                f"{page.name}: the retiring half ({page.retiring_root}) is RETIRED. No "
+                f"source file is left under it, so its {len(page.retiring)} files were not "
+                "read. There is nothing left there to check."
+            )
+
+    # A query file this spec does not name is a cache W6 cannot see. It is
+    # refused here, before any rule runs, like every other missing anchor.
+    if page.query_tree is not None:
+        unlisted = unlisted_query_files(root, page)
+        if unlisted:
+            raise CannotCheck(
+                f"{page.name}: {len(unlisted)} file(s) under {page.query_tree} call a "
+                "query hook but are not named by its PageSpec, so W6 never reads their "
+                "keys: " + ", ".join(str(u) for u in unlisted) + ". Name each one as a "
+                "renderer. Do not narrow `query_tree`."
+            )
 
     windows = parse_register(hooks_src, page)
 
@@ -862,6 +1074,32 @@ def run_page(root: Path, page: PageSpec, rep: Report) -> None:
         )
     bodies = hook_bodies + [b for src in renderer_src.values() for b in query_bodies(src)]
     keys = [k for b in bodies for k in query_keys(b)]
+
+    # Opt-in per page, and named on every clean run where it is off. Every
+    # query-hook call must parse, and every parsed body must carry a key this
+    # file can read. The page-wide "no keys at all" refusal below cannot see
+    # ONE unreadable query among readable ones, because the others' keys
+    # satisfy it. On /team that one would be a bucket W6 prints as checked.
+    if page.every_query_read:
+        for rel, src in [(page.hooks, hooks_src), *renderer_src.items()]:
+            sites = len(QUERY_HOOK_CALL_SITE.findall(src))
+            parsed = query_bodies(src)
+            if sites != len(parsed):
+                raise CannotCheck(
+                    f"{page.name}: {rel} makes {sites} query-hook call(s), but only "
+                    f"{len(parsed)} parsed to an options literal. A `useQueries`, a "
+                    "`useSuspenseQuery`, or options built elsewhere would be a cache W6 "
+                    "never reads."
+                )
+            for b in parsed:
+                if not query_keys(b):
+                    first = " ".join(b.split())[:80]
+                    raise CannotCheck(
+                        f"{page.name}: a query in {rel} has no key W6 can read "
+                        f"(`{first}` …). W6 reads key literals and factory calls, and "
+                        "this is neither (a bare local, or a computed key). Inline the "
+                        "key or call a factory with the tenant as an argument."
+                    )
     # A page whose EVERY cache bucket lives in a declared shared hook has no
     # page-local key to judge, and that is a shape, not a blind spot: W7 below
     # reads those hooks' keys and raises CannotCheck itself when one holds none.
@@ -889,7 +1127,7 @@ def run_page(root: Path, page: PageSpec, rep: Report) -> None:
         )
     for k in keys:
         flat = k.replace("\n", " ").strip()
-        if not any(tok in flat for tok in page.tenant_tokens):
+        if not names_tenant(flat, page.tenant_tokens):
             rep.untenanted_key.append(
                 f"[untenanted key] {page.name}: `queryKey: [{flat}]` names no tenant "
                 f"(looked for {', '.join(page.tenant_tokens)}). The gateway scopes this "
@@ -916,7 +1154,7 @@ def run_page(root: Path, page: PageSpec, rep: Report) -> None:
             )
         for k in hook_keys:
             flat = k.replace("\n", " ").strip()
-            if not any(tok in flat for tok in page.tenant_tokens):
+            if not names_tenant(flat, page.tenant_tokens):
                 rep.untenanted_key.append(
                     f"[untenanted key] {page.name}: {rel}::{fname} uses "
                     f"`queryKey: [{flat}]`, which names no tenant (looked for "
@@ -1229,6 +1467,8 @@ CLEAN_TEAM_HOOKS = """
 export const TEAM_SERVER_WINDOWS = {
   /** performance.service.ts:139 — the team benchmark ends `.limit(200)`. */
   BENCHMARK_SERVICES: 200,
+  /** settings-audit.service.ts:252 — `Math.min(200, limit)`, then `.limit(capped)`. */
+  TRAIL_ROWS: 100,
 } as const;
 
 export interface CertExposureVM {
@@ -1246,6 +1486,10 @@ export function useTeamNextData() {
   const rid = useActiveRestaurantId();
   const weekQ = useQuery({ queryKey: ['team-next-week', rid, weekStart], queryFn: f });
   const rulesQ = useQuery({ queryKey: ['team-next-coverage-rules', rid], queryFn: f });
+  const trailQ = useQuery({
+    queryKey: ['team-next-trail', rid],
+    queryFn: () => apiClient.get(`/settings-audit?limit=${TEAM_SERVER_WINDOWS.TRAIL_ROWS}`),
+  });
   return { week: weekQ.data ?? null, coverageRules: rulesQ.data === undefined ? null : rulesQ.data };
 }
 """
@@ -1256,6 +1500,106 @@ import { useTeamNextData } from './useTeamNextData';
 export default function TeamNext() {
   const data = useTeamNextData();
   return <span>{data.membersCount === null ? EM : data.membersCount}</span>;
+}
+"""
+
+# ── the rebuilt half's own query files ───────────────────────────────────────
+# Until 2026-09-28 the scaffold gave the rebuilt `MyShiftsNext.tsx` and
+# `PerformanceCard.tsx` the LEGACY bodies below (semicolon-free,
+# `activeRestaurantId`), and gave every other rebuilt file CLEAN_TEAM_NEXT, which
+# makes no query at all. So no self-test case exercised a single rebuilt query
+# file in its own shape. The cutover deletes the legacy half, and then these are
+# the only /team query fixtures left. They mirror the real files' key shapes:
+# literal keys on `rid`, and the two undotted factories (`grantKeys`,
+# `areasKey`/`awayKey`) that QUERY_KEY_CALL could not see before that day.
+
+CLEAN_TEAM_RECORD = """
+import { EM, LE } from './tm-format';
+import { TEAM_SERVER_WINDOWS } from './useTeamNextData';
+export function TeamRecord({ data }) {
+  return <p>The last {LE}{TEAM_SERVER_WINDOWS.TRAIL_ROWS} changes{data.trail === null ? EM : ''}</p>;
+}
+"""
+
+CLEAN_TEAM_PERF_CARD = """
+import { useQuery } from '@tanstack/react-query';
+import { useActiveRestaurantId, TEAM_SERVER_WINDOWS } from './useTeamNextData';
+import { EM, LE } from './tm-format';
+export function PerformanceCard({ memberId }) {
+  const rid = useActiveRestaurantId();
+  const q = useQuery({
+    queryKey: ['team-next-performance', rid, memberId],
+    queryFn: () => getMemberPerformance(memberId),
+    enabled: !!rid && !!memberId,
+  });
+  return <p>{q.data ? `over ${LE}${TEAM_SERVER_WINDOWS.BENCHMARK_SERVICES} of them` : EM}</p>;
+}
+"""
+
+CLEAN_TEAM_MYSHIFTS_NEXT = """
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useActiveRestaurantId } from './useTeamNextData';
+export function MyShiftsNext({ weekStart }) {
+  const rid = useActiveRestaurantId();
+  const q = useQuery({ queryKey: ['team-next-my-week', rid, weekStart], queryFn: f, enabled: !!rid });
+  const notesQ = useQuery({ queryKey: ['team-next-notes', rid, weekStart], queryFn: f, enabled: !!rid });
+  return <div>{q.isError ? 'not known' : 'Off'}{notesQ.data ? '' : ''}</div>;
+}
+"""
+
+CLEAN_TEAM_OVERLAYS = """
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { useActiveRestaurantId } from './useTeamNextData';
+export function TextSenders() {
+  const rid = useActiveRestaurantId();
+  const q = useQuery({ queryKey: ['team-next-text-senders', rid], queryFn: f, enabled: !!rid });
+  return <div>{q.isError ? 'unknown' : 'ok'}</div>;
+}
+"""
+
+CLEAN_TEAM_FORMER = """
+import { useQuery } from '@tanstack/react-query';
+import { useActiveRestaurantId } from './useTeamNextData';
+export function FormerStaffSheet() {
+  const rid = useActiveRestaurantId();
+  const q = useQuery({
+    queryKey: ['team-next-former-staff', rid],
+    queryFn: () => getFormerStaff(rid ?? undefined),
+    enabled: Boolean(rid),
+    retry: false,
+  });
+  return <div>{q.isError ? 'unknown here, not nobody' : q.data?.people.length === 0 ? 'Nobody' : 'people'}</div>;
+}
+"""
+
+# An undotted factory, and an eviction through the same factory. The eviction is
+# a `queryClient` prefix, not a bucket, and must stay out of W6's sight.
+CLEAN_TEAM_GRANTS = """
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+const grantKeys = (rid: string | null) => ['authority-grants', rid ?? ''] as const;
+export function SendGrantsSection({ restaurantId }) {
+  const qc = useQueryClient();
+  const grants = useQuery({
+    queryKey: grantKeys(restaurantId),
+    queryFn: () => apiClient.get('/authority/grants').then((r) => r.data),
+    enabled: !!restaurantId,
+  });
+  const refresh = () => void qc.invalidateQueries({ queryKey: grantKeys(restaurantId) });
+  return <div>{grants.isError ? 'unknown' : 'ok'}</div>;
+}
+"""
+
+CLEAN_TEAM_AREAS = """
+import { useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { useActiveRestaurantId } from './useTeamNextData';
+export const areasKey = (rid: string | null) => ['house-areas', rid] as const;
+export const awayKey = (rid: string | null) => ['house-away', rid] as const;
+export function useHouseAreas() {
+  const rid = useActiveRestaurantId();
+  const areasQ = useQuery({ queryKey: areasKey(rid), queryFn: getAreas, enabled: !!rid });
+  const awayQ = useQuery({ queryKey: awayKey(rid), queryFn: getAway, enabled: !!rid });
+  return { areas: areasQ.data ?? null, away: awayQ.data ?? null };
 }
 """
 
@@ -1307,6 +1651,16 @@ CLEAN_PERF_GATEWAY = """
 export class PerformanceService {
   async member() {
     return this.sb.from("server_sales").select("*").limit(200);
+  }
+}
+"""
+
+# The trail's cap is a clamp, not a literal, the same shape as /receipts' 100.
+CLEAN_SETTINGS_AUDIT_GATEWAY = """
+export class SettingsAuditService {
+  async list(limit = 50) {
+    const capped = Math.min(200, limit);
+    return this.sb.from("system_audit_log").select("*").limit(capped);
   }
 }
 """
@@ -1400,6 +1754,23 @@ _TEAM = _BY_NAME["/team"]
 _LOGS_PAGE = _BY_NAME["/logs"]
 
 
+def _team_file(name: str) -> Path:
+    """
+    A /team file BY NAME, from either half, never by tuple position.
+
+    Until 2026-09-28 four /team cases wrote into `_TEAM.renderers[1]`, `[3]`
+    and `[4]`. The parity build had long since re-pointed those slots at
+    WeekGrid, ShiftSheet and TeamOverlays. So "the LEGACY desk's week key" was
+    a legacy body written over a rebuilt file's name. The cases still passed,
+    because a whole-file overwrite is caught wherever it lands. It was their
+    names that lied. Exactly one match or this raises.
+    """
+    hits = [r for r in (_TEAM.hooks, *_TEAM.renderers, *_TEAM.retiring) if r.name == name]
+    if len(hits) != 1:
+        raise AssertionError(f"/team names {len(hits)} files called {name!r}, not one")
+    return hits[0]
+
+
 def _scaffold(tmp: Path) -> None:
     (tmp / _RCV.hooks.parent).mkdir(parents=True, exist_ok=True)
     (tmp / _RCP.hooks.parent).mkdir(parents=True, exist_ok=True)
@@ -1454,20 +1825,39 @@ def _scaffold(tmp: Path) -> None:
     # five-body tuple silently stopped at the fifth file once the parity build
     # (0bc70f76) grew the tuple to twelve, and the self-test then reported
     # `cannot-check: anchor file is missing` for a file that exists on disk.
+    # A rebuilt file with no entry here gets CLEAN_TEAM_NEXT, which makes no
+    # query. Every rebuilt file that makes one has its own body.
     _team_bodies = {
         "TeamNext.tsx": CLEAN_TEAM_NEXT,
-        "ManagerShiftDesk.tsx": CLEAN_TEAM_DESK,
-        "MyShifts.tsx": CLEAN_TEAM_MYSHIFTS,
-        "MyShiftsNext.tsx": CLEAN_TEAM_MYSHIFTS,
-        "OpsRulesPanel.tsx": CLEAN_TEAM_OPS,
-        "PerformancePanel.tsx": CLEAN_TEAM_PERF,
-        "PerformanceCard.tsx": CLEAN_TEAM_PERF,
+        "TeamRecord.tsx": CLEAN_TEAM_RECORD,
+        "PerformanceCard.tsx": CLEAN_TEAM_PERF_CARD,
+        "MyShiftsNext.tsx": CLEAN_TEAM_MYSHIFTS_NEXT,
+        "TeamOverlays.tsx": CLEAN_TEAM_OVERLAYS,
+        "FormerStaff.tsx": CLEAN_TEAM_FORMER,
+        "SendGrantsSection.tsx": CLEAN_TEAM_GRANTS,
+        "useHouseAreas.ts": CLEAN_TEAM_AREAS,
     }
     for rel in _TEAM.renderers:
         (tmp / rel).parent.mkdir(parents=True, exist_ok=True)
         (tmp / rel).write_text(_team_bodies.get(rel.name, CLEAN_TEAM_NEXT), encoding="utf-8")
+    # The legacy half, as `main` has it until the cutover. By name, with no
+    # default: a retiring file this map does not know is a KeyError here,
+    # never a silent CLEAN_TEAM_NEXT that would drop its query from the test.
+    _legacy_bodies = {
+        "ManagerShiftDesk.tsx": CLEAN_TEAM_DESK,
+        "MyShifts.tsx": CLEAN_TEAM_MYSHIFTS,
+        "OpsRulesPanel.tsx": CLEAN_TEAM_OPS,
+        "PerformancePanel.tsx": CLEAN_TEAM_PERF,
+    }
+    for rel in _TEAM.retiring:
+        (tmp / rel).parent.mkdir(parents=True, exist_ok=True)
+        (tmp / rel).write_text(_legacy_bodies[rel.name], encoding="utf-8")
     (tmp / GATEWAY_ROOT / "team" / "performance.service.ts").write_text(
         CLEAN_PERF_GATEWAY, encoding="utf-8"
+    )
+    (tmp / GATEWAY_ROOT / "settings-audit").mkdir(parents=True, exist_ok=True)
+    (tmp / GATEWAY_ROOT / "settings-audit" / "settings-audit.service.ts").write_text(
+        CLEAN_SETTINGS_AUDIT_GATEWAY, encoding="utf-8"
     )
 
     # /logs. Its cited gateway file is `logs-timeline.service.ts`, already
@@ -1509,7 +1899,9 @@ def self_test() -> int:
             except CannotCheck as exc:
                 got, detail = "cannot-check", str(exc)
             else:
-                got, detail = verdict(rep), "; ".join(rep.violations())
+                # Notes follow the violations, so a case can assert that a
+                # CLEAN run still said what it did not read.
+                got, detail = verdict(rep), "; ".join(rep.violations() + rep.notes)
             ok = got == expect
             missing = ok and expect_text is not None and expect_text not in detail
             if missing:
@@ -2078,7 +2470,20 @@ def self_test() -> int:
     )
 
     # ── /team ────────────────────────────────────────────────────────────────
+    # Every case names its file BY NAME (`_team_file`), never by tuple position.
+    # They come in four groups. The rebuilt half, which is the whole page after
+    # the cutover. The legacy half while it is PRESENT, which is `main` until
+    # the cutover. The retirement itself, which is PR #494's tree. And the two
+    # completeness checks, `query_tree` and `every_query_read`.
     print("\n-- /team --\n")
+
+    def put(name: str, body: str):
+        return lambda t: (t / _team_file(name)).write_text(body, encoding="utf-8")
+
+    def retire_legacy(t: Path) -> None:
+        shutil.rmtree(t / _TEAM_CMD)
+
+    # The rebuilt half.
     case(
         "W6 the redesign's week key lost its tenant",
         lambda t: (t / _TEAM.hooks).write_text(
@@ -2098,43 +2503,83 @@ def self_test() -> int:
         "violation",
     )
     case(
-        "W6 the LEGACY desk's week key lost its tenant (the half that was right)",
-        lambda t: (t / _TEAM.renderers[1]).write_text(
-            CLEAN_TEAM_DESK.replace(
-                "'team', 'week', activeRestaurantId, weekStart]", "'team', 'week', weekStart]"
+        "W6 a key that names the tenant only as a SUBSTRING (`rid` inside `grid`)",
+        # Passed W6 until 2026-09-28: `tok in flat` found `rid` in `week-grid`.
+        lambda t: (t / _TEAM.hooks).write_text(
+            CLEAN_TEAM_HOOKS.replace(
+                "'team-next-week', rid, weekStart]", "'team-next-week-grid', weekStart]"
             ),
             encoding="utf-8",
         ),
         "violation",
+        expect_text="team-next-week-grid",
     )
     case(
-        "W6 the Ops drawer's rule key lost its tenant",
-        lambda t: (t / _TEAM.renderers[3]).write_text(
-            CLEAN_TEAM_OPS.replace(
-                "'coverage-templates', activeRestaurantId]", "'coverage-templates']"
+        "W6 FormerStaff's key lost its tenant (a file W6 never read before 2026-09-28)",
+        put(
+            "FormerStaff.tsx",
+            CLEAN_TEAM_FORMER.replace("'team-next-former-staff', rid]", "'team-next-former-staff']"),
+        ),
+        "violation",
+        expect_text="team-next-former-staff",
+    )
+    case(
+        "W6 SendGrants' undotted factory lost its tenant argument",
+        # `.replace(…, 1)` changes the cache bucket only. The eviction below it
+        # keeps the tenant, and W6 must not be reading evictions anyway.
+        put(
+            "SendGrantsSection.tsx",
+            CLEAN_TEAM_GRANTS.replace("queryKey: grantKeys(restaurantId),", "queryKey: grantKeys(),", 1),
+        ),
+        "violation",
+        expect_text="grantKeys()",
+    )
+    case(
+        "W6 useHouseAreas' Away factory lost its tenant argument",
+        put("useHouseAreas.ts", CLEAN_TEAM_AREAS.replace("queryKey: awayKey(rid)", "queryKey: awayKey(null)")),
+        "violation",
+        expect_text="awayKey(null)",
+    )
+    case(
+        "W6 TeamOverlays' text-senders key lost its tenant",
+        put(
+            "TeamOverlays.tsx",
+            CLEAN_TEAM_OVERLAYS.replace("'team-next-text-senders', rid]", "'team-next-text-senders']"),
+        ),
+        "violation",
+        expect_text="team-next-text-senders",
+    )
+    case(
+        "W6 MyShiftsNext's week key lost its tenant",
+        put(
+            "MyShiftsNext.tsx",
+            CLEAN_TEAM_MYSHIFTS_NEXT.replace("'team-next-my-week', rid, weekStart]", "'team-next-my-week', weekStart]"),
+        ),
+        "violation",
+        expect_text="team-next-my-week",
+    )
+    case(
+        "W6 PerformanceCard's key lost its tenant",
+        put(
+            "PerformanceCard.tsx",
+            CLEAN_TEAM_PERF_CARD.replace(
+                "'team-next-performance', rid, memberId]", "'team-next-performance', memberId]"
             ),
-            encoding="utf-8",
         ),
         "violation",
+        expect_text="team-next-performance",
     )
     case(
-        "W6 the performance key lost its tenant",
-        lambda t: (t / _TEAM.renderers[4]).write_text(
-            CLEAN_TEAM_PERF.replace(
-                "'team', 'performance', activeRestaurantId, member?.id]",
-                "'team', 'performance', member?.id]",
-            ),
-            encoding="utf-8",
-        ),
+        "W2 PerformanceCard's ceiling mark was deleted but its import stayed",
+        put("PerformanceCard.tsx", CLEAN_TEAM_PERF_CARD.replace("over ${LE}${", "over ${")),
         "violation",
+        expect_text="PerformanceCard.tsx",
     )
     case(
-        "W2 the benchmark's window mark was deleted but its SEMICOLON-FREE import stayed",
-        lambda t: (t / _TEAM.renderers[4]).write_text(
-            CLEAN_TEAM_PERF.replace("{LE}{TEAM_SERVER_WINDOWS.BENCHMARK_SERVICES} of them", "{TEAM_SERVER_WINDOWS.BENCHMARK_SERVICES}"),
-            encoding="utf-8",
-        ),
+        "W2 TeamRecord's trail mark was deleted but its import stayed",
+        put("TeamRecord.tsx", CLEAN_TEAM_RECORD.replace("The last {LE}{", "The last {")),
         "violation",
+        expect_text="TeamRecord.tsx",
     )
     case(
         "W1 the benchmark window drifted from the server's .limit(200)",
@@ -2142,6 +2587,14 @@ def self_test() -> int:
             CLEAN_PERF_GATEWAY.replace("limit(200)", "limit(500)"), encoding="utf-8"
         ),
         "violation",
+    )
+    case(
+        "W1 the trail's clamp fell below the 100 the sheet declares",
+        lambda t: (t / GATEWAY_ROOT / "settings-audit" / "settings-audit.service.ts").write_text(
+            CLEAN_SETTINGS_AUDIT_GATEWAY.replace("Math.min(200,", "Math.min(50,"), encoding="utf-8"
+        ),
+        "violation",
+        expect_text="TRAIL_ROWS",
     )
     case(
         "W4 CertExposureVM.shiftsThisWeek widened back to a plain number",
@@ -2171,14 +2624,233 @@ def self_test() -> int:
         "violation",
     )
     case(
+        "W3 a measured zero folded into the dash in a rebuilt sheet",
+        put("FormerStaff.tsx", CLEAN_TEAM_FORMER.replace(
+            "return <div>", "return <div>{q.data?.people.length > 0 ? q.data.people.length : EM}",
+        )),
+        "violation",
+        expect_text="FormerStaff.tsx",
+    )
+
+    # The legacy half, PRESENT: `main` until the cutover.
+    case(
+        "W6 the LEGACY desk's week key lost its tenant (the half that was right)",
+        put(
+            "ManagerShiftDesk.tsx",
+            CLEAN_TEAM_DESK.replace("'team', 'week', activeRestaurantId, weekStart]", "'team', 'week', weekStart]"),
+        ),
+        "violation",
+        expect_text="'team', 'week', weekStart",
+    )
+    case(
+        "W6 the legacy Ops drawer's rule key lost its tenant",
+        put(
+            "OpsRulesPanel.tsx",
+            CLEAN_TEAM_OPS.replace("'coverage-templates', activeRestaurantId]", "'coverage-templates']"),
+        ),
+        "violation",
+        expect_text="coverage-templates",
+    )
+    case(
+        "W6 the legacy performance key lost its tenant",
+        put(
+            "PerformancePanel.tsx",
+            CLEAN_TEAM_PERF.replace(
+                "'team', 'performance', activeRestaurantId, member?.id]",
+                "'team', 'performance', member?.id]",
+            ),
+        ),
+        "violation",
+        expect_text="'team', 'performance', member?.id",
+    )
+    case(
+        "W2 the legacy benchmark mark was deleted but its SEMICOLON-FREE import stayed",
+        put(
+            "PerformancePanel.tsx",
+            CLEAN_TEAM_PERF.replace(
+                "{LE}{TEAM_SERVER_WINDOWS.BENCHMARK_SERVICES} of them", "{TEAM_SERVER_WINDOWS.BENCHMARK_SERVICES}"
+            ),
+        ),
+        "violation",
+        expect_text="PerformancePanel.tsx",
+    )
+    case(
+        "one legacy file is gone while the rest of the legacy half is still there",
+        lambda t: (t / _team_file("ManagerShiftDesk.tsx")).unlink(),
+        "cannot-check",
+        expect_text="ManagerShiftDesk.tsx",
+    )
+    case(
+        "the legacy query files are gone but a legacy TEST is left behind",
+        # A lone test still imports the half it tests, so that half is not gone.
+        lambda t: [
+            (t / r).unlink() for r in _TEAM.retiring
+        ] and (t / _TEAM_CMD / "TeamCommand.honesty.test.tsx").write_text(
+            "import { ManagerShiftDesk } from './ManagerShiftDesk'\n", encoding="utf-8"
+        ),
+        "cannot-check",
+        expect_text="anchor file is missing",
+    )
+
+    # The retirement: PR #494's tree.
+    case(
+        "the legacy half is deleted whole: clean, and the run SAYS it read none of it",
+        retire_legacy,
+        "clean",
+        expect_text="RETIRED",
+    )
+    case(
+        "an EMPTY legacy directory left behind also counts as retired",
+        lambda t: [(t / r).unlink() for r in _TEAM.retiring] and None,
+        "clean",
+        expect_text="RETIRED",
+    )
+
+    def retired_and_leaky(t: Path) -> None:
+        retire_legacy(t)
+        put("SendGrantsSection.tsx", CLEAN_TEAM_GRANTS.replace(
+            "queryKey: grantKeys(restaurantId),", "queryKey: grantKeys(),", 1
+        ))(t)
+
+    case(
+        "legacy half retired AND a rebuilt key lost its tenant: the guard still fires",
+        retired_and_leaky,
+        "violation",
+        expect_text="grantKeys()",
+    )
+
+    def retired_and_unmarked(t: Path) -> None:
+        retire_legacy(t)
+        put("PerformanceCard.tsx", CLEAN_TEAM_PERF_CARD.replace("over ${LE}${", "over ${"))(t)
+
+    case(
+        "legacy half retired AND the only benchmark mark left was deleted",
+        # With PerformancePanel gone, PerformanceCard is the sole renderer of
+        # the benchmark. Its mark must still be held.
+        retired_and_unmarked,
+        "violation",
+        expect_text="PerformanceCard.tsx",
+    )
+
+    def retired_and_missing(t: Path) -> None:
+        retire_legacy(t)
+        (t / _team_file("useHouseAreas.ts")).unlink()
+
+    case(
+        "legacy half retired AND a rebuilt anchor is missing",
+        retired_and_missing,
+        "cannot-check",
+        expect_text="useHouseAreas.ts",
+    )
+
+    def moved_not_deleted(t: Path) -> None:
+        retire_legacy(t)
+        moved = t / _TEAM_TREE / "legacy" / "ManagerShiftDesk.tsx"
+        moved.parent.mkdir(parents=True)
+        moved.write_text(CLEAN_TEAM_DESK, encoding="utf-8")
+
+    case(
+        "the legacy desk was MOVED under pages/team rather than deleted",
+        # Retiring `command/` must not let the same queries live on next door.
+        moved_not_deleted,
+        "cannot-check",
+        expect_text="legacy/ManagerShiftDesk.tsx",
+    )
+
+    # query_tree: every query file under pages/team is named.
+    case(
+        "query_tree: a new rebuilt file calls useQuery and is not named",
+        lambda t: (t / _TEAM_NEXT / "BreakPlanner.tsx").write_text(
+            "import { useQuery } from '@tanstack/react-query';\n"
+            "export function BreakPlanner() {\n"
+            "  const q = useQuery({ queryKey: ['team-next-breaks', rid], queryFn: f });\n"
+            "  return null;\n}\n",
+            encoding="utf-8",
+        ),
+        "cannot-check",
+        expect_text="BreakPlanner.tsx",
+    )
+    case(
+        "query_tree: a new file's useSuspenseQuery is a query file too",
+        lambda t: (t / _TEAM_NEXT / "useBreaks.ts").write_text(
+            "export const useBreaks = () => useSuspenseQuery({ queryKey: ['b', rid], queryFn: f });\n",
+            encoding="utf-8",
+        ),
+        "cannot-check",
+        expect_text="useBreaks.ts",
+    )
+    case(
+        "query_tree: a TEST file that calls useQuery is not a page file",
+        lambda t: (t / _TEAM_NEXT / "BreakPlanner.test.tsx").write_text(
+            "const q = useQuery({ queryKey: ['x'], queryFn: f });\n", encoding="utf-8"
+        ),
+        "clean",
+    )
+    case(
+        "query_tree: a new file that only EVICTS (useQueryClient) is not a query file",
+        lambda t: (t / _TEAM_NEXT / "BreakSheet.tsx").write_text(
+            "import { useMutation, useQueryClient } from '@tanstack/react-query';\n"
+            "export function BreakSheet() {\n"
+            "  const qc = useQueryClient();\n"
+            "  void qc.invalidateQueries({ queryKey: ['team-next-breaks'] });\n"
+            "  return null;\n}\n",
+            encoding="utf-8",
+        ),
+        "clean",
+    )
+
+    # every_query_read: every call parses, every body has a key W6 can read.
+    case(
+        "every_query_read: SendGrants' key moved into a bare local",
+        put(
+            "SendGrantsSection.tsx",
+            CLEAN_TEAM_GRANTS.replace("queryKey: grantKeys(restaurantId),", "queryKey: grantsKey,", 1),
+        ),
+        "cannot-check",
+        expect_text="has no key W6 can read",
+    )
+    case(
+        "every_query_read: a useQueries beside an ordinary useQuery in one file",
+        # The file still has one parsed body, so a has-a-body test passes it.
+        # The call count does not.
+        put(
+            "MyShiftsNext.tsx",
+            CLEAN_TEAM_MYSHIFTS_NEXT.replace(
+                "  const notesQ = useQuery({",
+                "  const both = useQueries({ queries: [{ queryKey: ['team-next-extra'], queryFn: f }] });\n"
+                "  const notesQ = useQuery({",
+            ),
+        ),
+        "cannot-check",
+        expect_text="MyShiftsNext.tsx makes 3 query-hook call(s), but only 2 parsed",
+    )
+    case(
+        "every_query_read: a legacy query built from an options object elsewhere",
+        put("MyShifts.tsx", CLEAN_TEAM_MYSHIFTS.replace(
+            "const q = useQuery({ queryKey: ['team', 'my-week', activeRestaurantId, weekStart], queryFn: f })",
+            "const q = useQuery(weekOptions(weekStart))",
+        )),
+        "cannot-check",
+        expect_text="MyShifts.tsx makes 1 query-hook call(s), but only 0 parsed",
+    )
+
+    # Anchors.
+    case(
         "the team register was deleted",
         lambda t: (t / _TEAM.hooks).write_text("export const nothing = 1;\n", encoding="utf-8"),
         "cannot-check",
     )
     case(
-        "a team renderer is missing",
-        lambda t: (t / _TEAM.renderers[2]).unlink(),
+        "a rebuilt renderer added 2026-09-28 is missing",
+        lambda t: (t / _team_file("FormerStaff.tsx")).unlink(),
         "cannot-check",
+        expect_text="FormerStaff.tsx",
+    )
+    case(
+        "a rebuilt renderer from the parity build is missing",
+        lambda t: (t / _team_file("RosterSheet.tsx")).unlink(),
+        "cannot-check",
+        expect_text="RosterSheet.tsx",
     )
     case(
         "the cited performance service lost every .limit()",
@@ -2420,6 +3092,8 @@ def main(argv: list[str]) -> int:
         print("WINDOWED FIGURES — violations found:\n")
         for v in rep.violations():
             print(f"  {v}\n")
+        for n in rep.notes:
+            print(f"  NOT read: {n}")
         print(f"{len(rep.violations())} violation(s). See ADR 0051 clauses 1 and 2.")
         return 1
 
@@ -2449,6 +3123,25 @@ def main(argv: list[str]) -> int:
             "If one starts importing a shared query hook, add it to that "
             "PageSpec: W6 structurally cannot see it."
         )
+    # The two completeness checks are opt-in per page (2026-09-28, /team
+    # first). Where they are off, the run says so rather than implying them.
+    untreed = [pg.name for pg in PAGES if pg.query_tree is None]
+    if untreed:
+        print(
+            "  NOT checked: that every file calling a query hook is named "
+            "(`query_tree`) on " + ", ".join(untreed) + ". A query in a file "
+            "those PageSpecs do not name is invisible to W6."
+        )
+    unread = [pg.name for pg in PAGES if pg.tenant_keyed and not pg.every_query_read]
+    if unread:
+        print(
+            "  NOT checked: that every query call parses and carries a key W6 can "
+            "read (`every_query_read`) on " + ", ".join(unread) + ". There, a key "
+            "held in a bare local passes unread as long as another query on the "
+            "page has a readable key."
+        )
+    for n in rep.notes:
+        print(f"  NOT read: {n}")
     print("  See this file's header for the full boundary.")
     return 0
 
