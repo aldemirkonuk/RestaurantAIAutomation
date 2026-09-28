@@ -274,13 +274,18 @@ def adrs_here() -> dict[str, str]:
     return found
 
 
-# Frozen snapshots of unfinished local work (`.planning/handoff/preserve-local-work.sh`,
-# founder decision 2026-09-28). A draft ADR inside one is not a decision in flight: it
+# Frozen snapshots of unfinished local work (`.planning/handoff/preserve-local-work.sh`
+# on branch main-1ll9rp, PR #498). DECISION, founder, 2026-09-28, verbatim from the
+# AskUserQuestion answer: "Checker skips snapshots (Recommended)" -- chosen over
+# "Renumber the snapshot draft" and "Renumber ADR 0231" (PR #500 records the fork). A draft ADR inside one is not a decision in flight: it
 # keeps whatever number it had on the laptop, and it gets a fresh number when a lane
 # carries it (the 0231 draft in wt-adr-mig-merge lands as 0235). Counting them as
 # collisions turned a real PR (#490, ADR 0231) red over a number the snapshot can never
 # take, and a snapshot is never edited to fix that. They still count toward the
 # next-free number, so nobody hands out a number a snapshot draft already wears.
+# KNOWN LIMIT, stated rather than hidden: anyone who can push can name a branch
+# wip/preserve-*, and a real ADR on such a branch is invisible to other PRs' collision
+# check. Open a PR from a normal branch name; snapshots are for saving, never for review.
 SNAPSHOT_PREFIXES = ("wip/preserve-",)
 
 
@@ -616,6 +621,89 @@ def _ref_completeness_fixtures() -> str | None:
     return None
 
 
+def _snapshot_fixture() -> str | None:
+    """End to end, from nothing (ADR 0085): the guard run on a real clone.
+
+    A bare remote carries main, a snapshot branch `wip/preserve-s/t` whose draft
+    wears 9003, and an ordinary branch `docs/real` whose ADR wears 9004. A branch
+    that introduces 9003 with another slug must PASS (the snapshot is skipped) and
+    still count toward the next free number (9007, above the snapshot's 9006). A
+    branch that introduces 9004 with another slug must FAIL (a real collision).
+    """
+    def run(*args: str, cwd: str | None = None) -> subprocess.CompletedProcess:
+        return subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True)
+
+    guard = os.path.abspath(__file__)
+    with tempfile.TemporaryDirectory() as td:
+        seed, bare, clone = (os.path.join(td, n) for n in ("seed", "origin.git", "clone"))
+        d = os.path.join(seed, DECISIONS_DIR)
+        os.makedirs(d)
+
+        def write(name: str) -> None:
+            with open(os.path.join(d, name), "w", encoding="utf-8") as fh:
+                fh.write(f"# {name}\n")
+
+        write("9001-synthetic-base.md")
+        steps = [
+            (["init", "--quiet", "-b", "main", seed], None),
+            (["config", "user.email", "guard@invalid"], seed),
+            (["config", "user.name", "guard"], seed),
+            (["add", "-A"], seed), (["commit", "--quiet", "-m", "base"], seed),
+            (["init", "--bare", "--quiet", bare], None),
+            (["push", "--quiet", bare, "HEAD:refs/heads/main"], seed),
+        ]
+        for args, cwd in steps:
+            r = run(*args, cwd=cwd)
+            if r.returncode:
+                return f"snapshot fixture: `git {' '.join(args)}` failed: {r.stderr.strip()}"
+        # The snapshot also wears 9006, the highest number anywhere: next-free must
+        # still say 9007, proving snapshot numbers count toward it.
+        for branch, names in (("wip/preserve-s/t", ("9003-snapshot-draft.md", "9006-snapshot-late.md")),
+                              ("docs/real", ("9004-real-decision.md",))):
+            run("checkout", "--quiet", "-B", "tmp", "main", cwd=seed)
+            for name in names:
+                write(name)
+            run("add", "-A", cwd=seed)
+            run("commit", "--quiet", "-m", branch, cwd=seed)
+            r = run("push", "--quiet", bare, f"HEAD:refs/heads/{branch}", cwd=seed)
+            if r.returncode:
+                return f"snapshot fixture: push {branch} failed: {r.stderr.strip()}"
+            for name in names:
+                os.remove(os.path.join(d, name))
+        r = run("clone", "--quiet", f"file://{bare}", clone)
+        if r.returncode:
+            return f"snapshot fixture: clone failed: {r.stderr.strip()}"
+        run("config", "user.email", "guard@invalid", cwd=clone)
+        run("config", "user.name", "guard", cwd=clone)
+
+        def introduce(name: str) -> subprocess.CompletedProcess:
+            run("checkout", "--quiet", "-B", "mine", "origin/main", cwd=clone)
+            with open(os.path.join(clone, DECISIONS_DIR, name), "w", encoding="utf-8") as fh:
+                fh.write(f"# {name}\n")
+            run("add", "-A", cwd=clone)
+            run("commit", "--quiet", "-m", name, cwd=clone)
+            return subprocess.run([sys.executable, guard], cwd=clone,
+                                  capture_output=True, text=True)
+
+        p = introduce("9003-my-own-decision.md")
+        out = p.stdout + p.stderr
+        if p.returncode != 0:
+            return ("a number worn only by a preserve snapshot's draft failed the guard "
+                    f"(exit {p.returncode}), want 0: {out.strip()[:300]}")
+        if "OK -- introduced by this ref: 9003" not in out:
+            return f"the snapshot case passed for the wrong reason: {out.strip()[:300]}"
+
+        p = introduce("9004-my-other-decision.md")
+        out = p.stdout + p.stderr
+        if p.returncode != 1 or "COLLISION: ADR 9004" not in out:
+            return ("a real collision with an ordinary branch did not fail "
+                    f"(exit {p.returncode}), want 1 and COLLISION: {out.strip()[:300]}")
+        if "every ref: 9007" not in out:
+            return ("next-free dropped a number only a snapshot wears, want 9007: "
+                    f"{out.strip()[:300]}")
+    return None
+
+
 def run_self_test() -> int:
     """The guard must still fire on the shape it exists to catch."""
     where = {
@@ -661,6 +749,10 @@ def run_self_test() -> int:
     if kept != ["origin/main", "origin/fix/a"]:
         failures.append(f"decision_refs kept {kept}, want main and fix/a only")
 
+    snap_case = _snapshot_fixture()
+    if snap_case:
+        failures.append(snap_case)
+
     refs_case = _ref_completeness_fixtures()
     if refs_case:
         failures.append(refs_case)
@@ -670,7 +762,8 @@ def run_self_test() -> int:
             print(f"SELF-TEST FAILED: {f}")
         return 1
     print("SELF-TEST OK -- collision detected, non-collision not flagged, "
-          "next-free swept across refs, README not parsed as an ADR, a "
+          "next-free swept across refs, README not parsed as an ADR, a snapshot "
+          "draft skipped while a real collision still fails, a "
           "concurrent push re-fetched and passed, a branch the fetch cannot "
           "resolve still exit 2.")
     _ = where
