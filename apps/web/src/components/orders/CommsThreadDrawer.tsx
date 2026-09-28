@@ -115,6 +115,19 @@ const STATUS_CONFIG: Record<string, {
     dotBorder: 'border-red-300',
     icon: AlertTriangle,
   },
+  // The relay refused this exact request before any transport (ADR 0099,
+  // founder 2026-09-21: "Close, no retry"). Never reached the vendor, and
+  // closed for good — without an entry it fell to the generic fallback, the
+  // raw token under a Clock icon, which reads as "still waiting".
+  RELAY_REFUSED: {
+    label: 'Not sent · refused',
+    textColor: 'text-red-700',
+    bgColor: 'bg-red-50',
+    borderColor: 'border-red-200',
+    dotBg: 'bg-red-500',
+    dotBorder: 'border-red-300',
+    icon: XCircle,
+  },
   APPROVED: {
     label: 'Sent',
     textColor: 'text-emerald-700',
@@ -1181,6 +1194,7 @@ function ThreadEvent({ conv, attachments, isLast, isLatest, isCancelled, onOpenD
   const StatusIcon = cfg.icon
   const isPending = conv.status === 'PENDING_APPROVAL' && !isInbound
   const isDiscarded = conv.status === 'DISCARDED'
+  const isRelayRefused = conv.status === 'RELAY_REFUSED' && !isInbound
   const isSent = ['SENT', 'AUTO_SENT', 'APPROVED', 'SEND_UNCONFIRMED'].includes(conv.status) && !isInbound
   const bodyText = conv.draftContent || conv.rollingSummary || ''
 
@@ -1226,6 +1240,19 @@ function ThreadEvent({ conv, attachments, isLast, isLatest, isCancelled, onOpenD
               <p className="text-[11px] text-gray-400 italic">No content recorded</p>
             </div>
           )}
+
+                {/* Why a relay refusal closed this draft — the gateway's own
+                    sentence, on the draft itself (ADR 0099, 2026-09-21). */}
+                {isRelayRefused && (
+                  <div className="px-3 py-2 bg-red-50 border-t border-red-100">
+                    <div className="flex items-center gap-1 text-[10px] font-semibold text-red-800 mb-0.5">
+                      <XCircle className="w-3 h-3" /> Not sent — the relay refused it
+                    </div>
+                    <p className="text-[10.5px] text-red-800">
+                      {conv.relayRefusalReason || 'No reason was recorded with this refusal.'}
+                    </p>
+                  </div>
+                )}
 
                 {/* Special conditions the AI flagged (delivery delays, substitutions, etc.) */}
                 {conv.specialConditions && conv.specialConditions.length > 0 && (

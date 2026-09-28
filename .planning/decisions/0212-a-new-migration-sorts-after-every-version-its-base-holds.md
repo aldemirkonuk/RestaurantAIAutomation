@@ -67,6 +67,54 @@ run on the result:
 | #434 | `20260922230000`..`…115100` | passes | **fails, 3** |
 | #429 | `20260921110000`, `…113000` | passes | n/a |
 
+[2026-09-26, PR #429 audit at `e38d7d5b`: the #429 row is kept as it was measured on
+2026-09-21. It no longer names that PR's files. Under this ADR's guard they were renamed
+twice: on 2026-09-25 to `20260925160000` and `…160100`, and on 2026-09-26 to
+`20260927140000` and `…140100`, past main's ceiling `20260925160700` at `fc2d40f96`. So the
+right-hand column, which measures what happens after #429 merges, describes files that no
+longer exist.]
+
+[2026-09-27, merge-train update on PR #429: renamed a third time, to `20260928130000` and
+`…130100`, past main's new ceiling `20260928000000` (added by #394's promotions migration
+while #429 was in flight — the same guard, `check_migration_order.py`, caught it before
+merge, then caught a version COLLISION against #440's own new migration at the first
+choice, `…120000`/`…120100`, which is why the final pair sits one hour later). Every
+citation of the prior `20260927140000`/`…140100` pair, including this ADR's own line
+above and the CLAIMS row that asserts each migration cites its sibling by name, was
+repointed in the same commit.]
+
+[2026-09-27, PR #429 items 66/68/69 round: renamed a fourth time, to `20261001090000` and
+`…090100`, past main's new ceiling `20260930100100` (#441's areas migrations, merged while
+#429 was in flight; `check_migration_order.py` failed the merged tree until the rename).
+Every citation of the `20260928130000`/`…130100` pair outside this bracket and the one
+above was repointed in the same commit.]
+
+[2026-09-27, merge-train update on PR #429: renamed a fifth time, to `20261025000000` and
+`…000100`, past main's new ceiling `20261021150000` (#485's never-arrived-cancel-can-claim
+migration, merged while #429 was still catching up to main; `check_migration_order.py`
+failed the merged tree until the rename). Every citation of the `20261001090000`/`…090100`
+pair outside this bracket and the ones above was repointed in the same commit — the
+functional ones (CLAIMS.jsonl's verify strings, the migrations' own cross-references, the
+gateway and orchestrator source comments) directly, and the dated narrative ones (this
+file, `.planning/06-pages/communications.md`, ADR 0099, ADR 0118, ADR 0147, ADR 0230,
+`v3.0-TECH-DEBT.md`) by bracket, matching this ADR's own convention.]
+
+[2026-09-27, PR #429 audit fix round after `2b97a7563`: renamed a sixth time, to
+`20261105000000` and `…000100`, past main's new ceiling `20261031174623` (#438's
+calendar-link migrations, merged while #429 was in audit; `check_migration_order.py`
+failed the merged tree until the rename). Same split as the bracket above: CLAIMS.jsonl,
+the migrations' own cross-references and the gateway/orchestrator source comments
+repointed directly; `.planning/06-pages/communications.md`, ADR 0099, ADR 0118, ADR 0147
+and `v3.0-TECH-DEBT.md` by a dated bracket after the previous one.]
+
+[2026-09-27, PR #429 item-76 round: renamed a seventh time, to `20261115100000` and
+`…100100`, past main's new ceiling `20261115000000` (#482's vendor-price provenance
+migration). The versions sit below PR #440's `20261116000000`… on purpose, so this
+rename puts no new PR behind #429's ceiling. Same split as the bracket above. The
+`ADR-0212-PR429-MIGRATIONS-CITE-LIVE-VERSIONS` verify also stopped matching the sibling
+file by an `endswith("000100_…")` literal, which a version not ending in `000100` fails;
+it now matches the name tail.]
+
 The same day, one lane renamed its migration to one step past the ceiling. That was
 checked by hand against every branch it could see, and it still lost the race twice.
 

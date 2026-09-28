@@ -205,4 +205,28 @@ describe('CommsThreadDrawer', () => {
     // Should show 3 rounds badge on Thread tab
     expect(screen.getByText('3')).toBeInTheDocument()
   })
+
+  // ADR 0099, founder 2026-09-21: a 400/403/422 relay refusal CLOSES the draft
+  // ("Close, no retry") and the manager sees why on the draft. Before this the
+  // row fell to the generic fallback: the raw token under a Clock icon, which
+  // reads as "still waiting" for a message that is closed for good.
+  it('names a relay-refused draft and prints the gateway\'s sentence on it', async () => {
+    const said =
+      "gateway refused the send: HTTP 403 — Vendor prov-1 has no address in this house's book. Nothing was sent."
+    vi.mocked(useOrderConversations).mockReturnValue({
+      data: [makeConv({ status: 'RELAY_REFUSED', sentAt: null, relayRefusalReason: said })],
+      isLoading: false,
+    } as any)
+
+    renderDrawer()
+
+    await waitFor(() => {
+      expect(screen.getByText('Not sent · refused')).toBeInTheDocument()
+    })
+    expect(screen.queryByText('RELAY_REFUSED')).toBeNull()
+    expect(screen.getByText('Not sent — the relay refused it')).toBeInTheDocument()
+    expect(screen.getByText(said)).toBeInTheDocument()
+    // Closed, not waiting on anyone: no approve control is offered for it.
+    expect(screen.queryByText('Review & Approve Draft')).toBeNull()
+  })
 })

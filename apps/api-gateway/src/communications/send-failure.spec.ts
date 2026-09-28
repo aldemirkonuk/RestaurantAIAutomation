@@ -8,7 +8,13 @@
  * Run: cd apps/api-gateway && npx jest --testPathPattern send-failure --runInBand
  */
 
-import { classifySendFailure } from "./send-failure";
+import {
+  RELAY_PARKING_GMAIL_REASONS,
+  classifySendFailure,
+  gmailErrorReasons,
+  gmailRefusalClosesRelayDraft,
+  gmailRefusalParksRelayDraft,
+} from "./send-failure";
 import { MimeHeaderError } from "./mime-headers";
 
 /** A googleapis / gaxios failure: status lives on `response`, text on `message`. */
@@ -134,5 +140,187 @@ describe("classifySendFailure — everything else is ambiguous", () => {
       classifySendFailure(new Error("503 Service Unavailable")),
     ).toBeUndefined();
     expect(classifySendFailure(new Error("550 no such user"))).toBeUndefined();
+  });
+});
+
+/**
+ * Founder, 2026-09-27, merge-train item 69 / OD-174 (b), verbatim "Park
+ * quota/delegation 403 (Recommended)": a Gmail 403 whose REASON is a fault of
+ * the shared sending mailbox parks a relay draft; every other 403 and every
+ * 404 still closes it RELAY_REFUSED (item 66). The reason is read from typed
+ * fields of the Gmail error body, never from its message.
+ * Founder item 76 (2026-09-27, verbatim "Park it (Recommended)") adds
+ * `insufficientPermissions` to the parking reasons.
+ */
+describe("gmailErrorReasons — typed fields only", () => {
+  /** Gmail's v1 JSON error body, as gaxios keeps it on `response.data`. */
+  function gmailBody(status: number, reason: string, message = "Forbidden") {
+    return gaxios(
+      status,
+      {
+        error: {
+          code: status,
+          message,
+          errors: [{ domain: "usageLimits", reason, message }],
+          status: "PERMISSION_DENIED",
+        },
+      },
+      message,
+    );
+  }
+
+  it("reads errors[].reason from the response body", () => {
+    expect(gmailErrorReasons(gmailBody(403, "dailyLimitExceeded"))).toEqual([
+      "dailyLimitExceeded",
+    ]);
+  });
+
+  it("reads an AIP-193 ErrorInfo reason from details, and only ErrorInfo", () => {
+    const err = gaxios(403, {
+      error: {
+        code: 403,
+        message: "Gmail API has not been used in project 1 before or it is disabled.",
+        details: [
+          {
+            "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+            reason: "SERVICE_DISABLED",
+            domain: "googleapis.com",
+          },
+          {
+            "@type": "type.googleapis.com/google.rpc.Help",
+            reason: "quotaExceeded",
+          },
+        ],
+      },
+    });
+    expect(gmailErrorReasons(err)).toEqual(["SERVICE_DISABLED"]);
+  });
+
+  it("reads an errors array a googleapis version copies onto the error itself", () => {
+    const err = Object.assign(new Error("Rate Limit Exceeded"), {
+      status: 403,
+      errors: [{ reason: "rateLimitExceeded" }],
+    });
+    expect(gmailErrorReasons(err)).toEqual(["rateLimitExceeded"]);
+  });
+
+  it("never reads the message: quota words in text, no typed reason, give nothing", () => {
+    const err = gaxios(
+      403,
+      { error: { code: 403, message: "Daily Limit Exceeded quotaExceeded" } },
+      "Daily Limit Exceeded rateLimitExceeded userRateLimitExceeded",
+    );
+    expect(gmailErrorReasons(err)).toEqual([]);
+  });
+
+  it("ignores non-string reasons and non-object entries", () => {
+    const err = gaxios(403, {
+      error: { errors: [null, "dailyLimitExceeded", { reason: 7 }, {}] },
+    });
+    expect(gmailErrorReasons(err)).toEqual([]);
+    expect(gmailErrorReasons(null)).toEqual([]);
+    expect(gmailErrorReasons("dailyLimitExceeded")).toEqual([]);
+  });
+});
+
+describe("item 69 — which relay refusals park and which close", () => {
+  const rejected = { kind: "rejected" as const };
+
+  it("parks on exactly the documented sending-mailbox reasons", () => {
+    expect([...RELAY_PARKING_GMAIL_REASONS].sort()).toEqual(
+      [
+        "RATE_LIMIT_EXCEEDED",
+        "SERVICE_DISABLED",
+        "accessNotConfigured",
+        "dailyLimitExceeded",
+        "domainPolicy",
+        "insufficientPermissions",
+        "quotaExceeded",
+        "rateLimitExceeded",
+        "userRateLimitExceeded",
+      ].sort(),
+    );
+  });
+
+  it.each([...RELAY_PARKING_GMAIL_REASONS])(
+    "a Gmail 403 with reason %s parks and does not close",
+    (reason) => {
+      const result = {
+        refusal: rejected,
+        gmailApiStatus: 403,
+        gmailApiReasons: [reason],
+      };
+      expect(gmailRefusalParksRelayDraft(result)).toBe(true);
+      expect(gmailRefusalClosesRelayDraft(result)).toBe(false);
+    },
+  );
+
+  it.each([
+    ["forbidden (how Gmail types 'Delegation denied')", ["forbidden"]],
+    ["no reason at all", []],
+    ["an unknown reason", ["somethingNew"]],
+    ["the reason in the wrong case", ["DAILYLIMITEXCEEDED"]],
+  ])("a Gmail 403 with %s still closes", (_label, reasons) => {
+    const result = {
+      refusal: rejected,
+      gmailApiStatus: 403,
+      gmailApiReasons: reasons,
+    };
+    expect(gmailRefusalParksRelayDraft(result)).toBe(false);
+    expect(gmailRefusalClosesRelayDraft(result)).toBe(true);
+  });
+
+  // Founder item 76 (2026-09-27, verbatim "Park it (Recommended)"): a send
+  // 403 `insufficientPermissions` (the shared mailbox's grant lacks the send
+  // scope) parks like the quota/delegation 403s instead of closing.
+  it("a Gmail 403 insufficientPermissions parks and does not close (item 76)", () => {
+    const result = {
+      refusal: rejected,
+      gmailApiStatus: 403,
+      gmailApiReasons: ["insufficientPermissions"],
+    };
+    expect(gmailRefusalParksRelayDraft(result)).toBe(true);
+    expect(gmailRefusalClosesRelayDraft(result)).toBe(false);
+  });
+
+  it("a Gmail 404 carrying insufficientPermissions still closes — 403 only parks (item 76)", () => {
+    const result = {
+      refusal: rejected,
+      gmailApiStatus: 404,
+      gmailApiReasons: ["insufficientPermissions"],
+    };
+    expect(gmailRefusalParksRelayDraft(result)).toBe(false);
+    expect(gmailRefusalClosesRelayDraft(result)).toBe(true);
+  });
+
+  it("a Gmail 404 closes even when it carries a quota reason — 403 only parks", () => {
+    const result = {
+      refusal: rejected,
+      gmailApiStatus: 404,
+      gmailApiReasons: ["dailyLimitExceeded"],
+    };
+    expect(gmailRefusalParksRelayDraft(result)).toBe(false);
+    expect(gmailRefusalClosesRelayDraft(result)).toBe(true);
+  });
+
+  it("parks when a parking reason sits beside another one", () => {
+    const result = {
+      refusal: rejected,
+      gmailApiStatus: 403,
+      gmailApiReasons: ["forbidden", "userRateLimitExceeded"],
+    };
+    expect(gmailRefusalParksRelayDraft(result)).toBe(true);
+    expect(gmailRefusalClosesRelayDraft(result)).toBe(false);
+  });
+
+  it.each([
+    ["a Gmail 429", { refusal: undefined, gmailApiStatus: 429 }],
+    ["a Gmail 400", { refusal: rejected, gmailApiStatus: 400 }],
+    ["the SMTP fallback (no Gmail status)", { refusal: rejected }],
+    ["a credentials refusal", { refusal: { kind: "credentials" as const }, gmailApiStatus: 401 }],
+  ])("%s with a quota reason neither parks nor closes", (_label, base) => {
+    const result = { ...base, gmailApiReasons: ["dailyLimitExceeded"] };
+    expect(gmailRefusalParksRelayDraft(result)).toBe(false);
+    expect(gmailRefusalClosesRelayDraft(result)).toBe(false);
   });
 });

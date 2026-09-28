@@ -1,0 +1,13 @@
+{
+  "to": ["orders@vendor-one.example"],
+  "subject": "Regarding Barolo 2019 — Vendor One",
+  "bodyHtml": "<!DOCTYPE html><html><body><p>Could you quote 12 bottles?</p></body></html>",
+  "bodyText": "Could you quote 12 bottles?",
+  "restaurantId": "aaaaaaaa-0000-4000-8000-aaaaaaaaaaaa",
+  "providerId": "cccccccc-0000-4000-8000-cccccccccccc",
+  "conversationId": "eeeeeeee-0000-4000-8000-eeeeeeeeeeee",
+  "orderId": "bbbbbbbb-0000-4000-8000-bbbbbbbbbbbb",
+  "threadId": "19f365aac4e6",
+  "inReplyTo": "<wineops-123@wineops.ai>",
+  "references": "<wineops-123@wineops.ai>"
+}
