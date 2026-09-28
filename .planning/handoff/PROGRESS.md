@@ -89,7 +89,14 @@ found — ADR 0192, whose `main` copy contains all of it plus a 40-line later se
 `20261003100000_a_thread_list_withholds_credit_drafts_from_staff.sql` is on `main`
 byte-for-byte as `20261016000000_…` (blob `4fe71fef0`). So that checkout can be reset to
 `main` whenever the founder wants — its snapshot branch keeps the copy. The other 234 trees
-are classified as their snapshots land.
+are classified as their snapshots land, with
+[`classify-preserved.sh <stamp>`](classify-preserved.sh) (read-only; per snapshot: identical /
+older-on-main / renamed / UNIQUE, and every UNIQUE path; on a shallow clone it can only
+over-report UNIQUE). First five, 17:05Z: `wt-adr-mig-merge` holds 1 UNIQUE file, a new ADR
+that also claims **0231** (so it must renumber — #490 holds 0231); `wt-areas` 3;
+`page-actions` 26; `page-finalization` 258. UNIQUE means the content is not on `main`, not
+that it is still wanted: many are old edits later rebuilt differently. Each tree gets a
+judged review (landed differently / abandoned / still wanted) once the Mac run finishes.
 
 **Lanes in flight** — workflow `wf_75eb7e91-5af` (`web-rebuild-finish-lanes`: build →
 Sonnet adversarial verify → one Opus fix round; 2 agents at a time on this 4-CPU
