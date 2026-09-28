@@ -1,10 +1,12 @@
 # 0050 — Session agents are dispatched on a hardness score: below the line Sonnet, at or above it Opus
 
-- **Status:** Locked — founder directed the policy in-session 2026-09-01; the calibration below is the session's, and is the revisitable part.
+- **Status:** **Superseded by [ADR 0231](0231-opus-as-much-as-the-work-needs-sonnet-where-it-is-fast-and-direct.md)** (2026-09-28, founder item 86). Was: Locked — founder directed the policy in-session 2026-09-01; the calibration below is the session's, and is the revisitable part.
 - **Date:** 2026-09-01
 - **Decider:** Aldemir (founder), 2026-09-01 — phrasing: *"create a hardness threshold and if below deploy sonnet, otherwise opus"*
 - **Keywords:** agent dispatch, subagent, model routing, hardness, sonnet, opus, session discipline, cost
 - **Links:** [[0036-cost-routing-two-plans-in-harmony]] (**different subject — see Boundary below**), [[0003-session-output-discipline]], [[0049-ecosystem-division-layer]], [ECOSYSTEM-PLAN.md](../04-specs/ECOSYSTEM-PLAN.md)
+
+**[2026-09-28 bracket — SUPERSEDED. Do not dispatch by this ADR's score.]** The founder, item 86, verbatim: *"remove ADR050, run opus as much as you need, while putting emphasis on sonnet when the tasks are fast, and direct, and other things that sonnet are highly capable of doing maximizng efficiency"*. The merge trains had already stopped scoring agents on 2026-09-27, when the founder chose the judge's mix (census `WEB-REBUILD-CENSUS-2026-09-25.md` §17). The rule now lives in [ADR 0231](0231-opus-as-much-as-the-work-needs-sonnet-where-it-is-fast-and-direct.md). This file is kept, not deleted, because `decisions/README.md:10` says a Locked ADR becomes Superseded and nothing is ever silently deleted. Its filename is also pinned by `scripts/check_adr_numbers_unique.py:601-613`. What 0231 carries forward from here: the 0036 boundary, *judgment and consequence, not effort*, and split-don't-route. The five-axis score, the ≤3/≥4 threshold and the override lists no longer bind.
 
 ## Boundary — what this ADR is *not*
 
