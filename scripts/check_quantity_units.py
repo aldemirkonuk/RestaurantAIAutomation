@@ -249,6 +249,21 @@ KNOWN_EXCEPTIONS: tuple[tuple[str, str, bool, str], ...] = (
         "DEPRECATED alias for `prefilledFreeGoodsQuantityInCountedUom` — the pre-filled free-goods figure. "
         "Kept for offline-outbox payloads written by the pre-fix client.",
     ),
+    # ---------------------------------------------------------------------
+    # CONFIRM-DEAL — the body was an inline type (invisible to this guard)
+    # until lane E made it a validated class on 2026-09-21 (ADR 0175 D9, the
+    # sealed confirm-deal door), which exposed a wire name that predates it.
+    # ---------------------------------------------------------------------
+    (
+        "dto/approve-draft.dto.ts",
+        "quantity",
+        False,
+        "ConfirmDealDto.quantity OVERWRITES procurement_orders.quantity, so it is in that column's "
+        "unit, the order's own unit_type, and the service states it in that unit to the vendor "
+        "(describeConfirmedOrderTerms). The web deal modal and the seal's args both send it under "
+        "this name; renaming it is a wire change recorded as a follow-up in the ADR 0175 amendment "
+        "(2026-09-21), not done inside the seal build that exposed it.",
+    ),
 )
 
 
@@ -596,19 +611,24 @@ def _fixture(tmp: Path) -> Path:
     # an alias standing alone is the original defect, and the guard is meant to
     # say so. Emitting only the alias would make the clean tree fail — which is
     # the guard being right, not the fixture being unlucky.
-    debt = "".join(
-        (
-            f"  @IsNumber()\n  {field}?: number;\n\n"
-            + (f"  @IsNumber()\n  {field}InCountedUom?: number;\n\n" if twin else "")
+    # One fixture file per DTO file the list names (procurement.dto.ts, and
+    # since 2026-09-21 approve-draft.dto.ts), so every entry has something to
+    # excuse in the clean tree.
+    dto_files = sorted({suffix for suffix, *_ in KNOWN_EXCEPTIONS if suffix.startswith("dto/")})
+    for dto_file in dto_files:
+        debt = "".join(
+            (
+                f"  @IsNumber()\n  {field}?: number;\n\n"
+                + (f"  @IsNumber()\n  {field}InCountedUom?: number;\n\n" if twin else "")
+            )
+            for suffix, field, twin, _reason in KNOWN_EXCEPTIONS
+            if suffix == dto_file
         )
-        for suffix, field, twin, _reason in KNOWN_EXCEPTIONS
-        if suffix.endswith("dto/procurement.dto.ts")
-    )
-    (root / GATEWAY_ROOTS[0] / "dto" / "procurement.dto.ts").write_text(
-        'import { IsNumber } from "class-validator";\n\n'
-        "export class LegacyReceiptDto {\n" + debt + "}\n",
-        encoding="utf-8",
-    )
+        (root / GATEWAY_ROOTS[0] / dto_file).write_text(
+            'import { IsNumber } from "class-validator";\n\n'
+            "export class LegacyReceiptDto {\n" + debt + "}\n",
+            encoding="utf-8",
+        )
     return root
 
 

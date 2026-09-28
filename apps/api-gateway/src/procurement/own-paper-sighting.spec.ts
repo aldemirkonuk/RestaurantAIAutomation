@@ -28,6 +28,7 @@ import {
   provenanceIds,
 } from "./own-paper-sighting";
 import { priceBelowAverage } from "../vendor-intel/price-below-average";
+import { A_MANAGER, A_SEAL, GATES_AFTER_LEDGER } from "./testing/passing-vendor-gates";
 import * as ownPaperSighting from "./own-paper-sighting";
 
 type Row = Record<string, any>;
@@ -217,7 +218,7 @@ const events = { createEvent: jest.fn().mockResolvedValue({}) } as unknown as Ev
 const ledger = { recordTransaction: jest.fn().mockResolvedValue({}) } as unknown as InventoryLedgerService;
 
 function service(db: DatabaseService) {
-  return new ProcurementService(db, events, ledger);
+  return new ProcurementService(db, events, ledger, ...GATES_AFTER_LEDGER);
 }
 
 const deliveredOrder = {
@@ -306,10 +307,10 @@ describe("own paper reaches vendor_price_observations", () => {
       orderLineRow: { unit_type: "bottle", bottles_per_unit: 1 },
     });
 
-    await service(db).confirmDeal(REST, ORDER, {
+    await service(db).confirmDeal(REST, ORDER, A_MANAGER, {
       finalPrice: 36,
       sendConfirmation: false,
-    });
+    }, A_SEAL);
 
     // CHANGED BY ADR 0117 Q25 (founder, 2026-09-05), and this is the cost of
     // that decision written down rather than argued away.
@@ -364,10 +365,10 @@ describe("own paper reaches vendor_price_observations", () => {
       logged.push(String(a[0]));
     });
 
-    await svc.confirmDeal(REST, ORDER, {
+    await svc.confirmDeal(REST, ORDER, A_MANAGER, {
       finalPrice: 36,
       sendConfirmation: false,
-    });
+    }, A_SEAL);
 
     expect(calls.priceHistoryInserts).toHaveLength(0);
     expect(calls.sightingInserts).toHaveLength(0);
@@ -1048,7 +1049,7 @@ describe("fork 6(a): a confirmed deal names the vendor message it was read from"
       ],
     });
 
-    await service(db).confirmDeal(REST, ORDER, { finalPrice: 36, sendConfirmation: false });
+    await service(db).confirmDeal(REST, ORDER, A_MANAGER, { finalPrice: 36, sendConfirmation: false }, A_SEAL);
 
     expect(calls.sightingInserts).toHaveLength(1);
     const row = calls.sightingInserts[0];

@@ -98,6 +98,12 @@ vi.mock('../../../lib/spotCountOutbox', () => ({
 
 vi.mock('../../../services/api/orders', () => ({
   getOrders: vi.fn().mockResolvedValue([]),
+  // The deliveries-to-name card (ADR 0192, components/mudavym) reads this on
+  // the same page; nothing waits to be named in this harness.
+  fetchDeliveriesToName: vi.fn().mockResolvedValue({
+    viewer: { mayName: false, mayNameReason: null },
+    deliveries: [],
+  }),
 }));
 
 vi.mock('../../../services/api/posHub', () => ({

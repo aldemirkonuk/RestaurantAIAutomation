@@ -30,7 +30,8 @@ import { InventoryLedgerService } from "../inventory-ledger/inventory-ledger.ser
  *  D3  markDelivered booked `order.quantity` into the ledger while writing
  *      `quantity_received: null`. The door's anti-double-book guard reads that
  *      column (`receiving.service.ts:194`), so NULL read as 0 and the door
- *      booked the whole delivery a second time.
+ *      booked the whole delivery a second time. [ADR 0192, 2026-09-21: the
+ *      door now reconciles against the ledger and no path writes the column.]
  *
  * Before this file there was no test of verifyReceipt anywhere in the repo;
  * `invoice-match.spec.ts` covers only the pure computeMatch function.
@@ -139,6 +140,10 @@ interface Calls {
   inventoryUpdates: Row[];
   eventInserts: Row[];
   priceHistoryInserts: Row[];
+  /** `procurement_receipt_events` rows: the verification's own `reconciled` event (ADR 0192 amendment). */
+  receiptEvents: Row[];
+  /** `house_item_research` inserts: research queued for a wine the library lacks (ADR 0192, third amendment). */
+  researchInserts: Row[];
 }
 
 /**
@@ -157,9 +162,28 @@ function makeDb(opts: {
    * bottles_total/quantity fallback instead.
    */
   orderLineRow?: Row | null;
+  bookedBottles?: number;
+  ledgerReadError?: boolean;
   ownedInventoryIds?: string[];
   updatedRow?: Row;
   updateError?: { code: string; message: string } | null;
+  /** The verification's event insert fails with this. */
+  receiptEventError?: { message: string } | null;
+  /** The item's wine-library id; null = a wine the library lacks. Default: a library wine. */
+  libraryWineId?: string | null;
+  /**
+   * The order's existing latest `reconciled` event, read back before the
+   * one-tap confirmation's insert (the idempotence check). `undefined` (the
+   * default) falls back to the last row this same fixture has already
+   * recorded in `calls.receiptEvents`, so calling `verifyReceipt` twice on one
+   * `db`/`calls` pair models a real double-tap. Pass `null` explicitly for "no
+   * prior verification" even after an insert, or a row to model one seeded
+   * outside this test (e.g. a full verification an earlier, unrelated call
+   * wrote).
+   */
+  latestReconciledEvent?: Row | null;
+  /** The idempotence check's read of the latest `reconciled` event fails with this. */
+  latestReconciledReadError?: { message: string } | null;
 }) {
   const calls: Calls = {
     orderUpdates: [],
@@ -168,6 +192,8 @@ function makeDb(opts: {
     inventoryUpdates: [],
     eventInserts: [],
     priceHistoryInserts: [],
+    receiptEvents: [],
+    researchInserts: [],
   };
   const owned = new Set(opts.ownedInventoryIds ?? [OWN_INVENTORY]);
 
@@ -195,8 +221,37 @@ function makeDb(opts: {
           return { data: opts.orderRow ?? null, error: null };
         }
 
+        if (table === "inventory_transactions")
+          return opts.ledgerReadError
+            ? { data: null, error: { message: "offline" } }
+            : {
+                data: [
+                  {
+                    id: "movement-1",
+                    quantity_change: opts.bookedBottles ?? 10,
+                  },
+                ],
+                error: null,
+              };
+
         if (table === "procurement_order_items")
           return { data: opts.orderLineRow ?? null, error: null };
+
+        if (table === "procurement_receipt_events" && op === "insert" && opts.receiptEventError)
+          return { data: null, error: opts.receiptEventError };
+
+        // The idempotence check's read of the latest `reconciled` event,
+        // before the one-tap confirmation's own insert (never reached on the
+        // `insert` op above, which the branch above already answered).
+        if (table === "procurement_receipt_events" && op !== "insert") {
+          if (opts.latestReconciledReadError)
+            return { data: null, error: opts.latestReconciledReadError };
+          const latest =
+            opts.latestReconciledEvent !== undefined
+              ? opts.latestReconciledEvent
+              : (calls.receiptEvents[calls.receiptEvents.length - 1] ?? null);
+          return { data: latest ? [latest] : [], error: null };
+        }
 
         if (table === "restaurant_inventory") {
           // The ownership probe: select("id") filtered by restaurant_id + id.
@@ -207,7 +262,11 @@ function makeDb(opts: {
             };
           return {
             data: {
-              master_wine_id: "55555555-5555-4555-8555-555555555555",
+              master_wine_id:
+                opts.libraryWineId === undefined
+                  ? "55555555-5555-4555-8555-555555555555"
+                  : opts.libraryWineId,
+              wine_name: "Barolo Riserva",
               shadow_stock: 0,
               in_transit_quantity: 0,
             },
@@ -242,7 +301,12 @@ function makeDb(opts: {
           if (table === "procurement_credits")
             calls.creditInserts.push(payload);
           if (table === "inventory_events") calls.eventInserts.push(payload);
-          if (table === "price_history") calls.priceHistoryInserts.push(payload);
+          if (table === "price_history")
+            calls.priceHistoryInserts.push(payload);
+          if (table === "procurement_receipt_events")
+            calls.receiptEvents.push(payload);
+          if (table === "house_item_research")
+            calls.researchInserts.push(payload);
           return q;
         },
         update(payload: Row) {
@@ -457,10 +521,67 @@ describe("verifyReceipt — adjustments cannot reach another tenant", () => {
   });
 });
 
+describe("verifyReceipt — a correction that books a wine the library lacks queues research (ADR 0192, third amendment)", () => {
+  // Founder, 2026-09-22, verbatim pick: "Yes, same rule (Recommended)" — every
+  // path that books stock for a wine the library lacks queues research once
+  // per item id. [Last call, 2026-09-22: verification was the path missed.]
+  it("queues the item by its id when a correction booked bottles in", async () => {
+    const { db, calls } = makeDb({
+      orderRow: { ...deliveredOrder, inventory_id: "other-own-id" },
+      ownedInventoryIds: [OWN_INVENTORY, "other-own-id"],
+      libraryWineId: null,
+    });
+
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      adjustments: [{ inventoryId: OWN_INVENTORY, delta: 3, reason: "unlisted extras" }],
+    } as any);
+
+    expect(calls.researchInserts).toHaveLength(1);
+    expect(calls.researchInserts[0]).toMatchObject({
+      restaurant_id: REST,
+      inventory_id: OWN_INVENTORY,
+      status: "queued",
+      queued_from: "receiving",
+      source_order_id: ORDER,
+      queued_by: USER,
+      classified_name: "Barolo Riserva",
+    });
+  });
+
+  it("queues nothing for a correction that took bottles out", async () => {
+    const { db, calls } = makeDb({
+      orderRow: { ...deliveredOrder, inventory_id: "other-own-id" },
+      ownedInventoryIds: [OWN_INVENTORY, "other-own-id"],
+      libraryWineId: null,
+    });
+
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      adjustments: [{ inventoryId: OWN_INVENTORY, delta: -2, reason: "breakage" }],
+    } as any);
+
+    expect(calls.rpc.filter((c) => c.name === "apply_stock_movement")).toHaveLength(1);
+    expect(calls.researchInserts).toEqual([]);
+  });
+
+  it("queues nothing for a wine the library holds", async () => {
+    const { db, calls } = makeDb({
+      orderRow: { ...deliveredOrder, inventory_id: "other-own-id" },
+      ownedInventoryIds: [OWN_INVENTORY, "other-own-id"],
+    });
+
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      adjustments: [{ inventoryId: OWN_INVENTORY, delta: 3, reason: "unlisted extras" }],
+    } as any);
+
+    expect(calls.rpc.filter((c) => c.name === "apply_stock_movement")).toHaveLength(1);
+    expect(calls.researchInserts).toEqual([]);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // D3
 // ---------------------------------------------------------------------------
-describe("markDelivered — the column records what was booked", () => {
+describe("markDelivered — books what arrived, and writes no received column (ADR 0192)", () => {
   const pendingOrder = {
     id: ORDER,
     order_number: "ORD-2026-00002",
@@ -474,10 +595,11 @@ describe("markDelivered — the column records what was booked", () => {
     status: "APPROVED",
   };
 
-  it("writes quantity_received equal to what it booked when the caller sends no quantity", async () => {
-    // The web client sends none (useOrdersData.ts:68). Pre-fix, the ledger got
-    // order.quantity and the column got NULL, so the door's `alreadyBooked`
-    // read 0 and booked all 12 again.
+  it("books the order's quantity when the caller sends none, and writes no received column", async () => {
+    // The web client sends none (useOrdersData.ts:68). The door reconciles
+    // against the LEDGER (`readBookedOrderBottles`), not a column, so what was
+    // booked is what the order received — there is no second copy to keep in
+    // step, and ADR 0192 forbids writing one.
     const { db, calls } = makeDb({ orderRow: pendingOrder });
 
     await service(db).markDelivered(REST, ORDER, USER);
@@ -490,11 +612,10 @@ describe("markDelivered — the column records what was booked", () => {
     expect(live!.args.p_delta).toBe(12);
 
     expect(calls.orderUpdates).toHaveLength(1);
-    expect(calls.orderUpdates[0].quantity_received).toBe(12);
-    expect(calls.orderUpdates[0].quantity_received).toBe(live!.args.p_delta);
+    expect("quantity_received" in calls.orderUpdates[0]).toBe(false);
   });
 
-  it("records an explicit short count as the short count, not the ordered count", async () => {
+  it("books an explicit short count as the short count, not the ordered count", async () => {
     const { db, calls } = makeDb({ orderRow: pendingOrder });
 
     await service(db).markDelivered(REST, ORDER, USER, 9);
@@ -504,13 +625,67 @@ describe("markDelivered — the column records what was booked", () => {
         c.name === "apply_stock_movement" && c.args.p_stock_state === "live",
     );
     expect(live!.args.p_delta).toBe(9);
-    expect(calls.orderUpdates[0].quantity_received).toBe(9);
+    expect("quantity_received" in calls.orderUpdates[0]).toBe(false);
   });
 
-  it("never leaves quantity_received NULL after booking stock", async () => {
+  it("books five cases as sixty bottles and converts an explicitly case-priced agreement once", async () => {
+    const { db, calls } = makeDb({
+      orderRow: { ...pendingOrder, quantity: 5, bottles_total: 60, unit_type: "case", final_price: 360 },
+      orderLineRow: { id: "line", unit_type: "case", bottles_per_unit: 12, price_uom: "case", price_pack_size: 12, final_unit_price: 360 },
+    });
+    await service(db).markDelivered(REST, ORDER, USER);
+    const live = calls.rpc.find(c => c.name === "apply_stock_movement" && c.args.p_stock_state === "live");
+    expect(live?.args).toMatchObject({ p_delta: 60, p_unit_cost: 30, p_cost_provenance: "estimated" });
+    // Five cases book SIXTY bottles, and no order-unit "5" is written anywhere.
+    expect("quantity_received" in calls.orderUpdates[0]).toBe(false);
+  });
+
+  it("writes no received column on ANY of its updates", async () => {
     const { db, calls } = makeDb({ orderRow: pendingOrder });
     await service(db).markDelivered(REST, ORDER, USER);
-    expect(calls.orderUpdates[0].quantity_received).not.toBeNull();
+    expect(calls.orderUpdates.length).toBeGreaterThan(0);
+    for (const update of calls.orderUpdates)
+      expect(Object.keys(update)).not.toContain("quantity_received");
+  });
+
+  it("D6 (ADR 0190, filed as 0168) — the verify-receipt notice names how many BOTTLES were booked, not the order's own unit count", async () => {
+    // Neither `service()` nor `makeDb` wires a notificationsService, so every
+    // test above this one skips the `if (this.notificationsService)` block
+    // entirely and could not have caught this — the notice is only
+    // constructed when a real (or mocked) NotificationsService is present.
+    const notifications = {
+      persistForRestaurant: jest.fn().mockResolvedValue({ inserted: 1 }),
+    };
+    const { db } = makeDb({
+      orderRow: {
+        ...pendingOrder,
+        quantity: 5,
+        bottles_total: 60,
+        unit_type: "case",
+        final_price: 360,
+      },
+    });
+
+    await new ProcurementService(
+      db,
+      events,
+      ledger,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      notifications as any,
+    ).markDelivered(REST, ORDER, USER);
+
+    expect(notifications.persistForRestaurant).toHaveBeenCalledTimes(1);
+    const [, payload] = notifications.persistForRestaurant.mock.calls[0];
+    // Pre-fix this read "5 bottles stocked in" (resolvedQuantity — 5 cases,
+    // the order's own unit), while the ledger booked receivedBottles (60, the
+    // ledger call above asserts p_delta: 60 for this exact fixture shape).
+    expect(payload.message).toBe(
+      "60 bottles stocked in. Confirm the physical count against the vendor invoice.",
+    );
   });
 });
 
@@ -597,7 +772,17 @@ describe("verifyReceipt — cross-unit quantities are converted, not compared ra
     } as any);
 
     expect(calls.orderUpdates[0].match_status).toBe("matched");
-    expect(calls.orderUpdates[0].backorder_quantity).toBe(0);
+    // ADR 0192 amendment: the verification is a `reconciled` event in BOTTLES,
+    // and the order row no longer carries the four sibling quantities.
+    expect(calls.receiptEvents).toEqual([
+      expect.objectContaining({
+        stage: "reconciled",
+        counted_uom: "bottle",
+        counted_qty_bottles: 24,
+        rejected_qty_bottles: 0,
+        invoice_qty_bottles: 24,
+      }),
+    ]);
     expect(calls.orderUpdates[0].discrepancy_notes).toBeNull();
   });
 
@@ -846,7 +1031,7 @@ describe("verifyReceipt — a deprecated alias may not disagree with its twin", 
     } as any);
 
     expect(calls.orderUpdates[0].match_status).toBe("matched");
-    expect(calls.orderUpdates[0].accepted_quantity).toBe(24);
+    expect(calls.receiptEvents[0]).toMatchObject({ counted_qty_bottles: 24, invoice_qty_bottles: 24 });
   });
 
   it("still honours a payload that carries only the old unitless names", async () => {
@@ -862,8 +1047,7 @@ describe("verifyReceipt — a deprecated alias may not disagree with its twin", 
       rejectedQuantity: 2,
     } as any);
 
-    expect(calls.orderUpdates[0].accepted_quantity).toBe(22);
-    expect(calls.orderUpdates[0].rejected_quantity).toBe(2);
+    expect(calls.receiptEvents[0]).toMatchObject({ counted_qty_bottles: 22, rejected_qty_bottles: 2 });
     expect(calls.orderUpdates[0].match_status).toBe("rejected");
   });
 });
@@ -889,5 +1073,429 @@ describe("markDelivered — ?quantityReceived is a deprecated alias, not a secon
 
   it("keeps absence absent", () => {
     expect(readDeliveredQuantity(undefined, undefined)).toBeUndefined();
+  });
+});
+
+describe("receipt quantity follows the booked ledger", () => {
+  it.each([false, true])(
+    "does not multiply a door-counted case order twice (invoice=%s)",
+    async (withInvoice) => {
+      const { db, calls } = makeDb({
+        orderRow: {
+          ...deliveredOrder,
+          quantity: 5,
+          unit_type: "case",
+          bottles_total: 60,
+          quantity_received: 60,
+        },
+        bookedBottles: 60,
+      });
+      await service(db).verifyReceipt(REST, ORDER, USER, {
+        acceptedQuantity: 5,
+        ...(withInvoice
+          ? { invoiceQuantity: 5, invoiceUnitPrice: 40, invoiceCurrency: "USD" }
+          : {}),
+      } as any);
+      expect(
+        calls.rpc.filter((x) => x.name === "apply_stock_movement"),
+      ).toEqual([]);
+    },
+  );
+
+  it("corrects a short case against booked bottles, independently of the ambiguous display cache", async () => {
+    const { db, calls } = makeDb({
+      orderRow: {
+        ...deliveredOrder,
+        quantity: 5,
+        unit_type: "case",
+        bottles_total: 60,
+        quantity_received: 5,
+      },
+      bookedBottles: 60,
+    });
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      acceptedQuantity: 58,
+      countedUom: "bottle",
+    } as any);
+    expect(
+      calls.rpc.find((x) => x.name === "apply_stock_movement")?.args.p_delta,
+    ).toBe(-2);
+  });
+
+  it("makes no receipt write when the existing ledger cannot be read", async () => {
+    const { db, calls } = makeDb({
+      orderRow: deliveredOrder,
+      ledgerReadError: true,
+    });
+    await expect(
+      service(db).verifyReceipt(REST, ORDER, USER, {
+        acceptedQuantity: 10,
+      } as any),
+    ).rejects.toThrow(/could not be read/);
+    expect(calls.orderUpdates).toEqual([]);
+    expect(calls.rpc).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A derived count that is not a whole pack verifies in BASE UNITS (founder,
+// 2026-09-25, round 5: "Yes, in base units"). It used to be refused (D5, ADR
+// 0168 — then kept "as a follow-up" by ADR 0192's amendment), and a refused
+// verification left no history line.
+// ---------------------------------------------------------------------------
+/**
+ * When a caller states no accepted count but does state other match fields,
+ * `acceptedQtyInCountedUom` is BACK-DERIVED from the ledger's booked bottles.
+ * 59 bottles booked on a 12-pack case order is 4.9167 cases. Since 2026-09-25
+ * that reading is re-stated as the whole physical count in bottles (accepted,
+ * rejected and free goods together), so every operand is an integer in a
+ * stated unit (ADR 0070) and the verification writes its `reconciled` event.
+ *
+ * Today's web and mobile desks always send an accepted count
+ * (`ReceivingWorkspace.tsx` sends a part case as `countedUom: 'bottle'`, the
+ * mobile receive screen counts bottles), so only a direct API caller reaches
+ * this branch — which is why a mock-level test is the kind that exercises it.
+ */
+describe("verifyReceipt — a part-pack derived count verifies in bottles", () => {
+  const casesOf12 = {
+    ...deliveredOrder,
+    quantity: 5,
+    unit_type: "case",
+    bottles_total: 60,
+    quantity_received: 5,
+  };
+
+  it("verifies 59 booked bottles on a 12-pack order and records them in bottles", async () => {
+    const { db, calls } = makeDb({
+      orderRow: casesOf12,
+      bookedBottles: 59, // 59 / 12 = 4.9166... — not a whole number of cases
+    });
+
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      invoiceQuantity: 59,
+      invoiceUom: "bottle",
+      invoiceUnitPrice: 40,
+      invoiceCurrency: "USD",
+      // No acceptedQuantity: the derivation this covers is the one that
+      // only runs when the caller states no count of its own.
+    } as any);
+
+    // One history line, every quantity in bottles, nothing rounded.
+    expect(calls.receiptEvents).toHaveLength(1);
+    expect(calls.receiptEvents[0]).toMatchObject({
+      stage: "reconciled",
+      counted_uom: "bottle",
+      counted_qty: 59,
+      counted_qty_bottles: 59,
+      rejected_qty_bottles: 0,
+      invoice_qty_bottles: 59,
+    });
+    // The count is the ledger's own: no correction is booked for it.
+    expect(
+      calls.rpc.filter(
+        (c) => c.name === "apply_stock_movement" && c.args?.p_delta !== 0,
+      ),
+    ).toEqual([]);
+  });
+
+  it("converts a stated rejection in packs with the part pack, never only one of the pair", async () => {
+    const { db, calls } = makeDb({
+      orderRow: casesOf12,
+      bookedBottles: 59,
+    });
+
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      rejectedQuantity: 1, // one case refused, stated in the order's unit
+      rejectedReason: "broken case",
+    } as any);
+
+    expect(calls.receiptEvents[0]).toMatchObject({
+      counted_uom: "bottle",
+      counted_qty_bottles: 59,
+      rejected_qty_bottles: 12,
+    });
+  });
+
+  it("still derives normally when the booked total divides evenly", async () => {
+    // The guard must not close the door on the case this derivation exists
+    // for: 60 booked bottles on the same 12-pack order is exactly 5 cases.
+    const { db, calls } = makeDb({
+      orderRow: casesOf12,
+      bookedBottles: 60,
+    });
+
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      invoiceQuantity: 60,
+      invoiceUnitPrice: 40,
+      invoiceCurrency: "USD",
+    } as any);
+
+    // 5 cases of 12, stated in bottles on the event.
+    expect(calls.receiptEvents[0]).toMatchObject({ counted_qty_bottles: 60 });
+  });
+});
+
+describe("verifyReceipt — the verification is an event, not four order columns (ADR 0192 amendment)", () => {
+  const SIBLINGS = ["accepted_quantity", "rejected_quantity", "backorder_quantity", "invoice_quantity"];
+  const bottleOrder = {
+    id: ORDER,
+    order_number: "ORD-2026-00006",
+    restaurant_id: REST,
+    inventory_id: OWN_INVENTORY,
+    provider_id: "prov-1",
+    quantity: 24,
+    bottles_total: 24,
+    unit_type: "bottle",
+    final_price: 22,
+    status: "DELIVERED",
+    delivery_notes: null,
+  };
+
+  it("writes none of the four sibling columns, and records the verification once, in bottles", async () => {
+    const { db, calls } = makeDb({ orderRow: bottleOrder });
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      invoiceQuantity: 24,
+      invoiceUnitPrice: 22,
+      invoiceCurrency: "USD",
+      acceptedQuantity: 22,
+      rejectedQuantity: 2,
+      rejectedReason: "two corked",
+    } as any);
+    for (const update of calls.orderUpdates)
+      for (const col of SIBLINGS) expect(col in update).toBe(false);
+    expect(calls.receiptEvents).toEqual([
+      expect.objectContaining({
+        restaurant_id: REST,
+        order_id: ORDER,
+        stage: "reconciled",
+        counted_qty_bottles: 22,
+        rejected_qty_bottles: 2,
+        invoice_qty_bottles: 24,
+        received_by: USER,
+        notes: "two corked",
+      }),
+    ]);
+  });
+
+  it("a verification with no invoice records no invoice quantity, not zero", async () => {
+    const { db, calls } = makeDb({ orderRow: bottleOrder });
+    await service(db).verifyReceipt(REST, ORDER, USER, { acceptedQuantity: 24 } as any);
+    expect(calls.receiptEvents[0]).toMatchObject({ invoice_qty_bottles: null });
+  });
+
+  it("if the verification's counts cannot be recorded, nothing is changed: no stock moves, no claim, no order write", async () => {
+    const { db, calls } = makeDb({
+      orderRow: bottleOrder,
+      receiptEventError: { message: "permission denied" },
+    });
+    await expect(
+      service(db).verifyReceipt(REST, ORDER, USER, {
+        invoiceQuantity: 24,
+        invoiceUnitPrice: 22,
+        invoiceCurrency: "USD",
+        acceptedQuantity: 20,
+      } as any),
+    ).rejects.toThrow(/counts could not be recorded .*nothing was changed/);
+    expect(calls.rpc.filter((c) => c.name === "apply_stock_movement")).toEqual([]);
+    expect(calls.creditInserts).toEqual([]);
+    expect(calls.orderUpdates).toEqual([]);
+  });
+});
+
+describe("verifyReceipt — a one-tap 'Counts match' leaves a history line (ADR 0192, fifth amendment)", () => {
+  // Founder, 2026-09-26, round 6, verbatim option: "Yes, keep last invoice
+  // (Recommended) — It writes a history line with the counted bottles. The
+  // invoice figure from an earlier check stays readable instead of turning
+  // into 'unknown'." The mobile Today card posts exactly `{ adjustments: [] }`
+  // (`apps/mobile/src/components/today/DecisionCard.tsx`).
+  const bottleOrder = {
+    id: ORDER,
+    order_number: "ORD-2026-00007",
+    restaurant_id: REST,
+    inventory_id: OWN_INVENTORY,
+    provider_id: "prov-1",
+    quantity: 24,
+    bottles_total: 24,
+    unit_type: "bottle",
+    final_price: 22,
+    status: "DELIVERED",
+    delivery_notes: null,
+  };
+
+  it("writes one reconciled line with the booked bottles, no invoice, no refusal, and the confirmation's word", async () => {
+    const { db, calls } = makeDb({ orderRow: bottleOrder, bookedBottles: 24 });
+    await service(db).verifyReceipt(REST, ORDER, USER, { adjustments: [] } as any);
+    expect(calls.receiptEvents).toEqual([
+      expect.objectContaining({
+        restaurant_id: REST,
+        order_id: ORDER,
+        stage: "reconciled",
+        outcome: "accepted",
+        counted_qty: 24,
+        counted_uom: "bottle",
+        counted_qty_bottles: 24,
+        rejected_qty_bottles: 0,
+        invoice_qty_bottles: null,
+        received_by: USER,
+      }),
+    ]);
+    // Still the one-tap it was: the order completes and nothing moves.
+    expect(calls.orderUpdates[0]).toMatchObject({ status: "COMPLETED" });
+    expect(calls.rpc.filter((c) => c.name === "apply_stock_movement")).toEqual([]);
+  });
+
+  it("a full verification never carries the confirmation's word", async () => {
+    const { db, calls } = makeDb({ orderRow: bottleOrder, bookedBottles: 24 });
+    await service(db).verifyReceipt(REST, ORDER, USER, { acceptedQuantity: 24 } as any);
+    expect(calls.receiptEvents).toHaveLength(1);
+    expect(calls.receiptEvents[0].outcome).toBeUndefined();
+  });
+
+  it("an old offline payload that corrects the ordered line records the bottles after its correction", async () => {
+    const { db, calls } = makeDb({ orderRow: bottleOrder, bookedBottles: 24 });
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      adjustments: [{ inventoryId: OWN_INVENTORY, delta: -2, reason: "two broken" }],
+    } as any);
+    expect(calls.receiptEvents).toEqual([
+      expect.objectContaining({ outcome: "accepted", counted_qty_bottles: 22, invoice_qty_bottles: null }),
+    ]);
+    expect(calls.rpc.filter((c) => c.name === "apply_stock_movement")).toHaveLength(1);
+  });
+
+  it("an order with no item still leaves its line, with no count rather than a guessed one", async () => {
+    const { db, calls } = makeDb({ orderRow: { ...bottleOrder, inventory_id: null } });
+    await service(db).verifyReceipt(REST, ORDER, USER, { adjustments: [] } as any);
+    expect(calls.receiptEvents).toEqual([
+      expect.objectContaining({ outcome: "accepted", counted_qty: null, counted_qty_bottles: null }),
+    ]);
+  });
+
+  it("a refused adjustment leaves no line claiming a verification happened", async () => {
+    const { db, calls } = makeDb({ orderRow: bottleOrder, ownedInventoryIds: [OWN_INVENTORY] });
+    await expect(
+      service(db).verifyReceipt(REST, ORDER, USER, {
+        adjustments: [{ inventoryId: FOREIGN_INVENTORY, delta: 5 }],
+      } as any),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(calls.receiptEvents).toEqual([]);
+    expect(calls.orderUpdates).toEqual([]);
+  });
+
+  it("if the line cannot be recorded, nothing is changed", async () => {
+    const { db, calls } = makeDb({
+      orderRow: bottleOrder,
+      receiptEventError: { message: "permission denied" },
+    });
+    await expect(
+      service(db).verifyReceipt(REST, ORDER, USER, { adjustments: [] } as any),
+    ).rejects.toThrow(/could not be recorded .*nothing was changed/);
+    expect(calls.orderUpdates).toEqual([]);
+    expect(calls.rpc.filter((c) => c.name === "apply_stock_movement")).toEqual([]);
+  });
+
+  it("an unreadable ledger records no line and changes nothing, rather than a zero", async () => {
+    const { db, calls } = makeDb({ orderRow: bottleOrder, ledgerReadError: true });
+    await expect(
+      service(db).verifyReceipt(REST, ORDER, USER, { adjustments: [] } as any),
+    ).rejects.toThrow(/could not be read/);
+    expect(calls.receiptEvents).toEqual([]);
+    expect(calls.orderUpdates).toEqual([]);
+  });
+});
+
+describe("verifyReceipt — a repeated identical 'Counts match' tap writes nothing new (ADR 0192, sixth amendment)", () => {
+  // Founder, 2026-09-26, round 7, item 47 (record:
+  // `~/.claude/projects/-Users-aldemirkonuk-Projects-restaurant-ai-automation/memory/founder-answers-2026-09-25-web-rebuild.md`):
+  // "a repeated identical 'Counts match' tap on an already-completed/verified
+  // order writes NOTHING new (idempotent — detect that the latest reconciled
+  // event already states the same accepted counts and no invoice change;
+  // return success without a new row); an earlier full check's rejected count
+  // stays visible (as built)."
+  const bottleOrder = {
+    id: ORDER,
+    order_number: "ORD-2026-00008",
+    restaurant_id: REST,
+    inventory_id: OWN_INVENTORY,
+    provider_id: "prov-1",
+    quantity: 24,
+    bottles_total: 24,
+    unit_type: "bottle",
+    final_price: 22,
+    status: "DELIVERED",
+    delivery_notes: null,
+  };
+
+  it("a double-tap — the same request twice in a row — writes exactly one line", async () => {
+    const { db, calls } = makeDb({ orderRow: bottleOrder, bookedBottles: 24 });
+    await service(db).verifyReceipt(REST, ORDER, USER, { adjustments: [] } as any);
+    await service(db).verifyReceipt(REST, ORDER, USER, { adjustments: [] } as any);
+    expect(calls.receiptEvents).toHaveLength(1);
+    expect(calls.receiptEvents[0]).toMatchObject({
+      outcome: "accepted",
+      counted_qty_bottles: 24,
+    });
+    // Still reports success both times, and the order still completes: the
+    // tap is a no-op on the EVENTS table only, not a refusal to the caller.
+    expect(calls.orderUpdates).toHaveLength(2);
+    expect(calls.orderUpdates[1]).toMatchObject({ status: "COMPLETED" });
+  });
+
+  it("a third identical tap still writes nothing, beyond the second", async () => {
+    const { db, calls } = makeDb({ orderRow: bottleOrder, bookedBottles: 24 });
+    await service(db).verifyReceipt(REST, ORDER, USER, { adjustments: [] } as any);
+    await service(db).verifyReceipt(REST, ORDER, USER, { adjustments: [] } as any);
+    await service(db).verifyReceipt(REST, ORDER, USER, { adjustments: [] } as any);
+    expect(calls.receiptEvents).toHaveLength(1);
+  });
+
+  it("a tap that follows a ledger change is not a repeat, and writes its own line", async () => {
+    const fixture = { orderRow: bottleOrder, bookedBottles: 24 };
+    const { db, calls } = makeDb(fixture);
+    await service(db).verifyReceipt(REST, ORDER, USER, { adjustments: [] } as any);
+    // Two more bottles landed on the shelf between taps (a delivery, or a
+    // desk correction) — the ledger the second tap reads is not the ledger
+    // the first one did, so this is not the same fact restated.
+    fixture.bookedBottles = 26;
+    await service(db).verifyReceipt(REST, ORDER, USER, { adjustments: [] } as any);
+    expect(calls.receiptEvents).toHaveLength(2);
+    expect(calls.receiptEvents.map((e) => e.counted_qty_bottles)).toEqual([24, 26]);
+  });
+
+  it("a tap after a full verification that already states the same accepted count is also a repeat", async () => {
+    // The full check (not this branch) already wrote its own `reconciled`
+    // event — outcome null, an invoice on it — before the one-tap runs. The
+    // founder's wording covers an "already-completed/verified" order, not
+    // only a prior one-tap.
+    const { db, calls } = makeDb({
+      orderRow: bottleOrder,
+      bookedBottles: 24,
+      latestReconciledEvent: { counted_qty_bottles: 24, invoice_qty_bottles: 22 },
+    });
+    await service(db).verifyReceipt(REST, ORDER, USER, { adjustments: [] } as any);
+    expect(calls.receiptEvents).toEqual([]);
+    // The order still completes; only the events table saw nothing new.
+    expect(calls.orderUpdates).toHaveLength(1);
+    expect(calls.orderUpdates[0]).toMatchObject({ status: "COMPLETED" });
+  });
+
+  it("a repeat on an order with no item is still a repeat: 'no count recorded' twice is not new information", async () => {
+    const { db, calls } = makeDb({ orderRow: { ...bottleOrder, inventory_id: null } });
+    await service(db).verifyReceipt(REST, ORDER, USER, { adjustments: [] } as any);
+    await service(db).verifyReceipt(REST, ORDER, USER, { adjustments: [] } as any);
+    expect(calls.receiptEvents).toHaveLength(1);
+    expect(calls.receiptEvents[0].counted_qty_bottles).toBeNull();
+  });
+
+  it("if whether this order was already verified could not be checked, nothing is changed", async () => {
+    const { db, calls } = makeDb({
+      orderRow: bottleOrder,
+      bookedBottles: 24,
+      latestReconciledReadError: { message: "connection reset" },
+    });
+    await expect(
+      service(db).verifyReceipt(REST, ORDER, USER, { adjustments: [] } as any),
+    ).rejects.toThrow(/could not be checked.*nothing was changed/);
+    expect(calls.receiptEvents).toEqual([]);
+    expect(calls.orderUpdates).toEqual([]);
   });
 });

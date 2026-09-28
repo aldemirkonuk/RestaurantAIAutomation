@@ -40,7 +40,13 @@ vi.mock('./useReceivingNextData', () => ({ useActiveRestaurantId: () => 'rest-A'
 vi.mock('@/services/api/orders', () => ({ getOrder: vi.fn().mockResolvedValue(null) }))
 vi.mock('@/services/api/receiving', () => ({
   receivingApi: {
-    doorReceivedSoFar: vi.fn().mockResolvedValue({ receivedBoxes: 0 }),
+    doorReceivedSoFar: vi.fn().mockResolvedValue({
+      receivedQtyBottles: 0,
+      packSize: 12,
+      receivedBoxes: 0,
+      receivedLooseBottles: 0,
+      doorEventCount: 0,
+    }),
     uploadDocument: vi.fn(),
   },
 }))

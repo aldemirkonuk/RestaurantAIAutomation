@@ -85,12 +85,23 @@ function makeService(
     },
   };
 
-  const service = new ConversationsService({
-    supabase: client,
-  } as unknown as DatabaseService);
+  // The approve gates (ADR 0175 D9/D10, 2026-09-21) are stand-ins that pass:
+  // this file is about what happens AFTER an approval is allowed — the
+  // dispatch and its honesty — not about who may approve.
+  const service = new ConversationsService(
+    { supabase: client } as unknown as DatabaseService,
+    { redeem: async () => ({ sealId: "seal-1" }) } as any,
+    {
+      assertMaySend: async () => ({ mode: "send", basis: "manager", grant: null, role: "manager" }),
+      witnessGrantUse: async () => undefined,
+    } as any,
+  );
 
   return { service, updates };
 }
+
+/** The approve route's actor since the seal (ADR 0175 D9, 2026-09-21). */
+const ACTOR = { userId: "manager-1", challenge: "good" };
 
 function axios404() {
   const err: any = new Error("Request failed with status code 404");
@@ -109,7 +120,7 @@ describe("Defect B — a failed publish can never be reported as a send", () => 
 
     const result = await service.approveConversation(CONV, HOUSE, {
       approvalChannel: "web",
-    });
+    }, ACTOR);
 
     expect(result.messageSent).toBe(false);
     expect(result.success).toBe(false);
@@ -125,7 +136,7 @@ describe("Defect B — a failed publish can never be reported as a send", () => 
 
     const result = await service.approveConversation(CONV, HOUSE, {
       approvalChannel: "web",
-    });
+    }, ACTOR);
 
     expect(result.success).toBe(true);
     expect(result.messageSent).toBe(false);
@@ -135,7 +146,7 @@ describe("Defect B — a failed publish can never be reported as a send", () => 
     mockedAxios.post.mockRejectedValue(axios404());
     const { service, updates } = makeService();
 
-    await service.approveConversation(CONV, HOUSE, { approvalChannel: "web" });
+    await service.approveConversation(CONV, HOUSE, { approvalChannel: "web" }, ACTOR);
 
     expect(updates).toHaveLength(1);
     expect(updates[0].table).toBe("procurement_conversations");
@@ -174,12 +185,15 @@ describe("PR #476 Train 5 BLOCK — approveConversation refuses every house lett
   });
 
   // The real route (`conversations.controller.ts`, `@Roles("owner","manager")`)
-  // always passes the caller's role; so does every case here.
+  // always passes the caller's role; so does every case here. [#436 merging
+  // main ef8ecdf30, 2026-09-27: on #436 the route has no @Roles (WHO is the
+  // service's gate, ADR 0175 D10) and the role follows the actor.]
   const approve = (service: any) =>
     service.approveConversation(
       CONV,
       HOUSE,
       { approvalChannel: "web" },
+      ACTOR,
       "owner",
     );
 
@@ -295,7 +309,7 @@ describe("Defect B — the failure is logged loudly, not as a warning", () => {
       error: (m: string) => errors.push(m),
     };
 
-    await service.approveConversation(CONV, HOUSE, { approvalChannel: "web" });
+    await service.approveConversation(CONV, HOUSE, { approvalChannel: "web" }, ACTOR);
 
     const line = errors.find((e) => e.includes("Event publish FAILED"));
     expect(line).toBeDefined();

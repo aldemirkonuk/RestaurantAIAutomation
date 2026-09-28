@@ -32,6 +32,15 @@ links: ["[[PAGE-CONTRACT]]", "[[simpos-order-log]]", "[[0086-a-count-confesses-w
 - "Open the orders" → `/orders` · "Open the reports" → `/documents-reports` · "Open the features" → `/settings?tab=features` · "Open the team" → `/team` (audit rows, by `entityType`)
 - A register with no page of its own renders a sentence saying so — never a dead control
 
+## Correlation ownership correction — 2026-09-13
+
+The gateway now scopes event_store rows by the production writer's
+`payload.restaurant_id` as well as correlation_id, before applying the page window.
+A correlation id alone is not an ownership key; shared and foreign correlations
+must never return another house's event metadata. Unattributed historical rows
+are withheld rather than guessed. The service tests cover shared/foreign ids,
+unattributed rows, and pagination after the tenant predicate.
+
 ## 1. Purpose
 Read-only correlated timeline for the active restaurant across six sources: POS checks, agent decisions, stock movements, procurement documents, audit log, and (when filtered) the event store (`LogsTimelinePage.tsx:1-35,45-51`). Filter by correlation id via `?correlationId=` or the search box; clicking any event's correlation id pivots the whole timeline onto that thread (`LogsTimelinePage.tsx:363-376`). This is the "show your working" surface for anything an agent did to inventory.
 
