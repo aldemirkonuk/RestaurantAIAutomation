@@ -22,6 +22,10 @@
  * renders only where `mudavym_design_promotions` is on (OFF by default,
  * 20261015000000). The gate claims the shell and carries the header, as for
  * every other rebuilt page — this component no longer does either itself.
+ * [2026-09-27, ADR 0149 row 54: no longer dark — founder item 53 ("Live in
+ * code at cutover (Recommended)") put `promotions` in LIVE_PAGES, so this
+ * renders for every house with no flag read; the PageGate stays for the QA
+ * override.]
  * The ground follows the person's choice (ADR 0169); nothing here forces
  * charcoal any more.
  *

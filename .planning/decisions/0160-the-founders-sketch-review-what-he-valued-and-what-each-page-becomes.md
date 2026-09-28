@@ -567,7 +567,7 @@ must land before the flag goes live for any house". So the first build (PR #473,
 and `mudavym_design_vendor_prices` may not be turned on for any house until the
 provenance lane has landed. This answers the sequencing question #473's page note asked;
 it does not reopen "not deferred" — the provenance is still owed before any house sees
-the page.]** **[built 2026-09-25, lane W3-provenance, branch
+the page.]** **[2026-09-27, ADR 0149 row 54 (PR #487): the provenance lane (#482) merged, and founder item 53 (2026-09-25, round 8, "Live in code at cutover (Recommended)"; rejected "Promotions only", "Keep both dark") put `vendor_prices` in `LIVE_PAGES` for every house, including houses created later. `mudavym_design_vendor_prices` moved to `LIVE_IN_CODE_FLAGS`; its column (`20261022000000`) stays, unread. The per-house flip above is superseded.]** **[built 2026-09-25, lane W3-provenance, branch
 `feat/vendor-price-provenance` (stacked on #473): `vendor_price_observations` gains
 `document_id`, `document_line_id`, `conversation_message_id` and `source_contact_id`
 (`20260927130000_a_price_names_its_paper_and_its_messenger.sql` **[renamed
@@ -711,7 +711,7 @@ written rule under ADR 0020 before it ships. Open item 8 is closed; ads become o
   admitted'" (his answer 30, 2026-09-25). Label: keep the landed/agreed words (batch 2,
   2026-09-19). Colour: no movement colour pair, a rise and a fall use the same ink
   (answer 30). Sequencing: fork 6(a)'s full provenance is a follow-on lane that MUST
-  land before `mudavym_design_vendor_prices` is turned on for any house (answer 30).
+  land before `mudavym_design_vendor_prices` is turned on for any house (answer 30). **[2026-09-27: #482 landed; `vendor_prices` is now live in code for every house on founder item 53 — ADR 0149 row 54.]**
   Source: project memory `founder-sketch-decisions-106-115.md:139-141` and
   `founder-answers-2026-09-25-web-rebuild.md:50`.]**; 113 — 6 of 7 open
   (`README:336-377`): only question 7, the coupling to 112's forks, is answered, through
@@ -730,6 +730,14 @@ written rule under ADR 0020 before it ships. Open item 8 is closed; ads become o
   answering both). Still owed: the founder's pick. The `/promotions` build on
   `feat/promotions-mudavym` ships dark behind `mudavym_design_promotions` and builds
   neither part until he picks (CLAIMS `PROMOTIONS-OWED-DRAWINGS-NOT-BUILT`).]**
+  **[2026-09-27, ADR 0149 row 54 (PR #487): no longer dark. Founder item 53 (2026-09-25,
+  round 8, "Promotions and vendor-prices go live in code at cutover (flags-to-code PR,
+  every house incl. new ones)", option chosen "Live in code at cutover (Recommended)")
+  put `promotions` in `LIVE_PAGES`; `mudavym_design_promotions` moved to
+  `LIVE_IN_CODE_FLAGS`, its column (`20261015000000`) stays, unread. The precondition
+  its registry entry named — "Who is writing" (#470) live on `/communications` — is met:
+  #470 merged and `CommunicationsNext.tsx` renders `<WhoIsWriting />` ungated. CLAIMS
+  `PROMOTIONS-DARK-BEHIND-FLAG` amended in place.]**
   **[ANSWERED and BUILT 2026-09-25 — founder, 2026-09-25, round 5 (`AskUserQuestion`,
   session 6c6d8b93; recorded in memory `founder-answers-2026-09-25-web-rebuild.md` item 35).
   The option text below is sketch 124's README question text
@@ -915,3 +923,4 @@ written rule under ADR 0020 before it ships. Open item 8 is closed; ads become o
 | 2026-09-25 | Aldemir (founder, `AskUserQuestion`, session 6c6d8b93, items 24-25) + lane W3-recs (Opus 5.5) | Answered — §108: sketch 122 direction B ("direction B is better"), questions 2-10 all "Recommended" (verbatim options and rejected alternatives in §108's bracket); `/recommendations` joins `LIVE_PAGES` for every house |
 | 2026-09-26 | Aldemir (founder), rounds 5-6 items 36 and 43, as recorded in memory `founder-answers-2026-09-25-web-rebuild.md` (the question-round wording is not in the repo) + Claude (Opus 5.5; lane W4-promos-filters, PR #474) | Answered and built — `/promotions`' house-first ladder (On my menu → Everything I stock → All offers, live counts, box sizes fixed), its facets (vendor, ends soon, search, coarse category, running low over counted stock only), the no-menu banner, bundles tagged n of m, URL state, the 390px apply step, and the tray's first five bottles. See §113's round-6 bracket. |
 | 2026-09-26 | Aldemir (founder, `AskUserQuestion`, session 6c6d8b93, round 6) + lane W4-receiving (Opus 5.5) | Answered — register row 125 (the deliveries-domain fork): the receiving desk stays keyed on purchase orders now (*"Stay on orders now (Recommended)"*); moving to `deliveries` is a later migration (§107 bracket) |
+| 2026-09-27 | Aldemir (founder, round 8 item 53, memory `founder-answers-2026-09-25-web-rebuild.md`) + lane W8-flags (Opus 5.5, PR #487) | Bracketed — §112 and §113: `/vendor-prices` and `/promotions` live in code for every house (ADR 0149 row 54); their "dark"/"may not be turned on" sentences superseded, preconditions (#470, #482) verified merged |
