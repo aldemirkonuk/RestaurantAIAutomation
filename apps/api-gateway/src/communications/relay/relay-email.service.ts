@@ -138,8 +138,10 @@ import { HouseSenderService } from "../letters/house-sender.service";
 import { houseActor, type TokenUser } from "../letters/house-letters.actor";
 import { MimeHeaderError } from "../mime-headers";
 import {
+  RelayProviderFailedError,
   RelayRejectedByProviderError,
   RelaySendingMailboxUnavailableError,
+  type SendRefusal,
   gmailRefusalClosesRelayDraft,
   gmailRefusalParksRelayDraft,
 } from "../send-failure";
@@ -241,6 +243,17 @@ export interface RelayResult {
   sendingMailboxUnavailable?: boolean;
   /** The Gmail reasons that set `sendingMailboxUnavailable`, as Gmail typed them. */
   gmailReasons?: string[];
+  /**
+   * Present only when `success` is `false` on the orchestrator's transport and
+   * `classifySendFailure` (send-failure.ts) PROVED the failure a refusal:
+   * `kind` is its typed answer, read from the error's fields and never from
+   * `error`'s text. Absent means ambiguous — the provider may hold the message.
+   * The orchestrator decides release-versus-park on a 200 from this field alone
+   * (`_is_definite_send_refusal`, provider_conversation_agent.py), because the
+   * sentence in `error` is the provider's free text (2026-09-28, the Python
+   * twin of PR #405; see `RelayProviderFailedError`).
+   */
+  refusal?: SendRefusal;
   channel: "email";
   door: RelayDoor;
   /** Populated only on the person door: which mailbox it sent (or will send)
@@ -412,8 +425,8 @@ export class RelayEmailService {
     // (Recommended)", narrowing item 66): a Gmail 403 whose typed reason is
     // a fault of the shared sending mailbox is the mailbox's problem, not
     // the draft's, so it must not close. It answers 503: the orchestrator's
-    // `_is_definite_send_refusal` checks "gateway refused the send: HTTP 5xx"
-    // FIRST and returns False, so `_handle_conversation_approved` parks the
+    // `_is_definite_send_refusal` reads a 5xx `gateway_status` (typed since
+    // 2026-09-28; it was the "HTTP 5xx" sentence) and returns False, so `_handle_conversation_approved` parks the
     // draft SEND_UNCONFIRMED without raising — the same outcome as ADR
     // 0099's relay 401 ("401 parks"), never RELAY_REFUSED, never a bus retry.
     if (!result.success && result.sendingMailboxUnavailable) {
@@ -796,6 +809,10 @@ export class RelayEmailService {
     // `providerRejectedRequest`.
     let sendingMailboxUnavailable = false;
     let gmailReasons: string[] = [];
+    // `RelayProviderFailedError` (send-failure.ts): every other transport
+    // failure on the orchestrator's transport, carrying `classifySendFailure`'s
+    // typed refusal when it proved one. Undefined = ambiguous.
+    let refusal: SendRefusal | undefined;
     try {
       const result = await send(plan);
       success = true;
@@ -809,6 +826,9 @@ export class RelayEmailService {
       if (err instanceof RelaySendingMailboxUnavailableError) {
         sendingMailboxUnavailable = true;
         gmailReasons = [...err.reasons];
+      }
+      if (err instanceof RelayProviderFailedError && err.refusal) {
+        refusal = { kind: err.refusal.kind };
       }
     }
 
@@ -826,6 +846,7 @@ export class RelayEmailService {
               providerRejectedRequest,
               sendingMailboxUnavailable,
               ...(gmailReasons.length ? { gmailReasons } : {}),
+              refusalKind: refusal?.kind ?? null,
               ...extraAudit,
             },
         success ? null : (error ?? null),
@@ -843,6 +864,7 @@ export class RelayEmailService {
       ...(sendingMailboxUnavailable
         ? { sendingMailboxUnavailable, gmailReasons }
         : {}),
+      ...(refusal ? { refusal } : {}),
       channel: "email",
       door: plan.door,
       ...(extraAudit.sender
@@ -908,6 +930,9 @@ export class RelayEmailService {
       // delivery method available" in that 200's text and RELEASES the draft
       // for retry. ADR 0099's "401 parks" is the relay DOOR's own 401. Open
       // as OD-175 (OPEN-DECISIONS.md:24); code unchanged here.]
+      // [2026-09-28: the release now comes from the typed `refusal.kind`
+      // this 200 carries (`RelayProviderFailedError` below), no longer from
+      // the orchestrator matching those words. Same outcome; OD-175 open.]
       // Founder, 2026-09-27 (item 69, "Park quota/delegation 403
       // (Recommended)", narrowing item 66): a 403 whose typed Gmail reason is
       // a fault of THIS shared mailbox (quota, rate limit, domain policy, API
@@ -925,7 +950,14 @@ export class RelayEmailService {
           result.error ?? "the provider reported no reason",
         );
       }
-      throw new Error(result.error ?? "the provider reported no reason");
+      // Everything else still answers 200 `success:false`, as before — but
+      // now with `classifySendFailure`'s typed refusal on the body, so the
+      // orchestrator never has to read the provider's sentence to decide
+      // release versus park (2026-09-28; `RelayProviderFailedError`).
+      throw new RelayProviderFailedError(
+        result.error ?? "the provider reported no reason",
+        result.refusal,
+      );
     }
     return { messageId: result.messageId, threadId: result.threadId };
   }

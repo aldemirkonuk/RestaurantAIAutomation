@@ -188,15 +188,17 @@ async def test_missing_credential_is_classified_a_DEFINITE_refusal(
 ):
     """The classification decides whether a vendor gets a second purchase order.
 
-    Nothing was transmitted, so this is provably not delivered — it must land in
-    `_is_definite_send_refusal`'s allow-list, which releases the conversation for
-    retry instead of parking it as "the vendor may hold this message".
+    Nothing was transmitted, so this is provably not delivered — it carries the
+    typed `refused_before_send`, which `_is_definite_send_refusal` reads to
+    release the conversation for retry instead of parking it as "the vendor may
+    hold this message" (typed since 2026-09-28; its words are not read).
     """
     monkeypatch.delenv("ADMIN_API_KEY", raising=False)
 
     result = await composer.send_via_gateway(_payload())
 
-    assert ProviderConversationAgent._is_definite_send_refusal(result["error"])
+    assert result["refused_before_send"] is True
+    assert ProviderConversationAgent._is_definite_send_refusal(result)
 
 
 # ---------------------------------------------------------------------------
@@ -296,7 +298,7 @@ async def test_a_send_that_names_nothing_never_leaves_and_is_a_definite_refusal(
     assert _FakeSession.calls == []
     # Nothing was transmitted, so the conversation is released for retry
     # rather than parked as "the vendor may hold this".
-    assert ProviderConversationAgent._is_definite_send_refusal(result["error"])
+    assert ProviderConversationAgent._is_definite_send_refusal(result)
 
 
 @pytest.mark.asyncio
@@ -379,7 +381,7 @@ async def test_a_5xx_stays_ambiguous(
     result = await composer.send_via_gateway(_payload())
 
     assert result["success"] is False
-    assert not ProviderConversationAgent._is_definite_send_refusal(result["error"])
+    assert not ProviderConversationAgent._is_definite_send_refusal(result)
 
 
 # ---------------------------------------------------------------------------
@@ -411,7 +413,7 @@ async def test_a_relay_400_403_or_422_is_a_definite_refusal(
     result = await composer.send_via_gateway(_payload())
 
     assert result["success"] is False
-    assert ProviderConversationAgent._is_definite_send_refusal(result["error"])
+    assert ProviderConversationAgent._is_definite_send_refusal(result)
 
 
 # ---------------------------------------------------------------------------
@@ -426,8 +428,12 @@ async def test_a_relay_400_403_or_422_is_a_definite_refusal(
 
 @pytest.mark.parametrize("status", [400, 403, 422])
 def test_relay_final_refusal_code_matches_400_403_and_422(status: int):
-    text = f"gateway refused the send: HTTP {status} — refused"
-    assert ProviderConversationAgent._relay_final_refusal_code(text) == str(status)
+    failure = {
+        "success": False,
+        "error": f"gateway refused the send: HTTP {status} — refused",
+        "gateway_status": status,
+    }
+    assert ProviderConversationAgent._relay_final_refusal_code(failure) == str(status)
 
 
 @pytest.mark.parametrize("status", [401, 404, 429, 500, 503])
@@ -435,8 +441,12 @@ def test_relay_final_refusal_code_is_none_for_every_other_code(status: int):
     """401 (ambiguous, parks) and every code the founder's answer did not
     name (404, 429, 5xx) fall through to `_is_definite_send_refusal`
     unchanged — this function must never widen past exactly {400, 403, 422}."""
-    text = f"gateway refused the send: HTTP {status} — refused"
-    assert ProviderConversationAgent._relay_final_refusal_code(text) is None
+    failure = {
+        "success": False,
+        "error": f"gateway refused the send: HTTP {status} — refused",
+        "gateway_status": status,
+    }
+    assert ProviderConversationAgent._relay_final_refusal_code(failure) is None
 
 
 @pytest.mark.parametrize(
@@ -447,6 +457,9 @@ def test_relay_final_refusal_code_is_none_for_every_other_code(status: int):
         "no email delivery method available: ADMIN_API_KEY is not configured",
         "invalid_grant: Bad Request",
         "550 5.1.1 user unknown",
+        # 2026-09-28: a bare string is never classified, even one naming a
+        # relay-final code — only the typed `gateway_status` is read.
+        "gateway refused the send: HTTP 403 — refused",
     ],
 )
 def test_relay_final_refusal_code_is_none_for_non_relay_shaped_errors(text):
@@ -459,29 +472,34 @@ def test_relay_final_refusal_code_is_none_for_non_relay_shaped_errors(text):
 
 
 @pytest.mark.parametrize(
-    "text",
+    "status, text",
     [
         # A 5xx may follow an accepted send. Its detail is the gateway's (or an
         # upstream's) text, which can quote another refusal sentence.
         (
+            503,
             "gateway refused the send: HTTP 503 — upstream said: "
-            + "gateway refused the send: HTTP 422 — refused"
+            + "gateway refused the send: HTTP 422 — refused",
         ),
         # A 200 `success: false` carries the provider's own error text.
         (
+            200,
             "gateway refused the send: HTTP 200 — provider error quoting "
-            + "gateway refused the send: HTTP 403 — refused"
+            + "gateway refused the send: HTTP 403 — refused",
         ),
     ],
 )
-def test_relay_final_refusal_code_reads_only_the_composer_s_own_status(text):
+def test_relay_final_refusal_code_reads_only_the_composer_s_own_status(status, text):
     """Only the status `send_via_gateway` wrote at the FRONT of its sentence
     decides. A relay-final code quoted later, inside the detail, must not close
     a send that may have reached the vendor: RELAY_REFUSED tells the manager
     "not sent", and a resend from there is the duplicate order this classifier
     exists to prevent (last call, 2026-09-21: a mutant that closed on ANY
-    quoted 400/403/422 passed all 85 tests before this one)."""
-    assert ProviderConversationAgent._relay_final_refusal_code(text) is None
+    quoted 400/403/422 passed all 85 tests before this one). Since 2026-09-28
+    that status is the typed `gateway_status`, and the sentence is not read."""
+    failure = {"success": False, "error": text, "gateway_status": status}
+    assert ProviderConversationAgent._relay_final_refusal_code(failure) is None
+    assert not ProviderConversationAgent._is_definite_send_refusal(failure)
 
 
 @pytest.mark.asyncio
@@ -511,7 +529,7 @@ async def test_a_relay_401_stays_ambiguous_and_parks_for_a_person(
     result = await composer.send_via_gateway(_payload())
 
     assert result["success"] is False
-    assert not ProviderConversationAgent._is_definite_send_refusal(result["error"])
+    assert not ProviderConversationAgent._is_definite_send_refusal(result)
 
 
 @pytest.mark.parametrize("status", [404, 429])
@@ -537,7 +555,7 @@ async def test_a_relay_404_or_429_is_unchanged_and_still_ambiguous(
     result = await composer.send_via_gateway(_payload())
 
     assert result["success"] is False
-    assert not ProviderConversationAgent._is_definite_send_refusal(result["error"])
+    assert not ProviderConversationAgent._is_definite_send_refusal(result)
 
 
 @pytest.mark.parametrize("status", [400, 403, 422])
@@ -631,8 +649,8 @@ async def test_an_older_gateway_s_whitelist_400_names_the_fields_and_is_not_rela
     assert result["success"] is False
     assert result["gateway_older_than_agent"] is True
     assert "restaurantId, providerId, conversationId, orderId" in result["error"]
-    assert ProviderConversationAgent._relay_final_refusal_code(result["error"]) is None
-    assert ProviderConversationAgent._is_definite_send_refusal(result["error"])
+    assert ProviderConversationAgent._relay_final_refusal_code(result) is None
+    assert ProviderConversationAgent._is_definite_send_refusal(result)
 
 
 @pytest.mark.parametrize(
@@ -683,7 +701,7 @@ async def test_the_whitelist_shape_is_read_only_on_a_400(
     result = await composer.send_via_gateway(_payload())
 
     assert "gateway_older_than_agent" not in result
-    assert ProviderConversationAgent._relay_final_refusal_code(result["error"]) == "403"
+    assert ProviderConversationAgent._relay_final_refusal_code(result) == "403"
 
 
 @pytest.mark.asyncio
@@ -788,7 +806,160 @@ async def test_a_provider_failure_behind_a_200_reports_the_provider_s_error(
 
     assert result["success"] is False
     assert "Gmail API quota exceeded" in result["error"]
-    assert not ProviderConversationAgent._is_definite_send_refusal(result["error"])
+    assert not ProviderConversationAgent._is_definite_send_refusal(result)
+
+
+# ---------------------------------------------------------------------------
+# 2026-09-28 — the Python twin of PR #405's double-send vector. A relay 200
+# `success:false` carries the provider's own words in `error`, and the gateway's
+# typed `refusal: { kind }` when `classifySendFailure` proved a refusal from the
+# error's fields (relay-email.doors.spec.ts pins that half). Only the typed
+# field decides release versus park; the words never do.
+# ---------------------------------------------------------------------------
+
+
+def _relay_200(error: str, refusal: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    body: Dict[str, Any] = {
+        "success": False,
+        "error": error,
+        "channel": "email",
+        "door": "orchestrator",
+    }
+    if refusal is not None:
+        body["refusal"] = refusal
+    return body
+
+
+@pytest.mark.parametrize("kind", ["credentials", "no-transport", "rejected", "header"])
+@pytest.mark.asyncio
+async def test_a_relay_200_with_a_typed_refusal_is_definite(
+    composer: EmailComposerService, monkeypatch: pytest.MonkeyPatch, kind: str
+):
+    monkeypatch.setenv("ADMIN_API_KEY", "s3cret-value")
+    # Words chosen to match none of the old phrases: the kind alone decides.
+    monkeypatch.setattr(
+        _CLIENT_SESSION, _answering(200, _relay_200("provider said no", {"kind": kind}))
+    )
+
+    result = await composer.send_via_gateway(_payload())
+
+    assert result["gateway_status"] == 200
+    assert result["refusal_kind"] == kind
+    assert ProviderConversationAgent._is_definite_send_refusal(result)
+    assert ProviderConversationAgent._relay_final_refusal_code(result) is None
+
+
+@pytest.mark.parametrize(
+    "words",
+    [
+        "Email delivery failed: Message failed: 450 4.2.1 Mailbox unavailable",
+        "invalid_grant: Token has been expired or revoked.",
+        "Can't send mail - all recipients were rejected: 550 5.1.1 user unknown",
+        "No email delivery method available — OAuth failed and SMTP not configured",
+    ],
+)
+@pytest.mark.asyncio
+async def test_a_relay_200_s_words_never_prove_a_refusal(
+    composer: EmailComposerService, monkeypatch: pytest.MonkeyPatch, words: str
+):
+    """FAILED on c8bbf95de for every case: each sentence matched a phrase in
+    the old text allow-list. With no typed kind the gateway proved nothing —
+    an SMTP 450 may still have been queued — so it parks."""
+    monkeypatch.setenv("ADMIN_API_KEY", "s3cret-value")
+    monkeypatch.setattr(_CLIENT_SESSION, _answering(200, _relay_200(words)))
+
+    result = await composer.send_via_gateway(_payload())
+
+    assert words in result["error"]
+    assert "refusal_kind" not in result
+    assert not ProviderConversationAgent._is_definite_send_refusal(result)
+
+
+@pytest.mark.parametrize(
+    "refusal",
+    [{"kind": "maybe"}, {"kind": 5}, "rejected", {"reason": "rejected"}],
+)
+@pytest.mark.asyncio
+async def test_only_a_known_typed_kind_is_read(
+    composer: EmailComposerService, monkeypatch: pytest.MonkeyPatch, refusal: Any
+):
+    monkeypatch.setenv("ADMIN_API_KEY", "s3cret-value")
+    body = _relay_200("x")
+    body["refusal"] = refusal
+    monkeypatch.setattr(_CLIENT_SESSION, _answering(200, body))
+
+    result = await composer.send_via_gateway(_payload())
+
+    assert "refusal_kind" not in result
+    assert not ProviderConversationAgent._is_definite_send_refusal(result)
+
+
+@pytest.mark.parametrize("status", [401, 403, 503])
+@pytest.mark.asyncio
+async def test_a_typed_kind_is_read_only_on_a_200(
+    composer: EmailComposerService, monkeypatch: pytest.MonkeyPatch, status: int
+):
+    """A non-200 is decided by its status alone; a `refusal` on it is ignored."""
+    monkeypatch.setenv("ADMIN_API_KEY", "s3cret-value")
+    body = {"statusCode": status, "message": "m", "refusal": {"kind": "rejected"}}
+    monkeypatch.setattr(_CLIENT_SESSION, _answering(status, body))
+
+    result = await composer.send_via_gateway(_payload())
+
+    assert "refusal_kind" not in result
+    assert result["gateway_status"] == status
+
+
+@pytest.mark.asyncio
+async def test_a_relay_200_smtp_450_end_to_end_parks_and_is_never_retried(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """The double-send itself, end to end. On c8bbf95de this raised "released
+    for retry" and returned the row to PENDING_APPROVAL, so the bus retry — or
+    the manager's next tap — sent a second copy of a message Gmail's SMTP
+    server may already have queued."""
+    monkeypatch.setenv("ADMIN_API_KEY", "s3cret-value")
+    monkeypatch.setattr(
+        _CLIENT_SESSION,
+        _answering(
+            200,
+            _relay_200(
+                "Email delivery failed: Message failed: 450 4.2.1 Mailbox unavailable"
+            ),
+        ),
+    )
+    agent = _approved_agent(_approved_conversation())
+
+    await agent._handle_conversation_approved({"conversation_id": CONVO_A})
+
+    row = agent.database.supabase.conversation
+    assert row["status"] == "SEND_UNCONFIRMED"
+    assert row.get("relay_refusal_reason") is None
+
+
+@pytest.mark.asyncio
+async def test_a_relay_200_typed_credentials_end_to_end_is_still_released(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """OD-175 is open: a relay-path credentials refusal is RELEASED for retry,
+    as it was before this change. Typed now; the outcome is unchanged."""
+    monkeypatch.setenv("ADMIN_API_KEY", "s3cret-value")
+    monkeypatch.setattr(
+        _CLIENT_SESSION,
+        _answering(
+            200,
+            _relay_200(
+                "invalid_grant: Token has been expired or revoked.",
+                {"kind": "credentials"},
+            ),
+        ),
+    )
+    agent = _approved_agent(_approved_conversation())
+
+    with pytest.raises(RuntimeError, match="released for retry"):
+        await agent._handle_conversation_approved({"conversation_id": CONVO_A})
+
+    assert agent.database.supabase.conversation["status"] == "PENDING_APPROVAL"
 
 
 # ---------------------------------------------------------------------------
@@ -1011,6 +1182,24 @@ async def test_an_approved_conversation_whose_row_names_no_house_never_leaves(
     nothing was, the claim is released rather than parked."""
     monkeypatch.setenv("ADMIN_API_KEY", "s3cret-value")
     agent = _approved_agent(_approved_conversation(restaurant_id=None))
+
+    with pytest.raises(RuntimeError, match="released for retry"):
+        await agent._handle_conversation_approved({"conversation_id": CONVO_A})
+
+    assert _FakeSession.calls == []
+    assert agent.database.supabase.conversation["status"] == "PENDING_APPROVAL"
+
+
+@pytest.mark.asyncio
+async def test_a_vendor_with_no_address_never_leaves_and_is_released(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """`_send_message`'s own `no_email` refusal carries the typed
+    `refused_before_send` (2026-09-28): nothing was transmitted, so the claim
+    is released rather than parked — decided by the flag, not the word."""
+    monkeypatch.setenv("ADMIN_API_KEY", "s3cret-value")
+    agent = _approved_agent(_approved_conversation())
+    agent.database.supabase.provider = {"name": "Vendor One", "primary_contact": {}}
 
     with pytest.raises(RuntimeError, match="released for retry"):
         await agent._handle_conversation_approved({"conversation_id": CONVO_A})
