@@ -40,7 +40,7 @@ const note: React.CSSProperties = {
 const quiet: React.CSSProperties = {
   fontFamily: SANS,
   fontSize: 11.5,
-  color: 'var(--ink-3, #7C7365)',
+  color: 'var(--ink-4, #665D50)',
   margin: '0 0 10px',
 };
 
@@ -493,12 +493,12 @@ function CatalogueRow({
             {tag}
           </span>
         )}
-        <span style={{ display: 'block', fontSize: 11.5, color: 'var(--ink-3, #7C7365)' }}>
+        <span style={{ display: 'block', fontSize: 11.5, color: 'var(--ink-4, #665D50)' }}>
           {[placeOf(v), v.wine_specialties].filter(Boolean).join(' · ') || EM}
         </span>
       </div>
       {yours ? (
-        <span style={{ fontSize: 12, color: 'var(--ink-3, #7C7365)' }}>In your vendors</span>
+        <span style={{ fontSize: 12, color: 'var(--ink-4, #665D50)' }}>In your vendors</span>
       ) : (
         <button
           type="button"

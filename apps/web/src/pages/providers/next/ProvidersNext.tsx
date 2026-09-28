@@ -141,7 +141,7 @@ function BucketCard({
         {tag && (
           <span
             data-testid="supply-tag"
-            style={{ display: 'block', marginTop: 2, fontSize: 11, color: 'var(--ink-3, #7C7365)' }}
+            style={{ display: 'block', marginTop: 2, fontSize: 11, color: 'var(--ink-4, #665D50)' }}
           >
             {tag}
           </span>

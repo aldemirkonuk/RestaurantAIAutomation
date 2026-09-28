@@ -40,7 +40,7 @@ const LABEL: React.CSSProperties = {
   fontWeight: 600,
   letterSpacing: '0.14em',
   textTransform: 'uppercase',
-  color: 'var(--ink-3, #7C7365)',
+  color: 'var(--ink-4, #665D50)',
   margin: '14px 0 6px',
 };
 
@@ -54,7 +54,7 @@ const BODY: React.CSSProperties = {
 const QUIET: React.CSSProperties = {
   ...BODY,
   fontSize: 11.5,
-  color: 'var(--ink-3, #7C7365)',
+  color: 'var(--ink-4, #665D50)',
   margin: '2px 0 0',
 };
 
@@ -85,7 +85,7 @@ const FIELD_LABEL: React.CSSProperties = {
   fontWeight: 600,
   letterSpacing: '0.11em',
   textTransform: 'uppercase',
-  color: 'var(--ink-3, #7C7365)',
+  color: 'var(--ink-4, #665D50)',
   marginBottom: 3,
 };
 
@@ -441,7 +441,7 @@ export function BranchesList({
                 <div className="flex items-baseline justify-between gap-3">
                   <span style={{ ...BODY, color: 'var(--ink-1, #211C16)' }}>
                     {b.name}
-                    <span style={{ color: 'var(--ink-3, #7C7365)' }}> · {kindLabel(b.type)}</span>
+                    <span style={{ color: 'var(--ink-4, #665D50)' }}> · {kindLabel(b.type)}</span>
                   </span>
                   {b.isPrimary && <PrimaryChip />}
                 </div>
