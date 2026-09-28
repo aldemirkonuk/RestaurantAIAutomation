@@ -71,7 +71,7 @@ function IncompleteOrderRow({ o }: { o: IncompleteOrder }) {
     >
       <div className="flex flex-wrap items-baseline gap-3">
         <span style={{ fontWeight: 600 }}>{o.orderNumber ?? 'Order'}</span>
-        <span style={{ color: 'var(--ink-3, #7C7365)', fontSize: 11.5 }}>
+        <span style={{ color: 'var(--ink-4, #665D50)', fontSize: 11.5 }}>
           {o.providerName ?? 'vendor not named'} · expected {o.expectedDate} · {o.daysPast} days ·{' '}
           {o.confirmed ? 'someone said not yet' : 'never answered'}
         </span>
@@ -143,7 +143,7 @@ export function IncompleteOrders() {
           fontWeight: 600,
           letterSpacing: '0.14em',
           textTransform: 'uppercase',
-          color: 'var(--ink-3, #7C7365)',
+          color: 'var(--ink-4, #665D50)',
         }}
       >
         Incomplete orders
@@ -153,11 +153,11 @@ export function IncompleteOrders() {
           {message(q.error, 'The incomplete orders could not be read.')} This register is unknown, not empty.
         </p>
       ) : !q.data ? (
-        <p aria-busy="true" style={{ margin: '6px 0 0', fontFamily: SANS, fontSize: 12, color: 'var(--ink-3, #7C7365)' }}>
+        <p aria-busy="true" style={{ margin: '6px 0 0', fontFamily: SANS, fontSize: 12, color: 'var(--ink-4, #665D50)' }}>
           Reading the orders that never arrived…
         </p>
       ) : !q.data.forYou ? (
-        <p style={{ margin: '6px 0 0', fontFamily: SANS, fontSize: 12, color: 'var(--ink-3, #7C7365)' }}>{q.data.sentence}</p>
+        <p style={{ margin: '6px 0 0', fontFamily: SANS, fontSize: 12, color: 'var(--ink-4, #665D50)' }}>{q.data.sentence}</p>
       ) : q.data.orders.length === 0 ? (
         <p data-testid="incomplete-empty" style={{ margin: '6px 0 0', fontFamily: SANS, fontSize: 12, lineHeight: 1.45, color: 'var(--ink-2, #4F473C)' }}>
           No order is more than {q.data.afterDays} days past its date without arriving.

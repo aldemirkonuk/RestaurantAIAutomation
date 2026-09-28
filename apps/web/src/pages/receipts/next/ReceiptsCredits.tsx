@@ -119,13 +119,13 @@ const CAP: CSSProperties = {
   fontWeight: 600,
   letterSpacing: '0.14em',
   textTransform: 'uppercase',
-  color: 'var(--ink-3, #7C7365)',
+  color: 'var(--ink-4, #665D50)',
 };
 
 const NOTE: CSSProperties = {
   fontFamily: SANS,
   fontSize: 12,
-  color: 'var(--ink-3, #7C7365)',
+  color: 'var(--ink-4, #665D50)',
   margin: 0,
 };
 
@@ -386,7 +386,7 @@ function ClaimRow({
           {fmtMoney(claim.claimed_amount, claim.currency)}
         </span>
       </span>
-      <span style={{ display: 'block', fontSize: 11, color: 'var(--ink-3, #7C7365)', marginTop: 2 }}>
+      <span style={{ display: 'block', fontSize: 11, color: 'var(--ink-4, #665D50)', marginTop: 2 }}>
         {vendor} · {STATE_WORDS[claim.state] ?? claim.state} · opened {fmtDate(claim.opened_at)}
         {age == null ? '' : ` · ${age} ${age === 1 ? 'day' : 'days'} ago`}
       </span>

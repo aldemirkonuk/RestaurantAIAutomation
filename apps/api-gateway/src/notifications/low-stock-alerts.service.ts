@@ -17,8 +17,35 @@ import {
 } from "../communications/recipient-resolver.service";
 import type { LowStockDigestWine } from "../communications/email-templates";
 import { canonicalOrigin } from "../communications/email-templates";
+import {
+  digestClockFor,
+  digestHourOf,
+  digestAlreadySentOn,
+  hourTick,
+  houseWallAt,
+  isDigestDue,
+  type DigestClock,
+  type DigestClockSource,
+} from "./low-stock-digest-clock";
 
 type AlertLevel = "ok" | "low" | "critical";
+
+/**
+ * The once-a-day digest fence (founder item 74), one row per house:
+ * migration 20261102110000_a_low_stock_digest_is_fenced_once_a_house_day.sql
+ * (renamed 2026-09-27 from 20261021173000 to sort after origin/main's newer
+ * migrations — the check_migration_order.py merge-train rename, PR #488).
+ */
+export const LOW_STOCK_DIGEST_FENCE_TABLE = "low_stock_digest_fence";
+
+interface DigestFence {
+  /** `YYYY-MM-DD`, the house-local date claimed, in the zone of that attempt. */
+  sentOn: string;
+  /** The sweep tick that claimed it — re-read in the house's zone per tick. */
+  attemptedAt: Date;
+  /** `attempted_at` exactly as read — the compare-and-set's expected value. */
+  attemptedAtRaw: string;
+}
 
 interface EffectiveLowStockPrefs {
   enabled: boolean;
@@ -49,7 +76,8 @@ export interface HeldCrossingsView {
   summary: { count: number; critical: number; oldest_held_at: string | null };
   /**
    * When the held wines will be told, as the digest cron will actually keep
-   * it. `null` when the house's preferences could not be read.
+   * it. `null` when the house's preferences, its digest time or its
+   * `restaurants` row (the zone) could not be read.
    */
   digest: {
     /** False when every member turned low-stock alerts off. */
@@ -57,7 +85,19 @@ export interface HeldCrossingsView {
     frequency: "daily" | "off";
     /** 0-23; the cron matches the hour only. */
     hour: number;
-    timezone: "America/New_York";
+    /**
+     * The IANA zone the digest hour is kept in — the house's own
+     * (`restaurants.timezone`), else UTC (founder item 61; ADR 0149 item 56,
+     * PR #488). Was the literal New York zone until #488 moved the sweep
+     * onto each house's clock.
+     */
+    timezone: string;
+    /**
+     * `house` — the house's own zone. `fallback` — no zone this server can
+     * read, so UTC; the page says so (item 61: "UTC — this house has no time
+     * zone set yet"). `country` is reserved for #435's country step.
+     */
+    zone_source: DigestClockSource;
   } | null;
 }
 
@@ -196,55 +236,184 @@ export class LowStockAlertsService {
   }
 
   /**
-   * Digest sweep — runs hourly and, for each restaurant, sends the batched
-   * reminder only when the current hour matches that restaurant's configured
-   * `digest_time` (and the digest isn't turned off). One email + one grouped
-   * inbox row per restaurant.
+   * Digest sweep — runs hourly, on the UTC hour, and for each restaurant
+   * sends the batched reminder once per house-local date, on the first
+   * evaluated tick at or after that house's OWN local digest hour (item 56 /
+   * ADR 0149: "each house's timezone"; item 70: "Catch up same day").
+   *
+   * The cron itself no longer names a timezone — it fires once per UTC hour
+   * — and `runDigestSweepAt` (below) decides per house, per tick, whether
+   * the digest is due and not yet sent, using its own clock
+   * (`low-stock-digest-clock.ts`: house zone, then UTC when the house has
+   * none this server can read — see ADR 0116:297-301).
    */
-  @Cron("0 * * * *", {
-    name: "low-stock-digest",
-    timeZone: "America/New_York",
-  })
+  @Cron("0 * * * *", { name: "low-stock-digest", timeZone: "UTC" })
   async runDailyDigest(): Promise<void> {
+    await this.runDigestSweepAt(new Date());
+  }
+
+  /**
+   * The digest sweep for one tick, extracted so tests can drive it at any
+   * instant without waiting on the cron. `at` is rounded to the nearest UTC
+   * hour (`hourTick`) so cron jitter of up to ±30 minutes cannot shift which
+   * house-local hour a house is judged against.
+   *
+   * SAME-DAY CATCH-UP (founder item 70, 2026-09-27, verbatim "Catch up same
+   * day (Recommended)"): a house is sent when its local time has reached
+   * today's digest hour (`isDigestDue`) AND the house's digest fence
+   * (`low_stock_digest_fence`, founder item 74; before it, `last_digest_at`)
+   * is not on today's house-local date (`digestAlreadySentOn`). A tick that was skipped, late or
+   * never run is therefore made up by the next evaluated tick that day. The
+   * price of that is that the fence carries the whole weight of "once a
+   * day": when its read or its compare-and-set write fails, the house is
+   * SKIPPED this tick — never sent blind — and the next tick tries again
+   * (specs k, p). The same holds for the
+   * two reads that decide WHETHER and WHEN a house is due: a failed
+   * preferences read (spec o) or restaurants read (specs h, i) skips the
+   * house this tick; none of the three falls back to a default.
+   */
+  async runDigestSweepAt(at: Date): Promise<void> {
     try {
-      const etHour = this.currentEtHour();
+      const tick = hourTick(at);
       const byRestaurant = await this.getLowStockByRestaurant();
+      if (byRestaurant.size === 0) return;
       // Captured once, right after the read `rows` itself comes from — the
       // true "we observed these holds as of here" instant, before ANY
       // restaurant's email send or writes below (PR #486 round-2 audit,
       // 2026-09-26). Every restaurant in this sweep shares it, which is
       // correct: they all came from the same `getLowStockByRestaurant` call.
       const rowsSnapshotAt = new Date().toISOString();
-      const names = await this.getRestaurantNames([...byRestaurant.keys()]);
+      const ids = [...byRestaurant.keys()];
+      const names = await this.getRestaurantNames(ids);
+      const houses = await this.getRestaurantHouses(ids);
+      // The once-a-day fence (founder item 74), read once for the tick. A
+      // failed read is checked per house below, and only for a house that is
+      // due — it SKIPS that house, never sends it blind.
+      const fences = await this.readDigestFences(ids);
+
       for (const [restaurantId, rows] of byRestaurant) {
-        const prefs = await this.getEffectiveLowStockPrefs(restaurantId);
+        // The THROWING prefs read, not `getEffectiveLowStockPrefs`: that one
+        // turns a failed read into the defaults (on, daily, 12:00). Under
+        // same-day catch-up every tick from local noon to midnight would then
+        // be "due" for a house that turned the digest off or set a later
+        // hour; the early send stamps `last_digest_at` for today, and that
+        // stamp suppresses the house's real hour for the rest of the day
+        // (PR #488 audit at 7b2ab8d3f). So an unreadable preference SKIPS the
+        // house this tick, like the dedupe and restaurants reads below, and
+        // the next readable tick catches it up (spec o).
+        let prefs: EffectiveLowStockPrefs;
+        try {
+          prefs = await this.readLowStockPrefs(restaurantId);
+        } catch (e: any) {
+          this.logger.warn(
+            `LOW_STOCK_DIGEST_PREFS_UNREADABLE restaurant=${restaurantId} — notification preferences could not be read (${e?.message}); skipping this tick rather than sending on the defaults, a later tick today catches it up.`,
+          );
+          continue;
+        }
         if (!prefs.enabled || prefs.digestFrequency === "off") continue;
-        const digestHour = parseInt(
-          (prefs.digestTime || "12:00").split(":")[0],
-          10,
+
+        const hour = digestHourOf(prefs.digestTime);
+        if (hour === null) {
+          this.logger.warn(
+            `LOW_STOCK_DIGEST_TIME_UNREADABLE restaurant=${restaurantId} digest_time=${JSON.stringify(prefs.digestTime)} — skipping this tick.`,
+          );
+          continue;
+        }
+
+        if (!houses.ok) {
+          // The batched restaurants read failed for this whole tick — an
+          // unreadable row is never silently "no timezone → UTC" (that would
+          // misfire LOW_STOCK_DIGEST_TIMEZONE_UNKNOWN for a house that in
+          // fact has a zone this server just failed to read). Skip this
+          // house this tick; under same-day catch-up the next tick whose
+          // read succeeds sends it, if its hour has passed and it has not
+          // been sent today (spec i).
+          this.logger.warn(
+            `LOW_STOCK_DIGEST_HOUSE_UNREADABLE restaurant=${restaurantId} — restaurants row (timezone/country) could not be read; skipping this tick, a later tick today catches it up.`,
+          );
+          continue;
+        }
+
+        const house = houses.map.get(restaurantId) ?? null;
+        const clock = digestClockFor(house);
+        if (!isDigestDue(tick, clock.zone, hour)) continue;
+
+        const periodKey = houseWallAt(tick, clock.zone).dateKey;
+
+        // THE FENCE (founder item 74, 2026-09-27, verbatim "Own fence column
+        // (Recommended)"): `low_stock_digest_fence`, one row per house,
+        // written BEFORE the email is attempted and independent of the inbox
+        // row and of `inventory_alert_state.last_digest_at`. It replaced the
+        // `last_digest_at` read (item 70's dedupe) and the in-process
+        // `digestSentOn` map, which together could not fence a digest that
+        // wrote no inbox row across a restart or a second replica.
+        if (!fences.ok) {
+          // SKIP, never send: under catch-up this read is the only thing
+          // between the house and a digest every hour until midnight
+          // (founder item 70: "a failed dedupe read SKIPS (never
+          // double-send)"). The next tick reads again, so one failed read
+          // delays today's digest, it does not lose it (spec k).
+          this.logger.warn(
+            `LOW_STOCK_DIGEST_DEDUPE_UNREADABLE restaurant=${restaurantId} date=${periodKey} — the digest fence could not be read; skipping this tick so it cannot send twice, a later tick today retries.`,
+          );
+          continue;
+        }
+        const fence = fences.map.get(restaurantId) ?? null;
+        // The last attempt's INSTANT, read in the house's zone at this tick,
+        // so a house whose zone changed mid-day is judged in its new zone
+        // (spec n). `sent_on` is the same date in the zone of the attempt.
+        if (
+          fence &&
+          digestAlreadySentOn(
+            houseWallAt(fence.attemptedAt, clock.zone).dateKey,
+            periodKey,
+          )
+        ) {
+          continue;
+        }
+
+        if (clock.source === "fallback") {
+          this.logger.warn(
+            `LOW_STOCK_DIGEST_TIMEZONE_UNKNOWN restaurant=${restaurantId} timezone=${JSON.stringify(clock.recorded)} — no zone this server can read; the digest runs on ${clock.zone}.`,
+          );
+        }
+
+        // Claim the date BEFORE the send, compare-and-set: of two replicas
+        // (or two runs) that both read the same fence, exactly one claims
+        // it. A claim that is lost or cannot be written SKIPS — never sends
+        // (spec p). Once claimed, the date is spent whatever the send does:
+        // a send that throws part-way, writes no inbox row (#486's early
+        // return) or fails its email is not repeated that day by any process
+        // (a failed email is recorded on the notification row, as before).
+        const claim = await this.claimDigestFence(
+          restaurantId,
+          fence,
+          periodKey,
+          tick,
         );
-        if (etHour !== digestHour) continue;
+        if (claim !== "claimed") {
+          if (claim === "taken") {
+            this.logger.log(
+              `Low-stock digest for ${restaurantId} date=${periodKey}: another run claimed today's fence first — not sending.`,
+            );
+          } else {
+            this.logger.warn(
+              `LOW_STOCK_DIGEST_FENCE_UNWRITTEN restaurant=${restaurantId} date=${periodKey} — the digest fence could not be written; skipping this tick so it cannot send twice, a later tick today retries.`,
+            );
+          }
+          continue;
+        }
         await this.sendDigest(
           restaurantId,
           rows,
           names.get(restaurantId),
           rowsSnapshotAt,
+          { periodKey },
         );
       }
     } catch (e: any) {
       this.logger.error(`low-stock digest failed: ${e?.message}`);
     }
-  }
-
-  /** Current hour (0–23) in the digest timezone. */
-  private currentEtHour(): number {
-    return Number(
-      new Intl.DateTimeFormat("en-US", {
-        timeZone: "America/New_York",
-        hour: "2-digit",
-        hour12: false,
-      }).format(new Date()),
-    );
   }
 
   // Manual triggers (tests / on-demand — bypass the hour gate).
@@ -428,22 +597,35 @@ export class LowStockAlertsService {
     // so rather than promise "the next digest". A preferences read that fails
     // is `null`, never the defaults: "12:00, daily" invented over a failed
     // read would be a claim about this house nobody measured.
+    //
+    // (2026-09-27, PR #488 merge) The hour and zone are the ones the sweep
+    // itself uses: `digestHourOf` (an unreadable `digest_time` is never sent,
+    // so it is never reported as 12:00 either) and `digestClockForRestaurant`
+    // (the house's zone, else UTC; `null` when the restaurants read failed).
     let digest: HeldCrossingsView["digest"] = null;
     try {
       const prefs = await this.readLowStockPrefs(restaurantId);
-      const hour = parseInt((prefs.digestTime || "12:00").split(":")[0], 10);
+      // The digest cron fires on the hour (`0 * * * *`) and matches only the
+      // HOUR of `digest_time`, so a 12:30 setting goes out at 12:00. The
+      // time reported is the one the cron will actually keep.
+      const hour = digestHourOf(prefs.digestTime);
+      if (hour === null) {
+        throw new Error(
+          `digest_time ${JSON.stringify(prefs.digestTime)} is unreadable`,
+        );
+      }
+      const clock = await this.digestClockForRestaurant(restaurantId);
+      if (!clock) throw new Error("restaurants row (timezone) unreadable");
       digest = {
         low_stock_enabled: prefs.enabled,
         frequency: prefs.digestFrequency === "daily" ? "daily" : "off",
-        // The digest cron fires on the hour (`0 * * * *`) and matches only the
-        // HOUR of `digest_time`, so a 12:30 setting goes out at 12:00. The
-        // time reported is the one the cron will actually keep.
-        hour: Number.isFinite(hour) ? hour : 12,
-        timezone: "America/New_York",
+        hour,
+        timezone: clock.zone,
+        zone_source: clock.source,
       };
     } catch (e: any) {
       this.logger.warn(
-        `held crossings: preferences unreadable for ${restaurantId}: ${e?.message}`,
+        `held crossings: digest time or zone unreadable for ${restaurantId}: ${e?.message}`,
       );
     }
 
@@ -679,11 +861,31 @@ export class LowStockAlertsService {
     rows: LowStockRow[],
     restaurantName?: string,
     rowsSnapshotAt?: string,
+    /**
+     * Passed only by the hourly sweep (`runDigestSweepAt`); omitted by
+     * `triggerDailyDigest` and every direct caller, which keep the UTC date
+     * and a now-stamp.
+     *
+     * `periodKey` is the house-local date (`YYYY-MM-DD`) this digest belongs
+     * to, from the sweep's `houseWallAt(tick, clock.zone)`.
+     *
+     * (2026-09-27, founder item 74) The sweep no longer passes a `digestAt`.
+     * It stamped `last_digest_at` with its hour TICK, because that stamp was
+     * the once-a-day dedupe and had to sit on the tick's house date (spec
+     * j2). The tick runs up to 29 minutes ahead of the clock on a late run,
+     * and `listHeldCrossings` hides a hold whose `last_held_at` is not after
+     * `last_digest_at` — so a hold written in that window was hidden from the
+     * held band though this digest never told anyone about it. The dedupe
+     * now lives in `low_stock_digest_fence` (which holds the tick), so
+     * `last_digest_at` is stamped with `snapshotAt`: the instant the rows
+     * this digest tells were read (spec j2, spec q).
+     */
+    sweep?: { periodKey: string },
   ): Promise<void> {
     if (rows.length === 0) return;
     const snapshotAt = rowsSnapshotAt ?? new Date().toISOString();
     const criticalCount = rows.filter((w) => w.severity === "critical").length;
-    const dateStr = new Date().toISOString().slice(0, 10);
+    const dateStr = sweep?.periodKey ?? new Date().toISOString().slice(0, 10);
 
     const persisted = await this.notifications.persistForRestaurant(
       restaurantId,
@@ -728,28 +930,48 @@ export class LowStockAlertsService {
     // when the inbox write was deduped or failed (`inserted: 0`), which made
     // "a digest went out" a claim about an intention. Both halves now follow
     // the same rule as the instant path: only a written inbox row counts.
+    //
+    // (2026-09-27, PR #488 merge with #486) On this early return nothing is
+    // stamped. That no longer leaves the day unfenced: the sweep claimed
+    // `low_stock_digest_fence` for this house date BEFORE calling here
+    // (founder item 74), so no restart or second replica sends it again
+    // (TD-2026-09-27-LOW-STOCK-DIGEST-UNTOLD-NOT-FENCED, resolved; spec r).
     const told = (persisted?.inserted ?? 0) > 0;
     if (!told) {
       this.logger.warn(
-        `Low-stock digest for ${restaurantId} wrote no inbox row — holds are left in place.`,
+        `Low-stock digest for ${restaurantId} wrote no inbox row — holds are left in place and last_digest_at is not stamped; the sweep's digest fence already holds today.`,
       );
       return;
     }
-    const nowIso = new Date().toISOString();
+    // When the rows were read (see `sweep` above) — not the sweep's tick,
+    // which can run up to 29 minutes ahead and would hide a hold written in
+    // that window from the held band.
+    const stampIso = snapshotAt;
+    let stamped = 0;
     for (const row of rows) {
-      await this.upsertState(restaurantId, {
+      const ok = await this.upsertState(restaurantId, {
         inventoryId: row.inventoryId,
         wineName: row.wineName,
         level: row.severity,
-        digestAt: nowIso,
+        digestAt: stampIso,
         clearHold: true,
-        // The pre-slow-work cutoff (see the doc comment above), NOT `nowIso`
-        // above -- `nowIso` is stamped after the email send and after every
-        // sibling row in this same loop, so using it here would recreate the
-        // round-1 defect (comparing a value to something captured after the
-        // gap it needs to protect).
+        // The pre-slow-work cutoff (see the doc comment above) — the same
+        // instant as the stamp since founder item 74. Never a now-stamp
+        // taken after the email send and after every sibling row in this
+        // loop, and never the sweep's tick (up to 29 minutes AHEAD of the
+        // read): either would clear a hold this digest never told anyone
+        // about (round-1 defect of #486).
         clearHoldNotAfter: snapshotAt,
       });
+      if (ok) stamped++;
+    }
+    // None written: the holds this digest answered stay listed as held.
+    // The day itself is fenced by `low_stock_digest_fence`, not by this
+    // stamp (founder item 74), so nothing is sent again (spec m).
+    if (stamped === 0) {
+      this.logger.warn(
+        `LOW_STOCK_DIGEST_STAMP_UNWRITTEN restaurant=${restaurantId} date=${dateStr} — last_digest_at could not be written; the held queue keeps these wines until the next digest, and the digest fence still holds today.`,
+      );
     }
   }
 
@@ -1287,6 +1509,170 @@ export class LowStockAlertsService {
       .in("id", ids);
     for (const r of data || []) map.set(r.id, r.name);
     return map;
+  }
+
+  /**
+   * `getRestaurantNames` widened to the columns the digest clock needs
+   * (`timezone`, `country`) so the sweep can decide each house's clock
+   * without a second round trip per restaurant.
+   *
+   * `ok: false` means the read itself failed (network/DB error) — the same
+   * shape as `readDigestFences`, and the same reason: this is a batched read
+   * for every low-stock restaurant in the tick, so a failure here cannot be
+   * attributed to one house. An unreadable row must never be silently read
+   * as "no timezone → UTC" (that would make a transient DB failure look like
+   * a house that genuinely has no zone, and everyone on that connection
+   * would get the wrong warning — `LOW_STOCK_DIGEST_TIMEZONE_UNKNOWN` — for
+   * the wrong reason). The caller (`runDigestSweepAt`) checks `ok` and skips
+   * each affected house's tick with its own log line instead.
+   */
+  private async getRestaurantHouses(ids: string[]): Promise<{
+    ok: boolean;
+    map: Map<
+      string,
+      { name: string; timezone: string | null; country: string | null }
+    >;
+  }> {
+    const map = new Map<
+      string,
+      { name: string; timezone: string | null; country: string | null }
+    >();
+    if (ids.length === 0) return { ok: true, map };
+    const { data, error } = await this.db.supabase
+      .from("restaurants")
+      .select("id, name, timezone, country")
+      .in("id", ids);
+    if (error) {
+      this.logger.warn(
+        `restaurants (house timezone/country) read failed: ${error.message}`,
+      );
+      return { ok: false, map };
+    }
+    for (const r of data || []) {
+      map.set(r.id, {
+        name: r.name,
+        timezone: r.timezone ?? null,
+        country: r.country ?? null,
+      });
+    }
+    return { ok: true, map };
+  }
+
+  /**
+   * The clock one house's low-stock digest runs on. Public so a caller
+   * outside this service (e.g. the held-low-stock queue view) can report
+   * which zone a house's digest hour is read on without duplicating the
+   * house/country/fallback order.
+   *
+   * Returns `null` only when the `restaurants` read itself failed — the same
+   * honesty rule the held-queue view already applies to an unreadable prefs
+   * read: an unreadable fact is `null`, never silently the fallback.
+   */
+  async digestClockForRestaurant(
+    restaurantId: string,
+  ): Promise<DigestClock | null> {
+    const { data, error } = await this.db.supabase
+      .from("restaurants")
+      .select("id, timezone, country")
+      .eq("id", restaurantId)
+      .maybeSingle();
+    if (error || !data) return null;
+    return digestClockFor({ timezone: data.timezone, country: data.country });
+  }
+
+  /**
+   * Every due house's digest fence for one tick, batched like
+   * `getRestaurantHouses` (founder item 74, 2026-09-27, verbatim "Own fence
+   * column (Recommended)": a "digest sent on <house date>" record stamped
+   * whenever a digest email is attempted, independent of the inbox row and
+   * of `inventory_alert_state.last_digest_at`).
+   *
+   * `ok: false` means the read itself failed, distinct from `ok: true` with
+   * no row for a house (never attempted). A house missing from `map` has
+   * never been claimed. `attemptedAtRaw` is the value exactly as PostgREST
+   * returned it: `claimDigestFence` compares against it, and a round trip
+   * through `Date` would drop microseconds and never match again.
+   */
+  private async readDigestFences(ids: string[]): Promise<{
+    ok: boolean;
+    map: Map<string, DigestFence>;
+  }> {
+    const map = new Map<string, DigestFence>();
+    if (ids.length === 0) return { ok: true, map };
+    try {
+      const { data, error } = await this.db.supabase
+        .from(LOW_STOCK_DIGEST_FENCE_TABLE)
+        .select("restaurant_id, sent_on, attempted_at")
+        .in("restaurant_id", ids);
+      if (error) {
+        this.logger.warn(
+          `${LOW_STOCK_DIGEST_FENCE_TABLE} read failed: ${error.message}`,
+        );
+        return { ok: false, map };
+      }
+      for (const r of data || []) {
+        const attemptedAt = new Date(r.attempted_at);
+        // A row this code cannot read as an instant is a failed read for
+        // that house, never "no row" (which would send).
+        if (Number.isNaN(attemptedAt.getTime())) return { ok: false, map };
+        map.set(r.restaurant_id, {
+          sentOn: r.sent_on,
+          attemptedAt,
+          attemptedAtRaw: r.attempted_at,
+        });
+      }
+      return { ok: true, map };
+    } catch (e: any) {
+      this.logger.warn(
+        `${LOW_STOCK_DIGEST_FENCE_TABLE} read threw: ${e?.message}`,
+      );
+      return { ok: false, map };
+    }
+  }
+
+  /**
+   * Claim one house's digest for `periodKey`, compare-and-set, BEFORE the
+   * email is attempted (founder item 74).
+   *
+   * - No row read (`prior === null`): INSERT. The primary key on
+   *   `restaurant_id` lets exactly one of two concurrent inserts win; the
+   *   loser gets 23505 and is `taken`.
+   * - A row read: UPDATE ... WHERE `attempted_at` still equals the value
+   *   read. Every claim writes a new tick, so a row another run claimed
+   *   after this run's read no longer matches, and Postgres re-checks the
+   *   WHERE on the committed row before updating (READ COMMITTED), so two
+   *   concurrent updates cannot both match.
+   *
+   * `failed` (any other error, or a write that reports nothing) SKIPS the
+   * house like `taken`: never send on a fence this run does not hold.
+   */
+  private async claimDigestFence(
+    restaurantId: string,
+    prior: DigestFence | null,
+    periodKey: string,
+    tick: Date,
+  ): Promise<"claimed" | "taken" | "failed"> {
+    const row = { sent_on: periodKey, attempted_at: tick.toISOString() };
+    try {
+      if (!prior) {
+        const { data, error } = await this.db.supabase
+          .from(LOW_STOCK_DIGEST_FENCE_TABLE)
+          .insert({ restaurant_id: restaurantId, ...row })
+          .select("restaurant_id");
+        if (error) return error.code === "23505" ? "taken" : "failed";
+        return (data?.length ?? 0) === 1 ? "claimed" : "failed";
+      }
+      const { data, error } = await this.db.supabase
+        .from(LOW_STOCK_DIGEST_FENCE_TABLE)
+        .update(row)
+        .eq("restaurant_id", restaurantId)
+        .eq("attempted_at", prior.attemptedAtRaw)
+        .select("restaurant_id");
+      if (error) return "failed";
+      return (data?.length ?? 0) === 1 ? "claimed" : "taken";
+    } catch {
+      return "failed";
+    }
   }
 
   /**

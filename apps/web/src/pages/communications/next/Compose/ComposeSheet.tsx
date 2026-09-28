@@ -286,7 +286,7 @@ export function ComposeSheet({ open, onClose, prefill, onDiscarded }: ComposeShe
               fontWeight: 600,
               letterSpacing: '0.14em',
               textTransform: 'uppercase',
-              color: 'var(--ink-3, #7C7365)',
+              color: 'var(--ink-4, #665D50)',
               marginBottom: 4,
             }}
           >
@@ -329,7 +329,7 @@ export function ComposeSheet({ open, onClose, prefill, onDiscarded }: ComposeShe
                 ))}
               </select>
               {templates.length === 0 && (
-                <p style={{ fontSize: 11, color: 'var(--ink-3, #7C7365)', margin: '5px 0 0' }}>
+                <p style={{ fontSize: 11, color: 'var(--ink-4, #665D50)', margin: '5px 0 0' }}>
                   This house has written no template yet. A template is a letter you have already
                   written twice — write the letter first.
                 </p>
@@ -348,7 +348,7 @@ export function ComposeSheet({ open, onClose, prefill, onDiscarded }: ComposeShe
               fontWeight: 600,
               letterSpacing: '0.14em',
               textTransform: 'uppercase',
-              color: 'var(--ink-3, #7C7365)',
+              color: 'var(--ink-4, #665D50)',
               marginBottom: 4,
             }}
           >
@@ -381,7 +381,7 @@ export function ComposeSheet({ open, onClose, prefill, onDiscarded }: ComposeShe
               fontWeight: 600,
               letterSpacing: '0.14em',
               textTransform: 'uppercase',
-              color: 'var(--ink-3, #7C7365)',
+              color: 'var(--ink-4, #665D50)',
               marginBottom: 4,
             }}
           >
@@ -479,7 +479,7 @@ export function ComposeSheet({ open, onClose, prefill, onDiscarded }: ComposeShe
               </button>
             )}
             {remaining === 0 && (
-              <p style={{ margin: '5px 0 0', fontSize: 11, color: 'var(--ink-3, #7C7365)' }}>
+              <p style={{ margin: '5px 0 0', fontSize: 11, color: 'var(--ink-4, #665D50)' }}>
                 The window has closed. Whether it left is what the conversation book says, not this
                 panel.
               </p>
@@ -527,7 +527,7 @@ export function ComposeSheet({ open, onClose, prefill, onDiscarded }: ComposeShe
                 borderRadius: 9,
                 border: '1px solid var(--seal-ring, rgba(26,94,107,.32))',
                 background: canSend ? 'var(--seal, #1A5E6B)' : 'transparent',
-                color: canSend ? 'var(--paper-0, #FAF7F1)' : 'var(--ink-3, #7C7365)',
+                color: canSend ? 'var(--paper-0, #FAF7F1)' : 'var(--ink-4, #665D50)',
                 cursor: canSend ? 'pointer' : 'not-allowed',
                 opacity: canSend ? 1 : 0.7,
               }}
@@ -554,7 +554,7 @@ export function ComposeSheet({ open, onClose, prefill, onDiscarded }: ComposeShe
               Discard the draft
             </button>
           )}
-          <p style={{ margin: 0, fontSize: 11, lineHeight: 1.45, color: 'var(--ink-3, #7C7365)', maxWidth: '52ch' }}>
+          <p style={{ margin: 0, fontSize: 11, lineHeight: 1.45, color: 'var(--ink-4, #665D50)', maxWidth: '52ch' }}>
             {data.senderFailed
               ? 'Send is disabled: which mailbox this house sends from could not be read, and a letter is never sent from a mailbox we cannot name.'
               : !sender

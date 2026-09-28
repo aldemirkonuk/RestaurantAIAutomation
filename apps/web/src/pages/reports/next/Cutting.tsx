@@ -73,7 +73,7 @@ const GRAPH_ICON: Record<GraphType, typeof ChartLine> = {
 
 function GraphIcon({ graph }: { graph: GraphType }) {
   const Icon = GRAPH_ICON[graph];
-  return <Icon size={13} strokeWidth={1.6} color="var(--ink-3)" aria-hidden />;
+  return <Icon size={13} strokeWidth={1.6} color="var(--ink-4)" aria-hidden />;
 }
 
 /** Window picker for the till — the only period control on the whole sheet. */

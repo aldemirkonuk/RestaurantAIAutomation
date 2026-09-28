@@ -716,8 +716,16 @@ export class IdentityService {
    *
    * A session with no house is REFUSED. With a null house this used to apply
    * no filter at all, which is not a queue but every tenant's pending rows.
+   *
+   * `identityId`, when given, narrows the queue to proposals naming ONE
+   * bottle — the sighting sheet's pending line (a candidate row is included
+   * beside the decisions on it) and 1b's staff "Waiting for a person" card
+   * (ADR 0160 §112). Unlike `decisions()`, this table names the identity
+   * directly (`identity_id` on `beverage_identity_candidates` itself), so
+   * this is a one-step filter, not the candidate-then-decision join
+   * `decisions()` needs.
    */
-  async pending(restaurantId: string | null, limit = 50) {
+  async pending(restaurantId: string | null, limit = 50, identityId?: string) {
     const house = this.requireHouse(restaurantId);
     let q = this.databaseService.supabase
       .from("beverage_identity_candidates")
@@ -728,6 +736,7 @@ export class IdentityService {
       .order("created_at", { ascending: false })
       .limit(limit);
     q = q.or(`restaurant_id.is.null,restaurant_id.eq.${house}`);
+    if (identityId) q = q.eq("identity_id", identityId);
     const { data, error } = await q;
     if (error) {
       throw new BadRequestException(
@@ -1070,7 +1079,6 @@ export class IdentityService {
         "That row IS an undo. Undoing an undo would be a re-confirmation, which is a decision somebody has to take on the evidence.",
       );
     }
-
     const alreadyUndone = await this.databaseService.supabase
       .from("beverage_identity_decisions")
       .select("id")
@@ -1138,6 +1146,18 @@ export class IdentityService {
    * has ever decided anything", which is a claim, and a query that failed has
    * made no claim at all.
    *
+   * `identityId`, when given, narrows the log to decisions on ONE bottle —
+   * the sighting sheet's "identity decisions on this row" card and A's 1b
+   * staff waiting-queue read (ADR 0160 §112). `beverage_identity_decisions`
+   * carries `candidate_id`, not `identity_id` — a decision is a decision on a
+   * CANDIDATE, and only the candidate names which identity it proposed a link
+   * to — so this is a two-step read: which candidates ever named this
+   * identity, then which decisions named one of those candidates. Both steps
+   * stay inside the same tenant scope as the unfiltered log (this house's own
+   * candidates plus the public-register ones), so a house can never learn
+   * about another house's private candidate by asking for one that happens to
+   * share an identity.
+   *
    * WHO IS NAMED, AND TO WHOM (ADR 0149 answer 17, ADR 0124 addendum
    * 2026-09-16). A decision on a shared register is shown to every house, but
    * the PERSON is shown only inside the house that took it: another house reads
@@ -1151,11 +1171,42 @@ export class IdentityService {
   async decisions(
     restaurantId: string | null,
     limit = 50,
+    identityId?: string,
   ): Promise<{ items: any[]; scope: string; limit: number; complete: boolean }> {
     // A session with no house is refused. With a null house this used to read
     // with no filter and label the result "every decision".
     const house = this.requireHouse(restaurantId);
     const capped = Math.min(Math.max(limit, 1), 200);
+
+    let candidateIds: string[] | null = null;
+    if (identityId) {
+      const { data: candidateRows, error: candidateError } =
+        await this.databaseService.supabase
+          .from("beverage_identity_candidates")
+          .select("id, restaurant_id")
+          .eq("identity_id", identityId)
+          .or(`restaurant_id.is.null,restaurant_id.eq.${house}`);
+      if (candidateError) {
+        throw new BadRequestException(
+          `The identity decision log could not be read (${candidateError.message}). This is a failure, not an empty log.`,
+        );
+      }
+      candidateIds = (candidateRows ?? []).map((c: any) => c.id);
+      // No candidate has ever named this identity (in this house's scope):
+      // there is nothing to filter FOR, and an empty `.in()` list reads as
+      // "no filter" to PostgREST rather than "match nothing" — so this
+      // returns the honest empty result directly instead of letting an empty
+      // filter fall through to the unfiltered log.
+      if (candidateIds.length === 0) {
+        return {
+          items: [],
+          scope: `this house's decisions on this bottle, plus decisions on it from the public registers`,
+          limit: capped,
+          complete: true,
+        };
+      }
+    }
+
     let q = this.databaseService.supabase
       .from("beverage_identity_decisions")
       .select(
@@ -1164,6 +1215,7 @@ export class IdentityService {
       .order("decided_at", { ascending: false })
       .limit(capped);
     q = q.or(`restaurant_id.is.null,restaurant_id.eq.${house}`);
+    if (candidateIds) q = q.in("candidate_id", candidateIds);
     const { data, error } = await q;
     if (error) {
       throw new BadRequestException(
@@ -1173,8 +1225,9 @@ export class IdentityService {
     const items = ((data ?? []) as any[]).map((row) => this.presentDecision(row, house));
     return {
       items,
-      scope:
-        "this house's decisions, plus decisions on the public registers — the person is named only where this house took the decision",
+      scope: identityId
+        ? "this house's decisions on this bottle, plus decisions on it from the public registers"
+        : "this house's decisions, plus decisions on the public registers — the person is named only where this house took the decision",
       limit: capped,
       // A full page is a FLOOR, not a total. The page must not print `items.length`
       // as "N decisions" when the query was capped at exactly that many.

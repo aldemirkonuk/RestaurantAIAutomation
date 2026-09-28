@@ -192,7 +192,7 @@
   font-size: 10px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 .cl-table td {
   padding: 7px 10px;
@@ -214,7 +214,7 @@
   white-space: nowrap;
 }
 .cl-dim {
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 
 /* ── shelf (grid) view ─────────────────────────────────────────────────── */
@@ -325,7 +325,7 @@
   font-size: 11px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 .cl-crumb a { color: inherit; }
 
@@ -370,7 +370,7 @@
   font-weight: 700;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 
 /* --ink-4, not --ink-3: a caption on paper reads with --ink-4 by house
@@ -392,7 +392,7 @@
   font-size: 10px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 .cl-facts dd { margin: 2px 0 0; font-size: 13px; color: var(--ink-1); }
 
@@ -426,7 +426,7 @@
   font-size: 10.5px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 .cl-tile-fig { margin: 4px 0 0; font-size: 25px; line-height: 1.05; color: var(--ink-1); }
 
@@ -487,7 +487,7 @@
 .cl-book code {
   font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 10px;
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 
 /* a textarea borrows the field's skin without its fixed height */
@@ -556,7 +556,7 @@ textarea.cl-field {
   display: flex;
   gap: 7px;
   margin: 6px 0 0;
-  color: var(--ink-3);
+  color: var(--ink-4);
   font-size: 11.5px;
   line-height: 1.5;
 }
@@ -591,7 +591,7 @@ textarea.cl-field {
 
 .cl-more {
   margin-top: 14px;
-  color: var(--ink-3);
+  color: var(--ink-4);
   font-size: 12px;
 }
 .cl-more > summary {
@@ -647,7 +647,7 @@ textarea.cl-field {
   font-weight: 700;
   letter-spacing: 0.11em;
   text-transform: uppercase;
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 .cl-kv {
   display: flex;
@@ -656,7 +656,7 @@ textarea.cl-field {
   gap: 10px;
   padding: 3px 0;
   font-size: 12px;
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 .cl-kv > span:last-child {
   color: var(--ink-1);
@@ -698,7 +698,7 @@ textarea.cl-field {
   margin-top: 4px;
   font-family: 'JetBrains Mono', ui-monospace, monospace;
   font-size: 9.5px;
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 .cl-heat {
   display: grid;
@@ -709,7 +709,7 @@ textarea.cl-field {
 .cl-heat-d {
   font-family: 'JetBrains Mono', ui-monospace, monospace;
   font-size: 9px;
-  color: var(--ink-3);
+  color: var(--ink-4);
   text-align: center;
 }
 .cl-heat-d {
@@ -737,7 +737,7 @@ textarea.cl-field {
   font-size: 9px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--ink-3);
+  color: var(--ink-4);
   border: 1px solid var(--paper-2);
   border-radius: 4px;
   padding: 1px 5px;
@@ -767,7 +767,7 @@ textarea.cl-field {
   font-size: 10px;
   letter-spacing: 0.09em;
   text-transform: uppercase;
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 .cl-fact-v {
   font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -778,7 +778,7 @@ textarea.cl-field {
 /* A withheld line is drawn, not dropped: the label stands, the value is the
    dash, and the table it would have come from is on the title. */
 .cl-fact-v[data-withheld='true'] {
-  color: var(--ink-3);
+  color: var(--ink-4);
   cursor: help;
 }
 

@@ -60,7 +60,7 @@ export function Eyebrow({ children }: { children: ReactNode }) {
 
 export function Note({ children, id }: { children: ReactNode; id?: string }) {
   return (
-    <p id={id} style={{ margin: 0, fontFamily: SANS, fontSize: 12, color: 'var(--ink-3)' }}>
+    <p id={id} style={{ margin: 0, fontFamily: SANS, fontSize: 12, color: 'var(--ink-4)' }}>
       {children}
     </p>
   );
@@ -183,12 +183,12 @@ export function Rail({
           color: 'var(--ink-1)',
         }}
       >
-        <span aria-hidden style={{ display: 'inline-flex', color: 'var(--ink-3)' }}>
+        <span aria-hidden style={{ display: 'inline-flex', color: 'var(--ink-4)' }}>
           {icon}
         </span>
         {title}
       </h3>
-      <p style={{ margin: '2px 0 10px', fontFamily: SANS, fontSize: 12, color: 'var(--ink-3)' }}>
+      <p style={{ margin: '2px 0 10px', fontFamily: SANS, fontSize: 12, color: 'var(--ink-4)' }}>
         {lead}
       </p>
       {children}
@@ -228,7 +228,7 @@ export function Card({
         {title}
       </h3>
       {lead && (
-        <p style={{ margin: '2px 0 0', fontFamily: SANS, fontSize: 12, color: 'var(--ink-3)' }}>{lead}</p>
+        <p style={{ margin: '2px 0 0', fontFamily: SANS, fontSize: 12, color: 'var(--ink-4)' }}>{lead}</p>
       )}
       <div style={{ marginTop: 12 }}>{children}</div>
     </div>
@@ -366,7 +366,7 @@ export function ConnectionRow({
         </span>
         <StateChip state={state} />
       </div>
-      <div style={{ marginTop: 4, fontFamily: SANS, fontSize: 12, color: 'var(--ink-3)' }}>
+      <div style={{ marginTop: 4, fontFamily: SANS, fontSize: 12, color: 'var(--ink-4)' }}>
         {subtitle}
       </div>
       {reason && (
@@ -400,7 +400,7 @@ export function ConnectionRow({
               onClick={onToggleDetail}
               aria-expanded={!!detailOpen}
               aria-controls={detailId}
-              style={{ ...BTN_BASE, borderColor: 'transparent', color: 'var(--ink-3)' }}
+              style={{ ...BTN_BASE, borderColor: 'transparent', color: 'var(--ink-4)' }}
             >
               {detailOpen ? 'Hide' : detailLabel}
             </button>
@@ -512,7 +512,7 @@ export function Field({
           borderRadius: 8,
           border: '1px solid var(--paper-2)',
           background: readOnly || disabled ? 'var(--paper-2)' : 'var(--paper-1)',
-          color: readOnly || disabled ? 'var(--ink-3)' : 'var(--ink-1)',
+          color: readOnly || disabled ? 'var(--ink-4)' : 'var(--ink-1)',
           fontFamily: SANS,
           fontSize: 13,
         }}
@@ -568,7 +568,7 @@ export function Choice({
           borderRadius: 8,
           border: '1px solid var(--paper-2)',
           background: disabled ? 'var(--paper-2)' : 'var(--paper-1)',
-          color: disabled ? 'var(--ink-3)' : 'var(--ink-1)',
+          color: disabled ? 'var(--ink-4)' : 'var(--ink-1)',
           fontFamily: SANS,
           fontSize: 13,
         }}

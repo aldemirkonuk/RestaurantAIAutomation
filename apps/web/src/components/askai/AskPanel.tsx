@@ -419,7 +419,7 @@ function AskPanelBody({
           maxLength={2000}
           disabled={busy}
         />
-        {busy ? <Loader2 size={14} aria-hidden style={{ color: 'var(--ink-3)', flex: 'none' }} /> : <kbd className="mdv-kbd">esc</kbd>}
+        {busy ? <Loader2 size={14} aria-hidden style={{ color: 'var(--ink-4)', flex: 'none' }} /> : <kbd className="mdv-kbd">esc</kbd>}
       </div>
 
       {suggest && (

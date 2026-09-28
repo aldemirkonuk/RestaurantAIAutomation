@@ -345,7 +345,7 @@ export default function CatalogueRegister({
               <Search
                 size={13}
                 aria-hidden
-                style={{ position: 'absolute', left: 9, top: 8.5, color: 'var(--ink-3)' }}
+                style={{ position: 'absolute', left: 9, top: 8.5, color: 'var(--ink-4)' }}
               />
               <input
                 id="cl-r-search"

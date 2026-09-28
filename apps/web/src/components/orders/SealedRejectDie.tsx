@@ -306,7 +306,7 @@ export function SealedRejectDie({
           fontSize: 11,
           letterSpacing: '0.08em',
           textTransform: 'uppercase',
-          color: 'var(--ink-3, #7C7365)',
+          color: 'var(--ink-4, #665D50)',
         }}
       >
         Reject — say why
