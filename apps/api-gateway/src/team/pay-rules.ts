@@ -221,6 +221,54 @@ export function houseDay(
   return new Date(ms + shift).toISOString().slice(0, 10);
 }
 
+/** A house-local wall clock: `YYYY-MM-DD` and minutes since local midnight. */
+export interface HouseWallClock {
+  date: string;
+  minutes: number;
+}
+
+/**
+ * The house's wall clock at `instant` (ADR 0215 item 26, founder item 93).
+ * With no zone known for the house the clock is read at UTC+14 — the latest
+ * any house could be — so a shift this calls "not yet started" has not
+ * started in any zone (the `common/house-frame.ts` rule: with no zone, only
+ * the verdict that holds in every zone). `null` for an instant that does not
+ * parse.
+ */
+export function houseWallClock(
+  instant: Date,
+  zone: string | null | undefined,
+): HouseWallClock | null {
+  const ms = instant.getTime();
+  if (!Number.isFinite(ms)) return null;
+  const tz = resolveZone(zone ?? null);
+  const shift = tz ? zoneOffsetMs(new Date(ms), tz) : 14 * HOUR_MS;
+  const iso = new Date(ms + shift).toISOString();
+  return {
+    date: iso.slice(0, 10),
+    minutes: Number(iso.slice(11, 13)) * 60 + Number(iso.slice(14, 16)),
+  };
+}
+
+/**
+ * True when a shift has provably not started by the house's wall clock `now`:
+ * dated after today, or today with a start time still ahead (ADR 0215 item
+ * 26). A date or start time that does not parse is not provably unworked, so
+ * it is false — the shift is kept as it is, never reopened on a guess.
+ */
+export function shiftNotYetStarted(
+  s: { shift_date?: string | null; start_time?: string | null },
+  now: HouseWallClock,
+): boolean {
+  const day = typeof s.shift_date === "string" ? s.shift_date.slice(0, 10) : "";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return false;
+  if (day > now.date) return true;
+  if (day < now.date) return false;
+  const m = /^(\d{1,2}):(\d{2})/.exec(String(s.start_time ?? ""));
+  if (!m) return false;
+  return Number(m[1]) * 60 + Number(m[2]) > now.minutes;
+}
+
 /**
  * The owner periods of everyone who is not an owner here now, from the
  * house's `member_role_changed` audit rows (founder item 80). Per person, in

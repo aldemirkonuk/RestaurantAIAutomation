@@ -27,7 +27,7 @@
   their owner period stay the owners', per row and in the week total; from
   the demotion on their pay is a manager's. Built as item 25; see
   "Answered, 2026-09-28 (item 80)". Nothing from this record is open for the
-  founder except OD-165 (question 6) and the literal "and off" of item 16.]**
+  founder except OD-165 (question 6) and the literal "and off" of item 16.]** **[2026-09-28, founder item 93 (OD-181): a removed person's shifts that have not started yet go back to the open pool — "back to the open pool absolutely". Built as item 26; the replacement step he asked to be brainstormed is a fork in `.planning/06-pages/team.md` §15, not built.]**
 - **Date:** 2026-09-21 (round 2 answers 2026-09-21; round 6y answers
   2026-09-22; round 4 answers 2026-09-25)
 - **Decider:** Aldemir (founder) — four picks and one answer to five forks
@@ -519,7 +519,7 @@ questions round 2 left open (see "Answered, 2026-09-22 (round 6y)" below):
       (past week included) shows them, and the owner reads them in the
       former-staff history — item 22. A removed person's unworked future
       shifts are kept and shown there like any other kept shift; nothing
-      reassigns them.]** **[2026-09-27, ADR 0090 audit of #440 at
+      reassigns them.]** **[2026-09-28, founder item 93: superseded for the unstarted ones — they go back to the open pool at removal (item 26); the started and past ones stay kept as above.]** **[2026-09-27, ADR 0090 audit of #440 at
       `ea4cc38d0`: "no page reads" them held for the week, copy and leave
       lists above but not for the by-id routes — a removed person's kept
       shift could still be edited, called out, offered, assigned or deleted
@@ -791,6 +791,48 @@ questions round 2 left open (see "Answered, 2026-09-22 (round 6y)" below):
       outside the gateway; that person reads as never having been an owner.
       Residual (t)'s remainder, stated, not guarded.
     CLAIMS `ADR-0215-R7-A-FORMER-OWNERS-OWNER-PERIOD-PAY-IS-THE-OWNERS`.
+26. **A removed person's unstarted shifts go back to the open pool
+    (founder item 93, 2026-09-28, OD-181), verbatim: "back to the open pool
+    absolutely".** It answers the fork the preserved wt-labor snapshot
+    (`4d299b231`, round 6z "Past shown, future open") and item 20's round-4
+    bracket ("nothing reassigns them") left unreconciled; the snapshot's own
+    items 21–23 are not carried (their numbers collide with, and two of them
+    contradict, items 21–23 above). How it is built
+    (`TeamService.openUnstartedShiftsOf`, called by `deleteMember`):
+    - **Which shifts**: the person's rows in this house not yet started by
+      the house's clock — dated after today, or today with a start time
+      still ahead (`pay-rules.ts` `shiftNotYetStarted`). A started, past or
+      unparseable one stays theirs, kept (item 20) and read in the
+      former-staff history (item 22). A call-out stays too: its slot is
+      already in the pool as the cover shift `reportCallout` opened, so
+      opening it would double the slot (the snapshot opened it; not carried).
+    - **Whose clock**: `common/house-frame.ts` `houseFrame` on
+      `restaurants.timezone`/`country` (the house's zone, else its country's
+      only zone). With no zone, the clock is read at UTC+14
+      (`houseWallClock`), so only a shift unstarted in every zone opens —
+      the house-frame rule, not ADR 0116's UTC fallback, because this is a
+      write that clears a cost and a wrong "future" loses history, while a
+      wrong "past" only leaves a hidden slot for the manager to refill.
+    - **The write**: `member_id` null, `state`/`shift_type` `open`,
+      `labor_cost` null (the cover-shift shape). The receipt carries
+      `shiftsOpened`; the `team_member_removed` audit row carries
+      `changes.shifts_opened`.
+    - **Order and failure**: after every refusal (owners manage owners, the
+      last owner) and before the first membership write (the calendar-link
+      stop for a person with an account; the roster delete for one
+      without), so a refused removal opens nothing and a failed open removes
+      nobody. A failed `restaurants` read, shifts read or shifts write is a
+      500 in words; nothing is guessed. Not atomic: if a LATER step fails
+      (calendar stop, `users` clear, access delete, roster delete), the
+      shifts are already open and the person is still listed; a retry opens
+      nothing more and finishes the removal.
+    - **The dialog** (`RosterSheet.tsx`) says the unstarted shifts go back
+      to the open pool; `/help#replace-team-member` (`hp-faq.ts`) gives
+      today's replace procedure (add, move, then remove).
+    `team-pay.spec.ts` K2, 10 cases (9 fail on `origin/main` `0d7af2975`;
+    the owner refusal is a control), 10 of 10 service and pay-rules mutations killed;
+    CLAIMS `ADR-0215-R8-A-REMOVED-PERSONS-UNSTARTED-SHIFTS-GO-TO-THE-OPEN-POOL`
+    (14 of 14 anchor mutants fail it).
 
 ## Consequences
 
@@ -1531,3 +1573,4 @@ Round 3 Opus last call, 2026-09-22, on the index tree (`wt-labor`):
 | 2026-09-27 | ADR 0090 audit of #440 at 56940e7d5 (BLOCK, fix round 1 of 2) | Security review BLOCKed on a cross-surface effect of item 20 that this ADR never named: the personal calendar feed's "all" scope served a removed person's kept shift, past or future, as "Someone — shift". Fixed in `readShifts` (`onTheRoster` against the live roster; residual (u); two cases, both killed by the mutation; CLAIMS row). The unbounded `member_role_changed` read of residual (t) now counts exactly and withholds on a short read (one case over a new stub `rowCap`; both mutations killed; CLAIMS row). The migration that drops the foreign keys said the kept rows were a record "which no page reads"; a dated bracket there now names the calendar feed (fixed) and `rosterAt` (residual (m)). `jest src/team src/restaurants src/calendar`: 27 of 27 suites, 638 of 638 tests; `check_decision_claims.sh` PASS. |
 | 2026-09-28 | Merge-train update of PR #440, CLAUDE.md-directed sync to `origin/main` | PR #436 (`feat/finish-action-integrity`) landed on `origin/main` at `fd73d0920` while this PR's required checks were settling, gaining `20261116101700_a_stale_name_ask_closes_by_itself.sql` and putting the branch's six migrations behind main's newest again; `mergeStateStatus` went DIRTY/CONFLICTING. Merged `origin/main` in worktree `wt-train-440` (branch `train/pr-440`): four conflicts, all disjoint appends kept both sides (`DELIVERY-AUDIT.md` two blocks of unrelated dated measurement bullets, `.planning/06-pages/team.md` this PR's numbered §14 beside an unrelated unnumbered Codex-execution note, `.planning/decisions/README.md` this ADR's index row beside ADR 0192's amendment row — the founder's standing rule already excuses an index-row-only README change), and one substantive conflict in `apps/web/src/pages/team/next/TeamNext.tsx` (both branches added `Overlay` union members and imports; unioned — `former`/`areas`/`export`/`rules`/`sales`, `areas` deduped, both `FormerStaffSheet` and `SendGrantsSection` imports kept). `CLAIMS.jsonl` merged clean with no `(id, verify)` duplicates (710 checked, 710 holding). Renumbered an eleventh time (bracket above, Links section) to `20261116110xxx`, past main's new ceiling; every live citation swept (this ADR's Links list and body prose, `CLAIMS.jsonl`, `OPEN-DECISIONS.md`, `README.md`'s index row, the nine `apps/api-gateway/src/team/*.ts`/`*.spec.ts` files, and the three migrations' own cross-referencing comments), the ten historical rename brackets and changelog rows above left citing the numbers true when they were written. `check_migration_order.py` and `check_migration_versions_unique.py` re-run clean on the merged tree; `check_decision_claims.sh` PASS (710/710). |
 | 2026-09-28 | Merge-train update of PR #440, CLAUDE.md-directed sync to `origin/main` | `origin/main` gained PR #479 (passkeys/sign-in) past the branch's six migrations, and the widest open-PR ceiling moved further still to PR #480's door-record migration; `check_migration_order.py` refused all six again. Merged `origin/main` in worktree `wt-train-440` (branch `train/pr-440`): two conflicts, both disjoint-id appends kept both sides (`CLAIMS.jsonl` — this branch's five `ADR-0215-R6`/`ADR-0215-R7` rows beside `main`'s seven `ADR-0229-FORK-*` rows; `.planning/v3.0-TECH-DEBT.md` — this PR's new "owner-period pay" section beside `main`'s update closing the unrelated verification-link/invite-membership section, adjacent `##` headers only). Renumbered a twelfth time (bracket above, Links section), past both ceilings; every live citation swept (this ADR's Links list and body prose, `CLAIMS.jsonl`, `OPEN-DECISIONS.md`, `README.md`'s index row, the team files, and the three migrations' own cross-referencing comments), the eleven historical rename brackets and changelog rows above left citing the numbers true when they were written. Per the founder's 2026-09-27 migrations-numbered-at-merge rule, this row and the new bracket cite the six migrations by slug, not by version. `check_migration_order.py` and `check_migration_versions_unique.py` re-run clean on the merged tree; `check_decision_claims.sh` re-run on the merged tree. |
+| 2026-09-28 | Founder item 93 (lane fix/team-removed-shifts-open-pool) | Item 26 built from the preserved wt-labor snapshot `4d299b231`'s `shiftsOpened` logic and K2 tests, re-cut to main's `deleteMember`: the house's clock (not the UTC day), a call-out kept, the open before the first membership write. Status and item-20 brackets; OD-181 filed resolved; the replacement step brainstormed in `06-pages/team.md` §15 (a fork, not built); FAQ entry and remove-dialog copy. Gateway `jest src/team src/restaurants src/calendar src/auth` 1091/1091; web `vitest src/pages/help src/pages/team` 266/266. |

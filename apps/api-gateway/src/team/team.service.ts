@@ -29,7 +29,10 @@ import {
   ownWageTellsTheOwner,
   workedHours,
   isWorked,
+  houseWallClock,
+  shiftNotYetStarted,
 } from "./pay-rules";
+import { houseFrame } from "../common/house-frame";
 import { stopCalendarLinksOnLeaving } from "../calendar/stop-links-on-leaving";
 import {
   ChannelPreferences,
@@ -1018,6 +1021,14 @@ export class TeamService {
    * 44.1n). And the removal now also stops the person's `users` row naming this
    * house, so the `users`-row fallback no longer counts them as a member here
    * (44.1j).
+   *
+   * BACK TO THE OPEN POOL (ADR 0215 item 26; founder item 93, 2026-09-28:
+   * "back to the open pool absolutely"). The person's shifts that have not
+   * started yet by the house's clock become open shifts; the ones that have
+   * started stay theirs, kept as former-staff history (item 20, item 22). The
+   * receipt's `shiftsOpened` says how many. That write runs after every
+   * refusal above has had its chance and before the first membership write,
+   * so a refused removal opens nothing and a failed open removes nobody.
    */
   async deleteMember(
     userId: string,
@@ -1028,7 +1039,12 @@ export class TeamService {
     audited: boolean;
     notified: boolean;
     accessRevoked: boolean;
+    /** Unstarted shifts of theirs this removal turned into open shifts (ADR 0215 item 26). */
+    shiftsOpened: number;
   }> {
+    // Set once this removal has sent the person's unstarted shifts back to
+    // the open pool (item 26); `null` until then.
+    let shiftsOpened: number | null = null;
     const actor = await this.assertAccess(userId, restaurantId, "manager");
 
     // Capture the before-state while it still exists. Nothing below can
@@ -1107,6 +1123,10 @@ export class TeamService {
         }
       }
 
+      // Every refusal has run: their unstarted shifts go back to the open
+      // pool before the first membership write (item 26).
+      shiftsOpened = await this.openUnstartedShiftsOf(restaurantId, memberId);
+
       // Their calendar link in this house stops for good, audited, before the
       // first membership write (ADR 0111, 2026-09-21, round 6t: "Yes, revoke
       // on leaving (Recommended)"). A stop that fails throws here, so nothing
@@ -1163,6 +1183,11 @@ export class TeamService {
       );
     }
 
+    // A roster row with no account passed no refusal above; its shifts open
+    // here, still before the roster row goes (item 26).
+    if (shiftsOpened === null)
+      shiftsOpened = await this.openUnstartedShiftsOf(restaurantId, memberId);
+
     // Remove from team_members roster.
     const { error } = await this.sb
       .from("team_members")
@@ -1184,6 +1209,8 @@ export class TeamService {
         user_id: member?.user_id ?? null,
         display_name: member?.display_name ?? null,
         position: member?.position ?? null,
+        // How many of their unstarted shifts this removal opened (item 26).
+        shifts_opened: shiftsOpened,
       },
       notice: {
         title: "Your access to this restaurant was removed",
@@ -1193,7 +1220,73 @@ export class TeamService {
       },
     });
 
-    return { removed: true, accessRevoked, ...receipt };
+    return { removed: true, accessRevoked, shiftsOpened, ...receipt };
+  }
+
+  /**
+   * Turns a leaving person's shifts that have not started yet into open
+   * shifts, and says how many (ADR 0215 item 26, founder item 93). "Not
+   * started" is read on the house's clock (`houseFrame`: its zone, else its
+   * country's only zone, else the latest clock any house could have, so only
+   * a shift unstarted everywhere opens). A started or past shift stays theirs
+   * — kept, as former-staff history (item 20). A call-out stays too: its slot
+   * is already in the open pool as the cover shift `reportCallout` opened.
+   * A failed read or write refuses the whole removal: nobody was removed.
+   */
+  private async openUnstartedShiftsOf(
+    restaurantId: string,
+    memberId: string,
+  ): Promise<number> {
+    const refuse = (what: string, err: { message: string }): never => {
+      this.logger.error(
+        `deleteMember could not ${what} for ${memberId} in ${restaurantId}: ${err.message}`,
+      );
+      throw new InternalServerErrorException(
+        "Could not move this person's upcoming shifts to the open pool, so nobody was removed.",
+      );
+    };
+    const { data: house, error: houseErr } = await this.sb
+      .from("restaurants")
+      .select("timezone, country")
+      .eq("id", restaurantId)
+      .maybeSingle();
+    if (houseErr) refuse("read the house's clock", houseErr);
+    const now = houseWallClock(new Date(), houseFrame(house as any).zone);
+    if (!now) throw new InternalServerErrorException("Failed to remove member");
+
+    const { data: theirs, error: readErr } = await this.sb
+      .from("shifts")
+      .select("id, shift_date, start_time, state")
+      .eq("restaurant_id", restaurantId)
+      .eq("member_id", memberId)
+      .gte("shift_date", now.date);
+    if (readErr) refuse("read the upcoming shifts", readErr);
+    const ids = ((theirs ?? []) as any[])
+      .filter(
+        (s) =>
+          s?.id &&
+          s.state !== "open" &&
+          s.state !== "callout" &&
+          shiftNotYetStarted(s, now),
+      )
+      .map((s) => s.id as string);
+    if (ids.length === 0) return 0;
+
+    const { data: opened, error: openErr } = await this.sb
+      .from("shifts")
+      .update({
+        member_id: null,
+        state: "open",
+        shift_type: "open",
+        labor_cost: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("restaurant_id", restaurantId)
+      .eq("member_id", memberId)
+      .in("id", ids)
+      .select("id");
+    if (openErr) refuse("open the upcoming shifts", openErr);
+    return (opened ?? []).length;
   }
 
   /**

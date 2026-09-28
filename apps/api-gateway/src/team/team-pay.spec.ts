@@ -1183,3 +1183,168 @@ describe("K1 — a removed person's kept shifts and leave are kept, not part of 
     );
   });
 });
+
+// ── K2: a removal sends the person's unstarted shifts back to the open pool ──
+//
+// ADR 0215 item 26, founder item 93 (2026-09-28): "back to the open pool
+// absolutely". Carried from the preserved wt-labor snapshot 4d299b231's K2,
+// re-cut to main's `deleteMember`: "not started" is read on the house's clock
+// (not the UTC calendar day), a call-out stays (its cover is already open),
+// every failed read refuses, and the open runs before the first membership
+// write. K1 (above) is the read side: what stays theirs stays hidden.
+
+describe("K2 — deleteMember sends a removed person's unstarted shifts back to the open pool", () => {
+  const GONE = "m-gone";
+  const OTHER = "m-other";
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  function at(iso: string) {
+    jest.useFakeTimers({ doNotFake: ["nextTick", "setImmediate"] }).setSystemTime(new Date(iso));
+  }
+
+  function seedGone(db: StubDb, zone: string | null = "Europe/Istanbul") {
+    db.tables.restaurants = [{ id: RID, timezone: zone, country: null }];
+    db.tables.team_members.push({
+      id: GONE,
+      restaurant_id: RID,
+      user_id: null,
+      display_name: "Gone",
+      hourly_wage: 25,
+    });
+  }
+
+  it("opens every shift not yet started on the house's clock; the started, the past, a call-out and others' stay", async () => {
+    // 12:00 UTC = 15:00 in Istanbul.
+    at("2026-09-22T12:00:00Z");
+    const db = seed();
+    seedGone(db);
+    db.tables.shifts.push(
+      shift({ id: "past", member_id: GONE, shift_date: "2026-09-01", labor_cost: 150 }),
+      shift({ id: "today-started", member_id: GONE, shift_date: "2026-09-22", start_time: "09:00", labor_cost: 150 }),
+      shift({ id: "today-later", member_id: GONE, shift_date: "2026-09-22", start_time: "18:00", labor_cost: 90 }),
+      shift({ id: "future-scheduled", member_id: GONE, shift_date: "2026-10-05", labor_cost: 150 }),
+      shift({ id: "future-covered", member_id: GONE, shift_date: "2026-10-06", state: "covered", labor_cost: 140 }),
+      shift({ id: "future-callout", member_id: GONE, shift_date: "2026-10-07", state: "callout", labor_cost: 150 }),
+      shift({ id: "other-future", member_id: OTHER, shift_date: "2026-10-05", labor_cost: 100 }),
+    );
+
+    const receipt: any = await teamOf(db).deleteMember(MANAGER, RID, GONE);
+    expect(receipt.shiftsOpened).toBe(3);
+
+    const byId = new Map(db.tables.shifts.map((s) => [s.id, s]));
+    for (const id of ["today-later", "future-scheduled", "future-covered"]) {
+      expect(byId.get(id)).toMatchObject({
+        member_id: null,
+        state: "open",
+        shift_type: "open",
+        labor_cost: null,
+      });
+    }
+    expect(byId.get("past")).toMatchObject({ member_id: GONE, state: "scheduled", labor_cost: 150 });
+    expect(byId.get("today-started")).toMatchObject({ member_id: GONE, state: "scheduled", labor_cost: 150 });
+    expect(byId.get("future-callout")).toMatchObject({ member_id: GONE, state: "callout", labor_cost: 150 });
+    expect(byId.get("other-future")).toMatchObject({ member_id: OTHER, labor_cost: 100 });
+    expect(db.tables.system_audit_log[0]?.changes?.shifts_opened).toBe(3);
+    expect(db.tables.team_members.some((m) => m.id === GONE)).toBe(false);
+  });
+
+  it("reads 'today' on the house's zone, not UTC: after local midnight, a shift that already started stays", async () => {
+    // 22:30 UTC on the 22nd = 01:30 on the 23rd in Istanbul.
+    at("2026-09-22T22:30:00Z");
+    const db = seed();
+    seedGone(db);
+    db.tables.shifts.push(
+      shift({ id: "started-local", member_id: GONE, shift_date: "2026-09-23", start_time: "00:30" }),
+      shift({ id: "later-local", member_id: GONE, shift_date: "2026-09-23", start_time: "09:00" }),
+    );
+    const receipt: any = await teamOf(db).deleteMember(MANAGER, RID, GONE);
+    expect(receipt.shiftsOpened).toBe(1);
+    const byId = new Map(db.tables.shifts.map((s) => [s.id, s]));
+    expect(byId.get("started-local")).toMatchObject({ member_id: GONE, state: "scheduled" });
+    expect(byId.get("later-local")).toMatchObject({ member_id: null, state: "open" });
+  });
+
+  it("with no zone known, opens only what has not started in any zone (the clock at UTC+14)", async () => {
+    // 12:00 UTC on the 22nd = 02:00 on the 23rd at UTC+14.
+    at("2026-09-22T12:00:00Z");
+    const db = seed();
+    seedGone(db, null);
+    db.tables.shifts.push(
+      shift({ id: "maybe-started", member_id: GONE, shift_date: "2026-09-22", start_time: "18:00" }),
+      shift({ id: "surely-later", member_id: GONE, shift_date: "2026-09-23", start_time: "09:00" }),
+    );
+    const receipt: any = await teamOf(db).deleteMember(MANAGER, RID, GONE);
+    expect(receipt.shiftsOpened).toBe(1);
+    const byId = new Map(db.tables.shifts.map((s) => [s.id, s]));
+    expect(byId.get("maybe-started")).toMatchObject({ member_id: GONE });
+    expect(byId.get("surely-later")).toMatchObject({ member_id: null, state: "open" });
+  });
+
+  it("opens nothing, and reports 0, for a person with no upcoming shifts", async () => {
+    at("2026-09-22T12:00:00Z");
+    const db = seed();
+    seedGone(db);
+    db.tables.shifts.push(shift({ id: "past", member_id: GONE, shift_date: "2026-09-01" }));
+    const receipt: any = await teamOf(db).deleteMember(MANAGER, RID, GONE);
+    expect(receipt.shiftsOpened).toBe(0);
+    expect(db.opsOn("shifts", "update")).toHaveLength(0);
+    expect(db.tables.shifts[0]).toMatchObject({ member_id: GONE });
+  });
+
+  it.each([
+    ["restaurants:select", "the house's clock cannot be read"],
+    ["shifts:select", "their shifts cannot be read"],
+    ["shifts:update", "the open fails"],
+  ])("refuses, removing nobody, when %s fails (%s)", async (key) => {
+    at("2026-09-22T12:00:00Z");
+    const db = seed();
+    seedGone(db);
+    db.tables.shifts.push(shift({ id: "future", member_id: GONE, shift_date: "2026-10-05" }));
+    db.errors[key] = { message: "boom" };
+    await expect(teamOf(db).deleteMember(MANAGER, RID, GONE)).rejects.toBeInstanceOf(
+      InternalServerErrorException,
+    );
+    expect(db.tables.team_members.some((m) => m.id === GONE)).toBe(true);
+    expect(db.tables.shifts[0]).toMatchObject({ member_id: GONE, state: "scheduled" });
+    expect(db.tables.system_audit_log).toHaveLength(0);
+  });
+
+  it("for a person with an account, opens before the first membership write: a failed open leaves their access", async () => {
+    at("2026-09-22T12:00:00Z");
+    const db = seed();
+    db.tables.restaurants = [{ id: RID, timezone: "Europe/Istanbul", country: null }];
+    db.tables.shifts.push(shift({ id: "sam-future", member_id: "m-staff", shift_date: "2026-10-05" }));
+    db.errors["shifts:update"] = { message: "boom" };
+    await expect(teamOf(db).deleteMember(MANAGER, RID, "m-staff")).rejects.toBeInstanceOf(
+      InternalServerErrorException,
+    );
+    expect(db.tables.user_restaurant_access.some((a) => a.user_id === STAFF)).toBe(true);
+    expect(db.tables.users.find((u) => u.user_id === STAFF)).toMatchObject({ restaurant_id: RID });
+    expect(db.tables.team_members.some((m) => m.id === "m-staff")).toBe(true);
+  });
+
+  it("for a person with an account, a removal that goes through opens their upcoming shift", async () => {
+    at("2026-09-22T12:00:00Z");
+    const db = seed();
+    db.tables.restaurants = [{ id: RID, timezone: "Europe/Istanbul", country: null }];
+    db.tables.shifts.push(shift({ id: "sam-future", member_id: "m-staff", shift_date: "2026-10-05" }));
+    const receipt: any = await teamOf(db).deleteMember(MANAGER, RID, "m-staff");
+    expect(receipt).toMatchObject({ removed: true, accessRevoked: true, shiftsOpened: 1 });
+    expect(db.tables.shifts[0]).toMatchObject({ member_id: null, state: "open" });
+  });
+
+  it("still refuses a manager removing an owner before any shift is opened", async () => {
+    at("2026-09-22T12:00:00Z");
+    const db = seed();
+    db.tables.restaurants = [{ id: RID, timezone: "Europe/Istanbul", country: null }];
+    db.tables.shifts.push(shift({ id: "boss-future", member_id: "m-owner", shift_date: "2026-10-05" }));
+    await expect(teamOf(db).deleteMember(MANAGER, RID, "m-owner")).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+    expect(db.tables.shifts[0]).toMatchObject({ member_id: "m-owner", state: "scheduled" });
+    expect(db.opsOn("shifts", "update")).toHaveLength(0);
+  });
+});

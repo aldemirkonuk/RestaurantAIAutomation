@@ -34,6 +34,18 @@ export const FAQ_ENTRIES: readonly FaqEntry[] = [
     goes: { to: '/team', label: 'Open Team' },
   },
   {
+    // Founder item 93 (2026-09-28), ADR 0215 item 26. Today's procedure, no
+    // replace step built: ShiftSheet.tsx "Who" picker moves a shift
+    // (PATCH …/shifts/:id memberId); RosterSheet.tsx "Remove and revoke
+    // access" → TeamService.deleteMember, which opens the person's shifts
+    // that have not started yet (openUnstartedShiftsOf) and keeps the past.
+    slug: 'replace-team-member',
+    question: 'Someone is leaving and a new person is taking their shifts. What do I do?',
+    answer:
+      'Add the new person first. Then open each of the leaving person’s upcoming shifts and change Who to the new person. Remove the leaving person last. Anything you did not move goes back to the open pool when they are removed, for anyone to take; their past shifts stay in the owner’s former-staff history.',
+    goes: { to: '/team', label: 'Open Team' },
+  },
+  {
     // Profile.tsx (Security, Linked accounts); ProfileNext Register II
     // (Security) and Register III (Connected accounts); AuthContext.loginWithGoogle/Microsoft.
     slug: 'password-or-login',

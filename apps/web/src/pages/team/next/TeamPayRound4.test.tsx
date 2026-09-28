@@ -230,6 +230,11 @@ describe('the pay switch on a manager’s row', () => {
     expect(screen.getByText(/kept for five years, for an owner only/)).toHaveTextContent(
       /availability is not kept/,
     );
+    // ADR 0215 item 26 (founder item 93): what has not started goes back to
+    // the open pool; what is kept is the PAST shifts, not every shift.
+    expect(screen.getByText(/kept for five years, for an owner only/)).toHaveTextContent(
+      /shifts that have not started yet go back to the open pool.*Their past shifts, leave/,
+    );
   });
 });
 

@@ -761,9 +761,10 @@ export function MemberSheet({
             <p style={{ margin: 0 }}>
               Removing {resolved?.known ? resolved.text : 'this person'} deletes their
               roster row and revokes their access to this restaurant. It is written to the
-              audit log and they are notified. This cannot be undone. Their shifts, leave, wage
-              changes and credentials are kept for five years, for an owner only, in the
-              former-staff history; their availability is not kept.
+              audit log and they are notified. This cannot be undone. Their shifts that have
+              not started yet go back to the open pool, for someone else to take. Their past
+              shifts, leave, wage changes and credentials are kept for five years, for an owner
+              only, in the former-staff history; their availability is not kept.
             </p>
             <div className="tm-actions">
               <button
