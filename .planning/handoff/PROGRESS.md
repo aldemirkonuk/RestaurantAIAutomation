@@ -2,6 +2,21 @@
 
 ## ▶ PICK-UP CARD — read this first (updated 2026-09-28T22:30Z, cloud session c98bb6c5)
 
+**▶▶ Latest (22:50Z).** This block supersedes the 22:30Z block below.
+- **#499** is merged (2ba1326e3).
+- **#500** has an audit PASS at f30ee5d (planner HOLDS after a round-1 BLOCK on §0.2, fixed by the ADR 0085 amendment). The marker is posted once CI is green, then the founder runs `bash ~/merge-audited-pr.sh 500`. After it lands, merge main into #490 again.
+- **Lane re-run wf_c400443f-5f7:**
+  - New PRs, each with a Sonnet verify PASS: #501 deal-proposal house scope (security), #502 removed shifts go to the open pool (item 93), #503 ask round 6z.
+  - Verify passes also PASS on #497, #495 and #496.
+  - Six lanes died because the disk was full (worktree creation failed) and must be re-run: mig-adr, register, sketch-123, gitignore, mobile-fab, flag-dto.
+  - #501, #503 and at least one more carry a CLAIMS append conflict with main; resolve as the union.
+- **Disk:** 100% full. Deleting /tmp caches was refused by the permission check, so it waits for the founder.
+- **Founder forks raised:**
+  - #502 no-timezone fallback: UTC+14, or UTC as in ADR 0116.
+  - #502 replacement step: options (a)–(d) in 06-pages/team.md §15, plus warn-or-refuse on availability.
+  - OD-182 thumbs-label disclosure.
+  - Model-provider line on /terms and /ask.
+
 **▶▶ Latest (22:30Z). Read this block before the rest of the card.**
 - **Agent capacity is back.** The founder reset the limit, and test agents on both Sonnet and Opus ran. A reset restores only the five-hour window *or* the weekly one, so check `/usage` before a large fan-out.
 - **Ready for the founder to merge:**
