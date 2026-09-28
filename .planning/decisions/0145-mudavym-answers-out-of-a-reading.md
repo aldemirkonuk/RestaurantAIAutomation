@@ -1349,14 +1349,22 @@ PASS). Evidence: see the review trail.
   exists only on the new Settings page (`mudavym_design_settings`;
   `settings` is not in `LIVE_PAGES`). A house on the old Settings page has no
   switch to find. Nothing is asked yet (`ASK_LAUNCHED` unset); put to the
-  founder by the KL5 last-call report as a launch condition.
+  founder by the KL5 last-call report as a launch condition. [Answered 2026-09-22, round 6z, "/ask waits for new Settings
+  (Recommended)", and met on `main` by #419 (24b7d5288): `settings` is in
+  `LIVE_PAGES` (`useMudavymDesign.ts:213`) and the switch renders for every
+  house (`SettingsNext.tsx:438`). See the round-6z amendment below.]
 - [Last call] A person's own label (`basis = 'person'`) given while the house
   is opted out, on a question asked while opted in, is exported once the
   house opts back in. His answer covers questions asked; a label is not a
-  question, so this is recorded, not decided (KL5 last-call report).
+  question, so this is recorded, not decided (KL5 last-call report). [Answered 2026-09-22, round 6z,
+  "Leave it out (Recommended)"; built 2026-09-28, migration `20261202100000`.
+  See the round-6z amendment below.]
 - [Last call] `/privacy` does not say that a question is sent to an AI model
   provider to be answered. That was never part of this round's notice; it
-  is the lawyer's KVKK/GDPR review to settle, recorded here.
+  is the lawyer's KVKK/GDPR review to settle, recorded here. [Answered 2026-09-22,
+  round 6z, "Add a plain line now (Recommended)", over the lawyer-review
+  default; built 2026-09-28 in both copies of the section. See the round-6z
+  amendment below.]
 - [Last call] The new `/privacy` section uses the page's own `Section` rows
   (the page is not rebuilt in the Mudavym components); a browser render was
   not done.
@@ -1820,6 +1828,149 @@ and `AskPanel.test.tsx`, `AskPanel.shortcut.test.tsx`, `HouseShell.test.tsx`,
   remain as the round-5/round-6 amendments left them -- unrelated to this
   item, not re-verified here.
 
+## Amendment, 2026-09-28 -- round 6z: Settings reach met by #419, a label snapshots its own opt-out, /privacy says where a question goes (answered 2026-09-22)
+
+**Where this comes from.** The founder answered round 6z on 2026-09-22 to
+the KL6 lane (worktree `wt-r5-KL`, branch `r5/KL`). That work was never
+pushed. It exists only in the preserved snapshot `2f9a1e0d3`
+(`origin/wip/preserve-20260928T1629Z/Projects--wt-r5-KL-f13dae6`), and the
+triage of 2026-09-28 (`PRESERVE-TRIAGE-2026-09-28.md`, on `main-1ll9rp`, §2
+and §3 item 3) sorted what still applies. The three picks below are quoted
+from that snapshot's review-trail row. They are not in the web-rebuild census
+on `main`: census :531 carries round 6z's Team #440 picks, not these (a
+correction to the triage's pointer).
+
+**The forks.** The three items the round-6y last call left recorded, not
+decided (brackets above): whether `/ask` should wait until a house can reach
+the training switch; whether a person's label given while opted out, on a
+question asked while opted in, may be exported; whether `/privacy` should
+say a question is sent to an AI model provider outside Turkey.
+
+**Founder's answers, 2026-09-22, round 6z, his picks verbatim** (as relayed
+by the orchestrating session; the brief's reading of each is its words, not
+his):
+
+1. Settings reach: **"/ask waits for new Settings (Recommended)"**.
+2. Labels given while opted out: **"Leave it out (Recommended)"**. The
+   brief's test, which the probe below runs: "opt-in ask -> opt-out -> label
+   -> opt-in -> export excludes the label".
+3. `/privacy` and the model provider: **"Add a plain line now
+   (Recommended)"**, over the lawyer-review default. The brief: name the
+   provider only if the repository already names it publicly.
+
+### Built (branch `fix/ask-round-6z`, 2026-09-28, against `main` 0d7af2975)
+
+1. **Answer 1 is met by #419; nothing new is built for it.** The snapshot
+   built a 503 gate in `BoundAskService.submit` on `mudavym_design_settings`.
+   It is not carried. That column defaults false
+   (`20260902230000_mudavym_design_flags_p4.sql:20`), so the gate would
+   refuse `/ask` for every house left at the default, and the condition it
+   stood for already holds. Since #419 (24b7d5288), `settings` is in
+   `LIVE_PAGES` (`useMudavymDesign.ts:213`) and Settings → Training use renders
+   for every house (`SettingsNext.tsx:438`). So every house that can open
+   `/ask` (#475, 347f9879b) can also reach the switch. The snapshot's premises
+   ("no web-reachable /ask", "settings not in LIVE_PAGES") were true on
+   2026-09-22 and are false on `main`.
+2. **A label snapshots its own opt-out** (answer 2). Migration
+   `20261202100000_ask_feedback_label_opt_out_snapshot.sql` is the snapshot's
+   `20260922023000`, renumbered past every version on every origin ref
+   (ceiling 20261201120000) and re-cited to `main`'s versions (`20260922220600`
+   for the snapshot's `20260922014000`, and so on).
+   - It adds `ask_folio_labels.given_while_opted_out`, derived by a BEFORE
+     INSERT trigger from `ask_training_opt_outs`. A client's value is
+     overwritten, and the derive function is revoked from `public`, `anon` and
+     `authenticated`.
+   - No written-once trigger: `ask_folio_labels` has no UPDATE code path
+     (`ReadingFolioStore.label()` only inserts,
+     `reading-folio.store.ts:194`).
+   - In `ask_folio_training_export`, the `pick` (basis `person`), `compose`
+     and `knowledge` lateral joins each gain `and not l.given_while_opted_out`.
+     So an earlier label given while opted in still surfaces past a later
+     one given while opted out. The re-ask lateral is untouched: its label is
+     derived, not a person's, and `20260922220600` already gates it on the
+     folio that wrote it.
+   - **The backfill changed from the snapshot, because `/ask` is live.** The
+     snapshot took each old label's value from the house's CURRENT answer and
+     said production had no rows. That no longer holds. With the current
+     answer, a label given while opted out, in a house that has since opted
+     back in, would be backfilled false and exported, which is what answer 2
+     forbids. The file now backfills from what `ask_training_opt_outs` can
+     prove:
+     - no row: false (never answered = opted in, his default);
+     - a row set at or before the label: that row's `opted_out`;
+     - a row set after the label: true, because the earlier answer is not
+       in the table. This can only keep an opted-in label out, never let an
+       opted-out one in.
+
+     `system_audit_log` holds the full history, but the audit row is written
+     after the upsert and can be missing, so the backfill does not rely on it.
+     No web surface sends a label today (`apps/web/src/services/api/ask.ts`
+     has no call to `/feedback`), so production likely holds few labels or
+     none. This was not queried.
+   - The migration recreates the view, so it is now the view's last-defining
+     file. Two CLAIMS rows that name that file are re-pointed (below).
+3. **`/privacy` says where a question goes** (answer 3). Both copies of
+   "Questions you ask Mudavym" in `apps/web/src/pages/Privacy.tsx` gain *"To
+   answer it, the question is sent to an AI model provider outside
+   Turkey."*: the plate copy that ships and the legacy `<Section>` copy behind
+   the QA override. The snapshot changed only the `<Section>` copy, which
+   no visitor sees. The provider is not named. No public page names one (the
+   signed-in Studio command bar and the admin panel say "Claude"; neither is
+   public). The snapshot's reason, "only internal code comments", was wrong.
+
+### CLAIMS
+
+- Added: `ADR-0145-ASK-FEEDBACK-LABEL-OPT-OUT-SNAPSHOT`, which also pins the
+  new backfill.
+- Re-pointed to read the view body from `20261202100000`:
+  `ADR-0145-ASK-EXPORT-LEAVES-OUT-OPTED-OUT-HOUSES-AND-FREE-TEXT` and
+  `ADR-0145-ASK-TRAINING-OPT-OUT-SNAPSHOT-AT-ASK-TIME`. The second still reads
+  its trigger and column checks from `20260922220600`.
+- Not carried: the snapshot's `ADR-0145-ASK-WAITS-FOR-NEW-SETTINGS`, since
+  its gate is not carried.
+
+### Evidence, measured 2026-09-28
+
+- **PGlite** (`@electric-sql/pglite`, probe `KL6-label-opt-out-snapshot.mjs`,
+  rewritten for `main`, text in the PR body): 17 of 17 PASS. It replays
+  `main`'s five ask migrations (`20260922220000`, `…220300`, `…220400`,
+  `…220500`, `…220600`) over stub `restaurants`, `users` and
+  `ai_proposed_actions` tables and the three client roles, then applies
+  `20261202100000`. It covers the founder's scenario verbatim, a forged
+  value, an opted-in label, `pick` and `knowledge`, an earlier label surviving
+  a later relabel, the re-ask label and kind, EXECUTE for anon and
+  authenticated, the four backfill shapes, and an idempotent re-run.
+- **Mutations**, each restored (md5 `d65b0de40749f85e6d68fc90956388d4`):
+  - dropping the `compose` filter: 3 PGlite FAIL and the new CLAIMS row FAIL;
+  - the snapshot's current-state backfill: 1 PGlite FAIL and the new row FAIL;
+  - dropping the revoke: 1 PGlite FAIL and the new row FAIL;
+  - dropping the view's `asked_while_opted_out` clause: the re-pointed
+    snapshot row FAIL;
+  - removing the file (i.e. `main`): all three rows FAIL.
+- **vitest** `Privacy.test.tsx`: 7 of 7. On `main`'s `Privacy.tsx` the two new
+  cases fail. With the sentence only on the plate, the legacy-copy case
+  fails.
+- **Checks:** web `tsc` clean; `check_decision_claims.sh` 739 of 739.
+
+### Not built, not verified (round 6z)
+
+- The PGlite run is not the full migration chain: five ask migrations over
+  stubs. No Supabase roles or RLS were exercised beyond the grants.
+  `check_migration_ledger.py` and `check_definer_functions_closed.py` need a
+  database and were not run.
+- No production query, so how many labels the backfill touches is unknown.
+  No browser render of `/privacy`: vitest only.
+- `/terms` (#478, `Terms.tsx:130`) and the `/ask` page's note under the
+  question box (`AskNext.tsx:368-371`) each carry their own training notice
+  now. Neither says a question is sent to a model provider outside Turkey.
+  Answer 3 named `/privacy`; whether the other two should also say it is
+  the founder's call, returned with this PR and not decided here.
+- **Recorded, not decided, as [OD-182](OPEN-DECISIONS.md):** neither
+  `/privacy` nor Settings → Training use says that a person's label (thumbs
+  up/down) exists or can reach the export. Both describe only the question
+  and its answer. The snapshot noticed this and did not decide it; neither
+  does this record.
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
@@ -1841,3 +1992,5 @@ and `AskPanel.test.tsx`, `AskPanel.shortcut.test.tsx`, `HouseShell.test.tsx`,
 | 2026-09-26 | Aldemir (founder), round 7, `AskUserQuestion` "/ask panel: which mode does it open in?" | His pick, verbatim: "Last used, first time Ask (Recommended)" (rejected: "Always Ask"). Item 45 in the session memory ("/ask panel opens in the person's LAST USED mode; first time = Ask the books") is the orchestrating session's summary of this pick, not his verbatim words. See "Amendment, 2026-09-26, round 7". |
 | 2026-09-26 | W5-ask lane (build, PR #475) | Built `askLastMode` in the existing `user_preferences` blob (no new store, no migration -- the lane brief's own fallback, a `localStorage` key, did not apply once this was found); hydrate/persist effects in `AskPanel.tsx`. `AskPanel.test.tsx` +6 tests; three other suites that render `AskPanel` with no `QueryClientProvider` gained the same `useUserPreferences` mock `GroundChoiceSync.test.tsx` already uses. Measured: affected suites 14 files / 168 tests, the lane's wider run 125 files / 1305 tests, web `tsc` and eslint (6 changed files) both exit 0 -- all green. Not built: optimistic rollback on a failed write (a stated shortcut; see the amendment); no browser render. |
 | 2026-09-26 | W4-ask lane (build, PR #475) | Built one Ask panel with an explicit mode switch and a suggestion that never acts; docked in the counter slot at ≥ ~1280 px, lying over below; `AskAiBar` retired; build task 14 closed. Measured in the section above and in the PR. |
+| 2026-09-22 | Aldemir (founder), round 6z, relayed by the orchestrating session (recorded 2026-09-28 from preserved snapshot `2f9a1e0d3`) | His picks, verbatim: "/ask waits for new Settings (Recommended)" (Settings reach); "Leave it out (Recommended)" (labels given while opted out); "Add a plain line now (Recommended)" (the AI model provider, over the lawyer-review default). See the round-6z amendment. |
+| 2026-09-28 | `fix/ask-round-6z` lane (build, against `main` 0d7af2975) | Answer 1 met by #419, nothing built for it; the snapshot's 503 gate is not carried. Answer 2 built as `20261202100000`, with the backfill changed so it cannot export an opted-out label now that production may hold labels (PGlite 17/17 on the five ask migrations over stubs; mutations listed in the amendment). Answer 3 built in both copies (vitest 7/7). The label-disclosure gap filed as OD-182, open. |
