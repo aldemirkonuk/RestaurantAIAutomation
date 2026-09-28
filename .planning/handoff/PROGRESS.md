@@ -28,7 +28,12 @@ session that continued the desktop run (session_01GYea8ghmHSxrpWCjmRjXoq).
   ADR 0090 audit PASS marker is the first line of the PR comment
   (`pull/487#issuecomment-5872446308`); local copy
   `07-reference/pr-audits/487-d3bfacb.md` (branch `main-1ll9rp`).
-  **Production not yet verified at `dcdb6d5e9`** — see step 5 below.
+  **Production verified 2026-09-28T15:15Z:** on `dcdb6d5e9`, `CI`, `Schema parity`, `CodeQL` and
+  `Deploy to Production` (workflow_run) all concluded success (Actions API); Vercel's web
+  deployment `dpl_AJMuqqw5xJiMhoZVm6hzKKmFNABQ` (READY, production,
+  `githubCommitSha` `dcdb6d5e9`) carries the `mudavym.com` alias, and the gateway's
+  `dpl_D9CJ48EBcg2RAvYBK4xwvxgF4Tzb` is READY on the same SHA. Not done: no browser
+  walk of the three pages — the cloud container's proxy refuses mudavym.com (403).
 - Merged before this session: #436, #440, #479, #480, #484 (plus the 47 commits the
   other account landed since `059169a59`). The desktop WIP snapshot `459653f` was fully
   superseded by `main` and dropped (its one unique migration is on `main` as
@@ -49,7 +54,7 @@ migrations `20261117100000`–`20261117100900`.
 |---|---|---|---|---|
 | ADR 0231 retires 0050 (item 86) | `docs/model-dispatch-adr-0231` | **#490** `cfe9fc94a` | built; verify pending. Touches gate-owned `decisions/0050-*.md` + `decisions/README.md`, so the audit skill records BLOCK-for-human-review, never an automated PASS | founder reads and merges by hand (4b) |
 | Cutover manifest + trial delete (L17) | `feat/cutover-manifest-trial` | draft, not yet opened | building | **never as one merge**: founder approves group by group (ADR 0149) |
-| Security residuals (L3/L14) | `fix/security-residuals-2026-09-28` | not yet | building | after audit PASS |
+| Security residuals (L3/L14) | `fix/security-residuals-2026-09-28` | **#491** | built 15:1xZ; verify pending | after audit PASS |
 | Records refresh (census §18, STATE, LIVE-CHECKLIST) | `docs/records-2026-09-28` | not yet | queued | after audit PASS; last among the docs PRs |
 | Promotions room `minRole: 'manager'` (TD-2026-09-27) | `fix/promotions-room-manager-only` | not yet | queued (built on #487's head; #487 has merged, so merge `origin/main` in first) | after audit PASS |
 
