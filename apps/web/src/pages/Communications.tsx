@@ -52,6 +52,10 @@ const OUTCOME_LABELS: Record<string, string> = {
   // Reaches this history list because the send happened; the status write
   // afterwards did not. Named, not left to render as a raw enum token.
   SEND_UNCONFIRMED: 'Sent · unconfirmed',
+  // The relay refused this exact request before any transport and the draft
+  // is closed, not retried (ADR 0099, founder 2026-09-21). Never reached the
+  // vendor; the reason is shown in the expanded row.
+  RELAY_REFUSED: 'Not sent · refused',
 }
 
 interface ProcurementSendHistoryProps {
@@ -180,7 +184,7 @@ export function ProcurementSendHistory({
                   <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
                     item.direction === 'INBOUND'
                       ? 'bg-blue-100 text-blue-700'
-                      : item.status === 'SEND_UNCONFIRMED'
+                      : item.status === 'SEND_UNCONFIRMED' || item.status === 'RELAY_REFUSED'
                         ? 'bg-red-100 text-red-700'
                         : item.status === 'APPROVED' || item.status === 'AUTO_SENT'
                           ? 'bg-emerald-100 text-emerald-700'
@@ -206,6 +210,15 @@ export function ProcurementSendHistory({
                     <span><strong>Rounds:</strong> {item.roundCount}</span>
                     <span><strong>Sent:</strong> {new Date(item.sentAt).toLocaleString()}</span>
                   </div>
+                  {/* Why a relay refusal closed this draft (ADR 0099, 2026-09-21) */}
+                  {item.direction !== 'INBOUND' && item.status === 'RELAY_REFUSED' && (
+                    <div>
+                      <p className="text-xs font-semibold text-red-700 mb-1">Not sent — the relay refused it</p>
+                      <p className="text-xs text-red-700 bg-white border border-red-200 rounded-lg p-3">
+                        {item.relayRefusalReason || 'No reason was recorded with this refusal.'}
+                      </p>
+                    </div>
+                  )}
                   {/* Draft body */}
                   <div>
                     <p className="text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wide">Draft Body</p>
