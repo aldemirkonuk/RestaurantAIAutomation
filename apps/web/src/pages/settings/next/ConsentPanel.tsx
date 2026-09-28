@@ -95,7 +95,7 @@ async function readTrail(register: string): Promise<LedgerRegister> {
 
 export function ConsentTrail({ spec }: { spec: ConsentSwitchSpec }) {
   const q = useQuery({ queryKey: ['consent-trail', spec.register], queryFn: () => readTrail(spec.register), retry: false });
-  const line: CSSProperties = { fontFamily: SANS, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-3)', margin: '4px 0 0' };
+  const line: CSSProperties = { fontFamily: SANS, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-4)', margin: '4px 0 0' };
 
   if (q.isPending) return <p style={line}>Reading who changed it…</p>;
   if (q.isError || !q.data || !q.data.readable) {
@@ -178,7 +178,7 @@ export function ConsentPanelOpener({ data }: { data: SettingsNextData }) {
   return (
     <div data-testid="consent-panel-opener" style={{ margin: '14px 0 0', display: 'flex', gap: 12, alignItems: 'baseline', flexWrap: 'wrap' }}>
       <Action onClick={() => setOpen(true)}>Open the consent panel</Action>
-      <span style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-3)' }}>
+      <span style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-4)' }}>
         {count === 1 ? 'One consent this house gives' : `${count} consents this house gives`}, with who changed
         {count === 1 ? ' it' : ' each'} and when.
       </span>

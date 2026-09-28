@@ -295,7 +295,7 @@ export function PasskeyRows() {
         />
       ))}
       {readout.passkeys.length === 0 && (
-        <p style={{ margin: '4px 0 8px', fontSize: 12, color: 'var(--ink-3)' }}>
+        <p style={{ margin: '4px 0 8px', fontSize: 12, color: 'var(--ink-4)' }}>
           No passkey has been added to this account.
         </p>
       )}
