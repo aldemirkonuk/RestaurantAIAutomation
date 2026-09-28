@@ -15,11 +15,12 @@ const api = vi.hoisted(() => ({
   setMemberPayAccess: vi.fn(),
   getFormerStaff: vi.fn(),
   updateTeamMember: vi.fn((..._a: unknown[]) => Promise.resolve({})),
+  deleteTeamMember: vi.fn((..._a: unknown[]) => Promise.resolve({} as Record<string, unknown>)),
 }));
 
 vi.mock('../../../services/api/team', () => ({
   createTeamMember: vi.fn(() => Promise.resolve({})),
-  deleteTeamMember: vi.fn(() => Promise.resolve(undefined)),
+  deleteTeamMember: api.deleteTeamMember,
   updateTeamMember: api.updateTeamMember,
   setMemberPayAccess: api.setMemberPayAccess,
   getFormerStaff: api.getFormerStaff,
@@ -68,6 +69,7 @@ beforeEach(() => {
   api.setMemberPayAccess.mockReset();
   api.getFormerStaff.mockReset();
   api.updateTeamMember.mockClear();
+  api.deleteTeamMember.mockReset();
 });
 
 describe('the pay switch on a manager’s row', () => {
@@ -235,6 +237,70 @@ describe('the pay switch on a manager’s row', () => {
     expect(screen.getByText(/kept for five years, for an owner only/)).toHaveTextContent(
       /shifts that have not started yet go back to the open pool.*Their past shifts, leave/,
     );
+    // The founder, 2026-09-28: a shift being worked right now is cut at the
+    // removal minute (ADR 0215 item 26's 2026-09-28 bracket).
+    expect(screen.getByText(/kept for five years, for an owner only/)).toHaveTextContent(
+      /working right now is cut at this minute: the part worked stays theirs, paid for the time worked, and the rest of it goes to the open pool/,
+    );
+  });
+
+  function removeWith(receipt: Record<string, unknown>) {
+    api.deleteTeamMember.mockResolvedValue(receipt);
+    const onClose = vi.fn();
+    const onChanged = vi.fn();
+    render(
+      wrap(
+        <MemberSheet
+          member={member({ role: 'staff' }) as never}
+          moneyVisible
+          viewerIsOwner
+          viewerUserId="u-owner"
+          ownerCount={1}
+          onClose={onClose}
+          onChanged={onChanged}
+        />,
+      ),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove and revoke access' }));
+    return { onClose, onChanged };
+  }
+
+  it('closes after a removal judged on the house\'s own clock, with nothing to say', async () => {
+    const { onClose, onChanged } = removeWith({
+      shiftsOpened: 2,
+      shiftsSplit: 1,
+      shiftsUnjudged: 0,
+      clock: { zone: 'Europe/Istanbul', source: 'house' },
+    });
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(onChanged).toHaveBeenCalled();
+    expect(screen.queryByRole('status')).toBeNull();
+  });
+
+  it('says when the removal was judged on this device\'s clock, and waits to be closed', async () => {
+    const { onClose, onChanged } = removeWith({
+      shiftsSplit: 1,
+      shiftsUnjudged: 0,
+      clock: { zone: 'Europe/Istanbul', source: 'device' },
+    });
+    const note = await screen.findByRole('status');
+    expect(note).toHaveTextContent(/no time zone set.*this device's clock \(Europe\/Istanbul\).*Set the restaurant's time zone in Settings/);
+    expect(onChanged).toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it('names the shifts it could not judge with no clock at all', async () => {
+    const { onClose } = removeWith({
+      shiftsSplit: 0,
+      shiftsUnjudged: 2,
+      clock: { zone: null, source: 'none' },
+    });
+    const note = await screen.findByRole('status');
+    expect(note).toHaveTextContent(/2 shifts of theirs may already have started.*kept with them, whole/);
+    expect(onClose).not.toHaveBeenCalled();
   });
 });
 

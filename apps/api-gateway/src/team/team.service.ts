@@ -29,10 +29,13 @@ import {
   ownWageTellsTheOwner,
   workedHours,
   isWorked,
-  houseWallClock,
-  shiftNotYetStarted,
+  leavingShiftsFrom,
+  planLeavingShifts,
+  removalClock,
+  RemovalClock,
 } from "./pay-rules";
 import { houseFrame } from "../common/house-frame";
+import { resolveSignUpTimezone } from "../auth/sign-up-timezone";
 import { stopCalendarLinksOnLeaving } from "../calendar/stop-links-on-leaving";
 import {
   ChannelPreferences,
@@ -65,6 +68,21 @@ export const FORMER_STAFF_RETENTION_YEARS = 5;
  * certifications, availability, time-off/swap requests, coverage rules and
  * the per-restaurant team settings (labor toggle).
  */
+/** What `releaseShiftsOf` did to a leaving person's shifts (ADR 0215 item 26). */
+interface Released {
+  opened: number;
+  /** Per cut shift: where it was cut, the new open row, and its end and break before the cut. */
+  split: {
+    id: string;
+    cut: string;
+    rest_id: string | null;
+    was_end: string;
+    was_break_min: number | null;
+  }[];
+  unjudged: string[];
+  clock: RemovalClock;
+}
+
 @Injectable()
 export class TeamService {
   private readonly logger = new Logger(TeamService.name);
@@ -1026,14 +1044,23 @@ export class TeamService {
    * "back to the open pool absolutely"). The person's shifts that have not
    * started yet by the house's clock become open shifts; the ones that have
    * started stay theirs, kept as former-staff history (item 20, item 22). The
-   * receipt's `shiftsOpened` says how many. That write runs after every
-   * refusal above has had its chance and before the first membership write,
-   * so a refused removal opens nothing and a failed open removes nobody.
+   * receipt's `shiftsOpened` says how many. A shift IN PROGRESS at the
+   * removal is split at the removal minute (founder, 2026-09-28: "it also
+   * has to take care of yhat exact edge case where it opens midahift then
+   * everything changes accordingly"): the worked part stays theirs,
+   * re-priced; the rest becomes a new open shift (`shiftsSplit`). That write
+   * runs after every refusal above has had its chance and before the first
+   * membership write, in one database transaction, so a refused removal
+   * opens nothing, a failed write removes nobody, and no half of it lands.
+   *
+   * `deviceZone` is the remover's device zone (the web sends its `Intl`
+   * zone), used only when the house records none (`removalClock`).
    */
   async deleteMember(
     userId: string,
     restaurantId: string,
     memberId: string,
+    deviceZone?: string | null,
   ): Promise<{
     removed: true;
     audited: boolean;
@@ -1041,10 +1068,16 @@ export class TeamService {
     accessRevoked: boolean;
     /** Unstarted shifts of theirs this removal turned into open shifts (ADR 0215 item 26). */
     shiftsOpened: number;
+    /** In-progress shifts of theirs cut at the removal minute, the rest opened. */
+    shiftsSplit: number;
+    /** With no clock at all: shifts that may have started, kept whole and named. */
+    shiftsUnjudged: number;
+    /** The clock "started" was judged on, and where its zone came from. */
+    clock: RemovalClock;
   }> {
     // Set once this removal has sent the person's unstarted shifts back to
-    // the open pool (item 26); `null` until then.
-    let shiftsOpened: number | null = null;
+    // the open pool and cut any in progress (item 26); `null` until then.
+    let released: Released | null = null;
     const actor = await this.assertAccess(userId, restaurantId, "manager");
 
     // Capture the before-state while it still exists. Nothing below can
@@ -1125,7 +1158,7 @@ export class TeamService {
 
       // Every refusal has run: their unstarted shifts go back to the open
       // pool before the first membership write (item 26).
-      shiftsOpened = await this.openUnstartedShiftsOf(restaurantId, memberId);
+      released = await this.releaseShiftsOf(restaurantId, memberId, deviceZone);
 
       // Their calendar link in this house stops for good, audited, before the
       // first membership write (ADR 0111, 2026-09-21, round 6t: "Yes, revoke
@@ -1185,8 +1218,8 @@ export class TeamService {
 
     // A roster row with no account passed no refusal above; its shifts open
     // here, still before the roster row goes (item 26).
-    if (shiftsOpened === null)
-      shiftsOpened = await this.openUnstartedShiftsOf(restaurantId, memberId);
+    if (released === null)
+      released = await this.releaseShiftsOf(restaurantId, memberId, deviceZone);
 
     // Remove from team_members roster.
     const { error } = await this.sb
@@ -1209,8 +1242,14 @@ export class TeamService {
         user_id: member?.user_id ?? null,
         display_name: member?.display_name ?? null,
         position: member?.position ?? null,
-        // How many of their unstarted shifts this removal opened (item 26).
-        shifts_opened: shiftsOpened,
+        // What this removal did to their shifts (item 26): how many unstarted
+        // ones it opened, which in-progress ones it cut and where, which it
+        // could not judge, and on whose clock. No money: the audit row is
+        // not pay-gated.
+        shifts_opened: released.opened,
+        shifts_split: released.split,
+        shifts_unjudged: released.unjudged,
+        shifts_clock: released.clock,
       },
       notice: {
         title: "Your access to this restaurant was removed",
@@ -1220,23 +1259,43 @@ export class TeamService {
       },
     });
 
-    return { removed: true, accessRevoked, shiftsOpened, ...receipt };
+    return {
+      removed: true,
+      accessRevoked,
+      shiftsOpened: released.opened,
+      shiftsSplit: released.split.length,
+      shiftsUnjudged: released.unjudged.length,
+      clock: released.clock,
+      ...receipt,
+    };
   }
 
   /**
-   * Turns a leaving person's shifts that have not started yet into open
-   * shifts, and says how many (ADR 0215 item 26, founder item 93). "Not
-   * started" is read on the house's clock (`houseFrame`: its zone, else its
-   * country's only zone, else the latest clock any house could have, so only
-   * a shift unstarted everywhere opens). A started or past shift stays theirs
-   * — kept, as former-staff history (item 20). A call-out stays too: its slot
-   * is already in the open pool as the cover shift `reportCallout` opened.
-   * A failed read or write refuses the whole removal: nobody was removed.
+   * What a removal does to the leaving person's shifts (ADR 0215 item 26,
+   * founder item 93 and the founder's 2026-09-28 answer). On the house's
+   * clock at the removal minute (`removalClock`: the house's zone, else its
+   * country's only zone, else the remover's device zone, else none):
+   *   - not started: OPEN, whole — `member_id` null, `state`/`shift_type`
+   *     open, `labor_cost` null;
+   *   - in progress: SPLIT at the removal minute — the worked part (start ->
+   *     now) stays theirs with its end, break and cost recomputed for the
+   *     shorter span; the rest (now -> the old end) is a NEW open shift with
+   *     the same role and note and nobody on it (`planLeavingShifts`);
+   *   - ended: kept, untouched (former-staff history, item 20).
+   * A call-out stays: its cover is already open. With no clock at all, a
+   * shift that may or may not have started is kept whole and named
+   * (`unjudged`), never cut at a guessed minute.
+   *
+   * Every write goes in ONE call to `release_leaving_shifts` (migration
+   * 20261201130000), one transaction that re-checks each row is still as it
+   * was read, so either all of it lands or none does. A failed read or that
+   * call failing refuses the whole removal: nobody was removed.
    */
-  private async openUnstartedShiftsOf(
+  private async releaseShiftsOf(
     restaurantId: string,
     memberId: string,
-  ): Promise<number> {
+    deviceZone: string | null | undefined,
+  ): Promise<Released> {
     const refuse = (what: string, err: { message: string }): never => {
       this.logger.error(
         `deleteMember could not ${what} for ${memberId} in ${restaurantId}: ${err.message}`,
@@ -1251,42 +1310,77 @@ export class TeamService {
       .eq("id", restaurantId)
       .maybeSingle();
     if (houseErr) refuse("read the house's clock", houseErr);
-    const now = houseWallClock(new Date(), houseFrame(house as any).zone);
-    if (!now) throw new InternalServerErrorException("Failed to remove member");
+    const clock = removalClock(
+      houseFrame(house as any),
+      resolveSignUpTimezone(deviceZone ?? null),
+    );
+    const now = new Date();
+    const from = leavingShiftsFrom(now, clock);
+    if (!from) throw new InternalServerErrorException("Failed to remove member");
 
     const { data: theirs, error: readErr } = await this.sb
       .from("shifts")
-      .select("id, shift_date, start_time, state")
-      .eq("restaurant_id", restaurantId)
-      .eq("member_id", memberId)
-      .gte("shift_date", now.date);
-    if (readErr) refuse("read the upcoming shifts", readErr);
-    const ids = ((theirs ?? []) as any[])
-      .filter(
-        (s) =>
-          s?.id &&
-          s.state !== "open" &&
-          s.state !== "callout" &&
-          shiftNotYetStarted(s, now),
+      .select(
+        "id, shift_date, start_time, end_time, state, recorded_break_min, shift_breaks(start_time, duration_min)",
       )
-      .map((s) => s.id as string);
-    if (ids.length === 0) return 0;
-
-    const { data: opened, error: openErr } = await this.sb
-      .from("shifts")
-      .update({
-        member_id: null,
-        state: "open",
-        shift_type: "open",
-        labor_cost: null,
-        updated_at: new Date().toISOString(),
-      })
       .eq("restaurant_id", restaurantId)
       .eq("member_id", memberId)
-      .in("id", ids)
-      .select("id");
-    if (openErr) refuse("open the upcoming shifts", openErr);
-    return (opened ?? []).length;
+      .gte("shift_date", from);
+    if (readErr) refuse("read the upcoming shifts", readErr);
+    const rows = (theirs ?? []) as any[];
+
+    let plan = planLeavingShifts(rows, clock, now, null);
+    if (plan.split.length > 0) {
+      // The worked part is re-priced at their wage, read now, before any
+      // write; a failed read refuses like the others.
+      const { data: m, error: wageErr } = await this.sb
+        .from("team_members")
+        .select("hourly_wage")
+        .eq("id", memberId)
+        .eq("restaurant_id", restaurantId)
+        .maybeSingle();
+      if (wageErr) refuse("read their wage to re-price the worked part", wageErr);
+      plan = planLeavingShifts(rows, clock, now, m?.hourly_wage ?? null);
+    }
+    const released: Released = {
+      opened: 0,
+      split: [],
+      unjudged: plan.unjudged,
+      clock,
+    };
+    if (plan.open.length === 0 && plan.split.length === 0) return released;
+
+    // The breaks on record as read, before the write replaces them.
+    const readBreak = new Map<string, number | null>(
+      rows.map((r) => [
+        r.id,
+        r.recorded_break_min == null ? null : Number(r.recorded_break_min),
+      ]),
+    );
+    const { data: done, error: writeErr } = await (this.sb as any).rpc(
+      "release_leaving_shifts",
+      {
+        p_restaurant_id: restaurantId,
+        p_member_id: memberId,
+        p_open: plan.open,
+        p_split: plan.split,
+      },
+    );
+    if (writeErr) refuse("open and split the upcoming shifts", writeErr);
+    const rests = new Map<string, string>(
+      ((done?.rests ?? []) as any[]).map((r) => [r.id, r.rest_id]),
+    );
+    released.opened = Number(done?.opened ?? 0);
+    released.split = plan.split.map((x) => ({
+      id: x.id,
+      cut: x.worked.end_time,
+      rest_id: rests.get(x.id) ?? null,
+      // What the cut replaced, for the record: the worked row no longer
+      // carries its old end or its recorded break (no money here).
+      was_end: x.was.end_time,
+      was_break_min: readBreak.get(x.id) ?? null,
+    }));
+    return released;
   }
 
   /**

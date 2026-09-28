@@ -229,20 +229,24 @@ export interface HouseWallClock {
 
 /**
  * The house's wall clock at `instant` (ADR 0215 item 26, founder item 93).
- * With no zone known for the house the clock is read at UTC+14 — the latest
- * any house could be — so a shift this calls "not yet started" has not
- * started in any zone (the `common/house-frame.ts` rule: with no zone, only
- * the verdict that holds in every zone). `null` for an instant that does not
- * parse.
+ * With no zone known the clock is read at an edge of the 26-hour band any
+ * house could be in: `late` = UTC+14, the latest any house could be (a shift
+ * this calls "not yet started" has not started anywhere); `early` = UTC-12,
+ * the earliest (a shift this calls "ended" has ended everywhere) — the
+ * `common/house-frame.ts` rule: with no zone, only the verdict that holds in
+ * every zone. `null` for an instant that does not parse.
  */
 export function houseWallClock(
   instant: Date,
   zone: string | null | undefined,
+  edge: "late" | "early" = "late",
 ): HouseWallClock | null {
   const ms = instant.getTime();
   if (!Number.isFinite(ms)) return null;
   const tz = resolveZone(zone ?? null);
-  const shift = tz ? zoneOffsetMs(new Date(ms), tz) : 14 * HOUR_MS;
+  const shift = tz
+    ? zoneOffsetMs(new Date(ms), tz)
+    : (edge === "late" ? 14 : -12) * HOUR_MS;
   const iso = new Date(ms + shift).toISOString();
   return {
     date: iso.slice(0, 10),
@@ -250,23 +254,276 @@ export function houseWallClock(
   };
 }
 
+// ── whose clock a removal is judged on (ADR 0215 item 26, 2026-09-28) ──────
+
 /**
- * True when a shift has provably not started by the house's wall clock `now`:
- * dated after today, or today with a start time still ahead (ADR 0215 item
- * 26). A date or start time that does not parse is not provably unworked, so
- * it is false — the shift is kept as it is, never reopened on a guess.
+ * Where the zone a removal is judged on came from. `house` and `country` are
+ * `houseFrame`'s (the location row's own zone — at sign-up the browser's,
+ * else none, founder item 62 — then its country's only zone). `device` is the
+ * zone of the device the remover pressed "Remove" on, sent with the request:
+ * the fallback the scheduling tools use when a location names no zone (When I
+ * Work defaults a workplace to its admin's zone; Deputy shows shifts in the
+ * device's zone by default; RFC 5545 reads a zoneless "floating" time in the
+ * reader's own zone). `none` = no source at all, and then only what holds in
+ * every zone is decided (`planLeavingShifts`).
  */
-export function shiftNotYetStarted(
-  s: { shift_date?: string | null; start_time?: string | null },
-  now: HouseWallClock,
-): boolean {
-  const day = typeof s.shift_date === "string" ? s.shift_date.slice(0, 10) : "";
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return false;
-  if (day > now.date) return true;
-  if (day < now.date) return false;
-  const m = /^(\d{1,2}):(\d{2})/.exec(String(s.start_time ?? ""));
-  if (!m) return false;
-  return Number(m[1]) * 60 + Number(m[2]) > now.minutes;
+export type RemovalClockSource = "house" | "country" | "device" | "none";
+
+export interface RemovalClock {
+  zone: string | null;
+  source: RemovalClockSource;
+}
+
+/**
+ * The best zone known for judging a removal, in order: the house's own, its
+ * country's only zone, the remover's device's; else none. The device zone is
+ * checked the way sign-up checks a browser's (`resolveSignUpTimezone`, item
+ * 62: an IANA name `Intl` resolves, never a bare offset) — passed in already
+ * checked, so this stays free of the auth module. Never UTC by default and
+ * never a guessed default zone (ADR 0116).
+ */
+export function removalClock(
+  frame: { zone: string | null; zoneSource: "house" | "country" | "none" },
+  deviceZone: string | null,
+): RemovalClock {
+  if (frame.zone && frame.zoneSource !== "none")
+    return { zone: frame.zone, source: frame.zoneSource };
+  const device = resolveZone(deviceZone);
+  if (device) return { zone: device, source: "device" };
+  return { zone: null, source: "none" };
+}
+
+/**
+ * The earliest `shift_date` a removal must read: the day before the house's
+ * earliest possible "today", because a shift is shorter than a day, so one
+ * in progress now started today or yesterday (an overnight one). `null` for
+ * an instant that does not parse.
+ */
+export function leavingShiftsFrom(
+  instant: Date,
+  clock: RemovalClock,
+): string | null {
+  const early = houseWallClock(instant, clock.zone, "early");
+  return early ? addDaysIso(early.date, -1) : null;
+}
+
+// ── a removal mid-shift splits the shift (founder, 2026-09-28) ─────────────
+
+/** A leaving person's shift, as `planLeavingShifts` reads it. */
+export interface LeavingShift extends Partial<ShiftLike> {
+  id: string;
+  shift_date?: string | null;
+  start_time: string;
+  end_time: string;
+  state?: string | null;
+  shift_breaks?: (BreakLike & { start_time?: string | null })[] | null;
+}
+
+/** One in-progress shift cut at the removal minute. */
+export interface ShiftSplit {
+  id: string;
+  /** The row as it was read: the write refuses if it changed since. */
+  was: { shift_date: string; start_time: string; end_time: string };
+  /** The part worked, kept with the removed person (start -> cut). */
+  worked: {
+    end_time: string;
+    recorded_break_min: number | null;
+    labor_cost: number | null;
+  };
+  /** The rest, a NEW open shift with nobody on it (cut -> the old end). */
+  rest: {
+    shift_date: string;
+    start_time: string;
+    end_time: string;
+    recorded_break_min: number | null;
+  };
+}
+
+export interface LeavingPlan {
+  /** Not started: sent to the open pool whole. */
+  open: { id: string; shift_date: string; start_time: string }[];
+  /** In progress: cut at the removal minute. */
+  split: ShiftSplit[];
+  /**
+   * With no zone at all: shifts that may or may not have started by the
+   * house's clock. Kept whole with the person, untouched, and said in the
+   * receipt, because no cut minute can be named without a clock.
+   */
+  unjudged: string[];
+}
+
+const DAY_MIN = 24 * 60;
+
+function hhmm(t: string | null | undefined): number | null {
+  const m = /^(\d{1,2}):(\d{2})/.exec(String(t ?? ""));
+  if (!m) return null;
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  if (h > 23 || min > 59) return null;
+  return h * 60 + min;
+}
+
+function asHHMM(min: number): string {
+  const m = ((min % DAY_MIN) + DAY_MIN) % DAY_MIN;
+  return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+}
+
+function dayNumber(iso: string): number {
+  return Date.parse(`${iso}T00:00:00Z`) / 86_400_000;
+}
+
+function addDaysIso(iso: string, n: number): string {
+  return new Date((dayNumber(iso) + n) * 86_400_000).toISOString().slice(0, 10);
+}
+
+/** Minutes of `now` counted from the start of the house-local day `day`. */
+function minutesFrom(day: string, now: HouseWallClock): number {
+  return (dayNumber(now.date) - dayNumber(day)) * DAY_MIN + now.minutes;
+}
+
+/**
+ * The break each part of a cut shift is counted with. A break's place on
+ * the clock is known only from the planned `shift_breaks` rows (their
+ * `start_time`): each part gets the minutes that fall inside it, written as a
+ * recorded number so the rows (which stay on the worked part's id) are not
+ * counted whole against a shorter span. A row whose start does not parse is
+ * read as falling after the cut — not taken — so it never lowers the worked
+ * part's pay on a guess. With no rows, a recorded `0` (no break taken) stays
+ * `0` in both parts; any other record says how long, not when, so each part
+ * gets `null`: nothing recorded, counted with the Art. 68 minimum for its own
+ * length and shown as ASSUMED (founder round 6y), for whoever edits it to
+ * record the real one. A part too short to hold that minimum
+ * (`art68MinimumBreak(span) >= span`) had no break: `0`.
+ */
+function splitBreaks(
+  s: LeavingShift,
+  startMin: number,
+  cutMin: number,
+  endMin: number,
+): { worked: number | null; rest: number | null } {
+  const fit = (n: number | null, span: number): number | null => {
+    if (n == null) return art68MinimumBreak(span) >= span ? 0 : null;
+    return Math.min(n, span);
+  };
+  const rows = Array.isArray(s.shift_breaks) ? s.shift_breaks : [];
+  if (rows.length > 0) {
+    let before = 0;
+    let after = 0;
+    for (const b of rows) {
+      const dur = Number(b?.duration_min);
+      if (!Number.isFinite(dur) || dur <= 0) continue;
+      let at = hhmm(b?.start_time ?? null);
+      if (at == null) {
+        after += dur;
+        continue;
+      }
+      if (at < startMin) at += DAY_MIN; // after midnight on an overnight shift
+      const bEnd = at + dur;
+      before += Math.max(0, Math.min(bEnd, cutMin) - Math.max(at, startMin));
+      after += Math.max(0, Math.min(bEnd, endMin) - Math.max(at, cutMin));
+    }
+    return {
+      worked: Math.min(before, cutMin - startMin),
+      rest: after > 0 ? fit(after, endMin - cutMin) : fit(null, endMin - cutMin),
+    };
+  }
+  const rec =
+    s.recorded_break_min != null && Number.isFinite(Number(s.recorded_break_min))
+      ? Number(s.recorded_break_min)
+      : null;
+  if (rec === 0) return { worked: 0, rest: 0 };
+  return {
+    worked: fit(null, cutMin - startMin),
+    rest: fit(null, endMin - cutMin),
+  };
+}
+
+/**
+ * What a removal does to each of the leaving person's shifts (ADR 0215 item
+ * 26). The founder, 2026-09-28, verbatim: "handle it sota, it also has to take
+ * care of yhat exact edge case where it opens midahift then everything
+ * changes accordingly".
+ *
+ * On the house's wall clock at the removal minute (`clock.zone`):
+ *   - not started (the start minute is now or later): OPEN, whole;
+ *   - ended (the end minute is now or earlier): kept, untouched;
+ *   - in progress: SPLIT at the removal minute. The worked part keeps the row
+ *     (start -> cut), re-priced at `wage` on its own worked hours; the rest
+ *     (cut -> the old end) becomes a new open shift. An overnight shift cut
+ *     after midnight puts the rest on the next day.
+ * Spans are wall-clock minutes, as every hour rule in this file counts them
+ * (`hoursBetween`), so the two parts' spans add up to the shift's, on a DST
+ * night too.
+ *
+ * With no zone (`clock.zone` null), a shift unstarted at UTC+14 opens, one
+ * ended at UTC-12 is kept, and anything between is `unjudged`: kept whole and
+ * said, never cut at a guessed minute.
+ *
+ * Only `scheduled`-like rows are considered: an `open` row is nobody's and a
+ * `callout` already has its cover in the pool. A row whose date or start
+ * does not parse is kept as it is; so is a started one with no span to cut.
+ */
+export function planLeavingShifts(
+  shifts: readonly LeavingShift[],
+  clock: RemovalClock,
+  instant: Date,
+  wage: number | string | null | undefined,
+): LeavingPlan {
+  const plan: LeavingPlan = { open: [], split: [], unjudged: [] };
+  const late = houseWallClock(instant, clock.zone, "late");
+  const early = houseWallClock(instant, clock.zone, "early");
+  if (!late || !early) return plan;
+  for (const s of shifts ?? []) {
+    if (!s?.id || s.state === "open" || s.state === "callout") continue;
+    const day = typeof s.shift_date === "string" ? s.shift_date.slice(0, 10) : "";
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) continue;
+    const startMin = hhmm(s.start_time);
+    if (startMin == null) continue;
+    const nowLate = minutesFrom(day, late);
+    const nowEarly = minutesFrom(day, early);
+    // Not started — the start minute is now or later: open, whole.
+    if (nowLate <= startMin) {
+      plan.open.push({ id: s.id, shift_date: day, start_time: s.start_time });
+      continue;
+    }
+    // Started, with no span to cut (an end that does not parse, or equal to
+    // the start): kept as it is.
+    const span =
+      hhmm(s.end_time) == null
+        ? 0
+        : Math.round(hoursBetween(s.start_time, s.end_time) * 60);
+    if (span <= 0) continue;
+    const endMin = startMin + span;
+    if (nowEarly >= endMin) continue;
+    if (!clock.zone) {
+      plan.unjudged.push(s.id);
+      continue;
+    }
+    // A zone is known, so `late` and `early` are the same clock.
+    const cutMin = nowLate;
+    const breaks = splitBreaks(s, startMin, cutMin, endMin);
+    const cut = asHHMM(cutMin);
+    plan.split.push({
+      id: s.id,
+      was: { shift_date: day, start_time: s.start_time, end_time: s.end_time },
+      worked: {
+        end_time: cut,
+        recorded_break_min: breaks.worked,
+        labor_cost: priceShift(wage, {
+          start_time: s.start_time,
+          end_time: cut,
+          recorded_break_min: breaks.worked,
+        }),
+      },
+      rest: {
+        shift_date: addDaysIso(day, Math.floor(cutMin / DAY_MIN)),
+        start_time: cut,
+        end_time: s.end_time,
+        recorded_break_min: breaks.rest,
+      },
+    });
+  }
+  return plan;
 }
 
 /**

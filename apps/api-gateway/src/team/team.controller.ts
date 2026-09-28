@@ -131,13 +131,19 @@ export class TeamController {
     return this.team.listFormerStaff(this.uid(req), rid);
   }
 
+  /**
+   * `deviceZone`: the remover's device zone (IANA, from the browser's
+   * `Intl`), read only when the house records no zone of its own — the clock
+   * a removal judges "started" on (ADR 0215 item 26, 2026-09-28).
+   */
   @Delete("members/:memberId")
   deleteMember(
     @Req() req: any,
     @Param("restaurantId") rid: string,
     @Param("memberId") memberId: string,
+    @Query("deviceZone") deviceZone?: string,
   ) {
-    return this.team.deleteMember(this.uid(req), rid, memberId);
+    return this.team.deleteMember(this.uid(req), rid, memberId, deviceZone ?? null);
   }
 
   // ── Schedule / week ──────────────────────────────────────────────────────

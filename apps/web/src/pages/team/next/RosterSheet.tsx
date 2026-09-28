@@ -547,11 +547,33 @@ export function MemberSheet({
     },
   });
 
+  // What the removal could not settle on the house's own clock, said before
+  // the sheet closes (ADR 0215 item 26, 2026-09-28): a removal judged on
+  // this device's zone because the house records none, or shifts it could
+  // not judge at all. `null` = nothing to say, and the sheet closes.
+  const [removedNotice, setRemovedNotice] = useState<string | null>(null);
   const remove = useMutation({
     mutationFn: () => deleteTeamMember(member!.id),
-    onSuccess: () => {
+    onSuccess: (receipt) => {
       onChanged();
-      onClose();
+      const unjudged = receipt?.shiftsUnjudged ?? 0;
+      const notes: string[] = [];
+      if (receipt?.clock?.source === 'device' && receipt.clock.zone) {
+        notes.push(
+          `This restaurant has no time zone set, so which of their shifts had started was judged on this device's clock (${receipt.clock.zone}). Set the restaurant's time zone in Settings so the next one is judged on its own.`,
+        );
+      }
+      if (unjudged > 0) {
+        notes.push(
+          `${unjudged === 1 ? 'One shift' : `${unjudged} shifts`} of theirs may already have started, and with no time zone for this restaurant it could not be told, so ${unjudged === 1 ? 'it was' : 'they were'} kept with them, whole. An owner can check ${unjudged === 1 ? 'it' : 'them'} in the former-staff history; add cover if needed.`,
+        );
+      }
+      if (notes.length === 0) {
+        onClose();
+        return;
+      }
+      setConfirmRemove(false);
+      setRemovedNotice(notes.join(' '));
     },
   });
 
@@ -572,6 +594,16 @@ export function MemberSheet({
           The removal did not go through — this person is still on the roster and still
           has whatever access they had.
         </MutationError>
+        {removedNotice && (
+          <div className="tm-alert" role="status">
+            <p style={{ margin: 0 }}>Removed. {removedNotice}</p>
+            <div className="tm-actions">
+              <button type="button" className="tm-ctl tm-ctl--sm" onClick={onClose}>
+                Done
+              </button>
+            </div>
+          </div>
+        )}
 
         {editing && resolved && !resolved.known && (
           <p className="tm-hint">
@@ -762,7 +794,9 @@ export function MemberSheet({
               Removing {resolved?.known ? resolved.text : 'this person'} deletes their
               roster row and revokes their access to this restaurant. It is written to the
               audit log and they are notified. This cannot be undone. Their shifts that have
-              not started yet go back to the open pool, for someone else to take. Their past
+              not started yet go back to the open pool, for someone else to take. A shift they
+              are working right now is cut at this minute: the part worked stays theirs, paid
+              for the time worked, and the rest of it goes to the open pool. Their past
               shifts, leave, wage changes and credentials are kept for five years, for an owner
               only, in the former-staff history; their availability is not kept.
             </p>

@@ -3,6 +3,7 @@
  * All routes are scoped under /restaurants/:restaurantId/team.
  */
 import { apiClient, getActiveRestaurantId } from './client'
+import { getBrowserTimezone } from '../../lib/browserTimezone'
 
 const base = (rid?: string) => {
   const id = rid || getActiveRestaurantId()
@@ -286,8 +287,28 @@ export async function getFormerStaff(rid?: string): Promise<FormerStaffReadout> 
   return data
 }
 
-export async function deleteTeamMember(memberId: string, rid?: string) {
-  await apiClient.delete(`${base(rid)}/members/${memberId}`)
+/** What a removal did to the person's shifts (ADR 0215 item 26, 2026-09-28). */
+export interface RemovalReceipt {
+  shiftsOpened?: number
+  /** Shifts in progress cut at the removal minute; the rest opened. */
+  shiftsSplit?: number
+  /** With no clock at all: shifts that may have started, kept whole. */
+  shiftsUnjudged?: number
+  clock?: { zone: string | null; source: 'house' | 'country' | 'device' | 'none' }
+}
+
+/**
+ * Sends this device's zone with the removal: the gateway judges which of the
+ * person's shifts have started on the house's clock, and uses the device's
+ * only when the house records no zone (`removalClock`). Omitted when the
+ * browser will not say.
+ */
+export async function deleteTeamMember(memberId: string, rid?: string): Promise<RemovalReceipt> {
+  const deviceZone = getBrowserTimezone()
+  const { data } = await apiClient.delete(`${base(rid)}/members/${memberId}`, {
+    params: deviceZone ? { deviceZone } : undefined,
+  })
+  return (data ?? {}) as RemovalReceipt
 }
 
 // ── Week / schedule ─────────────────────────────────────────────────────

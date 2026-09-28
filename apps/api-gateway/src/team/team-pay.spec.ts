@@ -54,7 +54,7 @@ const STAFF = "user-staff";
 const WEEK = "2026-09-07"; // a Monday
 
 function seed(): StubDb {
-  return makeStubDb({
+  return withReleaseRpc(makeStubDb({
     user_restaurant_access: [
       { id: "a1", user_id: OWNER, restaurant_id: RID, role: "owner", is_active: true },
       { id: "a2", user_id: MANAGER, restaurant_id: RID, role: "manager", is_active: true },
@@ -82,7 +82,82 @@ function seed(): StubDb {
     time_off_requests: [],
     notifications: [],
     system_audit_log: [],
-  });
+  }));
+}
+
+/**
+ * `release_leaving_shifts` (migration 20261201130000) over the stub's tables,
+ * the way the SQL does it: every row re-checked against what was read, all
+ * of it applied or none of it. The SQL itself is held by its own test,
+ * `supabase/tests/20261201130000_a_removal_mid_shift_splits_the_shift_test.sql`.
+ * Fail it with `db.errors["rpc:release_leaving_shifts"]`.
+ */
+function withReleaseRpc(db: StubDb): StubDb {
+  let nextRest = 0;
+  (db.supabase as any).rpc = async (fn: string, args: any) => {
+    db.ops.push({ table: `rpc:${fn}`, op: "update", filters: [], payload: args } as any);
+    const forced = db.errors[`rpc:${fn}`];
+    if (forced) return { data: null, error: forced };
+    if (fn !== "release_leaving_shifts") throw new Error(`stub: no rpc ${fn}`);
+    const rows = db.tables.shifts;
+    const find = (id: string) => rows.find((r) => r.id === id);
+    const theirs = (r: any) =>
+      r && r.restaurant_id === args.p_restaurant_id && r.member_id === args.p_member_id &&
+      r.state !== "open" && r.state !== "callout";
+    const stale = { data: null, error: { message: "not as it was read" } };
+    for (const o of args.p_open) {
+      const r = find(o.id);
+      if (!theirs(r) || r!.shift_date !== o.shift_date || r!.start_time !== o.start_time) return stale;
+    }
+    for (const x of args.p_split) {
+      const r = find(x.id);
+      if (!theirs(r) || r!.shift_date !== x.was.shift_date || r!.start_time !== x.was.start_time ||
+          r!.end_time !== x.was.end_time) return stale;
+      if (x.rest.start_time !== x.worked.end_time || x.rest.end_time !== x.was.end_time) return stale;
+    }
+    for (const o of args.p_open)
+      Object.assign(find(o.id)!, { member_id: null, state: "open", shift_type: "open", labor_cost: null });
+    const rests: any[] = [];
+    for (const x of args.p_split) {
+      const r = find(x.id)!;
+      Object.assign(r, {
+        end_time: x.worked.end_time,
+        recorded_break_min: x.worked.recorded_break_min,
+        labor_cost: x.worked.labor_cost,
+      });
+      const monday = (d: string) => {
+        const t = Date.parse(`${d}T00:00:00Z`);
+        const dow = (new Date(t).getUTCDay() + 6) % 7;
+        return new Date(t - dow * 86_400_000).toISOString().slice(0, 10);
+      };
+      const schedule_id =
+        monday(x.rest.shift_date) === monday(r.shift_date)
+          ? r.schedule_id
+          : (db.tables.schedules.find(
+              (w) => w.restaurant_id === args.p_restaurant_id && w.week_start === monday(x.rest.shift_date),
+            )?.id ?? null);
+      const rest = {
+        id: `rest-${++nextRest}`,
+        restaurant_id: args.p_restaurant_id,
+        schedule_id,
+        member_id: null,
+        shift_date: x.rest.shift_date,
+        start_time: x.rest.start_time,
+        end_time: x.rest.end_time,
+        role: r.role ?? null,
+        shift_type: "open",
+        state: "open",
+        note: r.note ?? null,
+        labor_cost: null,
+        recorded_break_min: x.rest.recorded_break_min,
+        shift_breaks: [],
+      };
+      rows.push(rest);
+      rests.push({ id: r.id, rest_id: rest.id });
+    }
+    return { data: { opened: args.p_open.length, split: args.p_split.length, rests }, error: null };
+  };
+  return db;
 }
 
 function teamOf(db: StubDb) {
@@ -1216,7 +1291,7 @@ describe("K2 — deleteMember sends a removed person's unstarted shifts back to 
     });
   }
 
-  it("opens every shift not yet started on the house's clock; the started, the past, a call-out and others' stay", async () => {
+  it("opens every shift not yet started on the house's clock; the past, a call-out and others' stay", async () => {
     // 12:00 UTC = 15:00 in Istanbul.
     at("2026-09-22T12:00:00Z");
     const db = seed();
@@ -1244,7 +1319,9 @@ describe("K2 — deleteMember sends a removed person's unstarted shifts back to 
       });
     }
     expect(byId.get("past")).toMatchObject({ member_id: GONE, state: "scheduled", labor_cost: 150 });
-    expect(byId.get("today-started")).toMatchObject({ member_id: GONE, state: "scheduled", labor_cost: 150 });
+    // In progress at 15:00 (09:00-17:00): cut there, not kept whole (K3).
+    expect(byId.get("today-started")).toMatchObject({ member_id: GONE, state: "scheduled", end_time: "15:00" });
+    expect(receipt.shiftsSplit).toBe(1);
     expect(byId.get("future-callout")).toMatchObject({ member_id: GONE, state: "callout", labor_cost: 150 });
     expect(byId.get("other-future")).toMatchObject({ member_id: OTHER, labor_cost: 100 });
     expect(db.tables.system_audit_log[0]?.changes?.shifts_opened).toBe(3);
@@ -1278,8 +1355,9 @@ describe("K2 — deleteMember sends a removed person's unstarted shifts back to 
     );
     const receipt: any = await teamOf(db).deleteMember(MANAGER, RID, GONE);
     expect(receipt.shiftsOpened).toBe(1);
+    expect(receipt).toMatchObject({ shiftsSplit: 0, shiftsUnjudged: 1, clock: { zone: null, source: "none" } });
     const byId = new Map(db.tables.shifts.map((s) => [s.id, s]));
-    expect(byId.get("maybe-started")).toMatchObject({ member_id: GONE });
+    expect(byId.get("maybe-started")).toMatchObject({ member_id: GONE, end_time: "17:00" });
     expect(byId.get("surely-later")).toMatchObject({ member_id: null, state: "open" });
   });
 
@@ -1291,13 +1369,14 @@ describe("K2 — deleteMember sends a removed person's unstarted shifts back to 
     const receipt: any = await teamOf(db).deleteMember(MANAGER, RID, GONE);
     expect(receipt.shiftsOpened).toBe(0);
     expect(db.opsOn("shifts", "update")).toHaveLength(0);
+    expect(db.opsOn("rpc:release_leaving_shifts")).toHaveLength(0);
     expect(db.tables.shifts[0]).toMatchObject({ member_id: GONE });
   });
 
   it.each([
     ["restaurants:select", "the house's clock cannot be read"],
     ["shifts:select", "their shifts cannot be read"],
-    ["shifts:update", "the open fails"],
+    ["rpc:release_leaving_shifts", "the open fails"],
   ])("refuses, removing nobody, when %s fails (%s)", async (key) => {
     at("2026-09-22T12:00:00Z");
     const db = seed();
@@ -1317,7 +1396,7 @@ describe("K2 — deleteMember sends a removed person's unstarted shifts back to 
     const db = seed();
     db.tables.restaurants = [{ id: RID, timezone: "Europe/Istanbul", country: null }];
     db.tables.shifts.push(shift({ id: "sam-future", member_id: "m-staff", shift_date: "2026-10-05" }));
-    db.errors["shifts:update"] = { message: "boom" };
+    db.errors["rpc:release_leaving_shifts"] = { message: "boom" };
     await expect(teamOf(db).deleteMember(MANAGER, RID, "m-staff")).rejects.toBeInstanceOf(
       InternalServerErrorException,
     );
@@ -1346,5 +1425,395 @@ describe("K2 — deleteMember sends a removed person's unstarted shifts back to 
     );
     expect(db.tables.shifts[0]).toMatchObject({ member_id: "m-owner", state: "scheduled" });
     expect(db.opsOn("shifts", "update")).toHaveLength(0);
+    expect(db.opsOn("rpc:release_leaving_shifts")).toHaveLength(0);
+  });
+});
+
+// ── K3: a removal mid-shift splits the shift, and every figure follows ───────
+//
+// The founder, 2026-09-28, verbatim: "handle it sota, it also has to take care
+// of yhat exact edge case where it opens midahift then everything changes
+// accordingly". ADR 0215 item 26's 2026-09-28 bracket. A shift in progress at
+// the removal is cut at the removal minute on the house's clock: the worked
+// part stays the person's, its end, break and cost recomputed; the rest is a
+// new open shift. The clock is the house's zone, else its country's only
+// zone, else the remover's device zone, else none — and with none, a shift
+// that may have started is kept whole and named, never cut on a guess.
+
+describe("K3 — a removal mid-shift splits the shift at the removal minute", () => {
+  const GONE = "m-gone";
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  function at(iso: string) {
+    jest.useFakeTimers({ doNotFake: ["nextTick", "setImmediate"] }).setSystemTime(new Date(iso));
+  }
+
+  function seedGone(zone: string | null = "Europe/Istanbul", country: string | null = null) {
+    const db = seed();
+    db.tables.restaurants = [{ id: RID, timezone: zone, country }];
+    db.tables.team_members.push({
+      id: GONE,
+      restaurant_id: RID,
+      user_id: null,
+      display_name: "Gone",
+      hourly_wage: 25,
+    });
+    return db;
+  }
+
+  const minutes = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+  const span = (a: string, b: string) => (minutes(b) - minutes(a) + 1440) % 1440;
+  const restOf = (db: StubDb) => db.tables.shifts.filter((r) => String(r.id).startsWith("rest-"));
+
+  it("cuts a shift in progress: the worked part stays theirs, re-priced; the rest is a new open shift", async () => {
+    // 10:00 UTC = 13:00 in Istanbul, four hours into 09:00-17:00.
+    at("2026-09-22T10:00:00Z");
+    const db = seedGone();
+    db.tables.shifts.push(
+      shift({ id: "live", member_id: GONE, shift_date: "2026-09-22", role: "Server", note: "Patio", labor_cost: 187.5 }),
+    );
+    const receipt: any = await teamOf(db).deleteMember(MANAGER, RID, GONE);
+    expect(receipt).toMatchObject({
+      shiftsOpened: 0,
+      shiftsSplit: 1,
+      shiftsUnjudged: 0,
+      clock: { zone: "Europe/Istanbul", source: "house" },
+    });
+
+    const worked = db.tables.shifts.find((r) => r.id === "live")!;
+    // 4 hours, the Art. 68 minimum for 4 hours (15 min) assumed: 3.75 h x 25.
+    expect(worked).toMatchObject({
+      member_id: GONE,
+      state: "scheduled",
+      start_time: "09:00",
+      end_time: "13:00",
+      recorded_break_min: null,
+      labor_cost: 93.75,
+    });
+    const [rest] = restOf(db);
+    expect(rest).toMatchObject({
+      member_id: null,
+      state: "open",
+      shift_type: "open",
+      shift_date: "2026-09-22",
+      start_time: "13:00",
+      end_time: "17:00",
+      role: "Server",
+      note: "Patio",
+      labor_cost: null,
+      schedule_id: "s1",
+    });
+
+    // Everything follows: the two spans add up to the shift; the stored cost
+    // is what the hour rules give the stored row; the audit names the cut.
+    expect(span(worked.start_time, worked.end_time) + span(rest.start_time, rest.end_time)).toBe(8 * 60);
+    expect(worked.labor_cost).toBe(priceShift(25, worked as any));
+    expect(workedHours(worked as any)).toBe(3.75);
+    expect(db.tables.system_audit_log[0]?.changes).toMatchObject({
+      shifts_opened: 0,
+      shifts_split: [{ id: "live", cut: "13:00", rest_id: rest.id, was_end: "17:00", was_break_min: null }],
+      shifts_unjudged: [],
+      shifts_clock: { zone: "Europe/Istanbul", source: "house" },
+    });
+    // The receipt carries no money: a manager removed them.
+    expect(JSON.stringify(receipt)).not.toMatch(/labor_cost|hourly_wage|93\.75/);
+  });
+
+  it("the week then shows the rest as open, and the worked part only in the former-staff rows", async () => {
+    at("2026-09-22T10:00:00Z");
+    const db = seedGone();
+    db.tables.schedules.push({ id: "s2", restaurant_id: RID, week_start: "2026-09-21", status: "draft" });
+    db.tables.shifts.push(shift({ id: "live", schedule_id: "s2", member_id: GONE, shift_date: "2026-09-22" }));
+    await teamOf(db).deleteMember(MANAGER, RID, GONE);
+    const week = await scheduleOf(db).getWeek(OWNER, RID, "2026-09-21");
+    const ids = week.shifts.map((s: any) => s.id);
+    expect(ids).not.toContain("live");
+    const open = week.shifts.find((s: any) => s.member_id == null);
+    expect(open).toMatchObject({ start_time: "13:00", end_time: "17:00", state: "open", labor_cost: null });
+  });
+
+  it("an overnight shift cut after midnight: the read reaches yesterday, and the rest lands on today", async () => {
+    // 22:30 UTC on the 22nd = 01:30 on the 23rd in Istanbul; the shift began at 22:00 on the 22nd.
+    at("2026-09-22T22:30:00Z");
+    const db = seedGone();
+    db.tables.shifts.push(
+      shift({ id: "night", member_id: GONE, shift_date: "2026-09-22", start_time: "22:00", end_time: "04:00" }),
+    );
+    const receipt: any = await teamOf(db).deleteMember(MANAGER, RID, GONE);
+    expect(receipt.shiftsSplit).toBe(1);
+    const worked = db.tables.shifts.find((r) => r.id === "night")!;
+    expect(worked).toMatchObject({ shift_date: "2026-09-22", start_time: "22:00", end_time: "01:30" });
+    // 3.5 h with a 15-minute assumed break: 3.25 h x 25.
+    expect(worked.labor_cost).toBe(81.25);
+    const [rest] = restOf(db);
+    expect(rest).toMatchObject({ shift_date: "2026-09-23", start_time: "01:30", end_time: "04:00", member_id: null });
+  });
+
+  it("an overnight Sunday shift cut after midnight puts the rest in Monday's week", async () => {
+    // 2026-09-27 is a Sunday; 23:00 UTC = 02:00 Monday the 28th in Istanbul.
+    at("2026-09-27T23:00:00Z");
+    const db = seedGone();
+    db.tables.schedules.push({ id: "s-next", restaurant_id: RID, week_start: "2026-09-28", status: "draft" });
+    db.tables.shifts.push(
+      shift({ id: "sun", member_id: GONE, shift_date: "2026-09-27", start_time: "22:00", end_time: "04:00" }),
+    );
+    await teamOf(db).deleteMember(MANAGER, RID, GONE);
+    expect(restOf(db)[0]).toMatchObject({ shift_date: "2026-09-28", start_time: "02:00", schedule_id: "s-next" });
+  });
+
+  it.each([
+    // [label, instant, zone, shift, worked end, rest date, rest start]
+    ["fall back (New York, 2026-11-01)", "2026-11-01T10:00:00Z", "America/New_York", ["2026-10-31", "22:00", "06:00"], "05:00", "2026-11-01", "05:00"],
+    ["spring forward (New York, 2026-03-08)", "2026-03-08T07:30:00Z", "America/New_York", ["2026-03-07", "23:00", "07:00"], "03:30", "2026-03-08", "03:30"],
+  ])("across DST — %s — the cut is the house's wall clock and the spans still add up", async (_l, instant, zone, [d, a, b], cut, restDay, restStart) => {
+    at(instant as string);
+    const db = seedGone(zone as string);
+    db.tables.shifts.push(shift({ id: "dst", member_id: GONE, shift_date: d, start_time: a, end_time: b }));
+    await teamOf(db).deleteMember(MANAGER, RID, GONE);
+    const worked = db.tables.shifts.find((r) => r.id === "dst")!;
+    const [rest] = restOf(db);
+    expect(worked.end_time).toBe(cut);
+    expect(rest).toMatchObject({ shift_date: restDay, start_time: restStart, end_time: b });
+    expect(span(worked.start_time, worked.end_time) + span(rest.start_time, rest.end_time)).toBe(span(a as string, b as string));
+  });
+
+  it("a recorded break says how long, not when: each part is counted with its own Art. 68 minimum, shown as assumed", async () => {
+    // 15:00 UTC = 18:00 in Istanbul, nine hours into 09:00-19:00 with 60 recorded.
+    at("2026-09-22T15:00:00Z");
+    const db = seedGone();
+    db.tables.shifts.push(
+      shift({ id: "long", member_id: GONE, shift_date: "2026-09-22", end_time: "19:00", recorded_break_min: 60 }),
+    );
+    await teamOf(db).deleteMember(MANAGER, RID, GONE);
+    const worked = db.tables.shifts.find((r) => r.id === "long")!;
+    // 9 h, assumed 60 (Art. 68 over 7.5 h of work): 8 h x 25.
+    expect(worked).toMatchObject({ end_time: "18:00", recorded_break_min: null, labor_cost: 200 });
+    expect(breakCounted(worked as any)).toEqual({ minutes: 60, assumed: true });
+    // The one hour left: a 15-minute minimum fits in it, so it is assumed.
+    expect(restOf(db)[0]).toMatchObject({ start_time: "18:00", end_time: "19:00", recorded_break_min: null });
+    // The record keeps what the cut replaced.
+    expect(db.tables.system_audit_log[0]?.changes?.shifts_split?.[0]).toMatchObject({
+      was_end: "19:00",
+      was_break_min: 60,
+    });
+  });
+
+  it("a recorded 'no break taken' stays no break in both parts", async () => {
+    at("2026-09-22T10:00:00Z");
+    const db = seedGone();
+    db.tables.shifts.push(shift({ id: "nobreak", member_id: GONE, shift_date: "2026-09-22", recorded_break_min: 0 }));
+    await teamOf(db).deleteMember(MANAGER, RID, GONE);
+    expect(db.tables.shifts.find((r) => r.id === "nobreak")).toMatchObject({ recorded_break_min: 0, labor_cost: 100 });
+    expect(restOf(db)[0]).toMatchObject({ recorded_break_min: 0 });
+  });
+
+  it("a planned break on the clock goes to the part it falls in", async () => {
+    // 11:00 UTC = 14:00 Istanbul; the planned 30-minute break was at 12:00.
+    at("2026-09-22T11:00:00Z");
+    const db = seedGone();
+    db.tables.shifts.push(
+      shift({
+        id: "planned",
+        member_id: GONE,
+        shift_date: "2026-09-22",
+        shift_breaks: [{ start_time: "12:00", duration_min: 30 }],
+      }),
+    );
+    await teamOf(db).deleteMember(MANAGER, RID, GONE);
+    // 5 h less the 30 taken: 4.5 h x 25; recorded, so the row is not counted whole.
+    expect(db.tables.shifts.find((r) => r.id === "planned")).toMatchObject({
+      end_time: "14:00",
+      recorded_break_min: 30,
+      labor_cost: 112.5,
+    });
+    expect(restOf(db)[0]).toMatchObject({ start_time: "14:00", recorded_break_min: null });
+  });
+
+  it("a planned break after the cut is not taken in the worked part; the rest carries it", async () => {
+    // 08:00 UTC = 11:00 Istanbul; the planned break is at 12:00.
+    at("2026-09-22T08:00:00Z");
+    const db = seedGone();
+    db.tables.shifts.push(
+      shift({ id: "later", member_id: GONE, shift_date: "2026-09-22", shift_breaks: [{ start_time: "12:00", duration_min: 30 }] }),
+    );
+    await teamOf(db).deleteMember(MANAGER, RID, GONE);
+    expect(db.tables.shifts.find((r) => r.id === "later")).toMatchObject({ recorded_break_min: 0, labor_cost: 50 });
+    expect(restOf(db)[0]).toMatchObject({ start_time: "11:00", recorded_break_min: 30 });
+  });
+
+  it("on an overnight shift, a planned break after midnight is placed after midnight", async () => {
+    // 23:00 UTC = 02:00 Istanbul; 20:00-04:00 with a 30-minute break planned at 01:00.
+    at("2026-09-22T23:00:00Z");
+    const db = seedGone();
+    db.tables.shifts.push(
+      shift({
+        id: "late-break",
+        member_id: GONE,
+        shift_date: "2026-09-22",
+        start_time: "20:00",
+        end_time: "04:00",
+        shift_breaks: [{ start_time: "01:00", duration_min: 30 }],
+      }),
+    );
+    await teamOf(db).deleteMember(MANAGER, RID, GONE);
+    // 6 h less the 30 taken at 01:00: 5.5 h x 25.
+    expect(db.tables.shifts.find((r) => r.id === "late-break")).toMatchObject({
+      end_time: "02:00",
+      recorded_break_min: 30,
+      labor_cost: 137.5,
+    });
+  });
+
+  it("a planned break whose start does not parse is read as not taken, never lowering the worked pay", async () => {
+    at("2026-09-22T10:00:00Z");
+    const db = seedGone();
+    db.tables.shifts.push(
+      shift({ id: "odd", member_id: GONE, shift_date: "2026-09-22", shift_breaks: [{ start_time: "noon", duration_min: 30 }] }),
+    );
+    await teamOf(db).deleteMember(MANAGER, RID, GONE);
+    expect(db.tables.shifts.find((r) => r.id === "odd")).toMatchObject({ recorded_break_min: 0, labor_cost: 100 });
+    expect(restOf(db)[0]).toMatchObject({ recorded_break_min: 30 });
+  });
+
+  it("a stint too short to hold the minimum break had none: ten minutes are paid as ten minutes", async () => {
+    // 06:10 UTC = 09:10 Istanbul, ten minutes into the shift.
+    at("2026-09-22T06:10:00Z");
+    const db = seedGone();
+    db.tables.shifts.push(shift({ id: "brief", member_id: GONE, shift_date: "2026-09-22" }));
+    await teamOf(db).deleteMember(MANAGER, RID, GONE);
+    const worked = db.tables.shifts.find((r) => r.id === "brief")!;
+    expect(worked).toMatchObject({ end_time: "09:10", recorded_break_min: 0, labor_cost: 4.17 });
+    expect(restOf(db)[0]).toMatchObject({ start_time: "09:10", end_time: "17:00" });
+  });
+
+  it("at the very start minute the shift opens whole; at the very end minute it is kept whole", async () => {
+    at("2026-09-22T06:00:00Z"); // 09:00 Istanbul
+    const db = seedGone();
+    db.tables.shifts.push(
+      shift({ id: "now-starts", member_id: GONE, shift_date: "2026-09-22", start_time: "09:00", end_time: "17:00" }),
+      shift({ id: "now-ends", member_id: GONE, shift_date: "2026-09-22", start_time: "01:00", end_time: "09:00" }),
+    );
+    const receipt: any = await teamOf(db).deleteMember(MANAGER, RID, GONE);
+    expect(receipt).toMatchObject({ shiftsOpened: 1, shiftsSplit: 0 });
+    expect(db.tables.shifts.find((r) => r.id === "now-starts")).toMatchObject({ member_id: null, state: "open", end_time: "17:00" });
+    expect(db.tables.shifts.find((r) => r.id === "now-ends")).toMatchObject({ member_id: GONE, end_time: "09:00" });
+    expect(restOf(db)).toHaveLength(0);
+  });
+
+  it("a call-out or an open row in progress is left alone", async () => {
+    at("2026-09-22T10:00:00Z");
+    const db = seedGone();
+    db.tables.shifts.push(shift({ id: "co", member_id: GONE, shift_date: "2026-09-22", state: "callout" }));
+    const receipt: any = await teamOf(db).deleteMember(MANAGER, RID, GONE);
+    expect(receipt.shiftsSplit).toBe(0);
+    expect(db.tables.shifts.find((r) => r.id === "co")).toMatchObject({ end_time: "17:00", state: "callout" });
+  });
+
+  it("with no zone on the house, the country's only zone decides", async () => {
+    at("2026-09-22T10:00:00Z");
+    const db = seedGone(null, "TR");
+    db.tables.shifts.push(shift({ id: "tr", member_id: GONE, shift_date: "2026-09-22" }));
+    const receipt: any = await teamOf(db).deleteMember(MANAGER, RID, GONE);
+    expect(receipt.clock).toEqual({ zone: "Europe/Istanbul", source: "country" });
+    expect(db.tables.shifts.find((r) => r.id === "tr")).toMatchObject({ end_time: "13:00" });
+  });
+
+  it("with none recorded, the remover's device zone decides, and the receipt says so", async () => {
+    at("2026-09-22T10:00:00Z");
+    const db = seedGone(null);
+    db.tables.shifts.push(shift({ id: "dev", member_id: GONE, shift_date: "2026-09-22" }));
+    const receipt: any = await teamOf(db).deleteMember(MANAGER, RID, GONE, "Europe/Istanbul");
+    expect(receipt).toMatchObject({ shiftsSplit: 1, clock: { zone: "Europe/Istanbul", source: "device" } });
+    expect(db.tables.shifts.find((r) => r.id === "dev")).toMatchObject({ end_time: "13:00" });
+  });
+
+  it("the house's own zone wins over the device's", async () => {
+    at("2026-09-22T10:00:00Z");
+    const db = seedGone("Europe/Istanbul");
+    db.tables.shifts.push(shift({ id: "own", member_id: GONE, shift_date: "2026-09-22" }));
+    const receipt: any = await teamOf(db).deleteMember(MANAGER, RID, GONE, "America/New_York");
+    expect(receipt.clock).toEqual({ zone: "Europe/Istanbul", source: "house" });
+    expect(db.tables.shifts.find((r) => r.id === "own")).toMatchObject({ end_time: "13:00" });
+  });
+
+  it.each([["+05:00"], ["Not/AZone"], [""]])(
+    "a device zone that is not an IANA zone (%p) is no clock: a maybe-started shift is kept whole and named",
+    async (device) => {
+      at("2026-09-22T10:00:00Z");
+      const db = seedGone(null);
+      db.tables.shifts.push(shift({ id: "maybe", member_id: GONE, shift_date: "2026-09-22" }));
+      const receipt: any = await teamOf(db).deleteMember(MANAGER, RID, GONE, device);
+      expect(receipt).toMatchObject({ shiftsSplit: 0, shiftsUnjudged: 1, clock: { zone: null, source: "none" } });
+      expect(db.tables.shifts.find((r) => r.id === "maybe")).toMatchObject({ member_id: GONE, end_time: "17:00" });
+      expect(restOf(db)).toHaveLength(0);
+      expect(db.tables.system_audit_log[0]?.changes?.shifts_unjudged).toEqual(["maybe"]);
+    },
+  );
+
+  it("a failed split write refuses the whole removal: nothing opened, nothing cut, nobody removed", async () => {
+    at("2026-09-22T10:00:00Z");
+    const db = seedGone();
+    db.tables.shifts.push(
+      shift({ id: "live", member_id: GONE, shift_date: "2026-09-22", labor_cost: 187.5 }),
+      shift({ id: "next", member_id: GONE, shift_date: "2026-10-05" }),
+    );
+    db.errors["rpc:release_leaving_shifts"] = { message: "boom" };
+    await expect(teamOf(db).deleteMember(MANAGER, RID, GONE)).rejects.toThrow(/nobody was removed/);
+    expect(db.tables.shifts.find((r) => r.id === "live")).toMatchObject({ member_id: GONE, end_time: "17:00", labor_cost: 187.5 });
+    expect(db.tables.shifts.find((r) => r.id === "next")).toMatchObject({ member_id: GONE, state: "scheduled" });
+    expect(restOf(db)).toHaveLength(0);
+    expect(db.tables.team_members.some((m) => m.id === GONE)).toBe(true);
+    expect(db.tables.system_audit_log).toHaveLength(0);
+  });
+
+  it("a row changed since it was read refuses the whole removal", async () => {
+    at("2026-09-22T10:00:00Z");
+    const db = seedGone();
+    db.tables.shifts.push(shift({ id: "live", member_id: GONE, shift_date: "2026-09-22" }));
+    // Someone moves the shift between the read and the write.
+    const realRpc = (db.supabase as any).rpc;
+    (db.supabase as any).rpc = async (fn: string, args: any) => {
+      db.tables.shifts.find((r) => r.id === "live")!.end_time = "18:00";
+      return realRpc(fn, args);
+    };
+    await expect(teamOf(db).deleteMember(MANAGER, RID, GONE)).rejects.toThrow(/nobody was removed/);
+    expect(db.tables.team_members.some((m) => m.id === GONE)).toBe(true);
+    expect(restOf(db)).toHaveLength(0);
+  });
+
+  it("a failed read of their wage, needed to re-price the worked part, refuses before any write", async () => {
+    at("2026-09-22T10:00:00Z");
+    const db = seedGone();
+    db.tables.shifts.push(shift({ id: "live", member_id: GONE, shift_date: "2026-09-22" }));
+    const realFrom = db.supabase.from.bind(db.supabase);
+    let memberReads = 0;
+    (db.supabase as any).from = (t: string) => {
+      // The first team_members read is the removal target; the second is the wage.
+      if (t === "team_members" && ++memberReads === 2) db.errors["team_members:select"] = { message: "boom" };
+      return realFrom(t);
+    };
+    await expect(teamOf(db).deleteMember(MANAGER, RID, GONE)).rejects.toThrow(/nobody was removed/);
+    expect(db.opsOn("rpc:release_leaving_shifts")).toHaveLength(0);
+    expect(db.tables.shifts.find((r) => r.id === "live")).toMatchObject({ end_time: "17:00" });
+  });
+
+  it("for a person with an account, the split lands before the first membership write", async () => {
+    at("2026-09-22T10:00:00Z");
+    const db = seed();
+    db.tables.restaurants = [{ id: RID, timezone: "Europe/Istanbul", country: null }];
+    db.tables.shifts.push(shift({ id: "sam-live", member_id: "m-staff", shift_date: "2026-09-22" }));
+    const receipt: any = await teamOf(db).deleteMember(MANAGER, RID, "m-staff");
+    expect(receipt).toMatchObject({ removed: true, accessRevoked: true, shiftsSplit: 1 });
+    // Sam's wage is 20: 4 h less 15 min assumed = 3.75 h x 20.
+    expect(db.tables.shifts.find((r) => r.id === "sam-live")).toMatchObject({ end_time: "13:00", labor_cost: 75 });
+    const rpcAt = db.ops.findIndex((o) => o.table === "rpc:release_leaving_shifts");
+    const firstMembershipWrite = db.ops.findIndex(
+      (o) => o.op !== "select" && ["user_restaurant_access", "users", "team_members", "calendar_links"].includes(o.table),
+    );
+    expect(rpcAt).toBeGreaterThanOrEqual(0);
+    expect(firstMembershipWrite === -1 || rpcAt < firstMembershipWrite).toBe(true);
   });
 });

@@ -833,6 +833,98 @@ questions round 2 left open (see "Answered, 2026-09-22 (round 6y)" below):
     the owner refusal is a control), 10 of 10 service and pay-rules mutations killed;
     CLAIMS `ADR-0215-R8-A-REMOVED-PERSONS-UNSTARTED-SHIFTS-GO-TO-THE-OPEN-POOL`
     (14 of 14 anchor mutants fail it).
+    **[2026-09-28, founder answer on PR #502, verbatim: "handle it sota, it
+    also has to take care of yhat exact edge case where it opens midahift
+    then everything changes accordingly".** The lane's reading, stated on
+    the PR: (1) "sota" = resolve the house's real zone before guessing, the
+    way mature scheduling tools do, and only with no source at all apply a
+    conservative rule and say so; (2) a removal WHILE a shift of theirs is
+    in progress splits it at the removal minute on the house clock, and
+    every figure derived from the shift follows. What was built, superseding
+    the "Whose clock", "The write" and "Which shifts" bullets above where
+    they differ:
+    - **Whose clock** (`pay-rules.ts` `removalClock`): the house's own
+      `restaurants.timezone` (the location row — `createLocation` writes a
+      `restaurants` row, and at sign-up it is the browser's zone, else none,
+      item 62), else its country's only zone (`houseFrame`), else **the
+      remover's device zone**, which the web now sends as `?deviceZone=`
+      and the gateway checks exactly as sign-up checks a browser's
+      (`resolveSignUpTimezone`: an IANA name `Intl` resolves, never a bare
+      offset), else none. Researched: 7shifts, Deputy and Homebase each set
+      the zone on the LOCATION and 7shifts says it "affects all schedule
+      times and labor reports"; Deputy shows each location's schedule in
+      its zone "regardless of the time zone for the scheduling manager" and
+      the mobile app defaults to the DEVICE zone; When I Work defaults a
+      workplace's zone to "the Admin's location when the workplace account
+      is created" and lets a schedule follow the zone 75% of its users set
+      in their profiles; the Google Calendar API reads a zoneless event time
+      in the calendar's default zone; RFC 5545 reads a zoneless ("floating")
+      time in whoever reads it. So location zone first, then a person's
+      local zone. **Rejected sources, measured:** the owner's profile — the
+      only per-person zone column is `manager_preferences.report_timezone`,
+      which no product path writes (the one writer is
+      `services/agent-orchestrator/demo/weekly_report_scheduler.py:127`,
+      writing the very `America/Los_Angeles` default migration
+      20260904190000 removed), keyed on `manager_id` with no foreign key;
+      `users` has no zone column; ADR 0116's UTC fallback — a claim about a
+      fact nobody holds, and here it would cut paid hours at a guessed
+      minute. **With no source at all:** a shift unstarted at UTC+14 opens,
+      one ended at UTC-12 is kept, anything between is kept whole and NAMED
+      (`shiftsUnjudged`, `changes.shifts_unjudged`), never cut; the web says
+      so before the sheet closes, and also says when the device's clock was
+      the one used (`RosterSheet.tsx`).
+    - **Which shifts** (`planLeavingShifts`): start minute now or later —
+      OPEN whole (a shift starting this very minute had no minute worked);
+      end minute now or earlier — kept; in between — SPLIT. The read now
+      reaches the day before the house's earliest "today"
+      (`leavingShiftsFrom`), so an overnight shift that began yesterday is
+      found. A call-out and an open row are left alone, as before.
+    - **The split**: the worked part keeps the row, `end_time` = the
+      removal minute, its break and `labor_cost` recomputed for the shorter
+      span at the person's wage (read before any write; a failed read
+      refuses). The rest is a NEW open shift — same `role` and `note`
+      (`shifts` has no area column: baseline:5378 and every later
+      migration), nobody on it, `labor_cost` null, `shift_type`/`state`
+      open; cut after midnight it is dated the next day and takes that
+      week's `schedules` row. Spans are wall-clock minutes, as every hour
+      rule counts them (`hoursBetween`), so the two parts add up to the
+      shift on a DST night too.
+    - **Breaks**: a planned `shift_breaks` row has a place on the clock, so
+      each part gets the minutes that fall inside it, written as a recorded
+      number (a row whose start does not parse counts as after the cut —
+      never lowering the worked pay); a recorded `0` stays `0` in both; any
+      other recorded number says how long, not when, so each part gets
+      `null` — the Art. 68 minimum for its own length, shown as ASSUMED
+      (round 6y) — and the audit keeps the old number
+      (`changes.shifts_split[].was_break_min`, `was_end`). A part too short
+      to hold that minimum (a stint "started but under a minimum length",
+      e.g. ten minutes) had no break: `0`, so ten minutes are paid as ten.
+    - **All or none**: every write is one call to
+      `release_leaving_shifts` (migration 20261201130000, SECURITY INVOKER,
+      service role only), one transaction that re-checks each row is still
+      as read (person, date, times, state) and that each cut adds up, and
+      raises otherwise, so nothing half-lands; the gateway then refuses
+      ("nobody was removed") before its first membership write — the
+      ordering above is unchanged. Rejected: two or three PostgREST writes
+      (a failure between them lands half a removal); one multi-row upsert
+      (atomic, but rewrites whole rows from the read and loses a concurrent
+      edit).
+    - **Everything follows**: the week (`getWeek`) and its labour, the
+      former-staff history, the calendar feeds and the roster notices all
+      read the stored rows, and the stored cost equals `priceShift` on the
+      stored worked row (asserted), so no reader recomputes anything
+      different. The week keeps hiding the removed person's worked part
+      (item 20; whether a past week should show it stays the founder's
+      question) and shows the rest as open.
+    `team-pay.spec.ts` K3, 25 cases (all fail on the branch head
+    `c2bad0f0e`, the pre-change merge) and 4 re-cut K2 cases; 22 of 22
+    service/pay-rules mutants killed;
+    `supabase/tests/20261201130000_a_removal_mid_shift_splits_the_shift_test.sql`
+    fails without the migration and passes with it, 12 of 12 SQL mutants
+    killed (run on a stand-in schema, not a full migrated database). CLAIMS
+    `ADR-0215-R9-A-REMOVAL-MID-SHIFT-SPLITS-THE-SHIFT`. Forks it found, not
+    decided: OD-190 (a very short rest), OD-191 (paging for cover now),
+    OD-192 (the device zone), OD-193 (DST hours are wall-clock).]**
 
 ## Consequences
 
