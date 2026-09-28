@@ -268,6 +268,18 @@ ineligible to be merged, ineligible as a match target, and flagged for
 re-extraction. The real fix is upstream: extraction must never put an
 appellation in `producer`.
 
+> **Superseded in part, 2026-09-05 — ADR 0130.** This rule quarantines the
+> *stored row*; it does not reach the *incoming query*, and on Antalya night a
+> generic draft ("House White Wine", no producer, no vintage, no region) still
+> auto-linked at confidence 90 to another venue's row because
+> `match_library_wine` scores two ABSENT producers as a perfect match. The rule
+> is now: an identity that is not specific — a name plus either a producer, or
+> a vintage and a region (`wine_identity_is_specific`) — returns **no
+> candidates at all**, and becomes that venue's own provisional row
+> (`master_wine_library.provisional_for_restaurant_id`), which is never a match
+> target for anybody. See
+> [`decisions/0130-a-generic-name-stays-the-venues-own-wine.md`](../decisions/0130-a-generic-name-stays-the-venues-own-wine.md).
+
 > **Live hazard.** `find_library_duplicates(85)` returns 289 proposals today, of
 > which **200 are pairs co-occurring on a single menu** — provably different
 > products — and **18 are flagged `safe_to_merge`**. Nothing auto-merges, so this

@@ -1,4 +1,4 @@
-import { apiClient } from "./client";
+import { apiClient, getActiveRestaurantId } from "./client";
 import type { NotificationFilters } from "../../lib/query-keys";
 
 export type NotificationType =
@@ -84,6 +84,15 @@ export async function fetchNotifications(
 ): Promise<Notification[]> {
   const params = new URLSearchParams();
   params.append("userId", userId);
+  // The gateway scopes this read from the JWT's restaurantId and IGNORES any
+  // restaurant sent here — a query parameter is not a tenant boundary. Sending
+  // it anyway keeps the request self-describing in logs and network traces,
+  // where the absence of a restaurant is what made the Antalya bleed look like
+  // correct behaviour: one owner, two venues, one undifferentiated pile of 20.
+  const activeRestaurantId = getActiveRestaurantId();
+  if (activeRestaurantId) {
+    params.append("restaurantId", activeRestaurantId);
+  }
 
   if (filters?.type) {
     params.append("type", filters.type);

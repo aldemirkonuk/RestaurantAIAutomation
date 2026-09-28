@@ -16,6 +16,7 @@ import { NfEventRef } from "../common/model-client/model-client.service";
 import { NfVerdictService } from "../common/model-client/nf-verdict.service";
 import { HUMAN_COUNT_BASIS, humanCountVerdict } from "./photo-count-verdict";
 import { mapStockCountResult } from "./stock-count-result";
+import { classifyStock } from "../common/stock-status";
 import {
   CreateInventoryItemDto,
   UpdateInventoryItemDto,
@@ -415,7 +416,9 @@ export class InventoryService {
       },
     );
     if (rpcErr) {
-      this.logger.error(`Spot count record_stock_count failed: ${rpcErr.message}`);
+      this.logger.error(
+        `Spot count record_stock_count failed: ${rpcErr.message}`,
+      );
       throw new HttpException(rpcErr.message, HttpStatus.BAD_REQUEST);
     }
 
@@ -944,7 +947,7 @@ export class InventoryService {
         (line.wineId ? `wine ${line.wineId}` : "unknown");
 
       try {
-        const resolved = await this.resolveBulkLineWine(line);
+        const resolved = await this.resolveBulkLineWine(line, restaurantId);
         const outcome = await this.receiveBulkLine(
           restaurantId,
           line,
@@ -961,6 +964,10 @@ export class InventoryService {
           wineName: resolved.wineName || wineName,
           libraryMatched: resolved.matched,
           libraryTier: resolved.libraryTier,
+          // ADR 0130: this line's name was too generic to join the shared
+          // library, so it became this venue's own wine. Reported so the
+          // receiving screen can say that rather than implying a library hit.
+          venueProvisional: resolved.provisional,
         });
       } catch (error: any) {
         const message =
@@ -1002,11 +1009,15 @@ export class InventoryService {
   }
 
   /** Resolves a bulk line to a master wine ID, creating a Provisional row if needed. */
-  private async resolveBulkLineWine(line: BulkInventoryLineDto): Promise<{
+  private async resolveBulkLineWine(
+    line: BulkInventoryLineDto,
+    restaurantId: string,
+  ): Promise<{
     masterWineId: string;
     wineName: string | null;
     matched: boolean;
     libraryTier: number | null;
+    provisional?: boolean;
   }> {
     const client = this.dbService.getClient();
 
@@ -1045,20 +1056,24 @@ export class InventoryService {
       );
     }
 
-    const resolution = await this.wineSubmissions.resolveOrCreateLibraryWine({
-      name: line.wineDraft.name,
-      producer: line.wineDraft.producer ?? null,
-      vintage: line.wineDraft.vintage ?? null,
-      country: line.wineDraft.country ?? null,
-      region: line.wineDraft.region ?? null,
-      grapeVariety: line.wineDraft.grapeVariety ?? null,
-    });
+    const resolution = await this.wineSubmissions.resolveOrCreateLibraryWine(
+      {
+        name: line.wineDraft.name,
+        producer: line.wineDraft.producer ?? null,
+        vintage: line.wineDraft.vintage ?? null,
+        country: line.wineDraft.country ?? null,
+        region: line.wineDraft.region ?? null,
+        grapeVariety: line.wineDraft.grapeVariety ?? null,
+      },
+      restaurantId,
+    );
 
     return {
       masterWineId: resolution.masterWineId,
       wineName: line.wineDraft.name,
       matched: resolution.matched,
       libraryTier: resolution.libraryTier,
+      provisional: resolution.provisional,
     };
   }
 
@@ -1129,12 +1144,22 @@ export class InventoryService {
       if (line.storageLocationId !== undefined)
         insertData.storage_location_id = line.storageLocationId;
 
-      const { data: mw } = await client
-        .from("master_wine_library")
-        .select("name")
-        .eq("id", masterWineId)
-        .maybeSingle();
-      insertData.wine_name = mw?.name ?? null;
+      // The venue's own label wins (ADR 0130). This used to read the library
+      // row's name and store THAT, which is how "House White Wine" came back
+      // from the Antalya receiving screen as "HOUSE WHITE" — a Sim Meyhouse
+      // row, on every screen, forever, because restaurant_inventory.wine_name
+      // is what /inventory renders. The library name is the fallback for a
+      // line that arrived as a bare wineId and carries no label of its own.
+      let libraryName: string | null = null;
+      if (!line.wineDraft?.name) {
+        const { data: mw } = await client
+          .from("master_wine_library")
+          .select("name")
+          .eq("id", masterWineId)
+          .maybeSingle();
+        libraryName = mw?.name ?? null;
+      }
+      insertData.wine_name = line.wineDraft?.name ?? libraryName;
 
       const { data: created, error: insertError } = await client
         .from("restaurant_inventory")
@@ -1197,10 +1222,37 @@ export class InventoryService {
       (sum: number, item: any) => sum + (item.stock_live || 0),
       0,
     );
-    const lowStockCount = lowStock.length;
-    const criticalCount = inventory.filter(
-      (item) => (item.stock_live || 0) === 0,
+
+    // ONE definition, from common/stock-status.ts, over the SAME rows.
+    //
+    // `criticalCount` was `stock_live === 0` — which is "out of stock", a
+    // different question — so it answered 0 for the sim tenant at the exact
+    // moment the alert service was calling a wine at 2/5 critical. And
+    // `lowStockCount` was `lowStock.length`, a second read of a second source
+    // (`v_low_stock_items`) whose predicate the chip did not share. Counting
+    // both from one classification over one array means the three numbers on
+    // the page can no longer disagree about the same wine.
+    const bands = inventory.map((item: any) =>
+      classifyStock(item.stock_live, item.threshold_min),
+    );
+    const lowStockCount = bands.filter(
+      (b) => b === "low" || b === "critical",
     ).length;
+    const criticalCount = bands.filter((b) => b === "critical").length;
+    const atParCount = bands.filter((b) => b === "at_par").length;
+    // A wine whose stock or par we could not read is NOT healthy. Folding it
+    // into the healthy count is how an unreadable row becomes a reassuring one.
+    const unknownCount = bands.filter((b) => b === "unknown").length;
+
+    // `v_low_stock_items` is still read, and any disagreement with the
+    // classification above is REPORTED rather than reconciled silently: the
+    // view is a database predicate and this is a TypeScript one, and if they
+    // ever drift the page must say so instead of picking a winner.
+    if (rawLowStock !== null && lowStock.length !== lowStockCount) {
+      this.logger.warn(
+        `Low-stock count disagreement for ${restaurantId}: v_low_stock_items says ${lowStock.length}, classifyStock over restaurant_inventory says ${lowStockCount}. One of the two predicates has drifted — see datasets/sim/fixtures/below-par-cases.json.`,
+      );
+    }
 
     // Count Toast mappings
     const toastMappedCount = inventory.filter(
@@ -1213,7 +1265,12 @@ export class InventoryService {
       totalBottles,
       lowStockCount,
       criticalCount,
-      healthyCount: totalItems - lowStockCount,
+      atParCount,
+      unknownCount,
+      // Was `totalItems - lowStockCount`, which counted every unreadable and
+      // every at-par row as healthy. Healthy is now a band a row is IN, not
+      // the remainder after subtracting the rows we noticed.
+      healthyCount: bands.filter((b) => b === "healthy").length,
       toastMappedCount,
       toastUnmappedCount,
     };
@@ -1369,6 +1426,33 @@ export class InventoryService {
           `Failed to publish stock.manual_override: ${pubErr?.message}`,
         );
       }
+    }
+
+    // A threshold crossing has TWO sides, and only one of them was wired.
+    //
+    // `evaluateInventoryItem` was called from the stock-moving paths only, so
+    // stock falling to meet par alerted and par rising to meet stock did not.
+    // Measured on the 2026-09-03 lens run: three pars raised above current
+    // stock through this door produced 0 notifications; the two-minute sweep
+    // caught two of them about nine minutes later, and the third was never
+    // explained. The sweep is a backstop, not the mechanism — an owner raising
+    // a par is TELLING the system a wine is now short.
+    //
+    // Fired on a lowering too, not only a raise: the alert ledger has to learn
+    // that a crossing was undone, or `last_alert_level` stays advanced and the
+    // wine is never alerted about again when it genuinely falls.
+    //
+    // Fire-and-forget for the same reason the pour path is: an owner's edit
+    // must not fail because the notification service is down. The alert
+    // service logs its own failures — this `catch` drops a rejection, not a
+    // report.
+    const parChanged =
+      dto.thresholdMin !== undefined &&
+      Number(dto.thresholdMin) !== Number(oldItem?.threshold_min ?? NaN);
+    if (parChanged && this.lowStockAlerts) {
+      void this.lowStockAlerts
+        .evaluateInventoryItem(restaurantId, itemId)
+        .catch(() => undefined);
     }
 
     const rollup = await this.fetchLotRollup(restaurantId);

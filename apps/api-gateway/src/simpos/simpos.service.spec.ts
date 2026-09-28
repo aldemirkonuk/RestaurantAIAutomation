@@ -320,7 +320,11 @@ describe("SimposService.closeCheck (decisions C25/C27/C28)", () => {
     expect(parsed[0].items).toHaveLength(1); // voided line excluded
     expect(parsed[0].items[0].externalItemId).toBe("plu-123");
     expect(parsed[0].items[0].qty).toBe(2);
-    expect(parsed[0].items[0].is_wine).toBe(true);
+    // This asserted `true` until 2026-09-05, when `is_wine: true` was hard-coded
+    // on every line. It is now read from the button's category, and this fixture
+    // has none — so the answer is "not wine", which is the safe direction for an
+    // uncategorised button (lens defect 5).
+    expect(parsed[0].items[0].is_wine).toBe(false);
 
     // HMAC signature must match the exact bytes sent.
     const expectedSig = crypto
@@ -361,5 +365,268 @@ describe("SimposService.closeCheck (decisions C25/C27/C28)", () => {
     await expect(service.closeCheck(SIM_RESTAURANT, checkId)).rejects.toThrow(
       /already closed/,
     );
+  });
+});
+
+/**
+ * SimPOS behaves like a POS (lens defects 3, 4, 5, 11).
+ *
+ * The whole value of a testbed is that what it exercises is what a real
+ * provider will exercise. On the 2026-09-03 run it was not: every button cost
+ * $45, every line was wine, the webhook carried no money, and 44 checks rang
+ * after the venue's published close with nothing noticing. Each of those made
+ * a downstream surface compute over a fiction rather than over a gap.
+ */
+describe("SimposService — the catalog tells the truth about price and kind", () => {
+  const SIM = SIM_RESTAURANT;
+
+  function seedTables(inventory: Row[]) {
+    return {
+      restaurants: [{ id: SIM, slug: "sim-bistro-1" }],
+      simpos_catalog: [] as Row[],
+      _inventory: inventory,
+    };
+  }
+
+  function serviceWithInventory(inventory: Row[]) {
+    const { supabase, tables } = makeFakeSupabase(seedTables(inventory));
+    const dbService = {
+      supabase,
+      getRestaurantInventory: async () => inventory,
+    } as unknown as DatabaseService;
+    return { service: new SimposService(dbService), tables };
+  }
+
+  it("seeds price null rather than a $45 placeholder when no price is known", async () => {
+    const { service, tables } = serviceWithInventory([
+      {
+        id: "inv-1",
+        wine_name: "Haydari",
+        bottle_size_ml: 750,
+        master_wine_library: { name: "Haydari", producer: null, vintage: null },
+      },
+    ]);
+
+    await service.seedCatalogIfEmpty(SIM);
+
+    expect(tables.simpos_catalog).toHaveLength(1);
+    expect(tables.simpos_catalog[0].price).toBeNull();
+  });
+
+  it("still seeds a real menu price when the inventory row has one", async () => {
+    const { service, tables } = serviceWithInventory([
+      {
+        id: "inv-2",
+        wine_name: "Akakies",
+        menu_price_current: 62,
+        bottle_size_ml: 750,
+        master_wine_library: { name: "Akakies" },
+      },
+    ]);
+
+    await service.seedCatalogIfEmpty(SIM);
+
+    expect(tables.simpos_catalog[0].price).toBe(62);
+  });
+
+  it("carries a category onto the seeded button instead of assuming wine", async () => {
+    const { service, tables } = serviceWithInventory([
+      {
+        id: "inv-3",
+        wine_name: "Turkish coffee",
+        // beverage_kind lives on master_wine_library and is trigger-maintained
+        // (20260817060000_beverage_kind_classification.sql) — never set by
+        // application code, which is exactly why it is worth reading.
+        master_wine_library: {
+          name: "Turkish coffee",
+          beverage_kind: "non_alcoholic",
+        },
+      },
+    ]);
+
+    await service.seedCatalogIfEmpty(SIM);
+
+    expect(tables.simpos_catalog[0].category).toBe("non_alcoholic");
+  });
+});
+
+describe("SimposService.closeCheck — the webhook carries what a POS carries", () => {
+  const checkId = "chk-money";
+  const catalogId = "cat-money";
+  const SIM = SIM_RESTAURANT;
+
+  function tablesWith(
+    overrides: { check?: Row; catalog?: Row; lines?: Row[] } = {},
+  ) {
+    return {
+      restaurants: [
+        {
+          id: SIM,
+          slug: "sim-bistro-1",
+          timezone: "America/Los_Angeles",
+          // The contract requires all seven keys; [] means closed that day.
+          // Friday closes at 22:00 — the published Meyhouse hour the lens run's
+          // 44 checks all rang past.
+          operating_hours: {
+            mon: [],
+            tue: [{ open: "17:00", close: "22:00" }],
+            wed: [{ open: "17:00", close: "22:00" }],
+            thu: [{ open: "17:00", close: "22:00" }],
+            fri: [{ open: "17:00", close: "22:00" }],
+            sat: [{ open: "17:00", close: "22:00" }],
+            sun: [],
+          },
+        },
+      ],
+      simpos_checks: [
+        {
+          id: checkId,
+          restaurant_id: SIM,
+          status: "open",
+          opened_at: "2026-09-04T01:00:00Z",
+          table_id: "tbl-7",
+          covers: 4,
+          server_name: "Deniz",
+          ...(overrides.check || {}),
+        },
+      ],
+      simpos_catalog: [
+        {
+          id: catalogId,
+          restaurant_id: SIM,
+          external_item_id: "plu-1",
+          wine_name: "Akakies",
+          category: "wine",
+          ...(overrides.catalog || {}),
+        },
+      ],
+      simpos_check_lines: overrides.lines || [
+        {
+          id: "l1",
+          check_id: checkId,
+          catalog_id: catalogId,
+          status: "active",
+          item_name_snapshot: "Akakies",
+          unit_price_snapshot: 60,
+          qty: 2,
+          discount_amount: 0,
+        },
+      ],
+    };
+  }
+
+  beforeEach(() => {
+    process.env.POS_HUB_WEBHOOK_SECRET = "test-secret";
+    mockedAxios.post.mockReset();
+    mockedAxios.post.mockResolvedValue({ status: 200, data: { ok: true } });
+  });
+  afterEach(() => {
+    delete process.env.POS_HUB_WEBHOOK_SECRET;
+  });
+
+  const sentPayload = () =>
+    JSON.parse(mockedAxios.post.mock.calls[0][1] as string)[0];
+
+  it("sends subtotal, total, tip, covers, table and server (ADR 0011's contract)", async () => {
+    const { service } = makeService(tablesWith());
+
+    await service.closeCheck(SIM, checkId);
+
+    const p = sentPayload();
+    expect(p.subtotal).toBe(120);
+    expect(p.total).toBe(120);
+    expect(p.covers).toBe(4);
+    expect(p.tableRef).toBe("tbl-7");
+    expect(p.serverName).toBe("Deniz");
+  });
+
+  it("sends covers null — not 0 — when no table was opened (ADR 0105 D5)", async () => {
+    const { service } = makeService(
+      tablesWith({
+        check: { covers: null, table_id: null, server_name: null },
+      }),
+    );
+
+    await service.closeCheck(SIM, checkId);
+
+    const p = sentPayload();
+    expect(p.covers).toBeNull();
+    expect(p.tableRef).toBeNull();
+  });
+
+  it("sends a line price of null for an unpriced button, and leaves it out of the total", async () => {
+    const { service } = makeService(
+      tablesWith({
+        lines: [
+          {
+            id: "l1",
+            check_id: checkId,
+            catalog_id: catalogId,
+            status: "active",
+            item_name_snapshot: "Akakies",
+            unit_price_snapshot: null,
+            qty: 2,
+            discount_amount: 0,
+          },
+        ],
+      }),
+    );
+
+    await service.closeCheck(SIM, checkId);
+
+    const p = sentPayload();
+    expect(p.items[0].price).toBeNull();
+    // Nothing priced, so the check's money is unknown — not $0.00.
+    expect(p.subtotal).toBeNull();
+    expect(p.total).toBeNull();
+  });
+
+  it("declares a meze as not-wine instead of hard-coding is_wine: true", async () => {
+    const { service } = makeService(
+      tablesWith({ catalog: { category: "food", wine_name: "Haydari" } }),
+    );
+
+    await service.closeCheck(SIM, checkId);
+
+    expect(sentPayload().items[0].is_wine).toBe(false);
+  });
+
+  it("treats an uncategorised button as not-wine — the safe direction", async () => {
+    const { service } = makeService(
+      tablesWith({ catalog: { category: null } }),
+    );
+
+    await service.closeCheck(SIM, checkId);
+
+    expect(sentPayload().items[0].is_wine).toBe(false);
+  });
+
+  it("flags a check rung after the venue's published close, and does not refuse it", async () => {
+    // 2026-09-05T06:20:00Z is 23:20 Friday in America/Los_Angeles — 80 minutes
+    // past the 22:00 close, the exact shape all 44 lens checks had.
+    const realNow = Date.now;
+    Date.now = () => new Date("2026-09-05T06:20:00.000Z").getTime();
+    try {
+      const { service, tables } = makeService(tablesWith());
+
+      const result = await service.closeCheck(SIM, checkId);
+
+      expect(result.check.status).toBe("closed");
+      const stored = tables.simpos_checks.find((c: Row) => c.id === checkId);
+      expect(stored!.hours_state).toBe("outside_hours");
+    } finally {
+      Date.now = realNow;
+    }
+  });
+
+  it("records that the question could not be answered, not that the venue was open", async () => {
+    const t = tablesWith();
+    t.restaurants[0].operating_hours = null as any;
+    const { service, tables } = makeService(t);
+
+    await service.closeCheck(SIM, checkId);
+
+    const stored = tables.simpos_checks.find((c: Row) => c.id === checkId);
+    expect(stored!.hours_state).toBe("hours_unknown");
   });
 });

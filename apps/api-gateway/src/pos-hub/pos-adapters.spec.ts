@@ -138,3 +138,67 @@ describe("adapters normalize to the canonical check", () => {
     expect(check.items[0].category).toBe("Wine");
   });
 });
+
+/**
+ * An absent number and a zero are different facts (ADR 0105 D5, ADR 0020).
+ *
+ * `num()` was `Number(v)` guarded by `Number.isFinite`. `Number(null)` is `0`
+ * and `0` is finite, so a provider that says "this check has no cover count"
+ * — Square structurally cannot put covers on an Order — had that recorded as
+ * a table that seated nobody. Measured on the Square day: 42 canonical checks
+ * sent `covers: null` and read back `0`. Omitted keys were unaffected
+ * (`Number(undefined)` is NaN), which is why the SimPOS lens saw 44 nulls on
+ * the same column: the two runs hit opposite sides of the same coercion.
+ */
+describe("canonical adapter — a field a POS cannot supply stays null", () => {
+  const base = {
+    externalCheckId: "chk-1",
+    openedAt: "2026-09-03T05:00:00.000Z",
+    items: [],
+  };
+
+  it("keeps an explicit null covers as null, not 0", () => {
+    const [check] = genericAdapter.normalize({ ...base, covers: null });
+    expect(check.covers).toBeNull();
+  });
+
+  it("keeps an explicit null total/subtotal/tip as null, not $0.00", () => {
+    const [check] = genericAdapter.normalize({
+      ...base,
+      total: null,
+      subtotal: null,
+      tip: null,
+    });
+    expect(check.total).toBeNull();
+    expect(check.subtotal).toBeNull();
+    expect(check.tip).toBeNull();
+  });
+
+  it("still reads a real zero as zero — a comped check is not an unknown one", () => {
+    const [check] = genericAdapter.normalize({ ...base, covers: 0, tip: 0 });
+    expect(check.covers).toBe(0);
+    expect(check.tip).toBe(0);
+  });
+
+  it("treats an empty string as absent rather than as zero", () => {
+    const [check] = genericAdapter.normalize({
+      ...base,
+      covers: "",
+      total: "",
+    });
+    expect(check.covers).toBeNull();
+    expect(check.total).toBeNull();
+  });
+
+  it("defaults a line with no quantity to 1", () => {
+    // Passed before the fix too, and the reason is worth pinning: `it.qty ??
+    // it.quantity` evaluates a null qty to `undefined`, and `Number(undefined)`
+    // is NaN, so the line took the intended `?? 1` by luck rather than design.
+    // With `num` now rejecting null directly, it takes it on purpose.
+    const [check] = genericAdapter.normalize({
+      ...base,
+      items: [{ name: "Akakies", qty: null }],
+    });
+    expect(check.items[0].qty).toBe(1);
+  });
+});

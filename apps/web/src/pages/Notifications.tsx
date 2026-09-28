@@ -210,9 +210,15 @@ export function Notifications() {
    * `isError` is kept separate from an empty list: an empty held-queue is good
    * news, and good news has to be measured rather than assumed (ADR 0067).
    */
+  // Same guard as the /inventory POS chip, and for the same measured reason:
+  // on mount `activeRestaurantId` is not in localStorage yet, so an ungated
+  // query fails once and — with `retry: false` and no id in the key — stays
+  // failed, reporting "could not be read" over a queue that reads fine.
+  const activeRestaurantIdForHeld = getActiveRestaurantId();
   const heldQuery = useQuery({
-    queryKey: ["notifications", "low-stock-held"],
-    queryFn: () => fetchHeldLowStock(getActiveRestaurantId()),
+    queryKey: ["notifications", "low-stock-held", activeRestaurantIdForHeld],
+    queryFn: () => fetchHeldLowStock(activeRestaurantIdForHeld),
+    enabled: Boolean(activeRestaurantIdForHeld),
     staleTime: 60_000,
     retry: false,
   });

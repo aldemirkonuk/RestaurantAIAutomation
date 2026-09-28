@@ -238,6 +238,14 @@ Seams:
 > sequential approvals lost 7 to the 100-per-60s limit). `unit_if_unanswered: "bottle"` became
 > `effect_if_unanswered: "depletes_nothing"`.
 >
+> **Also closed 2026-09-05 (#310):** every SimPOS line arriving as wine, and the
+> Square day's `covers: null → 0`. The covers cause was a coercion, not the column:
+> `pos-adapters.ts`'s `num()` was `Number(v)` guarded by `isFinite`, and `Number(null)`
+> is 0. An explicit null became 0 (Square day, 42 of 42) while an omitted key survived
+> as null (SimPOS lens, 44 of 44) — one coercion, two runs, opposite sides. Measured
+> on the sim tenant before the fix: `pos_checks`, 44 rows, `covers null=44 zero=0`, so
+> the column was already nullable and no migration was needed.
+>
 > **The threshold claim above is withdrawn.** "0 of 135 cleared the 0.9 threshold" is true but
 > misattributed: measured over those same 135 buttons, the matcher's maximum emittable confidence
 > is **0.8800 for every input**, because `catalog-matcher.service.ts:332` is

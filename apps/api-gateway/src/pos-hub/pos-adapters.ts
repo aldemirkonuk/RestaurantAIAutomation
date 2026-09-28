@@ -14,7 +14,23 @@ export interface PosAdapter {
   normalize(payload: any): CanonicalCheck[];
 }
 
+/**
+ * A number, or null when the provider did not give one.
+ *
+ * The null/undefined/"" guard is the whole point and was missing until
+ * 2026-09-05: `Number(null)` is `0`, and `0` is finite, so an explicit
+ * `covers: null` — the honest answer from a POS that structurally cannot
+ * report covers, Square being the case that measured it — was stored as a
+ * table that seated nobody. 42 of 42 canonical checks on the Square day sent
+ * `covers: null` and read back `0`. Omitted keys happened to survive
+ * (`Number(undefined)` is NaN), which is why the SimPOS lens saw 44 nulls on
+ * the same column: the two runs landed on opposite sides of one coercion.
+ *
+ * A real zero still reads as zero — a comped check took no money, and that is
+ * a fact, not an absence. ADR 0105 D5, ADR 0020.
+ */
 const num = (v: unknown): number | null => {
+  if (v === null || v === undefined || v === "") return null;
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
 };
@@ -97,13 +113,15 @@ export const squareAdapter: PosAdapter = {
         subtotal: cents(o.net_amounts?.total_money?.amount),
         total: cents(o.total_money?.amount),
         tip: cents(o.total_tip_money?.amount),
-        items: (o.line_items ?? []).map((li: any): CanonicalItem => ({
-          name: String(li.name ?? "unknown"),
-          externalItemId: li.catalog_object_id ?? null,
-          category: null,
-          qty: num(li.quantity) ?? 1,
-          price: cents(li.base_price_money?.amount) ?? 0,
-        })),
+        items: (o.line_items ?? []).map(
+          (li: any): CanonicalItem => ({
+            name: String(li.name ?? "unknown"),
+            externalItemId: li.catalog_object_id ?? null,
+            category: null,
+            qty: num(li.quantity) ?? 1,
+            price: cents(li.base_price_money?.amount) ?? 0,
+          }),
+        ),
         raw: o,
       }));
   },
@@ -141,13 +159,15 @@ export const cloverAdapter: PosAdapter = {
         subtotal: null,
         total: cents(o.total),
         tip: cents(o.tipAmount),
-        items: (o.lineItems?.elements ?? []).map((li: any): CanonicalItem => ({
-          name: String(li.name ?? "unknown"),
-          externalItemId: li.item?.id ?? null,
-          category: null,
-          qty: num(li.unitQty) ?? 1,
-          price: cents(li.price) ?? 0,
-        })),
+        items: (o.lineItems?.elements ?? []).map(
+          (li: any): CanonicalItem => ({
+            name: String(li.name ?? "unknown"),
+            externalItemId: li.item?.id ?? null,
+            category: null,
+            qty: num(li.unitQty) ?? 1,
+            price: cents(li.price) ?? 0,
+          }),
+        ),
         raw: o,
       }));
   },
@@ -183,13 +203,15 @@ export const toastAdapter: PosAdapter = {
         subtotal: num(c.amount),
         total: num(c.totalAmount ?? c.amount),
         tip: num(c.tipAmount),
-        items: (c.selections ?? []).map((s: any): CanonicalItem => ({
-          name: String(s.displayName ?? s.itemName ?? "unknown"),
-          externalItemId: s.item?.guid ?? null,
-          category: s.salesCategory?.name ?? null,
-          qty: num(s.quantity) ?? 1,
-          price: num(s.price) ?? 0,
-        })),
+        items: (c.selections ?? []).map(
+          (s: any): CanonicalItem => ({
+            name: String(s.displayName ?? s.itemName ?? "unknown"),
+            externalItemId: s.item?.guid ?? null,
+            category: s.salesCategory?.name ?? null,
+            qty: num(s.quantity) ?? 1,
+            price: num(s.price) ?? 0,
+          }),
+        ),
         raw: c,
       }));
   },

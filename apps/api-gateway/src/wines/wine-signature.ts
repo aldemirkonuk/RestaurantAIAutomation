@@ -247,6 +247,99 @@ export function wineSignatureHashOrNull(
 }
 
 /**
+ * Prefix that separates a venue-scoped key from a shared-library one.
+ *
+ * Provably disjoint from any shared key rather than merely unlikely to
+ * collide: a shared key's first segment is `normalizeSignatureText(producer)`,
+ * whose output alphabet is `[a-z0-9 ]` only, so it can never contain a colon.
+ * Mirrored by `public.wine_provisional_signature_hash`.
+ */
+export const PROVISIONAL_SIGNATURE_PREFIX = "venue:";
+
+/**
+ * Is this identity specific enough to join the SHARED library?
+ *
+ * Locked by the founder on 2026-09-05 (ADR 0130): a name plus EITHER a
+ * producer, OR a vintage and a region. Anything less is a menu section rather
+ * than a bottle, and belongs to the venue that wrote it.
+ *
+ * Why a name alone is not enough, measured rather than assumed. On the schema
+ * built from all 100 migrations, the Antalya venue's draft `"House White
+ * Wine"` — no producer, no vintage, no region — scored 90 against `HOUSE
+ * WHITE`, a row the Sim Meyhouse load created (United States / California /
+ * 2023):
+ *
+ *     match_library_wine('House White Wine', NULL, NULL, NULL, NULL, NULL)
+ *       -> HOUSE WHITE, confidence 90, name_sim 1, producer_sim 1
+ *
+ * `producer_sim` is 1 because the scorer reads two ABSENT producers as a
+ * perfect producer match. So the only thing separating two unrelated venues
+ * was a 10-point vintage penalty, and 90 clears AUTO_LINK_CONFIDENCE (85).
+ *
+ * This is deliberately NOT the floor `wineSignatureHashOrNull` applies. That
+ * one answers "is this comparable at all", is the key the submissions pipeline
+ * has always stored, and lowering or raising it would silently re-key existing
+ * rows. This answers a different question — "may this join OTHER PEOPLE'S
+ * data" — and only the resolver asks it.
+ *
+ * Mirrored by `public.wine_identity_is_specific()` and by
+ * `wine_identity_is_specific()` in `scripts/synth/identity.py`; all three are
+ * pinned against each other by
+ * `datasets/sim/fixtures/wine-identity-vectors.json`.
+ */
+export function isSpecificWineIdentity(input: WineSignatureInput): boolean {
+  if (!normalizeSignatureText(input.name)) return false;
+  if (normalizeSignatureText(input.producer)) return true;
+  return (
+    parsedVintageOrNull(input.vintage) !== null &&
+    normalizeSignatureText(input.region) !== ""
+  );
+}
+
+/**
+ * The vintage as the DATABASE will see it.
+ *
+ * `public.wine_identity_is_specific` takes an `integer`, and every caller
+ * reaches it through the same `parseInt(...) || null` the resolver applies
+ * before the RPC. Reproducing that here rather than reusing
+ * `normalizeVintage` is what keeps the two sides answering the same question:
+ * `normalizeVintage("MMXV")` renders a segment, but Postgres receives NULL.
+ */
+export function parsedVintageOrNull(
+  value?: string | number | null,
+): number | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  return parseInt(value, 10) || null;
+}
+
+/**
+ * The identity of one venue's own provisional wine.
+ *
+ * The same six-field key as `hashWineSignature`, behind a `venue:<id>|`
+ * segment. Two venues that both print "House White Wine" therefore occupy two
+ * rows under `idx_master_wine_library_signature_hash` instead of colliding on
+ * one, while the SAME venue rescanning its own menu still lands on its own row
+ * rather than spawning a duplicate.
+ *
+ * Mirrored by `public.wine_provisional_signature_hash`, which the
+ * `trg_sync_signature_hash` trigger applies to any row carrying
+ * `provisional_for_restaurant_id`. The hash is recomputed in the database on
+ * every write, so this function's output is a lookup key, never the stored
+ * value's only author.
+ */
+export function hashProvisionalWineSignature(
+  restaurantId: string,
+  input: WineSignatureInput,
+): string {
+  return createHash("sha256")
+    .update(
+      `${PROVISIONAL_SIGNATURE_PREFIX}${restaurantId}|${buildWineSignature(input)}`,
+    )
+    .digest("hex");
+}
+
+/**
  * Read a signature input off a submission payload of unknown shape.
  *
  * `master_wine_library_submissions.payload` is untyped JSONB written by four

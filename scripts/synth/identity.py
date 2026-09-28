@@ -94,3 +94,76 @@ def wine_signature_for_item(item: dict) -> str:
         item.get("region"),
         item.get("grape_variety"),
     )
+
+
+#: The venue segment that separates a venue-scoped key from a shared one.
+#: Mirrors PROVISIONAL_SIGNATURE_PREFIX in
+#: apps/api-gateway/src/wines/wine-signature.ts and the literal in
+#: public.wine_provisional_signature_hash. Disjoint from any shared key by
+#: construction: a shared key's first segment is wine_normalize_text(producer),
+#: whose output alphabet is [a-z0-9 ] and can never contain a colon.
+PROVISIONAL_PREFIX = "venue:"
+
+
+def wine_identity_is_specific(
+    producer: str | None,
+    name: str | None,
+    vintage: int | str | None,
+    region: str | None,
+) -> bool:
+    """Mirror of public.wine_identity_is_specific(...) — ADR 0130.
+
+    An identity may join the SHARED library only when it carries a name plus
+    EITHER a producer, OR a vintage and a region. A bare "House White Wine" is
+    a menu section, and on 2026-09-04 one venue's menu section auto-linked to
+    another venue's 2023 California wine at confidence 90.
+
+    `vintage` is judged the way Postgres sees it: the resolver reaches the SQL
+    through `parseInt(...) || null`, so anything that is not a number is NULL
+    there and must be absent here.
+    """
+    if wine_normalize_text(name) == "":
+        return False
+    if wine_normalize_text(producer) != "":
+        return True
+    return _vintage_or_none(vintage) is not None and wine_normalize_text(region) != ""
+
+
+def _vintage_or_none(value: int | str | None) -> int | None:
+    if value is None or value == "":
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def wine_provisional_signature_hash(
+    restaurant_id: str,
+    producer: str | None,
+    name: str | None,
+    vintage: int | str | None,
+    country: str | None,
+    region: str | None,
+    grape_variety: str | None,
+) -> str:
+    """Mirror of public.wine_provisional_signature_hash(...) — ADR 0130.
+
+    The identity of one venue's own provisional wine: the same six-field key,
+    behind a "venue:<id>|" segment, so two venues printing the same generic
+    words occupy two rows under the UNIQUE index instead of colliding on one.
+    """
+    vintage_txt = "NV" if vintage is None or vintage == "" else str(int(vintage))
+    joined = "|".join(
+        [
+            wine_normalize_text(producer),
+            wine_normalize_text(name),
+            vintage_txt,
+            wine_normalize_text(country),
+            wine_normalize_text(region),
+            wine_normalize_text(grape_variety),
+        ]
+    )
+    return hashlib.sha256(
+        f"{PROVISIONAL_PREFIX}{restaurant_id}|{joined}".encode("utf-8")
+    ).hexdigest()

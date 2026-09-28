@@ -7,6 +7,92 @@ import {
 import * as crypto from "crypto";
 import axios from "axios";
 import { DatabaseService } from "../database/database.service";
+import { isOpenAt } from "../common/operating-hours/operating-hours";
+
+/**
+ * Categories a SimPOS button can carry — `master_wine_library.beverage_kind`'s
+ * vocabulary plus the two words a beverage classifier has no room for and a
+ * restaurant's button list is full of.
+ */
+const SIMPOS_CATEGORIES = new Set([
+  "wine",
+  "beer",
+  "spirit",
+  "sake",
+  "cider",
+  "cocktail",
+  "non_alcoholic",
+  "food",
+  "other",
+]);
+
+/**
+ * The price to seed a button with, or null.
+ *
+ * Was `… || 45`, which is two bugs in one operator: `||` treats a genuine $0
+ * (a staff pour, a tasting) as absent, and the literal invents a price for
+ * anything with none. Measured: 53 of 53 seeded SKUs carried $45.00, with
+ * nothing on screen saying they were placeholders — so every revenue figure
+ * SimPOS produced was arithmetic over a constant. ADR 0020: an unknown number
+ * is null and renders as "unpriced".
+ */
+function seedPrice(inv: any, wine: any): number | null {
+  for (const raw of [
+    inv.menu_price_current,
+    inv.custom_price,
+    inv.target_price,
+    wine?.price_reference,
+  ]) {
+    if (raw === null || raw === undefined || raw === "") continue;
+    const n = Number(raw);
+    if (Number.isFinite(n) && n >= 0) return Math.round(n * 100) / 100;
+  }
+  return null;
+}
+
+/**
+ * What kind of thing this button sells, or null when nothing says.
+ *
+ * `beverage_kind` is trigger-maintained on `master_wine_library` and never
+ * written by application code, which makes it the one classification here that
+ * is not a guess. Its `'unknown'` is stored as null: the absence of an answer
+ * is not a category, and writing it as one is how "we do not know" starts
+ * rendering as "we checked".
+ */
+function seedCategory(inv: any, wine: any): string | null {
+  const raw = String(wine?.beverage_kind ?? inv?.beverage_kind ?? "")
+    .trim()
+    .toLowerCase();
+  if (!raw || raw === "unknown") return null;
+  return SIMPOS_CATEGORIES.has(raw) ? raw : null;
+}
+
+/** A money field, or null when there is no number — never a coerced 0. */
+function moneyOrNull(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * What the check is worth, or null when nothing on it carries a price.
+ *
+ * A check with SOME priced lines returns the sum of those, because the money
+ * that was charged is a fact even when part of the check is unpriced. A check
+ * with NO priced line at all returns null: "we do not know what this cost" and
+ * "this cost nothing" are different, and only one of them is true.
+ */
+function sumLineMoney(lines: any[]): number | null {
+  let total = 0;
+  let sawPrice = false;
+  for (const l of lines) {
+    const price = moneyOrNull(l.unit_price_snapshot);
+    if (price === null) continue;
+    sawPrice = true;
+    total += price * (Number(l.qty) || 0);
+  }
+  return sawPrice ? Math.round(total * 100) / 100 : null;
+}
 
 /**
  * SimposService — the fake POS terminal's own backend (SimPOS testbed plan,
@@ -88,19 +174,14 @@ export class SimposService {
       .filter((inv: any) => inv.master_wine_library)
       .map((inv: any) => {
         const wine = inv.master_wine_library;
-        const price =
-          Number(inv.menu_price_current) ||
-          Number(inv.custom_price) ||
-          Number(inv.target_price) ||
-          Number(wine.price_reference) ||
-          45;
         return {
           restaurant_id: restaurantId,
           wine_name: inv.wine_name || wine.name,
           producer: wine.producer ?? null,
           vintage: wine.vintage ?? null,
           size_ml: inv.bottle_size_ml || 750,
-          price: Math.round(price * 100) / 100,
+          price: seedPrice(inv, wine),
+          category: seedCategory(inv, wine),
         };
       });
     if (rows.length === 0) return { seeded: false, count: 0 };
@@ -112,6 +193,52 @@ export class SimposService {
       `SimPOS catalog seeded for ${restaurantId}: ${rows.length} SKU(s)`,
     );
     return { seeded: true, count: rows.length };
+  }
+
+  /**
+   * The venue's own timezone and published hours.
+   *
+   * Exists because the SimPOS screens were rendering POS timestamps with
+   * `toLocaleString()` — the VIEWER's zone. A 23:20 PDT check showed as 2:20 AM
+   * EDT to anyone reading from the east coast, which is not a cosmetic
+   * difference: it moves the check to the wrong service day and makes "did this
+   * ring after we closed?" unanswerable by eye.
+   *
+   * Returns nulls rather than a fallback zone when the venue has not set them.
+   * A default of UTC (or of the browser's zone) would render a confident wrong
+   * time, which is worse than rendering a time that admits what it is.
+   */
+  async getVenue(restaurantId: string): Promise<{
+    id: string;
+    name: string | null;
+    timezone: string | null;
+    operating_hours: unknown;
+    open_now: { open: boolean | null; reason: string | null };
+  }> {
+    await this.assertSimRestaurant(restaurantId);
+    const { data, error } = await this.dbService.supabase
+      .from("restaurants")
+      .select("id, name, timezone, operating_hours")
+      .eq("id", restaurantId)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+
+    // Answered here rather than in the browser so there is exactly ONE
+    // implementation of "is this venue open" — the same `isOpenAt` the close
+    // path stamps onto the check. A second copy in the SPA would drift, and
+    // the two would disagree about the same minute.
+    const state = isOpenAt(
+      data?.operating_hours ?? null,
+      data?.timezone ?? null,
+      new Date(Date.now()),
+    );
+    return {
+      id: restaurantId,
+      name: data?.name ?? null,
+      timezone: data?.timezone ?? null,
+      operating_hours: data?.operating_hours ?? null,
+      open_now: { open: state.open, reason: state.reason ?? null },
+    };
   }
 
   async listCatalog(restaurantId: string) {
@@ -135,18 +262,26 @@ export class SimposService {
       producer?: string | null;
       vintage?: number | null;
       sizeMl?: number;
-      price: number;
+      /** Null is a real answer: the button exists and nobody has priced it. */
+      price?: number | null;
+      category?: string | null;
     },
   ) {
     await this.assertSimRestaurant(restaurantId);
     const db = this.dbService.supabase;
+    const rawCategory = String(item.category ?? "")
+      .trim()
+      .toLowerCase();
     const row = {
       restaurant_id: restaurantId,
       wine_name: item.wineName,
       producer: item.producer ?? null,
       vintage: item.vintage ?? null,
       size_ml: item.sizeMl ?? 750,
-      price: item.price,
+      // `?? null` and not `|| null`: a deliberate $0 button must survive.
+      price: item.price ?? null,
+      category:
+        rawCategory && SIMPOS_CATEGORIES.has(rawCategory) ? rawCategory : null,
       updated_at: new Date().toISOString(),
     };
     if (item.id) {
@@ -270,7 +405,12 @@ export class SimposService {
     let loss = 0;
     for (const l of lines) {
       if (l.status === "voided" || l.status === "comped") {
-        loss += Number(l.unit_price_snapshot) * Number(l.qty);
+        // An unpriced button's void is a loss of an UNKNOWN amount. It is
+        // skipped rather than added as `Number(null) * qty` = 0, which would
+        // have quietly asserted that voiding it cost nothing.
+        const price = moneyOrNull(l.unit_price_snapshot);
+        if (price === null) continue;
+        loss += price * Number(l.qty);
       } else if (l.status === "discounted") {
         loss += Number(l.discount_amount) || 0;
       }
@@ -321,6 +461,74 @@ export class SimposService {
       .single();
     if (error) throw new Error(error.message);
     return line;
+  }
+
+  /**
+   * Record the covers, table and server on an open check.
+   *
+   * A POS knows who is at the table and how many of them there are; SimPOS had
+   * nowhere to put any of it, so `pos_checks.covers`, `.table_id` and
+   * `.server_name` were NULL on 44 of 44 rows and every covers-based or
+   * per-server figure downstream was computed over nothing.
+   *
+   * Only the keys actually sent are written, so setting a server does not
+   * silently clear a cover count. An explicitly sent `null` DOES clear —
+   * "nobody said" has to be expressible, or the first wrong number entered
+   * becomes permanent.
+   */
+  async updateCheckContext(
+    restaurantId: string,
+    checkId: string,
+    patch: {
+      covers?: number | null;
+      tableId?: string | null;
+      serverName?: string | null;
+    },
+  ) {
+    await this.assertSimRestaurant(restaurantId);
+    const db = this.dbService.supabase;
+
+    const { data: check } = await db
+      .from("simpos_checks")
+      .select("id, status")
+      .eq("id", checkId)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (!check) throw new NotFoundException("Check not found");
+    if (check.status !== "open")
+      throw new ForbiddenException("Check is closed — open a new one");
+
+    const row: Record<string, unknown> = {
+      updated_at: new Date().toISOString(),
+    };
+    if ("covers" in patch) {
+      if (patch.covers === null || patch.covers === undefined) {
+        row.covers = null;
+      } else {
+        const n = Number(patch.covers);
+        if (!Number.isInteger(n) || n < 0 || n > 200) {
+          throw new Error(
+            `covers must be a whole number of guests between 0 and 200, or null — got ${JSON.stringify(patch.covers)}`,
+          );
+        }
+        row.covers = n;
+      }
+    }
+    if ("tableId" in patch) row.table_id = patch.tableId ?? null;
+    if ("serverName" in patch) {
+      const name = String(patch.serverName ?? "").trim();
+      row.server_name = name === "" ? null : name.slice(0, 120);
+    }
+
+    const { data, error } = await db
+      .from("simpos_checks")
+      .update(row)
+      .eq("id", checkId)
+      .eq("restaurant_id", restaurantId)
+      .select()
+      .single();
+    if (error) throw new Error(error.message);
+    return data;
   }
 
   /** Loss box inputs: void ("never happened"), comp (free, still consumed), discount (partial). */
@@ -381,38 +589,98 @@ export class SimposService {
       ...new Set(activeLines.map((l) => l.catalog_id).filter(Boolean)),
     ];
     let externalIdByCatalogId = new Map<string, string>();
+    let catalogByCatalogId = new Map<string, any>();
     if (catalogIds.length > 0) {
       const { data: catalogRows } = await db
         .from("simpos_catalog")
-        .select("id, external_item_id")
+        .select("id, external_item_id, category")
         .in("id", catalogIds);
       externalIdByCatalogId = new Map(
         (catalogRows || []).map((c: any) => [c.id, c.external_item_id]),
       );
+      catalogByCatalogId = new Map(
+        (catalogRows || []).map((c: any) => [c.id, c]),
+      );
     }
 
-    const closedAt = new Date().toISOString();
+    const closedAt = new Date(Date.now()).toISOString();
+
+    // Was the venue open when this rang? All 44 checks on the 2026-09-03 lens
+    // run were closed between 22:29 and 23:20 PDT against a published 22:00
+    // Friday close, and nothing anywhere noticed. This RECORDS the answer and
+    // never refuses the check: a POS that will not take money after closing
+    // time is a broken POS, and late trade is a fact about the night, not an
+    // error. `isOpenAt` answers null-with-a-reason rather than false, and that
+    // distinction survives into the column — "we could not tell" must never
+    // render as "it was fine" (ADR 0093 D1).
+    const venue = await this.loadVenueContext(restaurantId);
+    const openState = isOpenAt(
+      venue.operating_hours,
+      venue.timezone,
+      new Date(closedAt),
+    );
+    const hoursState =
+      openState.open === true ? "open" : (openState.reason ?? "hours_unknown");
+
     const { error: closeError } = await db
       .from("simpos_checks")
-      .update({ status: "closed", closed_at: closedAt })
+      .update({
+        status: "closed",
+        closed_at: closedAt,
+        hours_state: hoursState,
+      })
       .eq("id", checkId);
     if (closeError) throw new Error(closeError.message);
 
+    const items = activeLines.map((l) => {
+      const catalog = catalogByCatalogId.get(l.catalog_id) ?? null;
+      return {
+        name: l.item_name_snapshot,
+        externalItemId: externalIdByCatalogId.get(l.catalog_id) ?? l.catalog_id,
+        qty: l.qty,
+        // An unpriced button sells at an unknown price, not at $0.00. The old
+        // `Number(null)` made that 0 and every downstream revenue figure a sum
+        // over invented zeros.
+        price: moneyOrNull(l.unit_price_snapshot),
+        category: catalog?.category ?? null,
+        // Was hard-coded `true`. SimPOS's catalog is not all wine — the lens
+        // run put Haydari, Köpoğlu, Acılı Muhammara, a Turkish coffee and a
+        // mocktail into pos_unresolved_lines as permanent "unmapped wine", 38
+        // of the 39 open rows. An uncategorised button is NOT declared wine:
+        // a meze wrongly dropped costs one queue row, a meze wrongly declared
+        // wine costs a permanent one.
+        is_wine: (catalog?.category ?? null) === "wine",
+      };
+    });
+
+    // ADR 0011's contract: a check carries its money, its table, its server
+    // and its covers. All six were NULL on 44 of 44 pos_checks rows, so every
+    // revenue, average-check and covers figure downstream was computed over
+    // nulls while the screens rendered them as numbers.
+    const subtotal = sumLineMoney(activeLines);
+    const discounts = activeLines.reduce(
+      (s, l) => s + (Number(l.discount_amount) || 0),
+      0,
+    );
     const payload = {
       externalCheckId: checkId,
       openedAt: check.opened_at,
       closedAt,
       voided: false,
-      items: activeLines.map((l) => ({
-        name: l.item_name_snapshot,
-        externalItemId: externalIdByCatalogId.get(l.catalog_id) ?? l.catalog_id,
-        qty: l.qty,
-        price: Number(l.unit_price_snapshot),
-        // SimPOS's whole catalog is wine — every line is definitively wine,
-        // so the hub's WINE_WORDS fallback (which "Opus One" would fail)
-        // never needs to guess.
-        is_wine: true,
-      })),
+      // Null and not 0 when a table was never opened: a check rung without
+      // seating anybody has an UNKNOWN cover count (ADR 0105 D5).
+      covers: check.covers ?? null,
+      tableRef: check.table_id ?? null,
+      serverName: check.server_name ?? null,
+      subtotal,
+      total:
+        subtotal === null
+          ? null
+          : Math.round((subtotal - discounts) * 100) / 100,
+      // SimPOS has no tip flow, and inventing 0 would make "nobody tipped"
+      // indistinguishable from "this POS does not report tips".
+      tip: null,
+      items,
     };
 
     const delivery = await this.sendSignedWebhook(restaurantId, payload);
@@ -426,9 +694,46 @@ export class SimposService {
       .eq("id", checkId);
 
     return {
-      check: { ...check, status: "closed", closed_at: closedAt },
+      check: {
+        ...check,
+        status: "closed",
+        closed_at: closedAt,
+        hours_state: hoursState,
+      },
       lines,
       webhook: delivery,
+    };
+  }
+
+  /**
+   * The venue's timezone and published hours, read fresh at close time.
+   *
+   * Deliberately a soft read: a restaurants row that cannot be loaded yields
+   * nulls, which `isOpenAt` answers `hours_unknown` to. Failing the close
+   * because we could not look up opening hours would be the tail wagging the
+   * dog — but reporting "open" because we could not look them up would be the
+   * absence-as-health fault this whole pass exists to remove.
+   */
+  private async loadVenueContext(
+    restaurantId: string,
+  ): Promise<{ timezone: string | null; operating_hours: unknown }> {
+    const { data, error } = await this.dbService.supabase
+      .from("restaurants")
+      .select("id, timezone, operating_hours")
+      .eq("id", restaurantId)
+      .maybeSingle();
+    if (error) {
+      // Soft, but never silent. The close proceeds and the check is stamped
+      // `hours_unknown`, which is TRUE — we could not find out. What must not
+      // happen is this failing quietly and the venue reading as open, so the
+      // reason is logged with the restaurant it concerns.
+      this.logger.warn(
+        `Could not read operating hours for ${restaurantId} while closing a check — hours_state will be 'hours_unknown': ${error.message}`,
+      );
+    }
+    return {
+      timezone: data?.timezone ?? null,
+      operating_hours: data?.operating_hours ?? null,
     };
   }
 

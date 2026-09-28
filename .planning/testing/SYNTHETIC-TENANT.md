@@ -173,6 +173,32 @@ Registry Table D domain buckets beyond the generator write-set remain **out of s
 
 ---
 
+## Real-venue behaviour profiles (`datasets/sim/venues/`)
+
+A sim tenant is only as honest as the venue it imitates, so each archetype can be backed by a
+researched profile of a **real** venue built from public sources only, with every price, hour
+and capacity figure traced to a URL and a read date, and anything unpublished recorded as
+`null` rather than filled in. `meyhouse-palo-alto/` was the first. **`vanilla-antalya-kaleici/`
+(added 2026-09-05) is the second and the first non-US one:** Vanilla Restaurant, Hesapçı Sk.
+No:33 in Antalya's Kaleiçi old town — a British-chef bistro since 2007 that Turkish listings
+file under *Bar & Pub* with *Egzotik Kokteyller* as a cuisine type, so it exercises the
+cocktail-and-spirits half of a beverage program that the wine-shaped Meyhouse profile does not.
+It carries **284 published menu rows in ₺ (TRY)** — 46 alcoholic cocktails, 78 spirit rows
+(including rakı in five sizes per brand), 37 wines, 6 beers, 48 non-alcoholic lines and 69 food
+rows — lifted verbatim from the venue's own machine-readable menu payload rather than OCR'd,
+plus Google's measured 7-day × 18-hour popular-times histogram, the venue's own reservation
+grid, and `Europe/Istanbul` as the tenant timezone. What it deliberately lacks is as important:
+**no seat, table or cover count is published anywhere for this venue** (Cvent, whose purpose is
+publishing venue capacity, shows a dash for every field), so unlike Meyhouse this profile
+derives **no** covers-per-service estimate at all; 21 of the 284 rows — the venue's whole
+by-the-bottle spirits offer plus four wines — are published with an empty price and carry
+`price: null`; and the venue's own site publishes **seven mutually contradictory opening-hour
+ranges**, four of them on its own pages and two of those varying by display language, which
+`operating_hours._conflicts` records in full rather than resolving silently. Read
+`datasets/sim/venues/vanilla-antalya-kaleici/SOURCES.md` before trusting any single field.
+
+---
+
 ## Auth / secrets
 
 - Reuse Supabase Auth REST password grant pattern from `prod_jwt` in `conftest_prod.py` (session-scoped JWT; never function-scoped for multi-wave suites).
@@ -181,6 +207,30 @@ Registry Table D domain buckets beyond the generator write-set remain **out of s
 - Do not embed secret values in this document (names only when referencing ops status elsewhere).
 
 ---
+
+## A second currency and a second timezone: `Sim Vanilla Kaleiçi` (added 2026-09-05)
+
+Until this tenant, every sim restaurant was American: dollars, a US timezone, and a cellar the
+shared wine library already knew. `Sim Vanilla Kaleiçi` (`684920db-e416-4099-9969-66873afa6c57`,
+slug `sim-vanilla-kalei-i-4ef207cb`, country `TR`, timezone **`Europe/Istanbul`**, hours Mon–Sun
+11:00–23:59) is none of those, and it was created **through the product's own doors** —
+`POST /organizations/locations`, `POST /auth/switch-restaurant`,
+`PUT /restaurants/:id/operating-hours` — not through `scripts/synth/seed.py`. It carries 27 wines,
+268 SimPOS buttons priced in **₺**, 36 POS mappings and one 38-check night
+(`03-scenarios/S04` §9.2; findings in `v3.0-TECH-DEBT.md`, 2026-09-05 Antalya lens).
+
+Three things it proved that the American tenants structurally cannot. **A non-ASCII venue name
+survives the slugger, but only by mutilation:** `Kaleiçi` becomes `kalei-i` — the `ç` is dropped,
+not transliterated — which still matches `sim-%`, so `SimposService.assertSimRestaurant` and this
+document's teardown filter both accept it, but no transliteration table exists. **A tenant created
+through the product door lands inside the sim contract by luck, not by design:** nothing in
+`POST /organizations/locations` knows about `sim-`; the slug matched only because the operator
+named the location "Sim …". **And the shared library is not tenant-neutral:** a generic draft name
+(`House White Wine`) auto-linked at tier 4 to a row another sim tenant created two days earlier,
+so one sim restaurant's stock now points at another's wine identity and renders under its name.
+Teardown deletes `sim.wine.*` ids only and never touches rows that already existed, so that
+captured row is *correctly* left alone — but it means a sim tenant's inventory can reference a
+library identity outside its own write set, and a reader who assumes otherwise will be wrong.
 
 ## CI capability note (C1)
 
