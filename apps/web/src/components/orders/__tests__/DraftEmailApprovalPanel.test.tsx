@@ -1,7 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { DraftEmailApprovalPanel } from '../DraftEmailApprovalPanel'
+vi.mock('@/hooks/queries/useDraftEmailQueries', () => ({ issueDraftSendChallenge: vi.fn().mockResolvedValue('draft-proof') }))
+
+/** The gateway's `sendOrAsk` for a manager (founder, 2026-09-21: send or ask). */
+const AS_MANAGER = {
+  readable: true,
+  maySend: true,
+  mode: 'send' as const,
+  basis: 'manager' as const,
+  grant: null,
+  sentence: null,
+}
 
 function makeDraft(overrides = {}) {
   return {
@@ -36,6 +47,7 @@ describe('DraftEmailApprovalPanel', () => {
     render(
       <DraftEmailApprovalPanel
         isOpen={true}
+        sendOrAsk={AS_MANAGER}
         draftData={makeDraft()}
         onApprove={onApprove}
         onDiscard={onDiscard}
@@ -47,11 +59,11 @@ describe('DraftEmailApprovalPanel', () => {
     expect(screen.getByText('Penfolds Grange 2019')).toBeInTheDocument()
   })
 
-  it('calls onApprove with no modified content when Send Draft is clicked', async () => {
-    const user = userEvent.setup()
+  it('holds over the displayed body and passes its one-use challenge', async () => {
     render(
       <DraftEmailApprovalPanel
         isOpen={true}
+        sendOrAsk={AS_MANAGER}
         draftData={makeDraft()}
         onApprove={onApprove}
         onDiscard={onDiscard}
@@ -60,11 +72,13 @@ describe('DraftEmailApprovalPanel', () => {
     )
 
     const sendBtn = screen.getByRole('button', { name: /send draft/i })
-    await user.click(sendBtn)
+    fireEvent.keyDown(sendBtn, { key: 'Enter' })
+    fireEvent.keyDown(sendBtn, { key: 'Enter' })
+    await waitFor(() => expect(onApprove).toHaveBeenCalledOnce(), { timeout: 1500 })
 
     expect(onApprove).toHaveBeenCalledOnce()
     // Not dirty → undefined for content/notes; no CC → undefined for ccEmails
-    expect(onApprove).toHaveBeenCalledWith(undefined, undefined, undefined)
+    expect(onApprove).toHaveBeenCalledWith(makeDraft().draftContent, undefined, undefined, 'draft-proof')
   })
 
   it('calls onApprove with edited content when Send Edited is clicked', async () => {
@@ -72,6 +86,7 @@ describe('DraftEmailApprovalPanel', () => {
     render(
       <DraftEmailApprovalPanel
         isOpen={true}
+        sendOrAsk={AS_MANAGER}
         draftData={makeDraft()}
         onApprove={onApprove}
         onDiscard={onDiscard}
@@ -90,7 +105,9 @@ describe('DraftEmailApprovalPanel', () => {
 
     // Send the edited draft
     const sendBtn = screen.getByRole('button', { name: /send edited/i })
-    await user.click(sendBtn)
+    fireEvent.keyDown(sendBtn, { key: 'Enter' })
+    fireEvent.keyDown(sendBtn, { key: 'Enter' })
+    await waitFor(() => expect(onApprove).toHaveBeenCalledOnce(), { timeout: 1500 })
 
     expect(onApprove).toHaveBeenCalledOnce()
     expect(onApprove.mock.calls[0][0]).toContain('Custom edited email content')
@@ -101,6 +118,7 @@ describe('DraftEmailApprovalPanel', () => {
     render(
       <DraftEmailApprovalPanel
         isOpen={true}
+        sendOrAsk={AS_MANAGER}
         draftData={makeDraft()}
         onApprove={onApprove}
         onDiscard={onDiscard}
@@ -119,6 +137,7 @@ describe('DraftEmailApprovalPanel', () => {
     render(
       <DraftEmailApprovalPanel
         isOpen={true}
+        sendOrAsk={AS_MANAGER}
         draftData={makeDraft()}
         onApprove={onApprove}
         onDiscard={onDiscard}
@@ -136,9 +155,11 @@ describe('DraftEmailApprovalPanel', () => {
 
     // Approve with CC — ccEmails non-empty so passed as array
     const sendBtn = screen.getByRole('button', { name: /send draft/i })
-    await user.click(sendBtn)
+    fireEvent.keyDown(sendBtn, { key: 'Enter' })
+    fireEvent.keyDown(sendBtn, { key: 'Enter' })
+    await waitFor(() => expect(onApprove).toHaveBeenCalledOnce(), { timeout: 1500 })
 
-    expect(onApprove).toHaveBeenCalledWith(undefined, undefined, ['manager@restaurant.com'])
+    expect(onApprove).toHaveBeenCalledWith(makeDraft().draftContent, undefined, ['manager@restaurant.com'], 'draft-proof')
   })
 
   it('rejects invalid CC email addresses', async () => {
@@ -146,6 +167,7 @@ describe('DraftEmailApprovalPanel', () => {
     render(
       <DraftEmailApprovalPanel
         isOpen={true}
+        sendOrAsk={AS_MANAGER}
         draftData={makeDraft()}
         onApprove={onApprove}
         onDiscard={onDiscard}
@@ -179,6 +201,7 @@ describe('DraftEmailApprovalPanel', () => {
     render(
       <DraftEmailApprovalPanel
         isOpen={true}
+        sendOrAsk={AS_MANAGER}
         draftData={makeDraft()}
         onApprove={onApprove}
         onDiscard={onDiscard}
@@ -196,6 +219,7 @@ describe('DraftEmailApprovalPanel', () => {
     render(
       <DraftEmailApprovalPanel
         isOpen={true}
+        sendOrAsk={AS_MANAGER}
         draftData={makeDraft({ providerEmail: 'specific@provider.com' })}
         onApprove={onApprove}
         onDiscard={onDiscard}
@@ -205,5 +229,68 @@ describe('DraftEmailApprovalPanel', () => {
 
     // The designated email should be visible in the To field
     expect(screen.getByText('specific@provider.com')).toBeInTheDocument()
+  })
+})
+
+describe('DraftEmailApprovalPanel — send or ask (founder, 2026-09-21)', () => {
+  it('a staff member holds to ASK: onAsk gets the exact words and copies, no seal is minted, onApprove never runs', async () => {
+    const onApprove = vi.fn()
+    const onAsk = vi.fn().mockResolvedValue('Asked. Your version is saved exactly as you wrote it.')
+    render(
+      <DraftEmailApprovalPanel
+        isOpen={true}
+        sendOrAsk={{
+          readable: true,
+          maySend: false,
+          mode: 'ask',
+          basis: null,
+          grant: null,
+          sentence: 'Your hold will ask a manager to send it; your version is kept exactly as you wrote it.',
+        }}
+        draftData={makeDraft()}
+        onApprove={onApprove}
+        onDiscard={vi.fn()}
+        onClose={vi.fn()}
+        onAsk={onAsk}
+      />
+    )
+    expect(screen.getByTestId('legacy-draft-standing')).toHaveTextContent(/Your hold will ask a manager/)
+    const die = screen.getByRole('button', { name: /Hold to ask a manager to send it/ })
+    fireEvent.keyDown(die, { key: 'Enter' })
+    fireEvent.keyDown(die, { key: 'Enter' })
+    await waitFor(() => expect(onAsk).toHaveBeenCalledOnce(), { timeout: 1500 })
+    expect(onAsk).toHaveBeenCalledWith(makeDraft().draftContent, [])
+    await waitFor(() => expect(screen.getByTestId('legacy-draft-asked')).toHaveTextContent(/saved exactly/))
+    expect(onApprove).not.toHaveBeenCalled()
+  })
+
+  it('with no standing known yet, the hold stays disabled — the panel never guesses "send"', () => {
+    render(
+      <DraftEmailApprovalPanel
+        isOpen={true}
+        draftData={makeDraft()}
+        onApprove={vi.fn()}
+        onDiscard={vi.fn()}
+        onClose={vi.fn()}
+        standingLoading
+      />
+    )
+    expect(screen.getByRole('button', { name: /send draft/i })).toBeDisabled()
+    expect(screen.getByTestId('legacy-draft-standing')).toHaveTextContent(/Reading whether your hold sends/)
+  })
+
+  it('shows who asked, to the manager who will release it', () => {
+    render(
+      <DraftEmailApprovalPanel
+        isOpen={true}
+        sendOrAsk={AS_MANAGER}
+        sendRequest={{ requestedBy: 'u-staff', requestedByName: 'Ayşe', requestedAt: '2026-09-21T11:00:00.000Z', current: true, ccEmails: [] }}
+        draftData={makeDraft()}
+        onApprove={vi.fn()}
+        onDiscard={vi.fn()}
+        onClose={vi.fn()}
+      />
+    )
+    expect(screen.getByTestId('legacy-draft-standing')).toHaveTextContent(/Ayşe asked for this to be sent/)
   })
 })

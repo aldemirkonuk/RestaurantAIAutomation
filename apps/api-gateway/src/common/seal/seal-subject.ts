@@ -146,6 +146,17 @@ export const SEAL_SUBJECT_KINDS = [
   "text_credit_purchase",
   "commodity_exposure",
   "procurement_document",
+  // ADR 0175 D9 (sealed 2026-09-21; admitted by 20261116100100): the AI
+  // negotiation's pause-for-approval, keyed on the conversation row, and the
+  // house composer's letter, keyed on the vendor it is written to.
+  "procurement_conversation",
+  "house_letter",
+  // ADR 0175 amendment, founder answer (4), 2026-09-21 (admitted by
+  // 20261116100600): issuing, revoking, re-approving and deleting a send
+  // grant are sealed on the server. Keyed on the grant; an issue, which has
+  // no grant row yet, is keyed on the house (the `payment_method` create
+  // shape).
+  "authority_grant",
   "house_data_terms",
   "configuration_batch",
   "integration_grant",
@@ -206,6 +217,21 @@ export function subjectNoun(kind: SealSubjectKind): string {
       // would name the row a correction touches rather than the record somebody
       // is standing behind.
       return "document";
+    case "procurement_conversation":
+      // "conversation": the subject of POST /conversations/:id/approve is the
+      // negotiation's pending message, and "a different order" would name the
+      // wrong thing — a conversation need not have one.
+      return "conversation";
+    case "house_letter":
+      // "letter": the composer's subject id is the VENDOR it writes to, but the
+      // thing sealed is the letter, and "a different vendor" would read as a
+      // statement about the book rather than about what was held.
+      return "letter";
+    case "authority_grant":
+      // "send grant", not "grant": `mcp_tool_grant` already reads "grant", and
+      // a refusal must not say the same words about an assistant's tool grant
+      // and a person's right to send to vendors.
+      return "send grant";
     case "house_data_terms":
       // "data terms", not "acceptance": the act being sealed is agreeing to
       // the house's data-and-privacy terms, and "a different acceptance"

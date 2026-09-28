@@ -41,6 +41,8 @@ export interface LetterDispatchRun {
   sent: number;
   failed: number;
   skipped: number;
+  /** Staff requests put back to waiting because their letter was not sent (founder, 2026-09-22). */
+  rewaited?: number;
   /**
    * `null` means the run COMPLETED, so `considered: 0` is a real quiet minute.
    * A string means it did not — the queue could not be read, or the dispatcher
@@ -68,9 +70,9 @@ export class HouseLettersCron {
     try {
       const result = await this.letters.dispatchDue();
       this.last = { at, error: null, ...result };
-      if (result.sent > 0 || result.failed > 0) {
+      if (result.sent > 0 || result.failed > 0 || result.rewaited > 0) {
         this.logger.log(
-          `house letters: ${result.sent} sent, ${result.failed} failed, ${result.skipped} claimed elsewhere.`,
+          `house letters: ${result.sent} sent, ${result.failed} failed, ${result.skipped} claimed elsewhere, ${result.rewaited} requests back to waiting.`,
         );
       }
     } catch (err) {

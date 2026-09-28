@@ -2,7 +2,6 @@ import { ProcurementService } from "./procurement.service";
 import { DatabaseService } from "../database/database.service";
 import { EventsService } from "../events/events.service";
 import { InventoryLedgerService } from "../inventory-ledger/inventory-ledger.service";
-import { QUANTITY_RECEIVED_UNIT_UNSTATED } from "./quantity-received-unit";
 
 /**
  * The order routes name the vendor, and the received count states its unit.
@@ -24,11 +23,12 @@ import { QUANTITY_RECEIVED_UNIT_UNSTATED } from "./quantity-received-unit";
  *    as `null`, and — read the other way round — as a one-element array. The
  *    array is the dangerous one: it is truthy and has no `name`, so a naive
  *    read reports every vendor as unnameable.
- *  * THE RECEIVED COUNT'S UNIT. Stated on a bottle order; REFUSED on a case
- *    order, because the receiving door writes that column in bottles and the
- *    desk writes it in the order's own unit, and the row does not say which.
- *    The refusal is the point of the field.
- *  * A ROUTE THAT DOES NOT SELECT THE COLUMN emits neither key.
+ *  * WHAT THE ORDER RECEIVED (ADR 0192). It is the stock ledger's sum for the
+ *    order and its item, shown in cases and loose bottles, never rounded, and
+ *    never read from `procurement_orders.quantity_received` — a row carrying
+ *    36 in that column with an empty ledger reads as nothing received. A
+ *    failed ledger read is `readable:false`, never a zero. A route that did not
+ *    read the ledger sends no `received` key.
  */
 
 type Row = Record<string, any>;
@@ -41,30 +41,62 @@ type Row = Record<string, any>;
  * caring which of the two the route uses. `select` records what was asked for,
  * which is how the embed itself is asserted rather than only its effect.
  */
-function makeDb(result: { data: any; error?: any; count?: number }) {
+function makeDb(
+  result: { data: any; error?: any; count?: number },
+  /**
+   * What the OTHER tables hold — the ledger, the door's events, the items and
+   * the order lines the received reading takes (ADR 0192). A table named here
+   * with `error` answers that error instead. Unnamed tables are empty.
+   */
+  tables: Record<string, Row[] | { error: { message: string } }> = {},
+) {
   const selects: string[] = [];
-  const q: any = {
-    select(sel: string) {
-      selects.push(sel);
-      return q;
-    },
-    eq: () => q,
-    in: () => q,
-    gte: () => q,
-    lte: () => q,
-    order: () => q,
-    range: () => q,
-    single: () => q,
-    maybeSingle: () => q,
-    then: (resolve: (v: any) => void) =>
-      resolve({
-        data: result.data,
-        error: result.error ?? null,
-        count: result.count ?? (Array.isArray(result.data) ? result.data.length : 1),
-      }),
+  const orderSelects: string[] = [];
+  const reads: string[] = [];
+  const from = (table: string) => {
+    const filters: Array<(r: Row) => boolean> = [];
+    const q: any = {
+      select(sel: string) {
+        selects.push(sel);
+        if (table === "procurement_orders") orderSelects.push(sel);
+        reads.push(table);
+        return q;
+      },
+      eq: (col: string, v: unknown) => {
+        filters.push((r) => r[col] === v);
+        return q;
+      },
+      in: (col: string, vs: unknown[]) => {
+        filters.push((r) => vs.includes(r[col]));
+        return q;
+      },
+      gte: () => q,
+      lte: () => q,
+      order: () => q,
+      range: () => q,
+      single: () => q,
+      maybeSingle: () => q,
+      then: (resolve: (v: any) => void) => {
+        if (table === "procurement_orders") {
+          return resolve({
+            data: result.data,
+            error: result.error ?? null,
+            count:
+              result.count ?? (Array.isArray(result.data) ? result.data.length : 1),
+          });
+        }
+        const t = tables[table];
+        if (t && !Array.isArray(t)) return resolve({ data: null, error: t.error });
+        return resolve({
+          data: (t ?? []).filter((r) => filters.every((f) => f(r))),
+          error: null,
+        });
+      },
+    };
+    return q;
   };
-  const db = { supabase: { from: () => q } } as unknown as DatabaseService;
-  return { db, selects };
+  const db = { supabase: { from } } as unknown as DatabaseService;
+  return { db, selects, orderSelects, reads };
 }
 
 function service(db: DatabaseService) {
@@ -107,11 +139,13 @@ function orderRow(over: Row = {}): Row {
 
 describe("the orders routes join the vendor's name", () => {
   it("embeds providers on the list route, in the SAME statement as the order", async () => {
-    const { db, selects } = makeDb({ data: [orderRow()], count: 1 });
+    const { db, orderSelects } = makeDb({ data: [orderRow()], count: 1 });
     const res = await service(db).listOrders("rest-1", {} as any);
 
-    expect(selects).toHaveLength(1);
-    expect(selects[0]).toContain("provider:provider_id(name)");
+    // ONE statement against the orders table; the other reads on this route
+    // are the ledger's (ADR 0192), which the received block below covers.
+    expect(orderSelects).toHaveLength(1);
+    expect(orderSelects[0]).toContain("provider:provider_id(name)");
     expect(res.orders[0].providerName).toBe("Vinifera Imports");
   });
 
@@ -173,62 +207,125 @@ describe("the orders routes join the vendor's name", () => {
   });
 });
 
-describe("the received count travels with its unit (ADR 0070)", () => {
-  it("states the unit on an order whose unit does not multiply", async () => {
-    const { db } = makeDb({
-      data: orderRow({ quantity_received: 3, unit_type: "bottle" }),
+describe("what the order received is the ledger's count (ADR 0192)", () => {
+  /** A 5-case order at 12 a case, as the line states it. */
+  const caseOrder = () =>
+    orderRow({ quantity: 5, unit_type: "case", bottles_total: 60, status: "DELIVERED" });
+  const item = { id: "inv-1", restaurant_id: "rest-1", uom: "bottle" };
+  const line = {
+    id: "line-1",
+    order_id: "ord-1",
+    restaurant_id: "rest-1",
+    unit_type: "case",
+    bottles_per_unit: 12,
+  };
+  const ledgerRow = (id: string, change: number, key: string, over: Row = {}) => ({
+    id,
+    restaurant_id: "rest-1",
+    order_id: "ord-1",
+    inventory_id: "inv-1",
+    stock_type: "live",
+    quantity_change: change,
+    idempotency_key: key,
+    ...over,
+  });
+
+  it("states five cases and five loose bottles, never a rounded case count", async () => {
+    const { db } = makeDb(
+      { data: caseOrder() },
+      {
+        restaurant_inventory: [item],
+        procurement_order_items: [line],
+        inventory_transactions: [
+          ledgerRow("t1", 60, "order-delivered-live:ord-1"),
+          ledgerRow("t2", 5, "door-receipt:ev-2"),
+        ],
+      },
+    );
+    const order = await service(db).getOrder("rest-1", "ord-1");
+    expect(order.received).toMatchObject({
+      readable: true,
+      quantityInStockUom: 65,
+      stockUom: "bottle",
+      packUnit: "case",
+      packSize: 12,
+      packs: 5,
+      looseInStockUom: 5,
+      words: "5 cases + 5 bottles",
     });
-    const order = await service(db).getOrder("rest-1", "ord-1");
-    expect(order.quantityReceived).toBe(3);
-    expect(order.quantityReceivedUom).toBe("bottle");
   });
 
-  it("REFUSES the unit on a case order — the column has two writers", async () => {
-    // The receiving door writes `quantity_received` in bottles
-    // (`receiving.service.ts:504`); markDelivered, updateOrder and
-    // verifyReceipt write it in the order's own unit. On a case order those
-    // differ by the pack size and the row does not record which wrote it, so
-    // the number arrives with no unit rather than under a guess.
-    const { db } = makeDb({
-      data: orderRow({ quantity_received: 36, unit_type: "case" }),
-    });
+  it("does NOT read procurement_orders.quantity_received: 36 in the column, an empty ledger, reads as nothing received", async () => {
+    const { db } = makeDb(
+      { data: { ...caseOrder(), quantity_received: 36 } },
+      { restaurant_inventory: [item], procurement_order_items: [line] },
+    );
     const order = await service(db).getOrder("rest-1", "ord-1");
-    expect(order.quantityReceived).toBe(36);
-    expect(order.quantityReceivedUom).toBeNull();
-  });
-
-  it("carries a null count as null, never as a zero", async () => {
-    const { db } = makeDb({ data: orderRow({ quantity_received: null }) });
-    const order = await service(db).getOrder("rest-1", "ord-1");
-    // Nothing has been received. A 0 here would be a count somebody took.
-    expect(order.quantityReceived).toBeNull();
-    expect(order.quantityReceivedUom).toBe("bottle");
-  });
-
-  it("sends NEITHER key when the route did not select the column", async () => {
-    // Same boundary argument as the vendor case above: the keys exist in memory
-    // holding `undefined` and `JSON.stringify` drops them, and the wire is the
-    // only shape a client can read. A route selecting a column list — the ones
-    // that take `"status, delivered_at, ..."` — has not learned the column is
-    // empty, and must not say it is.
-    const svc: any = service(makeDb({ data: null }).db);
-    const row: Record<string, unknown> = { ...orderRow(), wine_name: "Barolo Riserva" };
-    delete row.quantity_received;
-    const wire = JSON.parse(JSON.stringify(svc.mapOrderRow(row)));
+    expect(order.received?.quantityInStockUom).toBe(0);
+    expect(order.received?.words).toBe("0 bottles");
+    const wire = JSON.parse(JSON.stringify(order));
     expect("quantityReceived" in wire).toBe(false);
     expect("quantityReceivedUom" in wire).toBe(false);
-
-    // Selecting it and finding nothing is the OTHER answer, and it is sent.
-    const selected = JSON.parse(
-      JSON.stringify(svc.mapOrderRow({ ...row, quantity_received: null })),
-    );
-    expect("quantityReceived" in selected).toBe(true);
-    expect(selected.quantityReceived).toBeNull();
-    expect(selected.quantityReceivedUom).toBe("bottle");
   });
 
-  it("the refusal has words a screen can print", () => {
-    expect(QUANTITY_RECEIVED_UNIT_UNSTATED).toContain("bottles");
-    expect(QUANTITY_RECEIVED_UNIT_UNSTATED).toContain("the order's own unit");
+  it("a ledger that cannot be read is readable:false with words, never a zero", async () => {
+    const { db } = makeDb(
+      { data: caseOrder() },
+      {
+        restaurant_inventory: [item],
+        inventory_transactions: { error: { message: "connection reset" } },
+      },
+    );
+    const order = await service(db).getOrder("rest-1", "ord-1");
+    expect(order.received?.readable).toBe(false);
+    expect(order.received?.quantityInStockUom).toBeNull();
+    expect(order.received?.why).toContain("connection reset");
+  });
+
+  it("the list route reads the ledger ONCE for the whole page, not once per order", async () => {
+    const two = [caseOrder(), { ...caseOrder(), id: "ord-2", inventory_id: "inv-1" }];
+    const { db, reads } = makeDb(
+      { data: two, count: 2 },
+      {
+        restaurant_inventory: [item],
+        procurement_order_items: [line, { ...line, id: "line-2", order_id: "ord-2" }],
+        inventory_transactions: [
+          ledgerRow("t1", 24, "door-receipt:a"),
+          ledgerRow("t2", 7, "door-receipt:b", { order_id: "ord-2" }),
+        ],
+      },
+    );
+    const res = await service(db).listOrders("rest-1", {} as any);
+    expect(reads.filter((t) => t === "inventory_transactions")).toHaveLength(1);
+    expect(res.orders.map((o) => o.received?.words)).toEqual([
+      "2 cases",
+      "7 bottles",
+    ]);
+  });
+
+  it.each([
+    ["the canonical field", { quantityReceivedInOrderUom: 5 }],
+    ["its deprecated alias", { quantityReceived: 5 }],
+  ])("updateOrder refuses %s before anything is read or written", async (_l, body) => {
+    // It used to write the column from the body with no stock movement, so any
+    // caller could make an order "receive" a number the shelf never saw.
+    const { db, reads } = makeDb({ data: orderRow() });
+    let thrown: any;
+    try {
+      await service(db).updateOrder("rest-1", "ord-1", body as any);
+    } catch (e) {
+      thrown = e;
+    }
+    expect(thrown?.getStatus?.()).toBe(400);
+    expect(thrown.getResponse().reason).toBe("received_is_the_ledger");
+    expect(thrown.getResponse().message).toContain("ADR 0192");
+    expect(reads).toHaveLength(0);
+  });
+
+  it("sends NO received key from a route that did not read the ledger", () => {
+    const svc: any = service(makeDb({ data: null }).db);
+    const row: Record<string, unknown> = { ...orderRow(), wine_name: "Barolo Riserva" };
+    const wire = JSON.parse(JSON.stringify(svc.mapOrderRow(row)));
+    expect("received" in wire).toBe(false);
   });
 });

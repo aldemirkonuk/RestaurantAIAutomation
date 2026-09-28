@@ -42,6 +42,15 @@ vi.mock('./Compose/HouseDrafts', async (importOriginal) => ({
 vi.mock('./TemplateSheet', () => ({
   TemplateSheet: () => <div data-testid="letter-library" />,
 }));
+// The letters staff asked a manager to send (founder answer 3) are proved in
+// LetterRequests.test.tsx; here the panel is stubbed and its standing is fixed.
+vi.mock('./LetterRequestsPanel', () => ({
+  LetterRequestsPanel: () => <div data-testid="letter-requests-stub" />,
+}));
+vi.mock('./Compose/useComposeData', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./Compose/useComposeData')>()),
+  useLetterSenderStanding: () => ({ restaurantId: 'r1', canRelease: true }),
+}));
 
 // ADR 0160 §113 Open item 3: senders and strangers live on this page now. The
 // section is proved in `WhoIsWriting.test.tsx`; here it is a stub so this file
@@ -95,6 +104,11 @@ const noFailures = {
 const base = {
   rows: [] as ProcurementHistoryItem[],
   glance: { threads: 4, draftsPending: 1, sentLast30: 9 },
+  // The drafts THEMSELVES, added 2026-09-06 with the drafted-reply panel: the
+  // strip's figure and this list come from one read, so a mock that carries the
+  // count and not the rows is a mock of a state the hook cannot produce.
+  drafts: [] as unknown[],
+  draftsKnown: true,
   hasData: true,
   isError: false,
   errorMessage: '',

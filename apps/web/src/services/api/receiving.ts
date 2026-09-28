@@ -86,13 +86,25 @@ export interface DoorReceiptResponse {
   stockIssue?: string
 }
 
-/** What earlier trucks on this order already brought. */
+/**
+ * What earlier trucks on this order already brought — summed from the door's
+ * own events (ADR 0062 D3), in bottles, never rounded to boxes (ADR 0192). The
+ * stock ledger's count travels beside it.
+ */
 export interface DoorReceivedSoFar {
+  /** What the door's own events accepted, every truck, in bottles. */
   receivedQtyBottles: number
+  /** The stock ledger's count (ADR 0192), in bottles; null when it could not be read. */
+  onShelfBottles?: number | null
+  /** Counted at the door and not on the shelf yet, in bottles; null when not comparable or unread. */
+  countedNotBookedBottles?: number | null
   doorEventCount: number
-  packSize: number
-  /** Null — never 0 — when the pack size is not knowable. */
+  /** Bottles per box, exact. Null — never a guess — when the order states no pack. */
+  packSize: number | null
+  /** WHOLE boxes. Null — never 0 — when the pack size is not knowable. */
   receivedBoxes: number | null
+  /** What is left after the whole boxes, in bottles; null with `receivedBoxes`. */
+  receivedLooseBottles?: number | null
 }
 
 export interface UnverifiedDelivery {

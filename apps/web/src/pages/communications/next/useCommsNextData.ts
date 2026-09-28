@@ -148,6 +148,17 @@ export function useCommsNextData() {
   return {
     rows,
     glance,
+    /**
+     * The drafts themselves, not just how many there are.
+     *
+     * The strip has counted them since the rebuild; nothing could OPEN one,
+     * which is what packet 2 owed. Same query, so the count and the list can
+     * never disagree — a figure and a list from two reads is how a page ends up
+     * saying "3 waiting" over an empty column.
+     */
+    drafts: activeQ.data ?? [],
+    /** True only when the drafts register actually answered. */
+    draftsKnown: activeQ.data !== undefined,
     hasData: historyQ.data !== undefined,
     isError: historyQ.isError,
     errorMessage: errText(historyQ.error),

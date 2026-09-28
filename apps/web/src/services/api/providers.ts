@@ -4,7 +4,13 @@ import type { ProviderFilters } from '../../lib/query-keys'
 export interface Provider {
   id: string
   name: string
-  primaryBusinessType: 'Distributor' | 'Importer' | 'Wholesaler'
+  /**
+   * What kind of business this vendor is, typed by a person — or free text a
+   * house typed itself (AddProviderModal's "add a type" flow). `undefined`
+   * means nobody has said: the sheets render that as "Not stated", never as
+   * 'Distributor' (founder, 2026-09-21).
+   */
+  primaryBusinessType?: string
   winePortfolio: string
   phone: string
   email: string
@@ -82,7 +88,8 @@ export interface ProviderOrder {
 
 export interface CreateProviderInput {
   name: string
-  primaryBusinessType: 'Distributor' | 'Importer' | 'Wholesaler'
+  /** Undefined (never 'Distributor') when the form's choice is "Not stated". */
+  primaryBusinessType?: string
   winePortfolio?: string
   phone: string
   email: string
@@ -124,6 +131,15 @@ type ApiProviderPayload = {
   tier?: string
   notes?: string
   isActive?: boolean
+  /**
+   * Sent only when the caller passes one. This used to be collected by every
+   * provider form and dropped here — never reaching the request body — so
+   * choosing a business type was a write the page claimed and never made.
+   * On create a "Not stated" choice arrives as `undefined` and is not sent;
+   * on edit a change TO "Not stated" arrives as `''` and IS sent, which the
+   * gateway folds to NULL (clearing a type set earlier).
+   */
+  primaryBusinessType?: string
 }
 
 const mapProviderToApiPayload = (
@@ -181,6 +197,13 @@ const mapProviderToApiPayload = (
 
   if (data.paymentTerms !== undefined) {
     (payload as any).paymentTerms = data.paymentTerms
+  }
+
+  // Never a guessed default. `undefined` is not sent (create's "Not stated",
+  // or an edit that left the type alone); `''` is sent (an edit that chose
+  // "Not stated" — the gateway clears the column). See the type above.
+  if (data.primaryBusinessType !== undefined) {
+    payload.primaryBusinessType = data.primaryBusinessType
   }
 
   if (data.minimumOrderValue !== undefined) {

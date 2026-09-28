@@ -26,6 +26,8 @@ import { HouseLettersService, LETTER_STATUS } from "./house-letters.service";
 import { composeCreditLetter } from "./credit-letter";
 import { composerGuardrails } from "./composer-guardrails";
 import { CreditsController } from "../../procurement/documents/credits.controller";
+import type { VendorSendAuthorityService } from "../../organizations/vendor-send-authority.service";
+import type { SealChallengeService } from "../../common/seal/seal-challenge.service";
 
 const HOUSE = "aaaaaaaa-0000-4000-8000-aaaaaaaaaaaa";
 const OTHER_HOUSE = "bbbbbbbb-0000-4000-8000-bbbbbbbbbbbb";
@@ -169,11 +171,35 @@ function sendable(): HouseSenderService {
   } as unknown as HouseSenderService;
 }
 
+/*
+ * The composer's two gates (ADR 0175 D9/D10, #436), stood in for here so this
+ * file keeps testing what it owns — the draft and ADR 0167's credit rule. WHO
+ * answers as a GRANTEE whatever the role (a staff member an owner named), so
+ * every refusal below is the credit rule's, never WHO's: the composition that
+ * matters is that a grant to send does not open a credit claim's letter to
+ * staff. WHO itself is house-letters-sealed.spec.ts's; the seal accepts any
+ * challenge. [#436 merging main ef8ecdf30, 2026-09-27.]
+ */
+const grantee = {
+  assertMaySend: async () => ({
+    mode: "send",
+    basis: "grant",
+    grant: { id: "grant-1", grantorUserId: "owner-1", expiresAt: null, limitAmount: null, limitCurrency: null },
+    role: "staff",
+  }),
+  witnessGrantUse: async () => undefined,
+} as unknown as VendorSendAuthorityService;
+const anySeal = {
+  redeem: async () => ({ sealId: "seal-1" }),
+} as unknown as SealChallengeService;
+
 function service(db: DatabaseService) {
   return new HouseLettersService(
     db,
     sendable(),
     {} as unknown as IntegrationsOauthService,
+    grantee,
+    anySeal,
   );
 }
 
@@ -450,7 +476,7 @@ describe("sending a draft is the approval", () => {
     ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
-  it("does not gate a letter with no draft behind it — writing by hand stays open to every role", async () => {
+  it("does not gate a letter with no draft behind it on the credit rule — a hand letter from anyone WHO admits (here a staff grantee) still queues", async () => {
     const { db, tables } = seed();
     const svc = service(db);
     const out = await svc.queue({

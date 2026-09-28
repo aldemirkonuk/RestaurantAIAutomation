@@ -2873,7 +2873,10 @@ class ProviderConversationAgent(BaseAgent):
 
     # Statuses that mean "a send for this conversation is already in flight,
     # already happened, or is CLOSED and must not be reattempted". A claim
-    # must never be granted over one of these. RELAY_REFUSED (added
+    # must never be granted over one of these. SEND_REFUSED is the gateway's
+    # own in-process send closing a draft it refused before anything left
+    # (founder, 2026-09-21, answer 6; migration 20261116100800): a replayed
+    # approval must not re-open it through this path. RELAY_REFUSED (added
     # 2026-09-21, ADR 0099) belongs here for the same reason SEND_UNCONFIRMED
     # does: without it, a bus replay of the SAME approval event — the exact
     # scenario `_claim_conversation_for_send` exists to guard against — could
@@ -2885,6 +2888,7 @@ class ProviderConversationAgent(BaseAgent):
         "AUTO_SENT",
         "SEND_UNCONFIRMED",
         "RELAY_REFUSED",
+        "SEND_REFUSED",
     )
 
     # A house letter (`outbound_email_type = 'HOUSE_LETTER'`: the ADR 0118

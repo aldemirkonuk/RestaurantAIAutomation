@@ -36,10 +36,10 @@ const http = vi.mocked(apiClient) as unknown as { post: ReturnType<typeof vi.fn>
 
 const REFUSAL =
   'Order ORD-2026-00042 was already delivered on 2026-09-04 at 14:05 UTC. ' +
-  '12 recorded as received. An order is delivered once. Nothing was changed.'
+  '5 cases + 5 bottles on the shelf for it. An order is delivered once. Nothing was changed.'
 
 const SUMMARY =
-  'Delivered on 2026-09-04 at 14:05 UTC by Ada Lovelace, 12 bottles booked in.'
+  'Delivered on 2026-09-04 at 14:05 UTC by Ada Lovelace, 5 cases + 5 bottles on the shelf.'
 
 /**
  * The body the gateway actually sends, key for key.
@@ -55,11 +55,21 @@ const EARLIER = {
   receivedBy: 'user-7',
   receivedByName: 'Ada Lovelace',
   receivedByNameReason: null,
-  quantityReceived: 12,
-  unitType: 'bottle',
-  quantityUnitWhy:
-    'Stated in bottle: the order\'s own unit does not multiply.',
-  bottlesTotal: 12,
+  // ADR 0192: what the earlier delivery received is the ledger's count.
+  received: {
+    readable: true,
+    why: null,
+    quantityInStockUom: 65,
+    stockUom: 'bottle',
+    packUnit: 'case',
+    packSize: 12,
+    packs: 5,
+    looseInStockUom: 5,
+    words: '5 cases + 5 bottles',
+    rejectedAtDoorBottles: 0,
+    countedNotBookedBottles: 0,
+  },
+  bottlesTotal: 60,
   summary: SUMMARY,
 }
 
@@ -179,13 +189,28 @@ describe('alreadyDeliveredRefusal — one parser, four surfaces', () => {
     expect(alreadyDeliveredWords(noSummary!)).toBe(REFUSAL)
   })
 
+  it('reads an unreadable ledger as unreadable, never as a count', () => {
+    const refused = alreadyDeliveredRefusal(
+      conflict({
+        ...EARLIER,
+        received: { readable: false, why: 'The stock ledger could not be read (timeout).' },
+        summary: 'Delivered on 2026-09-04 at 14:05 UTC by Ada Lovelace.',
+      }),
+    )
+    expect(refused!.earlierDelivery!.received).toMatchObject({
+      readable: false,
+      quantityInStockUom: null,
+      why: 'The stock ledger could not be read (timeout).',
+    })
+  })
+
   it('keeps a failed name lookup distinct from a delivery nobody signed for', () => {
     const unnamed = alreadyDeliveredRefusal(
       conflict({
         ...EARLIER,
         receivedByName: null,
         receivedByNameReason: 'the people register could not be read (timeout)',
-        summary: 'Delivered on 2026-09-04 at 14:05 UTC by someone this house could not look up, 12 bottles booked in.',
+        summary: 'Delivered on 2026-09-04 at 14:05 UTC by someone this house could not look up, 5 cases + 5 bottles on the shelf.',
       })
     )
     expect(unnamed!.earlierDelivery!.receivedBy).toBe('user-7')

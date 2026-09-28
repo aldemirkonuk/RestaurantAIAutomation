@@ -39,6 +39,13 @@ function harness(options: {
   redeemThrows?: Error;
   deliverThrows?: Error;
   updateError?: { message: string } | null;
+  /**
+   * What the stock ledger holds for the order (ADR 0192 — "received" is the
+   * ledger's sum). The order's item states `bottle` as its stock unit.
+   */
+  ledger?: Row[];
+  /** What markDelivered's ledger read-back says, when a case needs another. */
+  deliveredReceived?: Row;
 }): Harness {
   const updates: Harness["updates"] = [];
   const reads: Harness["reads"] = [];
@@ -61,7 +68,21 @@ function harness(options: {
         },
         is: (c: string, v: unknown) => ((entry.filters[c] = v), q),
         eq: (c: string, v: unknown) => ((entry.filters[c] = v), q),
+        in: (c: string, v: unknown) => ((entry.filters[c] = v), q),
         order: () => q,
+        // The received reading's paged reads (`shelf-received.ts`). Only the
+        // ledger and the item carry rows here; the door's events and the order
+        // lines are empty, which is the ordinary one-tap case.
+        range: async () => {
+          if (table === "inventory_transactions")
+            return { data: options.ledger ?? [], error: null };
+          if (table === "restaurant_inventory")
+            return {
+              data: [{ id: (options.order as Row | null)?.inventory_id, uom: "bottle" }],
+              error: null,
+            };
+          return { data: [], error: null };
+        },
         maybeSingle: async () => {
           if (table === "procurement_orders") {
             if (options.orderError) return { data: null, error: options.orderError };
@@ -109,6 +130,12 @@ function harness(options: {
         status: "DELIVERED",
         quantity: 12,
         bottlesTotal: 72,
+        // markDelivered's own read-back of the ledger (ADR 0192).
+        received: options.deliveredReceived ?? {
+          readable: true,
+          quantityInStockUom: 72,
+          stockUom: "bottle",
+        },
       } as any;
     },
   } as any;
@@ -224,6 +251,30 @@ describe("the first real one-tap action — confirming a delivery", () => {
     expect(h.updates[0].payload.executed_by).toBe("user-1");
   });
 
+  it("records the bottles the LEDGER holds, not the order's bottles_total (ADR 0192)", async () => {
+    // A refused movement books nothing; the record of the act must say so.
+    const booked0 = harness({
+      action: DELIVERY_CARD,
+      order: ORDER,
+      deliveredReceived: { readable: true, quantityInStockUom: 0, stockUom: "bottle" },
+    });
+    await booked0.service.executeAction("act-1", "rest-A", "user-1", {} as any, "seal-token");
+    expect(
+      (booked0.updates[0].payload.execution_result as Row).bottlesBooked,
+    ).toBe(0);
+
+    // A ledger that could not be read back is null — never the order's 72.
+    const unread = harness({
+      action: DELIVERY_CARD,
+      order: ORDER,
+      deliveredReceived: { readable: false, why: "timeout" },
+    });
+    await unread.service.executeAction("act-1", "rest-A", "user-1", {} as any, "seal-token");
+    expect(
+      (unread.updates[0].payload.execution_result as Row).bottlesBooked,
+    ).toBeNull();
+  });
+
   it("does not record a delivery that threw", async () => {
     const h = harness({
       action: DELIVERY_CARD,
@@ -263,12 +314,20 @@ describe("the first real one-tap action — confirming a delivery", () => {
         ...ORDER,
         status: "DELIVERED",
         order_number: "ORD-2026-00042",
+        inventory_id: "inv-9",
         delivered_at: "2026-09-04T14:05:00.000Z",
         received_by: "user-7",
-        quantity_received: 12,
         unit_type: "bottle",
       },
       user: { user_id: "user-7", name: "Ada Lovelace" },
+      ledger: [
+        {
+          order_id: "ord-9",
+          inventory_id: "inv-9",
+          quantity_change: 12,
+          idempotency_key: "order-delivered-live:ord-9",
+        },
+      ],
     });
 
     let thrown: any;
@@ -285,7 +344,7 @@ describe("the first real one-tap action — confirming a delivery", () => {
     expect(body.orderId).toBe("ord-9");
     expect(body.orderNumber).toBe("ORD-2026-00042");
     expect(body.earlierDelivery.summary).toBe(
-      "Delivered on 2026-09-04 at 14:05 UTC by Ada Lovelace, 12 bottles booked in.",
+      "Delivered on 2026-09-04 at 14:05 UTC by Ada Lovelace, 12 bottles on the shelf.",
     );
     // The seal is never minted or spent, and nothing is recorded — the whole
     // reason this check stays ahead of `markDelivered`'s own.
@@ -302,10 +361,18 @@ describe("the first real one-tap action — confirming a delivery", () => {
       order: {
         ...ORDER,
         status: "PARTIALLY_RECEIVED",
+        inventory_id: "inv-9",
         delivered_at: "2026-09-04T14:05:00.000Z",
-        quantity_received: 3,
         unit_type: "bottle",
       },
+      ledger: [
+        {
+          order_id: "ord-9",
+          inventory_id: "inv-9",
+          quantity_change: 3,
+          idempotency_key: "door-receipt:ev-1",
+        },
+      ],
     });
 
     let thrown: any;
@@ -317,9 +384,13 @@ describe("the first real one-tap action — confirming a delivery", () => {
     expect(thrown.getStatus()).toBe(409);
     expect(thrown.message).toMatch(/receiving door/i);
     const earlier = thrown.getResponse().earlierDelivery;
-    expect(earlier.quantityReceived).toBe(3);
-    // `unit_type: "bottle"` does not multiply, so the count's unit is stated.
-    expect(earlier.unitType).toBe("bottle");
+    // What the door booked, read from the ledger (ADR 0192), in the item's unit.
+    expect(earlier.received).toMatchObject({
+      readable: true,
+      quantityInStockUom: 3,
+      stockUom: "bottle",
+      words: "3 bottles",
+    });
     expect(h.calls).toEqual([]);
   });
 
@@ -619,6 +690,8 @@ function sealedHarness(seed: Row[] = [], action: Row = DELIVERY_CARD): SealedHar
         status: "DELIVERED",
         quantity: 12,
         bottlesTotal: 72,
+        // markDelivered's own read-back of the ledger (ADR 0192).
+        received: { readable: true, quantityInStockUom: 72, stockUom: "bottle" },
       } as any;
     },
   } as any;

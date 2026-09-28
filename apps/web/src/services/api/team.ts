@@ -267,8 +267,24 @@ export async function createCoverageTemplate(body: Record<string, any>, rid?: st
   const { data } = await apiClient.post(`${base(rid)}/coverage-templates`, body)
   return data
 }
-export async function deleteCoverageTemplate(id: string, rid?: string) {
-  await apiClient.delete(`${base(rid)}/coverage-templates/${id}`)
+/** A coverage rule as `coverage_templates` stores it (baseline `:2574-2582`). */
+export interface CoverageTemplateRow {
+  id: string
+  restaurant_id?: string
+  day_of_week: number | null
+  shift_period: string
+  role: string
+  min_staff: number
+  created_at?: string
+}
+/**
+ * Removes one rule of this house and answers with the row that went. The
+ * gateway answers 404 when this house has no rule by that id — it no longer
+ * says 200 over a delete that removed nothing (founder, 2026-09-26, item 51).
+ */
+export async function deleteCoverageTemplate(id: string, rid?: string): Promise<CoverageTemplateRow> {
+  const { data } = await apiClient.delete<CoverageTemplateRow>(`${base(rid)}/coverage-templates/${id}`)
+  return data
 }
 
 // ── Performance / sales ─────────────────────────────────────────────────
@@ -276,12 +292,34 @@ export async function getMemberPerformance(memberId: string, rid?: string): Prom
   const { data } = await apiClient.get<MemberPerformance>(`${base(rid)}/members/${memberId}/performance`)
   return data
 }
-export async function ingestSales(body: Record<string, any>, rid?: string) {
+/**
+ * One service's figures for one person — the `IngestSalesDto` shape
+ * (`team.dto.ts`). A blank figure is sent as 0, as the legacy panel did; the
+ * gateway writes the same row either way. A second write for the same person
+ * and day REPLACES the first (`uq_server_sales`).
+ */
+export interface SalesEntry {
+  memberId: string
+  serviceDate: string
+  covers?: number
+  netSales?: number
+  wineSales?: number
+  checks?: number
+  /** 'manual' for typed in, 'csv' for a file — the two the legacy panel wrote. */
+  source?: string
+}
+export interface SalesBatchResult {
+  inserted: number
+  /** Rows naming someone not on this house's roster — not written, named back. */
+  skipped: number
+  skippedRows: Array<{ memberId: string; serviceDate: string }>
+}
+export async function ingestSales(body: SalesEntry, rid?: string) {
   const { data } = await apiClient.post(`${base(rid)}/sales`, body)
   return data
 }
-export async function ingestSalesBatch(rows: Record<string, any>[], rid?: string) {
-  const { data } = await apiClient.post(`${base(rid)}/sales/batch`, { rows })
+export async function ingestSalesBatch(rows: SalesEntry[], rid?: string): Promise<SalesBatchResult> {
+  const { data } = await apiClient.post<SalesBatchResult>(`${base(rid)}/sales/batch`, { rows })
   return data
 }
 

@@ -644,7 +644,6 @@ def seed_procurement_orders(restaurant_id, provider_ids, inventory_items):
             "priority_level": 2,
             "expected_delivery_date": (now - timedelta(days=1)).strftime("%Y-%m-%d"),
             "delivered_at": (now - timedelta(hours=4)).isoformat(),
-            "quantity_received": 18,
             "price_verified": True,
             "negotiation_attempts": 1,
             "last_negotiation_at": (now - timedelta(days=5)).isoformat(),
