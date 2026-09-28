@@ -37,9 +37,12 @@
  * and `DeliveryStockService.bookAtTheDoor`, through
  * `queueResearchIfLibraryLacks`), the naming of a delivery that booked
  * nothing, a verification correction that booked bottles in
- * (`applyReceiptAdjustment`), and a rename. The unique index on the item id
- * is the "once". Not wired, stated in ADR 0192: count corrections, POS sales,
- * and the API-only `POST /inventory-ledger/transactions`.
+ * (`applyReceiptAdjustment`), a rename, and — as of round 6z, founder,
+ * 2026-09-22, verbatim pick 8: "Queue it; Mudavym + hold (Recommended)" —
+ * `POST /inventory-ledger/transactions` (bulk included: it calls the single
+ * path per line), on any positive `quantityChange`, `queuedFrom: "receiving"`.
+ * The unique index on the item id is the "once". Still not wired, stated in
+ * ADR 0192: count corrections and POS sales.
  *
  * Tables: `house_item_research` (20260921170500, 20260921170520).
  */

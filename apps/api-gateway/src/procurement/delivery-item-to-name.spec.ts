@@ -15,6 +15,7 @@
 import { ForbiddenException } from "@nestjs/common";
 import { FakeDb } from "../notifications/producers/testing/fake-db";
 import {
+  closeDeliveryItemToNameBookedElsewhere,
   nameAskWords,
   nameDeliveredItem,
   raiseDeliveryItemToName,
@@ -241,15 +242,23 @@ describe("naming it books the stock then — once, on the record", () => {
     expect(t.db.tables.procurement_orders[0].inventory_id).toBeNull();
   });
 
-  it("stock the door booked since is not booked again", async () => {
+  it("stock the door booked since is not booked again, and the ask closes itself as booked_elsewhere", async () => {
+    // Founder, 2026-09-22 (round 6z), verbatim pick 2: "Close by itself
+    // (Recommended)" — this read-time refusal is the fallback close; the
+    // proactive close (receiving.service.ts, delivery-stock.service.ts) is
+    // covered below, on the primitive itself.
     const t = build();
     t.db.tables.inventory_transactions.push({ order_id: ORDER, delivery_id: "d-1", idempotency_key: "delivery-line:d-1:doc:1" });
     await expect(name(t)).rejects.toThrow(/receiving door has booked this order's stock/);
     expect(t.live()).toHaveLength(0);
-    expect(t.db.tables.delivery_item_to_name[0].status).toBe("open");
+    expect(t.db.tables.delivery_item_to_name[0]).toMatchObject({
+      status: "booked_elsewhere",
+      closed_reason: "The receiving door booked this order's stock before its item was named.",
+    });
+    expect(t.db.tables.delivery_item_to_name[0].closed_at).toBeTruthy();
   });
 
-  it("stock the door's case count booked since (no delivery id) is not booked again", async () => {
+  it("stock the door's case count booked since (no delivery id) is not booked again, and the ask closes itself", async () => {
     const t = build();
     t.db.tables.inventory_transactions.push({
       restaurant_id: HOUSE,
@@ -262,7 +271,21 @@ describe("naming it books the stock then — once, on the record", () => {
     });
     await expect(name(t)).rejects.toThrow(/booked since it was delivered \(at the door, at its verification, or by an earlier delivery\)/);
     expect(t.live()).toHaveLength(0);
-    expect(t.db.tables.delivery_item_to_name[0].status).toBe("open");
+    expect(t.db.tables.delivery_item_to_name[0].status).toBe("booked_elsewhere");
+  });
+
+  it("an ask already closed as booked_elsewhere says why naming refuses, instead of the generic 'already named' 409", async () => {
+    const t = build({ ask: { status: "booked_elsewhere", closed_at: "2026-09-22T09:00:00Z", closed_reason: "A verification booked this order's stock before its item was named." } });
+    let thrown: any;
+    try {
+      await name(t);
+    } catch (e) {
+      thrown = e;
+    }
+    expect(thrown?.getStatus?.()).toBe(409);
+    expect(thrown.getResponse().reason).toBe("delivery_item_booked_elsewhere");
+    expect(thrown.getResponse().message).toContain("A verification booked this order's stock before its item was named.");
+    expect(t.live()).toHaveLength(0);
   });
 
   it("a ledger that cannot be read refuses; nothing is written", async () => {
@@ -307,5 +330,45 @@ describe("naming it books the stock then — once, on the record", () => {
     const out = await name(t);
     expect(out.research).toBeNull();
     expect(t.db.tables.house_item_research).toHaveLength(0);
+  });
+});
+
+describe("closeDeliveryItemToNameBookedElsewhere — the ask closes itself (founder, 2026-09-22, round 6z, verbatim pick 2)", () => {
+  it("closes an open ask, once, with the reason for whichever door called it", async () => {
+    const t = build();
+    const out = await closeDeliveryItemToNameBookedElsewhere(t.db, { restaurantId: HOUSE, orderId: ORDER, via: "receiving_door" });
+    expect(out).toEqual({ ok: true, closed: true });
+    expect(t.db.tables.delivery_item_to_name[0]).toMatchObject({
+      status: "booked_elsewhere",
+      closed_reason: "The receiving door booked this order's stock before its item was named.",
+    });
+
+    // A second call (e.g. a verification correction on the same already-closed
+    // order) is a no-op, not a second close and not an overwritten reason.
+    const again = await closeDeliveryItemToNameBookedElsewhere(t.db, { restaurantId: HOUSE, orderId: ORDER, via: "verification" });
+    expect(again).toEqual({ ok: true, closed: false });
+    expect(t.db.tables.delivery_item_to_name[0].closed_reason).toBe(
+      "The receiving door booked this order's stock before its item was named.",
+    );
+  });
+
+  it("an order with no ask at all is a no-op, not an error", async () => {
+    const t = build({ ask: null });
+    const out = await closeDeliveryItemToNameBookedElsewhere(t.db, { restaurantId: HOUSE, orderId: ORDER, via: "verification" });
+    expect(out).toEqual({ ok: true, closed: false });
+  });
+
+  it("a named ask is left alone — naming already happened; this never re-closes it", async () => {
+    const t = build({ ask: { status: "named", named_by: OWNER, named_at: "2026-09-22T08:05:00Z", named_inventory_id: ITEM, bottles_booked: 6 } });
+    const out = await closeDeliveryItemToNameBookedElsewhere(t.db, { restaurantId: HOUSE, orderId: ORDER, via: "receiving_door" });
+    expect(out).toEqual({ ok: true, closed: false });
+    expect(t.db.tables.delivery_item_to_name[0].status).toBe("named");
+  });
+
+  it("a failed write is said, never thrown — the booking that triggered it already happened", async () => {
+    const t = build();
+    t.db.failures.delivery_item_to_name = "connection reset";
+    const out = await closeDeliveryItemToNameBookedElsewhere(t.db, { restaurantId: HOUSE, orderId: ORDER, via: "verification" });
+    expect(out).toEqual({ ok: false, error: expect.stringMatching(/could not be closed \(connection reset\)/) });
   });
 });

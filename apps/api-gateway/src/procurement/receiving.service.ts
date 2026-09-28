@@ -8,6 +8,7 @@ import {
 import { DatabaseService } from "../database/database.service";
 import { deliveryHasBookedOrder } from "./canonical/delivery-stock.service";
 import { queueResearchIfLibraryLacks } from "../inventory/house-item-research";
+import { closeDeliveryItemToNameBookedElsewhere } from "./delivery-item-to-name";
 import { normalizeUom, toBottles, Uom } from "./documents/document-types";
 import { readBookedOrderBottles } from "./booked-order-quantity";
 import { packsAndLoose, readOneShelfReceived, readShelfReceived } from "./shelf-received";
@@ -560,6 +561,24 @@ export class ReceivingService {
         researchIssue = `The stock is booked, but whether this wine needs research could not be recorded: ${queued.error}.`;
         this.logger.error(
           `door receipt for order ${input.orderId} booked, but its item was not queued for research: ${queued.error}`,
+        );
+      }
+    }
+
+    // A STALE NAME ASK CLOSES BY ITSELF (founder, 2026-09-22, round 6z,
+    // verbatim pick 2: "Close by itself (Recommended)"): the door just
+    // booked this order's stock, so any open delivery_item_to_name ask for
+    // it no longer needs naming. Never blocks the receipt; a failure is
+    // logged.
+    if (stockBooked && delta > 0) {
+      const closed = await closeDeliveryItemToNameBookedElsewhere(this.db.getClient(), {
+        restaurantId: input.restaurantId,
+        orderId: input.orderId,
+        via: "receiving_door",
+      });
+      if (!closed.ok) {
+        this.logger.error(
+          `door receipt for order ${input.orderId} booked, but its stale name-item ask was not closed: ${closed.error}`,
         );
       }
     }

@@ -32,6 +32,7 @@ import {
 } from "../inventory/house-item-research";
 import { type DeliveryBooking, verifyNoticeMessage } from "./delivered-notice";
 import {
+  closeDeliveryItemToNameBookedElsewhere,
   nameDeliveredItem as nameDeliveredItemAct,
   raiseDeliveryItemToName,
   readOpenDeliveryItemsToName,
@@ -5462,6 +5463,21 @@ export class ProcurementService {
             `verifyReceipt booked ${delta} bottles of ${inventoryId} on order ${orderId}, but the item was not queued for research: ${research.error}`,
           );
         }
+
+        // A STALE NAME ASK CLOSES BY ITSELF (founder, 2026-09-22, round 6z,
+        // verbatim pick 2: "Close by itself (Recommended)"): this correction
+        // just booked bottles in for the order, so any open
+        // delivery_item_to_name ask for it no longer needs naming. A
+        // failure is logged, not surfaced; the correction stands either way.
+        const closed = await closeDeliveryItemToNameBookedElsewhere(
+          this.databaseService.supabase,
+          { restaurantId, orderId, via: "verification" },
+        );
+        if (!closed.ok) {
+          this.logger.error(
+            `verifyReceipt booked ${delta} bottles of ${inventoryId} on order ${orderId}, but its stale name-item ask was not closed: ${closed.error}`,
+          );
+        }
       }
     }
 
@@ -8444,6 +8460,77 @@ export class ProcurementService {
       }),
     ]);
     return { request: waiting[0] ?? null, standing };
+  }
+
+  /**
+   * The deal request to decline or withdraw, by order id — shared by both so
+   * they read the same row the same way. This is the MOST RECENT request for
+   * the order, any state, not only `waiting`: a request declined/withdrawn by
+   * order id (rather than by a request id a list screen already holds) needs
+   * to tell "never asked" (404) apart from "already released a moment ago"
+   * (409, `decline`/`withdraw`'s own `assertStillWaiting`) — filtering to
+   * `waiting` first would flatten both into the same bare 404.
+   */
+  private async waitingDealRequestOrThrow(restaurantId: string, orderId: string) {
+    if (!this.vendorSendRequests) {
+      throw new InternalServerErrorException(
+        "Requests could not be read (the requests service is not wired into procurement). Nothing was changed.",
+      );
+    }
+    const row = await this.vendorSendRequests.latestForOrder(restaurantId, orderId, "confirm_deal");
+    if (!row) {
+      throw new NotFoundException("No deal request is waiting on this order. Nothing was changed.");
+    }
+    return row;
+  }
+
+  /**
+   * An owner or a manager declines a waiting deal request, saying why — the
+   * founder's answer of 2026-09-22 (round 6z), verbatim pick: (1) "Yes, same
+   * as letters (Recommended)": a waiting deal request is declined and
+   * withdrawn exactly like a house-letter request (`VendorSendRequestsService
+   * .decline`, shared by both kinds; `requestId` never comes from the
+   * client — this reads the order's own waiting row first, so a stale id
+   * cannot decline someone else's request). Nothing is committed.
+   */
+  async declineDealRequest(
+    restaurantId: string,
+    orderId: string,
+    userId: string,
+    reason: string,
+  ): Promise<{ id: string; state: string; says: string }> {
+    const waiting = await this.waitingDealRequestOrThrow(restaurantId, orderId);
+    const row = await this.vendorSendRequests!.decline({
+      restaurantId,
+      requestId: waiting.id,
+      kind: "confirm_deal",
+      userId,
+      reason,
+    });
+    this.emitConvUpdate(restaurantId, orderId, waiting.provider_id ?? null, orderId);
+    return { id: row.id, state: row.state, says: "Declined. The person who asked was told why, and nothing was confirmed." };
+  }
+
+  /**
+   * The person who asked withdraws their own waiting deal request — founder,
+   * 2026-09-22 (round 6z), verbatim pick (1): "Yes, same as letters
+   * (Recommended)". Nobody else may withdraw it (an owner or a manager
+   * declines instead, same rule as a letter request).
+   */
+  async withdrawDealRequest(
+    restaurantId: string,
+    orderId: string,
+    userId: string,
+  ): Promise<{ id: string; state: string; says: string }> {
+    const waiting = await this.waitingDealRequestOrThrow(restaurantId, orderId);
+    const row = await this.vendorSendRequests!.withdraw({
+      restaurantId,
+      requestId: waiting.id,
+      kind: "confirm_deal",
+      userId,
+    });
+    this.emitConvUpdate(restaurantId, orderId, waiting.provider_id ?? null, orderId);
+    return { id: row.id, state: row.state, says: "Withdrawn. It no longer waits for a manager, and nothing was confirmed." };
   }
 
   /**

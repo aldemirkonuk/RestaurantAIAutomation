@@ -366,3 +366,82 @@ describe("staff ask a manager to confirm a deal (founder answer 3, 2026-09-21)",
     expect(readout.standing.sentence).toMatch(/^Your hold will ask a manager to confirm this deal/);
   });
 });
+
+describe("a waiting deal request may be declined or withdrawn, exactly like a letter (founder, 2026-09-22, round 6z, verbatim pick 1: \"Yes, same as letters (Recommended)\")", () => {
+  const terms = { finalPrice: 190, quantity: 6, sendConfirmation: true };
+  const request = (t: ReturnType<typeof build>) => t.db.tables.vendor_send_requests[0];
+  const noticesOf = (t: ReturnType<typeof build>, type: string) => t.db.tables.notifications.filter((n) => n.type === type);
+
+  it("an owner or a manager declines with a reason: closed on the record, the staffer told why, and it no longer waits", async () => {
+    const t = build();
+    await t.service.requestConfirmDeal(HOUSE, ORDER, STAFF, terms);
+    const out = await t.service.declineDealRequest(HOUSE, ORDER, MANAGER, "We already ordered from them this week.");
+    expect(out).toMatchObject({ id: request(t).id, state: "closed" });
+    expect(request(t)).toMatchObject({
+      state: "closed",
+      closed_how: "declined",
+      closed_by: MANAGER,
+      closed_reason: "We already ordered from them this week.",
+    });
+    // The pre-existing shared bell wording said "Nothing was sent" for a
+    // deal too (it was built generic-first, for the letter path); fixed in
+    // the same pass since this is the first caller to exercise it for a deal.
+    const told = noticesOf(t, "vendor_deal_declined");
+    expect(told.map((n) => n.user_id)).toEqual([STAFF]);
+    expect(told[0].message).toBe(
+      "Mert Manager declined your request to confirm a deal. Why: We already ordered from them this week. Nothing was confirmed.",
+    );
+    expect((await t.service.dealRequestReadout(HOUSE, ORDER, MANAGER, terms)).request).toBeNull();
+  });
+
+  it("staff and grantees may not decline a deal request; an owner may", async () => {
+    const t = build();
+    await t.service.requestConfirmDeal(HOUSE, ORDER, STAFF, terms);
+    await expect(t.service.declineDealRequest(HOUSE, ORDER, GRANTEE, "no")).rejects.toThrow(/Only an owner or a manager may decline/);
+    await expect(t.service.declineDealRequest(HOUSE, ORDER, STAFF, "no")).rejects.toThrow(/Only an owner or a manager may decline/);
+    expect(request(t).state).toBe("waiting");
+    await t.service.declineDealRequest(HOUSE, ORDER, OWNER, "Not now.");
+    expect(request(t)).toMatchObject({ state: "closed", closed_by: OWNER });
+  });
+
+  it("a decline without a reason is refused and changes nothing", async () => {
+    const t = build();
+    await t.service.requestConfirmDeal(HOUSE, ORDER, STAFF, terms);
+    await expect(t.service.declineDealRequest(HOUSE, ORDER, MANAGER, "   ")).rejects.toThrow(/A decline says why/);
+    expect(request(t).state).toBe("waiting");
+  });
+
+  it("the staffer withdraws their own: closed on the record, and the owners and managers are told", async () => {
+    const t = build();
+    await t.service.requestConfirmDeal(HOUSE, ORDER, STAFF, terms);
+    const out = await t.service.withdrawDealRequest(HOUSE, ORDER, STAFF);
+    expect(out).toMatchObject({ state: "closed" });
+    expect(request(t)).toMatchObject({ state: "closed", closed_how: "withdrawn", closed_by: STAFF });
+    const told = noticesOf(t, "vendor_deal_withdrawn");
+    expect(told.map((n) => n.user_id).sort()).toEqual([MANAGER, OWNER].sort());
+    expect(told[0].message).toBe("Ayse Staff withdrew their request to confirm a deal. It no longer waits for you, and nothing was confirmed.");
+  });
+
+  it("nobody but the person who asked may withdraw it — a manager declines instead", async () => {
+    const t = build();
+    await t.service.requestConfirmDeal(HOUSE, ORDER, STAFF, terms);
+    await expect(t.service.withdrawDealRequest(HOUSE, ORDER, MANAGER)).rejects.toThrow(/Only the person who asked may withdraw/);
+    expect(request(t).state).toBe("waiting");
+  });
+
+  it("a released request cannot be declined or withdrawn after the fact", async () => {
+    const t = build();
+    await t.service.requestConfirmDeal(HOUSE, ORDER, STAFF, terms);
+    const { challenge } = await t.service.issueConfirmDealSeal(HOUSE, ORDER, MANAGER, terms);
+    await t.service.confirmDeal(HOUSE, ORDER, MANAGER, terms, challenge);
+    await expect(t.service.declineDealRequest(HOUSE, ORDER, OWNER, "late")).rejects.toThrow(/already released, so it was not declined/);
+    await expect(t.service.withdrawDealRequest(HOUSE, ORDER, STAFF)).rejects.toThrow(/already released, so it was not withdrawn/);
+    expect(request(t).state).toBe("released");
+  });
+
+  it("no waiting deal request on this order is a 404, whether declining or withdrawing", async () => {
+    const t = build();
+    await expect(t.service.declineDealRequest(HOUSE, ORDER, MANAGER, "no")).rejects.toMatchObject({ status: 404 });
+    await expect(t.service.withdrawDealRequest(HOUSE, ORDER, STAFF)).rejects.toMatchObject({ status: 404 });
+  });
+});

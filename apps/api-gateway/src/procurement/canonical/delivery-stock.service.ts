@@ -1,6 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../../database/database.service";
 import { queueResearchIfLibraryLacks } from "../../inventory/house-item-research";
+import { closeDeliveryItemToNameBookedElsewhere } from "../delivery-item-to-name";
 
 /**
  * DeliveryStockService — ADR 0103 A1 + A5: stock at the door, cost at VERIFIED.
@@ -323,6 +324,24 @@ export class DeliveryStockService {
           `bookAtTheDoor: delivery ${deliveryId} booked item ${inventoryId}, but it was not queued for research: ${queued.error}`,
         );
         research.push({ inventoryId, error: queued.error });
+      }
+    }
+
+    // A STALE NAME ASK CLOSES BY ITSELF (founder, 2026-09-22, round 6z,
+    // verbatim pick 2: "Close by itself (Recommended)"): this count just
+    // booked the order's stock at the door, so any open delivery_item_to_name
+    // ask for it no longer needs naming. Once per order, never per item; a
+    // failure is logged, not surfaced (the booking stands either way).
+    if (bookedInto.length > 0) {
+      const closed = await closeDeliveryItemToNameBookedElsewhere(this.db.getClient(), {
+        restaurantId,
+        orderId: delivery.value.orderId,
+        via: "receiving_door",
+      });
+      if (!closed.ok) {
+        this.logger.error(
+          `bookAtTheDoor: delivery ${deliveryId} booked order ${delivery.value.orderId}, but its stale name-item ask was not closed: ${closed.error}`,
+        );
       }
     }
 
