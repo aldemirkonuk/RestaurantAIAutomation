@@ -1,6 +1,6 @@
 ---
 type: page
-route: /providers
+route: /vendors
 slug: providers
 softwares: [vendor-directory, global-vendor-search]
 component: apps/web/src/pages/Providers.tsx
@@ -15,7 +15,42 @@ updated: 2026-08-26
 links: ["[[PAGE-CONTRACT]]", "[[distributors]]", "[[promotions]]", "[[vendor-prices]]", "[[orders]]"]
 ---
 
-# /providers — vendor roster + distributor discovery
+# /vendors (was /providers) — vendor roster + vendor discovery
+
+> [2026-09-25, lane W3-vendors, ADR 0221: the page's address is `/vendors` and its
+> name everywhere the house reads it (rail, header, sidebar, command palette,
+> shortcuts sheet, tours, help guide, the page's own heading) is **Vendors**.
+> `/providers` and `/distributors` redirect to it for good, carrying the rest of
+> the path, the query (`?vendor=<id>`) and the hash (`apps/web/src/lib/renamedRoute.tsx`);
+> `/distributors` adds `tab=discover` when the link did not name a tab. What did
+> NOT move: the page slug and flag (`providers`, `mudavym_design_providers`), the
+> code paths under `pages/providers/`, the gateway's `/providers` API and every
+> table and column. The rest of this note predates the rename and says
+> `/providers` where it means this page.]
+
+> [2026-09-26, lane W4-vendors-filters, ADR 0221 — two founder answers (founder,
+> 2026-09-26, round 6), built on #481. The bracket for ADR 0221 itself is owed by the
+> records lane (#466 holds that file; see the PR body for the text).
+> **Shortcut** — asked "Command palette: the 'go to vendors' shortcut is still 'g p'
+> (providers). Change it?"; chosen **"'g v', keep 'g p' working (Recommended)"** ("New
+> letter matches the word; the old one still works so nobody's habit breaks."). Rejected:
+> "Keep 'g p' only" ("No change."). Built: `GOTO_MAP` has `v` and `p`, both `/vendors`;
+> the palette entry shows `g v`; the shortcuts sheet says "g then w / r / v … (g then p
+> still works)" (`components/command/commands.ts`, `ShortcutsSheet.tsx`); pinned through
+> the real key handler by `CommandProvider.goto.test.tsx`.
+> **The word "distributor"** — asked "'distributor' is also the legal term for the licensed
+> wholesaler in the three-tier system (e.g. /connections: 'Licensed distributors'). Rename
+> those to 'vendor' too?"; chosen **"Keep the legal term (Recommended)"** ("Everywhere we
+> mean 'who I buy from' says vendor; 'distributor' stays only where it names the licensed
+> tier, since that's a real legal distinction."). Rejected: "Vendor everywhere" ("One word
+> across the whole product."). Verified on the rendered (Mudavym) pages: the one remaining
+> "who I buy from" use, /receiving's "provable from the distributor's own packing slip"
+> (`receiving/next/RcOwnerLedger.tsx`), now says vendor's. Kept as the licensed tier:
+> /connections "Licensed distributors" (`DistributorFeedPanel.tsx`), and the business-type
+> value "Distributor" beside Importer / Wholesaler (`VendorCatalogueCard.tsx`, the add/edit
+> vendor forms). Legacy-only copy (`Providers.tsx` "Find Distributors", `Settings.tsx`,
+> the legacy /communications filter "All distributors") is left for ADR 0149's cutover
+> delete, as #481 already left it.]
 
 > **Part of** [[08-softwares/vendor-directory|Vendor Directory & Intel]] · [[08-softwares/global-vendor-search|Global Vendor Search]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
 
