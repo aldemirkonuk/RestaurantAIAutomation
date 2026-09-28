@@ -260,6 +260,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [user]);
 
+  // Feed the Zustand mirror (stores/authStore.ts) from THIS provider's session,
+  // so login, logout and the initial /auth/me all reach it through one path.
+  // Held back until the first load settles: the store rehydrates its last user
+  // from localStorage, and syncing null on mount would blank it for every page
+  // load before /auth/me answers.
+  useEffect(() => {
+    if (loading) return;
+    useAuthStore.getState().syncSession(
+      user && {
+        userId: user.userId,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        restaurantId: user.restaurantId,
+      },
+    );
+  }, [user, loading]);
+
   // Load user from token on mount
   useEffect(() => {
     const loadUser = async () => {

@@ -1,13 +1,23 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import axios from 'axios'
 
-const API_URL = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000'
-
-const api = axios.create({
-  baseURL: API_URL,
-  timeout: 8000,
-})
+/**
+ * A read-only MIRROR of the session that `AuthContext` owns.
+ *
+ * This store used to run its own bootstrap: a module-level `loadUser()` fired
+ * on import (and the `@/stores` barrel is imported by AuthContext itself, so it
+ * fired on every route), made a second GET /auth/me through a private axios
+ * instance, and on any failure other than a recovered 401 wiped BOTH tokens
+ * and hard-navigated to /login. AuthContext had already been taught that only a
+ * 401 means "you are not who you said you were" — a 429, a 500 or a dropped
+ * connection say "ask again later" — so the store's twin defeated that fix
+ * whenever the two calls disagreed.
+ *
+ * The store now makes no request, holds no token and never navigates. Two
+ * fields are read across the app (`user` and `activeRestaurantId`); AuthContext
+ * is the only writer of both. Do not add a fetch, a redirect or a token write
+ * here — a second session owner is how the defect above got in.
+ */
 
 export interface User {
   userId: string
@@ -17,276 +27,50 @@ export interface User {
   restaurantId: string
 }
 
-export interface RegisterData {
-  email: string
-  password: string
-  name: string
-  restaurantId: string
-  role: 'owner' | 'manager' | 'staff'
-  phone?: string
-}
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 interface AuthState {
-  // State
   user: User | null
-  loading: boolean
-  error: string | null
   activeRestaurantId: string | null
-  availableRestaurants: string[]
-  accessToken: string | null
-  refreshToken: string | null
-  
-  // Computed
-  isAuthenticated: boolean
-  
-  // Actions
+
   setUser: (user: User | null) => void
-  setLoading: (loading: boolean) => void
-  setError: (error: string | null) => void
+  /** Records the branch the user picked. Ignores anything that is not a UUID. */
   setActiveRestaurantId: (restaurantId: string) => void
-  setTokens: (accessToken: string, refreshToken: string) => void
-  clearTokens: () => void
-  
-  // Auth methods
-  login: (email: string, password: string) => Promise<void>
-  register: (data: RegisterData) => Promise<void>
-  loginWithGoogle: (token: string) => Promise<void>
-  loginWithMicrosoft: (token: string) => Promise<void>
-  logout: () => Promise<void>
-  refreshAccessToken: () => Promise<void>
-  loadUser: () => Promise<void>
+  /**
+   * Mirror AuthContext's resolved session. `null` clears the mirror. When the
+   * store has no active restaurant yet it is seeded from the user's own
+   * restaurant, in memory only — AuthContext owns the localStorage key that
+   * drives the X-Restaurant-Id header.
+   */
+  syncSession: (user: User | null) => void
 }
 
 export const useAuthStore = create<AuthState>()(
   persist(
     (set, get) => ({
-      // Initial state
       user: null,
-      loading: true,
-      error: null,
       activeRestaurantId: null,
-      availableRestaurants: [],
-      accessToken: null,
-      refreshToken: null,
-      
-      // Computed
-      get isAuthenticated() {
-        return !!get().user
-      },
-      
-      // Setters
+
       setUser: (user) => set({ user }),
-      setLoading: (loading) => set({ loading }),
-      setError: (error) => set({ error }),
+
       setActiveRestaurantId: (restaurantId) => {
-        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
-          .test(restaurantId)
-        if (!isUuid) {
+        if (!UUID_RE.test(restaurantId)) {
           return
         }
         set({ activeRestaurantId: restaurantId })
         localStorage.setItem('activeRestaurantId', restaurantId)
       },
-      setTokens: (accessToken, refreshToken) => {
-        set({ accessToken, refreshToken })
-        localStorage.setItem('accessToken', accessToken)
-        localStorage.setItem('refreshToken', refreshToken)
-        api.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`
-      },
-      clearTokens: () => {
-        set({ accessToken: null, refreshToken: null })
-        localStorage.removeItem('accessToken')
-        localStorage.removeItem('refreshToken')
-        localStorage.removeItem('demoMode')
-        delete api.defaults.headers.common['Authorization']
-      },
-      
-      // Auth methods
-      login: async (email, password) => {
-        set({ loading: true, error: null })
-        
-        try {
-          const response = await api.post('/api/v1/auth/login', { email, password })
-          const { user, accessToken, refreshToken, availableRestaurants } = response.data
-          
-          get().setTokens(accessToken, refreshToken)
-          set({
-            user,
-            availableRestaurants: availableRestaurants || [user.restaurantId],
-            activeRestaurantId: user.restaurantId,
-            loading: false,
-          })
-        } catch (err: any) {
-          const errorMessage = err.response?.data?.message || 'Login failed'
-          set({ error: errorMessage, loading: false })
-          throw new Error(errorMessage)
-        }
-      },
-      
-      register: async (data) => {
-        set({ loading: true, error: null })
-        
-        try {
-          const response = await api.post('/api/v1/auth/register', data)
-          const { user, accessToken, refreshToken } = response.data
-          
-          get().setTokens(accessToken, refreshToken)
-          set({
-            user,
-            availableRestaurants: [user.restaurantId],
-            activeRestaurantId: user.restaurantId,
-            loading: false,
-          })
-        } catch (err: any) {
-          const errorMessage = err.response?.data?.message || 'Registration failed'
-          set({ error: errorMessage, loading: false })
-          throw new Error(errorMessage)
-        }
-      },
-      
-      loginWithGoogle: async (token) => {
-        set({ loading: true, error: null })
-        
-        try {
-          const response = await api.post('/api/v1/auth/oauth/google', { token })
-          const { user, accessToken, refreshToken, availableRestaurants } = response.data
-          
-          get().setTokens(accessToken, refreshToken)
-          set({
-            user,
-            availableRestaurants: availableRestaurants || [user.restaurantId],
-            activeRestaurantId: user.restaurantId,
-            loading: false,
-          })
-        } catch (err: any) {
-          const errorMessage = err.response?.data?.message || 'Google login failed'
-          set({ error: errorMessage, loading: false })
-          throw new Error(errorMessage)
-        }
-      },
-      
-      loginWithMicrosoft: async (token) => {
-        set({ loading: true, error: null })
-        
-        try {
-          const response = await api.post('/api/v1/auth/oauth/microsoft', { token })
-          const { user, accessToken, refreshToken, availableRestaurants } = response.data
-          
-          get().setTokens(accessToken, refreshToken)
-          set({
-            user,
-            availableRestaurants: availableRestaurants || [user.restaurantId],
-            activeRestaurantId: user.restaurantId,
-            loading: false,
-          })
-        } catch (err: any) {
-          const errorMessage = err.response?.data?.message || 'Microsoft login failed'
-          set({ error: errorMessage, loading: false })
-          throw new Error(errorMessage)
-        }
-      },
-      
-      logout: async () => {
-        try {
-          await api.post('/api/v1/auth/logout')
-        } catch (err) {
-          console.error('Logout error:', err)
-        } finally {
-          get().clearTokens()
-          set({
-            user: null,
-            activeRestaurantId: null,
-            availableRestaurants: [],
-            error: null,
-          })
-        }
-      },
-      
-      refreshAccessToken: async () => {
-        const { refreshToken } = get()
-        
-        if (!refreshToken) {
-          throw new Error('No refresh token available')
-        }
-        
-        try {
-          const response = await api.post('/api/v1/auth/refresh', { refreshToken })
-          const { accessToken: newAccessToken } = response.data
-          
-          get().setTokens(newAccessToken, refreshToken)
-        } catch (err) {
-          console.error('Token refresh failed:', err)
-          get().clearTokens()
-          set({ user: null })
-          throw err
-        }
-      },
-      
-      loadUser: async () => {
-        const token = localStorage.getItem('accessToken')
-        if (!token) {
-          set({ loading: false })
+
+      syncSession: (user) => {
+        if (!user) {
+          set({ user: null, activeRestaurantId: null })
           return
         }
-        if (token === 'demo-token') {
-          get().clearTokens()
-          localStorage.removeItem('demoMode')
-          set({ loading: false })
-          return
-        }
-
-        api.defaults.headers.common['Authorization'] = `Bearer ${token}`
-
-        const applyUserData = (user: any, availableRestaurants: any[]) => {
-          const restaurants = Array.isArray(availableRestaurants) && availableRestaurants.length > 0
-            ? availableRestaurants
-            : [user.restaurantId]
-          const storedActive = localStorage.getItem('activeRestaurantId')
-          const isUuid = storedActive
-            ? /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i.test(storedActive)
-            : false
-          const resolvedActive =
-            storedActive && isUuid && restaurants.includes(storedActive)
-              ? storedActive
-              : user.restaurantId
-          set({
-            user,
-            availableRestaurants: restaurants,
-            activeRestaurantId: resolvedActive,
-            accessToken: localStorage.getItem('accessToken'),
-            refreshToken: localStorage.getItem('refreshToken'),
-            loading: false,
-          })
-        }
-
-        try {
-          const response = await api.get('/api/v1/auth/me')
-          applyUserData(response.data.user, response.data.availableRestaurants)
-        } catch (err: any) {
-          // Access token expired — try refresh before giving up.
-          // Previously we called clearTokens() here which wiped the refresh
-          // token, causing every page query to 401 silently with no recovery.
-          if (err.response?.status === 401) {
-            const storedRefresh = localStorage.getItem('refreshToken')
-            if (storedRefresh) {
-              try {
-                const refreshRes = await api.post('/api/v1/auth/refresh', { refreshToken: storedRefresh })
-                const { accessToken: newAccess, refreshToken: newRefresh } = refreshRes.data
-                get().setTokens(newAccess, newRefresh || storedRefresh)
-                api.defaults.headers.common['Authorization'] = `Bearer ${newAccess}`
-                const retryRes = await api.get('/api/v1/auth/me')
-                applyUserData(retryRes.data.user, retryRes.data.availableRestaurants)
-                return
-              } catch {
-                // Refresh token itself is expired/invalid — fall through to clear
-              }
-            }
-          }
-          console.error('Failed to load user:', err)
-          get().clearTokens()
-          set({ user: null, loading: false })
-          window.location.href = '/login'
-        }
+        const seed =
+          !get().activeRestaurantId && UUID_RE.test(user.restaurantId)
+            ? user.restaurantId
+            : get().activeRestaurantId
+        set({ user, activeRestaurantId: seed })
       },
     }),
     {
@@ -294,11 +78,7 @@ export const useAuthStore = create<AuthState>()(
       partialize: (state) => ({
         user: state.user,
         activeRestaurantId: state.activeRestaurantId,
-        availableRestaurants: state.availableRestaurants,
       }),
     }
   )
 )
-
-// Initialize auth on app load
-useAuthStore.getState().loadUser()

@@ -20,7 +20,7 @@
  */
 
 export { useAuthStore } from './authStore'
-export type { User, RegisterData } from './authStore'
+export type { User } from './authStore'
 
 export { useUIStore } from './uiStore'
 export type { Theme } from './uiStore'
