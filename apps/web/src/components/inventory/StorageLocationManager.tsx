@@ -207,7 +207,7 @@ export function StorageLocationManager({
   }
 
   // P0: use updateLocation hook so edits are persisted to the server
-  const handleUpdate = (forceCapacity = false) => {
+  const handleUpdate = async (forceCapacity = false) => {
     if (!editingLocation || !formData.name) return
 
     const newCapacity = formData.capacity ?? editingLocation.capacity
@@ -224,7 +224,12 @@ export function StorageLocationManager({
       return
     }
 
-    updateLocation(editingLocation.id, {
+    // `parentId` is always sent, so an empty picker clears the parent (the
+    // hook sends it as `parent_id: null`). A refused save has already rolled
+    // the zone back and shown the reason; keep the form open with what the
+    // person typed instead of closing it as if it had saved (sweep #4, #5).
+    setCapacityWarning(null)
+    const saved = await updateLocation(editingLocation.id, {
       name: formData.name,
       description: formData.description,
       capacity: newCapacity,
@@ -234,8 +239,8 @@ export function StorageLocationManager({
       parentId: formData.parentId,
       color: formData.color || editingLocation.color,
     })
+    if (!saved) return
     setEditingLocation(null)
-    setCapacityWarning(null)
     resetForm()
   }
 
