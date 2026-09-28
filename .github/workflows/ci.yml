@@ -536,6 +536,30 @@ jobs:
           echo "::notice::A 'baseline row no longer describes the tree' failure is the GOOD direction: a site was fixed or moved. Lower or delete the row, and update the denominator in .planning/03-scenarios/DELIVERY-AUDIT.md section 6."
           echo "::notice::CANNOT CHECK (exit 2) means the guard scanned zero files, the baseline is missing or unparseable, or the detector matched zero sites while the baseline lists hundreds -- i.e. the pattern rotted. That is a failure, not a skip: a guard reporting its own absence as health is the fault this one exists to stop."
 
+  # ADR 0161. `check_read_errors_not_swallowed.py` proves a queue read's error was
+  # BOUND; this proves it was SURFACED -- a dispatcher that answers an unreadable
+  # queue with the zero-shape it uses for an empty one reports an outage as a quiet
+  # minute. Stdlib only. Exit 2 (cannot check) blocks like exit 1.
+  dispatch-read-failure:
+    name: A failed queue read is not a quiet minute
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: The guard still fires on the shape it exists to catch
+        run: python3 scripts/check_dispatch_read_failure_is_not_quiet.py --self-test
+
+      - name: No queue dispatcher reports an unreadable queue as an empty one
+        run: python3 scripts/check_dispatch_read_failure_is_not_quiet.py
+
+      - name: Explain a failure
+        if: failure()
+        run: |
+          echo "::notice::A queue dispatcher's read-error branch returned (or fell through to) the same zero-shape it returns for an empty queue. The cron then records error: null, so a database outage reads as a quiet minute."
+          echo "::notice::Fix: throw. The cron already catches it and records it as lastRun().error. Reference: HouseLettersService.dispatchDue (ADR 0161)."
+          echo "::notice::CANNOT CHECK (exit 2) means a registered dispatcher was renamed or moved (repoint EXPECTED, never delete the row), a file could not be parsed (add it to UNPARSEABLE with the reason), or the detector matched zero error blocks -- a failure, not a skip."
+
   decision-claims:
     name: Decision register matches reality
     runs-on: ubuntu-latest
@@ -1515,6 +1539,9 @@ jobs:
         # Added 2026-09-05 with the job itself, per the rule this list exists to
         # enforce.
         migration-versions-unique,
+        # Added 2026-09-18 with the job itself (ADR 0161), per the rule this list
+        # exists to enforce.
+        dispatch-read-failure,
       ]
     steps:
       - name: Checkout code
