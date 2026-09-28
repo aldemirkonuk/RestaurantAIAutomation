@@ -274,6 +274,27 @@ def adrs_here() -> dict[str, str]:
     return found
 
 
+# Frozen snapshots of unfinished local work (`.planning/handoff/preserve-local-work.sh`,
+# founder decision 2026-09-28). A draft ADR inside one is not a decision in flight: it
+# keeps whatever number it had on the laptop, and it gets a fresh number when a lane
+# carries it (the 0231 draft in wt-adr-mig-merge lands as 0235). Counting them as
+# collisions turned a real PR (#490, ADR 0231) red over a number the snapshot can never
+# take, and a snapshot is never edited to fix that. They still count toward the
+# next-free number, so nobody hands out a number a snapshot draft already wears.
+SNAPSHOT_PREFIXES = ("wip/preserve-",)
+
+
+def is_snapshot(ref: str) -> bool:
+    """A preserve snapshot, local (`wip/preserve-...`) or remote (`origin/wip/preserve-...`)."""
+    name = ref[len("origin/"):] if ref.startswith("origin/") else ref
+    return name.startswith(SNAPSHOT_PREFIXES)
+
+
+def decision_refs(refs: list[str]) -> list[str]:
+    """The refs whose ADRs are decisions in flight: everything except snapshots."""
+    return [r for r in refs if not is_snapshot(r)]
+
+
 def next_free(by_number: dict[str, set[str]]) -> str:
     """Lowest number above the highest claimed, swept across ALL refs.
 
@@ -329,21 +350,22 @@ def report_collision(number: str, mine: str, theirs: set[str], where, by_number)
 
 def run_default() -> int:
     refs = all_refs()
-    by_number, where = collect(refs)
+    by_number_all, _ = collect(refs)
+    by_number, where = collect(decision_refs(refs))
     mine = adrs_here()
     on_main = adrs_at(MAIN_REF)
 
     introduced = {n: s for n, s in mine.items() if on_main.get(n) != s}
     if not introduced:
         print("No ADR numbers introduced by this ref. Nothing to check.")
-        print(f"Next free number, swept across {len(refs)} refs: {next_free(by_number)}")
+        print(f"Next free number, swept across {len(refs)} refs: {next_free(by_number_all)}")
         return 0
 
     failed = False
     for number, slug in sorted(introduced.items()):
         others = {s for s in by_number.get(number, set()) if s != slug}
         if others:
-            report_collision(number, slug, others, where, by_number)
+            report_collision(number, slug, others, where, by_number_all)
             failed = True
 
     if failed:
@@ -357,11 +379,12 @@ def run_default() -> int:
 
 def run_audit() -> int:
     refs = all_refs()
-    by_number, where = collect(refs)
+    by_number_all, _ = collect(refs)
+    by_number, where = collect(decision_refs(refs))
     collisions = {n: s for n, s in by_number.items() if len(s) > 1}
     if not collisions:
         print(f"AUDIT: no ADR number collisions across {len(refs)} refs.")
-        print(f"Next free number: {next_free(by_number)}")
+        print(f"Next free number: {next_free(by_number_all)}")
         return 0
     print(f"AUDIT: {len(collisions)} colliding ADR number(s) across {len(refs)} refs.\n")
     for number, slugs in sorted(collisions.items()):
@@ -369,7 +392,7 @@ def run_audit() -> int:
         for slug in sorted(slugs):
             print(f"    {number}-{slug}.md")
             print(f"      on {fmt_refs(where[(number, slug)])}")
-    print(f"\nNext free number: {next_free(by_number)}")
+    print(f"\nNext free number: {next_free(by_number_all)}")
     return 1
 
 
@@ -620,6 +643,23 @@ def run_self_test() -> int:
         failures.append("README.md was parsed as an ADR")
     if not ADR_RE.match(".planning/decisions/0049-ecosystem-division-layer.md"):
         failures.append("a real ADR filename did not parse")
+
+    # Snapshots: skipped for collisions, and ONLY snapshots. A prefix that also
+    # matched ordinary wip/ branches, or a branch merely containing the word, would
+    # hide a real collision -- the exact thing this guard exists to catch.
+    for ref, want in (
+        ("origin/wip/preserve-20260928T1629Z/Projects--wt-adr-mig-merge-31b0c4b", True),
+        ("wip/preserve-20260928T1629Z/x", True),
+        ("origin/wip/2026-09-19/drops", False),
+        ("origin/docs/wip/preserve-notes", False),
+        ("origin/docs/model-dispatch-adr-0231", False),
+        ("origin/main", False),
+    ):
+        if is_snapshot(ref) != want:
+            failures.append(f"is_snapshot({ref!r}) is {not want}, want {want}")
+    kept = decision_refs(["origin/main", "origin/wip/preserve-s/t", "origin/fix/a"])
+    if kept != ["origin/main", "origin/fix/a"]:
+        failures.append(f"decision_refs kept {kept}, want main and fix/a only")
 
     refs_case = _ref_completeness_fixtures()
     if refs_case:
