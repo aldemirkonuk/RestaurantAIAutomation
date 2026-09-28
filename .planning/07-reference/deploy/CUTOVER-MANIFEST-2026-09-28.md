@@ -14,7 +14,8 @@
 2. **Trial v1, per group:** delete the group's files and the tests that import only them, strip its slot from App.tsx, run `tsc --noEmit` and vitest on every test that names a deleted file, `App` or `PageGate`; record; restore (`git checkout HEAD -- apps/web/src`).
 3. **Trial v2, per group:** v1 plus the two things v1 surfaced — files **already unreachable from `main.tsx`** that import the group (dead code that would stop compiling), and tests that read a deleted file by path or pin App.tsx's old route shape — each judged by hand and listed under the group.
 4. **Combined trial:** every group at once, plus the shared files, the redirect slots, and the records the deletion touches (§6). **Web `tsc --noEmit`: 0 errors. Full vitest: 332 files, 4,754 passed, 11 skipped, 0 failed** (baseline on the same tree before deletion: 381 files, 5,223 passed, 11 skipped). The 49 fewer files and 469 fewer tests are the deleted groups' own tests; none of the remaining tests was skipped or weakened to pass except the edits named under each group.
-5. **Not measured:** a feature-by-feature capability audit of every legacy page against its Mudavym page. The 2026-09-26 draft did that audit (its G0.3); its three gaps were ruled "build, not waive" (census §16 item 51) and are **built and on `main`**: vendor branches `providers/next/BranchesSection.tsx` (#484), the held low-stock band `notifications/next/HeldBand.tsx` (#486), team coverage-rule delete and hand-entered sales `team/next/CoverageRulesSheet.tsx`, `team/next/SalesSheet.tsx` (#436). This pass found one more legacy-only feature by accident, the `/reports` check scanner (group `reports` below) — so the audit is not known to be complete.
+5. **CI's own guards — missed by the trials above, found at review.** Trials v1, v2 and the combined trial ran web `tsc` and vitest only. The PR's CI then failed two Python guards the deletion broke: `check_windowed_figures.py` (exit 2, group `team`, §4) and `check_nightly_manifest.py` (exit 1, groups `arrival_book` and `recommendations`, §6). Fix round (2026-09-28, head after `1fefa23e0`): each guard `ci.yml` runs that needs no `gh`, database or gateway build was run on the branch, and on an export of `origin/main` `dcdb6d5e9` for comparison. That is 84 invocations, their `--self-test`s included. Two still fail on the branch. `check_windowed_figures.py` exits 2 — **not fixed**, see `team`. `check_no_direct_type_attributes_access.sh` exits 1, but that one is **pre-existing**: it flags only `pages/cellar/next/{RowExpander.tsx,cellar-columns.ts,CellarNext.test.tsx}`, which this branch does not touch. Every other invocation exits 0.
+6. **Not measured:** a feature-by-feature capability audit of every legacy page against its Mudavym page. The 2026-09-26 draft did that audit (its G0.3); its three gaps were ruled "build, not waive" (census §16 item 51) and are **built and on `main`**: vendor branches `providers/next/BranchesSection.tsx` (#484), the held low-stock band `notifications/next/HeldBand.tsx` (#486), team coverage-rule delete and hand-entered sales `team/next/CoverageRulesSheet.tsx`, `team/next/SalesSheet.tsx` (#436). This pass found one more legacy-only feature by accident, the `/reports` check scanner (group `reports` below) — so the audit is not known to be complete.
 
 ## 2. The routes, re-measured (App.tsx on the tree above, 72 `path=` entries)
 
@@ -51,7 +52,7 @@ Not counted as gaps: the nine public doors (`/login` … `/v/:slug`) and `/terms
 
 ## 4. The file groups
 
-Each group: its legacy root(s), the files only it reaches (with line counts on `d3bfacb82`), the importers of its root other than App.tsx's slot (the import-graph proof — **none** for every group), the tests that go with it, the hand-judged test edits, and both trials. **Every group passes trial v2.** Line counts are the file's lines, tests counted separately.
+Each group: its legacy root(s), the files only it reaches (with line counts on `d3bfacb82`), the importers of its root other than App.tsx's slot (the import-graph proof — **none** for every group), the tests that go with it, the hand-judged test edits, and both trials. **Every group passes trial v2** (web `tsc` + vitest). **One fails CI:** `team`, whose files a CI guard names (below; found at review, §1.5). Line counts are the file's lines, tests counted separately.
 
 **What trial v1 caught — every failure, and what still referenced the group.** No failure was a live (reachable from `main.tsx`) source file importing a legacy file. Every one was one of three kinds: (a) a file **already unreachable from `main.tsx`** that imports the group, (b) the group's **own** test that v1's first cut kept because it also mocks a live module or reads the page by path, (c) a live test that **pins App.tsx's old route shape** or reads the deleted page as a source contract. Line numbers are on `d3bfacb82`.
 
@@ -62,14 +63,14 @@ Each group: its legacy root(s), the files only it reaches (with line counts on `
 | receiving_desk | 1 test fails | `components/mudavym/PageGate.liveForEveryHouse.test.tsx:199` pins the old `/receiving` element | (c) |
 | vendors | tsc 5, 1 test | `components/providers/index.ts:1-2` (barrel), `pages/distributors/index.tsx:1-3`; `lib/renamedRoute.test.tsx:120` | (a), (c) |
 | communications | tsc 1 | `components/documents/TemplateLibrary.tsx:28` → `SavedSMSTemplates` | (a) |
-| team | tsc 5, 1 test | `pages/team/command/TeamCommand.honesty.test.tsx:99-103` | (b) |
+| team | tsc 5, 1 test; **CI** `check_windowed_figures.py` exit 2 (found at review, not fixed) | `pages/team/command/TeamCommand.honesty.test.tsx:99-103`; `scripts/check_windowed_figures.py:417-420` | (b); a CI guard's anchors |
 | receipts | tsc 1, 2 tests | `pages/ReceiptsPage.roles.test.tsx:52`; `pages/receipts/next/ReceiptsSeal.test.tsx:386` reads `ReceiptsPage.tsx` | (b), (c) |
 | reports | tsc 9 | `components/reports/organisms/AIInsightsSection.tsx:8`, `ChartsGrid.tsx:6-8`, `KPISection.tsx:9`, `organisms/index.ts:6-13` | (a) |
 | recommendations | tsc 2, 2 tests | `pages/Recommendations.test.tsx:39`, `pages/__tests__/InsightCatalog.honesty.test.tsx:20` | (b); the honesty file's command-palette case is live and kept |
 | calendar | tsc 20, 1 test | `pages/calendar/index.tsx` (barrel), `pages/calendar/EventCard.tsx:2`; `CalendarPage.reminders.test.tsx:14` | (a), (b) |
 | profile, logs | tsc 1, 1 test each | `pages/Profile.test.tsx:5`; `pages/LogsTimelinePage.test.tsx:42` | (b) |
 | admin, authorize, promotions, vendor_prices | 1-2 tests each | `PageGate.liveForEveryHouse.test.tsx:133,138` / `:145` / `:219` / `:227` pin the old elements | (c) |
-| receiving_door, documents, notifications, settings, cellar, ask, arrival_book, help | **pass** | — | — |
+| receiving_door, documents, notifications, settings, cellar, ask, arrival_book, help | **pass** (arrival_book and recommendations also broke CI's `check_nightly_manifest.py`; found at review and fixed, §6) | `e2e/nightly/manifest.json` `arrival.source`, `pending_pages[0].file` | a CI guard's data |
 
 ### dashboard
 
@@ -228,6 +229,7 @@ Tests:
 - **Tests/stories deleted with it:** 2 files, 533 lines.
 - **Trial v1** (group files + its obvious tests only): `tsc=2 tsErr=5 vitest=1  Test Files 1 failed | 26 passed (27) |  Tests 482 passed (482)`
 - **Trial v2** (with dead importers, its own tests and the edits above): `tsc=0 tsErr=0 vitest=0  Test Files 26 passed (26) |  Tests 482 passed (482)`
+- **Fails CI — not fixed on the draft PR.** `scripts/check_windowed_figures.py` (ADR 0051's guard) lists four of this group's files among /team's renderers: `ManagerShiftDesk.tsx`, `MyShifts.tsx`, `OpsRulesPanel.tsx` and `PerformancePanel.tsx` (`:417-420` on `main`). With them deleted, it exits 2: *"CANNOT CHECK … anchor file is missing: apps/web/src/pages/team/command/ManagerShiftDesk.tsx"*. That blocks like a violation, on purpose. The guard's header forbids the easy fix of dropping the anchors until it goes green. The group can only go with one reviewed change to that guard that does three things together: it drops the four; it adds the three rebuilt files that query and were never listed (`FormerStaff.tsx`, `SendGrantsSection.tsx`, `useHouseAreas.ts` — v3.0-TECH-DEBT.md, 2026-09-28; CLAIMS `TD-2026-09-28-TEAM-WINDOWED-GUARD-UNLISTED-QUERIES`); and it retargets the self-test cases that write into the legacy fixtures. The fix round tried two ways to make the branch green. Editing the guard was refused by the session's permission check, and so were the first steps toward restoring this group's files instead. So the draft branch still deletes the group and still fails that check. The coordinator or founder chooses (§7).
 <details><summary>Files</summary>
 
 - `components/team/ShiftImportModal.tsx` (268)
@@ -656,7 +658,15 @@ These are legacy branches **inside** files that stay, not files; a file-group tr
 - `scripts/check_adr_0140_door_outbox.py` — the deleted `DoorReceipt.tsx` leaves its screen list.
 - `scripts/read_error_baseline.json` + `DELIVERY-AUDIT.md` §6 — `SeatingDensityPanel.tsx`'s row retired; the baseline's `total_sites` had drifted (159 recorded, rows summing to 152), re-measured to 151 across 37 files.
 - `components/settings/inactiveFeatures.ts` and the gateway's `INACTIVE_FEATURE_FLAGS` entry for `enable_check_scanning` — both named the deleted `/reports` check scanner as the capability; corrected to say nothing reads a check. The gateway line is a string in a list the API never returns (the `INACTIVE_FEATURE_FLAGS` doc comment says so); gateway `tsc` 0, `jest src/settings` 11 suites / 179 tests passed.
-- Not changed, stated: `apps/web/e2e/nightly/manifest.json:608-615` lists `/recommendations/catalog` as a pending page whose `file` is the deleted `InsightCatalog.tsx`. That entry was already stale before this cutover (the route has rendered the Mudavym `CatalogView` for every house since #483); moving it into `pages` needs its sentences written and is left to the nightly's owner.
+- ~~Not changed, stated: `apps/web/e2e/nightly/manifest.json:608-615` lists `/recommendations/catalog` as a pending page whose `file` is the deleted `InsightCatalog.tsx`…~~ [Wrong, corrected 2026-09-28 in the fix round. The entry was stale for the *walk* before the cutover: the route has rendered `CatalogView` for every house since #483, so the nightly's pending check already failed. But `check_nightly_manifest.py` [5] passed on `main`, because the file existed. Deleting it with group `recommendations` is what broke CI.]
+- **The nightly e2e manifest** (`apps/web/e2e/nightly/manifest.json`), changed in the fix round. The cutover broke CI's check and would have broken the nightly walk after deploy:
+  - **`arrival`** — `source` was `pages/arrival`, which group `arrival_book` deletes (check [2]). `/get-started` now renders `GetStarted` with no gate and no `.mudavym` root. So the entry is now `legacy: "same"` with `source: "apps/web/src/pages"` (the page file's own directory). Its Arrival-book sentences are dropped: `GetStarted` renders no read-state sentence.
+  - **23 pages, `legacy` from `page` to `none`** (a new value). The nightly's flag-off pass asserted *no* Mudavym root for `page`. With the legacy slot gone, the override `"0"` renders the Mudavym page, so every one of those pages would have gone red after deploy. `none` asserts the Mudavym root in **both** passes. `same` was not used because it records the root and does not assert it. The pages: dashboard, orders, receiving, receiving_door, providers, communications, team, receipts, documents_reports, reports, notifications, recommendations, promotions, calendar, settings, profile, cellar, authorize_integration, logs, help, admin, vendor_prices and ask.
+  - **Redirects to `none`:** `document`, `connections` and `menu`, which were `redirect:/…`, and the `/cellar` alias. `/admin/health` keeps `redirect:/admin`, because its `next` slot is itself a `Navigate`.
+  - **`/recommendations/catalog`** moved from `pending_pages` to an alias of `recommendations`. Its `file` was the deleted `InsightCatalog.tsx` (check [5]), and it is gated under that enrolled slug (`App.tsx`, `PageGate page="recommendations"`). `pending_pages` is now empty.
+  - **Supporting edits:** `nightly.spec.ts` (the `none` branch), `lib.ts` (`PageEntry.legacy` doc) and `e2e/README.md` §6.
+  - **Re-checkable:** `check_nightly_manifest.py` does not read `legacy`, so CLAIMS `ADR-0149-CUTOVER-NIGHTLY-LEGACY-VALUES-MATCH-APP` (resolved) holds each value against App.tsx. It was mutation-tested both ways. A group the founder refuses restores its slot, which turns the row STALE until its entry goes back to `page`.
+  - **Verified:** `check_nightly_manifest.py` and its `--self-test` pass. `playwright test --config playwright.nightly.config.ts --list` loads the spec (6 tests). The walk itself was **not** run: it needs a deployed build and the simulator account.
 
 ## 7. His answers, group by group
 
@@ -671,7 +681,7 @@ Every row is a fork. The recommendation for every page group is **approve**: eac
 | vendors | 17 files, 8,363 lines; tests 7 files, 806 lines | Approve | Carries G8's world map (`distributors/command/*`, already ruled "delete" — item 52) and `Providers.tsx`; **keeps** `ProviderIntelligencePanel` and its tabs, which the live sheet renders |
 | communications | 8 files, 5,298 lines; tests 2 files, 242 lines | Approve | Shares four conversation files with `documents` |
 | documents | 1 file, 1,107 lines; tests 1 file, 57 lines | Approve | Shares the same four with `communications` |
-| team | 8 files, 2,736 lines; tests 2 files, 533 lines | Approve | Its G0.3 gap is built on `main` (#436) |
+| team | 8 files, 2,736 lines; tests 2 files, 533 lines | Approve, **but only after** a separate reviewed amendment to `check_windowed_figures.py`'s /team PageSpec lands first. That amendment drops the four legacy renderers, adds the three unlisted rebuilt files, and retargets the self-test (§4 `team`). Until then the draft's CI stays red on that guard. The other path is to hold the group, which means restoring its files on this branch | Its G0.3 gap is built on `main` (#436). Sub-fork: approve the guard amendment (a CI change, not a page deletion) |
 | receipts | 1 file, 532 lines; tests 1 file, 112 lines | Approve | Credits are rebuilt (G8); `ReceiptsSeal.test.tsx` loses its legacy §4 |
 | reports | 53 files, 9,698 lines; tests 23 files, 1,926 lines | Approve | Deletes the `/reports` check scanner — a stub that never read a check (`pages/Reports.tsx:554,926` at `c8bbf95de`: scans always `[]`, upload only logs the file name); Settings' "always available from Reports" copy corrected |
 | notifications | 1 file, 2,478 lines; no tests | Approve | Its G0.3 gap is built on `main` (#486) |
@@ -689,8 +699,11 @@ Every row is a fork. The recommendation for every page group is **approve**: eac
 ## 8. Not done, stated
 
 - **Per-group vitest was targeted, not full.** Each group's trial ran vitest on the tests that name a deleted file, `App` or `PageGate` (25-125 files a group); the full suite ran once, on the combined cutover (§1.4). A group he refuses changes the combined tree, so the branch needs a fresh full run after his answers.
-- **No capability audit was redone** (§1.5); the check scanner was found by accident.
+- **No capability audit was redone** (§1.6); the check scanner was found by accident.
 - **The gap list in §2 is a heuristic** over class names, not a look at each surface in a browser.
 - **G-shell and G-public were not trialled** and their line counts not measured (§5).
 - **`check_migration_versions_unique.py` was not run** — it needs `gh`, which this environment lacks. No migration is touched.
-- **Recorded rather than fixed:** the nightly e2e manifest's stale `/recommendations/catalog` entry (§6); `mudavym_design_arrival` left ACTIVE (§3).
+- **Recorded rather than fixed:** ~~the nightly e2e manifest's stale `/recommendations/catalog` entry (§6)~~ [fixed 2026-09-28, §6]; `mudavym_design_arrival` left ACTIVE (§3).
+- **`check_windowed_figures.py` still exits 2 on the draft branch** (group `team`, §4). Not fixed: both the guard edit and the group restore were refused by the session's permission check in the fix round. The founder or coordinator chooses (§7).
+- **The CI guard sweep (§1.5) skipped the guards that need `gh`, a database or a gateway build**: `check_migration_versions_unique.py`, `check_migration_order.py --event`, `check_gateway_boots.sh`, `pr_audit_gate.py`, and the `test_*` / eval scripts. No migration or gateway boot path is touched.
+- **The nightly walk was not run** (§6). Its manifest and spec changes are checked by the static guard, the new CLAIMS row and a Playwright `--list` load only.

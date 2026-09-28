@@ -33,7 +33,7 @@
       "slug": "dashboard",
       "flag": "mudavym_design_dashboard",
       "route": "/",
-      "legacy": "page",
+      "legacy": "none",
       "source": "apps/web/src/pages/dashboard/next",
       "empty": [
         "Nothing on the calendar",
@@ -56,7 +56,7 @@
       "slug": "orders",
       "flag": "mudavym_design_orders",
       "route": "/orders",
-      "legacy": "page",
+      "legacy": "none",
       "source": "apps/web/src/pages/orders/next",
       "empty": [
         "no active orders"
@@ -72,7 +72,7 @@
       "slug": "receiving",
       "flag": "mudavym_design_receiving",
       "route": "/receiving",
-      "legacy": "page",
+      "legacy": "none",
       "source": "apps/web/src/pages/receiving/next",
       "empty": [
         "Nothing queued on this device",
@@ -90,7 +90,7 @@
       "slug": "receiving_door",
       "flag": "mudavym_design_receiving_door",
       "route": "/receiving/{orderId}/door",
-      "legacy": "page",
+      "legacy": "none",
       "source": "apps/web/src/pages/receiving/next",
       "needs": {
         "param": "orderId",
@@ -106,7 +106,7 @@
       "slug": "providers",
       "flag": "mudavym_design_providers",
       "route": "/vendors",
-      "legacy": "page",
+      "legacy": "none",
       "source": "apps/web/src/pages/providers/next",
       "empty": [
         "no vendors",
@@ -121,7 +121,7 @@
       "slug": "communications",
       "flag": "mudavym_design_communications",
       "route": "/communications",
-      "legacy": "page",
+      "legacy": "none",
       "source": "apps/web/src/pages/communications/next",
       "empty": [
         "no vendor exchanges yet"
@@ -135,7 +135,7 @@
       "slug": "team",
       "flag": "mudavym_design_team",
       "route": "/team",
-      "legacy": "page",
+      "legacy": "none",
       "source": "apps/web/src/pages/team/next",
       "empty": [
         "Nobody is on the roster yet",
@@ -161,7 +161,7 @@
       "slug": "receipts",
       "flag": "mudavym_design_receipts",
       "route": "/receipts",
-      "legacy": "page",
+      "legacy": "none",
       "source": "apps/web/src/pages/receipts/next",
       "empty": [
         "Nothing awaits review \u2014 the paper trail is caught up",
@@ -178,7 +178,7 @@
       "slug": "documents_reports",
       "flag": "mudavym_design_documents_reports",
       "route": "/documents-reports",
-      "legacy": "page",
+      "legacy": "none",
       "source": "apps/web/src/pages/documents-reports/next",
       "empty": [
         "Nothing needs you. The registers keep counting without you",
@@ -195,7 +195,7 @@
       "slug": "document",
       "flag": "mudavym_design_document",
       "route": "/documents/{documentId}",
-      "legacy": "redirect:/receipts",
+      "legacy": "none",
       "source": "apps/web/src/pages/documents/next",
       "needs": {
         "param": "documentId",
@@ -214,7 +214,7 @@
       "slug": "reports",
       "flag": "mudavym_design_reports",
       "route": "/reports",
-      "legacy": "page",
+      "legacy": "none",
       "source": "apps/web/src/pages/reports/next",
       "failed_read": [
         "could not be read"
@@ -227,7 +227,7 @@
       "slug": "notifications",
       "flag": "mudavym_design_notifications",
       "route": "/notifications",
-      "legacy": "page",
+      "legacy": "none",
       "source": "apps/web/src/pages/notifications/next",
       "failed_read": [
         "The book could not be read",
@@ -241,8 +241,14 @@
       "slug": "recommendations",
       "flag": "mudavym_design_recommendations",
       "route": "/recommendations",
-      "legacy": "page",
+      "legacy": "none",
       "source": "apps/web/src/pages/recommendations/next",
+      "aliases": [
+        {
+          "route": "/recommendations/catalog",
+          "legacy": "none"
+        }
+      ],
       "failed_read": [
         "The book of scenarios could not be read",
         "Your goals could not be read"
@@ -258,7 +264,7 @@
       "slug": "promotions",
       "flag": "mudavym_design_promotions",
       "route": "/promotions",
-      "legacy": "page",
+      "legacy": "none",
       "source": "apps/web/src/pages/promotions/next",
       "empty": [
         "No offers are on the table right now."
@@ -271,7 +277,7 @@
       "slug": "calendar",
       "flag": "mudavym_design_calendar",
       "route": "/calendar",
-      "legacy": "page",
+      "legacy": "none",
       "source": "apps/web/src/pages/calendar/next",
       "failed_read": [
         "The reminder job could not be read",
@@ -287,7 +293,7 @@
       "slug": "settings",
       "flag": "mudavym_design_settings",
       "route": "/settings",
-      "legacy": "page",
+      "legacy": "none",
       "source": "apps/web/src/pages/settings/next",
       "failed_read": [
         "The carrying cost could not be read",
@@ -305,7 +311,7 @@
       "slug": "profile",
       "flag": "mudavym_design_profile",
       "route": "/profile",
-      "legacy": "page",
+      "legacy": "none",
       "source": "apps/web/src/pages/profile/next",
       "failed_read": [
         "Your account record could not be read",
@@ -321,12 +327,12 @@
       "slug": "cellar",
       "flag": "mudavym_design_cellar",
       "route": "/wines",
-      "legacy": "page",
+      "legacy": "none",
       "source": "apps/web/src/pages/cellar/next",
       "aliases": [
         {
           "route": "/cellar",
-          "legacy": "redirect:/wines"
+          "legacy": "none"
         }
       ],
       "failed_read": [
@@ -344,7 +350,7 @@
       "slug": "connections",
       "flag": "mudavym_design_connections",
       "route": "/connections",
-      "legacy": "redirect:/profile",
+      "legacy": "none",
       "source": "apps/web/src/pages/connections/next",
       "failed_read": [
         "could not be read",
@@ -356,7 +362,7 @@
       "slug": "authorize_integration",
       "flag": "mudavym_design_authorize_integration",
       "route": "/authorize/{integrationId}",
-      "legacy": "page",
+      "legacy": "none",
       "source": "apps/web/src/pages/authorize-integration",
       "needs": {
         "param": "integrationId",
@@ -382,7 +388,7 @@
       "slug": "logs",
       "flag": "mudavym_design_logs",
       "route": "/logs",
-      "legacy": "page",
+      "legacy": "none",
       "source": "apps/web/src/pages/logs/next",
       "static_text": [
         "A register that could not be read is named."
@@ -403,7 +409,7 @@
       "slug": "menu",
       "flag": "mudavym_design_menu",
       "route": "/menu",
-      "legacy": "redirect:/cellar",
+      "legacy": "none",
       "source": "apps/web/src/pages/menu/next",
       "empty": [
         "No current menu yet.",
@@ -422,7 +428,7 @@
       "slug": "help",
       "flag": "mudavym_design_help",
       "route": "/help",
-      "legacy": "page",
+      "legacy": "none",
       "source": "apps/web/src/pages/help/next",
       "static_text": [
         "What to do next"
@@ -438,7 +444,7 @@
       "slug": "admin",
       "flag": "mudavym_design_admin",
       "route": "/admin",
-      "legacy": "page",
+      "legacy": "none",
       "source": "apps/web/src/pages/admin/next",
       "aliases": [
         {
@@ -474,7 +480,7 @@
       "slug": "vendor_prices",
       "flag": "mudavym_design_vendor_prices",
       "route": "/vendor-prices",
-      "legacy": "page",
+      "legacy": "none",
       "source": "apps/web/src/pages/vendor-prices/next",
       "empty": [
         "Search for a bottle above to open its price register.",
@@ -489,7 +495,7 @@
       "slug": "ask",
       "flag": "mudavym_design_ask",
       "route": "/ask",
-      "legacy": "page",
+      "legacy": "none",
       "source": "apps/web/src/pages/ask/next",
       "empty": [
         "No asks yet in this house."
@@ -507,16 +513,8 @@
       "slug": "arrival",
       "flag": "mudavym_design_arrival",
       "route": "/get-started",
-      "legacy": "page",
-      "source": "apps/web/src/pages/arrival",
-      "empty": [
-        "Nothing is written yet. Give the book a menu and it opens already written."
-      ],
-      "failed_read": [
-        "This part of the book could not be read.",
-        "The folio history could not be read.",
-        "failure to read, not an empty menu"
-      ]
+      "legacy": "same",
+      "source": "apps/web/src/pages"
     }
   ],
   "public_pages": [
@@ -605,12 +603,5 @@
       "$comment": "ProtectedRoute-wrapped (App.tsx), not a public door"
     }
   ],
-  "pending_pages": [
-    {
-      "slug": "recommendations_catalog",
-      "route": "/recommendations/catalog",
-      "file": "apps/web/src/pages/InsightCatalog.tsx",
-      "held_by": "ADR 0143 (open fork)"
-    }
-  ]
+  "pending_pages": []
 }
