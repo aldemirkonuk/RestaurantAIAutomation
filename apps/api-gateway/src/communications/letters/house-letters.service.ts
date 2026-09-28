@@ -891,10 +891,9 @@ export class HouseLettersService {
    */
   async cancel(params: {
     restaurantId: string;
+    /** Who pulled it back — named on the staff request it re-opens, if any. */
     userId: string;
     id: string;
-    /** Who pulled it back — named on the staff request it re-opens, if any. */
-    userId?: string | null;
     /** The caller's role in this house (ADR 0162). See the R1b check below. */
     role?: string | null;
   }): Promise<{ id: string; status: string; says: string; requestWaitsAgain?: boolean }> {
