@@ -260,6 +260,12 @@ export class McpToolReadersService {
     // correlation-id lookup as a surface yet — that is a feature-scope
     // choice, not the security boundary. The house still comes from the
     // credential row and from nowhere else (ADR 0132).
+    //
+    // No `role` is passed either: a key is the house's, not a person's, so
+    // there is no reader's role to forward. `getTimeline` reads an omitted
+    // role as staff, so this tool and the day-book resource withhold a
+    // colleague's Away being set or ended (ADR 0218 round 4) from every key.
+    // Whether an assistant's key should read them is not ruled; see ADR 0218.
     const result = await this.timeline.getTimeline(restaurantId, {
       ...(args.limit ? { limit: Math.min(200, Math.max(1, args.limit)) } : {}),
     });
