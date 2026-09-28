@@ -244,6 +244,7 @@ function mkData(over: Record<string, unknown> = {}) {
     events,
     shown: events,
     hiddenByFilter: 0,
+    unexpandedSeries: [],
     byDay,
     hasEvents: true,
     isLoading: false,
@@ -517,6 +518,35 @@ describe('CalendarNext — honesty', () => {
     state.current = mkData({ hiddenByFilter: 3 });
     draw();
     expect(screen.getByText(/3 entries are held back by the filter/)).toBeInTheDocument();
+  });
+
+  // Sweep 2026-09-28 row 16: a series whose dates cannot be drawn is named,
+  // never left looking like a one-off entry.
+  it('names a repeating entry whose dates could not be drawn', () => {
+    state.current = mkData({
+      unexpandedSeries: [{ id: 'ev-9', title: 'Cellar count', reason: 'its repeat rule was not returned' }],
+    });
+    draw();
+    expect(
+      screen.getByText(/One repeating entry could not be drawn on every date it falls on/),
+    ).toHaveTextContent('“Cellar count”: its repeat rule was not returned');
+  });
+
+  // Sweep 2026-09-28 row 19: adding or deleting a custom type used to fail in
+  // silence. Both refusals reach the sheet's failure banner.
+  it.each([
+    ['createType', 'type name taken'],
+    ['deleteType', 'type in use'],
+  ])('says so when %s is refused', (key, message) => {
+    const data = mkData({
+      events: [event({ id: 'e1', title: 'Vega Sicilia crate', date: '2026-09-17' })],
+      [key]: { mutate: vi.fn(), isPending: false, error: new Error(message) },
+    });
+    state.current = data;
+    draw();
+    fireEvent.click(screen.getByText('Vega Sicilia crate'));
+    const sheet = screen.getByRole('dialog');
+    expect(within(sheet).getByText(new RegExp(`The gateway refused this write \\(${message}\\)`))).toBeInTheDocument();
   });
 });
 

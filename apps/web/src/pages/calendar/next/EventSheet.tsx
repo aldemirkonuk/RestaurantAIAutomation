@@ -149,7 +149,14 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
 
   const custom = useMemo(() => data.eventTypes.filter((t) => !t.isDefault), [data.eventTypes]);
   const saving = data.create.isPending || data.update.isPending;
-  const failure = data.create.error ?? data.update.error ?? data.remove.error;
+  // Adding or deleting a custom type is a write too; its refusal must reach
+  // the same banner (sweep 2026-09-28 row 19 — it used to vanish silently).
+  const failure =
+    data.create.error ??
+    data.update.error ??
+    data.remove.error ??
+    data.createType.error ??
+    data.deleteType.error;
 
   /**
    * The server owns this entry's reminder from here on, so any copy the legacy
