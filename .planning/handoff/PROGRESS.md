@@ -46,6 +46,13 @@ session that continued the desktop run (session_01GYea8ghmHSxrpWCjmRjXoq).
   (dead stock, puzzle activation, pairing promotion, basket), the card says "a manager's, in
   Promotions" and has no Act button. Rejected: "Hide these cards from staff", "Leave it as it
   is". Filed as **OD-176** and built in #493's fix round (workflow `wf_8cd0cd2a-574`).
+- **Founder items 88–92 (2026-09-28, `AskUserQuestion` on draft PR #494, the cutover manifest), verbatim:**
+  - **88** (which groups to delete): *"if the new version is avaliable then remove from all production activity and archive them in a compressed environement"* — every group has its new version live, so all 24 groups go (dashboard, orders, receiving desk, receiving door, vendors incl. the G8 world map, communications, documents, receipts, reports incl. the check-scanner stub, notifications, recommendations, calendar, settings, profile, logs, help, cellar, admin, authorize, ask, promotions, vendor prices, arrival book, redirect slots, and team per item 89).
+  - **89** (team group): *"Guard PR first, then delete (Recommended)"* — a separate reviewed PR amends `scripts/check_windowed_figures.py`'s /team list (drop the four legacy files, add the rebuilt `FormerStaff.tsx`, `SendGrantsSection.tsx`, `useHouseAreas.ts`, retarget its self-test) and merges before the cutover. This answer is his yes to that CI change.
+  - **90** (OD-177, legacy-styled pieces inside live pages): *"Mixed, per the manifest (Recommended)"* — /inventory is a permanent exception (his 2026-09-04 word, to be written into ADR 0149); the vendor sheet's intelligence panel is rebuilt before DONE; the rest are looked at in a browser first, then decided one by one.
+  - **91** (OD-178, in-file legacy branches): *"Shell now, public doors next (Recommended)"* — the old shell's off-branch is removed in later commits on #494; the public doors' off-branch in a second small PR right after.
+  - **92** (where the archive lives): *"Release asset + tag (Recommended)"* — a git tag on the last commit with the legacy code, plus a `.tar.gz` of exactly the deleted files attached to a GitHub Release on it; ADR 0149's tombstone names both. ADR 0032 stays intact (nothing archived inside the tree).
+  - Still open (not asked yet): retire the now-inert `mudavym_design_arrival` gateway flag now or later (manifest recommends later, its own gateway PR).
 - **Founder, 2026-09-28:** asked for the merge commands below — **the founder merges**;
   a session does not self-merge (the auto-mode classifier refused a session follow-up as
   "self-approval / merge without review" right after #487 merged).
@@ -111,7 +118,7 @@ migrations `20261117100000`–`20261117100900`.
 | Lane | Branch | PR | State at writing | Merges |
 |---|---|---|---|---|
 | ADR 0231 retires 0050 (item 86) | `docs/model-dispatch-adr-0231` | **#490** `cfe9fc94a` | built; verify pending. Touches gate-owned `decisions/0050-*.md` + `decisions/README.md`, so the audit skill records BLOCK-for-human-review, never an automated PASS | founder reads and merges by hand (4b) |
-| Cutover manifest + trial delete (L17) | `feat/cutover-manifest-trial` | draft, not yet opened | building | **never as one merge**: founder approves group by group (ADR 0149) |
+| Cutover manifest + trial delete (L17) | `feat/cutover-manifest-trial` | **#494** (draft) | built: manifest `CUTOVER-MANIFEST-2026-09-28.md`, 24 groups, trial delete of 236 files / 79,816 lines; web tsc 0, vitest 4,754 passed. Blocked only by `check_windowed_figures.py` (team group). Founder items 88–92 answer every group | after the guard PR (item 89) merges, the shell off-branch commits land (item 91), and a fresh audit PASS |
 | Security residuals (L3/L14) | `fix/security-residuals-2026-09-28` | **#491** | built 15:1xZ; verify pending | after audit PASS |
 | Records refresh (census §18, STATE, LIVE-CHECKLIST) | `docs/records-2026-09-28` | **#492** | audit plan found 4 false or unbracketed facts; fixed at `15e5b94bd`; re-audit when CI is green | after audit PASS; last among the docs PRs |
 | Websocket role gate (found by #493's audit: the promotions digest — vendor + discount — is broadcast to every member's socket, staff included) | `fix/websocket-role-gate` | not yet | inventory → adversarial check → build → verify (workflow `wf_3e70e15e-8b8`); reserved ADR 0234, OD-180, migration `20261117101000` | after audit PASS |
