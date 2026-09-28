@@ -100,6 +100,31 @@ echo "== merged as $MERGE"
 # CI starts on the push; Deploy to Production starts only after CI completes
 # (deploy.yml: workflow_run on "CI"). Both are looked up by the merge commit,
 # never "the latest run", which right after a merge is the previous one.
+# `gh run watch --exit-status` also exits non-zero when the connection to GitHub drops
+# (2026-09-28: "connection reset by peer" was reported as a failed deploy that had in fact
+# succeeded). So a non-zero watch is never the verdict: the run's own status/conclusion is
+# re-read, with retries, and only a completed non-success conclusion counts as a failure.
+# Returns 0 success, 1 the run failed (prints its conclusion), 3 could not confirm.
+POLL="${MERGE_POLL_SECONDS:-10}"   # override only for its test
+confirm_run() {  # $1 run id
+  local id="$1" tries=0 sc=""
+  while (( tries < 30 )); do
+    gh run watch "$id" -R "$R" --exit-status </dev/null || true
+    sc=""; local r=0
+    while (( r < 6 )); do
+      sc=$(gh run view "$id" -R "$R" --json status,conclusion --jq '.status + " " + (.conclusion // "")' 2>/dev/null) && [[ -n "$sc" ]] && break
+      sleep "$POLL"; r=$((r + 1))
+    done
+    case "$sc" in
+      "completed success") return 0 ;;
+      "completed "*) echo "run $id concluded: ${sc#completed }" >&2; return 1 ;;
+      "") return 3 ;;
+      *) tries=$((tries + 1)); sleep "$POLL" ;;   # still queued/in progress: the watch dropped early
+    esac
+  done
+  return 3
+}
+
 wait_for_run() {  # $1 workflow name, $2 max seconds
   local id="" waited=0
   while [[ -z "$id" && $waited -lt $2 ]]; do
@@ -113,11 +138,15 @@ wait_for_run() {  # $1 workflow name, $2 max seconds
 echo "== waiting for CI on $MERGE"
 CI_ID=$(wait_for_run "CI" 300)
 [[ -n "$CI_ID" ]] || die "no CI run appeared for $MERGE within 5 minutes"
-gh run watch "$CI_ID" -R "$R" --exit-status || die "CI failed on $MERGE (run $CI_ID)"
+confirm_run "$CI_ID"; rc=$?
+[[ $rc -eq 1 ]] && die "CI failed on $MERGE (run $CI_ID)"
+[[ $rc -eq 3 ]] && { echo "COULD NOT CONFIRM: CI run $CI_ID on $MERGE — GitHub unreachable; the merge is done. Check: gh run view $CI_ID -R $R" >&2; exit 3; }
 
 echo "== waiting for Deploy to Production on $MERGE"
 DEP_ID=$(wait_for_run "Deploy to Production" 600)
 [[ -n "$DEP_ID" ]] || die "no Deploy to Production run appeared for $MERGE within 10 minutes"
-gh run watch "$DEP_ID" -R "$R" --exit-status || die "Deploy to Production failed on $MERGE (run $DEP_ID)"
+confirm_run "$DEP_ID"; rc=$?
+[[ $rc -eq 1 ]] && die "Deploy to Production failed on $MERGE (run $DEP_ID)"
+[[ $rc -eq 3 ]] && { echo "COULD NOT CONFIRM: deploy run $DEP_ID on $MERGE — GitHub unreachable; the merge is done. Check: gh run view $DEP_ID -R $R" >&2; exit 3; }
 
 echo "DONE: #$N merged as $MERGE; CI run $CI_ID and deploy run $DEP_ID succeeded."

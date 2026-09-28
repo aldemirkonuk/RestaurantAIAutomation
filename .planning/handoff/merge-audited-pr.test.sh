@@ -25,6 +25,7 @@ case "$1 $2" in
   "pr merge") echo "MERGED $args" >> "$FAKE_LOG"; exit "${FAKE_MERGE_RC:-0}" ;;
   "run list") printf '[{"databaseId": 4242}]' | jq -r "$jqexpr" ;;
   "run watch") exit "${FAKE_WATCH_RC:-0}" ;;
+  "run view") [[ "${FAKE_VIEW_RC:-0}" -eq 0 ]] || exit "$FAKE_VIEW_RC"; printf '%s' "${FAKE_RUN_JSON:-{\"status\":\"completed\",\"conclusion\":\"success\"}}" | jq -r "$jqexpr" ;;
   *) echo "unexpected gh $args" >&2; exit 99 ;;
 esac
 SHIM
@@ -64,7 +65,7 @@ ARGS="491"; t block-marker 2 no "491" "BLOCK marker" FAKE_PR="$PR_OK" FAKE_COMME
 ARGS="491"; t wrong-confirm 2 no "490" "did not match" FAKE_PR="$PR_OK" FAKE_COMMENTS="$PASS_ME"
 ARGS="491"; t happy-path 0 yes "491" "DONE:" FAKE_PR="$PR_OK" FAKE_COMMENTS="$PASS_ME" FAKE_MERGE=deadbeef
 ARGS="491"; t merge-refused 2 yes "491" "merge refused" FAKE_PR="$PR_OK" FAKE_COMMENTS="$PASS_ME" FAKE_MERGE_RC=1
-ARGS="491"; t ci-fails-after 2 yes "491" "CI failed" FAKE_PR="$PR_OK" FAKE_COMMENTS="$PASS_ME" FAKE_MERGE=deadbeef FAKE_WATCH_RC=1
+ARGS="491"; t ci-fails-after 2 yes "491" "CI failed" FAKE_PR="$PR_OK" FAKE_COMMENTS="$PASS_ME" FAKE_MERGE=deadbeef FAKE_WATCH_RC=1 FAKE_RUN_JSON='{"status":"completed","conclusion":"failure"}'
 ARGS="490 --gate-owned"; t gate-owned-happy 0 yes "490" "DONE:" FAKE_DIFF=".planning/decisions/README.md" FAKE_PR="$PR_OK" FAKE_COMMENTS="{\"comments\":[]}" FAKE_MERGE=deadbeef
 ARGS="490 --gate-owned"; t gate-owned-checks-red 2 no "490" "exit 1" FAKE_DIFF=".planning/decisions/README.md" FAKE_PR="$PR_OK" FAKE_COMMENTS="{\"comments\":[]}" FAKE_CHECKS_RC=1
 # the merge must be pinned to the exact head SHA, squash, with -R
@@ -85,5 +86,10 @@ ARGS="491"; t bad-sha 2 no "491" "head SHA" FAKE_PR="${PR_OK/$SHA/}" FAKE_COMMEN
 ARGS="491"; t pending-message 2 no "491" "still pending" FAKE_PR="$PR_OK" FAKE_COMMENTS="$PASS_ME" FAKE_CHECKS_RC=8
 grep -q -- "--subject t (#491)" "$T/log.happy-path" \
   && { pass=$((pass+1)); echo "ok   squash-subject"; } || { fail=$((fail+1)); echo "FAIL squash-subject"; grep MERGED "$T/log.happy-path"; }
+# a dropped connection during the watch is not a failure: the run's own conclusion decides
+ARGS="491"; t watch-drops-run-succeeded 0 yes "491" "DONE:" FAKE_PR="$PR_OK" FAKE_COMMENTS="$PASS_ME" FAKE_MERGE=deadbeef FAKE_WATCH_RC=1
+ARGS="491"; t github-unreachable 3 yes "491" "COULD NOT CONFIRM" FAKE_PR="$PR_OK" FAKE_COMMENTS="$PASS_ME" FAKE_MERGE=deadbeef FAKE_WATCH_RC=1 FAKE_VIEW_RC=1 MERGE_POLL_SECONDS=0
+ARGS="491"; t run-cancelled 2 yes "491" "concluded: cancelled" FAKE_PR="$PR_OK" FAKE_COMMENTS="$PASS_ME" FAKE_MERGE=deadbeef FAKE_WATCH_RC=1 FAKE_RUN_JSON='{"status":"completed","conclusion":"cancelled"}'
+
 echo "== $pass passed, $fail failed"
 [[ $fail -eq 0 ]]
