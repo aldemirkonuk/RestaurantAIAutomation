@@ -78,6 +78,19 @@ branch, classify every file against `origin/main` — identical, changed on main
 identical, 188 superseded, 1 renamed on main). Fold unique work into a proper PR; delete
 nothing until the founder says so.
 
+**Classified 2026-09-28 — the founder's main checkout** (`~/Projects/restaurant-ai-automation`,
+snapshot `wip/preserve-20260928T1629Z/Projects--restaurant-ai-automation-bf0bd64`,
+`405ef1f92`): **no unique work.** Its base is `059169a59` (on `main`) and its tree is
+byte-identical to the cloud-move snapshot `459653f` (tree `5905f94f7` both). Of its 1,142
+changed files, measured against `main` at `dcdb6d5e9`: 944 identical; 197 an older version
+that `main`'s history holds (each blob found in `git rev-list --objects origin/main`); 1 not
+found — ADR 0192, whose `main` copy contains all of it plus a 40-line later section
+(`git diff --numstat` snapshot→main: 40 added, 0 deleted). The migration
+`20261003100000_a_thread_list_withholds_credit_drafts_from_staff.sql` is on `main`
+byte-for-byte as `20261016000000_…` (blob `4fe71fef0`). So that checkout can be reset to
+`main` whenever the founder wants — its snapshot branch keeps the copy. The other 234 trees
+are classified as their snapshots land.
+
 **Lanes in flight** — workflow `wf_75eb7e91-5af` (`web-rebuild-finish-lanes`: build →
 Sonnet adversarial verify → one Opus fix round; 2 agents at a time on this 4-CPU
 container). Reserved ids so lanes never collide: ADR 0231–0234, OD-176–OD-180,
