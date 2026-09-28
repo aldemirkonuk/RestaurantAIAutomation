@@ -882,6 +882,9 @@ describe("the orchestrator's door", () => {
     const res = await post(ORCHESTRATOR_SEND, asService);
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({ success: false, error: "socket hang up" });
+    // A hang-up can follow an accepted message: nothing typed proves a
+    // refusal, so the 200 carries none (2026-09-28).
+    expect(res.body.refusal).toBeUndefined();
     expect(actions()).toEqual([
       RELAY_AUDIT_ACTIONS.ATTEMPTED,
       RELAY_AUDIT_ACTIONS.FAILED,
@@ -1104,6 +1107,7 @@ describe("the orchestrator's door", () => {
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(false);
     expect(res.body.providerRejectedRequest).toBeUndefined();
+    expect(res.body.refusal).toEqual({ kind: "rejected" });
     expect(audit()[1].changes).toMatchObject({
       refusedBeforeSend: false,
       providerRejectedRequest: false,
@@ -1111,11 +1115,16 @@ describe("the orchestrator's door", () => {
   });
 
   it.each([
-    ["EENVELOPE", { code: "EENVELOPE" }],
-    ["an SMTP 550", { responseCode: 550, code: "EMESSAGE" }],
+    ["EENVELOPE", { code: "EENVELOPE" }, { kind: "rejected" }],
+    ["an SMTP 550", { responseCode: 550, code: "EMESSAGE" }, { kind: "rejected" }],
+    // 2026-09-28, the Python twin of PR #405: a 4xx is transient and may
+    // still have been queued, so the classifier proves nothing — and the 200
+    // must carry NO refusal, even though its sentence says "Mailbox
+    // unavailable", which the orchestrator's old text match called definite.
+    ["an SMTP 450", { responseCode: 450, code: "EMESSAGE" }, undefined],
   ])(
     "stays 200 (not closed) for %s from the REAL SMTP fallback — a transport the ruling never named",
-    async (_label, fields) => {
+    async (_label, fields, expectedRefusal) => {
       // A GmailService whose Gmail API is not ready, so sendEmail takes its
       // real nodemailer fallback; only nodemailer's sendMail is stubbed.
       const smtpGmail = new GmailService(
@@ -1140,15 +1149,19 @@ describe("the orchestrator's door", () => {
         const res = await post(ORCHESTRATOR_SEND, asService);
 
         expect(createTransport).toHaveBeenCalledTimes(1);
-        // The shared classifier DOES call this "rejected" — the relay is
-        // what declines to close on it.
+        // The shared classifier calls the 5xx and EENVELOPE "rejected" and
+        // the 4xx nothing — the relay is what declines to close on either.
         const result = await gmail.sendEmail.mock.results[0].value;
-        expect(result.refusal).toEqual({ kind: "rejected" });
+        expect(result.refusal).toEqual(expectedRefusal);
         expect(result.gmailApiStatus).toBeUndefined();
 
         expect(res.status).toBe(200);
         expect(res.body.success).toBe(false);
         expect(res.body.providerRejectedRequest).toBeUndefined();
+        // The 200 says, typed, what the classifier proved (or that it proved
+        // nothing), so the orchestrator never reads the sentence.
+        expect(res.body.refusal).toEqual(expectedRefusal);
+        expect(res.body.error).toMatch(/Mailbox unavailable/);
         expect(audit()[1].changes).toMatchObject({
           refusedBeforeSend: false,
           providerRejectedRequest: false,
@@ -1179,6 +1192,8 @@ describe("the orchestrator's door", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(false);
+    expect(res.body.refusal).toEqual({ kind: "credentials" });
+    expect(audit()[1].changes).toMatchObject({ refusalKind: "credentials" });
     expect(res.body.refusedBeforeSend).toBeUndefined();
     expect(res.body.providerRejectedRequest).toBeUndefined();
     expect(audit()[1].changes).toMatchObject({
