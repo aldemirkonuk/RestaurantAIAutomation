@@ -1,6 +1,23 @@
 # Handoff: the merge queue and the page wave, 2026-09-12
 
-## ▶ PICK-UP CARD — read this first (updated 2026-09-28T19:20Z, cloud session c98bb6c5)
+## ▶ PICK-UP CARD — read this first (updated 2026-09-28T22:30Z, cloud session c98bb6c5)
+
+**▶▶ Latest (22:30Z). Read this block before the rest of the card.**
+- **Agent capacity is back.** The founder reset the limit, and test agents on both Sonnet and Opus ran. A reset restores only the five-hour window *or* the weekly one, so check `/usage` before a large fan-out.
+- **Ready for the founder to merge:**
+  - **#499** (ADR 0237, effort per task). CI is green. It is gate-owned, so the founder reads `gh pr diff 499`, then runs `bash ~/merge-audited-pr.sh 499 --gate-owned`.
+- **Being audited:**
+  - **#500** (the ADR-number guard skips `wip/preserve-*` snapshots; founder: "Checker skips snapshots (Recommended)").
+  - Head `ec4819eb7`. The fixture commit answers the plan's gaps: an end-to-end snapshot fixture, and the decision recorded in the guard.
+  - Plan READY was made at the old head `62fab623e`. The next session re-plans on the new head once CI is green, then runs the two Sonnet reviewers, resumes the planner, and posts the marker.
+  - Then the founder runs `bash ~/merge-audited-pr.sh 500`.
+  - **#500 must merge before #490.** After that, merge `main` into #490 again; the guard is red on #490 until then.
+- **#490 and #492:** `main` was merged into both (`cb6e0239f`, `2fce53274`).
+- **Workflows running** (resume after a restart with `Workflow({scriptPath, resumeFromRunId})`; the scripts are under `~/.claude/projects/-home-user-RestaurantAIAutomation/<session>/workflows/scripts/`):
+  - `wf_c400443f-5f7` **carry-lanes-rerun**. It runs the nine failed lanes (deal-scope, removed-shifts, ask-6z, mig-adr 0235, register, sketch-123, gitignore, mobile-fab, flag-dto 0236) at ADR 0237's model and effort, each building, then a Sonnet-high verify, then an Opus-high fix. It also runs the verify pass that never ran for #497, #495 and #496.
+  - `wf_6361dfdd-20b` **web-endpoint-contract-sweep**. The founder asked that "the whole web pages endpoint works smoothly full functionalities". It covers 9 route clusters: page → every API call → gateway handler (method, path, roles, request DTO, response shape, errors shown as empty). Each finding gets a Sonnet refuter, then an Opus report with fix lanes. Write its report to `evidence/WEB-ENDPOINT-SWEEP-2026-09-28.md`, then open fix lanes from it.
+- **Next, in order:** finish the #500 audit. Audit #497 (security, highest), then #495, #496, #492. Audit each lane PR as its CI goes green. Then run the #494 update lane and the OD-177 fact sheet.
+- **Ids:** next free ADR is **0238** (0235 and 0236 are the lanes', 0237 is #499), and next free OD is **OD-183**.
 
 Any account can continue from here. **Re-measure before acting** (CLAUDE.md §5b): every
 state below was true at the time above; re-read each PR through the GitHub API before
