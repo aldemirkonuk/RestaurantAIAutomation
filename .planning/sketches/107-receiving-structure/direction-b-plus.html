@@ -1,0 +1,982 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>107 &middot; Receiving &middot; Direction B+ — The Grid, composed</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ── Mudavym tokens — apps/web/src/styles/mudavym.css, copied inline (ADR 0042 / ADR 0138).
+   The ground is Warm Charcoal by decision; [data-ground="paper"] is the one escape:
+   a surface that is a sheet of paper (the canonical document, ADR 0104 D9). ── */
+.mudavym, .mudavym[data-ground="charcoal"]{
+  --seal:#5FB0BC; --seal-deep:#7DC3CD; --seal-tint:rgba(95,176,188,.14); --seal-ring:rgba(95,176,188,.38);
+  --paper-0:#15130F; --paper-1:#1D1813; --paper-2:#262019;
+  --ink-1:#EFE7D9; --ink-2:#C0B6A5; --ink-3:#8E8576; --ink-4:#ABA294;
+  --rule:rgba(239,231,217,.09); --rule-2:rgba(239,231,217,.16); --scrim:rgba(0,0,0,.52);
+  color-scheme:dark;
+}
+.mudavym [data-ground="paper"], .mudavym[data-ground="paper"]{
+  --seal:#1A5E6B; --seal-deep:#14515C; --seal-tint:rgba(26,94,107,.10); --seal-ring:rgba(26,94,107,.32);
+  --paper-0:#FFFDF8; --paper-1:#F3EFE6; --paper-2:#EAE4D8;
+  --ink-1:#211C16; --ink-2:#4F473C; --ink-3:#7C7365; --ink-4:#665D50;
+  --rule:rgba(33,28,22,.10); --rule-2:rgba(33,28,22,.18);
+  color-scheme:light;
+}
+:root{
+  --serif:"Fraunces",Georgia,"Times New Roman",serif;
+  --sans:"DM Sans","Plus Jakarta Sans",system-ui,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  /* motion — lib/mudavym/motion.ts, the seven tokens and nothing else */
+  --house:cubic-bezier(0.16,1,0.3,1);
+  --settle:320ms var(--house);
+  --ink:160ms var(--house);
+  --turn:420ms cubic-bezier(0.32,0.72,0,1);
+  --pour-ms:620ms;
+  --ease-tuck:var(--house); --tuck-ms:300ms;
+  --ease-stamp:var(--house); --stamp-ms:360ms;
+  --ease-tally:var(--house); --tally-ms:840ms;
+}
+@media (prefers-reduced-motion: reduce){
+  :root{--settle:0ms linear;--ink:0ms linear;--turn:0ms linear;--pour-ms:0ms;--tuck-ms:0ms;--stamp-ms:0ms;--tally-ms:0ms}
+  *,*::before,*::after{animation-duration:0ms !important;transition-duration:0ms !important}
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:#15130F;color:#EFE7D9;font-family:var(--sans);font-size:13px;line-height:1.45;-webkit-font-smoothing:antialiased}
+body.mudavym{background:var(--paper-0);color:var(--ink-1)}
+
+/* ── the sketch's own frame (not the product) ── */
+.banner{display:flex;gap:18px;align-items:baseline;background:var(--ink-1);color:var(--paper-0);font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;padding:8px 22px}
+.banner b{font-weight:600}
+.banner span{opacity:.7}
+.wrap{max-width:1440px;margin:0 auto;padding:0 20px 80px}
+.sec{display:flex;align-items:baseline;gap:14px;margin:34px 0 10px;padding-top:18px;border-top:1px solid var(--rule)}
+.sec .n{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--seal);white-space:nowrap}
+.sec h2{font-family:var(--serif);font-size:22px;font-weight:600;letter-spacing:-.012em;margin:0;color:var(--ink-1)}
+.sec .k{font-family:var(--sans);font-size:12px;color:var(--ink-3);margin-left:auto;text-align:right;max-width:560px}
+.note{font-size:12.5px;line-height:1.6;color:var(--ink-2);max-width:900px;margin:0 0 12px}
+.note b{color:var(--ink-1);font-weight:600}
+.note code, code{font-family:var(--mono);font-size:11px;color:var(--ink-2)}
+
+/* ── the stage: an app viewport ── */
+.stage{position:relative;border:1px solid var(--rule-2);background:var(--paper-0);overflow:hidden;border-radius:4px}
+.stage.desk{width:100%;max-width:1400px}
+.app{display:grid;grid-template-columns:212px minmax(0,1fr);min-height:860px}
+.side{border-right:1px solid var(--rule);padding:16px 12px;display:flex;flex-direction:column;gap:2px}
+.side .wm{font-family:var(--serif);font-weight:600;font-size:14px;letter-spacing:.04em;color:var(--ink-1);padding:2px 10px 14px}
+.side .wm i{font-style:normal;color:var(--seal)}
+.side a{display:block;padding:6px 10px;border-radius:8px;font-size:12.5px;color:var(--ink-2);text-decoration:none;transition:background var(--ink),color var(--ink)}
+.side a.on{background:var(--seal-tint);color:var(--ink-1);box-shadow:inset 2px 0 0 var(--seal)}
+.side .grp{font-family:var(--mono);font-size:8.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);padding:12px 10px 4px}
+.side .who{margin-top:auto;padding:12px 10px 0;border-top:1px solid var(--rule);font-size:11.5px;color:var(--ink-2)}
+.side .who b{display:block;color:var(--ink-1);font-weight:600}
+.side .who .h{font-family:var(--mono);font-size:9.5px;color:var(--ink-3);display:block;margin-top:2px}
+.main{padding:22px 28px 36px;min-width:0}
+
+/* masthead — ReceivingNext.tsx:172-206 */
+.mast{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:18px}
+.mast .wm{font-family:var(--serif);font-weight:600;font-size:12px;letter-spacing:.06em;color:var(--ink-2)}
+.mast h1{font-family:var(--serif);font-size:30px;font-weight:600;letter-spacing:-.015em;line-height:1.1;margin:4px 0 0;color:var(--ink-1)}
+.mast .sent{font-size:12.5px;color:var(--ink-3);margin:4px 0 0}
+.mast .right{display:grid;gap:6px;justify-items:end;text-align:right}
+.cap{font-family:var(--mono);font-size:9px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3)}
+.cap.seal{color:var(--seal)}
+.house{font-family:var(--mono);font-size:10.5px;color:var(--ink-2)}
+.house b{color:var(--ink-1);font-weight:600}
+
+/* figures */
+.fig{font-family:var(--mono);font-variant-numeric:tabular-nums;color:var(--ink-1)}
+.dim{color:var(--ink-3)}
+.mid{color:var(--ink-2)}
+.em{color:var(--ink-3)}
+.nums{display:flex;flex-wrap:wrap;border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);margin:0 0 18px}
+.nums > div{flex:1 1 0;min-width:0;padding:10px 14px 10px 0;margin-right:14px;border-right:1px solid var(--rule)}
+.nums > div:last-child{border-right:0}
+.nums .v{font-family:var(--mono);font-size:22px;font-weight:500;letter-spacing:-.02em;line-height:1.1;color:var(--ink-1);display:block;font-variant-numeric:tabular-nums}
+.nums .v small{font-size:12px;color:var(--ink-3);font-weight:400;margin-left:4px}
+.nums .l{display:block;margin-top:5px}
+.nums .s{display:block;font-size:11px;color:var(--ink-3);margin-top:3px}
+
+/* chips — verdict words are WORDS, never colour alone; one chromatic colour */
+.chip{display:inline-block;font-family:var(--mono);font-size:9.5px;font-weight:500;letter-spacing:.08em;text-transform:uppercase;padding:2px 7px;border:1px solid var(--rule-2);border-radius:6px;color:var(--ink-2);white-space:nowrap;line-height:1.5;vertical-align:middle}
+.chip.seal{border-color:var(--seal-ring);color:var(--seal)}
+.chip.solid{background:var(--ink-1);border-color:var(--ink-1);color:var(--paper-0)}
+.chip.dash{border-style:dashed}
+.chip.ghost{border-color:transparent;color:var(--ink-3);font-style:italic;padding-left:0}
+.chip.tint{background:var(--seal-tint);border-color:transparent;color:var(--seal-deep)}
+.v-accepted{}
+.v-short{border-color:var(--seal-ring);color:var(--seal)}
+.v-refused{background:var(--ink-1);border-color:var(--ink-1);color:var(--paper-0)}
+.v-damaged{border-style:dashed;color:var(--ink-1)}
+.v-none{border-color:transparent;color:var(--ink-3);font-style:italic;padding-left:0}
+
+/* cards + rows */
+.card{border:1px solid var(--rule);background:var(--paper-1);border-radius:12px}
+.card.flat{background:transparent}
+.row{display:grid;align-items:center;gap:12px;padding:10px 12px;border-top:1px solid var(--rule)}
+.row:first-child{border-top:0}
+.t{color:var(--ink-1);font-weight:500}
+.s{font-size:11.5px;color:var(--ink-3)}
+.sent{font-family:var(--serif);font-style:italic;color:var(--ink-2)}
+
+/* buttons */
+.btn{display:inline-flex;align-items:center;gap:6px;font-family:var(--sans);font-size:12px;font-weight:500;padding:6px 11px;border-radius:8px;border:1px solid var(--rule-2);background:transparent;color:var(--ink-1);cursor:pointer;transition:border-color var(--ink),background var(--ink),color var(--ink)}
+.btn:hover{border-color:var(--seal-ring);background:var(--seal-tint)}
+.btn.pri{background:var(--seal-tint);border-color:var(--seal-ring);color:var(--ink-1)}
+.btn.quiet{border-color:transparent;color:var(--ink-2)}
+.btn.quiet:hover{color:var(--ink-1)}
+.btn[disabled]{opacity:.55;cursor:not-allowed}
+.btn.sm{font-size:11px;padding:4px 8px}
+
+/* the expander — settle on the row, turn on the reveal ("show the working") */
+.x-head{cursor:pointer;user-select:none}
+.chev{display:inline-block;width:10px;height:10px;margin-left:6px;vertical-align:middle;border-right:1.5px solid var(--ink-3);border-bottom:1.5px solid var(--ink-3);transform:rotate(-45deg);transition:transform var(--settle)}
+.open > .x-head .chev, .x-head[aria-expanded="true"] .chev{transform:rotate(45deg)}
+.x-body{display:grid;grid-template-rows:0fr;transition:grid-template-rows var(--turn)}
+.x-body > div{overflow:hidden;min-height:0}
+.open > .x-body, .x-body.open{grid-template-rows:1fr}
+
+/* the append-only ledger — one line's entries, oldest first, nothing erased */
+.ledger{display:grid;gap:0;font-size:12px}
+.entry{display:grid;grid-template-columns:34px 92px minmax(0,1fr);gap:10px;padding:8px 0;border-top:1px dashed var(--rule)}
+.entry:first-child{border-top:0}
+.entry .vn{font-family:var(--mono);font-size:10px;color:var(--ink-3);padding-top:2px}
+.entry .who{font-size:11.5px;color:var(--ink-2);line-height:1.35}
+.entry .who b{display:block;color:var(--ink-1);font-weight:600}
+.entry .who .h{font-family:var(--mono);font-size:10px;color:var(--ink-3);display:block}
+.entry .what{color:var(--ink-1);line-height:1.45}
+.entry .what .chip{margin-right:6px}
+.entry .what .ev{display:block;margin-top:4px;font-size:11px;color:var(--ink-3)}
+.entry .what .ev .chip{font-size:8.5px;margin-right:4px}
+.entry.superseded .what{color:var(--ink-2)}
+.entry.superseded .what .strike{text-decoration:line-through;text-decoration-color:var(--ink-3);color:var(--ink-3)}
+.derived{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:baseline;margin-top:8px;padding:8px 10px;border:1px solid var(--seal-ring);border-radius:8px;background:var(--seal-tint);font-size:12px}
+.derived .cap{color:var(--seal)}
+.derived b{color:var(--ink-1);font-weight:600}
+.rule-sent{font-size:11px;color:var(--ink-3);margin-top:6px;line-height:1.5}
+
+/* evidence chips + provenance ("a figure opens to its sources") */
+.src{border-bottom:1px dotted var(--ink-3);cursor:help}
+.src:hover{border-bottom-color:var(--seal)}
+
+/* hold-to-approve — pour fills (linear), release retreats (tuck), the wax lands on stamp */
+.hold{position:relative;display:inline-flex;align-items:center;gap:8px;padding:8px 14px;border-radius:10px;border:1px solid var(--seal-ring);background:transparent;color:var(--ink-1);font-family:var(--sans);font-size:12px;font-weight:500;cursor:pointer;overflow:hidden;user-select:none;-webkit-user-select:none;touch-action:none}
+.hold .fill{position:absolute;inset:0;width:0%;background:var(--seal-tint);transition:width var(--tuck-ms) var(--ease-tuck)}
+.hold.pouring .fill{width:100%;transition:width var(--pour-ms) linear}
+.hold .lbl{position:relative}
+.hold .wax{position:relative;width:18px;height:18px;border-radius:999px;border:1.5px solid var(--seal-ring);display:inline-flex;align-items:center;justify-content:center;font-family:var(--serif);font-size:10px;color:var(--seal);transform:scale(1)}
+.hold.sealed{border-color:var(--seal);background:var(--seal-tint)}
+.hold.sealed .wax{background:var(--seal);color:var(--paper-0);border-color:var(--seal);animation:stamp var(--stamp-ms) var(--ease-stamp) both}
+@keyframes stamp{from{transform:scale(.6)}to{transform:scale(1)}}
+.hold[data-idle]{opacity:.6;cursor:not-allowed}
+
+/* overlays — ADR 0112, numbers from components/mudavym/Sheet.tsx */
+.scrim{position:absolute;inset:0;background:var(--scrim)}
+.sheet{position:absolute;top:0;right:0;bottom:0;width:100%;max-width:440px;background:var(--paper-0);border-left:1px solid var(--rule-2);box-shadow:-18px 0 48px rgba(0,0,0,.35);display:flex;flex-direction:column;transform:translateX(0);transition:transform var(--tuck-ms) var(--ease-tuck)}
+.sheet.closed{transform:translateX(104%)}
+.panel{position:absolute;left:50%;top:9%;transform:translateX(-50%);width:min(620px,100% - 32px);max-height:80%;background:var(--paper-0);border:1px solid var(--rule-2);border-radius:14px;box-shadow:0 24px 60px -30px rgba(0,0,0,.7);display:flex;flex-direction:column;overflow:hidden}
+.pop{position:absolute;width:320px;background:var(--paper-0);border:1px solid var(--rule-2);border-radius:14px;box-shadow:0 18px 44px -22px rgba(0,0,0,.6);overflow:hidden}
+.oh{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:14px 16px 11px;border-bottom:1px solid var(--rule);flex:none}
+.oh .eye{display:block;font-family:var(--mono);font-size:9.5px;font-weight:600;letter-spacing:.13em;text-transform:uppercase;color:var(--seal)}
+.oh .ttl{margin:2px 0 0;font-family:var(--serif);font-size:19px;font-weight:600;line-height:1.16;letter-spacing:-.01em;color:var(--ink-1)}
+.oh .sub{font-size:11.5px;color:var(--ink-3);margin:3px 0 0}
+.oclose{font-family:var(--sans);font-size:12px;line-height:1.2;padding:5px 10px;border-radius:8px;border:1px solid var(--rule-2);background:transparent;color:var(--ink-2);cursor:pointer;flex:none}
+.obody{flex:1 1 auto;min-height:0;overflow:auto;padding:12px 16px}
+.ofoot{flex:none;padding:10px 16px 12px;border-top:1px solid var(--rule);font-size:11px;line-height:1.5;color:var(--ink-3);display:flex;justify-content:space-between;align-items:center;gap:12px}
+.osect{display:block;font-family:var(--mono);font-size:9px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);margin:14px 0 6px}
+.osect:first-child{margin-top:0}
+
+/* forms — inputs are inset, slightly darker */
+.field{display:grid;gap:4px;margin-top:8px}
+.field label{font-size:11px;color:var(--ink-3)}
+.inp{font-family:var(--sans);font-size:12.5px;color:var(--ink-1);background:var(--paper-0);border:1px solid var(--rule-2);border-radius:8px;padding:7px 9px;width:100%}
+.inp.mono{font-family:var(--mono);font-size:12px}
+.inp[disabled]{color:var(--ink-3);border-style:dashed}
+.radios{display:flex;flex-wrap:wrap;gap:6px}
+/* in a picker every word is drawn in ONE neutral style; only .on is marked (seal ring + underline) */
+.radios .chip{cursor:pointer;padding:5px 10px;font-size:10px;background:transparent;border:1px solid var(--rule-2);color:var(--ink-2);font-style:normal;padding-left:10px}
+.radios .chip.on{background:var(--seal-tint);border-color:var(--seal);color:var(--ink-1);box-shadow:0 0 0 2px var(--seal-ring);text-decoration:underline;text-underline-offset:3px;text-decoration-color:var(--seal)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+
+/* the states strip */
+.states{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.state{border:1px solid var(--rule-2);border-radius:10px;background:var(--paper-0);overflow:hidden;display:flex;flex-direction:column;min-height:300px}
+.state .lab{font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--seal);padding:8px 12px;border-bottom:1px solid var(--rule)}
+.state .lab span{color:var(--ink-3);letter-spacing:.06em;text-transform:none;font-family:var(--sans);font-size:11px;margin-left:8px}
+.state .in{padding:12px;font-size:12px;color:var(--ink-2);line-height:1.5;flex:1}
+.state .in p{margin:0 0 8px}
+.state .in b{color:var(--ink-1);font-weight:600}
+.state .why{padding:8px 12px;border-top:1px dashed var(--rule);font-size:11px;color:var(--ink-3);line-height:1.5}
+/* skeleton bars are STATIC — a pulse would be an eighth motion outside lib/mudavym/motion.ts */
+.skel{display:block;height:10px;border-radius:5px;background:var(--paper-2);margin:6px 0}
+.skel.w40{width:40%}.skel.w70{width:70%}.skel.w90{width:90%}
+.alert{border:1px solid var(--seal-ring);border-radius:10px;padding:10px 12px;background:var(--paper-1);font-size:12px;color:var(--ink-2)}
+.alert b{color:var(--ink-1)}
+.alert .cap{display:block;margin-bottom:4px}
+
+/* the phone — 390 × 844, the staff rendering */
+.phones{display:flex;gap:28px;align-items:flex-start;flex-wrap:wrap}
+.phone{width:390px;min-height:844px;border:1px solid var(--rule-2);border-radius:28px;background:var(--paper-0);overflow:hidden;position:relative;flex:none;box-shadow:0 30px 60px -40px rgba(0,0,0,.8)}
+.phone .sb{display:flex;justify-content:space-between;padding:12px 22px 4px;font-family:var(--mono);font-size:11px;color:var(--ink-2)}
+.phone .pin{padding:6px 18px 26px}
+.phone .ph{display:flex;align-items:flex-end;justify-content:space-between;margin:6px 0 10px}
+.phone .ph h1{font-family:var(--serif);font-size:24px;font-weight:600;letter-spacing:-.012em;margin:2px 0 0;line-height:1.1;color:var(--ink-1)}
+.phone .ph .wm{font-family:var(--serif);font-size:11px;font-weight:600;letter-spacing:.06em;color:var(--ink-2)}
+.phone .ph .sent{font-size:12px;color:var(--ink-3);margin:3px 0 0}
+.phone .hint{font-size:12px;color:var(--ink-2);margin:0 0 12px;line-height:1.5}
+.phone .hint b{color:var(--ink-1)}
+.dcard{display:grid;grid-template-columns:minmax(0,1fr) 72px;border:1px solid var(--rule-2);border-radius:14px;overflow:hidden;background:var(--paper-1);margin-bottom:10px}
+.dcard .body{padding:12px 12px 12px 14px;min-width:0}
+.dcard .go{display:flex;align-items:center;justify-content:center;writing-mode:vertical-rl;text-orientation:mixed;background:var(--seal-tint);border-left:1px solid var(--seal-ring);color:var(--ink-1);font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;padding:16px 0;transition:background var(--ink)}
+.dcard .go.off{background:transparent;border-left:1px dashed var(--rule-2);color:var(--ink-3)}
+.dcard .vn{font-family:var(--serif);font-size:17px;font-weight:600;color:var(--ink-1);line-height:1.15}
+.dcard .po{font-family:var(--mono);font-size:10.5px;color:var(--ink-3);margin-top:2px}
+.dcard .cnt{font-size:12.5px;color:var(--ink-2);margin-top:8px;line-height:1.45}
+.dcard .cnt b{color:var(--ink-1);font-weight:600;font-family:var(--mono)}
+.pside{width:min(100%,520px)}
+.pside p{font-size:12.5px;line-height:1.6;color:var(--ink-2);margin:0 0 10px}
+.pside b{color:var(--ink-1);font-weight:600}
+
+/* the sketch's own callouts on a stage */
+.callout{position:absolute;z-index:5;font-family:var(--mono);font-size:9.5px;letter-spacing:.06em;color:var(--paper-0);background:var(--seal);padding:3px 7px;border-radius:5px;pointer-events:none;box-shadow:0 2px 10px rgba(0,0,0,.4)}
+.callout::after{content:"";position:absolute;left:-6px;top:50%;margin-top:-4px;border:4px solid transparent;border-right-color:var(--seal)}
+.callout.up::after{left:10px;top:-8px;margin:0;border:4px solid transparent;border-bottom-color:var(--seal)}
+.callout.rt::after{left:auto;right:-6px;border-right-color:transparent;border-left-color:var(--seal)}
+
+/* captions on a tinted or selected surface step up to --ink-4 (~6.4:1); --ink-3 measures ~3.9:1 there */
+.tab.on .dn,.tab.on .un .cl,.tab.on .un .s{color:var(--ink-4)}
+.x.open > .x-head small,.x.open > .x-head .q small,.x.open > .x-head .w small,.x.open > .x-head .cnt,.x.open > .x-head .n,.x.open > .x-head .s,.x.open > .x-head .dif.none{color:var(--ink-4)}
+.derived .dim{color:var(--ink-4)}
+/* measured in Chrome after the first review: these were still --ink-3 on a tinted, selected or raised surface (3.85–4.1:1) */
+.x.open .n,.x.open .cnt,.grow[style*="seal-tint"] .n,.grow[style*="seal-tint"] .s,.grow[style*="seal-tint"] .go,.grow[style*="seal-tint"] .q small,.row[style*="seal-tint"] .n,.row[style*="seal-tint"] .cnt,.row[style*="seal-tint"] .s,.grow .go,.av.dep,.pop .item.on .s,.sl.on .s,.sl.on .n,.sl.on .q,.tab.on .hd2,.tab.on .clk2{color:var(--ink-4)}
+.grow .go::after{color:var(--seal-deep)}
+/* the sketch's notes on a stage live UNDER it, never on it — a callout over a cell hides product content */
+.snotes{display:flex;flex-wrap:wrap;gap:6px 18px;margin:8px 0 0;font-family:var(--mono);font-size:10px;letter-spacing:.04em;color:var(--ink-2);max-width:1400px}
+.snotes span{display:inline-flex;align-items:baseline;gap:7px}
+.snotes i{font-style:normal;color:var(--paper-0);background:var(--seal);border-radius:4px;padding:1px 6px;font-size:9px;letter-spacing:.08em;font-weight:600}
+/* the phone grid — narrower cells, the same words */
+.pgrid .grow > div{padding:7px 6px}
+.pgrid .grow.hd > div{padding:6px 6px;font-size:8.5px}
+.pgrid .chip{font-size:8.5px;padding:2px 5px;letter-spacing:.06em}
+.pgrid .vd{display:grid;gap:3px;justify-items:start;line-height:1.2}
+.pgrid .q{font-size:11px}
+
+/* the phone form of the sheet — ADR 0112 F9: a bottom sheet with detents peek · half · full */
+.phone .bscrim{position:absolute;inset:0;background:var(--scrim)}
+.bsheet{position:absolute;left:0;right:0;bottom:0;height:56%;background:var(--paper-0);border-top:1px solid var(--rule-2);border-radius:18px 18px 0 0;box-shadow:0 -18px 48px rgba(0,0,0,.45);display:flex;flex-direction:column;overflow:hidden}
+.bsheet .grab{flex:none;width:36px;height:4px;border-radius:2px;background:var(--ink-3);margin:8px auto 2px}
+.bsheet .oh{padding:8px 16px 9px}
+.bsheet .obody{padding:10px 16px 12px}
+.detents{position:absolute;right:14px;top:0;bottom:0;width:58px;pointer-events:none}
+.detents span{position:absolute;right:0;font-family:var(--mono);font-size:8px;letter-spacing:.1em;text-transform:uppercase;color:var(--seal);padding:0 6px 0 0;border-right:2px solid var(--seal-ring);line-height:1;transform:translateY(50%)}
+.detents span.on{color:var(--paper-0);background:var(--seal);border-right-color:var(--seal);padding:2px 6px;border-radius:3px 0 0 3px}
+.mob-note{display:none;font-size:12px;color:var(--ink-2);border:1px dashed var(--rule-2);border-radius:8px;padding:8px 10px;margin:0 0 12px}
+@media (max-width:720px){.mob-note{display:block}.phone.has-bsheet{min-height:844px}}
+
+/* legend of the four verdict words */
+.legend{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;font-size:11.5px;color:var(--ink-3);margin:8px 0 0}
+.legend .chip{margin-right:4px}
+
+@media (max-width:720px){
+  .desk-only{display:none !important}
+  .wrap{padding:0 12px 60px}
+  .banner{flex-wrap:wrap;gap:6px 14px;padding:8px 12px}
+  .states{grid-template-columns:1fr}
+  .phones{flex-direction:column;gap:16px}
+  .phone{width:100%;border-radius:0;border-left:0;border-right:0;box-shadow:none;min-height:0}
+  .sec{flex-wrap:wrap}
+  .sec .k{margin-left:0;text-align:left;max-width:none}
+}
+/* a vertical spine — for narrow places */
+.spine.v{grid-template-columns:1fr;border:0}
+.spine.v .st{border-left:2px solid var(--paper-2);border-top:1px solid var(--rule);padding:8px 10px}
+.spine.v .st:first-child{border-top:0}
+.spine.v .st::before{display:none}
+.spine.v .st.d{border-left-color:var(--ink-2)}
+.spine.v .st.n{border-left-color:var(--seal)}
+.spine.v .st.r{border-left-style:dashed;border-left-color:var(--ink-3)}
+/* ── Direction B: one delivery at a time, line by line, four numbers per line, a ledger under each ── */
+.tabs{display:flex;border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);margin:0 0 16px}
+.tab{flex:1 1 0;min-width:0;padding:10px 12px 11px;border-left:1px solid var(--rule);cursor:pointer;transition:background var(--ink)}
+.tab:first-child{border-left:0}
+.tab.on{background:var(--seal-tint);box-shadow:inset 0 -2px 0 var(--seal)}
+.tab .vn{font-family:var(--serif);font-size:15px;font-weight:600;color:var(--ink-1);line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tab .dn{font-family:var(--mono);font-size:10px;color:var(--ink-3);margin-top:2px;line-height:1.4}
+.tab .un{display:flex;justify-content:space-between;gap:8px;margin-top:7px;font-size:11.5px;color:var(--ink-2)}
+.tab .un b{font-family:var(--mono);font-size:18px;font-weight:500;letter-spacing:-.02em;color:var(--ink-1);line-height:1}
+.tab.on .un b{color:var(--seal-deep)}
+.tab .un .cl{font-family:var(--mono);font-size:9.5px;color:var(--ink-3);text-align:right;line-height:1.35}
+
+.dhead{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 14px;margin:8px 0 8px}
+.dhead h2{font-family:var(--serif);font-size:21px;font-weight:600;letter-spacing:-.012em;margin:0;color:var(--ink-1)}
+.dhead .meta{font-family:var(--mono);font-size:10.5px;color:var(--ink-3)}
+.dhead .meta b{color:var(--ink-2);font-weight:500}
+.gate{display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;padding:9px 12px;border:1px solid var(--seal-ring);border-radius:10px;background:var(--paper-1);font-size:12px;color:var(--ink-2);margin:0 0 26px}
+.gate b{color:var(--ink-1);font-weight:600}
+.gate .cap{flex:none}
+.gate .btn{margin-left:auto}
+
+.desk2{display:grid;grid-template-columns:minmax(0,1fr) 250px;gap:22px;align-items:start}
+
+/* the grid — the four numbers per line; the paper column IS paper */
+.grid{border:1px solid var(--rule);border-radius:12px;background:var(--paper-1);overflow:hidden}
+.grow{display:grid;grid-template-columns:22px minmax(0,1.3fr) 84px 96px 112px minmax(0,1.45fr) minmax(0,1fr) 112px;align-items:center;gap:0}
+.grow > div{padding:9px 10px;min-width:0;font-size:12px;border-left:1px solid var(--rule)}
+.grow > div:first-child{border-left:0}
+.grow.hd > div{font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);padding:7px 10px;line-height:1.4}
+.grow.hd > div small{display:block;font-family:var(--sans);font-size:10px;letter-spacing:0;text-transform:none;color:var(--ink-3);margin-top:2px}
+.grow .n{font-family:var(--mono);font-size:10px;color:var(--ink-3);padding-left:8px !important;padding-right:0 !important}
+.grow .w{color:var(--ink-1);font-weight:500;line-height:1.25}
+.grow .w small{display:block;font-family:var(--mono);font-size:10px;color:var(--ink-3);font-weight:400;margin-top:1px}
+.grow .q{font-family:var(--mono);font-size:11.5px;color:var(--ink-1);font-variant-numeric:tabular-nums;line-height:1.3}
+.grow .q small{display:block;font-size:9.5px;color:var(--ink-3)}
+.grow .q.none{color:var(--ink-3);font-style:italic;font-family:var(--sans);font-size:11.5px}
+/* the paper column carries data-ground="paper" (ADR 0138's declared exception; ADR 0104 D9): inside
+   the cell the tokens re-resolve, so --paper-0 IS #FFFDF8 and --ink-1 IS #211C16 — the document on
+   the light ground, everything the house measured on charcoal */
+.grow .paper{align-self:stretch;background:var(--paper-0);color:var(--ink-2)}
+.grow .paper .q{color:var(--ink-1)}
+.grow .paper .q small{color:var(--ink-4)}
+.grow.hd .paper,.grow.hd .paper small{color:var(--ink-4)}
+.grow .dif{font-size:11.5px;color:var(--ink-2);line-height:1.35}
+.grow .dif b{color:var(--ink-1);font-weight:600}
+.grow .dif.none{color:var(--ink-3)}
+.grow .vd{line-height:1.6}
+.grow .vd .cnt{display:block;font-family:var(--mono);font-size:9.5px;color:var(--ink-3);margin-top:1px}
+.grow .ans{display:grid;gap:4px;justify-items:start}
+.grow .ans .s{font-size:10.5px;line-height:1.3}
+.x + .x{border-top:1px solid var(--rule)}
+.x.open > .grow.x-head{background:var(--seal-tint)}
+.x.open > .grow.x-head .paper{background:var(--paper-0)}
+.x .x-body > div{padding:0 10px 0 32px;background:var(--paper-1)}
+.led2{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:18px;padding:8px 0 14px}
+.led2 .ledger{border-left:2px solid var(--seal-ring);padding-left:12px}
+.led2 h4{font-family:var(--mono);font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--seal);margin:0 0 4px;font-weight:600}
+.led2 .side-note{font-size:11.5px;color:var(--ink-2);line-height:1.5}
+.led2 .side-note b{color:var(--ink-1);font-weight:600}
+.led2 .side-note .chip{margin:2px 4px 2px 0}
+.gfoot{display:grid;grid-template-columns:22px minmax(0,1.3fr) 84px 96px 112px minmax(0,1.45fr) minmax(0,1fr) 112px;border-top:1px solid var(--rule-2);background:var(--paper-1)}
+.gfoot > div{padding:9px 10px;font-size:11.5px;color:var(--ink-2);border-left:1px solid var(--rule);line-height:1.4}
+.gfoot > div:first-child{border-left:0}
+.gfoot b{color:var(--ink-1);font-weight:600;font-family:var(--mono);font-size:11.5px}
+.gfoot .paper{background:var(--paper-0);color:var(--ink-2)}
+.gfoot .paper b{color:var(--ink-1)}
+.gfoot .paper .s{color:var(--ink-4)}
+
+/* the rail — documents and clocks of this delivery */
+.rail-b h4{font-family:var(--mono);font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);margin:0 0 6px;font-weight:600}
+.rail-b .card{padding:10px 12px;margin-bottom:12px}
+.doc{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 8px;padding:7px 0;border-top:1px solid var(--rule);font-size:12px}
+.doc:first-of-type{border-top:0;padding-top:0}
+.doc .t{color:var(--ink-1);font-weight:500}
+.doc .s{grid-column:1/-1}
+.doc.sheet-p{position:relative}
+.doc .pp{display:inline-block;width:14px;height:17px;border:1px solid var(--rule-2);background:var(--paper-2);border-radius:2px;vertical-align:-3px;margin-right:6px}
+.doc .pp.paper{background:#FFFDF8;border-color:#EAE4D8}
+.clk{padding:7px 0;border-top:1px solid var(--rule);font-size:12px}
+.clk:first-of-type{border-top:0;padding-top:0}
+.clk .t{display:flex;justify-content:space-between;gap:8px;color:var(--ink-1);font-weight:500}
+.clk .t .fig{font-size:11px}
+.clk .s{display:block;margin-top:2px;line-height:1.4}
+.clk.blocked .t{color:var(--ink-2)}
+.clk.blocked .t .fig{color:var(--ink-3);font-style:italic;font-family:var(--sans)}
+
+/* the record — time runs down; a verdict is a mark on the same rail as everything else */
+.tl{position:relative;padding-left:0;font-size:12px}
+.ev{display:grid;grid-template-columns:82px 16px minmax(0,1fr);gap:0 10px;padding:7px 0;position:relative}
+.ev .tm{font-family:var(--mono);font-size:10.5px;color:var(--ink-3);padding-top:2px;text-align:right;line-height:1.3}
+.ev .tm b{display:block;color:var(--ink-2);font-weight:500}
+.ev .rail{position:relative}
+.ev .rail::before{content:"";position:absolute;left:7px;top:0;bottom:0;width:1px;background:var(--rule-2)}
+.ev:first-child .rail::before{top:9px}
+.ev:last-child .rail::before{bottom:auto;height:9px}
+.ev .rail i{position:absolute;left:4px;top:7px;width:7px;height:7px;border-radius:999px;background:var(--paper-0);border:1.5px solid var(--ink-2)}
+.ev.house .rail i{border-style:dashed;border-color:var(--ink-3)}
+.ev.vd .rail i{background:var(--seal);border-color:var(--seal)}
+.ev.now .rail i{background:var(--paper-0);border-color:var(--seal);box-shadow:0 0 0 3px var(--seal-tint)}
+.ev .tx{color:var(--ink-1);line-height:1.45}
+.ev .tx .a{color:var(--ink-2);font-weight:500}
+.ev .tx .a::after{content:" · ";color:var(--ink-3)}
+.ev .tx .ev-s{display:block;font-size:11px;color:var(--ink-3);margin-top:2px}
+.ev .tx .chip{margin-left:4px;vertical-align:1px}
+.ev.vd{background:linear-gradient(90deg,transparent 92px,var(--seal-tint) 92px,var(--seal-tint) 100%)}
+.ev.vd .tx .vn{font-family:var(--mono);font-size:9.5px;color:var(--seal);letter-spacing:.08em;margin-right:6px}
+.bracket{grid-column:1/-1;display:flex;align-items:center;gap:8px;padding:2px 0 2px 108px;font-family:var(--mono);font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--seal)}
+.bracket::before{content:"";width:14px;height:1px;background:var(--seal)}
+.av{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:999px;background:var(--seal-tint);box-shadow:inset 0 0 0 1px var(--seal-ring);font-family:var(--mono);font-size:8.5px;color:var(--ink-1);font-weight:600}
+.av.dep{background:transparent;box-shadow:inset 0 0 0 1px var(--rule-2);color:var(--ink-3)}
+/* ── Direction B+: B's grid; C's clock-ordered tabs, holder on the tab; A's record inside the 440 line sheet ── */
+.tab .clk2{font-family:var(--mono);font-size:9.5px;color:var(--ink-3);margin-top:3px;line-height:1.35}
+.tab .clk2 b{color:var(--ink-1);font-weight:500}
+.tab.on .clk2{color:var(--ink-4)}
+.tab .hd2{display:flex;align-items:center;flex-wrap:wrap;gap:3px 5px;margin-top:7px;font-size:10.5px;color:var(--ink-3);line-height:1.3}
+.tab .hd2 .av{width:18px;height:18px;font-size:8px;flex:none}
+.tab.on .hd2{color:var(--ink-4)}
+.tab.hot .vn::after{content:" · live";font-family:var(--mono);font-size:9px;color:var(--seal);letter-spacing:.08em;text-transform:uppercase;font-weight:500}
+.grow .go{font-family:var(--mono);font-size:9.5px;color:var(--ink-3);text-align:right}
+.grow .go::after{content:"›";margin-left:4px;color:var(--seal)}
+/* the record inside the sheet: a narrower time column */
+.sheet .ev{grid-template-columns:62px 14px minmax(0,1fr);font-size:11.5px;padding:6px 0}
+.sheet .ev .tm{font-size:9.5px}
+.sheet .ev.vd{background:linear-gradient(90deg,transparent 72px,var(--seal-tint) 72px,var(--seal-tint) 100%)}
+.sheet .bracket{padding-left:86px}
+/* the ~1100 px rule: the difference folds under the line name, the pack sublines go, the answer is one control */
+.grid.narrow .grow,.grid.narrow .gfoot{grid-template-columns:22px minmax(0,2.1fr) 66px 78px 86px minmax(0,1fr) 96px}
+.grid.narrow .grow .w .dif{display:block;font-size:11px;color:var(--ink-2);margin-top:3px;font-weight:400;line-height:1.35}
+.grid.narrow .grow .w .dif b{color:var(--ink-1)}
+.grid.narrow .grow .q small,.grid.narrow .grow .w small,.grid.narrow .grow.hd small{display:none}
+.grid.narrow .grow > div{padding:8px 8px}
+</style>
+</head>
+<body class="mudavym" data-ground="charcoal">
+<!-- TITLE: Direction B+ — The Grid, composed -->
+
+
+<div class="banner"><b>Sketch 107 &middot; /receiving</b><span>Direction B+ &middot; The Grid, composed</span><span>Warm Charcoal ground &middot; ADR 0138</span><span>Verdicts are append-only &middot; decided 2026-09-16</span></div>
+<div class="wrap">
+
+  <div class="sec"><span class="n">The idea</span><h2>B's grid. C's clock as the tab order, the holder on the tab. A's record inside the line sheet.</h2></div>
+  <p class="note">This is the desk the README recommends, drawn so the founder approves a screen and not a sentence. The page is still <b>one delivery at a time, four numbers per line, a verdict derived from entries, an answer owed</b>. Two grafts: the deliveries across the top are <b>C's queue in clock order</b> &mdash; the soonest window first, with the holder on the tab (D9: no unowned backlog) &mdash; so the manager never guesses which delivery to open; and pressing a row opens <b>the line sheet</b>, one object at 440 px, which carries <b>A's record for that line</b> (order, paper, count, comparison, nudge, entries, all on one rail by name) above the ledger, the held append, and the answer. Section 3 draws the grid at about 1100 px with the column-hiding rule applied.</p>
+
+  <!-- ═══════════════════ 1 · DESKTOP ═══════════════════ -->
+  <div class="sec desk-only"><span class="n">1 &middot; Desktop 1440</span><h2>The manager's desk &mdash; Vanilla Kaleiçi, Antalya</h2><span class="k">TRY &middot; TR &middot; Europe/Istanbul &middot; Wed 16 Sep 2026, 12:05 &middot; the tabs are in clock order: minutes, then 1 d 21 h, then 5 d, then 16 d, then the clock that cannot be computed, last &middot; the gate as drawn needs three changes to <code>scanDifferences</code> / <code>agree()</code> that the README's cost row B names with line numbers</span></div>
+
+  <div class="stage desk desk-only">
+    <div class="app">
+      <aside class="side">
+        <div class="wm">Mudavym<i>.</i></div>
+        <a>Dashboard</a><a>Inventory</a><a>Orders</a><a class="on">Receiving</a><a>Receipts &amp; Credits</a><a>Providers</a>
+        <div class="grp">House</div>
+        <a>Reports</a><a>Calendar</a><a>Team</a><a>Communications</a><a>Notifications</a>
+        <div class="grp">You</div>
+        <a>Settings</a>
+        <div class="who"><b>Zeynep Çelik</b>manager<span class="h">Vanilla &middot; Kaleiçi, Antalya</span></div>
+      </aside>
+      <main class="main">
+        <header class="mast">
+          <div>
+            <div class="wm">Mudavym</div>
+            <h1>Receiving</h1>
+            <p class="sent">What needs a decision &mdash; soonest clock first.</p>
+          </div>
+          <div class="right">
+            <span class="cap">one event &middot; three renderings &middot; this one is manager</span>
+            <span class="house"><b>Vanilla Kaleiçi</b> &middot; Antalya &middot; TRY &middot; TR</span>
+          </div>
+        </header>
+
+        <!-- deliveries as tabs, in CLOCK order — the soonest window first, the holder on the tab -->
+        <div class="tabs">
+          <div class="tab hot"><div class="vn">Doluca</div><div class="dn">PO-118 &middot; DELIVERED &middot; counting now</div><div class="clk2"><b>driver here</b> &middot; since 11:58 &middot; ends at the signature</div><div class="un"><span><b>&mdash;</b> <span class="s">no paper yet</span></span></div><div class="hd2"><span class="av dep">ET</span>Emre T. at the door &middot; <span class="av">ZÇ</span>holds</div></div>
+          <div class="tab on"><div class="vn">Kavaklıdere</div><div class="dn">e-İrsaliye VKL&hellip;12345 &middot; PO-2231</div><div class="clk2"><b>1 d 21 h</b> &middot; day 5 of 7 &middot; Fri 18 Sep 09:40</div><div class="un"><span><b>3</b> <span class="s">lines unanswered</span></span><span class="cl">+ 1 line<br>uncounted</span></div><div class="hd2"><span class="av">ZÇ</span><span class="av dep">CB</span>Zeynep Ç. &middot; Can B.</div></div>
+          <div class="tab"><div class="vn">Metro Toptan</div><div class="dn">UNORDERED &middot; e-Fatura MTR&hellip;9981</div><div class="clk2"><b>5 d</b> &middot; objection day 2 of 8 &middot; Tue 22 Sep</div><div class="un"><span><b>1</b> <span class="s">line unanswered</span></span></div><div class="hd2"><span class="av">ZÇ</span><span class="av dep">CB</span>Zeynep Ç. &middot; Can B.</div></div>
+          <div class="tab"><div class="vn">Sevilen</div><div class="dn">e-Fatura SVL&hellip;4410 &middot; PO-2228 &middot; AGREED</div><div class="clk2"><b>16 d</b> &middot; payment day 14 of 30 &middot; Fri 2 Oct</div><div class="un"><span><b>0</b> <span class="s">unanswered</span></span><span class="cl">verify to post cost<br>₺18.640,00</span></div><div class="hd2"><span class="av">ZÇ</span>Zeynep Ç. &middot; no deputy set</div></div>
+          <div class="tab"><div class="vn">Likya</div><div class="dn">PO-121 &middot; DELIVERED at the premises Mon &middot; paper irsaliye photographed</div><div class="clk2"><b>asks</b> &middot; response window &middot; basis unknown &middot; never fires (A8)</div><div class="un"><span><b>0</b> <span class="s">unanswered</span></span><span class="cl">no countdown<br>asks a YMM</span></div><div class="hd2"><span class="av">ZÇ</span>Zeynep Ç. &middot; no deputy set</div></div>
+        </div>
+
+        <div class="dhead">
+          <h2>Kavaklıdere &middot; e-İrsaliye VKL2026000012345</h2>
+          <span class="meta"><b>RECONCILING</b> &middot; against PO-2231 &middot; delivered Fri 11 Sep 09:52 &middot; counted by Emre T. &middot; GİB-signed XML, source embedded_xml</span>
+        </div>
+        <div class="gate">
+          <span class="cap seal">agreed &middot; held</span>
+          <span><b>3 lines unanswered: 2, 3, 5.</b> A difference must be answered by an accepted proposal or an explicit acceptance with a reason (A11) &mdash; and <b>line 4 was never counted</b>, so it cannot be compared and holds the gate on its own (A6).</span>
+          <span class="s">Response window: <b>day 5 of 7</b> from the e-İrsaliye (Fri 11 Sep 09:40) &mdash; the law deems acceptance <b>Fri 18 Sep 09:40</b>; the state records <b>no response</b>, never agreement.</span>
+          <button class="btn" disabled>Agree &mdash; held: 3 answers owed, 1 line uncounted</button>
+        </div>
+
+        <div class="desk2">
+          <div>
+            <div class="grid">
+              <div class="grow hd">
+                <div></div>
+                <div>line<small>as ordered, PO-2231 &middot; press a row for its sheet</small></div>
+                <div>ordered<small>pack size stated once</small></div>
+                <div>at the door<small>Emre T. &middot; Fri 09:52</small></div>
+                <div class="paper" data-ground="paper">on paper<small>e-İrsaliye &middot; no money on this document</small></div>
+                <div>difference<small>in words, never colour alone</small></div>
+                <div>verdict<small>current &middot; derived from entries</small></div>
+                <div>answer<small>owed by the house</small></div>
+              </div>
+              <div class="x"><div class="grow x-head">
+                <div class="n">1</div>
+                <div class="w">Kavaklıdere Çankaya 2023<small>750 ml &middot; koli of 12</small></div>
+                <div class="q">6 koli<small>= 72 şişe</small></div>
+                <div class="q">6 koli</div>
+                <div class="paper" data-ground="paper"><div class="q">6 koli<small>price &mdash; · not on an irsaliye</small></div></div>
+                <div class="dif none">none &mdash; count = paper = order</div>
+                <div class="vd"><span class="chip v-accepted">accepted</span><span class="cnt">1 entry</span></div>
+                <div class="ans"><span class="s">nothing owed</span><span class="go">sheet</span></div>
+              </div></div>
+              <div class="x open"><div class="grow x-head">
+                <div class="n">2</div>
+                <div class="w">Kavaklıdere Yakut 2022<small>750 ml &middot; koli of 12</small></div>
+                <div class="q">4 koli<small>= 48 şişe</small></div>
+                <div class="q">4 koli<small>label reads 2021</small></div>
+                <div class="paper" data-ground="paper"><div class="q">4 koli<small>Yakut 2022 &middot; price &mdash;</small></div></div>
+                <div class="dif"><b>Vintage differs.</b> 2021 delivered; 2022 ordered and on paper. A substitution, not a tolerance (A9).</div>
+                <div class="vd"><span class="chip v-accepted">accepted</span> <span class="chip seal">substitution</span><span class="cnt">2 entries</span></div>
+                <div class="ans"><button class="btn sm pri">Accept as dispatched</button><span class="s">or propose <code>VINTAGE_CHANGE</code></span><span class="go">sheet</span></div>
+              </div></div>
+              <div class="x"><div class="grow x-head">
+                <div class="n">3</div>
+                <div class="w">Pendore Syrah 2021<small>750 ml &middot; koli of 6</small></div>
+                <div class="q">2 koli<small>= 12 şişe</small></div>
+                <div class="q">1 koli<small>1 refused at the door</small></div>
+                <div class="paper" data-ground="paper"><div class="q">2 koli<small>price &mdash;</small></div></div>
+                <div class="dif"><b>Paper says 2, the house kept 1.</b> One koli was the wrong wine (Boğazkere) and went back on the truck.</div>
+                <div class="vd"><span class="chip v-accepted">accepted 1</span> <span class="chip v-refused">refused 1</span><span class="cnt">2 entries</span></div>
+                <div class="ans"><button class="btn sm">Send partial acceptance</button><span class="s">kısmi kabul drafted &middot; not sent</span><span class="go">sheet</span></div>
+              </div></div>
+              <div class="x"><div class="grow x-head">
+                <div class="n">4</div>
+                <div class="w">Sevilen 900 Fümé Blanc 2023<small>750 ml &middot; koli of 6</small></div>
+                <div class="q">3 koli<small>= 18 şişe</small></div>
+                <div class="q none">not counted</div>
+                <div class="paper" data-ground="paper"><div class="q">3 koli<small>price &mdash;</small></div></div>
+                <div class="dif none">cannot compare &mdash; nobody counted this line. Received is <b>not counted</b>, never equal to paper (A6).</div>
+                <div class="vd"><span class="chip v-none">no verdict</span><span class="cnt">0 entries</span></div>
+                <div class="ans"><button class="btn sm">Count it</button><span class="s">a count owed, not an answer &middot; holds the gate alone</span><span class="go">sheet</span></div>
+              </div></div>
+              <div class="x"><div class="grow x-head">
+                <div class="n">5</div>
+                <div class="w">Kavaklıdere Ancyra Kalecik Karası 2022<small>on paper only &middot; koli of 12</small></div>
+                <div class="q none">not ordered</div>
+                <div class="q none">not counted</div>
+                <div class="paper" data-ground="paper"><div class="q">1 koli<small>price &mdash;</small></div></div>
+                <div class="dif"><b>Pairs with nothing.</b> On the vendor's paper; on no order and in no count. An unmatched line is a recorded difference &mdash; unanswered.</div>
+                <div class="vd"><span class="chip v-none">unpaired</span><span class="cnt">0 entries</span></div>
+                <div class="ans"><button class="btn sm">Answer</button><span class="s">a verdict, an acceptance, or a proposal</span><span class="go">sheet</span></div>
+              </div></div>
+              <div class="gfoot">
+                <div></div>
+                <div>5 lines &middot; 4 ordered &middot; 1 on paper only</div>
+                <div><b>15 koli</b><br>= 150 şişe</div>
+                <div><b>11 koli</b><br>1 line not counted</div>
+                <div class="paper" data-ground="paper"><b>16 koli</b><br><span class="s">no money on this document</span></div>
+                <div>3 lines differ &middot; 1 cannot compare</div>
+                <div>at the agreed price, <b>refused 6 şişe</b> = <b><span class="src" title="PO-2231 line 3 · ₺290,00/şişe × 6 — the PO's agreed price, not a billed one">₺1.740,00</span></b><br><span class="s">not a claim until a priced document bills it</span></div>
+                <div><b>3</b> answers owed<br><span class="s">+ line 4 uncounted</span></div>
+              </div>
+            </div>
+            <div class="legend"><span class="cap">verdict words</span><span><span class="chip v-accepted">accepted</span></span><span><span class="chip v-short">short</span></span><span><span class="chip v-refused">refused</span></span><span><span class="chip v-damaged">damaged</span></span><span><span class="chip seal">substitution</span> rides on an accepted entry</span><span><span class="chip v-none">no verdict</span> is the absence of one</span></div>
+          </div>
+
+          <aside class="rail-b">
+            <div class="card">
+              <h4>documents on this delivery</h4>
+              <div class="doc"><span class="t"><i class="pp"></i>PO-2231</span><span class="s">Mon 7 Sep</span><span class="s">4 lines &middot; agreed <span class="src" title="72 × ₺310,00 + 48 × ₺340,00 + 12 × ₺290,00 + 18 × ₺420,00 = ₺49.680,00">₺49.680,00</span> &middot; sealed by Zeynep Ç.</span></div>
+              <div class="doc"><span class="t"><i class="pp paper"></i>e-İrsaliye VKL2026000012345</span><span class="s">Fri 11 Sep 09:40</span><span class="s">GİB-signed UBL-TR &middot; 5 lines &middot; <b style="color:var(--ink-1)">no money</b> &middot; correctable 7 d</span></div>
+              <div class="doc"><span class="t"><i class="pp"></i>Door count</span><span class="s">Fri 11 Sep 09:52</span><span class="s">Emre T. &middot; 11 koli &middot; 3 photos &middot; our own receiving_advice, no money</span></div>
+              <div class="doc"><span class="t dim"><i class="pp" style="border-style:dashed;background:transparent"></i>e-Fatura</span><span class="s">not yet</span><span class="s">issuance window &le; 7 d &middot; prices are dashes until it arrives</span></div>
+            </div>
+            <div class="card">
+              <h4>clocks &middot; data, not defaults</h4>
+              <div class="clk"><div class="t"><span>Response window</span><span class="fig">day 5 of 7</span></div><span class="s">from the e-İrsaliye, Fri 11 Sep 09:40 &middot; re-notified Zeynep Ç. Mon 14 Sep 21:40 (day 3.5) &middot; escalates to Can B. Thu 17 Sep 00:04 (day 5.6) with the response drafted &middot; <b style="color:var(--ink-1)">the law deems acceptance</b> Fri 18 Sep 09:40; the state records no response</span></div>
+              <div class="clk"><div class="t"><span>Objection window</span><span class="fig">not started</span></div><span class="s">8 d from the e-Fatura, which has not arrived</span></div>
+              <div class="clk blocked"><div class="t"><span>Payment</span><span class="fig">cannot be computed</span></div><span class="s">no vendor_terms row for Kavaklıdere &middot; basis <b>unknown</b> &middot; this clock asks and never fires (D4, A8)</span></div>
+            </div>
+            <div class="s" style="padding:0 2px">Who holds it is on the tab; changing the holder is a popover (C), a row, never an overwrite.</div>
+          </aside>
+        </div>
+      </main>
+    </div>
+  </div>
+  <div class="snotes desk-only"><span><i>tabs</i>in clock order &mdash; soonest window first, the holder on the tab; a clock that cannot be computed sits last and says <b>asks</b></span><span><i>paper</i>the on-paper column carries data-ground="paper" &mdash; the document on the light ground</span><span><i>row</i>press a row: the line sheet (section 2)</span><span><i>gate</i>held on three unanswered lines and one uncounted line &mdash; the wider gate this desk needs, not today's</span></div>
+
+  <!-- ═══════════════════ 1b · OWNER ═══════════════════ -->
+  <div class="sec desk-only"><span class="n">1b &middot; The owner rendering</span><h2>Money that actually came back &mdash; Meyhouse, Palo Alto</h2><span class="k">USD &middot; US-CA &middot; Wed 16 Sep 2026, 16:52 &middot; the third rendering of the same event, kept from the founder's verdict: the band is asked &middot; promised &middot; recovered, and only a credit memo is money. No line ledger, no door counts, no unpriced lines &mdash; those are the manager's. The same figures appear in A's tiles and C's strip.</span></div>
+  <div class="stage desk desk-only">
+    <div class="app" style="min-height:0">
+      <aside class="side" style="padding-bottom:16px">
+        <div class="wm">Mudavym<i>.</i></div>
+        <a>Dashboard</a><a>Inventory</a><a>Orders</a><a class="on">Receiving</a><a>Receipts &amp; Credits</a><a>Reports</a>
+        <div class="who" style="margin-top:18px"><b>Aylin Demir</b>owner<span class="h">Meyhouse &middot; Palo Alto</span></div>
+      </aside>
+      <main class="main" style="padding-bottom:26px">
+        <header class="mast">
+          <div><div class="wm">Mudavym</div><h1>Receiving</h1><p class="sent">Money that actually came back.</p></div>
+          <div class="right"><span class="cap">one event &middot; three renderings &middot; this one is owner</span><span class="house"><b>Meyhouse</b> &middot; Palo Alto &middot; USD &middot; US-CA</span></div>
+        </header>
+        <div class="nums">
+          <div><span class="v">$96.00<small>recovered</small></span><span class="cap l">September to date &middot; credit memos only</span><span class="s">1 memo &middot; SK-CM-1180, Tue 8 Sep &middot; nothing else on this band is money</span></div>
+          <div><span class="v">$180.00<small>promised</small></span><span class="cap l">a promise is not money</span><span class="s">1 &middot; SGWS "credit to follow", Fri 11 Sep &middot; printed beside recovered, never added in</span></div>
+          <div><span class="v">$0<small>asked</small></span><span class="cap l">sent &middot; waiting on a vendor</span><span class="s">0 sent &middot; <b style="color:var(--ink-1)">1 drafted, not sent</b> ($28.20) &mdash; a draft is not a claim</span></div>
+          <div><span class="v">&ge;$28.20<small>at risk</small></span><span class="cap l">unanswered money &middot; a floor</span><span class="s">2 billed lines cannot be priced: Musar not counted, Efes never ordered &mdash; $393.60 billed</span></div>
+        </div>
+        <div class="desk2">
+          <div>
+            <div class="card" style="overflow:hidden">
+              <div class="grow hd" style="grid-template-columns:22px minmax(0,1.1fr) minmax(0,2fr) 92px 132px"><div></div><div>delivery<small>money back, per delivery</small></div><div>what happened<small>by name, in order</small></div><div>amount<small>USD</small></div><div>where it stands<small>a word, never a colour</small></div></div>
+              <div class="grow" style="grid-template-columns:22px minmax(0,1.1fr) minmax(0,2fr) 92px 132px;border-top:1px solid var(--rule)"><div class="n">1</div><div class="w">Skurnik Wines<small>PO-2405 &middot; delivered Tue 1 Sep</small></div><div class="dif">4 btl Ridge Geyserville 2021 corked (entry v2, Deniz K.) &middot; claim sent Wed 2 Sep by Hasan A. &middot; promised Fri 4 Sep &middot; <b>credit memo SK-CM-1180 Tue 8 Sep</b></div><div class="q">$96.00<small>4 &times; $24.00</small></div><div><span class="chip v-accepted">recovered</span></div></div>
+              <div class="grow" style="grid-template-columns:22px minmax(0,1.1fr) minmax(0,2fr) 92px 132px;border-top:1px solid var(--rule)"><div class="n">2</div><div class="w">Southern Glazer's<small>PO-2398 &middot; delivered Thu 10 Sep</small></div><div class="dif">12 btl Suvla Sur 2020 short (entry v1, Deniz K.) &middot; claim sent Thu 10 Sep &middot; vendor wrote <b>"credit to follow"</b> Fri 11 Sep &middot; no memo yet</div><div class="q">$180.00<small>12 &times; $15.00</small></div><div><span class="chip seal">promised</span><span class="cnt" style="display:block;font-family:var(--mono);font-size:9px;color:var(--ink-4);margin-top:2px">not money</span></div></div>
+              <div class="grow" style="grid-template-columns:22px minmax(0,1.1fr) minmax(0,2fr) 92px 132px;border-top:1px solid var(--rule)"><div class="n">3</div><div class="w">Southern Glazer's<small>PO-2417 &middot; delivered today 14:12</small></div><div class="dif">2 btl Doluca Antik Kırmızı 2021 damaged (entry v4, Hasan A. 16:40) &middot; credit request <b>drafted by the house, not sent</b> &middot; 2 more lines hold the gate and cannot be priced</div><div class="q">$28.20<small>2 &times; $14.10</small></div><div><span class="chip v-damaged">drafted</span><span class="cnt" style="display:block;font-family:var(--mono);font-size:9px;color:var(--ink-4);margin-top:2px">not sent &middot; not asked</span></div></div>
+              <div class="grow" style="grid-template-columns:22px minmax(0,1.1fr) minmax(0,2fr) 92px 132px;border-top:1px solid var(--rule)"><div class="n">4</div><div class="w">Wine Warehouse<small>PO-2402 &middot; delivered Wed 2 Sep</small></div><div class="dif">PRICE_VARIANCE proposal $41.60 sent Thu 3 Sep &middot; vendor countered Mon 14 Sep &middot; Selin Ö. holds it &middot; <b>a proposal is not a claim</b> &mdash; nothing here is asked, promised or recovered</div><div class="q dim">&mdash;<small>$41.60 at risk</small></div><div><span class="chip v-none">not a claim</span></div></div>
+              <div class="grow" style="grid-template-columns:22px minmax(0,1.1fr) minmax(0,2fr) 92px 132px;border-top:1px solid var(--rule)"><div class="n">5</div><div class="w">Skurnik Wines<small>PO-2388 &middot; lapsed Mon 7 Sep</small></div><div class="dif">EFT debited $1,204.00 on day 30 &middot; nobody verified &middot; no claim was ever raised &middot; 8 cases on the shelf at <b>cost provisional</b></div><div class="q dim">&mdash;<small>nothing asked</small></div><div><span class="chip v-none">nothing asked</span></div></div>
+              <div class="gfoot" style="grid-template-columns:22px minmax(0,1.1fr) minmax(0,2fr) 92px 132px"><div></div><div>5 deliveries touched money this month</div><div>recovered = memos received. Promised and drafted are printed beside it and never added in; a proposal is a position on a price, not a claim on money.</div><div><b>$96.00</b><br><span class="s">recovered</span></div><div><span class="s">$180.00 promised &middot; $28.20 drafted</span></div></div>
+            </div>
+            <div class="legend"><span class="cap">words on this band</span><span><span class="chip v-accepted">recovered</span> a credit memo received</span><span><span class="chip seal">promised</span> the vendor said yes in writing</span><span><span class="chip v-damaged">drafted</span> the house wrote it, nobody sent it</span><span><span class="chip v-none">not a claim</span> a proposal or nothing</span></div>
+          </div>
+          <aside class="rail-b">
+            <div class="card">
+              <h4>what this rendering never does</h4>
+              <div class="doc"><span class="t">Add promised into recovered</span><span class="s">$180.00 stays beside $96.00, in words</span></div>
+              <div class="doc"><span class="t">Count a draft as asked</span><span class="s">$28.20 is drafted &middot; asked reads $0</span></div>
+              <div class="doc"><span class="t">Price an unpriced line</span><span class="s">at risk is a floor: &ge;$28.20, because $393.60 billed on two lines has no verdict</span></div>
+            </div>
+            <div class="card">
+              <h4>Vanilla Kaleiçi &middot; TRY &middot; the same band</h4>
+              <div class="doc"><span class="t">₺1.320,00 recovered</span><span class="s">Sevilen &middot; credit against iade faturası SVL-İ-0021 &middot; Wed 9 Sep</span></div>
+              <div class="doc"><span class="t">₺0 promised &middot; ₺0 asked</span><span class="s">1 response drafted, not sent (kısmi kabul on VKL&hellip;12345)</span></div>
+              <div class="doc"><span class="t dim">₺1.740,00 &mdash; not a claim</span><span class="s">refused 6 şişe at the agreed price; nothing is claimable until a priced document bills it</span></div>
+            </div>
+            <div class="s" style="padding:0 2px">The band reads <code>GET /procurement/credits</code> and <code>/stats</code>; a figure opens to the memo, the letter or the draft it came from.</div>
+          </aside>
+        </div>
+      </main>
+    </div>
+  </div>
+  <div class="snotes desk-only"><span><i>band</i>asked &middot; promised &middot; recovered, one figure each, only the last is money</span><span><i>rows</i>money back per delivery, by name and date &mdash; a draft, a proposal and a lapse each get their own word</span><span><i>floor</i>&ge;$28.20 because two billed lines cannot be priced, not because a list was capped</span></div>
+
+  <!-- ═══════════════════ 2 · OVERLAY ═══════════════════ -->
+  <div class="sec desk-only"><span class="n">2 &middot; Overlay</span><h2>The line sheet &mdash; one object, 440 px, carrying A's record for that line</h2><span class="k">ADR 0112: a sheet for one object. The record is the line's chronology by name; beneath it the ledger, the held append (a ledger row keeps the seal before &mdash; F10), and the answer the house owes. The centred question it can open is drawn in B.</span></div>
+
+  <div class="stage desk desk-only" style="height:1600px">
+    <div class="app" style="min-height:1600px">
+      <aside class="side">
+        <div class="wm">Mudavym<i>.</i></div>
+        <a>Dashboard</a><a>Inventory</a><a>Orders</a><a class="on">Receiving</a><a>Receipts &amp; Credits</a>
+      </aside>
+      <main class="main">
+        <header class="mast"><div><div class="wm">Mudavym</div><h1>Receiving</h1><p class="sent">What needs a decision &mdash; soonest clock first.</p></div></header>
+        <div class="tabs" style="max-width:760px">
+          <div class="tab hot"><div class="vn">Doluca</div><div class="clk2"><b>driver here</b></div></div>
+          <div class="tab on"><div class="vn">Kavaklıdere</div><div class="clk2"><b>1 d 21 h</b> &middot; day 5 of 7</div></div>
+          <div class="tab"><div class="vn">Metro Toptan</div><div class="clk2"><b>5 d</b> &middot; day 2 of 8</div></div>
+          <div class="tab"><div class="vn">Sevilen</div><div class="clk2"><b>16 d</b> &middot; verify</div></div>
+          <div class="tab"><div class="vn">Likya</div><div class="clk2"><b>asks</b> &middot; no countdown</div></div>
+        </div>
+        <div class="dhead"><h2>Kavaklıdere &middot; e-İrsaliye VKL2026000012345</h2><span class="meta"><b>RECONCILING</b> &middot; 3 lines unanswered &middot; 1 uncounted</span></div>
+        <div class="grid" style="max-width:760px">
+          <div class="grow hd" style="grid-template-columns:22px minmax(0,1.3fr) 70px 80px 90px minmax(0,1fr) 110px"><div></div><div>line</div><div>ordered</div><div>door</div><div class="paper" data-ground="paper">paper</div><div>verdict</div><div>answer</div></div>
+          <div class="x"><div class="grow" style="grid-template-columns:22px minmax(0,1.3fr) 70px 80px 90px minmax(0,1fr) 110px"><div class="n">1</div><div class="w">Çankaya 2023</div><div class="q">6 koli</div><div class="q">6 koli</div><div class="paper" data-ground="paper"><div class="q">6 koli</div></div><div class="vd"><span class="chip v-accepted">accepted</span></div><div class="ans"><span class="s">nothing owed</span></div></div></div>
+          <div class="x open"><div class="grow" style="grid-template-columns:22px minmax(0,1.3fr) 70px 80px 90px minmax(0,1fr) 110px;background:var(--seal-tint)"><div class="n">2</div><div class="w">Yakut 2022</div><div class="q">4 koli</div><div class="q">4 koli</div><div class="paper" data-ground="paper"><div class="q">4 koli</div></div><div class="vd"><span class="chip v-accepted">accepted</span> <span class="chip seal">substitution</span></div><div class="ans"><span class="s">owed</span></div></div></div>
+          <div class="x"><div class="grow" style="grid-template-columns:22px minmax(0,1.3fr) 70px 80px 90px minmax(0,1fr) 110px"><div class="n">3</div><div class="w">Pendore Syrah 2021</div><div class="q">2 koli</div><div class="q">1 koli</div><div class="paper" data-ground="paper"><div class="q">2 koli</div></div><div class="vd"><span class="chip v-accepted">accepted 1</span> <span class="chip v-refused">refused 1</span></div><div class="ans"><span class="s">owed</span></div></div></div>
+        </div>
+      </main>
+    </div>
+    <div class="scrim"></div>
+    <div class="sheet" id="sheet-bp">
+      <div class="oh">
+        <div><span class="eye">Line 2 of 5 &middot; e-İrsaliye VKL2026000012345 &middot; PO-2231</span><h3 class="ttl">Kavaklıdere Yakut 2022</h3><p class="sub">750 ml &middot; koli of 12 &middot; ordered 4 koli = 48 şişe &middot; the pack size is the order's, stated once</p></div>
+        <button class="oclose" data-close>Close</button>
+      </div>
+      <div class="obody">
+        <span class="osect">The four numbers</span>
+        <div class="card flat" style="border-color:var(--rule);padding:8px 10px;display:grid;grid-template-columns:repeat(4,1fr);gap:8px;font-size:11.5px">
+          <div><span class="cap">ordered</span><div class="fig">4 koli</div><div class="s">= 48 şişe &middot; <span class="src" title="PO-2231 line 2, sealed Mon 7 Sep by Zeynep Ç.">₺340,00/şişe</span></div></div>
+          <div><span class="cap">door</span><div class="fig">4 koli</div><div class="s">Emre T. Fri 09:52 &middot; label reads 2021</div></div>
+          <div class="paper" data-ground="paper" style="padding:4px 6px;border-radius:6px;background:var(--paper-0)"><span class="cap" style="color:var(--ink-4)">on paper</span><div class="fig" style="color:var(--ink-1)">4 koli</div><div class="s" style="color:var(--ink-4)">Yakut 2022 &middot; price &mdash;</div></div>
+          <div><span class="cap">difference</span><div class="fig">vintage</div><div class="s">2021 for 2022 &middot; a substitution (A9)</div></div>
+        </div>
+
+        <span class="osect">The record &mdash; this line, oldest first</span>
+        <div class="tl">
+          <div class="ev"><div class="tm"><b>Mon 7 Sep</b>09:10</div><div class="rail"><i></i></div><div class="tx"><span class="a">Zeynep Ç.</span>ordered 4 koli Yakut 2022 <span class="ev-s">agreed ₺340,00/şişe &middot; sealed on /orders</span></div></div>
+          <div class="ev house"><div class="tm"><b>Fri 11 Sep</b>09:40</div><div class="rail"><i></i></div><div class="tx"><span class="a">the house</span>read e-İrsaliye VKL&hellip;12345: 4 koli Yakut 2022 <span class="ev-s">GİB-signed XML, source embedded_xml &middot; no money on this document</span></div></div>
+          <div class="ev vd"><div class="tm">09:52</div><div class="rail"><i></i></div><div class="tx"><span class="vn">v1</span><span class="a">Emre T. &middot; door</span><span class="chip v-accepted">accepted</span> 4 koli <span class="ev-s">photo IMG_0231 &middot; "label says 2021", driver present &middot; counted in koli, so the entry says koli</span></div></div>
+          <div class="ev house"><div class="tm">09:53</div><div class="rail"><i></i></div><div class="tx"><span class="a">the house</span>differs: vintage 2021 at the door, 2022 ordered and on paper &mdash; Zeynep Ç. notified <span class="ev-s">one comparison, the same one the AGREED gate reads (A11)</span></div></div>
+          <div class="ev house"><div class="tm"><b>Mon 14 Sep</b>21:40</div><div class="rail"><i></i></div><div class="tx"><span class="a">the house</span>re-notified Zeynep Ç. &mdash; day 3.5 of 7 <span class="ev-s">escalates to Can B. Thu 00:04 with the response drafted</span></div></div>
+          <div class="ev vd"><div class="tm"><b>Wed 16 Sep</b>11:20</div><div class="rail"><i></i></div><div class="tx"><span class="vn">v2</span><span class="a">Zeynep Ç. &middot; desk</span><span class="chip v-accepted">accepted</span> 4 koli <span class="chip seal">substitution</span> <span class="chip ghost">takes all of v1</span><span class="ev-s">2021 for 2022 &middot; VINTAGE_CHANGE drafted, <b>not sent</b> &middot; v1 stays, retired</span></div></div>
+          <div class="bracket">one line &middot; two entries &middot; the current state is derived from both</div>
+          <div class="ev now"><div class="tm">now</div><div class="rail"><i></i></div><div class="tx"><span class="a">waiting on Zeynep Ç.</span>unanswered: send the proposal, or accept as dispatched with a reason</div></div>
+        </div>
+        <div class="derived"><span class="cap">current &middot; derived</span><b>accepted 48 &minus; 48 + 48 = 48 şişe</b><span>&middot;</span><b>substitution &mdash; unanswered</b><span class="dim">&middot; 2 entries, v1 retired</span></div>
+
+        <span class="osect">Append an entry &mdash; it becomes v3 &middot; nothing is chosen for you</span>
+        <div class="radios" role="radiogroup" aria-label="verdict"><span class="chip">accepted</span><span class="chip">short</span><span class="chip">refused</span><span class="chip">damaged</span></div>
+        <div class="two">
+          <div class="field"><label>How many</label><input class="inp mono" value="" placeholder="&mdash;" aria-label="quantity"></div>
+          <div class="field"><label>Unit &mdash; one, never both</label><div class="radios"><span class="chip">şişe</span><span class="chip">koli</span></div></div>
+        </div>
+        <div class="field"><label>Takes from &mdash; a portion must come from somewhere</label><div class="radios"><span class="chip">v2 &middot; accepted 48 şişe</span><span class="chip ghost">none chosen</span></div></div>
+        <div class="field"><label>Why, in your words (required)</label><input class="inp" placeholder="What you saw — a decision somebody made" aria-label="reason"></div>
+        <div style="margin-top:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><div class="hold" data-idle aria-disabled="true"><span class="fill"></span><span class="wax">m</span><span class="lbl">Hold to append</span></div><span class="s">Disabled until a verdict, a quantity, a unit and the reason are filled. A ledger row keeps the seal before (ADR 0112 F10). v1 and v2 are untouched.</span></div>
+
+        <span class="osect">The answer &mdash; owed by the house</span>
+        <div class="card" style="padding:10px 12px;font-size:12px">
+          <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline"><b>VINTAGE_CHANGE</b><span class="s">proposal &middot; drafted by the house &middot; <b style="color:var(--ink-1)">not sent</b></span></div>
+          <p class="sent" style="margin:6px 0 8px;font-size:12px">"Line 2 of VKL2026000012345 delivered Yakut 2021 against Yakut 2022 ordered. We accept the 2021 at the agreed price of ₺340,00 per bottle and ask you to confirm."</p>
+          <div class="s" style="margin-bottom:8px">Generated from the ledger &middot; not evidence &mdash; the photograph and entry v1 are. Sending puts a position in the window the vendor must answer.</div>
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><div class="hold" data-done="Sent to Kavaklıdere — a proposal is not an agreement"><span class="fill"></span><span class="wax">m</span><span class="lbl">Hold to send</span></div><span class="s">or</span><button class="btn sm pri">Accept as dispatched</button><span class="s">opens the centred question (B, section 2)</span></div>
+        </div>
+      </div>
+      <div class="ofoot"><span>Esc tears the sheet; a stub with your unwritten entry stays on the line.</span><span>tuck &middot; 300 ms</span></div>
+    </div>
+  </div>
+  <div class="snotes desk-only"><span><i>record</i>A's record for one line, inside B's sheet &mdash; order, paper, count, comparison, nudge, entries, on one rail by name</span><span><i>append</i>the picker is drawn empty: no verdict, no quantity, no unit, no takes-from; the hold wakes when the reason is written</span><span><i>behind</i>the desk keeps its pulse behind the sheet</span></div>
+
+  <!-- ═══════════════════ 2b · THE RULE'S OTHER TWO CASES ═══════════════════ -->
+  <div class="sec desk-only"><span class="n">2b &middot; The rule's other two cases</span><h2>The derived box with no order, and with more than was ordered</h2><span class="k">"Current portions add up to the ordered quantity" is undefined for an unordered line and for an over-delivery. The rule (README, "The derivation rule"): with no order the basis is the counted quantity, or the on-paper quantity if nobody counted; a portion beyond the order is marked as such, and the invariant compares to max(ordered, counted).</span></div>
+  <div class="states desk-only" style="grid-template-columns:1fr 1fr;max-width:1400px">
+    <div class="state" style="min-height:0">
+      <div class="lab">No order<span>line 5 &middot; Kavaklıdere Ancyra Kalecik Karası 2022 &middot; on the e-İrsaliye only</span></div>
+      <div class="in">
+        <div class="card flat" style="border-color:var(--rule);padding:8px 10px;display:grid;grid-template-columns:repeat(3,1fr);gap:8px;font-size:11.5px;margin-bottom:10px">
+          <div><span class="cap">ordered</span><div class="q none" style="font-family:var(--sans);font-style:italic;color:var(--ink-3)">not ordered</div></div>
+          <div><span class="cap">door</span><div class="q none" style="font-family:var(--sans);font-style:italic;color:var(--ink-3)">not counted</div></div>
+          <div class="paper" data-ground="paper" style="padding:4px 6px;border-radius:6px;background:var(--paper-0)"><span class="cap" style="color:var(--ink-4)">on paper</span><div class="fig" style="color:var(--ink-1)">1 koli</div><div class="s" style="color:var(--ink-4)">koli of 12 &middot; price &mdash;</div></div>
+        </div>
+        <div class="rule-sent" style="margin:0 0 8px">No entry. The first one will be v1.</div>
+        <div class="derived"><span class="cap">current &middot; derived</span><b>no order &middot; the basis is the paper: 1 koli = 12 şişe</b><span>&middot;</span><b>no verdict</b><span>&middot;</span><span>not counted 12 = basis</span><span class="dim">&middot; 0 entries &middot; a count here becomes v1 and the basis becomes the count, not the paper</span></div>
+      </div>
+      <div class="why">The house's own count outranks the vendor's paper; the paper is the basis only in its absence. "Not counted 12" is a gap, never a zero &mdash; and this line still holds the gate as unpaired (A11).</div>
+    </div>
+    <div class="state" style="min-height:0">
+      <div class="lab">Over-delivery<span>Sevilen PO-2228 line 2 &middot; e-Fatura SVL&hellip;4410 &middot; AGREED &middot; 5 koli arrived for 4</span></div>
+      <div class="in">
+        <div class="card flat" style="border-color:var(--rule);padding:8px 10px;display:grid;grid-template-columns:repeat(3,1fr);gap:8px;font-size:11.5px;margin-bottom:10px">
+          <div><span class="cap">ordered</span><div class="fig">4 koli</div><div class="s">koli of 6 &middot; = 24 şişe, stated once</div></div>
+          <div><span class="cap">door</span><div class="fig">5 koli</div><div class="s">Emre T. Thu 3 Sep 10:10</div></div>
+          <div class="paper" data-ground="paper" style="padding:4px 6px;border-radius:6px;background:var(--paper-0)"><span class="cap" style="color:var(--ink-4)">on paper</span><div class="fig" style="color:var(--ink-1)">4 koli</div><div class="s" style="color:var(--ink-4)">e-Fatura &middot; ₺330,00/şişe</div></div>
+        </div>
+        <div class="ledger" style="margin-bottom:6px">
+          <div class="entry"><span class="vn">v1</span><span class="who"><b>Emre T.</b>door<span class="h">Thu 10:10</span></span><span class="what"><span class="chip v-accepted">accepted</span>4 koli <span class="ev"><span class="chip">photo IMG_0198</span>driver present</span></span></div>
+          <div class="entry"><span class="vn">v2</span><span class="who"><b>Emre T.</b>door<span class="h">Thu 10:11</span></span><span class="what"><span class="chip v-refused">refused</span>1 koli <span class="chip seal">beyond the order</span> <span class="ev">one koli more than ordered &middot; back on the van &middot; the flag is the row's, not derived</span></span></div>
+        </div>
+        <div class="derived"><span class="cap">current &middot; derived</span><b>accepted 24 şişe</b><span>&middot;</span><b>refused 6 şişe beyond the order</b><span>&middot;</span><span>basis max(ordered 24, counted 30) = 30 &middot; 24 + 6 = 30</span><span class="dim">&middot; 2 entries &middot; paper 4 koli = accepted 4 &middot; no difference to answer</span></div>
+      </div>
+      <div class="why">Had the excess been kept, v2 would read <b>accepted 1 koli &middot; beyond the order</b> &mdash; a manager's gate (D6) and an answer owed until a priced document bills it or the vendor writes that it will not. Within-order and beyond-order portions are never summed into one word.</div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════ 3 · 1100 ═══════════════════ -->
+  <div class="sec desk-only"><span class="n">3 &middot; Desktop ~1100</span><h2>The grid below 1200 px &mdash; the column-hiding rule, applied</h2><span class="k">Below ~1200 px: the difference folds under the line name as a sentence, the pack sublines go (the pack size stays in the sheet), the answer is one control. Below ~960 px the grid becomes the phone list of section 5. Nothing is hidden that changes a number.</span></div>
+  <div class="stage desk desk-only" style="max-width:1100px">
+    <div class="app" style="min-height:0">
+      <aside class="side" style="padding-bottom:16px">
+        <div class="wm">Mudavym<i>.</i></div>
+        <a>Dashboard</a><a>Inventory</a><a>Orders</a><a class="on">Receiving</a><a>Receipts &amp; Credits</a>
+        <div class="who" style="margin-top:18px"><b>Zeynep Çelik</b>manager<span class="h">Vanilla &middot; Kaleiçi</span></div>
+      </aside>
+      <main class="main" style="padding-bottom:24px">
+        <header class="mast" style="margin-bottom:12px"><div><div class="wm">Mudavym</div><h1>Receiving</h1><p class="sent">What needs a decision &mdash; soonest clock first.</p></div><div class="right"><span class="house"><b>Vanilla Kaleiçi</b> &middot; TRY</span></div></header>
+        <div class="tabs">
+          <div class="tab hot"><div class="vn">Doluca</div><div class="clk2"><b>driver here</b></div><div class="hd2"><span class="av dep">ET</span><span class="av">ZÇ</span></div></div>
+          <div class="tab on"><div class="vn">Kavaklıdere</div><div class="clk2"><b>1 d 21 h</b> &middot; day 5 of 7</div><div class="hd2"><span class="av">ZÇ</span><span class="av dep">CB</span>3 unanswered</div></div>
+          <div class="tab"><div class="vn">Metro Toptan</div><div class="clk2"><b>5 d</b> &middot; day 2 of 8</div><div class="hd2"><span class="av">ZÇ</span><span class="av dep">CB</span>1 unanswered</div></div>
+          <div class="tab"><div class="vn">Sevilen</div><div class="clk2"><b>16 d</b> &middot; verify</div><div class="hd2"><span class="av">ZÇ</span>0</div></div>
+          <div class="tab"><div class="vn">Likya</div><div class="clk2"><b>asks</b> &middot; basis unknown</div><div class="hd2"><span class="av">ZÇ</span>0</div></div>
+        </div>
+        <div class="gate" style="margin-bottom:14px"><span class="cap seal">agreed &middot; held</span><span><b>3 unanswered: 2, 3, 5</b> &middot; line 4 uncounted (A6)</span><span class="s">day 5 of 7 &middot; deems Fri 18 Sep 09:40</span><button class="btn sm" disabled>Agree &mdash; held</button></div>
+        <div class="grid narrow">
+          <div class="grow hd"><div></div><div>line &middot; difference</div><div>ordered</div><div>door</div><div class="paper" data-ground="paper">on paper</div><div>verdict</div><div>answer</div></div>
+          <div class="x"><div class="grow"><div class="n">1</div><div class="w">Kavaklıdere Çankaya 2023<span class="dif none">none &mdash; count = paper = order</span></div><div class="q">6 koli</div><div class="q">6 koli</div><div class="paper" data-ground="paper"><div class="q">6 koli</div></div><div class="vd"><span class="chip v-accepted">accepted</span></div><div class="ans"><span class="s">nothing owed</span></div></div></div>
+          <div class="x"><div class="grow"><div class="n">2</div><div class="w">Kavaklıdere Yakut 2022<span class="dif"><b>Vintage differs</b> &mdash; 2021 delivered; 2022 ordered and on paper (A9)</span></div><div class="q">4 koli</div><div class="q">4 koli</div><div class="paper" data-ground="paper"><div class="q">4 koli</div></div><div class="vd"><span class="chip v-accepted">accepted</span> <span class="chip seal">substitution</span></div><div class="ans"><button class="btn sm pri">Answer</button></div></div></div>
+          <div class="x"><div class="grow"><div class="n">3</div><div class="w">Pendore Syrah 2021<span class="dif"><b>Paper says 2, kept 1</b> &mdash; wrong wine, back on the truck</span></div><div class="q">2 koli</div><div class="q">1 koli</div><div class="paper" data-ground="paper"><div class="q">2 koli</div></div><div class="vd"><span class="chip v-accepted">accepted 1</span> <span class="chip v-refused">refused 1</span></div><div class="ans"><button class="btn sm">Answer</button></div></div></div>
+          <div class="x"><div class="grow"><div class="n">4</div><div class="w">Sevilen 900 Fümé Blanc 2023<span class="dif none">cannot compare &mdash; not counted (A6)</span></div><div class="q">3 koli</div><div class="q none">not counted</div><div class="paper" data-ground="paper"><div class="q">3 koli</div></div><div class="vd"><span class="chip v-none">no verdict</span></div><div class="ans"><button class="btn sm">Count</button></div></div></div>
+          <div class="x"><div class="grow"><div class="n">5</div><div class="w">Kavaklıdere Ancyra 2022<span class="dif"><b>Pairs with nothing</b> &mdash; on paper only</span></div><div class="q none">not ordered</div><div class="q none">not counted</div><div class="paper" data-ground="paper"><div class="q">1 koli</div></div><div class="vd"><span class="chip v-none">unpaired</span></div><div class="ans"><button class="btn sm">Answer</button></div></div></div>
+          <div class="gfoot"><div></div><div>5 lines &middot; 3 differ &middot; 1 cannot compare</div><div><b>15 koli</b></div><div><b>11 koli</b></div><div class="paper" data-ground="paper"><b>16 koli</b></div><div>refused 6 şişe = <b>₺1.740,00</b> at the agreed price<br><span class="s">not a claim: no priced document yet</span></div><div><b>3</b> owed</div></div>
+        </div>
+      </main>
+    </div>
+  </div>
+  <div class="snotes desk-only"><span><i>fold</i>the difference folds under the line name as a sentence; the paper cell stays paper</span><span><i>kept</i>the footer keeps its qualifier &mdash; ₺1.740,00 is at the agreed price and is not a claim until a priced document bills it</span><span><i>last</i>the blocked clock is the last tab, with <b>asks</b> where a countdown would be</span></div>
+
+  <!-- ═══════════════════ 4 · STATES ═══════════════════ -->
+  <div class="sec"><span class="n">4 &middot; States</span><h2>Empty, loading, refused, partial</h2><span class="k">The same four as B: three answers to a comparison, never two &mdash; compared &middot; not comparable &middot; unreadable. Only the first can open the gate.</span></div>
+  <div class="mob-note">Sections 1&ndash;3 (the desk at 1440, its line sheet, and the ~1100 grid) are desk-only in this sketch. The phone form of the line sheet &mdash; ADR 0112 F9's bottom sheet with detents &mdash; is drawn in section 5.</div>
+  <div class="states">
+    <div class="state">
+      <div class="lab">Empty<span>nothing to reconcile</span></div>
+      <div class="in">
+        <div class="tabs" style="margin-bottom:10px"><div class="tab" style="border-style:dashed;cursor:default"><div class="vn dim">no delivery</div><div class="dn">nothing on a clock today</div></div></div>
+        <p><span class="cap">Wed 16 Sep &middot; 08:30</span><br><b>0 deliveries</b> carry a document to reconcile. <b>1 in transit</b>: Doluca PO-118, window 11:30&ndash;13:00, acknowledged without changes &mdash; the van that is at the door by 11:58 on the desk above.</p>
+        <div class="grid" style="font-size:11px"><div class="grow hd" style="grid-template-columns:1fr 1fr 1fr 1fr"><div>line</div><div>ordered</div><div>door</div><div class="paper" data-ground="paper">paper</div></div><div class="grow" style="grid-template-columns:1fr 1fr 1fr 1fr"><div class="q none">&mdash; no lines</div><div></div><div></div><div class="paper" data-ground="paper"></div></div></div>
+      </div>
+      <div class="why">The list answered. An empty grid is drawn as one, with its columns, so "nothing" and "not loaded" never look alike.</div>
+    </div>
+    <div class="state">
+      <div class="lab">Loading<span>tabs first, clocks later &middot; static bars</span></div>
+      <div class="in">
+        <div class="tabs" style="margin-bottom:10px"><div class="tab"><div class="vn">Kavaklıdere</div><div class="clk2">&mdash;</div></div><div class="tab"><div class="vn">Metro Toptan</div><div class="clk2">&mdash;</div></div></div>
+        <div class="grid" style="font-size:11px"><div class="grow hd" style="grid-template-columns:1.4fr 1fr 1fr 1fr"><div>line</div><div>ordered</div><div>door</div><div class="paper" data-ground="paper">paper</div></div>
+          <div class="grow" style="grid-template-columns:1.4fr 1fr 1fr 1fr"><div><span class="skel w90"></span></div><div><span class="skel w40"></span></div><div><span class="skel w40"></span></div><div class="paper" data-ground="paper"><span class="skel w40"></span></div></div>
+        </div>
+        <p class="s" style="margin-top:10px">A tab's clock is a dash until the timer arrives &mdash; the order of the tabs is not known before the clocks are, so the strip holds its order from the last read and says so. The bars do not pulse.</p>
+      </div>
+      <div class="why">A tab strip that re-sorted on every load would be a page that never sits still; the clock order settles once, then moves only on the tally.</div>
+    </div>
+    <div class="state">
+      <div class="lab">Refused<span>the comparison and the role</span></div>
+      <div class="in">
+        <div class="alert" role="alert"><span class="cap seal">unreadable &middot; the gate refuses</span><b>The comparison could not be read.</b> <code>scanDifferences</code> timed out at 12:04. Nothing moves: this is not "no difference" &mdash; a failed read never opens the gate (A11 point 2). <div style="margin-top:8px"><button class="btn sm">Run it again</button></div></div>
+        <div class="alert" role="alert" style="margin-top:10px;border-color:var(--rule-2)"><span class="cap">403 &middot; your role</span><b>Staff cannot read the grid.</b> The door rendering is yours.</div>
+      </div>
+      <div class="why">Three answers, never two. Collapsing "unreadable" into "not comparable" would let a timeout agree a delivery.</div>
+    </div>
+    <div class="state">
+      <div class="lab">Partial<span>honest gaps on one row</span></div>
+      <div class="in" style="padding:10px">
+        <div class="grid" style="font-size:11px">
+          <div class="grow hd" style="grid-template-columns:1.2fr .8fr .9fr 1fr"><div>line</div><div>door</div><div class="paper" data-ground="paper">paper</div><div>verdict</div></div>
+          <div class="grow" style="grid-template-columns:1.2fr .8fr .9fr 1fr"><div class="w" style="font-size:11px">Sevilen 900 Fümé</div><div class="q none">not counted</div><div class="paper" data-ground="paper"><div class="q">3 koli<small>price &mdash;</small></div></div><div><span class="chip v-none">no verdict</span></div></div>
+          <div class="grow" style="grid-template-columns:1.2fr .8fr .9fr 1fr"><div class="w" style="font-size:11px">Yakut 2022</div><div class="q">4 koli</div><div class="paper" data-ground="paper"><div class="q">4 koli<small>money withheld</small></div></div><div><span class="chip v-accepted">accepted</span><span class="cnt" style="display:block;font-family:var(--mono);font-size:9px;color:var(--ink-3)">draft not sent</span></div></div>
+        </div>
+        <p class="s" style="margin-top:10px"><b>Money withheld</b>: an e-Fatura arrived stating no currency, and the house states none &mdash; the price is refused at this desk, the stock proceeds (batch 64). A tab whose clock cannot be computed sits last, with <b>asks</b> where its countdown would be, and never fires (A8) &mdash; Likya PO-121, drawn as the fifth tab in sections 1 and 3.</p>
+      </div>
+      <div class="why">Every gap is a word in its own cell. A dash in the paper column is "no price on this document", never "free".</div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════ 5 · MOBILE ═══════════════════ -->
+  <div class="sec"><span class="n">5 &middot; Mobile 390</span><h2>The manager's phone &mdash; the line sheet as a bottom sheet &mdash; and the staff rendering</h2><span class="k">On the phone the grid is a list ordered by the same clocks; a row opens ADR 0112 F9's bottom sheet at half, and full reveals the record. The staff phone is B's, unchanged: no prices, ordered and counted.</span></div>
+  <div class="phones">
+    <div class="phone has-bsheet">
+      <div class="sb"><span>12:05</span><span>Mudavym &middot; Vanilla Kaleiçi</span></div>
+      <div class="pin">
+        <div class="ph"><div><div class="wm">Mudavym</div><h1>Receiving</h1><p class="sent">Soonest clock first.</p></div><span class="cap">manager</span></div>
+        <div class="tabs" style="margin:0 0 10px"><div class="tab hot" style="padding:8px 8px"><div class="vn" style="font-size:13px">Doluca</div><div class="clk2">here</div></div><div class="tab on" style="padding:8px 8px"><div class="vn" style="font-size:13px">Kavaklıdere</div><div class="clk2">1 d 21 h</div></div><div class="tab" style="padding:8px 8px"><div class="vn" style="font-size:13px">Metro</div><div class="clk2">5 d</div></div></div>
+        <div class="gate" style="margin:0 0 10px;padding:8px 10px;font-size:11.5px"><span><b>3 unanswered: 2, 3, 5</b> &middot; line 4 uncounted &middot; <span class="av" style="width:16px;height:16px;font-size:7px">ZÇ</span> <span class="av dep" style="width:16px;height:16px;font-size:7px">CB</span></span></div>
+        <div class="grid pgrid">
+          <div class="grow hd" style="grid-template-columns:14px minmax(0,1fr) 42px 42px 42px 86px"><div></div><div>line</div><div>order</div><div>door</div><div class="paper" data-ground="paper">paper</div><div>verdict</div></div>
+          <div class="grow" style="grid-template-columns:14px minmax(0,1fr) 42px 42px 42px 86px"><div class="n">1</div><div class="w" style="font-size:11.5px">Çankaya 2023</div><div class="q">6</div><div class="q">6</div><div class="paper" data-ground="paper"><div class="q">6</div></div><div class="vd"><span class="chip v-accepted">accepted</span></div></div>
+          <div class="grow" style="grid-template-columns:14px minmax(0,1fr) 42px 42px 42px 86px;background:var(--seal-tint)"><div class="n">2</div><div class="w" style="font-size:11.5px">Yakut 2022</div><div class="q">4</div><div class="q">4</div><div class="paper" data-ground="paper"><div class="q">4</div></div><div class="vd"><span class="chip v-accepted">accepted</span><span class="chip seal">substitution</span></div></div>
+          <div class="grow" style="grid-template-columns:14px minmax(0,1fr) 42px 42px 42px 86px"><div class="n">3</div><div class="w" style="font-size:11.5px">Pendore Syrah 2021</div><div class="q">2</div><div class="q">1</div><div class="paper" data-ground="paper"><div class="q">2</div></div><div class="vd"><span class="chip v-accepted">accepted 1</span><span class="chip v-refused">refused 1</span></div></div>
+        </div>
+      </div>
+      <div class="bscrim"></div>
+      <div class="bsheet">
+        <div class="grab"></div>
+        <div class="oh"><div><span class="eye">Line 2 of 5 &middot; the sheet</span><h3 class="ttl" style="font-size:16px">Kavaklıdere Yakut 2022</h3><p class="sub">4 koli = 48 şişe ordered &middot; 2 entries &middot; substitution unanswered</p></div><button class="oclose">Close</button></div>
+        <div class="obody">
+          <div class="ledger" style="font-size:11.5px">
+            <div class="entry superseded" style="grid-template-columns:26px 78px minmax(0,1fr)"><span class="vn">v1</span><span class="who"><b>Emre T.</b><span class="h">door Fri 09:52</span></span><span class="what"><span class="chip v-accepted">accepted</span><span class="strike">4 koli</span> &middot; label says 2021</span></div>
+            <div class="entry" style="grid-template-columns:26px 78px minmax(0,1fr)"><span class="vn">v2</span><span class="who"><b>Zeynep Ç.</b><span class="h">desk Wed 11:20</span></span><span class="what"><span class="chip v-accepted">accepted</span>4 koli <span class="chip seal">substitution</span> takes all of v1</span></div>
+          </div>
+          <div class="derived" style="font-size:11.5px"><span class="cap">current</span><b>accepted 48 şişe</b><span>&middot;</span><b>substitution &mdash; unanswered</b></div>
+          <div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="btn sm pri">Append an entry</button><button class="btn sm">Answer</button><span class="s">append opens the full detent; the hold is inside the form, after the reason</span></div>
+        </div>
+      </div>
+      <div class="detents"><span style="bottom:92%">full</span><span class="on" style="bottom:56%">half</span><span style="bottom:18%">peek</span></div>
+    </div>
+
+    <div class="phone">
+      <div class="sb"><span>14:09</span><span>Mudavym &middot; Meyhouse</span></div>
+      <div class="pin">
+        <div class="ph"><div><div class="wm">Mudavym</div><h1>Receiving</h1><p class="sent">Which delivery are you receiving?</p></div><span class="cap">staff</span></div>
+        <p class="hint">Tap the delivery that just arrived. <b>Prices are not shown here on purpose</b> &mdash; counting is the door's whole job.</p>
+        <div class="dcard">
+          <div class="body">
+            <div class="vn">Southern Glazer's</div>
+            <div class="po">PO-2417 &middot; driver here &middot; 5 lines</div>
+            <div class="cnt"><b>15 cases</b> expected &middot; 5&times;12 + 3&times;6 + 2&times;6 + 4&times;6 + 1&times;6 = <b>120 btl</b> &mdash; pack sizes are the order's, stated once</div>
+          </div>
+          <div class="go">Count at the door</div>
+        </div>
+        <div class="card" style="padding:0;overflow:hidden;margin-bottom:10px">
+          <div class="cap" style="padding:9px 12px 7px;border-bottom:1px solid var(--rule)">the lines &middot; what to check &middot; no prices</div>
+          <div class="row" style="grid-template-columns:minmax(0,1fr) 62px 70px;padding:8px 12px"><span class="t">Kavaklıdere Yakut 2022<br><span class="s">case of 12</span></span><span class="fig">5 cs</span><span class="chip v-none">not yet</span></div>
+          <div class="row" style="grid-template-columns:minmax(0,1fr) 62px 70px;padding:8px 12px"><span class="t">Doluca Antik Kırmızı 2021<br><span class="s">case of 6</span></span><span class="fig">3 cs</span><span class="chip v-none">not yet</span></div>
+          <div class="row" style="grid-template-columns:minmax(0,1fr) 62px 70px;padding:8px 12px"><span class="t">Suvla Sur 2020<br><span class="s">case of 6</span></span><span class="fig">2 cs</span><span class="chip v-none">not yet</span></div>
+          <div class="row" style="grid-template-columns:minmax(0,1fr) 62px 70px;padding:8px 12px"><span class="t">Yeni Rakı 70 cl<br><span class="s">case of 6</span></span><span class="fig">4 cs</span><span class="chip v-none">not yet</span></div>
+          <div class="row" style="grid-template-columns:minmax(0,1fr) 62px 70px;padding:8px 12px"><span class="t">Chateau Musar 2017<br><span class="s">case of 6 &middot; vendor said 1 case backordered</span></span><span class="fig">1 cs</span><span class="chip v-none">not yet</span></div>
+          <div class="row" style="grid-template-columns:minmax(0,1fr) 62px 70px;padding:8px 12px"><span class="t dim">Anything not on this list<br><span class="s">count it too &mdash; it becomes an unordered line</span></span><span class="fig dim">&mdash;</span><span></span></div>
+        </div>
+        <div class="card" style="padding:10px 12px;margin-top:6px;font-size:12px;color:var(--ink-2)"><span class="cap">outbox</span><div style="margin-top:4px"><b style="color:var(--ink-1)">Nothing held</b> &mdash; the last receipt reached the house at 13:58.</div></div>
+      </div>
+    </div>
+
+    <div class="pside desk-only">
+      <p><b>The manager's phone.</b> The tab strip keeps its clock order at 390; the grid is three numbers &mdash; ordered, door, paper &mdash; and a verdict in full words, stacked as on the desk, the paper cell still on paper. A row opens the line sheet as ADR 0112 F9's bottom sheet: peek &middot; half &middot; full, the grabber shown because there is more than one. At <i>half</i> the ledger, the derived state and the two acts fit &mdash; <i>Append an entry</i> opens the full detent, where the form and its hold live; nothing is sealed from half, because nothing has been entered there.</p>
+      <p><b>The staff phone</b> is B's: what was ordered and what the porter is about to count. Paper and money do not exist on this rendering.</p>
+    </div>
+  </div>
+
+</div>
+<script>
+/* Mudavym motion — the spring sampler from lib/mudavym/motion.ts, verbatim in shape,
+   so tuck / stamp / tally on this page ARE the curves that run in the product. */
+(function () {
+  'use strict';
+  function springLinear(stiffness, damping, mass, restDelta) {
+    mass = mass || 1; restDelta = restDelta || 0.01;
+    var dt = 1 / 1000, omega = Math.sqrt(stiffness / mass), x = 1, v = 0, t = 0, pts = [];
+    while (t < 5) {
+      v += ((-stiffness * x - damping * v) / mass) * dt; x += v * dt; t += dt; pts.push(1 - x);
+      if (Math.hypot(x, v / omega) < restDelta) break;
+    }
+    var N = 60, last = pts.length - 1, samples = [];
+    for (var i = 0; i < N; i++) { var idx = Math.min(last, Math.round((i * last) / (N - 1))); samples.push(Number(pts[idx].toFixed(4))); }
+    var peakIdx = 0; for (var j = 1; j <= last; j++) if (pts[j] > pts[peakIdx]) peakIdx = j;
+    if (pts[peakIdx] > 1) { var at = Math.min(N - 2, Math.max(1, Math.round((peakIdx * (N - 1)) / last))); samples[at] = Number(pts[peakIdx].toFixed(4)); }
+    samples[0] = 0; samples[N - 1] = 1;
+    return { easing: 'linear(' + samples.join(',') + ')', ms: Math.max(140, Math.round(t * 1000)) };
+  }
+  var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var supportsLinear = CSS && CSS.supports && CSS.supports('transition-timing-function', 'linear(0,1)');
+  if (!reduced && supportsLinear) {
+    var r = document.documentElement.style;
+    r.setProperty('--ease-tuck', springLinear(380, 32).easing);
+    r.setProperty('--ease-stamp', springLinear(500, 26).easing);
+    r.setProperty('--ease-tally', springLinear(120, 26).easing);
+  }
+
+  /* expanders — settle on the head, turn on the reveal */
+  document.querySelectorAll('[data-x]').forEach(function (head) {
+    head.setAttribute('role', 'button'); head.tabIndex = 0;
+    var target = head.closest('.x');
+    function toggle() {
+      var open = target.classList.toggle('open');
+      head.setAttribute('aria-expanded', open ? 'true' : 'false');
+    }
+    head.addEventListener('click', function (e) { if (e.target.closest('a,button,.hold')) return; toggle(); });
+    head.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } });
+  });
+
+  /* sheets — tuck in, tuck out; the close control is words */
+  document.querySelectorAll('[data-open]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var s = document.querySelector(b.getAttribute('data-open')); if (!s) return;
+      s.classList.remove('closed'); var sc = s.parentElement.querySelector('.scrim'); if (sc) sc.hidden = false;
+    });
+  });
+  document.querySelectorAll('[data-close]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var s = b.closest('.sheet,.panel,.pop'); if (!s) return;
+      s.classList.add('closed'); var sc = s.parentElement.querySelector('.scrim'); if (sc) sc.hidden = true;
+    });
+  });
+
+  /* radio chips */
+  document.querySelectorAll('.radios').forEach(function (g) {
+    g.querySelectorAll('.chip').forEach(function (c) {
+      c.addEventListener('click', function () { g.querySelectorAll('.chip').forEach(function (o) { o.classList.remove('on'); }); c.classList.add('on'); });
+    });
+  });
+
+  /* hold-to-approve — pour fills against the operator's own thumb; an early
+     release retreats on tuck; the wax lands on stamp. Reduced motion: the hold
+     still takes its full time (the ceremony is the safeguard), the fill just
+     does not travel. */
+  document.querySelectorAll('.hold').forEach(function (h) {
+    if (h.hasAttribute('data-idle')) return;
+    var timer = null, ms = 620;
+    function start(e) {
+      if (h.classList.contains('sealed')) return;
+      e.preventDefault(); h.classList.add('pouring');
+      timer = setTimeout(function () { h.classList.remove('pouring'); h.classList.add('sealed'); var l = h.querySelector('.lbl'); if (l && h.dataset.done) l.textContent = h.dataset.done; }, ms);
+    }
+    function stop() { if (timer) { clearTimeout(timer); timer = null; } h.classList.remove('pouring'); }
+    h.addEventListener('pointerdown', start);
+    h.addEventListener('pointerup', stop); h.addEventListener('pointerleave', stop); h.addEventListener('pointercancel', stop);
+    h.addEventListener('keydown', function (e) { if (e.key === ' ' || e.key === 'Enter') start(e); });
+    h.addEventListener('keyup', stop);
+  });
+})();
+</script>
+</body>
+</html>

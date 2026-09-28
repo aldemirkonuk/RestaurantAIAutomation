@@ -1,0 +1,852 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>107 &middot; Receiving &middot; Direction A — The Spine</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ── Mudavym tokens — apps/web/src/styles/mudavym.css, copied inline (ADR 0042 / ADR 0138).
+   The ground is Warm Charcoal by decision; [data-ground="paper"] is the one escape:
+   a surface that is a sheet of paper (the canonical document, ADR 0104 D9). ── */
+.mudavym, .mudavym[data-ground="charcoal"]{
+  --seal:#5FB0BC; --seal-deep:#7DC3CD; --seal-tint:rgba(95,176,188,.14); --seal-ring:rgba(95,176,188,.38);
+  --paper-0:#15130F; --paper-1:#1D1813; --paper-2:#262019;
+  --ink-1:#EFE7D9; --ink-2:#C0B6A5; --ink-3:#8E8576; --ink-4:#ABA294;
+  --rule:rgba(239,231,217,.09); --rule-2:rgba(239,231,217,.16); --scrim:rgba(0,0,0,.52);
+  color-scheme:dark;
+}
+.mudavym [data-ground="paper"], .mudavym[data-ground="paper"]{
+  --seal:#1A5E6B; --seal-deep:#14515C; --seal-tint:rgba(26,94,107,.10); --seal-ring:rgba(26,94,107,.32);
+  --paper-0:#FFFDF8; --paper-1:#F3EFE6; --paper-2:#EAE4D8;
+  --ink-1:#211C16; --ink-2:#4F473C; --ink-3:#7C7365; --ink-4:#665D50;
+  --rule:rgba(33,28,22,.10); --rule-2:rgba(33,28,22,.18);
+  color-scheme:light;
+}
+:root{
+  --serif:"Fraunces",Georgia,"Times New Roman",serif;
+  --sans:"DM Sans","Plus Jakarta Sans",system-ui,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  /* motion — lib/mudavym/motion.ts, the seven tokens and nothing else */
+  --house:cubic-bezier(0.16,1,0.3,1);
+  --settle:320ms var(--house);
+  --ink:160ms var(--house);
+  --turn:420ms cubic-bezier(0.32,0.72,0,1);
+  --pour-ms:620ms;
+  --ease-tuck:var(--house); --tuck-ms:300ms;
+  --ease-stamp:var(--house); --stamp-ms:360ms;
+  --ease-tally:var(--house); --tally-ms:840ms;
+}
+@media (prefers-reduced-motion: reduce){
+  :root{--settle:0ms linear;--ink:0ms linear;--turn:0ms linear;--pour-ms:0ms;--tuck-ms:0ms;--stamp-ms:0ms;--tally-ms:0ms}
+  *,*::before,*::after{animation-duration:0ms !important;transition-duration:0ms !important}
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:#15130F;color:#EFE7D9;font-family:var(--sans);font-size:13px;line-height:1.45;-webkit-font-smoothing:antialiased}
+body.mudavym{background:var(--paper-0);color:var(--ink-1)}
+
+/* ── the sketch's own frame (not the product) ── */
+.banner{display:flex;gap:18px;align-items:baseline;background:var(--ink-1);color:var(--paper-0);font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;padding:8px 22px}
+.banner b{font-weight:600}
+.banner span{opacity:.7}
+.wrap{max-width:1440px;margin:0 auto;padding:0 20px 80px}
+.sec{display:flex;align-items:baseline;gap:14px;margin:34px 0 10px;padding-top:18px;border-top:1px solid var(--rule)}
+.sec .n{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--seal);white-space:nowrap}
+.sec h2{font-family:var(--serif);font-size:22px;font-weight:600;letter-spacing:-.012em;margin:0;color:var(--ink-1)}
+.sec .k{font-family:var(--sans);font-size:12px;color:var(--ink-3);margin-left:auto;text-align:right;max-width:560px}
+.note{font-size:12.5px;line-height:1.6;color:var(--ink-2);max-width:900px;margin:0 0 12px}
+.note b{color:var(--ink-1);font-weight:600}
+.note code, code{font-family:var(--mono);font-size:11px;color:var(--ink-2)}
+
+/* ── the stage: an app viewport ── */
+.stage{position:relative;border:1px solid var(--rule-2);background:var(--paper-0);overflow:hidden;border-radius:4px}
+.stage.desk{width:100%;max-width:1400px}
+.app{display:grid;grid-template-columns:212px minmax(0,1fr);min-height:860px}
+.side{border-right:1px solid var(--rule);padding:16px 12px;display:flex;flex-direction:column;gap:2px}
+.side .wm{font-family:var(--serif);font-weight:600;font-size:14px;letter-spacing:.04em;color:var(--ink-1);padding:2px 10px 14px}
+.side .wm i{font-style:normal;color:var(--seal)}
+.side a{display:block;padding:6px 10px;border-radius:8px;font-size:12.5px;color:var(--ink-2);text-decoration:none;transition:background var(--ink),color var(--ink)}
+.side a.on{background:var(--seal-tint);color:var(--ink-1);box-shadow:inset 2px 0 0 var(--seal)}
+.side .grp{font-family:var(--mono);font-size:8.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);padding:12px 10px 4px}
+.side .who{margin-top:auto;padding:12px 10px 0;border-top:1px solid var(--rule);font-size:11.5px;color:var(--ink-2)}
+.side .who b{display:block;color:var(--ink-1);font-weight:600}
+.side .who .h{font-family:var(--mono);font-size:9.5px;color:var(--ink-3);display:block;margin-top:2px}
+.main{padding:22px 28px 36px;min-width:0}
+
+/* masthead — ReceivingNext.tsx:172-206 */
+.mast{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:18px}
+.mast .wm{font-family:var(--serif);font-weight:600;font-size:12px;letter-spacing:.06em;color:var(--ink-2)}
+.mast h1{font-family:var(--serif);font-size:30px;font-weight:600;letter-spacing:-.015em;line-height:1.1;margin:4px 0 0;color:var(--ink-1)}
+.mast .sent{font-size:12.5px;color:var(--ink-3);margin:4px 0 0}
+.mast .right{display:grid;gap:6px;justify-items:end;text-align:right}
+.cap{font-family:var(--mono);font-size:9px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3)}
+.cap.seal{color:var(--seal)}
+.house{font-family:var(--mono);font-size:10.5px;color:var(--ink-2)}
+.house b{color:var(--ink-1);font-weight:600}
+
+/* figures */
+.fig{font-family:var(--mono);font-variant-numeric:tabular-nums;color:var(--ink-1)}
+.dim{color:var(--ink-3)}
+.mid{color:var(--ink-2)}
+.em{color:var(--ink-3)}
+.nums{display:flex;flex-wrap:wrap;border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);margin:0 0 18px}
+.nums > div{flex:1 1 0;min-width:0;padding:10px 14px 10px 0;margin-right:14px;border-right:1px solid var(--rule)}
+.nums > div:last-child{border-right:0}
+.nums .v{font-family:var(--mono);font-size:22px;font-weight:500;letter-spacing:-.02em;line-height:1.1;color:var(--ink-1);display:block;font-variant-numeric:tabular-nums}
+.nums .v small{font-size:12px;color:var(--ink-3);font-weight:400;margin-left:4px}
+.nums .l{display:block;margin-top:5px}
+.nums .s{display:block;font-size:11px;color:var(--ink-3);margin-top:3px}
+
+/* chips — verdict words are WORDS, never colour alone; one chromatic colour */
+.chip{display:inline-block;font-family:var(--mono);font-size:9.5px;font-weight:500;letter-spacing:.08em;text-transform:uppercase;padding:2px 7px;border:1px solid var(--rule-2);border-radius:6px;color:var(--ink-2);white-space:nowrap;line-height:1.5;vertical-align:middle}
+.chip.seal{border-color:var(--seal-ring);color:var(--seal)}
+.chip.solid{background:var(--ink-1);border-color:var(--ink-1);color:var(--paper-0)}
+.chip.dash{border-style:dashed}
+.chip.ghost{border-color:transparent;color:var(--ink-3);font-style:italic;padding-left:0}
+.chip.tint{background:var(--seal-tint);border-color:transparent;color:var(--seal-deep)}
+.v-accepted{}
+.v-short{border-color:var(--seal-ring);color:var(--seal)}
+.v-refused{background:var(--ink-1);border-color:var(--ink-1);color:var(--paper-0)}
+.v-damaged{border-style:dashed;color:var(--ink-1)}
+.v-none{border-color:transparent;color:var(--ink-3);font-style:italic;padding-left:0}
+
+/* cards + rows */
+.card{border:1px solid var(--rule);background:var(--paper-1);border-radius:12px}
+.card.flat{background:transparent}
+.row{display:grid;align-items:center;gap:12px;padding:10px 12px;border-top:1px solid var(--rule)}
+.row:first-child{border-top:0}
+.t{color:var(--ink-1);font-weight:500}
+.s{font-size:11.5px;color:var(--ink-3)}
+.sent{font-family:var(--serif);font-style:italic;color:var(--ink-2)}
+
+/* buttons */
+.btn{display:inline-flex;align-items:center;gap:6px;font-family:var(--sans);font-size:12px;font-weight:500;padding:6px 11px;border-radius:8px;border:1px solid var(--rule-2);background:transparent;color:var(--ink-1);cursor:pointer;transition:border-color var(--ink),background var(--ink),color var(--ink)}
+.btn:hover{border-color:var(--seal-ring);background:var(--seal-tint)}
+.btn.pri{background:var(--seal-tint);border-color:var(--seal-ring);color:var(--ink-1)}
+.btn.quiet{border-color:transparent;color:var(--ink-2)}
+.btn.quiet:hover{color:var(--ink-1)}
+.btn[disabled]{opacity:.55;cursor:not-allowed}
+.btn.sm{font-size:11px;padding:4px 8px}
+
+/* the expander — settle on the row, turn on the reveal ("show the working") */
+.x-head{cursor:pointer;user-select:none}
+.chev{display:inline-block;width:10px;height:10px;margin-left:6px;vertical-align:middle;border-right:1.5px solid var(--ink-3);border-bottom:1.5px solid var(--ink-3);transform:rotate(-45deg);transition:transform var(--settle)}
+.open > .x-head .chev, .x-head[aria-expanded="true"] .chev{transform:rotate(45deg)}
+.x-body{display:grid;grid-template-rows:0fr;transition:grid-template-rows var(--turn)}
+.x-body > div{overflow:hidden;min-height:0}
+.open > .x-body, .x-body.open{grid-template-rows:1fr}
+
+/* the append-only ledger — one line's entries, oldest first, nothing erased */
+.ledger{display:grid;gap:0;font-size:12px}
+.entry{display:grid;grid-template-columns:34px 92px minmax(0,1fr);gap:10px;padding:8px 0;border-top:1px dashed var(--rule)}
+.entry:first-child{border-top:0}
+.entry .vn{font-family:var(--mono);font-size:10px;color:var(--ink-3);padding-top:2px}
+.entry .who{font-size:11.5px;color:var(--ink-2);line-height:1.35}
+.entry .who b{display:block;color:var(--ink-1);font-weight:600}
+.entry .who .h{font-family:var(--mono);font-size:10px;color:var(--ink-3);display:block}
+.entry .what{color:var(--ink-1);line-height:1.45}
+.entry .what .chip{margin-right:6px}
+.entry .what .ev{display:block;margin-top:4px;font-size:11px;color:var(--ink-3)}
+.entry .what .ev .chip{font-size:8.5px;margin-right:4px}
+.entry.superseded .what{color:var(--ink-2)}
+.entry.superseded .what .strike{text-decoration:line-through;text-decoration-color:var(--ink-3);color:var(--ink-3)}
+.derived{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:baseline;margin-top:8px;padding:8px 10px;border:1px solid var(--seal-ring);border-radius:8px;background:var(--seal-tint);font-size:12px}
+.derived .cap{color:var(--seal)}
+.derived b{color:var(--ink-1);font-weight:600}
+.rule-sent{font-size:11px;color:var(--ink-3);margin-top:6px;line-height:1.5}
+
+/* evidence chips + provenance ("a figure opens to its sources") */
+.src{border-bottom:1px dotted var(--ink-3);cursor:help}
+.src:hover{border-bottom-color:var(--seal)}
+
+/* hold-to-approve — pour fills (linear), release retreats (tuck), the wax lands on stamp */
+.hold{position:relative;display:inline-flex;align-items:center;gap:8px;padding:8px 14px;border-radius:10px;border:1px solid var(--seal-ring);background:transparent;color:var(--ink-1);font-family:var(--sans);font-size:12px;font-weight:500;cursor:pointer;overflow:hidden;user-select:none;-webkit-user-select:none;touch-action:none}
+.hold .fill{position:absolute;inset:0;width:0%;background:var(--seal-tint);transition:width var(--tuck-ms) var(--ease-tuck)}
+.hold.pouring .fill{width:100%;transition:width var(--pour-ms) linear}
+.hold .lbl{position:relative}
+.hold .wax{position:relative;width:18px;height:18px;border-radius:999px;border:1.5px solid var(--seal-ring);display:inline-flex;align-items:center;justify-content:center;font-family:var(--serif);font-size:10px;color:var(--seal);transform:scale(1)}
+.hold.sealed{border-color:var(--seal);background:var(--seal-tint)}
+.hold.sealed .wax{background:var(--seal);color:var(--paper-0);border-color:var(--seal);animation:stamp var(--stamp-ms) var(--ease-stamp) both}
+@keyframes stamp{from{transform:scale(.6)}to{transform:scale(1)}}
+.hold[data-idle]{opacity:.6;cursor:not-allowed}
+
+/* overlays — ADR 0112, numbers from components/mudavym/Sheet.tsx */
+.scrim{position:absolute;inset:0;background:var(--scrim)}
+.sheet{position:absolute;top:0;right:0;bottom:0;width:100%;max-width:440px;background:var(--paper-0);border-left:1px solid var(--rule-2);box-shadow:-18px 0 48px rgba(0,0,0,.35);display:flex;flex-direction:column;transform:translateX(0);transition:transform var(--tuck-ms) var(--ease-tuck)}
+.sheet.closed{transform:translateX(104%)}
+.panel{position:absolute;left:50%;top:9%;transform:translateX(-50%);width:min(620px,100% - 32px);max-height:80%;background:var(--paper-0);border:1px solid var(--rule-2);border-radius:14px;box-shadow:0 24px 60px -30px rgba(0,0,0,.7);display:flex;flex-direction:column;overflow:hidden}
+.pop{position:absolute;width:320px;background:var(--paper-0);border:1px solid var(--rule-2);border-radius:14px;box-shadow:0 18px 44px -22px rgba(0,0,0,.6);overflow:hidden}
+.oh{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:14px 16px 11px;border-bottom:1px solid var(--rule);flex:none}
+.oh .eye{display:block;font-family:var(--mono);font-size:9.5px;font-weight:600;letter-spacing:.13em;text-transform:uppercase;color:var(--seal)}
+.oh .ttl{margin:2px 0 0;font-family:var(--serif);font-size:19px;font-weight:600;line-height:1.16;letter-spacing:-.01em;color:var(--ink-1)}
+.oh .sub{font-size:11.5px;color:var(--ink-3);margin:3px 0 0}
+.oclose{font-family:var(--sans);font-size:12px;line-height:1.2;padding:5px 10px;border-radius:8px;border:1px solid var(--rule-2);background:transparent;color:var(--ink-2);cursor:pointer;flex:none}
+.obody{flex:1 1 auto;min-height:0;overflow:auto;padding:12px 16px}
+.ofoot{flex:none;padding:10px 16px 12px;border-top:1px solid var(--rule);font-size:11px;line-height:1.5;color:var(--ink-3);display:flex;justify-content:space-between;align-items:center;gap:12px}
+.osect{display:block;font-family:var(--mono);font-size:9px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);margin:14px 0 6px}
+.osect:first-child{margin-top:0}
+
+/* forms — inputs are inset, slightly darker */
+.field{display:grid;gap:4px;margin-top:8px}
+.field label{font-size:11px;color:var(--ink-3)}
+.inp{font-family:var(--sans);font-size:12.5px;color:var(--ink-1);background:var(--paper-0);border:1px solid var(--rule-2);border-radius:8px;padding:7px 9px;width:100%}
+.inp.mono{font-family:var(--mono);font-size:12px}
+.inp[disabled]{color:var(--ink-3);border-style:dashed}
+.radios{display:flex;flex-wrap:wrap;gap:6px}
+/* in a picker every word is drawn in ONE neutral style; only .on is marked (seal ring + underline) */
+.radios .chip{cursor:pointer;padding:5px 10px;font-size:10px;background:transparent;border:1px solid var(--rule-2);color:var(--ink-2);font-style:normal;padding-left:10px}
+.radios .chip.on{background:var(--seal-tint);border-color:var(--seal);color:var(--ink-1);box-shadow:0 0 0 2px var(--seal-ring);text-decoration:underline;text-underline-offset:3px;text-decoration-color:var(--seal)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+
+/* the states strip */
+.states{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.state{border:1px solid var(--rule-2);border-radius:10px;background:var(--paper-0);overflow:hidden;display:flex;flex-direction:column;min-height:300px}
+.state .lab{font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--seal);padding:8px 12px;border-bottom:1px solid var(--rule)}
+.state .lab span{color:var(--ink-3);letter-spacing:.06em;text-transform:none;font-family:var(--sans);font-size:11px;margin-left:8px}
+.state .in{padding:12px;font-size:12px;color:var(--ink-2);line-height:1.5;flex:1}
+.state .in p{margin:0 0 8px}
+.state .in b{color:var(--ink-1);font-weight:600}
+.state .why{padding:8px 12px;border-top:1px dashed var(--rule);font-size:11px;color:var(--ink-3);line-height:1.5}
+/* skeleton bars are STATIC — a pulse would be an eighth motion outside lib/mudavym/motion.ts */
+.skel{display:block;height:10px;border-radius:5px;background:var(--paper-2);margin:6px 0}
+.skel.w40{width:40%}.skel.w70{width:70%}.skel.w90{width:90%}
+.alert{border:1px solid var(--seal-ring);border-radius:10px;padding:10px 12px;background:var(--paper-1);font-size:12px;color:var(--ink-2)}
+.alert b{color:var(--ink-1)}
+.alert .cap{display:block;margin-bottom:4px}
+
+/* the phone — 390 × 844, the staff rendering */
+.phones{display:flex;gap:28px;align-items:flex-start;flex-wrap:wrap}
+.phone{width:390px;min-height:844px;border:1px solid var(--rule-2);border-radius:28px;background:var(--paper-0);overflow:hidden;position:relative;flex:none;box-shadow:0 30px 60px -40px rgba(0,0,0,.8)}
+.phone .sb{display:flex;justify-content:space-between;padding:12px 22px 4px;font-family:var(--mono);font-size:11px;color:var(--ink-2)}
+.phone .pin{padding:6px 18px 26px}
+.phone .ph{display:flex;align-items:flex-end;justify-content:space-between;margin:6px 0 10px}
+.phone .ph h1{font-family:var(--serif);font-size:24px;font-weight:600;letter-spacing:-.012em;margin:2px 0 0;line-height:1.1;color:var(--ink-1)}
+.phone .ph .wm{font-family:var(--serif);font-size:11px;font-weight:600;letter-spacing:.06em;color:var(--ink-2)}
+.phone .ph .sent{font-size:12px;color:var(--ink-3);margin:3px 0 0}
+.phone .hint{font-size:12px;color:var(--ink-2);margin:0 0 12px;line-height:1.5}
+.phone .hint b{color:var(--ink-1)}
+.dcard{display:grid;grid-template-columns:minmax(0,1fr) 72px;border:1px solid var(--rule-2);border-radius:14px;overflow:hidden;background:var(--paper-1);margin-bottom:10px}
+.dcard .body{padding:12px 12px 12px 14px;min-width:0}
+.dcard .go{display:flex;align-items:center;justify-content:center;writing-mode:vertical-rl;text-orientation:mixed;background:var(--seal-tint);border-left:1px solid var(--seal-ring);color:var(--ink-1);font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;padding:16px 0;transition:background var(--ink)}
+.dcard .go.off{background:transparent;border-left:1px dashed var(--rule-2);color:var(--ink-3)}
+.dcard .vn{font-family:var(--serif);font-size:17px;font-weight:600;color:var(--ink-1);line-height:1.15}
+.dcard .po{font-family:var(--mono);font-size:10.5px;color:var(--ink-3);margin-top:2px}
+.dcard .cnt{font-size:12.5px;color:var(--ink-2);margin-top:8px;line-height:1.45}
+.dcard .cnt b{color:var(--ink-1);font-weight:600;font-family:var(--mono)}
+.pside{width:min(100%,520px)}
+.pside p{font-size:12.5px;line-height:1.6;color:var(--ink-2);margin:0 0 10px}
+.pside b{color:var(--ink-1);font-weight:600}
+
+/* the sketch's own callouts on a stage */
+.callout{position:absolute;z-index:5;font-family:var(--mono);font-size:9.5px;letter-spacing:.06em;color:var(--paper-0);background:var(--seal);padding:3px 7px;border-radius:5px;pointer-events:none;box-shadow:0 2px 10px rgba(0,0,0,.4)}
+.callout::after{content:"";position:absolute;left:-6px;top:50%;margin-top:-4px;border:4px solid transparent;border-right-color:var(--seal)}
+.callout.up::after{left:10px;top:-8px;margin:0;border:4px solid transparent;border-bottom-color:var(--seal)}
+.callout.rt::after{left:auto;right:-6px;border-right-color:transparent;border-left-color:var(--seal)}
+
+/* captions on a tinted or selected surface step up to --ink-4 (~6.4:1); --ink-3 measures ~3.9:1 there */
+.dcardx.on .po,.dcardx.on .ans,.dcardx.on .clk{color:var(--ink-4)}
+.dcardx.on .ans b{color:var(--seal-deep)}
+.st.n .sub{color:var(--ink-4)}
+.x.open > .x-head small,.x.open > .x-head .q small,.x.open > .x-head .w small,.x.open > .x-head .cnt,.x.open > .x-head .n,.x.open > .x-head .s{color:var(--ink-4)}
+.derived .dim{color:var(--ink-4)}
+/* measured in Chrome after the first review: these were still --ink-3 on a tinted, selected or raised surface (3.85–4.1:1) */
+.x.open .n,.x.open .cnt,.lines .x.open > .x-head .cnt,.lines .x.open > .x-head .n,.row[style*="seal-tint"] .n,.row[style*="seal-tint"] .cnt,.row[style*="seal-tint"] .s,.row[style*="seal-tint"] .q small,.av.dep,.pop .item.on .s,.sl.on .s,.dcardx.on .s{color:var(--ink-4)}
+/* the sketch's notes on a stage live UNDER it, never on it — a callout over a cell hides product content */
+.snotes{display:flex;flex-wrap:wrap;gap:6px 18px;margin:8px 0 0;font-family:var(--mono);font-size:10px;letter-spacing:.04em;color:var(--ink-2);max-width:1400px}
+.snotes span{display:inline-flex;align-items:baseline;gap:7px}
+.snotes i{font-style:normal;color:var(--paper-0);background:var(--seal);border-radius:4px;padding:1px 6px;font-size:9px;letter-spacing:.08em;font-weight:600}
+.sl.on .n,.sl.on .q{color:var(--ink-4)}
+
+/* the phone form of the sheet — ADR 0112 F9: a bottom sheet with detents peek · half · full */
+.phone .bscrim{position:absolute;inset:0;background:var(--scrim)}
+.bsheet{position:absolute;left:0;right:0;bottom:0;height:56%;background:var(--paper-0);border-top:1px solid var(--rule-2);border-radius:18px 18px 0 0;box-shadow:0 -18px 48px rgba(0,0,0,.45);display:flex;flex-direction:column;overflow:hidden}
+.bsheet .grab{flex:none;width:36px;height:4px;border-radius:2px;background:var(--ink-3);margin:8px auto 2px}
+.bsheet .oh{padding:8px 16px 9px}
+.bsheet .obody{padding:10px 16px 12px}
+.detents{position:absolute;right:14px;top:0;bottom:0;width:58px;pointer-events:none}
+.detents span{position:absolute;right:0;font-family:var(--mono);font-size:8px;letter-spacing:.1em;text-transform:uppercase;color:var(--seal);padding:0 6px 0 0;border-right:2px solid var(--seal-ring);line-height:1;transform:translateY(50%)}
+.detents span.on{color:var(--paper-0);background:var(--seal);border-right-color:var(--seal);padding:2px 6px;border-radius:3px 0 0 3px}
+.mob-note{display:none;font-size:12px;color:var(--ink-2);border:1px dashed var(--rule-2);border-radius:8px;padding:8px 10px;margin:0 0 12px}
+@media (max-width:720px){.mob-note{display:block}}
+
+/* legend of the four verdict words */
+.legend{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;font-size:11.5px;color:var(--ink-3);margin:8px 0 0}
+.legend .chip{margin-right:4px}
+
+@media (max-width:720px){
+  .desk-only{display:none !important}
+  .wrap{padding:0 12px 60px}
+  .banner{flex-wrap:wrap;gap:6px 14px;padding:8px 12px}
+  .states{grid-template-columns:1fr}
+  .phones{flex-direction:column;gap:16px}
+  .phone{width:100%;border-radius:0;border-left:0;border-right:0;box-shadow:none;min-height:0}
+  .phone.has-bsheet{min-height:844px}
+  .sec{flex-wrap:wrap}
+  .sec .k{margin-left:0;text-align:left;max-width:none}
+}
+/* a vertical spine — for narrow places */
+.spine.v{grid-template-columns:1fr;border:0}
+.spine.v .st{border-left:2px solid var(--paper-2);border-top:1px solid var(--rule);padding:8px 10px}
+.spine.v .st:first-child{border-top:0}
+.spine.v .st::before{display:none}
+.spine.v .st.d{border-left-color:var(--ink-2)}
+.spine.v .st.n{border-left-color:var(--seal)}
+.spine.v .st.r{border-left-style:dashed;border-left-color:var(--ink-3)}
+/* ── Direction A: the delivery is the spine; the record hangs beneath it ── */
+.dstrip{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:0 0 20px}
+.dcardx{border:1px solid var(--rule);border-radius:12px;background:var(--paper-1);padding:11px 12px;cursor:pointer;transition:border-color var(--ink),background var(--ink);min-width:0}
+.dcardx:hover{border-color:var(--seal-ring)}
+.dcardx.on{background:var(--seal-tint);border-color:var(--seal-ring);box-shadow:inset 0 2px 0 var(--seal)}
+.dcardx .vn{font-family:var(--serif);font-size:15px;font-weight:600;color:var(--ink-1);line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dcardx .po{font-family:var(--mono);font-size:10px;color:var(--ink-3);margin-top:2px;display:flex;justify-content:space-between;gap:8px}
+.dots{display:flex;gap:3px;margin:9px 0 7px;align-items:center}
+.dots i{display:block;height:4px;flex:1;border-radius:2px;background:var(--paper-2)}
+.dots i.d{background:var(--ink-2)}
+.dots i.n{background:var(--seal)}
+.dots i.x{background:repeating-linear-gradient(90deg,var(--ink-3) 0 3px,transparent 3px 6px);opacity:.7}
+.dcardx .clk{font-size:11.5px;color:var(--ink-2);line-height:1.4}
+.dcardx .clk b{color:var(--ink-1);font-weight:600}
+.dcardx .ans{font-family:var(--mono);font-size:10px;color:var(--ink-3);margin-top:5px}
+.dcardx .ans b{color:var(--seal);font-weight:600}
+
+.dhead{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 16px;margin:0 0 10px}
+.dhead h2{font-family:var(--serif);font-size:21px;font-weight:600;letter-spacing:-.012em;margin:0;color:var(--ink-1)}
+.dhead .meta{font-family:var(--mono);font-size:10.5px;color:var(--ink-3)}
+.dhead .meta b{color:var(--ink-2);font-weight:500}
+.dhead .own{margin-left:auto;font-size:11.5px;color:var(--ink-2)}
+.dhead .own b{color:var(--ink-1);font-weight:600}
+
+/* the spine — eight stations across the full width */
+.spine{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:0;border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);margin:0 0 20px}
+.st{position:relative;padding:12px 10px 12px 12px;border-left:1px solid var(--rule);min-width:0}
+.st:first-child{border-left:0}
+.st::before{content:"";position:absolute;left:12px;top:-1px;height:2px;width:calc(100% - 22px);background:var(--paper-2)}
+.st.d::before{background:var(--ink-2)}
+.st.n::before{background:var(--seal)}
+.st.r::before{background:repeating-linear-gradient(90deg,var(--ink-3) 0 4px,transparent 4px 8px)}
+.st .cap{display:block}
+.st.n .cap{color:var(--seal)}
+.st .w{font-size:12px;color:var(--ink-1);font-weight:500;margin-top:6px;line-height:1.3}
+.st.f .w{color:var(--ink-3);font-weight:400;font-style:italic}
+.st .sub{font-size:11px;color:var(--ink-3);margin-top:3px;line-height:1.4}
+.st .sub b{color:var(--ink-2);font-weight:500}
+.st.n{background:var(--seal-tint)}
+.st.r .w{color:var(--ink-1)}
+
+.below{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.22fr);gap:26px;align-items:start}
+.blk-h{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin:0 0 8px}
+.blk-h h3{font-family:var(--serif);font-size:16px;font-weight:600;margin:0;color:var(--ink-1)}
+.blk-h .s{font-size:11px}
+
+/* the record — time runs down; a verdict is a mark on the same rail as everything else */
+.tl{position:relative;padding-left:0;font-size:12px}
+.ev{display:grid;grid-template-columns:82px 16px minmax(0,1fr);gap:0 10px;padding:7px 0;position:relative}
+.ev .tm{font-family:var(--mono);font-size:10.5px;color:var(--ink-3);padding-top:2px;text-align:right;line-height:1.3}
+.ev .tm b{display:block;color:var(--ink-2);font-weight:500}
+.ev .rail{position:relative}
+.ev .rail::before{content:"";position:absolute;left:7px;top:0;bottom:0;width:1px;background:var(--rule-2)}
+.ev:first-child .rail::before{top:9px}
+.ev:last-child .rail::before{bottom:auto;height:9px}
+.ev .rail i{position:absolute;left:4px;top:7px;width:7px;height:7px;border-radius:999px;background:var(--paper-0);border:1.5px solid var(--ink-2)}
+.ev.house .rail i{border-style:dashed;border-color:var(--ink-3)}
+.ev.vd .rail i{background:var(--seal);border-color:var(--seal)}
+.ev.now .rail i{background:var(--paper-0);border-color:var(--seal);box-shadow:0 0 0 3px var(--seal-tint)}
+.ev .tx{color:var(--ink-1);line-height:1.45}
+.ev .tx .a{color:var(--ink-2);font-weight:500}
+.ev .tx .a::after{content:" · ";color:var(--ink-3)}
+.ev .tx .ev-s{display:block;font-size:11px;color:var(--ink-3);margin-top:2px}
+.ev .tx .chip{margin-left:4px;vertical-align:1px}
+.ev.vd{background:linear-gradient(90deg,transparent 92px,var(--seal-tint) 92px,var(--seal-tint) 100%)}
+.ev.vd .tx .vn{font-family:var(--mono);font-size:9.5px;color:var(--seal);letter-spacing:.08em;margin-right:6px}
+.bracket{grid-column:1/-1;display:flex;align-items:center;gap:8px;padding:2px 0 2px 108px;font-family:var(--mono);font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--seal)}
+.bracket::before{content:"";width:14px;height:1px;background:var(--seal)}
+
+/* the lines — current state derived, entry count on the row */
+.lines .row{grid-template-columns:18px minmax(0,1.7fr) 60px 66px 80px minmax(0,1fr) 50px;font-size:12px}
+.lines .row.h{font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);padding:6px 12px}
+.lines .row .n{font-family:var(--mono);font-size:10px;color:var(--ink-3)}
+.lines .row .w{color:var(--ink-1);font-weight:500;line-height:1.25}
+.lines .row .w small{display:block;font-family:var(--mono);font-size:10px;color:var(--ink-3);font-weight:400}
+.lines .row .q{font-family:var(--mono);font-size:11.5px;color:var(--ink-1);font-variant-numeric:tabular-nums}
+.lines .row .q small{display:block;font-size:9.5px;color:var(--ink-3)}
+.lines .row .cnt{font-family:var(--mono);font-size:10px;color:var(--ink-3);text-align:right;white-space:nowrap}
+.lines .x{border-top:1px solid var(--rule)}
+.lines .x:first-of-type{border-top:0}
+.lines .x .row{border-top:0}
+.lines .x.open > .x-head{background:var(--seal-tint)}
+.lines .x-body > div{padding:0 12px 0 42px}
+.lines .ledger{padding:6px 0 12px}
+</style>
+</head>
+<body class="mudavym" data-ground="charcoal">
+<!-- TITLE: Direction A — The Spine -->
+
+
+<div class="banner"><b>Sketch 107 &middot; /receiving</b><span>Direction A &middot; The Spine</span><span>Warm Charcoal ground &middot; ADR 0138</span><span>Verdicts are append-only &middot; decided 2026-09-16</span></div>
+<div class="wrap">
+
+  <div class="sec"><span class="n">The idea</span><h2>The delivery is the spine. The record hangs beneath it.</h2></div>
+  <p class="note">Every delivery is one event with eight stations &mdash; <b>ordered &middot; acknowledged &middot; door &middot; paper &middot; verdicts &middot; agreed &middot; verified &middot; paid</b> &mdash; drawn as a spine across the whole desk (ADR 0103 D1, the founder's praised five-station orders spine extended to receiving). Time runs down beneath it as <b>the record</b>: every count, every reading, every proposal and every verdict is a mark on the same rail, in the order it happened, by name. A verdict that changes is a <b>new mark</b> that names the mark it supersedes; the old mark stays. The lines sit beside the record with their <b>current state derived</b> from the entries, never stored as a column.</p>
+
+  <!-- ═══════════════════ 1 · DESKTOP ═══════════════════ -->
+  <div class="sec desk-only"><span class="n">1 &middot; Desktop 1440</span><h2>The manager's desk &mdash; Meyhouse, Palo Alto</h2><span class="k">USD &middot; US-CA &middot; Wed 16 Sep 2026, 16:52 &middot; the manager rendering; staff and owner renderings share the spine (sections 4 and 3)</span></div>
+
+  <div class="stage desk desk-only">
+    <div class="app">
+      <aside class="side">
+        <div class="wm">Mudavym<i>.</i></div>
+        <a>Dashboard</a><a>Inventory</a><a>Orders</a><a class="on">Receiving</a><a>Receipts &amp; Credits</a><a>Providers</a>
+        <div class="grp">House</div>
+        <a>Reports</a><a>Calendar</a><a>Team</a><a>Communications</a><a>Notifications</a>
+        <div class="grp">You</div>
+        <a>Settings</a>
+        <div class="who"><b>Hasan Aydın</b>manager<span class="h">Meyhouse &middot; Palo Alto</span></div>
+      </aside>
+      <main class="main">
+        <header class="mast">
+          <div>
+            <div class="wm">Mudavym</div>
+            <h1>Receiving</h1>
+            <p class="sent">What needs a decision &mdash; worst money first.</p>
+          </div>
+          <div class="right">
+            <span class="cap">one event &middot; three renderings &middot; this one is manager</span>
+            <span class="house"><b>Meyhouse</b> &middot; Palo Alto &middot; USD &middot; US-CA</span>
+          </div>
+        </header>
+
+        <div class="nums">
+          <div><span class="v">4</span><span class="cap l">on the spine today</span><span class="s">3 ordered &middot; 1 unordered</span></div>
+          <div><span class="v">2</span><span class="cap l">hold a gate</span><span class="s">PO-2417: line 5 not counted, line 6 unpaired</span></div>
+          <div><span class="v">1</span><span class="cap l">driver still here</span><span class="s">Wine Warehouse &middot; correction window open</span></div>
+          <div><span class="v">&ge;$28.20<small>at risk</small></span><span class="cap l">unanswered money &middot; a floor</span><span class="s">2 billed lines cannot be priced: Musar not counted, Efes never ordered &mdash; $393.60 billed</span></div>
+          <div><span class="v">$96.00<small>recovered</small></span><span class="cap l">September &middot; only credit memos</span><span class="s">asked $0 &middot; 1 drafted, not sent ($28.20) &middot; promised $180.00, not money</span></div>
+        </div>
+
+        <!-- the deliveries on the spine today -->
+        <div class="dstrip">
+          <div class="dcardx on">
+            <div class="vn">Southern Glazer's</div>
+            <div class="po"><span>PO-2417 &middot; 5 lines &middot; 15 cases</span><span>RECONCILING</span></div>
+            <div class="dots"><i class="d"></i><i class="d"></i><i class="d"></i><i class="d"></i><i class="n"></i><i></i><i></i><i></i></div>
+            <div class="clk">Delivered <b>14:12</b> &middot; driver countersigned 14:19 &middot; EFT day 30 is <b>Fri 16 Oct</b></div>
+            <div class="ans"><b>2 lines hold the gate</b> &middot; &ge;$28.20 at risk, $393.60 unpriced &middot; owner Hasan A.</div>
+          </div>
+          <div class="dcardx">
+            <div class="vn">Wine Warehouse</div>
+            <div class="po"><span>PO-2419 &middot; 4 lines &middot; 9 cases</span><span>DELIVERED</span></div>
+            <div class="dots"><i class="d"></i><i class="d"></i><i class="n"></i><i></i><i></i><i></i><i></i><i></i></div>
+            <div class="clk"><b>Driver here</b> &middot; counting since 16:41 &middot; Deniz K. at the door</div>
+            <div class="ans">door-correction window <b>open</b> &middot; closes when the ticket is signed</div>
+          </div>
+          <div class="dcardx">
+            <div class="vn">Skurnik Wines</div>
+            <div class="po"><span>PO-2411 &middot; 3 lines &middot; 5 cases</span><span>AGREED</span></div>
+            <div class="dots"><i class="d"></i><i class="d"></i><i class="d"></i><i class="d"></i><i class="d"></i><i class="d"></i><i class="n"></i><i></i></div>
+            <div class="clk">Agreed Mon &middot; <b>verify</b> to post cost &middot; EFT day 30 in <b>9 d</b></div>
+            <div class="ans">0 lines unanswered &middot; cost still <b>provisional</b> until verified</div>
+          </div>
+          <div class="dcardx">
+            <div class="vn">Chef's Warehouse</div>
+            <div class="po"><span>no order &middot; 1 line</span><span>UNORDERED</span></div>
+            <div class="dots"><i class="x"></i><i class="x"></i><i class="n"></i><i class="d"></i><i></i><i></i><i></i><i></i></div>
+            <div class="clk">Invoice CW-3102 dated Mon 14 Sep &middot; by email Wed 11:20 &middot; <b>no door count</b></div>
+            <div class="ans"><b>1 line unanswered</b> &middot; accepting an unordered delivery is a human gate (D6)</div>
+          </div>
+        </div>
+
+        <!-- the selected delivery -->
+        <div class="dhead">
+          <h2>Southern Glazer's &middot; PO-2417</h2>
+          <span class="meta"><b>RECONCILING</b> &middot; provenance ORDERED &middot; delivered Wed 16 Sep 14:12 &middot; invoice SG-88213 &middot; USD</span>
+          <span class="own">Owner <b>Hasan A.</b> &middot; deputy <b>Selin Ö.</b> &middot; re-notifies day 15 &middot; escalates day 24</span>
+        </div>
+
+        <div class="spine">
+          <div class="st d"><span class="cap">1 &middot; Ordered</span><div class="w">Mon 8 Sep &middot; Hasan A.</div><div class="sub">5 lines &middot; 15 cases &middot; <b>$2,063.40</b> agreed price</div></div>
+          <div class="st d"><span class="cap">2 &middot; Acknowledged</span><div class="w">Tue 9 Sep &middot; vendor</div><div class="sub">EDI 855 &middot; <b>with changes</b>: Musar 2017, 1 case backordered</div></div>
+          <div class="st d"><span class="cap">3 &middot; Door</span><div class="w">Wed 14:12 &middot; Deniz K.</div><div class="sub"><b>14 of 15 cases</b> &middot; Musar not counted &middot; 2 photos &middot; countersigned 14:19</div></div>
+          <div class="st d"><span class="cap">4 &middot; Paper</span><div class="w">15:02 &middot; read from PDF</div><div class="sub">Invoice SG-88213 &middot; 6 lines &middot; goods $2,109.00 + delivery $31.60 = <b>$2,140.60</b> &middot; USD</div></div>
+          <div class="st n"><span class="cap">5 &middot; Verdicts</span><div class="w">7 entries &middot; 2 people</div><div class="sub">4 lines accepted (1 with damage) &middot; <b>1 not counted</b> &middot; 1 unpaired</div></div>
+          <div class="st r"><span class="cap">6 &middot; Agreed</span><div class="w">Held</div><div class="sub">line 5 <b>not counted</b> (A6), line 6 <b>unpaired</b> (A11) &mdash; each holds the gate on its own</div></div>
+          <div class="st f"><span class="cap">7 &middot; Verified</span><div class="w">not yet</div><div class="sub">stock booked <b>provisional</b> &middot; cost not posted</div></div>
+          <div class="st f"><span class="cap">8 &middot; Paid</span><div class="w">EFT day 30</div><div class="sub">Fri 16 Oct &middot; wholesaler-initiated &middot; 1% at day 43</div></div>
+        </div>
+
+        <div class="below">
+          <!-- the record -->
+          <section>
+            <div class="blk-h"><h3>The record</h3><span class="s">every mark by name &middot; nothing erased &middot; newest last</span></div>
+            <div class="tl">
+              <div class="ev"><div class="tm"><b>Mon 8 Sep</b>09:14</div><div class="rail"><i></i></div><div class="tx"><span class="a">Hasan A.</span>ordered 5 lines, 15 cases <span class="ev-s">agreed price $2,063.40 &middot; sealed on /orders</span></div></div>
+              <div class="ev"><div class="tm"><b>Tue 9 Sep</b>11:02</div><div class="rail"><i></i></div><div class="tx"><span class="a">Southern Glazer's</span>acknowledged with changes <span class="chip">EDI 855</span><span class="ev-s">Chateau Musar 2017: 1 case backordered &mdash; the only warning before the truck</span></div></div>
+              <div class="ev"><div class="tm"><b>Wed 16 Sep</b>14:12</div><div class="rail"><i></i></div><div class="tx"><span class="a">Deniz K.</span>counted 13 cases at the door <span class="chip">photo &times;2</span><span class="ev-s">13 of 15 &mdash; Doluca one case short, said while the driver was there; Musar not on the truck, <b>not counted</b></span></div></div>
+              <div class="ev vd"><div class="tm">14:12</div><div class="rail"><i></i></div><div class="tx"><span class="vn">v1</span><span class="a">Deniz K. &middot; door</span>Doluca Antik Kırmızı 2021 <span class="chip v-accepted">accepted</span> 2 cases<span class="ev-s">driver present &middot; photo IMG_4411</span></div></div>
+              <div class="ev vd"><div class="tm">14:12</div><div class="rail"><i></i></div><div class="tx"><span class="vn">v2</span><span class="a">Deniz K. &middot; door</span>Doluca Antik Kırmızı 2021 <span class="chip v-short">short</span> 1 case<span class="ev-s">the units missing, not the units received &middot; same photo</span></div></div>
+              <div class="ev vd"><div class="tm">14:19</div><div class="rail"><i></i></div><div class="tx"><span class="vn">v3</span><span class="a">Deniz K. &middot; door</span>Doluca Antik Kırmızı 2021 <span class="chip v-accepted">accepted</span> 1 case <span class="chip ghost">takes all of v2</span><span class="ev-s">the third case was in the truck &middot; v2 stays on the record, retired &middot; 14 of 15 now</span></div></div>
+              <div class="ev"><div class="tm">14:19</div><div class="rail"><i></i></div><div class="tx"><span class="a">driver, SGWS</span>countersigned the ticket <span class="ev-s">door-correction clock closed &middot; per-vendor rule: the signed ticket is final for count</span></div></div>
+              <div class="ev house"><div class="tm">15:02</div><div class="rail"><i></i></div><div class="tx"><span class="a">the house</span>read invoice SG-88213 from the PDF &middot; 6 lines &middot; goods $2,109.00 + delivery $31.60 = $2,140.60 <span class="ev-s">extractor named on the document &middot; confidence is never shown as a number &middot; not evidence: the PDF is</span></div></div>
+              <div class="ev house"><div class="tm">15:02</div><div class="rail"><i></i></div><div class="tx"><span class="a">the house</span>differs on 2 lines &mdash; Hasan A. notified <span class="ev-s">Musar billed, not counted; Efes billed, never ordered &middot; one comparison, the same one the AGREED gate reads (A11)</span></div></div>
+              <div class="ev vd"><div class="tm">16:40</div><div class="rail"><i></i></div><div class="tx"><span class="vn">v4</span><span class="a">Hasan A. &middot; desk</span>Doluca Antik Kırmızı 2021 <span class="chip v-damaged">damaged</span> 2 bottles in case 3 <span class="chip ghost">takes 2 btl of v3</span><span class="ev-s">photo IMG_4420 &middot; credit request drafted <b>$28.20</b> &mdash; <b>not sent</b></span></div></div>
+              <div class="bracket">one line &middot; four entries &middot; the current state is derived from all four</div>
+              <div class="ev house"><div class="tm">16:41</div><div class="rail"><i></i></div><div class="tx"><span class="a">the house</span>payment clock set: EFT day 30 = Fri 16 Oct <span class="ev-s">basis delivery_date &middot; from vendor_terms US-CA alcohol &middot; re-notify day 15, escalate day 24</span></div></div>
+              <div class="ev now"><div class="tm">now</div><div class="rail"><i></i></div><div class="tx"><span class="a">waiting on Hasan A.</span>lines 5 and 6 hold the gate <span class="ev-s">Musar 2017 was not counted &mdash; a line nobody counted cannot be compared (A6) &middot; Efes Pilsen is billed and pairs with nothing ordered &mdash; unanswered (A11)</span></div></div>
+            </div>
+          </section>
+
+          <!-- the lines -->
+          <section>
+            <div class="blk-h"><h3>The lines</h3><span class="s">current state &middot; derived from the entries &middot; press a line to see them</span></div>
+            <div class="card lines">
+              <div class="row h"><span>#</span><span>line</span><span>ordered</span><span>door</span><span>billed</span><span>verdict</span><span style="text-align:right">entries</span></div>
+
+              <div class="x"><div class="row x-head" data-x><span class="n">1</span><span class="w">Kavaklıdere Yakut 2022<small>750 ml &middot; case of 12</small></span><span class="q">5 cs<small>= 60 btl</small></span><span class="q">5 cs</span><span class="q">5 cs<small>$9.40 / btl</small></span><span><span class="chip v-accepted">accepted</span></span><span class="cnt">1 <i class="chev"></i></span></div>
+                <div class="x-body"><div><div class="ledger"><div class="entry"><span class="vn">v1</span><span class="who"><b>Deniz K.</b>door<span class="h">14:12</span></span><span class="what"><span class="chip v-accepted">accepted</span>5 of 5 cases <span class="ev"><span class="chip">photo</span>driver present</span></span></div></div></div></div>
+              </div>
+
+              <div class="x open"><div class="row x-head" data-x aria-expanded="true"><span class="n">2</span><span class="w">Doluca Antik Kırmızı 2021<small>750 ml &middot; case of 6</small></span><span class="q">3 cs<small>= 18 btl</small></span><span class="q">3 cs</span><span class="q">3 cs<small>$14.10 / btl</small></span><span><span class="chip v-accepted">accepted 16</span> <span class="chip v-damaged">damaged 2</span></span><span class="cnt">4 <i class="chev"></i></span></div>
+                <div class="x-body"><div>
+                  <div class="ledger">
+                    <div class="entry"><span class="vn">v1</span><span class="who"><b>Deniz K.</b>door<span class="h">14:12</span></span><span class="what"><span class="chip v-accepted">accepted</span>2 cases <span class="ev"><span class="chip">photo IMG_4411</span>driver present</span></span></div>
+                    <div class="entry superseded"><span class="vn">v2</span><span class="who"><b>Deniz K.</b>door<span class="h">14:12</span></span><span class="what"><span class="chip v-short">short</span><span class="strike">1 case missing</span> <span class="ev"><span class="chip">photo IMG_4411</span>retired by v3, kept</span></span></div>
+                    <div class="entry"><span class="vn">v3</span><span class="who"><b>Deniz K.</b>door<span class="h">14:19</span></span><span class="what"><span class="chip v-accepted">accepted</span>1 case <span class="ev"><span class="chip">takes all of v2</span>the third case was in the truck</span></span></div>
+                    <div class="entry"><span class="vn">v4</span><span class="who"><b>Hasan A.</b>desk<span class="h">16:40</span></span><span class="what"><span class="chip v-damaged">damaged</span>2 btl, case 3 <span class="ev"><span class="chip">takes 2 btl of v3</span><span class="chip">photo IMG_4420</span><span class="chip">credit drafted $28.20 &middot; not sent</span></span></span></div>
+                  </div>
+                  <div class="derived"><span class="cap">current &middot; derived</span><b>accepted 12 + 6 &minus; 2 = 16 btl</b><span>&middot;</span><b>damaged 2 btl</b><span>&middot;</span><span>short 6 &minus; 6 = 0</span><span>&middot;</span><span>16 + 2 = <b>18</b> = ordered</span><span class="dim">&middot; from 4 entries</span></div>
+                  <div class="rule-sent">Each entry is a portion of the line in one verdict; an entry that takes from an earlier one names it. The current state is the sum per verdict of what was never taken away. A fifth entry would be v5; none of these four can be edited or removed.</div>
+                </div></div>
+              </div>
+
+              <div class="x"><div class="row x-head" data-x><span class="n">3</span><span class="w">Suvla Sur 2020<small>750 ml &middot; case of 6</small></span><span class="q">2 cs<small>= 12 btl</small></span><span class="q">2 cs</span><span class="q">2 cs<small>$19.80 / btl</small></span><span><span class="chip v-accepted">accepted</span></span><span class="cnt">1 <i class="chev"></i></span></div>
+                <div class="x-body"><div><div class="ledger"><div class="entry"><span class="vn">v1</span><span class="who"><b>Deniz K.</b>door<span class="h">14:12</span></span><span class="what"><span class="chip v-accepted">accepted</span>2 of 2 cases</span></div></div></div></div>
+              </div>
+
+              <div class="x"><div class="row x-head" data-x><span class="n">4</span><span class="w">Yeni Rakı 70 cl<small>case of 6</small></span><span class="q">4 cs<small>= 24 btl</small></span><span class="q">4 cs</span><span class="q">4 cs<small>$27.50 / btl</small></span><span><span class="chip v-accepted">accepted</span></span><span class="cnt">1 <i class="chev"></i></span></div>
+                <div class="x-body"><div><div class="ledger"><div class="entry"><span class="vn">v1</span><span class="who"><b>Deniz K.</b>door<span class="h">14:12</span></span><span class="what"><span class="chip v-accepted">accepted</span>4 of 4 cases</span></div></div></div></div>
+              </div>
+
+              <div class="x"><div class="row x-head" data-x><span class="n">5</span><span class="w">Chateau Musar 2017<small>750 ml &middot; case of 6</small></span><span class="q">1 cs<small>= 6 btl</small></span><span class="q dim">not counted</span><span class="q">1 cs<small>$58.00 / btl</small></span><span><span class="chip v-none">no verdict</span></span><span class="cnt">0 <i class="chev"></i></span></div>
+                <div class="x-body"><div><div class="ledger"><div class="rule-sent" style="padding:8px 0 12px">No entry. Nobody counted this line at the door and the invoice bills one case. <b>Received is "not counted", never equal to billed</b> (A6). The first entry here will be v1 &mdash; a count, or a stated refusal to accept a line nobody saw.</div></div></div></div>
+              </div>
+
+              <div class="x open"><div class="row x-head" data-x aria-expanded="true"><span class="n">6</span><span class="w">Efes Pilsen 50 cl<small>on the invoice only &middot; case of 24</small></span><span class="q dim">&mdash;<small>not ordered</small></span><span class="q dim">not counted</span><span class="q">1 cs<small>$1.90 / btl</small></span><span><span class="chip v-none">unpaired</span></span><span class="cnt">0 <i class="chev"></i></span></div>
+                <div class="x-body"><div><div class="ledger"><div class="rule-sent" style="padding:8px 0 8px">Billed, and pairs with nothing ordered or counted. A question, not a difference &mdash; and the most expensive question at the door. Answerable by the same two doors: a verdict entry, or accept-as-billed with a reason.</div>
+                  <div class="derived" style="margin:0 0 12px"><span class="cap">current &middot; derived</span><b>no order &middot; the basis is what was billed: 1 case = 24 btl</b><span>&middot;</span><b>no verdict</b><span>&middot;</span><span>not counted 24 = basis</span><span class="dim">&middot; 0 entries &middot; a count here becomes v1, and the basis becomes the count, not the paper</span></div>
+                </div></div></div>
+              </div>
+            </div>
+            <div class="legend"><span class="cap">verdict words</span><span><span class="chip v-accepted">accepted</span></span><span><span class="chip v-short">short</span></span><span><span class="chip v-refused">refused</span></span><span><span class="chip v-damaged">damaged</span></span><span><span class="chip v-none">no verdict</span> is the absence of one, never a zero</span></div>
+          </section>
+        </div>
+      </main>
+    </div>
+  </div>
+  <div class="snotes desk-only"><span><i>spine</i>the selected delivery &mdash; the whole desk is its spine; the current station takes the seal</span><span><i>record</i>v2 stays &mdash; struck, not deleted; a row names the unit it was counted in, never its conversion</span><span><i>line 6</i>no order to add up to, so the derived box's basis is the billed quantity; a count would replace it</span></div>
+
+  <!-- ═══════════════════ 2 · OVERLAY ═══════════════════ -->
+  <div class="sec desk-only"><span class="n">2 &middot; Overlay</span><h2>The line sheet &mdash; one object, 440 px, tucks in from the right</h2><span class="k">ADR 0112: a sheet for one object. Appending an entry writes a ledger row, and <b>ledger rows keep the seal before</b> (F10, Locked) &mdash; so the append is held, like the send. Two seals on one sheet; the door's own 7-minute correction (v2 to v3) is the F12 undo-after case, founder question 3.</span></div>
+
+  <div class="stage desk desk-only" style="height:1290px">
+    <div class="app" style="min-height:1290px">
+      <aside class="side">
+        <div class="wm">Mudavym<i>.</i></div>
+        <a>Dashboard</a><a>Inventory</a><a>Orders</a><a class="on">Receiving</a><a>Receipts &amp; Credits</a><a>Providers</a>
+        <div class="grp">House</div><a>Reports</a><a>Calendar</a><a>Team</a>
+      </aside>
+      <main class="main">
+        <header class="mast"><div><div class="wm">Mudavym</div><h1>Receiving</h1><p class="sent">What needs a decision &mdash; worst money first.</p></div><div class="right"><span class="cap">one event &middot; three renderings &middot; this one is manager</span></div></header>
+        <div class="dhead"><h2>Southern Glazer's &middot; PO-2417</h2><span class="meta"><b>RECONCILING</b> &middot; delivered Wed 14:12 &middot; invoice SG-88213 &middot; USD</span></div>
+        <div class="spine">
+          <div class="st d"><span class="cap">1 &middot; Ordered</span><div class="w">Mon 8 Sep &middot; Hasan A.</div></div>
+          <div class="st d"><span class="cap">2 &middot; Acknowledged</span><div class="w">Tue 9 Sep &middot; vendor</div></div>
+          <div class="st d"><span class="cap">3 &middot; Door</span><div class="w">Wed 14:12 &middot; Deniz K.</div></div>
+          <div class="st d"><span class="cap">4 &middot; Paper</span><div class="w">15:02 &middot; read from PDF</div></div>
+          <div class="st n"><span class="cap">5 &middot; Verdicts</span><div class="w">7 entries &middot; 2 people</div></div>
+          <div class="st r"><span class="cap">6 &middot; Agreed</span><div class="w">Held</div></div>
+          <div class="st f"><span class="cap">7 &middot; Verified</span><div class="w">not yet</div></div>
+          <div class="st f"><span class="cap">8 &middot; Paid</span><div class="w">EFT day 30</div></div>
+        </div>
+        <div class="card lines" style="max-width:760px">
+          <div class="row h"><span>#</span><span>line</span><span>ordered</span><span>door</span><span>billed</span><span>verdict</span><span style="text-align:right">entries</span></div>
+          <div class="x"><div class="row x-head"><span class="n">1</span><span class="w">Kavaklıdere Yakut 2022</span><span class="q">5 cs</span><span class="q">5 cs</span><span class="q">5 cs</span><span><span class="chip v-accepted">accepted</span></span><span class="cnt">1</span></div></div>
+          <div class="x open"><div class="row x-head" style="background:var(--seal-tint)"><span class="n">2</span><span class="w">Doluca Antik Kırmızı 2021</span><span class="q">3 cs</span><span class="q">3 cs</span><span class="q">3 cs</span><span><span class="chip v-accepted">accepted 16</span> <span class="chip v-damaged">damaged 2</span></span><span class="cnt">4</span></div></div>
+          <div class="x"><div class="row x-head"><span class="n">3</span><span class="w">Suvla Sur 2020</span><span class="q">2 cs</span><span class="q">2 cs</span><span class="q">2 cs</span><span><span class="chip v-accepted">accepted</span></span><span class="cnt">1</span></div></div>
+          <div class="x"><div class="row x-head"><span class="n">5</span><span class="w">Chateau Musar 2017</span><span class="q">1 cs</span><span class="q dim">not counted</span><span class="q">1 cs</span><span><span class="chip v-none">no verdict</span></span><span class="cnt">0</span></div></div>
+        </div>
+      </main>
+    </div>
+    <div class="scrim"></div>
+    <div class="sheet" id="sheet-a">
+      <div class="oh">
+        <div><span class="eye">Line 2 of 6 &middot; PO-2417 &middot; Southern Glazer's</span><h3 class="ttl">Doluca Antik Kırmızı 2021</h3><p class="sub">750 ml &middot; case of 6 &middot; ordered 3 cases = 18 bottles &middot; the pack size is the order's, stated once</p></div>
+        <button class="oclose" data-close>Close</button>
+      </div>
+      <div class="obody">
+        <span class="osect">The four numbers</span>
+        <div class="card flat" style="border-color:var(--rule);padding:8px 10px;display:grid;grid-template-columns:repeat(4,1fr);gap:8px;font-size:11.5px">
+          <div><span class="cap">ordered</span><div class="fig">3 cs</div><div class="s">= 18 btl</div></div>
+          <div><span class="cap">door</span><div class="fig">3 cs</div><div class="s">Deniz K. 14:19</div></div>
+          <div><span class="cap">billed</span><div class="fig">3 cs</div><div class="s"><span class="src" title="Invoice SG-88213, line 2: 18 × $14.10 = $253.80">$253.80</span> &middot; $14.10 / btl</div></div>
+          <div><span class="cap">difference</span><div class="fig">count = paper</div><div class="s">2 btl damaged after the count (v4)</div></div>
+        </div>
+
+        <span class="osect">The entries &mdash; oldest first</span>
+        <div class="ledger">
+          <div class="entry"><span class="vn">v1</span><span class="who"><b>Deniz K.</b>door<span class="h">Wed 14:12</span></span><span class="what"><span class="chip v-accepted">accepted</span>2 cases <span class="ev"><span class="chip">photo IMG_4411</span>driver present</span></span></div>
+          <div class="entry superseded"><span class="vn">v2</span><span class="who"><b>Deniz K.</b>door<span class="h">Wed 14:12</span></span><span class="what"><span class="chip v-short">short</span><span class="strike">1 case missing</span> <span class="ev"><span class="chip">photo IMG_4411</span>retired by v3, kept</span></span></div>
+          <div class="entry"><span class="vn">v3</span><span class="who"><b>Deniz K.</b>door<span class="h">Wed 14:19</span></span><span class="what"><span class="chip v-accepted">accepted</span>1 case <span class="ev"><span class="chip">takes all of v2</span>the third case was in the truck</span></span></div>
+          <div class="entry"><span class="vn">v4</span><span class="who"><b>Hasan A.</b>desk<span class="h">Wed 16:40</span></span><span class="what"><span class="chip v-damaged">damaged</span>2 btl, case 3 <span class="ev"><span class="chip">takes 2 btl of v3</span><span class="chip">photo IMG_4420</span></span></span></div>
+        </div>
+        <div class="derived"><span class="cap">current &middot; derived</span><b>accepted 12 + 6 &minus; 2 = 16 btl</b><span>&middot;</span><b>damaged 2 btl</b><span>&middot;</span><span>16 + 2 = 18 = ordered</span><span class="dim">&middot; from 4 entries</span></div>
+
+        <span class="osect">Append an entry &mdash; it becomes v5 &middot; nothing is chosen for you</span>
+        <div class="radios" role="radiogroup" aria-label="verdict"><span class="chip">accepted</span><span class="chip">short</span><span class="chip">refused</span><span class="chip">damaged</span></div>
+        <div class="two">
+          <div class="field"><label>How many</label><input class="inp mono" value="" placeholder="&mdash;" aria-label="quantity"></div>
+          <div class="field"><label>Unit &mdash; one, never both</label><div class="radios"><span class="chip">bottles</span><span class="chip">cases</span></div></div>
+        </div>
+        <div class="field"><label>Takes from &mdash; a portion must come from somewhere</label><div class="radios"><span class="chip">v1 &middot; 12 btl left</span><span class="chip">v3 &middot; 4 btl left</span><span class="chip ghost">none chosen</span></div></div>
+        <div class="field"><label>Why, in your words (required)</label><input class="inp" placeholder="What you saw — a decision somebody made" aria-label="reason"></div>
+        <div class="field"><label>Evidence</label><div class="radios"><span class="chip">attach photo</span><span class="chip">driver's initials</span><span class="chip ghost">a note is not evidence; a photo is</span></div></div>
+        <div style="margin-top:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><div class="hold" data-idle aria-disabled="true"><span class="fill"></span><span class="wax">m</span><span class="lbl">Hold to append</span></div><span class="s">Disabled until a verdict, a quantity, a unit and the reason are filled. A ledger row keeps the seal before (ADR 0112 F10). Writes one row: verdict, quantity, unit, what it takes from, reason, who, when. v1&ndash;v4 are untouched.</span></div>
+
+        <span class="osect">Credit request &mdash; drafted by the house, not sent</span>
+        <div class="card" style="padding:10px 12px;font-size:12px">
+          <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline"><b>$28.20</b><span class="s">2 btl &times; $14.10 &middot; <span class="src" title="invoice line 2 unit price × damaged quantity from entry v3">opens to its sources</span></span></div>
+          <p class="sent" style="margin:6px 0 8px;font-size:12px">"Two bottles of Doluca Antik Kırmızı 2021 arrived broken in case 3 of PO-2417 (photo attached). We request a credit of $28.20."</p>
+          <div class="s" style="margin-bottom:8px">Generated from the ledger &middot; not evidence &mdash; the photograph and entry v4 are.</div>
+          <div class="hold" data-done="Sent to SGWS — a promise is not money"><span class="fill"></span><span class="wax">m</span><span class="lbl">Hold to send</span></div>
+        </div>
+      </div>
+      <div class="ofoot"><span>Esc tears the sheet; a stub with your unwritten entry stays on the line.</span><span>tuck &middot; 300 ms</span></div>
+    </div>
+  </div>
+  <div class="snotes desk-only"><span><i>append</i>the picker is drawn empty &mdash; no verdict, no quantity, no unit, no takes-from; the hold wakes when the reason is written</span><span><i>behind</i>the desk keeps its pulse behind the sheet</span></div>
+
+  <!-- ═══════════════════ 3 · STATES ═══════════════════ -->
+  <div class="sec"><span class="n">3 &middot; States</span><h2>Empty, loading, refused, partial &mdash; and the owner's band</h2><span class="k">A failed read is never an empty room. A missing count is not a zero. A blocked clock asks; it never fires.</span></div>
+  <div class="mob-note">Sections 1 and 2 (the desk at 1440 and its line sheet) are desk-only in this sketch. The phone form of that sheet &mdash; ADR 0112 F9's bottom sheet with detents &mdash; is drawn in section 4.</div>
+  <div class="states">
+    <div class="state">
+      <div class="lab">Empty<span>a measured zero</span></div>
+      <div class="in">
+        <div class="cap" style="margin-bottom:6px">on the spine today</div>
+        <div class="fig" style="font-size:26px;line-height:1">0</div>
+        <p style="margin-top:10px"><span class="cap">Mon 14 Sep &middot; 08:10</span><br>Nothing is on the spine. <b>The list answered</b>: 0 open deliveries. The last one closed Fri 11 Sep &mdash; Wine Warehouse PO-2413, verified by Hasan A.</p>
+        <p>Expected next: <b>Southern Glazer's PO-2417</b>, Wed 14:00&ndash;16:00, acknowledged <b>with changes</b> (Musar 2017, 1 case backordered).</p>
+        <div class="dstrip" style="grid-template-columns:1fr;margin:0"><div class="dcardx" style="border-style:dashed;cursor:default"><div class="vn dim">no delivery</div><div class="dots"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="clk dim">an empty spine, drawn empty</div></div></div>
+      </div>
+      <div class="why">GET /procurement/deliveries returned an empty array with status 200. Empty and unknown never share a rendering (ADR 0067).</div>
+    </div>
+    <div class="state">
+      <div class="lab">Loading<span>figures are dashes</span></div>
+      <div class="in">
+        <div class="nums" style="margin-bottom:10px"><div><span class="v">&mdash;</span><span class="cap l">on the spine</span></div><div><span class="v">&mdash;</span><span class="cap l">need an answer</span></div></div>
+        <span class="skel w70"></span><span class="skel w40"></span><span class="skel w90"></span><span class="skel w70"></span>
+        <p style="margin-top:10px" class="s">Reaching the gateway&hellip; nothing here is zero yet. Counts arrive on the tally spring only when they change; never on first paint.</p>
+      </div>
+      <div class="why">RcTally: a number is never animated from 0 on load &mdash; that would draw a zero that was never measured.</div>
+    </div>
+    <div class="state">
+      <div class="lab">Refused<span>two kinds, both in words</span></div>
+      <div class="in">
+        <div class="alert" role="alert"><span class="cap seal">Failed read</span><b>The deliveries did not load.</b> 502 from <code>/procurement/deliveries</code> at 16:52. This is not a quiet day &mdash; a spine may well be waiting. <div style="margin-top:8px"><button class="btn sm">Reload</button></div></div>
+        <div class="alert" role="alert" style="margin-top:10px;border-color:var(--rule-2)"><span class="cap">403 &middot; your role</span><b>Staff cannot read the manager desk.</b> Permission <code>receiving:manage</code>. The door rendering is yours; no retry is offered because it cannot help.</div>
+      </div>
+      <div class="why">RcStaffLane / RcManagerQueue precedent: 403 is its own state on all three renderings; a retry that cannot succeed is not shown.</div>
+    </div>
+    <div class="state">
+      <div class="lab">Partial<span>honest gaps on one spine</span></div>
+      <div class="in" style="padding:10px">
+        <div class="dhead" style="margin-bottom:6px"><h2 style="font-size:15px">Kavaklıdere &middot; e-İrsaliye VKL2026&hellip;345</h2></div>
+        <div class="spine v" style="margin-bottom:8px">
+          <div class="st d" style="padding:8px 6px 8px 8px"><span class="cap">Door</span><div class="w" style="font-size:11px">11 koli &middot; Emre T. Fri 09:52</div><div class="sub">line 4 <b>not counted</b> &mdash; received is not counted, never equal to paper (A6)</div></div>
+          <div class="st d" style="padding:8px 6px 8px 8px"><span class="cap">Paper</span><div class="w" style="font-size:11px">e-İrsaliye, no money</div><div class="sub">the price arrives with the e-Fatura &middot; <b>no currency = no price</b></div></div>
+          <div class="st n" style="padding:8px 6px 8px 8px"><span class="cap">Answer</span><div class="w" style="font-size:11px">day 5 of 7 &middot; from Fri 11 Sep 09:40</div><div class="sub"><b>the law deems acceptance on day 7</b> (Fri 18 Sep 09:40); the state records <b>no response</b>, never agreement</div></div>
+          <div class="st r" style="padding:8px 6px 8px 8px"><span class="cap">Paid</span><div class="w" style="font-size:11px">clock blocked</div><div class="sub">basis unknown &mdash; asked of a YMM; <b>never fires</b> (A8)</div></div>
+        </div>
+        <p class="s">Strip counts read <b>&ge;100</b> when the list came back full: a window is a floor, not a total (ADR 0060). A drafted credit stays <b>not sent</b>; a promised credit is not recovered money.</p>
+      </div>
+      <div class="why">Every gap is a sentence in the station that has it, not a blank station. The owner's band counts only credit memos.</div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════ 4 · MOBILE ═══════════════════ -->
+  <div class="sec"><span class="n">4 &middot; Mobile 390</span><h2>The staff rendering &mdash; Vanilla Kaleiçi, Antalya &mdash; and the sheet as a bottom sheet</h2><span class="k">TRY &middot; TR &middot; Europe/Istanbul &middot; Wed 16 Sep 12:05 &middot; no prices on the staff phone, ever &middot; the same spine, vertical &middot; the manager's line sheet is ADR 0112 F9's bottom sheet: peek &middot; half &middot; full</span></div>
+  <div class="phones">
+    <div class="phone">
+      <div class="sb"><span>12:05</span><span>Mudavym &middot; Vanilla Kaleiçi</span></div>
+      <div class="pin">
+        <div class="ph"><div><div class="wm">Mudavym</div><h1>Receiving</h1><p class="sent">Which delivery are you receiving?</p></div><span class="cap">staff</span></div>
+        <p class="hint">Tap the delivery that just arrived. <b>Prices are not shown here on purpose</b> &mdash; counting is the door's whole job.</p>
+
+        <div class="dcard">
+          <div class="body">
+            <div class="vn">Doluca</div>
+            <div class="po">PO-118 &middot; driver here since 11:58</div>
+            <div class="cnt"><b>5 koli</b> expected &middot; 2 lines &middot; 3 &times; 6 + 2 &times; 6 = <b>30 şişe</b><br><span class="s">pack sizes are the order's, stated once</span></div>
+            <div class="dots" style="margin:10px 0 4px"><i class="d"></i><i class="d"></i><i class="n"></i><i></i><i></i><i></i><i></i><i></i></div>
+            <div class="s">ordered &middot; acknowledged Tue, no changes &middot; <b style="color:var(--seal)">door &mdash; now</b> &middot; paper irsaliye to photograph &middot; verdicts &middot; agreed &middot; verified &middot; paid</div>
+          </div>
+          <div class="go">Count at the door</div>
+        </div>
+
+        <div class="dcard">
+          <div class="body">
+            <div class="vn">Metro Toptan</div>
+            <div class="po">no order &middot; UNORDERED &middot; arrived Mon 11:05 &middot; still not counted</div>
+            <div class="cnt"><b>&mdash; koli</b> expected &middot; nothing was ordered, so nothing is expected<br><span class="s">count what came; a manager decides whether the house accepts it (D6)</span></div>
+            <div class="dots" style="margin:10px 0 4px"><i class="x"></i><i class="x"></i><i class="n"></i><i class="d"></i><i></i><i></i><i></i><i></i></div>
+          </div>
+          <div class="go">Count what came</div>
+        </div>
+
+        <div class="dcard">
+          <div class="body">
+            <div class="vn">Kavaklıdere</div>
+            <div class="po">e-İrsaliye VKL2026000012345 &middot; Fri 11 Sep &middot; counted by you 09:52</div>
+            <div class="cnt"><b>11 koli</b> counted &middot; 1 line not counted &middot; the desk has it now &middot; 3 lines waiting on Zeynep Ç.</div>
+            <div class="dots" style="margin:10px 0 4px"><i class="d"></i><i class="d"></i><i class="d"></i><i class="d"></i><i class="n"></i><i></i><i></i><i></i></div>
+          </div>
+          <div class="go off">done at the door</div>
+        </div>
+
+        <div class="card" style="padding:10px 12px;margin-top:14px;font-size:12px;color:var(--ink-2)"><span class="cap">outbox</span><div style="margin-top:4px"><b style="color:var(--ink-1)">Holding 1 receipt</b> &mdash; no signal in the walk-in. It sends when it can; nothing here says "sent".</div></div>
+
+        <div class="card" style="padding:10px 12px;margin-top:10px;font-size:12px;color:var(--ink-2)"><span class="cap">Fri &middot; Kavaklıdere line 3 &middot; your entries</span>
+          <div class="ledger" style="margin-top:4px">
+            <div class="entry"><span class="vn">v1</span><span class="who"><b>Emre T.</b>door<span class="h">Fri 09:54</span></span><span class="what">Pendore Syrah 2021 <span class="chip v-refused">refused</span> 1 koli &mdash; wrong wine (Boğazkere)<span class="ev"><span class="chip">photo IMG_0234</span>driver took it back</span></span></div>
+            <div class="entry"><span class="vn">v2</span><span class="who"><b>Emre T.</b>door<span class="h">Fri 09:55</span></span><span class="what"><span class="chip v-accepted">accepted</span> 1 koli<span class="ev">Zeynep Ç. drafted kısmi kabul Wed 11:20 &middot; <b style="color:var(--ink-1)">not sent</b> &mdash; a red is a sealed legal document (D6)</span></span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="phone has-bsheet">
+      <div class="sb"><span>16:53</span><span>Mudavym &middot; Meyhouse</span></div>
+      <div class="pin">
+        <div class="ph"><div><div class="wm">Mudavym</div><h1>Receiving</h1><p class="sent">Southern Glazer's &middot; PO-2417</p></div><span class="cap">manager</span></div>
+        <div class="spine v" style="margin:0 0 10px">
+          <div class="st d" style="padding:6px 8px"><span class="cap">3 &middot; Door</span><div class="w" style="font-size:11px">14 of 15 cases &middot; Musar not counted</div></div>
+          <div class="st n" style="padding:6px 8px"><span class="cap">5 &middot; Verdicts</span><div class="w" style="font-size:11px">7 entries &middot; 2 people</div></div>
+          <div class="st r" style="padding:6px 8px"><span class="cap">6 &middot; Agreed</span><div class="w" style="font-size:11px">Held &middot; lines 5, 6</div></div>
+        </div>
+        <div class="card lines">
+          <div class="row" style="grid-template-columns:14px minmax(0,1fr) 44px 40px;padding:8px 10px"><span class="n">1</span><span class="w" style="font-size:12px">Kavaklıdere Yakut 2022</span><span class="q">5 cs</span><span class="cnt">1</span></div>
+          <div class="row" style="grid-template-columns:14px minmax(0,1fr) 44px 40px;padding:8px 10px;background:var(--seal-tint)"><span class="n">2</span><span class="w" style="font-size:12px">Doluca Antik Kırmızı 2021</span><span class="q">3 cs</span><span class="cnt">4</span></div>
+          <div class="row" style="grid-template-columns:14px minmax(0,1fr) 44px 40px;padding:8px 10px"><span class="n">3</span><span class="w" style="font-size:12px">Suvla Sur 2020</span><span class="q">2 cs</span><span class="cnt">1</span></div>
+        </div>
+      </div>
+      <div class="bscrim"></div>
+      <div class="bsheet">
+        <div class="grab"></div>
+        <div class="oh"><div><span class="eye">Line 2 of 6 &middot; PO-2417</span><h3 class="ttl" style="font-size:16px">Doluca Antik Kırmızı 2021</h3><p class="sub">3 cases = 18 btl ordered &middot; 4 entries</p></div><button class="oclose">Close</button></div>
+        <div class="obody">
+          <div class="ledger" style="font-size:11.5px">
+            <div class="entry" style="grid-template-columns:26px 78px minmax(0,1fr)"><span class="vn">v1</span><span class="who"><b>Deniz K.</b><span class="h">door 14:12</span></span><span class="what"><span class="chip v-accepted">accepted</span>2 cs</span></div>
+            <div class="entry superseded" style="grid-template-columns:26px 78px minmax(0,1fr)"><span class="vn">v2</span><span class="who"><b>Deniz K.</b><span class="h">door 14:12</span></span><span class="what"><span class="chip v-short">short</span><span class="strike">1 cs</span></span></div>
+            <div class="entry" style="grid-template-columns:26px 78px minmax(0,1fr)"><span class="vn">v3</span><span class="who"><b>Deniz K.</b><span class="h">door 14:19</span></span><span class="what"><span class="chip v-accepted">accepted</span>1 cs &middot; takes all of v2</span></div>
+            <div class="entry" style="grid-template-columns:26px 78px minmax(0,1fr)"><span class="vn">v4</span><span class="who"><b>Hasan A.</b><span class="h">desk 16:40</span></span><span class="what"><span class="chip v-damaged">damaged</span>2 btl &middot; takes 2 of v3</span></div>
+          </div>
+          <div class="derived" style="font-size:11.5px"><span class="cap">current</span><b>accepted 16 btl</b><span>&middot;</span><b>damaged 2 btl</b><span>&middot;</span><span>= 18</span></div>
+          <div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="btn sm pri">Append an entry</button><span class="s">opens the full detent &mdash; the form and its hold live there, after the reason</span></div>
+        </div>
+      </div>
+      <div class="detents"><span style="bottom:92%">full</span><span class="on" style="bottom:56%">half</span><span style="bottom:18%">peek</span></div>
+    </div>
+
+    <div class="pside desk-only">
+      <p><b>What the staff phone is.</b> The same spine, turned vertical and reduced to the one station a porter can move: the door. The dots are the delivery's stations; the seal marks where it is now. No money appears on this rendering &mdash; a porter never argues price with a driver.</p>
+      <p><b>The Turkish door, Wed 12:05.</b> Doluca's van is here now. Metro Toptan came unordered on Monday and nobody has counted it &mdash; it stays on the phone, drawn with no expectation rather than a zero, until someone does. Kavaklıdere was counted on Friday and belongs to the desk now; the porter still sees it, and their own entries on it.</p>
+      <p><b>The manager's phone (second)</b> is the desk's line sheet in ADR 0112 F9's form: a bottom sheet with detents peek &middot; half &middot; full, the grabber shown because there is more than one. At <i>half</i> the ledger and the derived state fit, and <i>Append an entry</i> is a button; <i>full</i> reveals the form, whose hold is disabled until the reason is written (F10) &mdash; nothing is sealed from half, because nothing has been entered there. The desk keeps its pulse behind the scrim.</p>
+      <p><b>The outbox says "holding"</b>, never "sent 0 &middot; failed 0" (ADR 0140).</p>
+    </div>
+  </div>
+
+</div>
+<script>
+/* Mudavym motion — the spring sampler from lib/mudavym/motion.ts, verbatim in shape,
+   so tuck / stamp / tally on this page ARE the curves that run in the product. */
+(function () {
+  'use strict';
+  function springLinear(stiffness, damping, mass, restDelta) {
+    mass = mass || 1; restDelta = restDelta || 0.01;
+    var dt = 1 / 1000, omega = Math.sqrt(stiffness / mass), x = 1, v = 0, t = 0, pts = [];
+    while (t < 5) {
+      v += ((-stiffness * x - damping * v) / mass) * dt; x += v * dt; t += dt; pts.push(1 - x);
+      if (Math.hypot(x, v / omega) < restDelta) break;
+    }
+    var N = 60, last = pts.length - 1, samples = [];
+    for (var i = 0; i < N; i++) { var idx = Math.min(last, Math.round((i * last) / (N - 1))); samples.push(Number(pts[idx].toFixed(4))); }
+    var peakIdx = 0; for (var j = 1; j <= last; j++) if (pts[j] > pts[peakIdx]) peakIdx = j;
+    if (pts[peakIdx] > 1) { var at = Math.min(N - 2, Math.max(1, Math.round((peakIdx * (N - 1)) / last))); samples[at] = Number(pts[peakIdx].toFixed(4)); }
+    samples[0] = 0; samples[N - 1] = 1;
+    return { easing: 'linear(' + samples.join(',') + ')', ms: Math.max(140, Math.round(t * 1000)) };
+  }
+  var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var supportsLinear = CSS && CSS.supports && CSS.supports('transition-timing-function', 'linear(0,1)');
+  if (!reduced && supportsLinear) {
+    var r = document.documentElement.style;
+    r.setProperty('--ease-tuck', springLinear(380, 32).easing);
+    r.setProperty('--ease-stamp', springLinear(500, 26).easing);
+    r.setProperty('--ease-tally', springLinear(120, 26).easing);
+  }
+
+  /* expanders — settle on the head, turn on the reveal */
+  document.querySelectorAll('[data-x]').forEach(function (head) {
+    head.setAttribute('role', 'button'); head.tabIndex = 0;
+    var target = head.closest('.x');
+    function toggle() {
+      var open = target.classList.toggle('open');
+      head.setAttribute('aria-expanded', open ? 'true' : 'false');
+    }
+    head.addEventListener('click', function (e) { if (e.target.closest('a,button,.hold')) return; toggle(); });
+    head.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } });
+  });
+
+  /* sheets — tuck in, tuck out; the close control is words */
+  document.querySelectorAll('[data-open]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var s = document.querySelector(b.getAttribute('data-open')); if (!s) return;
+      s.classList.remove('closed'); var sc = s.parentElement.querySelector('.scrim'); if (sc) sc.hidden = false;
+    });
+  });
+  document.querySelectorAll('[data-close]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var s = b.closest('.sheet,.panel,.pop'); if (!s) return;
+      s.classList.add('closed'); var sc = s.parentElement.querySelector('.scrim'); if (sc) sc.hidden = true;
+    });
+  });
+
+  /* radio chips */
+  document.querySelectorAll('.radios').forEach(function (g) {
+    g.querySelectorAll('.chip').forEach(function (c) {
+      c.addEventListener('click', function () { g.querySelectorAll('.chip').forEach(function (o) { o.classList.remove('on'); }); c.classList.add('on'); });
+    });
+  });
+
+  /* hold-to-approve — pour fills against the operator's own thumb; an early
+     release retreats on tuck; the wax lands on stamp. Reduced motion: the hold
+     still takes its full time (the ceremony is the safeguard), the fill just
+     does not travel. */
+  document.querySelectorAll('.hold').forEach(function (h) {
+    if (h.hasAttribute('data-idle')) return;
+    var timer = null, ms = 620;
+    function start(e) {
+      if (h.classList.contains('sealed')) return;
+      e.preventDefault(); h.classList.add('pouring');
+      timer = setTimeout(function () { h.classList.remove('pouring'); h.classList.add('sealed'); var l = h.querySelector('.lbl'); if (l && h.dataset.done) l.textContent = h.dataset.done; }, ms);
+    }
+    function stop() { if (timer) { clearTimeout(timer); timer = null; } h.classList.remove('pouring'); }
+    h.addEventListener('pointerdown', start);
+    h.addEventListener('pointerup', stop); h.addEventListener('pointerleave', stop); h.addEventListener('pointercancel', stop);
+    h.addEventListener('keydown', function (e) { if (e.key === ' ' || e.key === 'Enter') start(e); });
+    h.addEventListener('keyup', stop);
+  });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,801 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>109 · Settings — direction B · the week</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,400&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* Mudavym tokens — ADR 0042 / ADR 0138, copied inline from apps/web/src/styles/mudavym.css.
+   The ground is decided, not preferred: Warm Charcoal on every Mudavym page; [data-ground="paper"]
+   is the one declared escape (ADR 0104 D9). This page declares no paper surface. */
+.mudavym,.mudavym[data-ground="charcoal"]{
+  --seal:#5FB0BC;--seal-deep:#7DC3CD;--seal-tint:rgba(95,176,188,.14);--seal-ring:rgba(95,176,188,.38);
+  --paper-0:#15130F;--paper-1:#1D1813;--paper-2:#262019;
+  --ink-1:#EFE7D9;--ink-2:#C0B6A5;--ink-3:#8E8576;--ink-4:#ABA294;
+  color-scheme:dark;
+}
+.mudavym[data-ground="paper"]{
+  --seal:#1a5e6b;--seal-deep:#14515c;--seal-tint:rgba(26,94,107,.1);--seal-ring:rgba(26,94,107,.32);
+  --paper-0:#fffdf8;--paper-1:#f3efe6;--paper-2:#eae4d8;
+  --ink-1:#211c16;--ink-2:#4f473c;--ink-3:#7c7365;--ink-4:#665d50;
+  color-scheme:light;
+}
+:root{
+  --serif:"Fraunces",Georgia,"Times New Roman",serif;
+  --sans:"DM Sans","Plus Jakarta Sans",system-ui,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  /* motion — the seven tokens of lib/mudavym/motion.ts, nothing else */
+  --house:cubic-bezier(.16,1,.3,1);                 /* settle 320 · ink 160 */
+  --turn:cubic-bezier(.32,.72,0,1);                 /* turn 420 */
+  --tuck:linear(0,0.03,0.089,0.173,0.268,0.357,0.453,0.543,0.624,0.691,0.755,0.809,0.851,0.89,0.92,0.943,0.963,0.978,0.989,0.996,1.002,1.006,1.009,1); /* tuck 300 */
+  --stamp:linear(0,0.066,0.217,0.394,0.573,0.735,0.877,0.976,1.044,1.084,1.102,1.104,1.091,1.075,1.055,1.037,1.021,1.009,0.999,0.993,0.99,0.989,0.99,1); /* stamp 360 */
+  --tally:linear(0,0.065,0.188,0.319,0.44,0.545,0.632,0.703,0.761,0.808,0.846,0.877,0.901,0.921,0.936,0.949,0.959,0.967,0.974,0.979,0.983,0.986,0.989,1); /* tally 840 */
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--paper-0);color:var(--ink-1);font-family:var(--sans);font-size:13px;-webkit-font-smoothing:antialiased}
+img{max-width:100%}
+
+/* ── the sketch's own chrome (not the product) ─────────────────────────── */
+.banner{position:sticky;top:0;z-index:50;background:var(--ink-1);color:var(--paper-0);font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;padding:7px 20px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.stage{padding:36px 20px 8px;max-width:1440px;margin:0 auto}
+.stage-label{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-4);margin:0 0 8px;display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+.stage-label b{color:var(--seal-deep);font-weight:600}
+.stage-note{font-size:12px;line-height:1.55;color:var(--ink-2);max-width:780px;margin:0 0 14px}
+.frame{background:var(--paper-0);border:1px solid var(--paper-2);border-radius:12px;overflow:hidden}
+.frame.paper{background:var(--paper-1)}
+.states{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+.state{border:1px solid var(--paper-2);border-radius:12px;padding:16px 18px;background:var(--paper-0);min-width:0}
+.state .micro{display:block;margin-bottom:8px}
+.state .row{flex-direction:column;gap:8px}
+.state .ctl{justify-content:flex-start;padding-top:0}
+.phone{width:390px;max-width:100%;border:1px solid var(--paper-2);border-radius:28px;overflow:hidden;background:var(--paper-0);margin:0}
+.phone .statusbar{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--ink-4);padding:10px 22px 0}
+.cites{font-family:var(--mono);font-size:10.5px;line-height:1.7;color:var(--ink-4);max-width:1100px;margin:0 auto;padding:30px 20px 60px}
+.cites b{color:var(--ink-2);font-weight:600}
+.cites p{margin:0 0 6px}
+
+/* ── the product's vocabulary (pages/settings/next + SectionKit) ───────── */
+.wrap{max-width:1180px;margin:0 auto;padding:26px 22px 56px}
+.wordmark{font-family:var(--serif);font-weight:600;font-size:13px;letter-spacing:.04em;color:var(--ink-2)}
+h1{font-family:var(--serif);font-size:34px;font-weight:600;letter-spacing:-.015em;line-height:1.1;margin:4px 0 0;color:var(--ink-1)}
+h1 .dot{color:var(--seal)}
+.lede{font-family:var(--serif);font-style:italic;font-size:15px;color:var(--ink-2);margin:6px 0 0}
+.standing{font-size:12px;line-height:1.6;color:var(--ink-4);margin:8px 0 0;max-width:700px}
+.dbl{border-top:1px solid var(--ink-1);border-bottom:1px solid var(--ink-1);height:3px;opacity:.5;margin:16px 0 18px}
+h2{font-family:var(--serif);font-size:22px;font-weight:600;letter-spacing:-.01em;margin:0;color:var(--ink-1)}
+h3{font-family:var(--serif);font-size:17px;font-weight:600;letter-spacing:-.005em;margin:0;color:var(--ink-1)}
+.micro{font-family:var(--mono);font-size:9.5px;font-weight:600;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-4)}
+.micro.seal{color:var(--seal-deep)}
+.row{display:flex;align-items:flex-start;gap:16px;padding:12px 0;border-top:1px solid var(--paper-2)}
+.row .body{flex:1;min-width:0}
+.q{font-size:13.5px;font-weight:600;margin:0;color:var(--ink-1)}
+.ans{font-size:13px;line-height:1.5;color:var(--ink-1);margin:3px 0 0}
+.ans.inf{font-family:var(--serif);font-style:italic;font-size:14px;color:var(--ink-2)}
+.ans.none{color:var(--ink-4)}
+.con{font-size:11.5px;line-height:1.5;color:var(--ink-4);margin:3px 0 0} /* quiet by default (style bar 2026-09-17): the same tier as .why, not .ans */
+.why{font-size:11.5px;line-height:1.5;color:var(--ink-4);margin:4px 0 0}
+.prov{overflow-wrap:anywhere;font-family:var(--mono);font-size:9.5px;font-weight:500;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-4);margin:6px 0 0;display:flex;gap:8px;flex-wrap:wrap;align-items:center;line-height:1.6}
+.tag{display:inline-block;padding:1px 6px;border-radius:4px;border:1px solid var(--paper-2);font-family:var(--mono);font-size:9px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;line-height:1.5;white-space:nowrap}
+.tag.manual{color:var(--ink-1);border-color:var(--ink-3)}
+.tag.confirmed{color:var(--seal-deep);border-color:var(--seal-ring);background:var(--seal-tint)}
+.tag.inferred{color:var(--ink-2);border-style:dashed;border-color:var(--ink-3)}
+.tag.unstated{color:var(--ink-4);border-color:var(--paper-2)}
+.tag.proposed{color:var(--seal-deep);border-color:var(--seal-ring);border-style:dashed}
+.tag.refused{color:var(--paper-0);background:var(--ink-1);border-color:var(--ink-1)}
+.tag.dead{color:var(--ink-4);border-style:dashed}
+.kept{font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-4)}
+.ctl{flex-shrink:0;padding-top:2px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+.sw{position:relative;width:40px;height:22px;border-radius:999px;border:1px solid var(--paper-2);background:var(--paper-2);display:inline-block;flex-shrink:0;transition:background-color 160ms var(--house),border-color 160ms var(--house)}
+.sw.on{border-color:var(--seal);background:var(--seal)}
+.sw i{position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:999px;background:var(--paper-0);box-shadow:0 1px 2px rgba(0,0,0,.35);transition:transform 300ms var(--tuck)}
+.sw.on i{transform:translateX(18px)}
+.sw.dim{opacity:.45}
+.btn{font-family:var(--sans);font-size:12px;font-weight:600;padding:6px 13px;border-radius:8px;border:1px solid var(--seal-ring);background:transparent;color:var(--seal-deep);cursor:pointer;white-space:nowrap;transition:background-color 160ms var(--house),border-color 160ms var(--house),color 160ms var(--house)}
+.btn:hover{background:var(--seal-tint)}
+.btn.q{border-color:var(--paper-2);color:var(--ink-2)}
+.btn.q:hover{background:var(--paper-1)}
+.btn.sm{font-size:11px;padding:4px 10px}
+.btn[disabled],.btn.off{opacity:.45;cursor:default}
+.btn:focus-visible,.sw:focus-visible,.chip:focus-visible{outline:2px solid var(--seal);outline-offset:3px}
+.chip{font-family:var(--sans);font-size:12px;font-weight:500;padding:4px 11px;border-radius:999px;border:1px solid var(--paper-2);background:transparent;color:var(--ink-2);display:inline-flex;gap:6px;align-items:center;cursor:pointer;transition:background-color 160ms var(--house),border-color 160ms var(--house)}
+.chip:hover{background:var(--paper-1)}
+.chip.on{border-color:var(--seal);background:var(--seal-tint);color:var(--ink-1);font-weight:600}
+.chip .n{font-family:var(--mono);font-size:10px;color:var(--ink-4);font-variant-numeric:tabular-nums}
+.chip.on .n{color:var(--seal-deep)}
+.field{font-family:var(--sans);font-size:12px;padding:5px 8px;border-radius:8px;border:1px solid var(--paper-2);background:var(--paper-0);color:var(--ink-1)}
+.field.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.dead{font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-4);border:1px dashed var(--paper-2);border-radius:999px;padding:3px 9px;white-space:nowrap}
+.note{font-size:12px;line-height:1.55;color:var(--ink-2);margin:0 0 10px}
+.fail{font-size:12px;line-height:1.5;color:var(--ink-1);background:var(--paper-2);border-radius:8px;padding:8px 11px;margin:10px 0 0}
+.callout{border-left:2px solid var(--seal);padding:9px 0 9px 13px;margin:14px 0 0;font-size:12px;line-height:1.6;color:var(--ink-2);background:linear-gradient(90deg,var(--seal-tint),transparent 60%)}
+.fig{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.big{font-family:var(--mono);font-size:22px;font-weight:500;letter-spacing:-.01em;font-variant-numeric:tabular-nums;color:var(--ink-1);line-height:1}
+.skel{background:var(--paper-2);border-radius:3px;height:10px} /* static — no sheen: none of the seven motion tokens is a loop, and ADR 0134 is Proposed, not locked */
+[hidden]{display:none!important}
+.disc{display:grid;grid-template-rows:0fr;transition:grid-template-rows 320ms var(--house)}
+.disc[data-open="true"]{grid-template-rows:1fr}
+.disc>*{min-height:0;overflow:hidden}
+.chev{display:inline-block;transition:transform 160ms var(--house)}
+[aria-expanded="true"] .chev{transform:rotate(90deg)}
+.turn{animation:turn 420ms var(--turn) both}
+@keyframes turn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+a{color:var(--seal-deep)}
+code{font-family:var(--mono);font-size:11px}
+em{font-style:italic}
+table{border-collapse:collapse;width:100%}
+th{font-family:var(--mono);font-size:9.5px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-4);text-align:left;padding:6px 8px 6px 0;border-bottom:1px solid var(--paper-2);white-space:nowrap}
+td{font-size:12.5px;line-height:1.45;padding:9px 8px 9px 0;border-bottom:1px solid var(--paper-2);vertical-align:top;color:var(--ink-1)}
+td.fig,th.fig{text-align:right;padding-right:0}
+td.mono{font-family:var(--mono);font-size:11.5px;white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--ink-2)}
+.tscroll{overflow-x:auto}
+
+/* ── the seal (sig-hero wax outline; the production Seal carries the trued interlock, ADR 0047) ── */
+.sealmark{width:34px;height:34px;color:var(--seal);flex-shrink:0}
+.sealmark.pressed{transform:scale(1)}
+.hold{border:1px solid var(--seal-ring);border-radius:10px;padding:10px 14px;max-width:360px;position:relative;overflow:hidden;background:var(--paper-1);cursor:pointer;user-select:none;display:flex;align-items:center;gap:12px;-webkit-tap-highlight-color:transparent}
+.hold .fill{position:absolute;inset:0;width:0%;background:var(--seal-tint)}
+.hold[data-state="holding"] .fill{transition:width 620ms linear}
+.hold[data-state="released"] .fill{transition:width 300ms var(--tuck)}
+.hold .face{position:relative;font-size:12.5px;font-weight:600;color:var(--seal-deep);flex:1}
+.hold .sub{position:relative;font-size:11px;font-weight:400;color:var(--ink-4);display:block;margin-top:2px}
+.hold .sealmark{position:relative;opacity:.35;transition:opacity 160ms var(--house)}
+.hold[data-state="sealed"] .sealmark{opacity:1;animation:stamp 360ms var(--stamp) both}
+@keyframes stamp{from{transform:scale(.72)}to{transform:scale(1)}}
+.hold[data-state="sealed"]{border-color:var(--seal)}
+.hold[data-state="sealed"] .fill{width:100%}
+
+/* ── overlays (ADR 0112 / Sheet.tsx: sheet 440 right · panel 620 centred · popover anchored) ── */
+/* The stage grows to fit whichever overlay is drawn: page beneath and overlay share one grid cell. */
+.scrim{position:relative;display:grid;grid-template-columns:minmax(0,1fr);background:var(--paper-0);overflow:hidden}
+.scrim>*{grid-area:1/1}
+.scrim::before{content:"";grid-area:1/1;background:rgba(0,0,0,.42);z-index:1;pointer-events:none}
+.scrim .under{opacity:.9;min-height:520px}
+.sheet{position:relative;z-index:2;justify-self:end;align-self:stretch;width:min(440px,100%);background:var(--paper-0);border-left:1px solid var(--paper-2);padding:22px 24px;box-shadow:-24px 0 48px rgba(0,0,0,.35)}
+.panel{position:relative;z-index:2;justify-self:center;align-self:start;margin:44px 16px;width:min(620px,calc(100% - 32px));background:var(--paper-0);border:1px solid var(--paper-2);border-radius:14px;padding:22px 26px;box-shadow:0 30px 60px rgba(0,0,0,.45)}
+.popover{position:relative;z-index:2;justify-self:start;align-self:start;background:var(--paper-0);border:1px solid var(--paper-2);border-radius:12px;padding:12px 14px;width:340px;max-width:calc(100% - 32px);box-shadow:0 18px 40px rgba(0,0,0,.4)}
+.close{font-family:var(--sans);font-size:12px;color:var(--ink-4);background:none;border:0;padding:0;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+.ov-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
+
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{transition:none!important;animation:none!important}
+}
+
+</style>
+</head>
+<body class="mudavym">
+<style>
+/* Direction B — the week. Time-shaped settings drawn on seven days; the rest as a book beneath. */
+.layers{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:14px 0 10px}
+.layers .k{font-family:var(--mono);font-size:9.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-4);margin-right:6px}
+.week{display:grid;grid-template-columns:44px repeat(7,minmax(0,1fr));gap:0 4px;margin-top:6px}
+.week .axis{position:relative;height:330px}
+.week .axis span{position:absolute;right:6px;transform:translateY(-50%);font-family:var(--mono);font-size:9.5px;color:var(--ink-4);font-variant-numeric:tabular-nums}
+/* the delivery chips sit directly after their own day's label — never pushed to the edge, where they read as the next day's */
+.week .dh{font-size:12px;font-weight:600;color:var(--ink-1);padding:0 0 4px 2px;display:flex;justify-content:flex-start;align-items:baseline;gap:8px;min-height:22px}
+.week .dh .dl{display:flex;gap:3px;flex-wrap:wrap}
+.dl b{font-family:var(--mono);font-size:9.5px;font-weight:600;letter-spacing:.06em;padding:1px 5px;border-radius:3px;border:1px solid var(--ink-3);color:var(--ink-2)}
+.dl b.inf{border-style:dashed}
+.week .col{position:relative;height:330px;border:1px solid var(--paper-2);border-radius:6px;background:var(--paper-1);overflow:hidden}
+.week .col::before{content:"";position:absolute;left:0;right:0;top:37.5%;border-top:1px dashed var(--paper-2)}
+.week .col::after{content:"";position:absolute;left:0;right:0;top:87.5%;border-top:1px dashed var(--paper-2)}
+.band{position:absolute;left:4px;right:4px;border-radius:4px}
+.band.open{background:var(--seal-tint);border-left:2px solid var(--seal)}
+.band.open i{position:absolute;left:6px;top:4px;font-family:var(--mono);font-size:9px;font-style:normal;color:var(--seal-deep);font-variant-numeric:tabular-nums;white-space:nowrap}
+.band.quiet{left:0;right:0;border-radius:0;background:repeating-linear-gradient(135deg,transparent 0 5px,rgba(142,133,118,.14) 5px 6px)}
+.band.quiet i{position:absolute;right:6px;bottom:3px;font-family:var(--mono);font-size:8.5px;font-style:normal;color:var(--ink-4);letter-spacing:.06em}
+.tick{position:absolute;left:4px;right:4px;border-top:1px solid var(--ink-2)}
+.tick i{position:absolute;left:0;top:-13px;font-family:var(--mono);font-size:8.5px;font-style:normal;color:var(--ink-2);white-space:nowrap;background:var(--paper-1);padding-right:3px}
+.brk{position:absolute;left:4px;right:4px;border:1px dashed var(--ink-3);border-radius:3px;background:repeating-linear-gradient(90deg,transparent 0 3px,rgba(142,133,118,.12) 3px 4px)}
+.brk i{position:absolute;left:3px;top:2px;font-family:var(--mono);font-size:8.5px;font-style:italic;color:var(--ink-2);white-space:nowrap}
+.mk{position:absolute;right:6px;width:7px;height:7px;border-radius:50%;background:var(--seal);transform:translateY(-50%)}
+.mk.srv{background:var(--ink-4)}
+.mk.s2{right:16px}
+.mk.s3{right:26px}
+.mk.ref{background:transparent;border:1.5px solid var(--ink-1);width:8px;height:8px}
+.mk.ref::after{content:"";position:absolute;left:-2px;right:-2px;top:50%;border-top:1.5px solid var(--ink-1);transform:rotate(-45deg)}
+.mk.prop{background:transparent;border:1.5px dashed var(--seal)}
+.mk.you{right:auto;left:6px;background:transparent;border:1.5px solid var(--ink-2);width:8px;height:8px}
+.rail-any{position:absolute;top:0;bottom:0;left:50%;border-left:1px dotted var(--ink-4);opacity:.55}
+.srvnote{display:block;font-family:var(--mono);font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-4);white-space:normal;margin-top:2px}
+/* the proposal panel (3b) — the same rows direction A draws */
+.prop-row{display:grid;grid-template-columns:minmax(0,1fr) 150px 150px;gap:14px;padding:11px 0;border-top:1px solid var(--paper-2);align-items:start}
+.prop-row .lab{font-size:12.5px;font-weight:600;color:var(--ink-1)}
+.prop-row .rsn{font-size:11.5px;line-height:1.5;color:var(--ink-2);margin-top:2px}
+.prop-row .cur{font-size:12px;color:var(--ink-4)}
+.prop-row .new{font-size:12px;color:var(--ink-1);font-weight:500}
+.prop-row .k{display:block;font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-4);margin-bottom:3px}
+.prop-row.dropped{opacity:.7}
+.receipt{border:1px solid var(--paper-2);border-radius:10px;padding:12px 14px;margin-top:14px}
+.receipt li{font-size:12px;line-height:1.5;color:var(--ink-2);margin:4px 0}
+.receipt ul{margin:6px 0 0;padding-left:18px}
+@media (max-width:900px){.prop-row{grid-template-columns:1fr}}
+.closedlbl{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:var(--serif);font-style:italic;font-size:13px;color:var(--ink-4)}
+.week[data-off~="vendors"] .l-vendors,.week[data-off~="alerts"] .l-alerts,.week[data-off~="yours"] .l-yours,.week[data-off~="hours"] .l-hours{display:none}
+.legend{display:flex;gap:16px;flex-wrap:wrap;margin:10px 0 0;font-family:var(--mono);font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-4)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend .sw-open{width:14px;height:8px;background:var(--seal-tint);border-left:2px solid var(--seal)}
+.legend .sw-q{width:14px;height:8px;background:repeating-linear-gradient(135deg,transparent 0 3px,rgba(142,133,118,.5) 3px 4px)}
+.legend .sw-t{width:14px;border-top:1px solid var(--ink-2)}
+.legend .sw-b{width:14px;height:8px;border:1px dashed var(--ink-3)}
+.legend .sw-d{width:7px;height:7px;border-radius:50%;background:var(--seal)}
+.legend .sw-r{width:8px;height:8px;border-radius:50%;border:1.5px solid var(--ink-1)}
+.legend .sw-p{width:8px;height:8px;border-radius:50%;border:1.5px dashed var(--seal)}
+.legend .sw-y{width:8px;height:8px;border-radius:50%;border:1.5px solid var(--ink-2)}
+.legend .sw-a{width:0;height:10px;border-left:1px dotted var(--ink-4)}
+.reads{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;margin-top:18px}
+.reads .callout{margin:0}
+.offgrid{margin-top:14px;font-size:12px;line-height:1.6;color:var(--ink-2)}
+.book{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 40px;margin-top:6px}
+.entry{display:flex;gap:14px;align-items:flex-start;padding:11px 0;border-top:1px solid var(--paper-2)}
+.entry .body{flex:1;min-width:0}
+.entry .n{font-size:13px;font-weight:600;color:var(--ink-1);margin:0}
+.entry .v{font-size:12.5px;line-height:1.5;color:var(--ink-2);margin:2px 0 0}
+.entry .v.none{color:var(--ink-4)}
+.entry .v.inf{font-family:var(--serif);font-style:italic;font-size:13.5px}
+.entry .prov{margin-top:4px}
+.book-h{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-top:34px;flex-wrap:wrap}
+.book-h .lede{margin:0}
+/* the week sideways — seven bars, one per day. Three lanes: the refused ring and your digest mark at the head,
+   the open band in the middle, the server's senders along the foot — so no glyph sits on another. */
+.bars{display:none}
+.dayrow{display:grid;grid-template-columns:34px minmax(0,1fr);gap:8px;align-items:center;padding:4px 0}
+.dayrow .dn{font-family:var(--mono);font-size:10px;color:var(--ink-4);text-transform:uppercase;letter-spacing:.08em}
+.bar{position:relative;height:36px;border:1px solid var(--paper-2);border-radius:5px;background:var(--paper-1);overflow:hidden}
+.bar .band.open{top:12px;height:12px;left:auto;right:auto;border-radius:3px}
+.bar .band.quiet{top:0;bottom:0;height:auto;right:auto;border-radius:0}
+.bar .tick{top:0;bottom:0;left:auto;right:auto;border-top:0;border-left:1px solid var(--ink-2)}
+.bar .brk{top:10px;height:16px;left:auto;right:auto}
+.bar .mk{right:auto;top:auto;bottom:3px;transform:translateX(-50%)}
+.bar .mk.ref{bottom:auto;top:3px}
+.bar .mk.you{bottom:auto;top:3px}
+.bar .mk i{position:absolute;left:-1px;top:-12px;font-family:var(--mono);font-size:8.5px;font-style:normal;color:var(--ink-4);white-space:nowrap}
+.bar .rail-any{left:2px;right:2px;top:50%;bottom:auto;height:0;border-left:0;border-top:1px dotted var(--ink-4)}
+.bar .closedlbl{font-size:11px;justify-content:flex-end;padding-right:10px}
+.bar-axis{display:grid;grid-template-columns:34px minmax(0,1fr);gap:8px}
+.bar-axis div{position:relative;height:12px}
+.bar-axis span{position:absolute;transform:translateX(-50%);font-family:var(--mono);font-size:8.5px;color:var(--ink-4)}
+.phone .bars{display:block}
+@media (max-width:900px){
+  /* the seven-column grid never renders narrow: the desktop week, the Istanbul week and the under-page weeks swap for the bars */
+  #wk,#tr .week,.scrim .week{display:none}
+  .bars{display:block}
+  .week{grid-template-columns:28px repeat(7,minmax(0,1fr))}
+  .week .axis span{right:3px;font-size:8px}
+  .book{grid-template-columns:1fr}
+  .band.open i,.tick i,.brk i{display:none}
+  .week .dh{font-size:10px}
+  .week .dh .dl{display:none}
+  .week .closedlbl{font-size:10px}
+  .row{flex-direction:column;gap:8px}
+  .ctl{justify-content:flex-start}
+  /* the senders table stacks: one card per sender, every column and the action in view — no scroller */
+  table.senders,table.senders tbody,table.senders tr,table.senders td{display:block;width:100%}
+  table.senders thead{display:none}
+  table.senders tr{border:1px solid var(--paper-2);border-radius:8px;padding:8px 10px;margin-top:8px}
+  table.senders td{border:0;padding:3px 0 3px 72px;white-space:normal;position:relative;min-height:18px}
+  table.senders td::before{content:attr(data-l);position:absolute;left:0;top:5px;width:64px;font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-4)}
+  table.senders td .srvnote{display:inline;margin-left:6px}
+  table.senders td .btn{margin-top:4px}
+}
+</style>
+
+<div class="banner"><span>Sketch 109 · direction B · the week</span><span>example data, not a tenant</span></div>
+
+<!-- ═══════════════════════════ 1 · DESKTOP ═══════════════════════════ -->
+<section class="stage" id="desktop">
+  <p class="stage-label"><b>1 · Desktop, 1440</b> Meyhouse Palo Alto · USD · America/Los_Angeles · signed in as Deniz Arslan, owner</p>
+  <p class="stage-note">The page opens on the house's week: its own hours, drawn from the operating-hours editor that has had no Mudavym home until now, with everything else time-shaped laid over them — vendor cutoffs and delivery days, the senders' hours, your quiet window. A setting that is a time is a thing on a grid; a setting that is not a time is an entry in the book beneath. Every band and mark keeps its stamp: a stated cutoff is a line, an inferred one is a hatched bracket, an unstated one is not drawn and is listed as missing.</p>
+  <div class="frame"><div class="wrap">
+    <header>
+      <div class="wordmark">Mudavym</div>
+      <h1>Settings<span class="dot">.</span></h1>
+      <p class="lede">The house's week, and the book behind it.</p>
+      <p class="standing">Times are America/Los_Angeles, stated on the restaurant row by Deniz Arslan. Every mark is placed in that clock. The six scheduled senders are the one thing on the grid this house did not choose: they run on a single schedule the server fixes in America/New_York, the same for every house, and are drawn here converted (−3 h) and grey. A house with an unrecorded timezone gets this page as a list, because a grid drawn in the wrong zone would be a fabricated week.</p>
+    </header>
+    <div class="dbl" aria-hidden="true"></div>
+
+    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap">
+      <div><span class="micro seal">Register 01 · the week</span><h2 style="margin-top:2px">When the house is open, and what happens around it</h2></div>
+      <div class="ctl"><button class="btn q sm">Edit the hours</button><button class="btn sm">Ask the house to propose from the till</button></div>
+    </div>
+    <div class="prov" style="margin-top:6px"><span class="tag confirmed">Confirmed</span> hours proposed from 1,212 till checks · sealed by Deniz Arslan · 16 Sep 2026 · <code>restaurants.operating_hours</code> · up to three ranges a day · a range may cross midnight if it is the day's last</div>
+
+    <div class="layers" data-layers="wk"><span class="k">Layers</span>
+      <button class="chip on" data-layer="hours">Hours</button>
+      <button class="chip on" data-layer="vendors">Vendors <span class="n">5</span></button>
+      <button class="chip on" data-layer="alerts">Senders <span class="n">7 of 8</span></button>
+      <button class="chip on" data-layer="yours">Yours · quiet, digest</button>
+    </div>
+
+    <!-- axis: 03:00 at the top, 24 hours, 00:00 at 87.5% — so the 04:00–06:00 server hours sit inside the frame instead of on its edge -->
+    <div class="week" id="wk">
+      <div><div class="dh" style="visibility:hidden">x</div><div class="axis"><span style="top:0">03</span><span style="top:12.5%">06</span><span style="top:25%">09</span><span style="top:37.5%">12</span><span style="top:50%">15</span><span style="top:62.5%">18</span><span style="top:75%">21</span><span style="top:87.5%">00</span></div></div>
+
+      <!-- Monday -->
+      <div><div class="dh"><span>Mon</span><span class="dl l-vendors"><b class="inf">SY</b></span></div><div class="col">
+        <div class="closedlbl l-hours">closed</div>
+        <div class="band quiet l-yours" style="top:0;height:20.83%"></div>
+        <div class="band quiet l-yours" style="top:79.17%;height:20.83%"><i>quiet</i></div>
+        <div class="mk you l-yours" style="top:37.5%" title="Your low-stock digest hour · 12:00 · yours, not a sender"></div>
+        <div class="tick l-vendors" style="top:45.83%"><i>WW 14:00</i></div>
+        <div class="rail-any l-alerts" title="Low-stock alert · on a crossing, any hour"></div>
+        <div class="mk prop l-alerts" style="top:4.17%" title="Inventory audit reminder · Mon 04:00 (07:00 America/New_York, fixed by the server) · proposed"></div>
+        <div class="mk srv l-alerts" style="top:8.33%" title="Event prep reminder · 05:00 (08:00 America/New_York, fixed by the server)"></div>
+        <div class="mk ref s2 l-alerts" style="top:8.33%" title="Recurring-order reminder · 05:00 (08:00 America/New_York) · refused"></div>
+        <div class="mk srv s3 l-alerts" style="top:8.33%" title="Weekly report · Mon 05:00 (08:00 America/New_York, fixed by the server)"></div>
+        <div class="mk srv l-alerts" style="top:12.5%" title="Daily summary · 06:00 (09:00 America/New_York, fixed by the server)"></div>
+        <div class="mk srv l-alerts" style="top:45.83%" title="Delivery ETA · 14:00 (17:00 America/New_York, fixed by the server)"></div>
+      </div></div>
+      <!-- Tuesday -->
+      <div><div class="dh"><span>Tue</span><span class="dl l-vendors"><b>WW</b><b>VP</b></span></div><div class="col">
+        <div class="band open l-hours" style="top:58.33%;height:25%"><i>17:00–23:00</i></div>
+        <div class="band quiet l-yours" style="top:0;height:20.83%"></div>
+        <div class="band quiet l-yours" style="top:79.17%;height:20.83%"></div>
+        <div class="mk you l-yours" style="top:37.5%"></div>
+        <div class="brk l-vendors" style="top:52.78%;height:6.25%"><i>SY ~15:40–17:10</i></div>
+        <div class="rail-any l-alerts"></div>
+        <div class="mk srv l-alerts" style="top:8.33%"></div>
+        <div class="mk ref s2 l-alerts" style="top:8.33%"></div>
+        <div class="mk srv l-alerts" style="top:12.5%"></div>
+        <div class="mk srv l-alerts" style="top:45.83%"></div>
+      </div></div>
+      <!-- Wednesday -->
+      <div><div class="dh"><span>Wed</span><span class="dl l-vendors"><b class="inf">SY</b></span></div><div class="col">
+        <div class="band open l-hours" style="top:58.33%;height:25%"><i>17:00–23:00</i></div>
+        <div class="band quiet l-yours" style="top:0;height:20.83%"></div>
+        <div class="band quiet l-yours" style="top:79.17%;height:20.83%"></div>
+        <div class="mk you l-yours" style="top:37.5%"></div>
+        <div class="tick l-vendors" style="top:45.83%"><i>WW 14:00</i></div>
+        <div class="rail-any l-alerts"></div>
+        <div class="mk srv l-alerts" style="top:8.33%"></div>
+        <div class="mk ref s2 l-alerts" style="top:8.33%"></div>
+        <div class="mk srv l-alerts" style="top:12.5%"></div>
+        <div class="mk srv l-alerts" style="top:45.83%"></div>
+      </div></div>
+      <!-- Thursday -->
+      <div><div class="dh"><span>Thu</span><span class="dl l-vendors"><b>WW</b></span></div><div class="col">
+        <div class="band open l-hours" style="top:58.33%;height:25%"><i>17:00–23:00</i></div>
+        <div class="band quiet l-yours" style="top:0;height:20.83%"></div>
+        <div class="band quiet l-yours" style="top:79.17%;height:20.83%"></div>
+        <div class="mk you l-yours" style="top:37.5%"></div>
+        <div class="brk l-vendors" style="top:52.78%;height:6.25%"><i>SY ~15:40–17:10</i></div>
+        <div class="rail-any l-alerts"></div>
+        <div class="mk srv l-alerts" style="top:8.33%"></div>
+        <div class="mk ref s2 l-alerts" style="top:8.33%"></div>
+        <div class="mk srv l-alerts" style="top:12.5%"></div>
+        <div class="mk srv l-alerts" style="top:45.83%"></div>
+      </div></div>
+      <!-- Friday -->
+      <div><div class="dh"><span>Fri</span><span class="dl l-vendors"><b class="inf">SY</b></span></div><div class="col">
+        <div class="band open l-hours" style="top:58.33%;height:31.25%"><i>17:00–00:30</i></div>
+        <div class="band quiet l-yours" style="top:0;height:20.83%"></div>
+        <div class="band quiet l-yours" style="top:79.17%;height:20.83%"></div>
+        <div class="mk you l-yours" style="top:37.5%"></div>
+        <div class="rail-any l-alerts"></div>
+        <div class="mk srv l-alerts" style="top:8.33%"></div>
+        <div class="mk ref s2 l-alerts" style="top:8.33%"></div>
+        <div class="mk srv l-alerts" style="top:12.5%"></div>
+        <div class="mk srv l-alerts" style="top:45.83%"></div>
+      </div></div>
+      <!-- Saturday -->
+      <div><div class="dh"><span>Sat</span><span class="dl l-vendors"><b>VP</b></span></div><div class="col">
+        <div class="band open l-hours" style="top:58.33%;height:31.25%"><i>17:00–00:30</i></div>
+        <div class="band quiet l-yours" style="top:0;height:20.83%"></div>
+        <div class="band quiet l-yours" style="top:79.17%;height:20.83%"></div>
+        <div class="mk you l-yours" style="top:37.5%"></div>
+        <div class="rail-any l-alerts"></div>
+        <div class="mk srv l-alerts" style="top:8.33%"></div>
+        <div class="mk ref s2 l-alerts" style="top:8.33%"></div>
+        <div class="mk srv l-alerts" style="top:12.5%"></div>
+        <div class="mk srv l-alerts" style="top:45.83%"></div>
+      </div></div>
+      <!-- Sunday -->
+      <div><div class="dh"><span>Sun</span><span class="dl l-vendors"></span></div><div class="col">
+        <div class="band open l-hours" style="top:58.33%;height:20.83%"><i>17:00–22:00</i></div>
+        <div class="band quiet l-yours" style="top:0;height:20.83%"></div>
+        <div class="band quiet l-yours" style="top:79.17%;height:20.83%"></div>
+        <div class="mk you l-yours" style="top:37.5%"></div>
+        <div class="brk l-vendors" style="top:52.78%;height:6.25%"><i>SY ~15:40–17:10</i></div>
+        <div class="rail-any l-alerts"></div>
+        <div class="mk srv l-alerts" style="top:8.33%"></div>
+        <div class="mk ref s2 l-alerts" style="top:8.33%"></div>
+        <div class="mk srv l-alerts" style="top:12.5%"></div>
+        <div class="mk srv l-alerts" style="top:45.83%"></div>
+      </div></div>
+    </div>
+    <div class="legend">
+      <span><i class="sw-open"></i>open · stated</span>
+      <span><i class="sw-t"></i>cutoff · stated</span>
+      <span><i class="sw-b"></i>cutoff · inferred bracket</span>
+      <span><i class="sw-d" style="background:var(--ink-4)"></i>a sender runs — fixed by the server in America/New_York, shown in this house's clock</span>
+      <span><i class="sw-p"></i>proposed — awaiting the seal</span>
+      <span><i class="sw-r"></i>refused — no category</span>
+      <span><i class="sw-a"></i>low-stock alert — on a crossing, any hour</span>
+      <span><i class="sw-y"></i>your low-stock digest hour</span>
+      <span><i class="sw-q"></i>your quiet hours</span>
+      <span>WW Wine Warehouse · SY Sysco · VP Valley Produce · a chip follows its own day's label · a dashed chip is an inferred delivery day (Sysco's Mon · Wed · Fri, from 41 receipts)</span>
+      <span>the eighth sender, custom reminders, runs every fifteen minutes and fires only when a reminder a person wrote is due — it has no hour of its own, so it is listed in the table beneath and not drawn</span>
+    </div>
+    <!-- the same week sideways: shown in place of the grid below 900px -->
+    <div class="bars" id="wk-bars" aria-label="The week, sideways">
+      <div class="bar-axis"><div></div><div><span style="left:0">03</span><span style="left:25%">09</span><span style="left:50%">15</span><span style="left:75%">21</span><span style="left:87.5%">00</span></div></div>
+      <div class="dayrow"><span class="dn">Mon</span><div class="bar"><div class="band quiet" style="left:0;width:20.83%"></div><div class="band quiet" style="left:79.17%;width:20.83%"></div><div class="closedlbl">closed</div><div class="rail-any"></div><div class="tick" style="left:45.83%"></div><div class="mk you" style="left:37.5%"></div><div class="mk ref" style="left:8.33%"></div><div class="mk prop" style="left:4.17%"></div><div class="mk srv" style="left:8.33%"><i>×2</i></div><div class="mk srv" style="left:12.5%"></div><div class="mk srv" style="left:45.83%"></div></div></div>
+      <div class="dayrow"><span class="dn">Tue</span><div class="bar"><div class="band quiet" style="left:0;width:20.83%"></div><div class="band quiet" style="left:79.17%;width:20.83%"></div><div class="band open" style="left:58.33%;width:25%"></div><div class="rail-any"></div><div class="brk" style="left:52.78%;width:6.25%"></div><div class="mk you" style="left:37.5%"></div><div class="mk ref" style="left:8.33%"></div><div class="mk srv" style="left:8.33%"></div><div class="mk srv" style="left:12.5%"></div><div class="mk srv" style="left:45.83%"></div></div></div>
+      <div class="dayrow"><span class="dn">Wed</span><div class="bar"><div class="band quiet" style="left:0;width:20.83%"></div><div class="band quiet" style="left:79.17%;width:20.83%"></div><div class="band open" style="left:58.33%;width:25%"></div><div class="rail-any"></div><div class="tick" style="left:45.83%"></div><div class="mk you" style="left:37.5%"></div><div class="mk ref" style="left:8.33%"></div><div class="mk srv" style="left:8.33%"></div><div class="mk srv" style="left:12.5%"></div><div class="mk srv" style="left:45.83%"></div></div></div>
+      <div class="dayrow"><span class="dn">Thu</span><div class="bar"><div class="band quiet" style="left:0;width:20.83%"></div><div class="band quiet" style="left:79.17%;width:20.83%"></div><div class="band open" style="left:58.33%;width:25%"></div><div class="rail-any"></div><div class="brk" style="left:52.78%;width:6.25%"></div><div class="mk you" style="left:37.5%"></div><div class="mk ref" style="left:8.33%"></div><div class="mk srv" style="left:8.33%"></div><div class="mk srv" style="left:12.5%"></div><div class="mk srv" style="left:45.83%"></div></div></div>
+      <div class="dayrow"><span class="dn">Fri</span><div class="bar"><div class="band quiet" style="left:0;width:20.83%"></div><div class="band quiet" style="left:79.17%;width:20.83%"></div><div class="band open" style="left:58.33%;width:31.25%"></div><div class="rail-any"></div><div class="mk you" style="left:37.5%"></div><div class="mk ref" style="left:8.33%"></div><div class="mk srv" style="left:8.33%"></div><div class="mk srv" style="left:12.5%"></div><div class="mk srv" style="left:45.83%"></div></div></div>
+      <div class="dayrow"><span class="dn">Sat</span><div class="bar"><div class="band quiet" style="left:0;width:20.83%"></div><div class="band quiet" style="left:79.17%;width:20.83%"></div><div class="band open" style="left:58.33%;width:31.25%"></div><div class="rail-any"></div><div class="mk you" style="left:37.5%"></div><div class="mk ref" style="left:8.33%"></div><div class="mk srv" style="left:8.33%"></div><div class="mk srv" style="left:12.5%"></div><div class="mk srv" style="left:45.83%"></div></div></div>
+      <div class="dayrow"><span class="dn">Sun</span><div class="bar"><div class="band quiet" style="left:0;width:20.83%"></div><div class="band quiet" style="left:79.17%;width:20.83%"></div><div class="band open" style="left:58.33%;width:20.83%"></div><div class="rail-any"></div><div class="brk" style="left:52.78%;width:6.25%"></div><div class="mk you" style="left:37.5%"></div><div class="mk ref" style="left:8.33%"></div><div class="mk srv" style="left:8.33%"></div><div class="mk srv" style="left:12.5%"></div><div class="mk srv" style="left:45.83%"></div></div></div>
+      <p class="why" style="margin-top:6px">Sideways below 900 px: open bands in the middle lane; the server's senders as grey dots along the foot (×2 where two share an hour — Monday 05:00, the weekly report and event prep); the refused reminder as the crossed ring at the head, apart from the dots; the hollow ring is your digest hour; the dotted line the low-stock alert at any hour; hatching your quiet window. Delivery chips are in the book, not on the bars.</p>
+    </div>
+
+    <div class="reads">
+      <div class="callout"><b>Sysco's cutoff falls before you open.</b> An order for Wednesday's delivery has to be placed on Tuesday before about 15:40, and the kitchen is not in until 17:00. No sender reminds anyone of it today: the recurring-order reminder is refused, and it fires at 05:00 in any case, twelve hours before the door opens. The bracket is inferred from 23 orders; confirming it, or Sysco stating a time, is what would let the calendar draw the deadline as a fact.</div>
+      <div class="callout"><b>Monday is closed and carries the most machine.</b> The audit reminder at 04:00 (proposed), the weekly report at 05:00, the event-prep check and the refused reminder at 05:00, the daily summary at 06:00, Sysco delivering. A closed day is not a day nothing happens; someone should be there for the delivery, and the calendar draws it as unplaced until a window is stated.</div>
+      <div class="callout"><b>Five of the six scheduled senders fire inside your quiet hours.</b> 04:00 to 06:00 here is 07:00 to 09:00 in New York, where the server's one schedule is set; only the delivery ETA at 14:00 falls in your day. Your quiet window does not hold them: it is read by the Python chooser (<code>notification_agent.py:1487</code>) for low-stock, negotiation and delivery alerts, and the six gateway senders never pass through it. The daily summary lands on the SMS door at 06:00 regardless. A per-house schedule does not exist — founder question 5.</div>
+    </div>
+    <p class="offgrid"><b>Not on the grid, because it is not stated:</b> the recommendations digest (hour, least urgency, recipient — the sender exists, the answer does not); Monterey Fish Co. and Chefs' Warehouse cutoffs and delivery days; Valley Produce's cutoff (its delivery days are stated); a delivery window for any vendor. <b>On the grid, but not this house's:</b> the six fixed-hour senders — daily summary, weekly report, delivery ETA, event prep, audit reminder, recurring-order reminder — run at cron constants in America/New_York (<code>scheduled-tasks.service.ts:195–680</code>), one schedule imposed on every house; they are drawn grey, converted, and are not editable here. <b>Two senders have no hour:</b> the low-stock alert fires on a threshold crossing and is drawn as the dotted rail; the custom-reminders check runs every fifteen minutes (<code>:733</code>) and sends only when a reminder a person wrote is due, so it is the eighth row of the table beneath and is not drawn as a mark.</p>
+
+    <!-- The book -->
+    <div class="book-h"><div><span class="micro seal">Registers 02 – 16 · the book</span><h2 style="margin-top:2px">What is not a time</h2></div><p class="lede" style="font-size:13px">Kept on the restaurant unless the entry says otherwise. Each one opens as a sheet.</p></div>
+    <div class="book">
+      <div>
+        <div class="entry"><div class="body"><p class="n">Team</p><p class="v">5 people · 1 owner · 1 manager · 3 staff · 1 invite open</p><div class="prov"><span class="tag manual">Manual</span> last granted 11 Sep 2026</div></div><div class="ctl"><button class="btn q sm">Open</button></div></div>
+        <div class="entry"><div class="body"><p class="n">Locations</p><p class="v">One branch, no chain · 640 Emerson St</p><div class="prov"><span class="tag manual">Manual</span> Deniz Arslan · 12 Jun 2026</div></div><div class="ctl"><button class="btn q sm">Open</button></div></div>
+        <div class="entry"><div class="body"><p class="n">Reporting currency</p><p class="v">USD — nothing is ever converted</p><div class="prov"><span class="tag manual">Manual</span> Deniz Arslan · 19 Aug 2026 · the audit trail</div></div><div class="ctl"><button class="btn q sm">Open</button></div></div>
+        <div class="entry"><div class="body"><p class="n">What holding stock costs</p><p class="v none">— not stated · no alert prints a saving until it is</p><div class="prov"><span class="tag unstated">—</span> never asked · the assistant will not propose it</div></div><div class="ctl"><button class="btn sm">Answer</button></div></div>
+        <div class="entry"><div class="body"><p class="n">Cellar registers</p><p class="v">Wines · cocktails · non-alcoholic carried &nbsp;·&nbsp; <em>whiskey and beer inferred, unconfirmed</em> &nbsp;·&nbsp; spirits, soft drinks —</p><div class="prov"><span class="tag manual">Manual</span> 3 &nbsp;<span class="tag confirmed">Confirmed</span> 1 &nbsp;<span class="tag inferred">Inferred</span> 2 &nbsp;<span class="tag unstated">—</span> 2</div></div><div class="ctl"><button class="btn q sm">Open</button></div></div>
+        <div class="entry"><div class="body"><p class="n">Vendor terms — the parts that are not a time</p><p class="v">Wine Warehouse min $300, Net 30 · <em>Sysco has accepted as little as $412</em> · Chefs' Warehouse Net 30 · Valley Produce delivery days only, the rest — · Monterey Fish —</p><div class="prov"><span class="tag manual">Manual</span> 3 &nbsp;<span class="tag inferred">Inferred</span> 1 &nbsp;<span class="tag unstated">—</span> 1 · five vendors, the five on the grid's chips and brackets</div></div><div class="ctl"><button class="btn q sm">Open</button></div></div>
+        <div class="entry"><div class="body"><p class="n">Approval thresholds</p><p class="v">Manager's ceiling <span class="fig">$2,500</span> (fired 7×) · first order to a vendor (3×) · <em>price rule proposed: 12 % above the last paid</em></p><div class="prov"><span class="tag manual">Manual</span> Deniz Arslan · 4 Sep &nbsp;<span class="tag proposed">Proposed</span> 1 awaiting the seal · enforced</div></div><div class="ctl"><button class="btn q sm">Open</button></div></div>
+        <div class="entry"><div class="body"><p class="n">What it may do on its own</p><p class="v">Send vendor mail without asking: no (the seal grants it) · read the house inbox: yes</p><div class="prov"><span class="tag manual">Manual</span> inbox granted by Deniz Arslan · 5 Sep 2026</div></div><div class="ctl"><button class="btn q sm">Open</button></div></div>
+      </div>
+      <div>
+        <div class="entry"><div class="body"><p class="n">Who each sender may write to</p><p class="v">8 senders · 5 mapped · 1 proposed · <b>1 refused</b> · 1 not yet mapped — the recurring-order reminder has no category and sends to nobody. The eight are the table beneath the book.</p><div class="prov"><span class="tag refused">Refused</span> 2 sends refused since 16 Sep · nothing went to anyone</div></div><div class="ctl"><button class="btn sm">Map it</button></div></div>
+        <div class="entry"><div class="body"><p class="n">Recommendations digest</p><p class="v none">— not stated · the sender exists; the hour, the least urgency and the recipient do not</p><div class="prov"><span class="tag unstated">—</span> last sent: never — not “sent nothing” · the least urgency is one of the contract's three: now · this week · this month</div></div><div class="ctl"><button class="btn sm">Answer</button></div></div>
+        <div class="entry"><div class="body"><p class="n">Your doors</p><p class="v">Email open · SMS closed · push stored on, read by nothing · low-stock digest 12:00</p><div class="prov"><span class="kept">your account</span> <span class="tag manual">Manual</span> you · 2 Sep 2026</div></div><div class="ctl"><button class="btn q sm">Open</button></div></div>
+        <div class="entry"><div class="body"><p class="n">Map · Measurement</p><p class="v">West Coast · millilitres, pour 150 ml, recipes tracked</p><div class="prov"><span class="kept">your account · this browser</span> keeps a value, not a history</div></div><div class="ctl"><button class="btn q sm">Open</button></div></div>
+        <div class="entry" style="background:var(--paper-1);border-radius:8px;padding:10px 12px;border-top:0;margin-top:10px"><div class="body"><p class="n">What acts for this house — on /connections</p><p class="v">The till, the mail sender and its sign-off, the calendar feed, the grants. Four registers that were here are one list there (ADR 0114, 2026-09-04); this is the one line out, and none of the four is drawn in this book. <code>?tab=pos</code> → <code>#till</code> · <code>?tab=email</code> → <code>#sender</code> · <code>?tab=calendar</code> → <code>#feed</code> · <code>?tab=services</code> → <code>#grants</code>.</p><div class="prov"><span class="kept">not an entry — a pointer · managers and owners only</span></div></div><div class="ctl"><button class="btn q sm">Open connections</button></div></div>
+        <div class="entry"><div class="body"><p class="n">What changed here</p><p class="v">14 entries · last 12 Sep 09:41 · read-only, no delete route</p><div class="prov"><span class="tag manual">Manual</span> every row is a date and a name</div></div><div class="ctl"><button class="btn q sm">Open</button></div></div>
+        <div class="entry"><div class="body"><p class="n">Not asked · retired · reach us</p><p class="v">No analytics consent is collected yet — the panel that asked was deleted 16 Sep; nothing reads one. Appearance is retired: charcoal everywhere, paper only by decision. <b>support@mudavym.com</b>.</p></div></div>
+      </div>
+    </div>
+
+    <!-- The seven senders — the mapping itself, not only its count -->
+    <div class="book-h" style="margin-top:26px"><div><span class="micro seal">Register 10 · the senders</span><h2 style="margin-top:2px">Who each sender may write to</h2></div><p class="lede" style="font-size:13px">Each sender is mapped to one category; the category's doors decide. Unmapped is refused, and counted.</p></div>
+    <div class="row" style="border-top:0;padding-top:4px"><div class="body">
+      <div class="tbl-wrap"><table class="senders">
+        <thead><tr><th>Sender</th><th>Runs · America/Los_Angeles</th><th>Category</th><th>Whose doors today</th><th>Stamp</th></tr></thead>
+        <tbody>
+          <tr><td data-l="Sender">Low-stock alert</td><td data-l="Runs" class="mono">on a threshold crossing · any hour</td><td data-l="Category">Low stock</td><td data-l="Doors">Deniz, Priya · email</td><td data-l="Stamp"><span class="tag manual">Manual</span> Deniz · 16 Sep</td></tr>
+          <tr><td data-l="Sender">Daily summary</td><td data-l="Runs" class="mono">06:00 daily <span class="srvnote">server-fixed · 09:00 NY</span></td><td data-l="Category">Financial reports</td><td data-l="Doors">Deniz · SMS</td><td data-l="Stamp"><span class="tag manual">Manual</span> Deniz · 16 Sep</td></tr>
+          <tr><td data-l="Sender">Weekly report</td><td data-l="Runs" class="mono">Mon 05:00 <span class="srvnote">server-fixed · 08:00 NY</span></td><td data-l="Category">Financial reports <span class="srvnote">OD-121 reserves this product-wide</span></td><td data-l="Doors">Deniz, Priya · email</td><td data-l="Stamp"><span class="tag manual">Manual</span> Deniz · 16 Sep</td></tr>
+          <tr><td data-l="Sender">Delivery ETA</td><td data-l="Runs" class="mono">14:00 daily <span class="srvnote">server-fixed · 17:00 NY</span></td><td data-l="Category">Delivery</td><td data-l="Doors">Deniz, Priya, Sam · email</td><td data-l="Stamp"><span class="tag manual">Manual</span> Deniz · 16 Sep</td></tr>
+          <tr><td data-l="Sender">Event prep reminder</td><td data-l="Runs" class="mono">05:00 daily <span class="srvnote">server-fixed · 08:00 NY</span></td><td data-l="Category">Calendar reminders</td><td data-l="Doors">Deniz, Priya · email</td><td data-l="Stamp"><span class="tag manual">Manual</span> Deniz · 16 Sep</td></tr>
+          <tr><td data-l="Sender">Inventory audit reminder</td><td data-l="Runs" class="mono">Mon 04:00 <span class="srvnote">server-fixed · 07:00 NY</span></td><td data-l="Category"><em>Low stock</em></td><td data-l="Doors"><em>would be Deniz, Priya</em></td><td data-l="Stamp"><span class="tag proposed">Proposed</span> assistant <button class="btn sm" style="margin-left:6px">Open the proposal</button></td></tr>
+          <tr><td data-l="Sender">Recurring-order reminder</td><td data-l="Runs" class="mono">05:00 daily <span class="srvnote">server-fixed · 08:00 NY</span></td><td data-l="Category"><span class="tag refused">Refused</span></td><td data-l="Doors">nobody · 2 sends refused</td><td data-l="Stamp"><span class="tag unstated">—</span> <button class="btn sm" style="margin-left:6px">Map it</button></td></tr>
+          <tr><td data-l="Sender">Custom reminders</td><td data-l="Runs" class="mono">every 15 minutes · sends when a reminder a person wrote is due <span class="srvnote">no fixed hour · not in OD-121's count</span></td><td data-l="Category"><span class="tag unstated">—</span> not yet mapped</td><td data-l="Doors">by address: whoever the reminder names · by role: would be refused once a category is required</td><td data-l="Stamp"><span class="tag unstated">—</span> <button class="btn sm" style="margin-left:6px">Map it</button></td></tr>
+        </tbody></table></div>
+      <p class="why">The eighth row is the sender OD-121's <em>seven</em> leaves out: <code>custom-reminders-check</code> (<code>@Cron("*/15 * * * *")</code>, <code>scheduled-tasks.service.ts:733</code>) resolves recipients by role at <code>:820</code> and mails through <code>gmailService.sendCustomReminder</code>. A required <code>category</code> on <code>RecipientQuery</code> would refuse its by-role sends too, so it is counted here or it would be refused uncounted — founder question 9. Six categories exist on the preference row: low stock · order approval · financial reports · delivery · price inequality · calendar reminders. OD-121 names two mappings as the founder's to make product-wide — the weekly report and the recurring-order reminder. In this example Deniz answered the first for his house; the product-level call is still open (README question 3). The second is drawn refused and not guessed. “Map it” opens a centred panel that says, for each category, who would receive the sender today (direction C, section 3); a person's own mapping is stated, not sealed.</p>
+    </div></div>
+
+    <div class="footline" style="display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;border-top:1px solid var(--paper-2);margin-top:30px;padding-top:14px;font-size:11px;color:var(--ink-4)"><span class="wordmark">Mudavym</span><span>A band is drawn only where a person stated a time or sealed a proposal. A bracket is worked out from the house's own orders and is never written down. Nothing unstated is drawn.</span></div>
+  </div></div>
+</section>
+
+<!-- ═══════════════════════════ 2 · TURKISH HOUSE ═══════════════════════════ -->
+<section class="stage" id="tr">
+  <p class="stage-label"><b>2 · Where currency and locale matter</b> Lokanta Müdavim, Kadıköy · TRY · Europe/Istanbul · signed in as Selin Kara, owner</p>
+  <p class="stage-note">Open every day from noon past midnight — each day's last range crosses into the next, which the contract allows. The vendors are Turkish, the clock is the same 24-hour clock, and the book beneath prints lira with the Turkish separators. Nothing about the country decided the currency: Selin stated it.</p>
+  <div class="frame"><div class="wrap" style="padding-top:18px;padding-bottom:22px">
+    <div class="prov"><span class="tag confirmed">Confirmed</span> hours proposed from 2,406 till checks · sealed by Selin Kara · 14 Sep 2026 · Europe/Istanbul · every day 12:00–01:00</div>
+    <div class="week" style="margin-top:10px">
+      <div><div class="dh" style="visibility:hidden">x</div><div class="axis" style="height:240px"><span style="top:0">03</span><span style="top:25%">09</span><span style="top:50%">15</span><span style="top:75%">21</span></div></div>
+      <div><div class="dh"><span>Mon</span><span class="dl"><b class="inf">MT</b></span></div><div class="col" style="height:240px"><div class="band open" style="top:37.5%;height:54.17%"><i>12:00–01:00</i></div><div class="band quiet" style="top:0;height:25%"></div><div class="band quiet" style="top:83.33%;height:16.67%"><i>quiet</i></div><div class="brk" style="top:44.44%;height:6.25%"><i>EŞ ~13:40–15:10</i></div><div class="rail-any"></div><div class="mk srv" style="top:45.83%" title="Inventory audit reminder · Mon 14:00 (07:00 America/New_York)"></div><div class="mk srv" style="top:50%" title="Event prep reminder · 15:00 (08:00 America/New_York)"></div><div class="mk srv s2" style="top:50%" title="Recurring-order reminder · 15:00 (08:00 America/New_York)"></div><div class="mk srv s3" style="top:50%" title="Weekly report · Mon 15:00 (08:00 America/New_York)"></div><div class="mk srv" style="top:54.17%" title="Daily summary · 16:00 (09:00 America/New_York)"></div><div class="mk srv" style="top:87.5%" title="Delivery ETA · 00:00 (17:00 America/New_York)"></div></div></div>
+      <div><div class="dh"><span>Tue</span><span class="dl"><b>EŞ</b></span></div><div class="col" style="height:240px"><div class="band open" style="top:37.5%;height:54.17%"><i>12:00–01:00</i></div><div class="band quiet" style="top:0;height:25%"></div><div class="band quiet" style="top:83.33%;height:16.67%"></div><div class="rail-any"></div><div class="mk srv" style="top:50%"></div><div class="mk srv s2" style="top:50%"></div><div class="mk srv" style="top:54.17%"></div><div class="mk srv" style="top:87.5%"></div></div></div>
+      <div><div class="dh"><span>Wed</span><span class="dl"><b class="inf">MT</b></span></div><div class="col" style="height:240px"><div class="band open" style="top:37.5%;height:54.17%"><i>12:00–01:00</i></div><div class="band quiet" style="top:0;height:25%"></div><div class="band quiet" style="top:83.33%;height:16.67%"></div><div class="brk" style="top:44.44%;height:6.25%"><i>EŞ ~13:40–15:10</i></div><div class="rail-any"></div><div class="mk srv" style="top:50%"></div><div class="mk srv s2" style="top:50%"></div><div class="mk srv" style="top:54.17%"></div><div class="mk srv" style="top:87.5%"></div></div></div>
+      <div><div class="dh"><span>Thu</span><span class="dl"><b>EŞ</b></span></div><div class="col" style="height:240px"><div class="band open" style="top:37.5%;height:54.17%"><i>12:00–01:00</i></div><div class="band quiet" style="top:0;height:25%"></div><div class="band quiet" style="top:83.33%;height:16.67%"></div><div class="rail-any"></div><div class="mk srv" style="top:50%"></div><div class="mk srv s2" style="top:50%"></div><div class="mk srv" style="top:54.17%"></div><div class="mk srv" style="top:87.5%"></div></div></div>
+      <div><div class="dh"><span>Fri</span><span class="dl"><b class="inf">MT</b><b>KB</b></span></div><div class="col" style="height:240px"><div class="band open" style="top:37.5%;height:54.17%"><i>12:00–01:00</i></div><div class="band quiet" style="top:0;height:25%"></div><div class="band quiet" style="top:83.33%;height:16.67%"></div><div class="rail-any"></div><div class="mk srv" style="top:50%"></div><div class="mk srv s2" style="top:50%"></div><div class="mk srv" style="top:54.17%"></div><div class="mk srv" style="top:87.5%"></div></div></div>
+      <div><div class="dh"><span>Sat</span><span class="dl"><b>KB</b></span></div><div class="col" style="height:240px"><div class="band open" style="top:37.5%;height:54.17%"><i>12:00–01:00</i></div><div class="band quiet" style="top:0;height:25%"></div><div class="band quiet" style="top:83.33%;height:16.67%"></div><div class="rail-any"></div><div class="mk srv" style="top:50%"></div><div class="mk srv s2" style="top:50%"></div><div class="mk srv" style="top:54.17%"></div><div class="mk srv" style="top:87.5%"></div></div></div>
+      <div><div class="dh"><span>Sun</span><span class="dl"></span></div><div class="col" style="height:240px"><div class="band open" style="top:37.5%;height:54.17%"><i>12:00–01:00</i></div><div class="band quiet" style="top:0;height:25%"></div><div class="band quiet" style="top:83.33%;height:16.67%"></div><div class="rail-any"></div><div class="mk srv" style="top:50%"></div><div class="mk srv s2" style="top:50%"></div><div class="mk srv" style="top:54.17%"></div><div class="mk srv" style="top:87.5%"></div></div></div>
+    </div>
+    <div class="bars" aria-label="The Istanbul week, sideways">
+      <div class="bar-axis"><div></div><div><span style="left:0">03</span><span style="left:25%">09</span><span style="left:50%">15</span><span style="left:75%">21</span><span style="left:87.5%">00</span></div></div>
+      <div class="dayrow"><span class="dn">Mon</span><div class="bar"><div class="band quiet" style="left:0;width:25%"></div><div class="band quiet" style="left:83.33%;width:16.67%"></div><div class="band open" style="left:37.5%;width:54.17%"></div><div class="rail-any"></div><div class="brk" style="left:44.44%;width:6.25%"></div><div class="mk srv" style="left:45.83%"></div><div class="mk srv" style="left:50%"><i>×3</i></div><div class="mk srv" style="left:54.17%"></div><div class="mk srv" style="left:87.5%"></div></div></div>
+      <div class="dayrow"><span class="dn">Tue</span><div class="bar"><div class="band quiet" style="left:0;width:25%"></div><div class="band quiet" style="left:83.33%;width:16.67%"></div><div class="band open" style="left:37.5%;width:54.17%"></div><div class="rail-any"></div><div class="mk srv" style="left:50%"><i>×2</i></div><div class="mk srv" style="left:54.17%"></div><div class="mk srv" style="left:87.5%"></div></div></div>
+      <div class="dayrow"><span class="dn">Wed</span><div class="bar"><div class="band quiet" style="left:0;width:25%"></div><div class="band quiet" style="left:83.33%;width:16.67%"></div><div class="band open" style="left:37.5%;width:54.17%"></div><div class="rail-any"></div><div class="brk" style="left:44.44%;width:6.25%"></div><div class="mk srv" style="left:50%"><i>×2</i></div><div class="mk srv" style="left:54.17%"></div><div class="mk srv" style="left:87.5%"></div></div></div>
+      <div class="dayrow"><span class="dn">Thu</span><div class="bar"><div class="band quiet" style="left:0;width:25%"></div><div class="band quiet" style="left:83.33%;width:16.67%"></div><div class="band open" style="left:37.5%;width:54.17%"></div><div class="rail-any"></div><div class="mk srv" style="left:50%"><i>×2</i></div><div class="mk srv" style="left:54.17%"></div><div class="mk srv" style="left:87.5%"></div></div></div>
+      <div class="dayrow"><span class="dn">Fri</span><div class="bar"><div class="band quiet" style="left:0;width:25%"></div><div class="band quiet" style="left:83.33%;width:16.67%"></div><div class="band open" style="left:37.5%;width:54.17%"></div><div class="rail-any"></div><div class="mk srv" style="left:50%"><i>×2</i></div><div class="mk srv" style="left:54.17%"></div><div class="mk srv" style="left:87.5%"></div></div></div>
+      <div class="dayrow"><span class="dn">Sat</span><div class="bar"><div class="band quiet" style="left:0;width:25%"></div><div class="band quiet" style="left:83.33%;width:16.67%"></div><div class="band open" style="left:37.5%;width:54.17%"></div><div class="rail-any"></div><div class="mk srv" style="left:50%"><i>×2</i></div><div class="mk srv" style="left:54.17%"></div><div class="mk srv" style="left:87.5%"></div></div></div>
+      <div class="dayrow"><span class="dn">Sun</span><div class="bar"><div class="band quiet" style="left:0;width:25%"></div><div class="band quiet" style="left:83.33%;width:16.67%"></div><div class="band open" style="left:37.5%;width:54.17%"></div><div class="rail-any"></div><div class="mk srv" style="left:50%"><i>×2</i></div><div class="mk srv" style="left:54.17%"></div><div class="mk srv" style="left:87.5%"></div></div></div>
+    </div>
+    <p class="legend" style="margin-top:8px"><span>EŞ Ekim Şarap · MT Metro Türkiye (delivery days inferred from 31 receipts) · KB Kadıköy Balık Hali · quiet 23:00–09:00 · all eight senders mapped, none proposed</span><span>the six fixed-hour senders are converted from the server's America/New_York per date — +7 h today, +8 h from 1 Nov when New York leaves daylight time and Istanbul, which keeps none, does not: 14:00–16:00 in the afternoon service, and the delivery ETA at midnight, inside the last hour of trade — the same New York schedule imposed on a house seven hours away</span></p>
+    <div class="book" style="margin-top:14px">
+      <div>
+        <div class="entry"><div class="body"><p class="n">Reporting currency</p><p class="v">TRY — Türk lirası</p><div class="prov"><span class="tag manual">Manual</span> Selin Kara · 2 Sep 2026 · the country's default offered, stated in words, then written</div></div></div>
+        <div class="entry"><div class="body"><p class="n">What holding stock costs</p><p class="v"><span class="fig">1,8 %</span> a month — “kredi faizi ve depo”</p><div class="prov"><span class="tag manual">Manual</span> Selin Kara · 6 Sep 2026</div></div></div>
+      </div>
+      <div>
+        <div class="entry"><div class="body"><p class="n">Approval thresholds</p><p class="v">Manager's ceiling <span class="fig">₺45.000,00</span> (fired 11×) · first order to a vendor (5×)</p><div class="prov"><span class="tag manual">Manual</span> Selin Kara · 5 Sep 2026 · enforced</div></div></div>
+        <div class="entry"><div class="body"><p class="n">Recommendations digest</p><p class="v">On · <span class="fig">08:00</span> Europe/Istanbul · this week or sooner · to selin@…</p><div class="prov"><span class="tag manual">Manual</span> Selin Kara · 15 Sep · last sent 16 Sep 08:00 · 3 entries</div></div></div>
+      </div>
+    </div>
+  </div></div>
+</section>
+
+<!-- ═══════════════════════════ 3 · OVERLAY ═══════════════════════════ -->
+<section class="stage" id="overlay">
+  <p class="stage-label"><b>3 · The overlay this page opens</b> one day's hours — a right sheet, 440, because it is one object (ADR 0112); the four location dialogs already live in this shape</p>
+  <p class="stage-note">Opened by clicking a day column or “Edit the hours” on a week that is already stated — the other six days stand as they are, so one day is one object. On a week that is null a day cannot be written alone: all seven keys are required and <code>null</code> means the whole week is unknown (<code>operating-hours.ts:13-20</code>), so “Type the hours” in the empty state opens the seven-day editor drawn in A, section 3b, and nothing is written until all seven are answered. The day sheet keeps the four states the legacy section held apart — loading, failed, not set, closed all week — and adds what the grid knows about that day: which vendor cuts off, who delivers, which senders run. A save that does not go through is said in words with the server's values kept on screen.</p>
+  <div class="frame scrim">
+    <div class="under wrap" aria-hidden="true" style="margin:0;max-width:960px">
+      <div class="wordmark">Mudavym</div><h1>Settings<span class="dot">.</span></h1><p class="lede">The house's week, and the book behind it.</p>
+      <div class="dbl"></div>
+      <div class="week" style="max-width:760px">
+        <div><div class="dh" style="visibility:hidden">x</div><div class="axis" style="height:220px"></div></div>
+        <div><div class="dh"><span>Mon</span></div><div class="col" style="height:220px"><div class="closedlbl">closed</div></div></div>
+        <div><div class="dh"><span>Tue</span></div><div class="col" style="height:220px;border-color:var(--seal)"><div class="band open" style="top:50%;height:27.27%"></div></div></div>
+        <div><div class="dh"><span>Wed</span></div><div class="col" style="height:220px"><div class="band open" style="top:50%;height:27.27%"></div></div></div>
+        <div><div class="dh"><span>Thu</span></div><div class="col" style="height:220px"><div class="band open" style="top:50%;height:27.27%"></div></div></div>
+        <div><div class="dh"><span>Fri</span></div><div class="col" style="height:220px"><div class="band open" style="top:50%;height:34.09%"></div></div></div>
+        <div><div class="dh"><span>Sat</span></div><div class="col" style="height:220px"><div class="band open" style="top:50%;height:34.09%"></div></div></div>
+        <div><div class="dh"><span>Sun</span></div><div class="col" style="height:220px"><div class="band open" style="top:50%;height:22.73%"></div></div></div>
+      </div>
+    </div>
+    <div class="sheet" role="dialog" aria-labelledby="day-h">
+      <div class="ov-head"><div><span class="micro seal">Hours · Tuesday</span><h2 id="day-h" style="margin-top:2px">Tuesday</h2></div><button class="close">Close without saving</button></div>
+      <p class="note" style="margin-top:8px">Local to America/Los_Angeles. Up to three ranges, sorted, not overlapping. A range whose close is not after its open crosses midnight and must be the day's last.</p>
+
+      <div class="micro seal">Open</div>
+      <div class="row" style="border-top:0;padding-top:6px"><div class="body" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><input class="field mono" style="width:70px" value="17:00"> <span class="kept">to</span> <input class="field mono" style="width:70px" value="23:00"> <button class="btn q sm">Remove</button></div></div>
+      <div class="row" style="padding-top:4px"><div class="body" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><input class="field mono" style="width:70px" value="22:30"> <span class="kept">to</span> <input class="field mono" style="width:70px" value="23:45"> <button class="btn q sm">Remove</button></div></div>
+      <p class="fail">That did not go through — 400: <code>tue: ranges overlap or are unsorted (17:00-23:00 then 22:30-23:45)</code>. The validator's words, not the page's. The values shown are still yours to fix; the server still holds 17:00–23:00.</p>
+      <div class="ctl" style="justify-content:flex-start;margin-top:10px"><button class="btn q sm">Add a third range</button><label style="display:inline-flex;gap:8px;align-items:center;font-size:12px;color:var(--ink-2)"><span class="sw" role="switch" aria-checked="false" tabindex="0"><i></i></span> Closed on Tuesdays</label></div>
+
+      <div class="micro seal" style="display:block;margin-top:18px">What else touches Tuesday</div>
+      <div class="row"><div class="body"><p class="q">Sysco cuts off</p><p class="ans inf">after 15:40, before 17:10 — before you open</p><div class="prov"><span class="tag inferred">Inferred</span> from 23 orders · never written down</div></div><div class="ctl"><button class="btn sm">Confirm</button></div></div>
+      <div class="row"><div class="body"><p class="q">Deliveries</p><p class="ans">Wine Warehouse · Valley Produce — no window stated for either</p><div class="prov"><span class="tag manual">Manual</span> delivery days · Priya Natarajan · 28 Aug</div></div></div>
+      <div class="row"><div class="body"><p class="q">Senders</p><p class="ans">05:00 event prep · 05:00 <span class="tag refused">Refused</span> recurring-order reminder · 06:00 daily summary · 14:00 delivery ETA · low-stock alert at any hour</p><div class="prov"><span class="kept">fixed by the server in America/New_York · shown in this house's clock</span></div></div></div>
+
+      <div style="display:flex;gap:10px;align-items:center;margin-top:18px;flex-wrap:wrap"><button class="btn">Record Tuesday</button><span class="why" style="margin:0">Owner or manager. Writes the whole week — Tuesday as typed, the other six days as they stand; files who and when.</span></div>
+      <div class="prov" style="margin-top:14px"><span class="tag confirmed">Confirmed</span> current: sealed by Deniz Arslan · 16 Sep 2026 · after this save: manual, in your name — the week's stamp, because the week is one row</div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════ 3b · THE PROPOSAL AND THE SEAL ═══════════════════════════ -->
+<section class="stage" id="proposal">
+  <p class="stage-label"><b>3b · The second overlay — the proposal from the till</b> a centred panel, 620, because it is a question (ADR 0112); the seal at its foot, hold-to-approve (ADR 0113)</p>
+  <p class="stage-note">Opened from “Ask the house to propose from the till” — drawn from the empty state, before the week was sealed. The assistant proposes; nothing is written until the hold completes. The panel carries reason · now · proposed per row, one row the assistant refuses to guess, and the per-item receipt after the seal. The hold is live: press and hold, or Enter twice under reduced motion, as <code>HoldToApprove.tsx</code> does.</p>
+  <div class="frame scrim">
+    <div class="under wrap" aria-hidden="true" style="margin:0;max-width:960px">
+      <div class="wordmark">Mudavym</div><h1>Settings<span class="dot">.</span></h1><p class="lede">The house's week, and the book behind it.</p>
+      <div class="dbl"></div>
+      <div class="week" style="max-width:760px">
+        <div><div class="dh" style="visibility:hidden">x</div><div class="axis" style="height:160px"></div></div>
+        <div><div class="dh"><span>Mon</span></div><div class="col" style="height:160px"><div class="closedlbl">—</div></div></div>
+        <div><div class="dh"><span>Tue</span></div><div class="col" style="height:160px"><div class="closedlbl">—</div></div></div>
+        <div><div class="dh"><span>Wed</span></div><div class="col" style="height:160px"><div class="closedlbl">—</div></div></div>
+        <div><div class="dh"><span>Thu</span></div><div class="col" style="height:160px"><div class="closedlbl">—</div></div></div>
+        <div><div class="dh"><span>Fri</span></div><div class="col" style="height:160px"><div class="closedlbl">—</div></div></div>
+        <div><div class="dh"><span>Sat</span></div><div class="col" style="height:160px"><div class="closedlbl">—</div></div></div>
+        <div><div class="dh"><span>Sun</span></div><div class="col" style="height:160px"><div class="closedlbl">—</div></div></div>
+      </div>
+    </div>
+    <div class="panel turn" role="dialog" aria-labelledby="b-prop-h">
+      <div class="ov-head"><div><span class="micro seal">Proposal · 16 Sep 2026 · 14:12</span><h2 id="b-prop-h" style="margin-top:2px">The house proposes its week from the till</h2></div><button class="close">Not now</button></div>
+      <p class="note" style="margin-top:6px">From 1,212 till checks since June. The first check of a day opens at 17:04 on the median day; the last closes at 00:21 on Fridays; Mondays have no checks at all. Nothing below is written until you seal it, and the seal is undone as one unit for seven days.</p>
+      <div class="prop-row"><div><div class="lab">When the house is open</div><div class="rsn">Tue–Thu 17:00–23:00 · Fri–Sat 17:00–00:30 · Sun 17:00–22:00 · Mon closed. Six open days, one closed; the Friday and Saturday ranges cross midnight and are each the day's last.</div></div><div class="cur"><span class="k">Now</span>— not stated · the calendar says <em>hours unknown</em></div><div class="new"><span class="k">Proposed</span>six open days, one closed</div></div>
+      <div class="prop-row dropped"><div><div class="lab">Sysco's cutoff</div><div class="rsn">Not proposed as a time. 23 orders placed before 15:40 arrived next day and 4 placed after 17:10 did not; that is a bracket, and it stays a bracket on the grid until Sysco says a time or you confirm the bracket as stated.</div></div><div class="cur"><span class="k">Now</span>— not stated</div><div class="new"><span class="k">Proposed</span>—</div></div>
+      <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-top:16px">
+        <div class="hold" tabindex="0" role="button" data-done="Sealed — the week" data-receipt="Written · see the receipt" data-after="receipt-b"><span class="fill"></span><span class="face"><span class="face-text">Hold to seal the week</span><span class="sub"></span></span>
+          <svg class="sealmark" viewBox="0 0 100 100" aria-hidden="true"><path fill="currentColor" d="M50 6c9 0 14 6 22 8s16-2 21 5-1 15 1 23 8 13 5 21-13 8-18 14-6 15-14 17-14-4-22-4-14 6-22 4-9-11-14-17-15-6-18-14 3-13 5-21-3-16 1-23 13-3 21-5S41 6 50 6z"/><g stroke="var(--paper-0)" stroke-opacity=".62" stroke-width="2.5"><path d="M34 58h32M34 63h32"/></g></svg>
+        </div>
+        <span class="why" style="margin:0">Owner or manager. The hold is 620 ms and linear. Enter arms it; Enter again seals.</span>
+      </div>
+      <div class="receipt" id="receipt-b" hidden>
+        <span class="micro seal">Receipt · sealed 14:13 by Deniz Arslan · undo as one unit until 23 Sep</span>
+        <ul>
+          <li><b>Written</b> — hours: six open days, one closed. <code>PUT /restaurants/…/operating-hours</code> 200. The stamp on the grid is now <em>confirmed</em>: proposed from the till, sealed by Deniz Arslan.</li>
+          <li><b>Not attempted</b> — Sysco's cutoff. Nothing was proposed, so nothing was written; the bracket stays inferred.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════ 4 · STATES ═══════════════════════════ -->
+<section class="stage" id="states">
+  <p class="stage-label"><b>4 · Key states</b> empty · loading · refused (no timezone) · partial</p>
+  <div class="states">
+    <div class="state"><span class="micro">Empty — hours not set</span>
+      <h3>Settings<span style="color:var(--seal)">.</span></h3>
+      <p class="lede" style="font-size:13px">The house has not said when it is open.</p>
+      <div class="week" style="margin-top:10px;grid-template-columns:repeat(7,minmax(0,1fr))">
+        <div><div class="dh" style="font-size:10px">Mon</div><div class="col" style="height:90px"><div class="closedlbl">—</div></div></div>
+        <div><div class="dh" style="font-size:10px">Tue</div><div class="col" style="height:90px"><div class="closedlbl">—</div></div></div>
+        <div><div class="dh" style="font-size:10px">Wed</div><div class="col" style="height:90px"><div class="closedlbl">—</div></div></div>
+        <div><div class="dh" style="font-size:10px">Thu</div><div class="col" style="height:90px"><div class="closedlbl">—</div></div></div>
+        <div><div class="dh" style="font-size:10px">Fri</div><div class="col" style="height:90px"><div class="closedlbl">—</div></div></div>
+        <div><div class="dh" style="font-size:10px">Sat</div><div class="col" style="height:90px"><div class="closedlbl">—</div></div></div>
+        <div><div class="dh" style="font-size:10px">Sun</div><div class="col" style="height:90px"><div class="closedlbl">—</div></div></div>
+      </div>
+      <p class="con" style="margin-top:10px">Not set is not closed all week: <code>operating_hours</code> is null, and the calendar says <em>hours unknown</em>. Seven em dashes, not seven empty days.</p>
+      <div class="ctl" style="justify-content:flex-start;margin-top:8px"><button class="btn sm">Type the hours</button><button class="btn q sm">Let the house propose from the till</button></div>
+      <div style="border:1px solid var(--paper-2);border-radius:8px;padding:8px 10px;margin-top:10px">
+        <span class="micro seal">What “Type the hours” opens</span>
+        <p class="why" style="margin:4px 0 6px">The seven-day editor (A, section 3b), not a day sheet — because the contract writes the whole week or nothing (<code>operating-hours.ts:13-20</code>). Every day is answered, closed or with ranges, before Record turns on; a day left blank keeps the week unknown and is never written as closed.</p>
+        <div style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;font-family:var(--mono);font-size:9.5px;color:var(--ink-4);text-transform:uppercase;letter-spacing:.08em;text-align:center"><span>Mon<br>—</span><span>Tue<br>—</span><span>Wed<br>—</span><span>Thu<br>—</span><span>Fri<br>—</span><span>Sat<br>—</span><span>Sun<br>—</span></div>
+        <div class="ctl" style="justify-content:flex-start;margin-top:8px"><button class="btn sm" disabled>Record the week</button><span class="why" style="margin:0">off — 7 of 7 unanswered</span></div>
+      </div>
+    </div>
+    <div class="state"><span class="micro">Loading — the week being read</span>
+      <h3>Settings<span style="color:var(--seal)">.</span></h3>
+      <p class="lede" style="font-size:13px">Reading the hours, five vendors and seven senders.</p>
+      <div class="week" style="margin-top:10px;grid-template-columns:repeat(7,minmax(0,1fr))">
+        <div><div class="dh" style="font-size:10px">Mon</div><div class="col" style="height:90px"><div class="skel" style="position:absolute;left:6px;right:6px;top:40%;height:30%"></div></div></div>
+        <div><div class="dh" style="font-size:10px">Tue</div><div class="col" style="height:90px"><div class="skel" style="position:absolute;left:6px;right:6px;top:40%;height:30%"></div></div></div>
+        <div><div class="dh" style="font-size:10px">Wed</div><div class="col" style="height:90px"><div class="skel" style="position:absolute;left:6px;right:6px;top:40%;height:30%"></div></div></div>
+        <div><div class="dh" style="font-size:10px">Thu</div><div class="col" style="height:90px"><div class="skel" style="position:absolute;left:6px;right:6px;top:40%;height:30%"></div></div></div>
+        <div><div class="dh" style="font-size:10px">Fri</div><div class="col" style="height:90px"><div class="skel" style="position:absolute;left:6px;right:6px;top:40%;height:30%"></div></div></div>
+        <div><div class="dh" style="font-size:10px">Sat</div><div class="col" style="height:90px"><div class="skel" style="position:absolute;left:6px;right:6px;top:40%;height:30%"></div></div></div>
+        <div><div class="dh" style="font-size:10px">Sun</div><div class="col" style="height:90px"><div class="skel" style="position:absolute;left:6px;right:6px;top:40%;height:30%"></div></div></div>
+      </div>
+      <p class="con" style="margin-top:10px">The day columns are known before the bands are. No band is drawn from a default while the read is out, and the callouts under the grid do not render until every layer has answered.</p>
+    </div>
+    <div class="state"><span class="micro">Refused — an unrecorded timezone</span>
+      <h3>Settings<span style="color:var(--seal)">.</span></h3>
+      <p class="lede" style="font-size:13px">The grid cannot be drawn.</p>
+      <div class="fail">This house has no timezone on record, so local times cannot be placed on a grid — a week drawn in the server's zone would be a fabricated week. The hours are listed as text until a zone is stated.</div>
+      <div class="row" style="margin-top:10px"><div class="body"><p class="q">Which clock does it keep?</p><p class="ans none">— an unrecorded timezone</p><p class="con">No zone is preselected: a picked-for-you default would be the fabricated week by another door.</p></div><div class="ctl"><select class="field"><option selected disabled>Choose the house's zone</option><option>America/Los_Angeles</option><option>America/Chicago</option><option>Europe/Istanbul</option></select> <button class="btn sm" disabled>Record</button></div></div>
+      <div class="row"><div class="body"><p class="q">Hours, as stored</p><p class="ans">Tue–Thu 17:00–23:00 · Fri–Sat 17:00–00:30 · Sun 17:00–22:00 · Mon closed</p><div class="prov"><span class="tag manual">Manual</span> Deniz Arslan · 16 Sep 2026 · local to a zone nobody has named</div></div></div>
+      <p class="why">A 403 on the vendor-terms read takes the same shape: the layer is said to be refused, never drawn empty.</p>
+    </div>
+    <div class="state"><span class="micro">Partial — the vendor layer failed</span>
+      <h3>Settings<span style="color:var(--seal)">.</span></h3>
+      <p class="lede" style="font-size:13px">Hours and senders drawn; vendors not read.</p>
+      <div class="fail">Vendor terms could not be read (the request timed out after 8 s). The vendor layer is off because it is unread, not because the house has no vendors. <button class="btn q sm" style="margin-left:6px">Read again</button></div>
+      <div class="layers" style="margin-top:10px"><span class="k">Layers</span><span class="chip on">Hours</span><span class="chip" style="opacity:.5;text-decoration:line-through">Vendors</span><span class="chip on">Senders <span class="n">7</span></span><span class="chip on">Yours</span></div>
+      <div class="week" style="grid-template-columns:repeat(7,minmax(0,1fr))">
+        <div><div class="dh" style="font-size:10px">Mon</div><div class="col" style="height:90px"><div class="closedlbl">closed</div><div class="mk srv" style="top:8.33%"></div><div class="mk srv" style="top:45.83%"></div></div></div>
+        <div><div class="dh" style="font-size:10px">Tue</div><div class="col" style="height:90px"><div class="band open" style="top:58.33%;height:25%"></div><div class="mk srv" style="top:8.33%"></div><div class="mk srv" style="top:45.83%"></div></div></div>
+        <div><div class="dh" style="font-size:10px">Wed</div><div class="col" style="height:90px"><div class="band open" style="top:58.33%;height:25%"></div><div class="mk srv" style="top:8.33%"></div><div class="mk srv" style="top:45.83%"></div></div></div>
+        <div><div class="dh" style="font-size:10px">Thu</div><div class="col" style="height:90px"><div class="band open" style="top:58.33%;height:25%"></div><div class="mk srv" style="top:8.33%"></div><div class="mk srv" style="top:45.83%"></div></div></div>
+        <div><div class="dh" style="font-size:10px">Fri</div><div class="col" style="height:90px"><div class="band open" style="top:58.33%;height:31.25%"></div><div class="mk srv" style="top:8.33%"></div><div class="mk srv" style="top:45.83%"></div></div></div>
+        <div><div class="dh" style="font-size:10px">Sat</div><div class="col" style="height:90px"><div class="band open" style="top:58.33%;height:31.25%"></div><div class="mk srv" style="top:8.33%"></div><div class="mk srv" style="top:45.83%"></div></div></div>
+        <div><div class="dh" style="font-size:10px">Sun</div><div class="col" style="height:90px"><div class="band open" style="top:58.33%;height:20.83%"></div><div class="mk srv" style="top:8.33%"></div><div class="mk srv" style="top:45.83%"></div></div></div>
+      </div>
+      <p class="why">The two callouts that mention Sysco are suppressed rather than rewritten around a missing layer.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════ 5 · MOBILE ═══════════════════════════ -->
+<section class="stage" id="mobile">
+  <p class="stage-label"><b>5 · 390 px</b> the week turns sideways — seven bars, one per day; the book stacks</p>
+  <div class="phone"><div class="statusbar"><span>09:41</span><span>Mudavym</span></div><div class="wrap" style="padding:14px 18px 28px">
+    <div class="wordmark">Mudavym</div>
+    <h1 style="font-size:28px">Settings<span class="dot">.</span></h1>
+    <p class="lede" style="font-size:14px">The house's week, and the book behind it.</p>
+    <div class="layers" style="margin-top:10px"><span class="chip on">Hours</span><span class="chip on">Vendors</span><span class="chip on">Senders <span class="n">7 of 8</span></span><span class="chip on">Yours</span></div>
+    <div class="bars">
+    <div class="bar-axis"><div></div><div><span style="left:0">03</span><span style="left:25%">09</span><span style="left:50%">15</span><span style="left:75%">21</span><span style="left:87.5%">00</span></div></div>
+    <div class="dayrow"><span class="dn">Mon</span><div class="bar"><div class="band quiet" style="left:0;width:20.83%"></div><div class="band quiet" style="left:79.17%;width:20.83%"></div><div class="closedlbl">closed</div><div class="rail-any"></div><div class="tick" style="left:45.83%"></div><div class="mk you" style="left:37.5%"></div><div class="mk ref" style="left:8.33%"></div><div class="mk prop" style="left:4.17%"></div><div class="mk srv" style="left:8.33%"><i>×2</i></div><div class="mk srv" style="left:12.5%"></div><div class="mk srv" style="left:45.83%"></div></div></div>
+    <div class="dayrow"><span class="dn">Tue</span><div class="bar"><div class="band quiet" style="left:0;width:20.83%"></div><div class="band quiet" style="left:79.17%;width:20.83%"></div><div class="band open" style="left:58.33%;width:25%"></div><div class="rail-any"></div><div class="brk" style="left:52.78%;width:6.25%"></div><div class="mk you" style="left:37.5%"></div><div class="mk ref" style="left:8.33%"></div><div class="mk srv" style="left:8.33%"></div><div class="mk srv" style="left:12.5%"></div><div class="mk srv" style="left:45.83%"></div></div></div>
+    <div class="dayrow"><span class="dn">Wed</span><div class="bar"><div class="band quiet" style="left:0;width:20.83%"></div><div class="band quiet" style="left:79.17%;width:20.83%"></div><div class="band open" style="left:58.33%;width:25%"></div><div class="rail-any"></div><div class="tick" style="left:45.83%"></div><div class="mk you" style="left:37.5%"></div><div class="mk ref" style="left:8.33%"></div><div class="mk srv" style="left:8.33%"></div><div class="mk srv" style="left:12.5%"></div><div class="mk srv" style="left:45.83%"></div></div></div>
+    <div class="dayrow"><span class="dn">Thu</span><div class="bar"><div class="band quiet" style="left:0;width:20.83%"></div><div class="band quiet" style="left:79.17%;width:20.83%"></div><div class="band open" style="left:58.33%;width:25%"></div><div class="rail-any"></div><div class="brk" style="left:52.78%;width:6.25%"></div><div class="mk you" style="left:37.5%"></div><div class="mk ref" style="left:8.33%"></div><div class="mk srv" style="left:8.33%"></div><div class="mk srv" style="left:12.5%"></div><div class="mk srv" style="left:45.83%"></div></div></div>
+    <div class="dayrow"><span class="dn">Fri</span><div class="bar"><div class="band quiet" style="left:0;width:20.83%"></div><div class="band quiet" style="left:79.17%;width:20.83%"></div><div class="band open" style="left:58.33%;width:31.25%"></div><div class="rail-any"></div><div class="mk you" style="left:37.5%"></div><div class="mk ref" style="left:8.33%"></div><div class="mk srv" style="left:8.33%"></div><div class="mk srv" style="left:12.5%"></div><div class="mk srv" style="left:45.83%"></div></div></div>
+    <div class="dayrow"><span class="dn">Sat</span><div class="bar"><div class="band quiet" style="left:0;width:20.83%"></div><div class="band quiet" style="left:79.17%;width:20.83%"></div><div class="band open" style="left:58.33%;width:31.25%"></div><div class="rail-any"></div><div class="mk you" style="left:37.5%"></div><div class="mk ref" style="left:8.33%"></div><div class="mk srv" style="left:8.33%"></div><div class="mk srv" style="left:12.5%"></div><div class="mk srv" style="left:45.83%"></div></div></div>
+    <div class="dayrow"><span class="dn">Sun</span><div class="bar"><div class="band quiet" style="left:0;width:20.83%"></div><div class="band quiet" style="left:79.17%;width:20.83%"></div><div class="band open" style="left:58.33%;width:20.83%"></div><div class="rail-any"></div><div class="brk" style="left:52.78%;width:6.25%"></div><div class="mk you" style="left:37.5%"></div><div class="mk ref" style="left:8.33%"></div><div class="mk srv" style="left:8.33%"></div><div class="mk srv" style="left:12.5%"></div><div class="mk srv" style="left:45.83%"></div></div></div>
+    </div>
+    <p class="why" style="margin-top:6px">Tap a day to edit it. Open 17:00–23:00 · Fri, Sat to 00:30 · Sun to 22:00 · Mon closed. WW cutoff 14:00 Mon, Wed · Sysco bracket Tue, Thu, Sun (inferred). Grey dots along the foot are the server's senders at 04:00–06:00 and 14:00, fixed in America/New_York (×2 where two share an hour); the crossed ring at the head is the refused one; the hollow ring your digest hour; the dotted line the low-stock alert, any hour; hatching your quiet window. Custom reminders have no hour and are in the book.</p>
+    <div class="callout"><b>Sysco's cutoff falls before you open.</b> Tuesday before ~15:40 for Wednesday. No sender reminds anyone of it today — the recurring-order reminder is refused, and fires at 05:00 in any case.</div>
+    <div class="dbl"></div>
+    <span class="micro seal">The book</span>
+    <div class="entry"><div class="body"><p class="n">What holding stock costs</p><p class="v none">— not stated</p><div class="prov"><span class="tag unstated">—</span> never asked</div></div><div class="ctl"><button class="btn sm">Answer</button></div></div>
+    <div class="entry"><div class="body"><p class="n">Who each sender may write to</p><p class="v">5 mapped · 1 proposed · <b>1 refused</b></p><div class="prov"><span class="tag refused">Refused</span> recurring-order reminder</div></div><div class="ctl"><button class="btn sm">Map it</button></div></div>
+    <div class="entry"><div class="body"><p class="n">Approval thresholds</p><p class="v">Ceiling <span class="fig">$2,500</span> · <em>price rule proposed 12 %</em></p><div class="prov"><span class="tag proposed">Proposed</span> 1 awaiting the seal</div></div><div class="ctl"><button class="btn q sm">Open</button></div></div>
+  </div></div>
+</section>
+
+<footer class="cites">
+  <p><b>Drawn from</b> (re-verified 2026-09-17 on <code>feat/mudavym-finish</code>): <code>apps/api-gateway/src/common/operating-hours/operating-hours.ts:13-20</code> (the contract: all seven keys required, [] is closed, null is the whole week unknown and never coerced, three ranges, midnight crossing last — why a null week opens the seven-day editor, not the day sheet) · <code>communications/scheduled-tasks.service.ts:733,820</code> (the eighth sender, <code>custom-reminders-check</code>, every fifteen minutes, recipients by role — not in OD-121's seven) · <code>pages/settings/next/st-format.ts:279,292</code> (<code>COLLAPSED_SECTIONS</code>, <code>CONNECTIONS_ANCHOR</code>: services, pos, email, calendar leave for <code>/connections</code>, ADR 0114) · <code>analytics/recommendation-actions.service.ts:319</code> (the digest's three urgencies: now · this_week · this_month) · <code>restaurants/operating-hours.controller.ts:38,56</code> (<code>GET/PUT :restaurantId/operating-hours</code>, any member reads, owner or manager writes) · <code>components/settings/OperatingHoursSection.tsx:16-33</code> (the four states held apart) · <code>vendor-terms/</code> (a cutoff as a bracket) · <code>communications/scheduled-tasks.service.ts:193-736</code> (crons: daily summary 09:00, weekly report Mon 08:00, recurring reminder 08:00, delivery ETA 17:00, audit reminder Mon 07:00, event prep 08:00 — every one with <code>timeZone: "America/New_York"</code> at :195, :229, :408, :523, :626, :680, so for Palo Alto they fall at 06:00, Mon 05:00, 05:00, 14:00, Mon 04:00, 05:00 PDT and for Istanbul at +7 h; the seventh sender, the low-stock alert, is event-driven at <code>low-stock-alerts.service.ts:976</code>) · <code>communications/recipient-resolver.service.ts</code> (no quiet-hours read; the window is Python's, <code>notification_agent.py:1448,1487</code>) · <code>common/operating-hours/operating-hours.ts:197-211</code> (the two refusal strings the validator produces, one of them quoted in the sheet) · <code>notification_agent.py:1487-1494</code> (quiet hours) · <code>analytics.controller.ts:1143-1153</code> (the digest preference) · <code>components/locations/*Dialog.tsx</code> (already sheets) · <code>lib/mudavym/motion.ts</code>.</p>
+  <p><b>Decisions</b>: ADR 0093 D1 (operating hours; unknown is never coerced to closed) · ADR 0112 (an object gets a sheet) · ADR 0113 (proposals from the till; the seal applies; rule 4a, undone as one unit for seven days) · ADR 0114 (move the registers and collapse the four tabs) · ADR 0116 (a default is not an answer) · ADR 0138 · ADR 0149 rows 6, 8, 14, 15, 22, 26 · OD-121.</p>
+  <p><b>Example data, not a tenant</b> — every house, person, vendor, figure and date is invented for the drawing. Fonts load from Google Fonts here; the product self-hosts every face (ADR 0149 row 9).</p>
+</footer>
+<script>
+document.querySelectorAll('[data-layers]').forEach(function(group){
+  var grid=document.getElementById(group.getAttribute('data-layers'));
+  group.querySelectorAll('[data-layer]').forEach(function(c){
+    c.addEventListener('click',function(){
+      c.classList.toggle('on');
+      var off=[];group.querySelectorAll('[data-layer]').forEach(function(o){if(!o.classList.contains('on'))off.push(o.getAttribute('data-layer'))});
+      grid.setAttribute('data-off',off.join(' '));
+    });
+  });
+});
+</script>
+
+<script>
+// Sketch-only behaviour. Motion is the seven tokens of lib/mudavym/motion.ts and nothing else;
+// reduced motion collapses every timed gesture to a two-step confirm, as HoldToApprove.tsx does.
+(function () {
+  var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // disclosures — settle (320ms house curve, 0fr → 1fr)
+  document.querySelectorAll('[data-disc]').forEach(function (btn) {
+    var target = document.getElementById(btn.getAttribute('data-disc'));
+    if (!target) return;
+    btn.addEventListener('click', function () {
+      var open = target.getAttribute('data-open') === 'true';
+      target.setAttribute('data-open', open ? 'false' : 'true');
+      btn.setAttribute('aria-expanded', open ? 'false' : 'true');
+    });
+  });
+
+  // hold-to-approve — pour (linear 620) · early release retreats on tuck · completion lands on stamp
+  document.querySelectorAll('.hold').forEach(function (h) {
+    var fill = h.querySelector('.fill');
+    var sub = h.querySelector('.sub');
+    var face = h.querySelector('.face-text');
+    var timer = null, started = 0, armed = false;
+    var label = face ? face.textContent : '';
+    var doneLabel = h.getAttribute('data-done') || 'Sealed';
+    function seal() {
+      clearTimeout(timer); timer = null;
+      h.setAttribute('data-state', 'sealed');
+      if (face) face.textContent = doneLabel;
+      if (sub) sub.textContent = h.getAttribute('data-receipt') || '';
+      var after = h.getAttribute('data-after');
+      if (after) { var el = document.getElementById(after); if (el) el.hidden = false; }
+    }
+    function start() {
+      if (h.getAttribute('data-state') === 'sealed') return;
+      if (reduced) {
+        if (!armed) { armed = true; if (sub) sub.textContent = 'Press again to seal.'; setTimeout(function () { armed = false; if (sub && h.getAttribute('data-state') !== 'sealed') sub.textContent = ''; }, 3000); return; }
+        seal(); return;
+      }
+      started = Date.now();
+      h.setAttribute('data-state', 'holding');
+      requestAnimationFrame(function () { fill.style.width = '100%'; });
+      timer = setTimeout(seal, 620);
+    }
+    function release() {
+      if (h.getAttribute('data-state') !== 'holding') return;
+      clearTimeout(timer); timer = null;
+      var pct = Math.min(99, Math.round(((Date.now() - started) / 620) * 100));
+      h.setAttribute('data-state', 'released');
+      fill.style.width = '0%';
+      if (sub) sub.textContent = 'Released at ' + pct + '% — nothing sealed.';
+      if (face) face.textContent = label;
+    }
+    h.addEventListener('pointerdown', function (e) { e.preventDefault(); start(); });
+    h.addEventListener('pointerup', release);
+    h.addEventListener('pointerleave', release);
+    h.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (!armed) { armed = true; if (sub) sub.textContent = 'Enter again to seal.'; setTimeout(function () { armed = false; }, 3000); } else { seal(); } } });
+  });
+
+  // chips that switch a filter view (sketch only)
+  document.querySelectorAll('[data-filter-group]').forEach(function (group) {
+    var chips = group.querySelectorAll('.chip');
+    chips.forEach(function (c) {
+      c.addEventListener('click', function () {
+        chips.forEach(function (o) { o.classList.remove('on'); });
+        c.classList.add('on');
+        var want = c.getAttribute('data-show');
+        var scope = document.getElementById(group.getAttribute('data-filter-group'));
+        if (!scope) return;
+        scope.querySelectorAll('[data-cert]').forEach(function (r) {
+          r.hidden = !(want === 'all' || r.getAttribute('data-cert') === want);
+        });
+      });
+    });
+  });
+})();
+
+</script>
+</body>
+</html>

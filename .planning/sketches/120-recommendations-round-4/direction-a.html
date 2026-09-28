@@ -1,0 +1,1559 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>120a — The Letter, Bound In · /recommendations</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..680;1,9..144,300..680&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ── sketch chrome (outside the product frames) ─────────────────────────── */
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:#0B0A08;color:#C0B6A5;font-family:"Plus Jakarta Sans",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+.sk-banner{background:#1A5E6B;color:#FAF7F1;font:600 10.5px/1 "JetBrains Mono",ui-monospace,monospace;letter-spacing:.16em;text-transform:uppercase;padding:9px 20px;display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.sk-sec{padding:26px 20px 6px;max-width:1480px;margin:0 auto}
+.sk-label{font:600 10.5px/1.4 "JetBrains Mono",ui-monospace,monospace;letter-spacing:.16em;text-transform:uppercase;color:#8E8576;margin:0 0 8px}
+.sk-note{font-size:12.5px;color:#8E8576;max-width:980px;line-height:1.55;margin:0 0 12px}
+.sk-note b{color:#C0B6A5;font-weight:600}
+.frame{border:1px solid #2A241C;border-radius:10px;overflow:hidden;background:#15130F;width:100%}
+.w390{width:390px;max-width:100%}
+.states{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:14px}
+.states .frame{min-height:300px}
+@media (max-width:600px){.desk-only{display:none}.states{grid-template-columns:1fr}.sk-sec{padding:18px 10px 4px}}
+
+/* ── Mudavym tokens — Warm Charcoal is the ground (ADR 0138) ────────────── */
+.mudavym{
+  --seal:#5FB0BC;--seal-deep:#7DC3CD;--seal-tint:rgba(95,176,188,.14);--seal-ring:rgba(95,176,188,.38);
+  --paper-0:#15130F;--paper-1:#1D1813;--paper-2:#262019;
+  --ink-1:#EFE7D9;--ink-2:#C0B6A5;--ink-3:#8E8576;--ink-4:#ABA294;
+  color-scheme:dark;background:var(--paper-0);color:var(--ink-1);
+  font-family:"Plus Jakarta Sans","DM Sans",system-ui,sans-serif;font-size:13px;line-height:1.5}
+/* the one declared exception: a sheet of paper (ADR 0104 D9) — the mail is paper */
+.mudavym[data-ground="paper"]{
+  --seal:#1A5E6B;--seal-deep:#14515C;--seal-tint:rgba(26,94,107,.10);--seal-ring:rgba(26,94,107,.32);
+  --paper-0:#FFFDF8;--paper-1:#F3EFE6;--paper-2:#EAE4D8;
+  --ink-1:#211C16;--ink-2:#4F473C;--ink-3:#7C7365;--ink-4:#665D50;color-scheme:light}
+.serif{font-family:"Fraunces",Georgia,"Times New Roman",serif}
+.num{font-family:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;font-variant-numeric:tabular-nums}
+.micro{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:8.5px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-4)}
+.micro.seal{color:var(--seal-deep)}
+.em{color:var(--ink-4)}
+.ico{display:inline-block;vertical-align:-.15em;flex:0 0 auto}
+
+/* ── motion: tokens only (lib/mudavym/motion.ts) ────────────────────────── */
+.ink{transition:border-color 160ms cubic-bezier(.16,1,.3,1),background-color 160ms cubic-bezier(.16,1,.3,1),color 160ms cubic-bezier(.16,1,.3,1)}
+.settle{display:grid;grid-template-rows:0fr;transition:grid-template-rows 320ms cubic-bezier(.16,1,.3,1)}
+.settle[data-open="true"]{grid-template-rows:1fr}
+.settle>*{min-height:0;overflow:hidden}
+@media (prefers-reduced-motion:reduce){.ink,.settle{transition:none}}
+
+/* ── house header (components/mudavym/HouseHeader) ──────────────────────── */
+.hdr{display:flex;align-items:center;gap:12px;min-height:52px;padding:0 24px;border-bottom:1px solid var(--paper-2);background:var(--paper-0)}
+.hdr .mark{color:var(--seal);display:inline-flex}
+.hdr .rule{width:1px;height:18px;background:var(--paper-2)}
+.hdr .pg{font-family:"Fraunces",Georgia,serif;font-weight:600;font-size:15px;letter-spacing:-.01em;white-space:nowrap}
+.hdr .search{margin:0 auto;display:inline-flex;align-items:center;gap:8px;padding:6px 11px;border:1px solid var(--paper-2);border-radius:9px;background:var(--paper-1);color:var(--ink-4);font-size:12.5px;min-width:260px}
+.hdr .search kbd{margin-left:auto;font:500 10px "JetBrains Mono",monospace;color:var(--ink-4);border:1px solid var(--paper-2);border-radius:4px;padding:1px 4px}
+.hdr .right{display:flex;align-items:center;gap:12px;color:var(--ink-2);font-size:12.5px}
+.hdr .house{display:inline-flex;align-items:center;gap:6px}
+.hdr .av{width:24px;height:24px;border-radius:50%;background:var(--seal-tint);border:1px solid var(--seal-ring);display:inline-flex;align-items:center;justify-content:center;font:600 10px "JetBrains Mono",monospace;color:var(--seal-deep)}
+.hdr .bell{position:relative;display:inline-flex}
+.hdr .bell i{position:absolute;top:-3px;right:-4px;font:600 8.5px/1 "JetBrains Mono",monospace;background:var(--seal);color:#15130F;border-radius:8px;padding:2px 4px;font-style:normal}
+
+/* ── the page — the built page's own ruling (rec-next.css), kept ────────── */
+.wrap{max-width:1120px;margin:0 auto;padding:24px 16px 48px}
+.wordmark{font-family:"Fraunces",Georgia,serif;font-weight:600;font-size:13px;letter-spacing:-.02em}
+.wordmark i{color:var(--seal);font-style:normal}
+h1.title{font-family:"Fraunces",Georgia,serif;font-weight:500;font-size:32px;line-height:1.1;letter-spacing:-.015em;margin:4px 0 0}
+.voice{font-family:"Fraunces",Georgia,serif;font-style:italic;font-size:15px;color:var(--ink-2);margin:4px 0 0;max-width:72ch}
+.readat{margin-top:6px}
+.double{margin-top:10px}.double i{display:block;height:1px;background:var(--ink-3);opacity:.5}.double i+i{margin-top:2px}
+.said{font-size:11px;color:var(--ink-4);margin:3px 0 0;line-height:1.5}
+.suppressed{margin-top:8px}
+.plain{font-size:12px;color:var(--ink-2)}
+.why{font-size:10.5px;color:var(--ink-4);margin:5px 0 0;line-height:1.45}
+
+/* leaves */
+.leaves{display:flex;gap:4px;margin:12px 0 16px;flex-wrap:wrap}
+.leaf{font:inherit;font-size:12px;font-weight:500;padding:5px 11px;border-radius:8px;border:1px solid var(--paper-2);background:transparent;color:var(--ink-2);cursor:pointer}
+.leaf[aria-current="page"]{font-weight:600;border-color:var(--seal);background:var(--seal-tint);color:var(--seal-deep)}
+.leaf .num{font-size:11px;margin-left:6px;color:var(--ink-4)}
+.leaf.view{margin-left:auto;border-style:dashed}
+.leaf.view[aria-current="page"]{border-style:solid}
+
+/* ── the house day strip (components/mudavym/DayStrip + day-strip.css) ──── */
+.ribbon{margin:0 0 18px}
+.ribbon-title{display:inline-flex;align-items:center;gap:5px;margin-bottom:7px}
+.ds-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:7px}
+.ds-months{display:inline-flex;align-items:center;gap:6px}
+.ds-mo{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border:1px solid var(--paper-2);border-radius:6px;background:var(--paper-0);color:var(--ink-3);font:inherit;cursor:pointer}
+.ds-label{font-family:"Fraunces",Georgia,serif;font-size:14px;color:var(--ink-1);min-width:116px}
+.ds-quiet{font:600 9px "JetBrains Mono",monospace;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-4);background:none;border:1px solid var(--paper-2);border-radius:6px;padding:3px 7px;cursor:pointer}
+.ds-strip{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(30px,1fr);gap:2px;border:1px solid var(--paper-2);border-radius:10px;padding:5px;background:var(--paper-1);overflow-x:auto}
+.ds-day{font:inherit;display:grid;justify-items:center;align-content:start;gap:1px;min-width:30px;padding:5px 2px 4px;border:1px solid transparent;border-radius:7px;background:var(--paper-0);color:var(--ink-2);cursor:pointer;position:relative}
+.ds-wd{font-family:"JetBrains Mono",monospace;font-size:8.5px;letter-spacing:.08em;color:var(--ink-4)}
+.ds-n{font-family:"JetBrains Mono",monospace;font-variant-numeric:tabular-nums;font-size:11.5px;line-height:1.1}
+.ds-mark{display:flex;align-items:flex-end;justify-content:center;gap:2px;height:20px;margin-top:3px}
+.bar{display:block;width:3px;border-radius:1px}
+.bar-fired{background:var(--seal)}
+.bar-due{width:4px;background:transparent;border:1px dashed var(--seal-ring)}
+/* new mark: a post went out that morning — the send log's row, never a guess */
+.posted{position:absolute;left:50%;bottom:2px;width:4px;height:4px;margin-left:-2px;border-radius:50%;background:var(--ink-3)}
+.ds-day[data-records="none"]{background:repeating-linear-gradient(135deg,var(--paper-1),var(--paper-1) 3px,var(--paper-2) 3px,var(--paper-2) 6px)}
+.ds-day[data-records="future"]{background:transparent;opacity:.5}
+.ds-day[data-today="true"]{box-shadow:inset 0 0 0 1px var(--seal-ring)}
+.ds-day[data-struck="true"]{border-color:var(--ink-4);border-style:dashed}
+.ds-day[data-struck="true"] .ds-n{text-decoration:line-through}
+.ds-day[aria-pressed="true"]{background:var(--seal);border-color:var(--seal);color:var(--paper-0)}
+.ds-day[aria-pressed="true"] .ds-wd{color:var(--paper-1)}
+.ds-day[aria-pressed="true"] .bar-fired{background:var(--paper-0)}
+.ds-day[aria-pressed="true"] .posted{background:var(--paper-0)}
+.legend{display:flex;flex-wrap:wrap;gap:14px;margin-top:8px;font-size:10px;color:var(--ink-4)}
+.legend i{font-style:normal;display:inline-flex;align-items:center;gap:5px}
+.sw{display:inline-block;width:9px;height:9px;border-radius:2px}
+.sw-fired{background:var(--seal)}
+.sw-due{border:1px dashed var(--seal-ring)}
+.sw-none{background:repeating-linear-gradient(135deg,var(--paper-1),var(--paper-1) 3px,var(--paper-2) 3px,var(--paper-2) 6px)}
+.sw-out{border:1px dashed var(--ink-4)}
+.sw-today{box-shadow:inset 0 0 0 1px var(--seal-ring)}
+.sw-future{border:1px solid var(--paper-2);opacity:.5}
+.sw-posted{width:5px;height:5px;border-radius:50%;background:var(--ink-3);margin:0 2px}
+.ribbon-note{display:flex;align-items:flex-start;gap:5px;max-width:780px}
+.dayhead{margin-top:12px;padding:10px 12px;border:1px solid var(--paper-2);border-radius:10px;background:var(--paper-1)}
+.dayhead h2{font-family:"Fraunces",Georgia,serif;font-size:16px;font-weight:500;margin:0}
+.dayhead .micro{display:block;margin-top:3px}
+.row{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:6px}
+
+/* ── the shell: register rail + the book ─────────────────────────────────── */
+.shell{display:grid;grid-template-columns:208px minmax(0,1fr);gap:20px}
+.reg-note{font-size:11px;color:var(--ink-4);margin:4px 0 8px;line-height:1.45}
+.reg-list{display:grid;gap:2px}
+.reg{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:baseline;gap:6px;text-align:left;padding:6px 8px;border-radius:8px;border:1px solid transparent;background:transparent;cursor:pointer;font:inherit}
+.reg[aria-pressed="true"]{border-color:var(--seal);background:var(--seal-tint)}
+.reg span:first-child{font-size:12.5px;font-weight:500;color:var(--ink-1)}
+.reg[aria-pressed="true"] span:first-child{font-weight:600}
+.reg .num{font-size:11px;color:var(--ink-4)}
+.aside-block{margin-top:18px}
+.keys{font-family:"JetBrains Mono",monospace;font-size:10.5px;color:var(--ink-4);margin:5px 0 0;line-height:1.7}
+.excl{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:6px}
+.excl li{display:grid;gap:2px}
+.excl .quiet{justify-self:start;margin-top:2px}
+
+/* controls — the die pressed dry (built) */
+.quiet{font:inherit;font-size:11.5px;padding:4px 9px;border-radius:7px;border:1px solid var(--paper-2);background:transparent;color:var(--ink-2);cursor:pointer}
+.quiet[aria-pressed="true"]{background:var(--seal-tint);color:var(--seal-deep)}
+.quiet:hover{border-color:var(--seal-ring);color:var(--seal-deep)}
+.act{font:inherit;font-size:12px;font-weight:600;padding:5px 12px;border-radius:8px;border:1px solid var(--seal);background:var(--seal-tint);color:var(--seal-deep);cursor:pointer}
+.act:hover{background:var(--seal);color:var(--paper-0)}
+.act[disabled]{border-color:var(--paper-2);background:transparent;color:var(--ink-4);cursor:not-allowed}
+.dark{font:inherit;font-size:11.5px;padding:4px 9px;border-radius:7px;text-align:left;border:1px dashed var(--paper-2);background:transparent;color:var(--ink-4);cursor:not-allowed}
+.dark-wide{margin-top:6px;width:100%;padding:6px 10px;border-radius:8px}
+
+/* a cutting — the reports sheet's card, borrowed for the rail and the delta */
+.cut{border:1px solid var(--paper-2);border-radius:10px;background:var(--paper-1);padding:10px 12px 12px;position:relative}
+.cut h3{font-family:"Fraunces",Georgia,serif;font-weight:600;font-size:15px;letter-spacing:-.01em;margin:0;color:var(--ink-1)}
+.cut .window{margin:2px 0 0;font-family:"JetBrains Mono",monospace;font-size:9px;letter-spacing:.06em;color:var(--ink-4)}
+.cut .fig{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-top:7px}
+.cut .fig dt{font-size:11.5px;color:var(--ink-4)}
+.cut .fig dd{margin:0;font-family:"JetBrains Mono",monospace;font-size:11.5px;font-variant-numeric:tabular-nums;color:var(--ink-1);text-align:right}
+.cut .fig dd.em{color:var(--ink-4)}
+.cut dl{margin:4px 0 0}
+.cut .sentence{margin:8px 0 0;font-size:12.5px;line-height:1.5;color:var(--ink-1)}
+.cut .work{margin-top:10px;font-family:"JetBrains Mono",monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-4)}
+.cut .ctl{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
+
+/* the delta — since yesterday's letter, as a cutting above the docket */
+.delta{margin-bottom:16px}
+.delta .line{display:grid;grid-template-columns:86px minmax(0,1fr);gap:12px;padding:8px 0;border-top:1px dotted var(--paper-2);font-size:12.5px}
+.delta .line:first-of-type{border-top:0}
+.delta .k{font-family:"JetBrains Mono",monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-4);padding-top:3px}
+.delta .k.seal{color:var(--seal-deep)}
+.delta .v{color:var(--ink-2);line-height:1.5}
+.delta .v b{color:var(--ink-1);font-weight:500}
+.delta .v a{color:var(--seal-deep);text-decoration:none;border-bottom:1px solid var(--seal-ring)}
+
+/* ── the book ────────────────────────────────────────────────────────────── */
+.loading{font-size:12.5px;color:var(--ink-4)}
+.ghost{height:58px;margin-top:10px;border-radius:8px;border:1px solid var(--paper-2);background:var(--paper-1)}
+.empty{padding:18px 0}
+.empty p:first-child{font-family:"Fraunces",Georgia,serif;font-size:17px;margin:0}
+.empty-why{font-size:12.5px;color:var(--ink-4);margin-top:6px;max-width:560px;line-height:1.5}
+.docket-note{max-width:780px;margin-bottom:14px}
+.section{margin-bottom:22px}
+.section-head{display:flex;align-items:baseline;gap:9px}
+.section-head h2{font-family:"Fraunces",Georgia,serif;font-size:15px;font-weight:600;margin:0}
+.section-head .num{margin-left:auto;font-size:11px;color:var(--ink-4)}
+.section-head .amt{margin-left:0;font-size:11px;color:var(--ink-4);white-space:nowrap}
+.section-head .meta{margin-left:auto;display:inline-flex;align-items:baseline;gap:9px;white-space:nowrap}
+.section-head .meta .num{margin-left:0}
+.act-ic{display:inline-flex;color:var(--ink-3);align-self:center}
+.act-say{display:block;font-size:11.5px;line-height:1.5;color:var(--ink-4);margin:4px 0 0;max-width:820px}
+.section .double{margin-top:5px}.section .double i{opacity:.45}
+.dark-sect{border:1.5px dashed var(--seal-ring);border-radius:12px;padding:12px 14px;background:var(--paper-0)}
+.dark-head{color:var(--ink-4)}
+
+/* one entry (built) */
+.entry{display:grid;grid-template-columns:34px minmax(0,1fr);gap:10px;padding:14px 14px 14px 8px;border-top:1px solid var(--paper-2);border-left:2px solid transparent}
+.entry:hover{border-left-color:var(--seal-ring)}
+.entry[data-focused="true"]{border-left-color:var(--seal)}
+.gutter{text-align:right;padding-top:2px}
+.gutter .num{font-size:11px;color:var(--ink-4)}
+.gutter .micro{margin-top:4px;display:block}
+.body{min-width:0}
+.stamps{display:flex;flex-wrap:wrap;align-items:baseline;gap:10px}
+.obs{font-family:"Fraunces",Georgia,serif;font-size:16.5px;line-height:1.32;margin:5px 0 0;color:var(--ink-1)}
+.obs sup{font-family:"JetBrains Mono",monospace;font-size:9px;color:var(--seal-deep);margin-left:2px}
+.do{font-size:13px;line-height:1.5;margin:6px 0 0;color:var(--ink-2)}
+.facts{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin:10px 0 0;padding:8px 0 0;border-top:1px solid var(--paper-2)}
+.fact{min-width:0}
+.fact>div:last-child{font-size:12px;color:var(--ink-2);margin-top:2px;line-height:1.35}
+.basis{display:block;font-size:10px;color:var(--ink-4);margin-top:2px;line-height:1.35}
+.controls{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:10px}
+.controls-do{margin-top:12px}
+.controls-file{margin-top:6px}
+.ctl-label{flex:0 0 88px;white-space:nowrap;color:var(--ink-4)}
+.controls-file .ctl-label{opacity:.85}
+.forward-note{margin-top:7px;line-height:1.5;max-width:720px}
+.notposted{font-family:"JetBrains Mono",monospace;font-size:8.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-4);border:1px dashed var(--paper-2);border-radius:4px;padding:1px 6px}
+
+/* the receipt — what the page just wrote, next to the entry it belongs to */
+.receipt{margin-top:10px;padding:8px 10px;border-radius:9px;border:1px solid var(--paper-2);border-left:2px solid var(--ink-3);background:var(--paper-1);display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 12px;align-items:baseline}
+.receipt .stamp{font-family:"JetBrains Mono",monospace;font-size:8.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-4);white-space:nowrap;padding-top:2px}
+.receipt .what{font-size:12px;color:var(--ink-2);line-height:1.5}
+.receipt .what b{color:var(--ink-1);font-weight:500}
+.receipt .what a{color:var(--seal-deep);text-decoration:underline;text-underline-offset:2px;margin-left:6px}
+.receipt .what .key{font-family:"JetBrains Mono",monospace;font-size:10.5px;color:var(--ink-4);word-break:break-all}
+.receipt.sealed{border-left-color:var(--seal)}
+.seal{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ink-2)}
+.seal .die{width:18px;height:18px;border-radius:50%;border:1.5px solid var(--seal);display:inline-flex;align-items:center;justify-content:center;color:var(--seal);font:600 8px "JetBrains Mono",monospace}
+
+/* the working (built) */
+.workbox{margin-top:10px;padding:10px 12px;border-radius:10px;background:var(--paper-1);border:1px solid var(--paper-2)}
+.workblock{margin-top:10px}
+.prose{font-size:12.5px;line-height:1.55;margin:4px 0 0;color:var(--ink-2)}
+.rulekey{font-size:11.5px;margin:4px 0 0;color:var(--ink-1);word-break:break-all}
+
+/* the dismissal sheet — inline, no motion (MOTIONS.md) */
+.menu{margin-top:8px;padding:8px 10px;border-radius:9px;border:1px solid var(--paper-2);background:var(--paper-1)}
+.dsheet{padding:12px 14px}
+.sheet-title{font-family:"Fraunces",Georgia,serif;font-size:14px;margin:0 0 2px;color:var(--ink-1)}
+.sheet-block{margin-top:10px}
+.scopes{display:flex;flex-direction:column;gap:4px;margin-top:6px}
+.scope{display:flex;align-items:flex-start;gap:7px;font-size:12px;color:var(--ink-2);line-height:1.4;cursor:pointer}
+.scope input{margin-top:2px;accent-color:var(--seal)}
+.scope input:disabled+span{color:var(--ink-4)}
+.sheet-promise{margin-top:10px;padding-top:8px;border-top:1px solid var(--paper-2);color:var(--ink-2);line-height:1.5;font-size:11.5px}
+.sheet-promise b{color:var(--ink-1);font-weight:500}
+
+/* what the page just wrote, and the foot */
+/* the built page's foot note (`.note` + Undo) is not drawn: the receipt is the surface, the live region is .sr-only */
+.foot{margin-top:34px;padding-top:12px;border-top:1px solid var(--paper-2);display:flex;flex-wrap:wrap;gap:8px;align-items:baseline;justify-content:space-between}
+.foot p{font-size:11px;color:var(--ink-4);margin:0}
+
+/* ── overlays (ADR 0112): sheet 440 — modal by default (Sheet.tsx:291 `modal = modalProp ?? shape !== 'popover'`); the scrim is always rendered and on charcoal paints rgba(0,0,0,.5) (sheet.css:36-38, 70-80). No popover on this page: a form that commits is a sheet (founder answer F2). ── */
+.stage{position:relative;overflow:hidden}
+.scrim{position:absolute;inset:0;z-index:5;background:rgba(0,0,0,.5)}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+.prow{display:grid;grid-template-columns:78px minmax(0,1fr);gap:8px;align-items:center;font-size:12px;margin-top:8px}
+.prow .l{font-family:"JetBrains Mono",monospace;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-4)}
+.prow select,.prow input{font:inherit;font-size:12px;color:var(--ink-1);background:var(--paper-1);border:1px solid var(--paper-2);border-radius:7px;padding:5px 8px;width:100%}
+.sheet{position:absolute;top:0;right:0;bottom:0;width:440px;max-width:100%;z-index:6;border-left:1px solid var(--paper-2);background:var(--paper-0);box-shadow:-18px 0 48px rgba(23,19,15,.5);display:flex;flex-direction:column}
+.sh-head{display:flex;align-items:flex-start;gap:12px;padding:14px 16px 11px;border-bottom:1px solid var(--paper-2)}
+.sh-head .eyebrow{display:block;font-family:"JetBrains Mono",monospace;font-size:9.5px;font-weight:600;letter-spacing:.13em;text-transform:uppercase;color:var(--seal-deep)}
+.sh-head h3{font-family:"Fraunces",Georgia,serif;font-weight:600;font-size:19px;line-height:1.16;margin:2px 0 0;letter-spacing:-.01em}
+.sh-head .close{margin-left:auto;font:inherit;font-size:12px;padding:5px 10px;border:1px solid var(--paper-2);border-radius:8px;background:transparent;color:var(--ink-2);white-space:nowrap}
+.sh-body{padding:14px 16px;overflow:auto;flex:1}
+.sh-foot{padding:10px 16px;border-top:1px solid var(--paper-2);font-size:11px;color:var(--ink-4);line-height:1.45}
+.blk{margin-top:14px}
+.blk:first-child{margin-top:0}
+.blk .micro{display:block;margin-bottom:4px}
+.check{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:4px;font-size:12px;color:var(--ink-2)}
+.check li{display:grid;grid-template-columns:14px minmax(0,1fr);gap:8px;align-items:baseline}
+.check li i{font-style:normal;font-family:"JetBrains Mono",monospace;font-size:10px;color:var(--seal-deep)}
+.check li.no i{color:var(--ink-4)}
+.check li.no{color:var(--ink-4)}
+.acct{list-style:none;margin:4px 0 0;padding:0;display:grid;gap:8px}
+.acct li{display:grid;grid-template-columns:78px minmax(0,1fr);gap:10px;padding:6px 0;border-top:1px dotted var(--paper-2);font-size:12px;color:var(--ink-2);line-height:1.45}
+.acct li:first-child{border-top:0}
+.acct .d{font-family:"JetBrains Mono",monospace;font-size:10px;color:var(--ink-4);padding-top:2px}
+.acct b{color:var(--ink-1);font-weight:500}
+
+/* the mail — the sender's own template, on paper, inside the charcoal sheet */
+.mail{border:1px solid var(--paper-2);border-radius:10px;overflow:hidden;margin-top:8px}
+.mail .env{padding:10px 14px;border-bottom:1px solid var(--paper-2);font-size:11.5px;color:var(--ink-2);display:grid;grid-template-columns:auto 1fr;gap:2px 10px}
+.mail .env .l{font-family:"JetBrains Mono",monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-4);padding-top:2px}
+.mail .mbody{padding:18px 18px 16px;background:var(--paper-1);font-family:Georgia,"Times New Roman",serif}
+.mail .card{background:var(--paper-0);border:1px solid var(--paper-2);padding:18px 18px 14px}
+.mail .wm{font-size:10px;letter-spacing:.24em;text-transform:uppercase;color:var(--seal)}
+.mail h2{font-weight:normal;font-size:18px;line-height:1.3;margin:8px 0 0;color:var(--ink-1)}
+.mail .lead{font-size:12.5px;line-height:1.55;color:var(--ink-2);margin:10px 0 0}
+.mail .mentry{padding:12px 0;border-top:1px solid var(--paper-2);margin-top:12px}
+.mail .mentry .u{font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--seal);margin:0 0 5px}
+.mail .mentry .o{font-size:14px;line-height:1.45;color:var(--ink-1);margin:0 0 6px}
+.mail .mentry .dw{font-size:12px;line-height:1.5;color:var(--ink-1);margin:0 0 4px}
+.mail .mentry .dw.why{color:var(--ink-2)}
+.mail .mentry .from{font-size:10.5px;line-height:1.5;color:var(--ink-4)}
+.mail .mentry .from code{font-family:ui-monospace,Menlo,Consolas,monospace}
+.mail .mentry .from a{color:var(--seal)}
+.mail .fine{font-size:10.5px;line-height:1.6;color:var(--ink-4);border-top:1px solid var(--paper-2);padding-top:10px;margin-top:12px}
+.mail .fine a{color:var(--seal)}
+
+/* ── the catalogue leaf ─────────────────────────────────────────────────── */
+.cat{display:grid;grid-template-columns:208px minmax(0,1fr);gap:20px}
+.cat .head{font-family:"Fraunces",Georgia,serif;font-style:italic;font-size:15px;line-height:1.5;color:var(--ink-2);max-width:72ch;margin:0}
+.cat .head b{font-style:normal;font-weight:500;color:var(--ink-1)}
+.cat table{width:100%;table-layout:fixed;border-collapse:collapse;margin-top:12px;font-size:12px}
+.cat th{text-align:left;font-family:"JetBrains Mono",monospace;font-size:8.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-4);font-weight:600;padding:4px 8px 5px 0;border-bottom:1px solid var(--paper-2)}
+.cat td{padding:6px 8px 6px 0;border-bottom:1px solid var(--paper-2);vertical-align:top;color:var(--ink-2)}
+.cat td:first-child{color:var(--ink-1);font-family:"JetBrains Mono",monospace;font-size:10px;overflow-wrap:anywhere}
+.cat .st{font-family:"JetBrains Mono",monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;line-height:1.5}
+.cat .st.built{color:var(--seal-deep)}
+.cat .st.miss{color:var(--ink-4)}
+.cat tr.open td{background:var(--paper-1)}
+.cat .leafrow{padding:10px 12px;border:1px solid var(--seal-ring);border-radius:10px;background:var(--paper-1);margin-top:10px;font-size:12.5px;color:var(--ink-2);line-height:1.55}
+.cat .leafrow b{color:var(--ink-1);font-weight:500}
+
+/* ── states ─────────────────────────────────────────────────────────────── */
+.alert{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;padding:10px 14px;border-radius:10px;border:1px solid var(--paper-2);background:var(--paper-1);font-size:12.5px;color:var(--ink-2);line-height:1.5}
+.retry{font:inherit;font-size:12px;font-weight:600;padding:5px 12px;border-radius:8px;border:1px solid var(--seal-ring);background:transparent;color:var(--seal-deep);cursor:pointer}
+.small-wrap{padding:16px 16px 20px}
+
+/* ── mobile 390 — the built page's own breakpoints ───────────────────────── */
+.m .hdr{padding:0 14px;min-height:48px}
+.m .hdr .search{display:none}
+.m .wrap{padding:14px 14px 28px}
+.m h1.title{font-size:26px}
+.m .shell{grid-template-columns:1fr;gap:14px}
+.m .facts{grid-template-columns:1fr;gap:6px}
+.m .ctl-label{flex:1 0 100%}
+.m .leaves{overflow-x:auto;flex-wrap:nowrap;-webkit-mask-image:linear-gradient(90deg,#000 88%,transparent);mask-image:linear-gradient(90deg,#000 88%,transparent);padding-right:28px}
+.m .leaf{white-space:nowrap;flex:0 0 auto}
+.m .leaf.view{margin-left:0}
+.m .delta .line{grid-template-columns:1fr;gap:2px}
+.m .cut .ctl .quiet{flex:1 1 auto;text-align:center}
+.m .entry{grid-template-columns:30px minmax(0,1fr);padding:14px 0}
+.m .section-head{flex-wrap:wrap}
+.m .dark-sect{padding:12px 10px}
+.m .ds-strip{-webkit-mask-image:linear-gradient(90deg,#000 92%,transparent);mask-image:linear-gradient(90deg,#000 92%,transparent)}
+.m .section-head .meta{margin-left:auto}
+@media (max-width:600px){.w390{width:100%}.frame.w390{border-radius:0;border-left:0;border-right:0}}
+</style></head>
+<body>
+<div class="sk-banner"><span>Sketch 120 · direction A · The Letter, Bound In</span><span>/recommendations · example data, not a tenant · every figure invented to show the full view</span></div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<section class="sk-sec desk-only">
+  <h2 class="sk-label">1 · Desktop 1440 — Meyhouse Palo Alto (US · USD · Pacific) · Wed 16 Sep 2026, read at 06:58</h2>
+  <p class="sk-note"><b>The idea.</b> The page the founder likes stays exactly as it is — masthead, denominator, leaves, the house day strip, the register rail and the docket filed by the act — and the Morning Letter (108-A, chosen) is bound into it as functionality, not as a redraw. Three things arrive: a <b>delta cutting</b> above the docket (since the last post, read from the send log the digest sender now writes), <b>the post</b> in the rail where the dark "Daily digest" block stood (the house's hour and floor, your own copy, and every reason a copy would not reach you), and a <b>receipt</b> under every act saying exactly what was stored. The subject's account, the mail and the catalogue are sheets and a leaf of this page, never a second page. Nothing on the surface got denser: a door prints its reason only when it is shut. The built page's <span class="num">role="status"</span> note at the foot is kept as a visually hidden live region; on the surface the receipt under the entry replaces it, so one act has one Undo.</p>
+  <div class="frame"><div class="mudavym">
+    <div class="hdr">
+      <span class="mark"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-label="Mudavym mark"><path d="M3 20 8.5 4l3.5 9"/><path d="M8 20l4-11 4 11 2.5-8L21 20"/></svg></span>
+      <span class="rule"></span><span class="pg">Recommendations</span>
+      <span class="search"><svg class="ico" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>Search the house, or type a command<kbd>⌘K</kbd></span>
+      <span class="right"><span class="bell"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10 21a2 2 0 0 0 4 0"/></svg><i>3</i></span><span class="house">Meyhouse Palo Alto <svg class="ico" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></span><span class="av">AK</span></span>
+    </div>
+    <div class="wrap">
+      <header>
+        <div class="wordmark">Mudavym<i>.</i></div>
+        <h1 class="title">Recommendations</h1>
+        <p class="voice">14 rules were read. 5 entries stand, and they are five kinds of work — one of them is new since yesterday's letter; the rest did not fire, or you have already ruled them off.</p>
+        <p class="micro readat">Read at 6:58 AM · one entry = one deterministic rule that fired · 8 of 8 sources answered</p>
+        <div class="double"><i></i><i></i></div>
+        <p class="said suppressed">1 entry was withheld because you dismissed it. It is on the Dismissed leaf, and can be returned.</p>
+      </header>
+
+      <nav class="leaves" aria-label="Leaves of the book">
+        <button class="leaf" aria-current="page">Standing<span class="num">5</span></button>
+        <button class="leaf">Snoozed<span class="num">0</span></button>
+        <button class="leaf">Dismissed<span class="num">1</span></button>
+        <button class="leaf">Ruled off<span class="num">6</span></button>
+        <button class="leaf">History<span class="num">—</span></button>
+        <button class="leaf view">The catalogue<span class="num">573</span></button>
+      </nav>
+
+      <section class="ribbon" aria-labelledby="rb-h">
+        <span class="micro ribbon-title" id="rb-h">The days behind this book</span>
+        <div class="ds-head">
+          <div class="ds-months"><button class="ds-mo" aria-label="Show August 2026">‹</button><span class="ds-label">September 2026</span><button class="ds-mo" aria-label="Show October 2026">›</button></div>
+          <span class="said" style="margin:0">Select a day to narrow the docket</span>
+        </div>
+        <div class="ds-strip" role="group" aria-label="Select a day to narrow the docket">
+          <button class="ds-day" data-records="yes"><span class="ds-wd">TU</span><span class="ds-n">1</span><span class="ds-mark"></span></button>
+          <button class="ds-day" data-records="yes"><span class="ds-wd">WE</span><span class="ds-n">2</span><span class="ds-mark"></span></button>
+          <button class="ds-day" data-records="yes"><span class="ds-wd">TH</span><span class="ds-n">3</span><span class="ds-mark"></span></button>
+          <button class="ds-day" data-records="yes"><span class="ds-wd">FR</span><span class="ds-n">4</span><span class="ds-mark"></span></button>
+          <button class="ds-day" data-records="yes"><span class="ds-wd">SA</span><span class="ds-n">5</span><span class="ds-mark"><i class="bar bar-fired" style="height:4px"></i></span></button>
+          <button class="ds-day" data-records="yes"><span class="ds-wd">SU</span><span class="ds-n">6</span><span class="ds-mark"></span></button>
+          <button class="ds-day" data-records="yes"><span class="ds-wd">MO</span><span class="ds-n">7</span><span class="ds-mark"></span><i class="posted"></i></button>
+          <button class="ds-day" data-records="none" data-struck="true"><span class="ds-wd">TU</span><span class="ds-n">8</span><span class="ds-mark"></span><i class="posted"></i></button>
+          <button class="ds-day" data-records="yes"><span class="ds-wd">WE</span><span class="ds-n">9</span><span class="ds-mark"></span><i class="posted"></i></button>
+          <button class="ds-day" data-records="yes"><span class="ds-wd">TH</span><span class="ds-n">10</span><span class="ds-mark"></span><i class="posted"></i></button>
+          <button class="ds-day" data-records="yes"><span class="ds-wd">FR</span><span class="ds-n">11</span><span class="ds-mark"></span><i class="posted"></i></button>
+          <button class="ds-day" data-records="none"><span class="ds-wd">SA</span><span class="ds-n">12</span><span class="ds-mark"></span><i class="posted"></i></button>
+          <button class="ds-day" data-records="none"><span class="ds-wd">SU</span><span class="ds-n">13</span><span class="ds-mark"><i class="bar bar-fired" style="height:4px"></i></span><i class="posted"></i></button>
+          <button class="ds-day" data-records="yes"><span class="ds-wd">MO</span><span class="ds-n">14</span><span class="ds-mark"></span><i class="posted"></i></button>
+          <button class="ds-day" data-records="yes"><span class="ds-wd">TU</span><span class="ds-n">15</span><span class="ds-mark"></span><i class="posted"></i></button>
+          <button class="ds-day" data-records="yes" data-today="true"><span class="ds-wd">WE</span><span class="ds-n">16</span><span class="ds-mark"><i class="bar bar-fired" style="height:4px"></i></span></button>
+          <button class="ds-day" data-records="future"><span class="ds-wd">TH</span><span class="ds-n">17</span><span class="ds-mark"></span></button>
+          <button class="ds-day" data-records="future"><span class="ds-wd">FR</span><span class="ds-n">18</span><span class="ds-mark"></span></button>
+          <button class="ds-day" data-records="future"><span class="ds-wd">SA</span><span class="ds-n">19</span><span class="ds-mark"></span></button>
+          <button class="ds-day" data-records="future"><span class="ds-wd">SU</span><span class="ds-n">20</span><span class="ds-mark"></span></button>
+          <button class="ds-day" data-records="future"><span class="ds-wd">MO</span><span class="ds-n">21</span><span class="ds-mark"></span></button>
+          <button class="ds-day" data-records="future"><span class="ds-wd">TU</span><span class="ds-n">22</span><span class="ds-mark"></span></button>
+          <button class="ds-day" data-records="future"><span class="ds-wd">WE</span><span class="ds-n">23</span><span class="ds-mark"></span></button>
+          <button class="ds-day" data-records="future"><span class="ds-wd">TH</span><span class="ds-n">24</span><span class="ds-mark"></span></button>
+          <button class="ds-day" data-records="future"><span class="ds-wd">FR</span><span class="ds-n">25</span><span class="ds-mark"></span></button>
+          <button class="ds-day" data-records="future"><span class="ds-wd">SA</span><span class="ds-n">26</span><span class="ds-mark"></span></button>
+          <button class="ds-day" data-records="future"><span class="ds-wd">SU</span><span class="ds-n">27</span><span class="ds-mark"></span></button>
+          <button class="ds-day" data-records="future"><span class="ds-wd">MO</span><span class="ds-n">28</span><span class="ds-mark"></span></button>
+          <button class="ds-day" data-records="future"><span class="ds-wd">TU</span><span class="ds-n">29</span><span class="ds-mark"></span></button>
+          <button class="ds-day" data-records="future"><span class="ds-wd">WE</span><span class="ds-n">30</span><span class="ds-mark"><i class="bar bar-due" style="height:8px"></i></span></button>
+        </div>
+        <div class="legend" aria-hidden="true">
+          <i><span class="sw sw-fired"></span>first fired</i><i><span class="sw sw-due"></span>falls due</i><i><span class="sw sw-none"></span>no records — not a zero</i><i><span class="sw sw-out"></span>out of the analysis</i><i><span class="sw sw-posted"></span>a post went out</i><i><span class="sw sw-today"></span>today</i><i><span class="sw sw-future"></span>not happened yet</i>
+        </div>
+        <p class="why ribbon-note"><svg class="ico" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v4h1"/></svg> A hatched day carries no record at all. It is never drawn as a bar of zero — a closure read as a measurement is the fault this page exists to refuse. A dot means a post went out that morning to at least one member; it is read from the send log, never inferred from the schedule.</p>
+      </section>
+
+      <div class="shell">
+        <!-- ── the register rail ─────────────────────────────────────── -->
+        <aside>
+          <div class="micro">The register</div>
+          <p class="reg-note">What acting on an entry would change. Filed from the rule's own category.</p>
+          <div class="reg-list">
+            <button class="reg" aria-pressed="true"><span>All</span><span class="num">5</span></button>
+            <button class="reg" aria-pressed="false"><span>Money</span><span class="num">2</span></button>
+            <button class="reg" aria-pressed="false"><span>Stock</span><span class="num">1</span></button>
+            <button class="reg" aria-pressed="false"><span>Vendors</span><span class="num">1</span></button>
+            <button class="reg" aria-pressed="false"><span>The floor</span><span class="num">1</span></button>
+          </div>
+
+          <div class="aside-block">
+            <div class="micro">Out of the analysis</div>
+            <ul class="excl"><li><span class="num" style="font-size:11px">Tue 8 Sep</span><span class="why" style="margin:0">Closed</span><button class="quiet">Count it again</button></li></ul>
+          </div>
+
+          <!-- the post — the digest, live: the house's hour and floor, and your own copy -->
+          <div class="aside-block">
+            <div class="micro">The post</div>
+            <div class="cut" style="margin-top:6px">
+              <h3>Daily at 07:00</h3>
+              <p class="window">Pacific · carries "this week" and above</p>
+              <dl>
+                <div class="fig"><dt>Your copy</dt><dd>daily</dd></div>
+                <div class="fig"><dt>Next</dt><dd>today 07:00</dd></div>
+                <div class="fig"><dt>Last</dt><dd>Tue 15 · sent · 4</dd></div>
+              </dl>
+              <p class="why">4 of the 5 standing would be carried; 03 sits below the floor. Whether a post was opened is not recorded.</p>
+              <div class="ctl"><button class="quiet ink" aria-pressed="true">Your copy</button><button class="quiet ink">The house's post</button></div>
+            </div>
+          </div>
+
+          <div class="aside-block">
+            <div class="micro">Keys</div>
+            <p class="keys">j / k move · e the working · a act<br>d the dismissal sheet · s snooze · p pin · x select<br>on the strip: ← → a day · ↑ ↓ a week · Enter selects · Esc clears</p>
+          </div>
+        </aside>
+
+        <!-- ── the book ──────────────────────────────────────────────── -->
+        <section>
+          <!-- the delta: since yesterday's letter, as a cutting above the docket -->
+          <div class="cut delta">
+            <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><h3>Since yesterday's letter</h3><span class="window">what changed between the last post, Tue 15 07:00, and now</span><span class="num" style="margin-left:auto;font-size:11px;color:var(--ink-4)">5 lines</span></div>
+            <div style="margin-top:8px">
+              <div class="line"><span class="k seal">New</span><span class="v"><b>04 · Tuesday sales came in 38% lower than your average Tuesday</b> — first shown this morning at 06:58. It goes into this morning's post at 07:00.</span></div>
+              <div class="line"><span class="k">Ruled off</span><span class="v"><b>$6,140 locked in inventory that has not moved in 90 days</b> — ruled off with the seal, Tue 15 Sep 18:12. <a href="#">Ruled off</a></span></div>
+              <div class="line"><span class="k">Dismissed</span><span class="v"><b>Pairing promotion</b> — silenced, this rule entirely, Tue 15 Sep 17:40. The rule names no wine, so no narrower promise could be kept. <a href="#">Return it</a></span></div>
+              <div class="line"><span class="k">No record</span><span class="v"><b>Sat 12 · Sun 13 Sep</b> — the till has still sent nothing for these two days. The weekday spread (05) does not skip them: it reads a series that fills every missing day with zero, no exclusion honoured (<span class="num">advanced-analytics.service.ts:387</span>) — a till gap here quietly drags its averages down, an engine defect this page states rather than papers over — and has not filed, in v3.0-TECH-DEBT.md or anywhere else.</span></div>
+              <div class="line"><span class="k">Withheld</span><span class="v">dismissed: <b>1</b> · below the floor: <b>1</b> · sources that did not answer: <b>0</b> — what this morning's post keeps from you, and why. The dismissed entry is on its leaf and can be returned; 03 stands on this page and will not be in the mail; every source answered, so nothing is withheld by a silence.</span></div>
+            </div>
+          </div>
+
+          <p class="why docket-note">No section can total what it is worth. The engine states each entry's money inside its sentence, not as a field, and the figures are not the same quantity from rule to rule — so every heading shows an em dash instead of a zero.</p>
+
+          <!-- Order it -->
+          <div class="section">
+            <div class="section-head"><span class="act-ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 17h4V5H2v12h3"/><path d="M20 17h2v-3.34a4 4 0 0 0-1.17-2.83L19 9h-5v8h1"/><circle cx="7.5" cy="17.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg></span><h2>Order it</h2><span class="meta"><span class="num">1 entry</span><span class="num amt">— at stake · not carried</span></span></div>
+            <p class="act-say">These end in a purchase order. Doing them is one sitting at the Orders desk: draft what is short, then walk the open book against days-of-cover before the next run goes out.</p>
+            <div class="double"><i></i><i></i></div>
+            <article class="entry">
+              <div class="gutter"><div class="num">01</div></div>
+              <div class="body">
+                <div class="stamps"><span class="micro">Tonight</span><span class="micro">inventory</span><span class="micro">acted</span></div>
+                <p class="obs">Barolo Riserva 2019 has a 71% chance of stocking out before a 7-day replenishment (on hand: 4).</p>
+                <p class="do">Place the order today — reorder point is 12 bottles. If the vendor is slow, split the order across two vendors.</p>
+                <div class="facts">
+                  <div class="fact"><div class="micro">Would change</div><div>Stock</div></div>
+                  <div class="fact"><div class="micro">Whose hand</div><div>Yours, in Orders</div></div>
+                  <div class="fact"><div class="micro">Standing</div><div><span class="num">3 days</span><span class="basis">since it was first shown to you</span></div></div>
+                </div>
+                <div class="controls controls-do"><span class="micro ctl-label">Carry it out</span><button class="act ink">Draft the PO →</button><button class="dark" disabled>Make this a goal</button><button class="quiet ink">See it in reports</button></div>
+                <div class="controls controls-file"><span class="micro ctl-label">File it</span><button class="quiet ink">The working</button><button class="quiet ink">Snooze</button><button class="quiet ink">Dismiss</button><button class="quiet ink">Pin</button><button class="quiet ink">Select</button></div>
+                <p class="said forward-note"><b style="color:var(--ink-2);font-weight:500">Make this a goal — held.</b> A stockout is an availability event, not one of the seven figures a goal can be held on (wine revenue · bottles sold · purchasing spend · checks · average check · attach rate · days of stock). Ruling it off when the order is placed is the record this one keeps.</p>
+                <div class="receipt"><span class="stamp">Receipt · 06:59</span><span class="what">Followed <b>Draft the PO</b> to Orders — recorded as acted. The entry stands until you rule it off.<a href="#">Undo</a></span></div>
+              </div>
+            </article>
+          </div>
+
+          <!-- Price it -->
+          <div class="section">
+            <div class="section-head"><span class="act-ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.6 2.6 21.4 11.4a2 2 0 0 1 0 2.8l-7.2 7.2a2 2 0 0 1-2.8 0L2.6 12.6V2.6h10Z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg></span><h2>Price it</h2><span class="meta"><span class="num">1 entry</span><span class="num amt">— at stake · not carried</span></span></div>
+            <p class="act-say">These change what something sells for — a list price, an offer, a pairing on the insert. All of them are a menu decision and all of them want the same half hour.</p>
+            <div class="double"><i></i><i></i></div>
+            <article class="entry">
+              <div class="gutter"><div class="num">02</div></div>
+              <div class="body">
+                <div class="stamps"><span class="micro">This week</span><span class="micro">efficiency</span></div>
+                <p class="obs">3 wines sell fast but earn below-median margin (top: Sancerre Les Baronnes 2023).</p>
+                <p class="do">Raise those prices 5–8% or renegotiate cost on the next PO — volume holds on small moves for high-velocity wines.</p>
+                <div class="facts">
+                  <div class="fact"><div class="micro">Would change</div><div>The floor</div></div>
+                  <div class="fact"><div class="micro">Whose hand</div><div>Yours, in Reports</div></div>
+                  <div class="fact"><div class="micro">Standing</div><div><span class="num">11 days</span><span class="basis">since it was first shown to you</span></div></div>
+                </div>
+                <div class="controls controls-do"><span class="micro ctl-label">Carry it out</span><button class="act ink">Open the menu report →</button><button class="quiet ink">Make this a goal</button><button class="quiet ink">See it in reports</button></div>
+                <div class="controls controls-file"><span class="micro ctl-label">File it</span><button class="quiet ink">The working</button><button class="quiet ink">Snooze</button><button class="quiet ink">Dismiss</button><button class="quiet ink">Pin</button><button class="quiet ink">Select</button></div>
+              </div>
+            </article>
+          </div>
+
+          <!-- Call a vendor -->
+          <div class="section">
+            <div class="section-head"><span class="act-ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.9.6 2.8.7a2 2 0 0 1 1.8 2Z"/></svg></span><h2>Call a vendor</h2><span class="meta"><span class="num">1 entry</span><span class="num amt">— at stake · not carried</span></span></div>
+            <p class="act-say">These need a supplier on the phone, not a screen. It is the slowest act on this page and the one most often postponed, which is why it gets its own heading rather than a chip.</p>
+            <div class="double"><i></i><i></i></div>
+            <article class="entry">
+              <div class="gutter"><div class="num">03</div></div>
+              <div class="body">
+                <div class="stamps"><span class="micro">This month</span><span class="micro">risk</span><span class="notposted">not posted — below the floor</span></div>
+                <p class="obs">Purchasing is highly concentrated (HHI 4686 — effectively 2.1 vendors).</p>
+                <p class="do">Request quotes from one alternative vendor for your top category this month and move 10–20% of volume to establish the relationship before you need it.</p>
+                <div class="facts">
+                  <div class="fact"><div class="micro">Would change</div><div>Vendors</div></div>
+                  <div class="fact"><div class="micro">Whose hand</div><div>Yours, in Providers</div></div>
+                  <div class="fact"><div class="micro">Standing</div><div><span class="num">17 days</span><span class="basis">since it was first shown to you</span></div></div>
+                </div>
+                <div class="controls controls-do"><span class="micro ctl-label">Carry it out</span><button class="act ink">Compare vendors →</button><button class="dark" disabled>Make this a goal</button><button class="dark" disabled>See it in reports</button></div>
+                <div class="controls controls-file"><span class="micro ctl-label">File it</span><button class="quiet ink">The working</button><button class="quiet ink">Snooze</button><button class="quiet ink">Dismiss</button><button class="quiet ink">Pin</button><button class="quiet ink">Select</button></div>
+                <p class="said forward-note"><b style="color:var(--ink-2);font-weight:500">Make this a goal — held.</b> Vendor concentration is an HHI over your purchase book. The gateway holds goals on seven figures only, and a concentration index is not among them. <b style="color:var(--ink-2);font-weight:500">See it in reports — held.</b> No cutting answers this one: the concentration register (`/analytics/risk`) is not among the eleven analyses the reports sheet can lay down.</p>
+              </div>
+            </article>
+          </div>
+
+          <!-- Brief the floor -->
+          <div class="section">
+            <div class="section-head"><span class="act-ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 11 18-5v12L3 14v-3Z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg></span><h2>Brief the floor</h2><span class="meta"><span class="num">1 entry</span><span class="num amt">— at stake · not carried</span></span></div>
+            <p class="act-say">These are things people are told before service. A third of what this engine produces is a sentence for a pre-shift, and it was previously scattered across every other section.</p>
+            <div class="double"><i></i><i></i></div>
+            <article class="entry" data-focused="true">
+              <div class="gutter"><div class="num">04</div><span class="micro seal">new</span></div>
+              <div class="body">
+                <div class="stamps"><span class="micro">Tonight</span><span class="micro">sales</span></div>
+                <p class="obs">Tuesday sales came in 38% lower than your average Tuesday ($1,940 vs $3,120, over 6 past Tuesdays).</p>
+                <p class="do">Tonight: brief the floor on top-margin picks, run one by-the-glass feature, and pair your strongest server with the weakest section. A soft day is a staffing-and-suggestion problem before it's a demand problem.</p>
+                <div class="facts">
+                  <div class="fact"><div class="micro">Would change</div><div>Money</div></div>
+                  <div class="fact"><div class="micro">Whose hand</div><div>Yours, in Reports</div></div>
+                  <div class="fact"><div class="micro">Standing</div><div><span class="num">today</span><span class="basis">since it was first shown to you · about Tue 15 Sep</span></div></div>
+                </div>
+                <div class="controls controls-do"><span class="micro ctl-label">Carry it out</span><button class="act ink">Mark as briefed</button><button class="quiet ink">Make this a goal</button><button class="quiet ink">See it in reports</button><button class="quiet ink">Tuesday's account</button></div>
+                <div class="controls controls-file"><span class="micro ctl-label">File it</span><button class="quiet ink">The working</button><button class="quiet ink">Snooze</button><button class="quiet ink">Dismiss</button><button class="quiet ink">Pin</button><button class="quiet ink">Select</button></div>
+              </div>
+            </article>
+          </div>
+
+          <!-- Schedule it -->
+          <div class="section">
+            <div class="section-head"><span class="act-ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18M12 14v4M10 16h4"/></svg></span><h2>Schedule it</h2><span class="meta"><span class="num">1 entry</span><span class="num amt">— at stake · not carried</span></span></div>
+            <p class="act-say">These do not ask you to buy, price or say anything. They ask you to put something on a day. Nothing here is done until it is on the day-book, which is why every entry carries a control that opens the calendar.</p>
+            <div class="double"><i></i><i></i></div>
+            <article class="entry">
+              <div class="gutter"><div class="num">05</div></div>
+              <div class="body">
+                <div class="stamps"><span class="micro">This week</span><span class="micro">sales</span></div>
+                <p class="obs">Friday is reliably your strongest day; Tuesday the weakest.</p>
+                <p class="do">Move staff training, deliveries, and inventory counts to Tuesday; test a Tuesday-only offer (corkage-free, flight special) rather than discounting strong days.</p>
+                <div class="facts">
+                  <div class="fact"><div class="micro">Would change</div><div>Money</div></div>
+                  <div class="fact"><div class="micro">Whose hand</div><div>Yours, in Reports</div></div>
+                  <div class="fact"><div class="micro">Standing</div><div><span class="num">24 days</span><span class="basis">since it was first shown to you</span></div></div>
+                </div>
+                <div class="controls controls-do"><span class="micro ctl-label">Carry it out</span><button class="act ink">Open Reports →</button><button class="quiet ink">Put it on the day-book</button><button class="quiet ink">Make this a goal</button><button class="quiet ink">See it in reports</button></div>
+                <div class="controls controls-file"><span class="micro ctl-label">File it</span><button class="quiet ink">The working</button><button class="quiet ink">Snooze</button><button class="quiet ink">Dismiss</button><button class="quiet ink">Pin</button><button class="quiet ink">Select</button></div>
+              </div>
+            </article>
+          </div>
+
+          <!-- Change a rule — dark, as built -->
+          <div class="section dark-sect">
+            <div class="section-head"><span class="act-ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg></span><h2 class="dark-head">Change a rule</h2><span class="micro">nothing behind this yet</span></div>
+            <p class="act-say">No rule can be tuned from anywhere in the product: the thresholds are constants in the gateway's recommendations service, and the only feedback the engine takes from a manager is a dismissal — which silences a finding rather than moving a threshold.</p>
+            <div class="row"><button class="dark" disabled>Retune the rule</button><span class="said" style="margin:0">Not built: no rule store, no threshold history, and no proposal-and-seal.</span></div>
+          </div>
+        </section>
+      </div>
+
+      <div class="sr-only" role="status">Followed "Draft the PO" to Orders — recorded as acted.</div>
+
+      <footer class="foot"><span class="wordmark">Mudavym<i>.</i></span><p>Every entry is one deterministic rule against your own numbers. No model wrote them. The post carries what stands at 07:00, not what stands now.</p></footer>
+    </div>
+  </div></div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<section class="sk-sec desk-only">
+  <h2 class="sk-label">1b · A past day selected — Sun 13 Sep: the docket narrows, and the post that went out that morning is read from the send log</h2>
+  <p class="sk-note">The strip is the built house strip; selecting a day does what it does today — narrows the docket to the entries that touch it — and now also reads the <b>send log</b> for that morning. The log keeps which rules went out, how many the engine evaluated and when it read; it does not keep the mail's prose (the sender quotes the engine and stores provenance, not a copy). So the page lists the rules that went out, links each to the entry as it stands today, and says the words are not stored — never a redrawn letter presented as "as posted".</p>
+  <div class="frame"><div class="mudavym">
+    <div class="wrap" style="padding-top:18px">
+      <section class="ribbon" aria-labelledby="rb-h2">
+        <span class="micro ribbon-title" id="rb-h2">The days behind this book</span>
+        <div class="ds-head">
+          <div class="ds-months"><button class="ds-mo">‹</button><span class="ds-label">September 2026</span><button class="ds-mo">›</button></div>
+          <button class="ds-quiet">Show the whole book</button>
+        </div>
+        <div class="ds-strip">
+          <button class="ds-day" data-records="yes"><span class="ds-wd">TU</span><span class="ds-n">1</span><span class="ds-mark"></span></button>
+          <button class="ds-day" data-records="yes"><span class="ds-wd">WE</span><span class="ds-n">2</span><span class="ds-mark"></span></button>
+          <button class="ds-day" data-records="yes"><span class="ds-wd">TH</span><span class="ds-n">3</span><span class="ds-mark"></span></button>
+          <button class="ds-day" data-records="yes"><span class="ds-wd">FR</span><span class="ds-n">4</span><span class="ds-mark"></span></button>
+          <button class="ds-day" data-records="yes"><span class="ds-wd">SA</span><span class="ds-n">5</span><span class="ds-mark"><i class="bar bar-fired" style="height:4px"></i></span></button>
+          <button class="ds-day" data-records="yes"><span class="ds-wd">SU</span><span class="ds-n">6</span><span class="ds-mark"></span></button>
+          <button class="ds-day" data-records="yes"><span class="ds-wd">MO</span><span class="ds-n">7</span><span class="ds-mark"></span><i class="posted"></i></button>
+          <button class="ds-day" data-records="none" data-struck="true"><span class="ds-wd">TU</span><span class="ds-n">8</span><span class="ds-mark"></span><i class="posted"></i></button>
+          <button class="ds-day" data-records="yes"><span class="ds-wd">WE</span><span class="ds-n">9</span><span class="ds-mark"></span><i class="posted"></i></button>
+          <button class="ds-day" data-records="yes"><span class="ds-wd">TH</span><span class="ds-n">10</span><span class="ds-mark"></span><i class="posted"></i></button>
+          <button class="ds-day" data-records="yes"><span class="ds-wd">FR</span><span class="ds-n">11</span><span class="ds-mark"></span><i class="posted"></i></button>
+          <button class="ds-day" data-records="none"><span class="ds-wd">SA</span><span class="ds-n">12</span><span class="ds-mark"></span><i class="posted"></i></button>
+          <button class="ds-day" data-records="none" aria-pressed="true"><span class="ds-wd">SU</span><span class="ds-n">13</span><span class="ds-mark"><i class="bar bar-fired" style="height:4px"></i></span><i class="posted"></i></button>
+          <button class="ds-day" data-records="yes"><span class="ds-wd">MO</span><span class="ds-n">14</span><span class="ds-mark"></span><i class="posted"></i></button>
+          <button class="ds-day" data-records="yes"><span class="ds-wd">TU</span><span class="ds-n">15</span><span class="ds-mark"></span><i class="posted"></i></button>
+          <button class="ds-day" data-records="yes" data-today="true"><span class="ds-wd">WE</span><span class="ds-n">16</span><span class="ds-mark"><i class="bar bar-fired" style="height:4px"></i></span></button>
+          <button class="ds-day" data-records="future"><span class="ds-wd">TH</span><span class="ds-n">17</span><span class="ds-mark"></span></button>
+          <button class="ds-day" data-records="future"><span class="ds-wd">FR</span><span class="ds-n">18</span><span class="ds-mark"></span></button>
+          <button class="ds-day" data-records="future"><span class="ds-wd">SA</span><span class="ds-n">19</span><span class="ds-mark"></span></button>
+          <button class="ds-day" data-records="future"><span class="ds-wd">SU</span><span class="ds-n">20</span><span class="ds-mark"></span></button>
+          <button class="ds-day" data-records="future"><span class="ds-wd">MO</span><span class="ds-n">21</span><span class="ds-mark"></span></button>
+          <button class="ds-day" data-records="future"><span class="ds-wd">TU</span><span class="ds-n">22</span><span class="ds-mark"></span></button>
+          <button class="ds-day" data-records="future"><span class="ds-wd">WE</span><span class="ds-n">23</span><span class="ds-mark"></span></button>
+          <button class="ds-day" data-records="future"><span class="ds-wd">TH</span><span class="ds-n">24</span><span class="ds-mark"></span></button>
+          <button class="ds-day" data-records="future"><span class="ds-wd">FR</span><span class="ds-n">25</span><span class="ds-mark"></span></button>
+          <button class="ds-day" data-records="future"><span class="ds-wd">SA</span><span class="ds-n">26</span><span class="ds-mark"></span></button>
+          <button class="ds-day" data-records="future"><span class="ds-wd">SU</span><span class="ds-n">27</span><span class="ds-mark"></span></button>
+          <button class="ds-day" data-records="future"><span class="ds-wd">MO</span><span class="ds-n">28</span><span class="ds-mark"></span></button>
+          <button class="ds-day" data-records="future"><span class="ds-wd">TU</span><span class="ds-n">29</span><span class="ds-mark"></span></button>
+          <button class="ds-day" data-records="future"><span class="ds-wd">WE</span><span class="ds-n">30</span><span class="ds-mark"><i class="bar bar-due" style="height:8px"></i></span></button>
+        </div>
+        <div class="dayhead">
+          <h2>Sunday 13 September</h2>
+          <span class="micro">1 first fired · 0 falls due · no records — not a zero · a post went out at 07:00 to 1 member, 3 entries</span>
+          <p class="why">The docket below is narrowed to the 1 entry that touches this day — first fired on it, waking on it, or watched by a goal that falls due on it.</p>
+          <div class="row"><button class="quiet ink"><svg class="ico" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="m5 5 14 14"/></svg> Rule this day out of the analysis</button><span class="said" style="margin:0">A closure or an outage should not drag an average down.</span></div>
+        </div>
+      </section>
+
+      <div class="shell">
+        <aside>
+          <div class="micro">The register</div>
+          <p class="reg-note">every entry that touches the selected day</p>
+          <div class="reg-list">
+            <button class="reg" aria-pressed="true"><span>All</span><span class="num">1</span></button>
+            <button class="reg" aria-pressed="false"><span>Money</span><span class="num">0</span></button>
+            <button class="reg" aria-pressed="false"><span>Stock</span><span class="num">1</span></button>
+            <button class="reg" aria-pressed="false"><span>Vendors</span><span class="num">0</span></button>
+            <button class="reg" aria-pressed="false"><span>The floor</span><span class="num">0</span></button>
+          </div>
+        </aside>
+        <section>
+          <div class="cut delta">
+            <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><h3>The post that morning</h3><span class="window">Sun 13 Sep · sent 07:00:38 · to 1 member · 3 entries · 14 rules evaluated · engine read 06:59:51</span></div>
+            <div style="margin-top:8px">
+              <div class="line"><span class="k">carried</span><span class="v"><b>stockout_imminent</b> — first carried in this post. <a href="#">01 as it stands today</a> — 71% today, on hand 4; what it read on Sunday is not stored.</span></div>
+              <div class="line"><span class="k">carried</span><span class="v"><b>plowhorse_repricing</b> — <a href="#">02 as it stands today</a></span></div>
+              <div class="line"><span class="k">carried</span><span class="v"><b>weekday_gap</b> — <a href="#">05 as it stands today</a></span></div>
+              <div class="line"><span class="k">not carried</span><span class="v">11 other rules did not carry that morning (14 evaluated, 3 named above) — the log keeps only the carried rule keys, so whether any of the eleven stood below the floor or simply did not fire is not something it says.</span></div>
+            </div>
+            <p class="why" style="margin-top:8px">The send log keeps which rules went out, the count, the engine's read time and the outcome. It does not keep the mail's words — the sender quotes the engine and stores provenance, not a copy — so nothing here is drawn as the letter "as posted".</p>
+          </div>
+          <div class="section">
+            <div class="section-head"><span class="act-ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 17h4V5H2v12h3"/><path d="M20 17h2v-3.34a4 4 0 0 0-1.17-2.83L19 9h-5v8h1"/><circle cx="7.5" cy="17.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg></span><h2>Order it</h2><span class="meta"><span class="num">1 entry</span><span class="num amt">— at stake · not carried</span></span></div>
+            <div class="double"><i></i><i></i></div>
+            <article class="entry">
+              <div class="gutter"><div class="num">01</div></div>
+              <div class="body">
+                <div class="stamps"><span class="micro">Tonight</span><span class="micro">inventory</span><span class="micro">acted</span></div>
+                <p class="obs">Barolo Riserva 2019 has a 71% chance of stocking out before a 7-day replenishment (on hand: 4).</p>
+                <div class="facts">
+                  <div class="fact"><div class="micro">Would change</div><div>Stock</div></div>
+                  <div class="fact"><div class="micro">Whose hand</div><div>Yours, in Orders</div></div>
+                  <div class="fact"><div class="micro">Standing</div><div><span class="num">3 days</span><span class="basis">first shown Sun 13 Sep 06:57</span></div></div>
+                </div>
+                <div class="controls controls-do"><span class="micro ctl-label">Carry it out</span><button class="act ink">Draft the PO →</button><button class="dark" disabled>Make this a goal</button><button class="quiet ink">See it in reports</button></div>
+              </div>
+            </article>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div></div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<section class="sk-sec desk-only">
+  <h2 class="sk-label">2 · The post — the house's post in a side sheet (440, modal: focus trap, scroll lock, scrim) · a form that commits is a sheet, not a popover (ADR 0112, founder answer F2)</h2>
+  <p class="sk-note">Two writes, two doors, two sheets. <b>The house's post</b> changes three stored fields — on/off, the hour on the house's own clock, the urgency floor — the exact body of <span class="num">PUT /analytics/recommendations/:rid/digest</span> less <span class="num">recipientEmail</span>, which the sender never mails and the page therefore never asks for. The first draft of this round drew it as an anchored popover with no scrim. That is withdrawn: it is a <b>form that commits</b>, and ADR 0112 names exactly one anchored form — <span class="num">InviteTeamDialog</span>, on <span class="num">Popover modal</span> — with the founder's answer F2 recording that "a second <i>component</i> needing <span class="num">Popover modal</span> is still the signal that collapses the policy". So the house's post takes the shape the ADR already gives a form: a side sheet. The fork — sheet (drawn) · a second <span class="num">Popover modal</span> (needs 0112 superseded) · <span class="num">/settings</span> row 26 with a link (frame 2c) — is founder question 5. Every sheet on this page is drawn as the primitive builds it: modal by default (<span class="num">Sheet.tsx:291</span>), scrim at <span class="num">rgba(0,0,0,.5)</span> on charcoal (<span class="num">sheet.css:36-38, 70-80</span>).</p>
+  <div class="frame"><div class="mudavym stage" style="min-height:700px">
+    <div class="hdr">
+      <span class="mark"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M3 20 8.5 4l3.5 9"/><path d="M8 20l4-11 4 11 2.5-8L21 20"/></svg></span>
+      <span class="rule"></span><span class="pg">Recommendations</span>
+      <span class="search"><svg class="ico" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>Search the house, or type a command<kbd>⌘K</kbd></span>
+      <span class="right"><span class="bell"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10 21a2 2 0 0 0 4 0"/></svg><i>3</i></span><span class="house">Meyhouse Palo Alto</span><span class="av">AK</span></span>
+    </div>
+    <div class="wrap" style="max-width:none;padding-right:470px">
+      <header>
+        <div class="wordmark">Mudavym<i>.</i></div>
+        <h1 class="title">Recommendations</h1>
+        <p class="voice">14 rules were read. 5 entries stand, and they are five kinds of work — one of them is new since yesterday's letter.</p>
+        <p class="micro readat">Read at 6:58 AM · the post goes at 07:00</p>
+        <div class="double"><i></i><i></i></div>
+      </header>
+      <div class="shell" style="margin-top:16px">
+        <aside style="align-self:start">
+          <div class="micro">The post</div>
+          <div class="cut" style="margin-top:6px">
+            <h3>Daily at 07:00</h3>
+            <p class="window">Pacific · carries "this week" and above</p>
+            <dl>
+              <div class="fig"><dt>Your copy</dt><dd>daily</dd></div>
+              <div class="fig"><dt>Next</dt><dd>today 07:00</dd></div>
+              <div class="fig"><dt>Last</dt><dd>Tue 15 · sent · 4</dd></div>
+            </dl>
+            <div class="ctl"><button class="quiet ink">Your copy</button><button class="quiet ink" aria-pressed="true" aria-expanded="true">The house's post</button></div>
+          </div>
+        </aside>
+        <section style="max-width:560px">
+          <div class="cut delta">
+            <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><h3>Since yesterday's letter</h3><span class="window">since the last post, Tue 15 07:00</span></div>
+            <div style="margin-top:8px">
+              <div class="line"><span class="k seal">New</span><span class="v"><b>04 · Tuesday sales came in 38% lower than your average Tuesday</b> — first shown 06:58. It goes into this morning's post.</span></div>
+              <div class="line"><span class="k">Ruled off</span><span class="v"><b>$6,140 locked in inventory that has not moved in 90 days</b> — sealed Tue 15 18:12.</span></div>
+              <div class="line"><span class="k">Dismissed</span><span class="v"><b>Pairing promotion</b> — this rule entirely. <a href="#">Return it</a></span></div>
+              <div class="line"><span class="k">No record</span><span class="v"><b>Sat 12 · Sun 13 Sep</b> — no till rows for either day.</span></div>
+              <div class="line"><span class="k">Withheld</span><span class="v">dismissed: <b>1</b> · below the floor: <b>1</b> · sources that did not answer: <b>0</b></span></div>
+            </div>
+          </div>
+          <div class="section">
+            <div class="section-head"><h2>Order it</h2><span class="num">1 entry</span></div>
+            <div class="double"><i></i><i></i></div>
+            <article class="entry">
+              <div class="gutter"><div class="num">01</div></div>
+              <div class="body">
+                <div class="stamps"><span class="micro">Tonight</span><span class="micro">inventory</span><span class="micro">acted</span></div>
+                <p class="obs">Barolo Riserva 2019 has a 71% chance of stocking out before a 7-day replenishment (on hand: 4).</p>
+                <p class="do">Place the order today — reorder point is 12 bottles. If the vendor is slow, split the order across two vendors.</p>
+                <div class="controls controls-do"><span class="micro ctl-label">Carry it out</span><button class="act ink">Draft the PO →</button><button class="dark" disabled>Make this a goal</button><button class="quiet ink">See it in reports</button></div>
+                <div class="controls controls-file"><span class="micro ctl-label">File it</span><button class="quiet ink">The working</button><button class="quiet ink">Snooze</button><button class="quiet ink">Dismiss</button><button class="quiet ink">Pin</button><button class="quiet ink">Select</button></div>
+              </div>
+            </article>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <!-- the sheet: tuck, 300ms, 440 — modal by default (Sheet.tsx:291), so the scrim is painted: rgba(0,0,0,.5) on charcoal (ADR 0112; sheet.css:36-38, 70-80) -->
+    <div class="scrim" aria-hidden="true"></div>
+    <aside class="sheet" role="dialog" aria-modal="true" aria-label="The house's post">
+      <div class="sh-head"><div><span class="eyebrow">The house's post</span><h3>What every member's copy carries</h3></div><button class="close">Close</button></div>
+      <div class="sh-body">
+        <div class="blk">
+          <span class="micro">The three fields the house stores</span>
+          <div class="prow" style="margin-top:2px"><span class="l">Post it</span><select><option>Daily</option><option>Off — keep the page, send nothing</option></select></div>
+          <div class="prow"><span class="l">At</span><select><option>07:00</option><option>06:00</option><option>08:00</option><option>09:00</option></select></div>
+          <div class="prow"><span class="l">Clock</span><span class="plain">America/Los_Angeles — the house's zone. A house with no zone is read in UTC, and the mail says so.</span></div>
+          <div class="prow"><span class="l">Floor</span><select><option>This week and above</option><option>Now only</option><option>Everything standing</option></select></div>
+          <p class="why">Today the floor keeps 03 (this month) off the post; "Now only" would also drop 02 and 05.</p>
+        </div>
+        <div class="blk">
+          <span class="micro">What saving does</span>
+          <p class="plain" style="margin:0">Changes what the next post carries — this morning's, if it is saved before 07:00. It sends nothing now and it subscribes nobody: each member asks for their own copy, and a copy goes only to a member who asked.</p>
+        </div>
+        <div class="blk">
+          <span class="micro">Who has a copy</span>
+          <p class="plain" style="margin:0">Not listed. A member sees their own copy only; the house's post does not name its subscribers.</p>
+        </div>
+        <div class="blk row"><button class="act ink">Save the post</button><button class="quiet ink" style="border-color:transparent;color:var(--ink-4)">Cancel</button></div>
+      </div>
+      <div class="sh-foot">Writes <span class="num" style="font-size:10px">recommendation_digest_prefs</span> for this house only: enabled, hour, floor. The address column the row also carries is never written from here and never mailed.</div>
+    </aside>
+  </div></div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<section class="sk-sec desk-only">
+  <h2 class="sk-label">2b · Your copy — a side sheet (440, modal, scrim) with the cadence, the sender's blockers as a checklist, the last send, and the mail as buildDigestLetter lays it out, string for string — captions drawn at --ink-4 where the template ships ink3, a nit filed in the README — on paper</h2>
+  <p class="sk-note"><b>Your copy</b> is the person's subscription — <span class="num">PUT /recommendations/digest/subscription</span>, daily or weekly with an ISO weekday — and the GET beside it returns every reason a copy would not reach you, in words; the sheet prints that list as a checklist. The mail block is the template's output for this house, string for string: the lead sentence, and for every entry the urgency word, the observation, <b>Do</b>, <b>Why</b> (unconditional — <span class="num">rationale: string</span> is not optional, printed at <span class="num">recommendation-digest.template.ts:190</span> text / <span class="num">:217</span> html), <b>From rule</b> with the category and the standing date, the why-you-get-this line, the one-click stop. Nothing is shortened. The date reads as Node's <span class="num">Intl</span> prints it ("16 September 2026 at 06:58"). Saving either sheet sends nothing now, and the foot says a preview is not a post.</p>
+  <div class="frame"><div class="mudavym stage" style="min-height:2100px">
+    <div class="hdr">
+      <span class="mark"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M3 20 8.5 4l3.5 9"/><path d="M8 20l4-11 4 11 2.5-8L21 20"/></svg></span>
+      <span class="rule"></span><span class="pg">Recommendations</span>
+      <span class="search"><svg class="ico" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>Search the house, or type a command<kbd>⌘K</kbd></span>
+      <span class="right"><span class="bell"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10 21a2 2 0 0 0 4 0"/></svg><i>3</i></span><span class="house">Meyhouse Palo Alto</span><span class="av">AK</span></span>
+    </div>
+    <div class="wrap" style="max-width:none;padding-right:470px">
+      <header>
+        <div class="wordmark">Mudavym<i>.</i></div>
+        <h1 class="title">Recommendations</h1>
+        <p class="voice">14 rules were read. 5 entries stand, and they are five kinds of work — one of them is new since yesterday's letter.</p>
+        <p class="micro readat">Read at 6:58 AM · the post goes at 07:00</p>
+        <div class="double"><i></i><i></i></div>
+      </header>
+      <div class="shell" style="margin-top:16px">
+        <aside style="align-self:start">
+          <div class="micro">The post</div>
+          <div class="cut" style="margin-top:6px">
+            <h3>Daily at 07:00</h3>
+            <p class="window">Pacific · carries "this week" and above</p>
+            <dl>
+              <div class="fig"><dt>Your copy</dt><dd>daily</dd></div>
+              <div class="fig"><dt>Next</dt><dd>today 07:00</dd></div>
+              <div class="fig"><dt>Last</dt><dd>Tue 15 · sent · 4</dd></div>
+            </dl>
+            <div class="ctl"><button class="quiet ink" aria-pressed="true" aria-expanded="true">Your copy</button><button class="quiet ink">The house's post</button></div>
+          </div>
+        </aside>
+        <section style="max-width:560px">
+          <div class="cut delta">
+            <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><h3>Since yesterday's letter</h3><span class="window">since the last post, Tue 15 07:00</span></div>
+            <div style="margin-top:8px">
+              <div class="line"><span class="k seal">New</span><span class="v"><b>04 · Tuesday sales came in 38% lower than your average Tuesday</b> — first shown 06:58. It goes into this morning's post.</span></div>
+              <div class="line"><span class="k">Ruled off</span><span class="v"><b>$6,140 locked in inventory that has not moved in 90 days</b> — sealed Tue 15 18:12.</span></div>
+              <div class="line"><span class="k">Dismissed</span><span class="v"><b>Pairing promotion</b> — this rule entirely. <a href="#">Return it</a></span></div>
+              <div class="line"><span class="k">No record</span><span class="v"><b>Sat 12 · Sun 13 Sep</b> — no till rows for either day.</span></div>
+              <div class="line"><span class="k">Withheld</span><span class="v">dismissed: <b>1</b> · below the floor: <b>1</b> · sources that did not answer: <b>0</b></span></div>
+            </div>
+          </div>
+          <div class="section">
+            <div class="section-head"><h2>Order it</h2><span class="num">1 entry</span></div>
+            <div class="double"><i></i><i></i></div>
+            <article class="entry">
+              <div class="gutter"><div class="num">01</div></div>
+              <div class="body">
+                <div class="stamps"><span class="micro">Tonight</span><span class="micro">inventory</span><span class="micro">acted</span></div>
+                <p class="obs">Barolo Riserva 2019 has a 71% chance of stocking out before a 7-day replenishment (on hand: 4).</p>
+                <p class="do">Place the order today — reorder point is 12 bottles. If the vendor is slow, split the order across two vendors.</p>
+                <div class="controls controls-do"><span class="micro ctl-label">Carry it out</span><button class="act ink">Draft the PO →</button><button class="dark" disabled>Make this a goal</button><button class="quiet ink">See it in reports</button></div>
+                <div class="controls controls-file"><span class="micro ctl-label">File it</span><button class="quiet ink">The working</button><button class="quiet ink">Snooze</button><button class="quiet ink">Dismiss</button><button class="quiet ink">Pin</button><button class="quiet ink">Select</button></div>
+              </div>
+            </article>
+          </div>
+          <div class="section">
+            <div class="section-head"><h2>Price it</h2><span class="num">1 entry</span></div>
+            <div class="double"><i></i><i></i></div>
+            <article class="entry">
+              <div class="gutter"><div class="num">02</div></div>
+              <div class="body">
+                <div class="stamps"><span class="micro">This week</span><span class="micro">efficiency</span></div>
+                <p class="obs">3 wines sell fast but earn below-median margin (top: Sancerre Les Baronnes 2023).</p>
+                <p class="do">Raise those prices 5–8% or renegotiate cost on the next PO — volume holds on small moves for high-velocity wines.</p>
+                <div class="controls controls-do"><span class="micro ctl-label">Carry it out</span><button class="act ink">Open the menu report →</button><button class="quiet ink">Make this a goal</button><button class="quiet ink">See it in reports</button></div>
+                <div class="controls controls-file"><span class="micro ctl-label">File it</span><button class="quiet ink">The working</button><button class="quiet ink">Snooze</button><button class="quiet ink">Dismiss</button><button class="quiet ink">Pin</button><button class="quiet ink">Select</button></div>
+              </div>
+            </article>
+          </div>
+          <div class="section">
+            <div class="section-head"><h2>Call a vendor</h2><span class="num">1 entry</span></div>
+            <div class="double"><i></i><i></i></div>
+            <article class="entry">
+              <div class="gutter"><div class="num">03</div></div>
+              <div class="body">
+                <div class="stamps"><span class="micro">This month</span><span class="micro">risk</span><span class="notposted">not posted — below the floor</span></div>
+                <p class="obs">Purchasing is highly concentrated (HHI 4686 — effectively 2.1 vendors).</p>
+                <p class="do">Request quotes from one alternative vendor for your top category this month and move 10–20% of volume to establish the relationship before you need it.</p>
+                <div class="controls controls-do"><span class="micro ctl-label">Carry it out</span><button class="act ink">Compare vendors →</button><button class="dark" disabled>Make this a goal</button><button class="dark" disabled>See it in reports</button></div>
+                <div class="controls controls-file"><span class="micro ctl-label">File it</span><button class="quiet ink">The working</button><button class="quiet ink">Snooze</button><button class="quiet ink">Dismiss</button><button class="quiet ink">Pin</button><button class="quiet ink">Select</button></div>
+              </div>
+            </article>
+          </div>
+          <div class="section">
+            <div class="section-head"><h2>Brief the floor</h2><span class="num">1 entry</span></div>
+            <div class="double"><i></i><i></i></div>
+            <article class="entry">
+              <div class="gutter"><div class="num">04</div><span class="micro seal">new</span></div>
+              <div class="body">
+                <div class="stamps"><span class="micro">Tonight</span><span class="micro">sales</span></div>
+                <p class="obs">Tuesday sales came in 38% lower than your average Tuesday ($1,940 vs $3,120, over 6 past Tuesdays).</p>
+                <p class="do">Tonight: brief the floor on top-margin picks, run one by-the-glass feature, and pair your strongest server with the weakest section. A soft day is a staffing-and-suggestion problem before it's a demand problem.</p>
+                <div class="controls controls-do"><span class="micro ctl-label">Carry it out</span><button class="act ink">Mark as briefed</button><button class="quiet ink">Make this a goal</button><button class="quiet ink">See it in reports</button><button class="quiet ink">Tuesday's account</button></div>
+                <div class="controls controls-file"><span class="micro ctl-label">File it</span><button class="quiet ink">The working</button><button class="quiet ink">Snooze</button><button class="quiet ink">Dismiss</button><button class="quiet ink">Pin</button><button class="quiet ink">Select</button></div>
+              </div>
+            </article>
+          </div>
+          <div class="section">
+            <div class="section-head"><h2>Schedule it</h2><span class="num">1 entry</span></div>
+            <div class="double"><i></i><i></i></div>
+            <article class="entry">
+              <div class="gutter"><div class="num">05</div></div>
+              <div class="body">
+                <div class="stamps"><span class="micro">This week</span><span class="micro">sales</span></div>
+                <p class="obs">Friday is reliably your strongest day; Tuesday the weakest.</p>
+                <p class="do">Move staff training, deliveries, and inventory counts to Tuesday; test a Tuesday-only offer (corkage-free, flight special) rather than discounting strong days.</p>
+                <div class="controls controls-do"><span class="micro ctl-label">Carry it out</span><button class="act ink">Open Reports →</button><button class="quiet ink">Put it on the day-book</button><button class="quiet ink">Make this a goal</button><button class="quiet ink">See it in reports</button></div>
+                <div class="controls controls-file"><span class="micro ctl-label">File it</span><button class="quiet ink">The working</button><button class="quiet ink">Snooze</button><button class="quiet ink">Dismiss</button><button class="quiet ink">Pin</button><button class="quiet ink">Select</button></div>
+              </div>
+            </article>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <!-- the sheet: tuck, 300ms, 440 — modal by default (Sheet.tsx:291), so the scrim is painted: rgba(0,0,0,.5) on charcoal (ADR 0112; sheet.css:36-38, 70-80) -->
+    <div class="scrim" aria-hidden="true"></div>
+    <aside class="sheet" role="dialog" aria-modal="true" aria-label="Your copy of the post">
+      <div class="sh-head"><div><span class="eyebrow">Your copy of the post</span><h3>Wednesday's post, to you</h3></div><button class="close">Close</button></div>
+      <div class="sh-body">
+        <div class="blk">
+          <span class="micro">Cadence</span>
+          <div class="row" style="margin-top:4px"><button class="quiet ink" aria-pressed="true">Daily</button><button class="quiet ink">Weekly</button><select disabled style="font:inherit;font-size:11.5px;color:var(--ink-4);background:var(--paper-0);border:1px dashed var(--paper-2);border-radius:7px;padding:4px 8px"><option>on a weekday…</option></select></div>
+          <p class="why">Since Mon 7 Sep. A weekly copy needs a weekday; a daily one takes none. Changing it writes nothing if the choice is unchanged.</p>
+        </div>
+        <div class="blk">
+          <span class="micro">Will it reach you?</span>
+          <p class="plain" style="margin:0"><b style="color:var(--ink-1);font-weight:500">Yes — next today, 07:00 Pacific, in two minutes.</b></p>
+          <ul class="check">
+            <li><i>✓</i><span>The house runs a post — daily at 07:00, floor "this week"</span></li>
+            <li><i>✓</i><span>You asked for it — daily, since Mon 7 Sep</span></li>
+            <li><i>✓</i><span>You are an active member of this house</span></li>
+            <li><i>✓</i><span>Your email notifications are on</span></li>
+            <li><i>✓</i><span>Your "ai" notification category is on · quiet hours off</span></li>
+          </ul>
+          <p class="why">Every line is a reason the sender checks before it mails. When one fails, it is printed here in the sender's own words rather than as a silent no.</p>
+        </div>
+        <div class="blk">
+          <span class="micro">Last</span>
+          <p class="plain" style="margin:0">Tue 15 Sep, due 07:00 · <b style="color:var(--ink-1);font-weight:500">sent</b> 07:00:41 · 4 entries. Whether it was opened is not recorded.</p>
+        </div>
+        <div class="blk">
+          <span class="micro">The mail, as it will read</span>
+          <div class="mudavym mail" data-ground="paper">
+            <div class="env"><span class="l">from</span><span>Mudavym &lt;the account's sender&gt;</span><span class="l">to</span><span>aldemir@meyhouse.com</span><span class="l">subject</span><span>Mudavym: 4 recommendations standing at Meyhouse Palo Alto</span></div>
+            <div class="mbody"><div class="card">
+              <div class="wm">Mudavym</div>
+              <h2>Recommendations digest — Meyhouse Palo Alto</h2>
+              <p class="lead">4 entries stand in Meyhouse Palo Alto's recommendations at or above "This week", as the engine read them on 16 September 2026 at 06:58 (14 rules evaluated). The sentences below are the engine's own; nothing in this letter was recomputed for it.</p>
+              <div class="mentry"><p class="u">Now</p><p class="o">Barolo Riserva 2019 has a 71% chance of stocking out before a 7-day replenishment (on hand: 4).</p><p class="dw"><strong>Do:</strong> Place the order today — reorder point is 12 bottles. If the vendor is slow, split the order across two vendors.</p><p class="dw why"><strong>Why:</strong> Stockout probability is computed from this wine's own demand variance; above 40%, waiting for the weekly order cycle usually means an empty slot on the list.</p><p class="from">From rule <code>stockout_imminent</code> · inventory · standing since 13 September 2026 · <a href="#">Open it in Mudavym</a></p></div>
+              <div class="mentry"><p class="u">Now</p><p class="o">Tuesday sales came in 38% lower than your average Tuesday ($1,940 vs $3,120, over 6 past Tuesdays).</p><p class="dw"><strong>Do:</strong> Tonight: brief the floor on top-margin picks, run one by-the-glass feature, and pair your strongest server with the weakest section. A soft day is a staffing-and-suggestion problem before it's a demand problem.</p><p class="dw why"><strong>Why:</strong> Same-weekday baselines remove day-of-week mix, so the gap is execution or traffic — the levers you control same-day are selling behavior and features.</p><p class="from">From rule <code>sales_below_weekday_baseline</code> · sales · standing since 16 September 2026 · <a href="#">Open it in Mudavym</a></p></div>
+              <div class="mentry"><p class="u">This week</p><p class="o">3 wines sell fast but earn below-median margin (top: Sancerre Les Baronnes 2023).</p><p class="dw"><strong>Do:</strong> Raise those prices 5–8% or renegotiate cost on the next PO — volume holds on small moves for high-velocity wines.</p><p class="dw why"><strong>Why:</strong> Menu-engineering plowhorses are proven demand with underpriced margin; small price moves on high-velocity items compound faster than any new listing.</p><p class="from">From rule <code>plowhorse_repricing</code> · efficiency · standing since 5 September 2026 · <a href="#">Open it in Mudavym</a></p></div>
+              <div class="mentry"><p class="u">This week</p><p class="o">Friday is reliably your strongest day; Tuesday the weakest.</p><p class="dw"><strong>Do:</strong> Move staff training, deliveries, and inventory counts to Tuesday; test a Tuesday-only offer (corkage-free, flight special) rather than discounting strong days.</p><p class="dw why"><strong>Why:</strong> Weekday seasonality is structural — schedule costs into the trough and promotions where marginal demand is elastic, never where the room fills itself.</p><p class="from">From rule <code>weekday_gap</code> · sales · standing since 23 August 2026 · <a href="#">Open it in Mudavym</a></p></div>
+              <p class="fine">You get this every day at 07:00 America/Los_Angeles because you asked for it on 7 September 2026. Stopping it takes one click and no sign-in, and stops only this digest from this house. <a href="#">Stop this digest</a><br>Questions: <a href="#">support@mudavym.com</a></p>
+            </div></div>
+          </div>
+        </div>
+        <div class="blk row"><button class="quiet ink">Stop my copy</button><span class="said" style="margin:0">Stops your copy only. The house's post and everyone else's copy stay as they are.</span></div>
+      </div>
+      <div class="sh-foot">A preview is not a post. What arrives at 07:00 is what stands at 07:00; this reads what stands at 06:58, through the sender's own template. The last post that actually went out is the record above.</div>
+    </aside>
+  </div></div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<section class="sk-sec desk-only">
+  <h2 class="sk-label">2c · The alternative for founder question 5 — the rail reads the house's post; the write lives on /settings row 26 (sketch 109), one link away</h2>
+  <p class="sk-note">Same cutting, one door fewer. The rail still shows the house's hour, floor and clock — read from <span class="num">house</span> on <span class="num">GET /recommendations/digest/subscription</span> — and <b>Your copy</b> still opens its sheet here; only the house-level edit moves to Settings, where sketch 109 already draws the digest row. Fewer overlays on this page, no second form-sheet, and the house's post edited beside the house's other settings. The cost is one navigation for a rare edit, and the page no longer controls everything it is made from.</p>
+  <div class="frame" style="width:360px;max-width:100%"><div class="mudavym"><div class="wrap" style="padding:18px 16px 20px">
+    <div class="micro">The post</div>
+    <div class="cut" style="margin-top:6px">
+      <h3>Daily at 07:00</h3>
+      <p class="window">Pacific · carries "this week" and above</p>
+      <dl>
+        <div class="fig"><dt>Your copy</dt><dd>daily</dd></div>
+        <div class="fig"><dt>Next</dt><dd>today 07:00</dd></div>
+        <div class="fig"><dt>Last</dt><dd>Tue 15 · sent · 4</dd></div>
+      </dl>
+      <p class="why">4 of the 5 standing would be carried; 03 sits below the floor. Whether a post was opened is not recorded.</p>
+      <div class="ctl"><button class="quiet ink">Your copy</button></div>
+      <p class="why" style="margin-top:8px">The house's post — its hour and floor — is set in <a href="#" style="color:var(--seal-deep)">Settings → Recommendations digest</a>.</p>
+    </div>
+  </div></div></div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<section class="sk-sec desk-only">
+  <h2 class="sk-label">3 · A subject's account — a side sheet (440, modal, scrim) from entry 04's Tuesday door</h2>
+  <p class="sk-note">Only two rules carry a subject today, so the account door appears only where the gateway can key it — entry 04's <b>Tuesday</b>. The sheet is one object: what stands against it, what was done, what is silenced for it (and at what scope), what the stored feed has written about it, and what the catalogue could tell. An entry that names its subject only inside its sentence (05 names Tuesday) is <b>not</b> counted on the account — a text match is not a key. The sheet is drawn as the primitive builds it: modal, with the charcoal scrim behind it (<span class="num">Sheet.tsx:291</span>, <span class="num">sheet.css:36-38</span>).</p>
+  <div class="frame"><div class="mudavym stage" style="min-height:920px">
+    <div class="wrap" style="max-width:none;padding-right:470px">
+      <div class="section" style="max-width:640px;margin-top:8px">
+        <div class="section-head"><h2>Brief the floor</h2><span class="num">1 entry</span></div>
+        <div class="double"><i></i><i></i></div>
+        <article class="entry">
+          <div class="gutter"><div class="num">04</div><span class="micro seal">new</span></div>
+          <div class="body">
+            <div class="stamps"><span class="micro">Tonight</span><span class="micro">sales</span></div>
+            <p class="obs">Tuesday sales came in 38% lower than your average Tuesday ($1,940 vs $3,120, over 6 past Tuesdays).</p>
+            <p class="do">Tonight: brief the floor on top-margin picks, run one by-the-glass feature, and pair your strongest server with the weakest section. A soft day is a staffing-and-suggestion problem before it's a demand problem.</p>
+            <div class="facts">
+              <div class="fact"><div class="micro">Would change</div><div>Money</div></div>
+              <div class="fact"><div class="micro">Whose hand</div><div>Yours, in Reports</div></div>
+              <div class="fact"><div class="micro">Standing</div><div><span class="num">today</span><span class="basis">since it was first shown to you · about Tue 15 Sep</span></div></div>
+            </div>
+            <div class="controls controls-do"><span class="micro ctl-label">Carry it out</span><button class="act ink">Mark as briefed</button><button class="quiet ink">Make this a goal</button><button class="quiet ink">See it in reports</button><button class="quiet ink" aria-pressed="true" aria-expanded="true">Tuesday's account</button></div>
+            <div class="controls controls-file"><span class="micro ctl-label">File it</span><button class="quiet ink">The working</button><button class="quiet ink">Snooze</button><button class="quiet ink">Dismiss</button><button class="quiet ink">Pin</button><button class="quiet ink">Select</button></div>
+          </div>
+        </article>
+      </div>
+    </div>
+
+    <!-- the account sheet: one object, 440, tuck — modal by default (Sheet.tsx:291), scrim rgba(0,0,0,.5) on charcoal (ADR 0112; sheet.css:36-38, 70-80) -->
+    <div class="scrim" aria-hidden="true"></div>
+    <aside class="sheet" role="dialog" aria-modal="true" aria-label="Tuesday's account">
+      <div class="sh-head"><div><span class="eyebrow">A subject's account · day of week</span><h3>Tuesday</h3></div><button class="close">Close</button></div>
+      <div class="sh-body">
+        <div class="blk"><span class="micro">Standing against it · 1</span>
+          <ul class="acct"><li><span class="d">04 · today</span><span><b>Tuesday sales came in 38% lower than your average Tuesday</b> ($1,940 vs $3,120, over 6 past Tuesdays). Brief the floor tonight. <a href="#" style="color:var(--seal-deep)">Open the entry</a></span></li></ul>
+        </div>
+        <div class="blk"><span class="micro">Done · 2</span>
+          <ul class="acct">
+            <li><span class="d">Wed 9 Sep</span><span>This finding for <b>Tue 8 Sep</b> dismissed — "not relevant" (closed that day).</span></li>
+            <li><span class="d">Wed 9 Sep</span><span><b>Tue 8 Sep</b> ruled out of the analysis — "Closed". Struck on the strip; count it again from there.</span></li>
+          </ul>
+        </div>
+        <div class="blk"><span class="micro">Silenced for it</span>
+          <p class="plain" style="margin:0">Nothing at the subject scope — <b style="color:var(--ink-1);font-weight:500">every Tuesday</b> still reports. One finding-scope silence stands, for Tue 8 Sep, above.</p>
+        </div>
+        <div class="blk"><span class="micro">Written recently · the stored feed</span>
+          <ul class="acct">
+            <li><span class="d">Wed 16 · 06:00</span><span>Tuesday sales came in 38% lower than your average Tuesday ($1,940 vs $3,120, over 6 past Tuesdays).</span></li>
+          </ul>
+          <p class="why" style="margin:6px 0 0">One row, not a history: every recompute deletes this house's prior rows for the category before it writes the new ones (<span class="num">insight-generator.service.ts:354-360</span>), so the feed keeps only what it wrote most recently — not what it wrote each week.</p>
+        </div>
+        <div class="blk"><span class="micro">Can be told</span>
+          <p class="plain" style="margin:0">48 types are catalogued for a day of the week; <b style="color:var(--ink-1);font-weight:500">none is built</b>. The baseline that wrote 04 is filed under Overall (<span class="num" style="font-size:10.5px">overall.revenue.vs_same_weekday</span>). <a href="#" style="color:var(--seal-deep)">The catalogue, by day of week</a></p>
+        </div>
+        <div class="blk"><span class="micro">Not on this account</span>
+          <p class="why" style="margin:0">05 names Tuesday inside its sentence and carries no subject, so it is not counted here. A text match is not a key.</p>
+        </div>
+        <div class="blk row"><button class="quiet ink">Rule a Tuesday out</button><button class="quiet ink">Silence this rule for every Tuesday</button></div>
+      </div>
+      <div class="sh-foot">An account exists only where a rule carries a subject. Today that is two rules; the others name their subject inside the sentence, and no account can be opened from a sentence.</div>
+    </aside>
+  </div></div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<section class="sk-sec desk-only">
+  <h2 class="sk-label">3b · The dismissal with a real day to exclude (inline, no overlay) · the acts and their receipts, each as it renders under the entry it belongs to</h2>
+  <p class="sk-note">The dismissal is drawn open on 04 with the day exclusion <b>live</b>, because this entry names a day; it is inline in the entry, as built (<span class="num">Entry.tsx:957-1058</span>), so nothing is dimmed. Below it, every act's receipt. The dismiss receipt's first sentence is <span class="num">dismissalSentence</span>'s output for the stored key, character for character — including the lowercase <span class="num">tuesday</span> the slug carries (<span class="num">rec-format.ts:262-271</span>; a nit for the page, noted in the README); the exclusion sentence after it is the receipt's own, because the function reads the key and knows nothing of <span class="num">analytics_day_exclusions</span>. The built page's <span class="num">role="status"</span> note at the foot is kept as a visually hidden live region so the announcement survives; on the surface the receipt replaces it, and one act has one Undo.</p>
+  <div class="frame"><div class="mudavym">
+    <div class="wrap" style="max-width:none">
+      <div class="section" style="max-width:640px;margin-top:8px">
+        <div class="section-head"><h2>Brief the floor</h2><span class="num">1 entry</span></div>
+        <div class="double"><i></i><i></i></div>
+        <article class="entry">
+          <div class="gutter"><div class="num">04</div><span class="micro seal">new</span></div>
+          <div class="body">
+            <div class="stamps"><span class="micro">Tonight</span><span class="micro">sales</span></div>
+            <p class="obs">Tuesday sales came in 38% lower than your average Tuesday ($1,940 vs $3,120, over 6 past Tuesdays).</p>
+            <p class="do">Tonight: brief the floor on top-margin picks, run one by-the-glass feature, and pair your strongest server with the weakest section. A soft day is a staffing-and-suggestion problem before it's a demand problem.</p>
+            <div class="controls controls-do"><span class="micro ctl-label">Carry it out</span><button class="act ink">Mark as briefed</button><button class="quiet ink">Make this a goal</button><button class="quiet ink">See it in reports</button><button class="quiet ink">Tuesday's account</button></div>
+            <div class="controls controls-file"><span class="micro ctl-label">File it</span><button class="quiet ink">The working</button><button class="quiet ink">Snooze</button><button class="quiet ink" aria-pressed="true">Dismiss</button><button class="quiet ink">Pin</button><button class="quiet ink">Select</button></div>
+            <!-- the dismissal — inline, no motion, no overlay -->
+            <div class="menu dsheet" role="group" aria-label="Dismiss this entry">
+              <p class="sheet-title">Dismiss it — and never show it again</p>
+              <div class="sheet-block"><span class="micro">Why are you dismissing it?</span><div class="row"><button class="quiet ink">Not relevant</button><button class="quiet ink" aria-pressed="true">Already handled</button><button class="quiet ink">I disagree</button><button class="quiet ink">Not right now</button></div></div>
+              <div class="sheet-block"><span class="micro">Never show me…</span>
+                <div class="scopes" role="radiogroup">
+                  <label class="scope"><input type="radio" name="sc3" checked><span>This exact finding — Tue 15 Sep</span></label>
+                  <label class="scope"><input type="radio" name="sc3"><span>Every Tuesday, for this rule</span></label>
+                  <label class="scope"><input type="radio" name="sc3"><span>This rule entirely, for this restaurant</span></label>
+                </div>
+              </div>
+              <div class="sheet-block">
+                <label class="scope"><input type="checkbox" checked><span>Also exclude Tue 15 Sep from the analysis</span></label>
+                <p class="why">A closure or an outage should not drag the average down. Excluding the day stops its numbers counting toward every baseline, on this page and everywhere else.</p>
+              </div>
+              <p class="said sheet-promise">After this you will not see <b>this one finding about Tuesday on Tue 15 Sep — the same rule will still be read on every other day</b>, and Tue 15 Sep stops counting toward every baseline. Undo it from the History leaf.</p>
+              <div class="row"><button class="act ink">Dismiss it</button><button class="quiet ink">Keep it standing</button></div>
+            </div>
+          </div>
+        </article>
+      </div>
+
+      <div class="section" style="max-width:640px;margin-top:26px">
+        <div class="section-head"><h2>The acts, and their receipts</h2><span class="micro">what the page writes, said under the entry it belongs to</span></div>
+        <div class="double"><i></i><i></i></div>
+        <div class="receipt"><span class="stamp">Act · 06:59</span><span class="what">Followed <b>Draft the PO</b> to Orders — recorded as acted. The entry stands until you rule it off.<a href="#">Undo</a></span></div>
+        <div class="receipt"><span class="stamp">Dismiss · 07:02</span><span class="what">Dismissed, "already handled". Silenced: this one finding about tuesday on Tue 15 Sep. The rule still reads every other day. <b>Tue 15 Sep</b> no longer counts toward any average — struck on the strip, and returnable there.<a href="#">Undo</a><a href="#">History</a><br><span class="key">recommendation_actions · sales_below_weekday_baseline#tuesday#d:2026-09-15 · analytics_day_exclusions · 2026-09-15</span></span></div>
+        <div class="receipt"><span class="stamp">Snooze · 07:03</span><span class="what">Snoozed until tomorrow — wakes <b>Thu 17 Sep 07:03</b>, marked on the strip as falling due. It leaves the letter and the post until then.<a href="#">Undo</a></span></div>
+        <div class="receipt sealed"><span class="stamp">Rule off · 07:05</span><span class="what"><span class="seal"><span class="die">M</span>Ruled off, and sealed.</span> The entry is kept as it stood on the Ruled-off leaf. No outcome is measured yet — "what changed after" is not a figure this page has, and it says so rather than counting it.<a href="#">Return it</a></span></div>
+        <div class="receipt"><span class="stamp">Goal · 07:06</span><span class="what">A goal is held on <b>Wine revenue, at least $3,000 by Wed 23 Sep</b>, watching this rule. The entry now carries a <span class="micro seal" style="font-size:8.5px">watched</span> stamp; progress is read in Reports.<a href="#">Open the goal</a></span></div>
+        <div class="receipt"><span class="stamp">Day-book · 07:07</span><span class="what">Opened the calendar with a draft for <b>Tue 22 Sep</b> — title, type and note filled in. <b>Nothing was written on this page</b>: whether the draft was saved is the calendar's record, and the entry stands until it is ruled off.</span></div>
+        <div class="receipt"><span class="stamp">Pin · 07:08</span><span class="what">Pinned to the top of the book. It leads the post too — pinned entries go first, and the letter carries at most ten.<a href="#">Unpin</a></span></div>
+      </div>
+    </div>
+  </div></div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<section class="sk-sec desk-only">
+  <h2 class="sk-label">4 · The Turkish house — Sim Vanilla Kaleiçi, Antalya (TRY · Europe/Istanbul) — no till, no post set up, nobody subscribed</h2>
+  <p class="sk-note">Where the second house changes the page: two rules read POS-check data directly (the server spread and the pairing, <span class="num">recommendations.service.ts:310-328</span>, "fire only with POS check data") and no till is connected, so neither can fire; three more are answered independently of it — vendor concentration and the purchasing-spend rule (the two entries standing below) and revenue concentration (till-independent too, just not standing today, for its own threshold's reasons). Every other rule reads the same consumption log only the till fills (demand, reorder science, dead stock, both menu-engineering rules — <span class="num">analytics.service.ts:204-226</span>), so their silence here is no cleaner a reading either — the aside and the delta's <b>Withheld</b> line say so for the whole set, not only the two checks rules. <span class="num">dead_stock_capital</span> is left out of the docket rather than drawn: its figure is that same consumption join, null with no till, so this house has no honest number for it — the docket stands at <b>2</b> entries, renumbered, not 3. The post has never been set up (no preference row), so the rail's cutting is the honest "not set" state with one primary act; and the money inside the sentences is drawn as <b>₺184.500</b> though <span class="num">recommendations.service.ts:211,299</span> print <span class="num">$</span> today — a costed change, named in the README, not existing behaviour. The rail's built "days with no records were never counted as zero" string still prints as the page prints it, though frame 1's fix says the opposite holds for this engine — a nit for the page, noted in the README, not corrected here. Dates print as the built page prints them; the product has no Turkish UI and the sketch does not pretend one.</p>
+  <div class="frame"><div class="mudavym">
+    <div class="hdr">
+      <span class="mark"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M3 20 8.5 4l3.5 9"/><path d="M8 20l4-11 4 11 2.5-8L21 20"/></svg></span>
+      <span class="rule"></span><span class="pg">Recommendations</span>
+      <span class="search"><svg class="ico" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>Search the house, or type a command<kbd>⌘K</kbd></span>
+      <span class="right"><span class="bell"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10 21a2 2 0 0 0 4 0"/></svg></span><span class="house">Sim Vanilla Kaleiçi</span><span class="av">SV</span></span>
+    </div>
+    <div class="wrap">
+      <header>
+        <div class="wordmark">Mudavym<i>.</i></div>
+        <h1 class="title">Recommendations</h1>
+        <p class="voice">14 rules were read. 2 entries stand, and they are two kinds of work — the rest did not fire, or you have already ruled them off.</p>
+        <p class="micro readat">Read at 9:12 AM · one entry = one deterministic rule that fired · 8 of 8 connected sources answered · the till is not connected, so it was never asked</p>
+        <div class="double"><i></i><i></i></div>
+        <p class="said suppressed">Nothing was withheld by a dismissal.</p>
+      </header>
+      <nav class="leaves"><button class="leaf" aria-current="page">Standing<span class="num">2</span></button><button class="leaf">Snoozed<span class="num">0</span></button><button class="leaf">Dismissed<span class="num">0</span></button><button class="leaf">Ruled off<span class="num">2</span></button><button class="leaf">History<span class="num">—</span></button><button class="leaf view">The catalogue<span class="num">573</span></button></nav>
+      <section class="ribbon">
+        <span class="micro ribbon-title">The days behind this book</span>
+        <div class="ds-head"><div class="ds-months"><button class="ds-mo">‹</button><span class="ds-label">September 2026</span><button class="ds-mo">›</button></div><span class="said" style="margin:0">Select a day to narrow the docket</span></div>
+        <div class="ds-strip">
+          <button class="ds-day" data-records="unknown"><span class="ds-wd">TU</span><span class="ds-n">1</span><span class="ds-mark"></span></button><button class="ds-day" data-records="unknown"><span class="ds-wd">WE</span><span class="ds-n">2</span><span class="ds-mark"></span></button><button class="ds-day" data-records="unknown"><span class="ds-wd">TH</span><span class="ds-n">3</span><span class="ds-mark"></span></button><button class="ds-day" data-records="unknown"><span class="ds-wd">FR</span><span class="ds-n">4</span><span class="ds-mark"></span></button><button class="ds-day" data-records="unknown"><span class="ds-wd">SA</span><span class="ds-n">5</span><span class="ds-mark"></span></button><button class="ds-day" data-records="unknown"><span class="ds-wd">SU</span><span class="ds-n">6</span><span class="ds-mark"></span></button><button class="ds-day" data-records="unknown"><span class="ds-wd">MO</span><span class="ds-n">7</span><span class="ds-mark"></span></button><button class="ds-day" data-records="unknown"><span class="ds-wd">TU</span><span class="ds-n">8</span><span class="ds-mark"></span></button><button class="ds-day" data-records="unknown"><span class="ds-wd">WE</span><span class="ds-n">9</span><span class="ds-mark"></span></button><button class="ds-day" data-records="unknown"><span class="ds-wd">TH</span><span class="ds-n">10</span><span class="ds-mark"><i class="bar bar-fired" style="height:4px"></i></span></button><button class="ds-day" data-records="unknown"><span class="ds-wd">FR</span><span class="ds-n">11</span><span class="ds-mark"></span></button><button class="ds-day" data-records="unknown"><span class="ds-wd">SA</span><span class="ds-n">12</span><span class="ds-mark"></span></button><button class="ds-day" data-records="unknown"><span class="ds-wd">SU</span><span class="ds-n">13</span><span class="ds-mark"></span></button><button class="ds-day" data-records="unknown"><span class="ds-wd">MO</span><span class="ds-n">14</span><span class="ds-mark"></span></button><button class="ds-day" data-records="unknown"><span class="ds-wd">TU</span><span class="ds-n">15</span><span class="ds-mark"></span></button><button class="ds-day" data-records="unknown" data-today="true"><span class="ds-wd">WE</span><span class="ds-n">16</span><span class="ds-mark"></span></button><button class="ds-day" data-records="future"><span class="ds-wd">TH</span><span class="ds-n">17</span><span class="ds-mark"></span></button><button class="ds-day" data-records="future"><span class="ds-wd">FR</span><span class="ds-n">18</span><span class="ds-mark"></span></button><button class="ds-day" data-records="future"><span class="ds-wd">SA</span><span class="ds-n">19</span><span class="ds-mark"></span></button><button class="ds-day" data-records="future"><span class="ds-wd">SU</span><span class="ds-n">20</span><span class="ds-mark"></span></button><button class="ds-day" data-records="future"><span class="ds-wd">MO</span><span class="ds-n">21</span><span class="ds-mark"></span></button><button class="ds-day" data-records="future"><span class="ds-wd">TU</span><span class="ds-n">22</span><span class="ds-mark"></span></button><button class="ds-day" data-records="future"><span class="ds-wd">WE</span><span class="ds-n">23</span><span class="ds-mark"></span></button><button class="ds-day" data-records="future"><span class="ds-wd">TH</span><span class="ds-n">24</span><span class="ds-mark"></span></button><button class="ds-day" data-records="future"><span class="ds-wd">FR</span><span class="ds-n">25</span><span class="ds-mark"></span></button><button class="ds-day" data-records="future"><span class="ds-wd">SA</span><span class="ds-n">26</span><span class="ds-mark"></span></button><button class="ds-day" data-records="future"><span class="ds-wd">SU</span><span class="ds-n">27</span><span class="ds-mark"></span></button><button class="ds-day" data-records="future"><span class="ds-wd">MO</span><span class="ds-n">28</span><span class="ds-mark"></span></button><button class="ds-day" data-records="future"><span class="ds-wd">TU</span><span class="ds-n">29</span><span class="ds-mark"></span></button><button class="ds-day" data-records="future"><span class="ds-wd">WE</span><span class="ds-n">30</span><span class="ds-mark"></span></button>
+        </div>
+        <p class="why ribbon-note"><svg class="ico" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v4h1"/></svg> No till is connected to this house, so nothing here knows which days carry records. No day is hatched — an absence of a POS is not an absence of trade. No post has gone out from this house, so no day carries a dot.</p>
+      </section>
+      <div class="shell">
+        <aside>
+          <div class="micro">The register</div>
+          <p class="reg-note">What acting on an entry would change. Filed from the rule's own category.</p>
+          <div class="reg-list"><button class="reg" aria-pressed="true"><span>All</span><span class="num">2</span></button><button class="reg" aria-pressed="false"><span>Money</span><span class="num">0</span></button><button class="reg" aria-pressed="false"><span>Stock</span><span class="num">0</span></button><button class="reg" aria-pressed="false"><span>Vendors</span><span class="num">2</span></button><button class="reg" aria-pressed="false"><span>The floor</span><span class="num">0</span></button></div>
+          <div class="aside-block"><div class="micro">Out of the analysis</div><p class="why">No day has been ruled out. Every day with records counts toward the averages; days with no records were never counted as zero.</p></div>
+          <div class="aside-block">
+            <div class="micro">The post</div>
+            <div class="cut" style="margin-top:6px">
+              <h3>No post yet</h3>
+              <p class="window">Europe/Istanbul · the house's zone is set</p>
+              <p class="sentence">This house has never set a digest preference, so it runs no post — and you have not asked for a copy. Nothing is sent to anybody.</p>
+              <p class="why">Set the house's hour and floor first; then each member asks for their own copy.</p>
+              <div class="ctl"><button class="act ink">Set up the post</button></div>
+            </div>
+          </div>
+          <div class="aside-block"><div class="micro">Could not read</div><p class="why">2 rules need POS-check data directly — the server spread and the pairing — and no till is connected, read from the POS hub. Their silence is not a clean reading. Three more are answered independently of it — vendor concentration and the purchasing-spend rule, which stand below, and revenue concentration, equally till-independent though not standing today for its own reasons. Every other rule on this page reads the same consumption log only the till fills — demand, reorder science, dead stock and both menu-engineering rules, besides the weekday baseline, the weekly slide and the weekday gap — so a missing till is not a clean reading for any of them either. The till was never a source: the read-at count is of sources that were asked, and it does not count one that is not connected. <a href="#" style="color:var(--seal-deep)">Connect a till</a></p></div>
+        </aside>
+        <section>
+          <div class="cut delta">
+            <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><h3>Since your last visit</h3><span class="window">no post has ever gone out from this house, so this is since Tue 15 Sep 22:40, the last time this page was read</span><span class="num" style="margin-left:auto;font-size:11px;color:var(--ink-4)">2 lines</span></div>
+            <div style="margin-top:8px">
+              <div class="line"><span class="k">Unchanged</span><span class="v">The two entries below stood at your last visit. None closed, none was dismissed, none is new.</span></div>
+              <div class="line"><span class="k">Withheld</span><span class="v">dismissed: <b>0</b> · below the floor: <b>none</b> — no post is set, so there is no floor · sources that did not answer: <b>0</b> · never asked: <b>the till</b>, which is not connected — read directly by 2 rules, and by way of a log only it fills by every rule except the three answered independently of it (two of which stand below).</span></div>
+            </div>
+          </div>
+          <p class="why docket-note">No section can total what it is worth. The engine states each entry's money inside its sentence, not as a field — so every heading shows an em dash instead of a zero.</p>
+          <div class="section">
+            <div class="section-head"><span class="act-ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 17h4V5H2v12h3"/><path d="M20 17h2v-3.34a4 4 0 0 0-1.17-2.83L19 9h-5v8h1"/><circle cx="7.5" cy="17.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg></span><h2>Order it</h2><span class="meta"><span class="num">1 entry</span><span class="num amt">— at stake · not carried</span></span></div>
+            <div class="double"><i></i><i></i></div>
+            <article class="entry">
+              <div class="gutter"><div class="num">01</div></div>
+              <div class="body">
+                <div class="stamps"><span class="micro">This week</span><span class="micro">purchasing</span></div>
+                <p class="obs">Purchasing spend is up 34% vs the prior 30 days (₺184.500).</p>
+                <p class="do">Audit open orders against days-of-cover before the next PO run; push slow-mover orders a cycle and consolidate to hit vendor volume breaks.</p>
+                <div class="facts"><div class="fact"><div class="micro">Would change</div><div>Vendors</div></div><div class="fact"><div class="micro">Whose hand</div><div>Yours, in Orders</div></div><div class="fact"><div class="micro">Standing</div><div><span class="num">6 days</span><span class="basis">since it was first shown to you</span></div></div></div>
+                <div class="controls controls-do"><span class="micro ctl-label">Carry it out</span><button class="act ink">Audit open orders →</button><button class="quiet ink">Make this a goal</button><button class="quiet ink">See it in reports</button></div>
+                <div class="controls controls-file"><span class="micro ctl-label">File it</span><button class="quiet ink">The working</button><button class="quiet ink">Snooze</button><button class="quiet ink">Dismiss</button><button class="quiet ink">Pin</button><button class="quiet ink">Select</button></div>
+                <p class="said forward-note">₺ is drawn; the rule prints this figure in $ today. Currency-aware sentences are a costed change — README.</p>
+              </div>
+            </article>
+          </div>
+          <div class="section">
+            <div class="section-head"><span class="act-ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.9.6 2.8.7a2 2 0 0 1 1.8 2Z"/></svg></span><h2>Call a vendor</h2><span class="meta"><span class="num">1 entry</span><span class="num amt">— at stake · not carried</span></span></div>
+            <div class="double"><i></i><i></i></div>
+            <article class="entry">
+              <div class="gutter"><div class="num">02</div></div>
+              <div class="body">
+                <div class="stamps"><span class="micro">This month</span><span class="micro">risk</span></div>
+                <p class="obs">Purchasing is highly concentrated (HHI 5200 — effectively 1.9 vendors).</p>
+                <p class="do">Request quotes from one alternative vendor for your top category this month and move 10–20% of volume to establish the relationship before you need it.</p>
+                <div class="facts"><div class="fact"><div class="micro">Would change</div><div>Vendors</div></div><div class="fact"><div class="micro">Whose hand</div><div>Yours, in Providers</div></div><div class="fact"><div class="micro">Standing</div><div><span class="num">30 days</span><span class="basis">since it was first shown to you</span></div></div></div>
+                <div class="controls controls-do"><span class="micro ctl-label">Carry it out</span><button class="act ink">Compare vendors →</button><button class="dark" disabled>Make this a goal</button><button class="dark" disabled>See it in reports</button></div>
+                <div class="controls controls-file"><span class="micro ctl-label">File it</span><button class="quiet ink">The working</button><button class="quiet ink">Snooze</button><button class="quiet ink">Dismiss</button><button class="quiet ink">Pin</button><button class="quiet ink">Select</button></div>
+                <p class="said forward-note"><b style="color:var(--ink-2);font-weight:500">Make this a goal — held.</b> Vendor concentration is an HHI over your purchase book. The gateway holds goals on seven figures only, and a concentration index is not among them. <b style="color:var(--ink-2);font-weight:500">See it in reports — held.</b> No cutting answers this one: the concentration register (`/analytics/risk`) is not among the eleven analyses the reports sheet can lay down.</p>
+              </div>
+            </article>
+          </div>
+        </section>
+      </div>
+      <footer class="foot"><span class="wordmark">Mudavym<i>.</i></span><p>Every entry is one deterministic rule against your own numbers. No model wrote them.</p></footer>
+    </div>
+  </div></div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<section class="sk-sec desk-only">
+  <h2 class="sk-label">5 · The catalogue as a view — a leaf of this page, read-only, with the same rail; "computable now" is the server's own figure, and "data present" is relabelled as what it measures</h2>
+  <p class="sk-note">Same page, one more leaf, the same shape as the register rail and the docket: the rail is the catalogue's own dimensions with counts, the head is one italic sentence in the page's own voice, every row carries a word for its state — <b>built</b>, <b>data present</b>, <b>missing</b> (names what), <b>not built</b>, and <b>unknown</b> when the API omits the flag. The server's four numbers partition exactly (573 = 24 built + 549 not built; 24 computable + 0 blocked here); "data present" across all 573 is the client's count of types whose requirements this house satisfies, and the head says which is which. No watch, no mute: the ruling is read-only.</p>
+  <div class="frame"><div class="mudavym">
+    <div class="wrap">
+      <header>
+        <div class="wordmark">Mudavym<i>.</i></div>
+        <h1 class="title">Recommendations</h1>
+        <p class="micro readat">The catalogue · what this house can be told · read at 6:58 AM</p>
+        <div class="double"><i></i><i></i></div>
+      </header>
+      <nav class="leaves"><button class="leaf">Standing<span class="num">5</span></button><button class="leaf">Snoozed<span class="num">0</span></button><button class="leaf">Dismissed<span class="num">1</span></button><button class="leaf">Ruled off<span class="num">6</span></button><button class="leaf">History<span class="num">—</span></button><button class="leaf view" aria-current="page">The catalogue<span class="num">573</span></button></nav>
+      <div class="cat">
+        <aside>
+          <div class="micro">By subject</div>
+          <p class="reg-note">The catalogue's own dimensions. The counts are the same in every house; the words on the rows are not.</p>
+          <div class="reg-list">
+            <button class="reg" aria-pressed="false"><span>Overall</span><span class="num">62</span></button>
+            <button class="reg" aria-pressed="false"><span>Day of week</span><span class="num">48</span></button>
+            <button class="reg" aria-pressed="false"><span>Daypart</span><span class="num">40</span></button>
+            <button class="reg" aria-pressed="false"><span>Table</span><span class="num">51</span></button>
+            <button class="reg" aria-pressed="false"><span>Table zone</span><span class="num">51</span></button>
+            <button class="reg" aria-pressed="false"><span>Server</span><span class="num">44</span></button>
+            <button class="reg" aria-pressed="true"><span>Wine</span><span class="num">96</span></button>
+            <button class="reg" aria-pressed="false"><span>Wine category</span><span class="num">70</span></button>
+            <button class="reg" aria-pressed="false"><span>Vendor</span><span class="num">58</span></button>
+            <button class="reg" aria-pressed="false"><span>Venue feature</span><span class="num">53</span></button>
+          </div>
+          <div class="aside-block"><div class="micro">Two lists</div><p class="why">The catalogue keeps no <i>declared</i> edge to a rule: a candidate carries key · dimension · measure · comparator · category · template · requires, and the reply adds only <i>implemented</i> and the house's <i>available</i> — no field names which rule a row feeds. Two of the twelve rules key on a piece of it anyway (<span class="num">recommendations.service.ts:145-171</span>): the weekday baseline matches any comparator containing <span class="num">vs_same_weekday</span> (a substring test, not an exact key), the weekly slide matches <span class="num">vs_prev_period_7d</span> and category sales; two more match on category alone (<span class="num">:311-328</span>) — the server spread on staff, the pairing on basket, whichever type wrote it. The other eight, including the stockout rule, read a different bundle entirely and touch no insight row. So the closest thing to an edge is a comparator or a category shared by several rows, never one candidate to one rule — a table couldn't draw it as a line, and this column stays the honest substitute: which of a type's sources this house has.</p></div>
+        </aside>
+        <section>
+          <p class="head"><b>573</b> types are catalogued. <b>24</b> are built, and all 24 can be computed in this house. <b>412</b> have their data present here — the tables a type reads hold rows, which is not the same as enough of them — and <b>549</b> are not built.</p>
+          <div class="row" style="margin-top:12px"><button class="quiet ink" aria-pressed="true">All states</button><button class="quiet ink">Built</button><button class="quiet ink">Data present</button><button class="quiet ink">Missing data</button><button class="quiet ink">Not built</button><span class="quiet" style="margin-left:auto;border-color:transparent;color:var(--ink-4)">Search 96 wine types</span></div>
+          <table>
+            <colgroup><col style="width:29%"><col style="width:25%"><col style="width:19%"><col style="width:13%"><col style="width:14%"></colgroup>
+            <thead><tr><th>Type</th><th>Says</th><th>State</th><th>Needs</th><th>Here</th></tr></thead>
+            <tbody>
+              <tr class="open"><td>wine.stockout_risk.peer_rank</td><td>which wines rank highest for stockout risk against their peers</td><td><span class="st built">built · data present</span></td><td>consumption · inventory</td><td>both present</td></tr>
+              <tr><td>wine.bottles.vs_prev_period_7d</td><td>bottles of a wine this week against last week</td><td><span class="st built">built · data present</span></td><td>consumption</td><td>present</td></tr>
+              <tr><td>wine.bottles.basket_affinity</td><td>which wines are bought together</td><td><span class="st built">built · data present</span></td><td>checks · consumption</td><td>both present</td></tr>
+              <tr><td>wine.consumption_qty.concentration</td><td>how much of the pour rides on few wines</td><td><span class="st built">built · data present</span></td><td>consumption</td><td>present</td></tr>
+              <tr><td>wine.revenue.vs_same_weekday</td><td>a wine's sales against its own weekday history</td><td><span class="st miss">not built · data present</span></td><td>checks · consumption</td><td>both present</td></tr>
+              <tr><td>wine.revenue_per_seat.trend_direction</td><td>whether a wine's take per seat is rising or falling</td><td><span class="st miss">not built · missing: tables</span></td><td>consumption · checks · tables</td><td>consumption · checks present; tables absent</td></tr>
+              <tr><td>wine.avg_check.driver_weights</td><td>what drives the check when this wine is on it</td><td><span class="st miss">unknown — the reply omitted the flag</span></td><td>checks</td><td>present — the flag is unknown, the sources are not</td></tr>
+            </tbody>
+          </table>
+          <div class="leafrow"><b>wine.stockout_risk.peer_rank</b> — ranks each wine's stockout probability against the cellar. Reads the 30-day consumption log and the latest count. In this house: <b>data present</b>. Last wrote to the stored feed Sun 13 Sep — this house's one current row for this type; the table keeps no earlier ones. No entry in the book reads this row directly: the stockout rule (01) fires on the reorder register's probability, not on an insight type — four other rules do key on a comparator or a category (two of each), not on this one (see <i>Two lists</i>). <span class="em">Nothing here can be watched or muted; an entry is dismissed, with a scope, from the book.</span></div>
+          <p class="why" style="margin-top:12px">A row's state is a word, never a hue: on this ground the ten category colours of the old page do not exist, and a state that depended on one would be lost.</p>
+        </section>
+      </div>
+    </div>
+  </div></div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<section class="sk-sec desk-only">
+  <h2 class="sk-label">6 · States — loading · empty · refused · partial · the post switched off (every house today)</h2>
+  <div class="states">
+    <div class="frame"><div class="mudavym small-wrap">
+      <div class="micro" style="margin-bottom:8px">Loading</div>
+      <h1 class="title" style="font-size:20px">Recommendations</h1>
+      <p class="voice" style="font-size:13px">Reading the rule engine…</p>
+      <p class="micro readat">Read at — · the post: —</p>
+      <div class="ghost"></div><div class="ghost"></div><div class="ghost"></div>
+      <p class="sk-note" style="margin-top:10px;color:var(--ink-4)">Ruled ghosts, no sheen. An em dash and a skeleton are different claims; nothing counts up.</p>
+    </div></div>
+    <div class="frame"><div class="mudavym small-wrap">
+      <div class="micro" style="margin-bottom:8px">Empty — a proven absence</div>
+      <h1 class="title" style="font-size:20px">Recommendations</h1>
+      <p class="voice" style="font-size:13px">14 rules were read, and none of them stands. The book is clear.</p>
+      <p class="micro readat">Read at 6:58 AM · 8 of 8 sources answered</p>
+      <div class="double"><i></i><i></i></div>
+      <p class="said suppressed">Nothing was withheld by a dismissal.</p>
+      <div class="cut" style="margin-top:12px"><h3>Nothing stood at 07:00</h3><p class="window">the post · Wed 16 · skipped, empty</p><p class="sentence">This morning's post was recorded as skipped: nothing stood at or above "this week" when it fell due. The log says what the engine evaluated (14) and found (0). A silent morning and a clear one are different records.</p></div>
+    </div></div>
+    <div class="frame"><div class="mudavym small-wrap">
+      <div class="micro" style="margin-bottom:8px">Refused — 403</div>
+      <h1 class="title" style="font-size:20px">Recommendations</h1>
+      <p class="voice" style="font-size:13px">This account is not allowed to read the standing book (403). Nothing below is claimed.</p>
+      <div class="alert" style="margin-top:12px"><span>The gateway answered 403 for this house. This is not an empty book.</span><button class="retry">Try again</button></div>
+      <div class="cut" style="margin-top:12px"><h3>The post</h3><p class="window">could not be read</p><p class="sentence">Your copy and the house's post are unknown, not off.</p></div>
+    </div></div>
+    <div class="frame"><div class="mudavym small-wrap">
+      <div class="micro" style="margin-bottom:8px">Partial — the book read, two things did not</div>
+      <h1 class="title" style="font-size:20px">Recommendations</h1>
+      <p class="voice" style="font-size:13px">14 rules were read. 5 entries stand.</p>
+      <p class="micro readat">Read at 6:58 AM · 6 of 8 sources answered</p>
+      <div class="double"><i></i><i></i></div>
+      <p class="said suppressed">Your dismissals could not be read, so entries you have already dismissed may be standing below — this book is not proof they are gone.</p>
+      <div class="alert" style="margin-top:10px">Menu engineering and cashflow did not answer, so the rules over them could not fire. Their silence is not a clean reading, and the post says the same before it lists anything.</div>
+    </div></div>
+    <div class="frame"><div class="mudavym small-wrap">
+      <div class="micro" style="margin-bottom:8px">The post, switched off — every house today</div>
+      <h1 class="title" style="font-size:20px">Recommendations</h1>
+      <p class="voice" style="font-size:13px">14 rules were read. 5 entries stand.</p>
+      <div class="cut" style="margin-top:12px"><h3>Nothing is sent</h3><p class="window">the post · built and switched off</p>
+        <ul class="check" style="margin-top:6px">
+          <li class="no"><i>—</i><span>The digest sender is built and switched off on this deployment, so nothing is sent to anybody yet.</span></li>
+          <li class="no"><i>—</i><span>This house has never set a digest preference, so it runs no digest.</span></li>
+          <li class="no"><i>—</i><span>You have not asked for this digest.</span></li>
+          <li><i>✓</i><span>You are an active member · email on · "ai" on</span></li>
+        </ul>
+        <p class="why">The sender's own words, from the subscription read. The first line is a deployment fact the page reads, never one it assumes. The hour and floor are not printed: no row exists, and a stand-in is not a setting.</p>
+        <div class="ctl"><button class="quiet ink">Set up the post</button><button class="quiet ink">Ask for a copy</button></div>
+      </div>
+    </div></div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<section class="sk-sec">
+  <h2 class="sk-label">7 · Mobile 390 — the built page's own fold, nothing trimmed: the rail stacks above the book, the three facts go to one column, each control row's label becomes a heading over its own row, and all five entries stand — there is no fold</h2>
+  <p class="sk-note">This frame is frame 1's markup laid out at 390, so what the page prints at 1440 it prints here: the voice and read-at lines whole, every <b>Do:</b> and refusal string, the three facts, both labelled control rows with <b>The working</b> and <b>Select</b>, the receipt under 01, all five standing entries and the dark <i>Change a rule</i>. The fold is the built page's — <span class="num">rc-shell</span> stacks the rail above the book below 900 (<span class="num">rec-next.css:76-77</span>), the facts are one column below 640 (<span class="num">:151-155</span>), the control label is <span class="num">flex: 1 0 100%</span> below 640 (<span class="num">:176-178</span>) — not a shorter page wearing its clothes. The register, the out-of-analysis block and the Keys block are drawn above the book because the built page renders the whole rail at every width (keyboard hints on a touch surface are a nit for the page, not a change made here). The strip is frame 1's whole month: below its 30 px floor the built strip scrolls sideways rather than shrinking the day number (<span class="num">day-strip.css:48, 126</span>), and the legend, the hint and both sentences render at every width (<span class="num">Ribbon.tsx:131-158</span>). It opens on the 1st, as the built strip does — <span class="num">homeIdx</span> seats the roving focus on today and nothing scrolls the strip to it (<span class="num">DayStrip.tsx:110-113</span>) — so on a phone today is off to the right until the person scrolls: a nit for the page, drawn as built, not corrected here. The fade at the strip's right edge is this sketch's hint that it scrolls; the built strip shows a scrollbar. The delta comes before the docket, the post is one cutting.</p>
+  <div class="frame w390"><div class="mudavym m">
+    <div class="hdr">
+      <span class="mark"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M3 20 8.5 4l3.5 9"/><path d="M8 20l4-11 4 11 2.5-8L21 20"/></svg></span>
+      <span class="rule"></span><span class="pg">Recommendations</span>
+      <span class="right" style="margin-left:auto"><span class="bell"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10 21a2 2 0 0 0 4 0"/></svg><i>3</i></span><span class="av">AK</span></span>
+    </div>
+    <div class="wrap">
+      <header>
+        <div class="wordmark">Mudavym<i>.</i></div>
+        <h1 class="title">Recommendations</h1>
+        <p class="voice">14 rules were read. 5 entries stand, and they are five kinds of work — one of them is new since yesterday's letter; the rest did not fire, or you have already ruled them off.</p>
+        <p class="micro readat">Read at 6:58 AM · one entry = one deterministic rule that fired · 8 of 8 sources answered</p>
+        <div class="double"><i></i><i></i></div>
+        <p class="said suppressed">1 entry was withheld because you dismissed it. It is on the Dismissed leaf, and can be returned.</p>
+      </header>
+
+      <nav class="leaves" aria-label="Leaves of the book">
+        <button class="leaf" aria-current="page">Standing<span class="num">5</span></button>
+        <button class="leaf">Snoozed<span class="num">0</span></button>
+        <button class="leaf">Dismissed<span class="num">1</span></button>
+        <button class="leaf">Ruled off<span class="num">6</span></button>
+        <button class="leaf">History<span class="num">—</span></button>
+        <button class="leaf view">The catalogue<span class="num">573</span></button>
+      </nav>
+
+      <section class="ribbon" aria-labelledby="rb-h7">
+        <span class="micro ribbon-title" id="rb-h7">The days behind this book</span>
+        <div class="ds-head">
+          <div class="ds-months"><button class="ds-mo" aria-label="Show August 2026">‹</button><span class="ds-label">September 2026</span><button class="ds-mo" aria-label="Show October 2026">›</button></div>
+          <span class="said" style="margin:0">Select a day to narrow the docket</span>
+        </div>
+        <div class="ds-strip" role="group" aria-label="Select a day to narrow the docket">
+          <button class="ds-day" data-records="yes"><span class="ds-wd">TU</span><span class="ds-n">1</span><span class="ds-mark"></span></button>
+          <button class="ds-day" data-records="yes"><span class="ds-wd">WE</span><span class="ds-n">2</span><span class="ds-mark"></span></button>
+          <button class="ds-day" data-records="yes"><span class="ds-wd">TH</span><span class="ds-n">3</span><span class="ds-mark"></span></button>
+          <button class="ds-day" data-records="yes"><span class="ds-wd">FR</span><span class="ds-n">4</span><span class="ds-mark"></span></button>
+          <button class="ds-day" data-records="yes"><span class="ds-wd">SA</span><span class="ds-n">5</span><span class="ds-mark"><i class="bar bar-fired" style="height:4px"></i></span></button>
+          <button class="ds-day" data-records="yes"><span class="ds-wd">SU</span><span class="ds-n">6</span><span class="ds-mark"></span></button>
+          <button class="ds-day" data-records="yes"><span class="ds-wd">MO</span><span class="ds-n">7</span><span class="ds-mark"></span><i class="posted"></i></button>
+          <button class="ds-day" data-records="none" data-struck="true"><span class="ds-wd">TU</span><span class="ds-n">8</span><span class="ds-mark"></span><i class="posted"></i></button>
+          <button class="ds-day" data-records="yes"><span class="ds-wd">WE</span><span class="ds-n">9</span><span class="ds-mark"></span><i class="posted"></i></button>
+          <button class="ds-day" data-records="yes"><span class="ds-wd">TH</span><span class="ds-n">10</span><span class="ds-mark"></span><i class="posted"></i></button>
+          <button class="ds-day" data-records="yes"><span class="ds-wd">FR</span><span class="ds-n">11</span><span class="ds-mark"></span><i class="posted"></i></button>
+          <button class="ds-day" data-records="none"><span class="ds-wd">SA</span><span class="ds-n">12</span><span class="ds-mark"></span><i class="posted"></i></button>
+          <button class="ds-day" data-records="none"><span class="ds-wd">SU</span><span class="ds-n">13</span><span class="ds-mark"><i class="bar bar-fired" style="height:4px"></i></span><i class="posted"></i></button>
+          <button class="ds-day" data-records="yes"><span class="ds-wd">MO</span><span class="ds-n">14</span><span class="ds-mark"></span><i class="posted"></i></button>
+          <button class="ds-day" data-records="yes"><span class="ds-wd">TU</span><span class="ds-n">15</span><span class="ds-mark"></span><i class="posted"></i></button>
+          <button class="ds-day" data-records="yes" data-today="true"><span class="ds-wd">WE</span><span class="ds-n">16</span><span class="ds-mark"><i class="bar bar-fired" style="height:4px"></i></span></button>
+          <button class="ds-day" data-records="future"><span class="ds-wd">TH</span><span class="ds-n">17</span><span class="ds-mark"></span></button>
+          <button class="ds-day" data-records="future"><span class="ds-wd">FR</span><span class="ds-n">18</span><span class="ds-mark"></span></button>
+          <button class="ds-day" data-records="future"><span class="ds-wd">SA</span><span class="ds-n">19</span><span class="ds-mark"></span></button>
+          <button class="ds-day" data-records="future"><span class="ds-wd">SU</span><span class="ds-n">20</span><span class="ds-mark"></span></button>
+          <button class="ds-day" data-records="future"><span class="ds-wd">MO</span><span class="ds-n">21</span><span class="ds-mark"></span></button>
+          <button class="ds-day" data-records="future"><span class="ds-wd">TU</span><span class="ds-n">22</span><span class="ds-mark"></span></button>
+          <button class="ds-day" data-records="future"><span class="ds-wd">WE</span><span class="ds-n">23</span><span class="ds-mark"></span></button>
+          <button class="ds-day" data-records="future"><span class="ds-wd">TH</span><span class="ds-n">24</span><span class="ds-mark"></span></button>
+          <button class="ds-day" data-records="future"><span class="ds-wd">FR</span><span class="ds-n">25</span><span class="ds-mark"></span></button>
+          <button class="ds-day" data-records="future"><span class="ds-wd">SA</span><span class="ds-n">26</span><span class="ds-mark"></span></button>
+          <button class="ds-day" data-records="future"><span class="ds-wd">SU</span><span class="ds-n">27</span><span class="ds-mark"></span></button>
+          <button class="ds-day" data-records="future"><span class="ds-wd">MO</span><span class="ds-n">28</span><span class="ds-mark"></span></button>
+          <button class="ds-day" data-records="future"><span class="ds-wd">TU</span><span class="ds-n">29</span><span class="ds-mark"></span></button>
+          <button class="ds-day" data-records="future"><span class="ds-wd">WE</span><span class="ds-n">30</span><span class="ds-mark"><i class="bar bar-due" style="height:8px"></i></span></button>
+        </div>
+        <div class="legend" aria-hidden="true">
+          <i><span class="sw sw-fired"></span>first fired</i><i><span class="sw sw-due"></span>falls due</i><i><span class="sw sw-none"></span>no records — not a zero</i><i><span class="sw sw-out"></span>out of the analysis</i><i><span class="sw sw-posted"></span>a post went out</i><i><span class="sw sw-today"></span>today</i><i><span class="sw sw-future"></span>not happened yet</i>
+        </div>
+        <p class="why ribbon-note"><svg class="ico" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v4h1"/></svg> A hatched day carries no record at all. It is never drawn as a bar of zero — a closure read as a measurement is the fault this page exists to refuse. A dot means a post went out that morning to at least one member; it is read from the send log, never inferred from the schedule.</p>
+      </section>
+
+      <div class="shell">
+        <!-- ── the register rail ─────────────────────────────────────── -->
+        <aside>
+          <div class="micro">The register</div>
+          <p class="reg-note">What acting on an entry would change. Filed from the rule's own category.</p>
+          <div class="reg-list">
+            <button class="reg" aria-pressed="true"><span>All</span><span class="num">5</span></button>
+            <button class="reg" aria-pressed="false"><span>Money</span><span class="num">2</span></button>
+            <button class="reg" aria-pressed="false"><span>Stock</span><span class="num">1</span></button>
+            <button class="reg" aria-pressed="false"><span>Vendors</span><span class="num">1</span></button>
+            <button class="reg" aria-pressed="false"><span>The floor</span><span class="num">1</span></button>
+          </div>
+
+          <div class="aside-block">
+            <div class="micro">Out of the analysis</div>
+            <ul class="excl"><li><span class="num" style="font-size:11px">Tue 8 Sep</span><span class="why" style="margin:0">Closed</span><button class="quiet">Count it again</button></li></ul>
+          </div>
+
+          <!-- the post — the digest, live: the house's hour and floor, and your own copy -->
+          <div class="aside-block">
+            <div class="micro">The post</div>
+            <div class="cut" style="margin-top:6px">
+              <h3>Daily at 07:00</h3>
+              <p class="window">Pacific · carries "this week" and above</p>
+              <dl>
+                <div class="fig"><dt>Your copy</dt><dd>daily</dd></div>
+                <div class="fig"><dt>Next</dt><dd>today 07:00</dd></div>
+                <div class="fig"><dt>Last</dt><dd>Tue 15 · sent · 4</dd></div>
+              </dl>
+              <p class="why">4 of the 5 standing would be carried; 03 sits below the floor. Whether a post was opened is not recorded.</p>
+              <div class="ctl"><button class="quiet ink" aria-pressed="true">Your copy</button><button class="quiet ink">The house's post</button></div>
+            </div>
+          </div>
+
+          <div class="aside-block">
+            <div class="micro">Keys</div>
+            <p class="keys">j / k move · e the working · a act<br>d the dismissal sheet · s snooze · p pin · x select<br>on the strip: ← → a day · ↑ ↓ a week · Enter selects · Esc clears</p>
+          </div>
+        </aside>
+
+        <!-- ── the book ──────────────────────────────────────────────── -->
+        <section>
+          <!-- the delta: since yesterday's letter, as a cutting above the docket -->
+          <div class="cut delta">
+            <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><h3>Since yesterday's letter</h3><span class="window">what changed between the last post, Tue 15 07:00, and now</span><span class="num" style="margin-left:auto;font-size:11px;color:var(--ink-4)">5 lines</span></div>
+            <div style="margin-top:8px">
+              <div class="line"><span class="k seal">New</span><span class="v"><b>04 · Tuesday sales came in 38% lower than your average Tuesday</b> — first shown this morning at 06:58. It goes into this morning's post at 07:00.</span></div>
+              <div class="line"><span class="k">Ruled off</span><span class="v"><b>$6,140 locked in inventory that has not moved in 90 days</b> — ruled off with the seal, Tue 15 Sep 18:12. <a href="#">Ruled off</a></span></div>
+              <div class="line"><span class="k">Dismissed</span><span class="v"><b>Pairing promotion</b> — silenced, this rule entirely, Tue 15 Sep 17:40. The rule names no wine, so no narrower promise could be kept. <a href="#">Return it</a></span></div>
+              <div class="line"><span class="k">No record</span><span class="v"><b>Sat 12 · Sun 13 Sep</b> — the till has still sent nothing for these two days. The weekday spread (05) does not skip them: it reads a series that fills every missing day with zero, no exclusion honoured (<span class="num">advanced-analytics.service.ts:387</span>) — a till gap here quietly drags its averages down, an engine defect this page states rather than papers over — and has not filed, in v3.0-TECH-DEBT.md or anywhere else.</span></div>
+              <div class="line"><span class="k">Withheld</span><span class="v">dismissed: <b>1</b> · below the floor: <b>1</b> · sources that did not answer: <b>0</b> — what this morning's post keeps from you, and why. The dismissed entry is on its leaf and can be returned; 03 stands on this page and will not be in the mail; every source answered, so nothing is withheld by a silence.</span></div>
+            </div>
+          </div>
+
+          <p class="why docket-note">No section can total what it is worth. The engine states each entry's money inside its sentence, not as a field, and the figures are not the same quantity from rule to rule — so every heading shows an em dash instead of a zero.</p>
+
+          <!-- Order it -->
+          <div class="section">
+            <div class="section-head"><span class="act-ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 17h4V5H2v12h3"/><path d="M20 17h2v-3.34a4 4 0 0 0-1.17-2.83L19 9h-5v8h1"/><circle cx="7.5" cy="17.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg></span><h2>Order it</h2><span class="meta"><span class="num">1 entry</span><span class="num amt">— at stake · not carried</span></span></div>
+            <p class="act-say">These end in a purchase order. Doing them is one sitting at the Orders desk: draft what is short, then walk the open book against days-of-cover before the next run goes out.</p>
+            <div class="double"><i></i><i></i></div>
+            <article class="entry">
+              <div class="gutter"><div class="num">01</div></div>
+              <div class="body">
+                <div class="stamps"><span class="micro">Tonight</span><span class="micro">inventory</span><span class="micro">acted</span></div>
+                <p class="obs">Barolo Riserva 2019 has a 71% chance of stocking out before a 7-day replenishment (on hand: 4).</p>
+                <p class="do">Place the order today — reorder point is 12 bottles. If the vendor is slow, split the order across two vendors.</p>
+                <div class="facts">
+                  <div class="fact"><div class="micro">Would change</div><div>Stock</div></div>
+                  <div class="fact"><div class="micro">Whose hand</div><div>Yours, in Orders</div></div>
+                  <div class="fact"><div class="micro">Standing</div><div><span class="num">3 days</span><span class="basis">since it was first shown to you</span></div></div>
+                </div>
+                <div class="controls controls-do"><span class="micro ctl-label">Carry it out</span><button class="act ink">Draft the PO →</button><button class="dark" disabled>Make this a goal</button><button class="quiet ink">See it in reports</button></div>
+                <div class="controls controls-file"><span class="micro ctl-label">File it</span><button class="quiet ink">The working</button><button class="quiet ink">Snooze</button><button class="quiet ink">Dismiss</button><button class="quiet ink">Pin</button><button class="quiet ink">Select</button></div>
+                <p class="said forward-note"><b style="color:var(--ink-2);font-weight:500">Make this a goal — held.</b> A stockout is an availability event, not one of the seven figures a goal can be held on (wine revenue · bottles sold · purchasing spend · checks · average check · attach rate · days of stock). Ruling it off when the order is placed is the record this one keeps.</p>
+                <div class="receipt"><span class="stamp">Receipt · 06:59</span><span class="what">Followed <b>Draft the PO</b> to Orders — recorded as acted. The entry stands until you rule it off.<a href="#">Undo</a></span></div>
+              </div>
+            </article>
+          </div>
+
+          <!-- Price it -->
+          <div class="section">
+            <div class="section-head"><span class="act-ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.6 2.6 21.4 11.4a2 2 0 0 1 0 2.8l-7.2 7.2a2 2 0 0 1-2.8 0L2.6 12.6V2.6h10Z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg></span><h2>Price it</h2><span class="meta"><span class="num">1 entry</span><span class="num amt">— at stake · not carried</span></span></div>
+            <p class="act-say">These change what something sells for — a list price, an offer, a pairing on the insert. All of them are a menu decision and all of them want the same half hour.</p>
+            <div class="double"><i></i><i></i></div>
+            <article class="entry">
+              <div class="gutter"><div class="num">02</div></div>
+              <div class="body">
+                <div class="stamps"><span class="micro">This week</span><span class="micro">efficiency</span></div>
+                <p class="obs">3 wines sell fast but earn below-median margin (top: Sancerre Les Baronnes 2023).</p>
+                <p class="do">Raise those prices 5–8% or renegotiate cost on the next PO — volume holds on small moves for high-velocity wines.</p>
+                <div class="facts">
+                  <div class="fact"><div class="micro">Would change</div><div>The floor</div></div>
+                  <div class="fact"><div class="micro">Whose hand</div><div>Yours, in Reports</div></div>
+                  <div class="fact"><div class="micro">Standing</div><div><span class="num">11 days</span><span class="basis">since it was first shown to you</span></div></div>
+                </div>
+                <div class="controls controls-do"><span class="micro ctl-label">Carry it out</span><button class="act ink">Open the menu report →</button><button class="quiet ink">Make this a goal</button><button class="quiet ink">See it in reports</button></div>
+                <div class="controls controls-file"><span class="micro ctl-label">File it</span><button class="quiet ink">The working</button><button class="quiet ink">Snooze</button><button class="quiet ink">Dismiss</button><button class="quiet ink">Pin</button><button class="quiet ink">Select</button></div>
+              </div>
+            </article>
+          </div>
+
+          <!-- Call a vendor -->
+          <div class="section">
+            <div class="section-head"><span class="act-ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.9.6 2.8.7a2 2 0 0 1 1.8 2Z"/></svg></span><h2>Call a vendor</h2><span class="meta"><span class="num">1 entry</span><span class="num amt">— at stake · not carried</span></span></div>
+            <p class="act-say">These need a supplier on the phone, not a screen. It is the slowest act on this page and the one most often postponed, which is why it gets its own heading rather than a chip.</p>
+            <div class="double"><i></i><i></i></div>
+            <article class="entry">
+              <div class="gutter"><div class="num">03</div></div>
+              <div class="body">
+                <div class="stamps"><span class="micro">This month</span><span class="micro">risk</span><span class="notposted">not posted — below the floor</span></div>
+                <p class="obs">Purchasing is highly concentrated (HHI 4686 — effectively 2.1 vendors).</p>
+                <p class="do">Request quotes from one alternative vendor for your top category this month and move 10–20% of volume to establish the relationship before you need it.</p>
+                <div class="facts">
+                  <div class="fact"><div class="micro">Would change</div><div>Vendors</div></div>
+                  <div class="fact"><div class="micro">Whose hand</div><div>Yours, in Providers</div></div>
+                  <div class="fact"><div class="micro">Standing</div><div><span class="num">17 days</span><span class="basis">since it was first shown to you</span></div></div>
+                </div>
+                <div class="controls controls-do"><span class="micro ctl-label">Carry it out</span><button class="act ink">Compare vendors →</button><button class="dark" disabled>Make this a goal</button><button class="dark" disabled>See it in reports</button></div>
+                <div class="controls controls-file"><span class="micro ctl-label">File it</span><button class="quiet ink">The working</button><button class="quiet ink">Snooze</button><button class="quiet ink">Dismiss</button><button class="quiet ink">Pin</button><button class="quiet ink">Select</button></div>
+                <p class="said forward-note"><b style="color:var(--ink-2);font-weight:500">Make this a goal — held.</b> Vendor concentration is an HHI over your purchase book. The gateway holds goals on seven figures only, and a concentration index is not among them. <b style="color:var(--ink-2);font-weight:500">See it in reports — held.</b> No cutting answers this one: the concentration register (`/analytics/risk`) is not among the eleven analyses the reports sheet can lay down.</p>
+              </div>
+            </article>
+          </div>
+
+          <!-- Brief the floor -->
+          <div class="section">
+            <div class="section-head"><span class="act-ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 11 18-5v12L3 14v-3Z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg></span><h2>Brief the floor</h2><span class="meta"><span class="num">1 entry</span><span class="num amt">— at stake · not carried</span></span></div>
+            <p class="act-say">These are things people are told before service. A third of what this engine produces is a sentence for a pre-shift, and it was previously scattered across every other section.</p>
+            <div class="double"><i></i><i></i></div>
+            <article class="entry" data-focused="true">
+              <div class="gutter"><div class="num">04</div><span class="micro seal">new</span></div>
+              <div class="body">
+                <div class="stamps"><span class="micro">Tonight</span><span class="micro">sales</span></div>
+                <p class="obs">Tuesday sales came in 38% lower than your average Tuesday ($1,940 vs $3,120, over 6 past Tuesdays).</p>
+                <p class="do">Tonight: brief the floor on top-margin picks, run one by-the-glass feature, and pair your strongest server with the weakest section. A soft day is a staffing-and-suggestion problem before it's a demand problem.</p>
+                <div class="facts">
+                  <div class="fact"><div class="micro">Would change</div><div>Money</div></div>
+                  <div class="fact"><div class="micro">Whose hand</div><div>Yours, in Reports</div></div>
+                  <div class="fact"><div class="micro">Standing</div><div><span class="num">today</span><span class="basis">since it was first shown to you · about Tue 15 Sep</span></div></div>
+                </div>
+                <div class="controls controls-do"><span class="micro ctl-label">Carry it out</span><button class="act ink">Mark as briefed</button><button class="quiet ink">Make this a goal</button><button class="quiet ink">See it in reports</button><button class="quiet ink">Tuesday's account</button></div>
+                <div class="controls controls-file"><span class="micro ctl-label">File it</span><button class="quiet ink">The working</button><button class="quiet ink">Snooze</button><button class="quiet ink">Dismiss</button><button class="quiet ink">Pin</button><button class="quiet ink">Select</button></div>
+              </div>
+            </article>
+          </div>
+
+          <!-- Schedule it -->
+          <div class="section">
+            <div class="section-head"><span class="act-ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18M12 14v4M10 16h4"/></svg></span><h2>Schedule it</h2><span class="meta"><span class="num">1 entry</span><span class="num amt">— at stake · not carried</span></span></div>
+            <p class="act-say">These do not ask you to buy, price or say anything. They ask you to put something on a day. Nothing here is done until it is on the day-book, which is why every entry carries a control that opens the calendar.</p>
+            <div class="double"><i></i><i></i></div>
+            <article class="entry">
+              <div class="gutter"><div class="num">05</div></div>
+              <div class="body">
+                <div class="stamps"><span class="micro">This week</span><span class="micro">sales</span></div>
+                <p class="obs">Friday is reliably your strongest day; Tuesday the weakest.</p>
+                <p class="do">Move staff training, deliveries, and inventory counts to Tuesday; test a Tuesday-only offer (corkage-free, flight special) rather than discounting strong days.</p>
+                <div class="facts">
+                  <div class="fact"><div class="micro">Would change</div><div>Money</div></div>
+                  <div class="fact"><div class="micro">Whose hand</div><div>Yours, in Reports</div></div>
+                  <div class="fact"><div class="micro">Standing</div><div><span class="num">24 days</span><span class="basis">since it was first shown to you</span></div></div>
+                </div>
+                <div class="controls controls-do"><span class="micro ctl-label">Carry it out</span><button class="act ink">Open Reports →</button><button class="quiet ink">Put it on the day-book</button><button class="quiet ink">Make this a goal</button><button class="quiet ink">See it in reports</button></div>
+                <div class="controls controls-file"><span class="micro ctl-label">File it</span><button class="quiet ink">The working</button><button class="quiet ink">Snooze</button><button class="quiet ink">Dismiss</button><button class="quiet ink">Pin</button><button class="quiet ink">Select</button></div>
+              </div>
+            </article>
+          </div>
+
+          <!-- Change a rule — dark, as built -->
+          <div class="section dark-sect">
+            <div class="section-head"><span class="act-ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg></span><h2 class="dark-head">Change a rule</h2><span class="micro">nothing behind this yet</span></div>
+            <p class="act-say">No rule can be tuned from anywhere in the product: the thresholds are constants in the gateway's recommendations service, and the only feedback the engine takes from a manager is a dismissal — which silences a finding rather than moving a threshold.</p>
+            <div class="row"><button class="dark" disabled>Retune the rule</button><span class="said" style="margin:0">Not built: no rule store, no threshold history, and no proposal-and-seal.</span></div>
+          </div>
+        </section>
+      </div>
+
+      <div class="sr-only" role="status">Followed "Draft the PO" to Orders — recorded as acted.</div>
+
+      <footer class="foot"><span class="wordmark">Mudavym<i>.</i></span><p>Every entry is one deterministic rule against your own numbers. No model wrote them. The post carries what stands at 07:00, not what stands now.</p></footer>
+    </div>
+  </div></div>
+</section>
+
+<section class="sk-sec" style="padding-bottom:36px"><p class="sk-note">Fonts load from Google Fonts in this sketch; the product self-hosts Fraunces and JetBrains Mono. Motion in this file is the house's <span class="num">ink</span> (160ms) and <span class="num">settle</span> (320ms) only, guarded by <span class="num">prefers-reduced-motion</span>; a sheet opens on <span class="num">tuck</span>, a leaf turns on <span class="num">turn</span>; there is no popover on this page. Nothing on this page is sealed except ruling an entry off, which is unchanged from the built page; nothing tallies.</p></section>
+</body></html>

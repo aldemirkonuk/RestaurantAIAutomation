@@ -1,0 +1,757 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>109 · Settings — direction C · who carries it out</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,400&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* Mudavym tokens — ADR 0042 / ADR 0138, copied inline from apps/web/src/styles/mudavym.css.
+   The ground is decided, not preferred: Warm Charcoal on every Mudavym page; [data-ground="paper"]
+   is the one declared escape (ADR 0104 D9). This page declares no paper surface. */
+.mudavym,.mudavym[data-ground="charcoal"]{
+  --seal:#5FB0BC;--seal-deep:#7DC3CD;--seal-tint:rgba(95,176,188,.14);--seal-ring:rgba(95,176,188,.38);
+  --paper-0:#15130F;--paper-1:#1D1813;--paper-2:#262019;
+  --ink-1:#EFE7D9;--ink-2:#C0B6A5;--ink-3:#8E8576;--ink-4:#ABA294;
+  color-scheme:dark;
+}
+.mudavym[data-ground="paper"]{
+  --seal:#1a5e6b;--seal-deep:#14515c;--seal-tint:rgba(26,94,107,.1);--seal-ring:rgba(26,94,107,.32);
+  --paper-0:#fffdf8;--paper-1:#f3efe6;--paper-2:#eae4d8;
+  --ink-1:#211c16;--ink-2:#4f473c;--ink-3:#7c7365;--ink-4:#665d50;
+  color-scheme:light;
+}
+:root{
+  --serif:"Fraunces",Georgia,"Times New Roman",serif;
+  --sans:"DM Sans","Plus Jakarta Sans",system-ui,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  /* motion — the seven tokens of lib/mudavym/motion.ts, nothing else */
+  --house:cubic-bezier(.16,1,.3,1);                 /* settle 320 · ink 160 */
+  --turn:cubic-bezier(.32,.72,0,1);                 /* turn 420 */
+  --tuck:linear(0,0.03,0.089,0.173,0.268,0.357,0.453,0.543,0.624,0.691,0.755,0.809,0.851,0.89,0.92,0.943,0.963,0.978,0.989,0.996,1.002,1.006,1.009,1); /* tuck 300 */
+  --stamp:linear(0,0.066,0.217,0.394,0.573,0.735,0.877,0.976,1.044,1.084,1.102,1.104,1.091,1.075,1.055,1.037,1.021,1.009,0.999,0.993,0.99,0.989,0.99,1); /* stamp 360 */
+  --tally:linear(0,0.065,0.188,0.319,0.44,0.545,0.632,0.703,0.761,0.808,0.846,0.877,0.901,0.921,0.936,0.949,0.959,0.967,0.974,0.979,0.983,0.986,0.989,1); /* tally 840 */
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--paper-0);color:var(--ink-1);font-family:var(--sans);font-size:13px;-webkit-font-smoothing:antialiased}
+img{max-width:100%}
+
+/* ── the sketch's own chrome (not the product) ─────────────────────────── */
+.banner{position:sticky;top:0;z-index:50;background:var(--ink-1);color:var(--paper-0);font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;padding:7px 20px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.stage{padding:36px 20px 8px;max-width:1440px;margin:0 auto}
+.stage-label{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-4);margin:0 0 8px;display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+.stage-label b{color:var(--seal-deep);font-weight:600}
+.stage-note{font-size:12px;line-height:1.55;color:var(--ink-2);max-width:780px;margin:0 0 14px}
+.frame{background:var(--paper-0);border:1px solid var(--paper-2);border-radius:12px;overflow:hidden}
+.frame.paper{background:var(--paper-1)}
+.states{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+.state{border:1px solid var(--paper-2);border-radius:12px;padding:16px 18px;background:var(--paper-0);min-width:0}
+.state .micro{display:block;margin-bottom:8px}
+.state .row{flex-direction:column;gap:8px}
+.state .ctl{justify-content:flex-start;padding-top:0}
+.phone{width:390px;max-width:100%;border:1px solid var(--paper-2);border-radius:28px;overflow:hidden;background:var(--paper-0);margin:0}
+.phone .statusbar{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--ink-4);padding:10px 22px 0}
+.cites{font-family:var(--mono);font-size:10.5px;line-height:1.7;color:var(--ink-4);max-width:1100px;margin:0 auto;padding:30px 20px 60px}
+.cites b{color:var(--ink-2);font-weight:600}
+.cites p{margin:0 0 6px}
+
+/* ── the product's vocabulary (pages/settings/next + SectionKit) ───────── */
+.wrap{max-width:1180px;margin:0 auto;padding:26px 22px 56px}
+.wordmark{font-family:var(--serif);font-weight:600;font-size:13px;letter-spacing:.04em;color:var(--ink-2)}
+h1{font-family:var(--serif);font-size:34px;font-weight:600;letter-spacing:-.015em;line-height:1.1;margin:4px 0 0;color:var(--ink-1)}
+h1 .dot{color:var(--seal)}
+.lede{font-family:var(--serif);font-style:italic;font-size:15px;color:var(--ink-2);margin:6px 0 0}
+.standing{font-size:12px;line-height:1.6;color:var(--ink-4);margin:8px 0 0;max-width:700px}
+.dbl{border-top:1px solid var(--ink-1);border-bottom:1px solid var(--ink-1);height:3px;opacity:.5;margin:16px 0 18px}
+h2{font-family:var(--serif);font-size:22px;font-weight:600;letter-spacing:-.01em;margin:0;color:var(--ink-1)}
+h3{font-family:var(--serif);font-size:17px;font-weight:600;letter-spacing:-.005em;margin:0;color:var(--ink-1)}
+.micro{font-family:var(--mono);font-size:9.5px;font-weight:600;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-4)}
+.micro.seal{color:var(--seal-deep)}
+.row{display:flex;align-items:flex-start;gap:16px;padding:12px 0;border-top:1px solid var(--paper-2)}
+.row .body{flex:1;min-width:0}
+.q{font-size:13.5px;font-weight:600;margin:0;color:var(--ink-1)}
+.ans{font-size:13px;line-height:1.5;color:var(--ink-1);margin:3px 0 0}
+.ans.inf{font-family:var(--serif);font-style:italic;font-size:14px;color:var(--ink-2)}
+.ans.none{color:var(--ink-4)}
+.con{font-size:11.5px;line-height:1.5;color:var(--ink-4);margin:3px 0 0} /* quiet by default (style bar 2026-09-17): the same tier as .why, not .ans */
+.why{font-size:11.5px;line-height:1.5;color:var(--ink-4);margin:4px 0 0}
+.prov{overflow-wrap:anywhere;font-family:var(--mono);font-size:9.5px;font-weight:500;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-4);margin:6px 0 0;display:flex;gap:8px;flex-wrap:wrap;align-items:center;line-height:1.6}
+.tag{display:inline-block;padding:1px 6px;border-radius:4px;border:1px solid var(--paper-2);font-family:var(--mono);font-size:9px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;line-height:1.5;white-space:nowrap}
+.tag.manual{color:var(--ink-1);border-color:var(--ink-3)}
+.tag.confirmed{color:var(--seal-deep);border-color:var(--seal-ring);background:var(--seal-tint)}
+.tag.inferred{color:var(--ink-2);border-style:dashed;border-color:var(--ink-3)}
+.tag.unstated{color:var(--ink-4);border-color:var(--paper-2)}
+.tag.proposed{color:var(--seal-deep);border-color:var(--seal-ring);border-style:dashed}
+.tag.refused{color:var(--paper-0);background:var(--ink-1);border-color:var(--ink-1)}
+.tag.dead{color:var(--ink-4);border-style:dashed}
+.kept{font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-4)}
+.ctl{flex-shrink:0;padding-top:2px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+.sw{position:relative;width:40px;height:22px;border-radius:999px;border:1px solid var(--paper-2);background:var(--paper-2);display:inline-block;flex-shrink:0;transition:background-color 160ms var(--house),border-color 160ms var(--house)}
+.sw.on{border-color:var(--seal);background:var(--seal)}
+.sw i{position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:999px;background:var(--paper-0);box-shadow:0 1px 2px rgba(0,0,0,.35);transition:transform 300ms var(--tuck)}
+.sw.on i{transform:translateX(18px)}
+.sw.dim{opacity:.45}
+.btn{font-family:var(--sans);font-size:12px;font-weight:600;padding:6px 13px;border-radius:8px;border:1px solid var(--seal-ring);background:transparent;color:var(--seal-deep);cursor:pointer;white-space:nowrap;transition:background-color 160ms var(--house),border-color 160ms var(--house),color 160ms var(--house)}
+.btn:hover{background:var(--seal-tint)}
+.btn.q{border-color:var(--paper-2);color:var(--ink-2)}
+.btn.q:hover{background:var(--paper-1)}
+.btn.sm{font-size:11px;padding:4px 10px}
+.btn[disabled],.btn.off{opacity:.45;cursor:default}
+.btn:focus-visible,.sw:focus-visible,.chip:focus-visible{outline:2px solid var(--seal);outline-offset:3px}
+.chip{font-family:var(--sans);font-size:12px;font-weight:500;padding:4px 11px;border-radius:999px;border:1px solid var(--paper-2);background:transparent;color:var(--ink-2);display:inline-flex;gap:6px;align-items:center;cursor:pointer;transition:background-color 160ms var(--house),border-color 160ms var(--house)}
+.chip:hover{background:var(--paper-1)}
+.chip.on{border-color:var(--seal);background:var(--seal-tint);color:var(--ink-1);font-weight:600}
+.chip .n{font-family:var(--mono);font-size:10px;color:var(--ink-4);font-variant-numeric:tabular-nums}
+.chip.on .n{color:var(--seal-deep)}
+.field{font-family:var(--sans);font-size:12px;padding:5px 8px;border-radius:8px;border:1px solid var(--paper-2);background:var(--paper-0);color:var(--ink-1)}
+.field.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.dead{font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-4);border:1px dashed var(--paper-2);border-radius:999px;padding:3px 9px;white-space:nowrap}
+.note{font-size:12px;line-height:1.55;color:var(--ink-2);margin:0 0 10px}
+.fail{font-size:12px;line-height:1.5;color:var(--ink-1);background:var(--paper-2);border-radius:8px;padding:8px 11px;margin:10px 0 0}
+.callout{border-left:2px solid var(--seal);padding:9px 0 9px 13px;margin:14px 0 0;font-size:12px;line-height:1.6;color:var(--ink-2);background:linear-gradient(90deg,var(--seal-tint),transparent 60%)}
+.fig{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.big{font-family:var(--mono);font-size:22px;font-weight:500;letter-spacing:-.01em;font-variant-numeric:tabular-nums;color:var(--ink-1);line-height:1}
+.skel{background:var(--paper-2);border-radius:3px;height:10px} /* static — no sheen: none of the seven motion tokens is a loop, and ADR 0134 is Proposed, not locked */
+[hidden]{display:none!important}
+.disc{display:grid;grid-template-rows:0fr;transition:grid-template-rows 320ms var(--house)}
+.disc[data-open="true"]{grid-template-rows:1fr}
+.disc>*{min-height:0;overflow:hidden}
+.chev{display:inline-block;transition:transform 160ms var(--house)}
+[aria-expanded="true"] .chev{transform:rotate(90deg)}
+.turn{animation:turn 420ms var(--turn) both}
+@keyframes turn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+a{color:var(--seal-deep)}
+code{font-family:var(--mono);font-size:11px}
+em{font-style:italic}
+table{border-collapse:collapse;width:100%}
+th{font-family:var(--mono);font-size:9.5px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-4);text-align:left;padding:6px 8px 6px 0;border-bottom:1px solid var(--paper-2);white-space:nowrap}
+td{font-size:12.5px;line-height:1.45;padding:9px 8px 9px 0;border-bottom:1px solid var(--paper-2);vertical-align:top;color:var(--ink-1)}
+td.fig,th.fig{text-align:right;padding-right:0}
+td.mono{font-family:var(--mono);font-size:11.5px;white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--ink-2)}
+.tscroll{overflow-x:auto}
+
+/* ── the seal (sig-hero wax outline; the production Seal carries the trued interlock, ADR 0047) ── */
+.sealmark{width:34px;height:34px;color:var(--seal);flex-shrink:0}
+.sealmark.pressed{transform:scale(1)}
+.hold{border:1px solid var(--seal-ring);border-radius:10px;padding:10px 14px;max-width:360px;position:relative;overflow:hidden;background:var(--paper-1);cursor:pointer;user-select:none;display:flex;align-items:center;gap:12px;-webkit-tap-highlight-color:transparent}
+.hold .fill{position:absolute;inset:0;width:0%;background:var(--seal-tint)}
+.hold[data-state="holding"] .fill{transition:width 620ms linear}
+.hold[data-state="released"] .fill{transition:width 300ms var(--tuck)}
+.hold .face{position:relative;font-size:12.5px;font-weight:600;color:var(--seal-deep);flex:1}
+.hold .sub{position:relative;font-size:11px;font-weight:400;color:var(--ink-4);display:block;margin-top:2px}
+.hold .sealmark{position:relative;opacity:.35;transition:opacity 160ms var(--house)}
+.hold[data-state="sealed"] .sealmark{opacity:1;animation:stamp 360ms var(--stamp) both}
+@keyframes stamp{from{transform:scale(.72)}to{transform:scale(1)}}
+.hold[data-state="sealed"]{border-color:var(--seal)}
+.hold[data-state="sealed"] .fill{width:100%}
+
+/* ── overlays (ADR 0112 / Sheet.tsx: sheet 440 right · panel 620 centred · popover anchored) ── */
+/* The stage grows to fit whichever overlay is drawn: page beneath and overlay share one grid cell. */
+.scrim{position:relative;display:grid;grid-template-columns:minmax(0,1fr);background:var(--paper-0);overflow:hidden}
+.scrim>*{grid-area:1/1}
+.scrim::before{content:"";grid-area:1/1;background:rgba(0,0,0,.42);z-index:1;pointer-events:none}
+.scrim .under{opacity:.9;min-height:520px}
+.sheet{position:relative;z-index:2;justify-self:end;align-self:stretch;width:min(440px,100%);background:var(--paper-0);border-left:1px solid var(--paper-2);padding:22px 24px;box-shadow:-24px 0 48px rgba(0,0,0,.35)}
+.panel{position:relative;z-index:2;justify-self:center;align-self:start;margin:44px 16px;width:min(620px,calc(100% - 32px));background:var(--paper-0);border:1px solid var(--paper-2);border-radius:14px;padding:22px 26px;box-shadow:0 30px 60px rgba(0,0,0,.45)}
+.popover{position:relative;z-index:2;justify-self:start;align-self:start;background:var(--paper-0);border:1px solid var(--paper-2);border-radius:12px;padding:12px 14px;width:340px;max-width:calc(100% - 32px);box-shadow:0 18px 40px rgba(0,0,0,.4)}
+.close{font-family:var(--sans);font-size:12px;color:var(--ink-4);background:none;border:0;padding:0;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+.ov-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
+
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{transition:none!important;animation:none!important}
+}
+
+</style>
+</head>
+<body class="mudavym">
+<style>
+/* Direction C — who carries it out. Every setting is filed under the thing that obeys it. */
+.layout{display:grid;grid-template-columns:minmax(0,1fr) 250px;gap:34px;align-items:start;margin-top:4px}
+.rail{position:sticky;top:46px}
+.rail .box{border:1px solid var(--paper-2);border-radius:10px;padding:12px 13px;margin-bottom:12px}
+.rail ol{list-style:none;margin:8px 0 0;padding:0}
+.rail li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:baseline;padding:6px 0;border-top:1px solid var(--paper-2);font-size:12px;color:var(--ink-2)}
+.rail li:first-child{border-top:0}
+.rail li b{display:block;color:var(--ink-1);font-weight:600}
+.rail li small{display:block;font-family:var(--mono);font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-4);margin-top:2px}
+.rail li .n{font-family:var(--mono);font-size:10px;color:var(--ink-4);font-variant-numeric:tabular-nums}
+.rail li.on b{color:var(--seal-deep)}
+.officer{margin-top:30px;border-top:1px solid var(--paper-2);padding-top:18px}
+.officer:first-of-type{margin-top:10px;border-top:0;padding-top:0}
+.of-head{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:18px;align-items:start}
+.of-head .what{font-size:12.5px;line-height:1.55;color:var(--ink-2);margin:4px 0 0;max-width:640px}
+.of-facts{font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-4);line-height:1.8;margin:8px 0 6px;display:flex;gap:6px 14px;flex-wrap:wrap}
+.of-facts b{color:var(--ink-1);font-weight:500}
+.of-facts .ran{color:var(--seal-deep)}
+.of-facts .never{color:var(--ink-4);border:1px dashed var(--paper-2);padding:0 6px;border-radius:4px}
+.of-num{font-family:var(--serif);font-size:13px;font-style:italic;color:var(--ink-4);white-space:nowrap;padding-top:6px}
+.prov .kept{margin-left:auto;padding-left:10px;border-left:1px solid var(--paper-2)}
+.of-facts{overflow-wrap:anywhere}
+.row[data-refused]{box-shadow:inset 2px 0 0 var(--ink-1);padding-left:12px}
+.row[data-proposed]{box-shadow:inset 2px 0 0 var(--seal);padding-left:12px}
+.row[data-unstated]{box-shadow:inset 2px 0 0 var(--ink-3);padding-left:12px}
+.tbl-wrap{margin-top:8px}
+.elsewhere{margin-top:34px;border-top:1px solid var(--paper-2);padding-top:14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:18px}
+.elsewhere p{font-size:12px;line-height:1.55;color:var(--ink-2);margin:4px 0 0}
+.footline{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;border-top:1px solid var(--paper-2);margin-top:34px;padding-top:14px;font-size:11px;color:var(--ink-4)}
+.opt{display:grid;grid-template-columns:20px minmax(0,1fr);gap:12px;padding:11px 0;border-top:1px solid var(--paper-2);align-items:start}
+.opt .radio{width:16px;height:16px;border-radius:50%;border:1.5px solid var(--ink-3);margin-top:2px;position:relative}
+.opt .radio.on{border-color:var(--seal)}
+.opt .radio.on::after{content:"";position:absolute;inset:3px;border-radius:50%;background:var(--seal)}
+.opt .lab{font-size:13px;font-weight:600;color:var(--ink-1)}
+.opt .who{font-size:12px;line-height:1.5;color:var(--ink-2);margin-top:2px}
+.opt .who em{color:var(--ink-4)}
+.srvnote{display:block;font-family:var(--mono);font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-4);white-space:normal;margin-top:2px}
+/* the proposal panel (3b) — the same rows directions A and B draw */
+.prop-row{display:grid;grid-template-columns:minmax(0,1fr) 150px 150px;gap:14px;padding:11px 0;border-top:1px solid var(--paper-2);align-items:start}
+.prop-row .lab{font-size:12.5px;font-weight:600;color:var(--ink-1)}
+.prop-row .rsn{font-size:11.5px;line-height:1.5;color:var(--ink-2);margin-top:2px}
+.prop-row .cur{font-size:12px;color:var(--ink-4)}
+.prop-row .new{font-size:12px;color:var(--ink-1);font-weight:500}
+.prop-row .k{display:block;font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-4);margin-bottom:3px}
+.prop-row.dropped{opacity:.7}
+.receipt{border:1px solid var(--paper-2);border-radius:10px;padding:12px 14px;margin-top:14px}
+.receipt li{font-size:12px;line-height:1.5;color:var(--ink-2);margin:4px 0}
+.receipt ul{margin:6px 0 0;padding-left:18px}
+@media (max-width:900px){.prop-row{grid-template-columns:1fr}}
+.opt.sub{padding-left:20px;border-top:1px dashed var(--paper-2)}
+.m .row{flex-direction:column;gap:8px}
+.m .ctl{justify-content:flex-start;padding-top:0}
+.m .of-head{grid-template-columns:1fr}
+.m .of-facts{gap:4px 10px}
+.strip{display:flex;gap:6px;flex-wrap:wrap;margin:12px 0 0}
+@media (max-width:900px){
+  .layout{grid-template-columns:minmax(0,1fr)}
+  main{min-width:0}
+  .rail{position:static;order:-1} /* the rails sit under the lede, never after the footer */
+  .rail .box{margin-bottom:10px}
+  .of-head{grid-template-columns:1fr}
+  .row{flex-direction:column;gap:8px}
+  .ctl{justify-content:flex-start}
+  /* the senders table stacks: one card per sender, every column and the action in view — no scroller */
+  table.senders,table.senders tbody,table.senders tr,table.senders td{display:block;width:100%}
+  table.senders thead{display:none}
+  table.senders tr{border:1px solid var(--paper-2);border-radius:8px;padding:8px 10px;margin-top:8px}
+  table.senders td{border:0;padding:3px 0 3px 72px;white-space:normal;position:relative;min-height:18px}
+  table.senders td::before{content:attr(data-l);position:absolute;left:0;top:5px;width:64px;font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-4)}
+  table.senders td .srvnote{display:inline;margin-left:6px}
+  table.senders td .btn{margin-top:4px}
+}
+</style>
+
+<div class="banner"><span>Sketch 109 · direction C · who carries it out</span><span>example data, not a tenant</span></div>
+
+<!-- ═══════════════════════════ 1 · DESKTOP ═══════════════════════════ -->
+<section class="stage" id="desktop">
+  <p class="stage-label"><b>1 · Desktop, 1440</b> Meyhouse Palo Alto · USD · America/Los_Angeles · signed in as Deniz Arslan, owner</p>
+  <p class="stage-note">Every setting is filed under the thing that obeys it — the approval gate, the senders, the day-book, the ledger, the door — and each of those opens with what it reads, the file it runs from and when it last ran — where a log records it; where none does, the heading says <em>not recorded</em> rather than printing the schedule as a run. The page answers “did flipping this change anything, and for whom” with its headings. The last group is Nobody: the settings the product stores and no code reads, listed rather than hidden. Provenance per field is unchanged — manual, confirmed, inferred, or an em dash — and “kept on” (this restaurant · your account · this browser) is printed on every row, because filing by reader mixes house and personal scope on purpose.</p>
+  <div class="frame"><div class="wrap">
+    <header>
+      <div class="wordmark">Mudavym</div>
+      <h1>Settings<span class="dot">.</span></h1>
+      <p class="lede">Every setting, filed under the thing that obeys it — and when it last did.</p>
+      <p class="standing">Five things read this house's settings, and one group of settings is read by nothing. Each reader is named with the file it runs from and the last time it ran, measured from its own log — where no run is recorded, the line says so rather than printing a time. Two proposals from the assistant are waiting for the seal; one sender is refused because nobody has said whose doors it may use, and one more has never been counted.</p>
+    </header>
+    <div class="dbl" aria-hidden="true"></div>
+
+    <div class="layout">
+    <main>
+
+      <!-- 1 · The approval gate -->
+      <section class="officer" id="c-gate">
+        <div class="of-head"><div><span class="micro seal">Reader 1 of 5</span><h2>The approval gate</h2><p class="what">Reads these before any seal on an order. If a rule fires, the order parks in <em>approval needed</em> and the refusal is said in words. It is the only thing on this page that stops an order.</p></div><span class="of-num">3 rules · 2 roles</span></div>
+        <div class="of-facts"><span>runs from <b>procurement.service.ts · assertApprovalAllowed</b></span><span class="ran">last acted <b>14 Sep 19:22</b> — parked order 4471, $3,140, Priya Natarajan</span><span>reads <b>restaurant_approval_thresholds · user_restaurant_access</b></span></div>
+
+        <div class="row"><div class="body">
+          <p class="q">A manager's order waits above</p>
+          <p class="ans"><span class="fig">$2,500.00</span> — would have fired <span class="fig">7</span> times in the last 365 days</p>
+          <div class="prov"><span class="tag manual">Manual</span> set by Deniz Arslan · 4 Sep 2026 <span class="kept">this restaurant · owner or manager writes</span></div>
+        </div><div class="ctl"><button class="btn q sm">Edit</button></div></div>
+
+        <div class="row"><div class="body">
+          <p class="q">The first order to a new vendor needs a second signature</p>
+          <p class="ans">Yes — would have fired <span class="fig">3</span> times</p>
+          <div class="prov"><span class="tag manual">Manual</span> set by Deniz Arslan · 4 Sep 2026 <span class="kept">this restaurant</span></div>
+        </div><div class="ctl"><span class="sw on" role="switch" aria-checked="true" tabindex="0"><i></i></span></div></div>
+
+        <div class="row" data-proposed><div class="body">
+          <p class="q">An order waits when a price is above the last paid by</p>
+          <p class="ans none">— not stated</p>
+          <p class="ans inf">Proposed: 12 % — from 14 sightings this year; would have fired twice</p>
+          <div class="prov"><span class="tag proposed">Proposed</span> by the assistant · 16 Sep 2026 · awaiting the seal <span class="kept">this restaurant</span></div>
+        </div><div class="ctl"><button class="btn sm">Open the proposal</button></div></div>
+
+        <div class="row"><div class="body">
+          <p class="q">Who may seal at all</p>
+          <p class="ans">Deniz Arslan (owner) · Priya Natarajan (manager) — the gate reads the role on the access row, never a list kept here</p>
+          <div class="prov"><span class="tag manual">Manual</span> roles granted 12 Jun · 3 Sep 2026 <span class="kept">this restaurant · from The door, below</span></div>
+        </div><div class="ctl"><button class="btn q sm">Open team</button></div></div>
+      </section>
+
+      <!-- 2 · The senders -->
+      <section class="officer" id="c-senders">
+        <div class="of-head"><div><span class="micro seal">Reader 2 of 5</span><h2>The senders</h2><p class="what">Eight scheduled and event-driven senders, one channel chooser, and the one door that lets the house write to a vendor by itself. They read every member's doors together: an alert goes out if anyone here wants it, and the earliest digest time wins. The mail sender's own identity and the sign-off at the foot of every vendor email are the sender's, not a setting here — <code>/connections#sender</code>.</p></div><span class="of-num">8 senders · 6 categories</span></div>
+        <div class="of-facts"><span>run from <b>scheduled-tasks.service.ts · low-stock-alerts.service.ts · notification_agent.py</b></span><span class="never">last ran — not recorded for the six fixed-hour senders: they log to stdout only; needs the run row this direction asks for</span><span class="ran">last sent <b>15 Sep 11:52</b> low-stock alert — a <b>notifications</b> row with its delivery outcome</span><span class="ran">last sent <b>13 Sep 09:15</b> custom reminder — also a <b>notifications</b> row (:859)</span><span>read <b>notification_preferences · recommendation_digest_prefs</b></span></div>
+
+        <div class="row" data-refused><div class="body">
+          <p class="q">Whose doors each sender may use</p>
+          <p class="ans">5 mapped · 1 proposed · <b>1 refused</b> · 1 not yet mapped</p>
+          <p class="con">Each sender is mapped to one category, and the category's own channel array decides the doors. A sender with no category is refused: it sends to nobody, and says so here, rather than to everyone. Today the six arrays still act as one switch (a union across three, OD-121); once OD-121 lands, each is read on its own and this table is what it reads. The six fixed-hour senders run on one clock the server fixes in America/New_York — shown here converted, and not this house's to move.</p>
+          <div class="prov"><span class="tag refused">Refused</span> recurring-order reminder · no category · 2 sends refused since 16 Sep · nothing went to anyone <span class="kept">this restaurant</span></div>
+          <div class="tbl-wrap"><table class="senders">
+            <thead><tr><th>Sender</th><th>Runs · America/Los_Angeles</th><th>Category</th><th>Whose doors today</th><th>Stamp</th><th></th></tr></thead>
+            <tbody>
+              <tr><td data-l="Sender">Low-stock alert</td><td data-l="Runs" class="mono">on a crossing · any hour</td><td data-l="Category">Low stock</td><td data-l="Doors">Deniz, Priya · email</td><td data-l="Stamp"><span class="tag manual">Manual</span> Deniz · 16 Sep</td><td><button class="btn q sm">Change</button></td></tr>
+              <tr><td data-l="Sender">Daily summary</td><td data-l="Runs" class="mono">06:00 <span class="srvnote">server-fixed · 09:00 NY</span></td><td data-l="Category">Financial reports</td><td data-l="Doors">Deniz · SMS</td><td data-l="Stamp"><span class="tag manual">Manual</span> Deniz · 16 Sep</td><td><button class="btn q sm">Change</button></td></tr>
+              <tr><td data-l="Sender">Weekly report</td><td data-l="Runs" class="mono">Mon 05:00 <span class="srvnote">server-fixed · 08:00 NY</span></td><td data-l="Category">Financial reports <span class="srvnote">OD-121 reserves this product-wide</span></td><td data-l="Doors">Deniz, Priya · email</td><td data-l="Stamp"><span class="tag manual">Manual</span> Deniz · 16 Sep</td><td><button class="btn q sm">Change</button></td></tr>
+              <tr><td data-l="Sender">Delivery ETA</td><td data-l="Runs" class="mono">14:00 <span class="srvnote">server-fixed · 17:00 NY</span></td><td data-l="Category">Delivery</td><td data-l="Doors">Deniz, Priya, Sam · email</td><td data-l="Stamp"><span class="tag manual">Manual</span> Deniz · 16 Sep</td><td><button class="btn q sm">Change</button></td></tr>
+              <tr><td data-l="Sender">Event prep reminder</td><td data-l="Runs" class="mono">05:00 <span class="srvnote">server-fixed · 08:00 NY</span></td><td data-l="Category">Calendar reminders</td><td data-l="Doors">Deniz, Priya · email</td><td data-l="Stamp"><span class="tag manual">Manual</span> Deniz · 16 Sep</td><td><button class="btn q sm">Change</button></td></tr>
+              <tr><td data-l="Sender">Inventory audit reminder</td><td data-l="Runs" class="mono">Mon 04:00 <span class="srvnote">server-fixed · 07:00 NY</span></td><td data-l="Category"><em>Low stock</em></td><td data-l="Doors"><em>would be Deniz, Priya</em></td><td data-l="Stamp"><span class="tag proposed">Proposed</span> assistant</td><td><button class="btn sm">Open the proposal</button></td></tr>
+              <tr><td data-l="Sender">Recurring-order reminder</td><td data-l="Runs" class="mono">05:00 <span class="srvnote">server-fixed · 08:00 NY</span></td><td data-l="Category"><span class="tag refused">Refused</span></td><td data-l="Doors">nobody</td><td data-l="Stamp"><span class="tag unstated">—</span></td><td><button class="btn sm">Map it</button></td></tr>
+              <tr><td data-l="Sender">Custom reminders</td><td data-l="Runs" class="mono">every 15 min · when a reminder a person wrote is due <span class="srvnote">no fixed hour · not in OD-121's count</span></td><td data-l="Category"><span class="tag unstated">—</span> not yet mapped</td><td data-l="Doors">by address: whoever the reminder names · by role: would be refused once a category is required</td><td data-l="Stamp"><span class="tag unstated">—</span></td><td><button class="btn sm">Map it</button></td></tr>
+            </tbody></table></div>
+          <p class="why">The eighth row is the sender OD-121's <em>seven</em> leaves out: <code>custom-reminders-check</code> (<code>@Cron("*/15 * * * *")</code>, <code>scheduled-tasks.service.ts:733</code>) resolves recipients by role at <code>:820</code> and mails through <code>gmailService.sendCustomReminder</code>; a required <code>category</code> on <code>RecipientQuery</code> would refuse its by-role sends too, so it is counted here or it would be refused uncounted — founder question 9. OD-121 names two mappings as the founder's to make product-wide — the weekly report and the recurring-order reminder. In this example Deniz answered the first for his house; the product-level call is still open (README question 3). The second is drawn refused and not guessed. “Open the proposal” leads to the assistant's panel and its hold-to-seal (ADR 0113); a person's own mapping is stated, not sealed.</p>
+        </div></div>
+
+        <div class="row"><div class="body">
+          <p class="q">Your doors</p>
+          <p class="ans">Email open · SMS closed</p>
+          <div class="prov"><span class="tag manual">Manual</span> you · 2 Sep 2026 <span class="kept">your account · read by broadcast-preferences.ts</span></div>
+        </div><div class="ctl"><label class="kept">Email</label><span class="sw on" role="switch" aria-checked="true" tabindex="0"><i></i></span><label class="kept">SMS</label><span class="sw" role="switch" aria-checked="false" tabindex="0"><i></i></span></div></div>
+
+        <div class="row"><div class="body">
+          <p class="q">Your quiet hours</p>
+          <p class="ans"><span class="fig">22:00 – 08:00</span></p>
+          <p class="con">The chooser holds low-stock, negotiation and delivery alerts inside the window. An order-approval request goes out anyway — it never passes through the chooser.</p>
+          <div class="prov"><span class="tag manual">Manual</span> you · 2 Sep 2026 <span class="kept">your account · read by notification_agent.py:1487</span></div>
+        </div><div class="ctl"><input class="field mono" style="width:64px" value="22:00"> <input class="field mono" style="width:64px" value="08:00"></div></div>
+
+        <div class="row"><div class="body">
+          <p class="q">Your low-stock digest</p>
+          <p class="ans">Daily at <span class="fig">12:00</span> · first crossing immediately</p>
+          <div class="prov"><span class="tag manual">Manual</span> you · 2 Sep 2026 <span class="kept">your account · the earliest time across members wins</span></div>
+        </div><div class="ctl"><button class="btn q sm">Edit</button></div></div>
+
+        <div class="row" data-unstated><div class="body">
+          <p class="q">The recommendations digest</p>
+          <p class="ans none">— not stated · the sender exists as of this pass</p>
+          <p class="con">Off until someone answers: the hour, the least urgency worth a mail, and to whom. Stored defaults are not an answer. Last sent: never — which is not “sent nothing”.</p>
+          <div class="prov"><span class="tag unstated">—</span> never written <span class="kept">this restaurant · recommendation_digest_prefs</span></div>
+        </div><div class="ctl"><span class="sw dim" role="switch" aria-checked="false" tabindex="0"><i></i></span> <input class="field mono" style="width:64px" placeholder="hour"> <select class="field"><option selected disabled>Choose the least urgency…</option><option>only what is due now</option><option>this week or sooner</option><option>this month or sooner</option></select> <input class="field" style="width:120px" placeholder="to whom"> <button class="btn sm" disabled>Record</button></div></div>
+
+        <div class="row"><div class="body">
+          <p class="q">May the house write to a vendor without asking?</p>
+          <p class="ans">No</p>
+          <p class="con">Granted only by holding the seal; revoked by one plain button. Never a toggle. Reading the house inbox is granted: yes, by Deniz Arslan on 5 Sep.</p>
+          <div class="prov"><span class="tag manual">Manual</span> never granted <span class="kept">this restaurant · enable_ai_autonomous_send · enable_house_inbox_read</span></div>
+        </div><div class="ctl">
+          <div class="hold" tabindex="0" role="button" data-done="Granted" data-receipt="Written · 16 Sep 2026 · by Deniz Arslan"><span class="fill"></span><span class="face"><span class="face-text">Hold to grant</span><span class="sub"></span></span>
+            <svg class="sealmark" viewBox="0 0 100 100" aria-hidden="true"><path fill="currentColor" d="M50 6c9 0 14 6 22 8s16-2 21 5-1 15 1 23 8 13 5 21-13 8-18 14-6 15-14 17-14-4-22-4-14 6-22 4-9-11-14-17-15-6-18-14 3-13 5-21-3-16 1-23 13-3 21-5S41 6 50 6z"/><g stroke="var(--paper-0)" stroke-opacity=".62" stroke-width="2.5"><path d="M34 58h32M34 63h32"/></g></svg>
+          </div>
+        </div></div>
+      </section>
+
+      <!-- 3 · The day-book -->
+      <section class="officer" id="c-daybook">
+        <div class="of-head"><div><span class="micro seal">Reader 3 of 5</span><h2>The day-book</h2><p class="what">The calendar and the order-by windows. It reads when the house is open, which clock it keeps, when each vendor closes for the day and which days they deliver. The feed another calendar subscribes to is a connection, not a setting here — <code>/connections#feed</code>.</p></div><span class="of-num">hours · zone · 5 vendors</span></div>
+        <div class="of-facts"><span>runs from <b>calendar/ · operating-hours.service.ts · vendor-terms/</b></span><span class="never">last calendar build — not recorded; the calendar is computed on read and keeps no log</span></div>
+
+        <div class="row"><div class="body">
+          <p class="q">When the house is open</p>
+          <p class="ans">Tue–Thu 17:00–23:00 · Fri–Sat 17:00–00:30 · Sun 17:00–22:00 · Mon closed</p>
+          <p class="con">Up to three ranges a day; a range may cross midnight if it is the day's last. Not set is not closed all week — null reads as <em>hours unknown</em>.</p>
+          <div class="prov"><span class="tag confirmed">Confirmed</span> proposed from 1,212 till checks · sealed by Deniz Arslan · 16 Sep 2026 <span class="kept">this restaurant · restaurants.operating_hours</span></div>
+          <p class="why">“Edit the week” opens the one-day sheet drawn in B, section 3, because this week is stated and the other six days stand as they are. On a week that is null it opens the seven-day editor drawn in A, section 3b — all seven keys are required, so a day cannot be written alone (<code>operating-hours.ts:13-20</code>).</p>
+        </div><div class="ctl"><button class="btn q sm">Edit the week</button></div></div>
+
+        <div class="row"><div class="body">
+          <p class="q">Which clock it keeps</p>
+          <p class="ans">America/Los_Angeles</p>
+          <div class="prov"><span class="tag manual">Manual</span> stated by Deniz Arslan · 12 Jun 2026 <span class="kept">this restaurant · never defaulted to the server's</span></div>
+        </div><div class="ctl"><button class="btn q sm">Edit</button></div></div>
+
+        <div class="row"><div class="body">
+          <p class="q">Wine Warehouse</p>
+          <p class="ans">Cutoff 14:00, one day before · delivers Tue · Thu · minimum $300 · Net 30</p>
+          <div class="prov"><span class="tag manual">Manual</span> stated by Priya Natarajan · 28 Aug 2026 <span class="kept">this restaurant · restaurant_vendor_terms</span></div>
+        </div><div class="ctl"><button class="btn q sm">Open</button></div></div>
+
+        <div class="row"><div class="body">
+          <p class="q">Sysco</p>
+          <p class="ans inf">Cutoff after 15:40, before 17:10 · delivers Mon · Wed · Fri · has accepted as little as $412</p>
+          <div class="prov"><span class="tag inferred">Inferred</span> from 23 orders and 41 receipts · computed on read · never written down <span class="kept">this restaurant</span></div>
+        </div><div class="ctl"><button class="btn sm">Confirm</button><button class="btn q sm">Open</button></div></div>
+
+        <div class="row"><div class="body">
+          <p class="q">Chefs' Warehouse · Monterey Fish Co. · Valley Produce</p>
+          <p class="ans">Net 30 on the record, four terms — &nbsp;·&nbsp; nothing stated, 6 orders too few &nbsp;·&nbsp; delivers Tue · Sat</p>
+          <div class="prov"><span class="tag manual">Manual</span> 2 &nbsp;<span class="tag unstated">—</span> 1 <span class="kept">this restaurant</span></div>
+        </div><div class="ctl"><button class="btn q sm">Open</button></div></div>
+      </section>
+
+      <!-- 4 · The ledger -->
+      <section class="officer" id="c-ledger">
+        <div class="of-head"><div><span class="micro seal">Reader 4 of 5</span><h2>The ledger and the reports</h2><p class="what">Every money figure and every quantity in the product. It reads the currency figures are stated in, what holding stock costs, and which drinks registers exist to be counted at all.</p></div><span class="of-num">347 rules · 12 fired last night</span></div>
+        <div class="of-facts"><span>runs from <b>analytics/ · inventory/ · cellar/</b></span><span class="never">last insight run — not recorded as a run; a log line only</span><span class="ran">newest insight <b>last night</b> — 12 rows carry its date</span><span>reads <b>restaurants.currency · carrying_cost_pct · restaurant_cellar_registers</b></span></div>
+
+        <div class="row"><div class="body">
+          <p class="q">The money figures are stated in</p>
+          <p class="ans">USD — nothing is ever converted</p>
+          <div class="prov"><span class="tag manual">Manual</span> stated by Deniz Arslan · 19 Aug 2026 <span class="kept">this restaurant · the audit trail, never updated_at</span></div>
+        </div><div class="ctl"><button class="btn q sm">Change</button></div></div>
+
+        <div class="row" data-unstated><div class="body">
+          <p class="q">What a month of holding stock costs</p>
+          <p class="ans none">— not stated</p>
+          <p class="con">Until typed, every commodity alert the nightly run produces prints <em>unmeasured</em> where a saving would go — 4 of last night's 12 did. The assistant will not propose this; nothing in the books says what the house's money costs it.</p>
+          <div class="prov"><span class="tag unstated">—</span> never asked <span class="kept">this restaurant · restaurants.carrying_cost_pct</span></div>
+        </div><div class="ctl"><input class="field mono" style="width:84px" placeholder="e.g. 0.75"> <span class="kept">% a month</span> <button class="btn sm" disabled>Record</button></div></div>
+
+        <div class="row"><div class="body">
+          <p class="q">Which drinks registers exist</p>
+          <p class="ans">Wines · cocktails · non-alcoholic carried &nbsp;·&nbsp; <em>whiskey likely — 38 menu lines name one, none counted in the cellar · beer certain — 96 cellar rows name one · both unconfirmed</em> &nbsp;·&nbsp; spirits, soft drinks — none</p>
+          <p class="con">The engine's confidence is a word — certain · likely · none · unknown — never a decimal, and its basis is menu and cellar rows (<code>cellar-registers.ts:38,446-464</code>). An inferred register is drawn on <code>/cellar</code> in the inferred style and never counted in a total.</p>
+          <div class="prov"><span class="tag manual">Manual</span> 3 &nbsp;<span class="tag confirmed">Confirmed</span> 1 &nbsp;<span class="tag inferred">Inferred</span> 2 &nbsp;<span class="tag unstated">—</span> 2 <span class="kept">this restaurant</span></div>
+        </div><div class="ctl"><button class="btn sm">Confirm two</button><button class="btn q sm">Open</button></div></div>
+
+        <div class="row"><div class="body">
+          <p class="q">How volumes are written for you</p>
+          <p class="ans">Millilitres · pour 150 ml · recipes tracked</p>
+          <div class="prov"><span class="tag manual">Manual</span> <span class="kept">this browser only · keeps a value, not a history · not the phone</span></div>
+        </div><div class="ctl"><button class="btn q sm">Edit</button></div></div>
+      </section>
+
+      <!-- 5 · The door -->
+      <section class="officer" id="c-door">
+        <div class="of-head"><div><span class="micro seal">Reader 5 of 5</span><h2>The door</h2><p class="what">Who may enter this house at all, and what each of them may change once inside. The gateway refuses independently of anything drawn here.</p></div><span class="of-num">5 people · 1 branch</span></div>
+        <div class="of-facts"><span>runs from <b>TenantGuard · assertCanManageRestaurant</b></span><span class="ran">last changed <b>11 Sep 2026</b> invite issued</span><span>reads <b>user_restaurant_access · organization_invites · restaurants</b></span></div>
+
+        <div class="row"><div class="body">
+          <p class="q">Who can reach this house</p>
+          <p class="ans">Deniz Arslan (owner) · Priya Natarajan (manager) · Sam Okafor, Lina Reyes, Tomás Vidal (staff) · 1 invite open</p>
+          <div class="prov"><span class="tag manual">Manual</span> last granted 3 Sep · invite issued 11 Sep to m.okafor@… <span class="kept">this restaurant</span></div>
+        </div><div class="ctl"><button class="btn q sm">Open team</button><button class="btn sm">Invite</button></div></div>
+
+        <div class="row"><div class="body">
+          <p class="q">Where here is</p>
+          <p class="ans">One branch, no chain · 640 Emerson St, Palo Alto</p>
+          <div class="prov"><span class="tag manual">Manual</span> Deniz Arslan · 12 Jun 2026 <span class="kept">this restaurant</span></div>
+        </div><div class="ctl"><button class="btn q sm">Open locations</button></div></div>
+
+        <div class="row"><div class="body">
+          <p class="q">How wide Find distributors frames you</p>
+          <p class="ans">West Coast</p>
+          <div class="prov"><span class="tag manual">Manual</span> you <span class="kept">your account</span></div>
+        </div><div class="ctl"><button class="btn q sm">Edit</button></div></div>
+      </section>
+
+      <!-- 6 · Nobody -->
+      <section class="officer" id="c-nobody">
+        <div class="of-head"><div><span class="micro">Read by nobody</span><h2>Nobody</h2><p class="what">Settings the product stores and no code reads, and the two it stopped asking for. Listed, not hidden: a switch whose only effect is to record itself is the fake toggle this house refuses. Each line names the files that were grepped, across all four runtimes.</p></div><span class="of-num">2 stored · 2 retired</span></div>
+
+        <div class="row"><div class="body">
+          <p class="q">Push</p>
+          <p class="ans">Stored: on</p>
+          <p class="con">Nothing sends a push, and this switch would not decide it if something did. The chooser picks by urgency; the device table is absent from production; the gateway has no push path.</p>
+          <div class="prov"><span class="tag dead">Read by nothing</span> push_enabled · three writers, no reader · grepped 3 Sep 2026 <span class="kept">your account</span></div>
+        </div><div class="ctl"><span class="dead">no switch</span></div></div>
+
+        <div class="row"><div class="body">
+          <p class="q">A second quiet-hours store</p>
+          <p class="ans">manager_preferences.quiet_hours_start / _end</p>
+          <p class="con">Read by a function with no callers. The live one is above, under The senders. Worth knowing before anyone “fixes” quiet hours by wiring this one.</p>
+          <div class="prov"><span class="tag dead">Read by nothing</span> core/database.py:1503-1516 <span class="kept">this restaurant</span></div>
+        </div><div class="ctl"><span class="dead">no switch</span></div></div>
+
+        <div class="row"><div class="body">
+          <p class="q">Analytics consent</p>
+          <p class="ans">No analytics consent is collected yet.</p>
+          <p class="con">The panel that asked for one was deleted on 16 Sep 2026. Nothing reads a consent, so nothing is asked and nothing is recorded. When something does, it is asked here first, under the reader that needs it.</p>
+          <div class="prov"><span class="tag dead">Deleted</span> ServicesPermissions.tsx · ConsentDialog.tsx · 16 Sep 2026</div>
+        </div></div>
+
+        <div class="row"><div class="body">
+          <p class="q">Appearance</p>
+          <p class="ans">Retired. The house is charcoal on every page; the surfaces that are paper are paper by decision.</p>
+          <div class="prov"><span class="tag dead">Retired</span> the light and dark switch · 16 Sep 2026 · ADR 0138</div>
+        </div></div>
+      </section>
+
+      <div class="elsewhere">
+        <div><span class="micro">Elsewhere</span>
+          <p><b>Connections</b> — what acts for this house: the till, the mail sender, the calendar feed's grants, the payment provider. Four registers that were here are one list on <code>/connections</code>. Managers and owners only.</p></div>
+        <div><span class="micro">The record</span>
+          <p><b>What changed here</b> — 14 entries; last 12 Sep 09:41, Deniz Arslan confirmed cocktails. Read-only, no delete route. Sealed proposals file with the sentence that produced them.</p></div>
+        <div><span class="micro">Reach Mudavym</span>
+          <p><b>support@mudavym.com</b> — the one address, here, on <code>/help</code>, on <code>/privacy</code> and at the foot of every mail the product sends.</p></div>
+      </div>
+
+      <div class="footline"><span class="wordmark">Mudavym</span><span>A reader's “last ran” is measured from its own log, never assumed from its schedule. A setting under Nobody is stored and read by nothing; it is listed, not hidden.</span></div>
+    </main>
+
+    <aside class="rail" aria-label="Who reads what">
+      <div class="box">
+        <span class="micro seal">Who reads what</span>
+        <ol>
+          <li class="on"><span><b>The approval gate</b><small>last acted 14 Sep 19:22</small></span><span class="n">3</span></li>
+          <li><span><b>The senders</b><small>last ran — not recorded · 1 refused</small></span><span class="n">12</span></li>
+          <li><span><b>The day-book</b><small>feed pull — not recorded</small></span><span class="n">8</span></li>
+          <li><span><b>The ledger and the reports</b><small>run — not recorded · 12 insights last night</small></span><span class="n">4</span></li>
+          <li><span><b>The door</b><small>changed 11 Sep</small></span><span class="n">3</span></li>
+          <li><span><b>Nobody</b><small>stored, read by nothing</small></span><span class="n">4</span></li>
+        </ol>
+      </div>
+      <div class="box">
+        <span class="micro seal">Waiting on you</span>
+        <ol>
+          <li><span>proposals to seal — the price rule, the audit reminder</span><span class="n">2</span></li>
+          <li><span>a sender refused — the recurring-order reminder</span><span class="n">1</span></li>
+          <li><span>inferences to confirm — Sysco, whiskey, beer</span><span class="n">3</span></li>
+          <li><span>unanswered — carrying cost, the digest</span><span class="n">2</span></li>
+        </ol>
+      </div>
+      <div class="ask" style="border:1px solid var(--seal-ring);border-radius:10px;padding:10px 12px;background:var(--paper-1)"><p class="why" style="margin:0;color:var(--ink-2)"><b style="color:var(--ink-1)">Tell the house something.</b> It proposes; you seal (ADR 0113). Six registers are out of its reach by blast radius.</p><button class="btn sm" style="margin-top:8px">Ask</button></div>
+    </aside>
+    </div>
+  </div></div>
+</section>
+
+<!-- ═══════════════════════════ 2 · TURKISH HOUSE ═══════════════════════════ -->
+<section class="stage" id="tr">
+  <p class="stage-label"><b>2 · Where currency and locale matter</b> Lokanta Müdavim, Kadıköy · TRY · Europe/Istanbul · signed in as Selin Kara, owner</p>
+  <p class="stage-note">The readers are the same five; what they read is a Turkish house's. The gate's ceiling is in lira with the Turkish separators. The senders' schedules are converted into Europe/Istanbul from the server's America/New_York (+7 h) and labelled as such — nothing on the page is printed in the server's clock without saying so, and nothing is printed as a run that was not recorded.</p>
+  <div class="frame"><div class="wrap" style="padding-top:18px;padding-bottom:22px">
+    <div class="of-head"><div><span class="micro seal">Reader 1 of 5</span><h2 style="font-size:19px">The approval gate</h2></div><span class="of-num">3 rules · 2 roles</span></div>
+    <div class="of-facts"><span class="ran">last acted <b>15 Sep 21:04</b> — parked order 218, ₺52.300,00, Emre Doğan</span></div>
+    <div class="row"><div class="body"><p class="q">A manager's order waits above</p><p class="ans"><span class="fig">₺45.000,00</span> — would have fired <span class="fig">11</span> times in the last 365 days</p><div class="prov"><span class="tag manual">Manual</span> set by Selin Kara · 5 Sep 2026 <span class="kept">this restaurant</span></div></div><div class="ctl"><button class="btn q sm">Edit</button></div></div>
+    <div class="of-head" style="margin-top:22px"><div><span class="micro seal">Reader 2 of 5</span><h2 style="font-size:19px">The senders</h2></div><span class="of-num">8 senders · all mapped</span></div>
+    <div class="of-facts"><span class="never">last ran — not recorded for the six scheduled senders</span><span>scheduled <b>16:00</b> daily summary · <b>Mon 15:00</b> weekly report · <b>00:00</b> delivery ETA — fixed by the server in America/New_York, shown in Europe/Istanbul</span><span class="ran">last sent <b>today 08:00</b> recommendations digest, 3 entries — <b>last_sent_at</b> on its own row</span></div>
+    <div class="row"><div class="body"><p class="q">The recommendations digest</p><p class="ans">On · <span class="fig">08:00</span> Europe/Istanbul · this week or sooner · to selin@…</p><div class="prov"><span class="tag manual">Manual</span> Selin Kara · 15 Sep 2026 · last sent 16 Sep 08:00 <span class="kept">this restaurant</span></div></div><div class="ctl"><span class="sw on" role="switch" aria-checked="true" tabindex="0"><i></i></span></div></div>
+
+    <div class="of-head" style="margin-top:22px"><div><span class="micro seal">Reader 3 of 5</span><h2 style="font-size:19px">The day-book</h2></div><span class="of-num">hours · zone · 1 vendor</span></div>
+    <div class="of-facts"><span class="never">last calendar build — not recorded; computed on read</span></div>
+    <div class="row"><div class="body"><p class="q">When the house is open</p><p class="ans">Mon–Sun <span class="fig">12:00 – 01:00</span></p><p class="con">Every day crosses midnight; the last range of each day is allowed to.</p><div class="prov"><span class="tag confirmed">Confirmed</span> proposed from 2,406 till checks · sealed by Selin Kara · 14 Sep 2026 <span class="kept">Europe/Istanbul</span></div></div><div class="ctl"><button class="btn q sm">Edit the week</button></div></div>
+    <div class="row"><div class="body"><p class="q">Ekim Şarap</p><p class="ans inf">Cutoff after 13:40, before 15:10 · delivers Tue · Thu · has accepted as little as ₺6.200</p><div class="prov"><span class="tag inferred">Inferred</span> from 19 orders and 26 receipts · never written down <span class="kept">this restaurant</span></div></div><div class="ctl"><button class="btn sm">Confirm</button></div></div>
+
+    <div class="of-head" style="margin-top:22px"><div><span class="micro seal">Reader 4 of 5</span><h2 style="font-size:19px">The ledger and the reports</h2></div><span class="of-num">347 rules · 9 fired</span></div>
+    <div class="row"><div class="body"><p class="q">The money figures are stated in</p><p class="ans">TRY — Türk lirası</p><div class="prov"><span class="tag manual">Manual</span> Selin Kara · 2 Sep 2026 · the country's default offered, stated in words, then written <span class="kept">this restaurant</span></div></div><div class="ctl"><button class="btn q sm">Change</button></div></div>
+    <div class="row"><div class="body"><p class="q">What a month of holding stock costs</p><p class="ans"><span class="fig">1,8 %</span> — “kredi faizi ve depo” · every alert last night printed a saving</p><div class="prov"><span class="tag manual">Manual</span> Selin Kara · 6 Sep 2026 <span class="kept">this restaurant</span></div></div><div class="ctl"><button class="btn q sm">Edit</button></div></div>
+    <div class="row"><div class="body"><p class="q">Ekim Şarap</p><p class="ans inf">Cutoff after 13:40, before 15:10 · delivers Tue · Thu · has accepted as little as ₺6.200</p><div class="prov"><span class="tag inferred">Inferred</span> from 19 orders · never written down <span class="kept">this restaurant</span></div></div><div class="ctl"><button class="btn sm">Confirm</button></div></div>
+  </div></div>
+</section>
+
+<!-- ═══════════════════════════ 3 · OVERLAY ═══════════════════════════ -->
+<section class="stage" id="overlay">
+  <p class="stage-label"><b>3 · The overlay this page opens</b> which category is this sender — a centred panel, 620, because it is a question (ADR 0112); no seal, because a mapping is stated, not sealed</p>
+  <p class="stage-note">Opened from “Map it” on the refused sender. Each option says who would receive the sender today through that category's own doors, so the choice is made on its consequence. Leaving it unmapped is an option and is named for what it is. The assistant's proposal for the audit reminder is a separate object with its own seal; this panel records a person's own answer.</p>
+  <div class="frame scrim">
+    <div class="under wrap" aria-hidden="true" style="margin:0;max-width:1000px">
+      <div class="wordmark">Mudavym</div><h1>Settings<span class="dot">.</span></h1><p class="lede">Every setting, filed under the thing that obeys it — and when it last did.</p>
+      <div class="dbl"></div>
+      <span class="micro seal">Reader 2 of 5</span><h2>The senders</h2>
+      <div class="row"><div class="body"><p class="q">Whose doors each sender may use</p><p class="ans">5 mapped · 1 proposed · <b>1 refused</b></p></div></div>
+      <div class="row"><div class="body"><p class="q">Your doors</p><p class="ans">Email open · SMS closed</p></div></div>
+    </div>
+    <div class="panel turn" role="dialog" aria-labelledby="map-h">
+      <div class="ov-head"><div><span class="micro seal">The senders · recurring-order reminder</span><h2 id="map-h" style="margin-top:2px">Which category is the recurring-order reminder?</h2></div><button class="close">Leave it</button></div>
+      <p class="note" style="margin-top:6px">It runs daily at 05:00 here — 08:00 in America/New_York, where the server fixes it — and tells whoever it may reach that a standing order is due to be placed. It has been refused since 16 Sep — 2 sends, nothing to anyone. The category decides whose doors it may use, from each member's own preference row. Nothing is preselected: OD-121 says this mapping is asked, not defaulted.</p>
+      <div class="opt"><span class="radio"></span><div><div class="lab">Order approval</div><div class="who">Today: Deniz Arslan, Priya Natarajan by email. <em>Reads order_approval_channels — the same doors the approval request uses, which fits a reminder about placing an order.</em></div></div></div>
+      <div class="opt"><span class="radio"></span><div><div class="lab">Delivery</div><div class="who">Today: Deniz, Priya, Sam Okafor by email. <em>Adds the person who receives deliveries; a standing order is about what arrives.</em></div></div></div>
+      <div class="opt"><span class="radio"></span><div><div class="lab">Low stock</div><div class="who">Today: Deniz, Priya by email. <em>A standing order is not a stock crossing; the low-stock digest would then carry two kinds of message.</em></div></div></div>
+      <div class="opt"><span class="radio"></span><div><div class="lab">Financial reports</div><div class="who">Today: Deniz Arslan by email. <em>Not about an order — shown so the six categories are the six.</em></div></div></div>
+      <div class="opt"><span class="radio"></span><div><div class="lab">Price inequality</div><div class="who">Today: Priya Natarajan by email. <em>Not about an order.</em></div></div></div>
+      <div class="opt"><span class="radio"></span><div><div class="lab">Calendar reminders</div><div class="who">Today: nobody. <em>Not about an order.</em></div></div></div>
+      <div class="opt"><span class="radio"></span><div><div class="lab">Leave it unmapped</div><div class="who">Stays refused. It sends to nobody and this page keeps saying so. <em>Not the same as off: a refused sender is counted and shown; an off one would be a preference.</em></div></div></div>
+      <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:16px"><button class="btn" disabled>Record</button><span class="why" style="margin:0">Disabled until a category is chosen. Owner or manager. Stated in your name, filed to the record. The next run is tomorrow 05:00 (08:00 in America/New_York); nothing is sent now.</span></div>
+      <div class="prov" style="margin-top:14px"><span class="tag unstated">—</span> now: unmapped, refused · after a choice: manual, mapped by Deniz Arslan <span class="kept">this restaurant · restaurant_notification_categories</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════ 3b · THE SEAL ═══════════════════════════ -->
+<section class="stage" id="seal-overlay">
+  <p class="stage-label"><b>3b · The second overlay — the assistant's proposal</b> a centred panel, 620, because it is a question (ADR 0112); the seal sits at its foot, never in a popover</p>
+  <p class="stage-note">Opened from “Open the proposal” on the price rule (Reader 1) or the audit reminder (Reader 2). Every proposed value carries its reason, the current value and where the current value came from. The seal never reports a single “Done” — the receipt after it says written · not attempted per item, because the apply crosses services with no shared transaction. The mapping panel above records a person's own answer and has no seal; this panel is the assistant's proposal and does.</p>
+  <div class="frame scrim">
+    <div class="under wrap" aria-hidden="true" style="margin:0;max-width:1000px">
+      <div class="wordmark">Mudavym</div><h1>Settings<span class="dot">.</span></h1><p class="lede">Every setting, filed under the thing that obeys it — and when it last did.</p>
+      <div class="dbl"></div>
+      <span class="micro seal">Reader 1 of 5</span><h2>The approval gate</h2>
+      <div class="row"><div class="body"><p class="q">An order waits when a price is above the last paid by</p><p class="ans none">— not stated</p></div></div>
+    </div>
+    <div class="panel turn" role="dialog" aria-labelledby="c-prop-h">
+      <div class="ov-head"><div><span class="micro seal">Proposal · 16 Sep 2026 · 14:12</span><h2 id="c-prop-h" style="margin-top:2px">The house proposes two answers</h2></div><button class="close">Not now</button></div>
+      <p class="note" style="margin-top:6px">Each line says why. Nothing below is written until you seal it, and the batch is undone as one unit for seven days (ADR 0113 rule 4a).</p>
+
+      <div class="prop-row"><div><div class="lab">An order waits when a price is above the last paid by</div><div class="rsn">12 % — the largest rise the house accepted without comment this year was 11 %, across 14 sightings. Would have fired twice.</div></div><div class="cur"><span class="k">Now</span>— not stated</div><div class="new"><span class="k">Proposed</span>12 %</div></div>
+      <div class="prop-row"><div><div class="lab">Which category is the inventory audit reminder?</div><div class="rsn">Low stock — it reads the same stock rows the low-stock alert reads and goes to the same two people.</div></div><div class="cur"><span class="k">Now</span>unmapped · refused</div><div class="new"><span class="k">Proposed</span>Low stock</div></div>
+
+      <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-top:16px">
+        <div class="hold" tabindex="0" role="button" data-done="Sealed — two answers" data-receipt="Written 1 · not attempted 1 · see the receipt" data-after="c-receipt"><span class="fill"></span><span class="face"><span class="face-text">Hold to seal two answers</span><span class="sub"></span></span>
+          <svg class="sealmark" viewBox="0 0 100 100" aria-hidden="true"><path fill="currentColor" d="M50 6c9 0 14 6 22 8s16-2 21 5-1 15 1 23 8 13 5 21-13 8-18 14-6 15-14 17-14-4-22-4-14 6-22 4-9-11-14-17-15-6-18-14 3-13 5-21-3-16 1-23 13-3 21-5S41 6 50 6z"/><g stroke="var(--paper-0)" stroke-opacity=".62" stroke-width="2.5"><path d="M34 58h32M34 63h32"/></g></svg>
+        </div>
+        <span class="why" style="margin:0">Owner or manager. The hold is 620 ms and linear — you are timing it against your own thumb.</span>
+      </div>
+      <div class="receipt" id="c-receipt" hidden>
+        <span class="micro seal">Receipt · sealed 14:13 by Deniz Arslan · undo as one unit until 23 Sep</span>
+        <ul>
+          <li><b>Written</b> — price rule 12 %. <code>PUT /settings/approval-thresholds</code> 200.</li>
+          <li><b>Not attempted</b> — audit reminder → low stock. The mapping table (<code>restaurant_notification_categories</code>, OD-121) is not built, so there is nothing to write to; nothing was written. Left unmapped; still refused to send.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════ 4 · STATES ═══════════════════════════ -->
+<section class="stage" id="states">
+  <p class="stage-label"><b>4 · Key states</b> empty · loading · refused · partial (no run recorded)</p>
+  <div class="states">
+    <div class="state"><span class="micro">Empty — a house on its first day</span>
+      <h3>Settings<span style="color:var(--seal)">.</span></h3>
+      <p class="lede" style="font-size:13px">Five readers, and nothing yet to read.</p>
+      <div class="of-facts" style="margin-top:12px"><span><b>The approval gate</b></span><span class="never">no rule set — seals as before, and says so</span></div>
+      <div class="of-facts"><span><b>The senders</b></span><span class="never">0 of 8 mapped — all eight refused until mapped</span></div>
+      <div class="of-facts"><span><b>The day-book</b></span><span class="never">hours unknown · zone unrecorded</span></div>
+      <div class="of-facts"><span><b>The ledger</b></span><span class="never">currency not recorded · no figure prints</span></div>
+      <p class="con" style="margin-top:10px">Nothing is defaulted. Seven refused senders on day one is silence, and the page says so rather than mapping them itself — the assistant offers the mapping during onboarding, and the seal applies it.</p>
+      <div class="ctl" style="justify-content:flex-start;margin-top:8px"><button class="btn sm">Ask the house to propose</button><button class="btn q sm">Map them by hand</button></div>
+    </div>
+    <div class="state"><span class="micro">Loading — five readers being asked</span>
+      <h3>Settings<span style="color:var(--seal)">.</span></h3>
+      <p class="lede" style="font-size:13px">Reading fourteen registers and five logs.</p>
+      <div style="margin-top:12px"><span class="micro seal">Reader 1 of 5</span><h3 style="font-size:15px">The approval gate</h3><div class="skel" style="width:70%;margin-top:8px;height:8px"></div><div class="skel" style="width:50%;margin-top:6px;height:8px"></div></div>
+      <div style="margin-top:14px"><span class="micro seal">Reader 2 of 5</span><h3 style="font-size:15px">The senders</h3><div class="skel" style="width:80%;margin-top:8px;height:8px"></div><div class="skel" style="width:40%;margin-top:6px;height:8px"></div></div>
+      <p class="con" style="margin-top:12px">The readers and their names are known before their settings are. “Last ran” waits for the log; it is never printed from the schedule while the read is out.</p>
+    </div>
+    <div class="state"><span class="micro">Refused — a role that could not be resolved</span>
+      <h3>Settings<span style="color:var(--seal)">.</span></h3>
+      <p class="lede" style="font-size:13px">One reader could not be read.</p>
+      <div class="fail">The approval gate's rules were refused (403). Your role at this house could not be resolved, so the gateway refused to say what the rules are. The reader is shown with its last action and without its rules — that is not the same as no rules.</div>
+      <div class="of-facts" style="margin-top:12px"><span><b>The approval gate</b></span><span class="ran">last acted 14 Sep 19:22</span><span class="never">rules — refused, 403</span></div>
+      <div class="row"><div class="body"><p class="q">A manager's order waits above</p><p class="ans none">could not be read — refused</p><div class="prov"><span class="tag refused">Refused</span> GET /settings/approval-thresholds · your role: unresolved</div></div><div class="ctl"><button class="btn q sm" disabled>Edit</button></div></div>
+      <p class="why">Staff never reach this page at all: they see <em>Ask a manager</em>, with their own profile and help still open.</p>
+    </div>
+    <div class="state"><span class="micro">Partial — a log that exists did not answer</span>
+      <h3>Settings<span style="color:var(--seal)">.</span></h3>
+      <p class="lede" style="font-size:13px">The gate's rules read; its log did not.</p>
+      <div class="fail">The gate's last action is filed (<code>order_approval_refused</code>, ADR 0116) and the read of it timed out after 8 s. The heading says <em>could not be read</em> — which is not <em>not recorded</em> (the senders' line, on every day until their run row exists) and not a time printed from a schedule. <button class="btn q sm" style="margin-left:6px">Read again</button></div>
+      <div class="of-facts" style="margin-top:12px"><span><b>The approval gate</b></span><span class="never">last acted — could not be read · timeout</span><span>reads <b>restaurant_approval_thresholds · …</b></span></div>
+      <div class="of-facts"><span><b>The senders</b></span><span class="never">last ran — not recorded</span></div>
+      <div class="row"><div class="body"><p class="q">A manager's order waits above</p><p class="ans"><span class="fig">$2,500.00</span></p><div class="prov"><span class="tag manual">Manual</span> set by Deniz Arslan · 4 Sep 2026</div></div></div>
+      <p class="why">Three different absences, three different sentences: <em>not recorded</em> (no log exists), <em>could not be read</em> (a log exists and the read failed), and a time. The run row per sender (started, finished, recipients resolved, refused) is the table this direction asks to build; without it the senders' heading stays on the first sentence.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════ 5 · MOBILE ═══════════════════════════ -->
+<section class="stage" id="mobile">
+  <p class="stage-label"><b>5 · 390 px</b> the readers become a strip of chips; each reader's facts stack; rows stack</p>
+  <div class="phone m"><div class="statusbar"><span>09:41</span><span>Mudavym</span></div><div class="wrap" style="padding:14px 18px 28px">
+    <div class="wordmark">Mudavym</div>
+    <h1 style="font-size:28px">Settings<span class="dot">.</span></h1>
+    <p class="lede" style="font-size:14px">Every setting, filed under the thing that obeys it.</p>
+    <div class="strip"><span class="chip on">Gate <span class="n">3</span></span><span class="chip">Senders <span class="n">12</span></span><span class="chip">Day-book <span class="n">8</span></span><span class="chip">Ledger <span class="n">4</span></span><span class="chip">Door <span class="n">3</span></span><span class="chip">Nobody <span class="n">4</span></span></div>
+    <div class="dbl"></div>
+    <span class="micro seal">Reader 1 of 5</span><h2 style="font-size:19px">The approval gate</h2>
+    <p class="con">Reads these before any seal on an order. The only thing here that stops an order.</p>
+    <div class="of-facts"><span class="ran">last acted <b>14 Sep 19:22</b></span><span>procurement.service.ts</span></div>
+    <div class="row"><div class="body"><p class="q">A manager's order waits above</p><p class="ans"><span class="fig">$2,500.00</span> — fired 7×</p><div class="prov"><span class="tag manual">Manual</span> Deniz Arslan · 4 Sep</div></div><div class="ctl"><button class="btn q sm">Edit</button></div></div>
+    <div class="row" data-proposed><div class="body"><p class="q">Waits when a price is above the last paid by</p><p class="ans none">— not stated</p><p class="ans inf">Proposed: 12 %</p><div class="prov"><span class="tag proposed">Proposed</span> awaiting the seal</div></div><div class="ctl"><button class="btn sm">Open the proposal</button></div></div>
+    <span class="micro seal" style="display:block;margin-top:20px">Reader 2 of 5</span><h2 style="font-size:19px">The senders</h2>
+    <div class="of-facts"><span class="never">last ran — not recorded</span><span>1 refused</span></div>
+    <div class="row" data-refused><div class="body"><p class="q">Whose doors each sender may use</p><p class="ans">5 mapped · 1 proposed · <b>1 refused</b></p><div class="prov"><span class="tag refused">Refused</span> recurring-order reminder · 2 sends</div></div><div class="ctl"><button class="btn sm">Map it</button></div></div>
+    <div class="row" data-unstated><div class="body"><p class="q">The recommendations digest</p><p class="ans none">— not stated · last sent never</p></div><div class="ctl"><button class="btn sm">Answer</button></div></div>
+  </div></div>
+</section>
+
+<footer class="cites">
+  <p><b>Drawn from</b> (re-verified 2026-09-16 on <code>feat/mudavym-finish</code>): <code>procurement/procurement.service.ts · assertApprovalAllowed</code> (ADR 0116; the refusal in words, the parked state) · <code>communications/scheduled-tasks.service.ts:127-155,193-736</code> (<code>recipientsFor</code>, the six crons) · <code>notifications/low-stock-alerts.service.ts:976</code> (the seventh) · <code>communications/recipient-resolver.service.ts</code> (roles, channels, no push) · <code>notification_agent.py:1487-1494</code> (quiet hours) and <code>core/database.py:1503-1516</code> (the dead second store) · <code>NotifySection.tsx:1-70</code> (the four-runtime grep) · <code>restaurants/operating-hours.*</code> · <code>vendor-terms/</code> · <code>analytics.controller.ts:1143-1153</code> (the digest) · <code>settings/settings.controller.ts:105-109</code> (owner or manager on features) · <code>st-format.ts · KEPT_LABEL</code> (this restaurant · your account · this browser) · <code>lib/mudavym/motion.ts</code>.</p>
+  <p><b>What this direction asks to build that does not exist:</b> a last-run row per sender (<code>scheduled_task_runs</code> or a column on the existing notification tables); if the day-book and the ledger headings are to say a time, a feed-access log on the calendar feed route and an insight-run row from <code>insights/insight-scheduler.service.ts</code> — until then both headings say <em>not recorded</em>, as drawn; and a <code>restaurant_notification_categories</code> mapping table with a <code>category</code> threaded through <code>RecipientQuery</code> (OD-121). The six crons carry <code>timeZone: "America/New_York"</code> (<code>scheduled-tasks.service.ts:195,229,408,523,626,680</code>) and are shown converted; the low-stock alert's last send is a <code>notifications</code> row (<code>low-stock-alerts.service.ts:652-667</code>). Everything else is read from endpoints that exist.</p>
+  <p><b>Decisions</b>: ADR 0116 (the gate) · ADR 0113 (the assistant proposes, the seal applies) · ADR 0112 (a question gets a panel; the seal never sits in a popover) · ADR 0138 · ADR 0149 rows 6, 8, 14, 15, 22, 26 · OD-121 · DESIGN-FOUNDATION §6 (“every setting states its blast radius”).</p>
+  <p><b>Example data, not a tenant</b> — every house, person, vendor, figure and date is invented for the drawing. Fonts load from Google Fonts here; the product self-hosts every face (ADR 0149 row 9).</p>
+</footer>
+
+<script>
+// Sketch-only behaviour. Motion is the seven tokens of lib/mudavym/motion.ts and nothing else;
+// reduced motion collapses every timed gesture to a two-step confirm, as HoldToApprove.tsx does.
+(function () {
+  var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // disclosures — settle (320ms house curve, 0fr → 1fr)
+  document.querySelectorAll('[data-disc]').forEach(function (btn) {
+    var target = document.getElementById(btn.getAttribute('data-disc'));
+    if (!target) return;
+    btn.addEventListener('click', function () {
+      var open = target.getAttribute('data-open') === 'true';
+      target.setAttribute('data-open', open ? 'false' : 'true');
+      btn.setAttribute('aria-expanded', open ? 'false' : 'true');
+    });
+  });
+
+  // hold-to-approve — pour (linear 620) · early release retreats on tuck · completion lands on stamp
+  document.querySelectorAll('.hold').forEach(function (h) {
+    var fill = h.querySelector('.fill');
+    var sub = h.querySelector('.sub');
+    var face = h.querySelector('.face-text');
+    var timer = null, started = 0, armed = false;
+    var label = face ? face.textContent : '';
+    var doneLabel = h.getAttribute('data-done') || 'Sealed';
+    function seal() {
+      clearTimeout(timer); timer = null;
+      h.setAttribute('data-state', 'sealed');
+      if (face) face.textContent = doneLabel;
+      if (sub) sub.textContent = h.getAttribute('data-receipt') || '';
+      var after = h.getAttribute('data-after');
+      if (after) { var el = document.getElementById(after); if (el) el.hidden = false; }
+    }
+    function start() {
+      if (h.getAttribute('data-state') === 'sealed') return;
+      if (reduced) {
+        if (!armed) { armed = true; if (sub) sub.textContent = 'Press again to seal.'; setTimeout(function () { armed = false; if (sub && h.getAttribute('data-state') !== 'sealed') sub.textContent = ''; }, 3000); return; }
+        seal(); return;
+      }
+      started = Date.now();
+      h.setAttribute('data-state', 'holding');
+      requestAnimationFrame(function () { fill.style.width = '100%'; });
+      timer = setTimeout(seal, 620);
+    }
+    function release() {
+      if (h.getAttribute('data-state') !== 'holding') return;
+      clearTimeout(timer); timer = null;
+      var pct = Math.min(99, Math.round(((Date.now() - started) / 620) * 100));
+      h.setAttribute('data-state', 'released');
+      fill.style.width = '0%';
+      if (sub) sub.textContent = 'Released at ' + pct + '% — nothing sealed.';
+      if (face) face.textContent = label;
+    }
+    h.addEventListener('pointerdown', function (e) { e.preventDefault(); start(); });
+    h.addEventListener('pointerup', release);
+    h.addEventListener('pointerleave', release);
+    h.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (!armed) { armed = true; if (sub) sub.textContent = 'Enter again to seal.'; setTimeout(function () { armed = false; }, 3000); } else { seal(); } } });
+  });
+
+  // chips that switch a filter view (sketch only)
+  document.querySelectorAll('[data-filter-group]').forEach(function (group) {
+    var chips = group.querySelectorAll('.chip');
+    chips.forEach(function (c) {
+      c.addEventListener('click', function () {
+        chips.forEach(function (o) { o.classList.remove('on'); });
+        c.classList.add('on');
+        var want = c.getAttribute('data-show');
+        var scope = document.getElementById(group.getAttribute('data-filter-group'));
+        if (!scope) return;
+        scope.querySelectorAll('[data-cert]').forEach(function (r) {
+          r.hidden = !(want === 'all' || r.getAttribute('data-cert') === want);
+        });
+      });
+    });
+  });
+})();
+
+</script>
+</body>
+</html>

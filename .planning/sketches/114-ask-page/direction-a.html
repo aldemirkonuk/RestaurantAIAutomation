@@ -1,0 +1,934 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sketch 114 · /ask · Direction A · The Reading Room</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..700&family=DM+Sans:ital,opsz,wght@0,9..40,300..700;1,9..40,300..700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   Sketch 114 · /ask · Direction A — The Reading Room
+   The shelf of fifteen readings IS the page. Asking is picking a reading
+   (or typing, which Haiku maps onto one — and the page shows the pick
+   before anything runs). One Finding = one object = the right Sheet (440).
+   Board (outside .mudavym) + house tokens (ADR 0042; Warm Charcoal is the
+   decided ground, ADR 0138). Fonts from Google here; the product self-hosts.
+   ============================================================ */
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body { background: #E6E1D7; color: #211C16; font-family: 'DM Sans', system-ui, sans-serif; font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+
+/* ── the sketch board ─────────────────────────────────────────────── */
+.sk-band { padding: 30px 40px 6px; max-width: 1360px; }
+.sk-kicker { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: #665d50; margin: 0 0 6px; }
+.sk-title { font-family: 'Fraunces', Georgia, serif; font-size: 28px; font-weight: 600; letter-spacing: -.015em; line-height: 1.1; margin: 0; }
+.sk-title .stop { color: #1A5E6B; }
+.sk-sub { font-size: 13.5px; color: #4f473c; max-width: 900px; margin: 8px 0 0; }
+.sk-sub b { color: #211C16; font-weight: 600; }
+.sk-label { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: #665d50; padding: 30px 40px 10px; }
+.sk-label small { text-transform: none; letter-spacing: 0; font-family: 'DM Sans', system-ui, sans-serif; font-size: 12.5px; color: #665d50; margin-left: 10px; }
+.sk-frame { margin: 0 40px; border: 1px solid #b6ad9e; background: #15130F; overflow: hidden; position: relative; }
+.sk-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; margin: 0 40px; }
+.sk-strip--2 { grid-template-columns: repeat(auto-fit, minmax(460px, 1fr)); }
+.sk-cell { border: 1px solid #b6ad9e; background: #15130F; overflow: hidden; min-width: 0; }
+.sk-cell-h { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color: #665d50; padding: 8px 12px; background: #F1EDE5; border-bottom: 1px solid #b6ad9e; }
+.sk-cell-h em { font-style: normal; text-transform: none; letter-spacing: 0; font-family: 'DM Sans', system-ui, sans-serif; font-size: 12px; color: #665d50; }
+.sk-mobile { width: 390px; max-width: 100%; margin: 0 40px; border: 1px solid #b6ad9e; background: #15130F; overflow: hidden; position: relative; }
+.sk-note { margin: 10px 40px 0; font-size: 12.5px; color: #4f473c; max-width: 900px; }
+.sk-strip--m { grid-template-columns: repeat(auto-fill, minmax(300px, 390px)); gap: 24px; }
+.sk-strip--m .sk-mobile { margin: 0; }
+.sk-foot { padding: 40px 40px 60px; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 11px; color: #665d50; line-height: 1.7; }
+@media (max-width: 560px) {
+  .sk-band, .sk-label, .sk-foot { padding-left: 14px; padding-right: 14px; }
+  .sk-frame, .sk-strip, .sk-mobile, .sk-note { margin-left: 14px; margin-right: 14px; }
+  .sk-mobile { width: auto; }
+  .sk-strip, .sk-strip--2, .sk-strip--m { grid-template-columns: 1fr; }
+  /* at phone width the 1440 frames are cropped out: section 6 is the phone rendering */
+  .sk-frame--desktop, .sk-frame--desktop + .sk-note, .sk-label--desktop { display: none; }
+}
+
+/* ── the house tokens ─────────────────────────────────────────────── */
+.mudavym, .mudavym[data-ground="charcoal"] {
+  --seal: #5FB0BC; --seal-deep: #7DC3CD; --seal-tint: rgba(95,176,188,.14); --seal-ring: rgba(95,176,188,.38);
+  --paper-0: #15130F; --paper-1: #1D1813; --paper-2: #262019;
+  --ink-1: #EFE7D9; --ink-2: #C0B6A5; --ink-3: #8E8576; --ink-4: #ABA294;
+  --hatch: repeating-linear-gradient(135deg, transparent 0 3px, var(--ink-3) 3px 4px);
+  color-scheme: dark;
+}
+.mudavym { background: var(--paper-0); color: var(--ink-1); font-family: 'DM Sans', system-ui, sans-serif; font-size: 14px; line-height: 1.5; container-type: inline-size; container-name: page; position: relative; }
+.mudavym a { color: inherit; }
+.mono { font-family: 'JetBrains Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+
+/* ── house header chrome (PageGate mounts HouseHeader above every next tree) ── */
+.mdv-hdr { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 0 20px; border-bottom: 1px solid var(--paper-2); }
+.mdv-hdr__mark { display: inline-flex; width: 22px; height: 22px; color: var(--seal); }
+.mdv-hdr__mark svg { width: 22px; height: 22px; }
+.mdv-hdr__house { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-1); padding: 5px 10px; border: 1px solid var(--paper-2); border-radius: 8px; background: var(--paper-1); }
+.mdv-hdr__house .chev { color: var(--ink-4); font-size: 10px; }
+.mdv-hdr__nav { display: flex; gap: 2px; margin-left: 8px; }
+.mdv-hdr__nav a { font-size: 12.5px; color: var(--ink-3); padding: 5px 8px; border-radius: 6px; text-decoration: none; }
+.mdv-hdr__nav a[aria-current] { color: var(--ink-1); background: var(--paper-1); }
+.mdv-hdr__spacer { flex: 1; }
+.mdv-hdr__pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-2); padding: 5px 9px; border: 1px solid var(--paper-2); border-radius: 8px; }
+.mdv-hdr__pill .n { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 11px; color: var(--seal-deep); }
+.mdv-hdr__avatar { width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--ink-3); display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; color: var(--ink-1); }
+.mdv-kbd { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10px; color: var(--ink-4); border: 1px solid var(--paper-2); border-radius: 4px; padding: 1px 5px; }
+
+/* ── page kit ────────────────────────────────────────────────────── */
+.ak-wrap { max-width: 1240px; margin: 0 auto; padding: 24px 24px 56px; }
+.ak-eyebrow { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-4); margin: 0; }
+.ak-eyebrow--seal { color: var(--seal-deep); font-weight: 600; }
+.ak-h1 { font-family: 'Fraunces', Georgia, serif; font-size: 34px; font-weight: 600; letter-spacing: -.015em; line-height: 1.1; margin: 4px 0 0; }
+.ak-h1 .stop { color: var(--seal); }
+.ak-lead { font-family: 'Fraunces', Georgia, serif; font-style: italic; font-size: 15px; color: var(--ink-2); margin: 8px 0 0; max-width: 620px; line-height: 1.45; }
+.ak-h2 { font-family: 'Fraunces', Georgia, serif; font-size: 20px; font-weight: 500; letter-spacing: -.01em; line-height: 1.2; margin: 0; }
+.ak-h3 { font-family: 'Fraunces', Georgia, serif; font-size: 16px; font-weight: 500; margin: 0; line-height: 1.3; }
+.ak-p { font-size: 13px; line-height: 1.55; color: var(--ink-2); margin: 6px 0 0; }
+.ak-p--dim { color: var(--ink-3); }
+.ak-link { color: var(--seal-deep); text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; }
+.ak-btn { font: 500 13px/1 'DM Sans', system-ui, sans-serif; color: var(--ink-1); background: transparent; border: 1px solid var(--ink-3); border-radius: 8px; padding: 8px 12px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; transition: border-color 160ms cubic-bezier(.16,1,.3,1), background-color 160ms cubic-bezier(.16,1,.3,1), transform 160ms cubic-bezier(.16,1,.3,1); }
+.ak-btn:hover { background: var(--paper-1); border-color: var(--ink-2); }
+.ak-btn:active { transform: scale(.97); }
+.ak-btn--seal { color: var(--seal-deep); border-color: var(--seal-ring); }
+.ak-btn--seal:hover { background: var(--seal-tint); border-color: var(--seal); }
+.ak-btn--quiet { border-color: transparent; color: var(--ink-2); padding-left: 6px; padding-right: 6px; }
+.ak-btn[aria-disabled="true"] { color: var(--ink-3); border-color: var(--paper-2); cursor: not-allowed; }
+.ak-chip { display: inline-flex; align-items: center; gap: 6px; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2); border: 1px solid var(--paper-2); border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
+.ak-chip[data-k="read"] { color: var(--seal-deep); border-color: var(--seal-ring); }
+.ak-chip[data-k="read"]::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--seal); }
+.ak-chip[data-k="empty"] { color: var(--ink-2); }
+.ak-chip[data-k="empty"]::before { content: ''; width: 6px; height: 6px; border-radius: 50%; border: 1px solid var(--ink-3); }
+.ak-chip[data-k="failed"], .ak-chip[data-k="unsatisfied"], .ak-chip[data-k="unread"], .ak-chip[data-k="notkept"] { color: var(--ink-1); border-color: var(--ink-3); }
+.ak-chip[data-k="failed"]::before, .ak-chip[data-k="unsatisfied"]::before, .ak-chip[data-k="unread"]::before, .ak-chip[data-k="notkept"]::before { content: ''; width: 9px; height: 9px; border-radius: 2px; background: var(--hatch); }
+.ak-chip[data-k="notbuilt"] { color: var(--ink-3); border-style: dashed; }
+.ak-chip[data-k="model"] { color: var(--ink-1); border-color: var(--ink-2); background: var(--paper-2); }
+.ak-chip[data-k="pending"] { color: var(--ink-2); border-color: var(--ink-3); }
+.ak-chip[data-k="clarify"] { color: var(--ink-1); border-color: var(--ink-2); }
+.ak-rule { border: 0; border-top: 1px solid var(--paper-2); margin: 18px 0; }
+.ak-double { border-top: 1px solid var(--ink-1); border-bottom: 1px solid var(--ink-1); height: 3px; opacity: .45; margin: 16px 0 6px; }
+
+/* ── the ask field ──────────────────────────────────────────────── */
+.ak-ask { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; border: 1px solid var(--ink-3); border-radius: 12px; background: var(--paper-1); padding: 10px 12px 10px 16px; margin-top: 18px; transition: border-color 160ms cubic-bezier(.16,1,.3,1), box-shadow 160ms cubic-bezier(.16,1,.3,1); }
+.ak-ask:focus-within { border-color: var(--seal); box-shadow: 0 0 0 3px var(--seal-tint); }
+.ak-ask__in { font-family: 'Fraunces', Georgia, serif; font-size: 20px; font-weight: 400; color: var(--ink-1); background: transparent; border: 0; outline: 0; width: 100%; min-width: 0; padding: 6px 0; }
+.ak-ask__in::placeholder { color: var(--ink-3); font-style: italic; }
+.ak-ask__ctl { display: flex; align-items: center; gap: 8px; }
+.ak-pick { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 8px; font-size: 12.5px; color: var(--ink-2); }
+.ak-pick .mono { font-size: 11px; color: var(--ink-4); }
+.ak-pick b { color: var(--ink-1); font-weight: 500; }
+
+/* ── layout: shelf + book ────────────────────────────────────────── */
+.ak-cols { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 28px; margin-top: 26px; align-items: start; }
+.ak-shelf { display: grid; gap: 18px; }
+.ak-reg { border-top: 1px solid var(--paper-2); padding-top: 12px; }
+.ak-reg__h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; margin-bottom: 10px; }
+.ak-reg__name { font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-1); }
+.ak-reg__count { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 11px; color: var(--ink-4); }
+.ak-reg__count b { color: var(--ink-2); font-weight: 500; }
+.ak-reg__count .fail { color: var(--ink-1); border: 1px dashed var(--ink-3); border-radius: 3px; padding: 0 5px; white-space: nowrap; }
+.ak-reg__count .fail::before { content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 2px; background: var(--hatch); margin-right: 5px; vertical-align: -1px; }
+.ak-books { display: grid; grid-template-columns: repeat(auto-fill, minmax(212px, 1fr)); gap: 10px; }
+.ak-book { position: relative; text-align: left; border: 1px solid var(--paper-2); border-radius: 10px; background: var(--paper-0); padding: 12px 14px 11px; min-width: 0; cursor: pointer; color: var(--ink-1); font: inherit; transition: border-color 160ms cubic-bezier(.16,1,.3,1), background-color 160ms cubic-bezier(.16,1,.3,1), transform 160ms cubic-bezier(.16,1,.3,1); }
+.ak-book:hover { border-color: var(--ink-3); background: var(--paper-1); }
+.ak-book:active { transform: scale(.985); }
+.ak-book:focus-visible { outline: 2px solid var(--seal); outline-offset: 2px; }
+.ak-book[data-picked="true"] { border-color: var(--seal); box-shadow: inset 0 0 0 1px var(--seal); }
+.ak-book__t { font-family: 'Fraunces', Georgia, serif; font-size: 16px; font-weight: 500; line-height: 1.2; }
+.ak-book__q { font-size: 12.5px; color: var(--ink-2); margin-top: 4px; line-height: 1.4; }
+.ak-book__s { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 9px; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10.5px; color: var(--ink-4); }
+.ak-book__s .sub { color: var(--ink-4); }
+.ak-book[data-k="notbuilt"] { border-style: dashed; cursor: default; }
+.ak-book[data-k="notbuilt"] .ak-book__t { color: var(--ink-2); }
+.ak-book[data-k="notbuilt"]:hover { background: transparent; border-color: var(--paper-2); }
+.ak-book[data-k="unsatisfied"] .ak-book__t, .ak-book[data-k="failed"] .ak-book__t { color: var(--ink-2); }
+.ak-book[data-k="model"] { background: var(--paper-1); border-color: var(--ink-3); }
+.ak-book[data-k="model"] .ak-book__t { font-family: 'DM Sans', system-ui, sans-serif; font-weight: 500; font-size: 15px; }
+.ak-foot { font-size: 12px; color: var(--ink-3); line-height: 1.55; margin-top: 4px; }
+.ak-foot .mono { font-size: 11px; }
+
+/* the book (folio index) */
+.ak-bookcol { position: sticky; top: 16px; }
+.ak-folio { list-style: none; margin: 8px 0 0; padding: 0; border-top: 1px solid var(--paper-2); }
+.ak-folio li { display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--paper-2); align-items: start; }
+.ak-folio .t { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10.5px; color: var(--ink-4); padding-top: 3px; }
+.ak-folio .u { font-family: 'Fraunces', Georgia, serif; font-size: 14px; line-height: 1.25; color: var(--ink-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ak-folio .m { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 4px; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10px; color: var(--ink-4); }
+.ak-folio li[data-open="true"] { background: var(--paper-1); margin: 0 -10px; padding-left: 10px; padding-right: 10px; border-radius: 6px; }
+.ak-daylabel { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-4); padding: 10px 0 2px; }
+
+/* ── the reading sheet (ADR 0112 Sheet, 440, tuck) ───────────────── */
+.ak-scrim { position: absolute; inset: 0; background: rgba(21,19,15,.42); }
+.ak-sheet { position: absolute; top: 0; right: 0; bottom: 0; width: 100%; max-width: 440px; background: var(--paper-0); border-left: 1px solid var(--paper-2); box-shadow: -24px 0 48px rgba(0,0,0,.35); display: flex; flex-direction: column; }
+.ak-sheet--wide { max-width: 640px; }
+.ak-sheet__h { padding: 16px 20px 12px; border-bottom: 1px solid var(--paper-2); display: flex; align-items: flex-start; gap: 12px; }
+.ak-sheet__h .x { margin-left: auto; color: var(--ink-3); font-size: 18px; line-height: 1; padding: 2px 4px; }
+.ak-close { margin-left: auto; flex-shrink: 0; font: 500 12px/1 'DM Sans', system-ui, sans-serif; color: var(--ink-2); background: transparent; border: 1px solid var(--paper-2); border-radius: 7px; padding: 6px 10px; cursor: pointer; }
+.ak-close:hover { color: var(--ink-1); border-color: var(--ink-3); }
+.ak-sheet__b { padding: 16px 20px 24px; overflow: auto; flex: 1; }
+.ak-sheet__f { padding: 12px 20px; border-top: 1px solid var(--paper-2); display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.ak-utt { font-family: 'Fraunces', Georgia, serif; font-style: italic; font-size: 15px; color: var(--ink-2); line-height: 1.4; margin: 0; }
+.ak-utt::before { content: '“'; } .ak-utt::after { content: '”'; }
+
+/* the sentence and the cells */
+.ak-say { font-family: 'Fraunces', Georgia, serif; font-size: 21px; font-weight: 400; line-height: 1.4; color: var(--ink-1); margin: 14px 0 0; letter-spacing: -.005em; }
+.ak-say--s { font-size: 18px; }
+.ak-cell { font: inherit; font-weight: 600; color: var(--ink-1); background: transparent; border: 0; padding: 0 1px; cursor: pointer; border-bottom: 1.5px solid var(--seal); border-radius: 2px 2px 0 0; transition: background-color 160ms cubic-bezier(.16,1,.3,1); }
+.ak-cell:hover, .ak-cell[data-open="true"] { background: var(--seal-tint); }
+.ak-cell:focus-visible { outline: 2px solid var(--seal); outline-offset: 2px; }
+.ak-cell[data-prov="defaulted"] { border-bottom-style: dashed; border-bottom-color: var(--ink-3); font-weight: 500; }
+.ak-cell[data-prov="defaulted"]::after { content: 'assumed'; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 9px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-4); vertical-align: super; margin-left: 3px; }
+.ak-cell[data-prov="derived"] { border-bottom-style: dotted; border-bottom-color: var(--seal-deep); }
+.ak-cell[data-prov="not_recorded"] { border: 1px dashed var(--ink-3); border-radius: 4px; color: var(--ink-2); font-weight: 500; padding: 0 5px; }
+.ak-cell[data-prov="not_recorded"]::before { content: ''; display: inline-block; width: 9px; height: 9px; border-radius: 2px; background: var(--hatch); margin-right: 5px; vertical-align: -1px; }
+.ak-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 10px; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10px; color: var(--ink-4); }
+.ak-legend i { display: inline-block; width: 16px; height: 0; border-bottom: 1.5px solid var(--seal); vertical-align: middle; margin-right: 5px; }
+.ak-legend i.d { border-bottom-style: dashed; border-color: var(--ink-3); }
+.ak-legend i.o { border-bottom-style: dotted; border-color: var(--seal-deep); }
+.ak-legend i.n { border: 0; height: 8px; background: var(--hatch); }
+
+/* the drawer: rows behind a cell — the 0fr → 1fr settle */
+.ak-drawer { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 320ms cubic-bezier(.16,1,.3,1); }
+.ak-drawer[data-open="true"] { grid-template-rows: 1fr; }
+.ak-drawer > div { min-height: 0; overflow: hidden; }
+.ak-rows { margin-top: 12px; border: 1px solid var(--paper-2); border-radius: 8px; overflow: hidden; }
+.ak-rows__h { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 8px 12px; background: var(--paper-1); font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10.5px; color: var(--ink-4); }
+.ak-rows__h b { color: var(--ink-2); font-weight: 500; }
+.ak-kv { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 2px 12px; padding: 8px 12px; font-size: 12.5px; }
+.ak-kv > div { padding: 4px 0; border-top: 1px solid var(--paper-2); min-width: 0; }
+.ak-kv > div:nth-child(-n+3) { border-top: 0; }
+.ak-kv .k { color: var(--ink-2); font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 11px; white-space: nowrap; }
+.ak-kv .v { color: var(--ink-1); font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 11.5px; text-align: right; overflow-wrap: anywhere; }
+.ak-kv .p { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 9.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-4); text-align: right; }
+.ak-kv .p[data-p="stated"] { color: var(--seal-deep); }
+.ak-kv .p[data-p="defaulted"] { color: var(--ink-3); }
+
+/* the trace: what was read, minted by the runner */
+.ak-trace { margin-top: 14px; }
+.ak-trace__h { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-4); margin-bottom: 6px; display: flex; gap: 10px; flex-wrap: wrap; }
+.ak-trace table { width: 100%; border-collapse: collapse; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 11px; }
+.ak-trace td { padding: 5px 8px 5px 0; border-top: 1px solid var(--paper-2); color: var(--ink-2); vertical-align: top; overflow-wrap: anywhere; }
+.ak-trace td:first-child { color: var(--ink-1); }
+.ak-trace td.n { text-align: right; color: var(--ink-2); }
+.ak-trace td.t { text-align: right; white-space: nowrap; color: var(--ink-3); padding-right: 0; }
+.ak-trace tr[data-o="failed"] td:first-child::before { content: ''; display: inline-block; width: 9px; height: 9px; border-radius: 2px; background: var(--hatch); margin-right: 6px; vertical-align: -1px; }
+.ak-trace tr[data-o="failed"] td.n { color: var(--ink-1); }
+.ak-trace tr[data-o="pending"] td { color: var(--ink-3); }
+.ak-asof { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10.5px; color: var(--ink-4); margin-top: 8px; }
+
+/* the sixty-second rule */
+.ak-budget { margin-top: 12px; }
+.ak-budget__bar { height: 3px; background: var(--paper-2); border-radius: 2px; overflow: hidden; }
+.ak-budget__fill { height: 100%; background: var(--seal); width: 22%; transition: width 620ms linear; }
+.ak-budget__l { display: flex; justify-content: space-between; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10px; color: var(--ink-4); margin-top: 5px; }
+.ak-budget[data-out="true"] .ak-budget__fill { background: var(--ink-3); width: 100%; }
+
+/* ── reply cards: one silhouette per wire kind ──────────────────── */
+.ak-reply { border: 1px solid var(--paper-2); border-radius: 10px; padding: 14px 16px; margin-top: 14px; background: var(--paper-0); }
+.ak-reply__k { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-4); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ak-reply__k .wire { color: var(--ink-3); letter-spacing: 0; text-transform: none; }
+.ak-reply[data-kind="reading"] { border-color: var(--seal-ring); }
+.ak-reply[data-kind="not_in_your_books"] { border-left: 3px solid var(--ink-3); }
+.ak-reply[data-kind="could_not_read"] { border-color: var(--ink-3); }
+.ak-reply[data-kind="could_not_read"]::before { content: ''; display: block; height: 6px; background: var(--hatch); border-radius: 2px; margin: -6px 0 10px; }
+.ak-reply[data-kind="clarify"] { border-color: var(--ink-2); }
+.ak-reply[data-kind="not_built"] { border-style: dashed; border-color: var(--ink-3); background: transparent; }
+.ak-reply[data-kind="model_knowledge"] { background: var(--paper-1); border-color: var(--ink-3); display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 12px; }
+.ak-reply[data-kind="model_knowledge"] .ak-say { font-family: 'DM Sans', system-ui, sans-serif; font-size: 15px; line-height: 1.55; color: var(--ink-1); margin-top: 8px; }
+.ak-runlabel { writing-mode: vertical-rl; transform: rotate(180deg); font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 9.5px; letter-spacing: .16em; text-transform: uppercase; color: var(--ink-2); border-right: 1px solid var(--ink-3); padding: 2px 0; text-align: center; }
+.ak-modelband { grid-column: 1 / -1; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-1); border-bottom: 1px solid var(--ink-3); padding-bottom: 8px; margin-bottom: 2px; }
+.ak-reply[data-kind="requirements_unsatisfied"] { border-left: 3px solid var(--ink-3); border-left-style: dashed; }
+.ak-reply[data-kind="no_reading_matched"] { border-color: var(--paper-2); background: var(--paper-1); }
+.ak-req { margin-top: 10px; border-top: 1px solid var(--paper-2); }
+.ak-req div { display: grid; grid-template-columns: minmax(0,1fr) minmax(0, 46%); gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--paper-2); font-size: 12.5px; color: var(--ink-2); }
+.ak-req div > span:first-child { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 11px; color: var(--ink-1); overflow-wrap: anywhere; }
+.ak-req .mono { font-size: 10.5px; color: var(--ink-4); text-align: right; }
+.ak-req .ok { color: var(--seal-deep); }
+.ak-choices { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 6px; }
+.ak-choices li { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 10px; align-items: center; border: 1px solid var(--paper-2); border-radius: 8px; padding: 8px 10px; font-size: 13px; cursor: pointer; transition: border-color 160ms cubic-bezier(.16,1,.3,1), background-color 160ms cubic-bezier(.16,1,.3,1); }
+.ak-choices li:hover { border-color: var(--seal-ring); background: var(--paper-1); }
+.ak-choices .mono { font-size: 10px; color: var(--ink-4); }
+.ak-choices .blank { color: var(--ink-3); font-style: italic; }
+.ak-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+
+/* ── the draft (work order as a document) ───────────────────────── */
+.ak-draft { margin-top: 14px; border: 1px solid var(--paper-2); border-radius: 10px; background: var(--paper-1); padding: 14px 16px; }
+.ak-draft__verb { font-family: 'Fraunces', Georgia, serif; font-size: 17px; font-weight: 500; margin: 4px 0 0; }
+.ak-fields { margin-top: 10px; border-top: 1px solid var(--paper-2); }
+.ak-fields > div { display: grid; grid-template-columns: 92px minmax(0,1fr) auto; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--paper-2); font-size: 12.5px; align-items: baseline; }
+.ak-fields .k { color: var(--ink-4); font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10.5px; padding-top: 2px; }
+.ak-fields .v { color: var(--ink-1); min-width: 0; }
+.ak-fields .v .arrow { color: var(--ink-3); margin: 0 6px; }
+.ak-fields .v .old { color: var(--ink-3); text-decoration: line-through; text-decoration-color: var(--ink-3); }
+.ak-fields .v q { font-style: italic; color: var(--ink-2); }
+.ak-fields .v q::before { content: '“'; } .ak-fields .v q::after { content: '”'; }
+.ak-prov { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 9.5px; letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; color: var(--ink-4); border: 1px solid var(--paper-2); border-radius: 999px; padding: 1px 7px; }
+.ak-prov[data-p="books"] { color: var(--seal-deep); border-color: var(--seal-ring); }
+.ak-prov[data-p="said"] { color: var(--ink-1); border-color: var(--ink-3); }
+.ak-prov[data-p="suggest"] { color: var(--ink-2); border-style: dashed; }
+.ak-prov[data-p="absent"] { color: var(--ink-2); border-style: dashed; border-color: var(--ink-3); }
+.ak-prov[data-p="absent"]::before { content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 2px; background: var(--hatch); margin-right: 5px; vertical-align: -1px; }
+.ak-removes { font-size: 12.5px; color: var(--ink-2); margin-top: 8px; }
+.ak-removes b { color: var(--ink-4); font-weight: 500; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; margin-right: 6px; }
+
+/* ── /orders approval (the seal lives there) ─────────────────────── */
+.ak-order { border: 1px solid var(--paper-2); border-radius: 10px; padding: 14px 16px; background: var(--paper-0); }
+.ak-order__h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; }
+.ak-order__n { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 11px; color: var(--ink-4); }
+.ak-order__t { font-family: 'Fraunces', Georgia, serif; font-size: 18px; font-weight: 500; }
+.ak-order__amt { font-family: 'Fraunces', Georgia, serif; font-size: 18px; font-weight: 600; margin-left: auto; }
+.ak-attach { margin-top: 10px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10.5px; color: var(--ink-4); }
+.ak-attach b { color: var(--ink-2); font-weight: 500; }
+.ak-hold { display: inline-flex; align-items: center; gap: 12px; margin-top: 12px; }
+.ak-die { position: relative; width: 44px; height: 44px; border-radius: 50%; border: 1.5px solid var(--seal-ring); display: inline-flex; align-items: center; justify-content: center; color: var(--seal); overflow: hidden; }
+.ak-die svg { width: 18px; height: 22px; position: relative; }
+.ak-die__pour { position: absolute; left: 0; right: 0; bottom: 0; height: 38%; background: var(--seal-tint); }
+.ak-die[data-refused="true"] { border-color: var(--ink-3); color: var(--ink-3); border-style: dashed; }
+.ak-die[data-refused="true"] .ak-die__pour { display: none; }
+.ak-hold__l { font-size: 12.5px; color: var(--ink-2); }
+.ak-hold__l b { display: block; color: var(--ink-1); font-weight: 500; }
+.ak-ba { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
+.ak-ba > div { border: 1px solid var(--paper-2); border-radius: 8px; padding: 10px 12px; }
+.ak-ba .h { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-4); }
+.ak-ba .fig { font-family: 'Fraunces', Georgia, serif; font-size: 26px; font-weight: 600; margin-top: 4px; line-height: 1; }
+.ak-ba .fig small { font-size: 13px; font-weight: 400; color: var(--ink-2); margin-left: 4px; }
+.ak-ba .as { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10px; color: var(--ink-4); margin-top: 6px; }
+.ak-ba > div[data-now="true"] { border-color: var(--ink-2); }
+
+/* ── panel + popover (ADR 0112 shapes) ───────────────────────────── */
+.ak-panel { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(620px, calc(100% - 32px)); background: var(--paper-0); border: 1px solid var(--paper-2); border-radius: 14px; box-shadow: 0 30px 70px rgba(0,0,0,.45); }
+.ak-panel__h { padding: 16px 20px 12px; border-bottom: 1px solid var(--paper-2); }
+.ak-panel__b { padding: 14px 20px 18px; }
+.ak-panel__f { padding: 12px 20px; border-top: 1px solid var(--paper-2); display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+.ak-pop { position: absolute; width: 320px; background: var(--paper-1); border: 1px solid var(--paper-2); border-radius: 10px; box-shadow: 0 16px 40px rgba(0,0,0,.4); padding: 8px; transform-origin: top left; }
+.ak-pop__h { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-4); padding: 4px 8px 6px; }
+.ak-pop__in { width: 100%; font: 13px 'DM Sans', system-ui, sans-serif; color: var(--ink-1); background: var(--paper-0); border: 1px solid var(--paper-2); border-radius: 6px; padding: 6px 8px; margin: 0 0 6px; }
+.ak-pop ul { list-style: none; margin: 0; padding: 0; }
+.ak-pop li { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; padding: 6px 8px; border-radius: 6px; font-size: 13px; cursor: pointer; }
+.ak-pop li:hover, .ak-pop li[data-hi="true"] { background: var(--paper-2); }
+.ak-pop li .mono { font-size: 10px; color: var(--ink-4); }
+.ak-pop li .blank { color: var(--ink-3); font-style: italic; }
+
+/* ── skeleton + states ──────────────────────────────────────────── */
+.ak-skel { position: relative; overflow: hidden; background: var(--paper-2); border-radius: 3px; height: 12px; }
+.ak-skel::after { content: ''; position: absolute; inset: 0; transform: translateX(-100%); background: linear-gradient(90deg, transparent, var(--paper-1), transparent); animation: ak-sheen 1.9s cubic-bezier(.45,0,.55,1) infinite; }
+@keyframes ak-sheen { to { transform: translateX(100%); } }
+.ak-refuse { border: 1px solid var(--ink-3); border-radius: 10px; padding: 14px 16px; margin-top: 14px; }
+.ak-refuse::before { content: ''; display: block; height: 6px; background: var(--hatch); border-radius: 2px; margin: -6px 0 10px; }
+.ak-alert { border: 1px solid var(--ink-3); border-radius: 10px; padding: 12px 14px; margin-top: 12px; font-size: 13px; color: var(--ink-1); }
+.ak-alert .mono { font-size: 10.5px; color: var(--ink-4); display: block; margin-top: 4px; }
+
+/* ── mobile (container query on the page root) ───────────────────── */
+@container page (max-width: 640px) {
+  .ak-wrap { padding: 16px 14px 40px; }
+  .ak-h1 { font-size: 28px; }
+  .ak-cols { grid-template-columns: 1fr; gap: 20px; }
+  .ak-bookcol { position: static; }
+  .ak-books { grid-template-columns: 1fr 1fr; }
+  .ak-ask { grid-template-columns: 1fr; padding: 10px 12px; }
+  .ak-ask__in { font-size: 17px; }
+  .ak-sheet { max-width: 100%; border-left: 0; box-shadow: none; }
+  .ak-say { font-size: 18px; }
+  .ak-ba { grid-template-columns: 1fr; }
+  .mdv-hdr__nav, .mdv-hdr__pill--hide { display: none; }
+  .ak-fields > div { grid-template-columns: 92px minmax(0,1fr); row-gap: 4px; }
+  .ak-fields .k { grid-row: 1; }
+  .ak-fields .v { grid-row: 1; }
+  .ak-prov { grid-column: 2; grid-row: 2; justify-self: start; white-space: normal; }
+  .ak-choices li { grid-template-columns: 1fr; row-gap: 4px; }
+  .ak-choices .mono { justify-self: start; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ak-skel::after { animation: none; }
+  .ak-drawer, .ak-btn, .ak-book, .ak-cell, .ak-ask, .ak-budget__fill { transition: none; }
+}
+</style></head>
+<body>
+
+<div class="sk-band">
+  <p class="sk-kicker">Sketch 114 · /ask · Direction A · ADR 0145 · ADR 0143 §3 · ADR 0146</p>
+  <h1 class="sk-title">The Reading Room<span class="stop">.</span></h1>
+  <p class="sk-sub">The shelf of fifteen house readings <b>is the page</b>. You ask by picking a reading (or by typing — Haiku maps the words onto one, and the page shows the pick before anything runs). Every reading is one object, so it opens as the right <b>Sheet (440)</b>; a figure inside it opens to its rows with the 0fr→1fr <b>settle</b>. The book of past asks is the right rail. What Mudavym does not keep, and what it has not built, sit on the same shelf in their own words — never as an emptiness.</p>
+</div>
+
+<!-- ============================================================ 1 · desktop, US house ============================================================ -->
+<div class="sk-label sk-label--desktop">1 · Desktop 1440 · Larkspur &amp; Vine (Oakland · USD · en-US) <small>the shelf at rest, a reading open in the Sheet, a cell opened to its row</small></div>
+<div class="sk-frame sk-frame--desktop">
+<div class="mudavym" data-ground="charcoal" style="min-height: 1180px;">
+  <header class="mdv-hdr">
+    <span class="mdv-hdr__mark" data-mark></span>
+    <span class="mdv-hdr__house">Larkspur &amp; Vine <span class="chev">▾</span></span>
+    <nav class="mdv-hdr__nav"><a href="#">Desk</a><a href="#">Cellar</a><a href="#">Orders</a><a href="#">Calendar</a><a href="#" aria-current="page">Ask</a><a href="#">Logs</a></nav>
+    <span class="mdv-hdr__spacer"></span>
+    <span class="mdv-hdr__pill mdv-hdr__pill--hide"><kbd class="mdv-kbd">⌘⇧K</kbd> ask anywhere</span>
+    <span class="mdv-hdr__pill">Waiting on you <span class="n">7</span></span>
+    <span class="mdv-hdr__avatar">M</span>
+  </header>
+
+  <div class="ak-wrap">
+    <p class="ak-eyebrow">Mudavym · ask</p>
+    <h1 class="ak-h1">Ask the house<span class="stop">.</span></h1>
+    <p class="ak-lead">Every figure comes out of a reading of the house's own books and opens to its rows. What Mudavym cannot read, it says in words.</p>
+    <p class="ak-p ak-p--dim" style="font-size:11px;margin-top:2px">/sommelier now opens here — old links and bookmarks still work.</p>
+
+    <div class="ak-ask">
+      <input class="ak-ask__in" value="How much of the Vajra Barolo do we have?" aria-label="Ask the house">
+      <div class="ak-ask__ctl"><span class="mdv-kbd">↵</span><button class="ak-btn ak-btn--seal">Ask</button></div>
+    </div>
+    <div class="ak-pick">
+      <span>Mudavym will run</span> <b>The recorded stock</b> <span class="mono">inventory.position · v1</span>
+      <span>for</span> <b>Barolo Albe, G.D. Vajra 2020</b> <span class="mono">1 of 206 items matched</span>
+      <span>· reads</span> <span class="mono">restaurant_inventory</span>
+      <a class="ak-link" href="#" style="font-size:12px">Not this reading?</a>
+    </div>
+
+    <div class="ak-cols">
+      <div class="ak-shelf">
+        <div class="ak-reg">
+          <div class="ak-reg__h"><span class="ak-reg__name">Stock</span><span class="ak-reg__count"><b>restaurant_inventory</b> 206 rows · <b>inventory_lots</b> 41 · <b>inventory_transactions</b> 88 · <b>storage_locations</b> 1 · counted 2:14 PM</span></div>
+          <div class="ak-books">
+            <button class="ak-book" data-picked="true"><div class="ak-book__t">The recorded stock</div><div class="ak-book__q">What stock is recorded for this item?</div><div class="ak-book__s"><span class="ak-chip" data-k="read">readable</span><span class="sub">item ·</span> 206 items · 53 unnamed</div></button>
+            <button class="ak-book"><div class="ak-book__t">Below the recorded threshold</div><div class="ak-book__q">Which active items are below their threshold?</div><div class="ak-book__s"><span class="ak-chip" data-k="read">readable</span> thresholds not set by the house</div></button>
+            <button class="ak-book"><div class="ak-book__t">Recorded in transit</div><div class="ak-book__q">Which items have stock recorded in transit?</div><div class="ak-book__s"><span class="ak-chip" data-k="read">readable</span></div></button>
+            <button class="ak-book"><div class="ak-book__t">Where the stock is held</div><div class="ak-book__q">Where is this item's recorded stock held?</div><div class="ak-book__s"><span class="ak-chip" data-k="read">readable</span><span class="sub">item ·</span> 1 named location</div></button>
+            <button class="ak-book"><div class="ak-book__t">The movement record</div><div class="ak-book__q">What changed this item's stock in a period?</div><div class="ak-book__s"><span class="ak-chip" data-k="read">readable</span><span class="sub">item · period</span></div></button>
+          </div>
+        </div>
+
+        <div class="ak-reg">
+          <div class="ak-reg__h"><span class="ak-reg__name">Orders &amp; receipts</span><span class="ak-reg__count"><b>procurement_orders</b> 2 · <b>procurement_order_items</b> 1 · <b>procurement_documents</b> 0 · <b>procurement_document_links</b> 0 · counted 2:14 PM</span></div>
+          <div class="ak-books">
+            <button class="ak-book"><div class="ak-book__t">The open orders</div><div class="ak-book__q">Which orders are still open?</div><div class="ak-book__s"><span class="ak-chip" data-k="read">readable</span> 2 orders</div></button>
+            <button class="ak-book"><div class="ak-book__t">What the order contains</div><div class="ak-book__q">What does this order contain?</div><div class="ak-book__s"><span class="ak-chip" data-k="read">readable</span><span class="sub">order ·</span> 1 header-only</div></button>
+            <button class="ak-book"><div class="ak-book__t">Past the stated delivery date</div><div class="ak-book__q">Which open deliveries are past a date?</div><div class="ak-book__s"><span class="ak-chip" data-k="empty">none dated</span> 2 orders carry no date</div></button>
+            <button class="ak-book" data-k="unsatisfied"><div class="ak-book__t">The last verified receipt line</div><div class="ak-book__q">What did the last verified receipt record for this item?</div><div class="ak-book__s"><span class="ak-chip" data-k="unsatisfied">needs a linked line</span> 0 documents in the books</div></button>
+            <button class="ak-book"><div class="ak-book__t">Documents awaiting review</div><div class="ak-book__q">Which documents are waiting for review?</div><div class="ak-book__s"><span class="ak-chip" data-k="empty">none in the books</span></div></button>
+          </div>
+        </div>
+
+        <div class="ak-reg">
+          <div class="ak-reg__h"><span class="ak-reg__name">Sales, calendar, vendors, targets</span><span class="ak-reg__count"><b>pos_checks</b> 312 · <b>wine_consumption_log</b> 74 · <b>calendar_events</b> 7 · <b>providers</b> 4 owned + 0 linked · <b>analytics_goals</b> 0 · counted 2:14 PM</span></div>
+          <div class="ak-books">
+            <button class="ak-book"><div class="ak-book__t">The recorded checks</div><div class="ak-book__q">How many closed checks and covers in a period?</div><div class="ak-book__s"><span class="ak-chip" data-k="read">readable</span><span class="sub">period ·</span> no revenue: checks carry no currency</div></button>
+            <button class="ak-book"><div class="ak-book__t">The consumption record</div><div class="ak-book__q">What consumption was recorded for this item?</div><div class="ak-book__s"><span class="ak-chip" data-k="read">readable</span><span class="sub">item · period</span></div></button>
+            <button class="ak-book"><div class="ak-book__t">The house calendar</div><div class="ak-book__q">What is in the house calendar for a period?</div><div class="ak-book__s"><span class="ak-chip" data-k="read">readable</span><span class="sub">period ·</span> 7 entries, 1 rule</div></button>
+            <button class="ak-book"><div class="ak-book__t">The attached vendors</div><div class="ak-book__q">Which vendors are attached and active?</div><div class="ak-book__s"><span class="ak-chip" data-k="read">readable</span> 4 owned</div></button>
+            <button class="ak-book"><div class="ak-book__t">The posted targets</div><div class="ak-book__q">What goals and targets are posted?</div><div class="ak-book__s"><span class="ak-chip" data-k="empty">none posted</span></div></button>
+          </div>
+        </div>
+
+        <div class="ak-reg">
+          <div class="ak-reg__h"><span class="ak-reg__name">Not built yet</span><span class="ak-reg__count">these are statements about Mudavym, not about the house's books</span></div>
+          <div class="ak-books">
+            <div class="ak-book" data-k="notbuilt"><div class="ak-book__t">A forecast</div><div class="ak-book__q">What will we sell on Saturday?</div><div class="ak-book__s"><span class="ak-chip" data-k="notbuilt">not built</span></div></div>
+            <div class="ak-book" data-k="notbuilt"><div class="ak-book__t">Landed cost</div><div class="ak-book__q">What does a bottle really cost us?</div><div class="ak-book__s"><span class="ak-chip" data-k="notbuilt">not built</span></div></div>
+            <div class="ak-book" data-k="notbuilt"><div class="ak-book__t">Sales revenue</div><div class="ak-book__q">How much did we take on Friday?</div><div class="ak-book__s"><span class="ak-chip" data-k="notbuilt">not built</span></div></div>
+            <div class="ak-book" data-k="notbuilt"><div class="ak-book__t">Lot expiry</div><div class="ak-book__q">What is about to go off?</div><div class="ak-book__s"><span class="ak-chip" data-k="notbuilt">not built</span> lots carry no expiry date</div></div>
+          </div>
+        </div>
+
+        <div class="ak-reg">
+          <div class="ak-reg__h"><span class="ak-reg__name">Not from the house's books</span><span class="ak-reg__count">the model's own knowledge · never carries a figure · never mixed into a reading</span></div>
+          <div class="ak-books">
+            <button class="ak-book" data-k="model"><div class="ak-book__t">Pairing, service, the wine itself</div><div class="ak-book__q">What goes with lamb? How long does an open Barolo keep?</div><div class="ak-book__s"><span class="ak-chip" data-k="model">not from the books</span></div></button>
+          </div>
+        </div>
+
+        <p class="ak-foot">Not on the shelf: <span class="mono">vendor_price_observations</span>, <span class="mono">price_history</span> — no single house key, so no count is shown rather than a wrong one. Prices are asked on <a class="ak-link" href="#">/vendor-prices</a>.</p>
+      </div>
+
+      <aside class="ak-bookcol">
+        <p class="ak-eyebrow">The book · your asks in this house</p>
+        <div class="ak-daylabel">Today</div>
+        <ul class="ak-folio">
+          <li data-open="true"><span class="t">2:14 PM</span><div><div class="u">How much of the Vajra Barolo do we have?</div><div class="m"><span class="ak-chip" data-k="read">answered</span> inventory.position v1</div></div></li>
+          <li><span class="t">1:52 PM</span><div><div class="u">Reorder 12 of the Vajra from Skurnik</div><div class="m"><span class="ak-chip" data-k="pending">draft on /orders</span> PO-0231</div></div></li>
+          <li><span class="t">11:08 AM</span><div><div class="u">What goes with the lamb special?</div><div class="m"><span class="ak-chip" data-k="model">not from the books</span></div></div></li>
+          <li><span class="t">9:41 AM</span><div><div class="u">Which orders are late?</div><div class="m"><span class="ak-chip" data-k="empty">none dated</span> orders.late_deliveries</div></div></li>
+        </ul>
+        <div class="ak-daylabel">Yesterday</div>
+        <ul class="ak-folio">
+          <li><span class="t">6:30 PM</span><div><div class="u">What is in the calendar this week?</div><div class="m"><span class="ak-chip" data-k="failed">could not read</span> calendar_events 57014</div></div></li>
+          <li><span class="t">4:05 PM</span><div><div class="u">How much Chardonnay do we have?</div><div class="m"><span class="ak-chip" data-k="clarify">3 matched</span> answered after the pick</div></div></li>
+          <li><span class="t">10:12 AM</span><div><div class="u">What will we sell on Saturday?</div><div class="m"><span class="ak-chip" data-k="notbuilt">not built</span> forecast</div></div></li>
+        </ul>
+        <p class="ak-p ak-p--dim" style="font-size:12px">Each ask is a folio with its own address, kept with the reading that answered it. Re-reading an old folio makes a new version; the old one is never overwritten.</p>
+      </aside>
+    </div>
+  </div>
+
+  <!-- the Sheet: one Finding = one object -->
+  <div class="ak-scrim"></div>
+  <aside class="ak-sheet" role="dialog" aria-label="The recorded stock">
+    <div class="ak-sheet__h">
+      <div><p class="ak-eyebrow ak-eyebrow--seal">The recorded stock · v1 · folio 0231</p><p class="ak-utt" style="margin-top:6px">How much of the Vajra Barolo do we have?</p></div>
+      <button class="ak-close" aria-label="Close">Close</button>
+    </div>
+    <div class="ak-sheet__b">
+      <p class="ak-say">The house records <button class="ak-cell" data-open="true" data-prov="stated">7 bottles</button> of Barolo Albe, G.D. Vajra 2020, with <button class="ak-cell" data-prov="stated">12 bottles</button> in transit and <button class="ak-cell" data-prov="stated">0</button> in shadow stock. Its threshold is <button class="ak-cell" data-prov="defaulted">3</button>.</p>
+      <div class="ak-legend"><span><i></i>from a row</span><span><i class="d"></i>a default nobody chose</span><span><i class="o"></i>computed from rows</span><span><i class="n"></i>not recorded</span></div>
+
+      <div class="ak-drawer" data-open="true"><div>
+        <div class="ak-rows">
+          <div class="ak-rows__h"><b>restaurant_inventory</b> · row 7c2e…91 · the row behind “7 bottles” <span style="margin-left:auto">read 2:14:07 PM</span></div>
+          <div class="ak-kv">
+            <div class="k">display_name</div><div class="v">Barolo Albe, G.D. Vajra 2020</div><div class="p" data-p="stated">stated</div>
+            <div class="k">stock_live</div><div class="v">7</div><div class="p" data-p="stated">stated</div>
+            <div class="k">uom</div><div class="v">bottle</div><div class="p" data-p="stated">stated</div>
+            <div class="k">in_transit_quantity</div><div class="v">12</div><div class="p" data-p="stated">stated</div>
+            <div class="k">shadow_stock</div><div class="v">0</div><div class="p" data-p="stated">stated</div>
+            <div class="k">threshold_min</div><div class="v">3</div><div class="p" data-p="defaulted">= column default</div>
+          </div>
+        </div>
+      </div></div>
+
+      <div class="ak-trace">
+        <div class="ak-trace__h"><span>What was read</span><span style="color:var(--ink-3)">minted by the runner, not written by the reading</span></div>
+        <table>
+          <tr><td>restaurant_inventory</td><td class="n">206 scanned · 1 matched</td><td class="t">2:14:07 PM</td></tr>
+        </table>
+        <div class="ak-asof">as of 2:14:07 PM · 0.9 s of the 60 s budget · picked by Haiku, composed by Sonnet 5</div>
+      </div>
+
+      <div class="ak-acts">
+        <button class="ak-btn ak-btn--seal">Draft a reorder</button>
+        <button class="ak-btn">Read again</button>
+        <button class="ak-btn ak-btn--quiet">Open on /cellar →</button>
+      </div>
+    </div>
+    <div class="ak-sheet__f"><span class="ak-p ak-p--dim" style="margin:0;font-size:12px">A draft is an ordinary tap. The seal is on the order, at approval, on /orders.</span></div>
+  </aside>
+</div>
+</div>
+<p class="sk-note">The shelf's counts are the shelf endpoint's — <code>DevTruthService.reach()</code> generalised and un-gated (ADR 0145 build item 5) — and the sentence's figures are cells whose ids must resolve inside the Finding. The dashed “3 <small>assumed</small>” is R8: <code>threshold_min</code> equals its column default, so it renders as an assumption, never as a fact the owner stated. The picked-reading line under the field is the Haiku step made visible before Sonnet spends anything.</p>
+
+<!-- ============================================================ 1b · desktop, no Sheet open ============================================================ -->
+<div class="sk-label sk-label--desktop">1b · Desktop 1440 · Larkspur &amp; Vine <small>the page's real composition — shelf and book rail, nothing open</small></div>
+<div class="sk-frame sk-frame--desktop">
+<div class="mudavym" data-ground="charcoal" style="min-height: 1180px;">
+  <header class="mdv-hdr">
+    <span class="mdv-hdr__mark" data-mark></span>
+    <span class="mdv-hdr__house">Larkspur &amp; Vine <span class="chev">▾</span></span>
+    <nav class="mdv-hdr__nav"><a href="#">Desk</a><a href="#">Cellar</a><a href="#">Orders</a><a href="#">Calendar</a><a href="#" aria-current="page">Ask</a><a href="#">Logs</a></nav>
+    <span class="mdv-hdr__spacer"></span>
+    <span class="mdv-hdr__pill mdv-hdr__pill--hide"><kbd class="mdv-kbd">⌘⇧K</kbd> ask anywhere</span>
+    <span class="mdv-hdr__pill">Waiting on you <span class="n">7</span></span>
+    <span class="mdv-hdr__avatar">M</span>
+  </header>
+
+  <div class="ak-wrap">
+    <p class="ak-eyebrow">Mudavym · ask</p>
+    <h1 class="ak-h1">Ask the house<span class="stop">.</span></h1>
+    <p class="ak-lead">Every figure comes out of a reading of the house's own books and opens to its rows. What Mudavym cannot read, it says in words.</p>
+
+    <div class="ak-ask">
+      <input class="ak-ask__in" placeholder="Ask about the house's books…" aria-label="Ask the house">
+      <div class="ak-ask__ctl"><span class="mdv-kbd">↵</span><button class="ak-btn ak-btn--seal">Ask</button></div>
+    </div>
+
+    <div class="ak-cols">
+      <div class="ak-shelf">
+        <div class="ak-reg">
+          <div class="ak-reg__h"><span class="ak-reg__name">Stock</span><span class="ak-reg__count"><b>restaurant_inventory</b> 206 rows · <b>inventory_lots</b> 41 · <b>inventory_transactions</b> 88 · <b>storage_locations</b> 1 · counted 2:14 PM</span></div>
+          <div class="ak-books">
+            <button class="ak-book"><div class="ak-book__t">The recorded stock</div><div class="ak-book__q">What stock is recorded for this item?</div><div class="ak-book__s"><span class="ak-chip" data-k="read">readable</span><span class="sub">item ·</span> 206 items · 53 unnamed</div></button>
+            <button class="ak-book"><div class="ak-book__t">Below the recorded threshold</div><div class="ak-book__q">Which active items are below their threshold?</div><div class="ak-book__s"><span class="ak-chip" data-k="read">readable</span> thresholds not set by the house</div></button>
+            <button class="ak-book"><div class="ak-book__t">Recorded in transit</div><div class="ak-book__q">Which items have stock recorded in transit?</div><div class="ak-book__s"><span class="ak-chip" data-k="read">readable</span></div></button>
+            <button class="ak-book"><div class="ak-book__t">Where the stock is held</div><div class="ak-book__q">Where is this item's recorded stock held?</div><div class="ak-book__s"><span class="ak-chip" data-k="read">readable</span><span class="sub">item ·</span> 1 named location</div></button>
+            <button class="ak-book"><div class="ak-book__t">The movement record</div><div class="ak-book__q">What changed this item's stock in a period?</div><div class="ak-book__s"><span class="ak-chip" data-k="read">readable</span><span class="sub">item · period</span></div></button>
+          </div>
+        </div>
+
+        <div class="ak-reg">
+          <div class="ak-reg__h"><span class="ak-reg__name">Orders &amp; receipts</span><span class="ak-reg__count"><b>procurement_orders</b> 2 · <b>procurement_order_items</b> 1 · <b>procurement_documents</b> 0 · <b>procurement_document_links</b> 0 · counted 2:14 PM</span></div>
+          <div class="ak-books">
+            <button class="ak-book"><div class="ak-book__t">The open orders</div><div class="ak-book__q">Which orders are still open?</div><div class="ak-book__s"><span class="ak-chip" data-k="read">readable</span> 2 orders</div></button>
+            <button class="ak-book"><div class="ak-book__t">What the order contains</div><div class="ak-book__q">What does this order contain?</div><div class="ak-book__s"><span class="ak-chip" data-k="read">readable</span><span class="sub">order ·</span> 1 header-only</div></button>
+            <button class="ak-book"><div class="ak-book__t">Past the stated delivery date</div><div class="ak-book__q">Which open deliveries are past a date?</div><div class="ak-book__s"><span class="ak-chip" data-k="empty">none dated</span> 2 orders carry no date</div></button>
+            <button class="ak-book" data-k="unsatisfied"><div class="ak-book__t">The last verified receipt line</div><div class="ak-book__q">What did the last verified receipt record for this item?</div><div class="ak-book__s"><span class="ak-chip" data-k="unsatisfied">needs a linked line</span> 0 documents in the books</div></button>
+            <button class="ak-book"><div class="ak-book__t">Documents awaiting review</div><div class="ak-book__q">Which documents are waiting for review?</div><div class="ak-book__s"><span class="ak-chip" data-k="empty">none in the books</span></div></button>
+          </div>
+        </div>
+
+        <div class="ak-reg">
+          <div class="ak-reg__h"><span class="ak-reg__name">Sales, calendar, vendors, targets</span><span class="ak-reg__count"><b>pos_checks</b> 312 · <b>wine_consumption_log</b> 74 · <b>calendar_events</b> 7 · <b>providers</b> 4 owned + 0 linked · <b>analytics_goals</b> 0 · counted 2:14 PM</span></div>
+          <div class="ak-books">
+            <button class="ak-book"><div class="ak-book__t">The recorded checks</div><div class="ak-book__q">How many closed checks and covers in a period?</div><div class="ak-book__s"><span class="ak-chip" data-k="read">readable</span><span class="sub">period ·</span> no revenue: checks carry no currency</div></button>
+            <button class="ak-book"><div class="ak-book__t">The consumption record</div><div class="ak-book__q">What consumption was recorded for this item?</div><div class="ak-book__s"><span class="ak-chip" data-k="read">readable</span><span class="sub">item · period</span></div></button>
+            <button class="ak-book"><div class="ak-book__t">The house calendar</div><div class="ak-book__q">What is in the house calendar for a period?</div><div class="ak-book__s"><span class="ak-chip" data-k="read">readable</span><span class="sub">period ·</span> 7 entries, 1 rule</div></button>
+            <button class="ak-book"><div class="ak-book__t">The attached vendors</div><div class="ak-book__q">Which vendors are attached and active?</div><div class="ak-book__s"><span class="ak-chip" data-k="read">readable</span> 4 owned</div></button>
+            <button class="ak-book"><div class="ak-book__t">The posted targets</div><div class="ak-book__q">What goals and targets are posted?</div><div class="ak-book__s"><span class="ak-chip" data-k="empty">none posted</span></div></button>
+          </div>
+        </div>
+
+        <div class="ak-reg">
+          <div class="ak-reg__h"><span class="ak-reg__name">Not built yet</span><span class="ak-reg__count">these are statements about Mudavym, not about the house's books</span></div>
+          <div class="ak-books">
+            <div class="ak-book" data-k="notbuilt"><div class="ak-book__t">A forecast</div><div class="ak-book__q">What will we sell on Saturday?</div><div class="ak-book__s"><span class="ak-chip" data-k="notbuilt">not built</span></div></div>
+            <div class="ak-book" data-k="notbuilt"><div class="ak-book__t">Landed cost</div><div class="ak-book__q">What does a bottle really cost us?</div><div class="ak-book__s"><span class="ak-chip" data-k="notbuilt">not built</span></div></div>
+            <div class="ak-book" data-k="notbuilt"><div class="ak-book__t">Sales revenue</div><div class="ak-book__q">How much did we take on Friday?</div><div class="ak-book__s"><span class="ak-chip" data-k="notbuilt">not built</span></div></div>
+            <div class="ak-book" data-k="notbuilt"><div class="ak-book__t">Lot expiry</div><div class="ak-book__q">What is about to go off?</div><div class="ak-book__s"><span class="ak-chip" data-k="notbuilt">not built</span> lots carry no expiry date</div></div>
+          </div>
+        </div>
+
+        <div class="ak-reg">
+          <div class="ak-reg__h"><span class="ak-reg__name">Not from the house's books</span><span class="ak-reg__count">the model's own knowledge · never carries a figure · never mixed into a reading</span></div>
+          <div class="ak-books">
+            <button class="ak-book" data-k="model"><div class="ak-book__t">Pairing, service, the wine itself</div><div class="ak-book__q">What goes with lamb? How long does an open Barolo keep?</div><div class="ak-book__s"><span class="ak-chip" data-k="model">not from the books</span></div></button>
+          </div>
+        </div>
+
+        <p class="ak-foot">Not on the shelf: <span class="mono">vendor_price_observations</span>, <span class="mono">price_history</span> — no single house key, so no count is shown rather than a wrong one. Prices are asked on <a class="ak-link" href="#">/vendor-prices</a>.</p>
+      </div>
+
+      <aside class="ak-bookcol">
+        <p class="ak-eyebrow">The book · your asks in this house</p>
+        <div class="ak-daylabel">Today</div>
+        <ul class="ak-folio">
+          <li><span class="t">2:14 PM</span><div><div class="u">How much of the Vajra Barolo do we have?</div><div class="m"><span class="ak-chip" data-k="read">answered</span> inventory.position v1</div></div></li>
+          <li><span class="t">1:52 PM</span><div><div class="u">Reorder 12 of the Vajra from Skurnik</div><div class="m"><span class="ak-chip" data-k="pending">draft on /orders</span> PO-0231</div></div></li>
+          <li><span class="t">11:08 AM</span><div><div class="u">What goes with the lamb special?</div><div class="m"><span class="ak-chip" data-k="model">not from the books</span></div></div></li>
+          <li><span class="t">9:41 AM</span><div><div class="u">Which orders are late?</div><div class="m"><span class="ak-chip" data-k="empty">none dated</span> orders.late_deliveries</div></div></li>
+        </ul>
+        <div class="ak-daylabel">Yesterday</div>
+        <ul class="ak-folio">
+          <li><span class="t">6:30 PM</span><div><div class="u">What is in the calendar this week?</div><div class="m"><span class="ak-chip" data-k="failed">could not read</span> calendar_events 57014</div></div></li>
+          <li><span class="t">4:05 PM</span><div><div class="u">How much Chardonnay do we have?</div><div class="m"><span class="ak-chip" data-k="clarify">3 matched</span> answered after the pick</div></div></li>
+          <li><span class="t">10:12 AM</span><div><div class="u">What will we sell on Saturday?</div><div class="m"><span class="ak-chip" data-k="notbuilt">not built</span> forecast</div></div></li>
+        </ul>
+        <p class="ak-p ak-p--dim" style="font-size:12px">Each ask is a folio with its own address, kept with the reading that answered it. Re-reading an old folio makes a new version; the old one is never overwritten.</p>
+      </aside>
+    </div>
+  </div>
+</div>
+</div>
+<p class="sk-note">The shelf and the book rail, together, with nothing open — this is what the page looks like before an ask. Fifteen readings across three registers, four not-built statements, one model-knowledge group; the book on the right holds every past ask for this person in this house.</p>
+
+<!-- ============================================================ 2 · desktop, Turkish house ============================================================ -->
+<div class="sk-label sk-label--desktop">2 · Desktop 1440 · Sim Meyhouse (Kadıköy · TRY · tr-TR) <small>a Turkish utterance, a period reading, and the receipt reading that cannot run yet — English UI, house-locale figures</small></div>
+<div class="sk-frame sk-frame--desktop">
+<div class="mudavym" data-ground="charcoal" style="min-height: 980px;">
+  <header class="mdv-hdr">
+    <span class="mdv-hdr__mark" data-mark></span>
+    <span class="mdv-hdr__house">Sim Meyhouse <span class="chev">▾</span></span>
+    <nav class="mdv-hdr__nav"><a href="#">Desk</a><a href="#">Cellar</a><a href="#">Orders</a><a href="#">Calendar</a><a href="#" aria-current="page">Ask</a><a href="#">Logs</a></nav>
+    <span class="mdv-hdr__spacer"></span>
+    <span class="mdv-hdr__pill">Waiting on you <span class="n">3</span></span>
+    <span class="mdv-hdr__avatar">D</span>
+  </header>
+  <div class="ak-wrap">
+    <p class="ak-eyebrow">Mudavym · ask</p>
+    <h1 class="ak-h1">Ask the house<span class="stop">.</span></h1>
+    <div class="ak-ask">
+      <input class="ak-ask__in" value="Geçen hafta kaç adisyon kapandı?" aria-label="Ask the house">
+      <div class="ak-ask__ctl"><span class="mdv-kbd">↵</span><button class="ak-btn ak-btn--seal">Ask</button></div>
+    </div>
+    <div class="ak-pick"><span>Mudavym will run</span> <b>The recorded checks</b> <span class="mono">sales.check_activity · v1</span> <span>for</span> <b>07.09.2026 – 13.09.2026</b> <span class="mono">“geçen hafta”, house week Mon–Sun</span> <a class="ak-link" href="#" style="font-size:12px">Change the period</a></div>
+
+    <div class="ak-cols">
+      <div class="ak-shelf">
+        <div class="ak-reg">
+          <div class="ak-reg__h"><span class="ak-reg__name">Orders &amp; receipts</span><span class="ak-reg__count"><b>procurement_orders</b> 0 · <b>procurement_documents</b> 33 · <b>procurement_document_lines</b> 60 · <b>procurement_document_links</b> 0 · counted 21:14</span></div>
+          <div class="ak-books">
+            <button class="ak-book"><div class="ak-book__t">The open orders</div><div class="ak-book__q">Which orders are still open?</div><div class="ak-book__s"><span class="ak-chip" data-k="empty">none in the books</span></div></button>
+            <button class="ak-book" data-k="unsatisfied"><div class="ak-book__t">The last verified receipt line</div><div class="ak-book__q">What did the last verified receipt record for this item?</div><div class="ak-book__s"><span class="ak-chip" data-k="unsatisfied">needs a linked line</span> 33 documents · 0 lines linked to an item</div></button>
+            <button class="ak-book"><div class="ak-book__t">Documents awaiting review</div><div class="ak-book__q">Which documents are waiting for review?</div><div class="ak-book__s"><span class="ak-chip" data-k="read">readable</span> 33 documents · 9 need review</div></button>
+          </div>
+        </div>
+        <div class="ak-reg">
+          <div class="ak-reg__h"><span class="ak-reg__name">Sales</span><span class="ak-reg__count"><b>pos_checks</b> 145 · <b>wine_consumption_log</b> 119 · counted 21:14 · <span style="color:var(--ink-2)">checks carry no currency, so no revenue reading exists</span></span></div>
+          <div class="ak-books">
+            <button class="ak-book" data-picked="true"><div class="ak-book__t">The recorded checks</div><div class="ak-book__q">How many closed checks and covers in a period?</div><div class="ak-book__s"><span class="ak-chip" data-k="read">readable</span><span class="sub">period</span></div></button>
+            <button class="ak-book"><div class="ak-book__t">The consumption record</div><div class="ak-book__q">What consumption was recorded for this item?</div><div class="ak-book__s"><span class="ak-chip" data-k="read">readable</span><span class="sub">item · period</span></div></button>
+          </div>
+        </div>
+        <div class="ak-reg">
+          <div class="ak-reg__h"><span class="ak-reg__name">Vendors &amp; targets</span><span class="ak-reg__count"><b>providers</b> 3 owned + 0 linked · <b>restaurant_providers</b> 0 · <b>analytics_goals</b> 0 · counted 21:14</span></div>
+          <div class="ak-books">
+            <button class="ak-book"><div class="ak-book__t">The attached vendors</div><div class="ak-book__q">Which vendors are attached and active?</div><div class="ak-book__s"><span class="ak-chip" data-k="read">readable</span> 3 owned · a zero junction is not “no vendors”</div></button>
+            <button class="ak-book"><div class="ak-book__t">The posted targets</div><div class="ak-book__q">What goals and targets are posted?</div><div class="ak-book__s"><span class="ak-chip" data-k="empty">none posted</span></div></button>
+          </div>
+        </div>
+      </div>
+      <aside class="ak-bookcol">
+        <p class="ak-eyebrow">The book · your asks in this house</p>
+        <div class="ak-daylabel">Today</div>
+        <ul class="ak-folio">
+          <li data-open="true"><span class="t">21:14</span><div><div class="u">Geçen hafta kaç adisyon kapandı?</div><div class="m"><span class="ak-chip" data-k="read">answered</span> sales.check_activity v1</div></div></li>
+          <li><span class="t">20:02</span><div><div class="u">Çankaya son faturada kaça geldi?</div><div class="m"><span class="ak-chip" data-k="unsatisfied">needs a linked line</span> receipts.verified_line</div></div></li>
+          <li><span class="t">18:40</span><div><div class="u">Rakı ile ne gider?</div><div class="m"><span class="ak-chip" data-k="model">not from the books</span></div></div></li>
+        </ul>
+      </aside>
+    </div>
+  </div>
+
+  <div class="ak-scrim"></div>
+  <aside class="ak-sheet" role="dialog" aria-label="The recorded checks">
+    <div class="ak-sheet__h"><div><p class="ak-eyebrow ak-eyebrow--seal">The recorded checks · v1 · folio 0088</p><p class="ak-utt" style="margin-top:6px">Geçen hafta kaç adisyon kapandı?</p></div><button class="ak-close" aria-label="Close">Close</button></div>
+    <div class="ak-sheet__b">
+      <p class="ak-say">Between 07.09.2026 and 13.09.2026 the house closed <button class="ak-cell" data-prov="derived">31 checks</button> with <button class="ak-cell" data-prov="derived">68 covers</button> known; <button class="ak-cell" data-prov="derived">4 checks</button> recorded no cover count. <span style="color:var(--ink-2)">No revenue is stated: the checks carry no currency.</span></p>
+      <div class="ak-legend"><span><i></i>from a row</span><span><i class="o"></i>computed from rows</span><span><i class="n"></i>not recorded</span></div>
+      <div class="ak-trace">
+        <div class="ak-trace__h"><span>What was read</span></div>
+        <table>
+          <tr><td>pos_checks</td><td class="n">145 scanned · 31 matched in period<br><span style="color:var(--ink-3)">closed_at in window · voided = false</span></td><td class="t">21:14:22</td></tr>
+        </table>
+        <div class="ak-asof">as of 21:14:22 · 1.4 s of 60 s</div>
+      </div>
+      <div class="ak-acts"><button class="ak-btn">Read again</button><button class="ak-btn ak-btn--quiet">Open on /reports →</button></div>
+    </div>
+  </aside>
+</div>
+</div>
+<p class="sk-note">The utterance is the operator's own words in Turkish; every interface word stays English (the 113 rule). Dates and counts follow tr-TR. The receipt reading's card says why it cannot run — 33 documents but 0 lines linked to an item — and the vendor card refuses the scalar trap (ADR 0145 R6): a zero junction is printed beside the owned count, never as “no vendors”.</p>
+
+<!-- ============================================================ 3 · the reply shapes ============================================================ -->
+<div class="sk-label">3 · The reply shapes, each drawn <small>as they render in the Sheet body — one silhouette per wire kind, no shared fallback (ADR 0145 R3, R4)</small></div>
+<div class="sk-strip">
+  <div class="sk-cell"><div class="sk-cell-h">reading <em>· answered · cells resolve inside the Finding</em></div><div class="mudavym" style="padding:4px 16px 16px">
+    <div class="ak-reply" data-kind="reading"><div class="ak-reply__k">Answered <span class="wire">kind: reading</span></div>
+      <p class="ak-say ak-say--s">The house records <button class="ak-cell">7 bottles</button> of Barolo Albe, G.D. Vajra 2020, with <button class="ak-cell">12</button> in transit.</p>
+      <div class="ak-trace"><table><tr><td>restaurant_inventory</td><td class="n">206 · 1</td><td class="t">2:14 PM</td></tr></table></div>
+    </div></div></div>
+  <div class="sk-cell"><div class="sk-cell-h">not_in_your_books <em>· the register was read and holds nothing for this</em></div><div class="mudavym" style="padding:4px 16px 16px">
+    <div class="ak-reply" data-kind="not_in_your_books"><div class="ak-reply__k">Not in the house's books <span class="wire">kind: not_in_your_books · reason: empty_register</span></div>
+      <p class="ak-say ak-say--s">No targets are posted in the house's books.</p>
+      <div class="ak-trace"><table><tr><td>analytics_goals</td><td class="n">0 scanned · 0 matched</td><td class="t">2:16 PM</td></tr></table><div class="ak-asof">read, and empty — not unread</div></div>
+      <div class="ak-acts"><a class="ak-btn ak-btn--quiet" href="#">Post a target on /reports →</a></div>
+    </div></div></div>
+  <div class="sk-cell"><div class="sk-cell-h">could_not_read <em>· a query failed · nothing assumed · never an emptiness</em></div><div class="mudavym" style="padding:4px 16px 16px">
+    <div class="ak-reply" data-kind="could_not_read"><div class="ak-reply__k">Could not read <span class="wire">kind: could_not_read · reason: query_failed</span></div>
+      <p class="ak-say ak-say--s">Mudavym could not read the house calendar. Nothing about it is assumed.</p>
+      <div class="ak-trace"><table><tr data-o="failed"><td>calendar_events</td><td class="n">failed · 57014</td><td class="t">6:30 PM</td></tr><tr data-o="pending"><td>calendar_recurrence_rules</td><td class="n">not attempted</td><td class="t">—</td></tr></table></div>
+      <div class="ak-acts"><button class="ak-btn">Read again</button></div>
+    </div></div></div>
+  <div class="sk-cell"><div class="sk-cell-h">clarify <em>· more than one row matched · the pick is a person's</em></div><div class="mudavym" style="padding:4px 16px 16px">
+    <div class="ak-reply" data-kind="clarify"><div class="ak-reply__k">Which one? <span class="wire">kind: clarify · reason: ambiguous_subject · 3 matched</span></div>
+      <p class="ak-say ak-say--s">“Chardonnay” matches three items. Mudavym will not choose.</p>
+      <ul class="ak-choices"><li>Chablis 1er Cru Vaillons, Dauvissat 2021 <span class="mono">7c2e…04 · 5 btl</span></li><li>Chardonnay, Sandhi Sta. Rita Hills 2022 <span class="mono">b19a…e7 · 11 btl</span></li><li><span class="blank">(no name recorded)</span> <span class="mono">2f31…8c · 2 btl</span></li></ul>
+    </div></div></div>
+  <div class="sk-cell"><div class="sk-cell-h">not_built <em>· a statement about Mudavym, not about the house</em></div><div class="mudavym" style="padding:4px 16px 16px">
+    <div class="ak-reply" data-kind="not_built"><div class="ak-reply__k">Not built <span class="wire">kind: not_built · reason: unimplemented_question</span></div>
+      <p class="ak-say ak-say--s">Mudavym has no forecast reading yet. This says nothing about the house's books.</p>
+      <p class="ak-p">A forecast would read the recorded checks and the consumption record; both are readable in this house today.</p>
+    </div></div></div>
+  <div class="sk-cell"><div class="sk-cell-h">model_knowledge <em>· the model's own head · a different paper, a different face, no cells</em></div><div class="mudavym" style="padding:4px 16px 16px">
+    <div class="ak-reply" data-kind="model_knowledge"><div class="ak-modelband">Not from the house's books</div><div class="ak-runlabel">Not from the house's books</div><div>
+      <div class="ak-reply__k">Mudavym's own knowledge <span class="wire">kind: model_knowledge · source: model_knowledge</span></div>
+      <p class="ak-say">Lamb takes tannin and a little rusticity: a Chianti Classico, a young Bandol, or a Cahors. If the dish is spiced, drop the oak and reach for a Cru Beaujolais.</p>
+      <p class="ak-p ak-p--dim">No figure here can be a cell. Whether the house has any of these is a separate ask: <a class="ak-link" href="#">Do we have a Bandol?</a></p>
+    </div></div></div></div>
+  <div class="sk-cell"><div class="sk-cell-h">requirements_unsatisfied <em>· a seventh wire kind on Codex's union · the reading matched, the registers do not carry what it needs</em></div><div class="mudavym" style="padding:4px 16px 16px">
+    <div class="ak-reply" data-kind="requirements_unsatisfied"><div class="ak-reply__k">Cannot run yet <span class="wire">kind: requirements_unsatisfied · reason: missing_verified_link</span></div>
+      <p class="ak-say ak-say--s">To answer this Mudavym would read a verified receipt line linked to the item. None is linked.</p>
+      <div class="ak-req"><div><span>procurement_documents</span><span class="mono ok">33 rows · satisfied</span></div><div><span>procurement_document_lines</span><span class="mono ok">60 rows · satisfied</span></div><div><span>procurement_document_links</span><span class="mono">0 rows · needs 1+ linked to this item</span></div></div>
+      <div class="ak-acts"><a class="ak-btn ak-btn--quiet" href="#">Link lines on /documents →</a></div>
+    </div></div></div>
+  <div class="sk-cell"><div class="sk-cell-h">no_reading_matched <em>· eighth wire kind · not a reading, not an act</em></div><div class="mudavym" style="padding:4px 16px 16px">
+    <div class="ak-reply" data-kind="no_reading_matched"><div class="ak-reply__k">No reading matched <span class="wire">kind: no_reading_matched · reason: no_matching_question</span></div>
+      <p class="ak-say ak-say--s">Mudavym did not match “rename the Barolo” to a reading, and it is not an act it can draft.</p>
+      <div class="ak-acts"><button class="ak-btn ak-btn--quiet">See the shelf</button><a class="ak-btn ak-btn--quiet" href="#">Rename on /cellar →</a></div>
+    </div></div></div>
+</div>
+<p class="sk-note">Six shapes were named in the brief; Codex's wire union carries eight (<code>bound-reply.ts</code>: reading, model_knowledge, clarify, not_built, no_reading_matched, requirements_unsatisfied, not_in_your_books, could_not_read). All eight are drawn so none can fall into a default renderer. Note the two denials: <em>not in the books</em> shows its read as 0 scanned with a time; <em>could not read</em> shows a hatched failed source and names the code. They cannot be confused at a glance, which is the whole point.</p>
+
+<!-- ============================================================ 4 · states ============================================================ -->
+<div class="sk-label">4 · States <small>empty · loading with the 60 s rule · the budget running out · refused by the ceiling · refused by a person's own rate · the shelf partly uncounted</small></div>
+<div class="sk-strip">
+  <div class="sk-cell"><div class="sk-cell-h">empty <em>· first visit: nothing asked yet · the shelf is the empty state</em></div><div class="mudavym" style="padding:16px">
+    <p class="ak-eyebrow">The book · your asks in this house</p>
+    <p class="ak-say ak-say--s" style="margin-top:8px">Nothing asked yet.</p>
+    <p class="ak-p">The shelf on the left is what Mudavym can read in this house today — 11 readings can run, 3 have nothing in the books yet, 1 needs a linked receipt line. Pick one, or type.</p>
+    <p class="ak-p ak-p--dim mono" style="font-size:10.5px">GET /ask/folios → 200 · [] · read 2:14 PM (an empty book that was read, not a failed read)</p>
+  </div></div>
+  <div class="sk-cell"><div class="sk-cell-h">loading <em>· the reading is spent on screen · pour is linear on purpose</em></div><div class="mudavym" style="padding:16px">
+    <p class="ak-eyebrow ak-eyebrow--seal">The movement record · v1 · folio 0238</p>
+    <p class="ak-utt" style="margin-top:6px">What moved the Vajra this month?</p>
+    <div class="ak-budget"><div class="ak-budget__bar"><div class="ak-budget__fill" style="width:20%"></div></div><div class="ak-budget__l"><span>reading the house</span><span>12 s of 60</span></div></div>
+    <div class="ak-trace"><table>
+      <tr><td>restaurant_inventory</td><td class="n">206 · 1</td><td class="t">2:31:02 PM</td></tr>
+      <tr data-o="pending"><td>inventory_transactions</td><td class="n">reading…</td><td class="t">—</td></tr>
+    </table></div>
+    <div style="margin-top:14px"><div class="ak-skel" style="width:88%"></div><div class="ak-skel" style="width:64%;margin-top:8px"></div></div>
+    <p class="ak-p ak-p--dim" style="font-size:12px">The folio row was written before the model was called; if this tab closes, the ask is still in the book.</p>
+  </div></div>
+  <div class="sk-cell"><div class="sk-cell-h">the 60 s ran out <em>· nothing invented · the folio stays pending</em></div><div class="mudavym" style="padding:16px">
+    <p class="ak-eyebrow ak-eyebrow--seal">The movement record · v1 · folio 0238</p>
+    <div class="ak-budget" data-out="true"><div class="ak-budget__bar"><div class="ak-budget__fill"></div></div><div class="ak-budget__l"><span>the budget ran out</span><span>60 s of 60</span></div></div>
+    <div class="ak-refuse"><div class="ak-reply__k">No answer in 60 seconds <span class="wire">client budget · /ask only</span></div>
+      <p class="ak-say ak-say--s">Mudavym did not answer in time. Nothing was invented and nothing was drafted.</p>
+      <div class="ak-trace"><table><tr><td>restaurant_inventory</td><td class="n">206 · 1</td><td class="t">2:31:02 PM</td></tr><tr data-o="pending"><td>inventory_transactions</td><td class="n">no result returned</td><td class="t">—</td></tr></table></div>
+      <div class="ak-acts"><button class="ak-btn">Check the folio</button><button class="ak-btn ak-btn--quiet">Ask again</button></div>
+    </div>
+  </div></div>
+  <div class="sk-cell"><div class="sk-cell-h">refused · the ceiling <em>· 429 in the ceiling's own words, never “temporarily unavailable” (ADR 0146)</em></div><div class="mudavym" style="padding:16px">
+    <div class="ak-ask" style="margin-top:0;opacity:.7"><input class="ak-ask__in" value="Which items are below par?" disabled><div class="ak-ask__ctl"><button class="ak-btn" aria-disabled="true">Ask</button></div></div>
+    <div class="ak-alert">This restaurant has used today's AI allowance. It resets at midnight UTC — 3h 12m from now (5:00 PM PDT, house time); nothing was charged.<span class="mono">429 · model_spend_ceiling · resets midnight UTC · the shelf and the book still read</span></div>
+    <p class="ak-p ak-p--dim" style="font-size:12px">The shelf and the book are not behind the ceiling: reading a stored folio costs no model call.</p>
+  </div></div>
+  <div class="sk-cell"><div class="sk-cell-h">refused · too fast <em>· a second 429, a person's own rate — not the house's spend ceiling</em></div><div class="mudavym" style="padding:16px">
+    <div class="ak-ask" style="margin-top:0;opacity:.7"><input class="ak-ask__in" value="Reorder the Cornas?" disabled><div class="ak-ask__ctl"><button class="ak-btn" aria-disabled="true">Ask</button></div></div>
+    <div class="ak-alert">You've asked too many times too quickly. Try again in a moment.<span class="mono">429 · rate_limited · 10/min per person · 200/h per house</span></div>
+    <p class="ak-p ak-p--dim" style="font-size:12px">A different limit from the spend ceiling: this one clears in seconds, not at midnight.</p>
+  </div></div>
+  <div class="sk-cell"><div class="sk-cell-h">partial <em>· three registers could not be counted · asks still run · a figure resting on defaults</em></div><div class="mudavym" style="padding:16px">
+    <div class="ak-reg" style="border-top:0;padding-top:0">
+      <div class="ak-reg__h"><span class="ak-reg__name">Sales, calendar, vendors, targets</span><span class="ak-reg__count"><b>pos_checks</b> <span class="fail">could not be counted · 57014</span> · <b>calendar_events</b> <span class="fail">could not be counted</span> · <b>providers</b> 4 owned + 0 linked · <b>analytics_goals</b> 0 · counted 2:14 PM</span></div>
+      <div class="ak-books" style="grid-template-columns:1fr 1fr">
+        <button class="ak-book" data-k="failed"><div class="ak-book__t">The recorded checks</div><div class="ak-book__s"><span class="ak-chip" data-k="failed">count failed</span> ask anyway</div></button>
+        <button class="ak-book"><div class="ak-book__t">The attached vendors</div><div class="ak-book__s"><span class="ak-chip" data-k="read">readable</span></div></button>
+      </div>
+    </div>
+    <div class="ak-reply" data-kind="reading" style="margin-top:14px"><div class="ak-reply__k">Answered · resting on assumptions <span class="wire">every cell is defaulted</span></div>
+      <p class="ak-say ak-say--s"><button class="ak-cell" data-prov="derived">4 items</button> are below threshold — but every threshold is <button class="ak-cell" data-prov="defaulted">3</button>, the column default. Nobody in the house set one.</p>
+      <div class="ak-acts"><a class="ak-btn ak-btn--quiet" href="#">Set thresholds on /inventory →</a></div>
+    </div>
+  </div></div>
+</div>
+<p class="sk-note">A register that could not be counted keeps its card on the shelf with a hatched chip and “ask anyway” — the shelf's count failing is not the reading failing, and the page must not hide a readable reading behind a broken counter. The partial answer renders as an assumption because all its cells are defaulted (R8): the sentence itself says who did not set the number.</p>
+
+<!-- ============================================================ 5 · overlays ============================================================ -->
+<div class="sk-label">5 · Overlays drawn open <small>the subject popover · the clarify panel · the draft in the Sheet · the draft on /orders with the seal re-running the reading</small></div>
+<div class="sk-strip sk-strip--2">
+  <div class="sk-cell"><div class="sk-cell-h">popover · anchored, ink <em>· a subject reading picked from the shelf asks for its item first</em></div><div class="mudavym" style="padding:16px;min-height:400px;position:relative">
+    <div class="ak-books" style="grid-template-columns:1fr 1fr;max-width:460px">
+      <button class="ak-book" data-picked="true"><div class="ak-book__t">Where the stock is held</div><div class="ak-book__q">Where is this item's recorded stock held?</div><div class="ak-book__s"><span class="ak-chip" data-k="read">readable</span><span class="sub">item</span></div></button>
+      <button class="ak-book"><div class="ak-book__t">The movement record</div><div class="ak-book__q">What changed this item's stock in a period?</div><div class="ak-book__s"><span class="ak-chip" data-k="read">readable</span></div></button>
+    </div>
+    <div class="ak-pop" style="left:24px;top:132px"><div class="ak-pop__h">Which item? · 206 in the books</div><input class="ak-pop__in" value="vaj"><ul>
+      <li data-hi="true"><span>Barolo Albe, G.D. Vajra 2020</span><span class="mono">7 btl</span></li>
+      <li><span>Langhe Nebbiolo, G.D. Vajra 2022</span><span class="mono">0 btl</span></li>
+      <li><span class="blank">(no name recorded) · 2f31…8c</span><span class="mono">2 btl</span></li>
+    </ul><p class="ak-p ak-p--dim" style="font-size:11px;padding:6px 8px 2px;margin:0">53 items have no name; they are listed by id, not hidden.</p></div>
+  </div></div>
+  <div class="sk-cell"><div class="sk-cell-h">panel · centred, settle <em>· the clarify shape is a question, so it takes the Panel</em></div><div class="mudavym" style="padding:16px;min-height:330px;position:relative"><div class="ak-scrim"></div>
+    <div class="ak-panel" style="position:absolute"><div class="ak-panel__h"><p class="ak-eyebrow ak-eyebrow--seal">Which one? · 3 matched</p><p class="ak-say ak-say--s" style="margin-top:6px">“Chardonnay” matches three items in the house. Mudavym will not choose.</p></div>
+      <div class="ak-panel__b"><ul class="ak-choices" style="margin-top:0"><li>Chablis 1er Cru Vaillons, Dauvissat 2021 <span class="mono">7c2e…04 · 5 btl</span></li><li>Chardonnay, Sandhi Sta. Rita Hills 2022 <span class="mono">b19a…e7 · 11 btl</span></li><li><span class="blank">(no name recorded)</span> <span class="mono">2f31…8c · 2 btl · name it on /cellar</span></li></ul></div>
+      <div class="ak-panel__f"><button class="ak-btn ak-btn--quiet">Ask something else</button><button class="ak-btn ak-btn--seal">Read the one I pick</button></div></div>
+  </div></div>
+  <div class="sk-cell"><div class="sk-cell-h">the draft, in the Sheet <em>· an ordinary tap · every field carries exactly one provenance · a field with none does not render</em></div><div class="mudavym" style="padding:16px">
+    <p class="ak-eyebrow ak-eyebrow--seal">Draft · from folio 0231</p>
+    <div class="ak-draft">
+      <div class="ak-reply__k">Reorder <span class="wire">procurement.reorder · will open a DRAFT on /orders</span></div>
+      <p class="ak-draft__verb">Order 12 bottles of Barolo Albe, G.D. Vajra 2020 from Skurnik</p>
+      <div class="ak-fields">
+        <div><span class="k">item</span><span class="v">Barolo Albe, G.D. Vajra 2020</span><span class="ak-prov" data-p="books">from the books</span></div>
+        <div><span class="k">quantity</span><span class="v">12 bottles <q>12 of the Vajra</q></span><span class="ak-prov" data-p="said">you said it</span></div>
+        <div><span class="k">vendor</span><span class="v">Skurnik Wines <q>from Skurnik</q></span><span class="ak-prov" data-p="said">you said it</span></div>
+        <div><span class="k">on hand</span><span class="v">7 bottles · 12 in transit</span><span class="ak-prov" data-p="books">from the books</span></div>
+        <div><span class="k">unit price</span><span class="v" style="color:var(--ink-3)">not in the draft — no verified receipt line for this item</span><span class="ak-prov" data-p="absent">absent</span></div>
+        <div><span class="k">delivery</span><span class="v">Thursday, Sep 24</span><span class="ak-prov" data-p="suggest">Mudavym's suggestion, from nothing</span></div>
+      </div>
+      <p class="ak-removes"><b>removes</b> nothing</p>
+      <p class="ak-p ak-p--dim" style="font-size:12px">This opens a pending order and asks the vendor agent for a letter. Whether that letter is auto-sent is decided by the agent when it runs; this desk cannot see that decision.</p>
+      <div class="ak-acts"><button class="ak-btn ak-btn--seal">Hand to /orders</button><button class="ak-btn ak-btn--quiet">Edit</button></div>
+    </div>
+  </div></div>
+  <div class="sk-cell"><div class="sk-cell-h">on /orders · approval <em>· the seal is over the ORDER (fork 3) · the reading travels with the draft and is re-run · a moved figure refuses the seal and shows both</em></div><div class="mudavym" style="padding:16px">
+    <div class="ak-order">
+      <div class="ak-order__h"><span class="ak-order__n">PO-0231 · DRAFT · source ask_ai</span><span class="ak-order__t">Skurnik Wines · 12 btl Vajra Barolo</span><span class="ak-order__amt">$—</span></div>
+      <div class="ak-attach"><span class="ak-chip" data-k="read">reading attached</span><span>inventory.position v1 · folio 0231 · as of 2:14 PM · fingerprint 9e1c…</span></div>
+      <div class="ak-hold"><span class="ak-die"><span class="ak-die__pour"></span><span data-mark></span></span><span class="ak-hold__l"><b>Hold to approve</b>620 ms · pour, linear · seal minted at press</span></div>
+    </div>
+    <div class="ak-order" style="margin-top:12px;border-color:var(--ink-3)">
+      <div class="ak-order__h"><span class="ak-order__n">PO-0231 · DRAFT · re-read at 4:05 PM</span><span class="ak-order__t">The reading moved since the ask</span></div>
+      <div class="ak-ba">
+        <div><div class="h">when asked · 2:14 PM</div><div class="fig">7<small>bottles on hand</small></div><div class="as">fingerprint 9e1c…</div></div>
+        <div data-now="true"><div class="h">now · 4:05 PM</div><div class="fig">5<small>bottles on hand</small></div><div class="as">fingerprint 41b7… · 2 sold since</div></div>
+      </div>
+      <div class="ak-hold"><span class="ak-die" data-refused="true"><span data-mark></span></span><span class="ak-hold__l"><b>The seal did not apply</b>Review both records, then hold again on the current one.</span></div>
+      <div class="ak-acts"><button class="ak-btn">Accept the current reading</button><button class="ak-btn ak-btn--quiet">Back to the ask</button></div>
+    </div>
+  </div></div>
+</div>
+<p class="sk-note">The draft is a document (ADR 0145, taken from Option 2): a verb line, one provenance per field in those three words, an explicit <em>removes</em> that renders even when empty, and the auto-send unknown named as a first-class state. The price field is absent because the receipt reading cannot run in this house — the proposer cannot quietly invent a number. On /orders the attached reading is re-run at approval (<code>ReadingCommitService.assertCurrent</code>): a changed fingerprint refuses the seal and renders both figures.</p>
+
+<!-- ============================================================ 6 · mobile ============================================================ -->
+<div class="sk-label">6 · Mobile 390 <small>the shelf as a two-up list; the Sheet becomes the full screen; the book is a second tab</small></div>
+<div class="sk-strip sk-strip--m">
+  <div class="sk-mobile mudavym" data-ground="charcoal" style="min-height:820px">
+    <header class="mdv-hdr" style="padding:0 14px"><span class="mdv-hdr__mark" data-mark></span><span class="mdv-hdr__house">Larkspur &amp; Vine <span class="chev">▾</span></span><span class="mdv-hdr__spacer"></span><span class="mdv-hdr__avatar">M</span></header>
+    <div class="ak-wrap">
+      <p class="ak-eyebrow">Mudavym · ask</p>
+      <h1 class="ak-h1">Ask the house<span class="stop">.</span></h1>
+      <div class="ak-ask"><input class="ak-ask__in" placeholder="Ask about the house's books…" aria-label="Ask the house"><div class="ak-ask__ctl" style="justify-content:space-between"><span class="ak-p ak-p--dim" style="margin:0;font-size:11.5px">or pick a reading</span><button class="ak-btn ak-btn--seal">Ask</button></div></div>
+      <div style="display:flex;gap:14px;margin-top:18px;border-bottom:1px solid var(--paper-2)"><span style="padding:6px 0;border-bottom:2px solid var(--seal);font-size:13px;font-weight:500">The shelf</span><span style="padding:6px 0;font-size:13px;color:var(--ink-3)">The book · 7</span></div>
+      <div class="ak-reg" style="border-top:0;padding-top:12px">
+        <div class="ak-reg__h"><span class="ak-reg__name">Stock</span><span class="ak-reg__count">206 items · counted 2:14 PM</span></div>
+        <div class="ak-books">
+          <button class="ak-book"><div class="ak-book__t">The recorded stock</div><div class="ak-book__s"><span class="ak-chip" data-k="read">readable</span></div></button>
+          <button class="ak-book"><div class="ak-book__t">Below the threshold</div><div class="ak-book__s"><span class="ak-chip" data-k="read">readable</span></div></button>
+          <button class="ak-book"><div class="ak-book__t">In transit</div><div class="ak-book__s"><span class="ak-chip" data-k="read">readable</span></div></button>
+          <button class="ak-book"><div class="ak-book__t">Where it is held</div><div class="ak-book__s"><span class="ak-chip" data-k="read">readable</span></div></button>
+        </div>
+      </div>
+      <div class="ak-reg">
+        <div class="ak-reg__h"><span class="ak-reg__name">Orders &amp; receipts</span><span class="ak-reg__count">2 orders · 0 documents</span></div>
+        <div class="ak-books">
+          <button class="ak-book"><div class="ak-book__t">The open orders</div><div class="ak-book__s"><span class="ak-chip" data-k="read">readable</span></div></button>
+          <button class="ak-book" data-k="unsatisfied"><div class="ak-book__t">Last verified receipt</div><div class="ak-book__s"><span class="ak-chip" data-k="unsatisfied">needs a link</span></div></button>
+        </div>
+      </div>
+      <div class="ak-reg">
+        <div class="ak-reg__h"><span class="ak-reg__name">Not built yet</span></div>
+        <div class="ak-books">
+          <div class="ak-book" data-k="notbuilt"><div class="ak-book__t">A forecast</div><div class="ak-book__s"><span class="ak-chip" data-k="notbuilt">not built</span></div></div>
+          <div class="ak-book" data-k="notbuilt"><div class="ak-book__t">Landed cost</div><div class="ak-book__s"><span class="ak-chip" data-k="notbuilt">not built</span></div></div>
+        </div>
+      </div>
+      <div class="ak-reg">
+        <div class="ak-reg__h"><span class="ak-reg__name">Not from the house's books</span></div>
+        <div class="ak-books" style="grid-template-columns:1fr">
+          <button class="ak-book" data-k="model"><div class="ak-book__t">Pairing, service, the wine itself</div><div class="ak-book__s"><span class="ak-chip" data-k="model">not from the books</span></div></button>
+        </div>
+      </div>
+      <p class="ak-p ak-p--dim" style="font-size:11px;margin-top:10px">+9 more readings below (Sales, calendar, vendors, targets; the rest of Stock and Orders &amp; receipts) · 2 more not-built statements.</p>
+    </div>
+  </div>
+  <div class="sk-mobile mudavym" data-ground="charcoal" style="min-height:820px">
+    <aside class="ak-sheet" style="position:relative;max-width:100%;min-height:820px;border-left:0;box-shadow:none" role="dialog">
+      <div class="ak-sheet__h" style="padding:14px 14px 12px"><div><p class="ak-eyebrow ak-eyebrow--seal">The recorded stock · v1 · folio 0231</p><p class="ak-utt" style="margin-top:6px">How much of the Vajra Barolo do we have?</p></div><button class="ak-close" aria-label="Close">Close</button></div>
+      <div class="ak-sheet__b" style="padding:14px 14px 20px">
+        <p class="ak-say" style="font-size:18px">The house records <button class="ak-cell" data-open="true">7 bottles</button> of Barolo Albe, G.D. Vajra 2020, with <button class="ak-cell">12 bottles</button> in transit. Its threshold is <button class="ak-cell" data-prov="defaulted">3</button>.</p>
+        <div class="ak-drawer" data-open="true"><div><div class="ak-rows"><div class="ak-rows__h"><b>restaurant_inventory</b> · 7c2e…91</div><div class="ak-kv">
+          <div class="k">stock_live</div><div class="v">7</div><div class="p" data-p="stated">stated</div>
+          <div class="k">uom</div><div class="v">bottle</div><div class="p" data-p="stated">stated</div>
+          <div class="k">in_transit_quantity</div><div class="v">12</div><div class="p" data-p="stated">stated</div>
+          <div class="k">threshold_min</div><div class="v">3</div><div class="p" data-p="defaulted">default</div>
+        </div></div></div></div>
+        <div class="ak-trace"><div class="ak-trace__h"><span>What was read</span></div><table><tr><td>restaurant_inventory</td><td class="n">206 · 1</td><td class="t">2:14 PM</td></tr></table><div class="ak-asof">as of 2:14:07 PM · 0.9 s of 60</div></div>
+        <div class="ak-acts"><button class="ak-btn ak-btn--seal">Draft a reorder</button><button class="ak-btn">Read again</button></div>
+      </div>
+    </aside>
+  </div>
+  <div class="sk-mobile mudavym" data-ground="charcoal" style="min-height:820px">
+    <header class="mdv-hdr" style="padding:0 14px"><span class="mdv-hdr__mark" data-mark></span><span class="mdv-hdr__house">Larkspur &amp; Vine <span class="chev">▾</span></span><span class="mdv-hdr__spacer"></span><span class="mdv-hdr__avatar">M</span></header>
+    <div class="ak-wrap">
+      <p class="ak-eyebrow">Mudavym · ask</p>
+      <h1 class="ak-h1">Ask the house<span class="stop">.</span></h1>
+      <div class="ak-ask"><input class="ak-ask__in" placeholder="Ask about the house's books…" aria-label="Ask the house"><div class="ak-ask__ctl" style="justify-content:space-between"><span class="ak-p ak-p--dim" style="margin:0;font-size:11.5px">or pick a reading</span><button class="ak-btn ak-btn--seal">Ask</button></div></div>
+      <div style="display:flex;gap:14px;margin-top:18px;border-bottom:1px solid var(--paper-2)"><span style="padding:6px 0;font-size:13px;color:var(--ink-3)">The shelf</span><span style="padding:6px 0;border-bottom:2px solid var(--seal);font-size:13px;font-weight:500">The book · 7</span></div>
+      <p class="ak-eyebrow" style="margin-top:14px">Your asks in this house</p>
+      <div class="ak-daylabel">Today</div>
+      <ul class="ak-folio">
+        <li data-open="true"><span class="t">2:14 PM</span><div><div class="u">How much of the Vajra Barolo do we have?</div><div class="m"><span class="ak-chip" data-k="read">answered</span> inventory.position v1</div></div></li>
+        <li><span class="t">1:52 PM</span><div><div class="u">Reorder 12 of the Vajra from Skurnik</div><div class="m"><span class="ak-chip" data-k="pending">draft on /orders</span> PO-0231</div></div></li>
+        <li><span class="t">11:08 AM</span><div><div class="u">What goes with the lamb special?</div><div class="m"><span class="ak-chip" data-k="model">not from the books</span></div></div></li>
+        <li><span class="t">9:41 AM</span><div><div class="u">Which orders are late?</div><div class="m"><span class="ak-chip" data-k="empty">none dated</span> orders.late_deliveries</div></div></li>
+      </ul>
+      <div class="ak-daylabel">Yesterday</div>
+      <ul class="ak-folio">
+        <li><span class="t">6:30 PM</span><div><div class="u">What is in the calendar this week?</div><div class="m"><span class="ak-chip" data-k="failed">could not read</span> calendar_events 57014</div></div></li>
+        <li><span class="t">4:05 PM</span><div><div class="u">How much Chardonnay do we have?</div><div class="m"><span class="ak-chip" data-k="clarify">3 matched</span> answered after the pick</div></div></li>
+        <li><span class="t">10:12 AM</span><div><div class="u">What will we sell on Saturday?</div><div class="m"><span class="ak-chip" data-k="notbuilt">not built</span> forecast</div></div></li>
+      </ul>
+    </div>
+  </div>
+</div>
+<p class="sk-note">At 390 the Sheet takes the whole screen (the primitive already collapses under 640) and the book becomes a tab beside the shelf, drawn here both closed and open. The shelf tab above is a shortened sample, marked as such rather than hidden silently. No floating button: the page and the ⌘⇧K panel are the doors (founder 2026-09-17; the Wine Agent FAB is gone).</p>
+
+<div class="sk-foot">Sketch 114 · direction A · The Reading Room · house tokens ADR 0042 · ground ADR 0138 · overlays ADR 0112 · motion: settle (drawer, sheet swap), ink (chips, hover), tuck (sheet), pour (hold, the 60 s rule), stamp (seal landing on /orders only), tally (none here — figures arrive without a ticker because a count that animates looks measured while it is still moving) · reduced motion renders end states · fonts from Google in this file; the product self-hosts.</div>
+
+<script>
+const AM_PATHS = ['M0 38H72V540H0Z','M15 38H96L460 574H379Z','M0 346H305L353 416H0Z','M0 470H137V540H0Z','M99 0H151L278.7 187.8L284.8 273Z','M389.5 40H460.9L284.8 273L251.4 224Z','M412 40H483V574H412Z'];
+const mark = `<svg viewBox="0 0 483 574" aria-hidden="true" fill="currentColor">${AM_PATHS.map(d => `<path d="${d}"/>`).join('')}</svg>`;
+document.querySelectorAll('[data-mark]').forEach(el => { el.innerHTML = mark; });
+</script>
+</body></html>

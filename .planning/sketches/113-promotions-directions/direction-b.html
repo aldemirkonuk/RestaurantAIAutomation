@@ -1,0 +1,461 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>113b · /promotions · The Docket of Worth</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..680;1,9..144,300..680&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box} html,body{margin:0;padding:0}
+body{background:#0B0A08;color:#EFE7D9;font-family:"DM Sans","Plus Jakarta Sans",system-ui,sans-serif;-webkit-font-smoothing:antialiased;font-size:14px;line-height:1.45}
+.mudavym{
+  --seal:#5FB0BC;--seal-deep:#7DC3CD;--seal-tint:rgba(95,176,188,.14);--seal-ring:rgba(95,176,188,.38);
+  --paper-0:#15130F;--paper-1:#1D1813;--paper-2:#262019;
+  --ink-1:#EFE7D9;--ink-2:#C0B6A5;--ink-3:#8E8576;--ink-4:#ABA294;
+  --warn:#D9A15B;--warn-tint:rgba(217,161,91,.14);--loss:#D98C7A;--loss-tint:rgba(217,140,122,.14);
+  color-scheme:dark;background:var(--paper-0);color:var(--ink-1)}
+.serif{font-family:Fraunces,Georgia,serif;font-weight:420;letter-spacing:-.015em}
+.mono{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}
+.banner{background:#1A5E6B;color:#FAF7F1;font-size:11px;letter-spacing:.18em;text-transform:uppercase;padding:7px 16px;font-family:"JetBrains Mono",ui-monospace,monospace;display:flex;gap:14px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.banner b{font-weight:600}
+.seclabel{max-width:1440px;margin:34px auto 10px;padding:0 16px;font-family:"JetBrains Mono",ui-monospace,monospace;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:#ABA294}
+.seclabel small{display:block;letter-spacing:0;text-transform:none;font-family:"DM Sans",system-ui,sans-serif;font-size:12.5px;color:#8E8576;margin-top:4px;max-width:900px}
+.frame{max-width:1440px;margin:0 auto;border:1px solid #262019;overflow:hidden}
+.desk-note{display:none;max-width:1440px;margin:0 auto;padding:10px 16px;font-size:12px;color:#8E8576;border:1px dashed #262019}
+/* house header */
+.hdr{display:flex;align-items:center;gap:12px;min-height:52px;padding:0 24px;border-bottom:1px solid var(--paper-2)}
+.hdr__left{display:flex;align-items:center;gap:10px;min-width:0}
+.hdr__rule{width:1px;height:18px;background:var(--paper-2)}
+.hdr__page{font-family:Fraunces,Georgia,serif;font-weight:600;font-size:15px;letter-spacing:-.01em;white-space:nowrap}
+.hdr__search{display:inline-flex;align-items:center;gap:8px;margin:0 auto;padding:6px 10px 6px 11px;border:1px solid var(--paper-2);border-radius:9px;background:var(--paper-1);color:var(--ink-3);font-size:12.5px}
+.kbd{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:10px;border:1px solid var(--paper-2);border-radius:4px;padding:1px 5px;color:var(--ink-3)}
+.hdr__right{display:flex;align-items:center;gap:10px;font-size:12.5px;color:var(--ink-2)}
+.hdr__house{border:1px solid var(--paper-2);border-radius:8px;padding:5px 9px;background:var(--paper-1)}
+.avatar{width:26px;height:26px;border-radius:50%;background:var(--seal-tint);color:var(--seal-deep);display:grid;place-items:center;font-size:10.5px;font-weight:600;border:1px solid var(--seal-ring)}
+.bell{width:26px;height:26px;display:grid;place-items:center;color:var(--ink-3);position:relative}
+.bell i{position:absolute;top:3px;right:3px;width:6px;height:6px;border-radius:50%;background:var(--seal)}
+/* page */
+.page{max-width:1200px;margin:0 auto;padding:24px 24px 48px}
+.wm{font-family:Fraunces,Georgia,serif;font-weight:600;letter-spacing:-.02em;font-size:13px;line-height:1}
+.wm span{color:var(--seal)}
+.eyebrow{font-size:11px;text-transform:uppercase;letter-spacing:.14em;color:var(--ink-3);margin:14px 0 0}
+h1.title{font-size:36px;line-height:1.08;margin:6px 0 0;font-weight:420}
+h1.title .dot{color:var(--seal)}
+.standing{font-family:Fraunces,Georgia,serif;font-style:italic;font-size:15.5px;color:var(--ink-2);max-width:880px;margin:10px 0 0;line-height:1.5}
+.standing b{font-style:normal;font-weight:500;color:var(--ink-1)}
+.standing .src{font-style:normal;font-family:"JetBrains Mono",ui-monospace,monospace;font-size:10.5px;color:var(--ink-3);letter-spacing:.02em}
+.rank{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:22px 0 14px;padding-bottom:12px;border-bottom:1px solid var(--paper-2);font-size:12.5px;color:var(--ink-3)}
+.rank b{color:var(--ink-2);font-weight:500}
+.rank u{text-decoration:none;border-bottom:1px dotted var(--ink-3);color:var(--ink-2)}
+.rank .sp{flex:1}
+.fchip{border:1px solid var(--paper-2);background:transparent;border-radius:999px;padding:3px 9px;font-size:11.5px;color:var(--ink-2);display:inline-flex;gap:6px;align-items:center}
+.fchip b{font-family:"JetBrains Mono",ui-monospace,monospace;font-weight:500;font-size:11px;color:var(--ink-3)}
+.chip{display:inline-block;font-family:"JetBrains Mono",ui-monospace,monospace;font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--paper-2);border-radius:3px;padding:1px 5px;color:var(--ink-3);vertical-align:middle}
+.chip.inv{border-color:var(--seal-ring);color:var(--seal-deep)}
+.chip.agreed{border-color:rgba(217,161,91,.5);color:var(--warn)}
+/* the offer's code with its copy act (legacy Promotions.tsx:328, :392-397) */
+.chip.code{border-color:var(--paper-2);color:var(--ink-2);text-transform:none;letter-spacing:.02em}
+.chip.code b{font-weight:500;color:var(--ink-1);letter-spacing:.06em}
+.chip.code i{font-style:normal;color:var(--seal-deep);margin-left:5px;border-left:1px solid var(--paper-2);padding-left:5px}
+/* the docket */
+.docket{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.card{border:1px solid var(--paper-2);border-radius:12px;background:var(--paper-1);padding:16px 18px 14px;display:flex;flex-direction:column;gap:10px;position:relative;transition:border-color 160ms cubic-bezier(.16,1,.3,1)}
+.card:hover{border-color:var(--seal-ring)}
+/* the hero: number + working on the left, worth on the right, the lines as one row under both — nothing left empty under the number */
+.card.hero{grid-column:1/-1;display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:8px 40px;align-items:start;padding:22px 26px 18px}
+.card .top{display:flex;justify-content:space-between;gap:12px;align-items:baseline;flex-wrap:wrap}
+.card .vendor{font-family:Fraunces,Georgia,serif;font-size:17px;font-weight:500;letter-spacing:-.01em}
+.card .vendor span{color:var(--ink-2);font-weight:420}
+.card .ends{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:11px;color:var(--ink-3);white-space:nowrap}
+.card .ends.soon{color:var(--warn)}
+/* the number is the verdict against the lowest OTHER vendor — never a percentage off the house's own price */
+.num{font-family:Fraunces,Georgia,serif;font-weight:500;letter-spacing:-.03em;line-height:.95;font-variant-numeric:tabular-nums;font-size:64px}
+.hero .num{font-size:112px;letter-spacing:-.04em}
+.num.beats{color:var(--seal-deep)} .num.above{color:var(--loss)}
+.num.none{font-size:34px;font-style:italic;font-weight:420;color:var(--ink-3);letter-spacing:-.01em;line-height:1.1}
+.num.ng{font-size:26px;font-style:italic;font-weight:420;color:var(--loss);letter-spacing:-.01em;line-height:1.15}
+.hero .num.none{font-size:44px}
+.against{font-size:13px;color:var(--ink-2);margin-top:6px;line-height:1.45}
+.against b{color:var(--ink-1);font-weight:500}
+.against.warn{color:var(--warn)}
+.claimline{font-size:12.5px;color:var(--ink-3);line-height:1.45;margin-top:4px}
+.claimline b{color:var(--ink-2);font-weight:500}
+.worth{border-top:1px solid var(--paper-2);padding-top:10px;font-size:13px;color:var(--ink-2);line-height:1.5}
+.worth .w{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:15px;color:var(--ink-1)}
+.worth .w.loss{color:var(--loss)}
+.worth .est{display:block;font-size:11.5px;color:var(--ink-3);margin-top:2px}
+.worth .parts{display:block;font-family:"JetBrains Mono",ui-monospace,monospace;font-size:11.5px;color:var(--ink-2);margin-top:6px;line-height:1.6}
+.hero .worth{border-top:0;padding-top:0;align-self:start;margin-top:6px}
+.hero .worth .w{font-size:30px;font-family:Fraunces,Georgia,serif;font-weight:500;letter-spacing:-.02em;display:block;line-height:1.05;margin-bottom:6px}
+.lines{font-size:12.5px;color:var(--ink-2);display:flex;flex-direction:column;gap:5px;line-height:1.45}
+.lines .l{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.lines .b{color:var(--ink-1)}
+.lines .f{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:12px;white-space:nowrap}
+.lines .f s{color:var(--ink-3)}
+.lines .why{font-size:11.5px;color:var(--ink-3);flex-basis:100%}
+.lines .why.warn{color:var(--warn)}
+.hero .lines{grid-column:1/-1;border-top:1px solid var(--paper-2);padding-top:10px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px 22px}
+.hero .lines .l{flex-direction:column;flex-wrap:nowrap;gap:2px;justify-content:flex-start}
+.hero .lines .f{white-space:normal}
+.claim{font-family:Fraunces,Georgia,serif;font-style:italic;font-size:12.5px;color:var(--ink-3)}
+.foot{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:auto;padding-top:6px}
+.foot .prov{font-size:11px;color:var(--ink-3);display:inline-flex;gap:6px;align-items:center;margin-right:auto;flex-wrap:wrap}
+.card:not(.hero) .foot .prov{flex-basis:100%;margin-bottom:2px}
+.btn{border:1px solid var(--paper-2);background:var(--paper-0);color:var(--ink-1);border-radius:8px;padding:6px 11px;font-size:12.5px;font-family:inherit}
+.btn.primary{border-color:var(--seal);background:var(--seal-tint);color:var(--seal-deep)}
+.btn.quiet{color:var(--ink-3);background:transparent}
+.hero .left{display:flex;flex-direction:column;gap:4px;min-width:0}
+.hero .top{grid-column:1/-1}
+.hero .foot{grid-column:1/-1;border-top:1px solid var(--paper-2);padding-top:12px}
+.ungr{margin-top:22px}
+.ungr h3{font-family:Fraunces,Georgia,serif;font-weight:500;font-size:19px;margin:0 0 3px;letter-spacing:-.01em}
+.ungr .lede{font-size:12.5px;color:var(--ink-3);margin:0 0 10px}
+.ungr .docket{grid-template-columns:repeat(4,1fr)}
+.ungr .card{padding:12px 14px}
+.fold{margin-top:14px;border:1px dashed var(--paper-2);border-radius:8px;padding:10px 14px;font-size:12.5px;color:var(--ink-3);display:flex;gap:14px;flex-wrap:wrap;align-items:center}
+.fold b{color:var(--ink-2);font-weight:500}
+.writing{margin-top:30px;border-top:1px solid var(--paper-2);padding-top:14px;display:flex;gap:16px;align-items:center;flex-wrap:wrap;font-size:13px;color:var(--ink-2)}
+.writing h3{font-family:Fraunces,Georgia,serif;font-weight:500;font-size:17px;margin:0;letter-spacing:-.01em}
+.writing .cnt{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:12px;color:var(--ink-3)}
+.writing a{color:var(--seal-deep);text-decoration:none;border-bottom:1px dotted var(--seal-ring);margin-left:auto}
+/* fork 1, drawn as a choice: the Miraval card three ways */
+.fork{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;max-width:1440px;margin:0 auto;padding:0 16px}
+.fk{border:1px solid var(--paper-2);border-radius:10px;background:var(--paper-0);padding:14px 16px;min-width:0}
+.fk .k{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);margin-bottom:10px}
+.fk .k b{color:var(--seal-deep);font-weight:500}
+.fk .card{margin-bottom:10px}
+.fk .num{font-size:56px}
+.fk .num.second{font-size:34px;margin-top:8px}
+.fk p{font-size:12px;color:var(--ink-3);margin:0 0 6px;line-height:1.5}
+.fk p b{color:var(--ink-2);font-weight:500}
+.fk[data-chosen]{border-color:var(--seal-ring)}
+/* states */
+.states{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;max-width:1440px;margin:0 auto;padding:0 16px}
+.st{border:1px solid var(--paper-2);border-radius:10px;background:var(--paper-0);padding:14px 16px;min-height:200px;min-width:0}
+.st.wide{grid-column:span 2}
+.st .k{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);margin-bottom:10px}
+.st .t{font-family:Fraunces,Georgia,serif;font-size:17px;margin:0 0 6px;font-weight:500}
+.st p{font-size:12.5px;color:var(--ink-2);margin:0 0 8px;line-height:1.5}
+/* skeleton sheen: the dashboard/reports precedent (dashboard-next.css:44, reports MOTIONS.md:38), not a motion.ts token */
+.skel{height:12px;border-radius:3px;background:var(--paper-2);position:relative;overflow:hidden;margin:8px 0}
+.skel.big{height:44px;width:45%}
+.skel::after{content:"";position:absolute;inset:0;transform:translateX(-100%);background:linear-gradient(90deg,transparent,var(--paper-1),transparent);animation:sheen 1.9s cubic-bezier(.45,0,.55,1) infinite}
+@keyframes sheen{to{transform:translateX(100%)}}
+.mini{border:1px solid var(--paper-2);border-radius:10px;background:var(--paper-1);padding:12px 14px;margin:6px 0}
+.mini .vendor{font-family:Fraunces,Georgia,serif;font-size:15px;font-weight:500}
+.mini .num{font-size:34px}
+.twomini{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.undo{display:inline-flex;gap:10px;align-items:center;border:1px solid var(--paper-2);background:var(--paper-1);border-radius:8px;padding:8px 12px;font-size:12.5px}
+.undo .bar{width:80px;height:3px;background:var(--paper-2);border-radius:2px;overflow:hidden}
+.undo .bar i{display:block;height:100%;width:60%;background:var(--seal)}
+/* overlays */
+.ovl{position:relative;height:720px;overflow:hidden;background:var(--paper-0)}
+.ovl .under{position:absolute;inset:0;padding:24px;opacity:.9}
+.scrim{position:absolute;inset:0;background:rgba(0,0,0,.5)}
+.sheet{position:absolute;top:0;right:0;bottom:0;width:100%;max-width:440px;background:var(--paper-0);border-left:1px solid var(--paper-2);box-shadow:-18px 0 48px rgba(23,19,15,.14);display:flex;flex-direction:column}
+.sheet__h{display:flex;justify-content:space-between;align-items:flex-start;padding:16px 20px 12px;border-bottom:1px solid var(--paper-2)}
+.sheet__h .k{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3)}
+.sheet__h h2{font-family:Fraunces,Georgia,serif;font-size:20px;margin:2px 0 0;font-weight:500;letter-spacing:-.01em}
+.sheet__close{border:1px solid var(--paper-2);background:transparent;color:var(--ink-2);border-radius:8px;padding:5px 9px;font-size:12px;font-family:inherit}
+.sheet__b{padding:14px 20px;overflow:auto;flex:1;font-size:13px}
+.sheet__f{border-top:1px solid var(--paper-2);padding:12px 20px;display:flex;gap:8px;flex-wrap:wrap}
+.kv{display:grid;grid-template-columns:110px 1fr;gap:4px 12px;font-size:12.5px;margin:8px 0}
+.kv dt{color:var(--ink-3)} .kv dd{margin:0}
+.kv .copy{border:1px solid var(--paper-2);border-radius:6px;padding:2px 8px;font-size:11.5px;color:var(--seal-deep);background:var(--paper-1);margin-left:8px;font-family:inherit}
+.ref{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:11px;color:var(--seal-deep);border-bottom:1px dotted var(--seal-ring)}
+.lineblk{border:1px solid var(--paper-2);border-radius:8px;padding:10px 12px;margin:8px 0;background:var(--paper-1)}
+.lineblk .w{font-weight:500} .lineblk .d{font-family:Fraunces,Georgia,serif;font-size:22px;margin-top:2px}
+.lineblk .d.beats{color:var(--seal-deep)} .lineblk .d.above{color:var(--loss)} .lineblk .d.none{color:var(--ink-3);font-style:italic;font-size:15px}
+.lineblk p{margin:4px 0 0;font-size:12px;color:var(--ink-2);line-height:1.5}
+.lineblk h5{margin:8px 0 2px;font-family:"JetBrains Mono",ui-monospace,monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);font-weight:500}
+/* popover at the primitive's default width (Sheet.tsx:204, 320) */
+.pop{position:absolute;width:320px;background:var(--paper-0);border:1px solid var(--paper-2);border-radius:14px;box-shadow:0 18px 44px -22px rgba(0,0,0,.42);padding:6px;font-size:13px}
+.pop button{display:block;width:100%;text-align:left;border:0;border-left:2px solid transparent;background:transparent;color:var(--ink-1);padding:8px 10px;font-family:inherit;font-size:13px;border-radius:6px}
+.pop button.sel{background:var(--seal-tint);border-left-color:var(--seal)}
+.pop button small{display:block;color:var(--ink-3);font-size:11px}
+.pop button.sel small{color:var(--ink-4)}
+.pop .cols{padding:8px 10px 4px;font-size:11px;color:var(--ink-3);line-height:1.5;border-top:1px solid var(--paper-2);margin-top:4px}
+.pop .cols b{color:var(--ink-2);font-weight:500}
+.panel{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(620px,calc(100% - 32px));background:var(--paper-0);border:1px solid var(--paper-2);border-radius:14px;box-shadow:0 24px 60px -30px rgba(0,0,0,.5);overflow:hidden}
+.panel__h{padding:16px 20px 10px;border-bottom:1px solid var(--paper-2)}
+.panel__b{padding:14px 20px;font-size:13px}
+.panel__f{padding:12px 20px 16px;border-top:1px solid var(--paper-2)}
+.panel__f.acts{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.panel__f.acts .note{flex:1 1 240px}
+.panel__f.acts .btn{white-space:nowrap}
+/* the draft's lines: a grid on desktop; one stacked block per bottle on a phone, so the quantity field is in view */
+.ols{display:grid;grid-template-columns:1.7fr .7fr 1.1fr .7fr .7fr .8fr;gap:0 8px;font-size:12.5px;margin:6px 0 10px}
+.ols .h{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);font-weight:500;padding:4px 0;border-bottom:1px solid var(--paper-2);white-space:nowrap}
+.ols .c{padding:7px 0;border-bottom:1px solid var(--paper-2)}
+.ols .n{text-align:right;font-family:"JetBrains Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums}
+.ols .c small{display:block;font-family:"DM Sans",system-ui,sans-serif;color:var(--ink-3);font-size:10.5px}
+.ols .c::before{display:none}
+.qty{width:58px;border:1px solid var(--paper-2);background:var(--paper-1);color:var(--ink-1);border-radius:6px;padding:3px 6px;font-family:"JetBrains Mono",ui-monospace,monospace;font-size:12px;text-align:right}
+.qty:placeholder-shown{border-color:rgba(217,161,91,.5)}
+.note{font-size:12px;color:var(--ink-3);line-height:1.5}
+/* mobile */
+.phone{width:390px;max-width:100%;margin:0 auto;border:1px solid var(--paper-2);border-radius:28px;overflow:hidden;background:var(--paper-0)}
+.phone .ph{padding:12px 16px 0;font-size:12px;color:var(--ink-3);display:flex;justify-content:space-between}
+.phone .card{margin:0 16px 10px;padding:14px 16px 12px}
+.phone .num{font-size:56px}
+.phone .num.none{font-size:28px}
+.phone .card.hero{display:flex;flex-direction:column;grid-column:auto;gap:8px}
+.phone .hero .worth{border-top:1px solid var(--paper-2);padding-top:10px;align-self:stretch}
+.phone .hero .worth .w{font-size:20px}
+.phone .hero .lines{display:flex;flex-direction:column;border-top:1px solid var(--paper-2);padding-top:8px}
+.phone .hero .foot{border-top:0;padding-top:4px}
+/* the offer sheet on a phone: a bottom sheet with detents (ADR 0112 F9 — peek · half · full; the grabber only when there is more than one) */
+.bsframe{position:relative;width:390px;max-width:100%;height:700px;margin:0 auto;border:1px solid var(--paper-2);border-radius:28px;overflow:hidden;background:var(--paper-0)}
+.bsframe .under{position:absolute;inset:0;opacity:.7;padding:8px 16px}
+.bsframe .scrim{background:rgba(0,0,0,.45)}
+.bsheet{position:absolute;left:0;right:0;bottom:0;height:58%;background:var(--paper-0);border:1px solid var(--paper-2);border-bottom:0;border-radius:16px 16px 0 0;box-shadow:0 -18px 48px rgba(0,0,0,.4);display:flex;flex-direction:column}
+.bsheet .grab{width:36px;height:4px;border-radius:2px;background:var(--ink-3);opacity:.6;margin:8px auto 2px;flex:none}
+.bsheet .sheet__h{padding:8px 16px 10px}
+.bsheet .sheet__b{padding:12px 16px}
+.bsheet .sheet__f{padding:10px 16px 14px}
+.detent{position:absolute;right:0;left:0;border-top:1px dashed var(--seal-ring);pointer-events:none;z-index:2}
+.detent span{position:absolute;left:10px;top:-8px;font-family:"JetBrains Mono",ui-monospace,monospace;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--seal-deep);background:var(--paper-0);padding:1px 5px;border:1px solid var(--seal-ring);border-radius:3px}
+.twophone{display:grid;grid-template-columns:1fr 1fr;gap:20px;max-width:840px;margin:0 auto;align-items:start}
+.cite{max-width:1440px;margin:30px auto 60px;padding:0 16px;font-size:11.5px;color:#8E8576;line-height:1.7}
+.cite code{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:10.5px;color:#ABA294}
+@media (max-width:900px){.docket,.ungr .docket{grid-template-columns:1fr}.card.hero{display:flex;flex-direction:column}.hero .num{font-size:72px}.hero .lines{display:flex;flex-direction:column}.hdr__search{display:none}.page{padding:18px 14px 40px}h1.title{font-size:28px}.num{font-size:52px}.fork{grid-template-columns:1fr}.st.wide{grid-column:auto}.twomini{grid-template-columns:1fr}.twophone{grid-template-columns:1fr}}
+/* at phone width the desktop drawings (1, 1b, 2) are cropped out — section 5 is the phone rendering; overlays stack as blocks so nothing is clipped */
+@media (max-width:600px){
+  .desk-only{display:none}.desk-note{display:block}
+  .ovl{height:auto!important;min-height:0;padding:14px}
+  .ovl .under,.scrim{display:none}
+  .pop{position:static;width:100%;margin:0 0 12px}
+  .sheet{position:static;max-width:100%;height:auto;border-left:0;border:1px solid var(--paper-2);border-radius:12px}
+  .sheet__b{overflow:visible}
+  .panel{position:static;transform:none;width:100%;margin:0}
+  .ols{grid-template-columns:1fr 1fr;gap:2px 10px}
+  .ols .h{display:none}
+  .ols .c{padding:3px 0;border-bottom:0}
+  .ols .c.b{grid-column:1/-1;border-top:1px solid var(--paper-2);padding-top:10px;font-weight:500;margin-top:4px}
+  .ols .c::before{content:attr(data-l);display:block;font-family:"JetBrains Mono",ui-monospace,monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3)}
+  .ols .c.b::before{display:none}
+  .ols .n{text-align:left}
+  .states{grid-template-columns:1fr}
+  .bsframe .scrim{display:block}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style></head>
+<body>
+<div class="banner"><span><b>Sketch</b> — example data, not a tenant</span><span>113 · /promotions · direction B · The Docket of Worth</span></div>
+
+<!-- ═══════════════════════ 1 · DESKTOP ═══════════════════════ -->
+<div class="seclabel desk-only">1 · Desktop, 1440 — Müdavim Brooklyn (USD, en-US) — signed in as Ayşe K., manager
+<small>One card per offer, ranked by what taking it would be worth to this house against the lowest <em>other</em> vendor it already buys the bottle from. The biggest thing on the page is the verdict — the offered price against that other vendor's line, same unit and money (fork 1(b); section 1b draws the alternatives) — because it is the only figure the mail could not have told you: a percentage off the house's own price is the vendor's claim written on the house's number (offer-grade.ts:238-277), and it is printed here as a claim, under the verdict, never as the number. When no other vendor has charged the house for the bottle, the number's slot carries a word and the worth is withheld. The offer's code with its copy act, the "with a code" filter and the export are the legacy page's acts, kept.</small></div>
+<div class="desk-note">Section 1 (desktop, 1440) is cropped out at this width — section 5 is the 390 rendering.</div>
+<div class="frame mudavym desk-only">
+  <header class="hdr">
+    <div class="hdr__left"><svg width="24" height="24" viewBox="0 0 100 100" aria-hidden><path fill="var(--seal)" d="M50 6c9 0 14 6 22 8s16-2 21 5-1 15 1 23 8 13 5 21-13 8-18 14-6 15-14 17-14-4-22-4-14 6-22 4-9-11-14-17-15-6-18-14 3-13 5-21-3-16 1-23 13-3 21-5S41 6 50 6z"/><text x="50" y="62" text-anchor="middle" font-family="Fraunces,Georgia,serif" font-weight="600" font-size="34" fill="#15130F">M</text></svg><span class="hdr__rule"></span><span class="hdr__page">Promotions</span></div>
+    <div class="hdr__search">Search or act <span class="kbd">⌘K</span></div>
+    <div class="hdr__right"><span class="hdr__house">Müdavim Brooklyn ▾</span><span class="bell"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20a2 2 0 0 0 4 0"/></svg><i></i></span><span class="avatar">AK</span></div>
+  </header>
+  <div class="page">
+    <div class="wm">Mudavym<span>.</span></div>
+    <p class="eyebrow">Wednesday, September 16 · between services · read 14:05</p>
+    <h1 class="title serif">What is on the table<span class="dot">.</span></h1>
+    <p class="standing"><b>Seven offers</b> from six vendors, naming <b>eight bottle lines</b>. <b>Two</b> lines are worth money against another vendor you use, <b>one</b> costs more than your book, <b>three</b> have no other vendor to be measured against, <b>one</b> cannot be graded because the vendor has never charged you for that bottle, and <b>one</b> names a bottle you have never bought. One of the seven offers is a condition, not a price. <span class="src">verdicts against the lowest other vendor's line · 1,284 invoice and agreed lines, 540 days · "bought" is last calendar quarter, Apr–Jun, from accepted invoices in the unit each line states</span></p>
+
+    <div class="rank"><span>Ranked by <b>worth against your lowest other vendor</b> — an estimate from your own buying, never a saving. Offers with no worth rank by ends-soonest, and say so.</span><span class="sp"></span><span class="fchip">With a code <b>2</b></span><span>rank: <u>worth</u> · ends soonest · vendor</span><span>bought over: <u>last quarter · Apr–Jun</u></span><span>show put away</span><span><u>export</u> ▾</span></div>
+
+    <div class="docket">
+      <!-- hero -->
+      <article class="card hero">
+        <div class="top"><span class="vendor">Empire Wine &amp; Spirits <span>· September rosé close-out</span></span><span class="ends soon">ends 30 Sep · 14 days</span></div>
+        <div class="left">
+          <div class="num beats">−4.6%</div>
+          <div class="against">under the lowest other vendor you use — <b>Winebow, $13.10</b> <span class="chip inv">landed · 2 Jun</span> — on Château de Sours Rosé 2024, per bottle</div>
+          <div class="claimline"><b>Their claim:</b> 12% off list, which on your $14.20 from Empire <span class="chip inv">landed · 4 Sep</span> is $12.50 — the vendor's number on your price, not a grade. <span class="chip code">code <b>ROSE12</b><i>copy</i></span></div>
+        </div>
+        <div class="worth"><span class="w">about $53 against your lowest other vendors' prices</span>if you buy at last quarter's rate from Empire at the offered prices instead of from the vendors who were cheapest.<span class="parts">$31 · Château de Sours · 52 btl × $0.60 under Winebow<br>$22 · Miraval · 30 btl × $0.74 under Skurnik's March price</span><span class="est">An estimate from your own rate (Apr–Jun, 13 accepted invoices). Not a saving until an invoice says so. Whispering Angel is not counted: no other vendor's line to measure it against, and its $18.90 is agreed, never landed.</span></div>
+        <div class="lines">
+          <div class="l"><span class="b">Château de Sours Rosé 2024 · per bottle</span><span class="f"><s>$14.20</s> → $12.50 · −4.6% under Winebow $13.10</span></div>
+          <div class="l"><span class="b">Miraval Rosé 2024 · per bottle</span><span class="f"><s>$17.80</s> → $15.66 · −4.5% under Skurnik $16.40 (3 Mar)</span><span class="why">your last landed from anyone is Winebow's $18.60, 8 Sep — section 1b</span></div>
+          <div class="l"><span class="b">Whispering Angel 2024 · per bottle</span><span class="f"><s>$18.90</s> → $16.63 · no other vendor</span><span class="why warn">$18.90 is agreed on 28 Aug and not yet received — never checked against an invoice; not counted</span></div>
+        </div>
+        <div class="foot"><span class="prov"><span class="claim">vendor says "12% off list through 30 September"</span> · mail 11 Sep · extracted by rule</span><button class="btn primary">Draft an order</button><button class="btn">Open the mail</button><button class="btn quiet">Put away for the house</button></div>
+      </article>
+
+      <article class="card">
+        <div class="top"><span class="vendor">Southern Glazer's <span>· Fall spirits: Fords Gin</span></span><span class="ends">ends 15 Oct · 29 d</span></div>
+        <div><div class="num above">+4.2%</div><div class="against">above the lowest other vendor you use — <b>Winebow, $21.90</b> <span class="chip inv">landed · 14 Jul</span></div><div class="claimline"><b>Their claim:</b> 8% off your $24.80 from Southern Glazer's <span class="chip inv">landed · 20 Aug</span> → $22.82. Cheaper than what this vendor last charged you; dearer than your book. <span class="chip code">code <b>FALL8</b><i>copy</i></span></div></div>
+        <div class="worth"><span class="w loss">about −$28 against Winebow's price</span> — 30 bottles last quarter × $0.92 above. Taking it costs more than buying from Winebow.<span class="est">Estimate at your rate.</span></div>
+        <div class="lines"><div class="l"><span class="b">Fords London Dry Gin 1 L · per bottle</span><span class="f"><s>$24.80</s> → $22.82 · Winebow $21.90</span></div></div>
+        <div class="foot"><span class="prov"><span class="claim">"8% off through 15 October"</span> · mail 12 Sep</span><button class="btn">Open the mail</button><button class="btn quiet">Put away</button></div>
+      </article>
+
+      <article class="card">
+        <div class="top"><span class="vendor">Skurnik Wines <span>· Case deal, Tempier Bandol</span></span><span class="ends soon">ends 30 Sep · 14 d</span></div>
+        <div><div class="num none">no other line in cases</div><div class="claimline"><b>Their claim:</b> $20 off your $312.00 a case <span class="chip inv">landed · 11 Aug</span> → $292.00. Empire's $26.10 is per bottle: case ≠ bottle, not compared.</div></div>
+        <div class="worth"><span class="w">worth —</span> nothing of yours to measure the claim against.<span class="est">Ranked by ends-soonest, since no worth can be put on it.</span></div>
+        <div class="lines"><div class="l"><span class="b">Domaine Tempier Bandol Rouge 2021 · case of 12</span><span class="f"><s>$312.00</s> → $292.00</span></div></div>
+        <div class="foot"><span class="prov"><span class="claim">"$20 off a case, this month"</span> · mail 9 Sep · "this month" read as 30 Sep</span><button class="btn primary">Draft an order</button><button class="btn quiet">Put away</button></div>
+      </article>
+
+      <article class="card">
+        <div class="top"><span class="vendor">Vinos Libres <span>· Txakoli by the pallet</span></span><span class="ends" style="color:var(--warn)">no end date</span></div>
+        <div><div class="num none">no other vendor</div><div class="claimline"><b>Their claim:</b> 10% off your $11.40 <span class="chip inv">landed · 2 Sep</span> → $10.26. Only Vinos Libres has charged you for this bottle.</div></div>
+        <div class="worth"><span class="w">worth —</span> no other vendor to measure against; and you bought none last quarter — your first invoice from them is 2 September.<span class="est">Kept as an undated offer, labelled; ranked last.</span></div>
+        <div class="lines"><div class="l"><span class="b">Ameztoi Txakolina 2024 · per bottle</span><span class="f"><s>$11.40</s> → $10.26</span></div></div>
+        <div class="foot"><span class="prov"><span class="claim">"10% off for the season"</span> · mail 14 Sep</span><button class="btn primary">Draft an order</button><button class="btn quiet">Put away</button></div>
+      </article>
+    </div>
+
+    <div class="ungr"><h3>Cannot be graded</h3><p class="lede">Three of the seven: nothing of yours to measure them against. They are listed as the vendors' claims, in the vendors' words. The passed offer beside them is not among the seven.</p>
+      <div class="docket">
+        <article class="card"><div class="top"><span class="vendor">T. Edward Wines <span>· Bandol by the case</span></span><span class="ends">ends 15 Oct</span></div><div class="num none">cannot be graded</div><p class="claim" style="margin:0">"10% off list on Tempier Bandol" — no price from T. Edward for this bottle yet. You pay Skurnik $312.00 a case (landed 11 Aug); their 10% cannot be taken from a price you never paid them.</p><div class="foot"><button class="btn">Open the mail</button><button class="btn quiet">Put away</button></div></article>
+        <article class="card"><div class="top"><span class="vendor">Skurnik Wines <span>· New: Gut Oggau Theodora</span></span><span class="ends">ends 31 Oct</span></div><div class="num none">never bought</div><p class="claim" style="margin:0">"15% off list through 31 October" — their claim; no invoice of yours names this bottle, from anyone. A second offer from Skurnik: one discount per offer.</p><div class="foot"><button class="btn">Open the mail</button><button class="btn quiet">Put away</button></div></article>
+        <article class="card"><div class="top"><span class="vendor">Winebow <span>· Free delivery over $600</span></span><span class="ends soon">ends 18 Sep · 2 d</span></div><div class="num none">not a price</div><p class="claim" style="margin:0">The condition is on the order, not on a bottle. Your Winebow orders averaged $740 across 9 orders in the last 90 days.</p><div class="foot"><button class="btn">Open the mail</button><button class="btn quiet">Put away</button></div></article>
+        <article class="card" style="opacity:.6"><div class="top"><span class="vendor">Empire Wine &amp; Spirits <span>· Labor Day bubbles</span></span><span class="ends">passed 8 Sep</span></div><div class="num none">passed</div><p class="claim" style="margin:0">Kept 30 days so the price it named stays readable. Not counted.</p></article>
+      </div>
+    </div>
+    <div class="fold"><b>2 put away for the house</b><span>Winebow · Summer Provence mixed case — by Ayşe K., 12 Sep</span><span>Southern Glazer's · Aperol summer — by Dan R., 3 Sep</span><span style="margin-left:auto;color:var(--seal-deep)">show · restore</span></div>
+
+    <div class="writing"><h3>Who is writing</h3><span class="cnt">2 trusted senders · 1 suspended · 2 strangers waiting · across your 3 houses</span><span>Senders and strangers are mail, not money; they live with the rest of the house's mail, with the trust toggle, add-as-vendor and the across-houses scope.</span><a href="#">Open in Communications →</a></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════ 1b · FORK 1, DRAWN AS A CHOICE ═══════════════════════ -->
+<div class="seclabel desk-only">1b · Fork 1, drawn as a choice — the Miraval card three ways; the worth quadruples between them
+<small>ADR 0144 §4's sentence names the house's most recent paid price from <em>any</em> vendor (1a). The grader's <code>bestElsewhere</code> (offer-grade.ts:332-376) is the cheapest other vendor's line over 540 days (1b). Miraval: the house moved to Winebow in July and pays $18.60; Skurnik's $16.40 is from March. On this direction the choice is not cosmetic: the worth is <code>(basis − offered) × last quarter's quantity</code>, so it is $22 on one basis and $88 on the other. The docket as drawn uses 1(b); choosing 1(a) or 1(c) amends ADR 0144 §4 (README, founder question 1).</small></div>
+<div class="fork mudavym desk-only" style="background:transparent">
+  <div class="fk"><div class="k"><b>1(a)</b> · against your last landed cost — ADR 0144 §4 as written</div>
+    <article class="card"><div class="top"><span class="vendor">Empire <span>· Miraval Rosé 2024</span></span></div><div><div class="num beats">−15.8%</div><div class="against">under your last landed — <b>Winebow, $18.60</b> <span class="chip inv">landed · 8 Sep</span>, 8 days old</div></div><div class="worth"><span class="w">about $88 against Winebow's price</span> — 30 bottles last quarter × $2.94.<span class="est">Estimate at your rate.</span></div></article>
+    <p><b>Says:</b> what taking the offer changes against what you paid last. <b>Hides:</b> that Skurnik charged $16.40 in March. <b>Fails:</b> on Château de Sours the last landing is Empire's own, so the number is the claim (−12.0%) and the worth is the claim × volume.</p></div>
+  <div class="fk" data-chosen><div class="k"><b>1(b)</b> · against the lowest other vendor — as drawn in 1</div>
+    <article class="card"><div class="top"><span class="vendor">Empire <span>· Miraval Rosé 2024</span></span></div><div><div class="num beats">−4.5%</div><div class="against">under your lowest other — <b>Skurnik, $16.40</b> <span class="chip inv">landed · 3 Mar</span>, 197 days old</div></div><div class="worth"><span class="w">about $22 against Skurnik's March price</span> — 30 bottles last quarter × $0.74.<span class="est">Estimate at your rate.</span></div></article>
+    <p><b>Says:</b> the figure the mail could not carry. <b>Hides:</b> that the house no longer buys from Skurnik and pays Winebow $2.20 more; the worth is measured against a price the house cannot get today. <b>Fails:</b> never into the claim, but it can understate a real fall.</p></div>
+  <div class="fk"><div class="k"><b>1(c)</b> · both, landed first</div>
+    <article class="card"><div class="top"><span class="vendor">Empire <span>· Miraval Rosé 2024</span></span></div><div><div class="num beats">−15.8%</div><div class="against">under your last landed — <b>Winebow, $18.60</b>, 8 Sep</div><div class="num beats second">−4.5%</div><div class="against">under your lowest other — <b>Skurnik, $16.40</b>, 3 Mar</div></div><div class="worth"><span class="w">about $88 against what you paid last</span> · about $22 against the cheapest line you have had.<span class="est">Two estimates, both at your rate.</span></div></article>
+    <p><b>Says:</b> both, in ADR 0144's order. <b>Hides:</b> nothing, at the cost of two numbers and two worths per card. <b>Costs:</b> a "last landed from anyone" read the grader does not do today (<code>reference = mostRecent(house)</code> only for <code>no_baseline</code>, :303-313).</p></div>
+</div>
+
+<!-- ═══════════════════════ 2 · TURKISH HOUSE ═══════════════════════ -->
+<div class="seclabel desk-only">2 · The same docket for a Turkish house — Sim Meyhane Kadıköy (TRY, tr-TR)
+<small>This section shows <em>locale formatting on an English UI</em>: currency, number and date formats follow the house's locale (tr-TR); every word of the interface stays English, and the vendors' own words stay in the vendors' Turkish. The worth is in the house's money and rounded like an estimate; a line in another currency is a reason, never a converted figure.</small></div>
+<div class="desk-note">Sections 1b and 2 (fork 1 and the Turkish house, desktop) are cropped out at this width.</div>
+<div class="frame mudavym desk-only"><div class="page" style="padding-top:18px">
+  <div class="wm">Mudavym<span>.</span></div>
+  <p class="eyebrow">Wednesday, 16 September · between services · read 14:05</p>
+  <h1 class="title serif" style="font-size:30px">What is on the table<span class="dot">.</span></h1>
+  <p class="standing"><b>Two offers</b> from two vendors, naming <b>three bottle lines</b>. <b>One</b> line is worth money against another vendor you use; <b>two</b> have no other vendor to be measured against, and one of those is against an agreed price only. <span class="src">verdicts against the lowest other vendor's line · "bought" is last calendar quarter, Apr–Jun, from accepted invoices in the unit each line states</span></p>
+  <div class="docket" style="margin-top:18px">
+    <article class="card hero">
+      <div class="top"><span class="vendor">Kavaklıdere Dağıtım <span>· Eylül Öküzgözü kampanyası</span></span><span class="ends soon">ends 30.09.2026 · 14 days</span></div>
+      <div class="left"><div class="num beats">−%3,7</div><div class="against">under the lowest other vendor you use — <b>Bahçe Dağıtım, ₺598,00</b> <span class="chip inv">landed · 12.06.2026</span></div><div class="claimline"><b>Their claim:</b> %10 off list, which on your ₺640,00 from Kavaklıdere <span class="chip inv">landed · 04.09.2026</span> is ₺576,00 — the vendor's number on your price, not a grade. <span class="chip code">code <b>EYLUL10</b><i>copy</i></span></div></div>
+      <div class="worth"><span class="w">about ₺2.100 against Bahçe's price</span>if you buy Öküzgözü at last quarter's rate — you bought <b>96 bottles</b> in Apr–Jun across 11 accepted invoices — from Kavaklıdere at ₺576,00 instead of Bahçe at ₺598,00.<span class="est">An estimate from your own rate, rounded like one. Not a saving until an invoice says so. Villa Antinori is not counted: no other vendor's line in lira to measure it against — a €14,90 sighting is EUR, not the same money.</span></div>
+      <div class="lines"><div class="l"><span class="b">Kavaklıdere Öküzgözü 2022 · per bottle</span><span class="f"><s>₺640,00</s> → ₺576,00 · Bahçe ₺598,00</span></div><div class="l"><span class="b">Villa Antinori Rosso 2021 · per bottle</span><span class="f"><s>₺1.180,00</s> → ₺1.062,00 · no other vendor</span><span class="why">the only other line is a sighting at €14,90 — EUR, not compared; not counted in the worth</span></div></div>
+      <div class="foot"><span class="prov"><span class="claim">vendor says "%10 indirim, 30 Eylül'e kadar"</span> · mail 11.09.2026</span><button class="btn primary">Draft an order</button><button class="btn quiet">Put away for the house</button></div>
+    </article>
+    <article class="card"><div class="top"><span class="vendor">Mey Dağıtım <span>· Yeni Rakı 70 cl, koli</span></span><span class="ends" style="color:var(--warn)">no end date</span></div><div><div class="num none">no other vendor</div><div class="claimline"><b>Their claim:</b> %6 off an <span style="color:var(--warn)">agreed</span> ₺13.440,00 a case <span class="chip agreed">agreed · 01.09.2026</span> → ₺12.633,60 — <span style="color:var(--warn)">order confirmed, not yet received</span>.</div></div><div class="worth"><span class="w">worth —</span> no other line in cases to measure the claim against; the base is what they said, not what they charged; and no accepted invoice names this bottle.</div><div class="lines"><div class="l"><span class="b">Yeni Rakı 70 cl · case of 12</span><span class="f"><s>₺13.440,00</s> → ₺12.633,60</span></div></div><div class="foot"><span class="prov"><span class="claim">"koli alımında %6"</span> · mail 14.09.2026</span><button class="btn">Open the mail</button><button class="btn quiet">Put away</button></div></article>
+  </div>
+</div></div>
+
+<!-- ═══════════════════════ 3 · STATES ═══════════════════════ -->
+<div class="seclabel">3 · The states — a card that cannot say its number says why, in the same place the number would be
+<small>The worth figure is the most dangerous thing on this page: it is a projection from the house's own rate against another vendor's price. Every state that cannot compute it prints a reason where the figure would sit, never a zero. The offers read and the register read can each fail alone; both are drawn.</small></div>
+<div class="states mudavym" style="background:transparent">
+  <div class="st"><div class="k">loading</div><p class="t">Taking the table's temperature…</p><div class="skel" style="width:50%"></div><div class="skel big"></div><div class="skel" style="width:80%"></div><p style="margin-top:12px">Skeleton cards at card height, the number's slot reserved, with the dashboard's sheen (the one motion here that is not a motion.ts token). The worth never counts up from zero on arrival (tally is for a figure the page can prove; it appears at its value).</p></div>
+  <div class="st"><div class="k">empty · listening</div><p class="t">Nothing on the table.</p><p>No vendor mail with an offer in it has reached this house since 2 August. The lane is listening at the house's inbound address (<span class="mono">r-7k2…</span>, opaque by design); the last mail it read was 14:02 today.</p><p style="color:var(--ink-3)">The time of the last read is what separates "quiet" from "broken".</p></div>
+  <div class="st"><div class="k">read failed · the offers</div><p class="t" style="color:var(--loss)">The offers could not be read.</p><p>The price register answered (1,284 lines). <span class="mono">GET /promotions</span> did not: 502 after 8 s. No card is drawn from a failed read.</p><button class="btn">Try again</button></div>
+  <div class="st wide"><div class="k">read failed · the register (offers read, nothing graded)</div><p class="t" style="color:var(--loss)">Seven offers on the table; none could be graded.</p>
+    <div class="twomini"><div class="mini"><div class="vendor">Empire · September rosé close-out</div><div class="num ng">not graded — the register could not be read</div><p style="margin:2px 0 0">"12% off list through 30 September" · worth — · not read</p></div><div class="mini"><div class="vendor">Southern Glazer's · Fall spirits</div><div class="num ng">not graded — the register could not be read</div><p style="margin:2px 0 0">"8% off through 15 October" · worth — · not read</p></div></div>
+    <p>The offers arrived; the ledger behind them did not: <span class="mono">price_history · timeout after 8 s</span>, on the wire as <span class="mono">ledger.status: "read_failed"</span>. The number's slot says so on every card; the rank falls to ends-soonest and the strip says why. <button class="btn" style="margin-left:6px">Try the register again</button></p>
+    <p style="color:var(--ink-3)">The trap: a failed register handed to the grader as an empty ledger returns <span class="mono">no_ledger_lines</span> — "none graded, no invoice to grade against" — which reports an outage as a young house. The read carries <span class="mono">ledger.status</span> (<span class="mono">ok · empty · read_failed</span>) and the page draws the three differently.</p></div>
+  <div class="st"><div class="k">any member · staff see the docket (F05 3b)</div><div class="mini"><div class="vendor">Empire · September rosé close-out</div><div class="num beats">−4.6%</div><p style="margin:2px 0 0">under Winebow, $13.10 · about $53 at last quarter's rate</p></div><p style="color:var(--ink-3)">This direction takes fork 3(b): any member of the house sees the graded docket — verdict, worth and what the house paid — so it has no withheld state at all. ADR 0124:356-360 leans the other way (what a vendor charges this house is owner/manager); choosing B as drawn means an addendum to that ADR, or B falls back to A's per-field withholding. Drawn so the cost of 3(b) is visible, not implied.</p></div>
+  <div class="st"><div class="k">partial · no rate</div><div class="mini"><div class="vendor">Empire · Château de Sours Rosé</div><div class="num beats">−4.6%</div><p style="margin:2px 0 0">under Winebow · worth — · you bought none in Apr–Jun</p></div><p style="color:var(--ink-3)">Drawn as if the quarter were empty. The verdict is known, the worth is not: the quarter has no purchases of this bottle. Half a card is honest; a projected zero is not.</p></div>
+  <div class="st"><div class="k">partial · ledger empty</div><p class="t">Seven offers, none graded.</p><p>No accepted invoice in the last 540 days (<span class="mono">ledger.status: "empty"</span>); nothing to grade against. Every card shows the vendor's claim with "not graded — no invoice to grade against" in the number's slot, and the ranking is by ends-soonest. Distinct from the register having failed.</p></div>
+  <div class="st"><div class="k">put away · after the server says so</div><p class="t">Put away for the house.</p><div class="undo"><span>Winebow · Summer Provence — put away by you</span><span class="bar"><i></i></span><span style="color:var(--seal-deep)">Undo</span></div><p style="margin-top:10px;color:var(--ink-3)">The card leaves on settle only after <span class="mono">POST /promotions/:id/dismiss</span> returns the changed row (ADR 0112 F10: dismiss is undo-after).</p></div>
+</div>
+
+<!-- ═══════════════════════ 4 · OVERLAYS ═══════════════════════ -->
+<div class="seclabel">4 · Overlays, drawn open — the offer sheet (440, tuck) carries what the card leaves out: the working, both bases for the Miraval line, the market sighting, the code, the skipped lines
+<small>The card is the verdict; the sheet is the working. The card's menu is a popover (320) with the copy act; the ask is the same draft-order panel as direction A, prefilled from last quarter here.</small></div>
+<div class="frame mudavym"><div class="ovl">
+  <div class="under page" style="max-width:none"><div class="wm">Mudavym<span>.</span></div><p class="eyebrow">Wednesday, September 16</p><h1 class="title serif" style="font-size:30px">What is on the table<span class="dot">.</span></h1>
+    <div class="docket" style="margin-top:20px;max-width:900px"><article class="card hero"><div class="top"><span class="vendor">Empire Wine &amp; Spirits <span>· September rosé close-out</span></span><span class="ends soon">ends 30 Sep</span></div><div class="left"><div class="num beats" style="font-size:88px">−4.6%</div><div class="against">under Winebow, $13.10</div></div><div class="worth"><span class="w">about $53 against your lowest other vendors' prices</span></div></article>
+    <article class="card"><div class="top"><span class="vendor">Southern Glazer's</span></div><div class="num above">+4.2%</div></article><article class="card"><div class="top"><span class="vendor">Skurnik <span>· Bandol</span></span></div><div class="num none">no other line in cases</div></article></div></div>
+  <div class="scrim"></div>
+  <div class="pop" style="left:560px;top:120px"><button class="sel">Draft an order from this offer<small>opens the ask; nothing is sent</small></button><button>Copy code ROSE12<small>to the clipboard, for the vendor's order form</small></button><button>Open the mail it came from<small>conversation of 11 Sep</small></button><button>Open the vendor<small>Empire Wine &amp; Spirits · 61 orders</small></button><button>Put away for the house<small>who and when is kept; restorable</small></button></div>
+  <aside class="sheet" aria-label="Offer: September rosé close-out">
+    <div class="sheet__h"><div><div class="k">Offer · Empire Wine &amp; Spirits</div><h2>September rosé close-out</h2></div><button class="sheet__close">Close <span class="kbd">Esc</span></button></div>
+    <div class="sheet__b">
+      <dl class="kv"><dt>Vendor says</dt><dd><em class="serif">"12% off list through 30 September"</em></dd><dt>Code</dt><dd><span class="mono">ROSE12</span><button class="copy">Copy</button></dd><dt>From</dt><dd>mail of 11 Sep 09:14 · <span class="ref">open the conversation</span></dd><dt>Extracted</dt><dd>by rule, no model</dd><dt>Ends</dt><dd>30 Sep · 14 days</dd><dt>Worth</dt><dd>about $53 against your lowest other vendors' prices at last quarter's rate — estimate; $31 + $22</dd></dl>
+      <div class="lineblk"><div class="w">Château de Sours Rosé 2024 · per bottle</div><div class="d beats">−4.6% under Winebow, your lowest other</div><p>Winebow charged you $13.10 on 2 Jun (landed, <span class="ref">price_history · 41f0…</span>). Your last landed from anyone is Empire's own $14.20 (4 Sep) — against it the offer is the claim, 12%.</p><h5>The claim</h5><p>12% off list, which on your $14.20 from Empire (landed 4 Sep, <span class="ref">price_history · 8c21…</span>) is $12.50. Taken off <em>your</em> price, never the vendor's list — so it is the mail's own number, not a grade.</p><h5>Market · context only</h5><p>$12.90 at a retailer, 9 Sep — a sighting, never the verdict.</p><h5>Bought</h5><p>52 bottles last quarter (Apr–Jun, 8 invoices).</p></div>
+      <div class="lineblk"><div class="w">Miraval Rosé 2024 · per bottle</div><div class="d beats">−4.5% under Skurnik, your lowest other</div><p>Skurnik charged you $16.40 on 3 Mar (landed), 197 days ago. Your last landed from anyone is Winebow's $18.60 on 8 Sep; against that the offer is 15.8% under. The claim: 12% off your $17.80 from Empire (landed 12 Jun) → $15.66.</p><h5>Bought</h5><p>30 bottles last quarter (Apr–Jun, 5 invoices).</p></div>
+      <div class="lineblk"><div class="w">Whispering Angel 2024 · per bottle</div><div class="d none">no other vendor</div><p>No other vendor's line for this bottle in bottles, so there is nothing to grade against. The claim: 12% off an $18.90 <span style="color:var(--warn)">agreed 28 Aug, not yet received</span> → $16.63. No accepted invoice names this bottle. Not counted in the worth.</p></div>
+      <p class="note">Tally: 3 of 3 lines read · 2 under another vendor · 0 above · 1 with no other vendor.</p>
+    </div>
+    <div class="sheet__f"><button class="btn primary">Draft an order</button><button class="btn">Open the mail</button><button class="btn quiet">Put away for the house</button></div>
+  </aside>
+</div></div>
+
+<div class="seclabel" style="margin-top:14px">4b · The ask — "Draft an order from this offer" (panel, 620, settle) — a plain create; the quantity starts from last quarter's rate as the page states it (52, 30), blank where the quarter has none
+<small>A draft is not money, not a send, not a ledger row (ADR 0112 F10), so it does not take the seal. On a phone each bottle is one stacked block with its quantity field in view.</small></div>
+<div class="frame mudavym"><div class="ovl" style="height:600px">
+  <div class="under page" style="max-width:none"><div class="wm">Mudavym<span>.</span></div><h1 class="title serif" style="font-size:30px;margin-top:20px">What is on the table<span class="dot">.</span></h1></div>
+  <div class="scrim"></div>
+  <div class="panel" role="dialog" aria-label="Draft an order from this offer">
+    <div class="panel__h"><div class="mono" style="font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3)">Draft an order · Empire Wine &amp; Spirits</div><h2 class="serif" style="font-size:22px;margin:2px 0 0;font-weight:500">Take the September rosé close-out<span style="color:var(--seal)">?</span></h2></div>
+    <div class="panel__b">
+      <div class="ols">
+        <div class="h">Bottle</div><div class="h n">Offered</div><div class="h n">Lowest other</div><div class="h n">Last quarter</div><div class="h n">Qty</div><div class="h n">Line</div>
+        <div class="c b">Château de Sours Rosé 2024</div><div class="c n" data-l="offered">$12.50</div><div class="c n" data-l="lowest other">$13.10 <small>Winebow · 2 Jun</small></div><div class="c n" data-l="last quarter">52</div><div class="c n" data-l="qty"><input class="qty" value="52"></div><div class="c n" data-l="line">$650.00</div>
+        <div class="c b">Miraval Rosé 2024</div><div class="c n" data-l="offered">$15.66</div><div class="c n" data-l="lowest other">$16.40 <small>Skurnik · 3 Mar</small></div><div class="c n" data-l="last quarter">30</div><div class="c n" data-l="qty"><input class="qty" value="30"></div><div class="c n" data-l="line">$469.80</div>
+        <div class="c b">Whispering Angel 2024 <span class="chip agreed">agreed only</span></div><div class="c n" data-l="offered">$16.63</div><div class="c n" data-l="lowest other">—</div><div class="c n" data-l="last quarter">— <small>no accepted invoice</small></div><div class="c n" data-l="qty"><input class="qty" value="" placeholder="0"></div><div class="c n" data-l="line">—</div>
+      </div>
+      <p class="note">At the offered prices this draft comes to <b class="mono" style="color:var(--ink-1)">$1,119.80</b> for the two lines with a quantity. Offered is the vendor's claim written on your own book; the invoice is what it will cost, and the ledger will hold both. Code <span class="mono">ROSE12</span> is written on the draft's note for the vendor. Whispering Angel has no accepted invoice, so its quantity is yours to type, not a guess.</p>
+    </div>
+    <div class="panel__f acts"><span class="note">A draft is not an order. It waits on Orders for the seal; nothing is sent to Empire now.</span><button class="btn quiet">Not now</button><button class="btn primary">Create the draft</button></div>
+  </div>
+</div></div>
+
+<div class="seclabel" style="margin-top:14px">4c · Export (popover, 320, ink) — the legacy export kept, with its Code column (Promotions.tsx:181-268)
+<small>Writes the offers as ranked, in the legacy formats, with the legacy columns kept and the verdict and worth beside them; the worth exports with its basis (window, quantity, the other vendor's line), never as a bare figure.</small></div>
+<div class="frame mudavym"><div class="ovl" style="height:380px">
+  <div class="under page" style="max-width:none"><div class="wm">Mudavym<span>.</span></div><div class="rank" style="margin-top:20px"><span>Ranked by <b>worth against your lowest other vendor</b></span><span class="sp"></span><span class="fchip">With a code <b>2</b></span><span>bought over: <u>last quarter</u></span><span style="color:var(--ink-1)"><u>export</u> ▾</span></div></div>
+  <div class="scrim" style="background:rgba(0,0,0,.25)"></div>
+  <div class="pop" style="right:40px;top:64px"><button class="sel">CSV<small>7 offers · 8 lines · as ranked</small></button><button>Excel (.xlsx)<small>the same rows</small></button><button>JSON<small>the same rows, with the row refs and the worth's basis</small></button><div class="cols"><b>Columns:</b> vendor · offer · vendor says · code · min qty · ends · bottle · unit · your last price (landed | agreed) · offered · verdict · lowest other vendor · lowest other price · bought (Apr–Jun) · worth · worth basis. <b>A withheld worth exports as its reason.</b></div></div>
+</div></div>
+
+<!-- ═══════════════════════ 5 · MOBILE ═══════════════════════ -->
+<div class="seclabel">5 · Mobile, 390 — the docket is already a stack: all seven offers drawn, the hero keeps its size, the rest shrink one step; the offer sheet becomes a bottom sheet
+<small>Left: the page, every offer the standing line counts. Right: the offer sheet as a bottom sheet (ADR 0112 F9 — peek · half · full, the grabber because there is more than one detent), drawn at half. The draft ask on a phone stacks each bottle with its quantity field in view (4b's phone layout).</small></div>
+<div class="twophone">
+<div class="phone mudavym">
+  <div class="ph"><span>14:05</span><span>●●●</span></div>
+  <div style="padding:8px 16px 4px"><div class="wm">Mudavym<span>.</span></div><p class="eyebrow" style="margin-top:8px">Wed 16 Sep · read 14:05</p><h1 class="title serif" style="font-size:26px">What is on the table<span class="dot">.</span></h1><p class="standing" style="font-size:14px">Seven offers, eight lines. Two worth money against another vendor; one dearer than your book; three with no other vendor; one cannot be graded; one never bought. One offer is a condition.</p></div>
+  <div class="rank" style="margin:12px 16px 10px;padding-bottom:10px">Ranked by <b>worth against your lowest other vendor</b> · last quarter · <span class="fchip">With a code <b>2</b></span></div>
+  <article class="card hero"><div class="top"><span class="vendor">Empire <span>· Sept rosé close-out</span></span><span class="ends soon">30 Sep · 14 d</span></div><div class="num beats" style="font-size:72px">−4.6%</div><div class="against">under <b>Winebow, $13.10</b> · landed 2 Jun · on Château de Sours</div><div class="claimline"><b>Their claim:</b> 12% off your $14.20 → $12.50 — not a grade. <span class="chip code">code <b>ROSE12</b><i>copy</i></span></div><div class="worth"><span class="w">about $53 against your lowest other vendors</span> at last quarter's rate: $31 on Château de Sours (52 btl), $22 on Miraval (30 btl).<span class="est">Estimate, not a saving.</span></div><div class="lines"><div class="l"><span class="b">Ch. de Sours Rosé 2024</span><span class="f"><s>$14.20</s> → $12.50 · −4.6%</span></div><div class="l"><span class="b">Miraval Rosé 2024</span><span class="f"><s>$17.80</s> → $15.66 · −4.5%</span></div><div class="l"><span class="b">Whispering Angel 2024</span><span class="f"><s>$18.90</s> → $16.63</span><span class="why warn">no other vendor · agreed, not received · not counted</span></div></div><div class="foot"><button class="btn primary">Draft an order</button><button class="btn quiet">Put away</button></div></article>
+  <article class="card"><div class="top"><span class="vendor">Southern Glazer's <span>· Fords Gin</span></span><span class="ends">15 Oct</span></div><div class="num above">+4.2%</div><div class="against">above <b>Winebow, $21.90</b> · landed 14 Jul</div><div class="claimline"><b>Their claim:</b> 8% off your $24.80 → $22.82 — dearer than your book. <span class="chip code">code <b>FALL8</b><i>copy</i></span></div><div class="worth"><span class="w loss">about −$28</span> against Winebow · 30 btl last quarter</div></article>
+  <article class="card"><div class="top"><span class="vendor">Skurnik <span>· Bandol case</span></span><span class="ends soon">30 Sep</span></div><div class="num none">no other line in cases</div><div class="claimline"><b>Their claim:</b> $20 off your $312.00 a case → $292.00.</div><div class="worth"><span class="w">worth —</span> · nothing to measure the claim against</div></article>
+  <article class="card"><div class="top"><span class="vendor">Vinos Libres <span>· Txakoli</span></span><span class="ends" style="color:var(--warn)">no end date</span></div><div class="num none">no other vendor</div><div class="claimline"><b>Their claim:</b> 10% off your $11.40 → $10.26.</div><div class="worth"><span class="w">worth —</span> · none bought last quarter</div></article>
+  <article class="card"><div class="top"><span class="vendor">T. Edward <span>· Bandol by the case</span></span><span class="ends">15 Oct</span></div><div class="num none">cannot be graded</div><p class="claim" style="margin:0">No price from T. Edward yet — you pay Skurnik $312.00 a case. Their 10% off list cannot be taken from a price you never paid them.</p></article>
+  <article class="card"><div class="top"><span class="vendor">Skurnik <span>· Gut Oggau</span></span><span class="ends">31 Oct</span></div><div class="num none">never bought</div><p class="claim" style="margin:0">"15% off list" — their claim, not a grade.</p></article>
+  <article class="card"><div class="top"><span class="vendor">Winebow <span>· Free delivery over $600</span></span><span class="ends soon">Fri 18 Sep</span></div><div class="num none">not a price</div><p class="claim" style="margin:0">The condition is on the order. Your Winebow orders averaged $740 across 9 orders, last 90 d.</p></article>
+  <div style="padding:6px 16px 22px;font-size:12px;color:var(--ink-3)">All seven offers are above. Not drawn: 1 passed · 2 put away (show · restore) · Who is writing → Communications</div>
+</div>
+<div class="bsframe mudavym">
+  <div class="under"><div class="wm" style="margin-top:8px">Mudavym<span>.</span></div><h1 class="title serif" style="font-size:24px;margin-top:10px">What is on the table<span class="dot">.</span></h1>
+    <article class="card hero" style="margin:12px 0 10px;padding:14px 16px"><div class="top"><span class="vendor">Empire <span>· Sept rosé close-out</span></span></div><div class="num beats" style="font-size:60px">−4.6%</div><div class="against">under Winebow, $13.10</div></article></div>
+  <div class="scrim"></div>
+  <aside class="bsheet" aria-label="Offer: September rosé close-out">
+    <div class="grab"></div>
+    <div class="sheet__h"><div><div class="k">Offer · Empire Wine &amp; Spirits</div><h2>September rosé close-out</h2></div><button class="sheet__close">Close</button></div>
+    <div class="sheet__b">
+      <dl class="kv" style="grid-template-columns:80px 1fr;margin:4px 0 8px"><dt>Vendor says</dt><dd><em class="serif">"12% off list through 30 September"</em></dd><dt>Code</dt><dd><span class="mono">ROSE12</span><button class="copy">Copy</button></dd><dt>Worth</dt><dd>about $53 · estimate</dd></dl>
+      <div class="lineblk"><div class="w">Château de Sours Rosé 2024</div><div class="d beats">−4.6% under Winebow</div><p>Winebow $13.10, landed 2 Jun. The claim: 12% off your $14.20 → $12.50. 52 btl last quarter.</p></div>
+      <div class="lineblk"><div class="w">Miraval Rosé 2024</div><div class="d beats">−4.5% under Skurnik</div><p>Skurnik $16.40, landed 3 Mar. Your last landed from anyone: Winebow $18.60, 8 Sep.</p></div>
+    </div>
+    <div class="sheet__f"><button class="btn primary">Draft an order</button><button class="btn quiet">Put away</button></div>
+  </aside>
+  <div class="detent" style="bottom:14%"><span>peek</span></div>
+  <div class="detent" style="bottom:58%"><span>half · shown</span></div>
+  <div class="detent" style="bottom:93%"><span>full</span></div>
+</div>
+</div>
+
+<div class="cite">Drawn from: ADR 0144 §4 ("12% under your last landed cost, on a bottle you bought 40 of last quarter" — its basis is fork 1(a), drawn in 1b beside 1(b), the docket's basis, and 1(c); its rejection of relaying the vendor's claim is why the number here is never the percentage off the house's own price) · the unmerged grader's <code>offeredFrom()</code> (<code>offer-grade.ts:238-277</code>: the discount is taken off <em>this vendor's last price to the house</em>, so offered-vs-this-vendor always equals the claim), one discount per offer (<code>:64-75</code>, so Skurnik's two deals are two offers), and its verdict/<code>deltaPct</code> against <code>bestElsewhere</code> (<code>:332-376</code>) — the cheapest other vendor's line over 540 days, not the house's last landing from anyone; <code>no_baseline</code> (<code>:303-313</code>) for the T. Edward card; the baseline prefers a paid line from this vendor (<code>:305-307</code>), so an agreed-only card is a bottle with no accepted invoice from that vendor · ADR 0020 (no fabricated figure — the worth is labelled an estimate, carries its parts, and is withheld when there is no other vendor or the quarter has no purchases) · ADR 0054 rule 6 (agreed is not landed; agreed-only lines are labelled and excluded from the worth) · ADR 0124:356-360 (prices are owner/manager — this direction draws the 3(b) alternative and names its cost) · ADR 0112 F4 (every legacy act rebuilt: code + copy, "with a code", export with its Code column; senders, strangers and the across-houses scope move to /communications whole), F9 (the sheet on a phone is a bottom sheet with detents), F10 (dismiss is undo-after; a draft is not money, so it is a plain create) · <code>motion.ts</code>: settle for the card leaving, tally only for a figure the page can prove (so the worth appears at its value, never counts up); the skeleton sheen is the dashboard/reports precedent (<code>dashboard-next.css:44</code>), not a token · <code>Sheet.tsx</code> (popover 320). Example data is invented for the drawing.</div>
+</body></html>
