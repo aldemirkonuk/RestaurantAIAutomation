@@ -152,12 +152,12 @@ are this lane's reconstruction and are marked as such:
 How it is built:
 
 - `GET /providers/wine-sellers?q=` answers "All my vendors"
-  (`readOwnWineSellers`, `vendor-wine-search.ts:227`). It reads the house's own
+  (`readOwnWineSellers`, `vendor-wine-search.ts:251`). It reads the house's own
   purchase evidence, the same three sources as the menu rung, **of all time**,
   with no 180-day window. Each vendor is labelled "Sold you <wine> <vintages> ·
   priced/ordered/stocked".
 - `GET /providers/catalogue-wine-listers?q=&country=` answers "Find new vendors"
-  (`readCatalogueWineListers`, `:398`). It reads price sightings (this house's
+  (`readCatalogueWineListers`, `:422`). It reads price sightings (this house's
   own and openly posted ones, through `scopePriceRegisterRead` /
   `houseAndOpenMarket`) of curated, active catalogue vendors in the chosen
   country. **A sighting is not a sale**, so each wine is labelled
@@ -169,7 +169,7 @@ How it is built:
   served by `GET /settings/currency`). It holds what the address form wrote,
   such as Google's long text "Türkiye". It is resolved to ISO-2 by the one
   country table (`apps/web/src/lib/countries.ts`, `countryByName`) in
-  `defaultCatalogueCountry` (`vendor-scope.ts:251`). Text the table does not
+  `defaultCatalogueCountry` (`vendor-scope.ts:252`). Text the table does not
   know is not guessed at: it falls back to US, like a missing or unreadable
   country, and the hint says which of these happened. The catalogue is not
   searched until the house's country has answered, so a house in Türkiye never
@@ -185,9 +185,26 @@ Readings by this lane, not founder answers:
   interpolated into a PostgREST filter.
 - **The "Find new vendors" sightings are narrowed server-side on the query's
   longest word, matched against the vendor's own text** (`accentBlindLike`,
-  `:394`). A sighting whose own text lacks that word but whose library row has
+  `:418`). A sighting whose own text lacks that word but whose library row has
   it is missed.
 - **The name search is not offered on "Supplies my menu".**
+- **[2026-09-28, ADR 0090 audit of #484 at `d44056b42`, R2 — both reviewers.]**
+  Two more readings, both engineering bounds rather than product choices:
+  - *The name floor is on the longest word.* It was "two characters of name",
+    measured on the joined words, so "a b" passed and its one-letter narrowing
+    word became the pattern `%_%`, which matches every sighting. Now at least
+    one word must have two characters or more (`parseWineQuery`); "a b" and
+    "o 2019" are a 400, and the web's `wineSearchable` asks the same.
+  - *The "Find new vendors" sightings read has a loud ceiling.* The narrowing
+    word is made accent-blind, so a short or vowel-heavy word (`one` becomes
+    `%___%`) still lets most of the register through, and the register holds
+    every openly posted sighting, not only this house's. The read stops at
+    `CATALOGUE_SIGHTINGS_CEILING` (5000) + 1 rows and answers **422, "type
+    more of the wine's name"**, never a partial list. This is not a silent
+    cap: nothing is answered from part of the rows. Production held 0
+    `vendor_price_observations` rows on 2026-09-28, so no search today comes
+    near it. The house-scoped reads (menu rung, "All my vendors") carry no
+    ceiling; they are bounded by the house's own book.
 
 **[2026-09-26, founder, round 7, item 49 — FUTURE, not built.]** As recorded (item 49),
 his intuition was that when menu wine X is unavailable or priced above the seasonal
@@ -238,6 +255,35 @@ sheet's resend-everything save had hidden, and each is pinned in `provider-locat
 - Removing the primary hands the mark to the oldest remaining branch. The legacy
   sheet applied this rule in its own state; it is now the gateway's, and the answer
   names the branch (`promotedId`) or says the hand-off failed (`promotionFailed`).
+  **[2026-09-28, ADR 0090 audit of #484 at `d44056b42`, R4: `promotionFailed` is
+  gone. Delete and hand-off are now one transaction (next bullet), so a hand-off
+  that fails refuses the whole removal and nothing is half-done.]** The founder
+  confirmed this rule as built (memory item 57: "last branch removable; primary
+  passes to oldest remaining").
+- **[2026-09-28, same audit, R4 — both reviewers.] A vendor has at most one
+  primary branch per house, and the mark moves in one transaction.** The mark
+  used to move in separate PostgREST calls (demote, then set; or delete, read the
+  oldest, promote), each its own transaction, and `is_primary` had no unique
+  index, so two concurrent writes could leave two primaries, or none. Migration
+  `a_vendor_has_one_primary_branch` adds the partial unique index
+  `provider_locations_one_primary (provider_id, restaurant_id) WHERE is_primary`
+  and two functions, `provider_location_make_primary` and
+  `provider_location_remove`. Each runs under a per-vendor-per-house advisory
+  lock, filters every statement on the house and the vendor, is
+  `SECURITY INVOKER`, and can be executed by `service_role` only. The gateway
+  inserts a new branch unmarked and then moves the mark; a failed move takes
+  the new branch back out. Pinned by CLAIMS `ADR-0221-VENDOR-ONE-PRIMARY-BRANCH`.
+  The functions were measured in PGlite over the whole migration corpus, with a
+  control build without the migration. **Real concurrency was not measured**
+  (PGlite is one session); the lock and the index are the argument.
+- **Open, not decided here: who may write a vendor's branches.** The four
+  location routes admit any member of the house, as `POST /providers`,
+  `PATCH /providers/:id` and `DELETE /providers/:id` always have; only
+  `PATCH :id/usual-currency` is manager-gated. The audit noted that the sheet
+  now puts branch edits in front of every member. Whether branch writes (and
+  vendor writes generally) should be manager-only is the founder's call. With
+  the transaction above, the answer changes who may act, not whether the data
+  stays whole.
 - A **different** address sent with no point clears the old point. The same address
   sent again keeps it.
 - The body refuses a fifth kind of branch and an empty name (400), before the table's
@@ -253,3 +299,4 @@ sheet's resend-everything save had hidden, and each is pinned in `provider-locat
 | 2026-09-26 | Lane W5-vendors (Opus 5.5), PR #484 | Items 36, 39 and 48 recorded as built; item 49 recorded as future. Code facts are cited at #484's head. The verbatim option texts of round 7 were not available; this is stated above. |
 | 2026-09-26 | Lane W7-vloc (Opus 5.5), PR #484 | Item 51 (vendor branches) recorded as built and item 52 as not built here. The four location routes were re-verified as house-scoped. Six readings are listed above. The verbatim option texts of round 8 were not available; this is stated above. |
 | 2026-09-27 | #466 audit fix round 1 (records lane, Opus 5.5) | Brackets only; the decision is unchanged: #416 merged; founder items 39 (keep the legal "distributor"; `g v`) and 52 (legacy map deleted at cutover; a globe tab later) added. The first ADR 0090 audit of #466 (`091686861`) blocked on their absence |
+| 2026-09-28 | #484 audit fix round 1 (Opus 5.5), after the ADR 0090 BLOCK at `d44056b42` | Brackets only; the decision is unchanged. R2: the name floor moved to the longest word and the catalogue sightings read gained a loud ceiling (422). R4: one primary per vendor per house, moved in one transaction (migration `a_vendor_has_one_primary_branch`). The role question for branch writes is recorded as open. |

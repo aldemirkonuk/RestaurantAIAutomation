@@ -109,6 +109,9 @@ links: ["[[PAGE-CONTRACT]]", "[[distributors]]", "[[promotions]]", "[[vendor-pri
 > (`defaultCatalogueCountry`); US when missing, unknown or unreadable, with a hint saying
 > which; still editable; the catalogue is not searched until the house has answered.
 > Item 49 (substitution suggestions) is a FUTURE idea — no UI.]
+> [2026-09-28, #484 audit R2: a wine search needs one word of two letters or more ("a b"
+> is refused), and the *Find new vendors* sightings read stops at 5000 rows with a 422
+> asking for more of the name, never a partial list — ADR 0221.]
 
 > **Part of** [[08-softwares/vendor-directory|Vendor Directory & Intel]] · [[08-softwares/global-vendor-search|Global Vendor Search]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
 
@@ -456,7 +459,11 @@ Sidebar item (`components/layout/Sidebar.tsx:87`). `/distributors` redirects her
 - Branches (redesign, 2026-09-26, founder round 8 item 51 · ADR 0221): the locations CRUD
   above is also called from the vendor sheet — `pages/providers/next/useVendorBranches.ts`
   → `BranchesSection.tsx`, mounted in `TwinSheet.tsx`. Legacy `Providers.tsx` /
-  `EditProviderModal.tsx` are no longer its only callers. No map (item 52)
+  `EditProviderModal.tsx` are no longer its only callers. No map (item 52).
+  [2026-09-28, #484 audit R4: the primary mark and the delete go through the SQL
+  functions `provider_location_make_primary` / `provider_location_remove`
+  (migration `a_vendor_has_one_primary_branch`), one transaction each, and a
+  partial unique index allows one primary per vendor per house — ADR 0221.]
 - Scorecard (redesign only, ADR 0207): `GET /vendor-scorecard?window=30|90|365` (the
   Roll Call and each card's fact), `GET /vendor-scorecard/:id` (the ledger card),
   `GET /vendor-scorecard/:id/docket?measure=` (the rows) — house from the token, a
