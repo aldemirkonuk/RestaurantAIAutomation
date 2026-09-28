@@ -30,6 +30,14 @@ import {
   useProvidersNextData,
   type ProviderCardVM,
 } from "./useProvidersNextData";
+import { useVendorScopes } from "./useVendorScopes";
+import {
+  BookSearchBar,
+  FindNewVendors,
+  ScopeNotice,
+  VendorScopeBar,
+} from "./VendorScopes";
+import { soldTag, supplierTag } from "./vendor-scope";
 import { RollCall } from './scorecard/RollCall';
 import { SC } from './scorecard/sc-copy';
 import { useRollCall } from './scorecard/useVendorScorecard';
@@ -85,11 +93,14 @@ function BucketCard({
   ordersKnown,
   did,
   onOpen,
+  tag,
 }: {
   vm: ProviderCardVM;
   ordersKnown: boolean;
   did?: DidFact;
   onOpen: () => void;
+  /** On "Supplies my menu": what the evidence is (item 36). Not a fourth fact. */
+  tag?: string | null;
 }) {
   const p = vm.provider;
   const open =
@@ -139,6 +150,14 @@ function BucketCard({
         >
           {p.name}
         </span>
+        {tag && (
+          <span
+            data-testid="supply-tag"
+            style={{ display: 'block', marginTop: 2, fontSize: 11, color: 'var(--ink-4, #665D50)' }}
+          >
+            {tag}
+          </span>
+        )}
       </div>
       <dl
         style={{
@@ -189,6 +208,18 @@ function BucketCard({
 
 export default function ProvidersNext() {
   const data = useProvidersNextData();
+  // Supplies my menu -> All my vendors -> Find new vendors (founder,
+  // 2026-09-26, item 36). The rules are in vendor-scope.ts.
+  const scopes = useVendorScopes(data.cards, data.hasData);
+  const addedCatalogueIds = useMemo(
+    () =>
+      new Set(
+        data.cards
+          .map((vm) => vm.provider.catalogueVendorId)
+          .filter((id): id is string => typeof id === 'string' && id !== ''),
+      ),
+    [data.cards],
+  );
   const [openProvider, setOpenProvider] = useState<Provider | null>(null);
   const [adding, setAdding] = useState(false);
   const [view, setView] = useState<ProvidersView>(viewFromUrl);
@@ -379,7 +410,27 @@ export default function ProvidersNext() {
           onOpenVendor={openById}
         />
 
-        {data.hasData && data.cards.length === 0 && !data.isError && (
+        <VendorScopeBar scopes={scopes} />
+        <ScopeNotice scopes={scopes} />
+        {scopes.scope === "find" && (
+          <FindNewVendors
+            find={scopes.find}
+            addedCatalogueIds={addedCatalogueIds}
+          />
+        )}
+        {/* Name-only search, any vintage (founder, 2026-09-26, round 7, item
+            48). Not on the menu rung: that one is the exact vintage. */}
+        {scopes.scope === "all" && data.hasData && data.cards.length > 0 && (
+          <BookSearchBar
+            book={scopes.book}
+            shown={scopes.visible ? scopes.visible.length : null}
+          />
+        )}
+
+        {scopes.scope !== "find" &&
+          data.hasData &&
+          data.cards.length === 0 &&
+          !data.isError && (
           <p
             style={{
               fontFamily: SANS,
@@ -391,7 +442,10 @@ export default function ProvidersNext() {
           </p>
         )}
 
-        {!data.ordersKnown && data.hasData && data.cards.length > 0 && (
+        {scopes.scope !== "find" &&
+          !data.ordersKnown &&
+          data.hasData &&
+          data.cards.length > 0 && (
           <p
             style={{
               fontFamily: SANS,
@@ -411,10 +465,21 @@ export default function ProvidersNext() {
             gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))",
           }}
         >
-          {data.cards.map((vm) => (
+          {(scopes.scope === 'find' ? [] : (scopes.visible ?? [])).map((vm) => (
             <BucketCard
               key={vm.provider.id}
               vm={vm}
+              tag={
+                scopes.scope === 'menu'
+                  ? (() => {
+                      const s = scopes.supplierOf(vm.provider.id);
+                      return s ? supplierTag(s) : null;
+                    })()
+                  : (() => {
+                      const s = scopes.book.sellerOf(vm.provider.id);
+                      return s ? soldTag(s) : null;
+                    })()
+              }
               ordersKnown={data.ordersKnown}
               did={didFor(vm.provider.id)}
               onOpen={() => {
