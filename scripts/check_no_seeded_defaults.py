@@ -194,6 +194,25 @@ SCAN_ROOTS = [
     Path("apps/web/src/pages/team/next"),
     Path("apps/web/src/pages/documents-reports/next"),
     Path("apps/web/src/pages/communications/next"),
+    # p4 wave (2026-09-02): seven more rebuilt surfaces, each builder ran the guard
+    # on a copy with its own directory added before this line was written.
+    Path("apps/web/src/pages/reports/next"),
+    Path("apps/web/src/pages/notifications/next"),
+    Path("apps/web/src/pages/recommendations/next"),
+    Path("apps/web/src/pages/calendar/next"),
+    Path("apps/web/src/pages/settings/next"),
+    Path("apps/web/src/pages/profile/next"),
+    Path("apps/web/src/pages/cellar/next"),
+    # p4g (2026-09-03): `/connections`, a NEW surface rather than a rebuild
+    # (ADR 0114). Added here for the same reason as the seven above — every
+    # figure on it is a count of something the gateway measured, and a seeded
+    # one would be a claim about what can act for the house.
+    Path("apps/web/src/pages/connections/next"),
+    # New-pages wave (ADR 0133, 2026-09-11): `/logs`, rebuilt behind
+    # `mudavym_design_logs`. Every figure on it is a per-register count of
+    # rows the gateway returned; a seeded row would be a fabricated entry in
+    # the house's own ledger of what happened.
+    Path("apps/web/src/pages/logs/next"),
 ]
 
 # Hooks that back those surfaces. These are data hooks, so a fabricated row set

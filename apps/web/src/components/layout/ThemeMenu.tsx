@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { Sun, Moon, Monitor, Check } from 'lucide-react'
 import { useTheme } from '../../contexts/ThemeContext'
 import { cn } from '../../lib/utils'
+import { Popover } from '../mudavym/Sheet'
+import { useMudavymShell } from '../../lib/mudavym/shellGround'
 
 /**
  * ThemeMenu — 3-way theme picker in the header (NEW-026).
@@ -21,9 +23,14 @@ export function ThemeMenu({ className }: { className?: string }) {
   const { theme, resolvedTheme, setTheme } = useTheme()
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const shell = useMudavymShell()
 
   useEffect(() => {
-    if (!open) return
+    // The house Popover portals to <body>, so a click inside it is outside
+    // `ref` — this listener would close the menu the moment you aimed at it.
+    // The Popover owns dismissal in that branch.
+    if (!open || shell.on) return
     const onDown = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
     }
@@ -36,13 +43,14 @@ export function ThemeMenu({ className }: { className?: string }) {
       window.removeEventListener('mousedown', onDown)
       window.removeEventListener('keydown', onKey)
     }
-  }, [open])
+  }, [open, shell.on])
 
   const TriggerIcon = resolvedTheme === 'dark' ? Moon : Sun
 
   return (
     <div ref={ref} className={cn('relative', className)}>
       <button
+        ref={triggerRef}
         onClick={() => setOpen((o) => !o)}
         className="rounded-xl bg-gray-100 p-2 text-gray-700 transition-colors hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
         aria-label="Theme"
@@ -53,7 +61,38 @@ export function ThemeMenu({ className }: { className?: string }) {
         <TriggerIcon className="w-5 h-5" />
       </button>
 
-      {open && (
+      {shell.on ? (
+        <Popover
+          open={open}
+          onClose={() => setOpen(false)}
+          anchorRef={triggerRef}
+          label="Theme"
+          width={180}
+          showClose={false}
+        >
+          {OPTIONS.map(({ value, label, icon: Icon }) => {
+            const active = theme === value
+            return (
+              <button
+                key={value}
+                type="button"
+                className="mdv-item"
+                data-active={active}
+                onClick={() => {
+                  setTheme(value)
+                  setOpen(false)
+                }}
+              >
+                <Icon size={14} aria-hidden className="mdv-item__icon" />
+                <span className="mdv-item__text">{label}</span>
+                {active && <Check size={14} aria-hidden style={{ color: 'var(--seal)' }} />}
+              </button>
+            )
+          })}
+        </Popover>
+      ) : null}
+
+      {open && !shell.on && (
         <div
           role="menu"
           className="absolute right-0 mt-2 w-40 rounded-xl border border-gray-200 bg-white p-1 shadow-xl z-50 dark:border-gray-700 dark:bg-gray-800"

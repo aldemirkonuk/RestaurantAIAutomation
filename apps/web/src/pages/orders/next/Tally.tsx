@@ -1,6 +1,6 @@
 /**
  * Tally — a figure that arrives on the overdamped tally spring and never
- * bounces past a number someone will act on (motion 059, token `tally`).
+ * bounces past a number someone will act on (motion 083, token `tally`).
  *
  * Two honesty rules from the motion canvas:
  * - it never animates on first paint — a count that was already at nine when

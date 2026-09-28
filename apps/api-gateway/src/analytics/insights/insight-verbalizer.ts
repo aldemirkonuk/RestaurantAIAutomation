@@ -97,12 +97,25 @@ export function verbalize(template: string, e: InsightEvidence): string | null {
   const entity = e.entity ?? "Overall";
   switch (template) {
     case "baseline": {
+      // `deltaPct == null` is the divide-by-a-zero-baseline case: a ratio
+      // against nothing is not a percentage, and there is no honest sentence
+      // to render from it. Returning null here is the second of two guards —
+      // `groupBaseline` reports the same case as `in_line` and the generator
+      // drops it — and it is asserted directly in `baseline-honesty.spec.ts`.
       if (e.deltaPct == null || e.baseline == null || e.value == null)
         return null;
       if (e.direction === "in_line")
         return `${entity} ${e.measureLabel} (${fmtValue(e.value, e.unit)}) is in line with the typical ${entity.toLowerCase()}.`;
       const dir = e.deltaPct > 0 ? "higher" : "lower";
-      return `${entity} ${e.measureLabel} came in ${fmtPct(e.deltaPct)} ${dir} than your average ${entity} (${fmtValue(e.value, e.unit)} vs ${fmtValue(e.baseline, e.unit)}).`;
+      // `date` on a baseline means the day compared was NOT the newest day in
+      // the series — the generator skipped back past days with no records. The
+      // sentence has to carry that date, or "Wednesday" reads as yesterday.
+      const when = e.date ? `${entity} ${e.date} ` : `${entity} `;
+      // The support count travels with the claim. "12% lower than your average
+      // Wednesday" is a different statement over four Wednesdays than over
+      // three, and the reader is entitled to know which one they are reading.
+      const support = e.n ? `, over ${e.n} past ${entity}s` : "";
+      return `${when}${e.measureLabel} came in ${fmtPct(e.deltaPct)} ${dir} than your average ${entity} (${fmtValue(e.value, e.unit)} vs ${fmtValue(e.baseline, e.unit)}${support}).`;
     }
     case "period": {
       if (e.deltaPct == null || e.value == null || e.baseline == null)

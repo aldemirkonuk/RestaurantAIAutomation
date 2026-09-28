@@ -1,152 +1,178 @@
 /**
- * TemplateSheet contract (P1) — the page must not assert a behaviour it does
- * not have.
+ * The house's letter library — what it may say, and what it may never say.
  *
- * The rebuild's banner said "Saving stores it for later", and `onSave` was
- * `onClose` — a function that ignores its argument. `GmailTemplateBuilder`
- * makes no network call and writes no storage; `SMSTemplateBuilder` says so in
- * a comment (`// Simulate save delay`). Pressing Save showed a success state
- * and discarded the work. Legacy has the same no-op and does NOT claim
- * otherwise, so the claim is a regression the rebuild introduced.
+ * The two things this file exists to stop:
+ *   1. an unreadable library rendering as an empty one ("no templates" is a
+ *      claim; "could not be read" is the truth), and
+ *   2. a save that failed closing the editor and reporting success — the exact
+ *      regression the previous TemplateSheet shipped, and the reason ADR 0083
+ *      exists.
+ *
+ * It also pins the founder's 2026-09-04 call: a staff broadcast is NOT one of
+ * the composer's purposes.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
-const mockCreate = vi.hoisted(() => vi.fn());
+const mockData = vi.hoisted(() => ({ current: {} as Record<string, unknown> }));
+const mockPost = vi.hoisted(() => vi.fn());
 
-vi.mock('../../../hooks/useTemplates', () => ({
-  useTemplates: () => ({
-    templates: [],
-    isLoading: false,
-    error: null,
-    createTemplate: mockCreate,
-    updateTemplate: vi.fn(),
-    deleteTemplate: vi.fn(),
-    refetch: vi.fn(),
-  }),
+vi.mock('./Compose/useComposeData', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./Compose/useComposeData')>()),
+  useComposeData: () => mockData.current,
 }));
 
-// The real builders are ~1500-line overlays; what matters here is the contract
-// between the sheet and whatever the builder hands to `onSave`.
-vi.mock('../../../components/documents/GmailTemplateBuilder', () => ({
-  GmailTemplateBuilder: ({ onSave }: { onSave?: (t: unknown) => unknown }) => (
-    <button
-      type="button"
-      data-testid="gmail-save"
-      onClick={() =>
-        void Promise.resolve(
-          onSave?.({
-          id: 'template-1',
-          name: 'Weekly wine report',
-          description: 'desc',
-          subject: 'Weekly Wine Report - {{date}}',
-          panels: [{ id: 'p1', type: 'text', content: 'hello', config: {} }],
-          thumbnail: 'data:image/svg+xml,x',
-          category: 'custom',
-          created_at: new Date(),
-          last_modified: new Date(),
-          used_count: 0,
-          }),
-        ).catch(() => {})
-      }
-    >
-      save gmail
-    </button>
-  ),
-}));
-
-vi.mock('../../../components/documents/SMSTemplateBuilder', () => ({
-  SMSTemplateBuilder: ({ onSave }: { onSave?: (t: unknown) => unknown }) => (
-    <button
-      type="button"
-      data-testid="sms-save"
-      onClick={() =>
-        void Promise.resolve(
-          onSave?.({
-          id: 'sms-1',
-          name: 'Delivery nudge',
-          category: 'delivery',
-          message: 'Your order {{order_id}} ships today.',
-          variables: ['{{order_id}}'],
-          characterCount: 41,
-          segmentCount: 1,
-          created_at: new Date(),
-          last_modified: new Date(),
-          used_count: 0,
-          tags: [],
-          }),
-        ).catch(() => {})
-      }
-    >
-      save sms
-    </button>
-  ),
+vi.mock('../../../services/api/client', () => ({
+  apiClient: { post: mockPost, get: vi.fn() },
 }));
 
 import { TemplateSheet } from './TemplateSheet';
 
+const base = {
+  restaurantId: 'r1',
+  sender: null,
+  senderFailed: false,
+  senderError: null,
+  book: [],
+  bookFailed: false,
+  bookError: null,
+  byProvider: new Map(),
+  templates: [],
+  templatesFailed: false,
+  templatesError: null,
+  insights: [],
+  insightsFailed: false,
+  insightsError: null,
+  queued: [],
+  queuedFailed: false,
+  refetchQueued: vi.fn(),
+};
+
 beforeEach(() => {
-  vi.clearAllMocks();
-  mockCreate.mockResolvedValue({ id: 'srv-1' });
+  mockData.current = { ...base };
+  mockPost.mockReset();
 });
 
-describe('TemplateSheet — Save stores the template', () => {
-  it('sends the email template to the server on save', async () => {
-    render(<TemplateSheet channel="gmail" onClose={vi.fn()} />);
-    fireEvent.click(await screen.findByTestId('gmail-save'));
-
-    await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
-    const payload = mockCreate.mock.calls[0][0];
-    expect(payload.name).toBe('Weekly wine report');
-    expect(payload.subject).toBe('Weekly Wine Report - {{date}}');
-    expect(payload.type).toBe('email');
-    expect(typeof payload.body).toBe('string');
-    expect(payload.body.length).toBeGreaterThan(0);
+describe('the house letter library', () => {
+  it('says a failed read as a failure, never as an empty shelf', () => {
+    mockData.current = {
+      ...base,
+      templates: null,
+      templatesFailed: true,
+      // The gateway's OWN sentence, verbatim — the page relays it and adds only
+      // the consequence. Restating the failure here is what printed it twice,
+      // nested inside itself, in the first browser capture of this sheet.
+      templatesError:
+        "The house's letter templates could not be read (column communication_templates.category does not exist).",
+    };
+    render(<TemplateSheet onClose={() => {}} />);
+    const alert = screen.getByRole('alert');
+    expect(alert).toHaveTextContent('could not be read');
+    expect(alert).toHaveTextContent('unknown, not empty');
+    // said ONCE
+    expect((alert.textContent ?? '').match(/could not be read/g)).toHaveLength(1);
   });
 
-  it('sends the SMS template to the server on save, message verbatim', async () => {
-    render(<TemplateSheet channel="sms" onClose={vi.fn()} />);
-    fireEvent.click(await screen.findByTestId('sms-save'));
+  it('distinguishes "not read yet" from "this house has written none"', () => {
+    mockData.current = { ...base, templates: null };
+    const { rerender } = render(<TemplateSheet onClose={() => {}} />);
+    expect(screen.getByText(/Reading the library/)).toBeInTheDocument();
 
-    await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
-    const payload = mockCreate.mock.calls[0][0];
-    expect(payload.name).toBe('Delivery nudge');
-    expect(payload.type).toBe('sms');
-    expect(payload.body).toBe('Your order {{order_id}} ships today.');
+    mockData.current = { ...base, templates: [] };
+    rerender(<TemplateSheet onClose={() => {}} />);
+    expect(screen.getByText(/has written no template yet/)).toBeInTheDocument();
   });
 
-  it('says a failed save in words, and does not close over it', async () => {
-    const onClose = vi.fn();
-    mockCreate.mockRejectedValue(new Error('Request failed with status code 400'));
-    render(<TemplateSheet channel="gmail" onClose={onClose} />);
-    fireEvent.click(await screen.findByTestId('gmail-save'));
+  it('never prints a fabricated author or last-use for a row that has none', () => {
+    mockData.current = {
+      ...base,
+      templates: [
+        {
+          id: 't1',
+          name: 'Standing order query',
+          subject: null,
+          body: 'Merhaba,',
+          category: 'price_query',
+          mergeFields: null,
+          lastEditedBy: null,
+          lastEditedAt: null,
+          lastUsedAt: null,
+        },
+      ],
+    };
+    render(<TemplateSheet onClose={() => {}} />);
+    // "unknown", not "nobody" and not "never" — a row written before the
+    // migration has no author recorded and never will.
+    expect(screen.getByText(/last edited by unknown/)).toBeInTheDocument();
+    expect(screen.getByText(/last used unknown/)).toBeInTheDocument();
+    expect(screen.getByText(/none declared/)).toBeInTheDocument();
+  });
 
-    await waitFor(() =>
-      expect(screen.getByRole('status')).toHaveTextContent(/could not be saved/i),
+  it('offers the five vendor purposes and never a staff broadcast', () => {
+    render(<TemplateSheet onClose={() => {}} />);
+    fireEvent.click(screen.getByText('Write a new template'));
+    const select = screen.getByLabelText('Purpose') as HTMLSelectElement;
+    const options = Array.from(select.options).map((o) => o.textContent);
+    expect(options).toEqual([
+      'Order confirmation',
+      'Price query',
+      'Delivery dispute',
+      'Invoice mismatch',
+      'Promotion reply',
+    ]);
+    expect(options.join(' ')).not.toMatch(/broadcast|staff|crew/i);
+  });
+
+  it('starts a template from an insight, carrying its rule key', () => {
+    mockData.current = {
+      ...base,
+      insights: [
+        {
+          candidateKey: 'weekday.baseline.wednesday',
+          category: 'sales',
+          sentence: 'Wednesday came in 38% under its own average.',
+          periodStart: '2026-08-01',
+          periodEnd: '2026-08-28',
+          computedAt: '2026-09-01T06:00:00Z',
+        },
+      ],
+    };
+    render(<TemplateSheet onClose={() => {}} />);
+    fireEvent.click(screen.getByText(/Wednesday came in 38% under/));
+    expect(screen.getByText(/from weekday\.baseline\.wednesday/)).toBeInTheDocument();
+    expect((screen.getByLabelText('The letter') as HTMLTextAreaElement).value).toContain(
+      'Wednesday came in 38% under',
     );
-    expect(screen.getByRole('status')).toHaveTextContent(/400/);
-    expect(onClose).not.toHaveBeenCalled();
   });
 
-  it('the banner does not claim a persistence it has not performed', async () => {
-    render(<TemplateSheet channel="gmail" onClose={vi.fn()} />);
-    const banner = screen.getByRole('status');
-    // The pre-fix sentence asserted storage that never happened.
-    expect(banner).not.toHaveTextContent('Saving stores it for later');
-    expect(banner).toHaveTextContent(/nothing is sent from here/i);
+  it('a failed save keeps the editor open and says nothing was stored', async () => {
+    mockPost.mockRejectedValue(new Error('boom'));
+    render(<TemplateSheet onClose={() => {}} />);
+    fireEvent.click(screen.getByText('Write a new template'));
+    fireEvent.change(screen.getByLabelText('The letter'), { target: { value: 'Merhaba,' } });
+    fireEvent.click(screen.getByText('Save the template'));
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent('was NOT saved');
+    });
+    // The author's work is still in front of them.
+    expect(screen.getByLabelText('The letter')).toBeInTheDocument();
+    expect(screen.queryByText(/Stored on the server/)).toBeNull();
   });
 
-  it('confirms a save only after the server has accepted it', async () => {
-    let settle: (v: unknown) => void = () => {};
-    mockCreate.mockReturnValue(new Promise((res) => { settle = res; }));
-    render(<TemplateSheet channel="sms" onClose={vi.fn()} />);
-    fireEvent.click(await screen.findByTestId('sms-save'));
-
-    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(/saving/i));
-    expect(screen.getByRole('status')).not.toHaveTextContent(/stored/i);
-
-    settle({ id: 'srv-1' });
-    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(/stored/i));
+  it('confirms a save only after the server accepted it', async () => {
+    mockPost.mockResolvedValue({ data: { id: 't9', saved: true } });
+    render(<TemplateSheet onClose={() => {}} />);
+    fireEvent.click(screen.getByText('Write a new template'));
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Late delivery' } });
+    fireEvent.change(screen.getByLabelText('The letter'), { target: { value: 'Merhaba,' } });
+    fireEvent.click(screen.getByText('Save the template'));
+    await waitFor(() => {
+      expect(screen.getByRole('status')).toHaveTextContent('Stored on the server');
+    });
+    expect(mockPost).toHaveBeenCalledWith(
+      '/communications/letters/templates',
+      expect.objectContaining({ name: 'Late delivery', category: 'price_query' }),
+    );
   });
 });

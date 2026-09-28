@@ -1,0 +1,366 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>100 &middot; The template library</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,400&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/* ── Mudavym tokens (ADR 0042), copied inline from apps/web/src/styles/mudavym.css ── */
+.mudavym{
+  --seal:#1A5E6B; --seal-deep:#14515C; --seal-tint:rgba(26,94,107,.10); --seal-ring:rgba(26,94,107,.32);
+  --paper-0:#FAF7F1; --paper-1:#F3EFE6; --paper-2:#EAE4D8;
+  --ink-1:#211C16; --ink-2:#4F473C; --ink-3:#7C7365; --ink-4:#665D50;
+  --mdv-scrim:rgba(23,19,15,.28);
+  color-scheme:light;
+}
+/* Warm Charcoal — mudavym.css:48-66. A specimen that carries the ground itself
+   stays charcoal on a paper page: that is the whole point of the portal rule. */
+.mudavym[data-ground="charcoal"]{
+  --seal:#5FB0BC; --seal-deep:#7DC3CD; --seal-tint:rgba(95,176,188,.14); --seal-ring:rgba(95,176,188,.38);
+  --paper-0:#15130F; --paper-1:#1D1813; --paper-2:#262019;
+  --ink-1:#EFE7D9; --ink-2:#C0B6A5; --ink-3:#8E8576; --ink-4:#ABA294;
+  --mdv-scrim:rgba(0,0,0,.5);
+  color-scheme:dark;
+}
+@media (prefers-color-scheme: dark){
+  :root:not(.light) .mudavym:not([data-ground="paper"]){
+    --seal:#5FB0BC; --seal-deep:#7DC3CD; --seal-tint:rgba(95,176,188,.14); --seal-ring:rgba(95,176,188,.38);
+    --paper-0:#15130F; --paper-1:#1D1813; --paper-2:#262019;
+    --ink-1:#EFE7D9; --ink-2:#C0B6A5; --ink-3:#8E8576; --ink-4:#ABA294;
+    --mdv-scrim:rgba(0,0,0,.5);
+    color-scheme:dark;
+  }
+}
+:root{--serif:"Fraunces",Georgia,"Times New Roman",serif;--sans:"DM Sans","Plus Jakarta Sans",system-ui,sans-serif;--mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper-0);color:var(--ink-1);font-family:var(--sans);font-size:13px}
+.banner{background:var(--ink-1);color:var(--paper-0);font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;padding:7px 20px}
+.wrap{max-width:1220px;margin:0 auto;padding:22px 20px 78px}
+.wordmark{font-family:var(--serif);font-weight:600;font-size:13px;letter-spacing:.04em}
+h1{font-family:var(--serif);font-size:35px;font-weight:600;letter-spacing:-.018em;line-height:1.07;margin:4px 0 0}
+h1 .dot{color:var(--seal)}
+.lede{font-family:var(--serif);font-style:italic;font-size:15.5px;color:var(--ink-2);margin:7px 0 0;max-width:900px}
+.dbl{border-top:1px solid var(--ink-1);border-bottom:1px solid var(--ink-1);height:3px;opacity:.5;margin:17px 0 0}
+.back{display:inline-block;margin:0 0 10px;font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--seal-deep);text-decoration:none}
+p{font-size:12.5px;line-height:1.64;color:var(--ink-2);margin:7px 0 0;max-width:900px}
+b{color:var(--ink-1);font-weight:600}
+code{font-family:var(--mono);font-size:11px;color:var(--ink-2)}
+
+.sec-h{display:flex;align-items:baseline;gap:12px;margin:34px 0 0}
+.sec-n{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--seal-deep);white-space:nowrap}
+h2{font-family:var(--serif);font-size:24px;font-weight:600;letter-spacing:-.012em;margin:0}
+.sec-k{font-family:var(--mono);font-size:9.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3);margin:6px 0 12px}
+
+/* ── the specimen numbers strip ── */
+.nums{display:flex;flex-wrap:wrap;gap:0;margin:16px 0 0;padding:12px 0 2px;border-top:1px solid var(--paper-2);border-bottom:1px solid var(--paper-2)}
+.nums div{padding:0 16px 10px 0;margin-right:16px;border-right:1px solid var(--paper-2)}
+.nums div:last-child{border-right:0}
+.nums .n{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--ink-1);display:block;font-variant-numeric:tabular-nums}
+.nums .k{font-family:var(--mono);font-size:8.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);display:block;margin-top:3px}
+
+/* ══ THE STAGE — an app viewport, the page beneath, the overlay on top ══ */
+.stage{position:relative;overflow:hidden;border:1px solid var(--paper-2);background:var(--paper-0);margin:14px 0 0}
+.stage.xl{height:730px}
+.stage.tall{height:560px}
+.stage.mid{height:470px}
+.stage.short{height:400px}
+.under{position:absolute;inset:0;padding:16px 20px;overflow:hidden}
+.scrim{position:absolute;inset:0;background:var(--mdv-scrim)}
+
+/* the page beneath — deliberately plain; it exists to prove it stays legible */
+.u-eyebrow{font-family:var(--mono);font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--seal-deep)}
+.u-h{font-family:var(--serif);font-size:21px;font-weight:600;margin:2px 0 10px;color:var(--ink-1)}
+.u-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}
+.u-card{border:1px solid var(--paper-2);background:var(--paper-1);padding:10px 12px}
+.u-card .t{font-weight:600;font-size:12.5px;color:var(--ink-1)}
+.u-card .s{font-family:var(--mono);font-size:10px;color:var(--ink-3);margin-top:3px}
+.u-row{display:grid;grid-template-columns:1.6fr 1fr 1fr .8fr;gap:10px;padding:7px 0;border-top:1px solid var(--paper-2);font-size:12px;color:var(--ink-2)}
+.u-row .t{color:var(--ink-1);font-weight:500}
+.u-cal{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:var(--paper-2);border:1px solid var(--paper-2)}
+.u-cal div{background:var(--paper-0);min-height:52px;padding:4px 5px;font-family:var(--mono);font-size:9.5px;color:var(--ink-3)}
+.u-cal div .e{display:block;font-family:var(--sans);font-size:9.5px;color:var(--ink-2);margin-top:3px;border-left:2px solid var(--seal);padding-left:4px;line-height:1.25}
+
+/* the app header bar — popovers hang off it */
+.bar{position:absolute;top:0;left:0;right:0;height:52px;background:var(--paper-0);border-bottom:1px solid var(--paper-2);display:flex;align-items:center;gap:10px;padding:0 16px}
+.bar .sp{flex:1}
+.ctl{display:flex;align-items:center;gap:7px;padding:5px 9px;border-radius:9px;color:var(--ink-2);font-size:12px}
+.ctl.hot{background:var(--paper-1);box-shadow:inset 0 0 0 1px var(--paper-2)}
+.ctl .nm{font-weight:600;color:var(--ink-1);font-size:12.5px}
+.ctl .sub{font-family:var(--mono);font-size:9px;color:var(--ink-3);display:block}
+.av{width:26px;height:26px;border-radius:999px;background:var(--seal-tint);box-shadow:inset 0 0 0 1px var(--seal-ring);color:var(--seal-deep);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:11px}
+.dotmark{position:absolute;top:7px;right:7px;width:6px;height:6px;border-radius:999px;background:var(--seal)}
+
+/* ══ THE OVERLAY SURFACES — numbers from sheet.css ══ */
+.ovl{background:var(--paper-0);color:var(--ink-1);display:flex;flex-direction:column;font-family:var(--sans)}
+/* sheet.css:72-82 */
+.sheet{position:absolute;top:0;right:0;bottom:0;width:100%;max-width:440px;border-left:1px solid var(--paper-2);box-shadow:-18px 0 48px rgba(23,19,15,.14);overflow:hidden}
+.sheet.wide{max-width:640px}
+/* sheet.css:88-97 */
+.panel{position:absolute;left:50%;transform:translateX(-50%);top:10%;width:min(620px,100% - 32px);max-height:76%;border:1px solid var(--paper-2);border-radius:14px;box-shadow:0 24px 60px -30px rgba(0,0,0,.5);overflow:hidden}
+/* sheet.css:99-106 */
+.pop{position:absolute;border:1px solid var(--paper-2);border-radius:14px;box-shadow:0 18px 44px -22px rgba(0,0,0,.42);overflow:hidden}
+/* sheet.css:109-141 */
+.oh{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:14px 16px 11px;border-bottom:1px solid var(--paper-2);flex:none}
+.oh-eyebrow{display:block;font-family:var(--mono);font-size:9.5px;font-weight:600;letter-spacing:.13em;text-transform:uppercase;color:var(--seal-deep)}
+.oh-title{margin:2px 0 0;font-family:var(--serif);font-size:19px;font-weight:600;line-height:1.16;letter-spacing:-.01em;color:var(--ink-1)}
+.oh-side{display:flex;align-items:center;gap:8px;flex:none}
+/* sheet.css:146-162 — the close control is WORDS */
+.oclose{font-family:var(--sans);font-size:12px;line-height:1.2;padding:5px 10px;border-radius:8px;border:1px solid var(--paper-2);background:transparent;color:var(--ink-2);cursor:pointer}
+.obody{flex:1 1 auto;min-height:0;overflow:hidden}
+.ofoot{flex:none;padding:9px 16px 12px;border-top:1px solid var(--paper-2);font-size:11px;line-height:1.5;color:var(--ink-3);display:flex;justify-content:space-between;gap:12px}
+
+/* content vocabulary — sheet.css:198-351 */
+.sect{display:block;font-family:var(--mono);font-size:9px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);padding:10px 16px 4px}
+.item{display:flex;align-items:center;gap:10px;width:100%;padding:7px 16px;border-left:2px solid transparent;font-size:13px;color:var(--ink-1)}
+.item.on{background:var(--seal-tint);border-left-color:var(--seal)}
+.item .txt{flex:1 1 auto;min-width:0}
+.item .lab{display:block;font-weight:500;color:var(--ink-1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item .sub{display:block;font-size:11px;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item .ico{flex:none;color:var(--ink-3)}
+.item.on .ico{color:var(--seal)}
+.kbd{flex:none;font-family:var(--mono);font-size:10px;font-weight:500;color:var(--ink-3);background:var(--paper-1);border:1px solid var(--paper-2);border-radius:5px;padding:1px 5px;white-space:nowrap}
+.quiet{margin:0;padding:8px 16px 10px;font-size:11.5px;line-height:1.5;color:var(--ink-2)}
+.field{display:flex;align-items:center;gap:10px;padding:0 16px;border-bottom:1px solid var(--paper-2)}
+.field .fin{flex:1 1 auto;padding:13px 0;font-family:var(--serif);font-size:17px;color:var(--ink-1)}
+.field .fph{color:var(--ink-3);font-family:var(--sans);font-size:14px}
+.lnk{font-family:var(--sans);font-size:12px;font-weight:500;color:var(--seal-deep)}
+
+/* sheet body furniture */
+.fact{display:grid;grid-template-columns:118px 1fr;gap:10px;padding:6px 16px;font-size:12.5px}
+.fact .k{font-family:var(--mono);font-size:9.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3);padding-top:3px}
+.fact .v{color:var(--ink-1)}
+.fact .v.em{color:var(--ink-3)}
+.frow{padding:8px 16px 0}
+.flab{display:block;font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);margin-bottom:4px}
+.fin2{border:1px solid var(--paper-2);background:var(--paper-1);border-radius:7px;padding:7px 9px;font-size:12.5px;color:var(--ink-1);min-height:31px}
+.fin2.ph{color:var(--ink-3)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:8px 16px 0}
+.two .frow{padding:0}
+.chiprow{display:flex;flex-wrap:wrap;gap:5px;margin-top:2px}
+.chip{font-family:var(--sans);font-size:11px;padding:3px 8px;border-radius:999px;border:1px solid var(--paper-2);color:var(--ink-2);display:inline-flex;align-items:center;gap:5px}
+.chip.on{color:var(--ink-1);background:var(--seal-tint);border-color:var(--seal-ring)}
+.sw{width:8px;height:8px;border-radius:2px;display:inline-block}
+.notice{margin:10px 16px 0;padding:9px 11px;background:var(--paper-1);border-left:2px solid var(--ink-4);font-size:11.5px;line-height:1.55;color:var(--ink-2)}
+.notice b{color:var(--ink-1)}
+.hta{margin:12px 16px 0;position:relative;border:1px solid var(--seal);border-radius:9px;padding:9px 12px;font-size:12.5px;color:var(--seal-deep);font-weight:500;display:flex;align-items:center;gap:9px;overflow:hidden;background:linear-gradient(90deg,var(--seal-tint) 38%,transparent 38%)}
+.hta .sealdot{width:18px;height:18px;border-radius:999px;background:var(--seal);color:var(--paper-0);display:flex;align-items:center;justify-content:center;flex:none}
+.btnrow{display:flex;gap:8px;padding:12px 16px 0}
+.btn{font-size:12px;padding:6px 12px;border-radius:8px;border:1px solid var(--paper-2);color:var(--ink-1);background:transparent}
+.btn.pri{border-color:var(--ink-4)}
+.btn[data-disabled]{color:var(--ink-3);border-color:var(--paper-2)}
+
+/* callouts and lists on the page itself */
+.callout{border-left:2px solid var(--seal);padding:11px 0 11px 15px;margin:16px 0 0;font-size:12.5px;line-height:1.66;color:var(--ink-2);background:linear-gradient(90deg,var(--seal-tint),transparent 62%);max-width:960px}
+.never{margin:16px 0 0;padding:0;list-style:none;max-width:960px}
+.never li{padding:8px 0;border-top:1px solid var(--paper-2);font-size:12.5px;line-height:1.6;color:var(--ink-2);display:grid;grid-template-columns:150px 1fr;gap:14px}
+.never li .h{font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);padding-top:2px}
+.never li b{color:var(--ink-1)}
+.cap{font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin:7px 0 0}
+.foot{margin:42px 0 0;padding-top:14px;border-top:1px solid var(--ink-1);font-size:11.5px;line-height:1.72;color:var(--ink-3);max-width:980px}
+.foot b{color:var(--ink-2)}
+.foot a{color:var(--seal-deep)}
+</style>
+
+<style>
+/* ── sketch 100 additions ── */
+.sheet.wide{max-width:640px}
+.prov{display:inline-flex;align-items:center;gap:6px;vertical-align:baseline;
+  background:var(--seal-tint);box-shadow:inset 0 0 0 1px var(--seal-ring);border-radius:4px;
+  padding:1px 6px 2px;margin:0 1px;font-family:var(--mono);font-size:9.5px;letter-spacing:.05em;
+  color:var(--seal-deep);white-space:nowrap;text-transform:uppercase;font-weight:600}
+.ins{background:var(--seal-tint);box-shadow:inset 0 0 0 1px var(--seal-ring);border-radius:4px;
+  padding:1px 4px;color:var(--ink-1)}
+.held{background:var(--paper-2);box-shadow:inset 0 0 0 1px var(--ink-4);border-radius:4px;
+  padding:1px 4px;color:var(--ink-1);font-style:italic}
+.body-txt{font-size:13px;line-height:1.78;color:var(--ink-1);padding:10px 16px 0}
+.body-txt p{font-size:13px;line-height:1.78;color:var(--ink-1);margin:0 0 11px;max-width:none}
+.srow{display:grid;grid-template-columns:96px 1fr;gap:10px;padding:8px 16px;border-bottom:1px solid var(--paper-2);align-items:start}
+.srow .k{font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);padding-top:4px}
+.srow .v{font-size:12.5px;color:var(--ink-1);line-height:1.5}
+.srow .v .note{display:block;font-size:11px;color:var(--ink-3);margin-top:3px;line-height:1.5}
+.srow .v .em{color:var(--ink-3)}
+.pill{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-size:8.5px;font-weight:600;
+  letter-spacing:.11em;text-transform:uppercase;padding:2px 6px;border-radius:3px;color:var(--ink-2);background:var(--paper-2)}
+.pill.on{color:var(--seal-deep);background:var(--seal-tint);box-shadow:inset 0 0 0 1px var(--seal-ring)}
+.pill.off{color:var(--ink-3);background:transparent;box-shadow:inset 0 0 0 1px var(--paper-2)}
+.pill.warn{color:var(--ink-1);background:var(--paper-2);box-shadow:inset 0 0 0 1px var(--ink-4)}
+.guard{margin:12px 16px 0;padding:10px 12px;border-left:2px solid var(--ink-4);background:var(--paper-1);
+  font-size:11.5px;line-height:1.6;color:var(--ink-2)}
+.guard b{color:var(--ink-1)}
+.guard .hd{display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:9px;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--ink-1);margin-bottom:5px}
+.tbl{width:100%;border-collapse:collapse;margin-top:12px;font-size:12px}
+.tbl th{text-align:left;font-family:var(--mono);font-size:8.5px;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--ink-3);font-weight:600;padding:0 12px 7px 0;border-bottom:1px solid var(--ink-4);vertical-align:bottom}
+.tbl td{padding:10px 12px 10px 0;border-bottom:1px solid var(--paper-2);vertical-align:top;color:var(--ink-2);line-height:1.55}
+.tbl td.n{color:var(--ink-1);font-weight:600}
+.tbl td .sub{display:block;font-family:var(--mono);font-size:10px;color:var(--ink-3);margin-top:3px}
+.tbl code{font-size:10.5px}
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:14px}
+.step{border-top:2px solid var(--seal);padding-top:10px}
+.step .n{font-family:var(--mono);font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--seal-deep)}
+.step h4{font-family:var(--serif);font-size:17px;font-weight:600;margin:3px 0 0;color:var(--ink-1)}
+.step p{font-size:12px;line-height:1.6;margin-top:6px}
+.step .quote{font-family:var(--serif);font-style:italic;font-size:13px;color:var(--ink-1);
+  border-left:2px solid var(--paper-2);padding-left:10px;margin-top:8px;line-height:1.5}
+.opt{border:1px solid var(--paper-2);padding:16px 18px 18px;background:var(--paper-1)}
+.opt h3{font-family:var(--serif);font-size:20px;font-weight:600;margin:3px 0 0;color:var(--ink-1)}
+.opt .n{font-family:var(--mono);font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--seal-deep)}
+.opt p{font-size:12px;line-height:1.62}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:14px;align-items:start}
+</style>
+</head>
+<body class="mudavym">
+<div class="banner">Sketch 100 &middot; templates &mdash; example data, not a tenant</div>
+<div class="wrap">
+
+<a class="back" href="index.html">&larr; 100 index</a>
+<div class="wordmark">Mudavym</div>
+<h1>The template library &mdash; house-owned, per purpose<span class="dot">.</span></h1>
+<p class="lede">Seven templates, and not one of them starts as a blank page. A template here is a purpose with its merge fields declared, so the composer knows in advance which figures it will have to stand behind.</p>
+<div class="dbl"></div>
+
+<div class="callout">
+  <b>House-owned, not person-owned.</b> Front separates individual templates from shared ones and lets a teammate see only the shared ones. Mudavym has no reason for the first kind: a letter to a vendor is written in the house's name, from the house's address, about the house's ledger. Every row below belongs to the restaurant, and every row says who touched it last.
+</div>
+
+<div class="sec-h"><span class="sec-n">The library</span><h2>Seven purposes</h2></div>
+<table class="tbl">
+  <thead><tr><th style="width:150px">Template</th><th style="width:210px">Purpose</th><th style="width:290px">Merge fields</th><th style="width:230px">Figures it may insert</th><th style="width:135px">Last edited by</th><th>Last used</th></tr></thead>
+  <tbody>
+    <tr>
+      <td class="n">Order confirmation<span class="sub">email</span></td>
+      <td>Tell a vendor what we are ordering and when we expect it.</td>
+      <td><code>order.total &middot; order.lines &middot; order.expected_at &middot; provider.name</code></td>
+      <td>0 insight sentences &mdash; every field is a stored column</td>
+      <td>Ay&#351;e Y&#305;lmaz<span class="sub">edited 14 Feb 2026</span></td>
+      <td>yesterday</td>
+    </tr>
+    <tr>
+      <td class="n">Price query<span class="sub">email</span></td>
+      <td>Ask what a line will cost next month, with what we paid last.</td>
+      <td><code>provider.name &middot; item.name &middot; ledger.last_paid &middot; <b>insight: price_moved_against_us</b></code></td>
+      <td>1 sentence &middot; withheld when fewer than three past invoices exist</td>
+      <td>Hasan Demir<span class="sub">edited 2 Mar 2026</span></td>
+      <td>6 days ago</td>
+    </tr>
+    <tr>
+      <td class="n">Delivery dispute<span class="sub">email</span></td>
+      <td>A delivery arrived short, late or wrong.</td>
+      <td><code>order.id &middot; delivery.received_at &middot; receipt.variance_lines</code></td>
+      <td>0 insight sentences &mdash; the variance is read off the receipt</td>
+      <td>Hasan Demir<span class="sub">edited 19 Jan 2026</span></td>
+      <td>3 weeks ago</td>
+    </tr>
+    <tr>
+      <td class="n">Invoice mismatch<span class="sub">email</span></td>
+      <td>The invoice and the quote disagree.</td>
+      <td><code>invoice.total &middot; quote.total &middot; invoice.variance &middot; provider.payment_terms</code></td>
+      <td>0 insight sentences &mdash; both totals are stored</td>
+      <td>Zeynep Ar&#305;<span class="sub">edited 7 Feb 2026</span></td>
+      <td>3 days ago</td>
+    </tr>
+    <tr>
+      <td class="n">Standing order review<span class="sub">email</span></td>
+      <td>The order has not changed while the trade has.</td>
+      <td><code>provider.name &middot; <b>insight: sales_below_weekday_baseline</b> &middot; <b>insight: standing_order_unchanged</b></code></td>
+      <td>2 sentences &middot; both carry rule, window and computed-at</td>
+      <td>Hasan Demir<span class="sub">edited 28 Feb 2026</span></td>
+      <td>9 days ago</td>
+    </tr>
+    <tr>
+      <td class="n">Promotion reply<span class="sub">email</span></td>
+      <td>Answer a vendor's offer with what we actually pour.</td>
+      <td><code>promo.item &middot; promo.price &middot; <b>insight: pour_rank_in_category</b></code></td>
+      <td>1 sentence &middot; withheld when the category has fewer than 30 pours</td>
+      <td>Ay&#351;e Y&#305;lmaz<span class="sub">edited 21 Feb 2026</span></td>
+      <td>12 days ago</td>
+    </tr>
+    <tr>
+      <td class="n">Staff broadcast<span class="sub">email &middot; SMS</span></td>
+      <td>Tell the roster something once.</td>
+      <td><code>member.display_name &middot; shift.date &middot; shift.start</code></td>
+      <td>0 insight sentences &mdash; and no vendor guardrail applies</td>
+      <td>Zeynep Ar&#305;<span class="sub">edited 3 Mar 2026</span></td>
+      <td>2 days ago</td>
+    </tr></tbody>
+</table>
+
+<div class="callout" style="margin-top:20px">
+  <b>Three of those six columns cannot be stored today.</b> <code>communication_templates</code> has eight columns &mdash; <code>id, restaurant_id, name, subject, body, type, is_active, created_at/updated_at</code> &mdash; and no category, no declared merge fields, no author and no last-used. The library above is therefore a <b>shape, not a screenshot</b>: it is what the page looks like <em>after</em> one migration adds <code>category</code>, <code>merge_fields jsonb</code>, <code>updated_by</code> and <code>last_used_at</code>. The build plan on the index names it. Drawing it without saying so would be exactly the fault this house is built to avoid.
+</div>
+
+<div class="sec-h"><span class="sec-n">In-house creation</span><h2>A template starts from something the house noticed</h2></div>
+<p class="sec-k">the founder's words: &ldquo;inhouse email creations &hellip; creating data from our insights&rdquo;</p>
+<p>Front got the shape right and named it well: its composer has a <b>New from draft</b> control that lifts the letter you have just written into the template editor so you do not retype it. Mudavym starts one step earlier &mdash; not from a draft, and certainly not from a blank editor, but from the observation that made the letter worth writing.</p>
+
+<div class="steps">
+  <div class="step">
+    <span class="n">Step one</span>
+    <h4>The house notices</h4>
+    <p>An insight is computed on its own schedule and stored with its rule, its window and its evidence. Nobody asked for it.</p>
+    <div class="quote">&ldquo;Wednesday came in 38% under its average Wednesday, and the standing order has not changed size in eleven weeks.&rdquo;</div>
+    <p style="margin-top:8px;font-family:var(--mono);font-size:10px;color:var(--ink-3)">GET /analytics/insights/:rid &mdash; exists today</p>
+  </div>
+  <div class="step">
+    <span class="n">Step two</span>
+    <h4>It offers the letter</h4>
+    <p>The recommendation carries a <b>Write to the vendor</b> door beside the two it already has. Opening it fills the sheet: the vendor from the rule's own entity, the sentence in the body, the chip attached to the sentence.</p>
+    <p style="margin-top:8px">The manager edits everything except the provenance. You can delete a sentence; you cannot keep its number and drop its chip.</p>
+  </div>
+  <div class="step">
+    <span class="n">Step three</span>
+    <h4>The letter becomes a template</h4>
+    <p><b>Save as template</b> keeps the wording and, crucially, keeps the <em>fields rather than the values</em>: the rule key travels, the &#8378;2.6k does not. Next Wednesday it re-reads.</p>
+    <p style="margin-top:8px">That is the whole difference between a template in this house and a template anywhere else in the field: ours knows where its numbers come from, so it can refuse to fill one in.</p>
+  </div>
+</div>
+
+<div class="sec-h"><span class="sec-n">What the field does</span><h2>Every merge-field system answers a missing value by inventing a plausible one</h2></div>
+<p>This was the most useful thing the survey turned up, and it is unanimous. Not one product treats &ldquo;I could not measure this&rdquo; as a distinct state.</p>
+<table class="tbl">
+  <thead><tr><th style="width:140px">Product</th><th style="width:330px">What a merge field does</th><th>What happens when the value is missing</th></tr></thead>
+  <tbody>
+    <tr><td class="n">Gmail</td><td>Templates are canned bodies; the composer's help pages describe no variables at all. Smart Compose predicts the next words as you type.</td><td>Google's own caveat: Smart Compose &ldquo;is not designed to provide answers and may not always predict factually correct information.&rdquo; <b>Fluency without a source is the default.</b></td></tr>
+    <tr><td class="n">HubSpot</td><td>Personalization tokens read a contact property.</td><td>A <b>default value</b>, set globally per property or overridden per email. The reader cannot tell a real value from a default.</td></tr>
+    <tr><td class="n">Mailchimp</td><td>Merge tags such as <code>*|FNAME|*</code>.</td><td>Inserts the value &ldquo;<b>if it's available</b>&rdquo; &mdash; otherwise nothing, silently.</td></tr>
+    <tr><td class="n">lemlist</td><td>Liquid, <code>&#123;&#123;variable&#124;fallback&#125;&#125;</code>.</td><td>The documentation's own advice is to &ldquo;always use fallbacks&rdquo; and to test with leads that have <em>empty</em> fields &mdash; i.e. to make the substitute invisible.</td></tr>
+    <tr><td class="n">Missive</td><td>Liquid, with a <code>confirm</code> flag.</td><td><code>default: "there"</code> substitutes; <b><code>confirm</code> pauses for a human to look</b>. The closest thing in the field to our chip &mdash; but it confirms the <em>insertion</em>, never the <em>measurement</em>.</td></tr>
+    <tr><td class="n">Superhuman</td><td>Built-in variables plus free placeholders in curly brackets.</td><td><b>Warns you to fill them in before sending.</b> Also a real precedent &mdash; and also about text the human owes, not about a figure the system owes.</td></tr>
+    <tr><td class="n">Front</td><td>Shared and individual templates; <code>&#123;&#123;</code> lists dynamic variables; third-party object variables are Enterprise-only.</td><td>Not stated. The strong idea we take is <b>New from draft</b>, not the variables.</td></tr>
+    <tr><td class="n">Notion Mail</td><td>AI drafts a whole reply; snippets are saved via the <code>&#123;&#125;</code> control.</td><td>Not applicable &mdash; and worth stating plainly: <b>Notion Mail shuts down on 22 September 2026</b>, so it is a reference, not a model.</td></tr>
+    <tr><td class="n">Toast xtraCHEF</td><td>Builds a purchase order and emails the PDF to the vendor contact, or downloads it.</td><td>No free-text templating documented. <b>It sends an order, not a letter.</b></td></tr>
+    <tr><td class="n">Square</td><td>Purchase orders to a vendor email, with <b>an optional note</b> and a Preview Email step.</td><td>One free-text box on a structured order. The closest the POS field gets to a letter.</td></tr>
+  </tbody>
+</table>
+
+<div class="callout" style="margin-top:18px">
+  <p style="font-family:var(--serif);font-size:17px;line-height:1.45;color:var(--ink-1);margin:0">The field's universal fallback <em>is</em> absence reported as health, told in a letter.</p>
+  <p style="margin-top:8px">A default value, a silent blank and a fluent prediction are three ways of saying the same untrue thing: <b>that a number was measured when it was not</b>. The house rule is one line and it is the whole sketch: <b>a figure carries its provenance or it goes in as words.</b> Two products &mdash; Missive's <code>confirm</code> and Superhuman's placeholder warning &mdash; stop to ask a human, which is nearer than the rest; neither of them can say <em>why</em> a figure is missing, because neither of them computed it.</p>
+</div>
+
+<div class="foot">
+  <b>Verified against:</b>
+  <code>supabase/migrations/20260805000000_baseline_from_production.sql:2465-2474</code> (the eight columns) &middot;
+  <code>restaurant-templates/restaurant-templates.controller.ts:28,44,61,83</code> and <code>dto/restaurant-templates.dto.ts:4-42</code> (the CRUD accepts name, subject, body, type &mdash; nothing else) &middot;
+  <code>components/documents/GmailTemplateBuilder.tsx:99-108</code> (today's eight variables: <code>&#123;&#123;restaurant_name&#125;&#125;</code>, <code>&#123;&#123;date&#125;&#125;</code>, <code>&#123;&#123;time&#125;&#125;</code>, <code>&#123;&#123;wine_name&#125;&#125;</code>, <code>&#123;&#123;wine_count&#125;&#125;</code>, <code>&#123;&#123;provider_name&#125;&#125;</code>, <code>&#123;&#123;total_value&#125;&#125;</code>, <code>&#123;&#123;order_id&#125;&#125;</code> &mdash; none carries a source, a window or a fallback) &middot;
+  <code>pages/communications/next/TemplateSheet.tsx:196-215</code> (the next page mounts the legacy builders whole: 1,683 and 982 lines).
+  <br><b>Outside the repo:</b>
+  <a href="https://support.google.com/mail/answer/9116836">Gmail Smart Compose</a> &middot;
+  <a href="https://knowledge.hubspot.com/marketing-email/create-default-values-for-personalization-tokens">HubSpot default values for personalization tokens</a> &middot;
+  <a href="https://mailchimp.com/help/all-the-merge-tags-cheat-sheet/">Mailchimp merge tags</a> &middot;
+  <a href="https://help.lemlist.com/en/articles/4452688-format-custom-variables-correctly">lemlist custom variables</a> &middot;
+  <a href="https://missiveapp.com/blog/canned-responses">Missive canned responses</a> &middot;
+  <a href="https://help.superhuman.com/hc/en-us/articles/38450007523475-Snippets">Superhuman snippets</a> &middot;
+  <a href="https://help.front.com/t/63244r/understanding-message-templates-and-folders">Front message templates</a> &middot;
+  <a href="https://www.notion.com/help/use-notion-ai-with-notion-mail">Notion Mail AI and snippets</a> &middot;
+  <a href="https://support.toasttab.com/en/article/xtraCHEF-Create-Orders">Toast xtraCHEF: Create Orders</a> &middot;
+  <a href="https://squareup.com/help/us/en/article/8258-create-purchase-orders-with-square-for-retail">Square purchase orders</a>.
+  <br><b>Example data, not a tenant.</b>
+</div>
+</div>
+</body>
+</html>

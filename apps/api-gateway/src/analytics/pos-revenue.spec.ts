@@ -5,13 +5,43 @@ import { AdvancedAnalyticsService } from "./advanced-analytics.service";
 import { RecommendationsService } from "./recommendations.service";
 import { RecommendationActionsService } from "./recommendation-actions.service";
 import { TableAnalyticsService } from "./table-analytics.service";
+import { ConfigService } from "@nestjs/config";
 import { GoalsService } from "./goals.service";
+import { GoalScenarioRequestsService } from "./goal-scenario-requests.service";
 import { ConsultantsService } from "./consultants.service";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
 import { InsightSchedulerService } from "./insights/insight-scheduler.service";
+import { DayExclusionsService } from "./insights/day-exclusions.service";
 import { DatabaseService } from "../database/database.service";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { IS_PUBLIC_KEY } from "../auth/decorators/public.decorator";
+
+/**
+ * `AnalyticsService`, stubbed. Only `days_of_inventory` reaches it — it reads
+ * the single published `daysInventoryOutstanding` field rather than
+ * re-deriving the ratio, so two surfaces cannot disagree about one cellar.
+ */
+const analytics = {
+  getFinancialSummary: async () => ({ daysInventoryOutstanding: null }),
+} as any;
+
+
+/**
+ * The verdict recorder, captured (OD-59 / ADR 0029 P3.0).
+ *
+ * `goal_cutting_spec` used to emit a footprint row carrying `call_level_v0`
+ * alone — "the HTTP request returned 200" — which is silent about whether the
+ * assistant named an analysis this sheet carries. These rows are what
+ * `check_task_types_are_graded.py` demands and what a reader of
+ * `nf_a.doneability_verdict_coverage` will actually see.
+ */
+const graded: Array<{ basis: string; outcome: unknown; evidence: any }> = [];
+const verdicts = {
+  record: (_ref: unknown, basis: string, v: any) =>
+    graded.push({ basis, outcome: v.outcome, evidence: v.evidence }),
+  recordForEvent: () => {},
+} as any;
+
 
 /**
  * OD-85 — POS-backed sales revenue.
@@ -90,7 +120,17 @@ function makeClient(rowsByTable: Rows) {
 function makeGoals(rowsByTable: Rows) {
   const client = makeClient(rowsByTable);
   const db = { getClient: () => client } as unknown as DatabaseService;
-  const service = new GoalsService(db, {} as InsightGeneratorService);
+  // ConfigService and ModelClientService joined the constructor for the goals
+  // desk's "ask the book which analysis shows this goal" (report-cuttings.ts).
+  // Neither is reached by any POS-revenue path, so both are stubbed empty here.
+  const service = new GoalsService(
+    db,
+    {} as InsightGeneratorService,
+    { get: () => undefined } as never,
+    {} as never,
+    verdicts,
+    analytics,
+  );
   return { service, client };
 }
 
@@ -284,9 +324,20 @@ describe("GET /analytics/pos-revenue/:restaurantId", () => {
         { provide: RecommendationActionsService, useValue: {} },
         { provide: TableAnalyticsService, useValue: {} },
         { provide: GoalsService, useValue: goals },
+        // ADR 0120 Q4: the controller now also carries the scenario-request
+        // store and one platform-admin route. Nothing in this file calls
+        // either; they are provided so the module compiles — and ConfigService
+        // with them, because `ServiceKeyGuard` injects it and Nest builds every
+        // route guard when the module is created, not when a route is hit.
+        { provide: GoalScenarioRequestsService, useValue: {} },
+        { provide: ConfigService, useValue: { get: () => undefined } },
         { provide: ConsultantsService, useValue: {} },
         { provide: InsightGeneratorService, useValue: {} },
         { provide: InsightSchedulerService, useValue: {} },
+        // The controller now also exposes the day-exclusion store (the
+        // engine's "do not count this day" hook). Nothing in this file calls
+        // it; it is provided so the module compiles.
+        { provide: DayExclusionsService, useValue: {} },
       ],
     })
       .overrideGuard(JwtAuthGuard)

@@ -232,3 +232,99 @@ describe("LowStockAlertsService — edge vs. batch decision", () => {
     expect(gmail.sendLowStockDigest).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * The title the founder read on production carried a siren emoji in front
+ * of "50 wines dropped below par".
+ *
+ * The emoji was the ONLY severity mark the line carried — which is why it read
+ * as load-bearing — but it restated `priority` and `metadata.criticalCount`,
+ * and being written into the row it could never be restyled or read aloud.
+ * These tests pin the replacement: the severity is now stated in WORDS, and
+ * nothing is dropped.
+ */
+describe("LowStockAlertsService — the stored title is plain, and still says the severity", () => {
+  const EMOJI = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u;
+
+  let notifications: { persistForRestaurant: jest.Mock };
+  let gmail: { sendLowStockDigest: jest.Mock };
+  let recipientResolver: { resolveRecipients: jest.Mock };
+  let config: { get: jest.Mock };
+
+  beforeEach(() => {
+    notifications = {
+      persistForRestaurant: jest.fn().mockResolvedValue({ inserted: 1 }),
+    };
+    gmail = { sendLowStockDigest: jest.fn().mockResolvedValue({ success: true }) };
+    recipientResolver = {
+      resolveRecipients: jest.fn().mockResolvedValue({ emails: ["mgr@x.com"] }),
+    };
+    config = { get: jest.fn().mockReturnValue("") };
+  });
+
+  function build(alertStateRows: any[] = []) {
+    return new LowStockAlertsService(
+      makeDbMock(alertStateRows),
+      notifications as any,
+      config as any,
+      gmail as any,
+      recipientResolver as any,
+    );
+  }
+
+  it("names one wine's severity in words, with no emoji", async () => {
+    await build().evaluateRestaurant(
+      "r1",
+      [makeRow({ severity: "critical", currentStock: 1 })],
+      "R1",
+    );
+    const { title } = notifications.persistForRestaurant.mock.calls[0][1];
+    expect(title).toBe("Critical: Opus One 2019");
+    expect(title).not.toMatch(EMOJI);
+  });
+
+  it("says how many of a burst were critical, instead of prefixing a siren", async () => {
+    await build().evaluateRestaurant(
+      "r1",
+      [
+        makeRow({ inventoryId: "inv-1", wineName: "A", severity: "low" }),
+        makeRow({
+          inventoryId: "inv-2",
+          wineName: "B",
+          severity: "critical",
+          currentStock: 1,
+        }),
+        makeRow({ inventoryId: "inv-3", wineName: "C", severity: "low" }),
+      ],
+      "R1",
+    );
+    const payload = notifications.persistForRestaurant.mock.calls[0][1];
+    // The count the emoji could never carry is now in the sentence itself.
+    expect(payload.title).toBe("3 wines dropped below par — 1 critical");
+    expect(payload.title).not.toMatch(EMOJI);
+    // and the structural facts it restated are untouched
+    expect(payload.priority).toBe("critical");
+    expect(payload.metadata.criticalCount).toBe(1);
+  });
+
+  it("says nothing about criticals when there are none", async () => {
+    await build().evaluateRestaurant(
+      "r1",
+      [
+        makeRow({ inventoryId: "inv-1", wineName: "A", severity: "low" }),
+        makeRow({ inventoryId: "inv-2", wineName: "B", severity: "low" }),
+      ],
+      "R1",
+    );
+    const payload = notifications.persistForRestaurant.mock.calls[0][1];
+    expect(payload.title).toBe("2 wines dropped below par");
+    expect(payload.priority).toBe("high");
+  });
+
+  it("keeps the daily digest's title plain too", async () => {
+    await build().sendDigest("r1", [makeRow(), makeRow({ inventoryId: "inv-2" })], "R1");
+    const { title } = notifications.persistForRestaurant.mock.calls[0][1];
+    expect(title).toBe("Low-stock digest: 2 wines below par");
+    expect(title).not.toMatch(EMOJI);
+  });
+});

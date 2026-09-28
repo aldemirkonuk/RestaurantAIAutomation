@@ -1,0 +1,57 @@
+/**
+ * The card panel's own rules.
+ *
+ * WHY THIS FILE EXISTS AT ALL (2026-09-05)
+ * ----------------------------------------
+ * The panel used to live in `pages/profile/next` and borrowed `.pf-btn` and
+ * `.pf-focus` from that page's injected `PF_CSS`. It is now rendered by
+ * `/profile` AND by `/connections`, and `/connections` has never had a `.pf-`
+ * class in it. A component that only looks finished on one of its two callers
+ * is a fork with the fork hidden in a stylesheet — so the hover, the disabled
+ * state and the focus ring travel with the component rather than with either
+ * page.
+ *
+ * Everything else the panel draws is an inline style over the house tokens,
+ * which resolve from `.mudavym` on whichever page mounted it. That is why this
+ * file names no colour of its own: a hex here would be a third palette for the
+ * two grounds to disagree with.
+ *
+ * 160ms on `cubic-bezier(0.16, 1, 0.3, 1)` is the `ink` token
+ * (`lib/mudavym/motion.ts:96,106`), restated because a static stylesheet cannot
+ * read a TypeScript constant. Both pages' own buttons use the same figure.
+ */
+
+.mudavym .scp-btn {
+  font-family: "Plus Jakarta Sans", "DM Sans", system-ui, sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-1);
+  background: transparent;
+  border: 1px solid var(--paper-2);
+  border-radius: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  transition:
+    border-color 160ms cubic-bezier(0.16, 1, 0.3, 1),
+    background 160ms cubic-bezier(0.16, 1, 0.3, 1),
+    color 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.mudavym .scp-btn:hover:not(:disabled) {
+  border-color: var(--seal-ring);
+  background: var(--seal-tint);
+}
+
+.mudavym .scp-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.mudavym .scp-btn:focus-visible {
+  outline: 2px solid var(--seal);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mudavym .scp-btn { transition: none !important; }
+}

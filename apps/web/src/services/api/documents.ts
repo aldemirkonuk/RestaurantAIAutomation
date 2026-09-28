@@ -8,6 +8,17 @@
 
 import { apiClient } from './client'
 
+/**
+ * The seal header, the request config that carries it, and the rule that keeps
+ * the gateway's refusal sentence alive across the trip.
+ *
+ * All three moved to `./seal.ts` on 2026-09-11 (batch 69), unchanged, when the
+ * two acts on ADR 0104's canonical face were sealed in `canonical.ts` and this
+ * file's own note — "this is that rule, not a second copy of the policy" —
+ * would otherwise have stopped being true.
+ */
+import { sealed, rethrowSpoken } from './seal'
+
 export interface ProcurementDocument {
   id: string
   doc_type:
@@ -32,6 +43,17 @@ export interface ProcurementDocument {
    * fact to state, not a dollar sign to assume.
    */
   currency?: string | null
+  /**
+   * Whether this document's money may be read, and the sentence saying why not.
+   *
+   * DERIVED BY THE GATEWAY, never here. `documentMoneyState` in
+   * `procurement/documents/invoice-currency.ts` is the same function
+   * `verifyReceipt` refuses a keyed-in unit price with, so the screen and the
+   * gate cannot disagree about whether a document is held — a second
+   * implementation in the browser is how a page comes to show an enabled field
+   * the server will reject. Absent on responses from a gateway that predates it.
+   */
+  moneyState?: { priced: true } | { priced: false; reason: string }
   total: number | null
   freight: number | null
   fuel_surcharge: number | null
@@ -93,6 +115,23 @@ export function dashNull(value: string | number | null | undefined): string {
   return String(value)
 }
 
+/**
+ * What the ORDER a document is filed against was placed in (B4, founder
+ * 2026-09-06 batch 65: "we will have time To make sure that the invoice is good
+ * with the order we had").
+ *
+ * `failure` is not decoration. A read that broke and an order that named no
+ * currency both arrive as `currency: null`, and only one of them means the
+ * comparison can be trusted (ADR 0067).
+ */
+export interface OrderCurrencyBlock {
+  id: string
+  currency: string | null
+  currencySource: 'vendor_usual' | 'typed' | null
+  orderNumber: string | null
+  failure: string | null
+}
+
 export const documentsApi = {
   /** Documents linked to one order. Empty when none are attached yet. */
   async forOrder(orderId: string): Promise<ProcurementDocument[]> {
@@ -100,6 +139,24 @@ export const documentsApi = {
       params: { orderId, limit: 50 },
     })
     return data.items ?? []
+  },
+
+  /**
+   * The same list, plus the order's OWN currency, for the surface that
+   * reconciles an invoice against its order.
+   *
+   * One request rather than two so the two halves of the comparison come from
+   * one moment: an invoice read now against an order read a second later can
+   * show a mismatch that a restatement in between had already resolved.
+   */
+  async forOrderWithCurrency(orderId: string): Promise<{
+    documents: ProcurementDocument[]
+    order: OrderCurrencyBlock | null
+  }> {
+    const { data } = await apiClient.get('/procurement/documents', {
+      params: { orderId, limit: 50 },
+    })
+    return { documents: data.items ?? [], order: data.order ?? null }
   },
 
   /** All documents for the restaurant, optionally filtered by status (needs_review / verified). */
@@ -127,9 +184,119 @@ export const documentsApi = {
     return data
   },
 
-  /** Confirm the extraction is a faithful transcription of the paper document. */
-  async verify(id: string): Promise<void> {
-    await apiClient.post(`/procurement/documents/${id}/verify`, {})
+  /**
+   * Mint the one-time seal a VERIFICATION has to carry back — at the moment the
+   * confirm gesture BEGINS.
+   *
+   * THE SEAL IS REDEEMED, NOT ASSERTED (founder, 2026-09-06 batch 64: "Decide as
+   * a module: seal all three"). The gateway mints a token bound to (this
+   * reviewer, this document, "verify", and the whole transcription as it stands)
+   * and redeems it exactly once, so a verification proves a person did it rather
+   * than asserting one did — and a line corrected between the gesture and the
+   * write refuses the seal instead of putting a reviewer's name on a figure they
+   * never read.
+   *
+   * It MUST be called when the gesture starts, never at the moment of confirm: a
+   * token this request fetched for itself is the assertion model with extra
+   * steps. `SwipeToConfirm`/`HoldToApprove`'s `onChallenge` is the hook that
+   * guarantees the timing, and a mint that fails or returns null does NOT
+   * verify.
+   */
+  async mintVerifySeal(id: string): Promise<string | null> {
+    try {
+      const { data } = await apiClient.post<{ challenge?: string }>(
+        `/procurement/documents/${id}/verify-seal-challenge`,
+        {},
+      )
+      return data?.challenge ?? null
+    } catch (error) {
+      return rethrowSpoken(error)
+    }
+  },
+
+  /**
+   * Confirm the extraction is a faithful transcription of the paper document,
+   * carrying the seal minted when the gesture began.
+   *
+   * `challenge` is not optional in practice — the gateway refuses a verification
+   * without one, in words. It is typed optional so a caller that does not yet
+   * mint keeps COMPILING and receives the gateway's refusal sentence rather than
+   * a type error. That refusal is the honest outcome: it says, in words, that
+   * the seal has to be proven and that nothing was changed.
+   */
+  async verify(id: string, challenge?: string | null): Promise<void> {
+    try {
+      await apiClient.post(
+        `/procurement/documents/${id}/verify`,
+        {},
+        sealed(challenge),
+      )
+    } catch (error) {
+      rethrowSpoken(error)
+    }
+  },
+
+  /**
+   * RULE 3 — restate what currency this invoice's money is in.
+   *
+   * Founder, 2026-09-06: the house may deliberately change it when the invoice
+   * is other than their default. Managers and owners only; the gateway refuses
+   * anyone else in a sentence, and the page disables the control with that
+   * sentence rather than hiding it.
+   *
+   * The gateway writes the audit row FIRST and does not change the currency if
+   * the log cannot be written, so a resolved promise here means both landed.
+   * `sentence` is what moved, in the server's own words — rendered verbatim
+   * rather than paraphrased, because it names figures this client does not have.
+   */
+  async restateCurrency(
+    id: string,
+    currency: string,
+    reason?: string,
+    challenge?: string | null,
+  ): Promise<{
+    currency: string
+    previousCurrency: string | null
+    sentence: string
+    moneyRefiled: boolean
+    linesRefiled: number
+    lineFailures: string[]
+  }> {
+    try {
+      const { data } = await apiClient.patch(
+        `/procurement/documents/${id}/currency`,
+        { currency, reason },
+        sealed(challenge),
+      )
+      return data
+    } catch (error) {
+      return rethrowSpoken(error)
+    }
+  },
+
+  /**
+   * Mint the one-time seal a RESTATEMENT has to carry back.
+   *
+   * The currency is named at the MINT as well as at the write, because the seal
+   * is bound to the pair (the code being written, the code the document carries
+   * now): a seal obtained to move a held invoice to EUR cannot be spent after
+   * somebody else already filed it in USD.
+   *
+   * It is also the first refusal a person meets. The gateway will not mint a
+   * seal for a restatement it would refuse — a caller who is not a manager or an
+   * owner, or a code that is not a currency — so the hold fails at its start
+   * with the reason rather than at its end after a second of ceremony.
+   */
+  async mintCurrencySeal(id: string, currency: string): Promise<string | null> {
+    try {
+      const { data } = await apiClient.post<{ challenge?: string }>(
+        `/procurement/documents/${id}/currency-seal-challenge`,
+        { currency },
+      )
+      return data?.challenge ?? null
+    } catch (error) {
+      return rethrowSpoken(error)
+    }
   },
 
   /**
@@ -146,6 +313,13 @@ export const documentsApi = {
    * every field it did NOT send against its own cached copy of the row, so a
    * value that moved underneath is said out loud instead of silently winning.
    * A real precondition needs a migration; filed as a page-note gap.
+   *
+   * THE SEAL IS NOW THAT PRECONDITION, and it is stronger than the after-the-fact
+   * comparison this comment describes. Since 2026-09-06 the mint hashes the line
+   * AS IT STANDS together with the exact patch, so a correction written on top of
+   * somebody else's is REFUSED rather than reported once it has already landed.
+   * The collision notice below stays: it is what a person reads when the refusal
+   * arrives, and it names which field moved.
    */
   async editLine(
     documentId: string,
@@ -156,15 +330,45 @@ export const documentsApi = {
         'qty' | 'description' | 'vintage' | 'uom'
       > & { unitPrice: number | null; lineTotal: number | null }
     >,
+    challenge?: string | null,
   ): Promise<{
     line: ProcurementDocumentLine
     tieOut: { computedLinesTotal: number; tieOutDelta: number | null; tiesOut: boolean | null }
   }> {
-    const { data } = await apiClient.patch(
-      `/procurement/documents/${documentId}/lines/${lineId}`,
-      patch,
-    )
-    return data
+    try {
+      const { data } = await apiClient.patch(
+        `/procurement/documents/${documentId}/lines/${lineId}`,
+        patch,
+        sealed(challenge),
+      )
+      return data
+    } catch (error) {
+      return rethrowSpoken(error)
+    }
+  },
+
+  /**
+   * Mint the one-time seal a LINE CORRECTION has to carry back.
+   *
+   * THE PATCH GOES TO THE MINT TOO, and that is the point: the seal is taken over
+   * the correction about to be made, so a gesture obtained for "qty 14" cannot be
+   * spent to write 140. The caller must send the SAME patch object to both — the
+   * page does, because both come from one commit.
+   */
+  async mintLineEditSeal(
+    documentId: string,
+    lineId: string,
+    patch: Record<string, unknown>,
+  ): Promise<string | null> {
+    try {
+      const { data } = await apiClient.post<{ challenge?: string }>(
+        `/procurement/documents/${documentId}/lines/${lineId}/edit-seal-challenge`,
+        patch,
+      )
+      return data?.challenge ?? null
+    } catch (error) {
+      return rethrowSpoken(error)
+    }
   },
 
   /**

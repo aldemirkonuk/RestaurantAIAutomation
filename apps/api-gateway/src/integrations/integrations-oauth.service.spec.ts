@@ -70,12 +70,24 @@ describe("integration OAuth tables are backed by an applied migration", () => {
     .join("\n")
     .replace(/--[^\n]*/g, "");
 
-  it("queries the two tables this module owns, and nothing unexpected", () => {
+  it("queries the tables this module owns and reads, and nothing unexpected", () => {
     // Guards the extraction itself: if the regex silently stops matching, the
     // checks below would pass vacuously over an empty list.
+    //
+    // Three names joined the list on 2026-09-03 (ADR 0114) and each is a READ
+    // this module now performs rather than a table it owns:
+    //   restaurant_personal_grant_access — the house's revocation list, checked
+    //     at getAccessToken so a manager's decision is enforced at the door;
+    //   users — naming the owner of each grant, because "a member" is not an
+    //     answer to "whose is this";
+    //   user_restaurant_access — counting the live grants of people who work
+    //     here that carry no recorded restaurant, so an incomplete list says so.
     expect(queriedTables).toEqual([
       "integration_oauth_connections",
       "integration_oauth_states",
+      "restaurant_personal_grant_access",
+      "user_restaurant_access",
+      "users",
     ]);
   });
 

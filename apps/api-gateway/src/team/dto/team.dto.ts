@@ -1,4 +1,5 @@
 import {
+  ArrayNotEmpty,
   IsArray,
   IsBoolean,
   IsDateString,
@@ -185,6 +186,37 @@ export class BroadcastDto {
   /** Say it out loud. The only accepted value is `"everyone"`. */
   @IsOptional() @IsIn(["everyone"]) audience?: "everyone";
   @IsOptional() @IsString() title?: string;
+  /**
+   * Which channels this message may leave by. Omitting it means
+   * `["inbox", "push"]`, which since 2026-09-04 is also the most it can ever
+   * be: a crew message no longer sends email or SMS for ANY caller, because the
+   * only senders available are the house's shared mailbox and shared SMS
+   * account — the ones vendors are written from.
+   *
+   * `email` and `sms` are still ACCEPTED VALUES on purpose. A caller that names
+   * one is not rejected; it is told, in `withheldByProduct`, how many people it
+   * would have reached and why it did not. Rejecting the body outright would
+   * make an old caller fail with no explanation, and silently dropping the
+   * channel would let "we told everyone" stay true-looking while being false.
+   */
+  @IsOptional()
+  @IsArray()
+  @IsIn(["inbox", "push", "email", "sms"], { each: true })
+  channels?: Array<"inbox" | "push" | "email" | "sms">;
+}
+
+// ── Crew notes ─────────────────────────────────────────────────────────────
+/**
+ * A note about one week. `weekStart` and not `scheduleId` is the required key:
+ * a manager writes about Saturday while the week is still a draft, and
+ * `schedules` may hold no row for it yet.
+ */
+export class CreateTeamNoteDto {
+  @IsDateString() weekStart: string;
+  @IsString() @IsNotEmpty() body: string;
+  /** Required and non-empty: a note that names nobody reaches nobody. */
+  @IsArray() @ArrayNotEmpty() @IsUUID("all", { each: true }) memberIds: string[];
+  @IsOptional() @IsUUID() scheduleId?: string;
 }
 
 // ── Settings ───────────────────────────────────────────────────────────────

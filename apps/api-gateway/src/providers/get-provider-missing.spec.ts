@@ -57,6 +57,10 @@ describe("GET /providers/:id — a missing provider is 404, a broken read is 500
         { track: async () => undefined } as never,
         forbidden("ProcurementService"),
       ),
+      // OrganizationsService: the role half of the usual-currency write gate
+      // the feature branch added (merged 2026-09-11). getProvider never asks
+      // it, so it throws if reached, like every other collaborator here.
+      forbidden("OrganizationsService"),
     );
   });
 

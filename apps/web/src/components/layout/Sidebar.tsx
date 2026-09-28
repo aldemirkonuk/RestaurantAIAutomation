@@ -27,6 +27,7 @@ import {
   FileText,
   ScrollText,
   PackageCheck,
+  Plug,
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { cn } from '../../lib/utils'
@@ -38,6 +39,9 @@ import { useUnreadCount } from '../../hooks/queries/useNotificationQueries'
 import { usePendingOrdersCount } from '../../hooks/queries/useOrderQueries'
 import { useLowStockItems } from '../../hooks/queries/useInventoryQueries'
 import { useUIStore } from '../../stores/uiStore'
+import { useMudavymDesign } from '../../lib/mudavym/useMudavymDesign'
+import { useMudavymShell } from '../../lib/mudavym/shellGround'
+import '../mudavym/sheet.css'
 
 interface NavItem {
   name: string
@@ -47,6 +51,19 @@ interface NavItem {
   description: string
   badge?: number
   children?: { name: string; href: string }[]
+  /**
+   * Lowest role that may SEE this entry. Absent means everyone, which is every
+   * item but one and is why this is optional rather than defaulted.
+   *
+   * Added 2026-09-03 for `/connections` (ADR 0114). The alternative — show it
+   * to everyone and let the page refuse — is the weaker shape: a staff member
+   * would learn the house keeps cards on file by being told they may not look
+   * at them. Hiding the row is not the security boundary, though, and must
+   * never be mistaken for one: `/payment-methods`, `/billing/provider` and
+   * `/integrations/oauth/house-grants` all run `assertCanManageRestaurant` at
+   * the gateway, so the rows are refused to a staff member who types the URL.
+   */
+  minRole?: 'manager' | 'owner'
 }
 
 const DocumentsReportsIcon = (props: React.SVGProps<SVGSVGElement>) => (
@@ -188,6 +205,14 @@ const bottomNavItems: NavItem[] = [
     description: 'Restaurant setup, features, permissions, and integrations.',
   },
   {
+    name: 'Connections',
+    href: '/connections',
+    icon: Plug,
+    description:
+      'What acts for this house — the till, payments, senders and model-context servers.',
+    minRole: 'manager',
+  },
+  {
     name: 'Help & Support',
     href: '/help',
     icon: HelpCircle,
@@ -216,10 +241,36 @@ const TOOLTIP_HALF_HEIGHT = 34
  * it twice would be noise.
  */
 function NavTooltip({ title, description, badgeLabel, x, y }: NavTooltipState) {
+  const shell = useMudavymShell()
   const top = Math.min(
     Math.max(y, TOOLTIP_HALF_HEIGHT + 8),
     window.innerHeight - TOOLTIP_HALF_HEIGHT - 8,
   )
+
+  // Tokens only (ADR 0112): the hint keeps its geometry, its motion and its
+  // aria-hidden contract — it changes ink and paper, nothing else. It is
+  // portalled to <body>, so it must carry `.mudavym` itself to have tokens at
+  // all, and the page's ground with it.
+  if (shell.on) {
+    return createPortal(
+      <motion.div
+        aria-hidden
+        initial={{ opacity: 0, x: -4 }}
+        animate={{ opacity: 1, x: 0 }}
+        transition={{ duration: 0.15, ease: [0.4, 0, 0.2, 1] }}
+        style={{ top, left: x + 8 }}
+        className="mudavym mdv-hint pointer-events-none fixed z-[60] w-56 -translate-y-1/2 rounded-lg border p-2.5"
+        data-ground={shell.ground === 'charcoal' ? 'charcoal' : undefined}
+      >
+        <div className="flex items-center gap-1.5">
+          <p className="mdv-hint__title">{title}</p>
+          {badgeLabel && <span className="mdv-hint__badge">{badgeLabel}</span>}
+        </div>
+        <p className="mdv-hint__desc">{description}</p>
+      </motion.div>,
+      document.body,
+    )
+  }
 
   return createPortal(
     <motion.div
@@ -349,6 +400,9 @@ export function Sidebar() {
   const checklistButtonRef = useRef<HTMLButtonElement>(null)
   const location = useLocation()
   const { user, logout } = useAuth()
+  // One flag read for the one gated entry (ADR 0114). The hook caches per
+  // restaurant+flag for the session, so this costs at most one request.
+  const connectionsOn = useMudavymDesign('connections')
   const { progress, update } = useOnboardingProgress()
 
   // Force expanded labels in the mobile drawer
@@ -702,7 +756,18 @@ export function Sidebar() {
             </AnimatePresence>
           </div>
         )}
-        {bottomNavItems.map((item) => renderNavItem(item))}
+        {/* `minRole` filters here, and the `/connections` entry is additionally
+            hidden while its page flag is off — the route redirects to /profile
+            in that state, so a visible link would lead somewhere else. Both
+            conditions are cosmetic: the gateway refuses the reads regardless. */}
+        {bottomNavItems
+          .filter((item) => {
+            if (item.href === '/connections' && !connectionsOn) return false
+            if (!item.minRole) return true
+            if (item.minRole === 'owner') return user?.role === 'owner'
+            return user?.role === 'owner' || user?.role === 'manager'
+          })
+          .map((item) => renderNavItem(item))}
 
         {/* Logout */}
         <button

@@ -84,11 +84,18 @@ lines) for manager disposition, and `insights/insight-catalog.ts` for the candid
   `Recommendations.tsx` and `InsightCatalog.tsx` returns no hits. It is the confirm
   primitive this software's "act" verb should share and does not.
 - `apps/api-gateway/src/ux-optimizer/` — `@Controller("ux")` at
-  `ux-optimizer.controller.ts:56`, 8 endpoints. **Dark by construction**:
-  `UX_OPTIMIZER_ENABLED` defaults to `"false"` (`ux-optimizer.service.ts:78`) and the
-  client half is gated on `VITE_UX_OPTIMIZER === "true"` (`lib/uxSignals.ts:15`). Neither
-  recommendations page carries a `data-ux-key`, so nothing is emitted from here even with
-  the flag on.
+  `ux-optimizer.controller.ts:56`, **11 endpoints** (8 until 2026-09-05; three
+  experiment routes were added by ADR 0127). The optimizer half is **dark by
+  construction**: `UX_OPTIMIZER_ENABLED` defaults to `"false"`
+  (`ux-optimizer.service.ts:78`) and the client half is gated on
+  `VITE_UX_OPTIMIZER === "true"` (`lib/uxSignals.ts:15`). Neither recommendations page
+  carries a `data-ux-key`, so nothing is emitted from here even with the flag on.
+  **The experiment routes are deliberately NOT behind that kill switch** and have one
+  live caller — the dashboard's one-tap note (`note_close_control`, ADR 0127). A
+  measurement that stops recording when a flag is off leaves a gap in the ledger that
+  reads exactly like a period of nobody using the control; it assigns and counts, and
+  it applies nothing. This module has no page note of its own — this section is where
+  it is described.
 
 ## §4 Automation
 

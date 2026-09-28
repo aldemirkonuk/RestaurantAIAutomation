@@ -12,6 +12,8 @@ import { GuidanceLiveRegion } from '../../guidance/announce'
 import { useUIStore } from '../../stores/uiStore'
 import { cn } from '../../lib/utils'
 import { BrandMark } from '../brand/BrandMark'
+import { useMudavymShell } from '../../lib/mudavym/shellGround'
+import '../mudavym/sheet.css'
 
 interface DashboardLayoutProps {
   children?: React.ReactNode
@@ -22,6 +24,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   const sidebarOpen = useUIStore((s) => s.sidebarOpen)
   const sidebarCollapsed = useUIStore((s) => s.sidebarCollapsed)
   const setSidebarOpen = useUIStore((s) => s.setSidebarOpen)
+  const shell = useMudavymShell()
 
   // Close mobile drawer on route change
   useEffect(() => {
@@ -43,12 +46,21 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     <CommandProvider>
       <GuidanceProvider>
         <div className="min-h-screen bg-gray-50 safe-area-pad">
-          {/* Mobile backdrop */}
+          {/* Mobile backdrop. Tokens only — the scrim is the one thing here
+              that reads as part of the page under it, so while a Mudavym page
+              is up it uses the house scrim (warm ink on paper, black on
+              charcoal) instead of a flat black/40. Same element, same classes
+              otherwise; ADR 0112. */}
           {sidebarOpen && (
             <button
               type="button"
               aria-label="Close navigation"
-              className="fixed inset-0 z-[45] bg-black/40 md:hidden"
+              className={
+                shell.on
+                  ? 'fixed inset-0 z-[45] md:hidden mdv-scrim'
+                  : 'fixed inset-0 z-[45] bg-black/40 md:hidden'
+              }
+              data-ground={shell.on && shell.ground === 'charcoal' ? 'charcoal' : undefined}
               onClick={() => setSidebarOpen(false)}
             />
           )}

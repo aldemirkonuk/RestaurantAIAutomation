@@ -6,6 +6,7 @@ import {
   IsObject,
   IsOptional,
   IsString,
+  IsUUID,
   Max,
   MaxLength,
   Min,
@@ -89,4 +90,79 @@ export class RollbackProposalDto {
   @IsString()
   @MaxLength(500)
   reason?: string;
+}
+
+/**
+ * One exposure or outcome on an experiment arm.
+ *
+ * NOTE WHAT IS ABSENT: there is no `arm` field, and there is no `restaurantId`.
+ * Both are stamped by the service from the token and the stored assignment. A
+ * browser that could name its own arm could file its outcome against the other
+ * one, which would make the whole comparison a thing the measured party writes
+ * about itself.
+ */
+export class RecordExperimentEventDto {
+  @ApiProperty({
+    enum: ["exposed", "completed", "abandoned"],
+    description:
+      "exposed: the control was rendered. completed: the note was closed. abandoned: exposed, then left still open.",
+  })
+  @IsIn(["exposed", "completed", "abandoned"])
+  event!: "exposed" | "completed" | "abandoned";
+
+  @ApiPropertyOptional({
+    description: "The one-tap action the control belonged to.",
+  })
+  @IsOptional()
+  @IsUUID()
+  actionId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "Milliseconds from EXPOSURE to completion. Ignored on any other event.",
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(86_400_000)
+  durationMs?: number;
+
+  // There is deliberately NO field for the die's early releases. It would be
+  // die-only — a plain button has no partial gesture to release — and an event
+  // one arm can produce and the other cannot is not a measurement. Recording it
+  // would also mean a `onRelease` prop on the shared `HoldToApprove`, which no
+  // caller has and which is not this change's to add.
+}
+
+/**
+ * The arm a person names once the experiment's window has closed.
+ *
+ * NOTE WHAT IS ABSENT: there is no `endsAt`, no `force` and no `restaurantId`.
+ * The end date is DERIVED from the first exposure and frozen in the database,
+ * so it is not a thing a caller may assert; the refusal to name a winner early
+ * is the rule, not a default that a flag can wave away; and the winner applies
+ * to every house, so naming one is not a tenant act.
+ *
+ * `arm` is validated against the arms the experiment's spec declares, in the
+ * service. It is not an enum here because the register of experiments lives in
+ * source and each one declares its own arms — a fixed list on this DTO would be
+ * a second copy of it, wrong the first time a second experiment exists.
+ */
+export class NameExperimentWinnerDto {
+  @ApiProperty({
+    description:
+      "The winning arm, which must be one this experiment declares (e.g. 'plain' or 'die' for note_close_control).",
+  })
+  @IsString()
+  @MaxLength(60)
+  arm!: string;
+
+  @ApiPropertyOptional({
+    description:
+      "The founder's own words alongside the decision, kept so the arm is never read without its reason.",
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  words?: string;
 }

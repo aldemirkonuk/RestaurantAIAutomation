@@ -1,7 +1,7 @@
 # DoorNext — motion map
 
 Per-page motion inventory for `/receiving/:orderId/door` (Mudavym redesign).
-Every motion runs on a token from `lib/mudavym/motion.ts` (sketch 059's
+Every motion runs on a token from `lib/mudavym/motion.ts` (sketch 083's
 vocabulary, sampled springs included). Reduced motion collapses every entry to
 its end state (the `animate()` wrapper and each component's own reduced path);
 the door-seal gesture becomes a two-step press-to-arm / press-to-seal.

@@ -240,7 +240,7 @@ class EmailIntelAgent(BaseAgent):
             await self._notify(
                 restaurant_id=restaurant_id,
                 notification_type="email_classified_operational",
-                title=f"📧 New message from {classification.provider_name or 'vendor'}",
+                title=f"New message from {classification.provider_name or 'vendor'}",
                 message=f"OPERATIONAL: {email_subject[:80]}",
                 priority="high",
                 action_url="/providers",
@@ -585,7 +585,10 @@ class EmailIntelAgent(BaseAgent):
                 )
 
         # In-app notification (D-03 — direct Supabase INSERT, NOT HTTP to NestJS)
-        title = f"🏷️ Deal: {details.product_name}"
+        # No emoji in a stored notification title (house rule, 2026-09-03):
+        # the inbox draws the register's own mark from `type`; a picture in the
+        # row is unstylable and permanent.
+        title = f"Deal: {details.product_name}"
         if details.discount_pct:
             title += f" at {details.discount_pct}% off"
         if classification.provider_name:

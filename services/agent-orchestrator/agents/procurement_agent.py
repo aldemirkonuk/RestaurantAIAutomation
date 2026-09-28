@@ -775,9 +775,32 @@ class ProcurementAgent(BaseAgent):
                 self.logger.info(f"Order {order_id} counter-offered at ${parsed_price}")
 
             elif response_type in ("rejection", "declined"):
+                # A VENDOR'S NO IS NOT THE ORDER'S DEATH.
+                #
+                # ADR 0125 Q3, founder 2026-09-05: "Return to NEGOTIATING, with
+                # the decline recorded." This wrote status "REJECTED" — a
+                # TERMINAL state — so one vendor saying no dropped the order out
+                # of every open-order list, every outstanding count and every
+                # reorder widget before a human decided anything. The house may
+                # still buy this wine at another price or from another vendor.
+                # Dynamics 365 holds such a PO "In external review" for the same
+                # reason.
+                #
+                # As of the same day the DATABASE refuses the old write:
+                # `trg_procurement_order_transition_is_legal` has no
+                # CONFIRMED>REJECTED edge, so this path would have started
+                # raising 23514 rather than quietly closing the order. It is
+                # corrected here rather than left to fail.
+                #
+                # WHO DECLINED, WHEN AND IN WHAT WORDS is the inbound
+                # `procurement_conversations` row — provider, created_at, the
+                # vendor's own message and detected_intent — written by the
+                # responder before this runs. Not copied onto the order: two
+                # accounts of one event can disagree, and the row is the one a
+                # person reads in the responses sheet.
                 await self.database.supabase.table("procurement_orders").update(
                     {
-                        "status": "REJECTED",
+                        "status": "NEGOTIATING",
                         "updated_at": datetime.utcnow().isoformat(),
                     }
                 ).eq("id", order_id).execute()
@@ -791,13 +814,21 @@ class ProcurementAgent(BaseAgent):
                             "restaurant_id": restaurant_id
                             or order.get("restaurant_id"),
                             "order_id": order_id,
-                            "title": "Order rejected by vendor",
-                            "message": f"Vendor rejected order for {order.get('wine_name', 'Unknown')}",
+                            "title": "Vendor declined - back to you",
+                            "message": (
+                                f"{order.get('provider_name', 'The vendor')} declined "
+                                f"{order.get('wine_name', 'this order')}. The order is open "
+                                "again for negotiation, not cancelled - re-price it, try "
+                                "another vendor, or reject it yourself."
+                            ),
                             "urgency": "high",
                         },
                     },
                 )
-                self.logger.info(f"Order {order_id} rejected by vendor")
+                self.logger.info(
+                    f"Order {order_id} declined by vendor; returned to NEGOTIATING "
+                    "(the decline is the inbound conversation row)."
+                )
 
             elif response_type == "unavailable":
                 # Full OOS cascade — provider reported the wine is out of stock.

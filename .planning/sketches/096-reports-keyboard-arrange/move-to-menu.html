@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>096 · The move-to menu</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+.mudavym{
+  --seal:#1A5E6B; --seal-deep:#14515C; --seal-tint:rgba(26,94,107,.10); --seal-ring:rgba(26,94,107,.32);
+  --paper-0:#FAF7F1; --paper-1:#F3EFE6; --paper-2:#EAE4D8;
+  --ink-1:#211C16; --ink-2:#4F473C; --ink-3:#7C7365; --ink-4:#665D50;
+  color-scheme:light;
+}
+:root{--serif:"Fraunces",Georgia,"Times New Roman",serif;--sans:"DM Sans","Plus Jakarta Sans",system-ui,sans-serif;--mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper-0);color:var(--ink-1);font-family:var(--sans);font-size:13px}
+.banner{background:var(--ink-1);color:var(--paper-0);font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;padding:7px 20px}
+.wrap{max-width:1360px;margin:0 auto;padding:22px 24px 70px}
+.wordmark{font-family:var(--serif);font-weight:600;font-size:13px;letter-spacing:.04em}
+.eyebrow{font-family:var(--mono);font-size:9px;font-weight:600;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3)}
+h1{font-family:var(--serif);font-size:30px;font-weight:600;letter-spacing:-.015em;margin:4px 0 0}
+h1 .dot{color:var(--seal)}
+.lede{font-family:var(--serif);font-style:italic;font-size:15px;color:var(--ink-2);margin:6px 0 0;max-width:900px}
+.dbl{border-top:1px solid var(--ink-1);border-bottom:1px solid var(--ink-1);height:3px;opacity:.45;margin:16px 0 18px}
+p{font-size:12.5px;line-height:1.6;color:var(--ink-2);margin:6px 0 0;max-width:860px}
+.cap{font-size:10.5px;line-height:1.45;color:var(--ink-3);margin:4px 0 0}
+.row{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.btn{font-size:12px;font-weight:600;padding:6px 12px;border-radius:8px;border:1px solid var(--paper-2);background:transparent;color:var(--ink-2);cursor:pointer}
+.btn.strong{border-color:var(--seal);background:var(--seal-tint);color:var(--seal-deep)}
+.mini{font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;padding:2px 7px;border-radius:5px;border:1px solid var(--seal-ring);background:transparent;color:var(--seal-deep);display:inline-flex;align-items:center;gap:4px}
+
+/* ── the sheet: a twelve-column ruling, drawn because we are arranging ── */
+.sheet{position:relative;margin-top:14px;display:grid;grid-template-columns:repeat(12,1fr);grid-auto-rows:34px;gap:14px}
+.sheet::before{content:"";position:absolute;inset:-4px -2px;pointer-events:none;
+  background-image:repeating-linear-gradient(to right,var(--seal-ring) 0 1px,transparent 1px calc(100% / 12));}
+.cut{position:relative;z-index:2;border:1px dashed var(--seal-ring);border-radius:10px;background:var(--paper-1);padding:9px 12px 10px;overflow:hidden;display:flex;flex-direction:column;gap:5px}
+.cut h2{font-family:var(--serif);font-size:14px;font-weight:600;margin:0;color:var(--ink-1)}
+.cut .win{font-family:var(--mono);font-size:9px;letter-spacing:.06em;color:var(--ink-3);margin:0}
+.cut .head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+.grip{display:inline-flex;align-items:center;gap:4px;font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;padding:2px 7px;border-radius:5px;border:1px solid var(--paper-2);background:transparent;color:var(--ink-2);white-space:nowrap}
+.grip.pressed{border-color:var(--seal);background:var(--seal-tint);color:var(--seal-deep)}
+.focusring{outline:2px solid var(--seal);outline-offset:2px;border-radius:6px}
+.held{border-style:solid;border-color:var(--seal);box-shadow:0 6px 18px -8px var(--seal-ring);z-index:5}
+/* The ghost paints ABOVE the cuttings, as it does in the built page: the
+   square a cutting left is usually filled by the ruling closing behind it,
+   so an outline underneath would be invisible exactly when it matters. */
+.ghost{position:relative;z-index:7;border:1.5px dashed var(--seal);border-radius:10px;background:rgba(26,94,107,.07);pointer-events:none;display:flex;align-items:flex-end;justify-content:flex-start;padding:6px 8px}
+.ghost span{font-family:var(--mono);font-size:8.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--seal-deep);background:var(--paper-0);padding:2px 5px;border-radius:4px;border:1px solid var(--seal-ring)}
+
+/* charts, drawn in CSS so the file needs nothing */
+.bars{display:flex;align-items:flex-end;gap:5px;height:100%;min-height:40px}
+.bars i{display:block;flex:1;background:var(--seal);opacity:.75;border-radius:2px 2px 0 0}
+.spark{display:flex;align-items:flex-end;gap:3px;height:38px}
+.spark i{display:block;width:7px;background:var(--seal);opacity:.6;border-radius:2px 2px 0 0}
+.fig{display:flex;align-items:baseline;justify-content:space-between;gap:10px;font-size:11.5px;color:var(--ink-3)}
+.fig b{font-family:var(--mono);font-weight:400;font-size:12.5px;color:var(--ink-1);font-variant-numeric:tabular-nums}
+.sent{font-size:11.5px;line-height:1.5;color:var(--ink-1);margin:0}
+.bar{height:6px;border-radius:3px;background:var(--paper-2);overflow:hidden}
+.bar i{display:block;height:100%;background:var(--seal)}
+
+/* the live region, made VISIBLE for the sketch */
+.heard{margin-top:18px;border:1px solid var(--seal-ring);border-radius:10px;background:var(--seal-tint);padding:10px 13px}
+.heard .eyebrow{color:var(--seal-deep)}
+.heard p{color:var(--ink-1);font-size:12.5px;margin:4px 0 0;max-width:none}
+.keys{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
+kbd{font-family:var(--mono);font-size:10px;padding:2px 6px;border:1px solid var(--paper-2);border-bottom-width:2px;border-radius:4px;background:var(--paper-0);color:var(--ink-1)}
+.note{border-left:2px solid var(--seal);padding-left:12px;margin-top:20px}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-top:8px}
+table.k{border-collapse:collapse;width:100%;margin-top:8px}
+table.k th,table.k td{text-align:left;font-size:11.5px;padding:5px 8px;border-bottom:1px solid var(--paper-2);vertical-align:top}
+table.k th{font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);font-weight:600}
+a.back{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--seal-deep);text-decoration:none}
+
+
+.menu{position:absolute;z-index:9;width:230px;background:var(--paper-0);border:1px solid var(--seal-ring);border-radius:10px;box-shadow:0 18px 40px -22px rgba(0,0,0,.5);padding:6px}
+.menu .item{display:block;font-size:12px;padding:6px 9px;border-radius:6px;color:var(--ink-1)}
+.menu .item:hover,.menu .item.sel{background:var(--seal-tint);color:var(--seal-deep)}
+.menu .sep{height:1px;background:var(--paper-2);margin:5px 2px}
+.menu .grp{font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);padding:4px 9px 2px}
+
+</style>
+</head>
+<body class="mudavym">
+<div class="banner">Sketch 096 · direction c &middot; not built, and why · example data, not a tenant</div>
+<div class="wrap">
+  <a class="back" href="index.html">&larr; 096 index</a>
+  <div class="wordmark" style="margin-top:8px">Mudavym</div>
+  <h1>The move-to menu<span class="dot">.</span></h1>
+  <p class="lede">Atlassian's recommended alternative to keyboard drag, drawn honestly &mdash; including the part where a free canvas has no names to put in the menu.</p>
+  <div class="dbl"></div>
+
+<div class="sheet" style="margin-top:6px">
+  <section class="cut " style="grid-column:1 / span 7;grid-row:1 / span 6"><div class="head"><div><h2>The reading</h2><p class="win">the stored insight feed, hourly</p></div><span class="grip"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 9 2 12l3 3"/><path d="m9 5 3-3 3 3"/><path d="m15 19-3 3-3-3"/><path d="m19 9 3 3-3 3"/><path d="M2 12h20"/><path d="M12 2v20"/></svg>Move The reading</span></div><p class="sent">Barolo 2019 sold 32% above its own 12-week average this week (41 bottles, baseline 31).</p><p class="sent">Thursday is now the second-heaviest night for reds — it was fifth in June.</p><p class="sent">Vendor Cantine Rossi has been 4.2 days late on average across 9 deliveries.</p><p class="cap">14 more sentences · engine feed, hourly</p></section>
+  <section class="cut " style="grid-column:8 / span 5;grid-row:1 / span 6"><div class="head"><div><h2>Through the till</h2><p class="win">30 days, your choice</p></div><span class="grip focusring"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 9 2 12l3 3"/><path d="m9 5 3-3 3 3"/><path d="m15 19-3 3-3-3"/><path d="m19 9 3 3-3 3"/><path d="M2 12h20"/><path d="M12 2v20"/></svg>Move Through the till</span></div><div class="spark"><i style="height:38%"></i><i style="height:59%"></i><i style="height:48%"></i><i style="height:77%"></i><i style="height:67%"></i><i style="height:86%"></i><i style="height:81%"></i><i style="height:59%"></i><i style="height:73%"></i><i style="height:89%"></i><i style="height:100%"></i><i style="height:85%"></i></div><div class="fig"><span>Taken, 30 days</span><b>$41,208</b></div><div class="fig"><span>Checks</span><b>962</b></div></section>
+  <section class="cut " style="grid-column:1 / span 5;grid-row:7 / span 6"><div class="head"><div><h2>Goals</h2><p class="win">each goal counted from the day it was set</p></div><span class="grip"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 9 2 12l3 3"/><path d="m9 5 3-3 3 3"/><path d="m15 19-3 3-3-3"/><path d="m19 9 3 3-3 3"/><path d="M2 12h20"/><path d="M12 2v20"/></svg>Move Goals</span></div><div class="fig"><span>Lift wine revenue</span><b>$4,200 / $9,000</b></div><div class="bar"><i style="width:46.7%"></i></div><p class="cap">On the pace this goal needs, 40 days left. The trend projects $9,400 by the deadline — enough.</p><div class="fig"><span>Hold purchasing</span><b>$3,120 / $4,000</b></div><div class="bar"><i style="width:78%"></i></div><p class="cap">No deadline, so there is no schedule to be ahead or behind of.</p></section>
+  <section class="cut " style="grid-column:6 / span 4;grid-row:7 / span 6"><div class="head"><div><h2>Against ourselves</h2><p class="win">180 days of buying, 90 days of weekdays</p></div><span class="grip"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 9 2 12l3 3"/><path d="m9 5 3-3 3 3"/><path d="m15 19-3 3-3-3"/><path d="m19 9 3 3-3 3"/><path d="M2 12h20"/><path d="M12 2v20"/></svg>Move Against ourselves</span></div><div class="fig"><span>Bought, last 30 days</span><b>$12,410</b></div><div class="fig"><span>Bought, the 30 before</span><b>$9,860</b></div><div class="fig"><span>Pace against last month</span><b>+25.9%</b></div><p class="cap">No other house is in this comparison — every figure is this house against its own past.</p></section>
+  <section class="cut " style="grid-column:1 / span 4;grid-row:13 / span 5"><div class="head"><div><h2>The week&rsquo;s shape</h2><p class="win">last 90 days of consumption</p></div><span class="grip"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 9 2 12l3 3"/><path d="m9 5 3-3 3 3"/><path d="m15 19-3 3-3-3"/><path d="m19 9 3 3-3 3"/><path d="M2 12h20"/><path d="M12 2v20"/></svg>Move The week&rsquo;s shape</span></div><div class="bars"><i style="height:26%"></i><i style="height:35%"></i><i style="height:42%"></i><i style="height:73%"></i><i style="height:89%"></i><i style="height:100%"></i><i style="height:54%"></i></div><p class="cap">Mon · Tue · Wed · Thu · Fri · Sat · Sun — mean bottles per service, 90 days</p></section>
+  <section class="cut " style="grid-column:5 / span 4;grid-row:13 / span 5"><div class="head"><div><h2>Spend pacing</h2><p class="win">180 days, two 30-day windows</p></div><span class="grip"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 9 2 12l3 3"/><path d="m9 5 3-3 3 3"/><path d="m15 19-3 3-3-3"/><path d="m19 9 3 3-3 3"/><path d="M2 12h20"/><path d="M12 2v20"/></svg>Move Spend pacing</span></div><div class="bars"><i style="height:80%"></i><i style="height:100%"></i></div><div class="fig"><span>Committed, undelivered</span><b>$3,980</b></div></section>
+  <section class="cut " style="grid-column:9 / span 4;grid-row:13 / span 5"><div class="head"><div><h2>Margin against movement</h2><p class="win">the list, against 90 days of movement</p></div><span class="grip"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 9 2 12l3 3"/><path d="m9 5 3-3 3 3"/><path d="m15 19-3 3-3-3"/><path d="m19 9 3 3-3 3"/><path d="M2 12h20"/><path d="M12 2v20"/></svg>Move Margin against movement</span></div><div class="fig"><span>Stars</span><b>7</b></div><div class="fig"><span>Plowhorses</span><b>11</b></div><div class="fig"><span>Puzzles</span><b>4</b></div><div class="fig"><span>No quadrant</span><b>6</b></div></section>
+  <div class="menu" style="grid-column:10 / span 3;grid-row:2 / span 8;position:relative;z-index:9">
+    <div class="grp">Move &ldquo;Through the till&rdquo;</div>
+    <span class="item">To the head of the sheet</span>
+    <span class="item sel">Swap with &ldquo;The reading&rdquo;</span>
+    <span class="item">Swap with &ldquo;Goals&rdquo;</span>
+    <span class="item">Swap with &ldquo;Against ourselves&rdquo;</span>
+    <span class="item">To the foot</span>
+    <div class="sep"></div>
+    <div class="grp">Size</div>
+    <span class="item">Quarter width</span>
+    <span class="item">Half width</span>
+    <span class="item">Full width</span>
+    <span class="item">Twice as tall</span>
+  </div>
+</div>
+
+<div class="heard">
+  <span class="eyebrow">What the live region would say</span>
+  <p>&ldquo;Through the till swapped with The reading. It is now at column 1 of 12, row 1.&rdquo;</p>
+</div>
+
+<div class="note">
+  <p><b>This is the pattern the research argues FOR, and the one that was not built.</b> Atlassian's
+  <i>pragmatic drag and drop</i> accessibility guidance is explicit: do not build directional keyboard
+  drag, give each item a menu of named outcomes instead &mdash; <i>&ldquo;directional arrow movement
+  does not translate well to all experiences&rdquo;</i>, menus avoid screen-reader mode switching, and
+  they user-tested as more discoverable.</p>
+  <p><b>Why it loses here.</b> Their board has nameable destinations: a column, a position in a list.
+  A twelve-column canvas does not &mdash; the outcomes ARE the coordinates, and a menu that enumerated
+  them would be twelve columns times n rows, which is not a menu. What this direction can honestly
+  offer is the short list above: swaps and a handful of sizes. That is strictly less than the reader
+  can do with a pointer, which is the definition of a second-class path.</p>
+  <p class="cap">What was taken from the argument instead: the <b>announcement discipline</b> (name the
+  item and both positions), and the insistence that a menu-like set of BUTTONS exists &mdash; the
+  placing bar in direction A is that, without pretending a coordinate is a name.</p>
+</div>
+
+</div>
+</body>
+</html>

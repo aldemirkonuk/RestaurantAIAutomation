@@ -1,7 +1,7 @@
 /**
  * useUxOverrides — reads the self-learning UX agent's approved, gated overrides
- * for a page and exposes them to components. Also mounts the friction detectors
- * for that page, so this hook is both halves of the client loop.
+ * for a page and exposes them to components. It would also mount the friction
+ * detectors for that page, making it both halves of the client loop.
  *
  * A component asks for its `target_key`; if a human-approved override is live
  * AND this user falls inside its rollout bucket AND the feature is enabled
@@ -9,10 +9,47 @@
  * This is the ONLY channel through which the agent can influence the live UI,
  * and it is entirely opt-in + reversible.
  *
- * Mounted once in DashboardLayout. It previously existed but was imported by no
- * file, which meant the detectors never ran — so the feature was not merely
- * switched off, it was unreachable, and flipping VITE_UX_OPTIMIZER would have
- * collected nothing.
+ * NOT MOUNTED ANYWHERE — the whole client half of the loop ships dark.
+ * `git grep -n useUxOverrides -- apps/web/src` returns only this file, and
+ * `../lib/uxSignals` has no importer but this hook. So no TTI is reported, no
+ * friction detector is attached, no override is ever fetched, and the
+ * `data-ux-key` markers in the page tree are inert attributes nothing reads.
+ * VITE_UX_OPTIMIZER gates code that does not run: flipping it collects nothing.
+ *
+ * How many markers is a number that moves, so it is written as the command that
+ * produces it rather than as a figure that rots:
+ *
+ *   git grep -c 'data-ux-key=' -- apps/web/src | grep '\.tsx:' | grep -v '\.test\.'
+ *
+ * (written with `grep '\.tsx:'` rather than a `**` pathspec on purpose — a
+ * glob ending `*.tsx` would close this comment block.)
+ *
+ * Run it — for a total, pipe it through
+ * `awk -F: '{s+=$NF; n++} END {print s" lines across "n" files"}'`, and put a
+ * ref before `--` to read any other tree (`git grep -c 'data-ux-key=' origin/main
+ * -- apps/web/src | …`). No count is written here ON PURPOSE. The version of
+ * this comment that shipped hours ago carried one, and it was already wrong by
+ * the next commit on the same branch, which added markers to the door screen.
+ * That is the whole failure this file is an example of: a figure in prose is
+ * checked once, the day it is written; a command is checked every time someone
+ * reads it. Quoting today's output here would only start the clock again.
+ *
+ * How the previous version of this comment came to lie. It said "Mounted once
+ * in DashboardLayout", and that was TRUE the day it was written — 7c80b587
+ * added both the sentence and the mount. Hours later, on the same day,
+ * 1ddf0847 ("feat(receiving): door capture UI…") deleted the import, the
+ * `pageKey()` helper and the `useUxOverrides(pageKey(location.pathname))` call
+ * from DashboardLayout. Its message does not mention doing so. The sentence
+ * outlived the wiring it described and has been false on main ever since, which
+ * is why a claim like this one carries the command that re-checks it.
+ *
+ * To make it live, something must call it: mount `useUxOverrides(<page>)` once
+ * per page shell (DashboardLayout being the obvious single site, keyed off the
+ * route — see 7c80b587 for the `pageKey()` it used), THEN set
+ * VITE_UX_OPTIMIZER=true so the client gate opens, with the server's own gate
+ * and a human approval still standing between a signal and a live patch.
+ * Mounting it starts collecting behaviour from real users, so it is a decision
+ * to take deliberately, not a loose wire to quietly reconnect.
  */
 
 import { useEffect, useState } from "react";

@@ -25,6 +25,13 @@ REGISTRY = ROOT / "apps/api-gateway/src/settings/feature-flag-registry.ts"
 GATE_PATTERNS = [
     (re.compile(r"useMudavymDesign\.ts$"), re.compile(r"checkFeatureFlag")),
     (re.compile(r"inbound-responder\.service\.ts$"), re.compile(r"enable_ai_")),
+    # The house-inbox reader's own gate. `isEnabled` delegates to
+    # `inbox/house-inbox-flag.ts`, which is where the fails-closed read lives;
+    # the BRANCH is here, and a branch is what this guard is about.
+    (
+        re.compile(r"house-inbox\.service\.ts$"),
+        re.compile(r"isEnabled|enable_house_inbox_read"),
+    ),
 ]
 
 

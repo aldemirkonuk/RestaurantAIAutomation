@@ -109,12 +109,16 @@ export class CreateProviderDto {
   @IsOptional()
   website?: string;
 
-  @ApiPropertyOptional({ description: "Primary contact first name at the vendor" })
+  @ApiPropertyOptional({
+    description: "Primary contact first name at the vendor",
+  })
   @IsString()
   @IsOptional()
   contactFirstName?: string;
 
-  @ApiPropertyOptional({ description: "Primary contact last name at the vendor" })
+  @ApiPropertyOptional({
+    description: "Primary contact last name at the vendor",
+  })
   @IsString()
   @IsOptional()
   contactLastName?: string;

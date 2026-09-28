@@ -15,8 +15,9 @@
  *     shown calm, explicitly unsent, a manager approves it later;
  *  5. offline is the assumption — the tap always succeeds locally ("saved on
  *     this phone, will send when you're back inside"), and a send that
- *     permanently failed is VISIBLY different from a sent one (the flush's
- *     `failed` count is surfaced here; the legacy page discarded it);
+ *     PERMANENTLY failed is VISIBLY different from a sent one. The flush's
+ *     `dropped` count carries that — not `failed`, which counts a retryable
+ *     pass the queue will send itself;
  *  6. who signed — initials, no ceremony.
  *
  * The one thing deliberately NOT here: a line-item editor. Line-by-line
@@ -24,8 +25,10 @@
  *
  * The page keeps the legacy screen's essence — one job, one hand, one minute,
  * full-screen outside DashboardLayout, no prices anywhere — on the Warm
- * Charcoal ground (data-ground="charcoal"; ADR 0042 gives loading-dock
- * surfaces charcoal first-class).
+ * Charcoal ground. It states that ground out loud (data-ground="charcoal"),
+ * which the input rules below hang off; since 2026-09-12 charcoal is also the
+ * `.mudavym` default in every app theme, so the attribute confirms rather than
+ * forces.
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -36,11 +39,16 @@ import { animate, settle } from '@/lib/mudavym';
 import { receivingApi } from '@/services/api/receiving';
 import { getOrder } from '@/services/api/orders';
 import {
+  clearDroppedDoorReceipts,
   flushDoorOutbox,
   newIdempotencyKey,
   pendingDoorCount,
+  readDroppedDoorReceipts,
   submitDoorReceipt,
+  type DoorFlushResult,
+  type DroppedDoorReceipt,
 } from '@/lib/doorOutbox';
+import { useActiveRestaurantId } from './useReceivingNextData';
 import { SCAN_ACCEPT, resolveMimeType } from '@/lib/uploadAccept';
 import {
   composeDoorNotes,
@@ -127,6 +135,9 @@ export default function DoorNext() {
   const [driverName, setDriverName] = useState('');
 
   /* ── sealing + the outbox (point 5) ───────────────────────────────────── */
+  // The house this delivery is taken at: stamped onto the queued receipt, and
+  // the scope of the drop record. A door tablet is shared between houses.
+  const rid = useActiveRestaurantId();
   const [submitting, setSubmitting] = useState(false);
   const [queued, setQueued] = useState(false);
   const [stockIssue, setStockIssue] = useState<string | null>(null);
@@ -134,7 +145,27 @@ export default function DoorNext() {
   const [sealAttempt, setSealAttempt] = useState(0);
   const [online, setOnline] = useState(navigator.onLine);
   const [pendingQueue, setPendingQueue] = useState(0);
-  const [lastFlush, setLastFlush] = useState<{ sent: number; failed: number } | null>(null);
+  const [lastFlush, setLastFlush] = useState<DoorFlushResult | null>(null);
+  /**
+   * Receipts the outbox GAVE UP ON — read from the outbox's own durable
+   * record, not counted up here.
+   *
+   * This used to be a `useState(0)` counter, which is the defect the durability
+   * fix was written to remove and then left in place on the page that is
+   * actually live: the count died on the navigate that Finish triggers, so the
+   * only trace of a permanent loss vanished at the exact moment the porter
+   * walked away. The record survives the remount, names the order, is keyed on
+   * the queue id so one loss cannot be counted twice, and belongs to this
+   * house rather than to whatever tablet took it.
+   *
+   * It is the ONLY thing the red banner is allowed to fire on. `failed` counts
+   * a retryable pass too — the receipt is still queued and will send itself —
+   * so alarming on it sends a receiver to find a manager about a delivery that
+   * is about to land on the server by itself.
+   */
+  const [drops, setDrops] = useState<DroppedDoorReceipt[]>(() =>
+    readDroppedDoorReceipts(rid),
+  );
 
   const fileRef = useRef<HTMLInputElement>(null);
   const headRef = useRef<HTMLDivElement | null>(null);
@@ -186,18 +217,56 @@ export default function DoorNext() {
     };
   }, [orderId]);
 
-  // The outbox, watched by hand rather than via watchDoorOutbox, because that
-  // helper discards the flush result — and the `failed` count is exactly what
-  // point 5 requires this page to surface. Flushing twice is safe (idempotent).
+  // The outbox, watched by hand rather than via watchDoorOutbox.
+  //
+  // NOT because that helper discards the flush result — it no longer does; it
+  // hands the `DoorFlushResult` to its callback (lib/doorOutbox.ts,
+  // `onChange?.(result)`), which is how DoorReceipt.tsx gets the same
+  // `dropped`/`failed` split. The reason is the `offline`/`online` pair below:
+  // this screen RENDERS connectivity, and watchDoorOutbox listens for `online`
+  // without exposing it and has no `offline` handler at all. Flushing twice is
+  // safe (idempotent).
+  //
+  // (This used to add "and its returned cleanup detaches only the `online`
+  // listener — not the `visibilitychange` one". True the hour it was written,
+  // and false by the next commit on this same branch: `e93f368c` named both
+  // handlers so the cleanup could remove both — see the `return () =>` at the
+  // end of `watchDoorOutbox`, lib/doorOutbox.ts. The listener leak is gone; the
+  // connectivity reason above is the whole reason now.)
   useEffect(() => {
     let alive = true;
-    const refresh = () => void pendingDoorCount().then((n) => alive && setPendingQueue(n));
-    const flush = () =>
-      void flushDoorOutbox().then((r) => {
+    const refresh = () => {
+      void pendingDoorCount().then((n) => alive && setPendingQueue(n));
+      // Both records re-read on every pass rather than patched from the
+      // result: this is also what makes the `[rid]` note below true, since a
+      // lazy `useState` initializer does not re-run on a house switch.
+      setDrops(readDroppedDoorReceipts(rid));
+    };
+    /**
+     * The pass already accounted for.
+     *
+     * `onOnline` and `onVis` below fire in the SAME tick on the dock-to-office
+     * walk, and the outbox hands both callers the one in-flight pass
+     * (lib/doorOutbox.ts, `inFlight`). This no longer guards a miscount — both
+     * loss counts are read from storage now, so reporting one pass twice
+     * cannot inflate them — it just stops the same result doing the same two
+     * reads twice. A genuinely later flush is a different promise.
+     */
+    let counted: Promise<DoorFlushResult> | null = null;
+    const flush = () => {
+      const pass = flushDoorOutbox();
+      if (pass === counted) return;
+      counted = pass;
+      void pass.then((r) => {
         if (!alive) return;
         if (r.sent > 0 || r.failed > 0) setLastFlush(r);
+        // A discarded receipt leaves the queue exactly as a delivered one does,
+        // so `pendingQueue` falls by one either way. What tells them apart is
+        // on disk — the drop record and the parked queue entry — so the pass
+        // result is not consulted for either; the reads are.
         refresh();
       });
+    };
     const onOnline = () => {
       setOnline(true);
       flush();
@@ -217,7 +286,11 @@ export default function DoorNext() {
       window.removeEventListener('offline', onOffline);
       document.removeEventListener('visibilitychange', onVis);
     };
-  }, []);
+    // `rid` is a dependency because the record is scoped by it. In practice a
+    // door screen is one order at one house, so this does not re-subscribe
+    // mid-delivery; a switch re-reads that house's record rather than leaving
+    // the previous one on screen.
+  }, [rid]);
 
   /**
    * The photograph does work (point 2) — but NEVER blocks the count. The
@@ -326,6 +399,7 @@ export default function DoorNext() {
       const res = await submitDoorReceipt({
         orderId,
         orderLabel: order?.orderNumber ?? orderId,
+        restaurantId: rid,
         body: {
           countedQty: counted,
           countedUom: 'case',
@@ -406,15 +480,63 @@ export default function DoorNext() {
         </div>
       </div>
 
+
       {/* A send that permanently failed is NOT a sent one — said loudly,
-          wherever the receiver is in the flow (point 5). */}
-      {lastFlush !== null && lastFlush.failed > 0 && (
-        <p
+          wherever the receiver is in the flow (point 5). Loud is reserved for
+          `dropped`: the app has given up, and the person holding the paper is
+          the only one who can still act on it. Read from the outbox's durable
+          record, so it survives the Finish navigate and names the orders. */}
+      {drops.length > 0 && (
+        <div
           role="alert"
+          data-ux-key="door:dropped"
           className="mx-4 mt-3 rounded-xl border border-rose-400/50 bg-rose-500/10 px-3 py-2 text-sm text-rose-300"
         >
-          {lastFlush.failed} door {lastFlush.failed === 1 ? 'report' : 'reports'} did not send —
-          tell a manager before the paper is lost.
+          <p>
+            {drops.length === 1
+              ? `Delivery ${drops[0].orderLabel} was saved on this phone and never sent.`
+              : `${drops.length} deliveries saved on this phone were never sent.`}{' '}
+            {/* Only a remedy the cause supports. An expired session is the one
+                cause the record can tell apart, and the one the porter can fix
+                at the door in ten seconds instead of upstairs. Mixed or
+                anything else: no cause is claimed at all. */}
+            {drops.every((d) => d.reason === 'auth')
+              ? 'The app was signed out. Sign in again before recording another — and keep the paperwork: the count is not on the server.'
+              : 'The app has given up. Keep the paperwork and tell a manager: the count is not on the server.'}
+          </p>
+          {drops.length > 1 && (
+            <ul className="mt-2 space-y-1 text-rose-300/90">
+              {drops.map((d) => (
+                <li key={d.id}>{d.orderLabel}</li>
+              ))}
+            </ul>
+          )}
+          <button
+            type="button"
+            data-ux-key="door:dropped-ack"
+            onClick={() => {
+              // Clears the NOTICE, not the fact. The receipt is gone and
+              // nothing here brings it back; the alternative is a red strip on
+              // a shared dock phone that can never be dismissed, which is a
+              // strip nobody reads by the third delivery.
+              clearDroppedDoorReceipts(rid);
+              setDrops([]);
+            }}
+            className="mt-2 min-h-[44px] w-full rounded-lg bg-white/10 text-xs font-semibold active:bg-white/20"
+          >
+            I have the paperwork
+          </button>
+        </div>
+      )}
+
+      {/* A retryable failure is not a loss — the receipt is still queued and
+          the next flush sends it. Said quietly, in the chrome's own voice, so
+          it never reads as the alarm above. */}
+      {lastFlush !== null && lastFlush.failed - lastFlush.dropped > 0 && (
+        <p data-ux-key="door:retrying" className="mx-4 mt-2 text-xs text-inkm-3">
+          {lastFlush.failed - lastFlush.dropped}{' '}
+          {lastFlush.failed - lastFlush.dropped === 1 ? 'report' : 'reports'} did not send yet —
+          still on this phone, still trying.
         </p>
       )}
 

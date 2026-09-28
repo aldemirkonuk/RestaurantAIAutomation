@@ -213,3 +213,37 @@ describe("weekly manager email — no fabricated figures", () => {
     expect(data.topSellers).toEqual([]);
   });
 });
+
+/**
+ * The three inbox rows this file's service writes carried a picture in front
+ * of their titles until 2026-09-03 — a bar chart on "Weekly report ready", a
+ * repeat arrow on the recurring-order reminder, a parcel on the delivery ETA.
+ *
+ * They are asserted on the SOURCE rather than through the tenant runner for
+ * the same reason the fabricated-figures test above is: the three call sites
+ * sit inside three separate `runPerTenant` closures with their own database
+ * reads, and a source assertion pins the exact string a reader will see
+ * without pretending to have exercised three crons. The behaviour-level rule
+ * for every producer in the repo is scanned by
+ * `notifications/notification-text-is-plain.spec.ts`.
+ */
+describe("scheduled inbox rows — no emoji, and no fact lost with it", () => {
+  const EMOJI = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u;
+
+  it("writes plain titles that still name the count and the thing counted", () => {
+    expect(SOURCE).toContain('title: "Weekly report ready"');
+    expect(SOURCE).toContain(
+      'title: `${schedules.length} recurring order${schedules.length === 1 ? "" : "s"} due soon`',
+    );
+    expect(SOURCE).toContain(
+      'title: `${deliveries.length} deliver${deliveries.length === 1 ? "y" : "ies"} arriving tomorrow`',
+    );
+  });
+
+  it("carries no emoji on any title or message line", () => {
+    const offences = SOURCE.split("\n")
+      .map((text, i) => ({ line: i + 1, text }))
+      .filter(({ text }) => /\b(title|message)\s*:/.test(text) && EMOJI.test(text));
+    expect(offences).toEqual([]);
+  });
+});

@@ -863,9 +863,39 @@ class ReportingAgent(BaseAgent):
         """
         now = datetime.utcnow()
 
-        # Get manager's timezone
-        tz_str = preferences.get("report_timezone", "America/Los_Angeles")
-        tz = pytz.timezone(tz_str)
+        # THE ZONE IS NOT ASSUMED. IT IS REQUIRED, AND ITS ABSENCE IS SAID.
+        #
+        # This line read `preferences.get("report_timezone",
+        # "America/Los_Angeles")`. The founder dropped that column's default on
+        # 2026-09-04 (ADR 0116, migration
+        # `20260904190000_a_report_has_no_default_clock`) precisely because a
+        # house that was never asked had California answered for it — and this
+        # fallback would have written the same fabricated answer straight back
+        # in, in the one place where it decides WHEN a manager's report is sent.
+        # A report fired on the wrong wall clock is not a cosmetic error: it is a
+        # 07:00 digest arriving at 17:00.
+        #
+        # So: no zone, no schedule. The run is SKIPPED and the reason is logged
+        # in words. Skipping is the recoverable failure — somebody notices they
+        # are not receiving reports and sets a zone; sending on a guessed clock
+        # is the failure nobody notices at all.
+        tz_str = preferences.get("report_timezone")
+        if not tz_str:
+            logger.error(
+                "Scheduled report NOT generated: this manager has no report_timezone "
+                "recorded, so there is no wall clock on which 'is it delivery time?' "
+                "has an answer. Set manager_preferences.report_timezone. Nothing was "
+                "sent and no zone was assumed."
+            )
+            return False
+        try:
+            tz = pytz.timezone(tz_str)
+        except pytz.UnknownTimeZoneError:
+            logger.error(
+                f"Scheduled report NOT generated: report_timezone={tz_str!r} is not a "
+                "zone pytz recognises. Nothing was sent and no zone was substituted."
+            )
+            return False
         local_now = now.astimezone(tz)
 
         # Get delivery time

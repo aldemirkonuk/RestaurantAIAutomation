@@ -60,6 +60,45 @@ export class UploadDocumentDto {
   @IsOptional()
   @IsUUID()
   orderId?: string;
+
+  /**
+   * Which sender's price codes to read an 832 catalogue against (ADR 0126).
+   *
+   * NOT the same fact as `providerId`. `providerId` names a row in this house's
+   * own provider list; this names an entry in the measured distributor register,
+   * which is what a price-code statement is keyed on. A catalogue arriving
+   * without it is stored and NOT priced, and the response says which keys exist
+   * — the alternative, guessing the sender from the file's own `N1*SU`, would
+   * read one house's statement of what `CON` means onto a different
+   * distributor's paper.
+   */
+  @ApiPropertyOptional({
+    description:
+      "For an EDI 832 price catalogue: the distributor-register key whose price-code statements this file should be read against (e.g. southern-glazers-il). Ignored for every other document type. Omit it and the catalogue is stored but nothing on it is priced.",
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  distributorKey?: string;
+
+  /**
+   * The catalogue's currency, when the file itself states none.
+   *
+   * There is deliberately no default. An 832 with no `CUR` and no declaration
+   * here is refused whole rather than stamped USD — the published MSSS sample
+   * carries no `CUR` at all, so this is the common case, and
+   * `own-paper-sighting.ts`'s `?? "USD"` is the measured defect that already
+   * marks Turkish and British sightings as dollars.
+   */
+  @ApiPropertyOptional({
+    description:
+      "ISO 4217 code to read an 832 catalogue in when the file states no CUR segment. No default: a catalogue with neither is refused rather than assumed to be USD.",
+  })
+  @IsOptional()
+  @IsString()
+  @MinLength(3)
+  @MaxLength(3)
+  declaredCurrency?: string;
 }
 
 /**

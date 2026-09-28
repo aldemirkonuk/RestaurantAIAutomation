@@ -3,6 +3,7 @@ import { DocumentIntakeService } from "./document-intake.service";
 import { DocumentExtractorService } from "./document-extractor.service";
 import { CanonicalDocumentService } from "../canonical/canonical-document.service";
 import { LineMappingService } from "../canonical/line-mapping.service";
+import { VendorResolutionService } from "../vendor-identity/vendor-resolution.service";
 import { makeMockDb, MockDb } from "../canonical/delivery-mock";
 
 /**
@@ -46,6 +47,7 @@ describe("DocumentIntakeService.recordDoorCount", () => {
       db.client as unknown as DatabaseService,
       {} as unknown as DocumentExtractorService,
       {} as unknown as CanonicalDocumentService,
+      {} as unknown as VendorResolutionService,
     );
   });
 

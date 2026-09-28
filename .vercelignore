@@ -27,6 +27,14 @@ playwright-report
 coverage
 *.log
 logs
+# 2026-09-12: the bare `logs` pattern above (for runtime log output such as
+# services/agent-orchestrator/logs) also matched apps/web/src/pages/logs/ —
+# a real page's source, not log output — and Vercel silently dropped it
+# before build ("Removed N ignored files"), which surfaced as a rollup
+# resolve failure on ./pages/logs/next/LogsNext with no other clue why. Same
+# root cause already fixed twice in .gitignore (apps/api-gateway/src/logs/,
+# apps/web/src/pages/logs/) — same fix here.
+!apps/web/src/pages/logs/
 
 # ── Local / backup trees (never ship to Vercel) ───────────────────────────────
 cursor_chat_backup/

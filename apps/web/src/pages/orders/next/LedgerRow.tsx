@@ -4,9 +4,12 @@
  * Motion contract (MOTIONS.md):
  * - expand/collapse is the `settle` token on grid-template-rows 0fr→1fr, and
  *   the chevron turns on the same token — one curve, one duration, one event;
- * - the expanded body shows the working for the total (qty × unit price, and
- *   the server's listed total when the two disagree — a disagreement is said,
- *   never averaged away);
+ * - the expanded body shows the working for the total, drawn from the unit the
+ *   PRICE is stated in rather than assumed per bottle (ADR 0119) — and the
+ *   server's listed total when the two disagree, because a disagreement is
+ *   said, never averaged away. A price whose unit is UNSTATED gets no working
+ *   at all and the register's refusal instead: the per-bottle convention would
+ *   print a case price twelve times over, which is the error this ADR ends;
  * - approving is the ceremony: HoldToApprove completing into the Seal landing
  *   on the stamp spring, wired to the REAL approve mutation. A refusal from
  *   the gateway is stated in place and the die resets — the row never
@@ -20,8 +23,18 @@ import { useState } from 'react';
 import { HoldToApprove } from '@/components/mudavym';
 import { ink, settle } from '@/lib/mudavym/motion';
 import { useApproveOrder, useMarkOrderDelivered } from '@/hooks/queries/useOrderQueries';
+import { alreadyDeliveredRefusal, alreadyDeliveredWords } from '@/services/api/orders';
+import * as ordersApi from '@/services/api/orders';
 import { EM, MONO, SANS, SERIF, fmtDate, fmtMoney } from './format';
-import { STAGE_LABEL, type OrderRowVM } from './useOrdersNextData';
+import {
+  PRICE_UOM_LABEL,
+  ROW_FEES_NOT_READ,
+  ROW_PRICE_UNIT_NOT_READ,
+  ROW_UNSTATED_PRICE_UNIT,
+  describeFees,
+  describeStatedPrice,
+} from './price-unit';
+import { STAGE_LABEL, type ApprovalGateRow, type OrderRowVM } from './useOrdersNextData';
 
 export interface LedgerRowProps {
   row: OrderRowVM;
@@ -32,6 +45,40 @@ export interface LedgerRowProps {
   onSelectChange: (next: boolean) => void;
   /** True while a bulk run is executing, so per-row dies stay quiet. */
   bulkRunning: boolean;
+  /**
+   * This house's approval verdict for this row, from
+   * `GET /procurement/order-approval-gate`.
+   *
+   * `undefined` means the gate has not answered — not "unrestricted". The
+   * ceremony renders exactly as it did before ADR 0116 in that case, and the
+   * gateway still refuses independently, which the row prints.
+   */
+  approval?: ApprovalGateRow;
+  /**
+   * Open the responses sheet on this order.
+   *
+   * The sheet is owned by the PAGE, not by the row: it does a per-order read
+   * (`GET /procurement/orders/:id/conversations`) and one mounted instance per
+   * row would be one query subscription per row, all but one of them disabled.
+   *
+   * The control is offered on every live row rather than only on rows known to
+   * have an answer, because nothing on this page knows which those are: the
+   * list route returns the order header and says nothing about correspondence,
+   * and the only house-wide conversation read is capped at 100 rows — so a row
+   * hidden on that basis would be a claim of "no answer" the page cannot make.
+   * The sheet asks the route built for the question and answers it there, in
+   * three distinct states: answers, none, or unreadable.
+   */
+  onOpenResponses?: () => void;
+  /**
+   * Open the recurrence sheet for this order. Offered on every row, including
+   * one that already repeats — the sheet is where a rule is read, paused and
+   * ended as well as set, and it prints its own refusal for an order nobody
+   * has approved rather than the row hiding the control and saying nothing.
+   */
+  onOpenRecurrence?: () => void;
+  /** Why the gate could not be read. Said in words above the ceremony. */
+  approvalGateError?: string | null;
 }
 
 const label = (text: string) => (
@@ -49,7 +96,18 @@ const label = (text: string) => (
   </span>
 );
 
-export function LedgerRow({ row, expanded, onToggle, selected, onSelectChange, bulkRunning }: LedgerRowProps) {
+export function LedgerRow({
+  row,
+  expanded,
+  onToggle,
+  selected,
+  onSelectChange,
+  bulkRunning,
+  approval,
+  onOpenResponses,
+  onOpenRecurrence,
+  approvalGateError,
+}: LedgerRowProps) {
   const approve = useApproveOrder();
   const deliver = useMarkOrderDelivered();
   // Bumped after a refused approval so the die (HoldToApprove) remounts armed.
@@ -58,17 +116,42 @@ export function LedgerRow({ row, expanded, onToggle, selected, onSelectChange, b
   const [deliverError, setDeliverError] = useState<string | null>(null);
 
   const isPendingStage = row.stage === 'pending' && !row.recurring;
+  // A verdict the gate actually gave. `undefined` is "not answered", which must
+  // never disable the ceremony — the page is a courtesy, the gateway is the gate.
+  const heldForApproval = approval ? !approval.mayApprove : false;
   const disagreement =
     row.listedTotal !== null &&
     row.computedTotal !== null &&
     Math.abs(row.listedTotal - row.computedTotal) > 0.005;
 
-  const onApprove = () => {
+  /**
+   * Mint the proof, at the moment the hold BEGINS (founder, 2026-09-04).
+   *
+   * Not at the moment of approval: a token this request fetched for itself is
+   * the assertion `HoldToApprove`'s `onChallenge` exists to replace. A mint that
+   * fails leaves `HoldToApprove` in its "the seal could not be issued — nothing
+   * sent" state and never calls `onApprove`, so a refused seal cannot become a
+   * silent approval on the way through the UI.
+   */
+  const onChallenge = () => ordersApi.mintOrderSeal(row.id);
+
+  const onApprove = (challenge?: string | null) => {
     setApproveError(null);
-    approve.mutate(row.id, {
+    approve.mutate({ orderId: row.id, challenge }, {
       onError: (err) => {
+        // Since ADR 0116 a refusal's `message` IS the explanation — which rule
+        // fired, what the number was, who may sign (`services/api/orders.ts`
+        // promotes the 403 body onto it). Wrapping that in "The gateway refused
+        // (…)" would bury a sentence written to be read. A 403 is printed
+        // verbatim; anything else keeps the old framing, because a network
+        // error's message is not an explanation of anything.
+        const status = (err as { response?: { status?: number } })?.response?.status;
         const msg = (err as { message?: string })?.message ?? 'request failed';
-        setApproveError(`The gateway refused (${msg}) — still pending, nothing approved.`);
+        setApproveError(
+          status === 403
+            ? msg
+            : `The gateway refused (${msg}) — still pending, nothing approved.`,
+        );
         setAttempt((a) => a + 1);
       },
     });
@@ -80,6 +163,16 @@ export function LedgerRow({ row, expanded, onToggle, selected, onSelectChange, b
       { orderId: row.id },
       {
         onError: (err) => {
+          // An order already delivered is not a refused request, and this desk
+          // stops calling it one (founder, 2026-09-05, batch 46): a 409 carries
+          // the earlier delivery, so the row shows who booked it in and when
+          // rather than "the gateway refused". Nothing retries — repeating a
+          // well-formed request cannot change the order's state.
+          const refused = alreadyDeliveredRefusal(err);
+          if (refused) {
+            setDeliverError(alreadyDeliveredWords(refused));
+            return;
+          }
           const msg = (err as { message?: string })?.message ?? 'request failed';
           setDeliverError(`Not recorded — the gateway refused (${msg}).`);
         },
@@ -124,7 +217,25 @@ export function LedgerRow({ row, expanded, onToggle, selected, onSelectChange, b
             </span>
             <span className="block truncate" style={{ fontSize: 11.5, color: 'var(--ink-3, #7C7365)' }}>
               {row.providerName ?? EM}
-              {row.recurring ? ` · ${row.recurrenceLabel}` : ''}
+              {/*
+                * "recurs weekly, next 12 Sep". The clause is rendered whenever
+                * the reading produced a sentence — which covers the rule AND
+                * the case where the wire named a rule this build cannot read
+                * (the label then says so, rather than the row quietly reading
+                * as one-time). `row.recurring` alone would hide that second
+                * case, which is the shape of every absence-as-health bug this
+                * page has already had once.
+                */}
+              {row.recurrenceLabel ? ` · ${row.recurrenceLabel}` : ''}
+              {/*
+                * A CHILD SAYS WHOSE OCCURRENCE IT IS. It carries no rule of its
+                * own — it is one Tuesday of somebody else's standing order —
+                * and without this the row is indistinguishable from an order a
+                * person raised by hand.
+                */}
+              {row.recurrence.parentOrderId && row.recurrence.occurrenceOn
+                ? ` · one occurrence of a recurring order`
+                : ''}
             </span>
           </span>
           <span
@@ -194,13 +305,123 @@ export function LedgerRow({ row, expanded, onToggle, selected, onSelectChange, b
                   lineHeight: 1.7,
                 }}
               >
-                <div>
-                  {row.quantity !== null ? row.quantity : EM} × {fmtMoney(row.unitPrice)}
-                  <span style={{ color: 'var(--ink-3, #7C7365)' }}> = </span>
+                {/*
+                  The AGREED PRICE, with the unit it is stated in — ADR 0119.
+
+                  This is the number the whole ADR is about: "$420.00" beside a
+                  quantity in cases reads as per-bottle to the code and per-case
+                  to the desk, and the two differ by the pack in the direction
+                  that looks like a bargain. `describeStatedPrice` is the same
+                  function `AgreementSheet` prints at the moment of saving, so
+                  the row and the sheet cannot describe one agreement two ways.
+                */}
+                <div data-testid="agreed-price">
+                  {label('Agreed price')}{' '}
                   <span style={{ color: 'var(--ink-1, #211C16)', fontWeight: 600 }}>
-                    {fmtMoney(row.computedTotal ?? row.listedTotal)}
+                    {describeStatedPrice(row.unitPrice, row.priceUnit.stated) ?? EM}
                   </span>
                 </div>
+                {/*
+                  The working, drawn from the PRICE's unit rather than assumed
+                  per bottle. Null when an operand is missing — in which case
+                  the row says so instead of multiplying two numbers that are
+                  not in the same unit.
+                */}
+                <div>
+                  {row.agreement && row.agreement.ok ? (
+                    <>
+                      <span data-testid="row-working">{row.agreement.working}</span>
+                      <span style={{ color: 'var(--ink-3, #7C7365)' }}> = </span>
+                      <span style={{ color: 'var(--ink-1, #211C16)', fontWeight: 600 }}>
+                        {fmtMoney(row.agreement.total)}
+                      </span>
+                    </>
+                  ) : row.agreement && !row.agreement.ok ? (
+                    <span data-testid="row-uncountable" style={{ color: 'var(--seal-deep, #14515C)' }}>
+                      {row.agreement.message}
+                    </span>
+                  ) : (
+                    /*
+                      No working, and the two reasons are different facts.
+                      An UNSTATED unit is the ordinary case for every order
+                      placed before ADR 0119, and the page must not fill the
+                      gap with the per-bottle convention: totalling $420 per
+                      case as $420 per bottle prints a figure twelve times the
+                      truth, in bold, beside the right one. It prints the
+                      ledger's own number and nothing of its own.
+                    */
+                    <span data-testid="row-no-working" style={{ color: 'var(--ink-3, #7C7365)' }}>
+                      {row.quantity !== null ? row.quantity : EM}{' '}
+                      {row.unitType ? `${row.unitType}(s)` : 'ordered'} —{' '}
+                      {!row.priceUnit.read
+                        ? 'no working can be shown, because this view never read the unit the price is in. The figure above is the ledger’s own.'
+                        : row.priceUnit.stated === null
+                          ? `no working can be shown, because nothing says what unit ${
+                              row.unitPrice === null ? 'the price' : fmtMoney(row.unitPrice)
+                            } is in. The figure above is the ledger’s own.`
+                          : 'the working needs the order’s pack size, which this row does not carry, so the figure above is the ledger’s own and not one worked out here.'}
+                    </span>
+                  )}
+                </div>
+                {/*
+                  A price with no unit is not a stated price. The refusal is
+                  printed HERE, on the row, because until now it was a
+                  `logger.warn` in the gateway and no screen anywhere said why a
+                  house that buys by the case had an empty price register
+                  (ADR 0119 invariant 6).
+                */}
+                {!row.priceUnit.read ? (
+                  <div data-testid="price-unit-unread" style={{ color: 'var(--ink-3, #7C7365)' }}>
+                    {ROW_PRICE_UNIT_NOT_READ}
+                  </div>
+                ) : row.priceUnit.stated === null ? (
+                  <div data-testid="price-unit-unstated" style={{ color: 'var(--seal-deep, #14515C)' }}>
+                    {ROW_UNSTATED_PRICE_UNIT}
+                  </div>
+                ) : null}
+                {/*
+                  "That is ordinary" — a case price on an order counted in
+                  bottles is ordinary trade (Connecticut posts the two prices
+                  separately), and saying so stops the desk reading a correct
+                  row as a mistake. Only printed when the two units can actually
+                  be counted against each other; when they cannot, the refusal
+                  above has already said the opposite.
+                */}
+                {/*
+                  THE MONEY OUTSIDE THE PRICE OF THE WINE — ADR 0119 Q3.
+
+                  Where there IS a working, the fees are already inside it —
+                  "Goods $2100.00, less allowance $100.00, plus deposit $30.00"
+                  — and this line would print the same three amounts a second
+                  time. The first capture of this pass did exactly that
+                  (`$SP/shots-price-unit-2/`), so this line now exists for the
+                  case where there is NO working: an agreement whose price unit
+                  is unstated shows no arithmetic at all, and without this its
+                  deposit would be invisible on the row that a manager approves
+                  money from.
+
+                  A route that never READ the fee columns is a different fact
+                  again, and says so unconditionally — the absence of a read is
+                  not the absence of a deposit.
+                */}
+                {!row.fees.read ? (
+                  <div data-testid="fees-unread" style={{ color: 'var(--ink-3, #7C7365)' }}>
+                    {ROW_FEES_NOT_READ}
+                  </div>
+                ) : !(row.agreement && row.agreement.ok) && describeFees(row.fees.fees) ? (
+                  <div data-testid="row-fees" style={{ color: 'var(--ink-2, #4F473C)' }}>
+                    outside the price of the wine: {describeFees(row.fees.fees)}
+                  </div>
+                ) : null}
+                {row.priceUnit.stated &&
+                  row.unitType !== null &&
+                  row.priceUnit.stated.priceUom !== row.unitType &&
+                  !(row.agreement && !row.agreement.ok) && (
+                    <div data-testid="units-differ" style={{ color: 'var(--ink-3, #7C7365)' }}>
+                      counted in {row.unitType}s, priced{' '}
+                      {PRICE_UOM_LABEL[row.priceUnit.stated.priceUom]} — that is ordinary
+                    </div>
+                  )}
                 {disagreement && (
                   <div style={{ color: 'var(--seal-deep, #14515C)' }}>
                     the ledger lists {fmtMoney(row.listedTotal)} — the two disagree; the listed figure is
@@ -220,20 +441,113 @@ export function LedgerRow({ row, expanded, onToggle, selected, onSelectChange, b
 
             {/* the action column — one honest control per stage */}
             <div style={{ minWidth: 230 }}>
+              {/*
+                The correspondence, at every stage. It is not a stage control:
+                what a vendor said about an order is worth reading after the
+                order is delivered as much as before it is sealed, and the three
+                acts the sheet carries (confirm, reject, step) declare their own
+                availability inside it.
+              */}
+              {onOpenResponses && (
+                <button
+                  type="button"
+                  data-testid="open-responses"
+                  onClick={onOpenResponses}
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    marginBottom: 10,
+                    padding: '7px 12px',
+                    borderRadius: 9,
+                    border: '1px solid var(--paper-2, #EAE4D8)',
+                    background: 'transparent',
+                    color: 'var(--seal-deep, #14515C)',
+                    fontFamily: SANS,
+                    fontSize: 12.5,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    transition: `border-color ${ink.ms}ms ${ink.easing}`,
+                  }}
+                >
+                  The vendor&rsquo;s answers
+                </button>
+              )}
+              {onOpenRecurrence && (
+                <button
+                  type="button"
+                  data-testid="open-recurrence"
+                  onClick={onOpenRecurrence}
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    marginBottom: 10,
+                    padding: '7px 12px',
+                    borderRadius: 9,
+                    border: '1px solid var(--paper-2, #EAE4D8)',
+                    background: 'transparent',
+                    color: 'var(--seal-deep, #14515C)',
+                    fontFamily: SANS,
+                    fontSize: 12.5,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    transition: `border-color ${ink.ms}ms ${ink.easing}`,
+                  }}
+                >
+                  {row.recurring ? 'The repeating rule' : 'Make this repeat'}
+                </button>
+              )}
               {isPendingStage && (
                 <>
-                  {label(`Approve · ${row.providerName ?? 'vendor'}`)}
+                  {label(
+                    heldForApproval
+                      ? `Waiting on ${approval?.requiredRole === 'owner' ? 'an owner' : 'a manager'}`
+                      : `Approve · ${row.providerName ?? 'vendor'}`,
+                  )}
                   <div style={{ marginTop: 4 }}>
+                    {/*
+                      The ceremony is DISABLED, never hidden. A control that
+                      disappears teaches nothing; a control that is visibly shut
+                      with the rule beside it teaches who to ask.
+                    */}
                     <HoldToApprove
                       key={`die-${row.id}-${attempt}`}
                       label={`Hold to approve · ${fmtMoney(row.total)}`}
                       approvedLabel="Approved"
-                      disabled={bulkRunning || approve.isPending}
+                      disabled={bulkRunning || approve.isPending || heldForApproval}
                       onApprove={onApprove}
+                      onChallenge={onChallenge}
                     />
                   </div>
+                  {heldForApproval && approval?.sentence && (
+                    <p
+                      style={{
+                        marginTop: 5,
+                        fontSize: 11,
+                        lineHeight: 1.55,
+                        color: 'var(--ink-2, #4F473C)',
+                      }}
+                      role="status"
+                    >
+                      {approval.sentence}
+                    </p>
+                  )}
+                  {approval && approval.untestable.length > 0 && (
+                    <p style={{ marginTop: 4, fontSize: 10.5, lineHeight: 1.5, color: 'var(--ink-3, #7C7365)' }}>
+                      {approval.untestable.length === 1 ? 'One rule' : `${approval.untestable.length} rules`}{' '}
+                      could not be tested on this order ({approval.untestable.join(', ')}), so{' '}
+                      {approval.untestable.length === 1 ? 'it' : 'they'} did not fire. An
+                      unknown is not a finding.
+                    </p>
+                  )}
+                  {approvalGateError && (
+                    <p style={{ marginTop: 4, fontSize: 10.5, lineHeight: 1.5, color: 'var(--ink-2, #4F473C)' }} role="status">
+                      This house&rsquo;s approval rules could not be read ({approvalGateError}), so
+                      nothing here says whether you may seal this. The gateway still decides, and
+                      will say so if it refuses.
+                    </p>
+                  )}
                   {approveError && (
-                    <p style={{ marginTop: 4, fontSize: 11, color: 'var(--ink-2, #4F473C)' }} role="alert">
+                    <p style={{ marginTop: 4, fontSize: 11, lineHeight: 1.55, color: 'var(--ink-2, #4F473C)' }} role="alert">
                       {approveError}
                     </p>
                   )}

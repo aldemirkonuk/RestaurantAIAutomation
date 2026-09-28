@@ -1,0 +1,451 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>101 &middot; The proposal, and the seal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,400&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+.mudavym{
+  --seal:#1A5E6B; --seal-deep:#14515C; --seal-tint:rgba(26,94,107,.10); --seal-ring:rgba(26,94,107,.32);
+  --paper-0:#FAF7F1; --paper-1:#F3EFE6; --paper-2:#EAE4D8;
+  --ink-1:#211C16; --ink-2:#4F473C; --ink-3:#7C7365; --ink-4:#665D50;
+  color-scheme:light;
+}
+.mudavym[data-ground="charcoal"]{
+  --seal:#5FB0BC; --seal-deep:#7DC3CD; --seal-tint:rgba(95,176,188,.14); --seal-ring:rgba(95,176,188,.38);
+  --paper-0:#15130F; --paper-1:#1D1813; --paper-2:#262019;
+  --ink-1:#EFE7D9; --ink-2:#C0B6A5; --ink-3:#8E8576; --ink-4:#ABA294;
+  color-scheme:dark;
+}
+@media (prefers-color-scheme: dark){
+  :root:not(.light) .mudavym:not([data-ground="paper"]){
+    --seal:#5FB0BC; --seal-deep:#7DC3CD; --seal-tint:rgba(95,176,188,.14); --seal-ring:rgba(95,176,188,.38);
+    --paper-0:#15130F; --paper-1:#1D1813; --paper-2:#262019;
+    --ink-1:#EFE7D9; --ink-2:#C0B6A5; --ink-3:#8E8576; --ink-4:#ABA294;
+    color-scheme:dark;
+  }
+}
+:root{--serif:"Fraunces",Georgia,"Times New Roman",serif;--sans:"DM Sans","Plus Jakarta Sans",system-ui,sans-serif;--mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper-0);color:var(--ink-1);font-family:var(--sans);font-size:13px}
+.banner{background:var(--ink-1);color:var(--paper-0);font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;padding:7px 20px}
+.wrap{max-width:1220px;margin:0 auto;padding:22px 20px 78px}
+.back{display:inline-block;margin:0 0 10px;font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--seal-deep);text-decoration:none}
+.wordmark{font-family:var(--serif);font-weight:600;font-size:13px;letter-spacing:.04em}
+h1{font-family:var(--serif);font-size:33px;font-weight:600;letter-spacing:-.018em;line-height:1.08;margin:4px 0 0}
+h1 .dot{color:var(--seal)}
+.lede{font-family:var(--serif);font-style:italic;font-size:15px;color:var(--ink-2);margin:7px 0 0;max-width:900px}
+.dbl{border-top:1px solid var(--ink-1);border-bottom:1px solid var(--ink-1);height:3px;opacity:.5;margin:17px 0 0}
+p{font-size:12.5px;line-height:1.64;color:var(--ink-2);margin:7px 0 0;max-width:900px}
+b{color:var(--ink-1);font-weight:600}
+code{font-family:var(--mono);font-size:11px;color:var(--ink-2)}
+a{color:var(--seal-deep)}
+.sec-h{display:flex;align-items:baseline;gap:12px;margin:32px 0 0}
+.sec-n{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--seal-deep);white-space:nowrap}
+h2{font-family:var(--serif);font-size:23px;font-weight:600;letter-spacing:-.012em;margin:0}
+.sec-k{font-family:var(--mono);font-size:9.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3);margin:6px 0 12px}
+.ico{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;vertical-align:-2px}
+.chip{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--paper-2);background:var(--paper-0);color:var(--ink-2);font-family:var(--mono);font-size:9px;letter-spacing:.08em;text-transform:uppercase;padding:3px 7px;border-radius:2px;white-space:nowrap}
+.chip.seal{border-color:var(--seal-ring);color:var(--seal-deep);background:var(--seal-tint)}
+.chip.ink{border-color:var(--ink-3);color:var(--ink-1)}
+
+/* ══ the proposal document ══ */
+.doc{border:1px solid var(--ink-1);background:var(--paper-0);margin:14px 0 0}
+.doc-h{padding:18px 22px 15px;border-bottom:1px solid var(--ink-1)}
+.doc-h .k{font-family:var(--mono);font-size:9px;letter-spacing:.13em;text-transform:uppercase;color:var(--seal-deep)}
+.doc-h .t{font-family:var(--serif);font-size:24px;font-weight:600;color:var(--ink-1);margin-top:3px}
+.doc-h .s{font-size:12.5px;color:var(--ink-2);margin-top:6px;line-height:1.6;max-width:820px}
+.doc-h .meta{display:flex;gap:20px;margin-top:12px;flex-wrap:wrap}
+.doc-h .meta div{font-family:var(--mono);font-size:9px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3)}
+.doc-h .meta b{display:block;font-size:12px;letter-spacing:0;text-transform:none;color:var(--ink-1);font-family:var(--sans);font-weight:600;margin-top:2px}
+
+.grp{padding:0 22px}
+.grp-h{display:flex;align-items:baseline;justify-content:space-between;padding:15px 0 9px;border-bottom:1px solid var(--paper-2);margin-top:6px}
+.grp-h .g{font-family:var(--mono);font-size:9.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-1)}
+.grp-h .c{font-family:var(--mono);font-size:9px;color:var(--ink-3)}
+
+.row{display:grid;grid-template-columns:186px 214px 24px 214px 1fr 96px;gap:14px;align-items:start;padding:13px 0;border-bottom:1px solid var(--paper-2)}
+.row .fld{font-size:12.5px;color:var(--ink-1);font-weight:600;line-height:1.4}
+.row .fld .reg{display:block;font-family:var(--mono);font-size:8.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);font-weight:400;margin-top:3px}
+.row .cur{font-family:var(--mono);font-size:12px;color:var(--ink-3);line-height:1.4;font-variant-numeric:tabular-nums}
+.row .arw{color:var(--ink-3);padding-top:1px;text-align:center}
+.row .nxt{font-family:var(--mono);font-size:12px;color:var(--ink-1);font-weight:600;line-height:1.4;font-variant-numeric:tabular-nums}
+.row .why{font-size:11.5px;color:var(--ink-2);line-height:1.55}
+.row .why .prov{display:block;margin-top:5px}
+.row .act{text-align:right}
+.tog{display:inline-flex;border:1px solid var(--paper-2);background:var(--paper-1);border-radius:2px;overflow:hidden}
+.tog span{font-family:var(--mono);font-size:9px;letter-spacing:.08em;text-transform:uppercase;padding:4px 8px;color:var(--ink-3)}
+.tog span.on{background:var(--seal);color:#FAF7F1}
+.tog.off span.on2{background:var(--ink-3);color:var(--paper-0)}
+.row.dropped{opacity:.5}
+.row.dropped .nxt{text-decoration:line-through}
+.row.browser{background:var(--paper-1);margin:0 -22px;padding-left:22px;padding-right:22px}
+
+.blocked{margin:0 -22px;padding:14px 22px;background:var(--paper-1);border-bottom:1px solid var(--paper-2)}
+.blocked .t{font-size:12.5px;color:var(--ink-1);font-weight:600}
+.blocked p{font-size:11.5px;margin-top:5px}
+
+.contest{border-top:1px solid var(--ink-1);margin-top:8px;padding:16px 22px 4px}
+.contest .h{font-family:var(--serif);font-size:18px;font-weight:600;color:var(--ink-1)}
+.contest .sub{font-size:12px;color:var(--ink-2);margin-top:4px;line-height:1.6;max-width:820px}
+.crow{display:grid;grid-template-columns:1fr 200px;gap:18px;align-items:center;padding:14px 0;border-bottom:1px solid var(--paper-2)}
+.crow:last-child{border-bottom:0}
+.crow .cf{font-size:12.5px;color:var(--ink-1);font-weight:600}
+.crow .cw{font-size:11.5px;color:var(--ink-2);margin-top:4px;line-height:1.55}
+.mini-seal{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--seal-ring);background:var(--paper-0);color:var(--seal-deep);font-family:var(--sans);font-size:11.5px;font-weight:600;padding:8px 13px;border-radius:2px}
+.mini-seal .dsk{width:13px;height:13px;border-radius:50%;border:1.5px solid var(--seal);display:inline-block}
+
+/* the seal bar */
+.sealbar{border-top:1px solid var(--ink-1);padding:20px 22px 22px;background:var(--paper-1);display:grid;grid-template-columns:1fr 300px;gap:26px;align-items:center}
+.sealbar .tally{font-family:var(--serif);font-size:20px;font-weight:600;color:var(--ink-1);line-height:1.35}
+.sealbar .warn{font-size:11.5px;color:var(--ink-2);margin-top:7px;line-height:1.58;max-width:640px}
+.sealbar .warn b{color:var(--ink-1)}
+.hold{border:1px solid var(--seal);background:var(--seal);color:#FAF7F1;padding:0;border-radius:2px;overflow:hidden;position:relative}
+.hold .fill{position:absolute;inset:0 42% 0 0;background:rgba(255,255,255,.16)}
+.hold .lbl{position:relative;display:flex;align-items:center;justify-content:center;gap:10px;font-family:var(--sans);font-size:13.5px;font-weight:600;padding:14px 16px;letter-spacing:.01em}
+.hold .disc{width:16px;height:16px;border-radius:50%;border:1.5px solid rgba(250,247,241,.85)}
+.holdnote{font-family:var(--mono);font-size:9.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3);text-align:center;margin-top:8px}
+
+/* the receipt */
+.receipt{border:1px solid var(--ink-1);background:var(--paper-0);margin:14px 0 0}
+.receipt-h{padding:16px 22px 14px;border-bottom:1px solid var(--ink-1);display:flex;align-items:baseline;justify-content:space-between;gap:18px;flex-wrap:wrap}
+.receipt-h .t{font-family:var(--serif);font-size:21px;font-weight:600;color:var(--ink-1)}
+.receipt-h .id{font-family:var(--mono);font-size:10px;color:var(--ink-3)}
+.rrow{display:grid;grid-template-columns:120px 200px 1fr;gap:16px;padding:11px 22px;border-bottom:1px solid var(--paper-2);align-items:start}
+.rrow .st{font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;padding-top:2px}
+.rrow .st.w{color:var(--seal-deep)}
+.rrow .st.r{color:var(--ink-1)}
+.rrow .st.n{color:var(--ink-3)}
+.rrow .f{font-size:12.5px;color:var(--ink-1);font-weight:600}
+.rrow .f small{display:block;font-family:var(--mono);font-size:8.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);font-weight:400;margin-top:3px}
+.rrow .d{font-size:11.5px;color:var(--ink-2);line-height:1.55}
+.receipt-f{padding:15px 22px 18px;background:var(--paper-1);display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap}
+.receipt-f p{margin:0;max-width:700px}
+.undo{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--ink-1);background:transparent;color:var(--ink-1);font-family:var(--sans);font-size:12px;font-weight:600;padding:9px 14px;border-radius:2px}
+
+table{border-collapse:collapse;width:100%;margin:14px 0 0;font-size:12px}
+th{text-align:left;font-family:var(--mono);font-size:9px;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3);font-weight:400;padding:0 12px 7px 0;border-bottom:1px solid var(--ink-1);vertical-align:bottom}
+td{padding:9px 12px 9px 0;border-bottom:1px solid var(--paper-2);color:var(--ink-2);vertical-align:top;line-height:1.55}
+td b{color:var(--ink-1)}
+.callout{border-left:2px solid var(--seal);background:var(--seal-tint);padding:14px 18px;margin-top:14px}
+.cite{font-family:var(--mono);font-size:10px;line-height:1.85;color:var(--ink-3);margin-top:12px;word-break:break-word}
+.cite b{color:var(--ink-2);font-weight:600}
+</style>
+</head>
+<body class="mudavym">
+<div class="banner">Sketch 101 &middot; the proposal and the seal &mdash; example data, not a tenant</div>
+<div class="wrap">
+
+<a class="back" href="index.html">&larr; 101 index</a>
+<div class="wordmark">Mudavym</div>
+<h1>The proposal, and the seal<span class="dot">.</span></h1>
+<p class="lede">Every value it would set, grouped by the register it belongs to, each row carrying its reason and where the current value came from. Drop any of them. One seal at the bottom.</p>
+<div class="dbl"></div>
+
+<div class="sec-h"><span class="sec-n">01</span><h2>The document</h2></div>
+<div class="sec-k">nothing here is written until the seal completes</div>
+
+<div class="doc">
+  <div class="doc-h">
+    <div class="k"><svg class="ico" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M16 13H8"/><path d="M16 17H8"/></svg> Proposed configuration &middot; not yet applied</div>
+    <div class="t">Lokanta M&uuml;davim</div>
+    <div class="s">Drawn from your six sentences on 4 September. Six values would be written to this restaurant, one applied in this browser only, and one I have told you I cannot set. A row you drop is not written and is not recorded as an answer &mdash; it stays unanswered, which is the truth.</div>
+    <div class="meta">
+      <div>From<b>&ldquo;We&rsquo;re a small meyhane. Forty covers&hellip;&rdquo;</b></div>
+      <div>Batch<b style="font-family:var(--mono);font-size:11px">cfg&#8209;4f2a91c7</b></div>
+      <div>Registers touched<b>6 of 14</b></div>
+      <div>Will be recorded as<b>proposed &amp; sealed</b></div>
+    </div>
+  </div>
+
+  <div class="grp">
+
+    <div class="grp-h"><span class="g">Buying</span><span class="c">2 rows &middot; kept on this restaurant</span></div>
+
+    <div class="row">
+      <div class="fld">Manager ceiling<span class="reg">Approval thresholds</span></div>
+      <div class="cur">no policy recorded</div>
+      <div class="arw"><svg class="ico" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></div>
+      <div class="nxt">&#8378;5,000 &middot; owner signs above</div>
+      <div class="why">You said &ldquo;I sign anything over five thousand lira myself; Deniz can do the rest.&rdquo;
+        <span class="prov"><span class="chip">current: nobody has answered</span></span></div>
+      <div class="act"><span class="tog"><span class="on">Keep</span><span>Drop</span></span></div>
+    </div>
+
+    <div class="row">
+      <div class="fld">Anadolu &mdash; order cutoff<span class="reg">Vendor terms</span></div>
+      <div class="cur">&mdash; no cutoff recorded</div>
+      <div class="arw"><svg class="ico" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></div>
+      <div class="nxt">11:00, same day</div>
+      <div class="why">You said &ldquo;Anadolu wants the order in by eleven.&rdquo; This will read as a <b>stated</b> term, not an inferred one.
+        <span class="prov"><span class="chip">current: nothing named cutoff exists in any migration</span></span></div>
+      <div class="act"><span class="tog"><span class="on">Keep</span><span>Drop</span></span></div>
+    </div>
+
+    <div class="blocked">
+      <div class="t"><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/></svg> Ege &Scaron;arap and Kad&#305;k&ouml;y Bira have no cutoff, and I have not made one up.</div>
+      <p>Two of your three vendors were not mentioned. Copying Anadolu&rsquo;s 11:00 across them would put a number in a column that nobody stated &mdash; the exact fault this register exists to stop. They stay unanswered and will show as unanswered.</p>
+    </div>
+
+    <div class="grp-h"><span class="g">Autonomy</span><span class="c">2 rows &middot; 1 on the restaurant, 1 on your account</span></div>
+
+    <div class="row">
+      <div class="fld">Service day settles<span class="reg">Notifications</span></div>
+      <div class="cur">06:00 <span style="color:var(--ink-3)">(code constant)</span></div>
+      <div class="arw"><svg class="ico" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></div>
+      <div class="nxt">06:00 after last order</div>
+      <div class="why">The number is the same; <b>what changes is that somebody chose it.</b> Today <code>SETTLE_HOURS_AFTER_MIDNIGHT&nbsp;=&nbsp;6</code> is a constant nobody agreed to. You said you run to half one, which is why six is right for you.
+        <span class="prov"><span class="chip">current: a constant, not an answer</span></span></div>
+      <div class="act"><span class="tog"><span class="on">Keep</span><span>Drop</span></span></div>
+    </div>
+
+    <div class="row">
+      <div class="fld">Quiet hours<span class="reg">Notifications &middot; your account</span></div>
+      <div class="cur">none &mdash; everything sends at once</div>
+      <div class="arw"><svg class="ico" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></div>
+      <div class="nxt">18:00&ndash;01:30 &middot; digest 10:00</div>
+      <div class="why">You said &ldquo;don&rsquo;t ring my phone during service.&rdquo; Held alerts are not dropped &mdash; they arrive together the next morning.
+        <span class="prov"><span class="chip">current: nobody has answered</span></span></div>
+      <div class="act"><span class="tog"><span class="on">Keep</span><span>Drop</span></span></div>
+    </div>
+
+    <div class="grp-h"><span class="g">The house</span><span class="c">2 rows &middot; everyone here gets the same answer</span></div>
+
+    <div class="row">
+      <div class="fld">Registers carried<span class="reg">Cellar</span></div>
+      <div class="cur">wine only</div>
+      <div class="arw"><svg class="ico" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></div>
+      <div class="nxt">Wine &middot; Beer &middot; Rak&#305;</div>
+      <div class="why">You said &ldquo;we do wine, beer and rak&#305;.&rdquo; <b>Whiskey is not in this row</b> &mdash; a person turned it on and that is contested below, not batched.
+        <span class="prov"><span class="chip">current: nobody has answered</span></span></div>
+      <div class="act"><span class="tog"><span class="on">Keep</span><span>Drop</span></span></div>
+    </div>
+
+    <div class="row dropped">
+      <div class="fld">Days held out of baselines<span class="reg">Calendar</span></div>
+      <div class="cur">none</div>
+      <div class="arw"><svg class="ico" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></div>
+      <div class="nxt">Mondays excluded</div>
+      <div class="why"><b>You dropped this row.</b> It will not be written, and Mondays stay <em>unanswered</em> &mdash; not recorded as &ldquo;included&rdquo;. Dropping is not an answer.
+        <span class="prov"><span class="chip ink">dropped by you &mdash; nothing recorded</span></span></div>
+      <div class="act"><span class="tog off"><span>Keep</span><span class="on2">Drop</span></span></div>
+    </div>
+
+    <div class="grp-h"><span class="g">Yours</span><span class="c">1 row &middot; and it does not leave this browser</span></div>
+
+    <div class="row browser">
+      <div class="fld">Default glass pour<span class="reg">Measurement</span></div>
+      <div class="cur">150 ml <span style="color:var(--ink-3)">(this browser)</span></div>
+      <div class="arw"><svg class="ico" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></div>
+      <div class="nxt">150 ml</div>
+      <div class="why"><b>This one is applied here, not on the server.</b> Measurement is kept in this browser only; it does not reach the phone, nobody else here sees it, and clearing site data forgets it. There will be no audit row for this value because there is nowhere to write one.
+        <span class="prov"><span class="chip"><svg class="ico" viewBox="0 0 24 24"><rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>kind: browser &mdash; localStorage</span></span></div>
+      <div class="act"><span class="tog"><span class="on">Keep</span><span>Drop</span></span></div>
+    </div>
+
+    <div class="blocked" style="margin-bottom:0">
+      <div class="t"><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/></svg> Market price drop &mdash; 10%. I cannot set this for you, and here is why.</div>
+      <p>The threshold your price alerts fire at is read from <code>MARKET_SIGNAL_DROP_PCT</code>, once, for every house on this deployment. There is no per-restaurant value to write, so there is no control here. Your alerts will fire when a sighting is 10% below the thirty-day average, whether or not that suits you. If you want a different number, that is a change to the product, not to your settings.</p>
+    </div>
+  </div>
+
+  <div class="contest">
+    <div class="h">You already answered these. I would answer them differently.</div>
+    <div class="sub">A register already holding a value somebody stated <b>never enters the batch</b>. The seal at the bottom of this page covers filling silence, never overwriting a person &mdash; so each of these is its own decision with its own seal.</div>
+
+    <div class="crow">
+      <div>
+        <div class="cf">Cellar &rarr; Whiskey register</div>
+        <div class="cw">Turned <b>on</b> on 21 August by Deniz Ery&#305;lmaz. You said today &ldquo;no whiskey list.&rdquo; Turning it off hides 14 items from the cellar and from every count that reads it. I have not put this in the batch, and I will not.</div>
+      </div>
+      <div style="text-align:right">
+        <span class="mini-seal"><span class="dsk"></span>Hold to turn it off</span>
+      </div>
+    </div>
+
+    <div class="crow">
+      <div>
+        <div class="cf">Email &rarr; sign-off name</div>
+        <div class="cw">Reads <b>&ldquo;Lokanta M&uuml;davim &mdash; Sat&#305;n Alma&rdquo;</b>, set on 14 August. You did not mention it. I am showing it because it is the name every vendor letter leaves in, and it should be a name somebody meant.</div>
+      </div>
+      <div style="text-align:right">
+        <span class="chip">no change proposed</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="sealbar">
+    <div>
+      <div class="tally">Six values will be written. One applied in this browser. One I cannot set. One you dropped.</div>
+      <p class="warn">These six are written <b>one at a time, through six different services</b>, and there is no shared transaction behind them. If one fails the others still stand. That is why the next screen is a receipt naming each one, and not a single tick. <b>Nothing is written until this fills.</b></p>
+    </div>
+    <div>
+      <div class="hold">
+        <div class="fill"></div>
+        <div class="lbl"><span class="disc"></span>Hold to apply six values</div>
+      </div>
+      <div class="holdnote">Released at 58% &mdash; nothing written</div>
+    </div>
+  </div>
+</div>
+
+<div class="sec-h"><span class="sec-n">02</span><h2>The receipt &mdash; which is the whole reason the seal is honest</h2></div>
+<div class="sec-k">a batch that never reports a single &ldquo;Done&rdquo;</div>
+
+<p>The apply crosses six services with no shared transaction. Terraform publishes exactly this limit about itself on the same page as the apply command &mdash; <em>&ldquo;Terraform does not automatically roll back a partially-completed apply&rdquo;</em> &mdash; and CloudFormation states that it <em>&ldquo;stops at the first failure in each independent provisioning path&rdquo;</em> and then offers Retry, Update or Roll back. A seal that completed and said &ldquo;Done&rdquo; over a partial write would be this repository&rsquo;s cross-cutting fault in its purest form, so it does not exist. This is what completion looks like instead.</p>
+
+<div class="receipt">
+  <div class="receipt-h">
+    <div class="t">Applied 4 September, 11:42 &mdash; five written, one refused</div>
+    <div class="id">correlation_id cfg&#8209;4f2a91c7 &middot; sealed by Aldemir Konuk</div>
+  </div>
+
+  <div class="rrow">
+    <div class="st w"><svg class="ico" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg> written</div>
+    <div class="f">Manager ceiling<small>approval thresholds</small></div>
+    <div class="d">&#8378;5,000, owner signs above. Audit row filed: <code>approval_threshold_changed</code>, from <em>no policy</em> to <em>&#8378;5,000 / owner</em>.</div>
+  </div>
+  <div class="rrow">
+    <div class="st w"><svg class="ico" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg> written</div>
+    <div class="f">Anadolu &mdash; order cutoff<small>vendor terms</small></div>
+    <div class="d">11:00, recorded as <b>stated</b>. Audit row filed: <code>vendor_terms_changed</code>.</div>
+  </div>
+  <div class="rrow">
+    <div class="st w"><svg class="ico" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg> written</div>
+    <div class="f">Quiet hours<small>notifications &middot; your account</small></div>
+    <div class="d">18:00&ndash;01:30, digest at 10:00. Audit row filed: <code>notification_preferences_changed</code>.</div>
+  </div>
+  <div class="rrow">
+    <div class="st w"><svg class="ico" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg> written</div>
+    <div class="f">Registers carried<small>cellar</small></div>
+    <div class="d">Wine, beer, rak&#305;. Whiskey untouched, as promised.</div>
+  </div>
+  <div class="rrow">
+    <div class="st w"><svg class="ico" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg> written</div>
+    <div class="f">Service day settles<small>notifications</small></div>
+    <div class="d">Six hours after the last order. The value did not change; <b>its provenance did</b> &mdash; it is now an answer with an author.</div>
+  </div>
+  <div class="rrow">
+    <div class="st r"><svg class="ico" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg> refused</div>
+    <div class="f">Default glass pour<small>measurement &middot; this browser</small></div>
+    <div class="d"><b>Not written &mdash; and this is the honest outcome, not a bug.</b> Measurement is kept in this browser. It was applied here, in this tab, and there is no server row and no audit row for it. Open Mudavym on the till and it will still be at its old value until you set it there.</div>
+  </div>
+  <div class="rrow">
+    <div class="st n">not attempted</div>
+    <div class="f">Days held out of baselines<small>calendar</small></div>
+    <div class="d">You dropped this row before sealing. Mondays remain <b>unanswered</b> &mdash; not recorded as included.</div>
+  </div>
+  <div class="rrow">
+    <div class="st n">not offered</div>
+    <div class="f">Market price drop<small>set per deployment</small></div>
+    <div class="d">Still 10%, for every house. Nothing was written and nothing could have been.</div>
+  </div>
+
+  <div class="receipt-f">
+    <p>All five written rows share one <code>correlation_id</code>, and every one stored what it changed <b>from</b> as well as <b>to</b>. That is what makes this reversible as a unit rather than five separate archaeology projects.</p>
+    <span class="undo"><svg class="ico" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg> Undo this batch</span>
+  </div>
+</div>
+
+<div class="sec-h"><span class="sec-n">03</span><h2>Undo as a batch &mdash; and why this house can do it when the field cannot</h2></div>
+<div class="sec-k">no new table, no migration, two unused columns</div>
+
+<table>
+  <thead><tr><th style="width:24%">The piece</th><th style="width:32%">Where</th><th>State</th></tr></thead>
+  <tbody>
+    <tr><td>every field stored as <code>{from, to}</code></td><td><code>settings-audit.service.ts:89-91,216-221</code></td><td><b>Already true.</b> <code>changes: {register, subject, fields}</code>, each field a from/to pair.</td></tr>
+    <tr><td>a column to group a batch</td><td><code>system_audit_log.correlation_id</code>, added by <code>20260805132000:73-75</code></td><td><b>Exists. Never written.</b> <code>record()</code> does not set it (<code>:205-221</code>).</td></tr>
+    <tr><td>a column for the utterance</td><td><code>system_audit_log.reason</code>, baseline <code>:5564</code></td><td><b>Exists. Never written.</b> This is where the sentence that produced the value lives.</td></tr>
+    <tr><td>a reader that groups by batch</td><td><code>logs/logs-timeline.service.ts:302</code></td><td><b>Built and unfed.</b> <code>/logs</code> already filters this table by <code>correlation_id</code>.</td></tr>
+    <tr><td>the write path for the undo</td><td>each register&rsquo;s own owning service</td><td><b>Exists.</b> The undo writes <code>from</code> back through the same service, as a new batch that names the one it reverses &mdash; never a direct table write, so every guard still runs.</td></tr>
+  </tbody>
+</table>
+
+<div class="callout">
+  <p style="margin:0"><b>The field cannot do this.</b> Salesforce&rsquo;s Setup Audit Trail records who changed what in Setup and <em>does not capture field-level before-and-after values</em>, so it can never be an undo. Notion&rsquo;s answer is page version history, which has no concept of a settings batch. Zapier comes closest &mdash; every Copilot change to an agent creates a checkpoint with a view of what was added, removed or rewritten &mdash; and that is one artefact, not a cross-service configuration. Mudavym already stores the from-value <em>and</em> already has the reader. The only missing line is the writer setting two columns it was given a year ago.</p>
+</div>
+
+<div class="sec-h"><span class="sec-n">04</span><h2>The same document, charcoal</h2></div>
+<div class="sec-k">the seal is the one chromatic mark on either ground</div>
+
+<div class="doc mudavym" data-ground="charcoal">
+  <div class="doc-h">
+    <div class="k"><svg class="ico" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M16 13H8"/><path d="M16 17H8"/></svg> Proposed configuration &middot; not yet applied</div>
+    <div class="t">Lokanta M&uuml;davim</div>
+    <div class="s">Six values would be written to this restaurant, one applied in this browser only, and one I cannot set.</div>
+  </div>
+  <div class="grp">
+    <div class="grp-h"><span class="g">Buying</span><span class="c">kept on this restaurant</span></div>
+    <div class="row">
+      <div class="fld">Manager ceiling<span class="reg">Approval thresholds</span></div>
+      <div class="cur">no policy recorded</div>
+      <div class="arw"><svg class="ico" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></div>
+      <div class="nxt">&#8378;5,000 &middot; owner signs above</div>
+      <div class="why">You said &ldquo;I sign anything over five thousand lira myself.&rdquo;
+        <span class="prov"><span class="chip">current: nobody has answered</span></span></div>
+      <div class="act"><span class="tog"><span class="on">Keep</span><span>Drop</span></span></div>
+    </div>
+    <div class="row browser" style="border-bottom:0">
+      <div class="fld">Default glass pour<span class="reg">Measurement</span></div>
+      <div class="cur">150 ml <span style="color:var(--ink-3)">(this browser)</span></div>
+      <div class="arw"><svg class="ico" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></div>
+      <div class="nxt">150 ml</div>
+      <div class="why"><b>Applied here, not on the server.</b> No audit row, because there is nowhere to write one.
+        <span class="prov"><span class="chip"><svg class="ico" viewBox="0 0 24 24"><rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>kind: browser</span></span></div>
+      <div class="act"><span class="tog"><span class="on">Keep</span><span>Drop</span></span></div>
+    </div>
+  </div>
+  <div class="sealbar">
+    <div>
+      <div class="tally">Six values will be written. One applied in this browser.</div>
+      <p class="warn">Written one at a time, through six services, with <b>no shared transaction</b>. The next screen is a receipt, not a tick.</p>
+    </div>
+    <div>
+      <div class="hold"><div class="fill"></div><div class="lbl"><span class="disc"></span>Hold to apply six values</div></div>
+      <div class="holdnote">Released at 58% &mdash; nothing written</div>
+    </div>
+  </div>
+</div>
+
+<div class="sec-h"><span class="sec-n">05</span><h2>What to look at</h2></div>
+<div class="sec-k">three things this drawing is asking</div>
+
+<table>
+  <thead><tr><th style="width:30%">Question</th><th>Why it is open</th></tr></thead>
+  <tbody>
+    <tr><td><b>Is six rows still a document, or already a wall?</b></td><td>Six is comfortable. The kill-attempt that shaped this design says a forty-field batch is a signature over unread text. If a real house produces twenty rows, the contest rule is doing less work than hoped and the batch needs a hard cap.</td></tr>
+    <tr><td><b>Is the browser-kept row worth showing at all?</b></td><td>It is the most honest row on the page and the most confusing. The alternative is to leave <code>measurement</code> out of the assistant&rsquo;s reach entirely, which is simpler and slightly less useful.</td></tr>
+    <tr><td><b>Is one seal right, or should the contest section&rsquo;s seals be the only seals?</b></td><td>A defensible variant: <em>no</em> batch seal at all, and every row confirmed the way the contested rows are. It is safer and it is six ceremonies instead of one.</td></tr>
+  </tbody>
+</table>
+
+<div class="dbl" style="margin-top:32px"></div>
+<div class="cite">
+<b>Repo</b>, re-verified on <code>feat/mudavym-design-p4</code> 2026-09-04 &mdash;
+<code>apps/api-gateway/src/settings-audit/settings-audit.service.ts:89-91,188-236,205-221</code> &middot;
+<code>apps/api-gateway/src/logs/logs-timeline.service.ts:302</code> &middot;
+<code>supabase/migrations/20260805132000:73-75</code> (correlation_id) &middot;
+<code>supabase/migrations/20260805000000_baseline_from_production.sql:5553-5568</code> (system_audit_log, incl. <code>reason</code> at :5564) &middot;
+<code>apps/api-gateway/src/settings/approval-thresholds.ts:1-30</code> (no approval policy exists today) &middot;
+<code>apps/api-gateway/src/vendor-terms/vendor-terms.service.ts:27-59</code> (no cutoff column in any migration; a defaulted value reads as unknown) &middot;
+<code>apps/api-gateway/src/notifications/producers/service-day.ts:42,51</code> &middot;
+<code>apps/api-gateway/src/notifications/producers/market-price.producer.ts:95-97</code>, <code>market-signal.ts:93,96</code> &middot;
+<code>apps/web/src/pages/settings/next/st-format.ts:31-44,112-146</code> &middot;
+<code>apps/web/src/components/mudavym/HoldToApprove.tsx:1-21</code> (the fill is linear; an early release says what did not happen).
+<br><br>
+<b>Products</b> &mdash;
+Terraform <a href="https://developer.hashicorp.com/terraform/cli/commands/apply">developer.hashicorp.com/terraform/cli/commands/apply</a> &middot;
+CloudFormation <a href="https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/stack-failure-options.html">docs.aws.amazon.com</a> &middot;
+Salesforce Setup Audit Trail <a href="https://www.salesforceben.com/setup-audit-trail-keep-track-of-metadata-changes-in-salesforce/">salesforceben.com</a> &middot;
+Notion Agent <a href="https://www.notion.com/help/notion-agent">notion.com/help/notion-agent</a> &middot;
+Zapier Copilot checkpoints <a href="https://zapier.com/blog/december-2025-product-updates/">zapier.com/blog</a>
+<br><br>
+<b>Lokanta M&uuml;davim, its vendors, staff, figures and dates are invented for the drawing. The repo facts are not.</b>
+</div>
+
+</div>
+</body>
+</html>

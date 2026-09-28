@@ -52,11 +52,47 @@ function makeDb(result: Result) {
   return { calls, databaseService: { client } as any };
 }
 
+/**
+ * A settings-audit double that REMEMBERS what it was asked to file.
+ *
+ * Not a no-op: `updateFeatureFlags` now files who changed which flag, and a
+ * stub that swallowed the call would let the audit write regress silently while
+ * every one of these tests stayed green. The tests below that care assert on
+ * `filed`.
+ */
+function recordingAudit() {
+  const filed: any[] = [];
+  return {
+    filed,
+    record: async (change: any) => {
+      filed.push(change);
+      return { recorded: true, reason: null };
+    },
+  } as any;
+}
+
+/**
+ * A double whose READ and whose WRITE answer differently.
+ *
+ * `makeDb` returns one result for both, which would let the audit test pass
+ * with `readFlagsForAudit` deleted — before and after would be identical and
+ * the diff empty either way. This one makes the before-state observable.
+ */
+function twoStateDb(before: Record<string, boolean>, after: Record<string, boolean>) {
+  const chain: Record<string, (...args: any[]) => any> = {};
+  chain.select = () => chain;
+  chain.eq = () => chain;
+  chain.upsert = () => chain;
+  chain.maybeSingle = async () => ({ data: before, error: null });
+  chain.single = async () => ({ data: after, error: null });
+  return { client: { from: () => chain } } as any;
+}
+
 describe("SettingsService — feature flags (OD-86)", () => {
   describe("autonomous send default", () => {
     it("is OFF when the restaurant has no settings row", async () => {
       const { databaseService } = makeDb({ data: null, error: null });
-      const service = new SettingsService(databaseService);
+      const service = new SettingsService(databaseService, recordingAudit());
 
       const flags = await service.getFeatureFlags("rest-1");
 
@@ -68,7 +104,7 @@ describe("SettingsService — feature flags (OD-86)", () => {
         data: { enable_ai_negotiation: true, enable_ai_autonomous_send: null },
         error: null,
       });
-      const service = new SettingsService(databaseService);
+      const service = new SettingsService(databaseService, recordingAudit());
 
       const flags = await service.getFeatureFlags("rest-1");
 
@@ -80,7 +116,7 @@ describe("SettingsService — feature flags (OD-86)", () => {
         data: { enable_ai_negotiation: false, enable_ai_autonomous_send: true },
         error: null,
       });
-      const service = new SettingsService(databaseService);
+      const service = new SettingsService(databaseService, recordingAudit());
 
       const flags = await service.getFeatureFlags("rest-1");
 
@@ -93,7 +129,7 @@ describe("SettingsService — feature flags (OD-86)", () => {
         data: null,
         error: { message: "connection reset", code: "08006" },
       });
-      const service = new SettingsService(databaseService);
+      const service = new SettingsService(databaseService, recordingAudit());
 
       await expect(service.getFeatureFlags("rest-1")).rejects.toThrow();
     });
@@ -102,7 +138,7 @@ describe("SettingsService — feature flags (OD-86)", () => {
   describe("reads target the reserved settings row", () => {
     it("filters on restaurant_id AND the settings flag_name", async () => {
       const { calls, databaseService } = makeDb({ data: null, error: null });
-      const service = new SettingsService(databaseService);
+      const service = new SettingsService(databaseService, recordingAudit());
 
       await service.getFeatureFlags("rest-1");
 
@@ -117,7 +153,7 @@ describe("SettingsService — feature flags (OD-86)", () => {
         data: { enable_ai_negotiation: false, enable_ai_autonomous_send: false },
         error: null,
       });
-      const service = new SettingsService(databaseService);
+      const service = new SettingsService(databaseService, recordingAudit());
 
       const updated = await service.updateFeatureFlags("rest-1", {
         enable_ai_negotiation: false,
@@ -136,7 +172,7 @@ describe("SettingsService — feature flags (OD-86)", () => {
         data: { enable_ai_negotiation: true, enable_ai_autonomous_send: false },
         error: null,
       });
-      const service = new SettingsService(databaseService);
+      const service = new SettingsService(databaseService, recordingAudit());
 
       await service.updateFeatureFlags("rest-1", {
         enable_ai_autonomous_send: true,
@@ -152,9 +188,65 @@ describe("SettingsService — feature flags (OD-86)", () => {
       });
     });
 
+    it("files WHO granted autonomous sending, with the value it had before", async () => {
+      // The most consequential switch in the product: it lets an AI-written
+      // reply leave for a vendor with nobody having read it. Until this pass it
+      // could be granted with no record of who granted it — `restaurant_feature_flags`
+      // has `created_at` and no update column (baseline:5097-5105).
+      // The before-read and the write must answer DIFFERENTLY, or the test
+      // would pass with the read-before-write removed entirely.
+      const databaseService = twoStateDb(
+        { enable_ai_negotiation: false, enable_ai_autonomous_send: false },
+        { enable_ai_negotiation: false, enable_ai_autonomous_send: true },
+      );
+      const audit = recordingAudit();
+      const service = new SettingsService(databaseService, audit);
+
+      await service.updateFeatureFlags(
+        "rest-1",
+        { enable_ai_autonomous_send: true },
+        "public-users-id-7",
+      );
+
+      expect(audit.filed).toHaveLength(1);
+      expect(audit.filed[0]).toMatchObject({
+        restaurantId: "rest-1",
+        // public.users.user_id, straight from the JWT. An auth.users id would
+        // insert cleanly and never resolve to a person.
+        actorUserId: "public-users-id-7",
+        action: "feature_flag_changed",
+        register: "features",
+        entityType: "restaurant_feature_flag",
+      });
+      // The read-before-write is what makes `from` real rather than null.
+      expect(audit.filed[0].fields.enable_ai_autonomous_send).toEqual({
+        from: false,
+        to: true,
+      });
+    });
+
+    it("files nothing when the submitted value is what was already there", async () => {
+      const { databaseService } = makeDb({
+        data: { enable_ai_negotiation: true, enable_ai_autonomous_send: false },
+        error: null,
+      });
+      const audit = recordingAudit();
+      const service = new SettingsService(databaseService, audit);
+
+      await service.updateFeatureFlags(
+        "rest-1",
+        { enable_ai_negotiation: true },
+        "public-users-id-7",
+      );
+
+      // A row per SAVE rather than per CHANGE would fill the register with
+      // people opening a form and pressing the button.
+      expect(audit.filed[0].fields).toEqual({});
+    });
+
     it("rejects an update that contains no writable flag at all", async () => {
       const { databaseService } = makeDb({ data: null, error: null });
-      const service = new SettingsService(databaseService);
+      const service = new SettingsService(databaseService, recordingAudit());
 
       await expect(
         service.updateFeatureFlags("rest-1", {
@@ -168,7 +260,7 @@ describe("SettingsService — feature flags (OD-86)", () => {
         data: null,
         error: { message: "permission denied", code: "42501" },
       });
-      const service = new SettingsService(databaseService);
+      const service = new SettingsService(databaseService, recordingAudit());
 
       await expect(
         service.updateFeatureFlags("rest-1", {
@@ -181,7 +273,7 @@ describe("SettingsService — feature flags (OD-86)", () => {
   describe("isFeatureEnabled", () => {
     it("reports a flag nothing gates on as inactive rather than enabled", async () => {
       const { databaseService } = makeDb({ data: null, error: null });
-      const service = new SettingsService(databaseService);
+      const service = new SettingsService(databaseService, recordingAudit());
 
       // The old implementation called a `get_restaurant_feature_flag` RPC that
       // exists in no applied migration, then returned TRUE on the error. Every
@@ -196,7 +288,7 @@ describe("SettingsService — feature flags (OD-86)", () => {
         data: { enable_ai_negotiation: true, enable_ai_autonomous_send: true },
         error: null,
       });
-      const service = new SettingsService(databaseService);
+      const service = new SettingsService(databaseService, recordingAudit());
 
       await expect(
         service.isFeatureEnabled("rest-1", "enable_ai_autonomous_send"),

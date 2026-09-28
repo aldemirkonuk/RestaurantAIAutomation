@@ -447,7 +447,7 @@ describe("line net amount across a case quantity and a bottle price base", () =>
     // bookkeeper to argue a line that is in fact correct.
     const noPack = {
       ...TR_CASE_PRICED_INVOICE,
-      layer2: { providerId: null, lines: [] },
+      layer2: { providerId: null, vendorResolution: null, lines: [] },
     };
     const [first] = lineNetAmount(noPack);
     expect(first.holds).toBeNull();

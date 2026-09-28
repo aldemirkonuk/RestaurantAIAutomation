@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>100 &middot; The sending identity</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,400&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/* ── Mudavym tokens (ADR 0042), copied inline from apps/web/src/styles/mudavym.css ── */
+.mudavym{
+  --seal:#1A5E6B; --seal-deep:#14515C; --seal-tint:rgba(26,94,107,.10); --seal-ring:rgba(26,94,107,.32);
+  --paper-0:#FAF7F1; --paper-1:#F3EFE6; --paper-2:#EAE4D8;
+  --ink-1:#211C16; --ink-2:#4F473C; --ink-3:#7C7365; --ink-4:#665D50;
+  --mdv-scrim:rgba(23,19,15,.28);
+  color-scheme:light;
+}
+/* Warm Charcoal — mudavym.css:48-66. A specimen that carries the ground itself
+   stays charcoal on a paper page: that is the whole point of the portal rule. */
+.mudavym[data-ground="charcoal"]{
+  --seal:#5FB0BC; --seal-deep:#7DC3CD; --seal-tint:rgba(95,176,188,.14); --seal-ring:rgba(95,176,188,.38);
+  --paper-0:#15130F; --paper-1:#1D1813; --paper-2:#262019;
+  --ink-1:#EFE7D9; --ink-2:#C0B6A5; --ink-3:#8E8576; --ink-4:#ABA294;
+  --mdv-scrim:rgba(0,0,0,.5);
+  color-scheme:dark;
+}
+@media (prefers-color-scheme: dark){
+  :root:not(.light) .mudavym:not([data-ground="paper"]){
+    --seal:#5FB0BC; --seal-deep:#7DC3CD; --seal-tint:rgba(95,176,188,.14); --seal-ring:rgba(95,176,188,.38);
+    --paper-0:#15130F; --paper-1:#1D1813; --paper-2:#262019;
+    --ink-1:#EFE7D9; --ink-2:#C0B6A5; --ink-3:#8E8576; --ink-4:#ABA294;
+    --mdv-scrim:rgba(0,0,0,.5);
+    color-scheme:dark;
+  }
+}
+:root{--serif:"Fraunces",Georgia,"Times New Roman",serif;--sans:"DM Sans","Plus Jakarta Sans",system-ui,sans-serif;--mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper-0);color:var(--ink-1);font-family:var(--sans);font-size:13px}
+.banner{background:var(--ink-1);color:var(--paper-0);font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;padding:7px 20px}
+.wrap{max-width:1220px;margin:0 auto;padding:22px 20px 78px}
+.wordmark{font-family:var(--serif);font-weight:600;font-size:13px;letter-spacing:.04em}
+h1{font-family:var(--serif);font-size:35px;font-weight:600;letter-spacing:-.018em;line-height:1.07;margin:4px 0 0}
+h1 .dot{color:var(--seal)}
+.lede{font-family:var(--serif);font-style:italic;font-size:15.5px;color:var(--ink-2);margin:7px 0 0;max-width:900px}
+.dbl{border-top:1px solid var(--ink-1);border-bottom:1px solid var(--ink-1);height:3px;opacity:.5;margin:17px 0 0}
+.back{display:inline-block;margin:0 0 10px;font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--seal-deep);text-decoration:none}
+p{font-size:12.5px;line-height:1.64;color:var(--ink-2);margin:7px 0 0;max-width:900px}
+b{color:var(--ink-1);font-weight:600}
+code{font-family:var(--mono);font-size:11px;color:var(--ink-2)}
+
+.sec-h{display:flex;align-items:baseline;gap:12px;margin:34px 0 0}
+.sec-n{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--seal-deep);white-space:nowrap}
+h2{font-family:var(--serif);font-size:24px;font-weight:600;letter-spacing:-.012em;margin:0}
+.sec-k{font-family:var(--mono);font-size:9.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3);margin:6px 0 12px}
+
+/* ── the specimen numbers strip ── */
+.nums{display:flex;flex-wrap:wrap;gap:0;margin:16px 0 0;padding:12px 0 2px;border-top:1px solid var(--paper-2);border-bottom:1px solid var(--paper-2)}
+.nums div{padding:0 16px 10px 0;margin-right:16px;border-right:1px solid var(--paper-2)}
+.nums div:last-child{border-right:0}
+.nums .n{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--ink-1);display:block;font-variant-numeric:tabular-nums}
+.nums .k{font-family:var(--mono);font-size:8.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);display:block;margin-top:3px}
+
+/* ══ THE STAGE — an app viewport, the page beneath, the overlay on top ══ */
+.stage{position:relative;overflow:hidden;border:1px solid var(--paper-2);background:var(--paper-0);margin:14px 0 0}
+.stage.xl{height:730px}
+.stage.tall{height:560px}
+.stage.mid{height:470px}
+.stage.short{height:400px}
+.under{position:absolute;inset:0;padding:16px 20px;overflow:hidden}
+.scrim{position:absolute;inset:0;background:var(--mdv-scrim)}
+
+/* the page beneath — deliberately plain; it exists to prove it stays legible */
+.u-eyebrow{font-family:var(--mono);font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--seal-deep)}
+.u-h{font-family:var(--serif);font-size:21px;font-weight:600;margin:2px 0 10px;color:var(--ink-1)}
+.u-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}
+.u-card{border:1px solid var(--paper-2);background:var(--paper-1);padding:10px 12px}
+.u-card .t{font-weight:600;font-size:12.5px;color:var(--ink-1)}
+.u-card .s{font-family:var(--mono);font-size:10px;color:var(--ink-3);margin-top:3px}
+.u-row{display:grid;grid-template-columns:1.6fr 1fr 1fr .8fr;gap:10px;padding:7px 0;border-top:1px solid var(--paper-2);font-size:12px;color:var(--ink-2)}
+.u-row .t{color:var(--ink-1);font-weight:500}
+.u-cal{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:var(--paper-2);border:1px solid var(--paper-2)}
+.u-cal div{background:var(--paper-0);min-height:52px;padding:4px 5px;font-family:var(--mono);font-size:9.5px;color:var(--ink-3)}
+.u-cal div .e{display:block;font-family:var(--sans);font-size:9.5px;color:var(--ink-2);margin-top:3px;border-left:2px solid var(--seal);padding-left:4px;line-height:1.25}
+
+/* the app header bar — popovers hang off it */
+.bar{position:absolute;top:0;left:0;right:0;height:52px;background:var(--paper-0);border-bottom:1px solid var(--paper-2);display:flex;align-items:center;gap:10px;padding:0 16px}
+.bar .sp{flex:1}
+.ctl{display:flex;align-items:center;gap:7px;padding:5px 9px;border-radius:9px;color:var(--ink-2);font-size:12px}
+.ctl.hot{background:var(--paper-1);box-shadow:inset 0 0 0 1px var(--paper-2)}
+.ctl .nm{font-weight:600;color:var(--ink-1);font-size:12.5px}
+.ctl .sub{font-family:var(--mono);font-size:9px;color:var(--ink-3);display:block}
+.av{width:26px;height:26px;border-radius:999px;background:var(--seal-tint);box-shadow:inset 0 0 0 1px var(--seal-ring);color:var(--seal-deep);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:11px}
+.dotmark{position:absolute;top:7px;right:7px;width:6px;height:6px;border-radius:999px;background:var(--seal)}
+
+/* ══ THE OVERLAY SURFACES — numbers from sheet.css ══ */
+.ovl{background:var(--paper-0);color:var(--ink-1);display:flex;flex-direction:column;font-family:var(--sans)}
+/* sheet.css:72-82 */
+.sheet{position:absolute;top:0;right:0;bottom:0;width:100%;max-width:440px;border-left:1px solid var(--paper-2);box-shadow:-18px 0 48px rgba(23,19,15,.14);overflow:hidden}
+.sheet.wide{max-width:640px}
+/* sheet.css:88-97 */
+.panel{position:absolute;left:50%;transform:translateX(-50%);top:10%;width:min(620px,100% - 32px);max-height:76%;border:1px solid var(--paper-2);border-radius:14px;box-shadow:0 24px 60px -30px rgba(0,0,0,.5);overflow:hidden}
+/* sheet.css:99-106 */
+.pop{position:absolute;border:1px solid var(--paper-2);border-radius:14px;box-shadow:0 18px 44px -22px rgba(0,0,0,.42);overflow:hidden}
+/* sheet.css:109-141 */
+.oh{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:14px 16px 11px;border-bottom:1px solid var(--paper-2);flex:none}
+.oh-eyebrow{display:block;font-family:var(--mono);font-size:9.5px;font-weight:600;letter-spacing:.13em;text-transform:uppercase;color:var(--seal-deep)}
+.oh-title{margin:2px 0 0;font-family:var(--serif);font-size:19px;font-weight:600;line-height:1.16;letter-spacing:-.01em;color:var(--ink-1)}
+.oh-side{display:flex;align-items:center;gap:8px;flex:none}
+/* sheet.css:146-162 — the close control is WORDS */
+.oclose{font-family:var(--sans);font-size:12px;line-height:1.2;padding:5px 10px;border-radius:8px;border:1px solid var(--paper-2);background:transparent;color:var(--ink-2);cursor:pointer}
+.obody{flex:1 1 auto;min-height:0;overflow:hidden}
+.ofoot{flex:none;padding:9px 16px 12px;border-top:1px solid var(--paper-2);font-size:11px;line-height:1.5;color:var(--ink-3);display:flex;justify-content:space-between;gap:12px}
+
+/* content vocabulary — sheet.css:198-351 */
+.sect{display:block;font-family:var(--mono);font-size:9px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);padding:10px 16px 4px}
+.item{display:flex;align-items:center;gap:10px;width:100%;padding:7px 16px;border-left:2px solid transparent;font-size:13px;color:var(--ink-1)}
+.item.on{background:var(--seal-tint);border-left-color:var(--seal)}
+.item .txt{flex:1 1 auto;min-width:0}
+.item .lab{display:block;font-weight:500;color:var(--ink-1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item .sub{display:block;font-size:11px;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item .ico{flex:none;color:var(--ink-3)}
+.item.on .ico{color:var(--seal)}
+.kbd{flex:none;font-family:var(--mono);font-size:10px;font-weight:500;color:var(--ink-3);background:var(--paper-1);border:1px solid var(--paper-2);border-radius:5px;padding:1px 5px;white-space:nowrap}
+.quiet{margin:0;padding:8px 16px 10px;font-size:11.5px;line-height:1.5;color:var(--ink-2)}
+.field{display:flex;align-items:center;gap:10px;padding:0 16px;border-bottom:1px solid var(--paper-2)}
+.field .fin{flex:1 1 auto;padding:13px 0;font-family:var(--serif);font-size:17px;color:var(--ink-1)}
+.field .fph{color:var(--ink-3);font-family:var(--sans);font-size:14px}
+.lnk{font-family:var(--sans);font-size:12px;font-weight:500;color:var(--seal-deep)}
+
+/* sheet body furniture */
+.fact{display:grid;grid-template-columns:118px 1fr;gap:10px;padding:6px 16px;font-size:12.5px}
+.fact .k{font-family:var(--mono);font-size:9.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3);padding-top:3px}
+.fact .v{color:var(--ink-1)}
+.fact .v.em{color:var(--ink-3)}
+.frow{padding:8px 16px 0}
+.flab{display:block;font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);margin-bottom:4px}
+.fin2{border:1px solid var(--paper-2);background:var(--paper-1);border-radius:7px;padding:7px 9px;font-size:12.5px;color:var(--ink-1);min-height:31px}
+.fin2.ph{color:var(--ink-3)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:8px 16px 0}
+.two .frow{padding:0}
+.chiprow{display:flex;flex-wrap:wrap;gap:5px;margin-top:2px}
+.chip{font-family:var(--sans);font-size:11px;padding:3px 8px;border-radius:999px;border:1px solid var(--paper-2);color:var(--ink-2);display:inline-flex;align-items:center;gap:5px}
+.chip.on{color:var(--ink-1);background:var(--seal-tint);border-color:var(--seal-ring)}
+.sw{width:8px;height:8px;border-radius:2px;display:inline-block}
+.notice{margin:10px 16px 0;padding:9px 11px;background:var(--paper-1);border-left:2px solid var(--ink-4);font-size:11.5px;line-height:1.55;color:var(--ink-2)}
+.notice b{color:var(--ink-1)}
+.hta{margin:12px 16px 0;position:relative;border:1px solid var(--seal);border-radius:9px;padding:9px 12px;font-size:12.5px;color:var(--seal-deep);font-weight:500;display:flex;align-items:center;gap:9px;overflow:hidden;background:linear-gradient(90deg,var(--seal-tint) 38%,transparent 38%)}
+.hta .sealdot{width:18px;height:18px;border-radius:999px;background:var(--seal);color:var(--paper-0);display:flex;align-items:center;justify-content:center;flex:none}
+.btnrow{display:flex;gap:8px;padding:12px 16px 0}
+.btn{font-size:12px;padding:6px 12px;border-radius:8px;border:1px solid var(--paper-2);color:var(--ink-1);background:transparent}
+.btn.pri{border-color:var(--ink-4)}
+.btn[data-disabled]{color:var(--ink-3);border-color:var(--paper-2)}
+
+/* callouts and lists on the page itself */
+.callout{border-left:2px solid var(--seal);padding:11px 0 11px 15px;margin:16px 0 0;font-size:12.5px;line-height:1.66;color:var(--ink-2);background:linear-gradient(90deg,var(--seal-tint),transparent 62%);max-width:960px}
+.never{margin:16px 0 0;padding:0;list-style:none;max-width:960px}
+.never li{padding:8px 0;border-top:1px solid var(--paper-2);font-size:12.5px;line-height:1.6;color:var(--ink-2);display:grid;grid-template-columns:150px 1fr;gap:14px}
+.never li .h{font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);padding-top:2px}
+.never li b{color:var(--ink-1)}
+.cap{font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin:7px 0 0}
+.foot{margin:42px 0 0;padding-top:14px;border-top:1px solid var(--ink-1);font-size:11.5px;line-height:1.72;color:var(--ink-3);max-width:980px}
+.foot b{color:var(--ink-2)}
+.foot a{color:var(--seal-deep)}
+</style>
+
+<style>
+/* ── sketch 100 additions ── */
+.sheet.wide{max-width:640px}
+.prov{display:inline-flex;align-items:center;gap:6px;vertical-align:baseline;
+  background:var(--seal-tint);box-shadow:inset 0 0 0 1px var(--seal-ring);border-radius:4px;
+  padding:1px 6px 2px;margin:0 1px;font-family:var(--mono);font-size:9.5px;letter-spacing:.05em;
+  color:var(--seal-deep);white-space:nowrap;text-transform:uppercase;font-weight:600}
+.ins{background:var(--seal-tint);box-shadow:inset 0 0 0 1px var(--seal-ring);border-radius:4px;
+  padding:1px 4px;color:var(--ink-1)}
+.held{background:var(--paper-2);box-shadow:inset 0 0 0 1px var(--ink-4);border-radius:4px;
+  padding:1px 4px;color:var(--ink-1);font-style:italic}
+.body-txt{font-size:13px;line-height:1.78;color:var(--ink-1);padding:10px 16px 0}
+.body-txt p{font-size:13px;line-height:1.78;color:var(--ink-1);margin:0 0 11px;max-width:none}
+.srow{display:grid;grid-template-columns:96px 1fr;gap:10px;padding:8px 16px;border-bottom:1px solid var(--paper-2);align-items:start}
+.srow .k{font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);padding-top:4px}
+.srow .v{font-size:12.5px;color:var(--ink-1);line-height:1.5}
+.srow .v .note{display:block;font-size:11px;color:var(--ink-3);margin-top:3px;line-height:1.5}
+.srow .v .em{color:var(--ink-3)}
+.pill{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-size:8.5px;font-weight:600;
+  letter-spacing:.11em;text-transform:uppercase;padding:2px 6px;border-radius:3px;color:var(--ink-2);background:var(--paper-2)}
+.pill.on{color:var(--seal-deep);background:var(--seal-tint);box-shadow:inset 0 0 0 1px var(--seal-ring)}
+.pill.off{color:var(--ink-3);background:transparent;box-shadow:inset 0 0 0 1px var(--paper-2)}
+.pill.warn{color:var(--ink-1);background:var(--paper-2);box-shadow:inset 0 0 0 1px var(--ink-4)}
+.guard{margin:12px 16px 0;padding:10px 12px;border-left:2px solid var(--ink-4);background:var(--paper-1);
+  font-size:11.5px;line-height:1.6;color:var(--ink-2)}
+.guard b{color:var(--ink-1)}
+.guard .hd{display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:9px;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--ink-1);margin-bottom:5px}
+.tbl{width:100%;border-collapse:collapse;margin-top:12px;font-size:12px}
+.tbl th{text-align:left;font-family:var(--mono);font-size:8.5px;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--ink-3);font-weight:600;padding:0 12px 7px 0;border-bottom:1px solid var(--ink-4);vertical-align:bottom}
+.tbl td{padding:10px 12px 10px 0;border-bottom:1px solid var(--paper-2);vertical-align:top;color:var(--ink-2);line-height:1.55}
+.tbl td.n{color:var(--ink-1);font-weight:600}
+.tbl td .sub{display:block;font-family:var(--mono);font-size:10px;color:var(--ink-3);margin-top:3px}
+.tbl code{font-size:10.5px}
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:14px}
+.step{border-top:2px solid var(--seal);padding-top:10px}
+.step .n{font-family:var(--mono);font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--seal-deep)}
+.step h4{font-family:var(--serif);font-size:17px;font-weight:600;margin:3px 0 0;color:var(--ink-1)}
+.step p{font-size:12px;line-height:1.6;margin-top:6px}
+.step .quote{font-family:var(--serif);font-style:italic;font-size:13px;color:var(--ink-1);
+  border-left:2px solid var(--paper-2);padding-left:10px;margin-top:8px;line-height:1.5}
+.opt{border:1px solid var(--paper-2);padding:16px 18px 18px;background:var(--paper-1)}
+.opt h3{font-family:var(--serif);font-size:20px;font-weight:600;margin:3px 0 0;color:var(--ink-1)}
+.opt .n{font-family:var(--mono);font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--seal-deep)}
+.opt p{font-size:12px;line-height:1.62}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:14px;align-items:start}
+</style>
+</head>
+<body class="mudavym">
+<div class="banner">Sketch 100 &middot; the sending identity &mdash; example data, not a tenant</div>
+<div class="wrap">
+
+<a class="back" href="index.html">&larr; 100 index</a>
+<div class="wordmark">Mudavym</div>
+<h1>The sending identity &mdash; whose name the letter leaves in<span class="dot">.</span></h1>
+<p class="lede">A vendor decides in half a second whether a letter is from a restaurant they buy from or from a piece of software. The address is that decision. It is therefore a property of the house, and it is one of the two things a house pays us for.</p>
+<div class="dbl"></div>
+
+<div class="callout">
+  <p style="font-family:var(--serif);font-size:19px;line-height:1.42;color:var(--ink-1);margin:0">
+    The founder, 2026-09-03: a house sends either from <b>its own connected mailbox</b> or from <b>a Mudavym subdomain address we provision</b>. Never from a mailbox shared with every other house on the deployment.
+  </p>
+  <p style="margin-top:9px">That decision closes the largest hole in this wave. <b>Today every letter this product sends leaves from one address for the entire deployment</b> &mdash; <code>GMAIL_SENDER_EMAIL</code>, falling back to the literal string <code>notifications@wineops.ai</code> (<code>gmail.service.ts:78-80</code>), then overwritten at connect time with whatever address the deployment's own refresh token belongs to (<code>:126-129</code>). The restaurant cannot see it, cannot change it, and is not named in it. Both options below replace it; the sketch draws them as the two states of one row.</p>
+</div>
+
+<div class="sec-h"><span class="sec-n">Register I</span><h2>The house's sending identity &mdash; two options, one row</h2></div>
+<p class="sec-k">role-gated: a manager or owner sets it &middot; every member may see which of the two is in force</p>
+
+<div class="two-col" style="margin-top:16px">
+
+  <div class="opt">
+    <span class="n">Option A &middot; the house's own domain</span>
+    <h3>Connect the mailbox you already have</h3>
+    <p>A house that already has <code>@lokantamudavim.com</code> on Google Workspace connects it once. Letters leave from an address the vendor has seen before, SPF and DKIM already pass, and replies land in a mailbox the house owns and can read without us.</p>
+    <div style="margin-top:12px;border-top:1px solid var(--paper-2)">
+      <div class="srow" style="padding-left:0;padding-right:0"><span class="k">Sends as</span><span class="v"><b>siparis@lokantamudavim.com</b> <span class="pill on">Connected</span></span></div>
+      <div class="srow" style="padding-left:0;padding-right:0"><span class="k">Whose grant</span><span class="v">Declared by the house, consented by <b>Hasan Demir</b>, 14 Feb 2026.<span class="note">The two-tier shape the whole field uses: the house says which mailbox, the person authorises their own account.</span></span></div>
+      <div class="srow" style="padding-left:0;padding-right:0"><span class="k">May do</span><span class="v">Send a message as this address. <span class="em">Nothing else &mdash; it cannot read, label or delete a message, and it cannot see the rest of the mailbox.</span></span></div>
+      <div class="srow" style="padding-left:0;padding-right:0"><span class="k">Last sent</span><span class="v">40 minutes ago &middot; to Kavakl&#305;dere Ticaret<span class="note">Forty-one letters in 28 days. Every one is a row in the conversation book.</span></span></div>
+      <div class="srow" style="padding-left:0;padding-right:0"><span class="k">If Hasan leaves</span><span class="v"><span class="pill warn">The house stops sending</span><span class="note">The grant is his and dies with his account. The house is warned on this row <em>before</em> the account is removed, and the letter drafts survive &mdash; another manager reconnects and they go.</span></span></div>
+      <div class="srow" style="padding-left:0;padding-right:0;border-bottom:0"><span class="k">How to stop it</span><span class="v"><span class="btn">Disconnect</span><span class="note">Immediate. Letters already sent are not recalled; drafts stay drafts.</span></span></div>
+    </div>
+    <p style="margin-top:12px"><b>What it costs the house:</b> nothing beyond the Workspace seat it already pays for. <b>What it costs us:</b> one Gmail send-scope grant per house, and a Google verification review &mdash; <code>gmail.send</code> is a <em>sensitive</em> scope, so beyond 100 users the app must be verified with a written justification and a demonstration video.</p>
+  </div>
+
+  <div class="opt">
+    <span class="n">Option B &middot; the paid Mudavym address</span>
+    <h3>We provision one on our sending domain</h3>
+    <p>A house with no domain of its own &mdash; most of them &mdash; takes an address on <code>mail.mudavym.com</code>. We own the domain, the authentication and the deliverability; the house owns the name in front of the <code>@</code> and the replies come back into the conversation book.</p>
+    <div style="margin-top:12px;border-top:1px solid var(--paper-2)">
+      <div class="srow" style="padding-left:0;padding-right:0"><span class="k">Sends as</span><span class="v"><b>siparis@mail.mudavym.com</b> <span class="pill on">Provisioned</span></span></div>
+      <div class="srow" style="padding-left:0;padding-right:0"><span class="k">Whose</span><span class="v">The house's, and only the house's. <span class="em">It survives every person who works here.</span><span class="note">This is the reason the paid option is not merely a convenience: it is the only sending identity in the product that is not attached to a human being.</span></span></div>
+      <div class="srow" style="padding-left:0;padding-right:0"><span class="k">Authenticated</span><span class="v">SPF and DKIM pass on <code>mail.mudavym.com</code>; DMARC is published on the parent.<span class="note">The DNS sits on <em>our</em> domain, so the house does nothing and nothing can be misconfigured on their side.</span></span></div>
+      <div class="srow" style="padding-left:0;padding-right:0"><span class="k">Replies</span><span class="v">Come back to this book.<span class="note">Inbound on the same subdomain is parsed into <code>procurement_conversations</code>, so a vendor's answer reaches the thread it answers rather than a mailbox nobody watches.</span></span></div>
+      <div class="srow" style="padding-left:0;padding-right:0"><span class="k">Price</span><span class="v">A paid line on the plan. <span class="em">&mdash; not set</span><span class="note">Pricing is undecided (OD&#8209;23). The row says so rather than showing a number nobody agreed.</span></span></div>
+      <div class="srow" style="padding-left:0;padding-right:0;border-bottom:0"><span class="k">How to stop it</span><span class="v"><span class="btn">Release the address</span><span class="note">Held for 30 days, then reusable. A released address stops receiving replies immediately &mdash; the row says so before you press it.</span></span></div>
+    </div>
+    <p style="margin-top:12px"><b>What it costs us:</b> the sending domain and its reputation. Every house on <code>mail.mudavym.com</code> shares that reputation, which is the real reason this option is paid and gated &mdash; see the two obligations below.</p>
+  </div>
+</div>
+
+<div class="sec-h"><span class="sec-n">The obligation that comes with option B</span><h2>Sending for many houses on one domain makes us the sender</h2></div>
+<p>The moment letters leave on our domain, Google's sender requirements are ours to meet, not the restaurant's. They are not onerous, but they are not optional and they change the shape of the build.</p>
+<ul class="never">
+  <li><span class="h">Authentication</span><span>SPF and DKIM on the sending domain, DMARC published, valid forward and reverse DNS, TLS in transit, and <b>DMARC alignment</b> &mdash; the <code>From:</code> domain must align with the SPF or DKIM domain. All of that is ours to hold, once, for every house.</span></li>
+  <li><span class="h">Complaint rate</span><span>Google's threshold is a spam rate below <b>0.30%</b> in Postmaster Tools. Our letters go to vendors, not consumers, so the risk is not volume &mdash; it is one house writing something a vendor marks as spam and every other house on the subdomain paying for it. <b>This is the argument for the seal on Send</b>, not merely a nice ceremony.</span></li>
+  <li><span class="h">Unsubscribe</span><span>Bulk marketing mail needs one-click unsubscribe (<code>List-Unsubscribe-Post</code>). Vendor correspondence is transactional and does not, <em>but the staff broadcast template is on the edge of it</em>. That distinction has to be enforced in code, per template, not left to whoever writes the letter.</span></li>
+  <li><span class="h">Per-house separation</span><span>One house's reputation must not sink another's. The measurable version: sub-users or per-house DKIM selectors on the one domain, so a bad sender can be isolated instead of the domain being burned. <b>Not decided, and it is an engineering decision, not a page.</b></span></li>
+</ul>
+
+<div class="sec-h"><span class="sec-n">Register II</span><h2>What exists today, honestly</h2></div>
+<p class="sec-k">measured on <code>feat/mudavym-design-p4</code>, 2026-09-03 &mdash; neither option is built</p>
+<table class="tbl">
+  <thead><tr><th style="width:230px">The thing</th><th style="width:110px">State</th><th>What is actually there</th></tr></thead>
+  <tbody>
+    <tr><td class="n">The deployment mailbox</td><td><span class="pill warn">To retire</span></td><td>One Gmail refresh token for the whole deployment. <code>GMAIL_SENDER_EMAIL &#124;&#124; "notifications@wineops.ai"</code>, then overwritten by whatever address the token's Gmail profile returns. No restaurant appears anywhere in that decision. <code>gmail.service.ts:78-80,126-129</code></td></tr>
+    <tr><td class="n">A house mailbox grant</td><td><span class="pill off">Absent</span></td><td>The OAuth machinery exists and is good &mdash; a consent screen in our own words, encrypted tokens, soft revoke. But it offers exactly <b>two</b> integrations, <code>google_drive</code> and <code>excel</code>, and both <em>explicitly disclaim mail</em>: Drive's <code>notRequested</code> lists &ldquo;Your Gmail messages&rdquo;, Excel's lists &ldquo;Sending mail as you&rdquo;. <code>integrations-oauth.constants.ts:33-95</code></td></tr>
+    <tr><td class="n">Whose a grant is</td><td><span class="pill warn">A person's</span></td><td>Every connection upserts on <code>user_id,integration_id</code>. There is no house-scoped grant of any kind in the schema, so option A needs the two-tier shape built, not just a third scope added. <code>integrations-oauth.service.ts:436-452</code></td></tr>
+    <tr><td class="n">A Mudavym address</td><td><span class="pill off">Absent</span></td><td>No sending domain, no provider account, no DNS, no inbound route. The whole of option B is unbuilt &mdash; which is why it is drawn here as a decision with its costs, not as a feature.</td></tr>
+    <tr><td class="n">The outbound guard</td><td><span class="pill on">Built &mdash; best in class</span></td><td>The one thing in this area that is ahead of the field: the outbound address is parsed and the resolved address pinned into the socket, so a letter cannot be redirected between the check and the send. Whichever option wins, this stays.</td></tr>
+    <tr><td class="n">Replies</td><td><span class="pill on">Built, for one path</span></td><td>The Gmail webhook fetches inbound mail and lands it on the order thread. Option A inherits it. <b>Option B does not</b> &mdash; a Mudavym-subdomain reply arrives at a provider we do not have, so inbound parsing is new work, listed on the index.</td></tr>
+  </tbody>
+</table>
+
+<div class="sec-h"><span class="sec-n">Register III</span><h2>Where this row lives</h2></div>
+<p>Not here. This sketch draws the sending identity in detail because the composer cannot be honest without it &mdash; but the row belongs on <b>Connections</b>, the house-scoped surface decided in <code>DESIGN-FOUNDATION.md</code> §6b and drawn in sketch <b>097</b>, which the founder has today settled as <b>its own route, role-gated</b>.</p>
+<ul class="never">
+  <li><span class="h">On Connections</span><span>The sending identity sits in Register I beside the till, the payment provider, the calendar feed and the public page &mdash; the things that act in the house's name. §6b already lists it there and marks it &ldquo;<em>should be the house's; is nobody's</em>&rdquo;. This sketch is what fixes that line.</span></li>
+  <li><span class="h">On /profile</span><span>Nothing. A person's own Google sign-in link stays on their profile; the mailbox the <em>house</em> writes from was never personal, even when a person's grant is what authorises it. <code>profile.md</code> §13a makes the same cut.</span></li>
+  <li><span class="h">On /communications</span><span>One line, read-only, at the top of the composer: the address this letter will leave from, or the sentence saying there is none. It links to Connections; it does not duplicate the controls.</span></li>
+  <li><span class="h">Who may change it</span><span>A manager or an owner. Every member may <em>see</em> it, because everyone who writes a letter needs to know whose name it leaves in &mdash; and because a staff member discovering after the fact that their letter went out as <code>notifications@wineops.ai</code> is precisely the surprise this row exists to prevent.</span></li>
+</ul>
+
+<div class="foot">
+  <b>Verified against:</b>
+  <code>apps/api-gateway/src/communications/gmail.service.ts:74-94,121-135</code> (one deployment sender; the literal fallback; the profile overwrite) &middot;
+  <code>integrations/integrations-oauth.constants.ts:33-95</code> (two integrations only; both <code>notRequested</code> lists disclaim mail) &middot;
+  <code>integrations/integrations-oauth.service.ts:436-452</code> (<code>onConflict: "user_id,integration_id"</code> &mdash; a grant is a person's) &middot;
+  <code>communications/communications.controller.ts:1148,1306</code> (the Gmail inbound webhook and its status route) &middot;
+  <code>.planning/06-pages/DESIGN-FOUNDATION.md</code> §6b (the sender identity is &ldquo;the deployment's &hellip; should be the house's; is nobody's&rdquo;; the two-tier rule; the ten-product survey) &middot;
+  <code>.planning/06-pages/profile.md</code> §13a (what leaves /profile and why) &middot;
+  <code>.planning/sketches/097-integrations-home/connections.html</code> (the surface this row belongs to).
+  <br><b>Outside the repo:</b>
+  <a href="https://support.google.com/a/answer/81126">Google, Email sender guidelines</a> &mdash; SPF + DKIM + DMARC, alignment, valid forward and reverse DNS, TLS, spam rate below 0.30%, one-click unsubscribe for marketing mail, mandatory from 1 February 2024 above 5,000 daily messages &middot;
+  <a href="https://developers.google.com/workspace/gmail/api/auth/scopes">Gmail API scopes</a> and <a href="https://developers.google.com/identity/protocols/oauth2/production-readiness/sensitive-scope-verification">sensitive scope verification</a> &mdash; <code>gmail.send</code> is sensitive; verification needs a justification and a demonstration video &middot;
+  <a href="https://www.twilio.com/docs/sendgrid/ui/account-and-settings/how-to-set-up-domain-authentication">SendGrid domain authentication</a> &mdash; a sending subdomain, delegated by CNAME, with the provider rotating DKIM behind it &middot;
+  <a href="https://www.twilio.com/docs/sendgrid/for-developers/parsing-email/setting-up-the-inbound-parse-webhook">SendGrid Inbound Parse</a> &mdash; point the subdomain's MX at the provider; use a subdomain so existing mail is undisturbed; every subdomain needs its own MX record.
+  <br><b>Example data, not a tenant.</b> The addresses, dates and counts are invented for the drawing; the repo and product facts are not.
+</div>
+</div>
+</body>
+</html>

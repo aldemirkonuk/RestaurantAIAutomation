@@ -11,11 +11,29 @@
  */
 
 import { useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
+import { apiClient } from '@/services/api/client';
 import { useOrders } from '@/hooks/queries/useOrderQueries';
 import { useProviders } from '@/hooks/queries/useProviderQueries';
 import { type Order, type OrderStatus } from '@/services/api/types';
 import { num } from './format';
+import {
+  PRICE_UOMS,
+  agreementTotal,
+  readFeesFromWire,
+  type AgreementFees,
+  readPriceUnitFromWire,
+  type AgreementTotal,
+  type PriceUnitReading,
+  type PriceUom,
+} from './price-unit';
+import {
+  isRecurring,
+  readRecurrence,
+  recurrenceLabel,
+  type RecurrenceReading,
+} from './recurrence';
 
 export type Stage = 'pending' | 'approved' | 'ordered' | 'delivered';
 export const STAGES: Stage[] = ['pending', 'approved', 'ordered', 'delivered'];
@@ -66,6 +84,29 @@ export { canonicalStatus };
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const isUuid = (v: string | null | undefined): boolean => !!v && UUID_RE.test(v);
 
+/**
+ * What this page reads beyond the shared `Order` type.
+ *
+ * It used to carry six more: `finalPrice`, `totalCost`, `bottlesTotal`,
+ * `unitType`, `priceUom` and `pricePackSize` were declared here because the
+ * shared type named none of them — it named `unitPrice` / `totalPrice`, which
+ * the list route has never sent. On 2026-09-05 the shared type was rewritten to
+ * be exactly `OrderResponseDto`, so those six moved there and this intersection
+ * shrank to what remains genuinely local.
+ *
+ * The three fee keys stay because they are ADR 0119 Q3, still being built on the
+ * gateway side; they join the shared type when `OrderResponseDto` declares them.
+ * `scripts/check_web_reads_gateway_dto_keys.py` guards the shared type, not this
+ * intersection — a widening cast is always a way around a guard, which is why
+ * the only three keys in it are named, dated and owned.
+ */
+type OrderWire = Order & {
+  /** ADR 0119 Q3 — the money outside the price of the wine. */
+  allowance?: number | null;
+  deposit?: number | null;
+  freight?: number | null;
+};
+
 export interface OrderRowVM {
   id: string;
   orderNumber: string | null;
@@ -73,8 +114,35 @@ export interface OrderRowVM {
   producer: string | null;
   providerName: string | null;
   quantity: number | null;
+  /**
+   * The AGREED price, stated per `priceUom` — not necessarily per bottle. Read
+   * it only alongside `priceUnit`; on its own it is the ambiguous number ADR
+   * 0119 exists to end.
+   */
   unitPrice: number | null;
-  /** quantity × unitPrice when both are known — the working. */
+  /** Bottles (or kegs/litres, when the unit is opaque) the order comes to. */
+  bottlesTotal: number | null;
+  /** The unit the order's QUANTITY is counted in. Independent of the price's. */
+  unitType: PriceUom | null;
+  /**
+   * What the route said about the unit `unitPrice` is stated in — including
+   * whether it said anything at all (`read`). See `readPriceUnitFromWire`.
+   */
+  priceUnit: PriceUnitReading;
+  /**
+   * What the route said about the money OUTSIDE the price of the wine (ADR 0119
+   * Q3) — including whether it said anything at all. `read: false` means this
+   * payload came from a route that does not read the line's fee columns, which
+   * is not the same as the agreement charging nothing.
+   */
+  fees: { read: boolean; fees: AgreementFees };
+  /**
+   * The total worked out from the price and ITS unit, with the working in
+   * words. `null` when the operands are not all known — never a zero, and never
+   * a per-bottle multiplication applied to a per-case price.
+   */
+  agreement: AgreementTotal | null;
+  /** The arithmetic the page can show. Null when it cannot be done honestly. */
   computedTotal: number | null;
   /** The server's own totalPrice, kept separately so a disagreement can be said. */
   listedTotal: number | null;
@@ -82,7 +150,17 @@ export interface OrderRowVM {
   total: number | null;
   stage: Stage | 'cancelled';
   status: OrderStatus;
+  /**
+   * Does this order repeat? A MEASURED fact since 2026-09-05 — it was a
+   * hardcoded `false` before that, because the route sent nothing. False here
+   * now means either "read, and it does not" or "this route did not say"; read
+   * `recurrence.read` to tell those apart, and never print "none" off this
+   * boolean alone.
+   */
   recurring: boolean;
+  /** The whole reading, three-state. See `recurrence.ts`. */
+  recurrence: RecurrenceReading;
+  /** "recurs weekly, next 12 Sep". Null when there is nothing true to say. */
   recurrenceLabel: string | null;
   requestedAt: string | null;
   approvedAt: string | null;
@@ -98,11 +176,49 @@ export interface MonthFigure {
   unpricedThisMonth: number;
 }
 
+/**
+ * What this house's approval rules say about one pending order.
+ *
+ * `GET /procurement/order-approval-gate`, one call for the whole house. The
+ * facts the rules test — whether this is the first order to a vendor, how far
+ * the price is above what the house last paid — are a single walk through the
+ * order ledger, so they are computed there and never here: a browser cannot see
+ * the ledger, and a per-row call would recompute the walk once per row and still
+ * not agree with itself.
+ */
+export interface ApprovalGateRow {
+  orderId: string;
+  requiredRole: 'owner' | 'manager' | null;
+  firedBy: string[];
+  reasons: string[];
+  untestable: string[];
+  mayApprove: boolean;
+  /** The whole sentence, when the caller may not seal it. Null when they may. */
+  sentence: string | null;
+}
+
+export interface ApprovalGate {
+  restaurantId: string;
+  callerRole: string | null;
+  policySet: boolean;
+  policyNote: string;
+  readable: boolean;
+  reason: string | null;
+  orders: ApprovalGateRow[];
+}
+
 export interface OrdersNextData {
   rows: OrderRowVM[];
   /** Station counts. Null while unknown (loading with no cache, or errored). */
   counts: Record<Stage, number | null>;
   recurringCount: number | null;
+  /**
+   * How many rows CARRIED a recurrence reading, out of `rows.length`. Null
+   * while unknown. The Recurring station may say "none" only when this equals
+   * the row count and `recurringCount` is zero; anything less and it says what
+   * it does not know instead. See `emptyStationSentence`.
+   */
+  recurrenceReadCount: number | null;
   cancelledCount: number | null;
   month: MonthFigure;
   /**
@@ -115,40 +231,151 @@ export interface OrdersNextData {
   isError: boolean;
   errorMessage: string | null;
   refetch: () => void;
+  /**
+   * Per-order approval verdicts, keyed by order id. `null` while the gate has
+   * not been read, so an absent entry can never be mistaken for "anyone may
+   * seal this" — the page renders the ceremony as it always did until the gate
+   * actually answers.
+   */
+  approvalByOrder: Map<string, ApprovalGateRow> | null;
+  /** Why the gate could not be read. Rendered in words, never swallowed. */
+  approvalGateError: string | null;
+  /** The house's policy in one sentence, once the gate has answered. */
+  approvalPolicyNote: string | null;
 }
 
-function toRow(o: Order, providerNameById: Map<string, string>): OrderRowVM {
+/** The order's own quantity unit, when it is one of the seven the schema allows. */
+function readUnitType(v: unknown): PriceUom | null {
+  const raw = typeof v === 'string' ? v.trim().toLowerCase() : '';
+  return (PRICE_UOMS as readonly string[]).includes(raw) ? (raw as PriceUom) : null;
+}
+
+/**
+ * One wire row into one ledger row. Exported so the mapping can be tested on
+ * the payload `GET /procurement/orders` ACTUALLY sends — the defect this pass
+ * found lived entirely in the key names, and a test that builds an `OrderRowVM`
+ * by hand cannot see a key name that was never read.
+ */
+export function toRow(o: OrderWire, providerNameById: Map<string, string>): OrderRowVM {
   const status = canonicalStatus(o.status);
   const quantity = num(o.quantity);
-  const unitPrice = num(o.unitPrice);
-  const listedTotal = num(o.totalPrice);
-  const computedTotal = quantity !== null && unitPrice !== null ? quantity * unitPrice : null;
-  const rawProvider = o.providerName && !isUuid(o.providerName) ? o.providerName : null;
-  const recurring = !!o.recurrence;
-  const freq = o.recurrence?.frequency ?? null;
+
+  /*
+   * `finalPrice` and `totalCost` FIRST, because those are the keys the route
+   * actually sends.
+   *
+   * `OrderResponseDto` has always called them that (`mapOrderRow`); the shared
+   * `Order` type calls them `unitPrice` / `totalPrice`, which appear nowhere in
+   * the list route's payload. Reading only the shared names made both figures
+   * `undefined` for every live row, so `total` was null and the ledger printed
+   * an em dash in the money column, the working line, and the seal's own label
+   * ("Hold to approve · —"). The em dash was honest about a number the page did
+   * not have; it was not honest about WHY. Proven by `LedgerUnit.test.tsx`
+   * case 1, which fails against the pre-fix hook.
+   *
+   * The `?? o.unitPrice` / `?? o.totalPrice` fallbacks that stood here until
+   * 2026-09-05 are gone with the keys themselves: the shared type no longer
+   * declares a name the route does not send, so there is nothing to fall back
+   * to and nothing that could quietly supply one.
+   */
+  const unitPrice = num(o.finalPrice);
+  const listedTotal = num(o.totalCost);
+  const bottlesTotal = num(o.bottlesTotal);
+  const unitType = readUnitType(o.unitType);
+  const priceUnit = readPriceUnitFromWire(o);
+  const fees = readFeesFromWire(o);
+
+  /*
+   * The working, drawn from the PRICE's unit — the same arithmetic the gateway
+   * did (`agreedOrderTotal`), via the same function `AgreementSheet` shows
+   * before saving.
+   *
+   * ATTEMPTED ONLY WHEN THE PRICE'S UNIT IS STATED, and that guard is the whole
+   * point rather than a cheap exit. `agreementTotal` will happily total an
+   * UNSTATED price on "the old per-bottle convention" — the gateway does the
+   * same when it writes `total_cost`, and it must, because a stored total
+   * cannot be null. A PAGE has no such obligation, and printing that figure was
+   * measurably worse than printing nothing: the first capture of this row
+   * (2026-09-05, `$SP/shots-ledger-unit/`) showed a $420-per-case agreement
+   * whose unit was unstated rendering "60 × $420.00 = $25,200.00" in bold
+   * beside the ledger's own $2,100.00 — the exact twelve-times error ADR 0119
+   * exists to end, reprinted by the screen that was built to end it. An
+   * unstated unit now yields NO working, and the row says why.
+   *
+   * The other two operands — the order's own unit, and how many bottles are in
+   * one of them — are required for the same reason: defaulting `bottlesPerUnit`
+   * to 1 is the per-bottle assumption wearing a different hat.
+   */
+  const bottlesPerUnit =
+    quantity !== null && quantity > 0 && bottlesTotal !== null && bottlesTotal > 0
+      ? bottlesTotal / quantity
+      : null;
+  const agreement =
+    priceUnit.stated !== null && unitType !== null && bottlesPerUnit !== null
+      ? agreementTotal({
+          price: unitPrice,
+          stated: priceUnit.stated,
+          quantity,
+          unitType,
+          bottlesPerUnit,
+          // Only what the route actually read. A row whose fee columns were
+          // never selected totals the goods alone — which is what it did before
+          // ADR 0119 phase 2 — rather than a total built on three assumed
+          // zeroes.
+          fees: fees.read ? fees.fees : undefined,
+        })
+      : null;
+  const computedTotal = agreement && agreement.ok ? agreement.total : null;
+
+  /*
+   * The route sends NO producer and NO notes. Both were read off the shared
+   * `Order` type until 2026-09-05 and both were `undefined` on every live row:
+   *
+   *   providerName  the vendor was ALREADY resolved from `providerId` through
+   *                 the providers query, so the page was right by accident —
+   *                 `rawProvider` never once won that `??`.
+   *   producer      always null, so the row's producer line never rendered.
+   *   notes         always null, so the note clause never rendered.
+   *
+   * Reading them again would need the route to send them; asserting them from
+   * absence is the fault this whole pass exists to remove.
+   *
+   * RECURRENCE IS NO LONGER ON THAT LIST. It was, and it was the worst of the
+   * four: `const recurring = false` meant the Recurring station could never
+   * fill and every order fell into "one-time". `GET /procurement/orders` now
+   * sends six recurrence keys (ADR 0125's addendum; the founder's decision of
+   * 2026-09-05, "build recurrence on the order"), and `readRecurrence` reads
+   * them with the same three-state discipline as the price unit — a value, a
+   * null, or the key absent. `recurring` is now a MEASURED fact, and the
+   * station may say "none" only when it has one.
+   */
+  const recurrence = readRecurrence(o as unknown as Record<string, unknown>);
+  const recurring = isRecurring(recurrence);
   return {
     id: o.id,
     orderNumber: o.orderNumber ?? null,
     wineName: o.wineName && !isUuid(o.wineName) ? o.wineName : null,
-    producer: o.wineProducer ?? null,
-    providerName: rawProvider ?? providerNameById.get(o.providerId) ?? null,
+    producer: null,
+    providerName: providerNameById.get(o.providerId) ?? null,
     quantity,
     unitPrice,
+    bottlesTotal,
+    unitType,
+    priceUnit,
+    fees,
+    agreement,
     computedTotal,
     listedTotal,
     total: listedTotal ?? computedTotal,
     stage: stageOf(status),
     status,
     recurring,
-    recurrenceLabel: recurring
-      ? [freq, o.recurrence?.nextDate ? `next ${o.recurrence.nextDate}` : null]
-          .filter(Boolean)
-          .join(' · ') || 'recurring'
-      : null,
-    requestedAt: o.requestedAt ?? o.createdAt ?? null,
+    recurrence,
+    recurrenceLabel: recurrenceLabel(recurrence),
+    requestedAt: o.requestedAt ?? null,
     approvedAt: o.approvedAt ?? null,
     deliveredAt: o.deliveredAt ?? null,
-    notes: o.notes ?? null,
+    notes: null,
   };
 }
 
@@ -157,6 +384,22 @@ export function useOrdersNextData(): OrdersNextData {
   const restaurantId = activeRestaurantId || user?.restaurantId || '';
   const ordersQuery = useOrders();
   const providersQuery = useProviders(restaurantId);
+
+  // Tenant-keyed: a restaurant switch must never carry the previous house's
+  // verdicts. `retry: false` because a 403/500 here is a real state the page
+  // renders in words — silently retrying would make the page look like it is
+  // still loading while it has an answer.
+  const gateQuery = useQuery<ApprovalGate>({
+    queryKey: ['procurement', 'order-approval-gate', restaurantId],
+    enabled: !!restaurantId,
+    retry: false,
+    queryFn: async () => {
+      const { data } = await apiClient.get<ApprovalGate>(
+        '/procurement/order-approval-gate',
+      );
+      return data;
+    },
+  });
 
   const providerNameById = useMemo(() => {
     const map = new Map<string, string>();
@@ -178,6 +421,7 @@ export function useOrdersNextData(): OrdersNextData {
       delivered: null,
     };
     let recurringCount: number | null = null;
+    let recurrenceReadCount: number | null = null;
     let cancelledCount: number | null = null;
     const month: MonthFigure = { thisMonth: null, lastMonth: null, unpricedThisMonth: 0 };
 
@@ -185,6 +429,17 @@ export function useOrdersNextData(): OrdersNextData {
       const oneTime = rows.filter((r) => !r.recurring);
       for (const s of STAGES) counts[s] = oneTime.filter((r) => r.stage === s).length;
       recurringCount = rows.filter((r) => r.recurring).length;
+      /*
+       * HOW MANY ROWS ACTUALLY ANSWERED THE QUESTION.
+       *
+       * `recurringCount === 0` on its own has two meanings — "none of these
+       * repeats" and "this route never said" — and the station is not allowed
+       * to print the first when it only has grounds for the second. This count
+       * is what tells them apart, and `emptyStationSentence` is what turns it
+       * into words. Before 2026-09-05 the answer was ALWAYS the second one and
+       * the station showed nothing without saying so.
+       */
+      recurrenceReadCount = rows.filter((r) => r.recurrence.read).length;
       cancelledCount = rows.filter((r) => r.stage === 'cancelled').length;
 
       const now = new Date();
@@ -205,10 +460,30 @@ export function useOrdersNextData(): OrdersNextData {
     }
 
     const err = ordersQuery.error as { message?: string } | null;
+
+    // A gate that has not answered is `null`, not an empty map: an empty map
+    // reads as "every order is unrestricted", which is the one thing an
+    // unanswered gate must never be taken to mean.
+    const gate = gateQuery.data ?? null;
+    const approvalByOrder =
+      gate && gate.readable
+        ? new Map(gate.orders.map((o) => [o.orderId, o]))
+        : null;
+    const gateErr = gateQuery.error as { message?: string } | null;
+    const approvalGateError = gateQuery.isError
+      ? gateErr?.message ?? 'the approval rules could not be read'
+      : gate && !gate.readable
+        ? gate.reason ?? 'the approval rules could not be read'
+        : null;
+
     return {
+      approvalByOrder,
+      approvalGateError,
+      approvalPolicyNote: gate?.readable ? gate.policyNote : null,
       rows,
       counts,
       recurringCount,
+      recurrenceReadCount,
       cancelledCount,
       month,
       hasData: known,
@@ -217,5 +492,5 @@ export function useOrdersNextData(): OrdersNextData {
       errorMessage: ordersQuery.isError ? err?.message ?? 'request failed' : null,
       refetch: () => void ordersQuery.refetch(),
     };
-  }, [ordersQuery.data, ordersQuery.isLoading, ordersQuery.isError, ordersQuery.error, ordersQuery.refetch, providerNameById]);
+  }, [ordersQuery.data, ordersQuery.isLoading, ordersQuery.isError, ordersQuery.error, ordersQuery.refetch, providerNameById, gateQuery.data, gateQuery.isError, gateQuery.error]);
 }

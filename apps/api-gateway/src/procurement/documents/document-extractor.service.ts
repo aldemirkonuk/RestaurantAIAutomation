@@ -8,6 +8,7 @@ import { NfVerdictService } from "../../common/model-client/nf-verdict.service";
 import { DOC_TYPES, normalizeUom, toBottles, Uom } from "./document-types";
 import {
   applyTieOut,
+  CurrencySeen,
   LINE_KINDS,
   LineKind,
   ParsedDocument,
@@ -95,12 +96,18 @@ EXTRACT, transcribing only what is printed:
 - docNumber (invoice/slip number), docDate (ISO), poNumber, referencesDocNumber (an invoice a credit memo adjusts, or the packing slip an invoice bills)
 - deliveredDate (ISO) — the date the GOODS WERE DELIVERED, transcribe only if printed
 - vendorName
+- vendorTaxId — the SELLER's tax identification number exactly as printed ("VKN 1234567890", "Vergi No: 123 456 7890", "EIN 12-3456789", "USt-IdNr. DE811569869", "VAT GB123456789"). Transcribe the NUMBER and any country prefix that is part of it; you may keep or drop the label word. This is the seller's, never the buyer's — on a Turkish invoice the seller block is the one at the TOP with the logo, and the buyer ("SAYIN", "ALICI") is a different block with a different number.
+- vendorTaxOffice — the tax office or registering authority printed beside it ("Vergi Dairesi: Kadıköy", "Kadıköy V.D."). Null when none is printed.
+- vendorAddress — the seller's address as printed, on one line
+- vendorCountry — ISO-3166 alpha-2 for the SELLER's country ("TR", "US", "DE"), only when the address or the document states it. Null otherwise; do not infer it from the language or the currency.
+- buyerName and buyerTaxId — the same two fields for the BUYER (the "SAYIN"/"BILL TO" block), when printed
 - header money: subtotal, freight, fuelSurcharge, splitCaseFee, deliveryFee, depositTotal, tax, otherCharges, discountTotal, total
 - taxBreakdown: one row per printed tax rate — {rate, taxableBase, amount, category}
 - lines: vendorSku, description, vintage, formatMl, qty, uom, packSize (bottles per case), unitPrice, priceBaseQty, priceBaseUom, lineTotal, allowance, deposit, lineKind
 
 RULES
 - Transcribe, never compute. If a line total is not printed, leave it null; do not multiply.
+- "currency": the ISO 4217 alpha-3 the document DENOMINATES its money in, when the document itself says so. Null when it does not say — null is a correct answer and "USD" is not a fallback. A house that has stated its own currency supplies it downstream; a guess here would overwrite that.
 - Never invent a value to make the arithmetic work. A document that does not add up must come back not adding up — that is a signal, and smoothing it over hides the error we exist to catch.
 - uom is one of: bottle, case, keg, pack, split_case, each, liter. Use what the document says.
 - packSize is bottles per case when stated (a "12/750ml" case is packSize 12). Null if not stated — do not assume 12.
@@ -110,11 +117,13 @@ RULES
 - lineKind: "goods" (default), "deposit" (the line IS a returnable-container deposit or CRV — a "Depozito", "CRV", "bottle deposit" row), or "fee" (the line IS a freight, fuel or delivery charge). A line that IS the deposit gets lineKind "deposit" and NO deposit amount — its own lineTotal is the deposit. The line-level "deposit" field is a DIFFERENT thing: a deposit charged on that line IN ADDITION to its net, e.g. twelve bottles of wine plus a per-bottle crate charge. Never set both on one line.
 - Free goods: only set a line's allowance/zero price if the document itself says so.
 - Money as plain numbers, no currency symbols or thousands separators.
+- "currencySeen": the currency THIS PAGE shows, as EVIDENCE, with where you saw it. {"code": the ISO 4217 alpha-3 if the page prints one ("EUR", "TRY", "USD") else null, "asPrinted": the literal glyph or word exactly as printed ("EUR", "€", "TL", "₺", "Türk Lirası", "$", "£"), "where": the place on the page in a few words ("beside the grand total", "the KDV row", "the column header")}. Null for the whole object when the page shows NO currency anywhere — that is a real answer and you must give it rather than guessing one. Never infer a currency from the vendor's country, the language, or the date format: transcribe only a glyph, code or word that is actually printed.
 - "printed": alongside each line and alongside the document totals, return the LITERAL text the page shows for money and quantity fields, exactly as printed — keep the vendor's own grouping and decimal marks ("1.704,00" stays "1.704,00", "142,00 / KS(12)" stays whole). Line keys: qty, unitPrice, lineTotal, allowance, deposit. Document keys: subtotal, tax, freight, total. Omit a key you did not read; never write "" and never rewrite the number into our format.
+- vendorTaxId / buyerTaxId: transcribe, NEVER construct. If the page prints no tax number, return null — a resolved vendor keyed on a number you assembled would put a guess under every price we ever record for them. If you cannot tell which of two printed numbers belongs to the seller, return null for both and say so in "unreadable".
 - Anything illegible: null, and say so in "unreadable".
 
 OUTPUT only valid JSON:
-{"docType":"invoice","docNumber":null,"docDate":null,"deliveredDate":null,"poNumber":null,"referencesDocNumber":null,"vendorName":null,"currency":"USD","subtotal":null,"freight":null,"fuelSurcharge":null,"splitCaseFee":null,"deliveryFee":null,"depositTotal":null,"tax":null,"otherCharges":null,"discountTotal":null,"total":null,"taxBreakdown":[],"printed":{},"lines":[{"vendorSku":null,"description":null,"vintage":null,"formatMl":null,"qty":0,"uom":"bottle","packSize":null,"unitPrice":null,"priceBaseQty":null,"priceBaseUom":null,"lineTotal":null,"allowance":null,"deposit":null,"lineKind":"goods","printed":{}}],"unreadable":[]}`;
+{"docType":"invoice","docNumber":null,"docDate":null,"deliveredDate":null,"poNumber":null,"referencesDocNumber":null,"vendorName":null,"vendorTaxId":null,"vendorTaxOffice":null,"vendorAddress":null,"vendorCountry":null,"buyerName":null,"buyerTaxId":null,"currency":null,"currencySeen":null,"subtotal":null,"freight":null,"fuelSurcharge":null,"splitCaseFee":null,"deliveryFee":null,"depositTotal":null,"tax":null,"otherCharges":null,"discountTotal":null,"total":null,"taxBreakdown":[],"printed":{},"lines":[{"vendorSku":null,"description":null,"vintage":null,"formatMl":null,"qty":0,"uom":"bottle","packSize":null,"unitPrice":null,"priceBaseQty":null,"priceBaseUom":null,"lineTotal":null,"allowance":null,"deposit":null,"lineKind":"goods","printed":{}}],"unreadable":[]}`;
 
 /**
  * The fence-stripping `normalize` applies before `JSON.parse`.
@@ -293,7 +302,17 @@ export class DocumentExtractorService {
         poNumber: null,
         vendorName: null,
         vendorAccount: null,
-        currency: "USD",
+        vendorTaxId: null,
+        vendorTaxOffice: null,
+        vendorAddress: null,
+        vendorCountry: null,
+        buyerName: null,
+        buyerTaxId: null,
+        // Empty, never `"USD"`. A model that returned prose read nothing, and
+        // a document that says "these figures are dollars" on the strength of
+        // a failed parse is exactly the claim that put dollar signs on Turkish
+        // invoices (founder, 2026-09-06; `invoice-currency.ts`).
+        currency: "",
         subtotal: null,
         freight: null,
         fuelSurcharge: null,
@@ -411,7 +430,22 @@ export class DocumentExtractorService {
       poNumber: str(parsed.poNumber),
       vendorName: str(parsed.vendorName),
       vendorAccount: null,
-      currency: str(parsed.currency) ?? "USD",
+      // ADR 0104 D15 — BT-31/BT-32. Transcribed, never assembled: these are the
+      // only fields a vendor is resolved from, so a value we invented here
+      // becomes a guess underneath every price, lot and remembered pairing.
+      vendorTaxId: str(parsed.vendorTaxId),
+      vendorTaxOffice: str(parsed.vendorTaxOffice),
+      vendorAddress: str(parsed.vendorAddress),
+      vendorCountry: str(parsed.vendorCountry),
+      buyerName: str(parsed.buyerName),
+      buyerTaxId: str(parsed.buyerTaxId),
+      // WHAT THE DOCUMENT SAID, or nothing. The `?? "USD"` that stood here
+      // until 2026-09-06 meant a model answering `null` — the correct answer
+      // for a page that prints no currency — produced a document denominated
+      // in dollars, and `applyCurrencyRules` downstream would then have taken
+      // that as the vendor's own statement and never consulted the house.
+      currency: str(parsed.currency) ?? "",
+      currencySeen: normalizeCurrencySeen(parsed.currencySeen, warnings),
       subtotal: num(parsed.subtotal),
       freight: num(parsed.freight),
       fuelSurcharge: num(parsed.fuelSurcharge),
@@ -593,6 +627,58 @@ function str(v: unknown): string | null {
   if (v == null) return null;
   const s = String(v).trim();
   return s.length && s.toLowerCase() !== "null" ? s : null;
+}
+
+/**
+ * The model's currency SIGHTING, validated into `CurrencySeen` or into null.
+ *
+ * Founder, 2026-09-06: the model must state the currency it SEES on the page,
+ * with where it saw it, or state that it saw none. Three answers reach here and
+ * they are kept apart:
+ *
+ *   * a well-formed sighting -> recorded, and `applyCurrencyRules` may hold the
+ *     money on it (`invoice-currency.ts`);
+ *   * `null` / absent -> the model saw none. A real answer, recorded as null.
+ *   * a sighting with NO printed literal and no code -> not a sighting at all.
+ *     It comes back null WITH a warning, because an object shaped like evidence
+ *     that carries none is worse than nothing: it would make "the model looked
+ *     and saw a currency" true of a page where it saw nothing.
+ *
+ * `where` is defaulted to a SENTENCE rather than an empty string when the model
+ * omits it, so a screen never prints "seen at" followed by a blank. The default
+ * says the location is unrecorded — it never invents one.
+ *
+ * NOTHING here resolves a glyph to a code. That is `seenCodes`' job, and it is
+ * deliberately one function in one file: a second glyph table is how `$` starts
+ * meaning `USD` again.
+ */
+function normalizeCurrencySeen(
+  v: unknown,
+  warnings: string[],
+): CurrencySeen | null {
+  if (v == null) return null;
+  if (typeof v !== "object" || Array.isArray(v)) {
+    warnings.push(
+      `The extractor's currencySeen was ${JSON.stringify(v)}, which is not a sighting; no currency evidence was recorded for this document.`,
+    );
+    return null;
+  }
+  const raw = v as { code?: unknown; asPrinted?: unknown; where?: unknown };
+  const code = str(raw.code);
+  const asPrinted = str(raw.asPrinted);
+  if (!code && !asPrinted) {
+    warnings.push(
+      "The extractor returned a currencySeen with neither a code nor a printed literal, so it says nothing about what is on the page; no currency evidence was recorded.",
+    );
+    return null;
+  }
+  return {
+    code,
+    // A sighting with a code but no literal is still a sighting; the code IS
+    // what was printed in that case, and saying so beats an empty string.
+    asPrinted: asPrinted ?? (code as string),
+    where: str(raw.where) ?? "a place on the page the model did not name",
+  };
 }
 
 /**

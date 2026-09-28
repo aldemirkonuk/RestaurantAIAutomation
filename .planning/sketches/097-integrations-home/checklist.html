@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>097 · The comprehensiveness checklist</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+.mudavym{
+  --seal:#1A5E6B; --seal-deep:#14515C; --seal-tint:rgba(26,94,107,.10); --seal-ring:rgba(26,94,107,.32);
+  --paper-0:#FAF7F1; --paper-1:#F3EFE6; --paper-2:#EAE4D8;
+  --ink-1:#211C16; --ink-2:#4F473C; --ink-3:#7C7365; --ink-4:#665D50;
+  color-scheme:light;
+}
+:root{--serif:"Fraunces",Georgia,"Times New Roman",serif;--sans:"DM Sans","Plus Jakarta Sans",system-ui,sans-serif;--mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper-0);color:var(--ink-1);font-family:var(--sans);font-size:13px}
+.banner{background:var(--ink-1);color:var(--paper-0);font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;padding:7px 20px}
+.wrap{max-width:1240px;margin:0 auto;padding:22px 20px 80px}
+.wordmark{font-family:var(--serif);font-weight:600;font-size:13px;letter-spacing:.04em}
+h1{font-family:var(--serif);font-size:34px;font-weight:600;letter-spacing:-.018em;line-height:1.07;margin:4px 0 0}
+h1 .dot{color:var(--seal)}
+.lede{font-family:var(--serif);font-style:italic;font-size:15.5px;color:var(--ink-2);margin:7px 0 0;max-width:880px}
+.dbl{border-top:1px solid var(--ink-1);border-bottom:1px solid var(--ink-1);height:3px;opacity:.5;margin:18px 0 20px}
+.tally{display:flex;gap:0;margin:0 0 24px;flex-wrap:wrap}
+.tally div{padding:0 22px 0 0;margin-right:22px;border-right:1px solid var(--paper-2)}
+.tally div:last-child{border-right:0}
+.tally .n{font-family:var(--mono);font-size:22px;font-weight:600;color:var(--ink-1);font-variant-numeric:tabular-nums;display:block;line-height:1.1}
+.tally .k{font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);display:block;margin-top:3px}
+.tally .n.seal{color:var(--seal-deep)}
+.sec-h{display:flex;align-items:baseline;gap:12px;margin:32px 0 0}
+.sec-n{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--seal-deep);white-space:nowrap}
+h2{font-family:var(--serif);font-size:23px;font-weight:600;letter-spacing:-.012em;margin:0}
+.sec-d{font-size:12.5px;line-height:1.62;color:var(--ink-2);margin:6px 0 12px;max-width:900px}
+table{border-collapse:collapse;width:100%;font-size:12px}
+thead th{text-align:left;font-family:var(--mono);font-size:9px;font-weight:600;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3);padding:0 12px 8px 0;border-bottom:1px solid var(--ink-1);vertical-align:bottom}
+tbody td{padding:10px 12px 10px 0;border-bottom:1px solid var(--paper-2);vertical-align:top;line-height:1.55}
+tbody tr:hover{background:var(--paper-1)}
+td.item{font-weight:600;color:var(--ink-1);width:210px}
+td.item span{display:block;font-weight:400;font-size:11px;color:var(--ink-3);margin-top:2px;font-family:var(--mono)}
+td.who{width:250px;color:var(--ink-2)}
+td.st{width:118px}
+td.ev{color:var(--ink-2)}
+.s{font-family:var(--mono);font-size:8.5px;font-weight:600;letter-spacing:.11em;text-transform:uppercase;padding:3px 7px;border-radius:3px;white-space:nowrap;display:inline-block}
+.s.have{color:var(--seal-deep);background:var(--seal-tint);box-shadow:inset 0 0 0 1px var(--seal-ring)}
+.s.shape{color:var(--ink-1);background:var(--paper-2)}
+.s.none{color:var(--ink-3);background:transparent;box-shadow:inset 0 0 0 1px var(--paper-2)}
+.s.fork{color:var(--ink-1);background:transparent;box-shadow:inset 0 0 0 1px var(--ink-4)}
+code{font-family:var(--mono);font-size:10.5px;color:var(--ink-2);background:var(--paper-1);padding:1px 4px;border-radius:2px}
+.legend{display:flex;gap:26px;flex-wrap:wrap;margin:14px 0 0;font-size:11.5px;color:var(--ink-3)}
+.legend b{color:var(--ink-2)}
+.foot{margin:38px 0 0;padding-top:14px;border-top:1px solid var(--ink-1);font-size:11.5px;line-height:1.75;color:var(--ink-3);max-width:960px}
+.foot b{color:var(--ink-2)}
+.back{display:inline-block;margin:0 0 12px;font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--seal-deep);text-decoration:none}
+</style>
+</head>
+<body class="mudavym">
+<div class="banner">Sketch 097 · comprehensiveness checklist · measured 3 September 2026</div>
+<div class="wrap">
+  <a class="back" href="index.html">&larr; 097 index</a>
+  <div class="wordmark">Mudavym</div>
+  <h1>What a connections page must have<span class="dot">.</span></h1>
+  <p class="lede">Twenty-eight items, drawn from what Stripe, Linear, Notion, Slack, Vercel, GitHub, Zapier, Claude, Toast and Square actually ship. Each one says who does it, whether Mudavym has it today, and the file that proves the claim.</p>
+  <div class="dbl"></div>
+
+  <div class="tally">
+    <div><span class="n seal">8</span><span class="k">have it</span></div>
+    <div><span class="n">8</span><span class="k">a shape, not a thing</span></div>
+    <div><span class="n">9</span><span class="k">absent</span></div>
+    <div><span class="n">3</span><span class="k">need a decision</span></div>
+  </div>
+
+  <!-- A. The list itself -->
+  <div class="sec-h"><span class="sec-n">A</span><h2>The list itself</h2></div>
+  <p class="sec-d">The minimum that makes a page a register rather than a menu of buttons.</p>
+  <table>
+    <thead><tr><th>Item</th><th>Who does it</th><th>Mudavym</th><th>Evidence</th></tr></thead>
+    <tbody>
+      <tr><td class="item">One list of everything that acts<span>no attachment without a row</span></td><td class="who">Zapier App Connections; Claude Connectors; Google's third-party access page</td><td class="st"><span class="s none">Absent</span></td><td class="ev">The same OAuth catalogue is rendered in <b>three</b> places and each shows a different subset: <code>components/settings/IntegrationsAuth.tsx:161</code>, <code>pages/settings/next/ServicesSection.tsx:128</code>, <code>pages/profile/next/ConnectionsRegister.tsx:224</code>. POS, sender identity, calendar feed and payments appear in none of them.</td></tr>
+      <tr><td class="item">Scope on the row<span>what it may do, in words</span></td><td class="who">Claude ("review what permissions the server is requesting"); Slack approves scopes at install</td><td class="st"><span class="s have">Have it</span></td><td class="ev">Plain-language scope plus an explicit <em>not requested</em> list: <code>integrations-oauth.constants.ts:43-66</code>. The best thing on the surface today and the model for every other row.</td></tr>
+      <tr><td class="item">Last action, not last edit<span>proof it is alive</span></td><td class="who">Zapier shows last change per connection; Linear shows key last-used</td><td class="st"><span class="s shape">Partly</span></td><td class="ev">Real for MCP after ADR&nbsp;0107 (<code>last_probe_at</code>, <code>last_used_at</code>). Absent for Google/Microsoft grants (<code>connected_at</code> only) and for the calendar feed. <code>20260826170000_integration_oauth_tables.sql:139</code></td></tr>
+      <tr><td class="item">Revoke on every row<span>the whole point</span></td><td class="who">Every product listed</td><td class="st"><span class="s shape">Partly</span></td><td class="ev">Real for OAuth grants and MCP rows. The calendar feed can only be <em>regenerated</em>, which revokes all subscribers at once with no per-subscriber record. POS has no disconnect at all.</td></tr>
+      <tr><td class="item">Whose it is<span>house · person · deployment</span></td><td class="who">Notion Manage tab; Zapier's sharing avatars; GitHub's user-vs-org split</td><td class="st"><span class="s none">Absent</span></td><td class="ev">The scope taxonomy already exists as <code>kind: 'restaurant' | 'account' | 'browser'</code> in <code>settings/next/st-format.ts:31,97</code> — and <code>services</code> is labelled <code>'account'</code> at <code>:103</code> while the grants it renders are per-user. The label is on the tab, never on the row.</td></tr>
+      <tr><td class="item">What depends on it<span>before you break something</span></td><td class="who">Zapier: "the number of Zap workflows associated with the connection"</td><td class="st"><span class="s none">Absent</span></td><td class="ev">Nothing anywhere states that disconnecting the till stops every insight on /dashboard, or that regenerating the calendar token breaks four subscribers.</td></tr>
+      <tr><td class="item">An unconfigured provider says so<span>and does nothing</span></td><td class="who">Stripe's own checklist logic</td><td class="st"><span class="s have">Have it</span></td><td class="ev">Best-in-class already: <code>integrations-oauth.service.ts:88-116</code> (availability with a reason) and <code>payment-methods.service.ts:104-111</code> (a 503 carrying the same sentence the disabled button carries).</td></tr>
+    </tbody>
+  </table>
+
+  <!-- B. Scope and governance -->
+  <div class="sec-h"><span class="sec-n">B</span><h2>Scope and governance</h2></div>
+  <p class="sec-d">Who may attach a thing, and who may take it away. This is where every product in the field converges and where Mudavym has the most exposure.</p>
+  <table>
+    <thead><tr><th>Item</th><th>Who does it</th><th>Mudavym</th><th>Evidence</th></tr></thead>
+    <tbody>
+      <tr><td class="item">Two tiers with a link<span>house permits · person consents</span></td><td class="who">Notion (owner restricts which connections members may install); Slack (owner pre-approves, member installs); Claude (owner adds to the org, user connects individually); Linear (admin governs whether members may mint personal keys)</td><td class="st"><span class="s none">Absent</span></td><td class="ev">Any member may complete <code>POST /integrations/oauth/:id/authorize</code>; there is no notion of an approved list, and no owner-visible record of what members have connected.</td></tr>
+      <tr><td class="item">Role gate on the house's rows<span>read as well as write</span></td><td class="who">Toast: <em>Account Admin &gt; Manage Integrations</em>; Square: <em>account &amp; settings</em> permission</td><td class="st"><span class="s shape">Writes only</span></td><td class="ev">Writes are gated (<code>payment-methods.controller.ts:92-98, 114-125, 138-148</code>). <b>Reads are not</b> — <code>GET /payment-methods</code> at <code>:65-79</code> and <code>GET /billing/provider</code> at <code>:66-78</code> take any member of the restaurant, and the card rows render for every role (<code>PaymentRegister.tsx:370-385</code>). The precedent for the fix is in the tree: <code>assertManagerOrOwner</code> on <code>getLocation</code>, added 2026-09-03.</td></tr>
+      <tr><td class="item">A grant survives its author<span>the house keeps it</span></td><td class="who">Zapier transfers ownership when someone leaves; Toast attaches to the location</td><td class="st"><span class="s fork">Decision</span></td><td class="ev">Both connection tables cascade on the user: <code>user_mcp_connections.user_id … ON DELETE CASCADE</code> (<code>20260903094500:55</code>) and the same on <code>integration_oauth_connections</code> (<code>20260826170000:125</code>). Deleting the GM's account deletes the house's Toast bridge.</td></tr>
+      <tr><td class="item">The house's own sender identity<span>its letters, its envelope</span></td><td class="who">Every vendor-facing product; domain verification is table stakes</td><td class="st"><span class="s none">Absent</span></td><td class="ev">One deployment-wide mailbox with a hardcoded fallback: <code>gmail.service.ts:75-80</code> — <code>GMAIL_SENDER_EMAIL || "notifications@wineops.ai"</code>. No per-restaurant sender, no SPF/DKIM story, and the legacy brand in the default.</td></tr>
+      <tr><td class="item">Per-resource grant<span>this connector, these pages</span></td><td class="who">Notion (page-by-page); GitHub Apps (repository-by-repository); Vercel (install at the team, attach at the project)</td><td class="st"><span class="s none">Absent</span></td><td class="ev">A grant is all-or-nothing per integration id. Not urgent at one register per house; it becomes urgent the moment a chain has branches.</td></tr>
+      <tr><td class="item">Multi-location<span>attach here, or everywhere</span></td><td class="who">Toast removes per location; Stripe Organizations centralises across accounts</td><td class="st"><span class="s fork">Decision</span></td><td class="ev">Production has ten restaurants and one real tenant, so this is unexercisable today — but <code>integration_oauth_connections.restaurant_id</code> is <em>nullable</em> (<code>:126</code>) while <code>user_mcp_connections.restaurant_id</code> is <b>NOT NULL</b> (<code>:61</code>). Two neighbouring tables already disagree about the answer.</td></tr>
+    </tbody>
+  </table>
+
+  <!-- C. Trust and forensics -->
+  <div class="sec-h"><span class="sec-n">C</span><h2>Trust, and what you check after something goes wrong</h2></div>
+  <table>
+    <thead><tr><th>Item</th><th>Who does it</th><th>Mudavym</th><th>Evidence</th></tr></thead>
+    <tbody>
+      <tr><td class="item">Consent screen in our own words<span>before the provider's</span></td><td class="who">Rare. Claude warns before enabling; most products send you straight to the provider</td><td class="st"><span class="s have">Have it</span></td><td class="ev">Already better than the field: <code>pages/AuthorizeIntegration.tsx</code> states what we will do <em>and what we deliberately do not ask for</em>, so the provider screen confirms a decision rather than being the first the user hears of it.</td></tr>
+      <tr><td class="item">Soft revoke, not delete<span>a grant that existed leaves a mark</span></td><td class="who">Rare, and correct</td><td class="st"><span class="s have">Have it</span></td><td class="ev"><code>revoked_at</code> on both tables, with the reasoning written into the migration: "a deleted grant is indistinguishable from a grant that never existed" (<code>20260903094500:30-34</code>).</td></tr>
+      <tr><td class="item">A connection event log<span>who attached what, when</span></td><td class="who">Linear audit log; Notion admin log; Slack app-management history</td><td class="st"><span class="s none">Absent</span></td><td class="ev">Connect and revoke write no audit row anywhere. This is the single cheapest item on the list and the one most missed after an incident.</td></tr>
+      <tr><td class="item">Re-consent when scopes change<span>a widened grant is a new grant</span></td><td class="who">Slack re-approves on scope change; GitHub requires re-authorization</td><td class="st"><span class="s none">Absent</span></td><td class="ev"><code>scopes TEXT[]</code> is stored (<code>:133</code>) and nothing compares it to what was requested; a provider that widens a scope is invisible. The same hole exists for MCP: a trusted server that starts advertising <code>place_order</code> triggers nothing.</td></tr>
+      <tr><td class="item">Expiry and refresh visible<span>a dead token says so</span></td><td class="who">Zapier surfaces broken connections and prompts reconnect</td><td class="st"><span class="s shape">Stored, unshown</span></td><td class="ev"><code>token_expires_at</code> exists (<code>:138</code>); no surface reads it, so an expired grant looks identical to a live one until an export silently fails.</td></tr>
+      <tr><td class="item">A failed read is not an empty list<span>absence is not health</span></td><td class="who">Nobody. This is ADR 0020, and it is Mudavym's own idea</td><td class="st"><span class="s shape">Page yes, wire no</span></td><td class="ev">The page infers a failure and says so — but the endpoint still swallows it: <code>listConnections</code> logs and returns <code>[]</code> (<code>integrations-oauth.service.ts:486-489</code>, filed as G3). A correct inference today, a fragile one tomorrow.</td></tr>
+      <tr><td class="item">Outbound address safety<span>an endpoint a tenant typed</span></td><td class="who">Rare, and a real differentiator</td><td class="st"><span class="s have">Have it</span></td><td class="ev">Strongest thing built this wave: the address is parsed to sixteen bytes, judged on the bytes, fails closed, and is <em>pinned into the socket</em> via <code>http.request</code>'s <code>lookup</code> hook. <code>mcp-runtime/mcp-endpoint.guard.ts</code>, 33 tests, 7 red against the shipped version.</td></tr>
+      <tr><td class="item">Secrets encrypted, never returned<span>and a stated key</span></td><td class="who">Table stakes</td><td class="st"><span class="s have">Have it</span></td><td class="ev">AES-256-GCM under two named keys; with no key the feature is <em>disabled</em> rather than storing in the clear. <code>common/crypto/token-crypto.service.ts:32-64</code>, <code>mcp-runtime/mcp-secret.service.ts:37,85</code>.</td></tr>
+      <tr><td class="item">Key rotation with a record<span>when, and by whom</span></td><td class="who">Vercel documents rotating integration secrets</td><td class="st"><span class="s none">Absent</span></td><td class="ev">No rotation path and no rotation record for either key. Named on the sketch as an em dash rather than left off the page.</td></tr>
+    </tbody>
+  </table>
+
+  <!-- D. Acting -->
+  <div class="sec-h"><span class="sec-n">D</span><h2>Acting — the part that spends money</h2></div>
+  <table>
+    <thead><tr><th>Item</th><th>Who does it</th><th>Mudavym</th><th>Evidence</th></tr></thead>
+    <tbody>
+      <tr><td class="item">Handshake, not a declaration<span>the row proves the server exists</span></td><td class="who">Claude Code lists a server's tools after connecting</td><td class="st"><span class="s have">Have it</span></td><td class="ev">ADR 0107: <code>initialize</code> &rarr; <code>notifications/initialized</code> &rarr; <code>tools/list</code> over Streamable HTTP, revision 2025-06-18, writing the server's own name, version and tool list onto the row.</td></tr>
+      <tr><td class="item">Tool invocation, gated<span>a tool call can place an order</span></td><td class="who">Claude asks per tool call, with "Allow always" reserved for trusted operations</td><td class="st"><span class="s fork">Decision</span></td><td class="ev">Deliberately not built, and pinned by a structural test asserting the runtime has no <code>call</code>/<code>callTool</code>/<code>invoke</code>. ADR 0013's commitment guardrail has never been extended to a third party calling a tool. <b>The founder's call.</b></td></tr>
+      <tr><td class="item">Card on file without touching a PAN<span>the provider stays the record</span></td><td class="who">Stripe SetupIntent + Elements</td><td class="st"><span class="s shape">Built, unkeyed</span></td><td class="ev">ADR 0110: SetupIntent, Elements on Stripe's origin, <code>provider_ref</code> only, detach-at-the-provider, signed idempotent webhook. Three env vars away (G13). Charging is out of scope by decision (OD-23).</td></tr>
+      <tr><td class="item">Webhook delivery proven<span>configured is not working</span></td><td class="who">Stripe shows delivery attempts</td><td class="st"><span class="s have">Have it</span></td><td class="ev">The register distinguishes "configured" from "has ever received a signed delivery" — <code>webhookLastReceivedAt: null</code> "is not the same as healthy, and <code>webhookReason</code> says so in words" (<code>billing.controller.ts:70-75</code>).</td></tr>
+      <tr><td class="item">Freshness of the register<span>current as of when</span></td><td class="who">Zapier tests connections; monitors re-check</td><td class="st"><span class="s shape">Manual</span></td><td class="ev">Probes are manual and the row prints its own date. A scheduled probe under <code>ScheduledTenantsService.runPerTenant</code> would keep it fresh — and would turn a page action into standing outbound traffic to tenant-typed addresses, which needs quiet hours and back-off. Filed as G17.</td></tr>
+      <tr><td class="item">A catalogue of what could be connected<span>with the ones we cannot, marked</span></td><td class="who">Toast directory; Square marketplace; Vercel marketplace</td><td class="st"><span class="s shape">Two entries</span></td><td class="ev"><code>INTEGRATION_DEFINITIONS</code> holds exactly two, both still branded WineOps in their copy (<code>integrations-oauth.constants.ts:46,48,63</code>). A catalogue that lists what a restaurant actually runs — Square, Lightspeed, Sunmi, a bank feed — does not exist.</td></tr>
+    </tbody>
+  </table>
+
+  <div class="legend">
+    <span><b class="s have" style="padding:2px 6px">Have it</b> &mdash; built and measured on this branch</span>
+    <span><b class="s shape" style="padding:2px 6px">Shape</b> &mdash; partly there, or built to the credential</span>
+    <span><b class="s none" style="padding:2px 6px">Absent</b> &mdash; nothing in the tree</span>
+    <span><b class="s fork" style="padding:2px 6px">Decision</b> &mdash; the founder's call, not a build</span>
+  </div>
+
+  <div class="foot">
+    <b>The shape of the gap.</b> Mudavym is <em>ahead</em> of the field on the two hardest items — the consent screen written in our own words, and an outbound guard that parses an address to bytes and pins it into the socket. It is <em>behind</em> on the two cheapest — one list, and a log of who attached what. Every one of the nine absences is cheap; all three decisions are the founder&rsquo;s alone.<br><br>
+    <b>What no competitor has.</b> The em dash. Every product above will show you an empty connections list whether nothing is connected or the read failed. The rule that a failed read must say which register could not be read, applied to a connections page, is a differentiator nobody in this comparison ships.
+  </div>
+</div>
+</body>
+</html>

@@ -7,6 +7,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Clock, CornerDownLeft } from 'lucide-react'
 import { getRecentlyViewed } from './recents-store'
+import { Panel } from '../mudavym/Sheet'
+import { useMudavymShell } from '../../lib/mudavym/shellGround'
 
 function ago(ts: number): string {
   const s = Math.max(0, Math.round((Date.now() - ts) / 1000))
@@ -26,6 +28,7 @@ export function RecentlyViewed({
   onClose: () => void
 }) {
   const navigate = useNavigate()
+  const shell = useMudavymShell()
   const [active, setActive] = useState(0)
   // Skip the current page (index 0 is where you already are).
   const entries = useMemo(() => (open ? getRecentlyViewed().slice(1) : []), [open])
@@ -60,6 +63,50 @@ export function RecentlyViewed({
   }, [open, entries, active, navigate, onClose])
 
   if (!open) return null
+
+  if (shell.on) {
+    return (
+      <Panel
+        open={open}
+        onClose={onClose}
+        label="Recently viewed"
+        eyebrow="Where you have been"
+        title="Recently viewed"
+      >
+        {entries.length === 0 ? (
+          <p className="mdv-quiet">No recent pages yet — they collect as you navigate.</p>
+        ) : (
+          <div role="listbox" aria-label="Recently viewed">
+            {entries.map((entry, idx) => (
+              <button
+                key={entry.path}
+                type="button"
+                role="option"
+                aria-selected={idx === active}
+                className="mdv-item"
+                onMouseMove={() => setActive(idx)}
+                onClick={() => {
+                  onClose()
+                  navigate(entry.path)
+                }}
+              >
+                <Clock className="mdv-item__icon" size={14} aria-hidden />
+                <span className="mdv-item__text">
+                  <span className="mdv-item__label">{entry.label}</span>
+                  <span className="mdv-item__sub">
+                    {entry.path} · {ago(entry.ts)}
+                  </span>
+                </span>
+                {idx === active && (
+                  <CornerDownLeft className="mdv-item__icon" size={13} aria-hidden />
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+      </Panel>
+    )
+  }
 
   return (
     <div

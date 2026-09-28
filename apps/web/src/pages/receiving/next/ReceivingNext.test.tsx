@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RcStaffLane } from './RcStaffLane'
@@ -62,7 +62,16 @@ vi.mock('../../../lib/offline-storage', () => ({
     updatePendingMutation: vi.fn(),
   },
 }))
-vi.mock('../../../lib/doorOutbox', () => ({ flushDoorOutbox }))
+/**
+ * Only the flush is stubbed. The drop store is the REAL one — it moved into
+ * `lib/doorOutbox.ts` so a drop has exactly one home instead of three, and
+ * these tests are about the keys the rail actually reads and writes.
+ */
+vi.mock('../../../lib/doorOutbox', async () => {
+  const actual =
+    await vi.importActual<typeof import('../../../lib/doorOutbox')>('../../../lib/doorOutbox')
+  return { ...actual, flushDoorOutbox }
+})
 
 /** `GET /procurement/orders` returns `OrderListResponseDto` — `orders`, plus `total`/`hasMore`. */
 const orderList = (orders: unknown[], over: Record<string, unknown> = {}) => ({
@@ -115,7 +124,9 @@ beforeEach(() => {
   get.mockReset()
   navigate.mockReset()
   pendingByType.mockReset().mockResolvedValue([])
-  flushDoorOutbox.mockReset().mockResolvedValue({ sent: 0, failed: 0 })
+  flushDoorOutbox
+    .mockReset()
+    .mockResolvedValue({ sent: 0, failed: 0, dropped: 0, stranded: 0, unreachable: false })
   activeRestaurantId.current = 'rest-A'
   window.localStorage.clear()
   Object.defineProperty(navigator, 'onLine', { value: true, configurable: true })
@@ -207,9 +218,9 @@ describe('F3 — a dropped receipt does not follow the tablet into another resta
   const pinFor = (rid: string) => `mudavym.receiving.outboxDrops.${rid}`
   const drop = {
     id: 'drop-1',
-    label: 'PO-SECRET · Restaurant A',
+    orderLabel: 'PO-SECRET · Restaurant A',
     droppedAt: '2026-08-30T14:00:00.000Z',
-    exact: true,
+    reason: 'refused',
   }
 
   it('renders a pin stored under the active restaurant', async () => {
@@ -231,15 +242,18 @@ describe('F3 — a dropped receipt does not follow the tablet into another resta
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
-  it('writes a new pin under the scoped key, not the global one', async () => {
-    pendingByType
-      .mockResolvedValueOnce([{ id: 'm1', type: 'receiving.door', data: { orderId: 'ord-9', orderLabel: 'PO-9' }, timestamp: new Date(), retryCount: 7 }])
-      .mockResolvedValueOnce([{ id: 'm1', type: 'receiving.door', data: { orderId: 'ord-9', orderLabel: 'PO-9' }, timestamp: new Date(), retryCount: 7 }])
-      .mockResolvedValue([])
-    flushDoorOutbox.mockResolvedValue({ sent: 0, failed: 1 })
-
+  it('writes back to the scoped key when a pin is dismissed, never the global one', async () => {
+    // The flush is now the only thing that CREATES a pin (doorOutbox.test.ts
+    // pins that it lands under the receiving house's key). What this side
+    // still writes is the dismissal, and it must write to the same key.
+    window.localStorage.setItem(pinFor('rest-A'), JSON.stringify([drop]))
     harness(OutboxBody)
-    await waitFor(() => expect(window.localStorage.getItem(pinFor('rest-A'))).toBeTruthy())
+
+    fireEvent.click(await screen.findByRole('button', { name: /Dismiss the dropped receipt/ }))
+
+    await waitFor(() =>
+      expect(JSON.parse(window.localStorage.getItem(pinFor('rest-A')) ?? '[]')).toEqual([]),
+    )
     expect(window.localStorage.getItem('mudavym.receiving.outboxDrops')).toBeNull()
   })
 
@@ -273,7 +287,13 @@ describe('F4 — an offline non-attempt does not render as a clean sync', () => 
 
   it('still reports a real flush that found nothing to send', async () => {
     pendingByType.mockResolvedValue([])
-    flushDoorOutbox.mockResolvedValue({ sent: 0, failed: 0 })
+    flushDoorOutbox.mockResolvedValue({
+      sent: 0,
+      failed: 0,
+      dropped: 0,
+      stranded: 0,
+      unreachable: false,
+    })
     harness(OutboxBody)
 
     expect(await screen.findByText(/last sync .* · sent 0 · failed 0/)).toBeInTheDocument()
@@ -286,7 +306,13 @@ describe('F4 — an offline non-attempt does not render as a clean sync', () => 
     pendingByType.mockResolvedValue([
       { id: 'm1', type: 'receiving.door', data: { orderId: 'o', orderLabel: 'PO-1' }, timestamp: new Date(), retryCount: 0 },
     ])
-    flushDoorOutbox.mockResolvedValue({ sent: 0, failed: 0 })
+    flushDoorOutbox.mockResolvedValue({
+      sent: 0,
+      failed: 0,
+      dropped: 0,
+      stranded: 0,
+      unreachable: false,
+    })
     harness(OutboxBody)
 
     expect(await screen.findByText(/no sync attempted — offline/)).toBeInTheDocument()

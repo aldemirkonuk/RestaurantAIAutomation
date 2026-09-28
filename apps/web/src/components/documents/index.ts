@@ -7,6 +7,10 @@ export {
 } from './CanonicalSheet'
 export { CorrectionDialog, type CorrectionDialogProps } from './CorrectionDialog'
 export {
+  FieldVerifyDialog,
+  type FieldVerifyDialogProps,
+} from './FieldVerifyDialog'
+export {
   VerdictBlock,
   exceptionSentences,
   ladderDisagreement,

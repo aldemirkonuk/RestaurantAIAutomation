@@ -11,10 +11,15 @@ Run after all waves complete in CI:
 
 Wave dependency graph (D-17):
   A → B → C        (API contracts → agent health → agent triggers)
-  A + B → D        (API + health → Toast pipeline)
-  E (independent)  (Gmail pipeline)
   F (independent)  (Playwright frontend)
-  E → G            (Gmail → Calendar)
+
+  Waves D (Toast), E (Gmail) and G (Calendar) were RETIRED 2026-09-12 (ADR 0137,
+  see .planning/decisions/0137-legacy-e2e-waves-d-e-g-are-retired-not-repointed.md)
+  and removed from this file's WAVE_DEPS/SUGGESTED_FIXES/wave_files below — each
+  tested a table or endpoint with zero production consumer. Do not re-add them
+  without re-reading that ADR: a missing JUnit file for a retired wave used to
+  read as "missing" and count as a root-cause failure here, which is exactly the
+  false-report shape this repo's absence-reported-as-health fault takes.
 
 Output:
   cascading_report.json   — machine-readable (CI / Sentry / PR comment body)
@@ -34,10 +39,7 @@ WAVE_DEPS: Dict[str, List[str]] = {
     "A": [],
     "B": ["A"],
     "C": ["B"],
-    "D": ["A", "B"],
-    "E": [],
     "F": [],
-    "G": ["E"],
 }
 
 # D-16: Suggested fix per cluster of failed waves
@@ -46,7 +48,7 @@ SUGGESTED_FIXES: Dict[FrozenSet, str] = {
         "Wave A (API contracts) failed. Check: (1) RAILWAY_ORCHESTRATOR_URL is correct. "
         "(2) ADMIN_API_KEY matches the Railway environment variable. "
         "(3) GET /health on the Railway URL returns 200. "
-        "All other waves that depend on A (B, C, D) likely auto-recover if A is fixed."
+        "All other waves that depend on A (B, C) likely auto-recover if A is fixed."
     ),
     frozenset(["B"]): (
         "Wave B (agent health) failed. Check: (1) All 9 agents show Active on /admin/health. "
@@ -55,30 +57,11 @@ SUGGESTED_FIXES: Dict[FrozenSet, str] = {
     ),
     frozenset(["A", "B"]): (
         "Waves A+B failed — cascading failure. Fix Wave A first (auth/connectivity). "
-        "Wave B likely auto-recovers. Wave C and D may auto-recover once A+B pass."
+        "Wave B likely auto-recovers. Wave C may auto-recover once A+B pass."
     ),
     frozenset(["A", "B", "C"]): (
         "Waves A+B+C failed — root cause is Wave A auth. Fix RAILWAY_ORCHESTRATOR_URL "
         "and ADMIN_API_KEY in Railway. Restart the agent-orchestrator service."
-    ),
-    frozenset(["A", "B", "D"]): (
-        "Toast pipeline (Wave D) cascaded from A+B failure. Fix Wave A auth first. "
-        "Wave D will auto-recover once POSIntegrationAgent is healthy."
-    ),
-    frozenset(["E"]): (
-        "Wave E (Gmail pipeline) failed. Check: (1) GMAIL_USER and GMAIL_PASSWORD "
-        "are set on Railway orchestrator. (2) NotificationAgent is healthy (Wave B). "
-        "(3) notification_deliveries table exists in Supabase."
-    ),
-    frozenset(["G"]): (
-        "Wave G (Calendar) failed independently. Check: (1) CalendarAgent is healthy. "
-        "(2) calendar_events table schema matches test payload columns. "
-        "(3) CalendarAgent scan interval — the scheduling row may appear after > 30s."
-    ),
-    frozenset(["E", "G"]): (
-        "Gmail failure (Wave E) cascaded to Calendar (Wave G). "
-        "Fix GMAIL_USER/GMAIL_PASSWORD on Railway orchestrator. "
-        "Wave G will auto-recover once email sending works."
     ),
     frozenset(["F"]): (
         "Wave F (Playwright frontend) failed. Check: (1) E2E_BASE_URL points to the "
@@ -146,14 +129,13 @@ def collect_wave_results(results_dir: Path) -> Dict[str, Dict]:
     This allows cascading_report to distinguish B-only failures from C-only failures,
     producing precise root-cause analysis instead of marking both failed on any issue.
     """
+    # D, E, G retired 2026-09-12 (ADR 0137) — removed, not just absent, so a
+    # missing wave_d/e/g.xml never again reads as "missing" -> "failed" here.
     wave_files = {
         "A": "wave_a.xml",
         "B": "wave_b.xml",
         "C": "wave_c.xml",
-        "D": "wave_d.xml",
-        "E": "wave_e.xml",
         "F": "wave_f.xml",
-        "G": "wave_g.xml",
     }
     wave_results: Dict[str, Dict] = {}
 
@@ -278,7 +260,7 @@ def generate_markdown(
         "| Wave | Status | Tests | Passed | Failed | Skipped |",
         "|------|--------|-------|--------|--------|---------|",
     ]
-    for wave in sorted("ABCDEFG"):
+    for wave in sorted("ABCF"):  # D, E, G retired 2026-09-12 (ADR 0137)
         result = wave_results.get(wave, {"status": "missing"})
         status = result.get("status", "missing")
         if status == "passed":

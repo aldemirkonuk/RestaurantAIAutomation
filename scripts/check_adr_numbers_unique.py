@@ -71,6 +71,35 @@ and looks exactly like success. So the guard asks the remote what exists
 of it locally. Counting only what happens to be present is how a guard ends up
 certifying a repository it never read.
 
+ONE RE-FETCH BEFORE THAT VERDICT (founder, 2026-09-06 batch 67)
+---------------------------------------------------------------
+There is a benign way to be missing a ref, and it is common: somebody pushes a
+branch in the seconds between CI's own fetch step and this guard's `ls-remote`.
+The guard was right that it could not see everything, and wrong about what to do
+about it -- CI run 34036195481 (2026-09-06) went red on a peer's push, which
+teaches a reader that a red run means "someone else pushed" rather than "a
+number is wearing two slugs". A guard whose red means two different things stops
+being read.
+
+So on seeing a branch with no local ref the guard now runs ONE
+`git fetch origin '+refs/heads/*:refs/remotes/origin/*'` itself and asks again.
+Three properties matter and each is a decision:
+
+  * ONE. Not a loop and not a timer. A second push during the fetch would be
+    caught by a third, and a guard that retries until the repository holds still
+    can hang a CI job forever.
+  * The re-check uses the FIRST `ls-remote` snapshot, not a fresh one. Asking
+    the remote again after fetching re-opens the exact race being closed, and
+    the completeness claim the guard makes is "everything that existed when I
+    looked", which is what a snapshot is.
+  * A FETCH THAT FAILS IS NOT A PASS. The fetch is best-effort -- no network,
+    no credentials, a ref that cannot be written locally -- and its failure is
+    swallowed only so the verdict comes from the ref check itself, with its own
+    sentence. Still missing after the fetch is still exit 2, exactly as before.
+
+This narrows when the guard exits 2; it does not narrow WHAT it checks. Every
+condition that exited 2 and is still true after a fetch still exits 2.
+
 Per ADR 0025's "a claim that cannot run is a FAILURE", a guard that certifies
 itself on no evidence is the failure mode, not the fallback.
 
@@ -138,13 +167,8 @@ def remote_heads() -> set[str]:
     return heads
 
 
-def all_refs() -> list[str]:
-    """Every local and remote ref that could carry an ADR.
-
-    Refuses to return a partial view. Seeing 3 of 30 branches finds no collision
-    and looks exactly like success -- so completeness is checked against the
-    remote, not against a floor like "at least two refs".
-    """
+def local_refs() -> list[str]:
+    """Every local and remote-tracking ref that could carry an ADR, as it stands."""
     raw = git(
         "for-each-ref",
         "--format=%(refname:short)",
@@ -152,17 +176,72 @@ def all_refs() -> list[str]:
         "refs/heads",
     )
     refs = [r.strip() for r in raw.splitlines() if r.strip()]
-    refs = [r for r in refs if not r.endswith("/HEAD")]
+    return [r for r in refs if not r.endswith("/HEAD")]
 
-    tracked = {r[len("origin/"):] for r in refs if r.startswith("origin/")}
-    missing = remote_heads() - tracked
+
+def fetch_all_heads() -> bool:
+    """One fetch of every head on origin. True when git was happy.
+
+    Best-effort ON PURPOSE. The verdict this guard renders is the ref-completeness
+    check below, which has a sentence naming the branches it could not see; a
+    fetch that dies on a missing credential or a ref it cannot write locally would
+    otherwise replace that sentence with git's stderr and lose the reason. The
+    failure is not hidden -- it is reported as part of the CANNOT CHECK, and a
+    fetch that fails and leaves a branch missing is still exit 2.
+    """
+    try:
+        git("fetch", "origin", "+refs/heads/*:refs/remotes/origin/*")
+        return True
+    except CannotCheck:
+        return False
+
+
+def all_refs() -> list[str]:
+    """Every local and remote ref that could carry an ADR.
+
+    Refuses to return a partial view. Seeing 3 of 30 branches finds no collision
+    and looks exactly like success -- so completeness is checked against the
+    remote, not against a floor like "at least two refs".
+
+    A branch pushed by somebody else between CI's fetch and this call is missing
+    for a benign reason, so the guard fetches ONCE and asks again before refusing
+    (see the module docstring). The re-check is against the SAME `heads` snapshot
+    -- re-asking the remote would re-open the race it is closing.
+    """
+    refs = local_refs()
+    heads = remote_heads()
+    missing = heads - {r[len("origin/"):] for r in refs if r.startswith("origin/")}
+
+    refetched = False
+    fetch_ok = True
+    if missing:
+        refetched = True
+        fetch_ok = fetch_all_heads()
+        refs = local_refs()
+        missing = missing - {r[len("origin/"):] for r in refs if r.startswith("origin/")}
+
     if missing:
         shown = ", ".join(sorted(missing)[:5])
         more = f" (and {len(missing) - 5} more)" if len(missing) > 5 else ""
+        after = (
+            " This is AFTER the guard fetched every head itself and asked again"
+            f"{'' if fetch_ok else ' (that fetch itself failed)'}, so it is not a"
+            " concurrent push."
+        )
         raise CannotCheck(
-            f"{len(missing)} branch(es) on origin have no local ref: {shown}{more}. "
+            f"{len(missing)} branch(es) on origin have no local ref: {shown}{more}."
+            f"{after} "
             "A partial view cannot rule out a collision -- the branch holding the "
             f"duplicate may be one of the ones not fetched. Fetch them: {FETCH_HINT}"
+        )
+
+    if refetched:
+        # Said out loud: a run that had to fetch was racing somebody, and a
+        # reader comparing two runs' ref counts should know why they differ.
+        print(
+            "Re-fetched origin: a branch had no local ref on the first look "
+            "(a concurrent push), and every one of them resolved.",
+            file=sys.stderr,
         )
 
     if MAIN_REF not in refs:
@@ -294,14 +373,37 @@ def run_audit() -> int:
     return 1
 
 
-def _shallow_clone_must_exit_2() -> str | None:
-    """The one case a full local clone can never prove.
+def _ref_completeness_fixtures() -> str | None:
+    """The two cases a full local clone can never prove, built from nothing.
 
     Every other test in this file runs in a complete checkout, where the guard
     trivially sees every branch. CI does not look like that: checkout is shallow
     and single-branch, which is exactly the condition under which a weaker
     version of this guard would enumerate one ref, find no collision, and exit 0
-    on a live collision. So build that condition on purpose and assert it fails.
+    on a live collision. So build that condition on purpose.
+
+    TWO OUTCOMES, because as of 2026-09-06 the guard fetches once before it
+    refuses (module docstring, "ONE RE-FETCH BEFORE THAT VERDICT"):
+
+      A. THE RACE. A branch on origin has no local ref and a fetch resolves it --
+         a peer pushed between CI's fetch step and this guard's `ls-remote`
+         (CI run 34036195481). The guard must fetch, see it, and exit 0. Before
+         the change this exact shape exited 2, which is what made a peer's push
+         read as "a number wears two slugs".
+
+      B. THE FETCH CANNOT RESOLVE IT. Same missing branch, but fetching does not
+         produce it. The guard must still exit 2, and for the ref reason. This
+         is the half the retry must not swallow: if a failed fetch let the guard
+         proceed, the retry would have converted the guard's whole subject -- a
+         partial view -- into a pass.
+
+      Case B is built with a directory/file ref conflict, which is a real
+      condition rather than a stub: origin carries `feature/x`, the clone holds a
+      remote-tracking ref literally named `feature`, and git cannot create
+      `refs/remotes/origin/feature/x` under a ref that already exists as a file.
+      `ls-remote` still advertises the branch, so the guard genuinely cannot see
+      it, and the fetch genuinely cannot fix it. (Measured 2026-09-06: fetch
+      exits 1, `origin/feature/x` is absent afterwards.)
 
     HOW THIS USED TO BE WRONG, because the failure was expensive and silent.
     The fixture cloned the *enclosing checkout* and asserted the child exited 2.
@@ -323,16 +425,14 @@ def _shallow_clone_must_exit_2() -> str | None:
     testing the environment, not the guard.
 
     So the condition is now built from nothing and owned entirely by this
-    function: a scratch repo, a bare "remote" carrying TWO branches, and a
-    shallow single-branch clone of it over `file://` (a path-form local clone
-    silently ignores `--depth`). origin then advertises 2 while the child holds
-    1, which is the real condition rather than a coincidence of the enclosing
-    checkout, and it holds identically on `push`, on `pull_request` and on a
-    developer's laptop.
+    function: a scratch repo, a bare "remote", and a shallow single-branch clone
+    of it over `file://` (a path-form local clone silently ignores `--depth`).
+    Nothing is read from the enclosing checkout, so the result holds identically
+    on `push`, on `pull_request` and on a developer's laptop.
 
-    It also asserts WHY the child exited 2. There are six distinct CANNOT-CHECK
-    paths in this file, and an empty or malformed fixture would trip a
-    different one -- passing this test while proving nothing about the ref
+    Both cases also assert WHY the child exited as it did. There are six
+    distinct CANNOT-CHECK paths in this file, and an empty or malformed fixture
+    would trip a different one -- passing while proving nothing about the ref
     completeness it claims to cover.
 
     Returns an error string, or None when the guard behaved correctly.
@@ -362,7 +462,10 @@ def _shallow_clone_must_exit_2() -> str | None:
                 "would seed a tree the guard cannot read and prove nothing."
             )
 
-    with tempfile.TemporaryDirectory() as td:
+    guard = os.path.abspath(__file__)
+
+    def build(td: str, branches: list[str]) -> tuple[str, str] | str:
+        """A bare remote carrying `main` plus `branches`, and a shallow clone of main."""
         seed = os.path.join(td, "seed")
         bare = os.path.join(td, "origin.git")
         clone = os.path.join(td, "shallow")
@@ -379,9 +482,11 @@ def _shallow_clone_must_exit_2() -> str | None:
             (["add", "-A"], seed),
             (["commit", "--quiet", "-m", "seed"], seed),
             (["init", "--bare", "--quiet", bare], None),
-            # TWO branches on the remote; the clone will take one.
             (["push", "--quiet", bare, "HEAD:refs/heads/main"], seed),
-            (["push", "--quiet", bare, "HEAD:refs/heads/second-branch"], seed),
+        ]
+        for branch in branches:
+            steps.append((["push", "--quiet", bare, f"HEAD:refs/heads/{branch}"], seed))
+        steps.append(
             # file:// so --depth is honoured; a bare path is silently ignored.
             (
                 [
@@ -390,7 +495,7 @@ def _shallow_clone_must_exit_2() -> str | None:
                 ],
                 None,
             ),
-        ]
+        )
         for args, cwd in steps:
             r = run(*args, cwd=cwd)
             if r.returncode != 0:
@@ -398,23 +503,92 @@ def _shallow_clone_must_exit_2() -> str | None:
                     f"could not build the fixture at `git {' '.join(args)}`: "
                     f"{(r.stderr or r.stdout).strip()}"
                 )
+        return bare, clone
+
+    # ---- A. the race: a branch the clone does not have, and a fetch fixes it ----
+    with tempfile.TemporaryDirectory() as td:
+        built = build(td, ["second-branch"])
+        if isinstance(built, str):
+            return built
+        _, clone = built
+
+        before = run("for-each-ref", "--format=%(refname:short)", "refs/remotes", cwd=clone)
+        if "origin/second-branch" in before.stdout:
+            return (
+                "the race fixture is vacuous: the shallow clone already tracks "
+                "origin/second-branch, so the guard never reaches the re-fetch."
+            )
 
         proc = subprocess.run(
-            [sys.executable, os.path.abspath(__file__)],
-            cwd=clone, capture_output=True, text=True,
+            [sys.executable, guard], cwd=clone, capture_output=True, text=True
         )
+        if proc.returncode != 0:
+            return (
+                f"a branch pushed since the clone made the guard exit {proc.returncode}, "
+                "want 0. A concurrent push must become one re-fetch, not a red run: "
+                "a guard whose red means both 'two decisions wear one number' and "
+                "'somebody else pushed' stops being read. Got: "
+                f"{(proc.stdout + proc.stderr).strip()[:300]}"
+            )
+        if "Re-fetched origin" not in (proc.stdout + proc.stderr):
+            return (
+                "the guard exited 0 on the race fixture but never said it re-fetched, "
+                "so it passed for some other reason and this case covers nothing."
+            )
+        after = run("for-each-ref", "--format=%(refname:short)", "refs/remotes", cwd=clone)
+        if "origin/second-branch" not in after.stdout:
+            return (
+                "the guard exited 0 while origin/second-branch STILL has no local "
+                "ref -- it certified a repository it never read, which is the exact "
+                "failure this guard exists to prevent."
+            )
+
+    # ---- B. the fetch cannot resolve it: still exit 2, still for the ref reason ----
+    with tempfile.TemporaryDirectory() as td:
+        built = build(td, ["feature/x"])
+        if isinstance(built, str):
+            return built
+        _, clone = built
+
+        head = run("rev-parse", "HEAD", cwd=clone)
+        if head.returncode != 0:
+            return f"could not read the clone's HEAD: {head.stderr.strip()}"
+        # `refs/remotes/origin/feature` as a FILE makes `refs/remotes/origin/feature/x`
+        # impossible to create, so the fetch below cannot resolve the missing branch.
+        blocker = run(
+            "update-ref", "refs/remotes/origin/feature", head.stdout.strip(), cwd=clone
+        )
+        if blocker.returncode != 0:
+            return f"could not plant the blocking ref: {blocker.stderr.strip()}"
+
+        proc = subprocess.run(
+            [sys.executable, guard], cwd=clone, capture_output=True, text=True
+        )
+        blob = proc.stdout + proc.stderr
         if proc.returncode != 2:
             return (
-                f"a shallow single-branch clone exited {proc.returncode}, want 2. "
-                "In CI the guard would then certify a real collision as clean, "
-                "which is the exact failure this guard exists to prevent."
+                f"a branch the fetch cannot resolve exited {proc.returncode}, want 2. "
+                "The one re-fetch must narrow WHEN the guard cannot check, never "
+                f"convert a partial view into a pass. Got: {blob.strip()[:300]}"
             )
-        blob = proc.stdout + proc.stderr
         if "no local ref" not in blob:
             return (
-                "the shallow clone exited 2, but not for the missing-ref reason "
-                "this fixture exists to prove -- so it would pass while covering "
+                "the clone exited 2, but not for the missing-ref reason this "
+                "fixture exists to prove -- so it would pass while covering "
                 f"nothing. Got: {blob.strip()[:300]}"
+            )
+        if "AFTER the guard fetched" not in blob:
+            return (
+                "the clone exited 2 for the ref reason, but the refusal does not "
+                "say a fetch was already attempted -- a reader would try the fetch "
+                f"the message suggests and get the same red. Got: {blob.strip()[:300]}"
+            )
+        still = run("for-each-ref", "--format=%(refname:short)", "refs/remotes", cwd=clone)
+        if "origin/feature/x" in still.stdout:
+            return (
+                "the fixture's blocking ref did not block: origin/feature/x was "
+                "fetched after all, so case B proved nothing about a fetch that "
+                "cannot resolve a branch."
             )
     return None
 
@@ -447,16 +621,18 @@ def run_self_test() -> int:
     if not ADR_RE.match(".planning/decisions/0049-ecosystem-division-layer.md"):
         failures.append("a real ADR filename did not parse")
 
-    shallow = _shallow_clone_must_exit_2()
-    if shallow:
-        failures.append(shallow)
+    refs_case = _ref_completeness_fixtures()
+    if refs_case:
+        failures.append(refs_case)
 
     if failures:
         for f in failures:
             print(f"SELF-TEST FAILED: {f}")
         return 1
     print("SELF-TEST OK -- collision detected, non-collision not flagged, "
-          "next-free swept across refs, README not parsed as an ADR.")
+          "next-free swept across refs, README not parsed as an ADR, a "
+          "concurrent push re-fetched and passed, a branch the fetch cannot "
+          "resolve still exit 2.")
     _ = where
     return 0
 

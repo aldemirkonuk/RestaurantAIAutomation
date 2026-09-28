@@ -176,3 +176,7 @@ error when it did not.
    returns unbounded.
 5. Inherits [[simpos-terminal]] §13.4 — whether SimPOS should exist in a controlled
    production-like environment at all. *Blocked: founder decision / ADR.*
+
+### Money in the venue's own currency (2026-09-05)
+
+Every money figure on this page was printed with a bare `$` (main #310 added two more sites after the wave had made a house's currency a stated fact, ADR 0117 Q25/Q30). The venue read (`GET /simpos/:restaurantId/venue`) now carries `currency` from `restaurants.currency`, never defaulted, and the page prints with `formatMoney(amount, currency)`: the house's own symbol, or the number followed by "currency not recorded". `scripts/check_money_states_its_currency.py` had never been wired into CI; it is now, and its baseline rows for these two pages (and SommelierAI, already fixed) fell to zero.

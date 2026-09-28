@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>099 &middot; Three shapes, one primitive</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,400&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/* ── Mudavym tokens (ADR 0042), copied inline from apps/web/src/styles/mudavym.css ── */
+.mudavym{
+  --seal:#1A5E6B; --seal-deep:#14515C; --seal-tint:rgba(26,94,107,.10); --seal-ring:rgba(26,94,107,.32);
+  --paper-0:#FAF7F1; --paper-1:#F3EFE6; --paper-2:#EAE4D8;
+  --ink-1:#211C16; --ink-2:#4F473C; --ink-3:#7C7365; --ink-4:#665D50;
+  --mdv-scrim:rgba(23,19,15,.28);
+  color-scheme:light;
+}
+/* Warm Charcoal — mudavym.css:48-66. A specimen that carries the ground itself
+   stays charcoal on a paper page: that is the whole point of the portal rule. */
+.mudavym[data-ground="charcoal"]{
+  --seal:#5FB0BC; --seal-deep:#7DC3CD; --seal-tint:rgba(95,176,188,.14); --seal-ring:rgba(95,176,188,.38);
+  --paper-0:#15130F; --paper-1:#1D1813; --paper-2:#262019;
+  --ink-1:#EFE7D9; --ink-2:#C0B6A5; --ink-3:#8E8576; --ink-4:#ABA294;
+  --mdv-scrim:rgba(0,0,0,.5);
+  color-scheme:dark;
+}
+@media (prefers-color-scheme: dark){
+  :root:not(.light) .mudavym:not([data-ground="paper"]){
+    --seal:#5FB0BC; --seal-deep:#7DC3CD; --seal-tint:rgba(95,176,188,.14); --seal-ring:rgba(95,176,188,.38);
+    --paper-0:#15130F; --paper-1:#1D1813; --paper-2:#262019;
+    --ink-1:#EFE7D9; --ink-2:#C0B6A5; --ink-3:#8E8576; --ink-4:#ABA294;
+    --mdv-scrim:rgba(0,0,0,.5);
+    color-scheme:dark;
+  }
+}
+:root{--serif:"Fraunces",Georgia,"Times New Roman",serif;--sans:"DM Sans","Plus Jakarta Sans",system-ui,sans-serif;--mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper-0);color:var(--ink-1);font-family:var(--sans);font-size:13px}
+.banner{background:var(--ink-1);color:var(--paper-0);font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;padding:7px 20px}
+.wrap{max-width:1220px;margin:0 auto;padding:22px 20px 78px}
+.wordmark{font-family:var(--serif);font-weight:600;font-size:13px;letter-spacing:.04em}
+h1{font-family:var(--serif);font-size:35px;font-weight:600;letter-spacing:-.018em;line-height:1.07;margin:4px 0 0}
+h1 .dot{color:var(--seal)}
+.lede{font-family:var(--serif);font-style:italic;font-size:15.5px;color:var(--ink-2);margin:7px 0 0;max-width:900px}
+.dbl{border-top:1px solid var(--ink-1);border-bottom:1px solid var(--ink-1);height:3px;opacity:.5;margin:17px 0 0}
+.back{display:inline-block;margin:0 0 10px;font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--seal-deep);text-decoration:none}
+p{font-size:12.5px;line-height:1.64;color:var(--ink-2);margin:7px 0 0;max-width:900px}
+b{color:var(--ink-1);font-weight:600}
+code{font-family:var(--mono);font-size:11px;color:var(--ink-2)}
+
+.sec-h{display:flex;align-items:baseline;gap:12px;margin:34px 0 0}
+.sec-n{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--seal-deep);white-space:nowrap}
+h2{font-family:var(--serif);font-size:24px;font-weight:600;letter-spacing:-.012em;margin:0}
+.sec-k{font-family:var(--mono);font-size:9.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3);margin:6px 0 12px}
+
+/* ── the specimen numbers strip ── */
+.nums{display:flex;flex-wrap:wrap;gap:0;margin:16px 0 0;padding:12px 0 2px;border-top:1px solid var(--paper-2);border-bottom:1px solid var(--paper-2)}
+.nums div{padding:0 16px 10px 0;margin-right:16px;border-right:1px solid var(--paper-2)}
+.nums div:last-child{border-right:0}
+.nums .n{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--ink-1);display:block;font-variant-numeric:tabular-nums}
+.nums .k{font-family:var(--mono);font-size:8.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);display:block;margin-top:3px}
+
+/* ══ THE STAGE — an app viewport, the page beneath, the overlay on top ══ */
+.stage{position:relative;overflow:hidden;border:1px solid var(--paper-2);background:var(--paper-0);margin:14px 0 0}
+.stage.xl{height:730px}
+.stage.tall{height:560px}
+.stage.mid{height:470px}
+.stage.short{height:400px}
+.under{position:absolute;inset:0;padding:16px 20px;overflow:hidden}
+.scrim{position:absolute;inset:0;background:var(--mdv-scrim)}
+
+/* the page beneath — deliberately plain; it exists to prove it stays legible */
+.u-eyebrow{font-family:var(--mono);font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--seal-deep)}
+.u-h{font-family:var(--serif);font-size:21px;font-weight:600;margin:2px 0 10px;color:var(--ink-1)}
+.u-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}
+.u-card{border:1px solid var(--paper-2);background:var(--paper-1);padding:10px 12px}
+.u-card .t{font-weight:600;font-size:12.5px;color:var(--ink-1)}
+.u-card .s{font-family:var(--mono);font-size:10px;color:var(--ink-3);margin-top:3px}
+.u-row{display:grid;grid-template-columns:1.6fr 1fr 1fr .8fr;gap:10px;padding:7px 0;border-top:1px solid var(--paper-2);font-size:12px;color:var(--ink-2)}
+.u-row .t{color:var(--ink-1);font-weight:500}
+.u-cal{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:var(--paper-2);border:1px solid var(--paper-2)}
+.u-cal div{background:var(--paper-0);min-height:52px;padding:4px 5px;font-family:var(--mono);font-size:9.5px;color:var(--ink-3)}
+.u-cal div .e{display:block;font-family:var(--sans);font-size:9.5px;color:var(--ink-2);margin-top:3px;border-left:2px solid var(--seal);padding-left:4px;line-height:1.25}
+
+/* the app header bar — popovers hang off it */
+.bar{position:absolute;top:0;left:0;right:0;height:52px;background:var(--paper-0);border-bottom:1px solid var(--paper-2);display:flex;align-items:center;gap:10px;padding:0 16px}
+.bar .sp{flex:1}
+.ctl{display:flex;align-items:center;gap:7px;padding:5px 9px;border-radius:9px;color:var(--ink-2);font-size:12px}
+.ctl.hot{background:var(--paper-1);box-shadow:inset 0 0 0 1px var(--paper-2)}
+.ctl .nm{font-weight:600;color:var(--ink-1);font-size:12.5px}
+.ctl .sub{font-family:var(--mono);font-size:9px;color:var(--ink-3);display:block}
+.av{width:26px;height:26px;border-radius:999px;background:var(--seal-tint);box-shadow:inset 0 0 0 1px var(--seal-ring);color:var(--seal-deep);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:11px}
+.dotmark{position:absolute;top:7px;right:7px;width:6px;height:6px;border-radius:999px;background:var(--seal)}
+
+/* ══ THE OVERLAY SURFACES — numbers from sheet.css ══ */
+.ovl{background:var(--paper-0);color:var(--ink-1);display:flex;flex-direction:column;font-family:var(--sans)}
+/* sheet.css:72-82 */
+.sheet{position:absolute;top:0;right:0;bottom:0;width:100%;max-width:440px;border-left:1px solid var(--paper-2);box-shadow:-18px 0 48px rgba(23,19,15,.14);overflow:hidden}
+.sheet.wide{max-width:640px}
+/* sheet.css:88-97 */
+.panel{position:absolute;left:50%;transform:translateX(-50%);top:10%;width:min(620px,100% - 32px);max-height:76%;border:1px solid var(--paper-2);border-radius:14px;box-shadow:0 24px 60px -30px rgba(0,0,0,.5);overflow:hidden}
+/* sheet.css:99-106 */
+.pop{position:absolute;border:1px solid var(--paper-2);border-radius:14px;box-shadow:0 18px 44px -22px rgba(0,0,0,.42);overflow:hidden}
+/* sheet.css:109-141 */
+.oh{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:14px 16px 11px;border-bottom:1px solid var(--paper-2);flex:none}
+.oh-eyebrow{display:block;font-family:var(--mono);font-size:9.5px;font-weight:600;letter-spacing:.13em;text-transform:uppercase;color:var(--seal-deep)}
+.oh-title{margin:2px 0 0;font-family:var(--serif);font-size:19px;font-weight:600;line-height:1.16;letter-spacing:-.01em;color:var(--ink-1)}
+.oh-side{display:flex;align-items:center;gap:8px;flex:none}
+/* sheet.css:146-162 — the close control is WORDS */
+.oclose{font-family:var(--sans);font-size:12px;line-height:1.2;padding:5px 10px;border-radius:8px;border:1px solid var(--paper-2);background:transparent;color:var(--ink-2);cursor:pointer}
+.obody{flex:1 1 auto;min-height:0;overflow:hidden}
+.ofoot{flex:none;padding:9px 16px 12px;border-top:1px solid var(--paper-2);font-size:11px;line-height:1.5;color:var(--ink-3);display:flex;justify-content:space-between;gap:12px}
+
+/* content vocabulary — sheet.css:198-351 */
+.sect{display:block;font-family:var(--mono);font-size:9px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);padding:10px 16px 4px}
+.item{display:flex;align-items:center;gap:10px;width:100%;padding:7px 16px;border-left:2px solid transparent;font-size:13px;color:var(--ink-1)}
+.item.on{background:var(--seal-tint);border-left-color:var(--seal)}
+.item .txt{flex:1 1 auto;min-width:0}
+.item .lab{display:block;font-weight:500;color:var(--ink-1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item .sub{display:block;font-size:11px;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item .ico{flex:none;color:var(--ink-3)}
+.item.on .ico{color:var(--seal)}
+.kbd{flex:none;font-family:var(--mono);font-size:10px;font-weight:500;color:var(--ink-3);background:var(--paper-1);border:1px solid var(--paper-2);border-radius:5px;padding:1px 5px;white-space:nowrap}
+.quiet{margin:0;padding:8px 16px 10px;font-size:11.5px;line-height:1.5;color:var(--ink-2)}
+.field{display:flex;align-items:center;gap:10px;padding:0 16px;border-bottom:1px solid var(--paper-2)}
+.field .fin{flex:1 1 auto;padding:13px 0;font-family:var(--serif);font-size:17px;color:var(--ink-1)}
+.field .fph{color:var(--ink-3);font-family:var(--sans);font-size:14px}
+.lnk{font-family:var(--sans);font-size:12px;font-weight:500;color:var(--seal-deep)}
+
+/* sheet body furniture */
+.fact{display:grid;grid-template-columns:118px 1fr;gap:10px;padding:6px 16px;font-size:12.5px}
+.fact .k{font-family:var(--mono);font-size:9.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3);padding-top:3px}
+.fact .v{color:var(--ink-1)}
+.fact .v.em{color:var(--ink-3)}
+.frow{padding:8px 16px 0}
+.flab{display:block;font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);margin-bottom:4px}
+.fin2{border:1px solid var(--paper-2);background:var(--paper-1);border-radius:7px;padding:7px 9px;font-size:12.5px;color:var(--ink-1);min-height:31px}
+.fin2.ph{color:var(--ink-3)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:8px 16px 0}
+.two .frow{padding:0}
+.chiprow{display:flex;flex-wrap:wrap;gap:5px;margin-top:2px}
+.chip{font-family:var(--sans);font-size:11px;padding:3px 8px;border-radius:999px;border:1px solid var(--paper-2);color:var(--ink-2);display:inline-flex;align-items:center;gap:5px}
+.chip.on{color:var(--ink-1);background:var(--seal-tint);border-color:var(--seal-ring)}
+.sw{width:8px;height:8px;border-radius:2px;display:inline-block}
+.notice{margin:10px 16px 0;padding:9px 11px;background:var(--paper-1);border-left:2px solid var(--ink-4);font-size:11.5px;line-height:1.55;color:var(--ink-2)}
+.notice b{color:var(--ink-1)}
+.hta{margin:12px 16px 0;position:relative;border:1px solid var(--seal);border-radius:9px;padding:9px 12px;font-size:12.5px;color:var(--seal-deep);font-weight:500;display:flex;align-items:center;gap:9px;overflow:hidden;background:linear-gradient(90deg,var(--seal-tint) 38%,transparent 38%)}
+.hta .sealdot{width:18px;height:18px;border-radius:999px;background:var(--seal);color:var(--paper-0);display:flex;align-items:center;justify-content:center;flex:none}
+.btnrow{display:flex;gap:8px;padding:12px 16px 0}
+.btn{font-size:12px;padding:6px 12px;border-radius:8px;border:1px solid var(--paper-2);color:var(--ink-1);background:transparent}
+.btn.pri{border-color:var(--ink-4)}
+.btn[data-disabled]{color:var(--ink-3);border-color:var(--paper-2)}
+
+/* callouts and lists on the page itself */
+.callout{border-left:2px solid var(--seal);padding:11px 0 11px 15px;margin:16px 0 0;font-size:12.5px;line-height:1.66;color:var(--ink-2);background:linear-gradient(90deg,var(--seal-tint),transparent 62%);max-width:960px}
+.never{margin:16px 0 0;padding:0;list-style:none;max-width:960px}
+.never li{padding:8px 0;border-top:1px solid var(--paper-2);font-size:12.5px;line-height:1.6;color:var(--ink-2);display:grid;grid-template-columns:150px 1fr;gap:14px}
+.never li .h{font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);padding-top:2px}
+.never li b{color:var(--ink-1)}
+.cap{font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin:7px 0 0}
+.foot{margin:42px 0 0;padding-top:14px;border-top:1px solid var(--ink-1);font-size:11.5px;line-height:1.72;color:var(--ink-3);max-width:980px}
+.foot b{color:var(--ink-2)}
+.foot a{color:var(--seal-deep)}
+</style>
+</head>
+<body class="mudavym">
+<div class="banner">Sketch 099 &middot; modal shapes &mdash; example data, not a tenant</div>
+<div class="wrap">
+
+<div class="wordmark">Mudavym</div>
+<h1>099 &middot; Three shapes, one primitive<span class="dot">.</span></h1>
+<p class="lede">The founder, 2026-09-03: &ldquo;create sketches for each because all have diff purposes &hellip; three main shape one primitive is a good start.&rdquo; This is what those three look like on the pages that will use them.</p>
+<div class="dbl"></div>
+
+<div class="callout" style="margin-top:20px">
+  <p style="font-family:var(--serif);font-size:19px;line-height:1.42;color:var(--ink-1);margin:0;max-width:940px">
+    An object gets a <b>sheet</b>. A question gets a <b>panel</b>. A choice gets a <b>popover</b>.
+  </p>
+  <p style="margin-top:9px">The shape is chosen by <b>what the reader must do next</b> &mdash; never by how much content there is, never by which page it is on. That is what makes the shape itself carry information: something arriving from the right is one record and the list behind it still matters; something in the middle wants an answer before anything else; something hanging off a control belongs to that control and nothing else.</p>
+  <p style="margin-top:8px">Today the product has <b>four hand-rolled overlays and nine more in the legacy shell</b>, each with its own scrim colour, its own keyframes and its own Esc handler. None traps focus, none returns focus to the opener, none locks body scroll. Providers and calendar agree on a right sheet <em>by accident</em> &mdash; sketch 010 chose a centred sheet and nobody enforced it.</p>
+</div>
+
+<div class="sec-h"><span class="sec-n">The three</span><h2>When a page reaches for each</h2></div>
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:14px;align-items:start">
+
+  <a href="sheet.html" style="text-decoration:none;color:inherit;display:block">
+    <div style="position:relative;height:150px;border:1px solid var(--paper-2);background:var(--paper-1);overflow:hidden">
+      <div style="position:absolute;inset:0;background:var(--mdv-scrim)"></div>
+      <div style="position:absolute;top:0;right:0;bottom:0;width:44%;background:var(--paper-0);border-left:1px solid var(--paper-2);box-shadow:-18px 0 48px rgba(23,19,15,.14)">
+        <div style="padding:10px 11px;border-bottom:1px solid var(--paper-2)"><span class="oh-eyebrow" style="font-size:8px">The record</span><div style="font-family:var(--serif);font-size:13px;font-weight:600;margin-top:1px">One thing</div></div>
+      </div>
+    </div>
+    <div class="oh-eyebrow" style="margin-top:10px">Sheet &middot; tuck 300ms &middot; 440px</div>
+    <h3 style="font-family:var(--serif);font-size:20px;font-weight:600;margin:2px 0 0">An object</h3>
+    <p>A vendor, a calendar entry, a member, a letter. You came from a list and you will go back to it, so the list stays lit on the left. Focus is trapped, the body stops scrolling, and the close control is the word <b>Close</b>.</p>
+    <p style="margin-top:7px"><b>Never:</b> a question, a menu, a second object, or a page wearing a scrim.</p>
+  </a>
+
+  <a href="panel.html" style="text-decoration:none;color:inherit;display:block">
+    <div style="position:relative;height:150px;border:1px solid var(--paper-2);background:var(--paper-1);overflow:hidden">
+      <div style="position:absolute;inset:0;background:var(--mdv-scrim)"></div>
+      <div style="position:absolute;left:50%;transform:translateX(-50%);top:15%;width:74%;background:var(--paper-0);border:1px solid var(--paper-2);border-radius:14px;box-shadow:0 24px 60px -30px rgba(0,0,0,.5)">
+        <div style="padding:10px 11px;border-bottom:1px solid var(--paper-2)"><span class="oh-eyebrow" style="font-size:8px">Ask</span><div style="font-family:var(--serif);font-size:13px;font-weight:600;margin-top:1px">One answer</div></div>
+        <div style="padding:8px 11px 12px"><div style="height:7px;background:var(--paper-1);border-radius:3px;margin-bottom:5px"></div><div style="height:7px;background:var(--paper-1);border-radius:3px;width:70%"></div></div>
+      </div>
+    </div>
+    <div class="oh-eyebrow" style="margin-top:10px">Panel &middot; settle 320ms &middot; 620px</div>
+    <h3 style="font-family:var(--serif);font-size:20px;font-weight:600;margin:2px 0 0">A question</h3>
+    <p>&#8984;K, Ask the book, the shortcuts card, and the confirmations that carry the seal. It sits where the eye already is because the page behind it is not the subject. Focus trapped, scroll locked, Esc closes.</p>
+    <p style="margin-top:7px"><b>Never:</b> a record, a menu, a ten-field form, or a notice with nothing to answer.</p>
+  </a>
+
+  <a href="popover.html" style="text-decoration:none;color:inherit;display:block">
+    <div style="position:relative;height:150px;border:1px solid var(--paper-2);background:var(--paper-1);overflow:hidden">
+      <div style="position:absolute;top:0;left:0;right:0;height:30px;background:var(--paper-0);border-bottom:1px solid var(--paper-2);display:flex;align-items:center;justify-content:flex-end;padding-right:12px">
+        <span style="width:16px;height:16px;border-radius:5px;background:var(--seal-tint);box-shadow:inset 0 0 0 1px var(--seal-ring)"></span>
+      </div>
+      <div style="position:absolute;top:40px;right:12px;width:52%;background:var(--paper-0);border:1px solid var(--paper-2);border-radius:14px;box-shadow:0 18px 44px -22px rgba(0,0,0,.42)">
+        <div style="padding:9px 10px"><div style="height:6px;background:var(--paper-1);border-radius:3px;margin-bottom:5px"></div><div style="height:6px;background:var(--seal-tint);border-radius:3px;margin-bottom:5px"></div><div style="height:6px;background:var(--paper-1);border-radius:3px;width:68%"></div></div>
+      </div>
+    </div>
+    <div class="oh-eyebrow" style="margin-top:10px">Popover &middot; ink 160ms &middot; anchored</div>
+    <h3 style="font-family:var(--serif);font-size:20px;font-weight:600;margin:2px 0 0">A choice</h3>
+    <p>The bell, the branch switcher, the user menu, the invite form. It does not dim the page and it does not trap focus &mdash; it is one control's own drawer, and tabbing past it should leave it.</p>
+    <p style="margin-top:7px"><b>Never:</b> a record, a commitment (the seal never appears here), a long form, or anything without a visible trigger.</p>
+  </a>
+</div>
+
+<div class="sec-h"><span class="sec-n">Honesty</span><h2>The three hard cases, said out loud</h2></div>
+<p class="sec-k">a taxonomy is only worth adopting if it survives the cases that do not fit</p>
+<ul class="never">
+  <li><span class="h">The invite form</span><span>It is a <b>form</b> (a panel's job) attached to a <b>button</b> (a popover's job). It resolves as a popover because the answer is two short choices <em>about the roster underneath</em>, and covering that roster hides the reason you are inviting anyone. The tree already made this call &mdash; it is the one Radix dialog in the product that takes an anchor. <b>Rule: a form belongs in the anchored shape when the thing it is about must stay visible while you fill it in.</b></span></li>
+  <li><span class="h">Deleting one record</span><span>A question (panel) about an object (sheet). It stays <b>in the object's sheet</b>, below a double rule, as a hold-to-approve. Stacking a panel on a sheet to ask about the sheet is two overlays for one thought. <b>Rule: a question about the object already open never leaves it.</b></span></li>
+  <li><span class="h">The composer</span><span>A letter is an object being written &mdash; a sheet &mdash; but 440px is too narrow for a body with inserted figures. The honest answer is that <b>width is a parameter, not a shape</b>: sketch 100 asks the primitive for one <code>wide</code> sheet at 640px and changes nothing else. Making it a panel instead would cover the conversation book the letter is a reply to.</span></li>
+</ul>
+
+<div class="sec-h"><span class="sec-n">The field</span><h2>Where the three shapes come from</h2></div>
+<p>None of this is invented. Every product that has more than one overlay shape has separated them the same way, and each source below decides the split by the same question &mdash; is the page underneath still the subject?</p>
+<ul class="never">
+  <li><span class="h">Linear</span><span><a href="https://linear.app/docs/peek">Peek preview</a> exists so you can &ldquo;view details of focused issues at a glance from any list or board view, similar to Quicklook in macOS&rdquo;, and arrow up and down through adjacent issues with the preview updating. That is only possible because the list is <em>not covered</em>. A centred modal cannot do it at all.</span></li>
+  <li><span class="h">Notion</span><span><a href="https://www.notion.com/help/navigate-with-the-sidebar">Side peek</a> &ldquo;opens the page in a side panel, splitting your screen in two&hellip; you can view both pages at once&rdquo;, and it is the <em>default</em> for table, board, timeline and list &mdash; the layouts where the surrounding rows are the context. Calendar and gallery default to centre peek instead.</span></li>
+  <li><span class="h">shadcn / Radix</span><span><a href="https://ui.shadcn.com/docs/components/sheet">Sheet</a> &ldquo;extends the Dialog component to display content that <em>complements</em> the main content of the screen&rdquo; &mdash; the same distinction, stated as an API. <a href="https://www.radix-ui.com/primitives/docs/components/popover">Popover</a> is a third thing: anchored to its trigger, <code>modal</code> false by default.</span></li>
+  <li><span class="h">Stripe</span><span>The Dashboard opens a payment as a detail view over the payments list; Stripe ships the same thing to platforms as an embedded component whose docs call it <a href="https://docs.stripe.com/connect/supported-embedded-components/payment-details">&ldquo;the detail overlay of a given payment&rdquo;</a> &mdash; one record, over its list.</span></li>
+  <li><span class="h">Apple</span><span><a href="https://developer.apple.com/design/human-interface-guidelines/popovers">HIG, Popovers</a>: &ldquo;a transient view that appears above other content onscreen when people click or tap a control&rdquo;; its arrow must point at the element that revealed it and must not cover it; and people &ldquo;can unintentionally dismiss a nonmodal popover&rdquo;. That last sentence is why the seal never appears in this shape.</span></li>
+  <li><span class="h">W3C</span><span><a href="https://www.w3.org/WAI/ARIA/apg/patterns/dialog-modal/">APG, Modal Dialog</a> is the contract the primitive meets and the four hand-rolled overlays did not: Tab wraps to the first element from the last; Escape closes; focus moves inside on open; and &ldquo;when a dialog closes, focus returns to the element that invoked the dialog&rdquo;.</span></li>
+  <li><span class="h">GOV.UK</span><span>The most conservative design system in the field <b>still has no published modal component</b> &mdash; the <a href="https://github.com/alphagov/govuk-design-system-backlog/issues/30">request has sat open in the backlog</a>, unpublished, while services build their own. The lesson we take is not &ldquo;never use one&rdquo; but the reason it stays unpublished: a modal is a debt you take on the reader's behalf, so three named shapes with stated boundaries is the least you can ship responsibly.</span></li>
+</ul>
+
+<div class="sec-h"><span class="sec-n">The fork</span><h2>What only the founder can decide</h2></div>
+<ul class="never">
+  <li><span class="h">1 &middot; Three, or one?</span><span>The strongest case against this sketch is <b>one shape everywhere</b>: one implementation, one motion, one contract, and nothing for anyone to learn. It loses because it deletes the page underneath &mdash; the sheet exists so the list stays readable, and an anchored menu with no anchor is a menu that has lost its meaning. But it is a real simplification and it is the founder's to refuse.</span></li>
+  <li><span class="h">2 &middot; Does the composer get a wide sheet?</span><span>640px instead of 440px for one named case (sketch 100). Either the primitive gains a size parameter, or the composer becomes a route and stops being an overlay at all.</span></li>
+  <li><span class="h">3 &middot; Does the seal ever appear in a popover?</span><span>This sketch says never, on the grounds that popovers are dismissed by accident. If the founder wants one-click approvals from the bell, that rule has to be written down as an exception rather than quietly broken.</span></li>
+</ul>
+
+<div class="foot">
+  <b>These are drawings, not code.</b> The primitive is being built in parallel at <code>apps/web/src/components/mudavym/Sheet.tsx</code> and <code>sheet.css</code>; every measurement drawn here was read out of those two files and out of <code>lib/mudavym/motion.ts:103-112</code>. Nothing in this sketch directory is imported by the app.
+  <br><b>Example data, not a tenant.</b> Every name, figure and date on these four pages is invented for the drawing.
+</div>
+</div>
+</body>
+</html>

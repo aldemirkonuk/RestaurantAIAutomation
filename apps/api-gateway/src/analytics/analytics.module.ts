@@ -8,9 +8,11 @@ import { RecommendationsService } from "./recommendations.service";
 import { RecommendationActionsService } from "./recommendation-actions.service";
 import { TableAnalyticsService } from "./table-analytics.service";
 import { GoalsService } from "./goals.service";
+import { GoalScenarioRequestsService } from "./goal-scenario-requests.service";
 import { ConsultantsService } from "./consultants.service";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
 import { InsightSchedulerService } from "./insights/insight-scheduler.service";
+import { DayExclusionsService } from "./insights/day-exclusions.service";
 import { DatabaseModule } from "../database/database.module";
 import { AuthModule } from "../auth/auth.module";
 
@@ -39,10 +41,18 @@ import { AuthModule } from "../auth/auth.module";
     RecommendationActionsService,
     TableAnalyticsService,
     GoalsService,
+    // ADR 0120 Q4 — a house may REQUEST a scenario in words; it may not author
+    // one. Deliberately a separate provider from GoalsService: nothing it
+    // stores is read back into the catalogue, and keeping them apart is what
+    // makes that seam visible in the wiring rather than only in the comments.
+    GoalScenarioRequestsService,
     ConsultantsService,
     InsightGeneratorService,
     DevTruthService,
     InsightSchedulerService,
+    // The engine's one hook for "do not count this day" — closures, buyouts,
+    // outages the manager has ruled out of every baseline.
+    DayExclusionsService,
   ],
   // TableAnalyticsService joined the exports for ADR 0093: the scenario
   // verifier asks table performance whether it can see the day's tables, and

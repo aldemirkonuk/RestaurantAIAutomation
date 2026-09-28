@@ -2,7 +2,9 @@
   "$schema": "https://turbo.build/schema.json",
   "globalDependencies": [
     "**/.env.*local",
-    "tsconfig.json"
+    "tsconfig.json",
+    "apps/api-gateway/src/procurement/price-currency.ts",
+    "apps/api-gateway/src/common/iso-4217.ts"
   ],
   "pipeline": {
     "build": {

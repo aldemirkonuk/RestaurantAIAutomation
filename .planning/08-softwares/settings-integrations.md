@@ -5,18 +5,34 @@ name: Settings & Integrations
 division: platform-admin
 status: partial
 tier: core
-routes: ["/settings", "/services", "/authorize/:integrationId"]
-pages: [settings, services, authorize-integration]
-api_modules: [settings, integrations, user-preferences, restaurant-templates]
+routes: ["/settings", "/services", "/authorize/:integrationId", "/connections"]
+pages: [settings, services, authorize-integration, connections]
+api_modules: [settings, integrations, user-preferences, restaurant-templates, mcp-connections, mcp-runtime, payment-methods, billing]
 agents: []
 owner_unit: platform-api
-updated: 2026-09-01
-links: ["[[settings]]", "[[services]]", "[[authorize-integration]]", "[[platform-api-charter]]", "[[integration-engineering-charter]]", "[[team-command]]", "[[SOFTWARE-MAP]]"]
+updated: 2026-09-03
+links: ["[[settings]]", "[[connections]]", "[[services]]", "[[authorize-integration]]", "[[platform-api-charter]]", "[[integration-engineering-charter]]", "[[team-command]]", "[[SOFTWARE-MAP]]"]
 ---
 
 # Settings & Integrations
 
 ## §0 What it is
+
+> **New route, 2026-09-03: [[connections]] `/connections`** — *"what acts for
+> this house"*, manager-and-owner, behind `mudavym_design_connections`
+> ([ADR 0114](../decisions/0114-connections-are-the-houses-profile-is-the-persons.md)).
+> It is this software's house-scoped face: one list of the till, the payment
+> provider, the sending address, the calendar feed, the model-context servers
+> and every personal grant that acts inside the restaurant — the first place any
+> of those four appear together. It also closes three of this software's own
+> defects: **G19** (the payment and provider reads were open to any member),
+> **G20** (the same catalogue rendered in three places with three different
+> subsets — `/connections` reads the shared route rather than adding a fourth)
+> and **G21** (a grant made in one restaurant listed in another). Roadmap item 8
+> on that page note is the obligation this software still owes: the `services`,
+> `pos`, `email` and `calendar` tabs collapse into it, so the surface count
+> falls rather than rises.
+
 
 Where an owner configures the restaurant and grants the product access to outside
 accounts. Ten sections behind one screen — who is on the team, which locations belong to

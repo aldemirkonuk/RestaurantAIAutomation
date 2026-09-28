@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Wine as WineIcon, Camera, ScanText, ArrowRight, Truck } from 'lucide-react'
+import { X, Wine as WineIcon, Camera, ScanText, ArrowRight, Truck, Lightbulb } from 'lucide-react'
 
 interface AddWineSelectionModalProps {
   isOpen: boolean
@@ -159,8 +159,9 @@ export function AddWineSelectionModal({
 
             {/* Info Footer */}
             <div className="px-6 py-4 bg-gray-50 border-t border-gray-100">
-              <p className="text-xs text-gray-500 text-center">
-                💡 Tip: Both methods automatically check for duplicates and cross-reference with the Master Wine Library
+              <p className="text-xs text-gray-500 text-center inline-flex items-center justify-center gap-1.5 w-full">
+                <Lightbulb size={14} aria-hidden="true" className="shrink-0" />
+                Tip: Both methods automatically check for duplicates and cross-reference with the Master Wine Library
               </p>
             </div>
           </motion.div>

@@ -81,6 +81,23 @@ Every deleted path is recoverable with
 | `md/` + `md_files/` doc corpus — the Apr-13 WineOps import: 48 build logs in `04-updates-builds/` (incl. `POS_INTEGRATION_COMPLETE.md`, formally superseded by `04-specs/POS-BRIDGE-AUDIT.md`), getting-started/setup guides, package READMEs, architecture/planning/feature essays, the 8 top-level overview docs, `PROJECT_ANALYSIS_AND_CHAT_CONTEXT.md` (both copies), and the `md_files/` duplicates | 108 | `docs/md-cleanup` deletion commit | Founder batch calls 2026-08-27: superseded by the `.planning` spine and git history; five later-touched keepers moved to `07-reference/` instead (`FEATURE_ROADMAP`, `MOBILE_APP_SETUP_AND_STATUS`, `GOOGLE_AND_API_CREDENTIALS_SETUP`, both Toast API reports) |
 | The 5 schema-debt `.sql` files (`md/02-architecture/` ×4, `md_files/02-architecture/DATABASE_SCHEMA.sql`) — the last tracked content of both trees | 5 | `fix/md-sql-schema-debt` | Exited via the ADR 0026 shrink path (guard `--update`, inventory −5). Evidence, measured 2026-08-27: every table they define is also defined in `supabase/migrations/`; `pending_ai_approvals` and all three cron functions return **404 PGRST205/202-class to the service-role key** in production (never applied) and have **zero consumers** in code — the REGISTER-AUDIT:422 sole-DDL worry was moot. Nothing captured, per ADR 0028 ("repointed or deleted, never created") |
 
+## Retire-to-write waiver — PR #353 (2026-09-12)
+
+**Founder call 2026-09-12: retire-to-write is waived for PR #353's nine
+additions** (six files under `.planning/brand/` — `BUILDPROMPT.md`, the four
+`Mudavym *.dc.html` canvases, `PITCHING IDEAS.md` — plus three color-audit
+docs under `.planning/06-pages/`: `COLOR-AUDIT-PLATFORM.md`,
+`COLOR-AUDIT-WEB.md`, `COLOR-CONTRAST-REPORT.md`). None of the nine is a
+duplicate, byte-identical elsewhere, or superseding an existing doc — they
+are net-new founder-produced brand/design reference material with no natural
+retirement candidate, so the trade this section otherwise requires does not
+apply. Per the founder's own direction (session 2026-09-12): waive rather
+than force a fabricated retirement to satisfy the form. Precedent: ADR
+0052's "retire-to-write waived for this wave." This is a one-time waiver for
+this PR's specific nine files, not a standing exemption from §4 — the next
+new top-level-or-subdirectory doc still owes a real trade or its own waiver
+row here.
+
 Kept deliberately: `phases/999.1-consumer-food-profiles…/.gitkeep` (FUTURES §7
 backlog marker, not history); `archive/{ROADMAP,STATE}-pre-P2-20260825.md` (the
 only archive files anything references — STATE.md:5, ROADMAP.md:5, ADR 0018);

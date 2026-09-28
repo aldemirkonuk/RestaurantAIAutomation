@@ -1,0 +1,353 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Calendar strip — /recommendations</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..680;1,9..144,300..680&family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{ color-scheme: light }
+.mudavym{
+  --seal:#1A5E6B; --seal-deep:#14515C; --seal-tint:rgba(26,94,107,0.10); --seal-ring:rgba(26,94,107,0.32);
+  --paper-0:#FAF7F1; --paper-1:#F3EFE6; --paper-2:#EAE4D8;
+  --ink-1:#211C16; --ink-2:#4F473C; --ink-3:#7C7365; --ink-4:#665D50;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:#E7E2D8}
+.mudavym{background:var(--paper-0);color:var(--ink-1);min-height:100vh;
+  font-family:"DM Sans","Plus Jakarta Sans",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+.serif{font-family:"Fraunces",Georgia,serif;font-weight:420;letter-spacing:-0.015em}
+.mono{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}
+.ico{display:inline-block;vertical-align:-0.14em;flex:0 0 auto}
+.banner{background:var(--seal);color:#FAF7F1;font-size:11px;letter-spacing:.16em;
+  text-transform:uppercase;padding:7px 18px;font-family:"JetBrains Mono",ui-monospace,monospace;
+  display:flex;gap:14px;align-items:center;justify-content:space-between}
+.banner b{font-weight:600}
+.wrap{max-width:1400px;margin:0 auto;padding:20px 22px 48px}
+.kicker{font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-4);
+  font-family:"JetBrains Mono",ui-monospace,monospace}
+h1.page{font-size:33px;line-height:1.07;margin:6px 0 3px}
+.voice{font-family:"Fraunces",Georgia,serif;font-size:16px;color:var(--ink-2);line-height:1.5;margin:0;max-width:760px}
+.readat{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:10px;color:var(--ink-4);
+  letter-spacing:.06em;margin:7px 0 0}
+.rule2{border-top:1px solid var(--ink-4);box-shadow:0 3px 0 -2px var(--ink-4);margin:14px 0}
+.micro{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:9px;font-weight:600;
+  letter-spacing:.15em;text-transform:uppercase;color:var(--ink-4)}
+.micro.seal{color:var(--seal-deep)}
+.card{border:1px solid var(--paper-2);background:var(--paper-1);border-radius:12px;padding:13px 15px}
+.note{font-size:11.5px;color:var(--ink-4);line-height:1.55}
+.said{font-size:11px;color:var(--ink-3);line-height:1.5;margin:4px 0 0}
+.num{font-family:"JetBrains Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums;color:var(--ink-1)}
+.btn{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--paper-2);border-radius:7px;
+  background:transparent;color:var(--ink-2);font-size:11.5px;padding:4px 9px;font-family:inherit}
+.btn.seal{border-color:var(--seal);background:var(--seal-tint);color:var(--seal-deep);font-weight:600}
+.btn.on{border-color:var(--seal-ring);background:var(--seal-tint);color:var(--seal-deep)}
+.btn.dark{border-style:dashed;color:var(--ink-4);opacity:.72}
+.ctlrow{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:9px}
+.ctllab{flex:0 0 74px}
+.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:10.5px;color:var(--ink-4);margin-top:8px;align-items:center}
+.legend i{font-style:normal;display:inline-flex;align-items:center;gap:5px}
+.swatch{width:10px;height:10px;border-radius:2px;display:inline-block}
+.prop{border:1.5px dashed var(--seal-ring);border-radius:3px;padding:1px 5px;
+  font-family:"JetBrains Mono",ui-monospace,monospace;font-size:8.5px;letter-spacing:.13em;
+  text-transform:uppercase;color:var(--seal-deep)}
+footer.sig{display:flex;justify-content:space-between;align-items:baseline;gap:12px;
+  border-top:1px solid var(--paper-2);margin-top:28px;padding-top:12px}
+.wordmark{font-family:"Fraunces",Georgia,serif;font-size:15px;letter-spacing:.02em}
+.wordmark span{color:var(--seal)}
+/* an entry, shared by all three directions */
+.entry{display:grid;grid-template-columns:34px minmax(0,1fr);gap:10px;padding:12px 0;
+  border-bottom:1px solid var(--paper-2)}
+.entry:last-child{border-bottom:0}
+.gut{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:10.5px;color:var(--ink-4);padding-top:2px}
+.stamps{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:4px}
+.obs{font-family:"Fraunces",Georgia,serif;font-size:15.5px;line-height:1.35;margin:0;color:var(--ink-1)}
+.do{font-size:12.5px;color:var(--ink-2);line-height:1.5;margin:5px 0 0}
+.facts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px 18px;margin-top:9px;
+  border-top:1px dotted var(--paper-2);padding-top:7px}
+.facts>div>div:last-child{font-size:12px;color:var(--ink-2);margin-top:2px}
+.sheet{margin-top:9px;padding:12px 14px;border-radius:10px;border:1px solid var(--seal-ring);
+  background:var(--paper-0)}
+.sheet h3{font-family:"Fraunces",Georgia,serif;font-size:14.5px;font-weight:500;margin:0 0 2px}
+.sheet .blk{margin-top:9px}
+.scope{display:flex;align-items:flex-start;gap:7px;font-size:12px;color:var(--ink-2);line-height:1.4;margin-top:4px}
+.scope input{margin-top:2px;accent-color:var(--seal)}
+.field input{display:block;width:100%;max-width:300px;margin-top:4px;font:inherit;font-size:12.5px;
+  padding:5px 8px;border-radius:7px;border:1px solid var(--paper-2);background:var(--paper-1);color:var(--ink-1)}
+.promise{margin-top:10px;padding-top:8px;border-top:1px solid var(--paper-2);font-size:11.5px;
+  color:var(--ink-2);line-height:1.5}
+</style></head>
+<body><div class="mudavym">
+<div class="banner"><span><b>SKETCH</b> &nbsp;example data, not a tenant</span>
+<span>094 &middot; /recommendations &middot; direction A &middot; the calendar strip</span>
+<span>every figure below is invented to show the full view</span></div>
+<div class="wrap">
+
+  <style>
+.stripwrap{position:relative;margin-top:14px}
+.strip{display:grid;grid-template-columns:repeat(28,minmax(0,1fr));gap:3px;
+  border:1px solid var(--paper-2);background:var(--paper-1);border-radius:12px;padding:10px 11px}
+.cell{position:relative;border-radius:7px;padding:6px 3px 5px;text-align:center;cursor:pointer;
+  border:1px solid transparent;background:var(--paper-0);min-height:86px;
+  display:flex;flex-direction:column;justify-content:space-between;gap:3px}
+.cell .wd{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:8px;color:var(--ink-4);
+  letter-spacing:.06em}
+.cell .dn{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:13px;color:var(--ink-2);
+  font-variant-numeric:tabular-nums;line-height:1}
+.cell .mo{font-family:"Fraunces",Georgia,serif;font-size:9px;color:var(--seal-deep);margin-top:-1px}
+.cell .bars{display:flex;align-items:flex-end;justify-content:center;gap:2px;height:22px}
+.cell .bar{width:5px;border-radius:1px 1px 0 0;background:var(--seal-ring)}
+.cell .bar.due{background:transparent;border:1px dashed var(--seal-ring)}
+.cell .amt{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:8.5px;color:var(--ink-4)}
+.cell.past{opacity:.9}
+.cell.quiet .dn{color:var(--ink-4)}
+.cell.unobs{background:repeating-linear-gradient(135deg,var(--paper-1),var(--paper-1) 4px,var(--paper-2) 4px,var(--paper-2) 8px)}
+.cell.unobs .dn{color:var(--ink-4)}
+.cell.today{border-color:var(--seal-ring);box-shadow:inset 0 0 0 1px var(--seal-ring)}
+.cell.sel{border-color:var(--seal);background:var(--seal-tint);
+  box-shadow:0 0 0 1px var(--seal), 0 2px 0 0 var(--seal)}
+.cell.sel .dn{color:var(--seal-deep);font-weight:600}
+.cell.sel .bar{background:var(--seal)}
+.monthrule{position:absolute;top:8px;bottom:8px;width:1px;background:var(--ink-4);opacity:.35}
+.lineage{position:absolute;height:1px;background:var(--seal);opacity:.55}
+.lineage:before,.lineage:after{content:"";position:absolute;top:-2.5px;width:6px;height:6px;
+  border-radius:50%;background:var(--seal)}
+.lineage:before{left:-3px}
+.lineage:after{right:-3px}
+.lineagelab{position:absolute;font-family:"JetBrains Mono",ui-monospace,monospace;font-size:8.5px;
+  color:var(--seal-deep);background:var(--paper-0);padding:0 5px;border:1px solid var(--seal-ring);
+  border-radius:999px;transform:translateY(-50%)}
+.stripgrid{display:grid;grid-template-columns:264px minmax(0,1fr);gap:18px;align-items:start;margin-top:16px}
+.keys{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:10.5px;color:var(--ink-3);
+  line-height:1.9}
+.keys b{color:var(--ink-1);font-weight:600}
+.dayhead{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.dayhead h2{font-family:"Fraunces",Georgia,serif;font-size:22px;margin:0;font-weight:500}
+.band{display:flex;align-items:center;gap:9px;margin:16px 0 2px}
+.band .t{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:10px;color:var(--seal-deep);
+  border:1px solid var(--seal-ring);border-radius:999px;padding:2px 10px;background:var(--seal-tint);
+  letter-spacing:.1em;text-transform:uppercase}
+.band .r{flex:1;border-bottom:1px dotted var(--paper-2)}
+.band .n{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:10.5px;color:var(--ink-4)}
+</style>
+  <div class="kicker">Mudavym &middot; sketch 094a</div>
+  <h1 class="page serif">Recommendations</h1>
+  <p class="voice">17 rules were read. 9 entries stand &mdash; the rest did not fire, or you have already
+  ruled them off. The strip above the book is the <b>month in one line</b>: every day the house has
+  records for, what fired on it, what falls due on it, and what it is worth.</p>
+  <p class="readat">Read at 4:12 PM &middot; one entry = one deterministic rule that fired &middot;
+  4 entries were withheld because you dismissed them</p>
+  <div class="rule2"></div>
+
+  <div class="stripwrap">
+    <div class="strip"><div class="cell quiet" title="2026-08-07"><div><div class="wd">F</div><div class="dn">7</div></div><div class="bars"><span class="bar" style="height:2px;background:var(--paper-2)"></span></div><div class="amt">&middot;</div></div><div class="cell quiet" title="2026-08-08"><div><div class="wd">S</div><div class="dn">8</div></div><div class="bars"><span class="bar" style="height:2px;background:var(--paper-2)"></span></div><div class="amt">&middot;</div></div><div class="cell" title="2026-08-09"><div><div class="wd">S</div><div class="dn">9</div></div><div class="bars"><span class="bar due" style="height:11px"></span></div><div class="amt">&middot;</div></div><div class="cell" title="2026-08-10"><div><div class="wd">M</div><div class="dn">10</div></div><div class="bars"><span class="bar" style="height:18px"></span></div><div class="amt">$6,480</div></div><div class="cell quiet" title="2026-08-11"><div><div class="wd">T</div><div class="dn">11</div></div><div class="bars"><span class="bar" style="height:2px;background:var(--paper-2)"></span></div><div class="amt">&middot;</div></div><div class="cell unobs" title="2026-08-12"><div><div class="wd">W</div><div class="dn">12</div></div><div class="bars"><span class="bar" style="height:2px;background:var(--paper-2)"></span></div><div class="amt">no records</div></div><div class="cell unobs" title="2026-08-13"><div><div class="wd">T</div><div class="dn">13</div></div><div class="bars"><span class="bar" style="height:2px;background:var(--paper-2)"></span></div><div class="amt">no records</div></div><div class="cell" title="2026-08-14"><div><div class="wd">F</div><div class="dn">14</div></div><div class="bars"><span class="bar due" style="height:11px"></span></div><div class="amt">&middot;</div></div><div class="cell quiet" title="2026-08-15"><div><div class="wd">S</div><div class="dn">15</div></div><div class="bars"><span class="bar" style="height:2px;background:var(--paper-2)"></span></div><div class="amt">&middot;</div></div><div class="cell quiet" title="2026-08-16"><div><div class="wd">S</div><div class="dn">16</div></div><div class="bars"><span class="bar" style="height:2px;background:var(--paper-2)"></span></div><div class="amt">&middot;</div></div><div class="cell" title="2026-08-17"><div><div class="wd">M</div><div class="dn">17</div></div><div class="bars"><span class="bar" style="height:18px"></span></div><div class="amt">$2,110</div></div><div class="cell quiet" title="2026-08-18"><div><div class="wd">T</div><div class="dn">18</div></div><div class="bars"><span class="bar" style="height:2px;background:var(--paper-2)"></span></div><div class="amt">&middot;</div></div><div class="cell quiet" title="2026-08-19"><div><div class="wd">W</div><div class="dn">19</div></div><div class="bars"><span class="bar" style="height:2px;background:var(--paper-2)"></span></div><div class="amt">&middot;</div></div><div class="cell" title="2026-08-20"><div><div class="wd">T</div><div class="dn">20</div></div><div class="bars"><span class="bar due" style="height:11px"></span></div><div class="amt">&middot;</div></div><div class="cell quiet" title="2026-08-21"><div><div class="wd">F</div><div class="dn">21</div></div><div class="bars"><span class="bar" style="height:2px;background:var(--paper-2)"></span></div><div class="amt">&middot;</div></div><div class="cell quiet" title="2026-08-22"><div><div class="wd">S</div><div class="dn">22</div></div><div class="bars"><span class="bar" style="height:2px;background:var(--paper-2)"></span></div><div class="amt">&middot;</div></div><div class="cell" title="2026-08-23"><div><div class="wd">S</div><div class="dn">23</div></div><div class="bars"><span class="bar" style="height:18px"></span></div><div class="amt">$980</div></div><div class="cell quiet" title="2026-08-24"><div><div class="wd">M</div><div class="dn">24</div></div><div class="bars"><span class="bar" style="height:2px;background:var(--paper-2)"></span></div><div class="amt">&middot;</div></div><div class="cell" title="2026-08-25"><div><div class="wd">T</div><div class="dn">25</div></div><div class="bars"><span class="bar" style="height:18px"></span></div><div class="amt">$1,340</div></div><div class="cell quiet" title="2026-08-26"><div><div class="wd">W</div><div class="dn">26</div></div><div class="bars"><span class="bar" style="height:2px;background:var(--paper-2)"></span></div><div class="amt">&middot;</div></div><div class="cell" title="2026-08-27"><div><div class="wd">T</div><div class="dn">27</div></div><div class="bars"><span class="bar due" style="height:11px"></span></div><div class="amt">&middot;</div></div><div class="cell" title="2026-08-28"><div><div class="wd">F</div><div class="dn">28</div></div><div class="bars"><span class="bar" style="height:18px"></span></div><div class="amt">&middot;</div></div><div class="cell quiet" title="2026-08-29"><div><div class="wd">S</div><div class="dn">29</div></div><div class="bars"><span class="bar" style="height:2px;background:var(--paper-2)"></span></div><div class="amt">&middot;</div></div><div class="cell" title="2026-08-30"><div><div class="wd">S</div><div class="dn">30</div></div><div class="bars"><span class="bar" style="height:18px"></span></div><div class="amt">$1,260</div></div><div class="cell" title="2026-08-31"><div><div class="wd">M</div><div class="dn">31</div></div><div class="bars"><span class="bar" style="height:18px"></span></div><div class="amt">$4,080</div></div><div class="cell" title="2026-09-01"><div><div class="wd">T</div><div class="dn">1</div><div class="mo">Sep</div></div><div class="bars"><span class="bar due" style="height:11px"></span></div><div class="amt">&middot;</div></div><div class="cell sel" title="2026-09-02"><div><div class="wd">W</div><div class="dn">2</div></div><div class="bars"><span class="bar" style="height:18px"></span><span class="bar due" style="height:11px"></span><span class="bar due" style="height:11px"></span></div><div class="amt">$426</div></div><div class="cell today" title="2026-09-03"><div><div class="wd">T</div><div class="dn">3</div></div><div class="bars"><span class="bar due" style="height:11px"></span><span class="bar due" style="height:11px"></span><span class="bar due" style="height:11px"></span></div><div class="amt">&middot;</div></div></div>
+    <div class="lineage" style="left:calc(11px + (100% - 22px) * 0.3750);right:calc(11px + (100% - 22px) * 0.0179);bottom:-9px"></div>
+    <div class="lineagelab" style="left:calc(11px + (100% - 22px) * 0.3750);bottom:-9px;transform:translate(6px,50%)">
+      entry 03 has stood 17 days &mdash; first shown Sun 17 Aug</div>
+  </div>
+
+  <div class="legend" style="margin-top:22px">
+    <i><span class="swatch" style="background:var(--seal-ring)"></span>fired that day</i>
+    <i><span class="swatch" style="border:1px dashed var(--seal-ring)"></span>falls due that day</i>
+    <i><span class="swatch" style="background:repeating-linear-gradient(135deg,var(--paper-1),var(--paper-1) 3px,var(--paper-2) 3px,var(--paper-2) 6px)"></span>
+       <b>no records &mdash; not a zero</b></i>
+    <i><span class="swatch" style="background:var(--seal)"></span>selected</i>
+    <i><span class="swatch" style="box-shadow:inset 0 0 0 1px var(--seal-ring);background:transparent"></span>today</i>
+    <i>hairline = one entry&rsquo;s life, from first shown to now</i>
+  </div>
+
+  <div class="stripgrid">
+    <aside>
+      <div class="card">
+        <div class="micro"><svg class="ico" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg> The strip, and how it is worked</div>
+        <p class="keys" style="margin-top:7px">
+          <b>click</b> a day &rarr; the book below becomes that day<br>
+          <b>click it again</b> or <b>Esc</b> &rarr; back to everything standing<br>
+          <b>shift-click</b> &rarr; a range, Fri to Sun<br>
+          <b>&larr; &rarr;</b> move a day &middot; <b>&uarr; &darr;</b> a week<br>
+          <b>hover an entry</b> &rarr; its hairline lights on the strip<br>
+          <b>double-click</b> a day &rarr; take it out of the analysis
+        </p>
+        <p class="note" style="margin-top:8px">The last one is the point of drawing days at all: the
+        exclusion store already exists, and today it is a list in a side panel. On a strip it is the
+        object itself &mdash; you rule out the Tuesday you were shut by striking the Tuesday.</p>
+      </div>
+
+      <div class="card" style="margin-top:12px">
+        <div class="micro">Out of the analysis</div>
+        <p class="note" style="margin-top:6px">Two days are struck: <span class="num">Wed 12 Aug</span> and
+        <span class="num">Thu 13 Aug</span> &mdash; &ldquo;closed, kitchen refit&rdquo;. Their numbers count
+        toward no average, here or anywhere else.</p>
+        <div class="ctlrow"><button class="btn">Count them again</button></div>
+        <p class="note" style="margin-top:8px">A day with no records is drawn hatched, never as a bar of
+        zero. That distinction is the whole reason the second pass exists: &ldquo;Wednesday sales came in
+        100% lower&rdquo; was a closure being read as a measurement.</p>
+      </div>
+
+      <div class="card" style="margin-top:12px">
+        <div class="micro">The register, inside the day</div>
+        <p class="note" style="margin-top:6px">Money 4 &middot; Stock 2 &middot; Vendors 2 &middot;
+        The floor 1. The strip decides <i>when</i>; the register still decides <i>what changes</i>, and it
+        orders the entries within a selected day.</p>
+      </div>
+    </aside>
+
+    <section>
+      <div class="dayhead">
+        <h2>Wednesday 2 September</h2>
+        <span class="micro">selected</span>
+        <span class="note">1 entry first fired &middot; 2 fall due &middot; $426 at stake &middot;
+        $612 through the till, against an average Wednesday of $1,038</span>
+      </div>
+      <div class="rule2" style="margin:10px 0 0"></div>
+
+      <div class="band"><span class="t">Fired on this day</span><span class="r"></span>
+        <span class="n">1</span></div>
+      
+    <article class="entry">
+      <div class="gut">07</div>
+      <div>
+        <div class="stamps"><span class="micro seal">Tonight</span>
+          <span class="micro">sales</span>
+          <span class="micro">first fired Wed 2 Sep</span></div>
+        <p class="obs">Wednesday wine sales came in 41% below your average Wednesday ($612 against $1,038, over 11 past Wednesdays).</p>
+        <p class="do">Brief the floor on top-margin picks, run one by-the-glass feature, pair the strongest server with the weakest section.</p>
+        
+      <div class="facts">
+        <div><div class="micro">Would change</div><div>Money</div></div>
+        <div><div class="micro">Whose hand</div><div>Yours, in Reports</div></div>
+        <div><div class="micro">Standing</div><div><span class="num">1 day</span></div></div>
+        <div><div class="micro">At stake</div><div><span class="num">$426</span>
+           <span class="prop">proposed</span></div></div>
+      </div>
+        
+      <div class="ctlrow"><span class="micro ctllab">Carry it out</span>
+        <button class="btn seal">Open the reading <svg class="ico" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></button>
+        <button class="btn on"><svg class="ico" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg> Make this a goal</button><button class="btn"><svg class="ico" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="m19 9-5 5-4-4-3 3"/></svg> See it in reports</button>
+      </div>
+      <div class="ctlrow"><span class="micro ctllab">File it</span>
+        <button class="btn">The working</button><button class="btn">Snooze</button>
+        <button class="btn on">Dismiss</button>
+        <button class="btn">Pin</button><button class="btn">Select</button>
+      </div>
+      <p class="said">A goal from this entry is held on <b>Wine revenue</b>, at least. Reports draws it as &ldquo;<b>The week&rsquo;s shape</b>&rdquo; — a different register that plots what this rule is about. It lies on the sheet already.</p>
+      <div class="sheet">
+        <h3>Dismiss it &mdash; and never show it again</h3>
+        <div class="blk"><span class="micro">Why are you dismissing it?</span>
+          <div class="ctlrow" style="margin-top:5px">
+            <button class="btn">Not relevant</button><button class="btn on">Already handled</button>
+            <button class="btn">I disagree</button><button class="btn">Not right now</button></div></div>
+        <div class="blk"><span class="micro">Never show me&hellip;</span>
+          <label class="scope"><input type="radio" checked readonly><span>This exact finding &mdash; Wed 2 Sep</span></label>
+          <label class="scope"><input type="radio" readonly><span>Every Wednesday, for this rule</span></label>
+          <label class="scope"><input type="radio" readonly><span>This rule entirely, for this restaurant</span></label></div>
+        
+        <div class="blk">
+          <label class="scope"><input type="checkbox" readonly><span>Also exclude Wed 2 Sep from the analysis</span></label>
+          <p class="note">A closure or an outage should not drag the average down. Excluding the day stops its
+          numbers counting toward every baseline, on this page and everywhere else.</p></div>
+        <p class="promise">After this you will not see this one finding about Wednesday on Wed 2 Sep &mdash; the same rule will still be read on every other day. Undo it from the History leaf.</p>
+        <div class="ctlrow"><button class="btn seal">Dismiss it</button>
+          <button class="btn">Keep it standing</button></div>
+      </div>
+      </div>
+    </article>
+
+      <div class="band"><span class="t">Falls due on this day</span><span class="r"></span>
+        <span class="n">2</span></div>
+      <article class="entry"><div class="gut"><svg class="ico" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></div><div>
+        <div class="stamps"><span class="micro seal">Wakes today</span><span class="micro">snoozed 26 Aug</span></div>
+        <p class="obs">Barolo Riserva 2016 and two others have not moved in 90 days.</p>
+        <p class="do">You put this back on the shelf until today. It is on the book again.</p>
+        <div class="ctlrow"><span class="micro ctllab">Carry it out</span>
+          <button class="btn seal">Create the promo <svg class="ico" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></button>
+          <button class="btn on"><svg class="ico" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg> Make this a goal</button>
+          <button class="btn"><svg class="ico" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="m19 9-5 5-4-4-3 3"/></svg> See it in reports</button></div>
+      </div></article>
+      <article class="entry"><div class="gut"><svg class="ico" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg></div><div>
+        <div class="stamps"><span class="micro seal">Goal deadline</span>
+          <span class="micro">set from entry 03, Sun 17 Aug</span></div>
+        <p class="obs">&ldquo;Wine revenue after the reprice&rdquo; is due today &mdash; $8,410 of $9,000.</p>
+        <p class="do">93% of target, behind the linear pace by $590. Reports carries the projection.</p>
+        <div class="ctlrow"><span class="micro ctllab">Carry it out</span>
+          <button class="btn seal">Open the goal <svg class="ico" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></button>
+          <button class="btn"><svg class="ico" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="m19 9-5 5-4-4-3 3"/></svg> See it in reports</button></div>
+        <p class="said">A goal deadline lands on the strip because it is the one date on this page that is
+        genuinely a date. <span class="prop">proposed</span> &mdash; the feed does not return goal
+        deadlines today; the goals endpoint does, and nothing joins them.</p>
+      </div></article>
+
+      <div class="band"><span class="t">Standing, from other days</span><span class="r"></span>
+        <span class="n">8</span></div>
+      <p class="note" style="margin-top:6px">Selecting a day never hides the rest of the book &mdash; it
+      demotes it. The eight entries that fired on other days sit below, ink-light, in register order, and
+      one click on the selected cell brings them back to full weight.</p>
+      
+    <article class="entry">
+      <div class="gut">01</div>
+      <div>
+        <div class="stamps"><span class="micro seal">Tonight</span>
+          <span class="micro">inventory</span>
+          <span class="micro">first fired Mon 25 Aug</span></div>
+        <p class="obs">Chablis 1er Cru 2021 has a 62% chance of stocking out before a 7-day replenishment (on hand: 4).</p>
+        <p class="do">Place the order today — the reorder point is 11 bottles. If the vendor is slow, split it across two.</p>
+        
+        
+      <div class="ctlrow"><span class="micro ctllab">Carry it out</span>
+        <button class="btn seal">Draft the PO <svg class="ico" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></button>
+        <button class="btn dark" disabled><svg class="ico" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg> Make this a goal</button><button class="btn"><svg class="ico" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="m19 9-5 5-4-4-3 3"/></svg> See it in reports</button>
+      </div>
+      <div class="ctlrow"><span class="micro ctllab">File it</span>
+        <button class="btn">The working</button><button class="btn">Snooze</button>
+        <button class="btn">Dismiss</button>
+        <button class="btn">Pin</button><button class="btn">Select</button>
+      </div>
+      <p class="said">A stockout is an availability event, not one of the six figures a goal can be held on. Reports draws it as &ldquo;<b>What to buy back</b>&rdquo; — the same register this rule read. It is not on an unarranged sheet — add it with &ldquo;Add a cutting&rdquo;.</p>
+      </div>
+    </article>
+      
+    <article class="entry">
+      <div class="gut">03</div>
+      <div>
+        <div class="stamps"><span class="micro seal">This week</span>
+          <span class="micro">efficiency</span>
+          <span class="micro">first fired Sun 17 Aug</span></div>
+        <p class="obs">6 wines sell fast but earn below-median margin (top: Sancerre &lsquo;Les Baronnes&rsquo; 2022).</p>
+        <p class="do">Raise those prices 5&ndash;8% or renegotiate cost on the next PO — volume holds on small moves.</p>
+        
+        
+      <div class="ctlrow"><span class="micro ctllab">Carry it out</span>
+        <button class="btn seal">Open the menu report <svg class="ico" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></button>
+        <button class="btn on"><svg class="ico" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg> Make this a goal</button><button class="btn"><svg class="ico" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="m19 9-5 5-4-4-3 3"/></svg> See it in reports</button>
+      </div>
+      <div class="ctlrow"><span class="micro ctllab">File it</span>
+        <button class="btn">The working</button><button class="btn">Snooze</button>
+        <button class="btn">Dismiss</button>
+        <button class="btn">Pin</button><button class="btn">Select</button>
+      </div>
+      <p class="said">A goal from this entry is held on <b>Wine revenue</b>, at least. Reports draws it as &ldquo;<b>Margin against movement</b>&rdquo; — the same register this rule read. It lies on the sheet already.</p>
+      </div>
+    </article>
+    </section>
+  </div>
+
+  <div class="card" style="margin-top:22px">
+    <div class="micro"><svg class="ico" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg> What is drawn here that is not built</div>
+    <p class="note" style="margin-top:7px">
+      <span class="prop">proposed</span> <b>The per-day money.</b> The gateway returns each entry&rsquo;s
+      money inside its sentence, not as a field, so a strip that totals dollars per day needs a structured
+      <span class="mono">moneyAtStake</span> on the recommendation. Nothing else on this page would change.<br>
+      <span class="prop">proposed</span> <b>Falls due.</b> Snooze wake dates exist
+      (<span class="mono">snooze_until</span>); goal deadlines exist on the goals endpoint; vendor cutoffs
+      do not exist anywhere. The strip can draw the first two today and must draw nothing for the third.<br>
+      <span class="prop">proposed</span> <b>The hairline.</b> It needs
+      <span class="mono">firstSeenAt</span>, which the feed already attaches &mdash; but capped at 40 keys,
+      and null for any rule with no impression row. An entry with no first-fired date draws no hairline and
+      says so; it must never draw one starting today.
+    </p>
+  </div>
+
+<footer class="sig"><span class="wordmark">Mudavym<span>.</span></span>
+<p class="note" style="margin:0;max-width:640px">Example data throughout. No figure on this page
+came from a tenant. Every entry is one deterministic rule against a house&rsquo;s own numbers.
+No model wrote them.</p></footer>
+</div></div></body></html>

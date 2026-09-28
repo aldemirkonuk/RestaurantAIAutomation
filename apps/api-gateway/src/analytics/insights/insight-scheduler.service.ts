@@ -93,11 +93,33 @@ export class InsightSchedulerService {
     for (const p of prefRows || [])
       prefs.set(`${p.restaurant_id}:${p.category}`, p);
 
+    // Rows produced by superseded arithmetic are not merely stale, they are
+    // retracted claims — `getStored()` already refuses to serve them, but the
+    // cadence gate below would leave them in the table for up to 24 hours (a
+    // `daily @ 06:00` category refreshes once a day and not before). On
+    // 2026-09-03 that gap was measured: a day after the observed-day fix
+    // shipped, the demo tenant's cache still held "Tuesday sales came in 100%
+    // lower than your average Tuesday ($0 vs $72)". So a stale version makes a
+    // category due NOW, whatever its cadence says.
+    //
+    // A failed scan is said out loud rather than absorbed: it means this sweep
+    // could not tell which tenants are carrying superseded rows, and those
+    // rows will keep being withheld from readers (correct) but not replaced
+    // (the thing this block exists to do).
+    const staleByRestaurant = await this.generator.staleVersionCategories();
+    if (staleByRestaurant === null)
+      this.logger.error(
+        `stale-version scan failed — this sweep refreshes on CADENCE ONLY, so ` +
+          `any tenant still holding rows from superseded arithmetic keeps ` +
+          `holding them until its normal schedule comes round`,
+      );
+
     const hour = now.getHours();
     const weekday = now.getDay();
     const todayStr = now.toISOString().substring(0, 10);
 
     for (const r of restaurants) {
+      const stale = staleByRestaurant?.get(r.id);
       const due: InsightCategory[] = [];
       for (const category of InsightSchedulerService.ALL_CATEGORIES) {
         const p = prefs.get(`${r.id}:${category}`) ?? {
@@ -106,6 +128,14 @@ export class InsightSchedulerService {
           enabled: true,
           last_run_at: null,
         };
+        // A superseded row is replaced even for a category the operator set to
+        // `manual` or disabled: those preferences govern how often we look for
+        // NEW findings, not whether the product may keep serving a sentence it
+        // has retracted.
+        if (stale?.has(category)) {
+          due.push(category);
+          continue;
+        }
         if (!p.enabled || p.cadence === "manual") continue;
         const lastRunDay = p.last_run_at
           ? String(p.last_run_at).substring(0, 10)

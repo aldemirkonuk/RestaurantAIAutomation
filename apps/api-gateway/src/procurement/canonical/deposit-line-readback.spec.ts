@@ -4,6 +4,7 @@ import { DocumentExtractorService } from "../documents/document-extractor.servic
 import { DocumentIntakeService } from "../documents/document-intake.service";
 import { CanonicalDocumentService } from "./canonical-document.service";
 import { LineMappingService } from "./line-mapping.service";
+import { VendorResolutionService } from "../vendor-identity/vendor-resolution.service";
 import { runCorpus } from "./cli";
 
 /**
@@ -207,6 +208,7 @@ async function persistThroughTheDoor(): Promise<Persisted> {
         ),
       },
       { provide: CanonicalDocumentService, useValue: canonical },
+      VendorResolutionService,
     ],
   }).compile();
   const intake = module.get<DocumentIntakeService>(DocumentIntakeService);
@@ -294,6 +296,7 @@ async function serviceReading(rows: Persisted) {
     providers: [
       CanonicalDocumentService,
       LineMappingService,
+      VendorResolutionService,
       { provide: DatabaseService, useValue: { getClient: () => client } },
     ],
   }).compile();

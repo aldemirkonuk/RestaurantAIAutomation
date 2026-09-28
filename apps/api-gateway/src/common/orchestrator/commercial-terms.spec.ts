@@ -45,6 +45,13 @@ describe("commercial-terms", () => {
       expect(t.tax_status).toBe("included");
     });
 
+    it("states no currency for a three-letter code that names none", () => {
+      // 2026-09-11: `length === 3` passed ZZZ through as a vendor's currency.
+      expect(parseCommercialTerms({ currency: "ZZZ" }).currency).toBeNull();
+      expect(parseCommercialTerms({ currency: "TL." }).currency).toBeNull();
+      expect(parseCommercialTerms({ currency: " try " }).currency).toBe("TRY");
+    });
+
     it("returns safe empty terms for garbage/empty input", () => {
       expect(parseCommercialTerms(null)).toEqual(emptyCommercialTerms());
       expect(parseCommercialTerms("nope")).toEqual(emptyCommercialTerms());

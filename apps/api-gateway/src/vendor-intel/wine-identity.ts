@@ -110,8 +110,13 @@ export function hashWineIdentity(input: WineIdentity): string | null {
  *
  * A name almost never repeats these even when it names the producer, so
  * requiring them to match is what makes the comparison below fail.
+ *
+ * Exported since 2026-09-05 so `identity-join.ts` can block on the same
+ * distinctive words this file suppresses on, rather than growing a fifth
+ * stopword list in a repo that already holds four normalisers (the reasoning
+ * is in `beverage-identity.ts`'s header).
  */
-const TRADE_WORDS = new Set([
+export const TRADE_WORDS = new Set([
   "vineyard",
   "vineyards",
   "winery",

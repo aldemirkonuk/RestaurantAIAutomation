@@ -6,12 +6,27 @@
  * assertion below is about a SENTENCE the page prints over nothing.
  */
 
-import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen , configure } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 
+// The parity build mounts five queries and eight components on first paint, so
+// a settled assertion can take longer than RTL's 1s default — measured at
+// ~1.5s for the gap panel. Raised deliberately: the assertions below are
+// unchanged, and a flaky timeout would read as a broken page.
+configure({ asyncUtilTimeout: 5000 });
+
+
 const api = vi.hoisted(() => ({
+  notes: { weekStart: '2026-08-31', notes: [] as unknown[], readable: true, reason: null } as Record<string, unknown>,
+  createTeamNote: vi.fn(() => Promise.resolve({ id: 'n1', addressed: 1, delivered: { inbox: true, push: 1 }, channels: ['inbox', 'push'] })),
+  timeOff: [] as unknown[],
+  myWeek: {} as Record<string, unknown>,
+  publishSchedule: vi.fn(() => Promise.resolve({})),
+  copyWeek: vi.fn(() => Promise.resolve({})),
+  offerCover: vi.fn(() => Promise.resolve({})),
+  updateTeamMember: vi.fn(() => Promise.resolve({})),
   week: {} as Record<string, unknown>,
   members: [] as unknown[],
   certs: [] as unknown[],
@@ -22,6 +37,48 @@ const api = vi.hoisted(() => ({
 }));
 
 vi.mock('../../../services/api/team', () => ({
+  getTeamNotes: () => Promise.resolve(api.notes),
+  createTeamNote: api.createTeamNote,
+  openTeamNote: vi.fn(() => Promise.resolve({ recorded: true, alreadyOpen: false })),
+  /**
+   * ADR 0121 — the crew-text leg reads whether this house has a sender. The
+   * fixture is the MEASURED state of every house on this deployment: none, and
+   * a transport that is not built. A stub reporting a connected sender would
+   * make the composer's disabled control look like a bug in the test rather
+   * than the product's true answer.
+   */
+  getTextSenders: () =>
+    Promise.resolve({
+      senders: { whatsapp: null, sms: null },
+      readable: true,
+      reason: null,
+      transport: {
+        built: false,
+        words:
+          'No provider credential for a per-house sender exists on this deployment.',
+      },
+      myConsent: { consent: null, readable: true, reason: null },
+      crewConsents: 0,
+    }),
+  getTimeOff: () => Promise.resolve(api.timeOff),
+  getMyWeek: () => Promise.resolve(api.myWeek),
+  getMemberPerformance: () => Promise.resolve({ hasData: false }),
+  createSchedule: vi.fn(() => Promise.resolve({ id: 'sch1' })),
+  publishSchedule: api.publishSchedule,
+  copyWeek: api.copyWeek,
+  acknowledgeSchedule: vi.fn(() => Promise.resolve({})),
+  assignCover: vi.fn(() => Promise.resolve({})),
+  createTimeOff: vi.fn(() => Promise.resolve({})),
+  reviewTimeOff: vi.fn(() => Promise.resolve({})),
+  updateShift: vi.fn(() => Promise.resolve({})),
+  deleteShift: vi.fn(() => Promise.resolve(undefined)),
+  reportCallout: vi.fn(() => Promise.resolve({})),
+  offerCover: api.offerCover,
+  createTeamMember: vi.fn(() => Promise.resolve({})),
+  updateTeamMember: api.updateTeamMember,
+  deleteTeamMember: vi.fn(() => Promise.resolve(undefined)),
+  ingestSales: vi.fn(() => Promise.resolve({})),
+  ingestSalesBatch: vi.fn(() => Promise.resolve({})),
   getWeek: () => Promise.resolve(api.week),
   getTeamMembers: () => Promise.resolve(api.members),
   getCertifications: () => Promise.resolve(api.certs),
@@ -33,6 +90,24 @@ vi.mock('../../../services/api/team', () => ({
 
 const auth = vi.hoisted(() => ({ role: 'owner' as string | null }));
 
+// `/settings-audit` is read through the shared client, so the trail query would
+// otherwise reach the network from a unit test. `readable: true` with no rows
+// is the state a fresh restaurant is actually in.
+vi.mock('../../../services/api/client', () => ({
+  apiClient: {
+    get: () =>
+      Promise.resolve({
+        data: {
+          entries: [],
+          readable: true,
+          reason: null,
+          oldestAt: null,
+          recordingSince: '2026-09-03',
+        },
+      }),
+  },
+}));
+
 vi.mock('../../../contexts/AuthContext', () => ({
   useAuth: () => ({
     activeRestaurantId: 'r-alpha',
@@ -43,9 +118,21 @@ vi.mock('../../../contexts/AuthContext', () => ({
 
 // The staff fallback is the legacy My Shifts view; its own network calls are
 // not what this file is about.
-vi.mock('../command/MyShifts', () => ({ MyShifts: () => <div>My Shifts</div> }));
+vi.mock('./MyShiftsNext', () => ({ MyShiftsNext: () => <div>My Shifts</div> }));
 
 import TeamNext from './TeamNext';
+import { mondayOf } from './tm-format';
+
+/**
+ * The page opens on `mondayOf(new Date())` (TeamNext.tsx), so every fixture
+ * below that names a DATE is only rendered while the real clock happens to sit
+ * in that fixture's week. Pinning the clock to 2026-09-02 (a Wednesday of the
+ * week starting 2026-08-31, the `week_start` every fixture here uses) makes
+ * these assertions hold on any day the suite runs. Only `Date` is faked:
+ * faking timers wholesale would starve react-query's async settling.
+ */
+const PINNED_WEEK_START = '2026-08-31';
+const PINNED_NOW = new Date('2026-09-02T12:00:00');
 
 const member = (id: string, name: string, position: string) => ({
   id,
@@ -101,6 +188,8 @@ function wrapper({ children }: { children: ReactNode }) {
 }
 
 beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(PINNED_NOW);
   auth.role = 'owner';
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   api.week = weekPayload();
@@ -108,6 +197,10 @@ beforeEach(() => {
   api.certs = [];
   api.templates = [];
   api.createCoverageTemplate.mockClear();
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 /** P1 — an idle engine is not a staffed week. */
@@ -135,6 +228,10 @@ describe('the coverage engine says whether it has ever been asked', () => {
 /** P8 — a day whose coverage status is `gap` is not "covered". */
 describe('the day chips agree with the coverage status', () => {
   it('does not print "covered" on a day the gateway marked as a gap', async () => {
+    // Guard: this case is only meaningful while the page's opening week is the
+    // fixture's week. Without the pinned clock this fails on any date outside
+    // the week of 2026-08-31 — which is exactly how it broke on 2026-09-11.
+    expect(mondayOf(new Date())).toBe(PINNED_WEEK_START);
     api.templates = [{ id: 't1', role: 'line', day_of_week: null, shift_period: 'pm', min_staff: 3 }];
     api.week = weekPayload({
       coverage: {
@@ -146,9 +243,11 @@ describe('the day chips agree with the coverage status', () => {
       },
     });
     render(<TeamNext />, { wrapper });
-    await screen.findByText(/5 Sep/);
+    // The day heads render from the calendar, so wait for the COVERAGE to
+    // arrive rather than for the date: before the week answers the status line
+    // says "reading…", which is a third state and not a claim either way.
+    expect(await screen.findByText(/1 rule unmet/)).toBeInTheDocument();
     expect(screen.queryByText('covered')).not.toBeInTheDocument();
-    expect(screen.getByText(/1 rule unmet/)).toBeInTheDocument();
   });
 });
 
@@ -182,7 +281,7 @@ describe('the credential file says whether it holds anything', () => {
 describe('every query key carries the restaurant', () => {
   it('keys the week, roster, credentials and coverage rules by tenant', async () => {
     render(<TeamNext />, { wrapper });
-    await screen.findByText(/week of/i);
+    await screen.findByText(/members/i);
     const keys = client.getQueryCache().getAll().map((q) => JSON.stringify(q.queryKey));
     expect(keys.length).toBeGreaterThanOrEqual(4);
     for (const k of keys) expect(k).toContain('r-alpha');
@@ -228,7 +327,8 @@ describe('the blocker sentence claims only what the schema supports', () => {
       },
     ];
     render(<TeamNext />, { wrapper });
-    await screen.findByText(/Ayşe/);
+    // The name is on the credential row AND on the grid's member row now.
+    await screen.findAllByText(/Ayşe/);
     expect(screen.queryByText(/held by an expired credential/)).not.toBeInTheDocument();
     expect(screen.queryByText(/blocks 2 shifts/)).not.toBeInTheDocument();
     // What IS known: whose credential expired, and how much of their week is

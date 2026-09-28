@@ -13,7 +13,7 @@ import {
   ValidateNested,
   IsObject,
 } from "class-validator";
-import { Type } from "class-transformer";
+import { Transform, Type } from "class-transformer";
 
 // ============================================================================
 // ENUMS
@@ -325,18 +325,32 @@ export class GetCalendarEventsQueryDto {
   @IsOptional()
   providerId?: string;
 
+  // Query strings arrive as strings. The global ValidationPipe runs with
+  // `transform: true` but WITHOUT `enableImplicitConversion` (main.ts:51-57),
+  // so without these explicit converters `?limit=50` stays the string "50",
+  // fails `@IsInt()` and 400s the whole read. `@Type(() => Boolean)` would be
+  // wrong here — `Boolean("false")` is `true` — hence the explicit
+  // `@Transform`, which leaves anything that is not a recognised boolean
+  // literal untouched so `@IsBoolean()` still rejects it.
   @ApiPropertyOptional({ default: false })
+  @Transform(({ value }) => {
+    if (value === "true" || value === true) return true;
+    if (value === "false" || value === false) return false;
+    return value;
+  })
   @IsBoolean()
   @IsOptional()
   includeRecurring?: boolean;
 
   @ApiPropertyOptional({ default: 1 })
+  @Type(() => Number)
   @IsInt()
   @Min(1)
   @IsOptional()
   page?: number;
 
   @ApiPropertyOptional({ default: 100 })
+  @Type(() => Number)
   @IsInt()
   @Min(1)
   @Max(500)
@@ -555,8 +569,39 @@ export class ICalTokenResponseDto {
   token: string;
 
   @ApiProperty({
-    description: "Full subscription URL",
+    description:
+      "Subscription path, relative to the gateway. Kept for the callers that " +
+      "already read it; a calendar client cannot subscribe to a relative path.",
     example: "/api/v1/calendar/feed/abc123.ics",
   })
   feedUrl: string;
+
+  @ApiProperty({
+    description:
+      "The subscription URL a calendar client can actually take. NULL when " +
+      "the gateway has no configured public origin and the request carried no " +
+      "Host header to derive one — never a guessed origin.",
+    example: "https://api.mudavym.com/api/v1/calendar/feed/abc123.ics",
+    nullable: true,
+  })
+  absoluteFeedUrl: string | null;
+
+  @ApiProperty({
+    description:
+      "The same URL under the webcal:// scheme, which is what makes Apple " +
+      "Calendar and Outlook subscribe rather than download. NULL whenever " +
+      "absoluteFeedUrl is.",
+    example: "webcal://api.mudavym.com/api/v1/calendar/feed/abc123.ics",
+    nullable: true,
+  })
+  webcalUrl: string | null;
+
+  @ApiProperty({
+    description:
+      "Where the absolute origin came from, so a caller can tell a configured " +
+      "origin from one inferred from this request's own Host header.",
+    enum: ["config", "request", "none"],
+    example: "config",
+  })
+  originSource: "config" | "request" | "none";
 }

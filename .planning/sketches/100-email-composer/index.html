@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>100 &middot; The house writes its own mail</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,400&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/* ── Mudavym tokens (ADR 0042), copied inline from apps/web/src/styles/mudavym.css ── */
+.mudavym{
+  --seal:#1A5E6B; --seal-deep:#14515C; --seal-tint:rgba(26,94,107,.10); --seal-ring:rgba(26,94,107,.32);
+  --paper-0:#FAF7F1; --paper-1:#F3EFE6; --paper-2:#EAE4D8;
+  --ink-1:#211C16; --ink-2:#4F473C; --ink-3:#7C7365; --ink-4:#665D50;
+  --mdv-scrim:rgba(23,19,15,.28);
+  color-scheme:light;
+}
+/* Warm Charcoal — mudavym.css:48-66. A specimen that carries the ground itself
+   stays charcoal on a paper page: that is the whole point of the portal rule. */
+.mudavym[data-ground="charcoal"]{
+  --seal:#5FB0BC; --seal-deep:#7DC3CD; --seal-tint:rgba(95,176,188,.14); --seal-ring:rgba(95,176,188,.38);
+  --paper-0:#15130F; --paper-1:#1D1813; --paper-2:#262019;
+  --ink-1:#EFE7D9; --ink-2:#C0B6A5; --ink-3:#8E8576; --ink-4:#ABA294;
+  --mdv-scrim:rgba(0,0,0,.5);
+  color-scheme:dark;
+}
+@media (prefers-color-scheme: dark){
+  :root:not(.light) .mudavym:not([data-ground="paper"]){
+    --seal:#5FB0BC; --seal-deep:#7DC3CD; --seal-tint:rgba(95,176,188,.14); --seal-ring:rgba(95,176,188,.38);
+    --paper-0:#15130F; --paper-1:#1D1813; --paper-2:#262019;
+    --ink-1:#EFE7D9; --ink-2:#C0B6A5; --ink-3:#8E8576; --ink-4:#ABA294;
+    --mdv-scrim:rgba(0,0,0,.5);
+    color-scheme:dark;
+  }
+}
+:root{--serif:"Fraunces",Georgia,"Times New Roman",serif;--sans:"DM Sans","Plus Jakarta Sans",system-ui,sans-serif;--mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper-0);color:var(--ink-1);font-family:var(--sans);font-size:13px}
+.banner{background:var(--ink-1);color:var(--paper-0);font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;padding:7px 20px}
+.wrap{max-width:1220px;margin:0 auto;padding:22px 20px 78px}
+.wordmark{font-family:var(--serif);font-weight:600;font-size:13px;letter-spacing:.04em}
+h1{font-family:var(--serif);font-size:35px;font-weight:600;letter-spacing:-.018em;line-height:1.07;margin:4px 0 0}
+h1 .dot{color:var(--seal)}
+.lede{font-family:var(--serif);font-style:italic;font-size:15.5px;color:var(--ink-2);margin:7px 0 0;max-width:900px}
+.dbl{border-top:1px solid var(--ink-1);border-bottom:1px solid var(--ink-1);height:3px;opacity:.5;margin:17px 0 0}
+.back{display:inline-block;margin:0 0 10px;font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--seal-deep);text-decoration:none}
+p{font-size:12.5px;line-height:1.64;color:var(--ink-2);margin:7px 0 0;max-width:900px}
+b{color:var(--ink-1);font-weight:600}
+code{font-family:var(--mono);font-size:11px;color:var(--ink-2)}
+
+.sec-h{display:flex;align-items:baseline;gap:12px;margin:34px 0 0}
+.sec-n{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--seal-deep);white-space:nowrap}
+h2{font-family:var(--serif);font-size:24px;font-weight:600;letter-spacing:-.012em;margin:0}
+.sec-k{font-family:var(--mono);font-size:9.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3);margin:6px 0 12px}
+
+/* ── the specimen numbers strip ── */
+.nums{display:flex;flex-wrap:wrap;gap:0;margin:16px 0 0;padding:12px 0 2px;border-top:1px solid var(--paper-2);border-bottom:1px solid var(--paper-2)}
+.nums div{padding:0 16px 10px 0;margin-right:16px;border-right:1px solid var(--paper-2)}
+.nums div:last-child{border-right:0}
+.nums .n{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--ink-1);display:block;font-variant-numeric:tabular-nums}
+.nums .k{font-family:var(--mono);font-size:8.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);display:block;margin-top:3px}
+
+/* ══ THE STAGE — an app viewport, the page beneath, the overlay on top ══ */
+.stage{position:relative;overflow:hidden;border:1px solid var(--paper-2);background:var(--paper-0);margin:14px 0 0}
+.stage.xl{height:730px}
+.stage.tall{height:560px}
+.stage.mid{height:470px}
+.stage.short{height:400px}
+.under{position:absolute;inset:0;padding:16px 20px;overflow:hidden}
+.scrim{position:absolute;inset:0;background:var(--mdv-scrim)}
+
+/* the page beneath — deliberately plain; it exists to prove it stays legible */
+.u-eyebrow{font-family:var(--mono);font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--seal-deep)}
+.u-h{font-family:var(--serif);font-size:21px;font-weight:600;margin:2px 0 10px;color:var(--ink-1)}
+.u-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}
+.u-card{border:1px solid var(--paper-2);background:var(--paper-1);padding:10px 12px}
+.u-card .t{font-weight:600;font-size:12.5px;color:var(--ink-1)}
+.u-card .s{font-family:var(--mono);font-size:10px;color:var(--ink-3);margin-top:3px}
+.u-row{display:grid;grid-template-columns:1.6fr 1fr 1fr .8fr;gap:10px;padding:7px 0;border-top:1px solid var(--paper-2);font-size:12px;color:var(--ink-2)}
+.u-row .t{color:var(--ink-1);font-weight:500}
+.u-cal{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:var(--paper-2);border:1px solid var(--paper-2)}
+.u-cal div{background:var(--paper-0);min-height:52px;padding:4px 5px;font-family:var(--mono);font-size:9.5px;color:var(--ink-3)}
+.u-cal div .e{display:block;font-family:var(--sans);font-size:9.5px;color:var(--ink-2);margin-top:3px;border-left:2px solid var(--seal);padding-left:4px;line-height:1.25}
+
+/* the app header bar — popovers hang off it */
+.bar{position:absolute;top:0;left:0;right:0;height:52px;background:var(--paper-0);border-bottom:1px solid var(--paper-2);display:flex;align-items:center;gap:10px;padding:0 16px}
+.bar .sp{flex:1}
+.ctl{display:flex;align-items:center;gap:7px;padding:5px 9px;border-radius:9px;color:var(--ink-2);font-size:12px}
+.ctl.hot{background:var(--paper-1);box-shadow:inset 0 0 0 1px var(--paper-2)}
+.ctl .nm{font-weight:600;color:var(--ink-1);font-size:12.5px}
+.ctl .sub{font-family:var(--mono);font-size:9px;color:var(--ink-3);display:block}
+.av{width:26px;height:26px;border-radius:999px;background:var(--seal-tint);box-shadow:inset 0 0 0 1px var(--seal-ring);color:var(--seal-deep);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:11px}
+.dotmark{position:absolute;top:7px;right:7px;width:6px;height:6px;border-radius:999px;background:var(--seal)}
+
+/* ══ THE OVERLAY SURFACES — numbers from sheet.css ══ */
+.ovl{background:var(--paper-0);color:var(--ink-1);display:flex;flex-direction:column;font-family:var(--sans)}
+/* sheet.css:72-82 */
+.sheet{position:absolute;top:0;right:0;bottom:0;width:100%;max-width:440px;border-left:1px solid var(--paper-2);box-shadow:-18px 0 48px rgba(23,19,15,.14);overflow:hidden}
+.sheet.wide{max-width:640px}
+/* sheet.css:88-97 */
+.panel{position:absolute;left:50%;transform:translateX(-50%);top:10%;width:min(620px,100% - 32px);max-height:76%;border:1px solid var(--paper-2);border-radius:14px;box-shadow:0 24px 60px -30px rgba(0,0,0,.5);overflow:hidden}
+/* sheet.css:99-106 */
+.pop{position:absolute;border:1px solid var(--paper-2);border-radius:14px;box-shadow:0 18px 44px -22px rgba(0,0,0,.42);overflow:hidden}
+/* sheet.css:109-141 */
+.oh{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:14px 16px 11px;border-bottom:1px solid var(--paper-2);flex:none}
+.oh-eyebrow{display:block;font-family:var(--mono);font-size:9.5px;font-weight:600;letter-spacing:.13em;text-transform:uppercase;color:var(--seal-deep)}
+.oh-title{margin:2px 0 0;font-family:var(--serif);font-size:19px;font-weight:600;line-height:1.16;letter-spacing:-.01em;color:var(--ink-1)}
+.oh-side{display:flex;align-items:center;gap:8px;flex:none}
+/* sheet.css:146-162 — the close control is WORDS */
+.oclose{font-family:var(--sans);font-size:12px;line-height:1.2;padding:5px 10px;border-radius:8px;border:1px solid var(--paper-2);background:transparent;color:var(--ink-2);cursor:pointer}
+.obody{flex:1 1 auto;min-height:0;overflow:hidden}
+.ofoot{flex:none;padding:9px 16px 12px;border-top:1px solid var(--paper-2);font-size:11px;line-height:1.5;color:var(--ink-3);display:flex;justify-content:space-between;gap:12px}
+
+/* content vocabulary — sheet.css:198-351 */
+.sect{display:block;font-family:var(--mono);font-size:9px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);padding:10px 16px 4px}
+.item{display:flex;align-items:center;gap:10px;width:100%;padding:7px 16px;border-left:2px solid transparent;font-size:13px;color:var(--ink-1)}
+.item.on{background:var(--seal-tint);border-left-color:var(--seal)}
+.item .txt{flex:1 1 auto;min-width:0}
+.item .lab{display:block;font-weight:500;color:var(--ink-1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item .sub{display:block;font-size:11px;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item .ico{flex:none;color:var(--ink-3)}
+.item.on .ico{color:var(--seal)}
+.kbd{flex:none;font-family:var(--mono);font-size:10px;font-weight:500;color:var(--ink-3);background:var(--paper-1);border:1px solid var(--paper-2);border-radius:5px;padding:1px 5px;white-space:nowrap}
+.quiet{margin:0;padding:8px 16px 10px;font-size:11.5px;line-height:1.5;color:var(--ink-2)}
+.field{display:flex;align-items:center;gap:10px;padding:0 16px;border-bottom:1px solid var(--paper-2)}
+.field .fin{flex:1 1 auto;padding:13px 0;font-family:var(--serif);font-size:17px;color:var(--ink-1)}
+.field .fph{color:var(--ink-3);font-family:var(--sans);font-size:14px}
+.lnk{font-family:var(--sans);font-size:12px;font-weight:500;color:var(--seal-deep)}
+
+/* sheet body furniture */
+.fact{display:grid;grid-template-columns:118px 1fr;gap:10px;padding:6px 16px;font-size:12.5px}
+.fact .k{font-family:var(--mono);font-size:9.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3);padding-top:3px}
+.fact .v{color:var(--ink-1)}
+.fact .v.em{color:var(--ink-3)}
+.frow{padding:8px 16px 0}
+.flab{display:block;font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);margin-bottom:4px}
+.fin2{border:1px solid var(--paper-2);background:var(--paper-1);border-radius:7px;padding:7px 9px;font-size:12.5px;color:var(--ink-1);min-height:31px}
+.fin2.ph{color:var(--ink-3)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:8px 16px 0}
+.two .frow{padding:0}
+.chiprow{display:flex;flex-wrap:wrap;gap:5px;margin-top:2px}
+.chip{font-family:var(--sans);font-size:11px;padding:3px 8px;border-radius:999px;border:1px solid var(--paper-2);color:var(--ink-2);display:inline-flex;align-items:center;gap:5px}
+.chip.on{color:var(--ink-1);background:var(--seal-tint);border-color:var(--seal-ring)}
+.sw{width:8px;height:8px;border-radius:2px;display:inline-block}
+.notice{margin:10px 16px 0;padding:9px 11px;background:var(--paper-1);border-left:2px solid var(--ink-4);font-size:11.5px;line-height:1.55;color:var(--ink-2)}
+.notice b{color:var(--ink-1)}
+.hta{margin:12px 16px 0;position:relative;border:1px solid var(--seal);border-radius:9px;padding:9px 12px;font-size:12.5px;color:var(--seal-deep);font-weight:500;display:flex;align-items:center;gap:9px;overflow:hidden;background:linear-gradient(90deg,var(--seal-tint) 38%,transparent 38%)}
+.hta .sealdot{width:18px;height:18px;border-radius:999px;background:var(--seal);color:var(--paper-0);display:flex;align-items:center;justify-content:center;flex:none}
+.btnrow{display:flex;gap:8px;padding:12px 16px 0}
+.btn{font-size:12px;padding:6px 12px;border-radius:8px;border:1px solid var(--paper-2);color:var(--ink-1);background:transparent}
+.btn.pri{border-color:var(--ink-4)}
+.btn[data-disabled]{color:var(--ink-3);border-color:var(--paper-2)}
+
+/* callouts and lists on the page itself */
+.callout{border-left:2px solid var(--seal);padding:11px 0 11px 15px;margin:16px 0 0;font-size:12.5px;line-height:1.66;color:var(--ink-2);background:linear-gradient(90deg,var(--seal-tint),transparent 62%);max-width:960px}
+.never{margin:16px 0 0;padding:0;list-style:none;max-width:960px}
+.never li{padding:8px 0;border-top:1px solid var(--paper-2);font-size:12.5px;line-height:1.6;color:var(--ink-2);display:grid;grid-template-columns:150px 1fr;gap:14px}
+.never li .h{font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);padding-top:2px}
+.never li b{color:var(--ink-1)}
+.cap{font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin:7px 0 0}
+.foot{margin:42px 0 0;padding-top:14px;border-top:1px solid var(--ink-1);font-size:11.5px;line-height:1.72;color:var(--ink-3);max-width:980px}
+.foot b{color:var(--ink-2)}
+.foot a{color:var(--seal-deep)}
+</style>
+
+<style>
+/* ── sketch 100 additions ── */
+.sheet.wide{max-width:640px}
+.prov{display:inline-flex;align-items:center;gap:6px;vertical-align:baseline;
+  background:var(--seal-tint);box-shadow:inset 0 0 0 1px var(--seal-ring);border-radius:4px;
+  padding:1px 6px 2px;margin:0 1px;font-family:var(--mono);font-size:9.5px;letter-spacing:.05em;
+  color:var(--seal-deep);white-space:nowrap;text-transform:uppercase;font-weight:600}
+.ins{background:var(--seal-tint);box-shadow:inset 0 0 0 1px var(--seal-ring);border-radius:4px;
+  padding:1px 4px;color:var(--ink-1)}
+.held{background:var(--paper-2);box-shadow:inset 0 0 0 1px var(--ink-4);border-radius:4px;
+  padding:1px 4px;color:var(--ink-1);font-style:italic}
+.body-txt{font-size:13px;line-height:1.78;color:var(--ink-1);padding:10px 16px 0}
+.body-txt p{font-size:13px;line-height:1.78;color:var(--ink-1);margin:0 0 11px;max-width:none}
+.srow{display:grid;grid-template-columns:96px 1fr;gap:10px;padding:8px 16px;border-bottom:1px solid var(--paper-2);align-items:start}
+.srow .k{font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);padding-top:4px}
+.srow .v{font-size:12.5px;color:var(--ink-1);line-height:1.5}
+.srow .v .note{display:block;font-size:11px;color:var(--ink-3);margin-top:3px;line-height:1.5}
+.srow .v .em{color:var(--ink-3)}
+.pill{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-size:8.5px;font-weight:600;
+  letter-spacing:.11em;text-transform:uppercase;padding:2px 6px;border-radius:3px;color:var(--ink-2);background:var(--paper-2)}
+.pill.on{color:var(--seal-deep);background:var(--seal-tint);box-shadow:inset 0 0 0 1px var(--seal-ring)}
+.pill.off{color:var(--ink-3);background:transparent;box-shadow:inset 0 0 0 1px var(--paper-2)}
+.pill.warn{color:var(--ink-1);background:var(--paper-2);box-shadow:inset 0 0 0 1px var(--ink-4)}
+.guard{margin:12px 16px 0;padding:10px 12px;border-left:2px solid var(--ink-4);background:var(--paper-1);
+  font-size:11.5px;line-height:1.6;color:var(--ink-2)}
+.guard b{color:var(--ink-1)}
+.guard .hd{display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:9px;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--ink-1);margin-bottom:5px}
+.tbl{width:100%;border-collapse:collapse;margin-top:12px;font-size:12px}
+.tbl th{text-align:left;font-family:var(--mono);font-size:8.5px;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--ink-3);font-weight:600;padding:0 12px 7px 0;border-bottom:1px solid var(--ink-4);vertical-align:bottom}
+.tbl td{padding:10px 12px 10px 0;border-bottom:1px solid var(--paper-2);vertical-align:top;color:var(--ink-2);line-height:1.55}
+.tbl td.n{color:var(--ink-1);font-weight:600}
+.tbl td .sub{display:block;font-family:var(--mono);font-size:10px;color:var(--ink-3);margin-top:3px}
+.tbl code{font-size:10.5px}
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:14px}
+.step{border-top:2px solid var(--seal);padding-top:10px}
+.step .n{font-family:var(--mono);font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--seal-deep)}
+.step h4{font-family:var(--serif);font-size:17px;font-weight:600;margin:3px 0 0;color:var(--ink-1)}
+.step p{font-size:12px;line-height:1.6;margin-top:6px}
+.step .quote{font-family:var(--serif);font-style:italic;font-size:13px;color:var(--ink-1);
+  border-left:2px solid var(--paper-2);padding-left:10px;margin-top:8px;line-height:1.5}
+.opt{border:1px solid var(--paper-2);padding:16px 18px 18px;background:var(--paper-1)}
+.opt h3{font-family:var(--serif);font-size:20px;font-weight:600;margin:3px 0 0;color:var(--ink-1)}
+.opt .n{font-family:var(--mono);font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--seal-deep)}
+.opt p{font-size:12px;line-height:1.62}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:14px;align-items:start}
+</style>
+</head>
+<body class="mudavym">
+<div class="banner">Sketch 100 &middot; email composer &mdash; example data, not a tenant</div>
+<div class="wrap">
+
+<div class="wordmark">Mudavym</div>
+<h1>100 &middot; The house writes its own mail<span class="dot">.</span></h1>
+<p class="lede">The founder, 2026-09-03: &ldquo;include template for emails and inhouse email creations to sending emails (editing the emails &mdash; creating data from our insights), have it connected with the email account to connect with there.&rdquo;</p>
+<div class="dbl"></div>
+
+<div class="callout" style="margin-top:20px">
+  <p style="font-family:var(--serif);font-size:19px;line-height:1.42;color:var(--ink-1);margin:0">
+    One rule holds the whole thing up: <b>a figure carries its provenance, or it goes into the letter as words.</b>
+  </p>
+  <p style="margin-top:9px">Ten products were read. Every one of them answers a missing merge value by substituting a plausible one &mdash; a default, a silent blank, or a fluent prediction. That is <em>absence reported as health</em>, written into a letter a vendor keeps. Mudavym is the only house here that computes its own figures, so it is the only one that can say <b>why</b> a number is missing. The composer does.</p>
+</div>
+
+<div class="sec-h"><span class="sec-n">The three states</span><h2>What was drawn</h2></div>
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:14px;align-items:start">
+  <a href="compose.html" style="text-decoration:none;color:inherit;display:block">
+    <div style="position:relative;height:132px;border:1px solid var(--paper-2);background:var(--paper-1);overflow:hidden">
+      <div style="position:absolute;inset:0;background:var(--mdv-scrim)"></div>
+      <div style="position:absolute;top:0;right:0;bottom:0;width:56%;background:var(--paper-0);border-left:1px solid var(--paper-2);box-shadow:-18px 0 48px rgba(23,19,15,.14);padding:9px 10px">
+        <div style="font-family:var(--mono);font-size:7.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--seal-deep)">A letter from the house</div>
+        <div style="font-family:var(--serif);font-size:13px;font-weight:600;margin-top:1px">To Fikri Tar&#305;m G&#305;da</div>
+        <div style="height:5px;background:var(--paper-1);border-radius:3px;margin:9px 0 4px"></div>
+        <div style="height:5px;background:var(--seal-tint);box-shadow:inset 0 0 0 1px var(--seal-ring);border-radius:3px;margin-bottom:4px"></div>
+        <div style="height:5px;background:var(--paper-1);border-radius:3px;width:72%"></div>
+      </div>
+    </div>
+    <div class="oh-eyebrow" style="margin-top:10px">Compose &middot; a wide sheet, 640px</div>
+    <h3 style="font-family:var(--serif);font-size:20px;font-weight:600;margin:2px 0 0">The letter</h3>
+    <p>Sender first, then to, subject and a body carrying two insight sentences with their provenance chips and one withheld figure written out in words. The commitment-language guardrail runs over the human's draft. Send carries the seal.</p>
+  </a>
+  <a href="templates.html" style="text-decoration:none;color:inherit;display:block">
+    <div style="position:relative;height:132px;border:1px solid var(--paper-2);background:var(--paper-0);overflow:hidden;padding:10px 12px">
+      <div style="font-family:var(--mono);font-size:7.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3);border-bottom:1px solid var(--ink-4);padding-bottom:5px">Template &middot; purpose &middot; fields &middot; last used</div>
+      <div style="height:5px;background:var(--paper-1);border-radius:3px;margin:9px 0"></div>
+      <div style="height:5px;background:var(--paper-1);border-radius:3px;margin:9px 0"></div>
+      <div style="height:5px;background:var(--seal-tint);box-shadow:inset 0 0 0 1px var(--seal-ring);border-radius:3px;margin:9px 0"></div>
+      <div style="height:5px;background:var(--paper-1);border-radius:3px;margin:9px 0"></div>
+      <div style="height:5px;background:var(--paper-1);border-radius:3px;width:64%"></div>
+    </div>
+    <div class="oh-eyebrow" style="margin-top:10px">Templates &middot; house-owned</div>
+    <h3 style="font-family:var(--serif);font-size:20px;font-weight:600;margin:2px 0 0">The library</h3>
+    <p>Seven purposes, each with its merge fields declared and its figures named &mdash; and a stated warning that three of the six columns cannot be stored today. Plus the in-house creation flow, which starts from an insight rather than a blank page.</p>
+  </a>
+  <a href="account.html" style="text-decoration:none;color:inherit;display:block">
+    <div style="position:relative;height:132px;border:1px solid var(--paper-2);background:var(--paper-0);overflow:hidden;padding:10px 12px">
+      <div style="font-family:var(--mono);font-size:7.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--seal-deep)">Sends as</div>
+      <div style="font-family:var(--mono);font-size:11px;font-weight:600;color:var(--ink-1);margin-top:4px">siparis@mail.mudavym.com</div>
+      <div style="font-family:var(--mono);font-size:7.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--seal-deep);margin-top:12px">or</div>
+      <div style="font-family:var(--mono);font-size:11px;font-weight:600;color:var(--ink-1);margin-top:4px">siparis@lokantamudavim.com</div>
+      <div style="font-family:var(--mono);font-size:9px;color:var(--ink-3);margin-top:12px">never notifications@wineops.ai</div>
+    </div>
+    <div class="oh-eyebrow" style="margin-top:10px">Account &middot; per house, commercial</div>
+    <h3 style="font-family:var(--serif);font-size:20px;font-weight:600;margin:2px 0 0">The identity</h3>
+    <p>The founder's decision drawn as two options: the house's own connected mailbox, or a paid address we provision on <code>mail.mudavym.com</code>. Both replace the shared deployment mailbox. The row belongs on Connections.</p>
+  </a>
+</div>
+
+<div class="sec-h"><span class="sec-n">Honesty</span><h2>What Send does, and what it does not</h2></div>
+<ul class="never">
+  <li><span class="h">It does</span><span>Send one letter, now, from the identity the house has set, threaded onto the vendor's last message so their reply lands in the same conversation &mdash; and write it into the conversation book as <b>yours</b>, marked <code>ai_generated: false</code>. The house's next AI draft reads that row, so a letter you write by hand is counted in the round limit instead of being invisible to it.</span></li>
+  <li><span class="h">It does not</span><span>Queue, schedule, batch, or send later. It does not send to a list. It does not attach a file &mdash; there is no attachment path on the manager-written route today, and this sketch does not pretend there is.</span></li>
+  <li><span class="h">It is not the AI</span><span>The vendor-reply AI is a different thing and stays exactly as it is: it drafts, and <code>enable_ai_autonomous_send</code> is <b>off unless a literal stored <code>true</code> says otherwise</b> &mdash; no row, a read error or a thrown client all fail closed. When it is on, a guardrail-clear reply is staged for <b>two minutes</b> and can be cancelled from the sidebar. Nothing in this composer changes any of that.</span></li>
+  <li><span class="h">What is stored</span><span>The letter body, its subject, who sent it, when, the vendor, the thread and message ids, and &mdash; new &mdash; <b>the rule key and computed-at of every inserted sentence</b>. That last part is the point: six months later you can ask what the house believed when it wrote this, and get an answer.</span></li>
+  <li><span class="h">What is never claimed</span><span>That a figure was measured when it was withheld. That a letter was sent when the send failed. That the AI wrote something a person wrote, or the reverse. And &mdash; the one this pass adds &mdash; that a letter came from the house when it left from a mailbox the house does not own.</span></li>
+</ul>
+
+<div class="sec-h"><span class="sec-n">The build</span><h2>What exists, what is missing, and in what order</h2></div>
+<p class="sec-k">every &ldquo;exists&rdquo; row was read out of the tree on 2026-09-03; every &ldquo;missing&rdquo; row names what it needs</p>
+
+<table class="tbl">
+  <thead><tr><th style="width:250px">What the composer needs</th><th style="width:100px">State</th><th>Where it is, or what it takes</th></tr></thead>
+  <tbody>
+    <tr><td class="n">The insight sentences and their provenance</td><td><span class="pill on">Exists</span></td><td><code>GET /analytics/insights/:restaurantId</code> (<code>analytics.controller.ts:293</code>) returns stored rows carrying <code>candidate_key</code>, <code>category</code>, <code>entity_label</code>, <code>sentence</code>, <code>evidence</code>, <code>period_start/end</code> and <code>computed_at</code>. <b>The chip needs nothing computed</b> &mdash; only carried.</td></tr>
+    <tr><td class="n">Withholding a figure</td><td><span class="pill on">Exists</span></td><td>Four rules, already pinned by tests: a day with no records, non-comparable windows, a weekday baseline on fewer than three past days, and never dividing by a zero baseline. The composer inherits them by inserting sentences rather than numbers.</td></tr>
+    <tr><td class="n">The recipient</td><td><span class="pill on">Exists</span></td><td><code>GET /providers</code> (<code>providers.controller.ts:215</code>) and <code>GET /team/members</code> (<code>team.controller.ts:74</code>).</td></tr>
+    <tr><td class="n">Sending a manager-written letter</td><td><span class="pill warn">Half exists</span></td><td><code>POST /procurement/orders/:id/manual-reply</code> (<code>procurement.controller.ts:453</code>) is JWT-guarded, tenant-scoped, threads onto the last inbound and records the row with <code>ai_generated:false</code> and <code>outbound_email_type:'MANUAL_REPLY'</code>. <b>Two limits:</b> it requires an existing order, and the subject is <em>derived</em> (<code>procurement.service.ts:3436</code>), not chosen.</td></tr>
+    <tr><td class="n">The other send route</td><td><span class="pill off">Unusable</span></td><td><code>POST /communications/email</code> is <code>@Public()</code> behind a <code>ServiceKeyGuard</code> (<code>X-Admin-Key</code>), <b>carries no tenant and writes no conversation row</b> &mdash; its own header comment says so. A browser must never reach it, and this sketch does not propose that it should.</td></tr>
+    <tr><td class="n">A letter with no order</td><td><span class="pill off">Missing</span></td><td>A new <code>POST /communications/:restaurantId/letters</code>: JWT, tenant-scoped, takes provider or member, subject, body, and the inserted rule keys; sends through the same guarded sender; writes the conversation row. <b>Needs a migration:</b> <code>chk_outbound_email_type</code> permits exactly ten values, so a new kind fails the CHECK on insert unless the constraint is altered first.</td></tr>
+    <tr><td class="n">Provenance on the stored letter</td><td><span class="pill off">Missing</span></td><td>A migration adding <code>inserted_insights jsonb</code> to <code>procurement_conversations</code> &mdash; rule key, window, computed-at, per inserted sentence. Without it, the chips are a screen effect that does not survive the send.</td></tr>
+    <tr><td class="n">Templates worth the name</td><td><span class="pill warn">Half exists</span></td><td>CRUD is there (<code>restaurant-templates.controller.ts:28,44,61,83</code>) but the table has eight columns. <b>One migration</b> adds <code>category</code>, <code>merge_fields jsonb</code>, <code>updated_by</code> and <code>last_used_at</code>; the DTO grows to match. Until then the library page is a shape.</td></tr>
+    <tr><td class="n">The commitment check on a human draft</td><td><span class="pill warn">Reusable</span></td><td><code>COMMITMENT_PATTERNS</code> exists and is the single source of truth for both runtimes. Running it over a manager's body before send is a small, high-value reuse &mdash; and, as far as this survey found, <b>something no product in the field does</b>.</td></tr>
+    <tr><td class="n">A house sending identity (option A)</td><td><span class="pill off">Missing</span></td><td>A third <code>IntegrationDefinition</code> for <code>gmail.send</code> with its scope disclosure, plus the first <b>house-scoped</b> grant in the schema &mdash; today every connection upserts on <code>user_id,integration_id</code>. Plus Google verification: <code>gmail.send</code> is a sensitive scope.</td></tr>
+    <tr><td class="n">A Mudavym address (option B)</td><td><span class="pill off">Missing</span></td><td><b>A provider decision</b> (an ESP that supports a delegated sending subdomain and inbound parsing). <b>DNS on <code>mail.mudavym.com</code>:</b> the provider's CNAMEs for DKIM and SPF, a DMARC record on the parent, and an <b>MX record pointing the subdomain at the provider</b> &mdash; a subdomain precisely so the main domain's own mail is undisturbed. <b>Inbound routing:</b> a parse webhook that lands a reply on the right thread, which is a new controller, a new signature check, and a new mapping from address to restaurant. <b>Plus a table</b> for the provisioned address, its owner, its state and its release date.</td></tr>
+  </tbody>
+</table>
+
+<div class="sec-h"><span class="sec-n">The order</span><h2>What to build, in what sequence, and why that sequence</h2></div>
+<ul class="never">
+  <li><span class="h">First &mdash; the identity</span><span>Nothing else is honest without it. A composer on top of a shared deployment mailbox produces letters that are <em>from</em> the house and do not <em>look</em> it, and no amount of provenance in the body fixes the line above it. Option A is the smaller build and unblocks the houses that already have a domain; option B is the product decision and the revenue line.</span></li>
+  <li><span class="h">Second &mdash; the two migrations</span><span><code>inserted_insights</code> on the conversation, and the four columns on the template. Both are additive, neither touches an applied file, and doing them before the UI means the chips are real from the first letter rather than retrofitted onto rows that lack them.</span></li>
+  <li><span class="h">Third &mdash; the composer on the route that exists</span><span>Ship it against <code>manual-reply</code> first, so the first version writes only letters that belong to an order. That is most of them, it needs no new endpoint, and it proves the provenance chip end to end before a new route is designed around it.</span></li>
+  <li><span class="h">Fourth &mdash; the letter with no order</span><span>The new route, the CHECK-constraint migration, and the composer's &ldquo;no order&rdquo; path together. By this point the shape is known rather than guessed.</span></li>
+  <li><span class="h">Fifth &mdash; the library</span><span>Templates last, because a template is a letter you have already written twice. Building the library first produces seven guesses about what a house wants to say.</span></li>
+</ul>
+
+<div class="sec-h"><span class="sec-n">The fork</span><h2>What only the founder can decide</h2></div>
+<ul class="never">
+  <li><span class="h">1 &middot; What does Send cost the writer?</span><span>This sketch puts the <b>seal</b> on it &mdash; a deliberate hold &mdash; because a letter cannot be recalled and, on option B, one house's letter affects every other house's deliverability. The counter-argument is real: a manager writing eight letters a day will find the ceremony tiresome, and the house rations the seal on purpose. The alternative is a plain button plus a short undo window, which is what the AI path already uses.</span></li>
+  <li><span class="h">2 &middot; May a letter be sent to someone who is not in the book?</span><span>Typing a free email address is how a composer normally works, and how a letter escapes the vendor book, the guardrails and the round count. This sketch allows only a provider or a member. That is a restriction, and it is the founder's to lift.</span></li>
+  <li><span class="h">3 &middot; What does the Mudavym address cost, and who may take one?</span><span>Pricing is undecided (OD&#8209;23) and the page says so rather than showing a number. Related and sharper: does a house on a free plan send at all, or does the sending identity <em>become</em> the paid line?</span></li>
+  <li><span class="h">4 &middot; May the composer send SMS?</span><span>The SMS route was deleted on 2026-09-02 for being unguarded and untraceable, and the typed <code>SmsService</code> methods that remain each know what they are sending and to whom. A free-text SMS composer would re-open exactly what that deletion closed.</span></li>
+  <li><span class="h">5 &middot; Does a staff broadcast belong in this composer at all?</span><span>It is the one template with no vendor, no guardrail and a different legal footing &mdash; it is the row that could drag the sending domain into bulk-sender territory. It may deserve its own surface rather than a row in a vendor-shaped library.</span></li>
+</ul>
+
+<div class="foot">
+  <b>These are drawings, not code.</b> No file under <code>apps/</code> was changed by this sketch. Every repo claim above carries a <code>file:line</code> re-read on 2026-09-03 on <code>feat/mudavym-design-p4</code>; every product claim carries a URL on the page that makes it.
+  <br><b>The one thing this sketch asks of sketch 099's primitive:</b> a <code>wide</code> sheet at 640px. Nothing else about the shape changes.
+  <br><b>Example data, not a tenant.</b> Lokanta M&uuml;davim, its vendors, its figures, its addresses and its dates are invented for the drawing.
+</div>
+</div>
+</body>
+</html>

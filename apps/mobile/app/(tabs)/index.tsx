@@ -264,11 +264,24 @@ export default function TodayScreen() {
                     }}
                   >
                     <View style={{ flex: 1, paddingRight: space.sm }}>
+                      {/* "didn't go through" is FALSE for an already-done entry:
+                          the house did it, someone else got there first, and the
+                          409 says who and when (founder, 2026-09-05, batch 46). */}
                       <AppText variant="footnote" tone="danger">
-                        {f.label} didn't go through
+                        {f.alreadyDone
+                          ? `${f.label} — already done`
+                          : `${f.label} didn't go through`}
                       </AppText>
                       {f.lastError ? (
-                        <AppText variant="caption" tone="tertiary" numberOfLines={1}>
+                        // One line is right for "Request failed (500)" and wrong
+                        // for the earlier delivery, which is the whole answer a
+                        // receiver came for. Three lines fit "Delivered on … by
+                        // … , 12 bottles booked in." without truncating a name.
+                        <AppText
+                          variant="caption"
+                          tone="tertiary"
+                          numberOfLines={f.alreadyDone ? 3 : 1}
+                        >
                           {f.lastError}
                         </AppText>
                       ) : null}

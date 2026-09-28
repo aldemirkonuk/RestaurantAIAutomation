@@ -41,6 +41,65 @@ One event, three renderings by role:
 - **Verification settles COST, never quantity (ADR 0103 A1).** The bottles arrived on the shelf at the door; pressing verify posts the agreed price — an accepted proposal beats the invoice line it is about — onto that delivery's lots and flips them from `provisional` to `final`. The response's `costNote` says what could not be costed and why, rather than reporting a silent success.
 - 🚧 Nothing links here yet; the page is reachable by typed URL only (§9)
 
+Currency, since 2026-09-06 (founder, batch 63; built on [[receipts]]):
+- **The invoice a delivery is verified against may have NO money on it.** Rules 1 and
+  2 in `apps/api-gateway/src/procurement/documents/invoice-currency.ts` REFUSE an
+  invoice's money when neither the paper nor the house (`restaurants.currency`) states
+  a currency, and HOLD it when the extraction model reports seeing a different one.
+  Both leave `procurement_documents.currency` NULL and every money column null, with
+  the sentence on the document's `notes`. **The quantities are untouched**, so what
+  arrived can still be counted at the door.
+- **What this door does NOT yet do, stated:** `verifyReceipt` takes its
+  `invoiceUnitPrice` and `invoiceCurrency` from what a person KEYS IN
+  (`VerifyReceiptDto`), not from the document row. **Since 2026-09-06 (batch 64) that
+  keyed-in price is REFUSED while the attached invoice's money is not filed** — see
+  the block below. The register mirror also refuses a non-ISO currency
+  (`own-paper-sighting.ts:299-316`) and `price_history` records the gap.
+
+**A held invoice refuses the PRICE at this door, and only the price** — founder,
+2026-09-06 batch 64: *"do option 1 recomemneded, stock proceeds refuse the price at
+receving, and let them approve if otherwise"*:
+- **The refusal.** `ProcurementService.verifyReceipt` calls `heldInvoiceForOrder` before
+  any write; when a unit price was submitted and an attached invoice or credit memo has
+  `procurement_documents.currency` NULL, it throws a 409 carrying
+  `receivingPriceRefusal(...)` — the hold's own sentence, what still works, and the act
+  that clears it. `apps/api-gateway/src/procurement/procurement.service.ts:4590`
+  (the gate), `documents/invoice-currency.ts` `documentMoneyState` / `receivingPriceRefusal`.
+- **Stock is untouched, and that is measured not asserted.** A receipt submitted WITHOUT
+  a price goes through unchanged on a held document: `receiving-price-held.spec.ts`
+  compares the order updates, the RPC calls and the inventory updates against the same
+  receipt on a settled document and asserts they are equal.
+- **The state is the currency column, not a flag.** Every hold and the refusal all end in
+  `withholdMoney`, which blanks `currency`, so `currency IS NULL` IS "the money was not
+  filed" with no second bookkeeping to drift from it. The REASON is read off
+  `extracted.moneyHeld`, verbatim.
+- **The act that clears it is the restatement — or a CONFIRMATION.**
+  `PATCH /procurement/documents/:id/currency` now accepts `previous === next` and logs it
+  as `change_kind = 'confirmed'`
+  (migration `20260906180000_confirming_a_currency_is_the_same_logged_act_as_changing_it.sql`).
+  Before that a manager who read a held invoice and decided the currency it already had
+  was right got a 409, and the only way past the refusal was to name a currency they did
+  not believe in.
+- **The screen prints the refusal, disabled and never hidden.**
+  `apps/web/src/pages/inventory/command/ReceivingWorkspace.tsx` — the price input is
+  disabled with the sentence and a link to the receipt's currency control
+  (`/receipts?doc=<id>`, which now opens that document). The verdict comes from the
+  gateway (`moneyState` on the document), computed by the SAME function the gate uses.
+- **The invoice's currency is printed beside the ORDER's** (B4). A mismatch is shown, a
+  failed read of the order says so rather than reading as agreement, and nothing is
+  converted.
+- **The act that clears the hold now takes a REDEEMED SEAL** (founder 2026-09-06, batch
+  64: *"Decide as a module: seal all three"*). The restatement/confirmation this door
+  links out to is behind challenge-and-redeem like the order approval is: the manager
+  holds a control on `/receipts`, the seal is minted at the START of the gesture bound to
+  this document and to the pair of currency codes, and the write spends it exactly once.
+  So a seal obtained to move a held invoice to EUR cannot be spent after somebody else
+  filed it in USD, and the append-only row is still written before the currency lands.
+  **This door itself is unchanged** — `verifyReceipt` is not a document act and is not in
+  the seal census; what changed is that the errand it sends a manager on now costs one
+  ceremony. See [[receipts]] §1a and §13, and
+  `apps/api-gateway/src/procurement/documents/document-seal.ts`.
+
 Write-path behaviour behind the page, fixed 2026-09-01 ([ADR 0057](../decisions/0057-receiving-write-path-integrity.md)):
 - **A manager's verification note is saved.** It goes to `delivery_notes`, and is
   **appended** to whatever the door already wrote rather than replacing it. It
@@ -82,6 +141,15 @@ and held by `scripts/check_windowed_figures.py` in CI:
 
 ## 1b. Motions used — Mudavym redesign (flag `mudavym_design_receiving`)
 
+> **Chrome (2026-09-04).** With the flag on, this page is framed by the house
+> header — `apps/web/src/components/mudavym/HouseHeader.tsx`, mounted by
+> `PageGate` above every `next` tree: the A+M mark, this page's name, the ⌘K
+> "Search or act" trigger, the house (or the branch switcher when there is more
+> than one), the bell, the theme menu and the account menu. Chrome is excluded
+> from §Surface by PAGE-CONTRACT, so it is named here and nowhere else in this
+> note; its motions live in `components/mudavym/MOTIONS.md`, not the table
+> below.
+
 Canonical source with curves: `apps/web/src/pages/receiving/next/MOTIONS-receiving.md` —
 this list is the note-side index (ADR 0044 §2).
 
@@ -98,6 +166,16 @@ this list is the note-side index (ADR 0044 §2).
 Not used, on purpose: the queue item that stops existing gets no animation (the
 absence is the defect — the motion budget goes to the pin arriving); no shake,
 no bouncing checkmarks, no skeleton shimmer for unknowns.
+
+### Overlays, 2026-09-05 (sketch 102 · ADR 0112)
+
+<!-- sketch-102-overlays -->
+Generated by `.planning/sketches/102-modal-census/build.py --docs` from `census.py` — edit the census, not this table.
+The rule: an object gets a sheet, a question a panel, a choice a popover; the seal never sits in a popover.
+
+**`/receiving · /receiving/:orderId/door`** — No overlays. The door is six points on one page; a sealed step is a panel-shaped section inside the page, not a portal (DoorNext.tsx:697 declares a local Panel).
+
+Drawn in sketch 102 (`.planning/sketches/102-modal-census/index.html`); the policy is [[0112-one-modal-policy-three-shapes-one-primitive]].
 
 ## 2. Entry
 
@@ -152,6 +230,27 @@ applies (see dashboard.md §7).
   to. Either a sidebar/palette entry or a dashboard hand-off is missing.
 - PAGE_MAP's entry-point list omits this route (see §2) — the atlas undercounts
   orphans; worth a regeneration note there rather than a fix here.
+- ~~**`markDelivered` could be run on an order the door had already received.**~~
+  **Resolved 2026-09-05** (founder: *"harden it in the procurement service for every
+  caller"*). The door and this control book stock under **different idempotency keys** —
+  `door-receipt:{eventId}` versus `order-delivered-live:{orderId}` — so nothing
+  reconciled them: a door count of 3 on a twelve-bottle order followed by anyone tapping
+  "mark delivered" booked 3 + 12 = **15 bottles**, and reset `quantity_received` from the
+  door's measured 3 back to the ordered 12. `markDelivered` now refuses before any write
+  when the order is DELIVERED, PARTIALLY_RECEIVED or COMPLETED
+  (`ORDER_GOODS_ARRIVED_STATUSES`, imported from `order-transitions.ts`, ADR 0125), with
+  a 409 whose sentence for the partly-received case names the receiving door as the way
+  to finish — because the door adds only the difference and this control does not.
+  **The door itself needed no change and got none**: on its FIRST receipt
+  `recordDoorReceipt` already subtracts `quantity_received` — whatever the one-shot
+  path put on the shelf — from what it books, and on every receipt after that it books
+  its own accepted bottles under its own event key, with the running total summed from
+  the durable events (`receiving.service.ts:359-372`, ADR 0057 D3). So the two now agree
+  by the door reconciling and this path refusing, not by two rules being kept in step.
+  What made the 15 reachable was the ORDER of the two: door first, then the tap, where
+  the door's reconciliation had already happened and had nothing to subtract.
+  `apps/api-gateway/src/procurement/delivered-once.ts`,
+  `procurement/tests/delivered-once.spec.ts`.
 
 ## 10. Maturity
 
@@ -215,6 +314,156 @@ delivery day while the request behind it is rejected.
 
 ## 13. Roadmap
 
+**2026-09-06 — a held invoice and this door.** The founder's currency decision (batch
+63), verbatim:
+
+> "take the houses own currency, but AI needs to or otherwise house delibaretly
+> chnage it to other currency if the invoice is other than their default"
+
+Built on [[receipts]]. **The founder answered the question that lands HERE the same day,
+batch 64, and it is DECIDED:** a held invoice **blocks the PRICE at this door only** —
+never the delivery's stock movement — and, verbatim, *"let them approve if otherwise"*:
+a person may approve past the hold. He also asked for **a default-currency section on
+each vendor's profile**.
+
+**BOTH ARE NOW BUILT (2026-09-06, p4br).** `verifyReceipt` refuses a keyed-in
+`invoiceUnitPrice` while an attached invoice's money is not filed, in a sentence naming
+the reason and the act that clears it; the stock movement is untouched and that is
+measured (`receiving-price-held.spec.ts`). The approve-past is the restatement act
+itself: `PATCH :id/currency` now takes a CONFIRMATION as well as a change, logged as
+`change_kind = 'confirmed'` with the same author and the same audit row. The vendor
+profile's usual currency is §1a on [[providers]].
+
+**A FAILED READ DOES NOT REFUSE, and the cost is stated.** If the document links or the
+documents themselves cannot be read, the price is ALLOWED and the failure is logged by
+name. An outage that read as "held" would block receipts for a reason nobody could see;
+this direction leaves the door exactly as it was before the guard existed, and
+`invoiceCurrencyClaim` still refuses to denominate a figure whose currency nobody keyed
+in. The guard is best-effort against an outage and deliberately so.
+
+**One limit, stated rather than papered over:** the order's currency is read into the
+filing chain only for a document whose intake NAMED an order (`IntakeInput.orderId`). A
+document linked to an order LATER — by the auto-matcher or by a person on [[receipts]] —
+was already filed by then, and re-filing it is the restatement act, not intake.
+
+**2026-09-06, batch 66 — the two answers that land here, verbatim.**
+
+> **"Keep it open on every invoice"**
+> **"Two screens, for now"**
+
+The first: a manager may CONFIRM the currency of any invoice, not only a held one. The
+cost, stated — a control anyone can press on any document produces log rows that record
+nothing but somebody clicking — is accepted; the benefit is that a house can certify a
+currency before a dispute, and that the receiving refusal has one act that clears it
+whatever state the document is in.
+
+The second: clearing a held price stays TWO screens. This door refuses the price and
+links out to `/receipts?doc=<id>`; the manager decides there and comes back. Putting the
+currency control inside the receiving workspace would let a manager clear a hold without
+ever looking at the paper, which is the one thing the hold exists to make them do. *"For
+now"* is the founder's own hedge and it is recorded as one: if two page loads in the
+middle of a delivery prove painful, the control can be embedded with the document image
+beside it.
+
+**2026-09-06, batch 64 — the errand costs one ceremony now.** The founder's answer to
+whether procurement's write routes should be sealed was **"Decide as a module: seal all
+three"**, and the currency restatement is one of the three. Clearing a held price is
+therefore: this door refuses and links out; on `/receipts` the manager picks the code and
+HOLDS a control; the hold mints a one-time seal over that document and that pair of codes;
+the write redeems it. The two-screen cost above is unchanged and the hold is the third
+step, not a fourth screen. `verifyReceipt` is not sealed and is not in the census —
+sealing the door as well was not asked for and is not assumed here.
+
+**2026-09-06 — a receipt whose order has no LINKED document accepts a typed price with
+no cross-check. HALF ANSWERED the same day (batch 67); read to the end of this section.**
+
+Found by the Sonnet audit of `6c0933d3` and reproduced here as shipped tests
+(`receiving-price-held.spec.ts`).
+
+`heldInvoiceForOrder` (`apps/api-gateway/src/procurement/procurement.service.ts:2303`) is
+gated solely on `procurement_document_links` returning rows for the order. Zero rows and
+zero error is indistinguishable from "no invoice exists", so it returns `null` and the
+refusal never fires. Meanwhile `hasInvoice`
+(`procurement.service.ts:4989`, `invoiceQuantity != null`) depends only on the DESK typing
+an invoice-quantity field, and `recordPriceHistory` (`procurement.service.ts:5192`) fires
+on `match && hasInvoice`. So a desk that types a price against an order with an UNLINKED
+held invoice writes a real `price_history` row: `currency: null` when they typed none, and
+whatever three-letter code they DID type when they typed one — `invoiceCurrencyClaim`
+(`price-currency.ts`) says outright that `procurement_documents.currency` "is not read by
+this path".
+
+The register mirror is not fooled: `vendor_price_observations` refuses a sighting with an
+unstated currency, so only `price_history` is reachable this way.
+
+**ANSWERED 2026-09-06, batch 67 — HALF of this is now closed.** The founder chose
+*"Refuse a typed price with no currency"*: *"a price without money is not a price: the
+receiving screen requires a code (the order's, the house's, or one typed) before a unit
+price is accepted; price_history never gains a currency-null row from that door again."*
+
+So `verifyReceipt` refuses `invoiceUnitPrice` with no valid `invoiceCurrency` BEFORE any
+read or write, and `VerifyReceiptDto` refuses the same pair on the wire
+(`priceStatesItsCurrency`) — one sentence from one function
+(`price-currency.ts` `receivingPriceNeedsACurrency`), naming the three ways to state a
+code and what still records without one. The receiving workspace carries the code beside
+the price field, pre-filled from the order's own currency when it has one, with the
+invoice's filed code and the house's reporting currency offered as labelled one-tap
+choices — offered, never applied. (Superseded 2026-09-11, batch 69: the invoice's filed
+code now pre-fills AHEAD of the order's — see the block below.) Two of the three tests that pinned the old behaviour are
+flipped and the typed-code one is kept
+(`receiving-price-held.spec.ts`, `dto/verify-receipt-currency.spec.ts`).
+
+**WHAT IS STILL OPEN, and it is the other half.** Nothing cross-checks a typed code against
+a document that EXISTS but has not been linked yet: a desk typing `USD` against an order
+whose unlinked invoice is in TRY still writes `USD`. The currency-null row is gone from
+this door; the wrong-currency row is not. Closing it means running the held-invoice check
+when a document is LINKED to an order that already has priced receipts — new behaviour, not
+a narrowing of this one, and not built.
+
+**2026-09-11, batch 69 — the price field reads the invoice's own code first.** Asked in
+session as "batch 68" by mistake (recorded as batch 69), the founder answered verbatim:
+
+> **"Invoice's filed code first, then the order's"** — *"A reading of the document, like the
+> quantities and prices on that screen already are; when the two disagree the comparison
+> banner already says so. One line."*
+
+**BUILT (2026-09-11, p4bx).** The receiving workspace pre-fills the price's currency from the
+matched invoice's filed code; when the invoice states none, or a code the product cannot
+offer (a withdrawn one), from the order's; and otherwise leaves it empty, the house's code
+still only a labelled chip. The comparison banner (*"The order was placed in X; this invoice
+states Y"*) is unchanged and still prints whenever both are known and differ. With the field
+cleared, the chips offer the invoice's, the order's and the house's codes in that order. The
+shared refusal sentence (`price-currency.ts` `receivingPriceNeedsACurrency`) said the screen
+"offers three" while the invoice's chip had been on screen since batch 67; it now names four.
+The batch's other three answers (the twin acts sealed, the 157-code picker kept, withdrawn
+codes kept refused) are in [[receipts]] §13. The twins were first chosen by the earlier batch
+68 (2026-09-06), which this batch's first answer confirms.
+
+**2026-09-11 — the currency-null `price_history` rows: nothing to count yet.** p4bv asked
+whether existing `price_history` rows with `currency: null` should be counted or left. The
+parent measured production read-only that day (Supabase connector, project
+`exzueerziesmczwlhomd`): `public.price_history` holds **0 rows**, and the production table
+has **no `currency` column yet** (its columns are id, restaurant_id, master_wine_id,
+provider_id, price, quantity, unit, effective_date, source, order_id, notes, created_at; the
+branch's migration adds the column on merge). So there is nothing to backfill and nothing to
+count until the branch merges. **The count must be re-taken after the first merge to main.**
+
+**2026-09-11 — two findings from the audit of `b6d2e4b4` closed on this page.** (1) That
+commit's message said the DTO, `verifyReceipt` AND this workspace refuse a code-less price
+"with one shared sentence naming the three rungs"; the workspace in fact printed its own
+wording and named no rung, so in the state with no chip to offer (no order code, no invoice,
+an unreadable house) the desk was told a code was needed and not where to find one. The
+shared half of the sentence is now one exported constant in `price-currency.ts`
+(`RECEIVING_PRICE_CURRENCY_RUNGS`, worded to be true before anything is sent); the refusal
+composes from it and this panel IMPORTS it — the first production import from the gateway in
+the web app. It builds because Vercel builds the web from the monorepo root, and it stays
+current only because `scripts/vercel_should_build.sh` and `turbo.json` now list
+`price-currency.ts` and `common/iso-4217.ts` as web-build inputs: without that, a gateway-only
+edit to the sentence would skip the preview and hit the web's turbo cache. (2) The second
+receipt on an order that already carries a price from an earlier verify, submitted with counts
+and no price, is now pinned: no price is written from the stored row and nothing is refused
+(`receiving-price-held.spec.ts`).
+
+
 1. **Fix the staff query.** Use `getOrders({ status: … })` from `services/api/orders.ts`
    (which maps to the backend enum and unwraps `.orders`), with a real status —
    `CONFIRMED` and/or `IN_TRANSIT` are the "out for delivery" states. Two bugs, one fix.
@@ -227,6 +476,52 @@ delivery day while the request behind it is rejected.
 4. Link the manager queue's rows to the match workspace on [[inventory]] rather than to
    `/orders?order=` — the decision the row asks for is made there.
 5. Turn on the reporter for the two `data-ux-key` markers already placed (§5).
+6. **Compare the invoice's OWN allowance and deposit against the agreement's** — the
+   other half of ADR 0119 Q3, opened 2026-09-05. What changed on 2026-09-05: the AGREEMENT
+   now names its money outside the price (`procurement_order_items.allowance`, `.deposit`,
+   `.freight`), and `verifyReceipt` reads it, states it in the verdict's notes, and stops
+   reading a billed deposit the agreement provided for as a price variance. What did NOT
+   change, measured on this tree: `procurement_document_lines.allowance` and `.deposit`
+   (`baseline:4393-4394`) are written by the document parser and read by NOTHING at the
+   door — the only charge figure reaching `computeMatch` is the caller-supplied
+   `allocatedCharges` scalar, which is folded into landed cost and never compared to
+   anything. So the door compares like with like on the UNIT axis and not yet on the
+   CHARGES axis. *Blocker: it needs a decision on where the invoice's line-level charges
+   come from — the desk typing them like every other invoice figure, or the door reading
+   the matched `procurement_document_lines` row — and the second is a new read on a path
+   that currently takes all its invoice numbers from the request body.*
+7. **The agreed price reaching the door is now the LINE's, converted once** (ADR 0119
+   phase 2, 2026-09-05) — recorded here because it changed a verdict this page renders.
+   `verifyReceipt` fed `procurement_orders.final_price`, the unit-less header, into
+   `computeMatch`'s `poUnitPrice`, which `invoice-match.ts` documents as PER BOTTLE, so a
+   case-priced agreement produced `price_variance` — the loudest verdict the module
+   reaches — on an order where nothing was wrong. It now converts from the line's stated
+   `(price_uom, price_pack_size)`, and for an OPAQUE pair (per keg, per litre) it makes
+   NO price comparison at all rather than a wrong one: the check reads as not evaluated,
+   which is true, and the reason is logged and written into the discrepancy notes.
+8. ~~**Two paths book the same delivery under two idempotency keys.**~~ **DONE
+   2026-09-05** — the half that could be closed without a decision. `markDelivered` now
+   refuses an order the door has already received (§9), so the 3 + 12 = 15 case cannot
+   be reached from any caller. **The refusal is a 409 that carries the earlier delivery**
+   (founder, batch 46): *"a second delivery of an already-delivered order answers 409
+   Conflict, not 400 — the request is well-formed, the order's state conflicts with it,
+   and the door and the one-tap rail must be able to tell 'already done' from 'you sent
+   nonsense' and show the earlier delivery instead of an error."* **400 was rejected.**
+   The body carries `earlierDelivery` — when, who took it in (named from `users`, and
+   saying *"could not look up"* rather than *"nobody"* when the register cannot be read),
+   and how much **in the order's own unit** with the bottle count beside it. Measured and
+   worth stating plainly: **this page cannot reach that refusal.** `receiving/next` and
+   `services/api/receiving.ts` post only to `/procurement/receiving/*` and
+   `/procurement/documents`; nothing here calls `/procurement/orders/:id/deliver`, so no
+   render path was added here for a call that does not exist. The surfaces that DO reach
+   it are the one-tap rail, the Action Center, both Orders desks and the mobile outbox. **What is NOT closed and is still P11:** neither
+   `recordDoorReceipt` nor `verifyReceipt` releases shadow stock or `in_transit_quantity`
+   — only `markDelivered` and `releaseOrderShadowStock` do — so the door→verify flow, the
+   flow the two-stage design exists for, still leaks a reservation for every delivery it
+   handles. This pass deliberately did not touch `receiving.service.ts`: the leak is a
+   *missing* write on the door's path, not a *duplicate* one on this path, and it needs
+   its own decision about where the release belongs. *Blocker: founder / owner of
+   `receiving.service.ts`.*
 
 ## 14. Pipeline review — 2026-09-01
 
@@ -414,3 +709,13 @@ approve path).
    and inert until the write side stamps the field.
 3. **`ReceiptsNext.tsx:447` reads only `?tab`**, so the order id this page now
    passes to `/receipts` does not yet select anything there.
+4. **A delivered order can no longer be cancelled away, and the door is where the
+   correction now belongs** (2026-09-05, ADR 0125). Cancelling a DELIVERED or
+   PARTIALLY_RECEIVED order used to be allowed and reversed nothing — the receipt event
+   stood, the stock stayed booked — while taking the order's cost out of every spend and
+   delivery figure. `order-transitions.ts` refuses it, and the refusal a person reads
+   points here: *"Raise a vendor credit against the delivery instead, or correct the count
+   at the receiving door."* That sentence is a promise this page has to keep. The credit
+   half exists (`procurement/documents/credit-ledger.ts`); **the count-correction half is
+   not verified from this page and is not claimed here** — whether a counted receipt can be
+   corrected at the door, and by whom, is the open question the refusal now creates.

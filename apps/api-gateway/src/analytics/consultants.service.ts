@@ -8,6 +8,10 @@ import {
 } from "../common/model-client/model-client.service";
 import { NfVerdictService } from "../common/model-client/nf-verdict.service";
 import {
+  resolveModel,
+  routingContext,
+} from "../common/model-client/model-routing";
+import {
   GROUNDING_BASIS,
   checkGrounding,
   consultantVerdict,
@@ -28,10 +32,14 @@ import { InsightGeneratorService } from "./insights/insight-generator.service";
  * Toggle storage: analytics_insight_prefs row (category = 'consultants').
  * Absent row ⇒ disabled. Enable via PUT /analytics/consultants/:id/toggle.
  *
- * Model: claude-opus-4-8 by default (deep multi-signal reasoning over an
- * evidence pack is intelligence-sensitive); override with the
- * ANALYTICS_CONSULTANT_MODEL env var. Calls follow this codebase's existing
- * raw-fetch Messages API convention (see inbound-responder.service.ts).
+ * Model: the `consult` task class (ADR 0120 Q2, founder 2026-09-05) — default
+ * claude-opus-4-8, unchanged, because deep multi-signal reasoning over an
+ * evidence pack is intelligence-sensitive. Precedence is site env
+ * (`ANALYTICS_CONSULTANT_MODEL`) → class env (`MODEL_FOR_CONSULT`) → the class
+ * default, resolved by `common/model-client/model-routing.ts`, and the NF row
+ * carries `task_class: "consult"` so the ledger separates this call's spend
+ * from `compose`'s. Calls follow this codebase's existing raw-fetch Messages
+ * API convention (see inbound-responder.service.ts).
  */
 @Injectable()
 export class ConsultantsService {
@@ -97,7 +105,16 @@ export class ConsultantsService {
   // Consult — persona reads the evidence pack, returns weighted claims
   // ==========================================================================
 
-  async consult(restaurantId: string, persona: string) {
+  /**
+   * @param askedBy the user id that caused the call, read from the token by
+   *   the controller. `null` — never a placeholder string — when the caller is
+   *   a machine or the token carried no user id.
+   */
+  async consult(
+    restaurantId: string,
+    persona: string,
+    askedBy: string | null = null,
+  ) {
     if (!(await this.isEnabled(restaurantId))) {
       return {
         enabled: false,
@@ -163,9 +180,20 @@ Respond with ONLY valid JSON:
 Return 3–8 claims, sorted by (confidence × decision_importance) descending.
 Each claim ≤ 2 sentences. each why_it_matters ≤ 2 sentences. each suggested_resolution ≤ 1 sentence.`;
 
-    const model =
-      this.configService.get<string>("ANALYTICS_CONSULTANT_MODEL") ||
-      "claude-opus-4-8";
+    // The `consult` class (ADR 0120 Q2, founder 2026-09-05: *"Fourth class:
+    // consult."*). The model is UNCHANGED — `MODEL_FOR_CLASS.consult` carries
+    // the same `claude-opus-4-8` this line used to hard-code, and
+    // `ANALYTICS_CONSULTANT_MODEL` still outranks it as the site variable, so
+    // a gateway that already sets it keeps its instruction. What is new is that
+    // the choice is declared in one registry and the ledger names this call
+    // apart from `compose`.
+    const routing = resolveModel({
+      config: this.configService,
+      taskClass: "consult",
+      siteEnvVar: "ANALYTICS_CONSULTANT_MODEL",
+    });
+    const model = routing.model;
+    const meter = routingContext(routing, askedBy);
 
     // OD-59 / P3.0: this call grades itself on GROUNDING — did the model cite
     // evidence it was actually given — not on whether HTTP returned 200.
@@ -195,7 +223,17 @@ Each claim ≤ 2 sentences. each why_it_matters ≤ 2 sentences. each suggested_
           stimulus: "evidence_pack",
           choice: "weighted_claims",
           restaurantId,
-          context: { persona: personaKey },
+          // Metering keys written literally, so the row's shape is readable
+          // from this source rather than assembled out of a spread (ADR 0120).
+          // `asked_by` is null — never a placeholder — when the caller could
+          // not name who asked: an absent key means the row predates the field,
+          // a null means we recorded that we do not know.
+          context: {
+            persona: personaKey,
+            task_class: meter.task_class,
+            model_routed_by: meter.model_routed_by,
+            asked_by: meter.asked_by,
+          },
           eventRef,
         },
       });

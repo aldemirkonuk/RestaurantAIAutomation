@@ -5,6 +5,15 @@ export class ApiError extends Error {
   constructor(
     public status: number,
     message: string,
+    /**
+     * The parsed error body, when the server sent JSON.
+     *
+     * Added 2026-09-05: a refusal can carry more than a sentence. A second
+     * delivery answers 409 with the EARLIER delivery on it (founder, batch 46)
+     * so a screen can show who booked the wine in and when instead of an error,
+     * and keeping only `message` threw that away at the boundary.
+     */
+    public readonly body?: unknown,
   ) {
     super(message);
   }
@@ -68,6 +77,7 @@ export async function api<T = unknown>(
     throw new ApiError(
       res.status,
       errBody?.message ?? `Request failed (${res.status})`,
+      errBody,
     );
   }
 

@@ -1,4 +1,20 @@
-import { useState } from 'react'
+/**
+ * Create a chain, and optionally sweep standalone locations into it.
+ *
+ * SHAPE: `Sheet`. It is a form that authors ONE OBJECT (the chain) and names
+ * it; the location checklist is a field on that object, not a separate ask.
+ * ADR 0112: right slide-in, 440px, motion `tuck`.
+ *
+ * Not a `Panel`, even though it is the shorter of the two creation forms: the
+ * shape encodes what the overlay is FOR, not how tall it happens to be, and
+ * "in the middle" is reserved for a question the operator answers and leaves.
+ *
+ * The legacy Radix branch is frozen — see EditLocationChainDialog's header.
+ * Nothing here deletes: creating a chain and PATCHing `chainId` onto locations
+ * are both additive, so there is no hold-to-approve seal.
+ */
+
+import { useState, useRef } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import { motion } from 'framer-motion'
 import { Link2, X, Check } from 'lucide-react'
@@ -6,6 +22,9 @@ import { toast } from 'sonner'
 import { Button } from '../ui/button'
 import { cn } from '../../lib/utils'
 import { apiClient, getErrorMessage } from '../../services/api/client'
+import { Sheet } from '../mudavym/Sheet'
+import { useMudavymShell } from '../../lib/mudavym/shellGround'
+import './locations-mudavym.css'
 
 interface StandaloneLocation {
   id: string
@@ -30,6 +49,11 @@ export function CreateChainDialog({
   const [name, setName] = useState('')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [isSubmitting, setIsSubmitting] = useState(false)
+  /* The failure in words, on the surface that caused it — see the note in
+     EditLocationChainDialog. The toast still fires; behaviour is unchanged. */
+  const [failure, setFailure] = useState<string | null>(null)
+  const nameRef = useRef<HTMLInputElement | null>(null)
+  const shell = useMudavymShell()
 
   const toggleLocation = (id: string) => {
     setSelectedIds((prev) => {
@@ -43,12 +67,14 @@ export function CreateChainDialog({
   const handleClose = () => {
     setName('')
     setSelectedIds(new Set())
+    setFailure(null)
     onClose()
   }
 
   const handleSubmit = async () => {
     if (!name.trim()) return
     setIsSubmitting(true)
+    setFailure(null)
     try {
       // Create the chain
       const { data: created } = await apiClient.post<{ id: string; name: string }>(
@@ -74,10 +100,104 @@ export function CreateChainDialog({
       onCreated({ id: created.id, name: created.name })
       handleClose()
     } catch (e) {
+      setFailure(`Could not create chain — ${getErrorMessage(e)}`)
       toast.error(`Could not create chain — ${getErrorMessage(e)}`)
     } finally {
       setIsSubmitting(false)
     }
+  }
+
+  /* ── the house shape ─────────────────────────────────────────────────────
+     Copy is the legacy dialog's, word for word. Only the surface changes. */
+  if (shell.on) {
+    const tally =
+      selectedIds.size > 0
+        ? `${selectedIds.size} location${selectedIds.size !== 1 ? 's' : ''} selected`
+        : standaloneLocations.length > 0
+          ? 'No locations selected'
+          : ''
+
+    return (
+      <Sheet
+        open={open}
+        onClose={handleClose}
+        label="New chain"
+        eyebrow="The locations"
+        title="New chain"
+        initialFocusRef={nameRef}
+        bodyClassName="mdv-ovl__body--flush"
+        footer={<span>Group locations under a shared brand.</span>}
+      >
+        <div className="mdv-form">
+          {failure ? (
+            <div className="mdv-alert" role="alert">
+              <p className="mdv-alert__head">Not created</p>
+              <p>{failure}</p>
+            </div>
+          ) : null}
+
+          <div>
+            <label className="mdv-label" htmlFor="mdv-chain-name">
+              Chain name
+            </label>
+            <input
+              id="mdv-chain-name"
+              ref={nameRef}
+              className="mdv-input"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && !isSubmitting && name.trim() && handleSubmit()}
+              placeholder="e.g. The Grill Co."
+            />
+          </div>
+
+          {standaloneLocations.length > 0 && (
+            <div>
+              <span className="mdv-label">
+                Add locations to this chain <span style={{ textTransform: 'none' }}>(optional)</span>
+              </span>
+              <div className="mdv-picks">
+                {standaloneLocations.map((loc) => {
+                  const selected = selectedIds.has(loc.id)
+                  return (
+                    <button
+                      key={loc.id}
+                      type="button"
+                      aria-pressed={selected}
+                      className="mdv-pick"
+                      onClick={() => toggleLocation(loc.id)}
+                    >
+                      <span>
+                        <span className="mdv-pick__label">{loc.name}</span>
+                        {loc.city && <span className="mdv-pick__sub">{loc.city}</span>}
+                      </span>
+                      {selected ? (
+                        <Check size={14} className="mdv-pick__mark" aria-hidden />
+                      ) : null}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          <div className="mdv-actions">
+            <span className="mdv-tally">{tally}</span>
+            <button type="button" className="mdv-btn" onClick={handleClose} disabled={isSubmitting}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="mdv-btn mdv-btn--seal"
+              onClick={handleSubmit}
+              disabled={isSubmitting || !name.trim()}
+            >
+              {isSubmitting ? 'Creating…' : 'Create chain'}
+            </button>
+          </div>
+        </div>
+      </Sheet>
+    )
   }
 
   return (

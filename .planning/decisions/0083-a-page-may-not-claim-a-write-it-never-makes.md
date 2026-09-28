@@ -1,6 +1,16 @@
 # 0083 — A rebuilt page may not claim a write it never makes, nor call a failure a wait
 
 - **Status:** Locked
+  - **2026-09-04 — extended to a SEND, and pointed the other way.** [[0118-the-house-writes-its-own-mail]]
+    applies this rule to the house email composer: the queue route answers **202
+    and says "queued"**, never "sent", and the ledger chip reads
+    "Queued · not yet sent". The same rule read in reverse is what put the undo
+    window on the server: **a page may not offer to undo something that has
+    already happened**, so a client-side undo (send now, hide it for two minutes)
+    was refused and the window became a row with a `scheduled_send_at`. Also of
+    note here: the two legacy template builders this ADR wired to
+    `POST /restaurants/:rid/templates` are **retired from the rebuilt page** by
+    0118 D7 — they are untouched, and the legacy page still mounts them.
 - **Date:** 2026-09-02
 - **Decider:** Aldemir (founder)
 - **Keywords:** communications, templates, persistence, save, no-op, tenant key, query key, cache, failure, latency, em dash, SMS, honesty, page rebuild

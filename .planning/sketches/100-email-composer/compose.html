@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>100 &middot; Compose</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,400&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/* ── Mudavym tokens (ADR 0042), copied inline from apps/web/src/styles/mudavym.css ── */
+.mudavym{
+  --seal:#1A5E6B; --seal-deep:#14515C; --seal-tint:rgba(26,94,107,.10); --seal-ring:rgba(26,94,107,.32);
+  --paper-0:#FAF7F1; --paper-1:#F3EFE6; --paper-2:#EAE4D8;
+  --ink-1:#211C16; --ink-2:#4F473C; --ink-3:#7C7365; --ink-4:#665D50;
+  --mdv-scrim:rgba(23,19,15,.28);
+  color-scheme:light;
+}
+/* Warm Charcoal — mudavym.css:48-66. A specimen that carries the ground itself
+   stays charcoal on a paper page: that is the whole point of the portal rule. */
+.mudavym[data-ground="charcoal"]{
+  --seal:#5FB0BC; --seal-deep:#7DC3CD; --seal-tint:rgba(95,176,188,.14); --seal-ring:rgba(95,176,188,.38);
+  --paper-0:#15130F; --paper-1:#1D1813; --paper-2:#262019;
+  --ink-1:#EFE7D9; --ink-2:#C0B6A5; --ink-3:#8E8576; --ink-4:#ABA294;
+  --mdv-scrim:rgba(0,0,0,.5);
+  color-scheme:dark;
+}
+@media (prefers-color-scheme: dark){
+  :root:not(.light) .mudavym:not([data-ground="paper"]){
+    --seal:#5FB0BC; --seal-deep:#7DC3CD; --seal-tint:rgba(95,176,188,.14); --seal-ring:rgba(95,176,188,.38);
+    --paper-0:#15130F; --paper-1:#1D1813; --paper-2:#262019;
+    --ink-1:#EFE7D9; --ink-2:#C0B6A5; --ink-3:#8E8576; --ink-4:#ABA294;
+    --mdv-scrim:rgba(0,0,0,.5);
+    color-scheme:dark;
+  }
+}
+:root{--serif:"Fraunces",Georgia,"Times New Roman",serif;--sans:"DM Sans","Plus Jakarta Sans",system-ui,sans-serif;--mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper-0);color:var(--ink-1);font-family:var(--sans);font-size:13px}
+.banner{background:var(--ink-1);color:var(--paper-0);font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;padding:7px 20px}
+.wrap{max-width:1220px;margin:0 auto;padding:22px 20px 78px}
+.wordmark{font-family:var(--serif);font-weight:600;font-size:13px;letter-spacing:.04em}
+h1{font-family:var(--serif);font-size:35px;font-weight:600;letter-spacing:-.018em;line-height:1.07;margin:4px 0 0}
+h1 .dot{color:var(--seal)}
+.lede{font-family:var(--serif);font-style:italic;font-size:15.5px;color:var(--ink-2);margin:7px 0 0;max-width:900px}
+.dbl{border-top:1px solid var(--ink-1);border-bottom:1px solid var(--ink-1);height:3px;opacity:.5;margin:17px 0 0}
+.back{display:inline-block;margin:0 0 10px;font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--seal-deep);text-decoration:none}
+p{font-size:12.5px;line-height:1.64;color:var(--ink-2);margin:7px 0 0;max-width:900px}
+b{color:var(--ink-1);font-weight:600}
+code{font-family:var(--mono);font-size:11px;color:var(--ink-2)}
+
+.sec-h{display:flex;align-items:baseline;gap:12px;margin:34px 0 0}
+.sec-n{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--seal-deep);white-space:nowrap}
+h2{font-family:var(--serif);font-size:24px;font-weight:600;letter-spacing:-.012em;margin:0}
+.sec-k{font-family:var(--mono);font-size:9.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3);margin:6px 0 12px}
+
+/* ── the specimen numbers strip ── */
+.nums{display:flex;flex-wrap:wrap;gap:0;margin:16px 0 0;padding:12px 0 2px;border-top:1px solid var(--paper-2);border-bottom:1px solid var(--paper-2)}
+.nums div{padding:0 16px 10px 0;margin-right:16px;border-right:1px solid var(--paper-2)}
+.nums div:last-child{border-right:0}
+.nums .n{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--ink-1);display:block;font-variant-numeric:tabular-nums}
+.nums .k{font-family:var(--mono);font-size:8.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);display:block;margin-top:3px}
+
+/* ══ THE STAGE — an app viewport, the page beneath, the overlay on top ══ */
+.stage{position:relative;overflow:hidden;border:1px solid var(--paper-2);background:var(--paper-0);margin:14px 0 0}
+.stage.xl{height:730px}
+.stage.tall{height:560px}
+.stage.mid{height:470px}
+.stage.short{height:400px}
+.under{position:absolute;inset:0;padding:16px 20px;overflow:hidden}
+.scrim{position:absolute;inset:0;background:var(--mdv-scrim)}
+
+/* the page beneath — deliberately plain; it exists to prove it stays legible */
+.u-eyebrow{font-family:var(--mono);font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--seal-deep)}
+.u-h{font-family:var(--serif);font-size:21px;font-weight:600;margin:2px 0 10px;color:var(--ink-1)}
+.u-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}
+.u-card{border:1px solid var(--paper-2);background:var(--paper-1);padding:10px 12px}
+.u-card .t{font-weight:600;font-size:12.5px;color:var(--ink-1)}
+.u-card .s{font-family:var(--mono);font-size:10px;color:var(--ink-3);margin-top:3px}
+.u-row{display:grid;grid-template-columns:1.6fr 1fr 1fr .8fr;gap:10px;padding:7px 0;border-top:1px solid var(--paper-2);font-size:12px;color:var(--ink-2)}
+.u-row .t{color:var(--ink-1);font-weight:500}
+.u-cal{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:var(--paper-2);border:1px solid var(--paper-2)}
+.u-cal div{background:var(--paper-0);min-height:52px;padding:4px 5px;font-family:var(--mono);font-size:9.5px;color:var(--ink-3)}
+.u-cal div .e{display:block;font-family:var(--sans);font-size:9.5px;color:var(--ink-2);margin-top:3px;border-left:2px solid var(--seal);padding-left:4px;line-height:1.25}
+
+/* the app header bar — popovers hang off it */
+.bar{position:absolute;top:0;left:0;right:0;height:52px;background:var(--paper-0);border-bottom:1px solid var(--paper-2);display:flex;align-items:center;gap:10px;padding:0 16px}
+.bar .sp{flex:1}
+.ctl{display:flex;align-items:center;gap:7px;padding:5px 9px;border-radius:9px;color:var(--ink-2);font-size:12px}
+.ctl.hot{background:var(--paper-1);box-shadow:inset 0 0 0 1px var(--paper-2)}
+.ctl .nm{font-weight:600;color:var(--ink-1);font-size:12.5px}
+.ctl .sub{font-family:var(--mono);font-size:9px;color:var(--ink-3);display:block}
+.av{width:26px;height:26px;border-radius:999px;background:var(--seal-tint);box-shadow:inset 0 0 0 1px var(--seal-ring);color:var(--seal-deep);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:11px}
+.dotmark{position:absolute;top:7px;right:7px;width:6px;height:6px;border-radius:999px;background:var(--seal)}
+
+/* ══ THE OVERLAY SURFACES — numbers from sheet.css ══ */
+.ovl{background:var(--paper-0);color:var(--ink-1);display:flex;flex-direction:column;font-family:var(--sans)}
+/* sheet.css:72-82 */
+.sheet{position:absolute;top:0;right:0;bottom:0;width:100%;max-width:440px;border-left:1px solid var(--paper-2);box-shadow:-18px 0 48px rgba(23,19,15,.14);overflow:hidden}
+.sheet.wide{max-width:640px}
+/* sheet.css:88-97 */
+.panel{position:absolute;left:50%;transform:translateX(-50%);top:10%;width:min(620px,100% - 32px);max-height:76%;border:1px solid var(--paper-2);border-radius:14px;box-shadow:0 24px 60px -30px rgba(0,0,0,.5);overflow:hidden}
+/* sheet.css:99-106 */
+.pop{position:absolute;border:1px solid var(--paper-2);border-radius:14px;box-shadow:0 18px 44px -22px rgba(0,0,0,.42);overflow:hidden}
+/* sheet.css:109-141 */
+.oh{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:14px 16px 11px;border-bottom:1px solid var(--paper-2);flex:none}
+.oh-eyebrow{display:block;font-family:var(--mono);font-size:9.5px;font-weight:600;letter-spacing:.13em;text-transform:uppercase;color:var(--seal-deep)}
+.oh-title{margin:2px 0 0;font-family:var(--serif);font-size:19px;font-weight:600;line-height:1.16;letter-spacing:-.01em;color:var(--ink-1)}
+.oh-side{display:flex;align-items:center;gap:8px;flex:none}
+/* sheet.css:146-162 — the close control is WORDS */
+.oclose{font-family:var(--sans);font-size:12px;line-height:1.2;padding:5px 10px;border-radius:8px;border:1px solid var(--paper-2);background:transparent;color:var(--ink-2);cursor:pointer}
+.obody{flex:1 1 auto;min-height:0;overflow:hidden}
+.ofoot{flex:none;padding:9px 16px 12px;border-top:1px solid var(--paper-2);font-size:11px;line-height:1.5;color:var(--ink-3);display:flex;justify-content:space-between;gap:12px}
+
+/* content vocabulary — sheet.css:198-351 */
+.sect{display:block;font-family:var(--mono);font-size:9px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);padding:10px 16px 4px}
+.item{display:flex;align-items:center;gap:10px;width:100%;padding:7px 16px;border-left:2px solid transparent;font-size:13px;color:var(--ink-1)}
+.item.on{background:var(--seal-tint);border-left-color:var(--seal)}
+.item .txt{flex:1 1 auto;min-width:0}
+.item .lab{display:block;font-weight:500;color:var(--ink-1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item .sub{display:block;font-size:11px;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item .ico{flex:none;color:var(--ink-3)}
+.item.on .ico{color:var(--seal)}
+.kbd{flex:none;font-family:var(--mono);font-size:10px;font-weight:500;color:var(--ink-3);background:var(--paper-1);border:1px solid var(--paper-2);border-radius:5px;padding:1px 5px;white-space:nowrap}
+.quiet{margin:0;padding:8px 16px 10px;font-size:11.5px;line-height:1.5;color:var(--ink-2)}
+.field{display:flex;align-items:center;gap:10px;padding:0 16px;border-bottom:1px solid var(--paper-2)}
+.field .fin{flex:1 1 auto;padding:13px 0;font-family:var(--serif);font-size:17px;color:var(--ink-1)}
+.field .fph{color:var(--ink-3);font-family:var(--sans);font-size:14px}
+.lnk{font-family:var(--sans);font-size:12px;font-weight:500;color:var(--seal-deep)}
+
+/* sheet body furniture */
+.fact{display:grid;grid-template-columns:118px 1fr;gap:10px;padding:6px 16px;font-size:12.5px}
+.fact .k{font-family:var(--mono);font-size:9.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3);padding-top:3px}
+.fact .v{color:var(--ink-1)}
+.fact .v.em{color:var(--ink-3)}
+.frow{padding:8px 16px 0}
+.flab{display:block;font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);margin-bottom:4px}
+.fin2{border:1px solid var(--paper-2);background:var(--paper-1);border-radius:7px;padding:7px 9px;font-size:12.5px;color:var(--ink-1);min-height:31px}
+.fin2.ph{color:var(--ink-3)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:8px 16px 0}
+.two .frow{padding:0}
+.chiprow{display:flex;flex-wrap:wrap;gap:5px;margin-top:2px}
+.chip{font-family:var(--sans);font-size:11px;padding:3px 8px;border-radius:999px;border:1px solid var(--paper-2);color:var(--ink-2);display:inline-flex;align-items:center;gap:5px}
+.chip.on{color:var(--ink-1);background:var(--seal-tint);border-color:var(--seal-ring)}
+.sw{width:8px;height:8px;border-radius:2px;display:inline-block}
+.notice{margin:10px 16px 0;padding:9px 11px;background:var(--paper-1);border-left:2px solid var(--ink-4);font-size:11.5px;line-height:1.55;color:var(--ink-2)}
+.notice b{color:var(--ink-1)}
+.hta{margin:12px 16px 0;position:relative;border:1px solid var(--seal);border-radius:9px;padding:9px 12px;font-size:12.5px;color:var(--seal-deep);font-weight:500;display:flex;align-items:center;gap:9px;overflow:hidden;background:linear-gradient(90deg,var(--seal-tint) 38%,transparent 38%)}
+.hta .sealdot{width:18px;height:18px;border-radius:999px;background:var(--seal);color:var(--paper-0);display:flex;align-items:center;justify-content:center;flex:none}
+.btnrow{display:flex;gap:8px;padding:12px 16px 0}
+.btn{font-size:12px;padding:6px 12px;border-radius:8px;border:1px solid var(--paper-2);color:var(--ink-1);background:transparent}
+.btn.pri{border-color:var(--ink-4)}
+.btn[data-disabled]{color:var(--ink-3);border-color:var(--paper-2)}
+
+/* callouts and lists on the page itself */
+.callout{border-left:2px solid var(--seal);padding:11px 0 11px 15px;margin:16px 0 0;font-size:12.5px;line-height:1.66;color:var(--ink-2);background:linear-gradient(90deg,var(--seal-tint),transparent 62%);max-width:960px}
+.never{margin:16px 0 0;padding:0;list-style:none;max-width:960px}
+.never li{padding:8px 0;border-top:1px solid var(--paper-2);font-size:12.5px;line-height:1.6;color:var(--ink-2);display:grid;grid-template-columns:150px 1fr;gap:14px}
+.never li .h{font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);padding-top:2px}
+.never li b{color:var(--ink-1)}
+.cap{font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin:7px 0 0}
+.foot{margin:42px 0 0;padding-top:14px;border-top:1px solid var(--ink-1);font-size:11.5px;line-height:1.72;color:var(--ink-3);max-width:980px}
+.foot b{color:var(--ink-2)}
+.foot a{color:var(--seal-deep)}
+</style>
+
+<style>
+/* ── sketch 100 additions ── */
+.sheet.wide{max-width:640px}
+.prov{display:inline-flex;align-items:center;gap:6px;vertical-align:baseline;
+  background:var(--seal-tint);box-shadow:inset 0 0 0 1px var(--seal-ring);border-radius:4px;
+  padding:1px 6px 2px;margin:0 1px;font-family:var(--mono);font-size:9.5px;letter-spacing:.05em;
+  color:var(--seal-deep);white-space:nowrap;text-transform:uppercase;font-weight:600}
+.ins{background:var(--seal-tint);box-shadow:inset 0 0 0 1px var(--seal-ring);border-radius:4px;
+  padding:1px 4px;color:var(--ink-1)}
+.held{background:var(--paper-2);box-shadow:inset 0 0 0 1px var(--ink-4);border-radius:4px;
+  padding:1px 4px;color:var(--ink-1);font-style:italic}
+.body-txt{font-size:13px;line-height:1.78;color:var(--ink-1);padding:10px 16px 0}
+.body-txt p{font-size:13px;line-height:1.78;color:var(--ink-1);margin:0 0 11px;max-width:none}
+.srow{display:grid;grid-template-columns:96px 1fr;gap:10px;padding:8px 16px;border-bottom:1px solid var(--paper-2);align-items:start}
+.srow .k{font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);padding-top:4px}
+.srow .v{font-size:12.5px;color:var(--ink-1);line-height:1.5}
+.srow .v .note{display:block;font-size:11px;color:var(--ink-3);margin-top:3px;line-height:1.5}
+.srow .v .em{color:var(--ink-3)}
+.pill{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-size:8.5px;font-weight:600;
+  letter-spacing:.11em;text-transform:uppercase;padding:2px 6px;border-radius:3px;color:var(--ink-2);background:var(--paper-2)}
+.pill.on{color:var(--seal-deep);background:var(--seal-tint);box-shadow:inset 0 0 0 1px var(--seal-ring)}
+.pill.off{color:var(--ink-3);background:transparent;box-shadow:inset 0 0 0 1px var(--paper-2)}
+.pill.warn{color:var(--ink-1);background:var(--paper-2);box-shadow:inset 0 0 0 1px var(--ink-4)}
+.guard{margin:12px 16px 0;padding:10px 12px;border-left:2px solid var(--ink-4);background:var(--paper-1);
+  font-size:11.5px;line-height:1.6;color:var(--ink-2)}
+.guard b{color:var(--ink-1)}
+.guard .hd{display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:9px;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--ink-1);margin-bottom:5px}
+.tbl{width:100%;border-collapse:collapse;margin-top:12px;font-size:12px}
+.tbl th{text-align:left;font-family:var(--mono);font-size:8.5px;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--ink-3);font-weight:600;padding:0 12px 7px 0;border-bottom:1px solid var(--ink-4);vertical-align:bottom}
+.tbl td{padding:10px 12px 10px 0;border-bottom:1px solid var(--paper-2);vertical-align:top;color:var(--ink-2);line-height:1.55}
+.tbl td.n{color:var(--ink-1);font-weight:600}
+.tbl td .sub{display:block;font-family:var(--mono);font-size:10px;color:var(--ink-3);margin-top:3px}
+.tbl code{font-size:10.5px}
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:14px}
+.step{border-top:2px solid var(--seal);padding-top:10px}
+.step .n{font-family:var(--mono);font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--seal-deep)}
+.step h4{font-family:var(--serif);font-size:17px;font-weight:600;margin:3px 0 0;color:var(--ink-1)}
+.step p{font-size:12px;line-height:1.6;margin-top:6px}
+.step .quote{font-family:var(--serif);font-style:italic;font-size:13px;color:var(--ink-1);
+  border-left:2px solid var(--paper-2);padding-left:10px;margin-top:8px;line-height:1.5}
+.opt{border:1px solid var(--paper-2);padding:16px 18px 18px;background:var(--paper-1)}
+.opt h3{font-family:var(--serif);font-size:20px;font-weight:600;margin:3px 0 0;color:var(--ink-1)}
+.opt .n{font-family:var(--mono);font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--seal-deep)}
+.opt p{font-size:12px;line-height:1.62}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:14px;align-items:start}
+</style>
+</head>
+<body class="mudavym">
+<div class="banner">Sketch 100 &middot; compose &mdash; example data, not a tenant</div>
+<div class="wrap">
+
+<a class="back" href="index.html">&larr; 100 index</a>
+<div class="wordmark">Mudavym</div>
+<h1>Compose &mdash; the house writes, with its workings shown<span class="dot">.</span></h1>
+<p class="lede">Every figure in this letter came out of a register, and every one of them says which register, over what window, and when it was last computed. A figure that could not be measured goes in as words, never as a number.</p>
+<div class="dbl"></div>
+
+<div class="callout">
+  <p style="font-family:var(--serif);font-size:18px;line-height:1.45;color:var(--ink-1);margin:0">
+    The unit of insertion is <b>a sentence the engine already computed</b> &mdash; not a figure this page scrapes back out of one.
+  </p>
+  <p style="margin-top:8px">That is not a preference. <code>rec-forward.ts:16-21</code> already states the rule for the sibling page: an insight sentence carries &ldquo;numbers <em>formatted for reading, not for arithmetic</em>&rdquo;, so a target scraped back out of the sentence is a figure the page invented. The same trap applies to a letter, and it is worse there, because the vendor keeps the letter. So a merge field inserts the engine's own sentence with its provenance attached; a <em>bare</em> figure field exists only for things that are literally a stored column &mdash; an order total, a PO number, a delivery date.</p>
+</div>
+
+<div class="sec-h"><span class="sec-n">The composer</span><h2>A letter to a vendor, opened from the conversation book</h2></div>
+<p class="sec-k">a <b>wide</b> sheet &mdash; 640px, the one change this sketch asks of the 099 primitive &middot; motion <code>tuck</code> 300ms</p>
+<p>640 instead of 440 because a body with inserted sentences needs the line length; the shape is unchanged, and the conversation book stays legible on the left because the letter is a reply to what is in it. Making this a centred panel would cover the very thread it answers.</p>
+
+<div class="stage" style="height:1215px">
+  
+<div class="under">
+  <div class="u-eyebrow">Letters &middot; 28 days</div>
+  <div class="u-h">Forty-one letters, nine still waiting on the other side.</div>
+  <div class="u-grid">
+    <div class="u-card"><div class="t">41</div><div class="s">sent</div></div>
+    <div class="u-card"><div class="t">9</div><div class="s">awaiting reply</div></div>
+    <div class="u-card"><div class="t">3</div><div class="s">AI draft &middot; not sent</div></div>
+  </div>
+  <div style="margin-top:12px">
+    <div class="u-row"><span class="t">Kavakl&#305;dere Ticaret</span><span>Price inquiry</span><span>replied</span><span>2d</span></div>
+    <div class="u-row"><span class="t">Fikri Tar&#305;m G&#305;da</span><span>Order confirmation</span><span>sent</span><span>3d</span></div>
+    <div class="u-row"><span class="t">Deniz Bal&#305;k&ccedil;&#305;l&#305;k</span><span>Invoice mismatch</span><span>AI draft &middot; not sent</span><span>3d</span></div>
+    <div class="u-row"><span class="t">Marmara &#304;&ccedil;ecek</span><span>Promo inquiry</span><span>awaiting</span><span>5d</span></div>
+    <div class="u-row"><span class="t">Trakya Un</span><span>Counter offer</span><span>replied</span><span>6d</span></div>
+    <div class="u-row"><span class="t">Anadolu Et</span><span>Clarification</span><span>sent</span><span>8d</span></div>
+  </div>
+</div>
+
+  <div class="scrim"></div>
+  <div class="ovl sheet wide">
+    <div class="oh"><div><span class="oh-eyebrow">A letter from the house</span><h3 class="oh-title">To Fikri Tar&#305;m G&#305;da</h3></div><div class="oh-side"><span class="btn">Save as template</span><span class="oclose">Close</span></div></div>
+    <div class="obody">
+
+      <div class="srow"><span class="k">Sends as</span><span class="v">
+        <b>siparis@mail.mudavym.com</b> &nbsp;<span class="pill on">Provisioned</span>
+        <span class="note">The house's own address on Mudavym's sending domain &mdash; SPF and DKIM pass on <code>mail.mudavym.com</code>, and replies come back into this book. Provisioned 12 February 2026. Last sent 2 hours ago.</span>
+      </span></div>
+
+      <div class="srow"><span class="k">To</span><span class="v">
+        Fikri Tar&#305;m G&#305;da &middot; <span style="font-family:var(--mono);font-size:11px;color:var(--ink-3)">siparis@fikritarim.com.tr</span>
+        <span class="note">From the vendor book. This is the only address the house holds for them; a second contact has no email and cannot be written to.</span>
+      </span></div>
+
+      <div class="srow"><span class="k">About</span><span class="v">
+        Order #4128 &middot; produce, 16 March
+        <span class="note">Threaded onto their last message so the reply lands in the same conversation. Choosing &ldquo;no order&rdquo; starts a new thread &mdash; see the index for why that route does not exist yet.</span>
+      </span></div>
+
+      <div class="srow"><span class="k">Template</span><span class="v">
+        <span class="pill">Standing order review</span> <span class="pill off">house template &middot; last used 9 days ago</span>
+        <span class="note">Six house templates. This one was opened from the recommendation, not from a blank page.</span>
+      </span></div>
+
+      <div class="srow"><span class="k">Subject</span><span class="v">Re: Wednesday standing order &mdash; can we look at the size?</span></div>
+
+      <div class="body-txt">
+        <p>Merhaba Fikri Bey,</p>
+
+        <p>Wednesday has been coming in light for us for some weeks now, and I want to look at the standing order with you rather than just cutting it.</p>
+
+        <p><span class="ins">Wednesday sales came in 38% lower than your average Wednesday (&#8378;2.6k vs &#8378;4.2k).</span><span class="prov"><svg class="" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/></svg> sales_below_weekday_baseline &middot; 12 Wednesdays &middot; computed 06:14 today</span></p>
+
+        <p><span class="ins">The Wednesday standing order has not changed size in eleven weeks.</span><span class="prov"><svg class="" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/></svg> standing_order_unchanged &middot; 11 weeks &middot; 11 deliveries read</span> Over that period we have thrown away more of the greens than I would like.</p>
+
+        <p>What I have not got a number for is the waste itself: <span class="held">we have not been weighing the Wednesday bin long enough for me to quote you a figure</span>. I would rather say that than give you one I cannot stand behind.</p>
+
+        <p>Could we take the Wednesday delivery down to two crates of the greens and keep everything else as it is, from next week? If that puts us under a minimum, tell me and we will find another way round it.</p>
+
+        <p>Te&#351;ekk&uuml;rler,<br>Hasan Demir &middot; Lokanta M&uuml;davim</p>
+      </div>
+
+      <div class="guard">
+        <div class="hd"><svg class="" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ><path d="M12 3v18"/><path d="m19 8 3 8a5 5 0 0 1-6 0zV7"/><path d="M3 7h1a17 17 0 0 0 8-2 17 17 0 0 0 8 2h1"/><path d="m5 8 3 8a5 5 0 0 1-6 0zV7"/><path d="M7 21h10"/></svg> Before this leaves &mdash; one line reads as a commitment</div>
+        &ldquo;<b>we will find another way round it</b>&rdquo; matches the contract-formation pattern list the vendor-reply AI is held to. It is checked here for the same reason it is checked there: the guardrails were written about <em>the words</em>, not about who typed them. <b>Nothing is blocked</b> &mdash; you may send it as it stands. It is said now rather than after the vendor holds you to it.
+      </div>
+
+      <div class="guard">
+        <div class="hd"><svg class="" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ><path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49"/><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242"/><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143"/><path d="m2 2 20 20"/></svg> What is not in this letter</div>
+        One figure was <b>withheld</b> and reads as words above. Three more the engine could have offered were not inserted: two are about another vendor, and one is under its sample floor &mdash; a weekday baseline built on fewer than three past days is refused rather than estimated.
+      </div>
+
+      <div class="hta"><span class="sealdot"><svg class="" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ><path d="M14 13V8.5C14 7 15 7 15 5a3 3 0 0 0-6 0c0 2 1 2 1 3.5V13"/><path d="M20 15.5a2.5 2.5 0 0 0-2.5-2.5h-11A2.5 2.5 0 0 0 4 15.5V17a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1z"/><path d="M5 22h14"/></svg></span>Hold to send this letter</div>
+      <p class="quiet" style="padding-bottom:6px">It leaves as <b>siparis@mail.mudavym.com</b>, is written into the conversation book as yours &mdash; not the AI's &mdash; and the vendor's reply comes back to this thread. Release early and nothing is sent.</p>
+    </div>
+    <div class="ofoot"><span>Esc closes. The draft is kept.</span><span>2 sentences inserted &middot; 1 withheld</span></div>
+  </div>
+</div>
+
+<div class="sec-h"><span class="sec-n">The sender, in its other two states</span><h2>Whichever identity the house has set &mdash; and the honest state when it has none</h2></div>
+<p class="sec-k">the founder's decision, 2026-09-03: a house sends from <b>its own connected mailbox</b> or from <b>a Mudavym subdomain address we provision</b> &mdash; never the shared deployment mailbox</p>
+
+<div class="two-col">
+  <div>
+    <div class="ovl" style="border:1px solid var(--paper-2);border-radius:14px;overflow:hidden">
+      <div class="oh"><div><span class="oh-eyebrow">Sender &middot; state two</span><h3 class="oh-title" style="font-size:17px">The house's own mailbox</h3></div></div>
+      <div class="srow"><span class="k">Sends as</span><span class="v"><b>siparis@lokantamudavim.com</b> <span class="pill on">Connected</span>
+        <span class="note">Google Workspace. Declared by the house, consented by <b>Hasan Demir</b> on 14 February 2026. Scope: send only &mdash; the grant cannot read or delete a message. Last sent 40 minutes ago.</span></span></div>
+      <div class="srow"><span class="k">If Hasan leaves</span><span class="v em">The grant goes with him and the house stops being able to send.
+        <span class="note">Which is why the row lives on Connections, not on his profile, and why the house is told before it happens rather than after.</span></span></div>
+      <div class="hta" style="margin:12px 16px 14px"><span class="sealdot"><svg class="" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ><path d="M14 13V8.5C14 7 15 7 15 5a3 3 0 0 0-6 0c0 2 1 2 1 3.5V13"/><path d="M20 15.5a2.5 2.5 0 0 0-2.5-2.5h-11A2.5 2.5 0 0 0 4 15.5V17a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1z"/><path d="M5 22h14"/></svg></span>Hold to send this letter</div>
+    </div>
+  </div>
+  <div>
+    <div class="ovl" style="border:1px solid var(--paper-2);border-radius:14px;overflow:hidden">
+      <div class="oh"><div><span class="oh-eyebrow">Sender &middot; the honest state</span><h3 class="oh-title" style="font-size:17px">Neither is set</h3></div></div>
+      <div class="srow"><span class="k">Sends as</span><span class="v em"><b>&mdash;</b> <span class="pill warn">No identity</span>
+        <span class="note">This house has neither connected a mailbox nor taken a Mudavym address. There is nothing to send from, so there is nothing to send with.</span></span></div>
+      <div class="srow"><span class="k">What you can still do</span><span class="v">Write it, save it, keep it as a template.
+        <span class="note">The draft is kept against the order and will send the moment an identity exists. Nothing is lost by writing now.</span></span></div>
+      <div style="margin:12px 16px 0"><span class="btn" data-disabled>Send &mdash; unavailable</span></div>
+      <p class="quiet" style="padding-bottom:14px">This house has no sending identity. <span class="lnk">Set one on Connections</span> &mdash; a manager or owner can do it in one step.</p>
+    </div>
+  </div>
+</div>
+
+<div class="callout" style="margin-top:22px">
+  <b>Why the disabled control says a sentence and not nothing.</b> A composer whose Send button silently does nothing, or which sends from an address the vendor does not recognise, is the same fault told two ways: absence reported as health. The one thing this page will not do is let a letter leave looking as though it came from the house when it did not.
+</div>
+
+<div class="sec-h"><span class="sec-n">The other door</span><h2>Opened from a recommendation, already filled in</h2></div>
+<p class="sec-k">the founder's words: &ldquo;creating data from our insights&rdquo; &middot; the same sheet, reached from <code>/recommendations</code></p>
+<p>The composer is never a blank page reached from a menu. It is reached from something the house already noticed &mdash; and the sentence that made it worth writing is the first thing in the body, with its provenance already attached.</p>
+<div class="stage" style="height:430px">
+  
+<div class="under">
+  <div class="u-eyebrow">What the house should do</div>
+  <div class="u-h">Eleven recommendations, three of them about one vendor.</div>
+  <div class="u-row"><span class="t">The Wednesday standing order is too big</span><span>purchasing</span><span>&#8378;1,600/wk</span><span>act</span></div>
+  <div class="u-row"><span class="t">&Ouml;k&uuml;zg&ouml;z&uuml; 2021 is below par</span><span>cellar</span><span>34 bottles</span><span>act</span></div>
+  <div class="u-row"><span class="t">Deniz invoice is &#8378;340 over quote</span><span>procurement</span><span>&#8378;340</span><span>act</span></div>
+  <div class="u-row"><span class="t">Wine attach fell on Thursdays</span><span>sales</span><span>&minus;4.1pp</span><span>watch</span></div>
+</div>
+
+  <div class="scrim"></div>
+  <div class="ovl sheet wide">
+    <div class="oh"><div><span class="oh-eyebrow">From a recommendation</span><h3 class="oh-title">Write to Fikri Tar&#305;m G&#305;da</h3></div><div class="oh-side"><span class="oclose">Close</span></div></div>
+    <div class="obody">
+      <div class="srow"><span class="k">Because</span><span class="v">
+        <span class="ins">Wednesday came in 38% under its average Wednesday, and the standing order has not changed size in eleven weeks.</span>
+        <span class="note">Two sentences, one vendor, one action. The recommendation named the vendor; the composer did not guess it.</span></span></div>
+      <div class="srow"><span class="k">Starts from</span><span class="v">The <b>Standing order review</b> house template, with both sentences already placed and their chips attached.
+        <span class="note">You can delete either. Deleting a sentence deletes its chip &mdash; a figure never survives its provenance.</span></span></div>
+      <div class="srow"><span class="k">Also</span><span class="v">
+        <span class="pill">Set this as a goal</span> <span class="pill">See it in the sheet</span>
+        <span class="note">The two forward doors this rule already maps to, unchanged &mdash; writing to the vendor is a third, not a replacement.</span></span></div>
+      <div class="btnrow" style="padding-bottom:14px"><span class="btn pri">Open the letter</span><span class="btn">Not now</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="foot">
+  <b>Verified against:</b>
+  <code>pages/recommendations/next/rec-forward.ts:16-21</code> (a number in a sentence &ldquo;was formatted for reading, not for arithmetic&rdquo;) &middot;
+  <code>analytics/insights/insight-verbalizer.ts:1-45</code> (the sentence is 100% template-based; every number comes straight from the math) &middot;
+  <code>analytics/insights/baseline-honesty.spec.ts:180,224,236,257</code> (the four withholding rules &mdash; no records, non-comparable windows, <b>fewer than three past days</b>, never divide by a zero baseline) &middot;
+  <code>supabase/migrations/20260805000000_baseline_from_production.sql:2194-2208</code> (<code>analytics_insights</code> stores <code>candidate_key</code>, <code>evidence</code> jsonb, <code>period_start/end</code>, <code>computed_at</code> &mdash; the chip needs nothing new computed) &middot;
+  <code>common/orchestrator/commitment-patterns.ts</code> and <code>inbound-responder.service.ts:25,905-947</code> (the UCC contract-formation guardrail, reused here over a human draft) &middot;
+  <code>procurement/procurement.service.ts:3395-3470</code> (a manager-written reply is threaded and recorded with <code>ai_generated:false</code>) &middot;
+  <code>pages/communications/next/CommunicationsNext.tsx:1-20</code> (&ldquo;an AI draft can never look sent&rdquo;) &middot;
+  <code>components/mudavym/sheet.css:72-82</code> (the sheet's numbers; only <code>max-width</code> changes).
+  <br><b>Example data, not a tenant.</b> The vendor, the figures, the addresses and the dates are invented for the drawing.
+</div>
+</div>
+</body>
+</html>

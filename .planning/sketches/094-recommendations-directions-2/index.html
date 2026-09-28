@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>094 — /recommendations directions, pass two</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..680;1,9..144,300..680&family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{ color-scheme: light }
+.mudavym{
+  --seal:#1A5E6B; --seal-deep:#14515C; --seal-tint:rgba(26,94,107,0.10); --seal-ring:rgba(26,94,107,0.32);
+  --paper-0:#FAF7F1; --paper-1:#F3EFE6; --paper-2:#EAE4D8;
+  --ink-1:#211C16; --ink-2:#4F473C; --ink-3:#7C7365; --ink-4:#665D50;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:#E7E2D8}
+.mudavym{background:var(--paper-0);color:var(--ink-1);min-height:100vh;
+  font-family:"DM Sans","Plus Jakarta Sans",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+.serif{font-family:"Fraunces",Georgia,serif;font-weight:420;letter-spacing:-0.015em}
+.mono{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}
+.ico{display:inline-block;vertical-align:-0.14em;flex:0 0 auto}
+.banner{background:var(--seal);color:#FAF7F1;font-size:11px;letter-spacing:.16em;
+  text-transform:uppercase;padding:7px 18px;font-family:"JetBrains Mono",ui-monospace,monospace;
+  display:flex;gap:14px;align-items:center;justify-content:space-between}
+.banner b{font-weight:600}
+.wrap{max-width:1400px;margin:0 auto;padding:20px 22px 48px}
+.kicker{font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-4);
+  font-family:"JetBrains Mono",ui-monospace,monospace}
+h1.page{font-size:33px;line-height:1.07;margin:6px 0 3px}
+.voice{font-family:"Fraunces",Georgia,serif;font-size:16px;color:var(--ink-2);line-height:1.5;margin:0;max-width:760px}
+.readat{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:10px;color:var(--ink-4);
+  letter-spacing:.06em;margin:7px 0 0}
+.rule2{border-top:1px solid var(--ink-4);box-shadow:0 3px 0 -2px var(--ink-4);margin:14px 0}
+.micro{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:9px;font-weight:600;
+  letter-spacing:.15em;text-transform:uppercase;color:var(--ink-4)}
+.micro.seal{color:var(--seal-deep)}
+.card{border:1px solid var(--paper-2);background:var(--paper-1);border-radius:12px;padding:13px 15px}
+.note{font-size:11.5px;color:var(--ink-4);line-height:1.55}
+.said{font-size:11px;color:var(--ink-3);line-height:1.5;margin:4px 0 0}
+.num{font-family:"JetBrains Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums;color:var(--ink-1)}
+.btn{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--paper-2);border-radius:7px;
+  background:transparent;color:var(--ink-2);font-size:11.5px;padding:4px 9px;font-family:inherit}
+.btn.seal{border-color:var(--seal);background:var(--seal-tint);color:var(--seal-deep);font-weight:600}
+.btn.on{border-color:var(--seal-ring);background:var(--seal-tint);color:var(--seal-deep)}
+.btn.dark{border-style:dashed;color:var(--ink-4);opacity:.72}
+.ctlrow{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:9px}
+.ctllab{flex:0 0 74px}
+.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:10.5px;color:var(--ink-4);margin-top:8px;align-items:center}
+.legend i{font-style:normal;display:inline-flex;align-items:center;gap:5px}
+.swatch{width:10px;height:10px;border-radius:2px;display:inline-block}
+.prop{border:1.5px dashed var(--seal-ring);border-radius:3px;padding:1px 5px;
+  font-family:"JetBrains Mono",ui-monospace,monospace;font-size:8.5px;letter-spacing:.13em;
+  text-transform:uppercase;color:var(--seal-deep)}
+footer.sig{display:flex;justify-content:space-between;align-items:baseline;gap:12px;
+  border-top:1px solid var(--paper-2);margin-top:28px;padding-top:12px}
+.wordmark{font-family:"Fraunces",Georgia,serif;font-size:15px;letter-spacing:.02em}
+.wordmark span{color:var(--seal)}
+/* an entry, shared by all three directions */
+.entry{display:grid;grid-template-columns:34px minmax(0,1fr);gap:10px;padding:12px 0;
+  border-bottom:1px solid var(--paper-2)}
+.entry:last-child{border-bottom:0}
+.gut{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:10.5px;color:var(--ink-4);padding-top:2px}
+.stamps{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:4px}
+.obs{font-family:"Fraunces",Georgia,serif;font-size:15.5px;line-height:1.35;margin:0;color:var(--ink-1)}
+.do{font-size:12.5px;color:var(--ink-2);line-height:1.5;margin:5px 0 0}
+.facts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px 18px;margin-top:9px;
+  border-top:1px dotted var(--paper-2);padding-top:7px}
+.facts>div>div:last-child{font-size:12px;color:var(--ink-2);margin-top:2px}
+.sheet{margin-top:9px;padding:12px 14px;border-radius:10px;border:1px solid var(--seal-ring);
+  background:var(--paper-0)}
+.sheet h3{font-family:"Fraunces",Georgia,serif;font-size:14.5px;font-weight:500;margin:0 0 2px}
+.sheet .blk{margin-top:9px}
+.scope{display:flex;align-items:flex-start;gap:7px;font-size:12px;color:var(--ink-2);line-height:1.4;margin-top:4px}
+.scope input{margin-top:2px;accent-color:var(--seal)}
+.field input{display:block;width:100%;max-width:300px;margin-top:4px;font:inherit;font-size:12.5px;
+  padding:5px 8px;border-radius:7px;border:1px solid var(--paper-2);background:var(--paper-1);color:var(--ink-1)}
+.promise{margin-top:10px;padding-top:8px;border-top:1px solid var(--paper-2);font-size:11.5px;
+  color:var(--ink-2);line-height:1.5}
+</style></head>
+<body><div class="mudavym">
+<div class="banner"><span><b>SKETCH</b> &nbsp;example data, not a tenant</span>
+<span>094 &middot; /recommendations &middot; index</span>
+<span>every figure below is invented to show the full view</span></div>
+<div class="wrap">
+
+  <style>
+.dirs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-top:18px}
+a.dir{display:block;text-decoration:none;color:inherit;border:1px solid var(--paper-2);
+  background:var(--paper-1);border-radius:12px;padding:15px 17px}
+a.dir:hover{border-color:var(--seal-ring)}
+a.dir h2{font-family:"Fraunces",Georgia,serif;font-size:20px;margin:7px 0 4px;font-weight:500}
+a.dir p{font-size:12.5px;line-height:1.55;color:var(--ink-2);margin:6px 0 0}
+a.dir .cost{font-size:11.5px;line-height:1.5;color:var(--ink-4);margin-top:9px;
+  border-top:1px dotted var(--paper-2);padding-top:8px}
+.verdict{border:1px solid var(--seal);border-radius:12px;background:var(--seal-tint);padding:16px 18px;
+  margin-top:22px}
+.verdict h2{font-family:"Fraunces",Georgia,serif;font-size:22px;margin:0 0 6px;font-weight:500}
+.verdict p{font-size:13px;line-height:1.6;color:var(--ink-2);margin:8px 0 0;max-width:960px}
+.srcs{font-size:11px;line-height:1.75;color:var(--ink-4);margin-top:8px}
+.srcs a{color:var(--seal-deep)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:16px}
+</style>
+  <div class="kicker">Mudavym &middot; sketch set 094</div>
+  <h1 class="page serif">Three ways to make the book tell you what to do</h1>
+  <p class="voice">The founder, on the fourth pass: <i>&ldquo;I also liked the day strip a lot &hellip;
+  a calendar strip that we can select and see that is highly advanced and elegant looking, or sth else.
+  The need is that we need to everything in a categorized classified section in order for people to
+  understand what to do as action.&rdquo;</i> Two wants and one <b>need</b>. These three files answer the
+  need three ways, and each draws the two new buttons and the dismissal sheet so the fork is about the
+  <i>shape</i> of the page, not about what it can do.</p>
+  <div class="rule2"></div>
+
+  <div class="dirs">
+    <a class="dir" href="./calendar-strip.html">
+      <span class="prop">094a</span>
+      <h2><svg class="ico" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg> The calendar strip</h2>
+      <p>Twenty-eight days across the top, one cell per day: what fired, what falls due, what it is worth,
+      and &mdash; the part nobody else draws &mdash; which days the house has <b>no records for</b>, hatched
+      rather than zeroed. Select a day and the book below becomes that day; hover an entry and a hairline
+      draws its life back across the strip to the day it was first shown.</p>
+      <p class="cost"><b>Costs:</b> a recommendation has no natural date. Most entries share one first-fired
+      day, so on a real tenant the strip can be a single loaded column beside twenty-seven empty ones.
+      <b>Gains:</b> it gives the day-exclusion control a home (double-click a day to strike it), and it is
+      the only direction that makes &ldquo;this rule has stood for 17 days&rdquo; visible rather than stated.</p>
+    </a>
+
+    <a class="dir" href="./action-docket.html">
+      <span class="prop">094b</span>
+      <h2><svg class="ico" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z"/><path d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12"/><path d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17"/></svg> The action docket</h2>
+      <p>Filed by <b>the act your hands perform</b>: order it &middot; price it &middot; move stock &middot;
+      call a vendor &middot; brief the floor &mdash; each with its count, its money at stake, and one line
+      saying what doing the whole section looks like. The founder&rsquo;s fifth heading,
+      <i>change a rule</i>, is drawn dark because nothing behind it exists.</p>
+      <p class="cost"><b>Costs:</b> nine entries over five headings is often one row per heading, and
+      headings over singletons read as ceremony. <b>Gains:</b> it is the literal answer to
+      &ldquo;understand what to do as action&rdquo;, it needs one nine-row mapping and nothing else, and it
+      turns nine decisions into five sittings.</p>
+    </a>
+
+    <a class="dir" href="./case-ledger.html">
+      <span class="prop">094c</span>
+      <h2><svg class="ico" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/></svg> The case ledger</h2>
+      <p>The unit stops being a card and becomes a <b>case</b>: opened &rarr; acted &rarr; watching &rarr;
+      closed with a result, plus <i>refused</i> as a state with its reason kept. A closed case carries what
+      actually happened &mdash; or &ldquo;no comparable data&rdquo;, which is a different answer from zero.
+      <i>Make this a goal</i> is the instrument that moves a case into watching.</p>
+      <p class="cost"><b>Costs:</b> the outcome column needs a measurement job that does not exist, and a
+      case store the disposition table is only four-fifths of. Months, not days. <b>Gains:</b> it is the
+      only direction that would make this page unlike every competitor&rsquo;s; DESIGN-FOUNDATION &sect;6
+      already names it the need-it-now idea for this surface.</p>
+    </a>
+  </div>
+
+  <div class="verdict">
+    <span class="micro seal">The recommendation</span>
+    <h2>Build 094b as the spine. Put 094a above it as a ribbon, not as the axis. Keep 094c as the roadmap.</h2>
+    <p>The founder named the calendar strip as a <i>want</i> and the classified sections as the <i>need</i>,
+    and the evidence agrees with his own ordering. A recommendation has no date of its own: the rules are
+    re-evaluated against tonight&rsquo;s numbers on every request, and the only date most entries carry is
+    <span class="mono">firstSeenAt</span> &mdash; which is capped at 40 keys and null wherever no impression
+    was recorded. A page whose primary axis is time would, on the tenant we can actually measure, put every
+    entry it has in one column and leave twenty-seven blank. The act, by contrast, is knowable for every
+    entry from a field the feed already returns.</p>
+    <p>So: sections by the act, with count and money at stake, are the spine &mdash; that is 094b, and it
+    costs one nine-row mapping. The strip goes above it and does the two things a strip is genuinely good
+    at: showing <i>when</i> (first fired, falls due, and which days have no records at all) and being the
+    home for the day-exclusion control, which today is a list in a side panel and should be a day you strike.
+    Nothing is selected by default, so the strip is information until it is asked to be a filter.</p>
+    <p><b>The strongest counter-argument, and why it loses.</b> &ldquo;Two objects on one page is two
+    organising principles, and a page with two spines has none &mdash; you have just rebuilt the monitoring
+    wall that the notifications three-column direction was rejected for, and you have added a third cut
+    (act) on top of the register (consequence) that the page already has.&rdquo; That is the right worry and
+    it fails on one distinction: the ribbon is not an axis, it is a selector, and when nothing is selected
+    the book below is the whole book. The register is not a competing table of contents either &mdash; under
+    this proposal it stops being the page&rsquo;s spine and becomes the ordering <i>within</i> a section and
+    the filter across them, so the reader still meets exactly one classification at the top level. What
+    survives of the objection, honestly, is the thin-book case: on a house with three standing entries, five
+    headings over five singletons is ceremony. The answer is that a heading over one entry still carries the
+    count and the money, which a bare card does not &mdash; but it is the real cost of this choice and it
+    should be judged on the gallery, not on this page.</p>
+  </div>
+
+  <div class="two">
+    <div class="card">
+      <div class="micro"><svg class="ico" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg> What the field does, and what to refuse</div>
+      <p class="note" style="margin-top:7px">
+        <b>Google Ads Recommendations</b> groups by the object that changes &mdash; bidding, budgets,
+        keywords, ads, assets &mdash; with apply-all and dismiss-all per type. It is the closest thing to a
+        docket anyone ships, and its optimization score reaches 100% by <i>dismissing</i> everything: a
+        queue-clearing metric wearing the clothes of health. Group like it; never score like it.<br>
+        <b>AWS Trusted Advisor</b> gives suppression a home &mdash; excluded per resource, scoped, and
+        checks inherited from Security Hub say they are not yours to silence.<br>
+        <b>Google Search Console</b> is the lifecycle: an issue is grouped by type, you fix it, you request
+        validation, and it passes or fails per URL, then stays closed for 90 days before the same fault
+        counts as new. 094c is that machine.<br>
+        <b>Stripe Radar</b>&rsquo;s review queue is the same object at transaction scale: a prioritised
+        list, risk insights that say why the score is what it is, J/K between items, self-assignment, and
+        <span class="mono">review.closed</span> carrying a <i>reason</i>.<br>
+        <b>Linear Triage</b> gives an unclassified queue exactly four resolutions &mdash; accept, duplicate,
+        decline, snooze &mdash; and Linear&rsquo;s cycles decide what happens to what was not finished.<br>
+        <b>Things 3</b> classifies by commitment, not by date: Today, Anytime, Someday &mdash; a task with
+        no date is not overdue, it is Anytime. <b>Todoist</b>&rsquo;s Upcoming is the closest working
+        calendar strip: a week navigator across the top, days selected below.
+        <b>Asana</b>&rsquo;s My Tasks moves work between time sections by rule, and stopped auto-promoting
+        because moving someone&rsquo;s work without being asked was worse than leaving it.
+        <b>Superhuman</b>&rsquo;s Split Inbox is the strongest argument for 094b: dividing one stream into
+        named rooms is what makes triage fast, and the rooms are chosen by the reader&rsquo;s job, not by
+        the sender.<br>
+        <b>Datadog</b>&rsquo;s Watchdog insight cards carry their evidence &mdash; the proportion of errors a
+        tag contributes against baseline &mdash; which is the standard our working pane already meets.<br>
+        <b>Toast IQ</b> executes menu and shift edits from the feed card. That is the one to refuse: an act
+        that cannot be reconstructed later.</p>
+      <p class="srcs">
+        <a href="https://support.google.com/google-ads/answer/9061546">support.google.com/google-ads/answer/9061546</a> &middot;
+        <a href="https://developers.google.com/google-ads/api/docs/recommendations">developers.google.com/google-ads/api/docs/recommendations</a> &middot;
+        <a href="https://docs.aws.amazon.com/awssupport/latest/user/trusted-advisor.html">docs.aws.amazon.com/awssupport/latest/user/trusted-advisor.html</a> &middot;
+        <a href="https://support.google.com/webmasters/answer/7440203">support.google.com/webmasters/answer/7440203</a> &middot;
+        <a href="https://docs.stripe.com/radar/reviews">docs.stripe.com/radar/reviews</a> &middot;
+        <a href="https://linear.app/docs/triage">linear.app/docs/triage</a> &middot;
+        <a href="https://linear.app/docs/use-cycles">linear.app/docs/use-cycles</a> &middot;
+        <a href="https://culturedcode.com/things/support/articles/2803579/">culturedcode.com/things/support/articles/2803579</a> &middot;
+        <a href="https://www.todoist.com/help/articles/plan-your-week-with-the-upcoming-view-OKOg1mR8">todoist.com/help/articles/plan-your-week-with-the-upcoming-view</a> &middot;
+        <a href="https://help.asana.com/s/article/rules-in-my-tasks">help.asana.com/s/article/rules-in-my-tasks</a> &middot;
+        <a href="https://help.superhuman.com/hc/en-us/articles/38458483333907-Custom-Split-Inbox">help.superhuman.com/hc/en-us/articles/38458483333907-Custom-Split-Inbox</a> &middot;
+        <a href="https://docs.datadoghq.com/watchdog/insights/">docs.datadoghq.com/watchdog/insights/</a> &middot;
+        <a href="https://pos.toasttab.com/news/toast-expands-toast-iq-smart-ai-assistant">pos.toasttab.com/news/toast-expands-toast-iq-smart-ai-assistant</a> &middot;
+        <a href="https://www.nory.ai/product/business-intelligence">nory.ai/product/business-intelligence</a> (vendor-claimed)</p>
+    </div>
+
+    <div class="card">
+      <div class="micro"><svg class="ico" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg> The two new buttons, built and drawn</div>
+      <p class="note" style="margin-top:7px"><b>Make this a goal</b> writes a real goal:
+      <span class="mono">POST /analytics/goals/:rid</span>, with the metric, the direction and the period
+      derived from the rule that fired, the name derived and editable, and <b>only the target asked of the
+      manager</b> &mdash; a rule states a gap, not a number a house should be held to. Nine of the thirteen
+      rules map to one of the gateway&rsquo;s six metrics; three map to none (a stockout is availability, an
+      HHI is not a figure a goal can be held on) and render dark with the reason; the goal-behind family
+      refuses because it is already a goal.</p>
+      <p class="note" style="margin-top:7px"><b>See it in reports</b> sends each rule to the one cutting of
+      the sheet&rsquo;s eleven whose register answers it &mdash; and says whether that is
+      <i>the same register the rule read</i> or <i>a different one that plots the same thing</i>. Four rules
+      have no cutting at all and say so rather than sending you to a drawing that is not about them.</p>
+      <p class="note" style="margin-top:7px">Both are live behind
+      <span class="mono">mudavym_design_recommendations</span> today. Everything drawn with a dashed
+      <span class="prop">proposed</span> mark in these three files is not.</p>
+    </div>
+  </div>
+
+<footer class="sig"><span class="wordmark">Mudavym<span>.</span></span>
+<p class="note" style="margin:0;max-width:640px">Example data throughout. No figure on this page
+came from a tenant. Every entry is one deterministic rule against a house&rsquo;s own numbers.
+No model wrote them.</p></footer>
+</div></div></body></html>

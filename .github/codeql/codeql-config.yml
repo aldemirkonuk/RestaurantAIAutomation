@@ -1,0 +1,5 @@
+name: "Mudavym CodeQL config"
+# Recorded third-party merchant pages under vendor-intel fixtures are evidence, not our code:
+# their inline scripts trip use-before-declaration and semicolon rules we do not own.
+paths-ignore:
+  - apps/api-gateway/src/vendor-intel/__fixtures__

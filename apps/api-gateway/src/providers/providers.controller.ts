@@ -32,16 +32,73 @@ import {
 import { UpdateIntelligenceDto } from "./dto/update-intelligence.dto";
 import { RetroactiveOrderDto } from "./dto/retroactive-order.dto";
 import { ProvidersService } from "./providers.service";
+import { OrganizationsService } from "../organizations/organizations.service";
+import { roleSatisfies } from "../procurement/order-approval-gate";
+import {
+  readVendorCurrency,
+  usualCurrencyCoverageSentence,
+  vendorCurrencySentence,
+} from "./vendor-currency";
 
 @ApiTags("providers")
 @Controller("providers")
 @UseGuards(JwtAuthGuard)
 export class ProvidersController {
-  constructor(private readonly providersService: ProvidersService) {}
+  constructor(
+    private readonly providersService: ProvidersService,
+    // The role half of B1's gate. `resolveRestaurantRole` is the one
+    // implementation of "what is this person here" (its own header argues why a
+    // second one drifts), and it returns `null` for both "no row" and "the read
+    // failed" — so `roleSatisfies` is what must be asked, never the string.
+    private readonly organizations: OrganizationsService,
+  ) {}
 
   // =========================================================================
   // STATIC ROUTES (must come before :id params)
   // =========================================================================
+
+  // =========================================================================
+  // B2 (batch 66) — how many vendors have stated a usual currency.
+  //
+  // THE FOUNDER, 2026-09-06, batch 66, verbatim: *"Add the prompt panel"* —
+  // "One panel on the providers page (and the orders sheet's empty field)
+  // saying how many vendors have stated a usual currency and linking to the
+  // ones that have not. No provenance lie."
+  //
+  // READABLE BY MANAGERS AND STAFF ALIKE: it is information about the house's
+  // own book, not an act. Only STATING a currency is manager-gated
+  // (`PATCH :id/usual-currency` below), and a staff member who can see which
+  // vendors are unanswered is the person most likely to ask a manager to
+  // answer them.
+  //
+  // Two static segments, so `@Get(":id")` and `@Get(":id/usual-currency")`
+  // cannot swallow it; declared here with the other static routes regardless.
+  // =========================================================================
+  @Get("usual-currency/coverage")
+  @ApiOperation({
+    summary: "How many of this house's vendors have stated a usual currency",
+    description:
+      "A count and the names that are missing, for the providers page's prompt panel and the order sheet's empty currency field. It PRE-FILLS NOTHING and writes nothing: the repair for an unstated vendor is a person stating it on that vendor's profile, never a house-derived default recorded as somebody's choice. Live vendors only (is_active is not false and deleted_at is null) — the retired ones can take no order. A stored value that is not an ISO 4217 currency counts as unstated and is returned with the code it holds. A failed read is a 503 with the reason, never a coverage of zero.",
+  })
+  async usualCurrencyCoverage(
+    @CurrentUser() user: { id: string; restaurantId: string },
+  ): Promise<{
+    stated: number;
+    total: number;
+    unstated: { id: string; name: string; recorded: string | null }[];
+    sentence: string;
+  }> {
+    const counted = await this.providersService.usualCurrencyCoverage(
+      user.restaurantId,
+    );
+    return {
+      ...counted,
+      sentence: usualCurrencyCoverageSentence({
+        stated: counted.stated,
+        total: counted.total,
+      }),
+    };
+  }
 
   @Get("search")
   @ApiOperation({ summary: "Search providers" })
@@ -226,6 +283,92 @@ export class ProvidersController {
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
+  }
+
+  // =========================================================================
+  // B1 — the vendor's usual currency (founder, 2026-09-06 batch 65:
+  // "Every vendor and their profile will show their default currency, but we
+  // won't use that as the invoice").
+  //
+  // Declared BEFORE `@Get(":id")`. Nest matches in declaration order, and a
+  // route declared after it would never be reached — the same trap the `match`
+  // route above is placed to avoid.
+  // =========================================================================
+
+  @Get(":id/usual-currency")
+  @ApiOperation({
+    summary: "What this vendor usually invoices in, and who said so",
+    description:
+      "The vendor profile's own fact. NEVER used to file an invoice: an invoice takes the currency printed on it, then the currency of the order it is matched to, then the house's. This is offered as the starting value on the order sheet and printed on the profile, and nothing else reads it. A failed read is a 503 with the reason, never an empty field.",
+  })
+  async getUsualCurrency(
+    @Param("id") providerId: string,
+    @CurrentUser() user: { id: string; restaurantId: string },
+  ) {
+    const stated = await this.providersService.getUsualCurrency(
+      providerId,
+      user.restaurantId,
+    );
+    return {
+      providerId,
+      code: stated.code,
+      setAt: stated.setAt,
+      setByName: stated.setByName,
+      sentence: vendorCurrencySentence({
+        code: stated.code,
+        setByName: stated.setByName,
+        setAt: stated.setAt,
+        vendorName: stated.vendorName,
+      }),
+    };
+  }
+
+  @Patch(":id/usual-currency")
+  @ApiOperation({
+    summary: "State what this vendor usually invoices in",
+    description:
+      "Managers and owners only; staff are refused in words and the page disables the control with that sentence rather than hiding it. The code, the person and the moment are ONE fact enforced by a database CHECK. A blank is refused rather than treated as 'clear it' — clearing a stated currency is a different act with a different consequence and it is not built.",
+  })
+  async setUsualCurrency(
+    @Param("id") providerId: string,
+    @Body() body: { currency?: string },
+    @CurrentUser() user: { id: string; restaurantId: string },
+  ) {
+    const typed = readVendorCurrency(body?.currency);
+    if (!typed.ok)
+      throw new HttpException(typed.because, HttpStatus.BAD_REQUEST);
+
+    // WHO THIS PERSON IS HERE. `null` means "not proven to hold any role" — a
+    // failed read and a person with no row are indistinguishable at this layer
+    // and neither may pass (`procurement/order-approval-gate.ts`'s header).
+    const role = await this.organizations.resolveRestaurantRole(
+      user.id,
+      user.restaurantId,
+    );
+    if (!roleSatisfies(role, "manager"))
+      throw new HttpException(
+        `Stating what a vendor usually invoices in changes the currency every future order to them starts with, so it is a manager's or an owner's decision. ` +
+          `${role ? `You are signed in as ${role} at this house` : "This session could not be shown to hold any role at this house"}, so nothing was changed. Ask a manager or an owner to state it.`,
+        HttpStatus.FORBIDDEN,
+      );
+
+    const written = await this.providersService.setUsualCurrency({
+      providerId,
+      restaurantId: user.restaurantId,
+      code: typed.code,
+      userId: user.id,
+    });
+
+    return {
+      providerId,
+      code: written.code,
+      previous: written.previous,
+      setAt: written.setAt,
+      sentence:
+        `${written.previous && written.previous !== written.code ? `Changed from ${written.previous} to ${written.code}` : `Stated as ${written.code}`}. ` +
+        `This is what an order to this vendor will now start with; the person placing it can change it. ` +
+        `It files no invoice — an invoice takes the currency printed on it, then the currency of the order it is matched to.`,
+    };
   }
 
   @Get(":id")

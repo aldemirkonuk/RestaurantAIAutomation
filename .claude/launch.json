@@ -4,7 +4,10 @@
     {
       "name": "web",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
       "port": 3000,
       "autoPort": true,
       "cwd": "apps/web"
@@ -12,9 +15,16 @@
     {
       "name": "api-gateway",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "start:dev"],
+      "runtimeArgs": [
+        "run",
+        "start:dev"
+      ],
       "port": 4000,
       "cwd": "apps/api-gateway"
+    },
+    {
+      "name": "web-p4",
+      "url": "http://localhost:5274"
     }
   ]
 }

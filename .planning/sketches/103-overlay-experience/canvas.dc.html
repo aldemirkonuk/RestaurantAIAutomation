@@ -1,0 +1,1271 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400..700&amp;family=DM+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0;background:#151110;--paper:#FAF7F1;--ink:#211C16;--acc:#1A5E6B;--sealDk:#5FB08C;--char:#1B1511;--amber:#A5670A;--amberDk:#C98A2E;--rule:#E3DCCF;--mut:#6E675C;--mutDk:#8D8478;--edge:#3A322C;--sans:'DM Sans',system-ui,sans-serif;--serif:'Fraunces',Georgia,serif;--mono:'JetBrains Mono',ui-monospace,monospace}
+*{box-sizing:border-box}
+a{color:#1A5E6B;text-decoration:none}
+a:hover{color:#211C16}
+input,textarea,button{font-family:inherit}
+@keyframes sealLand{from{transform:scale(.8);opacity:.3}to{transform:scale(1);opacity:1}}
+@keyframes lineTurn{from{clip-path:inset(0 100% 0 0)}to{clip-path:inset(0 0 0 0)}}
+@keyframes veilDown{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</helmet>
+
+<section style="padding:48px 40px 24px;display:flex;justify-content:center;font-family:var(--sans)">
+<div style="width:1320px;max-width:100%;display:flex;flex-direction:column;gap:20px">
+
+  <div style="background:var(--paper);color:var(--ink);padding:34px 40px 30px;box-shadow:0 30px 80px rgba(0,0,0,.5);display:flex;flex-direction:column;gap:18px">
+    <div style="display:flex;align-items:baseline;gap:14px;border-bottom:2px solid var(--ink);padding-bottom:14px;flex-wrap:wrap">
+      <h1 style="margin:0;font-family:var(--serif);font-size:27px;font-weight:600;letter-spacing:-.015em">Turn two &#8212; the ceremonies, on the house&#8217;s own motion</h1>
+      <span style="font:500 11.5px var(--mono);color:var(--mut)">&#183; five more &#183; motion.ts tokens verbatim</span>
+      <span style="margin-left:auto;font:500 11px var(--mono);color:var(--acc)">SERVICE {{ clock }} &#183; {{ covers }} COVERS &#183; 2026-09-06</span>
+    </div>
+    <p style="margin:0;max-width:1000px;font-size:13.5px;line-height:1.65;color:#4A443B;text-wrap:pretty">Turn one argued about the container. This turn argues about the act inside it &#8212; and every commitment ends in the same hold-to-seal the repo ships: the fill is <span style="font-family:var(--mono);font-size:12px">pour</span>, linear on purpose because the thumb is timing it; an early release retreats on <span style="font-family:var(--mono);font-size:12px">tuck</span> and says what did not happen; the wax lands on <span style="font-family:var(--mono);font-size:12px">stamp</span>, the one spring allowed to overshoot. The curves are integrated here with the same sampler as <span style="font-family:var(--mono);font-size:12px">lib/mudavym/motion.ts</span>, so the numbers on the token are the curve that runs. Enter arms, Enter again seals; reduced motion collapses the hold to that two-step.</p>
+    <div style="display:flex;gap:12px;flex-wrap:wrap">
+      <div style="flex:1;min-width:220px;border:1px solid var(--rule);padding:11px 14px;font-size:11.5px;line-height:1.55;color:#4A443B"><span style="font:600 10px var(--mono);color:var(--acc)">FROM THE CANVAS&#160;&#160;</span>&#8220;Hold to approve &#183; the seal&#8221; and &#8220;Released early&#8221; are taken as the contract. The ledger line writes itself on <span style="font-family:var(--mono)">turn</span> after the wax lands.</div>
+      <div style="flex:1;min-width:220px;border:1px solid var(--rule);padding:11px 14px;font-size:11.5px;line-height:1.55;color:#4A443B"><span style="font:600 10px var(--mono);color:var(--acc)">COMMENTS APPLIED&#160;&#160;</span><a href="#1c">1c</a>: a click anywhere off the spindle collapses it to nothing. <a href="#1b">1b</a>: the engine&#8217;s draft sits grey under the field; Tab takes it, the words stay grey in the trail.</div>
+      <div style="flex:1;min-width:220px;border:1px solid var(--rule);padding:11px 14px;font-size:11.5px;line-height:1.55;color:#4A443B"><span style="font:600 10px var(--mono);color:var(--acc)">THE TOKENS&#160;&#160;</span><span style="font-family:var(--mono);font-size:10.5px">{{ tokLine }}</span></div>
+    </div>
+  </div>
+
+  <div style="display:flex;gap:20px;flex-wrap:wrap">
+
+    <div id="2a" style="width:650px;background:var(--paper);color:var(--ink);padding:24px 26px 20px;box-shadow:0 24px 60px rgba(0,0,0,.45);display:flex;flex-direction:column;gap:14px">
+      <div style="display:flex;align-items:baseline;gap:10px;border-bottom:2px solid var(--ink);padding-bottom:10px;flex-wrap:wrap">
+        <span style="font:600 10px var(--mono);border:1px solid var(--rule);padding:2px 6px;color:var(--acc)">2a</span>
+        <h2 style="margin:0;font-family:var(--serif);font-size:20px;font-weight:600;letter-spacing:-.01em">Peek, then promote</h2>
+        <span style="font:500 10px var(--mono);color:var(--mut)">PEEK &#8594; SHEET &#183; KEYBOARD FIRST</span>
+        <span style="margin-left:auto;font:500 10px var(--mono);color:var(--amber)">FAULT: A SHEET FOR A GLANCE</span>
+      </div>
+      <p style="margin:0;font-size:12.5px;line-height:1.6;color:#4A443B;text-wrap:pretty">Four in five lookups are a glance &#8212; is this the one, what did they answer &#8212; and a sheet is too much room for that. Space opens a peek beside the list; the arrows step rows and the peek follows; Enter promotes it into the sheet only when the reader actually leaves the list. No scrim, nothing trapped, until the moment it is earned.</p>
+      <div tabIndex="0" onKeyDown="{{ pKey }}" onClick="{{ pFocusStage }}" style="position:relative;background:var(--char);height:326px;padding:12px;display:flex;gap:10px;overflow:hidden;outline:none;border:1px solid {{ pStageBr }}">
+        <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:5px">
+          <div style="display:flex;justify-content:space-between;font:600 9px var(--mono);letter-spacing:.16em;color:var(--mutDk);padding:0 2px 4px"><span>THE BOOK &#183; {{ pHint }}</span><span>{{ clock }}</span></div>
+          <sc-for list="{{ pRows }}" as="r" hint-placeholder-count="5">
+            <div onClick="{{ r.onPick }}" style="border:1px solid {{ r.br }};border-left:3px solid {{ r.edge }};background:{{ r.bg }};padding:7px 10px;cursor:pointer;display:flex;align-items:baseline;gap:7px;min-width:0">
+              <span style="font:600 10px var(--mono);color:var(--sealDk)">{{ r.id }}</span>
+              <span style="font:600 12px var(--sans);color:var(--paper);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.name }}</span>
+              <span style="margin-left:auto;font:500 9.5px var(--mono);color:{{ r.sc }};flex:0 0 auto">{{ r.status }}</span>
+            </div>
+          </sc-for>
+          <div style="margin-top:auto;display:flex;gap:6px;flex-wrap:wrap">
+            <button onClick="{{ pSpace }}" style="padding:5px 9px;font:600 9px var(--mono);letter-spacing:.06em;background:transparent;color:var(--paper);border:1px solid var(--edge);cursor:pointer">SPACE</button>
+            <button onClick="{{ pUp }}" style="padding:5px 9px;font:600 9px var(--mono);letter-spacing:.06em;background:transparent;color:var(--paper);border:1px solid var(--edge);cursor:pointer">&#8593;</button>
+            <button onClick="{{ pDown }}" style="padding:5px 9px;font:600 9px var(--mono);letter-spacing:.06em;background:transparent;color:var(--paper);border:1px solid var(--edge);cursor:pointer">&#8595;</button>
+            <button onClick="{{ pEnter }}" style="padding:5px 9px;font:600 9px var(--mono);letter-spacing:.06em;background:transparent;color:var(--paper);border:1px solid var(--edge);cursor:pointer">ENTER</button>
+            <button onClick="{{ pEsc }}" style="padding:5px 9px;font:600 9px var(--mono);letter-spacing:.06em;background:transparent;color:var(--paper);border:1px solid var(--edge);cursor:pointer">ESC</button>
+          </div>
+        </div>
+        <div style="flex:0 0 auto;overflow:hidden;transition:width 320ms cubic-bezier(.16,1,.3,1);width:{{ pW }}px">
+          <sc-if value="{{ pIsPeek }}" hint-placeholder-val="{{ false }}">
+            <div style="width:236px;height:100%;background:#1F1914;border:1px dashed var(--edge);display:flex;flex-direction:column;padding:12px 13px;gap:8px">
+              <span style="font:600 8.5px var(--mono);letter-spacing:.16em;color:var(--mutDk)">PEEK &#183; NO SCRIM &#183; NOTHING TRAPPED</span>
+              <span style="font-family:var(--serif);font-size:16px;font-weight:600;color:var(--paper)">{{ pName }}</span>
+              <span style="font-size:11.5px;line-height:1.5;color:#CFC6B8">{{ pBody }}</span>
+              <span style="margin-top:auto;font:500 9px var(--mono);color:var(--sealDk)">ENTER PROMOTES &#183; &#8593;&#8595; STEP &#183; ESC CLOSES</span>
+            </div>
+          </sc-if>
+          <sc-if value="{{ pIsSheet }}" hint-placeholder-val="{{ false }}">
+            <div style="width:300px;height:100%;background:#221B16;border:1px solid var(--edge);display:flex;flex-direction:column">
+              <div style="padding:11px 13px;border-bottom:1px solid var(--edge);display:flex;flex-direction:column;gap:3px">
+                <span style="font:600 9px var(--mono);letter-spacing:.16em;color:var(--sealDk)">VENDOR ANSWERS</span>
+                <span style="font-family:var(--serif);font-size:16px;font-weight:600;color:var(--paper)">{{ pName }}</span>
+              </div>
+              <div style="padding:12px 13px;display:flex;flex-direction:column;gap:8px;flex:1">
+                <span style="font-size:11.5px;line-height:1.5;color:#CFC6B8">{{ pBody }}</span>
+                <span style="font-size:11.5px;line-height:1.5;color:#CFC6B8">Terms: cutoff 16:00, Tuesday and Friday. Two short deliveries this quarter, both credited.</span>
+                <span style="font:500 9.5px var(--mono);color:var(--mutDk);border-top:1px solid var(--edge);padding-top:8px">SUMMED FROM 3 ROWS &#183; READ {{ clock }}</span>
+              </div>
+              <div style="padding:10px 13px;border-top:1px solid var(--edge);display:flex;gap:8px;align-items:center">
+                <button onClick="{{ pEsc }}" style="padding:6px 11px;font:600 10px var(--mono);letter-spacing:.05em;background:transparent;color:var(--paper);border:1px solid var(--edge);cursor:pointer">CLOSE</button>
+                <span style="font:500 9px var(--mono);color:var(--mutDk)">NOW A SHEET: FOCUS MOVED IN</span>
+              </div>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+      <div style="border-top:1px solid var(--rule);padding-top:10px;font:500 10px var(--mono);color:var(--mut);line-height:1.5">Peek beside the list &#8212; <span style="color:var(--ink)">packet 5, fork F8</span> &#183; not a fourth shape: it has no scrim and traps nothing &#183; width moves on <span style="color:var(--ink)">settle</span></div>
+    </div>
+
+    <div id="2b" style="width:650px;background:var(--paper);color:var(--ink);padding:24px 26px 20px;box-shadow:0 24px 60px rgba(0,0,0,.45);display:flex;flex-direction:column;gap:14px">
+      <div style="display:flex;align-items:baseline;gap:10px;border-bottom:2px solid var(--ink);padding-bottom:10px;flex-wrap:wrap">
+        <span style="font:600 10px var(--mono);border:1px solid var(--rule);padding:2px 6px;color:var(--acc)">2b</span>
+        <h2 style="margin:0;font-family:var(--serif);font-size:20px;font-weight:600;letter-spacing:-.01em">Two hands</h2>
+        <span style="font:500 10px var(--mono);color:var(--mut)">PANEL &#183; SEAL &#215; 2 &#183; STEP-UP</span>
+        <span style="margin-left:auto;font:500 10px var(--mono);color:var(--amber)">FAULT: ONE CLICK MOVES MONEY</span>
+      </div>
+      <p style="margin:0;font-size:12.5px;line-height:1.6;color:#4A443B;text-wrap:pretty">Approval and release are two commitments, and the house already lists them so. The panel shows both seals at once, so the second is seen, not assumed. The step-up comes first when the session is stale; separation of duties is a sentence on the paper, not a rejected request; and the authority in use names who granted it.</p>
+      <div style="position:relative;background:#F3ECE0;border:1px solid var(--rule);min-height:326px;padding:14px;display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <span style="font:600 9px var(--mono);letter-spacing:.14em;color:var(--mut)">SIGNED IN AS</span>
+          <sc-for list="{{ tWhos }}" as="w" hint-placeholder-count="3">
+            <button onClick="{{ w.pick }}" style="padding:4px 9px;font:600 9.5px var(--mono);letter-spacing:.05em;border:1px solid var(--ink);background:{{ w.bg }};color:{{ w.fg }};cursor:pointer">{{ w.name }}</button>
+          </sc-for>
+          <span style="margin-left:auto;font:500 9.5px var(--mono);color:var(--mut)">{{ tRole }}</span>
+        </div>
+        <div style="background:var(--paper);border:1px solid var(--ink);display:flex;flex-direction:column;flex:1">
+          <div style="padding:11px 14px;border-bottom:1px solid var(--rule);display:flex;flex-direction:column;gap:2px">
+            <span style="font:600 9px var(--mono);letter-spacing:.16em;color:var(--acc)">RELEASE THE PAYMENT &#183; ORDER 118</span>
+            <span style="font-family:var(--serif);font-size:17px;font-weight:600">&#8378;4,280 to Selim &#350;arap</span>
+          </div>
+          <sc-if value="{{ tGate }}" hint-placeholder-val="{{ false }}">
+            <div style="padding:12px 14px;display:flex;flex-direction:column;gap:9px;border-bottom:1px solid var(--rule);background:#FCFAF6">
+              <span style="font-size:11.5px;line-height:1.5;color:#4A443B">This session was last verified <strong style="font-weight:600">2 h 14 min</strong> ago. Money does not move on a stale session.</span>
+              <button onClick="{{ tVerify }}" style="align-self:flex-start;padding:7px 12px;font:600 10.5px var(--mono);letter-spacing:.06em;background:var(--ink);color:var(--paper);border:1px solid var(--ink);cursor:pointer">VERIFY WITH THIS DEVICE</button>
+            </div>
+          </sc-if>
+          <div style="padding:12px 14px;display:flex;flex-direction:column;gap:10px;flex:1">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+              <div style="display:flex;flex-direction:column;gap:6px">
+                <span style="font:600 9px var(--mono);letter-spacing:.14em;color:var(--mut)">1 &#183; APPROVE</span>
+                <div style="display:flex;flex-direction:column;gap:4px">
+                  <button onPointerDown="{{ tA.down }}" onPointerUp="{{ tA.up }}" onPointerCancel="{{ tA.up }}" onKeyDown="{{ tA.key }}" style="position:relative;overflow:hidden;min-height:46px;width:100%;border-radius:12px;border:1px solid {{ tA.br }};background:{{ tA.bg }};color:var(--ink);font:600 12.5px var(--sans);cursor:{{ tA.cur }};opacity:{{ tA.op }};touch-action:none;user-select:none;display:flex;align-items:center;justify-content:center;gap:8px;padding:0 14px">
+                    <span style="position:absolute;inset:0;background:var(--acc);opacity:.16;transform-origin:0 50%;transform:scaleX({{ tA.fill }});transition:{{ tA.tr }};pointer-events:none"></span>
+                    <sc-if value="{{ tA.sealed }}" hint-placeholder-val="{{ false }}"><span style="display:flex;align-items:center;gap:8px;animation:sealLand 360ms var(--stampEase) both"><svg viewBox="0 0 100 100" width="24" height="24" style="color:var(--acc);display:block"><path fill="currentColor" d="M50 6c9 0 14 6 22 8s16-2 21 5-1 15 1 23 8 13 5 21-13 8-18 14-6 15-14 17-14-4-22-4-14 6-22 4-9-11-14-17-15-6-18-14 3-13 5-21-3-16 1-23 13-3 21-5S41 6 50 6z"></path><g opacity=".62"><g transform="translate(50 47) scale(0.0592) translate(-241.5 -287)" fill="#FAF7F1"><path d="M0 38H72V540H0Z"></path><path d="M15 38H96L460 574H379Z"></path><path d="M0 346H305L353 416H0Z"></path><path d="M0 470H137V540H0Z"></path><path d="M99 0H151L278.7 187.8L284.8 273Z"></path><path d="M389.5 40H460.9L284.8 273L251.4 224Z"></path><path d="M412 40H483V574H412Z"></path></g><g fill="none" stroke="#FAF7F1" stroke-width="4.4" stroke-linecap="square"><path d="M30 71h40"></path><path d="M30 77h40" stroke-width="2.6"></path></g></g></svg><span style="color:#14515C">{{ tA.sealedLabel }}</span></span></sc-if>
+                    <sc-if value="{{ tA.unsealed }}" hint-placeholder-val="{{ true }}"><span style="position:relative">{{ tA.label }}</span></sc-if>
+                  </button>
+                  <div style="min-height:16px;font-size:10.5px;text-align:center;color:#7C7365;line-height:1.4">{{ tA.note }}</div>
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:6px">
+                <span style="font:600 9px var(--mono);letter-spacing:.14em;color:var(--mut)">2 &#183; RELEASE</span>
+                <div style="display:flex;flex-direction:column;gap:4px">
+                  <button onPointerDown="{{ tR.down }}" onPointerUp="{{ tR.up }}" onPointerCancel="{{ tR.up }}" onKeyDown="{{ tR.key }}" style="position:relative;overflow:hidden;min-height:46px;width:100%;border-radius:12px;border:1px solid {{ tR.br }};background:{{ tR.bg }};color:var(--ink);font:600 12.5px var(--sans);cursor:{{ tR.cur }};opacity:{{ tR.op }};touch-action:none;user-select:none;display:flex;align-items:center;justify-content:center;gap:8px;padding:0 14px">
+                    <span style="position:absolute;inset:0;background:var(--acc);opacity:.16;transform-origin:0 50%;transform:scaleX({{ tR.fill }});transition:{{ tR.tr }};pointer-events:none"></span>
+                    <sc-if value="{{ tR.sealed }}" hint-placeholder-val="{{ false }}"><span style="display:flex;align-items:center;gap:8px;animation:sealLand 360ms var(--stampEase) both"><svg viewBox="0 0 100 100" width="24" height="24" style="color:var(--acc);display:block"><path fill="currentColor" d="M50 6c9 0 14 6 22 8s16-2 21 5-1 15 1 23 8 13 5 21-13 8-18 14-6 15-14 17-14-4-22-4-14 6-22 4-9-11-14-17-15-6-18-14 3-13 5-21-3-16 1-23 13-3 21-5S41 6 50 6z"></path><g opacity=".62"><g transform="translate(50 47) scale(0.0592) translate(-241.5 -287)" fill="#FAF7F1"><path d="M0 38H72V540H0Z"></path><path d="M15 38H96L460 574H379Z"></path><path d="M0 346H305L353 416H0Z"></path><path d="M0 470H137V540H0Z"></path><path d="M99 0H151L278.7 187.8L284.8 273Z"></path><path d="M389.5 40H460.9L284.8 273L251.4 224Z"></path><path d="M412 40H483V574H412Z"></path></g><g fill="none" stroke="#FAF7F1" stroke-width="4.4" stroke-linecap="square"><path d="M30 71h40"></path><path d="M30 77h40" stroke-width="2.6"></path></g></g></svg><span style="color:#14515C">{{ tR.sealedLabel }}</span></span></sc-if>
+                    <sc-if value="{{ tR.unsealed }}" hint-placeholder-val="{{ true }}"><span style="position:relative">{{ tR.label }}</span></sc-if>
+                  </button>
+                  <div style="min-height:16px;font-size:10.5px;text-align:center;color:{{ tR.noteFg }};line-height:1.4">{{ tR.note }}</div>
+                </div>
+              </div>
+            </div>
+            <div style="border-top:1px solid var(--rule);padding-top:9px;display:flex;flex-direction:column;gap:4px">
+              <sc-for list="{{ tLog }}" as="l" hint-placeholder-count="0">
+                <span style="font:500 10px var(--mono);color:{{ l.c }};line-height:1.5;animation:lineTurn 420ms cubic-bezier(.32,.72,0,1) both">{{ l.t }}</span>
+              </sc-for>
+              <sc-if value="{{ tLogEmpty }}" hint-placeholder-val="{{ true }}"><span style="font:500 10px var(--mono);color:var(--mut)">The trail is empty. Nothing has been bound.</span></sc-if>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div style="border-top:1px solid var(--rule);padding-top:10px;font:500 10px var(--mono);color:var(--mut);line-height:1.5">Approve, then release &#183; step up before the money moves &#183; a new bank detail waits &#8212; <span style="color:var(--ink)">packet 5, forks F11&#8211;F12</span> &#183; components/mudavym/HoldToApprove.tsx</div>
+    </div>
+
+    <div id="2c" style="width:1320px;max-width:100%;background:var(--paper);color:var(--ink);padding:24px 26px 20px;box-shadow:0 24px 60px rgba(0,0,0,.45);display:flex;flex-direction:column;gap:14px">
+      <div style="display:flex;align-items:baseline;gap:10px;border-bottom:2px solid var(--ink);padding-bottom:10px;flex-wrap:wrap">
+        <span style="font:600 10px var(--mono);border:1px solid var(--rule);padding:2px 6px;color:var(--acc)">2c</span>
+        <h2 style="margin:0;font-family:var(--serif);font-size:20px;font-weight:600;letter-spacing:-.01em">Grey until you say so</h2>
+        <span style="font:500 10px var(--mono);color:var(--mut)">IN PLACE &#183; THE TICKS CHOOSE, THE SEAL COMMITS</span>
+        <span style="margin-left:auto;font:500 10px var(--mono);color:var(--amber)">FAULT: AI THAT LOOKS ALREADY DONE</span>
+      </div>
+      <p style="margin:0;max-width:1080px;font-size:12.5px;line-height:1.6;color:#4A443B;text-wrap:pretty">The engine read the invoice and the vendor&#8217;s reply and has three things to say about this delivery. It says them in grey, beside the ink, on the record itself &#8212; never in a cell that already changed. You dispose of each one; nothing applies until the seal, and even after it applies, the engine&#8217;s hand stays grey in the margin. A draft never looks sent, and provenance never fades.</p>
+      <div style="display:flex;gap:16px;flex-wrap:wrap">
+        <div style="flex:1;min-width:600px;background:#F3ECE0;border:1px solid var(--rule);padding:14px;display:flex;flex-direction:column;gap:10px">
+          <div style="display:flex;align-items:baseline;gap:8px">
+            <span style="font:600 10px var(--mono);color:var(--acc)">119</span>
+            <span style="font-family:var(--serif);font-size:17px;font-weight:600">Ancyra Narince &#183; delivered 20:31</span>
+            <span style="margin-left:auto;font:500 9.5px var(--mono);color:var(--mut)">{{ gStatus }}</span>
+          </div>
+          <div style="display:grid;grid-template-columns:130px 1fr 1fr auto;gap:0;border:1px solid var(--rule);background:var(--paper)">
+            <div style="padding:7px 10px;border-bottom:1px solid var(--rule);font:600 8.5px var(--mono);letter-spacing:.14em;color:var(--mut)">FIELD</div>
+            <div style="padding:7px 10px;border-bottom:1px solid var(--rule);font:600 8.5px var(--mono);letter-spacing:.14em;color:var(--mut)">THE BOOK &#183; INK</div>
+            <div style="padding:7px 10px;border-bottom:1px solid var(--rule);font:600 8.5px var(--mono);letter-spacing:.14em;color:var(--mut)">THE ENGINE &#183; GREY</div>
+            <div style="padding:7px 10px;border-bottom:1px solid var(--rule);font:600 8.5px var(--mono);letter-spacing:.14em;color:var(--mut)">YOUR CALL</div>
+            <sc-for list="{{ gRows }}" as="g" hint-placeholder-count="3">
+              <div style="padding:10px;border-bottom:1px solid var(--rule);font:600 10px var(--mono);color:var(--mut);display:flex;flex-direction:column;gap:2px"><span>{{ g.field }}</span><span style="font:400 9px var(--mono);color:#9A9285">{{ g.src }}</span></div>
+              <div style="padding:10px;border-bottom:1px solid var(--rule);display:flex;flex-direction:column;gap:3px"><span style="font:600 13px var(--sans);color:var(--ink)">{{ g.ink }}</span><span style="font:400 9px var(--mono);color:{{ g.provFg }}">{{ g.prov }}</span></div>
+              <div style="padding:10px;border-bottom:1px solid var(--rule);display:flex;flex-direction:column;gap:3px;background:{{ g.greyBg }}"><span style="font:500 13px var(--sans);color:#8D8478;font-style:italic;text-decoration:{{ g.greyDeco }}">{{ g.grey }}</span><span style="font:400 9px var(--mono);color:#9A9285">{{ g.why }}</span></div>
+              <div style="padding:10px;border-bottom:1px solid var(--rule);display:flex;gap:5px;align-items:flex-start">
+                <button onClick="{{ g.accept }}" style="padding:5px 9px;font:600 9px var(--mono);letter-spacing:.05em;border:1px solid var(--acc);background:{{ g.aBg }};color:{{ g.aFg }};cursor:pointer">TAKE IT</button>
+                <button onClick="{{ g.keep }}" style="padding:5px 9px;font:600 9px var(--mono);letter-spacing:.05em;border:1px solid var(--ink);background:{{ g.kBg }};color:{{ g.kFg }};cursor:pointer">KEEP INK</button>
+              </div>
+            </sc-for>
+          </div>
+          <div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap">
+            <div style="flex:1;min-width:260px;display:flex;flex-direction:column;gap:4px">
+              <button onPointerDown="{{ gH.down }}" onPointerUp="{{ gH.up }}" onPointerCancel="{{ gH.up }}" onKeyDown="{{ gH.key }}" style="position:relative;overflow:hidden;min-height:46px;width:100%;border-radius:12px;border:1px solid {{ gH.br }};background:{{ gH.bg }};color:var(--ink);font:600 12.5px var(--sans);cursor:{{ gH.cur }};opacity:{{ gH.op }};touch-action:none;user-select:none;display:flex;align-items:center;justify-content:center;gap:8px;padding:0 14px">
+                <span style="position:absolute;inset:0;background:var(--acc);opacity:.16;transform-origin:0 50%;transform:scaleX({{ gH.fill }});transition:{{ gH.tr }};pointer-events:none"></span>
+                <sc-if value="{{ gH.sealed }}" hint-placeholder-val="{{ false }}"><span style="display:flex;align-items:center;gap:8px;animation:sealLand 360ms var(--stampEase) both"><svg viewBox="0 0 100 100" width="24" height="24" style="color:var(--acc);display:block"><path fill="currentColor" d="M50 6c9 0 14 6 22 8s16-2 21 5-1 15 1 23 8 13 5 21-13 8-18 14-6 15-14 17-14-4-22-4-14 6-22 4-9-11-14-17-15-6-18-14 3-13 5-21-3-16 1-23 13-3 21-5S41 6 50 6z"></path><g opacity=".62"><g transform="translate(50 47) scale(0.0592) translate(-241.5 -287)" fill="#FAF7F1"><path d="M0 38H72V540H0Z"></path><path d="M15 38H96L460 574H379Z"></path><path d="M0 346H305L353 416H0Z"></path><path d="M0 470H137V540H0Z"></path><path d="M99 0H151L278.7 187.8L284.8 273Z"></path><path d="M389.5 40H460.9L284.8 273L251.4 224Z"></path><path d="M412 40H483V574H412Z"></path></g><g fill="none" stroke="#FAF7F1" stroke-width="4.4" stroke-linecap="square"><path d="M30 71h40"></path><path d="M30 77h40" stroke-width="2.6"></path></g></g></svg><span style="color:#14515C">{{ gH.sealedLabel }}</span></span></sc-if>
+                <sc-if value="{{ gH.unsealed }}" hint-placeholder-val="{{ true }}"><span style="position:relative">{{ gH.label }}</span></sc-if>
+              </button>
+              <div style="min-height:16px;font-size:10.5px;text-align:center;color:#7C7365;line-height:1.4">{{ gH.note }}</div>
+            </div>
+            <div style="flex:1;min-width:240px;font-size:11px;line-height:1.55;color:#4A443B;border-left:1px solid var(--rule);padding-left:14px">{{ gExplain }}</div>
+          </div>
+        </div>
+        <div style="width:300px;display:flex;flex-direction:column;gap:10px">
+          <div style="border:1px solid var(--rule);padding:11px 13px;display:flex;flex-direction:column;gap:5px"><span style="font:600 9px var(--mono);letter-spacing:.14em;color:var(--acc)">THREE GRANULARITIES</span><span style="font-size:11.5px;line-height:1.55;color:#4A443B">One cell, one record, one batch. Every one of them is a tick; none of them is a write. The batch resolves to a single seal.</span></div>
+          <div style="border:1px solid var(--rule);padding:11px 13px;display:flex;flex-direction:column;gap:5px"><span style="font:600 9px var(--mono);letter-spacing:.14em;color:var(--acc)">A COLOUR THAT NEVER FADES</span><span style="font-size:11.5px;line-height:1.55;color:#4A443B">After the seal the value is ink because a person chose it. The margin still says the engine proposed it, at what time, from what. Permanently.</span></div>
+          <div style="border:1px solid var(--rule);padding:11px 13px;display:flex;flex-direction:column;gap:5px"><span style="font:600 9px var(--mono);letter-spacing:.14em;color:var(--acc)">NO CHEERFUL ZERO</span><span style="font-size:11.5px;line-height:1.55;color:#4A443B">The note field has no engine line for the two missing bottles because no source says where they went. An absence, shown as one.</span></div>
+        </div>
+      </div>
+      <div style="border-top:1px solid var(--rule);padding-top:10px;font:500 10px var(--mono);color:var(--mut);line-height:1.5">Suggested edits, not applied edits &#183; a proposal you accept line by line, sealed once &#8212; <span style="color:var(--ink)">packet 5, ADR 0113</span> &#183; the invoice beside the order, cell by cell</div>
+    </div>
+
+    <div id="2d" style="width:650px;background:var(--paper);color:var(--ink);padding:24px 26px 20px;box-shadow:0 24px 60px rgba(0,0,0,.45);display:flex;flex-direction:column;gap:14px">
+      <div style="display:flex;align-items:baseline;gap:10px;border-bottom:2px solid var(--ink);padding-bottom:10px;flex-wrap:wrap">
+        <span style="font:600 10px var(--mono);border:1px solid var(--rule);padding:2px 6px;color:var(--acc)">2d</span>
+        <h2 style="margin:0;font-family:var(--serif);font-size:20px;font-weight:600;letter-spacing:-.01em">The passcode at the pass</h2>
+        <span style="font:500 10px var(--mono);color:var(--mut)">PANEL &#183; SEAL &#183; SHARED TABLET</span>
+        <span style="margin-left:auto;font:500 10px var(--mono);color:var(--amber)">FAULT: A DEVICE LEFT OPEN</span>
+      </div>
+      <p style="margin:0;font-size:12.5px;line-height:1.6;color:#4A443B;text-wrap:pretty">The tablet at the pass belongs to nobody. A write-off there needs a manager, in seconds, without leaving the line: four digits, a name on the paper, then the hold. And the tablet locks itself &#8212; because a device left open hands everyone&#8217;s authority to whoever picks it up. Touch anything to reset the countdown; let it run to see the veil.</p>
+      <div onPointerDown="{{ kTouch }}" style="position:relative;background:var(--char);height:326px;padding:14px;display:flex;gap:12px;overflow:hidden">
+        <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:8px">
+          <div style="display:flex;justify-content:space-between;font:600 9px var(--mono);letter-spacing:.16em;color:var(--mutDk)"><span>WRITE OFF &#183; SPOT COUNT</span><span style="color:{{ kIdleFg }}">{{ kIdleTxt }}</span></div>
+          <div style="background:#221B16;border:1px solid var(--edge);padding:11px 13px;display:flex;flex-direction:column;gap:3px">
+            <span style="font:600 9px var(--mono);letter-spacing:.16em;color:var(--sealDk)">WRITE OFF 6 BOTTLES?</span>
+            <span style="font-family:var(--serif);font-size:16px;font-weight:600;color:var(--paper)">&#214;k&#252;zg&#246;z&#252; 2022 &#183; corked</span>
+            <span style="font-size:11px;line-height:1.5;color:#CFC6B8">A ledger write. Counted 6, shelf holds 0. The book will say who, and under whose authority.</span>
+          </div>
+          <div style="background:#221B16;border:1px solid {{ kMgrBr }};padding:9px 13px;display:flex;flex-direction:column;gap:2px">
+            <span style="font:600 8.5px var(--mono);letter-spacing:.14em;color:var(--mutDk)">AUTHORITY</span>
+            <span style="font:500 11px var(--mono);color:{{ kMgrFg }}">{{ kMgrTxt }}</span>
+          </div>
+          <div style="margin-top:auto;display:flex;flex-direction:column;gap:4px">
+            <button onPointerDown="{{ kH.down }}" onPointerUp="{{ kH.up }}" onPointerCancel="{{ kH.up }}" onKeyDown="{{ kH.key }}" style="position:relative;overflow:hidden;min-height:46px;width:100%;border-radius:12px;border:1px solid {{ kH.br }};background:{{ kH.bg }};color:var(--paper);font:600 12.5px var(--sans);cursor:{{ kH.cur }};opacity:{{ kH.op }};touch-action:none;user-select:none;display:flex;align-items:center;justify-content:center;gap:8px;padding:0 14px">
+              <span style="position:absolute;inset:0;background:var(--sealDk);opacity:.22;transform-origin:0 50%;transform:scaleX({{ kH.fill }});transition:{{ kH.tr }};pointer-events:none"></span>
+              <sc-if value="{{ kH.sealed }}" hint-placeholder-val="{{ false }}"><span style="display:flex;align-items:center;gap:8px;animation:sealLand 360ms var(--stampEase) both"><svg viewBox="0 0 100 100" width="24" height="24" style="color:var(--sealDk);display:block"><path fill="currentColor" d="M50 6c9 0 14 6 22 8s16-2 21 5-1 15 1 23 8 13 5 21-13 8-18 14-6 15-14 17-14-4-22-4-14 6-22 4-9-11-14-17-15-6-18-14 3-13 5-21-3-16 1-23 13-3 21-5S41 6 50 6z"></path><g opacity=".62"><g transform="translate(50 47) scale(0.0592) translate(-241.5 -287)" fill="#1B1511"><path d="M0 38H72V540H0Z"></path><path d="M15 38H96L460 574H379Z"></path><path d="M0 346H305L353 416H0Z"></path><path d="M0 470H137V540H0Z"></path><path d="M99 0H151L278.7 187.8L284.8 273Z"></path><path d="M389.5 40H460.9L284.8 273L251.4 224Z"></path><path d="M412 40H483V574H412Z"></path></g><g fill="none" stroke="#1B1511" stroke-width="4.4" stroke-linecap="square"><path d="M30 71h40"></path><path d="M30 77h40" stroke-width="2.6"></path></g></g></svg><span style="color:var(--sealDk)">{{ kH.sealedLabel }}</span></span></sc-if>
+              <sc-if value="{{ kH.unsealed }}" hint-placeholder-val="{{ true }}"><span style="position:relative">{{ kH.label }}</span></sc-if>
+            </button>
+            <div style="min-height:16px;font-size:10.5px;text-align:center;color:var(--mutDk);line-height:1.4">{{ kH.note }}</div>
+          </div>
+        </div>
+        <div style="flex:0 0 190px;display:flex;flex-direction:column;gap:8px">
+          <div style="display:flex;justify-content:center;gap:10px;padding:6px 0">
+            <sc-for list="{{ kDots }}" as="d" hint-placeholder-count="4"><span style="width:10px;height:10px;border-radius:50%;border:1px solid var(--sealDk);background:{{ d.bg }};display:block"></span></sc-for>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px">
+            <sc-for list="{{ kKeys }}" as="k" hint-placeholder-count="12">
+              <button onClick="{{ k.press }}" style="min-height:44px;font:600 13px var(--mono);background:#221B16;color:var(--paper);border:1px solid var(--edge);cursor:pointer" style-hover="border-color:var(--sealDk)">{{ k.t }}</button>
+            </sc-for>
+          </div>
+          <span style="font:500 8.5px var(--mono);color:var(--mutDk);text-align:center;line-height:1.5">A MANAGER&#8217;S FOUR DIGITS &#183; ANY FOUR WORK HERE</span>
+        </div>
+        <sc-if value="{{ kLocked }}" hint-placeholder-val="{{ false }}">
+          <div style="position:absolute;inset:0;background:rgba(14,11,9,.94);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:24px;text-align:center;animation:veilDown 320ms cubic-bezier(.16,1,.3,1) both">
+            <span style="font-family:var(--serif);font-size:20px;font-weight:600;color:var(--paper)">Locked.</span>
+            <span style="font-size:12px;line-height:1.55;color:#CFC6B8;max-width:340px">The tablet sat idle. Whoever picks it up now holds no one&#8217;s authority &#8212; the passcode is what makes the seal mean anything.</span>
+            <span style="font:600 9.5px var(--mono);letter-spacing:.12em;color:var(--sealDk)">FOUR DIGITS UNLOCK &#183; {{ kLockDots }}</span>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;width:190px">
+              <sc-for list="{{ kKeys }}" as="k" hint-placeholder-count="12">
+                <button onClick="{{ k.press }}" style="min-height:44px;font:600 13px var(--mono);background:#221B16;color:var(--paper);border:1px solid var(--edge);cursor:pointer">{{ k.t }}</button>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+      </div>
+      <div style="border-top:1px solid var(--rule);padding-top:10px;font:500 10px var(--mono);color:var(--mut);line-height:1.5">A manager&#8217;s passcode at the point of action &#183; the door tablet locks itself &#8212; <span style="color:var(--ink)">packet 5, fork F11</span> &#183; Spot count, pages/inventory/command/SpotCountPanel.tsx:210</div>
+    </div>
+
+    <div id="2e" style="width:650px;background:var(--paper);color:var(--ink);padding:24px 26px 20px;box-shadow:0 24px 60px rgba(0,0,0,.45);display:flex;flex-direction:column;gap:14px">
+      <div style="display:flex;align-items:baseline;gap:10px;border-bottom:2px solid var(--ink);padding-bottom:10px;flex-wrap:wrap">
+        <span style="font:600 10px var(--mono);border:1px solid var(--rule);padding:2px 6px;color:var(--acc)">2e</span>
+        <h2 style="margin:0;font-family:var(--serif);font-size:20px;font-weight:600;letter-spacing:-.01em">Queued is never confirmed</h2>
+        <span style="font:500 10px var(--mono);color:var(--mut)">BOTTOM SHEET &#183; SEAL &#183; FOUR STATES</span>
+        <span style="margin-left:auto;font:500 10px var(--mono);color:var(--amber)">FAULT: A TICK THAT LIES</span>
+      </div>
+      <p style="margin:0;font-size:12.5px;line-height:1.6;color:#4A443B;text-wrap:pretty">In the cellar the signal drops. The phone still lets you record the count &#8212; the hold runs upward, under the thumb &#8212; but it says exactly how far the record got: written here, sent, received, sealed by the house. Turn the signal off, record, and watch it refuse to pretend. Turn it back on and the wax lands only when the house has it.</p>
+      <div style="background:#F3ECE0;border:1px solid var(--rule);height:326px;padding:12px;display:flex;gap:14px;overflow:hidden">
+        <div style="width:236px;flex:0 0 auto;height:100%;background:#0E0B09;border:1px solid var(--edge);border-radius:24px;padding:9px;display:flex;flex-direction:column;gap:6px">
+          <div style="display:flex;justify-content:space-between;padding:2px 8px 0;font:600 9px var(--mono);color:var(--mutDk)"><span>{{ clock }}</span><button onClick="{{ qToggle }}" style="font:600 9px var(--mono);letter-spacing:.06em;background:transparent;border:1px solid {{ qSigBr }};color:{{ qSigFg }};padding:2px 6px;cursor:pointer">{{ qSigTxt }}</button></div>
+          <div style="flex:1;position:relative;overflow:hidden;background:#171310;border:1px solid var(--edge);display:flex;flex-direction:column">
+            <div style="padding:10px 10px 0;display:flex;flex-direction:column;gap:3px;opacity:.45">
+              <span style="font:600 8.5px var(--mono);letter-spacing:.14em;color:var(--sealDk)">SPOT COUNT</span>
+              <span style="font-family:var(--serif);font-size:14px;font-weight:600;color:var(--paper)">&#214;k&#252;zg&#246;z&#252; 2022</span>
+              <span style="font-size:10.5px;color:#CFC6B8">Book says 8. Shelf holds 6.</span>
+            </div>
+            <div style="position:absolute;left:0;right:0;bottom:0;background:#241D18;border:1px solid var(--edge);border-bottom:none;border-radius:14px 14px 0 0;padding:6px 10px 10px;display:flex;flex-direction:column;gap:7px">
+              <div style="display:flex;justify-content:center"><span style="width:34px;height:3px;border-radius:2px;background:var(--mutDk);display:block"></span></div>
+              <span style="font:600 8.5px var(--mono);letter-spacing:.14em;color:var(--sealDk)">RECORD 6 ON THE SHELF</span>
+              <button onPointerDown="{{ qH.down }}" onPointerUp="{{ qH.up }}" onPointerCancel="{{ qH.up }}" onKeyDown="{{ qH.key }}" style="position:relative;overflow:hidden;height:84px;width:100%;border-radius:12px;border:1px solid {{ qH.br }};background:{{ qH.bg }};color:var(--paper);font:600 12px var(--sans);cursor:{{ qH.cur }};touch-action:none;user-select:none;display:flex;align-items:center;justify-content:center;padding:0 12px;text-align:center">
+                <span style="position:absolute;inset:0;background:var(--sealDk);opacity:.22;transform-origin:50% 100%;transform:scaleY({{ qH.fill }});transition:{{ qH.trY }};pointer-events:none"></span>
+                <span style="position:relative;line-height:1.35">{{ qPlateTxt }}</span>
+              </button>
+              <div style="min-height:14px;font-size:10px;text-align:center;color:var(--mutDk);line-height:1.4">{{ qH.note }}</div>
+            </div>
+          </div>
+        </div>
+        <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:8px">
+          <span style="font:600 9px var(--mono);letter-spacing:.14em;color:var(--mut)">HOW FAR THE RECORD GOT</span>
+          <sc-for list="{{ qSteps }}" as="s" hint-placeholder-count="4">
+            <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--paper);border:1px solid {{ s.br }}">
+              <span style="width:22px;height:22px;border-radius:50%;border:1px solid {{ s.ringC }};background:{{ s.dotBg }};display:flex;align-items:center;justify-content:center;flex:0 0 auto">
+                <sc-if value="{{ s.wax }}" hint-placeholder-val="{{ false }}"><svg viewBox="0 0 100 100" width="22" height="22" style="color:var(--acc);display:block;animation:sealLand 360ms var(--stampEase) both"><path fill="currentColor" d="M50 6c9 0 14 6 22 8s16-2 21 5-1 15 1 23 8 13 5 21-13 8-18 14-6 15-14 17-14-4-22-4-14 6-22 4-9-11-14-17-15-6-18-14 3-13 5-21-3-16 1-23 13-3 21-5S41 6 50 6z"></path><g opacity=".62"><g transform="translate(50 47) scale(0.0592) translate(-241.5 -287)" fill="#FAF7F1"><path d="M0 38H72V540H0Z"></path><path d="M15 38H96L460 574H379Z"></path><path d="M0 346H305L353 416H0Z"></path><path d="M0 470H137V540H0Z"></path><path d="M99 0H151L278.7 187.8L284.8 273Z"></path><path d="M389.5 40H460.9L284.8 273L251.4 224Z"></path><path d="M412 40H483V574H412Z"></path></g><g fill="none" stroke="#FAF7F1" stroke-width="4.4" stroke-linecap="square"><path d="M30 71h40"></path><path d="M30 77h40" stroke-width="2.6"></path></g></g></svg></sc-if>
+              </span>
+              <div style="display:flex;flex-direction:column;gap:1px;min-width:0">
+                <span style="font:600 12px var(--sans);color:{{ s.fg }}">{{ s.t }}</span>
+                <span style="font:500 9.5px var(--mono);color:{{ s.subFg }}">{{ s.sub }}</span>
+              </div>
+            </div>
+          </sc-for>
+          <div style="margin-top:auto;font-size:11px;line-height:1.5;color:#4A443B;border-top:1px solid var(--rule);padding-top:8px">{{ qExplain }}</div>
+        </div>
+      </div>
+      <div style="border-top:1px solid var(--rule);padding-top:10px;font:500 10px var(--mono);color:var(--mut);line-height:1.5">Queued is never confirmed &#183; swipe up to record it; the stamp at the end &#8212; <span style="color:var(--ink)">packet 5, C20 &#183; C24</span> &#183; on desktop the same act is the hold</div>
+    </div>
+
+  </div>
+</div>
+</section>
+
+<section style="padding:24px 40px 72px;display:flex;justify-content:center;font-family:var(--sans)">
+<div style="width:1320px;max-width:100%;display:flex;flex-direction:column;gap:20px">
+
+  <div style="background:var(--paper);color:var(--ink);padding:34px 40px 30px;box-shadow:0 30px 80px rgba(0,0,0,.5);display:flex;flex-direction:column;gap:18px">
+    <div style="display:flex;align-items:baseline;gap:14px;border-bottom:2px solid var(--ink);padding-bottom:14px;flex-wrap:wrap">
+      <h1 style="margin:0;font-family:var(--serif);font-size:27px;font-weight:600;letter-spacing:-.015em">Turn one &#8212; five sketches on the experience</h1>
+      <span style="font:500 11.5px var(--mono);color:var(--mut)">&#183; census 102 &#183; ADR 0112</span>
+      <span style="margin-left:auto;font:500 11px var(--mono);color:var(--acc)">SERVICE {{ clock }} &#183; {{ covers }} COVERS &#183; LINE LIVE</span>
+    </div>
+    <p style="margin:0;max-width:1000px;font-size:13.5px;line-height:1.65;color:#4A443B;text-wrap:pretty">Five sketches, each one an argument about the reader rather than the container. Every one is live: click it, type in it, hold it, leave it. They answer the seven experience faults the founder named &#8212; interruption, losing your place, stacking, unsaved work, the phone, the keyboard, and an overlay that never says what it wants. The shapes and the words stay the policy&#8217;s: three shapes, one primitive, the close control is words, one chromatic colour, and the line behind the paper keeps moving while you read.</p>
+    <div style="display:flex;gap:12px;flex-wrap:wrap">
+      <div style="flex:1;min-width:220px;border:1px solid var(--rule);padding:11px 14px;font-size:11.5px;line-height:1.55;color:#4A443B"><span style="font:600 10px var(--mono);color:var(--acc)">THE BAR&#160;&#160;</span>A re-skin fails. Each sketch changes what the reader can do, not what the overlay looks like.</div>
+      <div style="flex:1;min-width:220px;border:1px solid var(--rule);padding:11px 14px;font-size:11.5px;line-height:1.55;color:#4A443B"><span style="font:600 10px var(--mono);color:var(--acc)">THE GROUND&#160;&#160;</span>1a and 1c sit on warm charcoal &#8212; the pass at service. 1b, 1d, 1e on paper &#8212; the desk. Both grounds, checked.</div>
+      <div style="flex:1;min-width:220px;border:1px solid var(--rule);padding:11px 14px;font-size:11.5px;line-height:1.55;color:#4A443B"><span style="font:600 10px var(--mono);color:var(--acc)">READ AS&#160;&#160;</span>Census entries with a working demo attached. Every footer names the file the act lives in today.</div>
+    </div>
+  </div>
+
+  <div style="display:flex;gap:20px;flex-wrap:wrap">
+
+    <div id="1a" style="width:650px;background:var(--paper);color:var(--ink);padding:24px 26px 20px;box-shadow:0 24px 60px rgba(0,0,0,.45);display:flex;flex-direction:column;gap:14px">
+      <div style="display:flex;align-items:baseline;gap:10px;border-bottom:2px solid var(--ink);padding-bottom:10px;flex-wrap:wrap">
+        <span style="font:600 10px var(--mono);border:1px solid var(--rule);padding:2px 6px;color:var(--acc)">1a</span>
+        <h2 style="margin:0;font-family:var(--serif);font-size:20px;font-weight:600;letter-spacing:-.01em">The Pass</h2>
+        <span style="font:500 10px var(--mono);color:var(--mut)">SHEET &#183; NO SCRIM &#183; NON-MODAL</span>
+        <span style="margin-left:auto;font:500 10px var(--mono);color:var(--amber)">FAULT: INTERRUPTION</span>
+      </div>
+      <p style="margin:0;font-size:12.5px;line-height:1.6;color:#4A443B;text-wrap:pretty">A scrim is a cost nobody costed. On a floor at service the operator is not reading &#8212; they are watching. So the sheet takes width, never light: the list gives up columns and keeps its pulse. Flip the toggle and watch what the old dim actually took from you.</p>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button onClick="{{ aHouse }}" style="padding:7px 12px;font:600 10.5px var(--mono);letter-spacing:.05em;cursor:pointer;border:1px solid var(--ink);background:{{ aHouseBg }};color:{{ aHouseFg }}">THE LIST COMPRESSES</button>
+        <button onClick="{{ aLegacy }}" style="padding:7px 12px;font:600 10.5px var(--mono);letter-spacing:.05em;cursor:pointer;border:1px solid var(--ink);background:{{ aLegacyBg }};color:{{ aLegacyFg }}">THE SCRIM DIMS</button>
+        <span style="margin-left:auto;font:500 10px var(--mono);color:var(--mut)">{{ aHint }}</span>
+      </div>
+      <div style="position:relative;background:var(--char);height:326px;padding:12px;display:flex;gap:10px;overflow:hidden">
+        <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:5px">
+          <div style="display:flex;justify-content:space-between;font:600 9px var(--mono);letter-spacing:.16em;color:var(--mutDk);padding:0 2px 4px">
+            <span>THE BOOK &#183; TODAY</span><span>{{ clock }}</span>
+          </div>
+          <sc-for list="{{ aRows }}" as="r" hint-placeholder-count="5">
+            <div onClick="{{ r.onOpen }}" style="border:1px solid var(--edge);border-left:3px solid {{ r.edge }};background:{{ r.bg }};padding:8px 10px;cursor:pointer;display:flex;flex-direction:column;gap:3px;transition:background 160ms" style-hover="background:#241D18">
+              <div style="display:flex;align-items:baseline;gap:7px;min-width:0">
+                <span style="font:600 10px var(--mono);color:var(--sealDk)">{{ r.id }}</span>
+                <span style="font:600 12.5px var(--sans);color:var(--paper);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.name }}</span>
+                <span style="margin-left:auto;font:500 10px var(--mono);color:var(--mutDk);flex:0 0 auto">{{ r.qty }}</span>
+              </div>
+              <div style="display:flex;align-items:baseline;gap:7px">
+                <span style="font-size:10.5px;color:var(--mutDk);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.vendor }}</span>
+                <span style="margin-left:auto;font:500 9.5px var(--mono);color:{{ r.sc }};flex:0 0 auto">{{ r.status }}</span>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+        <div style="flex:0 0 auto;overflow:hidden;transition:width 300ms cubic-bezier(.2,.75,.25,1);width:{{ aDockW }}px">
+          <sc-if value="{{ aDocked }}" hint-placeholder-val="{{ false }}">
+            <div style="width:268px;height:100%;background:#221B16;border:1px solid var(--edge);display:flex;flex-direction:column">
+              <div style="padding:11px 13px;border-bottom:1px solid var(--edge);display:flex;flex-direction:column;gap:3px">
+                <span style="font:600 9px var(--mono);letter-spacing:.16em;color:var(--sealDk)">VENDOR ANSWERS</span>
+                <span style="font-family:var(--serif);font-size:16px;font-weight:600;color:var(--paper)">{{ aOpenName }}</span>
+              </div>
+              <div style="padding:12px 13px;display:flex;flex-direction:column;gap:9px;flex:1">
+                <div style="font-size:11.5px;line-height:1.55;color:#CFC6B8">Selim &#350;arap can send 6 of 6, Tuesday. Price holds at &#8378;713 the bottle.</div>
+                <div style="font:500 9.5px var(--mono);color:var(--mutDk);border-top:1px solid var(--edge);padding-top:8px">SUMMED FROM 3 ROWS &#183; READ {{ clock }}</div>
+                <div style="font-size:11px;line-height:1.5;color:var(--amberDk)">The list is still moving behind this. You did not leave it.</div>
+              </div>
+              <div style="padding:10px 13px;border-top:1px solid var(--edge);display:flex;gap:8px;align-items:center">
+                <button onClick="{{ aClose }}" style="padding:6px 11px;font:600 10px var(--mono);letter-spacing:.05em;background:transparent;color:var(--paper);border:1px solid var(--edge);cursor:pointer" style-hover="border-color:var(--sealDk)">CLOSE</button>
+                <span style="font:500 9px var(--mono);color:var(--mutDk)">ESC ALSO</span>
+              </div>
+            </div>
+          </sc-if>
+        </div>
+        <sc-if value="{{ aScrimOn }}" hint-placeholder-val="{{ false }}">
+          <div onClick="{{ aClose }}" style="position:absolute;inset:0;background:rgba(15,12,10,.86);display:flex;align-items:flex-start;justify-content:center;padding-top:52px;cursor:pointer">
+            <div style="width:340px;background:#221B16;border:1px solid var(--edge);padding:16px 18px;display:flex;flex-direction:column;gap:10px">
+              <span style="font:600 9px var(--mono);letter-spacing:.16em;color:var(--amberDk)">THE OLD WAY</span>
+              <span style="font-family:var(--serif);font-size:17px;font-weight:600;color:var(--paper)">{{ aOpenName }}</span>
+              <div style="font-size:11.5px;line-height:1.55;color:#CFC6B8">Everything you were watching is behind this sheet of grey. Nothing behind it stopped.</div>
+              <div style="font:600 11px var(--mono);color:var(--amberDk);border-top:1px solid var(--edge);padding-top:9px">{{ aMissedTxt }}</div>
+              <button onClick="{{ aClose }}" style="align-self:flex-start;padding:6px 11px;font:600 10px var(--mono);letter-spacing:.05em;background:transparent;color:var(--paper);border:1px solid var(--edge);cursor:pointer">CLOSE</button>
+            </div>
+          </div>
+        </sc-if>
+      </div>
+      <div style="display:flex;gap:10px;align-items:baseline;border-top:1px solid var(--rule);padding-top:10px">
+        <span style="font:500 10px var(--mono);color:var(--mut);line-height:1.5">POS buttons and stock &#183; The zones &#183; Carry this bottle &#8212; <span style="color:var(--ink)">components/inventory/PosMappingPanel.tsx:294</span>, StorageLocationManager.tsx:327, AddWineToInventoryModal.tsx:253</span>
+      </div>
+    </div>
+
+    <div id="1b" style="width:650px;background:var(--paper);color:var(--ink);padding:24px 26px 20px;box-shadow:0 24px 60px rgba(0,0,0,.45);display:flex;flex-direction:column;gap:14px">
+      <div style="display:flex;align-items:baseline;gap:10px;border-bottom:2px solid var(--ink);padding-bottom:10px;flex-wrap:wrap">
+        <span style="font:600 10px var(--mono);border:1px solid var(--rule);padding:2px 6px;color:var(--acc)">1b</span>
+        <h2 style="margin:0;font-family:var(--serif);font-size:20px;font-weight:600;letter-spacing:-.01em">The Stub</h2>
+        <span style="font:500 10px var(--mono);color:var(--mut)">SHEET &#183; TORN, NOT CLOSED</span>
+        <span style="margin-left:auto;font:500 10px var(--mono);color:var(--amber)">FAULT: LOSING YOUR PLACE</span>
+      </div>
+      <p style="margin:0;font-size:12.5px;line-height:1.6;color:#4A443B;text-wrap:pretty">Nothing in a kitchen is thrown away because someone walked past it. So Esc does not destroy the sheet &#8212; it tears it, and the stub stays on the row where you were, holding your words. Type a note, leave with Esc, come back to it. Your place was never a scroll position; it was a piece of paper on the row.</p>
+      <div style="position:relative;background:#F3ECE0;border:1px solid var(--rule);height:326px;padding:12px;display:flex;gap:10px;overflow:hidden">
+        <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:6px">
+          <div style="font:600 9px var(--mono);letter-spacing:.16em;color:var(--mut);padding-bottom:2px">DELIVERIES &#183; AWAITING A WORD</div>
+          <sc-for list="{{ bRows }}" as="r" hint-placeholder-count="3">
+            <div style="background:var(--paper);border:1px solid var(--rule);border-left:3px solid {{ r.edge }};display:flex;flex-direction:column">
+              <div onClick="{{ r.onOpen }}" style="padding:8px 10px;cursor:pointer;display:flex;flex-direction:column;gap:2px" style-hover="background:#F7F2E8">
+                <div style="display:flex;align-items:baseline;gap:7px">
+                  <span style="font:600 10px var(--mono);color:var(--acc)">{{ r.id }}</span>
+                  <span style="font:600 12.5px var(--sans);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.t }}</span>
+                  <span style="margin-left:auto;font:500 9.5px var(--mono);color:var(--mut);flex:0 0 auto">{{ r.s }}</span>
+                </div>
+              </div>
+              <sc-if value="{{ r.hasStub }}" hint-placeholder-val="{{ false }}">
+                <div style="margin:0 8px 8px;border:1px dashed var(--acc);background:#F1F5F4;padding:7px 9px;display:flex;flex-direction:column;gap:5px">
+                  <span style="font:600 8.5px var(--mono);letter-spacing:.14em;color:var(--acc)">HELD HERE &#183; UNWRITTEN</span>
+                  <span style="font-size:11px;line-height:1.45;color:#4A443B;font-style:italic">&#8220;{{ r.stub }}&#8221;</span>
+                  <div style="display:flex;gap:7px">
+                    <button onClick="{{ r.onOpen }}" style="padding:4px 8px;font:600 9.5px var(--mono);letter-spacing:.05em;background:var(--acc);color:var(--paper);border:1px solid var(--acc);cursor:pointer">RESUME</button>
+                    <button onClick="{{ r.onDiscard }}" style="padding:4px 8px;font:600 9.5px var(--mono);letter-spacing:.05em;background:transparent;color:var(--mut);border:1px solid var(--rule);cursor:pointer" style-hover="color:var(--ink);border-color:var(--ink)">DISCARD</button>
+                  </div>
+                </div>
+              </sc-if>
+            </div>
+          </sc-for>
+          <div style="margin-top:auto;font-size:10.5px;line-height:1.5;color:var(--mut);border-top:1px solid var(--rule);padding-top:7px">{{ bFoot }}</div>
+        </div>
+        <div style="flex:0 0 auto;overflow:hidden;transition:width 300ms cubic-bezier(.2,.75,.25,1);width:{{ bDockW }}px">
+          <sc-if value="{{ bOpen }}" hint-placeholder-val="{{ false }}">
+            <div style="width:262px;height:100%;background:var(--paper);border:1px solid var(--ink);display:flex;flex-direction:column">
+              <div style="padding:11px 13px;border-bottom:1px solid var(--rule);display:flex;flex-direction:column;gap:2px">
+                <span style="font:600 9px var(--mono);letter-spacing:.16em;color:var(--acc)">A WORD ON THIS DELIVERY</span>
+                <span style="font-family:var(--serif);font-size:16px;font-weight:600">{{ bTitle }}</span>
+              </div>
+              <div style="padding:12px 13px;display:flex;flex-direction:column;gap:8px;flex:1">
+                <textarea ref="{{ bRef }}" value="{{ bText }}" onChange="{{ bType }}" onKeyDown="{{ bKey }}" placeholder="Your word on it." style="width:100%;flex:1;resize:none;border:1px solid var(--rule);background:#FCFAF6;padding:9px;font:400 11.5px var(--sans);line-height:1.5;color:var(--ink);outline:none" style-focus="border-color:var(--acc)"></textarea>
+                <sc-if value="{{ bGhostOn }}" hint-placeholder-val="{{ false }}">
+                  <div style="border:1px dashed var(--rule);padding:7px 9px;display:flex;flex-direction:column;gap:3px;background:#FCFAF6">
+                    <span style="font:600 8.5px var(--mono);letter-spacing:.12em;color:var(--mut)">THE ENGINE&#8217;S DRAFT &#183; TAB TAKES IT</span>
+                    <span style="font-size:11px;line-height:1.45;color:#8D8478;font-style:italic">{{ bGhost }}</span>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ bTaken }}" hint-placeholder-val="{{ false }}">
+                  <span style="font:500 9px var(--mono);color:#8D8478;line-height:1.45">ENGINE&#8217;S WORDS, TAKEN BY YOU AT {{ clock }} &#183; THEY STAY GREY IN THE TRAIL</span>
+                </sc-if>
+                <span style="font:500 9.5px var(--mono);color:var(--mut)">{{ bCount }}</span>
+              </div>
+              <div style="padding:10px 13px;border-top:1px solid var(--rule);display:flex;gap:8px;align-items:center">
+                <button onClick="{{ bClose }}" style="padding:6px 11px;font:600 10px var(--mono);letter-spacing:.05em;background:transparent;color:var(--ink);border:1px solid var(--ink);cursor:pointer" style-hover="background:var(--ink);color:var(--paper)">CLOSE</button>
+                <span style="font:500 9px var(--mono);color:var(--mut);line-height:1.4">ESC LEAVES THE STUB</span>
+              </div>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+      <div style="border-top:1px solid var(--rule);padding-top:10px;font:500 10px var(--mono);color:var(--mut);line-height:1.5">Undo after, for what can be undone &#183; the expanded row &#8212; <span style="color:var(--ink)">packet 5 behaviours</span>, fork F10 &#183; a note is reversible, a ledger row is not</div>
+    </div>
+
+    <div id="1c" style="width:1320px;max-width:100%;background:var(--paper);color:var(--ink);padding:24px 26px 20px;box-shadow:0 24px 60px rgba(0,0,0,.45);display:flex;flex-direction:column;gap:14px">
+      <div style="display:flex;align-items:baseline;gap:10px;border-bottom:2px solid var(--ink);padding-bottom:10px;flex-wrap:wrap">
+        <span style="font:600 10px var(--mono);border:1px solid var(--rule);padding:2px 6px;color:var(--acc)">1c</span>
+        <h2 style="margin:0;font-family:var(--serif);font-size:20px;font-weight:600;letter-spacing:-.01em">The Spindle</h2>
+        <span style="font:500 10px var(--mono);color:var(--mut)">SHEET &#215;3 &#183; DEPTH IS VISIBLE, NOT STACKED</span>
+        <span style="margin-left:auto;font:500 10px var(--mono);color:var(--amber)">FAULTS: NESTING &#183; THE PHONE</span>
+      </div>
+      <p style="margin:0;max-width:1080px;font-size:12.5px;line-height:1.6;color:#4A443B;text-wrap:pretty">Modals stack because software finds it easy, and the reader pays for it in lost bearings. A kitchen already solved this: tickets go on a spindle, in order, all of them still readable edge-on. Every level you leave behind collapses to a spine you can name and touch &#8212; and the depth is capped in words, not silently. The phone runs the same three levels as detented bottom sheets with one breadcrumb: same object, same head, same close in words.</p>
+      <div style="display:flex;gap:16px;flex-wrap:wrap">
+        <div style="flex:1;min-width:600px;position:relative;background:var(--char);height:352px;padding:14px;display:flex;gap:8px;overflow:hidden">
+          <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:5px">
+            <div style="font:600 9px var(--mono);letter-spacing:.16em;color:var(--mutDk);padding-bottom:3px">ORDERS &#183; THE PASS</div>
+            <div data-spindle="1" onClick="{{ cOpen }}" style="border:1px solid var(--edge);border-left:3px solid {{ cRowEdge }};padding:9px 11px;cursor:pointer;display:flex;align-items:baseline;gap:8px" style-hover="background:#241D18">
+              <span style="font:600 10px var(--mono);color:var(--sealDk)">118</span>
+              <span style="font:600 12.5px var(--sans);color:var(--paper)">&#214;k&#252;zg&#246;z&#252; 2022</span>
+              <span style="margin-left:auto;font:500 9.5px var(--mono);color:var(--amberDk)">answer waiting</span>
+            </div>
+            <div style="border:1px solid var(--edge);padding:9px 11px;display:flex;align-items:baseline;gap:8px;opacity:.55">
+              <span style="font:600 10px var(--mono);color:var(--sealDk)">119</span>
+              <span style="font:600 12.5px var(--sans);color:var(--paper)">Ancyra Narince</span>
+              <span style="margin-left:auto;font:500 9.5px var(--mono);color:var(--mutDk)">delivered</span>
+            </div>
+            <div style="margin-top:auto;font-size:11px;line-height:1.55;color:var(--mutDk);border-top:1px solid var(--edge);padding-top:9px">{{ cFoot }} A click anywhere off the spindle collapses it to nothing.</div>
+          </div>
+          <div data-spindle="1" style="flex:0 0 auto;display:flex;gap:6px;height:100%;transition:width 300ms cubic-bezier(.2,.75,.25,1);width:{{ cW }}px;overflow:hidden">
+            <sc-for list="{{ cSpines }}" as="s" hint-placeholder-count="0">
+              <div onClick="{{ s.onBack }}" style="flex:0 0 34px;background:#1F1914;border:1px solid var(--edge);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:8px 0" style-hover="border-color:var(--sealDk)">
+                <span style="writing-mode:vertical-rl;transform:rotate(180deg);font:600 10px var(--mono);letter-spacing:.1em;color:var(--mutDk);white-space:nowrap;overflow:hidden">{{ s.label }}</span>
+              </div>
+            </sc-for>
+            <sc-if value="{{ cLevel }}" hint-placeholder-val="{{ false }}">
+              <div style="flex:1;min-width:0;background:#221B16;border:1px solid var(--edge);display:flex;flex-direction:column">
+                <div style="padding:12px 14px;border-bottom:1px solid var(--edge);display:flex;flex-direction:column;gap:3px">
+                  <span style="font:600 9px var(--mono);letter-spacing:.16em;color:var(--sealDk)">{{ cLevel.eb }}</span>
+                  <span style="font-family:var(--serif);font-size:17px;font-weight:600;color:var(--paper)">{{ cLevel.ti }}</span>
+                </div>
+                <div style="padding:12px 14px;display:flex;flex-direction:column;gap:7px;flex:1">
+                  <sc-for list="{{ cBody }}" as="b" hint-placeholder-count="2">
+                    <span style="font-size:11.5px;line-height:1.5;color:#CFC6B8">{{ b.t }}</span>
+                  </sc-for>
+                  <span style="font:500 9.5px var(--mono);color:var(--mutDk);border-top:1px solid var(--edge);padding-top:8px">DEPTH {{ cDepthTxt }}</span>
+                  <sc-if value="{{ cRefused }}" hint-placeholder-val="{{ false }}">
+                    <span style="font-size:11.5px;line-height:1.5;color:var(--amberDk);border:1px solid var(--amberDk);padding:7px 9px">{{ cRefusal }}</span>
+                  </sc-if>
+                </div>
+                <div style="padding:10px 14px;border-top:1px solid var(--edge);display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                  <sc-if value="{{ cHasNext }}" hint-placeholder-val="{{ false }}">
+                    <button onClick="{{ cDrill }}" style="padding:6px 11px;font:600 10px var(--mono);letter-spacing:.05em;background:var(--sealDk);color:#10201A;border:1px solid var(--sealDk);cursor:pointer">{{ cNextLabel }}</button>
+                  </sc-if>
+                  <button onClick="{{ cBack }}" style="padding:6px 11px;font:600 10px var(--mono);letter-spacing:.05em;background:transparent;color:var(--paper);border:1px solid var(--edge);cursor:pointer" style-hover="border-color:var(--sealDk)">CLOSE</button>
+                  <span style="font:500 9px var(--mono);color:var(--mutDk)">ESC POPS ONE</span>
+                </div>
+              </div>
+            </sc-if>
+          </div>
+        </div>
+        <div style="flex:0 0 auto;display:flex;gap:14px;align-items:flex-start">
+          <div data-spindle="1" style="width:254px;height:352px;background:#0E0B09;border:1px solid var(--edge);border-radius:26px;padding:9px;display:flex;flex-direction:column;gap:7px">
+            <div style="display:flex;justify-content:space-between;padding:2px 8px 0;font:600 9px var(--mono);color:var(--mutDk)"><span>{{ clock }}</span><span>THE DOOR</span></div>
+            <div style="padding:0 8px;font:500 9.5px var(--mono);color:var(--sealDk);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ cCrumb }}</div>
+            <div style="flex:1;position:relative;overflow:hidden;background:#171310;border:1px solid var(--edge)">
+              <div style="padding:9px;display:flex;flex-direction:column;gap:5px;opacity:.4">
+                <div style="border:1px solid var(--edge);padding:7px 8px;font:600 10.5px var(--sans);color:var(--paper)">118 &#183; &#214;k&#252;zg&#246;z&#252;</div>
+                <div style="border:1px solid var(--edge);padding:7px 8px;font:600 10.5px var(--sans);color:var(--paper)">119 &#183; Ancyra</div>
+                <div style="border:1px solid var(--edge);padding:7px 8px;font:600 10.5px var(--sans);color:var(--paper)">120 &#183; Chablis</div>
+              </div>
+              <sc-for list="{{ cStack }}" as="p" hint-placeholder-count="0">
+                <div style="position:absolute;left:0;right:0;bottom:0;background:#241D18;border:1px solid var(--edge);border-bottom:none;border-radius:14px 14px 0 0;overflow:hidden;height:{{ p.h }}px;z-index:{{ p.z }};transition:height 260ms cubic-bezier(.2,.75,.25,1)">
+                  <sc-if value="{{ p.peek }}" hint-placeholder-val="{{ false }}">
+                    <div style="height:22px;display:flex;align-items:center;gap:6px;padding:0 12px;border-bottom:1px solid var(--edge)">
+                      <span style="width:16px;height:2px;border-radius:2px;background:var(--mutDk);display:block;flex:0 0 auto"></span>
+                      <span style="font:600 8px var(--mono);letter-spacing:.12em;color:var(--mutDk);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ p.spine }}</span>
+                    </div>
+                  </sc-if>
+                  <sc-if value="{{ p.front }}" hint-placeholder-val="{{ false }}">
+                    <div style="display:flex;flex-direction:column">
+                      <div style="display:flex;justify-content:center;padding:6px 0 2px"><span style="width:34px;height:3px;border-radius:2px;background:var(--mutDk);display:block"></span></div>
+                      <div style="padding:4px 12px 10px;display:flex;flex-direction:column;gap:4px">
+                        <span style="font:600 8.5px var(--mono);letter-spacing:.14em;color:var(--sealDk)">{{ p.eb }}</span>
+                        <span style="font-family:var(--serif);font-size:14px;font-weight:600;color:var(--paper)">{{ p.ti }}</span>
+                        <span style="font-size:10.5px;line-height:1.45;color:#CFC6B8">{{ p.b }}</span>
+                      </div>
+                    </div>
+                  </sc-if>
+                </div>
+              </sc-for>
+            </div>
+            <div style="display:flex;gap:5px;padding:0 2px 2px">
+              <button onClick="{{ cPeek }}" style="flex:1;padding:6px 0;font:600 9px var(--mono);letter-spacing:.05em;background:{{ cPeekBg }};color:{{ cPeekFg }};border:1px solid var(--edge);cursor:pointer">PEEK</button>
+              <button onClick="{{ cHalf }}" style="flex:1;padding:6px 0;font:600 9px var(--mono);letter-spacing:.05em;background:{{ cHalfBg }};color:{{ cHalfFg }};border:1px solid var(--edge);cursor:pointer">HALF</button>
+              <button onClick="{{ cFull }}" style="flex:1;padding:6px 0;font:600 9px var(--mono);letter-spacing:.05em;background:{{ cFullBg }};color:{{ cFullFg }};border:1px solid var(--edge);cursor:pointer">FULL</button>
+            </div>
+          </div>
+          <div style="width:250px;display:flex;flex-direction:column;gap:10px">
+            <div style="border:1px solid var(--rule);padding:11px 13px;display:flex;flex-direction:column;gap:5px">
+              <span style="font:600 9px var(--mono);letter-spacing:.14em;color:var(--acc)">WHAT THE SPINE BUYS</span>
+              <span style="font-size:11.5px;line-height:1.55;color:#4A443B">The reader can see how deep they went, name each level, and leave to any one of them in a single touch. A stack of scrims can do none of that.</span>
+            </div>
+            <div style="border:1px solid var(--rule);padding:11px 13px;display:flex;flex-direction:column;gap:5px">
+              <span style="font:600 9px var(--mono);letter-spacing:.14em;color:var(--acc)">THE CAP IS SPOKEN</span>
+              <span style="font-size:11.5px;line-height:1.55;color:#4A443B">A fourth level is refused in words, on the paper, with the way out named &#8212; never a silent no-op and never a fourth sheet.</span>
+            </div>
+            <div style="border:1px solid var(--rule);padding:11px 13px;display:flex;flex-direction:column;gap:5px">
+              <span style="font:600 9px var(--mono);letter-spacing:.14em;color:var(--acc)">ONE DECISION, NOT FOUR</span>
+              <span style="font-size:11.5px;line-height:1.55;color:#4A443B">Detents on the phone, spines on the desk. The same three levels, the same words. Fork F9, answered once.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div style="border-top:1px solid var(--rule);padding-top:10px;font:500 10px var(--mono);color:var(--mut);line-height:1.5">A new bank detail waits &#183; the door&#8217;s sheet rests at three heights &#8212; <span style="color:var(--ink)">packet 5 behaviours</span>, forks F9 &#183; F11 &#183; stacked sheets cap at three, with a breadcrumb</div>
+    </div>
+
+    <div id="1d" style="width:650px;background:var(--paper);color:var(--ink);padding:24px 26px 20px;box-shadow:0 24px 60px rgba(0,0,0,.45);display:flex;flex-direction:column;gap:14px">
+      <div style="display:flex;align-items:baseline;gap:10px;border-bottom:2px solid var(--ink);padding-bottom:10px;flex-wrap:wrap">
+        <span style="font:600 10px var(--mono);border:1px solid var(--rule);padding:2px 6px;color:var(--acc)">1d</span>
+        <h2 style="margin:0;font-family:var(--serif);font-size:20px;font-weight:600;letter-spacing:-.01em">Weight</h2>
+        <span style="font:500 10px var(--mono);color:var(--mut)">PANEL &#183; SEAL &#183; THE PAPER GETS HEAVY</span>
+        <span style="margin-left:auto;font:500 10px var(--mono);color:var(--amber)">FAULT: UNSAVED WORK</span>
+      </div>
+      <p style="margin:0;font-size:12.5px;line-height:1.6;color:#4A443B;text-wrap:pretty">A dialog that asks &#8220;are you sure you want to discard?&#8221; is a system that never watched what you did. This one gains weight as you work: edit a field and the paper thickens, so a stray click outside cannot lift it &#8212; it leans, tells you what it is holding, and waits for a second, deliberate click. Then the seal: hold it, and read back exactly what was bound.</p>
+      <div style="position:relative;background:#F3ECE0;border:1px solid var(--rule);height:326px;overflow:hidden;display:flex;align-items:flex-start;justify-content:center">
+        <div onClick="{{ dScrim }}" style="position:absolute;inset:0;cursor:pointer"></div>
+        <sc-if value="{{ dOpen }}" hint-placeholder-val="{{ true }}">
+          <div style="position:relative;width:376px;margin-top:22px;background:var(--paper);border:1px solid var(--ink);box-shadow:0 14px 34px rgba(27,21,17,{{ dShadow }});transition:transform 220ms cubic-bezier(.3,.8,.3,1),box-shadow 220ms;transform:translateX({{ dLean }}px) rotate({{ dRot }}deg);display:flex;flex-direction:column">
+            <div style="padding:12px 15px;border-bottom:1px solid var(--rule);display:flex;flex-direction:column;gap:2px">
+              <span style="font:600 9px var(--mono);letter-spacing:.16em;color:var(--acc)">RELEASE THE PAYMENT &#183; ORDER 118</span>
+              <span style="font-family:var(--serif);font-size:17px;font-weight:600">Selim &#350;arap</span>
+            </div>
+            <div style="padding:13px 15px;display:flex;flex-direction:column;gap:10px">
+              <div style="display:flex;gap:10px">
+                <label style="flex:0 0 92px;display:flex;flex-direction:column;gap:4px"><span style="font:600 9px var(--mono);letter-spacing:.1em;color:var(--mut)">BOTTLES</span><input value="{{ dQty }}" onChange="{{ dSetQty }}" style="border:1px solid var(--rule);background:#FCFAF6;padding:7px 8px;font:600 12px var(--mono);color:var(--ink);outline:none;width:100%" style-focus="border-color:var(--acc)"></label>
+                <label style="flex:1;display:flex;flex-direction:column;gap:4px"><span style="font:600 9px var(--mono);letter-spacing:.1em;color:var(--mut)">AMOUNT &#183; TRY</span><input value="{{ dPrice }}" onChange="{{ dSetPrice }}" style="border:1px solid var(--rule);background:#FCFAF6;padding:7px 8px;font:600 12px var(--mono);color:var(--ink);outline:none;width:100%" style-focus="border-color:var(--acc)"></label>
+              </div>
+              <label style="display:flex;flex-direction:column;gap:4px"><span style="font:600 9px var(--mono);letter-spacing:.1em;color:var(--mut)">WHY THIS AMOUNT</span><input value="{{ dNote }}" onChange="{{ dSetNote }}" placeholder="Two corked bottles credited" style="border:1px solid var(--rule);background:#FCFAF6;padding:7px 8px;font:400 12px var(--sans);color:var(--ink);outline:none;width:100%" style-focus="border-color:var(--acc)"></label>
+              <div style="display:flex;flex-direction:column;gap:4px;border-top:1px solid var(--rule);padding-top:9px">
+                <div style="display:flex;justify-content:space-between;font:600 9px var(--mono);letter-spacing:.1em;color:{{ dWeightFg }}"><span>{{ dWeightTxt }}</span><span>{{ dWeightPct }}</span></div>
+                <div style="height:4px;background:var(--rule)"><div style="height:100%;background:{{ dWeightFg }};transition:width 240ms;width:{{ dWeightW }}%"></div></div>
+              </div>
+              <span style="font-size:11px;line-height:1.5;color:var(--mut)">Summed from 3 delivery rows, read {{ clock }}. Aylin confirmed the bank detail on 4 September; she cannot release the first payment to it.</span>
+            </div>
+            <div style="padding:11px 15px;border-top:1px solid var(--rule);display:flex;gap:9px;align-items:center;flex-wrap:wrap">
+              <button onPointerDown="{{ dHoldOn }}" onPointerUp="{{ dHoldOff }}" onPointerLeave="{{ dHoldOff }}" style="position:relative;overflow:hidden;padding:8px 14px;font:600 10.5px var(--mono);letter-spacing:.06em;background:var(--acc);color:var(--paper);border:1px solid var(--acc);cursor:pointer">
+                <span style="position:absolute;left:0;top:0;bottom:0;background:rgba(250,247,241,.28);transition:width 60ms linear;width:{{ dHoldW }}%"></span>
+                <span style="position:relative">{{ dSealLabel }}</span>
+              </button>
+              <button onClick="{{ dScrim }}" style="padding:8px 12px;font:600 10.5px var(--mono);letter-spacing:.06em;background:transparent;color:{{ dCloseFg }};border:1px solid {{ dCloseFg }};cursor:pointer">{{ dCloseLabel }}</button>
+            </div>
+            <sc-if value="{{ dSealed }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:11px 15px;border-top:1px solid var(--acc);background:#F1F5F4;display:flex;flex-direction:column;gap:3px">
+                <span style="font:600 9px var(--mono);letter-spacing:.14em;color:var(--acc)">WHAT THE SEAL BOUND</span>
+                <span style="font-size:11.5px;line-height:1.5;color:#33463F">{{ dSealed }}</span>
+              </div>
+            </sc-if>
+          </div>
+        </sc-if>
+        <sc-if value="{{ dClosed }}" hint-placeholder-val="{{ false }}">
+          <div style="position:relative;margin-top:96px;display:flex;flex-direction:column;align-items:center;gap:11px">
+            <span style="font-family:var(--serif);font-size:17px;font-weight:600;color:var(--ink)">Closed. Nothing was written.</span>
+            <span style="font-size:11.5px;color:var(--mut)">{{ dClosedNote }}</span>
+            <button onClick="{{ dReopen }}" style="padding:7px 12px;font:600 10.5px var(--mono);letter-spacing:.06em;background:var(--ink);color:var(--paper);border:1px solid var(--ink);cursor:pointer">OPEN IT AGAIN</button>
+          </div>
+        </sc-if>
+        <sc-if value="{{ dToastOn }}" hint-placeholder-val="{{ false }}">
+          <div style="position:absolute;left:14px;right:14px;bottom:14px;background:var(--char);border:1px solid var(--edge);padding:10px 13px;display:flex;align-items:center;gap:12px">
+            <span style="font-size:11.5px;color:var(--paper);line-height:1.4">{{ dToastTxt }}</span>
+            <button onClick="{{ dUndo }}" style="margin-left:auto;padding:5px 10px;font:600 9.5px var(--mono);letter-spacing:.06em;background:transparent;color:var(--sealDk);border:1px solid var(--sealDk);cursor:pointer">PUT THEM BACK</button>
+          </div>
+        </sc-if>
+      </div>
+      <div style="border-top:1px solid var(--rule);padding-top:10px;font:500 10px var(--mono);color:var(--mut);line-height:1.5">Write off 6 bottles &#183; approve, then release &#183; what the seal bound &#8212; <span style="color:var(--ink)">components/inventory/RemoveFromInventoryModal.tsx:121</span> &#183; the seal is rationed, bulk gets the plain die</div>
+    </div>
+
+    <div id="1e" style="width:650px;background:var(--paper);color:var(--ink);padding:24px 26px 20px;box-shadow:0 24px 60px rgba(0,0,0,.45);display:flex;flex-direction:column;gap:14px">
+      <div style="display:flex;align-items:baseline;gap:10px;border-bottom:2px solid var(--ink);padding-bottom:10px;flex-wrap:wrap">
+        <span style="font:600 10px var(--mono);border:1px solid var(--rule);padding:2px 6px;color:var(--acc)">1e</span>
+        <h2 style="margin:0;font-family:var(--serif);font-size:20px;font-weight:600;letter-spacing:-.01em">Announced</h2>
+        <span style="font:500 10px var(--mono);color:var(--mut)">PANEL &#183; THE CONTRACT IS THE TITLE</span>
+        <span style="margin-left:auto;font:500 10px var(--mono);color:var(--amber)">FAULTS: DISCOVERY &#183; KEYBOARD</span>
+      </div>
+      <p style="margin:0;font-size:12.5px;line-height:1.6;color:#4A443B;text-wrap:pretty">Most overlays make the reader deduce what they want from a form. This one states its contract in one sentence &#8212; what it asks, what it writes, what leaving costs &#8212; and that sentence <em>is</em> the accessible name, so the eye and the ear get the same thing. Open it and press Tab: the transcript on the right prints what a screen reader says, stop for stop, including the moment the trap wraps.</p>
+      <div style="background:#F3ECE0;border:1px solid var(--rule);height:326px;padding:12px;display:flex;gap:10px;overflow:hidden">
+        <div style="flex:1;min-width:0;display:flex;flex-direction:column">
+          <sc-if value="{{ eClosedView }}" hint-placeholder-val="{{ true }}">
+            <div style="flex:1;display:flex;flex-direction:column;justify-content:center;gap:11px;padding:0 4px">
+              <span style="font:600 9px var(--mono);letter-spacing:.14em;color:var(--mut)">DELIVERY 119 &#183; ANCYRA NARINCE</span>
+              <span style="font-size:12px;line-height:1.55;color:#4A443B">Twelve bottles arrived. Ten were counted.</span>
+              <button onClick="{{ eOpenFn }}" style="align-self:flex-start;padding:8px 13px;font:600 10.5px var(--mono);letter-spacing:.06em;background:var(--ink);color:var(--paper);border:1px solid var(--ink);cursor:pointer">OPEN THE PANEL</button>
+              <span style="font:500 9.5px var(--mono);color:var(--mut);line-height:1.5">FOCUS RETURNS HERE ON CLOSE</span>
+            </div>
+          </sc-if>
+          <sc-if value="{{ eOpen }}" hint-placeholder-val="{{ false }}">
+            <div style="flex:1;background:var(--paper);border:1px solid var(--ink);display:flex;flex-direction:column">
+              <div style="padding:12px 14px;border-bottom:1px solid var(--rule);display:flex;flex-direction:column;gap:5px;background:{{ eS0Bg }}">
+                <span style="font:600 9px var(--mono);letter-spacing:.16em;color:var(--acc)">THE CONTRACT &#183; STOP 1 OF 4</span>
+                <span style="font-family:var(--serif);font-size:14.5px;font-weight:600;line-height:1.35">This asks one thing: confirm the 10 bottles that arrived. Sealing writes the count to the book. Leaving writes nothing.</span>
+              </div>
+              <div style="padding:12px 14px;display:flex;flex-direction:column;gap:9px;flex:1">
+                <label style="display:flex;flex-direction:column;gap:4px;border:1px solid {{ eS1Br }};padding:8px 9px;background:{{ eS1Bg }}"><span style="font:600 9px var(--mono);letter-spacing:.1em;color:var(--mut)">BOTTLES COUNTED &#183; STOP 2</span><span style="font:600 15px var(--mono)">10 <span style="font:500 10px var(--mono);color:var(--amber)">of 12 ordered</span></span></label>
+                <span style="font-size:11px;line-height:1.5;color:var(--mut)">Two bottles are unaccounted for. The book holds no note for them &#8212; that is an absence, not a zero.</span>
+              </div>
+              <div style="padding:11px 14px;border-top:1px solid var(--rule);display:flex;gap:9px;align-items:center">
+                <span style="padding:8px 13px;font:600 10.5px var(--mono);letter-spacing:.06em;background:var(--acc);color:var(--paper);border:2px solid {{ eS2Br }}">HOLD TO SEAL &#183; 3</span>
+                <span style="padding:8px 12px;font:600 10.5px var(--mono);letter-spacing:.06em;color:var(--ink);border:2px solid {{ eS3Br }}">CLOSE &#183; 4</span>
+              </div>
+              <div style="padding:9px 14px;border-top:1px solid var(--rule);display:flex;gap:8px;align-items:center;background:#FCFAF6">
+                <button onClick="{{ eTabFn }}" style="padding:6px 11px;font:600 10px var(--mono);letter-spacing:.06em;background:var(--ink);color:var(--paper);border:1px solid var(--ink);cursor:pointer">TAB</button>
+                <button onClick="{{ eCloseFn }}" style="padding:6px 11px;font:600 10px var(--mono);letter-spacing:.06em;background:transparent;color:var(--ink);border:1px solid var(--ink);cursor:pointer">CLOSE</button>
+                <span style="font:500 9px var(--mono);color:var(--mut);line-height:1.4">OR PRESS TAB &#183; ESC</span>
+              </div>
+            </div>
+          </sc-if>
+        </div>
+        <div style="flex:0 0 262px;background:var(--char);border:1px solid var(--edge);display:flex;flex-direction:column;overflow:hidden">
+          <div style="padding:9px 12px;border-bottom:1px solid var(--edge);display:flex;justify-content:space-between;align-items:baseline">
+            <span style="font:600 9px var(--mono);letter-spacing:.14em;color:var(--sealDk)">WHAT THE EAR GETS</span>
+            <span style="font:500 9px var(--mono);color:var(--mutDk)">{{ eCount }}</span>
+          </div>
+          <div style="flex:1;padding:10px 12px;display:flex;flex-direction:column;gap:7px;overflow:hidden">
+            <sc-for list="{{ eLines }}" as="l" hint-placeholder-count="0">
+              <div style="display:flex;gap:7px;align-items:baseline">
+                <span style="flex:0 0 34px;font:600 8.5px var(--mono);color:{{ l.c }};letter-spacing:.06em">{{ l.n }}</span>
+                <span style="font:400 10.5px var(--mono);line-height:1.45;color:#CFC6B8">{{ l.t }}</span>
+              </div>
+            </sc-for>
+            <sc-if value="{{ eEmpty }}" hint-placeholder-val="{{ true }}">
+              <span style="font:400 10.5px var(--mono);line-height:1.5;color:var(--mutDk)">Silent. Nothing has opened, so nothing is announced &#8212; the transcript never invents a line.</span>
+            </sc-if>
+          </div>
+        </div>
+      </div>
+      <div style="border-top:1px solid var(--rule);padding-top:10px;font:500 10px var(--mono);color:var(--mut);line-height:1.5">Is this the bottle? &#183; queued is never confirmed &#8212; <span style="color:var(--ink)">components/wines/WineValidationModal.tsx:162</span> &#183; an overlay with no name is a room with no sign</div>
+    </div>
+
+  </div>
+
+  <div style="background:var(--paper);color:var(--ink);padding:22px 40px;box-shadow:0 24px 60px rgba(0,0,0,.45);display:flex;gap:22px;flex-wrap:wrap;align-items:baseline">
+    <span style="font:600 9px var(--mono);letter-spacing:.14em;color:var(--mut)">HELD TO THE POLICY</span>
+    <span style="font:500 10.5px var(--mono);color:#4A443B">Three shapes &#183; one primitive &#183; the close control is words &#183; no glyph, no emoji &#183; one chromatic colour on paper or warm charcoal &#183; reduced motion renders none &#183; absence is never health</span>
+    <span style="margin-left:auto;font:500 10px var(--mono);color:var(--acc)">TELL ME WHICH IDS STAY</span>
+  </div>
+
+</div>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1400,&quot;height&quot;:1600},&quot;seal&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;#1A5E6B&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;options&quot;:[&quot;#1A5E6B&quot;,&quot;#9E4249&quot;,&quot;#211C16&quot;],&quot;section&quot;:&quot;Ink&quot;},&quot;holdMs&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;default&quot;:620,&quot;min&quot;:400,&quot;max&quot;:2000,&quot;step&quot;:20,&quot;unit&quot;:&quot;ms&quot;,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Ceremony&quot;},&quot;spindleCap&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:3,&quot;min&quot;:2,&quot;max&quot;:4,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Ceremony&quot;}}">
+const A_ROWS = [
+  { id: '118', name: 'Öküzgözü 2022', vendor: 'Selim Şarap · Tue cutoff 16:00', qty: '6 btl' },
+  { id: '119', name: 'Ancyra Narince', vendor: 'Vino Dükkân', qty: '12 btl' },
+  { id: '120', name: 'Chablis 1er Cru', vendor: 'Bordeaux Direct', qty: '4 btl' },
+  { id: '121', name: 'Tekirdağ Rakı', vendor: 'Mey İçki', qty: '24 btl' },
+  { id: '122', name: 'Bomonti Filtresiz', vendor: 'Anadolu Efes', qty: '48 btl' }
+];
+const STATUSES = [
+  { t: 'answer waiting', c: '#C98A2E' },
+  { t: 'delivered · 2 short', c: '#C98A2E' },
+  { t: 'sealed 20:41', c: '#5FB08C' },
+  { t: 'draft reply held', c: '#8D8478' },
+  { t: 'queued · not sent', c: '#8D8478' }
+];
+const B_ROWS = [
+  { id: '118', t: 'Öküzgözü 2022', s: 'answer waiting' },
+  { id: '119', t: 'Ancyra Narince', s: '2 short' },
+  { id: '120', t: 'Chablis 1er Cru', s: 'draft reply held' }
+];
+const C_LEVELS = [
+  { eb: 'ORDER · 118', ti: 'Öküzgözü 2022', spine: 'ORDER 118', b: ['6 bottles · ₺4,280 · Selim Şarap', 'Answer waiting since 20:12. Summed from 3 rows.'], pb: '6 bottles · ₺4,280', next: 'the vendor' },
+  { eb: 'VENDOR', ti: 'Selim Şarap', spine: 'SELİM ŞARAP', b: ['14 orders · 2 short deliveries', 'Terms: cutoff 16:00, Tuesday and Friday'], pb: '14 orders · 2 short', next: 'the bank detail' },
+  { eb: 'BANK DETAIL · NEW', ti: 'TR33 0006 1005 …', spine: 'BANK DETAIL', b: ['Added 4 September by Aylin Demir', 'Waits on a second owner. Aylin confirmed it, so Aylin cannot release to it.'], pb: 'waits on a second owner', next: 'the second owner' }
+];
+const E_STOPS = [
+  { n: '1/4', k: 'heading', t: 'heading: this asks one thing — confirm the 10 bottles that arrived. Sealing writes the count. Leaving writes nothing.' },
+  { n: '2/4', k: 'field', t: 'field: bottles counted, 10 of 12 ordered, editable' },
+  { n: '3/4', k: 'button', t: 'button: hold to seal — commits the count to the book' },
+  { n: '4/4', k: 'button', t: 'button: close — leaves the count unwritten' }
+];
+
+// Same integrator as lib/mudavym/motion.ts springLinear — the token's numbers ARE the curve.
+function springLinear(stiffness, damping, mass = 1, restDelta = 0.01) {
+  const dt = 1 / 1000, omega = Math.sqrt(stiffness / mass);
+  let x = 1, v = 0, t = 0; const pts = [];
+  while (t < 5) {
+    v += ((-stiffness * x - damping * v) / mass) * dt; x += v * dt; t += dt;
+    pts.push(1 - x);
+    if (Math.hypot(x, v / omega) < restDelta) break;
+  }
+  const N = 60, last = pts.length - 1, samples = [];
+  for (let i = 0; i < N; i++) samples.push(Number(pts[Math.min(last, Math.round((i * last) / (N - 1)))].toFixed(4)));
+  let pk = 0; for (let i = 1; i <= last; i++) if (pts[i] > pts[pk]) pk = i;
+  if (pts[pk] > 1) samples[Math.min(N - 2, Math.max(1, Math.round((pk * (N - 1)) / last)))] = Number(pts[pk].toFixed(4));
+  samples[0] = 0; samples[N - 1] = 1;
+  return { easing: 'linear(' + samples.join(',') + ')', ms: Math.max(140, Math.round(t * 1000)), over: Math.round((pts[pk] - 1) * 1000) / 10 };
+}
+const TUCK = springLinear(380, 32), STAMP = springLinear(500, 26);
+const POUR_MS = 620, ARM_MS = 3000, NOTE_MS = 1800;
+const B_SUG = {
+  '118': 'Selim Şarap can send 6 of 6 on Tuesday; the price holds at ₺713 the bottle.',
+  '119': 'Two of twelve were corked — told Aylin at 20:40, no credit yet.',
+  '120': 'Bordeaux Direct asked for a delivery window; none was given.'
+};
+const P_BODY = {
+  '118': 'Selim Şarap can send 6 of 6, Tuesday. Price holds at ₺713.',
+  '119': 'Twelve arrived, ten counted. No word yet on the two.',
+  '120': 'Bordeaux Direct asked for a window. The draft reply is held.',
+  '121': 'Sealed 20:41 by Aldemir. ₺3,120, 24 bottles.',
+  '122': 'Queued on the door tablet. No signal since 20:58.'
+};
+const G_SUG = [
+  { key: 'qty', field: 'BOTTLES', src: 'invoice scan', ink: '12', grey: '10', why: 'the invoice line reads 10' },
+  { key: 'price', field: 'PRICE · BOTTLE', src: 'vendor reply', ink: '₺713', grey: '₺698', why: 'Selim Şarap answered 698 at 20:12' },
+  { key: 'note', field: 'NOTE', src: 'no source', ink: '—', grey: null, why: 'nothing says where the two went' }
+];
+const K_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'CLEAR', '0', 'GO'];
+const Q_STEPS = ['Written on this device', 'Sent', 'Received by the house', 'Sealed by the house'];
+
+class Component extends DCLogic {
+  bRef = React.createRef();
+  hRaf = {}; hTimers = {};
+  state = {
+    beat: 0,
+    h: {},
+    pFocus: 0, pOpen: false, pSheet: false, pStageFocus: false,
+    tVerified: false, tWho: 'Aldemir', tLog: [], tApprovedBy: '', tReleasedBy: '',
+    gSug: { qty: 'pending', price: 'pending' }, gSealedAt: '',
+    kCode: '', kMgr: '', kIdle: 12, kStarted: false, kLocked: false,
+    qSig: true, qLadder: 0, qAt: '',
+    aRow: null, aLegacyOn: false, aMissed: 0,
+    bRow: null, bText: '', bStubs: { '119': 'Two of twelve were corked — told Aylin at 20:40, no credit yet.' },
+    cDepth: 0, cRefused: false, cH: 180,
+    dOpen: true, dQty: '6', dPrice: '4,280', dNote: '', dArmed: false, dLean: 0, dToast: 0, dSealed: '', dHold: 0, dStash: null,
+    eOpen: false, eStop: -1, eLines: []
+  };
+
+  componentDidMount() {
+    this.tick = setInterval(() => {
+      this.setState(s => ({
+        beat: s.beat + 1,
+        aMissed: (s.aLegacyOn && s.aRow) ? s.aMissed + 1 : s.aMissed
+      }));
+    }, 2400);
+    this.onKey = e => {
+      if (e.key === 'Tab' && this.state.eOpen) { e.preventDefault(); this.eTab(); return; }
+      if (e.key !== 'Escape') return;
+      const s = this.state;
+      if (s.eOpen) this.eClose();
+      else if (s.bRow) this.bClose();
+      else if (s.cDepth) this.setState({ cDepth: s.cDepth - 1, cRefused: false });
+      else if (s.aRow) this.setState({ aRow: null });
+    };
+    window.addEventListener('keydown', this.onKey);
+    // 1c comment: a click anywhere off the spindle collapses it.
+    this.onDocClick = e => {
+      if (!this.state.cDepth) return;
+      if (e.target && e.target.closest && e.target.closest('[data-spindle]')) return;
+      this.setState({ cDepth: 0, cRefused: false });
+    };
+    document.addEventListener('click', this.onDocClick);
+    // 2d idle lock, one second at a time.
+    this.idleT = setInterval(() => {
+      const s = this.state;
+      if (!s.kStarted || s.kLocked) return;
+      if (s.kIdle <= 1) {
+        this.setState(st => ({ kIdle: 0, kLocked: true, kMgr: '', kCode: '', h: Object.assign({}, st.h, { kH: st.h.kH && st.h.kH.phase === 'sealed' ? st.h.kH : { phase: 'idle', fill: 0, note: '' } }) }));
+      } else this.setState({ kIdle: s.kIdle - 1 });
+    }, 1000);
+    document.body.style.setProperty('--stampEase', STAMP.easing);
+    document.body.style.setProperty('--tuckEase', TUCK.easing);
+    this.applyVars();
+  }
+  applyVars() { if (this.props.seal) document.body.style.setProperty('--acc', this.props.seal); }
+  componentDidUpdate(prevProps, prevState) {
+    this.applyVars();
+    if (this.state.bRow && this.state.bRow !== prevState.bRow && this.bRef.current) this.bRef.current.focus();
+  }
+  componentWillUnmount() {
+    clearInterval(this.tick); clearInterval(this.holdT); clearInterval(this.idleT);
+    window.removeEventListener('keydown', this.onKey);
+    document.removeEventListener('click', this.onDocClick);
+    Object.values(this.hRaf).forEach(cancelAnimationFrame);
+    Object.values(this.hTimers).forEach(clearTimeout);
+  }
+
+  reduced() { return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches; }
+
+  /* ── the hold engine: pour in, tuck back, stamp down ── */
+  hold(k) { return this.state.h[k] || { phase: 'idle', fill: 0, note: '' }; }
+  hSet(k, patch) { this.setState(s => ({ h: Object.assign({}, s.h, { [k]: Object.assign({}, s.h[k] || { phase: 'idle', fill: 0, note: '' }, patch) }) })); }
+  hStart = k => e => {
+    const h = this.hold(k); if (h.phase === 'sealed' || h.phase === 'holding') return;
+    if (this.reduced()) { this.hStep(k); return; }
+    if (e && e.currentTarget && e.pointerId != null) { try { e.currentTarget.setPointerCapture(e.pointerId); } catch (_) {} }
+    this.hSet(k, { phase: 'holding', note: '', fill: 0 });
+    const t0 = performance.now(), ms = this.holdMs();
+    cancelAnimationFrame(this.hRaf[k]);
+    const tick = now => {
+      if (this.hold(k).phase !== 'holding') return;
+      const p = Math.min(1, (now - t0) / ms);
+      if (p >= 1) this.hCommit(k); else { this.hSet(k, { fill: p }); this.hRaf[k] = requestAnimationFrame(tick); }
+    };
+    this.hRaf[k] = requestAnimationFrame(tick);
+  };
+  hRelease = k => () => {
+    const h = this.hold(k); if (h.phase !== 'holding') return;
+    cancelAnimationFrame(this.hRaf[k]);
+    this.hSet(k, { phase: 'idle', fill: 0, note: 'Released at ' + Math.round(h.fill * 100) + '% — nothing sent.' });
+    clearTimeout(this.hTimers[k + 'n']);
+    this.hTimers[k + 'n'] = setTimeout(() => { if (this.hold(k).phase === 'idle') this.hSet(k, { note: '' }); }, NOTE_MS);
+  };
+  hStep(k) {
+    const h = this.hold(k);
+    if (h.phase === 'armed') { this.hCommit(k); return; }
+    this.hSet(k, { phase: 'armed' });
+    clearTimeout(this.hTimers[k + 'a']);
+    this.hTimers[k + 'a'] = setTimeout(() => { if (this.hold(k).phase === 'armed') this.hSet(k, { phase: 'idle' }); }, ARM_MS);
+  }
+  hKey = k => e => {
+    if (this.hold(k).phase === 'sealed') return;
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (!e.repeat) this.hStep(k); }
+    else if (e.key === 'Escape' && this.hold(k).phase === 'armed') this.hSet(k, { phase: 'idle' });
+  };
+  hCommit(k) {
+    clearTimeout(this.hTimers[k + 'a']);
+    this.hSet(k, { phase: 'sealed', fill: 1, note: '' });
+    this.onSeal(k);
+  }
+  onSeal(k) {
+    const c = this.clock(), s = this.state;
+    if (k === 'tA') this.setState({ tApprovedBy: s.tWho, tLog: s.tLog.concat([{ t: c + ' · approved · ₺4,280 · Selim Şarap · ' + s.tWho + this.grantTag(s.tWho), c: '#1A5E6B' }]) });
+    if (k === 'tR') this.setState({ tReleasedBy: s.tWho, tLog: s.tLog.concat([{ t: c + ' · released · ₺4,280 · Selim Şarap · ' + s.tWho + this.grantTag(s.tWho), c: '#1A5E6B' }, { t: c + ' · every owner told · payment left the house', c: '#6E675C' }]) });
+    if (k === 'gH') this.setState({ gSealedAt: c });
+    if (k === 'qH') {
+      this.setState({ qLadder: 1, qAt: c });
+      if (s.qSig) this.qAdvance();
+    }
+  }
+  grantTag(w) { return w === 'Kerem' ? ' (granted by Aldemir, to ₺5,000, until 30 Sept)' : ''; }
+  qAdvance() {
+    [2, 3, 4].forEach((n, i) => {
+      clearTimeout(this.hTimers['q' + n]);
+      this.hTimers['q' + n] = setTimeout(() => { if (this.state.qSig && this.state.qLadder >= 1) this.setState({ qLadder: n }); }, 600 + i * 700);
+    });
+  }
+  holdVals(k, label, sealedLabel, opt) {
+    opt = opt || {};
+    const h = this.hold(k), sealed = h.phase === 'sealed', dis = !!opt.disabled && !sealed, dark = !!opt.dark;
+    const tr = h.phase === 'holding' ? 'none' : 'transform ' + TUCK.ms + 'ms ' + TUCK.easing;
+    return {
+      fill: h.fill, tr, trY: tr,
+      label: h.phase === 'armed' ? 'Enter again to seal' : label,
+      sealedLabel, sealed, unsealed: !sealed,
+      note: h.note || (h.phase === 'armed' ? 'Press Enter again to seal — Esc cancels.' : (dis ? (opt.disabledNote || '') : (opt.idleNote || ''))),
+      noteFg: dis && opt.disabledNote ? '#A5670A' : '#7C7365',
+      br: sealed ? (dark ? '#5FB08C' : 'var(--acc)') : (dis ? (dark ? '#3A322C' : '#E3DCCF') : (dark ? 'rgba(95,176,140,.45)' : 'rgba(26,94,107,.32)')),
+      bg: sealed ? (dark ? 'rgba(95,176,140,.12)' : 'rgba(26,94,107,.10)') : (dark ? '#221B16' : '#F3EFE6'),
+      op: dis ? 0.5 : 1, cur: dis || sealed ? 'default' : 'pointer',
+      down: dis ? null : this.hStart(k), up: this.hRelease(k), key: dis ? null : this.hKey(k)
+    };
+  }
+
+  clock() {
+    const m = 1258 + this.state.beat;
+    const hh = String(Math.floor(m / 60) % 24).padStart(2, '0');
+    return hh + ':' + String(m % 60).padStart(2, '0');
+  }
+  cap() { return Math.max(2, Math.min(4, this.props.spindleCap ?? 3)); }
+  holdMs() { return this.props.holdMs ?? POUR_MS; }
+
+  bClose() {
+    const s = this.state, t = s.bText.trim(), stubs = Object.assign({}, s.bStubs);
+    if (t) stubs[s.bRow] = t; else delete stubs[s.bRow];
+    this.setState({ bRow: null, bText: '', bStubs: stubs });
+  }
+
+  dEdits() {
+    const s = this.state;
+    return (s.dQty !== '6' ? 1 : 0) + (s.dPrice !== '4,280' ? 1 : 0) + (s.dNote.trim() ? 1 : 0);
+  }
+  dScrim = () => {
+    const s = this.state;
+    if (!s.dOpen) return;
+    const n = this.dEdits();
+    if (n === 0) { this.setState({ dOpen: false, dArmed: false, dSealed: '' }); return; }
+    if (!s.dArmed) {
+      this.setState({ dArmed: true, dLean: -9 });
+      setTimeout(() => this.setState({ dLean: 0 }), 240);
+      clearTimeout(this.armT);
+      this.armT = setTimeout(() => this.setState({ dArmed: false }), 4200);
+      return;
+    }
+    this.setState({
+      dOpen: false, dArmed: false, dToast: n, dSealed: '',
+      dStash: { q: s.dQty, p: s.dPrice, n: s.dNote },
+      dQty: '6', dPrice: '4,280', dNote: ''
+    });
+    clearTimeout(this.toastT);
+    this.toastT = setTimeout(() => this.setState({ dToast: 0 }), 7000);
+  };
+  dUndo = () => {
+    const st = this.state.dStash;
+    this.setState({ dOpen: true, dToast: 0, dStash: null, dQty: st ? st.q : '6', dPrice: st ? st.p : '4,280', dNote: st ? st.n : '' });
+  };
+  dHoldOn = () => {
+    if (this.state.dSealed) return;
+    clearInterval(this.holdT);
+    const step = 100 / (this.holdMs() / 40);
+    this.holdT = setInterval(() => {
+      this.setState(s => {
+        const v = s.dHold + step;
+        if (v >= 100) {
+          clearInterval(this.holdT);
+          return { dHold: 100, dArmed: false, dSealed: 'Bound at ' + this.clock() + ': ₺' + s.dPrice + ' to Selim Şarap, order 118, ' + s.dQty + ' bottles. Signed by the device, not asserted by the page. Aylin is told at this moment.' };
+        }
+        return { dHold: v };
+      });
+    }, 40);
+  };
+  dHoldOff = () => { clearInterval(this.holdT); if (!this.state.dSealed) this.setState({ dHold: 0 }); };
+
+  eTab() {
+    const s = this.state, next = (s.eStop + 1) % 4, lines = s.eLines.slice();
+    if (next === 0) lines.push({ n: 'WRAP', t: 'the trap holds — focus returns to the first stop, it never escapes to the page behind', c: '#C98A2E' });
+    lines.push({ n: E_STOPS[next].n, t: E_STOPS[next].t, c: '#5FB08C' });
+    this.setState({ eStop: next, eLines: lines.slice(-8) });
+  }
+  eClose() {
+    const lines = this.state.eLines.slice();
+    lines.push({ n: 'CLOSE', t: 'closed, nothing written — focus returned to “Open the panel”', c: '#8D8478' });
+    this.setState({ eOpen: false, eStop: -1, eLines: lines.slice(-8) });
+  }
+
+  renderVals() {
+    const s = this.state, clock = this.clock(), cap = this.cap();
+    const seal = '#5FB08C', mut = '#8D8478';
+
+    const aRows = A_ROWS.map((r, i) => {
+      const st = STATUSES[(i + s.beat) % STATUSES.length];
+      const open = s.aRow === r.id;
+      return Object.assign({}, r, {
+        status: st.t, sc: st.c,
+        edge: open ? seal : 'transparent',
+        bg: open ? '#241D18' : 'transparent',
+        onOpen: () => this.setState({ aRow: r.id, aMissed: 0 })
+      });
+    });
+    const aOpen = A_ROWS.find(r => r.id === s.aRow);
+    const docked = !!s.aRow && !s.aLegacyOn;
+
+    const bRows = B_ROWS.map(r => ({
+      id: r.id, t: r.t, s: r.s,
+      stub: s.bStubs[r.id] || '',
+      hasStub: !!s.bStubs[r.id] && s.bRow !== r.id,
+      edge: s.bRow === r.id ? '#1A5E6B' : (s.bStubs[r.id] ? '#9BBFC4' : 'transparent'),
+      onOpen: () => this.setState({ bRow: r.id, bText: s.bStubs[r.id] || '' }),
+      onDiscard: () => { const st = Object.assign({}, s.bStubs); delete st[r.id]; this.setState({ bStubs: st }); }
+    }));
+    const bTitleRow = B_ROWS.find(r => r.id === s.bRow);
+
+    const lvl = s.cDepth > 0 ? C_LEVELS[s.cDepth - 1] : null;
+    const cSpines = [];
+    for (let i = 0; i < s.cDepth - 1; i++) {
+      cSpines.push({ label: C_LEVELS[i].spine, onBack: (n => () => this.setState({ cDepth: n, cRefused: false }))(i + 1) });
+    }
+    const cStack = [];
+    for (let i = 0; i < s.cDepth; i++) {
+      cStack.push({
+        eb: C_LEVELS[i].eb, ti: C_LEVELS[i].ti, b: C_LEVELS[i].pb, spine: C_LEVELS[i].spine,
+        h: s.cH + (s.cDepth - 1 - i) * 22, z: i + 1,
+        front: i === s.cDepth - 1, peek: i !== s.cDepth - 1
+      });
+    }
+    const detent = h => (s.cH === h ? seal : 'transparent');
+    const detentFg = h => (s.cH === h ? '#10201A' : '#CFC6B8');
+
+    const edits = this.dEdits();
+    const sealedNow = !!s.dSealed;
+
+    /* 1b comment: the engine's draft, taken with Tab */
+    const bGhost = s.bRow ? (B_SUG[s.bRow] || '') : '';
+    const bGhostOn = !!s.bRow && !!bGhost && !s.bText.trim();
+    const bTaken = !!s.bRow && !!bGhost && s.bText === bGhost;
+
+    /* 2a peek → sheet */
+    const pRows = A_ROWS.map((r, i) => {
+      const st = STATUSES[(i + s.beat) % STATUSES.length], f = s.pFocus === i;
+      return { id: r.id, name: r.name, status: st.t, sc: st.c,
+        br: f ? (s.pStageFocus ? seal : '#4A413A') : 'var(--edge)', edge: f && (s.pOpen || s.pSheet) ? seal : 'transparent', bg: f ? '#241D18' : 'transparent',
+        onPick: () => this.setState({ pFocus: i, pOpen: true }) };
+    });
+    const pRow = A_ROWS[s.pFocus];
+    const pKeyFn = e => {
+      const k = e.key;
+      if (k === ' ') { e.preventDefault(); this.setState({ pOpen: !s.pOpen, pSheet: false }); }
+      else if (k === 'ArrowDown') { e.preventDefault(); this.setState({ pFocus: Math.min(A_ROWS.length - 1, s.pFocus + 1) }); }
+      else if (k === 'ArrowUp') { e.preventDefault(); this.setState({ pFocus: Math.max(0, s.pFocus - 1) }); }
+      else if (k === 'Enter') { e.preventDefault(); if (s.pOpen) this.setState({ pSheet: true }); }
+      else if (k === 'Escape') { e.stopPropagation(); this.setState({ pOpen: false, pSheet: false }); }
+    };
+    const pIsSheet = s.pOpen && s.pSheet, pIsPeek = s.pOpen && !s.pSheet;
+
+    /* 2b two hands */
+    const tA = this.holdVals('tA', 'Hold to approve', 'Approved · ' + (s.tApprovedBy || s.tWho), { disabled: !s.tVerified, disabledNote: 'Verify first.' });
+    const tASealed = this.hold('tA').phase === 'sealed';
+    const tBlockedAylin = s.tWho === 'Aylin';
+    const tR = this.holdVals('tR', 'Hold to release', 'Released · ' + (s.tReleasedBy || s.tWho), {
+      disabled: !tASealed || tBlockedAylin,
+      disabledNote: tBlockedAylin ? 'Aylin confirmed this bank detail on 4 September. She cannot release the first payment to it.' : (tASealed ? '' : 'Waits on the approval beside it.')
+    });
+    const tRoleOf = { Aldemir: 'owner · full authority', Aylin: 'manager · confirmed the bank detail', Kerem: 'authorised by Aldemir · to ₺5,000 · until 30 Sept' };
+
+    /* 2c grey until you say so */
+    const gRows = G_SUG.map(g => {
+      const st = g.key === 'note' ? 'none' : s.gSug[g.key];
+      const acc = st === 'accepted', kept = st === 'kept', sealedG = !!s.gSealedAt;
+      const showInk = acc && sealedG ? g.grey : g.ink;
+      return {
+        field: g.field, src: g.src,
+        ink: showInk,
+        prov: acc && sealedG ? 'engine proposed · you took it · sealed ' + s.gSealedAt : (acc ? 'applies when sealed — still ink until then' : (kept ? 'kept · engine declined ' + clock : '')),
+        provFg: acc && sealedG ? '#8D8478' : (acc ? '#A5670A' : '#8D8478'),
+        grey: g.grey === null ? 'no line — no source' : g.grey,
+        greyDeco: kept ? 'line-through' : 'none',
+        greyBg: st === 'pending' ? '#F7F2E8' : 'transparent',
+        why: g.why,
+        aBg: acc ? 'var(--acc)' : 'transparent', aFg: acc ? 'var(--paper)' : 'var(--acc)',
+        kBg: kept ? 'var(--ink)' : 'transparent', kFg: kept ? 'var(--paper)' : 'var(--ink)',
+        accept: g.grey === null ? null : () => this.setState({ gSug: Object.assign({}, s.gSug, { [g.key]: 'accepted' }), gSealedAt: '', h: Object.assign({}, s.h, { gH: { phase: 'idle', fill: 0, note: '' } }) }),
+        keep: g.grey === null ? null : () => this.setState({ gSug: Object.assign({}, s.gSug, { [g.key]: 'kept' }), gSealedAt: '', h: Object.assign({}, s.h, { gH: { phase: 'idle', fill: 0, note: '' } }) })
+      };
+    });
+    const gPending = Object.values(s.gSug).filter(v => v === 'pending').length;
+    const gAccepted = Object.values(s.gSug).filter(v => v === 'accepted').length;
+    const gH = this.holdVals('gH', gAccepted ? 'Hold to seal ' + gAccepted + (gAccepted === 1 ? ' change' : ' changes') : 'Nothing to seal', 'Sealed · ' + gAccepted + ' applied', {
+      disabled: gPending > 0 || gAccepted === 0,
+      disabledNote: gPending > 0 ? gPending + ' of 2 still grey. Dispose of every line before the seal.' : (gAccepted === 0 && gPending === 0 ? 'You kept the ink on both. The book is unchanged; no seal needed.' : '')
+    });
+
+    /* 2d the passcode at the pass */
+    const kPress = t => () => {
+      const st = this.state;
+      if (t === 'CLEAR') { this.setState({ kCode: '' }); return; }
+      if (t === 'GO') return;
+      if (st.kCode.length >= 4) return;
+      const code = st.kCode + t;
+      if (code.length === 4) this.setState({ kCode: '', kMgr: 'Kerem Aksoy · manager', kLocked: false, kIdle: 12, kStarted: true });
+      else this.setState({ kCode: code, kIdle: 12, kStarted: true });
+    };
+    const kKeys = K_KEYS.map(t => ({ t, press: kPress(t) }));
+    const kDots = [0, 1, 2, 3].map(i => ({ bg: i < s.kCode.length ? seal : 'transparent' }));
+    const kH = this.holdVals('kH', 'Hold to write off 6', 'Written off · ' + (s.kMgr ? s.kMgr.split(' ·')[0] : ''), {
+      dark: true, disabled: !s.kMgr, disabledNote: 'A manager must be named first — four digits, at the pass.'
+    });
+
+    /* 2e queued is never confirmed */
+    const qSealedNow = this.hold('qH').phase === 'sealed';
+    const qH = this.holdVals('qH', 'Hold to record', 'Recorded here', { dark: true });
+    const qSteps = Q_STEPS.map((t, i) => {
+      const n = i + 1, done = s.qLadder >= n, stalled = s.qLadder === 1 && n === 2 && !s.qSig, isWax = n === 4 && done;
+      return { t, wax: isWax,
+        sub: done ? (n === 1 ? s.qAt + ' · on this phone' : (n === 4 ? s.qAt + ' · the house holds it' : s.qAt)) : (stalled ? 'no signal — queued here, not confirmed' : 'not yet'),
+        subFg: stalled ? '#A5670A' : (done ? '#1A5E6B' : '#8D8478'),
+        fg: done ? '#211C16' : '#8D8478',
+        br: stalled ? '#A5670A' : (done ? '#9BBFC4' : '#E3DCCF'),
+        ringC: done ? (isWax ? 'transparent' : '#1A5E6B') : '#E3DCCF', dotBg: done && !isWax ? '#1A5E6B' : 'transparent' };
+    });
+
+    return {
+      clock, covers: 84 + (s.beat % 7),
+      tokLine: 'pour linear ' + POUR_MS + 'ms · tuck spring 380/32 ' + TUCK.ms + 'ms, +' + TUCK.over + '% · stamp spring 500/26 ' + STAMP.ms + 'ms, +' + STAMP.over + '% · settle 320 · turn 420 · ink 160',
+
+      bRef: this.bRef, bGhost, bGhostOn, bTaken,
+      bKey: e => { if (e.key === 'Tab' && bGhostOn) { e.preventDefault(); this.setState({ bText: bGhost }); } },
+
+      pRows, pKey: pKeyFn, pW: pIsSheet ? 310 : (pIsPeek ? 246 : 0), pIsPeek, pIsSheet,
+      pName: pRow.name, pBody: P_BODY[pRow.id],
+      pStageBr: s.pStageFocus ? seal : 'transparent',
+      pHint: s.pStageFocus ? 'SPACE · ↑↓ · ENTER · ESC' : 'CLICK HERE, THEN SPACE',
+      pFocusStage: e => { e.currentTarget.focus(); this.setState({ pStageFocus: true }); },
+      pSpace: () => this.setState({ pOpen: !s.pOpen, pSheet: false }),
+      pUp: () => this.setState({ pFocus: Math.max(0, s.pFocus - 1) }),
+      pDown: () => this.setState({ pFocus: Math.min(A_ROWS.length - 1, s.pFocus + 1) }),
+      pEnter: () => { if (s.pOpen) this.setState({ pSheet: true }); },
+      pEsc: () => this.setState({ pOpen: false, pSheet: false }),
+
+      tWhos: ['Aldemir', 'Aylin', 'Kerem'].map(n => ({ name: n.toUpperCase(), bg: s.tWho === n ? 'var(--ink)' : 'transparent', fg: s.tWho === n ? 'var(--paper)' : 'var(--ink)', pick: () => this.setState({ tWho: n }) })),
+      tRole: tRoleOf[s.tWho],
+      tGate: !s.tVerified,
+      tVerify: () => this.setState({ tVerified: true, tLog: s.tLog.concat([{ t: clock + ' · verified on this device · re-arms for two hours', c: '#6E675C' }]) }),
+      tA, tR, tLog: s.tLog, tLogEmpty: s.tLog.length === 0,
+
+      gRows, gH,
+      gStatus: s.gSealedAt ? 'SEALED ' + s.gSealedAt + ' · ' + gAccepted + ' APPLIED' : (gPending ? gPending + ' GREY LINES WAIT ON YOU' : 'DISPOSED · UNSEALED'),
+      gExplain: s.gSealedAt ? 'The ink changed because you chose it, once, under one seal. The margin keeps the engine’s hand visible on every cell it touched — that colour does not fade.' : (gPending ? 'Nothing here has been written. Grey is a proposal; ink is the book. Take a line or keep the ink, on each.' : 'Every line is disposed. The hold below is the only thing that writes.'),
+
+      kTouch: () => { if (!s.kLocked) this.setState({ kIdle: 12, kStarted: true }); },
+      kIdleTxt: s.kLocked ? 'LOCKED' : (s.kStarted ? 'LOCKS IN ' + s.kIdle + 'S' : 'TOUCH TO START THE CLOCK'),
+      kIdleFg: s.kLocked ? '#C98A2E' : (s.kStarted && s.kIdle <= 4 ? '#C98A2E' : '#8D8478'),
+      kKeys, kDots, kLockDots: '●'.repeat(s.kCode.length) + '○'.repeat(4 - s.kCode.length),
+      kMgrTxt: s.kMgr ? s.kMgr + ' · ' + clock + ' · at the pass' : 'nobody — the tablet belongs to no one',
+      kMgrFg: s.kMgr ? '#5FB08C' : '#C98A2E', kMgrBr: s.kMgr ? 'rgba(95,176,140,.45)' : 'var(--edge)',
+      kH, kLocked: s.kLocked,
+
+      qToggle: () => { const on = !s.qSig; this.setState({ qSig: on }); if (on && s.qLadder === 1) this.qAdvance(); },
+      qSigTxt: s.qSig ? 'SIGNAL ON' : 'NO SIGNAL', qSigFg: s.qSig ? '#5FB08C' : '#C98A2E', qSigBr: s.qSig ? 'rgba(95,176,140,.45)' : '#C98A2E',
+      qH, qSteps,
+      qPlateTxt: qSealedNow ? (s.qLadder >= 4 ? 'Sealed by the house ' + s.qAt : 'Recorded here ' + s.qAt + ' — not confirmed') : (this.hold('qH').phase === 'armed' ? 'Enter again to record' : 'Hold to record'),
+      qExplain: s.qLadder === 0 ? 'Four states, each unmistakable in words. The wax appears on the last one only — a tick on the phone is not a seal in the book.' : (s.qLadder < 4 ? (s.qSig ? 'The record is travelling. Each step is named when it happens, not before.' : 'The count is safe on this phone and nowhere else. It says so. Turn the signal on to let it travel.') : 'The house holds it. The wax landed on stamp — the one spring allowed to overshoot — because now it is true.'),
+
+      aRows, aDocked: docked, aDockW: docked ? 278 : 0,
+      aOpenName: aOpen ? aOpen.name : '',
+      aScrimOn: !!s.aRow && s.aLegacyOn,
+      aMissedTxt: s.aMissed === 0 ? 'The line has not moved yet. Wait a moment and read this again.' : s.aMissed + (s.aMissed === 1 ? ' change on the line you could not see.' : ' changes on the line you could not see.'),
+      aHint: s.aRow ? (s.aLegacyOn ? 'the list is behind the grey' : 'the list kept its pulse') : 'pick a row',
+      aHouseBg: s.aLegacyOn ? 'var(--paper)' : 'var(--ink)',
+      aHouseFg: s.aLegacyOn ? 'var(--ink)' : 'var(--paper)',
+      aLegacyBg: s.aLegacyOn ? 'var(--ink)' : 'var(--paper)',
+      aLegacyFg: s.aLegacyOn ? 'var(--paper)' : 'var(--ink)',
+      aHouse: () => this.setState({ aLegacyOn: false, aMissed: 0 }),
+      aLegacy: () => this.setState({ aLegacyOn: true, aMissed: 0 }),
+      aClose: () => this.setState({ aRow: null }),
+
+      bRows, bOpen: !!s.bRow, bDockW: s.bRow ? 272 : 0,
+      bTitle: bTitleRow ? bTitleRow.t : '',
+      bText: s.bText,
+      bType: e => this.setState({ bText: e.target.value }),
+      bClose: () => this.bClose(),
+      bCount: s.bText.trim() ? s.bText.trim().length + ' characters, held on the row when you leave' : 'Nothing yet. Leaving now tears no stub.',
+      bFoot: Object.keys(s.bStubs).length ? Object.keys(s.bStubs).length + ' stub(s) on the list. Esc tore the ticket; it did not burn it.' : 'No stubs. Open a row, type, then press Esc.',
+
+      cLevel: lvl, cBody: lvl ? lvl.b.map(t => ({ t })) : [],
+      cSpines, cStack, cCrumb: s.cDepth ? C_LEVELS.slice(0, s.cDepth).map(l => l.ti).join('  ›  ') : 'the door · no sheet open',
+      cW: s.cDepth ? 300 + (s.cDepth - 1) * 40 : 0,
+      cRowEdge: s.cDepth ? seal : 'transparent',
+      cDepthTxt: s.cDepth + ' of ' + cap,
+      cHasNext: !!(lvl && lvl.next),
+      cNextLabel: lvl && lvl.next ? 'OPEN ' + lvl.next.toUpperCase() : '',
+      cRefused: s.cRefused,
+      cRefusal: cap + ' is the spindle’s depth. Close one to open another — the house will not stack a ' + (cap + 1) + 'th.',
+      cFoot: s.cDepth ? 'The list stays where it was. Every level you left is a spine you can name and touch.' : 'Open 118 and keep drilling. Watch the spines gather instead of the sheets piling.',
+      cOpen: () => this.setState({ cDepth: Math.max(1, s.cDepth), cRefused: false }),
+      cDrill: () => {
+        if (s.cDepth >= cap) {
+          this.setState({ cRefused: true });
+          clearTimeout(this.refT); this.refT = setTimeout(() => this.setState({ cRefused: false }), 3200);
+        } else this.setState({ cDepth: s.cDepth + 1, cRefused: false });
+      },
+      cBack: () => this.setState({ cDepth: Math.max(0, s.cDepth - 1), cRefused: false }),
+      cPeek: () => this.setState({ cH: 104 }), cHalf: () => this.setState({ cH: 180 }), cFull: () => this.setState({ cH: 250 }),
+      cPeekBg: detent(104), cPeekFg: detentFg(104),
+      cHalfBg: detent(180), cHalfFg: detentFg(180),
+      cFullBg: detent(250), cFullFg: detentFg(250),
+
+      dOpen: s.dOpen, dClosed: !s.dOpen,
+      dQty: s.dQty, dPrice: s.dPrice, dNote: s.dNote,
+      dSetQty: e => this.setState({ dQty: e.target.value, dSealed: '', dHold: 0 }),
+      dSetPrice: e => this.setState({ dPrice: e.target.value, dSealed: '', dHold: 0 }),
+      dSetNote: e => this.setState({ dNote: e.target.value, dSealed: '', dHold: 0 }),
+      dScrim: this.dScrim,
+      dLean: s.dLean, dRot: s.dLean ? -0.45 : 0,
+      dShadow: 0.1 + edits * 0.07,
+      dWeightW: Math.min(100, edits * 33.4),
+      dWeightPct: edits ? edits + ' / 3' : 'empty',
+      dWeightFg: edits ? '#A5670A' : '#6E675C',
+      dWeightTxt: edits === 0 ? 'WEIGHTLESS — A CLICK OUTSIDE LIFTS IT' : edits + (edits === 1 ? ' EDIT HELD, UNWRITTEN' : ' EDITS HELD, UNWRITTEN'),
+      dCloseLabel: s.dArmed ? 'CLOSE AND LOSE ' + edits + (edits === 1 ? ' EDIT' : ' EDITS') : 'CLOSE',
+      dCloseFg: s.dArmed ? '#A5670A' : '#211C16',
+      dHoldW: s.dHold, dSealed: s.dSealed,
+      dSealLabel: sealedNow ? 'SEALED ' + clock : (s.dHold > 0 ? 'KEEP HOLDING' : 'HOLD TO SEAL'),
+      dToastOn: s.dToast > 0, dToastTxt: s.dToast + (s.dToast === 1 ? ' edit discarded. It is not gone yet.' : ' edits discarded. They are not gone yet.'),
+      dUndo: this.dUndo, dReopen: () => this.setState({ dOpen: true, dToast: 0 }),
+      dHoldOn: this.dHoldOn, dHoldOff: this.dHoldOff,
+      dClosedNote: s.dToast > 0 ? 'The way back is on the paper below for a few seconds.' : 'The panel was weightless, so a click outside was enough.',
+
+      eOpen: s.eOpen, eClosedView: !s.eOpen,
+      eLines: s.eLines, eEmpty: s.eLines.length === 0,
+      eCount: s.eLines.length ? s.eLines.length + ' LINES' : 'NO LINES',
+      eS0Bg: s.eStop === 0 ? '#F1F5F4' : 'transparent',
+      eS1Bg: s.eStop === 1 ? '#F1F5F4' : '#FCFAF6',
+      eS1Br: s.eStop === 1 ? '#1A5E6B' : '#E3DCCF',
+      eS2Br: s.eStop === 2 ? '#211C16' : 'transparent',
+      eS3Br: s.eStop === 3 ? '#211C16' : 'transparent',
+      eOpenFn: () => this.setState({
+        eOpen: true, eStop: 0,
+        eLines: [
+          { n: 'DIALOG', t: 'dialog, named by its own contract — 4 stops, focus moved in', c: '#5FB08C' },
+          { n: E_STOPS[0].n, t: E_STOPS[0].t, c: '#5FB08C' }
+        ]
+      }),
+      eTabFn: () => this.eTab(),
+      eCloseFn: () => this.eClose()
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -31,7 +31,7 @@ describe('springLinear (damped-spring → CSS linear() sampler)', () => {
     }
   });
 
-  it('stamp overshoots within 1 point of the 059 measured figure (~11.1%)', () => {
+  it('stamp overshoots within 1 point of the 083 measured figure (~11.1%)', () => {
     const overshoot = Math.max(...springs.stamp.samples) - 1;
     expect(overshoot).toBeGreaterThanOrEqual(0.101);
     expect(overshoot).toBeLessThanOrEqual(0.121);
@@ -45,7 +45,7 @@ describe('springLinear (damped-spring → CSS linear() sampler)', () => {
     expect(Math.max(...springs.tally.samples)).toBeLessThanOrEqual(1);
   });
 
-  it('settle times reproduce the 059 durations within 10%', () => {
+  it('settle times reproduce the 083 durations within 10%', () => {
     expect(Math.abs(springs.tuck.ms - 300)).toBeLessThanOrEqual(30);
     expect(Math.abs(springs.stamp.ms - 360)).toBeLessThanOrEqual(36);
     expect(Math.abs(springs.tally.ms - 840)).toBeLessThanOrEqual(84);
@@ -56,7 +56,7 @@ describe('springLinear (damped-spring → CSS linear() sampler)', () => {
   });
 });
 
-describe('motion tokens carry the 059 names and numbers verbatim', () => {
+describe('motion tokens carry the 083 names and numbers verbatim', () => {
   it('durations', () => {
     expect(settle.ms).toBe(320);
     expect(ink.ms).toBe(160);
@@ -77,7 +77,7 @@ describe('motion tokens carry the 059 names and numbers verbatim', () => {
     expect(tally.easing).toMatch(/^linear\(/);
   });
 
-  it('exports all seven names, with press as the 059 alias of pour', () => {
+  it('exports all seven names, with press as the 083 alias of pour', () => {
     expect(Object.keys(motionTokens).sort()).toEqual(
       ['ink', 'pour', 'settle', 'stamp', 'tally', 'tuck', 'turn'].sort(),
     );

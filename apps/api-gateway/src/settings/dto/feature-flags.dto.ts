@@ -23,6 +23,13 @@ export class FeatureFlagsDto {
   })
   @IsBoolean()
   enable_ai_autonomous_send: boolean;
+
+  @ApiProperty({
+    description:
+      "A scheduled job reads this house's mailbox through a person's Gmail grant. Off = nothing is read; every uncertain answer is treated as off.",
+  })
+  @IsBoolean()
+  enable_house_inbox_read: boolean;
 }
 
 export class UpdateFeatureFlagsDto {
@@ -37,6 +44,29 @@ export class UpdateFeatureFlagsDto {
   @IsOptional()
   @IsBoolean()
   enable_ai_autonomous_send?: boolean;
+
+  /**
+   * WITHHELD UNTIL THE ROUTE ASKED WHO WAS ASKING.
+   *
+   * The house-inbox commit `3925cde6` left this key out of this DTO on purpose:
+   * `PUT /settings/feature-flags` had no role check, so adding it would have let
+   * any authenticated member of a restaurant start a job that reads a
+   * colleague's mailbox (ADR 0118 D8-D11, `06-pages/communications.md` §9). The
+   * route now runs `assertCanManageRestaurant` like the approval thresholds
+   * beside it — the condition that was being waited on — so the key joins the
+   * DTO here and the switch finally has a way to be set.
+   *
+   * The global pipe is `whitelist: true, forbidNonWhitelisted: true`
+   * (`main.ts:52-56`), so before this the key was not merely ignored: a body
+   * carrying it was rejected outright.
+   */
+  @ApiPropertyOptional({
+    description:
+      "A scheduled job reads this house's mailbox through a person's Gmail grant. Owner or manager only.",
+  })
+  @IsOptional()
+  @IsBoolean()
+  enable_house_inbox_read?: boolean;
 }
 
 export class CheckFeatureFlagDto {

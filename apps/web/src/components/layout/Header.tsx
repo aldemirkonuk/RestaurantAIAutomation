@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -19,6 +19,8 @@ import { useNotifications, useMarkNotificationAsRead, useMarkAllNotificationsAsR
 import type { Notification } from '../../services/api/notifications'
 import { useNotificationStore } from '../../stores'
 import { collapseStackedNotifications, stackedNotificationLabel } from '../../lib/notificationStack'
+import { Popover } from '../mudavym/Sheet'
+import { useMudavymShell } from '../../lib/mudavym/shellGround'
 
 interface HeaderProps {
   title?: string
@@ -31,6 +33,9 @@ export function Header({ title, subtitle }: HeaderProps) {
   const [showUserMenu, setShowUserMenu] = useState(false)
   const { user, logout } = useAuth()
   const navigate = useNavigate()
+  const shell = useMudavymShell()
+  const bellRef = useRef<HTMLButtonElement>(null)
+  const userRef = useRef<HTMLButtonElement>(null)
   const storeUnread = useNotificationStore((s) => s.unreadCount)
   const setUnreadCount = useNotificationStore((s) => s.setUnreadCount)
   const userId = user?.userId || ''
@@ -123,6 +128,7 @@ export function Header({ title, subtitle }: HeaderProps) {
           {/* Notifications */}
           <div className="relative">
             <button
+              ref={bellRef}
               onClick={() => setShowNotifications(!showNotifications)}
               className="relative p-2.5 hover:bg-gray-100 rounded-xl transition-colors"
               aria-label={`Notifications ${unreadCount > 0 ? `(${unreadCount} unread)` : ''}`}
@@ -136,9 +142,94 @@ export function Header({ title, subtitle }: HeaderProps) {
               )}
             </button>
 
-            {/* Notifications Dropdown */}
+            {/* Notifications Dropdown — house shape while a Mudavym page is up. */}
+            {shell.on ? (
+              <Popover
+                open={showNotifications}
+                onClose={() => setShowNotifications(false)}
+                anchorRef={bellRef}
+                label="Notifications"
+                width={340}
+                eyebrow={foldedCount > 0 ? `${foldedCount} similar grouped` : 'The bell'}
+                title="Notifications"
+                showClose={false}
+                action={
+                  notifications.length > 0 ? (
+                    <button
+                      type="button"
+                      className="mdv-link"
+                      onClick={async () => {
+                        await markAllAsRead.mutateAsync(userId)
+                        refetchNotifications()
+                      }}
+                    >
+                      Mark all read
+                    </button>
+                  ) : null
+                }
+                footer={
+                  <button
+                    type="button"
+                    className="mdv-link"
+                    onClick={() => {
+                      navigate('/notifications')
+                      setShowNotifications(false)
+                    }}
+                  >
+                    Read the whole book
+                  </button>
+                }
+              >
+                {displayNotifications.length === 0 ? (
+                  <p className="mdv-quiet">Nothing unread. The bell is quiet.</p>
+                ) : (
+                  displayNotifications.map((notification) => {
+                    const sublabel = stackedNotificationLabel(
+                      notification,
+                      foldedById[notification.id],
+                    )
+                    return (
+                      <button
+                        key={notification.id}
+                        type="button"
+                        className="mdv-item"
+                        style={{ alignItems: 'flex-start' }}
+                        data-active={notification.status === 'unread'}
+                        onClick={async () => {
+                          await markAsRead.mutateAsync(notification.id)
+                          refetchNotifications()
+                          navigate('/notifications', {
+                            state: { selectedNotificationId: notification.id },
+                          })
+                          setShowNotifications(false)
+                        }}
+                      >
+                        <span
+                          className="mdv-dot"
+                          aria-hidden
+                          style={
+                            notification.status === 'unread'
+                              ? { background: 'var(--seal)' }
+                              : undefined
+                          }
+                        />
+                        <span className="mdv-item__text">
+                          <span className="mdv-item__label" style={{ whiteSpace: 'normal' }}>
+                            {notification.title}
+                          </span>
+                          {sublabel && <span className="mdv-item__sub">{sublabel}</span>}
+                          <span className="mdv-item__sub">
+                            {formatTimestamp(notification.timestamp)}
+                          </span>
+                        </span>
+                      </button>
+                    )
+                  })
+                )}
+              </Popover>
+            ) : null}
             <AnimatePresence>
-              {showNotifications && (
+              {showNotifications && !shell.on && (
                 <>
                   <div
                     className="fixed inset-0 z-40"
@@ -240,6 +331,7 @@ export function Header({ title, subtitle }: HeaderProps) {
           {/* User Menu */}
           <div className="relative">
             <button
+              ref={userRef}
               onClick={() => setShowUserMenu(!showUserMenu)}
               className="flex items-center gap-2 p-1.5 pr-3 hover:bg-gray-100 rounded-xl transition-colors"
               aria-label="User menu"
@@ -254,9 +346,55 @@ export function Header({ title, subtitle }: HeaderProps) {
               <ChevronDown className="w-4 h-4 text-gray-400" aria-hidden="true" />
             </button>
 
-            {/* User Dropdown */}
+            {/* User Dropdown — house shape while a Mudavym page is up. */}
+            {shell.on ? (
+              <Popover
+                open={showUserMenu}
+                onClose={() => setShowUserMenu(false)}
+                anchorRef={userRef}
+                label="User menu"
+                width={248}
+                eyebrow={user?.email || 'Signed in'}
+                title={user?.name || 'User'}
+                showClose={false}
+              >
+                <button
+                  type="button"
+                  className="mdv-item"
+                  onClick={() => { navigate('/profile'); setShowUserMenu(false) }}
+                >
+                  <User size={14} aria-hidden className="mdv-item__icon" />
+                  <span className="mdv-item__text">Profile</span>
+                </button>
+                <button
+                  type="button"
+                  className="mdv-item"
+                  onClick={() => { navigate('/settings'); setShowUserMenu(false) }}
+                >
+                  <Settings size={14} aria-hidden className="mdv-item__icon" />
+                  <span className="mdv-item__text">Settings</span>
+                </button>
+                <button
+                  type="button"
+                  className="mdv-item"
+                  onClick={() => { navigate('/help'); setShowUserMenu(false) }}
+                >
+                  <HelpCircle size={14} aria-hidden className="mdv-item__icon" />
+                  <span className="mdv-item__text">Help &amp; Support</span>
+                </button>
+                <button
+                  type="button"
+                  className="mdv-item"
+                  style={{ borderTop: '1px solid var(--paper-2)', marginTop: 4, paddingTop: 9 }}
+                  onClick={logout}
+                >
+                  <LogOut size={14} aria-hidden className="mdv-item__icon" />
+                  <span className="mdv-item__text">Log Out</span>
+                </button>
+              </Popover>
+            ) : null}
             <AnimatePresence>
-              {showUserMenu && (
+              {showUserMenu && !shell.on && (
                 <>
                   <div
                     className="fixed inset-0 z-40"

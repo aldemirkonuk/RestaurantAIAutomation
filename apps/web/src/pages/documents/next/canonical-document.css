@@ -4,39 +4,20 @@
    flattened into a footnote column).
    ============================================================ */
 
-/* D9 — THE PAPER STAYS LIGHT IN DARK MODE.
-
-   The sheet is a sheet of paper on a dark desk: the scan beside it is light
-   anyway, and print must equal screen. `mudavym.css` gives `.dark .mudavym` the
-   Warm Charcoal column, so a sheet nested inside a dark page would inherit it;
-   this rule takes the light column back on the ONE element that carries
-   `data-ground="paper"`.
-
-   The selector is `.dark .mudavym[data-ground="paper"]` (0,3,0) rather than the
-   bare attribute (0,2,0) so it beats `.dark .mudavym` on specificity and not
-   merely on source order — the same trap PageGate's header records. */
-.mudavym[data-ground='paper'],
-.dark .mudavym[data-ground='paper'],
-.mudavym[data-ground='charcoal'] .mudavym[data-ground='paper'] {
-  --seal: #1a5e6b;
-  --seal-deep: #14515c;
-  --seal-tint: rgba(26, 94, 107, 0.1);
-  --seal-ring: rgba(26, 94, 107, 0.32);
-
-  --paper-0: #fffdf8;
-  --paper-1: #f3efe6;
-  --paper-2: #eae4d8;
-
-  --ink-1: #211c16;
-  --ink-2: #4f473c;
-  --ink-3: #7c7365;
-  --ink-4: #665d50;
-
-  color-scheme: light;
-}
-
+/* D9 — THE PAPER STAYS LIGHT. The `data-ground="paper"` token block used to
+   live here. It now lives in styles/mudavym.css, beside the ground it escapes:
+   this file is imported only by CanonicalDocumentPage, which App.tsx loads
+   lazily, so the escape existed nowhere else in the app — any other surface
+   that carried `data-ground="paper"` (providers/next/TwinSheet) silently got
+   charcoal, and the ground test could not see it because it reads both files
+   off disk. What stays here is the sheet's geometry and its print rules. */
+/* 100vh, not 100%. DashboardLayout's <main> is `min-h-screen` with no resolved
+   height on the chain above it (components/layout/DashboardLayout.tsx:85), so a
+   percentage minimum resolves against a content-sized parent and collapses —
+   the same measured fault that left DashboardNext's charcoal ground covering
+   18.5px of a 563px viewport, with the light app shell showing underneath. */
 .cd-page {
-  min-height: 100%;
+  min-height: 100vh;
 }
 
 /* The sheet keeps a page's proportions rather than filling the viewport. */
@@ -54,9 +35,12 @@
 }
 
 @media print {
-  /* Print equals screen (D9): the sheet is already light, so nothing inverts. */
+  /* Print equals screen (D9): the sheet is already light, so nothing inverts.
+     The viewport minimum is dropped here — on paper it would force a blank
+     trailing page for any document shorter than the screen. */
   .cd-page {
     background: #fff;
+    min-height: auto;
   }
 
   /* Chrome that is navigation, not evidence. */

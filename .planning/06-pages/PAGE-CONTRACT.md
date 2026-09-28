@@ -57,7 +57,7 @@ signals_today: none | partial | instrumented
 rebrand_strings: 0        # count of user-visible WineOps strings on this page
 maturity: complete | partial | hollow | broken   # §10 verdict, 2026-08-25
 status: documented
-updated: 2026-08-24
+updated: 2026-08-26
 links: []
 ```
 

@@ -7,13 +7,39 @@ import {
 import { DatabaseService } from "../database/database.service";
 import { hashWineIdentity, wineDisplayLabel } from "./wine-identity";
 import {
+  BelowAverageResult,
+  ObservationRow,
+  comparisonClassOf,
+  priceBelowAverage,
+} from "./price-below-average";
+// The floor and the dispersion test are the SAME ones the other two writers
+// use, imported rather than re-implemented. `vendor-site-sighting.ts`
+// re-exports them from `procurement/own-paper-sighting.ts`, which is where the
+// judgement and its reasoning live.
+import {
+  MIN_OUTLIER_SAMPLE,
+  isOutlierAgainstPriors,
+} from "./vendor-site-sighting";
+import {
   ConsensusResult,
   PriceObservation,
   PriceSourceType,
   PriceTrend,
+  normalizeUnitPrice,
   standardTrends,
   vendorPriceConsensus,
 } from "../analytics/engine/vendor-price-consensus";
+// The register's tenancy boundary, in one place (ADR 0117 addendum,
+// 2026-09-05). Every read of `vendor_price_observations` in this file goes
+// through it; `scripts/check_price_register_reads_are_scoped.py` fails CI for
+// one that does not. The `.from()` above each call keeps the table's name as a
+// STRING LITERAL on purpose: `check_read_columns_exist.py` pairs a literal
+// `.from("t")` with the `.select(` that follows it, and a constant there would
+// make every register read invisible to that guard.
+import {
+  VENDOR_PRICE_OBSERVATIONS,
+  scopePriceRegisterRead,
+} from "../price-register/visibility";
 
 export interface VendorComparison {
   productKey: { masterWineId?: string; signatureHash?: string };
@@ -92,12 +118,20 @@ export class VendorComparisonService {
   /**
    * Load observations for a product.
    *
-   * Deliberately NOT scoped to one restaurant by default. A scraped list price
-   * is market intelligence that belongs to everyone; restricting the ladder to
-   * rows this tenant happened to generate would make a vendor look absent
-   * simply because this restaurant has never bought from them. Tenant-scoped
-   * rows (invoices, negotiated quotes) are included on top when a restaurantId
-   * is supplied.
+   * A scraped list price is market intelligence that belongs to everyone;
+   * restricting the ladder to rows this tenant happened to generate would make
+   * a vendor look absent simply because this restaurant has never bought from
+   * them. So the openly posted rows are always in, and this house's own rows
+   * (invoices, negotiated quotes) are added on top when a restaurantId is
+   * supplied.
+   *
+   * CHANGED 2026-09-05 (ADR 0117 addendum): with no restaurantId this read used
+   * to apply NO tenancy clause at all, which is not "the market" -- it is every
+   * house's private paper. The docblock above it said "deliberately not scoped",
+   * which was true of the intent and false of the effect. It is now
+   * `openMarketOnly`. The only caller (line 523) always passes a restaurantId,
+   * so nothing on any screen changes; what changes is that the branch which
+   * could have leaked no longer exists.
    */
   private async loadObservations(params: {
     masterWineId?: string;
@@ -113,11 +147,20 @@ export class VendorComparisonService {
       windowDays = 365,
     } = params;
 
-    let q = this.databaseService.supabase
-      .from("vendor_price_observations")
-      .select(
-        "provider_id, vendor_name_raw, product_name_raw, source_type, source_url, raw_price, currency, pack_size, unit_volume_ml, yield_factor, parse_confidence, observed_at",
-      )
+    // The scope is decided FIRST, before the query exists, so there is no
+    // branch in which a query is built and then not scoped. A read with no
+    // house named is the openly posted rows only -- never everything.
+    let q = scopePriceRegisterRead(
+      this.databaseService.supabase
+        .from("vendor_price_observations")
+        .select(
+          "provider_id, vendor_name_raw, product_name_raw, source_type, source_url, raw_price, currency, pack_size, unit_volume_ml, yield_factor, parse_confidence, observed_at",
+        ),
+      VENDOR_PRICE_OBSERVATIONS,
+      restaurantId
+        ? { kind: "houseAndOpenMarket", restaurantId }
+        : { kind: "openMarketOnly" },
+    )
       .gte(
         "observed_at",
         new Date(Date.now() - windowDays * 86_400_000).toISOString(),
@@ -127,8 +170,8 @@ export class VendorComparisonService {
 
     // Match on either key. An observation resolved to a library row and one
     // that only ever knew a name are the same bottle, and ranking them apart
-    // is the bug this replaces. Two separate `.or()` calls are ANDed by
-    // PostgREST, which is what we want: (product) AND (tenant scope).
+    // is the bug this replaces. Separate `.or()` calls are ANDed by PostgREST,
+    // which is what we want: (product) AND (tenant scope) AND (not contributed).
     const identityHash = params.identityHash ?? signatureHash ?? null;
 
     const keys: Array<[column: string, value: string]> = [];
@@ -147,11 +190,6 @@ export class VendorComparisonService {
       q = q.eq(keys[0][0], keys[0][1]);
     } else if (keys.length > 1) {
       q = q.or(keys.map(([col, val]) => `${col}.eq.${val}`).join(","));
-    }
-
-    // Market rows (restaurant_id null) plus this tenant's own rows.
-    if (restaurantId) {
-      q = q.or(`restaurant_id.is.null,restaurant_id.eq.${restaurantId}`);
     }
 
     const { data, error } = await q;
@@ -250,6 +288,61 @@ export class VendorComparisonService {
       observedAt = parsed.toISOString();
     }
 
+    // SCREENED AT WRITE TIME, exactly like the other two writers.
+    //
+    // Until 2026-09-04 this was the ONE writer that still let `is_outlier` take
+    // its column DEFAULT of false — i.e. every hand-typed price entered the
+    // ladder pre-certified as clean, which is precisely the fault ADR 0117
+    // named when it said the column "has no writer anywhere". A typed price is
+    // the LEAST-provenanced row in the register (trust tier 7, and
+    // `parse_confidence` is deliberately null because nothing parsed it), so it
+    // is the last row that should be exempt from the test the tier-1 invoices
+    // and tier-4 scrapes both take.
+    //
+    // The test is `isOutlierAgainstPriors` — `flagOutliers` at 3.5 robust
+    // deviations — over the sightings of the SAME product in the SAME
+    // comparison class, and it is never a bound: no typed number is clamped,
+    // rounded, rejected or refused for being extreme. The row is written
+    // exactly as entered; a flag only keeps it out of the "cheaper than usual"
+    // ladder, stays visible, and the nightly re-judge clears it if later
+    // evidence proves it ordinary (`outlier-rejudge.ts`).
+    //
+    // Below `MIN_OUTLIER_SAMPLE` comparable priors nothing is flagged at all,
+    // and the reason SAYS the row was not judged rather than saying it is
+    // clean.
+    const candidateUnitPrice = normalizeUnitPrice({
+      price: params.price,
+      sourceType: sourceType as PriceSourceType,
+      observedAt,
+      packSize: params.packSize ?? 1,
+      unitVolumeMl: params.unitVolumeMl ?? undefined,
+      yieldFactor: 1,
+    }).unitPrice;
+
+    const priors =
+      candidateUnitPrice === null
+        ? []
+        : await this.priorUnitPricesInClass({
+            restaurantId: params.restaurantId,
+            masterWineId: params.masterWineId ?? null,
+            signatureHash: identityHash,
+            sourceClass: comparisonClassOf(sourceType),
+          });
+
+    const judged =
+      candidateUnitPrice !== null && priors.length + 1 >= MIN_OUTLIER_SAMPLE;
+    const isOutlier = judged
+      ? isOutlierAgainstPriors(priors, candidateUnitPrice as number)
+      : false;
+    const judgedAt = new Date().toISOString();
+    const outlierReason = !judged
+      ? candidateUnitPrice === null
+        ? `Not judged: the pack and volume given do not support a comparable unit price, so there is no number to test. The row is stored as entered; it is not claimed to be clean.`
+        : `Not judged: only ${priors.length} comparable sighting(s) of this product exist in its class, below the floor of ${MIN_OUTLIER_SAMPLE} at which a deviation test means anything. The row is stored as entered; it is not claimed to be clean.`
+      : isOutlier
+        ? `Flagged at write time against ${priors.length} earlier sighting(s) of this product in the same comparison class: it sits more than 3.5 robust deviations from their median. The price is stored exactly as entered and stays visible; it is kept out of the "cheaper than usual" ladder until it is corrected at source or the nightly re-judge clears it.`
+        : `Judged clean at write time against ${priors.length} earlier sighting(s) of this product in the same comparison class.`;
+
     const { data, error } = await this.databaseService.supabase
       .from("vendor_price_observations")
       .insert({
@@ -274,6 +367,10 @@ export class VendorComparisonService {
         // and nothing was parsed — a human asserted it. Claiming 1.0 would
         // make a typed number the best-parsed row in the ladder.
         parse_confidence: null,
+        is_outlier: isOutlier,
+        outlier_reason: outlierReason,
+        outlier_basis: "write_time",
+        outlier_judged_at: judgedAt,
         raw: {
           enteredBy: params.userId ?? null,
           note: params.note ?? null,
@@ -293,7 +390,136 @@ export class VendorComparisonService {
       );
     }
 
-    return { id: (data as any).id, observedAt: (data as any).observed_at };
+    return {
+      id: (data as any).id,
+      observedAt: (data as any).observed_at,
+      // Returned so the caller that just typed the price is TOLD it was set
+      // aside, rather than discovering later that it never reached the ladder.
+      isOutlier,
+      outlierReason,
+    };
+  }
+
+  /**
+   * The comparable unit prices already on the register for this product, in
+   * one comparison class.
+   *
+   * SCOPE matches `belowTrailingAverage`: market rows (`restaurant_id IS
+   * NULL`) plus this house's own, never another house's negotiating position.
+   * CLASS matches ADR 0117's closing rule — a quote is only ever set beside
+   * another quote — so a tier-4 public-site price can never make a quoted one
+   * look deviant.
+   *
+   * A read failure returns an EMPTY list, which puts the group below
+   * `MIN_OUTLIER_SAMPLE` and therefore flags nothing. A register we could not
+   * read is not a register that agrees with the number being typed.
+   */
+  private async priorUnitPricesInClass(args: {
+    restaurantId: string;
+    masterWineId: string | null;
+    signatureHash: string | null;
+    sourceClass: ReturnType<typeof comparisonClassOf>;
+  }): Promise<number[]> {
+    if (!args.masterWineId && !args.signatureHash) return [];
+    try {
+      let q = scopePriceRegisterRead(
+        this.databaseService.supabase
+          .from("vendor_price_observations")
+          .select(
+            "raw_price, source_type, observed_at, pack_size, unit_volume_ml, yield_factor",
+          ),
+        VENDOR_PRICE_OBSERVATIONS,
+        { kind: "houseAndOpenMarket", restaurantId: args.restaurantId },
+      )
+        .order("observed_at", { ascending: false })
+        .limit(200);
+      q = args.masterWineId
+        ? q.eq("master_wine_id", args.masterWineId)
+        : q.eq("signature_hash", args.signatureHash as string);
+
+      const { data, error } = await q;
+      if (error) throw new Error(error.message);
+
+      const out: number[] = [];
+      for (const r of (data ?? []) as any[]) {
+        if (comparisonClassOf(r.source_type) !== args.sourceClass) continue;
+        const { unitPrice } = normalizeUnitPrice({
+          price: Number(r.raw_price),
+          sourceType: r.source_type as PriceSourceType,
+          observedAt: r.observed_at,
+          packSize: Number(r.pack_size) || 1,
+          unitVolumeMl: r.unit_volume_ml ?? undefined,
+          yieldFactor: Number(r.yield_factor) || 1,
+        });
+        if (unitPrice !== null && Number.isFinite(unitPrice)) out.push(unitPrice);
+      }
+      return out;
+    } catch (e: any) {
+      this.logger.warn(
+        `Could not read the price register to screen a typed price for outliers: ${e?.message}. Nothing was flagged, and nothing is claimed to be clean.`,
+      );
+      return [];
+    }
+  }
+
+  /**
+   * "What is cheaper now than it has lately been" — the whole tenant at once.
+   *
+   * `compare()` answers for ONE product the caller already knows the id of.
+   * This answers the question /notifications asks, which is the other way
+   * round: nobody types a wine in, the house is supposed to notice. So the
+   * window is swept once and the products are ranked.
+   *
+   * TENANT SCOPE matches `loadObservations`: market rows (`restaurant_id IS
+   * NULL`) are public list prices that belong to everyone, and this tenant's
+   * own invoices and quotes are added on top. Another restaurant's rows are
+   * never read.
+   *
+   * `is_outlier` rows are excluded here rather than in the pure function:
+   * outlier-ness is decided by the consensus pass over the whole group, so
+   * re-deciding it per window would contradict the stored verdict.
+   *
+   * A failed query THROWS. "Nothing is below its average" and "the register
+   * could not be read" must not render as the same empty box — that is the
+   * defect this page's rebuild exists to remove.
+   */
+  async belowTrailingAverage(params: {
+    restaurantId: string;
+    windowDays?: number;
+    minObservations?: number;
+    limit?: number;
+  }): Promise<BelowAverageResult & { window: { days: number; from: string } }> {
+    const windowDays = params.windowDays ?? 30;
+    const from = new Date(Date.now() - windowDays * 86_400_000).toISOString();
+
+    const { data, error } = await scopePriceRegisterRead(
+      this.databaseService.supabase
+        .from("vendor_price_observations")
+        .select(
+          "identity_id, master_wine_id, signature_hash, product_name_raw, vendor_name_raw, provider_id, source_type, observed_at, raw_price, currency, pack_size, unit_volume_ml, yield_factor",
+        ),
+      VENDOR_PRICE_OBSERVATIONS,
+      { kind: "houseAndOpenMarket", restaurantId: params.restaurantId },
+    )
+      .gte("observed_at", from)
+      .eq("is_outlier", false)
+      .order("observed_at", { ascending: true })
+      .limit(2000);
+
+    if (error) {
+      this.logger.error(
+        `Failed to sweep vendor price observations: ${error.message}`,
+      );
+      throw new InternalServerErrorException(
+        `Could not read the price register: ${error.message}`,
+      );
+    }
+
+    const result = priceBelowAverage((data ?? []) as ObservationRow[], {
+      minObservations: params.minObservations,
+      limit: params.limit,
+    });
+    return { ...result, window: { days: windowDays, from } };
   }
 
   async compare(params: {

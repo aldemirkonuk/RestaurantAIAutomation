@@ -1,5 +1,30 @@
 /**
  * Payment Due Reminder Email Template
+ *
+ * ---------------------------------------------------------------------------
+ * `paymentTerms` AND THE DROPPED COLUMN DEFAULT (2026-09-03, ADR 0116)
+ * ---------------------------------------------------------------------------
+ * `06-pages/settings.md` §9.12 named this file as the place where a fabricated
+ * `providers.payment_terms DEFAULT 'Net 30'` reached a VENDOR's inbox, and it
+ * was the strongest argument for dropping that default. Two things were
+ * measured before the migration was written, and both are worth stating here
+ * because they are easy to get wrong from the outside:
+ *
+ *   1. **The field was already optional and already correct.** `paymentTerms` is
+ *      `string | undefined` and the row below is emitted only when it is truthy,
+ *      so an absent term has always printed NOTHING — never "Net 30", never
+ *      "null", never an empty row. The migration removes the fabricated VALUE at
+ *      source; this template needed no change and got none.
+ *   2. **Nothing calls it.** `GmailService.sendPaymentDueReminder` (its only
+ *      caller) is itself called from no production path: the cron that used to
+ *      call it was deleted, and the note where it stood is
+ *      `communications/scheduled-tasks.service.ts:596-619`. The only invocation
+ *      in the repository is `tests/email-e2e.spec.ts`. So no `Net 30` has ever
+ *      actually left the building through this template.
+ *
+ * Both facts are pinned in `payment-terms-are-not-fabricated.spec.ts` beside
+ * this file, so a future accounts-payable build (ADR 0077) that wires the mailer
+ * up cannot reintroduce either fault silently.
  */
 
 import { EMAIL_CONFIG, formatCurrency, formatDate } from "./template-config";

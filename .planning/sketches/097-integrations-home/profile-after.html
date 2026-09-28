@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>097 · Profile after the split — what stays personal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+.mudavym{
+  --seal:#1A5E6B; --seal-deep:#14515C; --seal-tint:rgba(26,94,107,.10); --seal-ring:rgba(26,94,107,.32);
+  --paper-0:#FAF7F1; --paper-1:#F3EFE6; --paper-2:#EAE4D8;
+  --ink-1:#211C16; --ink-2:#4F473C; --ink-3:#7C7365; --ink-4:#665D50;
+  color-scheme:light;
+}
+:root{--serif:"Fraunces",Georgia,"Times New Roman",serif;--sans:"DM Sans","Plus Jakarta Sans",system-ui,sans-serif;--mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper-0);color:var(--ink-1);font-family:var(--sans);font-size:13px}
+.banner{background:var(--ink-1);color:var(--paper-0);font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;padding:7px 20px}
+.wrap{max-width:1080px;margin:0 auto;padding:22px 20px 80px}
+.wordmark{font-family:var(--serif);font-weight:600;font-size:13px;letter-spacing:.04em}
+h1{font-family:var(--serif);font-size:36px;font-weight:600;letter-spacing:-.018em;line-height:1.06;margin:4px 0 0}
+h1 .dot{color:var(--seal)}
+.lede{font-family:var(--serif);font-style:italic;font-size:16px;color:var(--ink-2);margin:7px 0 0}
+.dbl{border-top:1px solid var(--ink-1);border-bottom:1px solid var(--ink-1);height:3px;opacity:.5;margin:18px 0 0}
+.ledger{margin:22px 0 0;padding:15px 20px 16px;background:var(--paper-1);border-left:2px solid var(--seal)}
+.ledger .l1{font-family:var(--serif);font-size:19px;line-height:1.42;color:var(--ink-1);margin:0;max-width:900px}
+.ledger .l1 b{font-weight:600;color:var(--seal-deep)}
+.ledger .l2{font-size:12px;line-height:1.65;color:var(--ink-2);margin:9px 0 0;max-width:880px}
+.sec-h{display:flex;align-items:baseline;gap:12px;margin:34px 0 0}
+.sec-n{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--seal-deep);white-space:nowrap}
+h2{font-family:var(--serif);font-size:24px;font-weight:600;letter-spacing:-.012em;margin:0}
+.sec-d{font-size:12.5px;line-height:1.62;color:var(--ink-2);margin:6px 0 0;max-width:820px}
+.sec-k{font-family:var(--mono);font-size:9.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3);margin:5px 0 12px}
+.row{display:grid;grid-template-columns:24px minmax(0,1fr) 190px 142px 170px;gap:0 16px;padding:13px 0 14px;border-top:1px solid var(--paper-2);align-items:start}
+.row:hover{background:var(--paper-1)}
+.row .ic{color:var(--ink-3);padding-top:2px}
+.ttl{font-weight:600;font-size:13.5px;color:var(--ink-1);display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.sub{font-family:var(--mono);font-size:11px;color:var(--ink-3);margin-top:3px;word-break:break-all}
+.why{font-size:11.5px;line-height:1.6;color:var(--ink-2);margin-top:7px;max-width:470px}
+.why em{font-style:normal;color:var(--ink-1);font-weight:500}
+.scope,.last{font-size:11.5px;line-height:1.55;color:var(--ink-2)}
+.scope .h,.last .h{font-family:var(--mono);font-size:8.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);display:block;margin-bottom:4px}
+.scope ul{margin:0;padding-left:13px}.scope li{margin:0 0 2px}.scope .no{color:var(--ink-3)}
+.last .w{font-family:var(--mono);font-size:11.5px;color:var(--ink-1);font-variant-numeric:tabular-nums}
+.last .d{display:block;font-size:10.5px;color:var(--ink-3);margin-top:2px}
+.last .em{font-family:var(--sans);color:var(--ink-3)}
+.chip{font-family:var(--mono);font-size:8.5px;font-weight:600;letter-spacing:.11em;text-transform:uppercase;padding:3px 7px;border-radius:3px;white-space:nowrap;color:var(--ink-2);background:var(--paper-2)}
+.chip.on{color:var(--seal-deep);background:var(--seal-tint);box-shadow:inset 0 0 0 1px var(--seal-ring)}
+.chip.off{color:var(--ink-3);background:transparent;box-shadow:inset 0 0 0 1px var(--paper-2)}
+.ctl{display:flex;flex-direction:column;gap:6px;align-items:flex-start}
+button{font-family:var(--sans);font-size:11.5px;font-weight:500;padding:5px 11px;border-radius:4px;border:1px solid var(--ink-4);background:transparent;color:var(--ink-1);cursor:pointer}
+button:hover{background:var(--paper-2)}
+button[disabled]{border-color:var(--paper-2);color:var(--ink-3);cursor:not-allowed}
+.ctlnote{font-size:10.5px;line-height:1.5;color:var(--ink-3);max-width:170px}
+.callout{border-left:2px solid var(--seal);padding:11px 0 11px 15px;margin:14px 0 0;font-size:12px;line-height:1.65;color:var(--ink-2);background:linear-gradient(90deg,var(--seal-tint),transparent 60%);max-width:880px}
+.callout b{color:var(--ink-1);font-weight:600}
+.field{display:grid;grid-template-columns:170px 1fr;gap:10px 16px;padding:11px 0;border-top:1px solid var(--paper-2);align-items:center}
+.fl{font-family:var(--mono);font-size:9.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3)}
+.fv{font-size:13px;color:var(--ink-1)}
+.fv.mono{font-family:var(--mono);font-size:12.5px}
+.moved{margin:32px 0 0;padding:15px 18px;border:1px dashed var(--ink-4);border-radius:4px;max-width:900px}
+.moved h3{font-family:var(--serif);font-size:17px;font-weight:600;margin:0 0 7px}
+.moved p{font-size:12px;line-height:1.65;color:var(--ink-2);margin:0 0 8px}
+.moved ul{margin:0;padding-left:17px;font-size:12px;line-height:1.75;color:var(--ink-2)}
+.moved b{color:var(--ink-1)}
+.back{display:inline-block;margin:0 0 12px;font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--seal-deep);text-decoration:none}
+</style>
+</head>
+<body class="mudavym">
+<div class="banner">Sketch 097 · profile after the split · example data, not a tenant</div>
+<div class="wrap">
+  <a class="back" href="index.html">&larr; 097 index</a>
+  <div class="wordmark">Mudavym</div>
+  <h1>Selin Kara<span class="dot">.</span></h1>
+  <p class="lede">Manager at Lokanta Müdavim since March.</p>
+  <div class="dbl"></div>
+
+  <div class="ledger">
+    <p class="l1">Three things can act as <b>you</b>. Two prove who you are at the door &mdash; your password and your Google link &mdash; and one phone in your pocket receives this house's alerts. Your Drive is not connected; Hasan's is, and the house's exports land there. <b>Nothing here can spend the house's money.</b></p>
+    <p class="l2">What the <em>house</em> has attached &mdash; the till, the payment provider, the address its letters leave from, its model-context servers &mdash; is on <b>Connections</b>, where the house's managers revoke it. Your Drive grant appears there too, named but not revocable, because only you may revoke it.</p>
+  </div>
+
+  <!-- I — who you are -->
+  <div class="sec-h"><span class="sec-n">Register I</span><h2>Who you are</h2></div>
+  <p class="sec-k">kept on your account · yours alone · nobody else in this house can read or change it</p>
+  <div class="field"><span class="fl">Name</span><span class="fv">Selin Kara</span></div>
+  <div class="field"><span class="fl">Email</span><span class="fv mono">selin@lokantamudavim.com</span></div>
+  <div class="field"><span class="fl">Phone</span><span class="fv mono">+90 532 118 44 07</span></div>
+  <div class="field"><span class="fl">Role here</span><span class="fv">Manager &middot; <span style="color:var(--ink-3)">granted by Hasan Demir, 3 March 2026</span></span></div>
+  <div class="field"><span class="fl">Ground</span><span class="fv">Paper &middot; <span style="color:var(--ink-3)">kept in this browser only</span></span></div>
+
+  <!-- II — what protects this account -->
+  <div class="sec-h"><span class="sec-n">Register II</span><h2>What protects this account</h2></div>
+  <p class="sec-d">The register the field opens on, and the one where Mudavym is furthest behind. Three of the five rows below have no code behind them at all, and say so rather than offering a switch that turns nothing on.</p>
+  <p class="sec-k">kept on your account · three rows measured as not built, 3 September 2026</p>
+
+  <div class="row">
+    <span class="ic"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>
+    <div>
+      <div class="ttl">Password <span class="chip on">Set</span></div>
+      <div class="sub">changed 12 July 2026</div>
+      <div class="why">One of your two ways in. Because Google is linked as well, removing this one still leaves you a door &mdash; the page checks that before it lets you.</div>
+    </div>
+    <div class="scope"><span class="h">Grants</span><ul><li>Sign-in with email</li></ul></div>
+    <div class="last"><span class="h">Last changed</span><span class="w">12 Jul 2026</span></div>
+    <div class="ctl"><button>Change</button></div>
+  </div>
+
+  <div class="row">
+    <span class="ic"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg></span>
+    <div>
+      <div class="ttl">This browser <span class="chip on">Signed in</span></div>
+      <div class="sub">macOS &middot; Safari 19 &middot; Istanbul &middot; since 08:14 today</div>
+      <div class="why">Built from evidence <em>this browser holds about itself</em> — not from a server-side session register, because there isn't one. That distinction is the whole content of the next row.</div>
+    </div>
+    <div class="scope"><span class="h">Grants</span><ul><li>Everything your role allows</li></ul></div>
+    <div class="last"><span class="h">Since</span><span class="w">Today, 08:14</span></div>
+    <div class="ctl"><button>Sign out</button></div>
+  </div>
+
+  <div class="row">
+    <span class="ic"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg></span>
+    <div>
+      <div class="ttl">Other devices <span class="chip off">Not built</span></div>
+      <div class="sub">no user_sessions table exists</div>
+      <div class="why">There is no server-side record of issued sessions, so <em>we cannot tell you where else you are signed in</em>, and "sign out everywhere" is not something this product can do. Measured across the gateway, the web app and every migration on 3 September 2026.</div>
+    </div>
+    <div class="scope"><span class="h">Would grant</span><ul><li class="no">A device list with revoke</li></ul></div>
+    <div class="last"><span class="h">Last action</span><span class="w em">&mdash;</span></div>
+    <div class="ctl"><button disabled>Sign out everywhere</button><span class="ctlnote">Nothing to call. The row is a measurement, not a promise.</span></div>
+  </div>
+
+  <div class="row">
+    <span class="ic"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 18v3c0 .6.4 1 1 1h4v-3h3v-3h2l1.4-1.4a6.5 6.5 0 1 0-4-4Z"/><circle cx="16.5" cy="7.5" r=".5"/></svg></span>
+    <div>
+      <div class="ttl">Second factor and passkeys <span class="chip off">Not built</span></div>
+      <div class="sub">zero matches for 2fa · totp · mfa · passkey · webauthn</div>
+      <div class="why">Your account can seal a purchase order, and it is protected by <em>one password and one Google link</em>. Stripe requires a second factor of every dashboard user; Linear lets an admin require one workspace-wide. Mudavym has neither.</div>
+    </div>
+    <div class="scope"><span class="h">Would grant</span><ul><li class="no">Passkey, authenticator, security key</li></ul></div>
+    <div class="last"><span class="h">Last action</span><span class="w em">&mdash;</span></div>
+    <div class="ctl"><button disabled>Add a passkey</button><span class="ctlnote">No backend exists.</span></div>
+  </div>
+
+  <div class="row">
+    <span class="ic"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="5.5"/><path d="m21 2-9.6 9.6"/><path d="m15.5 7.5 3 3L22 7l-3-3"/></svg></span>
+    <div>
+      <div class="ttl">Your own API tokens <span class="chip off">Not built</span></div>
+      <div class="sub">no user-issued token exists anywhere in the product</div>
+      <div class="why">Linear puts personal API keys here and lets a workspace admin decide whether members may create them at all. Mudavym issues none &mdash; so <em>every script anyone here has written signs in as a browser would</em>, which is worse and invisible.</div>
+    </div>
+    <div class="scope"><span class="h">Would grant</span><ul><li class="no">A scoped, revocable token</li></ul></div>
+    <div class="last"><span class="h">Last action</span><span class="w em">&mdash;</span></div>
+    <div class="ctl"><button disabled>Create a token</button><span class="ctlnote">No backend exists.</span></div>
+  </div>
+
+  <!-- III — your own attachments -->
+  <div class="sec-h"><span class="sec-n">Register III</span><h2>What is attached to you</h2></div>
+  <p class="sec-d">Yours, in every house you work in. Nobody else can revoke these — not the owner, not support. The house's Connections page names them so it can be a complete list, and links here.</p>
+  <p class="sec-k">kept on your account · revocable only by you · listed on Connections, revoked here</p>
+
+  <div class="row">
+    <span class="ic"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" x2="3" y1="12" y2="12"/></svg></span>
+    <div>
+      <div class="ttl">Google <span class="chip on">Linked</span></div>
+      <div class="sub">selin@lokantamudavim.com &middot; linked 3 March 2026</div>
+      <div class="why">Identity only &mdash; it proves who you are and carries <em>no token and no access</em>. Unlinking is allowed because your password is set; with one credential left, this control disables itself and says why.</div>
+    </div>
+    <div class="scope"><span class="h">Grants</span><ul><li>Proof of identity at sign-in</li><li class="no">No access to your Google data</li></ul></div>
+    <div class="last"><span class="h">Last used</span><span class="w">Today, 08:14</span></div>
+    <div class="ctl"><button>Unlink</button></div>
+  </div>
+
+  <div class="row">
+    <span class="ic"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span>
+    <div>
+      <div class="ttl">Google Drive <span class="chip off">Not connected</span></div>
+      <div class="sub">drive.file &middot; openid &middot; email</div>
+      <div class="why">Hasan has connected his; you have not. Exports currently land in <em>his</em> Drive. If you connect yours, the house's exports would land in yours instead &mdash; the consent screen says so before Google's does.</div>
+    </div>
+    <div class="scope"><span class="h">Would ask for</span><ul><li>Create and edit files it made</li><li class="no">Never your other documents</li><li class="no">Never your Gmail</li></ul></div>
+    <div class="last"><span class="h">Last action</span><span class="w em">Never connected</span></div>
+    <div class="ctl"><button>Connect</button></div>
+  </div>
+
+  <div class="row">
+    <span class="ic"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="20" x="5" y="2" rx="2"/><path d="M12 18h.01"/></svg></span>
+    <div>
+      <div class="ttl">Your phone <span class="chip on">Receiving</span></div>
+      <div class="sub">iPhone 16 &middot; registered 4 April 2026</div>
+      <div class="why">Receives this house's low-stock warnings and approval requests. One device, one row &mdash; a phone you no longer carry that still receives is an unrevoked key, so it is listed rather than counted.</div>
+    </div>
+    <div class="scope"><span class="h">Receives</span><ul><li>Alerts, deliveries, approvals</li></ul></div>
+    <div class="last"><span class="h">Last delivery</span><span class="w">4 hours ago</span><span class="d">&ldquo;Kavaklıdere delivery at the door&rdquo;</span></div>
+    <div class="ctl"><button>Stop this device</button></div>
+  </div>
+
+  <!-- IV — ruled off -->
+  <div class="sec-h"><span class="sec-n">Register IV</span><h2>Ruled off</h2></div>
+  <p class="sec-k">the two irreversible acts · the seal is pressed once, here, and nowhere else on this page</p>
+  <div class="field"><span class="fl">Leave this house</span><span class="fv">You would lose access to Lokanta Müdavim. Your account stays.</span></div>
+  <div class="field"><span class="fl">Delete account</span><span class="fv">Refused while you are the sole owner of any house. You are not. <span style="color:var(--seal-deep);font-weight:600">Hold the seal to confirm.</span></span></div>
+
+  <div class="moved">
+    <h3>What moved off this page, and where it went</h3>
+    <p>Three registers left. Each was <b>about the house</b> while living on a page that is about a person &mdash; and one of them was readable by every member of the house on their own profile.</p>
+    <ul>
+      <li><b>How the house pays</b> &rarr; Connections, Register II. The rows are keyed to the restaurant with no user column at all; the writes are manager-gated and the read is not.</li>
+      <li><b>Model context</b> &rarr; Connections, Register I. Its own lead calls them "servers the house agents may call". Whether a row keeps a person's name on it is the one open fork.</li>
+      <li><b>The house</b> (restaurant record, memberships, plan) &rarr; Connections' header, or /settings. It was never personal; it was on this page because there was nowhere else.</li>
+    </ul>
+    <p style="margin-top:9px">What stayed is what only you can answer for: <b>who you are, what protects you, and what is attached to you</b>. That is the same cut Stripe makes between Personal and Business settings, and the same one GitHub makes between a user's authorized apps and an organization's.</p>
+  </div>
+</div>
+</body>
+</html>

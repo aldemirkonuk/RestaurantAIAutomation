@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sketch 092 — Cellar directions</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300..700&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+:root {
+  --seal: #1A5E6B; --seal-deep: #14515C;
+  --seal-tint: rgba(26, 94, 107, 0.10); --seal-ring: rgba(26, 94, 107, 0.32);
+  --paper-0: #FAF7F1; --paper-1: #F3EFE6; --paper-2: #EAE4D8;
+  --ink-1: #211C16; --ink-2: #4F473C; --ink-3: #7C7365; --ink-4: #665D50;
+  color-scheme: light;
+  --sans: "DM Sans", "Plus Jakarta Sans", system-ui, sans-serif;
+  --serif: "Fraunces", Georgia, "Times New Roman", serif;
+  --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--paper-0); color: var(--ink-1); font-family: var(--sans); font-size: 14px; }
+.sk-banner { background: var(--ink-1); color: var(--paper-0); font-family: var(--mono); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; padding: 7px 20px; }
+.wrap { max-width: 940px; margin: 0 auto; padding: 26px 24px 60px; }
+h1 { font-family: var(--serif); font-size: 42px; line-height: 1.04; letter-spacing: -.022em; font-weight: 600; margin: 10px 0 0; }
+.crumb { font-size: 11.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); margin: 0; }
+.standing { font-family: var(--serif); font-size: 16.5px; line-height: 1.55; color: var(--ink-2); margin: 12px 0 0; max-width: 74ch; }
+.rule { border: 0; border-top: 1px solid var(--ink-1); border-bottom: 1px solid var(--paper-2); height: 3px; margin: 20px 0 0; }
+.card { display: block; border: 1px solid var(--paper-2); border-radius: 12px; background: var(--paper-1); padding: 18px 20px; text-decoration: none; color: inherit; }
+.card:hover { border-color: var(--seal-ring); background: var(--seal-tint); }
+.card h2 { font-family: var(--serif); font-size: 24px; font-weight: 600; letter-spacing: -.015em; margin: 0 0 6px; }
+.card p { font-size: 13px; line-height: 1.55; color: var(--ink-2); margin: 0 0 8px; }
+.card .note { font-size: 11.5px; color: var(--ink-3); }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 18px; }
+.sec { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; margin: 32px 0 10px; }
+.note { font-size: 12px; line-height: 1.55; color: var(--ink-3); }
+.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<div class="sk-banner">SKETCH &middot; 092 &middot; cellar directions &middot; example data, not a tenant</div>
+<div class="wrap">
+  <p class="crumb">Mudavym &middot; /cellar &middot; second pass, 2026-09-03</p>
+  <h1>Two directions for the Cellar<span style="color:var(--seal)">.</span></h1>
+  <p class="standing">
+    The shipped cellar is a book: a parent of registers, each opening at full
+    breadth with depth on a reading stand. These are the two alternatives its
+    page note named and did not build, drawn out so the founder can see them
+    against it. Both are shown adapting to two other houses &mdash; a
+    non-alcoholic caf&eacute; and a whisky bar &mdash; because that is the review
+    this pass answers.
+  </p>
+  <hr class="rule" />
+
+  <div class="grid">
+    <a class="card" href="cellar-floor.html">
+      <h2>A &middot; The cellar floor</h2>
+      <p>
+        The parent becomes a plan of the room. Zones are drawn where the bottles
+        physically are, each stating what it holds, how full it is and when it
+        was last walked. A register is reached by walking to it.
+      </p>
+      <p class="note">
+        Blocked on trust, not on code: <span class="num">storage_locations</span>
+        holds 87 rows across 7 tenants, 84 carrying one of four invented zone
+        names. Drawn today it would be a picture of fabricated rooms.
+      </p>
+    </a>
+
+    <a class="card" href="one-register-with-kind.html">
+      <h2>B &middot; One register, one kind facet</h2>
+      <p>
+        No children at all. One flat table for the whole cellar, with the kind
+        as a facet across the top &mdash; &ldquo;see everything&rdquo; taken
+        literally. The registers become a filter built from what the house holds.
+      </p>
+      <p class="note">
+        Unblocked by this pass: <span class="num">beverage_kind</span> is now
+        carried onto the wire and <span class="num">/beverages</span> and
+        <span class="num">/cocktails</span> are served, so the facet has real
+        counts. What it still trades away is one row grammar per kind.
+      </p>
+    </a>
+  </div>
+
+  <h2 class="sec">What both are being compared against</h2>
+  <p class="note" style="max-width:80ch">
+    The shipped direction (behind <span class="num">mudavym_design_cellar</span>):
+    a parent of registers plus <em>In the building tonight</em>, with
+    <span class="num">/wines</span> keeping every column, every filter and both
+    views, and everything the library has learned about a bottle opening on one
+    reading stand above the register. Breadth on the page, depth on the stand.
+    As of this pass it draws only the registers the house carries, decided by
+    inference and confirmed at onboarding.
+  </p>
+
+  <h2 class="sec">The fork, stated once</h2>
+  <p class="note" style="max-width:80ch">
+    A is the most characterful reading of &ldquo;what is in the building&rdquo;
+    and the only one that answers <em>where</em>; it needs
+    <span class="num">storage_locations</span> cleaned first. B is the only one
+    that shows a whisky, a keg and a Burgundy in one list; it needs a row grammar
+    that fits all three, which is the thing the four-child IA was chosen to
+    avoid. The shipped direction is the one that needs nothing further and
+    already carries the founder&rsquo;s &ldquo;see everything&rdquo; inside each
+    register.
+  </p>
+</div>
+</body>
+</html>

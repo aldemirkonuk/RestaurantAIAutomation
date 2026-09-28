@@ -293,15 +293,176 @@ export async function ingestSalesBatch(rows: Record<string, any>[], rid?: string
  * control labelled "Message {name}" reached the whole restaurant; saying it
  * out loud is the fix, so this signature will not let a caller stay silent.
  */
+/**
+ * `channels` names the channels a send may use. Founder decisions of
+ * 2026-09-04, all binding on EVERY caller including the legacy desk: a crew
+ * message sends neither email nor SMS (the only senders available are the
+ * house's shared mailbox and shared SMS account, the ones vendors are written
+ * from), and the set is `['inbox', 'push']` — which is also the most it can be.
+ * `email` and `sms` remain accepted VALUES so a caller naming one is told what
+ * it would have reached under `withheldByProduct` rather than silently losing
+ * the channel. Both return when a house has senders of its own.
+ * Gateway half: `apps/api-gateway/src/team/dto/team.dto.ts` + `team.controller.ts`.
+ */
+export type BroadcastChannel = 'inbox' | 'push' | 'email' | 'sms'
+
+export interface BroadcastReceipt {
+  audience: 'everyone' | 'selected'
+  recipients: { targeted: number; notified: number }
+  /** The RECIPIENTS declined it. Push is the only channel this can be non-zero on. */
+  suppressed: { email: number; sms: number; push?: number }
+  /** This send did not ask for the channel. */
+  withheldByCaller?: { email: number; sms: number; push?: number }
+  /** The house has no sender of its own, with the reason and the count. */
+  withheldByProduct?: { email: number; sms: number; reason: string }
+  channels?: BroadcastChannel[]
+  preferencesUnavailable: boolean
+  notified: number
+  emailed: number
+  texted: number
+  inbox: boolean
+}
+
 export async function broadcast(
-  body: { message: string; title?: string } & (
+  body: { message: string; title?: string; channels?: BroadcastChannel[] } & (
     | { memberIds: string[]; audience?: never }
     | { audience: 'everyone'; memberIds?: never }
   ),
   rid?: string,
 ) {
-  const { data } = await apiClient.post(`${base(rid)}/broadcast`, body)
+  const { data } = await apiClient.post<BroadcastReceipt>(`${base(rid)}/broadcast`, body)
   return data
+}
+
+// ── Crew notes ─────────────────────────────────────────────────────────
+/**
+ * A note about one week, kept as a record (migration 20260904180000).
+ *
+ * `broadcast` reaches people and leaves nothing a manager can read back; these
+ * three give the note an author, the audience it named at send time, and a
+ * per-person `openedAt`. Delivery is the inbox and the phone only.
+ */
+export interface TeamNoteRecipient {
+  memberId: string
+  /** `null` when the roster could not be read — never a member id shown raw. */
+  name: string | null
+  /** `null` means UNOPENED, and only that. */
+  openedAt: string | null
+}
+
+/**
+ * What happened to ONE person on ONE channel (ADR 0121 P0).
+ *
+ * `acceptedByService` is not a delivery and `readFailed` is a fact about this
+ * system rather than about the crew. The old `notified` count could say none of
+ * that: it counted roster entries, and reported eleven against zero devices.
+ */
+export interface TeamNoteDelivery {
+  memberId: string
+  name: string | null
+  channel: 'inbox' | 'push' | 'whatsapp' | 'sms'
+  state:
+    | 'delivered'
+    | 'accepted_by_service'
+    | 'no_device_registered'
+    | 'no_consent'
+    | 'no_sender'
+    | 'declined'
+    | 'read_failed'
+    | 'failed'
+  detail: string
+}
+
+export interface TeamNote {
+  id: string
+  weekStart: string
+  scheduleId: string | null
+  body: string
+  channels: string[]
+  createdAt: string
+  authorUserId: string
+  recipients: TeamNoteRecipient[]
+  openedCount: number
+  addressedCount: number
+  /** `null` means the RECEIPT READ failed — never an absence of receipts. */
+  deliveries: TeamNoteDelivery[] | null
+}
+
+export interface TeamNotesReadout {
+  weekStart: string
+  notes: TeamNote[]
+  /** `false` renders as words. An unreadable register is never a quiet week. */
+  readable: boolean
+  reason: string | null
+  namesReadable?: boolean
+  /** Whether the DELIVERY record could be read, separately from the notes. */
+  receiptsReadable?: boolean
+  receiptsReason?: string | null
+}
+
+/* ── The house's text senders (ADR 0121) ─────────────────────────────── */
+
+/**
+ * RE-EXPORTED, NOT REDECLARED. The house's sender is one object read by
+ * `/connections`, `/team` and `/profile`; its client lives in
+ * `services/api/textSenders.ts` and this line is the pointer. A second
+ * declaration here would be the fourth-catalogue mistake ADR 0114 closed as
+ * G20, one product over.
+ */
+export {
+  getTextSenders,
+  giveTextConsent,
+  withdrawTextConsent,
+} from './textSenders'
+export type {
+  HouseTextSender,
+  PersonTextConsent,
+  TextSendersReadout,
+} from './textSenders'
+
+export async function getTeamNotes(weekStart: string, rid?: string): Promise<TeamNotesReadout> {
+  const { data } = await apiClient.get<TeamNotesReadout>(`${base(rid)}/notes`, {
+    params: { weekStart },
+  })
+  return data
+}
+
+export async function createTeamNote(
+  body: { weekStart: string; body: string; memberIds: string[]; scheduleId?: string },
+  rid?: string,
+) {
+  const { data } = await apiClient.post(`${base(rid)}/notes`, body)
+  return data as {
+    id: string
+    addressed: number
+    delivered: { inbox: boolean; push: number }
+    channels: string[]
+    /**
+     * The tally, computed from the receipt rows rather than from the roster
+     * (ADR 0121 P0). `written: false` means the note went out and the record of
+     * what happened to whom did not, which the strip has to be able to say.
+     */
+    receipts: {
+      written: boolean
+      error: string | null
+      total: number
+      byState: {
+        delivered: number
+        acceptedByService: number
+        noDeviceRegistered: number
+        noConsent: number
+        noSender: number
+        readFailed: number
+        failed: number
+      }
+      note: string
+    }
+  }
+}
+
+export async function openTeamNote(noteId: string, rid?: string) {
+  const { data } = await apiClient.post(`${base(rid)}/notes/${noteId}/opened`)
+  return data as { recorded: boolean; alreadyOpen: boolean }
 }
 
 // ── Settings ───────────────────────────────────────────────────────────

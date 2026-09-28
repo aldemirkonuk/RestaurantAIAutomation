@@ -33,6 +33,30 @@ export interface DistributorRow {
   /** curated = human-vetted; registry = unverified permit-database row. */
   listing_tier: string;
   data_confidence: number | null;
+  /**
+   * When somebody last checked this vendor — and NOT a badge.
+   *
+   * ADR 0117 Q26: every one of the seventeen stamps this column held in
+   * production came from two 2026-08-07 geocoding migrations applying on
+   * 2026-08-10. "Verified" had meant "an address got coordinates"; three of the
+   * rows so marked had a casino, a wine school and a clothes shop for a
+   * website, and `source_ref` was NULL on all seventeen. They were cleared on
+   * the founder's word at 2026-09-05T20:35:56Z, and
+   * `20260906040000_a_verification_names_its_source.sql` now refuses a
+   * `verified_at` that names no `source_ref`.
+   *
+   * So it is NULL on every row today, and two readings are wrong:
+   *   - NULL does NOT mean "unverified, therefore suspect". It means nobody has
+   *     checked this vendor, which is true of all of them, and ranking or
+   *     hiding a row for it turns a repair into a demotion.
+   *   - A stamp does NOT mean "verified" unless `source_ref` says what checked
+   *     it. That was false on all seventeen.
+   *
+   * The page's "verified only" toggle filters `listing_tier === 'curated'`,
+   * which is a human-vetted listing and a different fact. Nothing decides on
+   * this column, and `scripts/check_verified_at_is_not_a_boolean.py` keeps it
+   * that way.
+   */
   verified_at: string | null;
 }
 

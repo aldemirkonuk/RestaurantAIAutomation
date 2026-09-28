@@ -1,8 +1,10 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ChevronDown, MapPin } from 'lucide-react'
 import { useAuth, type RestaurantBranch } from '../../contexts/AuthContext'
+import { Popover } from '../mudavym/Sheet'
+import { useMudavymShell } from '../../lib/mudavym/shellGround'
 
 interface RestaurantBranchSwitcherProps {
   /** `compact` hides the label on small screens (matches Header). */
@@ -15,6 +17,8 @@ export function RestaurantBranchSwitcher({ compact = true, className }: Restaura
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const [isSwitching, setIsSwitching] = useState(false)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const shell = useMudavymShell()
 
   const branchGroups = useMemo(() => {
     const chains: Record<string, { chainName: string; branches: RestaurantBranch[] }> = {}
@@ -48,6 +52,7 @@ export function RestaurantBranchSwitcher({ compact = true, className }: Restaura
     <div className={className ?? 'relative'}>
       <button
         type="button"
+        ref={triggerRef}
         onClick={() => setOpen(!open)}
         className="group flex items-center gap-3 pl-3 pr-2.5 py-1.5 bg-white border border-gray-200 hover:border-wine-300 hover:shadow-sm rounded-xl transition-all"
         aria-expanded={open}
@@ -71,8 +76,77 @@ export function RestaurantBranchSwitcher({ compact = true, className }: Restaura
         <ChevronDown className="w-4 h-4 text-gray-400 group-hover:text-wine-500 ml-1 transition-colors" />
       </button>
 
+      {shell.on ? (
+        <Popover
+          open={open}
+          onClose={() => setOpen(false)}
+          anchorRef={triggerRef}
+          label="Switch location"
+          width={330}
+          eyebrow={`${availableRestaurants.length} location${availableRestaurants.length !== 1 ? 's' : ''}${
+            branchGroups.chains.length > 0
+              ? ` across ${branchGroups.chains.length} chain${branchGroups.chains.length !== 1 ? 's' : ''}`
+              : ''
+          }`}
+          title="Switch location"
+          showClose={false}
+          footer={
+            <span style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+              <button
+                type="button"
+                className="mdv-link"
+                style={{ color: 'var(--ink-3)' }}
+                onClick={() => {
+                  navigate('/settings?tab=locations&action=add')
+                  setOpen(false)
+                }}
+              >
+                Add location
+              </button>
+              <button
+                type="button"
+                className="mdv-link"
+                onClick={() => {
+                  navigate('/settings')
+                  setOpen(false)
+                }}
+              >
+                Manage locations
+              </button>
+            </span>
+          }
+        >
+          {branchGroups.chains.map(({ chainName, branches }) => (
+            <div key={chainName}>
+              <span className="mdv-sect">{chainName}</span>
+              {branches.map((branch) => (
+                <HouseBranchRow
+                  key={branch.id}
+                  branch={branch}
+                  isActive={branch.id === activeRestaurantId}
+                  onSelect={() => void handleSwitch(branch.id)}
+                />
+              ))}
+            </div>
+          ))}
+          {branchGroups.standalone.length > 0 && (
+            <div>
+              {branchGroups.chains.length > 0 && <span className="mdv-sect">Other locations</span>}
+              {branchGroups.standalone.map((branch) => (
+                <HouseBranchRow
+                  key={branch.id}
+                  branch={branch}
+                  isActive={branch.id === activeRestaurantId}
+                  onSelect={() => void handleSwitch(branch.id)}
+                />
+              ))}
+            </div>
+          )}
+        </Popover>
+      ) : null}
+
       <AnimatePresence>
-        {open && (
+        {open && !shell.on && (
           <>
             <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
             <motion.div
@@ -169,6 +243,27 @@ export function RestaurantBranchSwitcher({ compact = true, className }: Restaura
         )}
       </AnimatePresence>
     </div>
+  )
+}
+
+/** The house row. `BranchRow` below is the legacy one, untouched. */
+function HouseBranchRow({
+  branch,
+  isActive,
+  onSelect,
+}: {
+  branch: RestaurantBranch
+  isActive: boolean
+  onSelect: () => void
+}) {
+  return (
+    <button type="button" className="mdv-item" data-active={isActive} onClick={onSelect}>
+      <span className="mdv-item__text">
+        <span className="mdv-item__label">{branch.name}</span>
+        {branch.city && <span className="mdv-item__sub">{branch.city}</span>}
+      </span>
+      {isActive && <span className="mdv-kbd">here</span>}
+    </button>
   )
 }
 

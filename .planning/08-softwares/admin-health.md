@@ -60,14 +60,18 @@ these pages call.**
 
 | Module | Endpoints | Controller |
 |---|---|---|
-| `health/` | 1 | `@Controller("health")` `health/liveness.controller.ts:46`, `@Get("live")` `:48` |
+| `health/` | 1 | `@Controller("health")` `health/liveness.controller.ts:95`, `@Get("live")` `:97` |
 | `logs/` | 1 | `@Controller("logs")` `logs/logs.controller.ts:22`, `@Get("timeline/:restaurantId")` `:26` |
 | `database/` | **0** | no controller — `DatabaseService` is the Supabase client provider (`database/database.service.ts:5-30`) |
 
 `health/liveness.controller.ts` is a deploy probe, unauthenticated by design and touching
-nothing: its 45-line header records that `deploy.yml` had polled a URL that never existed,
+nothing: its 68-line header records that `deploy.yml` had polled a URL that never existed,
 so *"the check has never actually run"*, and fixes the rule narrowly — *"this handler
-touches nothing"* (`liveness.controller.ts:4-45`).
+touches nothing"* (`liveness.controller.ts:4-71`). Since PR #254 the payload also names
+the build — `{ status, commit, bootedAt }`, with `commit` the literal `"unknown"` when no
+build variable is injected — so a 200 says *which* process answered, not just that one
+did. Still dependency-free: both values are read once from `process.env` at module load
+(`liveness.controller.ts:82-93`).
 
 The pages' actual backend is **`common/orchestrator/health-proxy.controller.ts`**, a
 different module: `@Controller("health")` at `:18` with `@Get("agents")` `:27`,

@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { Card, Button } from '../components/ui'
 import { Header } from '../components/layout/Header'
-import { OrderApprovalModal } from '../components/orders/OrderApprovalModal'
+import { SealedApproveDie } from '../components/orders/SealedApproveDie'
+import { SealedRejectDie } from '../components/orders/SealedRejectDie'
 import { OrderGuardModal } from '../components/orders/OrderGuardModal'
 import { DraftEmailApprovalPanel } from '../components/orders/DraftEmailApprovalPanel'
 import { ActiveConversationsPanel } from '../components/orders/ActiveConversationsPanel'
@@ -44,8 +45,9 @@ import { toast } from 'sonner'
 import axios from 'axios'
 import { Wine as WineType } from '../data/wineData'
 import type { Provider } from '../services/api/providers'
-import { apiClient } from '../services/api/client'
+import { apiClient, getErrorMessage } from '../services/api/client'
 import { inventoryApi, getInventory } from '../services/api'
+import { alreadyDeliveredRefusal, alreadyDeliveredWords } from '../services/api/orders'
 import { useRealtimeDispatch } from '../contexts/RealtimeContext'
 import { useWinesByIds } from '../hooks/queries'
 import { mapApiWinesToUiWines } from '../lib/wine-library'
@@ -93,7 +95,11 @@ const mapApiOrderToUi = (order: any): Order => ({
   wine_id: order.inventoryId ?? order.wine_id ?? '',
   wine_name: order.wineName ?? order.wine_name,
   quantity: order.quantity ?? 0,
-  provider_name: order.providerName ?? order.provider_id ?? order.providerId,
+  // `provider_name` deliberately carries the vendor's NAME or, when the
+  // payload has none, its id — `providerNameById` resolves a uuid downstream
+  // (useOrdersPage.ts:120). The `o.providerName ??` branch that led this
+  // chain was dead: OrderResponseDto carries `providerId` and no name.
+  provider_name: order.provider_id ?? order.providerId,
   status: mapApiStatusToUi(order.status),
   suggested_price: order.quotedPrice ?? order.suggested_price,
   final_price: order.finalPrice ?? order.final_price,
@@ -139,20 +145,6 @@ interface CreateOrderItem {
   notes: string
 }
 
-interface OrderApprovalData {
-  orderId: string
-  wineName: string
-  quantity: number
-  providerName: string
-  proposedPrice: number
-  finalPrice: number
-  deliveryEstimate: string
-  conversationSummary: string
-  hasNegotiation?: boolean
-  conversationId: string
-  timestamp: string
-}
-
 const getRecommendedProviders = (providerList: Provider[]) => {
   const sorted = [...providerList].sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0))
   return {
@@ -185,13 +177,11 @@ export function Orders() {
     setOrderSearch,
     toggleStatusFilter,
     viewMode,
-    selectedOrder,
     groupBy,
     expandedGroups,
     showRecurringSection,
     recurringGroupBy,
     setViewMode,
-    setSelectedOrder,
     setGroupBy,
     setExpandedGroups,
     setShowRecurringSection,
@@ -238,9 +228,17 @@ export function Orders() {
 
   // Use API orders hook for real-time updates (hook handles loading via loadOrders)
   const { refetch: refetchOrders } = useOrders()
-  const [showApprovalModal, setShowApprovalModal] = useState(false)
-  const [showOrderApprovalModal, setShowOrderApprovalModal] = useState(false)
-  const [orderApprovalData, setOrderApprovalData] = useState<OrderApprovalData | null>(null)
+  /*
+   * `showOrderApprovalModal`, `orderApprovalData` and `sealTarget` were deleted
+   * on 2026-09-05 with `OrderApprovalModal` (founder's call; orders.md §13.13).
+   *
+   * `sealTarget` went WITH it rather than after it: its only two setters were
+   * that modal's Confirm handler, so once the modal's render was gone the
+   * hand-over overlay had no opener at all — the exact state (a sealed ceremony
+   * nothing can reach) this pass exists to stop leaving behind. The act it
+   * carried is `SealedApproveDie` on the bulk bar, which is unchanged and still
+   * mints through the same path.
+   */
   const [showCreateOrderModal, setShowCreateOrderModal] = useState(false)
   const [showOrderGuard, setShowOrderGuard] = useState(false)
   const [draftPanelData, setDraftPanelData] = useState<{
@@ -386,11 +384,6 @@ export function Orders() {
   const [configCustomPrice, setConfigCustomPrice] = useState<number>(0)
   const [providerSearchQuery, setProviderSearchQuery] = useState('')
   
-  // Multi-provider approval pagination
-  const [currentApprovalIndex, setCurrentApprovalIndex] = useState(0)
-  const [allProviderResponses, setAllProviderResponses] = useState<OrderApprovalData[]>([])
-
-  
   // Wine list pagination for create order modal
   const [wineListLimit, setWineListLimit] = useState(20)
   const WINES_PER_PAGE = 20
@@ -510,35 +503,65 @@ export function Orders() {
     return configs[status] || configs.pending_approval
   }
 
-  const confirmApproval = async (price: number) => {
-    try {
-      if (selectedOrder && isUuid(selectedOrder.order_id)) {
-        await apiClient.post(`/procurement/orders/${selectedOrder.order_id}/approve`, {
-          finalPrice: price,
-        })
-      }
-      setShowApprovalModal(false)
-      setSelectedOrder(null)
+  /**
+   * The house's ceremony, on the legacy page: what happens AFTER the hold.
+   *
+   * ==========================================================================
+   * THE SEAL IS REDEEMED, NOT ASSERTED (founder, 2026-09-04; ADR 0116 addendum)
+   * ==========================================================================
+   * Every approve control on this page now goes through `SealedApproveDie`:
+   * the hold mints a one-time seal per order when the GESTURE BEGINS, the
+   * write carries it back, and a mint that fails approves nothing and says so.
+   * No handler here posts to `/approve` itself any more — a click that mints
+   * and approves in one breath is the assertion model with extra steps, which
+   * is the thing the addendum exists to remove.
+   *
+   * These functions are only the bookkeeping the page does once the gateway
+   * has said yes.
+   */
+  const afterOrdersSealed = useCallback(
+    (approvedIds: string[]) => {
+      const sealed = new Set(approvedIds)
+      const at = new Date().toISOString()
+      setOrders(prev =>
+        prev.map(order =>
+          sealed.has(order.order_id)
+            ? { ...order, status: 'approved', approved_at: at }
+            : order
+        )
+      )
+      setSelectedOrders(prev => {
+        const next = new Set(prev)
+        approvedIds.forEach(id => next.delete(id))
+        return next
+      })
       // Refetch orders to sync with backend
       refetchOrders()
-    } catch (error) {
-      console.error('Approval failed:', error)
-      alert('Failed to approve order')
-    }
-  }
+    },
+    [setOrders, setSelectedOrders, refetchOrders]
+  )
 
-  const handleReject = async (orderId: string) => {
-    if (confirm('Are you sure you want to reject this order?')) {
-      try {
-        if (isUuid(orderId)) {
-          await apiClient.delete(`/procurement/orders/${orderId}`)
-        }
-        // Refetch orders to sync with backend
-        refetchOrders()
-      } catch (error) {
-        console.error('Rejection failed:', error)
-      }
-    }
+  /**
+   * Open the reject ceremony. It does NOT reject.
+   *
+   * ADR 0125. This was `confirm('Are you sure you want to reject this order?')`
+   * followed by `apiClient.delete('/procurement/orders/:id')` — with no reason
+   * at all, so the one column that records why a house did not buy a wine was
+   * left null by the only Reject control production shows. Beside it, Approve
+   * had been a held gesture redeeming a one-time seal since 2026-09-04.
+   *
+   * A cancellation is now a sealed act like an approval, and the seal is minted
+   * when the HOLD begins — so a control that fires the write on click cannot
+   * carry one. All three call sites open `SealedRejectDie` instead: a reason in
+   * words, then the same gesture, then the write.
+   */
+  const openRejectCeremony = (orderId: string) => {
+    if (!isUuid(orderId)) return
+    const order = orders.find(o => o.order_id === orderId)
+    setRejectOrder({
+      orderId,
+      wineName: (order && resolveOrderWineName(order)) || order?.wine_name || 'this order',
+    })
   }
 
   const handleMarkAsOrdered = async (orderId: string) => {
@@ -720,7 +743,20 @@ Shadow stock has been moved to Live Stock.`)
       }
     } catch (error) {
       console.error('Failed to mark as delivered:', error)
-      alert('Failed to mark order as delivered. Please try again.')
+      // The gateway refuses a second delivery with a whole sentence and a 409
+      // (`delivered-once.ts`), and "Please try again" is the one instruction
+      // that must not follow it — it tells a person to repeat exactly what the
+      // house just declined to do.
+      //
+      // On a 409 the desk shows the EARLIER DELIVERY first (founder, 2026-09-05,
+      // batch 46): who booked it in, when, and how much. That is the answer the
+      // person tapping actually wanted; the refusal sentence follows it.
+      const refused = alreadyDeliveredRefusal(error)
+      if (refused) {
+        alert(alreadyDeliveredWords(refused))
+        return
+      }
+      alert(getErrorMessage(error) || 'Failed to mark order as delivered.')
     }
   }
 
@@ -1216,41 +1252,42 @@ Shadow stock has been moved to Live Stock.`)
   const orderedCount = oneTimeOrders.filter((o) => o.status === 'ordered').length
   const deliveredCount = oneTimeOrders.filter((o) => o.status === 'delivered').length
 
-  // Bulk action handlers with multi-status support
-  const handleBulkApprove = useCallback(async () => {
-    if (selectedOrders.size === 0) return
-    setActionLoading('bulk-approve')
-    
-    try {
-      const ordersToApprove = orders.filter(o => 
-        selectedOrders.has(o.order_id) && o.status === 'pending_approval'
-      )
-      
-      // Update all selected orders
-      setOrders(prev => prev.map(order => 
-        selectedOrders.has(order.order_id) && order.status === 'pending_approval'
-          ? { ...order, status: 'approved', approved_at: new Date().toISOString(), final_price: order.suggested_price }
-          : order
-      ))
-      
-      // Check if there are other actionable orders still selected
-      const selectedOrdersList = orders.filter(o => selectedOrders.has(o.order_id))
-      const hasOtherActionableOrders = selectedOrdersList.some(o => 
-        o.status === 'approved' || o.status === 'ordered'
-      )
-      
-      // Only clear selection if no other actionable orders remain
-      if (!hasOtherActionableOrders) {
-        setSelectedOrders(new Set())
-      }
-      
-      alert(`✅ ${ordersToApprove.length} order(s) approved!${hasOtherActionableOrders ? '\n\n📋 Other selected orders remain - you can continue with bulk actions.' : ''}`)
-    } catch (err) {
-      setError('Failed to approve orders')
-    } finally {
-      setActionLoading(null)
-    }
-  }, [selectedOrders, orders, setOrders, setSelectedOrders, setError])
+  /**
+   * The selected orders that a bulk approval would actually commit.
+   *
+   * ==========================================================================
+   * WHAT THIS REPLACED, AND WHY IT MATTERED
+   * ==========================================================================
+   * `handleBulkApprove` used to be the ONLY reachable approve control on this
+   * page (measured 2026-09-04: neither of the two approval modals could be
+   * opened from anywhere in the repo, and the two "Approve" buttons on the
+   * rows open the comms drawer). It called no endpoint at all: it rewrote
+   * local state to `approved`, cleared the selection and alerted "N order(s)
+   * approved!". Nothing was sent, nothing was written, and the page reported
+   * success — an absence rendered as health, pointed at the house's money.
+   *
+   * It is now the house ceremony: one deliberate hold, one seal minted per
+   * selected order when the gesture BEGINS, nothing approved at all if any of
+   * those mints fails, and each refusal printed in the gateway's own words.
+   * Only ids the gateway actually approved change status here.
+   */
+  const bulkApprovableIds = useMemo(
+    () =>
+      orders
+        .filter(o => selectedOrders.has(o.order_id) && o.status === 'pending_approval')
+        .map(o => o.order_id)
+        .filter(id => isUuid(id)),
+    [orders, selectedOrders]
+  )
+  /** Ids selected and pending but NOT approvable, because the gateway keys on a uuid. */
+  const bulkUnapprovableCount = useMemo(
+    () =>
+      orders.filter(
+        o => selectedOrders.has(o.order_id) && o.status === 'pending_approval' && !isUuid(o.order_id)
+      ).length,
+    [orders, selectedOrders]
+  )
+  const bulkDieRef = useRef<HTMLDivElement | null>(null)
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -1268,7 +1305,6 @@ Shadow stock has been moved to Live Stock.`)
       // Escape to close modals
       if (e.key === 'Escape') {
         setShowCreateOrderModal(false)
-        setShowOrderApprovalModal(false)
         setShowWineConfigModal(false)
         setSelectedOrders(new Set())
       }
@@ -1285,15 +1321,20 @@ Shadow stock has been moved to Live Stock.`)
           .map(o => o.order_id)
         setSelectedOrders(new Set(visibleOrderIds))
       }
-      // Cmd/Ctrl + Shift + A to approve selected orders
+      // Cmd/Ctrl + Shift + A takes you TO the seal — it no longer approves.
+      //
+      // A shortcut that committed fourteen orders on one keystroke is exactly
+      // the open-ended approval the seal exists to prevent (founder,
+      // 2026-09-04). It now moves focus onto the hold, which is itself
+      // keyboard-operable: Enter arms it, Enter again seals, Escape cancels.
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'a') {
         e.preventDefault()
-        handleBulkApprove()
+        bulkDieRef.current?.querySelector('button')?.focus()
       }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [orders, showCreateOrderModal, handleBulkApprove, openCreateOrderFlow, setSelectedOrders])
+  }, [orders, showCreateOrderModal, openCreateOrderFlow, setSelectedOrders])
 
   const handleBulkMarkAsOrdered = useCallback(async () => {
     if (selectedOrders.size === 0) return
@@ -1363,43 +1404,6 @@ Shadow stock has been moved to Live Stock.`)
     }
   }, [selectedOrders, orders, setOrders, setSelectedOrders, setError])
 
-  const handleBulkReject = useCallback(async () => {
-    if (selectedOrders.size === 0) return
-    
-    const ordersToReject = orders.filter(o => 
-      selectedOrders.has(o.order_id) && o.status === 'pending_approval'
-    )
-    
-    if (!confirm(`Reject ${ordersToReject.length} pending order(s)?`)) return
-    
-    setActionLoading('bulk-reject')
-    
-    try {
-      setOrders(prev => prev.map(order => 
-        selectedOrders.has(order.order_id) && order.status === 'pending_approval'
-          ? { ...order, status: 'cancelled' }
-          : order
-      ))
-      
-      // Check if there are other actionable orders still selected
-      const selectedOrdersList = orders.filter(o => selectedOrders.has(o.order_id))
-      const hasOtherActionableOrders = selectedOrdersList.some(o => 
-        o.status === 'approved' || o.status === 'ordered'
-      )
-      
-      // Only clear selection if no other actionable orders remain
-      if (!hasOtherActionableOrders) {
-        setSelectedOrders(new Set())
-      }
-      
-      alert(`❌ ${ordersToReject.length} order(s) rejected${hasOtherActionableOrders ? '\n\n📋 Other selected orders remain - you can continue with bulk actions.' : ''}`)
-    } catch (err) {
-      setError('Failed to reject orders')
-    } finally {
-      setActionLoading(null)
-    }
-  }, [selectedOrders, orders, setOrders, setSelectedOrders, setError])
-
   const toggleOrderSelection = (orderId: string) => {
     const newSelected = new Set(selectedOrders)
     if (newSelected.has(orderId)) {
@@ -1412,6 +1416,8 @@ Shadow stock has been moved to Live Stock.`)
 
   // ── Right-click context menu (NEW-135) + double-click open (NEW-136) ─────
   const [orderMenu, setOrderMenu] = useState<{ orderId: string; x: number; y: number } | null>(null)
+  /** The order whose reject ceremony is open. Opening it rejects nothing (ADR 0125). */
+  const [rejectOrder, setRejectOrder] = useState<{ orderId: string; wineName: string } | null>(null)
   const openThread = useCallback((order: Order) => {
     setCommsDrawerOrder({
       orderId: order.order_id,
@@ -1612,30 +1618,44 @@ Shadow stock has been moved to Live Stock.`)
                    {/* Pending Actions */}
                    {pendingCount > 0 && (
                      <>
-                       <Button
-                         size="sm"
-                         onClick={handleBulkApprove}
-                         disabled={actionLoading === 'bulk-approve'}
-                         title="Shortcut: Cmd/Ctrl+Shift+A"
-                         className="bg-emerald-600 hover:bg-emerald-700"
-                       >
-                         {actionLoading === 'bulk-approve' ? (
-                           <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                         ) : (
-                           <CheckCircle className="w-4 h-4 mr-1" />
+                       {/*
+                         The house ceremony, on the legacy ground. One hold,
+                         one seal per selected order minted when the gesture
+                         begins, nothing approved if any of them fails.
+                       */}
+                       <div ref={bulkDieRef} className="min-w-[260px]" title="Shortcut: Cmd/Ctrl+Shift+A moves focus here">
+                         <SealedApproveDie
+                           orderIds={bulkApprovableIds}
+                           label={`Hold to approve ${bulkApprovableIds.length} order${bulkApprovableIds.length === 1 ? '' : 's'}`}
+                           approvedLabel="Sealed"
+                           onApproved={afterOrdersSealed}
+                         />
+                         {bulkUnapprovableCount > 0 && (
+                           <p className="mt-1 text-xs text-gray-600" role="status">
+                             {bulkUnapprovableCount} selected order
+                             {bulkUnapprovableCount === 1 ? ' has' : 's have'} no server id yet, so
+                             {bulkUnapprovableCount === 1 ? ' it is' : ' they are'} not in this seal
+                             and nothing about {bulkUnapprovableCount === 1 ? 'it' : 'them'} was sent.
+                           </p>
                          )}
-                         Approve ({pendingCount})
-                       </Button>
-                       <Button
-                         size="sm"
-                         variant="outline"
-                         onClick={handleBulkReject}
-                         disabled={actionLoading === 'bulk-reject'}
-                         className="text-red-600 hover:bg-red-50 border-red-300"
-                       >
-                         <XCircle className="w-4 h-4 mr-1" />
-                         Reject ({pendingCount})
-                       </Button>
+                       </div>
+                       {/*
+                         WAS: a live `Reject (N)` button calling a bulk-reject
+                         handler that called NO endpoint at all — it rewrote local
+                         state to `cancelled` and alerted success. The twin of the
+                         bulk-approve defect ADR 0116's addendum found on 2026-09-04,
+                         left standing because that pass's scope was approve. A page
+                         may not claim a write it never makes (ADR 0020).
+                         It is not made real in bulk, because it should not be: a
+                         cancellation needs a REASON, and one sentence pasted over
+                         fourteen orders is not an account of any of them — the same
+                         argument that makes `SealedApproveDie` mint one seal per order.
+                       */}
+                       <p className="text-xs text-gray-600 max-w-[15rem]" role="status">
+                         Rejecting is one order at a time: each needs its own reason,
+                         and the reason is written onto that order. Open a row&rsquo;s
+                         Reject to do it.
+                       </p>
                      </>
                    )}
                    
@@ -2152,7 +2172,7 @@ Shadow stock has been moved to Live Stock.`)
                                                   <Button
                                                     size="sm"
                                                     variant="outline"
-                                                    onClick={() => handleReject(order.order_id)}
+                                                    onClick={() => openRejectCeremony(order.order_id)}
                                                     className="text-red-600 hover:bg-red-50"
                                                   >
                                                     <XCircle className="w-4 h-4 mr-1" />
@@ -2760,7 +2780,7 @@ Shadow stock has been moved to Live Stock.`)
                                       <Button
                                         size="sm"
                                         variant="outline"
-                                        onClick={() => handleReject(order.order_id)}
+                                        onClick={() => openRejectCeremony(order.order_id)}
                                         className="text-red-600 hover:bg-red-50"
                                       >
                                         <XCircle className="w-4 h-4 mr-1" />
@@ -3252,150 +3272,6 @@ Shadow stock has been moved to Live Stock.`)
         )}
       </AnimatePresence>
 
-      {/* Order Approval Modal - One-Tap Approval with Multi-Provider Support */}
-      {orderApprovalData && (
-        <OrderApprovalModal
-          isOpen={showOrderApprovalModal}
-          orderData={orderApprovalData}
-          totalResponses={allProviderResponses.length}
-          currentIndex={currentApprovalIndex}
-          onNext={() => {
-            // Navigate to next response
-            if (currentApprovalIndex < allProviderResponses.length - 1) {
-              const nextIndex = currentApprovalIndex + 1
-              setCurrentApprovalIndex(nextIndex)
-              setOrderApprovalData(allProviderResponses[nextIndex])
-            }
-          }}
-          onPrevious={() => {
-            // Navigate to previous response
-            if (currentApprovalIndex > 0) {
-              const prevIndex = currentApprovalIndex - 1
-              setCurrentApprovalIndex(prevIndex)
-              setOrderApprovalData(allProviderResponses[prevIndex])
-            }
-          }}
-          onConfirm={async () => {
-            try {
-              if (isUuid(orderApprovalData.orderId)) {
-                await apiClient.post(`/procurement/orders/${orderApprovalData.orderId}/approve`, {
-                  finalPrice: orderApprovalData.finalPrice,
-                })
-              } else {
-                throw new Error('Invalid order id')
-              }
-
-              setOrders(prev => prev.map(order =>
-                order.order_id === orderApprovalData.orderId
-                  ? {
-                      ...order,
-                      status: 'approved',
-                      final_price: orderApprovalData.finalPrice,
-                      approved_at: new Date().toISOString(),
-                    }
-                  : order
-              ))
-              // Refetch orders to sync with backend
-              refetchOrders()
-              
-              // Remove from all responses
-              setAllProviderResponses(prev => {
-                const updated = prev.filter((_, idx) => idx !== currentApprovalIndex)
-                
-                // If there are more responses, show the next one (or previous if at end)
-                if (updated.length > 0) {
-                  const nextIndex = Math.min(currentApprovalIndex, updated.length - 1)
-                  setCurrentApprovalIndex(nextIndex)
-                  setOrderApprovalData(updated[nextIndex])
-                } else {
-                  // No more responses, close modal
-                  setShowOrderApprovalModal(false)
-                  setOrderApprovalData(null)
-                  setCurrentApprovalIndex(0)
-                }
-                
-                return updated
-              })
-              
-              alert('Order approved successfully! ✅')
-            } catch (error) {
-              console.error('Failed to confirm order:', error)
-              alert('Failed to confirm order. Please try again.')
-            }
-          }}
-          onCancel={async () => {
-            try {
-              if (isUuid(orderApprovalData.orderId)) {
-                await apiClient.delete(`/procurement/orders/${orderApprovalData.orderId}`)
-              } else {
-                throw new Error('Invalid order id')
-              }
-
-              setOrders(prev => prev.map(order =>
-                order.order_id === orderApprovalData.orderId
-                  ? { ...order, status: 'cancelled' }
-                  : order
-              ))
-              // Refetch orders to sync with backend
-              refetchOrders()
-              
-              // Remove from all responses
-              setAllProviderResponses(prev => {
-                const updated = prev.filter((_, idx) => idx !== currentApprovalIndex)
-                
-                // If there are more responses, show the next one (or previous if at end)
-                if (updated.length > 0) {
-                  const nextIndex = Math.min(currentApprovalIndex, updated.length - 1)
-                  setCurrentApprovalIndex(nextIndex)
-                  setOrderApprovalData(updated[nextIndex])
-                } else {
-                  // No more responses - close modal
-                  setShowOrderApprovalModal(false)
-                  setOrderApprovalData(null)
-                  setCurrentApprovalIndex(0)
-                }
-                
-                return updated
-              })
-              
-              alert('Order cancelled. ❌')
-            } catch (error) {
-              console.error('Failed to cancel order:', error)
-              alert('Failed to cancel order. Please try again.')
-            }
-          }}
-          onEdit={() => {
-            // Open edit modal - for now just close approval and navigate to create order
-            setShowOrderApprovalModal(false)
-            openCreateOrderFlow()
-            // In real app, would pre-fill with existing data
-          }}
-          onRequestMoreInfo={async () => {
-            // Trigger another conversation with provider to ask for more information
-            alert('Requesting additional information from provider. You will receive another notification when they respond.')
-            
-            // In real app, this would trigger Procurement AI agent to contact provider again
-            // For now, simulate another conversation
-            setTimeout(() => {
-              const updatedData: OrderApprovalData = {
-                ...orderApprovalData,
-                conversationId: `CONV-${Date.now()}`,
-                conversationSummary: orderApprovalData.conversationSummary + '\n\n**FOLLOW-UP CONVERSATION:**\n\nManager requested additional information. Provider provided detailed specifications and confirmed all requirements can be met.',
-                timestamp: new Date().toISOString(),
-              }
-              setOrderApprovalData(updatedData)
-              // Update in all provider responses too
-              setAllProviderResponses(prev => prev.map((item, idx) => 
-                idx === currentApprovalIndex ? updatedData : item
-              ))
-            }, 2000)
-          }}
-          onClose={() => {
-            setShowOrderApprovalModal(false)
-            // Keep pending approvals - user can review later
-          }}
-        />
-      )}
 
       {/* AI Draft Email Approval Panel */}
       <DraftEmailApprovalPanel
@@ -3470,6 +3346,53 @@ Shadow stock has been moved to Live Stock.`)
         }}
       />
 
+      {/*
+        The reject ceremony (ADR 0125). All three Reject controls open this and
+        none of them cancels: the seal is minted when the HOLD begins, so a
+        one-click control could not carry one even if it wanted to. The wine is
+        named because the three call sites are rows in three different lists and
+        a bare "Reject this order?" over the wrong row is how the wrong order
+        gets cancelled.
+      */}
+      {rejectOrder && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/30 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Reject order"
+          onClick={() => setRejectOrder(null)}
+        >
+          <div
+            className="w-full max-w-sm rounded-xl border border-gray-200 bg-white p-4 shadow-xl dark:border-gray-700"
+            onClick={e => e.stopPropagation()}
+          >
+            <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+              Reject {rejectOrder.wineName}
+            </p>
+            <p className="mt-1 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
+              The reason is written onto the order, the cancellation is sealed like an
+              approval, and the vendor is not written to about it afterwards.
+            </p>
+            <div className="mt-3">
+              <SealedRejectDie
+                orderId={rejectOrder.orderId}
+                onRejected={() => {
+                  setRejectOrder(null)
+                  refetchOrders()
+                }}
+              />
+            </div>
+            <button
+              type="button"
+              className="mt-3 text-xs text-gray-500 underline hover:text-gray-700"
+              onClick={() => setRejectOrder(null)}
+            >
+              Leave it alone
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Right-click order context menu (NEW-135) */}
       {orderMenu && (() => {
         const order = orders.find((o) => o.order_id === orderMenu.orderId)
@@ -3491,7 +3414,7 @@ Shadow stock has been moved to Live Stock.`)
             {order.status === 'pending_approval' && (
               <>
                 <MItem icon={CheckCircle} label="Approve" onClick={() => { openThread(order); setOrderMenu(null) }} />
-                <MItem icon={XCircle} label="Reject" danger onClick={() => { handleReject(order.order_id); setOrderMenu(null) }} />
+                <MItem icon={XCircle} label="Reject" danger onClick={() => { openRejectCeremony(order.order_id); setOrderMenu(null) }} />
               </>
             )}
             {order.status === 'approved' && (
@@ -3551,70 +3474,6 @@ Shadow stock has been moved to Live Stock.`)
         isApproving={approveDraftMutation.isPending}
         isDiscarding={discardDraftMutation.isPending}
       />
-
-      {/* Legacy Approval Modal - For orders from list */}
-      <AnimatePresence>
-        {showApprovalModal && selectedOrder && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-            onClick={() => setShowApprovalModal(false)}
-          >
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              onClick={(e) => e.stopPropagation()}
-              className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full"
-            >
-              <h3 className="text-2xl font-bold text-gray-900 mb-4">Approve Order</h3>
-              <p className="text-gray-600 mb-6">
-                Confirm order for {selectedOrder.quantity} bottles of {selectedOrder.wine_name}
-              </p>
-
-              <div className="mb-6">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Final Price per Bottle
-                </label>
-                <div className="relative">
-                  <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-                  <input
-                    type="number"
-                    step="0.01"
-                    defaultValue={selectedOrder.suggested_price}
-                    className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-wine-500"
-                    id="final-price"
-                  />
-                </div>
-              </div>
-
-              <div className="flex gap-3">
-                <Button
-                  variant="default"
-                  onClick={() => {
-                    const price = parseFloat(
-                      (document.getElementById('final-price') as HTMLInputElement).value
-                    )
-                    confirmApproval(price)
-                  }}
-                  className="flex-1"
-                >
-                  Approve Order
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => setShowApprovalModal(false)}
-                  className="flex-1"
-                >
-                  Cancel
-                </Button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   )
 }

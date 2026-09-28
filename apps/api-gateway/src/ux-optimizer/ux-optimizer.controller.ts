@@ -14,12 +14,17 @@ import {
   ApiOperation,
   ApiQuery,
   ApiBearerAuth,
+  ApiHeader,
 } from "@nestjs/swagger";
 import { UxOptimizerService } from "./ux-optimizer.service";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { ServiceKeyGuard } from "../auth/guards/service-key.guard";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
+import { Public } from "../auth/decorators/public.decorator";
 import {
   IngestSignalDto,
+  NameExperimentWinnerDto,
+  RecordExperimentEventDto,
   ReviewProposalDto,
   RollbackProposalDto,
 } from "./dto/ux-optimizer.dto";
@@ -37,6 +42,11 @@ type AuthedUser = { userId: string; restaurantId: string };
  *   POST /ux/proposals/:id/review   human approve/reject (approve = gated ship)
  *   POST /ux/proposals/:id/rollback revert a live change
  *   GET  /ux/learnings          the append-only self-learning ledger
+ *   GET  /ux/experiments/:key           which arm this HOUSE is on
+ *   POST /ux/experiments/:key/events    one exposure or outcome
+ *   GET  /ux/experiments/:key/report    this house's counts, never a verdict
+ *   GET  /ux/experiments/:key/both-arms BOTH arms' figures — platform admin
+ *   POST /ux/experiments/:key/winner    name the winning arm — platform admin
  *
  * AUTHENTICATION — every route on this controller requires a valid JWT.
  * This is load-bearing, not defensive style: the globally-registered TenantGuard
@@ -49,6 +59,23 @@ type AuthedUser = { userId: string; restaurantId: string };
  * TENANCY — restaurantId is ALWAYS taken from the authenticated principal and
  * never from a query parameter or request body. Callers cannot ask about, or
  * write signals against, a restaurant that is not their own.
+ *
+ * THE TWO EXCEPTIONS, AND WHY THEY ARE NOT A HOLE. `both-arms` and `winner` are
+ * platform-admin acts: the founder alone may read both arms' figures, and the
+ * founder alone names the arm that becomes the product (2026-09-05, ADR 0127's
+ * addendum). They are gated by `ServiceKeyGuard` — the X-Admin-Key / ADMIN_API_KEY
+ * service credential ADR 0099 settled — and NOT by a new role, because this
+ * codebase has no platform-admin role: `RolesGuard` knows owner, manager and
+ * staff, all three of which are roles WITHIN a house, and inventing a fourth to
+ * hold one report would be inventing a permission system as a side effect of a
+ * measurement. The service key is the gate that already means "not a tenant".
+ *
+ * `@Public()` on those two routes does NOT mean unauthenticated. Nest runs class
+ * guards before method guards and requires all of them to pass, so a method
+ * guard can only ADD to the class-level JwtAuthGuard, never stand in for it.
+ * `@Public()` short-circuits the JWT check so that ServiceKeyGuard — which FAILS
+ * CLOSED on an unset or empty ADMIN_API_KEY — is what actually decides. Same
+ * shape as `POST /communications/email` (ADR 0099).
  */
 @ApiTags("ux-optimizer")
 @ApiBearerAuth()
@@ -200,6 +227,122 @@ export class UxOptimizerController {
     } catch (error) {
       throw new HttpException(
         error.message || "Failed to roll back",
+        error.status || HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  // ==========================================================================
+  // Experiments — assign, record, report. Nothing here applies anything.
+  // ==========================================================================
+
+  @Get("experiments/:key")
+  @ApiOperation({
+    summary: "Which arm of an experiment this house is on",
+    description:
+      "Deterministic per house and FROZEN on first read, so a later edit to the ratio constant cannot re-label exposures already recorded. Assigns on first ask. A caller that cannot read this must render the fallback arm and SAY the experiment could not be read — never a guess that looks like an assignment.",
+  })
+  async experiment(@Param("key") key: string, @CurrentUser() user: AuthedUser) {
+    try {
+      return await this.ux.assignmentFor(key, user.restaurantId);
+    } catch (error) {
+      throw new HttpException(
+        error.message || "Failed to read the experiment",
+        error.status || HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  @Post("experiments/:key/events")
+  @ApiOperation({
+    summary: "Record one exposure or outcome against this house's arm",
+    description:
+      "The arm is stamped from the stored assignment, never from the body. Written to neural_footprint_event as subject_type 'operator'; outcome is 'success' only on a completion, and NULL — meaning unknown — on everything else.",
+  })
+  async recordExperimentEvent(
+    @Param("key") key: string,
+    @Body() body: RecordExperimentEventDto,
+    @CurrentUser() user: AuthedUser,
+  ) {
+    try {
+      return await this.ux.recordExperimentEvent({
+        experimentKey: key,
+        restaurantId: user.restaurantId,
+        userId: user.userId,
+        event: body.event,
+        actionId: body.actionId ?? null,
+        durationMs: body.durationMs ?? null,
+      });
+    } catch (error) {
+      throw new HttpException(
+        error.message || "Failed to record the event",
+        error.status || HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @Get("experiments/:key/report")
+  @ApiOperation({
+    summary: "Counts for this house's arm — never a verdict",
+    description:
+      "House-scoped like every read here, and assignment is per house, so this can only ever show the one arm this house is on (`houseScopedOnly`). Reading does not assign. `abandoned` is a floor: a tab closed outright records nothing, equally in both arms.",
+  })
+  async experimentReport(
+    @Param("key") key: string,
+    @CurrentUser() user: AuthedUser,
+  ) {
+    try {
+      return await this.ux.experimentReport(key, user.restaurantId);
+    } catch (error) {
+      throw new HttpException(
+        error.message || "Failed to read the experiment report",
+        error.status || HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  @Get("experiments/:key/both-arms")
+  @Public()
+  @UseGuards(ServiceKeyGuard)
+  @ApiHeader({ name: "X-Admin-Key", required: true })
+  @ApiOperation({
+    summary: "BOTH arms' figures across every house — platform admin only",
+    description:
+      "The founder alone may read both arms (ADR 0127 addendum, 2026-09-05). Per arm: houses assigned, exposures, completions, abandons and the date of first exposure — counts and dates only. No restaurant id appears anywhere in the payload, so a house's identity is never returned beside its arm. Also derives and freezes the experiment's end date (first exposure + one quarter) if it is knowable and not yet stored. Counts, never a verdict: nothing here picks an arm.",
+  })
+  async experimentBothArms(@Param("key") key: string) {
+    try {
+      return await this.ux.adminExperimentReport(key);
+    } catch (error) {
+      throw new HttpException(
+        error.message || "Failed to read the both-arms report",
+        error.status || HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  @Post("experiments/:key/winner")
+  @Public()
+  @UseGuards(ServiceKeyGuard)
+  @ApiHeader({ name: "X-Admin-Key", required: true })
+  @ApiOperation({
+    summary: "Name the winning arm once the experiment has ended — platform admin only",
+    description:
+      "Written ONCE. Refused with its reason if the experiment has not started, has not yet ended, or already has a different winner; refused if the arm is not one the experiment declares. Until this is called, an ended experiment reports that it ended and that no winner is recorded — there is no default winner. The assignment rows are untouched and kept as the record of what each house was shown.",
+  })
+  async nameExperimentWinner(
+    @Param("key") key: string,
+    @Body() body: NameExperimentWinnerDto,
+  ) {
+    try {
+      return await this.ux.nameExperimentWinner({
+        experimentKey: key,
+        arm: body.arm,
+        words: body.words ?? null,
+      });
+    } catch (error) {
+      throw new HttpException(
+        error.message || "Failed to name the winner",
         error.status || HttpStatus.BAD_REQUEST,
       );
     }

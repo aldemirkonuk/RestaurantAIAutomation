@@ -200,10 +200,6 @@ KNOWN_BAD_READ_COLUMNS: dict[str, str] = {
     "provider_promotions.times_used": (
         "No such column. Same select as savings_realized."
     ),
-    "users.avatar_url": (
-        "No such column. team.service.ts:136 and :182 -- both team listings "
-        "42703. (members.service.ts stopped reading it; that read is fixed.)"
-    ),
     "master_wine_library.wine_name": (
         "The table has `name`, `display_name`, `normalized_name`. "
         "storage-locations.service.ts:284."
@@ -364,6 +360,20 @@ CONST_RE = re.compile(
 STRING_PIECE_RE = re.compile(r"""(?:"([^"]*)"|'([^']*)'|`([^`$]*)`)""")
 IDENT_RE = re.compile(r"^[a-z_][a-z0-9_]*$")
 
+# A PostgREST JSON path filter: `.eq("context->>experiment_key", key)` or
+# `.eq("meta->a->>b", v)`. The KEY inside the document is not a column and
+# cannot be checked against a migration — but the column the path starts from
+# is, and it is exactly the one whose absence would raise 42703 and kill the
+# whole query. Counting these as UNREADABLE would have retired a real check to
+# a ceiling; resolving them to the base column checks more, not less.
+JSON_PATH_RE = re.compile(r"^([a-z_][a-z0-9_]*)\s*->>?\s*[a-z0-9_>\-]+$", re.I)
+
+
+def _json_path_base(col: str) -> str | None:
+    """`context->>experiment_key` -> `context`. None when it is not a path."""
+    m = JSON_PATH_RE.match(col)
+    return m.group(1).lower() if m else None
+
 
 def _call_arg(src: str, open_paren: int) -> str | None:
     """Text between the parens of the call whose `(` is at src[open_paren]."""
@@ -508,7 +518,13 @@ def collect(root: Path, shared) -> tuple[list[str], set[str], int, int, int]:
                     filter_args += 1
                     if "." in col:
                         continue  # embedded filter: providers.name
-                    if not IDENT_RE.match(col):
+                    # A JSON path is checked at its BASE column. The key inside
+                    # the document is unknowable from a migration; the column is
+                    # not, and it is the half that 42703s.
+                    base = _json_path_base(col)
+                    if base is not None:
+                        col = base
+                    elif not IDENT_RE.match(col):
                         unreadable += 1
                         continue
                     report(table, col, m.start() + f.start(), f".{f.group(1)}() filters on")
@@ -645,7 +661,8 @@ def _fixture(tmp: Path) -> Path:
         "  restaurant_id uuid not null,\n"
         "  status varchar(50),\n"
         "  order_number varchar(50),\n"
-        "  created_at timestamptz\n"
+        "  created_at timestamptz,\n"
+        "  meta jsonb\n"
         ");\n"
         "create table public.debt_table (id uuid not null, restaurant_id uuid not null);\n",
         encoding="utf-8",
@@ -802,6 +819,33 @@ def self_test() -> int:
                     failures.append(f"unreadable read not counted: {findings}")
             finally:
                 globals()["UNREADABLE_READ_CEILING"] = real_ceiling
+
+            # F. a JSON path filter is checked at its BASE column, and is NOT
+            # counted against the unreadable ceiling. The ceiling is forced to 0
+            # so a regression here fails loudly instead of hiding under slack.
+            (root / SVC).write_text(
+                svc.replace('.eq("restaurant_id", r)', '.eq("meta->>arm", r)', 1),
+                encoding="utf-8",
+            )
+            try:
+                globals()["UNREADABLE_READ_CEILING"] = 0
+                code, findings = run(root)
+                expect("a JSON path filter on a real jsonb column", code, 0)
+                if findings:
+                    failures.append(f"json path filter reported: {findings}")
+            finally:
+                globals()["UNREADABLE_READ_CEILING"] = real_ceiling
+
+            # F2. and the base column is genuinely CHECKED: a path rooted on a
+            # phantom column is the 42703 this guard exists for.
+            (root / SVC).write_text(
+                svc.replace('.eq("restaurant_id", r)', '.eq("nope->>arm", r)', 1),
+                encoding="utf-8",
+            )
+            code, findings = run(root)
+            expect("a JSON path filter on a phantom column", code, 1)
+            if not any("filters on orders.nope" in f for f in findings):
+                failures.append(f"phantom json base not reported: {findings}")
 
             # E2. the same runtime name bound to a same-file const IS resolved,
             # and its bad column found.
@@ -1015,6 +1059,8 @@ def self_test() -> int:
     print("   an embedded resource is skipped, never guessed at")
     print("   the same defect written inside a // or /* */ comment does NOT fire")
     print("   a runtime column list counts as UNREADABLE, never as zero columns")
+    print('   .eq("meta->>arm", …) is checked at its base column, not shelved as unreadable')
+    print('   .eq("nope->>arm", …) exits 1 — the base column is genuinely checked')
     print("   a const-bound, template-literal or concatenated select IS resolved")
     print("   an unrelated .from(A) and .select on another chain are NOT paired")
     print("   a debt entry nothing reads any more exits 1")

@@ -7,11 +7,26 @@
  */
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen, renderHook } from '@testing-library/react';
+import { fireEvent, render, screen, renderHook , configure } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 
+// The parity build mounts five queries and eight components on first paint, so
+// a settled assertion can take longer than RTL's 1s default — measured at
+// ~1.5s for the gap panel. Raised deliberately: the assertions below are
+// unchanged, and a flaky timeout would read as a broken page.
+configure({ asyncUtilTimeout: 5000 });
+
+
 const api = vi.hoisted(() => ({
+  notes: { weekStart: '2026-08-31', notes: [] as unknown[], readable: true, reason: null } as Record<string, unknown>,
+  createTeamNote: vi.fn(() => Promise.resolve({ id: 'n1', addressed: 1, delivered: { inbox: true, push: 1 }, channels: ['inbox', 'push'] })),
+  timeOff: [] as unknown[],
+  myWeek: {} as Record<string, unknown>,
+  publishSchedule: vi.fn(() => Promise.resolve({})),
+  copyWeek: vi.fn(() => Promise.resolve({})),
+  offerCover: vi.fn(() => Promise.resolve({})),
+  updateTeamMember: vi.fn(() => Promise.resolve({})),
   week: {} as Record<string, unknown>,
   members: [] as unknown[],
   certs: [] as unknown[],
@@ -20,6 +35,48 @@ const api = vi.hoisted(() => ({
 }));
 
 vi.mock('../../../services/api/team', () => ({
+  getTeamNotes: () => Promise.resolve(api.notes),
+  createTeamNote: api.createTeamNote,
+  openTeamNote: vi.fn(() => Promise.resolve({ recorded: true, alreadyOpen: false })),
+  /**
+   * ADR 0121 — the crew-text leg reads whether this house has a sender. The
+   * fixture is the MEASURED state of every house on this deployment: none, and
+   * a transport that is not built. A stub reporting a connected sender would
+   * make the composer's disabled control look like a bug in the test rather
+   * than the product's true answer.
+   */
+  getTextSenders: () =>
+    Promise.resolve({
+      senders: { whatsapp: null, sms: null },
+      readable: true,
+      reason: null,
+      transport: {
+        built: false,
+        words:
+          'No provider credential for a per-house sender exists on this deployment.',
+      },
+      myConsent: { consent: null, readable: true, reason: null },
+      crewConsents: 0,
+    }),
+  getTimeOff: () => Promise.resolve(api.timeOff),
+  getMyWeek: () => Promise.resolve(api.myWeek),
+  getMemberPerformance: () => Promise.resolve({ hasData: false }),
+  createSchedule: vi.fn(() => Promise.resolve({ id: 'sch1' })),
+  publishSchedule: api.publishSchedule,
+  copyWeek: api.copyWeek,
+  acknowledgeSchedule: vi.fn(() => Promise.resolve({})),
+  assignCover: vi.fn(() => Promise.resolve({})),
+  createTimeOff: vi.fn(() => Promise.resolve({})),
+  reviewTimeOff: vi.fn(() => Promise.resolve({})),
+  updateShift: vi.fn(() => Promise.resolve({})),
+  deleteShift: vi.fn(() => Promise.resolve(undefined)),
+  reportCallout: vi.fn(() => Promise.resolve({})),
+  offerCover: api.offerCover,
+  createTeamMember: vi.fn(() => Promise.resolve({})),
+  updateTeamMember: api.updateTeamMember,
+  deleteTeamMember: vi.fn(() => Promise.resolve(undefined)),
+  ingestSales: vi.fn(() => Promise.resolve({})),
+  ingestSalesBatch: vi.fn(() => Promise.resolve({})),
   getWeek: () => Promise.resolve(api.week),
   getTeamMembers: () => Promise.resolve(api.members),
   getCertifications: () => Promise.resolve(api.certs),
@@ -27,6 +84,24 @@ vi.mock('../../../services/api/team', () => ({
   createCoverageTemplate: vi.fn(() => Promise.resolve({})),
   createShift: api.createShift,
   broadcast: vi.fn(() => Promise.resolve({})),
+}));
+
+// `/settings-audit` is read through the shared client, so the trail query would
+// otherwise reach the network from a unit test. `readable: true` with no rows
+// is the state a fresh restaurant is actually in.
+vi.mock('../../../services/api/client', () => ({
+  apiClient: {
+    get: () =>
+      Promise.resolve({
+        data: {
+          entries: [],
+          readable: true,
+          reason: null,
+          oldestAt: null,
+          recordingSince: '2026-09-03',
+        },
+      }),
+  },
 }));
 
 vi.mock('../../../contexts/AuthContext', () => ({
@@ -37,7 +112,7 @@ vi.mock('../../../contexts/AuthContext', () => ({
   }),
 }));
 
-vi.mock('../command/MyShifts', () => ({ MyShifts: () => <div>My Shifts</div> }));
+vi.mock('./MyShiftsNext', () => ({ MyShiftsNext: () => <div>My Shifts</div> }));
 
 import TeamNext from './TeamNext';
 import { useTeamNextData } from './useTeamNextData';

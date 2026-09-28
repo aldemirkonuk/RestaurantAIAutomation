@@ -19,6 +19,11 @@ import {
   RecurrenceEndType,
   CalendarEventStatus,
 } from "./dto/calendar.dto";
+import {
+  calendarDateToUtcMidnight,
+  resolveZone,
+  zonedWallClockToUtc,
+} from "./zoned-time";
 
 // ============================================================================
 // DATABASE ROW INTERFACES
@@ -1187,11 +1192,25 @@ export class CalendarService {
     return token;
   }
 
+  /**
+   * How often a subscriber should come back, in seconds.
+   *
+   * Emitted as both `REFRESH-INTERVAL` (RFC 7986 §5.7) and the pre-standard
+   * `X-PUBLISHED-TTL` that Outlook and Apple actually read. Without either,
+   * every client picks its own interval — Google's has been observed at up to
+   * 24 hours — and a delivery moved this morning shows up tomorrow. One hour is
+   * the shortest value the major clients honour; asking for less does not make
+   * them poll faster.
+   */
+  private static readonly ICAL_TTL_SECONDS = 3600;
+
   async getICalFeed(token: string): Promise<string> {
     const { data: restaurant, error: restError } =
       await this.databaseService.supabase
         .from("restaurants")
-        .select("id, name")
+        // `timezone` is what turns a stored wall clock into an instant. Without
+        // it every event was built on the SERVER's clock — see zoned-time.ts.
+        .select("id, name, timezone")
         .eq("calendar_ical_token", token)
         .single();
 
@@ -1202,6 +1221,10 @@ export class CalendarService {
         // No leading dash: ical-generator prepends the "-" that RFC 5545's FPI
         // convention requires, so "-//…" here emitted "PRODID:--//WineOps//…".
         prodId: "//WineOps//Restaurant Calendar//EN",
+        // The refresh hint belongs on every answer, including this one: a
+        // subscriber that first hits a bad token must still be told when to
+        // come back rather than choosing its own day-long interval.
+        ttl: CalendarService.ICAL_TTL_SECONDS,
       });
       return emptyCal.toString();
     }
@@ -1222,6 +1245,10 @@ export class CalendarService {
         // No leading dash: ical-generator prepends the "-" that RFC 5545's FPI
         // convention requires, so "-//…" here emitted "PRODID:--//WineOps//…".
         prodId: "//WineOps//Restaurant Calendar//EN",
+        // The refresh hint belongs on every answer, including this one: a
+        // subscriber that first hits a bad token must still be told when to
+        // come back rather than choosing its own day-long interval.
+        ttl: CalendarService.ICAL_TTL_SECONDS,
       });
       return emptyCal.toString();
     }
@@ -1249,7 +1276,20 @@ export class CalendarService {
       // No leading dash: ical-generator prepends the "-" that RFC 5545's FPI
       // convention requires, so "-//…" here emitted "PRODID:--//WineOps//…".
       prodId: "//WineOps//Restaurant Calendar//EN",
+      // REFRESH-INTERVAL + X-PUBLISHED-TTL. See ICAL_TTL_SECONDS.
+      ttl: CalendarService.ICAL_TTL_SECONDS,
     });
+
+    /**
+     * The zone the stored wall clocks are written in.
+     *
+     * null when the restaurant carries no `timezone`, or one this Node build
+     * cannot resolve. In that case each timed event is published **floating**
+     * (RFC 5545 §3.3.5 form one: no `Z`, no `TZID`) — "09:00 wherever you are",
+     * which is the honest reading of a wall clock with no zone. Publishing it as
+     * UTC would assert an offset nobody recorded.
+     */
+    const zone = resolveZone((restaurant as { timezone?: string }).timezone);
 
     const freqMap: Record<string, string> = {
       daily: "DAILY",
@@ -1284,14 +1324,25 @@ export class CalendarService {
       let endDate: Date;
 
       if (event.all_day) {
-        startDate = new Date(`${startDateStr}T00:00:00`);
-        endDate = new Date(`${endDateStr}T00:00:00`);
-        endDate.setDate(endDate.getDate() + 1);
-      } else {
+        // A calendar date has no zone. ical-generator renders VALUE=DATE from
+        // the Date's UTC fields, so UTC midnight is the only carrier that
+        // round-trips the stored date unchanged on any server.
+        startDate = calendarDateToUtcMidnight(startDateStr);
+        endDate = calendarDateToUtcMidnight(endDateStr);
+        endDate.setUTCDate(endDate.getUTCDate() + 1);
+      } else if (zone) {
         const startTime = event.start_time || "00:00";
         const endTime = event.end_time || "23:59";
-        startDate = new Date(`${startDateStr}T${startTime}:00`);
-        endDate = new Date(`${endDateStr}T${endTime}:00`);
+        startDate = zonedWallClockToUtc(startDateStr, startTime, zone);
+        endDate = zonedWallClockToUtc(endDateStr, endTime, zone);
+      } else {
+        // No zone on the restaurant: keep the wall clock and publish it
+        // floating (below). These Date objects are only carriers for the
+        // year/month/day/hour/minute fields ical-generator reads in UTC.
+        const startTime = event.start_time || "00:00";
+        const endTime = event.end_time || "23:59";
+        startDate = new Date(`${startDateStr}T${startTime}:00.000Z`);
+        endDate = new Date(`${endDateStr}T${endTime}:00.000Z`);
       }
 
       const calEvent = calendar.createEvent({
@@ -1301,6 +1352,9 @@ export class CalendarService {
         summary: event.title,
         description: event.description || undefined,
         allDay: event.all_day,
+        // Floating only where the zone is genuinely unknown; an all-day event
+        // is already zone-free and must not be marked floating as well.
+        floating: !event.all_day && !zone,
         status: icalStatus as any,
       });
 

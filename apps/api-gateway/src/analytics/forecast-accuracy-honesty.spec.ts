@@ -73,10 +73,20 @@ describe("forecast accuracy is refused when there is nothing to score", () => {
     const svc = build({ wine_consumption_log: [] });
     const out: any = await svc.getDemandForecast(RESTAURANT);
 
-    // The model still runs — the series is 120 zero-filled points, not short.
-    expect(out.model).toBe("holt_winters");
+    // The model still RUNS — the series is 120 zero-filled points, not short —
+    // but as of 2026-09-03 its output is no longer published. This assertion
+    // used to read `expect(out.model).toBe("holt_winters")`, which recorded the
+    // remaining half of the same fault: a fitted model and a
+    // `totalForecastDemand: 0` presented as a projection over a log holding no
+    // observation. The accuracy fields refused; the projection did not.
+    expect(out.model).toBeNull();
+    expect(out.modelFitted).toBe(false);
+    expect(out.forecast).toEqual([]);
+    expect(out.totalForecastDemand).toBeNull();
+    expect(out.totalForecastDemand).not.toBe(0);
+    expect(out.basis.model).toContain("reads zero");
 
-    // ...but nothing is claimed about its accuracy.
+    // ...and nothing is claimed about its accuracy either.
     expect(out.accuracy).toEqual({
       mae: null,
       rmse: null,

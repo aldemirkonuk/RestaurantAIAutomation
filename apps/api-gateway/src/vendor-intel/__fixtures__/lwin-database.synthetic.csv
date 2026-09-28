@@ -1,0 +1,16 @@
+# SYNTHETIC. Not one row here is a real LWIN record.
+# The LWIN database is Liv-ex's, free under CC BY 4.0, and is served through a
+# form rather than a URL (probed 2026-09-05: the LWIN page carries no .csv/.xlsx
+# /.zip link, and three guessed paths returned 404). Committing invented rows
+# that claimed to be Liv-ex's would be both a falsehood and a licence problem.
+# This file exists to pin the READER's shape and its refusals, nothing else.
+# The seven-digit codes below are deliberately in a 99xxxxx block.
+LWIN,DISPLAY_NAME,PRODUCER_NAME,PRODUCER_TITLE,COUNTRY,REGION,COLOUR,STATUS
+9900001,Probe Estate Grand Vin,Probe Estate,Chateau,France,Bordeaux,Red,Live
+9900002,Probe Estate Second Wine,Probe Estate,Chateau,France,Bordeaux,Red,Live
+9900003,Probe Maison Grande Cuvee,Probe Maison,Maison,France,Champagne,White,Live
+9900004,Probe Maison Rose,Probe Maison,Maison,France,Champagne,Rose,Live
+990000X,Bad Code Row,Probe Estate,Chateau,France,Bordeaux,Red,Live
+9900005,,Probe Estate,Chateau,France,Bordeaux,Red,Live
+9900006,No Producer Row,,,France,Bordeaux,Red,Live
+9900007,"Probe Estate ""Special"", Late Release",Probe Estate,Chateau,France,Bordeaux,Red,Live

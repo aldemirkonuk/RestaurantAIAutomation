@@ -15,6 +15,22 @@ export function money(v: number | null | undefined, mode: 'compact' | 'full' | '
   return v == null || Number.isNaN(v) ? DASH : formatMoney(v, mode);
 }
 
+/**
+ * The label on a hold-to-approve die.
+ *
+ * An approval gesture must never carry a money figure the payload did not
+ * contain. Until 2026-09-05 this card read `order.totalPrice`, a key
+ * `OrderResponseDto` has never sent, and `formatMoney(undefined)` is `"$0"` —
+ * so the die read "Hold to approve · $0" over every real order on the queue.
+ * A dash is no better on a control this small: it reads as a rendering fault
+ * rather than as an absence. With no total the die says only what it does.
+ */
+export function approveLabel(total: number | null | undefined): string {
+  return total == null || Number.isNaN(total)
+    ? 'Hold to approve'
+    : `Hold to approve · ${formatMoney(total, 'full')}`;
+}
+
 /** Plain figure or the dash. */
 export function figure(v: number | null | undefined, mode: 'compact' | 'full' = 'full'): string {
   return v == null || Number.isNaN(v) ? DASH : formatNumber(v, mode);

@@ -42,6 +42,12 @@ PATHS=(
   "turbo.json"
   "vercel.json"
   "scripts/vercel_should_build.sh"
+  # The web bundle compiles two GATEWAY files since 2026-09-11: the receiving
+  # workspace imports the refusal's shared sentence from price-currency.ts,
+  # which imports iso-4217.ts. A commit that changed only those would otherwise
+  # skip the preview and leave it saying yesterday's words.
+  "apps/api-gateway/src/procurement/price-currency.ts"
+  "apps/api-gateway/src/common/iso-4217.ts"
 )
 
 # No parent commit (first build of a branch, shallow clone) means we cannot

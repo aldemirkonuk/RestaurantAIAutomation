@@ -13,13 +13,14 @@
 import { KeyboardEvent, PointerEvent, ReactNode, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { formatMoney, formatNumber } from '@/lib/utils';
+import { vendorLine } from '@/lib/mudavym/vendor';
 import type {
   ActivityItem,
   AlertItem,
   DayLedger,
   DayOrdersState,
 } from './useDashboardNextData';
-import { DASH, eventTime, localDateStr, longDay, timeAgo } from './format';
+import { DASH, eventTime, localDateStr, longDay, money, timeAgo } from './format';
 import { SERIF } from './fonts';
 
 const MONO = "'JetBrains Mono', ui-monospace, monospace";
@@ -199,19 +200,30 @@ export function DayDetail({ day, daily, dayOrders, alerts, activity, onScrub, on
                 to={`/orders?highlight=${o.id}`}
                 className="dn-row dn-ink flex items-baseline justify-between gap-3 px-3 py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-seal"
               >
+                {/*
+                  The vendor clause is REAL again. `GET
+                  /procurement/orders/history` joins `providers` on
+                  `provider_id` since 2026-09-05; before that this line read
+                  `o.providerName` — a key the route had never sent — and
+                  printed the literal word "vendor" over every delivery. It goes
+                  through `vendorLine` so a name that could not be read prints
+                  the words rather than a blank. The two money figures are
+                  `finalPrice` / `totalCost`, the DTO's own names; the old
+                  `unitPrice` / `totalPrice` made `formatMoney(undefined)` and
+                  printed "60 × $0 · $0". `money()` is the em dash for an
+                  absent figure.
+                */}
                 <span className="min-w-0 truncate text-[13px] text-inkm-1">
-                  {o.wineName ?? (o as typeof o & { wine_name?: string }).wine_name ?? 'Unnamed wine'}
-                  <span className="text-inkm-3">
-                    {' '}
-                    · {o.providerName ?? (o as typeof o & { provider_name?: string }).provider_name ?? 'vendor'}
-                  </span>
+                  {o.wineName ?? 'Unnamed wine'}
+                  <span className="text-inkm-3"> · {vendorLine(o)}</span>
                 </span>
                 <span
                   className="shrink-0 text-[12px] text-inkm-2"
                   style={{ fontFamily: MONO, fontVariantNumeric: 'tabular-nums' }}
                 >
-                  {formatNumber(o.quantity)} × {formatMoney(o.unitPrice, 'full')} ·{' '}
-                  <span className="text-inkm-1">{formatMoney(o.totalPrice, 'full')}</span>
+                  {formatNumber(o.quantity)}
+                  {o.unitType ? ` ${o.unitType}` : ''} × {money(o.finalPrice)} ·{' '}
+                  <span className="text-inkm-1">{money(o.totalCost)}</span>
                 </span>
               </Link>
             ))}

@@ -329,8 +329,37 @@ export interface ResolvedLine {
   proposalUnavailableReason: string | null;
 }
 
+/**
+ * ADR 0104 D15 — how this document's vendor came to be (or why it did not).
+ *
+ * FOUR states, never three. `unresolved` says the PAPER names no identity we
+ * can verify; `unavailable` says OUR OWN read failed and we never looked. They
+ * draw the same picture — a document with no vendor — and rendering them the
+ * same is the fault this whole object exists to avoid.
+ */
+export interface VendorResolutionView {
+  state: "matched" | "created" | "unresolved" | "unavailable";
+  /** Always a sentence, on every state including the good ones. */
+  reason: string;
+  /** The vendor's name, on `matched` and `created`. */
+  providerName: string | null;
+  /** What we matched on, as printed — e.g. `1234567890`. */
+  matchedOn: string | null;
+  /** What to CALL it in a sentence: `VKN`, `EIN`, `DE VAT id`. */
+  scheme: string | null;
+  /** TRUE on a provider born from this document and not yet ordered from. */
+  provisional: boolean;
+}
+
 export interface Resolved {
   providerId: string | null;
+  /**
+   * NULL means resolution has never run on this document — a real third thing,
+   * distinct from having run and refused. Every document ingested after D15
+   * carries a row; the ones stored before it do not, and saying so is more
+   * honest than back-filling a verdict nobody reached.
+   */
+  vendorResolution: VendorResolutionView | null;
   lines: ResolvedLine[];
 }
 

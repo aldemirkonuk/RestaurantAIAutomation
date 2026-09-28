@@ -5,6 +5,7 @@ import {
   Put,
   Delete,
   Body,
+  Headers,
   Param,
   Query,
   HttpException,
@@ -211,20 +212,79 @@ export class OneTapActionsController {
     }
   }
 
+  /**
+   * Begin the hold on a one-tap action that really does something.
+   *
+   * Declared before nothing and shadowing nothing: `:actionId/seal-challenge`
+   * and `:actionId/execute` are distinct literal tails, so route order does not
+   * matter here the way it did for `GET pending`.
+   *
+   * The seal is minted when the gesture STARTS. A token fetched at the moment
+   * of execution would be one more thing the same request asked for itself —
+   * the assertion model with extra steps (founder, 2026-09-04; ADR 0116
+   * addendum). Only an action whose type is a real workflow gets one; a written
+   * note and an unbuilt act are both refused here, in words, rather than handed
+   * a seal for an act that will not run.
+   */
+  @Post(":actionId/seal-challenge")
+  @ApiOperation({
+    summary: "Mint the one-time seal this action's execution has to carry back",
+    description:
+      "`challenge` (returned once, never stored in the clear), `expiresAt` and `act`. The seal is bound to this manager, the ORDER the card points at, the act `deliver`, and the stock that is about to move: it cannot be spent by another person, on another order, for an approval, or after the order's quantity or state changed.",
+  })
+  @ApiParam({ name: "actionId", description: "Action UUID" })
+  @ApiResponse({ status: 201, description: "The seal, once" })
+  @ApiResponse({
+    status: 400,
+    description:
+      "This action is a written note, or its act is not built, or the order is already booked in. The body's `message` is the whole sentence and the page renders it verbatim.",
+  })
+  async issueExecutionSeal(
+    @Param("actionId") actionId: string,
+    @CurrentUser() user: AuthedUser,
+  ): Promise<{ challenge: string; expiresAt: string; act: string }> {
+    try {
+      return await this.oneTapActionsService.issueExecutionSeal(
+        actionId,
+        user.restaurantId,
+        user.userId,
+      );
+    } catch (error) {
+      if (error.status) throw error;
+      throw new HttpException(
+        error.message || "Failed to issue the seal",
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
   @Post(":actionId/execute")
   @ApiOperation({
     summary: "Execute a one-tap action",
     description:
-      "Path shape matches what the web client sends. The executor is the authenticated user, which is the whole point of an action log.",
+      "Path shape matches what the web client sends. The executor is the authenticated user, which is the whole point of an action log. An action whose type is a real workflow (today: delivery_confirm) redeems the seal, runs the write and only then records it; a written note is recorded; anything else is refused and the row stays pending.",
   })
   @ApiParam({ name: "actionId", description: "Action UUID" })
   @ApiResponse({ status: 200, type: OneTapActionResponseDto })
+  @ApiResponse({
+    status: 400,
+    description:
+      "The act is not built, the card names no order, or the order is already delivered. Nothing was changed.",
+  })
+  @ApiResponse({
+    status: 403,
+    description:
+      "The seal was absent, already spent, issued to somebody else, issued for another order or act, or issued before the order changed. The body's `message` is the whole sentence.",
+  })
   @ApiQuery({ name: "restaurantId", required: false })
   async executeAction(
     @Param("actionId") actionId: string,
     @Body() dto: ExecuteActionDto,
     @CurrentUser() user: AuthedUser,
     @Query("restaurantId") restaurantId?: string,
+    // The seal travels in a HEADER, matching `POST /procurement/orders/:id/approve`
+    // — it is not one of the arguments it is a seal OVER.
+    @Headers("x-seal-challenge") challenge?: string,
   ): Promise<OneTapActionResponseDto> {
     this.assertOwnRestaurant(restaurantId, user);
     try {
@@ -233,6 +293,7 @@ export class OneTapActionsController {
         user.restaurantId,
         user.userId,
         dto,
+        challenge ?? null,
       );
     } catch (error) {
       if (error.status) throw error;

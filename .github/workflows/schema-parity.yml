@@ -197,6 +197,23 @@ jobs:
             echo "This is therefore a STRICT comparison over the full migration set."
           fi
 
+      # The comparison's own boundary cases, before it is asked to judge anything.
+      #
+      # `--self-test` needs Docker and a running local stack, so it runs nowhere
+      # automatic and never has. That was tolerable while every invariant it
+      # proved was about SQL rendering. It stopped being tolerable on 2026-09-12,
+      # when three named tables were exempted from the column-order comparison:
+      # the cases proving that exception stays bounded to those three became the
+      # only thing standing between "three rows" and "a category nobody compares
+      # any more", and they were proof that never ran.
+      #
+      # `--self-test-offline` is the half that needs no database. It exits 1 if
+      # the exception is widened (proven: removing the allow-list gate makes
+      # "an UNLISTED table reordered exited 0, not 1" fire) and exits 1 if the
+      # list is emptied, which would otherwise make every other case vacuous.
+      - name: The comparison's own boundary cases hold
+        run: ./scripts/check_schema_parity.sh --self-test-offline
+
       - name: Rebuild the comparison database from the merge base
         run: supabase db reset --no-seed
 

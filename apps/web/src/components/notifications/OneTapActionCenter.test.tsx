@@ -7,7 +7,11 @@ import {
   executeOneTapAction,
   cancelOneTapAction,
 } from '../../services/api/dashboard'
-import { markOrderDelivered } from '../../services/api/orders'
+import {
+  getOrders,
+  getOrdersNeedingApproval,
+  markOrderDelivered,
+} from '../../services/api/orders'
 import { toast } from 'sonner'
 
 vi.mock('../../contexts/RealtimeContext', () => ({
@@ -19,11 +23,22 @@ vi.mock('../../contexts/RealtimeContext', () => ({
   RealtimeProvider: ({ children }: any) => <>{children}</>,
 }))
 
-vi.mock('../../services/api/orders', () => ({
-  getOrdersNeedingApproval: vi.fn().mockResolvedValue([]),
-  getOrders: vi.fn().mockResolvedValue([]),
-  markOrderDelivered: vi.fn().mockResolvedValue({ id: 'order-1' }),
-}))
+// The two 409 readers are the REAL ones (`importActual`), not stubs. Mocking
+// them would make this file assert that a mock returns what the test put in it;
+// the claim under test is that the card renders what the GATEWAY sends, so the
+// parser has to be the shipped one.
+vi.mock('../../services/api/orders', async () => {
+  const actual = await vi.importActual<typeof import('../../services/api/orders')>(
+    '../../services/api/orders'
+  )
+  return {
+    getOrdersNeedingApproval: vi.fn().mockResolvedValue([]),
+    getOrders: vi.fn().mockResolvedValue([]),
+    markOrderDelivered: vi.fn().mockResolvedValue({ id: 'order-1' }),
+    alreadyDeliveredRefusal: actual.alreadyDeliveredRefusal,
+    alreadyDeliveredWords: actual.alreadyDeliveredWords,
+  }
+})
 
 vi.mock('../../services/api/dashboard', () => ({
   getOneTapActions: vi.fn().mockResolvedValue([]),
@@ -269,6 +284,65 @@ describe('OneTapActionCenter — taps reach the server', () => {
     )
   })
 
+  it('shows the gateway\'s whole sentence when the order was already delivered', async () => {
+    // An order is delivered once (2026-09-05): the gateway answers 409 with a
+    // sentence naming the order and when it arrived, and `markOrderDelivered`
+    // promotes it onto `error.message` (orders.deliverOnce.test.ts pins that
+    // half). What this asserts is the last hop — that `failureMessage` shows
+    // the sentence rather than its own fallback, and that the card comes back
+    // so nothing reads as done.
+    const refusal =
+      'Order ORD-2026-00042 was already delivered on 2026-09-04 at 14:05 UTC. ' +
+      'An order is delivered once. Nothing was changed.'
+    const summary =
+      'Delivered on 2026-09-04 at 14:05 UTC by Ada Lovelace, 12 bottles booked in.'
+    seed([DERIVED_DELIVERY])
+    // The real 409 body (founder, 2026-09-05, batch 46), not a bare message:
+    // the card must show WHAT ALREADY HAPPENED, not that a request failed.
+    vi.mocked(markOrderDelivered).mockRejectedValue(
+      Object.assign(new Error(refusal), {
+        isAxiosError: true,
+        response: {
+          status: 409,
+          data: {
+            reason: 'order_already_delivered',
+            orderId: 'order-1',
+            orderNumber: 'ORD-2026-00042',
+            status: 'DELIVERED',
+            deliveredAt: '2026-09-04T14:05:00.000Z',
+            earlierDelivery: {
+              deliveredAt: '2026-09-04T14:05:00.000Z',
+              receivedBy: 'user-7',
+              receivedByName: 'Ada Lovelace',
+              receivedByNameReason: null,
+              quantityReceived: 12,
+              unitType: 'bottle',
+              bottlesTotal: 12,
+              summary,
+            },
+            message: refusal,
+          },
+        },
+      }),
+    )
+
+    renderWithProviders(<OneTapActionCenter />)
+
+    fireEvent.click(await screen.findByLabelText(/Approve: Barolo Delivery/i))
+
+    // Query and assert in one tick — same detached-node reason as the test above.
+    await waitFor(() => {
+      // The earlier delivery leads, the refusal follows. Not a generic error,
+      // and not the axios sentence.
+      expect(toast.error).toHaveBeenCalledWith(`${summary} ${refusal}`)
+      expect(screen.getByLabelText(/Approve: Barolo Delivery/i)).toBeInTheDocument()
+    })
+    expect(toast.success).not.toHaveBeenCalled()
+    // Never retried: a 409 says the request was fine, so repeating it cannot
+    // change the answer.
+    expect(markOrderDelivered).toHaveBeenCalledTimes(1)
+  })
+
   it('refuses to fake a reorder instead of fabricating an order id', async () => {
     seed([DERIVED_LOW_STOCK])
 
@@ -335,5 +409,124 @@ describe('openRouteForAction', () => {
       const path = openRouteForAction(action({ type })).split('?')[0]
       expect(known, `${type} -> ${path}`).toContain(path)
     }
+  })
+})
+
+describe('the delivery card comes from the orders routes, and names the vendor', () => {
+  /**
+   * TWO THINGS SHIP HERE, and neither is worth much without the other.
+   *
+   * THE FETCH. This desk asked for PENDING/APPROVAL_NEEDED and CONFIRMED while
+   * its own filter accepted only 'approved' and 'in_transit', so the delivery
+   * card had NO reachable input from the API at all — every delivery card on
+   * screen came from localStorage. The founder widened it on 2026-09-05:
+   * CONFIRMED and IN_TRANSIT, which is what the filter now names.
+   *
+   * THE NAME. `providerName` was declared on the shared type and never sent, so
+   * this card's supplier line said "Not named by this route". The orders routes
+   * join `providers` now, and the line prints the vendor — or says it could not
+   * be read, which is a different sentence from a blank.
+   *
+   * Every case below fails against the pre-fix component: the first two because
+   * no card is produced at all, the third because the line reads the phrase
+   * this change deleted.
+   */
+  const wireOrder = (over: Record<string, unknown> = {}) => ({
+    id: 'order-77',
+    orderNumber: 'ORD-2026-00077',
+    restaurantId: 'rest-1',
+    inventoryId: 'inv-1',
+    providerId: 'prov-1',
+    quantity: 6,
+    unitType: 'bottle',
+    finalPrice: 50,
+    totalCost: 300,
+    status: 'CONFIRMED',
+    requestedAt: '2026-09-01T10:00:00Z',
+    wineName: 'Barolo Riserva',
+    providerName: 'Vinifera Imports',
+    ...over,
+  })
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    localStorage.clear()
+    localStorage.setItem('wineops_pending_actions', JSON.stringify([]))
+    vi.mocked(getOneTapActions).mockResolvedValue([])
+    vi.mocked(getOrdersNeedingApproval).mockResolvedValue([])
+    vi.mocked(markOrderDelivered).mockResolvedValue({ id: 'order-77' } as any)
+  })
+
+  it('asks for CONFIRMED and IN_TRANSIT, and nothing else', async () => {
+    vi.mocked(getOrders).mockResolvedValue([])
+    renderWithProviders(<OneTapActionCenter />)
+
+    await waitFor(() => expect(getOrders).toHaveBeenCalledTimes(2))
+    const statuses = vi.mocked(getOrders).mock.calls.map((c) => (c[0] as any)?.status)
+    expect(statuses.sort()).toEqual(['in_transit', 'ordered'])
+  })
+
+  it.each([
+    ['CONFIRMED', 'ordered'],
+    ['IN_TRANSIT', 'in_transit'],
+  ])('raises a delivery card for a %s order', async (wireStatus) => {
+    vi.mocked(getOrders).mockImplementation(async (params: any) =>
+      // Only the fetch whose status matches answers, so the card is proved to
+      // come from THAT state rather than from whichever call ran first.
+      (wireStatus === 'CONFIRMED' && params?.status === 'ordered') ||
+      (wireStatus === 'IN_TRANSIT' && params?.status === 'in_transit')
+        ? ([wireOrder({ status: wireStatus })] as any)
+        : ([] as any),
+    )
+
+    renderWithProviders(<OneTapActionCenter />)
+
+    // The supplier line lives in the card's expanded body, so the card is
+    // opened the way a person opens it rather than asserted against a
+    // collapsed subtree that is not rendered at all.
+    //
+    // Query AND assert inside one `waitFor`, and click a node queried in the
+    // same synchronous tick: OD-96. Every card here lives inside
+    // <AnimatePresence>, so a node captured across an await boundary can be an
+    // exiting orphan by the time the matcher runs.
+    await waitFor(() =>
+      expect(screen.getByText(/Barolo Riserva Delivery/i)).toBeInTheDocument(),
+    )
+    fireEvent.click(screen.getByText(/Barolo Riserva Delivery/i))
+    await waitFor(() => expect(screen.getByText('Vinifera Imports')).toBeInTheDocument())
+  })
+
+  it('says the vendor is not named rather than printing a placeholder', async () => {
+    const unnamed = wireOrder({ providerName: null })
+    vi.mocked(getOrders).mockImplementation(async (params: any) =>
+      params?.status === 'ordered' ? ([unnamed] as any) : ([] as any),
+    )
+
+    renderWithProviders(<OneTapActionCenter />)
+
+    await waitFor(() =>
+      expect(screen.getByText(/Barolo Riserva Delivery/i)).toBeInTheDocument(),
+    )
+    fireEvent.click(screen.getByText(/Barolo Riserva Delivery/i))
+    await waitFor(() => expect(screen.getByText('Vendor not named')).toBeInTheDocument())
+    expect(screen.queryByText(/Not named by this route/i)).not.toBeInTheDocument()
+  })
+
+  it('confirms the delivery against the real endpoint, end to end from the wire', async () => {
+    // The whole point of widening the fetch: a card the API raised reaching
+    // `POST /procurement/orders/:id/deliver`. The gateway's double-delivery
+    // guard protects it (`delivered-once.ts`), which is why this could be
+    // switched on at all.
+    vi.mocked(getOrders).mockImplementation(async (params: any) =>
+      params?.status === 'ordered' ? ([wireOrder()] as any) : ([] as any),
+    )
+
+    renderWithProviders(<OneTapActionCenter />)
+
+    fireEvent.click(await screen.findByLabelText(/Approve: Barolo Riserva Delivery/i))
+
+    await waitFor(() =>
+      expect(markOrderDelivered).toHaveBeenCalledWith('order-77', undefined, 'rest-1'),
+    )
   })
 })

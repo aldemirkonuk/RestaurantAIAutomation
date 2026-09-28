@@ -70,10 +70,31 @@ export class RecommendationActionsService {
   /**
    * Current disposition per ruleKey. Snoozes whose window has elapsed are
    * reported as `active` (lazy expiry — cheap and avoids a background job).
+   *
+   * Kept for callers that genuinely cannot act on a read failure. Prefer
+   * `readDispositions()`: an empty map from a broken query and an empty map
+   * from a restaurant nobody has dismissed anything on are the same value here,
+   * and the difference decides whether a dismissed card comes back.
    */
   async getStateMap(
     restaurantId: string,
   ): Promise<Map<string, RecommendationActionRow>> {
+    return (await this.readDispositions(restaurantId)).map;
+  }
+
+  /**
+   * The disposition map AND whether it was actually read.
+   *
+   * `readable: false` is the honest shape of "the dismissals could not be
+   * loaded". The feed must say so, because the alternative — showing every
+   * entry as if nothing had ever been dismissed — is precisely the failure the
+   * founder named: a dismissal that does not hold, reported as a clean page.
+   */
+  async readDispositions(restaurantId: string): Promise<{
+    map: Map<string, RecommendationActionRow>;
+    readable: boolean;
+    problem: string | null;
+  }> {
     const map = new Map<string, RecommendationActionRow>();
     try {
       const { data, error } = await this.dbService
@@ -107,9 +128,33 @@ export class RecommendationActionsService {
         });
       }
     } catch (err: any) {
-      this.logger.warn(`getStateMap failed: ${err?.message}`);
+      const problem = err?.message || "recommendation_actions could not be read";
+      this.logger.warn(`readDispositions failed: ${problem}`);
+      return { map, readable: false, problem };
     }
-    return map;
+    return { map, readable: true, problem: null };
+  }
+
+  /**
+   * Every suppression key currently in force for this restaurant.
+   *
+   * A suppression is a `dismissed` row, and its `rule_key` IS the key — see
+   * `insights/suppression.ts` for the grammar (`rule#subject#grain`, with the
+   * bare rule key as the canonical `rule#*#*`). Nothing else is inspected: a
+   * snoozed row wakes on its own, a done row is a closed account, and neither
+   * is a standing instruction to never show something again.
+   *
+   * `readable: false` means the caller must NOT present its list as clean.
+   */
+  async listSuppressions(restaurantId: string): Promise<{
+    keys: Set<string>;
+    readable: boolean;
+    problem: string | null;
+  }> {
+    const { map, readable, problem } = await this.readDispositions(restaurantId);
+    const keys = new Set<string>();
+    for (const [key, row] of map) if (row.status === "dismissed") keys.add(key);
+    return { keys, readable, problem };
   }
 
   async setAction(

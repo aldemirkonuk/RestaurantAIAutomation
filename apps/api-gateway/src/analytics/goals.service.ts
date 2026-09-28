@@ -1,8 +1,29 @@
 import { Injectable, Logger } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { DatabaseService } from "../database/database.service";
+import { AnalyticsService } from "./analytics.service";
 import * as E from "./engine";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
 import { ORDER_SPEND_STATUSES } from "../procurement/order-status";
+import {
+  ModelClientService,
+  NfEventRef,
+} from "../common/model-client/model-client.service";
+import { NfVerdictService } from "../common/model-client/nf-verdict.service";
+import {
+  SCHEMA_BASIS,
+  cuttingSpecVerdict,
+} from "./goal-cutting-verdict";
+import {
+  resolveModel,
+  routingContext,
+} from "../common/model-client/model-routing";
+import {
+  catalogueForPrompt,
+  checkCuttingSpec,
+  type CuttingSpec,
+  type SpecRejection,
+} from "./report-cuttings";
 
 /**
  * GoalsService — metric-linked goals with AI assistance.
@@ -13,8 +34,9 @@ import { ORDER_SPEND_STATUSES } from "../procurement/order-status";
  * "what to do about it" is pulled from the stored insight feed (relevant
  * categories), so the assistance is grounded in this restaurant's own math.
  *
- * Supported metric keys (v1): wine_revenue, bottles_sold, purchase_spend,
- * checks, avg_check, wine_attach_rate.
+ * Supported metric keys: wine_revenue, bottles_sold, purchase_spend, checks,
+ * avg_check, wine_attach_rate, and — since 2026-09-04 (ADR 0120) —
+ * days_of_inventory, the first of the twelve gaps the scenario catalogue named.
  *
  * `pos_revenue` is computed by the same query but is deliberately NOT in
  * SUPPORTED_METRICS: it exists for `getPosRevenueWindow` (OD-85), and offering
@@ -27,13 +49,33 @@ export class GoalsService {
   constructor(
     private readonly dbService: DatabaseService,
     private readonly insightGenerator: InsightGeneratorService,
+    // Both @Global providers (ModelClientModule, ConfigModule), so neither
+    // needs an import line in AnalyticsModule — the same call DatabaseModule
+    // already made. Only `proposeCuttingSpec` uses them.
+    private readonly configService: ConfigService,
+    private readonly modelClient: ModelClientService,
+    // OD-59 / ADR 0029 P3.0: this call grades its own output. Without it the
+    // task type recorded `call_level_v0` alone — "HTTP 200, not truncated" —
+    // which says nothing about whether the assistant named an analysis this
+    // sheet actually carries.
+    private readonly nfVerdicts: NfVerdictService,
+    /**
+     * Only `days_of_inventory` uses this, and it reads ONE published field
+     * (`daysInventoryOutstanding`) rather than re-deriving the ratio. Two
+     * implementations of "how many days of stock" is how `/reports` and a goal
+     * end up disagreeing about the same cellar.
+     *
+     * No cycle: `AnalyticsService`'s constructor takes `DatabaseService` alone
+     * (analytics.service.ts), so it does not reach back here.
+     */
+    private readonly analyticsService: AnalyticsService,
   ) {}
 
   static readonly SUPPORTED_METRICS: Record<
     string,
     {
       label: string;
-      unit: "currency" | "units" | "count" | "percent";
+      unit: "currency" | "units" | "count" | "percent" | "days";
       insightCategories: string[];
     }
   > = {
@@ -67,6 +109,32 @@ export class GoalsService {
       unit: "percent",
       insightCategories: ["efficiency", "basket", "staff"],
     },
+    /**
+     * Days of stock on hand — the seventh, added 2026-09-04 (ADR 0120).
+     *
+     * The founder's answer to "which of the twelve gaps first": this one, and
+     * it was chosen because it was already computed. `/analytics/financial/:rid`
+     * has published `daysInventoryOutstanding` all along
+     * (`analytics.service.ts:444-451`); the only thing missing was an entry
+     * here, so the goals desk could hold a house to it.
+     *
+     * It is UNLIKE the other six in a way that matters downstream: they are
+     * cumulative sums over a window, and this is a STOCK LEVEL read at an
+     * instant. There is no daily series, so no Holt projection is drawn — the
+     * same shape `avg_check` and `wine_attach_rate` already have, and the page
+     * already says "there is not enough history to project the deadline".
+     *
+     * Insight categories are `purchasing` and `risk`: what moves days-of-stock
+     * is what you buy and how much capital you leave sitting, which is the same
+     * pair `purchase_spend` reads. `sales` is deliberately absent — selling
+     * faster does move it, but the levers the feed would hand back under that
+     * category are about revenue, and this goal is about the cellar.
+     */
+    days_of_inventory: {
+      label: "Days of stock",
+      unit: "days",
+      insightCategories: ["purchasing", "risk"],
+    },
   };
 
   // ==========================================================================
@@ -86,6 +154,46 @@ export class GoalsService {
     return data || [];
   }
 
+  /**
+   * The recommendation rules a goal may name as its source
+   * (`analytics_goals.source_rule_key`, migration `20260903161000`).
+   *
+   * These are the `rule("…")` keys evaluated in `recommendations.service.ts`.
+   * The list is duplicated here rather than imported because
+   * `RecommendationsService` depends on this service — importing back would
+   * close a cycle — and because the catalogue is the CONTRACT for a stored
+   * string: a rule that is renamed must break this list loudly, not silently
+   * orphan every goal that named the old key.
+   *
+   * `goal_behind_<uuid>` is generated per goal at read time, so it is matched
+   * by shape rather than listed.
+   */
+  static readonly RECOMMENDATION_RULE_KEYS: readonly string[] = [
+    "sales_below_weekday_baseline",
+    "weekly_demand_slide",
+    "stockout_imminent",
+    "dead_stock_capital",
+    "plowhorse_repricing",
+    "puzzle_activation",
+    "vendor_concentration",
+    "revenue_concentration",
+    "weekday_gap",
+    "spend_acceleration",
+    "staff_spread",
+    "pairing_promotion",
+  ];
+
+  private static readonly GOAL_BEHIND_KEY =
+    /^goal_behind_[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+
+  /** True only for a key the engine actually evaluates. */
+  static isRecommendationRuleKey(key: string): boolean {
+    return (
+      GoalsService.RECOMMENDATION_RULE_KEYS.includes(key) ||
+      GoalsService.GOAL_BEHIND_KEY.test(key)
+    );
+  }
+
   async createGoal(
     restaurantId: string,
     input: {
@@ -96,6 +204,12 @@ export class GoalsService {
       period?: string;
       direction?: "at_least" | "at_most";
       createdBy?: string;
+      /**
+       * The recommendation this goal came from, or absent when a person typed
+       * it. Validated against the catalogue above — an unknown key is refused
+       * with words rather than stored as a string nothing can resolve.
+       */
+      sourceRuleKey?: string | null;
     },
   ) {
     if (!GoalsService.SUPPORTED_METRICS[input.metricKey]) {
@@ -105,6 +219,18 @@ export class GoalsService {
     }
     if (!(Number(input.targetValue) > 0))
       throw new Error("targetValue must be > 0");
+    const sourceRuleKey =
+      input.sourceRuleKey === undefined || input.sourceRuleKey === null
+        ? null
+        : String(input.sourceRuleKey);
+    if (
+      sourceRuleKey !== null &&
+      !GoalsService.isRecommendationRuleKey(sourceRuleKey)
+    ) {
+      throw new Error(
+        `Unknown recommendation rule '${sourceRuleKey}'. A goal's source must be a rule the engine evaluates: ${GoalsService.RECOMMENDATION_RULE_KEYS.join(", ")}, or goal_behind_<goal id>.`,
+      );
+    }
     const baseline = await this.computeMetric(
       restaurantId,
       input.metricKey,
@@ -124,6 +250,7 @@ export class GoalsService {
         period: input.period ?? "custom",
         deadline: input.deadline ?? null,
         created_by: input.createdBy ?? null,
+        source_rule_key: sourceRuleKey,
       })
       .select()
       .single();
@@ -146,9 +273,146 @@ export class GoalsService {
     return data;
   }
 
+  /**
+   * Edit a goal in place — the founder's *"they will have access to edit change
+   * as they like"*.
+   *
+   * `metric_key` is deliberately NOT editable. `baseline_value` was measured
+   * against the old metric at creation, and every progress figure, the pace
+   * line and the Holt projection are computed against that baseline; swapping
+   * the metric under it would leave a goal whose "we started at" is a reading
+   * of a different quantity. Archive it and set a new one — the UI says so.
+   *
+   * A field the caller did not send is not written. A patch of `{}` therefore
+   * touches nothing but `updated_at`, which is the honest outcome of "the user
+   * opened the form and pressed save without changing anything".
+   */
+  async updateGoal(
+    restaurantId: string,
+    goalId: string,
+    input: {
+      name?: string;
+      targetValue?: number;
+      deadline?: string | null;
+      direction?: "at_least" | "at_most";
+      period?: string;
+    },
+  ) {
+    const patch: Record<string, unknown> = {};
+
+    if (input.name !== undefined) {
+      const name = String(input.name).trim();
+      if (!name) throw new Error("A goal needs a name");
+      patch.name = name.slice(0, 160);
+    }
+    if (input.targetValue !== undefined) {
+      const target = Number(input.targetValue);
+      if (!(target > 0)) throw new Error("targetValue must be > 0");
+      patch.target_value = target;
+    }
+    if (input.deadline !== undefined) {
+      if (input.deadline === null || input.deadline === "") {
+        patch.deadline = null;
+      } else if (!/^\d{4}-\d{2}-\d{2}$/.test(String(input.deadline))) {
+        throw new Error("deadline must be YYYY-MM-DD");
+      } else {
+        patch.deadline = input.deadline;
+      }
+    }
+    if (input.direction !== undefined) {
+      if (input.direction !== "at_least" && input.direction !== "at_most")
+        throw new Error("direction must be at_least or at_most");
+      patch.direction = input.direction;
+    }
+    if (input.period !== undefined) {
+      const allowed = ["day", "week", "month", "quarter", "custom"];
+      if (!allowed.includes(String(input.period)))
+        throw new Error(`period must be one of ${allowed.join(", ")}`);
+      patch.period = input.period;
+    }
+    if ((input as Record<string, unknown>).metricKey !== undefined)
+      throw new Error(
+        "A goal's metric cannot be changed after it is set — its baseline was measured against the old one. Archive this goal and set a new one.",
+      );
+
+    patch.updated_at = new Date().toISOString();
+
+    const { data, error } = await this.dbService
+      .getClient()
+      .from("analytics_goals")
+      .update(patch)
+      .eq("restaurant_id", restaurantId)
+      .eq("id", goalId)
+      .select()
+      // `.single()` here answered a missing goal with PostgREST's own
+      // "Cannot coerce the result to a single JSON object" — measured with
+      // curl on 2026-09-03. That is a sentence about our query, handed to a
+      // manager as though it were about their goal. `maybeSingle` lets the
+      // absence be named as an absence.
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!data)
+      throw new Error("No goal with that id belongs to this restaurant.");
+    return data;
+  }
+
   // ==========================================================================
   // Progress + AI assistance
   // ==========================================================================
+
+  /**
+   * Progress for every goal of one status, in one call.
+   *
+   * `listGoals` alone cannot drive a progress bar honestly: `current_value` is
+   * a STORED column, written at creation as the baseline and only refreshed
+   * when someone opens that one goal's progress (`getGoalProgress`, :359). A
+   * bar drawn off the list would therefore read "0% of the way there" for a
+   * goal that is in fact half done — an absence reported as a measurement,
+   * which is the fault ADR 0020 exists to stop.
+   *
+   * Capped at `MAX_PROGRESS_GOALS`, and the cap is REPORTED rather than
+   * silently applied: a house with more goals than that must see that the list
+   * it is looking at is partial.
+   */
+  async listGoalsWithProgress(restaurantId: string, status = "active") {
+    const goals = await this.listGoals(restaurantId, status);
+    const computed = goals.slice(0, GoalsService.MAX_PROGRESS_GOALS);
+    const progress = await Promise.all(
+      computed.map(async (g: any) => {
+        try {
+          return await this.getGoalProgress(restaurantId, g.id);
+        } catch (err: any) {
+          // One goal whose metric query broke must not blank the other five.
+          // `null` progress is rendered as "this goal could not be read",
+          // never as zero progress.
+          this.logger.warn(
+            `goal progress failed for ${g.id}: ${err?.message ?? err}`,
+          );
+          return { goal: g, unreadable: true, reason: String(err?.message ?? "") };
+        }
+      }),
+    );
+    return {
+      status,
+      goals: progress,
+      total: goals.length,
+      computed: computed.length,
+      truncated: goals.length > computed.length,
+      supportedMetrics: Object.entries(GoalsService.SUPPORTED_METRICS).map(
+        ([key, m]) => ({ key, label: m.label, unit: m.unit }),
+      ),
+      basis: {
+        current:
+          "each goal's current value is recomputed from the same query the analytics engine reads, over the window that opens on the goal's creation date",
+        peers:
+          "no other restaurant's books are in this comparison: every figure here is this house against its own baseline, schedule and projection",
+      },
+      generatedAt: new Date().toISOString(),
+    };
+  }
+
+  /** Recomputing progress is several queries per goal; six is a screenful. */
+  static readonly MAX_PROGRESS_GOALS = 6;
 
   async getGoalProgress(restaurantId: string, goalId: string) {
     const { data: goal, error } = await this.dbService
@@ -246,6 +510,244 @@ export class GoalsService {
   }
 
   // ==========================================================================
+  // "Ask the book to make an analysis for this goal" (ADR 0020 / 0051)
+  // ==========================================================================
+
+  /**
+   * Ask the assistant which of the analyses this product ALREADY computes
+   * answers a goal, and how it should be drawn.
+   *
+   *   *"the Goals section that owners/managers decide, and it can be edited
+   *    (will be using AI to create the analytics and their wanted feature if
+   *    not already created)"*            — the founder, /reports, 2026-09-03
+   *
+   * The line this must not cross: the deterministic engine writes every number
+   * and every sentence a reader sees as a measurement, and a model never does
+   * (`insights/insight-verbalizer.ts` templates over computed arithmetic; ADR
+   * 0020). So the model is not asked for an analysis — it is asked to CONFIGURE
+   * one, and its whole answer is three enum values plus one sentence of its own
+   * that is labelled as a proposal and never printed on a chart.
+   *
+   * Everything the model says is checked before it leaves this method
+   * (`checkCuttingSpec`), and a spec that fails validation is REPORTED, not
+   * repaired: a repaired spec would be shown to the reader as the assistant's
+   * proposal while being something else.
+   *
+   * Failure posture: this method does not throw for a model failure. The goals
+   * desk must keep working when the assistant does not, and "the book could not
+   * answer" is a sentence the page can print, whereas a 500 is a blank panel.
+   */
+  async proposeCuttingSpec(
+    restaurantId: string,
+    goalId: string,
+    /**
+     * The user who pressed "Ask the book". Metered as `context.asked_by`
+     * (ADR 0120). `null` — never a placeholder — when the caller cannot name
+     * them, so "we recorded that we do not know" stays distinguishable from a
+     * row written before the field existed.
+     */
+    askedBy: string | null = null,
+  ): Promise<{
+    available: boolean;
+    reason: string | null;
+    spec: CuttingSpec | null;
+    rejected: { reason: SpecRejection; detail: string } | null;
+    goal: { id: string; name: string; metricKey: string } | null;
+  }> {
+    const { data: goal, error } = await this.dbService
+      .getClient()
+      .from("analytics_goals")
+      .select("id, name, metric_key, target_value, direction, deadline, period")
+      .eq("restaurant_id", restaurantId)
+      .eq("id", goalId)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!goal)
+      throw new Error("No goal with that id belongs to this restaurant.");
+
+    const named = {
+      id: String(goal.id),
+      name: String(goal.name),
+      metricKey: String(goal.metric_key),
+    };
+    const metric = GoalsService.SUPPORTED_METRICS[goal.metric_key];
+
+    // A provider that is not configured says so and does nothing. It does not
+    // fall back to a hand-written "sensible" pick, because a fallback dressed
+    // as an assistant's answer is exactly the fabrication this whole seam is
+    // built to prevent.
+    if (!this.configService.get<string>("ANTHROPIC_API_KEY")) {
+      return {
+        available: false,
+        reason:
+          "ANTHROPIC_API_KEY is not configured on this gateway, so no model can be asked. Every analysis on the sheet is still available to choose by hand.",
+        spec: null,
+        rejected: null,
+        goal: named,
+      };
+    }
+
+    // Composing a cutting spec is the `compose` class (ADR 0120): the model is
+    // writing a configuration, not looking something up, so the founder's
+    // routing sends it to Sonnet 5. `GOAL_CUTTING_MODEL` still outranks the
+    // class — an operator who set it on a running gateway meant it.
+    const routing = resolveModel({
+      config: this.configService,
+      taskClass: "compose",
+      siteEnvVar: "GOAL_CUTTING_MODEL",
+    });
+    const model = routing.model;
+    const meter = routingContext(routing, askedBy);
+
+    const system = `You configure an existing restaurant analytics page. You do NOT write analysis, numbers, or findings.
+
+The page can lay down exactly these analyses, and no others:
+${catalogueForPrompt()}
+
+RULES
+- Choose exactly ONE analysisId from the list above. Never invent an id.
+- Choose ONE graph from that analysis's own "Drawings" list. Never choose a drawing that is not listed for it.
+- Only the analysis marked "Takes days" accepts a "days" value, and only one of the values listed for it. For every other analysis, days must be null.
+- "why" is one sentence naming the goal's measure and why that analysis speaks to it. Do NOT state any figure, trend, total or percentage: you have not been shown this restaurant's data and you must not imply that you have.
+
+OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
+{"analysisId":"...","graph":"...","days":null,"why":"..."}`;
+
+    const goalLine = `Goal "${named.name}": measure ${metric?.label ?? named.metricKey} (${metric?.unit ?? "count"}), ${goal.direction === "at_most" ? "keep at most" : "reach at least"} ${goal.target_value}${goal.deadline ? ` by ${goal.deadline}` : ", no deadline"}, period ${goal.period}.`;
+
+    const eventRef = new NfEventRef();
+    /** The grader, run once per exit. `record` never throws (nf-verdict.service). */
+    const grade = (reading: Parameters<typeof cuttingSpecVerdict>[0]["reading"]) =>
+      this.nfVerdicts.record(
+        eventRef,
+        SCHEMA_BASIS,
+        cuttingSpecVerdict({
+          reading,
+          model,
+          taskClass: routing.taskClass,
+          routedBy: routing.routedBy,
+        }),
+      );
+
+    let payload: any;
+    try {
+      payload = await this.modelClient.call({
+        body: {
+          model,
+          max_tokens: 400,
+          system,
+          messages: [
+            {
+              role: "user",
+              content: `${goalLine}\n\nWhich single analysis on this page should the owner put on their sheet to watch this goal, and how should it be drawn?`,
+            },
+          ],
+        },
+        nf: {
+          // NF-A ledger (P1 §5.3): one invocation, one row. `task_type` is the
+          // group-by column of the headline spend query, so this call is
+          // separable from the other nine model sites in the gateway.
+          subjectId: "GoalsDesk",
+          taskType: "goal_cutting_spec",
+          stimulus: "goal",
+          choice: (p: any) => {
+            const t = (p?.content || []).find((b: any) => b.type === "text");
+            try {
+              return String(JSON.parse(stripFence(t?.text ?? "")).analysisId);
+            } catch {
+              return "unparsed";
+            }
+          },
+          restaurantId,
+          // Metering keys written literally, so the row's shape is readable
+          // from this source rather than assembled out of a spread.
+          context: {
+            goal_id: named.id,
+            metric_key: named.metricKey,
+            task_class: meter.task_class,
+            model_routed_by: meter.model_routed_by,
+            asked_by: meter.asked_by,
+          },
+          eventRef,
+        },
+        timeoutMs: 20_000,
+      });
+    } catch (err: any) {
+      // The emitter wrote a failure row for the CALL. The task verdict is
+      // `null` — the grader ran and the case is untestable — because a model
+      // that never answered cannot be judged on how it configured the sheet.
+      grade({
+        status: "degraded",
+        why: "model_unreachable",
+        detail: String(err?.message ?? err),
+      });
+      return {
+        available: true,
+        reason: `The book could not be reached (${String(err?.message ?? err).slice(0, 200)}). Nothing was proposed.`,
+        spec: null,
+        rejected: null,
+        goal: named,
+      };
+    }
+
+    const text =
+      (payload?.content || []).find((b: any) => b.type === "text")?.text ?? "";
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(stripFence(text));
+    } catch {
+      grade({
+        status: "degraded",
+        why: "answer_not_json",
+        detail: "the model's answer was not readable as JSON",
+      });
+      return {
+        available: true,
+        reason: null,
+        spec: null,
+        rejected: {
+          reason: "not-an-object",
+          detail: "the model's answer was not readable as JSON",
+        },
+        goal: named,
+      };
+    }
+
+    const check = checkCuttingSpec(parsed);
+    if (!check.ok) {
+      this.logger.warn(
+        `goal cutting spec refused (${check.reason}): ${check.detail}`,
+      );
+      grade({
+        status: "refused_by_check",
+        reason: check.reason,
+        detail: check.detail,
+      });
+      return {
+        available: true,
+        reason: null,
+        spec: null,
+        rejected: { reason: check.reason, detail: check.detail },
+        goal: named,
+      };
+    }
+
+    grade({
+      status: "accepted",
+      analysisId: check.spec.analysisId,
+      graph: check.spec.graph,
+      days: check.spec.days,
+    });
+    return {
+      available: true,
+      reason: null,
+      spec: check.spec,
+      rejected: null,
+      goal: named,
+    };
+  }
+
+  // ==========================================================================
   // Metric computation (lean, per metric key)
   // ==========================================================================
 
@@ -301,6 +803,41 @@ export class GoalsService {
     dailyDates: string[];
     rowCount: number;
   }> {
+    /**
+     * Days of stock, before everything else, and deliberately OUTSIDE the
+     * try/catch below.
+     *
+     * That catch logs and falls through to a sum of nothing, which returns
+     * `0` — the shape that lets a failed query read as "this house bought
+     * nothing". The other six metrics have lived with it since before this
+     * change and repairing them is its own piece of work; what must not happen
+     * is a NEW metric inheriting it, because a days-of-stock goal reading
+     * "0 days" is not a light cellar, it is an unread one.
+     *
+     * `daysInventoryOutstanding` is `null` unless every on-hand row carries a
+     * recorded cost (ADR 0051), so a null is thrown rather than zeroed. It
+     * surfaces exactly where the honesty machinery already is:
+     * `listGoalsWithProgress` catches per goal and renders "this goal could not
+     * be scored (<reason>)", and `createGoal` refuses with the same sentence
+     * rather than writing a goal that can never be read.
+     *
+     * The window arguments are ignored on purpose and the caller is not misled
+     * about it: a stock level is what is on the shelf NOW, not a total over a
+     * period, and there is no historical series of it anywhere in this gateway.
+     */
+    if (metricKey === "days_of_inventory") {
+      const financial: any = await this.analyticsService.getFinancialSummary(
+        restaurantId,
+      );
+      const dio = financial?.daysInventoryOutstanding;
+      if (typeof dio !== "number" || !Number.isFinite(dio)) {
+        throw new Error(
+          "Days of stock cannot be read for this restaurant yet: it is cost of goods over inventory value, and inventory value is only known when every bottle on hand carries a recorded cost.",
+        );
+      }
+      return { current: dio, dailySeries: [], dailyDates: [], rowCount: 1 };
+    }
+
     const client = this.dbService.getClient();
     const sinceIso = `${sinceDate}T00:00:00Z`;
     const untilIso = untilDate ? `${untilDate}T23:59:59.999Z` : null;
@@ -497,6 +1034,18 @@ export class GoalsService {
       })),
     };
   }
+}
+
+/**
+ * Models fence JSON even when told not to. Stripping the fence is a transport
+ * concern, not a repair of the ANSWER — the values inside are still validated
+ * against the catalogue before anything is honoured.
+ */
+export function stripFence(text: string): string {
+  return String(text ?? "")
+    .replace(/^\s*```(?:json)?\s*/i, "")
+    .replace(/\s*```\s*$/, "")
+    .trim();
 }
 
 /** Sales revenue for one restaurant over one closed day range. */

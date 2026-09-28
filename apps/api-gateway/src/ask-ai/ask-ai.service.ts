@@ -12,6 +12,10 @@ import {
   NfEventRef,
 } from "../common/model-client/model-client.service";
 import { NfVerdictService } from "../common/model-client/nf-verdict.service";
+import {
+  resolveModel,
+  routingContext,
+} from "../common/model-client/model-routing";
 import { ProcurementService } from "../procurement/procurement.service";
 import { AskAiAction, validateAction } from "./ask-ai-actions";
 import { ProposalCandidates, checkActionGrounded } from "./ask-ai-grounding";
@@ -134,8 +138,21 @@ export class AskAiService {
     private readonly procurement: ProcurementService,
   ) {}
 
-  private model(): string {
-    return this.configService.get<string>("ASK_AI_MODEL") || "claude-haiku-4-5";
+  /**
+   * A proposal is a CONFIGURATION the operator will confirm and a service will
+   * execute — a purchase order, a vendor email. That is the `compose` class
+   * (ADR 0120), so the founder's routing sends it to Sonnet 5 rather than the
+   * Haiku this defaulted to. `ASK_AI_MODEL` still outranks the class.
+   *
+   * Returned as the whole `Routing` rather than a bare string because the row
+   * this call writes records WHICH rule chose the model, not only which model.
+   */
+  private routing() {
+    return resolveModel({
+      config: this.configService,
+      taskClass: "compose",
+      siteEnvVar: "ASK_AI_MODEL",
+    });
   }
 
   /**
@@ -313,11 +330,13 @@ export class AskAiService {
     const { candidates, prompt } = await this.loadCandidates(restaurantId);
 
     const eventRef = new NfEventRef();
+    const routing = this.routing();
+    const meter = routingContext(routing, userId);
     let payload: any;
     try {
       payload = await this.modelClient.call({
         body: {
-          model: this.model(),
+          model: routing.model,
           max_tokens: 1024,
           system: SYSTEM_PROMPT,
           messages: [
@@ -334,7 +353,14 @@ export class AskAiService {
           stimulus: "operator_utterance",
           choice: "proposed_action",
           restaurantId,
-          context: { utterance_chars: ask.length },
+          // Literal keys, for the same reason `goals.service.ts` writes them
+          // literally: the ledger's shape must be readable from the call site.
+          context: {
+            utterance_chars: ask.length,
+            task_class: meter.task_class,
+            model_routed_by: meter.model_routed_by,
+            asked_by: meter.asked_by,
+          },
           eventRef,
         },
       });

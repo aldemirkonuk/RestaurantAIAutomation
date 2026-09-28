@@ -1,4 +1,7 @@
 import { normalizeUom, toBottles, Uom } from "../document-types";
+import { applyCurrencyRules } from "../invoice-currency";
+// The SAME options shape the 810 takes: one house, one rule, one parameter.
+import type { X12InvoiceOptions } from "./x12-invoice";
 import { applyTieOut, ParsedDocument, ParsedLine } from "../parsed-document";
 import {
   el,
@@ -40,6 +43,7 @@ function isDebit(flag: string | null): boolean {
 export function parse812(
   tx: X12Transaction,
   _delimiters: X12Delimiters,
+  options: X12InvoiceOptions = {},
 ): ParsedDocument {
   const warnings: string[] = [];
   const segs = tx.segments;
@@ -165,7 +169,17 @@ export function parse812(
     poNumber: refs.PO ?? null,
     vendorName: el(seller, 2),
     vendorAccount: refs.VN ?? null,
-    currency: "USD",
+    // `CUR02` as the file stated it, and NOTHING otherwise. This was the
+    // literal `"USD"` until 2026-09-06 — worse than the 810's `?? "USD"`,
+    // because it ignored a stated CUR outright. An 812 carries a real
+    // `totalCredit` (BCD04) and settles against an 810, so a credit filed in
+    // dollars against a lira invoice is the disagreement this decision exists
+    // to prevent, arriving from our own parser.
+    currency:
+      el(
+        segs.find((s) => s.tag === "CUR"),
+        2,
+      ) ?? "",
     subtotal: null,
     freight: null,
     fuelSurcharge: null,
@@ -189,5 +203,14 @@ export function parse812(
       "No invoice reference (BCD07) — this credit cannot be matched to the claim it settles without one.",
     );
 
-  return applyTieOut(doc);
+  // Rule 1, after the tie-out, exactly as `parse810` runs it and for the
+  // measured reason stated there.
+  return applyCurrencyRules({
+    doc: applyTieOut(doc),
+    houseCurrency: options.houseCurrency,
+    orderCurrency: options.orderCurrency,
+    hasMatchedOrder: options.hasMatchedOrder,
+    orderLabel: options.orderLabel,
+    fileField: "CUR02 currency segment",
+  });
 }

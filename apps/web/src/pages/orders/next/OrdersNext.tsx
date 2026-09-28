@@ -11,6 +11,9 @@
  * - approve = HoldToApprove completing into the Seal landing (stamp);
  * - bulk approve = the dry emboss — same die, no wax, ONE impression;
  * - AI drafts never look sent (DraftRail, prc-02);
+ * - writing an agreement down states the unit its price is in (AgreementSheet,
+ *   ADR 0119 phase 1) — the order's unit and the price's unit are two fields,
+ *   not one assumption;
  * - row expand = settle, with the working shown for every total;
  * - countdowns drain un-eased.
  *
@@ -21,12 +24,16 @@
 
 import { useMemo, useState } from 'react';
 import { HoldToApprove, Wordmark } from '@/components/mudavym';
+import { AgreementSheet } from './AgreementSheet';
 import { BulkApproveBar } from './BulkApproveBar';
 import { DraftRail } from './DraftRail';
 import { LedgerRow } from './LedgerRow';
+import { RecurrenceSheet } from './RecurrenceSheet';
+import { ResponsesSheet } from './ResponsesSheet';
 import { StageSpine, type SpineStation } from './StageSpine';
 import { Tally } from './Tally';
 import { EM, MONO, SANS, SERIF, fmtMoneyWhole } from './format';
+import { emptyStationSentence } from './recurrence';
 import { useOrdersNextData, type OrderRowVM } from './useOrdersNextData';
 
 const monthName = new Intl.DateTimeFormat('en-GB', { month: 'long' });
@@ -103,6 +110,15 @@ export default function OrdersNext() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [bulkRunning, setBulkRunning] = useState(false);
+  const [writing, setWriting] = useState(false);
+  /**
+   * Which order's answers are open. ONE sheet for the page, not one per row:
+   * the sheet reads that order's correspondence when it opens, and a mounted
+   * instance per row would be one disabled query subscription per row.
+   */
+  const [responsesFor, setResponsesFor] = useState<string | null>(null);
+  /** Which order's recurrence is open. One sheet for the page, as above. */
+  const [recurrenceFor, setRecurrenceFor] = useState<string | null>(null);
 
   const visibleRows = useMemo(() => {
     const byDate = (a: OrderRowVM, b: OrderRowVM) =>
@@ -111,6 +127,16 @@ export default function OrdersNext() {
     const oneTime = data.rows.filter((r) => !r.recurring && r.stage !== 'cancelled');
     return (station === null ? oneTime : oneTime.filter((r) => r.stage === station)).sort(byDate);
   }, [data.rows, station]);
+
+  const responsesRow = useMemo(
+    () => (responsesFor === null ? null : (data.rows.find((r) => r.id === responsesFor) ?? null)),
+    [data.rows, responsesFor],
+  );
+
+  const recurrenceRow = useMemo(
+    () => (recurrenceFor === null ? null : (data.rows.find((r) => r.id === recurrenceFor) ?? null)),
+    [data.rows, recurrenceFor],
+  );
 
   const selectedRows = useMemo(
     () => data.rows.filter((r) => selected.has(r.id) && r.stage === 'pending' && !r.recurring),
@@ -153,6 +179,25 @@ export default function OrdersNext() {
               Orders
             </h1>
           </div>
+          <div className="flex items-end gap-4">
+            <button
+              type="button"
+              onClick={() => setWriting(true)}
+              data-testid="write-agreement"
+              style={{
+                fontFamily: SANS,
+                fontSize: 12.5,
+                fontWeight: 600,
+                padding: '7px 13px',
+                borderRadius: 9,
+                border: '1px solid var(--seal-ring, rgba(26,94,107,.32))',
+                background: 'transparent',
+                color: 'var(--seal-deep, #14515C)',
+                cursor: 'pointer',
+              }}
+            >
+              Write down an agreement
+            </button>
           <div className="text-right" style={{ fontFamily: SANS }}>
             <span
               style={{
@@ -186,7 +231,45 @@ export default function OrdersNext() {
                 ` · ${data.month.unpricedThisMonth} unpriced — excluded, not zeroed`}
             </span>
           </div>
+          </div>
         </header>
+
+        {/* The composer. Its own overlay so the ledger under it never moves,
+            and so the two units — the order's and the price's — are read
+            together in one place (ADR 0119 phase 1). */}
+        <AgreementSheet
+          open={writing}
+          onClose={() => setWriting(false)}
+          onSaved={() => data.refetch()}
+        />
+
+        {/* The vendors' answers to ONE order, with the three acts the legacy
+            `OrderApprovalModal` had and this page did not: reject with a reason,
+            step through several answers, and read the negotiation summary
+            (orders.md §13.13; founder, 2026-09-05). Rendered from the row the
+            page still holds, so a row that vanishes under a refetch closes the
+            sheet rather than leaving it describing an order that is no longer
+            in the book. */}
+        {responsesRow && (
+          <ResponsesSheet
+            open
+            onClose={() => setResponsesFor(null)}
+            row={responsesRow}
+            approval={data.approvalByOrder?.get(responsesRow.id)}
+            approvalGateError={data.approvalGateError}
+          />
+        )}
+
+        {/* The recurrence sheet, keyed off the row for the same reason the
+            answers sheet is: one instance for the page, and it follows the
+            order out of the book rather than describing one that has gone. */}
+        {recurrenceRow && (
+          <RecurrenceSheet
+            open
+            onClose={() => setRecurrenceFor(null)}
+            row={recurrenceRow}
+          />
+        )}
 
         {/* ── the gateway, when it cannot be reached, is said plainly ──── */}
         {data.isError && (
@@ -252,9 +335,27 @@ export default function OrdersNext() {
               </p>
             ) : visibleRows.length === 0 && !data.isError ? (
               <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-3, #7C7365)' }}>
-                {station === null
-                  ? 'The book is open and empty — no active orders.'
-                  : `Nothing sits at ${station} right now.`}
+                {/*
+                  * THE RECURRING STATION SAYS "NONE" ONLY FROM A MEASURED READ.
+                  *
+                  * Until 2026-09-05 this station was structurally empty — the
+                  * route sent no recurrence and `toRow` set `recurring = false`
+                  * for every order — and it printed "Nothing sits at recurring
+                  * right now", which is a claim about the ORDERS made from a
+                  * fact about the ROUTE. `emptyStationSentence` is handed the
+                  * two counts and says which of the four cases this actually
+                  * is; the one it will not say is "there are none" off a book
+                  * that never answered.
+                  */}
+                {station === 'recurring'
+                  ? emptyStationSentence(
+                      data.hasData,
+                      data.rows.length,
+                      data.recurrenceReadCount ?? 0,
+                    )
+                  : station === null
+                    ? 'The book is open and empty — no active orders.'
+                    : `Nothing sits at ${station} right now.`}
               </p>
             ) : (
               <div style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
@@ -267,6 +368,10 @@ export default function OrdersNext() {
                     selected={selected.has(row.id)}
                     onSelectChange={(next) => setRowSelected(row.id, next)}
                     bulkRunning={bulkRunning}
+                    approval={data.approvalByOrder?.get(row.id)}
+                    onOpenResponses={() => setResponsesFor(row.id)}
+                    onOpenRecurrence={() => setRecurrenceFor(row.id)}
+                    approvalGateError={data.approvalGateError}
                   />
                 ))}
               </div>

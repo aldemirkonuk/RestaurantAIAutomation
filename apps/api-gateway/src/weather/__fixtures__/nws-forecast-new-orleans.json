@@ -1,0 +1,239 @@
+{
+  "properties": {
+    "units": "us",
+    "forecastGenerator": "BaselineForecastGenerator",
+    "generatedAt": "2026-09-03T16:57:43+00:00",
+    "updateTime": "2026-09-03T16:31:00+00:00",
+    "validTimes": "2026-09-03T10:00:00+00:00/P7DT15H",
+    "elevation": {
+      "unitCode": "wmoUnit:m",
+      "value": 0.9144
+    },
+    "periods": [
+      {
+        "number": 1,
+        "name": "Today",
+        "startTime": "2026-09-03T11:00:00-05:00",
+        "endTime": "2026-09-03T18:00:00-05:00",
+        "isDaytime": true,
+        "temperature": 91,
+        "temperatureUnit": "F",
+        "probabilityOfPrecipitation": {
+          "unitCode": "wmoUnit:percent",
+          "value": 35
+        },
+        "windSpeed": "5 mph",
+        "windDirection": "SE",
+        "shortForecast": "Partly Sunny then Chance Showers And Thunderstorms"
+      },
+      {
+        "number": 2,
+        "name": "Tonight",
+        "startTime": "2026-09-03T18:00:00-05:00",
+        "endTime": "2026-09-04T06:00:00-05:00",
+        "isDaytime": false,
+        "temperature": 78,
+        "temperatureUnit": "F",
+        "probabilityOfPrecipitation": {
+          "unitCode": "wmoUnit:percent",
+          "value": 27
+        },
+        "windSpeed": "0 to 5 mph",
+        "windDirection": "SE",
+        "shortForecast": "Mostly Cloudy then Chance Showers And Thunderstorms"
+      },
+      {
+        "number": 3,
+        "name": "Friday",
+        "startTime": "2026-09-04T06:00:00-05:00",
+        "endTime": "2026-09-04T18:00:00-05:00",
+        "isDaytime": true,
+        "temperature": 89,
+        "temperatureUnit": "F",
+        "probabilityOfPrecipitation": {
+          "unitCode": "wmoUnit:percent",
+          "value": 66
+        },
+        "windSpeed": "0 to 5 mph",
+        "windDirection": "NE",
+        "shortForecast": "Chance Showers And Thunderstorms then Showers And Thunderstorms Likely"
+      },
+      {
+        "number": 4,
+        "name": "Friday Night",
+        "startTime": "2026-09-04T18:00:00-05:00",
+        "endTime": "2026-09-05T06:00:00-05:00",
+        "isDaytime": false,
+        "temperature": 77,
+        "temperatureUnit": "F",
+        "probabilityOfPrecipitation": {
+          "unitCode": "wmoUnit:percent",
+          "value": 37
+        },
+        "windSpeed": "0 to 5 mph",
+        "windDirection": "SW",
+        "shortForecast": "Chance Showers And Thunderstorms"
+      },
+      {
+        "number": 5,
+        "name": "Saturday",
+        "startTime": "2026-09-05T06:00:00-05:00",
+        "endTime": "2026-09-05T18:00:00-05:00",
+        "isDaytime": true,
+        "temperature": 90,
+        "temperatureUnit": "F",
+        "probabilityOfPrecipitation": {
+          "unitCode": "wmoUnit:percent",
+          "value": 83
+        },
+        "windSpeed": "0 to 5 mph",
+        "windDirection": "NW",
+        "shortForecast": "Chance Showers And Thunderstorms"
+      },
+      {
+        "number": 6,
+        "name": "Saturday Night",
+        "startTime": "2026-09-05T18:00:00-05:00",
+        "endTime": "2026-09-06T06:00:00-05:00",
+        "isDaytime": false,
+        "temperature": 77,
+        "temperatureUnit": "F",
+        "probabilityOfPrecipitation": {
+          "unitCode": "wmoUnit:percent",
+          "value": 83
+        },
+        "windSpeed": "0 to 5 mph",
+        "windDirection": "W",
+        "shortForecast": "Showers And Thunderstorms then Partly Cloudy"
+      },
+      {
+        "number": 7,
+        "name": "Sunday",
+        "startTime": "2026-09-06T06:00:00-05:00",
+        "endTime": "2026-09-06T18:00:00-05:00",
+        "isDaytime": true,
+        "temperature": 91,
+        "temperatureUnit": "F",
+        "probabilityOfPrecipitation": {
+          "unitCode": "wmoUnit:percent",
+          "value": 44
+        },
+        "windSpeed": "0 to 5 mph",
+        "windDirection": "NW",
+        "shortForecast": "Chance Showers And Thunderstorms"
+      },
+      {
+        "number": 8,
+        "name": "Sunday Night",
+        "startTime": "2026-09-06T18:00:00-05:00",
+        "endTime": "2026-09-07T06:00:00-05:00",
+        "isDaytime": false,
+        "temperature": 78,
+        "temperatureUnit": "F",
+        "probabilityOfPrecipitation": {
+          "unitCode": "wmoUnit:percent",
+          "value": 44
+        },
+        "windSpeed": "0 to 5 mph",
+        "windDirection": "SW",
+        "shortForecast": "Chance Showers And Thunderstorms then Partly Cloudy"
+      },
+      {
+        "number": 9,
+        "name": "Labor Day",
+        "startTime": "2026-09-07T06:00:00-05:00",
+        "endTime": "2026-09-07T18:00:00-05:00",
+        "isDaytime": true,
+        "temperature": 91,
+        "temperatureUnit": "F",
+        "probabilityOfPrecipitation": {
+          "unitCode": "wmoUnit:percent",
+          "value": 56
+        },
+        "windSpeed": "0 to 5 mph",
+        "windDirection": "N",
+        "shortForecast": "Showers And Thunderstorms Likely"
+      },
+      {
+        "number": 10,
+        "name": "Monday Night",
+        "startTime": "2026-09-07T18:00:00-05:00",
+        "endTime": "2026-09-08T06:00:00-05:00",
+        "isDaytime": false,
+        "temperature": 78,
+        "temperatureUnit": "F",
+        "probabilityOfPrecipitation": {
+          "unitCode": "wmoUnit:percent",
+          "value": 56
+        },
+        "windSpeed": "0 to 5 mph",
+        "windDirection": "SE",
+        "shortForecast": "Showers And Thunderstorms Likely"
+      },
+      {
+        "number": 11,
+        "name": "Tuesday",
+        "startTime": "2026-09-08T06:00:00-05:00",
+        "endTime": "2026-09-08T18:00:00-05:00",
+        "isDaytime": true,
+        "temperature": 90,
+        "temperatureUnit": "F",
+        "probabilityOfPrecipitation": {
+          "unitCode": "wmoUnit:percent",
+          "value": 64
+        },
+        "windSpeed": "0 to 10 mph",
+        "windDirection": "E",
+        "shortForecast": "Showers And Thunderstorms Likely"
+      },
+      {
+        "number": 12,
+        "name": "Tuesday Night",
+        "startTime": "2026-09-08T18:00:00-05:00",
+        "endTime": "2026-09-09T06:00:00-05:00",
+        "isDaytime": false,
+        "temperature": 78,
+        "temperatureUnit": "F",
+        "probabilityOfPrecipitation": {
+          "unitCode": "wmoUnit:percent",
+          "value": 64
+        },
+        "windSpeed": "0 to 5 mph",
+        "windDirection": "SE",
+        "shortForecast": "Showers And Thunderstorms Likely"
+      },
+      {
+        "number": 13,
+        "name": "Wednesday",
+        "startTime": "2026-09-09T06:00:00-05:00",
+        "endTime": "2026-09-09T18:00:00-05:00",
+        "isDaytime": true,
+        "temperature": 90,
+        "temperatureUnit": "F",
+        "probabilityOfPrecipitation": {
+          "unitCode": "wmoUnit:percent",
+          "value": 61
+        },
+        "windSpeed": "0 to 5 mph",
+        "windDirection": "SE",
+        "shortForecast": "Showers And Thunderstorms Likely"
+      },
+      {
+        "number": 14,
+        "name": "Wednesday Night",
+        "startTime": "2026-09-09T18:00:00-05:00",
+        "endTime": "2026-09-10T06:00:00-05:00",
+        "isDaytime": false,
+        "temperature": 78,
+        "temperatureUnit": "F",
+        "probabilityOfPrecipitation": {
+          "unitCode": "wmoUnit:percent",
+          "value": 61
+        },
+        "windSpeed": "0 to 5 mph",
+        "windDirection": "S",
+        "shortForecast": "Showers And Thunderstorms Likely then Partly Cloudy"
+      }
+    ]
+  }
+}

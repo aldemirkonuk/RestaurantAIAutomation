@@ -426,7 +426,9 @@ export function Reports() {
       const day = buckets.get(orderDate)!;
       day.orders += 1;
       day.bottles += order.quantity;
-      day.spend += order.totalPrice;
+      // Null = the route carried no total for this order. Adding a zero would
+      // make an unpriced day indistinguishable from a day nobody bought on.
+      if (order.totalPrice != null) day.spend += order.totalPrice;
       if (order.wineType) {
         day[order.wineType] += order.quantity;
       }
@@ -570,7 +572,7 @@ export function Reports() {
         rose: 0,
         dessert: 0,
       };
-      existing.value += order.totalPrice;
+      if (order.totalPrice != null) existing.value += order.totalPrice;
       existing.orders += order.quantity;
       if (order.wineType) {
         existing[order.wineType] += order.quantity;

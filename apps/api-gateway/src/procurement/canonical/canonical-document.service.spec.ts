@@ -2,6 +2,7 @@ import { Test, TestingModule } from "@nestjs/testing";
 import { DatabaseService } from "../../database/database.service";
 import { CanonicalDocumentService } from "./canonical-document.service";
 import { LineMappingService } from "./line-mapping.service";
+import { VendorResolutionService } from "../vendor-identity/vendor-resolution.service";
 
 /**
  * Mocked supabase. All ids and numbers are SYNTHETIC.
@@ -207,6 +208,7 @@ describe("CanonicalDocumentService", () => {
       providers: [
         CanonicalDocumentService,
         LineMappingService,
+        VendorResolutionService,
         { provide: DatabaseService, useValue: { getClient: () => client } },
       ],
     }).compile();
@@ -299,7 +301,7 @@ describe("CanonicalDocumentService", () => {
       jurisdiction: "US-CA" as const,
       revision: 1,
       layer1: { marker: "synthetic" } as never,
-      layer2: { providerId: null, lines: [] },
+      layer2: { providerId: null, vendorResolution: null, lines: [] },
       layer3: {
         lines: [],
         tiesOut: null,
@@ -511,6 +513,7 @@ describe("CanonicalDocumentService — what the columns cannot hold", () => {
       providers: [
         CanonicalDocumentService,
         LineMappingService,
+        VendorResolutionService,
         { provide: DatabaseService, useValue: { getClient: () => client } },
       ],
     }).compile();

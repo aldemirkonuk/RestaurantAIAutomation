@@ -2,6 +2,7 @@ import { Test, TestingModule } from "@nestjs/testing";
 import { DatabaseService } from "../../database/database.service";
 import { CanonicalDocumentService } from "./canonical-document.service";
 import { LineMappingService } from "./line-mapping.service";
+import { VendorResolutionService } from "../vendor-identity/vendor-resolution.service";
 import { DocumentCorrectionService } from "./document-correction.service";
 
 /**
@@ -218,6 +219,7 @@ describe("DocumentCorrectionService", () => {
       providers: [
         CanonicalDocumentService,
         LineMappingService,
+        VendorResolutionService,
         DocumentCorrectionService,
         { provide: DatabaseService, useValue: { getClient: () => client } },
       ],

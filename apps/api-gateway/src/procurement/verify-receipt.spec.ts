@@ -50,6 +50,24 @@ type Row = Record<string, any>;
  * catches drift; this list catches the write.
  */
 const PROCUREMENT_ORDER_COLUMNS = new Set([
+  // 20260905235800_an_order_that_repeats_says_so_on_itself.sql (2026-09-05):
+  // nine additive recurrence columns; createOrder writes the last two on a
+  // generated child (ADR 0125 recurrence addendum).
+  "recurrence_frequency",
+  "recurrence_anchor_day",
+  "recurrence_anchored_on",
+  "recurrence_next_due_on",
+  "recurrence_status",
+  "recurrence_status_by",
+  "recurrence_status_at",
+  "recurrence_parent_order_id",
+  "recurrence_occurrence_on",
+  // 20260906170000_a_vendor_states_its_usual_currency_and_an_order_carries_one.sql
+  // (2026-09-06): the ORDER carries the currency it was placed in and says where
+  // that came from. `createOrder` writes both, always together -- the CHECK
+  // `procurement_orders_currency_states_its_source` refuses either half alone.
+  "currency",
+  "currency_source",
   "accepted_quantity",
   "ai_autonomy_paused",
   "approved_at",
@@ -290,6 +308,15 @@ const deliveredOrder = {
 // ---------------------------------------------------------------------------
 // D1
 // ---------------------------------------------------------------------------
+
+/*
+ * `invoiceCurrency: "USD"` appears beside every `invoiceUnitPrice` below since
+ * 2026-09-06 (founder batch 67): `verifyReceipt` refuses a unit price with no
+ * currency before it reads anything, so a payload that carries a figure and no
+ * code no longer reaches any of the behaviour these tests are about. The value
+ * is incidental here — what each test asserts is unchanged.
+ */
+
 describe("verifyReceipt — writes only columns that exist", () => {
   it("never sends a key that is not a real procurement_orders column", async () => {
     // This is the assertion that fails against the pre-fix tree: the payload
@@ -301,6 +328,7 @@ describe("verifyReceipt — writes only columns that exist", () => {
       note: "Two bottles arrived cracked.",
       invoiceQuantity: 10,
       invoiceUnitPrice: 40,
+      invoiceCurrency: "USD",
       acceptedQuantity: 8,
       rejectedQuantity: 2,
     } as any);
@@ -319,6 +347,7 @@ describe("verifyReceipt — writes only columns that exist", () => {
       note: "Two bottles arrived cracked.",
       invoiceQuantity: 10,
       invoiceUnitPrice: 40,
+      invoiceCurrency: "USD",
       acceptedQuantity: 8,
       rejectedQuantity: 2,
     } as any);
@@ -340,6 +369,7 @@ describe("verifyReceipt — writes only columns that exist", () => {
       note: "Two bottles arrived cracked.",
       invoiceQuantity: 10,
       invoiceUnitPrice: 40,
+      invoiceCurrency: "USD",
       acceptedQuantity: 8,
       rejectedQuantity: 2,
     } as any);
@@ -358,6 +388,7 @@ describe("verifyReceipt — writes only columns that exist", () => {
     await service(db).verifyReceipt(REST, ORDER, USER, {
       invoiceQuantity: 10,
       invoiceUnitPrice: 40,
+      invoiceCurrency: "USD",
       acceptedQuantity: 10,
     } as any);
 
@@ -560,6 +591,7 @@ describe("verifyReceipt — cross-unit quantities are converted, not compared ra
       invoiceQuantity: 24,
       invoiceUom: "bottle",
       invoiceUnitPrice: 22,
+      invoiceCurrency: "USD",
       acceptedQuantity: 2,
       countedUom: "case",
     } as any);
@@ -579,6 +611,7 @@ describe("verifyReceipt — cross-unit quantities are converted, not compared ra
       invoiceQuantity: 24,
       invoiceUom: "bottle",
       invoiceUnitPrice: 22,
+      invoiceCurrency: "USD",
       acceptedQuantity: 2,
       countedUom: "case",
     } as any);
@@ -597,13 +630,20 @@ describe("verifyReceipt — cross-unit quantities are converted, not compared ra
       invoiceQuantity: 24,
       invoiceUom: "bottle",
       invoiceUnitPrice: 22,
+      invoiceCurrency: "USD",
       acceptedQuantity: 2,
       countedUom: "case",
     } as any);
 
     expect(calls.priceHistoryInserts).toHaveLength(1);
     const row = calls.priceHistoryInserts[0];
-    expect(row.unit).toBe("BOTTLE");
+    // Lowercase since ADR 0119 Q4 (2026-09-05): `price_history.unit` joined the
+    // house's one seven-word vocabulary, NOT NULL with no default, and the
+    // migration case-folded the one legacy spelling. The receipt path's claim is
+    // `bottle_equivalent` — not the agreement's unit, but a measured property of
+    // `computeMatch`, which converts all four documents to bottle-equivalents
+    // before producing this cost.
+    expect(row.unit).toBe("bottle");
     expect(row.price).toBe(22);
     // 24 BOTTLES, not the raw 24 that happened to be typed, and not 2 cases.
     expect(row.quantity).toBe(24);
@@ -620,6 +660,7 @@ describe("verifyReceipt — cross-unit quantities are converted, not compared ra
       invoiceQuantity: 24,
       invoiceUom: "bottle",
       invoiceUnitPrice: 22,
+      invoiceCurrency: "USD",
       acceptedQuantity: 1,
       rejectedQuantity: 1,
       rejectedReason: "case crushed",
@@ -653,6 +694,7 @@ describe("verifyReceipt — cross-unit quantities are converted, not compared ra
       invoiceQuantity: 24,
       invoiceUom: "bottle",
       invoiceUnitPrice: 22,
+      invoiceCurrency: "USD",
       acceptedQuantity: 2,
       countedUom: "case",
     } as any);
@@ -685,6 +727,7 @@ describe("verifyReceipt — a unit it cannot read is refused, never assumed", ()
         invoiceQuantity: 24,
         invoiceUom: "bxs",
         invoiceUnitPrice: 22,
+        invoiceCurrency: "USD",
         acceptedQuantity: 2,
       } as any),
     ).rejects.toThrow(/not a unit this match can convert/i);
@@ -700,6 +743,7 @@ describe("verifyReceipt — a unit it cannot read is refused, never assumed", ()
         invoiceQuantity: 24,
         invoiceUom: "bxs",
         invoiceUnitPrice: 22,
+        invoiceCurrency: "USD",
         acceptedQuantity: 2,
       } as any),
     ).rejects.toThrow();
@@ -724,6 +768,7 @@ describe("verifyReceipt — a unit it cannot read is refused, never assumed", ()
       service(db).verifyReceipt(REST, ORDER, USER, {
         invoiceQuantity: 24,
         invoiceUnitPrice: 22,
+        invoiceCurrency: "USD",
         acceptedQuantity: 5,
       } as any),
     ).rejects.toThrow(/how many bottles are in one/i);
@@ -744,6 +789,7 @@ describe("verifyReceipt — a unit it cannot read is refused, never assumed", ()
         invoiceQuantity: 24,
         invoiceUom: "bottle",
         invoiceUnitPrice: 22,
+        invoiceCurrency: "USD",
         acceptedQuantity: 2,
       } as any),
     ).rejects.toThrow(/cannot be compared/i);
@@ -778,6 +824,7 @@ describe("verifyReceipt — a deprecated alias may not disagree with its twin", 
         acceptedQuantity: 22,
         invoiceQuantity: 24,
         invoiceUnitPrice: 22,
+        invoiceCurrency: "USD",
       } as any),
     ).rejects.toThrow(
       /acceptedQuantityInCountedUom=24 disagrees with its deprecated alias acceptedQuantity=22/,
@@ -795,6 +842,7 @@ describe("verifyReceipt — a deprecated alias may not disagree with its twin", 
       invoiceQuantityInInvoiceUom: 24,
       invoiceQuantity: 24,
       invoiceUnitPrice: 22,
+      invoiceCurrency: "USD",
     } as any);
 
     expect(calls.orderUpdates[0].match_status).toBe("matched");
@@ -809,6 +857,7 @@ describe("verifyReceipt — a deprecated alias may not disagree with its twin", 
     await service(db).verifyReceipt(REST, ORDER, USER, {
       invoiceQuantity: 24,
       invoiceUnitPrice: 22,
+      invoiceCurrency: "USD",
       acceptedQuantity: 22,
       rejectedQuantity: 2,
     } as any);
