@@ -15,6 +15,14 @@ import { act, render, screen, waitFor } from "@testing-library/react";
  * The real AuthProvider and the real hook; only axios is mocked. The two pages
  * are picked from those NOT in LIVE_PAGES, so each one really spends a flag
  * request per house.
+ *
+ * [2026-09-27, ADR 0149 row 54: receiving, promotions and vendor_prices joined
+ * LIVE_PAGES, so exactly one page still fetches a flag (`arrival`). The test
+ * now mounts that one gate and flips it both ways — next on house A, legacy on
+ * house B, next again back on A — which still proves a switch re-resolves the
+ * gate against the new house and never carries the old verdict. What the
+ * two-gate shape also showed (two gates moving in opposite directions at
+ * once) has no second flag-gated page left to show it with.]
  */
 
 const h = vi.hoisted(() => {
@@ -48,12 +56,12 @@ const A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 
 const HELD_BACK = MUDAVYM_PAGES.filter((p) => !LIVE_PAGES.has(p));
-const [P1, P2] = HELD_BACK as readonly MudavymPage[];
+const [P1] = HELD_BACK as readonly MudavymPage[];
 
-/** House A turns P1 on and P2 off; house B the reverse. */
+/** House A turns P1 on; house B leaves it off. */
 const FLAGS: Record<string, Record<string, boolean>> = {
-  [A]: { [flagKeyFor(P1)]: true, [flagKeyFor(P2)]: false },
-  [B]: { [flagKeyFor(P1)]: false, [flagKeyFor(P2)]: true },
+  [A]: { [flagKeyFor(P1)]: true },
+  [B]: { [flagKeyFor(P1)]: false },
 };
 
 function jwt(claims: Record<string, unknown>): string {
@@ -138,7 +146,6 @@ async function mountWithGates() {
     <AuthProvider>
       <Probe onReady={(a) => (ctx = a)} />
       <Gate page={P1} />
-      <Gate page={P2} />
     </AuthProvider>,
   );
   await waitFor(() => expect(ctx?.loading).toBe(false));
@@ -150,15 +157,14 @@ const verdict = (page: MudavymPage) =>
   screen.getByTestId(`gate-${page}`).textContent;
 
 describe("switching house re-resolves every mounted design gate (ADR 0164)", () => {
-  it("picks two pages that really fetch a flag", () => {
-    expect(HELD_BACK.length).toBeGreaterThanOrEqual(2);
-    expect(P1).not.toBe(P2);
+  it("picks a page that really fetches a flag", () => {
+    expect(HELD_BACK.length).toBeGreaterThanOrEqual(1);
+    expect(LIVE_PAGES.has(P1)).toBe(false);
   });
 
   it("a granted switch re-reads each gate for the new house and drops the old verdict", async () => {
     const auth = await mountWithGates();
     await waitFor(() => expect(verdict(P1)).toBe("next"));
-    expect(verdict(P2)).toBe("legacy");
 
     let ok: boolean | undefined;
     await act(async () => {
@@ -167,12 +173,9 @@ describe("switching house re-resolves every mounted design gate (ADR 0164)", () 
     expect(ok).toBe(true);
 
     await waitFor(() => expect(verdict(P1)).toBe("legacy"));
-    await waitFor(() => expect(verdict(P2)).toBe("next"));
-    // Each gate asked about house B by name, once per page.
+    // The gate asked about house B by name, once.
     const inB = flagChecks.filter((c) => c.restaurant_id === B);
-    expect(inB.map((c) => c.feature_name).sort()).toEqual(
-      [flagKeyFor(P1), flagKeyFor(P2)].sort(),
-    );
+    expect(inB.map((c) => c.feature_name)).toEqual([flagKeyFor(P1)]);
 
     // And back: house A's verdicts return (served from the per-house cache).
     await act(async () => {
@@ -180,7 +183,6 @@ describe("switching house re-resolves every mounted design gate (ADR 0164)", () 
     });
     expect(ok).toBe(true);
     await waitFor(() => expect(verdict(P1)).toBe("next"));
-    expect(verdict(P2)).toBe("legacy");
   });
 
   it("a refused switch leaves every gate on the current house's verdict", async () => {
@@ -196,7 +198,6 @@ describe("switching house re-resolves every mounted design gate (ADR 0164)", () 
     expect(ok).toBe(false);
     expect(auth().activeRestaurantId).toBe(A);
     expect(verdict(P1)).toBe("next");
-    expect(verdict(P2)).toBe("legacy");
     expect(flagChecks.some((c) => c.restaurant_id === B)).toBe(false);
   });
 });

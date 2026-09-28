@@ -56,21 +56,22 @@ describe('useMudavymDesign precedence', () => {
   // live in this PR — they run against a held-back page that still reads
   // restaurant_feature_flags: 'recommendations' until 2026-09-25, when it
   // joined LIVE_PAGES (lane W3-recs, ADR 0160 §108), and 'receiving' (the
-  // desk) since. LIVE_PAGES' own behaviour is asserted in the LIVE_PAGES
+  // desk) since. [2026-09-27, ADR 0149 row 54: 'receiving' is live in code
+  // too now; 'arrival' is the one held-back page left, so these run on it.] LIVE_PAGES' own behaviour is asserted in the LIVE_PAGES
   // describe block below.
   it('without an override, an active+enabled server flag turns the page on', async () => {
     window.localStorage.setItem('activeRestaurantId', 'r1');
     checkFlag.mockResolvedValue(checkResult(true, true));
-    const { result } = renderHook(() => useMudavymDesign('receiving'));
+    const { result } = renderHook(() => useMudavymDesign('arrival'));
     expect(result.current).toBe(false); // legacy while the check is in flight
     await waitFor(() => expect(result.current).toBe(true));
-    expect(checkFlag).toHaveBeenCalledWith('r1', 'mudavym_design_receiving');
+    expect(checkFlag).toHaveBeenCalledWith('r1', 'mudavym_design_arrival');
   });
 
   it('an inactive flag (unregistered in the gateway) stays legacy', async () => {
     window.localStorage.setItem('activeRestaurantId', 'r1');
     checkFlag.mockResolvedValue(checkResult(true, false));
-    const { result } = renderHook(() => useMudavymDesign('receiving'));
+    const { result } = renderHook(() => useMudavymDesign('arrival'));
     await act(async () => {});
     expect(result.current).toBe(false);
   });
@@ -78,13 +79,13 @@ describe('useMudavymDesign precedence', () => {
   it('an API failure stays legacy rather than breaking the page', async () => {
     window.localStorage.setItem('activeRestaurantId', 'r1');
     checkFlag.mockRejectedValue(new Error('network down'));
-    const { result } = renderHook(() => useMudavymDesign('receiving'));
+    const { result } = renderHook(() => useMudavymDesign('arrival'));
     await act(async () => {});
     expect(result.current).toBe(false);
   });
 
   it('no active restaurant → legacy, no request', async () => {
-    const { result } = renderHook(() => useMudavymDesign('receiving'));
+    const { result } = renderHook(() => useMudavymDesign('arrival'));
     await act(async () => {});
     expect(result.current).toBe(false);
     expect(checkFlag).not.toHaveBeenCalled();
@@ -121,11 +122,17 @@ describe('useMudavymDesign precedence', () => {
  * [2026-09-26, lane W4-promos-filters, PR #474: `promotions` joins the held
  * back set — ADR 0160 §113 / ADR 0165, dark until the founder turns
  * `mudavym_design_promotions` on.]
+ *
+ * [2026-09-27, ADR 0149 row 54: `receiving` (the desk, not the door; the
+ * 2026-09-22 page-gap Q2/Q4 basis), `promotions` and `vendor_prices` (founder
+ * item 53, 2026-09-25, "Live in code at cutover (Recommended)") are live in
+ * code for every house. `arrival` is the only page still held back.]
  */
 describe('LIVE_PAGES (ADR 0149 row 36, go-live 2026-09-17)', () => {
-  // vendor_prices (ADR 0160 §112) ships dark: the founder flips it per house
-  // (his 2026-09-19 lane answer), so it is held back like the others.
-  const HELD_BACK = ['arrival', 'receiving', 'promotions', 'vendor_prices'] as const;
+  // [2026-09-27: vendor_prices no longer ships dark — founder item 53
+  // superseded the 2026-09-19 per-house flip; see PROMOTED_2026_09_27.]
+  const HELD_BACK = ['arrival'] as const;
+  const PROMOTED_2026_09_27 = ['receiving', 'promotions', 'vendor_prices'] as const;
   const PROMOTED_2026_09_25 = [
     'shell',
     'admin',
@@ -137,11 +144,11 @@ describe('LIVE_PAGES (ADR 0149 row 36, go-live 2026-09-17)', () => {
     const held = new Set<string>(HELD_BACK);
     const expected = MUDAVYM_PAGES.filter((p) => !held.has(p));
     expect([...LIVE_PAGES].sort()).toEqual([...expected].sort());
-    expect(LIVE_PAGES.size).toBe(25);
+    expect(LIVE_PAGES.size).toBe(28);
     expect(MUDAVYM_PAGES.length).toBe(29);
   });
 
-  it('holds back arrival, receiving, promotions and vendor_prices', () => {
+  it('holds back only arrival', () => {
     for (const page of HELD_BACK) {
       expect(LIVE_PAGES.has(page)).toBe(false);
       expect(MUDAVYM_PAGES).toContain(page); // still a real page, just gated
@@ -167,6 +174,49 @@ describe('LIVE_PAGES (ADR 0149 row 36, go-live 2026-09-17)', () => {
 
   it.each(PROMOTED_2026_09_25)(
     'promoted 2026-09-25 (%s): the QA override is the only way back to legacy',
+    async (page) => {
+      window.localStorage.setItem('activeRestaurantId', 'r1');
+      window.localStorage.setItem(`mudavym.design.${page}`, '0');
+      const { result } = renderHook(() => useMudavymDesign(page));
+      expect(result.current).toBe(false);
+      await act(async () => {});
+      expect(result.current).toBe(false);
+      expect(checkFlag).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(PROMOTED_2026_09_27)(
+    'promoted 2026-09-27 (%s): on for a house with no flag row, first render, no request',
+    async (page) => {
+      expect(LIVE_PAGES.has(page)).toBe(true);
+      window.localStorage.setItem('activeRestaurantId', 'r-new-house');
+      // Founder item 53: "every house incl. new ones". A house created after
+      // this merge has no settings row; the gateway would answer
+      // { enabled: false, active: false }. The page must not even ask.
+      checkFlag.mockResolvedValue(checkResult(false, false));
+      const { result } = renderHook(() => useMudavymDesign(page));
+      expect(result.current).toBe(true);
+      await act(async () => {});
+      expect(result.current).toBe(true);
+      expect(checkFlag).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(PROMOTED_2026_09_27)(
+    'promoted 2026-09-27 (%s): an explicit false column still resolves true — the column no longer matters',
+    async (page) => {
+      window.localStorage.setItem('activeRestaurantId', 'r1');
+      checkFlag.mockResolvedValue(checkResult(false, true));
+      const { result } = renderHook(() => useMudavymDesign(page));
+      expect(result.current).toBe(true);
+      await act(async () => {});
+      expect(result.current).toBe(true);
+      expect(checkFlag).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(PROMOTED_2026_09_27)(
+    'promoted 2026-09-27 (%s): the QA override is the only way back to legacy',
     async (page) => {
       window.localStorage.setItem('activeRestaurantId', 'r1');
       window.localStorage.setItem(`mudavym.design.${page}`, '0');
@@ -228,8 +278,8 @@ describe('LIVE_PAGES (ADR 0149 row 36, go-live 2026-09-17)', () => {
 
   it('the QA override can force a held-back page on without a flag row', async () => {
     window.localStorage.setItem('activeRestaurantId', 'r1');
-    window.localStorage.setItem('mudavym.design.receiving', 'on');
-    const { result } = renderHook(() => useMudavymDesign('receiving'));
+    window.localStorage.setItem('mudavym.design.arrival', 'on');
+    const { result } = renderHook(() => useMudavymDesign('arrival'));
     expect(result.current).toBe(true);
     await act(async () => {});
     expect(checkFlag).not.toHaveBeenCalled();
