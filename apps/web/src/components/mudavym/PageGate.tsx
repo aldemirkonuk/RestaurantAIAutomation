@@ -66,8 +66,18 @@ import {
 
 export interface PageGateProps {
   page: MudavymPage;
-  /** The shipping page — rendered untouched while the flag is off. */
-  legacy: ReactNode;
+  /**
+   * The shipping page — rendered untouched while the flag is off.
+   *
+   * Optional since the ADR 0149 cutover (manifest
+   * `.planning/07-reference/deploy/CUTOVER-MANIFEST-2026-09-28.md`): a page
+   * whose legacy file group was deleted passes no `legacy`, and then `next`
+   * renders whatever the gate resolves — the QA override
+   * `mudavym.design.<page> = 0` has nothing left to show, so it no longer
+   * pretends to. The gate stays because it is what mounts the house header,
+   * the ground claim and the sheet stack.
+   */
+  legacy?: ReactNode;
   /**
    * The Mudavym redesign, rendered as-is. The page itself owns the
    * `.mudavym` scope on its root — and its own `ground` prop when it wants to
@@ -78,7 +88,9 @@ export interface PageGateProps {
 }
 
 export function PageGate({ page, legacy, next }: PageGateProps) {
-  const showNext = useMudavymDesign(page);
+  // Read unconditionally so hook order never depends on `legacy`.
+  const gated = useMudavymDesign(page);
+  const showNext = legacy === undefined || gated;
   // Under the app shell (sketch 119 D) the shell owns the one house header;
   // mounting a second here would put two banners on the page.
   const inShell = useInHouseShell();

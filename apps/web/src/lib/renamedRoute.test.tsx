@@ -117,7 +117,7 @@ describe('App.tsx declares the rename', () => {
   };
 
   it('/vendors is the page (the providers slug and flag stay)', () => {
-    expect(routeFor('/vendors')).toContain('<PageGate page="providers" legacy={<Providers />} next={<ProvidersNext />} />');
+    expect(routeFor('/vendors')).toContain('<PageGate page="providers" next={<ProvidersNext />} />');
   });
 
   it('/providers/* and /distributors/* redirect with RenamedRoute', () => {
