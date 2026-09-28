@@ -11,7 +11,14 @@
   - Six lanes died because the disk was full (worktree creation failed) and must be re-run: mig-adr, register, sketch-123, gitignore, mobile-fab, flag-dto.
   - #501, #503 and at least one more carry a CLAIMS append conflict with main; resolve as the union.
 - **Disk:** 100% full. Deleting /tmp caches was refused by the permission check, so it waits for the founder.
-- **Founder forks raised:**
+- **Founder answers, 22:55Z (verbatim):**
+  - Disk: "Clean all safe items (Recommended)". Done: /tmp caches and venv_review deleted, plus 9 clean, pushed worktrees. 12 GB now free. Dirty worktrees were kept.
+  - #502 no-timezone clock: "handle it sota, it also has to take care of yhat exact edge case where it opens midahift then everything changes accordingly".
+  - Replacement step: "'Replace with' picker".
+  - Picker checks: "refuse overlap warn rest but owner has a say to change it into warn all four to allow double booking".
+  - OD-182: "Add when thumbs ships (Recommended)".
+  - Still unasked: the model-provider line on /terms and /ask.
+- **Founder forks raised (now answered above, except the /terms and /ask line):**
   - #502 no-timezone fallback: UTC+14, or UTC as in ADR 0116.
   - #502 replacement step: options (a)–(d) in 06-pages/team.md §15, plus warn-or-refuse on availability.
   - OD-182 thumbs-label disclosure.
