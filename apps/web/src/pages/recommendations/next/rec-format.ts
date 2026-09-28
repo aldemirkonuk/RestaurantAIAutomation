@@ -124,7 +124,7 @@ export function handOf(ruleKey: string, category: string): Hand {
     dead_stock_capital: { href: `/promotions?${q}`, label: 'Create the promo', where: 'Promotions' },
     plowhorse_repricing: { href: `/reports?${q}`, label: 'Open the menu report', where: 'Reports' },
     puzzle_activation: { href: `/promotions?${q}`, label: 'Feature by-the-glass', where: 'Promotions' },
-    vendor_concentration: { href: `/providers?${q}`, label: 'Compare vendors', where: 'Providers' },
+    vendor_concentration: { href: `/vendors?${q}`, label: 'Compare vendors', where: 'Vendors' },
     revenue_concentration: { href: `/inventory?${q}`, label: 'Protect top sellers', where: 'Inventory' },
     spend_acceleration: { href: `/orders?${q}`, label: 'Audit open orders', where: 'Orders' },
     pairing_promotion: { href: `/promotions?${q}`, label: 'Promote the pairing', where: 'Promotions' },

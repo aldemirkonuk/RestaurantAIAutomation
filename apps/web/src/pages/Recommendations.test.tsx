@@ -395,7 +395,7 @@ describe('legacy /recommendations — Act is a hand-off and records nothing', ()
       <MemoryRouter initialEntries={['/recommendations']}>
         <Routes>
           <Route path="/recommendations" element={<Recommendations />} />
-          <Route path="/providers" element={<p>vendors page</p>} />
+          <Route path="/vendors" element={<p>vendors page</p>} />
         </Routes>
       </MemoryRouter>,
     );
