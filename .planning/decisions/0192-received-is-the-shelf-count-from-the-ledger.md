@@ -659,6 +659,45 @@ existing fifth-amendment coverage (rejected-at-desk and invoiced read from the l
 that states them) is unchanged and still green — this amendment adds a read, not a change
 to that reader.
 
+## Re-verification 2026-09-27 — founder items 2, 34 and 38 against the code (PR #436, merge train 8, audit R5)
+
+**[2026-09-27, train 8 R5: each item below is quoted by its label in
+`founder-answers-2026-09-25-web-rebuild.md` and checked against the head of
+`feat/finish-action-integrity`, not against the prose above.]**
+
+- **Item 2** — *"Receiving desk history: built from the door receipts already recorded — no
+  separate verdict ledger table."* Holds for this PR: none of its 18 migrations names a
+  verdict table (`grep -il verdict` over them is empty), and the history this PR composes is
+  read from `procurement_receipt_events` (`shelf-received.ts:597`, composed by
+  `composeShelfReceived`, `shelf-received.ts:377`). The desk layout the same item names (one
+  row per line grouped by vendor, 5 rows per vendor box, history 10 per page) is not in this
+  PR; it is #480, stacked on this branch.
+- **Item 34** — *"Receiving: door record append-only enforced = trigger refusing
+  UPDATE/DELETE + FK no cascade; verifyReceipt accepts part-pack counts in base units (ADR
+  0070) so every verification leaves a history line."* The second half holds here:
+  `verifyReceipt` re-reads a back-derived part pack as the whole physical count in bottles
+  (`procurement.service.ts:6375-6384`) instead of refusing it (fourth amendment). The first
+  half is NOT in this PR: on this head `procurement_receipt_events` has no UPDATE/DELETE
+  trigger in any migration and its `order_id` and `restaurant_id` keys are still
+  `ON DELETE CASCADE` (the `baseline_from_production` migration, lines 13182 and 13190); the
+  trigger and the RESTRICT keys are #480's commit `369b99446` (ADR 0227). Nothing in this PR
+  updates or deletes a receipt event, so that trigger refuses nothing this PR writes. Limit,
+  stated rather than widened: a verification counted in kegs or litres with no stated
+  accepted count is still refused (`procurement.service.ts:6347-6351`, *"The ledger counts
+  bottles"*) and leaves no line; "every verification" here means every verification the
+  bottle ledger can state.
+- **Item 38** — *"Receiving: one-tap 'Counts match' writes a history line (counted bottles),
+  keeping the last stated invoice readable (ADR 0192 option B). Receiving stays keyed on
+  procurement_orders (OD-125 resolved: stay on orders now)."* Holds: the no-count path writes
+  one `reconciled` event with `counted_qty_bottles` from the ledger and
+  `invoice_qty_bottles: null` (`procurement.service.ts:6475-6550`); the reader takes
+  *invoiced* from the latest event that states one (`shelf-received.ts:437`); receiving reads
+  and writes by `procurement_orders` (`receiving.service.ts:200`, `:546`) and every receipt
+  event carries `order_id`.
+
+No mismatch in code was found; the one correction is to this PR's body, whose round-W3
+section still said the one-tap writes no event (bracketed there as superseded).
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
@@ -682,3 +721,4 @@ to that reader.
 | 2026-09-26 | Claude (Opus 5), lane W4-receiving | Built (fifth amendment): the no-count verification writes a `reconciled` line marked `outcome = 'accepted'`; the invoice and the desk's refusal read from the latest event that states them; the refusal half stated as this lane's reading |
 | 2026-09-26 | Aldemir (founder), round 7, item 47 | *"a repeated identical 'Counts match' tap ... writes NOTHING new (idempotent) ... an earlier full check's rejected count stays visible (as built)"* (sixth amendment, verbatim per the round-7 record) |
 | 2026-09-26 | Claude (Sonnet 5), lane W5-receiving | Built (sixth amendment): `repeatsTheLatestConfirmation` (`shelf-received.ts`) gates the one-tap's insert on the latest `reconciled` event's `counted_qty_bottles`; a failed idempotence read refuses rather than guessing; 7 new tests incl. double- and triple-tap |
+| 2026-09-27 | Claude (Opus 5.5), PR #436 merge train 8 (audit R5) | Re-verified founder items 2, 34 and 38 against the head with file:line (section above): items 2 and 38 hold; item 34's base-unit half holds, its append-only half is #480's (ADR 0227), not this PR's |
