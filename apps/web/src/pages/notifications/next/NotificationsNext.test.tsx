@@ -675,6 +675,47 @@ describe('NotificationsNext — the market-price box', () => {
     expect(within(box).getByText(/Terra Nostra · quote/)).toBeInTheDocument();
   });
 
+  it('links each drop to the price ladder opened on that product, key passed whole', () => {
+    const drop = {
+      currency: 'EUR',
+      latestPrice: 19.4,
+      latestAt: '2026-09-03T09:00:00.000Z',
+      latestVendor: 'Terra Nostra',
+      latestSource: 'quote',
+      averagePrice: 24.25,
+      averageOf: 5,
+      absoluteBelow: 4.85,
+      fractionBelow: 0.2,
+    };
+    mockMarket.current = {
+      ...EMPTY_MARKET,
+      scannedObservations: 41,
+      scannedProducts: 9,
+      items: [
+        { ...drop, productKey: 'wine:mw-1', productName: 'Etna Rosso' },
+        { ...drop, productKey: 'identity:3f2a-9c', productName: 'San Marzano 6/10' },
+        { ...drop, productKey: '', productName: 'Keyless drop' },
+      ],
+    };
+    mockData.current = base([]);
+    draw();
+    const box = screen.getByRole('region', { name: 'Cheaper than lately' });
+    expect(within(box).getByRole('link', { name: 'Etna Rosso' })).toHaveAttribute(
+      'href',
+      '/vendor-prices?product=wine%3Amw-1',
+    );
+    // An identity key has no resolver on the page yet; it still navigates so
+    // the page can name that absence itself rather than the link being hidden.
+    expect(within(box).getByRole('link', { name: 'San Marzano 6/10' })).toHaveAttribute(
+      'href',
+      '/vendor-prices?product=identity%3A3f2a-9c',
+    );
+    // No key, no link — never a bare /vendor-prices that lands on nothing.
+    expect(within(box).getByText('Keyless drop')).toBeInTheDocument();
+    expect(within(box).queryByRole('link', { name: 'Keyless drop' })).not.toBeInTheDocument();
+    expect(within(box).queryByRole('link', { name: /price ladder/ })).not.toBeInTheDocument();
+  });
+
   it('tells a refused price sweep apart from an empty market', () => {
     mockMarket.current = {
       ...EMPTY_MARKET,

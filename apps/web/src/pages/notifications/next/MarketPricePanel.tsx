@@ -41,16 +41,39 @@ function pct(fraction: number | null): string {
   return `${(fraction * 100).toFixed(1)}%`;
 }
 
+/**
+ * Where a row goes: the price ladder, opened on that product. The key is
+ * passed through whole — `identity:`, `wine:` or `sig:` prefix included —
+ * because the page is the one that knows how to resolve it, and the one that
+ * says so in words when it cannot. A row is never sent to a bare
+ * `/vendor-prices` (a link to nothing); a row with no key is not a link.
+ */
+function ladderHref(productKey: string): string | null {
+  return productKey ? `/vendor-prices?product=${encodeURIComponent(productKey)}` : null;
+}
+
 function Row({ item }: { item: MarketPriceItem }) {
+  const href = ladderHref(item.productKey);
+  const name = item.productName ?? 'Unnamed product';
   return (
     <li className="py-2" style={{ borderTop: '1px solid var(--paper-2)' }}>
       <div className="flex items-baseline justify-between gap-2">
-        <span
-          className="min-w-0 flex-1 truncate text-[12.5px] font-semibold"
-          style={{ fontFamily: SANS, color: 'var(--ink-1)' }}
-        >
-          {item.productName ?? 'Unnamed product'}
-        </span>
+        {href ? (
+          <Link
+            to={href}
+            className="nt-ink min-w-0 flex-1 truncate text-[12.5px] font-semibold underline decoration-[var(--paper-2)] underline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-seal"
+            style={{ fontFamily: SANS, color: 'var(--ink-1)' }}
+          >
+            {name}
+          </Link>
+        ) : (
+          <span
+            className="min-w-0 flex-1 truncate text-[12.5px] font-semibold"
+            style={{ fontFamily: SANS, color: 'var(--ink-1)' }}
+          >
+            {name}
+          </span>
+        )}
         <span
           className="shrink-0 text-[12px] font-semibold"
           style={{ fontFamily: MONO, color: 'var(--seal-deep)' }}
@@ -137,17 +160,6 @@ export function MarketPricePanel() {
               <Row key={i.productKey} item={i} />
             ))}
           </ul>
-          <Link
-            to="/vendor-prices"
-            className="nt-ink mt-2 inline-block rounded px-2 py-1 text-[11px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-seal"
-            style={{
-              fontFamily: SANS,
-              border: '1px solid var(--seal-ring)',
-              color: 'var(--seal-deep)',
-            }}
-          >
-            Open the price ladder →
-          </Link>
         </>
       )}
 
