@@ -3,6 +3,7 @@ import { DocumentIntakeService } from "./document-intake.service";
 import { DatabaseService } from "../../database/database.service";
 import { DocumentExtractorService } from "./document-extractor.service";
 import { CanonicalDocumentService } from "../canonical/canonical-document.service";
+import { LineMappingService } from "../canonical/line-mapping.service";
 
 /**
  * The extraction door — `applyExternalExtraction`.

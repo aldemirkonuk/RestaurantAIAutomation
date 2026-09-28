@@ -1,6 +1,7 @@
 import { Test, TestingModule } from "@nestjs/testing";
 import { DatabaseService } from "../../database/database.service";
 import { CanonicalDocumentService } from "./canonical-document.service";
+import { LineMappingService } from "./line-mapping.service";
 
 /**
  * Mocked supabase. All ids and numbers are SYNTHETIC.
@@ -205,6 +206,7 @@ describe("CanonicalDocumentService", () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         CanonicalDocumentService,
+        LineMappingService,
         { provide: DatabaseService, useValue: { getClient: () => client } },
       ],
     }).compile();
@@ -508,6 +510,7 @@ describe("CanonicalDocumentService — what the columns cannot hold", () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         CanonicalDocumentService,
+        LineMappingService,
         { provide: DatabaseService, useValue: { getClient: () => client } },
       ],
     }).compile();

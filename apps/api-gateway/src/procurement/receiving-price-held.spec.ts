@@ -591,6 +591,9 @@ describe("restating or confirming a currency clears the receiving refusal", () =
       // DeliveryStockService (main's ADR 0103 A1, the door's booking half; merged
       // 2026-09-11) -- stubbed, this file never books stock. tsc counts the arguments.
       {} as any,
+      // LineMappingService (main's ADR 0104 D12 slice 4, the mapping memory; merged
+      // 2026-09-11) -- stubbed, this file never maps a line. tsc counts the arguments.
+      {} as any,
       { redeem: async () => ({ sealId: "seal-1" }) } as any,
     );
   }

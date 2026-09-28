@@ -289,6 +289,8 @@ export interface Extracted {
 export interface ResolvedLine {
   /** Index into `layer1.lines`. */
   lineIndex: number;
+  /** `procurement_document_lines.id` — what the shelf-link door is addressed by. */
+  lineId: string | null;
   inventoryId: string | null;
   masterWineId: string | null;
   /** The canonical unit, via normalizeUom. NULL when the unit was unreadable —
@@ -302,6 +304,29 @@ export interface ResolvedLine {
   /** ADR 0103 A9 / ADR 0104 S7 — structured, so a vintage swap is machine-visible. */
   vintage: number | null;
   lot: string | null;
+  /**
+   * Where `inventoryId` came from. ADR 0103 A12: only a caller-supplied shelf
+   * books stock, so the page must be able to say whether the line names one
+   * itself (`line` — a person linked it) or inherits it from the order line it
+   * was matched to (`order`).
+   */
+  inventoryIdSource: "line" | "order" | null;
+  /**
+   * ADR 0104 D12 slice 4 — the mapping memory's answer for an unlinked line.
+   * A PROPOSAL, not a link: nothing is booked or costed from it. A person ticks
+   * it, which calls the link door.
+   */
+  proposedInventoryId: string | null;
+  /** The whole sentence. Never a number (ADR 0104). */
+  proposedSentence: string | null;
+  /**
+   * The memory could not be READ. Distinct from "the memory has nothing to
+   * propose", which is `proposedInventoryId: null` with this false. Both render
+   * as a line with no tick and only one of them is true.
+   */
+  proposalUnavailable: boolean;
+  /** Why, in words, when `proposalUnavailable`. */
+  proposalUnavailableReason: string | null;
 }
 
 export interface Resolved {

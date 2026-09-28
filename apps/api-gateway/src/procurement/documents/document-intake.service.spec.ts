@@ -3,6 +3,7 @@ import { DocumentIntakeService } from "./document-intake.service";
 import { DatabaseService } from "../../database/database.service";
 import { DocumentExtractorService } from "./document-extractor.service";
 import { CanonicalDocumentService } from "../canonical/canonical-document.service";
+import { LineMappingService } from "../canonical/line-mapping.service";
 import { getCorrelationId } from "../../common/model-client/correlation";
 
 describe("DocumentIntakeService — original bytes persistence (decision E47)", () => {
@@ -68,6 +69,7 @@ describe("DocumentIntakeService — original bytes persistence (decision E47)", 
         // the real service over the same mocked client — nothing on the path
         // under test reaches it, and a stub would have to pretend otherwise.
         CanonicalDocumentService,
+        LineMappingService,
       ],
     }).compile();
 

@@ -40,6 +40,7 @@ import { isIso4217, notACurrencyBecause } from "../../common/iso-4217";
 import { documentMoneyState } from "./invoice-currency";
 import { DeliveryService } from "../canonical/delivery.service";
 import { DeliveryStockService } from "../canonical/delivery-stock.service";
+import { LineMappingService } from "../canonical/line-mapping.service";
 import { DoorCountDto } from "../dto/deliveries.dto";
 import { SealChallengeService } from "../../common/seal/seal-challenge.service";
 import {
@@ -90,6 +91,32 @@ type AuthedUser = {
   email?: string;
 };
 
+/** The house shape (`procurement.service.ts`, `vendor-intel.controller.ts`). */
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * A path param that is not a uuid is the CALLER'S mistake, and it is caught
+ * here rather than by Postgres.
+ *
+ * Every `:id` and `:lineId` on this controller lands in a `uuid` column. Passed
+ * a malformed one, PostgREST answers `22P02 invalid input syntax for type uuid`,
+ * the route's catch-all turns that into a 500, and the caller is told the server
+ * broke when nothing did. Measured on the slice 4 live re-drive against
+ * `…/lines/:lineId/link-item`, and its `link`, `PATCH lines/:lineId` and
+ * `line-mappings` siblings all carried the same hole.
+ *
+ * This runs BEFORE the handler's `try`, so the 400 cannot be re-wrapped as a
+ * 500 by the catch that exists for real failures.
+ */
+function requireUuid(value: string, label: string): void {
+  if (typeof value === "string" && UUID_RE.test(value)) return;
+  throw new HttpException(
+    `The ${label} in this address is not an id we can read: "${value}".`,
+    HttpStatus.BAD_REQUEST,
+  );
+}
+
 /**
  * Vendor documents — upload, review, and the four-way match's evidence base.
  *
@@ -128,6 +155,7 @@ export class DocumentsController {
     private readonly organizations: OrganizationsService,
     private readonly deliveries: DeliveryService,
     private readonly deliveryStock: DeliveryStockService,
+    private readonly mapping: LineMappingService,
     // THE SEAL ON THE THREE WRITE ACTS (founder, 2026-09-06, batch 64:
     // "Decide as a module: seal all three"). `SealModule` is already a
     // `ProcurementModule` import for the order seal, so this adds no edge to
@@ -1108,6 +1136,66 @@ export class DocumentsController {
     }
   }
 
+  @Post(":id/lines/:lineId/link-item")
+  @ApiOperation({
+    summary: "Link this line to a shelf, and remember the pairing for this vendor",
+    description:
+      "ADR 0104 D12 slice 4. A person names the restaurant item this line is about; the line carries it from then on (`procurement_document_lines.inventory_id`), which is what lets a VERIFIED delivery finalise the cost for that item (ADR 0103 A1/A12). " +
+      "The act is also APPENDED to the mapping memory, so the next document from the same vendor carries the shelf as a PROPOSAL — a tick a person gives, never a booking and never a number. " +
+      "`source` says whether the person accepted what the memory proposed (`remembered`) or chose the shelf themselves (`chosen`). " +
+      "Pass `inventoryId: null` for \"not this one\": the line is cleared AND the memory FORGETS the pairing — it is not averaged away, it is gone, because a majority of wrong ticks is still the wrong shelf. " +
+      "Nothing here books stock or writes a cost.",
+  })
+  async linkLineToItem(
+    @Param("id") documentId: string,
+    @Param("lineId") lineId: string,
+    @Body() body: { inventoryId?: string | null; source?: "chosen" | "remembered" },
+    @CurrentUser() user: AuthedUser,
+  ) {
+    requireUuid(documentId, "document id");
+    requireUuid(lineId, "line id");
+    try {
+      return await this.mapping.linkLineToItem({
+        documentId,
+        lineId,
+        restaurantId: user.restaurantId,
+        userId: user.userId,
+        inventoryId: body?.inventoryId ?? null,
+        // Default `chosen`: claiming a person merely confirmed what we proposed,
+        // when we do not know that, would overstate the memory's own record.
+        source: body?.source === "remembered" ? "remembered" : "chosen",
+      });
+    } catch (error) {
+      const msg: string = error?.message ?? "Failed to link the line to an item";
+      if (msg === "NOT_FOUND")
+        throw new HttpException(
+          "Document or line not found",
+          HttpStatus.NOT_FOUND,
+        );
+      if (msg === "ITEM_NOT_FOUND")
+        throw new HttpException(
+          "That item does not belong to this restaurant, so the line was not linked.",
+          HttpStatus.NOT_FOUND,
+        );
+      throw new HttpException(msg, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
+  @Get(":id/line-mappings")
+  @ApiOperation({
+    summary: "Who linked which line to which shelf on this document, and when",
+    description:
+      "The append-only log behind the mapping memory (ADR 0104 D5/D12). Newest first. An `unlinked` row is a person saying \"not this one\" — a real act, kept, not a gap.",
+  })
+  async lineMappings(@Param("id") id: string, @CurrentUser() user: AuthedUser) {
+    requireUuid(id, "document id");
+    const log = await this.mapping.logFor(id, user.restaurantId);
+    // A failed read is not an empty log (ADR 0067).
+    if (!log.ok)
+      throw new HttpException(log.error, HttpStatus.INTERNAL_SERVER_ERROR);
+    return { entries: log.value };
+  }
+
   @Post(":id/lines/:lineId/link")
   @ApiOperation({
     summary: "Confirm a suggested line pairing",
@@ -1122,6 +1210,8 @@ export class DocumentsController {
     @Body() body: { orderLineId?: string | null },
     @CurrentUser() user: AuthedUser,
   ) {
+    requireUuid(documentId, "document id");
+    requireUuid(lineId, "line id");
     try {
       return await this.intake.confirmLineMatch(
         documentId,
@@ -1203,6 +1293,8 @@ export class DocumentsController {
     // only by the act the token was minted for, which the seal service compares.
     @Headers("x-seal-challenge") challenge?: string,
   ) {
+    requireUuid(documentId, "document id");
+    requireUuid(lineId, "line id");
     // BEFORE the write, and outside the try/catch below: a refused seal is a
     // 403 with a whole sentence, and this method's catch turns unknown messages
     // into 500s. It is deliberately NOT wrapped.

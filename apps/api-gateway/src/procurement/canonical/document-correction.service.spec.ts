@@ -1,6 +1,7 @@
 import { Test, TestingModule } from "@nestjs/testing";
 import { DatabaseService } from "../../database/database.service";
 import { CanonicalDocumentService } from "./canonical-document.service";
+import { LineMappingService } from "./line-mapping.service";
 import { DocumentCorrectionService } from "./document-correction.service";
 
 /**
@@ -216,6 +217,7 @@ describe("DocumentCorrectionService", () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         CanonicalDocumentService,
+        LineMappingService,
         DocumentCorrectionService,
         { provide: DatabaseService, useValue: { getClient: () => client } },
       ],

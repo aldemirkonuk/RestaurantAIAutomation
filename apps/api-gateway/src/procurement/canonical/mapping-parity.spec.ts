@@ -1,6 +1,7 @@
 import { Test, TestingModule } from "@nestjs/testing";
 import { DatabaseService } from "../../database/database.service";
 import { CanonicalDocumentService } from "./canonical-document.service";
+import { LineMappingService } from "./line-mapping.service";
 import { canonicalForRow, runCorpus } from "./cli";
 
 /**
@@ -136,6 +137,7 @@ async function throughTheRoute() {
   const module: TestingModule = await Test.createTestingModule({
     providers: [
       CanonicalDocumentService,
+      LineMappingService,
       {
         provide: DatabaseService,
         useValue: {

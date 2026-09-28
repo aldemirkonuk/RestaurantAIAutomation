@@ -36,8 +36,23 @@ filed and read.
 - Deep-linkable tab (`?tab=credits` — where `/credits` redirects, `App.tsx:314`)
 - The report archive: open a report, copy a share deep link, delete; `?doc=` share links
 - Conversation history tab (the same component as `/communications`)
-- Line-match **suggestions** — the endpoint exists, the legacy page has no UI for it;
-  deferred by design (`v3.0-TECH-DEBT.md:447`)
+- Line-match **suggestions** (document line ↔ ORDER line) — the endpoint exists, the
+  legacy page has no UI for it; deferred by design (`v3.0-TECH-DEBT.md:447`)
+- **The line-to-item mapping memory** (ADR 0104 D12 slice 4, 2026-09-11): on the
+  canonical page a line that names no shelf carries the shelf a person linked for
+  the SAME vendor before, as a one-tap tick with a sentence — *"Remembered from N
+  earlier documents from this vendor, last confirmed by <name> on <date>."* Never a
+  percentage and never a score: ADR 0104 forbids a confidence reaching a person.
+  Ticking it calls `POST …/:id/lines/:lineId/link-item`, which writes
+  `procurement_document_lines.inventory_id` — the fact a VERIFIED delivery needs to
+  finalise that item's cost (ADR 0103 A1/A12). **The proposal itself books nothing
+  and costs nothing.** "Not this one" un-links the line and makes the memory FORGET
+  the pairing rather than out-vote it. `GET …/:id/line-mappings` is the append-only
+  who-linked-what log. A memory that could not be READ says **"Memory unavailable"**,
+  never "nothing remembered" — the two draw identically otherwise and only one is true.
+  Keyed per `(restaurant, provider)` on the vendor SKU **folded with the vintage**, else
+  on the normalised description with format and vintage, so a SKU re-used for a new
+  vintage proposes nothing at all rather than last year's shelf.
 - Sending a credit claim — **dark**: the `→ requested` transition stamps
   `requested_at`/`requested_by` and returns. No email, no notification, no queue
   (`credits.controller.ts:218-221`)

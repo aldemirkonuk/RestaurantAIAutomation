@@ -12,6 +12,11 @@ import {
 } from "./canonical-types";
 import { runInvariants } from "./canonical-invariants";
 import {
+  compositeKey,
+  LineMappingService,
+  mappingKeyFor,
+} from "./line-mapping.service";
+import {
   CORRECTABLE_PATHS,
   replayOnParsed,
   splitPath,
@@ -158,6 +163,10 @@ interface LineRow {
   order_line_id: string | null;
   match_method: string | null;
   match_confidence: number | string | null;
+  /** Present only on the full read; absent on the schema-lag fallback. */
+  id?: string | null;
+  /** ADR 0103 A12 — the shelf a person linked. Migration 20260906233000. */
+  inventory_id?: string | null;
   /** BT-149 / BT-150 and the kept literals — migration 20260904120000. */
   price_base_qty?: number | string | null;
   price_base_uom?: string | null;
@@ -207,7 +216,12 @@ const LINE_COLUMNS =
   "line_no, vendor_sku, description, vintage, format_ml, qty, uom, pack_size, " +
   "qty_bottles, free_goods_qty, unit_price, line_total, allowance, deposit, " +
   "order_line_id, match_method, match_confidence, price_base_qty, " +
-  "price_base_uom, printed";
+  // `id` so the page can call the shelf-link door for a line; `inventory_id`
+  // (migration 20260906233000) so a line a person ALREADY linked reads back as
+  // linked. Both are spelled into THIS literal and not the BASE one: a database
+  // lagging on 20260904120000 lags on 20260906233000 too, and the fallback read
+  // must not name a column it does not have.
+  "price_base_uom, printed, id, inventory_id";
 
 /** The sentence a schema-lagged read carries out to the screen. */
 const SCHEMA_LAG_NOTE =
@@ -220,7 +234,10 @@ const SCHEMA_LAG_NOTE =
 export class CanonicalDocumentService {
   private readonly logger = new Logger(CanonicalDocumentService.name);
 
-  constructor(private readonly db: DatabaseService) {}
+  constructor(
+    private readonly db: DatabaseService,
+    private readonly mapping: LineMappingService,
+  ) {}
 
   /**
    * Build the canonical object for one stored document.
@@ -324,7 +341,11 @@ export class CanonicalDocumentService {
         );
     }
 
-    const resolved = await this.resolveLines(restaurantId, lineRows);
+    const resolved = await this.resolveLines(
+      restaurantId,
+      lineRows,
+      row.provider_id,
+    );
     if (!resolved.ok) return resolved;
     // Layer 2 is read from the LINE ROWS, which a correction does not touch, so
     // the two fields a correction can move there are re-derived from the
@@ -667,6 +688,7 @@ export class CanonicalDocumentService {
   private async resolveLines(
     restaurantId: string,
     lineRows: LineRow[],
+    providerId: string | null = null,
   ): Promise<ReadResult<ResolvedLine[]>> {
     const orderLineIds = Array.from(
       new Set(
@@ -708,6 +730,23 @@ export class CanonicalDocumentService {
       }
     }
 
+    /**
+     * ADR 0104 D12 slice 4 — what the memory says for the lines that still name
+     * no shelf. ONE read for the document. A failure here is carried onto every
+     * unlinked line as `proposalUnavailable`, never as "no proposal", which is
+     * the same picture with the opposite meaning.
+     */
+    const proposals = await this.mapping.proposalsFor({
+      restaurantId,
+      providerId,
+      lines: lineRows.map((l) => ({
+        vendorSku: l.vendor_sku,
+        description: l.description,
+        vintage: l.vintage,
+        formatMl: l.format_ml,
+      })),
+    });
+
     return {
       ok: true,
       value: lineRows.map((l, i): ResolvedLine => {
@@ -715,9 +754,40 @@ export class CanonicalDocumentService {
           ? (byOrderLine.get(l.order_line_id) ?? null)
           : null;
         const canonicalUom: Uom | null = normalizeUom(l.uom);
+
+        // The line's OWN shelf wins over the one inherited from an order line:
+        // it is the one a person put there, and it is the one the booking path
+        // reads (delivery-stock.service.ts). Before slice 4 this column was
+        // written by the door and never read back onto the page, so a line a
+        // person HAD linked still rendered as unlinked.
+        const ownItem = l.inventory_id ?? null;
+        const inventoryId = ownItem ?? linked?.inventory_id ?? null;
+        const inventoryIdSource: "line" | "order" | null = ownItem
+          ? "line"
+          : linked?.inventory_id
+            ? "order"
+            : null;
+
+        const key = mappingKeyFor({
+          vendorSku: l.vendor_sku,
+          description: l.description,
+          vintage: l.vintage,
+          formatMl: l.format_ml,
+        });
+        const remembered =
+          !inventoryId && proposals.ok && key
+            ? (proposals.value.get(compositeKey(key)) ?? null)
+            : null;
+
         return {
           lineIndex: i,
-          inventoryId: linked?.inventory_id ?? null,
+          lineId: l.id ?? null,
+          inventoryId,
+          inventoryIdSource,
+          proposedInventoryId: remembered?.inventoryId ?? null,
+          proposedSentence: remembered?.sentence ?? null,
+          proposalUnavailable: !inventoryId && !proposals.ok,
+          proposalUnavailableReason: proposals.ok ? null : proposals.error,
           masterWineId: linked?.master_wine_id ?? null,
           canonicalUom,
           packSize: l.pack_size ?? null,
