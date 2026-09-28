@@ -324,8 +324,51 @@ AMBIGUOUS_FAILURES = [
         {
             "success": False,
             "error": "gateway refused the send: HTTP 401 — Unauthorized",
+            "gateway_status": 401,
         },
         id="relay-401-service-key-problem-is-ambiguous",
+    ),
+    # 2026-09-28, the Python twin of PR #405's double-send vector. A relay 200
+    # `success:false` carries the PROVIDER's words; the gateway's typed
+    # classifier found no refusal (no `refusal_kind`), so the vendor may hold
+    # the message. Each of these was RELEASED for retry on c8bbf95de because
+    # its words matched a phrase — the retry is the second purchase order.
+    pytest.param(
+        {
+            "success": False,
+            "error": (
+                "gateway refused the send: HTTP 200 — Email delivery failed: "
+                "Message failed: 450 4.2.1 Mailbox unavailable"
+            ),
+            "gateway_status": 200,
+        },
+        id="relay-200-smtp-450-mailbox-unavailable-is-transient",
+    ),
+    pytest.param(
+        {
+            "success": False,
+            "error": (
+                "gateway refused the send: HTTP 200 — connect ETIMEDOUT " "10.5.1.2:443"
+            ),
+            "gateway_status": 200,
+        },
+        id="relay-200-timeout-whose-address-looks-like-an-smtp-code",
+    ),
+    pytest.param(
+        {
+            "success": False,
+            "error": (
+                "gateway refused the send: HTTP 200 — socket hang up after "
+                'RCPT TO "Suite 550 - Orders, user unknown" <v@example.com>'
+            ),
+            "gateway_status": 200,
+        },
+        id="relay-200-hang-up-quoting-planted-words",
+    ),
+    # Words alone, with no typed field at all, prove nothing either.
+    pytest.param(
+        {"success": False, "error": "550 5.1.1 User unknown"},
+        id="untyped-words-are-never-read",
     ),
 ]
 
@@ -379,21 +422,55 @@ class TestAmbiguousSendIsParkedNotRetried:
 
 class TestDefiniteRefusalIsReleased:
     @pytest.mark.parametrize(
-        "error",
+        "failure",
         [
-            "550 5.1.1 User unknown",
-            "Recipient address rejected: does not exist",
-            "No email delivery method available",
-            "invalid_grant: token expired",
+            # The gateway's typed refusal on a relay 200 (2026-09-28):
+            # `classifySendFailure` proved it from the error's fields.
+            pytest.param(
+                {
+                    "error": "gateway refused the send: HTTP 200 — Message failed: 550 5.1.1 User unknown",
+                    "gateway_status": 200,
+                    "refusal_kind": "rejected",
+                },
+                id="relay-200-typed-rejected",
+            ),
+            pytest.param(
+                {
+                    "error": "gateway refused the send: HTTP 200 — No email delivery method available",
+                    "gateway_status": 200,
+                    "refusal_kind": "no-transport",
+                },
+                id="relay-200-typed-no-transport",
+            ),
+            # OD-175 (open): released, as before — not decided here.
+            pytest.param(
+                {
+                    "error": "gateway refused the send: HTTP 200 — invalid_grant: token expired",
+                    "gateway_status": 200,
+                    "refusal_kind": "credentials",
+                },
+                id="relay-200-typed-credentials",
+            ),
+            # Refused in this process, before any transport.
+            pytest.param(
+                {"error": "no_email", "refused_before_send": True},
+                id="no-vendor-address",
+            ),
+            pytest.param(
+                {
+                    "error": "no email delivery method available: ADMIN_API_KEY is not configured for the orchestrator",
+                    "refused_before_send": True,
+                },
+                id="no-service-key",
+            ),
         ],
     )
-    async def test_definite_refusal_releases_the_claim_and_raises(self, error):
+    async def test_definite_refusal_releases_the_claim_and_raises(self, failure):
         """Proven undelivered: safe to hand back, and a retry is the right
-        outcome. NONE of these carry the relay's own 'gateway refused the
-        send: HTTP ...' sentence, so `_relay_final_refusal_code` must leave
-        them alone (see TestRelayFinalRefusalCloses below for the three that
-        do)."""
-        agent = _conversation_agent({"success": False, "error": error})
+        outcome. None is a relay 400/403/422, so `_relay_final_refusal_code`
+        leaves them alone (see TestRelayFinalRefusalCloses below for the
+        three that are)."""
+        agent = _conversation_agent({"success": False, **failure})
 
         with pytest.raises(RuntimeError):
             await ProviderConversationAgent._handle_conversation_approved(
@@ -406,20 +483,31 @@ class TestDefiniteRefusalIsReleased:
 
     async def test_classifier_defaults_to_ambiguous(self):
         """The asymmetry that drives the whole design."""
-        assert ProviderConversationAgent._is_definite_send_refusal("") is False
-        assert ProviderConversationAgent._is_definite_send_refusal(None) is False
+        classify = ProviderConversationAgent._is_definite_send_refusal
+        assert classify("") is False
+        assert classify(None) is False
+        assert classify({}) is False
+        assert classify("something weird") is False
         assert (
-            ProviderConversationAgent._is_definite_send_refusal("something weird")
-            is False
-        )
-        assert (
-            ProviderConversationAgent._is_definite_send_refusal("451 try later")
-            is False
+            classify("451 try later") is False
         ), "an SMTP 4xx is transient and may still have been relayed"
-        assert (
-            ProviderConversationAgent._is_definite_send_refusal("550 user unknown")
-            is True
-        )
+        # 2026-09-28: TEXT IS NEVER READ. This was True on c8bbf95de; the
+        # words are someone else's, and only a typed field proves a refusal.
+        assert classify("550 user unknown") is False
+        assert classify(asyncio.TimeoutError()) is False
+        assert classify({"error": "550 user unknown", "gateway_status": 200}) is False
+        # A typed kind the gateway does not define proves nothing.
+        assert classify({"gateway_status": 200, "refusal_kind": "maybe"}) is False
+        # `True` is an int in Python; it is not an HTTP status.
+        assert classify({"gateway_status": True}) is False
+        assert classify({"gateway_status": 200, "refusal_kind": "rejected"}) is True
+        assert classify({"refused_before_send": True}) is True
+
+
+def _status_of(error: str) -> int:
+    """The status these fixtures' sentences name — the typed field
+    `send_via_gateway` sets beside them (2026-09-28)."""
+    return int(error.split("HTTP ", 1)[1][:3])
 
 
 class TestRelayFinalRefusalCloses:
@@ -427,7 +515,7 @@ class TestRelayFinalRefusalCloses:
     'Close, no retry'" — narrowing the 2026-09-19 answer
     (TestDefiniteRefusalIsReleased's own header once said these three codes
     too, before this correction). These three still satisfy
-    `_is_definite_send_refusal` (unchanged, see the classifier tests above) —
+    `_is_definite_send_refusal` (read from `gateway_status` since 2026-09-28) —
     what changed is that `_handle_conversation_approved` now checks
     `_relay_final_refusal_code` FIRST and, for exactly these codes, CLOSES
     the row instead of releasing its claim, and does not raise."""
@@ -464,7 +552,9 @@ class TestRelayFinalRefusalCloses:
     async def test_relay_final_refusal_closes_and_does_not_raise(self, error):
         """CLOSED, not released: a retry would refuse the same request again,
         identically, so nothing must raise to trigger one."""
-        agent = _conversation_agent({"success": False, "error": error})
+        agent = _conversation_agent(
+            {"success": False, "error": error, "gateway_status": _status_of(error)}
+        )
 
         # No raise — this is the whole point of "no retry".
         await ProviderConversationAgent._handle_conversation_approved(
@@ -479,7 +569,9 @@ class TestRelayFinalRefusalCloses:
         """A closed row must never become re-sendable — the same replay trap
         `TestAmbiguousSendIsParkedNotRetried` guards for the parked case."""
         error = "gateway refused the send: HTTP 403 — refused. Nothing was sent."
-        agent = _conversation_agent({"success": False, "error": error})
+        agent = _conversation_agent(
+            {"success": False, "error": error, "gateway_status": 403}
+        )
 
         await ProviderConversationAgent._handle_conversation_approved(
             agent, {"conversation_id": CONV_ID}

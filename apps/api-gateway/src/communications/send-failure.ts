@@ -292,3 +292,30 @@ export class RelaySendingMailboxUnavailableError extends Error {
     this.reasons = [...reasons];
   }
 }
+
+/**
+ * Carries the TYPED refusal of every other relay transport failure — the ones
+ * that still answer 200 `success:false` (Gmail 400, the SMTP fallback's
+ * EENVELOPE / 5xx, `"credentials"`, `"no-transport"`, and the ambiguous ones
+ * with no refusal at all) — across the throw/catch boundary inside
+ * `RelayEmailService.dispatch()`, so the 200 body can say which kind it was.
+ *
+ * Why (2026-09-28, the Python twin of PR #405's double-send vector): the
+ * orchestrator classified that 200 by running `re.search` over the
+ * provider's own sentence, so an SMTP 450 "Mailbox unavailable" — a failure
+ * `classifySendFailure` above calls ambiguous, because a 4xx may still have
+ * been queued — matched the orchestrator's "mailbox unavailable" pattern, was
+ * released for retry, and the retry could send the vendor a second copy. The
+ * 200 now carries `refusal: { kind }` exactly as `classifySendFailure`
+ * decided it, and the orchestrator reads that field, never the words.
+ * `refusal` is absent when the failure is ambiguous. No HTTP status changes:
+ * what closes or parks is still decided by the two classes above.
+ */
+export class RelayProviderFailedError extends Error {
+  readonly refusal?: SendRefusal;
+  constructor(message: string, refusal?: SendRefusal) {
+    super(message);
+    this.name = "RelayProviderFailedError";
+    if (refusal) this.refusal = { kind: refusal.kind };
+  }
+}
