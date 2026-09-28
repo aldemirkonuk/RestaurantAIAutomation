@@ -82,6 +82,7 @@ vi.mock('../../../services/api/team', () => ({
   getCertifications: () => Promise.resolve(api.certs),
   getCoverageTemplates: () => Promise.resolve(api.templates),
   createCoverageTemplate: vi.fn(() => Promise.resolve({})),
+  deleteCoverageTemplate: vi.fn(() => Promise.resolve({})),
   createShift: api.createShift,
   broadcast: vi.fn(() => Promise.resolve({})),
 }));
@@ -90,6 +91,7 @@ vi.mock('../../../services/api/team', () => ({
 // otherwise reach the network from a unit test. `readable: true` with no rows
 // is the state a fresh restaurant is actually in.
 vi.mock('../../../services/api/client', () => ({
+  getErrorMessage: (e: unknown) => (e as { message?: string })?.message ?? 'unknown error',
   apiClient: {
     get: () =>
       Promise.resolve({
@@ -309,5 +311,24 @@ describe('TeamNext rendering', () => {
       await screen.findByText(/which shifts require it is not recorded/i),
     ).toBeInTheDocument();
     expect(screen.getByText(/1 person is/)).toBeInTheDocument();
+  });
+
+  // Founder, 2026-09-26, round 8, item 51: the two legacy-only acts have a
+  // way in from the page itself, not only from the desk the cutover deletes.
+  it('opens the coverage-rule file from the Unfilled panel, with its count', async () => {
+    render(<TeamNext />, { wrapper });
+    const open = await screen.findByRole('button', { name: 'Coverage rules · 1' });
+    fireEvent.click(open);
+    expect(
+      await screen.findByRole('button', { name: 'Remove the rule line · every day evening · 1 person' }),
+    ).toBeInTheDocument();
+  });
+
+  it('opens Log sales from the header', async () => {
+    api.members = [member('m1', 'Ayşe', 'Sommelier')];
+    render(<TeamNext />, { wrapper });
+    fireEvent.click(await screen.findByRole('button', { name: 'Log sales' }));
+    expect(await screen.findByRole('button', { name: 'Save the service' })).toBeInTheDocument();
+    expect(await screen.findByRole('option', { name: /Ayşe/ })).toBeInTheDocument();
   });
 });

@@ -10,6 +10,7 @@ import {
   ChevronDown,
 } from 'lucide-react'
 import type { EventLabel } from './EventModal'
+import { useDayNotes } from '../../hooks/queries'
 
 // ─────────────────────────────── Types ───────────────────────────────────────
 
@@ -90,6 +91,11 @@ export function MeetingMemoPrompt({
   const [docType, setDocType] = useState<DocType>('meeting_memo')
   const [notes, setNotes] = useState('')
 
+  // ADR 0111 §1 — the notes this day already has, own table
+  // (calendar_day_notes), read back rather than assumed. Only fetched while
+  // the prompt is actually open, on the event's own date.
+  const { data: dayNotes, isLoading: dayNotesLoading } = useDayNotes(isOpen ? eventDate : null)
+
   function handleSave() {
     onSave({ eventTitle, eventDate, docType, notes, labels })
     onClose()
@@ -128,7 +134,7 @@ export function MeetingMemoPrompt({
                 Write a meeting note for <span className="text-wine-800">"{eventTitle}"</span>?
               </p>
               <p className="text-[12px] text-gray-500 mt-1">
-                Capture key points while they're fresh — saved under Documents → Meetings.
+                Capture key points while they're fresh — saved to this day, in the calendar.
               </p>
             </div>
             <button
@@ -162,6 +168,24 @@ export function MeetingMemoPrompt({
                     )}
                   </div>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* Notes already recorded for this day — never re-derived, never silently dropped */}
+          {isOpen && !dayNotesLoading && dayNotes && dayNotes.length > 0 && (
+            <div className="px-5 py-3 border-b border-gray-100 bg-gray-50/60">
+              <p className="text-[10px] font-bold text-gray-300 uppercase tracking-widest mb-2">
+                Already recorded for {eventDate} ({dayNotes.length})
+              </p>
+              <div className="space-y-1.5 max-h-28 overflow-y-auto">
+                {dayNotes.map(n => (
+                  <div key={n.id} className="text-[11px] text-gray-600 bg-white rounded-lg border border-gray-100 px-2.5 py-1.5">
+                    <span className="font-semibold text-gray-800">{n.authorName}</span>
+                    {' — '}
+                    <span className="line-clamp-2">{n.body}</span>
+                  </div>
+                ))}
               </div>
             </div>
           )}

@@ -26,6 +26,8 @@
  * the sentence this parser produces.
  */
 import { ApiError } from "./client";
+import type { ShelfReceived } from "./types";
+import { readShelfReceived } from "@/lib/shelfReceived";
 
 export interface EarlierDelivery {
   deliveredAt: string | null;
@@ -34,17 +36,12 @@ export interface EarlierDelivery {
   /** Why there is no name, when one was wanted — a failed lookup and an
    *  unsigned delivery are different facts and must not both read as blank. */
   receivedByNameReason: string | null;
-  quantityReceived: number | null;
   /**
-   * The unit the count is stated in, or `null` — a REFUSAL, not a default. The
-   * column has four writers: three use the order's own unit, the receiving door
-   * uses bottles, and nothing on the row says which. For a multiplying unit the
-   * gateway states none and `summary` omits the count rather than printing one
-   * that could be off by the pack size.
+   * What the earlier delivery put on the shelf — the stock ledger's count
+   * (ADR 0192). `null` when the body carried no readable block; a block with
+   * `readable: false` is a failed read, never a zero.
    */
-  unitType: string | null;
-  /** Why the unit is, or is not, stated. Always present. */
-  quantityUnitWhy: string;
+  received: ShelfReceived | null;
   bottlesTotal: number | null;
   summary: string;
 }
@@ -92,9 +89,7 @@ export function alreadyDeliveredRefusal(
             receivedBy: str(raw.receivedBy),
             receivedByName: str(raw.receivedByName),
             receivedByNameReason: str(raw.receivedByNameReason),
-            quantityReceived: num(raw.quantityReceived),
-            unitType: str(raw.unitType),
-            quantityUnitWhy: str(raw.quantityUnitWhy) ?? "",
+            received: readShelfReceived(raw.received),
             bottlesTotal: num(raw.bottlesTotal),
             summary,
           }

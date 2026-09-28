@@ -75,7 +75,12 @@ export interface InventoryItem {
   abcClass?: "A" | "B" | "C";
   deadStock?: boolean;
   daysSinceSale?: number;
-  locations?: Array<{ locationId: string; locationName?: string; qty: number; wac?: number }>;
+  locations?: Array<{
+    locationId: string;
+    locationName?: string;
+    qty: number;
+    wac?: number;
+  }>;
   [key: string]: any;
 }
 
@@ -94,6 +99,26 @@ export interface InventoryItem {
  * It declares FEWER keys than the DTO on purpose; that direction is fine, and
  * the guard only fails a key the gateway does not send.
  */
+/** The gateway's `ShelfReceivedDto` (ADR 0192). Every field is null when `readable` is false. */
+export interface ShelfReceived {
+  readable: boolean;
+  why: string | null;
+  /** The ledger's sum, in `stockUom`. Never rounded. */
+  quantityInStockUom: number | null;
+  /** The item's stock unit — `bottle` for wine. */
+  stockUom: string | null;
+  packUnit: string | null;
+  packSize: number | null;
+  packs: number | null;
+  looseInStockUom: number | null;
+  /** "5 cases + 5 bottles". */
+  words: string | null;
+  /** Refused at the door, in bottles. */
+  rejectedAtDoorBottles: number | null;
+  /** Accepted at the door and not on the shelf yet, in bottles. */
+  countedNotBookedBottles: number | null;
+}
+
 export interface ProcurementOrder {
   id: string;
   orderNumber?: string;
@@ -107,19 +132,23 @@ export interface ProcurementOrder {
    */
   providerName?: string | null;
   quantity?: number;
+  bottlesTotal?: number;
   unitType?: string;
+  priceUom?: string | null;
+  pricePackSize?: number | null;
   /**
-   * What has been booked against this order so far. A number; `null` (read,
-   * and nothing received); or the key absent.
+   * What this order RECEIVED — ADR 0192: the stock ledger's count for the
+   * order's item, in the item's stock unit (bottles for wine), never rounded,
+   * with `words` ("5 cases + 5 bottles"). The block with `readable: false` is
+   * a failed read, never a zero; the key absent means the route did not read
+   * the ledger. Read it through `lib/shelfReceived.ts`.
    *
-   * NEVER READ IT WITHOUT `quantityReceivedUom`. The column is written in the
-   * order's unit by the desk and in bottles by the receiving door, so on an
-   * order placed in cases the unit key is `null` and the number must not be
-   * used as a count pre-fill. See `quantity-received-unit.ts` on the gateway.
+   * It replaces `quantityReceived` / `quantityReceivedUom`, which carried a
+   * column with four writers in two units that the gateway no longer reads. A
+   * phone on an older build reads neither key now and falls back to the
+   * ordered bottle count with its own sentence — never to a guessed unit.
    */
-  quantityReceived?: number | null;
-  /** The unit `quantityReceived` is in, or `null` when this row cannot say. */
-  quantityReceivedUom?: string | null;
+  received?: ShelfReceived;
   quotedPrice?: number;
   negotiatedPrice?: number;
   finalPrice?: number;

@@ -113,6 +113,8 @@ const DRAFT_STATUS_LABEL: Record<string, string> = {
   // exact failure this map exists to prevent, on the one state where a human
   // most needs the truth.
   SEND_UNCONFIRMED: 'Sent, delivery unconfirmed — check the vendor thread',
+  // Refused before anything left; the draft is closed (founder answer 6).
+  SEND_REFUSED: 'Refused before sending — draft closed',
   // Never reached the vendor — the relay refused it before any transport
   // (ADR 0099, founder 2026-09-21: "Close, no retry"). Unlike every other
   // label here, the row also carries WHY (relay_refusal_reason), shown on the

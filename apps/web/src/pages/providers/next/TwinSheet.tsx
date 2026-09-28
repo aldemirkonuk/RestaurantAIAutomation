@@ -29,6 +29,7 @@ import { EM, MONO, SANS, fmtDays, fmtLastContact } from './pv-format';
 import { TermsSection } from './TermsSection';
 import { UsualCurrencySection } from './UsualCurrencySection';
 import { ContactsSection } from './ContactsSection';
+import { VendorRecordEdit, businessTypeLabel } from './VendorRecordEdit';
 import { LedgerCard } from './scorecard/LedgerCard';
 import { MailTone } from './scorecard/MailTone';
 import { useAuth } from '../../../contexts/AuthContext';
@@ -50,6 +51,11 @@ interface Props {
    * fifth section holds it is a link that only looks like it worked.
    */
   focusUsualCurrency?: boolean;
+  /**
+   * The record was edited here (founder answer 12, 2026-09-21: the rebuilt
+   * sheet gets an edit path, type first). The page refreshes its cards.
+   */
+  onProviderSaved?: (updated: Provider) => void;
 }
 
 function FactRow({ label, value }: { label: string; value: string }) {
@@ -74,7 +80,7 @@ function FactRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-export function TwinSheet({ provider, onClose, focusUsualCurrency }: Props) {
+export function TwinSheet({ provider, onClose, focusUsualCurrency, onProviderSaved }: Props) {
   const regions = provider.regionsCovered ?? provider.statesOrRegionsServed ?? [];
   // "How their mail reads" is for owners and managers only (the founder,
   // 2026-09-21: staff never see it). The gateway refuses anyone else with 403;
@@ -88,11 +94,13 @@ export function TwinSheet({ provider, onClose, focusUsualCurrency }: Props) {
       open
       onClose={onClose}
       label={`${provider.name} — details`}
-      eyebrow={provider.primaryBusinessType}
+      eyebrow={businessTypeLabel(provider.primaryBusinessType)}
       title={provider.name}
     >
       <div className="px-4 py-4" style={{ fontFamily: SANS }}>
-        {/* the vendor's own record — plain facts, EM for absences */}
+        {/* the vendor's own record — the type first, editable here */}
+        <VendorRecordEdit provider={provider} onSaved={(p) => onProviderSaved?.(p)} />
+        {/* plain facts, EM for absences */}
         <FactRow label="Contact" value={provider.email || EM} />
         <FactRow label="Phone" value={provider.phone || EM} />
         <FactRow label="Lead time" value={fmtDays(provider.leadTimeDays)} />

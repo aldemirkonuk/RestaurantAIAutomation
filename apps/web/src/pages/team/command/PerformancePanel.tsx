@@ -7,7 +7,7 @@ import { useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { BarChart3, Plus, Upload } from 'lucide-react'
-import { getMemberPerformance, ingestSales, ingestSalesBatch, type TeamMember } from '../../../services/api/team'
+import { getMemberPerformance, ingestSales, ingestSalesBatch, type SalesEntry, type TeamMember } from '../../../services/api/team'
 import { useAuth } from '../../../contexts/AuthContext'
 import { TEAM_SERVER_WINDOWS } from '../next/useTeamNextData'
 import { LE } from '../next/tm-format'
@@ -88,7 +88,7 @@ export function PerformancePanel({ member }: { member: TeamMember | null }) {
   })
 
   const batch = useMutation({
-    mutationFn: (rows: Record<string, any>[]) => ingestSalesBatch(rows),
+    mutationFn: (rows: SalesEntry[]) => ingestSalesBatch(rows),
     onSuccess: (r: any) => {
       toast.success(`Imported ${r?.inserted ?? r?.rows ?? 'batch'} sales rows`)
       qc.invalidateQueries({ queryKey: ['team', 'performance'] })
