@@ -276,6 +276,10 @@ cmd_verify() {
 
 [[ $# -ge 1 ]] || { sed -n '/^# USAGE/,/^# Run /p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 1; }
 
+case "$1" in
+  -h|--help) sed -n '/^# USAGE/,/^# Run /p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+esac
+
 SUB="$1"; shift
 POSITIONAL=()
 while [[ $# -gt 0 ]]; do
