@@ -73,7 +73,7 @@ const HOST_CONFIG: Record<InsightHost, HostConfig> = {
     title: "Vendor insights",
     categories: ["purchasing", "risk"],
     browseDims: ["vendor"],
-    actRoute: "/providers",
+    actRoute: "/vendors",
   },
 };
 
