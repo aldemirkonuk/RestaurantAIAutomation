@@ -26,6 +26,7 @@ import { AllowsNoHouse } from "../common/tenant/allows-no-house.decorator";
 import { AllowUnverified } from "./decorators/allow-unverified.decorator";
 import { CheckEmailDto } from "./dto/check-email.dto";
 import { VerifyEmailDto } from "./dto/verify-email.dto";
+import { AcceptHeldMembershipDto } from "./dto/accept-held-membership.dto";
 import { RegisterRestaurantDto } from "./dto/register-restaurant.dto";
 import {
   RegisterAccountDto,
@@ -163,7 +164,11 @@ export class AuthController {
   ) {
     return {
       success: true,
-      ...(await this.authService.createFirstHouse(req.user.userId, dto)),
+      ...(await this.authService.createFirstHouse(
+        req.user.userId,
+        dto,
+        req.user.authTime ?? null,
+      )),
     };
   }
 
@@ -326,6 +331,9 @@ export class AuthController {
       {
         restaurantId: req.user.restaurantId ?? null,
         devBypass: req.user.devBypass === true && devBypassEnvEnabled(),
+        // ADR 0229: the kept session carries its auth_time unchanged, as a
+        // refresh and a house switch do; a password change is not a sign-in.
+        authTime: req.user.authTime ?? null,
       },
     );
     return { success: true, message: "Password updated", ...tokens };
@@ -552,15 +560,33 @@ export class AuthController {
 
   /**
    * Verify email with the token from the verification email.
+   *
+   * Signed-in only (ADR 0229 fork 12; the founder, 2026-09-28, item 81, "Link
+   * needs sign-in (Recommended)"): the link verifies only for a session of
+   * the account it was sent for, so it takes the password AND the mailbox. It
+   * was `@Public` (ADR 0096: "the one-time token in the body is the
+   * credential") until then; the token alone proved the mailbox and verified
+   * whatever password sat on the account, a stranger's included. Someone
+   * signed out is answered 401 here and the page sends them to sign in, or to
+   * the emailed code. Unverified sessions reach it (it is how they verify),
+   * and so do sessions in no house.
    */
-  // Public by DECISION, not by omission (ADR 0096): reached from a link in an email, often before a session exists; the one-time token in the body is the credential.
-  @Public()
   @Post("verify-email")
+  @UseGuards(JwtAuthGuard)
+  @AllowUnverified() // the escape hatch itself: verifying needs no verification
+  @AllowsNoHouse()
   // A class DTO, not an inline `{ token: string }`: an inline type erases to
   // `Object` and the global ValidationPipe skips it, so a malformed token
   // reached `.eq("token", ...)` on a uuid column unvalidated.
-  async verifyEmail(@Body() dto: VerifyEmailDto) {
-    const tokens = await this.authService.verifyEmail(dto.token);
+  async verifyEmail(
+    @Req() req: Request & { user: any },
+    @Body() dto: VerifyEmailDto,
+  ) {
+    const tokens = await this.authService.verifyEmail(
+      dto.token,
+      req.user?.userId ?? null,
+      req.user?.restaurantId ?? null,
+    );
     return { success: true, ...tokens, message: "Email verified" };
   }
 
@@ -575,6 +601,8 @@ export class AuthController {
     const result = await this.authService.resendVerification(
       req.user.userId,
       req.user.email,
+      // Exempt from the fork 8 lapse exactly where a refresh is (fork 10).
+      req.user.devBypass === true && devBypassEnvEnabled(),
     );
     return { success: true, ...result };
   }
@@ -596,6 +624,7 @@ export class AuthController {
       req.user.userId,
       body.restaurantId,
       req.user.devBypass === true,
+      req.user.authTime ?? null,
     );
     return { success: true, ...tokens };
   }
@@ -616,12 +645,39 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @AllowsNoHouse()
   async houses(@Req() req: Request & { user: any }) {
-    const houses = await this.authService.memberHouses(req.user.userId);
+    // `held`: memberships waiting for this person to accept (ADR 0229 fork 13).
+    const [houses, held] = await Promise.all([
+      this.authService.memberHouses(req.user.userId),
+      this.authService.heldMemberships(req.user.userId),
+    ]);
     const accessEnded =
       houses.length === 0
         ? await this.authService.hasEndedMembership(req.user.userId)
         : null;
-    return { success: true, houses, accessEnded };
+    return { success: true, houses, held, accessEnded };
+  }
+
+  /**
+   * Accept a membership an invite join granted before the address was
+   * proved (ADR 0229 fork 13; the founder, 2026-09-28, item 82, "Hold until
+   * accepted (Recommended)"). Verified sessions only (the default): holding
+   * the proof is what makes the acceptance the proven person's. The body names
+   * the held membership, not a house, so the tenant check has nothing to
+   * compare and this is not a second tenant-change route (ADR 0019); the
+   * service accepts only a held row that is this person's.
+   */
+  @Post("held-memberships/accept")
+  @UseGuards(JwtAuthGuard)
+  @AllowsNoHouse()
+  async acceptHeldMembership(
+    @Req() req: Request & { user: any },
+    @Body() dto: AcceptHeldMembershipDto,
+  ) {
+    const result = await this.authService.acceptHeldMembership(
+      req.user.userId,
+      dto.membershipId,
+    );
+    return { success: true, ...result };
   }
 
   /**

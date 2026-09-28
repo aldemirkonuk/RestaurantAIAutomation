@@ -20,7 +20,9 @@ describe("arrival registration contract", () => {
       restaurantName: "must not be accepted",
     });
     expect(await validate(dto, { whitelist: true })).toHaveLength(0);
-    expect((dto as RegisterAccountDto & { restaurantName?: string }).restaurantName).toBeUndefined();
+    expect(
+      (dto as RegisterAccountDto & { restaurantName?: string }).restaurantName,
+    ).toBeUndefined();
   });
 
   it("requires the first house address and accepts inferred money and zone", async () => {
@@ -39,7 +41,9 @@ describe("arrival registration contract", () => {
       city: "Istanbul",
       country: "Türkiye",
     });
-    expect((await validate(missingAddress)).some((e) => e.property === "address")).toBe(true);
+    expect(
+      (await validate(missingAddress)).some((e) => e.property === "address"),
+    ).toBe(true);
   });
 
   it("uses a validated token DTO for Google registration", async () => {
@@ -65,7 +69,12 @@ describe("arrival registration contract", () => {
       city: "Istanbul",
       country: "Türkiye",
     });
-    await controller.createFirstHouse({ user: { userId: "person" } } as any, dto);
-    expect(auth.createFirstHouse).toHaveBeenCalledWith("person", dto);
+    await controller.createFirstHouse(
+      { user: { userId: "person" } } as any,
+      dto,
+    );
+    // The third argument carries the session's auth_time (ADR 0229); a
+    // request with none carries null, never "now".
+    expect(auth.createFirstHouse).toHaveBeenCalledWith("person", dto, null);
   });
 });

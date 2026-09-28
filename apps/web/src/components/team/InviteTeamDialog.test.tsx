@@ -99,6 +99,31 @@ describe('with a Mudavym page on screen', () => {
     expect(onClose).toHaveBeenCalled()
   })
 
+  it('says the invite was emailed, on both branches (ADR 0229 fork 9, item 77)', async () => {
+    vi.mocked(apiClient.post).mockResolvedValue({
+      data: { ...INVITE, invitationEmail: 'sent' },
+    } as never)
+    draw(true, { anchored: true })
+    fireEvent.change(screen.getByLabelText('Email address (optional)'), {
+      target: { value: 'ana@example.com' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Generate Invite Link' }))
+    await waitFor(() =>
+      expect(screen.getByText(/We emailed this invite to ana@example\.com\./)).toBeInTheDocument(),
+    )
+    expect(vi.mocked(apiClient.post).mock.calls[0][1]).toMatchObject({
+      targetEmail: 'ana@example.com',
+    })
+
+    resetMudavymShell()
+    vi.mocked(apiClient.post).mockResolvedValue({
+      data: { ...INVITE, invitationEmail: 'rate_limited' },
+    } as never)
+    draw(false)
+    fireEvent.click(screen.getAllByRole('button', { name: 'Generate Invite Link' })[0])
+    await waitFor(() => expect(screen.getByText(/^Not emailed:/)).toBeInTheDocument())
+  })
+
   it('states the expiry in words once a link is generated, on both branches', async () => {
     // The code and the URL are useless without the date the recipient is racing;
     // "single-use, 7 days" before, an actual day after.

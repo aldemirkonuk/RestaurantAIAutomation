@@ -526,6 +526,14 @@ PACKAGES: dict[str, tuple[str, str]] = {
             "py:weasyprint",
         )
     },
+    "js:@simplewebauthn/server": (
+        LOCAL,
+        "verifies passkey ceremonies in process (ADR 0222/0229, PR #479); its only "
+        "network use is fetching a certificate revocation list from a URL named "
+        "inside an attestation certificate an authenticator presents at "
+        "enrolment -- a bare GET that carries no house data (v3.0-TECH-DEBT, "
+        "2026-09-27: that fetch's target is chosen by the certificate)",
+    ),
     "py:prometheus_client": (
         LOCAL,
         "exposes a metrics endpoint to be scraped; sends nothing",
