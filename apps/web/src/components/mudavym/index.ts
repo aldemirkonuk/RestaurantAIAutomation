@@ -48,3 +48,14 @@ export {
   type PopoverProps,
   type OverlayShape,
 } from './Sheet';
+export { Stub, type StubProps } from './Stub';
+export { Denied, Refused, type DeniedProps, type RefusedProps } from './Denied';
+export {
+  SheetStackProvider,
+  useSheetStack,
+  SHEET_STACK_CAP,
+  SHEET_STACK_REFUSAL,
+  type SheetStackApi,
+  type SheetStackEntry,
+  type SheetStackProviderProps,
+} from './SheetStack';

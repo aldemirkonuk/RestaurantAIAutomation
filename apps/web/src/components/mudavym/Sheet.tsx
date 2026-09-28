@@ -62,6 +62,8 @@ import {
   type MudavymGround,
 } from '../../lib/mudavym/shellGround';
 import { ink, settle, tuck, useReducedMotion, animate, type MotionToken } from '../../lib/mudavym/motion';
+import { useSheetStack } from './SheetStack';
+import { Denied, type DeniedProps } from './Denied';
 import './sheet.css';
 
 /* ── Fraunces ─────────────────────────────────────────────────────────────
@@ -113,6 +115,64 @@ function lockBodyScroll(): () => void {
   };
 }
 
+/* ── the page gives up width, not light ───────────────────────────────────
+   Sketch 103 · 1a, "The Pass": on a floor at service the operator is not
+   reading, they are watching, and a scrim takes the whole page away to show one
+   record. So a Sheet paints no scrim by default and instead tells the page it
+   is there: `data-sheet-open` and `--sheet-width` land on every `.mudavym` page
+   root (never on the overlay's own root) for the page's own CSS to answer with
+   a compressed list.
+
+   Counted, like the scroll lock, and last-opened wins the width — two sheets
+   are the spindle (1c), and the page compresses to whichever one is on top. */
+type SheetLayout = 'overlay' | 'compress';
+interface OpenSheet {
+  id: symbol;
+  layout: SheetLayout;
+  width: number;
+}
+const openSheets: OpenSheet[] = [];
+
+function pageRoots(): HTMLElement[] {
+  if (typeof document === 'undefined') return [];
+  return Array.from(document.querySelectorAll<HTMLElement>('.mudavym')).filter(
+    (el) => !el.classList.contains('mdv-ovl') && !el.closest('.mdv-ovl'),
+  );
+}
+
+function paintSheetWidth(): void {
+  const top = openSheets[openSheets.length - 1];
+  for (const root of pageRoots()) {
+    if (!top) {
+      root.removeAttribute('data-sheet-open');
+      root.style.removeProperty('--sheet-width');
+      continue;
+    }
+    root.setAttribute('data-sheet-open', top.layout);
+    root.style.setProperty('--sheet-width', `${top.width}px`);
+  }
+}
+
+function markSheetOpen(layout: SheetLayout, width: number): () => void {
+  const entry: OpenSheet = { id: Symbol('mdv-sheet'), layout, width };
+  openSheets.push(entry);
+  paintSheetWidth();
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    const i = openSheets.findIndex((e) => e.id === entry.id);
+    if (i >= 0) openSheets.splice(i, 1);
+    paintSheetWidth();
+  };
+}
+
+/** Test seam: forget every open sheet (a test that unmounts mid-render). */
+export function resetSheetWidth(): void {
+  openSheets.length = 0;
+  paintSheetWidth();
+}
+
 const FOCUSABLE = [
   'a[href]',
   'area[href]',
@@ -143,13 +203,105 @@ function focusables(root: HTMLElement): HTMLElement[] {
   );
 }
 
+/* ── the label check ──────────────────────────────────────────────────────
+   `label` is the contract sentence (what it asks · what it writes · what
+   leaving costs). Four words is the floor at which a sentence can carry three
+   clauses; below it the caller has passed a title. Dev only — this is a nudge
+   at the person writing the surface, never a runtime behaviour. */
+const LABEL_MIN_WORDS = 4;
+const warned = new Set<string>();
+
+/** Exported for the test; resets the once-per-label memo. */
+export function resetLabelWarnings(): void {
+  warned.clear();
+}
+
+function warnIfLabelIsATitle(label: string): void {
+  if (!import.meta.env?.DEV) return;
+  const words = label.trim().split(/\s+/).filter(Boolean);
+  if (words.length >= LABEL_MIN_WORDS) return;
+  if (warned.has(label)) return;
+  warned.add(label);
+  console.warn(
+    `[mudavym overlay] label "${label}" reads like a title (${words.length} ` +
+      `word${words.length === 1 ? '' : 's'}). The label IS the accessible name and ` +
+      'should be the contract sentence: what it asks, what sealing or saving ' +
+      'writes, what leaving costs. Put the heading in `title` instead.',
+  );
+}
+
+/* ── the weight (1d) ─────────────────────────────────────────────────────
+   A dialog that asks "are you sure you want to discard?" is a system that never
+   watched what you did. A dirty Panel gains weight instead: a stray click
+   outside cannot lift it — it leans, says what it is holding, and waits for a
+   second, deliberate act. The sentence is spoken, not only drawn, because the
+   lean is a movement and a movement reaches no screen reader. */
+const WEIGHT_OUTSIDE =
+  'This panel is holding unsaved edits. Click Close to leave; nothing will be written.';
+const WEIGHT_ESC =
+  'This panel is holding unsaved edits. Press Escape again to leave; nothing will be written.';
+/** How long a first Escape stays armed. Long enough to be deliberate, short
+    enough that an Escape minutes later is not read as a confirmation. */
+const ESC_ARM_MS = 6000;
+
+/* ── the phone form (F9) ─────────────────────────────────────────────────
+   639px, not 640: `sheet.css`'s `wide` note already says a 640px viewport
+   collapses the sheet to full width, so the bottom form starts one pixel below
+   that and the two rules can never both claim the same viewport. */
+const PHONE_QUERY = '(max-width: 639px)';
+
+export type Detent = 'peek' | 'half' | 'full';
+const DETENTS: readonly Detent[] = ['peek', 'half', 'full'];
+
+function useIsPhone(): boolean {
+  const [phone, setPhone] = useState(false);
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const mq = window.matchMedia(PHONE_QUERY);
+    setPhone(mq.matches);
+    const onChange = (e: MediaQueryListEvent) => setPhone(e.matches);
+    // `addListener` is the Safari < 14 spelling; both are kept for the same
+    // reason `useReducedMotion` keeps them.
+    if (mq.addEventListener) mq.addEventListener('change', onChange);
+    else mq.addListener?.(onChange);
+    return () => {
+      if (mq.removeEventListener) mq.removeEventListener('change', onChange);
+      else mq.removeListener?.(onChange);
+    };
+  }, []);
+  return phone;
+}
+
 export type OverlayShape = 'sheet' | 'panel' | 'popover';
 
 export interface OverlayProps {
   open: boolean;
   onClose: () => void;
-  /** Accessible name. Required — an overlay with no name is a room with no sign. */
+  /**
+   * The accessible name, ALWAYS — sketch 103 · 1e, "Announced".
+   *
+   * It is the contract sentence, not a heading: *what it asks, what sealing or
+   * saving writes, what leaving costs.* "This asks one thing: confirm the 10
+   * bottles that arrived. Sealing writes the count to the book. Leaving writes
+   * nothing."
+   *
+   * Until 2026-09-06 this prop was discarded whenever `title` was set
+   * (`aria-label={title ? undefined : label}`), and every one of the sixty live
+   * rows carries a title — so the *required* prop reached no ear on any of
+   * them, and the requirement made a builder believe the room had a sign
+   * (finder B, D1). The name is now the label on every surface and the title is
+   * only what the eye reads.
+   */
   label: string;
+  /**
+   * The contract sentence as the reader SEES it — rendered in the header and
+   * wired to `aria-describedby`, so the eye and the ear get the same thing.
+   *
+   * Optional and never fabricated: a surface that does not state its contract
+   * gets no `aria-describedby` at all rather than a description invented from
+   * its title. An absence is shown as one (ADR 0020).
+   */
+  contract?: ReactNode;
   /** Mono eyebrow above the title (what kind of thing this is). */
   eyebrow?: ReactNode;
   /** Fraunces title (the product speaking). */
@@ -182,6 +334,78 @@ export interface OverlayProps {
    * by increments: there are two widths, and a third needs an ADR.
    */
   wide?: boolean;
+  /**
+   * Paint the scrim — sketch 103 · 1a, "The Pass".
+   *
+   * **Default `false` for a Sheet** (changed 2026-09-06) and `true` for a
+   * Panel; a Popover is unchanged (transparent unless `modal`). A sheet is one
+   * record arriving beside a list that is still moving; a panel is a question,
+   * and a question dims the page because nothing else matters until it is
+   * answered.
+   *
+   * This is PAINT, not modality. Focus still moves in and returns, Esc still
+   * works, the body still locks, and the page behind is still inert to the
+   * pointer wherever the census row is modal — the scrim element is there, it
+   * is simply not dark. Turning the light back on is `scrim`.
+   */
+  scrim?: boolean;
+  /**
+   * What the page should do with the width a Sheet takes — 1a's other half.
+   *
+   * The primitive never edits the page: while a Sheet is open it sets
+   * `data-sheet-open="overlay|compress"` and `--sheet-width` on every
+   * `.mudavym` page root, and the page's own CSS decides whether its list gives
+   * up columns. `compress` is the sheet SAYING it is willing to be laid beside
+   * the list; a page that has written no rule for it renders exactly as before.
+   * See `components/mudavym/MOTIONS.md`.
+   */
+  layout?: SheetLayout;
+  /**
+   * The surface is holding words nobody has written yet — sketch 103 · 1b and
+   * 1d, accepted 2026-09-06.
+   *
+   * With `dirty` set, Esc and a click outside stop destroying work:
+   *   · a **Sheet** TEARS — it leaves on `tuck` and calls `onTear`, and the
+   *     caller puts a `<Stub>` on the row holding the draft (1b);
+   *   · a **Panel** LEANS — the paper has weight, so a stray click cannot lift
+   *     it; only Close, or Esc said twice, leaves (1d).
+   *
+   * The caller owns the draft. The primitive owns the ceremony.
+   */
+  dirty?: boolean;
+  /**
+   * The surface left with unwritten words in it, and why.
+   *
+   * Fired at the gesture, before the surface is off the screen, so the caller
+   * can put the stub on the row in the same frame. `onClose` still fires — a
+   * tear is a close, said honestly.
+   */
+  onTear?: (reason: 'esc' | 'outside') => void;
+  /**
+   * The word this level puts on the spine (1c) — "Order 118 › Öküzgözü ›
+   * Answers". Defaults to `title` when the title is a plain string, and to
+   * `label` otherwise, so a page that already names its sheets gets a spine for
+   * free and only a sheet with a composed title has to say anything.
+   */
+  spine?: string;
+  /**
+   * The heights this sheet rests at on a phone (F9) — peek · half · full.
+   *
+   * The grabber appears only when there is more than one, and a TAP on it
+   * cycles them: drag-only would fail WCAG 2.2 SC 2.5.7 on the one form where
+   * every reader is using a thumb. Arrow keys step it, and a drag snaps to the
+   * nearest. `Sheet` only; ignored on the desktop form.
+   */
+  detents?: readonly Detent[];
+  /**
+   * The reader may look at this and may not change it — ADR 0112's authority
+   * rule, drawn (finder B, D24: none of the sixty live rows draws this state).
+   *
+   * Given, the action row is replaced by the sentence naming who can grant it.
+   * The body is untouched: looking is exactly what is still allowed, and hiding
+   * the record would answer a different question from the one being asked.
+   */
+  denied?: Pick<DeniedProps, 'who' | 'grant' | 'verb'>;
   /** Stack order. Default 100. */
   zIndex?: number;
   /** Element to focus on open. Defaults to the first focusable in the panel. */
@@ -222,6 +446,13 @@ const ENTER: Record<OverlayShape, Keyframe[]> = {
     { transform: 'none', opacity: 1 },
   ],
 };
+
+/* On a phone the sheet arrives from the bottom edge, not the right one — same
+   `tuck`, same 28px, the axis the form actually moves on. */
+const ENTER_BOTTOM: Keyframe[] = [
+  { transform: 'translateY(28px)', opacity: 0 },
+  { transform: 'none', opacity: 1 },
+];
 
 /**
  * Position a popover under its anchor, right-aligned and clamped to the
@@ -265,6 +496,7 @@ function OverlayRoot({
   open,
   onClose,
   label,
+  contract,
   eyebrow,
   title,
   action,
@@ -276,6 +508,13 @@ function OverlayRoot({
   className,
   bodyClassName,
   wide,
+  dirty = false,
+  onTear,
+  denied,
+  spine,
+  detents = DETENTS,
+  scrim,
+  layout = 'overlay',
   zIndex = 100,
   initialFocusRef,
   anchorRef,
@@ -288,8 +527,88 @@ function OverlayRoot({
   const shell = useMudavymShell();
   const reduced = useReducedMotion();
   const titleId = useId();
+  const contractId = useId();
   const modal = modalProp ?? shape !== 'popover';
   const withClose = showClose ?? modal;
+  /* A sheet takes width, never light (1a); a question dims the page. A popover
+     keeps the behaviour it already had — transparent unless it is `modal`. */
+  const dimmed = scrim ?? (shape === 'panel' || (shape === 'popover' && modal));
+
+  /* ── the spindle (1c · F9) ──────────────────────────────────────────────
+     Only Sheets take a level, and only under a provider — see SheetStack.tsx
+     for why the cap is a page fact and not a document one. */
+  const stack = useSheetStack();
+  const stackId = useId();
+  const spineWord = spine ?? (typeof title === 'string' ? title : label);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const stacked = stack.present && shape === 'sheet';
+  useLayoutEffect(() => {
+    if (!open || !stacked) return;
+    return stack.join(stackId, spineWord, () => onCloseRef.current());
+    // `stack.join` is stable; `stack` itself is a new object on every depth
+    // change, and depending on it would make each sheet re-join whenever a
+    // sibling opened — which is how a stack turns into a loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, stacked, stackId, stack.join]);
+  useLayoutEffect(() => {
+    if (open && stacked) stack.rename(stackId, spineWord);
+  }, [open, stacked, stackId, spineWord, stack.rename]);
+
+  /* Refused levels render NOTHING: the sentence goes on the top sheet, where
+     the reader is already looking. `shown` therefore gates every open-dependent
+     effect below — without it a sheet admitted on the second commit would never
+     get its focus move, because the effect's deps had not changed. */
+  const shown = !stacked || !open || stack.holds(stackId);
+  const live = open && shown;
+  const depth = stack.entries.length;
+  const isTop = stacked && depth > 0 && stack.entries[depth - 1]?.id === stackId;
+
+  /* ── the phone form (F9) ────────────────────────────────────────────────
+     The same three levels, as detented bottom sheets with one breadcrumb. */
+  const phone = useIsPhone();
+  const bottom = phone && shape === 'sheet';
+  const rests = detents.length > 0 ? detents : DETENTS;
+  const [detent, setDetent] = useState<Detent>(() => rests[rests.length - 1]);
+  useEffect(() => {
+    // A sheet re-opened should rest where the form says it rests, not where the
+    // last reader dragged it.
+    if (live) setDetent(rests[rests.length - 1]);
+  }, [live, rests]);
+  const stepDetent = useCallback(
+    (delta: number) => {
+      setDetent((current) => {
+        const i = rests.indexOf(current);
+        const next = Math.min(rests.length - 1, Math.max(0, (i < 0 ? 0 : i) + delta));
+        return rests[next];
+      });
+    },
+    [rests],
+  );
+  const cycleDetent = useCallback(() => {
+    setDetent((current) => {
+      const i = rests.indexOf(current);
+      return rests[(i + 1) % rests.length];
+    });
+  }, [rests]);
+  /* A drag is the gesture people expect; the tap is the one WCAG 2.2 SC 2.5.7
+     requires. Both land on the same three heights — up is taller. */
+  const dragFrom = useRef<number | null>(null);
+  const onGrabDown = (e: React.PointerEvent<HTMLButtonElement>) => {
+    dragFrom.current = e.clientY;
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+  };
+  const onGrabUp = (e: React.PointerEvent<HTMLButtonElement>) => {
+    const from = dragFrom.current;
+    dragFrom.current = null;
+    if (from === null) return;
+    const dy = e.clientY - from;
+    if (Math.abs(dy) < 24) {
+      cycleDetent();
+      return;
+    }
+    stepDetent(dy < 0 ? 1 : -1);
+  };
   const pos = useAnchoredPosition(shape === 'popover' && open, anchorRef, width);
 
   /* The ground, resolved once per open, most-specific first. `ground` prop >
@@ -317,6 +636,15 @@ function OverlayRoot({
     if (open) ensureFraunces();
   }, [open]);
 
+  /* A label that reads like a title is the defect this pass fixed, arriving
+     again through the caller. Dev only, once per distinct label, and only while
+     the surface is actually open — a warning nobody can trip is a warning that
+     lies about coverage. */
+  useEffect(() => {
+    if (!live) return;
+    warnIfLabelIsATitle(label);
+  }, [live, label]);
+
   /* Remember the opener BEFORE focus moves inside, restore it on close. */
   useLayoutEffect(() => {
     if (!open) return;
@@ -335,7 +663,7 @@ function OverlayRoot({
      a real browser — jsdom reports every element as focusable regardless of
      layout, so the unit test passed while Chrome put focus on <body>. */
   useEffect(() => {
-    if (!open) return;
+    if (!live) return;
     const panel = panelRef.current;
     if (!panel) return;
     if (shape === 'popover' && anchorRef?.current && !pos) return;
@@ -357,49 +685,171 @@ function OverlayRoot({
       candidate.focus();
       if (document.activeElement === candidate) return;
     }
-  }, [open, initialFocusRef, shape, anchorRef, pos]);
+    // `live`, not `open` (packet 0's spindle): a Sheet refused a level renders
+    // nothing and must not take focus; one admitted on a later commit needs
+    // this effect to run again when it becomes live.
+  }, [live, initialFocusRef, shape, anchorRef, pos]);
 
   useEffect(() => {
-    if (!open || !modal) return;
+    if (!live || !modal) return;
     return lockBodyScroll();
-  }, [open, modal]);
+  }, [live, modal]);
+
+  /* Tell the page a sheet is beside it. Sheets only: a Panel is over the page,
+     not next to it, and a Popover belongs to a control that has not moved. */
+  useEffect(() => {
+    if (!live || shape !== 'sheet') return;
+    return markSheetOpen(layout, wide ? 640 : 440);
+  }, [live, shape, layout, wide]);
 
   /* Enter motion. `animate()` collapses to the end state under reduced motion;
      we skip it entirely so nothing is scheduled at all. */
   useEffect(() => {
-    if (!open || reduced) return;
+    if (!live || reduced) return;
     const panel = panelRef.current;
     if (!panel) return;
-    animate(panel, ENTER[shape], TOKEN[shape]);
-  }, [open, reduced, shape]);
+    animate(panel, phone && shape === 'sheet' ? ENTER_BOTTOM : ENTER[shape], TOKEN[shape]);
+  }, [live, reduced, shape, phone]);
+
+  /* ── the tear (1b) ──────────────────────────────────────────────────────
+     A dirty Sheet does not vanish when you press Esc: it leaves on `tuck`, the
+     one exit motion this system has, because a tear is something happening TO
+     the paper rather than a detour ending. `onTear` fires at the gesture so the
+     caller can put the stub on the row in the same frame; `onClose` follows
+     when the motion has run. Reduced motion skips straight to the close. */
+  const tearing = useRef(false);
+  const tearTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (tearTimer.current) clearTimeout(tearTimer.current);
+    },
+    [],
+  );
+
+  const tear = useCallback(
+    (reason: 'esc' | 'outside') => {
+      if (tearing.current) return;
+      tearing.current = true;
+      onTear?.(reason);
+      const panel = panelRef.current;
+      if (reduced || !panel) {
+        tearing.current = false;
+        onClose();
+        return;
+      }
+      animate(
+        panel,
+        [
+          { transform: 'none', opacity: 1 },
+          { transform: 'translateX(28px)', opacity: 0 },
+        ],
+        tuck,
+      );
+      tearTimer.current = setTimeout(() => {
+        tearing.current = false;
+        onClose();
+      }, tuck.ms);
+    },
+    [onClose, onTear, reduced],
+  );
+
+  /* ── the lean (1d) ──────────────────────────────────────────────────────
+     `settle`, 6px, one lean each way and back. The note lives in a polite live
+     region so the ear gets the same fact the eye does. */
+  const [weightNote, setWeightNote] = useState<string | null>(null);
+  const escArmed = useRef(false);
+  const escTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (escTimer.current) clearTimeout(escTimer.current);
+    },
+    [],
+  );
+
+  const lean = useCallback(
+    (note: string) => {
+      setWeightNote(note);
+      const panel = panelRef.current;
+      if (!reduced && panel) {
+        animate(
+          panel,
+          [
+            { transform: 'none' },
+            { transform: 'translateX(-6px)' },
+            { transform: 'translateX(6px)' },
+            { transform: 'none' },
+          ],
+          settle,
+        );
+      }
+    },
+    [reduced],
+  );
+
+  /** What a leave gesture means on this surface, right now. */
+  const leave = useCallback(
+    (reason: 'esc' | 'outside') => {
+      if (dirty && shape === 'sheet') {
+        tear(reason);
+        return;
+      }
+      if (dirty && shape === 'panel') {
+        // A stray click never lifts this paper. Escape does, said twice.
+        if (reason === 'outside') {
+          lean(WEIGHT_OUTSIDE);
+          return;
+        }
+        if (!escArmed.current) {
+          escArmed.current = true;
+          lean(WEIGHT_ESC);
+          if (escTimer.current) clearTimeout(escTimer.current);
+          escTimer.current = setTimeout(() => {
+            escArmed.current = false;
+            setWeightNote(null);
+          }, ESC_ARM_MS);
+          return;
+        }
+        escArmed.current = false;
+        if (escTimer.current) clearTimeout(escTimer.current);
+        onTear?.('esc');
+        onClose();
+        return;
+      }
+      onClose();
+    },
+    [dirty, shape, tear, lean, onTear, onClose],
+  );
 
   /* This overlay's place in the stack, kept live for as long as it is open.
      `titleId` (from `useId()`, declared above) is a stable per-instance
-     identity — nothing here needs a second one. */
+     identity — nothing here needs a second one.
+     Keyed on `live`, not `open`: a Sheet the spindle (SheetStack.tsx) refused
+     is open but renders nothing and has no Escape listener, so letting it sit
+     on top of this stack would leave the visible top sheet's Escape dead. */
   useEffect(() => {
-    if (!open) return;
+    if (!live) return;
     openStack.push(titleId);
     return () => {
       const idx = openStack.lastIndexOf(titleId);
       if (idx !== -1) openStack.splice(idx, 1);
     };
-  }, [open, titleId]);
+  }, [live, titleId]);
 
   /* Esc closes, from anywhere — an overlay whose Esc only works while focus is
      inside is an overlay you can get stuck behind. Only the TOPMOST overlay
      acts: every open overlay has its own listener on the same `window`
      target, and without this check one Escape press closed all of them. */
   useEffect(() => {
-    if (!open) return;
+    if (!live) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && openStack[openStack.length - 1] === titleId) {
         e.stopPropagation();
-        onClose();
+        leave('esc');
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [open, onClose, titleId]);
+  }, [live, leave, titleId]);
 
   /* Tab cycles inside a modal shape. A popover does not trap: it is attached to
      a control on the page, and tabbing off it should leave it. */
@@ -428,27 +878,88 @@ function OverlayRoot({
     [modal],
   );
 
-  if (!open || typeof document === 'undefined') return null;
+  if (!open || !shown || typeof document === 'undefined') return null;
+
+  /* ── the spine, and the cap said out loud (1c) ──────────────────────────
+     Only the top level draws it: three spines on three sheets is the stack this
+     replaces. Every level before the last is a control — "leave to any one of
+     them in a single touch" — and the last is the level you are on. */
+  const spineBar =
+    isTop && depth > 1 ? (
+      <nav className="mdv-ovl__spine" aria-label="Open sheets">
+        {stack.entries.map((entry, i) => {
+          const last = i === depth - 1;
+          return (
+            <span key={entry.id} className="mdv-ovl__spine-part">
+              {i > 0 ? (
+                <span className="mdv-ovl__spine-sep" aria-hidden="true">
+                  ›
+                </span>
+              ) : null}
+              {last ? (
+                <span className="mdv-ovl__spine-here" aria-current="step">
+                  {entry.title}
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  className="mdv-ovl__spine-back"
+                  onClick={() => stack.closeTo(i)}
+                >
+                  {entry.title}
+                </button>
+              )}
+            </span>
+          );
+        })}
+        <span className="mdv-ovl__depth">
+          Depth {depth} of {stack.cap}
+        </span>
+      </nav>
+    ) : null;
+
+  /* The cap is SPOKEN. A fourth level is not a silent no-op and is not a fourth
+     sheet — it is this sentence, on the paper the reader is looking at, with
+     the way out named. `assertive` because it is the answer to something the
+     reader just did. */
+  const refusal =
+    isTop && stack.refusal ? (
+      <p className="mdv-ovl__refusal" role="alert" aria-live="assertive">
+        {stack.refusal}
+      </p>
+    ) : null;
 
   const head =
-    eyebrow || title || action || withClose ? (
+    eyebrow || title || action || withClose || contract || spineBar || refusal ? (
       <div className="mdv-ovl__head">
-        <div>
-          {eyebrow ? <span className="mdv-ovl__eyebrow">{eyebrow}</span> : null}
-          {title ? (
-            <h2 className="mdv-ovl__title" id={titleId}>
-              {title}
-            </h2>
-          ) : null}
+        <div className="mdv-ovl__headrow">
+          <div>
+            {eyebrow ? <span className="mdv-ovl__eyebrow">{eyebrow}</span> : null}
+            {title ? (
+              <h2 className="mdv-ovl__title" id={titleId}>
+                {title}
+              </h2>
+            ) : null}
+          </div>
+          <div className="mdv-ovl__headside">
+            {action}
+            {withClose ? (
+              <button type="button" className="mdv-ovl__close" onClick={onClose}>
+                {closeLabel}
+              </button>
+            ) : null}
+          </div>
         </div>
-        <div className="mdv-ovl__headside">
-          {action}
-          {withClose ? (
-            <button type="button" className="mdv-ovl__close" onClick={onClose}>
-              {closeLabel}
-            </button>
-          ) : null}
-        </div>
+        {/* The contract, visible. Same sentence the ear gets, in the mono
+            eyebrow's voice so it reads as the surface's own terms rather than
+            as body copy. */}
+        {contract ? (
+          <p className="mdv-ovl__contract" id={contractId}>
+            {contract}
+          </p>
+        ) : null}
+        {spineBar}
+        {refusal}
       </div>
     ) : null;
 
@@ -461,21 +972,29 @@ function OverlayRoot({
       // would silently do nothing, so it is not carried there at all.
       data-wide={shape === 'sheet' && wide ? 'true' : undefined}
       data-modal={modal ? 'true' : undefined}
+      data-scrim={dimmed ? 'on' : 'off'}
+      data-dirty={dirty ? 'true' : undefined}
+      data-denied={denied ? 'true' : undefined}
+      data-form={bottom ? 'bottom' : undefined}
+      data-detent={bottom ? detent : undefined}
       style={{ zIndex }}
     >
       <button
         type="button"
         aria-label={`Close ${label}`}
         className="mdv-ovl__scrim"
-        onClick={onClose}
+        onClick={() => leave('outside')}
       />
       <div
         ref={panelRef}
         className={`mdv-ovl__panel${className ? ` ${className}` : ''}`}
         role="dialog"
         aria-modal={modal ? true : undefined}
-        aria-label={title ? undefined : label}
-        aria-labelledby={title ? titleId : undefined}
+        // ALWAYS the label — see the prop's note. `titleId` still exists so the
+        // visible heading has a stable id for a caller that wants to point at
+        // it; the NAME is never taken from it.
+        aria-label={label}
+        aria-describedby={contract ? contractId : undefined}
         data-motion={reduced ? 'none' : TOKEN_NAME[shape]}
         tabIndex={-1}
         onKeyDown={onKeyDown}
@@ -493,9 +1012,55 @@ function OverlayRoot({
             : undefined
         }
       >
+        {/* The grabber — only when there is more than one height to move
+            between, per F9. A tap cycles, the arrows step, a drag snaps. */}
+        {bottom && rests.length > 1 ? (
+          <button
+            type="button"
+            className="mdv-ovl__grab"
+            aria-label={`Sheet height — ${detent}. Press to change; use the arrow keys to step.`}
+            onPointerDown={onGrabDown}
+            onPointerUp={onGrabUp}
+            onClick={(e) => {
+              // Native keyboard/assistive activation has no pointer sequence.
+              // Pointer taps already cycle on release, so do not count twice.
+              if (e.detail === 0) cycleDetent();
+            }}
+            onPointerCancel={() => {
+              dragFrom.current = null;
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                stepDetent(1);
+              } else if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                stepDetent(-1);
+              }
+            }}
+          >
+            <span className="mdv-ovl__grab-bar" aria-hidden="true" />
+          </button>
+        ) : null}
         {head}
         <div className={`mdv-ovl__body${bodyClassName ? ` ${bodyClassName}` : ''}`}>{children}</div>
-        {footer ? <div className="mdv-ovl__foot">{footer}</div> : null}
+        {/* What the paper is holding. Rendered only on a surface that can be
+            dirty, so fifty-nine clean rows do not carry an empty region. */}
+        {dirty ? (
+          <p className="mdv-ovl__weight" role="status" aria-live="polite">
+            {weightNote}
+          </p>
+        ) : null}
+        {/* The action row, or the reason there is not one. Never both: an
+            authority the reader does not hold beside a control they cannot use
+            is the shape that makes people believe the software is broken. */}
+        {denied ? (
+          <div className="mdv-ovl__foot">
+            <Denied {...denied} />
+          </div>
+        ) : footer ? (
+          <div className="mdv-ovl__foot">{footer}</div>
+        ) : null}
       </div>
     </div>,
     document.body,
