@@ -13,16 +13,13 @@
  * gated page — today's behaviour is unchanged: silently `Navigate` home.
  */
 
-import { Navigate } from 'react-router-dom';
-import { useMudavymDesign } from '../../lib/mudavym/useMudavymDesign';
 import { useShellRoleFlags } from '../../lib/mudavym/shellRoleFlags';
 import { HouseNotFound } from './HouseNotFound';
 
 export function ShellCatchAll() {
-  const shellOn = useMudavymDesign('shell');
+  // [ADR 0149 cutover trial, 2026-09-28: the `shell` gate is gone.]
   const { role, flags } = useShellRoleFlags();
-  if (shellOn) return <HouseNotFound role={role} flags={flags} />;
-  return <Navigate to="/" replace />;
+  return <HouseNotFound role={role} flags={flags} />;
 }
 
 export default ShellCatchAll;

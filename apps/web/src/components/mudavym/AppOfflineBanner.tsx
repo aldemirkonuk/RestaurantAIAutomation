@@ -19,9 +19,7 @@
  * GATED like every shell chrome piece: off, `OfflineBanner` unchanged.
  */
 
-import { useMudavymDesign } from '../../lib/mudavym/useMudavymDesign'
 import { useSyncManager } from '../../hooks/useSyncManager'
-import { OfflineBanner } from '../ui/SyncStatus'
 import './house-offline-banner.css'
 
 function pluralChange(n: number): string {
@@ -29,8 +27,7 @@ function pluralChange(n: number): string {
 }
 
 export function AppOfflineBanner() {
-  const shellOn = useMudavymDesign('shell')
-  if (!shellOn) return <OfflineBanner />
+  // [ADR 0149 cutover trial, 2026-09-28: the `shell` gate is gone.]
   return <HouseOfflineBanner />
 }
 

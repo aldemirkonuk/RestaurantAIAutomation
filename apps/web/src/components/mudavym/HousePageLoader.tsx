@@ -14,8 +14,6 @@
  */
 
 import { useEffect, useState } from 'react';
-import { PageLoader } from '../ui/page-loader';
-import { useMudavymDesign } from '../../lib/mudavym/useMudavymDesign';
 import './house-page-loader.css';
 
 const MARK_AFTER_MS = 400;
@@ -64,9 +62,8 @@ function HouseLadderLoader() {
 }
 
 export function HousePageLoader() {
-  const shellOn = useMudavymDesign('shell');
-  if (shellOn) return <HouseLadderLoader />;
-  return <PageLoader />;
+  // [ADR 0149 cutover trial, 2026-09-28: the `shell` gate is gone.]
+  return <HouseLadderLoader />;
 }
 
 export default HousePageLoader;

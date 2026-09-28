@@ -26,7 +26,6 @@
 import { Link } from 'react-router-dom';
 import { useContext, useEffect, useState } from 'react';
 import { AuthContext } from '../../contexts/AuthContext';
-import { useMudavymDesign } from '../../lib/mudavym/useMudavymDesign';
 import { useHouseDay } from '../../lib/mudavym/useHouseDay';
 import {
   allTicks,
@@ -152,12 +151,10 @@ function DayLineBody({
 
 export function DayLine() {
   const auth = useContext(AuthContext);
-  const shellOn = useMudavymDesign('shell');
+  // [ADR 0149 cutover trial, 2026-09-28: the `shell` gate is gone.]
   const houseId = auth?.activeRestaurantId ?? null;
-  const state = useHouseDay(houseId, shellOn && Boolean(auth));
+  const state = useHouseDay(houseId, Boolean(auth));
   const now = useDeviceNow();
-
-  if (!shellOn) return null;
 
   return (
     <section className="mdv-dayline mudavym" aria-label="The day">

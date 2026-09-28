@@ -15,14 +15,12 @@
  */
 
 import { Toaster } from 'sonner'
-import { useMudavymDesign } from '../../lib/mudavym/useMudavymDesign'
 import './house-toast.css'
 
 export function AppToaster() {
-  const shellOn = useMudavymDesign('shell')
-
-  if (shellOn) {
-    return (
+  // [ADR 0149 cutover trial, 2026-09-28] The house Toaster only; the
+  // `shell` gate and the legacy Toaster are gone.
+  return (
       <Toaster
         className="mudavym mdv-toaster"
         position="top-right"
@@ -44,35 +42,6 @@ export function AppToaster() {
         expand={false}
       />
     )
-  }
-
-  // Legacy — unchanged from what App.tsx mounted before this file existed.
-  return (
-    <Toaster
-      position="top-right"
-      gap={12}
-      toastOptions={{
-        unstyled: true,
-        classNames: {
-          toast:
-            'flex items-center gap-3 w-full max-w-sm p-4 bg-white rounded-xl border border-slate-200 shadow-lg',
-          title: 'text-sm font-semibold text-slate-900',
-          description: 'text-sm text-slate-500',
-          success: 'border-emerald-200 bg-emerald-50',
-          error: 'border-rose-200 bg-rose-50',
-          warning: 'border-amber-200 bg-amber-50',
-          info: 'border-blue-200 bg-blue-50',
-          actionButton:
-            'px-3 py-1.5 text-sm font-medium bg-slate-900 text-white rounded-lg hover:bg-slate-800',
-          cancelButton: 'px-3 py-1.5 text-sm font-medium text-slate-600 hover:text-slate-900',
-          closeButton: 'text-slate-400 hover:text-slate-600',
-        },
-      }}
-      closeButton
-      richColors
-      expand={false}
-    />
-  )
 }
 
 export default AppToaster
