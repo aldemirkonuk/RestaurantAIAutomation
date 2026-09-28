@@ -135,8 +135,8 @@ snapshots (Recommended)".
 work onto `wip/preserve-<stamp>/*` branches. One snapshot carried a draft ADR that
 still wore 0231 from the laptop. The guard, which sweeps every ref, then failed
 PR #490, the real ADR 0231, over a number the snapshot can never take. A snapshot is
-never edited, and a draft in it gets a fresh number when a lane carries it (this one
-lands as 0235).
+never edited, and a draft in it gets a fresh number when a lane carries it (this one is
+assigned 0235 in the carry lane, not yet merged).
 
 **Options considered.**
 - *Checker skips snapshots* — chosen. Refs whose name starts with `wip/preserve-`
@@ -163,7 +163,8 @@ every next-free print still counts the snapshot's number.
 ## Consequences for the register
 
 No `OPEN-DECISIONS.md` row ([[0025-citations-must-disagree-loudly]]: a new row
-re-anchors citations). One `CLAIMS.jsonl` entry.
+re-anchors citations). Two `CLAIMS.jsonl` entries: `ADR-0085`, and
+`ADR-0085-SNAPSHOTS` for the 2026-09-28 amendment.
 
 ## Review trail
 
