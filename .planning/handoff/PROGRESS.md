@@ -12,7 +12,107 @@ disagrees with the tree, the tree wins. Re-measure before acting on any line her
 marked "agent died" has partial or no edits in its worktree. Inspect `git status` there
 before continuing.
 
+**2026-09-28 — read [§0f](#0f-cloud-session-c98bb6c5-2026-09-28--state-merge-runbook-what-a-resumed-session-does-supersedes-0e-and-the-censuss-pr-state-cells-wherever-they-differ) first** (state after #487, the lanes in flight, the founder's merge runbook).
+
 **2026-09-25 — read the [web-rebuild census](../07-reference/deploy/WEB-REBUILD-CENSUS-2026-09-25.md) first.** It is the current record of the finish goal: every route's state at `059169a59` (what production serves), the 17-lane plan with corrected lane bases (`origin/wip/2026-09-21/<lane>`, not the dirty `wt-pg-*` and `wt-sessions` trees), the open founder forks, and his 2026-09-22 answers that had lived only in memory. It retires `07-reference/deploy/PAGE-WAVE-BLOCKERS-2026-09-22.md`. Every section below is the record of its own date; where one disagrees with the census, the census wins, and the tree wins over both.
+
+## 0f. Cloud session c98bb6c5, 2026-09-28 — state, merge runbook, what a resumed session does (supersedes 0e and the census's PR-state cells wherever they differ)
+
+**Re-measure before acting (CLAUDE.md §5b).** Written 2026-09-28T15:00Z by the cloud
+session that continued the desktop run (session_01GYea8ghmHSxrpWCjmRjXoq).
+
+**Where the build is.**
+- `main` = `dcdb6d5e9`: **#487 merged** (squash, pinned to audited head `d3bfacb82`).
+  Receiving desk, `/promotions`, `/vendor-prices` are live in code for every house;
+  `arrival` is the only flag-gated page (`LIVE_PAGES` 28 of `MUDAVYM_PAGES` 29).
+  ADR 0090 audit PASS marker is the first line of the PR comment
+  (`pull/487#issuecomment-5872446308`); local copy
+  `07-reference/pr-audits/487-d3bfacb.md` (branch `main-1ll9rp`).
+  **Production not yet verified at `dcdb6d5e9`** — see step 5 below.
+- Merged before this session: #436, #440, #479, #480, #484 (plus the 47 commits the
+  other account landed since `059169a59`). The desktop WIP snapshot `459653f` was fully
+  superseded by `main` and dropped (its one unique migration is on `main` as
+  `20261016000000_a_thread_list_withholds_credit_drafts_from_staff.sql`).
+- **Founder item 86 (2026-09-28, verbatim):** *"remove ADR050, run opus as much as you
+  need, while putting emphasis on sonnet when the tasks are fast, and direct, and other
+  things that sonnet are highly capable of doing maximizng efficiency"* → ADR 0231, PR #490.
+- **Founder, 2026-09-28:** asked for the merge commands below — **the founder merges**;
+  a session does not self-merge (the auto-mode classifier refused a session follow-up as
+  "self-approval / merge without review" right after #487 merged).
+
+**Lanes in flight** — workflow `wf_75eb7e91-5af` (`web-rebuild-finish-lanes`: build →
+Sonnet adversarial verify → one Opus fix round; 2 agents at a time on this 4-CPU
+container). Reserved ids so lanes never collide: ADR 0231–0234, OD-176–OD-180,
+migrations `20261117100000`–`20261117100900`.
+
+| Lane | Branch | PR | State at writing | Merges |
+|---|---|---|---|---|
+| ADR 0231 retires 0050 (item 86) | `docs/model-dispatch-adr-0231` | **#490** `cfe9fc94a` | built; verify pending. Touches gate-owned `decisions/0050-*.md` + `decisions/README.md`, so the audit skill records BLOCK-for-human-review, never an automated PASS | founder reads and merges by hand (4b) |
+| Cutover manifest + trial delete (L17) | `feat/cutover-manifest-trial` | draft, not yet opened | building | **never as one merge**: founder approves group by group (ADR 0149) |
+| Security residuals (L3/L14) | `fix/security-residuals-2026-09-28` | not yet | building | after audit PASS |
+| Records refresh (census §18, STATE, LIVE-CHECKLIST) | `docs/records-2026-09-28` | not yet | queued | after audit PASS; last among the docs PRs |
+| Promotions room `minRole: 'manager'` (TD-2026-09-27) | `fix/promotions-room-manager-only` | not yet | queued (built on #487's head; #487 has merged, so merge `origin/main` in first) | after audit PASS |
+
+**What a resumed session does, in order.**
+1. Read this section, `git fetch origin`, and re-read every PR above
+   (`mcp__github__pull_request_read`; `gh` is not installed in the cloud container).
+2. If `wf_75eb7e91-5af` is still running, wait for its notification. If the session
+   restarted, resume it with `Workflow({scriptPath: "<session dir>/workflows/scripts/web-rebuild-finish-lanes-wf_75eb7e91-5af.js", resumeFromRunId: "wf_75eb7e91-5af"})`
+   (completed agents return cached). If the script file is gone, rebuild the lanes from
+   the table above.
+3. For each non-draft lane PR, once CI is green on its head: merge `origin/main` in if
+   behind (never rebase or force-push), then run `/pr-audit-gate <n>` (Opus planner →
+   two Sonnet reviewers in parallel → the planner resumed). Post the full report as a PR
+   comment whose **first line** is `<!-- pr-audit-gate: pr=<n> sha=<full sha> verdict=PASS|BLOCK -->`.
+   Any push after that invalidates the marker; re-audit.
+4. Hand the founder the list of PRs whose current head carries a PASS marker, in the
+   order below. **Do not merge.**
+5. After each merge he makes, confirm `CI` and `Deploy to Production` succeeded for the
+   merge commit and that mudavym.com serves it (ADR 0097/0219); report once.
+
+**Merge runbook — for the founder, from his own terminal with `gh` logged in as
+`aldemirkonuk`.** Order: **#490 → promotions-room fix → security fix → records
+refresh**. The cutover draft only group by group, never whole.
+
+```bash
+N=<pr number>
+
+# 1. Current head, mergeability, draft state; CI must be green on THIS head
+gh pr view $N --json headRefOid,mergeable,mergeStateStatus,isDraft \
+  --jq '{sha: .headRefOid, mergeable, state: .mergeStateStatus, draft: .isDraft}'
+gh pr checks $N --required
+SHA=$(gh pr view $N --json headRefOid -q .headRefOid)
+
+# 2. The audit marker must name exactly this SHA and say PASS
+gh pr view $N --json comments --jq \
+  '.comments[] | select(.body | startswith("<!-- pr-audit-gate")) | .body | split("\n")[0]'
+#    expect: <!-- pr-audit-gate: pr=N sha=<SHA or a prefix of it> verdict=PASS -->
+
+# 3. Merge, pinned to the audited commit (no --auto, never --admin)
+gh pr merge $N --squash --match-head-commit "$SHA"
+
+# 4. Watch main's CI and the production deploy for the merge commit
+gh run list --branch main --limit 4
+gh run watch "$(gh run list --workflow 'Deploy to Production' --limit 1 --json databaseId -q '.[0].databaseId')"
+```
+
+- **4b, #490 (gate-owned paths):** by design no automated PASS can exist (skill step 4).
+  Read the diff (`gh pr diff 490`), then run step 3 for 490 from a plain terminal. Inside
+  a Claude Code session the `require_pr_audit` hook refuses it without a PASS marker;
+  that is the hook working, not a fault.
+- If step 1 shows `BEHIND` or `DIRTY`, do not merge: ask a session to merge `main` in
+  and re-audit (the new head needs its own marker).
+- If `--match-head-commit` refuses, someone pushed after the audit: re-audit, never force.
+- **Cutover draft:** approve or hold each manifest group by name; a session then moves
+  only the approved groups into a non-draft PR, audits it, and hands it back here.
+
+**Open follow-ups from the #487 audit (non-blocking, not built):** ADR 0149 row 54 should
+cross-reference OD-156/159/160/161; vendor-prices currency pooling is medium from
+`dcdb6d5e9`; `flip_mudavym_design_flags.py --self-test` is not CI-wired; the nightly
+manifest's reason text is stale for the three now-absent flags;
+`check_flag_readby_anchors.py`'s anchor line-match does not strip comments. #490's own
+report lists gate-owned 0050 references still owed (`pr-audit-gate/SKILL.md:67,153`,
+`scripts/pr_audit_gate.py:66`); they need the founder's word per path.
 
 ## 0b. Public pages on PublicShell, 2026-09-13 — fixed 2026-09-17
 
