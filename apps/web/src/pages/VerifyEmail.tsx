@@ -1,7 +1,7 @@
 import { PublicShell } from '../components/mudavym/PublicShell'
 import { usePublicDesign } from '../lib/mudavym/publicDesign'
 import { useState } from 'react'
-import { useSearchParams, Link } from 'react-router-dom'
+import { useSearchParams, Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { Mail, CheckCircle, Loader2, AlertCircle } from 'lucide-react'
 import { AuthShell, AuthCard } from '../components/brand/AuthShell'
@@ -11,17 +11,43 @@ import { getOnboardingProgress } from '../services/api/menus'
 import { apiClient, getErrorMessage } from '../services/api/client'
 import { storeSession } from '../lib/houseMemory'
 
+/**
+ * The two answers the verify route gives a click it will not honour (ADR 0229
+ * fork 12; the founder, 2026-09-28, item 81, "Link needs sign-in
+ * (Recommended)"): the link verifies only for someone signed in to the
+ * account it was sent for. Routed on the status and the code, never the prose.
+ */
+function linkRefusal(err: unknown): 'sign-in' | 'other-account' | null {
+  const response = (err as { response?: { status?: number; data?: { code?: string } } })
+    ?.response
+  if (response?.data?.code === 'LINK_FOR_ANOTHER_ACCOUNT') return 'other-account'
+  if (response?.status === 401 || response?.data?.code === 'SIGN_IN_TO_VERIFY')
+    return 'sign-in'
+  return null
+}
+
 export function VerifyEmail() {
   const publicDesign = usePublicDesign()
   const [searchParams] = useSearchParams()
-  const { user } = useAuth()
+  const navigate = useNavigate()
+  const { user, loading, logout } = useAuth()
   const [verifying, setVerifying] = useState(false)
   const [resending, setResending] = useState(false)
   const [verified, setVerified] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [lastResent, setLastResent] = useState<Date | null>(null)
+  const [refusal, setRefusal] = useState<'sign-in' | 'other-account' | null>(null)
 
   const token = searchParams.get('token')
+  // Back to this very link after signing in (Login honours `redirect`).
+  const signInHref = `/login?redirect=${encodeURIComponent(
+    token ? `/verify-email?token=${token}` : '/verify-email',
+  )}`
+  // Fork 12: someone signed out holds only the mailbox. They sign in first;
+  // without the password, the sign-in page's emailed code proves the address
+  // and (ADR 0229 fork 6) removes a password they never set.
+  const mustSignIn = Boolean(token) && ((!loading && !user) || refusal === 'sign-in')
+  const alreadyVerified = Boolean(token) && user?.emailVerified === true && !verified
 
   const handleVerify = async () => {
     if (!token) {
@@ -42,22 +68,65 @@ export function VerifyEmail() {
       const house = storeSession(data.accessToken, data.refreshToken)
       setVerified(true)
       toast.success('Email verified! Redirecting...')
-      // An account-only signup (ADR 0213) has no house yet: its next step is
-      // opening one, and every house-scoped read would answer 403
-      // HOUSE_REQUIRED and send it to the chooser (ADR 0164). Only a session
-      // in a house asks whether the menu is already uploaded (re-verification
-      // flows) and skips /get-started.
+      // A session in no house goes to the chooser (ADR 0164): it shows a
+      // membership waiting to be accepted (ADR 0229 fork 13), and sends an
+      // account-only signup (ADR 0213) with nothing waiting on to
+      // /get-started. Only a session in a house asks whether the menu is
+      // already uploaded (re-verification flows).
       const progress = house ? await getOnboardingProgress().catch(() => null) : null
-      const destination = progress?.menu_uploaded ? '/' : '/get-started'
+      const destination = !house
+        ? '/choose-house'
+        : progress?.menu_uploaded
+          ? '/'
+          : '/get-started'
       setTimeout(() => {
         window.location.href = destination
       }, 1500)
     } catch (err: unknown) {
-      setError(getErrorMessage(err))
+      const refused = linkRefusal(err)
+      if (refused) setRefusal(refused)
+      else setError(getErrorMessage(err))
     } finally {
       setVerifying(false)
     }
   }
+
+  const signOutThenSignIn = () =>
+    void logout().then(() => navigate(signInHref, { replace: true }))
+
+  /** What the page says for a link it cannot honour yet (fork 12). */
+  const linkGate = mustSignIn ? (
+    <div className="mdv-pub__stack" data-testid="verify-needs-sign-in">
+      <p>
+        This link works only while you are signed in to the account it was
+        sent for.
+      </p>
+      <Link className="mdv-btn mdv-btn--seal" to={signInHref}>
+        Sign in to verify
+      </Link>
+      <p className="mdv-note">
+        Not your password, or you never set one? On the sign-in page choose
+        “Email me a sign-in code”. The code proves this address, and any
+        password you did not set is removed.
+      </p>
+    </div>
+  ) : refusal === 'other-account' ? (
+    <div className="mdv-pub__stack">
+      <p className="mdv-alert" role="alert">
+        This link is for a different account than the one signed in here.
+      </p>
+      <button className="mdv-btn mdv-btn--seal" onClick={signOutThenSignIn}>
+        Sign out and sign in to that account
+      </button>
+    </div>
+  ) : alreadyVerified ? (
+    <div className="mdv-pub__stack">
+      <p role="status">This address is already verified.</p>
+      <Link className="mdv-btn mdv-btn--seal" to="/">
+        Continue
+      </Link>
+    </div>
+  ) : null
 
   const handleResend = async () => {
     // Rate limit: 1 per 60 seconds (T-26-05-03)
@@ -116,13 +185,15 @@ export function VerifyEmail() {
                 </p>
               )}
               {token ? (
-                <button
-                  className="mdv-btn mdv-btn--seal"
-                  onClick={handleVerify}
-                  disabled={verifying}
-                >
-                  {verifying ? 'Verifying…' : 'Verify my email'}
-                </button>
+                linkGate ?? (
+                  <button
+                    className="mdv-btn mdv-btn--seal"
+                    onClick={handleVerify}
+                    disabled={verifying}
+                  >
+                    {verifying ? 'Verifying…' : 'Verify my email'}
+                  </button>
+                )
               ) : (
                 <>
                   {user?.email && (
@@ -223,7 +294,11 @@ export function VerifyEmail() {
           ))}
         </div>
 
-        {token ? (
+        {token && linkGate ? (
+          <div className="space-y-3 text-sm text-gray-600 text-center">
+            {linkGate}
+          </div>
+        ) : token ? (
           <div className="space-y-3">
             <p className="text-sm text-gray-600 text-center">
               Click below to verify your email address.

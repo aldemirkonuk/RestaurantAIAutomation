@@ -599,7 +599,7 @@ describe("nothing mints a token naming a house without a membership row", () => 
       },
     ];
 
-    const pair = await service(db).verifyEmail("t-1");
+    const pair = await service(db).verifyEmail("t-1", U);
 
     expect(pair.restaurantId).toBeNull();
     expect(claims(pair.accessToken).restaurantId).toBeNull();
@@ -688,6 +688,7 @@ describe("GET /auth/houses: a removed person apart from one who never had a hous
     await expect(houses(db)).resolves.toEqual({
       success: true,
       houses: [],
+      held: [],
       accessEnded: false,
     });
   });
@@ -791,6 +792,7 @@ describe("GET /auth/houses: an owner who ended their own house goes to /get-star
     await expect(houses(db)).resolves.toEqual({
       success: true,
       houses: [],
+      held: [],
       accessEnded: false,
     });
   });

@@ -5,6 +5,7 @@ import {
   BadRequestException,
   ForbiddenException,
   ConflictException,
+  NotFoundException,
   ServiceUnavailableException,
   InternalServerErrorException,
   Logger,
@@ -16,6 +17,12 @@ import { ConfigService } from "@nestjs/config";
 import { DatabaseService } from "../database/database.service";
 import { TokenBlacklistService } from "./services/token-blacklist.service";
 import { GmailService } from "../communications/gmail.service";
+import {
+  passwordChangedEmailTemplate,
+  type PasskeyStillLive,
+} from "../communications/email-templates/password-changed.template";
+import { unprovenPasswordRemovedEmailTemplate } from "../communications/email-templates/unproven-password-removed.template";
+import { teamInviteEmailTemplate } from "../communications/email-templates/team-invite.template";
 import { WebsocketGateway } from "../websocket/websocket.gateway";
 import {
   SESSION_ENDED,
@@ -36,6 +43,19 @@ import { InviteDto } from "./dto/invite.dto";
 import { resolveJwtSecret, INSECURE_DEFAULT_JWT_SECRET } from "./jwt-secret";
 import { devBypassEnvEnabled } from "./dev-bypass.util";
 import { grantRefusal } from "./role-grant";
+import {
+  INVITE_EMAILS_PER_ADDRESS,
+  INVITE_EMAILS_PER_HOUSE,
+  INVITE_EMAILS_PER_SENDER,
+  INVITE_EMAIL_WINDOW_MS,
+  hashInviteEmailSecret,
+  holdsUnprovenPassword,
+  inviteVerifiesAddress,
+  membershipIsHeld,
+  newInviteEmailSecret,
+  unprovenPasswordHasLapsed,
+} from "./unproven-address";
+import { normalizeEmail } from "../passkeys/sign-in-codes.service";
 import {
   ORG_ROW_INSERT_ONLY,
   orgRoleForHouseGrant,
@@ -127,6 +147,16 @@ export interface JwtPayload {
    */
   devBypass?: boolean;
   /**
+   * When this session last proved who it is, in seconds since the epoch (the
+   * OIDC `auth_time` claim; ADR 0229, founder 2026-09-25 item 29). Stamped
+   * ONLY by an interactive sign-in -- password, Google, Microsoft, passkey,
+   * emailed code, or the sign-up that just typed a password -- and carried
+   * unchanged by refresh and by a house switch, so a seven-day refresh chain
+   * never looks like a fresh sign-in. Absent means "not recent": adding a
+   * passkey then needs an emailed code.
+   */
+  auth_time?: number;
+  /**
    * The session version this token was minted under (ADR 0225). Every token
    * `generateTokens` signs carries it; a token below the person's current
    * `users.session_version` belongs to a session a password reset or change
@@ -147,6 +177,27 @@ export interface TokenPair {
    * membership row (ADR 0164, "Membership only").
    */
   restaurantId: string | null;
+}
+
+/**
+ * A membership waiting for the person to accept it (ADR 0229 fork 13): the
+ * house as the chooser shows it, plus the role it would grant, in the words
+ * `roleWord` allows.
+ */
+export interface HeldMembership {
+  /** The held `user_restaurant_access` row, which the accept route names. */
+  membershipId: string;
+  id: string;
+  name: string;
+  city: string | null;
+  role: "owner" | "manager" | "staff" | null;
+}
+
+/** Only the three known roles are ever printed; anything else is none. */
+function roleWord(role: unknown): HeldMembership["role"] {
+  return role === "owner" || role === "manager" || role === "staff"
+    ? role
+    : null;
 }
 
 /** One of the person's houses, as the chooser shows it: no role, no numbers. */
@@ -171,6 +222,26 @@ export interface SignInResult extends TokenPair {
  * named when the person is no longer a member of it: the new pair names no
  * house, and the client shows the chooser with one sentence (ADR 0164, R5).
  */
+/**
+ * What happened to the mail of a freshly minted invite (ADR 0229 fork 9,
+ * item 77): `sent`; `not_sent` (the mailer or a count read failed);
+ * `rate_limited` (the house is past `INVITE_EMAILS_PER_HOUSE`);
+ * `rate_limited_sender` (the minting person is past
+ * `INVITE_EMAILS_PER_SENDER` across their houses) and `rate_limited_address`
+ * (the address is past `INVITE_EMAILS_PER_ADDRESS` across all houses) -- fork
+ * 11, item 83, "Per address + per sender"; `no_address` (the invite named
+ * none). Only `sent` can lead to a verified join. Every refused outcome is
+ * returned to the minter, so they are told the invite was made and not
+ * mailed.
+ */
+export type InvitationEmailOutcome =
+  | "sent"
+  | "not_sent"
+  | "rate_limited"
+  | "rate_limited_sender"
+  | "rate_limited_address"
+  | "no_address";
+
 export interface RefreshResult extends TokenPair {
   houseAccessEnded?: { restaurantId: string };
 }
@@ -186,6 +257,11 @@ export interface LoginCredentials {
 }
 
 /** "Google", "Google and Microsoft", "Google, Microsoft and Apple". */
+/** The `auth_time` of a sign-in happening now, in seconds (ADR 0229). */
+export function signedInNow(nowMs: number = Date.now()): number {
+  return Math.floor(nowMs / 1000);
+}
+
 function formatList(items: string[]): string {
   if (items.length <= 1) return items[0] ?? "";
   return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
@@ -356,7 +432,14 @@ export class AuthService {
 
     // Verify password
     const isPasswordValid = await bcrypt.compare(password, user.password_hash);
-    if (!isPasswordValid) {
+    // ADR 0229 fork 8 (the founder, 2026-09-27, item 73, "Expire the
+    // password, 7 days (Recommended)"): an account still unverified more than
+    // seven days after registration keeps its row, but its unproven password
+    // no longer signs in. The compare above runs first either way, and the
+    // refusal is the wrong-password refusal word for word, so neither the
+    // answer nor its timing says the account exists or is unverified. The
+    // emailed code still signs in, and fork 6 then removes this password.
+    if (!isPasswordValid || unprovenPasswordHasLapsed(user, Date.now())) {
       throw new UnauthorizedException("Invalid credentials");
     }
 
@@ -376,7 +459,7 @@ export class AuthService {
 
     this.logger.log(`User logged in: ${user.email}`);
 
-    return this.signIn(user, false, credentials.lastHouses);
+    return this.signIn(user, false, credentials.lastHouses, signedInNow());
   }
 
   /**
@@ -385,11 +468,15 @@ export class AuthService {
    * used last if it did so within the return window, otherwise the person
    * chooses. Every sign-in door (password, Google, Microsoft, dev bypass) comes
    * through here, so they cannot disagree.
+   *
+   * `authTime` is the `auth_time` claim (ADR 0229): every caller here is an
+   * interactive sign-in, so it always passes `signedInNow()`.
    */
   private async signIn(
     user: any,
     devBypass: boolean,
     lastHouses: unknown,
+    authTime: number | null = null,
   ): Promise<SignInResult> {
     const houses = await this.memberHouses(user.user_id);
     const pick = signInHouse(
@@ -397,7 +484,12 @@ export class AuthService {
       hintFor(parseLastHouseHints(lastHouses), user.user_id),
       Date.now(),
     );
-    const tokens = await this.generateTokens(user, devBypass, pick.house);
+    const tokens = await this.generateTokens(
+      user,
+      devBypass,
+      pick.house,
+      authTime,
+    );
     return pick.choose ? { ...tokens, chooseHouse: { houses } } : tokens;
   }
 
@@ -538,7 +630,7 @@ export class AuthService {
     // (apps/web/src/components/ProtectedRoute.tsx:42) sends every route to
     // /verify-email on that. Changing the row instead would edit real data to
     // work around a dev tool, and would follow the account into production.
-    return this.signIn(user, true, lastHouses);
+    return this.signIn(user, true, lastHouses, signedInNow());
   }
 
   /**
@@ -560,7 +652,7 @@ export class AuthService {
 
     this.logger.log(`Google OAuth login: ${user.email}`);
 
-    return this.signIn(user, false, lastHouses);
+    return this.signIn(user, false, lastHouses, signedInNow());
   }
 
   /**
@@ -582,7 +674,7 @@ export class AuthService {
 
     this.logger.log(`Microsoft OAuth login: ${user.email}`);
 
-    return this.signIn(user, false, lastHouses);
+    return this.signIn(user, false, lastHouses, signedInNow());
   }
 
   /**
@@ -643,6 +735,29 @@ export class AuthService {
       });
     }
 
+    // ADR 0229 fork 10 (the founder, 2026-09-27, item 78, "Refresh refuses
+    // lapsed (Recommended)"): an account whose unproven password has lapsed
+    // (fork 8) mints nothing here either. Until then a registrant who signed
+    // in inside the seven days kept an unverified session for as long as they
+    // kept refreshing, each refresh minting a new 7-day refresh token. The
+    // person signs in by emailed code instead (fork 6 then removes that
+    // password). A dev-bypass session is not the password's (it is minted
+    // without one, and only where `devBypassEnvEnabled()` holds, never in
+    // production), so it is not refused for it.
+    const devBypassSession =
+      payload.devBypass === true && devBypassEnvEnabled();
+    if (
+      !devBypassSession &&
+      holdsUnprovenPassword(user) &&
+      unprovenPasswordHasLapsed(user, Date.now())
+    ) {
+      throw new UnauthorizedException({
+        message:
+          "This session was signed out because its password was never confirmed. Sign in with a code emailed to you.",
+        code: SESSION_ENDED,
+      });
+    }
+
     // Carry the dev-bypass marker across the refresh. Without this the
     // override silently lapsed after 15 minutes: the new payload is rebuilt
     // from the row, the row says false, and the founder was bounced to
@@ -653,10 +768,16 @@ export class AuthService {
     // Both gates are re-checked HERE, at refresh time, not inherited: a
     // marked refresh token presented to a production server mints an
     // ordinary session, exactly as if the marker were absent.
-    const devBypass = payload.devBypass === true && devBypassEnvEnabled();
+    const devBypass = devBypassSession;
 
     const house = tokenHouse(payload);
-    const tokens = await this.generateTokens(user, devBypass, house);
+    const tokens = await this.generateTokens(
+      user,
+      devBypass,
+      house,
+      // Carried, never renewed: a refresh is not a sign-in (ADR 0229).
+      typeof payload.auth_time === "number" ? payload.auth_time : null,
+    );
     if (house && tokens.restaurantId !== house) {
       this.logger.log(
         `refreshAccessToken: ${payload.sub} is no longer a member of ${house}; ` +
@@ -705,6 +826,7 @@ export class AuthService {
     userId: string,
     targetRestaurantId: string,
     devBypass = false,
+    authTime: number | null = null,
   ): Promise<TokenPair> {
     const { data: user, error: userErr } = await this.databaseService.supabase
       .from("users")
@@ -724,10 +846,12 @@ export class AuthService {
       throw new UnauthorizedException("User not found");
     }
 
+    // A house switch is not a sign-in: the session's auth_time is carried.
     const tokens = await this.generateTokens(
       user,
       devBypass && devBypassEnvEnabled(),
       targetRestaurantId,
+      authTime,
     );
     if (tokens.restaurantId !== targetRestaurantId) {
       throw new ForbiddenException({
@@ -743,6 +867,193 @@ export class AuthService {
    * Studio roles are fetched from user_roles table and embedded in app_metadata.roles
    * so FastAPI require_studio_role() can authorize studio API calls without a DB round-trip.
    */
+  /**
+   * A session for an account whose owner just proved who they are by a path
+   * that is not a password -- a passkey or an emailed code (ADR 0222 / 0229,
+   * founder 2026-09-25 item 29). The caller has already verified the proof;
+   * this hands the proven account to the same `signIn` a password uses, so
+   * membership, the hint/chooseHouse rule (ADR 0164) and every other claim
+   * follow exactly the password path.
+   *
+   * Until the ADR 0090 audit of PR #479 (2026-09-26) this minted directly
+   * against the stale `users.restaurant_id` column instead: a multi-house
+   * account never saw the chooser a password sign-in gives it, and a person
+   * whose `restaurant_id` pointed at a house they had since left landed with
+   * no house at all instead of being offered the ones they still hold.
+   * `generateTokens` itself re-checks membership before naming a house, so
+   * this was never a way to land in someone else's house -- but it could
+   * still land you in the wrong one of your own, or in none, silently.
+   */
+  async issueSessionForVerifiedSignIn(
+    userId: string,
+    method: "passkey" | "email_code",
+    provedEmail: string | null = null,
+    lastHouses: unknown = null,
+  ): Promise<SignInResult> {
+    const { data: user, error } = await this.databaseService.supabase
+      .from("users")
+      .select("*")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (error || !user) {
+      throw new UnauthorizedException(
+        "That account could not be read, so nobody was signed in.",
+      );
+    }
+    this.logger.log(`Signed in by ${method}: ${user.user_id}`);
+    const signedIn = await this.verifyEmailProvedByCode(
+      user,
+      method,
+      provedEmail,
+    );
+    return this.signIn(signedIn, false, lastHouses, signedInNow());
+  }
+
+  /**
+   * An emailed-code sign-in proves the mailbox, so it verifies the address
+   * (ADR 0229; the founder, 2026-09-26, round 6, item 37: "emailed-code sign-in
+   * marks email verified"). Written only when ALL hold:
+   *   * the method is `email_code` -- a passkey proves the device, not the
+   *     mailbox, and verifies nothing;
+   *   * the caller passes the address the code was checked against
+   *     (`SignInCodesService.verify` has already succeeded for it);
+   *   * that address is still the account's address -- a code mailed to an
+   *     address the account moved away from within its ten minutes proves the
+   *     old mailbox, not the current one.
+   *
+   * The FIRST proof of the address also ends everything set up before it
+   * (ADR 0229 fork 6; the founder, 2026-09-27, item 67, verbatim: "option 1 +
+   * do what industry do for these, for security ops do what the industry
+   * leaders do"). An unverified account's password was chosen by whoever typed
+   * the address at `POST /auth/register/account`, which is public and proves
+   * nothing -- possibly a stranger pre-registering someone else's address
+   * (Sudhodanan & Paverd, "Pre-hijacked accounts", USENIX Security 2022). So in
+   * ONE write, with the verification: `password_hash` goes to null and
+   * `session_version` goes up by one, which signs out every token minted
+   * before it (ADR 0225) -- the registrant's access and refresh tokens and
+   * sockets included. Firebase does exactly this when an email link first
+   * proves an address; Supabase drops unconfirmed identities when a verified
+   * one arrives. The session minted here is minted from the row this write
+   * returns, so it alone survives. When a password was removed, the address is
+   * told (`unprovenPasswordRemovedEmailTemplate`; ASVS 5.0 6.3.7). The real
+   * owner sets a new password on /profile or through "Forgot password?".
+   *
+   * The write is a compare-and-set on the address, `email_verified = false`
+   * and the session version read just before, so an email change, a link
+   * verification or a password write racing the sign-in makes it miss rather
+   * than land on a row it did not examine (every password write moves the
+   * session version, ADR 0225, so the version stands for the hash too). A miss re-reads and
+   * retries (up to three times); if the row is by then verified or on another
+   * address, there is nothing left to do here and it is returned as it is. A
+   * failed write is logged and the session is minted unverified, from the
+   * freshest row read: nothing was verified and nothing was removed, and the
+   * person lands on /verify-email, the state they were already in.
+   */
+  private async verifyEmailProvedByCode(
+    user: any,
+    method: "passkey" | "email_code",
+    provedEmail: string | null,
+  ): Promise<any> {
+    if (method !== "email_code" || user.email_verified === true) return user;
+    const proved = (provedEmail ?? "").trim().toLowerCase();
+    let row = user;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const current =
+        typeof row.email === "string" ? row.email.trim().toLowerCase() : "";
+      if (row.email_verified === true || !proved || proved !== current) {
+        return row;
+      }
+      const hadPassword =
+        typeof row.password_hash === "string" && row.password_hash.length > 0;
+      const from = sessionVersionOf(row);
+      const write = this.databaseService.supabase
+        .from("users")
+        .update({
+          email_verified: true,
+          password_hash: null,
+          session_version: from + 1,
+        })
+        .eq("user_id", row.user_id)
+        .eq("email", row.email)
+        .eq("email_verified", false)
+        .eq("session_version", from);
+      const { data, error } = await write.select("*").maybeSingle();
+      if (error) {
+        this.logger.error(
+          `An emailed-code sign-in could not mark ${row.user_id} verified: ${error.message}`,
+        );
+        return row;
+      }
+      if (data) {
+        this.websocketGateway?.endStaleSessions(
+          row.user_id,
+          sessionVersionOf(data),
+        );
+        this.logger.log(
+          `Email verified by an emailed code: ${row.user_id}; every earlier session ended` +
+            (hadPassword ? "; the unproven password was removed" : ""),
+        );
+        if (hadPassword) await this.mailUnprovenPasswordRemoved(data);
+        return data;
+      }
+      // The row moved between the read and the write. Read it again.
+      const { data: fresh, error: readErr } =
+        await this.databaseService.supabase
+          .from("users")
+          .select("*")
+          .eq("user_id", row.user_id)
+          .maybeSingle();
+      if (readErr || !fresh) {
+        this.logger.error(
+          `An emailed-code sign-in could not re-read ${row.user_id}: ${readErr?.message ?? "no row"}`,
+        );
+        return row;
+      }
+      row = fresh;
+    }
+    this.logger.error(
+      `An emailed-code sign-in could not mark ${row.user_id} verified: the row kept moving`,
+    );
+    return row;
+  }
+
+  /**
+   * Tell the address an emailed code (or a link clicked after the lapse, fork
+   * 8) just proved that the password set before it was removed (ADR 0229
+   * fork 6). Never throws: the removal already
+   * happened and the sign-in must not fail because a notice did not go out.
+   */
+  private async mailUnprovenPasswordRemoved(
+    row: any,
+    by: "code" | "link" = "code",
+  ): Promise<boolean> {
+    const to = typeof row?.email === "string" ? row.email.trim() : "";
+    try {
+      if (!to) return false;
+      const result = await this.gmailService.sendEmail({
+        to: [to],
+        subject:
+          "Your Mudavym account: a password nobody confirmed was removed",
+        html: unprovenPasswordRemovedEmailTemplate({
+          at: new Date().toISOString(),
+          by,
+        }),
+      });
+      if (!result?.success) {
+        this.logger.warn(
+          `unproven password removed for ${row.user_id}: the notice was not delivered -- ${result?.error}`,
+        );
+        return false;
+      }
+      return true;
+    } catch (e) {
+      this.logger.error(
+        `unproven password removed for ${row?.user_id}: the notice threw -- ${(e as Error).message}`,
+      );
+      return false;
+    }
+  }
+
   /**
    * The session version a new pair is minted under (ADR 0225).
    *
@@ -805,8 +1116,11 @@ export class AuthService {
     passwordHash: string,
     caller: string,
     expectedCurrentHash?: string | null,
+    provedEmail?: string | null,
   ): Promise<any> {
     const checkHash = expectedCurrentHash !== undefined;
+    const proved =
+      typeof provedEmail === "string" ? provedEmail.trim().toLowerCase() : "";
     for (let attempt = 0; attempt < 3; attempt++) {
       const { data: current, error: readErr } =
         await this.databaseService.supabase
@@ -837,11 +1151,27 @@ export class AuthService {
       }
 
       const from = sessionVersionOf(current);
+      // ADR 0229 fork 6 (item 67): a reset link proves the mailbox it was
+      // mailed to, as an emailed code does, so when that is still the
+      // account's address the same write verifies it (what Auth0 does on a
+      // reset). The password just set is then a PROVED one, and a later
+      // emailed code, finding the address already verified, leaves it alone
+      // instead of removing it as unproven.
+      const verifies =
+        proved.length > 0 &&
+        current.email_verified !== true &&
+        typeof current.email === "string" &&
+        current.email.trim().toLowerCase() === proved;
       let updateQuery = this.databaseService.supabase
         .from("users")
-        .update({ password_hash: passwordHash, session_version: from + 1 })
+        .update({
+          password_hash: passwordHash,
+          session_version: from + 1,
+          ...(verifies ? { email_verified: true } : {}),
+        })
         .eq("user_id", userId)
         .eq("session_version", from);
+      if (verifies) updateQuery = updateQuery.eq("email", current.email);
       if (checkHash) {
         updateQuery =
           expectedCurrentHash === null
@@ -871,10 +1201,17 @@ export class AuthService {
     );
   }
 
+  /**
+   * `authTime` is the `auth_time` claim (ADR 0229): pass `signedInNow()` only
+   * from an interactive sign-in, the carried value from refresh or a house
+   * switch, and nothing otherwise. The default is null -- a new call site that
+   * forgets it mints a session that is NOT recent, which fails closed.
+   */
   private async generateTokens(
     user: any,
-    devBypass: boolean,
-    house: string | null,
+    devBypass = false,
+    house: string | null = null,
+    authTime: number | null = null,
   ): Promise<TokenPair> {
     // Fetch active studio roles for this user
     let studioRoles: string[] = [];
@@ -935,6 +1272,7 @@ export class AuthService {
       // key at all. A signed `false` would be a second way to say "not a dev
       // session", and readers would have to handle both.
       ...(devBypass ? { devBypass: true } : {}),
+      ...(authTime !== null ? { auth_time: authTime } : {}),
       app_metadata: { roles: studioRoles },
       // ADR 0225: the session version this pair is minted under.
       sv: await this.sessionVersionFor(user),
@@ -1226,7 +1564,7 @@ export class AuthService {
     );
     // A new account has no house yet (ADR 0213), so its session names none
     // (ADR 0164): no house, no role, until createFirstHouse opens one.
-    return this.generateTokens(user, false, null);
+    return this.generateTokens(user, false, null, signedInNow());
   }
 
   /**
@@ -1282,7 +1620,7 @@ export class AuthService {
 
     // A new account has no house yet (ADR 0213), so its session names none
     // (ADR 0164): no house, no role, until createFirstHouse opens one.
-    return this.generateTokens(user, false, null);
+    return this.generateTokens(user, false, null, signedInNow());
   }
 
   /**
@@ -1293,6 +1631,7 @@ export class AuthService {
   async createFirstHouse(
     userId: string,
     dto: CreateFirstHouseDto,
+    authTime: number | null = null,
   ): Promise<TokenPair & { restaurantId: string }> {
     const { data: user, error: userReadError } =
       await this.databaseService.supabase
@@ -1310,12 +1649,11 @@ export class AuthService {
     let orgId: string | null = null;
     let restaurantId: string | null = null;
     try {
-      const { data: org, error: orgError } =
-        await this.databaseService.supabase
-          .from("organizations")
-          .insert({ name: `${dto.restaurantName} Group`, owner_id: userId })
-          .select()
-          .single();
+      const { data: org, error: orgError } = await this.databaseService.supabase
+        .from("organizations")
+        .insert({ name: `${dto.restaurantName} Group`, owner_id: userId })
+        .select()
+        .single();
       if (orgError || !org)
         throw new Error(orgError?.message ?? "organization was not created");
       orgId = org.id;
@@ -1363,15 +1701,13 @@ export class AuthService {
           user_id: userId,
           role: "owner",
         }),
-        this.databaseService.supabase
-          .from("user_restaurant_access")
-          .insert({
-            user_id: userId,
-            restaurant_id: restaurantId,
-            role: "owner",
-            invited_via: null,
-            is_active: true,
-          }),
+        this.databaseService.supabase.from("user_restaurant_access").insert({
+          user_id: userId,
+          restaurant_id: restaurantId,
+          role: "owner",
+          invited_via: null,
+          is_active: true,
+        }),
         this.databaseService.supabase
           .from("users")
           .update({ restaurant_id: restaurantId, role: "owner" })
@@ -1390,6 +1726,7 @@ export class AuthService {
         { ...user, restaurant_id: restaurantId, role: "owner" },
         false,
         restaurantId,
+        authTime,
       );
       return { ...tokens, restaurantId: restaurantId as string };
     } catch (error) {
@@ -1584,7 +1921,7 @@ export class AuthService {
 
       // Registering lands in the house it opened (ADR 0164, R1); the owner
       // row above is what lets `generateTokens` name it.
-      return this.generateTokens(user, false, restaurantId);
+      return this.generateTokens(user, false, restaurantId, signedInNow());
     } catch (err) {
       if (userId)
         await this.databaseService.supabase
@@ -1661,6 +1998,9 @@ export class AuthService {
     <div style="padding:32px;">
       <p style="margin:0 0 20px;color:#374151;font-size:15px;line-height:1.6;">
         You're almost there! Click the button below to verify your email address and activate your Mudavym account.
+      </p>
+      <p style="margin:0 0 20px;color:#374151;font-size:15px;line-height:1.6;">
+        Open it where you are signed in to this account. If you did not choose this account's password, sign in with a code emailed to this address instead: that confirms the address and removes any password you did not set.
       </p>
       <div style="text-align:center;margin:28px 0;">
         <a href="${verifyUrl}" style="display:inline-block;padding:14px 36px;background:#7c2d12;color:#fff;text-decoration:none;font-weight:600;border-radius:8px;font-size:16px;">
@@ -1846,6 +2186,15 @@ export class AuthService {
       attempts++;
     } while (attempts < 5);
 
+    // The address this invite is for (ADR 0229 fork 7, item 72), and the
+    // second secret that only the mail to that address will carry (fork 9,
+    // item 77). Only the secret's hash is stored; the secret itself leaves
+    // this function in the mail and nowhere else (not in the response, not in
+    // a log). `emailed_at` is written with the row: it is this invite's claim
+    // on the house's mail allowance, counted after the insert so that parallel
+    // mints cannot all see room (`sendInviteEmail`).
+    const targetEmail = normalizeEmail(dto.targetEmail) || null;
+    const emailSecret = targetEmail ? newInviteEmailSecret() : null;
     const { data: invite, error } = await this.databaseService.supabase
       .from("organization_invites")
       .insert({
@@ -1854,6 +2203,11 @@ export class AuthService {
         code,
         invited_by: userId,
         role: grantedRole,
+        target_email: targetEmail,
+        email_secret_hash: emailSecret
+          ? hashInviteEmailSecret(emailSecret)
+          : null,
+        emailed_at: targetEmail ? new Date().toISOString() : null,
       })
       .select("id, code, expires_at")
       .single();
@@ -1882,13 +2236,162 @@ export class AuthService {
           );
       });
 
+    // FRONTEND_URL is a comma-separated CORS allow-list; canonicalOrigin()
+    // takes only its first entry (template-config.ts).
+    const inviteUrl = `${canonicalOrigin(this.configService.get("FRONTEND_URL")) || "https://mudavym.com"}/invite/${invite.code}`;
+
+    const invitationEmail: InvitationEmailOutcome =
+      targetEmail && emailSecret
+        ? await this.sendInviteEmail({
+            inviteId: invite.id,
+            restaurantId,
+            invitedBy: userId,
+            to: targetEmail,
+            url: `${inviteUrl}#k=${emailSecret}`,
+            role: grantedRole,
+            expiresAt: invite.expires_at,
+          })
+        : "no_address";
+
     return {
       code: invite.code,
       expiresAt: invite.expires_at,
-      // FRONTEND_URL is a comma-separated CORS allow-list; canonicalOrigin()
-      // takes only its first entry (template-config.ts).
-      inviteUrl: `${canonicalOrigin(this.configService.get("FRONTEND_URL")) || "https://mudavym.com"}/invite/${invite.code}`,
+      // The minter's link carries no secret: a join from it is unverified
+      // (ADR 0229 fork 9, item 77).
+      inviteUrl,
+      invitationEmail,
     };
+  }
+
+  /**
+   * Mail an invite to the address it was made for, with the link that carries
+   * its second secret (ADR 0229 fork 9; the founder, 2026-09-27, item 77,
+   * "Email invite + (c) interim (Recommended)").
+   *
+   * Rate-limited three ways, each over `INVITE_EMAIL_WINDOW_MS`: per house
+   * (item 77, `INVITE_EMAILS_PER_HOUSE`), per minting person across all their
+   * houses (`INVITE_EMAILS_PER_SENDER`) and per target address across all
+   * houses (`INVITE_EMAILS_PER_ADDRESS`) -- the last two are ADR 0229 fork
+   * 11 (the founder, 2026-09-28, item 83, "Per address + per sender"). Each
+   * count is read AFTER this invite's own claim (`emailed_at`, written by the
+   * insert), so parallel mints over a limit each see the others and none
+   * squeezes past; the conservative direction (two at the edge may both
+   * refuse) is accepted. A failed count read sends nothing (fails closed). A
+   * refused or unread claim is released and the secret's hash cleared, so
+   * that invite can never verify anyone, and a released claim no longer
+   * counts against any of the three. A send that fails keeps its claim: a
+   * mailer that is down does not refill the allowances.
+   *
+   * The invite itself is never undone here: its copied link still joins, as
+   * an unverified account.
+   */
+  private async sendInviteEmail(params: {
+    inviteId: string;
+    restaurantId: string;
+    invitedBy: string;
+    to: string;
+    url: string;
+    role: string;
+    expiresAt: string;
+  }): Promise<InvitationEmailOutcome> {
+    const release = async () => {
+      const { error } = await this.databaseService.supabase
+        .from("organization_invites")
+        .update({ emailed_at: null, email_secret_hash: null })
+        .eq("id", params.inviteId);
+      if (error) {
+        this.logger.error(
+          `sendInviteEmail could not release invite ${params.inviteId}: ${error.message}`,
+        );
+      }
+    };
+
+    const since = new Date(Date.now() - INVITE_EMAIL_WINDOW_MS).toISOString();
+    // House first (item 77), then the person, then the address (item 83).
+    const limits: Array<{
+      column: "restaurant_id" | "invited_by" | "target_email";
+      value: string;
+      cap: number;
+      outcome: InvitationEmailOutcome;
+      what: string;
+    }> = [
+      {
+        column: "restaurant_id",
+        value: params.restaurantId,
+        cap: INVITE_EMAILS_PER_HOUSE,
+        outcome: "rate_limited",
+        what: `house ${params.restaurantId}`,
+      },
+      {
+        column: "invited_by",
+        value: params.invitedBy,
+        cap: INVITE_EMAILS_PER_SENDER,
+        outcome: "rate_limited_sender",
+        what: `minter ${params.invitedBy}`,
+      },
+      {
+        column: "target_email",
+        value: params.to,
+        cap: INVITE_EMAILS_PER_ADDRESS,
+        outcome: "rate_limited_address",
+        // Never the address itself in a log line.
+        what: "the invite's address",
+      },
+    ];
+    for (const limit of limits) {
+      let claims: unknown = null;
+      let countError: { message: string } | null = null;
+      try {
+        const read = await this.databaseService.supabase
+          .from("organization_invites")
+          .select("id")
+          .eq(limit.column, limit.value)
+          .gte("emailed_at", since)
+          .limit(limit.cap + 1);
+        claims = read.data;
+        countError = read.error;
+      } catch (err: any) {
+        countError = { message: err?.message ?? String(err) };
+      }
+      if (countError || !Array.isArray(claims)) {
+        this.logger.error(
+          `sendInviteEmail could not count invite mails by ${limit.column}: ${countError?.message ?? "no rows"}`,
+        );
+        await release();
+        return "not_sent";
+      }
+      if (claims.length > limit.cap) {
+        this.logger.warn(
+          `sendInviteEmail: ${limit.what} is past ${limit.cap} invite mails in the window; invite ${params.inviteId} not mailed`,
+        );
+        await release();
+        return limit.outcome;
+      }
+    }
+
+    try {
+      const result = await this.gmailService.sendEmail({
+        to: [params.to],
+        subject: "You have been invited to a team on Mudavym",
+        html: teamInviteEmailTemplate({
+          inviteUrl: params.url,
+          role: params.role,
+          expiresAt: params.expiresAt,
+        }),
+      });
+      if (!result.success) {
+        this.logger.warn(
+          `Invite ${params.inviteId} mail not delivered: ${result.error}`,
+        );
+        return "not_sent";
+      }
+      return "sent";
+    } catch (err: any) {
+      this.logger.warn(
+        `Invite ${params.inviteId} mail failed: ${err?.message ?? err}`,
+      );
+      return "not_sent";
+    }
   }
 
   /**
@@ -2185,17 +2688,39 @@ export class AuthService {
 
   /**
    * Path A: Join via invite code — atomically consumes invite and creates user.
-   * User is email_verified: true because owner vouched for them.
+   *
+   * A NEW account is verified only when the address typed here is the address
+   * the invite was made for (ADR 0229 fork 7; the founder, 2026-09-27, item
+   * 72, "Bind invite to address (Recommended)"). An invite made with no
+   * address, or a join with another address, creates the account unverified
+   * and mails the verification link, like any registration. Until 2026-09-27
+   * every new account made here was verified for whatever address was typed.
+   *
+   * A join whose address is not proved at this moment (that unverified new
+   * account, or an existing account still unverified) gets its membership
+   * HELD (ADR 0229 fork 13; the founder, 2026-09-28, item 82, "Hold until
+   * accepted (Recommended)"): the access row is written inactive with
+   * `held_since`, the new account's `users.restaurant_id` stays NULL (so the
+   * legacy users-row fallback admits nothing), no organisation row and no
+   * team claim are written, and the pair names no house. The person, once
+   * proven, accepts it (`acceptHeldMembership`). `membershipHeld` says so.
    */
-  async joinViaInvite(dto: JoinViaInviteDto): Promise<TokenPair> {
+  async joinViaInvite(
+    dto: JoinViaInviteDto,
+  ): Promise<TokenPair & { membershipHeld: boolean }> {
+    // One spelling of the address for every read and write below: the
+    // spelling registerAccount stores and the emailed code looks up.
+    const email = normalizeEmail(dto.email);
     const { data: invite, error: inviteErr } =
       await this.databaseService.supabase
         .from("organization_invites")
-        .update({ used_at: new Date().toISOString(), used_by_email: dto.email })
+        .update({ used_at: new Date().toISOString(), used_by_email: email })
         .eq("code", dto.code.toUpperCase())
         .is("used_at", null)
         .gt("expires_at", new Date().toISOString())
-        .select("id, organization_id, restaurant_id, role, invited_by")
+        .select(
+          "id, organization_id, restaurant_id, role, invited_by, target_email, email_secret_hash",
+        )
         .single();
 
     if (inviteErr || !invite) {
@@ -2242,10 +2767,12 @@ export class AuthService {
     const { data: existingUser } = await this.databaseService.supabase
       .from("users")
       .select("*")
-      .eq("email", dto.email)
+      .eq("email", email)
       .maybeSingle();
 
     let user: any;
+    // Whether the joining account's address is proved right now (fork 13).
+    let addressProved: boolean;
 
     if (existingUser) {
       const { data: existingAccess } = await this.databaseService.supabase
@@ -2277,10 +2804,17 @@ export class AuthService {
       //
       // Joining an ADDITIONAL restaurant with an existing account is a real
       // flow, so it is kept — it now costs the account's own password.
+      //
+      // An unproven password that has lapsed (ADR 0229 fork 8, item 73) opens
+      // nothing here either: this is a password sign-in by another door.
       const passwordMatches =
         typeof existingUser.password_hash === "string" &&
         existingUser.password_hash.length > 0 &&
-        (await bcrypt.compare(dto.password ?? "", existingUser.password_hash));
+        (await bcrypt.compare(
+          dto.password ?? "",
+          existingUser.password_hash,
+        )) &&
+        !unprovenPasswordHasLapsed(existingUser, Date.now());
 
       if (!passwordMatches) {
         // Deliberately identical to the credential error used elsewhere, and
@@ -2291,18 +2825,33 @@ export class AuthService {
       }
 
       user = existingUser;
+      addressProved = existingUser.email_verified === true;
     } else {
       const passwordHash = await bcrypt.hash(dto.password, this.SALT_ROUNDS);
+      // ADR 0229 fork 7, item 72, and fork 9, item 77: verified only when the
+      // address is the one the invite was made for AND the join carries the
+      // secret mailed to that address; otherwise the address is still
+      // unproven (a copied link, a forwarded code, an invite never mailed).
+      const addressProvedByInvite = inviteVerifiesAddress(
+        {
+          targetEmail: invite.target_email,
+          emailSecretHash: invite.email_secret_hash,
+        },
+        { email, emailSecret: dto.emailSecret },
+      );
       const { data: newUser, error: userErr } =
         await this.databaseService.supabase
           .from("users")
           .insert({
-            email: dto.email,
+            email,
             password_hash: passwordHash,
             name: dto.name,
-            restaurant_id: invite.restaurant_id,
+            // Fork 13: an unproven joiner's account names no house, or the
+            // legacy users-row fallback (assertMembership, assertAccess, ...)
+            // would admit it to the house its held row does not.
+            restaurant_id: addressProvedByInvite ? invite.restaurant_id : null,
             role: invite.role,
-            email_verified: true,
+            email_verified: addressProvedByInvite,
           })
           .select()
           .single();
@@ -2317,8 +2866,18 @@ export class AuthService {
         );
       }
       user = newUser;
+      addressProved = addressProvedByInvite;
+      if (!addressProvedByInvite) {
+        // The person proves the address once, as every registrant does.
+        this.queueEmailVerification(user.user_id, email).catch((err) =>
+          this.logger.warn(
+            `queueEmailVerification failed (non-fatal): ${err.message}`,
+          ),
+        );
+      }
     }
 
+    const held = membershipIsHeld(addressProved);
     const { error: uraErr } = await this.databaseService.supabase
       .from("user_restaurant_access")
       .insert({
@@ -2326,7 +2885,8 @@ export class AuthService {
         restaurant_id: invite.restaurant_id,
         role: invite.role,
         invited_via: invite.id,
-        is_active: true,
+        is_active: !held,
+        held_since: held ? new Date().toISOString() : null,
       });
 
     if (uraErr) {
@@ -2337,6 +2897,18 @@ export class AuthService {
       throw new BadRequestException(
         "Failed to grant restaurant access: " + uraErr.message,
       );
+    }
+
+    if (held) {
+      // Fork 13: nothing else is granted until the proven person accepts;
+      // `acceptHeldMembership` writes the organisation row and the team claim
+      // then. The session names no house.
+      this.logger.log(
+        `joinViaInvite: ${user.user_id} joined ${invite.restaurant_id} before ` +
+          "proving the address; the membership is held until accepted",
+      );
+      const pair = await this.generateTokens(user, false, null, signedInNow());
+      return { ...pair, membershipHeld: true };
     }
 
     // Insert-only, and never `owner` (organizations/org-role.ts, ADR 0164).
@@ -2362,20 +2934,284 @@ export class AuthService {
       restaurantId: invite.restaurant_id,
       inviteId: invite.id,
       userId: user.user_id,
-      email: dto.email,
+      email,
       name: dto.name ?? user.name ?? null,
       role: invite.role,
     });
 
     // Joining lands in the house the invite names (ADR 0164, R1).
-    return this.generateTokens(user, false, invite.restaurant_id);
+    const pair = await this.generateTokens(
+      user,
+      false,
+      invite.restaurant_id,
+      signedInNow(),
+    );
+    return { ...pair, membershipHeld: false };
+  }
+
+  /**
+   * The memberships waiting for this person to accept (ADR 0229 fork 13; the
+   * founder, 2026-09-28, item 82, "Hold until accepted (Recommended)"): their
+   * held `user_restaurant_access` rows, with the house's name and city, as
+   * the chooser shows a house. A failed read is a 503, never an empty list.
+   */
+  async heldMemberships(userId: string): Promise<HeldMembership[]> {
+    const { data: rows, error } = await this.databaseService.supabase
+      .from("user_restaurant_access")
+      .select("id, restaurant_id, role, held_since")
+      .eq("user_id", userId)
+      .eq("is_active", false)
+      .not("held_since", "is", null);
+    if (error) {
+      this.logger.error(
+        `heldMemberships could not read ${userId}'s held memberships: ${error.message}`,
+      );
+      throw new ServiceUnavailableException(
+        "Could not read your houses. Nothing was done; try again.",
+      );
+    }
+    const held = (rows ?? []).filter(
+      (r: { restaurant_id?: unknown }) => typeof r.restaurant_id === "string",
+    );
+    if (held.length === 0) return [];
+    const { data: restaurants, error: restaurantsError } =
+      await this.databaseService.supabase
+        .from("restaurants")
+        .select("id, name, city")
+        .in(
+          "id",
+          held.map((r: { restaurant_id: string }) => r.restaurant_id),
+        );
+    if (restaurantsError) {
+      this.logger.error(
+        `heldMemberships could not read house names for ${userId}: ${restaurantsError.message}`,
+      );
+      throw new ServiceUnavailableException(
+        "Could not read your houses. Nothing was done; try again.",
+      );
+    }
+    const byId = new Map(
+      (restaurants ?? []).map(
+        (r: { id: string; name?: string | null; city?: string | null }) => [
+          r.id,
+          r,
+        ],
+      ),
+    );
+    return held
+      .filter((r: { restaurant_id: string }) => byId.has(r.restaurant_id))
+      .map((r: { id: string; restaurant_id: string; role?: string | null }) => {
+        const house = byId.get(r.restaurant_id)!;
+        return {
+          membershipId: r.id,
+          id: r.restaurant_id,
+          name: house.name ?? "",
+          city: house.city ?? null,
+          role: roleWord(r.role),
+        };
+      })
+      .sort((a: HeldMembership, b: HeldMembership) =>
+        a.name.localeCompare(b.name),
+      );
+  }
+
+  /**
+   * Accept a held membership (ADR 0229 fork 13, item 82): the person, with a
+   * VERIFIED session (JwtAuthGuard refuses an unverified one; the row is
+   * re-read here too), turns the held row into an ordinary active
+   * membership. The issuer must still be able to grant that role in that
+   * house (ADR 0162's ceiling holds at acceptance, as in
+   * `acceptInviteAsExistingUser`), read through the invite the row was
+   * granted by; an invite that can no longer be read refuses. The row
+   * changes in ONE compare-and-set (`is_active = false` and `held_since` set
+   * -> active, `held_since` NULL); the organisation row and the team claim
+   * the join skipped are written after it, and the account's
+   * `users.restaurant_id` is pointed at the house only when it names none.
+   * Nothing is ever deleted; a refusal leaves the row held.
+   */
+  async acceptHeldMembership(
+    userId: string,
+    membershipId: string,
+  ): Promise<{ restaurantId: string; role: string }> {
+    const { data: account, error: accountErr } =
+      await this.databaseService.supabase
+        .from("users")
+        .select("user_id, email, name, email_verified, restaurant_id")
+        .eq("user_id", userId)
+        .maybeSingle();
+    if (accountErr || !account) {
+      throw new ServiceUnavailableException(
+        "Could not read your account. Nothing was done; try again.",
+      );
+    }
+    if (account.email_verified !== true) {
+      throw new ForbiddenException({
+        message: "Verify your email address before joining a house.",
+        code: "EMAIL_NOT_VERIFIED",
+      });
+    }
+
+    const { data: row, error: rowErr } = await this.databaseService.supabase
+      .from("user_restaurant_access")
+      .select("id, restaurant_id, role, invited_via, is_active, held_since")
+      .eq("id", membershipId)
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (rowErr) {
+      throw new ServiceUnavailableException(
+        "Could not read that invitation. Nothing was done; try again.",
+      );
+    }
+    if (!row || row.is_active === true || row.held_since == null) {
+      throw new NotFoundException("Nothing is waiting for you in that house.");
+    }
+    const restaurantId: string = row.restaurant_id;
+
+    let invite: {
+      id: string;
+      organization_id: string | null;
+      invited_by: string | null;
+    } | null = null;
+    if (typeof row.invited_via === "string") {
+      const { data, error } = await this.databaseService.supabase
+        .from("organization_invites")
+        .select("id, organization_id, invited_by")
+        .eq("id", row.invited_via)
+        .maybeSingle();
+      if (error) {
+        throw new ServiceUnavailableException(
+          "Could not confirm this invite is still good. Nothing was done; try again.",
+        );
+      }
+      invite = data ?? null;
+    }
+    if (!invite || typeof invite.invited_by !== "string") {
+      throw new BadRequestException(
+        "This invitation can no longer be confirmed. Ask the house for a new invite.",
+      );
+    }
+    const { data: issuerAccess, error: issuerErr } =
+      await this.databaseService.supabase
+        .from("user_restaurant_access")
+        .select("role")
+        .eq("user_id", invite.invited_by)
+        .eq("restaurant_id", restaurantId)
+        .eq("is_active", true)
+        .maybeSingle();
+    if (issuerErr) {
+      throw new ServiceUnavailableException(
+        "Could not confirm this invite is still good. Nothing was done; try again.",
+      );
+    }
+    if (grantRefusal(roleInHouse(issuerAccess), row.role, "invite")) {
+      throw new BadRequestException(
+        "This invite's issuer can no longer grant that role in this house. Ask them for a new invite.",
+      );
+    }
+
+    const { data: written, error: writeErr } =
+      await this.databaseService.supabase
+        .from("user_restaurant_access")
+        .update({
+          is_active: true,
+          held_since: null,
+          valid_from: new Date().toISOString(),
+        })
+        .eq("id", row.id)
+        .eq("is_active", false)
+        .not("held_since", "is", null)
+        .select("id")
+        .maybeSingle();
+    if (writeErr) {
+      this.logger.error(
+        `acceptHeldMembership could not activate ${userId} in ${restaurantId}: ${writeErr.message}`,
+      );
+      throw new ServiceUnavailableException(
+        "Could not join that house right now. Nothing was done; try again.",
+      );
+    }
+    if (!written) {
+      throw new ConflictException("That invitation was already answered.");
+    }
+
+    if (!account.restaurant_id) {
+      const { error } = await this.databaseService.supabase
+        .from("users")
+        .update({ restaurant_id: restaurantId })
+        .eq("user_id", userId)
+        .is("restaurant_id", null);
+      if (error) {
+        this.logger.warn(
+          `acceptHeldMembership could not point ${userId}'s account at ${restaurantId} (non-fatal): ${error.message}`,
+        );
+      }
+    }
+
+    if (invite.organization_id) {
+      // Insert-only, and never `owner` (organizations/org-role.ts, ADR 0164).
+      const { error: orgRowError } = await this.databaseService.supabase
+        .from("organization_members")
+        .upsert(
+          {
+            organization_id: invite.organization_id,
+            user_id: userId,
+            role: orgRoleForHouseGrant(row.role),
+            invited_via: invite.id,
+          },
+          ORG_ROW_INSERT_ONLY,
+        );
+      if (orgRowError) {
+        this.logger.error(
+          `acceptHeldMembership could not add ${userId} to organisation ` +
+            `${invite.organization_id}: ${orgRowError.message}`,
+        );
+      }
+    }
+
+    await this.claimTeamMemberFromInvite({
+      restaurantId,
+      inviteId: invite.id,
+      userId,
+      email: account.email ?? null,
+      name: account.name ?? null,
+      role: row.role,
+    });
+
+    this.logger.log(
+      `acceptHeldMembership: ${userId} accepted the held membership in ${restaurantId}`,
+    );
+    return { restaurantId, role: row.role };
   }
 
   /**
    * Verify email using the token from the verification email.
    * Returns a new token pair with emailVerified: true in the payload.
+   *
+   * The link verifies only for a caller signed in to the account it was sent
+   * for (ADR 0229 fork 12; the founder, 2026-09-28, item 81, "Link needs
+   * sign-in (Recommended)"): `callerUserId` is the session's user
+   * (`JwtAuthGuard`, which also proves the session is live). A link proves
+   * the mailbox, not who chose the password, so on its own it would verify a
+   * stranger's password the moment the real owner clicked. Needing both the
+   * session (the password) and the mailbox closes that: someone holding only
+   * the mailbox is sent to the emailed code, which verifies the address and,
+   * by fork 6, removes a password nobody proved and ends its sessions. No
+   * session: 401 `SIGN_IN_TO_VERIFY`. Another account's session: 403
+   * `LINK_FOR_ANOTHER_ACCOUNT`, before anything about the link is said. In
+   * both the link is not spent.
    */
-  async verifyEmail(token: string): Promise<TokenPair> {
+  async verifyEmail(
+    token: string,
+    callerUserId: string | null,
+    sessionHouse: string | null = null,
+  ): Promise<TokenPair> {
+    if (!callerUserId) {
+      throw new UnauthorizedException({
+        message:
+          "Sign in to finish verifying. If this account's password is not yours, sign in with a code emailed to this address instead.",
+        code: "SIGN_IN_TO_VERIFY",
+      });
+    }
     const { data: verif, error: verifError } =
       await this.databaseService.supabase
         .from("email_verifications")
@@ -2397,6 +3233,13 @@ export class AuthService {
     }
 
     if (!verif) throw new BadRequestException("Invalid verification token");
+    if (verif.user_id !== callerUserId) {
+      throw new ForbiddenException({
+        message:
+          "This link is for a different account. Sign out, then sign in to the account it was sent to, or sign in with a code emailed to that address.",
+        code: "LINK_FOR_ANOTHER_ACCOUNT",
+      });
+    }
     if (verif.verified_at)
       throw new BadRequestException("Email already verified");
     if (new Date(verif.expires_at) < new Date()) {
@@ -2405,23 +3248,116 @@ export class AuthService {
       );
     }
 
+    const user = await this.verifyEmailProvedByLink(verif.user_id);
+
     await this.databaseService.supabase
       .from("email_verifications")
       .update({ verified_at: new Date().toISOString() })
       .eq("id", verif.id);
 
-    const { data: user } = await this.databaseService.supabase
-      .from("users")
-      .update({ email_verified: true })
-      .eq("user_id", verif.user_id)
-      .select()
-      .single();
+    // The house the session names, else the one the person signed up into;
+    // membership-checked like every other mint (ADR 0164), so a held
+    // membership (fork 13) names nothing.
+    return this.generateTokens(
+      user,
+      false,
+      sessionHouse ?? user.restaurant_id ?? null,
+    );
+  }
 
-    if (!user) throw new BadRequestException("User not found");
-    // The house the person signed up into, membership-checked like every
-    // other mint (ADR 0164): verifying follows a register or a join, which
-    // name their house.
-    return this.generateTokens(user, false, user.restaurant_id ?? null);
+  /**
+   * The verification link proves the mailbox, and verifies the account.
+   *
+   * Inside the seven days (ADR 0229 fork 8) the password on the account is
+   * kept: the link is how a real registrant proves the address their password
+   * was set for (Firebase and Auth0 keep it too). Since fork 12 (item 81) the
+   * caller must be signed in to this account (`verifyEmail`), so the password
+   * kept is one the caller holds; a stranger's password can no longer be kept
+   * by the real owner's click, because the owner has no session to click with.
+   *
+   * Once that password has LAPSED (item 73: "after 7 days unverified the
+   * unproven password cannot sign in (code sign-in still works, fork 6 handles
+   * it)"), a link must not bring it back: the address being proved now does
+   * not prove who chose the password. So a link that verifies an account whose
+   * unproven password has lapsed does what fork 6 does for a code, in ONE
+   * compare-and-set: verified, `password_hash` null, `session_version + 1` (so
+   * every refresh token fork 10 refused stays refused, ADR 0225), sockets
+   * closed, the address told. Without this, one click on a link the stranger
+   * requested undid items 73 and 78 at once (the ADR 0090 audit of PR #479 at
+   * 09b712d29).
+   *
+   * Both writes are compare-and-set on `email_verified = false` and the
+   * session version read just before, so a code, a reset or another click
+   * racing this one makes it miss and re-read (three tries). A row already
+   * verified is returned as it is. A failed write verifies nothing: 503, and
+   * the link is not spent.
+   */
+  private async verifyEmailProvedByLink(userId: string): Promise<any> {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const { data: row, error: readErr } = await this.databaseService.supabase
+        .from("users")
+        .select("*")
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (readErr) {
+        this.logger.error(
+          `Email verification could not read ${userId}: ${readErr.message}`,
+        );
+        throw new ServiceUnavailableException(
+          "Could not check this verification link right now. Please try again.",
+        );
+      }
+      if (!row) throw new BadRequestException("User not found");
+      if (row.email_verified === true) return row;
+
+      const lapsed =
+        holdsUnprovenPassword(row) &&
+        unprovenPasswordHasLapsed(row, Date.now());
+      const from = sessionVersionOf(row);
+      const { data: written, error } = await this.databaseService.supabase
+        .from("users")
+        .update(
+          lapsed
+            ? {
+                email_verified: true,
+                password_hash: null,
+                session_version: from + 1,
+              }
+            : { email_verified: true },
+        )
+        .eq("user_id", userId)
+        .eq("email_verified", false)
+        .eq("session_version", from)
+        .select("*")
+        .maybeSingle();
+      if (error) {
+        this.logger.error(
+          `Email verification could not mark ${userId} verified: ${error.message}`,
+        );
+        throw new ServiceUnavailableException(
+          "Could not check this verification link right now. Please try again.",
+        );
+      }
+      if (!written) continue; // the row moved between the read and the write
+      if (lapsed) {
+        this.websocketGateway?.endStaleSessions(
+          userId,
+          sessionVersionOf(written),
+        );
+        this.logger.log(
+          `Email verified by a link after the unproven password lapsed: ${userId}; ` +
+            "the password was removed and every earlier session ended",
+        );
+        await this.mailUnprovenPasswordRemoved(written, "link");
+      }
+      return written;
+    }
+    this.logger.error(
+      `Email verification could not mark ${userId} verified: the row kept moving`,
+    );
+    throw new ServiceUnavailableException(
+      "Could not check this verification link right now. Please try again.",
+    );
   }
 
   /**
@@ -2441,7 +3377,39 @@ export class AuthService {
   async resendVerification(
     userId: string,
     email: string,
+    devBypassSession = false,
   ): Promise<{ sent: boolean }> {
+    // ADR 0229 fork 12 (item 81): a resend honours the fork 8 lapse, as a
+    // refresh does (fork 10). Past the seven days an unproven password opens
+    // nothing, and the session that password opened asks for no more links:
+    // the same refusal `refreshAccessToken` gives, so the person signs in by
+    // emailed code (fork 6). Read from the row, never the token.
+    const { data: account, error: accountErr } =
+      await this.databaseService.supabase
+        .from("users")
+        .select("email_verified, password_hash, created_at")
+        .eq("user_id", userId)
+        .maybeSingle();
+    if (accountErr || !account) {
+      this.logger.error(
+        `resendVerification could not read ${userId}: ${accountErr?.message ?? "no row"}`,
+      );
+      throw new ServiceUnavailableException(
+        "Could not send a verification email right now. Please try again.",
+      );
+    }
+    if (
+      !devBypassSession &&
+      holdsUnprovenPassword(account) &&
+      unprovenPasswordHasLapsed(account, Date.now())
+    ) {
+      throw new UnauthorizedException({
+        message:
+          "This session was signed out because its password was never confirmed. Sign in with a code emailed to you.",
+        code: SESSION_ENDED,
+      });
+    }
+
     const { data: verif } = await this.databaseService.supabase
       .from("email_verifications")
       .select("id, resend_count, last_resent_at, token")
@@ -2785,7 +3753,11 @@ export class AuthService {
     userId: string,
     currentPassword: string | undefined,
     newPassword: string,
-    session: { restaurantId?: string | null; devBypass?: boolean } = {},
+    session: {
+      restaurantId?: string | null;
+      devBypass?: boolean;
+      authTime?: number | null;
+    } = {},
   ): Promise<TokenPair> {
     if (!newPassword || newPassword.length < 8) {
       throw new BadRequestException(
@@ -2828,6 +3800,11 @@ export class AuthService {
       user.password_hash ?? null,
     );
 
+    // ADR 0229 (founder 2026-09-26, round 7, item 44): a change keeps every
+    // passkey, as a reset does, and tells the account which ones still sign
+    // it in. Never throws: the password is already changed.
+    await this.mailPasswordChangedNotice(userId, "change");
+
     // The kept session: same house as the token that asked, same dev-bypass
     // standing (already re-checked against the environment by the caller).
     // No fallback to the raw users row here (R4, audit 3aaaf502e): a session
@@ -2842,6 +3819,7 @@ export class AuthService {
       },
       session.devBypass === true,
       house,
+      typeof session.authTime === "number" ? session.authTime : null,
     );
   }
 
@@ -2963,7 +3941,7 @@ export class AuthService {
   async resetPassword(token: string, newPassword: string): Promise<void> {
     const { data: reset, error } = await this.databaseService.supabase
       .from("password_resets")
-      .select("id, user_id, expires_at, used_at")
+      .select("id, user_id, email, expires_at, used_at")
       .eq("token", token)
       .maybeSingle();
 
@@ -2983,10 +3961,15 @@ export class AuthService {
 
     // ADR 0225: the new password and the end of every session minted before
     // it are one write. A reset is made from no session, so none is kept.
+    // The link was mailed to `reset.email`; following it proves that mailbox,
+    // so the write also verifies it when it is still the account's address
+    // (ADR 0229 fork 6, item 67).
     await this.setPasswordEndingSessions(
       reset.user_id,
       passwordHash,
       "resetPassword",
+      undefined,
+      typeof reset.email === "string" ? reset.email : null,
     );
 
     const usedAt = new Date().toISOString();
@@ -3000,11 +3983,101 @@ export class AuthService {
       .eq("user_id", reset.user_id)
       .is("used_at", null);
 
+    // ADR 0229 (founder 2026-09-26, round 7, item 44, superseding item 37's
+    // "reset RETIRES every passkey"): a reset keeps every passkey -- what
+    // Google, Apple, Microsoft, GitHub and Okta do -- and the account is told,
+    // with the passkeys that still sign it in listed for review (NIST SP
+    // 800-63B-4 §4.2: an account-recovery event always notifies). Never
+    // throws: the password is already reset and the link already spent.
+    await this.mailPasswordChangedNotice(reset.user_id, "reset");
+
     // Every session this person had is now signed out (ADR 0225): not by
     // tracking the tokens issued to them (TokenBlacklistService can only
     // deny a token it is handed), but by the session version the write above
     // moved, which every token carries and every reader checks. See
     // session-version.ts.
+  }
+
+  /**
+   * "Your password was reset / changed", to the account's own address (read
+   * from `users`, never from the request), listing every passkey that still
+   * signs the account in (ADR 0229, round 7, item 44). Industry keeps passkeys
+   * across a password reset and a change and notifies instead; this mail is
+   * the "review your passkeys" prompt, and it reaches the mailbox -- the one
+   * channel an intruder inside a session does not control.
+   *
+   * Returns whether the mail was handed to the mail service. Never throws: the
+   * password write already happened, and a failed notice must not turn a
+   * finished reset into a reported failure. A failure is logged; when the
+   * passkeys cannot be read the mail says so rather than claiming there are
+   * none (absence is not reported as "no passkeys").
+   */
+  async mailPasswordChangedNotice(
+    userId: string,
+    how: "reset" | "change",
+  ): Promise<boolean> {
+    try {
+      const { data: person, error } = await this.databaseService.supabase
+        .from("users")
+        .select("email, name")
+        .eq("user_id", userId)
+        .maybeSingle();
+      const to = typeof person?.email === "string" ? person.email.trim() : "";
+      if (error || !to) {
+        this.logger.error(
+          `password ${how} for ${userId}: the notice was not sent, the address could not be read -- ${error?.message ?? "no address"}`,
+        );
+        return false;
+      }
+
+      let passkeys: PasskeyStillLive[] | null = null;
+      const { data: rows, error: pkErr } = await this.databaseService.supabase
+        .from("user_passkeys")
+        .select("nickname, device_type, created_at")
+        .eq("user_id", userId)
+        .is("revoked_at", null)
+        .order("created_at", { ascending: true });
+      if (pkErr) {
+        this.logger.error(
+          `password ${how} for ${userId}: the passkeys could not be read for the notice -- ${pkErr.message}`,
+        );
+      } else {
+        passkeys = ((rows as Array<Record<string, unknown>> | null) ?? []).map(
+          (r) => ({
+            nickname: typeof r.nickname === "string" ? r.nickname : null,
+            deviceType:
+              r.device_type === "multiDevice" ? "multiDevice" : "singleDevice",
+            createdAt: String(r.created_at ?? ""),
+          }),
+        );
+      }
+
+      const result = await this.gmailService.sendEmail({
+        to: [to],
+        subject:
+          how === "reset"
+            ? "Your Mudavym password was reset"
+            : "Your Mudavym password was changed",
+        html: passwordChangedEmailTemplate({
+          name: typeof person?.name === "string" ? person.name : null,
+          how,
+          at: new Date().toISOString(),
+          passkeys,
+        }),
+      });
+      if (!result?.success) {
+        this.logger.warn(
+          `password ${how} for ${userId}: the notice was not delivered -- ${result?.error}`,
+        );
+        return false;
+      }
+      return true;
+    } catch (e) {
+      this.logger.error(
+        `password ${how} for ${userId}: the notice threw -- ${(e as Error).message}`,
+      );
+      return false;
+    }
   }
 
   /**

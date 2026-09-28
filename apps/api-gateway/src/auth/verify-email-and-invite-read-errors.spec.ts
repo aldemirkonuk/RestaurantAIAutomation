@@ -1,6 +1,8 @@
 import {
   BadRequestException,
+  ForbiddenException,
   ServiceUnavailableException,
+  UnauthorizedException,
 } from "@nestjs/common";
 import { AuthService } from "./auth.service";
 
@@ -183,7 +185,7 @@ describe("AuthService#verifyEmail — a failed read is not an invalid link", () 
 
   it("database error on the token lookup: surfaces as 503, never as 400 'Invalid verification token'", async () => {
     const { svc, from } = makeService({ email_verifications: [DB_DOWN] });
-    await expect(svc.verifyEmail(TOKEN)).rejects.toBeInstanceOf(
+    await expect(svc.verifyEmail(TOKEN, "u1")).rejects.toBeInstanceOf(
       ServiceUnavailableException,
     );
     // Nothing was written on the back of a read that did not happen.
@@ -194,7 +196,7 @@ describe("AuthService#verifyEmail — a failed read is not an invalid link", () 
     const { svc, logError } = makeService({ email_verifications: [DB_DOWN] });
     let caught: any;
     try {
-      await svc.verifyEmail(TOKEN);
+      await svc.verifyEmail(TOKEN, "u1");
     } catch (e) {
       caught = e;
     }
@@ -211,7 +213,7 @@ describe("AuthService#verifyEmail — a failed read is not an invalid link", () 
     const { svc } = makeService({
       email_verifications: [{ data: null, error: null }],
     });
-    const p = svc.verifyEmail(TOKEN);
+    const p = svc.verifyEmail(TOKEN, "u1");
     await expect(p).rejects.toBeInstanceOf(BadRequestException);
     await expect(p).rejects.toThrow("Invalid verification token");
   });
@@ -230,7 +232,7 @@ describe("AuthService#verifyEmail — a failed read is not an invalid link", () 
         },
       ],
     });
-    await expect(svc.verifyEmail(TOKEN)).rejects.toThrow(
+    await expect(svc.verifyEmail(TOKEN, "u1")).rejects.toThrow(
       "Email already verified",
     );
   });
@@ -244,7 +246,7 @@ describe("AuthService#verifyEmail — a failed read is not an invalid link", () 
         },
       ],
     });
-    await expect(svc.verifyEmail(TOKEN)).rejects.toThrow(
+    await expect(svc.verifyEmail(TOKEN, "u1")).rejects.toThrow(
       "Verification token expired. Please resend.",
     );
   });
@@ -258,13 +260,26 @@ describe("AuthService#verifyEmail — a failed read is not an invalid link", () 
         },
         { data: null, error: null },
       ],
-      users: [{ data: { user_id: "u1", email_verified: true }, error: null }],
+      // The row read first (ADR 0229 fork 8: a lapsed unproven password is
+      // judged on it), then the compare-and-set that verifies it.
+      users: [
+        {
+          data: {
+            user_id: "u1",
+            email_verified: false,
+            password_hash: null,
+            session_version: 0,
+          },
+          error: null,
+        },
+        { data: { user_id: "u1", email_verified: true }, error: null },
+      ],
     });
     const gen = jest
       .spyOn(svc as any, "generateTokens")
       .mockResolvedValue({ accessToken: "a", refreshToken: "r" });
 
-    await expect(svc.verifyEmail(TOKEN)).resolves.toEqual({
+    await expect(svc.verifyEmail(TOKEN, "u1")).resolves.toEqual({
       accessToken: "a",
       refreshToken: "r",
     });
@@ -273,15 +288,98 @@ describe("AuthService#verifyEmail — a failed read is not an invalid link", () 
       TOKEN,
     );
     expect(chains.email_verifications[1].update).toHaveBeenCalled();
-    expect(chains.users[0].update).toHaveBeenCalledWith({
+    expect(chains.users[1].update).toHaveBeenCalledWith({
       email_verified: true,
     });
+    expect(chains.users[1].eq).toHaveBeenCalledWith("email_verified", false);
+    expect(chains.users[1].eq).toHaveBeenCalledWith("session_version", 0);
     // ADR 0164: every mint names its house explicitly, membership-checked
     // inside generateTokens; this users row names none.
     expect(gen).toHaveBeenCalledWith(
       { user_id: "u1", email_verified: true },
       false,
       null,
+    );
+  });
+});
+
+/**
+ * ADR 0229 fork 12, the founder 2026-09-28, item 81, "Link needs sign-in
+ * (Recommended)": the link verifies only for a caller signed in to the account
+ * it was sent for. Mock-level; the attack end to end is in
+ * unproven-address.spec.ts.
+ */
+describe("AuthService#verifyEmail — the link needs a session of its own account (fork 12)", () => {
+  const TOKEN = "3f2b8c1e-9a4d-4c7b-8e2f-1a2b3c4d5e6f";
+  const live = {
+    data: { id: "v1", user_id: "u1", expires_at: future(), verified_at: null },
+    error: null,
+  };
+
+  it("signed out: 401 SIGN_IN_TO_VERIFY, and nothing is read, written or spent", async () => {
+    const { svc, from } = makeService({ email_verifications: [live] });
+    let caught: any;
+    try {
+      await svc.verifyEmail(TOKEN, null);
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(UnauthorizedException);
+    expect(caught.getResponse()).toMatchObject({ code: "SIGN_IN_TO_VERIFY" });
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it("signed in to ANOTHER account: 403 LINK_FOR_ANOTHER_ACCOUNT, before the link's state is said, and the link is not spent", async () => {
+    const used = {
+      data: { id: "v1", user_id: "u1", expires_at: past(), verified_at: past() },
+      error: null,
+    };
+    for (const row of [live, used]) {
+      const { svc, from, chains } = makeService({ email_verifications: [row] });
+      let caught: any;
+      try {
+        await svc.verifyEmail(TOKEN, "someone-else");
+      } catch (e) {
+        caught = e;
+      }
+      expect(caught).toBeInstanceOf(ForbiddenException);
+      expect(caught.getResponse()).toMatchObject({
+        code: "LINK_FOR_ANOTHER_ACCOUNT",
+      });
+      // One read of the link; no users write, no link write.
+      expect(from).toHaveBeenCalledTimes(1);
+      expect(chains.email_verifications[0].update).not.toHaveBeenCalled();
+    }
+  });
+
+  it("the session's house is the one the new pair names, when it has one", async () => {
+    const { svc } = makeService({
+      email_verifications: [live, { data: null, error: null }],
+      users: [
+        {
+          data: {
+            user_id: "u1",
+            email_verified: false,
+            password_hash: null,
+            session_version: 0,
+            restaurant_id: "home-house",
+          },
+          error: null,
+        },
+        {
+          data: { user_id: "u1", email_verified: true, restaurant_id: "home-house" },
+          error: null,
+        },
+      ],
+    });
+    const gen = jest
+      .spyOn(svc as any, "generateTokens")
+      .mockResolvedValue({ accessToken: "a", refreshToken: "r" });
+    await svc.verifyEmail(TOKEN, "u1", "session-house");
+    expect(gen).toHaveBeenCalledWith(
+      expect.objectContaining({ user_id: "u1" }),
+      false,
+      "session-house",
     );
   });
 });
