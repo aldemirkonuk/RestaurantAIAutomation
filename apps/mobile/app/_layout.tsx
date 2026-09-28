@@ -31,7 +31,6 @@ import { clearPendingRoute, peekPendingRoute } from "@/auth/pendingRoute";
 import { color } from "@/design/tokens";
 import { GuidanceProvider } from "@/guidance/GuidanceProvider";
 import { TourSheet } from "@/guidance/TourSheet";
-import { WineAgentFab } from "@/guidance/WineAgentFab";
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -215,7 +214,6 @@ export default function RootLayout() {
               />
             </Stack>
             <TourSheet />
-            <WineAgentFab />
           </GuidanceProvider>
         </QueryClientProvider>
       </SafeAreaProvider>

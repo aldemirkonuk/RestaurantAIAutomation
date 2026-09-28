@@ -110,12 +110,11 @@ export default function HelpScreen() {
         <Card style={{ gap: space.sm }}>
           <AppText variant="headline">Wine Agent</AppText>
           <AppText variant="footnote" tone="secondary">
-            Inventory & ordering help entry. After activation, look for the circle bottom-right.
+            Inventory & ordering help. It does not access email.
           </AppText>
           <PressableScale
             onPress={async () => {
-              guidance?.unlockWineAgentFab();
-              trackGuidance("wine_agent_fab_clicked", { source: "help" });
+              trackGuidance("wine_agent_opened", { source: "help" });
               // Web `/wineagent` is retired (ADR 0019 §B); `/sommelier` is the
               // real inventory & ordering help surface.
               if (WEB_URL) await Linking.openURL(`${WEB_URL}/sommelier`);
@@ -124,17 +123,6 @@ export default function HelpScreen() {
           >
             <AppText variant="footnote" tone="wine">
               Open Wine Agent →
-            </AppText>
-          </PressableScale>
-          <PressableScale
-            onPress={() =>
-              guidance?.setShowWineAgentFab(!guidance.state.global.show_wine_agent_fab)
-            }
-          >
-            <AppText variant="footnote" tone="secondary">
-              {guidance?.state.global.show_wine_agent_fab === false
-                ? "Show Wine Agent button"
-                : "Hide Wine Agent button"}
             </AppText>
           </PressableScale>
         </Card>

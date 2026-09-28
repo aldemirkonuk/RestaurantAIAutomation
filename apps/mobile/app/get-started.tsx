@@ -44,7 +44,7 @@ const USE_CARDS = [
     id: "wine-agent",
     title: "Wine Agent",
     description:
-      "After setup, the wine circle bottom-right opens inventory help. It does not access email.",
+      "Inventory and ordering help. It does not access email.",
     icon: "chatbubble-ellipses" as const,
     href: "/wine-agent",
   },
@@ -161,9 +161,6 @@ export default function GetStartedScreen() {
                   if ("action" in card && card.action === "activate") {
                     setTab("activate");
                     return;
-                  }
-                  if (card.id === "wine-agent") {
-                    guidance?.unlockWineAgentFab();
                   }
                   if (card.id === "services") {
                     trackGuidance("services_visited", { source: "get-started" });
