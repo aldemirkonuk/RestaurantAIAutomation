@@ -159,3 +159,7 @@ apps/api-gateway/.gateway-boot-check.cjs
 # `pnpm --filter @wineops/api-gateway openapi:export` writes it; nothing in the
 # repo reads it, and booting the gateway no longer touches it.
 apps/api-gateway/openapi.json
+
+# Test-coverage output (jest/vitest/istanbul) — generated, never committed.
+# 794 of these were swept into a preserve snapshot because nothing ignored them.
+coverage/
