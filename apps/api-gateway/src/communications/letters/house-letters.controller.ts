@@ -261,7 +261,15 @@ export class HouseLettersController {
   }
 
   @Post(":id/cancel")
-  @ApiOperation({ summary: "Pull a queued letter back before it leaves" })
+  @ApiOperation({
+    summary:
+      "Pull a queued letter back before it leaves — the author's alone (founder, 2026-09-18)",
+  })
+  @ApiResponse({
+    status: 403,
+    description:
+      "This queued letter is another member's, not yours (founder, 2026-09-18: cancel is the author's alone).",
+  })
   async cancel(
     @CurrentUser() user: TokenUser,
     @Param("id", new ParseUUIDPipe()) id: string,
