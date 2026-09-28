@@ -1,6 +1,6 @@
 # 0229 — A passkey or an emailed code signs you in, and a recent sign-in guards enrolment
 
-- **Status:** Locked **[2026-09-27, the founder, round 11, item 63, verbatim: "Lock both as built (Recommended)" — ADR 0222 and ADR 0229 locked as built on PR #479. Fork 6 below was found by the ADR 0090 audit and was not in front of him when he answered, so it is recorded open rather than folded into the lock]** **[Amended 2026-09-27, the founder, item 67, verbatim: "option 1 + do what industry do for these, for security ops do what the industry leaders do" (the label he chose: "Drop pwd + (b) interim (Recommended)") — fork 6 RESOLVED as path (a), built on PR #479 with the industry-leader defences in § Fork 6; (b) is moot because #477 (ADR 0225) merged first. Two new forks (7, 8) found by that research are open. The ADR stays Locked]** **[Amended 2026-09-27, the founder, items 72 and 73, verbatim labels "Bind invite to address (Recommended)" and "Expire the password, 7 days (Recommended)" — forks 7 and 8 RESOLVED and built on PR #479 (§ Forks 7 and 8). Building them found two more, forks 9 and 10, open. The ADR stays Locked]** — the founder answered WHAT on 2026-09-25 (item 29, below), answered forks 1-3 on 2026-09-26 (round 6, item 37, § Open forks), and the same day (round 7, item 44) ordered industry practice for a reset AND a change — which **supersedes round 6's "reset RETIRES every passkey"** and answers forks 4 and 5 (§ Round 7); this record is the HOW
+- **Status:** Locked **[2026-09-27, the founder, round 11, item 63, verbatim: "Lock both as built (Recommended)" — ADR 0222 and ADR 0229 locked as built on PR #479. Fork 6 below was found by the ADR 0090 audit and was not in front of him when he answered, so it is recorded open rather than folded into the lock]** **[Amended 2026-09-27, the founder, item 67, verbatim: "option 1 + do what industry do for these, for security ops do what the industry leaders do" (the label he chose: "Drop pwd + (b) interim (Recommended)") — fork 6 RESOLVED as path (a), built on PR #479 with the industry-leader defences in § Fork 6; (b) is moot because #477 (ADR 0225) merged first. Two new forks (7, 8) found by that research are open. The ADR stays Locked]** **[Amended 2026-09-27, the founder, items 72 and 73, verbatim labels "Bind invite to address (Recommended)" and "Expire the password, 7 days (Recommended)" — forks 7 and 8 RESOLVED and built on PR #479 (§ Forks 7 and 8). Building them found two more, forks 9 and 10, open. The ADR stays Locked]** **[Amended 2026-09-27, the founder, items 77 and 78, verbatim labels "Email invite + (c) interim (Recommended)" and "Refresh refuses lapsed (Recommended)" — forks 9 and 10 RESOLVED and built on PR #479 (§ Forks 9 and 10). Building them found fork 11 (the invite-mail limit is per house), open. The ADR stays Locked]** — the founder answered WHAT on 2026-09-25 (item 29, below), answered forks 1-3 on 2026-09-26 (round 6, item 37, § Open forks), and the same day (round 7, item 44) ordered industry practice for a reset AND a change — which **supersedes round 6's "reset RETIRES every passkey"** and answers forks 4 and 5 (§ Round 7); this record is the HOW
 - **Date:** 2026-09-25
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** passkey sign-in, discoverable credential, user handle, WebAuthn authentication, one-time code, OTP, email code, step-up, re-authentication, auth_time, freshness, enumeration, rate limit, HMAC, session_version, membership, recovery, lost device
@@ -445,7 +445,7 @@ password cannot sign in (code sign-in still works, fork 6 handles it); no
 `founder-answers-2026-09-25-web-rebuild.md` items 72-73.
 
 **Built** (`apps/api-gateway/src/auth/unproven-address.ts`, `auth.service.ts`,
-migration `20261102100200_an_invite_remembers_the_address_it_was_made_for.sql`):
+migration `20261125100200_an_invite_remembers_the_address_it_was_made_for.sql`):
 
 1. **An invite remembers its address.** `organization_invites.target_email`
    (new, nullable); `generateInvite` writes `normalizeEmail(targetEmail)`
@@ -503,10 +503,124 @@ a comment-only control green) and the open
 
 **Found while building, open:** fork 9 (the bound address is the minter's
 word: the invite is never mailed) and fork 10 (a refresh outlives the lapsed
-password). No independent Workflow fan-out ran (a builder subagent has no
+password). **[Both answered 2026-09-27, items 77 and 78, and built: § Forks 9
+and 10.]** No independent Workflow fan-out ran (a builder subagent has no
 Workflow tool); the adversarial pass was the mutation run and walking each
 attack's sequence against the code, which is how forks 9 and 10 were found.
 
+
+### Forks 9 and 10 (the founder, 2026-09-27, items 77 and 78): only a join from the mail verifies, and a refresh ends with the password
+
+**[2026-09-27, the founder, item 77.]** Verbatim label: *"Email invite + (c)
+interim (Recommended)"* — the gateway itself emails the invite to
+`target_email` with a second secret that exists only in that email; a join is
+verified only when it carries that secret and the address matches; the
+minter's copied link still works but joins unverified; until then no invite
+join verifies. **[2026-09-27, the founder, item 78.]** Verbatim label:
+*"Refresh refuses lapsed (Recommended)"* — `refreshAccessToken` refuses an
+account whose unproven password has lapsed (`unprovenPasswordHasLapsed`). Both
+recorded in memory `founder-answers-2026-09-25-web-rebuild.md` items 77-78.
+
+**Built** (`apps/api-gateway/src/auth/unproven-address.ts`, `auth.service.ts`,
+`communications/email-templates/team-invite.template.ts`,
+`dto/join-via-invite.dto.ts`; web `lib/inviteMailSecret.ts`, `InviteLanding`,
+`Register`, `InviteTeamDialog`; migration
+`20261125100300_an_invite_is_mailed_with_a_secret_only_the_mail_carries.sql`):
+
+1. **The invite is mailed with a secret only the mail carries (fork 9).**
+   `generateInvite`, when the invite names an address, makes a 256-bit random
+   secret (`newInviteEmailSecret`, base64url), stores only its SHA-256 hex
+   (`organization_invites.email_secret_hash`, checked to that shape) with
+   `emailed_at`, and mails the address `/invite/<code>#k=<secret>`
+   (`teamInviteEmailTemplate`). The secret rides the URL fragment, which the
+   browser never sends to a server (and `scrubUrl` cuts at `#` before Sentry).
+   The mail carries only the link, the role in fixed words and the expiry:
+   no house name, no inviter name, no address — those are typed by whoever
+   opens a house, and the mail can reach an address that never asked for it.
+   The response's `inviteUrl` carries no secret and reports
+   `invitationEmail`: `sent`, `not_sent`, `rate_limited` or `no_address`, which
+   the invite dialog says in one sentence.
+2. **Only a join from the mail verifies (fork 9; the "(c) interim" is
+   inherent).** `inviteVerifiesAddress` now needs all three: the invite named
+   an address, the typed address equals it (normalised), and the join's
+   `emailSecret` hashes, compared in constant time, to the stored hash. A
+   copied link (no secret), a wrong secret, another invite's secret, a
+   different address, or an invite with no stored hash (never mailed, refused
+   by the allowance, or minted before this) all join unverified, and the
+   verification link is mailed to the typed address as before. The web
+   carries the fragment from `/invite/<code>` to `/register` and sends it as
+   `emailSecret`. The existing-account branch is unchanged: it still costs
+   that account's own password and verifies nothing.
+3. **Invite mails are rate-limited per house (fork 9).** At most
+   `INVITE_EMAILS_PER_HOUSE` = 20 in any `INVITE_EMAIL_WINDOW_MS` = 24 hours.
+   The number is the builder's (item 77 says "per house", not how many); a
+   restaurant onboarding a whole team in a day stays under it. The invite's
+   own `emailed_at` is written with the row and the count is read after it,
+   so parallel mints over the limit see each other and none squeezes past
+   (the conservative direction: two at the edge may both be refused). A
+   count that cannot be read, or a house over the limit, sends nothing,
+   releases the claim and clears the hash, so that invite can never verify.
+   A send that fails keeps its claim (a mailer that is down does not refill
+   the allowance). Over the limit the invite is still made and its copied
+   link still joins, unverified.
+4. **A refresh ends with the password (fork 10).** `refreshAccessToken`,
+   after the session-version check and before any token is signed, throws 401
+   `SESSION_ENDED` ("This session was signed out because its password was
+   never confirmed. Sign in with a code emailed to you.") when
+   `holdsUnprovenPassword` (not `email_verified`, and a non-empty
+   `password_hash`) and fork 8's `unprovenPasswordHasLapsed` both hold. An
+   account with no password has no unproven password to lapse. A dev-bypass
+   session is exempt only where `devBypassEnvEnabled()` holds (never in
+   production): the bypass account's row is unverified by design
+   (`devBypassLogin`) and its session is not the password's, so without the
+   exemption the local bypass would end at its first refresh.
+
+**Tests** — `unproven-address.spec.ts`, now 36 cases (the fork 7 case that
+joined verified by address alone now joins from the mail): the mail goes once
+to the address with a 43-character secret stored only as its hash and absent
+from the response and every table; the mail carries no word anyone typed (a
+house named `Evil <b>House</b> Pay Here`, an inviter `Mallory Phisher`, the
+address); no address, no mail; the copied link joins unverified; another
+address, a wrong secret or another invite's secret all join unverified; an
+invite with no stored hash verifies nobody; **the fork 9 attack end to end**
+(a minter types the victim's address, joins with it from the copied link and
+their own password → unverified; the victim's code removes that password and
+ends the attacker's refresh token); the addressed person joining from the
+mail is verified with their own password; 20 mails then `rate_limited`, the
+21st invite's hash cleared and its link joining unverified, another house
+unaffected, no-address invites not refused; mails past the window do not
+count; 30 parallel mints send at most 20; an unreadable count fails closed; a
+failed send keeps its claim; the template's role words; **the fork 10 attack
+end to end** (a pre-registrant signed in on day one refreshes on day six; on
+day eight both refresh tokens are refused while the owner's emailed code
+signs in and refreshes); inside the window it refreshes; a verified account
+and a passwordless one are not refused; dev bypass only where it is on. Web:
+`inviteMailSecret.test.ts` (4), `publicPages.recovery.test.tsx` (the fragment
+reaches the register link, and only when the link had one),
+`authPages.publicDesign.test.tsx` (a join from the mail sends the secret, a
+copied link sends none), `InviteTeamDialog.test.tsx` (the mail outcome on
+both branches). **Mutation check**: 21 gateway source mutants, 21 red (5 of
+fork 10: the lapse ignored, the dev-bypass exemption dropped, the exemption
+ignoring the environment, passwordless accounts refused, verified accounts
+treated as unproven; 16 of fork 9: the secret ignored, compared raw, not
+stored, missing from the mail, leaked in the response, `>=` at the limit, the
+limit not per house, the window ignored, the release keeping the hash, a
+failed count failing open, the hash not selected, the secret not passed, no
+mail sent, the address in the subject, a raw role printed, an empty hash
+accepted); 4 web mutants, 4 red (the secret's shape unchecked, the landing
+dropping it, the register not sending it, the dialog hiding the outcome); the
+legacy (house-design-off) branch of `InviteLanding` is not driven by a test.
+Sources restored byte-identical. CLAIMS: new
+`ADR-0229-FORK-9-ONLY-A-JOIN-FROM-THE-MAIL-VERIFIES`;
+`ADR-0229-FORK-10-A-LAPSED-ACCOUNT-STILL-REFRESHES` flipped to resolved with a
+verify that pins the refusal; `ADR-0229-FORK-7-...` and
+`ADR-0164-SESSIONS-FOLLOW-MEMBERSHIP` re-pinned to the changed code; 10 claim
+mutants red, a comment-only control green on all four rows.
+
+**Found while building, open:** fork 11 (the limit is per house, as item 77
+says, and anyone can open a house). No independent Workflow fan-out ran (a
+builder subagent has no Workflow tool); the adversarial pass was the mutation
+run and walking each attack against the code.
 
 ## Decision
 
@@ -517,7 +631,7 @@ in when this device has none; both mint only through
 `auth_time` within ten minutes or an emailed code. Built in
 `apps/api-gateway/src/passkeys/` (`sign-in.controller.ts`,
 `sign-in-codes.service.ts`, `passkeys.service.ts`), migration
-`20261102100100_passkey_sign_in_and_email_codes.sql` (`sign_in` challenge
+`20261125100100_passkey_sign_in_and_email_codes.sql` (`sign_in` challenge
 purpose with no person; `sign_in_codes`), and on `/login` and `/profile`.
 
 **Recovery when a device is lost.** A passkey is never the only door:
@@ -662,8 +776,11 @@ mint should stamp `signedInNow()` (the password was just typed).
    which fork 6 already handles); (c) leave it. **Recommendation: (b) with N
    = 7** — it closes the window without deleting a user, and a real
    registrant loses nothing but the password they never confirmed. Not built.
-9. **[OPEN — found 2026-09-27 building item 72; not yet put to the
-   founder.]** **The address an invite is bound to is typed by whoever mints
+9. **[RESOLVED 2026-09-27, the founder, item 77, verbatim label "Email
+   invite + (c) interim (Recommended)" → path (b), with (c) inherent: every
+   join that does not carry the mailed secret is unverified. Rejected: (a)
+   as built. Built: § Forks 9 and 10. What it does not close is fork 11.]
+   [Found 2026-09-27 building item 72.]** **The address an invite is bound to is typed by whoever mints
    it, and the gateway never mails the invite.** Item 72's words are "the
    address it was sent to", but nothing sends it: `generateInvite` returns the
    code and link to the minter (`InviteTeamDialog` copies it to the
@@ -682,8 +799,12 @@ mint should stamp `signedInNow()` (the password was just typed).
    **Recommendation: (b)** — it is what "sent to" assumed and keeps the one-step
    join for the addressed person; **(c) as the interim** until (b) is built.
    Cost of (b): one more mail type and a second secret column on the invite.
-10. **[OPEN — found 2026-09-27 building item 73; not yet put to the
-   founder.]** **A session outlives its lapsed password.** Item 73 stops the
+10. **[RESOLVED 2026-09-27, the founder, item 78, verbatim label "Refresh
+   refuses lapsed (Recommended)" → path (b): `refreshAccessToken` refuses an
+   account whose unproven password has lapsed, reusing
+   `unprovenPasswordHasLapsed`. Rejected: (a), (c). Built: § Forks 9 and 10;
+   the CLAIMS row below is flipped to resolved.] [Found 2026-09-27 building
+   item 73.]** **A session outlives its lapsed password.** Item 73 stops the
    unproven password signing in; a refresh is not a sign-in
    (`refreshAccessToken` reads no password and carries `auth_time`), and every
    refresh mints a new 7-day refresh token. So a registrant who signed in
@@ -700,6 +821,19 @@ mint should stamp `signedInNow()` (the password was just typed).
    `ADR-0229-FORK-10-A-LAPSED-ACCOUNT-STILL-REFRESHES`, which fails the build
    the day it is built so the fork is struck. Not built: item 73 names the
    password, not the session.
+11. **[OPEN — found 2026-09-27 building item 77; not yet put to the
+   founder.]** **The invite-mail limit is per house, and anyone can open a
+   house.** Item 77 says "rate-limit invite emails per house", built as 20 a
+   day per house. One person who opens several houses can send one address
+   20 invite mails a day per house. This is mail volume at a victim, not
+   account access: no mail lets anyone but its reader join verified, and the
+   mail carries no word the sender typed. Paths: (a) as built; (b) also cap
+   invite mails per target address across all houses (for example 3 a day),
+   past which the invite is made but not mailed, like the house limit; (c)
+   (b) plus a cap per minting person. **Recommendation: (b)** — it bounds
+   what one address can receive whoever sends, at the cost of one more count
+   on the same index shape. Not built: a cap across houses is beyond "per
+   house".
 
 ## Consequences
 
@@ -736,6 +870,16 @@ mint should stamp `signedInNow()` (the password was just typed).
   unverified with a password and older than seven days, the moment this
   deploys; they sign in by emailed code (which verifies and, fork 6, removes
   that password) or by "Forgot password?".
+- **[2026-09-27, forks 9 and 10, items 77-78]** One more mail type through
+  `GmailService` (the invite), sent while the minter waits; when mail is
+  down the invite is still made and the dialog says it was not emailed. An
+  invited person who joins from a copied link, not the mail, passes
+  /verify-email once. A house may mail 20 invites a day. A registrant whose
+  unproven password has lapsed is signed out at their next refresh (within
+  15 minutes) and signs in by emailed code. Migration `20261125100300` adds
+  two nullable columns and a partial index; the PR's three earlier
+  migrations were renumbered past main's new ceiling (`20261116000220`):
+  `20261102100000/100100/100200` → `20261125100000/100100/100200`.
 - Revisit when: #471 or #477 merges (the merge notes above); F11 lands (a
   passkey at the point of action); conditional UI is wanted; ~~fork 4 is
   answered~~ **[answered, round 7]**; a surveyed provider starts revoking
@@ -751,3 +895,4 @@ mint should stamp `signedInNow()` (the password was just typed).
 | 2026-09-27 | the founder (round 11, item 63) + PR #479 audit-fix round 2 (agent) | **Locked as built**, verbatim "Lock both as built (Recommended)"; Status line and this ADR's own index row changed. The same round recorded fork 6 (a code sign-in verifies an account someone else registered and keeps their password), found by the audit and not in front of the founder when he answered; not built, open for him. Code: `claimTry` replaces `recordWrongGuess` (claim a try before comparing); `sign-in-codes.service.spec.ts` 21/21 with two new cases (3×5 parallel guesses with the right code last: none signs in, `hashCode` runs 5 times; a right guess is not a wrong one for the day). Mutants: compare-first restored → both new cases red; the consumed-row adjustment removed → the day case red. `src/passkeys src/auth` 32 suites / 406 tests green; gateway `tsc --noEmit` clean |
 | 2026-09-27 | the founder (item 67) + PR #479 builder (Opus agent) | Fork 6 **resolved**, verbatim "option 1 + do what industry do for these, for security ops do what the industry leaders do" (label "Drop pwd + (b) interim (Recommended)"). Built path (a) plus the adopted industry defences (§ Fork 6): first code → verify + drop unproven password + `session_version + 1` in one CAS, sockets closed, notice mailed; a reset link verifies the address it was mailed to. Merged `origin/main` (#477, #441, #475, #489) first: kept both `auth_time` and `sv`, `changePassword` now carries `auth_time`; the PR's two migrations renumbered to 20261020000000 / 20261020000100 (past the #441 ceiling). `pre-hijack.spec.ts` 16/16; 11 source mutants 11 red; `src/auth src/passkeys src/communications/email-templates src/websocket` green; CLAIMS: two new rows, three amended, duplicate rows from the merge collapsed; 6 claim mutants red. Forks 7 (invite door verifies any address) and 8 (no expiry of unverified registrations) opened, not built |
 | 2026-09-27 | the founder (items 72, 73) + PR #479 builder (Opus agent) | Forks 7 and 8 **resolved**, verbatim labels "Bind invite to address (Recommended)" and "Expire the password, 7 days (Recommended)"; built as § Forks 7 and 8 (new `unproven-address.ts`, migration `20261102100200` adding `organization_invites.target_email`). Merged `origin/main` at `ef8ecdf30` (#435) first; the PR's two migrations renumbered again, `20261020000000`/`20261020000100` → `20261102100000`/`20261102100100`, because main's ceiling moved to `20261021150000` (`check_migration_order.py`); `@simplewebauthn/server` classified LOCAL for ADR 0224's host guard (its CRL fetch is filed in v3.0-TECH-DEBT). `unproven-address.spec.ts` 15/15; gateway `src/auth src/passkeys src/communications/email-templates src/restaurants src/team` 51 suites / 721 tests green; 15 source mutants 15 red; CLAIMS 627/627. Forks 9 and 10 found and left open for the founder. No independent Workflow fan-out ran |
+| 2026-09-27 | the founder (items 77, 78) + PR #479 builder (Opus agent) | Forks 9 and 10 **resolved**, verbatim labels "Email invite + (c) interim (Recommended)" and "Refresh refuses lapsed (Recommended)"; built as § Forks 9 and 10 (invite mail with a secret only it carries, `team-invite.template.ts`, migration `20261125100300`; the refresh refusal). Merged `origin/main` at `bc7121ccf` first (CLAIMS conflict: ADR-0164-SIGN-IN-HOUSE-RULE kept this branch's authTime amendment, ADR-0164-ROLES-EXACT-MANAGERS-KEPT took main's 191); the PR's migrations renumbered `20261102100000/100100/100200` → `20261125100000/100100/100200` (`check_migration_order.py`: main's ceiling `20261116000220`). `unproven-address.spec.ts` 36/36; gateway `src/auth src/passkeys src/communications/email-templates src/restaurants src/team src/websocket` 52 suites green; web touched suites green; 21 gateway + 4 web source mutants red; CLAIMS 647/647 with 10 claim mutants red. Fork 11 (per-house limit, anyone can open houses) found and left open for the founder. No independent Workflow fan-out ran |

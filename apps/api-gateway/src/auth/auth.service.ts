@@ -21,6 +21,7 @@ import {
   type PasskeyStillLive,
 } from "../communications/email-templates/password-changed.template";
 import { unprovenPasswordRemovedEmailTemplate } from "../communications/email-templates/unproven-password-removed.template";
+import { teamInviteEmailTemplate } from "../communications/email-templates/team-invite.template";
 import { WebsocketGateway } from "../websocket/websocket.gateway";
 import {
   SESSION_ENDED,
@@ -42,7 +43,12 @@ import { resolveJwtSecret, INSECURE_DEFAULT_JWT_SECRET } from "./jwt-secret";
 import { devBypassEnvEnabled } from "./dev-bypass.util";
 import { grantRefusal } from "./role-grant";
 import {
+  INVITE_EMAILS_PER_HOUSE,
+  INVITE_EMAIL_WINDOW_MS,
+  hashInviteEmailSecret,
+  holdsUnprovenPassword,
   inviteVerifiesAddress,
+  newInviteEmailSecret,
   unprovenPasswordHasLapsed,
 } from "./unproven-address";
 import { normalizeEmail } from "../passkeys/sign-in-codes.service";
@@ -191,6 +197,18 @@ export interface SignInResult extends TokenPair {
  * named when the person is no longer a member of it: the new pair names no
  * house, and the client shows the chooser with one sentence (ADR 0164, R5).
  */
+/**
+ * What happened to the mail of a freshly minted invite (ADR 0229 fork 9,
+ * item 77): `sent`; `not_sent` (the mailer or the count read failed);
+ * `rate_limited` (the house is past `INVITE_EMAILS_PER_HOUSE`); `no_address`
+ * (the invite named none). Only `sent` can lead to a verified join.
+ */
+export type InvitationEmailOutcome =
+  | "sent"
+  | "not_sent"
+  | "rate_limited"
+  | "no_address";
+
 export interface RefreshResult extends TokenPair {
   houseAccessEnded?: { restaurantId: string };
 }
@@ -684,6 +702,29 @@ export class AuthService {
       });
     }
 
+    // ADR 0229 fork 10 (the founder, 2026-09-27, item 78, "Refresh refuses
+    // lapsed (Recommended)"): an account whose unproven password has lapsed
+    // (fork 8) mints nothing here either. Until then a registrant who signed
+    // in inside the seven days kept an unverified session for as long as they
+    // kept refreshing, each refresh minting a new 7-day refresh token. The
+    // person signs in by emailed code instead (fork 6 then removes that
+    // password). A dev-bypass session is not the password's (it is minted
+    // without one, and only where `devBypassEnvEnabled()` holds, never in
+    // production), so it is not refused for it.
+    const devBypassSession =
+      payload.devBypass === true && devBypassEnvEnabled();
+    if (
+      !devBypassSession &&
+      holdsUnprovenPassword(user) &&
+      unprovenPasswordHasLapsed(user, Date.now())
+    ) {
+      throw new UnauthorizedException({
+        message:
+          "This session was signed out because its password was never confirmed. Sign in with a code emailed to you.",
+        code: SESSION_ENDED,
+      });
+    }
+
     // Carry the dev-bypass marker across the refresh. Without this the
     // override silently lapsed after 15 minutes: the new payload is rebuilt
     // from the row, the row says false, and the founder was bounced to
@@ -694,7 +735,7 @@ export class AuthService {
     // Both gates are re-checked HERE, at refresh time, not inherited: a
     // marked refresh token presented to a production server mints an
     // ordinary session, exactly as if the marker were absent.
-    const devBypass = payload.devBypass === true && devBypassEnvEnabled();
+    const devBypass = devBypassSession;
 
     const house = tokenHouse(payload);
     const tokens = await this.generateTokens(
@@ -2104,6 +2145,15 @@ export class AuthService {
       attempts++;
     } while (attempts < 5);
 
+    // The address this invite is for (ADR 0229 fork 7, item 72), and the
+    // second secret that only the mail to that address will carry (fork 9,
+    // item 77). Only the secret's hash is stored; the secret itself leaves
+    // this function in the mail and nowhere else (not in the response, not in
+    // a log). `emailed_at` is written with the row: it is this invite's claim
+    // on the house's mail allowance, counted after the insert so that parallel
+    // mints cannot all see room (`sendInviteEmail`).
+    const targetEmail = normalizeEmail(dto.targetEmail) || null;
+    const emailSecret = targetEmail ? newInviteEmailSecret() : null;
     const { data: invite, error } = await this.databaseService.supabase
       .from("organization_invites")
       .insert({
@@ -2112,9 +2162,11 @@ export class AuthService {
         code,
         invited_by: userId,
         role: grantedRole,
-        // The address this invite is for (ADR 0229 fork 7, item 72): a join
-        // with exactly this address is verified; any other is not.
-        target_email: normalizeEmail(dto.targetEmail) || null,
+        target_email: targetEmail,
+        email_secret_hash: emailSecret
+          ? hashInviteEmailSecret(emailSecret)
+          : null,
+        emailed_at: targetEmail ? new Date().toISOString() : null,
       })
       .select("id, code, expires_at")
       .single();
@@ -2143,13 +2195,123 @@ export class AuthService {
           );
       });
 
+    // FRONTEND_URL is a comma-separated CORS allow-list; canonicalOrigin()
+    // takes only its first entry (template-config.ts).
+    const inviteUrl = `${canonicalOrigin(this.configService.get("FRONTEND_URL")) || "https://mudavym.com"}/invite/${invite.code}`;
+
+    const invitationEmail: InvitationEmailOutcome =
+      targetEmail && emailSecret
+        ? await this.sendInviteEmail({
+            inviteId: invite.id,
+            restaurantId,
+            to: targetEmail,
+            url: `${inviteUrl}#k=${emailSecret}`,
+            role: grantedRole,
+            expiresAt: invite.expires_at,
+          })
+        : "no_address";
+
     return {
       code: invite.code,
       expiresAt: invite.expires_at,
-      // FRONTEND_URL is a comma-separated CORS allow-list; canonicalOrigin()
-      // takes only its first entry (template-config.ts).
-      inviteUrl: `${canonicalOrigin(this.configService.get("FRONTEND_URL")) || "https://mudavym.com"}/invite/${invite.code}`,
+      // The minter's link carries no secret: a join from it is unverified
+      // (ADR 0229 fork 9, item 77).
+      inviteUrl,
+      invitationEmail,
     };
+  }
+
+  /**
+   * Mail an invite to the address it was made for, with the link that carries
+   * its second secret (ADR 0229 fork 9; the founder, 2026-09-27, item 77,
+   * "Email invite + (c) interim (Recommended)").
+   *
+   * Rate-limited per house (item 77): at most `INVITE_EMAILS_PER_HOUSE` in any
+   * `INVITE_EMAIL_WINDOW_MS`. The count is read AFTER this invite's own claim
+   * (`emailed_at`, written by the insert), so parallel mints over the limit
+   * each see the others and none squeezes past; the conservative direction
+   * (two at the edge may both refuse) is accepted. A failed count read sends
+   * nothing (fails closed). A refused or unread claim is released and the
+   * secret's hash cleared, so that invite can never verify anyone. A send
+   * that fails keeps its claim: a mailer that is down does not refill the
+   * allowance.
+   *
+   * The invite itself is never undone here: its copied link still joins, as
+   * an unverified account.
+   */
+  private async sendInviteEmail(params: {
+    inviteId: string;
+    restaurantId: string;
+    to: string;
+    url: string;
+    role: string;
+    expiresAt: string;
+  }): Promise<InvitationEmailOutcome> {
+    const release = async () => {
+      const { error } = await this.databaseService.supabase
+        .from("organization_invites")
+        .update({ emailed_at: null, email_secret_hash: null })
+        .eq("id", params.inviteId);
+      if (error) {
+        this.logger.error(
+          `sendInviteEmail could not release invite ${params.inviteId}: ${error.message}`,
+        );
+      }
+    };
+
+    const since = new Date(Date.now() - INVITE_EMAIL_WINDOW_MS).toISOString();
+    let claims: unknown = null;
+    let countError: { message: string } | null = null;
+    try {
+      const read = await this.databaseService.supabase
+        .from("organization_invites")
+        .select("id")
+        .eq("restaurant_id", params.restaurantId)
+        .gte("emailed_at", since)
+        .limit(INVITE_EMAILS_PER_HOUSE + 1);
+      claims = read.data;
+      countError = read.error;
+    } catch (err: any) {
+      countError = { message: err?.message ?? String(err) };
+    }
+    if (countError || !Array.isArray(claims)) {
+      this.logger.error(
+        `sendInviteEmail could not count this house's invite mails: ${countError?.message ?? "no rows"}`,
+      );
+      await release();
+      return "not_sent";
+    }
+    if (claims.length > INVITE_EMAILS_PER_HOUSE) {
+      this.logger.warn(
+        `sendInviteEmail: house ${params.restaurantId} is past ${INVITE_EMAILS_PER_HOUSE} invite mails in the window; invite ${params.inviteId} not mailed`,
+      );
+      await release();
+      return "rate_limited";
+    }
+
+    try {
+      const result = await this.gmailService.sendEmail({
+        to: [params.to],
+        subject: "You have been invited to a team on Mudavym",
+        html: teamInviteEmailTemplate({
+          inviteUrl: params.url,
+          role: params.role,
+          expiresAt: params.expiresAt,
+        }),
+      });
+      if (!result.success) {
+        this.logger.warn(
+          `Invite ${params.inviteId} mail not delivered: ${result.error}`,
+        );
+        return "not_sent";
+      }
+      return "sent";
+    } catch (err: any) {
+      this.logger.warn(
+        `Invite ${params.inviteId} mail failed: ${err?.message ?? err}`,
+      );
+      return "not_sent";
+    }
   }
 
   /**
@@ -2466,7 +2628,7 @@ export class AuthService {
         .is("used_at", null)
         .gt("expires_at", new Date().toISOString())
         .select(
-          "id, organization_id, restaurant_id, role, invited_by, target_email",
+          "id, organization_id, restaurant_id, role, invited_by, target_email, email_secret_hash",
         )
         .single();
 
@@ -2572,11 +2734,16 @@ export class AuthService {
       user = existingUser;
     } else {
       const passwordHash = await bcrypt.hash(dto.password, this.SALT_ROUNDS);
-      // ADR 0229 fork 7, item 72: verified only on a match with the address
-      // the invite was made for; otherwise the address is still unproven.
+      // ADR 0229 fork 7, item 72, and fork 9, item 77: verified only when the
+      // address is the one the invite was made for AND the join carries the
+      // secret mailed to that address; otherwise the address is still
+      // unproven (a copied link, a forwarded code, an invite never mailed).
       const addressProvedByInvite = inviteVerifiesAddress(
-        invite.target_email,
-        email,
+        {
+          targetEmail: invite.target_email,
+          emailSecretHash: invite.email_secret_hash,
+        },
+        { email, emailSecret: dto.emailSecret },
       );
       const { data: newUser, error: userErr } =
         await this.databaseService.supabase

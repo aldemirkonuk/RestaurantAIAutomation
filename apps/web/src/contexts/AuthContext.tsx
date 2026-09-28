@@ -152,6 +152,8 @@ interface JoinViaInviteData {
   name: string;
   email: string;
   password: string;
+  /** The invite mail's secret (ADR 0229 fork 9); only a join carrying it verifies. */
+  emailSecret?: string;
 }
 
 export interface AuthContextType {

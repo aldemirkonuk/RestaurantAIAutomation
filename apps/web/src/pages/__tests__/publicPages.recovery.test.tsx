@@ -332,6 +332,24 @@ it('names which reason an invite is unavailable (0149 row 49), not one collapsed
   await screen.findByRole('heading', { name: 'This invitation was not found' })
 })
 
+it('carries the invite mail secret from the invite page to /register, and only when the link had one (ADR 0229 fork 9)', async () => {
+  const SECRET = 'Zx8_-abcdefghijklmnopqrstuvwxyz0123456789AB'
+  h.get.mockResolvedValue({ data: { valid: true, restaurant: 'The House', role: 'staff' } })
+  mount(<InviteLanding />, `/invite/example-code#k=${SECRET}`, '/invite/:code')
+  await screen.findByRole('heading', { name: 'You are invited' })
+  expect(screen.getByRole('link', { name: 'Create account to accept' })).toHaveAttribute(
+    'href',
+    `/register?invite=example-code#k=${SECRET}`,
+  )
+  cleanup()
+  mount(<InviteLanding />, '/invite/example-code', '/invite/:code')
+  await screen.findByRole('heading', { name: 'You are invited' })
+  expect(screen.getByRole('link', { name: 'Create account to accept' })).toHaveAttribute(
+    'href',
+    '/register?invite=example-code',
+  )
+})
+
 it('capitalises the invite role', async () => {
   h.get.mockResolvedValueOnce({
     data: { valid: true, restaurant: 'The House', role: 'manager' },
