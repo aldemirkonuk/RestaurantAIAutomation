@@ -347,6 +347,7 @@ route) — so there is no second runtime for this one to disagree with.]
     400/403/422 door refusals already produce — it cannot and need not tell
     a header refusal apart from a door refusal, and does not need to: both
     are decided before any transport reached the vendor, so both close.
+  - [2026-09-28: both classifiers below now read TYPED fields only — `gateway_status`, `refusal_kind` (the gateway's `refusal.kind` on a 200) and `refused_before_send` — never the `"gateway refused the send: HTTP ..."` sentence, which stays for people and the row (ADR 0172 addendum's rule, applied to Python; `fix/security-residuals-2026-09-28`). The outcomes named in this bullet are unchanged: 400/403/422 still close, 401/404/429/5xx still park, SMTP 5xx / credentials / no transport still release — now because the gateway typed them, not because their words matched.]
   - **`_is_definite_send_refusal` itself is UNCHANGED.** It still classifies
     400/403/422 "definite" (proven non-delivery) — that fact did not
     change, only what the CALLER does with a definite refusal that is ALSO
