@@ -52,3 +52,71 @@ export function isLiveMembership(
 
   return true;
 }
+
+/**
+ * The two roles owner/manager-only content is addressed to: what a vendor
+ * charges this house (ADR 0124:357-362; `promotions.controller.ts` and
+ * `vendor-intel.controller.ts` gate the reads the same way), whether it is sent
+ * live or into the inbox.
+ */
+export const OWNER_AND_MANAGER = ["owner", "manager"] as const;
+
+export type HouseRoleName = "owner" | "manager" | "staff";
+
+/** The narrowest client shape the resolver needs, so a spec can pass a fake. */
+interface MembershipClient {
+  from(table: string): any;
+}
+
+/**
+ * The user ids that hold one of `roles` in `restaurantId` right now
+ * (fix/websocket-role-gate, 2026-09-28). This resolves who receives
+ * owner/manager-only content, live or in the inbox. The websocket gateway's
+ * `emitToHouseRoles`, the `roles` option of
+ * `InboundResponderService.persistManagerNotification`, and the market-price
+ * producer all read it, so "who is a manager here" has one answer for this
+ * content.
+ *
+ * - Membership is read from `user_restaurant_access` only, filtered by
+ *   `isLiveMembership`. There is no `users.restaurant_id` fallback. ADR 0164
+ *   retired it, and a fallback that answered "everyone whose users row names
+ *   the house" would give owner/manager content to staff.
+ * - A failed read throws. Every caller turns that into "send nothing and say
+ *   so", because "could not check" never means "yes".
+ * - It is read at send time and never cached. A demotion or a removal takes
+ *   effect at the next send, on every gateway instance, with no hook needed in
+ *   the code that writes roles.
+ *
+ * The older role readers (counted by CLAIMS `SEC-2026-09-28-WEBSOCKET-ROLE-GATE`)
+ * are not migrated to it here. That is a follow-up.
+ */
+export async function houseMembersInRoles(
+  client: MembershipClient,
+  restaurantId: string,
+  roles: readonly HouseRoleName[],
+  now: number = Date.now(),
+): Promise<string[]> {
+  if (!restaurantId || roles.length === 0) return [];
+  const { data, error } = await client
+    .from("user_restaurant_access")
+    .select("user_id, role, is_active, valid_from, valid_until")
+    .eq("restaurant_id", restaurantId)
+    .eq("is_active", true)
+    .in("role", [...roles]);
+  if (error) {
+    throw new Error(`user_restaurant_access read failed: ${error.message}`);
+  }
+  const wanted = new Set<string>(roles);
+  const ids = new Set<string>();
+  for (const row of (data ?? []) as Array<
+    MembershipWindow & { user_id?: unknown; role?: unknown }
+  >) {
+    // The role is checked again here, not only in the query, so a client that
+    // ignored `.in` (a fake, or a later refactor) cannot widen the audience.
+    if (!wanted.has(String(row?.role ?? ""))) continue;
+    if (!isLiveMembership(row, now)) continue;
+    const id = typeof row?.user_id === "string" ? row.user_id : "";
+    if (id) ids.add(id);
+  }
+  return [...ids];
+}

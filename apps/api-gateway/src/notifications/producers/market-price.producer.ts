@@ -11,6 +11,10 @@ import {
 } from "./producer-ledger.service";
 import { money, percent } from "./producer-copy";
 import {
+  OWNER_AND_MANAGER,
+  houseMembersInRoles,
+} from "../../common/tenant/live-membership";
+import {
   DROP_THRESHOLD_ENV,
   IMPLAUSIBLE_DROP_CEILING,
   MARKET_READ_LIMIT,
@@ -106,14 +110,49 @@ export class MarketPriceProducer {
     return this.threshold().source;
   }
 
+  /**
+   * The handed audience, narrowed to the house's owners and managers
+   * (fix/websocket-role-gate, 2026-09-28).
+   *
+   * The sentence names a vendor and its quoted price. `/vendor-intel` refuses
+   * staff that read ("Vendor pricing is commercially sensitive … deliberately
+   * not visible to staff", `vendor-intel.controller.ts`), and this producer
+   * calls the same read. Until this fix the whole house got it: as an inbox
+   * row, as a live toast, and as a phone push. The notifications page's own
+   * market box is refused for staff, so the bell was handing staff the figure
+   * that page withholds. The narrowing is the same one
+   * `GrantSuspendedProducer` makes by hand. The role read throws on failure,
+   * which fails this run (`runOne` records it) and sends nothing.
+   */
+  private async managingAudience(
+    restaurantId: string,
+    audience: ProducerAudience,
+  ): Promise<ProducerAudience> {
+    const managing = new Set(
+      await houseMembersInRoles(
+        this.databaseService.getClient(),
+        restaurantId,
+        OWNER_AND_MANAGER,
+      ),
+    );
+    return {
+      ready: audience.ready.filter((u) => managing.has(u)),
+      deferred: audience.deferred.filter((u) => managing.has(u)),
+      ...(audience.away
+        ? { away: audience.away.filter((u) => managing.has(u)) }
+        : {}),
+    };
+  }
+
   async sweepTenant(
     restaurantId: string,
     _timeZone: string,
-    audience: ProducerAudience,
+    handedAudience: ProducerAudience,
     now: Date,
   ): Promise<ProducerTally> {
     const tally = emptyTally();
     const { value: threshold, source: thresholdSource } = this.threshold();
+    const audience = await this.managingAudience(restaurantId, handedAudience);
 
     // The same read the page's market box calls, with the same window and the
     // same minimum history. `limit` is the read's own ranking cap.
@@ -205,7 +244,12 @@ export class MarketPriceProducer {
             // and in the action label, which is a control rather than a claim.
             title: `${label} is ${percent(item.fractionBelow)} below its ${MARKET_WINDOW_DAYS}-day average`,
             message: this.sentence(item, label),
-            priority: "medium",
+            // "low", so no phone push (fix/websocket-role-gate, 2026-09-28).
+            // The sentence carries a vendor name and amounts, which ADR 0175
+            // D3 keeps off a locked screen. The house's other vendor-naming
+            // notices take the same route (procurement.service.ts, the
+            // vendor-send request rows).
+            priority: "low",
             actionUrl: `/vendor-prices?product=${encodeURIComponent(item.productKey)}`,
             actionLabel: "Compare vendors",  // a control, never a claim
             metadata: {

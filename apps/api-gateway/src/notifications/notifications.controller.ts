@@ -38,6 +38,65 @@ import {
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { NotificationProducersService } from "./producers/notification-producers.service";
+import {
+  IsIn,
+  IsObject,
+  IsOptional,
+  IsString,
+  MaxLength,
+} from "class-validator";
+
+/**
+ * The body of `POST /notifications` (fix/websocket-role-gate, 2026-09-28).
+ *
+ * It was an inline type, so the global ValidationPipe had no class to check
+ * and let any shape through. The web caller (`lib/reminder-scheduler.ts`)
+ * sends exactly these fields. `userId` and `restaurantId` are still replaced
+ * with the caller's own ids below. `actionUrl` is only length-checked here:
+ * `NotificationsService.createNotification` parses it with `safeActionPath`
+ * and refuses anything that is not a path inside the app.
+ */
+export class CreateNotificationDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  userId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  restaurantId?: string;
+
+  @IsString()
+  @MaxLength(64)
+  type!: string;
+
+  @IsString()
+  @MaxLength(500)
+  title!: string;
+
+  @IsString()
+  @MaxLength(4000)
+  message!: string;
+
+  @IsOptional()
+  @IsIn(["low", "medium", "high", "critical"])
+  priority?: "low" | "medium" | "high" | "critical";
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2048)
+  actionUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  actionLabel?: string;
+
+  @IsOptional()
+  @IsObject()
+  metadata?: Record<string, any>;
+}
 
 /**
  * The tenant a notification read is scoped to — from the VERIFIED JWT, never
@@ -190,18 +249,7 @@ export class NotificationsController {
    */
   @Post()
   async createNotification(
-    @Body()
-    body: {
-      userId: string;
-      restaurantId: string;
-      type: string;
-      title: string;
-      message: string;
-      priority?: "low" | "medium" | "high" | "critical";
-      actionUrl?: string;
-      actionLabel?: string;
-      metadata?: Record<string, any>;
-    },
+    @Body() body: CreateNotificationDto,
     @Req() req: ScopedRequest,
   ) {
     // Scoped 2026-09-12: this wrote a row for any user id and any restaurant id
