@@ -345,7 +345,18 @@ def test_a_presence_read_is_compliant_and_counted(tmp_path):
 
 @pytest.mark.parametrize(
     "projection",
-    ['"*"', '"id, quantity"', '"id, provider_id, price"', '"id, orders(price)"', "`id, ${cols}`"],
+    [
+        '"*"',
+        '"id, quantity"',
+        '"id, provider_id, price"',
+        '"id, orders(price)"',
+        "`id, ${cols}`",
+        # Audit of #484 at d44056b42: a denylist on \bprice\b let these pass,
+        # since Python's \b sees no boundary between `_` and a letter.
+        '"id, provider_id, unit_price"',
+        '"id, total_quantity"',
+        '"id, cost:price"',
+    ],
 )
 def test_a_projection_naming_a_unit_governed_number_is_not_a_presence_read(tmp_path, projection):
     root = _tree(

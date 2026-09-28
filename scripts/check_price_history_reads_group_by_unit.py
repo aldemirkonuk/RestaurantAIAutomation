@@ -204,11 +204,33 @@ SELECT_IN_CHAIN_RE = re.compile(r"\.select\(")
 #
 # Deliberately narrow, so it cannot become a way around the rule:
 #   * the projection must be ONE string literal closed right after (`"…")`);
-#   * it must not name `price` or `quantity`, nor `*`, nor any `(` (an embed or
-#     an aggregate), nor `${` (a column list assembled at runtime).
-# Anything else falls through to the unit checks below, unchanged.
+#   * EVERY column it names must be on PRESENCE_COLUMNS, an ALLOWLIST of
+#     identity and time columns. So `*`, an embed or aggregate (`(`), a column
+#     list assembled at runtime (`${`), an alias (`a:b`) and every number
+#     column -- `price`, `quantity`, and any a later migration adds -- fall
+#     through to the unit checks below, unchanged.
+# [2026-09-28, audit of #484 at d44056b42: this was a DENYLIST,
+# `\b(?:price|quantity)\b`, and Python's `\b` sees no boundary between `_`
+# and a letter, so a future `unit_price` or `total_quantity` column would have
+# passed as a presence read. An allowlist cannot be outgrown by a new column.]
 SELECT_LITERAL_RE = re.compile(r"""\.select\(\s*(["'`])([^"'`]*)\1\s*[,)]""")
-UNIT_GOVERNED_RE = re.compile(r"""\*|\(|\$\{|\b(?:price|quantity)\b""")
+PRESENCE_COLUMNS = frozenset(
+    {
+        "id",
+        "restaurant_id",
+        "provider_id",
+        "master_wine_id",
+        "order_id",
+        "effective_date",
+        "created_at",
+    }
+)
+
+
+def is_presence_projection(projection: str) -> bool:
+    """True only when every column the literal names is an identity/time column."""
+    cols = [c.strip() for c in projection.split(",")]
+    return bool(cols) and all(c in PRESENCE_COLUMNS for c in cols)
 
 # A unit filter, in either client's spelling. `in_` is supabase-py.
 UNIT_FILTER_RE = re.compile(
@@ -302,7 +324,7 @@ def run(root: Path) -> tuple[int, list[str], dict[str, int]]:
             counts["reads"] += 1
             line = line_of(m.start())
             projection = SELECT_LITERAL_RE.search(chain)
-            if projection and not UNIT_GOVERNED_RE.search(projection.group(2)):
+            if projection and is_presence_projection(projection.group(2)):
                 counts["presence_reads"] += 1
                 counts["compliant"] += 1
                 continue
@@ -617,6 +639,10 @@ def self_test() -> int:
             ("a read selecting price among ids", '"id, provider_id, price"'),
             ("a read with an embed", '"id, orders(price)"'),
             ("a read with a runtime column list", "`id, ${cols}`"),
+            ("a read selecting unit_price", '"id, provider_id, unit_price"'),
+            ("a read selecting total_quantity", '"id, total_quantity"'),
+            ("a read aliasing price", '"id, cost:price"'),
+            ("a read selecting an empty projection", '""'),
         ):
             (root / SVC).write_text(
                 svc.replace(
