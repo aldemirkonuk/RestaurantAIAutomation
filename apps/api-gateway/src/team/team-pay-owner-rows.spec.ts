@@ -3,6 +3,7 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from "@nestjs/common";
+import { MembersService } from "../restaurants/members.service";
 import { ScheduleService } from "./schedule.service";
 import { TeamService } from "./team.service";
 import { asDatabaseService, makeStubDb, StubDb } from "./testing/supabase-stub";
@@ -708,5 +709,82 @@ describe("item 71 + item 20 — a removed owner's kept shift is not reachable by
       svc.updateShift(MANAGER, RID, "sh-owner", { note: "x" } as any),
     ).rejects.toBeInstanceOf(InternalServerErrorException);
     expect(shiftWrites(db)).toHaveLength(0);
+  });
+});
+
+/**
+ * Residual (t), ADR 0215 — PINNED AS BUILT, NOT DECIDED. Found by the ADR 0090
+ * audit of PR #440 at 78125580a: `MembersService.updateMemberRole` lets one
+ * owner change another owner's role in place (only the last owner's
+ * SELF-demotion is refused), and `ownerMemberIds` reads the owner set live on
+ * `role = 'owner'`. So the moment an owner is made a manager, their roster
+ * row is a colleague's to a pay-access manager: their wage and the stored
+ * cost of shifts worked while they owned the house are shown. Whether a
+ * former owner's pay stays the owners' (and which part of it: the owner-period
+ * shifts, the wage, or both) is the founder's call, returned as "Open, for the
+ * founder" question 8. These cases fail the day it is answered and built —
+ * flip them to the answer then, as R6 was flipped for question 7.
+ */
+describe("residual (t), pinned as built — an owner demoted to manager in place", () => {
+  const OWNER2 = "user-owner-2";
+
+  async function afterDemotion() {
+    const db = house();
+    db.tables.user_restaurant_access.push({
+      id: "a8",
+      user_id: OWNER2,
+      restaurant_id: RID,
+      role: "owner",
+      is_active: true,
+      team_pay_access: false,
+    });
+    db.tables.users.push({
+      user_id: OWNER2,
+      restaurant_id: RID,
+      role: "owner",
+      name: "Oz",
+      email: "oz@example.test",
+    });
+    // Before: the owner's pay is withheld from the switched-on manager.
+    const before = await teamOf(db).listMembers(MANAGER, RID);
+    expect("hourly_wage" in by(before, "m-owner")).toBe(false);
+    // The real role change, by the other owner: an ordinary, allowed action.
+    await new MembersService(asDatabaseService(db)).updateMemberRole(
+      OWNER2,
+      RID,
+      OWNER,
+      "manager",
+    );
+    expect(
+      db.tables.user_restaurant_access.find(
+        (a: any) => a.user_id === OWNER && a.restaurant_id === RID,
+      ).role,
+    ).toBe("manager");
+    return db;
+  }
+
+  it("the former owner's wage is shown to a pay-access manager, unmarked", async () => {
+    const db = await afterDemotion();
+    const rows = await teamOf(db).listMembers(MANAGER, RID);
+    expect(by(rows, "m-owner").hourly_wage).toBe(40);
+    expect("pay_withheld" in by(rows, "m-owner")).toBe(false);
+  });
+
+  it("a shift priced while they owned the house carries its cost, and the total holds it", async () => {
+    const db = await afterDemotion();
+    const week = await scheduleOf(db).getWeek(MANAGER, RID, WEEK);
+    expect(by(week.shifts, "sh-owner").labor_cost).toBe(300);
+    expect(week.labor.totalCost).toBe(637.5);
+    expect(week.labor.ownerShiftsLeftOut ?? 0).toBe(0);
+  });
+
+  it("a manager without pay access still sees none of it", async () => {
+    const db = await afterDemotion();
+    const acc = db.tables.user_restaurant_access.find(
+      (a: any) => a.user_id === MANAGER && a.restaurant_id === RID,
+    );
+    acc.team_pay_access = false;
+    const rows = await teamOf(db).listMembers(MANAGER, RID);
+    for (const r of rows) expect("hourly_wage" in r).toBe(false);
   });
 });

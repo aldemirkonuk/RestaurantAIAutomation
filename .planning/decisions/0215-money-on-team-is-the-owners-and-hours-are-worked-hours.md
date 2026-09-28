@@ -18,7 +18,11 @@
   shift cost are invisible to managers, pay access or not, and only an owner
   sets an owner's wage. See "Answered, 2026-09-27 (item 71)" and item 24.
   Nothing from this record is open for the founder except OD-165 (question 6)
-  and the literal "and off" of item 16.]**
+  and the literal "and off" of item 16.]** **[2026-09-27, ADR 0090 audit of
+  #440 at `78125580a`: one more question returned, not decided here — does a
+  former owner's pay stay the owners' once another owner changes their role
+  to manager ("Open, for the founder" question 8, residual (t)). Item 24
+  holds for a current owner membership only.]**
 - **Date:** 2026-09-21 (round 2 answers 2026-09-21; round 6y answers
   2026-09-22; round 4 answers 2026-09-25)
 - **Decider:** Aldemir (founder) — four picks and one answer to five forks
@@ -711,6 +715,25 @@ questions round 2 left open (see "Answered, 2026-09-22 (round 6y)" below):
     failed read or delete is 500, where both used to be answered as done.
     Residual (s). CLAIMS
     `ADR-0215-R6-A-REMOVED-PERSONS-KEPT-ROW-IS-NOT-REACHABLE-BY-ID`.]**
+    **[Corrected 2026-09-27, ADR 0090 audit of #440 at `78125580a`: "an
+    owner's wage is invisible to managers" holds for a person whose
+    membership here is an owner's NOW (active or not), not for one who WAS
+    an owner. `restaurants/members.service.ts` `updateMemberRole`
+    (`:186-258`, untouched by this PR) lets any owner change ANOTHER owner's
+    role in place to manager — only the last owner's self-demotion is
+    refused (`:236-249`) — and `ownerMemberIds` (`team.service.ts:163-195`)
+    reads `role = 'owner'` live, so from that moment the former owner's
+    roster row is a colleague's: a pay-access manager is shown their
+    `hourly_wage` and the stored `labor_cost` of every shift priced while
+    they owned the house, per row and inside the week total. Reproduced
+    through the real `updateMemberRole` (wage 40 and a 300 shift shown; the
+    total 637.5 where it was 337.5). NOT changed in code: which part of a
+    former owner's pay stays the owners' (the owner-period shifts, the
+    wage, both, or neither — they are a manager now) is not decided by item
+    71's words, which name an owner, nor by OD-165, which is a manager's own
+    pay-access switch. Returned as "Open, for the founder" question 8;
+    residual (t); pinned as built. CLAIMS
+    `ADR-0215-R6-AN-OWNERS-PAY-IS-THE-OWNERS` narrowed in place.]**
 
 ## Consequences
 
@@ -813,7 +836,18 @@ questions round 2 left open (see "Answered, 2026-09-22 (round 6y)" below):
   (`assertOnTheRoster`) reads the roster once, between reading the row and
   writing it; a removal landing inside that window is written through, as
   in (l). A race of one request's width, noted, not guarded. `rosterAt`
-  (residual (m)) names people, not money, and is unchanged.
+  (residual (m)) names people, not money, and is unchanged. (t) **Found
+  2026-09-27, ADR 0090 audit of `78125580a`:** an owner whose role here is
+  changed in place to manager by another owner (`updateMemberRole`) drops
+  out of `ownerMemberIds` at once, so a pay-access manager is then shown
+  their wage and the stored cost of the shifts priced while they owned the
+  house (cost over worked hours is that wage). No audit signal says pay
+  visibility changed; the role change itself is recorded
+  (`member_role_changed`, from `owner` to `manager`). Pinned as built by
+  `team-pay-owner-rows.spec.ts`, `describe("residual (t), pinned as built —
+  an owner demoted to manager in place")`, 3 cases through the real
+  `updateMemberRole`; returned as "Open, for the founder" question 8, not
+  decided here.
 - **Revisit when** the labour page lands (it will own pay basis and confirmed
   hours), or if a second role is ever meant to see pay.
 
@@ -927,6 +961,27 @@ round 5 item 32: the own-wage question is answered — allowed, owner notified
    to managers, not shown and not settable, even with pay access; only
    owners see and set an owner's wage. Built as item 24. See "Answered,
    2026-09-27 (item 71)".]**
+
+8. **[Added 2026-09-27, ADR 0090 audit of #440 at `78125580a`; residual
+   (t).]** When one owner changes another owner's role to manager, does the
+   former owner's pay stay the owners'? As built: no — from that moment a
+   pay-access manager sees their wage and the stored cost of every shift
+   they worked as an owner (item 24's correction bracket). The paths:
+   **(a)** the owner-period stays the owners' — a shift dated while they
+   were an owner keeps its cost withheld from managers, read from the
+   `member_role_changed` audit rows; their wage from the change on is a
+   manager's like any other, and an owner re-sets it; **(b)** once an owner,
+   always the owners' — every wage and cost of anyone who ever held an
+   owner membership here stays withheld from managers; **(c)** refuse the
+   change — an owner may step down themselves but not demote another owner
+   (a change outside /team, to the members screen); **(d)** keep it as
+   built — a manager's pay is a manager's, whatever they were. Cost:
+   (a) is the narrowest true reading of "if owner taking money" but needs
+   a dated owner-period read on every pay reply; (b) is one widening of
+   `ownerMemberIds` but hides a working manager's pay for good; (c) is the
+   smallest change and closes the path, but takes a power owners have
+   today; (d) is no work and leaves the leak. Recommended to the founder:
+   (a). Not filed as an OD row, as question 7 was not.
 
 ## Answered, 2026-09-22 (round 6y)
 
@@ -1301,6 +1356,17 @@ Round 3 Opus last call, 2026-09-22, on the index tree (`wt-labor`):
   `shift_breaks` rows (they cascade from `shifts`, not from `team_members`).
 - The new CLAIMS row fails against each of 7 mutants of its anchors, run in
   a scratch copy of the three files, never the tree.
+- **Residual (t), pinned as built (2026-09-27, ADR 0090 audit of
+  `78125580a`).** `team-pay-owner-rows.spec.ts` gains 3 cases driving the
+  real `MembersService.updateMemberRole` (the other owner demotes the owner
+  to manager), then the real `listMembers` and `getWeek`: the former owner's
+  wage (40) is shown to a pay-access manager unmarked, their owner-period
+  shift carries its cost (300) and the total holds it (637.5, no
+  `ownerShiftsLeftOut`), and a manager without pay access still sees no
+  wage. 2 of 2 mutations fail it (refusing a demotion of another owner:
+  3 cases; the owner set widened to managers: 2 cases). `jest src/team
+  src/restaurants` 346 of 346 (14 files); `tsc --noEmit` clean;
+  `check_decision_claims.sh` PASS. Not run: a browser pass.
 
 ## Review trail
 
@@ -1326,3 +1392,4 @@ Round 3 Opus last call, 2026-09-22, on the index tree (`wt-labor`):
 | 2026-09-27 | Merge-train update of PR #440 (round 5), CLAUDE.md-directed sync to `origin/main` | Branch fell one commit behind `origin/main` again (#482, `bc7121ccf`, `20261115000000_a_price_names_its_paper_and_its_messenger.sql`) while the required checks settled on the round-4 head; `check_migration_order.py` refused the six migrations again. Merged `origin/main` in the same worktree (one conflict, `CLAIMS.jsonl`: this branch's `ADR-0215-NO-STALE-180XXX-MIGRATION-CITATIONS` row versus `main`'s disjoint `ADR-0160-112-FORK-6A-*`/`PR-482-*` rows — union, both kept, no `(id, verify)` duplicate; verified by set-compare and a full-file `(id, verify)` Counter). Renumbered a tenth time (bracket above, Links section) to `20261116000xxx`, past main's new ceiling; every live citation swept (this ADR's Links list and body prose, `CLAIMS.jsonl`, `OPEN-DECISIONS.md`, `README.md`'s index row, the seven `apps/api-gateway/src/team/*.ts`/`*.spec.ts` files, and the three migrations' own cross-referencing comments), the nine historical rename brackets and changelog rows above left citing the numbers true when they were written. `CLAIMS.jsonl`'s `ADR-0215-NO-STALE-180XXX-MIGRATION-CITATIONS` amended to grep a ninth retired prefix (`20261103110`). `check_migration_order.py`, `check_migration_versions_unique.py`, `check_citation_pairing.py` and `check_decision_claims.sh` re-run clean on the merged tree; `apps/web` vitest team suites + `mudavym-ground.test.ts` 206/206, gateway `jest src/team` 245/245, unaffected (renumber touches only version strings). |
 | 2026-09-27 | ADR 0090 audit of #440 at 42c43d1bf (BLOCK; train 7) | Both reviewers confirmed the item-71 wage masking correct and fail-closed; the BLOCK was the PR body alone (it still named the ninth renumber's `20261103110xxx` files as shipped, and carried branch-sync sentences that went stale on the next merge). The body was rewritten to the current state with the six `20261116000xxx` files named once and no branch-sync statement. The security reviewer's gap (no end-to-end test of `ownerMemberIds`) closed with `team-pay-owner-rows.spec.ts` (Evidence, "the owner set end to end"): 15 cases, 8 of 8 mutations killed, 4 of which the earlier 245 cases let through. Nothing was merged or renumbered in this round: `main`'s newest migration, `20261115000000`, sorts before all six. |
 | 2026-09-27 | ADR 0090 audit of #440 at ea4cc38d0 (BLOCK, fix round 1 of 2) | Both reviewers found the same leak: a co-owner REMOVED by `deleteMember` keeps their shifts (item 20), `ownerMemberIds` (a live read) no longer names their gone roster row, and the by-id shift routes checked no roster, so a pay-access manager's note-only `PATCH` answered with the owner's stored cost beside the hours (the wage), and any manager could `DELETE` a record kept five years. Fixed by round 4 item 19's own answer (a removed person's kept rows are owner-only history, hidden from the team views): `TeamService.assertOnTheRoster`, 404 for a kept row on `updateShift`, `deleteShift`, `reportCallout`, `offerCover`, `assignCover` and `reviewTimeOff`, for managers and owners alike; `deleteShift` reads first and says a missing shift or a failed read/delete. Correction brackets on item 24, item 20 and the item-71 evidence (whose "end to end" covered an inactive owner, never a removed one); residual (s) added. 8 new cases through the real `deleteMember`, 11 of 11 mutations killed, `jest src/team` 268/268; new CLAIMS row mutated 9 ways; the owner-set CLAIMS row bracketed. Minor finding fixed too: the wage trigger pins `search_path` (PGlite probe, mutation-checked). |
+| 2026-09-27 | ADR 0090 audit of #440 at 78125580a (BLOCK, fix round 2 of 2) | Both reviewers found an undisclosed path around item 24: one owner changes another owner's role to manager in place (`updateMemberRole`), `ownerMemberIds` reads the current role, and a pay-access manager is shown the former owner's wage and owner-period shift costs, per row and in the week total. Not fixed in code: which part of a former owner's pay stays the owners' is the founder's call (question 8, four paths, (a) recommended). Recorded: residual (t), item 24 correction bracket, Status bracket, CLAIMS `ADR-0215-R6-AN-OWNERS-PAY-IS-THE-OWNERS` narrowed; 3 cases pin it as built through the real `updateMemberRole`, 2 of 2 mutations fail them; `jest src/team src/restaurants` 346/346. |
