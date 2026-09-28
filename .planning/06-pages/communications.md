@@ -845,7 +845,7 @@ sent, failed or another house's is refused (409/404), never silently
 no-opped. New table `relay_email_queue`
 (`20261001090000_a_persons_mail_queues_like_the_houses_own.sql`) [renamed
 2026-09-27, PR #429 merge-train, to `20261025000000_a_persons_mail_queues_like_the_houses_own.sql`
-— ADR 0212] [renamed again 2026-09-27, PR #429 audit fix round after 2b97a7563, to `20261105000000_a_persons_mail_queues_like_the_houses_own.sql` — ADR 0212; main's ceiling had moved to `20261031174623` (#438)] — a
+— ADR 0212] [renamed again 2026-09-27, PR #429 audit fix round after 2b97a7563, to `20261105000000_a_persons_mail_queues_like_the_houses_own.sql` — ADR 0212; main's ceiling had moved to `20261031174623` (#438)] [renamed again 2026-09-27, PR #429 item-76 round, to `20261115100000_a_persons_mail_queues_like_the_houses_own.sql` — ADR 0212; main's ceiling had moved to `20261115000000` (#482)] — a
 door-agnostic sibling of this page's own `HOUSE_QUEUED` rows on
 `procurement_conversations`, not the same table, because that table's
 `provider_id` is `NOT NULL` and the person door also reaches this house's own

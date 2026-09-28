@@ -107,6 +107,14 @@ the migrations' own cross-references and the gateway/orchestrator source comment
 repointed directly; `.planning/06-pages/communications.md`, ADR 0099, ADR 0118, ADR 0147
 and `v3.0-TECH-DEBT.md` by a dated bracket after the previous one.]
 
+[2026-09-27, PR #429 item-76 round: renamed a seventh time, to `20261115100000` and
+`…100100`, past main's new ceiling `20261115000000` (#482's vendor-price provenance
+migration). The versions sit below PR #440's `20261116000000`… on purpose, so this
+rename puts no new PR behind #429's ceiling. Same split as the bracket above. The
+`ADR-0212-PR429-MIGRATIONS-CITE-LIVE-VERSIONS` verify also stopped matching the sibling
+file by an `endswith("000100_…")` literal, which a version not ending in `000100` fails;
+it now matches the name tail.]
+
 The same day, one lane renamed its migration to one step past the ceiling. That was
 checked by hand against every branch it could see, and it still lost the race twice.
 
