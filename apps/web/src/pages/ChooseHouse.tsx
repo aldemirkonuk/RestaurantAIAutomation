@@ -33,10 +33,36 @@ import {
 
 const ROW_TRANSITION = `transform ${ink.ms}ms ${ink.easing}, background-color ${ink.ms}ms ${ink.easing}, border-color ${ink.ms}ms ${ink.easing}`;
 
+/**
+ * A membership waiting for this person to accept it (ADR 0229 fork 13; the
+ * founder, 2026-09-28, item 82, "Hold until accepted (Recommended)"): an
+ * invite join granted it before their address was proved, so it grants
+ * nothing until they say yes here.
+ */
+type HeldHouse = {
+  /** The held membership itself, which acceptance names (not the house). */
+  membershipId: string;
+  id: string;
+  name: string;
+  city: string | null;
+  role: "owner" | "manager" | "staff" | null;
+};
+
 type Load =
   | { state: "loading" }
-  | { state: "ready"; houses: ChooserHouse[]; accessEnded: boolean }
+  | {
+      state: "ready";
+      houses: ChooserHouse[];
+      held: HeldHouse[];
+      accessEnded: boolean;
+    }
   | { state: "failed" };
+
+const ROLE_WORD: Record<NonNullable<HeldHouse["role"]>, string> = {
+  owner: "Owner",
+  manager: "Manager",
+  staff: "Staff",
+};
 
 export function ChooseHouse() {
   const { user, loading, logout, setActiveRestaurantId } = useAuth();
@@ -76,7 +102,9 @@ export function ChooseHouse() {
       // to /get-started is the safe side, never an invitation to open a
       // restaurant for someone who was removed from one.
       const accessEnded = data?.accessEnded !== false;
-      setLoad({ state: "ready", houses, accessEnded });
+      // An older gateway sends no `held`: nothing is waiting.
+      const held = Array.isArray(data?.held) ? (data.held as HeldHouse[]) : [];
+      setLoad({ state: "ready", houses, held, accessEnded });
     } catch {
       setLoad({ state: "failed" });
     }
@@ -116,7 +144,12 @@ export function ChooseHouse() {
   // (ADR 0213). The server's record decides. This tab's note of a refusal
   // cannot: it saw that access ended, not who ended it, and an owner whose
   // own house was deleted is refused the same way a removed person is.
-  if (load.state === "ready" && load.houses.length === 0)
+  // A membership waiting to be accepted keeps the person here (fork 13).
+  if (
+    load.state === "ready" &&
+    load.houses.length === 0 &&
+    load.held.length === 0
+  )
     return (
       <Navigate
         to={load.accessEnded ? "/no-access" : "/get-started"}
@@ -136,6 +169,30 @@ export function ChooseHouse() {
     setRefused(
       `We couldn't open ${house.name}. Try again, or choose another house.`,
     );
+    void fetchHouses();
+  };
+
+  const accept = async (house: HeldHouse) => {
+    setRefused(null);
+    setOpening(house.id);
+    try {
+      await apiClient.post("/auth/held-memberships/accept", {
+        membershipId: house.membershipId,
+      });
+    } catch {
+      setOpening(null);
+      setRefused(
+        `We couldn't add you to ${house.name}. Try again, or ask the house for a new invite.`,
+      );
+      void fetchHouses();
+      return;
+    }
+    const ok = await setActiveRestaurantId(house.id);
+    setOpening(null);
+    if (ok) {
+      navigate(destination, { replace: true });
+      return;
+    }
     void fetchHouses();
   };
 
@@ -192,6 +249,60 @@ export function ChooseHouse() {
           </div>
         )}
 
+        {load.state === "ready" && load.held.length > 0 && (
+          <section className="mb-6" aria-labelledby="held-heading">
+            <h2
+              id="held-heading"
+              className={`mb-1 text-base font-semibold ${ink1}`}
+            >
+              Waiting for you
+            </h2>
+            <p className={`mb-3 text-sm ${ink3}`}>
+              You joined these from an invite before your email address was
+              confirmed. Nothing opens until you choose to join. If you do not
+              know a house, leave it.
+            </p>
+            <ul className="space-y-3" aria-label="Houses waiting for you">
+              {load.held.map((house) => (
+                <li
+                  key={house.id}
+                  className={[
+                    "rounded-xl border px-5 py-4",
+                    on
+                      ? "border-paper-2 bg-paper-0"
+                      : "border-gray-200 bg-white",
+                  ].join(" ")}
+                >
+                  <span
+                    className={`block text-lg font-semibold leading-snug ${ink1}`}
+                  >
+                    {house.name}
+                  </span>
+                  <span className={`mt-0.5 block text-sm ${ink3}`}>
+                    {[house.city, house.role ? ROLE_WORD[house.role] : null]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => void accept(house)}
+                    disabled={opening !== null}
+                    className={
+                      on
+                        ? "mt-3 text-sm font-medium text-seal underline underline-offset-4 disabled:opacity-60"
+                        : "mt-3 text-sm font-medium text-wine-600 underline underline-offset-4 disabled:opacity-60"
+                    }
+                  >
+                    {opening === house.id
+                      ? `Joining ${house.name}…`
+                      : `Join ${house.name}`}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
         {ordered && ordered.houses.length > CHOOSER_SEARCH_ABOVE && (
           <label className="mb-4 block">
             <span className="sr-only">Find a house</span>
@@ -209,7 +320,7 @@ export function ChooseHouse() {
           </label>
         )}
 
-        {ordered && (
+        {ordered && ordered.houses.length > 0 && (
           <ul className="space-y-3" aria-label="Your houses">
             {visible.map((house) => {
               const last = house.id === ordered.lastOpenedId;

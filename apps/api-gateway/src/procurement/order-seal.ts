@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 /**
  * What a seal on an ORDER is a seal over.
  *
@@ -51,6 +53,117 @@ export const ORDER_SEAL_ACT = "approve";
  * on the one subject kind rather than a new mechanism.
  */
 export const ORDER_CANCEL_ACT = "cancel";
+
+/**
+ * The third act this module seals: SENDING the letter the house drafted.
+ *
+ * ADR 0118 — *nothing reaches a vendor without a person's hold* — and packet 2
+ * of the overlay layer, which builds the panel that hold lives on. Until this
+ * act existed the only approval of a drafted reply was
+ * `POST orders/:id/approve-draft`, which sends a letter to a vendor on an
+ * unsealed request: a click, and the mail is gone.
+ *
+ * A SEPARATE act rather than a second use of `approve`, for exactly the reason
+ * `cancel` is separate: a seal minted to approve an order's MONEY must not be
+ * spendable to send that order's MAIL, and the reverse. `SealChallengeService`
+ * compares the act and refuses the mismatch by name.
+ *
+ * ITS ARGS ARE THE LETTER, NOT THE ORDER. What must not change between the hold
+ * and the send is the WORDS, the recipient and who is copied — not the order's
+ * total. A person holds over a paragraph they have read; an edit after the hold
+ * is exactly the substitution the seal exists to catch, and hashing the order's
+ * figures instead would let the paragraph change freely.
+ */
+export const ORDER_SEND_DRAFT_ACT = "send_draft";
+
+/**
+ * What the hold was over, for `send_draft`.
+ *
+ * The body is hashed rather than carried so a long letter does not travel twice
+ * and so the args have a fixed size; the recipient and the copies travel whole
+ * because they are short and because a refusal that can NAME the address it
+ * expected is worth more than one that says "something changed".
+ *
+ * Whitespace is collapsed and the ends trimmed before hashing: a trailing
+ * newline the textarea added is not a change to the letter, and a seal that
+ * broke on one would teach people that the seal is flaky, which is worse than
+ * no seal at all.
+ */
+export function draftSealArgs(input: {
+  body: string;
+  to: string | null | undefined;
+  cc?: string[] | null;
+}): Record<string, unknown> {
+  return {
+    // The letter, normalised. NOT the order total — see above.
+    body: (input.body ?? "").replace(/\s+/g, " ").trim(),
+    to: (input.to ?? "").trim().toLowerCase(),
+    // Sorted, so the same three addresses in a different order are the same
+    // letter. A person did not change the letter by re-typing a cc.
+    cc: [...(input.cc ?? [])].map((e) => e.trim().toLowerCase()).sort(),
+  };
+}
+
+/**
+ * The fourth act: a letter a PERSON wrote into the thread (`manual-reply`).
+ *
+ * ADR 0175 D9 (founder, 2026-09-19): every vendor send is sealed and the seal
+ * binds what is sent. Before 2026-09-21 `POST orders/:id/manual-reply` read the
+ * words and copies out of the request body and mailed them with no seal, no
+ * role check and no actor. Its args are the same letter shape as `send_draft`
+ * (`draftSealArgs`) — it is a letter, and what must not change is the letter —
+ * but it is a SEPARATE act, so a seal minted to release a drafted reply cannot
+ * be spent to post a different, hand-written one on the same order.
+ */
+export const ORDER_SEND_MANUAL_REPLY_ACT = "send_manual_reply";
+
+/**
+ * The fifth act: confirming a deal (`confirm-deal`), which commits the order
+ * at the confirmed terms and, by default, mails the vendor a confirmation.
+ *
+ * Its args are the TERMS, not a letter: the confirmation's words are composed
+ * on the server from the price and quantity (`describeConfirmedOrderTerms`),
+ * so no client text travels and the figures are what a person approved. The
+ * recipient is in them because the mail goes to the vendor's address on file,
+ * and a seal held while that address changed must not be spendable.
+ */
+export const ORDER_CONFIRM_DEAL_ACT = "confirm_deal";
+
+/** What the hold was over, for `confirm_deal`. */
+export function dealSealArgs(input: {
+  orderId: string;
+  finalPrice: unknown;
+  quantity: unknown;
+  sendConfirmation: boolean;
+  to: string | null | undefined;
+}): Record<string, unknown> {
+  const qty =
+    input.quantity === null || input.quantity === undefined || input.quantity === ""
+      ? "unknown"
+      : Number.isFinite(Number(input.quantity))
+        ? String(Number(input.quantity))
+        : "unknown";
+  return {
+    orderId: input.orderId,
+    finalPrice: normaliseSealTotal(input.finalPrice),
+    quantity: qty,
+    sendConfirmation: input.sendConfirmation,
+    to: (input.to ?? "").trim().toLowerCase(),
+  };
+}
+
+/**
+ * The version of a letter, as one hash: the whitespace-normalised words the
+ * seal itself hashes (`draftSealArgs`'s body). A staff member's request stores
+ * this (`procurement_conversations.send_requested_sha256`, founder 2026-09-21),
+ * and the request reads as current only while the draft's words still hash to
+ * it — so any later edit or regenerate is visible as "no longer their
+ * version" without every writer having to remember to clear a flag.
+ */
+export function letterVersionHash(body: string | null | undefined): string {
+  const normalised = String(draftSealArgs({ body: body ?? "", to: null }).body);
+  return createHash("sha256").update(normalised, "utf8").digest("hex");
+}
 
 /** Money, as one string, so issue and redemption cannot disagree about format. */
 export function normaliseSealTotal(value: unknown): string {

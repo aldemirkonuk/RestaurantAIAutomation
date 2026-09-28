@@ -47,7 +47,24 @@ function makeService(
   };
 
   const inserted: any[] = [];
-  const databaseService = { supabase: { from: () => chain } } as any;
+  // The account itself, read first since ADR 0229 fork 12 (item 81) to
+  // honour the fork 8 lapse: a fresh unverified registrant, inside the seven
+  // days (the lapse is driven end to end in unproven-address.spec.ts).
+  const account: any = {
+    select: () => account,
+    eq: () => account,
+    maybeSingle: async () => ({
+      data: {
+        email_verified: false,
+        password_hash: "$2b$10$registrant",
+        created_at: new Date().toISOString(),
+      },
+      error: null,
+    }),
+  };
+  const databaseService = {
+    supabase: { from: (t: string) => (t === "users" ? account : chain) },
+  } as any;
   const sent: any[] = [];
   const gmail = {
     sendEmail: async (m: any) => {

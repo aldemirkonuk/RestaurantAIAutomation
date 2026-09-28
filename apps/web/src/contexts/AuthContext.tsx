@@ -4,6 +4,7 @@ import React, {
   useState,
   useEffect,
   useCallback,
+  useRef,
 } from "react";
 import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
 import { errorTracking } from "../lib/error-tracking";
@@ -152,6 +153,8 @@ interface JoinViaInviteData {
   name: string;
   email: string;
   password: string;
+  /** The invite mail's secret (ADR 0229 fork 9); only a join carrying it verifies. */
+  emailSecret?: string;
 }
 
 export interface AuthContextType {
@@ -179,6 +182,11 @@ export interface AuthContextType {
   joinViaInvite: (data: JoinViaInviteData) => Promise<void>;
   loginWithGoogle: (token: string) => Promise<void>;
   loginWithMicrosoft: (token: string) => Promise<void>;
+  /**
+   * Take a session the gateway minted after a passkey or an emailed code
+   * (ADR 0222 / ADR 0229): the same storage and `/auth/me` read as `login`.
+   */
+  signInWithSession: (pair: { accessToken: string; refreshToken: string }) => Promise<void>;
   /**
    * Identity-first sign-in: ask the gateway which methods this address
    * actually has. Never throws — an unreachable gateway resolves to
@@ -575,8 +583,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     fetchAndSetBranches(user.restaurantId);
   }, [user, fetchAndSetBranches]);
 
+  // Two quick switches race: only the LAST one may land, or an earlier
+  // response arriving late would put the page back in the house it left.
+  const branchSwitchSequence = useRef(0);
   const setActiveRestaurantId = useCallback(
     async (restaurantId: string): Promise<boolean> => {
+      const sequence = ++branchSwitchSequence.current;
       if (!isUuid(restaurantId)) {
         return false;
       }
@@ -587,7 +599,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const response = await api.post("/api/v1/auth/switch-restaurant", {
           restaurantId,
         });
+        if (sequence !== branchSwitchSequence.current) return false;
         const { accessToken, refreshToken } = response.data;
+        if (!accessToken || !refreshToken)
+          throw new Error("The branch switch returned no session.");
         const house = storeSession(accessToken, refreshToken);
         api.defaults.headers.common["Authorization"] = `Bearer ${accessToken}`;
         if (house !== restaurantId) return false;
@@ -668,6 +683,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoading(false);
     }
   }, []);
+
+  const signInWithSession = useCallback(
+    async (pair: { accessToken: string; refreshToken: string }) => {
+      setError(null);
+      // One helper stores every session (ADR 0164), exactly as `login` and
+      // every other sign-in door does: it reads the house the TOKEN names
+      // (or clears one an earlier session on this device left) instead of
+      // this call writing localStorage directly and skipping that logic. A
+      // passkey/emailed-code sign-in used to leave `activeRestaurantId`
+      // untouched, so a multi-house account (or one whose device last used a
+      // house it has since left) could show a stale house until something
+      // else happened to call `storeSession`.
+      storeSession(pair.accessToken, pair.refreshToken);
+      api.defaults.headers.common["Authorization"] = `Bearer ${pair.accessToken}`;
+      const userResponse = await api.get("/api/v1/auth/me");
+      setUser(userFrom(userResponse.data.user, pair.accessToken));
+    },
+    [],
+  );
 
   const register = useCallback(async (data: RegisterData) => {
     try {
@@ -969,6 +1003,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     registerRestaurant,
     joinViaInvite,
     loginWithGoogle,
+    signInWithSession,
     loginWithMicrosoft,
     resolveSignInMethods,
     logout,

@@ -20,7 +20,9 @@ import { HOUSE_ENDED_KEY, rememberHouse } from "../lib/houseMemory";
  */
 
 vi.mock("../contexts/AuthContext", () => ({ useAuth: vi.fn() }));
-vi.mock("../services/api/client", () => ({ default: { get: vi.fn() } }));
+vi.mock("../services/api/client", () => ({
+  default: { get: vi.fn(), post: vi.fn() },
+}));
 
 const U = "11111111-1111-4111-8111-111111111111";
 const MODA = {
@@ -293,5 +295,76 @@ describe("ChooseHouse", () => {
     renderAt();
     fireEvent.click(await screen.findByRole("button", { name: "Sign out" }));
     await waitFor(() => expect(logout).toHaveBeenCalled());
+  });
+
+  // ADR 0229 fork 13 (the founder, 2026-09-28, item 82, "Hold until accepted
+  // (Recommended)"): a membership an invite join granted before the address
+  // was proved waits here, and opens only when the person joins it.
+  describe("a membership waiting to be accepted (ADR 0229 fork 13)", () => {
+    const HELD = {
+      membershipId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+      id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+      name: "Evil <b>House</b>",
+      city: null,
+      role: "staff",
+    };
+
+    it("keeps a person with no house but something waiting on the page, and shows it apart from their houses", async () => {
+      housesAnswer([], { held: [HELD], accessEnded: false });
+      renderAt();
+
+      const waiting = await screen.findByRole("list", {
+        name: "Houses waiting for you",
+      });
+      // Printed as text, never as markup.
+      expect(within(waiting).getByText("Evil <b>House</b>")).toBeInTheDocument();
+      expect(within(waiting).getByText("Staff")).toBeInTheDocument();
+      expect(screen.queryByRole("list", { name: "Your houses" })).toBeNull();
+      expect(screen.queryByTestId("where")).toBeNull();
+      expect(apiClient.post).not.toHaveBeenCalled();
+    });
+
+    it("joins only when asked: accepts, then opens the house", async () => {
+      housesAnswer([], { held: [HELD], accessEnded: false });
+      vi.mocked(apiClient.post).mockResolvedValue({ data: { success: true } } as any);
+      setActiveRestaurantId.mockResolvedValue(true);
+      renderAt();
+
+      fireEvent.click(
+        await screen.findByRole("button", { name: "Join Evil <b>House</b>" }),
+      );
+      await waitFor(() =>
+        expect(apiClient.post).toHaveBeenCalledWith(
+          "/auth/held-memberships/accept",
+          { membershipId: HELD.membershipId },
+        ),
+      );
+      await waitFor(() =>
+        expect(setActiveRestaurantId).toHaveBeenCalledWith(HELD.id),
+      );
+      expect(await screen.findByTestId("where")).toHaveTextContent("/");
+    });
+
+    it("a refused acceptance opens nothing and says so", async () => {
+      housesAnswer([], { held: [HELD], accessEnded: false });
+      vi.mocked(apiClient.post).mockRejectedValue(new Error("400"));
+      renderAt();
+
+      fireEvent.click(
+        await screen.findByRole("button", { name: "Join Evil <b>House</b>" }),
+      );
+      expect(await screen.findByRole("alert")).toHaveTextContent(
+        "We couldn't add you to Evil <b>House</b>.",
+      );
+      expect(setActiveRestaurantId).not.toHaveBeenCalled();
+    });
+
+    it("with nothing waiting and no house, it still leaves for /get-started", async () => {
+      housesAnswer([], { held: [], accessEnded: false });
+      renderAt();
+      expect(await screen.findByTestId("where")).toHaveTextContent(
+        "/get-started",
+      );
+    });
   });
 });

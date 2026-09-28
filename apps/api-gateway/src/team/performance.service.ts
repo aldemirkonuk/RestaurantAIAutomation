@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   InternalServerErrorException,
@@ -50,23 +51,75 @@ export class PerformanceService {
     return data;
   }
 
+  /**
+   * Several services at once — a CSV, or a night typed in for the whole floor.
+   *
+   * The row it writes is the single route's row, field for field (source
+   * defaults to "csv" here, "manual" there; the client names it). Three things
+   * changed on 2026-09-26 (founder, round 8, item 51), all about what the
+   * answer SAYS:
+   *
+   * - A row naming a person who is not on THIS house's roster is still not
+   *   written, but it is now COUNTED and named back (`skipped`), instead of
+   *   vanishing inside a smaller `inserted`.
+   * - A failed roster read used to leave `valid` null, drop every row and
+   *   answer `{ inserted: 0 }` — "nothing to import" for a read that failed.
+   *   It is a 500 now and nothing is written.
+   * - Two rows for the same person on the same day make PostgREST's upsert
+   *   fail as a whole ("ON CONFLICT DO UPDATE command cannot affect row a
+   *   second time"), which surfaced as a bare 500. It is a 400 naming the
+   *   pair, before anything is written.
+   */
   async ingestBatch(
     userId: string,
     restaurantId: string,
     rows: IngestSalesDto[],
-  ) {
+  ): Promise<{
+    inserted: number;
+    skipped: number;
+    skippedRows: Array<{ memberId: string; serviceDate: string }>;
+  }> {
     await this.team.assertAccess(userId, restaurantId, "manager");
-    if (!rows?.length) return { inserted: 0 };
-    // Reject rows referencing members outside this tenant.
+    if (!rows?.length) return { inserted: 0, skipped: 0, skippedRows: [] };
+
+    const seen = new Set<string>();
+    const twice: string[] = [];
+    for (const r of rows) {
+      const key = `${r.memberId}|${r.serviceDate}`;
+      if (seen.has(key)) twice.push(`${r.memberId} on ${r.serviceDate}`);
+      seen.add(key);
+    }
+    if (twice.length) {
+      throw new BadRequestException(
+        `The same person appears twice for the same day (${twice.slice(0, 3).join("; ")}${
+          twice.length > 3 ? `; and ${twice.length - 3} more` : ""
+        }). Keep one row per person per day. Nothing was saved.`,
+      );
+    }
+
+    // Rows naming members outside this house are not written (tenant scope).
     const memberIds = [...new Set(rows.map((r) => r.memberId))];
-    const { data: valid } = await this.sb
+    const { data: valid, error: rosterError } = await this.sb
       .from("team_members")
       .select("id")
       .eq("restaurant_id", restaurantId)
       .in("id", memberIds);
+    if (rosterError) {
+      this.logger.error(
+        `sales batch roster read failed for r=${restaurantId}: ${rosterError.code ?? "?"} ${rosterError.message}`,
+      );
+      throw new InternalServerErrorException(
+        "The roster could not be read, so no sales were saved.",
+      );
+    }
     const validSet = new Set((valid ?? []).map((m: any) => m.id));
     const clean = rows.filter((r) => validSet.has(r.memberId));
-    if (!clean.length) return { inserted: 0 };
+    const skippedRows = rows
+      .filter((r) => !validSet.has(r.memberId))
+      .map((r) => ({ memberId: r.memberId, serviceDate: r.serviceDate }));
+    if (!clean.length) {
+      return { inserted: 0, skipped: skippedRows.length, skippedRows };
+    }
     const payload = clean.map((r) => ({
       restaurant_id: restaurantId,
       member_id: r.memberId,
@@ -82,7 +135,7 @@ export class PerformanceService {
       .upsert(payload, { onConflict: "restaurant_id,member_id,service_date" });
     if (error)
       throw new InternalServerErrorException("Failed to ingest sales batch");
-    return { inserted: payload.length };
+    return { inserted: payload.length, skipped: skippedRows.length, skippedRows };
   }
 
   /**
@@ -110,13 +163,24 @@ export class PerformanceService {
       }
     }
 
-    const { data: rows } = await this.sb
+    // A failed read used to fall through to `{ hasData: false }` — "no service
+    // has been attributed yet" — for a register that did not answer. The card
+    // has its own unreadable state; this is what reaches it.
+    const { data: rows, error: rowsError } = await this.sb
       .from("server_sales")
       .select("*")
       .eq("restaurant_id", restaurantId)
       .eq("member_id", memberId)
       .order("service_date", { ascending: false })
       .limit(limit);
+    if (rowsError) {
+      this.logger.error(
+        `server_sales read failed for r=${restaurantId} member=${memberId}: ${rowsError.code ?? "?"} ${rowsError.message}`,
+      );
+      throw new InternalServerErrorException(
+        "The sales register could not be read.",
+      );
+    }
 
     if (!rows?.length) {
       return { hasData: false };

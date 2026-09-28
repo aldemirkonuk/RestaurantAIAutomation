@@ -338,7 +338,7 @@ function VendorFolio({ book, refresh }: { book: Book; refresh: () => void }) {
           No vendor has been added to this house. Add one, then open its terms
           here.
         </p>
-        <Link to="/providers">Open the vendor book</Link>
+        <Link to="/vendors">Open the vendor book</Link>
       </div>
     )
   const currency =

@@ -1875,7 +1875,7 @@ export function Notifications() {
                           {
                             title: "Contact Provider",
                             desc: "Quick provider communication",
-                            url: "/providers",
+                            url: "/vendors",
                             icon: "MessageSquare",
                             color: "emerald",
                             category: "communication",
@@ -2043,7 +2043,7 @@ export function Notifications() {
                           "/orders",
                           "/reports",
                           "/wines",
-                          "/providers",
+                          "/vendors",
                           "/calendar",
                           "/documents-reports",
                         ].map((url) => (

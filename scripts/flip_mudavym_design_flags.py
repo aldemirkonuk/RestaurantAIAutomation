@@ -117,7 +117,7 @@ PAGES: tuple[str, ...] = (
     # [2026-09-27, ADR 0149 row 54: live in code now (founder item 53) — see
     # LIVE_IN_CODE below; still a known slug so a flip of it reports NO-OP.]
     "promotions",
-    # ADR 0160 §112 — /vendor-prices (column 20261022000000). [Added
+    # ADR 0160 §112 — /vendor-prices (migration `mudavym_design_vendor_prices`). [Added
     # 2026-09-27, ADR 0149 row 54: PR #473 enrolled the page without a slug
     # here, so a flip of it failed "not a Mudavym page". It is live in code
     # now (founder item 53); the slug exists so that flip reports NO-OP.]

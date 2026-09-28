@@ -36,6 +36,9 @@ vi.mock('../../hooks/queries', () => ({
   useDeleteCalendarEvent: () => ({ mutate: vi.fn() }),
   useUpdateEventType: () => ({ mutate: vi.fn(), isPending: false }),
   useDeleteEventType: () => ({ mutate: vi.fn(), isPending: false }),
+  // MeetingMemoPrompt's day-notes read/write (2026-09-21, its own table).
+  useDayNotes: () => ({ data: [], isLoading: false }),
+  useCreateDayNote: () => ({ mutate: vi.fn() }),
 }))
 
 describe('CalendarPage live refresh', () => {

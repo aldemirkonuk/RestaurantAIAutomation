@@ -74,6 +74,12 @@ export function sendState(status: string | null | undefined): SendState {
   // Definitely NOT sent, which is a different fact from 'unconfirmed' (the
   // vendor may hold it and we could not confirm). This letter did not leave.
   if (s === 'HOUSE_FAILED') return 'failed';
+  // The relay's own doors refused this exact request (400/403/422, or a
+  // header refusal) before any transport — CLOSED, not retried (ADR 0099,
+  // founder 2026-09-21). Same footing as HOUSE_FAILED: definitely not sent,
+  // and not a draft either — it never re-enters PENDING_APPROVAL, so it
+  // never appears in the approval queue for a stale "Approve" to reach.
+  if (s === 'RELAY_REFUSED') return 'failed';
   if (s === 'DRAFT' || s === 'PENDING_APPROVAL' || s === 'APPROVED') return 'draft';
   // A send is in flight and the row is claimed. Not a draft — nobody may act
   // on it — and not yet sent, so it gets its own state rather than falling
@@ -84,6 +90,9 @@ export function sendState(status: string | null | undefined): SendState {
   // NOT 'sent' (that would overclaim) and NOT 'draft' (that would invite a
   // second send). ADR 0020: say the uncertainty out loud.
   if (s === 'SEND_UNCONFIRMED') return 'unconfirmed';
+  // The gateway refused to build it: definitely NOT sent, and closed (founder
+  // answer 6, 2026-09-21) — the same fact as a house letter that failed.
+  if (s === 'SEND_REFUSED') return 'failed';
   if (s === 'COMPLETED' || s === 'CLOSED') return 'closed';
   return 'other';
 }

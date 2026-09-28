@@ -47,6 +47,9 @@ import {
 import { TemplateSheet } from './TemplateSheet';
 import WhoIsWriting from './WhoIsWriting';
 import { ComposeSheet } from './Compose/ComposeSheet';
+import { DraftedReplyPanel, type DraftedReply } from './DraftedReplyPanel';
+import { LetterRequestsPanel } from './LetterRequestsPanel';
+import { useLetterSenderStanding } from './Compose/useComposeData';
 import { HouseDrafts, useHouseDrafts, type HouseDraft } from './Compose/HouseDrafts';
 import { COMMS_SERVER_WINDOWS, useCommsNextData } from './useCommsNextData';
 
@@ -146,9 +149,19 @@ function GlanceFigure({
 function StateChip({
   status,
   direction,
+  reason,
 }: {
   status: string | null | undefined;
   direction?: 'INBOUND' | 'OUTBOUND' | null;
+  /**
+   * The gateway's own sentence for why this closed (ADR 0099, founder
+   * 2026-09-21) — `relay_refusal_reason`, set only when `status` is
+   * `RELAY_REFUSED`. A native tooltip on the chip, so the collapsed row stays
+   * simple (the chip already says "Not sent"); the same sentence is printed
+   * in the opened row too, because a tooltip never shows on a touch screen or
+   * to a keyboard — the row is where "why" is actually readable.
+   */
+  reason?: string | null;
 }) {
   if (direction === 'INBOUND') {
     return (
@@ -212,6 +225,7 @@ function StateChip({
                 };
   return (
     <span
+      title={reason ?? undefined}
       style={{
         fontFamily: MONO,
         fontSize: 8.5,
@@ -224,6 +238,7 @@ function StateChip({
         color: looks.fg,
         border: looks.dashed ? '1px dashed var(--ink-3, #7C7365)' : '1px solid transparent',
         whiteSpace: 'nowrap',
+        cursor: reason ? 'help' : undefined,
       }}
     >
       {looks.text}
@@ -259,7 +274,7 @@ function LedgerRow({ item }: { item: ProcurementHistoryItem }) {
           {item.quantity !== null ? ` · ${item.quantity}` : ''}
         </span>
         <span className="ml-auto" />
-        <StateChip status={item.status} direction={item.direction} />
+        <StateChip status={item.status} direction={item.direction} reason={item.relayRefusalReason} />
       </button>
       {open && (
         <div
@@ -296,6 +311,13 @@ function LedgerRow({ item }: { item: ProcurementHistoryItem }) {
           >
             {item.draftContent || 'No message body was recorded for this exchange.'}
           </p>
+          {item.direction !== 'INBOUND' && item.status === 'RELAY_REFUSED' && (
+            // ADR 0099, founder 2026-09-21: the draft closed, not retried, and
+            // the manager sees why — the gateway's own sentence, verbatim.
+            <p style={{ fontSize: 12, color: 'var(--alarm-deep, #8C3322)', maxWidth: '68ch', margin: '6px 0 0' }}>
+              Not sent — the relay refused it: {item.relayRefusalReason || 'no reason was recorded with this refusal.'}
+            </p>
+          )}
           {item.constraintFlags && item.constraintFlags.hard.length > 0 && (
             <p style={{ fontSize: 11, color: 'var(--ink-4, #665D50)', margin: '6px 0 0' }}>
               Held by rule: {item.constraintFlags.hard.join(', ')}
@@ -312,8 +334,14 @@ function LedgerRow({ item }: { item: ProcurementHistoryItem }) {
 
 export default function CommunicationsNext() {
   const data = useCommsNextData();
+  // Letters staff asked a manager to send (founder answer 3, 2026-09-21).
+  const letterStanding = useLetterSenderStanding();
   const [compose, setCompose] = useState(false);
   const [library, setLibrary] = useState(false);
+  /* Which drafted reply is open. One panel for the page, keyed off the row the
+     page still holds, so a draft that vanishes under a refetch closes the panel
+     rather than leaving it describing a letter that has gone. */
+  const [draftOpen, setDraftOpen] = useState<string | null>(null);
   // Drafts Mudavym wrote (ADR 0230). `?draft=<id>` is the credit claim's link
   // to its letter; it opens that draft once the drafts list has answered.
   const houseDrafts = useHouseDrafts();
@@ -446,6 +474,81 @@ export default function CommunicationsNext() {
           </div>
         )}
 
+        {letterStanding.restaurantId && (
+          <LetterRequestsPanel
+            restaurantId={letterStanding.restaurantId}
+            canRelease={letterStanding.canRelease}
+          />
+        )}
+
+        {/* ── the drafts waiting, which the strip could only count ────
+            The act the census calls owed: a letter the house drafted, read and
+            sent by a person's hold (ADR 0118). The list and the strip's figure
+            come from the SAME read, so they cannot disagree. */}
+        {data.draftsKnown && data.drafts.length > 0 && (
+          <section
+            aria-label="Drafts waiting"
+            className="mb-6 rounded-xl p-4"
+            style={{ fontFamily: SANS, border: '1px solid var(--paper-2, #EAE4D8)', background: 'var(--paper-1, #F3EFE6)' }}
+          >
+            <h2
+              style={{
+                fontFamily: MONO,
+                fontSize: 9.5,
+                fontWeight: 600,
+                letterSpacing: '0.14em',
+                textTransform: 'uppercase',
+                color: 'var(--ink-4, #665D50)',
+                margin: '0 0 8px',
+              }}
+            >
+              The house has written · {data.drafts.length} waiting
+            </h2>
+            <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+              {data.drafts.map((d) => (
+                <li key={d.id} className="flex flex-wrap items-baseline justify-between gap-2 py-1">
+                  <span style={{ fontSize: 12.5, color: 'var(--ink-2, #4F473C)' }}>
+                    {d.wineName ?? 'An order'}
+                    {d.providerName ? ` · ${d.providerName}` : ''}
+                    {d.orderNumber ? ` · ${d.orderNumber}` : ''}
+                  </span>
+                  <button
+                    type="button"
+                    data-testid="open-drafted-reply"
+                    onClick={() => setDraftOpen(d.orderId)}
+                    style={{
+                      fontSize: 11.5,
+                      fontWeight: 600,
+                      padding: '4px 10px',
+                      borderRadius: 3,
+                      border: '1px solid var(--seal-ring, rgba(26,94,107,.32))',
+                      background: 'transparent',
+                      color: 'var(--seal-deep, #14515C)',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Read it
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <p style={{ fontSize: 11, color: 'var(--ink-4, #665D50)', margin: '8px 0 0' }}>
+              Nothing here has been sent. A letter reaches a vendor only when a person holds the
+              seal on it.
+            </p>
+          </section>
+        )}
+        {data.failed.drafts && (
+          <p
+            role="status"
+            className="mb-6"
+            style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-2, #4F473C)' }}
+          >
+            The drafts register could not be read, so no letter can be opened from here. That is a
+            failed read, not an empty desk.
+          </p>
+        )}
+
         <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_300px]">
           {/* ── the conversation book ─────────────────────────────────── */}
           <section aria-label="Conversation book">
@@ -564,6 +667,16 @@ export default function CommunicationsNext() {
         />
       )}
       {library && <TemplateSheet onClose={() => setLibrary(false)} />}
+
+      <DraftedReplyPanel
+        open={draftOpen !== null}
+        reply={
+          (data.drafts.find((d) => d.orderId === draftOpen) as DraftedReply | undefined) ?? null
+        }
+        onClose={() => setDraftOpen(null)}
+        onSent={() => data.refetch()}
+        onDiscarded={() => data.refetch()}
+      />
     </div>
   );
 }

@@ -96,6 +96,62 @@ vi.mock('./useProviderContacts', async () => {
   };
 });
 
+// And one more section down: the vendor's branches (founder, 2026-09-26,
+// round 8, item 51). Its behaviour is asserted in BranchesSection.test.tsx.
+vi.mock('./useVendorBranches', async () => {
+  const actual = await vi.importActual<typeof import('./useVendorBranches')>(
+    './useVendorBranches',
+  );
+  return {
+    ...actual,
+    useVendorBranches: () => ({
+      branches: null,
+      loading: true,
+      error: null,
+      busy: null,
+      saveError: null,
+      notice: null,
+      add: vi.fn(),
+      update: vi.fn(),
+      makePrimary: vi.fn(),
+      remove: vi.fn(),
+      reload: vi.fn(),
+    }),
+  };
+});
+
+// The scope ladder (founder, 2026-09-26, item 36) reads its own evidence from
+// the gateway. This file is about the GRID and the sheet; the ladder's rungs,
+// counts, banner and empty states are asserted in VendorScopes.test.tsx against
+// a mocked apiClient. The double shows every card on "All my vendors", chosen,
+// so no banner draws here.
+vi.mock('./useVendorScopes', () => ({
+  useVendorScopes: (cards: unknown[]) => ({
+    scope: 'all',
+    choose: vi.fn(),
+    chosen: true,
+    supply: { status: 'loading' },
+    reason: null,
+    counts: { menu: null, all: cards.length, find: null },
+    visible: cards,
+    supplierOf: () => null,
+    find: {
+      q: '',
+      setQ: vi.fn(),
+      country: 'US',
+      setCountry: vi.fn(),
+      countryBasis: 'house',
+      countryWritten: 'United States',
+      status: 'loading',
+      message: null,
+      result: null,
+      wine: { status: 'idle' },
+    },
+    book: { q: '', setQ: vi.fn(), wine: { status: 'idle' }, sellerOf: () => null },
+    refetchSupply: vi.fn(),
+  }),
+}));
+
 // The scorecard (ADR 0207): the grid reads each card's one fact from the Roll
 // Call answer, the second view is the Roll Call, and the sheet carries the
 // ledger card. Their own behaviour is asserted in scorecard/*.test.tsx against
@@ -157,7 +213,7 @@ beforeEach(() => {
   // Each test states its own URL; without the reset a `?vendor=` from one test
   // would open a sheet in the next and the failure would look like a leak in
   // the component rather than in this file.
-  window.history.replaceState({}, '', '/providers');
+  window.history.replaceState({}, '', '/vendors');
 });
 
 describe('ProvidersNext', () => {
@@ -191,8 +247,30 @@ describe('ProvidersNext', () => {
     fireEvent.click(screen.getByText('Bodega Álvaro'));
     expect(await screen.findByTestId('twin-panel')).toHaveTextContent('twin of Bodega Álvaro');
     expect(screen.getByRole('dialog')).toBeInTheDocument();
+    // the sheet carries the vendor's branches (item 51), not only in legacy
+    expect(screen.getByRole('heading', { name: 'Branches' })).toBeInTheDocument();
+    expect(screen.getByText('Reading Bodega Álvaro’s branches…')).toBeInTheDocument();
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('a card says "Not stated" when nobody stated the vendor\'s type (founder answer 12)', () => {
+    mockData.current = {
+      ...base,
+      cards: [{ provider: provider({ primaryBusinessType: undefined }), openOrders: 0, leadTimeDays: null, lastContact: null }],
+    };
+    render(<ProvidersNext />);
+    expect(screen.getByText('Not stated')).toBeInTheDocument();
+  });
+
+  it('the vendor sheet offers the edit path, type first', async () => {
+    mockData.current = {
+      ...base,
+      cards: [{ provider: provider({}), openOrders: 0, leadTimeDays: null, lastContact: null }],
+    };
+    render(<ProvidersNext />);
+    fireEvent.click(screen.getByText('Bodega Álvaro'));
+    expect(await screen.findByTestId('vendor-record-edit')).toBeInTheDocument();
   });
 
   it('shows em dashes, not zeros, while the orders book is unanswered', () => {
@@ -240,7 +318,7 @@ describe('ProvidersNext', () => {
    * finding 8).
    */
   it('opens the asked-for vendor’s sheet when the page is reached by ?vendor=', async () => {
-    window.history.replaceState({}, '', '/providers?vendor=p1');
+    window.history.replaceState({}, '', '/vendors?vendor=p1');
     mockData.current = {
       ...base,
       cards: [{ provider: provider({}), openOrders: 0, leadTimeDays: null, lastContact: null }],
@@ -252,7 +330,7 @@ describe('ProvidersNext', () => {
   });
 
   it('honours ?vendor= once — a later render does not reopen the closed sheet', async () => {
-    window.history.replaceState({}, '', '/providers?vendor=p1');
+    window.history.replaceState({}, '', '/vendors?vendor=p1');
     mockData.current = {
       ...base,
       cards: [{ provider: provider({}), openOrders: 0, leadTimeDays: null, lastContact: null }],

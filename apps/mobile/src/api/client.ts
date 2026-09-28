@@ -19,7 +19,14 @@ export class ApiError extends Error {
   }
 }
 
+export interface RequestScope {
+  userId: string;
+  restaurantId: string;
+}
+
 interface RequestOptions {
+  scope?: RequestScope;
+  sealChallenge?: string;
   method?: "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
   body?: unknown;
   /** UUID for replay-safe mutations (the outbox sets this). */
@@ -37,9 +44,31 @@ export async function api<T = unknown>(
   path: string,
   options: RequestOptions = {},
 ): Promise<T> {
-  const { method = "GET", body, idempotencyKey, signal, timeoutMs = 15_000 } = options;
+  const {
+    method = "GET",
+    body,
+    idempotencyKey,
+    signal,
+    timeoutMs = 15_000,
+  } = options;
+  const generation = useSession.getState().generation;
+  const assertScope = () => {
+    const session = useSession.getState();
+    if (
+      session.generation !== generation ||
+      (options.scope &&
+        (session.status !== "signedIn" ||
+          session.user?.id !== options.scope.userId ||
+          session.user?.restaurantId !== options.scope.restaurantId))
+    )
+      throw new ApiError(
+        409,
+        "The active account or branch changed. Review this action in its original branch.",
+      );
+  };
 
   const doFetch = async (token: string | null): Promise<Response> => {
+    assertScope();
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     signal?.addEventListener("abort", () => controller.abort(), { once: true });
@@ -50,6 +79,9 @@ export async function api<T = unknown>(
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
           ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
+          ...(options.sealChallenge
+            ? { "X-Seal-Challenge": options.sealChallenge }
+            : {}),
         },
         body: body != null ? JSON.stringify(body) : undefined,
         signal: controller.signal,
@@ -64,6 +96,7 @@ export async function api<T = unknown>(
 
   if (res.status === 401) {
     const refreshed = await refreshAccessToken();
+    assertScope();
     if (!refreshed) {
       // Session is dead — sign out so the UI lands on login, not a spinner.
       await useSession.getState().signOut();
@@ -81,6 +114,9 @@ export async function api<T = unknown>(
     );
   }
 
+  assertScope();
   if (res.status === 204) return undefined as T;
-  return (await res.json()) as T;
+  const result = (await res.json()) as T;
+  assertScope();
+  return result;
 }

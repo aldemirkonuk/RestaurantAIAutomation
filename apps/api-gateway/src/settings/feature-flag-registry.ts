@@ -88,7 +88,7 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     // Settings `.select()` of every ACTIVE key cannot 42703 before the
     // migration has applied (the failure mode that blocked PR #414).
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:263",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:254",
   },
 ];
 
@@ -144,8 +144,9 @@ export function isActiveFeatureFlag(name: string): boolean {
  * (Recommended)"; rejected "Promotions only", "Keep both dark"), every house
  * including new ones. The two preconditions their removed entries named are
  * met: "Who is writing" (#470) is on /communications, ungated, and fork 6(a)'s
- * provenance (#482) is merged. Their three columns (20261015000000,
- * 20261022000000 and the receiving one) stay, unread. The one
+ * provenance (#482) is merged. Their three columns (migrations
+ * `mudavym_design_promotions_flag`, `mudavym_design_vendor_prices` and
+ * `mudavym_design_flags` for the desk) stay, unread. The one
  * `mudavym_design_*` key still ACTIVE is `mudavym_design_arrival`.]
  *
  * Deliberately NOT in ACTIVE_FEATURE_FLAGS:

@@ -104,27 +104,18 @@ export const MUDAVYM_PAGES = [
   // [2026-09-25: superseded — now in LIVE_PAGES, live for every house in
   // code; the 20260922220200 column stays, unread.]
   'authorize_integration',
-  // ADR 0160 §113 / ADR 0165 (2026-09-25). `/promotions`, sketch 113
-  // direction B with C's density. Held back from LIVE_PAGES: flag-gated on
-  // `mudavym_design_promotions`, OFF by default (20261015000000), `legacy`
-  // is today's three-tab Promotions page, unchanged. Dark until the founder
-  // turns it on — the two drawings ADR 0160 still owes (the bundle shape,
-  // B's sized boxes at C's 10+ density) are sketch 124, not built.
-  // [CORRECTED 2026-09-27, ADR 0149 row 54: both halves are stale. Sketch 124
-  // was answered (A · The Band, the tray) and built on PR #474 — ADR 0160
-  // §113's "ANSWERED and BUILT 2026-09-25" bracket, CLAIMS
-  // `PROMOTIONS-BAND-AND-TRAY-BUILT`. And `promotions` is no longer held back:
-  // founder item 53 (2026-09-25, round 8, "Live in code at cutover
-  // (Recommended)") put it in LIVE_PAGES below, live for every house in code;
-  // the 20261015000000 column stays, unread.]
+  // ADR 0160 §113 / ADR 0165. `/promotions`, sketch 113 direction B with C's
+  // density; sketch 124 (A · The Band, the tray) built on PR #474. Live for
+  // every house in code — see LIVE_PAGES below (ADR 0149 row 54, founder
+  // item 53). `legacy` is the old three-tab Promotions page, reachable only
+  // through the QA override; its column (migration
+  // `mudavym_design_promotions_flag`) stays, unread.
   'promotions',
-  // ADR 0160 §112 (/vendor-prices). Flag-gated, OFF by default, NOT in
-  // LIVE_PAGES — the founder flips it per house (column: 20261022000000).
-  // [CORRECTED 2026-09-27, ADR 0149 row 54: now in LIVE_PAGES, live for every
-  // house in code — founder item 53 ("Live in code at cutover
-  // (Recommended)"), which supersedes the per-house flip. Its precondition
-  // (ADR 0160 §112, answer 30: fork 6(a)'s provenance lands first) is PR
-  // #482, merged. The 20261022000000 column stays, unread.]
+  // ADR 0160 §112 (/vendor-prices). Live for every house in code — see
+  // LIVE_PAGES below (ADR 0149 row 54, founder item 53, which superseded the
+  // earlier per-house flip; ADR 0160 §112's 2026-09-27 bracket). Its
+  // precondition, fork 6(a)'s provenance (#482), is merged. Its column
+  // (migration `mudavym_design_vendor_prices`) stays, unread.
   'vendor_prices',
   // ADR 0145 `/ask` (2026-09-25 amendment): live in code from day one (Q2); no
   // column exists. `legacy` is the retired /sommelier chat, until the cutover.

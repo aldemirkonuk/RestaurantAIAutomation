@@ -295,7 +295,7 @@ describe('OneTapActionCenter — taps reach the server', () => {
       'Order ORD-2026-00042 was already delivered on 2026-09-04 at 14:05 UTC. ' +
       'An order is delivered once. Nothing was changed.'
     const summary =
-      'Delivered on 2026-09-04 at 14:05 UTC by Ada Lovelace, 12 bottles booked in.'
+      'Delivered on 2026-09-04 at 14:05 UTC by Ada Lovelace, 12 bottles on the shelf.'
     seed([DERIVED_DELIVERY])
     // The real 409 body (founder, 2026-09-05, batch 46), not a bare message:
     // the card must show WHAT ALREADY HAPPENED, not that a request failed.
@@ -315,8 +315,7 @@ describe('OneTapActionCenter — taps reach the server', () => {
               receivedBy: 'user-7',
               receivedByName: 'Ada Lovelace',
               receivedByNameReason: null,
-              quantityReceived: 12,
-              unitType: 'bottle',
+              received: { readable: true, quantityInStockUom: 12, stockUom: 'bottle', words: '12 bottles' },
               bottlesTotal: 12,
               summary,
             },

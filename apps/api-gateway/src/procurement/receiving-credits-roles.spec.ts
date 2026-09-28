@@ -232,20 +232,27 @@ describe("the gate is on the right handlers and only those (metadata)", () => {
     ]);
   });
 
-  it("gates ReceivingController.queue alone, on the method", () => {
-    expect(rolesOn(ReceivingController.prototype, "queue")).toEqual([
-      "owner",
-      "manager",
-    ]);
-    expect(
-      guardsOf(ReceivingController.prototype.queue),
-    ).toEqual([RolesGuard]);
+  // The desk's two handlers: the decision queue (ADR 0167) and, since PR
+  // #480, one line's history (the same rule applied to the desk's newest
+  // route). Both on the method; the door routes stay open to staff.
+  it("gates the desk handlers, queue and lineHistory, on the method", () => {
+    for (const name of ["queue", "lineHistory"] as const) {
+      expect(rolesOn(ReceivingController.prototype, name)).toEqual([
+        "owner",
+        "manager",
+      ]);
+      expect(
+        guardsOf(ReceivingController.prototype[name]),
+      ).toEqual([RolesGuard]);
+    }
     expect(guardsOf(ReceivingController)).toEqual([JwtAuthGuard]);
     expect(Reflect.getMetadata(ROLES_KEY, ReceivingController)).toBeUndefined();
   });
 
   it("leaves every other ReceivingController handler open to staff", () => {
-    const others = methodsOf(ReceivingController).filter((n) => n !== "queue");
+    const others = methodsOf(ReceivingController).filter(
+      (n) => n !== "queue" && n !== "lineHistory",
+    );
     // If this list is empty the test is looking at nothing.
     expect(others.sort()).toEqual([
       "door",

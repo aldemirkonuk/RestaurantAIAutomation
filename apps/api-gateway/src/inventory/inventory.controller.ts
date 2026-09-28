@@ -26,7 +26,10 @@ import {
   InventoryItemResponseDto,
   InventorySummaryResponseDto,
   UnmappedToastItemResponseDto,
+  CreateAuctionLotRecordDto,
+  AuctionLotRecordResponseDto,
 } from "./dto/inventory.dto";
+import { AuctionLotRecordsService } from "./auction-lot-records.service";
 
 @ApiTags("inventory")
 @Controller("inventory")
@@ -38,6 +41,7 @@ export class InventoryController {
     // be changed whenever the manager wants", founder 2026-09-21). The role
     // is resolved from the house's access rows, not from the token's claim.
     private readonly organizations: OrganizationsService,
+    private readonly auctionLotRecords: AuctionLotRecordsService,
   ) {}
 
   /**
@@ -58,6 +62,87 @@ export class InventoryController {
       restaurantId,
       "change a wine's price",
     );
+  }
+
+  // ==========================================================================
+  // AUCTION LOT RECORDS — an auction lot's own details, kept. Built
+  // 2026-09-21 (founder answer 2) closing the gap AuctionLotStart.tsx and
+  // inventory.md §9 named 2026-09-06 (ADR 0083). Tenant scope comes from the
+  // JWT, never the body or a path param — unlike the rest of this
+  // controller, which predates that rule. Declared BEFORE `:restaurantId`
+  // below on purpose: Nest/Express match routes in declaration order, and a
+  // single dynamic segment there would otherwise swallow GET
+  // /inventory/auction-lots as `restaurantId = "auction-lots"`.
+  // ==========================================================================
+
+  @Post("auction-lots")
+  @ApiOperation({
+    summary:
+      "Record an auction lot's own details against the stock it produced",
+  })
+  @ApiResponse({ status: 201, type: AuctionLotRecordResponseDto })
+  async createAuctionLotRecord(
+    @Body() dto: CreateAuctionLotRecordDto,
+    @CurrentUser()
+    user: {
+      userId: string;
+      restaurantId: string;
+      name?: string;
+      email?: string;
+    },
+  ): Promise<AuctionLotRecordResponseDto> {
+    const recordedByName = (user.name ?? user.email ?? "").trim();
+    return this.auctionLotRecords.create(
+      user.restaurantId,
+      user.userId,
+      recordedByName,
+      dto,
+    );
+  }
+
+  @Get("auction-lots")
+  @ApiOperation({
+    summary: "Every auction lot recorded for one inventory item, newest first",
+  })
+  @ApiResponse({ status: 200, type: [AuctionLotRecordResponseDto] })
+  async listAuctionLotRecords(
+    @Query("inventoryId") inventoryId: string,
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ): Promise<AuctionLotRecordResponseDto[]> {
+    if (!inventoryId) {
+      throw new HttpException(
+        "inventoryId is required",
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    return this.auctionLotRecords.listForInventoryItem(
+      user.restaurantId,
+      inventoryId,
+    );
+  }
+
+  // ==========================================================================
+  // RESEARCH — a house item the wine library does not have (founder,
+  // 2026-09-21, ADR 0192's amendment). Read by the /inventory flag. Tenant
+  // scope from the JWT, like the auction lots above, and declared before
+  // `:restaurantId` for the same routing reason.
+  // ==========================================================================
+
+  @Get("research")
+  @ApiOperation({
+    summary:
+      "This house's items the wine library does not have, and where each stands on the research queue",
+  })
+  async listHouseItemResearch(
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ) {
+    if (!user?.restaurantId) {
+      throw new HttpException(
+        "Your sign-in names no house, so there is nothing to read.",
+        HttpStatus.FORBIDDEN,
+      );
+    }
+    return this.inventoryService.listHouseItemResearch(user.restaurantId);
   }
 
   @Get(":restaurantId")

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { useNavigate, useSearchParams, Link } from 'react-router-dom'
+import { useNavigate, useSearchParams, useLocation, Link } from 'react-router-dom'
+import { readInviteMailSecret } from '../lib/inviteMailSecret'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '../contexts/AuthContext'
 import { Wine, Users, Building2, ArrowRight, ArrowLeft, Check, X, Loader2, AlertCircle, Mail, Lock, User, ChevronRight } from 'lucide-react'
@@ -68,6 +69,10 @@ interface InvitePreview {
 export function Register() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
+  // ADR 0229 fork 9 (item 77): the invite mail's secret, carried here from
+  // /invite/<code> as a fragment. Sent with the join; without it the new
+  // account is unverified.
+  const inviteMailSecret = readInviteMailSecret(useLocation().hash)
   const { registerAccount, registerRestaurant, joinViaInvite, error: authError } = useAuth()
   const on = usePublicDesign()
 
@@ -590,7 +595,13 @@ export function Register() {
     setError(null)
     setLoading(true)
     try {
-      await joinViaInvite({ code: inviteCode, name: joinName, email: joinEmail, password: joinPassword })
+      await joinViaInvite({
+        code: inviteCode,
+        name: joinName,
+        email: joinEmail,
+        password: joinPassword,
+        ...(inviteMailSecret ? { emailSecret: inviteMailSecret } : {}),
+      })
       navigate('/', { replace: true })
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to join restaurant')

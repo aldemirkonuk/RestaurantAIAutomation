@@ -1,6 +1,6 @@
 ---
 type: page
-route: /providers
+route: /vendors
 slug: providers
 softwares: [vendor-directory, global-vendor-search]
 component: apps/web/src/pages/Providers.tsx
@@ -15,7 +15,103 @@ updated: 2026-08-26
 links: ["[[PAGE-CONTRACT]]", "[[distributors]]", "[[promotions]]", "[[vendor-prices]]", "[[orders]]"]
 ---
 
-# /providers — vendor roster + distributor discovery
+# /vendors (was /providers) — vendor roster + vendor discovery
+
+> [2026-09-25, lane W3-vendors, ADR 0221: the page's address is `/vendors` and its
+> name everywhere the house reads it (rail, header, sidebar, command palette,
+> shortcuts sheet, tours, help guide, the page's own heading) is **Vendors**.
+> `/providers` and `/distributors` redirect to it for good, carrying the rest of
+> the path, the query (`?vendor=<id>`) and the hash (`apps/web/src/lib/renamedRoute.tsx`);
+> `/distributors` adds `tab=discover` when the link did not name a tab. What did
+> NOT move: the page slug and flag (`providers`, `mudavym_design_providers`), the
+> code paths under `pages/providers/`, the gateway's `/providers` API and every
+> table and column. The rest of this note predates the rename and says
+> `/providers` where it means this page.]
+
+> [2026-09-26, lane W4-vendors-filters, ADR 0221 — two founder answers (founder,
+> 2026-09-26, round 6), built on #481. The bracket for ADR 0221 itself is owed by the
+> records lane (#466 holds that file; see the PR body for the text).
+> **Shortcut** — asked "Command palette: the 'go to vendors' shortcut is still 'g p'
+> (providers). Change it?"; chosen **"'g v', keep 'g p' working (Recommended)"** ("New
+> letter matches the word; the old one still works so nobody's habit breaks."). Rejected:
+> "Keep 'g p' only" ("No change."). Built: `GOTO_MAP` has `v` and `p`, both `/vendors`;
+> the palette entry shows `g v`; the shortcuts sheet says "g then w / r / v … (g then p
+> still works)" (`components/command/commands.ts`, `ShortcutsSheet.tsx`); pinned through
+> the real key handler by `CommandProvider.goto.test.tsx`.
+> **The word "distributor"** — asked "'distributor' is also the legal term for the licensed
+> wholesaler in the three-tier system (e.g. /connections: 'Licensed distributors'). Rename
+> those to 'vendor' too?"; chosen **"Keep the legal term (Recommended)"** ("Everywhere we
+> mean 'who I buy from' says vendor; 'distributor' stays only where it names the licensed
+> tier, since that's a real legal distinction."). Rejected: "Vendor everywhere" ("One word
+> across the whole product."). Verified on the rendered (Mudavym) pages: the one remaining
+> "who I buy from" use, /receiving's "provable from the distributor's own packing slip"
+> (`receiving/next/RcOwnerLedger.tsx`), now says vendor's. Kept as the licensed tier:
+> /connections "Licensed distributors" (`DistributorFeedPanel.tsx`), and the business-type
+> value "Distributor" beside Importer / Wholesaler (`VendorCatalogueCard.tsx`, the add/edit
+> vendor forms). Legacy-only copy (`Providers.tsx` "Find Distributors", `Settings.tsx`,
+> the legacy /communications filter "All distributors") is left for ADR 0149's cutover
+> delete, as #481 already left it.]
+
+> [2026-09-26, lane W4-vendors-filters, ADR 0221 — house-first scopes (founder,
+> 2026-09-26, filters round, memory item 36), stacked on #481 as `feat/vendors-scopes`.
+> Asked "/vendors: open on 'Supplies my menu' (built from what you've actually bought:
+> price history, orders, inventory), then 'All my vendors'. Should there be an outer rung
+> 'Find new vendors' that searches the curated vendor catalogue we already have?";
+> chosen **"Yes, add 'Find new vendors' (Recommended)"** ("Uses the existing curated
+> catalogue search. This is not the shared-vendor layer ADR 0221 deferred."). Rejected:
+> "No, my vendors only" ("Discovery stays on its own page for now."). Same round, for both
+> pages: **"Widen + banner; show partial (Recommended)"** for a house with no menu.
+> Built: a scope bar **Supplies my menu · N → All my vendors · N → Find new vendors · N**
+> with live counts (an em dash, never a zero, when a count is unknown), state in `?scope=`,
+> and `?tab=discover` (the `/distributors` redirect) landing on Find new vendors.
+> *Supplies my menu* = `GET /providers/menu-supply` (`vendor-menu-supply.ts`): the house's
+> vendors with purchase evidence — `price_history (provider_id, master_wine_id)` with
+> `effective_date` in the last 180 days, lines of orders that reached the vendor
+> (`ORDER_ARRIVED_STATUSES` ∪ `ORDER_OPEN_WITH_VENDOR_STATUSES`, house read off the order),
+> and live `restaurant_inventory.provider_id` — intersected with the `wine_library_id`s of
+> the non-discarded lines of every ACTIVE menu (more than one is unioned). Every read is
+> `.eq` the caller's house and keyset-paged (no 1000-row cap). The card is tagged ("3 wines
+> on your menu · priced, ordered"); the rung hides cards, never re-orders them. No active
+> menu, a menu whose lines link no wine, or a failed read → the page opens on *All my
+> vendors* with a banner that says which; choosing the menu rung then says why it cannot
+> answer instead of drawing an empty list. *Find new vendors* = the curated
+> `vendor_catalogue` search (`GET /vendor-catalogue/search`, curated tier only) with its
+> total, a country field (opens on US, as the old add-vendor modal did — not derived from
+> the house **[CORRECTED 2026-09-26, lane W5-vendors: superseded by founder item 48 — it
+> now opens on the house's own country; see the next bracket]**), "In your vendors" for catalogue rows already linked, and "Add to my vendors"
+> through the existing `POST /providers {catalogue_vendor_id}`. Not built: the shared-vendor
+> layer and world map (ADR 0221 "later"); the licensed-territory discovery
+> (`/distributors/search`) — it remains the legacy page's map.
+> Guard change: `check_price_history_reads_group_by_unit.py` gains a narrow PRESENCE-read
+> arm (a literal projection naming no price, quantity, `*`, embed or runtime list), with
+> self-test cases both ways, because this read uses price_history as purchase evidence and
+> reads no price.]
+
+> [2026-09-26, lane W5-vendors, ADR 0221 amendment — founder, round 7, item 48, as
+> recorded in project memory: "'Supplies my menu' = exact vintage; a NAME-ONLY search
+> (menu filter not applied) matches any vintage — implement now. Find new vendors
+> defaults to the house's country (US fallback)." (The round's literal option texts were
+> not preserved; ADR 0221's amendment says so and reconstructs the rejected options.)
+> Built on #484: *All my vendors* gets one search box — a vendor's own name, or a wine
+> they sold you — backed by `GET /providers/wine-sellers?q=` (`vendor-wine-search.ts`,
+> `readOwnWineSellers`): the house's purchase evidence of ALL time (price history,
+> orders that reached the vendor, live stock lines), matched by "producer name",
+> accent/case-blind, every word, any vintage; each matching card is tagged "Sold you
+> Opus One 2019, 2018 · priced, ordered". *Find new vendors* keeps the curated name /
+> specialty search and adds, above it, curated vendors SEEN PRICING any vintage of the
+> typed wine (`GET /providers/catalogue-wine-listers`, price sightings through
+> `scopePriceRegisterRead` / `houseAndOpenMarket` — this house's own and openly posted,
+> never another house's), each labelled Invoiced / Quoted / Listed, because a sighting is
+> not a sale. A four-digit year in the query narrows to that exact vintage (a reading,
+> recorded in the ADR). *Supplies my menu* is untouched (exact vintage) and has no search
+> box. The country field now opens on the house's country: `restaurants.country` via
+> `GET /settings/currency`, resolved to ISO-2 by `lib/countries.ts`
+> (`defaultCatalogueCountry`); US when missing, unknown or unreadable, with a hint saying
+> which; still editable; the catalogue is not searched until the house has answered.
+> Item 49 (substitution suggestions) is a FUTURE idea — no UI.]
+> [2026-09-28, #484 audit R2: a wine search needs one word of two letters or more ("a b"
+> is refused), and the *Find new vendors* sightings read stops at 5000 rows with a 422
+> asking for more of the name, never a partial list — ADR 0221.]
 
 > **Part of** [[08-softwares/vendor-directory|Vendor Directory & Intel]] · [[08-softwares/global-vendor-search|Global Vendor Search]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
 
@@ -157,6 +253,45 @@ export; **discover** — the U.S. distributor catalogue on a map, one-tap add (S
     `apps/api-gateway/src/providers/providers.controller.ts`
     (`GET /providers/usual-currency/coverage`), `providers.service.ts`
     (`usualCurrencyCoverage`), `vendor-currency.ts` (`usualCurrencyCoverageSentence`).
+- **A new vendor is a SHEET on the rebuilt page, and its duplicate check a PANEL**
+  (built 2026-09-06, packet 2 of the overlay layer; census 102 · ADR 0112).
+  `pages/providers/next/NewVendorSheet.tsx` and `VendorTwinPanel.tsx`, opened by
+  *Add a vendor* in the masthead. Until they landed the rebuilt page could read the
+  book and open one vendor's twin, and could not add one — the legacy page split the
+  act across THREE modals (`VendorSearchModal.tsx:161` search the catalogue,
+  `AddProviderModal.tsx:361` a vendor of your own, `:629` invent a business type).
+  The vendor being added is one object however it was found, so it is one sheet.
+  - **Two doors, one object.** From the catalogue: `searchVendorCatalogue` →
+    `addProviderFromCatalogue` (`POST /providers { catalogue_vendor_id }`), one press
+    and nothing typed twice. Or a vendor of your own: `POST /providers` with the
+    legacy field set entire — name, both contact names, phone, email, website,
+    address, account number, type, specialties, payment terms, minimum order, notes.
+  - **The delivery days and the address are separate acts, and are reported
+    separately.** `PUT /vendor-terms/:providerId` is the only place in the schema
+    that can hold delivery days with a person's name attached, and coordinates live
+    in `provider_locations`, not on the provider row — a vendor added without one is
+    permanently unpinnable. Both are decoupled from the create exactly as
+    `pages/Providers.tsx:518-573` decoupled them: the vendor is already saved, and a
+    terms failure must never present as *failed to add vendor*. That silence is how
+    the original delivery-days defect stayed invisible for a year.
+  - **Payment terms are not defaulted.** Empty means unstated. Seeding *Net 30* would
+    refill the column default migration `20260903170000_a_default_is_not_an_answer.sql`
+    dropped, from the browser.
+  - **Four states on the catalogue search**, and the fourth is the one that matters: a
+    catalogue that could not be READ says so. An empty list drawn for a thrown request
+    tells a person the vendor is not in the catalogue when nobody looked.
+  - **The duplicate question refuses the save while it is unanswered** and never merges
+    anything — orders, invoices and letters all point at one `provider_id`. It reads
+    the same `useDuplicateVendorCheck` both legacy forms used, so the two can never
+    disagree about what a duplicate is. Its confidence figure NAMES WHAT IT MEASURED
+    (the hook takes `max(name, address)`, which are different claims); the legacy card
+    printed a bare percentage.
+  - **The rating stays with the person.** It goes to `providerRatings` in user
+    preferences, where the legacy page kept it (`pages/Providers.tsx:289-292`) — it is
+    an opinion, not a fact about the vendor, and it never belonged on the row.
+  - Proved by `NewVendor.test.tsx` (19 assertions, re-measured 2026-09-19 — lane E
+    audit D10's error-honesty and stay-open fixes added two). The pre-packet
+    `ProvidersNext.tsx` contains zero references to the act.
 - **Mudavym redesign behind `mudavym_design_providers` (OFF)**: a quiet grid of small, closed vendor buckets (≤3 real facts each: open orders · lead time · last contact) with the digital twin held back in a right-hand TwinSheet, fetched on open
 
 ## 1b. Motions used — Mudavym redesign (flag `mudavym_design_providers`)
@@ -177,6 +312,7 @@ this list is the note-side index (ADR 0044 §2).
 |---|---|---|
 | `pv-sheet-settle` | The sheet settles in | TwinSheet opening from a bucket card — now the house `Sheet`'s `tuck` (spring 380/32, 300ms, 28px travel); the hand-rolled `settle`/24px variant is retired (ADR 0112) |
 | `pv-card-ink` | Ink micro-state | bucket-card hover/focus — border to seal ring, one paper step; nothing moves |
+| `pv-newvendor-tuck` | The vendor composer opens | *Add a vendor* opens the house `Sheet` on `tuck`; the duplicate question opens over it on `settle` at z-index 140. Neither adds a motion of its own, and `prefers-reduced-motion` renders none |
 
 Deliberate non-motions: no card stagger (a roster is a reference, not an
 arrival), no count tallies, instant sheet close. **The Terms section adds no
@@ -273,8 +409,8 @@ The rule: an object gets a sheet, a question a panel, a choice a popover; the se
 | Page | Overlay | Shape | Status | Where the act lives or went | Source |
 |---|---|---|---|---|---|
 | `/providers` | The vendor's twin | sheet | Built | One vendor, opened from the list you can still see. | `pages/providers/next/TwinSheet.tsx:68` |
-| `/providers` | A new vendor | sheet | Owed | The vendor being added is one object; the old page split it across three modals. | `components/providers/AddProviderModal.tsx:361 (+ Add Provider Type :629) · components/providers/VendorSearchModal.tsx:161` |
-| `/providers` | A vendor you already have? | panel | Owed | A question with two answers before a write. | `components/providers/VendorMatchModal.tsx:108` |
+| `/providers` | A new vendor | sheet | Built | The vendor being added is one object; the old page split it across three modals. BUILT 2026-09-06 (packet 2): both doors in one sheet, the legacy field set entire, and the delivery days and the address written as SEPARATE acts that are reported separately — a terms failure never presents as a failed create. | `BUILT 2026-09-06 as pages/providers/next/NewVendorSheet.tsx (was AddProviderModal.tsx:361 + :629 and VendorSearchModal.tsx:161)` |
+| `/providers` | A vendor you already have? | panel | Built | A question with two answers before a write. BUILT 2026-09-06: it refuses the save while unanswered, never merges two records, and its confidence figure names WHICH similarity it measured rather than printing a bare percentage. | `BUILT 2026-09-06 as pages/providers/next/VendorTwinPanel.tsx (was components/providers/VendorMatchModal.tsx:108)` |
 | `/providers` | Edit provider | — | Retires | The twin sheet's edit half; terms on the row. | `components/providers/EditProviderModal.tsx:678` |
 | `/providers` | Send message | — | Retires | The composer (letters); the text sender is ADR 0121. | `components/providers/SendMessageSlideOver.tsx:319` |
 | `/providers` | Provider card | — | Retires | The twin sheet. | `pages/Providers.tsx:1355` |
@@ -303,13 +439,31 @@ Sidebar item (`components/layout/Sidebar.tsx:87`). `/distributors` redirects her
 - Locations CRUD `/providers/:id/locations[/:locationId]` (`providers.ts:456-498`)
 - `GET /orders` via `useOrders` (`Providers.tsx:28`)
 - Catalogue: `GET /vendor-catalogue/search` (`services/api/vendors.ts:74`) and add-from-
-  catalogue `POST /providers` (`vendors.ts:121,131`) via `VendorSearchModal`
+  catalogue `POST /providers` (`vendors.ts:121,131`) via `VendorSearchModal` and, since
+  2026-09-06, `pages/providers/next/NewVendorSheet.tsx` — the rebuilt page's own composer,
+  which also calls `POST /providers`, `PUT /vendor-terms/:providerId` and
+  `POST /providers/:id/locations` as three separately-reported acts
+- Duplicate check: `GET /vendor-catalogue/match` and `POST /providers/match`
+  (`hooks/useDuplicateVendorCheck.ts`) — read by the composer, answered by
+  `pages/providers/next/VendorTwinPanel.tsx`
 - Discover: `GET /distributors/search`, `/distributors/facets`, `/distributors/:id`
   (`services/api/distributors.ts:158-173`; ENDPOINTS.md:210-216)
 - Terms (redesign only): `GET /vendor-terms` and `PUT /vendor-terms/:providerId`
   (`apps/api-gateway/src/vendor-terms/vendor-terms.controller.ts:44,71`) via
   `pages/providers/next/useProviderTerms.ts`. The GET is house-wide — there is no
   per-provider read route (§9)
+- Scopes (redesign, 2026-09-26): `GET /providers/menu-supply` ("Supplies my menu",
+  `apps/api-gateway/src/providers/vendor-menu-supply.ts`) and `GET /vendor-catalogue/search`
+  with its total ("Find new vendors", `services/api/vendors.ts` `searchVendorCataloguePage`),
+  both via `pages/providers/next/useVendorScopes.ts`
+- Branches (redesign, 2026-09-26, founder round 8 item 51 · ADR 0221): the locations CRUD
+  above is also called from the vendor sheet — `pages/providers/next/useVendorBranches.ts`
+  → `BranchesSection.tsx`, mounted in `TwinSheet.tsx`. Legacy `Providers.tsx` /
+  `EditProviderModal.tsx` are no longer its only callers. No map (item 52).
+  [2026-09-28, #484 audit R4: the primary mark and the delete go through the SQL
+  functions `provider_location_make_primary` / `provider_location_remove`
+  (migration `a_vendor_has_one_primary_branch`), one transaction each, and a
+  partial unique index allows one primary per vendor per house — ADR 0221.]
 - Scorecard (redesign only, ADR 0207): `GET /vendor-scorecard?window=30|90|365` (the
   Roll Call and each card's fact), `GET /vendor-scorecard/:id` (the ledger card),
   `GET /vendor-scorecard/:id/docket?measure=` (the rows) — house from the token, a
@@ -409,6 +563,12 @@ through them asserted terms nobody chose — the same fabricated answer
 would have refilled the column on every save after migration `20260903170000`
 dropped the default. Both now default to `''` with an explicit "Not stated"
 option.
+
+**[2026-09-21, founder answer 12; ADR 0083 second addendum.]** The rebuilt sheet
+has an edit path: `VendorRecordEdit.tsx` at the top of `TwinSheet`, the business
+type first (the three offered, "Not stated", and a type outside the three shown as
+itself), then the name; only what changed is sent. The cards and the sheet's
+eyebrow say "Not stated" when no type was stated.
 
 - TwinSheet's intelligence panel renders in the legacy grey/blue skin inside
   the İznik sheet (`ProviderIntelligencePanel` is a shared legacy component) —

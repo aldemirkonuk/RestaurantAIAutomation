@@ -2,8 +2,9 @@
 
 Every case is a shape the guard must judge, written as a throwaway tree rather
 than against the repo, so the suite never depends on `apps/` staying still. Two
-cases DO read the repo: one asserts the shipped tree passes with ZERO readers
-counted, the other plants a non-compliant read into a temporary copy and asserts
+cases DO read the repo: one asserts the shipped tree passes with no reader of a
+price or a quantity (its only reader, since 2026-09-26, is /vendors' presence
+read in vendor-menu-supply.ts), the other plants a non-compliant read into a temporary copy and asserts
 the guard fails and names it. Nothing is ever planted into the worktree.
 
     pytest scripts/test_price_history_reads_group_by_unit.py -q
@@ -12,7 +13,6 @@ the guard fails and names it. Nothing is ever planted into the worktree.
 from __future__ import annotations
 
 import pathlib
-import re
 import shutil
 import subprocess
 import sys
@@ -308,24 +308,69 @@ def test_the_self_test_passes():
     assert self_test() == 0
 
 
-def test_the_shipped_tree_passes_and_every_reader_states_a_unit():
-    """The real tree passes, and the count line says every reader is compliant.
-
-    [2026-09-25, feat/promotions-mudavym: this test used to pin "0 readers
-    today". The /promotions grade (apps/api-gateway/src/promotions/
-    promotions.service.ts) is the first real reader of price_history and it
-    states its unit, so the honest pin is "N/N state a unit" -- never a
-    reader that does not.]
-    """
+def test_the_shipped_tree_passes_and_reads_no_price_without_a_unit():
+    # [2026-09-25, feat/promotions-mudavym: this test used to pin "0 readers
+    # today". The /promotions grade (apps/api-gateway/src/promotions/
+    # promotions.service.ts) is the first real reader of price_history and it
+    # states its unit.]
+    # Until 2026-09-26 every reader stated a unit outright. /vendors' "Supplies
+    # my menu" (apps/api-gateway/src/providers/vendor-menu-supply.ts) added one
+    # PRESENCE read -- it selects who priced which wine, never a price -- so
+    # the shipped tree now passes with every reader compliant and that one
+    # counted as such.
     proc = subprocess.run(
         [sys.executable, str(GUARD)], cwd=REPO_ROOT, capture_output=True, text=True
     )
     assert proc.returncode == 0, proc.stdout + proc.stderr
-    if "0 readers today" in proc.stdout:
-        return
-    m = re.search(r"\((\d+)/(\d+) state a unit;", proc.stdout)
-    assert m, proc.stdout
-    assert m.group(1) == m.group(2) and int(m.group(2)) > 0, proc.stdout
+    code, findings, counts = run(REPO_ROOT)
+    assert code == 0 and findings == []
+    assert counts["compliant"] == counts["reads"], counts
+    assert counts["presence_reads"] >= 1, counts
+
+
+def test_a_presence_read_is_compliant_and_counted(tmp_path):
+    root = _tree(
+        tmp_path,
+        _with(
+            "  async whoPriced(id) {\n"
+            '    return this.db.supabase.from("price_history")\n'
+            '      .select("id, provider_id, master_wine_id").eq("restaurant_id", id);\n'
+            "  }\n"
+        ),
+    )
+    code, findings, counts = run(root)
+    assert code == 0, findings
+    assert counts["presence_reads"] == 1 and counts["compliant"] == 1
+
+
+@pytest.mark.parametrize(
+    "projection",
+    [
+        '"*"',
+        '"id, quantity"',
+        '"id, provider_id, price"',
+        '"id, orders(price)"',
+        "`id, ${cols}`",
+        # Audit of #484 at d44056b42: a denylist on \bprice\b let these pass,
+        # since Python's \b sees no boundary between `_` and a letter.
+        '"id, provider_id, unit_price"',
+        '"id, total_quantity"',
+        '"id, cost:price"',
+    ],
+)
+def test_a_projection_naming_a_unit_governed_number_is_not_a_presence_read(tmp_path, projection):
+    root = _tree(
+        tmp_path,
+        _with(
+            "  async peek(id, cols) {\n"
+            '    return this.db.supabase.from("price_history")\n'
+            f'      .select({projection}).eq("restaurant_id", id);\n'
+            "  }\n"
+        ),
+    )
+    code, findings, counts = run(root)
+    assert code == 1, (projection, findings)
+    assert counts["presence_reads"] == 0
 
 
 def test_a_planted_read_in_a_copy_of_the_tree_fails(tmp_path):

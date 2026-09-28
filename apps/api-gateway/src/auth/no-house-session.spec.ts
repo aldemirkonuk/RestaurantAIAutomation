@@ -66,6 +66,8 @@ describe("a session in no house (ADR 0164, R4)", () => {
       "GET /auth/verify",
       "GET /organizations/branches",
       "PATCH /auth/me",
+      // ADR 0229 fork 13 (item 82): a held joiner's session names no house.
+      "POST /auth/held-memberships/accept",
       "POST /auth/invite/:code/accept",
       "POST /auth/logout",
       "POST /auth/me/link/:provider",
@@ -73,6 +75,9 @@ describe("a session in no house (ADR 0164, R4)", () => {
       "POST /auth/register/house",
       "POST /auth/resend-verification",
       "POST /auth/switch-restaurant",
+      // ADR 0229 fork 12 (item 81): the link now needs a session, which may
+      // name no house (a held joiner verifying).
+      "POST /auth/verify-email",
     ]);
   });
 

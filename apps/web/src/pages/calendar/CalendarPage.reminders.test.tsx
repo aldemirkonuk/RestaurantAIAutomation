@@ -61,6 +61,10 @@ vi.mock('../../hooks/queries', () => ({
   // EventModal's custom event-type management
   useUpdateEventType: () => ({ mutate: vi.fn(), isPending: false }),
   useDeleteEventType: () => ({ mutate: vi.fn(), isPending: false }),
+  // MeetingMemoPrompt's day-notes read/write (2026-09-21, its own table —
+  // see CalendarPage.tsx's handleMemoSave and MeetingMemoPrompt.tsx).
+  useDayNotes: () => ({ data: [], isLoading: false }),
+  useCreateDayNote: () => ({ mutate: vi.fn() }),
 }))
 
 /** An event already on the calendar, dated today so it lands in the month grid. */

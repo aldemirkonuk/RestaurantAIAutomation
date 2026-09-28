@@ -44,6 +44,7 @@ import { getActiveRestaurantId } from "../../../services/api/client";
 import { useTypedInventorySubscription } from "../../../contexts/RealtimeContext";
 import { ManualReceiptWorkspace } from "../../../components/inventory/ManualReceiptWorkspace";
 import { AddWineSelectionModal } from "../../../components/wines/AddWineSelectionModal";
+import { AuctionLotStart } from "./AuctionLotStart";
 import { MenuScannerFlow } from "../../../components/scanner/MenuScannerFlow";
 import { summarizeMenuScanPersist } from "../../../lib/menuScannerPersistence";
 import { ThemedSelect } from "../../../components/ui/ThemedSelect";
@@ -77,6 +78,11 @@ import {
   type RowFlag,
 } from "./bits";
 import { RowExpansion } from "./RowExpansion";
+import { HouseItemResearchUnread, NameThisWineHint } from "./NameThisWine";
+// Moved to components/mudavym (founder, 2026-09-22, round 6z, verbatim pick 8:
+// "Queue it; Mudavym + hold (Recommended)") — the card is now built on the
+// house's Select/CountInput/HoldToApprove controls, not by path from a page.
+import { DeliveriesToName } from "../../../components/mudavym/DeliveriesToName";
 import { HousePriceCell, addedPriceNote, type AdviceLoad } from "./HousePriceCell";
 import { getPriceAdvice } from "../../../services/api/pricing";
 import { ReceivingWorkspace } from "./ReceivingWorkspace";
@@ -259,6 +265,10 @@ export function InventoryCommandPage() {
   const [activeFlag, setActiveFlag] = useState<RowFlag | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showAddWine, setShowAddWine] = useState(false);
+  /* THE FOURTH START (census 102; the founder, 2026-09-05). An auction bottle
+     is still one bottle entering the book, so it goes in through the same
+     write below — see AuctionLotStart's header for the packet-1 merge point. */
+  const [showAuctionLot, setShowAuctionLot] = useState(false);
   const [showAddWineSelection, setShowAddWineSelection] = useState(false);
   const [showMenuScanner, setShowMenuScanner] = useState(false);
   const [showManualReceipt, setShowManualReceipt] = useState(false);
@@ -281,6 +291,7 @@ export function InventoryCommandPage() {
 
   const anyModalOpen =
     showAddWine ||
+    showAuctionLot ||
     showAddWineSelection ||
     showMenuScanner ||
     showManualReceipt ||
@@ -1054,6 +1065,9 @@ export function InventoryCommandPage() {
         />
       </div>
 
+      {/* deliveries that booked nothing wait for their item (founder, 2026-09-22) */}
+      <DeliveriesToName items={inventory} />
+
       {/* engine insights in context (NEW-729) */}
       <ContextualInsights
         host="inventory"
@@ -1401,6 +1415,7 @@ export function InventoryCommandPage() {
                             <span className="truncate">{item.name}</span>
                             <AbcBadge abc={item.abcClass} />
                           </div>
+                          <NameThisWineHint inventoryId={item.inventoryId} />
                           <div className="text-[11px] text-gray-400 mt-0.5 truncate">
                             {[item.producer, item.region]
                               .filter(Boolean)
@@ -1529,6 +1544,7 @@ export function InventoryCommandPage() {
               </div>
             </div>
           </div>
+          <HouseItemResearchUnread />
           <div className="flex items-center justify-between mt-2.5 text-xs text-gray-400">
             <span>
               Showing {fig(rows.length)} of {fig(stats.total)} wines
@@ -1574,6 +1590,7 @@ export function InventoryCommandPage() {
         onSelectSingle={() => setShowAddWine(true)}
         onSelectMenu={() => setShowMenuScanner(true)}
         onSelectReceipt={() => setShowManualReceipt(true)}
+        onSelectAuction={() => setShowAuctionLot(true)}
         title="Add Wine to Inventory"
         subtitle="One label, a whole menu, or a delivery with many lines"
       />
@@ -1600,6 +1617,37 @@ export function InventoryCommandPage() {
         onClose={() => setShowManualReceipt(false)}
         onSaved={() => void refetchInventory()}
       />
+
+      {/* The auction start. Its own Sheet today so packet 1's migration of the
+          carry sheet is untouched; at that merge it becomes the sheet's fourth
+          tab and this block collapses into it. One write into the book either
+          way — the same `createInventoryItem` the carry sheet uses. */}
+      {/* Mounted only while open: a closed sheet has nothing to show, and the
+          page's other reads (and their tests, which restore every mock between
+          cases, matchMedia included) must not depend on it. */}
+      {showAuctionLot && (
+      <AuctionLotStart
+        open={showAuctionLot}
+        onClose={() => setShowAuctionLot(false)}
+        onCarry={async ({ wine, quantity, costPerBottle }) => {
+          const created = await createInventoryItem.mutateAsync({
+            wineId: wine.id,
+            stockLive: quantity,
+            thresholdMin: 0,
+            // A person typed the hammer price, so the figure is `manual`. That
+            // is the honest one of the four the lot table's CHECK allows; it is
+            // not an estimate and it did not come off an invoice.
+            costPerBottle,
+            costProvenance: "manual" as const,
+          } as any);
+          void refetchInventory();
+          // The lot's own details (2026-09-21) link to THIS restaurant_inventory
+          // row — see AuctionLotStart's header for why that row and not a
+          // specific inventory_lots one.
+          return { inventoryId: (created as { id: string }).id };
+        }}
+      />
+      )}
 
       <AddWineToInventoryModal
         isOpen={showAddWine}

@@ -50,6 +50,7 @@ export interface AccessChange {
   action:
     | "team_member_removed"
     | "member_role_changed"
+    | "team_pay_access_changed"
     // ADR 0218 — the house log for areas, leads and Away set on someone's
     // behalf. Same row shape, same receipt; one writer for "record the change".
     | "house_area_changed"

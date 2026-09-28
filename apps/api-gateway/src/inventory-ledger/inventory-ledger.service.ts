@@ -8,6 +8,7 @@ import { DatabaseService } from "../database/database.service";
 import { assertInventoryBelongsToRestaurant } from "../common/tenant/assert-inventory-belongs-to-restaurant";
 import { EventsService } from "../events/events.service";
 import { EventType, SourcePage } from "../events/dto/event.dto";
+import { queueResearchIfLibraryLacks } from "../inventory/house-item-research";
 import {
   CreateInventoryTransactionDto,
   GetTransactionsQueryDto,
@@ -201,6 +202,32 @@ export class InventoryLedgerService {
       });
     } catch (e) {
       this.logger.warn("Failed to emit inventory change event", e);
+    }
+
+    // THE SAME RULE AT THIS DOOR TOO (founder, 2026-09-22, round 6z,
+    // verbatim pick 8: "Queue it; Mudavym + hold (Recommended)"): this was
+    // the one API-only path ADR 0192 stated as "not wired" — the ledger
+    // endpoint books whatever type its caller names, and none of it queued
+    // research. Now it does, once per item id, same as every other booking
+    // path (`queueResearchIfLibraryLacks`): only a booking IN (a positive
+    // delta) can be receiving a wine the library lacks. Never blocks the
+    // response; a failure is logged.
+    if (dto.quantityChange > 0) {
+      const research = await queueResearchIfLibraryLacks(this.databaseService.supabase, {
+        restaurantId,
+        inventoryId: dto.inventoryId,
+        queuedFrom: "receiving",
+        sourceOrderId: dto.orderId || null,
+        queuedBy: userId,
+      });
+      if (research && !research.ok) {
+        this.logger.error({
+          message: "Inventory transaction booked, but the item was not queued for research",
+          restaurantId,
+          inventoryId: dto.inventoryId,
+          error: research.error,
+        });
+      }
     }
 
     this.logger.log({
