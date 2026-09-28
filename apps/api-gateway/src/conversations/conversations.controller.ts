@@ -239,12 +239,14 @@ export class ConversationsController {
   @Get("by-provider/:providerId")
   @ApiOperation({ summary: "Get all conversations with a vendor" })
   async getByProvider(
+    @CurrentUser() user: AuthUser,
     @Param("providerId") providerId: string,
     @Query("page") page?: string,
     @Query("limit") limit?: string,
   ) {
     try {
       return await this.conversationsService.listConversations({
+        restaurantId: user.restaurantId,
         providerId,
         page: page ? parseInt(page, 10) : 1,
         limit: limit ? parseInt(limit, 10) : 20,
@@ -267,9 +269,13 @@ export class ConversationsController {
    */
   @Get("by-order/:orderId")
   @ApiOperation({ summary: "Get all conversations for an order" })
-  async getByOrder(@Param("orderId") orderId: string) {
+  async getByOrder(
+    @CurrentUser() user: AuthUser,
+    @Param("orderId") orderId: string,
+  ) {
     try {
       return await this.conversationsService.listConversations({
+        restaurantId: user.restaurantId,
         orderId,
         page: 1,
         limit: 100,

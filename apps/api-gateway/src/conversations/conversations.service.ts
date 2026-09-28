@@ -160,6 +160,13 @@ export class ConversationsService {
    * List conversations with comprehensive filtering and pagination
    */
   async listConversations(options: ListConversationsOptions) {
+    // Fail closed. This used to be `if (options.restaurantId) { .eq(...) }`, so a caller
+    // that forgot the tenant got every restaurant's rows instead of an error — which is
+    // how by-order/:orderId and by-provider/:providerId leaked across tenants.
+    if (!options.restaurantId) {
+      throw new Error("restaurantId is required to list conversations");
+    }
+
     try {
       const { page, limit, sortBy, sortOrder } = options;
       const offset = (page - 1) * limit;
@@ -179,9 +186,7 @@ export class ConversationsService {
         );
 
       // Apply filters
-      if (options.restaurantId) {
-        query = query.eq("restaurant_id", options.restaurantId);
-      }
+      query = query.eq("restaurant_id", options.restaurantId);
       if (options.providerId) {
         query = query.eq("provider_id", options.providerId);
       }
