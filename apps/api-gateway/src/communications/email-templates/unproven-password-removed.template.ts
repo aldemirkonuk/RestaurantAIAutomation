@@ -3,6 +3,12 @@ import { baseTemplate } from "./base-template";
 interface UnprovenPasswordRemovedEmailData {
   /** When the password was removed, ISO 8601. */
   at: string;
+  /**
+   * What proved the address: an emailed code (fork 6, the default) or the
+   * verification link, clicked after the unproven password had lapsed (fork 8
+   * completed, `AuthService.verifyEmailProvedByLink`).
+   */
+  by?: "code" | "link";
 }
 
 /**
@@ -12,7 +18,10 @@ interface UnprovenPasswordRemovedEmailData {
  * Sent to the address an emailed code just proved, the first time that
  * address is proved, when the account held a password set before anyone had
  * shown the address was theirs. That password is gone and every other session
- * of the account is signed out (`AuthService.verifyEmailProvedByCode`). The
+ * of the account is signed out (`AuthService.verifyEmailProvedByCode`). Also
+ * sent, worded for the link, when the verification link proves the address
+ * after that password had already lapsed (fork 8;
+ * `AuthService.verifyEmailProvedByLink`). The
  * mail is the notice OWASP ASVS 5.0 6.3.7 asks for after a change to the
  * account's authentication details, and the one thing the real owner of an
  * address someone else registered needs to read: the stranger's password no
@@ -31,10 +40,12 @@ export function unprovenPasswordRemovedEmailTemplate(
   const p = (html: string) =>
     `<p style="margin: 0 0 20px; color: #374151; font-size: 15px; line-height: 1.6;">${html}</p>`;
 
+  const how =
+    data.by === "link"
+      ? `You confirmed this address for Mudavym with the link we emailed to it, at ${escapeHtml(when)}.`
+      : `You signed in to Mudavym with a code we emailed to this address at ${escapeHtml(when)}.`;
   const content = `
-    ${p(
-      `You signed in to Mudavym with a code we emailed to this address at ${escapeHtml(when)}. That was the first time this address was confirmed.`,
-    )}
+    ${p(`${how} That was the first time this address was confirmed.`)}
     ${p(
       "The account had been created with a password, and until now nobody had shown that this address was theirs. So we removed that password and signed out every other session on the account.",
     )}

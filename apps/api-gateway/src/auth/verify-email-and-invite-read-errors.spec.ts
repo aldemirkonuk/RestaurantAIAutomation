@@ -258,7 +258,20 @@ describe("AuthService#verifyEmail — a failed read is not an invalid link", () 
         },
         { data: null, error: null },
       ],
-      users: [{ data: { user_id: "u1", email_verified: true }, error: null }],
+      // The row read first (ADR 0229 fork 8: a lapsed unproven password is
+      // judged on it), then the compare-and-set that verifies it.
+      users: [
+        {
+          data: {
+            user_id: "u1",
+            email_verified: false,
+            password_hash: null,
+            session_version: 0,
+          },
+          error: null,
+        },
+        { data: { user_id: "u1", email_verified: true }, error: null },
+      ],
     });
     const gen = jest
       .spyOn(svc as any, "generateTokens")
@@ -273,9 +286,11 @@ describe("AuthService#verifyEmail — a failed read is not an invalid link", () 
       TOKEN,
     );
     expect(chains.email_verifications[1].update).toHaveBeenCalled();
-    expect(chains.users[0].update).toHaveBeenCalledWith({
+    expect(chains.users[1].update).toHaveBeenCalledWith({
       email_verified: true,
     });
+    expect(chains.users[1].eq).toHaveBeenCalledWith("email_verified", false);
+    expect(chains.users[1].eq).toHaveBeenCalledWith("session_version", 0);
     // ADR 0164: every mint names its house explicitly, membership-checked
     // inside generateTokens; this users row names none.
     expect(gen).toHaveBeenCalledWith(

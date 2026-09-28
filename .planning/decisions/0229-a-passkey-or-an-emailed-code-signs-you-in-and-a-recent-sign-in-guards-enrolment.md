@@ -390,7 +390,19 @@ earlier session, and the owner is told.
 emailed *link* verifies (the link is how the registrant proves the address;
 Firebase and Auth0 keep the password there too — the residual, a victim
 clicking a link for an account they did not create, is what pruning, fork 8,
-narrows); a "this wasn't me" link in the verification mail (Instagram does it;
+narrows **[Corrected 2026-09-27, ADR 0090 audit of PR #479 at `09b712d29`:
+"narrows" overstated it. Fork 8 bounds only WHEN such a click can land: the
+stranger can ask for a link only while they hold a session (`POST
+/auth/resend-verification` is `@AllowUnverified`, so it needs one), fork 10
+ends that session at the lapse, and a link lives 24 h (`email_verifications.expires_at`,
+`20260805000000_baseline_from_production.sql:2738`), so the last link expires
+at most 7 d + 15 min + 24 h after registration. At `09b712d29` a click inside
+that bound verified the account, and `holdsUnprovenPassword` and
+`unprovenPasswordHasLapsed` key on `email_verified` alone, so the stranger's
+password and every refresh token fork 10 had refused came back, permanently
+and with no notice. A click after the lapse now removes the password and ends
+every session (§ Forks 8 and 10 after a link); a click inside the seven days
+still keeps both, which is fork 12, open]**); a "this wasn't me" link in the verification mail (Instagram does it;
 the paper calls it "some services", not consensus; it would be a new flow);
 a cap on verification-link resends (the paper states it for email-change
 capabilities, which this codebase has no flow for; the resend has a 60 s
@@ -622,6 +634,65 @@ says, and anyone can open a house). No independent Workflow fan-out ran (a
 builder subagent has no Workflow tool); the adversarial pass was the mutation
 run and walking each attack against the code.
 
+### Forks 8 and 10 after a link (ADR 0090 audit of PR #479 at `09b712d29`): a link cannot bring a lapsed password back
+
+**What was wrong.** `verifyEmail` (the `/verify-email` link) wrote
+`email_verified = true` and nothing else. Both gates of forks 8 and 10
+(`unproven-address.ts`, `holdsUnprovenPassword`, `unprovenPasswordHasLapsed`)
+return "not unproven" for a verified row, so a link clicked after the lapse
+un-lapsed the stranger's password and un-refused every refresh token fork 10
+had refused (a refresh token lives 7 days). The audit's walk: the stranger
+registers the victim's address, keeps a session to day 7 and asks for a
+fresh link; the owner clicks it on day 7.5.
+
+**Built (not a new decision).** Item 73's words are "after 7 days unverified
+the unproven password cannot sign in (code sign-in still works, fork 6
+handles it)", and item 78's refusal exists so "the session ends with the
+password". A link proves the mailbox, not who chose the password, so
+`AuthService.verifyEmailProvedByLink` now does what fork 6 does for a code
+when, on the row it just read, the password is unproven and lapsed: ONE
+compare-and-set (`email_verified = false` and the session version read) sets
+the account verified, `password_hash` null and `session_version + 1`, closes
+the stale sockets and mails the notice (`unprovenPasswordRemovedEmailTemplate`,
+`by: "link"`). A miss re-reads (three tries); a failed write is a 503 and the
+link is not spent. Inside the seven days the link keeps the password and every
+session, as before. This is narrower than fork 10's rejected (c) (every link
+click ends every session); it only makes items 73 and 78 hold after a click.
+
+**The rest of the surface, walked at this head.** Every write that verifies
+an address: the code (`verifyEmailProvedByCode`, fork 6: drops the password,
+bumps `sv`), a reset link (`setPasswordEndingSessions`: new password, bumps
+`sv`), a new invite account (`joinViaInvite` insert, fork 9: verified only
+with the mailed secret), and now the link. Google and Microsoft sign-in never
+attach to an account by address (`findOrCreateOAuthUser` accepts only an
+account already linked to that provider, `oauthAccountIsLinked`; linking is
+not an `@AllowUnverified` route), and the existing-account
+invite branch verifies nothing and honours the lapse. So after the lapse no
+door verifies without ending the sessions and the password. The six
+`@AllowUnverified` routes are unchanged (CLAIMS
+`ADR-0229-FORK-6-UNVERIFIED-REACHES-ONLY-THE-ESCAPE-HATCHES`). `resendVerification`
+has no lapse check; it needs a session, which fork 10 ends at the lapse, and a
+late click now removes the password, so no cap was added.
+
+**Tests** -- `unproven-address.spec.ts`, block "forks 8 and 10 hold after a
+verification link" (6 cases: the attack end to end through the real
+`verifyEmail`, `refreshAccessToken`, `login` and `JwtStrategy`; inside the
+seven days the link keeps both; a passwordless account; an account a code
+verified first; a failed write; a row moving between read and write), and the
+mock-level `verify-email-and-invite-read-errors.spec.ts` live-link case (read
+first, then the compare-and-set). **Mutation check**: 14 source mutants, 14
+red (the lapse ignored, the password kept, the version not moved, a
+passwordless account counted, sockets not closed, no notice, the notice
+worded for a code, the template ignoring `by`, a failed write verifying
+anyway, a miss not re-read, a verified row rewritten, either compare-and-set
+filter dropped -- those two are killed by the mock case pinning the filter,
+since the behavioural race moves both -- and the link spent before the
+write). CLAIMS `ADR-0229-FORK-8-A-LINK-CANNOT-REVIVE-A-LAPSED-PASSWORD`.
+
+**Found, open:** forks 12 and 13 (§ Open forks). No independent Workflow
+fan-out ran (a builder subagent has no Workflow tool); the adversarial pass
+was the audit's own walk plus the mutation run.
+
 ## Decision
 
 A passkey signs you in through a discoverable-credential ceremony whose user
@@ -812,6 +883,12 @@ mint should stamp `signedInNow()` (the password was just typed).
    refreshing. While unverified it reaches only the six escape hatches; if the
    real owner later follows a verification link, `JwtStrategy` reads the flag
    per request and that session is verified (the link residual fork 6 named).
+   **[2026-09-27, ADR 0090 audit of PR #479 at `09b712d29`: path (b) as first
+   built did not survive a later link click -- once the flag flipped, the
+   refused tokens and the lapsed password were accepted again. Completed
+   without reopening the rejected (c): only a link clicked AFTER the lapse
+   ends every session and removes the password (§ Forks 8 and 10 after a
+   link). The inside-the-seven-days half is fork 12.]**
    The owner's emailed code still ends it (fork 6). Paths: (a) as built; (b)
    `refreshAccessToken` refuses an account whose unproven password has lapsed
    (the same `unprovenPasswordHasLapsed`), so the session ends with the
@@ -834,6 +911,44 @@ mint should stamp `signedInNow()` (the password was just typed).
    what one address can receive whoever sends, at the cost of one more count
    on the same index shape. Not built: a cap across houses is beyond "per
    house".
+
+12. **[OPEN -- found 2026-09-27 by the ADR 0090 audit of PR #479 at
+   `09b712d29`; not yet put to the founder.]** **A verification link clicked
+   inside the seven days keeps a stranger's password and sessions.** Someone
+   registers the owner's address with their own password
+   (`POST /auth/register/account`, public); the owner, getting the mail,
+   clicks its link before the lapse. The account is verified with the
+   stranger's password, and the stranger's sessions become verified sessions
+   (`JwtStrategy` reads the flag per request). Fork 6 and fork 8 do not fire:
+   the address is now proved. The bound is the link's life: at most 7 d +
+   15 min + 24 h after registration. Paths: (a) as built (Firebase and Auth0
+   keep the password at a link, § Fork 6 "Considered, not adopted"); (b) the
+   link verifies only for someone signed in to that account, so it needs
+   both the password and the mailbox; someone with only the mailbox is sent to
+   the emailed code, and fork 6 then removes the stranger's password and
+   sessions; (c) every link click ends every other session (fork 10's (c),
+   rejected 2026-09-27) -- closes the sessions, not the password; (d) a
+   "this wasn't me" control in the verification mail (the paper: "some
+   services"; a new flow). **Recommendation: (b)** -- the only path that
+   closes the password half without taking a real registrant's password
+   away. Cost: a registrant who opens the link signed out (another device)
+   signs in first. Not re-researched this round; not built: it changes the
+   link flow every registrant uses.
+13. **[OPEN -- found 2026-09-27 walking the invite join for the same audit;
+   not yet put to the founder.]** **A join from a copied invite link plants
+   a house membership on an address nobody has proved.** Since fork 9 such a
+   join creates an unverified account, but `joinViaInvite` still inserts its
+   `user_restaurant_access` row in the minter's house. When the address's
+   owner later signs in by code, fork 6 removes the minter's password and
+   sessions but keeps the membership, and `signIn` picks from
+   `memberHouses`, so an owner with no other house lands in the minter's
+   house. No account access for the minter; the owner arrives inside a house
+   a stranger runs. Paths: (a) as built (a copied-link join is also how a
+   real invitee joins, and they keep the house); (b) a membership granted
+   before the address was proved waits until the person, once proven,
+   accepts it; (c) fork 6 removes such memberships. **Recommendation: (b)**.
+   Cost: one more step for a real invitee who joined from a copied link. Not
+   built: it changes the invite join.
 
 ## Consequences
 
@@ -880,6 +995,15 @@ mint should stamp `signedInNow()` (the password was just typed).
   two nullable columns and a partial index; the PR's three earlier
   migrations were renumbered past main's new ceiling (`20261116000220`):
   `20261102100000/100100/100200` → `20261125100000/100100/100200`.
+- **[2026-09-27, forks 8 and 10 after a link, audit of `09b712d29`]** A
+  registrant who clicks the verification link more than seven days after
+  registering loses the password they never confirmed (it had already stopped
+  signing in), every other session ends, and the address is mailed why; the
+  link's own session is verified, and they set a password on /profile. Only
+  a link asked for within the last 24 h can do this, and asking needs a
+  session; for the 2 production accounts above none can be asked for (their
+  password no longer signs in and fork 10 refuses their refresh), and a code
+  sign-in verifies them first (fork 6).
 - Revisit when: #471 or #477 merges (the merge notes above); F11 lands (a
   passkey at the point of action); conditional UI is wanted; ~~fork 4 is
   answered~~ **[answered, round 7]**; a surveyed provider starts revoking
@@ -896,3 +1020,4 @@ mint should stamp `signedInNow()` (the password was just typed).
 | 2026-09-27 | the founder (item 67) + PR #479 builder (Opus agent) | Fork 6 **resolved**, verbatim "option 1 + do what industry do for these, for security ops do what the industry leaders do" (label "Drop pwd + (b) interim (Recommended)"). Built path (a) plus the adopted industry defences (§ Fork 6): first code → verify + drop unproven password + `session_version + 1` in one CAS, sockets closed, notice mailed; a reset link verifies the address it was mailed to. Merged `origin/main` (#477, #441, #475, #489) first: kept both `auth_time` and `sv`, `changePassword` now carries `auth_time`; the PR's two migrations renumbered to 20261020000000 / 20261020000100 (past the #441 ceiling). `pre-hijack.spec.ts` 16/16; 11 source mutants 11 red; `src/auth src/passkeys src/communications/email-templates src/websocket` green; CLAIMS: two new rows, three amended, duplicate rows from the merge collapsed; 6 claim mutants red. Forks 7 (invite door verifies any address) and 8 (no expiry of unverified registrations) opened, not built |
 | 2026-09-27 | the founder (items 72, 73) + PR #479 builder (Opus agent) | Forks 7 and 8 **resolved**, verbatim labels "Bind invite to address (Recommended)" and "Expire the password, 7 days (Recommended)"; built as § Forks 7 and 8 (new `unproven-address.ts`, migration `20261102100200` adding `organization_invites.target_email`). Merged `origin/main` at `ef8ecdf30` (#435) first; the PR's two migrations renumbered again, `20261020000000`/`20261020000100` → `20261102100000`/`20261102100100`, because main's ceiling moved to `20261021150000` (`check_migration_order.py`); `@simplewebauthn/server` classified LOCAL for ADR 0224's host guard (its CRL fetch is filed in v3.0-TECH-DEBT). `unproven-address.spec.ts` 15/15; gateway `src/auth src/passkeys src/communications/email-templates src/restaurants src/team` 51 suites / 721 tests green; 15 source mutants 15 red; CLAIMS 627/627. Forks 9 and 10 found and left open for the founder. No independent Workflow fan-out ran |
 | 2026-09-27 | the founder (items 77, 78) + PR #479 builder (Opus agent) | Forks 9 and 10 **resolved**, verbatim labels "Email invite + (c) interim (Recommended)" and "Refresh refuses lapsed (Recommended)"; built as § Forks 9 and 10 (invite mail with a secret only it carries, `team-invite.template.ts`, migration `20261125100300`; the refresh refusal). Merged `origin/main` at `bc7121ccf` first (CLAIMS conflict: ADR-0164-SIGN-IN-HOUSE-RULE kept this branch's authTime amendment, ADR-0164-ROLES-EXACT-MANAGERS-KEPT took main's 191); the PR's migrations renumbered `20261102100000/100100/100200` → `20261125100000/100100/100200` (`check_migration_order.py`: main's ceiling `20261116000220`). `unproven-address.spec.ts` 36/36; gateway `src/auth src/passkeys src/communications/email-templates src/restaurants src/team src/websocket` 52 suites green; web touched suites green; PGlite full corpus 249/249 plus 10 checks on `20261125100300` (a raw secret or upper-case hex refused by the shape check, the partial index present, re-run idempotent; superuser, platform stubbed); `check_gateway_boots.sh` PASS; 21 gateway + 4 web source mutants red; CLAIMS 647/647 with 10 claim mutants red. Fork 11 (per-house limit, anyone can open houses) found and left open for the founder. No independent Workflow fan-out ran |
+| 2026-09-27 | PR #479 audit-fix round (Opus agent; ADR 0090 BLOCK at `09b712d29`, fix round 1 of 2) | The link path completed (§ Forks 8 and 10 after a link): `verifyEmailProvedByLink` removes a lapsed unproven password and bumps `sv` in one compare-and-set; the "fork 8 narrows" sentence corrected in place; fork 10 bracketed. Forks 12 (a link inside the seven days keeps a stranger's password and sessions) and 13 (a copied-link join plants a membership) filed open, with v3.0-TECH-DEBT rows. `unproven-address.spec.ts` + `verify-email-and-invite-read-errors.spec.ts` + `sessions-follow-membership.spec.ts` + `pre-hijack.spec.ts` green; 14 source mutants 14 red; CLAIMS `ADR-0229-FORK-8-A-LINK-CANNOT-REVIVE-A-LAPSED-PASSWORD` added: 4 claim mutants red, a comment-only control green; `check_decision_claims.sh` all holding. No independent Workflow fan-out ran |

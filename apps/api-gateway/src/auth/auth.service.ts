@@ -985,11 +985,15 @@ export class AuthService {
   }
 
   /**
-   * Tell the address an emailed code just proved that the password set before
-   * it was removed (ADR 0229 fork 6). Never throws: the removal already
+   * Tell the address an emailed code (or a link clicked after the lapse, fork
+   * 8) just proved that the password set before it was removed (ADR 0229
+   * fork 6). Never throws: the removal already
    * happened and the sign-in must not fail because a notice did not go out.
    */
-  private async mailUnprovenPasswordRemoved(row: any): Promise<boolean> {
+  private async mailUnprovenPasswordRemoved(
+    row: any,
+    by: "code" | "link" = "code",
+  ): Promise<boolean> {
     const to = typeof row?.email === "string" ? row.email.trim() : "";
     try {
       if (!to) return false;
@@ -999,6 +1003,7 @@ export class AuthService {
           "Your Mudavym account: a password nobody confirmed was removed",
         html: unprovenPasswordRemovedEmailTemplate({
           at: new Date().toISOString(),
+          by,
         }),
       });
       if (!result?.success) {
@@ -2870,23 +2875,111 @@ export class AuthService {
       );
     }
 
+    const user = await this.verifyEmailProvedByLink(verif.user_id);
+
     await this.databaseService.supabase
       .from("email_verifications")
       .update({ verified_at: new Date().toISOString() })
       .eq("id", verif.id);
 
-    const { data: user } = await this.databaseService.supabase
-      .from("users")
-      .update({ email_verified: true })
-      .eq("user_id", verif.user_id)
-      .select()
-      .single();
-
-    if (!user) throw new BadRequestException("User not found");
     // The house the person signed up into, membership-checked like every
     // other mint (ADR 0164): verifying follows a register or a join, which
     // name their house.
     return this.generateTokens(user, false, user.restaurant_id ?? null);
+  }
+
+  /**
+   * The verification link proves the mailbox, and verifies the account.
+   *
+   * Inside the seven days (ADR 0229 fork 8) the password on the account is
+   * kept: the link is how a real registrant proves the address their password
+   * was set for (Firebase and Auth0 keep it too). That a stranger's password
+   * is kept as well when the real owner clicks inside the seven days is ADR
+   * 0229 fork 12, open for the founder.
+   *
+   * Once that password has LAPSED (item 73: "after 7 days unverified the
+   * unproven password cannot sign in (code sign-in still works, fork 6 handles
+   * it)"), a link must not bring it back: the address being proved now does
+   * not prove who chose the password. So a link that verifies an account whose
+   * unproven password has lapsed does what fork 6 does for a code, in ONE
+   * compare-and-set: verified, `password_hash` null, `session_version + 1` (so
+   * every refresh token fork 10 refused stays refused, ADR 0225), sockets
+   * closed, the address told. Without this, one click on a link the stranger
+   * requested undid items 73 and 78 at once (the ADR 0090 audit of PR #479 at
+   * 09b712d29).
+   *
+   * Both writes are compare-and-set on `email_verified = false` and the
+   * session version read just before, so a code, a reset or another click
+   * racing this one makes it miss and re-read (three tries). A row already
+   * verified is returned as it is. A failed write verifies nothing: 503, and
+   * the link is not spent.
+   */
+  private async verifyEmailProvedByLink(userId: string): Promise<any> {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const { data: row, error: readErr } = await this.databaseService.supabase
+        .from("users")
+        .select("*")
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (readErr) {
+        this.logger.error(
+          `Email verification could not read ${userId}: ${readErr.message}`,
+        );
+        throw new ServiceUnavailableException(
+          "Could not check this verification link right now. Please try again.",
+        );
+      }
+      if (!row) throw new BadRequestException("User not found");
+      if (row.email_verified === true) return row;
+
+      const lapsed =
+        holdsUnprovenPassword(row) &&
+        unprovenPasswordHasLapsed(row, Date.now());
+      const from = sessionVersionOf(row);
+      const { data: written, error } = await this.databaseService.supabase
+        .from("users")
+        .update(
+          lapsed
+            ? {
+                email_verified: true,
+                password_hash: null,
+                session_version: from + 1,
+              }
+            : { email_verified: true },
+        )
+        .eq("user_id", userId)
+        .eq("email_verified", false)
+        .eq("session_version", from)
+        .select("*")
+        .maybeSingle();
+      if (error) {
+        this.logger.error(
+          `Email verification could not mark ${userId} verified: ${error.message}`,
+        );
+        throw new ServiceUnavailableException(
+          "Could not check this verification link right now. Please try again.",
+        );
+      }
+      if (!written) continue; // the row moved between the read and the write
+      if (lapsed) {
+        this.websocketGateway?.endStaleSessions(
+          userId,
+          sessionVersionOf(written),
+        );
+        this.logger.log(
+          `Email verified by a link after the unproven password lapsed: ${userId}; ` +
+            "the password was removed and every earlier session ended",
+        );
+        await this.mailUnprovenPasswordRemoved(written, "link");
+      }
+      return written;
+    }
+    this.logger.error(
+      `Email verification could not mark ${userId} verified: the row kept moving`,
+    );
+    throw new ServiceUnavailableException(
+      "Could not check this verification link right now. Please try again.",
+    );
   }
 
   /**

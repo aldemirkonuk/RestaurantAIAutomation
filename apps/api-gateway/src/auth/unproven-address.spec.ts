@@ -1,5 +1,8 @@
 import "reflect-metadata";
-import { UnauthorizedException } from "@nestjs/common";
+import {
+  ServiceUnavailableException,
+  UnauthorizedException,
+} from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import { AuthService, JwtPayload } from "./auth.service";
 import { JwtStrategy } from "./strategies/jwt.strategy";
@@ -801,6 +804,202 @@ describe("fork 10 (item 78): a refresh refuses an account whose unproven passwor
     } finally {
       process.env = env;
     }
+  });
+});
+
+describe("forks 8 and 10 hold after a verification link: a link cannot bring a lapsed password or its sessions back", () => {
+  const LINK = "5f0c7d2e-8b1a-4c3d-9e4f-6a7b8c9d0e1f";
+
+  /** The stranger registers the victim's address and signs in on day one;
+   * the verification link that registration mailed is the one the owner
+   * later clicks. */
+  async function strangerRegistered(w: ReturnType<typeof world>) {
+    await w.auth.registerAccount({
+      email: VICTIM,
+      password: ATTACKER_PASSWORD,
+      name: "Not the owner",
+    } as any);
+    await w.settle(); // the verification mail is not awaited
+    const s = (await w.auth.login({
+      email: VICTIM,
+      password: ATTACKER_PASSWORD,
+    })) as { accessToken: string; refreshToken: string };
+    const link = w.db.tables.email_verifications.find(
+      (v) => v.user_id === w.row(VICTIM)!.user_id,
+    )!;
+    // The column defaults the baseline declares (a uuid token, now() + 24 h),
+    // which the in-memory table does not apply by itself.
+    link.token = LINK;
+    link.expires_at = new Date(Date.now() + DAY).toISOString();
+    link.verified_at = null;
+    return s;
+  }
+  const age = (w: ReturnType<typeof world>, ms: number) => {
+    w.row(VICTIM)!.created_at = new Date(Date.now() - ms).toISOString();
+  };
+  const noticeMails = (w: ReturnType<typeof world>) =>
+    w.authMail.sendEmail.mock.calls
+      .map((c) => c[0])
+      .filter((m) => /a password nobody confirmed was removed/.test(m.subject));
+
+  it("the attack end to end: the stranger's password has lapsed and their refresh is refused; the owner clicks the link -- the password is removed, every earlier session stays ended, and the address is told", async () => {
+    const w = world();
+    const s = await strangerRegistered(w);
+    age(w, 6 * DAY);
+    const again = await w.auth.refreshAccessToken(s.refreshToken);
+    age(w, 7 * DAY + 60_000);
+    // Fork 10: refused while the password is lapsed.
+    expect(
+      (await refusal(w.auth.refreshAccessToken(again.refreshToken))).body,
+    ).toMatchObject({ code: SESSION_ENDED });
+
+    const owner = await w.auth.verifyEmail(LINK);
+
+    const r = w.row(VICTIM)!;
+    expect(r.email_verified).toBe(true);
+    expect(r.password_hash).toBeNull();
+    expect(r.session_version).toBe(1);
+    // Refused before the click, still refused after it: the version moved.
+    for (const token of [s.refreshToken, again.refreshToken]) {
+      expect(
+        (await refusal(w.auth.refreshAccessToken(token))).body,
+      ).toMatchObject({ code: SESSION_ENDED });
+    }
+    await expect(w.guard(s.accessToken)).rejects.toBeInstanceOf(
+      UnauthorizedException,
+    );
+    // The stranger's password opens nothing, now or later.
+    age(w, 400 * DAY);
+    await expect(
+      w.auth.login({ email: VICTIM, password: ATTACKER_PASSWORD }),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+    // The owner's session, minted from the written row, is the one that lives.
+    expect((await w.guard(owner.accessToken)).emailVerified).toBe(true);
+    await expect(
+      w.auth.refreshAccessToken(owner.refreshToken),
+    ).resolves.toHaveProperty("accessToken");
+    expect(
+      (w.auth as any).websocketGateway.endStaleSessions,
+    ).toHaveBeenCalledWith(r.user_id, 1);
+    // Told, by the link's own words, with no secret and no link.
+    const [notice] = noticeMails(w);
+    expect(noticeMails(w)).toHaveLength(1);
+    expect(notice.to).toEqual([VICTIM]);
+    expect(notice.html).toContain("with the link we emailed to it");
+    expect(notice.html).not.toContain("with a code");
+    expect(notice.html).not.toMatch(/href=|verify-email|token=/);
+    // The link is spent.
+    expect(
+      w.db.tables.email_verifications.find((v) => v.token === LINK)!
+        .verified_at,
+    ).toEqual(expect.any(String));
+  });
+
+  it("inside the seven days a link keeps the password and every session (the registrant's own proof; whether a stranger's is kept too is fork 12, open)", async () => {
+    const w = world();
+    const s = await strangerRegistered(w);
+    age(w, 7 * DAY - 60_000);
+
+    await w.auth.verifyEmail(LINK);
+
+    const r = w.row(VICTIM)!;
+    expect(r.email_verified).toBe(true);
+    expect(r.password_hash).toEqual(expect.any(String));
+    expect(r.session_version).toBe(0);
+    await expect(
+      w.auth.refreshAccessToken(s.refreshToken),
+    ).resolves.toHaveProperty("accessToken");
+    await expect(
+      w.auth.login({ email: VICTIM, password: ATTACKER_PASSWORD }),
+    ).resolves.toHaveProperty("accessToken");
+    expect(noticeMails(w)).toHaveLength(0);
+  });
+
+  it("a lapsed account with no password is verified and nobody is signed out", async () => {
+    const w = world();
+    const s = await strangerRegistered(w);
+    w.row(VICTIM)!.password_hash = null;
+    age(w, 30 * DAY);
+
+    await w.auth.verifyEmail(LINK);
+
+    expect(w.row(VICTIM)!.email_verified).toBe(true);
+    expect(w.row(VICTIM)!.session_version).toBe(0);
+    await expect(
+      w.auth.refreshAccessToken(s.refreshToken),
+    ).resolves.toHaveProperty("accessToken");
+    expect(noticeMails(w)).toHaveLength(0);
+  });
+
+  it("an account a code verified first is left as it is by a later link", async () => {
+    const w = world();
+    await strangerRegistered(w);
+    age(w, 30 * DAY);
+    const r = w.row(VICTIM)!;
+    r.email_verified = true;
+    r.password_hash = "a password the owner set after proving the address";
+
+    await w.auth.verifyEmail(LINK);
+
+    expect(w.row(VICTIM)!.password_hash).toBe(
+      "a password the owner set after proving the address",
+    );
+    expect(w.row(VICTIM)!.session_version).toBe(0);
+    expect(noticeMails(w)).toHaveLength(0);
+  });
+
+  it("a write that fails verifies nothing, removes nothing and does not spend the link (503)", async () => {
+    const w = world();
+    await strangerRegistered(w);
+    age(w, 30 * DAY);
+    w.db.failUpdateOn = "users";
+
+    await expect(w.auth.verifyEmail(LINK)).rejects.toBeInstanceOf(
+      ServiceUnavailableException,
+    );
+
+    const r = w.row(VICTIM)!;
+    expect(r.email_verified).toBe(false);
+    expect(r.password_hash).toEqual(expect.any(String));
+    expect(
+      w.db.tables.email_verifications.find((v) => v.token === LINK)!
+        .verified_at,
+    ).toBeNull();
+  });
+
+  it("a row that moves between the read and the write is read again, and the lapse is judged on the fresh row", async () => {
+    const w = world();
+    await strangerRegistered(w);
+    age(w, 30 * DAY);
+    // A reset lands in the gap: new password, version up, address verified.
+    const from = w.db.from.bind(w.db);
+    let raced = false;
+    w.db.from = ((table: string) => {
+      const q: any = from(table);
+      if (table !== "users" || raced) return q;
+      const update = q.update.bind(q);
+      q.update = (payload: any) => {
+        raced = true;
+        Object.assign(w.row(VICTIM)!, {
+          password_hash: "the owner's reset password",
+          session_version: 1,
+          email_verified: true,
+        });
+        return update(payload);
+      };
+      return q;
+    }) as any;
+
+    const pair = await w.auth.verifyEmail(LINK);
+
+    expect(raced).toBe(true);
+    // Minted from the row read again, so the version the reset moved to.
+    await expect(w.guard(pair.accessToken)).resolves.toMatchObject({
+      emailVerified: true,
+    });
+    expect(w.row(VICTIM)!.password_hash).toBe("the owner's reset password");
+    expect(w.row(VICTIM)!.session_version).toBe(1);
+    expect(noticeMails(w)).toHaveLength(0);
   });
 });
 

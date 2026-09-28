@@ -217,7 +217,10 @@ describe("fork 6: what the first code does NOT touch", () => {
   it("an already-verified account keeps its password and every session -- a code is just a sign-in", async () => {
     const w = world();
     const { signedIn } = await strangerRegisters(w);
-    w.account().email_verified = true; // proved earlier, e.g. by the link
+    // Proved earlier, e.g. by the link inside the seven days (a link after
+    // the lapse removes the password, ADR 0229 fork 8; whether a stranger's
+    // is kept inside them is fork 12, open).
+    w.account().email_verified = true;
 
     await w.codeSignIn();
 
