@@ -72,13 +72,13 @@ const PAGE_CSS = `
 .mudavym .ak-eyebrow { font: 500 11px/1.4 ${MONO}; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-4); margin: 0; }
 .mudavym .ak-h1 { font: 400 40px/1.1 ${SERIF}; color: var(--ink-1); margin: 6px 0 8px; letter-spacing: -.01em; }
 .mudavym .ak-lede { font: 400 14px/1.6 ${SANS}; color: var(--ink-2); margin: 0; max-width: 60ch; }
-.mudavym .ak-note { font: 400 12.5px/1.55 ${SANS}; color: var(--ink-3); margin: 8px 0 0; }
+.mudavym .ak-note { font: 400 12.5px/1.55 ${SANS}; color: var(--ink-4); margin: 8px 0 0; }
 .mudavym .ak-form { display: flex; gap: 8px; margin-top: 18px; }
 .mudavym .ak-input { flex: 1; min-width: 0; font: 400 15px/1.4 ${SANS}; color: var(--ink-1); background: var(--paper-1); border: 1px solid var(--paper-2); border-radius: 8px; padding: 11px 13px; }
 .mudavym .ak-input:focus-visible, .mudavym .ak-btn:focus-visible, .mudavym .ak-card:focus-visible, .mudavym .ak-link:focus-visible { outline: 2px solid var(--seal); outline-offset: 2px; }
 .mudavym .ak-btn { font: 500 13px/1 ${SANS}; color: var(--ink-1); background: transparent; border: 1px solid var(--ink-3); border-radius: 8px; padding: 10px 14px; cursor: pointer; white-space: nowrap; }
 .mudavym .ak-btn:hover { background: var(--paper-1); border-color: var(--ink-2); }
-.mudavym .ak-btn:disabled { color: var(--ink-3); border-color: var(--paper-2); cursor: default; background: transparent; }
+.mudavym .ak-btn:disabled { color: var(--ink-4); border-color: var(--paper-2); cursor: default; background: transparent; }
 .mudavym .ak-band { border: 1px solid var(--paper-2); border-radius: 10px; padding: 14px 16px; margin-top: 16px; }
 .mudavym .ak-band p { margin: 0; font: 400 13.5px/1.55 ${SANS}; color: var(--ink-2); }
 .mudavym .ak-group { margin-top: 28px; }
@@ -91,7 +91,7 @@ const PAGE_CSS = `
 .mudavym .ak-card-q { font: 400 13px/1.5 ${SANS}; color: var(--ink-2); margin: 4px 0 0; }
 .mudavym .ak-card.is-other { border-style: dashed; cursor: default; }
 .mudavym .ak-composer { border: 1px solid var(--ink-3); border-radius: 10px; padding: 14px 16px; margin-top: 10px; display: grid; gap: 10px; }
-.mudavym .ak-composer label { font: 400 12.5px/1.4 ${SANS}; color: var(--ink-3); display: grid; gap: 4px; }
+.mudavym .ak-composer label { font: 400 12.5px/1.4 ${SANS}; color: var(--ink-4); display: grid; gap: 4px; }
 .mudavym .ak-folio { border: 1px solid var(--ink-3); border-radius: 12px; padding: 18px 20px; margin-top: 20px; }
 .mudavym .ak-folio.is-knowledge { background: var(--paper-1); border-style: dashed; }
 .mudavym .ak-q { font: 400 22px/1.3 ${SERIF}; color: var(--ink-1); margin: 4px 0 0; }
@@ -99,19 +99,19 @@ const PAGE_CSS = `
 .mudavym .ak-line { font: 400 14px/1.6 ${SANS}; color: var(--ink-2); margin: 6px 0 0; }
 .mudavym .ak-figs { display: flex; flex-wrap: wrap; gap: 18px 28px; margin-top: 14px; }
 .mudavym .ak-fig b { display: block; font: 400 30px/1.1 ${SERIF}; color: var(--ink-1); }
-.mudavym .ak-fig span { display: block; font: 400 12px/1.4 ${SANS}; color: var(--ink-3); margin-top: 2px; }
+.mudavym .ak-fig span { display: block; font: 400 12px/1.4 ${SANS}; color: var(--ink-4); margin-top: 2px; }
 .mudavym .ak-fig i { display: block; font: 400 11.5px/1.4 ${MONO}; font-style: normal; color: var(--ink-4); margin-top: 2px; }
 .mudavym .ak-rows { width: 100%; border-collapse: collapse; margin-top: 12px; font: 400 12.5px/1.5 ${SANS}; }
 .mudavym .ak-rows td { border-top: 1px solid var(--paper-2); padding: 6px 8px 6px 0; color: var(--ink-2); vertical-align: top; }
-.mudavym .ak-rows td:first-child { color: var(--ink-3); }
-.mudavym .ak-mono { font: 400 12px/1.6 ${MONO}; color: var(--ink-3); margin: 0; }
+.mudavym .ak-rows td:first-child { color: var(--ink-4); }
+.mudavym .ak-mono { font: 400 12px/1.6 ${MONO}; color: var(--ink-4); margin: 0; }
 .mudavym .ak-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 .mudavym .ak-book h2 { font: 500 11px/1.4 ${MONO}; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-4); margin: 0; }
-.mudavym .ak-day { font: 500 12px/1.4 ${SANS}; color: var(--ink-3); margin: 18px 0 6px; }
+.mudavym .ak-day { font: 500 12px/1.4 ${SANS}; color: var(--ink-4); margin: 18px 0 6px; }
 .mudavym .ak-entry { display: block; text-decoration: none; color: inherit; padding: 8px 0; border-top: 1px solid var(--paper-2); }
 .mudavym .ak-entry[aria-current="page"] { border-left: 2px solid var(--seal); padding-left: 8px; }
 .mudavym .ak-entry p { margin: 0; font: 400 13px/1.45 ${SANS}; color: var(--ink-1); }
-.mudavym .ak-entry small { font: 400 11.5px/1.4 ${MONO}; color: var(--ink-3); }
+.mudavym .ak-entry small { font: 400 11.5px/1.4 ${MONO}; color: var(--ink-4); }
 .mudavym .ak-link { color: var(--ink-1); font: 500 13px/1.4 ${SANS}; }
 @media (prefers-reduced-motion: no-preference) { .mudavym .ak-card, .mudavym .ak-btn { transition: border-color 160ms ease, background-color 160ms ease; } }
 `;

@@ -115,7 +115,7 @@ const label = (text: string) => (
       fontWeight: 500,
       letterSpacing: '0.12em',
       textTransform: 'uppercase' as const,
-      color: 'var(--ink-3, #7C7365)',
+      color: 'var(--ink-4, #665D50)',
     }}
   >
     {text}
@@ -155,7 +155,7 @@ const quiet: React.CSSProperties = {
   fontFamily: SANS,
   fontSize: 11.5,
   lineHeight: 1.5,
-  color: 'var(--ink-3, #7C7365)',
+  color: 'var(--ink-4, #665D50)',
   margin: '6px 0 0',
 };
 
@@ -688,7 +688,7 @@ export function ResponsesSheet({
                 <Field name="Delivery estimate">
                   <span data-testid="response-delivery">
                     {deliveryFor(current.id) ?? (
-                      <span style={{ color: 'var(--ink-3, #7C7365)', fontSize: 11.5 }}>
+                      <span style={{ color: 'var(--ink-4, #665D50)', fontSize: 11.5 }}>
                         {NO_DELIVERY_ESTIMATE}
                       </span>
                     )}
@@ -795,7 +795,7 @@ function stepBtn(disabled: boolean): React.CSSProperties {
     borderRadius: 8,
     border: '1px solid var(--paper-2, #EAE4D8)',
     background: 'transparent',
-    color: disabled ? 'var(--ink-3, #7C7365)' : 'var(--seal-deep, #14515C)',
+    color: disabled ? 'var(--ink-4, #665D50)' : 'var(--seal-deep, #14515C)',
     opacity: disabled ? 0.5 : 1,
     cursor: disabled ? 'not-allowed' : 'pointer',
     transition: `color ${ink.ms}ms ${ink.easing}, border-color ${ink.ms}ms ${ink.easing}`,

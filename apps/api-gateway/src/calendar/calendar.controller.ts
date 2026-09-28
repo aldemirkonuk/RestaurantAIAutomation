@@ -7,6 +7,7 @@ import {
   HttpStatus,
   Logger,
   Param,
+  ParseUUIDPipe,
   Patch,
   Post,
   Query,
@@ -40,13 +41,22 @@ import {
   CreateEventTypeDto,
   UpdateEventTypeDto,
   UpdateEventStatusDto,
-  ICalTokenResponseDto,
+  MyCalendarLinkDto,
+  IssuedCalendarLinkDto,
+  CalendarLinkCategoriesDto,
+  HouseCalendarLinkDto,
+  CalendarLinkRevokedResponseDto,
 } from "./dto/calendar.dto";
+import {
+  CalendarLinksService,
+  FeedUnavailableError,
+} from "./calendar-links.service";
 import { WeatherService } from "../weather/weather.service";
 import type { WeatherWindow } from "../weather/weather.service";
 import { GetWeatherQueryDto } from "../weather/dto/weather.dto";
 import { DayRecordService } from "./day-record.service";
 import type { DayRecordWindow } from "./day-record.service";
+import { OrganizationsService } from "../organizations/organizations.service";
 
 @ApiTags("calendar")
 @Controller("calendar")
@@ -59,6 +69,13 @@ export class CalendarController {
     private readonly reminders: CalendarRemindersService,
     private readonly weather: WeatherService,
     private readonly dayRecord: DayRecordService,
+    // Personal calendar links (ADR 0111, 2026-09-21): the feed, and each
+    // person's own create / new link / stop.
+    private readonly links: CalendarLinksService,
+    // Gates the two acts on SOMEONE ELSE's link (the house register and
+    // stopping a person's link) on owner/manager — one implementation of "may
+    // this person manage this house" (organizations.service.ts:193).
+    private readonly organizations: OrganizationsService,
   ) {}
 
   // ==========================================================================
@@ -720,23 +737,54 @@ export class CalendarController {
   }
 
   // ==========================================================================
-  // iCAL SUBSCRIPTION FEED (D-07, D-08, D-09)
+  // PERSONAL CALENDAR LINKS (ADR 0111, review trail 2026-09-21)
   // ==========================================================================
+  //
+  // The founder, 2026-09-21: "every manager, staff and their labeled
+  // taskforces/areas, owners have different calendar subscriptions, they can
+  // connect their own. Soit should be personalized" -> "Yes, personal links".
+  //
+  // `ical-token` keeps its path but now means THE CALLER'S OWN link in the
+  // house their token names. Any member may read, make, renew or stop their
+  // own, and narrow what their own shows (service); only an owner or a
+  // manager may list the house's links or stop someone else's (here), and a
+  // manager never an owner's (service, `CalendarLinksService.revokeFor`).
 
   @Get("feed/:token.ics")
   @Public()
   @ApiOperation({
-    summary: "Public iCal feed — subscribe with Outlook/Apple/Google Calendar",
+    summary:
+      "Public iCal feed for one person's calendar link — subscribe with " +
+      "Outlook/Apple/Google Calendar. A dead link answers one notice event.",
   })
   @ApiParam({
     name: "token",
-    description: "Restaurant iCal token (64-char hex)",
+    description: "The link's secret (64-char hex)",
   })
   async getICalFeed(
     @Param("token") token: string,
     @Res() res: Response,
   ): Promise<void> {
-    const icalString = await this.calendarService.getICalFeed(token);
+    let icalString: string;
+    try {
+      icalString = await this.links.renderFor(token);
+    } catch (error) {
+      // A read failed. Telling the subscriber "your link expired" would be a
+      // lie that makes them reconnect for nothing, and an empty 200 would wipe
+      // their calendar. A 503 makes every client keep its last good copy and
+      // come back later.
+      this.logger.error({
+        message: "Calendar feed could not be built",
+        unavailable: error instanceof FeedUnavailableError,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      res.status(HttpStatus.SERVICE_UNAVAILABLE);
+      res.setHeader("Retry-After", "300");
+      res.setHeader("Content-Type", "text/plain; charset=utf-8");
+      res.setHeader("Cache-Control", "no-cache, no-store");
+      res.send("The calendar could not be read just now. Your calendar app will try again.");
+      return;
+    }
     res.setHeader("Content-Type", "text/calendar; charset=utf-8");
     // `attachment` told every client to SAVE A FILE. A saved .ics is a one-time
     // import: the events land once and never move again, which is exactly the
@@ -785,56 +833,148 @@ export class CalendarController {
     return { origin: null, source: "none" };
   }
 
-  /** Build the three URL fields of `ICalTokenResponseDto` from one token. */
-  private icalTokenResponse(
-    token: string,
-    req: Request,
-  ): ICalTokenResponseDto {
-    const path = `/api/v1/calendar/feed/${token}.ics`;
+  /** The address for a secret that was just made. Never built from a hash. */
+  private issued(secret: string, req: Request): IssuedCalendarLinkDto {
+    const path = `/api/v1/calendar/feed/${secret}.ics`;
     const { origin, source } = this.feedOrigin(req);
     const absolute = origin ? `${origin}${path}` : null;
     return {
-      token,
       feedUrl: path,
       absoluteFeedUrl: absolute,
       // `webcal://` is not an IANA scheme, it is the de-facto handler
       // registration Apple Calendar and Outlook bind to. Clicking an https://
       // .ics link opens a browser download; clicking the webcal:// form opens
       // the calendar app's subscribe dialog.
-      webcalUrl: absolute
-        ? absolute.replace(/^https?:\/\//, "webcal://")
-        : null,
+      webcalUrl: absolute ? absolute.replace(/^https?:\/\//, "webcal://") : null,
       originSource: source,
     };
   }
 
   @Get("ical-token")
   @ApiOperation({
-    summary: "Get or generate iCal subscription token for current restaurant",
+    summary:
+      "Read the caller's own calendar link in this house. Never creates one, " +
+      "and never returns the secret — it is shown once, when it is made.",
   })
-  @ApiResponse({ status: 200, type: ICalTokenResponseDto })
+  @ApiResponse({ status: 200, type: MyCalendarLinkDto })
   async getICalToken(
     @CurrentUser() user: { userId: string; restaurantId: string },
+  ): Promise<MyCalendarLinkDto> {
+    return this.links.getMine(user.restaurantId, user.userId);
+  }
+
+  @Post("ical-token")
+  @ApiOperation({
+    summary:
+      "Connect my calendar: make the caller's own link. Any member, for " +
+      "themselves only. The answer carries the address once; a second press " +
+      "finds the link already made and carries none.",
+  })
+  @ApiResponse({ status: 201, type: MyCalendarLinkDto })
+  async createICalToken(
+    @CurrentUser() user: { userId: string; restaurantId: string },
+    @Body() dto: CalendarLinkCategoriesDto,
     @Req() req: Request,
-  ): Promise<ICalTokenResponseDto> {
-    const token = await this.calendarService.getOrGenerateICalToken(
+  ): Promise<MyCalendarLinkDto> {
+    const { link, secret } = await this.links.create(
       user.restaurantId,
+      user.userId,
+      dto?.categories,
     );
-    return this.icalTokenResponse(token, req);
+    return { ...link, issued: secret ? this.issued(secret, req) : null };
   }
 
   @Post("ical-token/regenerate")
   @ApiOperation({
-    summary: "Regenerate iCal token — invalidates all existing subscriptions",
+    summary:
+      "Get a new link: replace the caller's own secret. The old address " +
+      "answers the expired notice from its next refresh.",
   })
-  @ApiResponse({ status: 201, type: ICalTokenResponseDto })
+  @ApiResponse({ status: 201, type: MyCalendarLinkDto })
   async regenerateICalToken(
     @CurrentUser() user: { userId: string; restaurantId: string },
     @Req() req: Request,
-  ): Promise<ICalTokenResponseDto> {
-    const token = await this.calendarService.regenerateICalToken(
+  ): Promise<MyCalendarLinkDto> {
+    const { link, secret } = await this.links.rotate(
       user.restaurantId,
+      user.userId,
     );
-    return this.icalTokenResponse(token, req);
+    return { ...link, issued: this.issued(secret, req) };
+  }
+
+  @Patch("ical-token")
+  @ApiOperation({
+    summary:
+      "Narrow what my link shows. Any member, for their own link; a pick " +
+      "only ever shows less than the role allows. The address does not change.",
+  })
+  @ApiResponse({ status: 200, type: MyCalendarLinkDto })
+  @ApiResponse({ status: 403, description: "Not a member of this house." })
+  async setICalCategories(
+    @CurrentUser() user: { userId: string; restaurantId: string },
+    @Body() dto: CalendarLinkCategoriesDto,
+  ): Promise<MyCalendarLinkDto> {
+    return this.links.setCategories(
+      user.restaurantId,
+      user.userId,
+      dto?.categories ?? null,
+    );
+  }
+
+  @Delete("ical-token")
+  @ApiOperation({
+    summary:
+      "Stop my calendar link. The address then answers the expired notice.",
+  })
+  @ApiResponse({ status: 200, type: CalendarLinkRevokedResponseDto })
+  async revokeICalToken(
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ): Promise<CalendarLinkRevokedResponseDto> {
+    return this.links.revokeMine(user.restaurantId, user.userId);
+  }
+
+  @Get("ical-links")
+  @ApiOperation({
+    summary:
+      "Who in this house has connected a calendar. Owner/manager only. " +
+      "Never carries a secret.",
+  })
+  @ApiResponse({ status: 200, type: [HouseCalendarLinkDto] })
+  @ApiResponse({ status: 403, description: "Not an owner or manager here." })
+  async listICalLinks(
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ): Promise<HouseCalendarLinkDto[]> {
+    await this.organizations.assertCanManageRestaurant(
+      user.userId,
+      user.restaurantId,
+      "see who has connected a calendar",
+    );
+    return this.links.listHouse(user.restaurantId, user.userId);
+  }
+
+  @Delete("ical-links/:userId")
+  @ApiOperation({
+    summary:
+      "Stop one person's calendar link. Owner/manager only, audited. Only " +
+      "that person's link stops. A manager may stop a manager's or staff's " +
+      "link, never an owner's; only an owner stops an owner's.",
+  })
+  @ApiParam({ name: "userId", description: "public.users.user_id (uuid)" })
+  @ApiResponse({ status: 200, type: CalendarLinkRevokedResponseDto })
+  @ApiResponse({
+    status: 403,
+    description:
+      "Not an owner or manager here, or a manager stopping an owner's link.",
+  })
+  async revokeICalLinkFor(
+    @CurrentUser() user: { userId: string; restaurantId: string },
+    @Param("userId", new ParseUUIDPipe()) targetUserId: string,
+  ): Promise<CalendarLinkRevokedResponseDto> {
+    await this.organizations.assertCanManageRestaurant(
+      user.userId,
+      user.restaurantId,
+      "stop someone else's calendar link",
+    );
+    return this.links.revokeFor(user.restaurantId, user.userId, targetUserId);
   }
 }

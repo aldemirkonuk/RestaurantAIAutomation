@@ -50,7 +50,7 @@ const eyebrow: React.CSSProperties = {
   fontWeight: 600,
   letterSpacing: '0.14em',
   textTransform: 'uppercase',
-  color: 'var(--ink-3, #7C7365)',
+  color: 'var(--ink-4, #665D50)',
   margin: '14px 0 6px',
 };
 
@@ -71,7 +71,7 @@ export function WindowChips({ value, onChange }: { value: WindowDays; onChange: 
             borderRadius: 6,
             border: `1px solid ${w === value ? 'var(--seal-ring, rgba(26,94,107,.32))' : 'var(--paper-2, #EAE4D8)'}`,
             background: w === value ? 'var(--paper-1, #F3EFE6)' : 'transparent',
-            color: w === value ? 'var(--ink-1, #211C16)' : 'var(--ink-3, #7C7365)',
+            color: w === value ? 'var(--ink-1, #211C16)' : 'var(--ink-4, #665D50)',
             cursor: 'pointer',
             transition: `border-color ${ink.ms}ms ${ink.easing}, color ${ink.ms}ms ${ink.easing}`,
           }}
@@ -88,7 +88,7 @@ function ListedClaims({ m, f }: { m: MeasureResult; f: Formats }) {
   if (!m.listed || m.listed.length === 0) return null;
   return (
     <div data-testid="ledger-listed-claims" style={{ marginTop: 4 }}>
-      <p style={{ margin: 0, fontSize: 10.5, color: 'var(--ink-3, #7C7365)' }}>
+      <p style={{ margin: 0, fontSize: 10.5, color: 'var(--ink-4, #665D50)' }}>
         {SC.ledger.claimsBelowMinimum(m.minimum)}
       </p>
       <ul style={{ margin: '2px 0 0', padding: 0 }}>
@@ -98,7 +98,7 @@ function ListedClaims({ m, f }: { m: MeasureResult; f: Formats }) {
             data-testid="ledger-listed-claim"
             style={{ listStyle: 'none', fontSize: 11, lineHeight: 1.45, color: 'var(--ink-2, #4F473C)' }}
           >
-            <span style={{ fontFamily: MONO, fontSize: 10, color: 'var(--ink-3, #7C7365)', marginRight: 6 }}>
+            <span style={{ fontFamily: MONO, fontSize: 10, color: 'var(--ink-4, #665D50)', marginRight: 6 }}>
               {dayLabel(e.at, f)}
             </span>
             {e.title} — {e.detail}
@@ -142,7 +142,7 @@ function Line({ m, f, onRows }: { m: MeasureResult; f: Formats; onRows: (k: Meas
               : {
                   fontSize: 12,
                   fontStyle: 'italic',
-                  color: 'var(--ink-3, #7C7365)',
+                  color: 'var(--ink-4, #665D50)',
                 }
           }
         >
@@ -155,7 +155,7 @@ function Line({ m, f, onRows }: { m: MeasureResult; f: Formats; onRows: (k: Meas
                 fontWeight: 400,
                 fontStyle: 'normal',
                 marginLeft: 6,
-                color: 'var(--ink-3, #7C7365)',
+                color: 'var(--ink-4, #665D50)',
               }}
             >
               {fig.small}
@@ -179,7 +179,7 @@ function Line({ m, f, onRows }: { m: MeasureResult; f: Formats; onRows: (k: Meas
           style={{
             fontFamily: MONO,
             fontSize: 10,
-            color: 'var(--ink-3, #7C7365)',
+            color: 'var(--ink-4, #665D50)',
           }}
         >
           {m.priorSentence}
@@ -207,7 +207,7 @@ function Line({ m, f, onRows }: { m: MeasureResult; f: Formats; onRows: (k: Meas
             style={{
               fontFamily: MONO,
               fontSize: 10,
-              color: 'var(--ink-3, #7C7365)',
+              color: 'var(--ink-4, #665D50)',
             }}
           >
             {SC.ledger.noRows}
@@ -260,7 +260,7 @@ export function LedgerCard({ providerId, providerName }: { providerId: string; p
       <div className="flex flex-wrap items-center justify-between gap-2" style={{ marginBottom: 4 }}>
         <WindowChips value={days} onChange={setDays} />
         {q.data && (
-          <span style={{ fontSize: 10.5, color: 'var(--ink-3, #7C7365)' }}>
+          <span style={{ fontSize: 10.5, color: 'var(--ink-4, #665D50)' }}>
             {windowLabel(q.data.window.from, q.data.window.to, formatsOf(q.data.house))} · {SC.window.against(days)}
           </span>
         )}
@@ -307,7 +307,7 @@ export function LedgerCard({ providerId, providerName }: { providerId: string; p
           <p
             style={{
               fontSize: 11.5,
-              color: 'var(--ink-3, #7C7365)',
+              color: 'var(--ink-4, #665D50)',
               margin: '6px 0',
             }}
           >
@@ -352,7 +352,7 @@ export function LedgerCard({ providerId, providerName }: { providerId: string; p
           borderRadius: 10,
           fontSize: 11,
           lineHeight: 1.45,
-          color: 'var(--ink-3, #7C7365)',
+          color: 'var(--ink-4, #665D50)',
         }}
       >
         {q.data?.alerting.sentence ?? SC.ledger.alertingFallback}

@@ -173,7 +173,7 @@ function PanelCard({
             margin: '2px 0 0',
             fontFamily: SANS,
             fontSize: 12,
-            color: 'var(--ink-3)',
+            color: 'var(--ink-4)',
           }}
         >
           {lead}
@@ -186,7 +186,7 @@ function PanelCard({
 
 function PanelNote({ children }: { children: ReactNode }) {
   return (
-    <p style={{ margin: 0, fontFamily: SANS, fontSize: 12, color: 'var(--ink-3)' }}>
+    <p style={{ margin: 0, fontFamily: SANS, fontSize: 12, color: 'var(--ink-4)' }}>
       {children}
     </p>
   );
@@ -262,7 +262,9 @@ function houseAppearance(root: HTMLElement | null): Record<string, unknown> {
   const paper2 = read('--paper-2');
   const sealRing = read('--seal-ring');
   const ink1 = read('--ink-1');
-  const ink3 = read('--ink-3');
+  // OD-112: colorTextSecondary renders Stripe's own field hint text, which
+  // reads as a caption — ink-4, not the decorative-only ink-3.
+  const ink4 = read('--ink-4');
 
   return {
     theme: 'stripe',
@@ -270,7 +272,7 @@ function houseAppearance(root: HTMLElement | null): Record<string, unknown> {
       colorPrimary: seal,
       colorBackground: paper1,
       colorText: ink1,
-      colorTextSecondary: ink3,
+      colorTextSecondary: ink4,
       // The house has no red. A decline reads in ink, like every other
       // settled error on either page (ADR 0042: the seal is the one chromatic
       // mark, and an error is not the seal).
@@ -501,7 +503,7 @@ export function StripeCardPanel({ client, publishableKey, onClose }: StripeCardP
                 fontSize: 11,
                 letterSpacing: '0.06em',
                 textTransform: 'uppercase',
-                color: 'var(--ink-3)',
+                color: 'var(--ink-4)',
               }}
             >
               {livemode
@@ -519,7 +521,7 @@ export function StripeCardPanel({ client, publishableKey, onClose }: StripeCardP
             style={{
               fontFamily: SANS,
               fontSize: 12,
-              color: 'var(--ink-3)',
+              color: 'var(--ink-4)',
               alignSelf: 'center',
             }}
           >

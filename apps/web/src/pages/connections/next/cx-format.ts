@@ -101,21 +101,6 @@ export function personName(name: string | null | undefined): string {
   return name && name.trim() ? name : 'no longer with this house';
 }
 
-/**
- * The absolute URL of the iCal feed.
- *
- * Built from the gateway origin the bundle was configured with, because the
- * feed is fetched by Outlook and Apple Calendar, not by this browser — a
- * relative path would be uncopyable. Returns null rather than a half-URL when
- * the token is absent, so the row shows a dash instead of a link to nowhere.
- */
-export function feedUrl(token: string | null | undefined): string | null {
-  if (!token) return null;
-  const base = (import.meta.env.VITE_API_URL as string | undefined) ?? '';
-  const origin = base.replace(/\/+$/, '');
-  return `${origin}/api/v1/calendar/feed/${token}.ics`;
-}
-
 /** A short, legible form of a URL for a row's subtitle. */
 export function shortUrl(url: string | null | undefined): string {
   if (!url) return DASH;

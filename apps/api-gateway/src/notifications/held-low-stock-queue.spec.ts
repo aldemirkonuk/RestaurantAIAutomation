@@ -57,6 +57,13 @@ function makeHarness(
     heldAtWrite?: string | null;
     /** Whether the `inventory_alert_state` row exists at all (default yes). */
     rowExists?: boolean;
+    /**
+     * The house's `restaurants` row as `digestClockForRestaurant` reads it
+     * (PR #488). Default: a house with `America/Los_Angeles` recorded.
+     * `null` = no row; `restaurantsError` = the read itself failed.
+     */
+    restaurantRow?: Row | null;
+    restaurantsError?: string;
   } = {},
 ) {
   const upserts: Row[] = [];
@@ -156,11 +163,27 @@ function makeHarness(
         return chain;
       },
       maybeSingle: () =>
-        Promise.resolve(
-          "guardCurrentHeldAt" in opts
-            ? { data: { last_held_at: opts.guardCurrentHeldAt } }
-            : { data: { alert_count: 0 } },
-        ),
+        table === "restaurants"
+          ? Promise.resolve(
+              opts.restaurantsError
+                ? { data: null, error: { message: opts.restaurantsError } }
+                : {
+                    data:
+                      "restaurantRow" in opts
+                        ? opts.restaurantRow
+                        : {
+                            id: "r1",
+                            timezone: "America/Los_Angeles",
+                            country: "US",
+                          },
+                    error: null,
+                  },
+            )
+          : Promise.resolve(
+              "guardCurrentHeldAt" in opts
+                ? { data: { last_held_at: opts.guardCurrentHeldAt } }
+                : { data: { alert_count: 0 } },
+            ),
       upsert: (row: Row, upsertOpts?: { ignoreDuplicates?: boolean }) => {
         // ON CONFLICT DO NOTHING: lands only when the row does not exist.
         const lands =
@@ -687,8 +710,39 @@ describe("listHeldCrossings", () => {
       low_stock_enabled: true,
       frequency: "daily",
       hour: 17,
-      timezone: "America/New_York",
+      timezone: "America/Los_Angeles",
+      zone_source: "house",
     });
+  });
+
+  // PR #488 merge (2026-09-27): the sweep keeps each house's own zone, so the
+  // view reports that zone — not the New York literal #486 was written
+  // against — and, for a house with none, UTC in founder item 61's terms.
+  it("reports the zone the sweep keeps: UTC with zone_source 'fallback' for a house with no readable zone", async () => {
+    const { service } = makeHarness({
+      prefsRows: [
+        {
+          low_stock_enabled: true,
+          digest_frequency: "daily",
+          digest_time: "09:00",
+        },
+      ],
+      restaurantRow: { id: "r1", timezone: null, country: "US" },
+    });
+    const view = await service.listHeldCrossings("r1");
+    expect(view.digest).toEqual({
+      low_stock_enabled: true,
+      frequency: "daily",
+      hour: 9,
+      timezone: "UTC",
+      zone_source: "fallback",
+    });
+  });
+
+  it("[REVERT-FAILS] an unreadable restaurants row is `digest: null`, never a guessed zone", async () => {
+    const { service } = makeHarness({ restaurantsError: "fetch failed" });
+    const view = await service.listHeldCrossings("r1");
+    expect(view.digest).toBeNull();
   });
 
   it("says the digest is off when no member takes it", async () => {
@@ -740,7 +794,8 @@ describe("listHeldCrossings", () => {
       low_stock_enabled: true,
       frequency: "daily",
       hour: 12,
-      timezone: "America/New_York",
+      timezone: "America/Los_Angeles",
+      zone_source: "house",
     });
   });
 
