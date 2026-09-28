@@ -45,6 +45,7 @@ import {
   typeLabel,
 } from './cm-format';
 import { TemplateSheet } from './TemplateSheet';
+import WhoIsWriting from './WhoIsWriting';
 import { ComposeSheet } from './Compose/ComposeSheet';
 import { COMMS_SERVER_WINDOWS, useCommsNextData } from './useCommsNextData';
 
@@ -557,6 +558,11 @@ export default function CommunicationsNext() {
             </div>
           </aside>
         </div>
+
+        {/* ADR 0160 §113, Open item 3 (founder, 2026-09-18): senders and
+            strangers are mail, not money — they moved here from /promotions,
+            with the hold-to-trust and add-vendor acts. */}
+        <WhoIsWriting />
       </div>
 
       <ComposeSheet open={compose} onClose={() => setCompose(false)} />
