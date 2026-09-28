@@ -69,6 +69,7 @@ import { composeCreditLetter } from "./credit-letter";
 import {
   addressListHeader,
   base64Body,
+  threadingHeader,
   unstructuredHeader,
 } from "../mime-headers";
 import type {
@@ -523,9 +524,18 @@ export class HouseLettersService {
    * cancelled; a row past its window is refused rather than marked cancelled,
    * because the dispatcher may already hold it and "cancelled" would then be a
    * claim about a letter that went.
+   *
+   * Author-only (founder, 2026-09-18, ADR 0149 row 43 — "only author is the
+   * best option"; answers this ADR's own open question 4, "should a queued
+   * letter be visible to the whole house, or only its author?"): the row's
+   * own `email_headers.written_by` is who queued it, and only that person may
+   * pull it back. A pooled inbox other owners could also cancel from was
+   * raised in the same answer and recorded as a direction, not built — see
+   * `.planning/06-pages/communications.md`'s relay section.
    */
   async cancel(params: {
     restaurantId: string;
+    userId: string;
     id: string;
     /** The caller's role in this house (ADR 0162). See the R1b check below. */
     role?: string | null;
@@ -545,15 +555,21 @@ export class HouseLettersService {
     if (!data) throw new NotFoundException("No such letter in this house.");
 
     const row = data as unknown as Record<string, unknown>;
+    const headers = (row.email_headers ?? {}) as Record<string, unknown>;
 
     // Same ADR 0167 reconciliation as `queue()` above: a queued letter that
     // answers a credit claim (`email_headers.credit_id`) is owner/manager
     // territory, pulling it back included. A letter with no claim behind it
     // is unaffected (PR #476 audit round 2, R1b).
-    const headers = (row.email_headers ?? {}) as Record<string, unknown>;
     if (headers.credit_id && !isOwnerOrManager(params.role)) {
       throw new ForbiddenException(
         "This letter answers a credit claim. Only an owner or manager may pull it back, the same rule the claim's own ledger already enforces. It is still queued.",
+      );
+    }
+    const writtenBy = (headers.written_by as string | null) ?? null;
+    if (writtenBy !== params.userId) {
+      throw new ForbiddenException(
+        "Only the person who wrote this letter can pull it back. Ask them to cancel it, or let it go and follow up once it has left.",
       );
     }
     if (String(row.status) !== LETTER_STATUS.QUEUED) {
@@ -570,15 +586,28 @@ export class HouseLettersService {
       );
     }
 
-    const { error: updateError } = await this.db.client
+    // `.select("id")` so a letter `dispatchDue` claimed between the read
+    // above and this update — QUEUED -> SENDING, the same race
+    // `RelayEmailService.cancelQueued` guards against on its own queue — is
+    // not silently reported as pulled back. Zero rows means the guard
+    // (`status = QUEUED`) matched nothing, which the read above cannot rule
+    // out: it is a snapshot, not a lock. (Wave5 confirmer residual: this
+    // mirrors relay's own B1 fix one-for-one.)
+    const { data: cancelled, error: updateError } = await this.db.client
       .from("procurement_conversations")
       .update({ status: LETTER_STATUS.CANCELLED, scheduled_send_at: null })
       .eq("id", params.id)
-      .eq("status", LETTER_STATUS.QUEUED);
+      .eq("status", LETTER_STATUS.QUEUED)
+      .select("id");
 
     if (updateError) {
       throw new BadRequestException(
         `The letter was NOT cancelled (${updateError.message}). It is still queued.`,
+      );
+    }
+    if (!cancelled || (cancelled as unknown[]).length === 0) {
+      throw new ConflictException(
+        "That letter was claimed by the dispatcher the instant before this reached it, so it was NOT cancelled. The conversation book will say what happened to it.",
       );
     }
 
@@ -1142,6 +1171,12 @@ export class HouseLettersService {
    * A send that fails is recorded as failed, in words. It is never left as
    * QUEUED (the next run would try again forever and the page would show a
    * letter perpetually about to leave) and never marked SENT.
+   *
+   * A queue that cannot be READ throws. It does not return the zero-shape:
+   * `{ considered: 0, sent: 0, ... }` is what a quiet minute looks like, and a
+   * database outage that reported it would read as "nothing was due" for as
+   * long as the outage lasted, on the one surface (`lastRun`) that exists to
+   * say whether letters can still leave. ADR 0161.
    */
   async dispatchDue(nowMs = Date.now()): Promise<{
     considered: number;
@@ -1159,10 +1194,10 @@ export class HouseLettersService {
       .limit(50);
 
     if (error) {
-      this.logger.error(
+      // The cron logs this and records it as `lastRun().error`.
+      throw new Error(
         `letter dispatch could not read the queue: ${error.message}`,
       );
-      return { considered: 0, sent: 0, failed: 0, skipped: 0 };
     }
 
     const rows = (data ?? []) as unknown as Record<string, unknown>[];
@@ -1364,14 +1399,39 @@ export function mergeFieldsIn(
  * shared with every other house. A bearer token from the house's own grant is
  * the whole point.
  *
+ * `to` stays a single string for the composer's own caller (`dispatchDue`,
+ * above); `cc`/`bcc`/`replyTo`/`threadId`/`inReplyTo`/`references` are new
+ * (ADR 0149 #19's person door, relay-email.service.ts) and all optional, so
+ * the composer's call is unchanged.
+ *
+ * NO HEADER VALUE CAN START A NEW HEADER. This function has no DTO in front
+ * of it the way `GmailService.createMimeMessage` has (`SINGLE_HEADER_LINE`,
+ * communication.dto.ts): a letter's `subject` comes from
+ * `email_headers.subject` on a queued row, and `to`/`cc`/`bcc`/`replyTo`/
+ * `inReplyTo`/`references` reach it from the relay's person door. A subject
+ * of `"hi\r\nBcc: someone@elsewhere"` once added a header nothing here checked
+ * (found 2026-09-17, adversarial review of the relay lane). Every header now
+ * goes through mime-headers.ts (ADR 0172), the same encoder GmailService
+ * uses: free text collapses CR/LF and is RFC 2047 encoded, an address with a
+ * control character inside it is REFUSED (throws `MimeHeaderError` before any
+ * fetch, so nothing is sent), and the threading values are rebuilt from their
+ * `<msg-id>` tokens. The relay lane's own CR/LF stripper was retired for it
+ * when main's encoder landed (2026-09-21), so there is one rule, not two.
+ *
  * Exported so the spec can prove the request shape without a network.
  */
 export async function sendThroughGrant(params: {
   token: string;
   from: string;
-  to: string;
+  to: string | string[];
+  cc?: string[];
+  bcc?: string[];
   subject: string;
   text: string;
+  replyTo?: string;
+  threadId?: string;
+  inReplyTo?: string;
+  references?: string;
   fetchImpl?: typeof fetch;
 }): Promise<string | null> {
   // `From` is emitted only when we actually know the address. The `gmail_send`
@@ -1384,11 +1444,24 @@ export async function sendThroughGrant(params: {
   // Headers go through mime-headers.ts (ADR 0172): a Turkish subject is RFC
   // 2047 encoded rather than sent as raw bytes, a line break in the subject
   // cannot start a new header, and the body is base64 under its UTF-8 charset.
+  // The person door's cc/bcc/reply-to and threading go through the same
+  // encoder (see the doc comment above); a threading value with no usable
+  // <msg-id> writes no header, and the reply is still sent.
   const from = params.from.trim();
+  const to = Array.isArray(params.to) ? params.to : [params.to];
+  const inReplyTo = threadingHeader("In-Reply-To", params.inReplyTo);
+  const references = threadingHeader("References", params.references);
   const mime = [
     ...(from ? [addressListHeader("From", [from])] : []),
-    addressListHeader("To", [params.to]),
+    addressListHeader("To", to),
+    ...(params.cc?.length ? [addressListHeader("Cc", params.cc)] : []),
+    ...(params.bcc?.length ? [addressListHeader("Bcc", params.bcc)] : []),
     unstructuredHeader("Subject", params.subject),
+    ...(params.replyTo
+      ? [addressListHeader("Reply-To", [params.replyTo])]
+      : []),
+    ...(inReplyTo ? [inReplyTo] : []),
+    ...(references ? [references] : []),
     "MIME-Version: 1.0",
     'Content-Type: text/plain; charset="UTF-8"',
     "Content-Transfer-Encoding: base64",
@@ -1405,7 +1478,10 @@ export async function sendThroughGrant(params: {
         Authorization: `Bearer ${params.token}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ raw: Buffer.from(mime).toString("base64url") }),
+      body: JSON.stringify({
+        raw: Buffer.from(mime).toString("base64url"),
+        ...(params.threadId ? { threadId: params.threadId } : {}),
+      }),
     },
   );
 

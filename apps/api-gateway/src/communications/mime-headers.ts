@@ -41,8 +41,9 @@
  *    only whole UTF-8 characters (so every word decodes on its own), and every
  *    header line at most 76 characters (RFC 2047 §2).
  *  - Bodies are base64 (RFC 2045 §6.8) in lines of at most 76 characters. The
- *    base64 alphabet has no "_", so a `boundary_…` delimiter can never occur
- *    inside a body part.
+ *    base64 alphabet has no "_", so a `mudavym_alt_…` delimiter (128 random
+ *    bits, gmail.service.ts createMimeMessage) can never occur inside a body
+ *    part.
  */
 
 /**
