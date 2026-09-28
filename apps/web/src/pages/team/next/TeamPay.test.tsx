@@ -369,6 +369,7 @@ describe("an owner's pay is not shown or offered to a manager who sees pay", () 
         onClose={() => {}}
         onEdit={() => {}}
         onAdd={() => {}}
+        onCertificates={() => undefined}
       />,
       { wrapper },
     );
