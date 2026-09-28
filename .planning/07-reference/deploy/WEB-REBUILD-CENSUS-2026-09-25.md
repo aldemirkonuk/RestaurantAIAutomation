@@ -37,7 +37,7 @@ tracked has merged or is re-planned in §3, and every founder question in its §
 | §1b | Why `provider_conversation_agent` is down is unverified | **A lead exists.** Railway logs for the running orchestrator show `Failed to start agent provider_conversation_agent: Invalid value for queue` (critic G13.1, not re-read by this lane). The first red `Deploy to Production` run is #415's merge | Runs: last success `35795292735` at `3579fa0c7`; first failure `35800299062` at `cc73f9f66` (#415), 2026-09-23T00:03Z; all 11 since have failed (`gh run list`, re-measured) |
 | R4 | CLAIMS shows 5 REGRESSED rows | **A local-venv artefact.** 484 of 484 hold on a clean clone (critic) and on this lane's fresh worktree | `scripts/check_decision_claims.sh` |
 | L15 | Jev is only the coding-agent prompt hook | **False for #435.** Its branch POSTs masked vendor mail to TypeSafe | `origin/feat/vendor-scorecard:apps/api-gateway/src/vendor-tone/jev-tone.client.ts` (critic G7) |
-| G8 | Credits, discovery and sentiment live only in legacy | **Refined.** Credits and sentiment *render legacy inside live pages*; discovery is reachable by no house | Credits: `ReceiptsNext.tsx:75-79,1312-1315` renders `ReceiptsPage` for `?tab=credits`. Sentiment: `TwinSheet.tsx:33-35,155` lazy-loads the legacy `ProviderIntelligencePanel`, whose Sentiment tab renders `ProviderSentimentChart` (`ProviderIntelligencePanel.tsx:6,116`). Discovery: only legacy `Providers.tsx:152-246`; `ProvidersNext` reads no search params, so `/distributors` → `/providers?tab=discover` lands on the roster |
+| G8 | Credits, discovery and sentiment live only in legacy | **Refined.** Credits and sentiment *render legacy inside live pages*; discovery is reachable by no house | Credits: `ReceiptsNext.tsx:75-79,1312-1315` renders `ReceiptsPage` for `?tab=credits`. Sentiment: `TwinSheet.tsx:33-35,155` lazy-loads the legacy `ProviderIntelligencePanel`, whose Sentiment tab renders `ProviderSentimentChart` (`ProviderIntelligencePanel.tsx:6,116`). Discovery: only legacy `Providers.tsx:152-246`; `ProvidersNext` reads no search params, so `/distributors` → `/providers?tab=discover` lands on the roster **[SUPERSEDED 2026-09-28 by [CUTOVER-MANIFEST-2026-09-28.md](CUTOVER-MANIFEST-2026-09-28.md) §2: credits and discovery are rebuilt (`ReceiptsNext.tsx:75-83`, `vendor-scope.ts:42`); the sentiment chart is retired, but its host `ProviderIntelligencePanel` is still rendered by the live vendor sheet (`TwinSheet.tsx:42-46,202`) and stays off the manifest.]** |
 | counts | ~16,730 legacy lines; 8 Dependabot PRs; 1007 remote branches | 19,144 lines across 17 files; 52 open PRs, 17 of them Dependabot; 539 heads on `origin` | `wc -l` over the 15 files of the route census plus `WineLibrary.tsx` (1,911) and `useWineLibraryPage.ts` (353); `gh pr list --state open`; `git ls-remote --heads origin` |
 
 ---
@@ -48,6 +48,8 @@ tracked has merged or is re-planned in §3, and every founder question in its §
 
 "Code" means the key is in `LIVE_PAGES` (`useMudavymDesign.ts:125-146`) and resolves with no
 database read. Flag states are the 2026-09-25T21:11Z production read above.
+
+**[SUPERSEDED 2026-09-28 for the "Legacy still mounted" column by [CUTOVER-MANIFEST-2026-09-28.md](CUTOVER-MANIFEST-2026-09-28.md): every legacy slot, file group by file group, with its import-graph proof and trial delete on `c8bbf95de` + #487. Read that document for what legacy remains; this table is the 2026-09-25 record.]**
 
 | Route (App.tsx line) | Key | State | Mudavym component | Legacy still mounted | Note |
 |---|---|---|---|---|---|
@@ -140,7 +142,7 @@ asked to review, and the deletion manifest, group by group. Web only this deploy
 
 **DONE =** every route in §1a on a Mudavym design at the full-purpose bar, *every surface on
 it* rebuilt (G8: a live route is not the same as a rebuilt route), live for every house
-including houses created later, captions at AA (OD-112 (OPEN-DECISIONS.md:104): 322
+including houses created later, captions at AA (OD-112 (OPEN-DECISIONS.md:106): 322
 `var(--ink-3)` uses against 183 `var(--ink-4)` in `apps/web/src` today), the manifest
 approved group by group, one cutover PR merged and deployed, production verified at that
 commit.
@@ -176,7 +178,7 @@ resolved by L2 at merge time. Flag files (`useMudavymDesign.ts` + test,
 | **L14** Pipeline | (a) `provider_conversation_agent` from the log line and #415's diff; (b) CLAIMS walkers scan tracked files only; (c) unshallow the shared clone; (d) Production E2E exits on named missing secrets; (e) CodeQL with L7; (f) #432 | | Push `wt-r5-gate`'s local `c59d8f71b` ("close the four remaining gate8c residuals") into #432 before its last call; `wt-gate-rule` is superseded (its 46 files equal `origin/wip/2026-09-19/gate`, an ancestor of #432's head `d45147f42`). Add OD-122 (OPEN-DECISIONS.md:79) |
 | **L15** Jev | (a) Keep `check_jev_never_blocks.py` green; (b) measure subagent egress without contacting TypeSafe; (c) land #431 via L2; (d) #435's product egress fails open, with a never-blocks spec for `jev-tone.client`; (e) masking covers names and sensitive topics (round 6y) | F4 | Partial measurement: an Agent-SDK subagent context carried no Jev annotation (critic G7); Task-tool subagents unmeasured |
 | **L16** Worktree hygiene | Step 1 preserves only what no ref holds (next table); step 2 removes, on the founder's word | After L13 | The old preservation list protected trees already on origin (J6) |
-| **L17** Cutover | The manifest as file groups, each with an import-graph proof (a trial delete plus tsc/vitest), special-casing `/get-started` (R14) and `/inventory` | Last; his approval per group | `ReceiptsPage.tsx`, `Providers.tsx` and the provider intelligence/sentiment components stay off the manifest until G8's three surfaces are rebuilt |
+| **L17** Cutover | The manifest as file groups, each with an import-graph proof (a trial delete plus tsc/vitest), special-casing `/get-started` (R14) and `/inventory` | Last; his approval per group | `ReceiptsPage.tsx`, `Providers.tsx` and the provider intelligence/sentiment components stay off the manifest until G8's three surfaces are rebuilt **[2026-09-28: the manifest is [CUTOVER-MANIFEST-2026-09-28.md](CUTOVER-MANIFEST-2026-09-28.md); re-measured, `ReceiptsPage.tsx` and `Providers.tsx` ARE on it now (credits and discovery rebuilt), the provider intelligence components are NOT (still rendered by the live sheet). Draft PR `feat/cutover-manifest-trial` performs the trial cutover, unmerged, awaiting his answer per group.]** |
 
 **Genuinely unpreserved work (L16 step 1).** Newer than every snapshot and absent from every
 ref (critic G3, mtimes and hashes; not re-measured by this lane): `wt-recs-cat` staged (7
@@ -466,7 +468,7 @@ Built on branch `fix/preview-notes-2026-09-22` (not merged).
 shell and admin in the database only (J1), `arrival` is overridden by ADR 0213; Q7 not built
 (F7); Q8 built (`ConnectionsNext.tsx:319`, ADR 0149 row 53); Q9 built on #434; Q10 recorded
 on OD-123 in this PR; Q11 recorded on OD-132 in this PR (see C22); §7.2 superseded by ADR
-0213 F7 (OD-141 (OPEN-DECISIONS.md:112)); preview rulings 1–3 merged via #458–#462, ruling 4
+0213 F7 (OD-141 (OPEN-DECISIONS.md:114)); preview rulings 1–3 merged via #458–#462, ruling 4
 is F2.
 
 ### 8.2 Round-5/6 rulings the corrections above rely on (memory `founder-answers-2026-09-21-round5.md`)
@@ -557,7 +559,7 @@ The verdict-ledger strip ruling cited in §0 (L6(b)) is in memory
 
 | Retired | Recover with | Why |
 |---|---|---|
-| `.planning/07-reference/deploy/PAGE-WAVE-BLOCKERS-2026-09-22.md` (245 lines) | `git show ddc5e094b:.planning/07-reference/deploy/PAGE-WAVE-BLOCKERS-2026-09-22.md` (its last change, #455; unchanged at `059169a59`) | Every PR in its §2–§3 has merged (#413, #414, #415, #419, #420, #426, #430, #434, #437, #439, #452, #454, #455; `gh pr view --json mergedAt`) or is re-planned in §3 here; its §5 questions are answered (Q1 → sketch 121, §8.1; Q2 → ADR 0213 F7; Q3 → Q12 confirmed). Prose mentions of its §5 Q2 in ADR 0213:48, OD-141 (OPEN-DECISIONS.md:112), `SKYLEAF-NEXT-ACT-BUILD-2026-09-22.md:168` and `research-122-squad/` resolve through the recovery command |
+| `.planning/07-reference/deploy/PAGE-WAVE-BLOCKERS-2026-09-22.md` (245 lines) | `git show ddc5e094b:.planning/07-reference/deploy/PAGE-WAVE-BLOCKERS-2026-09-22.md` (its last change, #455; unchanged at `059169a59`) | Every PR in its §2–§3 has merged (#413, #414, #415, #419, #420, #426, #430, #434, #437, #439, #452, #454, #455; `gh pr view --json mergedAt`) or is re-planned in §3 here; its §5 questions are answered (Q1 → sketch 121, §8.1; Q2 → ADR 0213 F7; Q3 → Q12 confirmed). Prose mentions of its §5 Q2 in ADR 0213:48, OD-141 (OPEN-DECISIONS.md:114), `SKYLEAF-NEXT-ACT-BUILD-2026-09-22.md:168` and `research-122-squad/` resolve through the recovery command |
 
 ---
 
