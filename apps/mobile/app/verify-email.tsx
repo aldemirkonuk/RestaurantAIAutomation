@@ -9,7 +9,7 @@ import {
   AuthShell,
 } from "@/components/auth/AuthShell";
 import { haptic } from "@/design/haptics";
-import { useSession } from "@/state/session";
+import { requestThenAdopt, useSession } from "@/state/session";
 import { verifyTokenFromPaste } from "@/auth/deepLink";
 import {
   authErrorMessage,
@@ -71,24 +71,29 @@ export default function VerifyEmailScreen() {
       setBusy(true);
       setError(null);
       try {
-        const result = await verifyEmail(candidate);
         // verify-email returns a fresh pair; adopting it is what turns an
-        // unverified session into a usable one without a second sign-in.
-        if (result.accessToken) {
-          await useSession
-            .getState()
-            .adoptTokens(result.accessToken, result.refreshToken);
-        } else {
-          await refreshUser();
-        }
+        // unverified session into a usable one without a second sign-in. A
+        // sign-out pressed while this was in flight wins: the pair is dropped
+        // and nothing more happens here.
+        const { outcome } = await requestThenAdopt(() => verifyEmail(candidate));
+        if (outcome === "superseded") return;
+        if (outcome === "noTokens") await refreshUser();
         haptic.confirm();
         const progress = await fetchOnboardingProgress().catch(() => null);
         router.replace(routeAfterVerification(progress) as never);
       } catch (e) {
+        // ADR 0229 fork 12 (the founder, 2026-09-28, item 81, "Link needs
+        // sign-in (Recommended)"): the link verifies only for someone signed
+        // in to the account it was sent for (401 signed out, 403 another
+        // account).
         setError(
-          statusOf(e) === 400 || statusOf(e) === 404
-            ? "That link has expired or has already been used. Send yourself a new one."
-            : authErrorMessage(e),
+          statusOf(e) === 401
+            ? "Sign in to the account this link was sent for, then open the link again. Not your password? Sign in with a code emailed to this address."
+            : statusOf(e) === 403
+              ? "This link is for a different account. Sign out, then sign in to the account it was sent to."
+              : statusOf(e) === 400 || statusOf(e) === 404
+                ? "That link has expired or has already been used. Send yourself a new one."
+                : authErrorMessage(e),
         );
         haptic.warn();
       } finally {

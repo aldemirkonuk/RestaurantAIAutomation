@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RcStaffLane } from './RcStaffLane'
@@ -110,22 +110,52 @@ const onlyForStatus =
 const httpError = (status: number, message = 'request failed') =>
   Object.assign(new Error(message), { response: { status } })
 
-const queuePayload = (over: Record<string, unknown> = {}) => ({
-  data: { items: [], unverified: [], totalAtRisk: 0, ...over },
-})
+/** Mirrors the gateway's own per-currency grouping (receiving.service.ts
+ * managerQueue) so a test only states `items` and gets an honest total for
+ * free — never a single number invented across currencies. */
+const totalAtRiskByCurrencyOf = (items: Array<Record<string, unknown>>) => {
+  const byCcy = new Map<string, number>()
+  for (const i of items) {
+    if (i.dollarsAtRisk == null) continue
+    const ccy = (i.currency as string | null | undefined) ?? ''
+    byCcy.set(ccy, (byCcy.get(ccy) ?? 0) + (i.dollarsAtRisk as number))
+  }
+  return Array.from(byCcy, ([currency, amount]) => ({ currency: currency || null, amount }))
+}
+
+const queuePayload = (over: Record<string, unknown> = {}) => {
+  const items = (over.items as Array<Record<string, unknown>> | undefined) ?? []
+  return {
+    data: {
+      items,
+      unverified: [],
+      totalAtRiskByCurrency: totalAtRiskByCurrencyOf(items),
+      ...over,
+    },
+  }
+}
 
 const queueItem = (over: Record<string, unknown> = {}) => ({
   orderId: 'ord-1',
   orderNumber: 'PO-1',
   verdict: 'qty_short',
   summary: 'Two bottles short',
-  backorderQty: 0,
+  backorderBottles: 0,
+  backorderWhy: null,
   verifiedAt: '2026-08-30T09:00:00.000Z',
   dollarsAtRisk: 120,
   selfEvidenced: false,
   openClaims: 1,
   ...over,
 })
+
+/**
+ * Scopes a query to the page header's own "At risk" figure(s) — since a row
+ * with the same dollar amount as the header total (the common case in a
+ * single-item fixture) renders the identical text elsewhere on the page, a
+ * bare `screen.getByText`/`findByText` is ambiguous once both have loaded.
+ */
+const atRiskHeader = () => within(screen.getByText('At risk').parentElement as HTMLElement)
 
 beforeEach(() => {
   get.mockReset()
@@ -364,7 +394,12 @@ describe('F5 — a windowed figure renders as a floor (ADR 0051 clause 2)', () =
     get.mockResolvedValue(queuePayload({ items: [queueItem()], totalAtRisk: 120 }))
     harness(ManagerBody)
 
-    expect(await screen.findByText('$120')).toBeInTheDocument()
+    // The header total and this fixture's one row carry the same $120 —
+    // scoped to the header, since a bare query would also match the row.
+    // RcTally sets its display via a post-commit effect, so the header can
+    // lag the row's own render by a tick; waitFor settles once it catches up.
+    await screen.findByText('PO-1')
+    await waitFor(() => expect(atRiskHeader().getByText('$120')).toBeInTheDocument())
     const short = screen.getByRole('tab', { name: /Short/ })
     expect(short).toHaveTextContent('1')
     expect(short).not.toHaveTextContent('≥1')
@@ -412,8 +447,12 @@ describe('F6 — $0 measured and $— unknown are different facts', () => {
     harness(ManagerBody)
 
     // Pre-fix: `dollarsAtRisk > 0 ? money : EM` printed "$—" beside a literal
-    // "0 open claims" — one row reading "$— · 0 open claims".
-    expect(await screen.findByText('$0')).toBeInTheDocument()
+    // "0 open claims" — one row reading "$— · 0 open claims". Scoped to the
+    // row itself: the header's own total is also a measured $0 here, so a
+    // bare query would match both.
+    await screen.findByText('PO-1')
+    const row = screen.getByText('PO-1').closest('button') as HTMLElement
+    expect(within(row).getByText('$0')).toBeInTheDocument()
   })
 
   it('renders an absent figure as an em dash', async () => {
@@ -425,12 +464,224 @@ describe('F6 — $0 measured and $— unknown are different facts', () => {
     expect(screen.getAllByText('—').length).toBeGreaterThan(0)
   })
 
+  it('states what is still owed in bottles, from the ledger (ADR 0192 amendment)', async () => {
+    get.mockResolvedValue(queuePayload({ items: [queueItem({ backorderBottles: 2 })], totalAtRisk: 120 }))
+    harness(ManagerBody)
+    expect(await screen.findByText(/2 bottles still on backorder/)).toBeInTheDocument()
+  })
+
+  it('an unreadable backorder says it is not known, never that nothing is owed', async () => {
+    get.mockResolvedValue(
+      queuePayload({
+        items: [queueItem({ backorderBottles: null, backorderWhy: 'The stock ledger could not be read (offline).' })],
+        totalAtRisk: 120,
+      }),
+    )
+    harness(ManagerBody)
+    expect(await screen.findByText(/What is still owed is not known: The stock ledger could not be read/)).toBeInTheDocument()
+  })
+
   it('marks the open-claim count as a floor — the link query is capped and unordered', async () => {
     get.mockResolvedValue(queuePayload({ items: [queueItem({ openClaims: 2 })], totalAtRisk: 120 }))
     harness(ManagerBody)
 
-    await screen.findByText('$120')
+    await screen.findByText('PO-1')
     expect(screen.getByText(/≥2 open claims/)).toBeInTheDocument()
+  })
+})
+
+/* ═══════════ sketch 107 — vendor boxes, grouped by A's graft onto B+ ══ */
+
+describe('Sketch 107 — vendor boxes group the queue, worst money first', () => {
+  it('renders one box per vendor when more than one vendor is present, each with its own subtotal', async () => {
+    get.mockResolvedValue(
+      queuePayload({
+        items: [
+          queueItem({ orderId: 'a', providerId: 'p-1', providerName: 'Skurnik', dollarsAtRisk: 100 }),
+          queueItem({ orderId: 'b', providerId: 'p-2', providerName: 'SGWS', dollarsAtRisk: 20 }),
+        ],
+        totalAtRisk: 120,
+      }),
+    )
+    harness(ManagerBody)
+
+    expect(await screen.findByText('Skurnik')).toBeInTheDocument()
+    expect(screen.getByText('SGWS')).toBeInTheDocument()
+    expect(document.querySelectorAll('[data-ux-key="receiving-next:vendor-box"]')).toHaveLength(2)
+  })
+
+  it('does not wrap a single vendor in a box — its subtotal would just repeat the page total', async () => {
+    get.mockResolvedValue(
+      queuePayload({ items: [queueItem({ providerId: 'p-1', providerName: 'Skurnik' })], totalAtRisk: 120 }),
+    )
+    harness(ManagerBody)
+
+    await screen.findByText('PO-1')
+    expect(document.querySelectorAll('[data-ux-key="receiving-next:vendor-box"]')).toHaveLength(0)
+  })
+
+  it('names a failed vendor-name lookup as one honest box, never as a silent "unknown vendor" per row', async () => {
+    get.mockResolvedValue(
+      queuePayload({
+        items: [
+          queueItem({ orderId: 'a', providerId: 'p-1' }),
+          queueItem({ orderId: 'b', providerId: 'p-2' }),
+        ],
+        totalAtRisk: 120,
+        providerNamesUnavailable: true,
+      }),
+    )
+    harness(ManagerBody)
+
+    expect(await screen.findByText('Vendor names could not be loaded')).toBeInTheDocument()
+    expect(document.querySelectorAll('[data-ux-key="receiving-next:vendor-box"]')).toHaveLength(1)
+  })
+
+  it('collapses a vendor box beyond the cap and expands it on request — page, never grow without end', async () => {
+    const items = Array.from({ length: 7 }, (_, i) =>
+      queueItem({ orderId: `o${i}`, orderNumber: `PO-${i}`, providerId: 'p-1', providerName: 'Skurnik', openClaims: i }),
+    )
+    get.mockResolvedValue(
+      queuePayload({
+        items: [
+          ...items,
+          queueItem({ orderId: 'other', orderNumber: 'PO-OTHER', providerId: 'p-2', providerName: 'SGWS' }),
+        ],
+        totalAtRisk: 120,
+      }),
+    )
+    harness(ManagerBody)
+
+    const more = await screen.findByRole('button', { name: /Show 2 more from Skurnik/ })
+    expect(more).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.getAllByText(/^PO-\d$/)).toHaveLength(5)
+    fireEvent.click(more)
+    const fewer = screen.getByRole('button', { name: /Show fewer from Skurnik/ })
+    expect(fewer).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getAllByText(/^PO-\d$/)).toHaveLength(7)
+  })
+
+  it('never sums a vendor box across currencies, and never folds an unpriced row into the total (fixer review, 2026-09-18)', async () => {
+    get.mockResolvedValue(
+      queuePayload({
+        items: [
+          queueItem({ orderId: 'a', providerId: 'p-1', providerName: 'Skurnik', dollarsAtRisk: 100, currency: 'GBP' }),
+          queueItem({ orderId: 'b', providerId: 'p-1', providerName: 'Skurnik', dollarsAtRisk: 40, currency: 'EUR' }),
+          queueItem({ orderId: 'c', providerId: 'p-1', providerName: 'Skurnik', dollarsAtRisk: null }),
+          queueItem({ orderId: 'd', providerId: 'p-2', providerName: 'SGWS', dollarsAtRisk: 20, currency: 'GBP' }),
+        ],
+        totalAtRisk: 120,
+      }),
+    )
+    harness(ManagerBody)
+
+    await screen.findByText('Skurnik')
+    // Two currencies in one box print as two figures, added — never a single
+    // invented "£140" that pretends 100 GBP and 40 EUR are the same money.
+    // (Stated as GBP, not USD: check_money_states_its_currency.py counts a
+    // pinned USD literal as a page assuming dollars.)
+    expect(screen.getByText(/£100 \+ €40/)).toBeInTheDocument()
+    // The unpriced row is named, not silently treated as $0.
+    expect(screen.getByText(/1 unpriced/)).toBeInTheDocument()
+  })
+
+  // Confirmer walk 2026-09-18 (OD-112 caption contrast): the vendor box's two
+  // secondary captions sat on paper in --ink-3, under the house's caption
+  // floor. --ink-4 is the token that clears it.
+  it('prints the vendor-box captions in --ink-4, the caption-contrast token', async () => {
+    get.mockResolvedValue(
+      queuePayload({
+        items: [
+          queueItem({ orderId: 'a', providerId: 'p-1', providerName: 'Skurnik', dollarsAtRisk: 100 }),
+          queueItem({ orderId: 'b', providerId: 'p-1', providerName: 'Skurnik', dollarsAtRisk: null }),
+          queueItem({ orderId: 'd', providerId: 'p-2', providerName: 'SGWS', dollarsAtRisk: 20 }),
+        ],
+        totalAtRisk: 120,
+      }),
+    )
+    harness(ManagerBody)
+
+    await screen.findByText('Skurnik')
+    const count = screen.getAllByText(/deliver(y|ies)$/)[0]
+    const unpriced = screen.getByText(/1 unpriced/)
+    for (const el of [count, unpriced]) {
+      expect(el.getAttribute('style')).toMatch(/var\(--ink-4/)
+      expect(el.getAttribute('style')).not.toMatch(/--ink-3/)
+    }
+  })
+
+  // Confirmer walk 2026-09-18: at 390 the page scrolled 12px sideways. The
+  // ellipsised summary line reported its full nowrap width upward and grew the
+  // vendor box, the section and <main>. jsdom has no layout, so this pins the
+  // style that stops the contribution (measured in Chrome: scrollWidth 402 →
+  // 390); the real-browser measurement is in the session's report.
+  it("keeps a row's ellipsised summary from widening its parents (width 0, min-width 100%)", async () => {
+    const summary = 'Musar 2016 not on the truck; billed on SG-88213 — a long line that must ellipsise, not widen'
+    get.mockResolvedValue(
+      queuePayload({ items: [queueItem({ providerId: 'p-1', providerName: 'Skurnik', summary })] }),
+    )
+    harness(ManagerBody)
+
+    const line = (await screen.findAllByText(summary))[0]
+    expect(line.style.width).toBe('0px')
+    expect(line.style.minWidth).toBe('100%')
+    expect(line.style.whiteSpace).toBe('nowrap')
+  })
+
+  // Regression (confirmer review, 2026-09-18): the page header's own "At
+  // risk" total, and each row's own at-risk figure, used to format through a
+  // formatter hardcoded to USD regardless of the order's own currency — a €40
+  // order's row printed "$40", and a EUR-only queue's header printed a "$"
+  // total for money that was never dollars.
+  it('formats the page header and a row\'s own figure in the order\'s own currency, never a hardcoded $', async () => {
+    get.mockResolvedValue(
+      queuePayload({
+        items: [queueItem({ dollarsAtRisk: 40, currency: 'EUR' })],
+      }),
+    )
+    harness(ManagerBody)
+
+    // Both the page header's total and the row's own figure read this one
+    // EUR order — neither may fall back to the hardcoded "$" formatter.
+    // RcTally sets its display via a post-commit effect, so the header can
+    // lag the row by a render; waitFor settles once both have caught up.
+    await screen.findByText('PO-1')
+    await waitFor(() => expect(screen.getAllByText('€40')).toHaveLength(2))
+    expect(screen.queryByText('$40')).not.toBeInTheDocument()
+  })
+
+  it('sums the page header\'s own total per currency, never into one invented figure', async () => {
+    get.mockResolvedValue(
+      queuePayload({
+        items: [
+          queueItem({ orderId: 'a', orderNumber: 'PO-A', providerId: 'p-1', dollarsAtRisk: 100, currency: 'GBP' }),
+          queueItem({ orderId: 'b', orderNumber: 'PO-B', providerId: 'p-2', dollarsAtRisk: 40, currency: 'EUR' }),
+        ],
+      }),
+    )
+    harness(ManagerBody)
+
+    await screen.findByText('PO-A')
+    // "£100" and "€40" render as two separate figures joined by " + " — never
+    // one invented cross-currency sum. Checked against the header's own
+    // container's full text (the two amounts are sibling <RcTally> spans,
+    // not one text node), waiting since RcTally's display lags by an effect.
+    const header = screen.getByText('At risk').parentElement as HTMLElement
+    await waitFor(() => expect(header).toHaveTextContent('£100 + €40'))
+  })
+
+  // The verdict-ledger feature was stripped (founder's condition was "if
+  // it's bulletproof"; a 16-agent research pass found its own invariant
+  // unenforced and its detector clamped to zero). This row no longer opens
+  // a ledger, and the row's other two hand-offs are untouched by the strip.
+  it('has no verdict-ledger entry point, and the row\'s existing hand-offs are unmoved', async () => {
+    get.mockResolvedValue(queuePayload({ items: [queueItem()], totalAtRisk: 120 }))
+    harness(ManagerBody)
+
+    await screen.findByText('PO-1')
+    expect(screen.queryByRole('button', { name: /Open the verdict ledger/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Open the order/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Edit line items at the desk/ })).toBeInTheDocument()
   })
 })
 

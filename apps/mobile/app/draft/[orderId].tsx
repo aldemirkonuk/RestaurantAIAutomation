@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useState } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
@@ -7,211 +7,175 @@ import {
   View,
 } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import Animated, {
-  Easing,
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming,
-} from "react-native-reanimated";
-import { Ionicons } from "@expo/vector-icons";
+import { useQuery } from "@tanstack/react-query";
+import { api, type RequestScope } from "@/api/client";
+import { useSession } from "@/state/session";
 import { AppText } from "@/components/ui/AppText";
 import { PressableScale } from "@/components/ui/PressableScale";
+import { DraftSendSeal } from "@/components/supply/DraftSendSeal";
+import { DraftAskSeal } from "@/components/supply/DraftAskSeal";
+import { holdAct, standingLines, type SendOrAsk, type SendRequest } from "@/lib/sendStanding";
 import { color, font, radius, space } from "@/design/tokens";
-import { GRACE_MS } from "@/design/motion";
-import { haptic } from "@/design/haptics";
-import { feedKey, pulseKey } from "@/api/queries";
-import { queryClient } from "@/lib/queryClient";
-import { useOutbox } from "@/state/outbox";
-import { useFeedLocal } from "@/state/feedLocal";
-import type { FeedResponse } from "@/api/types";
 
-/**
- * Review the AI-drafted vendor reply. Edits ride along as modifiedContent.
- * Send runs the same grace window as the feed: 8 seconds of Undo before the
- * email actually leaves, with the drain line making the countdown visible.
- */
-export default function DraftReviewScreen() {
+type Draft = {
+  id: string;
+  content: string | null;
+  provider_name: string | null;
+  provider_email: string | null;
+  /** A staff member's request waiting on this draft (founder, 2026-09-21). */
+  send_request?: SendRequest | null;
+};
+function DraftEditor({
+  draft,
+  orderId,
+  scope,
+  sendOrAsk,
+}: {
+  draft: Draft;
+  orderId: string;
+  scope: RequestScope;
+  /** Whether this person's hold sends or asks a manager; null = not readable. */
+  sendOrAsk: SendOrAsk | null;
+}) {
   const router = useRouter();
-  const { orderId, feedItemId } = useLocalSearchParams<{
-    orderId: string;
-    feedItemId?: string;
-  }>();
-
-  const feed = queryClient.getQueryData<FeedResponse>([...feedKey]);
-  const item = feed?.items.find(
-    (i) => i.id === feedItemId || (i.kind === "draft_approval" && i.orderId === orderId),
+  const [content, setContent] = useState(draft.content ?? "");
+  const [asked, setAsked] = useState<string | null>(null);
+  const sent = useCallback(() => router.back(), [router]);
+  const onAsked = useCallback((says: string) => setAsked(says), []);
+  const act = holdAct(sendOrAsk);
+  const request = draft.send_request ?? null;
+  // The seal binds copies: a manager releasing a staff member's request holds
+  // over the copies they chose.
+  const cc = request?.current ? request.ccEmails : [];
+  const lines = standingLines(sendOrAsk, request, { failed: sendOrAsk === null });
+  return (
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      style={{ flex: 1, backgroundColor: color.surfaceSecondary }}
+    >
+      <ScrollView
+        contentContainerStyle={{ padding: space.lg, gap: space.md }}
+        keyboardShouldPersistTaps="handled"
+      >
+        <AppText variant="bodyMedium">
+          {draft.provider_name ?? "Vendor"}
+        </AppText>
+        <AppText variant="caption" tone="tertiary">
+          To: {draft.provider_email ?? "No address on file"}
+        </AppText>
+        <TextInput
+          multiline
+          value={content}
+          onChangeText={setContent}
+          accessibilityLabel="Draft reply"
+          style={{
+            minHeight: 240,
+            padding: space.lg,
+            borderRadius: radius.card,
+            backgroundColor: color.surface,
+            fontSize: 15,
+            lineHeight: 22,
+            fontFamily: font.sans,
+            color: color.ink,
+            textAlignVertical: "top",
+          }}
+        />
+        <AppText variant="caption" tone="tertiary">
+          {act === "ask"
+            ? "Review the letter, then hold to ask a manager to send it. Nothing leaves the house from your hold."
+            : "Review the letter and recipient, then hold to send. This action needs a connection and is never queued offline."}
+        </AppText>
+        {lines.map((line) => (
+          <AppText key={line} variant="caption" tone="secondary">
+            {line}
+          </AppText>
+        ))}
+        {!draft.provider_email || !content.trim() ? (
+          <AppText variant="caption" tone="danger">
+            A letter and vendor email are required before this reply can be
+            sent.
+          </AppText>
+        ) : act === "send" ? (
+          <DraftSendSeal
+            orderId={orderId}
+            body={content}
+            recipient={draft.provider_email}
+            ccEmails={cc}
+            scope={scope}
+            onApproved={sent}
+          />
+        ) : act === "ask" ? (
+          asked ? (
+            <AppText variant="caption" tone="secondary">
+              {asked}
+            </AppText>
+          ) : (
+            <DraftAskSeal
+              orderId={orderId}
+              body={content}
+              scope={scope}
+              onAsked={onAsked}
+            />
+          )
+        ) : (
+          <AppText variant="caption" tone="danger">
+            Nothing can be held until it is known whether your hold sends or
+            asks a manager.
+          </AppText>
+        )}
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
+}
 
-  const [content, setContent] = useState(item?.draftContent ?? "");
-  const [edited, setEdited] = useState(false);
-  const [holdingId, setHoldingId] = useState<string | null>(null);
-  const graceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const graceX = useSharedValue(1);
-
-  useEffect(
-    () => () => {
-      if (graceTimer.current) clearTimeout(graceTimer.current);
-    },
-    [],
-  );
-
-  const send = () => {
-    if (!orderId || holdingId) return;
-    const entryId = useOutbox.getState().enqueue({
-      path: `/procurement/orders/${orderId}/approve-draft`,
-      body: edited && content.trim() ? { modifiedContent: content.trim() } : {},
-      label: item?.providerName ? `Reply sent to ${item.providerName}` : "Vendor reply sent",
-      graceMs: GRACE_MS,
-      invalidate: [[...feedKey], [...pulseKey], ["orders", "pending"]],
-      feedItemId: item?.id,
-    });
-    if (item) useFeedLocal.getState().hide(item.id, entryId);
-    setHoldingId(entryId);
-    haptic.tick();
-    graceX.value = 1;
-    graceX.value = withTiming(0, { duration: GRACE_MS, easing: Easing.linear });
-    graceTimer.current = setTimeout(() => {
-      haptic.commit();
-      useFeedLocal.getState().markCleared();
-      router.back();
-    }, GRACE_MS);
+export default function DraftReviewScreen() {
+  const { orderId } = useLocalSearchParams<{ orderId: string }>();
+  const session = useSession();
+  const scope = {
+    userId: session.user?.id ?? "",
+    restaurantId: session.user?.restaurantId ?? "",
   };
-
-  const undo = () => {
-    if (!holdingId) return;
-    if (graceTimer.current) clearTimeout(graceTimer.current);
-    if (useOutbox.getState().undo(holdingId)) {
-      if (item) useFeedLocal.getState().unhide(item.id);
-      setHoldingId(null);
-      graceX.value = withTiming(1, { duration: 180 });
-      haptic.tick();
-    }
-  };
-
-  const graceLineStyle = useAnimatedStyle(() => ({
-    transform: [{ scaleX: graceX.value }],
-  }));
-
+  const draft = useQuery({
+    queryKey: ["draft", orderId, scope.restaurantId, scope.userId],
+    queryFn: () =>
+      api<{ draft: Draft | null; sendOrAsk?: SendOrAsk }>(`/procurement/orders/${orderId}/draft`, {
+        scope,
+      }),
+    enabled: !!orderId && !!scope.restaurantId && session.status === "signedIn",
+  });
   return (
     <>
       <Stack.Screen
         options={{
           presentation: "modal",
           headerShown: true,
-          title: item?.providerName ? `Reply to ${item.providerName}` : "Vendor reply",
-          headerStyle: { backgroundColor: color.surface },
-          headerTitleStyle: { fontFamily: font.sansSemiBold, fontSize: 17, color: color.ink },
-          headerLeft: () => (
-            <PressableScale onPress={() => router.back()} accessibilityLabel="Close">
-              <Ionicons name="close" size={24} color={color.inkSecondary} />
-            </PressableScale>
-          ),
+          title: "Review vendor reply",
         }}
       />
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-        style={{ flex: 1, backgroundColor: color.surfaceSecondary }}
-      >
-        <ScrollView
-          contentContainerStyle={{ padding: space.lg, gap: space.md }}
-          keyboardShouldPersistTaps="handled"
-        >
-          {item?.meta?.orderNumber ? (
-            <AppText variant="caption" tone="tertiary">
-              {String(item.meta.orderNumber)}
-            </AppText>
-          ) : null}
-
-          <View
-            style={{
-              backgroundColor: color.surface,
-              borderRadius: radius.card,
-              borderWidth: 1,
-              borderColor: color.hairline,
-              overflow: "hidden",
-            }}
-          >
-            <TextInput
-              multiline
-              value={content}
-              onChangeText={(t) => {
-                setContent(t);
-                setEdited(true);
-              }}
-              editable={!holdingId}
-              style={{
-                minHeight: 220,
-                padding: space.lg,
-                fontSize: 15,
-                lineHeight: 22,
-                fontFamily: font.sans,
-                color: color.ink,
-                textAlignVertical: "top",
-              }}
-              placeholder="The AI draft appears here. Edit freely before sending."
-              placeholderTextColor={color.inkQuaternary}
-            />
-            {holdingId ? (
-              <Animated.View
-                style={[
-                  { height: 2, backgroundColor: color.wine, transformOrigin: "left" },
-                  graceLineStyle,
-                ]}
-              />
-            ) : null}
-          </View>
-
-          <AppText variant="caption" tone="tertiary">
-            {edited
-              ? "Sends your edited version and files it in the vendor thread."
-              : "Sends exactly as drafted and files it in the vendor thread."}
+      {draft.data?.draft ? (
+        <DraftEditor
+          key={`${scope.restaurantId}:${scope.userId}:${draft.data.draft.id}`}
+          draft={draft.data.draft}
+          orderId={orderId}
+          scope={scope}
+          sendOrAsk={draft.data.sendOrAsk ?? null}
+        />
+      ) : (
+        <View style={{ padding: space.lg, gap: space.md }}>
+          <AppText>
+            {draft.isError
+              ? "The draft could not be read. Nothing was sent."
+              : draft.isPending
+                ? "Reading the draft…"
+                : "No draft is waiting on this order."}
           </AppText>
-        </ScrollView>
-
-        <View
-          style={{
-            padding: space.lg,
-            paddingBottom: space.xxl,
-            backgroundColor: color.surface,
-            borderTopWidth: 1,
-            borderTopColor: color.hairline,
-          }}
-        >
-          {!holdingId ? (
-            <PressableScale
-              onPress={send}
-              disabled={!content.trim()}
-              style={{
-                backgroundColor: color.wine,
-                borderRadius: radius.control,
-                paddingVertical: 15,
-                alignItems: "center",
-                opacity: content.trim() ? 1 : 0.5,
-              }}
-            >
-              <AppText variant="bodyMedium" tone="onWine">
-                {edited ? "Send edited reply" : "Send reply"}
-              </AppText>
+          {draft.isError ? (
+            <PressableScale onPress={() => void draft.refetch()}>
+              <AppText tone="wine">Try again</AppText>
             </PressableScale>
-          ) : (
-            <PressableScale
-              onPress={undo}
-              style={{
-                backgroundColor: color.wineTint,
-                borderWidth: 1,
-                borderColor: color.wineTintStrong,
-                borderRadius: radius.control,
-                paddingVertical: 15,
-                alignItems: "center",
-              }}
-            >
-              <AppText variant="bodyMedium" tone="wine">
-                Undo — sending…
-              </AppText>
-            </PressableScale>
-          )}
+          ) : null}
         </View>
-      </KeyboardAvoidingView>
+      )}
     </>
   );
 }

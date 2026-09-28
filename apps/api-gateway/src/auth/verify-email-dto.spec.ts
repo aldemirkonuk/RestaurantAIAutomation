@@ -30,7 +30,9 @@ function bodyMetatype(): any {
     AuthController.prototype,
     "verifyEmail",
   );
-  return types?.[0];
+  // The body is the SECOND parameter since ADR 0229 fork 12 (item 81): the
+  // first is the request, whose session the link now needs.
+  return types?.[1];
 }
 
 const validateBody = (value: unknown) =>
@@ -86,12 +88,25 @@ describe("POST /auth/verify-email — body validation", () => {
     const controller = new AuthController(authService as any);
     const body: any = await validateBody({ token: VALID });
 
-    await expect(controller.verifyEmail(body)).resolves.toEqual({
+    await expect(
+      controller.verifyEmail(
+        { user: { userId: "u1", restaurantId: "h1" } } as any,
+        body,
+      ),
+    ).resolves.toEqual({
       success: true,
       accessToken: "a",
       refreshToken: "r",
       message: "Email verified",
     });
-    expect(authService.verifyEmail).toHaveBeenCalledWith(VALID);
+    // The session's user and house go with the token (ADR 0229 fork 12).
+    expect(authService.verifyEmail).toHaveBeenCalledWith(VALID, "u1", "h1");
+  });
+
+  it("is a signed-in route that unverified and houseless sessions reach (ADR 0229 fork 12, item 81)", () => {
+    const h = AuthController.prototype.verifyEmail;
+    expect(Reflect.getMetadata("isPublic", h)).toBeUndefined();
+    const guards = Reflect.getMetadata("__guards__", h) ?? [];
+    expect(guards.map((g: any) => g.name)).toContain("JwtAuthGuard");
   });
 });

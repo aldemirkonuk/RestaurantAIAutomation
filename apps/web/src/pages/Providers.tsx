@@ -72,7 +72,7 @@ function TypeBadge({ type }: { type: string | undefined }) {
     t === 'distributor' ? { dot: 'bg-blue-500',    bg: 'bg-blue-50',    text: 'text-blue-700',    label: 'Distributor' } :
     t === 'importer'    ? { dot: 'bg-violet-500',  bg: 'bg-violet-50',  text: 'text-violet-700',  label: 'Importer'    } :
     t === 'wholesaler'  ? { dot: 'bg-emerald-500', bg: 'bg-emerald-50', text: 'text-emerald-700', label: 'Wholesaler'  } :
-                          { dot: 'bg-gray-400',    bg: 'bg-gray-50',    text: 'text-gray-600',    label: type ?? '—'   }
+                          { dot: 'bg-gray-400',    bg: 'bg-gray-50',    text: 'text-gray-600',    label: type || 'Not stated' }
   return (
     <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold ${cfg.bg} ${cfg.text}`}>
       <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${cfg.dot}`} />
@@ -335,7 +335,17 @@ export function Providers() {
         contactLastName: data.contactLastName,
         website: data.website,
         physicalAddress: data.address,
-        primaryBusinessType: data.primaryBusinessType as any,
+        // Sent only when the person changed it (founder, 2026-09-21: "nothing
+        // assumed, settable later"). '' is the edit sheet's "Not stated" and
+        // is sent AS '' — the gateway folds it to NULL — so choosing "Not
+        // stated" clears a type set earlier instead of being a choice the
+        // page shows and never writes (ADR 0083). Unchanged is not sent, so
+        // an edit to any other field never touches the type.
+        primaryBusinessType:
+          data.primaryBusinessType !==
+          (editingProvider?.primaryBusinessType || (editingProvider as any)?.type || '')
+            ? data.primaryBusinessType
+            : undefined,
         winePortfolio: data.specialties.join(', '),
         // NOT `statesOrRegionsServed: data.deliveryDays` — see handleAddProvider.
         // Weekdays are a vendor term, not a territory.
@@ -493,7 +503,9 @@ export function Providers() {
     try {
       const result = await createProvider.mutateAsync({
         name: providerData.name,
-        primaryBusinessType: (providerData.primaryBusinessType as 'Distributor' | 'Importer' | 'Wholesaler') || 'Distributor',
+        // '' is AddProviderModal's "Not stated" tile — nobody said, so send
+        // nothing rather than assume 'Distributor' (founder, 2026-09-21).
+        primaryBusinessType: providerData.primaryBusinessType || undefined,
         phone: providerData.phone, email: providerData.email,
         physicalAddress: providerData.address, restaurantId,
         contactFirstName: providerData.contactFirstName, 

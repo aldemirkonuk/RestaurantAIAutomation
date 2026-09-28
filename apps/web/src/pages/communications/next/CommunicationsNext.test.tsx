@@ -42,6 +42,15 @@ vi.mock('./Compose/HouseDrafts', async (importOriginal) => ({
 vi.mock('./TemplateSheet', () => ({
   TemplateSheet: () => <div data-testid="letter-library" />,
 }));
+// The letters staff asked a manager to send (founder answer 3) are proved in
+// LetterRequests.test.tsx; here the panel is stubbed and its standing is fixed.
+vi.mock('./LetterRequestsPanel', () => ({
+  LetterRequestsPanel: () => <div data-testid="letter-requests-stub" />,
+}));
+vi.mock('./Compose/useComposeData', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./Compose/useComposeData')>()),
+  useLetterSenderStanding: () => ({ restaurantId: 'r1', canRelease: true }),
+}));
 
 // ADR 0160 §113 Open item 3: senders and strangers live on this page now. The
 // section is proved in `WhoIsWriting.test.tsx`; here it is a stub so this file
@@ -77,6 +86,7 @@ function item(over: Partial<ProcurementHistoryItem>): ProcurementHistoryItem {
     draftContent: 'Dear Bodega, could you hold 6 at $18.40?',
     constraintFlags: null,
     rollingSummary: null,
+    relayRefusalReason: null,
     orderNumber: 'PO-014',
     quantity: 6,
     wineName: 'Albariño 2022',
@@ -94,6 +104,11 @@ const noFailures = {
 const base = {
   rows: [] as ProcurementHistoryItem[],
   glance: { threads: 4, draftsPending: 1, sentLast30: 9 },
+  // The drafts THEMSELVES, added 2026-09-06 with the drafted-reply panel: the
+  // strip's figure and this list come from one read, so a mock that carries the
+  // count and not the rows is a mock of a state the hook cannot produce.
+  drafts: [] as unknown[],
+  draftsKnown: true,
   hasData: true,
   isError: false,
   errorMessage: '',
@@ -133,6 +148,26 @@ describe('CommunicationsNext', () => {
     render(<CommunicationsNext />);
     expect(screen.getByText('AI draft · not sent')).toBeInTheDocument();
     expect(screen.queryByText(/^Sent$/)).not.toBeInTheDocument();
+  });
+
+  // ADR 0099, founder 2026-09-21: a 400/403/422 relay refusal CLOSES the
+  // draft ("Close, no retry") and the manager sees why on the draft. The chip
+  // says it did not leave; the gateway's sentence is on the chip as a tooltip
+  // AND printed in the opened row, since a tooltip never shows on touch.
+  it('a relay refusal says Not sent and shows the gateway\'s sentence', () => {
+    const said =
+      "gateway refused the send: HTTP 403 — Conversation c1 is not one of this house's conversations. Nothing was sent.";
+    mockData.current = {
+      ...base,
+      rows: [item({ status: 'RELAY_REFUSED', relayRefusalReason: said })],
+    };
+    render(<CommunicationsNext />);
+    const chip = screen.getByText('Not sent');
+    expect(chip).toHaveAttribute('title', said);
+    expect(screen.queryByText(/^Sent$/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/the relay refused it/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText('Bodega Álvaro'));
+    expect(screen.getByText(/Not sent — the relay refused it: gateway refused the send: HTTP 403/)).toBeInTheDocument();
   });
 
   it('APPROVED is approval, never dispatch (the audit blocker case)', () => {

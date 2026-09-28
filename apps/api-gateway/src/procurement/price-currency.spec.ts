@@ -39,6 +39,7 @@ import {
   agreementCurrencyDefault,
   agreementCurrencyToRecord,
 } from "./agreement-currency";
+import { A_MANAGER, A_SEAL, GATES_AFTER_LEDGER } from "./testing/passing-vendor-gates";
 
 type Row = Record<string, any>;
 
@@ -359,7 +360,7 @@ describe("price_history records the currency, or records that it has none", () =
   it("writes the invoice's own code when the desk stated one", async () => {
     const { db, calls } = makeDb({ orderRow: turkishHouseOrder });
 
-    await new ProcurementService(db, events, ledger).verifyReceipt(
+    await new ProcurementService(db, events, ledger, ...GATES_AFTER_LEDGER).verifyReceipt(
       REST,
       ORDER,
       USER,
@@ -394,7 +395,7 @@ describe("price_history records the currency, or records that it has none", () =
     const { db, calls } = makeDb({ orderRow: turkishHouseOrder });
 
     await expect(
-      new ProcurementService(db, events, ledger).verifyReceipt(
+      new ProcurementService(db, events, ledger, ...GATES_AFTER_LEDGER).verifyReceipt(
         REST,
         ORDER,
         USER,
@@ -418,10 +419,10 @@ describe("price_history records the currency, or records that it has none", () =
       orderLineRow: statedLine,
     });
 
-    await new ProcurementService(db, events, ledger).confirmDeal(REST, ORDER, {
+    await new ProcurementService(db, events, ledger, ...GATES_AFTER_LEDGER).confirmDeal(REST, ORDER, A_MANAGER, {
       finalPrice: 36,
       sendConfirmation: false,
-    });
+    }, A_SEAL);
 
     // The unit IS stated on this line, so the series row is written — which is
     // what makes this a test of the currency rule and not of ADR 0119's.
@@ -436,7 +437,7 @@ describe("price_history records the currency, or records that it has none", () =
   it("names the currency key explicitly even when the value is null", async () => {
     const { db, calls } = makeDb({ orderRow: turkishHouseOrder });
 
-    await new ProcurementService(db, events, ledger).verifyReceipt(
+    await new ProcurementService(db, events, ledger, ...GATES_AFTER_LEDGER).verifyReceipt(
       REST,
       ORDER,
       USER,
@@ -467,10 +468,10 @@ describe("the agreement's own currency reaches both registers", () => {
       orderLineRow: statedLineInLira,
     });
 
-    await new ProcurementService(db, events, ledger).confirmDeal(REST, ORDER, {
+    await new ProcurementService(db, events, ledger, ...GATES_AFTER_LEDGER).confirmDeal(REST, ORDER, A_MANAGER, {
       finalPrice: 36,
       sendConfirmation: false,
-    });
+    }, A_SEAL);
 
     expect(calls.priceHistoryInserts).toHaveLength(1);
     expect(calls.priceHistoryInserts[0].currency).toBe("TRY");
@@ -494,10 +495,10 @@ describe("the agreement's own currency reaches both registers", () => {
       orderLineRow: statedLine,
     });
 
-    await new ProcurementService(db, events, ledger).confirmDeal(REST, ORDER, {
+    await new ProcurementService(db, events, ledger, ...GATES_AFTER_LEDGER).confirmDeal(REST, ORDER, A_MANAGER, {
       finalPrice: 36,
       sendConfirmation: false,
-    });
+    }, A_SEAL);
 
     expect(calls.priceHistoryInserts[0].currency).toBeNull();
     expect(calls.sightingInserts).toHaveLength(0);
@@ -511,10 +512,10 @@ describe("the agreement's own currency reaches both registers", () => {
       orderLineRow: { ...statedLine, currency: null },
     });
 
-    await new ProcurementService(db, events, ledger).confirmDeal(REST, ORDER, {
+    await new ProcurementService(db, events, ledger, ...GATES_AFTER_LEDGER).confirmDeal(REST, ORDER, A_MANAGER, {
       finalPrice: 36,
       sendConfirmation: false,
-    });
+    }, A_SEAL);
 
     expect(calls.priceHistoryInserts[0].currency).not.toBe("USD");
     expect(calls.priceHistoryInserts[0].currency).toBeNull();

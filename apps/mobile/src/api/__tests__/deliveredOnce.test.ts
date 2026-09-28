@@ -47,7 +47,7 @@ import {
 } from "../delivered-once";
 
 const SUMMARY =
-  "Delivered on 2026-09-04 at 14:05 UTC by Ada Lovelace, 12 bottles booked in.";
+  "Delivered on 2026-09-04 at 14:05 UTC by Ada Lovelace, 12 bottles on the shelf.";
 const MESSAGE = "An order is delivered once. Nothing was changed.";
 
 const EARLIER = {
@@ -55,10 +55,20 @@ const EARLIER = {
   receivedBy: "user-7",
   receivedByName: "Ada Lovelace",
   receivedByNameReason: null,
-  quantityReceived: 12,
-  unitType: "bottle",
-  quantityUnitWhy:
-    "Stated in bottle: the order's own unit does not multiply.",
+  // ADR 0192: what the earlier delivery received is the ledger's count.
+  received: {
+    readable: true,
+    why: null,
+    quantityInStockUom: 12,
+    stockUom: "bottle",
+    packUnit: null,
+    packSize: null,
+    packs: null,
+    looseInStockUom: null,
+    words: "12 bottles",
+    rejectedAtDoorBottles: 0,
+    countedNotBookedBottles: 0,
+  },
   bottlesTotal: 12,
   summary: SUMMARY,
 };

@@ -7,6 +7,7 @@ import {
   Logger,
   NotFoundException,
   ServiceUnavailableException,
+  UnprocessableEntityException,
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { EventsService } from "../events/events.service";
@@ -31,6 +32,33 @@ import { RetroactiveOrderDto } from "./dto/retroactive-order.dto";
 import { ProcurementService } from "../procurement/procurement.service";
 import { resolveOrderUnits } from "../procurement/order-units";
 import { isIso4217 } from "../common/iso-4217";
+import {
+  readVendorMenuSupply,
+  TooManyRowsError,
+  type VendorMenuSupply,
+} from "./vendor-menu-supply";
+import {
+  readCatalogueWineListers,
+  readOwnWineSellers,
+  type CatalogueWineSearch,
+  type OwnWineSearch,
+  type WineQuery,
+} from "./vendor-wine-search";
+
+/**
+ * A blank string and "not stated" are the same fact. The edit sheet's "Not
+ * stated" choice sends '' to clear a type set earlier (Providers.tsx
+ * handleEditProvider), and an older caller may send '' on create — this makes
+ * the column agree rather than storing a distinguishable-but-meaningless empty
+ * string next to NULL, which would render as "Not stated" in one place and a
+ * blank label in another for the identical fact.
+ */
+function normalizeBusinessType(
+  value: string | null | undefined,
+): string | null | undefined {
+  if (value === "") return null;
+  return value;
+}
 
 function normalizeToE164(phone: string | null | undefined): string | null {
   if (!phone) return null;
@@ -77,7 +105,12 @@ interface ProviderRow {
   is_active: boolean | null;
   deleted_at: string | null;
   payment_terms: string | null;
-  vendor_type: string | null;
+  // `vendor_type` was declared here for years against a column that has never
+  // existed in any migration (confirmed 2026-09-21 against baseline:4854-4901
+  // and every migration since — `match_restaurant_providers.sql:87-89` already
+  // recorded the same finding). `primary_business_type` (20261116100200) is
+  // the real column; kept nullable, no default, never assumed.
+  primary_business_type: string | null;
   known_personnel: string[] | null;
 }
 
@@ -195,6 +228,11 @@ export class ProvidersService {
         catalogue_vendor_id: dto.catalogue_vendor_id,
         is_custom: false,
         restaurant_id: restaurantId ?? null,
+        // The catalogue vendor already states its own type (used above for
+        // `catalogueNotes`) — that is a real fact, not an absence, so it is
+        // carried onto the provider row rather than left "Not stated" beside a
+        // value this house was just shown.
+        primary_business_type: normalizeBusinessType(vendor.type) ?? null,
       };
     } else {
       // Mode B: custom provider — requires name
@@ -230,6 +268,12 @@ export class ProvidersService {
         catalogue_vendor_id: null,
         is_custom: true,
         restaurant_id: restaurantId ?? null,
+        // Nothing assumed. A vendor added without a business type gets NULL
+        // here, and the sheet's "Not stated" choice is what sends nothing —
+        // never a guessed 'Distributor' (founder, 2026-09-21). `type` is the
+        // deprecated alias, honored for older callers.
+        primary_business_type:
+          normalizeBusinessType(dto.primaryBusinessType ?? dto.type) ?? null,
       };
     }
 
@@ -456,7 +500,15 @@ export class ProvidersService {
       tier: dto.tier ?? undefined,
       is_active: dto.isActive ?? undefined,
       payment_terms: dto.paymentTerms ?? undefined,
-      vendor_type: (dto as any).primaryBusinessType ?? undefined,
+      // `primaryBusinessType` is a real field on UpdateProviderDto now (it was
+      // not — the global ValidationPipe, `whitelist` + `forbidNonWhitelisted`
+      // (main.ts:52-56), refused an update carrying it with a 400 before this
+      // ever ran, so setting a vendor's type later was a write no page could
+      // make). `type` is the deprecated alias. '' ("Not stated", chosen on the
+      // edit sheet) clears it to NULL; undefined leaves it alone.
+      primary_business_type: normalizeBusinessType(
+        dto.primaryBusinessType ?? dto.type ?? undefined,
+      ),
       known_personnel: (dto as any).knownPersonnel ?? undefined,
     };
     // Remove undefined keys so Supabase doesn't null-out untouched columns
@@ -1214,25 +1266,50 @@ export class ProvidersService {
     }
 
     return (data || []).map((row: any) => ({
-      id: row.id,
-      name: row.name,
-      type: row.type,
-      address: row.address,
-      isPrimary: row.is_primary,
-      // Numeric columns arrive as strings over PostgREST; Number() here keeps
-      // the API contract numeric so callers do not compare "40.7" to 40.7.
-      latitude:
-        row.latitude === null || row.latitude === undefined
-          ? null
-          : Number(row.latitude),
-      longitude:
-        row.longitude === null || row.longitude === undefined
-          ? null
-          : Number(row.longitude),
-      geocodedAt: row.geocoded_at ?? null,
-      geocodeSource: row.geocode_source ?? null,
+      ...this.mapLocationRow(row),
       createdAt: row.created_at,
     }));
+  }
+
+  /**
+   * Move the primary mark to one branch of this vendor in this house, in ONE
+   * transaction (`provider_location_make_primary`, migration
+   * a_vendor_has_one_primary_branch). It takes a per-vendor-per-house advisory
+   * lock, demotes the others and marks this one, so two concurrent promotions
+   * cannot both land and leave two primaries; a partial unique index on
+   * `(provider_id, restaurant_id) WHERE is_primary` refuses two primaries
+   * whatever the writer. [Audit of #484 at d44056b42, R4: this used to be two
+   * PostgREST calls — demote, then set — each its own transaction.]
+   *
+   * A 404 when the branch is not this vendor's in this house (it was removed
+   * in the meantime): the function answers false and writes nothing.
+   */
+  private async makeLocationPrimary(
+    providerId: string,
+    restaurantId: string,
+    locationId: string,
+  ): Promise<void> {
+    const { data, error } = await this.databaseService.supabase.rpc(
+      "provider_location_make_primary",
+      {
+        p_restaurant_id: restaurantId,
+        p_provider_id: providerId,
+        p_location_id: locationId,
+      },
+    );
+    if (error) {
+      this.logger.error("Failed to move the primary branch mark", {
+        providerId,
+        locationId,
+        error: error.message,
+      });
+      throw error;
+    }
+    if (data !== true) {
+      throw new NotFoundException(
+        `No location with id ${locationId} belongs to this vendor.`,
+      );
+    }
   }
 
   async createProviderLocation(
@@ -1243,14 +1320,9 @@ export class ProvidersService {
     // The row is stamped with the caller's house either way, but without this
     // a house could hang a location off ANOTHER house's provider id.
     await this.getProvider(providerId, restaurantId);
-    if (dto.isPrimary) {
-      await this.databaseService.supabase
-        .from("provider_locations")
-        .update({ is_primary: false })
-        .eq("provider_id", providerId)
-        .eq("restaurant_id", restaurantId);
-    }
 
+    // Inserted as NOT primary, always: the mark only ever moves through
+    // `makeLocationPrimary`, the one transaction that demotes the others.
     const { data, error } = await this.databaseService.supabase
       .from("provider_locations")
       .insert({
@@ -1259,7 +1331,7 @@ export class ProvidersService {
         name: dto.name,
         type: dto.type || "office",
         address: dto.address || null,
-        is_primary: dto.isPrimary ?? false,
+        is_primary: false,
         // Only stamp geocode metadata when a real pair arrived. The DB CHECK
         // rejects half a coordinate, so sending one alone fails loudly rather
         // than storing an unplottable row.
@@ -1284,23 +1356,32 @@ export class ProvidersService {
     }
 
     const row = data as any;
-    return {
-      id: row.id,
-      name: row.name,
-      type: row.type,
-      address: row.address,
-      isPrimary: row.is_primary,
-      latitude:
-        row.latitude === null || row.latitude === undefined
-          ? null
-          : Number(row.latitude),
-      longitude:
-        row.longitude === null || row.longitude === undefined
-          ? null
-          : Number(row.longitude),
-      geocodedAt: row.geocoded_at ?? null,
-      geocodeSource: row.geocode_source ?? null,
-    };
+    if (!dto.isPrimary) return this.mapLocationRow(row);
+
+    try {
+      await this.makeLocationPrimary(providerId, restaurantId, row.id);
+    } catch (moveError) {
+      // The mark did not move (one transaction), so the old primary stands.
+      // Take the new branch back out, so the person's "add it as primary"
+      // either happened whole or not at all.
+      const { error: undoError } = await this.databaseService.supabase
+        .from("provider_locations")
+        .delete()
+        .eq("id", row.id)
+        .eq("provider_id", providerId)
+        .eq("restaurant_id", restaurantId);
+      if (undoError) {
+        this.logger.error(
+          "A branch added as primary could not be made primary, and could not be taken back out",
+          { providerId, locationId: row.id, error: undoError.message },
+        );
+        throw new ServiceUnavailableException(
+          `The branch "${row.name}" was added but could not be made primary, and could not be taken back out; the previous primary branch is unchanged.`,
+        );
+      }
+      throw moveError;
+    }
+    return { ...this.mapLocationRow(row), isPrimary: true };
   }
 
   async updateProviderLocation(
@@ -1310,35 +1391,89 @@ export class ProvidersService {
     dto: UpdateProviderLocationDto,
   ) {
     await this.getProvider(providerId, restaurantId);
-    if (dto.isPrimary) {
-      await this.databaseService.supabase
-        .from("provider_locations")
-        .update({ is_primary: false })
-        .eq("provider_id", providerId)
-        .eq("restaurant_id", restaurantId);
-    }
 
-    const { data, error } = await this.databaseService.supabase
+    // The branch must be this vendor's, in this house, BEFORE anything is
+    // written. The old order demoted every other primary first and only then
+    // found the id was wrong, so a PATCH with a stale id answered 404 and had
+    // still taken the primary mark off the vendor's real branch.
+    const { data: found, error: findError } = await this.databaseService.supabase
       .from("provider_locations")
-      .update({
-        ...(dto.name !== undefined && { name: dto.name }),
-        ...(dto.type !== undefined && { type: dto.type }),
-        ...(dto.address !== undefined && { address: dto.address }),
-        ...(dto.isPrimary !== undefined && { is_primary: dto.isPrimary }),
-        ...(dto.latitude !== undefined && dto.longitude !== undefined
-          ? {
-              latitude: dto.latitude,
-              longitude: dto.longitude,
-              geocoded_at: new Date().toISOString(),
-              geocode_source: "google_places",
-            }
-          : {}),
-      })
+      .select("id, address")
       .eq("id", locationId)
       .eq("provider_id", providerId)
       .eq("restaurant_id", restaurantId)
-      .select("*")
       .maybeSingle();
+    if (findError) {
+      this.logger.error("Failed to read provider location", {
+        locationId,
+        error: findError.message,
+      });
+      throw findError;
+    }
+    if (!found) {
+      throw new NotFoundException(
+        `No location with id ${locationId} belongs to this vendor.`,
+      );
+    }
+
+    // Marking primary is its own transaction (see `makeLocationPrimary`), run
+    // first so that a refused move writes nothing at all.
+    if (dto.isPrimary === true) {
+      await this.makeLocationPrimary(providerId, restaurantId, locationId);
+    }
+
+    const hasPair = dto.latitude !== undefined && dto.longitude !== undefined;
+    const newAddress = dto.address !== undefined ? dto.address || null : undefined;
+    const addressMoved =
+      newAddress !== undefined &&
+      newAddress !== ((found as { address?: string | null }).address ?? null);
+    const patch: Record<string, unknown> = {
+      ...(dto.name !== undefined && { name: dto.name }),
+      ...(dto.type !== undefined && { type: dto.type }),
+      ...(newAddress !== undefined && { address: newAddress }),
+      // Only an explicit UNmark is written here; a mark went through the
+      // transaction above.
+      ...(dto.isPrimary === false && { is_primary: false }),
+      ...(hasPair
+        ? {
+            latitude: dto.latitude,
+            longitude: dto.longitude,
+            geocoded_at: new Date().toISOString(),
+            geocode_source: "google_places",
+          }
+        : addressMoved
+          ? // A different address with no point of its own. The old point
+            // was resolved for the OLD address; keeping it would pin this
+            // branch where it no longer is and still say Google placed it
+            // there. The same address sent again (the legacy sheet resends
+            // every field) keeps its point.
+            {
+              latitude: null,
+              longitude: null,
+              geocoded_at: null,
+              geocode_source: null,
+            }
+          : {}),
+    };
+    // A PATCH that only marked the branch primary has nothing left to write;
+    // it reads the row back instead of sending an empty update.
+    const { data, error } =
+      Object.keys(patch).length > 0
+        ? await this.databaseService.supabase
+            .from("provider_locations")
+            .update(patch)
+            .eq("id", locationId)
+            .eq("provider_id", providerId)
+            .eq("restaurant_id", restaurantId)
+            .select("*")
+            .maybeSingle()
+        : await this.databaseService.supabase
+            .from("provider_locations")
+            .select("*")
+            .eq("id", locationId)
+            .eq("provider_id", providerId)
+            .eq("restaurant_id", restaurantId)
+            .maybeSingle();
 
     if (error) {
       this.logger.error("Failed to update provider location", {
@@ -1353,13 +1488,67 @@ export class ProvidersService {
       );
     }
 
-    const row = data as any;
+    return this.mapLocationRow(data as any);
+  }
+
+  /**
+   * Remove one branch. Answers which branch, if any, took the primary mark.
+   *
+   * A delete that matched nothing is a 404, not a success: the old code
+   * answered `{ success: true }` for an id that was never this vendor's,
+   * which is absence reported as a done job.
+   *
+   * Removing the primary hands the mark to the oldest remaining branch — the
+   * rule the legacy sheet applied in its own state before syncing
+   * (`EditProviderModal.tsx`, `removeLocation`), moved here so there is one
+   * place that decides it (founder item 57). Delete and hand-off are ONE
+   * transaction (`provider_location_remove`, under the same lock as
+   * `makeLocationPrimary`): a hand-off that fails rolls the delete back, so a
+   * vendor is never left with branches and no primary, and a concurrent
+   * create-as-primary cannot land between the read and the promote.
+   * [Audit of #484 at d44056b42, R4: these were three PostgREST calls, and a
+   * failed promote was reported as `promotionFailed` after the fact.]
+   */
+  async deleteProviderLocation(
+    providerId: string,
+    locationId: string,
+    restaurantId: string,
+  ): Promise<{ promotedId: string | null }> {
+    await this.getProvider(providerId, restaurantId);
+    const { data, error } = await this.databaseService.supabase.rpc(
+      "provider_location_remove",
+      {
+        p_restaurant_id: restaurantId,
+        p_provider_id: providerId,
+        p_location_id: locationId,
+      },
+    );
+
+    if (error) {
+      this.logger.error("Failed to delete provider location", {
+        locationId,
+        error: error.message,
+      });
+      throw error;
+    }
+    const out = (data ?? {}) as { removed?: boolean; promotedId?: string | null };
+    if (out.removed !== true) {
+      throw new NotFoundException(
+        `No location with id ${locationId} belongs to this vendor.`,
+      );
+    }
+    return { promotedId: out.promotedId ?? null };
+  }
+
+  private mapLocationRow(row: Record<string, any>) {
     return {
       id: row.id,
       name: row.name,
       type: row.type,
       address: row.address,
       isPrimary: row.is_primary,
+      // Numeric columns arrive as strings over PostgREST; Number() here keeps
+      // the API contract numeric so callers do not compare "40.7" to 40.7.
       latitude:
         row.latitude === null || row.latitude === undefined
           ? null
@@ -1371,28 +1560,6 @@ export class ProvidersService {
       geocodedAt: row.geocoded_at ?? null,
       geocodeSource: row.geocode_source ?? null,
     };
-  }
-
-  async deleteProviderLocation(
-    providerId: string,
-    locationId: string,
-    restaurantId: string,
-  ) {
-    await this.getProvider(providerId, restaurantId);
-    const { error } = await this.databaseService.supabase
-      .from("provider_locations")
-      .delete()
-      .eq("id", locationId)
-      .eq("provider_id", providerId)
-      .eq("restaurant_id", restaurantId);
-
-    if (error) {
-      this.logger.error("Failed to delete provider location", {
-        locationId,
-        error: error.message,
-      });
-      throw error;
-    }
   }
 
   // =========================================================================
@@ -1485,8 +1652,7 @@ export class ProvidersService {
       catalogueVendorId: (row as any).catalogue_vendor_id ?? null,
       isCustom: (row as any).is_custom ?? true,
       paymentTerms: row.payment_terms ?? undefined,
-      primaryBusinessType:
-        row.vendor_type ?? (row as any).primary_business_type ?? undefined,
+      primaryBusinessType: row.primary_business_type ?? undefined,
       knownPersonnel: row.known_personnel ?? undefined,
     };
   }
@@ -1707,5 +1873,92 @@ export class ProvidersService {
     unstated.sort((a, b) => a.name.localeCompare(b.name));
 
     return { stated, total: live.length, unstated };
+  }
+
+  /**
+   * Which of this house's vendors supply a wine on its current menu, from
+   * purchase evidence (founder, 2026-09-26, item 36 — the "Supplies my menu"
+   * rung of /vendors). The rules live in `vendor-menu-supply.ts`. A failed
+   * read is a 503 with the reason, never a menu nobody supplies.
+   */
+  async vendorMenuSupply(restaurantId: string): Promise<VendorMenuSupply> {
+    try {
+      return await readVendorMenuSupply(
+        this.databaseService.supabase,
+        restaurantId,
+      );
+    } catch (error) {
+      const message = (error as { message?: string })?.message ?? "unknown";
+      this.logger.error("Failed to read which vendors supply the menu", {
+        restaurantId,
+        error: message,
+      });
+      throw new ServiceUnavailableException(
+        `${message}. That is a failed read, not a menu no vendor supplies.`,
+      );
+    }
+  }
+
+  /**
+   * The name-only wine search on "All my vendors" (founder, 2026-09-26, round
+   * 7, item 48): this house's vendors with purchase evidence for ANY vintage of
+   * the wine named. Rules in `vendor-wine-search.ts`. A failed read is a 503.
+   */
+  async ownWineSellers(
+    restaurantId: string,
+    query: WineQuery,
+  ): Promise<OwnWineSearch> {
+    try {
+      return await readOwnWineSellers(
+        this.databaseService.supabase,
+        restaurantId,
+        query,
+      );
+    } catch (error) {
+      const message = (error as { message?: string })?.message ?? "unknown";
+      this.logger.error("Failed to search the vendor book by wine", {
+        restaurantId,
+        error: message,
+      });
+      throw new ServiceUnavailableException(
+        `${message}. That is a failed search, not a wine nobody sold you.`,
+      );
+    }
+  }
+
+  /**
+   * The same search on "Find new vendors": curated catalogue vendors a price
+   * sighting (this house's own, or openly posted) ties to any vintage of the
+   * wine. A failed read is a 503.
+   */
+  async catalogueWineListers(
+    restaurantId: string,
+    query: WineQuery,
+    country: string,
+  ): Promise<CatalogueWineSearch> {
+    try {
+      return await readCatalogueWineListers(
+        this.databaseService.supabase,
+        restaurantId,
+        query,
+        country,
+      );
+    } catch (error) {
+      if (error instanceof TooManyRowsError) {
+        // The text let too much of the register through. Not a failed read:
+        // the person can fix it by typing more, so say that.
+        throw new UnprocessableEntityException(
+          `More than ${error.ceiling} price sightings carry that word. Type more of the wine's name (a longer word narrows the search).`,
+        );
+      }
+      const message = (error as { message?: string })?.message ?? "unknown";
+      this.logger.error("Failed to search the vendor catalogue by wine", {
+        restaurantId,
+        error: message,
+      });
+      throw new ServiceUnavailableException(
+        `${message}. That is a failed search, not a wine no vendor lists.`,
+      );
+    }
   }
 }

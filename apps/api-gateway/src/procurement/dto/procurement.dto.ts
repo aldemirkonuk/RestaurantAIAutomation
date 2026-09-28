@@ -305,29 +305,34 @@ export class UpdateOrderDto {
   @IsOptional()
   trackingNumber?: string;
 
+  /**
+   * REFUSED since ADR 0192 (founder, 2026-09-21). Declared, not deleted, so a
+   * client that still sends it is told WHY in a sentence (`updateOrder` answers
+   * 400 naming this ADR) rather than a validator's "property should not exist".
+   * What an order received is what the stock ledger booked for it; a number
+   * typed onto the order with no stock movement behind it is not a receipt.
+   */
   @ApiPropertyOptional({
+    deprecated: true,
     description:
-      "Units received, IN THE ORDER'S OWN unit_type — the same unit `quantity` is stated in, " +
-      "which is the unit this value is stored beside in procurement_orders. The server reads " +
-      "that unit from the order record; a client may not restate it, because a client-asserted " +
-      "unit that disagreed with the order's would be a second way to book a wrong quantity.",
+      "REFUSED (ADR 0192). What an order received is what the stock ledger booked for it, so it " +
+      "cannot be set by hand here. Record a delivery at the receiving door, through " +
+      "POST /procurement/orders/:id/deliver, or by verifying the receipt.",
   })
   @IsInt()
   @IsOptional()
   quantityReceivedInOrderUom?: number;
 
   /**
-   * @deprecated Unitless. Use `quantityReceivedInOrderUom`.
+   * @deprecated Unitless, and REFUSED with its canonical twin (ADR 0192).
    *
-   * DEPRECATED ALIAS. Kept so a deployed client that still holds the old name
-   * keeps working; see `quantity-aliases.ts` for why aliasing rather than a hard
-   * rename, and for the condition under which this may be deleted. Sending both
-   * names with DIFFERENT values is a 400, not a silent choice.
+   * Still declared so the refusal can name it: an old client's payload gets the
+   * same sentence as a new one's.
    */
   @ApiPropertyOptional({
     deprecated: true,
     description:
-      "DEPRECATED ALIAS of quantityReceivedInOrderUom. Named no unit. Sending both with different values is refused.",
+      "DEPRECATED ALIAS of quantityReceivedInOrderUom, and REFUSED with it (ADR 0192).",
   })
   @IsInt()
   @IsOptional()
@@ -832,6 +837,116 @@ export class OrderFilterDto {
   limit?: number;
 }
 
+/**
+ * The ledger's answer to "what did this order receive" — ADR 0192.
+ *
+ * Every field is null exactly when `readable` is false. The quantity carries
+ * its unit in its own name (`quantityInStockUom` beside `stockUom`), the
+ * guard's form 2 (`scripts/check_quantity_units.py`).
+ */
+export class ShelfReceivedDto {
+  @ApiProperty({
+    description: "false = a read failed; every other field is then null and why says which.",
+  })
+  readable!: boolean;
+
+  @ApiProperty({ type: String, nullable: true })
+  why!: string | null;
+
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    example: 65,
+    description:
+      "Sum of the live ledger's quantity_change for this order and its item, in stockUom. Never rounded.",
+  })
+  quantityInStockUom!: number | null;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    example: "bottle",
+    description: "restaurant_inventory.uom for the order's item. bottle for wine.",
+  })
+  stockUom!: string | null;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    example: "case",
+    description: "The order's multiplying unit (case, pack, split_case) when the count is shown in packs.",
+  })
+  packUnit!: string | null;
+
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    example: 12,
+    description: "Bottles in one packUnit, exact. null = the order does not state one, so no pack view.",
+  })
+  packSize!: number | null;
+
+  @ApiProperty({ type: Number, nullable: true, example: 5, description: "Whole packUnits in the count." })
+  packs!: number | null;
+
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    example: 5,
+    description: "What is left after the whole packs, in stockUom.",
+  })
+  looseInStockUom!: number | null;
+
+  @ApiProperty({ type: String, nullable: true, example: "5 cases + 5 bottles" })
+  words!: string | null;
+
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    example: 1,
+    description: "Bottles refused at the door, from procurement_receipt_events.rejected_qty_bottles.",
+  })
+  rejectedAtDoorBottles!: number | null;
+
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    example: 0,
+    description:
+      "Bottles accepted at the door that the ledger does not hold (a movement that failed, or no item to book to). null when the stock unit is not a bottle count.",
+  })
+  countedNotBookedBottles!: number | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      "Bottles refused at verification, from the latest reconciled receipt event (ADR 0192 amendment). null = never verified, or unreadable.",
+  })
+  rejectedAtDeskBottles!: number | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description: "What the verified invoice billed, in bottles. null = no invoice verified, or unreadable.",
+  })
+  invoicedBottles!: number | null;
+
+  @ApiPropertyOptional({ nullable: true, description: "When the latest verification was recorded." })
+  verifiedAt!: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description: "The order's quantity in bottles, exactly; null when its pack size is not known exactly.",
+  })
+  orderedBottles!: number | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      "Ordered bottles the ledger does not hold yet (ordered less shelf, never below zero). null when either is not a bottle count. Replaces the order row's retired backorder column (ADR 0192 amendment).",
+  })
+  backorderBottles!: number | null;
+}
+
 export class OrderResponseDto {
   @ApiProperty()
   id: string;
@@ -922,52 +1037,24 @@ export class OrderResponseDto {
   providerName?: string | null;
 
   /**
-   * `procurement_orders.quantity_received` — what has actually been booked
-   * against this order so far.
+   * What this order RECEIVED — ADR 0192 (founder, 2026-09-21): the bottles the
+   * stock ledger booked onto the shelf for this order's item, in the item's
+   * stock unit, never rounded, with the door's rejections and anything counted
+   * at the door but not on the shelf beside it. See `shelf-received.ts`.
    *
-   * Three states, as everywhere else on this DTO: a number; `null` (the column
-   * was read and is empty — nothing has been received); the key ABSENT (this
-   * route did not read the column). A screen that pre-fills a physical count
-   * MUST tell `null` from absent: the phone used to read
-   * `order.quantityReceived ?? order.quantity` against a key the wire never
-   * sent, so a partially-received order pre-filled the receiver's count from
-   * the ORDERED quantity.
-   *
-   * IT TRAVELS WITH `quantityReceivedUom` AND IS UNSAFE WITHOUT IT. The column
-   * has four writers and they do not agree on its unit — see
-   * `quantity-received-unit.ts`, which carries the measurement.
+   * Three states: the block with `readable: true`; the block with
+   * `readable: false` and `why` (a read failed — never a zero); or the key
+   * ABSENT (this route did not read the ledger). It replaces
+   * `quantityReceived` / `quantityReceivedUom`, which read
+   * `procurement_orders.quantity_received`: a column with four writers in two
+   * units that the app no longer reads or writes.
    */
   @ApiPropertyOptional({
-    type: Number,
-    nullable: true,
-    example: 3,
+    type: () => ShelfReceivedDto,
     description:
-      "Units received against this order so far, in quantityReceivedUom. null = the column was read and is empty. Key ABSENT = this route does not read it. Never use it without its unit.",
+      "What this order received, from the stock ledger (ADR 0192). Key ABSENT = this route did not read the ledger; readable:false = a read failed and why says which.",
   })
-  quantityReceived?: number | null;
-
-  /**
-   * The unit `quantityReceived` is stated in — ADR 0070.
-   *
-   * A unit when the row can state one; `null` when it CANNOT, which is a
-   * refusal and not a default. The column is a single integer written in the
-   * order's own unit by three code paths and in bottles by the receiving door,
-   * and nothing on the row records which wrote it — so on an order placed in
-   * cases the two readings differ by the pack size and neither is knowledge.
-   * On an order whose unit does not multiply (bottle, each, keg, liter, or
-   * absent) both writers produce the same number and the unit is stated.
-   *
-   * The key is ABSENT exactly when `quantityReceived` is absent: they are one
-   * fact and never travel apart.
-   */
-  @ApiPropertyOptional({
-    type: String,
-    nullable: true,
-    example: "bottle",
-    description:
-      "The unit quantityReceived is stated in. null = this row cannot state it (the column has two writers with two units and the row does not say which), so the count must not be used as a pre-fill. Travels with quantityReceived: both stated, both null-able, or both keys absent.",
-  })
-  quantityReceivedUom?: string | null;
+  received?: ShelfReceivedDto;
 
   /**
    * The unit the agreed price is stated in — ADR 0119, read from the LINE.
@@ -1061,6 +1148,26 @@ export class OrderResponseDto {
   })
   freight?: number | null;
 
+  /**
+   * The currency this order was PLACED in — `procurement_orders.currency`,
+   * recorded once when the order was composed (migration
+   * `20260906170000_a_vendor_states_its_usual_currency_and_an_order_carries_one.sql`).
+   *
+   * Three states, as for `providerName`: a code; `null` when the row was read
+   * and names none (an order composed before the column existed, or one whose
+   * desk chose none — never defaulted to the house's); the key ABSENT when the
+   * route did not read the column. Added 2026-09-17 because the bell's approval
+   * panel put a total on a hold with no currency beside it (lane E audit D4).
+   */
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    example: "TRY",
+    description:
+      "ISO 4217 code the order was placed in. null = the row names no currency (never defaulted). Key ABSENT = this route does not read the column.",
+  })
+  currency?: string | null;
+
   /*
    * ===========================================================================
    * THE RECURRENCE (ADR 0125's addendum, founder 2026-09-05)
@@ -1152,4 +1259,25 @@ export class OrderListResponseDto {
 
   @ApiProperty()
   hasMore: boolean;
+}
+
+/**
+ * An owner or a manager names the item of a delivery that booked nothing
+ * (founder, 2026-09-22: "Deliver, flag to name it"). The item is named by its
+ * id, never by a name; `bottles` is required only when the delivery resolved
+ * to no bottles.
+ */
+export class NameDeliveredItemDto {
+  @ApiProperty({ description: "The house item's id (restaurant_inventory.id)." })
+  @IsUUID()
+  inventoryId: string;
+
+  @ApiPropertyOptional({
+    description: "Bottles that came in; required when the delivery resolved to zero bottles.",
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(100000)
+  bottles?: number;
 }

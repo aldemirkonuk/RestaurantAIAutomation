@@ -4,6 +4,7 @@ import {
   IsBoolean,
   IsIn,
   IsInt,
+  IsNotEmpty,
   IsNumber,
   IsOptional,
   IsString,
@@ -94,11 +95,19 @@ export class CreateProviderDto {
 
   @ApiPropertyOptional({
     description:
-      "Vendor type (distributor, importer, wholesaler, winery_direct, broker, other)",
+      "Vendor type (distributor, importer, wholesaler, winery_direct, broker, other). Deprecated alias of primaryBusinessType, kept for older callers.",
   })
   @IsString()
   @IsOptional()
   type?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "What kind of business this vendor is, TYPED BY A PERSON (or free text — a house may name its own). Left unset when nobody has said — never assumed 'Distributor' (founder, 2026-09-21). The create sheet's 'Not stated' choice sends nothing rather than a guess.",
+  })
+  @IsString()
+  @IsOptional()
+  primaryBusinessType?: string;
 
   @ApiPropertyOptional({ description: "Vendor phone number" })
   @IsString()
@@ -236,6 +245,14 @@ export class UpdateProviderDto {
   @IsString()
   @IsOptional()
   type?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "What kind of business this vendor is, TYPED BY A PERSON (or free text). Left unset when nobody has said — never assumed 'Distributor' (founder, 2026-09-21).",
+  })
+  @IsString()
+  @IsOptional()
+  primaryBusinessType?: string;
 }
 
 export class ProviderRatingDto {
@@ -506,13 +523,26 @@ export class BulkImportResultDto {
 
 // --- Provider Locations DTOs ---
 
+/**
+ * The four kinds of branch `provider_locations_type_check` admits (baseline
+ * migration). Named here so a fifth value is a 400 with the list, not a 500
+ * from a CHECK the caller cannot see.
+ */
+export const PROVIDER_LOCATION_TYPES = [
+  "office",
+  "warehouse",
+  "store",
+  "other",
+] as const;
+
 export class CreateProviderLocationDto {
   @ApiProperty()
   @IsString()
+  @IsNotEmpty()
   name: string;
 
-  @ApiPropertyOptional({ description: "office | warehouse | store | other" })
-  @IsString()
+  @ApiPropertyOptional({ enum: PROVIDER_LOCATION_TYPES })
+  @IsIn(PROVIDER_LOCATION_TYPES as unknown as string[])
   @IsOptional()
   type?: string;
 
@@ -549,11 +579,12 @@ export class CreateProviderLocationDto {
 export class UpdateProviderLocationDto {
   @ApiPropertyOptional()
   @IsString()
+  @IsNotEmpty()
   @IsOptional()
   name?: string;
 
-  @ApiPropertyOptional({ description: "office | warehouse | store | other" })
-  @IsString()
+  @ApiPropertyOptional({ enum: PROVIDER_LOCATION_TYPES })
+  @IsIn(PROVIDER_LOCATION_TYPES as unknown as string[])
   @IsOptional()
   type?: string;
 

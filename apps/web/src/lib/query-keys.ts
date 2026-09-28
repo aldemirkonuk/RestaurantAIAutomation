@@ -133,6 +133,10 @@ export const queryKeys = {
     event: (id: string) => [...queryKeys.calendar.all, 'event', id] as const,
     eventTypes: (restaurantId: string) => [...queryKeys.calendar.all, 'types', restaurantId] as const,
     upcoming: (restaurantId: string) => [...queryKeys.calendar.all, 'upcoming', restaurantId] as const,
+    dayNotes: (restaurantId: string, businessDate: string) =>
+      [...queryKeys.calendar.all, 'day-notes', restaurantId, 'day', businessDate] as const,
+    dayNotesRange: (restaurantId: string, from: string, to: string) =>
+      [...queryKeys.calendar.all, 'day-notes', restaurantId, 'range', from, to] as const,
   },
   
   // Notifications

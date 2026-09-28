@@ -264,11 +264,13 @@ describe('the roster list', () => {
           shifts={[]}
           certs={[]}
           timeOff={[]}
-          wageVisible={false}
+          moneyVisible={false}
+          money={null}
           house={h}
           onClose={() => undefined}
           onEdit={() => undefined}
           onAdd={() => undefined}
+          onCertificates={() => undefined}
         />,
       ),
     );
@@ -335,7 +337,8 @@ describe('only an owner sets or ends an owner’s Away (round-2 answer 7)', () =
             shifts={[]}
             certs={[]}
             timeOff={[]}
-            wageVisible={false}
+            moneyVisible={false}
+            money={null}
             house={{
               areas: { ...READOUT, role: readerRole },
               areasFailed: false,
@@ -346,6 +349,7 @@ describe('only an owner sets or ends an owner’s Away (round-2 answer 7)', () =
             onClose={() => undefined}
             onEdit={() => undefined}
             onAdd={() => undefined}
+            onCertificates={() => undefined}
           />,
         ),
       );

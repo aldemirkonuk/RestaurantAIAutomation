@@ -10,8 +10,10 @@ import {
   HttpException,
   HttpStatus,
   ForbiddenException,
+  Headers,
   UseGuards,
 } from "@nestjs/common";
+import { IsOptional, IsString, MaxLength } from "class-validator";
 import { ConversationsService } from "./conversations.service";
 import {
   ApiTags,
@@ -43,6 +45,17 @@ interface ApproveConversationDto {
   modified_message?: string;
   manager_notes?: string;
   approval_channel: "push_notification" | "onetap_center" | "web_app";
+}
+
+/**
+ * The body of the approve seal mint. A class so the ValidationPipe checks it
+ * (an inline type is recorded as `Object` and skipped).
+ */
+class ApproveConversationSealDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(5000)
+  modified_message?: string;
 }
 
 interface EditMessageDto {
@@ -468,16 +481,44 @@ export class ConversationsController {
   }
 
   /**
+   * Begin the hold on an approval: a one-time seal over the message the agent
+   * would release, its recipient and this conversation (ADR 0175 D9,
+   * 2026-09-21). Who may: an owner, a manager or a grantee (D10) — checked in
+   * the service, not by `@Roles`, because a grant is a row, not a token role.
+   */
+  @Post(":conversationId/approve-seal-challenge")
+  async issueApproveSeal(
+    @CurrentUser() user: AuthUser,
+    @Param("conversationId") conversationId: string,
+    @Body() body: ApproveConversationSealDto,
+  ) {
+    const restaurantId = houseOf(user);
+    return this.conversationsService.issueApproveSeal(
+      conversationId,
+      restaurantId,
+      user?.userId ?? "",
+      body?.modified_message ?? null,
+    );
+  }
+
+  /**
    * Approve AI conversation
    * Triggers conversation.approved event for procurement agent to resume
+   *
+   * SEALED AND GATED SINCE 2026-09-21 (ADR 0175 D9/D10). It carried
+   * `@Roles("owner", "manager")` and took the message from the body unsealed.
+   * D10 adds a grantee, which a token role cannot express, so WHO is checked
+   * in the service (`VendorSendAuthorityService`) and the seal is redeemed
+   * over the exact words it would release. The reject path (`approved:
+   * false`) sends nothing and keeps its own `@Roles` on `/reject`.
    */
   @Post(":conversationId/approve")
-  @Roles("owner", "manager")
   async approveConversation(
     @CurrentUser() user: AuthUser,
     @CurrentUser("role") role: string | null,
     @Param("conversationId") conversationId: string,
     @Body() body: ApproveConversationDto,
+    @Headers("x-seal-challenge") challenge?: string,
   ) {
     const restaurantId = houseOf(user);
     this.logger.log(
@@ -486,6 +527,16 @@ export class ConversationsController {
 
     try {
       if (!body.approved) {
+        // Declining sends nothing, but it is still an owner's or a manager's
+        // call: the `/reject` route's own @Roles("owner", "manager") is not on
+        // this path, so the same exact-role match RolesGuard makes is made here
+        // (roles.guard.ts; ADR 0164: a role list means exactly its roles, and
+        // `admin` is not one of them). `user.role` is the role in the token's
+        // house (ADR 0162).
+        const role = String((user as { role?: string })?.role ?? "").toLowerCase();
+        if (role !== "owner" && role !== "manager") {
+          throw new ForbiddenException("Only an owner or a manager may decline this message.");
+        }
         return await this.rejectConversation(user, conversationId, {
           reason: "Manager declined approval",
           manager_notes: body.manager_notes,
@@ -500,6 +551,7 @@ export class ConversationsController {
           managerNotes: body.manager_notes,
           approvalChannel: body.approval_channel,
         },
+        { userId: user?.userId ?? "", challenge },
         role,
       );
 

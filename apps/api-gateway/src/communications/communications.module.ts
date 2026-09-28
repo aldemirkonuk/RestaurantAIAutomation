@@ -16,6 +16,11 @@ import { CacheModule } from "../common/cache/cache.module";
 import { OrchestratorModule } from "../common/orchestrator/orchestrator.module";
 import { AuthModule } from "../auth/auth.module";
 import { CryptoModule } from "../common/crypto/crypto.module";
+// The house composer's two gates (ADR 0175 D9/D10, 2026-09-21). Each imports
+// DatabaseModule and nothing else, and neither service file imports anything
+// that reaches back here, so they add no Nest cycle and no ES-module load cycle.
+import { SealModule } from "../common/seal/seal.module";
+import { VendorSendAuthorityModule } from "../organizations/vendor-send-authority.module";
 // The SERVICE file, not `integrations.module`. See the note on the provider
 // below — importing the module closes an ES-module load cycle that no
 // `forwardRef` can open, because forwardRef defers Nest's DI graph and not
@@ -27,6 +32,15 @@ import { HouseLettersCron } from "./letters/house-letters.cron";
 import { HouseSenderService } from "./letters/house-sender.service";
 import { HouseInboxService } from "./inbox/house-inbox.service";
 import { HouseInboxCron } from "./inbox/house-inbox.cron";
+import { RelayEmailController } from "./relay/relay-email.controller";
+import { RelayEmailService } from "./relay/relay-email.service";
+import { RelayEmailCron } from "./relay/relay-email.cron";
+import { RelayDoorGuard } from "./relay/relay-door.guard";
+// The SERVICE file, not `organizations.module` — same reason as
+// IntegrationsOauthService below: that module imports AuthModule, which closes
+// auth → communications → organizations → auth at Node load time.
+// `organizations.service.ts` imports only DatabaseService.
+import { OrganizationsService } from "../organizations/organizations.service";
 
 @Module({
   imports: [
@@ -43,8 +57,15 @@ import { HouseInboxCron } from "./inbox/house-inbox.cron";
     // For IntegrationsOauthService's own dependency; CryptoModule imports
     // ConfigModule and nothing else, so it adds no edge to the module graph.
     CryptoModule,
+    SealModule,
+    VendorSendAuthorityModule,
   ],
-  controllers: [CommunicationsController, HouseLettersController],
+  controllers: [
+    CommunicationsController,
+    HouseLettersController,
+    // ADR 0149 #19 — POST /communications/email, two locked doors.
+    RelayEmailController,
+  ],
   providers: [
     GmailService,
     SmsService,
@@ -106,6 +127,21 @@ import { HouseInboxCron } from "./inbox/house-inbox.cron";
      */
     HouseInboxService,
     HouseInboxCron,
+    /**
+     * ADR 0149 #19 — the relay's doors and rules. `OrganizationsService` is
+     * provided from its class for `resolveRestaurantRole`, the one
+     * implementation of "what is this person at this house"; it holds no state,
+     * so a second instance is not a second rule. `RelayDoorGuard` is registered
+     * so it resolves Reflector, TokenBlacklistService (exported by AuthModule)
+     * and ConfigService from this module's injector.
+     */
+    OrganizationsService,
+    RelayEmailService,
+    RelayDoorGuard,
+    // Founder, 2026-09-17: the person door queues (ADR 0118 D2's undo
+    // window) rather than sending immediately. This is what actually sends
+    // it once the window closes — see relay-email.cron.ts.
+    RelayEmailCron,
   ],
   exports: [
     GmailService,

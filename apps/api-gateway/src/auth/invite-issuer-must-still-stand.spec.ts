@@ -216,7 +216,6 @@ describe("joinViaInvite (Path A) — the issuer's standing is checked again at a
       password: JOIN_PASSWORD,
     } as any);
 
-    expect(result.restaurantId).toBe(HOUSE);
     // The issuer's own seeded row, plus the new joiner's grant.
     expect(db.tables.user_restaurant_access).toHaveLength(2);
     const granted = db.tables.user_restaurant_access.find(
@@ -224,6 +223,13 @@ describe("joinViaInvite (Path A) — the issuer's standing is checked again at a
     );
     expect(granted).toBeDefined();
     expect(granted!.restaurant_id).toBe(HOUSE);
+    // This join carries no mailed secret, so the address is unproven and the
+    // grant is HELD until the proven person accepts it (ADR 0229 fork 13,
+    // item 82): inactive, and the session names no house.
+    expect(granted!.is_active).toBe(false);
+    expect(granted!.held_since).toEqual(expect.any(String));
+    expect(result.restaurantId).toBeNull();
+    expect(result.membershipHeld).toBe(true);
   });
 
   it("refuses (new account) when the issuer has been removed from the house since minting the invite, and creates no account", async () => {

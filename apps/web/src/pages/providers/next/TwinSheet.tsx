@@ -20,6 +20,10 @@
  * facts above are the vendor's own RECORD; `TermsSection` below is what this
  * HOUSE knows about dealing with them, each term showing its source, editable
  * in place through the same route the settings register writes.
+ *
+ * ── Fourth pass: branches (2026-09-26) ────────────────────────────────────
+ * `BranchesSection` carries the vendor's offices, warehouses and stores —
+ * until now editable only in the legacy sheet's Locations tab.
  */
 
 import { Suspense, lazy } from 'react';
@@ -29,6 +33,8 @@ import { EM, MONO, SANS, fmtDays, fmtLastContact } from './pv-format';
 import { TermsSection } from './TermsSection';
 import { UsualCurrencySection } from './UsualCurrencySection';
 import { ContactsSection } from './ContactsSection';
+import { BranchesSection } from './BranchesSection';
+import { VendorRecordEdit, businessTypeLabel } from './VendorRecordEdit';
 import { LedgerCard } from './scorecard/LedgerCard';
 import { MailTone } from './scorecard/MailTone';
 import { useAuth } from '../../../contexts/AuthContext';
@@ -50,6 +56,11 @@ interface Props {
    * fifth section holds it is a link that only looks like it worked.
    */
   focusUsualCurrency?: boolean;
+  /**
+   * The record was edited here (founder answer 12, 2026-09-21: the rebuilt
+   * sheet gets an edit path, type first). The page refreshes its cards.
+   */
+  onProviderSaved?: (updated: Provider) => void;
 }
 
 function FactRow({ label, value }: { label: string; value: string }) {
@@ -74,7 +85,7 @@ function FactRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-export function TwinSheet({ provider, onClose, focusUsualCurrency }: Props) {
+export function TwinSheet({ provider, onClose, focusUsualCurrency, onProviderSaved }: Props) {
   const regions = provider.regionsCovered ?? provider.statesOrRegionsServed ?? [];
   // "How their mail reads" is for owners and managers only (the founder,
   // 2026-09-21: staff never see it). The gateway refuses anyone else with 403;
@@ -88,11 +99,13 @@ export function TwinSheet({ provider, onClose, focusUsualCurrency }: Props) {
       open
       onClose={onClose}
       label={`${provider.name} — details`}
-      eyebrow={provider.primaryBusinessType}
+      eyebrow={businessTypeLabel(provider.primaryBusinessType)}
       title={provider.name}
     >
       <div className="px-4 py-4" style={{ fontFamily: SANS }}>
-        {/* the vendor's own record — plain facts, EM for absences */}
+        {/* the vendor's own record — the type first, editable here */}
+        <VendorRecordEdit provider={provider} onSaved={(p) => onProviderSaved?.(p)} />
+        {/* plain facts, EM for absences */}
         <FactRow label="Contact" value={provider.email || EM} />
         <FactRow label="Phone" value={provider.phone || EM} />
         <FactRow label="Lead time" value={fmtDays(provider.leadTimeDays)} />
@@ -126,6 +139,13 @@ export function TwinSheet({ provider, onClose, focusUsualCurrency }: Props) {
           lets a manager answer the question nobody has answered. */}
       <div className="px-4 pb-2" style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
         <ContactsSection providerId={provider.id} providerName={provider.name} />
+      </div>
+
+      {/* where they are — offices, warehouses, stores this house deals with
+          (founder, 2026-09-26, round 8, item 51; ADR 0221). Read on open. No
+          map here: the new one is its own tab later (item 52). */}
+      <div className="px-4 pb-2" style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
+        <BranchesSection providerId={provider.id} providerName={provider.name} />
       </div>
 
       {/* what they DID — the operational vendor scorecard (ADR 0207, sketch

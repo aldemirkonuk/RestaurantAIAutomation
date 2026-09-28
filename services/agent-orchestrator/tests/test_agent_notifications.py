@@ -55,7 +55,13 @@ class _Table:
 
     def execute(self):
         if self._name == "user_restaurant_access":
-            return type("R", (), {"data": self._store.get("members", [])})()
+            # Honour the filters the code applies, on the columns a row has.
+            rows = [
+                r
+                for r in self._store.get("members", [])
+                if all(c not in r or r[c] == v for c, v in self._filters.items())
+            ]
+            return type("R", (), {"data": rows})()
         if self._name == "restaurants":
             return type("R", (), {"data": self._store.get("restaurants", [])})()
         return type("R", (), {"data": []})()
@@ -150,6 +156,21 @@ class TestFanOutAndFailure:
 
         assert inserted == 0
         assert logger.warnings, "a notification that reached nobody must be logged"
+
+    async def test_only_active_members_are_recipients(self):
+        # ADR 0229 fork 13: a membership held until its proven person accepts
+        # it is inactive, and so is a former member's row; neither is told.
+        store = {
+            "members": [
+                {"user_id": "active-1", "is_active": True},
+                {"user_id": "held-1", "is_active": False},
+            ],
+            "restaurants": [],
+        }
+
+        ids = await resolve_restaurant_member_ids(_DB(store), "rest-1")
+
+        assert ids == ["active-1"]
 
     async def test_falls_back_to_the_restaurant_owner(self):
         no_membership = {"members": [], "restaurants": [{"owner_id": "owner-9"}]}

@@ -105,7 +105,7 @@
     {
       "slug": "providers",
       "flag": "mudavym_design_providers",
-      "route": "/providers",
+      "route": "/vendors",
       "legacy": "page",
       "source": "apps/web/src/pages/providers/next",
       "empty": [

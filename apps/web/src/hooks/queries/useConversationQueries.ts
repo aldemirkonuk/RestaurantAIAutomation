@@ -290,6 +290,13 @@ export interface ProcurementHistoryItem {
     is_sensitive: boolean
   } | null
   rollingSummary: string | null
+  /**
+   * The relay gateway's own refusal sentence, set only when
+   * `status === 'RELAY_REFUSED'` (ADR 0099, founder 2026-09-21: a 400/403/422
+   * relay refusal — or a header refusal, ADR 0172 — closes the draft rather
+   * than retrying it, and this is why). Null for every other status.
+   */
+  relayRefusalReason: string | null
   orderNumber: string | null
   quantity: number | null
   wineName: string | null

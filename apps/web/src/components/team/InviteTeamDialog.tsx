@@ -9,6 +9,7 @@ import { useAnchoredDialogPosition } from '../../hooks/useAnchoredDialogPosition
 import { apiClient, getErrorMessage } from '../../services/api/client'
 import { Panel, Popover } from '../mudavym/Sheet'
 import { useMudavymShell } from '../../lib/mudavym/shellGround'
+import { invitationEmailSentence, type InvitationEmailOutcome } from '../../lib/inviteMailSecret'
 
 interface InviteTeamDialogProps {
   open: boolean
@@ -27,7 +28,15 @@ interface GeneratedInvite {
   code: string
   expiresAt: string
   inviteUrl: string
+  /** ADR 0229 fork 9 (item 77): what became of the invite's mail. */
+  invitationEmail?: InvitationEmailOutcome
+  /** The address it was made for, as typed here (shown back, never sent again). */
+  sentTo?: string
 }
+
+const EMAIL_HINT =
+  'Optional. We email the invite to this address, and joining from that email confirms it. Anyone with the copied link can still join, and confirms their address once.'
+
 
 export function InviteTeamDialog({ open, onClose, restaurantId, anchorRef, onRosterOnly }: InviteTeamDialogProps) {
   const [targetEmail, setTargetEmail] = useState('')
@@ -46,7 +55,13 @@ export function InviteTeamDialog({ open, onClose, restaurantId, anchorRef, onRos
         targetEmail: targetEmail || undefined,
         role,
       })
-      setInvite({ code: data.code, expiresAt: data.expiresAt, inviteUrl: data.inviteUrl })
+      setInvite({
+        code: data.code,
+        expiresAt: data.expiresAt,
+        inviteUrl: data.inviteUrl,
+        invitationEmail: data.invitationEmail,
+        sentTo: targetEmail.trim() || undefined,
+      })
     } catch (err: unknown) {
       toast.error(getErrorMessage(err))
     } finally {
@@ -95,9 +110,7 @@ export function InviteTeamDialog({ open, onClose, restaurantId, anchorRef, onRos
               onChange={(e) => setTargetEmail(e.target.value)}
               placeholder="colleague@restaurant.com"
             />
-            <p className="mdv-hintline">
-              Optional — for your own tracking. Anyone with the link can use it.
-            </p>
+            <p className="mdv-hintline">{EMAIL_HINT}</p>
           </div>
           <div>
             <label className="mdv-label" htmlFor="mdv-invite-role">
@@ -145,6 +158,11 @@ export function InviteTeamDialog({ open, onClose, restaurantId, anchorRef, onRos
       </>
     ) : (
       <div className="mdv-form">
+        {invitationEmailSentence(invite) && (
+          <p className="mdv-note" role="status" style={{ margin: 0 }}>
+            {invitationEmailSentence(invite)}
+          </p>
+        )}
         <p className="mdv-hintline" style={{ margin: 0 }}>
           Share this link with your team member. It expires{' '}
           {format(new Date(invite.expiresAt), 'MMM d, yyyy')}.
@@ -244,7 +262,7 @@ export function InviteTeamDialog({ open, onClose, restaurantId, anchorRef, onRos
                       placeholder="colleague@restaurant.com"
                       className="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-wine-500 focus:outline-none"
                     />
-                    <p className="text-xs text-gray-400 mt-1">Optional — for your own tracking. Anyone with the link can use it.</p>
+                    <p className="text-xs text-gray-400 mt-1">{EMAIL_HINT}</p>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
@@ -283,6 +301,11 @@ export function InviteTeamDialog({ open, onClose, restaurantId, anchorRef, onRos
               </>
             ) : (
               <>
+                {invitationEmailSentence(invite) && (
+                  <p className="text-sm text-gray-700 mb-3" role="status">
+                    {invitationEmailSentence(invite)}
+                  </p>
+                )}
                 <p className="text-sm text-gray-500 mb-4">
                   Share this link with your team member. It expires{' '}
                   {format(new Date(invite.expiresAt), 'MMM d, yyyy')}.

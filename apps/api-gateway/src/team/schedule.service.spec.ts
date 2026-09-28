@@ -22,10 +22,23 @@ import { asDatabaseService, makeStubDb, StubDb } from "./testing/supabase-stub";
 const RID = "restaurant-1";
 const OTHER_RID = "restaurant-2";
 const MANAGER = "user-manager";
+/**
+ * The week's money is the owner's (ADR 0215), so the T1 cases — which are about
+ * what the cost total may claim — are read as the owner. What a manager
+ * receives is pinned in `team-pay.spec.ts`.
+ */
+const OWNER = "user-owner";
 
 function seed(): StubDb {
   return makeStubDb({
     user_restaurant_access: [
+      {
+        id: "a1",
+        user_id: OWNER,
+        restaurant_id: RID,
+        role: "owner",
+        is_active: true,
+      },
       {
         id: "a2",
         user_id: MANAGER,
@@ -35,6 +48,12 @@ function seed(): StubDb {
       },
     ],
     users: [
+      {
+        user_id: OWNER,
+        restaurant_id: RID,
+        role: "owner",
+        email: "ada@example.test",
+      },
       {
         user_id: MANAGER,
         restaurant_id: RID,
@@ -125,7 +144,7 @@ describe("ScheduleService — T1: a partial labour sum never presents itself as 
       },
     );
 
-    const week = await service(db).getWeek(MANAGER, RID, WEEK);
+    const week = await service(db).getWeek(OWNER, RID, WEEK);
 
     expect(week.labor.enabled).toBe(true);
     // 160 is the cost of one of two shifts. Rendering it as "the week" is the
@@ -156,7 +175,7 @@ describe("ScheduleService — T1: a partial labour sum never presents itself as 
       labor_cost: null,
     });
 
-    const week = await service(db).getWeek(MANAGER, RID, WEEK);
+    const week = await service(db).getWeek(OWNER, RID, WEEK);
     expect(week.labor.totalCost).toBeNull();
     expect(week.labor.unpricedShifts).toBe(1);
   });
@@ -194,7 +213,7 @@ describe("ScheduleService — T1: a partial labour sum never presents itself as 
       },
     );
 
-    const week = await service(db).getWeek(MANAGER, RID, WEEK);
+    const week = await service(db).getWeek(OWNER, RID, WEEK);
     expect(week.labor.costComplete).toBe(true);
     expect(week.labor.totalCost).toBe(240);
     expect(week.labor.unpricedShifts).toBe(0);
@@ -210,7 +229,7 @@ describe("ScheduleService — T1: a partial labour sum never presents itself as 
       status: "draft",
     });
 
-    const week = await service(db).getWeek(MANAGER, RID, WEEK);
+    const week = await service(db).getWeek(OWNER, RID, WEEK);
     expect(week.labor.targetPct).toBeNull();
   });
 });

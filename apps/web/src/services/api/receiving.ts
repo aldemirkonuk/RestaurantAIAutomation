@@ -86,13 +86,25 @@ export interface DoorReceiptResponse {
   stockIssue?: string
 }
 
-/** What earlier trucks on this order already brought. */
+/**
+ * What earlier trucks on this order already brought — summed from the door's
+ * own events (ADR 0062 D3), in bottles, never rounded to boxes (ADR 0192). The
+ * stock ledger's count travels beside it.
+ */
 export interface DoorReceivedSoFar {
+  /** What the door's own events accepted, every truck, in bottles. */
   receivedQtyBottles: number
+  /** The stock ledger's count (ADR 0192), in bottles; null when it could not be read. */
+  onShelfBottles?: number | null
+  /** Counted at the door and not on the shelf yet, in bottles; null when not comparable or unread. */
+  countedNotBookedBottles?: number | null
   doorEventCount: number
-  packSize: number
-  /** Null — never 0 — when the pack size is not knowable. */
+  /** Bottles per box, exact. Null — never a guess — when the order states no pack. */
+  packSize: number | null
+  /** WHOLE boxes. Null — never 0 — when the pack size is not knowable. */
   receivedBoxes: number | null
+  /** What is left after the whole boxes, in bottles; null with `receivedBoxes`. */
+  receivedLooseBottles?: number | null
 }
 
 export interface UnverifiedDelivery {
@@ -118,6 +130,69 @@ export interface UploadedDocument {
   } | null
 }
 
+/**
+ * One entry in a line's history on the receiving desk — one door receipt or
+ * one desk verification, exactly as recorded (founder, 2026-09-25: the history
+ * is built from the door receipts already recorded, never a table of its own).
+ */
+export interface LineHistoryEntry {
+  id: string
+  /**
+   * door_count · door_refused · desk_verified · desk_confirmed (the one-tap "Counts match",
+   * ADR 0192 fifth amendment) · other (an unworded stage, shown by `stage`).
+   */
+  kind: 'door_count' | 'door_refused' | 'desk_verified' | 'desk_confirmed' | 'other'
+  stage: string
+  occurredAt: string
+  outcome: string | null
+  refusalReason: string | null
+  /** What the person counted, in the unit they counted in. */
+  countedQtyInCountedUom: number | null
+  countedUom: string | null
+  countedBottles: number | null
+  rejectedQtyInCountedUom: number | null
+  rejectedBottles: number | null
+  expectedBottles: number | null
+  /** A desk verification only: what the invoice billed, in bottles. */
+  invoiceBottles: number | null
+  notes: string | null
+  driverName: string | null
+  signedByInitials: string | null
+  recordedBy: string | null
+}
+
+/** The line's received block (ADR 0192): the stock ledger's count, never typed in. */
+export interface LineReceived {
+  readable: boolean
+  why: string | null
+  words: string | null
+  quantityInStockUom: number | null
+  stockUom: string | null
+  orderedBottles: number | null
+  backorderBottles: number | null
+  rejectedAtDoorBottles: number | null
+  rejectedAtDeskBottles: number | null
+  invoicedBottles: number | null
+  verifiedAt: string | null
+}
+
+export interface LineHistoryPage {
+  orderId: string
+  orderNumber: string | null
+  /** Newest first, ten a page. */
+  entries: LineHistoryEntry[]
+  /** Every entry this line holds; null when the count could not be read. */
+  total: number | null
+  hasMore: boolean
+  /** Pass back as `before` for the next, older page. */
+  nextBefore: string | null
+  recordedByUnavailable: boolean
+  /** The order's own verification date, which a verification before #436 left no entry for. */
+  matchVerifiedAt: string | null
+  /** The first page only. */
+  received: LineReceived | null
+}
+
 export const receivingApi = {
   /** Record the case count and book the stock. Idempotent on `idempotencyKey`. */
   async recordDoorReceipt(
@@ -139,6 +214,18 @@ export const receivingApi = {
   async doorReceivedSoFar(orderId: string): Promise<DoorReceivedSoFar> {
     const { data } = await apiClient.get(
       `/procurement/receiving/orders/${orderId}/received`,
+    )
+    return data
+  },
+
+  /**
+   * One line's history, newest first, ten at a time. Owner or manager only
+   * (a desk route, ADR 0167). `before` is the previous page's `nextBefore`.
+   */
+  async lineHistory(orderId: string, before?: string | null): Promise<LineHistoryPage> {
+    const { data } = await apiClient.get(
+      `/procurement/receiving/orders/${orderId}/history`,
+      before ? { params: { before } } : undefined,
     )
     return data
   },

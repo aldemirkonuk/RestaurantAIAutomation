@@ -42,7 +42,12 @@ function makeService(opts: {
   };
   const issuerAccess =
     opts.issuerAccess === undefined
-      ? { user_id: ISSUER, restaurant_id: HOUSE, role: "owner", is_active: true }
+      ? {
+          user_id: ISSUER,
+          restaurant_id: HOUSE,
+          role: "owner",
+          is_active: true,
+        }
       : opts.issuerAccess;
 
   // The real, filter-applying stub (not a chain that replays one canned
@@ -135,6 +140,10 @@ describe("AuthService#joinViaInvite — existing account branch", () => {
         email,
         name: "Owner",
         password_hash: await bcrypt.hash(password, 10),
+        // A real owner's address is proved. Since ADR 0229 fork 8 (item 73)
+        // an unverified account's password lapses seven days after
+        // registration, at this door too (unproven-address.spec.ts).
+        email_verified: true,
       },
     });
 
@@ -145,7 +154,13 @@ describe("AuthService#joinViaInvite — existing account branch", () => {
         name: "Owner",
         password,
       } as any),
-    ).resolves.toEqual({ accessToken: "a", refreshToken: "r" });
+    ).resolves.toEqual({
+      accessToken: "a",
+      refreshToken: "r",
+      // A verified account's membership is granted at once (ADR 0229 fork 13
+      // holds only a join whose address is unproven).
+      membershipHeld: false,
+    });
     expect((svc as any).generateTokens).toHaveBeenCalled();
   });
 });

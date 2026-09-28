@@ -78,6 +78,28 @@ export async function searchVendorCatalogue(
 }
 
 /**
+ * The same curated search, with its total — /vendors' "Find new vendors" rung
+ * shows the live count of what the catalogue holds for the search, not just the
+ * page it drew (founder, 2026-09-26, item 36).
+ */
+export async function searchVendorCataloguePage(
+  q: string,
+  country: string,
+  limit = 20,
+  offset = 0,
+): Promise<VendorSearchResponse> {
+  const params = new URLSearchParams()
+  if (q) params.append('q', q)
+  if (country) params.append('country', country)
+  params.append('limit', String(limit))
+  params.append('offset', String(offset))
+  const response = await apiClient.get<VendorSearchResponse>(
+    `/vendor-catalogue/search?${params.toString()}`,
+  )
+  return response.data
+}
+
+/**
  * Duplicate-detection candidates for the add-provider form: curated
  * catalogue vendors whose name or address plausibly matches what the user
  * has typed so far. See match_vendor_catalogue in

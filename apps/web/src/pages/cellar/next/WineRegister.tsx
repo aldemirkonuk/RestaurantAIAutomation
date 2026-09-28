@@ -37,6 +37,8 @@ import {
   type CellarData,
 } from './useCellarNextData';
 import { EM, houseNamingFor, money, volume, year } from './cellar-format';
+import IsThisTheBottlePanel, { type BottleReading } from './IsThisTheBottlePanel';
+import { readingsFrom } from './readings';
 
 /**
  * The menu scanner ships today and its detection half is real (`scanMenuImage`
@@ -215,6 +217,12 @@ export default function WineRegister({ data }: { data: CellarData }) {
   const [scanning, setScanning] = useState(false);
   const [scanSaid, setScanSaid] = useState<string | null>(null);
   const [photographing, setPhotographing] = useState(false);
+  /* THE QUEUE THE SCANNER NEVER HAD. Detection was real and the add half did
+     not exist anywhere (see the header). The readings are asked about ONE AT A
+     TIME — 'Is this the bottle?' — and each answer is its own write. */
+  const [readings, setReadings] = useState<BottleReading[]>([]);
+  const [carried, setCarried] = useState(0);
+  const [turnedAway, setTurnedAway] = useState(0);
 
   const queryClient = useQueryClient();
   const bottles = data.bottles;
@@ -445,15 +453,52 @@ export default function WineRegister({ data }: { data: CellarData }) {
             onClose={() => setScanning(false)}
             onWinesDetected={(detected: unknown[]) => {
               const n = Array.isArray(detected) ? detected.length : 0;
+              const rows = readingsFrom(detected);
+              setCarried(0);
+              setTurnedAway(0);
+              setReadings(rows);
               setScanSaid(
-                `The scanner read ${n} ${n === 1 ? 'title' : 'titles'} off that menu. Nothing was written: ` +
-                  'the scanner detects, and no path from a detected title into the library or the cellar ' +
-                  'exists on this page yet. The book has been re-read in case something landed elsewhere.',
+                rows.length === 0
+                  ? `The scanner read ${n} ${n === 1 ? 'title' : 'titles'} off that menu and none of them ` +
+                      'carried a name and a producer, so there is nothing to ask about. Nothing was written.'
+                  : `The scanner read ${n} ${n === 1 ? 'title' : 'titles'} off that menu. ` +
+                      `${rows.length} can be asked about one at a time — nothing is written until you answer.`,
               );
+              setScanning(false);
               void queryClient.invalidateQueries({ queryKey: queryKeys.wines.all });
             }}
           />
         </Suspense>
+      ) : null}
+
+      {/* THE QUESTION, one reading at a time. The panel is the only path from a
+          detected title into the house library, and it says exactly what "yes"
+          does: the reading enters the library's staging, and no bottle reaches
+          a shelf. "Photograph the label" (below) is the one-bottle twin of
+          this act and writes to the same staging. (MERGE POINT: packet 1 is
+          moving the menu scan onto the carry sheet. This panel takes a plain
+          `BottleReading` and knows nothing about the scanner, so it re-points
+          at the sheet's detection output by changing the two lines below and
+          nothing else.) */}
+      <IsThisTheBottlePanel
+        open={readings.length > 0}
+        reading={readings[0] ?? null}
+        onClose={() => setReadings([])}
+        onRejected={() => {
+          setTurnedAway((n) => n + 1);
+          setReadings((rows) => rows.slice(1));
+        }}
+        onConfirmed={() => {
+          setCarried((n) => n + 1);
+          setReadings((rows) => rows.slice(1));
+          void queryClient.invalidateQueries({ queryKey: queryKeys.wines.all });
+        }}
+      />
+      {readings.length === 0 && carried + turnedAway > 0 ? (
+        <p role="status" className="cl-note" data-testid="cl-reading-tally">
+          {`${carried} added to the library, ${turnedAway} turned away. A bottle in the library is ` +
+            'not a bottle on a shelf — carrying stock is its own act.'}
+        </p>
       ) : null}
 
       <PhotographLabel
