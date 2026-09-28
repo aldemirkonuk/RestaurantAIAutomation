@@ -983,6 +983,33 @@ keeping it as built.
   owner's row; the roster fact, the grid chip and the shift sheet ignoring
   the marker; the left-out line dropped). Not run: a browser pass.
 
+- **Item 71, the owner set end to end (2026-09-27).** **[2026-09-27, ADR 0090
+  security review of PR #440 at `42c43d1bf`, which named the gap: the R6 cases
+  above build the viewer by hand or replace `ownerMemberIds` with a function
+  returning `null`, so the reads that decide whose pay is an owner's were
+  tested only incidentally. Founder item 71, verbatim: "if owner taking money,
+  manager can't see it".]** New `apps/api-gateway/src/team/team-pay-owner-rows.spec.ts`,
+  15 cases, drives `listMembers`, `updateMember`, `getWeek`, `createShift` and
+  `listFormerStaff` through the real `assertAccess` and `ownerMemberIds` over
+  the stub's filtered tables: a real owner row (an owner membership linked to
+  a roster row), a manager whose `team_pay_access` is on, and a person who
+  owns another house but is staff here. It pins the two reads' filters (this
+  house, `role = owner`, no `is_active`; then this house's rows of those
+  owners only), the list, the per-person replies (/team has no GET for one
+  person: the member save, a shift written onto the owner and the week), the
+  wage history (the owner-only former-staff history, the only reader of
+  `team_member_wage_changes`), and each read failing at the database — not
+  by replacing the method — withholding all pay from the manager and writing
+  no wage. `jest src/team` 260 of 260 (11 files). 8 of 8 mutations killed
+  (the `role` filter dropped; the house filter dropped on either read; either
+  error branch answering an empty set; active owners only; an unread set
+  keeping pay access; the set holding account ids instead of roster ids). A
+  control run of the same 8 against the 245 cases that existed before this
+  file: 4 survived (both house filters and both error branches). CLAIMS
+  `ADR-0215-R6-THE-OWNER-SET-IS-READ-AND-PINNED-END-TO-END`, its verify
+  mutated 4 ways and failing each. Not changed: residual (p), an owner's
+  roster row with no linked account, is still invisible to both reads.
+
 - **Round 4 (2026-09-25).** Gateway `team-pay-round4.spec.ts` 29 cases (PA
   pay switch 13, FS former-staff history 12, CR credentials 4) and R1 in
   `team-pay.spec.ts` extended to the credential purge (+2 cases); `jest
@@ -1233,3 +1260,4 @@ Round 3 Opus last call, 2026-09-22, on the index tree (`wt-labor`):
 | 2026-09-27 | ADR 0090 audit of #440 at ccd69c4e (BLOCK, fix round 1 of 2) | (1) A switched-on manager could read an owner's wage by unassigning the owner's shift: `updateShift`'s `dto.memberId ?? cur.member_id` priced the now-open shift at the owner's wage and `seesMoneyOf(viewer, null)` passed it on. Fixed in `updateShift` (prices the person the shift will have) and in `shiftForViewer` (a stored cost on an open shift is said as `null`), correction bracket under item 24. (2) No test covered it: `team-pay-round4.spec.ts` R6 +3 cases (the unassign, with and without a time change, and the week after it; a stale open-shift cost; the global `ValidationPipe` letting the `null` through, which closes the reviewer's open question). Each code half mutated back alone and killed by its own case; new CLAIMS row mutated both ways. (3) The PR body still listed `20261101100xxx` as the shipped files after the eighth renumber: rewritten to `20261101110xxx` with a dated bracket. |
 | 2026-09-27 | Merge-train update of PR #440 (round 4), CLAUDE.md-directed sync to `origin/main` | Branch fell one commit behind `origin/main` again (#488, `20261102110000_a_low_stock_digest_is_fenced_once_a_house_day.sql`) while CI ran on the item-71 unassign fix; `check_migration_order.py` refused the six migrations again. Merged `origin/main` in a worktree (no conflicts outside `CLAIMS.jsonl`, which took the disjoint #488 rows cleanly — no `(id, verify)` duplicates, verified by set-compare). Renumbered a ninth time (bracket above, Links section) to `20261103110xxx`, past main's new ceiling; every live citation swept (this ADR's Links list and body prose, `CLAIMS.jsonl`, `OPEN-DECISIONS.md`, `README.md`'s index row, the eleven `apps/api-gateway/src/team/*.ts`/`*.spec.ts` files, and the three migrations' own cross-referencing comments), the nine historical rename brackets and changelog rows above left citing the numbers true when they were written. `CLAIMS.jsonl`'s `ADR-0215-NO-STALE-180XXX-MIGRATION-CITATIONS` amended to grep an eighth retired prefix (`20261101110`). `check_migration_order.py`, `check_migration_versions_unique.py` and `check_decision_claims.sh` (645/645) re-run clean on the merged tree; `jest src/team` 245/245 unaffected (renumber touches only version strings). |
 | 2026-09-27 | Merge-train update of PR #440 (round 5), CLAUDE.md-directed sync to `origin/main` | Branch fell one commit behind `origin/main` again (#482, `bc7121ccf`, `20261115000000_a_price_names_its_paper_and_its_messenger.sql`) while the required checks settled on the round-4 head; `check_migration_order.py` refused the six migrations again. Merged `origin/main` in the same worktree (one conflict, `CLAIMS.jsonl`: this branch's `ADR-0215-NO-STALE-180XXX-MIGRATION-CITATIONS` row versus `main`'s disjoint `ADR-0160-112-FORK-6A-*`/`PR-482-*` rows — union, both kept, no `(id, verify)` duplicate; verified by set-compare and a full-file `(id, verify)` Counter). Renumbered a tenth time (bracket above, Links section) to `20261116000xxx`, past main's new ceiling; every live citation swept (this ADR's Links list and body prose, `CLAIMS.jsonl`, `OPEN-DECISIONS.md`, `README.md`'s index row, the seven `apps/api-gateway/src/team/*.ts`/`*.spec.ts` files, and the three migrations' own cross-referencing comments), the nine historical rename brackets and changelog rows above left citing the numbers true when they were written. `CLAIMS.jsonl`'s `ADR-0215-NO-STALE-180XXX-MIGRATION-CITATIONS` amended to grep a ninth retired prefix (`20261103110`). `check_migration_order.py`, `check_migration_versions_unique.py`, `check_citation_pairing.py` and `check_decision_claims.sh` re-run clean on the merged tree; `apps/web` vitest team suites + `mudavym-ground.test.ts` 206/206, gateway `jest src/team` 245/245, unaffected (renumber touches only version strings). |
+| 2026-09-27 | ADR 0090 audit of #440 at 42c43d1bf (BLOCK; train 7) | Both reviewers confirmed the item-71 wage masking correct and fail-closed; the BLOCK was the PR body alone (it still named the ninth renumber's `20261103110xxx` files as shipped, and carried branch-sync sentences that went stale on the next merge). The body was rewritten to the current state with the six `20261116000xxx` files named once and no branch-sync statement. The security reviewer's gap (no end-to-end test of `ownerMemberIds`) closed with `team-pay-owner-rows.spec.ts` (Evidence, "the owner set end to end"): 15 cases, 8 of 8 mutations killed, 4 of which the earlier 245 cases let through. Nothing was merged or renumbered in this round: `main`'s newest migration, `20261115000000`, sorts before all six. |
