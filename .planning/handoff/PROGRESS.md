@@ -45,6 +45,33 @@ session that continued the desktop run (session_01GYea8ghmHSxrpWCjmRjXoq).
   a session does not self-merge (the auto-mode classifier refused a session follow-up as
   "self-approval / merge without review" right after #487 merged).
 
+**Stage of the rebuild, against census §2's DONE list (2026-09-28, after #487):**
+1. Every route on a Mudavym design — **in code**: 28 of 29 page keys live for every house;
+   `arrival` stays flag-gated by plan (its `legacy` slot is ADR 0213's `/get-started`).
+2. Every surface on those routes rebuilt (G8) — **being re-measured** by the cutover lane.
+3. Live for every house, including houses created later — **done in code** (#463, #487).
+4. Captions at AA (OD-112) — **done** (#478).
+5. Deletion manifest approved group by group — **owed**: the lane builds it; the founder
+   approves each group.
+6. One cutover PR merged, deployed and verified in production — **owed**, last.
+So the build is at its **last stage, the cutover**: review and merge the four lane PRs,
+then the manifest groups, then one deletion PR.
+
+**Local work left on the founder's Mac (2026-09-28).** Another session left ~140+
+uncommitted files in `~/Projects/restaurant-ai-automation`, and its worktrees may hold
+more. [`preserve-local-work.sh`](preserve-local-work.sh) saves every dirty tree (the
+clone and each `git worktree`) as its own branch `wip/preserve-<UTC stamp>/<tree>` on
+origin **without touching any working tree, index, HEAD or branch** (it builds each
+commit from a temporary index), so it is safe while that session still runs. It refuses
+a tree holding a likely secret or a file over 50 MB and leaves `.gitignore`d files out.
+Its test, [`preserve-local-work.test.sh`](preserve-local-work.test.sh), runs on a
+throwaway repo: 18/18 on 2026-09-28, including a mutation that makes the script touch the
+real index, which the test catches. **Next for a session:** for each `wip/preserve-*`
+branch, classify every file against `origin/main` — identical, changed on main since
+(superseded), or unique — the method used on the desktop snapshot `459653f` (953 of 1142
+identical, 188 superseded, 1 renamed on main). Fold unique work into a proper PR; delete
+nothing until the founder says so.
+
 **Lanes in flight** — workflow `wf_75eb7e91-5af` (`web-rebuild-finish-lanes`: build →
 Sonnet adversarial verify → one Opus fix round; 2 agents at a time on this 4-CPU
 container). Reserved ids so lanes never collide: ADR 0231–0234, OD-176–OD-180,
