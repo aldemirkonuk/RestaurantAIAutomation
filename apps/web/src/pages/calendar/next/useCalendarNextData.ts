@@ -59,6 +59,8 @@ interface ApiEvent {
   parentEventId?: string;
   occurrenceDate?: string;
   recurrenceRule?: Record<string, unknown>;
+  occurrenceResolved?: boolean;
+  isVirtualOccurrence?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -285,6 +287,10 @@ export interface CalEvent {
   isRecurring: boolean;
   /** The gateway's rule, passed through verbatim for client-side expansion. */
   recurrenceRule?: Record<string, unknown>;
+  parentEventId?: string;
+  occurrenceDate?: string;
+  occurrenceResolved?: boolean;
+  isVirtualOccurrence?: boolean;
   reminderEnabled: boolean;
   reminderDaysBefore: number | null;
   /**
@@ -319,8 +325,12 @@ function str(v: unknown): string | null {
 function toCalEvent(raw: ApiEvent): CalEvent {
   return {
     id: raw.id,
-    seriesId: raw.id,
-    isOccurrence: false,
+    seriesId: raw.parentEventId ?? raw.id,
+    isOccurrence: !!raw.parentEventId,
+    occurrenceResolved: raw.occurrenceResolved,
+    isVirtualOccurrence: raw.isVirtualOccurrence,
+    parentEventId: raw.parentEventId,
+    occurrenceDate: raw.occurrenceDate,
     title: raw.title,
     description: str(raw.description),
     type: raw.eventType,
@@ -560,7 +570,7 @@ export function useCalendarNextData(view: CalView, cursor: Date, filter: Calenda
       ...e,
       date: typeof e.date === 'string' ? e.date : dayKey(e.date as unknown as Date),
       seriesId: e.isVirtualOccurrence ? (e.parentEventId ?? e.seriesId) : e.seriesId,
-      isOccurrence: !!e.isVirtualOccurrence,
+      isOccurrence: e.isOccurrence || !!e.isVirtualOccurrence,
     }));
   }, [eventsQ.data, start, end]);
 

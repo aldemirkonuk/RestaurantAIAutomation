@@ -3,7 +3,8 @@ export type IntegrationId =
   | "google_drive"
   | "excel"
   | "gmail_send"
-  | "gmail_read";
+  | "gmail_read"
+  | "google_calendar";
 
 export interface ScopeDisclosure {
   /** The raw scope string sent to the provider. */
@@ -256,6 +257,75 @@ export const INTEGRATION_DEFINITIONS: Record<
         "Everyone who works in this restaurant, which is the point of the grant: a vendor reply stops being private to whoever's inbox it happened to reach. Nobody outside this restaurant, and no other restaurant on this deployment. You can disconnect at any time, and a manager can stop the house using the grant without touching it — either one stops the reading on the next run.",
       keptFor:
         "A reply is kept as two separate things. The MAIL ITSELF — the body, its headers and any attachment — is a copy of your mailbox and has a window: the longest dispute this restaurant has actually recorded, plus a margin, worked out again every quarter from this restaurant's own conversations. When it runs out, the body, headers and attachment bytes are deleted and the row says when and why. Disconnecting deletes that raw mail straight away, without waiting for the window. What the ORDER needs from the reply — a quoted price, a confirmed date, a commitment and the exact sentence it was stated in — is written onto this restaurant's own order record and stays there under the bookkeeping law of the country the restaurant is in, because that is the house's record and not a copy of your mailbox. The current figure, its derivation and the statute behind the floor are on this page.",
+    },
+  },
+  /**
+   * The day-book, pushed OUT (ADR 0111 §5, connection direction 1).
+   *
+   * ONE scope, and it is the narrowest Google publishes that can do the job.
+   * `calendar.app.created` — read verbatim from
+   * https://developers.google.com/workspace/calendar/api/auth on 2026-09-06 —
+   * is "Make secondary Google calendars, and see, create, change, and delete
+   * events on them". It cannot open, list or touch a calendar this app did not
+   * create: the personal calendar, the shared team one and every subscribed
+   * feed are all outside it, and no request against them would be authorised
+   * even if one were made. `calendar` and `calendar.events` are the two scopes
+   * that would obviously work and both grant the whole account.
+   *
+   * WHY IT IS A SEPARATE ID rather than a scope on `google_drive`: the same
+   * reason `gmail_send` is. `UNIQUE (user_id, integration_id)`
+   * (20260826170000:144) makes an id a grant, so a separate id gets its own
+   * consent screen, its own row and its own disconnect. Widening an existing
+   * grant would push everyone already connected through a consent screen for a
+   * power they never agreed to.
+   *
+   * NO `openid` / `email`, following `gmail_send` and `gmail_read`. The
+   * consequence is stated rather than solved by asking for one more scope: the
+   * connected Google ADDRESS is never read, so `account_email` stays NULL on
+   * this grant and `/connections` names the person who consented plus the
+   * secondary calendar's own id. That id is the better answer to "which
+   * account" anyway — it is where the writes actually land, and it does not
+   * change when somebody renames their mailbox.
+   *
+   * NOTHING IS READ BACK. Direction 1 is push only. The scope permits reading
+   * the events on the calendar it created and this build never does: there is
+   * no list call, no sync token and no webhook anywhere in
+   * `calendar/push/`. Directions 2 and 3 are the ones that read, and they are
+   * separate scopes and a separate decision.
+   */
+  google_calendar: {
+    id: "google_calendar",
+    provider: "google",
+    label: "Google Calendar — this house's own calendar",
+    providerLabel: "Google",
+    description:
+      "Puts this house's day-book — deliveries, tastings, audits, meetings — into a calendar Mudavym makes inside your Google account, so you see the house's day beside your own.",
+    scopes: [
+      {
+        scope: "https://www.googleapis.com/auth/calendar.app.created",
+        label: "Make one calendar of its own, and manage only the events on it",
+        reason:
+          "Mudavym creates a single secondary calendar called after this restaurant and writes the house's entries there. This scope cannot see, change or delete anything on your personal calendar, your shared calendars, or any feed you subscribe to — only the calendar it made itself.",
+      },
+    ],
+    notRequested: [
+      "Your personal calendar, your shared calendars and every feed you subscribe to",
+      "Your free/busy times, your Calendar settings and your calendar list",
+      "Reading anything back — this connection only writes, and nothing from Google is copied into Mudavym",
+      "Your Google account address; it is never asked for, so this house names the person who consented instead",
+      "Inviting anybody, or creating a Meet link — both send mail on your behalf and neither is built",
+    ],
+    dataHandling: {
+      reads:
+        "Nothing. Every call this connection makes is a write to one calendar Mudavym created: making that calendar, and creating, updating or deleting the events it put there. There is no list call, no sync token and no notification channel anywhere in the code.",
+      doesNotRead:
+        "Your calendar, in every sense. `calendar.app.created` cannot reach a calendar this app did not create, so your personal appointments, your shared team calendars and your subscribed feeds are outside the grant entirely — not merely un-asked-for. It also never reads back the events it wrote itself.",
+      landsIn:
+        "Nothing from Google is copied into Mudavym. What is kept here is the pointer: `calendar_push_targets` holds the id of the secondary calendar Mudavym made, `calendar_push_mappings` holds one row per entry saying which Google event is its copy, and `calendar_push_outcomes` records what happened on each attempt. The tokens beside the grant are AES-256-GCM encrypted.",
+      visibleTo:
+        "Everyone who works in this restaurant sees that the house pushes its day-book and where to. A manager or owner may stop the house using the grant; they can never read your calendar through it and can never revoke it for you. Nobody outside this restaurant.",
+      keptFor:
+        "Nothing of yours is kept, because nothing of yours is read. The events Mudavym wrote into your Google calendar are the HOUSE's own entries and stay there until the house deletes them or you delete the whole calendar. Disconnecting stops future writes and leaves what is already there — and while the grant is live, a copy you delete inside Google comes back on the next push, because Mudavym treats its own day-book as the original.",
     },
   },
   excel: {

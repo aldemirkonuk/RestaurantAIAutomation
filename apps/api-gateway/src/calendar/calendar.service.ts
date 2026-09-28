@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from "@nestjs/common";
+import { Injectable, Logger, NotFoundException, ServiceUnavailableException } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { EventsService } from "../events/events.service";
 import ical from "ical-generator";
@@ -24,6 +24,10 @@ import {
   resolveZone,
   zonedWallClockToUtc,
 } from "./zoned-time";
+import { readCalendarPages } from "./calendar-read-pages";
+import { resolveCalendarOccurrences, CalendarOccurrenceRow, CalendarOccurrenceRule, CalendarOccurrenceException } from "./calendar-occurrences";
+import type { PushVerb } from "./push/calendar-push.service";
+import { CalendarPushService } from "./push/calendar-push.service";
 
 // ============================================================================
 // DATABASE ROW INTERFACES
@@ -88,7 +92,56 @@ export class CalendarService {
   constructor(
     private readonly databaseService: DatabaseService,
     private readonly eventsService: EventsService,
+    private readonly push: CalendarPushService,
   ) {}
+
+  /**
+   * THE ONE PLACE A MUTATION BECOMES A PUSH (ADR 0111 §5, direction 1).
+   *
+   * Every path in this class that changes `calendar_events` calls THIS and
+   * nothing else calls `CalendarPushService.push`. That is deliberate and it is
+   * the reason the method exists at all: there is no single SQL write path here
+   * to hook — there are eleven statements across five public methods (create,
+   * update including its this_and_future branch which inserts a whole new
+   * parent, delete including its cancel-an-occurrence branch, updateEventStatus,
+   * and deleteRecurringSeries) — and hooking a subset of them is precisely how a
+   * copy silently stops happening for one kind of edit. `push-write-paths.spec.ts`
+   * counts the mutation statements in this file and fails when the number
+   * changes, so a future eighth path cannot be added without deciding whether
+   * it pushes.
+   *
+   * NEVER AWAITS INTO A FAILURE. The entry is the house's record and is already
+   * saved; the copy in Google is a copy. `push()` itself never throws, and this
+   * wrapper catches anyway so that a change to that promise cannot turn a saved
+   * edit into a 500 for the person who made it.
+   */
+  private async copyToGoogle(
+    restaurantId: string,
+    eventId: string,
+    verb: PushVerb,
+  ): Promise<void> {
+    try {
+      const result = await this.push.push(restaurantId, eventId, verb);
+      if (result.outcome !== "delivered") {
+        this.logger.log({
+          message: "Calendar entry was not copied to Google",
+          restaurantId,
+          eventId,
+          verb,
+          outcome: result.outcome,
+          detail: result.detail,
+        });
+      }
+    } catch (error) {
+      this.logger.error({
+        message: "Calendar push threw and was contained",
+        restaurantId,
+        eventId,
+        verb,
+        error: (error as Error).message,
+      });
+    }
+  }
 
   // ==========================================================================
   // CREATE
@@ -220,6 +273,9 @@ export class CalendarService {
       this.logger.warn("Failed to emit calendar event to event system", e);
     }
 
+    // Push site 1 of 8 — a new entry.
+    await this.copyToGoogle(restaurantId, eventData.id, "create");
+
     this.logger.log({
       message: "Calendar event created",
       restaurantId,
@@ -273,10 +329,34 @@ export class CalendarService {
     };
   }
 
+  private async resolvedWindow(restaurantId: string, query: GetCalendarEventsQueryDto): Promise<CalendarEventsListResponseDto> {
+    // Parent series may begin years before the window; exceptions can move a
+    // later occurrence into it. Scope before reading, and never pre-limit by the
+    // parent's start date or filter cancelled rows needed for suppression.
+    const events = await readCalendarPages<CalendarOccurrenceRow>(() => this.databaseService.supabase.from("calendar_events").select("*", { count: "exact" }).eq("restaurant_id", restaurantId));
+    const rules = await readCalendarPages<CalendarOccurrenceRule>(() => this.databaseService.supabase.from("calendar_recurrence_rules").select("*", { count: "exact" }).eq("restaurant_id", restaurantId));
+    const exceptions: CalendarOccurrenceException[] = [];
+    for (let offset = 0; offset < rules.length; offset += 100) {
+      const ids = rules.slice(offset, offset + 100).map((rule) => rule.id);
+      exceptions.push(...await readCalendarPages<CalendarOccurrenceException>(() => this.databaseService.supabase.from("calendar_recurrence_exceptions").select("*", { count: "exact" }).in("recurrence_rule_id", ids)));
+    }
+    const resolved = resolveCalendarOccurrences({ restaurantId, events, rules, exceptions, from: query.startDate!, to: query.endDate! });
+    if (resolved.state !== "complete") throw new ServiceUnavailableException({ code: `calendar_${resolved.reason}`, message: resolved.detail });
+    const matching = resolved.events.filter((row) => (!query.eventType || row.event_type === query.eventType) && (!query.status || row.status === query.status) && (!query.providerId || row.provider_id === query.providerId));
+    const page = query.page ?? 1, limit = query.limit ?? 100;
+    const offset = (page - 1) * limit;
+    return { events: matching.slice(offset, offset + limit).map((row) => ({
+      ...this.mapCalendarEvent(row as unknown as CalendarEventRow),
+      occurrenceResolved: true,
+      isVirtualOccurrence: row.is_virtual_occurrence,
+    })), total: matching.length, page, limit, hasMore: offset + limit < matching.length };
+  }
+
   async listEvents(
     restaurantId: string,
     query: GetCalendarEventsQueryDto,
   ): Promise<CalendarEventsListResponseDto> {
+    if (query.startDate && query.endDate) return this.resolvedWindow(restaurantId, query);
     const startTime = Date.now();
     const page = query.page ?? 1;
     const limit = query.limit ?? 100;
@@ -519,6 +599,11 @@ export class CalendarService {
           }
         }
 
+        // Push site 2 of 8 — the split created a whole new parent entry, and
+        // this branch RETURNS before the shared update below. It was the
+        // easiest site in the file to miss, which is why they are numbered.
+        await this.copyToGoogle(restaurantId, newParentData.id, "create");
+
         // Return the new parent event (not the individual occurrence)
         return this.mapCalendarEvent(newParentData);
       } else if (dto.updateScope === "all") {
@@ -528,6 +613,17 @@ export class CalendarService {
             .from("calendar_events")
             .update(updatePayload)
             .eq("id", existing.parentEventId);
+
+          // Push site 8 of 8 — found by counting, not by reading. The parent
+          // of a series changes here and then this method goes on to update
+          // and push the OCCURRENCE, so before this line the parent's copy in
+          // Google kept the old title and time for ever, silently, on the one
+          // scope a person picks when they mean "change all of them".
+          await this.copyToGoogle(
+            restaurantId,
+            existing.parentEventId,
+            "update",
+          );
         }
       }
     }
@@ -569,6 +665,11 @@ export class CalendarService {
     } catch (e) {
       this.logger.warn("Failed to emit calendar event update", e);
     }
+
+    // Push site 3 of 8 — the entry changed. The copy is addressed by the
+    // provider's own event id held on the mapping, never by searching Google
+    // for something that looks like this entry.
+    await this.copyToGoogle(restaurantId, eventId, "update");
 
     this.logger.log({
       message: "Calendar event updated",
@@ -617,6 +718,12 @@ export class CalendarService {
         .from("calendar_events")
         .update({ status: "cancelled" })
         .eq("id", eventId);
+
+      // Push site 4 of 8 — an UPDATE, not a delete: the row is still here and
+      // Google's own `status: "cancelled"` is what a cancelled occurrence
+      // looks like there. Pushing a delete would remove the copy of a row the
+      // house still holds.
+      await this.copyToGoogle(restaurantId, eventId, "update");
 
       return { deleted: true, message: "Occurrence cancelled" };
     }
@@ -667,6 +774,11 @@ export class CalendarService {
       .eq("id", eventId)
       .eq("restaurant_id", restaurantId);
 
+    // Push site 5 of 8 — AFTER the local delete, on purpose. The mapping row
+    // carries no foreign key to `calendar_events` precisely so it survives this
+    // statement: the copy in Google can only be removed by something that still
+    // remembers its provider event id.
+
     if (error) {
       this.logger.error({
         message: "Failed to delete calendar event",
@@ -677,6 +789,8 @@ export class CalendarService {
       });
       throw error;
     }
+
+    await this.copyToGoogle(restaurantId, eventId, "delete");
 
     // Emit event to event ingestion system
     try {
@@ -720,6 +834,9 @@ export class CalendarService {
       ruleId,
       horizonDate,
     });
+
+    // The service-role RPC takes no tenant parameter. Prove rule ownership first.
+    await this.getRecurrenceRule(restaurantId, ruleId);
 
     // Call the database function
     const { data, error } = await this.databaseService.supabase.rpc(
@@ -990,6 +1107,12 @@ export class CalendarService {
       throw new NotFoundException(`Calendar event not found: ${eventId}`);
     }
 
+    // Push site 6 of 8 — a status change is a change to the entry, and a
+    // cancellation in particular has to reach the copy: an entry cancelled here
+    // and still drawn as confirmed in somebody's Google calendar is the worst
+    // shape this direction can produce.
+    await this.copyToGoogle(restaurantId, eventId, "update");
+
     try {
       await this.eventsService.createEvent(restaurantId, userId, {
         eventType: EventType.CALENDAR_EVENT,
@@ -1077,6 +1200,18 @@ export class CalendarService {
         .delete()
         .eq("id", eventId)
         .eq("restaurant_id", restaurantId);
+    }
+
+    // Push site 7 of 8 — a whole series. Each deleted occurrence AND the parent
+    // gets its own delete, one write per removed entry, because each one has
+    // its own copy in Google under its own provider event id. Serially rather
+    // than in parallel: this is the one path that can produce ninety writes at
+    // once, and a burst is what a rate limit is for.
+    for (const row of (data ?? []) as Array<{ id: string }>) {
+      await this.copyToGoogle(restaurantId, String(row.id), "delete");
+    }
+    if (!fromDate) {
+      await this.copyToGoogle(restaurantId, eventId, "delete");
     }
 
     try {

@@ -467,6 +467,12 @@ export class CalendarEventResponseDto {
   @ApiPropertyOptional()
   recurrenceRule?: RecurrenceRuleResponseDto;
 
+  @ApiPropertyOptional({ description: "This row is already resolved for the requested occurrence window" })
+  occurrenceResolved?: boolean;
+
+  @ApiPropertyOptional()
+  isVirtualOccurrence?: boolean;
+
   @ApiProperty()
   createdAt: string;
 

@@ -13,6 +13,17 @@ import { NwsWeatherProvider } from "../weather/nws.provider";
 import { WeatherPrefetchService } from "../weather/weather-prefetch.service";
 import { RecordedDaysService } from "./recorded-days.service";
 import { DayRecordService } from "./day-record.service";
+import { CryptoModule } from "../common/crypto/crypto.module";
+// The SERVICE file, not `integrations.module`. See the note beside the
+// provider below; `communications.module.ts:66-89` records what happens when
+// the module is imported instead.
+import { IntegrationsOauthService } from "../integrations/integrations-oauth.service";
+import { CalendarPushService } from "./push/calendar-push.service";
+import { CalendarPushReconcileService } from "./push/calendar-push-reconcile.service";
+import {
+  GoogleCalendarClient,
+  HttpGoogleCalendarClient,
+} from "./push/google-calendar.client";
 
 @Module({
   imports: [
@@ -29,6 +40,9 @@ import { DayRecordService } from "./day-record.service";
     // `scripts/check_gateway_boots.sh` is what proves this resolves.
     forwardRef(() => NotificationsModule),
     forwardRef(() => CommunicationsModule),
+    // For `TokenCryptoService`, which `IntegrationsOauthService` needs when it
+    // is provided from its class below.
+    CryptoModule,
   ],
   controllers: [CalendarController],
   // The weather overlay's provider and service live here rather than in their
@@ -45,7 +59,37 @@ import { DayRecordService } from "./day-record.service";
     WeatherPrefetchService,
     RecordedDaysService,
     DayRecordService,
+    /**
+     * ADR 0111 §5 direction 1 — the day-book pushed to Google.
+     *
+     * `IntegrationsOauthService` is PROVIDED FROM ITS CLASS rather than by
+     * importing `IntegrationsModule`, exactly as `CommunicationsModule` does
+     * and for the reason recorded there (`communications.module.ts:66-89`):
+     * `integrations.module` imports `OrganizationsModule`, which imports
+     * `AuthModule`, and `forwardRef` defers NEST's graph without deferring
+     * NODE's module loading. The service itself imports only DatabaseService,
+     * ConfigService and TokenCryptoService (plus an `@Optional`
+     * RawMailRetentionService this module does not supply and this direction
+     * never reaches — it is only used by `disconnect` on a MIRRORING grant,
+     * and `google_calendar` mirrors nothing), so requiring it directly adds no
+     * module edge at all.
+     *
+     * The cost is a second INSTANCE, and it is not a second door: the service
+     * holds no state, so this instance runs the same `getAccessToken` — with
+     * the same ADR 0114 house-revocation check — as the one behind
+     * `/integrations/oauth`. `scripts/check_gateway_boots.sh` is what proves
+     * the shape resolves.
+     */
+    IntegrationsOauthService,
+    { provide: GoogleCalendarClient, useClass: HttpGoogleCalendarClient },
+    CalendarPushService,
+    CalendarPushReconcileService,
   ],
-  exports: [CalendarService, CalendarRemindersService, WeatherService],
+  exports: [
+    CalendarService,
+    CalendarRemindersService,
+    WeatherService,
+    CalendarPushService,
+  ],
 })
 export class CalendarModule {}

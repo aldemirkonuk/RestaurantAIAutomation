@@ -47,7 +47,17 @@ function makeDb(opts: {
 }
 
 const svc = (opts: Parameters<typeof makeDb>[0]) =>
-  new CalendarService(makeDb(opts), {} as any);
+  // Third argument is CalendarPushService (ADR 0111 direction 1). A stub that
+  // records nothing: this file specifies the iCal feed, and a push that ran
+  // here would be a second, silent assertion about a different subject.
+  new CalendarService(makeDb(opts), {} as any, {
+    push: async () => ({
+      outcome: "not_connected" as const,
+      detail: "stub",
+      providerEventId: null,
+      restored: false,
+    }),
+  } as any);
 
 const EVENT = {
   id: "11111111-1111-1111-1111-111111111111",
