@@ -42,7 +42,7 @@ from core.commitment_patterns import contains_commitment_language
 from core.base_agent import BaseAgent
 from core.notifications import notify_restaurant
 from utils.logger import setup_logger
-from services.email_composer_service import EmailComposerService
+from services.email_composer_service import GATEWAY_REFUSAL_KINDS, EmailComposerService
 from services.spend_logger import estimate_llm_cost, get_spend_logger
 from config.settings import Settings, get_settings
 from services.model_clients import get_haiku_client
@@ -2923,8 +2923,22 @@ class ProviderConversationAgent(BaseAgent):
         """
         return f"<mudavym-{uuid.uuid4()}@wineops.ai>"
 
+    # The gateway's typed refusal kinds that PROVE non-delivery on a 200
+    # `success:false` (`SendRefusalKind`, send-failure.ts). One set, owned by
+    # the composer that reads them off the wire.
+    _DEFINITE_REFUSAL_KINDS = GATEWAY_REFUSAL_KINDS
+
     @staticmethod
-    def _is_definite_send_refusal(error: Any) -> bool:
+    def _typed_gateway_status(failure: Any) -> Optional[int]:
+        """The HTTP status the gateway answered, from the typed field only."""
+        if not isinstance(failure, dict):
+            return None
+        status = failure.get("gateway_status")
+        # `bool` is an `int` subclass; a True here is not a status.
+        return status if type(status) is int else None
+
+    @staticmethod
+    def _is_definite_send_refusal(failure: Any) -> bool:
         """Did this failure PROVE the vendor did not get the message?
 
         Only an explicit refusal proves it. A timeout, a connection reset, or a
@@ -2934,107 +2948,65 @@ class ProviderConversationAgent(BaseAgent):
         refusals — anything unrecognised is ambiguous, because guessing wrong in
         that direction sends a real vendor a second purchase order.
 
-        Ported deliberately from `ProcurementService.isDefiniteSendRefusal`
-        (apps/api-gateway/src/procurement/procurement.service.ts:2191) so the two
-        runtimes classify the same failure the same way.
+        TYPED FIELDS ONLY, NEVER TEXT (2026-09-28, the Python twin of PR #405's
+        double-send vector; ADR 0172 addendum's rule, "classify a send failure
+        by typed fields, never by text", applied to this runtime). `failure` is
+        the dict `send_via_gateway` / `_send_message` returned. Until this date
+        it was that dict's `error` STRING, matched with `re.search` against
+        SMTP, credential and recipient phrases — but on the relay path that
+        string is the provider's own free text behind "HTTP 200 —", so an SMTP
+        450 "Mailbox unavailable" (transient; the gateway's own
+        `classifySendFailure` calls it ambiguous) matched "mailbox unavailable",
+        was RELEASED, and the bus retry could send the vendor a second copy.
+        The orchestrator never speaks SMTP or OAuth itself, so every one of
+        those phrases could only ever have matched someone else's words.
+
+        What proves non-delivery, and nothing else:
+          - `refused_before_send` — minted by this service when no transport
+            was attempted (no recipients, no vendor address, no service key, a
+            send naming no house/vendor/conversation, an older gateway's
+            validator refusing the body).
+          - `gateway_status` 400 / 403 / 422 — the relay's own doors, decided
+            before any transport (ADR 0099, founder 2026-09-19 "relay 4xx =
+            split by code (400/403/422 final, 401 parks)"). The caller checks
+            `_relay_final_refusal_code` FIRST and closes these; they are
+            definite here too, as before.
+          - `gateway_status` 200 with a typed `refusal_kind` — the gateway's
+            `classifySendFailure` PROVED a refusal from the error's fields
+            (credentials, no transport, a Gmail 400 or an SMTP 5xx/EENVELOPE
+            rejection). `"credentials"` / `"no-transport"` stay RELEASED for
+            retry exactly as before; whether they should park instead is
+            OD-175, unanswered and not decided here.
+
+        Ambiguous (False), and parked for a person: a gateway 5xx (it can follow
+        an accepted send, or come from a proxy — ADR 0149 #19), a 401 (the
+        orchestrator's own key; ADR 0099 "401 parks"), every other code (404,
+        429, ...), a 200 with no typed kind, a raised exception, and anything
+        that is not the typed dict — including every string.
         """
-        text = str(error or "").strip()
-        if not text:
-            # `str(asyncio.TimeoutError())` is the empty string. An unnameable
-            # failure is the most ambiguous kind there is, not the safest.
+        if not isinstance(failure, dict):
             return False
-
-        # ADR 0149 #19 (2026-09-17). A gateway 5xx proves nothing: it can follow
-        # an accepted send, or come from a proxy in front of the gateway. It is
-        # checked FIRST because `send_via_gateway` words it
-        # "gateway refused the send: HTTP 503 — ...", and "503 " satisfied the
-        # SMTP permanent-failure pattern below — so a 502 after an accepted send
-        # was released for retry, which is the duplicate vendor mail this
-        # classifier exists to prevent. Measured: the pre-fix classifier
-        # returned True for every "HTTP 5xx —" string.
-        if re.search(r"gateway refused the send: HTTP 5\d\d\b", text, re.I):
+        if failure.get("refused_before_send") is True:
+            return True
+        status = ProviderConversationAgent._typed_gateway_status(failure)
+        if status is None:
             return False
-
-        # No transport was ever attempted.
-        if re.search(
-            r"no email delivery method available|no recipients|no_email", text, re.I
-        ):
+        if 500 <= status <= 599:
+            return False
+        if status in (400, 403, 422):
             return True
-
-        # Credentials refused: the request never became a message.
-        if re.search(
-            r"invalid_grant|invalid_client|unauthorized_client|authentication failed"
-            r"|invalid credentials|Username and Password not accepted",
-            text,
-            re.I,
-        ):
-            return True
-
-        # SMTP permanent failures (5xx) and the recipient rejections they carry.
-        # Explicitly NOT 4xx — those are transient and may still have been queued.
-        if (
-            re.search(r"\b5\d{2}[ -]", text)
-            or re.search(r"\b5\.\d\.\d\b", text)
-            or re.search(
-                r"user unknown|no such user|recipient address rejected"
-                r"|mailbox unavailable|address rejected|does not exist",
-                text,
-                re.I,
+        if status == 200:
+            kind = failure.get("refusal_kind")
+            return (
+                isinstance(kind, str)
+                and kind in ProviderConversationAgent._DEFINITE_REFUSAL_KINDS
             )
-        ):
-            return True
-
-        # A malformed request we built — nothing deliverable left the process.
-        if re.search(
-            r"invalid recipient|no recipients defined|invalid to header", text, re.I
-        ):
-            return True
-
-        # ADR 0099 (locked 2026-09-19, founder decision, lane answers batch 4):
-        # "relay 4xx = split by code (400/403/422 final, 401 parks)". A gateway
-        # 4xx from the relay's doors is decided before any transport exists,
-        # but not every code means the same thing:
-        #
-        #   400 / 403 / 422 — the relay's OWN structural refusal: a malformed
-        #   request (no bodyHtml), a door refusing what the request names (no
-        #   house/vendor/conversation, an address outside the house's book, a
-        #   conversation or order that belongs to someone else), or a guardrail
-        #   refusing the content. All three are decided by the gateway before
-        #   any transport is attempted, so — like the 5xx-exclusion above, just
-        #   pointed the other way — they PROVE non-delivery. Definite.
-        #
-        #   401 — the ORCHESTRATOR's own service key is missing, empty, or
-        #   wrong at the gateway. That is a fixable service-key/config problem,
-        #   not a fact about whether the vendor got the message, so it is left
-        #   ambiguous on purpose: the conversation is PARKED (SEND_UNCONFIRMED)
-        #   for a person to look at, never silently retried and never silently
-        #   dropped.
-        #
-        # This is intentionally narrower than the REJECTED alternative recorded
-        # above (teaching the allow-list that "HTTP 4xx means refused" in
-        # general) — that would have conflated 401 with 400/403/422, which is
-        # exactly the distinction the founder drew. It does not need to be
-        # ported to `ProcurementService.isDefiniteSendRefusal`: that classifier
-        # reads errors from the in-process Gmail path, which never produces the
-        # "gateway refused the send: HTTP ..." string this matches — that
-        # string is minted only by `email_composer_service.py`'s own gateway
-        # call, so there is no second runtime to keep in parity with here.
-        gateway_4xx = re.search(r"gateway refused the send: HTTP (\d{3})\b", text, re.I)
-        if gateway_4xx:
-            code = gateway_4xx.group(1)
-            if code in ("400", "403", "422"):
-                return True
-            if code == "401":
-                return False
-            # Any other code (404, 429, ...) is not part of the founder's
-            # answer above and is left exactly as before: ambiguous, parked.
-
         return False
 
-    _RELAY_FINAL_CODES = ("400", "403", "422")
+    _RELAY_FINAL_CODES = (400, 403, 422)
 
     @staticmethod
-    def _relay_final_refusal_code(error: Any) -> Optional[str]:
+    def _relay_final_refusal_code(failure: Any) -> Optional[str]:
         """Is this a 400/403/422 from the relay's OWN doors — final, not retried?
 
         ADR 0099, founder answer 2026-09-21: "a 400/403/422 relay refusal is
@@ -3045,27 +3017,26 @@ class ProviderConversationAgent(BaseAgent):
         cannot go out: a malformed body (400), a door refusing what the
         request names — no house/vendor/conversation, an address outside the
         house's book, a conversation or order that belongs to someone else
-        (403) — or a blocked guardrail, or (since the same day) a header the
-        message could not be built with, ADR 0172 (422). Retrying the SAME
-        request refuses it again, identically — a person editing the draft is
-        what changes the outcome, not the bus trying again. So the caller
-        below CLOSES the conversation instead of releasing its claim.
+        (403) — or a blocked guardrail, a header the message could not be
+        built with (ADR 0172), or a Gmail 403/404 on the relay path (item 66)
+        (422). Retrying the SAME request refuses it again, identically — a
+        person editing the draft is what changes the outcome, not the bus
+        trying again. So the caller CLOSES the conversation instead of
+        releasing its claim.
 
-        401 (the orchestrator's own service key wrong/missing at the gateway)
-        and every other code (404, 429, 5xx, ...) are UNCHANGED by this
-        answer and fall through to `_is_definite_send_refusal` above, exactly
-        as they did before — this function returns `None` for all of them,
-        never overlapping with that one's own classification of the same
-        codes.
+        Read from the typed `gateway_status` only (2026-09-28): never from the
+        `error` sentence, so no phrase quoted inside a provider's or a door's
+        words can close a draft. A refusal minted before the send
+        (`refused_before_send`, e.g. an older gateway's whitelist 400 — item
+        68, "Keep the retry") is never relay-final. 401 and every other code
+        return None and fall through to `_is_definite_send_refusal`.
         """
-        text = str(error or "").strip()
-        if not text:
+        if not isinstance(failure, dict) or failure.get("refused_before_send") is True:
             return None
-        match = re.search(r"gateway refused the send: HTTP (\d{3})\b", text, re.I)
-        if not match:
-            return None
-        code = match.group(1)
-        return code if code in ProviderConversationAgent._RELAY_FINAL_CODES else None
+        status = ProviderConversationAgent._typed_gateway_status(failure)
+        if status in ProviderConversationAgent._RELAY_FINAL_CODES:
+            return str(status)
+        return None
 
     def _claim_conversation_for_send(
         self, conversation_id: str, outbound_message_id: str
@@ -3303,6 +3274,9 @@ class ProviderConversationAgent(BaseAgent):
         attempted_at = datetime.utcnow().isoformat()
         send_result: Dict[str, Any] = {}
         send_error: Any = None
+        # What the classifiers read: the typed failure dict, or the exception.
+        # `send_error` is only the words, for the row and the log.
+        send_failure: Any = None
         try:
             send_result = (
                 await self._send_message(
@@ -3323,11 +3297,13 @@ class ProviderConversationAgent(BaseAgent):
                 # failure therefore has to be classified exactly like a thrown
                 # one, or every ambiguous timeout would sail past as a success.
                 send_error = send_result.get("error") or "unknown send failure"
+                send_failure = send_result
         except Exception as e:  # noqa: BLE001 — see the docstring; this is load-bearing
             send_error = e
+            send_failure = e
 
         if send_error is not None:
-            relay_final_code = self._relay_final_refusal_code(send_error)
+            relay_final_code = self._relay_final_refusal_code(send_failure)
             if relay_final_code is not None:
                 # ADR 0099, founder 2026-09-21: "Close, no retry." The relay's
                 # own doors refused this exact request (400/403/422) before,
@@ -3346,7 +3322,7 @@ class ProviderConversationAgent(BaseAgent):
                 )
                 return
 
-            if self._is_definite_send_refusal(send_error):
+            if self._is_definite_send_refusal(send_failure):
                 # Proven not delivered: safe to hand back and safe to retry.
                 self._release_send_claim(conversation_id, prior_status, str(send_error))
                 raise RuntimeError(
@@ -3490,7 +3466,7 @@ class ProviderConversationAgent(BaseAgent):
         vendor_email = contact.get("email", "")
         if not vendor_email:
             self.logger.warning(f"No email for provider {provider_id} — cannot send")
-            return {"success": False, "error": "no_email"}
+            return {"success": False, "error": "no_email", "refused_before_send": True}
 
         # Load conversation history for threading
         history = []

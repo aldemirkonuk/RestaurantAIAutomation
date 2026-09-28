@@ -33,6 +33,21 @@ logger = setup_logger("email_composer_service")
 # gateway side by `older-gateway-whitelist-shape.spec.ts`.
 _WHITELIST_REFUSAL = re.compile(r"^property (\S+) should not exist$")
 
+# The gateway's typed refusal kinds (`SendRefusalKind`,
+# apps/api-gateway/src/communications/send-failure.ts). A 200 `success:false`
+# from the relay carries `refusal: { kind }` only when `classifySendFailure`
+# PROVED the failure a refusal from the error's fields; its `error` sentence is
+# the provider's free text and is never classified (2026-09-28, the Python
+# twin of PR #405 — see `ProviderConversationAgent._is_definite_send_refusal`).
+GATEWAY_REFUSAL_KINDS = frozenset({"header", "no-transport", "credentials", "rejected"})
+
+
+def _typed_refusal_kind(result: Any) -> Optional[str]:
+    """The gateway's typed `refusal.kind`, or None. Reads the field, never text."""
+    refusal = result.get("refusal") if isinstance(result, dict) else None
+    kind = refusal.get("kind") if isinstance(refusal, dict) else None
+    return kind if isinstance(kind, str) and kind in GATEWAY_REFUSAL_KINDS else None
+
 
 def _fields_an_older_gateway_refused(
     status: int, message: Any, sent_keys: Any
@@ -408,17 +423,28 @@ class EmailComposerService:
         misconfiguration would then be indistinguishable in the logs — which is
         precisely how this went unnoticed for a week.
         """
+        # Every failure below carries TYPED fields the caller classifies on
+        # (2026-09-28, the Python twin of PR #405): `refused_before_send` for a
+        # refusal minted HERE with no transport attempted, `gateway_status`
+        # for any answer the gateway gave, and `refusal_kind` for the typed
+        # refusal a 200 `success:false` carries. `error` is for people and the
+        # logs only — `_is_definite_send_refusal` never reads it.
         if not payload.to:
             logger.warning("No recipients — skipping send")
-            return {"success": False, "error": "No recipients"}
+            return {
+                "success": False,
+                "error": "No recipients",
+                "refused_before_send": True,
+            }
 
         admin_key = (self.admin_api_key or os.getenv("ADMIN_API_KEY", "") or "").strip()
         if not admin_key:
-            # Worded to land in `ProviderConversationAgent._is_definite_send_refusal`
-            # (provider_conversation_agent.py:2635) on purpose: no transport was
-            # attempted, so this PROVES non-delivery and the conversation is safe
-            # to release for retry. Classifying it ambiguous would park a message
-            # that was never sent.
+            # No transport was attempted, so this PROVES non-delivery and the
+            # conversation is safe to release for retry: `refused_before_send`
+            # says so, typed. Classifying it ambiguous would park a message
+            # that was never sent. [2026-09-28: this was "worded to land in"
+            # the classifier's text allow-list; the classifier now reads only
+            # the typed field, so the wording is for people.]
             logger.error(
                 "ADMIN_API_KEY is not set — no email delivery method available; "
                 "refusing to send vendor mail unauthenticated."
@@ -429,15 +455,15 @@ class EmailComposerService:
                     "no email delivery method available: ADMIN_API_KEY is not "
                     "configured for the orchestrator"
                 ),
+                "refused_before_send": True,
             }
 
         # ADR 0149 #19. The gateway refuses (403) a service send that does not
         # say which house, vendor and conversation or order it is for. Refused
-        # HERE first, with no transport attempted. Worded, like the unset-key
-        # branch above, to land in `_is_definite_send_refusal`'s EXISTING
-        # allow-list ("no email delivery method available") rather than adding
-        # a pattern to it: nothing left the process, so this proves
-        # non-delivery.
+        # HERE first, with no transport attempted: nothing left the process,
+        # so this proves non-delivery — `refused_before_send`, typed, like the
+        # unset-key branch above. [2026-09-28: no longer "worded to land in"
+        # the classifier's text allow-list; it reads only the typed field.]
         missing = [
             name
             for name, value in (
@@ -463,6 +489,7 @@ class EmailComposerService:
                     + ": the gateway sends only for a named house, vendor, and "
                     "conversation or order"
                 ),
+                "refused_before_send": True,
             }
 
         request_body = {
@@ -515,14 +542,12 @@ class EmailComposerService:
                         )
                         if older:
                             # Nothing was sent: the pipe refused the body
-                            # before the handler ran. Worded, like the
-                            # unset-key branch above, to land in
-                            # `_is_definite_send_refusal`'s EXISTING allow-list
-                            # ("no email delivery method available") — released
+                            # before the handler ran. `refused_before_send`,
+                            # typed, like the unset-key branch above — released
                             # for retry, which succeeds once the newer gateway
-                            # is live — and never in the "gateway refused the
-                            # send: HTTP 400" shape `_relay_final_refusal_code`
-                            # closes for good.
+                            # is live — and deliberately NO `gateway_status`,
+                            # so `_relay_final_refusal_code` never closes it
+                            # for good as a relay 400 (item 68).
                             return {
                                 "success": False,
                                 "error": (
@@ -534,6 +559,9 @@ class EmailComposerService:
                                     "before any send), so nothing was sent"
                                 ),
                                 "gateway_older_than_agent": True,
+                                # The pipe refused the body before any handler
+                                # ran: released for retry, never closed.
+                                "refused_before_send": True,
                             }
                         # ADR 0099: a Nest error body carries `statusCode` and
                         # `message`, never `error`, so the old
@@ -555,10 +583,17 @@ class EmailComposerService:
                             or message
                             or "no detail returned"
                         )
-                        return {
+                        failure: Dict[str, Any] = {
                             "success": False,
                             "error": f"gateway refused the send: HTTP {resp.status} — {detail}",
+                            "gateway_status": resp.status,
                         }
+                        kind = (
+                            _typed_refusal_kind(result) if resp.status == 200 else None
+                        )
+                        if kind:
+                            failure["refusal_kind"] = kind
+                        return failure
         except Exception as e:
             logger.error(f"Failed to send via gateway: {e}")
             return {"success": False, "error": str(e)}

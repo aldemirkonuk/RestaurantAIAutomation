@@ -899,6 +899,41 @@ export class ProcurementService {
       this.logger,
     );
 
+    // THE VENDOR IS THIS HOUSE'S, BEFORE THE ORDER EXISTS (ADR 0147).
+    //
+    // `dto.providerId` is the caller's choice too, and it is used twice below:
+    // in the dedup lookup and on the inserted row. Only the inventory item was
+    // checked, so house A could book house B's vendor onto A's order
+    // (v3.0-TECH-DEBT 2026-09-25, CLAIMS
+    // TD-2026-09-25-PROCUREMENT-ORDER-FOREIGN-PROVIDER). Every caller —
+    // `POST /procurement/orders`, Ask-AI's reorder, the recurrences and the
+    // retroactive order — passes through here, so the fence is here. Another
+    // house's vendor, a vendor row with no house, and a missing id are the same
+    // 404 (ADR 0147: a 403 would confirm the id exists). A failed read refuses:
+    // the absence of an answer is not a yes (ADR 0051).
+    const { count: ownVendor, error: vendorError } = await this.databaseService.supabase
+      .from("providers")
+      .select("id", { count: "exact", head: true })
+      .eq("id", dto.providerId)
+      .eq("restaurant_id", restaurantId);
+    if (vendorError) {
+      this.logger.error("createOrder could not confirm the vendor's house", {
+        restaurantId,
+        providerId: dto.providerId,
+        error: vendorError.message,
+      });
+      throw new ServiceUnavailableException(
+        "Could not confirm this vendor belongs to this restaurant, so no order was placed. Please try again.",
+      );
+    }
+    if (!ownVendor) {
+      this.logger.warn("createOrder refused a vendor that is not this house's", {
+        restaurantId,
+        providerId: dto.providerId,
+      });
+      throw new NotFoundException("Vendor not found");
+    }
+
     // Guard: restaurant must have at least one active provider before placing orders
     const { count: providerCount, error: countError } =
       await this.databaseService.supabase
