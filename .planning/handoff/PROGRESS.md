@@ -91,8 +91,11 @@ that is not the PR number. It merges `--squash --match-head-commit <sha>` (no `-
 never `--admin`), then finds CI and `Deploy to Production` **by the merge commit** and
 watches both with `--exit-status`. Tested 2026-09-28 against a stand-in `gh` over 22 cases
 (every refusal asserted on its own reason, the pinned merge arguments, the merge-commit
-filter); not yet run against real `gh`, and the stand-in used jq 1.7 where real
-`gh --jq` uses gojq.
+filter). **Run against real `gh` by the founder, 2026-09-28, on #491 at `ad040d62e`:** it
+read the PR (OPEN, MERGEABLE, CLEAN), `gh pr checks --required` passed 5 of 5, the
+comments query (gojq) returned none, and it refused with "no trusted PASS marker" —
+the expected outcome, since #491 is not yet audited. The merge and watch half has not
+run for real yet.
 
 ```bash
 cd ~/Projects/restaurant-ai-automation
