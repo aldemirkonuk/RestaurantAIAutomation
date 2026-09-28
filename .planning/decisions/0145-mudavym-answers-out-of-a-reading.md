@@ -1,6 +1,6 @@
 # 0145 — Mudavym answers out of a reading, and only the query that ran may mint one
 
-- **Status:** Locked on the founder's call, 2026-09-12 — the deferred half of [[0133-a-public-page-has-no-house-so-the-public-door-has-one-switch]] decision 2. Five forks named below are deliberately NOT defaulted and remain open. **[2026-09-17, ADR 0149 row 33: the launch floor is Codex's fifteen house readings after audit; standing questions are not in v1 and get their own record; the floating "Wine Agent" button (`WineAgentFab`) is removed, so `/ask` and the palette panel are the two doors — this answers build item 15.]** **[2026-09-19, founder batch 4, KL lane — a NEW rule not among this record's original 15 build tasks: price, vendor, open-order and sales readings are owner/manager only, server-enforced per reading. Built. The cell picker is confirmed as `bound-ask.service.ts`'s existing compose step (Sonnet 5 selects up to 8 cell ids, writes no prose) -- Fork 1's intended, stricter reading, and it was already built. Two questions stay OPEN, to be settled with the `/ask` sketch: whether staff reach `/ask` at all, and what `/ask`'s date handling is. See "Amendment, 2026-09-19" below.]** **[2026-09-21, KL lane round 5 -- closed a role-gate bypass: `orders.late_deliveries` returned the same open orders `orders.open` now withholds from staff, so it is OWNER_MANAGER_ONLY too (six restricted readings, not five). Corrected the cell-picker section above, which had wrongly recorded the founder's answer as naming an unbuilt future UI. Relabelled two of this record's own paraphrases -- the cell-picker answer and the `/ask`-dates answer -- that had been recorded as his verbatim words (a matching fix landed on three more in ADR 0144, and on the reading-catalogue.ts and CLAIMS.jsonl copies of the same claims). See "Amendment, 2026-09-19"'s own dated corrections below.]** **[2026-09-21, same round, later -- a seventh reading restricted: the posted-targets reading (`goals.targets`) is OWNER_MANAGER_ONLY too, a money measure. This does NOT touch who may open `/ask` itself, which stays open with the founder (see "Still open, deliberately not decided here" below, unchanged). See "Amendment, 2026-09-21 -- goals.targets joins the restricted set" below.]** **[2026-09-21, KL round 5, later again -- the founder chose the option "Rules in code, label rows": permissions and spend never live in the model. Built: a staff refusal is now SAVED (the folio CHECK lacked `not_permitted`, so every refusal was a 503 on a real database); every field a Reading shows carries a data class and one role-policy table decides who sees what, which answer kinds each role gets and each role's share of the house's daily ask allowance -- the seven restricted Readings are now DERIVED from their fields, not hand-set; every ask is captured once (role snapshot, who chose the Reading, the raw pick, model ids, content hashes); a labels table with `POST /ask/folios/:id/feedback`; a redacted export view. No training. Who may open `/ask` itself stays open. See "Amendment, 2026-09-21 -- rules in code, label rows" below.]** **[2026-09-21, KL round 6 -- two founder answers. Staff on `/ask`: his pick, verbatim, "Yes, own-work only" -- staff reach `/ask`, see stock, receiving and today's deliveries, and are refused money, supplier prices and people data with a one-line reason; general knowledge is allowed and counts toward the house's daily limit. Trace counts: his pick, verbatim, "Hide by data type" -- a Finding's source trace shows a table's row count only to a role that sees that table's class. Built. See "Amendment, 2026-09-21 -- staff own work, and a trace that hides by data type" and the review trail at the end.]** **[2026-09-21, KL round 4 -- six founder answers (round 6r), his picks verbatim: "J4 wins, hide size (Recommended)", "Classify now, forecast=sales (Recommended)", "Same as the wine pool (Recommended)", "Two labels (Recommended)", "Stays stock (Recommended)", "No, user+house (Recommended)". Built: staff are told a failed read's source and never why or how big; the unbuilt money and sales questions refuse staff with the class's line; an owner-only, audited per-house training opt-out, and an export with no free text that leaves opted-out houses out; re-asks labelled `follow_up` or `correction`. `reading_version` answered from the code. Area-gated staff order lookup waits for PR #441. See "Amendment, 2026-09-21 -- round 6r".]** **[2026-09-22, KL round 5 -- the three forks round 6r left open, his picks verbatim: "Never (Recommended)" (opting back in never releases a question asked while opted out -- each folio snapshots the house's answer at ask time), "Text-free until lawyer (Recommended)" (the export stays as built, no free text; a name remover is the first training lane's job), "Add to /privacy now" (a short training notice, his own choice over the lawyer route). Built: migration 20260922014000 adds `ask_reading_folios.asked_while_opted_out`, derived and written once like `asked_as_role`, backfilled from each house's current answer; the export excludes a snapshot-true folio forever, on top of the existing current-state check, and (last call) no longer carries a re-ask label or `reask_kind` drawn from a folio asked while opted out; `/privacy` gained the notice. See "Amendment, 2026-09-22 -- round 6y".]**
+- **Status:** Locked on the founder's call, 2026-09-12 — the deferred half of [[0133-a-public-page-has-no-house-so-the-public-door-has-one-switch]] decision 2. Five forks named below are deliberately NOT defaulted and remain open. **[2026-09-17, ADR 0149 row 33: the launch floor is Codex's fifteen house readings after audit; standing questions are not in v1 and get their own record; the floating "Wine Agent" button (`WineAgentFab`) is removed, so `/ask` and the palette panel are the two doors — this answers build item 15.]** **[2026-09-19, founder batch 4, KL lane — a NEW rule not among this record's original 15 build tasks: price, vendor, open-order and sales readings are owner/manager only, server-enforced per reading. Built. The cell picker is confirmed as `bound-ask.service.ts`'s existing compose step (Sonnet 5 selects up to 8 cell ids, writes no prose) -- Fork 1's intended, stricter reading, and it was already built. Two questions stay OPEN, to be settled with the `/ask` sketch: whether staff reach `/ask` at all, and what `/ask`'s date handling is. See "Amendment, 2026-09-19" below.]** **[2026-09-21, KL lane round 5 -- closed a role-gate bypass: `orders.late_deliveries` returned the same open orders `orders.open` now withholds from staff, so it is OWNER_MANAGER_ONLY too (six restricted readings, not five). Corrected the cell-picker section above, which had wrongly recorded the founder's answer as naming an unbuilt future UI. Relabelled two of this record's own paraphrases -- the cell-picker answer and the `/ask`-dates answer -- that had been recorded as his verbatim words (a matching fix landed on three more in ADR 0144, and on the reading-catalogue.ts and CLAIMS.jsonl copies of the same claims). See "Amendment, 2026-09-19"'s own dated corrections below.]** **[2026-09-21, same round, later -- a seventh reading restricted: the posted-targets reading (`goals.targets`) is OWNER_MANAGER_ONLY too, a money measure. This does NOT touch who may open `/ask` itself, which stays open with the founder (see "Still open, deliberately not decided here" below, unchanged). See "Amendment, 2026-09-21 -- goals.targets joins the restricted set" below.]** **[2026-09-21, KL round 5, later again -- the founder chose the option "Rules in code, label rows": permissions and spend never live in the model. Built: a staff refusal is now SAVED (the folio CHECK lacked `not_permitted`, so every refusal was a 503 on a real database); every field a Reading shows carries a data class and one role-policy table decides who sees what, which answer kinds each role gets and each role's share of the house's daily ask allowance -- the seven restricted Readings are now DERIVED from their fields, not hand-set; every ask is captured once (role snapshot, who chose the Reading, the raw pick, model ids, content hashes); a labels table with `POST /ask/folios/:id/feedback`; a redacted export view. No training. Who may open `/ask` itself stays open. See "Amendment, 2026-09-21 -- rules in code, label rows" below.]** **[2026-09-21, KL round 6 -- two founder answers. Staff on `/ask`: his pick, verbatim, "Yes, own-work only" -- staff reach `/ask`, see stock, receiving and today's deliveries, and are refused money, supplier prices and people data with a one-line reason; general knowledge is allowed and counts toward the house's daily limit. Trace counts: his pick, verbatim, "Hide by data type" -- a Finding's source trace shows a table's row count only to a role that sees that table's class. Built. See "Amendment, 2026-09-21 -- staff own work, and a trace that hides by data type" and the review trail at the end.]** **[2026-09-21, KL round 4 -- six founder answers (round 6r), his picks verbatim: "J4 wins, hide size (Recommended)", "Classify now, forecast=sales (Recommended)", "Same as the wine pool (Recommended)", "Two labels (Recommended)", "Stays stock (Recommended)", "No, user+house (Recommended)". Built: staff are told a failed read's source and never why or how big; the unbuilt money and sales questions refuse staff with the class's line; an owner-only, audited per-house training opt-out, and an export with no free text that leaves opted-out houses out; re-asks labelled `follow_up` or `correction`. `reading_version` answered from the code. Area-gated staff order lookup waits for PR #441. See "Amendment, 2026-09-21 -- round 6r".]** **[2026-09-22, KL round 5 -- the three forks round 6r left open, his picks verbatim: "Never (Recommended)" (opting back in never releases a question asked while opted out -- each folio snapshots the house's answer at ask time), "Text-free until lawyer (Recommended)" (the export stays as built, no free text; a name remover is the first training lane's job), "Add to /privacy now" (a short training notice, his own choice over the lawyer route). Built: migration 20260922014000 adds `ask_reading_folios.asked_while_opted_out`, derived and written once like `asked_as_role`, backfilled from each house's current answer; the export excludes a snapshot-true folio forever, on top of the existing current-state check, and (last call) no longer carries a re-ask label or `reask_kind` drawn from a folio asked while opted out; `/privacy` gained the notice. See "Amendment, 2026-09-22 -- round 6y".]** **[2026-09-22, KL6 lane, round 6z -- the three forks round 6y's last call left open, his picks verbatim: "/ask waits for new Settings (Recommended)" (the Settings-page reach), "Leave it out (Recommended)" (a person's label given while opted out), "Add a plain line now (Recommended)" (the AI model provider). Built: `BoundAskService.submit` refuses per house until `mudavym_design_settings` is on, checked after `ASK_LAUNCHED` and before any folio write (no web gate exists to extend -- `/ask` has no page or other web-reachable surface, recorded rather than overclaimed); migration `20260922023000` adds `ask_folio_labels.given_while_opted_out`, derived at insert, and the export's three person-basis label columns (pick, compose, knowledge) exclude a label given while opted out even when the question it labels was asked while opted in; `/privacy` states plainly that a question is sent to an AI model provider outside Turkey, unnamed (the repository names no provider publicly). See "Amendment, 2026-09-22 -- round 6z" below.]**
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Date:** 2026-09-12
 - **Keywords:** ask, /ask, Mudavym, assistant, reading, finding, provenance, hollow build, refusal shapes, seal, ask-ai, sommelier
@@ -1361,6 +1361,209 @@ PASS). Evidence: see the review trail.
   (the page is not rebuilt in the Mudavym components); a browser render was
   not done.
 
+## Amendment, 2026-09-22 -- round 6z: /ask waits for the new Settings page, a label snapshots its own opt-out state, /privacy names the model provider's location (KL6 lane, founder answers)
+
+**The forks.** The three questions round-6y's last call left open, put to the
+founder by the KL5 last-call report: whether `/ask` should stay reachable for
+a house that has no way to find the training switch (the new Settings page,
+`mudavym_design_settings`, is not yet reachable for every house); whether a
+label given while opted out, on a question asked while opted in, should ever
+be exported; and whether `/privacy` should say that a question is sent to an
+AI model provider outside Turkey.
+
+**Founder's answers, 2026-09-22 -- round 6z, his picks verbatim.** The option
+label he picked is in quotation marks; the words after each are the
+orchestrating session's brief, not his:
+
+1. Settings reach: **"/ask waits for new Settings (Recommended)"** -- `/ask`
+   is available to a house only once its new Settings page (the one with the
+   training switch) is on for that house; enforce it wherever `/ask` is
+   already gated (web and, if there is a server gate, the API), with tests;
+   do not flip any flag.
+2. Labels given while opted out: **"Leave it out (Recommended)"** --
+   feedback labels (thumbs up/down) record the house's training choice at
+   the moment THEY are given, and the export leaves out any label given
+   while opted out, even on a question asked while opted in; migration in
+   the KL6 band; tests including the founder's own scenario, "opt-in ask ->
+   opt-out -> label -> opt-in -> export excludes the label".
+3. `/privacy` and the model provider: **"Add a plain line now
+   (Recommended)"** -- `/privacy` says plainly that a question on `/ask` is
+   sent to an AI model provider outside Turkey to be answered, naming the
+   provider only if the repository already names it publicly, in the same
+   plain words as the existing training notice; test that it renders.
+
+### Built
+
+1. **`/ask` waits for the new Settings page** (answer 1). Measured first,
+   because the founder's brief named two places to enforce it and this
+   session found only one exists: `/ask` (the bound-reading backend,
+   `BoundAskService` / `POST /ask/folios`) has no web page, palette entry or
+   other web-reachable surface today -- `MUDAVYM_PAGES`
+   (`apps/web/src/lib/mudavym/useMudavymDesign.ts`) carries no `'ask'` entry,
+   no router file in `apps/web/src` references the path `/ask`, and the one
+   component that DOES look like an "Ask AI" surface mounted everywhere
+   (`AskAiSurface` / `AskAiBar`, opened by ⌘⇧K) is the OLDER,
+   UNRELATED propose/confirm Ask AI (`POST /ask-ai/propose` /
+   `/confirm`, ADR 0146) -- a different feature that answers no questions and
+   is not gated by `ASK_LAUNCHED` or read a Reading at all. So there is
+   nothing on the web side today for this answer to gate; this record says so
+   rather than inventing a page or a check with nothing behind it (CLAUDE.md
+   §0.1). The one gate that exists is the server's: `BoundAskService.submit`
+   already refused globally on `ASK_LAUNCHED`; it now ALSO refuses per house
+   when `mudavym_design_settings` -- the flag `AskTrainingSection.tsx`
+   (Settings → Training use) is gated on -- is not enabled for the asking
+   house, checked through the same registry every other flag reads
+   (`SettingsService.isFeatureEnabled`, never a second copy of the logic) and
+   positioned AFTER `ASK_LAUNCHED` and BEFORE `this.folios.begin(`, so a
+   refused house spends nothing and stores nothing -- the identical
+   discipline `ASK_LAUNCHED` itself already follows. `AskAiModule` now
+   imports `SettingsModule` for `SettingsService`; no cycle (`SettingsModule`'s
+   own imports -- `OrganizationsModule`, `AuthModule`, `DatabaseModule`,
+   `SettingsAuditModule`, `VendorTermsModule` -- do not reach back to
+   `AskAiModule`, `ProcurementModule` or `ReadingsModule`). No flag's default
+   or column changed, per the brief: `mudavym_design_settings` stays OFF by
+   default and out of `LIVE_PAGES`; this only adds a second reader of the
+   existing switch.
+2. **A label snapshots its own opt-out state** (answer 2). Migration
+   `20260922023000_ask_feedback_label_opt_out_snapshot.sql` adds
+   `ask_folio_labels.given_while_opted_out boolean not null default false`,
+   modelled on `asked_while_opted_out` (`20260922014000`) but WITHOUT a
+   written-once trigger: `ask_folio_labels` has no UPDATE code path at all
+   (`ReadingFolioStore.label()` only ever `.insert()`s a new row for a
+   relabel), so nothing in the product can change the value once a row
+   exists, and a trigger guarding an update nothing performs would guard
+   nothing real -- stated here rather than added defensively, per CLAUDE.md
+   §5b ("state a claim precisely enough that someone could try to write a
+   check for it"), which cuts the other way too: don't build a lock for a
+   door nothing opens.
+   - A BEFORE INSERT trigger (`ask_folio_labels_opt_out_is_derived`) derives
+     the column from `ask_training_opt_outs` inside the same insert, the
+     same shape as `asked_while_opted_out`'s own derive trigger; a client-sent
+     value is overwritten. The function is revoked from `public`, `anon`
+     and `authenticated`.
+   - `ask_folio_training_export`'s three PERSON-basis label columns
+     (`pick_label` when `basis = 'person'`, `compose_label`, `knowledge_label`
+     -- `compose` and `knowledge` steps are person-basis by construction,
+     the table's own `ask_folio_labels_label_by_basis` CHECK requires
+     `basis = 're_ask'` to carry `step = 'pick'`) each gain
+     `and not l.given_while_opted_out` in their lateral join's WHERE clause,
+     so a label given while opted out is excluded from the most-recent-label
+     lookup -- and, because each label is its own row with its own snapshot,
+     an EARLIER label given while opted in still surfaces if a LATER relabel
+     on the same step was given opted out.
+   - Deliberately untouched: `reask_label` / `reask_gold_class` (`basis =
+     're_ask'`, a re-ask's DERIVED label, never a person clicking
+     thumbs-up/down) keep the existing `20260922014000` check on the folio
+     that WROTE them -- a different, already-closed question this round does
+     not reopen.
+   - Because this migration `drop`s and re-`create`s
+     `ask_folio_training_export`, it is now the LAST file defining that view
+     (`20260922014000` still last defines the derive trigger and the
+     written-once function for `asked_while_opted_out`, which this migration
+     does not touch). Two existing CLAIMS rows that name the view's last
+     file were re-pointed accordingly -- see "CLAIMS" below.
+3. **`/privacy` names the provider's location** (answer 3).
+   `apps/web/src/pages/Privacy.tsx`'s "Questions you ask Mudavym" section
+   gains one plain sentence, positioned right after what `/ask` keeps and
+   before the training-opt-out sentences (a separate fact from training: the
+   question is sent to be answered regardless of the house's training
+   choice): *"To answer it, the question is sent to an AI model provider
+   outside Turkey."* Not named: checked this session --
+   `grep -rn "Anthropic" apps/web/src/pages apps/web/src/components` matches
+   only internal code comments describing UI style (`GoogleSignInButton.tsx`,
+   `AuthorizeShell.tsx`) or an upload-size limit (`MenuCsvUpload.tsx`), never
+   a sentence a person reads -- so per the founder's own condition ("name it
+   only if the repo already names it publicly") it stays unnamed.
+   `Privacy.test.tsx` gains a sixth case asserting the sentence renders
+   (6 tests total, up from 5).
+
+### CLAIMS
+
+Two rows added: `ADR-0145-ASK-FEEDBACK-LABEL-OPT-OUT-SNAPSHOT` (the label
+snapshot and its three export filters) and `ADR-0145-ASK-WAITS-FOR-NEW-SETTINGS`
+(the per-house Settings gate, states plainly that no web gate exists to
+extend). Two existing rows RE-POINTED, not re-written: `20260922023000` now
+defines `ask_folio_training_export` last, so
+`ADR-0145-ASK-EXPORT-LEAVES-OUT-OPTED-OUT-HOUSES-AND-FREE-TEXT` and
+`ADR-0145-ASK-TRAINING-OPT-OUT-SNAPSHOT-AT-ASK-TIME` (the latter split into a
+trigger/column half still read from the untouched `20260922014000`, and a
+view-body half now read from `20260922023000`) both had their `verify`
+updated to read the view body from the new file; every assertion inside each
+is unchanged content, confirmed still true in the recreated view. Running
+`check_decision_claims.sh` on the built tree before the re-point reported
+these two rows REGRESSED (not a real regression -- the mechanism these rows
+themselves use, "am I still the last file defining the view", correctly
+fired the moment a later file legitimately redefined it); after re-pointing,
+437 of 437 hold.
+
+### Evidence, measured 2026-09-22 (KL6 lane, worktree wt-r5-KL, branch r5/KL, no merge in progress)
+
+PGlite `KL6-label-opt-out-snapshot.mjs`, 12 of 12 assertions, ALL PASS,
+against every migration before `20260922023000` plus that file: the
+founder's own test scenario verbatim, "opt-in ask -> opt-out -> label ->
+opt-in -> export excludes the label"; a forged client
+`given_while_opted_out=false` overwritten by the trigger; a label given
+while opted in exported normally; `pick` (basis=person) and `knowledge`
+steps treated the same as `compose`; an earlier opted-in label surviving a
+later opted-out relabel on the same step; the `re_ask` mechanism unaffected
+(its own control case still exports `reask_label`/`reask_gold_class`
+correctly); no `anon`/`authenticated`/`PUBLIC` grant on the derive function;
+idempotent re-run. `check_decision_claims.sh`: 437 of 437 holding (2 added,
+2 re-pointed). `bound-ask.service.spec.ts`: five new cases in a dedicated
+describe block -- the house's flag off refuses 503 before `begin`/the model
+are reached; `ASK_LAUNCHED` still checked first (unset short-circuits before
+the flag is ever read); a failed flag read propagates as an error, never
+read as on or off; both gates open lets `submit` proceed. Three existing
+`new BoundAskService(...)` call sites in `ask-staff-own-work.spec.ts`
+updated with an always-enabled settings double (none of those cases is
+about this gate).
+
+Mutation-tested, each restored byte-identically (md5 confirmed before and
+after): migration `20260922023000` (`a6c61c1373cc748d91c415f7ea56d3a8`) --
+dropping the pick(person) lateral's filter clause flips the new CLAIMS
+verify PASS → FAIL; dropping the current-state `asked_while_opted_out`
+clause flips the re-pointed training-opt-out-snapshot verify PASS → FAIL (the
+free-text-absence claim is unaffected, correctly -- that content is
+untouched). `bound-ask.service.ts`
+(`534fb564abfe874682854e8c66c56466`) -- removing the refusal branch, and
+moving the gate block to run genuinely after `this.folios.begin(` (confirmed
+by re-deriving `begin_at` from `gate_at`, which becomes unfindable), each
+flip the new CLAIMS verify PASS → FAIL.
+
+### Not built, not verified (round 6z)
+
+- No web gate for `/ask` exists to extend (answer 1) -- stated above, not
+  worked around. When `/ask`'s own page or palette entry ships, it inherits
+  this server gate automatically (nothing here is bypassable from a new
+  caller) and should ALSO check the flag client-side before rendering the
+  composer, the way every other `mudavym_design_*` page already does via
+  `useMudavymDesign` -- that page-side check is that future lane's job, not
+  this one's, since `/ask` is not `'ask'` in `MUDAVYM_PAGES` today.
+  Un-adjacent from this: the round-6r Terms and `/ask` notice drafts (still
+  unlanded, bracketed since round 6y) do not exist to update either.
+  Neither does the Settings page's own reachability change for anyone else
+  -- `mudavym_design_settings` is unaffected, per "do not flip any flag".
+- `gw_tsc`, `gw_tsc_spec`, `web_tsc`, `web_eslint`, `boots`, `prefixes`,
+  `vitest`, `check_decision_claims.sh` and the PGlite probe were run on the
+  worktree's index tree, not a fresh clone; `check_migration_ledger.py` and
+  `check_definer_functions_closed.py` remain CANNOT CHECK (no database
+  reachable in this worktree, the honest-failure shape, unchanged from every
+  earlier round). No production query; `ASK_LAUNCHED` is unset everywhere
+  today, so this round changes nothing observable in production regardless.
+- No browser render of `/privacy`'s new sentence (vitest only, matching
+  every earlier round on this page).
+- **Noticed, not decided, surfaced to the founder rather than acted on
+  unilaterally:** neither `/privacy`'s "Questions you ask Mudavym" section
+  nor `AskTrainingSection.tsx`'s Settings copy says a feedback label
+  (thumbs up/down) exists or can be exported -- both describe only the
+  QUESTION and its answer. `ask_folio_training_export` has exported
+  `pick_label`/`compose_label`/`knowledge_label`/`reask_label` since round
+  6r (20260921171200), unchanged by this round; this session did not widen
+  either page's copy to mention labels, since neither founder answer in this
+  round asked for that and CLAUDE.md §0.1 forbids picking a "sensible
+  default" on an undecided fork. Flagged as a founder question rather than
+  silently left as-is or silently fixed.
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
@@ -1376,3 +1579,4 @@ PASS). Evidence: see the review trail.
 | 2026-09-22 | KL lane, round 5 (build, on HEAD a04aaa4e1, no merge in progress) | Built all three. Migration `20260922014000` adds `ask_reading_folios.asked_while_opted_out` (derived, written once, backfilled) and a second export clause; `/privacy` gained the "Questions you ask Mudavym" section; `Privacy.test.tsx` added. Measured on staged index tree `bf3b2744a7393a3a7fb5ec0e7e0051570e32334a`: `verify_index.sh` ALL GREEN across `gw_tsc`, `gw_tsc_spec`, `web_tsc`, `web_eslint`, `claims` (435/435), `boots`, `prefixes`, PGlite `KL5-opt-out-snapshot.mjs` (19/19), `vitest` (`Privacy.test.tsx`, 5/5); eleven product guards and four git-reading guards all PASS; `check_migration_ledger.py` / `check_definer_functions_closed.py` CANNOT CHECK (no database reachable), the honest-failure shape. Mutations: 2 on the migration file (dropping the export's snapshot clause; letting the trigger trust the client's value) each flip the new CLAIMS verify and 2-4 PGlite assertions from PASS/OK to FAIL; both restored byte-identically, md5 `7c2ddbdfd5c827cb8a5ac9c75f7209c9` confirmed before and after. CLAIMS: one row added (`ADR-0145-ASK-TRAINING-OPT-OUT-SNAPSHOT-AT-ASK-TIME`), one re-pointed at the new migration file (`...-EXPORT-LEAVES-OUT-OPTED-OUT-HOUSES-AND-FREE-TEXT`, its checks unchanged on the recreated view). Not built: the Terms page and `/ask` page still do not exist (their notice lines from round 6r remain unlanded); the name remover (explicitly out of scope, answer 2); no production query, no browser render of `/privacy` (vitest only). |
 | 2026-09-22 | KL lane, round 5 (verify) | Re-ran the build's checks on its tree and matched every number. Fixed: the Settings copy still said names are removed before an export; it now says the export carries no question text, matching `/privacy` ("Fixed on verify" above). Re-measured on staged index tree 858487c3: `verify_index.sh` ALL GREEN, vitest 2 files / 11 tests. |
 | 2026-09-22 | Opus last call, KL round 5 (round 6y), HEAD a04aaa4e1, no merge in progress | Not ready as built: a re-ask carried a question asked while opted out into the export through another folio, both ways (PGlite `KL5-lastcall-reask-optout.mjs`, the build's 19 assertions plus 7 re-ask ones: 2 FAILED on the build's migration). Fixed in the view, with an all-opted-in control kept: 26 of 26. `verify_index.sh` on staged index tree 06c38532: `web_tsc`, `web_eslint` (the 4 changed web files), `claims` 435/435, `prefixes`, that PGlite probe, vitest 2 files / 11 tests -- ALL GREEN; the later edits are to this record only, after which the four git-reading guards and CLAIMS (435/435) were re-run. Gateway tsc and jest not re-run: no gateway file changed. Mutations: dropping the re-ask label clause, and exporting `reask_kind` unguarded, each fail one PGlite assertion; the strengthened CLAIMS verify fails on those two, on a missing `create trigger`, and on a later file redefining the view; all restored byte-identically. Also corrected: the migration header's unsourced quotation, the backfill's "only information" wording, the Settings On/Off lines, and the round-6r Terms and `/ask` drafts (bracketed). Recorded, not decided: the Settings switch is reachable only on the new Settings page; a person's label given while opted out; `/privacy` does not name the AI model provider. |
+| 2026-09-22 | Aldemir (founder), round 6z, relayed by the orchestrating session | His picks, verbatim: "/ask waits for new Settings (Recommended)" (Settings reach); "Leave it out (Recommended)" (labels given while opted out); "Add a plain line now (Recommended)" (the AI model provider, over the lawyer-review default). The brief's reading of each (its words, not his) is in the round-6z amendment above. |

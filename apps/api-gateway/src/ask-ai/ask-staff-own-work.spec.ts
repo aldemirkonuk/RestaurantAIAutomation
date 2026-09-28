@@ -28,6 +28,14 @@ const OTHER_HOUSE = "33333333-3333-4333-8333-333333333333";
 const USER = "11111111-1111-4111-8111-111111111111";
 const today = () => new Date().toISOString().slice(0, 10);
 
+/**
+ * Every case in this file is about staff role-gating, none about the
+ * round-6z "/ask waits for new Settings" per-house gate (ADR 0145,
+ * 2026-09-22), so this double always reports the flag on -- the same
+ * always-on double `bound-ask.service.spec.ts`'s harness defaults to.
+ */
+const settingsOn = { isFeatureEnabled: async () => ({ enabled: true, active: true }) } as any;
+
 type Row = Record<string, any>;
 /** A filtering, paginating book, the same contract as reading-runner.spec.ts's. */
 class Books {
@@ -107,7 +115,7 @@ async function ask(role: string, questionClass: QuestionClass, utterance: string
     finish: jest.fn(async (folio: ReadingFolio, answer: any, finding?: Finding) => ({ ...folio, status: "complete", answer, finding: finding ?? null })),
   };
   const service = new BoundAskService({ getClient } as any, new ConfigService({ ASK_LAUNCHED: "true" }),
-    { call, dailyShareOfAllowance: jest.fn() } as any, { record: jest.fn() } as any, folios as any);
+    { call, dailyShareOfAllowance: jest.fn() } as any, { record: jest.fn() } as any, folios as any, settingsOn);
   await service.submit(HOUSE, USER, role, { requestId: "req-1", utterance, origin: "page" } as BoundAskDto);
   const [, answer, finding] = folios.finish.mock.calls[0];
   return { answer, finding: finding as Finding | undefined, call, getClient };
@@ -260,7 +268,7 @@ describe("staff general knowledge counts toward the house's daily limit (real Mo
       begin: jest.fn(async (input: { restaurantId: string }) => ({ created: true, folio: pendingFolio("what grape is Barolo made from", input.restaurantId) })),
       finish: jest.fn(async (folio: ReadingFolio, answer: any) => ({ ...folio, status: "complete", answer })),
     };
-    const service = new BoundAskService({ getClient: jest.fn() } as any, config, modelClient, { record: jest.fn() } as any, folios as any);
+    const service = new BoundAskService({ getClient: jest.fn() } as any, config, modelClient, { record: jest.fn() } as any, folios as any, settingsOn);
     const askAs = async (restaurantId: string, role: string) => {
       folios.finish.mockClear();
       await service.submit(restaurantId, USER, role, { requestId: "req-1", utterance: "what grape is Barolo made from", origin: "page" } as BoundAskDto);
@@ -449,7 +457,7 @@ describe("round 6r: reading_version is the page's, and only for the Reading the 
       finish: jest.fn(async (folio: ReadingFolio, answer: any, finding?: Finding) => ({ ...folio, answer, finding: finding ?? null })),
     };
     const service = new BoundAskService({ getClient: () => books() } as any, new ConfigService({ ASK_LAUNCHED: "true" }),
-      { call, dailyShareOfAllowance: jest.fn() } as any, { record: jest.fn() } as any, folios as any);
+      { call, dailyShareOfAllowance: jest.fn() } as any, { record: jest.fn() } as any, folios as any, settingsOn);
     await service.submit(HOUSE, USER, "staff", { requestId: "req-1", utterance: "which wines are below par", origin: "page", ...input } as BoundAskDto);
     const [, answer, finding] = folios.finish.mock.calls[0];
     return { answer, finding: finding as Finding, begin: (folios.begin.mock.calls[0] as any[])[0], call };

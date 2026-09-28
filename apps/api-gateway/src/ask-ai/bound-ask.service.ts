@@ -42,6 +42,17 @@ import { FolioCapture, ReadingFolio, ReadingFolioStore } from "../ask-readings/r
 import { ReadingRunner } from "../ask-readings/reading-runner";
 import { Finding, QuestionClass, ReadingArgs, ReadingId } from "../ask-readings/reading.types";
 import { BoundAskDto } from "./dto/bound-ask.dto";
+import { SettingsService } from "../settings/settings.service";
+
+/**
+ * The one flag key `submit` checks before spending anything (ADR 0145,
+ * 2026-09-22, round 6z). Read through the registry's own
+ * `SettingsService.isFeatureEnabled`, never a second copy of the check --
+ * that method is what answers `{ enabled: false, active: false }` for a flag
+ * nothing reads, so a typo here would fail the gate CLOSED (never enabled)
+ * rather than silently deciding nothing.
+ */
+export const ASK_SETTINGS_GATE_FLAG = "mudavym_design_settings";
 
 /**
  * A failure on the MODEL side of an ask, already classified. Raised only by
@@ -141,6 +152,7 @@ export class BoundAskService {
     private readonly modelClient: ModelClientService,
     private readonly nfVerdicts: NfVerdictService,
     private readonly folios: ReadingFolioStore,
+    private readonly settings: SettingsService,
     @Optional() @Inject(ASK_ROLE_POLICY) private readonly policyTable: RolePolicyTable = ROLE_POLICY,
   ) {}
 
@@ -173,10 +185,39 @@ export class BoundAskService {
     // refusal here spends nothing and stores nothing. ASK_LAUNCHED is unset
     // everywhere today (no .env, no deployment config carries it); flip it
     // to "true" when the page ships, in the same change that wires the
-    // caller -- this is the one gate, so it is the first line, not a branch
-    // a future edit could accidentally get past.
+    // caller -- this is the first gate, so it is the first line, not a
+    // branch a future edit could accidentally get past. [2026-09-22, round
+    // 6z: a second, per-house gate follows it -- the new Settings page must
+    // also be on for the asking house. Both run before `this.folios.begin(`,
+    // for the same reason: a refusal here must never be the thing that
+    // spends the money it was meant to stop.]
     if (this.config.get<string>("ASK_LAUNCHED") !== "true") {
       throw new ServiceUnavailableException("Ask has not launched yet.");
+    }
+    // ADR 0145, 2026-09-22, round 6z. Founder's pick, verbatim: "/ask waits
+    // for new Settings (Recommended)" -- the brief's reading of it (not his
+    // words): /ask is available to a house only once its new Settings page
+    // (`mudavym_design_settings`, the page `AskTrainingSection` -- Settings
+    // -> Training use -- lives on) is turned on for that house, because that
+    // page is the only place the training switch this ADR already promises
+    // (round 6r/6y, and /privacy's own notice) can be found and worked. A
+    // house on the old Settings page has no switch to find, so /ask staying
+    // reachable for it would grant a capability with no visible opt-out.
+    // Checked per house, from the same registry every other flag is read
+    // from (`SettingsService.isFeatureEnabled`), never a second copy of the
+    // logic -- and BEFORE `this.folios.begin(`, same as ASK_LAUNCHED above,
+    // so a refused house spends nothing and stores nothing. No flag's
+    // default or column changed here: `mudavym_design_settings` is still OFF
+    // by default and still not in `LIVE_PAGES` (apps/web's
+    // useMudavymDesign.ts) -- this only adds a second reader of the existing
+    // switch, on the server, where /ask's only other gate already lives. A
+    // failed read is thrown, never read as "on" or "off": `isFeatureEnabled`
+    // raises rather than guessing.
+    const settingsGate = await this.settings.isFeatureEnabled(restaurantId, ASK_SETTINGS_GATE_FLAG);
+    if (!settingsGate.enabled) {
+      throw new ServiceUnavailableException(
+        "Ask needs this house's new Settings page turned on first (Settings → Training use).",
+      );
     }
     const utterance = input.utterance.trim();
     if (!utterance) throw new BadRequestException("Write the question first.");

@@ -10,6 +10,10 @@ import Privacy from './Privacy'
  * keeps, that the owner can opt out, that nothing asked while opted out is
  * ever used (even after opting back in), and that an export carries no
  * question text.
+ *
+ * The fifth case below is round 6z's own founder pick, verbatim: "Add a
+ * plain line now (Recommended)" — that a question sent to /ask is sent to an
+ * AI model provider outside Turkey to be answered.
  */
 describe('Privacy page', () => {
   it('renders the page', () => {
@@ -40,5 +44,12 @@ describe('Privacy page', () => {
   it('states that an export carries no question text', () => {
     renderWithProviders(<Privacy />)
     expect(screen.getByText(/that export carries no question text at all/i)).toBeInTheDocument()
+  })
+
+  it('states that a question is sent to an AI model provider outside Turkey to be answered', () => {
+    renderWithProviders(<Privacy />)
+    expect(
+      screen.getByText(/the question is sent to an ai model provider outside turkey/i),
+    ).toBeInTheDocument()
   })
 })

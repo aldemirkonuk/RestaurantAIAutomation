@@ -22,6 +22,21 @@ import { BrandMark } from '../components/brand/BrandMark'
  * migration 20260922014000), and — round 6y's other answer, "Text-free until
  * lawyer" — any export carries no question text at all today, not names
  * removed from text that is exported.
+ *
+ * [2026-09-22, round 6z, founder's pick verbatim: "Add a plain line now
+ * (Recommended)". The brief's reading of it, not his words: a question asked
+ * on /ask is sent to an AI model provider outside Turkey to be answered, and
+ * that is now said plainly here, in the same plain register as the training
+ * notice above it. Not named: the repository does not name a model provider
+ * anywhere in its own user-facing copy today (checked this session —
+ * `grep -rn "Anthropic" apps/web/src/pages apps/web/src/components` matches
+ * only internal code comments describing UI style or an upload-size limit,
+ * never a sentence a person reads), so per the founder's own condition
+ * ("name it only if the repo already names it publicly") it stays unnamed
+ * here too. This is a separate fact from the training notice: a question is
+ * sent to answer it regardless of the house's training choice, on or off —
+ * training governs a later, optional export, never whether the question
+ * leaves the browser to be answered at all.]
  */
 export default function Privacy() {
   return (
@@ -59,7 +74,7 @@ export default function Privacy() {
           <Section
             icon={MessageSquare}
             title="Questions you ask Mudavym"
-            body="When someone in your house asks Mudavym a question, we keep the question, the answer, and how the answer was reached, so it can be checked later. Your house's owner can turn training use off for the whole house, in Settings → Training use — asking and answering keep working the same either way. A question asked while training is off is never used for training, even if the owner turns it back on afterward. If we ever export questions to improve Mudavym, that export carries no question text at all, only facts such as which kind of question it was and when it was asked. No training has started."
+            body="When someone in your house asks Mudavym a question, we keep the question, the answer, and how the answer was reached, so it can be checked later. To answer it, the question is sent to an AI model provider outside Turkey. Your house's owner can turn training use off for the whole house, in Settings → Training use — asking and answering keep working the same either way. A question asked while training is off is never used for training, even if the owner turns it back on afterward. If we ever export questions to improve Mudavym, that export carries no question text at all, only facts such as which kind of question it was and when it was asked. No training has started."
           />
 
           <Section

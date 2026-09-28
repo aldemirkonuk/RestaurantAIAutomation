@@ -39,7 +39,21 @@ function modelTextReply(json: unknown) {
   return { content: [{ type: "text", text: JSON.stringify(json) }] };
 }
 
-function harness(configValues: Record<string, string> = { ASK_LAUNCHED: "true" }, policy?: RolePolicyTable) {
+/**
+ * `settingsFlag` doubles `SettingsService.isFeatureEnabled` for the round-6z
+ * per-house gate (`mudavym_design_settings`, "/ask waits for new Settings").
+ * Defaults to enabled -- true, active: true -- so every pre-existing test
+ * below, none of which is about this gate, keeps exercising submit()'s real
+ * behaviour past it exactly as it did before this gate existed. The gate's
+ * own OFF/unreadable behaviour is proven separately, below, by passing an
+ * override. An `Error` value makes the double reject, the same shape a real
+ * DB read failure takes.
+ */
+function harness(
+  configValues: Record<string, string> = { ASK_LAUNCHED: "true" },
+  policy?: RolePolicyTable,
+  settingsFlag: { enabled: boolean; active?: boolean } | Error = { enabled: true, active: true },
+) {
   const call = jest.fn();
   const dailyShareOfAllowance = jest.fn();
   const modelClient = { call, dailyShareOfAllowance } as any;
@@ -55,12 +69,17 @@ function harness(configValues: Record<string, string> = { ASK_LAUNCHED: "true" }
   // model_knowledge paths already had, extended to the new gate.
   const getClient = jest.fn(() => ({}));
   const db = { getClient } as any;
+  const isFeatureEnabled = jest.fn(async () => {
+    if (settingsFlag instanceof Error) throw settingsFlag;
+    return { enabled: settingsFlag.enabled, active: settingsFlag.active ?? true };
+  });
+  const settings = { isFeatureEnabled } as any;
   // Every test below exercises submit()'s real behaviour, so the harness
   // defaults the launch gate ON; the gate itself is proven OFF-by-default
   // separately, below, with no override.
   const config = new ConfigService(configValues);
-  const service = new BoundAskService(db, config, modelClient, nfVerdicts, folios, policy);
-  return { service, call, begin, finish, getClient, dailyShareOfAllowance };
+  const service = new BoundAskService(db, config, modelClient, nfVerdicts, folios, settings, policy);
+  return { service, call, begin, finish, getClient, dailyShareOfAllowance, isFeatureEnabled };
 }
 
 function dto(overrides: Partial<BoundAskDto> = {}): BoundAskDto {
@@ -97,6 +116,48 @@ describe("BoundAskService.submit: refuses cleanly while /ask has no caller", () 
 
   it("submits normally once ASK_LAUNCHED=true, proving the gate is the only thing refusing it above", async () => {
     const { service, begin } = harness({ ASK_LAUNCHED: "true" });
+    begin.mockResolvedValue({ created: false, folio: pendingFolio({ status: "complete" }) });
+    const result = await service.submit(HOUSE, USER, OWNER, dto());
+    expect(result.status).toBe("complete");
+  });
+});
+
+// ADR 0145, 2026-09-22, round 6z. Founder's pick, verbatim: "/ask waits for
+// new Settings (Recommended)". A second, per-house gate on top of
+// ASK_LAUNCHED: the asking house's `mudavym_design_settings` flag -- the page
+// `AskTrainingSection` (Settings -> Training use) lives on -- must be on, so
+// a house is never left able to ask without also being able to find the
+// training switch this same ADR already promises.
+describe("BoundAskService.submit: refuses until this house's new Settings page is on (round 6z)", () => {
+  it("refuses with 503 when the house's mudavym_design_settings flag is off, before writing a folio or calling the model", async () => {
+    const { service, begin, call, isFeatureEnabled } = harness({ ASK_LAUNCHED: "true" }, undefined, { enabled: false, active: true });
+    await expect(service.submit(HOUSE, USER, OWNER, dto())).rejects.toMatchObject({ status: 503 });
+    expect(begin).not.toHaveBeenCalled();
+    expect(call).not.toHaveBeenCalled();
+    expect(isFeatureEnabled).toHaveBeenCalledWith(HOUSE, "mudavym_design_settings");
+  });
+
+  it("refuses just the same when the registry itself reports the flag inactive -- fails closed, never open, on an unregistered key", async () => {
+    const { service, begin } = harness({ ASK_LAUNCHED: "true" }, undefined, { enabled: false, active: false });
+    await expect(service.submit(HOUSE, USER, OWNER, dto())).rejects.toMatchObject({ status: 503 });
+    expect(begin).not.toHaveBeenCalled();
+  });
+
+  it("ASK_LAUNCHED is still checked first: unset and settings off both refuse, but the launch gate never reads the flag", async () => {
+    const { service, begin, isFeatureEnabled } = harness({}, undefined, { enabled: false, active: true });
+    await expect(service.submit(HOUSE, USER, OWNER, dto())).rejects.toMatchObject({ status: 503 });
+    expect(begin).not.toHaveBeenCalled();
+    expect(isFeatureEnabled).not.toHaveBeenCalled();
+  });
+
+  it("a failed read of the flag is an error, never read as off or on", async () => {
+    const { service, begin } = harness({ ASK_LAUNCHED: "true" }, undefined, new Error("could not read your feature settings"));
+    await expect(service.submit(HOUSE, USER, OWNER, dto())).rejects.toThrow("could not read your feature settings");
+    expect(begin).not.toHaveBeenCalled();
+  });
+
+  it("submits normally once both gates are open, proving neither gate blocks a house with Settings on", async () => {
+    const { service, begin } = harness({ ASK_LAUNCHED: "true" }, undefined, { enabled: true, active: true });
     begin.mockResolvedValue({ created: false, folio: pendingFolio({ status: "complete" }) });
     const result = await service.submit(HOUSE, USER, OWNER, dto());
     expect(result.status).toBe("complete");

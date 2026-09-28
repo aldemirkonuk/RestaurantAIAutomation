@@ -8,6 +8,7 @@ import { AskAiService } from "./ask-ai.service";
 import { ReadingsModule } from "../ask-readings/readings.module";
 import { BoundAskController } from "./bound-ask.controller";
 import { BoundAskService } from "./bound-ask.service";
+import { SettingsModule } from "../settings/settings.module";
 
 /**
  * AuthModule is required, not optional: AskAiController is guarded by
@@ -21,11 +22,19 @@ import { BoundAskService } from "./bound-ask.service";
  * Nest fails circular forwardRefs by injecting undefined at runtime rather than
  * erroring at build time.
  *
+ * SettingsModule is imported for `SettingsService.isFeatureEnabled` (ADR 0145,
+ * 2026-09-22, round 6z — "/ask waits for new Settings (Recommended)"):
+ * `BoundAskService.submit` refuses per house until `mudavym_design_settings`
+ * is on for that house. No cycle: `SettingsModule`'s own imports
+ * (`OrganizationsModule`, `AuthModule`, `DatabaseModule`,
+ * `SettingsAuditModule`, `VendorTermsModule`) do not reach back to
+ * `AskAiModule`, `ProcurementModule` or `ReadingsModule`.
+ *
  * ModelClientModule is @Global, so ModelClientService and NfVerdictService need
  * no import line.
  */
 @Module({
-  imports: [DatabaseModule, ConfigModule, AuthModule, ProcurementModule, ReadingsModule],
+  imports: [DatabaseModule, ConfigModule, AuthModule, ProcurementModule, ReadingsModule, SettingsModule],
   controllers: [AskAiController, BoundAskController],
   providers: [AskAiService, BoundAskService],
   exports: [AskAiService],
