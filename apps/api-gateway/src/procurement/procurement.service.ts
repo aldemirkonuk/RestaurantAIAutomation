@@ -415,6 +415,24 @@ function embeddedProviderName(embed: unknown): string | null {
  */
 export class SendRefusedBeforeSendError extends BadRequestException {}
 
+/**
+ * The result of the founder's box on a never-arrived cancel (ADR 0207 round
+ * 5, question 20): "We paid for this, we are owed {total}." `opened` is true
+ * only the FIRST time this order's claim is raised; a repeat of the box on
+ * the same order reports `alreadyOpen: true` with that SAME claim, never a
+ * second row.
+ */
+export interface NeverArrivedCreditClaimResult {
+  opened: boolean;
+  alreadyOpen: boolean;
+  claim: {
+    id: string;
+    claimedAmount: number;
+    currency: string | null;
+    state: string;
+  };
+}
+
 @Injectable()
 export class ProcurementService {
   private readonly logger = new Logger(ProcurementService.name);
@@ -4671,33 +4689,50 @@ export class ProcurementService {
    * vendor error) and for any discrepancy whose amount cannot be computed. A $0
    * claim in a distributor's inbox costs more credibility than it recovers.
    */
+  /**
+   * @param order The order row this claim is against, when the caller already
+   *   has it (`verifyReceipt` selects `*`) — read here only for `provider_id`
+   *   and `currency`, so the claim states the vendor and money it is against
+   *   instead of leaving both silently unset. [ADR 0207 round 5, named as a
+   *   round-4 gap: "openCreditClaim ... records neither provider_id nor
+   *   currency, and the column defaults to 'USD'."] `currency` is left unset
+   *   (the column's own DEFAULT 'USD' stands) rather than written explicitly
+   *   when the order records none — writing 'USD' for an unknown currency
+   *   would be the same silent guess the design names as the fault, moved
+   *   one line down.
+   */
   private async openCreditClaim(
     restaurantId: string,
     orderId: string,
     userId: string,
     match: MatchResult,
+    order?: { provider_id?: string | null; currency?: string | null } | null,
   ): Promise<void> {
     try {
       const claim = draftClaimFromMatch(match);
       if (!claim) return;
 
+      const insertRow: Record<string, unknown> = {
+        restaurant_id: restaurantId,
+        order_id: orderId,
+        provider_id: order?.provider_id ?? null,
+        reason: claim.reason,
+        summary: claim.summary,
+        claimed_amount: claim.claimedAmount,
+        // True only when the vendor's own packing slip proves the overbill.
+        // Worth knowing which claims are winnable before spending a call.
+        self_evidenced: claim.selfEvidenced,
+        state: "open",
+        opened_by: userId,
+        // Snapshot: the order can be corrected later, and the claim must still
+        // be able to say what it was based on when it was raised.
+        evidence: match as unknown as Record<string, unknown>,
+      };
+      if (order?.currency) insertRow.currency = order.currency;
+
       const { error } = await this.databaseService.supabase
         .from("procurement_credits")
-        .insert({
-          restaurant_id: restaurantId,
-          order_id: orderId,
-          reason: claim.reason,
-          summary: claim.summary,
-          claimed_amount: claim.claimedAmount,
-          // True only when the vendor's own packing slip proves the overbill.
-          // Worth knowing which claims are winnable before spending a call.
-          self_evidenced: claim.selfEvidenced,
-          state: "open",
-          opened_by: userId,
-          // Snapshot: the order can be corrected later, and the claim must still
-          // be able to say what it was based on when it was raised.
-          evidence: match as unknown as Record<string, unknown>,
-        });
+        .insert(insertRow);
 
       // 23505 = a claim for this line and reason is already open. Re-running the
       // match must not manufacture a second claim for money already being
@@ -4709,6 +4744,184 @@ export class ProcurementService {
     } catch (err: any) {
       this.logger.warn(`openCreditClaim threw for ${orderId}: ${err?.message}`);
     }
+  }
+
+  /**
+   * The founder's box on the never-arrived cancel (ADR 0207 round 5, question
+   * 20, round 6z, verbatim): "Add the box (Recommended)" — "We paid for
+   * this, we are owed {total}", opening a credit claim with the order's
+   * vendor and currency so the Credits line chases it.
+   *
+   * Only after the order has actually been cancelled `never_arrived` — this
+   * is not a general "claim a credit" act, it is the one box that follows
+   * that specific cancellation, so it re-reads the order rather than trusting
+   * whatever the caller last knew. Idempotent: a second call for the same
+   * order finds its own open claim (`uq_pc_order_never_arrived` proves it at
+   * the database) and returns it rather than opening a second one.
+   */
+  async openNeverArrivedCreditClaim(
+    restaurantId: string,
+    orderId: string,
+    userId: string,
+  ): Promise<NeverArrivedCreditClaimResult> {
+    if (!this.organizations) {
+      throw new InternalServerErrorException(
+        "Who may claim this refund could not be established (the organizations service is not " +
+          "wired into procurement), so nothing was opened. This is a gateway fault, not a " +
+          "decision about this order.",
+      );
+    }
+    await this.organizations.assertCanManageRestaurant(
+      userId,
+      restaurantId,
+      "claim a credit for an order that never arrived",
+    );
+
+    const { data, error } = await this.databaseService.supabase
+      .from("procurement_orders")
+      .select("id, status, cancel_reason_code, provider_id, currency, total_cost")
+      .eq("restaurant_id", restaurantId)
+      .eq("id", orderId)
+      .maybeSingle();
+    if (error) {
+      throw new InternalServerErrorException(
+        `This order could not be read (${error.message}), so no claim was opened.`,
+      );
+    }
+    if (!data) {
+      throw new NotFoundException(
+        "No order with that id belongs to this restaurant, so no claim was opened.",
+      );
+    }
+    const row = data as {
+      status: string | null;
+      cancel_reason_code: string | null;
+      provider_id: string | null;
+      currency: string | null;
+      total_cost: string | number | null;
+    };
+    if (row.status !== "CANCELLED" || row.cancel_reason_code !== "never_arrived") {
+      throw new UnprocessableEntityException(
+        "A refund claim follows a never-arrived cancellation. Cancel this order as " +
+          "never arrived first, then claim the refund.",
+      );
+    }
+    const total =
+      typeof row.total_cost === "string"
+        ? parseFloat(row.total_cost)
+        : row.total_cost;
+    if (total == null || Number.isNaN(total) || !(total > 0)) {
+      throw new UnprocessableEntityException(
+        "This order has no positive total on record, so there is nothing to claim back.",
+      );
+    }
+
+    // Idempotent before the insert: a live open/requested/promised claim for
+    // this order and this reason is returned as-is. The database's own
+    // uq_pc_order_never_arrived is the proof this cannot be raced into two.
+    const existing = await this.databaseService.supabase
+      .from("procurement_credits")
+      .select("id, claimed_amount, currency, state")
+      .eq("restaurant_id", restaurantId)
+      .eq("order_id", orderId)
+      .eq("reason", "never_arrived")
+      .neq("state", "written_off")
+      .maybeSingle();
+    if (existing.error) {
+      throw new InternalServerErrorException(
+        `Whether a claim already existed could not be read (${existing.error.message}), so nothing was opened.`,
+      );
+    }
+    if (existing.data) {
+      const already = existing.data as {
+        id: string;
+        claimed_amount: number;
+        currency: string | null;
+        state: string;
+      };
+      return {
+        opened: false,
+        alreadyOpen: true,
+        claim: {
+          id: already.id,
+          claimedAmount: already.claimed_amount,
+          currency: already.currency,
+          state: already.state,
+        },
+      };
+    }
+
+    const insertRow: Record<string, unknown> = {
+      restaurant_id: restaurantId,
+      order_id: orderId,
+      provider_id: row.provider_id,
+      reason: "never_arrived",
+      summary:
+        "Paid in advance; the order was cancelled as never arrived. Chasing a refund.",
+      claimed_amount: total,
+      self_evidenced: false,
+      state: "open",
+      opened_by: userId,
+    };
+    if (row.currency) insertRow.currency = row.currency;
+
+    const { data: inserted, error: insertError } = await this.databaseService.supabase
+      .from("procurement_credits")
+      .insert(insertRow)
+      .select("id, claimed_amount, currency, state")
+      .single();
+    if (insertError) {
+      if (insertError.code === "23505") {
+        // Raced with another request that won first — read back what it
+        // opened rather than telling this caller nothing happened.
+        const raced = await this.databaseService.supabase
+          .from("procurement_credits")
+          .select("id, claimed_amount, currency, state")
+          .eq("restaurant_id", restaurantId)
+          .eq("order_id", orderId)
+          .eq("reason", "never_arrived")
+          .neq("state", "written_off")
+          .maybeSingle();
+        if (raced.data) {
+          const won = raced.data as {
+            id: string;
+            claimed_amount: number;
+            currency: string | null;
+            state: string;
+          };
+          return {
+            opened: false,
+            alreadyOpen: true,
+            claim: {
+              id: won.id,
+              claimedAmount: won.claimed_amount,
+              currency: won.currency,
+              state: won.state,
+            },
+          };
+        }
+      }
+      throw new InternalServerErrorException(
+        `The claim could not be recorded (${insertError.message}), so nothing was opened.`,
+      );
+    }
+
+    const won = inserted as {
+      id: string;
+      claimed_amount: number;
+      currency: string | null;
+      state: string;
+    };
+    return {
+      opened: true,
+      alreadyOpen: false,
+      claim: {
+        id: won.id,
+        claimedAmount: won.claimed_amount,
+        currency: won.currency,
+        state: won.state,
+      },
+    };
   }
 
   /**
@@ -5366,7 +5579,14 @@ export class ProcurementService {
     // Raise a vendor credit claim when the match found money owed back.
     // Best-effort: a failure here must not strand a delivery that has already
     // been counted, and the claim can be raised again from the discrepancy queue.
-    if (match) await this.openCreditClaim(restaurantId, orderId, userId, match);
+    if (match)
+      await this.openCreditClaim(
+        restaurantId,
+        orderId,
+        userId,
+        match,
+        orderRow as { provider_id?: string | null; currency?: string | null },
+      );
 
     const { data, error } = await this.databaseService.supabase
       .from("procurement_orders")

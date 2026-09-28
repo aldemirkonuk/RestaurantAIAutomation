@@ -7,6 +7,7 @@ import {
   Get,
   Header,
   Headers,
+  HttpCode,
   HttpException,
   HttpStatus,
   Param,
@@ -343,6 +344,47 @@ export class ProcurementController {
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
+  }
+
+  /**
+   * The founder's box on the never-arrived cancel (ADR 0207 round 5, question
+   * 20, round 6z): "Add the box (Recommended)" — "We paid for this, we are
+   * owed {total}". Manager or owner, the same register that may cancel the
+   * order in the first place; no seal (a credit claim is a record opened for
+   * chasing, not a transfer). Only legal after the SAME order has already
+   * been cancelled `never_arrived`; a second call is a no-op that returns the
+   * claim the first call opened.
+   */
+  @Post("orders/:id/never-arrived-credit-claim")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      "Claim a refund for a never-arrived, already-paid order — manager or owner",
+    description:
+      "Only legal once this SAME order has been cancelled with reasonCode never_arrived. Opens (or, on a repeat call, returns) one procurement_credits row for the order's total, vendor and currency, reason never_arrived, so the Credits line chases it.",
+  })
+  @ApiResponse({
+    status: 403,
+    description: "The caller is not a manager or an owner of this restaurant.",
+  })
+  @ApiResponse({
+    status: 404,
+    description: "No order with that id belongs to this restaurant.",
+  })
+  @ApiResponse({
+    status: 422,
+    description:
+      "This order has not been cancelled as never_arrived, or carries no positive total to claim back.",
+  })
+  async openNeverArrivedCreditClaim(
+    @Param("id") orderId: string,
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ) {
+    return this.procurementService.openNeverArrivedCreditClaim(
+      user.restaurantId,
+      orderId,
+      user.userId,
+    );
   }
 
   /**

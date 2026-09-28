@@ -195,6 +195,8 @@ function seed(db: FakeDb) {
     house: string,
     expected: string,
     status = "CONFIRMED",
+    totalCost: number | null = 240,
+    currency: string | null = "USD",
   ) => ({
     id,
     order_number: id.toUpperCase(),
@@ -202,12 +204,14 @@ function seed(db: FakeDb) {
     provider_id: house === A ? "pa" : "pb",
     status,
     expected_delivery_date: expected,
+    total_cost: totalCost,
+    currency,
   });
   db.tables.procurement_orders = [
     order("late-silent", A, "2026-09-18"), // 3 days past: asked
     order("late-said", A, "2026-09-15", "IN_TRANSIT"), // answered Not yet
     order("not-due", A, "2026-09-22"),
-    order("old", A, "2026-08-10"), // 42 days past on the Istanbul clock: incomplete
+    order("old", A, "2026-08-10", "CONFIRMED", 88.5, null), // 42 days past, incomplete, no stated currency
     order("credited", A, "2026-09-16"), // closed with a credit
     order("received", A, "2026-09-10", "DELIVERED"),
     order("b-late", B, "2026-09-18"),
@@ -273,6 +277,9 @@ describe("GET /procurement/arrival-asks", () => {
       ["late-said", "confirmed_late", 6],
     ]);
     expect(r.asks[0].providerName).toBe("Kestrel Wine Co.");
+    // ADR 0207 round 5 (question 20) — the ask carries the order's own total
+    // and currency, so the "We paid for this" box never guesses either.
+    expect(r.asks[0]).toMatchObject({ totalCost: 240, currency: "USD" });
     expect(r.asks[0].choices.map((c) => c.key)).toEqual([
       "receive",
       "not_yet",
@@ -373,5 +380,8 @@ describe("GET /procurement/incomplete-orders", () => {
       "receive",
       "cancel",
     ]);
+    // ADR 0207 round 5 — the order stated no currency, so the register says
+    // so rather than defaulting to a currency nobody named.
+    expect(r.orders[0]).toMatchObject({ totalCost: 88.5, currency: null });
   });
 });

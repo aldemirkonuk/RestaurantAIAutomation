@@ -55,6 +55,7 @@ function Ask({ a }: { a: ArrivalAsk }) {
   // order at all). reasonCode is locked: this ask exists only for an order
   // already past its deadline, so never_arrived is always the true category.
   const [cancelling, setCancelling] = useState(false);
+  const [cancelledNote, setCancelledNote] = useState<string | null>(null);
   return (
     <li data-testid="arrival-ask" style={{ listStyle: 'none', padding: '10px 0', borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
       <p style={{ margin: 0, fontFamily: SANS, fontSize: 13, fontWeight: 600, color: 'var(--ink-1, #211C16)' }}>
@@ -108,9 +109,25 @@ function Ask({ a }: { a: ArrivalAsk }) {
             orderId={a.orderId}
             reasonCode="never_arrived"
             label="Hold to cancel"
+            totalCost={a.totalCost}
+            currency={a.currency}
             onRejected={() => setCancelling(false)}
+            onCreditClaimOpened={(r) =>
+              setCancelledNote(
+                r.ok
+                  ? r.result.alreadyOpen
+                    ? 'A claim for this order was already open — nothing was opened twice.'
+                    : `A credit claim for this order was opened, chasing the vendor for ${r.result.claim.claimedAmount}${r.result.claim.currency ? ` ${r.result.claim.currency}` : ''}.`
+                  : r.message,
+              )
+            }
           />
         </div>
+      )}
+      {cancelledNote && (
+        <p role="status" style={{ margin: '6px 0 0', fontFamily: SANS, fontSize: 11.5, lineHeight: 1.45, color: 'var(--ink-2, #4F473C)' }}>
+          {cancelledNote}
+        </p>
       )}
     </li>
   );

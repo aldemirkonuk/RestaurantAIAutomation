@@ -39,8 +39,24 @@ const cancelMock = vi.hoisted(() => ({
 type Mint = (orderId: string) => Promise<string | null>;
 const mintMock = vi.hoisted(() => vi.fn<Mint>(async () => 'cancel-seal-token'));
 
+/** ADR 0207 round 5 — the founder's box on a never-arrived cancel. */
+type ClaimResult = {
+  opened: boolean;
+  alreadyOpen: boolean;
+  claim: { id: string; claimedAmount: number; currency: string | null; state: string };
+};
+type Claim = (orderId: string) => Promise<ClaimResult>;
+const claimMock = vi.hoisted(() =>
+  vi.fn<Claim>(async () => ({
+    opened: true,
+    alreadyOpen: false,
+    claim: { id: 'claim-1', claimedAmount: 240, currency: 'USD', state: 'open' },
+  })),
+);
+
 vi.mock('@/services/api/orders', () => ({
   mintOrderCancelSeal: (id: string) => mintMock(id),
+  openNeverArrivedCreditClaim: (id: string) => claimMock(id),
 }));
 
 vi.mock('@/hooks/queries/useOrderQueries', () => ({
@@ -84,6 +100,12 @@ beforeEach(() => {
   cancelMock.mutateAsync.mockResolvedValue({});
   mintMock.mockReset();
   mintMock.mockResolvedValue('cancel-seal-token');
+  claimMock.mockReset();
+  claimMock.mockResolvedValue({
+    opened: true,
+    alreadyOpen: false,
+    claim: { id: 'claim-1', claimedAmount: 240, currency: 'USD', state: 'open' },
+  });
   roleMock.current = 'manager';
 });
 
@@ -296,5 +318,121 @@ describe('a refusal from the write is printed as itself', () => {
     say('Because.');
     hold();
     await waitFor(() => expect(onRejected).toHaveBeenCalledWith('ord-1'));
+  });
+});
+
+/**
+ * ADR 0207 round 5, question 20, founder round 6z: "Add the box
+ * (Recommended)" — "We paid for this, we are owed {total}" on the
+ * never-arrived cancel.
+ */
+describe('the never-arrived cancel can claim a refund', () => {
+  it('never draws the box without a positive total', () => {
+    render(<SealedRejectDie orderId="ord-1" reasonCode="never_arrived" totalCost={null} />);
+    expect(screen.queryByTestId('never-arrived-claim-box')).toBeNull();
+  });
+
+  it('never draws the box off the fixed reasonCode', () => {
+    // A totalCost is given, but the picker defaults to house_decision —
+    // the box is only for a never_arrived cancel.
+    render(<SealedRejectDie orderId="ord-1" totalCost={240} currency="USD" />);
+    expect(screen.queryByTestId('never-arrived-claim-box')).toBeNull();
+  });
+
+  it('names the amount and currency the order actually states', () => {
+    render(
+      <SealedRejectDie orderId="ord-1" reasonCode="never_arrived" totalCost={240} currency="USD" />,
+    );
+    expect(screen.getByTestId('never-arrived-claim-box')).toHaveTextContent('$240.00');
+  });
+
+  it('prints "currency not recorded" rather than borrowing a symbol', () => {
+    render(
+      <SealedRejectDie orderId="ord-1" reasonCode="never_arrived" totalCost={88.5} currency={null} />,
+    );
+    expect(screen.getByTestId('never-arrived-claim-box')).toHaveTextContent(
+      '88.50 (currency not recorded)',
+    );
+  });
+
+  it('opens no claim when the box is left unchecked — the common case', async () => {
+    const onCreditClaimOpened = vi.fn();
+    render(
+      <SealedRejectDie
+        orderId="ord-1"
+        reasonCode="never_arrived"
+        totalCost={240}
+        currency="USD"
+        onCreditClaimOpened={onCreditClaimOpened}
+      />,
+    );
+    say('Vendor never shipped it.');
+    hold();
+    await waitFor(() => expect(cancelMock.mutateAsync).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 10));
+    expect(claimMock).not.toHaveBeenCalled();
+    expect(onCreditClaimOpened).not.toHaveBeenCalled();
+  });
+
+  it('opens the claim once the cancel succeeds, when the box is checked', async () => {
+    const onRejected = vi.fn();
+    const onCreditClaimOpened = vi.fn();
+    render(
+      <SealedRejectDie
+        orderId="ord-1"
+        reasonCode="never_arrived"
+        totalCost={240}
+        currency="USD"
+        onRejected={onRejected}
+        onCreditClaimOpened={onCreditClaimOpened}
+      />,
+    );
+    say('Vendor never shipped it.');
+    fireEvent.click(screen.getByRole('checkbox'));
+    hold();
+    await waitFor(() => expect(claimMock).toHaveBeenCalledWith('ord-1'));
+    // The claim is attempted, and reported, BEFORE onRejected — the parents
+    // that offer this box unmount the control the instant onRejected fires.
+    expect(onCreditClaimOpened).toHaveBeenCalledWith({
+      ok: true,
+      result: {
+        opened: true,
+        alreadyOpen: false,
+        claim: { id: 'claim-1', claimedAmount: 240, currency: 'USD', state: 'open' },
+      },
+    });
+    expect(onRejected).toHaveBeenCalledWith('ord-1');
+  });
+
+  it('reports a failed claim without un-cancelling the order', async () => {
+    claimMock.mockRejectedValue(
+      Object.assign(new Error('A claim for this order is already open.'), {
+        response: { status: 409 },
+      }),
+    );
+    const onRejected = vi.fn();
+    const onCreditClaimOpened = vi.fn();
+    render(
+      <SealedRejectDie
+        orderId="ord-1"
+        reasonCode="never_arrived"
+        totalCost={240}
+        currency="USD"
+        onRejected={onRejected}
+        onCreditClaimOpened={onCreditClaimOpened}
+      />,
+    );
+    say('Vendor never shipped it.');
+    fireEvent.click(screen.getByRole('checkbox'));
+    hold();
+    await waitFor(() => expect(claimMock).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(onCreditClaimOpened).toHaveBeenCalledWith({
+        ok: false,
+        message: expect.stringContaining('already open'),
+      }),
+    );
+    // The cancellation itself still stands — the box's failure is its own.
+    expect(onRejected).toHaveBeenCalledWith('ord-1');
   });
 });

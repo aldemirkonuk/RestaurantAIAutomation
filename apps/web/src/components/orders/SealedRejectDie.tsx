@@ -62,6 +62,7 @@ import { useStandaloneGround } from './useStandaloneGround';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCancelOrder } from '@/hooks/queries/useOrderQueries';
 import * as ordersApi from '@/services/api/orders';
+import type { NeverArrivedCreditClaimResult } from '@/services/api/orders';
 
 /** Said before the request, because the gateway would say it after. */
 export const REJECT_NEEDS_A_REASON_LEGACY =
@@ -88,6 +89,20 @@ export const REJECT_ROLE_UNKNOWN =
 export const REJECT_SEAL_NOT_ISSUED =
   'The seal could not be issued, so nothing was cancelled and no reason was ' +
   'written. Begin the hold again.';
+
+/**
+ * An amount, in the currency the order actually records. The same
+ * "currency not recorded" idiom `documents-reports/next/so-format.ts` uses —
+ * never a borrowed dollar sign for money nobody stated a unit for.
+ */
+function fmtClaimAmount(amount: number, currency: string | null): string {
+  if (!currency) return `${amount.toFixed(2)} (currency not recorded)`;
+  try {
+    return new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(amount);
+  } catch {
+    return `${amount.toFixed(2)} ${currency}`;
+  }
+}
 
 export function reasonIsGiven(reason: string): boolean {
   return reason.trim().length > 0;
@@ -117,6 +132,29 @@ export interface SealedRejectDieProps {
    * all (400) or one that does not fit this order's state (422).
    */
   reasonCode?: CancelReasonCode;
+  /**
+   * ADR 0207 round 5 (question 20, founder round 6z: "Add the box
+   * (Recommended)"). Given together with a positive `totalCost`, and only
+   * while the effective category is `never_arrived`, a checkbox offers "We
+   * paid for this — we are owed {total}"; checking it opens a credit claim
+   * for the order's total, vendor and currency the instant the cancel
+   * succeeds. Omit either prop and the box never renders — a caller with no
+   * total to show (the general reject picker in `ResponsesSheet`, today) is
+   * unchanged.
+   */
+  totalCost?: number | null;
+  currency?: string | null;
+  /**
+   * Called once the credit-claim attempt settles, ONLY when the box was
+   * checked. Fires after `onRejected` (the cancel is already real by then),
+   * so a caller can show its own confirmation even though this control
+   * itself is commonly unmounted the instant `onRejected` fires.
+   */
+  onCreditClaimOpened?: (
+    result:
+      | { ok: true; result: NeverArrivedCreditClaimResult }
+      | { ok: false; message: string },
+  ) => void;
 }
 
 export function SealedRejectDie({
@@ -126,6 +164,9 @@ export function SealedRejectDie({
   className,
   onRejected,
   reasonCode: fixedReasonCode,
+  totalCost = null,
+  currency = null,
+  onCreditClaimOpened,
 }: SealedRejectDieProps) {
   const cancel = useCancelOrder();
   const { activeRole } = useAuth();
@@ -134,6 +175,9 @@ export function SealedRejectDie({
   const [reasonTouched, setReasonTouched] = useState(false);
   const [pickedReasonCode, setPickedReasonCode] = useState<CancelReasonCode>('house_decision');
   const reasonCode = fixedReasonCode ?? pickedReasonCode;
+  const [claimIt, setClaimIt] = useState(false);
+  const showClaimBox =
+    reasonCode === 'never_arrived' && typeof totalCost === 'number' && totalCost > 0;
   /** Bumped after any refusal so the die remounts armed rather than sealed. */
   const [attempt, setAttempt] = useState(0);
   const [running, setRunning] = useState(false);
@@ -205,6 +249,25 @@ export function SealedRejectDie({
     setRunning(true);
     try {
       await cancel.mutateAsync({ orderId, reasonCode, reason: reason.trim(), challenge: seal });
+      // The claim, if the box was checked, is attempted BEFORE onRejected
+      // fires — both parents that offer the box (RcArrivalAsks,
+      // IncompleteOrders) unmount this control the instant onRejected runs,
+      // so a callback fired afterward would have nowhere left to report to.
+      // A failed claim never un-cancels the order: the cancel already
+      // succeeded and stays succeeded; only the claim's own outcome is
+      // reported, separately, through onCreditClaimOpened.
+      if (showClaimBox && claimIt) {
+        try {
+          const result = await ordersApi.openNeverArrivedCreditClaim(orderId);
+          onCreditClaimOpened?.({ ok: true, result });
+        } catch (err) {
+          const msg = (err as { message?: string })?.message ?? 'request failed';
+          onCreditClaimOpened?.({
+            ok: false,
+            message: `The order was cancelled, but the claim could not be opened (${msg}).`,
+          });
+        }
+      }
       onRejected?.(orderId);
     } catch (err) {
       const status = (err as { response?: { status?: number } })?.response?.status;
@@ -304,6 +367,37 @@ export function SealedRejectDie({
           resize: 'vertical',
         }}
       />
+      {showClaimBox && (
+        <label
+          data-testid="never-arrived-claim-box"
+          style={{
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: 7,
+            marginTop: 8,
+            padding: '7px 9px',
+            fontSize: 12,
+            lineHeight: 1.45,
+            color: 'var(--ink-2, #4F473C)',
+            background: 'var(--paper-1, #FAF7F0)',
+            border: '1px solid var(--rule, #DED5C6)',
+            borderRadius: 6,
+            cursor: disabled || running || !mayCancel ? 'default' : 'pointer',
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={claimIt}
+            disabled={disabled || running || !mayCancel}
+            onChange={(e) => setClaimIt(e.target.checked)}
+            style={{ marginTop: 2 }}
+          />
+          <span>
+            We paid for this — we are owed {fmtClaimAmount(totalCost as number, currency)}. Open a
+            credit claim with the vendor.
+          </span>
+        </label>
+      )}
       <div style={{ marginTop: 6 }}>
         <HoldToApprove
           key={`reject-${orderId}-${attempt}`}

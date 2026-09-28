@@ -13,6 +13,7 @@ import { useUIStore } from '../../stores/uiStore'
 import { cn } from '../../lib/utils'
 import { BrandMark } from '../brand/BrandMark'
 import { useMudavymShell } from '../../lib/mudavym/shellGround'
+import { DataTermsSignInGate } from '../settings/DataTermsSignInGate'
 import '../mudavym/sheet.css'
 
 interface DashboardLayoutProps {
@@ -100,6 +101,11 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
           <WineAgentFab />
           {/* Ask AI (P3.C) — opened by ⌘⇧K, which CommandProvider registers. */}
           <AskAiSurface />
+          {/* ADR 0207 round 5 (question 19) — every owner, at their next
+              sign-in, meets the house's data-and-privacy terms. Portalled
+              (Panel), so its position here is only about mounting once per
+              authenticated layout, not about layout. */}
+          <DataTermsSignInGate />
         </div>
       </GuidanceProvider>
     </CommandProvider>

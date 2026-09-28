@@ -1,10 +1,6 @@
 /**
  * How vendor mail is read — whether Jev reads this house's vendor mail (ADR
- * 0207, rounds 3 and 4).
- *
- * THE FOUNDER, 2026-09-21: "talk with JEV, put that onto point scale ... this
- * feature can also be disabled. other than that use warm/plain/terse", and on
- * what may leave: "Only with names removed".
+ * 0207, rounds 3, 4 and 5).
  *
  * THE FOUNDER, 2026-09-22, round 6y, on who may turn it on: "owner only, but
  * also we're going to use this as complete data and privacy usage, they have
@@ -12,13 +8,7 @@
  * and sensitive topics redacted." So, since round 4:
  *   - OFF by default: nothing leaves until an OWNER turns it on (was owner or
  *     manager — turning it on is an owner accepting the house's complete data
- *     terms, `GET /settings/data-terms`, which is not built as a sheet in
- *     this round: the gateway refuses `enabled: true` with 409 and a sentence
- *     written for the owner, shown here via the ordinary save-failure path
- *     rather than a dedicated acceptance flow — a named gap, not a silent
- *     one; the note says so in the owner's words. [Last call, 2026-09-22:
- *     the note pointed to "Settings → Data terms", a section that does not
- *     exist.])
+ *     terms, `GET /settings/data-terms`).
  *   - ON: each inbound vendor message goes to Jev (TypeSafe) with its email
  *     addresses, phone numbers, person names, account numbers, ids,
  *     credentials and sensitive topics removed first; Jev's point scale is
@@ -26,12 +16,27 @@
  *   - OFF again: any owner may turn it off, no acceptance needed — nothing
  *     more is sent, and the sheet reads the inbound model's existing label.
  *
+ * ROUND 5 (question 19, his pick, round 6z): "Every owner, next sign-in" —
+ * an owner most often reaches this switch already ON, because
+ * `DataTermsSignInGate` met them with the terms the moment they signed in.
+ * "Turn on" here is kept for the narrower case the sign-in gate does not
+ * cover on its own — a version bump between sign-ins, or an owner whose
+ * acceptance lapsed for some other reason — and now opens the SAME sheet
+ * (`DataTermsAcceptSheet`, `dismissable`) instead of calling the switch
+ * directly and letting the gateway's 409 arrive as an ordinary save
+ * failure. Accepting there turns the switch on itself (the gateway's
+ * `accept()` does both in one act); this component then only re-reads the
+ * switch so the row shows ON without a page reload.
+ *
  * The role check is the gateway's (`PUT /settings/vendor-tone-scoring`).
  */
 
+import { useState } from 'react';
 import { Action, Note, Register, Row, SaveFailure } from './SectionKit';
 import { MONO, SANS } from './st-format';
 import type { HouseToneScoringRegister, SettingsNextData } from './useSettingsNextData';
+import { useDataTerms } from '../../../hooks/queries/useDataTerms';
+import { DataTermsAcceptSheet } from '../../../components/settings/DataTermsAcceptSheet';
 
 const NO_DATE = 'never changed — it is off, as every house starts';
 
@@ -39,20 +44,32 @@ export function MailReadingSection({ data }: { data: SettingsNextData }) {
   const { houseToneScoring, isOwner, saveToneScoring, writer } = data;
   return (
     <Register remote={houseToneScoring} name="the mail-reading switch">
-      {(reg) => <Body reg={reg} isOwner={isOwner} save={saveToneScoring} writer={writer} />}
+      {(reg) => (
+        <Body
+          reg={reg}
+          isOwner={isOwner}
+          save={saveToneScoring}
+          writer={writer}
+          reload={houseToneScoring.reload}
+        />
+      )}
     </Register>
   );
 }
 
 function Body({
-  reg, isOwner, save, writer,
+  reg, isOwner, save, writer, reload,
 }: {
   reg: HouseToneScoringRegister;
   isOwner: boolean;
   save: (enabled: boolean) => Promise<boolean>;
   writer: SettingsNextData['writer'];
+  reload: () => void;
 }) {
   const busy = writer.busy === 'mail-reading';
+  const dataTerms = useDataTerms(isOwner);
+  const [showAcceptSheet, setShowAcceptSheet] = useState(false);
+
   if (!reg.readable || reg.enabled === null) {
     return (
       <div role="alert">
@@ -64,6 +81,22 @@ function Body({
     );
   }
   const on = reg.enabled;
+
+  function onTurnOnClick() {
+    // The data-terms read has not resolved yet, or it read fine and this
+    // house's owner already accepts the current version: try the switch
+    // directly, exactly as before this round — a stale acceptance still
+    // reaches the gateway's 409, printed through SaveFailure below as it
+    // always was.
+    if (!dataTerms.data || dataTerms.data.current) {
+      void save(true);
+      return;
+    }
+    // Known, specifically, not to be accepted: open the terms instead of
+    // spending a request only to be told to.
+    setShowAcceptSheet(true);
+  }
+
   return (
     <>
       <Note>
@@ -73,7 +106,8 @@ function Body({
         written in a way this pass does not recognise may not be caught. Jev’s reading is kept as internal data; the
         vendor sheet shows one word per message — warm, plain or terse — to owners and managers. Off, nothing is sent,
         and the sheet shows the reading the inbound mail already carries. Turning this on is an owner accepting this
-        house’s complete data-and-privacy terms, and accepting them is not on this page yet — so for now Jev stays off.
+        house’s complete data-and-privacy terms — every owner meets that sheet at their next sign-in, and it is also
+        reachable here.
       </Note>
       <Row
         label="Jev reads vendor mail"
@@ -90,7 +124,10 @@ function Body({
         }
         provenance={{ kept: 'restaurant', when: reg.statedAt, whenUnknown: NO_DATE, verb: 'set' }}
         control={
-          <Action disabled={!isOwner || busy} onClick={() => void save(!on)}>
+          <Action
+            disabled={!isOwner || busy}
+            onClick={() => (on ? void save(false) : onTurnOnClick())}
+          >
             {busy ? 'Recording…' : on ? 'Turn off' : 'Turn on'}
           </Action>
         }
@@ -116,6 +153,17 @@ function Body({
         failed={writer.failed?.key === 'mail-reading' ? writer.failed : null}
         what="Nothing was changed; the switch is as it was."
       />
+      {showAcceptSheet && dataTerms.data && (
+        <DataTermsAcceptSheet
+          readout={dataTerms.data}
+          dismissable
+          onClose={() => setShowAcceptSheet(false)}
+          onAccepted={() => {
+            setShowAcceptSheet(false);
+            reload();
+          }}
+        />
+      )}
     </>
   );
 }

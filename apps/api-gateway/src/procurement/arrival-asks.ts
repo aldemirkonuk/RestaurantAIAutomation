@@ -79,6 +79,17 @@ export interface ArrivalAsk {
   /** When the latest "Not yet" was given, for a confirmed order. */
   answeredAt: string | null;
   choices: ArrivalChoice[];
+  /**
+   * ADR 0207 round 5 (question 20, founder round 6z): what the "We paid for
+   * this" box on a never-arrived cancel would claim back — this order's own
+   * total and currency, never a guess. `totalCost` null means the order
+   * carries no total to claim; `currency` null means the order states none
+   * (the box then prints a bare amount, the same "not recorded" the vendor
+   * scorecard's Credits measure already uses rather than defaulting to a
+   * currency nobody stated).
+   */
+  totalCost: number | null;
+  currency: string | null;
 }
 
 export interface IncompleteOrder {
@@ -91,6 +102,9 @@ export interface IncompleteOrder {
   /** Someone said "Not yet" for this date before it went incomplete. */
   confirmed: boolean;
   choices: ArrivalChoice[];
+  /** See `ArrivalAsk.totalCost`/`currency` — same meaning, same source. */
+  totalCost: number | null;
+  currency: string | null;
 }
 
 export function choicesFor(orderId: string): ArrivalChoice[] {
@@ -123,6 +137,15 @@ export interface AskOrderRow {
   order_number: string | null;
   provider_id: string | null;
   expected_delivery_date: string;
+  total_cost?: string | number | null;
+  currency?: string | null;
+}
+
+/** `total_cost` reads back as a string over some drivers; never trust its type. */
+function numberOrNull(v: unknown): number | null {
+  if (v == null) return null;
+  const n = typeof v === "string" ? parseFloat(v) : (v as number);
+  return Number.isFinite(n) ? n : null;
 }
 
 /** The ask for one order, or null when its standing raises none. */
@@ -149,6 +172,8 @@ export function askFor(
     choices: choicesFor(o.id).filter(
       (c) => standing.kind === "unconfirmed" || c.key !== "not_yet",
     ),
+    totalCost: numberOrNull(o.total_cost),
+    currency: o.currency ?? null,
   };
 }
 
@@ -168,5 +193,7 @@ export function incompleteFor(
     daysPast: standing.days,
     confirmed: standing.confirmed,
     choices: choicesFor(o.id).filter((c) => c.key !== "not_yet"),
+    totalCost: numberOrNull(o.total_cost),
+    currency: o.currency ?? null,
   };
 }
