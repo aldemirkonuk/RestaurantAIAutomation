@@ -45,6 +45,10 @@ head, and a rebase of it all legitimately carry `0050-agent-dispatch-*.md`, and
 failing on that would make the guard fire constantly on ordinary work. It is the
 slug disagreeing that means two different decisions are wearing one number.
 
+Preserve snapshots (`wip/preserve-*`, ADR 0085's 2026-09-28 amendment) are not
+decisions in flight: their drafts never collide with anything, but their numbers
+still count toward the next free number.
+
 SCOPE: ONLY WHAT THIS REF INTRODUCES
 ------------------------------------
 The guard checks the numbers the current ref introduces *relative to main*, not
@@ -277,8 +281,9 @@ def adrs_here() -> dict[str, str]:
 # Frozen snapshots of unfinished local work (`.planning/handoff/preserve-local-work.sh`
 # on branch main-1ll9rp, PR #498). DECISION, founder, 2026-09-28, verbatim from the
 # AskUserQuestion answer: "Checker skips snapshots (Recommended)" -- chosen over
-# "Renumber the snapshot draft" and "Renumber ADR 0231" (PR #500 records the fork). A draft ADR inside one is not a decision in flight: it
-# keeps whatever number it had on the laptop, and it gets a fresh number when a lane
+# "Renumber the snapshot draft" and "Renumber ADR 0231"; recorded, with the rejected
+# options and this limit, in ADR 0085's 2026-09-28 amendment. A draft ADR inside a
+# snapshot is not a decision in flight: it keeps whatever number it had on the laptop, and it gets a fresh number when a lane
 # carries it (the 0231 draft in wt-adr-mig-merge lands as 0235). Counting them as
 # collisions turned a real PR (#490, ADR 0231) red over a number the snapshot can never
 # take, and a snapshot is never edited to fix that. They still count toward the
@@ -676,6 +681,24 @@ def _snapshot_fixture() -> str | None:
         run("config", "user.email", "guard@invalid", cwd=clone)
         run("config", "user.name", "guard", cwd=clone)
 
+        def guard_run(*args: str) -> subprocess.CompletedProcess:
+            return subprocess.run([sys.executable, guard, *args], cwd=clone,
+                                  capture_output=True, text=True)
+
+        # Nothing introduced, and a clean audit: both next-free prints must still
+        # count the snapshot's 9006.
+        run("checkout", "--quiet", "-B", "mine", "origin/main", cwd=clone)
+        p = guard_run()
+        out = p.stdout + p.stderr
+        if p.returncode != 0 or "Nothing to check" not in out or "refs: 9007" not in out:
+            return ("nothing-introduced path: want exit 0, 'Nothing to check' and next-free "
+                    f"9007 (exit {p.returncode}): {out.strip()[:300]}")
+        p = guard_run("--audit")
+        out = p.stdout + p.stderr
+        if p.returncode != 0 or "Next free number: 9007" not in out:
+            return ("clean audit: want exit 0 (the snapshot is skipped) and next-free 9007 "
+                    f"(exit {p.returncode}): {out.strip()[:300]}")
+
         def introduce(name: str) -> subprocess.CompletedProcess:
             run("checkout", "--quiet", "-B", "mine", "origin/main", cwd=clone)
             with open(os.path.join(clone, DECISIONS_DIR, name), "w", encoding="utf-8") as fh:
@@ -701,6 +724,13 @@ def _snapshot_fixture() -> str | None:
         if "every ref: 9007" not in out:
             return ("next-free dropped a number only a snapshot wears, want 9007: "
                     f"{out.strip()[:300]}")
+        # The branch `mine` now wears 9004 against docs/real: the audit must fail, and
+        # its next-free print must still count the snapshot.
+        p = guard_run("--audit")
+        out = p.stdout + p.stderr
+        if p.returncode != 1 or "ADR 9004" not in out or "Next free number: 9007" not in out:
+            return ("collision audit: want exit 1, ADR 9004 and next-free 9007 "
+                    f"(exit {p.returncode}): {out.strip()[:300]}")
     return None
 
 
