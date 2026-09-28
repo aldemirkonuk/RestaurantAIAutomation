@@ -79,45 +79,40 @@ migrations `20261117100000`–`20261117100900`.
 `aldemirkonuk`.** Order: **#490 → promotions-room fix → security fix → records
 refresh**. The cutover draft only group by group, never whole.
 
+**Use the script, not a pasted block.** A pasted block failed in the founder's zsh on
+2026-09-28 (interactive zsh reads `N=<pr number>` as a redirect and `#` as a command;
+with `N` empty every `gh pr` call fell back to the current branch — nothing merged).
+[`merge-audited-pr.sh`](merge-audited-pr.sh) does the same four steps and refuses
+(exit 2) on: no/non-numeric PR number; PR not OPEN, draft, not `MERGEABLE`, or merge
+state not `CLEAN`; required checks not all passing; no PASS marker from a trusted author
+(`aldemirkonuk`, `github-actions`, `github-actions[bot]` — the hook's set) naming this PR
+and a prefix of the exact head SHA; any BLOCK marker for that SHA; a typed confirmation
+that is not the PR number. It merges `--squash --match-head-commit <sha>` (no `--auto`,
+never `--admin`), then finds CI and `Deploy to Production` **by the merge commit** and
+watches both with `--exit-status`. Tested 2026-09-28 against a stand-in `gh` over 22 cases
+(every refusal asserted on its own reason, the pinned merge arguments, the merge-commit
+filter); not yet run against real `gh`, and the stand-in used jq 1.7 where real
+`gh --jq` uses gojq.
+
 ```bash
-N=<pr number>
-
-# 1. Current head, mergeability, draft state; CI must be green on THIS head
-gh pr view $N --json headRefOid,mergeable,mergeStateStatus,isDraft \
-  --jq '{sha: .headRefOid, mergeable, state: .mergeStateStatus, draft: .isDraft}'
-gh pr checks $N --required
-SHA=$(gh pr view $N --json headRefOid -q .headRefOid)
-
-# 2. The audit marker must name exactly this SHA and say PASS, and be posted by an
-#    author the hook trusts (require_pr_audit.py _TRUSTED_MARKER_AUTHORS + the gh user):
-#    github-actions / github-actions[bot] / aldemirkonuk. A look-alike from anyone
-#    else does not count.
-gh pr view $N --json comments --jq '.comments[]
-  | select(.author.login == "aldemirkonuk" or .author.login == "github-actions" or .author.login == "github-actions[bot]")
-  | (.body | sub("^\\s+"; "")) | select(startswith("<!-- pr-audit-gate")) | split("\n")[0]'
-#    expect: <!-- pr-audit-gate: pr=N sha=<SHA or a prefix of it> verdict=PASS -->
-
-# 3. Merge, pinned to the audited commit (no --auto, never --admin)
-gh pr merge $N --squash --match-head-commit "$SHA"
-
-# 4. Watch CI on the merge commit, THEN the deploy it triggers. "Deploy to Production"
-#    starts only after CI completes on main (deploy.yml: workflow_run on "CI"), so
-#    "the latest deploy run" read right after the merge is the PREVIOUS one — always
-#    filter by the merge commit.
-MERGE=$(gh pr view $N --json mergeCommit -q .mergeCommit.oid)
-gh run watch "$(gh run list --workflow CI --commit "$MERGE" --limit 1 --json databaseId -q '.[0].databaseId')"
-gh run list --workflow 'Deploy to Production' --commit "$MERGE" --limit 1   # re-run until it appears
-gh run watch "$(gh run list --workflow 'Deploy to Production' --commit "$MERGE" --limit 1 --json databaseId -q '.[0].databaseId')"
+cd ~/Projects/restaurant-ai-automation
+git fetch origin main-1ll9rp
+git show origin/main-1ll9rp:.planning/handoff/merge-audited-pr.sh > ~/merge-audited-pr.sh
 ```
+
+That block only fetches the script (no `#` comments, no placeholders, so it pastes into
+zsh). Then run it once per PR with the real number, e.g. `bash ~/merge-audited-pr.sh 491`;
+for #490 only, after reading `gh pr diff 490`: `bash ~/merge-audited-pr.sh 490 --gate-owned`.
+Run with no number, it refuses and prints the usage line.
 
 - **4b, #490 (gate-owned paths — it touches `decisions/README.md`, which is in
   `_GATE_OWNED_PATHS`):** by design no automated PASS can exist (skill step 4). Read the
-  diff (`gh pr diff 490`), set `N=490` and run **step 1** (CI must be green; it sets
-  `$SHA`), **skip step 2** (no marker will exist), then run step 3 and step 4 from a
-  plain terminal. Inside a Claude Code session the `require_pr_audit` hook refuses the
+  diff (`gh pr diff 490`), then `bash ~/merge-audited-pr.sh 490 --gate-owned` from a
+  plain terminal (it still requires green required checks and a clean merge state; it
+  skips only the marker). Inside a Claude Code session the `require_pr_audit` hook refuses the
   merge without a PASS marker; that is the hook working, not a fault.
-- If step 1 shows `BEHIND` or `DIRTY`, do not merge: ask a session to merge `main` in
-  and re-audit (the new head needs its own marker).
+- If the script says `BEHIND`, `CONFLICTING` or `DIRTY`, ask a session to merge `main`
+  in and re-audit (the new head needs its own marker).
 - If `--match-head-commit` refuses, someone pushed after the audit: re-audit, never force.
 - **Cutover draft:** approve or hold each manifest group by name; a session then moves
   only the approved groups into a non-draft PR, audits it, and hands it back here.
