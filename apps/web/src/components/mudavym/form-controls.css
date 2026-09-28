@@ -13,7 +13,7 @@
 .mdv-count__label {
   font-family: var(--mdv-sans, inherit);
   font-size: 11px;
-  color: var(--ink-3, #7c7365);
+  color: var(--ink-4, #665d50);
 }
 .mdv-select__control {
   min-width: 200px;
@@ -94,7 +94,7 @@
   outline: none;
 }
 .mdv-count__input::placeholder {
-  color: var(--ink-3, #7c7365);
+  color: var(--ink-4, #665d50);
 }
 .mdv-count__input:disabled {
   opacity: 0.55;

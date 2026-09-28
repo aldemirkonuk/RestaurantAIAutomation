@@ -55,7 +55,7 @@ export function VendorFirstPanel({ open, onClose, reason }: VendorFirstPanelProp
       title="Add a vendor to place orders"
       closeLabel="Back to the order"
       footer={
-        <span style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-3, #7C7365)' }}>
+        <span style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-4, #665D50)' }}>
           Nothing has been sent and nothing has been written.
         </span>
       }

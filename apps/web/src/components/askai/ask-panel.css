@@ -47,7 +47,7 @@
   padding: 8px 16px;
   border-top: 1px solid var(--paper-2);
   font-size: 11px;
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 
 .mdv-askp__foot {
@@ -95,7 +95,7 @@
   margin: 6px 16px 0;
   font-size: 12px;
   line-height: 1.45;
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 
 .mdv-askp__suggest {
@@ -104,7 +104,7 @@
 
 .mdv-askp__quiet {
   font-size: 11px;
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 
 .mdv-askp .mdv-field {
@@ -135,7 +135,7 @@
 .mdv-askp__q {
   margin: 0;
   font-size: 12px;
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 
 .mdv-askp__title {
@@ -164,7 +164,7 @@
 
 .mdv-askp__figs dt {
   font-size: 11px;
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 
 .mdv-askp__figs dd {
@@ -187,7 +187,7 @@
   font-size: 11px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 
 .mdv-askp__proposals {

@@ -62,7 +62,7 @@ function Ask({ a }: { a: ArrivalAsk }) {
         {name}
         {a.providerName ? ` · ${a.providerName}` : ''}
       </p>
-      <p style={{ margin: '2px 0 0', fontFamily: MONO, fontSize: 10, color: 'var(--ink-3, #7C7365)' }}>
+      <p style={{ margin: '2px 0 0', fontFamily: MONO, fontSize: 10, color: 'var(--ink-4, #665D50)' }}>
         expected {a.expectedDate} · {a.daysPast} {a.daysPast === 1 ? 'day' : 'days'} past
       </p>
       <p style={{ margin: '4px 0 0', fontFamily: SANS, fontSize: 11.5, lineHeight: 1.45, color: 'var(--ink-2, #4F473C)' }}>
@@ -151,13 +151,13 @@ export function RcArrivalAsks({ enabled }: { enabled: boolean }) {
           not empty.
         </p>
       ) : !q.data ? (
-        <p aria-busy="true" style={{ margin: 0, fontFamily: SANS, fontSize: 12, color: 'var(--ink-3, #7C7365)' }}>
+        <p aria-busy="true" style={{ margin: 0, fontFamily: SANS, fontSize: 12, color: 'var(--ink-4, #665D50)' }}>
           Reading the orders past their date…
         </p>
       ) : !q.data.forYou ? (
-        <p style={{ margin: 0, fontFamily: SANS, fontSize: 12, color: 'var(--ink-3, #7C7365)' }}>{q.data.sentence}</p>
+        <p style={{ margin: 0, fontFamily: SANS, fontSize: 12, color: 'var(--ink-4, #665D50)' }}>{q.data.sentence}</p>
       ) : q.data.asks.length === 0 ? (
-        <p data-testid="arrival-asks-empty" style={{ margin: 0, fontFamily: SANS, fontSize: 12, lineHeight: 1.45, color: 'var(--ink-3, #7C7365)' }}>
+        <p data-testid="arrival-asks-empty" style={{ margin: 0, fontFamily: SANS, fontSize: 12, lineHeight: 1.45, color: 'var(--ink-4, #665D50)' }}>
           No order is past its date and waiting. Orders more than 30 days past are in Incomplete orders under Documents &amp;
           Reports.
         </p>

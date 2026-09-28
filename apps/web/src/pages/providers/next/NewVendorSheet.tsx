@@ -190,7 +190,7 @@ const legend: React.CSSProperties = {
   fontWeight: 600,
   letterSpacing: '0.11em',
   textTransform: 'uppercase',
-  color: 'var(--ink-3, #7C7365)',
+  color: 'var(--ink-4, #665D50)',
   marginBottom: 3,
   display: 'block',
 };
@@ -460,7 +460,7 @@ export function NewVendorSheet({ open, onClose, onAdded }: NewVendorSheetProps) 
         closeLabel="Put it down"
         footer={
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <span style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-3, #7C7365)' }}>
+            <span style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-4, #665D50)' }}>
               Terms are written on the vendor’s row afterwards, each with its provenance.
             </span>
             <button
@@ -476,7 +476,7 @@ export function NewVendorSheet({ open, onClose, onAdded }: NewVendorSheetProps) 
                 borderRadius: 3,
                 border: '1px solid var(--seal, #1A5E6B)',
                 background: saving ? 'transparent' : 'var(--seal, #1A5E6B)',
-                color: saving ? 'var(--ink-3, #7C7365)' : 'var(--paper-0, #FBF8F1)',
+                color: saving ? 'var(--ink-4, #665D50)' : 'var(--paper-0, #FBF8F1)',
                 cursor: saving ? 'not-allowed' : 'pointer',
               }}
             >
@@ -500,7 +500,7 @@ export function NewVendorSheet({ open, onClose, onAdded }: NewVendorSheetProps) 
           />
 
           {catalogue.state === 'searching' && (
-            <p className="mt-1.5" style={{ fontSize: 11, color: 'var(--ink-3, #7C7365)' }}>
+            <p className="mt-1.5" style={{ fontSize: 11, color: 'var(--ink-4, #665D50)' }}>
               Reading the catalogue…
             </p>
           )}
@@ -519,7 +519,7 @@ export function NewVendorSheet({ open, onClose, onAdded }: NewVendorSheetProps) 
             <p
               data-testid="vendor-catalogue-empty"
               className="mt-1.5"
-              style={{ fontSize: 11.5, color: 'var(--ink-3, #7C7365)' }}
+              style={{ fontSize: 11.5, color: 'var(--ink-4, #665D50)' }}
             >
               Nothing in the catalogue matches “{query.trim()}”. Write the vendor yourself below.
             </p>
@@ -560,7 +560,7 @@ export function NewVendorSheet({ open, onClose, onAdded }: NewVendorSheetProps) 
                       {addingId === row.id ? 'Adding…' : 'Add this one'}
                     </button>
                   </div>
-                  <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--ink-3, #7C7365)' }}>
+                  <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--ink-4, #665D50)' }}>
                     {[row.city, row.state, row.country].filter(Boolean).join(' · ') || EM}
                     {row.type ? ` · ${row.type.replace('_', ' ')}` : ''}
                   </p>
@@ -578,7 +578,7 @@ export function NewVendorSheet({ open, onClose, onAdded }: NewVendorSheetProps) 
               fontWeight: 600,
               letterSpacing: '0.12em',
               textTransform: 'uppercase',
-              color: 'var(--ink-3, #7C7365)',
+              color: 'var(--ink-4, #665D50)',
             }}
           >
             Or a vendor of your own
@@ -754,7 +754,7 @@ export function NewVendorSheet({ open, onClose, onAdded }: NewVendorSheetProps) 
                 </button>
               ))}
             </div>
-            <p style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--ink-3, #7C7365)' }}>
+            <p style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--ink-4, #665D50)' }}>
               Recorded as a vendor term, with your name on it — not on the vendor’s row.
             </p>
           </fieldset>
@@ -777,7 +777,7 @@ export function NewVendorSheet({ open, onClose, onAdded }: NewVendorSheetProps) 
                 </option>
               ))}
             </select>
-            <p style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--ink-3, #7C7365)' }}>
+            <p style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--ink-4, #665D50)' }}>
               Left unstated unless somebody states it. A default here would write a term nobody
               agreed.
             </p>
@@ -811,7 +811,7 @@ export function NewVendorSheet({ open, onClose, onAdded }: NewVendorSheetProps) 
                 </button>
               ))}
             </div>
-            <p style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--ink-3, #7C7365)' }}>
+            <p style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--ink-4, #665D50)' }}>
               Kept with your own preferences, not on the vendor’s row — it is your opinion, not a
               fact about them.
             </p>

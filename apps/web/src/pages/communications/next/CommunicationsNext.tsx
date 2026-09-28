@@ -103,7 +103,7 @@ function GlanceFigure({
           fontWeight: 500,
           letterSpacing: '0.12em',
           textTransform: 'uppercase',
-          color: failed ? 'var(--alarm-deep, #8C3322)' : 'var(--ink-3, #7C7365)',
+          color: failed ? 'var(--alarm-deep, #8C3322)' : 'var(--ink-4, #665D50)',
         }}
       >
         {label}
@@ -185,7 +185,7 @@ function StateChip({
       : state === 'queued'
         ? { text: 'Queued · not yet sent', bg: 'var(--seal-tint, rgba(26,94,107,.10))', fg: 'var(--seal-deep, #14515C)', dashed: true }
         : state === 'cancelled'
-          ? { text: 'Pulled back', bg: 'transparent', fg: 'var(--ink-3, #7C7365)', dashed: false }
+          ? { text: 'Pulled back', bg: 'transparent', fg: 'var(--ink-4, #665D50)', dashed: false }
           : state === 'failed'
             ? { text: 'Not sent', bg: 'var(--alarm-tint, rgba(155,58,42,.10))', fg: 'var(--alarm-deep, #8C3322)', dashed: false }
       : state === 'sending'
@@ -202,7 +202,7 @@ function StateChip({
                 dashed: false,
               }
             : state === 'closed'
-              ? { text: 'Closed', bg: 'transparent', fg: 'var(--ink-3, #7C7365)', dashed: false }
+              ? { text: 'Closed', bg: 'transparent', fg: 'var(--ink-4, #665D50)', dashed: false }
               : {
                   // A null status is not a state to print — the row is on this
                   // page precisely because ADR 0084 refuses to hide what it
@@ -210,7 +210,7 @@ function StateChip({
                   // borrowing a lifecycle word it has no basis for.
                   text: status ? String(status).toLowerCase() : 'no status recorded',
                   bg: 'transparent',
-                  fg: 'var(--ink-3, #7C7365)',
+                  fg: 'var(--ink-4, #665D50)',
                   dashed: false,
                 };
   return (
@@ -250,7 +250,7 @@ function LedgerRow({ item }: { item: ProcurementHistoryItem }) {
           transition: `background ${ink.ms}ms ${ink.easing}`,
         }}
       >
-        <span style={{ fontFamily: MONO, fontSize: 10.5, color: 'var(--ink-3, #7C7365)', minWidth: 44 }}>
+        <span style={{ fontFamily: MONO, fontSize: 10.5, color: 'var(--ink-4, #665D50)', minWidth: 44 }}>
           {fmtWhen(item.sentAt ?? item.createdAt)}
         </span>
         <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--ink-1, #211C16)' }}>
@@ -300,11 +300,11 @@ function LedgerRow({ item }: { item: ProcurementHistoryItem }) {
             {item.draftContent || 'No message body was recorded for this exchange.'}
           </p>
           {item.constraintFlags && item.constraintFlags.hard.length > 0 && (
-            <p style={{ fontSize: 11, color: 'var(--ink-3, #7C7365)', margin: '6px 0 0' }}>
+            <p style={{ fontSize: 11, color: 'var(--ink-4, #665D50)', margin: '6px 0 0' }}>
               Held by rule: {item.constraintFlags.hard.join(', ')}
             </p>
           )}
-          <p style={{ fontFamily: MONO, fontSize: 9.5, color: 'var(--ink-3, #7C7365)', margin: '6px 0 0' }}>
+          <p style={{ fontFamily: MONO, fontSize: 9.5, color: 'var(--ink-4, #665D50)', margin: '6px 0 0' }}>
             {item.orderNumber ? `order ${item.orderNumber} · ` : ''}round {item.roundCount}
           </p>
         </div>
@@ -479,7 +479,7 @@ export default function CommunicationsNext() {
                 fontWeight: 600,
                 letterSpacing: '0.14em',
                 textTransform: 'uppercase',
-                color: 'var(--ink-3, #7C7365)',
+                color: 'var(--ink-4, #665D50)',
                 margin: '0 0 8px',
               }}
             >
@@ -513,7 +513,7 @@ export default function CommunicationsNext() {
                 </li>
               ))}
             </ul>
-            <p style={{ fontSize: 11, color: 'var(--ink-3, #7C7365)', margin: '8px 0 0' }}>
+            <p style={{ fontSize: 11, color: 'var(--ink-4, #665D50)', margin: '8px 0 0' }}>
               Nothing here has been sent. A letter reaches a vendor only when a person holds the
               seal on it.
             </p>
@@ -534,11 +534,11 @@ export default function CommunicationsNext() {
           {/* ── the conversation book ─────────────────────────────────── */}
           <section aria-label="Conversation book">
             {!data.hasData && !data.isError ? (
-              <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-3, #7C7365)' }}>
+              <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-4, #665D50)' }}>
                 Reaching the gateway…
               </p>
             ) : data.rows.length === 0 && !data.isError ? (
-              <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-3, #7C7365)' }}>
+              <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-4, #665D50)' }}>
                 The book is open and empty — no vendor exchanges yet.
               </p>
             ) : (
@@ -563,7 +563,7 @@ export default function CommunicationsNext() {
                   fontWeight: 600,
                   letterSpacing: '0.14em',
                   textTransform: 'uppercase',
-                  color: 'var(--ink-3, #7C7365)',
+                  color: 'var(--ink-4, #665D50)',
                   margin: '0 0 8px',
                 }}
               >

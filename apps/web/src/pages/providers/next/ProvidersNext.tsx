@@ -150,7 +150,7 @@ function BucketCard({
         }}
       >
         <div className="flex justify-between gap-3">
-          <dt style={{ color: "var(--ink-3, #7C7365)" }}>Open orders</dt>
+          <dt style={{ color: "var(--ink-4, #665D50)" }}>Open orders</dt>
           <dd
             style={{
               margin: 0,
@@ -162,15 +162,15 @@ function BucketCard({
           </dd>
         </div>
         <div className="flex justify-between gap-3">
-          <dt style={{ color: "var(--ink-3, #7C7365)" }}>Lead time</dt>
+          <dt style={{ color: "var(--ink-4, #665D50)" }}>Lead time</dt>
           <dd style={{ margin: 0 }}>{fmtDays(vm.leadTimeDays)}</dd>
         </div>
         <div className="flex justify-between gap-3">
-          <dt style={{ color: "var(--ink-3, #7C7365)" }}>Contact</dt>
+          <dt style={{ color: "var(--ink-4, #665D50)" }}>Contact</dt>
           <dd style={{ margin: 0 }}>{fmtLastContact(vm.lastContact)}</dd>
         </div>
         <div className="flex justify-between gap-3" data-testid="pv-card-did">
-          <dt style={{ color: 'var(--ink-3, #7C7365)', whiteSpace: 'nowrap' }}>{SC.page.didLabel}</dt>
+          <dt style={{ color: 'var(--ink-4, #665D50)', whiteSpace: 'nowrap' }}>{SC.page.didLabel}</dt>
           <dd
             style={{
               margin: 0,
@@ -297,7 +297,7 @@ export default function ProvidersNext() {
                     fontSize: 12.5,
                     border: 0,
                     cursor: 'pointer',
-                    color: view === v ? 'var(--ink-1, #211C16)' : 'var(--ink-3, #7C7365)',
+                    color: view === v ? 'var(--ink-1, #211C16)' : 'var(--ink-4, #665D50)',
                     background: view === v ? 'var(--paper-1, #F3EFE6)' : 'transparent',
                     transition: `color ${ink.ms}ms ${ink.easing}, background ${ink.ms}ms ${ink.easing}`,
                   }}
@@ -306,7 +306,7 @@ export default function ProvidersNext() {
                 </button>
               ))}
             </span>
-            <span style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-3, #7C7365)' }}>
+            <span style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-4, #665D50)' }}>
               {data.hasData
                 ? `${data.cards.length} vendors — the learned detail lives inside each card`
                 : 'Reaching the gateway…'}
@@ -384,7 +384,7 @@ export default function ProvidersNext() {
             style={{
               fontFamily: SANS,
               fontSize: 12.5,
-              color: "var(--ink-3, #7C7365)",
+              color: "var(--ink-4, #665D50)",
             }}
           >
             No vendors yet — the book is open and empty.
@@ -396,7 +396,7 @@ export default function ProvidersNext() {
             style={{
               fontFamily: SANS,
               fontSize: 11,
-              color: "var(--ink-3, #7C7365)",
+              color: "var(--ink-4, #665D50)",
               margin: "0 0 10px",
             }}
           >

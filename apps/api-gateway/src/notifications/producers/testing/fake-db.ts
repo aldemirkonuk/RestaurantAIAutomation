@@ -89,7 +89,7 @@ const UNIQUE_KEYS: Record<string, string[]> = {
     "dedupe_key",
     "user_id",
   ],
-  // uniq_delivery_item_to_name_order (20261103101300): one ask per order.
+  // uniq_delivery_item_to_name_order (20261116101300): one ask per order.
   delivery_item_to_name: ["order_id"],
   // `uq_calendar_feed_links_token_hash` (migration 20261031174523).
   calendar_feed_links: ["token_hash"],

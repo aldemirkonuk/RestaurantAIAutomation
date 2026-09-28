@@ -102,7 +102,7 @@ function Cell({
               : {
                   fontSize: 11.5,
                   fontStyle: 'italic',
-                  color: m.outcome === 'could_not_read' ? 'var(--alarm, #A33A2B)' : 'var(--ink-3, #7C7365)',
+                  color: m.outcome === 'could_not_read' ? 'var(--alarm, #A33A2B)' : 'var(--ink-4, #665D50)',
                 }
           }
         >
@@ -115,7 +115,7 @@ function Cell({
                 fontWeight: 400,
                 fontStyle: 'normal',
                 marginLeft: 4,
-                color: 'var(--ink-3, #7C7365)',
+                color: 'var(--ink-4, #665D50)',
               }}
             >
               {fig.small}
@@ -127,7 +127,7 @@ function Cell({
             display: 'block',
             fontFamily: MONO,
             fontSize: 9.5,
-            color: 'var(--ink-3, #7C7365)',
+            color: 'var(--ink-4, #665D50)',
           }}
         >
           {priorLine(m)}
@@ -177,7 +177,7 @@ export function RollCall() {
             display: 'block',
             fontFamily: MONO,
             fontSize: 9.5,
-            color: 'var(--ink-3, #7C7365)',
+            color: 'var(--ink-4, #665D50)',
           }}
         >
           {v.quiet
@@ -212,7 +212,7 @@ export function RollCall() {
           .rc-row { grid-template-columns: 1fr 1fr; gap: 4px 10px; padding: 12px 0 }
           .rc-vendor { grid-column: 1 / -1 }
           .rc-head { display: none }
-          .rc-cell-label { display: block; font-family: ${MONO}; font-size: 9px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3, #7C7365); padding: 0 6px }
+          .rc-cell-label { display: block; font-family: ${MONO}; font-size: 9px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-4, #665D50); padding: 0 6px }
         }
         @media (prefers-reduced-motion: reduce) { .rc-cell-btn { transition: none !important } }
       `}</style>
@@ -220,7 +220,7 @@ export function RollCall() {
       <div className="flex flex-wrap items-center justify-between gap-2" style={{ margin: '0 0 10px' }}>
         <WindowChips value={days} onChange={setDays} />
         {q.data && (
-          <span style={{ fontSize: 11, color: 'var(--ink-3, #7C7365)' }}>
+          <span style={{ fontSize: 11, color: 'var(--ink-4, #665D50)' }}>
             {SC.roll.header(windowLabel(q.data.window.from, q.data.window.to, f), days)}
             {sortLabel ? SC.roll.orderedByMeasure(sortLabel) : SC.roll.orderedByOrders}
           </span>
@@ -245,7 +245,7 @@ export function RollCall() {
           </span>
         </p>
       ) : !q.data ? (
-        <p aria-busy="true" style={{ fontSize: 12, color: 'var(--ink-3, #7C7365)' }}>
+        <p aria-busy="true" style={{ fontSize: 12, color: 'var(--ink-4, #665D50)' }}>
           {SC.roll.reading}
         </p>
       ) : q.data.vendors.length === 0 ? (
@@ -276,7 +276,7 @@ export function RollCall() {
                     display: 'block',
                     fontFamily: MONO,
                     fontSize: 9.5,
-                    color: 'var(--ink-3, #7C7365)',
+                    color: 'var(--ink-4, #665D50)',
                   }}
                 >
                   {SC.roll.vendorRule(days)}
@@ -305,7 +305,7 @@ export function RollCall() {
                       display: 'block',
                       fontFamily: MONO,
                       fontSize: 9.5,
-                      color: 'var(--ink-3, #7C7365)',
+                      color: 'var(--ink-4, #665D50)',
                     }}
                   >
                     {c.rule}
@@ -325,7 +325,7 @@ export function RollCall() {
                   borderTop: '1px dashed var(--paper-2, #EAE4D8)',
                   fontSize: 11,
                   fontStyle: 'italic',
-                  color: 'var(--ink-3, #7C7365)',
+                  color: 'var(--ink-4, #665D50)',
                 }}
               >
                 <span role="cell">
@@ -344,7 +344,7 @@ export function RollCall() {
             marginTop: 14,
             fontSize: 11,
             lineHeight: 1.5,
-            color: 'var(--ink-3, #7C7365)',
+            color: 'var(--ink-4, #665D50)',
           }}
         >
           <p style={{ margin: '0 0 4px' }}>{SC.roll.footListed}</p>

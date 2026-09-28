@@ -165,7 +165,7 @@ const labelStyle: React.CSSProperties = {
   fontWeight: 600,
   letterSpacing: '0.11em',
   textTransform: 'uppercase',
-  color: 'var(--ink-3, #7C7365)',
+  color: 'var(--ink-4, #665D50)',
   marginBottom: 3,
 };
 
@@ -394,7 +394,7 @@ export function NewOrderSheet({ open, onClose, onNoVendors, onPlaced }: NewOrder
       closeLabel="Put it down"
       footer={
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <span style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-3, #7C7365)' }}>
+          <span style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-4, #665D50)' }}>
             Nothing is sent by placing an order — the letter is its own sealed act.
           </span>
           <button
@@ -410,7 +410,7 @@ export function NewOrderSheet({ open, onClose, onNoVendors, onPlaced }: NewOrder
               borderRadius: 3,
               border: '1px solid var(--seal, #1A5E6B)',
               background: canPlace ? 'var(--seal, #1A5E6B)' : 'transparent',
-              color: canPlace ? 'var(--paper-0, #FBF8F1)' : 'var(--ink-3, #7C7365)',
+              color: canPlace ? 'var(--paper-0, #FBF8F1)' : 'var(--ink-4, #665D50)',
               cursor: canPlace ? 'pointer' : 'not-allowed',
             }}
           >
@@ -444,7 +444,7 @@ export function NewOrderSheet({ open, onClose, onNoVendors, onPlaced }: NewOrder
         {search.trim() !== '' && (
           <ul className="mt-1.5" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
             {matches.length === 0 && !inventory.isLoading && !shelfError && (
-              <li style={{ fontSize: 11.5, color: 'var(--ink-3, #7C7365)' }}>
+              <li style={{ fontSize: 11.5, color: 'var(--ink-4, #665D50)' }}>
                 Nothing on the shelf matches “{search.trim()}”.
               </li>
             )}
@@ -485,14 +485,14 @@ export function NewOrderSheet({ open, onClose, onNoVendors, onPlaced }: NewOrder
             fontWeight: 600,
             letterSpacing: '0.12em',
             textTransform: 'uppercase',
-            color: 'var(--ink-3, #7C7365)',
+            color: 'var(--ink-4, #665D50)',
           }}
         >
           Lines
         </h3>
 
         {lines.length === 0 && (
-          <p className="mt-1.5" style={{ fontSize: 11.5, color: 'var(--ink-3, #7C7365)' }}>
+          <p className="mt-1.5" style={{ fontSize: 11.5, color: 'var(--ink-4, #665D50)' }}>
             No lines yet. Search the register above and add what this order is for.
           </p>
         )}
@@ -524,7 +524,7 @@ export function NewOrderSheet({ open, onClose, onNoVendors, onPlaced }: NewOrder
                       fontSize: 11,
                       border: 'none',
                       background: 'transparent',
-                      color: 'var(--ink-3, #7C7365)',
+                      color: 'var(--ink-4, #665D50)',
                       cursor: 'pointer',
                       padding: 0,
                     }}
@@ -648,7 +648,7 @@ export function NewOrderSheet({ open, onClose, onNoVendors, onPlaced }: NewOrder
 
                 {/* ── the agreement, GREY until it is taken ─────────────── */}
                 {line.asking && (
-                  <p className="mt-1.5" style={{ fontSize: 11, color: 'var(--ink-3, #7C7365)' }}>
+                  <p className="mt-1.5" style={{ fontSize: 11, color: 'var(--ink-4, #665D50)' }}>
                     Reading what was last agreed with this vendor…
                   </p>
                 )}
@@ -664,7 +664,7 @@ export function NewOrderSheet({ open, onClose, onNoVendors, onPlaced }: NewOrder
                       // The engine's hand is grey and stays grey. A figure the
                       // person has not taken must never look like a value the
                       // line already holds.
-                      color: 'var(--ink-3, #7C7365)',
+                      color: 'var(--ink-4, #665D50)',
                     }}
                   >
                     <p style={{ margin: 0 }}>{line.offer.sentence}</p>

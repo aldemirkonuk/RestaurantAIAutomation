@@ -758,7 +758,7 @@ export function MarketIndexPanel() {
             <li
               key={b.sha256}
               className="flex items-start gap-1.5 text-[10.5px]"
-              style={{ fontFamily: SANS, color: 'var(--ink-3)' }}
+              style={{ fontFamily: SANS, color: 'var(--ink-4)' }}
             >
               <FileCheck2 size={11} className="mt-0.5 shrink-0" aria-hidden />
               <span>

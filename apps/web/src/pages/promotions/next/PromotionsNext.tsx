@@ -355,7 +355,7 @@ export function PromotionsNext({ ground }: PromotionsNextProps = {}) {
                       <div className="pn-card__top">
                         <span className="pn-card__vendor">{o.provider_name ?? 'Unnamed vendor'}</span>
                       </div>
-                      <span className="pn-mono" style={{ fontSize: 11, color: 'var(--ink-3)' }}>
+                      <span className="pn-mono" style={{ fontSize: 11, color: 'var(--ink-4)' }}>
                         put away {o.dismissed_at ? new Date(o.dismissed_at).toLocaleDateString() : ''}
                       </span>
                       <button type="button" className="pn-btn pn-btn--quiet" disabled={busy} onClick={() => restore.mutate(o.id)}>

@@ -37,7 +37,7 @@
  * 0083 — a control may not claim a write it never makes). They are now
  * written to `auction_lot_records`, a table of their own, linked to the
  * `restaurant_inventory` row the carry produced — see
- * `20261103100400_an_auction_lot_keeps_its_own_details.sql` for why that
+ * `20261116100400_an_auction_lot_keeps_its_own_details.sql` for why that
  * table and not a column on `inventory_lots`. `inventory.md` §9 is amended to
  * match.
  *
@@ -363,7 +363,7 @@ export function AuctionLotStart({ open, onClose, onCarry }: AuctionLotStartProps
     fontWeight: 600,
     letterSpacing: '0.11em',
     textTransform: 'uppercase',
-    color: 'var(--ink-3, #7C7365)',
+    color: 'var(--ink-4, #665D50)',
     marginBottom: 3,
   };
 
@@ -378,7 +378,7 @@ export function AuctionLotStart({ open, onClose, onCarry }: AuctionLotStartProps
       closeLabel="Put it down"
       footer={
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <span style={{ fontSize: 11.5, color: 'var(--ink-3, #7C7365)' }}>
+          <span style={{ fontSize: 11.5, color: 'var(--ink-4, #665D50)' }}>
             An auction bottle is still one bottle entering the book.
           </span>
           <button
@@ -393,7 +393,7 @@ export function AuctionLotStart({ open, onClose, onCarry }: AuctionLotStartProps
               borderRadius: 3,
               border: '1px solid var(--seal, #1A5E6B)',
               background: canCarry ? 'var(--seal, #1A5E6B)' : 'transparent',
-              color: canCarry ? 'var(--paper-0, #FBF8F1)' : 'var(--ink-3, #7C7365)',
+              color: canCarry ? 'var(--paper-0, #FBF8F1)' : 'var(--ink-4, #665D50)',
               cursor: canCarry ? 'pointer' : 'not-allowed',
             }}
           >
@@ -421,7 +421,7 @@ export function AuctionLotStart({ open, onClose, onCarry }: AuctionLotStartProps
         </p>
       )}
       {Array.isArray(rows) && rows.length === 0 && (
-        <p style={{ marginTop: 6, fontSize: 11.5, color: 'var(--ink-3, #7C7365)' }}>
+        <p style={{ marginTop: 6, fontSize: 11.5, color: 'var(--ink-4, #665D50)' }}>
           Nothing in the register matches “{query.trim()}”. A bottle has to be in the register
           before it can be carried in.
         </p>
@@ -629,7 +629,7 @@ export function AuctionLotStart({ open, onClose, onCarry }: AuctionLotStartProps
         </p>
       )}
 
-      <p className="mt-2" data-testid="auction-lot-saved-note" style={{ fontSize: 11, color: 'var(--ink-3, #7C7365)' }}>
+      <p className="mt-2" data-testid="auction-lot-saved-note" style={{ fontSize: 11, color: 'var(--ink-4, #665D50)' }}>
         The book keeps the cost per bottle, in the house&rsquo;s currency, and records it as typed
         by a person. Carrying this in also saves the lot&rsquo;s own details — {lotWords(lot)} —
         with the hammer price and premium in the currency chosen above, and any rate or cost you

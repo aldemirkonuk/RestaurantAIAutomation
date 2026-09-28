@@ -85,7 +85,7 @@ export function VendorRecordEdit({
     fontWeight: 500,
     letterSpacing: '0.12em',
     textTransform: 'uppercase',
-    color: 'var(--ink-3, #7C7365)',
+    color: 'var(--ink-4, #665D50)',
   };
 
   if (!editing) {
@@ -170,7 +170,7 @@ export function VendorRecordEdit({
             borderRadius: 8,
             border: '1px solid var(--seal, #1A5E6B)',
             background: canSave ? 'var(--seal, #1A5E6B)' : 'transparent',
-            color: canSave ? 'var(--paper-0, #FBF8F1)' : 'var(--ink-3, #7C7365)',
+            color: canSave ? 'var(--paper-0, #FBF8F1)' : 'var(--ink-4, #665D50)',
             cursor: canSave ? 'pointer' : 'not-allowed',
           }}
         >

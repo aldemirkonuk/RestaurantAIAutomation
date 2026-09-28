@@ -36,6 +36,7 @@ import {
   fetchIdentityDecisions,
   fetchIdentityStatus,
   fetchPriceIndexStatus,
+  fetchObservationSources,
   fetchProviderUsualCurrency,
   fetchShopSweepStatus,
   fetchSiteSweepStatus,
@@ -158,6 +159,25 @@ export function useRecordPrice(ref: ProductRef | null) {
     onSuccess: () => {
       if (ref) qc.invalidateQueries({ queryKey: ['vendor-prices-compare', activeRestaurantId, ref.kind, ref.id] })
     },
+  })
+}
+
+/**
+ * Fork 6(a): what "Record a price" may name as where a price came from — this
+ * house's recent messages with the matched vendor and that vendor's contacts.
+ * Enabled only once a vendor is resolved to one of this house's rows, and
+ * never cached (`gcTime: 0`, `staleTime: 0`): a message that arrived a minute
+ * ago must be pickable, and a contact removed a minute ago must not be.
+ */
+export function useObservationSources(providerId: string | null) {
+  const { activeRestaurantId } = useAuth()
+  return useQuery({
+    queryKey: ['vendor-prices-observation-sources', activeRestaurantId, providerId],
+    queryFn: () => fetchObservationSources(providerId as string),
+    enabled: !!providerId,
+    retry: retryUnlessClientError,
+    gcTime: 0,
+    staleTime: 0,
   })
 }
 
