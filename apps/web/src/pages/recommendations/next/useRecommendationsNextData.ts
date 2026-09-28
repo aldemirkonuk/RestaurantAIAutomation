@@ -34,6 +34,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiClient } from '@/services/api/client';
 import { decodeBook, type GoalScenarioBook } from '@/hooks/useGoalScenarios';
+import { toGoalBook, type GoalBookVM } from './rec-masthead';
 import { getTeamMembers } from '@/services/api/team';
 import {
   failureOf,
@@ -377,8 +378,13 @@ export interface RecommendationsData {
   requestPosBack: (days: number) => void;
   /** The last write the page performed, said in words. */
   note: string | null;
-  /** `personal`: the write was this person's own snooze — undo wakes it. */
-  undo: { ruleKey: string; label: string; personal?: boolean } | null;
+  /**
+   * `personal`: the write was this person's own snooze — undo wakes it.
+   * `inverse`: a one-tap act that stays on the leaf (a pin, a briefing —
+   * sketch 122 Q2, ADR 0112 F10 amended 2026-09-25): undo posts this patch
+   * against this entry.
+   */
+  undo: UndoVM | null;
   clearUndo: () => void;
   refetch: () => void;
   /** Resolves TRUE only when the server stored it. Callers that navigate away
@@ -391,6 +397,11 @@ export interface RecommendationsData {
     removeFromLeaf: boolean,
     /** Write to this key instead of the rule's own (snooze and done: the item). */
     atKey?: string,
+    /**
+     * Offer Undo for a write that stays on the leaf, by posting this patch
+     * back (sketch 122 Q2: pin and mark-as-briefed are undo-after).
+     */
+    undoWith?: Record<string, unknown>,
   ) => Promise<boolean>;
   dismiss: (entry: EntryVM, choice: DismissChoice) => Promise<void>;
   restore: (ruleKey: string) => Promise<void>;
@@ -417,6 +428,17 @@ export interface RecommendationsData {
   /** Standing entries withheld because this person snoozed them for themselves. */
   hiddenForYou: number | null;
   /**
+   * The engine sources that did not answer this read (`sourcesUnread`), the
+   * quiet tier's substitute (sketch 122 Q4). null = the gateway did not say.
+   */
+  sourcesUnread: string[] | null;
+  /**
+   * The house's active goals WITH progress (`GET /analytics/goals/:rid/progress`)
+   * — the masthead's margin (sketch 122 direction B). undefined = not asked,
+   * null = unreadable.
+   */
+  goalBook: GoalBookVM;
+  /**
    * False when this person's own snoozes could not be read — entries they
    * snoozed for themselves may be standing below, and the page says so.
    */
@@ -426,6 +448,13 @@ export interface RecommendationsData {
    * or null. The house's snoozes are still listed; theirs are not claimed.
    */
   personalProblem: string | null;
+}
+
+export interface UndoVM {
+  ruleKey: string;
+  label: string;
+  personal?: boolean;
+  inverse?: { entry: EntryVM; patch: Record<string, unknown> };
 }
 
 export function useRecommendationsNextData(): RecommendationsData {
@@ -463,11 +492,9 @@ export function useRecommendationsNextData(): RecommendationsData {
   const [pos, setPos] = useState<PosVM>(undefined);
   const [posProblem, setPosProblem] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
-  const [undo, setUndo] = useState<{
-    ruleKey: string;
-    label: string;
-    personal?: boolean;
-  } | null>(null);
+  const [undo, setUndo] = useState<UndoVM | null>(null);
+  const [sourcesUnread, setSourcesUnread] = useState<string[] | null>(null);
+  const [goalBook, setGoalBook] = useState<GoalBookVM>(undefined);
   const seq = useRef(0);
   const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -498,6 +525,12 @@ export function useRecommendationsNextData(): RecommendationsData {
           setHiddenForYou(num(data?.hiddenForYou));
           setPersonalSnoozesReadable(data?.personalSnoozesReadable === true);
           setGeneratedAt(typeof data?.generatedAt === 'string' ? data.generatedAt : null);
+          // Absent ⇒ not stated, never "every source answered" (Q4).
+          setSourcesUnread(
+            Array.isArray(data?.sourcesUnread)
+              ? (data.sourcesUnread as unknown[]).map(String)
+              : null,
+          );
           const sc = data?.stateCounts as Partial<StateCounts> | undefined;
           setCounts(
             sc
@@ -786,6 +819,28 @@ export function useRecommendationsNextData(): RecommendationsData {
     };
   }, [rid]);
 
+  /**
+   * The masthead's margin (sketch 122 direction B): the house's active goals
+   * with progress, recomputed by the gateway. Read once per tenant, apart from
+   * the book, so a goal failure never takes the entries down with it.
+   */
+  useEffect(() => {
+    let cancelled = false;
+    setGoalBook(undefined);
+    if (!rid) return;
+    apiClient
+      .get<Record<string, unknown>>(`/analytics/goals/${rid}/progress?status=active`)
+      .then(({ data }) => {
+        if (!cancelled) setGoalBook(toGoalBook(data));
+      })
+      .catch(() => {
+        if (!cancelled) setGoalBook(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [rid]);
+
   /** Kept for the goal sheet: a re-read after a failed one, never a second read. */
   const loadGoals = useCallback(() => {
     if (!rid || goals !== undefined) return;
@@ -917,11 +972,19 @@ export function useRecommendationsNextData(): RecommendationsData {
     [rid, say],
   );
 
-  const offerUndo = useCallback((ruleKey: string, label: string, personal = false) => {
-    setUndo({ ruleKey, label, personal });
+  const offerUndo = useCallback(
+    (
+      ruleKey: string,
+      label: string,
+      personal = false,
+      inverse?: UndoVM['inverse'],
+    ) => {
+    setUndo({ ruleKey, label, personal, inverse });
     if (undoTimer.current) clearTimeout(undoTimer.current);
     undoTimer.current = setTimeout(() => setUndo(null), 8000);
-  }, []);
+    },
+    [],
+  );
   useEffect(
     () => () => {
       if (undoTimer.current) clearTimeout(undoTimer.current);
@@ -943,6 +1006,7 @@ export function useRecommendationsNextData(): RecommendationsData {
       said: string,
       removeFromLeaf: boolean,
       atKey?: string,
+      undoWith?: Record<string, unknown>,
     ): Promise<boolean> => {
       if (!rid) return false;
       const before = entry;
@@ -966,6 +1030,8 @@ export function useRecommendationsNextData(): RecommendationsData {
         const personal =
           (data as { recordedAs?: unknown } | null)?.recordedAs === 'snoozed_for_you';
         if (removeFromLeaf) offerUndo(key, said, personal);
+        else if (undoWith)
+          offerUndo(key, said, false, { entry: { ...entry, ...patch }, patch: undoWith });
         return true;
       } catch (err) {
         const f = failureOf(err);
@@ -1172,5 +1238,7 @@ export function useRecommendationsNextData(): RecommendationsData {
     hiddenForYou,
     personalSnoozesReadable,
     personalProblem,
+    sourcesUnread,
+    goalBook,
   };
 }

@@ -43,26 +43,27 @@ export const GUIDE_ENTRIES: readonly GuideEntry[] = [
   {
     slug: 'using-the-assistant',
     title: 'Using the assistant',
-    dek: 'Two ways to ask Mudavym something, and what each is for.',
+    dek: 'One panel, two modes: ask the books, or propose an action you seal.',
     steps: [
       // CommandProvider.tsx: ⌘K/Ctrl+K opens the palette in capture phase;
-      // ⌘⇧K opens Ask AI via ASK_AI_OPEN_EVENT.
+      // ⌘⇧K opens the Ask panel via ASK_AI_OPEN_EVENT (ADR 0145, "One panel,
+      // two modes", founder, 2026-09-26). The header's Ask and the rail's
+      // first row open the same panel.
       {
-        text: 'Press Cmd+Shift+K (Ctrl+Shift+K on Windows) anywhere in the app to open Ask AI. Type what you want in plain words — "reorder the house red" — and it proposes one action.',
+        text: 'Press Cmd+Shift+K (Ctrl+Shift+K on Windows) anywhere in the app, or choose Ask in the header, to open the Ask panel. Two modes sit at its top: Ask the books, and Propose an action. Enter runs the one that is selected; if your words read like the other one, the panel says so and leaves the choice to you.',
       },
-      // askAi.ts module doc: "this module never executes anything by itself
-      // ... only confirm executes, and only against an action id a human has
-      // looked at." Allowlist: reorder, vendor_draft (askAi.ts:23-24).
+      // [2026-09-25] ADR 0145: the bound ask answers out of a reading of the
+      // house's books; /sommelier now redirects to /ask (App.tsx).
       {
-        text: 'It only proposes. Nothing sends, orders or changes stock until you read the proposal and confirm it — today that covers a reorder and a vendor message; everything else it is asked for, it declines to invent.',
+        text: 'Ask the books answers a question about the house itself — stock, orders, receipts, the calendar. Every figure comes from a reading of the house’s own books, and each answer opens on the Ask page, where your past questions stay in your book.',
       },
-      // pages/Help.tsx historic "Wine Agent" card; App.tsx mounts
-      // /sommelier directly (no PageGate).
+      // askAi.ts module doc: only the sealed apply executes, and only against
+      // an action id a human has held for. Allowlist: reorder, vendor_draft.
       {
-        text: 'For wine, cellar and pairing questions specifically, the Sommelier has its own page — open it when you want a longer conversation rather than a one-line ask.',
+        text: 'Propose an action drafts one action — today a reorder or a vendor message; everything else it declines to invent. Nothing sends, orders or changes stock until an owner or a manager holds to seal the proposal.',
       },
     ],
-    goes: { to: '/sommelier', label: 'Open the Sommelier' },
+    goes: { to: '/ask', label: 'Open Ask' },
   },
   {
     slug: 'moving-between-tasks',
@@ -77,7 +78,7 @@ export const GUIDE_ENTRIES: readonly GuideEntry[] = [
         text: 'Press "g" then a letter to jump to a page without leaving the keyboard — the same pattern Gmail and Linear use. Press "?" any time to see the full list for this build.',
       },
       {
-        text: 'Cmd+Shift+O reopens whatever you had open recently, in the order you looked at it — useful after Ask AI or a search sends you somewhere new.',
+        text: 'Cmd+Shift+O reopens whatever you had open recently, in the order you looked at it — useful after Ask or a search sends you somewhere new.',
       },
       {
         text: 'The bell in the header is the one place every waiting item across the house collects, regardless of which page raised it.',

@@ -231,15 +231,20 @@ export default function FeaturesSection({ data }: { data: SettingsNextData }) {
                       label={titleFromFlagKey(key)}
                       provenance={{
                         kept: 'restaurant', when: null, whenUnknown: NO_DATE,
-                        // Matches the registry's own `readBy` for every
-                        // `mudavym_design_*` key: useMudavymDesign.ts:202:
+                        // Names the same gate as the registry's own `readBy`
+                        // for every `mudavym_design_*` key: useMudavymDesign.ts's
                         // `.checkFeatureFlag(restaurantId, flagKeyFor(page))`.
+                        // No line number here: the registry's anchor is kept
+                        // true by scripts/check_flag_readby_anchors.py, and
+                        // nothing guards a copy of it in this file (it read
+                        // :202 after PR #474 moved the call to :211, then :217
+                        // after the 2026-09-27 main merge added `ask`).
                         // For a page in LIVE_PAGES the hook returns before
                         // that call ever runs (see its module doc above) — the
                         // column is real but nothing reads it any more.
                         readBy: alwaysOn
                           ? "nothing — useMudavymDesign.ts's LIVE_PAGES short-circuits before the fetch"
-                          : <code style={{ fontFamily: MONO, fontSize: 11 }}>lib/mudavym/useMudavymDesign.ts:202</code>,
+                          : <code style={{ fontFamily: MONO, fontSize: 11 }}>lib/mudavym/useMudavymDesign.ts · checkFeatureFlag</code>,
                       }}
                       consequence={
                         alwaysOn ? (

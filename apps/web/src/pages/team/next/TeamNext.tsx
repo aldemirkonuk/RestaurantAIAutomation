@@ -45,6 +45,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Download,
+  LayoutGrid,
   Megaphone,
   Send,
   Upload,
@@ -76,6 +77,8 @@ import {
   TimeOffSheet,
 } from './TeamOverlays';
 import { TeamRecordSection, TrailSheet } from './TeamRecord';
+import { AreasSheet } from './AreasSheet';
+import { useHouseAreas } from './useHouseAreas';
 import {
   useActiveRestaurantId,
   useTeamNextData,
@@ -242,7 +245,7 @@ function GapRow({
         {fmtWeekday(gap.date)} · {gap.role} · {periodLabel(gap.period)}
         {gap.times ? ` · ${gap.times.start.slice(0, 5)}–${gap.times.end.slice(0, 5)}` : ''}
       </span>
-      <span className="ml-auto" style={{ fontSize: 11.5, color: 'var(--ink-3)' }}>
+      <span className="ml-auto" style={{ fontSize: 11.5, color: 'var(--ink-4)' }}>
         {gap.suggested
           ? `suggest ${gap.suggested.name} — ${gap.suggested.hoursThisWeek}h this week` +
             (gap.times ? ` · ${gap.times.source}` : '')
@@ -258,7 +261,7 @@ function GapRow({
       </button>
       {/* the reason is on-screen text, not a hover-only title (a11y) */}
       {!canAssign && reason && gap.suggested !== null && (
-        <span style={{ fontSize: 11, color: 'var(--ink-3)', width: '100%' }}>{reason}</span>
+        <span style={{ fontSize: 11, color: 'var(--ink-4)', width: '100%' }}>{reason}</span>
       )}
       <MutationError when={assign.isError}>
         The assignment did not go through — the desk still shows the gap. Try again or set
@@ -278,6 +281,8 @@ function CertRow({ block }: { block: CertExposureVM }) {
       }),
   });
   const shifts = block.shiftsThisWeek;
+  // The one person asked is Away: the request waits for them (ADR 0218).
+  const held = renew.data?.away?.held[0] ?? null;
   return (
     <div
       className="flex flex-wrap items-center gap-3 py-2.5"
@@ -295,7 +300,7 @@ function CertRow({ block }: { block: CertExposureVM }) {
         style={{
           fontFamily: 'var(--tm-mono)',
           fontSize: 11,
-          color: (shifts ?? 0) > 0 ? 'var(--ink-1)' : 'var(--ink-3)',
+          color: (shifts ?? 0) > 0 ? 'var(--ink-1)' : 'var(--ink-4)',
         }}
       >
         {shifts === null
@@ -305,7 +310,7 @@ function CertRow({ block }: { block: CertExposureVM }) {
             : 'not scheduled this week'}
       </span>
       {!block.memberLinked ? (
-        <span style={{ fontSize: 11, color: 'var(--ink-3)' }}>
+        <span style={{ fontSize: 11, color: 'var(--ink-4)' }}>
           no linked account — a request would reach nobody
         </span>
       ) : (
@@ -318,12 +323,16 @@ function CertRow({ block }: { block: CertExposureVM }) {
           {renew.isPending ? 'Sending…' : 'Request renewal'}
         </button>
       )}
-      {renew.isSuccess && (
+      {renew.isSuccess && held && (
+        // ADR 0218, round-2 answer 3: the sender sees "away until <date>".
+        <span style={{ fontSize: 11, color: 'var(--ink-4)', width: '100%' }}>{held.detail}</span>
+      )}
+      {renew.isSuccess && !held && (
         // NOT a latch. Nothing on the server records that a renewal was asked
         // for, so this page cannot know on the next load whether it was.
         // TODO(gateway, not this branch): record renewal requests against the
         // certification so this can become a state instead of a moment.
-        <span style={{ fontSize: 11, color: 'var(--ink-3)', width: '100%' }}>
+        <span style={{ fontSize: 11, color: 'var(--ink-4)', width: '100%' }}>
           Sent just now. Nothing records the request, so this will not show after a reload.
         </span>
       )}
@@ -381,6 +390,7 @@ type Overlay =
   | { kind: 'note'; only: string | null }
   | { kind: 'timeoff' }
   | { kind: 'trail' }
+  | { kind: 'areas' }
   | { kind: 'export' };
 
 function TeamNextManager({ ground }: { ground?: 'charcoal' }) {
@@ -392,6 +402,7 @@ function TeamNextManager({ ground }: { ground?: 'charcoal' }) {
   const exportAnchor = useRef<HTMLButtonElement | null>(null);
 
   const data = useTeamNextData(weekStart);
+  const house = useHouseAreas();
   const labor = data.labor;
   const rules = data.coverageRules;
   // Three states, three sentences: the rule file has not answered, it is empty
@@ -434,6 +445,14 @@ function TeamNextManager({ ground }: { ground?: 'charcoal' }) {
             >
               <UsersRound className="tm-icon" aria-hidden="true" />
               People · {data.membersCount === null ? EM : data.membersCount}
+            </button>
+            <button
+              type="button"
+              className="tm-ctl tm-ctl--quiet"
+              onClick={() => setOverlay({ kind: 'areas' })}
+            >
+              <LayoutGrid className="tm-icon" aria-hidden="true" />
+              Areas
             </button>
             <button
               type="button"
@@ -538,14 +557,14 @@ function TeamNextManager({ ground }: { ground?: 'charcoal' }) {
             ) : (
               <div>
                 <span className="tm-fig">{fmtMoneyWhole(labor.totalCost)}</span>
-                <span style={{ fontSize: 12, color: 'var(--ink-3)', marginLeft: 8 }}>
+                <span style={{ fontSize: 12, color: 'var(--ink-4)', marginLeft: 8 }}>
                   {labor.totalHours}h scheduled
                   {data.target.pct === null
                     ? ' · no target set'
                     : ` · target ${data.target.pct}% of sales`}
                 </span>
                 {data.target.pct === null && (
-                  <p style={{ fontSize: 11.5, color: 'var(--ink-3)', margin: '6px 0 0' }}>
+                  <p style={{ fontSize: 11.5, color: 'var(--ink-4)', margin: '6px 0 0' }}>
                     {data.target.why}
                   </p>
                 )}
@@ -562,7 +581,7 @@ function TeamNextManager({ ground }: { ground?: 'charcoal' }) {
                     {data.overtimeNamed.map((o) => `${o.name} (${o.hours}h)`).join(', ')}
                   </p>
                 ) : (
-                  <p style={{ fontSize: 12, color: 'var(--ink-3)', margin: '8px 0 0' }}>
+                  <p style={{ fontSize: 12, color: 'var(--ink-4)', margin: '8px 0 0' }}>
                     No one crosses an overtime threshold as scheduled.
                   </p>
                 )}
@@ -747,9 +766,21 @@ function TeamNextManager({ ground }: { ground?: 'charcoal' }) {
           certs={data.certs}
           timeOff={data.timeOff}
           wageVisible={data.wageVisible}
+          house={house}
           onClose={() => setOverlay(null)}
           onEdit={(m) => setOverlay({ kind: 'member', member: m })}
           onAdd={() => setOverlay({ kind: 'member', member: null })}
+        />
+      )}
+      {overlay?.kind === 'areas' && (
+        <AreasSheet
+          readout={house.areas}
+          failed={house.areasFailed}
+          roster={data.members}
+          awayByUser={house.awayByUser}
+          today={house.away?.today ?? null}
+          awayFailed={house.awayFailed}
+          onClose={() => setOverlay(null)}
         />
       )}
       {overlay?.kind === 'member' && (
@@ -795,6 +826,8 @@ function TeamNextManager({ ground }: { ground?: 'charcoal' }) {
           only={overlay.only}
           weekStart={weekStart}
           scheduleId={data.scheduleId}
+          awayByUser={house.awayByUser}
+          awayToday={house.away?.today ?? null}
           onClose={() => setOverlay(null)}
           onSent={refreshWeek}
         />

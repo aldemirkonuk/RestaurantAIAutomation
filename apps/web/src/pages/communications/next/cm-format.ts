@@ -68,10 +68,18 @@ export function sendState(status: string | null | undefined): SendState {
   // also emphatically not 'sent': the whole point of the window is that the
   // letter has not left, and the 30-day sent figure must not count it.
   if (s === 'HOUSE_QUEUED') return 'queued';
+  // Written by Mudavym for a person to send (ADR 0230) — nobody has decided.
+  if (s === 'HOUSE_DRAFT') return 'draft';
   if (s === 'HOUSE_CANCELLED') return 'cancelled';
   // Definitely NOT sent, which is a different fact from 'unconfirmed' (the
   // vendor may hold it and we could not confirm). This letter did not leave.
   if (s === 'HOUSE_FAILED') return 'failed';
+  // The relay's own doors refused this exact request (400/403/422, or a
+  // header refusal) before any transport — CLOSED, not retried (ADR 0099,
+  // founder 2026-09-21). Same footing as HOUSE_FAILED: definitely not sent,
+  // and not a draft either — it never re-enters PENDING_APPROVAL, so it
+  // never appears in the approval queue for a stale "Approve" to reach.
+  if (s === 'RELAY_REFUSED') return 'failed';
   if (s === 'DRAFT' || s === 'PENDING_APPROVAL' || s === 'APPROVED') return 'draft';
   // A send is in flight and the row is claimed. Not a draft — nobody may act
   // on it — and not yet sent, so it gets its own state rather than falling
@@ -88,9 +96,12 @@ export function sendState(status: string | null | undefined): SendState {
 
 /** Chip wording for the pre-send states — approval is said as approval. */
 export function draftChipText(status: string | null | undefined): string {
-  return String(status ?? '').toUpperCase() === 'APPROVED'
-    ? 'Approved · not sent'
-    : 'AI draft · not sent';
+  const s = String(status ?? '').toUpperCase();
+  if (s === 'APPROVED') return 'Approved · not sent';
+  // Not an AI reply: a letter the house drafted from its own record (a credit
+  // claim asked for, ADR 0230). Still not sent.
+  if (s === 'HOUSE_DRAFT') return 'Drafted · not sent';
+  return 'AI draft · not sent';
 }
 
 /**

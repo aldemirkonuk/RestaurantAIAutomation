@@ -5,12 +5,16 @@ import { SettingsService } from "./settings.service";
 import { ApprovalThresholdsService } from "./approval-thresholds.service";
 import { HouseCurrencyService } from "./house-currency.service";
 import { HouseCarryingCostService } from "./house-carrying-cost.service";
+import { HouseTimeZoneService } from "./house-time-zone.service";
+import { HouseToneScoringService } from "./house-tone-scoring.service";
+import { HouseDataTermsService } from "./data-terms/house-data-terms.service";
 import { HouseAskTrainingService } from "./house-ask-training.service";
 import { DatabaseModule } from "../database/database.module";
 import { AuthModule } from "../auth/auth.module";
 import { SettingsAuditModule } from "../settings-audit/settings-audit.module";
 import { VendorTermsModule } from "../vendor-terms/vendor-terms.module";
 import { OrganizationsModule } from "../organizations/organizations.module";
+import { SealModule } from "../common/seal/seal.module";
 
 /**
  * Settings, and the two registers the fourth pass gave it.
@@ -41,6 +45,7 @@ import { OrganizationsModule } from "../organizations/organizations.module";
     SettingsAuditModule,
     VendorTermsModule,
     OrganizationsModule,
+    SealModule,
   ],
   controllers: [SettingsController, HouseAskTrainingController],
   providers: [
@@ -48,6 +53,9 @@ import { OrganizationsModule } from "../organizations/organizations.module";
     ApprovalThresholdsService,
     HouseCurrencyService,
     HouseCarryingCostService,
+    HouseTimeZoneService,
+    HouseToneScoringService,
+    HouseDataTermsService,
     HouseAskTrainingService,
   ],
   exports: [
@@ -55,6 +63,9 @@ import { OrganizationsModule } from "../organizations/organizations.module";
     ApprovalThresholdsService,
     HouseCurrencyService,
     HouseCarryingCostService,
+    // ADR 0207 round 4 — the vendor-tone sweep (providers.module.ts) reads
+    // effectiveAcceptance() before it will send anything for a house.
+    HouseDataTermsService,
   ],
 })
 export class SettingsModule {}

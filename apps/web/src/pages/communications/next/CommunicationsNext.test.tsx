@@ -8,6 +8,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render as rtlRender, screen, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MemoryRouter } from 'react-router-dom';
 import type { ProcurementHistoryItem } from '../../../hooks/queries/useConversationQueries';
 
 const mockData = vi.hoisted(() => ({ current: {} as Record<string, unknown> }));
@@ -25,8 +26,18 @@ vi.mock('./useCommsNextData', async (importOriginal) => ({
 // the house library; both are proved in their own files, and here they are
 // stubbed so this file stays a test of the PAGE.
 vi.mock('./Compose/ComposeSheet', () => ({
-  ComposeSheet: ({ open }: { open: boolean }) =>
-    open ? <div data-testid="composer" /> : null,
+  ComposeSheet: ({ open, prefill }: { open: boolean; prefill?: { draftId?: string } | null }) =>
+    open ? <div data-testid="composer" data-draft={prefill?.draftId ?? ''} /> : null,
+}));
+
+// ADR 0230 — the drafts list is its own module; only its hook is replaced, so
+// the list's own three states render for real.
+const mockDrafts = vi.hoisted(() => ({
+  current: { drafts: [] as unknown[] | null, failed: false, error: null as string | null, refetch: () => {} },
+}));
+vi.mock('./Compose/HouseDrafts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./Compose/HouseDrafts')>()),
+  useHouseDrafts: () => mockDrafts.current,
 }));
 vi.mock('./TemplateSheet', () => ({
   TemplateSheet: () => <div data-testid="letter-library" />,
@@ -43,9 +54,13 @@ import CommunicationsNext from './CommunicationsNext';
 
 // The template sheet persists through `useTemplates` (P1), so the page tree now
 // needs a query client. A fresh one per render keeps the tests independent.
-function render(ui: React.ReactElement) {
+function render(ui: React.ReactElement, at = '/communications') {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return rtlRender(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>);
+  return rtlRender(
+    <MemoryRouter initialEntries={[at]}>
+      <QueryClientProvider client={qc}>{ui}</QueryClientProvider>
+    </MemoryRouter>,
+  );
 }
 
 function item(over: Partial<ProcurementHistoryItem>): ProcurementHistoryItem {
@@ -62,6 +77,7 @@ function item(over: Partial<ProcurementHistoryItem>): ProcurementHistoryItem {
     draftContent: 'Dear Bodega, could you hold 6 at $18.40?',
     constraintFlags: null,
     rollingSummary: null,
+    relayRefusalReason: null,
     orderNumber: 'PO-014',
     quantity: 6,
     wineName: 'Albariño 2022',
@@ -118,6 +134,26 @@ describe('CommunicationsNext', () => {
     render(<CommunicationsNext />);
     expect(screen.getByText('AI draft · not sent')).toBeInTheDocument();
     expect(screen.queryByText(/^Sent$/)).not.toBeInTheDocument();
+  });
+
+  // ADR 0099, founder 2026-09-21: a 400/403/422 relay refusal CLOSES the
+  // draft ("Close, no retry") and the manager sees why on the draft. The chip
+  // says it did not leave; the gateway's sentence is on the chip as a tooltip
+  // AND printed in the opened row, since a tooltip never shows on touch.
+  it('a relay refusal says Not sent and shows the gateway\'s sentence', () => {
+    const said =
+      "gateway refused the send: HTTP 403 — Conversation c1 is not one of this house's conversations. Nothing was sent.";
+    mockData.current = {
+      ...base,
+      rows: [item({ status: 'RELAY_REFUSED', relayRefusalReason: said })],
+    };
+    render(<CommunicationsNext />);
+    const chip = screen.getByText('Not sent');
+    expect(chip).toHaveAttribute('title', said);
+    expect(screen.queryByText(/^Sent$/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/the relay refused it/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText('Bodega Álvaro'));
+    expect(screen.getByText(/Not sent — the relay refused it: gateway refused the send: HTTP 403/)).toBeInTheDocument();
   });
 
   it('APPROVED is approval, never dispatch (the audit blocker case)', () => {
@@ -340,5 +376,57 @@ describe('CommunicationsNext', () => {
     expect(screen.getByText('no status recorded')).toBeInTheDocument();
     expect(screen.queryByText(/^Sent$/)).toBeNull();
     expect(screen.queryByText('AI draft · not sent')).toBeNull();
+  });
+
+  it('a house draft in the book is "Drafted · not sent", never sent (ADR 0230)', () => {
+    mockData.current = { ...base, rows: [item({ status: 'HOUSE_DRAFT', emailType: 'HOUSE_LETTER' })] };
+    render(<CommunicationsNext />);
+    expect(screen.getByText('Drafted · not sent')).toBeInTheDocument();
+    expect(screen.queryByText(/^Sent$/)).toBeNull();
+    expect(screen.queryByText('AI draft · not sent')).toBeNull();
+  });
+});
+
+describe('drafted letters (ADR 0230)', () => {
+  const DRAFT = {
+    id: 'D1',
+    providerId: 'p1',
+    providerName: 'Bodega Álvaro',
+    orderId: null,
+    subject: 'Credit request — invoice INV-77',
+    to: 'orders@bodega.example',
+    category: 'invoice_mismatch',
+    creditId: 'c1',
+    body: 'We are asking for a credit.',
+    createdAt: '2026-09-25T09:00:00Z',
+  };
+  beforeEach(() => {
+    mockDrafts.current = { drafts: [], failed: false, error: null, refetch: () => {} };
+  });
+
+  it('lists a waiting draft and opens it in the composer', () => {
+    mockDrafts.current = { ...mockDrafts.current, drafts: [DRAFT] };
+    render(<CommunicationsNext />);
+    fireEvent.click(screen.getByText('Credit request — invoice INV-77'));
+    expect(screen.getByTestId('composer').getAttribute('data-draft')).toBe('D1');
+  });
+
+  it("the credit's link opens its draft", () => {
+    mockDrafts.current = { ...mockDrafts.current, drafts: [DRAFT] };
+    render(<CommunicationsNext />, '/communications?draft=D1');
+    expect(screen.getByTestId('composer').getAttribute('data-draft')).toBe('D1');
+  });
+
+  it('a link to a letter that is no longer a draft says so', () => {
+    render(<CommunicationsNext />, '/communications?draft=D1');
+    expect(screen.queryByTestId('composer')).toBeNull();
+    expect(screen.getByText(/no longer a draft/)).toBeInTheDocument();
+  });
+
+  it('a failed drafts read is unknown, not none', () => {
+    mockDrafts.current = { drafts: null, failed: true, error: 'The drafts could not be read (boom).', refetch: () => {} };
+    render(<CommunicationsNext />);
+    expect(screen.getByText(/The drafts could not be read \(boom\)\. Whether any letter is waiting is unknown, not none\./)).toBeInTheDocument();
+    expect(screen.queryByText('No drafted letters are waiting.')).toBeNull();
   });
 });

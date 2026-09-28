@@ -346,6 +346,8 @@ export function receiptFor(
     snoozeUntil?: string | null;
   },
   watching: boolean,
+  /** A *Brief the floor* entry — its "acted" is the briefing (sketch 122 Q7). */
+  briefing = false,
 ): string[] {
   const lines: string[] = [];
   if (e.status === 'snoozed') {
@@ -353,7 +355,11 @@ export function receiptFor(
   } else if (e.status === 'done') {
     lines.push('Sealed as ruled off. No outcome is measured yet — 094c’s roadmap.');
   } else if (e.acted) {
-    lines.push('Recorded as acted. Still standing — acting does not remove it from the book.');
+    lines.push(
+      briefing
+        ? 'Marked as briefed. Still standing — briefing does not remove it from the book.'
+        : 'Recorded as acted. Still standing — acting does not remove it from the book.',
+    );
   }
   if (watching) lines.push('Watched by a goal.');
   if (e.pinned) {

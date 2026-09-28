@@ -27,7 +27,8 @@
  * them any more.
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { PenLine, Library } from 'lucide-react';
 import { Wordmark } from '@/components/mudavym';
 import type { ProcurementHistoryItem } from '../../../hooks/queries/useConversationQueries';
@@ -46,6 +47,7 @@ import {
 import { TemplateSheet } from './TemplateSheet';
 import WhoIsWriting from './WhoIsWriting';
 import { ComposeSheet } from './Compose/ComposeSheet';
+import { HouseDrafts, useHouseDrafts, type HouseDraft } from './Compose/HouseDrafts';
 import { COMMS_SERVER_WINDOWS, useCommsNextData } from './useCommsNextData';
 
 const TYPE_LABELS: Record<string, string> = {
@@ -98,7 +100,7 @@ function GlanceFigure({
           fontWeight: 500,
           letterSpacing: '0.12em',
           textTransform: 'uppercase',
-          color: failed ? 'var(--alarm-deep, #8C3322)' : 'var(--ink-3, #7C7365)',
+          color: failed ? 'var(--alarm-deep, #8C3322)' : 'var(--ink-4, #665D50)',
         }}
       >
         {label}
@@ -144,9 +146,19 @@ function GlanceFigure({
 function StateChip({
   status,
   direction,
+  reason,
 }: {
   status: string | null | undefined;
   direction?: 'INBOUND' | 'OUTBOUND' | null;
+  /**
+   * The gateway's own sentence for why this closed (ADR 0099, founder
+   * 2026-09-21) — `relay_refusal_reason`, set only when `status` is
+   * `RELAY_REFUSED`. A native tooltip on the chip, so the collapsed row stays
+   * simple (the chip already says "Not sent"); the same sentence is printed
+   * in the opened row too, because a tooltip never shows on a touch screen or
+   * to a keyboard — the row is where "why" is actually readable.
+   */
+  reason?: string | null;
 }) {
   if (direction === 'INBOUND') {
     return (
@@ -180,7 +192,7 @@ function StateChip({
       : state === 'queued'
         ? { text: 'Queued · not yet sent', bg: 'var(--seal-tint, rgba(26,94,107,.10))', fg: 'var(--seal-deep, #14515C)', dashed: true }
         : state === 'cancelled'
-          ? { text: 'Pulled back', bg: 'transparent', fg: 'var(--ink-3, #7C7365)', dashed: false }
+          ? { text: 'Pulled back', bg: 'transparent', fg: 'var(--ink-4, #665D50)', dashed: false }
           : state === 'failed'
             ? { text: 'Not sent', bg: 'var(--alarm-tint, rgba(155,58,42,.10))', fg: 'var(--alarm-deep, #8C3322)', dashed: false }
       : state === 'sending'
@@ -197,7 +209,7 @@ function StateChip({
                 dashed: false,
               }
             : state === 'closed'
-              ? { text: 'Closed', bg: 'transparent', fg: 'var(--ink-3, #7C7365)', dashed: false }
+              ? { text: 'Closed', bg: 'transparent', fg: 'var(--ink-4, #665D50)', dashed: false }
               : {
                   // A null status is not a state to print — the row is on this
                   // page precisely because ADR 0084 refuses to hide what it
@@ -205,11 +217,12 @@ function StateChip({
                   // borrowing a lifecycle word it has no basis for.
                   text: status ? String(status).toLowerCase() : 'no status recorded',
                   bg: 'transparent',
-                  fg: 'var(--ink-3, #7C7365)',
+                  fg: 'var(--ink-4, #665D50)',
                   dashed: false,
                 };
   return (
     <span
+      title={reason ?? undefined}
       style={{
         fontFamily: MONO,
         fontSize: 8.5,
@@ -222,6 +235,7 @@ function StateChip({
         color: looks.fg,
         border: looks.dashed ? '1px dashed var(--ink-3, #7C7365)' : '1px solid transparent',
         whiteSpace: 'nowrap',
+        cursor: reason ? 'help' : undefined,
       }}
     >
       {looks.text}
@@ -245,7 +259,7 @@ function LedgerRow({ item }: { item: ProcurementHistoryItem }) {
           transition: `background ${ink.ms}ms ${ink.easing}`,
         }}
       >
-        <span style={{ fontFamily: MONO, fontSize: 10.5, color: 'var(--ink-3, #7C7365)', minWidth: 44 }}>
+        <span style={{ fontFamily: MONO, fontSize: 10.5, color: 'var(--ink-4, #665D50)', minWidth: 44 }}>
           {fmtWhen(item.sentAt ?? item.createdAt)}
         </span>
         <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--ink-1, #211C16)' }}>
@@ -257,7 +271,7 @@ function LedgerRow({ item }: { item: ProcurementHistoryItem }) {
           {item.quantity !== null ? ` · ${item.quantity}` : ''}
         </span>
         <span className="ml-auto" />
-        <StateChip status={item.status} direction={item.direction} />
+        <StateChip status={item.status} direction={item.direction} reason={item.relayRefusalReason} />
       </button>
       {open && (
         <div
@@ -294,12 +308,19 @@ function LedgerRow({ item }: { item: ProcurementHistoryItem }) {
           >
             {item.draftContent || 'No message body was recorded for this exchange.'}
           </p>
+          {item.direction !== 'INBOUND' && item.status === 'RELAY_REFUSED' && (
+            // ADR 0099, founder 2026-09-21: the draft closed, not retried, and
+            // the manager sees why — the gateway's own sentence, verbatim.
+            <p style={{ fontSize: 12, color: 'var(--alarm-deep, #8C3322)', maxWidth: '68ch', margin: '6px 0 0' }}>
+              Not sent — the relay refused it: {item.relayRefusalReason || 'no reason was recorded with this refusal.'}
+            </p>
+          )}
           {item.constraintFlags && item.constraintFlags.hard.length > 0 && (
-            <p style={{ fontSize: 11, color: 'var(--ink-3, #7C7365)', margin: '6px 0 0' }}>
+            <p style={{ fontSize: 11, color: 'var(--ink-4, #665D50)', margin: '6px 0 0' }}>
               Held by rule: {item.constraintFlags.hard.join(', ')}
             </p>
           )}
-          <p style={{ fontFamily: MONO, fontSize: 9.5, color: 'var(--ink-3, #7C7365)', margin: '6px 0 0' }}>
+          <p style={{ fontFamily: MONO, fontSize: 9.5, color: 'var(--ink-4, #665D50)', margin: '6px 0 0' }}>
             {item.orderNumber ? `order ${item.orderNumber} · ` : ''}round {item.roundCount}
           </p>
         </div>
@@ -312,6 +333,25 @@ export default function CommunicationsNext() {
   const data = useCommsNextData();
   const [compose, setCompose] = useState(false);
   const [library, setLibrary] = useState(false);
+  // Drafts Mudavym wrote (ADR 0230). `?draft=<id>` is the credit claim's link
+  // to its letter; it opens that draft once the drafts list has answered.
+  const houseDrafts = useHouseDrafts();
+  const [params, setParams] = useSearchParams();
+  const [draft, setDraft] = useState<HouseDraft | null>(null);
+  const linked = params.get('draft');
+  useEffect(() => {
+    if (!linked || !houseDrafts.drafts) return;
+    const hit = houseDrafts.drafts.find((d) => d.id === linked);
+    if (hit) setDraft(hit);
+  }, [linked, houseDrafts.drafts]);
+  const closeDraft = () => {
+    setDraft(null);
+    houseDrafts.refetch();
+    if (linked) {
+      params.delete('draft');
+      setParams(params, { replace: true });
+    }
+  };
 
   return (
     <div
@@ -429,11 +469,11 @@ export default function CommunicationsNext() {
           {/* ── the conversation book ─────────────────────────────────── */}
           <section aria-label="Conversation book">
             {!data.hasData && !data.isError ? (
-              <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-3, #7C7365)' }}>
+              <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-4, #665D50)' }}>
                 Reaching the gateway…
               </p>
             ) : data.rows.length === 0 && !data.isError ? (
-              <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-3, #7C7365)' }}>
+              <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-4, #665D50)' }}>
                 The book is open and empty — no vendor exchanges yet.
               </p>
             ) : (
@@ -458,7 +498,7 @@ export default function CommunicationsNext() {
                   fontWeight: 600,
                   letterSpacing: '0.14em',
                   textTransform: 'uppercase',
-                  color: 'var(--ink-3, #7C7365)',
+                  color: 'var(--ink-4, #665D50)',
                   margin: '0 0 8px',
                 }}
               >
@@ -496,6 +536,18 @@ export default function CommunicationsNext() {
                   The house's letter templates
                 </button>
               </div>
+              <HouseDrafts
+                drafts={houseDrafts.drafts}
+                failed={houseDrafts.failed}
+                error={houseDrafts.error}
+                onOpen={setDraft}
+              />
+              {linked && houseDrafts.drafts && !houseDrafts.drafts.some((d) => d.id === linked) && (
+                <p role="status" style={{ fontSize: 11.5, color: 'var(--ink-2, #4F473C)', margin: '8px 0 0' }}>
+                  The letter this link points to is no longer a draft — it was sent or discarded. The
+                  conversation book says which.
+                </p>
+              )}
             </div>
 
             {/* The "Scheduled reports" card left this page on 2026-09-25 (ADR
@@ -515,6 +567,21 @@ export default function CommunicationsNext() {
       </div>
 
       <ComposeSheet open={compose} onClose={() => setCompose(false)} />
+      {draft && (
+        <ComposeSheet
+          key={draft.id}
+          open
+          onClose={closeDraft}
+          onDiscarded={houseDrafts.refetch}
+          prefill={{
+            draftId: draft.id,
+            providerId: draft.providerId,
+            to: draft.to,
+            subject: draft.subject ?? '',
+            body: draft.body,
+          }}
+        />
+      )}
       {library && <TemplateSheet onClose={() => setLibrary(false)} />}
     </div>
   );

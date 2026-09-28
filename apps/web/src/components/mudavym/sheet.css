@@ -277,7 +277,7 @@
   min-width: 0;
 }
 .mdv-ovl__spine-sep {
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 .mdv-ovl__spine-back {
   font: inherit;
@@ -433,7 +433,7 @@
   border-top: 1px solid var(--paper-2);
   font-size: 11px;
   line-height: 1.5;
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -457,7 +457,7 @@
   font-weight: 600;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--ink-3);
+  color: var(--ink-4);
   padding: 10px 16px 4px;
 }
 
@@ -505,14 +505,14 @@
 .mdv-item__sub {
   display: block;
   font-size: 11px;
-  color: var(--ink-3);
+  color: var(--ink-4);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .mdv-item__icon {
   flex: none;
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 
 .mdv-kbd {
@@ -520,7 +520,7 @@
   font-family: var(--mdv-mono);
   font-size: 10px;
   font-weight: 500;
-  color: var(--ink-3);
+  color: var(--ink-4);
   background: var(--paper-1);
   border: 1px solid var(--paper-2);
   border-radius: 5px;
@@ -534,7 +534,7 @@
   text-align: center;
   font-size: 12.5px;
   line-height: 1.55;
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 
 .mdv-note {
@@ -566,7 +566,7 @@
   outline: none;
 }
 .mdv-field input::placeholder {
-  color: var(--ink-3);
+  color: var(--ink-4);
   font-family: var(--mdv-sans);
   font-size: 14px;
 }
@@ -658,7 +658,7 @@
 }
 .mdv-chip[aria-pressed='false'] {
   text-decoration: line-through;
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 .mdv-chip:focus-visible {
   outline: 2px solid var(--seal);
@@ -693,7 +693,7 @@
 .mdv-hint__desc {
   font-size: 11px;
   line-height: 1.5;
-  color: var(--ink-3);
+  color: var(--ink-4);
   margin: 2px 0 0;
 }
 
@@ -710,7 +710,7 @@
   font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--ink-3);
+  color: var(--ink-4);
   margin-bottom: 4px;
 }
 .mdv-input,
@@ -735,7 +735,7 @@
   margin: 4px 0 0;
   font-size: 11px;
   line-height: 1.45;
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 .mdv-btn {
   font-family: var(--mdv-sans);

@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import type { Provider } from '../../../services/api/providers';
 
 const mockData = vi.hoisted(() => ({
@@ -96,6 +96,36 @@ vi.mock('./useProviderContacts', async () => {
   };
 });
 
+// The scorecard (ADR 0207): the grid reads each card's one fact from the Roll
+// Call answer, the second view is the Roll Call, and the sheet carries the
+// ledger card. Their own behaviour is asserted in scorecard/*.test.tsx against
+// a mocked apiClient; here the doubles keep the props this file is about —
+// the fact on the card, the view switch, the section in the sheet — visible.
+const roll = vi.hoisted(() => ({ current: {} as Record<string, unknown> }));
+vi.mock('./scorecard/useVendorScorecard', () => ({
+  useRollCall: () => roll.current,
+}));
+vi.mock('./scorecard/RollCall', () => ({
+  RollCall: () => <div data-testid="roll-call-stub">roll call</div>,
+}));
+vi.mock('./scorecard/LedgerCard', () => ({
+  LedgerCard: ({ providerName }: { providerName: string }) => (
+    <div data-testid="ledger-stub">ledger of {providerName}</div>
+  ),
+}));
+// "How their mail reads" is for owners and managers only (ADR 0207, round 3).
+// Its own behaviour is asserted in scorecard/MailTone.test.tsx; here the role
+// decides whether the sheet carries it at all.
+vi.mock('./scorecard/MailTone', () => ({
+  MailTone: ({ providerId }: { providerId: string }) => (
+    <div data-testid="mail-tone-stub">mail of {providerId}</div>
+  ),
+}));
+const auth = vi.hoisted(() => ({ role: 'owner' as 'owner' | 'manager' | 'staff' | null }));
+vi.mock('../../../contexts/AuthContext', () => ({
+  useAuth: () => ({ activeRole: auth.role, user: { role: auth.role }, activeRestaurantId: 'r1' }),
+}));
+
 import ProvidersNext from './ProvidersNext';
 
 function provider(over: Partial<Provider>): Provider {
@@ -123,6 +153,7 @@ const base = {
 
 beforeEach(() => {
   mockData.current = { ...base, cards: [] };
+  roll.current = { data: undefined, isError: false };
   // Each test states its own URL; without the reset a `?vendor=` from one test
   // would open a sheet in the next and the failure would look like a leak in
   // the component rather than in this file.
@@ -253,5 +284,97 @@ describe('ProvidersNext', () => {
   it('admits an empty roster plainly', () => {
     render(<ProvidersNext />);
     expect(screen.getByText(/open and empty/)).toBeInTheDocument();
+  });
+
+  describe('the scorecard (ADR 0207)', () => {
+    const oneCard = () => ({
+      ...base,
+      cards: [{ provider: provider({}), openOrders: 0, leadTimeDays: null, lastContact: null }],
+    });
+    const rollOf = (fact: { text: string; outcome: string }) => ({
+      isError: false,
+      data: { vendors: [{ providerId: 'p1', fact }] },
+    });
+
+    it('puts one behavioural fact on the card, read from the Roll Call', () => {
+      mockData.current = oneCard();
+      roll.current = rollOf({ text: '86% on time · 12 of 14', outcome: 'answered' });
+      render(<ProvidersNext />);
+      const did = screen.getByTestId('pv-card-did');
+      expect(did).toHaveTextContent('Did · 90 d86% on time · 12 of 14');
+      expect(within(did).getByText('86% on time · 12 of 14')).toHaveStyle({ fontStyle: 'normal' });
+    });
+
+    it('prints a refusal on the card in italic words, never a zero', () => {
+      mockData.current = oneCard();
+      roll.current = rollOf({ text: '2 orders — too few to score', outcome: 'too_few' });
+      render(<ProvidersNext />);
+      const fact = within(screen.getByTestId('pv-card-did')).getByText('2 orders — too few to score');
+      expect(fact).toHaveStyle({ fontStyle: 'italic' });
+    });
+
+    it('draws an em dash while the fact is read, and words when the read failed', () => {
+      mockData.current = oneCard();
+      const { rerender } = render(<ProvidersNext />);
+      expect(screen.getByTestId('pv-card-did')).toHaveTextContent('Did · 90 d—');
+      roll.current = { data: undefined, isError: true };
+      rerender(<ProvidersNext />);
+      expect(screen.getByTestId('pv-card-did')).toHaveTextContent('could not be read');
+    });
+
+    it('draws the dash, not a failure, for a vendor the Roll Call answer does not hold yet', () => {
+      mockData.current = oneCard();
+      roll.current = { isError: false, data: { vendors: [] } };
+      render(<ProvidersNext />);
+      const did = screen.getByTestId('pv-card-did');
+      expect(did).toHaveTextContent('Did · 90 d—');
+      expect(did).not.toHaveTextContent('could not be read');
+    });
+
+    it('switches to the Roll Call and writes ?view=scorecard, keeping the Book one press away', () => {
+      mockData.current = oneCard();
+      render(<ProvidersNext />);
+      expect(screen.queryByTestId('roll-call-stub')).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Scorecard' }));
+      expect(screen.getByTestId('roll-call-stub')).toBeInTheDocument();
+      expect(screen.queryByText('Bodega Álvaro')).not.toBeInTheDocument();
+      expect(window.location.search).toBe('?view=scorecard');
+      fireEvent.click(screen.getByRole('button', { name: 'Book' }));
+      expect(screen.getByText('Bodega Álvaro')).toBeInTheDocument();
+      expect(window.location.search).toBe('');
+    });
+
+    it('opens on the Roll Call when reached by ?view=scorecard', () => {
+      window.history.replaceState({}, '', '/providers?view=scorecard');
+      mockData.current = oneCard();
+      render(<ProvidersNext />);
+      expect(screen.getByTestId('roll-call-stub')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Scorecard' })).toHaveAttribute('aria-pressed', 'true');
+    });
+
+    it('carries the ledger card inside the vendor sheet', async () => {
+      mockData.current = oneCard();
+      render(<ProvidersNext />);
+      fireEvent.click(screen.getByText('Bodega Álvaro'));
+      expect(await screen.findByTestId('ledger-stub')).toHaveTextContent('ledger of Bodega Álvaro');
+    });
+
+    it('carries how their mail reads for an owner and a manager, and never for staff', async () => {
+      for (const role of ['owner', 'manager'] as const) {
+        auth.role = role;
+        mockData.current = oneCard();
+        const { unmount } = render(<ProvidersNext />);
+        fireEvent.click(screen.getByText('Bodega Álvaro'));
+        expect(await screen.findByTestId('mail-tone-stub')).toBeInTheDocument();
+        unmount();
+      }
+      auth.role = 'staff';
+      mockData.current = oneCard();
+      render(<ProvidersNext />);
+      fireEvent.click(screen.getByText('Bodega Álvaro'));
+      await screen.findByTestId('ledger-stub');
+      expect(screen.queryByTestId('mail-tone-stub')).not.toBeInTheDocument();
+      auth.role = 'owner';
+    });
   });
 });

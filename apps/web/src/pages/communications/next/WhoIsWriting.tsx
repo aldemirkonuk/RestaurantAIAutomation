@@ -49,11 +49,11 @@ const H3: CSSProperties = {
   fontWeight: 600,
   letterSpacing: '0.14em',
   textTransform: 'uppercase',
-  color: 'var(--ink-3, #7C7365)',
+  color: 'var(--ink-4, #665D50)',
   margin: '0 0 6px',
 };
 const LEDE: CSSProperties = { fontFamily: SANS, fontSize: 12, color: 'var(--ink-2, #4F473C)', margin: '0 0 10px', maxWidth: '62ch' };
-const HONEST: CSSProperties = { fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-3, #7C7365)', margin: '10px 0 0', maxWidth: '62ch' };
+const HONEST: CSSProperties = { fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-4, #665D50)', margin: '10px 0 0', maxWidth: '62ch' };
 const ALERT: CSSProperties = { fontFamily: SANS, fontSize: 12, color: 'var(--alarm-deep, #8C3322)', margin: '8px 0 0' };
 const ROW: CSSProperties = { borderBottom: '1px solid var(--paper-2, #EAE4D8)', padding: '9px 0' };
 const CHIP: CSSProperties = {
@@ -64,7 +64,7 @@ const CHIP: CSSProperties = {
   padding: '1px 6px',
   borderRadius: 4,
   border: '1px solid var(--paper-2, #EAE4D8)',
-  color: 'var(--ink-3, #7C7365)',
+  color: 'var(--ink-4, #665D50)',
 };
 
 function Failed({ children }: { children: ReactNode }) {
@@ -76,7 +76,7 @@ function Failed({ children }: { children: ReactNode }) {
 }
 
 function Quiet({ children }: { children: ReactNode }) {
-  return <p style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-3, #7C7365)', margin: 0 }}>{children}</p>;
+  return <p style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-4, #665D50)', margin: 0 }}>{children}</p>;
 }
 
 function useHouse() {
@@ -145,7 +145,7 @@ function TrustedSenders({ senders, houseName }: { senders: ReturnType<typeof use
                           ? 'var(--alarm-deep, #8C3322)'
                           : st.tone === 'trusted'
                             ? 'var(--seal-deep, #14515C)'
-                            : 'var(--ink-3, #7C7365)',
+                            : 'var(--ink-4, #665D50)',
                     }}
                   >
                     {st.word} · updated {fmtDay(s.updated_at)}
@@ -287,7 +287,7 @@ function Strangers({
               <div key={p.id} style={ROW}>
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
                   <span style={{ fontFamily: SANS, fontSize: 13, fontWeight: 600, color: 'var(--ink-1, #211C16)' }}>{name}</span>
-                  <span style={{ fontFamily: MONO, fontSize: 10.5, color: 'var(--ink-3, #7C7365)' }}>
+                  <span style={{ fontFamily: MONO, fontSize: 10.5, color: 'var(--ink-4, #665D50)' }}>
                     {p.sender_email ? `<${p.sender_email}>` : p.domain} · {fmtDay(p.last_seen_at ?? p.first_seen_at)}
                   </span>
                 </div>

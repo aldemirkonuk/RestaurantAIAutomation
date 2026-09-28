@@ -29,6 +29,9 @@ import { EM, MONO, SANS, fmtDays, fmtLastContact } from './pv-format';
 import { TermsSection } from './TermsSection';
 import { UsualCurrencySection } from './UsualCurrencySection';
 import { ContactsSection } from './ContactsSection';
+import { LedgerCard } from './scorecard/LedgerCard';
+import { MailTone } from './scorecard/MailTone';
+import { useAuth } from '../../../contexts/AuthContext';
 
 const ProviderIntelligencePanel = lazy(() =>
   import('../../../components/providers/ProviderIntelligencePanel').then((m) => ({
@@ -59,7 +62,7 @@ function FactRow({ label, value }: { label: string; value: string }) {
           fontWeight: 500,
           letterSpacing: '0.12em',
           textTransform: 'uppercase',
-          color: 'var(--ink-3, #7C7365)',
+          color: 'var(--ink-4, #665D50)',
         }}
       >
         {label}
@@ -73,6 +76,12 @@ function FactRow({ label, value }: { label: string; value: string }) {
 
 export function TwinSheet({ provider, onClose, focusUsualCurrency }: Props) {
   const regions = provider.regionsCovered ?? provider.statesOrRegionsServed ?? [];
+  // "How their mail reads" is for owners and managers only (the founder,
+  // 2026-09-21: staff never see it). The gateway refuses anyone else with 403;
+  // this only keeps staff from asking.
+  const { user, activeRole } = useAuth();
+  const role = activeRole ?? user?.role ?? null;
+  const readsMail = role === 'owner' || role === 'manager';
 
   return (
     <Sheet
@@ -119,6 +128,24 @@ export function TwinSheet({ provider, onClose, focusUsualCurrency }: Props) {
         <ContactsSection providerId={provider.id} providerName={provider.name} />
       </div>
 
+      {/* what they DID — the operational vendor scorecard (ADR 0207, sketch
+          117 A). Five measured lines from this house's own records, each
+          opening to its rows. Placed above the legacy panel, whose Sentiment
+          tab retired in round 3 (its reading lives in the section below). */}
+      <div className="px-4 pb-4" style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
+        <LedgerCard providerId={provider.id} providerName={provider.name} />
+      </div>
+
+      {/* how their mail reads — the vendor's own lines, one word each (ADR
+          0207 round 3: the founder's "A, Plus C's lines", vendor sheet only,
+          owners and managers only). It replaces the legacy Sentiment tab's
+          design; the feature stays, here. */}
+      {readsMail && (
+        <div className="px-4 pb-4" style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
+          <MailTone providerId={provider.id} />
+        </div>
+      )}
+
       {/* the twin — fetched on open, never on the grid */}
       <div className="px-4 pb-6" style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
         <h3
@@ -128,7 +155,7 @@ export function TwinSheet({ provider, onClose, focusUsualCurrency }: Props) {
             fontWeight: 600,
             letterSpacing: '0.14em',
             textTransform: 'uppercase',
-            color: 'var(--ink-3, #7C7365)',
+            color: 'var(--ink-4, #665D50)',
             margin: '14px 0 6px',
           }}
         >
@@ -147,7 +174,7 @@ export function TwinSheet({ provider, onClose, focusUsualCurrency }: Props) {
         <div className="mudavym" data-ground="paper">
           <Suspense
             fallback={
-              <p style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-3, #7C7365)' }}>
+              <p style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-4, #665D50)' }}>
                 Opening the vendor’s record…
               </p>
             }

@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>124b · /promotions · The Span Grid</title>
+<style>
+.mudavym{
+  --seal:#1a5e6b;--seal-deep:#14515c;--seal-tint:rgba(26,94,107,.1);--seal-ring:rgba(26,94,107,.32);
+  --alarm:#A33A2B;--paper-0:#fffdf8;--paper-1:#f3efe6;--paper-2:#eae4d8;
+  --ink-1:#211c16;--ink-2:#4f473c;--ink-3:#7c7365;--ink-4:#665d50;
+  --warn:#96601A;--warn-tint:rgba(150,96,26,.14);--loss:#A8402C;--loss-tint:rgba(168,64,44,.14);
+  color-scheme:light;background:var(--paper-0);color:var(--ink-1)}
+
+*{box-sizing:border-box} html,body{margin:0;padding:0}
+body{background:#f7f3ea;font-family:"DM Sans","Plus Jakarta Sans",system-ui,-apple-system,"Segoe UI",sans-serif;font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased}
+.serif{font-family:Fraunces,"Iowan Old Style",Georgia,serif;letter-spacing:-.015em}
+.mono{font-family:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;font-variant-numeric:tabular-nums}
+.banner{background:var(--seal);color:#fffdf8;font:500 11px/1.3 "JetBrains Mono",ui-monospace,monospace;letter-spacing:.14em;text-transform:uppercase;padding:8px 16px;display:flex;gap:14px;flex-wrap:wrap}
+.note{max-width:1200px;margin:18px auto 0;padding:0 16px;color:var(--ink-3);font-size:12.5px}
+.note b{color:var(--ink-2);font-weight:500}
+.frame{max-width:1200px;margin:14px auto 40px;border:1px solid var(--paper-2);border-radius:10px;overflow:hidden}
+.page{padding:24px 24px 40px}
+.eyebrow{font:500 11px/1 "JetBrains Mono",ui-monospace,monospace;text-transform:uppercase;letter-spacing:.14em;color:var(--ink-3);margin:0}
+h1{font-family:Fraunces,Georgia,serif;font-weight:420;font-size:34px;line-height:1.08;margin:6px 0 0}
+.standing{font-family:Fraunces,Georgia,serif;font-style:italic;font-size:15px;color:var(--ink-2);margin:10px 0 0;max-width:860px}
+.standing b{font-style:normal;font-weight:500;color:var(--ink-1)}
+.readat{font:10.5px "JetBrains Mono",ui-monospace,monospace;color:var(--ink-3);margin-top:4px}
+.chip{display:inline-flex;align-items:center;gap:4px;font:500 9.5px/1.4 "JetBrains Mono",ui-monospace,monospace;letter-spacing:.06em;text-transform:uppercase;border:1px solid var(--paper-2);border-radius:3px;padding:1px 6px;color:var(--ink-3);white-space:nowrap}
+.chip.agreed{border-color:rgba(150,96,26,.45);color:var(--warn)}
+.chip.bundle{border-color:var(--seal-ring);color:var(--seal-deep)}
+.chip.code{text-transform:none;color:var(--ink-2)}
+.beats{color:var(--seal-deep)} .above{color:var(--loss)} .withheld{color:var(--ink-3);font-style:italic}
+.btn{border:1px solid var(--paper-2);background:var(--paper-0);color:var(--ink-1);border-radius:8px;padding:5px 10px;font:12px inherit;font-family:inherit;display:inline-flex;gap:4px;align-items:center}
+.btn.primary{border-color:var(--seal);background:var(--seal-tint);color:var(--seal-deep)}
+.btn.quiet{border-color:transparent;background:transparent;color:var(--ink-3)}
+.est{display:block;font-size:11px;color:var(--ink-3)}
+.forks{max-width:1200px;margin:0 auto 60px;padding:0 16px;color:var(--ink-2);font-size:13px}
+.forks h2{font-family:Fraunces,Georgia,serif;font-weight:500;font-size:18px;margin:0 0 6px}
+.forks li{margin:4px 0}
+@media (max-width:780px){ h1{font-size:26px} .page{padding:18px 16px 32px} }
+
+.grid{display:grid;grid-template-columns:repeat(6,1fr);grid-auto-flow:dense;grid-auto-rows:minmax(92px,auto);gap:10px;margin-top:22px}
+.cell{border:1px solid var(--paper-2);border-radius:12px;background:var(--paper-1);padding:12px 14px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.cell.hero{grid-column:span 3;grid-row:span 3;padding:18px 20px}
+.cell.large{grid-column:span 2;grid-row:span 2}
+.cell.compact{grid-column:span 1;grid-row:span 1}
+.cell .vendor{font-family:Fraunces,Georgia,serif;font-weight:500;font-size:14px}
+.cell .name{font-size:12px;color:var(--ink-2)}
+.cell .ends{font:10.5px "JetBrains Mono",ui-monospace,monospace;color:var(--ink-3)} .cell .ends.soon{color:var(--warn)}
+.fig{font-family:Fraunces,Georgia,serif;font-weight:500;letter-spacing:-.03em;line-height:.95;font-variant-numeric:tabular-nums}
+.hero .fig{font-size:96px}.large .fig{font-size:46px}.compact .fig{font-size:22px}
+.meta{font-size:12px;color:var(--ink-2)} .meta b{color:var(--ink-1);font-weight:500}
+.worth{font-size:12px;color:var(--ink-2);border-top:1px solid var(--paper-2);padding-top:6px}
+.worth .amt{font:14px "JetBrains Mono",ui-monospace,monospace;color:var(--ink-1)}
+.why{font-size:11px;color:var(--ink-3);font-style:italic}
+/* the bundle: TIED CELLS — one compact cell per bottle, joined by a bracket, the total on the bracket */
+.tie{grid-column:span 3;grid-row:span 1;border:1.5px solid var(--seal-ring);border-radius:12px;padding:8px;display:grid;grid-template-rows:auto 1fr;gap:6px;background:var(--paper-0)}
+.tie.w2{grid-column:span 2}
+.tie .bracket{display:flex;justify-content:space-between;gap:8px;align-items:baseline;font-size:12px}
+.tie .bracket .total{font:500 15px "JetBrains Mono",ui-monospace,monospace;color:var(--seal-deep)}
+.tie .bottles{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:6px}
+.tie .b{border:1px solid var(--paper-2);border-radius:8px;background:var(--paper-1);padding:6px 8px;font-size:11.5px;display:flex;flex-direction:column;gap:2px}
+.tie .b .fig{font-size:18px}
+@media (max-width:1100px){.grid{grid-template-columns:repeat(4,1fr)}.cell.hero{grid-column:span 4;grid-row:span 2}.tie{grid-column:span 4}.tie.w2{grid-column:span 2}}
+@media (max-width:780px){.grid{grid-template-columns:repeat(2,1fr)}.cell.hero,.cell.large,.tie,.tie.w2{grid-column:span 2}.cell.hero{grid-row:span 2}.hero .fig{font-size:56px}.large .fig{font-size:32px}.tie .bottles{grid-auto-flow:row}}
+</style></head>
+<body class="mudavym">
+<div class="banner"><b>Sketch 124 · B · The Span Grid</b><span>tier = span · bundle as tied cells</span><span>example data</span></div><p class="note"><b>The idea.</b> One six-column grid where a tier is a span, not a row: the hero takes 3×3 cells, a large card 2×2, a compact card 1×1, and the grid packs densely so the small ones fill the gaps beside the big ones — the closest to direction B's "bigger sale, bigger box" with C's ten-plus visible. A bundle is <b>tied cells</b>: one small cell per bottle, joined by a bracket that carries the vendor, the name and the bundle's total — the bundle reads as several offers that only come together. Order is rank order; dense packing can move a small card up beside a big one, so reading order and visual order can differ.</p><div class="frame"><div class="page"><p class="eyebrow">The house's vendors</p>
+<h1>Promotions.</h1>
+<p class="standing"><b>12 offers from 7 vendors on the table</b> — five carry a worth the house qualifies for, against a comparison no older than 180 days.</p>
+<p class="readat">Read Sep 25, 14:02 · 312 paid lines, 40 house sightings over 540 days · example data</p>
+<div class="grid"><article class="cell hero"><div><span class="vendor">Empire Merchants</span> <span class="ends">ends Sep 30</span><div class="name">September rosé close-out</div></div><div class="fig beats">−11.8%</div><div class="meta">against <b>Winebow, $13.10</b> · their claim 12% off</div><div class="worth"><span class="amt">$412</span> est. — 96 bottles over 540 days</div><div class="meta">Ch. de Sours Rosé 2024<br>Whispering Angel 2024<br>Miraval Rosé 2024</div><div style="display:flex;gap:6px;margin-top:auto"><span class="btn quiet">Details</span><span class="btn primary">Draft an order</span></div></article><article class="cell large"><div><span class="vendor">Winebow</span> <span class="ends">ends Oct 4</span><div class="name">Burgundy allocation</div></div><div class="fig beats">−7.2%</div><div class="meta">against <b>Empire, $41.80</b> · their claim 8% off 6+</div><div class="worth"><span class="amt">$188</span> est. — 24 bottles over 540 days</div></article><article class="tie"><div class="bracket"><span><span class="chip bundle">bundle · 3</span> <b>Southern Glazer&#x27;s</b> · Rakı &amp; meze trio · ends Oct 12</span><span class="total">$164</span></div><div class="bottles"><div class="b"><span>Yeni Rakı 70cl</span><span class="fig beats">−9.1%</span><span class="mono" style="font-size:10.5px;color:var(--ink-3)">$61</span></div><div class="b"><span>Tekirdağ Gold 70cl</span><span class="fig beats">−6.4%</span><span class="mono" style="font-size:10.5px;color:var(--ink-3)">$58</span></div><div class="b"><span>Efe Yaş Üzüm 70cl</span><span class="fig beats">−5.0%</span><span class="mono" style="font-size:10.5px;color:var(--ink-3)">$45</span></div></div></article><article class="cell large"><div><span class="vendor">Martignetti</span> <span class="ends">ends Oct 1</span><div class="name">Loire whites</div></div><div class="fig beats">−5.5%</div><div class="meta">against <b>Winebow, $17.40</b> · their claim 10% off</div><div class="worth"><span class="amt">$96</span> est. — 40 bottles over 540 days</div></article><article class="cell compact"><div><span class="vendor">Empire Merchants</span> <span class="ends soon">ends Sep 28 · 3 days</span><div class="name">Prosecco case deal</div></div><div class="fig beats">−3.1%</div><span class="why"></span></article><article class="cell compact"><div><span class="vendor">RNDC</span> <span class="ends">ends Oct 31</span><div class="name">Whiskey month</div></div><div class="fig beats">−2.0%</div><span class="why"></span></article><article class="cell compact"><div><span class="vendor">Winebow</span> <span class="ends">ends Oct 15</span><div class="name">Napa cabernet</div></div><div class="fig above">+1.8%</div><span class="why">above the lowest other vendor</span></article><article class="cell compact"><div><span class="vendor">Kobrand</span> <span class="ends">ends Nov 1</span><div class="name">Champagne 12+</div></div><div class="fig beats">−8.0%</div><span class="why">the minimum of 12 does not say bottles or cases — not sized</span></article><article class="tie w2"><div class="bracket"><span><span class="chip bundle">bundle · 2</span> <b>Empire Merchants</b> · Aperitivo pair · no end date</span><span class="why">worth withheld — 1 of 2 bottles has no comparison — no partial sum</span></div><div class="bottles"><div class="b"><span>Aperol 1L</span><span class="fig beats">−4.2%</span><span class="mono" style="font-size:10.5px;color:var(--ink-3)">$22</span></div><div class="b"><span>Campari 1L</span><span class="fig withheld">—</span><span class="mono" style="font-size:10.5px;color:var(--ink-3)">no comparison</span></div></div></article><article class="cell compact"><div><span class="vendor">Martignetti</span> <span class="ends">ends Oct 20</span><div class="name">Rioja reserva</div></div><div class="fig beats">−6.1%</div><span class="why">the other vendor&#x27;s price is 212 days old — past 180</span></article><article class="cell compact"><div><span class="vendor">Southern Glazer&#x27;s</span> <span class="ends">ends Oct 9</span><div class="name">Mezcal intro</div></div><div class="fig beats">−4.0%</div><span class="why">your largest single order is 4 bottles; the minimum is 6</span></article><article class="cell compact"><div><span class="vendor">RNDC</span> <span class="ends">no end date</span><div class="name">House gin</div></div><div class="fig matches">±0.0%</div><span class="why">matches the lowest other vendor</span></article></div></div></div><section class="forks"><h2>What this direction asks you</h2><ul><li>Dense packing lets a compact card sit above a large one it outranks — acceptable, or must visual order equal rank order (costs empty cells)?</li><li>Hero at 3×3 of a 6-column grid (half the width) — or full width, which pushes everything else below the fold?</li><li>Tied cells: does a bundle read as one offer, or as several? A bundle of eight bottles would need two rows of ties.</li><li>Where does the bundle sit — at the rank its total earns (here, among the large), or always after the single offers?</li></ul></section></body></html>

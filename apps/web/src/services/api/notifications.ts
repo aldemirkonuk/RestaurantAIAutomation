@@ -329,6 +329,25 @@ export interface HeldLowStockResponse {
   restaurant_id: string;
   held: HeldLowStockCrossing[];
   summary: { count: number; critical: number; oldest_held_at: string | null };
+  /**
+   * When the held wines will be told, as the gateway's digest cron keeps it
+   * (it matches the HOUR of `digest_time`). `null` when the house's
+   * preferences could not be read — never invented defaults. Absent on a
+   * gateway older than 2026-09-26.
+   */
+  digest?: {
+    low_stock_enabled: boolean;
+    frequency: "daily" | "off";
+    hour: number;
+    /** The IANA zone the digest hour is kept in: the house's own, else UTC (PR #488). */
+    timezone: string;
+    /**
+     * `house` — the house's zone; `fallback` — none readable, so UTC (founder
+     * item 61). Absent on a gateway older than PR #488, whose `timezone` was
+     * always New York.
+     */
+    zone_source?: "house" | "country" | "fallback";
+  } | null;
 }
 
 export async function fetchHeldLowStock(

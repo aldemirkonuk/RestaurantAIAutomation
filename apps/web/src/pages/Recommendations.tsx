@@ -508,9 +508,10 @@ export default function Recommendations() {
     toast.success(member ? `Assigned to ${member.display_name}` : "Assignment cleared");
   };
 
+  // A hand-off records nothing (ADR 0112 F10, amended 2026-09-25, sketch 122
+  // Q2); `acted` is now the gated "Mark as briefed" stamp (PR #483 audit, R4).
   const doAct = (rec: Card) => {
     const { href } = actTarget(rec);
-    patchAction(rec.ruleKey, { acted: true }, snapshotOf(rec));
     navigate(href);
   };
 

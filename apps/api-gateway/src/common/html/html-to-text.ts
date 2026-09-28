@@ -86,6 +86,11 @@ const BLOCK_TAGS = new Set([
   "footer",
   "blockquote",
   "pre",
+  // A horizontal rule is a visual break in every client; Outlook on the web
+  // puts one directly above a quoted reply's header block. Without a line
+  // break here the latest message and the quoted one ran together on one
+  // line (ADR 0090 audit of PR #435 at e2d8ef93a).
+  "hr",
 ]);
 
 /**
@@ -149,20 +154,57 @@ function decodeEntities(text: string): string {
  *
  * @param html    Source HTML. May be attacker-controlled.
  * @param maxChars Truncate the result to this many characters (0 = no limit).
+ * @param options.spaceForInlineTags  Emit a space for every non-block tag, so
+ *   `Hello<b>world</b>` reads `Hello world` rather than `Helloworld`. Off by
+ *   default because the vendor-page extractors read prices split across inline
+ *   tags (`$<b>18</b>.40`) and must see them joined; on for inbound mail
+ *   (`communications/gmail-mime.ts`), where words must not glue.
+ * @param options.oneBreakPerBoundary  A block tag starts a new line only when
+ *   the current line already holds text, so `</div><div>` or `</p><p>` is ONE
+ *   line break, not a blank line; `<br>` always breaks. Off by default (the
+ *   extractors keep their paragraph gaps); on for inbound mail, whose quoted-
+ *   thread cut (`vendor-tone/tone-scale.ts` `latestPart()`) reads a blank line
+ *   as the edge of a wrapped reply header — `<div>On Thu, …</div><div>…
+ *   wrote:</div>` must stay two ADJACENT lines for the cut to reach the "On".
  */
-export function htmlToText(html: string, maxChars = 0): string {
+export function htmlToText(
+  html: string,
+  maxChars = 0,
+  options: { spaceForInlineTags?: boolean; oneBreakPerBoundary?: boolean } = {},
+): string {
+  const inlineGap = options.spaceForInlineTags ? " " : "";
+  const oneBreak = options.oneBreakPerBoundary === true;
   const parts: string[] = [];
   let i = 0;
   const n = html.length;
+  // True while the current output line holds non-whitespace text. Tracked
+  // incrementally (never by re-reading `parts`) so the scan stays linear.
+  let lineHasText = false;
+  const pushText = (raw: string): void => {
+    const t = decodeEntities(raw);
+    parts.push(t);
+    const nl = t.lastIndexOf("\n");
+    if (/\S/.test(nl === -1 ? t : t.slice(nl + 1))) lineHasText = true;
+    else if (nl !== -1) lineHasText = false;
+  };
+  const pushTag = (tagName: string): void => {
+    if (!BLOCK_TAGS.has(tagName)) {
+      parts.push(inlineGap);
+      return;
+    }
+    if (oneBreak && tagName !== "br" && !lineHasText) return;
+    parts.push("\n");
+    lineHasText = false;
+  };
 
   while (i < n) {
     const lt = html.indexOf("<", i);
     if (lt === -1) {
-      parts.push(decodeEntities(html.slice(i)));
+      pushText(html.slice(i));
       break;
     }
 
-    if (lt > i) parts.push(decodeEntities(html.slice(i, lt)));
+    if (lt > i) pushText(html.slice(i, lt));
 
     // Comment, CDATA or doctype — skip wholesale.
     if (html.startsWith("<!--", lt)) {
@@ -191,7 +233,7 @@ export function htmlToText(html: string, maxChars = 0): string {
 
     if (!tagName) {
       // A bare `<` that starts no tag is literal text.
-      parts.push("<");
+      pushText("<");
       i = lt + 1;
       continue;
     }
@@ -221,11 +263,11 @@ export function htmlToText(html: string, maxChars = 0): string {
       } else {
         i = close;
       }
-      if (BLOCK_TAGS.has(tagName)) parts.push("\n");
+      pushTag(tagName);
       continue;
     }
 
-    if (BLOCK_TAGS.has(tagName)) parts.push("\n");
+    pushTag(tagName);
     i = tagEnd < n ? tagEnd + 1 : n;
   }
 
