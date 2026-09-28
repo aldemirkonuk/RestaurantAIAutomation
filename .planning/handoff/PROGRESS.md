@@ -18,6 +18,13 @@
   - Picker checks: "refuse overlap warn rest but owner has a say to change it into warn all four to allow double booking".
   - OD-182: "Add when thumbs ships (Recommended)".
   - Still unasked: the model-provider line on /terms and /ask.
+- **Sweep forks, founder answers 23:05Z (verbatim):**
+  - **F1 (New order merging into an approved order):** "never merge approved, but they can add to the order by saying add to this order, just like how I forgot to order this. And in order to solve this, we have we have to in order to we have to create a way to add an order, add an item to the certain order. Uh, to receive that whole old order in a whole and see that as a whole. But We don't need to touch the previous order. We just need to upgrade it to the new version and then just double check it. Right? Uh, research for it. I think this is the best option for us. Or just create new order or add order to the existing order?"
+    - This needs a research workflow, then an ADR: an order revision or amendment model.
+  - **F5 (/orders totals):** "option 1, but make sure we need all counts and orders and month totals, nothing could be missed." Server-side totals over every order, with the label in the meantime.
+  - **F6 (crew notes):** "Only their own row (Recommended)".
+  - **F3 (studio):** "let devs approve and certify. should contributors like outside party, verified person, sommelier see the metrics?" The founder's question on contributor metrics is still open, asked back 23:05Z.
+  - **F2, F4, F7:** not asked yet.
 - **Founder forks raised (now answered above, except the /terms and /ask line):**
   - #502 no-timezone fallback: UTC+14, or UTC as in ADR 0116.
   - #502 replacement step: options (a)–(d) in 06-pages/team.md §15, plus warn-or-refuse on availability.
