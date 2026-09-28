@@ -5,8 +5,11 @@
 # command, and with N empty every `gh pr` call fell back to the current branch.
 #
 # Usage:  bash merge-audited-pr.sh <pr-number>                 # needs a PASS marker
-#         bash merge-audited-pr.sh <pr-number> --gate-owned    # gate-owned PR (#490):
-#                                                              # no marker can exist
+#         bash merge-audited-pr.sh <pr-number> --gate-owned    # a PR that changes a
+#                                                              # gate-owned path (#490):
+#                                                              # no marker can exist.
+#                                                              # Refused for any PR whose
+#                                                              # diff touches none.
 # Works from any directory: every call names the repo with -R.
 # Refuses (exit 2) rather than guesses: no number, closed/draft/unmergeable PR,
 # required checks not all passing, no trusted PASS marker for the exact head SHA,
@@ -15,6 +18,7 @@ set -uo pipefail
 
 R="aldemirkonuk/RestaurantAIAutomation"
 N="${1:-}"
+N="${N#\#}"
 MODE="${2:-}"
 
 die() { printf 'REFUSED: %s\n' "$*" >&2; exit 2; }
@@ -25,9 +29,10 @@ command -v gh >/dev/null 2>&1 || die "gh is not installed"
 
 line=$(gh pr view "$N" -R "$R" \
   --json state,isDraft,headRefOid,mergeable,mergeStateStatus,title \
-  --jq '[.state, (.isDraft|tostring), .headRefOid, .mergeable, .mergeStateStatus, .title] | @tsv') \
+  --jq '[.state, (.isDraft|tostring), .headRefOid, .mergeable, .mergeStateStatus, .title] | join("\u001f")') \
   || die "could not read PR #$N"
-IFS=$'\t' read -r STATE DRAFT SHA MERGEABLE MSTATE TITLE <<<"$line"
+IFS=$'\x1f' read -r STATE DRAFT SHA MERGEABLE MSTATE TITLE <<<"$line"
+[[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || die "could not read PR #$N's head SHA (got '$SHA')"
 
 printf 'PR #%s  %s\n  head %s  state %s  draft %s  mergeable %s  merge-state %s\n' \
   "$N" "$TITLE" "$SHA" "$STATE" "$DRAFT" "$MERGEABLE" "$MSTATE"
@@ -40,22 +45,40 @@ printf 'PR #%s  %s\n  head %s  state %s  draft %s  mergeable %s  merge-state %s\
 echo "== required checks"
 gh pr checks "$N" -R "$R" --required
 rc=$?
-[[ $rc -eq 0 ]] || die "required checks are not all passing (gh pr checks exit $rc)"
+case $rc in
+  0) ;;
+  8) die "required checks are still pending (gh pr checks exit 8) — wait and re-run" ;;
+  *) die "required checks are not all passing, or none were reported (gh pr checks exit $rc)" ;;
+esac
 
 if [[ "$MODE" == "--gate-owned" ]]; then
-  echo "== gate-owned PR: no audit marker can exist by design. Files it changes:"
-  gh pr diff "$N" -R "$R" --name-only || die "could not read the diff"
+  files=$(gh pr diff "$N" -R "$R" --name-only) || die "could not read the diff"
+  owned=""
+  while IFS= read -r f; do
+    case "$f" in
+      scripts/pr_audit_gate.py|scripts/hooks/require_pr_audit.py|\
+      .github/workflows/pr-audit-gate.yml|.github/workflows/ci.yml|.github/workflows/deploy.yml|\
+      .claude/agents/pr-merge-*.md|.claude/skills/pr-audit-gate/*|.claude/settings.json|\
+      CLAUDE.md|.planning/decisions/0050-*.md|.planning/decisions/0090-*.md|\
+      .planning/decisions/README.md|supabase/migration-order-exceptions.txt)
+        owned="$owned  $f"$'\n' ;;
+    esac
+  done <<<"$files"
+  [[ -n "$owned" ]] || die "--gate-owned refused: PR #$N changes no gate-owned path, so it needs a PASS marker"
+  echo "== gate-owned PR: no audit marker can exist by design. Gate-owned paths it changes:"
+  printf '%s' "$owned"
   echo "Read the full diff first:  gh pr diff $N -R $R"
 else
   echo "== audit markers from trusted authors"
   markers=$(gh pr view "$N" -R "$R" --json comments --jq \
     ".comments[] | select(.author.login == \"aldemirkonuk\" or .author.login == \"github-actions\" or .author.login == \"github-actions[bot]\")
-      | (.body | sub(\"^\\\\s+\"; \"\")) | select(startswith(\"<!-- pr-audit-gate\")) | split(\"\\n\")[0]") \
+      | (.body | sub(\"^\\\\s+\"; \"\")) | select(test(\"^<!--\\\\s*pr-audit-gate:\")) | split(\"\\n\")[0]") \
     || die "could not read PR comments"
   printf '%s\n' "${markers:-  (none)}"
+  re='^<!--[[:space:]]*pr-audit-gate:[[:space:]]*pr=([0-9]+)[[:space:]]+sha=([0-9a-f]{7,40})[[:space:]]+verdict=(PASS|BLOCK)[[:space:]]*-->'
   pass=0
   while IFS= read -r m; do
-    [[ "$m" =~ pr=([0-9]+)[[:space:]]+sha=([0-9a-f]{7,40})[[:space:]]+verdict=(PASS|BLOCK) ]] || continue
+    [[ "$m" =~ $re ]] || continue
     mpr="${BASH_REMATCH[1]}"; msha="${BASH_REMATCH[2]}"; mv="${BASH_REMATCH[3]}"
     [[ "$mpr" == "$N" && "$SHA" == "$msha"* ]] || continue
     [[ "$mv" == "BLOCK" ]] && die "a BLOCK marker names this exact head SHA"
@@ -68,7 +91,7 @@ printf 'Type the PR number (%s) to squash-merge it at %s: ' "$N" "${SHA:0:9}"
 read -r ans
 [[ "$ans" == "$N" ]] || die "confirmation did not match"
 
-gh pr merge "$N" -R "$R" --squash --match-head-commit "$SHA" || die "merge refused by GitHub (head moved? re-audit, never force)"
+gh pr merge "$N" -R "$R" --squash --match-head-commit "$SHA" --subject "$TITLE (#$N)" || die "merge refused by GitHub (head moved? re-audit, never force)"
 
 MERGE=$(gh pr view "$N" -R "$R" --json mergeCommit --jq '.mergeCommit.oid // empty')
 [[ -n "$MERGE" ]] || die "merged, but could not read the merge commit — check main by hand"

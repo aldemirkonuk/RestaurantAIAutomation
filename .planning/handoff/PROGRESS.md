@@ -85,13 +85,19 @@ with `N` empty every `gh pr` call fell back to the current branch — nothing me
 [`merge-audited-pr.sh`](merge-audited-pr.sh) does the same four steps and refuses
 (exit 2) on: no/non-numeric PR number; PR not OPEN, draft, not `MERGEABLE`, or merge
 state not `CLEAN`; required checks not all passing; no PASS marker from a trusted author
-(`aldemirkonuk`, `github-actions`, `github-actions[bot]` — the hook's set) naming this PR
-and a prefix of the exact head SHA; any BLOCK marker for that SHA; a typed confirmation
-that is not the PR number. It merges `--squash --match-head-commit <sha>` (no `--auto`,
+(`aldemirkonuk`, `github-actions`, `github-actions[bot]` — the hook's set) whose body,
+stripped, **starts with** the marker (anchored like the hook's `MARKER_RE.match`) naming
+this PR and a prefix of the exact head SHA; any BLOCK marker for that SHA; `--gate-owned`
+on a PR whose diff changes no gate-owned path (the union of the skill's step-4 list and
+`_GATE_OWNED_PATHS`); a typed confirmation that is not the PR number. It merges `--squash --match-head-commit <sha>` (no `--auto`,
 never `--admin`), then finds CI and `Deploy to Production` **by the merge commit** and
-watches both with `--exit-status`. Tested 2026-09-28 against a stand-in `gh` over 22 cases
-(every refusal asserted on its own reason, the pinned merge arguments, the merge-commit
-filter). **Run against real `gh` by the founder, 2026-09-28, on #491 at `ad040d62e`:** it
+watches both with `--exit-status`. Its test, [`merge-audited-pr.test.sh`](merge-audited-pr.test.sh)
+(`bash .planning/handoff/merge-audited-pr.test.sh`, needs bash + jq), runs a stand-in `gh`
+over 31 cases — every refusal asserted on its own reason, the pinned merge arguments, the
+merge-commit filter, the squash subject: 31/31 on 2026-09-28. v2 of the script (same day)
+closed an adversarial review's four defects: `--gate-owned` was unscoped (any PR could
+skip the marker); the marker match was unanchored (a decoy earlier on the line won);
+tab-splitting could shift fields; and `gh` could open an editor for the squash subject. **Run against real `gh` by the founder, 2026-09-28, on #491 at `ad040d62e`:** it
 read the PR (OPEN, MERGEABLE, CLEAN), `gh pr checks --required` passed 5 of 5, the
 comments query (gojq) returned none, and it refused with "no trusted PASS marker" —
 the expected outcome, since #491 is not yet audited. The merge and watch half has not
@@ -119,6 +125,16 @@ Run with no number, it refuses and prints the usage line.
 - If `--match-head-commit` refuses, someone pushed after the audit: re-audit, never force.
 - **Cutover draft:** approve or hold each manifest group by name; a session then moves
   only the approved groups into a non-draft PR, audits it, and hands it back here.
+
+**Found while checking the merge script — both in gate-owned files, so each needs the
+founder's word before a session edits it (not built):**
+- `scripts/hooks/require_pr_audit.py` `_passing_marker_exists` returns True on the first
+  trusted PASS for the head SHA and never looks for a BLOCK on the same SHA, so an audit
+  corrected from PASS to BLOCK on one commit still lets the hook allow the merge. The
+  script refuses that case; the hook should too.
+- `.github/workflows/deploy.yml` `verify-frontend` checks out with no `ref:` pin, unlike
+  `verify-api-gateway`, which pins `workflow_run.head_sha`. If another merge lands between
+  CI and the deploy, that stage can verify a newer commit than the one being deployed.
 
 **Open follow-ups from the #487 audit (non-blocking, not built):** ADR 0149 row 54 should
 cross-reference OD-156/159/160/161; vendor-prices currency pooling is medium from
