@@ -12,7 +12,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { receiptFor } from './rec-format';
+import { handOf, heldBy, receiptFor } from './rec-format';
 
 function entry(over: Partial<Parameters<typeof receiptFor>[0]> = {}) {
   return {
@@ -48,5 +48,70 @@ describe('receiptFor', () => {
     );
     expect(receiptFor(entry({ status: 'done' }), false)[0]).toMatch(/^Sealed as ruled off/);
     expect(receiptFor(entry({ status: 'active', acted: true }), false)[0]).toMatch(/^Recorded as acted/);
+  });
+});
+
+/**
+ * Founder item 87, 2026-09-28 (OD-176, ADR 0191): "Show card, hand to manager
+ * (Recommended)". A staff member keeps a Promotions-bound card, but its hand
+ * is a manager's and it carries no Act control, because `GET /promotions` is
+ * owner/manager only and the shell's rooms table hides the room from staff.
+ * `heldBy` reads the gate from that table (`rooms.ts` `minRole`), so the card
+ * and the rail cannot disagree about who may open Promotions.
+ */
+describe('heldBy — whose hand, for the person looking (founder item 87, OD-176)', () => {
+  const PROMOTIONS = [
+    handOf('dead_stock_capital', 'inventory'),
+    handOf('puzzle_activation', 'efficiency'),
+    handOf('pairing_promotion', 'basket'),
+    // the category fallback: a basket rule this page has no hand filed for
+    handOf('a_basket_rule_not_filed_by_name', 'basket'),
+  ];
+
+  it('every Promotions-bound hand is a manager’s for staff, and not theirs to open', () => {
+    for (const h of PROMOTIONS) {
+      expect(h.where).toBe('Promotions');
+      expect(heldBy(h, 'staff')).toEqual({
+        yours: false,
+        words: 'A manager’s, in Promotions',
+        opens: 'an owner or manager',
+      });
+    }
+  });
+
+  it('owners and managers are unchanged: yours, in Promotions', () => {
+    for (const h of PROMOTIONS) {
+      for (const role of ['owner', 'manager'] as const) {
+        expect(heldBy(h, role)).toEqual({ yours: true, words: 'Yours, in Promotions', opens: null });
+      }
+    }
+  });
+
+  it('a role not yet known, or not one the shell knows, is read as staff — it fails closed', () => {
+    for (const h of PROMOTIONS) expect(heldBy(h, null).yours).toBe(false);
+  });
+
+  it('Promotions is the only hand-off the rooms table keeps from staff today', () => {
+    // Every rule the page files a hand for by name, and every category
+    // fallback. If a room one of these lands in gains a minRole, this fails,
+    // and the new "a manager’s" card is a change someone has to look at.
+    const rules = [
+      'stockout_imminent', 'dead_stock_capital', 'plowhorse_repricing', 'puzzle_activation',
+      'vendor_concentration', 'revenue_concentration', 'spend_acceleration', 'pairing_promotion',
+      'staff_spread', 'margin_to_target', 'margin_advice_blind', 'margin_target_unset',
+      'price_locks_to_review', 'goal_behind_x',
+    ];
+    const categories = [
+      'inventory', 'purchasing', 'risk', 'sales', 'efficiency', 'staff', 'basket', 'goals', 'unfiled',
+    ];
+    const hands = [
+      ...rules.map((r) => handOf(r, '')),
+      ...categories.map((c) => handOf('a_rule_not_filed_by_name', c)),
+    ];
+    const keptFromStaff = new Set(hands.filter((h) => !heldBy(h, 'staff').yours).map((h) => h.where));
+    expect([...keptFromStaff]).toEqual(['Promotions']);
+    for (const h of hands.filter((x) => x.where !== 'Promotions')) {
+      expect(heldBy(h, 'staff')).toEqual({ yours: true, words: `Yours, in ${h.where}`, opens: null });
+    }
   });
 });

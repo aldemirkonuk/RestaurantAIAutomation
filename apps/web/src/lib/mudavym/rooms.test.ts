@@ -40,6 +40,7 @@ describe('a room is hidden only where the gateway or the route refuses', () => {
     expect(names('manager')).not.toContain('The desk');
     expect(names('manager')).toContain('Vendor prices');
     expect(names('manager')).toContain('Connections');
+    expect(names('manager')).toContain('Promotions');
   });
 
   it('staff do not see Vendor prices (the gateway refuses them), Connections or The desk', () => {
@@ -49,6 +50,13 @@ describe('a room is hidden only where the gateway or the route refuses', () => {
     expect(s).not.toContain('The desk');
     // Receipts has no gateway refusal behind it, so it is not hidden.
     expect(s).toContain('Receipts & Credits');
+  });
+
+  // TD-2026-09-27-PROMOTIONS-ROOM-SHOWN-TO-STAFF: GET /promotions is
+  // owner/manager only (promotions.controller.ts @Roles("owner", "manager")),
+  // same as Vendor prices' /vendor-intel guard.
+  it('staff do not see Promotions either (the gateway refuses GET /promotions too)', () => {
+    expect(names('staff')).not.toContain('Promotions');
   });
 
   it('Connections is absent while its page flag is off (its route redirects)', () => {
