@@ -11,14 +11,14 @@ interface OrderGuardModalProps {
 
 /**
  * Shown when a user attempts to create an order but has no vendors configured.
- * Provides a direct link to /providers and a "Back to Order" dismiss button.
+ * Provides a direct link to /vendors and a "Back to Order" dismiss button.
  */
 export function OrderGuardModal({ open, onClose }: OrderGuardModalProps) {
   const navigate = useNavigate()
 
   const handleGoToProviders = () => {
     onClose()
-    navigate('/providers')
+    navigate('/vendors')
   }
 
   return (
@@ -55,7 +55,7 @@ export function OrderGuardModal({ open, onClose }: OrderGuardModalProps) {
 
               <Dialog.Description className="text-sm text-gray-500 text-center mb-6">
                 You don't have any wine vendors set up yet. Before you can place orders, add at least
-                one distributor or supplier to your Providers list.
+                one vendor to your vendor list.
               </Dialog.Description>
 
               <div className="flex flex-col gap-2">
@@ -63,7 +63,7 @@ export function OrderGuardModal({ open, onClose }: OrderGuardModalProps) {
                   onClick={handleGoToProviders}
                   className="w-full bg-wine-600 text-white hover:bg-wine-700 flex items-center justify-center gap-2"
                 >
-                  Go to Providers
+                  Go to Vendors
                   <ArrowRight className="w-4 h-4" />
                 </Button>
                 <Button
