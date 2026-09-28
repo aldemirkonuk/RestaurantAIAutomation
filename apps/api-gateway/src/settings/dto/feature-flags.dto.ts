@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { IsBoolean, IsOptional, IsString, IsUUID } from "class-validator";
+import { ACTIVE_FEATURE_FLAG_KEYS } from "../feature-flag-registry";
 
 /**
  * Only flags that a real column stores AND real code branches on appear here.
@@ -30,6 +31,12 @@ export class FeatureFlagsDto {
   })
   @IsBoolean()
   enable_house_inbox_read: boolean;
+
+  // See the dynamic-decoration block below the class — every other
+  // ACTIVE_FEATURE_FLAG_KEYS entry (the mudavym_design_* redesign flags) is a
+  // real key on a response object of this shape, just not one of the three
+  // hand-written above.
+  [key: string]: boolean;
 }
 
 export class UpdateFeatureFlagsDto {
@@ -67,6 +74,62 @@ export class UpdateFeatureFlagsDto {
   @IsOptional()
   @IsBoolean()
   enable_house_inbox_read?: boolean;
+
+  // See the dynamic-decoration block below — every other
+  // ACTIVE_FEATURE_FLAG_KEYS entry (the mudavym_design_* redesign flags) is
+  // accepted here too, just not one of the three hand-written above.
+  [key: string]: boolean | undefined;
+}
+
+/**
+ * MEASURED, NOT ASSUMED (2026-09-17): a real `ValidationPipe` built with
+ * `main.ts`'s exact config (`whitelist: true, forbidNonWhitelisted: true,
+ * transform: true`) run against `UpdateFeatureFlagsDto` with a body of
+ * `{ mudavym_design_dashboard: true }` returned
+ * `400 "property mudavym_design_dashboard should not exist"` — the mudavym
+ * redesign toggles in `FeaturesSection.tsx` could not be saved through the
+ * real HTTP API at all, only through direct-service unit tests that bypass
+ * the pipe. See `settings/feature-flags-dto-validation.spec.ts`.
+ *
+ * The three flags above are hand-declared because they carry a real per-flag
+ * description worth showing in Swagger and to a reviewer reading this file.
+ * The other twenty-one-and-growing keys are `mudavym_design_<page>` — one
+ * per rebuilt page, added to `ACTIVE_FEATURE_FLAGS` by whichever page team
+ * ships next (`feature-flag-registry.ts`) — and hand-adding a property here
+ * every time is exactly the kind of drift that produced this bug: the
+ * registry already grew to include `mudavym_design_logs` (2026-09-12) after
+ * this DTO was last hand-edited (2026-09-05), and the two silently went out
+ * of sync.
+ *
+ * So the remaining keys are decorated here, from the registry, once, at
+ * module load — the same effect as writing `@IsOptional() @IsBoolean()` by
+ * hand for each, applied programmatically because the list is the registry's
+ * to own. `class-validator`'s decorators are plain functions that register
+ * metadata on the prototype; calling them directly is identical to using the
+ * `@decorator` syntax, and it is what lets `ACTIVE_FEATURE_FLAG_KEYS` stay
+ * the single source of truth for "which keys does this route accept" instead
+ * of a second hand-kept list that can drift from the first one again.
+ */
+const HAND_DECLARED_FLAG_KEYS = new Set<string>([
+  "enable_ai_negotiation",
+  "enable_ai_autonomous_send",
+  "enable_house_inbox_read",
+]);
+
+for (const key of ACTIVE_FEATURE_FLAG_KEYS) {
+  if (HAND_DECLARED_FLAG_KEYS.has(key)) continue;
+
+  ApiProperty({ description: `Declared active by the feature-flag registry.` })(
+    FeatureFlagsDto.prototype,
+    key,
+  );
+  IsBoolean()(FeatureFlagsDto.prototype, key);
+
+  ApiPropertyOptional({
+    description: `Declared active by the feature-flag registry.`,
+  })(UpdateFeatureFlagsDto.prototype, key);
+  IsOptional()(UpdateFeatureFlagsDto.prototype, key);
+  IsBoolean()(UpdateFeatureFlagsDto.prototype, key);
 }
 
 export class CheckFeatureFlagDto {
