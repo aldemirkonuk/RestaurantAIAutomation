@@ -1,0 +1,70 @@
+import { describe, it, expect } from 'vitest'
+import { screen } from '@testing-library/react'
+import { renderWithProviders } from '../__tests__/utils/test-utils'
+import Terms from './Terms'
+
+/**
+ * G9 (census, 2026-09-25): `/terms` had no route. This confirms the page
+ * renders, is clearly labelled as a placeholder per OD-132/OD-124 (founder
+ * Q11, 2026-09-22: "keep placeholder text for now; lawyer later"), and
+ * cross-links `/privacy`.
+ */
+describe('Terms page', () => {
+  it('renders the page', () => {
+    renderWithProviders(<Terms />)
+    expect(screen.getByRole('heading', { name: /terms of service/i })).toBeInTheDocument()
+  })
+
+  it('is clearly labelled as a placeholder, not a reviewed contract', () => {
+    renderWithProviders(<Terms />)
+    expect(screen.getByRole('heading', { name: /this page is a placeholder/i })).toBeInTheDocument()
+    expect(screen.getByText(/has not been reviewed by a lawyer/i)).toBeInTheDocument()
+  })
+
+  it('links to the privacy notice', () => {
+    renderWithProviders(<Terms />)
+    const links = screen.getAllByRole('link', { name: /privacy/i })
+    expect(links.some((a) => a.getAttribute('href') === '/privacy')).toBe(true)
+  })
+
+  it('states the training notice only as far as the code enforces it', () => {
+    renderWithProviders(<Terms />)
+    expect(screen.getByRole('heading', { name: /questions you ask mudavym/i })).toBeInTheDocument()
+    // [PR 478 audit round 2] Names the section the owner actually finds
+    // (SettingsNext.tsx "Questions and training"), and claims only what
+    // ask_folio_training_export + asked_while_opted_out enforce
+    // (migration 20260922220600): out of the training export, not "any".
+    expect(screen.getByText(/settings → questions and training/i)).toBeInTheDocument()
+    expect(screen.getByText(/kept out of mudavym's training export permanently/i)).toBeInTheDocument()
+    expect(screen.queryByText(/training use,/i)).toBeNull()
+    expect(screen.queryByText(/any training export/i)).toBeNull()
+    // [PR 478 audit round 3] No by-reference clause to /privacy's section,
+    // whose wording ("Training use", "never used for training") is broader
+    // than the one export filter the code has.
+    expect(screen.queryByText(/same notice/i)).toBeNull()
+    expect(screen.queryByText(/never used for training/i)).toBeNull()
+    // [PR 478 audit of 57d8cddc6] Owner-only write, stated as such; no
+    // absence claim about the ask path; no claim beyond "nothing reads the
+    // export yet" (ask_folio_training_export has no reader outside migrations).
+    expect(screen.getByText(/only a house's owner can change/i)).toBeInTheDocument()
+    expect(screen.queryByText(/keep working the same/i)).toBeNull()
+    expect(screen.getByText(/nothing\s+reads that export yet/i)).toBeInTheDocument()
+  })
+
+  it('does not assume an acceptance the product never records', () => {
+    renderWithProviders(<Terms />)
+    expect(screen.queryByText(/already agreed/i)).toBeNull()
+    expect(screen.getByText(/does not record acceptance of it/i)).toBeInTheDocument()
+    // [PR 478 audit fix round 1 of 2] The denial is scoped to THIS page, and
+    // the separate, recorded data-terms acceptance (#435) is named, so the
+    // sentence is not broader than the code.
+    expect(screen.getByText(/does not ask anyone to accept this page/i)).toBeInTheDocument()
+    expect(screen.queryByText(/accept this text/i)).toBeNull()
+    expect(screen.getByText(/data and privacy terms/i)).toBeInTheDocument()
+    expect(screen.getByText(/mudavym records that\s+acceptance/i)).toBeInTheDocument()
+    // [PR 478 audit of 57d8cddc6] The gate asks only while activeRole is
+    // 'owner' (DataTermsSignInGate.tsx:52), so the page says so.
+    expect(screen.getByText(/signed in as the\s+house's owner is asked/i)).toBeInTheDocument()
+    expect(screen.queryByText(/each owner of a house/i)).toBeNull()
+  })
+})

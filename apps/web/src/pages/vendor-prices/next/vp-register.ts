@@ -7,7 +7,7 @@
  */
 
 import type { ComparisonClass, VendorObservationRow } from '../../../services/api/vendorIntel'
-import { ageWords, dateWords, isSourceType, money, packWords, SOURCE_META, sourceLabel } from './vp-format'
+import { ageWords, calendarDateWords, dateWords, isSourceType, money, packWords, SOURCE_META, sourceLabel } from './vp-format'
 
 /* ── grouping by class — a consensus never crosses one (fork 1) ─────────── */
 
@@ -118,11 +118,9 @@ export function paperBadge(sourceRef: string | null): PaperBadge {
   return null
 }
 
-/** The order id an own-paper row names, for a future line-level document
- * link — part of ADR 0160 §112 fork 6(a)'s full provenance, which the
- * founder put in the FIRST build, not a later step. Not built here; see
- * `vendor-prices.md` for the open founder question, which is on sequencing
- * only. */
+/** The order id an own-paper row names (fork 6b). The line-level paper
+ * itself — fork 6(a) — is `row.provenance.document` / `documentLine`, read
+ * fresh by the gateway; see `provenanceLines` below. */
 export function orderIdOf(sourceRef: string | null): string | null {
   if (!sourceRef) return null
   const m = /^(?:receipt_verified|order_confirmed):(.+)$/.exec(sourceRef)
@@ -161,6 +159,110 @@ export interface Provenance {
   vendor: string
   /** The note recorded with this sighting, or null when none was. */
   note: string | null
+  /** Fork 6(a) — the paper, its line, the message and the person, as lines
+   * a person reads (`provenanceLines`). */
+  lines: ProvenanceLine[]
+}
+
+/* ── fork 6(a): the paper, the message and the person ────────────────────── */
+
+export interface ProvenanceLine {
+  kind: 'paper' | 'line' | 'message' | 'person' | 'note'
+  text: string
+  /** A route this line opens, when it opens one. */
+  href?: string
+  hrefLabel?: string
+  /** The message's own words, shown as a quotation. */
+  quote?: string
+}
+
+const DOC_TYPE_WORDS: Record<string, string> = {
+  invoice: 'Invoice',
+  packing_slip: 'Packing slip',
+  delivery_receipt: 'Delivery receipt',
+  purchase_order: 'Purchase order',
+  credit_memo: 'Credit memo',
+  statement: 'Statement',
+  price_list: 'Price list',
+  unknown: 'A paper of unread type',
+}
+
+const CHANNEL_WORDS: Record<string, string> = {
+  email: 'Email',
+  whatsapp: 'WhatsApp message',
+  sms: 'Text message',
+  phone: 'Call note',
+}
+
+const PERSON_BASIS: Record<string, string> = {
+  named_contact: 'Given by',
+  message_sender: 'From',
+  message_recipient: 'Sent to',
+}
+
+/**
+ * ADR 0160 §112 fork 6(a) as a person reads it. Every line comes from what
+ * the gateway read FRESH for this record (`vendor-intel/price-provenance.ts`)
+ * — nothing is remembered from an earlier opening (fork 6: "Always on the
+ * record, loaded fresh"). Every absence is the gateway's own sentence, so a
+ * failed read never reads as a missing paper here either.
+ */
+export function provenanceLines(row: VendorObservationRow): ProvenanceLine[] {
+  const p = row.provenance
+  if (!p) {
+    return [
+      {
+        kind: 'note',
+        text: 'Where this price came from was not sent by the server. Unknown, not absent.',
+      },
+    ]
+  }
+  const out: ProvenanceLine[] = []
+  if (p.document) {
+    const d = p.document
+    const type = (d.docType && DOC_TYPE_WORDS[d.docType]) ?? 'A paper'
+    out.push({
+      kind: 'paper',
+      text: `${type} ${d.docNumber ? d.docNumber : 'with no number read'}${d.docDate ? `, dated ${calendarDateWords(d.docDate)}` : ''}`,
+      href: `/documents/${d.id}`,
+      hrefLabel: 'Open the paper',
+    })
+  }
+  if (p.documentLine) {
+    const l = p.documentLine
+    const qty = l.qty !== null ? `${l.qty} ${l.uom ?? ''}`.trim() : null
+    const at = l.unitPrice !== null ? `at ${l.unitPrice.toFixed(2)} on the paper` : null
+    out.push({
+      kind: 'line',
+      text: [`Line ${l.lineNo ?? 'without a number'}`, l.description, [qty, at].filter(Boolean).join(' ')]
+        .filter((x) => x && String(x).trim())
+        .join(' — '),
+    })
+  }
+  if (p.message) {
+    const m = p.message
+    const channel = (m.channel && CHANNEL_WORDS[m.channel.toLowerCase()]) ?? (m.channel ? `${m.channel} message` : 'Message')
+    const verb = m.direction === 'outbound' ? 'sent' : 'received'
+    out.push({
+      kind: 'message',
+      text: `${channel} ${verb} ${dateWords(m.at)}${m.subject ? ` — “${m.subject}”` : ''}`,
+      quote: m.excerpt ?? undefined,
+    })
+  }
+  if (p.person) {
+    const who = p.person.name ?? p.person.address ?? 'someone the row does not name'
+    const addr = p.person.name && p.person.address ? ` <${p.person.address}>` : ''
+    out.push({
+      kind: 'person',
+      text: `${PERSON_BASIS[p.person.basis] ?? 'From'} ${who}${addr}${p.person.role ? `, ${p.person.role}` : ''}`,
+    })
+  }
+  for (const sentence of p.sentences) out.push({ kind: 'note', text: sentence })
+  const conversational = row.sourceType === 'chat' || row.sourceType === 'social'
+  if (conversational && !p.message && !p.person && p.sentences.length === 0) {
+    out.push({ kind: 'note', text: 'No message or person was named when this price was recorded.' })
+  }
+  return out
 }
 
 export function provenanceOf(row: VendorObservationRow): Provenance {
@@ -200,7 +302,9 @@ export function provenanceOf(row: VendorObservationRow): Provenance {
       : `Names bottle identity ${row.identityId} (no label recorded).`
     : 'Unidentified — no confirmed bottle identity names this row yet (ADR 0124). It is ranked by name and vintage alone, so a 375 ml and a 750 ml of one wine could share a rung.'
 
-  const hasLink = orderId !== null || !!row.sourceUrl
+  const lines = provenanceLines(row)
+  const hasLink =
+    orderId !== null || !!row.sourceUrl || !!row.provenance?.document || !!row.provenance?.message
   return {
     eyebrow,
     what,
@@ -221,5 +325,6 @@ export function provenanceOf(row: VendorObservationRow): Provenance {
     identityWords,
     vendor,
     note: row.note,
+    lines,
   }
 }

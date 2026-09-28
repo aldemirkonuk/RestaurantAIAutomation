@@ -133,4 +133,31 @@ export class ManualObservationDto {
   @IsString()
   @MaxLength(1000)
   note?: string;
+
+  /**
+   * ADR 0160 §112 fork 6(a) — the attach-a-paper step: the
+   * `procurement_documents` row the person attached (uploaded through
+   * `POST /procurement/documents`, which returns its id). Checked against the
+   * caller's house before anything is written
+   * (`vendor-comparison.service.ts` `assertProvenanceIsThisHouses`), and the
+   * database refuses another house's document on its own.
+   */
+  @IsOptional()
+  @IsUUID()
+  documentId?: string;
+
+  /** The line on `documentId` this price is. Refused without `documentId`. */
+  @IsOptional()
+  @IsUUID()
+  documentLineId?: string;
+
+  /** The house's message (`procurement_conversations` row) this price came from. */
+  @IsOptional()
+  @IsUUID()
+  conversationMessageId?: string;
+
+  /** The vendor contact (`provider_contacts`) who gave this price. */
+  @IsOptional()
+  @IsUUID()
+  contactId?: string;
 }

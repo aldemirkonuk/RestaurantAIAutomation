@@ -24,7 +24,11 @@
  * `/privacy`). There is no dedicated `/terms` page in this codebase yet
  * (only `/privacy`); this sheet does not create one, and does not draft
  * legal language to fill the gap — see ADR 0207's *Round 5* section for what
- * that means for the lawyer's review.
+ * that means for the lawyer's review. [PR 478, 2026-09-27: a `/terms` page
+ * now exists (`pages/Terms.tsx`), as an unreviewed placeholder Terms of
+ * Service. It is a separate document: this sheet neither renders nor links
+ * it, and nobody is asked to accept it. `Terms.tsx`'s "Changes" section names
+ * these data terms as the separate, recorded acceptance.]
  *
  * SHAPE: `Panel` (ADR 0112) — centered, because this is a question the
  * reader must answer, not a record or a menu. Motion is whatever `Panel`
@@ -191,7 +195,7 @@ export function DataTermsAcceptSheet({
               onApprove={onApprove}
               onChallenge={onChallenge}
             />
-            <span style={{ fontFamily: SANS, fontSize: 11, color: 'var(--ink-3, #7C7365)' }}>
+            <span style={{ fontFamily: SANS, fontSize: 11, color: 'var(--ink-4, #665D50)' }}>
               version {readout.version}
             </span>
           </div>
@@ -205,7 +209,7 @@ export function DataTermsAcceptSheet({
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16, fontFamily: SANS, fontSize: 12.5, lineHeight: 1.55 }}>
         {readout.acceptance && (
-          <p style={{ margin: 0, fontFamily: MONO, fontSize: 10, letterSpacing: '0.06em', color: 'var(--ink-3, #7C7365)' }}>
+          <p style={{ margin: 0, fontFamily: MONO, fontSize: 10, letterSpacing: '0.06em', color: 'var(--ink-4, #665D50)' }}>
             {reaccepting
               ? `Last accepted version ${readout.acceptance.version} by ${readout.acceptance.acceptedBy.name ?? 'a former owner'} on ${readout.acceptance.acceptedAt.slice(0, 10)}.`
               : `Accepted (version ${readout.acceptance.version}) by ${readout.acceptance.acceptedBy.name ?? 'a former owner'} on ${readout.acceptance.acceptedAt.slice(0, 10)}.`}
@@ -265,7 +269,7 @@ export function DataTermsAcceptSheet({
           </div>
         )}
 
-        <p style={{ margin: 0, fontSize: 11.5, color: 'var(--ink-3, #7C7365)' }}>
+        <p style={{ margin: 0, fontSize: 11.5, color: 'var(--ink-4, #665D50)' }}>
           The full picture of what Mudavym collects is on the{' '}
           <Link to="/privacy" style={{ color: 'var(--seal-deep, #14515C)' }}>
             privacy page

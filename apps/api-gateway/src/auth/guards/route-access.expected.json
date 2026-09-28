@@ -432,6 +432,10 @@
     "owner",
     "manager"
   ],
+  "GET /vendor-intel/observation-sources (VendorIntelController.observationSources)": [
+    "owner",
+    "manager"
+  ],
   "POST /vendor-intel/scrape (VendorIntelController.scrape)": [
     "owner",
     "manager"
