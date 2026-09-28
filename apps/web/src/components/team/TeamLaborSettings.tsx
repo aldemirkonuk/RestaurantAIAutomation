@@ -1,6 +1,15 @@
 /**
- * Team labor & wage visibility preferences (Settings → Team).
+ * Team labor preferences (Settings → Team).
  * Persists to Supabase `team_settings` via PATCH /team/:rid/settings.
+ *
+ * The "Show hourly wages" switch is gone (ADR 0215). Wages and labour cost are
+ * the owner's by role — founder, 2026-09-21: "Owner only" — so there is nothing
+ * to switch, and the gateway refuses the old field in words.
+ *
+ * Only the owner switches labour-cost tracking off or changes the labour target
+ * (ADR 0215; founder 2026-09-21, "Take all five"). The gateway refuses a
+ * manager's attempt before it writes; this page reads `mayChange` from the
+ * settings reply and does not offer what would be refused, and says why.
  */
 import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -8,7 +17,19 @@ import { toast } from 'sonner'
 import { getTeamSettings, updateTeamSettings, type TeamSettings } from '../../services/api/team'
 import { useAuth } from '../../contexts/AuthContext'
 
-function Toggle({ on, onChange, label, hint }: { on: boolean; onChange: (v: boolean) => void; label: string; hint: string }) {
+function Toggle({
+  on,
+  onChange,
+  label,
+  hint,
+  disabled = false,
+}: {
+  on: boolean
+  onChange: (v: boolean) => void
+  label: string
+  hint: string
+  disabled?: boolean
+}) {
   return (
     <div className="flex items-center justify-between gap-4 py-2.5">
       <div>
@@ -18,8 +39,10 @@ function Toggle({ on, onChange, label, hint }: { on: boolean; onChange: (v: bool
       <button
         type="button"
         onClick={() => onChange(!on)}
-        className={`relative w-10 h-6 rounded-full transition-colors ${on ? 'bg-wine-600' : 'bg-gray-300'}`}
+        disabled={disabled}
+        className={`relative w-10 h-6 rounded-full transition-colors disabled:opacity-50 ${on ? 'bg-wine-600' : 'bg-gray-300'}`}
         aria-pressed={on}
+        aria-label={label}
       >
         <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${on ? 'translate-x-4' : ''}`} />
       </button>
@@ -79,7 +102,13 @@ export function TeamLaborSettings() {
     )
   }
 
+  // What this viewer may change. An older gateway that does not say gets
+  // nothing offered: a switch the gateway refuses is worse than none.
+  const may = data.mayChange ?? { trackingOff: false, trackingOn: false, target: false }
+  const trackingLocked = data.labor_tracking_enabled ? !may.trackingOff : !may.trackingOn
+
   const commitTarget = () => {
+    if (!may.target) return
     const n = Number(targetPct)
     if (!Number.isFinite(n) || n < 1 || n > 100) {
       toast.error('Labor target must be between 1 and 100')
@@ -96,20 +125,27 @@ export function TeamLaborSettings() {
       <Toggle
         on={data.labor_tracking_enabled}
         onChange={(v) => save.mutate({ laborTrackingEnabled: v })}
+        disabled={trackingLocked || save.isPending}
         label="Labor cost tracking"
-        hint="Show labor $ and the labor lens on the schedule. Off = hours only."
+        hint={
+          trackingLocked && data.labor_tracking_enabled
+            ? 'Only the owner can switch labour-cost tracking off.'
+            : "Show the week's labour cost and the labour lens to the owner. Off = hours only."
+        }
       />
-      <Toggle
-        on={data.wage_visible}
-        onChange={(v) => save.mutate({ wageVisible: v })}
-        label="Show hourly wages"
-        hint="Display wages in member profiles (owner/manager only)."
-      />
+      <div className="py-2.5 text-xs text-gray-500">
+        Wages and labour cost are shown to the owner only, and only an owner can change a
+        wage. Managers see hours.
+      </div>
       {data.labor_tracking_enabled && (
         <div className="flex items-center justify-between gap-4 py-2.5 border-t border-gray-100 mt-1">
           <div>
             <div className="text-sm font-medium text-gray-800">Labor target %</div>
-            <div className="text-xs text-gray-400">Saved to Supabase · used on Service Pulse</div>
+            <div className="text-xs text-gray-400">
+              {may.target
+                ? 'Saved to Supabase · used on Service Pulse'
+                : 'Only the owner can change the labour target.'}
+            </div>
           </div>
           <input
             type="number"
@@ -117,7 +153,7 @@ export function TeamLaborSettings() {
             max={100}
             step={0.5}
             value={targetPct}
-            disabled={save.isPending}
+            disabled={save.isPending || !may.target}
             onChange={(e) => setTargetPct(e.target.value)}
             onBlur={commitTarget}
             onKeyDown={(e) => {

@@ -19,6 +19,9 @@ import { TeamService } from "./team.service";
 import { NotesService } from "./notes.service";
 import { ScheduleService } from "./schedule.service";
 import { PerformanceService } from "./performance.service";
+// The wage record's five-year retention (ADR 0215): a nightly call to the
+// database's own purge, which refuses to delete anything early.
+import { WageRecordRetentionService } from "./wage-record-retention.service";
 
 @Module({
   imports: [
@@ -39,6 +42,7 @@ import { PerformanceService } from "./performance.service";
     PerformanceService,
     AwayHoldService,
     AwayReleaseService,
+    WageRecordRetentionService,
   ],
   // AwayReleaseService: an "End Away now" on /house/away releases what waited.
   exports: [TeamService, ScheduleService, AwayReleaseService],

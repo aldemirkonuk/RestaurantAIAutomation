@@ -358,6 +358,39 @@ describe("what each person's link shows", () => {
     );
   });
 
+  // ADR 0215 item 20: a removed person's shifts are KEPT five years (no
+  // cascade on `shifts.member_id` any more), and kept is not shown — the
+  // feed reads the week as /team's `getWeek` does (`onTheRoster`). Before
+  // this, an "all" link served a departed person's kept shift, past or
+  // future, as "Someone — shift", indistinguishable from a live one.
+  it.each([
+    ["OWNER", OWNER],
+    ["MANAGER", MANAGER],
+  ])(
+    "%s: a removed person's kept shift is not in the feed, past or future; live and open shifts are",
+    async (_label, viewer) => {
+      const db = seed();
+      db.tables.shifts.push(
+        shift("sh-gone-future", "m-gone", {
+          role: "grill",
+          shift_date: "2027-03-01",
+        }),
+        shift("sh-gone-past", "m-gone", {
+          role: "grill",
+          shift_date: "2026-09-15",
+        }),
+      );
+      const shown = await feedFor(db, viewer);
+      expect(shown.join("|")).not.toMatch(/Someone|grill/);
+      expect(shown).toEqual(
+        expect.arrayContaining([
+          "Bora — shift · kitchen",
+          "Open shift · floor",
+        ]),
+      );
+    },
+  );
+
   it("STAFF (Ayse): her own shifts and the house calendar — never Bora's shift or the open one", async () => {
     const shown = await feedFor(seed(), AYSE);
     expect(shown).toEqual(

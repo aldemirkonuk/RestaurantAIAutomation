@@ -529,7 +529,7 @@ files — verified before enabling. The self-test gained four invariants coverin
 they fail 4/4 against the pre-fix guard, so the blind spot cannot silently return.
 One anchor was also unfixable as written — `062-design-agenda-canvas/canvas.html:117`
 carried a bare `OPEN-DECISIONS.md:64` with no id beside it, which `--fix` cannot repoint. <!-- cite-example: this line quotes the defect; the anchor is deliberately id-less -->
-It is now `OD-106 (OPEN-DECISIONS.md:71)`.
+It is now `OD-106 (OPEN-DECISIONS.md:73)`.
 
 > **This paragraph broke the guard, which is the correct behaviour.** Describing an
 > unanchored citation produces an unanchored citation, so the now-sighted guard flagged

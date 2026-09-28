@@ -379,6 +379,8 @@ describe('the labour target is read against its column default', () => {
         // a number, and 28 is indistinguishable from nobody choosing one.
         targetPct: 28,
         overtime: [],
+        // The owner's week: the cost panel is the owner's (ADR 0215).
+        moneyVisible: true,
       },
       settings: {
         restaurant_id: 'r1',
@@ -422,6 +424,7 @@ describe('the labour target is read against its column default', () => {
         unpricedShifts: 0,
         targetPct: 31,
         overtime: [],
+        moneyVisible: true,
       },
       settings: {
         restaurant_id: 'r1',

@@ -132,6 +132,12 @@ reads as *"nothing to report"* forever.
 | Fixed on `fix/swallowed-read-errors-and-guard` | 8 | 5 |
 | **Remaining, baselined and non-growing** | **191 of 215** | 42 |
 
+> **159 as of 2026-09-27, on #440 (`fix/team-pay-defects`) merged onto `origin/main` 4b2a8e389 (#438)** (`check_read_errors_not_swallowed.py` on that tree: 1789 files scanned, 159 sites, 159 baselined, 0 allowlisted): #438 retired `calendar.service.ts` calendar_recurrence_rules/rules and ADR 0215 retires `schedule.service.ts` team_members/m. Re-measure before citing.
+
+> **160 as of 2026-09-27, on #440 (`fix/team-pay-defects`) merged onto `origin/main` ef8ecdf30** (`check_read_errors_not_swallowed.py` on that tree: 1774 files scanned, 160 sites, 160 baselined, 0 allowlisted): one below the 161 main carried at that merge (its line below); the 166 line below it was measured on an older base. Re-measure before citing.
+
+> **166 as of 2026-09-25, on #440 (`fix/team-pay-defects`) merged onto `origin/main` 4e7c5b5a6 (#412)** (`check_read_errors_not_swallowed.py` on that tree: 1656 files scanned, 166 sites, 166 baselined, 0 allowlisted). Both 167 lines below counted from 168: #412 retired `providers.service.ts` providers/existingProvider and ADR 0215 retires `schedule.service.ts` team_members/m. Re-measure before citing.
+
 > **154 as of 2026-09-27, on #436 (`feat/finish-action-integrity`) merged up to main ef8ecdf30 (#435)** (`check_read_errors_not_swallowed.py` on that tree: 1823 files scanned, 154 sites, 154 baselined, 0 allowlisted, PASS). The branch's 155 below and main's held-queue retirement (the 161 line below) together. Re-measure before citing.
 
 > **155 as of 2026-09-26, on #436 after the W7-team commit** (`check_read_errors_not_swallowed.py`: 1721 files scanned, 155 sites, 155 baselined, 0 allowlisted, PASS). Three retired in `apps/api-gateway/src/team/`: `team.service.ts` `coverage_templates/data` (the rule list read), `performance.service.ts` `team_members/valid` (the sales-batch roster read) and `server_sales/rows` (the performance read) — each now throws instead of reading as empty (ADR 0088 amendment, 2026-09-26).
@@ -152,11 +158,15 @@ reads as *"nothing to report"* forever.
 
 > **167 as of 2026-09-25, on #412 merged up to main e754b3a27 (#416)** (`check_read_errors_not_swallowed.py` on `fix/provider-subresources-house-scoped`: `providers.service.ts` `providers/existingProvider` actual=0 — `softDeleteProvider` now reads through `getProvider`, which throws on a failed read; retired, rows sum to 167). Re-measure before citing.
 
+> **167 as of 2026-09-25, on #440 (`fix/team-pay-defects`) merged onto `origin/main` 059169a5** (`check_read_errors_not_swallowed.py` on that tree: 1656 files scanned, 167 sites, 167 baselined, 0 allowlisted). ADR 0215 retires `schedule.service.ts` team_members/m. Re-measure before citing.
+
 > **168 as of 2026-09-23, on #455 after #414** (`check_read_errors_not_swallowed.py` on `feat/arrival-first-proof`: `auth.service.ts` `users/existing` actual=0 after account-only signup; retired, rows sum to 168). Re-measure before citing.
 
 > **170 as of 2026-09-23, on #434 after #430** (`check_read_errors_not_swallowed.py` on `serial-pr434-after-430`: two already-fixed baseline rows retired — `integrations-oauth.service.ts` `integration_oauth_connections/data` and `inventory.service.ts` `inventory_analytics/data`). Re-measure before citing.
 
 > **176 as of 2026-09-21, on `feat/shell-counter`** (`check_read_errors_not_swallowed.py` on that tree: 1545 files scanned, 176 sites, 176 baselined, 0 allowlisted). `ReceivingService.listUnverified` now binds and throws its `procurement_orders` read error instead of letting a failed read wave every closed order through the COMPLETED/CANCELLED filter, which retires receiving.service.ts procurement_orders/orders; the house counter (sketch 119 D) reads that register. Branches merge in any order, so re-measure before citing.
+
+> **176 as of 2026-09-21, on `fix/team-pay-defects`** (`check_read_errors_not_swallowed.py` on that tree: 1529 files scanned, 176 sites, 176 baselined, 0 allowlisted). ADR 0215: `ScheduleService.laborCost`'s wage read (team_members/m) now binds its error and refuses, because a failed read priced a shift as having no wage on file. The baseline's `total_sites` said 188 while its rows summed to 177 on `origin/main` 9cfc4e96d; it now says 176. Branches merge in any order, so re-measure before citing.
 
 > **173 as of 2026-09-21, on `r5/E` round 3** (`check_read_errors_not_swallowed.py` on that tree: 1572 files scanned, 173 sites, 173 baselined, 0 allowlisted). `markDelivered`'s item read (restaurant_inventory/currentStock) is now one strict read that binds its error: a failed or missing item row refuses the booking and puts the order back (founder, 2026-09-21, ADR 0192 amendment), where it used to read as zero shadow stock and book nothing. Its "was this order booked before" read (inventory_events/existingEvent) binds its error too and refuses the same way. The tree this round started from already measured 175 (the 176 -> 175 step predates this round and was not traced here); re-measure before citing.
 
