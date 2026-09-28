@@ -504,61 +504,17 @@ export class AuthService {
       throw new UnauthorizedException("User not found");
     }
 
-    const { data: uraAccess } = await this.databaseService.supabase
-      .from("user_restaurant_access")
-      .select("role")
-      .eq("user_id", userId)
-      .eq("restaurant_id", targetRestaurantId)
-      .eq("is_active", true)
-      .maybeSingle();
-
-    if (uraAccess) {
-      return this.generateTokens({
-        ...user,
-        restaurant_id: targetRestaurantId,
-      });
-    }
-
-    // Legacy fallback: org-level check for users who have no URA row yet
-    // Also handles legacy users (no org row) by checking via restaurant → org path.
-    const { data: orgMemberships } = await this.databaseService.supabase
-      .from("organization_members")
-      .select("organization_id")
-      .eq("user_id", userId);
-
-    let orgIds: string[] = (orgMemberships ?? []).map(
-      (m: any) => m.organization_id,
+    // The token is minted only after the same current membership check used
+    // when it is spent. A shared organisation is not a branch membership.
+    const role = await this.resolveCurrentRestaurantRole(
+      user,
+      targetRestaurantId,
     );
-
-    if (orgIds.length === 0) {
-      // Legacy fallback: derive org from the user's own restaurant
-      const { data: ownRestaurant } = await this.databaseService.supabase
-        .from("restaurants")
-        .select("organization_id")
-        .eq("id", user.restaurant_id)
-        .maybeSingle();
-      if (ownRestaurant?.organization_id) {
-        orgIds = [ownRestaurant.organization_id];
-      }
-    }
-
-    if (orgIds.length === 0) {
-      throw new ForbiddenException("No organisation membership found");
-    }
-
-    const { data: targetRestaurant } = await this.databaseService.supabase
-      .from("restaurants")
-      .select("id, organization_id")
-      .eq("id", targetRestaurantId)
-      .in("organization_id", orgIds)
-      .maybeSingle();
-
-    if (!targetRestaurant) {
-      throw new ForbiddenException("Access denied to requested restaurant");
-    }
-
-    // Issue new tokens with the switched restaurant_id
-    return this.generateTokens({ ...user, restaurant_id: targetRestaurantId });
+    return this.generateTokens({
+      ...user,
+      role,
+      restaurant_id: targetRestaurantId,
+    });
   }
 
   /**
@@ -583,21 +539,9 @@ export class AuthService {
       // Non-critical — studio endpoints will just reject with 403
     }
 
-    let restaurantRole = user.role as string;
-    if (user.restaurant_id) {
-      try {
-        const { data: membership } = await this.databaseService.supabase
-          .from("user_restaurant_access")
-          .select("role")
-          .eq("user_id", user.user_id)
-          .eq("restaurant_id", user.restaurant_id)
-          .eq("is_active", true)
-          .maybeSingle();
-        if (membership?.role) restaurantRole = membership.role;
-      } catch {
-        // Legacy fallback
-      }
-    }
+    const restaurantRole = user.restaurant_id
+      ? await this.resolveCurrentRestaurantRole(user, user.restaurant_id)
+      : (user.role as string);
 
     const payload = {
       sub: user.user_id,
@@ -724,17 +668,53 @@ export class AuthService {
    * Validate JWT payload
    */
   async validateJwtPayload(payload: JwtPayload): Promise<any> {
-    const { data: user } = await this.databaseService.supabase
+    const { data: user, error: userError } = await this.databaseService.supabase
       .from("users")
       .select("*")
       .eq("user_id", payload.sub)
       .single();
 
-    if (!user) {
-      throw new UnauthorizedException("User not found");
-    }
+    if (userError)
+      throw new ServiceUnavailableException("User could not be verified");
+    if (!user) throw new UnauthorizedException("User not found");
+    const restaurantId = payload.restaurantId || user.restaurant_id;
+    if (!restaurantId) return user;
+    return {
+      ...user,
+      role: await this.resolveCurrentRestaurantRole(user, restaurantId),
+    };
+  }
 
-    return user;
+  private async resolveCurrentRestaurantRole(
+    user: any,
+    restaurantId: string,
+  ): Promise<string> {
+    // A signed house selects the membership to check; the user's home role is
+    // not authority in another branch. Re-check revocation and role changes.
+    const { data: membership, error } = await this.databaseService.supabase
+      .from("user_restaurant_access")
+      .select("role, is_active")
+      .eq("user_id", user.user_id)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (error)
+      throw new ServiceUnavailableException(
+        "Branch access could not be verified",
+      );
+    if (membership) {
+      if (
+        membership.is_active !== true ||
+        !["owner", "manager", "staff"].includes(membership.role)
+      ) {
+        throw new UnauthorizedException(
+          "Access to this branch has been revoked or its role is unreadable",
+        );
+      }
+      return membership.role;
+    }
+    // ADR 0088 T5: the legacy row proves home membership, not privilege.
+    if (restaurantId === user.restaurant_id) return "staff";
+    throw new UnauthorizedException("You do not have access to this branch");
   }
 
   /**

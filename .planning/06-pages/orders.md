@@ -30,6 +30,10 @@ links: ["[[PAGE-CONTRACT]]", "[[receiving-door]]", "[[providers]]"]
 - **Draft email approval panel** → (panel on this page — approve/send vendor email)
 - **The vendor's answers** (rebuilt ledger row) → (house Sheet on this page) → API `GET /api/v1/procurement/orders/:id/conversations`; its Confirm → `POST …/:id/approve`, its Reject → `DELETE /api/v1/procurement/orders/:id?reason=…`
 
+## Action integrity — 2026-09-13 (pending release)
+
+`markDelivered` resolves the order's unit and pack before its status write, books bottle quantities, and converts a stated agreement price to the same bottle unit. Unknown packs and opaque units refuse before booking; the historical order-unit display cache is retained. Native approval now opens order review and mints a challenge when the held approval gesture starts, then redeems it in the request header. A short release or background transition cancels; the screen reader path uses two explicit actions. These one-time seals are not stored in the durable outbox or refreshed by a background retry. The server's response, rather than an elapsed grace timer, determines approval success.
+
 ## 1. Purpose
 
 The procurement cockpit: draft, approve, cancel and track purchase orders through
