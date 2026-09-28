@@ -37,9 +37,15 @@ import type {
 } from './useReceivingNextData';
 
 const role = vi.hoisted(() => ({ current: 'owner' as string }));
-vi.mock('@/contexts/AuthContext', () => ({
-  useAuth: () => ({ user: { userId: 'u1', restaurantId: 'rest-A', role: role.current } }),
-}));
+vi.mock('@/contexts/AuthContext', async () => {
+  const React = await import('react');
+  return {
+    // The day line (sketch 119 E, a page element on this page) reads the
+    // context itself; with none, its shell gate resolves off — the default.
+    AuthContext: React.createContext(null),
+    useAuth: () => ({ user: { userId: 'u1', restaurantId: 'rest-A', role: role.current } }),
+  };
+});
 
 const staffData: StaffLaneData = {
   deliveries: [],

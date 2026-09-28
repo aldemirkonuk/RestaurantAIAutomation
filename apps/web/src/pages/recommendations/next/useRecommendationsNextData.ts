@@ -104,12 +104,28 @@ export interface StateCounts {
 }
 
 export interface DigestPref {
+  /**
+   * False when this house has never stored a digest row at all. The
+   * `digestEnabled`/`digestHour`/`digestMinUrgency` fields below are the
+   * gateway's defaults in that case, not a fact about what the house chose
+   * — callers must gate any "Armed"/"Not armed, HH:00" sentence on `set`.
+   */
+  set: boolean;
   digestEnabled: boolean;
   digestHour: number;
   digestMinUrgency: string;
   recipientEmail: string | null;
   lastSentAt: string | null;
 }
+
+/**
+ * What writing the house's post answered. Mirrors `GoalWrite`'s shape: a
+ * failure carries the gateway's own sentence rather than a generic one, and
+ * the caller decides what to say from it.
+ */
+export type DigestWrite =
+  | { ok: true; digest: DigestPref }
+  | { ok: false; message: string; expired: boolean };
 
 export interface TeamOption {
   id: string;
@@ -273,6 +289,17 @@ export interface RecommendationsData {
   includeDay: (date: string) => Promise<void>;
   /** undefined = not asked yet; null = the read failed. */
   digest: DigestPref | null | undefined;
+  /**
+   * Writes the house's own post — `PUT /analytics/recommendations/:rid/digest`
+   * (`recommendation-actions.service.ts` `setDigestPref`, the digest branch).
+   * This is the HOUSE's stored preference, never a person's own copy — see
+   * `useDigestSubscription` for that.
+   */
+  setHouseDigest: (patch: {
+    digestEnabled?: boolean;
+    digestHour?: number;
+    digestMinUrgency?: string;
+  }) => Promise<DigestWrite>;
   team: TeamOption[] | null | undefined;
   teamFailed: boolean;
   loadTeam: () => void;
@@ -439,6 +466,44 @@ export function useRecommendationsNextData(): RecommendationsData {
   const say = useCallback((text: string) => {
     setNote(text);
   }, []);
+
+  /**
+   * `PUT /analytics/recommendations/:rid/digest` — the route the analytics
+   * controller has carried since NEW-303 (`analytics.controller.ts:1151`).
+   * This writes the HOUSE's one stored post (`digestEnabled`, `digestHour`,
+   * `digestMinUrgency`), not a person's own copy of it — the digest sender
+   * that actually mails anyone (branch `feat/finish-digest`) is a separate,
+   * per-person subscription; see `useDigestSubscription`. The response is
+   * folded into the read `digest` state on success rather than forcing a
+   * second GET, matching `createGoal`'s pattern.
+   */
+  const setHouseDigest = useCallback(
+    async (patch: {
+      digestEnabled?: boolean;
+      digestHour?: number;
+      digestMinUrgency?: string;
+    }): Promise<DigestWrite> => {
+      if (!rid) return { ok: false, message: 'no restaurant is selected', expired: false };
+      try {
+        const { data } = await apiClient.put<DigestPref>(`${BASE}/${rid}/digest`, patch);
+        const next = data ?? null;
+        if (next) setDigest(next);
+        say('The house’s post preference was stored.');
+        return next
+          ? { ok: true, digest: next }
+          : { ok: false, message: 'the gateway stored it but returned nothing back', expired: false };
+      } catch (err) {
+        const f = failureOf(err);
+        say(
+          f.expired
+            ? 'Your session has expired — the house’s post was not changed. Sign in again.'
+            : `The house’s post was not changed (${f.message}).`,
+        );
+        return { ok: false, message: f.message, expired: f.expired };
+      }
+    },
+    [rid, say],
+  );
 
   // The exclusion store — read once per tenant, and separately from the book,
   // so an unreadable exclusion list never takes the entries down with it. It
@@ -907,6 +972,7 @@ export function useRecommendationsNextData(): RecommendationsData {
     rulesEvaluated,
     generatedAt,
     digest,
+    setHouseDigest,
     team,
     teamFailed: team === null,
     loadTeam,

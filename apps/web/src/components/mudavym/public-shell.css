@@ -4,11 +4,10 @@
 
    Tokens only. There is NOT ONE hex literal in this file, no
    `prefers-color-scheme` block and no `[data-theme]` block — every colour is a
-   `.mudavym` custom property from `styles/mudavym.css`, so both grounds arrive
-   by the three routes ADR 0042 already defines (the app's `.dark` class, an
-   explicit `data-ground="charcoal"`, and mudavym.css's own pre-hydration media
-   query) and none of them can be contradicted from here.
-   `PublicShell.test.tsx` reads this file back and asserts all three.
+   `.mudavym` custom property from `styles/mudavym.css`. The current token
+   contract defaults to Warm Charcoal; an explicit data-ground="paper" opts
+   into the shared paper exception. This stylesheet owns neither palette.
+   `PublicShell.test.tsx` checks that no competing theme branch is introduced.
 
    There are also no `box-shadow` colours, deliberately: the separation in this
    house is a hairline and a change of ground (`--paper-1` on `--paper-0`,
@@ -20,8 +19,10 @@
    to a desk, not the other way round.
 
    Motion is `settle` — cubic-bezier(0.16, 1, 0.3, 1) at 320ms, the house curve
-   from lib/mudavym/motion.ts:103 — and only a `door` moves. A document and a
-   board do not arrive; they are simply there.
+   from lib/mudavym/motion.ts:103 — and only a `door` arrives. A document and a
+   board do not arrive; they are simply there. What does move in every shape
+   is a change of state (loading, then the form, then the outcome), which
+   settles in over 200ms on the same curve (`.mdv-pub__state`).
 */
 
 .mdv-pub {
@@ -117,8 +118,15 @@
   gap: 9px;
 }
 
+/* The signature is a way home, so it is a 44px target even where the board's
+   15px wordmark would make it a 15px one (measured 2026-09-17: 34px on a door,
+   15px on the board). */
 .mdv-pub__signlink {
   display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  min-width: 44px;
   border-radius: 8px;
   text-decoration: none;
   transition: opacity 160ms cubic-bezier(0.16, 1, 0.3, 1);
@@ -152,6 +160,9 @@
   letter-spacing: -0.015em;
   color: var(--ink-1);
   text-wrap: balance;
+  /* A vendor's display name is theirs to choose, and one unbroken word must
+     not push a 375px page sideways. */
+  overflow-wrap: anywhere;
 }
 
 /* An eyebrow already opened the space above the title. */
@@ -214,6 +225,20 @@
   text-align: center;
 }
 
+/* A link in the foot is usually the only way back ("Back to sign in"), so it
+   is a 44px target, not an 11.5px line of text (measured 16px tall). */
+.mdv-pub__foot a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
+
+/* `.mdv-link` is 12px in `sheet.css`, sized for an overlay's chrome. Inside
+   13.5px prose that is a link visibly smaller than the sentence it sits in. */
+.mdv-pub .mdv-link {
+  font-size: inherit;
+}
+
 /* ── focus, on a paper gap ───────────────────────────────────────────────
    The app ships a GLOBAL `*:focus-visible { ring-2 ring-wine-500 }`
    (styles/globals.css:221-264) — a wine ring, a colour this house does not
@@ -230,13 +255,48 @@
   box-shadow: none;
 }
 
+/* ── ink, out-ranking the app's base layer ───────────────────────────────
+   `styles/globals.css:154-160` paints every <p> `text-slate-600` and every
+   `.dark p` slate-300. Neither is a token, and on this plate's `--paper-1` the
+   first measured 2.35:1 (Chrome, 375px, 2026-09-17: the forgot-password
+   success message, the verify-email instruction, both no-access paragraphs,
+   the vendor's 404 and 503) — prose a stranger cannot read.
+
+   `main.tsx` imports `App.tsx` BEFORE `globals.css`, so the base layer lands
+   LATER in the bundle and wins every specificity tie. The shell's ink has to
+   out-rank it rather than out-order it: `.mudavym.mdv-pub p` is (0,2,1), above
+   `.dark p` at (0,1,1). The vocabulary's own quieter or louder inks are then
+   restated one step higher, at (0,3,0), so this default does not flatten
+   them. `PublicShell.test.tsx` asserts this selector's text and the
+   specificity claim against `globals.css`'s own rule directly. */
+
+.mudavym.mdv-pub p {
+  color: var(--ink-2);
+}
+
+.mudavym.mdv-pub :is(h1, h2, h3) {
+  color: var(--ink-1);
+}
+
+/* An alert is a message the reader must read, at full ink. */
+.mudavym.mdv-pub .mdv-alert {
+  color: var(--ink-1);
+}
+
+.mudavym.mdv-pub :is(.mdv-quiet, .mdv-hintline) {
+  color: var(--ink-3);
+}
+
 /* ── content vocabulary ──────────────────────────────────────────────────
-   Three classes, and only three. Everything else a page in this shell needs —
-   `.mdv-label`, `.mdv-input`, `.mdv-btn`, `.mdv-btn--seal`, `.mdv-actions`,
-   `.mdv-alert`, `.mdv-link`, `.mdv-note`, `.mdv-quiet`, `.mdv-record`,
-   `.mdv-panelbox` — is already declared unscoped in `sheet.css` and is
-   imported with it. A second vocabulary is exactly the drift the one-shell
-   decision was made to end. */
+   One vocabulary, in this file. Everything a page in this shell needs that
+   is not listed below — `.mdv-label`, `.mdv-input`, `.mdv-btn`,
+   `.mdv-btn--seal`, `.mdv-actions`, `.mdv-alert`, `.mdv-link`, `.mdv-note`,
+   `.mdv-quiet`, `.mdv-record`, `.mdv-panelbox` — is already declared unscoped
+   in `sheet.css` and is imported with it. The `mdv-pub__` classes here are the
+   ones the seven pages measurably needed and `sheet.css` does not have: a
+   plate, prose, a stack, a pair of facts, a board and its toolbar. A second
+   stylesheet with a second prefix is exactly the drift the one-shell decision
+   was made to end, so a page never adds one; it adds a class here. */
 
 /* `.mdv-panelbox` at page scale: the plate a door's form or a document's
    section sits on. */
@@ -291,18 +351,307 @@
   gap: 6px;
 }
 
-/* A board's table is six columns wide and a phone is 375px. The table scrolls
-   inside this, never the page: a public page that scrolls sideways as a whole
-   is a page a stranger cannot read. Measured in Chrome at 375px on the harness
-   — the page's scrollWidth stays 375 while this scroller's is 620.
+/* A document's sections are plates; inside one, a second paragraph or a list
+   needs the same breath the sections have between them. */
+.mdv-pub__prose .mdv-pub__plate > * + * {
+  margin-top: 9px;
+}
 
-   A page using this MUST give the element `tabIndex={0}`, `role="region"` and
-   an accessible name: a scrollable box that no keyboard can reach is WCAG
-   2.1.1, and only recent Chrome focuses one on its own. The class cannot do
-   that for the page, so it is said here rather than discovered later. */
+/* ── a stack: a door's plate, top to bottom ──────────────────────────────
+   A statement, a field, an act. Buttons and link-buttons fill the door's
+   column and are 44px targets. A link styled as a button is an inline <a>,
+   and `sheet.css`'s `.mdv-btn` assumes a <button>, whose label the UA centres;
+   an <a> needs flex to do the same (measured: text 9px from the top and 19px
+   from the bottom of a 44px box before this rule). */
+
+.mdv-pub__stack {
+  display: grid;
+  gap: 14px;
+}
+
+.mdv-pub__stack > p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.mdv-pub__stack > .mdv-btn {
+  width: 100%;
+  min-height: 44px;
+}
+
+.mdv-pub a.mdv-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  text-decoration: none;
+}
+
+/* On a board the column is 1080px; a retry the full width of it is a
+   1038px bar, not a button. */
+.mdv-pub[data-measure='board'] .mdv-pub__stack > .mdv-btn {
+  justify-self: start;
+  width: auto;
+  padding-inline: 18px;
+}
+
+/* A new state arrives, it does not snap in: loading, the form, the outcome.
+   Keyed by the page on the state it shows, so each swap replays it. Shorter
+   and quieter than the door's own arrival, which it may follow. */
+@keyframes mdv-pub-settle {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.mdv-pub__state {
+  animation: mdv-pub-settle 200ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* ── facts: a label and its value, the invitation's restaurant and role ── */
+
+.mdv-pub__facts {
+  margin: 0;
+  display: grid;
+  gap: 9px;
+}
+
+.mdv-pub__facts > div {
+  display: grid;
+  grid-template-columns: 90px minmax(0, 1fr);
+  gap: 14px;
+}
+
+.mdv-pub__facts dt {
+  color: var(--ink-3);
+}
+
+.mdv-pub__facts dd {
+  margin: 0;
+  color: var(--ink-1);
+  overflow-wrap: anywhere;
+}
+
+/* ── fields, on the shell's own ground ───────────────────────────────────
+   `globals.css` forces every input and select to near-black on white with
+   `!important` (styles/globals.css:366-383), so a token field on charcoal
+   renders as a white slab unless the override is `!important` too.
+
+   The boundary is `--ink-3`, not `sheet.css`'s `--paper-2`: a field's edge is
+   the only thing that says "type here", and `--paper-2` on the plate's
+   `--paper-1` measured 1.09:1 on charcoal, under WCAG 1.4.11's 3:1. The shared
+   vocabulary carries the same edge everywhere; that is the design-token
+   wave's to change, and this is scoped to the public door only. */
+
+.mdv-pub input.mdv-input,
+.mdv-pub select.mdv-input {
+  min-height: 44px;
+  color: var(--ink-1) !important;
+  -webkit-text-fill-color: var(--ink-1) !important;
+  background-color: var(--paper-0) !important;
+  border-color: var(--ink-3);
+  color-scheme: inherit !important;
+}
+
+.mdv-pub input.mdv-input::placeholder {
+  color: var(--ink-3) !important;
+  -webkit-text-fill-color: var(--ink-3) !important;
+}
+
+/* ── a board: a vendor's published catalogue ─────────────────────────── */
+
+.mdv-pub__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: end;
+}
+
+.mdv-pub__toolbar > :first-child {
+  flex: 1 1 240px;
+}
+
+.mdv-pub__contacts {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 18px;
+}
+
+/* An address or a phone number is tapped, not read: 44px tall. */
+.mdv-pub__contacts a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.mdv-pub__logo {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+  border-radius: 9px;
+}
+
+/* The table is a stack of rows on a phone and a table on a desk, decided by
+   the width the board actually has (a container query), not the viewport's.
+
+   On a phone the two things a buyer came for, the wine and its price, share
+   the first line; vintage, origin and format follow underneath, each with
+   its own name shown. Measured 2026-09-17 before this: a 760px table in a
+   343px box, both price columns off-canvas, with nothing on screen saying
+   so.
+
+   A table given `display: grid` or `block` loses its table semantics in some
+   engines, so the page sets `role` on every table element explicitly, and
+   the header row stays in the accessibility tree while it is visually
+   hidden.
+
+   Measured 2026-09-17: a wine or producer name that is one unbreakable token
+   (no space or hyphen — real vendor data can be) still forces its column,
+   and with it the whole `display: table` board, past 100% at any container
+   width once the two `.mdv-pub__num` columns stay `white-space: nowrap`
+   beside it (737px column, harness measured 1198px board, page-level
+   sideways scroll). `overflow-x` on this wrapper — not the page — is the
+   containment for that case; it is not dead weight from the old
+   `min-width:760px` table. */
+
 .mdv-pub__scroll {
+  container-type: inline-size;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
+}
+
+.mdv-pub__board {
+  display: block;
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.mdv-pub__board thead {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.mdv-pub__board tbody {
+  display: block;
+}
+
+.mdv-pub__board tr {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 14px;
+  row-gap: 4px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--paper-2);
+}
+
+.mdv-pub__board td {
+  display: block;
+  padding: 0;
+  color: var(--ink-2);
+}
+
+.mdv-pub__board td strong {
+  color: var(--ink-1);
+  font-weight: 600;
+}
+
+.mdv-pub__board td small {
+  display: block;
+  margin-top: 4px;
+  color: var(--ink-3);
+}
+
+.mdv-pub__board .mdv-pub__wine {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+}
+
+.mdv-pub__board .mdv-pub__price {
+  grid-column: 2;
+  grid-row: 1;
+  color: var(--ink-1);
+}
+
+.mdv-pub__board .mdv-pub__per750 {
+  grid-column: 2;
+  grid-row: 2;
+}
+
+.mdv-pub__board .mdv-pub__detail {
+  grid-column: 1 / -1;
+}
+
+.mdv-pub__num {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The column's name, said beside its value only where there is no header
+   row to say it. Hidden from assistive technology, which has the header. */
+.mdv-pub__cellname {
+  color: var(--ink-3);
+  margin-right: 6px;
+}
+
+@container (min-width: 720px) {
+  .mdv-pub__board {
+    display: table;
+  }
+
+  .mdv-pub__board thead {
+    position: static;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip-path: none;
+    white-space: normal;
+    display: table-header-group;
+  }
+
+  .mdv-pub__board tbody {
+    display: table-row-group;
+  }
+
+  .mdv-pub__board tr {
+    display: table-row;
+    padding: 0;
+    border-bottom: 0;
+  }
+
+  .mdv-pub__board th,
+  .mdv-pub__board td {
+    display: table-cell;
+    padding: 14px 12px;
+    border-bottom: 1px solid var(--paper-2);
+    vertical-align: top;
+  }
+
+  .mdv-pub__board th {
+    color: var(--ink-3);
+    font-weight: 500;
+    text-align: left;
+  }
+
+  .mdv-pub__board th.mdv-pub__num {
+    text-align: right;
+  }
+
+  .mdv-pub__cellname {
+    display: none;
+  }
 }
 
 /* ── arrival ─────────────────────────────────────────────────────────────
@@ -324,7 +673,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .mdv-pub[data-measure='door'] .mdv-pub__col {
+  .mdv-pub[data-measure='door'] .mdv-pub__col,
+  .mdv-pub__state {
     animation: none;
   }
 

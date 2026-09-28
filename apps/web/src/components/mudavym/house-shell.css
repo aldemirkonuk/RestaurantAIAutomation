@@ -1,0 +1,909 @@
+/* ============================================================
+   The house shell — sketch 119 direction D, "the counter"
+   ============================================================
+
+   Tokens only. Every colour is a `.mudavym` custom property
+   (styles/mudavym.css), so each region turns with the house ground and the
+   peer lane that makes the ground follow the person (ADR 0169) changes
+   nothing here. No ground is declared in this file.
+
+   Widths are the sketch's: the rail 232 (a 28 px strip tucked), the counter
+   320 (a ~52 px strip tucked — each verb and its mark, never a blank edge).
+   Motion is `ink` (160 ms) for chrome micro-states and nothing else; under
+   `prefers-reduced-motion` it is none. Nothing counts itself: no number here
+   animates. */
+
+.mdv-shell {
+  min-height: 100vh;
+}
+
+/* The house header is 53 px (a 52 px row and its 1 px rule, house-header.css);
+   the sticky rail and counter start under it. Offline, the 30 px strip sits
+   under the header too, so they start below that — otherwise the counter's
+   foot ran 30 px past the window. */
+.mdv-shell[data-offline='true'] {
+  --mdv-shell-top: 83px;
+}
+
+.mdv-rail,
+.mdv-counter,
+.mdv-doors,
+.mdv-actsheet__facts {
+  --mdv-sans: 'DM Sans', 'Plus Jakarta Sans', system-ui, sans-serif;
+  --mdv-serif: 'Fraunces', Georgia, 'Times New Roman', serif;
+  --mdv-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.mdv-shell__body {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+}
+
+.mdv-shell__page {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: calc(100vh - 52px);
+}
+
+.mdv-shell__main {
+  min-width: 0;
+}
+
+/* ── offline: the strip under the header ─────────────────────────────── */
+
+.mdv-shell__offline {
+  position: sticky;
+  top: 52px;
+  z-index: 29;
+  padding: 6px 16px;
+  background: var(--paper-1);
+  color: var(--ink-2);
+  border-bottom: 1px solid var(--paper-2);
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+}
+
+/* ── the rooms rail ──────────────────────────────────────────────────── */
+
+.mdv-rail {
+  position: sticky;
+  top: var(--mdv-shell-top, 53px);
+  height: calc(100vh - var(--mdv-shell-top, 53px));
+  width: 232px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  padding: 14px 12px 10px;
+  background: var(--paper-0);
+  color: var(--ink-2);
+  border-right: 1px solid var(--paper-2);
+  font-family: var(--mdv-sans);
+}
+
+.mdv-rail__scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.mdv-rail ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.mdv-rail__ask {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 10px;
+  margin-bottom: 10px;
+  border: 1px solid var(--paper-2);
+  border-radius: 9px;
+  background: var(--paper-1);
+  color: var(--ink-1);
+  font-family: var(--mdv-serif);
+  font-size: 13.5px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mdv-rail__ask .mdv-kbd {
+  margin-left: auto;
+}
+
+.mdv-rail__sect {
+  display: block;
+  padding: 12px 10px 5px;
+  font-family: var(--mdv-mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.mdv-rail__room {
+  display: flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 7px;
+  font-size: 13px;
+  color: var(--ink-2);
+  text-decoration: none;
+  transition: background-color 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.mdv-rail__room:hover {
+  background: var(--paper-1);
+  color: var(--ink-1);
+}
+
+.mdv-rail__room[aria-current='page'] {
+  background: var(--paper-1);
+  color: var(--ink-1);
+  box-shadow: inset 2px 0 0 var(--seal);
+}
+
+.mdv-rail__room:focus-visible,
+.mdv-rail__ask:focus-visible,
+.mdv-rail__tuck:focus-visible,
+.mdv-rail__stripbtn:focus-visible,
+.mdv-counter__act:focus-visible,
+.mdv-counter__tuck:focus-visible,
+.mdv-counter__stripverb:focus-visible,
+.mdv-counter__stripopen:focus-visible,
+.mdv-doors__door:focus-visible,
+.mdv-hdr__counter:focus-visible {
+  outline: 2px solid var(--seal-ring);
+  outline-offset: 1px;
+}
+
+.mdv-rail__foot {
+  margin-top: 10px !important;
+  padding-top: 8px !important;
+  border-top: 1px solid var(--paper-2);
+}
+
+.mdv-rail__tuck {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin-top: 6px;
+  padding: 8px 10px;
+  background: none;
+  border: 0;
+  font-size: 11.5px;
+  color: var(--ink-4);
+  cursor: pointer;
+  text-align: left;
+}
+
+.mdv-rail__tuck .mdv-kbd {
+  margin-left: auto;
+}
+
+.mdv-rail--strip {
+  width: 28px;
+  padding: 14px 0 0;
+  align-items: center;
+}
+
+.mdv-rail__stripbtn {
+  background: none;
+  border: 0;
+  padding: 4px;
+  cursor: pointer;
+}
+
+.mdv-rail__stripbtn span {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  font-family: var(--mdv-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+/* The rooms inside the phone's sheet: the same list, no column chrome. */
+.mdv-rail--sheet {
+  position: static;
+  height: auto;
+  width: auto;
+  /* The Sheet's body carries no inset of its own (sheet.css); the list
+     supplies it, as the Sheet's head does (14px 16px). */
+  padding: 6px 16px 14px;
+  border: 0;
+  background: transparent;
+}
+
+/* ── the counter ─────────────────────────────────────────────────────── */
+
+.mdv-counter {
+  position: sticky;
+  top: var(--mdv-shell-top, 53px);
+  height: calc(100vh - var(--mdv-shell-top, 53px));
+  width: 320px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  background: var(--paper-0);
+  color: var(--ink-2);
+  border-left: 1px solid var(--paper-2);
+  font-family: var(--mdv-sans);
+}
+
+.mdv-counter__inner {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.mdv-counter__head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 16px 16px 6px;
+}
+
+.mdv-counter__title,
+.mdv-counter__eyebrow {
+  margin: 0;
+  font-family: var(--mdv-mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.mdv-counter__read {
+  margin-left: auto;
+  font-family: var(--mdv-mono);
+  font-size: 10px;
+  color: var(--ink-4);
+  text-align: right;
+}
+
+.mdv-counter__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 16px;
+}
+
+.mdv-counter__sec {
+  padding: 10px 0 6px;
+}
+
+.mdv-counter__sec + .mdv-counter__sec {
+  border-top: 1px solid var(--paper-2);
+}
+
+.mdv-counter__eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.mdv-counter__n {
+  margin-left: auto;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  color: var(--ink-4);
+}
+
+.mdv-counter__acts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.mdv-counter__act {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  width: calc(100% + 16px);
+  margin: 0 -8px;
+  padding: 8px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.mdv-counter__act:hover {
+  background: var(--paper-1);
+}
+
+.mdv-counter__act[data-yours='false'] {
+  border: 1px dashed var(--paper-2);
+}
+
+.mdv-counter__verb {
+  flex: none;
+  width: 58px;
+  padding-top: 3px;
+  font-family: var(--mdv-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--seal-deep);
+}
+
+.mdv-counter__act[data-yours='false'] .mdv-counter__verb {
+  color: var(--ink-4);
+}
+
+.mdv-counter__main {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.mdv-counter__what {
+  font-size: 12.5px;
+  line-height: 1.35;
+  color: var(--ink-1);
+}
+
+.mdv-counter__detail {
+  margin-top: 2px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--ink-3);
+}
+
+.mdv-counter__at {
+  flex: none;
+  padding-top: 3px;
+  font-family: var(--mdv-mono);
+  font-size: 10px;
+  color: var(--ink-4);
+  white-space: nowrap;
+}
+
+.mdv-counter__regline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--ink-3);
+}
+
+.mdv-counter__again {
+  margin-left: auto;
+  flex: none;
+  font-size: 11.5px;
+}
+
+/* A register that did not answer: the hollow ring. Never a filled dot, never
+   a zero. */
+.mdv-counter__ring {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  border: 1.5px solid var(--ink-3);
+  background: transparent;
+}
+
+/* A register still being read: a static hairline, never the ring. */
+.mdv-counter__hair {
+  flex: none;
+  width: 14px;
+  height: 0;
+  border-top: 1px solid var(--ink-4);
+}
+
+.mdv-counter__said {
+  padding: 10px 16px 6px;
+  border-top: 1px solid var(--paper-2);
+}
+
+.mdv-counter__quiet {
+  margin: 4px 0 6px;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--ink-3);
+}
+
+.mdv-counter__saidlist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.mdv-counter__saidlist li {
+  display: flex;
+  flex-direction: column;
+  padding: 6px 0;
+}
+
+.mdv-counter__saideb {
+  font-family: var(--mdv-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+}
+
+.mdv-counter__saidlist li[data-kind='sealed'] .mdv-counter__saideb {
+  color: var(--seal-deep);
+}
+
+.mdv-counter__saidtxt {
+  font-size: 12px;
+  color: var(--ink-1);
+}
+
+.mdv-counter__saidsub {
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+.mdv-counter__foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px 12px;
+  border-top: 1px solid var(--paper-2);
+  font-family: var(--mdv-mono);
+  font-size: 10px;
+  color: var(--ink-4);
+}
+
+.mdv-counter__foot .mdv-link {
+  margin-left: auto;
+  flex: none;
+}
+
+.mdv-counter__tuck {
+  padding: 8px 16px 12px;
+  background: none;
+  border: 0;
+  font-size: 11.5px;
+  color: var(--ink-4);
+  text-align: left;
+  cursor: pointer;
+}
+
+/* Tucked: ~52 px, each verb with its mark. */
+.mdv-counter--strip {
+  width: 52px;
+  align-items: center;
+  padding-top: 10px;
+}
+
+.mdv-counter__stripopen {
+  background: none;
+  border: 0;
+  padding: 6px;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+
+.mdv-counter__strip {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mdv-counter__stripverb {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  width: 44px;
+  padding: 8px 2px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+
+.mdv-counter__stripverb:hover {
+  background: var(--paper-1);
+}
+
+.mdv-counter__stripword {
+  font-family: var(--mdv-mono);
+  font-size: 8.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.mdv-counter__stripn {
+  font-family: var(--mdv-mono);
+  font-size: 12px;
+  color: var(--ink-1);
+}
+
+/* The counter inside the phone's sheet: the same body, no column chrome. */
+.mdv-counter--sheet {
+  position: static;
+  height: auto;
+  width: auto;
+  /* Same reason as .mdv-rail--sheet: without it the eyebrows sat on the
+     panel's edge and the times were clipped at 375 px. */
+  padding: 0 16px 12px;
+  border: 0;
+  background: transparent;
+}
+
+/* The sheet's own title already says "On the counter"; the column's title
+   would say it twice. The register count beside it stays. */
+.mdv-counter--sheet .mdv-counter__title {
+  display: none;
+}
+
+/* The phone's shell sheets rest ABOVE the four doors (sketch 119 D, F9: "the
+   page visible above it and the four doors visible under it"), not over them.
+   The doors stay under the scrim — a tap there closes the sheet, as any tap
+   outside it does. 57 px is the doors' own height (.mdv-doors). */
+.mdv-ovl--sheet[data-form='bottom'] .mdv-ovl__panel.mdv-shell__phonesheet {
+  bottom: calc(57px + env(safe-area-inset-bottom, 0px));
+}
+
+.mdv-counter--sheet .mdv-counter__body {
+  overflow: visible;
+  padding: 0;
+}
+
+.mdv-counter--sheet .mdv-counter__head,
+.mdv-counter--sheet .mdv-counter__said,
+.mdv-counter--sheet .mdv-counter__foot {
+  padding-left: 0;
+  padding-right: 0;
+}
+
+/* ── the header's counter toggle ─────────────────────────────────────── */
+
+.mdv-hdr .mdv-hdr__counter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  position: relative;
+  padding: 6px 9px;
+  border: 1px solid var(--paper-2);
+  border-radius: 9px;
+  background: transparent;
+  color: var(--ink-2);
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: background-color 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.mdv-hdr .mdv-hdr__counter:hover,
+.mdv-hdr .mdv-hdr__counter[aria-pressed='true'] {
+  background: var(--paper-1);
+}
+
+.mdv-hdr__counterdot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--seal);
+}
+
+.mdv-hdr__counterdot--hollow {
+  background: transparent;
+  border: 1.5px solid var(--ink-3);
+}
+
+/* On a phone the Counter door carries the dot; the header keeps the words off. */
+@media (max-width: 767px) {
+  .mdv-hdr .mdv-hdr__counter {
+    display: none;
+  }
+}
+
+/* ── the phone's four doors ──────────────────────────────────────────── */
+
+.mdv-doors {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 40;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  background: var(--paper-0);
+  border-top: 1px solid var(--paper-2);
+  font-family: var(--mdv-sans);
+}
+
+.mdv-doors__door {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  min-height: 56px;
+  padding: 8px 4px 6px;
+  border: 0;
+  background: none;
+  color: var(--ink-3);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.mdv-doors__door[aria-pressed='true'] {
+  color: var(--ink-1);
+}
+
+.mdv-doors__glyph {
+  position: relative;
+  display: inline-flex;
+}
+
+.mdv-doors__dot {
+  position: absolute;
+  top: -2px;
+  right: -5px;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--seal);
+}
+
+.mdv-doors__dot--hollow {
+  background: transparent;
+  border: 1.5px solid var(--ink-3);
+}
+
+.mdv-shell[data-phone='true'] .mdv-shell__page {
+  padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+}
+
+/* ── one act, in its sheet ───────────────────────────────────────────── */
+
+.mdv-actsheet__facts {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  /* The Sheet's body has no inset of its own (sheet.css: each body's content
+     supplies it, as the head's 14px 16px does); without this the labels sat
+     on the panel's left edge, clipped. */
+  padding: 14px 16px;
+  font-family: var(--mdv-sans);
+}
+
+.mdv-actsheet__facts div {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  gap: 10px;
+  align-items: baseline;
+}
+
+.mdv-actsheet__facts dt {
+  font-family: var(--mdv-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.mdv-actsheet__facts dd {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink-1);
+}
+
+.mdv-actsheet__foot {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mdv-actsheet__links {
+  display: flex;
+  justify-content: space-between;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mdv-rail__room,
+  .mdv-counter__act,
+  .mdv-hdr .mdv-hdr__counter {
+    transition: none;
+  }
+}
+
+/* ── the error boundary's screen ─────────────────────────────────────── */
+
+.mdv-errscreen {
+  max-width: 480px;
+  margin: 64px auto 0;
+  padding: 32px 24px;
+  text-align: center;
+  font-family: var(--mdv-sans, 'DM Sans', system-ui, sans-serif);
+  /* Paints the house ground. It sits in the shell's page column, whose ground
+     is the LEGACY page's (light); transparent, its ink-1 headline read at
+     about 1.1:1 there (measured on the 404 below, the same rule). */
+  border: 1px solid var(--paper-2);
+  border-radius: 12px;
+  background: var(--paper-0);
+}
+
+.mdv-errscreen__icon {
+  width: 22px;
+  height: 22px;
+  color: var(--ink-3);
+}
+
+.mdv-errscreen__eyebrow {
+  margin: 12px 0 8px;
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.mdv-errscreen__headline {
+  margin: 0 0 8px;
+  font-family: 'Fraunces', Georgia, 'Times New Roman', serif;
+  font-size: 19px;
+  font-weight: 500;
+  line-height: 1.35;
+  color: var(--ink-1);
+}
+
+.mdv-errscreen__body {
+  margin: 0 0 6px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink-3);
+}
+
+.mdv-errscreen__detail {
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  background: var(--paper-1);
+  border-radius: 8px;
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  color: var(--ink-3);
+  word-break: break-word;
+  text-align: left;
+}
+
+.mdv-errscreen__actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  margin-top: 22px;
+}
+
+.mdv-errscreen__retry {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border: 1px solid var(--paper-2);
+  border-radius: 8px;
+  background: var(--paper-0);
+  color: var(--ink-1);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.mdv-errscreen__retry:hover {
+  background: var(--paper-1);
+}
+
+/* ── the in-app 404 ──────────────────────────────────────────────────── */
+
+.mdv-404 {
+  max-width: 640px;
+  margin: 32px auto;
+  padding: 40px 24px 32px;
+  font-family: var(--mdv-sans, 'DM Sans', system-ui, sans-serif);
+  /* Paints the house ground: measured 2026-09-21 in the Browser pane: this root's ink-1 (#EFE7D9) landed on
+     the legacy page's own light ground, rgb(250,247,245), at about 1.1:1
+     for the headline "There is no page at …". */
+  border: 1px solid var(--paper-2);
+  border-radius: 12px;
+  background: var(--paper-0);
+}
+
+.mdv-404__eyebrow {
+  margin: 0 0 10px;
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.mdv-404__headline {
+  margin: 0 0 10px;
+  font-family: 'Fraunces', Georgia, 'Times New Roman', serif;
+  font-size: 22px;
+  font-weight: 500;
+  line-height: 1.3;
+  color: var(--ink-1);
+  word-break: break-word;
+}
+
+.mdv-404__body {
+  margin: 0 0 20px;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--ink-3);
+}
+
+.mdv-404__links {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 32px;
+}
+
+.mdv-404__home {
+  font-weight: 600;
+}
+
+.mdv-404__rooms {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 20px;
+  padding-top: 20px;
+  border-top: 1px solid var(--paper-2);
+}
+
+.mdv-404__group ul {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+}
+
+.mdv-404__group li {
+  padding: 3px 0;
+}
+
+.mdv-404__group a {
+  font-size: 12.5px;
+  color: var(--ink-2);
+  text-decoration: none;
+}
+
+.mdv-404__group a:hover {
+  color: var(--ink-1);
+  text-decoration: underline;
+}
+
+.mdv-404__groupname {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+}

@@ -42,7 +42,7 @@ website_scrape — which is the whole reason to host it" (`VendorPortal.tsx:40-4
 link (`PAGE_MAP.md` entry-point list) — entry is entirely external: the vendor shares
 their own URL, and search engines can index it via the injected schema.org JSON-LD
 (`ItemList` → `Product` → `Offer` with price/currency/availability,
-`VendorPortal.tsx:118-158`) plus a real `document.title` (`:154`). Every visit is a
+`VendorPortal.tsx:118-158`) plus a real `document.title` (`:154`). [CLOSED 2026-09-21: see §9.] Every visit is a
 vendor marketing *their* catalogue on Mudavym infrastructure — inbound acquisition the
 platform gets for free, and the priced observations feed [[vendor-prices]] comparisons.
 Route comment: `App.tsx:159-161`.
@@ -55,7 +55,7 @@ Route comment: `App.tsx:159-161`.
 - `GET {VITE_API_GATEWAY_URL}/api/v1/vendor-portal/:slug` — direct axios
   (`VendorPortal.tsx:93-94`); ENDPOINTS.md:656-660, explicit `@Public()` 🌐
 - The sibling `GET /vendor-portal/:slug/jsonld` (ENDPOINTS.md:661) is **not called by
-  this page** — it serves the ingester; the page injects its own JSON-LD client-side.
+  this page** — it serves the ingester; the page injects its own JSON-LD client-side. [CLOSED 2026-09-21: see §9.]
 
 ## 5. Signals
 none — no view tracking of any kind. For the one page whose whole point is external
@@ -82,7 +82,7 @@ which also means zero Mudavym attribution (see §9).
   a true 404 for anything unpublished and a 503 on outage. Search and answer engines may
   read it; training crawlers are asked not to (robots.txt). **Still open:** the page's own
   client injection (`:118-158`) now duplicates the served block until it is deleted at the
-  ADR 0149 cutover (ADR 0158 "Integration at cutover" 2).
+  ADR 0149 cutover (ADR 0158 "Integration at cutover" 2). [CLOSED 2026-09-21, wave-5 lane C: VendorPortal.tsx no longer injects JSON-LD or writes `document.title`; the served head at `/v/:slug` carries both, and `RouteHead` (mounted once in `App.tsx`) leaves that served title in place. Check: CLAIMS `ADR-0158-VENDORPORTAL-CLIENT-INJECTION-REMOVED`.]
 - No platform attribution or sign-up path anywhere on the page — the Growth loop
   (vendor's customer → Mudavym) has no hook.
 - No pagination; entire catalogue in one payload/table.
@@ -124,11 +124,11 @@ no tenant, addressed by slug. The exposure is deliberately bounded:
   same way (`:154`). A crawler that does not execute JS sees the empty SPA shell from
   `vercel.json`'s rewrite (`:11-13`). The **server-side** `GET /vendor-portal/:slug/jsonld`
   exists and is `@Public()` (`vendor-portal.controller.ts:39-45`) — nothing wires it into
-  served HTML.
+  served HTML. [CLOSED 2026-09-21: see §9.]
 - **The client JSON-LD is a lossier copy of the server's.** The server emits
   `countryOfOrigin`, `size` as a `QuantitativeValue` in MLT, and `eligibleQuantity` for
   multi-bottle packs (`vendor-portal.service.ts:140-166`); the client omits all three
-  (`VendorPortal.tsx:131-150`). Two implementations of one contract, already diverged.
+  (`VendorPortal.tsx:131-150`). Two implementations of one contract, already diverged. [CLOSED 2026-09-21: see §9.]
 - **No OpenGraph or meta tags at all** — a link shared in chat or social unfurls blank.
 - **Zero telemetry.** The one page whose entire purpose is external reach cannot report a
   single visit (§5).
@@ -185,7 +185,7 @@ Everything on a **published** page, and nothing else:
   (`:51-57`).
 - Client-side search across product/producer/region/country/grape (`:163-168`) and three
   sorts (`:171-187`).
-- The injected JSON-LD block (`:118-158`) and a real `document.title` (`:154`).
+- The injected JSON-LD block (`:118-158`) and a real `document.title` (`:154`). [CLOSED 2026-09-21: see §9.]
 
 **Not visible, and confirmed absent from the payload:** `edit_token`, `master_wine_id`,
 `match_method`, `is_published`, any restaurant id, any negotiated rate, any other vendor's
@@ -238,3 +238,14 @@ appears SEO-ready — schema.org markup, a proper title — but only to JS-execu
    brands itself as the vendor, deliberately) against acquisition.*
 6. **Empty-catalogue copy** for a published page with zero listings.
 7. Paginate once catalogues are large (`vendor-portal.service.ts:69-77` is unbounded).
+
+
+### PublicShell implementation — 2026-09-13
+
+Implemented in the page-finalization working branch from `60ed83a7`; this is a code/test record, not a production-deployment claim. The new public treatment uses the shared `PublicShell` and `usePublicDesign()`. [UPDATED 2026-09-17, decision 0149 row 37: the switch is now permanent-on in code — `isPublicDesignOn()` resolves `true` unconditionally except an explicit `localStorage["mudavym.design.public"] = "off"` QA override, kept only so the legacy rendering stays reachable and compiling until the gated cutover deletes it. `VITE_MUDAVYM_PUBLIC` is no longer read.] No new server authorization or public endpoint is introduced by the visual port.
+
+The new board preserves published vendor data, contact links, search and sorting. [UPDATED 2026-09-17: the original catalogue was a 760px table forced into a horizontal scroller with no visible cue, which the lane C judge measured as hiding both price columns off-canvas at 375px (F4/D4, a phone visitor saw wine names and vintage and no prices — "the page's reason to exist"). It is now a container-queried responsive table: a two-column card (wine + price, vintage/origin/format underneath, each labelled) under ~720px of the board's own width, a full table above it, with `role` set explicitly on every table element since `display:grid`/`block` drops native table semantics in some engines. No page ever scrolls sideways.] Unknown vintage/stock stays “not stated”; a per-750ml price is unavailable when volume is missing. Price sorting groups by currency before comparing amounts; it does not perform an invented FX conversion. Both server and browser JSON-LD omit unknown availability rather than publishing it as InStock. Gateway page/listing database failures now raise 503, distinct from absent/unpublished 404 — and [UPDATED 2026-09-17: only a 503 offers "Try again"; a 404 (the page does not exist) no longer does, since a retry cannot help (D5b), and the eyebrow/footer drop the "Published" claim on either error]. The vendor's logo and website link are checked against an `^https?://` allowlist before rendering [UPDATED 2026-09-17, F5: a `javascript:` URL from a vendor-supplied field no longer reaches the DOM]. “Published on Mudavym” is linked; the approval seal is conservatively absent pending the founder's endorsement treatment decision — ratified as built, decision 0149 row 7.
+
+Verification (2026-09-13 Codex run, not re-measured; counts above are its own): `apps/web/src/pages/__tests__/publicPages.recovery.test.tsx` (ten behavior tests across the seven pages), existing PublicShell/public-switch tests (34), web/gateway TypeScript checks. Vendor read/JSON-LD tests (five) and account email body/sender identity tests (five) are isolated and perform no real sends or database writes. Remaining product choices were recorded under [[OPEN-DECISIONS#Public-page completion — 2026-09-13 (5 of 6 resolved 2026-09-17; the sixth is OD-124)]]; five of six are now resolved (2026-09-17) — see that section and decision 0149 rows 7-9.
+
+[FIXER RE-MEASURE 2026-09-17, this tree, clean: `apps/web/src/pages/__tests__/publicPages.recovery.test.tsx` 16 passed (6 added, closing the 404-vs-503, javascript: URL, role-capitalisation and token-vs-client-error gaps the lane C judge found), plus `PublicShell.test.tsx` 20 passed and `publicDesign.test.ts` 12 passed (rewritten for the permanent-on switch) — 48/48 across the three files. Gateway: 24/24 across 5 suites, including a new `verification-email-identity.spec.ts` and an added assertion in `password-reset.spec.ts` pinning the Mudavym senderName/subject the judge found untested (D5d/F10). 7 CLAUDE.md guard scripts and `check_decision_claims.sh` (335 claims) hold. Web and gateway `tsc --noEmit` both clean. Full command list and exit codes: `.planning/handoff/PROGRESS.md` §0b.] [CONFIRMER CORRECTION 2026-09-17: this tree was NOT clean at that point — `authPages.publicDesign.test.tsx:442` still asserted the pre-0149-row-37 contract against code this same pass had already flipped, and `verify_index.sh` was RED on it. The 48/48 above is now 49/49 (one CSS-specificity assertion added to `PublicShell.test.tsx`). Fixed and re-measured via `verify_index.sh` itself: `.planning/handoff/PROGRESS.md` §0b.]

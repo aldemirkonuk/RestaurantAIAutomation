@@ -122,7 +122,7 @@ import { Link } from 'react-router-dom';
 import { DoorOpen } from 'lucide-react';
 import { HoldToApprove, Wordmark } from '../../../components/mudavym';
 import { animate, settle } from '../../../lib/mudavym/motion';
-import { EM, MONO, SANS, SERIF, countWord, ensureFraunces, roleLabel } from './pf-format';
+import { EM, MONO, SANS, SERIF, countWord, roleLabel } from './pf-format';
 import { Btn, Card, Note, PF_CSS, Register, StatusLine } from './pf-ui';
 import { IdentityRegister } from './IdentityRegister';
 import { SecurityRegister } from './SecurityRegister';
@@ -222,10 +222,6 @@ export default function ProfileNext({ ground }: ProfileNextProps) {
   const [leaving, setLeaving] = useState(false);
   const [exitMsg, setExitMsg] = useState<{ tone: 'error' | 'done'; text: string } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState('');
-
-  useEffect(() => {
-    ensureFraunces();
-  }, []);
 
   useEffect(() => {
     if (!headRef.current) return;

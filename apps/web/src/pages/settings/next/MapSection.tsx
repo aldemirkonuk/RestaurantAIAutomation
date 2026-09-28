@@ -11,7 +11,7 @@
  */
 
 import { Choice, Register, Row, SaveFailure } from './SectionKit';
-import { PROVENANCE_UNKNOWN, SANS } from './st-format';
+import { MONO, PROVENANCE_UNKNOWN, SANS } from './st-format';
 import type { SettingsNextData } from './useSettingsNextData';
 
 const SCOPES = [
@@ -29,7 +29,10 @@ export function MapSection({ data }: { data: SettingsNextData }) {
         <>
           <Row
             label="Default view"
-            provenance={{ kept: 'account', when: reg.updatedAt, whenUnknown: PROVENANCE_UNKNOWN.neverWritten }}
+            provenance={{
+              kept: 'account', when: reg.updatedAt, whenUnknown: PROVENANCE_UNKNOWN.neverWritten,
+              readBy: <code style={{ fontFamily: MONO }}>pages/distributors/command/DistributorMapPage.tsx:36</code>,
+            }}
             consequence="How wide Find distributors frames your restaurant when it opens. Zooming on the map never changes this — it is the frame you come back to."
             control={
               <Choice

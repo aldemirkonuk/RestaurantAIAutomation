@@ -1,0 +1,85 @@
+/* ============================================================
+   The house toast — sketch 119, "the shared pieces"
+   ============================================================
+
+   ONE toast for the whole app: this is the single `<Toaster/>` in App.tsx —
+   both `sonner`'s direct imperative API (`toast.success(...)`, used by ~30
+   call sites) and `useToast()` (`contexts/ToastContext.tsx`, adapted to call
+   sonner underneath instead of rendering its own Radix toasts) land on this
+   one visual surface. No page renders a second toast system.
+
+   Tokens only (styles/mudavym.css) — no red/amber/emerald severity colours.
+   The rest of the shell tells success from failure with WORDS and shapes
+   (the counter's hollow ring, never a colour), not a traffic light; the
+   toast follows the same rule. Non-modal: no scrim, never blocks a click
+   underneath it. At most three visible (`visibleToasts` on `<Toaster/>`).
+*/
+
+.mdv-toaster {
+  font-family: 'DM Sans', 'Plus Jakarta Sans', system-ui, sans-serif;
+}
+
+.mdv-toast {
+  padding: 12px 14px !important;
+  background: var(--paper-0) !important;
+  border: 1px solid var(--paper-2) !important;
+  border-radius: 10px !important;
+  box-shadow: none !important;
+  color: var(--ink-1) !important;
+}
+
+.mdv-toast [data-icon] {
+  opacity: 0.72;
+}
+
+.mdv-toast__title {
+  font-size: 13px !important;
+  line-height: 1.4 !important;
+  color: var(--ink-1) !important;
+}
+
+/* The secondary line: what the sentence does NOT claim (e.g. "not sent yet"
+   next to a queued act) — quieter than the sentence itself, never louder. */
+.mdv-toast__description {
+  margin-top: 2px !important;
+  font-size: 11.5px !important;
+  line-height: 1.4 !important;
+  color: var(--ink-3) !important;
+}
+
+.mdv-toast__action {
+  background: transparent !important;
+  border: 0 !important;
+  padding: 0 !important;
+  margin-left: 10px !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  color: var(--seal-deep) !important;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.mdv-toast__cancel {
+  background: transparent !important;
+  border: 0 !important;
+  padding: 0 !important;
+  font-size: 12px !important;
+  color: var(--ink-4) !important;
+}
+
+.mdv-toast__close {
+  background: var(--paper-0) !important;
+  border: 1px solid var(--paper-2) !important;
+  color: var(--ink-3) !important;
+}
+
+.mdv-toast__close:hover {
+  color: var(--ink-1) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mdv-toaster [data-sonner-toast] {
+    transition: none !important;
+    animation: none !important;
+  }
+}

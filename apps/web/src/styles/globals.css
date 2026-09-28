@@ -2,6 +2,8 @@
    page that does not opt in. Must precede all rules per the CSS @import spec;
    Vite inlines it at build time. */
 @import './mudavym.css';
+/* The product's two sans faces, served from /fonts (ADR 0158). */
+@import './fonts-sans.css';
 
 @tailwind base;
 @tailwind components;

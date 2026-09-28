@@ -1,0 +1,28 @@
+# Migration order guard exceptions (ADR 0212, founder 2026-09-22: "Exceptions
+# list, your word (Recommended)").
+#
+# scripts/check_migration_order.py fails a PR that adds a migration dated
+# behind the newest version its base already holds. That is correct for a
+# genuinely new file. It is a false positive for two shapes that have both
+# happened on main already, and are not new migrations at all:
+#
+#   - a ledger-reconciliation rename onto the version production actually
+#     recorded (7ea563e23 renamed 20260208024921_new-migration to
+#     ...baseline_schema, plus 3 more, matching what had already run; ADR 0031);
+#   - a same-version-band rename back toward production's number
+#     (426984b34 / #63, 20260825150000_... renamed back to 20260824071839_...).
+#
+# Neither is covered by "a PR's new migrations must sort after main's newest":
+# production has already run the file under some name. Forcing it forward to a
+# new version would make production run it a second time, and a revert that
+# restores a deleted migration could not land at all.
+#
+# One line per exception: `<14-digit version> <reason, cite the ADR or PR>`.
+# A version listed here passes the order check no matter what the ceiling is.
+# An unlisted version fails exactly as before -- listing something here is
+# the only way past the guard, so this file is gate-owned
+# (scripts/pr_audit_gate.py::_GATE_OWNED_PATHS): a PR cannot exempt its own
+# migration from the check it is failing without a human audit pass. A line
+# that is not `<version> <reason>` is CANNOT CHECK, never a silent pass.
+#
+# No exceptions are open right now.

@@ -73,7 +73,6 @@ import {
   SERIF,
   describeOf,
   displaySources,
-  ensureFraunces,
   fmtClock,
   fmtStamp,
   groupByDay,
@@ -591,10 +590,6 @@ export default function LogsNext({ ground }: LogsNextProps) {
   const rowRefs = useRef(new Map<string, HTMLLIElement>());
   /** The reading `lg-turn` last landed on. See the effect below. */
   const turned = useRef<string | null>(correlationId);
-
-  useEffect(() => {
-    ensureFraunces();
-  }, []);
 
   // lg-arrive — the opening, once.
   useEffect(() => {

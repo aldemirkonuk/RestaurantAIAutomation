@@ -26,7 +26,70 @@ test-results
 playwright-report
 coverage
 *.log
-logs
+# 2026-09-21, surfaced by this PR's audit: `.claude/` had no entry, so every CLI
+# `vercel deploy` uploaded this tree — agent settings and whole sibling worktree
+# copies of the repo. Measured 2026-09-21 on one laptop: ~80,125 upload entries
+# removed by this line. (An earlier draft said 82,537; three independent counts
+# that day landed between 80,125 and 82,537, so the figure is a same-day reading
+# of one disk, not a repo fact. Re-measure, never copy it forward — CLAUDE.md §5b.)
+#
+# [CORRECTED 2026-09-21 by this PR's own audit, security angle: an earlier draft
+# of this comment said "No credential-shaped key is in settings*.json (checked),
+# so this is build weight and noise rather than a leak." The check was real but
+# it read the WRONG FILE — the glob matched the tracked `.claude/settings.json`
+# (605 bytes; two keys, `hooks` and an `env` holding one numeric limit —
+# genuinely clean, re-counted) and never opened the untracked
+# `.claude/settings.local.json`, which is what Vercel actually uploaded, in 21
+# copies. That file is NOT clean. This is the same tracked-tree-vs-disk mistake
+# corrected six lines below, made again in the paragraph above it.
+#
+# Do not read this line as "nothing was exposed." What IS established: nothing
+# under `.claude/` is ever SERVED — NEITHER vercel.json (root, nor
+# apps/web/vercel.json) sets "public": true, and a read-only probe of
+# /.claude/settings.local.json returns 404. So this was credential transit to a
+# third party with retention, not public disclosure. Both halves matter; neither
+# is the whole story. The founder was told the same day and took rotation and
+# every repo-side remedy as his own. The record is the entry headed
+# "Credentials in a public repo and in the Vercel upload" in
+# .planning/v3.0-TECH-DEBT.md, committed in THIS PR — cited by its heading and
+# not by its date, because that file already carries a DIFFERENT 2026-09-21
+# entry and "the 2026-09-21 entry" would resolve to the wrong one. This line
+# closes only the ongoing half: future CLI deploys stop re-uploading it.]
+.claude/
+# 2026-09-21: ANCHORED. The bare pattern plus a `!` negation (below) still
+# excluded apps/web/src/pages/logs/ from a `vercel deploy` upload — the build
+# failed with the exact "Could not resolve ./pages/logs/next/LogsNext" this
+# file already warns about. Vercel's uploader does not re-include it the way
+# git does. Anchoring costs nothing: both directories named `logs` in this
+# repo are SOURCE (apps/api-gateway/src/logs, 5 tracked files;
+# apps/web/src/pages/logs, 8) — both TRACKED ones, that is; the correction below
+# names the untracked runtime dirs that exist on disk. `*.log` above still
+# covers log FILES anywhere.
+#
+# [CORRECTED 2026-09-21 by this PR's own audit: an earlier draft of this comment
+# said "there is no runtime logs directory". That is true of the TRACKED tree and
+# FALSE of disk — and disk is what Vercel uploads, which is the whole point of
+# the bug being fixed here. utils/logger.py:118-121 does a CWD-relative
+# `Path("logs").mkdir(exist_ok=True)`, so both ./logs and
+# services/agent-orchestrator/logs exist locally; the latter is 95 MB. Root
+# ./logs is still directory-pruned by `/logs`, and today's single
+# agent-orchestrator.log is still caught by `*.log` — but anchoring downgraded
+# the NESTED dir from directory-pruned to contents-only, so a rotated .log.1, a
+# .jsonl sink or a gzip would start shipping. The explicit entry below covers
+# the one runtime path that actually exists, without shadowing source.
+#
+# [CORRECTED 2026-09-21, same audit, correctness angle: this sentence used to say
+# the explicit entry "restores directory pruning". It does not. In the
+# `ignore@4.0.6` that the Vercel CLI bundles, a trailing-slash pattern matches a
+# directory's DESCENDANTS, not the directory itself — `ig.ignores(
+# "services/agent-orchestrator/logs")` returns false. The uploader therefore
+# recurses in and excludes the children one by one, and the directory surfaces as
+# an empty-dir manifest entry. The OUTCOME is what was claimed (zero bytes ship,
+# measured), and `datasets/` below already produces this exact shape on main, so
+# it is known-good — but the stated MECHANISM was wrong, and this is a file whose
+# only job is to stop the next reader being misled.]
+/logs
+services/agent-orchestrator/logs/
 # 2026-09-12: the bare `logs` pattern above (for runtime log output such as
 # services/agent-orchestrator/logs) also matched apps/web/src/pages/logs/ —
 # a real page's source, not log output — and Vercel silently dropped it
@@ -34,6 +97,56 @@ logs
 # resolve failure on ./pages/logs/next/LogsNext with no other clue why. Same
 # root cause already fixed twice in .gitignore (apps/api-gateway/src/logs/,
 # apps/web/src/pages/logs/) — same fix here.
+#
+# [NOTE added 2026-09-21, round 3, correctness angle: that parenthesis names the
+# two PATHS correctly but is over-precise about the MECHANISM for the web one.
+# This file's CHALLENGED-AND-UPHELD note below credits "anchoring in
+# apps/web/.gitignore" — but the root .gitignore ALSO carries
+# `!apps/web/src/pages/logs/`, and its own comment claims that negation is the
+# one doing the work. Two mechanisms, one named. The OUTCOME is settled either
+# way (`git check-ignore -v apps/web/src/pages/logs/next/NEWFILE.tsx` exits 1,
+# not ignored), and this file's actual subject is the Vercel uploader, not git.
+# Recorded rather than resolved, because guessing which of the two is load-
+# bearing is exactly the over-precision that has blocked this PR three times.]
+#
+# [This sentence was CHALLENGED and UPHELD, 2026-09-21, round 2 of this PR's
+# audit. The correctness angle reported it false — "it was fixed once; there is
+# no negation for the web path, and apps/web/.gitignore's bare `logs` still
+# swallows it" — and produced a `git check-ignore -v` hit to prove it. That
+# measurement was taken in a working tree sitting on a stale branch. On main,
+# apps/web/.gitignore has been ROOT-SCOPED `/logs` since 2026-09-11 and its own
+# comment says why. Re-run inside a worktree at this PR's head,
+# `git check-ignore -v apps/web/src/pages/logs/next/NEWFILE.tsx` exits 1: not
+# ignored. The sentence names the two PATHS rescued, not two identical
+# mechanisms — api-gateway by a negation in the root .gitignore, web by
+# anchoring in apps/web/.gitignore — and both were. Recorded here so the next
+# reader does not re-open it, and because it is the SECOND time tonight that
+# grepping this repo from a stale checkout produced a confident wrong answer.]
+#
+# [CORRECTED 2026-09-21, same audit: "same fix here" was wrong about WHICH fix
+# worked. The negation below never did anything. Proof: apps/api-gateway/src/logs
+# has no negation and behaved identically under the old file — both directories
+# were pruned by the bare `logs` pattern before the uploader ever looked inside,
+# so there was nothing left for a negation to re-include. ANCHORING is what fixes
+# this. Removing the negation is a no-op, and the reason is mechanical rather
+# than statistical, so check the mechanism and not my arithmetic:
+#
+#   node -e "const ig=require('<repo>/node_modules/.pnpm/ignore@5.3.2/node_modules/ignore');
+#            console.log(String(ig().add('!apps/web/src/pages/logs/')._rules[0].regex))"
+#   ->  /^apps\/web\/src\/pages\/logs\/$/i
+#
+# The compiled pattern requires a LITERAL TRAILING SLASH. The uploader tests
+# paths produced by path.relative(), which never emits one, so this rule matches
+# nothing it can ever be handed. The CLI bundles ignore@4.0.6, not 5.3.2 (see
+# vercel/dist/chunks/chunk-SPXTKMOV.js:38861); its compilation differs in form —
+# a lookahead rather than a bare anchor — but requires the trailing slash just
+# the same. A full simulated upload walk with and without the line agreed with
+# that (identical entry sets, ~3.2k entries each, under both the old and the new
+# file), but treat the regex above as the evidence: it is one command, and the
+# walk was a same-day script that is not in the repo. The line is kept only to
+# hold this PR to one operation. That also means the
+# 2026-09-12 fix recorded above never worked, and this PR silently repairs a
+# second instance (apps/api-gateway/src/logs, 5 files) nobody had diagnosed.]
 !apps/web/src/pages/logs/
 
 # ── Local / backup trees (never ship to Vercel) ───────────────────────────────

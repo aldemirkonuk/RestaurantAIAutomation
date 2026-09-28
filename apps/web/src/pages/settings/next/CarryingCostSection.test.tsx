@@ -135,6 +135,15 @@ describe('three states, never two', () => {
     expect(alert).toHaveTextContent(/permission denied/);
     expect(alert).toHaveTextContent(/not the same as a house that has not been asked/i);
   });
+
+  // Graft C, sketch 109A: the honest answer to "did flipping this change
+  // anything, and for whom" — cited as file:line so the claim is checkable.
+  // No test asserted this line existed before this pass; this one would fail
+  // if the citation were ever removed.
+  it('carries graft C\'s "read by" line naming who actually consults this field', () => {
+    mount();
+    expect(screen.getByText(/every commodity alert's saving line/i)).toBeInTheDocument();
+  });
 });
 
 describe('nothing is recorded by opening the page', () => {

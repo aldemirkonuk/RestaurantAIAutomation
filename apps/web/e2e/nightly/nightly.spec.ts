@@ -275,6 +275,12 @@ async function walk(page: Page, request: APIRequestContext, mode: Mode, override
   }
 
   for (const entry of manifest.pages) {
+    if (entry.chrome) {
+      // Chrome wraps every route, so it is not opened as a page (its override
+      // is pinned off in both walks below). Recorded, never a pass.
+      record({ id: `page.${entry.slug}.${mode}`, state: 'absent', reason: `${entry.slug} is chrome around every route, not a page; its override is pinned off so it cannot stand in for any page, and this build of the nightly does not walk it` })
+      continue
+    }
     const errorsBefore = pageErrors.length
     const { route, reason: routeReason, state: routeState } = await resolveRoute(request, env, session!, restaurantId, entry)
     if (!route) {
@@ -416,7 +422,10 @@ async function walkPending(page: Page): Promise<void> {
 
 test('walk: every rebuilt page with the Mudavym override on', async ({ page, request }) => {
   const overrides: Record<string, '1' | '0'> = {}
-  for (const p of manifest.pages) overrides[p.slug] = '1'
+  // Chrome is pinned OFF even here. On, the shell's own `.mudavym` root would
+  // make every page (and every pending page) read as rebuilt, and its
+  // counter's sentences would be read as each page's own.
+  for (const p of manifest.pages) overrides[p.slug] = p.chrome ? '0' : '1'
   for (const p of manifest.pending_pages) overrides[p.slug] = '1'
   await walk(page, request, 'next', overrides)
 })

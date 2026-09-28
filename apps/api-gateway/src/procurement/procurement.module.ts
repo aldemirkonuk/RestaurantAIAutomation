@@ -113,6 +113,14 @@ import { DeliveryClockService } from "./canonical/delivery-clock.service";
   // OrchestratorModule, so that would need a circular forwardRef, and Nest fails
   // those by injecting undefined at runtime rather than erroring at build time.
   // The email channel runs as a sweep inside DocumentIntakeService instead.
-  exports: [ProcurementService, RecurringOrdersService, DocumentIntakeService],
+  // ReceivingService is exported for the house counter (house/house.module.ts),
+  // which reads the unverified-delivery register through it rather than
+  // repeating the query — one register, one reader.
+  exports: [
+    ProcurementService,
+    RecurringOrdersService,
+    DocumentIntakeService,
+    ReceivingService,
+  ],
 })
 export class ProcurementModule {}

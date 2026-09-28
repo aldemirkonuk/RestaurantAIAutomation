@@ -1,4 +1,9 @@
-import { Injectable, Logger, NotFoundException } from "@nestjs/common";
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  ServiceUnavailableException,
+} from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import axios from "axios";
 
@@ -695,10 +700,18 @@ export class ConversationsService {
 
       return data || [];
     } catch (error) {
+      // A failed read is not an empty queue. This used to `return []` here,
+      // so `GET /conversations/pending/list` answered `{ count: 0 }` — "no
+      // vendor is waiting on you" — over a read that never happened, and the
+      // house counter (sketch 119 D) would have printed that zero as an
+      // answer. The controller turns the throw into its own 500; the mobile
+      // feed keeps its own catch (mobile.service.ts), which is its call.
       this.logger.error(
         `Failed to get pending conversations: ${error.message}`,
       );
-      return [];
+      throw new ServiceUnavailableException(
+        "Could not read the replies waiting on this house",
+      );
     }
   }
 

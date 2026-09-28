@@ -18,7 +18,7 @@ function GetStartedUsePreview() {
     {
       title: 'Wine Agent',
       description:
-        'After setup, a small Wine Agent button appears bottom-right. It does not access your email.',
+        'Sommelier AI helps with inventory & ordering questions. It does not access your email.',
       icon: Bot,
     },
     {

@@ -15,11 +15,15 @@
 
 import { useEffect, useLayoutEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import { publicRouteFor } from './routes';
+import { publicRouteFor, VENDOR_PREFIX } from './routes';
 import { SITE, titleWithSite } from './site';
 
 /**
- * Sets the registry title for public pages and the bare site name elsewhere.
+ * Sets the registry title for public pages and the bare site name elsewhere,
+ * except under `/v/`: a vendor catalogue's title is served in its own head
+ * (`vendor-edge.ts`: the vendor's name, or "Not found" / "Catalogue
+ * unavailable"), and writing the site name over it would give every
+ * catalogue the same title in a tab and to a crawler that renders.
  * A layout effect on purpose: every layout effect in a commit runs before any
  * passive effect, so a `useDocumentTitle` below this in the tree still has
  * the last word on a signed-in page.
@@ -27,6 +31,7 @@ import { SITE, titleWithSite } from './site';
 export function RouteHead(): null {
   const { pathname } = useLocation();
   useLayoutEffect(() => {
+    if (pathname.startsWith(VENDOR_PREFIX)) return;
     document.title = publicRouteFor(pathname)?.head.title ?? SITE.name;
   }, [pathname]);
   return null;

@@ -20,24 +20,10 @@ import type { UploadedDocument } from '@/services/api/receiving';
 
 export const EM = '—';
 
-/* Type stacks — same faces the other Mudavym pages use. Fraunces is injected
-   by ensureDoorFraunces below (same link id as dashboard/next, so whichever
-   page runs first wins and the other is a no-op). */
+/* Type stacks — same faces the other Mudavym pages use. Self-hosted:
+   `@font-face` in `styles/mudavym.css` (decision 0149 row 9). */
 export const SERIF = '"Fraunces", Georgia, "Times New Roman", serif';
 export const MONO = '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace';
-
-const FRAUNCES_LINK_ID = 'mudavym-fraunces';
-
-export function ensureDoorFraunces(): void {
-  if (typeof document === 'undefined') return;
-  if (document.getElementById(FRAUNCES_LINK_ID)) return;
-  const link = document.createElement('link');
-  link.id = FRAUNCES_LINK_ID;
-  link.rel = 'stylesheet';
-  link.href =
-    'https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..680;1,9..144,300..680&display=swap';
-  document.head.appendChild(link);
-}
 
 /** A finite number or null. Guards NaN and the API's occasional string. */
 export function num(v: unknown): number | null {

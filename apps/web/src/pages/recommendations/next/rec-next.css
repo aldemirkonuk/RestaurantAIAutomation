@@ -38,7 +38,7 @@
 /* ── head ────────────────────────────────────────────────────────────────── */
 
 .rc-head { margin-bottom: 14px; }
-.rc-title { font-size: 32px; font-weight: 500; letter-spacing: -0.015em; line-height: 1.1; margin: 4px 0 0; }
+.rc-title { font-size: 32px; font-weight: 500; letter-spacing: -0.015em; line-height: 1.1; margin: 4px 0 0; color: var(--ink-1, #211c16); }
 .rc-voice { font-style: italic; font-size: 15px; margin: 4px 0 0; color: var(--ink-2, #4f473c); }
 .rc-readat { margin-top: 6px; }
 
@@ -120,7 +120,7 @@
 
 .rc-section { margin-bottom: 22px; }
 .rc-section-head { display: flex; align-items: baseline; gap: 8px; }
-.rc-section-head h2 { font-size: 15px; font-weight: 600; margin: 0; }
+.rc-section-head h2 { font-size: 15px; font-weight: 600; margin: 0; color: var(--ink-1, #211c16); }
 .rc-section-head .rc-blurb { font-size: 11px; color: var(--ink-3, #7c7365); }
 .rc-section-head .rc-num { margin-left: auto; font-size: 11px; color: var(--ink-3, #7c7365); }
 .rc-section .rc-double { margin-top: 5px; }
@@ -269,6 +269,12 @@
 .rc-prose { font-size: 12.5px; line-height: 1.55; margin: 4px 0 0; color: var(--ink-2, #4f473c); }
 .rc-rulekey { font-size: 11.5px; margin: 4px 0 0; color: var(--ink-1, #211c16); word-break: break-all; }
 .rc-said { font-size: 11px; margin: 3px 0 0; color: var(--ink-3, #7c7365); }
+/* CatalogView's expanded detail (CatalogView.tsx:255-273) puts bare <p> tags
+   inside .rc-said: globals.css:157 sets a `p` element-selector color
+   (slate-600) that beats an ancestor's inherited value, so each line needs
+   its own rule pointing back at the wrapper's ink token rather than relying
+   on inheritance to survive globals.css. */
+.rc-said p { margin: 0; color: inherit; }
 .rc-plain { font-size: 12px; color: var(--ink-2, #4f473c); }
 .rc-seal-block { margin-top: 12px; max-width: 320px; }
 .rc-seal-block .rc-said { margin: 3px 0 6px; }
@@ -339,7 +345,7 @@
   border-radius: 10px;
   background: var(--paper-1, #f3efe6);
 }
-.rc-dayhead h2 { font-size: 16px; font-weight: 500; margin: 0; }
+.rc-dayhead h2 { font-size: 16px; font-weight: 500; margin: 0; color: var(--ink-1, #211c16); }
 .rc-dayhead .rc-micro { display: block; margin-top: 3px; }
 .rc-dayhead .rc-why { max-width: 720px; }
 
@@ -358,7 +364,14 @@
   padding: 12px 14px;
   background: var(--paper-0, #faf7f1);
 }
-.rc-dark-head { color: var(--ink-4, #665d50); }
+/* Doubled selector deliberately, not a typo: a bare `.rc-dark-head` is (0,1,0)
+   specificity, which `.rc-section-head h2` above (0,1,1) beats wherever this
+   class sits on a headed h2 — the regression that silently re-brightened
+   "Change a rule" back to ink-1 (found in verification 2026-09-19; test:
+   rec-next-ink.test.ts, "the fifth heading … wins its cascade"). Repeating the
+   class is a deliberate (0,2,0), which wins outright without depending on
+   file order or a `:not()` clause that only guards one caller. */
+.rc-dark-head.rc-dark-head { color: var(--ink-4, #665d50); }
 .rc-watched { margin-top: 7px; color: var(--ink-2, #4f473c); line-height: 1.5; }
 
 /* ── motion — every value a token from lib/mudavym/motion.ts ─────────────── */
@@ -412,3 +425,33 @@
 .rc-levers { margin: 7px 0 0; padding-left: 16px; }
 .rc-levers li { font-size: 12px; color: var(--ink-2, #4f473c); margin-bottom: 4px; }
 .rc-levers .rc-num { font-size: 10.5px; color: var(--ink-4, #665d50); }
+
+/* ── the catalogue view — sketch 120 item 5, /recommendations/catalog ────── */
+
+.rc-catalog-rows { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+/* stacked block, NOT .rc-entry's 34px/1fr grid — .rc-entry is Entry.tsx's
+   rc-gutter + rc-body pair; a catalogue row is a head button, a plain-text
+   line and an optional detail block, three items that must not be forced
+   into two grid columns (review: squeezed the head button into 34px and
+   overlapped its text with rc-plain) */
+.rc-catalog-entry {
+  padding: 14px 14px 14px 8px;
+  border-top: 1px solid var(--paper-2, #eae4d8);
+  border-left: 2px solid transparent;
+}
+.rc-catalog-row-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  background: none;
+  border: 0;
+  padding: 2px 0;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+.rc-catalog-row-head .rc-num { font-size: 12px; }
+.rc-catalog-row-head .rc-micro { color: var(--ink-3, #7c7365); white-space: nowrap; }
+[aria-disabled='true'] .rc-reg { opacity: 0.4; pointer-events: none; }

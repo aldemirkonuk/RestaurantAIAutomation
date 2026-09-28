@@ -27,17 +27,39 @@
  *   - `readGroundFromDom(anchor)` — the live answer, used by an overlay at the
  *     moment it opens. When the opener is inside a `.mudavym` subtree this is
  *     exact and has no timing dependency at all.
- *   - the store's `ground` — measured once by PageGate after its child has
- *     mounted, for the shell overlays whose triggers live in the header, i.e.
- *     OUTSIDE the page's `.mudavym` root, where an anchor walk finds nothing.
+ *   - the store's `ground` — measured by PageGate after its child has mounted
+ *     AND whenever the person's own choice changes (`groundChoice.ts`,
+ *     ADR 0169), for the shell overlays whose triggers live in the header,
+ *     i.e. OUTSIDE the page's `.mudavym` root, where an anchor walk finds
+ *     nothing.
  *
- * HONEST LIMIT: a page that changed its own ground at runtime would leave the
- * store's copy stale until the next mount. No page does that today — `ground`
- * is a static prop on all eight rebuilt pages that accept one (grep
- * `ground?: 'charcoal'`) — and the anchor reader is unaffected either way.
+ * [ADR 0169 round 5, 2026-09-20 — the self-reference bug.] `readShellGroundFromDom`
+ * below used to query every `.mudavym[data-ground=…]` in the document with no
+ * exclusion but `.mdv-ovl`. `HouseHeader` and the sidebar's `NavTooltip`
+ * (`components/layout/Sidebar.tsx`) are THEMSELVES `.mudavym` roots — they carry
+ * an explicit `data-ground` ONLY to mirror whatever this function last returned
+ * (PageGate hands it straight through as a prop; see PageGate's header comment
+ * for why it has to be a second declaration rather than inheritance). Once a
+ * charcoal answer had been mirrored onto the header, a LATER call to this same
+ * function — even one correctly triggered by a fresh choice or a page change —
+ * found the header's own leftover mirror before it found (or failed to find)
+ * anything the page itself declared, and answered charcoal again. The header
+ * never got a chance to update, because the thing measuring it was reading
+ * what it had told the header to say the time before. `:not(.mdv-hdr)` and
+ * `:not(.mdv-hint)` below close that: only a genuine page-authored `data-ground`
+ * (or the overlay case `.mdv-ovl` already excluded) counts as a declaration.
+ * PageGate-level regression coverage: `HouseHeader.test.tsx`'s "PageGate" suite.
+ *
+ * HONEST LIMIT: a page that changed its OWN declared ground at runtime (not
+ * the person's choice — an actual page rewriting its own `data-ground`) would
+ * still leave the store's copy stale until the next mount or choice change. No
+ * page does that today — `ground` is a static prop on all eight rebuilt pages
+ * that accept one (grep `ground?: 'charcoal'`) — and the anchor reader is
+ * unaffected either way.
  */
 
 import { createContext, useSyncExternalStore } from 'react';
+import { getGroundChoice } from './groundChoice';
 
 export type MudavymGround = 'paper' | 'charcoal';
 
@@ -112,34 +134,61 @@ export function useMudavymShell(): MudavymShellState {
  * The ground of the `.mudavym` subtree `anchor` sits in, or `null` when it sits
  * in none (a shell trigger in the header is outside every page root).
  *
- * A host with no `data-ground` is paper, exactly as the page itself reads it:
- * an app-level `.dark` then turns BOTH the page and the overlay charcoal
- * through `.dark .mudavym`, so the two still agree without either declaring it.
+ * A host with no `data-ground` stands on whatever this person chose
+ * (`groundChoice.ts`, ADR 0169; paper until they say otherwise, and from
+ * 2026-09-21 the choice belongs to their ACCOUNT, not to this browser) — the
+ * same rule `styles/mudavym.css` paints it with, so this answer and the pixel
+ * always agree without the host declaring anything.
+ * [2026-09-19, ADR 0169: before this, an undeclared host was hardcoded
+ * 'paper' here, described as agreeing with an app-level `.dark` rule that (by
+ * the time of this correction) no longer exists in `mudavym.css` — ADR 0138
+ * had already moved the charcoal column off `.dark .mudavym` on 2026-09-12.
+ * That description was stale; this reader now asks the one place that knows.]
  *
- * Returning `null` rather than a paper default is the point — a default here
- * would answer "paper" for a question that was never asked, which is the
- * absence-reported-as-health shape (ADR 0020).
+ * Returning `null` rather than guessing is still the point for an anchor
+ * outside every `.mudavym` root — a default here would answer for a question
+ * that was never asked, the absence-reported-as-health shape (ADR 0020).
  */
 export function readGroundFromDom(anchor?: Element | null): MudavymGround | null {
   if (typeof document === 'undefined') return null;
   const host = anchor?.closest?.('.mudavym') as HTMLElement | null | undefined;
   if (!host) return null;
-  return host.getAttribute('data-ground') === 'charcoal' ? 'charcoal' : 'paper';
+  const declared = host.getAttribute('data-ground');
+  if (declared === 'charcoal' || declared === 'paper') return declared;
+  return getGroundChoice();
 }
 
 /**
  * The ground of the Mudavym page currently on screen, read off the document.
  * PageGate's measurement (see the header note) and the last-resort answer for
  * an overlay whose trigger lives outside every page root.
+ *
+ * Checked in order: an explicit charcoal declaration, an explicit paper
+ * declaration (a per-surface decision always wins — ADR 0169 changes neither
+ * branch), else the person's own choice for this device.
  */
 export function readShellGroundFromDom(): MudavymGround {
-  if (typeof document === 'undefined') return 'paper';
+  if (typeof document === 'undefined') return getGroundChoice();
   // `:not(.mdv-ovl)` keeps an open overlay out of the answer: the overlay root
   // is itself a `.mudavym[data-ground]` node portalled into <body>, and reading
   // it back would be the system asking itself what it just said.
-  return document.querySelector('.mudavym[data-ground="charcoal"]:not(.mdv-ovl)')
-    ? 'charcoal'
-    : 'paper';
+  //
+  // `:not(.mdv-hdr)` and `:not(.mdv-hint)` do the same for the gate's own
+  // chrome (`HouseHeader`, the sidebar's `NavTooltip`) — both are `.mudavym`
+  // roots that only ever MIRROR the value this function returned last time,
+  // never a genuine declaration of their own. Without this exclusion a stale
+  // mirror answers for the very call meant to refresh it — the file header's
+  // "self-reference bug" note above. A real per-surface declaration (DoorNext,
+  // the canonical document) never carries either class, so this excludes
+  // nothing that was ever an honest answer.
+  const EXCLUDE = ':not(.mdv-ovl):not(.mdv-hdr):not(.mdv-hint)';
+  if (document.querySelector(`.mudavym[data-ground="charcoal"]${EXCLUDE}`)) {
+    return 'charcoal';
+  }
+  if (document.querySelector(`.mudavym[data-ground="paper"]${EXCLUDE}`)) {
+    return 'paper';
+  }
+  return getGroundChoice();
 }
 
 /**

@@ -30,7 +30,6 @@ import { TIP_REGISTRY } from './tours/registry'
 interface GuidanceContextValue {
   state: GuidanceState
   tipVisibleFor: PageTourId | null
-  tipOffsetFab: boolean
   isTourRunning: boolean
   startTour: (pageId: PageTourId) => void
   snoozeTip: (pageId: PageTourId) => void
@@ -38,7 +37,6 @@ interface GuidanceContextValue {
   completeTipViaTour: (pageId: PageTourId) => void
   hideAllTips: () => void
   resetTips: () => void
-  setShowWineAgentFab: (show: boolean) => void
   markUseCardSeen: (cardId: string) => void
   resolvePageId: (pathname: string, search?: string) => PageTourId | null
   /** Finish-setup nudge banner — see `isSetupNudgeDue` for the escalating-backoff cadence. */
@@ -355,20 +353,6 @@ export function GuidanceProvider({ children }: { children: ReactNode }) {
     })
   }, [persistGuidance])
 
-  const setShowWineAgentFab = useCallback(
-    (show: boolean) => {
-      persistGuidance((prev) => ({
-        ...prev,
-        global: {
-          ...prev.global,
-          show_wine_agent_fab: show,
-          wine_agent_fab_unlocked: show ? true : prev.global.wine_agent_fab_unlocked,
-        },
-      }))
-    },
-    [persistGuidance],
-  )
-
   const markUseCardSeen = useCallback(
     (cardId: string) => {
       if (state.guide.use_cards_seen.includes(cardId)) return
@@ -429,7 +413,6 @@ export function GuidanceProvider({ children }: { children: ReactNode }) {
   const value: GuidanceContextValue = {
     state,
     tipVisibleFor,
-    tipOffsetFab: !!tipVisibleFor,
     isTourRunning: tourRunning,
     startTour,
     snoozeTip,
@@ -437,7 +420,6 @@ export function GuidanceProvider({ children }: { children: ReactNode }) {
     completeTipViaTour,
     hideAllTips,
     resetTips,
-    setShowWineAgentFab,
     markUseCardSeen,
     resolvePageId,
     isSetupNudgeDue: isSetupNudgeDue(state.setup_nudge),

@@ -609,7 +609,10 @@ Four directions, in the order ADR 0111 recommends building them:
 #### The ⌘K assistant, and the line it may not cross
 
 The machinery is built and proven: `POST /ask-ai/propose` → a human looks →
-`POST /ask-ai/confirm` → execute, with a validated allowlist, grounding against candidate
+`POST /ask-ai/confirm` → execute **[amended 2026-09-21: the confirm step is now a sealed
+hold — `seal-challenge` then `sealed-confirm` under `/ask-ai/actions/:id/`; the unsealed
+confirm answers 410 (the founder's "Never without the seal", ADR 0160's review trail of
+that date)]**, with a validated allowlist, grounding against candidate
 ids, and a `proposed → confirmed → executed | failed | discarded` lifecycle
 (`ask-ai.service.ts:305,525,653,700`). The web client's own header states the rule — *"this
 module never executes anything by itself"* (`services/api/askAi.ts`). The allowlist is two

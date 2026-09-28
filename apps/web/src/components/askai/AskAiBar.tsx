@@ -10,7 +10,9 @@
  * WHAT THIS SURFACE PROMISES
  * --------------------------
  *  • It never executes. `POST /propose` cannot, by construction; the only
- *    execution path in this component tree is a Confirm button on a card.
+ *    execution path in this component tree is the hold on a card, bound to a
+ *    server seal minted after any edits ("Never without the seal", the
+ *    founder, 2026-09-21). There is no click that applies a proposal.
  *  • A refusal always says why. The gateway guarantees `reason` on every
  *    `{proposed: false}`, and it is rendered as the answer — not as an error,
  *    and never as a silent no-op. "Ask AI could not do that" with nothing after
@@ -120,7 +122,7 @@ export function AskAiBar({ open, onClose }: { open: boolean; onClose: () => void
   // operator touched the card.
   //
   // A failure leaves `candidates` at null, which is the read-only fallback:
-  // asking still works and confirming still works, only the pickers are gone.
+  // asking still works and the sealed apply still works, only the pickers are gone.
   useEffect(() => {
     if (!open) return
     let cancelled = false
@@ -251,8 +253,9 @@ export function AskAiBar({ open, onClose }: { open: boolean; onClose: () => void
             </div>
           )}
 
-          {/* The proposal card is the legacy component, unchanged: it carries the
-              approve/confirm contract and re-skinning it is a separate decision. */}
+          {/* The proposal card is the legacy component; its one apply is the
+              Mudavym hold bound to a server seal (2026-09-21), and re-skinning
+              the rest of it is a separate decision (the /ask UI lane). */}
           {proposals.map((p) => (
             <ProposalCard key={p.actionId} proposal={p} candidates={candidates} />
           ))}
@@ -260,7 +263,7 @@ export function AskAiBar({ open, onClose }: { open: boolean; onClose: () => void
           {!refusal && !error && proposals.length === 0 && (
             <div>
               <p className="mdv-quiet" style={{ padding: '4px 0 10px' }}>
-                Ask AI proposes; you confirm. Nothing runs until you do.
+                Ask AI proposes; you hold to apply. Nothing runs until you do.
               </p>
               <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 6 }}>
                 {EXAMPLES.map((example) => (
@@ -398,7 +401,7 @@ export function AskAiBar({ open, onClose }: { open: boolean; onClose: () => void
           {!refusal && !error && proposals.length === 0 && (
             <div className="py-4 text-center">
               <p className="text-xs text-gray-400">
-                Ask AI proposes; you confirm. Nothing runs until you do.
+                Ask AI proposes; you hold to apply. Nothing runs until you do.
               </p>
               <ul className="mt-3 space-y-1.5">
                 {EXAMPLES.map((example) => (

@@ -259,19 +259,6 @@ export function LearnPanel({
                 <RotateCcw className="w-3.5 h-3.5" />
                 Reset page tips
               </button>
-              <button
-                type="button"
-                onClick={() =>
-                  guidance.setShowWineAgentFab(
-                    !guidance.state.global.show_wine_agent_fab,
-                  )
-                }
-                className="w-full flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-gray-50 text-left text-sm text-gray-700"
-              >
-                {guidance.state.global.show_wine_agent_fab
-                  ? 'Hide Wine Agent button'
-                  : 'Show Wine Agent button'}
-              </button>
             </>
           )}
         </div>

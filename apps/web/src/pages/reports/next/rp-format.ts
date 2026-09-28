@@ -149,22 +149,6 @@ export function failureLine(register: string, f: Failure): string {
 
 /* ───────────────────────────────────────────── the house serif ─────────── */
 
-/**
- * Fraunces — the house voice, injected once and idempotently. `index.html` is
- * a shared file this page may not touch and it does not load Fraunces;
- * Georgia carries the text until the webfont lands. Copied from the
- * dashboard's `fonts.ts` deliberately — pages depend on the foundation, never
- * on each other.
- */
-const LINK_ID = 'mudavym-fraunces';
+/** Fraunces — self-hosted; `@font-face` lives in `styles/mudavym.css`
+ * (decision 0149 row 9). Georgia is the fallback until it loads. */
 
-export function ensureFraunces(): void {
-  if (typeof document === 'undefined') return;
-  if (document.getElementById(LINK_ID)) return;
-  const link = document.createElement('link');
-  link.id = LINK_ID;
-  link.rel = 'stylesheet';
-  link.href =
-    'https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..680;1,9..144,300..680&display=swap';
-  document.head.appendChild(link);
-}

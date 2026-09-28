@@ -75,7 +75,13 @@ export const PAGE_NAMES: Record<MudavymPage, string> = {
   // The canonical document at /documents/:id (ADR 0104 slice 2, merged from main 2026-09-05).
   document: 'Document',
   logs: 'Logs',
+  // The app shell, not a page (sketch 119 D). Named because the map is
+  // exhaustive; never printed in the header — under the shell the header
+  // prints the ROOM's own name from `rooms.ts`, the table the rail reads.
+  shell: 'The house',
   authorize_integration: 'Permission to connect',
+  // Sidebar.tsx — the entry that links here (ADR 0160 §111 / PR #413).
+  help: 'Help & Support',
 };
 
 /**
@@ -87,7 +93,7 @@ export const PAGE_NAMES: Record<MudavymPage, string> = {
  * taps that comment removes. It also forces the charcoal ground
  * (`DoorNext.tsx:380`), which is the one surface a header would have to fight.
  */
-export const NO_CHROME: ReadonlySet<MudavymPage> = new Set<MudavymPage>(['receiving_door', 'authorize_integration']);
+export const NO_CHROME: ReadonlySet<MudavymPage> = new Set<MudavymPage>(['receiving_door']);
 
 /** The name to print for `page`, given the route actually open. */
 export function pageNameFor(page: MudavymPage, pathname?: string | null): string {

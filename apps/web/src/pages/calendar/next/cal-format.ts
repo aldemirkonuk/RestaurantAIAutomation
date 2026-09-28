@@ -17,24 +17,8 @@ export const SERIF = '"Fraunces", Georgia, "Times New Roman", serif';
 export const MONO = '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace';
 export const SANS = '"Plus Jakarta Sans", "DM Sans", system-ui, sans-serif';
 
-/* ── Fraunces ─────────────────────────────────────────────────────────────
- * Copied from pages/dashboard/next/fonts.ts rather than imported: pages depend
- * on the foundation, never on each other (providers/next carries its own copy
- * of its formatters for the same reason). index.html loads the sans and the
- * mono but not the serif, and index.html is not this page's to edit.
- */
-const FRAUNCES_LINK_ID = 'mudavym-fraunces';
-
-export function ensureFraunces(): void {
-  if (typeof document === 'undefined') return;
-  if (document.getElementById(FRAUNCES_LINK_ID)) return;
-  const link = document.createElement('link');
-  link.id = FRAUNCES_LINK_ID;
-  link.rel = 'stylesheet';
-  link.href =
-    'https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..680;1,9..144,300..680&display=swap';
-  document.head.appendChild(link);
-}
+/* Fraunces — self-hosted; `@font-face` lives in `styles/mudavym.css`
+ * (decision 0149 row 9). Georgia is the fallback until it loads. */
 
 /* ── Day keys ─────────────────────────────────────────────────────────────── */
 

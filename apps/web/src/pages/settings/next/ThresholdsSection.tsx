@@ -285,6 +285,7 @@ export function ThresholdsSection({ data }: { data: SettingsNextData }) {
                         when: row.updatedAt,
                         whenUnknown: 'the rule carries no date, which should be impossible',
                         verb: row.setBy?.name ? `set by ${row.setBy.name}` : 'set',
+                        readBy: <code style={{ fontFamily: MONO }}>settings/approval-thresholds.ts:135</code>,
                       }
                     : undefined
                 }

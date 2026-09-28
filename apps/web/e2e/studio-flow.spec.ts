@@ -12,7 +12,8 @@ test.describe('Studio Flow', () => {
   // assertion alive.
   test('login page renders step one: identify yourself', async ({ page }) => {
     await page.goto('/login')
-    await expect(page.getByRole('heading', { name: 'Mudavym' })).toBeVisible()
+    await expect(page.getByRole('img', { name: 'Mudavym' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Welcome back.' })).toBeVisible()
     await expect(page.getByLabel('Email Address')).toBeVisible()
     await expect(page.getByRole('button', { name: /continue/i })).toBeVisible()
 

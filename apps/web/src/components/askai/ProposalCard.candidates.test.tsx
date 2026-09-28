@@ -4,14 +4,19 @@
  * Editable ids are the part of this card that can quietly do the WRONG thing,
  * so each test here is one way that happens:
  *
- *  1. Changing the vendor must send the WHOLE payload with the new id. The
- *     gateway re-validates the complete payload — there is no partial patch —
- *     so a picker that mutated state without reaching `confirm` correctly
- *     would confirm the old vendor while showing the new one.
+ *  1. Changing the vendor must seal and send the WHOLE payload with the new
+ *     id. The gateway re-validates the complete payload — there is no partial
+ *     patch — so a picker that mutated state without reaching the seal
+ *     correctly would apply the old vendor while showing the new one.
  *  2. An UNTOUCHED card must still send no payload. The pickers make every id
  *     a controlled input; if one of them normalises or re-orders on mount, an
- *     untouched confirm silently becomes `edited: true` and the P3.0 ledger
+ *     untouched apply silently becomes `edited: true` and the P3.0 ledger
  *     stops meaning anything.
+ *
+ * Applying is a HOLD bound to a server seal ("Never without the seal", the
+ * founder, 2026-09-21), driven here the way a keyboard drives it — Enter arms
+ * and mints, Enter commits. The network under the ceremony is what is mocked
+ * (`mintProposalSeal`, `applyProposalSealed`), never the card.
  *  3. A proposed id OUTSIDE the candidate set must stay selected. It happens
  *     (capped out, vendor deactivated), and a select that fell through to its
  *     first option would rewrite what the operator is about to confirm without
@@ -27,18 +32,27 @@ import { ProposalCard } from './ProposalCard'
 import {
   AskAiCandidates,
   AskAiProposal,
-  confirmAction,
+  applyProposalSealed,
+  mintProposalSeal,
 } from '../../services/api/askAi'
+import { completeHold } from '../../__tests__/utils/seal'
 
 vi.mock('../../services/api/askAi', async () => {
   const actual =
     await vi.importActual<typeof import('../../services/api/askAi')>(
       '../../services/api/askAi',
     )
-  return { ...actual, confirmAction: vi.fn(), discardAction: vi.fn() }
+  return {
+    ...actual,
+    mintProposalSeal: vi.fn(),
+    applyProposalSealed: vi.fn(),
+    discardAction: vi.fn(),
+  }
 })
 
-const confirm = vi.mocked(confirmAction)
+const mint = vi.mocked(mintProposalSeal)
+const apply = vi.mocked(applyProposalSealed)
+const hold = () => screen.getByRole('button', { name: /hold to apply/i })
 
 const INV = '11111111-1111-4111-8111-111111111111'
 const INV_OTHER = '11111111-1111-4111-8111-1111111111aa'
@@ -80,7 +94,8 @@ const candidates: AskAiCandidates = {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  confirm.mockResolvedValue({
+  mint.mockResolvedValue('seal-1')
+  apply.mockResolvedValue({
     executed: true,
     actionId: 'action-1',
     executionRef: 'order-9',
@@ -105,31 +120,28 @@ describe('ProposalCard id pickers', () => {
     render(<ProposalCard proposal={reorder} candidates={candidates} />)
 
     await user.selectOptions(screen.getByLabelText('Vendor'), PROV_OTHER)
-    await user.click(screen.getByRole('button', { name: /confirm/i }))
+    completeHold(hold())
 
-    await waitFor(() => expect(confirm).toHaveBeenCalledTimes(1))
-    expect(confirm).toHaveBeenCalledWith('action-1', {
-      inventoryId: INV,
-      providerId: PROV_OTHER,
-      quantity: 6,
-    })
+    const whole = { inventoryId: INV, providerId: PROV_OTHER, quantity: 6 }
+    await waitFor(() => expect(apply).toHaveBeenCalledTimes(1))
+    expect(mint).toHaveBeenCalledWith('action-1', whole)
+    expect(apply).toHaveBeenCalledWith('action-1', 'seal-1', whole)
   })
 
   it('still sends NO payload when nothing is touched', async () => {
-    const user = userEvent.setup()
     render(<ProposalCard proposal={reorder} candidates={candidates} />)
 
-    await user.click(screen.getByRole('button', { name: /confirm/i }))
+    completeHold(hold())
 
-    await waitFor(() => expect(confirm).toHaveBeenCalledTimes(1))
-    expect(confirm).toHaveBeenCalledWith('action-1', undefined)
+    await waitFor(() => expect(apply).toHaveBeenCalledTimes(1))
+    expect(mint).toHaveBeenCalledWith('action-1', undefined)
+    expect(apply).toHaveBeenCalledWith('action-1', 'seal-1', undefined)
   })
 
   it('keeps a proposed id that is not in the candidate set selected', async () => {
     // The vendor went inactive between propose and now. The row still points
     // at it, so the card must still show it — and an untouched confirm must
     // still be an untouched confirm.
-    const user = userEvent.setup()
     render(
       <ProposalCard
         proposal={reorder}
@@ -144,8 +156,9 @@ describe('ProposalCard id pickers', () => {
     expect(vendor.value).toBe(PROV)
     expect(screen.getByRole('option', { name: /As proposed/ })).toBeTruthy()
 
-    await user.click(screen.getByRole('button', { name: /confirm/i }))
-    await waitFor(() => expect(confirm).toHaveBeenCalledWith('action-1', undefined))
+    completeHold(hold())
+    await waitFor(() => expect(apply).toHaveBeenCalledWith('action-1', 'seal-1', undefined))
+    expect(mint).toHaveBeenCalledWith('action-1', undefined)
   })
 
   it('a card restored from the database is NOT reported as edited', async () => {
@@ -153,7 +166,6 @@ describe('ProposalCard id pickers', () => {
     // jsonb key order rather than preserving it. A stringify-based change
     // detector called every restored reorder edited, which sent a payload the
     // operator never typed and filed it in the ledger as a human correction.
-    const user = userEvent.setup()
     const restored: AskAiProposal = {
       ...reorder,
       action: {
@@ -164,11 +176,12 @@ describe('ProposalCard id pickers', () => {
     }
     render(<ProposalCard proposal={restored} candidates={candidates} />)
 
-    expect(screen.getByRole('button', { name: /^Confirm$/ })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /^Hold to apply$/ })).toBeTruthy()
     expect(screen.queryByText(/Edited — your version/)).toBeNull()
 
-    await user.click(screen.getByRole('button', { name: /confirm/i }))
-    await waitFor(() => expect(confirm).toHaveBeenCalledWith('action-1', undefined))
+    completeHold(hold())
+    await waitFor(() => expect(apply).toHaveBeenCalledWith('action-1', 'seal-1', undefined))
+    expect(mint).toHaveBeenCalledWith('action-1', undefined)
   })
 
   it('still reports a real edit on a restored card', async () => {
@@ -184,14 +197,10 @@ describe('ProposalCard id pickers', () => {
 
     await user.selectOptions(screen.getByLabelText('Vendor'), PROV_OTHER)
     await waitFor(() => expect(screen.getByText(/Edited — your version/)).toBeTruthy())
-    await user.click(screen.getByRole('button', { name: /confirm edits/i }))
-    await waitFor(() =>
-      expect(confirm).toHaveBeenCalledWith('action-1', {
-        inventoryId: INV,
-        providerId: PROV_OTHER,
-        quantity: 6,
-      }),
-    )
+    completeHold(screen.getByRole('button', { name: /hold to apply your edits/i }))
+    const whole = { inventoryId: INV, providerId: PROV_OTHER, quantity: 6 }
+    await waitFor(() => expect(apply).toHaveBeenCalledWith('action-1', 'seal-1', whole))
+    expect(mint).toHaveBeenCalledWith('action-1', whole)
   })
 
   it('says a capped list is a ceiling, not a first page', () => {
@@ -215,10 +224,7 @@ describe('ProposalCard id pickers', () => {
     expect(screen.queryByRole('combobox')).toBeNull()
     // The id is still shown — shortened, as it was before pickers existed.
     expect(screen.getByTitle(INV)).toBeTruthy()
-    // And the card is still confirmable.
-    expect(
-      (screen.getByRole('button', { name: /confirm/i }) as HTMLButtonElement)
-        .disabled,
-    ).toBe(false)
+    // And the card can still be applied — by the hold.
+    expect((hold() as HTMLButtonElement).disabled).toBe(false)
   })
 })

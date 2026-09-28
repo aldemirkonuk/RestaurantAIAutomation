@@ -11,7 +11,7 @@ signals_today: none
 rebrand_strings: 3
 maturity: partial
 status: documented
-updated: 2026-08-26
+updated: 2026-09-13
 links: ["[[PAGE-CONTRACT]]", "[[register]]", "[[no-access]]", "[[login]]", "[[dashboard]]"]
 ---
 
@@ -134,3 +134,14 @@ Named absences:
 4. Decide whether the unauthenticated preview should name the inviter (`auth.service.ts:793`). *Blocked:* founder call.
 5. Move to the shared axios client (`:38`, `:59`).
 6. Track invite viewed / accepted / abandoned — the highest-value growth event in the product, currently unmeasured (§5). *Blocked:* no sink (see [[get-started]] §11).
+
+
+### PublicShell implementation — 2026-09-13
+
+Implemented in the page-finalization working branch from `60ed83a7`; this is a code/test record, not a production-deployment claim. The new public treatment uses the shared `PublicShell` and `usePublicDesign()`. [UPDATED 2026-09-17, decision 0149 row 37: the switch is now permanent-on in code — `isPublicDesignOn()` resolves `true` unconditionally except an explicit `localStorage["mudavym.design.public"] = "off"` QA override, kept only so the legacy rendering stays reachable and compiling until the gated cutover deletes it. `VITE_MUDAVYM_PUBLIC` is no longer read.] No new server authorization or public endpoint is introduced by the visual port.
+
+A failed preview now stays a retryable read error rather than pretending that an invitation expired, in both legacy and new renderings. The new shell preserves the existing public restaurant/role preview, encoded sign-in return path, account-creation invitation and explicit accept action. Accept refreshes memberships before navigation. No additional inviter/organization disclosure was added; changing the public preview contract remains a founder decision. No invitation was redeemed during validation.
+
+Verification (2026-09-13 Codex run, not re-measured; counts above are its own): `apps/web/src/pages/__tests__/publicPages.recovery.test.tsx` (ten behavior tests across the seven pages), existing PublicShell/public-switch tests (34), web/gateway TypeScript checks. Vendor read/JSON-LD tests (five) and account email body/sender identity tests (five) are isolated and perform no real sends or database writes. Remaining product choices were recorded under [[OPEN-DECISIONS#Public-page completion — 2026-09-13 (5 of 6 resolved 2026-09-17; the sixth is OD-124)]]; five of six are now resolved (2026-09-17) — see that section and decision 0149 rows 7-9.
+
+[FIXER RE-MEASURE 2026-09-17, this tree, clean: `apps/web/src/pages/__tests__/publicPages.recovery.test.tsx` 16 passed (6 added, closing the 404-vs-503, javascript: URL, role-capitalisation and token-vs-client-error gaps the lane C judge found), plus `PublicShell.test.tsx` 20 passed and `publicDesign.test.ts` 12 passed (rewritten for the permanent-on switch) — 48/48 across the three files. Gateway: 24/24 across 5 suites, including a new `verification-email-identity.spec.ts` and an added assertion in `password-reset.spec.ts` pinning the Mudavym senderName/subject the judge found untested (D5d/F10). 7 CLAUDE.md guard scripts and `check_decision_claims.sh` (335 claims) hold. Web and gateway `tsc --noEmit` both clean. Full command list and exit codes: `.planning/handoff/PROGRESS.md` §0b.] [CONFIRMER CORRECTION 2026-09-17: this tree was NOT clean at that point — `authPages.publicDesign.test.tsx:442` still asserted the pre-0149-row-37 contract against code this same pass had already flipped, and `verify_index.sh` was RED on it. The 48/48 above is now 49/49 (one CSS-specificity assertion added to `PublicShell.test.tsx`). Fixed and re-measured via `verify_index.sh` itself: `.planning/handoff/PROGRESS.md` §0b.]

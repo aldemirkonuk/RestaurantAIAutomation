@@ -64,6 +64,14 @@ function build(env: Record<string, any> = {}, overrides: any = {}) {
   const grantSuspended = overrides.grantSuspended ?? stub("grant_suspended");
   (grantSuspended as any).suspendedGrantCount =
     overrides.suspendedGrantCount ?? recorder(async () => 0);
+  // The tenth producer also narrows its own audience and is asked, by the
+  // status read, whether this house's mail grant is currently absent.
+  // Default: fine (either mail reading is off, or the grant is live), which
+  // is the ordinary state for most houses; the cases below opt into the
+  // other two three-state answers `wouldFire` can give.
+  const mailGrantAbsent = overrides.mailGrantAbsent ?? stub("mail_grant_absent");
+  (mailGrantAbsent as any).wouldFire =
+    overrides.mailGrantWouldFire ?? recorder(async () => false);
   // The ninth producer is not a tenant sweep, so it gets a stub with the three
   // methods the service actually calls on it. `founderHouseId` answers the
   // TENANT by default, which makes "this is the founder's house" the ordinary
@@ -95,6 +103,7 @@ function build(env: Record<string, any> = {}, overrides: any = {}) {
     grantSuspended as any,
     addedTool as any,
     experimentEnded as any,
+    mailGrantAbsent as any,
   );
   return {
     service,
@@ -105,6 +114,7 @@ function build(env: Record<string, any> = {}, overrides: any = {}) {
     goals,
     market,
     grantSuspended,
+    mailGrantAbsent,
     stub,
   };
 }
@@ -142,6 +152,7 @@ describe("arming", () => {
       "invoice_confirmed",
       "grant_suspended",
       "added_tool",
+      "mail_grant_absent",
       // LAST, and outside the per-tenant loop. It reports cross-house figures to
       // one reader; running it inside would put them in every house's inbox.
       "experiment_ended_unnamed",
@@ -211,10 +222,17 @@ describe("arming", () => {
     expect(sweeps).not.toContain("grant_suspended");
     expect((grantSuspended as any).sweepTenant.calls).toHaveLength(0);
   });
+
+  it("[REVERT-FAILS] a disarmed deployment writes no mail-grant-absent notification", async () => {
+    const { service, sweeps, mailGrantAbsent } = build();
+    await service.sweepFast();
+    expect(sweeps).not.toContain("mail_grant_absent");
+    expect((mailGrantAbsent as any).sweepTenant.calls).toHaveLength(0);
+  });
 });
 
 describe("the two cadences", () => {
-  it("the fast sweep runs the six event producers and opens a run row each", async () => {
+  it("the fast sweep runs the seven event producers and opens a run row each", async () => {
     const { service, ledger } = build();
     await service.runFastForTenant(TENANT, new Date("2026-09-03T12:00:00Z"));
     expect(ledger.openRun.calls.map((c: any[]) => c[1])).toEqual([
@@ -224,8 +242,9 @@ describe("the two cadences", () => {
       "invoice_confirmed",
       "grant_suspended",
       "added_tool",
+      "mail_grant_absent",
     ]);
-    expect(ledger.closeRun.calls).toHaveLength(6);
+    expect(ledger.closeRun.calls).toHaveLength(7);
   });
 
   it("[REVERT-FAILS] one producer throwing does not cost the others their run", async () => {
@@ -246,6 +265,7 @@ describe("the two cadences", () => {
       "invoice_confirmed",
       "grant_suspended",
       "added_tool",
+      "mail_grant_absent",
     ]);
     // The failure is recorded on the run row rather than swallowed.
     const closed = ledger.closeRun.calls[0];
@@ -278,7 +298,7 @@ describe("the two cadences", () => {
 });
 
 describe("statusFor — what the page is allowed to say", () => {
-  it("names all nine producers, their schedule and their next tick", async () => {
+  it("names all ten producers, their schedule and their next tick", async () => {
     const { service } = build();
     const status = await service.statusFor(
       "rest-1",
@@ -291,6 +311,7 @@ describe("statusFor — what the page is allowed to say", () => {
       "invoice_confirmed",
       "grant_suspended",
       "added_tool",
+      "mail_grant_absent",
       "experiment_ended_unnamed",
       "sale_record",
       "market_price",
@@ -298,19 +319,20 @@ describe("statusFor — what the page is allowed to say", () => {
     expect(status.producers[0].nextTickAt).toBe("2026-09-03T12:15:00.000Z");
     expect(status.producers[5].nextTickAt).toBe("2026-09-03T12:15:00.000Z");
     expect(status.producers[6].nextTickAt).toBe("2026-09-03T12:15:00.000Z");
-    expect(status.producers[8].nextTickAt).toBe("2026-09-03T13:00:00.000Z");
+    expect(status.producers[7].nextTickAt).toBe("2026-09-03T12:15:00.000Z");
+    expect(status.producers[9].nextTickAt).toBe("2026-09-03T13:00:00.000Z");
   });
 
-  it("[REVERT-FAILS] one switch arms all nine, and every producer says so while it is off", async () => {
+  it("[REVERT-FAILS] one switch arms all ten, and every producer says so while it is off", async () => {
     const { service } = build();
     const status = await service.statusFor("rest-1");
     expect(status.armed).toBe(false);
-    expect(status.armingNote).toMatch(/arms all 9 producers/);
-    expect(status.producers).toHaveLength(9);
+    expect(status.armingNote).toMatch(/arms all 10 producers/);
+    expect(status.producers).toHaveLength(10);
     for (const p of status.producers) {
       expect(p.willWrite).toBe(false);
       expect(p.silentReason).toMatch(
-        /NOTIFICATION_PRODUCERS_ENABLED is not set.*arms all 9 producers at once/s,
+        /NOTIFICATION_PRODUCERS_ENABLED is not set.*arms all 10 producers at once/s,
       );
     }
   });
@@ -324,14 +346,15 @@ describe("statusFor — what the page is allowed to say", () => {
     const market = status.producers.find((p) => p.producer === "market_price")!;
     expect(market.willWrite).toBe(false);
     expect(market.silentReason).toMatch(/no sighting this restaurant can see/);
-    // …and the others are not tarred with it. The grant producer is given a
-    // suspension here so its own silence case does not mask this one, and the
-    // ninth is excluded because it is legitimately silent whenever no experiment
-    // has ended unnamed — the stub answers 0 by default.
+    // …and the others are not tarred with it. The grant and mail-grant producers
+    // are each given their loud case here so their own silence does not mask
+    // this one, and the ninth is excluded because it is legitimately silent
+    // whenever no experiment has ended unnamed — the stub answers 0 by default.
     for (const p of status.producers.filter(
       (x) =>
         x.producer !== "market_price" &&
         x.producer !== "grant_suspended" &&
+        x.producer !== "mail_grant_absent" &&
         x.producer !== "experiment_ended_unnamed",
     )) {
       expect(p.willWrite).toBe(true);
@@ -375,6 +398,42 @@ describe("statusFor — what the page is allowed to say", () => {
     expect(grant.silentReason).toMatch(/could not be read/);
   });
 
+  it("[REVERT-FAILS] armed and served, the mail-grant producer says it is mute when the grant is fine", async () => {
+    const { service } = build({ NOTIFICATION_PRODUCERS_ENABLED: "true" });
+    const status = await service.statusFor("rest-1");
+    const mail = status.producers.find(
+      (p) => p.producer === "mail_grant_absent",
+    )!;
+    expect(mail.willWrite).toBe(false);
+    expect(mail.silentReason).toMatch(/mail reading, or the grant behind/);
+  });
+
+  it("[REVERT-FAILS] a house whose mail grant is absent is told this producer will speak", async () => {
+    const { service } = build(
+      { NOTIFICATION_PRODUCERS_ENABLED: "true" },
+      { mailGrantWouldFire: recorder(async () => true) },
+    );
+    const status = await service.statusFor("rest-1");
+    const mail = status.producers.find(
+      (p) => p.producer === "mail_grant_absent",
+    )!;
+    expect(mail.willWrite).toBe(true);
+    expect(mail.silentReason).toBeNull();
+  });
+
+  it("[REVERT-FAILS] an unreadable mail-grant register is unknown, not fine", async () => {
+    const { service } = build(
+      { NOTIFICATION_PRODUCERS_ENABLED: "true" },
+      { mailGrantWouldFire: recorder(async () => null) },
+    );
+    const status = await service.statusFor("rest-1");
+    const mail = status.producers.find(
+      (p) => p.producer === "mail_grant_absent",
+    )!;
+    expect(mail.willWrite).toBeNull();
+    expect(mail.silentReason).toMatch(/could not be read/);
+  });
+
   it("[REVERT-FAILS] an unreadable price register is unknown, not an empty one", async () => {
     const { service } = build(
       { NOTIFICATION_PRODUCERS_ENABLED: "true" },
@@ -386,7 +445,7 @@ describe("statusFor — what the page is allowed to say", () => {
     expect(market.silentReason).toMatch(/could not be read/);
   });
 
-  it("a restaurant the scheduler skips makes the eight tenant producers silent for that reason", async () => {
+  it("a restaurant the scheduler skips makes the nine tenant producers silent for that reason", async () => {
     const { service } = build({ NOTIFICATION_PRODUCERS_ENABLED: "true" });
     const status = await service.statusFor("rest-99");
     for (const p of status.producers.filter(
@@ -400,7 +459,7 @@ describe("statusFor — what the page is allowed to say", () => {
   it("[REVERT-FAILS] the ninth is NOT silenced by the opt-in register, and says its own reason", async () => {
     // It runs outside `runPerTenant`, so whether the scheduler enumerates a
     // restaurant does not decide whether it speaks. Printing the opt-in sentence
-    // over it would be a true statement about the other eight rendered where it
+    // over it would be a true statement about the other nine rendered where it
     // is false — the reader would go and set a feature flag that changes nothing.
     const { service } = build({ NOTIFICATION_PRODUCERS_ENABLED: "true" });
     const status = await service.statusFor("rest-99");

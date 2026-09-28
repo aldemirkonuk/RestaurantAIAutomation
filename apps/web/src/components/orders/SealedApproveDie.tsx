@@ -91,6 +91,13 @@ export interface SealedApproveDieProps {
   className?: string;
   /** Ids the gateway actually approved. Never the ids that were attempted. */
   onApproved?: (approvedIds: string[]) => void;
+  /**
+   * Called when any order in the gesture was refused, with the gateway's own
+   * sentences — so a caller that keeps a record of the sitting (the house
+   * counter's "The house said", sketch 119 D) can file the refusal as the
+   * house worded it. The control still prints the refusal itself.
+   */
+  onRefused?: (reasons: string[], refusedCount: number) => void;
   /** Called with `true` while the writes are in flight. */
   onRunningChange?: (running: boolean) => void;
 }
@@ -112,6 +119,7 @@ export function SealedApproveDie({
   disabled = false,
   className,
   onApproved,
+  onRefused,
   onRunningChange,
 }: SealedApproveDieProps) {
   const approve = useApproveOrder();
@@ -189,6 +197,7 @@ export function SealedApproveDie({
     // is still pending, so the ceremony is returned to rest.
     if (refused > 0) setAttempt((a) => a + 1);
     if (approvedIds.length > 0) onApproved?.(approvedIds);
+    if (refused > 0) onRefused?.(reasons, refused);
   };
 
   const noun = orderIds.length === 1 ? 'order' : 'orders';

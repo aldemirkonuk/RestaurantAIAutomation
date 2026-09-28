@@ -13,6 +13,7 @@ import { apiClient } from '../../services/api/client'
 import type { UnverifiedDelivery } from '../../services/api/receiving'
 import { useAuth } from '../../contexts/AuthContext'
 import { cn } from '../../lib/utils'
+import { DayLine } from '../../components/mudavym/DayLine'
 
 /**
  * Receiving — one event, three renderings, chosen by role.
@@ -65,11 +66,32 @@ export default function ReceivingHome() {
   const { user } = useAuth()
   const role = (user?.role ?? '').toLowerCase()
 
-  if (role === 'owner') return <OwnerView />
-  if (role === 'manager' || role === 'admin') return <ManagerView />
+  // The day line (sketch 119 §E) — a PAGE element, self-gated by the shell
+  // flag, above all three renderings: it carries no money (deliveries
+  // arrived, the calendar, reminders), so it belongs even on the staff view,
+  // which hides cost deliberately.
+  if (role === 'owner')
+    return (
+      <>
+        <DayLine />
+        <OwnerView />
+      </>
+    )
+  if (role === 'manager' || role === 'admin')
+    return (
+      <>
+        <DayLine />
+        <ManagerView />
+      </>
+    )
   // Anything unrecognised falls to the staff view, which shows no cost data. If the role
   // cannot be established, showing less is the safe direction to fail.
-  return <StaffView />
+  return (
+    <>
+      <DayLine />
+      <StaffView />
+    </>
+  )
 }
 
 /* ---------------------------------------------------------------- staff --- */

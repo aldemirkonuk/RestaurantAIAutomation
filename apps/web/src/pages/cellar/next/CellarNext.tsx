@@ -47,7 +47,6 @@
  * no source at all and say that instead of showing an empty table.
  */
 
-import { useEffect } from 'react';
 import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import { Wordmark } from '@/components/mudavym';
 import CatalogueRegister from './CatalogueRegister';
@@ -58,7 +57,6 @@ import {
   REGISTER_ORDER,
   REGISTER_TITLE,
   SANS,
-  ensureFraunces,
   houseNamingFor,
   parentView,
   registerHref,
@@ -123,10 +121,6 @@ export default function CellarNext({ ground, category }: CellarNextProps) {
   // Which view this page opens on, off the SAME readout as the name — so the
   // two can never disagree, and neither is recomputed per session.
   const view = parentView(data.registers);
-
-  useEffect(() => {
-    ensureFraunces();
-  }, []);
 
   return (
     <div

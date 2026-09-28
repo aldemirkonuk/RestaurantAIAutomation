@@ -66,6 +66,19 @@ export interface UserPreferences {
     activeProvider?: string
     updatedAt?: string
   }
+  /**
+   * The Mudavym ground this person reads the house on — ADR 0169, and the
+   * founder's 2026-09-21 answer, "Always paper, follows account". Absent
+   * means they have never chosen, which is paper.
+   *
+   * Stored here, in the account's JSONB blob, rather than in a device-wide
+   * `localStorage` key, precisely so it follows the person to another
+   * browser and to another device — the same rationale `mapDefaultScope`
+   * above states. `lib/mudavym/GroundChoiceSync.tsx` is the only reader and
+   * writer; do not set it from anywhere else, or the device mirror it keeps
+   * can go out of step with the account.
+   */
+  ground?: 'paper' | 'charcoal'
   [key: string]: unknown
 }
 
@@ -150,11 +163,29 @@ export function useUserPreferences() {
     mutation.mutate(partial)
   }
 
+  /**
+   * Same write, but the caller learns whether it landed. `updatePreferences`
+   * above is fire-and-forget, which is fine for a favourite or a layout — a
+   * caller that must not report an unsaved change as saved (ADR 0169's ground
+   * choice) needs the rejection. Added for that; `mutateAsync` is stable
+   * across renders, so it is safe in an effect's dependency list.
+   */
+  const updatePreferencesAsync = mutation.mutateAsync
+
   return {
     preferences,
     isLoading: query.isLoading,
+    /**
+     * True while `preferences` is still the `{}` placeholder rather than an
+     * answer from the account — including while the query is disabled for a
+     * signed-out visitor. `isLoading` alone cannot be used for this:
+     * `placeholderData` above puts the query into `success` immediately, so
+     * `isLoading` is false before the gateway has said anything.
+     */
+    isPlaceholderData: query.isPlaceholderData,
     error: query.error,
     updatePreferences,
+    updatePreferencesAsync,
     isUpdating: mutation.isPending,
   }
 }

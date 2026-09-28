@@ -4,9 +4,24 @@ import { errorTracking } from '../lib/error-tracking'
 
 type ErrorCategory = 'network' | 'auth' | 'server' | 'unknown'
 
+/** What a render-function `fallback` receives — enough to build a styled
+ * screen of its own (sketch 119's house error screen) without duplicating
+ * this class's error-categorisation or its stale-chunk-reload match. */
+export interface ErrorBoundaryFallbackInfo {
+  error: Error | null
+  errorCategory: ErrorCategory
+  /** Clears the error and re-renders `children` in place — for a transient failure. */
+  retry: () => void
+  /** Clears the error and navigates to `/` — for one that will not clear itself. */
+  reset: () => void
+}
+
 interface Props {
   children: ReactNode
-  fallback?: ReactNode
+  /** A static node (unchanged, pre-existing usage), or a render function that
+   * gets the error, its category, and working retry/reset handlers — so a
+   * caller can build its own screen without a second copy of this class. */
+  fallback?: ReactNode | ((info: ErrorBoundaryFallbackInfo) => ReactNode)
 }
 
 interface State {
@@ -183,6 +198,14 @@ export class ErrorBoundary extends Component<Props, State> {
 
   render() {
     if (this.state.hasError) {
+      if (typeof this.props.fallback === 'function') {
+        return this.props.fallback({
+          error: this.state.error,
+          errorCategory: this.state.errorCategory,
+          retry: this.handleRetry,
+          reset: this.handleReset,
+        })
+      }
       if (this.props.fallback) {
         return this.props.fallback
       }

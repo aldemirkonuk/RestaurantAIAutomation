@@ -938,3 +938,17 @@
   font-size: 11.5px !important;
   color: var(--ink-4) !important;
 }
+
+/* ADR 0169 — the Ground menu says out loud when the ground on screen is not a
+   confirmed answer from the person's account: still loading, this device's
+   copy, unreadable, or chosen-but-not-saved. Without it the menu would put a
+   checkmark next to Paper and call an unread preference an answer.
+   `--ink-4`, not `--ink-3`: OD-112 (ADR 0149 row 30) reserves `--ink-3` for
+   decoration on paper and `--ink-4` for text a person is meant to read. */
+.mdv-menu-note {
+  padding: 6px 16px 10px;
+  font-family: var(--mdv-sans);
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--ink-4);
+}

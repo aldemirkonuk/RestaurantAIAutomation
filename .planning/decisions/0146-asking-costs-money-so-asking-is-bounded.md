@@ -119,7 +119,11 @@ proposal into a real order.
 - **Who.** `@Roles("owner", "manager")` on `confirm`, with `RolesGuard`.
   Founder's call, over signing-instead-of-gating and over owner-only. Production
   has no `staff` role at all and six of ten houses are owner-only, so in practice
-  this changes almost nothing today except closing the hole.
+  this changes almost nothing today except closing the hole. **[amended 2026-09-21:
+  the unsealed `confirm` route is retired (410, naming the sealed routes) on the
+  founder's "Never without the seal"; the role now sits on `seal-challenge` and
+  `sealed-confirm`, the only way a proposal is applied. The guard's section 4 was
+  rewritten to hold that; see ADR 0160's review trail, 2026-09-21.]**
 
 **None is sufficient alone, and the arrangement is deliberate.** Validation
 bounds the REQUEST. The limit bounds the RATE, in one process. The ceiling bounds
@@ -212,7 +216,9 @@ below was measured before it was written.
   - a paged sum;
   - integer bounds on every rate-limit rule;
   - `@Roles("owner", "manager")` on every handler in the gateway that calls Ask AI's
-    confirm, where before it checked one route sliced to end of file;
+    confirm, where before it checked one route sliced to end of file [amended
+    2026-09-21: now on every handler that mints or redeems a proposal seal, with no
+    handler anywhere allowed to call an unsealed confirm];
   - a 429 thrown inside the `instanceof ModelSpendCeilingError` branch.
 
   Each check was proven red by mutating its target in a copy of the tree. The third

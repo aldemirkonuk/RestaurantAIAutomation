@@ -5,10 +5,12 @@
  *     `POST /propose` returns the TypeScript action (`actionType`). If both
  *     shapes reach React, a card renders `undefined` for its own type and the
  *     bug looks like a rendering bug.
- *  2. A confirm can fail three ways and they are NOT the same event. A 404 is
- *     the compare-and-swap working; a 400 is a rejected edit the operator must
- *     be able to fix in place; a 5xx is a real failure. Collapsing them into
- *     "something went wrong" is what turns a working gate into a scary one.
+ *  2. A sealed apply can fail four ways and they are NOT the same event. A 404
+ *     is the compare-and-swap working; a 400 is a rejected edit the operator
+ *     must be able to fix in place; a 403 is a refused seal (nothing written);
+ *     a 5xx is a real failure. Collapsing them into "something went wrong" is
+ *     what turns a working gate into a scary one. And there is no unsealed
+ *     confirm left to call ("Never without the seal", the founder, 2026-09-21).
  *  3. `GET /ask-ai/candidates` hits the right path and does not manufacture a
  *     candidate set out of a malformed body. Everything the picker offers is
  *     an id the confirm will ground against, so an invented option here is a
@@ -16,12 +18,14 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import * as askAiModule from './askAi'
 import {
   AskAiActionError,
-  confirmAction,
+  applyProposalSealed,
   discardAction,
   listCandidates,
   listOpenProposals,
+  mintProposalSeal,
   proposeAction,
 } from './askAi'
 import { apiClient } from './client'
@@ -142,31 +146,57 @@ describe('listOpenProposals', () => {
   })
 })
 
-describe('confirmAction', () => {
-  it('omits payload entirely when confirming as proposed', async () => {
-    http.post.mockResolvedValue({
-      data: { executed: true, actionId: 'a-1', executionRef: 'o-9', edited: false },
-    })
-
-    await confirmAction('a-1')
-
-    expect(http.post).toHaveBeenCalledWith('/ask-ai/actions/a-1/confirm', {})
+describe('the sealed apply — the only way a proposal is applied', () => {
+  it('has no unsealed confirm left to call', () => {
+    expect('confirmAction' in askAiModule).toBe(false)
+    expect('confirm' in askAiModule.askAiApi).toBe(false)
   })
 
-  it('sends the full payload when the operator edited it', async () => {
-    http.post.mockResolvedValue({
-      data: { executed: true, actionId: 'a-1', executionRef: 'o-9', edited: true },
-    })
+  it('mints on nothing when the proposal is untouched', async () => {
+    http.post.mockResolvedValue({ data: { challenge: 'seal-1' } })
+    await expect(mintProposalSeal('a-1')).resolves.toBe('seal-1')
+    expect(http.post).toHaveBeenCalledWith('/ask-ai/actions/a-1/seal-challenge', {})
+  })
 
-    await confirmAction('a-1', {
+  it('mints ON the edit: the full payload goes into the seal request', async () => {
+    http.post.mockResolvedValue({ data: { challenge: 'seal-1' } })
+    await mintProposalSeal('a-1', {
       inventoryId: INVENTORY,
       providerId: PROVIDER,
       quantity: 8,
     })
-
-    expect(http.post).toHaveBeenCalledWith('/ask-ai/actions/a-1/confirm', {
+    expect(http.post).toHaveBeenCalledWith('/ask-ai/actions/a-1/seal-challenge', {
       payload: { inventoryId: INVENTORY, providerId: PROVIDER, quantity: 8 },
     })
+  })
+
+  it('applies with the seal in the header and the same edit in the body', async () => {
+    http.post.mockResolvedValue({
+      data: { executed: true, actionId: 'a-1', executionRef: 'o-9', edited: true },
+    })
+    await applyProposalSealed('a-1', 'seal-1', {
+      inventoryId: INVENTORY,
+      providerId: PROVIDER,
+      quantity: 8,
+    })
+    expect(http.post).toHaveBeenCalledWith(
+      '/ask-ai/actions/a-1/sealed-confirm',
+      { payload: { inventoryId: INVENTORY, providerId: PROVIDER, quantity: 8 } },
+      { headers: { 'x-seal-challenge': 'seal-1' } },
+    )
+    expect(http.post.mock.calls.some((c) => String(c[0]).endsWith('/confirm'))).toBe(false)
+  })
+
+  it('applies untouched with an empty body, never a payload', async () => {
+    http.post.mockResolvedValue({
+      data: { executed: true, actionId: 'a-1', executionRef: 'o-9', edited: false },
+    })
+    await applyProposalSealed('a-1', 'seal-1')
+    expect(http.post).toHaveBeenCalledWith(
+      '/ask-ai/actions/a-1/sealed-confirm',
+      {},
+      { headers: { 'x-seal-challenge': 'seal-1' } },
+    )
   })
 
   it('classifies a lost compare-and-swap as `gone`, not as a failure', async () => {
@@ -174,19 +204,19 @@ describe('confirmAction', () => {
       httpError(404, 'That action is no longer waiting for confirmation.'),
     )
 
-    const error = await confirmAction('a-1').catch((e) => e as AskAiActionError)
+    const error = await applyProposalSealed('a-1', 's').catch((e) => e as AskAiActionError)
 
     expect(error).toBeInstanceOf(AskAiActionError)
     expect((error as AskAiActionError).kind).toBe('gone')
     expect((error as AskAiActionError).message).toMatch(/no longer waiting/)
   })
 
-  it('classifies a rejected edit as `rejected` and keeps the server reason', async () => {
+  it('classifies a rejected edit as `rejected` and keeps the server reason — at the mint too', async () => {
     http.post.mockRejectedValue(
       httpError(400, 'An edit cannot change what kind of action this is.'),
     )
 
-    const error = await confirmAction('a-1', {
+    const error = await mintProposalSeal('a-1', {
       orderId: PROVIDER,
       instruction: 'x',
     }).catch((e) => e as AskAiActionError)
@@ -195,9 +225,18 @@ describe('confirmAction', () => {
     expect((error as AskAiActionError).message).toMatch(/cannot change what kind/)
   })
 
+  it('classifies a refused seal as `refused`, never as a terminal failure', async () => {
+    http.post.mockRejectedValue(
+      httpError(403, 'This proposal changed after the seal was issued, so nothing was changed.'),
+    )
+    const error = await applyProposalSealed('a-1', 's').catch((e) => e as AskAiActionError)
+    expect((error as AskAiActionError).kind).toBe('refused')
+    expect((error as AskAiActionError).message).toMatch(/changed after the seal/)
+  })
+
   it('classifies an executor blow-up as `failed`', async () => {
     http.post.mockRejectedValue(httpError(500, 'Could not confirm that action.'))
-    const error = await confirmAction('a-1').catch((e) => e as AskAiActionError)
+    const error = await applyProposalSealed('a-1', 's').catch((e) => e as AskAiActionError)
     expect((error as AskAiActionError).kind).toBe('failed')
   })
 })

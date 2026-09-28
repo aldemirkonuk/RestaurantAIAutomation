@@ -1,0 +1,44 @@
+/* The house offline/sync banner — tokens only (styles/mudavym.css). App-wide:
+   any queued mutation, on any page, shell or legacy content underneath it.
+   The shell's own header strip (`.mdv-shell__offline` in house-shell.css)
+   speaks only for the counter.
+
+   FIXED TO THE FOOT OF THE WINDOW, NOT STICKY. App.tsx mounts this AFTER the
+   router — the last thing in the document — and `position: sticky; top: 0`
+   cannot lift an element above its place in the flow: measured 2026-09-21 at
+   1440x900 on the dashboard, the bar sat at y=2497 of a 2527 px document,
+   900 px below anything a person would see. Fixed at the foot, it is on screen
+   on every page whatever its length, and never covers the house header. On a
+   phone under the shell it rides above the four doors (57 px, .mdv-doors). */
+
+.mdv-offlinebar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 45;
+  padding: 6px 16px;
+  background: var(--paper-1);
+  color: var(--ink-2);
+  border-top: 1px solid var(--paper-2);
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  letter-spacing: 0.01em;
+  text-align: center;
+}
+
+body:has(.mdv-doors) .mdv-offlinebar {
+  bottom: calc(57px + env(safe-area-inset-bottom, 0px));
+}
+
+.mdv-offlinebar__word {
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-1);
+}
+
+.mdv-offlinebar--failed .mdv-offlinebar__word {
+  color: var(--seal-deep);
+}

@@ -23,10 +23,17 @@ export async function getDashboardStats(restaurantId?: string): Promise<Dashboar
     const response = await apiClient.get<DashboardStats>(`${DASHBOARD_PATH}/stats/${id}`);
     return response.data;
   } catch (error) {
-    // Fallback to aggregating from individual APIs
+    // Fallback to aggregating from individual APIs.
+    //
+    // The pending count is NOT caught to 0 any more. `.catch(() => 0)` here
+    // turned "the approvals queue could not be read" into "nothing is waiting
+    // on you" — absence reported as health — and the house counter (sketch 119
+    // D) would have inherited that zero. A failed count now rejects the
+    // fallback, and both callers already `settle` this read and show it as
+    // not read (useDashboardNextData.ts, useDashboardData.ts).
     const [summary, pendingOrders] = await Promise.all([
       inventoryApi.getInventorySummary(id),
-      ordersApi.getPendingOrdersCount(id).catch(() => 0),
+      ordersApi.getPendingOrdersCount(id),
     ]);
 
     return {
