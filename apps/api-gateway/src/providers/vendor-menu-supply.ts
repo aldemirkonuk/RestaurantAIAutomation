@@ -97,10 +97,31 @@ type Page = PromiseLike<{
 }>;
 
 /**
+ * A read that matched more rows than its stated ceiling. Thrown instead of
+ * returning a truncated list, so the caller can refuse out loud ("type more")
+ * rather than answer from part of the rows — a ceiling, never a silent cap.
+ */
+export class TooManyRowsError extends Error {
+  constructor(
+    readonly what: string,
+    readonly ceiling: number,
+  ) {
+    super(`${what} matched more than ${ceiling} rows`);
+    this.name = "TooManyRowsError";
+  }
+}
+
+/**
  * Read every row of a keyset-paged query. `build(after)` returns the chain
  * with its filters; this adds the `id` cursor, the order and the page size.
  * Exported for `vendor-wine-search.ts` (the name-only wine search, founder
  * 2026-09-26 item 48), so the two /vendors reads page the same way.
+ *
+ * `ceiling`, when given, bounds the read: at most `ceiling + 1` rows are ever
+ * fetched, and a read that reaches `ceiling + 1` throws `TooManyRowsError`
+ * instead of answering. Only the reads whose size a person's typed text
+ * decides carry one (the catalogue sightings search); the house-scoped book
+ * reads are bounded by the house's own rows.
  */
 export async function readAll(
   what: string,
@@ -110,19 +131,27 @@ export async function readAll(
       o: { ascending: boolean },
     ) => { limit: (n: number) => Page };
   },
+  ceiling?: number,
 ): Promise<Row[]> {
   const out: Row[] = [];
   let after: string | null = null;
   for (;;) {
+    const want =
+      ceiling === undefined
+        ? PAGE_ROWS
+        : Math.min(PAGE_ROWS, ceiling + 1 - out.length);
     const { data, error } = await build(after)
       .order("id", { ascending: true })
-      .limit(PAGE_ROWS);
+      .limit(want);
     if (error) {
       throw new Error(`${what} could not be read (${error.message})`);
     }
     const rows = data ?? [];
     out.push(...rows);
-    if (rows.length < PAGE_ROWS) return out;
+    if (ceiling !== undefined && out.length > ceiling) {
+      throw new TooManyRowsError(what, ceiling);
+    }
+    if (rows.length < want) return out;
     after = String(rows[rows.length - 1].id);
   }
 }

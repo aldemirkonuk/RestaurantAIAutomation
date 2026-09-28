@@ -118,6 +118,9 @@ describe('the name-only wine search (founder, 2026-09-26, round 7, item 48)', ()
     expect(wineSearchable('2019')).toBe(false);
     expect(wineSearchable('op')).toBe(true);
     expect(wineSearchable('opus 2019')).toBe(true);
+    expect(wineSearchable('a b')).toBe(false);
+    expect(wineSearchable('o 2019')).toBe(false);
+    expect(wineSearchable('a bc')).toBe(true);
   });
 
   it('matches a vendor name word by word, accent- and case-blind', () => {

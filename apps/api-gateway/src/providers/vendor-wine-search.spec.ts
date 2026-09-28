@@ -14,8 +14,10 @@ import {
   BadRequestException,
   ForbiddenException,
   ServiceUnavailableException,
+  UnprocessableEntityException,
 } from "@nestjs/common";
 import {
+  CATALOGUE_SIGHTINGS_CEILING,
   ID_CHUNK,
   accentBlindLike,
   matchesWine,
@@ -25,7 +27,7 @@ import {
   vintageWritten,
   type WineQuery,
 } from "./vendor-wine-search";
-import { PAGE_ROWS } from "./vendor-menu-supply";
+import { PAGE_ROWS, TooManyRowsError } from "./vendor-menu-supply";
 import { ProvidersService } from "./providers.service";
 import { ProvidersController } from "./providers.controller";
 
@@ -203,6 +205,20 @@ describe("the query", () => {
     expect(parseWineQuery("op")).toEqual({
       text: "op",
       words: ["op"],
+      vintages: [],
+    });
+  });
+
+  // Audit of #484 at d44056b42: the floor was on the JOINED words, so "a b"
+  // (three characters joined) passed, and its narrowing word "a" became the
+  // pattern `%_%`, which lets every sighting through.
+  it("needs one WORD of two characters — one-letter words joined are not a name", () => {
+    expect(parseWineQuery("a b")).toBeNull();
+    expect(parseWineQuery("a b c d")).toBeNull();
+    expect(parseWineQuery("o 2019")).toBeNull();
+    expect(parseWineQuery("a bc")).toEqual({
+      text: "a bc",
+      words: ["a", "bc"],
       vintages: [],
     });
   });
@@ -738,6 +754,59 @@ describe("Find new vendors — a name search over curated catalogue sightings (i
     }
   });
 
+  // Audit of #484 at d44056b42: the narrowing is one accent-blind word, and a
+  // short or vowel-heavy word still lets most of the register through. The
+  // read is bounded, and the bound is said out loud, never a partial answer.
+  const manySightings = (n: number): Tables => {
+    const t = catalogueTables();
+    t.vendor_price_observations = [];
+    for (let i = 0; i < n; i += 1) {
+      t.vendor_price_observations.push({
+        id: `s-${String(i).padStart(6, "0")}`,
+        restaurant_id: null,
+        vendor_catalogue_id: "c1",
+        master_wine_id: null,
+        product_name_raw: `Opus One lot ${i}`,
+        source_type: "website_scrape",
+        observed_at: "2026-07-01T00:00:00Z",
+      });
+    }
+    return t;
+  };
+
+  it("a query that lets more sightings through than the ceiling is refused, and reads no further", async () => {
+    const { supabase, seen } = fakeDb(
+      manySightings(CATALOGUE_SIGHTINGS_CEILING + PAGE_ROWS * 2),
+    );
+    const err = await readCatalogueWineListers(
+      supabase,
+      HOUSE,
+      Q("opus"),
+      "US",
+    ).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(TooManyRowsError);
+    const vpoReads = seen.filter(
+      (s) => s.table === "vendor_price_observations",
+    ).length;
+    // ceiling + 1 rows, a page at a time — never the whole register.
+    expect(vpoReads).toBe(Math.ceil((CATALOGUE_SIGHTINGS_CEILING + 1) / PAGE_ROWS));
+    // Nothing downstream is read for a refused search.
+    expect(seen.filter((s) => s.table === "master_wine_library")).toEqual([]);
+    expect(seen.filter((s) => s.table === "vendor_catalogue")).toEqual([]);
+  });
+
+  it("exactly the ceiling is still answered in full", async () => {
+    const { supabase } = fakeDb(manySightings(CATALOGUE_SIGHTINGS_CEILING));
+    const out = await readCatalogueWineListers(
+      supabase,
+      HOUSE,
+      Q("opus"),
+      "US",
+    );
+    expect(out.sightingsRead).toBe(CATALOGUE_SIGHTINGS_CEILING);
+    expect(out.listers.map((l) => l.vendor.id)).toEqual(["c1"]);
+  });
+
   it.each([
     "vendor_price_observations",
     "vendor_catalogue",
@@ -774,6 +843,30 @@ describe("the service and the routes", () => {
     expect(err2).toBeInstanceOf(ServiceUnavailableException);
   });
 
+  it("the service turns a search that reached the ceiling into a 422 asking for more of the name", async () => {
+    const t = catalogueTables();
+    t.vendor_price_observations = Array.from(
+      { length: CATALOGUE_SIGHTINGS_CEILING + 1 },
+      (_, i) => ({
+        id: `s-${String(i).padStart(6, "0")}`,
+        restaurant_id: null,
+        vendor_catalogue_id: "c1",
+        master_wine_id: null,
+        product_name_raw: "Opus One",
+        source_type: "website_scrape",
+        observed_at: "2026-07-01T00:00:00Z",
+      }),
+    );
+    const svc = Object.create(ProvidersService.prototype) as any;
+    svc.databaseService = { supabase: fakeDb(t).supabase };
+    svc.logger = { error: jest.fn() };
+    const err = await svc
+      .catalogueWineListers(HOUSE, Q("opus"), "US")
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(UnprocessableEntityException);
+    expect((err as Error).message).toMatch(/Type more of the wine's name/);
+  });
+
   const organizations: any = {};
 
   it("GET /providers/wine-sellers answers for the caller's house with the parsed query", async () => {
@@ -797,6 +890,9 @@ describe("the service and the routes", () => {
       c.wineSellers({ userId: "u1", restaurantId: HOUSE } as any, "o"),
     ).rejects.toBeInstanceOf(BadRequestException);
     await expect(
+      c.wineSellers({ userId: "u1", restaurantId: HOUSE } as any, "a b"),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    await expect(
       c.wineSellers({ userId: "u1", restaurantId: null } as any, "opus"),
     ).rejects.toBeInstanceOf(ForbiddenException);
     expect(ownWineSellers).not.toHaveBeenCalled();
@@ -815,6 +911,14 @@ describe("the service and the routes", () => {
         "USA",
       ),
     ).rejects.toBeInstanceOf(BadRequestException);
+    await expect(
+      c.catalogueWineListers(
+        { userId: "u1", restaurantId: HOUSE } as any,
+        "a b",
+        "US",
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(catalogueWineListers).not.toHaveBeenCalled();
     await c.catalogueWineListers(
       { userId: "u1", restaurantId: HOUSE } as any,
       "opus",

@@ -43,8 +43,17 @@
  *     matches any vintage" says nothing about a query that states a year, and
  *     treating "2019" as text would find nothing, since no wine's NAME contains
  *     its vintage. Recorded in ADR 0221's bracket as a reading.]
- *   * The name part must be at least two characters; shorter is a 400, not a
- *     search of everything.
+ *   * The name part must hold at least one word of two characters or more;
+ *     shorter is a 400, not a search of everything. [2026-09-28, audit of
+ *     #484 at d44056b42: the floor was on the JOINED words, so "a b" passed
+ *     and its one-letter narrowing word became the pattern `%_%`, which
+ *     matches every sighting. The floor is now on the longest word.]
+ *   * The catalogue arm's sightings read has a CEILING
+ *     (`CATALOGUE_SIGHTINGS_CEILING`): the server-side narrowing is one word
+ *     made accent-blind, and a short or vowel-heavy word ("one" becomes
+ *     `%___%`) still lets most of the register through. A query that reaches
+ *     the ceiling is refused out loud — 422, "type more of the name" — never
+ *     answered from part of the rows. Same audit.
  *
  * WHY THE RULES BELOW ARE LOAD-BEARING (same five as the menu rung)
  *   1. Every read is house-scoped (the gateway reads with the service role, so
@@ -52,8 +61,10 @@
  *      inventory, the ORDER's house for order lines, `scopePriceRegisterRead`
  *      for sightings. `master_wine_library` and `vendor_catalogue` are shared
  *      reference tables and are read only BY ID for rows the scoped reads named.
- *   2. No read is capped: keyset-paged on `id` to a short page (`readAll`), and
- *      id lists are chunked, never truncated.
+ *   2. No read is silently capped: keyset-paged on `id` to a short page
+ *      (`readAll`), and id lists are chunked, never truncated. The one bounded
+ *      read, the catalogue sightings, refuses at its ceiling rather than
+ *      answering from part of its rows (see THE MATCH above).
  *   3. The name match is done here, in code, over rows already scoped — never
  *      by interpolating the person's text into a PostgREST filter string.
  *      (The one server-side narrowing, on the sightings' own text, goes through
@@ -77,6 +88,17 @@ import { BOUGHT_STATUSES, readAll, type Row } from "./vendor-menu-supply";
 export const ID_CHUNK = 150;
 
 export const MIN_NAME_CHARS = 2;
+
+/**
+ * The most price sightings one "Find new vendors" name search may read. The
+ * person's text decides how many rows the narrowing lets through, and the
+ * register holds this house's sightings plus every openly posted one, so this
+ * read — unlike the house-scoped book reads — is bounded here. Reaching it is
+ * a 422 asking for more of the name (`TooManyRowsError`), never a truncated
+ * answer. Measured 2026-09-28: production `vendor_price_observations` holds 0
+ * rows, so no search today comes near it.
+ */
+export const CATALOGUE_SIGHTINGS_CEILING = 5000;
 
 export interface WineQuery {
   /** The query as the person typed it, trimmed. */
@@ -109,7 +131,9 @@ export function parseWineQuery(raw: unknown): WineQuery | null {
     if (YEAR.test(w)) vintages.push(Number(w));
     else words.push(w);
   }
-  if (words.join(" ").length < MIN_NAME_CHARS) return null;
+  // The floor is on the LONGEST word, not the joined text: "a b" is three
+  // characters joined, but its narrowing word "a" would match everything.
+  if (!words.some((w) => w.length >= MIN_NAME_CHARS)) return null;
   return { text, words, vintages: [...new Set(vintages)] };
 }
 
@@ -420,7 +444,7 @@ export async function readCatalogueWineListers(
       .ilike("product_name_raw", accentBlindLike(longest));
     if (after) q = q.gt("id", after);
     return q;
-  });
+  }, CATALOGUE_SIGHTINGS_CEILING);
 
   const library = await readLibraryWines(
     db,

@@ -146,15 +146,16 @@ export function fold(s: string): string {
 }
 
 /**
- * Whether the text is worth sending as a wine search: at least two characters
- * of NAME once any four-digit year is set aside (the gateway's own floor — it
- * answers 400 below it, and a year alone names no wine).
+ * Whether the text is worth sending as a wine search: at least one WORD of two
+ * characters or more once any four-digit year is set aside (the gateway's own
+ * floor — it answers 400 below it, and a year alone names no wine). One-letter
+ * words joined ("a b") are not a name: the gateway narrows on the longest word,
+ * and a one-letter word narrows nothing (audit of #484, 2026-09-28).
  */
 export function wineSearchable(text: string): boolean {
-  const words = fold(text)
+  return fold(text)
     .split(' ')
-    .filter((w) => w && !/^(19|20)\d{2}$/.test(w));
-  return words.join(' ').length >= 2;
+    .some((w) => w.length >= 2 && !/^(19|20)\d{2}$/.test(w));
 }
 
 /** A vendor's own NAME matches the typed text (every word, accent-blind). */

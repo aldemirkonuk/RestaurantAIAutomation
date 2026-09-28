@@ -7,6 +7,7 @@ import {
   Logger,
   NotFoundException,
   ServiceUnavailableException,
+  UnprocessableEntityException,
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { EventsService } from "../events/events.service";
@@ -33,6 +34,7 @@ import { resolveOrderUnits } from "../procurement/order-units";
 import { isIso4217 } from "../common/iso-4217";
 import {
   readVendorMenuSupply,
+  TooManyRowsError,
   type VendorMenuSupply,
 } from "./vendor-menu-supply";
 import {
@@ -1883,6 +1885,13 @@ export class ProvidersService {
         country,
       );
     } catch (error) {
+      if (error instanceof TooManyRowsError) {
+        // The text let too much of the register through. Not a failed read:
+        // the person can fix it by typing more, so say that.
+        throw new UnprocessableEntityException(
+          `More than ${error.ceiling} price sightings carry that word. Type more of the wine's name (a longer word narrows the search).`,
+        );
+      }
       const message = (error as { message?: string })?.message ?? "unknown";
       this.logger.error("Failed to search the vendor catalogue by wine", {
         restaurantId,

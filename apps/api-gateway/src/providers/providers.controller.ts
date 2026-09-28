@@ -67,7 +67,7 @@ function wineQueryOf(q: unknown) {
   const parsed = parseWineQuery(q);
   if (!parsed) {
     throw new BadRequestException(
-      `Type at least ${MIN_NAME_CHARS} letters of the wine's name.`,
+      `Type at least one word of ${MIN_NAME_CHARS} or more letters of the wine's name.`,
     );
   }
   return parsed;
@@ -157,7 +157,7 @@ export class ProvidersController {
     summary:
       "Curated catalogue vendors a price sighting ties to any vintage of a wine",
     description:
-      "Price sightings (this house's own and openly posted ones, never another house's) of curated, active catalogue vendors in `country`, matched by the same rule as /providers/wine-sellers. Each wine says whether it was invoiced, quoted or only listed. A failed read is a 503.",
+      "Price sightings (this house's own and openly posted ones, never another house's) of curated, active catalogue vendors in `country`, matched by the same rule as /providers/wine-sellers. Each wine says whether it was invoiced, quoted or only listed. A query whose narrowing word lets more than CATALOGUE_SIGHTINGS_CEILING sightings through is a 422 asking for more of the name, never a partial answer. A failed read is a 503.",
   })
   @ApiQuery({ name: "q", required: true })
   @ApiQuery({ name: "country", required: true })
