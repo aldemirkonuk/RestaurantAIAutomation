@@ -5,7 +5,7 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Bash|mcp__.*[Mm]erge.*",
+        "matcher": "Bash|Monitor|mcp__.*[Mm]erge.*|mcp__.*(?:[Tt]erminal|[Ss]andbox|[Ee]xec|[Ss]hell|[Cc]omputer|[Ss]imulator|[Dd]irectory).*",
         "hooks": [
           {
             "type": "command",

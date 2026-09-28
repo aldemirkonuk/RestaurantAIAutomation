@@ -29,8 +29,13 @@ judgment-class agent in the repo; see ADR 0090 §"Options considered" note on
 ## Doneability
 
 A PR comment carrying the exact marker
-`<!-- pr-audit-gate: pr=<n> sha=<sha7> verdict=PASS -->` (or `verdict=BLOCK`),
-for the PR's *current* head SHA specifically — a marker for a stale SHA does not
+`<!-- pr-audit-gate: pr=<n> sha=<full-40-hex-sha> verdict=PASS -->` (or
+`verdict=BLOCK`), for the PR's *current* head SHA specifically, in FULL — a
+7-character sha is no longer accepted (gate-r3 sha-prefix-collision,
+2026-09-19: two genuine git commits mined 7 hex chars apart, one benign one
+carrying a backdoor, showed a marker minted for one validated the OTHER
+outright; `require_pr_audit.py` now requires an exact 40-hex match). A marker
+for a stale SHA does not
 satisfy the hook, by design (a force-push or new commit must be re-audited). On
 PASS, `main`'s HEAD after this skill runs traces back through a merge commit
 whose PR carries that comment. On BLOCK, the PR is untouched and the founder has
@@ -75,7 +80,7 @@ individually while what they don't cover reaches production — this gate exists
    - **Exit 0.** Continue to step 5.
    - **Exit 3.** The PR changes what the gate owns (ADR 0090, 2026-09-18 amendment).
      - Stop before any model call.
-     - Post a comment that starts `<!-- pr-audit-gate: pr=<n> sha=<sha7> verdict=BLOCK -->`,
+     - Post a comment that starts `<!-- pr-audit-gate: pr=<n> sha=<full-40-hex-sha> verdict=BLOCK -->`,
        is headed ESCALATED, and carries the printed reasons verbatim.
      - Tell the founder in chat.
      - Only the founder's word merges it, through the SHA-pinned
@@ -152,8 +157,10 @@ individually while what they don't cover reaches production — this gate exists
    (report this as a limitation, never silently omit it — see
    [[absence-reported-as-health]]).
 9. **Post the FULL report to the PR as a comment**, starting with the exact
-   marker line `<!-- pr-audit-gate: pr=<n> sha=<full-or-7-char-sha> verdict=PASS -->`
-   (or `verdict=BLOCK`) — `gh pr comment <n> --body "..."`. This marker, not a
+   marker line `<!-- pr-audit-gate: pr=<n> sha=<full-40-hex-sha> verdict=PASS -->`
+   (or `verdict=BLOCK`) — the FULL sha, never a 7-character abbreviation (gate-r3
+   sha-prefix-collision, 2026-09-19 — see "Doneability" above) —
+   `gh pr comment <n> --body "..."`. This marker, not a
    committed file, is what `require_pr_audit.py` checks. **Do not commit the
    local report file before merging** — a v1 version of this skill did, which
    changes the head SHA the very check you're about to satisfy is keyed to,

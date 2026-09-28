@@ -504,6 +504,47 @@ GATE_OWNED_PREFIXES = (
 )
 # An instruction or MCP configuration file an agent loads by name, at any depth.
 OWNED_BASENAMES = frozenset({"claude.md", "claude.local.md", "agents.md", ".mcp.json"})
+# gate-r3 own-r3-pytest-config-neuters-regression-net (2026-09-19): CONFIRMED an
+# unowned root pytest.ini (`addopts = --deselect scripts/test_pr_audit_gate.py
+# --deselect scripts/test_require_pr_audit.py`) or a conftest.py
+# (`pytest_collection_modifyitems` marking either suite's tests `skip`) fully
+# suppresses the gate's own regression net -- 192 tests collected drops to 0,
+# silently, with ci.yml's pytest step still exiting 0 -- and gate_ownership()
+# released a diff adding either, since neither basename was owned. Same
+# rationale as scripts/test_pr_audit_gate.py itself being owned above ("a PR
+# gutting them is released otherwise, and the next one weakens the gate with
+# nothing left to catch it"): applies identically to a config file that gets
+# the same result without editing the owned file's bytes.
+#
+# NARROWED 2026-09-19 (gate-r4, founder's delegated answer, lane batch 4:
+# "do what the best approach for long term, quality, sota, scalability" ->
+# "own exactly what can influence the gate's own test run ... not every
+# depth"). The "belt-and-suspenders" framing above shipped without his word
+# (r4-gate.json finding 9) and was wider than the finding it answers: measured
+# directly against this checkout's own pytest 7.4.4 (scratch repro, both
+# directions) --
+#   `pytest -c /dev/null --confcutdir=scripts <file>` with a ROOT `pytest.ini`
+#   carrying the exact deselect above: 1 passed, not deselected -- `-c
+#   /dev/null` does not merely add to normal ini discovery, it REPLACES it, so
+#   pytest.ini/pyproject.toml/setup.cfg/tox.ini, AT ANY DEPTH, already cannot
+#   reach this step's collection at all, belt or no belt. The same command
+#   with a ROOT `conftest.py` (outside scripts/) carrying a
+#   `pytest_collection_modifyitems` skip hook: also 1 passed, not skipped --
+#   `--confcutdir=scripts` stops the upward conftest.py search at exactly the
+#   directory this owns. The same command with the hook in `scripts/conftest.py`
+#   (at or under the owned directory): 1 skipped -- it DOES still run.
+# So a `conftest.py` at or under `scripts/` is the only file this basename
+# check can still matter for, and `pytest.ini`/`pyproject.toml`/`setup.cfg`/
+# `tox.ini` cannot influence this step's test run anywhere, PROVIDED ci.yml
+# keeps both flags -- which test_ci_pytest_flags_pin_the_gates_own_isolation
+# (scripts/test_pr_audit_gate.py) pins, per his answer's second half, so a
+# silent drift there is caught even though `.github/workflows/` already being
+# owned whole means removing the flags outright would itself have escalated.
+# The three basenames beyond conftest.py (and conftest.py outside scripts/,
+# e.g. `services/agent-orchestrator/pytest.ini`, `tests/conftest.py`,
+# `tests/e2e/conftest.py`) are no longer owned by this rule at any depth.
+TEST_CONFIG_BASENAMES = frozenset({"conftest.py"})
+TEST_CONFIG_OWNED_PREFIX = "scripts/"
 # A directory an agent loads from, at any depth: agents, skills,
 # settings(.local).json, rules, commands. Claude Code loads a nested
 # .claude/skills/ when it works in that subdirectory, so a root-only prefix let
@@ -572,6 +613,27 @@ CONFUSABLE = {
     "\u0111": "d", "\u00f0": "d", "\u00fe": "th", "\u00df": "ss",
 }
 _ZERO_SHA = "0" * 40
+# gate-r4 (2026-09-19, r4-gate.json): see skeleton()'s own comment below for
+# why each of these has no length bound, unlike the short-inline-HTML probe
+# it sits beside.
+_HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
+_HTML_TAG_RE = re.compile(r"</?[a-zA-Z][a-zA-Z0-9-]*(?:\s+[^\s=/>]+(?:=(?:\"[^\"]*\"|'[^']*'|[^\s>]+))?)*\s*/?>")
+# SELF-ADVERSARIAL finding, fixed before this round ever shipped: a first
+# version matched ANY `[^label]`, identifier included -- which strips the
+# label's own TEXT, not just its "[^"/"]" punctuation. CONFIRMED that
+# regresses a case gate-r3's own code already caught correctly:
+# "pr[^audit]-gate" was OWNED before this fix (skeleton() never touched
+# "[^audit]", so the word "audit" stayed put, glued closely enough for
+# `\bpr{_S}audit{_S}gate` to match through the "[^"/"]-" separators) and
+# RELEASED after a label-agnostic footnote strip removed "audit" along with
+# its brackets. Bounded to DIGITS ONLY -- the shape every real footnote
+# reference this round demonstrated ("audit[^1] gate") and the shape GFM/most
+# renderers actually generate -- so a real word can never be inside what
+# this strips. Residual, stated plainly, not attempted: a NAMED label
+# ("[^important-note]") between two identity words is not stripped, and
+# stays governed by `_S`'s ordinary 0-3 character bound like any other
+# separator, same as before this round.
+_FOOTNOTE_REF_RE = re.compile(r"\[\^[0-9]{1,20}\]")
 
 
 def _norm_path(p: str) -> str:
@@ -589,7 +651,40 @@ def skeleton(s: str) -> tuple[str, list[str]]:
     for _ in range(2):
         s = html.unescape(urllib.parse.unquote(s))
     s = unicodedata.normalize("NFKC", s)
-    s = re.sub(r"<[^<>]{0,40}>", "", s)  # inline HTML inside a word
+    # gate-r4 (2026-09-19, r4-gate.json round-3-last-call): the 40-char bound
+    # below exists so a stray, unrelated "<" and a much-later unrelated ">"
+    # cannot silently erase everything between them -- but that same bound let
+    # ANYTHING longer survive completely unstripped. An HTML comment is
+    # unambiguous (it can only end at its own "-->", never confusable with two
+    # unrelated angle brackets) and is invisible when rendered at ANY length,
+    # so it is stripped first, with no bound: CONFIRMED released end to end
+    # ("The audit <!-- reviewers: nothing to see here, this is formatting only
+    # --> gate opt-out applies...", 74 characters of comment). A real tag's
+    # own grammar -- a name, then zero or more bare or quoted attributes,
+    # closed by "/>" or ">" -- is matched next, also with no length bound
+    # (a long `data-*`/`style` attribute was the other demonstrated case,
+    # "<span data-note=\"...\">"), but it still cannot span two unrelated
+    # angle brackets the way an unbounded "<[^<>]*>" would, since prose like
+    # "a < b" has no attribute grammar for the tag-shape regex to match.
+    # The original 40-char probe (`<[^<>]{0,40}>`, matching ANY characters
+    # between one "<" and the next ">") is retired here rather than kept
+    # alongside the two above: re-measured against this file's own 91+6-case
+    # suite, once the comment and real-tag-grammar passes run first, removing
+    # it changed zero cases' outcome and killed zero mutations -- it no
+    # longer has anything load-bearing left to do that _HTML_COMMENT_RE and
+    # _HTML_TAG_RE do not already cover, and unlike them it was never
+    # tag-shape-constrained, so it was also the one place in this function
+    # that could strip unrelated prose sharing a stray "<"/">" pair (a
+    # comparison like "a < b, c > d" within 40 characters) instead of real
+    # markup. A dead, provably-non-load-bearing check is worse than no check
+    # -- it reads as coverage that is not there -- so it is removed, not kept
+    # for its own sake. A markdown footnote reference ("audit[^1] gate") is
+    # RELEASED for an unrelated reason -- its digit is alnum, so no amount of
+    # separator collapsing lets `_S` (non-alnum only) bridge it -- and is
+    # dropped outright, the same as the emphasis/code markers below.
+    s = _HTML_COMMENT_RE.sub("", s)  # HTML comment, any length
+    s = _HTML_TAG_RE.sub("", s)  # a real tag's own grammar, any length
+    s = _FOOTNOTE_REF_RE.sub("", s)  # markdown footnote reference
     s = re.sub(r"[*`~_\\]", "", s)  # markdown emphasis, code and escapes inside a word
     out: list[str] = []
     bad: list[str] = []
@@ -613,7 +708,67 @@ def skeleton(s: str) -> tuple[str, list[str]]:
                 bad.append(c)
         else:
             out.append(c)
-    return re.sub(r"\s+", " ", "".join(out)).casefold(), bad
+    # gate-r3 T-SEP-GAP-4CHAR (2026-09-19): this used to collapse only
+    # WHITESPACE runs, leaving any other non-alnum run (a markdown table's
+    # second pipe on an empty cell, a repeated hyphen/dash) at its full
+    # length. GATE_TEXT_ALTERNATIVES' separators (`_S`) are bounded to 0-3
+    # chars specifically so a token stays readable as a near-miss rather than
+    # matching across an unrelated sentence -- but that same bound became an
+    # escape hatch: a 4+-char separator (`merge----gate`, `merge |  | gate`,
+    # an empty table cell between them) sat entirely outside it with the
+    # identity words left completely unparaphrased, and CONFIRMED released at
+    # every layer (gate_ownership(), an appended ADR-index row's own title,
+    # and the real PreToolUse hook end to end). Collapsing every RUN of
+    # non-alnum, non-Greek characters down to its OWN FIRST character makes
+    # separator LENGTH stop being adversarially controllable: a run of any
+    # length becomes exactly one character, always within `_S`'s bound, so
+    # proximity is broken only by an intervening real word, never by padding
+    # the separator. Greek letters are excluded from the collapsed class
+    # (kept as their own character, as before) so the math ADRs' legitimate
+    # use is unaffected. Deliberately the run's FIRST character, not a fixed
+    # " " (an earlier version of this fix used a fixed space and broke
+    # self-test's own "0.0050 is not an ADR reference" invariant: collapsing
+    # "0.0050"'s lone "." to a generic space removed the very character
+    # `(?<![a-z0-9.])00(?:50|90)` depends on seeing to stay excluded -- a
+    # SINGLE-character run must be left completely unchanged, and "first
+    # character of the run" does exactly that while still shortening a
+    # longer run).
+    #
+    # CORRECTED 2026-09-19 (gate-r4, r4-gate.json round-3-last-call): "first
+    # character of the run" turned out to be its own regression, not just a
+    # historical near-miss. A run's first character can itself be a real,
+    # meaning-bearing character elsewhere in this file's patterns, so
+    # collapsing a MULTI-character run down to it manufactures a match that
+    # was never in the text:
+    #   - "escalation. 0090" (period, then a real space, then the number) had
+    #     its ". " run collapsed to "." alone -- removing the space the
+    #     lookbehind above needs to see NOT to look glued to a decimal --
+    #     CONFIRMED released (real commit e4b2312988 flipped OWNED to
+    #     RELEASED across the replay window).
+    #   - "Our guest -- merge gate is relaxed" (em dash) had its " -- " run
+    #     collapsed to " " alone, reproducing the *exact* "guest " the
+    #     merge{_S}gate exclusion below carves out for the product's own
+    #     guest-identity merges -- CONFIRMED released, though this text names
+    #     the audit gate, not that feature.
+    # Both are the same shape: collapsing to a character that is ALSO one of
+    # the three this file's negative lookbehinds key on ("-", " ", ".")
+    # forges a glued-word or an excluded-compound reading out of what was
+    # really a multi-character gap. A run of exactly one character is still
+    # left completely unchanged (needed for "0.0050" to stay excluded, and
+    # for a real "guest-merge-gate"/"guest merge gate" to stay excluded) --
+    # only a run of two or more collapses now, and it collapses to "~"
+    # (already stripped from real text, unconditionally, two lines above this
+    # loop, so an artificial "~" here can never collide with one the author
+    # actually wrote), which is not "-", " " or "." and so cannot forge
+    # either kind of false match while still sitting inside `_S`'s
+    # `[^a-z0-9]{0,3}` bound -- T-SEP-GAP-4CHAR (`merge----gate`,
+    # `merge |  | gate`) stays exactly as closed as it was.
+    def _collapse_sep_run(m: "re.Match[str]") -> str:
+        run = m.group(0)
+        return run if len(run) == 1 else "~"
+
+    collapsed = re.sub(r"[^a-zA-Z0-9Ͱ-Ͽἀ-῿]+", _collapse_sep_run, "".join(out))
+    return collapsed.casefold(), bad
 
 
 def _scan_text(text: str) -> str | None:
@@ -681,6 +836,10 @@ def _owned_path(p: str) -> str | None:
         return "inside a .claude directory, at any depth (agents, skills and settings load from it)"
     if parts[-1] in OWNED_BASENAMES:
         return "an instruction or MCP configuration file an agent loads by name"
+    if parts[-1] in TEST_CONFIG_BASENAMES and n.startswith(TEST_CONFIG_OWNED_PREFIX):
+        return ("a conftest.py under scripts/ that can silently suppress the gate's own "
+                "regression tests -- outside scripts/, ci.yml's own "
+                "`-c /dev/null --confcutdir=scripts` already keeps it from reaching this step")
     return None
 
 
@@ -1015,6 +1174,13 @@ def run_audit(pr_number: str) -> int:
 def _run_audit_inner(pr_number: str) -> int:
     pr = _gh_json(["gh", "pr", "view", pr_number, "--json", "number,headRefOid,title,url,baseRefName"])
     sha7 = pr["headRefOid"][:7]
+    # gate-r3 sha-prefix-collision (2026-09-19): the MARKER must always carry
+    # the FULL sha, never the 7-char abbreviation used everywhere else in this
+    # function for display (report headers, filenames, log prose) -- two
+    # genuine git commits, mined 7 hex chars apart, showed a 7-char marker
+    # minted for one validates the OTHER outright. `sha7` stays as it was for
+    # every cosmetic use below; only the marker string uses `sha_full`.
+    sha_full = pr["headRefOid"]
 
     # SECURITY (confirmed live, run 33695630472, security angle BLOCK on the
     # PR that introduced this gate): this workflow runs from a checkout PINNED
@@ -1038,7 +1204,7 @@ def _run_audit_inner(pr_number: str) -> int:
                             "the gate-ownership check could not complete: " + "; ".join(reasons)[:2000])
     if reasons:
         body = (
-            f"<!-- pr-audit-gate: pr={pr_number} sha={sha7} verdict=BLOCK -->\n"
+            f"<!-- pr-audit-gate: pr={pr_number} sha={sha_full} verdict=BLOCK -->\n"
             "## PR Audit Gate \u2014 BLOCK (ESCALATED before any model call)\n\n"
             "**ESCALATED, not a normal BLOCK:** this PR changes what the audit gate owns "
             "(ADR 0090, 2026-09-18 amendment). No model was called and no PASS can "
@@ -1228,7 +1394,7 @@ def _run_audit_inner(pr_number: str) -> int:
     # prose let a BLOCK report's own words ("...all PASS") satisfy "PASS" in
     # line. This is the ONLY thing either enforcement path is allowed to
     # parse for a verdict — never re-grep the prose below it.
-    marker = f"<!-- pr-audit-gate: pr={pr_number} sha={sha7} verdict={overall} -->"
+    marker = f"<!-- pr-audit-gate: pr={pr_number} sha={sha_full} verdict={overall} -->"
     comment_body = (
         f"{marker}\n"
         f"## PR Audit Gate — {overall}\n\n"
@@ -1894,7 +2060,9 @@ def run_self_test() -> int:
         if _key is not None:
             os.environ["ANTHROPIC_API_KEY"] = _key
     check("an owned PR escalates before any model call, with no API key",
-          (_ret_owned, _body_owned.startswith("<!-- pr-audit-gate: pr=0 sha=aaaaaaa verdict=BLOCK -->"),
+          # gate-r3 sha-prefix-collision: the marker carries the FULL sha now,
+          # never the 7-char abbreviation (_pr's headRefOid is "a" * 40 above).
+          (_ret_owned, _body_owned.startswith(f"<!-- pr-audit-gate: pr=0 sha={'a' * 40} verdict=BLOCK -->"),
            "ESCALATED" in _body_owned), (1, True, True))
     check("a released PR reaches the key check instead of escalating",
           (_ret_released, "[no-key]" in _body_released, "ESCALATED" in _body_released), (1, True, False))

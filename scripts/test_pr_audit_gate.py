@@ -1,10 +1,10 @@
-"""`scripts/pr_audit_gate.py` gate ownership — ADR 0090, 2026-09-18 amendment.
+"""`scripts/pr_audit_gate.py` gate ownership -- ADR 0090, 2026-09-18 amendment.
 
 Three layers, none of which touches the network:
 
 1. **72 PR shapes, end to end through real git.** A scratch repository is seeded
    with a small synthetic decision log; each case is one commit on top of the
-   base, classified by ``ownership_between`` — the same path ``pr_ownership``
+   base, classified by ``ownership_between`` -- the same path ``pr_ownership``
    takes after its fetch. The cases include every bypass the four adversarial
    passes built against the two candidate designs (ported from the judged
    prototype's attacks.py). The seed is synthetic on purpose: the real ADRs that
@@ -475,6 +475,83 @@ def _(s):
     s.insert_after("| [0158]", "| [0099](0099-a-note.md) | **A note** (Proposed) | 2026-09-18 |")
 
 
+# ---------------- added by the gate-r3 adversarial round (2026-09-19) ----------------
+# T-SEP-GAP-4CHAR: GATE_TEXT_ALTERNATIVES' `_S = [^a-z0-9]{0,3}` bounds a
+# separator to 0-3 characters so a token stays a near-miss rather than
+# matching across an unrelated sentence -- but a separator of 4+ such
+# characters sat entirely outside that bound, unparaphrased, and was
+# RELEASED before skeleton() collapsed any non-alnum run to one character.
+@case("G1 four-hyphen separator between merge and gate", True)
+def _(s): s.write(ADR161, CLEAN_ADR + "The merge----gate is retired.\n")
+@case("G2 empty markdown table cell hides the separator length", True)
+def _(s): s.write(ADR161, CLEAN_ADR + "| merge |  | gate opt-out applies to docs-only changes |\n")
+@case("G3 an appended index row's own title uses the same trick", True)
+def _(s):
+    s.write(ADR161, CLEAN_ADR)
+    s.insert_after("| [0158]", ROW_0161.replace("shelf labels**", "shelf labels; merge----gate opt-out**"))
+@case("G4 a long run of unrelated punctuation, no near-miss token either side", False)
+def _(s): s.write(ADR161, CLEAN_ADR + "A separate note ---- with nothing on either side that names anything.\n")
+
+# own-r3-pytest-config-neuters-regression-net: a root pytest.ini/conftest.py
+# (or a nested conftest.py, or pyproject.toml -- all OWNED_BASENAMES, any
+# depth) can silently suppress the gate's own regression tests from
+# collection without editing scripts/test_pr_audit_gate.py's bytes at all.
+#
+# CORRECTED 2026-09-19 (gate-r4, founder's delegated pytest-config-ownership
+# answer: "own exactly what can influence the gate's own test run ... not
+# every depth"). Measured directly against this checkout's own pytest 7.4.4
+# (scratch repro, both directions -- see TEST_CONFIG_BASENAMES's own comment
+# in pr_audit_gate.py): with ci.yml's `-c /dev/null --confcutdir=scripts`
+# already in place, a root `pytest.ini`'s `addopts` is NOT read at all --
+# `-c /dev/null` replaces normal ini discovery outright, it does not add to
+# it. So G5 (and G7 below) no longer demonstrate a real gap against THIS
+# gate's own test run; they are corrected in place rather than deleted, so
+# the history of what gate-r3 believed stays visible. G6 is unaffected: a
+# conftest.py under scripts/ is not an ini file, and `--confcutdir=scripts`
+# still lets it load.
+@case("G5 a root pytest.ini deselecting the gate's own tests", False)
+def _(s): s.write("pytest.ini", "[pytest]\naddopts = --deselect scripts/test_pr_audit_gate.py "
+                  "--deselect scripts/test_require_pr_audit.py\n")
+@case("G6 a nested conftest.py with a collection-skip hook", True)
+def _(s): s.write("scripts/conftest.py",
+                  "def pytest_collection_modifyitems(items):\n"
+                  "    for i in items:\n        i.add_marker('skip')\n")
+@case("G7 a new pyproject.toml with pytest ini_options", False)
+def _(s): s.write("pyproject.toml", "[tool.pytest.ini_options]\naddopts = '--deselect scripts/test_pr_audit_gate.py'\n")
+
+# ---------------- added by the gate-r4 last-call round (2026-09-19) ----------------
+# r4-gate.json finding 1 (skeleton T-SEP-GAP-4CHAR regression) and finding 4
+# (fresh HTML-comment/footnote/span bypass, HIGH, same class). Each writes a
+# NEW decision file naming the gate, with no index row, so ownership turns on
+# decision-text scanning alone (gate_ownership()'s "decision text" rule).
+@case("H1 an HTML comment over 40 characters hides the words in prose", True)
+def _(s): s.write(ADR161, CLEAN_ADR + "The audit <!-- reviewers: nothing to see here, this is "
+                  "formatting only --> gate opt-out applies to docs-only changes.\n")
+@case("H2 a markdown footnote reference between the words", True)
+def _(s): s.write(ADR161, CLEAN_ADR + "The audit[^1] gate opt-out is explained in the footnote.\n")
+@case("H3 a span whose attributes run past 40 characters", True)
+def _(s): s.write(ADR161, CLEAN_ADR + "The audit<span data-note=\"this attribute value is long "
+                  "enough to exceed forty characters easily\"></span> gate is retired.\n")
+@case("H4 an em-dash-padded separator forges the guest-identity exclusion", True)
+def _(s): s.write(ADR161, CLEAN_ADR + "Our guest -- merge gate is relaxed for this PR.\n")
+@case("H5 a real sentence break before a bare ADR number", True)
+def _(s): s.write(ADR161, CLEAN_ADR + "This changes gate behavior for docs-only PRs. "
+                  "0090 no longer applies to them.\n")
+@case("H6 a conftest.py outside scripts/ does not reach the gate's own test run", False)
+def _(s): s.write("services/agent-orchestrator/conftest.py",
+                  "def pytest_collection_modifyitems(items):\n"
+                  "    for i in items:\n        i.add_marker('skip')\n")
+@case("H7 a named footnote label carrying a real word is not stripped whole", True)
+def _(s): s.write(ADR161, CLEAN_ADR + "The pr[^audit]-gate is retired.\n")
+# SELF-ADVERSARIAL finding, fixed before this round ever shipped: H1-H3's own
+# footnote fix first matched ANY `[^label]`, which strips the label's TEXT,
+# not just its brackets. "pr[^audit]-gate" was OWNED before H1-H3 (skeleton()
+# never touched "[^audit]", so "audit" stayed close enough to "pr"/"gate" for
+# `\bpr{_S}audit{_S}gate` to match) and was RELEASED by a label-agnostic
+# strip that deleted "audit" along with its brackets -- narrowed to digits
+# only (the shape H2 demonstrates and the shape real footnotes actually are).
+
+
 def pairs(s: Scratch) -> list[tuple[str, bool, str, str]]:
     """(name, expect_owned, base sha, head sha) for every case."""
     base = s.seed()
@@ -533,6 +610,31 @@ def test_the_harness_has_72_ported_cases_and_19_added(scratch):
     assert len([n for n in names if n[0] == "E"]) == 3
     assert len([n for n in names if n[0] == "F"]) == 9
     assert len([n for n in names if n[0] == "C"]) == 7
+
+
+def test_the_gate_r3_round_added_7_cases(scratch):
+    """gate-r3 adversarial round (2026-09-19): T-SEP-GAP-4CHAR (a 4+-character
+    separator run escaped GATE_TEXT_ALTERNATIVES' `_S` bound; skeleton() now
+    collapses any run of non-alnum, non-Greek characters to one before
+    matching) and own-r3-pytest-config-neuters-regression-net (a pytest
+    config file, any depth, can silently suppress the gate's own tests;
+    OWNED_BASENAMES now names pytest.ini/conftest.py/pyproject.toml/
+    setup.cfg/tox.ini)."""
+    names = [p[0] for p in scratch[1]]
+    assert len([n for n in names if n[0] == "G"]) == 7
+
+
+def test_the_gate_r4_round_added_7_cases(scratch):
+    """gate-r4 last-call round (2026-09-19, r4-gate.json): the T-SEP-GAP-4CHAR
+    fix's own collapse-to-first-character regressed two real cases (H4, H5);
+    an HTML comment, a footnote and a long tag attribute each survived past
+    the 40-char probe (H1-H3); a conftest.py outside scripts/ no longer needs
+    owning now that ci.yml's `-c /dev/null --confcutdir=scripts` already
+    keeps it from the gate's own test run (H6). H7 is a fix to H1-H3's own
+    footnote fix, found self-adversarially before this round shipped: a
+    named footnote label carrying a real word must not be stripped whole."""
+    names = [p[0] for p in scratch[1]]
+    assert len([n for n in names if n[0] == "H"]) == 7
 
 
 def test_every_case_classifies_as_expected(scratch):
@@ -620,7 +722,9 @@ def call_site_probe(mod) -> list[str]:
                     ret = mod.run_audit("0")
                 bodies = [c[c.index("--body") + 1] for c in calls if c[:3] == ["gh", "pr", "comment"]]
                 merged = any(c[:2] == ["gh", "api"] for c in calls)
-                verdict = re.match(r"<!-- pr-audit-gate: pr=0 sha=aaaaaaa verdict=(\w+) -->", bodies[0]) if bodies else None
+                # gate-r3 sha-prefix-collision: the marker carries the FULL
+                # sha now (headRefOid above is "a" * 40), never a 7-char abbreviation.
+                verdict = re.match(r"<!-- pr-audit-gate: pr=0 sha=a{40} verdict=(\w+) -->", bodies[0]) if bodies else None
                 got = (ret, verdict.group(1) if verdict else None, merged)
                 if got != (want_ret, want_verdict, want_merge):
                     problems.append(f"{label}: got {got}, want {(want_ret, want_verdict, want_merge)}")
@@ -710,7 +814,6 @@ MUTATIONS: list[tuple[str, str, str, bool]] = [
     ("NFKC removed", 's = unicodedata.normalize("NFKC", s)', "s = s", False),
     ("invisible-character drop removed", 'elif cat in ("Cf", "Mn", "Me", "Cc", "Co", "Cs", "Cn"):', "elif False:", False),
     ("markup strip removed", 's = re.sub(r"[*`~_\\\\]", "", s)', "s = s", False),
-    ("inline-tag strip removed", 's = re.sub(r"<[^<>]{0,40}>", "", s)', "s = s", False),
     ("unescaping removed", "s = html.unescape(urllib.parse.unquote(s))", "s = s", False),
     ("CONFUSABLE removed", "f = CONFUSABLE.get(c) or _nfkd_ascii(c)", "f = _nfkd_ascii(c)", False),
     ("foreign digit rejection removed", '        elif cat == "Nd":\n            bad.append(c)', '        elif cat == "Nd":\n            out.append(c)', False),
@@ -741,6 +844,18 @@ MUTATIONS: list[tuple[str, str, str, bool]] = [
     ("_apply_escalation not called at the call site",
      "    overall = _apply_escalation(overall, escalation_reasons)\n", "", False),
     ("_apply_escalation lets PASS through", 'return "BLOCK" if reasons and overall == "PASS" else overall', "return overall", False),
+    # gate-r4 last-call round (2026-09-19, r4-gate.json)
+    ("html comment strip removed", 's = _HTML_COMMENT_RE.sub("", s)', "s = s", False),
+    ("html tag-grammar strip removed", 's = _HTML_TAG_RE.sub("", s)', "s = s", False),
+    ("footnote-reference strip removed", 's = _FOOTNOTE_REF_RE.sub("", s)', "s = s", False),
+    ("footnote digit-only restriction widened back to any label (self-adversarial fix)",
+     r'_FOOTNOTE_REF_RE = re.compile(r"\[\^[0-9]{1,20}\]")',
+     r'_FOOTNOTE_REF_RE = re.compile(r"\[\^[^\]\n]{1,30}\]")', False),
+    ("multi-char separator collapse reverted to first-character",
+     'return run if len(run) == 1 else "~"', "return run[0]", False),
+    ("conftest.py ownership no longer scoped to scripts/",
+     'if parts[-1] in TEST_CONFIG_BASENAMES and n.startswith(TEST_CONFIG_OWNED_PREFIX):',
+     "if parts[-1] in TEST_CONFIG_BASENAMES:", False),
 ] + [
     (f"owned prefix {p!r} deleted", f'\n    "{p}",', "\n", False) for p in _PREFIXES
 ] + [
@@ -793,3 +908,99 @@ def test_every_mutation_is_killed(name, old, new, live, scratch, cached_inputs, 
         killed += [f"call site: {p}" for p in call_site_probe(mod)]
     print(f"MUTATION {name}: killed by {killed[:3]}")
     assert killed, f"mutation survived: {name}"
+
+
+# --------------------------------------------------------------------------- #
+# gate-r3 adversarial round (2026-09-19): static, file-content checks for the
+# CI-side findings (own-r3, ci-unpinned-*, ci-deploy-stage3-checkout-not-pinned).
+# No `gh`/network call: these read the workflow files this checkout already
+# has, the same way check_test_scripts_are_real.py reads scripts statically.
+# --------------------------------------------------------------------------- #
+
+WORKFLOWS_DIR = ROOT / ".github" / "workflows"
+_USES_RE = re.compile(r"^\s*(?:-\s+)?uses:\s*([^\s#]+)@([^\s#]+)", re.M)
+# A commit sha (40 hex) or a released tag some project actually cuts
+# (v1.2.3, v1, 1.2.3) is pinned enough for this check; a bare branch name
+# (master, main, develop, HEAD) is not -- it has no release gate at all and
+# tracks whatever that org pushes to it next.
+_ACCEPTABLE_REF_RE = re.compile(r"^(?:[0-9a-f]{40}|v?\d+(?:\.\d+){0,2}(?:[-.][A-Za-z0-9]+)*)$")
+_KNOWN_MUTABLE_BRANCHES = frozenset({"master", "main", "develop", "head", "latest", "trunk"})
+
+
+def test_no_workflow_action_is_pinned_to_a_mutable_branch():
+    """ci-unpinned-actions-supply-chain (gate-r3, 2026-09-19): CONFIRMED
+    `aquasecurity/trivy-action@master` -- a mutable branch with no release
+    gate at all, in a job with contents:write and a live ANTHROPIC_API_KEY
+    elsewhere in this same workflow file. Fixed to a pinned release commit;
+    this guard fails the build on any FUTURE regression to a bare branch
+    name, without requiring every one of the ~73 `uses:` lines to be
+    SHA-pinned (most are already at a released version tag, a materially
+    different risk profile from an unreleased branch — recorded as a
+    residual in ADR 0090, not attempted here)."""
+    offenders = []
+    for path in sorted(WORKFLOWS_DIR.glob("*.yml")):
+        for repo, ref in _USES_RE.findall(path.read_text()):
+            if ref.lower() in _KNOWN_MUTABLE_BRANCHES:
+                offenders.append(f"{path.name}: {repo}@{ref}")
+    assert offenders == []
+
+
+def test_trivy_action_is_pinned_to_the_v0_36_0_commit_not_its_tag_object():
+    """gate-r4 last-call round (2026-09-19, r4-gate.json): the sha ci.yml
+    pinned (a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8) and called "the v0.36.0
+    release commit" is actually the TAG OBJECT -- `git ls-remote --tags`
+    returns an annotated tag's own object sha, not what it points to.
+    CONFIRMED independently: `git ls-remote
+    https://github.com/aquasecurity/trivy-action refs/tags/v0.36.0
+    refs/tags/v0.36.0^{}` (the `^{}` suffix peels the tag) returns
+    a9c7b0f0...ab8 for the tag and ed142fd0...c25 for the commit it names.
+    No network call here (this suite's own no-network rule, see the module
+    docstring) -- both shas are pinned as constants instead, the same way
+    _KNOWN_MUTABLE_BRANCHES is."""
+    text = (WORKFLOWS_DIR / "ci.yml").read_text()
+    m = re.search(r"aquasecurity/trivy-action@([0-9a-f]{40})", text)
+    assert m, "trivy-action uses: line not found or not sha-pinned"
+    assert m.group(1) == "ed142fd0673e97e23eac54620cfb913e5ce36c25", (
+        f"pinned to {m.group(1)!r}, not the v0.36.0 commit")
+    assert "a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8" not in text  # the tag object, not the commit
+
+
+def test_pr_audit_gates_own_pip_install_pins_a_version():
+    """ci-unpinned-pip-install-anthropic (gate-r3, 2026-09-19): CONFIRMED
+    unpinned `pip install anthropic`, no version/hash/lockfile, imported into
+    the same process holding ANTHROPIC_API_KEY and a write-scoped GH_TOKEN."""
+    text = (WORKFLOWS_DIR / "pr-audit-gate.yml").read_text()
+    m = re.search(r"run:\s*pip install[^\n]*anthropic[^\n]*", text)
+    assert m, "no `pip install ... anthropic` line found at all"
+    assert re.search(r"anthropic==\d", m.group(0)), (
+        f"anthropic is not version-pinned: {m.group(0)!r}")
+
+
+def test_ci_pytest_step_is_config_isolated_from_pytest_ini_and_conftest():
+    """own-r3-pytest-config-neuters-regression-net (gate-r3, 2026-09-19),
+    CI-side half: `-c /dev/null` refuses any repo-root pytest.ini/
+    pyproject.toml/setup.cfg/tox.ini and `--confcutdir=scripts` stops
+    conftest.py collection above scripts/, so a PR adding either (even if it
+    somehow got past OWNED_BASENAMES) can no longer silently drop the gate's
+    own regression tests from collection."""
+    text = (WORKFLOWS_DIR / "ci.yml").read_text()
+    m = re.search(r"run:\s*python3 -m pytest[^\n]*test_pr_audit_gate\.py[^\n]*", text)
+    assert m, "the scripts/ unit-test step (audit gate suite) was not found"
+    assert "-c /dev/null" in m.group(0) and "--confcutdir=scripts" in m.group(0), m.group(0)
+
+
+def test_deploy_stage3_checkout_pins_the_audited_ref():
+    """ci-deploy-stage3-checkout-not-pinned (gate-r3, 2026-09-19): every other
+    job in this workflow_run-triggered chain pins `ref:` explicitly (an
+    unpinned checkout in a workflow_run context resolves `github.sha` to the
+    default branch's CURRENT tip at run time, not the commit the triggering
+    run finished on) -- Stage 3 (verify-frontend) alone did not, so it could
+    build a different commit than deploy-audit.json then records its result
+    against."""
+    text = (WORKFLOWS_DIR / "deploy.yml").read_text()
+    m = re.search(r"verify-frontend:.*?(?=\n  [a-zA-Z_-]+:\n)", text, re.S)
+    assert m, "the verify-frontend job was not found"
+    checkout = re.search(r"uses:\s*actions/checkout@\S+\n(?:\s+with:\n(?:\s{8,}\S.*\n)*)?", m.group(0))
+    assert checkout and "ref:" in checkout.group(0), (
+        f"verify-frontend's checkout step has no ref: {checkout.group(0) if checkout else '(no with: block)'!r}")
+    assert "github.event.workflow_run.head_sha" in checkout.group(0)

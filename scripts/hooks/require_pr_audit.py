@@ -92,6 +92,153 @@ fail-closed hardening, tested with an injected crash):
    it would exit 1, which Claude Code treats as a non-blocking error, so the
    command would run unchecked (no input is known to raise; 200,000 fuzzed
    commands raised none).
+2026-09-19, gate-r3 adversarial round (each CONFIRMED by execution against a
+throwaway harness, never against this repo's real gh/GitHub; a name in
+parentheses is the finding's own id for cross-reference):
+18. A symlink or PATH-relative rename of `gh`/`git` (`octocli -> $(which
+    gh)`), invoked as the new name, by its full path, or wrapped in `nohup`,
+    was invisible to every check here -- each recognised the program only by
+    the literal word or a path ending in `/gh`/`/git`. `_is_program()` adds an
+    identity fallback (PATH lookup + realpath, same as the shell's own
+    resolution) that unplain_gh_word(), merge_invocations() and the new push
+    check below all use (shell-renamed-gh-direct-merge,
+    shell-renamed-gh-alias-plant, shell-renamed-git-direct-push). Residual,
+    not closed: an INDEPENDENTLY BUILT OR COPIED binary, different inode, same
+    behaviour -- a lexical hook cannot execute a candidate to compare
+    behaviour against the real one; ADR 0090 names this rather than claiming
+    it closed.
+19. `merge_invocations()`'s own probe required the literal word "gh" (or
+    `$.../)/`` ) before "pr ... merge", so it returned before the tokenizer --
+    which does not care what the program is named -- ever ran; a renamed `gh`
+    doing `octocli pr merge N` was `([], None)` every time. Now also
+    tokenizes on a bare "pr ... merge" adjacency and lets the tokenizer's own
+    per-segment `_is_program` check (18) decide, rather than deciding from
+    the raw text alone.
+20. `DIRECT_PUSH_PATTERN` requires the literal substring "main"; `git push`,
+    `git push origin` (no refspec) and `--mirror`/`--all` carry none, and the
+    real destination then depends on local config (push.default, branch
+    tracking, remote.pushDefault) this hook never reads -- on a repo with ~90
+    worktrees, routinely main (path-push-bare-and-broad). It also tolerates
+    exactly one hardcoded `-C <path>` between "git" and "push";
+    `--no-pager`, `-c x=y` or `git subtree push` are not "push" immediately
+    after "git" (path-push-token-between-git-and-push). `_direct_push_problem()`
+    is a second, additive check (DIRECT_PUSH_PATTERN itself, and its own
+    pinned history in scripts/pr_audit_gate.py's self-test, are untouched):
+    it tokenizes, walks past any number of recognized git global flags, and
+    treats a push with fewer than two literal positional arguments (no
+    remote, or a remote with no refspec) as needing to block, same as
+    `--mirror`/`--all` or an explicit `main` target.
+21. A `git config alias.<name>` collapses an entire push into one word
+    carrying neither "push" nor "main" (path-git-level-alias). `_push_reason()`
+    resolves an unrecognized git subcommand word via `git config --get
+    alias.<name>` (skipped for a short allowlist of common subcommands, so an
+    ordinary `git status`/`git commit`/etc. never pays for the extra call)
+    and treats a definition containing "push" as one, CANNOT-CHECKED rather
+    than parsed further. Not attempted: an alias whose *value* is itself
+    built from a separately-set variable or file across two commands, neither
+    of which contains "push" and "main" together in its own text -- this
+    hook reasons about one command at a time, by design.
+22. A REST PUT/PATCH to `.../pulls/<n>/merge`, a `gh api graphql` mutation
+    naming `mergePullRequest` or `enablePullRequestAutoMerge` (no bounded
+    `\bpr\b` word for the merge probe -- "pullRequestId" has none, even
+    though `gh` itself is running it), or a POST to the base repo's own
+    `/merges` endpoint (no PR number exists at all) each merge through
+    GitHub's API directly, in any client (curl, wget, a Python/Node script,
+    or `gh api`) -- none of it shaped like `gh pr merge` (path-http-api-clients,
+    path-graphql-merge-mutations, path-merges-endpoint-no-pr).
+    `_github_api_merge_reason()` blocks all three outright, like an MCP tool
+    that arms auto-merge: none carries a pin, a marker or an ownership check
+    to bind to.
+23. A generic exec-capable tool (a terminal runner, a sandbox, a batched
+    computer-use call) is not named "merge" and so was never checked at all
+    for anything BUT its own name -- CONFIRMED exit 0 for six real tool names,
+    each carrying a complete `gh pr merge` command in its input untouched
+    (path-exec-surface-outside-matcher). `.claude/settings.json`'s matcher is
+    widened (terminal/sandbox/exec/shell/computer/simulator/directory, beside
+    the existing merge pattern) and main()'s non-Bash branch now scans
+    tool_input's own text the same way a Bash command's is scanned. Residual,
+    stated plainly: a wholly novel, unlisted tool name is still not routed
+    here at all; a name-pattern matcher can never be complete against a tool
+    that does not exist yet, which is why ADR 0090 also names the GitHub-side
+    backstop (a required check tied to the real merge event) as the durable
+    fix, not another string pattern.
+24. `_mcp_merge_tool()`'s word-splitter needed a case TRANSITION to separate
+    words, so an all-lowercase joined name ("mergepr", "automergepr") was one
+    token matching neither "merge" nor a companion word
+    (path-mcp-lowercase-collapse). Now also checked as a lowercased
+    substring. Not closed, and recorded as a residual rather than attempted:
+    a bare "merge" with no companion word at all ("merge_now") -- treating
+    "merge" alone as enough would also block a real, unrelated tool this
+    session can call (path-mcp-bare-merge-word).
+25. `_passing_marker_exists()` accepted the marker's sha as a PREFIX match,
+    so a 7-character marker (SKILL.md's own documented format) validated ANY
+    commit sharing that prefix, not only the one it was minted for --
+    demonstrated with two genuine git commits, mined 7 hex chars apart, one
+    benign and one carrying a backdoor (sha-prefix-collision). It also
+    returned True on the first matching trusted PASS without checking for a
+    trusted BLOCK on the identical pr+sha, so a non-deterministic re-audit
+    only had to roll PASS once, ever, ahead of or behind an existing BLOCK
+    for the same commit (verdict-any-match-wins). Now requires the FULL
+    40-hex sha by `==`, and a trusted BLOCK vetoes a coexisting trusted PASS
+    outright, order-independent. Not closed, and left as an explicit open
+    decision rather than papered over: `_current_gh_user()` is unconditionally
+    trusted, so a session authenticated as the founder's own `gh` identity can
+    post its own PASS comment and merge with the audit itself never invoked
+    (self-forged-pass-marker) -- see OPEN-DECISIONS.md ([OD-128](../../.planning/decisions/OPEN-DECISIONS.md))
+    and ADR 0090's residual list; this is a trust-model question the hook
+    cannot resolve by itself.
+
+2026-09-19, gate-r4 (r4-gate.json, the round-3 adversarial pass's own
+last call against gate-r3's fixes -- CONFIRMED by execution unless stated
+otherwise):
+26. Point 22 above OVER-corrected: `_github_api_merge_reason()` blocked a
+    literal-PR `gh api .../pulls/<n>/merge` outright, which is the founder's
+    own documented, previously-working owned-PR route (see point 7, ADR
+    0090:173/242, SKILL.md step 4) -- a locked decision silently reversed
+    (BLOCKER, CLAUDE.md 0.1), with the owned-PR block message below still
+    telling a session to run the exact call now blocked. Restored: `gh api`
+    with a literal PR number on this one endpoint stays ungated, exactly as
+    before gate-r3; curl/wget/a script/graphql/the base Merges endpoint do
+    not, unchanged. Separately, and not a re-opening of the same gap: the
+    literal-PR-number requirement itself had a hole point 22 introduced --
+    `_PR_MERGE_ENDPOINT_RE` required `\\d+`, so `pulls/$N/merge` matched
+    NEITHER the block nor the exemption and ran completely unchecked, in
+    `gh api` or any other client (`N=2; curl -X PUT .../pulls/$N/merge`,
+    confirmed exit 0). Now detected and refused for every client, literal
+    number or not decided before the gh-api exemption is even considered.
+27. `_direct_push_problem()`'s refspec reading only ever compared the WHOLE
+    joined positional-argument text against `_MAIN_TARGET_RE`, so three
+    shapes reached main with no literal "main" anywhere: a bare `HEAD`/`@`
+    with no `:dest` (the real destination is the CURRENT LOCAL BRANCH, which
+    this hook has never read -- `git push origin HEAD`, `git push origin @`,
+    confirmed exit 0, confirmed live against a local bare origin to really
+    move its `main`); a wildcard refspec (`git push origin
+    'refs/heads/*:refs/heads/*'`, confirmed exit 0 and confirmed live);
+    and a destination built from a shell variable ASSIGNED EARLIER IN THE
+    SAME COMMAND (`B=main; git push origin HEAD:$B`, confirmed exit 0) --
+    this hook already reasons about one command at a time (point 21's own
+    residual says so explicitly), and a plain `NAME=value` before the push,
+    in that same command, is exactly the case that principle covers, so it
+    is now resolved the way the shell itself would resolve it. `_push_reason()`
+    now reads each refspec's own destination: bare `HEAD`/`@` blocks outright
+    (unknowable without reading local state); a wildcard on either side of a
+    refspec blocks; a same-command `NAME=value` substitutes into a `$NAME`/
+    `${NAME}` destination before the main-target and wildcard checks run; a
+    `HEAD`/`@`-sourced destination that is still a shell expansion after that
+    substitution (no matching assignment was found) blocks as unresolvable,
+    the same conservative direction as the pre-existing
+    fewer-than-two-positionals case. A non-`HEAD`/`@` source with an
+    unresolvable variable destination (`git push origin
+    feature:$UNRELATED_VAR`, no assignment anywhere in the command) is left
+    alone -- not the demonstrated shape, and blocking every unresolved
+    variable regardless of source would refuse ordinary scripted pushes to
+    named branches that have nothing to do with main.
+28. path-exec-surface-outside-matcher (point 23) named six tool families the
+    matcher was widened for; the built-in `Monitor` tool runs a shell command
+    in the same shell environment as Bash and was not among them --
+    CONFIRMED with `re.search`, the widened pattern did not match its name.
+    `.claude/settings.json`'s matcher now includes it explicitly.
+
 This is still a lexical check, not a shell: a command computed at run time (a
 `gh` alias, a shell alias for gh, `eval` of a built string, a script file,
 arguments xargs appends) is not seen, nor are words the shell splits apart (`gh${IFS}pr${IFS}merge`,
@@ -118,6 +265,7 @@ import os
 import pathlib
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -144,6 +292,20 @@ REPO = "aldemirkonuk/RestaurantAIAutomation"
 # saying "the PR merge flow" does not match; "gh pr merge" in prose still does.
 _FLAGS = r"(?:\s+-{1,2}\S+(?:\s+[^\s-]\S*)?)*"
 _MERGE_PROBE_RE = re.compile(rf"(?i)(?:\bgh\b|\$\S*|[)`]){_FLAGS}\s*\bpr{_FLAGS}\s+merge\b")
+# CONFIRMED BY EXECUTION (gate-r3 adversarial round, 2026-09-19,
+# shell-renamed-gh-direct-merge): the probe above requires the literal word
+# "gh" (or a $.../)/` lead-in) before "pr ... merge"; a symlink or PATH-relative
+# rename of `gh` (`octocli -> $(which gh)`, invoked as `octocli`, by absolute
+# path, or wrapped in `nohup`) has none of those, so `probe` was always empty
+# and merge_invocations() returned before the tokenizer -- which does not care
+# what the program is named -- ever ran. This is the SAME tail shape with the
+# "gh" requirement dropped, used ONLY to decide whether tokenizing is worth it
+# at all: a command mentioning neither "gh" nor a bare "pr ... merge" pair
+# still short-circuits instantly. A hit here is not itself a verdict --
+# merge_invocations()'s own tokenizer + _is_program() below still have to
+# confirm the segment's head is actually gh (literally or by identity) before
+# anything is added to `found`.
+_PLAIN_PR_MERGE_RE = re.compile(rf"(?i)\bpr{_FLAGS}\s+merge\b")
 _SHELL_PUNCTUATION = "();<>|&\n`"
 # gh pr merge's own flags (gh 2.x). Anything else is not something this hook
 # can reason about, so it blocks.
@@ -218,6 +380,233 @@ def _normalize_command(command: str) -> str:
     a continuation to the shell either."""
     return re.sub(r"(?<!\\)((?:\\\\)*)\\\n", r"\1", command)
 
+
+# gate-r3 adversarial round (2026-09-19), three CONFIRMED gaps in
+# DIRECT_PUSH_PATTERN, additive so the regex above (and its own pinned history
+# in scripts/pr_audit_gate.py's self-test) is untouched:
+#   shell-renamed-git-direct-push: the regex requires the literal word "git".
+#   path-push-token-between-git-and-push: it tolerates exactly one hardcoded
+#     `-C <path>` between "git" and "push"; `--no-pager`, `-c x=y`, or `git
+#     subtree push` are not "push" immediately after "git" and are missed.
+#   path-push-bare-and-broad: it requires the literal substring "main"; `git
+#     push`, `git push origin`, `--mirror` and `--all` carry none, and the
+#     real destination then depends on local config (push.default, branch
+#     tracking, remote.pushDefault) this hook never reads -- on a repo with
+#     ~90 worktrees, routinely main.
+#   path-git-level-alias: a `git config alias.<name>` collapses an entire push
+#     into one word carrying neither "push" nor "main"; resolved here (bounded
+#     to names outside a short common-subcommand list, so an ordinary `git
+#     status`/`git commit`/etc. never pays for the extra `git config` call).
+# _direct_push_problem() tokenizes the same way merge_invocations() does (any
+# number of global flags, `git` by literal spelling or by the _is_program
+# identity fallback) and is checked IN ADDITION to DIRECT_PUSH_PATTERN, never
+# instead of it -- either one blocking is enough.
+_GIT_GLOBAL_VALUE_FLAGS = frozenset({"-C", "-c", "--git-dir", "--work-tree",
+                                     "--namespace", "--super-prefix", "--config-env"})
+_COMMON_GIT_SUBCOMMANDS = frozenset({
+    "status", "diff", "add", "commit", "log", "fetch", "pull", "checkout",
+    "branch", "merge", "rebase", "stash", "tag", "remote", "clone", "init",
+    "reset", "show", "config", "restore", "switch", "cherry-pick", "revert",
+    "mv", "rm", "blame", "describe", "worktree", "submodule", "grep", "apply",
+    "cat-file", "rev-parse", "ls-tree", "ls-files", "update-index", "hash-object",
+})
+# The same ref shapes DIRECT_PUSH_PATTERN's own tail recognizes (a leading `+`,
+# an optional `<something>:` source half of a refspec, `refs/heads/`, optional
+# quotes), applied only to a push's own destination arguments once they are
+# known, not the whole command.
+_MAIN_TARGET_RE = re.compile(r"(?:^|\s)\+?(?:[^\s:]+:)?(?:refs/heads/)?['\"]?main['\"]?(?:\s|$)")
+
+
+def _skip_git_global_flags(seg: list[str], j: int) -> int:
+    while j < len(seg) and seg[j].startswith("-") and seg[j] != "-":
+        name, eq, _val = seg[j].partition("=")
+        j += 2 if (name in _GIT_GLOBAL_VALUE_FLAGS and not eq) else 1
+    return j
+
+
+def _git_alias_definition(name: str) -> str | None:
+    return _run(["git", "config", "--get", f"alias.{name}"])
+
+
+# gate-r4 path-push-refspec-ambiguous (2026-09-19, r4-gate.json): a same-command
+# `NAME=value` read the way the shell itself would resolve it -- this hook
+# already reasons about one command at a time (point 21's own residual says
+# so explicitly), and `B=main; git push origin HEAD:$B` is one command.
+# Deliberately simple: only a leading run of statements shaped exactly like
+# `NAME=value` counts, the same restraint this file applies everywhere else
+# it declines to build a general shell evaluator.
+_SIMPLE_ASSIGNMENT_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)=(.*)$", re.DOTALL)
+_VAR_REF_RE = re.compile(r"\$\{(\w+)\}|\$(\w+)")
+_STATEMENT_SEP_TOKENS = frozenset({";", "&&", "||", "\n"})
+# A value this hook must never trust as literal, however it was produced --
+# distinct from "not set at all" (also left unresolved, by the .get default
+# below, but for a different reason).
+_UNRESOLVED = object()
+
+
+def _collect_assignments(toks: list[str]) -> dict[str, object]:
+    """NAME -> value (or _UNRESOLVED) for every plain `NAME=value` token
+    leading a statement (`B=main; ...`, or an env-prefix `B=main C=x git
+    ...`), read from the FULL flat token stream `_tokens()` produced for the
+    whole command -- not the already-segmented list -- so this can see what
+    comes immediately after each assignment.
+
+    SELF-ADVERSARIAL FINDING, fixed before ever shipping (2026-09-19): a
+    first version of this read `NAME=value` per already-split segment and
+    trusted `value` outright. `_SHELL_PUNCTUATION` includes `(` and `` ` ``,
+    so the tokenizer itself splits `B=$(echo main)` into `"B=$"`, `"("`,
+    `"echo"`, `"main"`, `");"`, ... and `` B=`echo main`; `` into `"B="`,
+    `` "`" ``, `"echo"`, `"main"`, `` "`;" ``, ... -- CONFIRMED the naive
+    version read the truncated fragment (`"$"`, or `""`) as B's whole value,
+    concluded it plainly was not main, and let `HEAD:$B` through even though
+    the shell's real value of `$B` is `main`. Now: whenever the token right
+    after a `NAME=value` assignment is itself punctuation and is NOT a
+    statement separator (so it is a `(`/backtick/similar opening a
+    construct this hook does not evaluate, not the `;`/`&&`/newline that
+    would end an ordinary standalone assignment), NAME maps to `_UNRESOLVED`
+    -- never to the fragment left behind -- so a downstream lookup treats it
+    exactly like an unresolved expansion, the safe direction, rather than
+    like a literal value that happens not to be main."""
+    env: dict[str, object] = {}
+    at_start = True
+    i, n = 0, len(toks)
+    while i < n:
+        tok = toks[i]
+        if tok in _STATEMENT_SEP_TOKENS:
+            at_start = True
+            i += 1
+            continue
+        if not at_start:
+            i += 1
+            continue
+        m = _SIMPLE_ASSIGNMENT_RE.match(tok)
+        if not m:
+            at_start = False  # the command itself starts here
+            i += 1
+            continue
+        nxt = toks[i + 1] if i + 1 < n else None
+        if nxt is not None and nxt not in _STATEMENT_SEP_TOKENS and _is_punctuation(nxt):
+            env[m.group(1)] = _UNRESOLVED
+        else:
+            env[m.group(1)] = m.group(2)
+        i += 1
+    return env
+
+
+def _resolve_simple_var(value: str, env: dict[str, object]) -> str:
+    """Substitute a bare $NAME/${NAME} using a same-command assignment `env`
+    collected above; anything else ($(...), backticks, an unset name, or a
+    name collected but marked _UNRESOLVED above) is left exactly as written
+    -- the caller treats "still looks like an expansion after this" as
+    unresolved, never as proof it is safe."""
+    def sub(m: "re.Match[str]") -> str:
+        name = m.group(1) or m.group(2)
+        val = env.get(name, m.group(0))
+        return m.group(0) if val is _UNRESOLVED else val
+    return _VAR_REF_RE.sub(sub, value)
+
+
+def _push_reason(seg: list[str], env: dict[str, str] | None = None) -> str | None:
+    """Why this segment (its head already confirmed to be git) is a push this
+    hook must block or treat as CANNOT CHECK, or None if it plainly is not.
+    `env`: same-command NAME=value assignments (see _collect_assignments)."""
+    env = env or {}
+    j = _skip_git_global_flags(seg, 1)
+    if j >= len(seg):
+        return None
+    sub = seg[j].lower()
+    rest = seg[j + 1:]
+    if sub == "subtree" and j + 1 < len(seg) and seg[j + 1].lower() == "push":
+        rest = seg[j + 2:]
+    elif sub != "push":
+        if sub in _COMMON_GIT_SUBCOMMANDS or not re.fullmatch(r"[a-z][a-z0-9-]*", sub):
+            return None  # a known, or clearly not alias-shaped, subcommand
+        alias = _git_alias_definition(seg[j])
+        if not alias or not re.search(r"(?i)\bpush\b", alias):
+            return None
+        return (f"`git {seg[j]}` is a git alias (`{alias.strip()[:120]}`) this hook cannot "
+                "expand and re-check, and it may push")
+    if any(t in ("--mirror", "--all") for t in rest):
+        return "pushes every ref (--mirror/--all), which includes main if main exists on the remote"
+    positional = [a for a in rest if not a.startswith("-")]
+    if len(positional) < 2:
+        where = "no remote or refspec" if not positional else f"{positional[0]!r} but no refspec"
+        return (f"a push with {where} -- the real destination depends on local config "
+                "(push.default, branch tracking, remote.pushDefault) this hook does not read")
+    # gate-r4 path-push-refspec-ambiguous: a refspec's DESTINATION is what
+    # actually lands on the remote, and three shapes let it be main (or any
+    # ref) with no literal "main" anywhere in the command text -- a bare
+    # `HEAD`/`@` (git names the remote branch after the CURRENT LOCAL BRANCH,
+    # which this hook has never read, the same gap the fewer-than-two-
+    # positionals case above already declines to guess at); a wildcard
+    # (`refs/heads/*:refs/heads/*`, matching every local branch, main
+    # included, if one exists); and a shell variable on the destination side
+    # (`HEAD:$B`), resolved against a same-command assignment when one
+    # exists and treated as unresolved, not safe, when it does not.
+    for spec in positional[1:]:
+        if ":" in spec:
+            src, dst = spec.split(":", 1)
+        else:
+            src, dst = spec, None
+        if dst is None:
+            if src in ("HEAD", "@"):
+                return ("pushes HEAD/@ with no explicit destination branch name -- the real "
+                        "destination is resolved from the current local branch, which this "
+                        "hook does not read")
+            target = src
+        else:
+            target = dst
+        if "*" in src or (dst is not None and "*" in dst):
+            return "pushes a wildcard refspec, which includes main if a local main matches"
+        resolved = _resolve_simple_var(target, env)
+        if _MAIN_TARGET_RE.search(" " + resolved + " "):
+            return "pushes directly to main"
+        if resolved == target and re.search(r"[$`]", target) and (dst is None or src in ("HEAD", "@")):
+            return (f"pushes to a destination ({target!r}) built from a shell expansion this "
+                    "hook cannot resolve, which may be main")
+    return None
+
+
+def _direct_push_problem(command: str) -> str | None:
+    # Cheap pre-filter: "push" covers a literal invocation (including a
+    # renamed/symlinked git, which still can't rename its own SUBCOMMAND
+    # away) and "git" covers the alias case, where "push" is hidden inside an
+    # alias definition this hook has not read yet and the word never appears
+    # in the command text at all (`git shipit`). A renamed git invoking an
+    # alias, with neither word present, is a compounding of two separate
+    # evasions this hook does not attempt -- tokenizing every single Bash
+    # command regardless of content is the cost of closing it, which is not
+    # taken here.
+    if not re.search(r"(?i)\b(?:push|git)\b", command):
+        return None
+    try:
+        toks = _tokens(command)
+    except ValueError:
+        return None  # merge_invocations()/unplain_gh_word() already surface this
+    segments: list[list[str]] = [[]]
+    target = False
+    for tok in toks:
+        if _is_punctuation(tok) and ("<" in tok or ">" in tok) and set(tok) <= set("<>&"):
+            if segments[-1] and segments[-1][-1].isdigit():
+                segments[-1].pop()
+            target = True
+        elif _is_punctuation(tok):
+            segments.append([])
+            target = False
+        elif target:
+            target = False
+        else:
+            segments[-1].append(tok)
+    env = _collect_assignments(toks)
+    for seg in segments:
+        if not seg or not _is_program(seg[0], "git"):
+            continue
+        reason = _push_reason(seg, env)
+        if reason:
+            return reason
+    return None
+
+
 # Both this hook and scripts/pr_audit_gate.py (CI) must emit exactly this shape
 # in the PR comment they post: an HTML comment, invisible when rendered, that
 # names the PR, the exact head SHA it was computed against, and the verdict.
@@ -247,6 +636,172 @@ MARKER_RE = re.compile(
 # match both still apply on top of this, which is the actual containment.
 _TRUSTED_MARKER_AUTHORS = {"github-actions[bot]", "github-actions"}
 
+# CONFIRMED bypasses (gate-r3 adversarial round, 2026-09-19): a merge can go
+# straight through GitHub's API with no `gh pr merge`-shaped text anywhere for
+# _MERGE_PROBE_RE/unplain_gh_word to find, in ANY client:
+#   path-http-api-clients: curl/wget/python `requests`/node `fetch` PUT/PATCH
+#     to .../pulls/<n>/merge.
+#   path-graphql-merge-mutations: `gh api graphql` naming mergePullRequest or
+#     enablePullRequestAutoMerge -- no bounded `\bpr\b` word (`pullRequestId`
+#     has none), so the probe never fires even though `gh` is the one running
+#     it. enablePullRequestAutoMerge does exactly what an MCP auto-merge tool
+#     is already blocked outright for (comment on _mcp_merge_tool).
+#   path-merges-endpoint-no-pr: POST to the base repo's own /merges endpoint --
+#     no PR number exists at all, so there is nothing to pin a marker or an
+#     ownership check to; this is a straight block, not a pin-and-check.
+# Blocked outright, like an MCP tool that arms auto-merge: none of these carry
+# a --match-head-commit pin, a PASS marker or an ownership check to bind to.
+_GITHUB_API_HOST_RE = re.compile(r"(?i)\bapi\.github\.com\b")
+_GH_API_RE = re.compile(r"(?i)\bgh\s+api\b")
+_PR_MERGE_ENDPOINT_RE = re.compile(r"(?i)/?(?:repos/[^\s'\"]+/)?pulls?/([^/\s'\"]+)/merges?\b")
+_BASE_MERGES_ENDPOINT_RE = re.compile(r"(?i)/?repos/[^\s'\"]+/merges\b")
+_GRAPHQL_MERGE_MUTATION_RE = re.compile(r"\b(?:mergePullRequest|enablePullRequestAutoMerge)\b")
+
+# gate-r4 residual CLOSED (2026-09-19): `_GH_API_RE` alone reads only the
+# literal substring "gh api", so `gh${IFS}api ...`, `"gh" api ...`, `{gh,api}`
+# or a symlinked/renamed gh running `api ...` were never recognised as gh at
+# all -- and with `talks_to_github` False every merge-surface check below
+# (non-literal PR number, GraphQL merge mutation, base /merges endpoint) was
+# skipped, CONFIRMED exit 0 for each. Tokenizing cannot fix this by itself
+# (shlex/_lex do no ${...} or IFS expansion, so `gh${IFS}api` stays ONE word);
+# the respelled reading therefore has three parts, most to least certain:
+#   1. the plain regex above, on the command as written;
+#   2. the same words on the quote-and-backslash-stripped text, with the
+#      separator widened to what a shell turns into whitespace or brace-splits
+#      (`${IFS}`, `$IFS`, any `${...}`/`$name`, `{gh,api}`) -- the stripping is
+#      what unplain_gh_word() and _MERGE_PROBE_RE already do for `gh pr merge`;
+#   3. the words as _lex reads them: a word that IS gh (_is_program(): spelled
+#      plainly, a path, or the identity fallback for a renamed/symlinked gh)
+#      followed by `api`, or one the shell expands (`$G api`, `$(command -v
+#      gh) api`) -- which may be gh -- followed by `api`, or a real gh followed
+#      by a subcommand word the shell expands (`gh $S ...`), or any of these
+#      inside a quoted string another shell runs (`bash -c '...'`).
+# 1-2 and a literal gh in 3 are "gh-api" (recognised, so the founder's literal-
+# PR route stays ungated exactly as when plainly spelled); an expanded word in
+# 3, or a command _lex cannot read at all, is only "maybe" (a merge surface is
+# still checked, but the ungated exemption is not extended to what may not be
+# gh api). Residual, named rather than claimed closed: `gh${IFS}pr${IFS}merge`
+# is a DIFFERENT surface (ADR 0090's not-seen list; test NOT_SEEN pins it) and
+# is not changed by this; and a gh AND an api that are both built by expansion
+# (`G=gh; A=api; $G $A -X PUT ...`) are NOT recognised -- the same shape as the
+# not-seen `$G p$()r merge` -- since the word after `$G` is `$A`, not `api`.
+_GH_API_RESPELLED_RE = re.compile(
+    r"(?i)\bgh(?:\s|\$\{[^}]*\}|\$\w+)+api\b|\{\s*gh\s*,\s*api\b")
+_MAX_API_READ_DEPTH = 3
+
+
+def _command_segments(group: list[tuple[str, str]]) -> list[list[tuple[str, str]]]:
+    """The simple commands of one _lex word group: split at each operator
+    run or parenthesis, a redirection's target word dropped (the same
+    segmentation unplain_gh_word() applies to its own groups)."""
+    segments: list[list[tuple[str, str]]] = [[]]
+    target = False
+    for cooked, raw in group:
+        if raw and all(c in _OPERATOR_CHARS + "()" for c in raw):
+            if set(raw) <= set("<>&") and ("<" in raw or ">" in raw):
+                target = True
+            else:
+                segments.append([])
+                target = False
+        elif target:
+            target = False
+        else:
+            segments[-1].append((cooked, raw))
+    return segments
+
+
+def _gh_api_reading(command: str, _depth: int = 0) -> str | None:
+    """"gh-api" if `command` runs gh's `api` subcommand however it is spelled
+    (see the block above), "maybe" if it may or cannot be told, else None."""
+    if _GH_API_RE.search(command):
+        return "gh-api"
+    stripped = re.sub(r"[\"'\\]", "", command)
+    if _GH_API_RESPELLED_RE.search(stripped):
+        return "gh-api"
+    try:
+        api_words, api_subs, _tail = _lex(command, 0, None, 0)
+        reading: str | None = None
+        for group in [api_words, *api_subs]:
+            for seg in _command_segments(group):
+                for k, (cooked, raw) in enumerate(seg):
+                    literal_gh = _is_program(cooked, "gh")
+                    expands = not literal_gh and any(c in _EXPANDS for c in raw)
+                    if literal_gh or expands:
+                        j = _past_flags(seg, k + 1)
+                        if j < len(seg):
+                            if seg[j][0] == "api":
+                                if literal_gh:
+                                    return "gh-api"
+                                reading = "maybe"
+                            elif literal_gh and any(c in _QUOTES_OR_EXPANDS for c in seg[j][1]):
+                                reading = "maybe"  # `gh ap$()i`, `gh $S`: a subcommand built by the shell
+                    # A quoted string holding a command another shell runs.
+                    if (_depth < _MAX_API_READ_DEPTH and raw[:1] in ("'", '"')
+                            and any(c.isspace() for c in cooked)):
+                        nested = _gh_api_reading(cooked, _depth + 1)
+                        if nested == "gh-api":
+                            return "gh-api"
+                        reading = reading or nested
+        return reading
+    except Exception:  # noqa: BLE001 -- a reader that fails must not read as "not gh api"
+        return "maybe"
+
+
+def _github_api_merge_reason(text: str) -> str | None:
+    """Why `text` (a Bash command, or any string an MCP tool's input carries)
+    reaches GitHub's merge surface directly, bypassing every gh-pr-merge-
+    shaped check in this file; None if it plainly does not.
+
+    gate-r4 CORRECTION (2026-09-19, r4-gate.json round-3-last-call, BLOCKER):
+    gate-r3 made this block a literal-PR-number `gh api .../pulls/<n>/merge`
+    outright -- but that call, with a literal PR number, is the founder's own
+    documented route for an owned PR (ADR 0090:173 founder answer 3; :242
+    "stays ungated on purpose"; this module's own docstring above, point 7;
+    SKILL.md step 4's Exit 3 branch; the owned-PR block message in
+    _check_invocation below), used for real at PRs #261, #297 and #299. This
+    hook not matching that ONE shape is not an oversight; it is the point --
+    an owned PR's audit code could grade itself, so that path is deliberately
+    left to the founder's word instead of anything this hook can check. Gate-r3
+    blocked it anyway with no test pinning the exemption and no mention in its
+    own ADR section, silently reversing a locked decision (CLAUDE.md 0.1).
+    Restored below, narrowly: only `gh api` (not curl/wget/a script/graphql/
+    the base Merges endpoint) with a LITERAL decimal PR number stays ungated.
+    A non-literal PR number (`pulls/$N/merge`) previously escaped detection
+    entirely -- the old regex required `\\d+`, so a shell variable there matched
+    NEITHER the (then-unconditional) block NOR anything else, and ran
+    completely unaudited (r4-gate.json finding 6, HIGH: `N=2; gh api -X PUT
+    .../pulls/$N/merge` and the curl equivalent both exited 0). `gh pr merge`
+    itself refuses a non-literal PR (bug 9 above); this now does too, for
+    every client, literal-PR-or-not being decided BEFORE the gh-api exemption
+    so a non-literal number is refused even when `gh api` is the caller."""
+    m = _PR_MERGE_ENDPOINT_RE.search(text)
+    base_merges = _BASE_MERGES_ENDPOINT_RE.search(text)
+    graphql_merge = re.search(r"(?i)\bgraphql\b", text) and _GRAPHQL_MERGE_MUTATION_RE.search(text)
+    if not (m or base_merges or graphql_merge):
+        return None  # names no merge surface at all: nothing below can matter
+    # gate-r4 closure (2026-09-19): the gh reading is _gh_api_reading(), not the
+    # bare literal-substring regex, so a respelled `gh api` reaches the checks
+    # below exactly as a plain one does. Only a merge surface named above ever
+    # pays for the word-by-word reading.
+    gh_api = _gh_api_reading(text)
+    if not (_GITHUB_API_HOST_RE.search(text) or gh_api):
+        return None
+    unsure = ("" if gh_api != "maybe" else
+              " (through a `gh api` this hook cannot confirm is gh: an expanded or unreadable word)")
+    if m:
+        pr_token = m.group(1)
+        if not pr_token.isdigit():
+            return (f"calls GitHub's REST merge endpoint with a non-literal PR number "
+                    f"({pr_token!r}) -- gh pr merge refuses a non-literal PR the same way{unsure}")
+        if gh_api == "gh-api":
+            return None  # ADR 0090: gh api with a literal PR number is the
+            # founder's SHA-pinned owned-PR merge route, ungated on purpose.
+        return f"calls GitHub's REST merge endpoint for a pull request directly{unsure}"
+    if base_merges:
+        return ("calls GitHub's base-repo Merges API directly -- no PR is involved, so there "
+                f"is nothing to pin a marker or an ownership check to{unsure}")
+    return f"runs a GraphQL mutation that merges a PR or arms auto-merge{unsure}"
+
 
 def _allow(note: str = "") -> None:
     if note:
@@ -270,13 +825,45 @@ def _run(cmd: list[str]) -> str | None:
 
 
 def _mcp_merge_tool(name: str) -> bool:
-    """True for an MCP tool whose name says it merges a PR or arms auto-merge."""
+    """True for an MCP tool whose name says it merges a PR or arms
+    auto-merge. gate-r3 path-mcp-lowercase-collapse (2026-09-19): the
+    word-splitter needs a case TRANSITION to separate words, so an
+    all-lowercase joined name ("mergepr", "automergepr") was one token
+    matching neither "merge" nor a companion word -- CONFIRMED:
+    _mcp_merge_tool("mcp__github__mergepr") was False. Now also checked as a
+    lowercased SUBSTRING, which catches that without an allowlist. Residual,
+    NOT closed by this (ADR 0090's not-seen list, path-mcp-bare-merge-word): a
+    bare "merge" with no companion word at all ("merge_now") still is not
+    caught -- treating "merge" alone as enough would also block
+    mcp__c96b062f__merge_branch, a real, unrelated Supabase DB-branch-merge
+    tool this session can call, and no allowlist of "known safe" merge-shaped
+    tool names can stay complete as new tools appear."""
     if not name.startswith("mcp__"):
         return False
-    words = {w.lower() for w in re.findall(r"[A-Z]?[a-z]+|[0-9]+", name)}
-    if "automerge" in words:
+    lname = name.lower()
+    if "automerge" in lname:
         return True
-    return "merge" in words and bool(words & _MCP_MERGE_WORDS)
+    words = {w.lower() for w in re.findall(r"[A-Z]?[a-z]+|[0-9]+", name)}
+    if "merge" in words and bool(words & _MCP_MERGE_WORDS):
+        return True
+    return "merge" in lname and any(w in lname for w in _MCP_MERGE_WORDS)
+
+
+def _tool_input_text(value, _depth: int = 0) -> str:
+    """Every string value inside a tool_input payload, concatenated, so a
+    command-shaped string is found regardless of which key holds it
+    (`command`, `script`, `code`, ...) or which tool carries it. Bounded
+    depth: a tool input is a small JSON object, not attacker-supplied
+    recursion fuel."""
+    if _depth > 10:
+        return ""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        return "\n".join(_tool_input_text(v, _depth + 1) for v in value.values())
+    if isinstance(value, list):
+        return "\n".join(_tool_input_text(v, _depth + 1) for v in value)
+    return ""
 
 
 def _tokens(command: str) -> list[str]:
@@ -293,6 +880,61 @@ def _is_punctuation(tok: str) -> bool:
     return bool(tok) and all(c in _SHELL_PUNCTUATION for c in tok)
 
 
+def _program_realpath(name: str) -> str | None:
+    """The real, symlink-resolved file `name` would run as -- a PATH lookup
+    for a bare name (the same lookup the shell itself performs), or the name
+    directly if it holds a path separator. None if it cannot be found."""
+    try:
+        found = shutil.which(name)
+        return os.path.realpath(found) if found else None
+    except OSError:
+        return None
+
+
+# CONFIRMED BY EXECUTION (gate-r3 adversarial round, 2026-09-19,
+# shell-renamed-gh-direct-merge / shell-renamed-git-direct-push): every check
+# in this file recognised `gh`/`git` by the literal word only (or a path
+# ending in `/gh`/`/git`). A symlink `octocli -> $(which gh)`, invoked as
+# `octocli`, by its full path, or wrapped in `nohup`, was invisible to all of
+# them -- merge_invocations() built zero invocations and DIRECT_PUSH_PATTERN
+# never matched, so a `gh pr merge` or `git push origin main` run this way
+# passed unchecked. _is_program() adds an identity fallback: a word that is
+# not spelled `gh`/`git` at all is still treated as one when it resolves, via
+# PATH, to the SAME file this hook would itself invoke as `gh`/`git`.
+# Deliberately cached (not re-`which`'d per word): PATH does not change within
+# one hook invocation, and a command can hold many candidate words.
+#
+# Residual, stated plainly rather than claimed closed: this catches a rename
+# or symlink ON PATH, never an INDEPENDENTLY BUILT OR COPIED binary with the
+# same behaviour but a different inode (demonstrated with a `shutil.copy2`
+# clone named `reviewtool` -- different realpath, so `_is_program` correctly
+# returns False for it). A lexical hook cannot execute a candidate to compare
+# behaviour against the real `gh`/`git`; ADR 0090's residual list names this
+# rather than claiming it closed. See scripts/test_require_pr_audit.py's
+# gate-r3 cases for both the closed (symlink) and residual (copy) shapes.
+_REALPATH_CACHE: dict[str, str | None] = {}
+
+
+def _cached_realpath(name: str) -> str | None:
+    if name not in _REALPATH_CACHE:
+        _REALPATH_CACHE[name] = _program_realpath(name)
+    return _REALPATH_CACHE[name]
+
+
+def _is_program(word: str, canonical: str) -> bool:
+    """True if `word` (quotes/backslashes already stripped by the caller) IS
+    the program `canonical` ("gh" or "git"): spelled plainly, a path ending in
+    /<canonical>, or -- the identity fallback above -- resolving on PATH to
+    the exact file `canonical` itself would resolve to."""
+    lw = word.lower()
+    if lw == canonical or lw.endswith("/" + canonical):
+        return True
+    if not word or word.startswith("-"):
+        return False
+    real = _cached_realpath(canonical)
+    return bool(real) and _cached_realpath(word) == real
+
+
 def merge_invocations(command: str) -> tuple[list[list[str]], str | None]:
     """(the argument list of every `pr [flags] merge` in the command, a problem).
 
@@ -301,8 +943,9 @@ def merge_invocations(command: str) -> tuple[list[list[str]], str | None]:
     `pr merge` that could not be placed as its own invocation: an unclosed
     quote, or one inside `bash -c "..."`, `eval '...'`, a comment, or anything
     else a tokenizer cannot see through. Either way the caller blocks."""
-    probe = _MERGE_PROBE_RE.findall(re.sub(r"[\"'\\]", "", command))
-    if not probe:
+    stripped = re.sub(r"[\"'\\]", "", command)
+    probe = _MERGE_PROBE_RE.findall(stripped)
+    if not probe and not _PLAIN_PR_MERGE_RE.search(stripped):
         return [], None
     try:
         toks = _tokens(command)
@@ -335,6 +978,18 @@ def merge_invocations(command: str) -> tuple[list[list[str]], str | None]:
             if j < len(seg) and seg[j].lower() == "merge":
                 if any(t in ("-R", "--repo") or t.startswith("--repo=") for t in seg[:i]):
                     return found, "a repository flag before `pr` points gh somewhere this hook does not check"
+                # gate-r3 shell-renamed-gh-direct-merge: `pr merge` is only a gh
+                # invocation if SOME word running it actually IS gh -- literally,
+                # or by the identity fallback (a renamed/symlinked binary
+                # resolving to the same file). Without this, `curl` or prose
+                # sharing a segment with a stray "pr merge" would count too.
+                # ANY earlier word, not just the first: a wrapper (`sudo gh pr
+                # merge`, `nohup octocli pr merge` -- the ADR's own "Checked"
+                # list names sudo/env/time as supported wrappers) sits before
+                # the real program.
+                before = [t for t in seg[:i] if not t.startswith("-")]
+                if before and not any(_is_program(t, "gh") for t in before):
+                    continue
                 found.append(seg[i + 1:j] + seg[j + 1:])
     if len(found) < len(probe):
         return found, (f"the command holds {len(probe)} `pr merge` but only {len(found)} "
@@ -632,7 +1287,7 @@ def unplain_gh_word(command: str) -> str | None:
                 segments[-1].append((cooked, raw))
         for seg in segments:
             for k, (cooked, raw) in enumerate(seg):
-                literal_gh = cooked.lower() == "gh" or cooked.lower().endswith("/gh")
+                literal_gh = _is_program(cooked, "gh")
                 expands = not literal_gh and any(c in _EXPANDS for c in raw)
                 if not literal_gh and not expands:
                     continue
@@ -674,11 +1329,29 @@ def _current_gh_user() -> str | None:
 
 def _passing_marker_exists(pr_number: str, sha: str) -> bool:
     """True iff some TRUSTED-author PR comment STARTS WITH the marker for
-    this exact PR + sha with verdict=PASS. Checks ALL comments (not just the
-    latest) since the CI path and this skill can both post one, in either
-    order. Author-trust and position-anchoring are both load-bearing — see
-    bugs 4 and 5 in the module docstring; either alone was confirmed
-    bypassable."""
+    this exact PR + FULL sha with verdict=PASS, and no trusted comment marks
+    that identical PR + sha BLOCK. Checks ALL comments (not just the latest)
+    since the CI path and this skill can both post one, in either order.
+    Author-trust and position-anchoring are both load-bearing — see bugs 4
+    and 5 in the module docstring; either alone was confirmed bypassable.
+
+    gate-r3 adversarial round (2026-09-19), two more CONFIRMED bypasses:
+      sha-prefix-collision: `sha.startswith(m.group("sha"))` accepted the
+      marker's sha as a PREFIX match. SKILL.md documented (and CI posted) only
+      a 7-character sha, and two genuine, independently mined git commits 7
+      hex chars apart -- one benign, one carrying a backdoor -- showed a
+      marker minted for one validates the OTHER outright. Now `==` against
+      the FULL 40-hex sha, never a prefix; SKILL.md and pr_audit_gate.py's own
+      marker-posting code are updated in this same round to always post the
+      full sha (never `sha[:7]`) so a real PASS still matches.
+      verdict-any-match-wins: returning True on the first matching trusted
+      PASS, without checking for a trusted BLOCK on the identical pr+sha,
+      meant a non-deterministic re-audit only had to roll PASS once, ever, to
+      permanently outvote an existing BLOCK for the same commit -- CONFIRMED
+      with two trusted comments for one sha, one of each verdict, both
+      orderings, both exiting 0. A trusted BLOCK for the same pr+sha now
+      vetoes a coexisting trusted PASS outright, order-independent.
+    """
     raw = _run(["gh", "pr", "view", pr_number, "--json", "comments"])
     if raw is None:
         return False  # caller must treat None-vs-False distinctly if needed
@@ -692,15 +1365,18 @@ def _passing_marker_exists(pr_number: str, sha: str) -> bool:
     if me:
         trusted.add(me)
 
+    saw_pass = False
     for c in comments:
         author = (c.get("author") or {}).get("login", "")
         if author not in trusted:
             continue
         m = MARKER_RE.match(c.get("body", "").strip())
-        if m and m.group("pr") == pr_number and sha.startswith(m.group("sha")) \
-                and m.group("verdict") == "PASS":
-            return True
-    return False
+        if not (m and m.group("pr") == pr_number and m.group("sha") == sha):
+            continue
+        if m.group("verdict") == "BLOCK":
+            return False  # a trusted BLOCK for this exact pr+sha vetoes any PASS
+        saw_pass = True
+    return saw_pass
 
 
 def _ownership_from_main(pr: str, sha: str) -> tuple[int, str]:
@@ -794,13 +1470,55 @@ def main() -> int:
                 "<audited sha>`); a PR that changes what the gate owns needs the "
                 "founder's word."
             )
+        # gate-r3 path-exec-surface-outside-matcher (2026-09-19): a generic
+        # exec-capable tool (a terminal runner, a sandbox, a batched
+        # computer-use call) is not named "merge" and so is not caught above,
+        # but its OWN input can still carry a fully-formed `gh pr merge` or
+        # `git push origin main` -- CONFIRMED exit 0 for six real tool names
+        # in a session's own roster, carrying a complete merge command
+        # untouched, since main() never inspected tool_input for anything but
+        # tool_name here. Only a tool .claude/settings.json's matcher (widened
+        # in this same round) actually routes to the hook is ever seen at
+        # all -- a wholly novel, unlisted tool name still is not, and that
+        # residual is named in ADR 0090, not claimed closed -- but any tool
+        # that IS routed here now has its input scanned the same way a Bash
+        # command's is, whatever the tool is named.
+        text = _tool_input_text(payload.get("tool_input"))
+        if text:
+            api_reason = _github_api_merge_reason(text)
+            if api_reason:
+                _block(f"BLOCKED by ADR 0090: {tool}'s input {api_reason}. Merge through the "
+                       "pr-audit-gate skill (`gh pr merge <n> --squash --match-head-commit "
+                       "<audited sha>`); a PR that changes what the gate owns needs the "
+                       "founder's word.")
+            stripped_text = re.sub(r"[\"'\\]", "", text)
+            if _MERGE_PROBE_RE.search(stripped_text) or _PLAIN_PR_MERGE_RE.search(stripped_text) \
+                    or re.search(r"(?i)\bgit\s+(?:\S+\s+)*push\b", text):
+                _block(f"BLOCKED by ADR 0090: {tool}'s input looks like it runs a `gh pr merge` "
+                       "or a `git push`; this hook only fully checks a Bash command. Run it as "
+                       "a plain Bash command instead, so the pin, marker and ownership checks "
+                       "all run.")
         return 0
 
     command = _normalize_command(str(payload.get("tool_input", {}).get("command", "")))
+    api_reason = _github_api_merge_reason(command)
+    if api_reason:
+        _block(f"BLOCKED by ADR 0090: this command {api_reason}. Merge through the "
+               "pr-audit-gate skill (`gh pr merge <n> --squash --match-head-commit "
+               "<audited sha>`); a PR that changes what the gate owns needs the "
+               "founder's word.")
+
     if DIRECT_PUSH_PATTERN.search(command):
         _block(
             "BLOCKED by ADR 0090: direct pushes to main are not audited. Open a "
             "PR and let the pr-audit-gate skill carry it, so main's branch "
+            "protection and the audit both actually run against it."
+        )
+    push_problem = _direct_push_problem(command)
+    if push_problem:
+        _block(
+            f"BLOCKED by ADR 0090: direct pushes to main are not audited ({push_problem}). "
+            "Open a PR and let the pr-audit-gate skill carry it, so main's branch "
             "protection and the audit both actually run against it."
         )
 
