@@ -34,6 +34,7 @@ import {
 import { resolveZone } from "./zoned-time";
 import { roleInHouse } from "../auth/house-role";
 import { stopCalendarLinksOnLeaving } from "./stop-links-on-leaving";
+import { onTheRoster } from "../team/pay-rules";
 
 /**
  * Personal calendar links (ADR 0111, review trail 2026-09-21).
@@ -742,17 +743,28 @@ export class CalendarLinksService {
         `Could not read the shifts: ${shiftsErr.message}`,
       );
     }
+    // A removed person's shifts are KEPT five years since ADR 0215 item 20
+    // dropped `shifts.member_id`'s cascade, and kept is not shown: the feed
+    // reads the week the way /team's `getWeek` does (`onTheRoster`), as it
+    // did before that change, when a removal deleted those rows. Without
+    // this an owner's or manager's "all" link served a departed person's
+    // kept shift, past and future alike, as "Someone — shift", which reads
+    // as a live shift. An unassigned (open) shift has no person to have left.
+    const liveRoster = new Set(roster.map((m) => m.id));
     const shown = selectShifts(
-      (rows ?? []) as Array<{
-        id: string;
-        schedule_id: string | null;
-        member_id: string | null;
-        shift_date: string;
-        start_time: string;
-        end_time: string;
-        role: string | null;
-        state: string | null;
-      }>,
+      onTheRoster(
+        (rows ?? []) as Array<{
+          id: string;
+          schedule_id: string | null;
+          member_id: string | null;
+          shift_date: string;
+          start_time: string;
+          end_time: string;
+          role: string | null;
+          state: string | null;
+        }>,
+        liveRoster,
+      ),
       scope,
       mine,
     );

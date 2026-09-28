@@ -897,6 +897,30 @@ describe("item 80 — an owner demoted to manager in place: owner-period pay sta
     for (const r of rows) expect("hourly_wage" in r).toBe(false);
   });
 
+  // PostgREST caps a reply at `max-rows` with no error. Before the count,
+  // a short read was taken as the whole record, and a dropped demotion ended
+  // (or never closed) an owner period on a guess. Now a shortfall is an
+  // unreadable record: the switched-on manager is shown no pay at all.
+  it("the role changes read SHORT (a row cap): no pay at all, not the periods the rows that came back imply", async () => {
+    const db = twoOwners();
+    await changeRole(db, "manager", "2026-09-07T20:00:00.000Z");
+    await changeRole(db, "owner", "2026-09-09T21:30:00.000Z");
+    await changeRole(db, "manager", "2026-09-10T12:00:00.000Z");
+    db.rowCap = { system_audit_log: 2 };
+    const week = await scheduleOf(db).getWeek(MANAGER, RID, WEEK);
+    expect(week.labor.moneyVisible).toBe(false);
+    for (const s of week.shifts) expect("labor_cost" in s).toBe(false);
+    const rows = await teamOf(db).listMembers(MANAGER, RID);
+    for (const r of rows) expect("hourly_wage" in r).toBe(false);
+
+    // Control: a cap the record fits under reads as the uncapped record.
+    db.rowCap = { system_audit_log: 3 };
+    const whole = await scheduleOf(db).getWeek(MANAGER, RID, WEEK);
+    expect(whole.labor.moneyVisible).toBe(true);
+    expect(costOf(whole, "sh-owner-day").labor_cost).toBe(300);
+    expect("labor_cost" in costOf(whole, "sh-owner-late")).toBe(false);
+  });
+
   it("a manager without pay access still sees none of it", async () => {
     const db = await afterDemotion();
     const acc = db.tables.user_restaurant_access.find(

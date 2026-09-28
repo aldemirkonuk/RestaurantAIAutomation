@@ -908,6 +908,36 @@ questions round 2 left open (see "Answered, 2026-09-22 (round 6y)" below):
   a demotion with no `member_role_changed` row (its audit write failed, or
   it was made outside the gateway) is not seen, and until an owner re-sets
   the wage, the wage shown is the one set while they owned the house.]**
+  **[2026-09-27, ADR 0090 audit of `56940e7d5`: the role-change read had no
+  count, limit or range, so a PostgREST `max-rows` cap could return it short
+  with no error and a dropped middle demotion would end an owner period
+  early (less withheld, not more). `formerOwnerPeriodsOf` now asks for an
+  exact count in the same request and treats a short read as an unreadable
+  one: pay is withheld from the switched-on manager altogether.
+  `team-pay-owner-rows.spec.ts`, "the role changes read SHORT (a row cap)",
+  over the stub's new per-table `rowCap`; CLAIMS
+  `ADR-0215-R7-A-SHORT-ROLE-CHANGE-READ-WITHHOLDS`. A house whose role
+  changes outgrow the cap reads as withheld until the read is paged, which
+  is not built.]** (u) **Found 2026-09-27, ADR 0090 audit of `56940e7d5`,
+  fixed the same day:** item 20's kept shifts reached a reader outside
+  /team that no line of this ADR named. The personal calendar feed
+  (`calendar/calendar-links.service.ts` `readShifts`, `feed-scope.ts`
+  `selectShifts`) served every shift from 31 days back, with no upper date
+  bound, to an owner's or manager's "all" link; a removed person's kept
+  shift rendered as "Someone — shift · <role>", which reads as a live
+  shift, for as long as the row is kept. No money reached a feed (it
+  selects no cost or wage). `readShifts` now passes its shifts through
+  `onTheRoster` against the house's live roster, the rule `getWeek` reads
+  by, so the feed shows what it did before the foreign keys were dropped;
+  an open shift is still served. `calendar-links.service.spec.ts`, OWNER
+  and MANAGER cases, both killed by admitting the removed id; CLAIMS
+  `ADR-0215-R7-A-REMOVED-PERSONS-KEPT-SHIFT-IS-NOT-IN-A-CALENDAR-FEED`. The
+  census of readers of `shifts` and `time_off_requests` at this head
+  (`grep -rlE` for `.from("shifts")` / `.from("time_off_requests")` and SQL
+  `FROM`/`JOIN` over `apps`, `services`, `supabase/functions`): the calendar
+  feed, `team/schedule.service.ts`, `team/team.service.ts` and
+  `notifications/producers/roster.ts`; the last is residual (m), unchanged.
+  No migration function reads either table outside this ADR's own two.
 - **Revisit when** the labour page lands (it will own pay basis and confirmed
   hours), or if a second role is ever meant to see pay.
 
@@ -1496,3 +1526,4 @@ Round 3 Opus last call, 2026-09-22, on the index tree (`wt-labor`):
 | 2026-09-27 | ADR 0090 audit of #440 at ea4cc38d0 (BLOCK, fix round 1 of 2) | Both reviewers found the same leak: a co-owner REMOVED by `deleteMember` keeps their shifts (item 20), `ownerMemberIds` (a live read) no longer names their gone roster row, and the by-id shift routes checked no roster, so a pay-access manager's note-only `PATCH` answered with the owner's stored cost beside the hours (the wage), and any manager could `DELETE` a record kept five years. Fixed by round 4 item 19's own answer (a removed person's kept rows are owner-only history, hidden from the team views): `TeamService.assertOnTheRoster`, 404 for a kept row on `updateShift`, `deleteShift`, `reportCallout`, `offerCover`, `assignCover` and `reviewTimeOff`, for managers and owners alike; `deleteShift` reads first and says a missing shift or a failed read/delete. Correction brackets on item 24, item 20 and the item-71 evidence (whose "end to end" covered an inactive owner, never a removed one); residual (s) added. 8 new cases through the real `deleteMember`, 11 of 11 mutations killed, `jest src/team` 268/268; new CLAIMS row mutated 9 ways; the owner-set CLAIMS row bracketed. Minor finding fixed too: the wage trigger pins `search_path` (PGlite probe, mutation-checked). |
 | 2026-09-27 | ADR 0090 audit of #440 at 78125580a (BLOCK, fix round 2 of 2) | Both reviewers found an undisclosed path around item 24: one owner changes another owner's role to manager in place (`updateMemberRole`), `ownerMemberIds` reads the current role, and a pay-access manager is shown the former owner's wage and owner-period shift costs, per row and in the week total. Not fixed in code: which part of a former owner's pay stays the owners' is the founder's call (question 8, four paths, (a) recommended). Recorded: residual (t), item 24 correction bracket, Status bracket, CLAIMS `ADR-0215-R6-AN-OWNERS-PAY-IS-THE-OWNERS` narrowed; 3 cases pin it as built through the real `updateMemberRole`, 2 of 2 mutations fail them; `jest src/team src/restaurants` 346/346. |
 | 2026-09-28 | Founder item 80; built on #440 (Opus builder) | Question 8 answered, verbatim: "Hide owner-period pay (Recommended)". Built as item 25: `formerOwnerPeriods` from the house's `member_role_changed` rows, `seesShiftMoneyOf` on every shift reply and the manager total, fail-closed on an unreadable read, the wage a manager's from the demotion on. 15 cases, 9 of 9 mutations killed; `jest src/team src/restaurants` 358/358; new CLAIMS row `ADR-0215-R7-A-FORMER-OWNERS-OWNER-PERIOD-PAY-IS-THE-OWNERS` (12 of 12 anchor mutants fail it); the item-71 row re-pointed. |
+| 2026-09-27 | ADR 0090 audit of #440 at 56940e7d5 (BLOCK, fix round 1 of 2) | Security review BLOCKed on a cross-surface effect of item 20 that this ADR never named: the personal calendar feed's "all" scope served a removed person's kept shift, past or future, as "Someone — shift". Fixed in `readShifts` (`onTheRoster` against the live roster; residual (u); two cases, both killed by the mutation; CLAIMS row). The unbounded `member_role_changed` read of residual (t) now counts exactly and withholds on a short read (one case over a new stub `rowCap`; both mutations killed; CLAIMS row). The migration that drops the foreign keys said the kept rows were a record "which no page reads"; a dated bracket there now names the calendar feed (fixed) and `rosterAt` (residual (m)). `jest src/team src/restaurants src/calendar`: 27 of 27 suites, 638 of 638 tests; `check_decision_claims.sh` PASS. |

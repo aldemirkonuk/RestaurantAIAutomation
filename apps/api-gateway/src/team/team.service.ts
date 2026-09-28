@@ -179,14 +179,24 @@ export class TeamService {
    * (`recordAccessChange` logs it and the change stands), or it was made
    * outside the gateway — is not seen: that person reads as never having been
    * an owner. Stated in ADR 0215 residual (t), not guarded.
+   *
+   * A read that came back SHORT is not taken as the whole record: PostgREST
+   * caps a reply at its `max-rows` without an error, and a dropped middle
+   * demotion would end an owner period early — less withheld, not more. The
+   * rows are counted exactly in the same request, and any shortfall is an
+   * unreadable record (`null`), the same as a failed read.
    */
   private async formerOwnerPeriodsOf(
     restaurantId: string,
     currentOwners: ReadonlySet<string>,
   ): Promise<Map<string, OwnerPeriod[]> | null> {
-    const { data: changes, error: changesError } = await this.sb
+    const {
+      data: changes,
+      error: changesError,
+      count: changesCount,
+    } = await this.sb
       .from("system_audit_log")
-      .select("entity_id, changes, created_at")
+      .select("entity_id, changes, created_at", { count: "exact" })
       .eq("restaurant_id", restaurantId)
       .eq("action", "member_role_changed");
     if (changesError) {
@@ -197,6 +207,14 @@ export class TeamService {
       return null;
     }
     const rows = (changes ?? []) as RoleChangeRow[];
+    if (typeof changesCount !== "number" || changesCount !== rows.length) {
+      this.logger.warn(
+        `formerOwnerPeriodsOf: read ${rows.length} of ` +
+          `${changesCount ?? "an uncounted number of"} role changes of ` +
+          `${restaurantId}, so pay is withheld from managers`,
+      );
+      return null;
+    }
     const userIds = [
       ...new Set(
         rows

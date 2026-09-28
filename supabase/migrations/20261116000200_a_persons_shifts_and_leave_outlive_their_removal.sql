@@ -66,6 +66,12 @@
 -- `pay-rules.ts`): `getWeek`, `copyWeek` and the leave list read as they did
 -- before this migration, when a removal deleted those rows, so the kept rows
 -- are a record, like the wage record, which no page reads.
+-- [2026-09-27, ADR 0090 audit of 56940e7d5: narrower than stated. The
+-- personal calendar feed read them too (`calendar-links.service.ts`
+-- `readShifts`, an owner's or manager's "all" link) until it was given the
+-- same `onTheRoster` rule the same day, ADR 0215 residual (u); and
+-- `notifications/producers/roster.ts` `rosterAt` still reads every shift,
+-- residual (m).]
 --
 -- ADDITIVE AND IDEMPOTENT: two constraints dropped (guarded `IF EXISTS`, and
 -- re-dropping is a no-op), two functions replaced (`CREATE OR REPLACE`), one

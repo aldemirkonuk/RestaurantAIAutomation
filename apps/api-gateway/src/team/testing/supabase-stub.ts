@@ -37,6 +37,12 @@ export interface StubDb {
    * PostgREST does. A table not named here is not column-checked.
    */
   schema?: Record<string, string[]>;
+  /**
+   * PostgREST's `max-rows`, per table: a select returns at most this many
+   * rows, with no error, while an exact `count` still counts every match.
+   * A table not named here is not capped.
+   */
+  rowCap?: Record<string, number>;
   supabase: { from: (table: string) => any };
   /** Convenience: the ops that touched `table` with operation `op`. */
   opsOn(table: string, op?: RecordedOp["op"]): RecordedOp[];
@@ -376,6 +382,8 @@ class Builder implements PromiseLike<any> {
       );
     }
     if (this.limitTo != null) out = out.slice(0, this.limitTo);
+    const cap = this.db.rowCap?.[this.table];
+    if (cap != null) out = out.slice(0, cap);
     return {
       data: this.headOnly ? null : out,
       error: null,
