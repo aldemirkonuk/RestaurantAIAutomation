@@ -113,6 +113,13 @@ const DRAFT_STATUS_LABEL: Record<string, string> = {
   // exact failure this map exists to prevent, on the one state where a human
   // most needs the truth.
   SEND_UNCONFIRMED: 'Sent, delivery unconfirmed — check the vendor thread',
+  // Never reached the vendor — the relay refused it before any transport
+  // (ADR 0099, founder 2026-09-21: "Close, no retry"). Unlike every other
+  // label here, the row also carries WHY (relay_refusal_reason), shown on the
+  // ledger row and the order's thread drawer. Not "edit and resend": the row
+  // is closed, and re-approving it cannot re-claim it — a new message is the
+  // only way the words go out.
+  RELAY_REFUSED: 'Not sent — refused by the relay',
 }
 
 export function draftStatusLabel(
