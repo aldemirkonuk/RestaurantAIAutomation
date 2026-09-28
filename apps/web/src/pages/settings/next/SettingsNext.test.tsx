@@ -116,7 +116,7 @@ function base(over: Record<string, unknown> = {}) {
     team: remote({ members: [], invites: [], invitesDenied: false }),
     flags: remote({}),
     ical: remote({ token: 'tok' }),
-    sender: remote(null),
+    sender: remote({ row: null }),
     chains: remote([]),
     pos: remote({ providers: { summary: { total: 0, byTier: {}, byStatus: {} }, providers: [] }, status: null, statusError: null }),
     prefs: remote({ preferences: {}, updatedAt: null }),
