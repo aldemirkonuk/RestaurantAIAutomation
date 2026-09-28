@@ -83,23 +83,34 @@ gh pr view $N --json headRefOid,mergeable,mergeStateStatus,isDraft \
 gh pr checks $N --required
 SHA=$(gh pr view $N --json headRefOid -q .headRefOid)
 
-# 2. The audit marker must name exactly this SHA and say PASS
-gh pr view $N --json comments --jq \
-  '.comments[] | select(.body | startswith("<!-- pr-audit-gate")) | .body | split("\n")[0]'
+# 2. The audit marker must name exactly this SHA and say PASS, and be posted by an
+#    author the hook trusts (require_pr_audit.py _TRUSTED_MARKER_AUTHORS + the gh user):
+#    github-actions / github-actions[bot] / aldemirkonuk. A look-alike from anyone
+#    else does not count.
+gh pr view $N --json comments --jq '.comments[]
+  | select(.author.login == "aldemirkonuk" or .author.login == "github-actions" or .author.login == "github-actions[bot]")
+  | (.body | sub("^\\s+"; "")) | select(startswith("<!-- pr-audit-gate")) | split("\n")[0]'
 #    expect: <!-- pr-audit-gate: pr=N sha=<SHA or a prefix of it> verdict=PASS -->
 
 # 3. Merge, pinned to the audited commit (no --auto, never --admin)
 gh pr merge $N --squash --match-head-commit "$SHA"
 
-# 4. Watch main's CI and the production deploy for the merge commit
-gh run list --branch main --limit 4
-gh run watch "$(gh run list --workflow 'Deploy to Production' --limit 1 --json databaseId -q '.[0].databaseId')"
+# 4. Watch CI on the merge commit, THEN the deploy it triggers. "Deploy to Production"
+#    starts only after CI completes on main (deploy.yml: workflow_run on "CI"), so
+#    "the latest deploy run" read right after the merge is the PREVIOUS one — always
+#    filter by the merge commit.
+MERGE=$(gh pr view $N --json mergeCommit -q .mergeCommit.oid)
+gh run watch "$(gh run list --workflow CI --commit "$MERGE" --limit 1 --json databaseId -q '.[0].databaseId')"
+gh run list --workflow 'Deploy to Production' --commit "$MERGE" --limit 1   # re-run until it appears
+gh run watch "$(gh run list --workflow 'Deploy to Production' --commit "$MERGE" --limit 1 --json databaseId -q '.[0].databaseId')"
 ```
 
-- **4b, #490 (gate-owned paths):** by design no automated PASS can exist (skill step 4).
-  Read the diff (`gh pr diff 490`), then run step 3 for 490 from a plain terminal. Inside
-  a Claude Code session the `require_pr_audit` hook refuses it without a PASS marker;
-  that is the hook working, not a fault.
+- **4b, #490 (gate-owned paths — it touches `decisions/README.md`, which is in
+  `_GATE_OWNED_PATHS`):** by design no automated PASS can exist (skill step 4). Read the
+  diff (`gh pr diff 490`), set `N=490` and run **step 1** (CI must be green; it sets
+  `$SHA`), **skip step 2** (no marker will exist), then run step 3 and step 4 from a
+  plain terminal. Inside a Claude Code session the `require_pr_audit` hook refuses the
+  merge without a PASS marker; that is the hook working, not a fault.
 - If step 1 shows `BEHIND` or `DIRTY`, do not merge: ask a session to merge `main` in
   and re-audit (the new head needs its own marker).
 - If `--match-head-commit` refuses, someone pushed after the audit: re-audit, never force.
@@ -110,9 +121,13 @@ gh run watch "$(gh run list --workflow 'Deploy to Production' --limit 1 --json d
 cross-reference OD-156/159/160/161; vendor-prices currency pooling is medium from
 `dcdb6d5e9`; `flip_mudavym_design_flags.py --self-test` is not CI-wired; the nightly
 manifest's reason text is stale for the three now-absent flags;
-`check_flag_readby_anchors.py`'s anchor line-match does not strip comments. #490's own
-report lists gate-owned 0050 references still owed (`pr-audit-gate/SKILL.md:67,153`,
-`scripts/pr_audit_gate.py:66`); they need the founder's word per path.
+`check_flag_readby_anchors.py`'s anchor line-match does not strip comments. Stale 0050 mentions
+inside gate-owned files, owed after #490 and each needing the founder's word per path
+(#490's report, re-read 2026-09-28): `.claude/skills/pr-audit-gate/SKILL.md:67` lists
+`0050-*.md` as gate-owned and `:153` cites "ADRs 0050/0090" for model routing;
+`scripts/pr_audit_gate.py:66` is a comment calling ADR 0050 "locked". Separately, the two
+owned-path lists have drifted: `_GATE_OWNED_PATHS` (`scripts/pr_audit_gate.py:491-534`)
+has **no** 0050 entry while `SKILL.md:67` has one (census §17 found the same).
 
 ## 0b. Public pages on PublicShell, 2026-09-13 — fixed 2026-09-17
 
