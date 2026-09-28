@@ -3,6 +3,8 @@
 ## ▶ PICK-UP CARD — read this first (updated 2026-09-28T22:30Z, cloud session c98bb6c5)
 
 **▶▶ Latest (23:30Z). Read this block first. Where it disagrees with the blocks below, this one wins.**
+
+- **#502 fix round done (head 8dd9bfeaf, not audited, not merged):** zone chain `restaurants.timezone` → country's single zone → remover's device zone (`?deviceZone=`, checked by `resolveSignUpTimezone`) → none (keep-whole + `shiftsUnjudged` receipt). An in-progress shift is split at the removal minute: the worked part keeps the row with cost recomputed; the rest becomes an open shift. Both writes are atomic via migration `20261201130000` `release_leaving_shifts`. Checks: gateway jest 1551/1551, web vitest 341/341, claims 742/742. Shortcuts: 16 files (1 over cap, allowlist line); OD-190..193 filed in a trailing section, not the Open table (avoids shifting 211 citations); no browser pass; SQL test run on a stand-in schema; the release still runs before the membership write, so it is not atomic end-to-end. New forks: OD-190 (floor for tiny leftover), OD-191 (page team for cover), OD-192 (device zone OK? save it to house?), OD-193 (DST wall-clock vs elapsed). Next: the "Replace with" picker on top, then the audit.
 - **Merged:** #499, and #500 (5e876f39d). I merged main into #490 again (fd002fb3b, pushed). Locally, the ADR guard passes, 741 of 741 claims hold, and citation pairing passes.
   - **Founder next:** run `gh pr diff 490`, then `bash ~/merge-audited-pr.sh 490 --gate-owned` once CI is green.
 - **Lane re-run: done.** Every verify passed. None of these PRs has had its ADR 0090 audit yet:
