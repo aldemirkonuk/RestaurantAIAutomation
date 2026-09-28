@@ -21,15 +21,16 @@ afterEach(() => {
   window.localStorage.clear();
 });
 
-describe('shell off (default)', () => {
+describe("shell off (the QA override '0' -- since 2026-09-25 the only way to legacy)", () => {
+  beforeEach(() => window.localStorage.setItem('mudavym.design.shell', '0'));
+
   it('renders the legacy spinner immediately — no ladder, no staging', () => {
     render(<HousePageLoader />);
     expect(screen.getByText('Loading...')).toBeTruthy();
   });
 });
 
-describe('shell on', () => {
-  beforeEach(() => window.localStorage.setItem('mudavym.design.shell', '1'));
+describe('shell on (the default: live in code since 2026-09-25, no override, no flag row)', () => {
 
   it('renders nothing for the first 400ms', () => {
     const { container } = render(<HousePageLoader />);

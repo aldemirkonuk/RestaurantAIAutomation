@@ -6,6 +6,7 @@ import { DatabaseService } from "../database/database.service";
 import { EventsService } from "../events/events.service";
 import { InventoryLedgerService } from "../inventory-ledger/inventory-ledger.service";
 import { OrchestratorService } from "../common/orchestrator/orchestrator.service";
+import { alterTableColumnClauses } from "../common/testing/migration-alter-clauses";
 import {
   CalendarEventStatus,
   CalendarEventType,
@@ -85,10 +86,17 @@ function calendarEventColumns(): Set<string> {
         if (m) columns.add(m[1].toLowerCase());
       }
     }
-    const alterRe =
-      /ALTER\s+TABLE\s+(?:ONLY\s+)?(?:public\.)?calendar_events\s+ADD\s+COLUMN\s+(?:IF\s+NOT\s+EXISTS\s+)?"?([a-z_][a-z0-9_]*)"?/gi;
-    let a: RegExpExecArray | null;
-    while ((a = alterRe.exec(sql)) !== null) columns.add(a[1].toLowerCase());
+    // Every ADD COLUMN clause of every ALTER TABLE calendar_events, comments
+    // blanked first — the shared reader explains why a statement-level regex
+    // went blind (multi-column statements, a `;` inside a comment).
+    for (const clause of alterTableColumnClauses(sql)) {
+      if (
+        clause.table.toLowerCase() === "calendar_events" &&
+        clause.op === "ADD"
+      ) {
+        columns.add(clause.column.toLowerCase());
+      }
+    }
   }
 
   // Prove presence before interpreting the set: a parser that matched nothing

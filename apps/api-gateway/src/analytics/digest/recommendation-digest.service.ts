@@ -3,6 +3,7 @@ import {
   ForbiddenException,
   Injectable,
   Logger,
+  Optional,
   ServiceUnavailableException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
@@ -19,6 +20,8 @@ import {
   type QuietHours,
 } from "../../calendar/reminder-window";
 import { RecommendationsService } from "../recommendations.service";
+import { AreaRoutingService } from "../../areas/area-routing.service";
+import { isAwayOn } from "../../areas/area-routing";
 import {
   DIGEST_LATE_LIMIT_MS,
   DIGEST_SEND_FLAG,
@@ -157,6 +160,12 @@ export class RecommendationDigestService {
     private readonly gmail: GmailService,
     private readonly tenants: ScheduledTenantsService,
     private readonly configService: ConfigService,
+    // ADR 0218, the founder's round-2 answer 4: the digest pauses for a
+    // person while they are Away. Optional so the specs that build this
+    // service by hand with five arguments keep their behaviour; the Nest
+    // provider always has it (RecommendationDigestModule imports
+    // AreaRoutingModule).
+    @Optional() private readonly areaRouting?: AreaRoutingService,
   ) {}
 
   private armed(): boolean {
@@ -263,11 +272,23 @@ export class RecommendationDigestService {
     }
     if (candidates.length === 0) return this.finish(tenant, tally);
 
-    const handled = await this.readHandled(tenant.id, candidates);
-    const open = candidates.filter(
+    // ── Away pauses the digest (ADR 0218, round-2 answer 4) ─────────────────
+    // Judged on the day the letter FELL DUE (`periodKey`, the house-local
+    // date), never on today: a letter due on the last Away day and swept just
+    // after midnight is still an Away letter, and it is neither sent on return
+    // nor recorded `expired` — `expired` would claim a miss for a letter the
+    // person had paused. No row is written, so a letter due on a day they are
+    // back is owed exactly as before.
+    const paused = await this.awayOnDueDay(tenant.id, candidates);
+    const owed = candidates.filter((c) => !paused.has(c));
+    tally.pausedAway = candidates.length - owed.length;
+    if (owed.length === 0) return this.finish(tenant, tally);
+
+    const handled = await this.readHandled(tenant.id, owed);
+    const open = owed.filter(
       (c) => !handled.has(periodOf(c.sub.userId, c.due.periodKey)),
     );
-    tally.alreadyHandled = candidates.length - open.length;
+    tally.alreadyHandled = owed.length - open.length;
 
     const pastLimit = open.filter(
       (c) => now.getTime() - c.due.dueAt.getTime() > DIGEST_LATE_LIMIT_MS,
@@ -501,9 +522,46 @@ export class RecommendationDigestService {
   }
 
   /**
+   * The candidates whose letter fell due on a day their person is Away.
+   *
+   * An unreadable Away register FAILS OPEN — nobody is paused on this sweep —
+   * and says so at error level, the same way the notification funnel and the
+   * producers treat it (ADR 0218): a register that only narrows an audience
+   * must never silence a letter the person asked for, and the log line names
+   * the fallback so it is loud, never quiet.
+   */
+  private async awayOnDueDay(
+    restaurantId: string,
+    candidates: Candidate[],
+  ): Promise<Set<Candidate>> {
+    const paused = new Set<Candidate>();
+    if (!this.areaRouting || candidates.length === 0) return paused;
+    const earliest = candidates
+      .map((c) => c.due.periodKey)
+      .reduce((a, b) => (a < b ? a : b));
+    let windows;
+    try {
+      windows = await this.areaRouting.awayWindowsSince(restaurantId, earliest);
+    } catch (e: any) {
+      this.logger.error(
+        `RECOMMENDATION_DIGEST_AWAY_UNREADABLE restaurant=${restaurantId} — ${e?.message}. ` +
+          "Nobody's digest is paused on this sweep.",
+      );
+      return paused;
+    }
+    for (const c of candidates) {
+      if (windows.some((w) => w.userId === c.sub.userId && isAwayOn(w, c.due.periodKey))) {
+        paused.add(c);
+      }
+    }
+    return paused;
+  }
+
+  /**
    * One line per house per sweep that DID something (sent, failed, expired,
-   * skipped, deferred, or lost a claim). A house with nothing due logs at debug:
-   * ninety-six identical lines a day per house would bury the ones that matter.
+   * skipped, deferred, lost a claim, or paused a letter for someone Away). A
+   * house with nothing due logs at debug: ninety-six identical lines a day per
+   * house would bury the ones that matter.
    */
   private finish(tenant: ScheduledTenant, tally: DigestTally): DigestTally {
     const line =
@@ -517,7 +575,8 @@ export class RecommendationDigestService {
         tally.expired +
         tally.skippedEmpty +
         tally.deferredQuietHours +
-        tally.claimedElsewhere >
+        tally.claimedElsewhere +
+        tally.pausedAway >
       0;
     if (acted) this.logger.log(line);
     else this.logger.debug(line);
@@ -746,6 +805,13 @@ export class RecommendationDigestService {
       .select(
         "user_id, restaurant_id, email_enabled, categories, quiet_hours_enabled, quiet_hours_start, quiet_hours_end",
       )
+      // Preferences are per person PER HOUSE (ADR 0149 row 39: "reads and the
+      // resolver filter by house"). Without this filter a member with no row
+      // here but one in another house had THAT house's email switch and quiet
+      // hours decide this house's digest, instead of the defaults the header
+      // promises (fact 4). Same defect the D5 sweep closed in
+      // calendar-reminders.service.ts (PR #422 audit, 2026-09-26).
+      .eq("restaurant_id", restaurantId)
       .in("user_id", ids);
     if (error) {
       // Not "defaults": a read failure must neither wake somebody inside quiet
@@ -756,7 +822,6 @@ export class RecommendationDigestService {
     }
     const out = new Map<string, MemberPrefs>();
     for (const raw of (data ?? []) as Record<string, any>[]) {
-      if (out.has(raw.user_id) && raw.restaurant_id !== restaurantId) continue;
       out.set(raw.user_id, toMemberPrefs(raw));
     }
     return out;
@@ -813,7 +878,7 @@ export class RecommendationDigestService {
         : "Scheduled mail has not been switched on for this house yet, so the digest does not run here. " +
           "Mudavym switches it on per house; no setting a member can change turns it on.";
 
-      const [house, members, subRes, prefs, lastRes] = await Promise.all([
+      const [house, members, subRes, prefs, lastRes, letterRes, houseRes] = await Promise.all([
         this.readHousePref(restaurantId),
         this.readMemberIds(restaurantId, now),
         client
@@ -834,6 +899,25 @@ export class RecommendationDigestService {
           .eq("user_id", userId)
           .order("claimed_at", { ascending: false })
           .limit(1),
+        // Sketch 122 Q9: this reader's own last SENT letter — a failed or
+        // skipped claim is not a letter anyone read.
+        client
+          .from("recommendation_digest_sends")
+          .select("period_key, sent_at, rule_keys")
+          .eq("restaurant_id", restaurantId)
+          .eq("user_id", userId)
+          .eq("outcome", "sent")
+          .order("sent_at", { ascending: false })
+          .limit(1),
+        // Sketch 122 Q8: the house's latest sent letter, for its date only —
+        // the count is read below; no user id leaves this method.
+        client
+          .from("recommendation_digest_sends")
+          .select("period_key, sent_at")
+          .eq("restaurant_id", restaurantId)
+          .eq("outcome", "sent")
+          .order("sent_at", { ascending: false })
+          .limit(1),
       ]);
       if (subRes.error)
         throw new Error(
@@ -843,6 +927,49 @@ export class RecommendationDigestService {
         throw new Error(
           `recommendation_digest_sends could not be read: ${lastRes.error.message}`,
         );
+      if (letterRes.error)
+        throw new Error(
+          `recommendation_digest_sends (your last letter) could not be read: ${letterRes.error.message}`,
+        );
+      if (houseRes.error)
+        throw new Error(
+          `recommendation_digest_sends (the house's last post) could not be read: ${houseRes.error.message}`,
+        );
+      const letter =
+        ((letterRes.data ?? []) as Record<string, any>[])[0] ?? null;
+      const houseLatest =
+        ((houseRes.data ?? []) as Record<string, any>[])[0] ?? null;
+      // How many letters went out on the house's latest post date. Counted
+      // from the rows' outcome alone; `user_id` is selected only to count
+      // distinct readers and never returned (Q8: count, not who). One row per
+      // (house, reader, period) is the table's own unique index, so a house
+      // has at most one row per member here — capped at 500 all the same,
+      // and a count at the cap says so rather than claiming exactness.
+      let houseLastPost: DigestSubscriptionStatus["houseLastPost"] = null;
+      if (houseLatest) {
+        const countRes = await client
+          .from("recommendation_digest_sends")
+          .select("user_id")
+          .eq("restaurant_id", restaurantId)
+          .eq("outcome", "sent")
+          .eq("period_key", houseLatest.period_key)
+          .limit(HOUSE_POST_COUNT_CAP);
+        if (countRes.error)
+          throw new Error(
+            `recommendation_digest_sends (the house's last post) could not be counted: ${countRes.error.message}`,
+          );
+        const readers = new Set(
+          ((countRes.data ?? []) as Record<string, any>[]).map((r) =>
+            String(r.user_id),
+          ),
+        );
+        const rows = (countRes.data ?? []).length;
+        houseLastPost = {
+          periodKey: String(houseLatest.period_key),
+          sent: readers.size,
+          atCap: rows >= HOUSE_POST_COUNT_CAP,
+        };
+      }
 
       const subRow = subRes.data as Record<string, any> | null;
       const active = !!subRow && !subRow.unsubscribed_at;
@@ -930,6 +1057,17 @@ export class RecommendationDigestService {
               entriesCount: last.entries_count ?? null,
             }
           : null,
+        lastLetter:
+          letter && letter.sent_at
+            ? {
+                periodKey: String(letter.period_key),
+                sentAt: String(letter.sent_at),
+                ruleKeys: Array.isArray(letter.rule_keys)
+                  ? (letter.rule_keys as unknown[]).map(String)
+                  : null,
+              }
+            : null,
+        houseLastPost,
       };
     } catch (err) {
       if (
@@ -1271,6 +1409,7 @@ function emptyTally(): DigestTally {
     claimedElsewhere: 0,
     sent: 0,
     failed: 0,
+    pausedAway: 0,
   };
 }
 
@@ -1323,6 +1462,11 @@ export interface DigestTally {
   claimedElsewhere: number;
   sent: number;
   failed: number;
+  /**
+   * Letters that fell due on a day their person is Away (ADR 0218): not sent,
+   * no row written, owed again from the first due day they are back.
+   */
+  pausedAway: number;
 }
 
 export type UnsubscribeLinkState =
@@ -1331,6 +1475,9 @@ export type UnsubscribeLinkState =
   | { kind: "active"; houseName: string }
   | { kind: "already_stopped"; houseName: string }
   | { kind: "stopped"; houseName: string };
+
+/** The most letters one house-local date is counted to (sketch 122 Q8). */
+export const HOUSE_POST_COUNT_CAP = 500;
 
 export interface DigestSubscriptionStatus {
   armed: boolean;
@@ -1370,5 +1517,32 @@ export interface DigestSubscriptionStatus {
     outcome: "sent" | "failed" | "skipped_empty" | "expired" | null;
     reason: string | null;
     entriesCount: number | null;
+  } | null;
+  /**
+   * The last letter that actually went to THIS reader (`outcome = 'sent'`),
+   * with the rule keys it carried — the clock the page's "since your last
+   * letter" cutting reads. Per reader, never the house's (sketch 122 Q9, the
+   * founder 2026-09-25, round 5, "Per reader (Recommended)"): a shared clock
+   * would misdescribe what a newer subscriber saw. Null: none has gone to
+   * them. `ruleKeys` null: the row predates provenance, so no delta is
+   * claimed from it.
+   */
+  lastLetter: {
+    periodKey: string;
+    sentAt: string;
+    ruleKeys: string[] | null;
+  } | null;
+  /**
+   * The house's most recent post: the latest house-local date any letter
+   * went out on, and HOW MANY went out that day — never to whom (sketch 122
+   * Q8, the founder 2026-09-25, round 5, "Count, not who (Recommended)").
+   * Every member may read it, recipient or not. Null: no letter has gone out
+   * in this house.
+   */
+  houseLastPost: {
+    periodKey: string;
+    sent: number;
+    /** True when the count read HOUSE_POST_COUNT_CAP rows — "at least", not "exactly". */
+    atCap: boolean;
   } | null;
 }

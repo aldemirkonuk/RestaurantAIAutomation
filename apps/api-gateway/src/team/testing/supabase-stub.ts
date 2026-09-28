@@ -101,6 +101,10 @@ class Builder implements PromiseLike<any> {
   private orderBy: { column: string; ascending: boolean } | null = null;
   private limitTo: number | null = null;
   private recorded: RecordedOp | null = null;
+  private upsertOpts: {
+    onConflict?: string;
+    ignoreDuplicates?: boolean;
+  } | null = null;
 
   constructor(
     private readonly db: StubDb,
@@ -147,9 +151,13 @@ class Builder implements PromiseLike<any> {
     this.payload = payload;
     return this;
   }
-  upsert(payload: any, _opts?: any) {
+  upsert(
+    payload: any,
+    opts?: { onConflict?: string; ignoreDuplicates?: boolean },
+  ) {
     this.op = "upsert";
     this.payload = payload;
+    this.upsertOpts = opts ?? null;
     return this;
   }
   delete() {
@@ -259,6 +267,39 @@ class Builder implements PromiseLike<any> {
       };
     }
 
+    if (this.op === "upsert" && this.upsertOpts?.onConflict) {
+      // PostgREST's `on_conflict`: a row that matches an existing one on the
+      // named columns is updated in place, or left alone entirely when
+      // `ignoreDuplicates` is set. Without this the stub appended a second row,
+      // so no test could tell an upsert that overwrites from one that does not
+      // (ADR 0164: the organisation role must not be overwritten by a grant).
+      const keys = this.upsertOpts.onConflict.split(",").map((k) => k.trim());
+      const incoming: Row[] = Array.isArray(this.payload)
+        ? this.payload
+        : [this.payload];
+      const written: Row[] = [];
+      for (const r of incoming) {
+        const hit = store.find((existing) =>
+          keys.every((k) => existing[k] === r[k]),
+        );
+        if (hit) {
+          if (!this.upsertOpts.ignoreDuplicates) {
+            Object.assign(hit, r);
+            written.push(hit);
+          }
+          continue;
+        }
+        const row = {
+          id: `stub-${store.length + 1}`,
+          created_at: new Date().toISOString(),
+          ...r,
+        };
+        store.push(row);
+        written.push(row);
+      }
+      return { data: written, error: null };
+    }
+
     if (this.op === "insert" || this.op === "upsert") {
       const incoming: Row[] = Array.isArray(this.payload)
         ? this.payload
@@ -351,5 +392,32 @@ export function asDatabaseService(db: StubDb): any {
     supabase: db.supabase,
     client: db.supabase,
     getClient: () => db.supabase,
+    // Mirrors `DatabaseService.getRestaurantMemberIds` (database.service.ts)
+    // so a spec can hand a real `NotificationsService` this stub and get the
+    // same roster `TeamService` sees over the same tables — needed to run
+    // `persistForRestaurant` for real instead of mocking it away.
+    async getRestaurantMemberIds(restaurantId: string): Promise<string[]> {
+      // Unlike the real method (whose two reads are baselined debt in
+      // scripts/read_error_baseline.json), the stub binds each read's
+      // `error` and throws: a harness that turned a failed read into "no
+      // members" would let a spec pass on a silent empty roster (ADR 0051).
+      const { data: ura, error: uraError } = await db.supabase
+        .from("user_restaurant_access")
+        .select("user_id")
+        .eq("restaurant_id", restaurantId)
+        .eq("is_active", true);
+      if (uraError) throw uraError;
+      const uraIds = (ura || []).map((r: any) => r.user_id).filter(Boolean);
+      if (uraIds.length) return Array.from(new Set(uraIds)) as string[];
+
+      const { data: users, error: usersError } = await db.supabase
+        .from("users")
+        .select("user_id")
+        .eq("restaurant_id", restaurantId);
+      if (usersError) throw usersError;
+      return Array.from(
+        new Set((users || []).map((u: any) => u.user_id).filter(Boolean)),
+      ) as string[];
+    },
   };
 }

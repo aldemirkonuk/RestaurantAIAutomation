@@ -12,6 +12,7 @@ import { ConfigService } from "@nestjs/config";
 import { Public } from "../../auth/decorators/public.decorator";
 import { OrchestratorService } from "./orchestrator.service";
 import { InboundAddressService } from "./inbound-address.service";
+import { htmlToText } from "../../communications/gmail-mime";
 
 interface NormalizedInbound {
   from: string;
@@ -147,12 +148,23 @@ export class InboundEmailController {
       b.FromFull?.Email || b.From || b.from || headerMap["from"] || "";
     const subject: string =
       b.Subject ?? b.subject ?? headerMap["subject"] ?? "";
+    // [Audit of PR #435 at a229848f3, 2026-09-26: this used to fall back to
+    // raw HTML (`b.HtmlBody || b.html`) with no text conversion at all, one
+    // flattening step worse than gmail-mime.ts's own bug (see that file's
+    // `htmlToText` docstring). A provider that sends no plain-text part
+    // (Postmark, SES, Mailgun, Cloudflare all support HTML-only inbound)
+    // would push raw markup — no newlines a quoted-thread cut could match —
+    // into the same `email.inbound.received` event the Gmail path feeds, so
+    // it hits the same downstream Jev egress unprotected. Convert with the
+    // SAME function so a message from either ingest path gets the same
+    // newline-delimited shape `vendor-tone/tone-scale.ts` `latestPart()`
+    // already knows how to cut.]
+    const htmlBody: string = b.HtmlBody || b.html || "";
     const body: string =
       b.TextBody ||
       b.text ||
       b.StrippedTextReply ||
-      b.HtmlBody ||
-      b.html ||
+      (htmlBody ? htmlToText(htmlBody) : "") ||
       b.body ||
       "";
 

@@ -275,7 +275,7 @@ describe("GET /providers/usual-currency/coverage", () => {
       unstated: [{ id: "b", name: "Bodega Álvaro", recorded: null }],
     };
     const res = await controller(counted).usualCurrencyCoverage({
-      id: "u-1",
+      userId: "u-1",
       restaurantId: "rest-1",
     });
     expect(res.stated).toBe(3);
@@ -301,7 +301,7 @@ describe("GET /providers/usual-currency/coverage", () => {
       } as any,
       roles as any,
     );
-    await c.usualCurrencyCoverage({ id: "u-1", restaurantId: "rest-1" });
+    await c.usualCurrencyCoverage({ userId: "u-1", restaurantId: "rest-1" });
     expect(roles.resolveRestaurantRole).not.toHaveBeenCalled();
   });
 
@@ -315,7 +315,7 @@ describe("GET /providers/usual-currency/coverage", () => {
       { resolveRestaurantRole: async () => "manager" } as any,
     );
     await expect(
-      c.usualCurrencyCoverage({ id: "u-1", restaurantId: "rest-1" }),
+      c.usualCurrencyCoverage({ userId: "u-1", restaurantId: "rest-1" }),
     ).rejects.toBeInstanceOf(ServiceUnavailableException);
   });
 });

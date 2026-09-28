@@ -245,6 +245,13 @@ export function TeamRecordSection({
 function describe(action: string): string {
   if (action === 'member_role_changed') return 'changed what someone may do';
   if (action === 'team_member_removed') return 'removed someone from the team';
+  if (action === 'house_area_changed') return 'changed an area';
+  if (action === 'area_member_added') return 'put someone in an area';
+  if (action === 'area_member_removed') return 'took someone out of an area';
+  if (action === 'area_lead_granted') return 'made someone an area lead';
+  if (action === 'area_lead_removed') return 'removed an area lead';
+  if (action === 'away_set_for_member') return "set someone's Away dates";
+  if (action === 'away_ended_for_member') return "ended someone's Away";
   return action.replace(/_/g, ' ');
 }
 
@@ -280,7 +287,8 @@ export function TrailSheet({
         <span>
           The last {LE}
           {TEAM_SERVER_WINDOWS.TRAIL_ROWS} changes on this restaurant, from the same trail
-          `/settings` reads, filtered to the two actions that are about people. A ceiling,
+          `/settings` reads, filtered to the actions that are about people: access, areas,
+          leads, and Away set for someone else. A ceiling,
           not a total: the route caps the read and offers no count of what is behind it.
           There is no write route and no delete route — a log a manager can edit is not a
           log.

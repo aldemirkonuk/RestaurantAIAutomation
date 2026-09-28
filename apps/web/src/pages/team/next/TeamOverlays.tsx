@@ -45,6 +45,9 @@ import { exportTable, type TableExportColumn, type TableExportFormat } from '../
 import { EM, addDays, fmtDayShort, fmtWeekRange, resolveName } from './tm-format';
 import { MutationError, Tag } from './tm-bits';
 import { useActiveRestaurantId, type TimeOffRow } from './useTeamNextData';
+import { AwayMarker } from '@/components/mudavym/AwayMarker';
+import { dayWords } from '@/components/mudavym/awayWords';
+import type { AwayView } from '../../../services/api/areas';
 
 /** The gateway's own words when it has them — a 409 says exactly what is missing. */
 function serverMessage(e: unknown): string | null {
@@ -481,6 +484,8 @@ export function CrewNoteSheet({
   only,
   weekStart,
   scheduleId,
+  awayByUser,
+  awayToday = null,
   onClose,
   onSent,
 }: {
@@ -490,6 +495,15 @@ export function CrewNoteSheet({
   only: string | null;
   weekStart: string;
   scheduleId: string | null;
+  /**
+   * Away windows by `public.users.user_id` (ADR 0218). A note to someone who
+   * is Away waits until they are back, and the sender is told BEFORE sending
+   * (the founder's round-2 answer 3: "the sender sees 'away until <date>'").
+   * The gateway decides the hold; this only says it.
+   */
+  awayByUser?: ReadonlyMap<string, AwayView>;
+  /** House-local today from the Away read; null while it has not answered. */
+  awayToday?: string | null;
   onClose: () => void;
   onSent: () => void;
 }) {
@@ -499,6 +513,14 @@ export function CrewNoteSheet({
     if (only) return all.filter((m) => m.id === only);
     return all.filter((m) => m.status === 'active' && m.accountLinked);
   }, [members, only]);
+  // Who this note will wait for: Away TODAY (a window that starts later does
+  // not hold a note sent now).
+  const awayNow = (m: TeamMember): AwayView | null => {
+    if (!awayByUser || awayToday === null || !m.user_id) return null;
+    const w = awayByUser.get(m.user_id);
+    return w && w.from <= awayToday && awayToday <= w.until ? w : null;
+  };
+  const waiting = recipients.filter((m) => awayNow(m) !== null);
 
   const send = useMutation({
     mutationFn: () =>
@@ -553,10 +575,35 @@ export function CrewNoteSheet({
             </p>
           ) : (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 4 }}>
-              {recipients.map((m) => (
-                <Tag key={m.id}>{resolveName(m).text}</Tag>
-              ))}
+              {recipients.map((m) => {
+                const w = awayNow(m);
+                const label = resolveName(m).text;
+                return (
+                  <Tag key={m.id}>
+                    {w && awayToday ? (
+                      <AwayMarker
+                        name={label}
+                        personLabel={label}
+                        window={w}
+                        today={awayToday}
+                        interactive={false}
+                      />
+                    ) : (
+                      label
+                    )}
+                  </Tag>
+                );
+              })}
             </div>
+          )}
+          {waiting.length > 0 && (
+            <p className="tm-hint" data-testid="note-waits-for-away">
+              {waiting
+                .map((m) => `${resolveName(m).text} is away until ${dayWords(awayNow(m)!.until)}`)
+                .join('; ')}
+              . The note waits and reaches {waiting.length === 1 ? 'them' : 'each of them'} when
+              they are back, outside their quiet hours.
+            </p>
           )}
         </div>
         <CrewTextLeg recipientCount={n} />

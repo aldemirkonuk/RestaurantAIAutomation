@@ -41,6 +41,12 @@ export interface LetterDispatchRun {
   sent: number;
   failed: number;
   skipped: number;
+  /**
+   * `null` means the run COMPLETED, so `considered: 0` is a real quiet minute.
+   * A string means it did not — the queue could not be read, or the dispatcher
+   * threw — and the counts beside it are zeros by default, not a measurement.
+   * Read this before the counts. ADR 0161.
+   */
   error: string | null;
 }
 

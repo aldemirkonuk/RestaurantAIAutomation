@@ -118,8 +118,22 @@ export interface TeamTrail {
   recordingSince: string;
 }
 
-/** The two actions on that trail that are about people, not about settings. */
-export const TEAM_TRAIL_ACTIONS = ['member_role_changed', 'team_member_removed'] as const;
+/**
+ * The actions on that trail that are about people, not about settings: the two
+ * access changes, and (ADR 0218) areas, lead marks and Away set or ended on
+ * someone's behalf. A person's own Away dates are never on this trail.
+ */
+export const TEAM_TRAIL_ACTIONS = [
+  'member_role_changed',
+  'team_member_removed',
+  'house_area_changed',
+  'area_member_added',
+  'area_member_removed',
+  'area_lead_granted',
+  'area_lead_removed',
+  'away_set_for_member',
+  'away_ended_for_member',
+] as const;
 
 /**
  * What `/team` can and cannot say about where a value came from.

@@ -254,8 +254,17 @@ export async function approveOrder(
  * The note that used to sit on the responses sheet saying this act was recorded
  * rather than proven is retired with this change.
  */
+/**
+ * ADR 0207 round 4. `reasonCode` is REQUIRED — never optional — so `tsc`
+ * finds every call site: never_arrived (the vendor's failure — counts late),
+ * vendor_cannot_supply (the vendor said so — listed, not counted),
+ * house_decision (the house's own choice — never counted). The gateway
+ * refuses a missing or unknown code with 400, and a code that does not fit
+ * this order's state or deadline with 422 (`cancel-reason.ts`).
+ */
 export async function cancelOrder(
   orderId: string,
+  reasonCode: 'never_arrived' | 'vendor_cannot_supply' | 'house_decision',
   reason?: string,
   restaurantId?: string,
   challenge?: string | null
@@ -265,7 +274,7 @@ export async function cancelOrder(
 
   try {
     const response = await apiClient.delete<Order>(`${ORDERS_PATH}/${orderId}`, {
-      params: reason ? { reason } : undefined,
+      params: reason ? { reason, reasonCode } : { reasonCode },
       // The same header the approval carries, so a caller has one thing to
       // learn. What separates the two acts is the act the token names, which
       // the gateway compares — not the shape of the request.
@@ -276,6 +285,36 @@ export async function cancelOrder(
     // Same promotion as `approveOrder`: the gateway's sentence is what a person
     // needs, and every call site reads `.message`. The original error object is
     // rethrown so callers that branch on `err.response?.status` still can.
+    if (axios.isAxiosError(error)) {
+      const spoken = getErrorMessage(error);
+      if (spoken) error.message = spoken;
+    }
+    throw error;
+  }
+}
+
+/**
+ * The founder's box on the never-arrived cancel (ADR 0207 round 5, question
+ * 20, round 6z): "Add the box (Recommended)" — "We paid for this, we are
+ * owed {total}". Only legal once the SAME order has been cancelled with
+ * `reasonCode=never_arrived`; a repeat call is a no-op that returns the same
+ * claim (`alreadyOpen: true`) rather than opening a second one.
+ */
+export interface NeverArrivedCreditClaimResult {
+  opened: boolean;
+  alreadyOpen: boolean;
+  claim: { id: string; claimedAmount: number; currency: string | null; state: string };
+}
+
+export async function openNeverArrivedCreditClaim(
+  orderId: string,
+): Promise<NeverArrivedCreditClaimResult> {
+  try {
+    const response = await apiClient.post<NeverArrivedCreditClaimResult>(
+      `${ORDERS_PATH}/${orderId}/never-arrived-credit-claim`,
+    );
+    return response.data;
+  } catch (error) {
     if (axios.isAxiosError(error)) {
       const spoken = getErrorMessage(error);
       if (spoken) error.message = spoken;
@@ -592,6 +631,7 @@ export const ordersApi = {
   mintOrderSeal,
   mintOrderCancelSeal,
   cancelOrder,
+  openNeverArrivedCreditClaim,
   markOrderDelivered,
   getPendingOrdersCount,
   getOrdersNeedingApproval,

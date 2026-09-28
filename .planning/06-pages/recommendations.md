@@ -11,7 +11,7 @@ signals_today: none
 rebrand_strings: 0
 maturity: partial
 status: documented
-updated: 2026-09-19
+updated: 2026-09-21
 links: ["[[PAGE-CONTRACT]]", "[[orders]]", "[[promotions]]", "[[reports]]", "[[providers]]", "[[inventory]]", "[[team]]", "[[recommendations-catalog]]"]
 ---
 
@@ -367,7 +367,18 @@ back as a sentence ("Silenced: this one finding about wednesday on Wed 2 Sep. Th
 reads every other day.") beside **Return it to the book**. The `d` key now *opens* the sheet
 rather than dismissing — a keystroke cannot choose a scope on the manager's behalf. Bulk
 dismiss cannot ask per entry, so it takes the widest scope and says so on the control itself:
-**"Dismiss them — whole rules"**.
+**"Dismiss them — whole rules"**. [**2026-09-21, ADR 0191 round 2 (founder):** the whole-rule
+scope, the bulk bar's "whole rules" and "Return it to the book" on a whole-rule dismissal
+are owner/manager only (403 from the gateway, audited in `system_audit_log`); staff see them
+dark or absent, with why. Every dismissal carries one of four reason labels — the bulk bar
+now asks instead of stamping `not_now`. Snooze and rule-off write the finding's own key, and
+one shared per-item state (`item-state.ts`) decides what every surface hides.] [**2026-09-21,
+ADR 0191 round 3 (founder):** a rule that names no subject and no period is keyed by its
+firing ("Each firing is one card"), so staff dismiss or finish this firing and it returns
+when the rule fires again; the dismiss list keeps four choices but "Already handled" records
+done and "Not right now" hides it from you alone; Snooze offers "Just for you" to everyone
+and "For everyone" to owners and managers; every house act is kept in
+`recommendation_action_history` ("Keep every label").]
 
 **Verified, not asserted — and which endpoints.** Against the running local gateway on :4000,
 for `550e8400-…`, **both** readers of this generator were checked, because the first attempt at
@@ -833,7 +844,51 @@ settled:**
   the only shape ADR 0112 allows, and not a founder choice.
 - **The catalogue's read-only-ness** is a standing open fork, not a build
   default: `.planning/handoff/PROGRESS.md` §6 still lists "Recommendations
-  catalog: is it actionable?" among the forks not yet asked.
+  catalog: is it actionable?" among the forks not yet asked. [**CLOSED
+  2026-09-21 by the founder, recorded in [[0191-the-recommendations-catalogue-is-actionable-not-a-read-only-leaf]]:**
+  actionable, not a read-only leaf. Each type can be turned on or off for the
+  house (owner/manager, audited in `system_audit_log`) and opened to its
+  live recommendations with the feed's own one-tap acts (Pin/Dismiss). The
+  owner/manager gate holds on the catalogue's door only — the feed's "whole
+  rule" dismiss and the Dismissed tab's Restore still write the same row for
+  any member; ADR 0191 "The gate holds on one door" leaves that to the
+  founder. Both writes reuse the SAME
+  `recommendation_actions` store NEW-434 already keys `insight:<candidate_key>`
+  — no new table, no migration. Built in `CatalogView.tsx`/`rec-catalog.ts`
+  (lane `recs-catalogue`, `wt-recs-cat`) and `analytics.controller.ts`'s new
+  `PUT insight-catalog/types/:restaurantId/:candidateKey/toggle`.] [**Both
+  follow-up forks CLOSED 2026-09-21** (ADR 0191 "Round 2"): the gate and the
+  audit now hold on every door, and the live-items panel offers Snooze, Done
+  and Dismiss-with-a-reason, because one shared per-item state is now read by
+  the feed, the catalogue, Reports (live and stored) and the rails.] [**Round
+  3, 2026-09-21** (ADR 0191 "Round 3"): the live-items panel's Snooze asks
+  who it is for (staff: themselves alone), its dismiss list records "Already
+  handled" as done and "Not right now" as your own snooze, and it says how
+  many of the type are hidden just for you.] [**Round 4, 2026-09-21** (ADR
+  0191 "Round 4", the founder: "Take all seven"): staff return only their own
+  acts. The Dismissed, Done and Snoozed leaves darken "Return it to the book"
+  on anyone else's and say why (`undoableByYou`, `not_your_act`). The gateway
+  refuses every house act from the platform `admin`. The page no longer
+  offers them snooze for everyone, the whole-rule acts or the catalogue's
+  on/off. It still offers them a card's Done and Dismiss: the gateway refuses
+  these, and the page puts the card back with the gateway's sentence. The
+  history keeps a name two years.] [**Round 5, 2026-09-22** (ADR 0191 "Round
+  5", the founder: three "Recommended" picks): a pin, a rating or an
+  assignment is now gated the same way an act is — the platform admin makes
+  none at all; staff change or clear only their own note; owners and
+  managers change or clear anyone's; every note change is audited
+  (`system_audit_log`, `recommendation_note_changed`, each field as
+  `{ from, to, from_by }` — what it replaced and whose note it was). A
+  refused note says the gateway's own sentence and is put back as it was —
+  on the legacy page too, which until the last call said the whole-house
+  dismiss sentence for a refused pin and toasted a refused assignment as
+  done. No page yet darkens a note control ahead of time the way it
+  darkens Restore. `recommendation_actions.created_by`
+  is now cleared on the same two-year sweep as the history's names;
+  `system_audit_log` keeps every name, "an audit trail that forgets who
+  acted is no longer an audit trail" (the founder, verbatim). Acts made
+  before the history existed still name nobody and are still owner/manager
+  only to return — kept as built, on the founder's word.]
 
 **The handoff to sketch 122 (lane `recs-sketch`).** The founder's sketch-120
 feedback (`founder-sketch-decisions-106-115.md:146-151`, batch 3
@@ -879,6 +934,8 @@ as open as it found them.
 **`/recommendations` stays dark.** `mudavym_design_recommendations` is
 untouched by this pass — off everywhere, per house, unchanged from before
 this note.
+**[2026-09-25: no longer dark — live in code for every house; see "Round 6"
+below.]**
 
 ### Repair pass, 2026-09-19 — the charcoal-contrast regression, and the adjacent theme fork
 
@@ -910,6 +967,48 @@ ADR 0149 row 6. ADR 0169 is reserved for the lane that records that decision,
 not this one. The fix above does not depend on which ground wins by default:
 `.rc-dark-head` still has to render dimmer than `.rc-section-head h2` under
 either ground, since charcoal stays available as a per-person choice.
+
+### Round 6, 2026-09-25 — sketch 122 direction B, built, and live for every house
+
+The founder picked sketch 122 **direction B, Goals in the Masthead** (*"direction B is better"*,
+item 24) and took the recommended option on questions 2-10 (round 5). Every answer, verbatim with
+its rejected options, is in [[0160-the-founders-sketch-review-what-he-valued-and-what-each-page-becomes]]
+§108; Q2 is also an amendment to [[0112-one-modal-policy-three-shapes-one-primitive]] F10. Branch
+`feat/recs-round6-direction-b`, cut from PR #467's head (`85283ad0f`, the catalogue, rounds 1-6)
+because this round edits the same files; it merges after #467.
+
+| Answer | What the page does now | Where |
+|---|---|---|
+| Q1 B | The masthead is two columns: the letter (kicker "The Morning Letter", title, voice, read-at, quiet tier) and a 250px margin of the house's goals; the day strip moved from under the leaves to directly under the masthead, spanning both. Below 640px the two stack, letter first. | `RecommendationsNext.tsx` `.rc-mast`, `GoalsMargin.tsx`, `rec-next.css` |
+| goals | The margin reads `GET /analytics/goals/:rid/progress?status=active` (recomputed; the stored `current_value` is stale by design). Up to 3 rows: name, bar, "current of target", the gateway's own pace (`onTrack`: On pace · Behind · No deadline). Every state said: reading, unread, none set, a goal whose figure failed, "N more … in Reports". Money prints with no symbol, as the reports goals desk does — the read carries no currency. | `rec-masthead.ts` `toGoalBook`/`paceOf`/`inUnit` |
+| suggestion | One standing entry whose rule maps to a goal metric (`rec-forward.ts`) that no active goal holds; "Set a goal →" opens THAT entry's own goal sheet, target blank. Not offered when the goal list is unread. | `suggestGoal`, `Entry.tsx` `openGoal` |
+| Q2 | A hand-off (`Draft the PO →`, `Open Reports →` …) only navigates — no `acted` write any more, on this page or on the older "Act" hand-offs (`ContextualInsights`, `EngineInsightsPanel`, legacy `Recommendations.tsx`), which stopped posting it in PR #483 (audit R4; CLAIMS `ADR-0112-F10-NO-HANDOFF-STAMPS-ACTED`). Snooze, pin and "Mark as briefed" are undo-after: the note line's Undo posts the inverse patch (pin → the old value; briefing → `acted: false`). | `act`, `brief`, `pin`; hook `undoWith` |
+| Q2 gateway | `acted: true` stamps `acted_at` + the new `acted_by`; `acted: false` clears both. Both are a note change gated like a pin (a first stamp anyone's but the admin's; re-stamping or clearing someone else's: staff own, owner/manager any, admin none; audited as `recommendation_note_changed` — PR #483 audit R2). Migration `20261001000000` adds `acted_by` and puts it on the two-year author sweep. | `item-state.ts`, `recommendation-actions.service.ts` |
+| Q3 | The stockout entry's control says it: "Opens Orders to draft it by hand — nothing is recorded here, and the order is sealed there with the hold." No in-place draft. | `Entry.tsx` `rc-handoff` |
+| Q4 | Under the read-at line: which engine sources did not answer (`sourcesUnread`, the digest's own wording); an absent field is "not stated", never "all answered". | `quietTierWords` |
+| Q5 | Unchanged: "Its account" shows only where `entry.subject` is set — `sales_below_weekday_baseline` and `weekly_demand_slide`. | `Entry.tsx` |
+| Q6 | Unchanged: the house's post is edited in its side sheet. | `DigestPost.tsx` |
+| Q7 | Floor entries (`sales_below_weekday_baseline`, `staff_spread`) lead with "Mark as briefed" / "Briefed" (pressed); their hand-off stays beside it as a quiet link. | `Entry.tsx` `rc-brief` |
+| Q8 | Under The post: "Last sent Wed 16 Sep: 2 letters. Who received one is not shown." — from `houseLastPost` on `GET /recommendations/digest/subscription` (date + count + at-cap flag, no user id). | `recommendation-digest.service.ts` `statusFor`, `DigestPost.tsx` |
+| Q9 | Above the docket: "Since your letter of Wed 16 Sep — N entries stand that it did not carry · M it carried no longer stand", from THIS reader's last SENT letter (`lastLetter.ruleKeys`). Never "new" (a letter only carries entries above the house's urgency floor). No letter, an unread copy, and a letter with no recorded keys each have their own sentence. | `LetterDelta.tsx` |
+| Q10 | Unchanged: refusal copy only on the controls actually refused. | — |
+
+**Live in code.** `recommendations` is in `LIVE_PAGES` (25 keys, with `ask` from #475) and
+`mudavym_design_recommendations` in the gateway's `LIVE_IN_CODE_FLAGS`; the flip script treats it as
+a no-op. The column stays, unread (ADR 0149).
+
+**Measured (scratch harness, fixture gateway, not production).** At 375px no page-level horizontal
+scroll once the goal sheet's scenario `<select>` was bounded (it had widened the page by 27px — fixed
+in `rec-next.css`); at 1440 the margin sits right of the letter (250px) and the strip below both.
+axe-core 4.11.1 (WCAG 2 A/AA) on the page: the three contrast failures this round introduced or
+touched (suggestion text 3.94:1, delta label 4.06:1, the "File it" label 4.47:1) were fixed; the
+only remaining violations are the shared day strip's future-day digits (`.mdv-ds-n`, 2.4:1,
+`components/mudavym/day-strip.css`, not this page's file). Charcoal ground: no contrast violation.
+
+**Not built, by the answers:** the in-place PO draft (Q3), the per-rule reading · threshold · state
+field (Q4), the account door on more rules (Q5). **Answered, not asked again:** the README's
+one-line "fifth/sixth" reading — confirmed in the founder's 2026-09-25 answers, item 43 ("Sketch 122
+fifth/sixth reading confirmed").
 
 ## 2. Entry
 
@@ -1567,7 +1666,9 @@ execution, no first-fired timestamp — in the same way.
     retired. **094c (the case ledger) remains the roadmap:** opened → acted → watching → closed,
     with *refused* as a state that keeps its reason. `source_rule_key` was its first prerequisite
     and is now in place; what it still needs is a stored `acted_at`-to-outcome link and a way to
-    close a case with a result rather than only with a seal.
+    close a case with a result rather than only with a seal. *[2026-09-27, PR #483 audit R4:
+    `acted_at` now records a "Mark as briefed" stamp only — no Act hand-off writes it (ADR 0112
+    F10, amended) — so a case's "acted" state needs its own record, not `acted_at`.]*
 25. **Let the ribbon draw a range, and a lineage hairline.** Sketch 094a drew shift-click for a
     range (Fri to Sun) and a hairline from an entry back to the day it was first shown. Neither is
     built: the range needs the docket's filter to take an interval rather than a day, and the

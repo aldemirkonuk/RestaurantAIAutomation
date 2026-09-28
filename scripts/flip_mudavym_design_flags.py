@@ -79,7 +79,7 @@ FLAGS_TABLE = "restaurant_feature_flags"
 SETTINGS_ROW_FLAG_NAME = "restaurant_settings"
 AUDIT_TABLE = "system_audit_log"
 
-# The twenty-one pages of ADR 0044 + 0114 + 0133 (logs) + 0143 (admin),
+# The twenty-two pages of ADR 0044 + 0114 + 0133 (logs) + 0143 (admin) + 0165 (promotions),
 # in MUDAVYM_PAGES order (apps/web/src/lib/mudavym/useMudavymDesign.ts).
 # A slug not in this list is a typo, not a page; the script refuses it rather
 # than inventing a column. (shell / help live only in MUDAVYM_PAGES — shell is
@@ -108,8 +108,12 @@ PAGES: tuple[str, ...] = (
     # without it "logs" fails "not a Mudavym page" instead of correctly
     # reporting the no-op below (live-review.md defect 2).
     "logs",
-    # ADR 0143 — the Mudavym admin desk; still flag-gated (not live-in-code).
+    # ADR 0143 — the Mudavym admin desk. [2026-09-25: live in code now — see
+    # LIVE_IN_CODE below; still a known slug so a flip of it reports NO-OP.]
     "admin",
+    # ADR 0160 §113 / ADR 0165 (2026-09-25) — /promotions, flag-gated and OFF
+    # by default (column 20261015000000). Not live in code: a flip is real.
+    "promotions",
 )
 
 # ADR 0149 row 36 (2026-09-17, "16 locked pages"), live-review.md defect 2.
@@ -143,6 +147,18 @@ LIVE_IN_CODE: frozenset[str] = frozenset(
         # (.planning/06-pages/wines.md, Seventh pass). `/menu` has no column,
         # so it is not a slug here at all.
         "cellar",
+        # [2026-09-25] `settings` went live in code with PR #419 (2026-09-19)
+        # but was never added here, so a flip of it wrote a column nothing
+        # reads and reported success. `admin` joins on ADR 0149 row 36's
+        # 2026-09-25 bracket (founder Q2/Q4, 2026-09-22). `shell` and
+        # `authorize_integration` joined LIVE_PAGES at the same time but were
+        # never slugs here (see PAGES).
+        "settings",
+        "admin",
+        # [2026-09-25, lane W3-recs] `recommendations` joins LIVE_PAGES on ADR
+        # 0160 §108's round-5 bracket (sketch 122 fully answered); a flip of
+        # its column is now a no-op like the rest.
+        "recommendations",
     }
 )
 
@@ -308,11 +324,11 @@ def self_test() -> int:
             "dashboard", "orders", "receiving_door", "providers", "communications",
             "team", "inventory", "receipts", "documents_reports", "document",
             "reports", "calendar", "profile", "connections", "notifications", "logs",
-            "cellar",
+            "cellar", "settings", "admin", "recommendations",
         },
-        "LIVE_IN_CODE is exactly the sixteen ADR 0149 row 36 names plus the cellar",
+        "LIVE_IN_CODE is the sixteen ADR 0149 row 36 names plus cellar, settings, admin and recommendations",
     )
-    check(len(LIVE_IN_CODE) == 17, "seventeen live-in-code pages")
+    check(len(LIVE_IN_CODE) == 20, "twenty live-in-code pages")
     check(set(LIVE_IN_CODE) <= set(PAGES), "every live-in-code slug is a known page")
     check("receiving" not in LIVE_IN_CODE, "the receiving DESK is not live-in-code (only the door is)")
     if failures:

@@ -26,7 +26,9 @@ beforeEach(() => {
 });
 afterEach(() => window.localStorage.clear());
 
-describe('shell off (default)', () => {
+describe("shell off (the QA override '0' -- since 2026-09-25 the only way to legacy)", () => {
+  beforeEach(() => window.localStorage.setItem('mudavym.design.shell', '0'));
+
   it('renders nothing while online with nothing pending (legacy OfflineBanner behaviour)', () => {
     const { container } = render(<AppOfflineBanner />);
     expect(container.textContent).toBe('');
@@ -39,8 +41,7 @@ describe('shell off (default)', () => {
   });
 });
 
-describe('shell on', () => {
-  beforeEach(() => window.localStorage.setItem('mudavym.design.shell', '1'));
+describe('shell on (the default: live in code since 2026-09-25, no override, no flag row)', () => {
 
   it('offline with nothing queued: says so, not "will sync"', () => {
     syncState.current = { isOnline: false, isSyncing: false, pendingCount: 0, lastError: null };

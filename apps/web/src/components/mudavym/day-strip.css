@@ -74,7 +74,7 @@
   border: 1px solid var(--paper-2);
   border-radius: 6px;
   background: var(--paper-0);
-  color: var(--ink-3);
+  color: var(--ink-4);
   cursor: pointer;
   transition:
     border-color 160ms cubic-bezier(0.16, 1, 0.3, 1),
@@ -99,7 +99,7 @@
   font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--ink-3);
+  color: var(--ink-4);
   background: none;
   border: 1px solid var(--paper-2);
   border-radius: 6px;

@@ -79,8 +79,11 @@ export interface LedgerRowProps {
   onOpenRecurrence?: () => void;
   /**
    * Open this order's receipt — the canonical document — in a right sheet.
-   * Offered on every row: the order carries no document id, and the sheet
-   * asks the deliveries that fulfil it and says so when there is none.
+   * Offered inside every expanded row: the order carries no document id, and
+   * the sheet asks the deliveries that fulfil it and says so when there is none.
+   *
+   * On a row whose order has been DELIVERED it is also what the bare row click
+   * does (OD-152, founder 2026-09-25) — see `rowOpensReceipt`.
    */
   onOpenReceipt?: () => void;
   /** Why the gate could not be read. Said in words above the ceremony. */
@@ -95,12 +98,48 @@ const label = (text: string) => (
       fontWeight: 500,
       letterSpacing: '0.12em',
       textTransform: 'uppercase' as const,
-      color: 'var(--ink-3, #7C7365)',
+      color: 'var(--ink-4, #665D50)',
     }}
   >
     {text}
   </span>
 );
+
+/** The chevron's turn — the `settle` token, the same event as the expansion. */
+const chevronStyle = (expanded: boolean) => ({
+  flex: 'none' as const,
+  color: 'var(--ink-4, #665D50)',
+  fontSize: 11,
+  transform: expanded ? 'rotate(90deg)' : 'rotate(0deg)',
+  transition: `transform ${settle.ms}ms ${settle.easing}`,
+});
+
+/**
+ * Does the bare row click open this order's receipt, rather than expand the row?
+ *
+ * OD-152, founder 2026-09-25: "depends on state" — the click opens the receipt
+ * sheet when a receipt exists, and expands the row while the order is still
+ * being worked (the approve hold and "Mark delivered" live in the expansion).
+ *
+ * "A receipt exists" is read from what the row ALREADY carries, and the row
+ * carries no document: `OrderResponseDto` (procurement.dto.ts) has no document
+ * id and no delivery id, and a receipt is found only by asking the deliveries
+ * that fulfil the order (`deliveriesApi.receiptForOrder`). What the row does
+ * carry is its stage, and `delivered` (delivered / partially_received /
+ * verified / completed) is the only stage at which goods — and therefore the
+ * paper that came with them — have been booked against the order. So the rule
+ * is the stage, and the sheet keeps its three states: a document, "No receipt
+ * has been attached to this order yet", or a read that failed. A delivered order
+ * with no document opens a sheet that says so — that is the honest answer to
+ * the click, not a reason to guess per row with one delivery read each.
+ *
+ * Every other stage expands: pending (the approve hold), approved, ordered
+ * ("Mark delivered"), cancelled. "Open the receipt" stays inside the expansion
+ * for all of them, because an invoice can arrive before the goods do.
+ */
+export function rowOpensReceipt(row: Pick<OrderRowVM, 'stage'>): boolean {
+  return row.stage === 'delivered';
+}
 
 export function LedgerRow({
   row,
@@ -123,6 +162,8 @@ export function LedgerRow({
   const [deliverError, setDeliverError] = useState<string | null>(null);
 
   const isPendingStage = row.stage === 'pending' && !row.recurring;
+  // The row click opens the receipt only when there is a sheet to open it in.
+  const clickOpensReceipt = !!onOpenReceipt && rowOpensReceipt(row);
   // A verdict the gate actually gave. `undefined` is "not answered", which must
   // never disable the ceremony — the page is a courtesy, the gateway is the gate.
   const heldForApproval = approval ? !approval.mayApprove : false;
@@ -208,10 +249,20 @@ export function LedgerRow({
         ) : (
           <span aria-hidden style={{ width: 14, flex: 'none' }} />
         )}
+        {/*
+          The row click, by state (OD-152). One native button either way, so
+          Enter, Space and a screen reader get exactly what the pointer gets:
+          on a delivered row it opens a dialog (aria-haspopup, and its name
+          ends "open the receipt"), and it carries no aria-expanded because it
+          expands nothing; on every other row it is the disclosure it was.
+        */}
         <button
           type="button"
-          onClick={onToggle}
-          aria-expanded={expanded}
+          onClick={clickOpensReceipt ? onOpenReceipt : onToggle}
+          aria-expanded={clickOpensReceipt ? undefined : expanded}
+          aria-haspopup={clickOpensReceipt ? 'dialog' : undefined}
+          data-testid="row-click"
+          data-row-click={clickOpensReceipt ? 'receipt' : 'expand'}
           className="flex flex-1 items-baseline gap-3 py-2.5 text-left"
           style={{ fontFamily: SANS, cursor: 'pointer', minWidth: 0 }}
         >
@@ -222,7 +273,7 @@ export function LedgerRow({
             >
               {row.wineName ?? EM}
             </span>
-            <span className="block truncate" style={{ fontSize: 11.5, color: 'var(--ink-3, #7C7365)' }}>
+            <span className="block truncate" style={{ fontSize: 11.5, color: 'var(--ink-4, #665D50)' }}>
               {row.providerName ?? EM}
               {/*
                 * "recurs weekly, next 12 Sep". The clause is rendered whenever
@@ -252,7 +303,7 @@ export function LedgerRow({
               fontWeight: 500,
               letterSpacing: '0.1em',
               textTransform: 'uppercase',
-              color: row.stage === 'pending' ? 'var(--seal, #1A5E6B)' : 'var(--ink-3, #7C7365)',
+              color: row.stage === 'pending' ? 'var(--seal, #1A5E6B)' : 'var(--ink-4, #665D50)',
               border: `1px solid ${row.stage === 'pending' ? 'var(--seal-ring, rgba(26,94,107,.32))' : 'var(--paper-2, #EAE4D8)'}`,
               borderRadius: 3,
               padding: '2px 6px',
@@ -274,23 +325,47 @@ export function LedgerRow({
           >
             {fmtMoney(row.total)}
           </span>
-          <span
-            aria-hidden
-            style={{
-              flex: 'none',
-              color: 'var(--ink-3, #7C7365)',
-              fontSize: 11,
-              transform: expanded ? 'rotate(90deg)' : 'rotate(0deg)',
-              transition: `transform ${settle.ms}ms ${settle.easing}`,
-            }}
-          >
-            ›
-          </span>
+          {clickOpensReceipt ? (
+            <span className="sr-only"> — open the receipt</span>
+          ) : (
+            <span aria-hidden style={chevronStyle(expanded)}>
+              ›
+            </span>
+          )}
         </button>
+        {/*
+          A delivered row still has its working, its answers and its repeating
+          rule, so the chevron becomes its own disclosure button beside the row
+          — the only way into the expansion once the row click opens a sheet.
+        */}
+        {clickOpensReceipt && (
+          <button
+            type="button"
+            onClick={onToggle}
+            aria-expanded={expanded}
+            aria-label={`${expanded ? 'Hide' : 'Show'} the working for ${row.wineName ?? 'this order'}`}
+            data-testid="row-disclose"
+            style={{ flex: 'none', background: 'transparent', border: 0, cursor: 'pointer', padding: '10px 4px' }}
+          >
+            <span aria-hidden style={{ ...chevronStyle(expanded), display: 'inline-block' }}>
+              ›
+            </span>
+          </button>
+        )}
       </div>
 
-      {/* row expand = settle: 0fr→1fr, same token as the chevron above */}
+      {/*
+        row expand = settle: 0fr→1fr, same token as the chevron above.
+
+        A shut row is `inert`: at 0fr its buttons are invisible but were still
+        in the tab order and the accessibility tree, so a keyboard or screen
+        reader reached "Mark delivered" on a row the pointer could not see.
+        What the click shows is now exactly what the keyboard reaches (OD-152).
+        React 18 has no `inert` prop, so the attribute is spread as a string.
+      */}
       <div
+        data-testid="row-body"
+        {...(expanded ? {} : { inert: '' })}
         style={{
           display: 'grid',
           gridTemplateRows: expanded ? '1fr' : '0fr',
@@ -338,7 +413,7 @@ export function LedgerRow({
                   {row.agreement && row.agreement.ok ? (
                     <>
                       <span data-testid="row-working">{row.agreement.working}</span>
-                      <span style={{ color: 'var(--ink-3, #7C7365)' }}> = </span>
+                      <span style={{ color: 'var(--ink-4, #665D50)' }}> = </span>
                       <span style={{ color: 'var(--ink-1, #211C16)', fontWeight: 600 }}>
                         {fmtMoney(row.agreement.total)}
                       </span>
@@ -357,7 +432,7 @@ export function LedgerRow({
                       truth, in bold, beside the right one. It prints the
                       ledger's own number and nothing of its own.
                     */
-                    <span data-testid="row-no-working" style={{ color: 'var(--ink-3, #7C7365)' }}>
+                    <span data-testid="row-no-working" style={{ color: 'var(--ink-4, #665D50)' }}>
                       {row.quantity !== null ? row.quantity : EM}{' '}
                       {row.unitType ? `${row.unitType}(s)` : 'ordered'} —{' '}
                       {!row.priceUnit.read
@@ -378,7 +453,7 @@ export function LedgerRow({
                   (ADR 0119 invariant 6).
                 */}
                 {!row.priceUnit.read ? (
-                  <div data-testid="price-unit-unread" style={{ color: 'var(--ink-3, #7C7365)' }}>
+                  <div data-testid="price-unit-unread" style={{ color: 'var(--ink-4, #665D50)' }}>
                     {ROW_PRICE_UNIT_NOT_READ}
                   </div>
                 ) : row.priceUnit.stated === null ? (
@@ -412,7 +487,7 @@ export function LedgerRow({
                   not the absence of a deposit.
                 */}
                 {!row.fees.read ? (
-                  <div data-testid="fees-unread" style={{ color: 'var(--ink-3, #7C7365)' }}>
+                  <div data-testid="fees-unread" style={{ color: 'var(--ink-4, #665D50)' }}>
                     {ROW_FEES_NOT_READ}
                   </div>
                 ) : !(row.agreement && row.agreement.ok) && describeFees(row.fees.fees) ? (
@@ -424,7 +499,7 @@ export function LedgerRow({
                   row.unitType !== null &&
                   row.priceUnit.stated.priceUom !== row.unitType &&
                   !(row.agreement && !row.agreement.ok) && (
-                    <div data-testid="units-differ" style={{ color: 'var(--ink-3, #7C7365)' }}>
+                    <div data-testid="units-differ" style={{ color: 'var(--ink-4, #665D50)' }}>
                       counted in {row.unitType}s, priced{' '}
                       {PRICE_UOM_LABEL[row.priceUnit.stated.priceUom]} — that is ordinary
                     </div>
@@ -435,11 +510,11 @@ export function LedgerRow({
                     what will be spent
                   </div>
                 )}
-                <div style={{ color: 'var(--ink-3, #7C7365)' }}>
+                <div style={{ color: 'var(--ink-4, #665D50)' }}>
                   requested {fmtDate(row.requestedAt)} · approved {fmtDate(row.approvedAt)} · delivered{' '}
                   {fmtDate(row.deliveredAt)}
                 </div>
-                <div style={{ color: 'var(--ink-3, #7C7365)' }}>
+                <div style={{ color: 'var(--ink-4, #665D50)' }}>
                   {row.orderNumber ? `no. ${row.orderNumber}` : `id ${row.id.slice(0, 8)}`}
                   {row.notes ? ` · ${row.notes}` : ''}
                 </div>
@@ -563,7 +638,7 @@ export function LedgerRow({
                     </p>
                   )}
                   {approval && approval.untestable.length > 0 && (
-                    <p style={{ marginTop: 4, fontSize: 10.5, lineHeight: 1.5, color: 'var(--ink-3, #7C7365)' }}>
+                    <p style={{ marginTop: 4, fontSize: 10.5, lineHeight: 1.5, color: 'var(--ink-4, #665D50)' }}>
                       {approval.untestable.length === 1 ? 'One rule' : `${approval.untestable.length} rules`}{' '}
                       could not be tested on this order ({approval.untestable.join(', ')}), so{' '}
                       {approval.untestable.length === 1 ? 'it' : 'they'} did not fire. An
@@ -585,7 +660,7 @@ export function LedgerRow({
                 </>
               )}
               {row.stage === 'approved' && (
-                <p style={{ fontSize: 11.5, color: 'var(--ink-3, #7C7365)', marginTop: 18 }}>
+                <p style={{ fontSize: 11.5, color: 'var(--ink-4, #665D50)', marginTop: 18 }}>
                   Sealed {fmtDate(row.approvedAt)} — the house places it with{' '}
                   {row.providerName ?? 'the vendor'}.
                 </p>
@@ -624,12 +699,12 @@ export function LedgerRow({
                 </>
               )}
               {row.stage === 'delivered' && (
-                <p style={{ fontSize: 11.5, color: 'var(--ink-3, #7C7365)', marginTop: 18 }}>
+                <p style={{ fontSize: 11.5, color: 'var(--ink-4, #665D50)', marginTop: 18 }}>
                   Delivered {fmtDate(row.deliveredAt)}.
                 </p>
               )}
               {row.stage === 'cancelled' && (
-                <p style={{ fontSize: 11.5, color: 'var(--ink-3, #7C7365)', marginTop: 18 }}>
+                <p style={{ fontSize: 11.5, color: 'var(--ink-4, #665D50)', marginTop: 18 }}>
                   Cancelled — kept in the book, off the figures.
                 </p>
               )}
