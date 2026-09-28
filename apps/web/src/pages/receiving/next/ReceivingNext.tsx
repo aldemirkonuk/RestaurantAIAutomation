@@ -38,6 +38,7 @@ import { Wordmark } from '@/components/mudavym';
 import { DayLine } from '@/components/mudavym/DayLine';
 import { ink } from '@/lib/mudavym/motion';
 import { useAuth } from '@/contexts/AuthContext';
+import { RcArrivalAsks } from './RcArrivalAsks';
 import { RcCreditDrafts } from './RcCreditDrafts';
 import { RcManagerQueue } from './RcManagerQueue';
 import { RcOutboxRail } from './RcOutboxRail';
@@ -101,7 +102,7 @@ function RolePreview({
           fontWeight: 700,
           letterSpacing: '0.14em',
           textTransform: 'uppercase',
-          color: 'var(--ink-3, #7C7365)',
+          color: 'var(--ink-4, #665D50)',
         }}
       >
         Preview · dev only · account unchanged
@@ -123,7 +124,7 @@ function RolePreview({
               borderRadius: 5,
               border: `1px solid ${active ? 'var(--seal, #1A5E6B)' : 'var(--paper-2, #EAE4D8)'}`,
               background: active ? 'var(--seal-tint, rgba(26,94,107,.10))' : 'transparent',
-              color: active ? 'var(--seal-deep, #14515C)' : 'var(--ink-3, #7C7365)',
+              color: active ? 'var(--seal-deep, #14515C)' : 'var(--ink-4, #665D50)',
               cursor: 'pointer',
               transition: `border-color ${ink.ms}ms ${ink.easing}, background ${ink.ms}ms ${ink.easing}`,
             }}
@@ -265,7 +266,7 @@ export default function ReceivingNext() {
             >
               Receiving
             </h1>
-            <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-3, #7C7365)', margin: '4px 0 0' }}>
+            <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-4, #665D50)', margin: '4px 0 0' }}>
               {RENDERING_SENTENCE[rendering]}
             </p>
           </div>
@@ -297,6 +298,9 @@ export default function ReceivingNext() {
             {rendering === 'owner' && <OwnerBody highlightOrderId={highlightOrderId} />}
           </main>
           <aside>
+            {/* "Did it arrive?" (ADR 0207 round 3) — asked of owners and
+                managers; a staff rendering never asks for it. */}
+            <RcArrivalAsks enabled={rendering !== 'staff'} />
             <RcOutboxRail data={outbox} />
           </aside>
         </div>

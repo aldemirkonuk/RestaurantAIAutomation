@@ -821,7 +821,7 @@ function PourReveal({
       </div>
       <p className="ar-note">
         {lines && lines.notPlaced > 0
-          ? `The ${lines.notPlaced} lines the reader could not place stay in this house’s menu book. The book returns their number, not yet the lines themselves — it will not list what it cannot name.`
+          ? `The ${lines.notPlaced} lines the reader could not place stay in this house’s menu book. /cellar lists them beside the registers; nothing is placed for you.`
           : 'Nothing above was ticked, so nothing here has been rubber-stamped. What the book read enters the ledger through one held seal; what you switch by hand posts at once.'}
       </p>
 

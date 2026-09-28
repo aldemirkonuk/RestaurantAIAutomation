@@ -28,6 +28,40 @@ import { useProvidersNextData, type ProviderCardVM } from './useProvidersNextDat
 import { useVendorScopes } from './useVendorScopes';
 import { BookSearchBar, FindNewVendors, ScopeNotice, VendorScopeBar } from './VendorScopes';
 import { soldTag, supplierTag } from './vendor-scope';
+import { RollCall } from './scorecard/RollCall';
+import { SC } from './scorecard/sc-copy';
+import { useRollCall } from './scorecard/useVendorScorecard';
+import type { VendorScorecard } from './scorecard/scorecard-types';
+
+/**
+ * The card's one behavioural fact (ADR 0207, sketch 117 A; MAKEOVER-VERDICTS
+ * `/providers` MERGE: "at most three facts plus one behavioural fact"). Read
+ * from the Roll Call answer, never computed here: `undefined` while that read
+ * is out, `null` when it failed — both drawn as words, never as a zero.
+ */
+type DidFact = VendorScorecard['fact'] | null | undefined;
+
+/**
+ * `?view=scorecard` opens the second view (sketch 117 B, the Roll Call). Read
+ * once at mount like `?vendor=`; the toggle writes it back with replaceState
+ * so a reload keeps the view without adding a history entry per press.
+ */
+type ProvidersView = 'book' | 'scorecard';
+function viewFromUrl(): ProvidersView {
+  if (typeof window === 'undefined') return 'book';
+  return new URLSearchParams(window.location.search).get('view') === 'scorecard' ? 'scorecard' : 'book';
+}
+function writeViewToUrl(view: ProvidersView) {
+  if (typeof window === 'undefined') return;
+  try {
+    const url = new URL(window.location.href);
+    if (view === 'scorecard') url.searchParams.set('view', 'scorecard');
+    else url.searchParams.delete('view');
+    window.history.replaceState(window.history.state, '', url.toString());
+  } catch {
+    /* a URL the page cannot rewrite keeps the view in state only */
+  }
+}
 
 /**
  * `?vendor=<id>` opens that vendor's sheet — where the currency control lives.
@@ -47,11 +81,13 @@ function vendorFromUrl(): string | null {
 function BucketCard({
   vm,
   ordersKnown,
+  did,
   onOpen,
   tag,
 }: {
   vm: ProviderCardVM;
   ordersKnown: boolean;
+  did?: DidFact;
   onOpen: () => void;
   /** On "Supplies my menu": what the evidence is (item 36). Not a fourth fact. */
   tag?: string | null;
@@ -113,16 +149,29 @@ function BucketCard({
       </div>
       <dl style={{ margin: 0, display: 'grid', gap: 2, fontSize: 11.5, color: 'var(--ink-2, #4F473C)' }}>
         <div className="flex justify-between gap-3">
-          <dt style={{ color: 'var(--ink-3, #7C7365)' }}>Open orders</dt>
+          <dt style={{ color: 'var(--ink-4, #665D50)' }}>Open orders</dt>
           <dd style={{ margin: 0, fontFamily: MONO, fontVariantNumeric: 'tabular-nums' }}>{open}</dd>
         </div>
         <div className="flex justify-between gap-3">
-          <dt style={{ color: 'var(--ink-3, #7C7365)' }}>Lead time</dt>
+          <dt style={{ color: 'var(--ink-4, #665D50)' }}>Lead time</dt>
           <dd style={{ margin: 0 }}>{fmtDays(vm.leadTimeDays)}</dd>
         </div>
         <div className="flex justify-between gap-3">
-          <dt style={{ color: 'var(--ink-3, #7C7365)' }}>Contact</dt>
+          <dt style={{ color: 'var(--ink-4, #665D50)' }}>Contact</dt>
           <dd style={{ margin: 0 }}>{fmtLastContact(vm.lastContact)}</dd>
+        </div>
+        <div className="flex justify-between gap-3" data-testid="pv-card-did">
+          <dt style={{ color: 'var(--ink-4, #665D50)', whiteSpace: 'nowrap' }}>{SC.page.didLabel}</dt>
+          <dd
+            style={{
+              margin: 0,
+              textAlign: 'right',
+              fontStyle: did && did.outcome === 'answered' ? 'normal' : 'italic',
+              color: did === null ? 'var(--alarm, #A33A2B)' : undefined,
+            }}
+          >
+            {did === undefined ? EM : did === null ? SC.page.didFailed : did.text}
+          </dd>
         </div>
       </dl>
     </button>
@@ -144,6 +193,22 @@ export default function ProvidersNext() {
     [data.cards],
   );
   const [openProvider, setOpenProvider] = useState<Provider | null>(null);
+  const [view, setView] = useState<ProvidersView>(viewFromUrl);
+  const chooseView = (next: ProvidersView) => {
+    setView(next);
+    writeViewToUrl(next);
+  };
+  // The Roll Call answer carries each card's one fact; the Book reads it too.
+  const roll = useRollCall(90);
+  const didById = useMemo(() => {
+    const m = new Map<string, VendorScorecard['fact']>();
+    for (const v of roll.data?.vendors ?? []) m.set(v.providerId, v.fact);
+    return m;
+  }, [roll.data]);
+  // A vendor missing from a Roll Call that DID answer (added after it was read)
+  // has not been read yet — the dash, never "could not be read", which is kept
+  // for a read that failed.
+  const didFor = (id: string): DidFact => (roll.isError ? null : roll.data ? didById.get(id) : undefined);
   /*
    * A sheet opened FROM THE CURRENCY PROMPT — the panel's link or `?vendor=` —
    * carries the reason it was opened, so `UsualCurrencySection` can put the
@@ -186,6 +251,7 @@ export default function ProvidersNext() {
       <style>{`
         .pv-card:hover { border-color: var(--seal-ring, rgba(26,94,107,.32)); background: var(--paper-0, #FAF7F1) }
         .pv-card:focus-visible { outline: 2px solid var(--seal, #1A5E6B); outline-offset: 2px }
+        .pv-seg:focus-visible { outline: 2px solid var(--seal, #1A5E6B); outline-offset: -2px }
         @media (prefers-reduced-motion: reduce) { .pv-card { transition: none !important } }
       `}</style>
       <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
@@ -205,11 +271,46 @@ export default function ProvidersNext() {
               Vendors
             </h1>
           </div>
-          <span style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-3, #7C7365)' }}>
-            {data.hasData
-              ? `${data.cards.length} vendors — the learned detail lives inside each card`
-              : 'Reaching the gateway…'}
-          </span>
+          <div className="flex flex-col items-end gap-2">
+            <span
+              role="group"
+              aria-label={SC.page.viewGroup}
+              data-testid="pv-view-toggle"
+              style={{
+                display: 'inline-flex',
+                border: '1px solid var(--paper-2, #EAE4D8)',
+                borderRadius: 8,
+                overflow: 'hidden',
+                fontFamily: SANS,
+              }}
+            >
+              {(['book', 'scorecard'] as const).map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  aria-pressed={view === v}
+                  onClick={() => chooseView(v)}
+                  className="pv-seg"
+                  style={{
+                    padding: '5px 14px',
+                    fontSize: 12.5,
+                    border: 0,
+                    cursor: 'pointer',
+                    color: view === v ? 'var(--ink-1, #211C16)' : 'var(--ink-4, #665D50)',
+                    background: view === v ? 'var(--paper-1, #F3EFE6)' : 'transparent',
+                    transition: `color ${ink.ms}ms ${ink.easing}, background ${ink.ms}ms ${ink.easing}`,
+                  }}
+                >
+                  {v === 'book' ? SC.page.book : SC.page.scorecard}
+                </button>
+              ))}
+            </span>
+            <span style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-4, #665D50)' }}>
+              {data.hasData
+                ? `${data.cards.length} vendors — the learned detail lives inside each card`
+                : 'Reaching the gateway…'}
+            </span>
+          </div>
         </header>
 
         {data.isError && (
@@ -246,6 +347,13 @@ export default function ProvidersNext() {
           </div>
         )}
 
+        {/* Book · Scorecard (ADR 0207). The Book's blocks below keep their old
+            indentation on purpose: another lane is rebuilding this page's
+            vendor sheet in parallel, and a re-indent would conflict every line. */}
+        {view === 'scorecard' ? (
+          <RollCall />
+        ) : (
+        <>
         {/* The prompt that keeps the order-currency chain alive (founder,
             2026-09-06 batch 66). It counts and links; it pre-fills nothing. */}
         <UsualCurrencyCoveragePanel knownIds={knownIds} onOpenVendor={openById} />
@@ -262,13 +370,13 @@ export default function ProvidersNext() {
         )}
 
         {scopes.scope !== 'find' && data.hasData && data.cards.length === 0 && !data.isError && (
-          <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-3, #7C7365)' }}>
+          <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-4, #665D50)' }}>
             No vendors yet — the book is open and empty.
           </p>
         )}
 
         {scopes.scope !== 'find' && !data.ordersKnown && data.hasData && data.cards.length > 0 && (
-          <p style={{ fontFamily: SANS, fontSize: 11, color: 'var(--ink-3, #7C7365)', margin: '0 0 10px' }}>
+          <p style={{ fontFamily: SANS, fontSize: 11, color: 'var(--ink-4, #665D50)', margin: '0 0 10px' }}>
             The orders book hasn’t answered yet — open-order counts show {EM} until it does.
           </p>
         )}
@@ -293,6 +401,7 @@ export default function ProvidersNext() {
                     })()
               }
               ordersKnown={data.ordersKnown}
+              did={didFor(vm.provider.id)}
               onOpen={() => {
                 setOpenedForCurrency(false);
                 setOpenProvider(vm.provider);
@@ -300,6 +409,8 @@ export default function ProvidersNext() {
             />
           ))}
         </div>
+        </>
+        )}
       </div>
 
       {openProvider && (

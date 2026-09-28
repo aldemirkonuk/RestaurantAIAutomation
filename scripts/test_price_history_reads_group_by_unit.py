@@ -309,10 +309,15 @@ def test_the_self_test_passes():
 
 
 def test_the_shipped_tree_passes_and_reads_no_price_without_a_unit():
-    # Until 2026-09-26 the tree had zero readers. /vendors' "Supplies my menu"
-    # (apps/api-gateway/src/providers/vendor-menu-supply.ts) added one PRESENCE
-    # read -- it selects who priced which wine, never a price -- so the shipped
-    # tree now passes with every reader compliant and that one counted as such.
+    # [2026-09-25, feat/promotions-mudavym: this test used to pin "0 readers
+    # today". The /promotions grade (apps/api-gateway/src/promotions/
+    # promotions.service.ts) is the first real reader of price_history and it
+    # states its unit.]
+    # Until 2026-09-26 every reader stated a unit outright. /vendors' "Supplies
+    # my menu" (apps/api-gateway/src/providers/vendor-menu-supply.ts) added one
+    # PRESENCE read -- it selects who priced which wine, never a price -- so
+    # the shipped tree now passes with every reader compliant and that one
+    # counted as such.
     proc = subprocess.run(
         [sys.executable, str(GUARD)], cwd=REPO_ROOT, capture_output=True, text=True
     )

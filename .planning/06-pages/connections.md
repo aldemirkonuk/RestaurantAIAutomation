@@ -30,7 +30,7 @@ links: ["[[PAGE-CONTRACT]]", "[[profile]]", "[[settings]]"]
 
 ## Surface — buttons → where they go
 
-- **Copy address** → API `GET /api/v1/calendar/ical-token` (the value is copied, not navigated)
+- **Copy address** → API `GET /api/v1/calendar/ical-token` (the value is copied, not navigated) *[corrected 2026-09-21: calendar links are personal (ADR 0111 review trail) — the GET never carries the address; it is shown once, on the answer to connect or get-a-new-link, and copied from there]*
 - **Regenerate** → API `POST /api/v1/calendar/ical-token/regenerate`
 - **Consent / Withdraw consent** → API `PUT /api/v1/mcp-connections/:id/consent`
 - **Check again** → API `POST /api/v1/mcp-connections/:id/probe`
@@ -591,8 +591,8 @@ manager; a staff member reaches the written refusal.
 | PATCH | `/payment-methods/:id/default` | JWT + **manager/owner** + **a REDEEMED seal** | `setDefaultPayment` — "Charge this first". The seal rides in `X-Seal-Challenge`; written at the provider before the local flag (2026-09-04) |
 | DELETE | `/payment-methods/:id` | JWT + **manager/owner** + **a REDEEMED seal** | `removePayment` — "Remove". Detaches at the provider first, then drops the row (2026-09-04) |
 | GET | `/communications/sender-identity` | JWT | **new this pass** — the address and its scope, never a credential |
-| GET | `/calendar/ical-token` | JWT | provisions on read |
-| POST | `/calendar/ical-token/regenerate` | JWT | revokes every subscription |
+| GET | `/calendar/ical-token` | JWT | provisions on read *[corrected 2026-09-21: calendar links are personal (ADR 0111 review trail) — read-only, the reader's own link, never the address; POST makes it on a click, and `GET /calendar/ical-links` is the owner/manager register]* |
+| POST | `/calendar/ical-token/regenerate` | JWT | revokes every subscription *[corrected 2026-09-21: calendar links are personal (ADR 0111 review trail) — ends only the reader's own address]* |
 | GET | `/mcp-connections` | JWT | **house-scoped this pass**; carries consent and tool grants |
 | GET | `/mcp-server-keys` | JWT | **INBOUND half, new 2026-09-06 (ADR 0132)** — keys assistants present to us. Also serves the grantable read-scope vocabulary and the rate-limit sentence, so the page cannot offer a scope the server does not honour. No UI calls it yet (G-C-MCP) |
 | POST | `/mcp-server-keys` | JWT + **manager/owner** | mints a key; the secret is returned **once** and stored only as a SHA-256 hash. Write scopes cannot be typed — `@IsIn` restricts minting to the seven read slugs |

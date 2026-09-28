@@ -17,7 +17,7 @@ and two readings of a NULL there were live on the same day:
   (`apps/api-gateway/src/providers/provider-intelligence.service.ts:436-455` at `059169a59`;
   its spec `provider-intelligence.service.spec.ts:294`). The comment itself says the
   production count of such rows was not measured.
-- **#416** (open, head `09b086fe0`) reverts that read to a plain `.eq("restaurant_id", …)`.
+- **#416** (open, head `09b086fe0`, when this record was written) **[2026-09-27: #416 merged 2026-09-25T23:25:17Z as `e754b3a27` (`gh pr view 416 --json mergedAt,mergeCommit`), so `main` now reads vendors with the plain `.eq`.]** reverts that read to a plain `.eq("restaurant_id", …)`.
   Its body argues that no other vendor read shares NULL rows (`listProviders` and
   `getProvider` use `.eq`: `providers.service.ts:285-306`, `:381-393`) and that bulk import
   wrote `restaurant_id` NULL until #412, so the `.or` showed one house's imported vendors to
@@ -72,6 +72,11 @@ becomes `/vendors`, with `/providers` and `/distributors` redirecting to it. API
 (`/providers/...` on the gateway) and table names are unchanged unless a later decision says so.
 The rename is a later implementation lane, not this record.
 
+**[2026-09-27 — two follow-up answers narrow "The word". Both were asked on #481, the rename lane, in round 6 (2026-09-26, after Wave 3); project memory `founder-answers-2026-09-25-web-rebuild.md` item 39; options verbatim from #481's body (`gh pr view 481 --json body`).
+(1) **"Distributor" stays where it names the licensed three-tier wholesaler.** Asked: *"'distributor' is also the legal term for the licensed wholesaler in the three-tier system (e.g. /connections: 'Licensed distributors'). Rename those to 'vendor' too?"* Chosen: **"Keep the legal term (Recommended)"** — *"Everywhere we mean 'who I buy from' says vendor; 'distributor' stays only where it names the licensed tier, since that's a real legal distinction."* Rejected: **"Vendor everywhere"**. So the sentence above means: "distributor" becomes "vendor" wherever it means *who I buy from*. It stays where it names the licensed tier, for example /connections' "Licensed distributors" and the "Distributor" business type. `/distributors` still redirects to `/vendors`, because that route is the vendor roster, not the licensed tier.
+(2) **Shortcut.** Chosen: **"'g v', keep 'g p' working (Recommended)"**. Rejected: **"Keep 'g p' only"**. The go-to-vendors key becomes `g v`, and `g p` keeps working.
+#481 carries both. It was OPEN at `0cee29c0e` when this bracket was written, so neither is on `main` yet.]**
+
 What carried it: his own case — the same company known to two houses by different names,
 numbers and people — cannot be served by one shared row, and a NULL that means both "shared"
 and "written without a house" cannot be audited.
@@ -91,15 +96,9 @@ and "written without a house" cannot be audited.
   (3) the world map on the Mudavym page — today it lives only in the legacy page
   (`apps/web/src/pages/Providers.tsx:154-157`, lazy `DistributorMapPage`); `ProvidersNext`
   has none, and `/distributors` lands on the roster (census G8), which is also ADR 0149
-  row 22's "discovery in `/providers`".
+  row 22's "discovery in `/providers`". **[2026-09-27 — item (3) is narrowed by the founder, round 8, 2026-09-26 (project memory `founder-answers-2026-09-25-web-rebuild.md` item 52; his words: *"delete, draw new later, with a more futuristic globe draw, nand tab"*). The legacy world map (`DistributorMapPage`, deletion-manifest group G8) is **deleted at cutover**, not ported to the Mudavym page. Rejected: "Port it to the new page first". The map owed here is now a **later, separate build**: a globe, on its own tab of the vendors page. It is recorded in [FUTURES.md](../FUTURES.md) "Vendors map — a more futuristic globe draw" and in ADR 0149's 2026-09-26 deletion-manifest note. No lane builds it now. The shared vendors this record's **Later** paragraph puts on "the world map" appear on that globe tab.]**
 - **Revisit when:** enough gathered vendor data exists to design the shared layer, or a house
   needs to see a vendor row it does not own.
-
-## Review trail
-
-| Date | Reviewer | Outcome |
-|---|---|---|
-| 2026-09-25 | Aldemir (founder, `AskUserQuestion`, session 6c6d8b93) + records lane W1 (Opus 5.5) | Locked — his answer quoted from project memory; code facts re-measured at `059169a59` and #416's head `09b086fe0` |
 
 ## Amendments — /vendors search rules (PR #484, lane W5-vendors)
 
@@ -246,7 +245,11 @@ sheet's resend-everything save had hidden, and each is pinned in `provider-locat
 - The last branch **may** be removed. The legacy sheet disabled that, because its
   Details-tab address mirrored the primary location. The new sheet has no such coupling.
 
+## Review trail
+
 | Date | Reviewer | Outcome |
 |---|---|---|
+| 2026-09-25 | Aldemir (founder, `AskUserQuestion`, session 6c6d8b93) + records lane W1 (Opus 5.5) | Locked — his answer quoted from project memory; code facts re-measured at `059169a59` and #416's head `09b086fe0` |
 | 2026-09-26 | Lane W5-vendors (Opus 5.5), PR #484 | Items 36, 39 and 48 recorded as built; item 49 recorded as future. Code facts are cited at #484's head. The verbatim option texts of round 7 were not available; this is stated above. |
 | 2026-09-26 | Lane W7-vloc (Opus 5.5), PR #484 | Item 51 (vendor branches) recorded as built and item 52 as not built here. The four location routes were re-verified as house-scoped. Six readings are listed above. The verbatim option texts of round 8 were not available; this is stated above. |
+| 2026-09-27 | #466 audit fix round 1 (records lane, Opus 5.5) | Brackets only; the decision is unchanged: #416 merged; founder items 39 (keep the legal "distributor"; `g v`) and 52 (legacy map deleted at cutover; a globe tab later) added. The first ADR 0090 audit of #466 (`091686861`) blocked on their absence |

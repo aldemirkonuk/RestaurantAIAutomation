@@ -163,3 +163,17 @@ Seams:
   residual risks SEC-2 named are **slug enumeration and unpublished-page leakage**, not
   signature verification, and publish-state is a relationship property.
 - PROD-F2 (§6) has to resolve before this software has an owner to assign that work to.
+
+## §9 Capacity and coverage — measured 2026-09-19
+
+**Capacity.** 7.9% branch coverage on a public, unauthenticated endpoint — the lowest branch coverage measured anywhere in the gateway.
+
+**Coverage.** 61.0%/7.9% stmt/branch.
+
+**Runs in production.** Route is live and public; both backing tables have 0 rows.
+
+**Promised vs. built.** `hollow` holds.
+
+**Gaps.** A public unauthenticated surface with no production data and 7.9% branch coverage.
+
+*Evidence:* Supabase `vendor_portal_pages`=0, `vendor_portal_listings`=0.

@@ -154,6 +154,19 @@ export; **discover** — the U.S. distributor catalogue on a map, one-tap add (S
   malformed one, or an identity with no seller name creates **nothing** — name similarity is
   not a rule here and does not become one.
 - **Discover** tab: the U.S. distributor catalogue on a map with facet filters and one-tap add
+- **The operational vendor scorecard** (redesign only, ADR 0207, sketch 117 A + B + C as
+  the founder picked it 2026-09-21): *What they did* in the TwinSheet — on time, lines as
+  ordered, price as agreed, reply time, credits recovered, each a percent with its count
+  (founder, 2026-09-21) beside the prior window's own and a link to its rows; one fact on
+  each card (*Did · 90 d — 86% on time · 12 of 14*); a *Book · Scorecard* switch
+  (`?view=scorecard`) whose Scorecard is the Roll Call; and the Docket, a stacked sheet of
+  the dated rows behind every figure. Five records everywhere before a percent (credits
+  too — under five the claims are listed); on time is the house's local midnight, and an
+  order past it not landed counts late; English words in the house's own formats.
+  Too few, not collected and could-not-read are sentences with their counts, never a zero.
+  Tone is a minor line in no figure. **No alert is built** — a labelled set and a shadow
+  run come first. Files: `pages/providers/next/scorecard/*`,
+  `apps/api-gateway/src/providers/scorecard/*`
 - Export; contextual insights rail
 - 🚧 No link to `/vendor-prices` price comparison — that page is unreachable from here (§9)
 - **Vendor terms on the vendor's row** (redesign only, TwinSheet §Terms): the five terms
@@ -398,6 +411,10 @@ Sidebar item (`components/layout/Sidebar.tsx:87`). `/distributors` redirects her
   above is also called from the vendor sheet — `pages/providers/next/useVendorBranches.ts`
   → `BranchesSection.tsx`, mounted in `TwinSheet.tsx`. Legacy `Providers.tsx` /
   `EditProviderModal.tsx` are no longer its only callers. No map (item 52)
+- Scorecard (redesign only, ADR 0207): `GET /vendor-scorecard?window=30|90|365` (the
+  Roll Call and each card's fact), `GET /vendor-scorecard/:id` (the ledger card),
+  `GET /vendor-scorecard/:id/docket?measure=` (the rows) — house from the token, a
+  foreign vendor is 404 (`apps/api-gateway/src/providers/scorecard/vendor-scorecard.controller.ts`)
 - Intelligence panel: `GET /providers/:id/promotions`, `/providers/promotions/active`,
   `/expiring`, `/savings` + knowledge/conversation-memory
   (`services/api/provider-intelligence.ts`; ENDPOINTS.md:450-459)
@@ -517,7 +534,7 @@ links to the comparison surface built for it.
 | **Catalogue add is real**, including the 409 dedupe that S13 Core claims. | `vendor-catalogue.controller.ts`; client `services/api/vendors.ts:121,131` |
 | **Discover tab is real** — `GET /distributors/search` runs the `search_distributors` RPC over `vendor_catalogue` joined to `vendor_locations`, `vendor_service_territories` and `vendor_portfolio_facets`. | `distributor-discovery.controller.ts:34-89`; `distributor-discovery.service.ts:84,177-204` |
 | **The intelligence panels depend on one Python agent.** `provider_knowledge`, `provider_sentiment_history`, `conversation_embeddings` and `provider_conversation_sessions` are each written by exactly one file — `provider_conversation_agent.py` — reachable only via the orchestrator's registry and a Level-4 feature flag. If that agent is not running for a restaurant, all four panels render empty and the page gives no indication why. | writers `agents/provider_conversation_agent.py:1453,2216,1160,754`; registry `core/orchestrator.py:181,297`; flag `config/settings.py:193`; readers `provider-intelligence.service.ts:18,251,304,355` |
-| **The Promotions panel now has a live producer** — the D3 lane extracts deterministically from provider-matched inbound mail into `provider_promotions`, on every message, plus a 09:00 digest cron. (Supersedes the "dormant" note carried in memory and in [[promotions]] §9.) | `common/orchestrator/promotion-extractor.service.ts:37-60,179`; wiring `rabbitmq-bridge.service.ts:789-799` |
+| **The Promotions panel now has a live producer** — the D3 lane extracts deterministically from provider-matched inbound mail into `provider_promotions`, on every message, plus a 09:00 digest cron. (Supersedes the "dormant" note carried in memory and in [[06-pages/promotions|promotions]] §9.) | `common/orchestrator/promotion-extractor.service.ts:37-60,179`; wiring `rabbitmq-bridge.service.ts:789-799` |
 | **Never links to [[vendor-prices]]** — the price-comparison page built for exactly this job is unreachable from the vendor hub, which TIER-MAP S13 Pro names as a defect. | §9 of this note; [[vendor-prices]] §2 |
 
 ## 11. Data flow

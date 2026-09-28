@@ -11,6 +11,7 @@ import "reflect-metadata";
 import { NotFoundException, UnauthorizedException } from "@nestjs/common";
 import { GUARDS_METADATA } from "@nestjs/common/constants";
 import { CommunicationsController } from "./communications.controller";
+import { RelayEmailController } from "./relay/relay-email.controller";
 import { NonProductionGuard } from "./guards/non-production.guard";
 import { GmailPushAuthService } from "./gmail-push-auth.service";
 import { IS_PUBLIC_KEY } from "../auth/decorators/public.decorator";
@@ -115,11 +116,12 @@ describe("CommunicationsController test routes (ADR 0019 D2)", () => {
     const stillPublic = Object.getOwnPropertyNames(
       CommunicationsController.prototype,
     ).filter((n) => n !== "constructor" && isPublic(n as any) === true);
-    // Both exceptions are authenticated — just not by a user JWT:
+    // The one exception is authenticated — just not by a user JWT:
     //   handleGmailWebhook  Google-signed Pub/Sub OIDC token (D3)
-    //   sendEmail           X-Admin-Key service key (ADR 0099) — its caller is
-    //                       the Python orchestrator, which has no session
-    expect(stillPublic.sort()).toEqual(["handleGmailWebhook", "sendEmail"]);
+    // `sendEmail` was the second (X-Admin-Key, ADR 0099) until 2026-09-17, when
+    // POST /communications/email moved to RelayEmailController with two locked
+    // doors (ADR 0149 #19). It is asserted on that controller below.
+    expect(stillPublic.sort()).toEqual(["handleGmailWebhook"]);
   });
 
   it("every @Public() route names the thing that authenticates it instead", () => {
@@ -128,9 +130,16 @@ describe("CommunicationsController test routes (ADR 0019 D2)", () => {
     // property: @Public() may mean "not a JWT", never "not authenticated".
     // handleGmailWebhook verifies its OIDC token inside the handler (D3), so
     // it is asserted by the D3 block below rather than by a guard here.
-    expect(routeGuards("sendEmail" as any).map((g: any) => g?.name)).toContain(
-      "ServiceKeyGuard",
-    );
+    // POST /communications/email is decided by RelayDoorGuard — the service key
+    // or the full JWT check — proved over HTTP in relay-email.doors.spec.ts.
+    expect(
+      (
+        Reflect.getMetadata(
+          GUARDS_METADATA,
+          (RelayEmailController.prototype as any).sendEmail,
+        ) || []
+      ).map((g: any) => g?.name),
+    ).toContain("RelayDoorGuard");
   });
 });
 

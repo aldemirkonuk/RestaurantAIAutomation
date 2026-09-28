@@ -27,6 +27,50 @@ from config.settings import get_settings
 
 logger = setup_logger("email_composer_service")
 
+# class-validator's sentence for a body field the gateway's DTO does not
+# declare, under the global `ValidationPipe({ whitelist: true,
+# forbidNonWhitelisted: true })` (apps/api-gateway/src/main.ts). Pinned on the
+# gateway side by `older-gateway-whitelist-shape.spec.ts`.
+_WHITELIST_REFUSAL = re.compile(r"^property (\S+) should not exist$")
+
+
+def _fields_an_older_gateway_refused(
+    status: int, message: Any, sent_keys: Any
+) -> Optional[List[str]]:
+    """The body fields a gateway OLDER than this agent refused, or None.
+
+    PR #429 audit (F2): the gateway and this agent are two Railway services
+    with no deploy-order guarantee. While a new agent (sending `restaurantId`,
+    `providerId`, `conversationId`, `orderId`) talks to a gateway binary whose
+    `SendEmailDto` predates those fields, the global ValidationPipe answers 400
+    before any guard-passed handler runs — and ADR 0099 makes a relay 400
+    FINAL, so every approved draft in that window would close as
+    RELAY_REFUSED for a reason that is neither the vendor's nor the draft's.
+
+    Recognised STRUCTURALLY, never by a phrase anywhere in free text: a 400
+    whose `message` is a LIST (ValidationPipe's shape; every refusal the
+    relay's own doors write is a single string) in which EVERY entry is the
+    whitelist sentence naming a key THIS agent put in the body. A list mixing
+    in any other validation failure, a string `message`, or a name this agent
+    did not send is not this case and stays the relay's own final 400.
+
+    [FOUNDER-APPROVED 2026-09-27, merge-train item 68 / OD-174 (a), verbatim
+    "Keep the retry (Recommended)": this release-for-retry is a named,
+    approved exception to ADR 0099's "400/403/422 relay refusal is FINAL"
+    rule, not an agent's reading of it. The rejected alternative was to close
+    this 400 too and rely on the gateway-before-agent deploy order alone.]
+    """
+    if status != 400 or not isinstance(message, list) or not message:
+        return None
+    sent = set(sent_keys)
+    names: List[str] = []
+    for entry in message:
+        match = _WHITELIST_REFUSAL.match(entry) if isinstance(entry, str) else None
+        if match is None or match.group(1) not in sent:
+            return None
+        names.append(match.group(1))
+    return names
+
 
 def _format_wine_name_with_volume(wine_name: str, bottle_size_ml: Optional[Any]) -> str:
     """Append bottle format to wine name: 'Barolo 2019' -> 'Barolo 2019 (750ml)', 1500 -> '... (1.5L)'."""
@@ -67,6 +111,14 @@ class EmailPayload:
     in_reply_to: Optional[str] = None
     references: Optional[str] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
+    # ADR 0149 #19 (2026-09-16, "Two doors, both locked"). What the send is FOR.
+    # The gateway's service door refuses a send that does not name the house,
+    # the vendor, and the conversation or order, and checks every recipient
+    # against that vendor's addresses in the house's book.
+    restaurant_id: Optional[str] = None
+    provider_id: Optional[str] = None
+    conversation_id: Optional[str] = None
+    order_id: Optional[str] = None
 
 
 @dataclass
@@ -379,12 +431,52 @@ class EmailComposerService:
                 ),
             }
 
+        # ADR 0149 #19. The gateway refuses (403) a service send that does not
+        # say which house, vendor and conversation or order it is for. Refused
+        # HERE first, with no transport attempted. Worded, like the unset-key
+        # branch above, to land in `_is_definite_send_refusal`'s EXISTING
+        # allow-list ("no email delivery method available") rather than adding
+        # a pattern to it: nothing left the process, so this proves
+        # non-delivery.
+        missing = [
+            name
+            for name, value in (
+                ("restaurant_id", payload.restaurant_id),
+                ("provider_id", payload.provider_id),
+            )
+            if not value
+        ]
+        if not payload.conversation_id and not payload.order_id:
+            missing.append("conversation_id or order_id")
+        if missing:
+            logger.error(
+                "Vendor email names no %s — refusing to send; the gateway would "
+                "refuse it too.",
+                ", ".join(missing),
+            )
+            return {
+                "success": False,
+                "error": (
+                    "no email delivery method available for a vendor email that "
+                    "does not name "
+                    + ", ".join(missing)
+                    + ": the gateway sends only for a named house, vendor, and "
+                    "conversation or order"
+                ),
+            }
+
         request_body = {
             "to": payload.to,
             "subject": payload.subject,
             "bodyHtml": payload.body_html,
             "bodyText": payload.body_text,
+            "restaurantId": payload.restaurant_id,
+            "providerId": payload.provider_id,
         }
+        if payload.conversation_id:
+            request_body["conversationId"] = payload.conversation_id
+        if payload.order_id:
+            request_body["orderId"] = payload.order_id
 
         if payload.reply_to:
             request_body["replyTo"] = payload.reply_to
@@ -418,13 +510,49 @@ class EmailComposerService:
                         }
                     else:
                         logger.error(f"Gateway send failed: {result}")
+                        older = _fields_an_older_gateway_refused(
+                            resp.status, result.get("message"), request_body.keys()
+                        )
+                        if older:
+                            # Nothing was sent: the pipe refused the body
+                            # before the handler ran. Worded, like the
+                            # unset-key branch above, to land in
+                            # `_is_definite_send_refusal`'s EXISTING allow-list
+                            # ("no email delivery method available") — released
+                            # for retry, which succeeds once the newer gateway
+                            # is live — and never in the "gateway refused the
+                            # send: HTTP 400" shape `_relay_final_refusal_code`
+                            # closes for good.
+                            return {
+                                "success": False,
+                                "error": (
+                                    "no email delivery method available yet: the "
+                                    "gateway that answered is older than this "
+                                    "agent and does not accept "
+                                    + ", ".join(older)
+                                    + " (its request validator refused the body "
+                                    "before any send), so nothing was sent"
+                                ),
+                                "gateway_older_than_agent": True,
+                            }
                         # ADR 0099: a Nest error body carries `statusCode` and
                         # `message`, never `error`, so the old
                         # `result.get("error", "Unknown error")` erased the
                         # status on every refusal. Name it.
+                        #
+                        # ADR 0149 #19 correction: a Nest HttpException body
+                        # carries BOTH — `error` is the bare status phrase
+                        # ("Forbidden") and `message` is the gateway's sentence
+                        # (which house, which address). So a refusal reads
+                        # `message` first; a 200 provider failure has only
+                        # `error`, and still reads it.
+                        message = result.get("message")
+                        if isinstance(message, list):
+                            message = "; ".join(str(m) for m in message)
                         detail = (
-                            result.get("error")
-                            or result.get("message")
+                            (message if resp.status != 200 else None)
+                            or result.get("error")
+                            or message
                             or "no detail returned"
                         )
                         return {
@@ -715,7 +843,11 @@ class EmailComposerService:
         escaped BEFORE the <br/> is written, so the only tags in the output are
         the ones this method writes. The body is LLM-drafted and goes to the
         vendor under the restaurant's name, so a draft saying "<a href=...>"
-        must arrive as visible text, not as a live link.
+        must arrive as visible text, not as a live link. The order reference is
+        database text and is escaped the same way. (The relay lane found and
+        closed the same hole on 2026-09-17, ADR 0149 #19 review, with
+        ``quote=False``; main's ``quote=True`` is kept as the stricter of the
+        two when the lanes met on 2026-09-21.)
         """
         paragraphs = (body_text or "").split("\n\n")
         html_paras = "".join(

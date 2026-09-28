@@ -16,7 +16,7 @@ and asked for the build. Nothing here invents a product choice past that word.
 
 `#414` (`feat/finish-arrival`) and `#454` stay unmerged. This record does **not**
 flip `mudavym_design_arrival`. Gate-owned `#415` / `#430` / `#434` stay with
-their owner.
+their owner. **[CORRECTED 2026-09-25, [web-rebuild census](../07-reference/deploy/WEB-REBUILD-CENSUS-2026-09-25.md) §1c.1: false when this record landed. `#415` (`cc73f9f66`, 23:53Z), `#430` (`e2abd7844`, 00:43Z), `#434` (`92ea9cecc`, 01:29Z), `#454` (`162f25ade`, 01:42Z) and `#414` (`8ec925aa7`, 01:59Z) had all merged before `#455` (`ddc5e094b`, 02:33Z, 2026-09-22/23 UTC), which carried this paragraph. What held: `mudavym_design_arrival` is OFF for 14 of 14 houses (production read, 2026-09-25T21:11Z), so `/get-started` renders this record's flow from the `legacy` slot of `App.tsx:215-219` and `#414`'s book sits dormant in `next`. "Do not merge it" in Consequences below is moot for the same reason.]**
 
 OD-123 and OD-124 already mean other forks on `main` (Sheet scrim; privacy
 legal facts). The squad's draft mapping of F1–F7 onto those ids is **wrong**
@@ -73,8 +73,65 @@ as the fallback the verdict named: unmatched / uncategorised / unknown → penci
   "Still open" as the get-started decision. Sketch 123 draws the lock; 121/122
   stay as research records.
 
+**[ITEM 62, 2026-09-27 — row 8 ("TZ ... derived, shown, never asked as
+blanks") tightened on both SIGN-UP routes. Founder verbatim, item 62:
+*"Browser zone, else none (Recommended)"*; rejected "Save nothing" (would
+discard a good browser answer) and "Keep New York default" (the fault ADR
+0116 had already removed from `restaurants.timezone` itself — the column has
+carried no default and stayed nullable since
+`20260903170000_a_default_is_not_an_answer.sql`, so no migration was needed
+here). Until this change, "derived" was true only in the sense that a value
+always arrived — `AuthService.registerRestaurant` wrote `dto.timezone ||
+"America/New_York"` for the legacy route this ADR's Consequences names, an
+application-level re-invention of the exact fabricated-default fault the
+column-level fix had removed one layer down. `createFirstHouse` (the route
+this ADR actually put `/get-started` on) had no such fallback but also no
+validation, so a malformed client-sent string would have been stored as a
+house's clock, unread by `Intl` anywhere in the write path.**
+**Both sign-up routes now call one function, `resolveSignUpTimezone`
+(`apps/api-gateway/src/auth/sign-up-timezone.ts`): `Intl.DateTimeFormat`'s
+own resolved name for the caller's zone when `Intl` accepts it and that name
+is not a bare UTC offset, `null` otherwise — never a substituted default,
+never the caller's raw spelling (`"america/new_york"` is stored as
+`"America/New_York"`; `"+05:00"`, which Node 22.22.2's `Intl` accepts, is
+stored as `null`; measured 2026-09-27, pinned in `register-timezone.spec.ts`).
+A THIRD route also creates a house and is NOT covered here:
+`OrganizationsService.createLocation` (`POST /organizations/locations`, used
+by `AddLocationDialog.tsx` to add a location to an existing organisation)
+writes `dto.timezone ?? null` with no `Intl` check, and the dialog calls the
+bare `Intl` expression this bracket replaces below. It never writes New York,
+so it is outside item 62's words, but it is the same class of gap — filed in
+`v3.0-TECH-DEBT.md` (2026-09-27) with the open CLAIMS row
+`TD-2026-09-27-CREATE-LOCATION-TIMEZONE-UNVALIDATED`.**
+**What a `null` zone means downstream is not uniform yet, and this bracket
+does not change it. At `origin/main` 29ba4e820 the low-stock digest runs
+EVERY house on a hard-coded New York clock
+(`notifications/low-stock-alerts.service.ts:146,172`) whatever
+`restaurants.timezone` holds, so storing `null` instead of
+`"America/New_York"` changes nothing about the digest while that stands. The
+digest's move to the house's own zone with a UTC fallback is PR #488 (item
+61, OPEN when this was written); the on-page "UTC — this house has no time
+zone set yet" line is a further follow-up that #488's page note assigns to
+#486's lane. So the honest UTC fallback for a sign-up with no zone depends on
+#488 landing — this change does not supply it; merging this first changes
+nothing in the digest, because the digest ignores the column until then.
+Other readers already carry `null` themselves (`scheduled-tenants.service.ts`
+`TIMEZONE_NOT_SET`; `calendar-reminders.service.ts` falls back to UTC and
+logs it; `vendor-terms.service.ts:716-717` uses a display zone flagged
+`isColumnDefault`).**
+**The web side (`Register.tsx`, `GetStarted.tsx`, `AuthContext.tsx`)
+computed the "derived" zone with a bare
+`Intl.DateTimeFormat().resolvedOptions().timeZone` — including once at
+`GetStarted.tsx`'s render, feeding the visible "Timezone · {timezone}" line
+row 8 promises is "shown." A runtime whose `Intl` cannot resolve a zone would
+have thrown there and taken the screen down before the person ever reached
+"This is us," rather than proceeding with no zone recorded. All three call
+sites now go through `lib/browserTimezone.ts`'s `getBrowserTimezone()`, which
+wraps the same call in a `try`/`catch` and omits the field on failure.]**
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
 |---|---|---|
 | 2026-09-22 | Aldemir (founder) | All 17 Opus recs = A; build |
+| 2026-09-25 | Records lane L1 (Opus 5.5), web-rebuild census | Bracketed in place — the Context paragraph's "stay unmerged" was false when it landed (merge history, census §1c.1) |

@@ -58,7 +58,7 @@
 }
 .tm-sub {
   font-size: 12px;
-  color: var(--ink-3);
+  color: var(--ink-4);
   margin: 4px 0 0;
 }
 .tm-headline {
@@ -90,7 +90,7 @@
 }
 .tm-ctl:disabled {
   border-color: var(--paper-2);
-  color: var(--ink-3);
+  color: var(--ink-4);
   cursor: not-allowed;
 }
 .tm-ctl--quiet {
@@ -132,7 +132,7 @@
   font-weight: 600;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--ink-3);
+  color: var(--ink-4);
   margin: 0 0 10px;
 }
 .tm-note {
@@ -144,7 +144,7 @@
 .tm-quiet {
   font-size: 12.5px;
   line-height: 1.5;
-  color: var(--ink-3);
+  color: var(--ink-4);
   margin: 0;
 }
 .tm-fig {
@@ -207,7 +207,7 @@
   font-size: 9.5px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 .tm-dayhead__n {
   display: block;
@@ -217,7 +217,7 @@
 .tm-dayhead__s {
   display: block;
   font-size: 10.5px;
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 .tm-dayhead__s[data-short='true'] {
   color: var(--ink-2);
@@ -277,12 +277,12 @@
 }
 .tm-membercell__name[data-known='false'] {
   font-weight: 500;
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 .tm-membercell__sub {
   display: block;
   font-size: 9.5px;
-  color: var(--ink-3);
+  color: var(--ink-4);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -292,7 +292,7 @@
   font-family: var(--tm-mono);
   font-size: 10px;
   font-variant-numeric: tabular-nums;
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 .tm-membercell__h[data-over='true'] {
   color: var(--ink-1);
@@ -333,7 +333,7 @@
 }
 .tm-chip[data-state='callout'] {
   text-decoration: line-through;
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 .tm-chip__t {
   display: block;
@@ -347,7 +347,7 @@
 .tm-chip__m {
   display: block;
   font-size: 8.5px;
-  color: var(--ink-3);
+  color: var(--ink-4);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -393,7 +393,7 @@
   font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 .tm-fact__v {
   display: block;
@@ -418,7 +418,7 @@
   font-weight: 600;
   letter-spacing: 0.13em;
   text-transform: uppercase;
-  color: var(--ink-3);
+  color: var(--ink-4);
   margin: 0 0 6px;
 }
 .tm-kv {
@@ -467,7 +467,7 @@
 .tm-rrow__line {
   display: block;
   font-size: 10.5px;
-  color: var(--ink-3);
+  color: var(--ink-4);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -511,7 +511,7 @@
   font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--ink-3);
+  color: var(--ink-4);
   margin-bottom: 3px;
 }
 .tm-input,
@@ -535,7 +535,7 @@
 .tm-hint {
   font-size: 11px;
   line-height: 1.45;
-  color: var(--ink-3);
+  color: var(--ink-4);
   margin: 3px 0 0;
 }
 
@@ -591,7 +591,7 @@
   font-size: 9px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 .tm-day__n {
   display: block;

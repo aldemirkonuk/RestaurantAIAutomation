@@ -80,10 +80,26 @@ ALLOWLIST: dict[str, str] = {
     # asserts the page prints `TRY` and NOT `$412.50` — which is the assertion
     # this literal exists to make possible (2026-09-06, p4bp).
     "apps/web/src/pages/receipts/next/ReceiptsNext.test.tsx": "a fixture that states the document's own currency so the assertion can check the page prints the stated one and never a default",
+    # Same shape again: `fmtPrice`/`fmtEstimate` (promotions-format.ts) never
+    # default a currency — a null one renders "currency not recorded"
+    # (asserted directly by this file's own test), so every fixture LedgerLine/
+    # WineWorth states the currency it is testing rather than letting one be
+    # assumed (2026-09-18).
+    "apps/web/src/pages/promotions/next/promotions-format.test.ts": "fixtures state each line's own currency (USD/EUR) so the null-currency and mismatched-currency assertions have a premise; the formatter itself takes currency from data, never a literal",
+    "apps/web/src/pages/promotions/next/PromotionsNext.test.tsx": "same fixtures one layer up, for the page-level render assertions (the −4.6% figure, the code chip) that need a real currency to format against",
     # The table itself: naming USD is what it is for.
     "apps/web/src/lib/currency.ts": "the ISO 4217 table and the formatter that refuses to assume one",
     "apps/web/src/lib/countries.ts": "the one country table: `currency: 'USD'` there is Ecuador, El Salvador and the United States, which is the fact the table exists to hold",
     "apps/web/src/lib/currency.test.ts": "asserts the refusal, so it must name the literals",
+    # Test-only (imported by LedgerCard/RollCall tests, never by the app): the
+    # gateway's scorecard answer, whose claim money STATES the currency of the
+    # claim's order. The views print what the answer states and a bare amount
+    # when it states none (sc-format.ts `fmtMoney`) — ADR 0207, 2026-09-21.
+    "apps/web/src/pages/providers/next/scorecard/scorecard-fixtures.ts": "a test fixture of the gateway's answer, whose money states its order's currency so the views can be asserted to print the stated one",
+    # Test-only: the never-arrived refund box (ADR 0207 question 20) must print
+    # the currency the ORDER states, and "currency not recorded" when it states
+    # none; asserting both needs one stated currency literal. 2026-09-25.
+    "apps/web/src/components/orders/__tests__/SealedRejectDie.test.tsx": "asserts the refund box prints the order's own stated currency, and 'currency not recorded' for a null one",
     # The symbol map is keyed BY currency and returns '' for an unknown one.
     "apps/web/src/components/documents/canonical-format.ts": "symbol lookup keyed by the document's own currency; unknown renders unsymboled",
 }

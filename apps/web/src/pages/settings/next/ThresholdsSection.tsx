@@ -89,7 +89,7 @@ function findRow(reg: ThresholdsRegister, rule: ApprovalRule): ThresholdRow | un
 function Retrospective({ reg, rule }: { reg: ThresholdsRegister; rule: ApprovalRule }) {
   if (!reg.retrospective.readable) {
     return (
-      <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-3)', margin: '5px 0 0' }}>
+      <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-4)', margin: '5px 0 0' }}>
         {EM} the order ledger could not be read, so this cannot say how often the
         rule would have fired — {reg.retrospective.reason}.
       </p>
@@ -98,7 +98,7 @@ function Retrospective({ reg, rule }: { reg: ThresholdsRegister; rule: ApprovalR
   const count = reg.retrospective.counts.find((c) => c.rule === rule);
   if (!count || count.tested === 0) {
     return (
-      <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-3)', margin: '5px 0 0' }}>
+      <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-4)', margin: '5px 0 0' }}>
         {EM} no order in the last {reg.retrospective.windowDays} days could be tested
         against this rule, so there is nothing to count.
       </p>
@@ -155,7 +155,7 @@ function RuleEditor({
           <span
             style={{
               display: 'block', fontFamily: MONO, fontSize: 9, fontWeight: 600,
-              letterSpacing: '0.11em', textTransform: 'uppercase', color: 'var(--ink-3)', marginBottom: 3,
+              letterSpacing: '0.11em', textTransform: 'uppercase', color: 'var(--ink-4)', marginBottom: 3,
             }}
           >
             {spec.hint}
@@ -197,12 +197,12 @@ function RuleEditor({
         {busy ? 'Recording…' : row ? 'Change it' : 'Set it'}
       </Action>
       {numberMissing && canManage && (
-        <span style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-3)' }}>
+        <span style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-4)' }}>
           A rule with no number cannot fire, so it cannot be set.
         </span>
       )}
       {!canManage && (
-        <span style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-3)', maxWidth: 340 }} role="status">
+        <span style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-4)', maxWidth: 340 }} role="status">
           Only an owner or a manager of this restaurant may set a threshold. The
           rule and the number are shown because a limit you cannot see is one you
           cannot plan around.
@@ -334,7 +334,7 @@ export function ThresholdsSection({ data }: { data: SettingsNextData }) {
               <span
                 style={{
                   fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: '0.1em',
-                  textTransform: 'uppercase', color: 'var(--ink-3)', border: '1px dashed var(--paper-2)',
+                  textTransform: 'uppercase', color: 'var(--ink-4)', border: '1px dashed var(--paper-2)',
                   borderRadius: 999, padding: '3px 9px', whiteSpace: 'nowrap',
                 }}
               >
@@ -342,7 +342,7 @@ export function ThresholdsSection({ data }: { data: SettingsNextData }) {
               </span>
             }
           >
-            <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-3)', margin: '5px 0 0' }}>
+            <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-4)', margin: '5px 0 0' }}>
               No switch: the rule set is closed by a database constraint
               (<code style={{ fontFamily: MONO }}>restaurant_approval_thresholds_rule_check</code>),
               and a fourth rule would need a row per vendor and a reader that does
@@ -356,7 +356,7 @@ export function ThresholdsSection({ data }: { data: SettingsNextData }) {
             what="Nothing was recorded; the rule stands as it was."
           />
 
-          <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.55, color: 'var(--ink-3)', margin: '14px 0 0', maxWidth: 720 }}>
+          <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.55, color: 'var(--ink-4)', margin: '14px 0 0', maxWidth: 720 }}>
             {reg.retrospective.caveat}
           </p>
 
