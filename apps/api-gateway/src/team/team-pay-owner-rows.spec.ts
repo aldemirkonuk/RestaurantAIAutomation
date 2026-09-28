@@ -798,7 +798,7 @@ describe("item 80 — an owner demoted to manager in place: owner-period pay sta
     expect(
       db.tables.user_restaurant_access.find(
         (a: any) => a.user_id === OWNER && a.restaurant_id === RID,
-      ).role,
+      )?.role,
     ).toBe("manager");
     return db;
   }
@@ -901,7 +901,7 @@ describe("item 80 — an owner demoted to manager in place: owner-period pay sta
     const db = await afterDemotion();
     const acc = db.tables.user_restaurant_access.find(
       (a: any) => a.user_id === MANAGER && a.restaurant_id === RID,
-    );
+    )!;
     acc.team_pay_access = false;
     const rows = await teamOf(db).listMembers(MANAGER, RID);
     for (const r of rows) expect("hourly_wage" in r).toBe(false);
