@@ -41,6 +41,11 @@ session that continued the desktop run (session_01GYea8ghmHSxrpWCjmRjXoq).
 - **Founder item 86 (2026-09-28, verbatim):** *"remove ADR050, run opus as much as you
   need, while putting emphasis on sonnet when the tasks are fast, and direct, and other
   things that sonnet are highly capable of doing maximizng efficiency"* → ADR 0231, PR #490.
+- **Founder item 87 (2026-09-28, `AskUserQuestion`, verbatim label):** *"Show card, hand to
+  manager (Recommended)"* — on `/recommendations`, staff keep the Promotions-bound cards
+  (dead stock, puzzle activation, pairing promotion, basket), the card says "a manager's, in
+  Promotions" and has no Act button. Rejected: "Hide these cards from staff", "Leave it as it
+  is". Filed as **OD-176** and built in #493's fix round (workflow `wf_8cd0cd2a-574`).
 - **Founder, 2026-09-28:** asked for the merge commands below — **the founder merges**;
   a session does not self-merge (the auto-mode classifier refused a session follow-up as
   "self-approval / merge without review" right after #487 merged).
@@ -108,8 +113,9 @@ migrations `20261117100000`–`20261117100900`.
 | ADR 0231 retires 0050 (item 86) | `docs/model-dispatch-adr-0231` | **#490** `cfe9fc94a` | built; verify pending. Touches gate-owned `decisions/0050-*.md` + `decisions/README.md`, so the audit skill records BLOCK-for-human-review, never an automated PASS | founder reads and merges by hand (4b) |
 | Cutover manifest + trial delete (L17) | `feat/cutover-manifest-trial` | draft, not yet opened | building | **never as one merge**: founder approves group by group (ADR 0149) |
 | Security residuals (L3/L14) | `fix/security-residuals-2026-09-28` | **#491** | built 15:1xZ; verify pending | after audit PASS |
-| Records refresh (census §18, STATE, LIVE-CHECKLIST) | `docs/records-2026-09-28` | not yet | queued | after audit PASS; last among the docs PRs |
-| Promotions room `minRole: 'manager'` (TD-2026-09-27) | `fix/promotions-room-manager-only` | not yet | queued (built on #487's head; #487 has merged, so merge `origin/main` in first) | after audit PASS |
+| Records refresh (census §18, STATE, LIVE-CHECKLIST) | `docs/records-2026-09-28` | **#492** | audit plan found 4 false or unbracketed facts; fixed at `15e5b94bd`; re-audit when CI is green | after audit PASS; last among the docs PRs |
+| Websocket role gate (found by #493's audit: the promotions digest — vendor + discount — is broadcast to every member's socket, staff included) | `fix/websocket-role-gate` | not yet | inventory → adversarial check → build → verify (workflow `wf_3e70e15e-8b8`); reserved ADR 0234, OD-180, migration `20261117101000` | after audit PASS |
+| Promotions room `minRole: 'manager'` (TD-2026-09-27) | `fix/promotions-room-manager-only` | **#493** | ADR 0090 audit **BLOCK** at `111c669f0` (PR comment 5874869182): its inventory claim missed the websocket leak, and its fork was not in the register. Fix round builds item 87 / OD-176 and narrows the claim | after a fresh audit PASS |
 
 **What a resumed session does, in order.**
 1. Read this section, `git fetch origin`, and re-read every PR above
