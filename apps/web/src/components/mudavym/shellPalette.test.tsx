@@ -146,6 +146,15 @@ describe('roomPaletteRows — the one rooms table', () => {
     expect(owner).toContain('/vendor-prices');
     expect(owner).toContain('/admin');
   });
+
+  // TD-2026-09-27-PROMOTIONS-ROOM-SHOWN-TO-STAFF: the palette reads the same
+  // rooms table as the rail, so it inherits the fix — proved here directly.
+  it('staff get no Promotions either (GET /promotions is owner/manager only); managers do', () => {
+    const staff = roomPaletteRows('staff', { connections: true }).map((r) => r.href);
+    expect(staff).not.toContain('/promotions');
+    const manager = roomPaletteRows('manager', { connections: true }).map((r) => r.href);
+    expect(manager).toContain('/promotions');
+  });
 });
 
 function mountPalette(value: ShellPaletteValue | null) {
