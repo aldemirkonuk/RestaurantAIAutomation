@@ -121,7 +121,13 @@ const OTHER_NAMES: ReadonlyArray<[string, string]> = [
 /** One incoming document (`/documents/:id`, ADR 0104 D12) — a record, not a room. */
 const DOCUMENT_RECORD = /^\/documents\/[^/]+/;
 
-function roleAllows(role: ShellRole, min: Room['minRole']): boolean {
+/**
+ * Whether `role` clears a room's `minRole`. A null role (not yet read, or not
+ * a house role) clears none, so it fails closed. Exported for pages that link
+ * INTO a room: a Recommendations hand-off reads this, not its own copy of the
+ * gate (founder item 87, OD-176; `rec-format.ts` `heldBy`).
+ */
+export function roleAllows(role: ShellRole, min: Room['minRole']): boolean {
   if (!min) return true;
   if (min === 'owner') return role === 'owner';
   return role === 'owner' || role === 'manager';

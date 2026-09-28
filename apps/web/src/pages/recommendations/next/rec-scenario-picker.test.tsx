@@ -167,6 +167,7 @@ function renderSheet(
       siblings={[]}
       canActRuleWide
       canSnoozeForEveryone
+      role="manager"
       exclusions={undefined}
       openDismiss={false}
       onDismissOpened={vi.fn()}

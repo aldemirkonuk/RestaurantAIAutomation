@@ -32,6 +32,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { normalRole } from '@/lib/mudavym/shellRoleFlags';
+import type { ShellRole } from '@/lib/mudavym/rooms';
 import { apiClient } from '@/services/api/client';
 import { decodeBook, type GoalScenarioBook } from '@/hooks/useGoalScenarios';
 import { toGoalBook, type GoalBookVM } from './rec-masthead';
@@ -425,6 +427,15 @@ export interface RecommendationsData {
    * 0191 round 3). Anyone else's snooze hides the entry from them alone.
    */
   canSnoozeForEveryone: boolean;
+  /**
+   * This person's role in this house, read exactly as the shell reads it
+   * (`shellRoleFlags.ts` `normalRole`: the branch role first, the account
+   * role while it resolves; anything but owner, manager or staff is null).
+   * The card reads whose hand the work is in from it at render time
+   * (`rec-format.ts` `heldBy`, founder item 87, OD-176), so a role that
+   * resolves after the book loaded still counts.
+   */
+  role: ShellRole;
   /** Standing entries withheld because this person snoozed them for themselves. */
   hiddenForYou: number | null;
   /**
@@ -462,6 +473,7 @@ export function useRecommendationsNextData(): RecommendationsData {
   const rid = activeRestaurantId ?? null;
   const canActRuleWide = mayActRuleWide(activeRole ?? user?.role ?? null);
   const canSnoozeForEveryone = maySnoozeForEveryone(activeRole ?? user?.role ?? null);
+  const role = normalRole(activeRole ?? user?.role ?? null);
 
   const [leaf, setLeaf] = useState<Leaf>('standing');
   const [phase, setPhase] = useState<Phase>('loading');
@@ -1235,6 +1247,7 @@ export function useRecommendationsNextData(): RecommendationsData {
     bulk,
     canActRuleWide,
     canSnoozeForEveryone,
+    role,
     hiddenForYou,
     personalSnoozesReadable,
     personalProblem,
