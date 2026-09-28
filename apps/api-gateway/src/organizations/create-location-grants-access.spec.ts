@@ -195,3 +195,40 @@ describe("OrganizationsService#createLocation — creator access", () => {
     expect(calls.restaurantDeletes).toEqual([{ col: "id", val: REST_ID }]);
   });
 });
+
+/**
+ * The new house's clock is the zone `Intl` vouches for, or nothing
+ * (founder item 62, "Browser zone, else none"; TD-2026-09-27-CREATE-LOCATION-
+ * TIMEZONE-UNVALIDATED). Until 2026-09-28 this route wrote
+ * `dto.timezone ?? null`, so any string the client sent became the house's
+ * clock — an offset or a wrong-case name that Python's `zoneinfo` cannot read.
+ */
+describe("OrganizationsService#createLocation — timezone", () => {
+  const storedZone = async (timezone?: string) => {
+    const { svc, calls } = makeService();
+    await svc.createLocation(USER_ID, { ...DTO, timezone });
+    expect(calls.restaurantInserts).toHaveLength(1);
+    return calls.restaurantInserts[0].timezone;
+  };
+
+  it("stores a real IANA zone exactly", async () => {
+    expect(await storedZone("Europe/Istanbul")).toBe("Europe/Istanbul");
+  });
+
+  it("stores Intl's own name for a zone spelled another way", async () => {
+    expect(await storedZone("america/new_york")).toBe("America/New_York");
+  });
+
+  it.each([
+    ["an unknown name", "Mars/Olympus"],
+    ["a bare UTC offset", "+05:00"],
+    ["free text", "not a zone; drop table"],
+    ["an empty string", ""],
+  ])("stores nothing for %s", async (_label, zone) => {
+    expect(await storedZone(zone)).toBeNull();
+  });
+
+  it("stores nothing when no zone was sent — never a default", async () => {
+    expect(await storedZone(undefined)).toBeNull();
+  });
+});
