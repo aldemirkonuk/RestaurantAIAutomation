@@ -16,11 +16,55 @@ import { DatabaseService } from "../database/database.service";
  * What this person is at this restaurant — the ONE implementation of the
  * two-step lookup (`user_restaurant_access`, then the legacy `users.role`).
  *
+ * `readError` is set whenever a read the answer depends on failed: the access
+ * row (whose absence is what sends us to the legacy home, so an unreadable one
+ * leaves the answer unknown even when the legacy row names a role), or the
+ * legacy row when it was needed.
+ *
  * Module-level so the vendor-send authority (`vendor-send-authority.service.ts`,
  * ADR 0175 D10) can use the same rule without importing this whole service and
  * the module graph behind it. Lifted, not copied: a second copy of "what is
  * this person here" is how a gate and the page that explains it drift apart
- * (`decideApproval`'s header makes the same argument).
+ * (`decideApproval`'s header makes the same argument). [2026-09-27, PR #436
+ * train 8: until this date the lane's `readRestaurantRole` below WAS a second
+ * copy of `OrganizationsService.lookupRestaurantRole`, which main had carried
+ * since 2026-09-17; that method's body now lives here, and every reading of
+ * the rule, strict or not, goes through this one function.]
+ */
+export async function lookupRestaurantRole(
+  supabase: DatabaseService["supabase"],
+  userId: string,
+  restaurantId: string,
+): Promise<{ role: string | null; readError: string | null }> {
+  const { data: access, error: accessError } = await supabase
+    .from("user_restaurant_access")
+    .select("role")
+    .eq("user_id", userId)
+    .eq("restaurant_id", restaurantId)
+    .eq("is_active", true)
+    .maybeSingle();
+
+  const fromAccess = (access as { role?: string } | null)?.role;
+  if (fromAccess) return { role: fromAccess, readError: null };
+
+  const { data: user, error: userError } = await supabase
+    .from("users")
+    .select("role, restaurant_id")
+    .eq("user_id", userId)
+    .maybeSingle();
+  const legacy = user as { role?: string; restaurant_id?: string } | null;
+  const role =
+    legacy?.restaurant_id === restaurantId ? (legacy.role ?? null) : null;
+  const readError = accessError
+    ? `this house's access register could not be read (${accessError.message})`
+    : userError
+      ? `the person's home house could not be read (${userError.message})`
+      : null;
+  return { role, readError };
+}
+
+/**
+ * The same answer, read one of two ways.
  *
  * `strict: false` is the historical behaviour `resolveRestaurantRole` keeps: a
  * read that FAILS returns `null`, the same as a person with no row, and every
@@ -36,35 +80,17 @@ export async function readRestaurantRole(
   restaurantId: string,
   opts: { strict: boolean },
 ): Promise<string | null> {
-  const { data: access, error: accessError } = await supabase
-    .from("user_restaurant_access")
-    .select("role")
-    .eq("user_id", userId)
-    .eq("restaurant_id", restaurantId)
-    .eq("is_active", true)
-    .maybeSingle();
-  if (accessError && opts.strict) {
+  const { role, readError } = await lookupRestaurantRole(
+    supabase,
+    userId,
+    restaurantId,
+  );
+  if (readError && opts.strict) {
     throw new InternalServerErrorException(
-      `This person's role in the house could not be read (${accessError.message}).`,
+      `This person's role in the house could not be read (${readError}).`,
     );
   }
-
-  const fromAccess = (access as { role?: string } | null)?.role;
-  if (fromAccess) return fromAccess;
-
-  const { data: user, error: userError } = await supabase
-    .from("users")
-    .select("role, restaurant_id")
-    .eq("user_id", userId)
-    .maybeSingle();
-  if (userError && opts.strict) {
-    throw new InternalServerErrorException(
-      `This person's role in the house could not be read (${userError.message}).`,
-    );
-  }
-  const legacy = user as { role?: string; restaurant_id?: string } | null;
-  if (legacy?.restaurant_id === restaurantId) return legacy.role ?? null;
-  return null;
+  return role;
 }
 
 /**
@@ -250,50 +276,13 @@ export class OrganizationsService {
     userId: string,
     restaurantId: string,
   ): Promise<string | null> {
-    const { role, readError } = await this.lookupRestaurantRole(
+    const { role, readError } = await lookupRestaurantRole(
+      this.databaseService.supabase,
       userId,
       restaurantId,
     );
     if (readError) throw new RestaurantRoleUnreadableError(readError);
     return role;
-  }
-
-  /**
-   * The two-step lookup itself. `readError` is set whenever a read the answer
-   * depends on failed: the access row (whose absence is what sends us to the
-   * legacy home, so an unreadable one leaves the answer unknown even when the
-   * legacy row names a role), or the legacy row when it was needed.
-   */
-  private async lookupRestaurantRole(
-    userId: string,
-    restaurantId: string,
-  ): Promise<{ role: string | null; readError: string | null }> {
-    const { data: access, error: accessError } =
-      await this.databaseService.supabase
-        .from("user_restaurant_access")
-        .select("role")
-        .eq("user_id", userId)
-        .eq("restaurant_id", restaurantId)
-        .eq("is_active", true)
-        .maybeSingle();
-
-    const fromAccess = (access as { role?: string } | null)?.role;
-    if (fromAccess) return { role: fromAccess, readError: null };
-
-    const { data: user, error: userError } = await this.databaseService.supabase
-      .from("users")
-      .select("role, restaurant_id")
-      .eq("user_id", userId)
-      .maybeSingle();
-    const legacy = user as { role?: string; restaurant_id?: string } | null;
-    const role =
-      legacy?.restaurant_id === restaurantId ? (legacy.role ?? null) : null;
-    const readError = accessError
-      ? `this house's access register could not be read (${accessError.message})`
-      : userError
-        ? `the person's home house could not be read (${userError.message})`
-        : null;
-    return { role, readError };
   }
 
   /**
