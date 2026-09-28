@@ -75,7 +75,12 @@ export interface InventoryItem {
   abcClass?: "A" | "B" | "C";
   deadStock?: boolean;
   daysSinceSale?: number;
-  locations?: Array<{ locationId: string; locationName?: string; qty: number; wac?: number }>;
+  locations?: Array<{
+    locationId: string;
+    locationName?: string;
+    qty: number;
+    wac?: number;
+  }>;
   [key: string]: any;
 }
 
@@ -107,7 +112,10 @@ export interface ProcurementOrder {
    */
   providerName?: string | null;
   quantity?: number;
+  bottlesTotal?: number;
   unitType?: string;
+  priceUom?: string | null;
+  pricePackSize?: number | null;
   /**
    * What has been booked against this order so far. A number; `null` (read,
    * and nothing received); or the key absent.

@@ -3278,25 +3278,20 @@ Shadow stock has been moved to Live Stock.`)
         isOpen={isDraftPanelOpen}
         draftData={draftPanelData}
         managerName={user?.name ?? ''}
-        onApprove={async (modifiedContent, managerNotes, ccEmails) => {
+        onApprove={async (modifiedContent, managerNotes, ccEmails, challenge) => {
           if (!draftPanelData) return
-          try {
-            await approveDraftMutation.mutateAsync({
-              orderId: draftPanelData.orderId,
-              modifiedContent,
-              managerNotes,
-              ccEmails,
-            })
-            setIsDraftPanelOpen(false)
-            setDraftPanelData(null)
-          } catch (err: any) {
-            // 4xx = email delivery explicitly failed — keep modal open for retry
-            // Network/5xx = response lost but email may have sent — close anyway
-            if (!err?.response?.status || err.response.status >= 500) {
-              setIsDraftPanelOpen(false)
-              setDraftPanelData(null)
-            }
-          }
+          // A failure propagates: a missing response may follow delivery. Keep
+          // the draft visible and let the held control report uncertainty; never
+          // label it sent.
+          await approveDraftMutation.mutateAsync({
+            orderId: draftPanelData.orderId,
+            modifiedContent,
+            managerNotes,
+            ccEmails,
+            challenge,
+          })
+          setIsDraftPanelOpen(false)
+          setDraftPanelData(null)
         }}
         onDiscard={async () => {
           if (!draftPanelData) return
@@ -3469,7 +3464,6 @@ Shadow stock has been moved to Live Stock.`)
           setIsDraftPanelOpen(true)
           setIsActiveConvPanelOpen(false)
         }}
-        onApprove={(orderId) => approveDraftMutation.mutate({ orderId })}
         onDiscard={(orderId) => discardDraftMutation.mutate(orderId)}
         isApproving={approveDraftMutation.isPending}
         isDiscarding={discardDraftMutation.isPending}

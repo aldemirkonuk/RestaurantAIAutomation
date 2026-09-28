@@ -30,6 +30,12 @@ links: ["[[PAGE-CONTRACT]]", "[[PAGE_MAP]]", "[[dashboard]]", "[[forgot-password
 - **Set a password** / **Forgot password?** → [[forgot-password]] `/forgot-password?email=…`
 - **Create one now** → [[register]] `/register`
 
+## Active branch and native session integrity — 2026-09-13 (pending release)
+
+Token minting, branch switching and JWT validation now share a current membership/role reader. Explicit inactive membership wins; another house requires its own active membership; unreadable membership refuses; the legacy home-house fallback remains at `staff`, following ADR 0088 T5. Organisation proximity does not mint sibling-house access. A failed web switch retains its previous token/house, and an older overlapping response cannot replace a later selection.
+
+Native saved actions retain actor and restaurant ownership. Only that principal's unlocked session can dispatch them, including after hydration; older unscoped work is held for review. API refresh/retry and late responses cannot cross session generations. Central sign-out clears private query persistence and local feed state immediately, including expiry-driven sign-outs, while leaving owned pending work saved for the original principal.
+
 ## 1. Purpose
 Sign in with the methods this identity actually has. Enter an address, and the page asks the gateway which methods exist for it — `password_hash` present, plus rows in `user_oauth_accounts` — and renders exactly those (`Login.tsx:70-79`, `auth.service.ts:1890`). Nothing is inferred from the address.
 

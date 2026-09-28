@@ -44,6 +44,31 @@ panel that stays in sync with refreshes (:192-200), the One-Tap Action Center, a
 - Detail panel, deep-linkable from the header bell straight to one notification
 - One-Tap Action Center embedded (approve orders, low-stock reorders)
 - Create a custom one-tap action (🚧 not persisted — gone on refresh)
+- **Approve from the bell — a PANEL, and the bell closes first** (built 2026-09-06,
+  packet 2 of the overlay layer; census 102 · ADR 0112, the founder's ruling of
+  2026-09-04: *"a one-click approval from the bell opens the panel first"*).
+  `components/notifications/ApproveFromBellPanel.tsx`, handed off from
+  `components/mudavym/HouseBell.tsx`. Nothing of this existed before: the bell could
+  open a line and navigate, and no path from a bell line to a sealed approval was
+  built at all.
+  - **The seal is never in the popover.** A popover is dismissed by clicking
+    anywhere, so a commitment reached inside one is one stray click from being
+    half-made. *Approve it* closes the bell and opens a room that cannot be
+    dismissed by accident.
+  - **The figures are the ORDER's, read at the moment they are shown**
+    (`GET /procurement/orders/:id`). Nothing is carried over from the notice except
+    the id — a bell line is a sentence somebody wrote weeks ago, and the order is
+    what is true now. The panel says that, on the panel.
+  - **A settled order is told so and offered no hold** — already approved, placed,
+    delivered, complete, cancelled or rejected, each with its own sentence. Handing
+    a manager a hold the gateway is about to refuse is how the seal becomes
+    decoration.
+  - **The seal is the house's one implementation** (`components/orders/SealedApproveDie`),
+    not a third mint.
+  - 🚧 **No producer writes an order id onto a notification today**, so the control
+    is correct and rarely reachable rather than decorative — see §9. A button that
+    opened an empty room would be the fault; its absence is the truth.
+  - Proved by `ApproveFromBell.test.tsx` (11 assertions).
 
 - Posted-price index box says when a hand-carried price book is **waiting for a
   second pair of eyes**, that nothing is drawn from it until an owner or manager
@@ -325,6 +350,7 @@ the tokens, so what runs is the token. `prefers-reduced-motion` collapses all of
 | `nt-chev` | `settle` | HOUSE · 320ms | the line's chevron turning 90°, on the same token as the expansion it belongs to |
 | `nt-ink` | `ink` | HOUSE · 160ms | hover/focus micro-states on lines and controls; nothing translates, nothing scales |
 | `nt-tally` | `tally` | overdamped spring 120/26 · 840ms | the rail's per-register open counts and "Showing N of …"; an em dash never counts |
+| `nt-bell-settle` | `settle` | HOUSE · 320ms | **Approve from the bell** — the hand-off panel opening after the bell's popover closes. It adds no motion of its own; the hold inside it is `pour` → `stamp`, and `prefers-reduced-motion` renders none |
 
 **Fourth pass, 2026-09-03 — no new motion.** The day rail, the filter pills, the
 search box, the hide-read fold and the keyboard cursor all use `nt-ink` (the
@@ -816,7 +842,7 @@ The rule: an object gets a sheet, a question a panel, a choice a popover; the se
 
 | Page | Overlay | Shape | Status | Where the act lives or went | Source |
 |---|---|---|---|---|---|
-| `/notifications` | Approve from the bell | panel · seal | Owed | The bell is a menu; a commitment needs a room that cannot be dismissed by accident. | `ADR 0112, founder answer 2026-09-04 — 'a one-click approval from the bell opens the panel first'; not built` |
+| `/notifications` | Approve from the bell | panel · seal | Built | The bell is a menu; a commitment needs a room that cannot be dismissed by accident. BUILT 2026-09-06 (packet 2): the popover CLOSES first, the panel reads GET /procurement/orders/:id fresh rather than trusting the notice, and the seal is the house's one implementation (SealedApproveDie). A settled order is told so and offered no hold. No producer writes an order id onto a notification today, so the control is rare rather than decorative — notifications.md §9. | `BUILT 2026-09-06 as components/notifications/ApproveFromBellPanel.tsx, handed off from HouseBell.tsx (ADR 0112, founder answer 2026-09-04)` |
 | `/notifications` | Notification detail | — | Retires | The row expands in place (`.nt-expand`); a sealed act opens the panel above. | `pages/Notifications.tsx:1513` |
 | `/notifications` | Create one-tap action | — | Retires · fork F4 | One-tap actions moved to the dashboard rail; a person-authored action is built as **A one-tap action of your own** on / (decided 2026-09-05, F4). | `pages/Notifications.tsx:1705` |
 | `/notifications` | Add vendor deadline | — | Delete | Cutoffs live in vendor terms (ADR 0116). Delete. | `components/notifications/VendorDeadlineSettings.tsx:184 — nobody imports it` |
@@ -949,6 +975,16 @@ dashboard.md §7.
 | Price-index poll | 300s (`useHouseIndex.ts` `INDEX_POLL_MS`) — a posted list moves on a weekly-to-monthly cadence, so a faster poll would only cost requests |
 
 ## 9. Gaps
+
+- **Nothing writes an order id onto a notification** (found 2026-09-06 while building
+  *Approve from the bell*). The only producer of an `order_pending` line is
+  `communications/scheduled-tasks.service.ts:490`, and its metadata is
+  `{ count: schedules.length }` — a count of recurring schedules, with no order named.
+  So the bell's approve hand-off is built, tested and correct, and a house will
+  almost never see it. The fix is a producer, not a panel: an order raised for
+  approval should raise a line that names it. Filed here rather than worked around,
+  because a control that appeared on every line and opened an empty room would be a
+  worse answer than one that appears only when there is something to approve.
 
 - **A held price book has no way to be admitted, refused or reopened from the
   product** (ADR 0128, 2026-09-05). `GET /price-index/uploads`, `POST

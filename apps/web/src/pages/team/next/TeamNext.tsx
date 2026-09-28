@@ -66,6 +66,7 @@ import {
 import { ensureFraunces, MutationError } from './tm-bits';
 import { LENSES, WeekGrid, type Lens } from './WeekGrid';
 import { RosterSheet, MemberSheet } from './RosterSheet';
+import { CertificationsSheet } from './CertificationsSheet';
 import { ShiftSheet, type ShiftSheetTarget } from './ShiftSheet';
 import {
   CopyWeekPanel,
@@ -375,6 +376,7 @@ export default function TeamNext({ ground }: { ground?: 'charcoal' }) {
 type Overlay =
   | { kind: 'roster' }
   | { kind: 'member'; member: TeamMember | null }
+  | { kind: 'certificates'; member: TeamMember }
   | { kind: 'shift'; target: ShiftSheetTarget }
   | { kind: 'publish'; republish: boolean }
   | { kind: 'copy' }
@@ -750,7 +752,18 @@ function TeamNextManager({ ground }: { ground?: 'charcoal' }) {
           wageVisible={data.wageVisible}
           onClose={() => setOverlay(null)}
           onEdit={(m) => setOverlay({ kind: 'member', member: m })}
+          onCertificates={(m) => setOverlay({ kind: 'certificates', member: m })}
           onAdd={() => setOverlay({ kind: 'member', member: null })}
+        />
+      )}
+      {overlay?.kind === 'certificates' && (
+        <CertificationsSheet
+          open
+          member={overlay.member}
+          certs={data.certs}
+          restaurantId={rid ?? null}
+          onClose={() => setOverlay({ kind: 'roster' })}
+          onChanged={() => data.refetch?.()}
         />
       )}
       {overlay?.kind === 'member' && (

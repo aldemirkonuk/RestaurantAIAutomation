@@ -24,6 +24,14 @@ links: ["[[PAGE-CONTRACT]]", "[[receiving-door]]", "[[orders]]"]
 - **Delivery card** (staff view) → [[receiving-door]] `/receiving/:orderId/door`
 - **Issue row** (manager view) → [[orders]] `/orders?order=<id>`
 
+## Action integrity — 2026-09-13 (pending release)
+
+`verifyReceipt` now measures previously booked quantity from immutable `inventory_transactions`, scoped by restaurant, order, inventory item and live stock, paginated through all rows. The new matcher operand names bottles explicitly; it never multiplies this total by the receiving unit again. The mixed historical `quantity_received` cache is retained for display compatibility and no longer authorizes a stock correction. An unreadable ledger refuses before any receipt write. Five twelve-bottle cases recorded at the door and verified at the desk now compare accepted 60 to stocked 60 with or without an invoice; a physical count of 58 corrects by −2.
+
+The native receiving form counts individual bottles in its steppers, scanner and request payload. It uses `bottlesTotal` for case orders, refuses an unknown pack/opaque unit, names the prefill as a suggested count, and requires explicit invoice figures and currency instead of copying the purchase order into invoice evidence. Its local result is labelled a preview; the gateway owns the document verdict. Scanning adds a count, not proof of product identity.
+
+Remaining limits: the legacy desk adjustment still has one idempotency key per order/item; changing quantities after a prior verification needs an atomic revision design. This patch does not backfill ambiguous historical cache units or reconcile prior production receipts, and the native preview does not implement the gateway's packing-slip, free-goods or credit ledger.
+
 ## 1. Purpose
 
 "One event, three renderings, chosen by role" (`ReceivingHome.tsx:17-33`, echoed at

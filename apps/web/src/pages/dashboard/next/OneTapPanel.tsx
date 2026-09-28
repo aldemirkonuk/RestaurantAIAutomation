@@ -56,7 +56,7 @@
  *     ADR 0083: a control may not claim a write it never makes.
  */
 
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, Check, Hand, Lock, PenLine, Undo2, UserRound } from 'lucide-react';
 import { HoldToApprove } from '@/components/mudavym';
@@ -70,6 +70,13 @@ import {
   type ArmRegister,
 } from './note-close-experiment';
 import { timeAgo } from './format';
+import OneTapSheet, {
+  EMPTY_DRAFT,
+  draftHasWords,
+  draftOf,
+  markFor,
+  type OneTapDraft,
+} from './OneTapSheet';
 
 const MONO = "'JetBrains Mono', ui-monospace, monospace";
 const DASHED = '1.5px dashed var(--seal-ring)';
@@ -94,6 +101,8 @@ export interface OneTapAction {
   description?: string;
   actionUrl?: string;
   priority: string;
+  /** The MARK the card wears. `OneTapSheet.markFor` falls back rather than blanking. */
+  icon?: string | null;
   status: OneTapStatus;
   /** The order a delivery card is about. Absent means there is nothing to book. */
   relatedOrderId?: string | null;
@@ -109,6 +118,8 @@ export interface CreateOneTapInput {
   description?: string;
   actionUrl?: string;
   priority: 'low' | 'medium' | 'high';
+  /** A name from `ONE_TAP_MARKS`. The gateway's own default is `Zap`. */
+  icon?: string;
 }
 
 export interface FailureVM {
@@ -158,6 +169,10 @@ export interface OneTapDesk {
   execute: (id: string, challenge?: string | null) => Promise<OneTapAction | null>;
   cancel: (id: string) => Promise<void>;
   create: (input: CreateOneTapInput) => Promise<void>;
+  /** Change an action already on the rail. `PUT /one-tap-actions/:id`. */
+  update: (id: string, input: CreateOneTapInput) => Promise<void>;
+  /** Take one off the rail for good. `DELETE /one-tap-actions/:id` (a soft delete). */
+  remove: (id: string) => Promise<void>;
 }
 
 /**
@@ -306,16 +321,71 @@ export function useOneTapActions(restaurantId: string | null): OneTapDesk {
     async (input: CreateOneTapInput) => {
       setFailureNote(null);
       try {
+        // No restaurantId and no author in the body on purpose: the gateway
+        // takes both from the token (`one-tap-actions.controller.ts:146`), and
+        // an id sent from a browser is an id a browser could change.
         await apiClient.post('/one-tap-actions', {
           title: input.title,
           description: input.description || undefined,
           actionUrl: input.actionUrl || undefined,
           actionType: 'custom',
           priority: input.priority,
+          icon: input.icon || undefined,
         });
         await read();
       } catch (err) {
         setFailureNote(`The action was not saved (${failureOf(err).message}) — nothing was created.`);
+        throw err;
+      }
+    },
+    [read],
+  );
+
+  /**
+   * Change one already on the rail.
+   *
+   * The refusal names what did NOT happen and, crucially, that the row is
+   * unchanged — a "could not save" that leaves an operator unsure whether half
+   * of it landed is the failure this house calls a lie by omission.
+   */
+  const update = useCallback(
+    async (id: string, input: CreateOneTapInput) => {
+      setFailureNote(null);
+      try {
+        await apiClient.put(`/one-tap-actions/${id}`, {
+          title: input.title,
+          description: input.description ?? '',
+          actionUrl: input.actionUrl ?? '',
+          priority: input.priority,
+          icon: input.icon || undefined,
+        });
+        await read();
+      } catch (err) {
+        const failure = failureOf(err);
+        setFailureNote(
+          failure.forbidden
+            ? `This account may not change actions on this rail (${failure.status}). The action is unchanged.`
+            : `The change was not saved (${failure.message}) — the action is unchanged.`,
+        );
+        throw err;
+      }
+    },
+    [read],
+  );
+
+  const remove = useCallback(
+    async (id: string) => {
+      setFailureNote(null);
+      try {
+        await apiClient.delete(`/one-tap-actions/${id}`);
+        await read();
+      } catch (err) {
+        const failure = failureOf(err);
+        setFailureNote(
+          failure.forbidden
+            ? `This account may not take actions off this rail (${failure.status}). It is still there.`
+            : `Taking it off the rail was refused (${failure.message}) — it is still there.`,
+        );
         throw err;
       }
     },
@@ -330,6 +400,8 @@ export function useOneTapActions(restaurantId: string | null): OneTapDesk {
     execute,
     cancel,
     create,
+    update,
+    remove,
   };
 }
 
@@ -382,6 +454,7 @@ export function ActionCard({
   onMintSeal,
   onExecute,
   onCancel,
+  onEdit,
 }: {
   action: OneTapAction;
   byHouse: boolean;
@@ -390,6 +463,8 @@ export function ActionCard({
   onMintSeal: (id: string) => Promise<string | null>;
   onExecute: (id: string, challenge?: string | null) => Promise<OneTapAction | null>;
   onCancel: (id: string) => Promise<void>;
+  /** Re-open a person-written action in the sheet. Absent on a house-raised one. */
+  onEdit?: (action: OneTapAction) => void;
 }) {
   // Bumped after a refusal so the die remounts at rest rather than staying sealed.
   const [attempt, setAttempt] = useState(0);
@@ -487,7 +562,15 @@ export function ActionCard({
           {timeAgo(action.createdAt)}
         </span>
       </div>
-      <p className="mt-1.5 text-[13px] font-semibold text-inkm-1">{action.title}</p>
+      <p className="mt-1.5 flex items-center gap-1.5 text-[13px] font-semibold text-inkm-1">
+        {/* The mark the writer chose. Never nothing: `markFor` falls back to the
+            gateway's own default rather than leaving a hole where a glyph was. */}
+        {(() => {
+          const Mark = markFor(action.icon);
+          return <Mark size={13} strokeWidth={1.75} aria-hidden />;
+        })()}
+        {action.title}
+      </p>
       {action.description && (
         <p className="mt-0.5 text-[11.5px] text-inkm-4">{action.description}</p>
       )}
@@ -504,6 +587,17 @@ export function ActionCard({
             Go and do it
             <ArrowRight size={12} strokeWidth={1.75} aria-hidden />
           </Link>
+        )}
+        {onEdit && (
+          <button
+            type="button"
+            onClick={() => onEdit(action)}
+            data-testid="one-tap-edit"
+            className="dn-ink inline-flex items-center gap-1.5 rounded border border-paper-2 px-2 py-1 text-[11px] text-inkm-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-seal"
+          >
+            <PenLine size={12} strokeWidth={1.75} aria-hidden />
+            Change it
+          </button>
         )}
         <button
           type="button"
@@ -623,10 +717,11 @@ export function OneTapPanel({ restaurantId }: OneTapPanelProps) {
      could answer it differently if one of them failed. */
   const noteArm = useNoteCloseArm(restaurantId);
   const [open, setOpen] = useState(false);
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [actionUrl, setActionUrl] = useState('');
-  const [priority, setPriority] = useState<'low' | 'medium' | 'high'>('medium');
+  /* THE STUB (sketch 103, 1b). The draft lives HERE, not in the sheet, so Esc
+     tears the sheet off rather than binning the words: the rail says it is
+     holding them and re-opening finds them where they were left. */
+  const [draft, setDraft] = useState<OneTapDraft>(EMPTY_DRAFT);
+  const [editing, setEditing] = useState<OneTapAction | null>(null);
   const [saving, setSaving] = useState(false);
 
   const rows = desk.register.state === 'ready' ? desk.register.rows : [];
@@ -634,32 +729,65 @@ export function OneTapPanel({ restaurantId }: OneTapPanelProps) {
   const byHouse = pending.filter((a) => !a.userId);
   const byPeople = pending.filter((a) => !!a.userId);
 
-  const submit = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!title.trim() || saving) return;
+  const openNew = () => {
+    setEditing(null);
+    setOpen(true);
+  };
+
+  const openEdit = (a: OneTapAction) => {
+    setEditing(a);
+    setDraft(draftOf(a));
+    setOpen(true);
+  };
+
+  /* Leaving an EDIT keeps nothing: the words on the rail are the action's own,
+     and a half-typed change to somebody else's row is not a stub, it is a
+     confusion. Only a NEW action leaves one. */
+  const leave = () => {
+    setOpen(false);
+    if (editing) {
+      setEditing(null);
+      setDraft(EMPTY_DRAFT);
+    }
+  };
+
+  const save = async (d: OneTapDraft, editingId: string | null) => {
+    if (saving) return;
     setSaving(true);
     try {
-      await desk.create({ title: title.trim(), description, actionUrl, priority });
-      setTitle('');
-      setDescription('');
-      setActionUrl('');
+      const input = {
+        title: d.title.trim(),
+        description: d.description.trim(),
+        actionUrl: d.actionUrl.trim(),
+        priority: d.priority,
+        icon: d.mark,
+      };
+      if (editingId) await desk.update(editingId, input);
+      else await desk.create(input);
+      // Cleared only after the gateway accepted it. A form emptied on the way
+      // out would lose the words to a refusal (ADR 0020).
+      setDraft(EMPTY_DRAFT);
+      setEditing(null);
       setOpen(false);
-    } catch {
-      /* desk.failureNote says what did not happen */
     } finally {
       setSaving(false);
     }
   };
 
-  const field: CSSProperties = {
-    fontSize: 12,
-    width: '100%',
-    padding: '6px 8px',
-    borderRadius: 6,
-    border: '1px solid var(--paper-2)',
-    background: 'var(--paper-0)',
-    color: 'var(--ink-1)',
+  const remove = async (id: string) => {
+    if (saving) return;
+    setSaving(true);
+    try {
+      await desk.remove(id);
+      setDraft(EMPTY_DRAFT);
+      setEditing(null);
+      setOpen(false);
+    } finally {
+      setSaving(false);
+    }
   };
+
+  const stubHeld = !editing && draftHasWords(draft);
 
   return (
     <section
@@ -721,6 +849,7 @@ export function OneTapPanel({ restaurantId }: OneTapPanelProps) {
                 onMintSeal={desk.mintSeal}
                 onExecute={desk.execute}
                 onCancel={desk.cancel}
+                onEdit={openEdit}
               />
             ))}
           </ul>
@@ -734,65 +863,34 @@ export function OneTapPanel({ restaurantId }: OneTapPanelProps) {
 
         <button
           type="button"
-          onClick={() => setOpen((o) => !o)}
+          onClick={openNew}
+          aria-haspopup="dialog"
           aria-expanded={open}
+          data-testid="one-tap-open-sheet"
           className="dn-ink mt-3 inline-flex items-center gap-1.5 rounded border border-seal-ring px-2 py-1 text-[11px] text-seal focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-seal"
         >
           <PenLine size={12} strokeWidth={1.75} aria-hidden />
-          {open ? 'Never mind' : 'Write a new one'}
+          Write a new one
         </button>
+        {/* The stub. Torn off, not thrown away — the words are still here. */}
+        {stubHeld && (
+          <p data-testid="one-tap-stub" className="mt-1.5 text-[11px] italic text-inkm-4">
+            Held here, unwritten: “{draft.title.trim() || draft.description.trim() || draft.actionUrl.trim()}”
+          </p>
+        )}
 
-        <div className="dn-expand" data-open={open}>
-          <div>
-            <form onSubmit={submit} className="mt-3 space-y-2">
-              <label className="block text-[11px] text-inkm-4">
-                What is it
-                <input
-                  style={field}
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder="Call Bodega Álvaro about the Rioja"
-                  required
-                />
-              </label>
-              <label className="block text-[11px] text-inkm-4">
-                A line of context (optional)
-                <input
-                  style={field}
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                />
-              </label>
-              <label className="block text-[11px] text-inkm-4">
-                Where it is done (optional, e.g. /inventory)
-                <input
-                  style={field}
-                  value={actionUrl}
-                  onChange={(e) => setActionUrl(e.target.value)}
-                />
-              </label>
-              <label className="block text-[11px] text-inkm-4">
-                How much it presses
-                <select
-                  style={field}
-                  value={priority}
-                  onChange={(e) => setPriority(e.target.value as 'low' | 'medium' | 'high')}
-                >
-                  <option value="low">low</option>
-                  <option value="medium">medium</option>
-                  <option value="high">high</option>
-                </select>
-              </label>
-              <button
-                type="submit"
-                disabled={saving || title.trim() === ''}
-                className="dn-ink rounded border border-seal-ring bg-seal-tint px-2.5 py-1.5 text-[11.5px] font-semibold text-seal disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-seal"
-              >
-                {saving ? 'Writing it down…' : 'Write it into the book'}
-              </button>
-            </form>
-          </div>
-        </div>
+        <OneTapSheet
+          open={open}
+          onClose={leave}
+          draft={draft}
+          onDraft={setDraft}
+          editing={editing}
+          onSave={save}
+          onRemove={remove}
+          busy={saving}
+          failureNote={desk.failureNote}
+          register={desk.register}
+        />
 
         <p className="mt-3 border-t border-paper-2 pt-2 text-[11px] text-inkm-4">
           One act on this desk is real: confirming a delivery books the stock through the order it

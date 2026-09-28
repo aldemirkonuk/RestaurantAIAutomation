@@ -71,6 +71,7 @@ function MemberDetail({
   timeOff,
   wageVisible,
   onEdit,
+  onCertificates,
 }: {
   member: TeamMember;
   /** `null` while the week has not answered — the card says so. */
@@ -79,6 +80,8 @@ function MemberDetail({
   timeOff: TimeOffRow[] | null;
   wageVisible: boolean;
   onEdit: () => void;
+  /** Open this person's certificate FILE — the owed act (census 102). */
+  onCertificates: () => void;
 }) {
   const name = resolveName(member);
   const mine = (shifts ?? []).filter((s) => s.member_id === member.id);
@@ -145,6 +148,19 @@ function MemberDetail({
             A certification carries no role and no shift, so which shifts require it is
             not recorded.
           </p>
+          {/* The read-only card could only LIST. Filing, correcting and removing
+              live in the file itself (census 102) — the legacy desk that had
+              them is deleted with packet 4. */}
+          <div className="tm-actions" style={{ marginTop: 6 }}>
+            <button
+              type="button"
+              className="tm-ctl"
+              data-testid="open-certificates"
+              onClick={onCertificates}
+            >
+              Open the certificate file
+            </button>
+          </div>
         </Card>
 
         <Card title="Time off on file">
@@ -186,6 +202,7 @@ export function RosterSheet({
   wageVisible,
   onClose,
   onEdit,
+  onCertificates,
   onAdd,
 }: {
   members: TeamMember[] | null;
@@ -196,6 +213,8 @@ export function RosterSheet({
   wageVisible: boolean;
   onClose: () => void;
   onEdit: (m: TeamMember) => void;
+  /** Open one person's certificate file. */
+  onCertificates: (m: TeamMember) => void;
   onAdd: () => void;
 }) {
   const [openId, setOpenId] = useState<string | null>(null);
@@ -295,6 +314,7 @@ export function RosterSheet({
                   timeOff={timeOff}
                   wageVisible={wageVisible}
                   onEdit={() => onEdit(m)}
+                  onCertificates={() => onCertificates(m)}
                 />
               )}
             </div>

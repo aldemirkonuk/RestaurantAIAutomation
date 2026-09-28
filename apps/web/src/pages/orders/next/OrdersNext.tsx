@@ -28,6 +28,8 @@ import { AgreementSheet } from './AgreementSheet';
 import { BulkApproveBar } from './BulkApproveBar';
 import { DraftRail } from './DraftRail';
 import { LedgerRow } from './LedgerRow';
+import { NewOrderSheet } from './NewOrderSheet';
+import { VendorFirstPanel } from './VendorFirstPanel';
 import { RecurrenceSheet } from './RecurrenceSheet';
 import { ResponsesSheet } from './ResponsesSheet';
 import { StageSpine, type SpineStation } from './StageSpine';
@@ -35,6 +37,8 @@ import { Tally } from './Tally';
 import { EM, MONO, SANS, SERIF, fmtMoneyWhole } from './format';
 import { emptyStationSentence } from './recurrence';
 import { useOrdersNextData, type OrderRowVM } from './useOrdersNextData';
+import { useAuth } from '@/contexts/AuthContext';
+import { useProviders } from '@/hooks/queries/useProviderQueries';
 
 const monthName = new Intl.DateTimeFormat('en-GB', { month: 'long' });
 
@@ -106,11 +110,20 @@ function RehearsalCard() {
 
 export default function OrdersNext() {
   const data = useOrdersNextData();
+  const { activeRestaurantId, user } = useAuth();
+  /* Read here as well as inside the sheet so the guard can fire BEFORE the
+     composer opens — the legacy desk's `openCreateOrderFlow` rule
+     (`pages/Orders.tsx:296-302`). React Query hands both callers the same
+     cached read, so this is one request, not two. */
+  const vendorList = useProviders(activeRestaurantId || user?.restaurantId || '');
   const [station, setStation] = useState<SpineStation | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [bulkRunning, setBulkRunning] = useState(false);
   const [writing, setWriting] = useState(false);
+  /* The manual composer (fork F5) and the guard that travels with it. */
+  const [ordering, setOrdering] = useState(false);
+  const [vendorGuard, setVendorGuard] = useState<'before' | 'refused' | null>(null);
   /**
    * Which order's answers are open. ONE sheet for the page, not one per row:
    * the sheet reads that order's correspondence when it opens, and a mounted
@@ -156,6 +169,17 @@ export default function OrdersNext() {
 
   const now = new Date();
 
+  /* An empty vendor list stops the composer; an UNREADABLE one does not.
+     A failed read drawn as "you have no vendors" would send a person off to add
+     a vendor they already have — the absence-as-health fault, in one click. */
+  const openTheComposer = () => {
+    if (!vendorList.isError && !vendorList.isLoading && (vendorList.data ?? []).length === 0) {
+      setVendorGuard('before');
+      return;
+    }
+    setOrdering(true);
+  };
+
   return (
     <div
       className="mudavym min-h-screen"
@@ -180,6 +204,24 @@ export default function OrdersNext() {
             </h1>
           </div>
           <div className="flex items-end gap-4">
+            <button
+              type="button"
+              onClick={openTheComposer}
+              data-testid="write-order"
+              style={{
+                fontFamily: SANS,
+                fontSize: 12.5,
+                fontWeight: 600,
+                padding: '7px 13px',
+                borderRadius: 9,
+                border: '1px solid var(--seal, #1A5E6B)',
+                background: 'var(--seal, #1A5E6B)',
+                color: 'var(--paper-0, #FBF8F1)',
+                cursor: 'pointer',
+              }}
+            >
+              Write a new order
+            </button>
             <button
               type="button"
               onClick={() => setWriting(true)}
@@ -241,6 +283,25 @@ export default function OrdersNext() {
           open={writing}
           onClose={() => setWriting(false)}
           onSaved={() => data.refetch()}
+        />
+
+        {/* The manual entry (fork F5, 2026-09-05). Several lines placed
+            together, and an honest account of which of them landed —
+            `AgreementSheet` writes one line, `DraftRail` shows what the engine
+            wrote, and neither is a cart. */}
+        <NewOrderSheet
+          open={ordering}
+          onClose={() => setOrdering(false)}
+          onNoVendors={() => setVendorGuard('refused')}
+          onPlaced={() => data.refetch()}
+        />
+
+        {/* The guard travels with it: caught before the composer opens, and
+            again when the gateway answers 403 no_vendors on a real write. */}
+        <VendorFirstPanel
+          open={vendorGuard !== null}
+          reason={vendorGuard ?? 'before'}
+          onClose={() => setVendorGuard(null)}
         />
 
         {/* The vendors' answers to ONE order, with the three acts the legacy
