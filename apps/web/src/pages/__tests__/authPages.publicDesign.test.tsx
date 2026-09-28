@@ -686,3 +686,40 @@ describe.runIf(Boolean(process.env.AUTHPAGES_CAPTURE_DIR))('capture', () => {
     }
   })
 })
+
+/*
+ * ADR 0229 fork 9 (the founder, 2026-09-27, item 77, "Email invite + (c)
+ * interim (Recommended)"): the invite mail's link carries a second secret in
+ * its fragment, and the join sends it. Only a join carrying it can verify.
+ */
+describe('the invite mail secret reaches the join', () => {
+  const SECRET = 'Zx8_-abcdefghijklmnopqrstuvwxyz0123456789AB'
+
+  async function joinFrom(url: string) {
+    h.auth.joinViaInvite.mockReset()
+    h.auth.joinViaInvite.mockResolvedValue(undefined)
+    gateway({ invite: 'valid', emailAvailable: true })
+    renderAt(createElement(Register), url)
+    await screen.findByText('Invited by', undefined, WAIT)
+    fireEvent.click(screen.getByRole('button', { name: /continue/i }))
+    await screen.findByText(/^(Your Account|Who is joining\?)$/, undefined, WAIT)
+    type('Full Name *', 'Deniz Kaya')
+    type('Email *', 'deniz@house.test')
+    type('Password *', 'long-enough-1')
+    type('Confirm Password *', 'long-enough-1')
+    await screen.findByText('Email is available', undefined, WAIT)
+    fireEvent.click(screen.getByRole('button', { name: 'Join Restaurant' }))
+    await vi.waitFor(() => expect(h.auth.joinViaInvite).toHaveBeenCalledTimes(1))
+    return h.auth.joinViaInvite.mock.calls[0][0] as Record<string, unknown>
+  }
+
+  it('a join opened from the mail sends the secret', async () => {
+    const sent = await joinFrom(`/register?invite=abcdefgh#k=${SECRET}`)
+    expect(sent).toMatchObject({ email: 'deniz@house.test', emailSecret: SECRET })
+  })
+
+  it('a join from a copied link sends no secret', async () => {
+    const sent = await joinFrom('/register?invite=abcdefgh')
+    expect(sent).not.toHaveProperty('emailSecret')
+  })
+})

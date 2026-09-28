@@ -13,7 +13,9 @@
  *     revokes for real; the payment register opens its form and DISABLES the
  *     submit with the provider's stated reason, and never reports a save;
  *  4. the security register — one session row built from evidence, and three
- *     protections rendered `Not built` with no toggle that could turn nothing on;
+ *     protections rendered `Not built` with no toggle that could turn nothing on
+ *     [2026-09-25, ADR 0222: passkeys are built now, so the unbuilt ones are
+ *     other devices, two-factor and API tokens; passkeys are drawn live];
  *  5. the plan is a figure now, and still an em dash when it was not read;
  *  6. delete-account is hold-to-approve, inert until DELETE is typed.
  *
@@ -50,6 +52,21 @@ vi.mock('../../../services/api/textSenders', () => ({
     }),
   giveTextConsent: vi.fn(() => Promise.resolve({ consent: null, words: 'Recorded.' })),
   withdrawTextConsent: vi.fn(() => Promise.resolve({ withdrawn: 0, words: 'Nothing to withdraw.' })),
+}));
+
+/**
+ * ADR 0222 — the passkey rows read the person's own passkeys. The fixture is
+ * an eligible manager with none enrolled; `PasskeyRows.test.tsx` owns the
+ * ceremony and every other state.
+ */
+vi.mock('../../../services/api/passkeys', () => ({
+  PASSKEYS_QUERY_KEY: ['passkeys'],
+  getPasskeys: () =>
+    Promise.resolve({ readable: true, reason: null, passkeys: [], eligible: true, eligibilityReason: null }),
+  passkeysSupported: () => true,
+  addPasskey: vi.fn(),
+  removePasskey: vi.fn(),
+  checkPasskey: vi.fn(),
 }));
 
 vi.mock('./useProfileNextData', () => ({
@@ -434,7 +451,6 @@ describe('ProfileNext — security', () => {
     for (const [title, control] of [
       ['Other devices', 'Sign out everywhere'],
       ['Two-factor authentication', 'Turn on two-factor'],
-      ['Passkeys', 'Add a passkey'],
       ['API tokens', 'Create a token'],
     ] as const) {
       const row = rowFor(title);
@@ -448,6 +464,17 @@ describe('ProfileNext — security', () => {
     // and there is no checkbox or switch anywhere that could pretend to arm one
     expect(screen.queryByRole('switch')).not.toBeInTheDocument();
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+  });
+
+  it('draws passkeys as built (ADR 0222), live for an eligible manager, never as Not built', async () => {
+    draw();
+    const row = await waitFor(() => {
+      const r = rowFor('Passkeys');
+      expect(within(r).getByRole('button', { name: 'Add a passkey' })).toBeEnabled();
+      return r;
+    });
+    expect(within(row).queryByText('Not built')).not.toBeInTheDocument();
+    expect(screen.getByText(/A passkey signs you in on mudavym.com/)).toBeInTheDocument();
   });
 
   it('keeps the password form reachable from the sign-in rail’s Change password', () => {
