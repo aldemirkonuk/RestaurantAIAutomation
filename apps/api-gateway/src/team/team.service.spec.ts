@@ -247,6 +247,9 @@ describe("TeamService — T5: an authorisation default must not escalate", () =>
       service(db).assertAccess(OWNER, RID, "owner"),
     ).resolves.toEqual({
       role: "owner",
+      // The pay switch is a manager's; an owner has none and sees pay anyway
+      // (ADR 0215, round 4 item 19).
+      payAccess: false,
     });
   });
 

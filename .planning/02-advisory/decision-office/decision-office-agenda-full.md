@@ -275,9 +275,9 @@ office's contradiction register pointed at its own log.
 - **Evidence, verified 2026-08-28:**
   `0023-email-verification-is-enforced.md:12` reads *"Status: Proposed — closes
   [OD-106](OPEN-DECISIONS.md)"*, and repeats it at `:16`. But today
-  OD-106 (`OPEN-DECISIONS.md:71`) is **Design foundation direction**, still open.
+  OD-106 (`OPEN-DECISIONS.md:73`) is **Design foundation direction**, still open.
   The row that ADR actually closed is
-  OD-79 (`OPEN-DECISIONS.md:135`) — *"Resolved 2026-08-26 — enforced"*.
+  OD-79 (`OPEN-DECISIONS.md:137`) — *"Resolved 2026-08-26 — enforced"*.
   `0025-citations-must-disagree-loudly.md:385-388` records this exact
   renumber — OD-79 was refiled as OD-106 — and says `check_od_ids_exist.py` *"blocks the
   names-nothing half and says in its own docstring that it cannot catch
