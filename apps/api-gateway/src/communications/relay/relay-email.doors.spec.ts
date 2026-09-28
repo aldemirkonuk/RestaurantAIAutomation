@@ -1034,6 +1034,13 @@ describe("the orchestrator's door", () => {
     [403, "Quota exceeded", "quotaExceeded"],
     [403, "The domain administrators have disabled Gmail apps.", "domainPolicy"],
     [403, "Gmail API has not been used in project 1 before or it is disabled.", "accessNotConfigured"],
+    // Founder item 76 (2026-09-27, verbatim "Park it (Recommended)"): the
+    // shared mailbox's grant lacks the send scope — parks like quota.
+    [
+      403,
+      "Request had insufficient authentication scopes.",
+      "insufficientPermissions",
+    ],
   ])(
     "is 503 — held, not closed — for a real Gmail API %i whose reason is a sending-mailbox fault (%s)",
     async (status, said, reason) => {
@@ -1063,8 +1070,8 @@ describe("the orchestrator's door", () => {
 
   it.each([
     [403, "Delegation denied for letters@mudavym.example", ["forbidden"]],
-    [403, "Request had insufficient authentication scopes.", ["insufficientPermissions"]],
     [404, "Requested entity was not found.", ["dailyLimitExceeded"]],
+    [404, "Requested entity was not found.", ["insufficientPermissions"]],
   ])(
     "is still 422 (closed) for a real Gmail API %i: %s — only a 403 with a sending-mailbox reason parks",
     async (status, said, reasons) => {

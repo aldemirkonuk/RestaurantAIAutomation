@@ -146,16 +146,18 @@ export const RELAY_CLOSING_GMAIL_STATUSES: ReadonlySet<number> = new Set([
  * mailbox's own OAuth refresh token, so a grant or delegation fault surfaces
  * at the token endpoint (`invalid_grant` / `unauthorized_client`, kind
  * `"credentials"`), which never closed a relay draft. `forbidden` therefore
- * stays in the closing bucket, as do `insufficientPermissions` and a 403 that
- * carries no reason at all ("every other 403 ... still closes", item 69).
+ * stays in the closing bucket, as does a 403 that carries no reason at all
+ * ("every other 403 ... still closes", item 69).
  * [NARROWED 2026-09-27, PR #429 audit round at 2b97a7563: "a grant ... fault
  * surfaces at the token endpoint" is too broad. A revoked or expired grant
  * does; a grant that is valid but lacks the send scope does NOT — the token
- * refreshes, and `users.messages.send` answers 403 `insufficientPermissions`,
- * which closes every relay draft sent while it lasts. That is inside item 69's
- * literal "every other 403 still closes", so it is unchanged here; whether it
- * should park like a mailbox fault is an open founder question, not filed as
- * an OD by this round (named in PR #429's body next to OD-175).]
+ * refreshes, and `users.messages.send` answers 403 `insufficientPermissions`.]
+ * [PARKS since 2026-09-27, founder item 76, verbatim "Park it (Recommended)":
+ * that missing send scope is a fault of the shared sending mailbox's grant,
+ * not of the draft, so `insufficientPermissions` is in this set and a Gmail
+ * 403 carrying it parks (503) instead of closing every relay draft sent while
+ * it lasts. Recorded in OD-174's row. Only the `errors[].reason` spelling the
+ * founder named is added; Gmail's v1 error body carries it there.]
  */
 export const RELAY_PARKING_GMAIL_REASONS: ReadonlySet<string> = new Set([
   // Gmail API errors[].reason (the v1 JSON error body)
@@ -165,6 +167,9 @@ export const RELAY_PARKING_GMAIL_REASONS: ReadonlySet<string> = new Set([
   "quotaExceeded",
   "domainPolicy",
   "accessNotConfigured",
+  // founder item 76 (2026-09-27, "Park it (Recommended)"): the shared
+  // mailbox's grant lacks the send scope
+  "insufficientPermissions",
   // AIP-193 google.rpc.ErrorInfo reasons for the same two facts
   "RATE_LIMIT_EXCEEDED",
   "SERVICE_DISABLED",

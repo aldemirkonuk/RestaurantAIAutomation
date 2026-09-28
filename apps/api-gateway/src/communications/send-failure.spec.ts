@@ -149,6 +149,8 @@ describe("classifySendFailure — everything else is ambiguous", () => {
  * the shared sending mailbox parks a relay draft; every other 403 and every
  * 404 still closes it RELAY_REFUSED (item 66). The reason is read from typed
  * fields of the Gmail error body, never from its message.
+ * Founder item 76 (2026-09-27, verbatim "Park it (Recommended)") adds
+ * `insufficientPermissions` to the parking reasons.
  */
 describe("gmailErrorReasons — typed fields only", () => {
   /** Gmail's v1 JSON error body, as gaxios keeps it on `response.data`. */
@@ -232,6 +234,7 @@ describe("item 69 — which relay refusals park and which close", () => {
         "accessNotConfigured",
         "dailyLimitExceeded",
         "domainPolicy",
+        "insufficientPermissions",
         "quotaExceeded",
         "rateLimitExceeded",
         "userRateLimitExceeded",
@@ -254,7 +257,6 @@ describe("item 69 — which relay refusals park and which close", () => {
 
   it.each([
     ["forbidden (how Gmail types 'Delegation denied')", ["forbidden"]],
-    ["insufficientPermissions", ["insufficientPermissions"]],
     ["no reason at all", []],
     ["an unknown reason", ["somethingNew"]],
     ["the reason in the wrong case", ["DAILYLIMITEXCEEDED"]],
@@ -263,6 +265,29 @@ describe("item 69 — which relay refusals park and which close", () => {
       refusal: rejected,
       gmailApiStatus: 403,
       gmailApiReasons: reasons,
+    };
+    expect(gmailRefusalParksRelayDraft(result)).toBe(false);
+    expect(gmailRefusalClosesRelayDraft(result)).toBe(true);
+  });
+
+  // Founder item 76 (2026-09-27, verbatim "Park it (Recommended)"): a send
+  // 403 `insufficientPermissions` (the shared mailbox's grant lacks the send
+  // scope) parks like the quota/delegation 403s instead of closing.
+  it("a Gmail 403 insufficientPermissions parks and does not close (item 76)", () => {
+    const result = {
+      refusal: rejected,
+      gmailApiStatus: 403,
+      gmailApiReasons: ["insufficientPermissions"],
+    };
+    expect(gmailRefusalParksRelayDraft(result)).toBe(true);
+    expect(gmailRefusalClosesRelayDraft(result)).toBe(false);
+  });
+
+  it("a Gmail 404 carrying insufficientPermissions still closes — 403 only parks (item 76)", () => {
+    const result = {
+      refusal: rejected,
+      gmailApiStatus: 404,
+      gmailApiReasons: ["insufficientPermissions"],
     };
     expect(gmailRefusalParksRelayDraft(result)).toBe(false);
     expect(gmailRefusalClosesRelayDraft(result)).toBe(true);

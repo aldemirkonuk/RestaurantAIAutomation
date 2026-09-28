@@ -231,7 +231,8 @@ export interface RelayResult {
    * `true` only when `success` is `false`, the send went through the
    * orchestrator's transport, and Gmail answered 403 with a reason that
    * names a fault of the shared SENDING mailbox — quota, rate limit, a
-   * domain policy, the API switched off (`send-failure.ts`'s
+   * domain policy, the API switched off, or (item 76, "Park it
+   * (Recommended)") a grant missing the send scope (`send-failure.ts`'s
    * `gmailRefusalParksRelayDraft`). Founder, 2026-09-27 (item 69, "Park
    * quota/delegation 403 (Recommended)"): this PARKS the draft the way a
    * relay 401 does — `sendAsOrchestrator` answers 503 — instead of closing it
@@ -910,7 +911,8 @@ export class RelayEmailService {
       // Founder, 2026-09-27 (item 69, "Park quota/delegation 403
       // (Recommended)", narrowing item 66): a 403 whose typed Gmail reason is
       // a fault of THIS shared mailbox (quota, rate limit, domain policy, API
-      // disabled) parks instead — checked first, because
+      // disabled; since item 76, "Park it (Recommended)", a grant missing the
+      // send scope, `insufficientPermissions`) parks instead — checked first, because
       // `gmailRefusalClosesRelayDraft` excludes exactly these.
       if (gmailRefusalParksRelayDraft(result)) {
         throw new RelaySendingMailboxUnavailableError(
