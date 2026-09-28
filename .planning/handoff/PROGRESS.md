@@ -65,8 +65,14 @@ origin **without touching any working tree, index, HEAD or branch** (it builds e
 commit from a temporary index), so it is safe while that session still runs. It refuses
 a tree holding a likely secret or a file over 50 MB and leaves `.gitignore`d files out.
 Its test, [`preserve-local-work.test.sh`](preserve-local-work.test.sh), runs on a
-throwaway repo: 18/18 on 2026-09-28, including a mutation that makes the script touch the
-real index, which the test catches. **Next for a session:** for each `wip/preserve-*`
+throwaway repo: 26/26 on 2026-09-28 (v3), including a mutation that makes the script touch
+the real index, which the test catches. **v3, same day:** the founder's Mac lists **235**
+trees (this clone plus Cursor's `~/.cursor/worktrees/*` and the ChatGPT app's
+`~/Documents/ChatGPT/Mudavym/worktrees/*`); the run stalled on one tree, and many share one
+folder name, so v2's per-tree branch names would have collided. v3 names each branch
+`<parent>--<tree>-<path hash>`, stops reading a tree after 120 s and reports it SLOW with
+the exact re-run command, resumes by stamp (`PRESERVE_STAMP=`), takes `--only <path>`, and
+always leaves out `node_modules`, `.venv`, `venv`, `__pycache__`, `.turbo`, `.next`. **Next for a session:** for each `wip/preserve-*`
 branch, classify every file against `origin/main` — identical, changed on main since
 (superseded), or unique — the method used on the desktop snapshot `459653f` (953 of 1142
 identical, 188 superseded, 1 renamed on main). Fold unique work into a proper PR; delete
