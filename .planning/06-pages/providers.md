@@ -52,6 +52,67 @@ links: ["[[PAGE-CONTRACT]]", "[[distributors]]", "[[promotions]]", "[[vendor-pri
 > the legacy /communications filter "All distributors") is left for ADR 0149's cutover
 > delete, as #481 already left it.]
 
+> [2026-09-26, lane W4-vendors-filters, ADR 0221 — house-first scopes (founder,
+> 2026-09-26, filters round, memory item 36), stacked on #481 as `feat/vendors-scopes`.
+> Asked "/vendors: open on 'Supplies my menu' (built from what you've actually bought:
+> price history, orders, inventory), then 'All my vendors'. Should there be an outer rung
+> 'Find new vendors' that searches the curated vendor catalogue we already have?";
+> chosen **"Yes, add 'Find new vendors' (Recommended)"** ("Uses the existing curated
+> catalogue search. This is not the shared-vendor layer ADR 0221 deferred."). Rejected:
+> "No, my vendors only" ("Discovery stays on its own page for now."). Same round, for both
+> pages: **"Widen + banner; show partial (Recommended)"** for a house with no menu.
+> Built: a scope bar **Supplies my menu · N → All my vendors · N → Find new vendors · N**
+> with live counts (an em dash, never a zero, when a count is unknown), state in `?scope=`,
+> and `?tab=discover` (the `/distributors` redirect) landing on Find new vendors.
+> *Supplies my menu* = `GET /providers/menu-supply` (`vendor-menu-supply.ts`): the house's
+> vendors with purchase evidence — `price_history (provider_id, master_wine_id)` with
+> `effective_date` in the last 180 days, lines of orders that reached the vendor
+> (`ORDER_ARRIVED_STATUSES` ∪ `ORDER_OPEN_WITH_VENDOR_STATUSES`, house read off the order),
+> and live `restaurant_inventory.provider_id` — intersected with the `wine_library_id`s of
+> the non-discarded lines of every ACTIVE menu (more than one is unioned). Every read is
+> `.eq` the caller's house and keyset-paged (no 1000-row cap). The card is tagged ("3 wines
+> on your menu · priced, ordered"); the rung hides cards, never re-orders them. No active
+> menu, a menu whose lines link no wine, or a failed read → the page opens on *All my
+> vendors* with a banner that says which; choosing the menu rung then says why it cannot
+> answer instead of drawing an empty list. *Find new vendors* = the curated
+> `vendor_catalogue` search (`GET /vendor-catalogue/search`, curated tier only) with its
+> total, a country field (opens on US, as the old add-vendor modal did — not derived from
+> the house **[CORRECTED 2026-09-26, lane W5-vendors: superseded by founder item 48 — it
+> now opens on the house's own country; see the next bracket]**), "In your vendors" for catalogue rows already linked, and "Add to my vendors"
+> through the existing `POST /providers {catalogue_vendor_id}`. Not built: the shared-vendor
+> layer and world map (ADR 0221 "later"); the licensed-territory discovery
+> (`/distributors/search`) — it remains the legacy page's map.
+> Guard change: `check_price_history_reads_group_by_unit.py` gains a narrow PRESENCE-read
+> arm (a literal projection naming no price, quantity, `*`, embed or runtime list), with
+> self-test cases both ways, because this read uses price_history as purchase evidence and
+> reads no price.]
+
+> [2026-09-26, lane W5-vendors, ADR 0221 amendment — founder, round 7, item 48, as
+> recorded in project memory: "'Supplies my menu' = exact vintage; a NAME-ONLY search
+> (menu filter not applied) matches any vintage — implement now. Find new vendors
+> defaults to the house's country (US fallback)." (The round's literal option texts were
+> not preserved; ADR 0221's amendment says so and reconstructs the rejected options.)
+> Built on #484: *All my vendors* gets one search box — a vendor's own name, or a wine
+> they sold you — backed by `GET /providers/wine-sellers?q=` (`vendor-wine-search.ts`,
+> `readOwnWineSellers`): the house's purchase evidence of ALL time (price history,
+> orders that reached the vendor, live stock lines), matched by "producer name",
+> accent/case-blind, every word, any vintage; each matching card is tagged "Sold you
+> Opus One 2019, 2018 · priced, ordered". *Find new vendors* keeps the curated name /
+> specialty search and adds, above it, curated vendors SEEN PRICING any vintage of the
+> typed wine (`GET /providers/catalogue-wine-listers`, price sightings through
+> `scopePriceRegisterRead` / `houseAndOpenMarket` — this house's own and openly posted,
+> never another house's), each labelled Invoiced / Quoted / Listed, because a sighting is
+> not a sale. A four-digit year in the query narrows to that exact vintage (a reading,
+> recorded in the ADR). *Supplies my menu* is untouched (exact vintage) and has no search
+> box. The country field now opens on the house's country: `restaurants.country` via
+> `GET /settings/currency`, resolved to ISO-2 by `lib/countries.ts`
+> (`defaultCatalogueCountry`); US when missing, unknown or unreadable, with a hint saying
+> which; still editable; the catalogue is not searched until the house has answered.
+> Item 49 (substitution suggestions) is a FUTURE idea — no UI.]
+> [2026-09-28, #484 audit R2: a wine search needs one word of two letters or more ("a b"
+> is refused), and the *Find new vendors* sightings read stops at 5000 rows with a 422
+> asking for more of the name, never a partial list — ADR 0221.]
+
 > **Part of** [[08-softwares/vendor-directory|Vendor Directory & Intel]] · [[08-softwares/global-vendor-search|Global Vendor Search]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
 
 ## Surface — buttons → where they go
@@ -391,6 +452,18 @@ Sidebar item (`components/layout/Sidebar.tsx:87`). `/distributors` redirects her
   (`apps/api-gateway/src/vendor-terms/vendor-terms.controller.ts:44,71`) via
   `pages/providers/next/useProviderTerms.ts`. The GET is house-wide — there is no
   per-provider read route (§9)
+- Scopes (redesign, 2026-09-26): `GET /providers/menu-supply` ("Supplies my menu",
+  `apps/api-gateway/src/providers/vendor-menu-supply.ts`) and `GET /vendor-catalogue/search`
+  with its total ("Find new vendors", `services/api/vendors.ts` `searchVendorCataloguePage`),
+  both via `pages/providers/next/useVendorScopes.ts`
+- Branches (redesign, 2026-09-26, founder round 8 item 51 · ADR 0221): the locations CRUD
+  above is also called from the vendor sheet — `pages/providers/next/useVendorBranches.ts`
+  → `BranchesSection.tsx`, mounted in `TwinSheet.tsx`. Legacy `Providers.tsx` /
+  `EditProviderModal.tsx` are no longer its only callers. No map (item 52).
+  [2026-09-28, #484 audit R4: the primary mark and the delete go through the SQL
+  functions `provider_location_make_primary` / `provider_location_remove`
+  (migration `a_vendor_has_one_primary_branch`), one transaction each, and a
+  partial unique index allows one primary per vendor per house — ADR 0221.]
 - Scorecard (redesign only, ADR 0207): `GET /vendor-scorecard?window=30|90|365` (the
   Roll Call and each card's fact), `GET /vendor-scorecard/:id` (the ledger card),
   `GET /vendor-scorecard/:id/docket?measure=` (the rows) — house from the token, a
