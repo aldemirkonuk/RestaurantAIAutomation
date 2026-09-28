@@ -183,3 +183,45 @@ describe('a refused write is printed on the dialog that asked for it', () => {
     expect(toastError).toHaveBeenCalled();
   });
 });
+
+/**
+ * The zone is a courtesy, never a reason the add fails (item 62). The dialog
+ * called `Intl.DateTimeFormat().resolvedOptions().timeZone` bare inside its
+ * submit handler, so a runtime whose `Intl` throws lost the whole add before
+ * any request left (TD-2026-09-27-CREATE-LOCATION-TIMEZONE-UNVALIDATED). It
+ * now goes through `getBrowserTimezone()`, which omits the field instead.
+ */
+describe('the browser zone never stops a location being added', () => {
+  function fillAndSubmit() {
+    fireEvent.change(screen.getByLabelText(/Location name/), { target: { value: 'Uptown' } });
+    fireEvent.change(screen.getByLabelText('Country'), { target: { value: 'United States' } });
+    fireEvent.change(screen.getByLabelText('Street Address'), { target: { value: '1 Main St' } });
+    fireEvent.change(screen.getByLabelText(/City/), { target: { value: 'Chicago' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add Location' }));
+  }
+
+  it('sends the browser zone when Intl gives one', async () => {
+    render(<AddLocationDialog open onClose={() => {}} />);
+    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    fillAndSubmit();
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+    expect(post.mock.calls[0][0]).toBe('/organizations/locations');
+    expect((post.mock.calls[0][1] as { timezone?: string }).timezone).toBe(zone);
+  });
+
+  it('still adds the location, with no zone, when Intl throws', async () => {
+    render(<AddLocationDialog open onClose={() => {}} />);
+    const spy = vi.spyOn(Intl, 'DateTimeFormat').mockImplementation(() => {
+      throw new RangeError('Intl is not available');
+    });
+    try {
+      fillAndSubmit();
+      await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+    } finally {
+      spy.mockRestore();
+    }
+    const body = post.mock.calls[0][1] as Record<string, unknown>;
+    expect(body.name).toBe('Uptown');
+    expect(body.timezone).toBeUndefined();
+  });
+});
