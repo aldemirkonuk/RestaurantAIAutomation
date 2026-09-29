@@ -1,11 +1,11 @@
 -- ADR 0215 item 27 (founder, 2026-09-28): "Replace with" — a leaving
 -- person's shifts go to someone named on the same roster, all of it or none
 -- of it, and double booking is refused unless the owner allows it and the
--- remover accepted it. Migration 20261202110000.
+-- remover accepted it. Migration 20261202120000.
 --
 -- Self-asserting: every block raises on a failure, so `psql -v
 -- ON_ERROR_STOP=1 -f` stops at the first one. Run it on a database built
--- from supabase/migrations. It must FAIL on a build without 20261202110000
+-- from supabase/migrations. It must FAIL on a build without 20261202120000
 -- (no hand_over_leaving_shifts, no allow_double_booking) and PASS with it.
 -- One transaction, rolled back: it leaves nothing behind.
 

@@ -1353,7 +1353,7 @@ export class TeamService {
    *
    * Every write goes in ONE call — `release_leaving_shifts` (migration
    * 20261201130000), or with a hand-over `hand_over_leaving_shifts`
-   * (migration 20261202110000), which applies the same plan and the
+   * (migration 20261202120000), which applies the same plan and the
    * hand-over in one transaction and re-checks the chosen person and the
    * overlap itself — so either all of it lands or none does. A failed read
    * or that call failing refuses the whole removal: nobody was removed.

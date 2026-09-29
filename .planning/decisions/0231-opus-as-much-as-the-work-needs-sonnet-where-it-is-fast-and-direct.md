@@ -82,6 +82,21 @@ records it):
 - **Process:** parallel prep and a serial merge (main is strict); a lane waits for
   all 5 required checks before it reports.
 
+> **[2026-09-29 — two one-PR waivers of the 15-file cap, founder's words]** The cap
+> stands. Each waiver below covers exactly one PR and sets no precedent; a later PR
+> over 15 files needs its own founder answer.
+>
+> - **PR #517 (sketch 123, `docs/sketch-123-drawing`).** Founder 2026-09-29, verbatim
+>   pick: *"Allow 20 files here (Recommended)"*. Recorded here after the fact, because
+>   this ADR did not yet record it.
+> - **PR #502 (`fix/team-removed-shifts-open-pool-r2`, ADR 0215 item 27).** The verifier
+>   blocked on 21 files. Founder 2026-09-29, verbatim pick: *"Waive for #502
+>   (Recommended)"*, option text: *"One PR, cap waived for this feature only, recorded
+>   in ADR 0231 with your words. It is one flow (remove → split → hand over), and
+>   splitting it forces reviewers to read half a feature each. The full audit still
+>   reads all 21 files."* Recording the waiver here adds this ADR to the PR, which makes
+>   it 22 files; the waiver covers that file too.
+
 **3. Where Sonnet gets the emphasis** (item 86's *"fast, and direct"* work Sonnet is
 *"highly capable of"*): verification runs and check suites, mechanical edits to a spec,
 branch updates and merges of `main`, posting PRs and comments, the plan-scoped audit

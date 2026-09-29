@@ -106,7 +106,7 @@ function withReleaseRpc(db: StubDb): StubDb {
     if (fn !== "release_leaving_shifts") throw new Error(`stub: no rpc ${fn}`);
     return release(args);
   };
-  // `hand_over_leaving_shifts` (migration 20261202110000), over copies of the
+  // `hand_over_leaving_shifts` (migration 20261202120000), over copies of the
   // tables so a raise changes nothing, as the transaction does.
   const handOver = (args: any) => {
     const saved = db.tables.shifts.map((r) => ({ ...r }));

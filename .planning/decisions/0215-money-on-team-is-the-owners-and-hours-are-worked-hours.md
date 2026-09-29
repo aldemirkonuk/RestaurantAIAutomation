@@ -961,7 +961,7 @@ questions round 2 left open (see "Answered, 2026-09-22 (round 6y)" below):
       MESSAGES, not a scheduling state. Filed as OD-194 and OD-195.
     - **Where the owner's setting lives:** a new column
       `team_settings.allow_double_booking boolean NOT NULL DEFAULT false`
-      (migration 20261202110000). `team_settings` is this house's team-rule
+      (migration 20261202120000). `team_settings` is this house's team-rule
       row and every rule on it is one typed column (`labor_tracking_enabled`,
       `labor_target_pct`) read and written by `getSettings`/`updateSettings`
       and recorded in `team_labour_settings_changed`; there is no settings
@@ -996,7 +996,7 @@ questions round 2 left open (see "Answered, 2026-09-22 (round 6y)" below):
       [{id, row, part}]` and `shifts_warnings_accepted` (only codes that were
       raised and accepted).
     - **All or none, and the database checks too:** one call to
-      `hand_over_leaving_shifts` (migration 20261202110000, SECURITY
+      `hand_over_leaving_shifts` (migration 20261202120000, SECURITY
       INVOKER, service role only) runs `release_leaving_shifts` for what
       opens and what is cut, then moves each named unstarted shift to the new
       person whole (re-checked as read, keeping its `state`/`shift_type`) and
@@ -1054,7 +1054,7 @@ questions round 2 left open (see "Answered, 2026-09-22 (round 6y)" below):
     21 service/pay-rules/controller mutants killed (one survived at first —
     `getSettings` dropping the `false` default for a row saved before the
     column — and a case was added that kills it);
-    `supabase/tests/20261202110000_a_leaving_persons_shifts_can_go_to_someone_named_test.sql`
+    `supabase/tests/20261202120000_a_leaving_persons_shifts_can_go_to_someone_named_test.sql`
     fails without the migration (no function) and passes with it, 6 of 6 SQL
     mutants killed (a stand-in schema of the five tables it reads, as item
     26's test was run — not a full migrated database); `TeamPayRound4.test.tsx`
