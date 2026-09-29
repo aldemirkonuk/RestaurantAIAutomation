@@ -90,9 +90,12 @@ export class UpdateFeatureFlagsDto {
  *
  * So every ACTIVE key the three hand-written properties do not cover is
  * decorated here, at module load. `class-validator` and `@nestjs/swagger`
- * decorators are plain functions that register metadata on the prototype;
- * calling them directly is what the `@` syntax does. The loop assumes every
- * ACTIVE flag is a boolean, as `ActiveFeatureFlagSpec.defaultValue` types it —
+ * decorators are plain functions that register metadata on the prototype,
+ * so they can be called directly. A direct call is NOT everything `@` does:
+ * `@` on a declared property also emits TypeScript's `design:type`, and a
+ * direct call does not, so every Swagger call below must pass `type`
+ * explicitly (its absence crashed the gateway at boot, #509 → #524).
+ * The loop assumes every ACTIVE flag is a boolean, as `ActiveFeatureFlagSpec.defaultValue` types it —
  * a non-boolean flag would need its own hand-written property.
  */
 const HAND_DECLARED_FLAG_KEYS = new Set<string>([
