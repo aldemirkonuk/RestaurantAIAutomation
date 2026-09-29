@@ -287,8 +287,16 @@ export class CalendarService {
       .select("*", { count: "exact" })
       .eq("restaurant_id", restaurantId);
 
-    // Date range filter
-    if (query.startDate) {
+    // Date range filter. A repeating series that began before the window still
+    // has occurrences inside it, so a caller that expands rules itself can ask
+    // for the lower bound to spare repeating rows (sweep 2026-09-28 row 16).
+    // The value is quoted for PostgREST's `or` grammar; `@IsDateString`
+    // already refuses commas.
+    if (query.startDate && query.includeEarlierSeries) {
+      supabaseQuery = supabaseQuery.or(
+        `start_date.gte."${query.startDate}",is_recurring.eq.true`,
+      );
+    } else if (query.startDate) {
       supabaseQuery = supabaseQuery.gte("start_date", query.startDate);
     }
     if (query.endDate) {
@@ -329,9 +337,14 @@ export class CalendarService {
       throw error;
     }
 
-    const events = (data || []).map((row: CalendarEventRow) =>
-      this.mapCalendarEvent(row),
-    );
+    const rows: CalendarEventRow[] = data || [];
+    const rules = await this.readRulesFor(restaurantId, rows);
+    const events = rows.map((row) => ({
+      ...this.mapCalendarEvent(row),
+      recurrenceRule: row.recurrence_rule_id
+        ? rules.get(row.recurrence_rule_id)
+        : undefined,
+    }));
     const total = count ?? events.length;
 
     this.logger.debug({
@@ -349,6 +362,46 @@ export class CalendarService {
       limit,
       hasMore: fromIndex + events.length < total,
     };
+  }
+
+  /**
+   * The repeat rules named by a page of rows, read in one pass per chunk and
+   * scoped to this house. A failed read throws: returning the rows without
+   * their rules would draw every series on its first date only, which is the
+   * defect this exists to fix (sweep 2026-09-28 row 16).
+   */
+  private async readRulesFor(
+    restaurantId: string,
+    rows: CalendarEventRow[],
+  ): Promise<Map<string, RecurrenceRuleResponseDto>> {
+    const ids = [
+      ...new Set(
+        rows
+          .map((r) => r.recurrence_rule_id)
+          .filter((id): id is string => !!id),
+      ),
+    ];
+    const out = new Map<string, RecurrenceRuleResponseDto>();
+    const CHUNK = 100;
+    for (let i = 0; i < ids.length; i += CHUNK) {
+      const { data, error } = await this.databaseService.supabase
+        .from("calendar_recurrence_rules")
+        .select("*")
+        .eq("restaurant_id", restaurantId)
+        .in("id", ids.slice(i, i + CHUNK));
+      if (error) {
+        this.logger.error({
+          message: "Failed to read recurrence rules for calendar list",
+          restaurantId,
+          error: error.message,
+        });
+        throw error;
+      }
+      for (const rule of (data || []) as RecurrenceRuleRow[]) {
+        out.set(rule.id, this.mapRecurrenceRule(rule));
+      }
+    }
+    return out;
   }
 
   // ==========================================================================
