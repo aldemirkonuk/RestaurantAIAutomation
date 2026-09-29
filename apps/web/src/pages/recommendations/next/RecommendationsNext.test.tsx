@@ -227,6 +227,9 @@ const base = {
   canActRuleWide: true,
   // Round 3: a manager may snooze for everyone; nothing hidden just for them.
   canSnoozeForEveryone: true,
+  // The person's role in this house, as the shell reads it (normalRole).
+  // Founder item 87: a Promotions hand is theirs only as owner or manager.
+  role: 'manager',
   hiddenForYou: 0,
   personalSnoozesReadable: true,
   personalProblem: null,
@@ -2036,5 +2039,96 @@ describe('round 6 — the masthead, the one-tap acts, the delta and the post cou
     };
     draw();
     expect(screen.getByTestId('rc-delta-unknown')).toBeInTheDocument();
+  });
+});
+
+/*
+ * Founder item 87, 2026-09-28 (OD-176, ADR 0191), verbatim option label: "Show
+ * card, hand to manager (Recommended)" — "Staff still see the recommendation,
+ * but the card says \"a manager's, in Promotions\" and has no Act button. They
+ * stay informed and are never sent to a page that refuses them." Rejected:
+ * "Hide these cards from staff", "Leave it as it is". `GET /promotions` is
+ * owner/manager only (ADR-0124-PROMOTIONS-ROLE-GATE), and the shell's rooms
+ * table hides the room from staff (rooms.ts minRole).
+ */
+describe('founder item 87 — a Promotions hand is a manager’s for staff (OD-176)', () => {
+  const staff = { ...base, role: 'staff', canActRuleWide: false, canSnoozeForEveryone: false };
+  const PROMOTIONS: Array<[string, string, string]> = [
+    ['dead_stock_capital', 'inventory', 'Create the promo'],
+    ['puzzle_activation', 'efficiency', 'Feature by-the-glass'],
+    ['pairing_promotion', 'basket', 'Promote the pairing'],
+    ['a_basket_rule_not_filed_by_name', 'basket', 'Open Promotions'],
+  ];
+
+  it('staff see the card handed to a manager, with no Act control and no navigation', async () => {
+    for (const [ruleKey, category, label] of PROMOTIONS) {
+      mockData.current = { ...staff, entries: [entry({ ruleKey, category })] };
+      const { unmount } = draw();
+      const row = screen.getByTestId('rc-entry');
+      // they stay informed: the card and its finding are still there
+      expect(within(row).getByText(/Chablis 2021 runs out/)).toBeInTheDocument();
+      expect(within(row).getByText('A manager’s, in Promotions')).toBeInTheDocument();
+      expect(within(row).queryByText(/Yours, in/)).not.toBeInTheDocument();
+      // no Act control of either shape, and no link to the page
+      expect(within(row).queryByText(`${label} →`)).not.toBeInTheDocument();
+      expect(within(row).queryByRole('button', { name: new RegExp(label) })).not.toBeInTheDocument();
+      expect(within(row).queryByRole('link', { name: new RegExp(label) })).not.toBeInTheDocument();
+      expect(within(row).getByTestId('rc-handoff')).toHaveTextContent(
+        'The work is done in Promotions, which only an owner or manager can open',
+      );
+      // the `a` key reaches the same act() — it must not navigate either
+      fireEvent.keyDown(window, { key: 'j' });
+      fireEvent.keyDown(window, { key: 'a' });
+      await Promise.resolve();
+      expect(navigate).not.toHaveBeenCalled();
+      unmount();
+    }
+  });
+
+  it('owners and managers are unchanged: yours, in Promotions, and Act opens it', async () => {
+    for (const role of ['owner', 'manager']) {
+      for (const [ruleKey, category, label] of PROMOTIONS) {
+        navigate.mockClear();
+        mockData.current = { ...base, role, entries: [entry({ ruleKey, category })] };
+        const { unmount } = draw();
+        const row = screen.getByTestId('rc-entry');
+        expect(within(row).getByText('Yours, in Promotions')).toBeInTheDocument();
+        expect(within(row).queryByText(/A manager’s/)).not.toBeInTheDocument();
+        fireEvent.click(within(row).getByRole('button', { name: `${label} →` }));
+        await waitFor(() =>
+          expect(navigate).toHaveBeenCalledWith(
+            `/promotions?rec=${ruleKey}&from=recommendations`,
+          ),
+        );
+        unmount();
+      }
+    }
+  });
+
+  it('a role not known, not yet read, or not a house role is read as staff — it fails closed', async () => {
+    for (const role of [null, undefined, 'admin', 'Owner']) {
+      navigate.mockClear();
+      mockData.current = { ...base, role, entries: [entry({ ruleKey: 'dead_stock_capital' })] };
+      const { unmount } = draw();
+      const row = screen.getByTestId('rc-entry');
+      expect(within(row).getByText('A manager’s, in Promotions')).toBeInTheDocument();
+      expect(within(row).queryByText('Create the promo →')).not.toBeInTheDocument();
+      fireEvent.keyDown(window, { key: 'j' });
+      fireEvent.keyDown(window, { key: 'a' });
+      await Promise.resolve();
+      expect(navigate).not.toHaveBeenCalled();
+      unmount();
+    }
+  });
+
+  it('staff keep every other hand: Orders is still theirs to open', async () => {
+    mockData.current = { ...staff, entries: [entry()] };
+    draw();
+    const row = screen.getByTestId('rc-entry');
+    expect(within(row).getByText('Yours, in Orders')).toBeInTheDocument();
+    fireEvent.click(within(row).getByText('Draft the PO →'));
+    await waitFor(() =>
+      expect(navigate).toHaveBeenCalledWith(expect.stringContaining('/orders?rec=stockout_imminent')),
+    );
   });
 });
