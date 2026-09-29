@@ -146,10 +146,16 @@ function services(db: StubDb) {
   );
   const links = new CalendarLinksService(asDatabaseService(db));
   links.clock = () => NOW;
+  // ADR 0242 (OD-204): one removal path. The members door hands a rostered
+  // person to TeamService.removeFromHouse, and leaving goes through the
+  // members door (`AuthService.leaveRestaurant` looks it up at call time).
+  const team = new TeamService(asDatabaseService(db));
+  const members = new MembersService(asDatabaseService(db), undefined, team);
+  (auth as any).moduleRef = { get: () => members };
   return {
     auth,
-    members: new MembersService(asDatabaseService(db)),
-    team: new TeamService(asDatabaseService(db)),
+    members,
+    team,
     links,
   };
 }
@@ -266,7 +272,9 @@ describe("every door that ends a membership stops that person's link there, for 
   it("leaving on your own (AuthService.leaveRestaurant)", async () => {
     const db = world();
     await services(db).auth.leaveRestaurant(P, B);
-    expectStoppedForGood(db, P, "AuthService.leaveRestaurant");
+    // Leaving is the members door's self-leave since ADR 0242 (one removal
+    // path), so the stop is filed by the door that ran it.
+    expectStoppedForGood(db, P, "MembersService.removeMember");
     await expectNobodyElseTouched(db);
     await expectNoRevival(db);
   });

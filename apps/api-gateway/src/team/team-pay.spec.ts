@@ -24,6 +24,8 @@ import {
   WageRecordRetentionService,
 } from "./wage-record-retention.service";
 import { asDatabaseService, makeStubDb, StubDb } from "./testing/supabase-stub";
+import { MembersService } from "../restaurants/members.service";
+import { AuthService } from "../auth/auth.service";
 
 /**
  * /team pay defects — ADR 0215. The founder, 2026-09-21: "Fix /team first";
@@ -2182,5 +2184,159 @@ describe("K4 — the pure rules behind 'Replace with'", () => {
     expect(() => handoverOf("m", undefined, undefined)).toThrow(BadRequestException);
     expect(() => handoverOf("m", "a", "overlap,sneaky")).toThrow(BadRequestException);
     expect(handoverOf(" m ", "a, b", "overlap,role")).toEqual({ to: "m", shiftIds: ["a", "b"], accept: ["overlap", "role"] });
+  });
+});
+
+describe("K5 — every door out of a house releases the person's shifts (ADR 0242, OD-204)", () => {
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  // 12:00 UTC = 15:00 in Istanbul.
+  function world() {
+    jest.useFakeTimers({ doNotFake: ["nextTick", "setImmediate"] }).setSystemTime(new Date("2026-09-22T12:00:00Z"));
+    const db = seed();
+    db.tables.restaurants = [{ id: RID, timezone: "Europe/Istanbul", country: null }];
+    db.tables.shifts.push(
+      shift({ id: "staff-past", member_id: "m-staff", shift_date: "2026-09-01", labor_cost: 150 }),
+      shift({ id: "staff-next", member_id: "m-staff", shift_date: "2026-10-05", labor_cost: 150 }),
+      shift({ id: "staff-later", member_id: "m-staff", shift_date: "2026-10-06", labor_cost: 150 }),
+    );
+    return db;
+  }
+  const membersOf = (db: StubDb) =>
+    new MembersService(asDatabaseService(db), undefined, teamOf(db));
+  const byId = (db: StubDb) => new Map(db.tables.shifts.map((r) => [r.id, r]));
+
+  it("Settings' remove opens their unstarted shifts, takes them off the roster, and files the removal", async () => {
+    const db = world();
+
+    await membersOf(db).removeMember(OWNER, RID, STAFF);
+
+    expect(byId(db).get("staff-next")).toMatchObject({ member_id: null, state: "open", labor_cost: null });
+    expect(byId(db).get("staff-later")).toMatchObject({ member_id: null, state: "open" });
+    expect(byId(db).get("staff-past")).toMatchObject({ member_id: "m-staff", labor_cost: 150 });
+    expect(db.tables.team_members.some((m) => m.id === "m-staff")).toBe(false);
+    expect(db.tables.user_restaurant_access.some((r) => r.user_id === STAFF)).toBe(false);
+    const audit = db.tables.system_audit_log.find((r) => r.action === "team_member_removed");
+    expect(audit?.changes).toMatchObject({ via: "MembersService.removeMember", self_leave: false, shifts_opened: 2 });
+    // The removed person is told, in the remover's role.
+    const told = db.tables.notifications.filter((n) => n.user_id === STAFF);
+    expect(told.map((n) => n.message)).toEqual([expect.stringMatching(/^An owner removed you/)]);
+  });
+
+  it("leaving on one's own is the same removal, and the owners and managers are told what opened", async () => {
+    const db = world();
+
+    await membersOf(db).removeMember(STAFF, RID, STAFF);
+
+    expect(byId(db).get("staff-next")).toMatchObject({ member_id: null, state: "open" });
+    expect(db.tables.team_members.some((m) => m.id === "m-staff")).toBe(false);
+    const audit = db.tables.system_audit_log.find((r) => r.action === "team_member_removed");
+    expect(audit?.changes).toMatchObject({ self_leave: true, shifts_opened: 2 });
+    // Nobody tells the leaver they were removed; both leads hear what opened.
+    expect(db.tables.notifications.filter((n) => n.user_id === STAFF)).toEqual([]);
+    const leads = db.tables.notifications.filter((n) => n.metadata?.action === "team_member_left");
+    expect(leads.map((n) => n.user_id).sort()).toEqual([MANAGER, OWNER].sort());
+    expect(leads[0].message).toBe("2 of their upcoming shifts are open again and need someone on them.");
+  });
+
+  it("leaving from the profile (AuthService.leaveRestaurant) is the same removal, not a third door", async () => {
+    const db = world();
+    const auth = new AuthService(
+      { sign: () => "tok", signAsync: async () => "tok" } as any,
+      { get: () => undefined } as any,
+      asDatabaseService(db),
+      { isBlacklisted: async () => false, blacklist: async () => undefined } as any,
+      { sendEmail: async () => undefined } as any,
+    );
+    (auth as any).moduleRef = { get: () => membersOf(db) };
+
+    await auth.leaveRestaurant(STAFF, RID);
+
+    expect(byId(db).get("staff-next")).toMatchObject({ member_id: null, state: "open" });
+    expect(db.tables.team_members.some((m) => m.id === "m-staff")).toBe(false);
+    expect(db.tables.user_restaurant_access.some((r) => r.user_id === STAFF)).toBe(false);
+    const leads = db.tables.notifications.filter((n) => n.metadata?.action === "team_member_left");
+    expect(leads.map((n) => n.user_id).sort()).toEqual([MANAGER, OWNER].sort());
+  });
+
+  it("deleting the account leaves every house through the same removal first", async () => {
+    const db = world();
+    db.tables.user_oauth_accounts = [];
+    const auth = new AuthService(
+      { sign: () => "tok", signAsync: async () => "tok" } as any,
+      { get: () => undefined } as any,
+      asDatabaseService(db),
+      { isBlacklisted: async () => false, blacklist: async () => undefined } as any,
+      { sendEmail: async () => undefined } as any,
+    );
+    (auth as any).moduleRef = { get: () => membersOf(db) };
+
+    await auth.deleteAccount(STAFF);
+
+    expect(byId(db).get("staff-next")).toMatchObject({ member_id: null, state: "open" });
+    expect(db.tables.team_members.some((m) => m.id === "m-staff")).toBe(false);
+    expect(db.tables.users.some((u) => u.user_id === STAFF)).toBe(false);
+  });
+
+  it("leaving refuses, and changes nothing, when the one removal path is not wired", async () => {
+    const db = world();
+    const auth = new AuthService(
+      { sign: () => "tok", signAsync: async () => "tok" } as any,
+      { get: () => undefined } as any,
+      asDatabaseService(db),
+      { isBlacklisted: async () => false, blacklist: async () => undefined } as any,
+      { sendEmail: async () => undefined } as any,
+    );
+
+    await expect(auth.leaveRestaurant(STAFF, RID)).rejects.toBeInstanceOf(InternalServerErrorException);
+    expect(db.tables.user_restaurant_access.some((r) => r.user_id === STAFF)).toBe(true);
+  });
+
+  it("a leave names the shifts the house had no clock to judge, and pushes to the leads it told", async () => {
+    const db = world();
+    // No zone, no country: a shift today may or may not have started, so it is
+    // kept whole on the leaver's name (unjudged) — the one that needs a person.
+    db.tables.restaurants = [{ id: RID, timezone: null, country: null }];
+    db.tables.shifts.push(
+      shift({ id: "staff-today", member_id: "m-staff", shift_date: "2026-09-22", start_time: "11:00", end_time: "19:00" }),
+    );
+    const push = { sendToUsers: jest.fn(async () => ({ outcome: "accepted_by_service" })) };
+    const team = new TeamService(asDatabaseService(db), undefined, push as any);
+    const members = new MembersService(asDatabaseService(db), undefined, team);
+
+    await members.removeMember(STAFF, RID, STAFF);
+
+    const leads = db.tables.notifications.filter((n) => n.metadata?.action === "team_member_left");
+    expect(leads[0].metadata.shifts_unjudged).toBe(1);
+    expect(leads[0].message).toMatch(/1 shift this house has no clock to judge is still on their name/);
+    expect(push.sendToUsers).toHaveBeenCalledWith(
+      expect.arrayContaining([OWNER, MANAGER]),
+      expect.objectContaining({ title: "Sam left the team", priority: "high" }),
+    );
+  });
+
+  it("the Team page's remove still hands nobody a leaver notice (a manager chose it)", async () => {
+    const db = world();
+    await teamOf(db).deleteMember(MANAGER, RID, "m-staff");
+    expect(db.tables.notifications.filter((n) => n.metadata?.action === "team_member_left")).toEqual([]);
+    expect(byId(db).get("staff-next")).toMatchObject({ member_id: null, state: "open" });
+  });
+
+  it("a members door without the one removal path refuses, and changes nothing", async () => {
+    const db = world();
+    const bare = new MembersService(asDatabaseService(db));
+
+    await expect(bare.removeMember(OWNER, RID, STAFF)).rejects.toBeInstanceOf(InternalServerErrorException);
+
+    expect(db.tables.user_restaurant_access.some((r) => r.user_id === STAFF)).toBe(true);
+    expect(byId(db).get("staff-next")).toMatchObject({ member_id: "m-staff" });
+  });
+
+  it("a manager still cannot remove an owner through the members door", async () => {
+    const db = world();
+    await expect(membersOf(db).removeMember(MANAGER, RID, OWNER)).rejects.toBeInstanceOf(ForbiddenException);
+    expect(db.tables.team_members.some((m) => m.id === "m-owner")).toBe(true);
   });
 });
