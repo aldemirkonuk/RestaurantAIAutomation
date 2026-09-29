@@ -940,7 +940,7 @@ still need his word. The audit skill lists it as gate-owned
 `grep -n 0050 scripts/pr_audit_gate.py` matches only the comment at `:66`. So the rule
 is enforced by the founder's word and the audit skill, not mechanically. **Owed:** a
 dated bracket in ADR 0050 for the 2026-09-27 judge's mix, landed through that path's
-own founder word.
+own founder word. **[2026-09-28, lane `docs/model-dispatch-adr-0231`: the owed bracket is overtaken. Asked whether to amend 0050, the founder answered as item 86, verbatim: *"remove ADR050, run opus as much as you need, while putting emphasis on sonnet when the tasks are fast, and direct, and other things that sonnet are highly capable of doing maximizng efficiency"*. That is his word on this gate-owned path. ADR 0050 now reads **Superseded by [ADR 0231](../../decisions/0231-opus-as-much-as-the-work-needs-sonnet-where-it-is-fast-and-direct.md)**. It is marked, not deleted (`decisions/README.md:10`). 0231 carries the judge's mix above as its working default. Still owed through a founder-approved gate PR: `SKILL.md:67` (whether 0231 replaces `0050-*.md` in the gate-owned list), `SKILL.md:153`, and the comment at `pr_audit_gate.py:66`.]**
 
 **OD-157, closed (2026-09-27, #466 audit fix round 1):** the register row is now in
 `OPEN-DECISIONS.md`'s Resolved table, matching its `resolved` CLAIMS row. The earlier
