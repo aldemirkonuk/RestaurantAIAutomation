@@ -203,3 +203,67 @@ begin
 end $$;
 
 rollback;
+
+-- T7 TWO SESSIONS (PR #502 audit, 2026-09-29): while a hand-over to Q is
+-- open, Q's removal (TeamService.deleteMember's roster DELETE) must wait for
+-- it, not land between the roster check and the UPDATEs and leave the shift
+-- on someone who is gone. shifts.member_id has no FK to team_members, so only
+-- the function's FOR KEY SHARE stops it. Needs dblink and a database this
+-- session can reach again by name (or the libpq string in the setting
+-- t7.conninfo, e.g. `set t7.conninfo = 'dbname=x user=postgres password=…'`
+-- before this file, where a non-superuser must give a password); the two
+-- sessions commit their own
+-- fixture (ids e7…) and remove it at the end. On a build whose function only
+-- reads the roster row, the DELETE goes through and this block raises.
+create extension if not exists dblink;
+do $$
+declare
+  conn text := coalesce(nullif(current_setting('t7.conninfo', true), ''),
+                        'dbname=' || current_database());
+  err text; n integer;
+begin
+  perform dblink_connect('t7a', conn);
+  perform dblink_connect('t7b', conn);
+  -- A run that died half-way leaves its fixture; clear it first.
+  perform dblink_exec('t7a', $f$
+    delete from public.shifts where restaurant_id = 'e7000000-0000-4000-8000-000000000001';
+    delete from public.team_members where restaurant_id = 'e7000000-0000-4000-8000-000000000001';
+    delete from public.schedules where restaurant_id = 'e7000000-0000-4000-8000-000000000001';
+    delete from public.restaurants where id = 'e7000000-0000-4000-8000-000000000001';
+    insert into public.restaurants (id, name, slug) values
+      ('e7000000-0000-4000-8000-000000000001', 'Race house', 'race-house-item-27');
+    insert into public.schedules (id, restaurant_id, week_start) values
+      ('e7300000-0000-4000-8000-000000000001', 'e7000000-0000-4000-8000-000000000001', '2026-09-21');
+    insert into public.team_members (id, restaurant_id, display_name, "position") values
+      ('e7200000-0000-4000-8000-000000000001', 'e7000000-0000-4000-8000-000000000001', 'P', 'Server'),
+      ('e7200000-0000-4000-8000-000000000002', 'e7000000-0000-4000-8000-000000000001', 'Q', 'Server');
+    insert into public.shifts
+      (id, restaurant_id, schedule_id, member_id, shift_date, start_time, end_time, role, shift_type, state, labor_cost)
+    values ('e7400000-0000-4000-8000-000000000001', 'e7000000-0000-4000-8000-000000000001',
+            'e7300000-0000-4000-8000-000000000001', 'e7200000-0000-4000-8000-000000000001',
+            '2026-09-24', '09:00', '17:00', 'Server', 'am', 'scheduled', 150)$f$);
+  -- Session A: the hand-over, left open.
+  perform dblink_exec('t7a', 'begin');
+  perform x from dblink('t7a', $f$select public.hand_over_leaving_shifts(
+      'e7000000-0000-4000-8000-000000000001', 'e7200000-0000-4000-8000-000000000001',
+      'e7200000-0000-4000-8000-000000000002', '[]'::jsonb, '[]'::jsonb,
+      '[{"id":"e7400000-0000-4000-8000-000000000001","shift_date":"2026-09-24","start_time":"09:00","labor_cost":140}]'::jsonb,
+      '[]'::jsonb, false)::text$f$) as t(x text);
+  -- Session B: remove Q while A is open. It must be made to wait.
+  perform dblink_exec('t7b', $f$set lock_timeout = '300ms'$f$);
+  err := dblink_exec('t7b', $f$delete from public.team_members
+                              where id = 'e7200000-0000-4000-8000-000000000002'$f$, false);
+  perform dblink_exec('t7a', 'commit');
+  select count(*) into n from dblink('t7b', $f$select 1 from public.team_members
+      where id = 'e7200000-0000-4000-8000-000000000002'$f$) as t(x int);
+  perform dblink_exec('t7b', 'reset lock_timeout');
+  perform dblink_exec('t7b', $f$
+    delete from public.shifts where restaurant_id = 'e7000000-0000-4000-8000-000000000001';
+    delete from public.team_members where restaurant_id = 'e7000000-0000-4000-8000-000000000001';
+    delete from public.schedules where restaurant_id = 'e7000000-0000-4000-8000-000000000001';
+    delete from public.restaurants where id = 'e7000000-0000-4000-8000-000000000001'$f$);
+  perform dblink_disconnect('t7a');
+  perform dblink_disconnect('t7b');
+  assert err <> 'DELETE 1' and n = 1,
+    'T7 Q was removed while a hand-over to Q was open (' || err || ')';
+end $$;

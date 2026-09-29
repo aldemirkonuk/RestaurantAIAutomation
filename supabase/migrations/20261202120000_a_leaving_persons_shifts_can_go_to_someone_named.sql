@@ -22,7 +22,8 @@
 -- 2. `hand_over_leaving_shifts(...)`. In one transaction:
 --    * the chosen person (`p_to`) must be on THIS house's roster and must not
 --      be the person leaving, or it raises — the database's own check, not
---      only the gateway's;
+--      only the gateway's. Their roster row is locked FOR KEY SHARE for the
+--      rest of the transaction, so their own removal cannot land mid-way;
 --    * it applies `release_leaving_shifts` (migration 20261201130000) for the
 --      shifts that open and the ones cut now, with every re-check it makes;
 --    * each unstarted shift in `p_give` moves to `p_to` whole, re-checked
@@ -37,6 +38,16 @@
 --      shift added to them after the gateway's check is still caught.
 --    Any raise rolls everything back: nothing is opened, cut, moved or added,
 --    and the gateway refuses the removal before its first membership write.
+--
+-- CONCURRENCY (PR #502 audit, 2026-09-29). The lock on p_to's roster row
+-- closes the window INSIDE this call: a concurrent removal of p_to waits for
+-- it, or has already committed and this raises. It does not cover p_to's own
+-- removal as a whole: TeamService.deleteMember releases a person's shifts,
+-- then revokes access, then deletes the roster row, in separate calls, so a
+-- hand-over to them that commits after their shifts were released but
+-- before their roster row goes still lands on someone about to be removed.
+-- Two-session proof of the part this closes: supabase/tests/20261202120000_*
+-- block T7 (red on the unlocked function).
 --
 -- SECURITY INVOKER (not DEFINER): the gateway calls it with the service role;
 -- anon and authenticated may not call it at all.
@@ -81,10 +92,17 @@ BEGIN
   IF p_to = p_member_id THEN
     RAISE EXCEPTION 'hand_over_leaving_shifts: the person taking over is the person leaving; nothing was changed';
   END IF;
-  IF NOT EXISTS (
-    SELECT 1 FROM public.team_members
-     WHERE id = p_to AND restaurant_id = p_restaurant_id
-  ) THEN
+  -- Locked, not only read (PR #502 audit, 2026-09-29): FOR KEY SHARE holds
+  -- the roster row until this transaction ends, so a concurrent removal of
+  -- p_to (TeamService.deleteMember's DELETE) waits for the hand-over instead
+  -- of landing between this check and the UPDATEs below and leaving the
+  -- shifts on someone who is no longer on the roster. If the removal
+  -- committed first, the row is gone and this raises. shifts.member_id has no
+  -- FK to team_members (dropped in 20261201110200), so nothing else would.
+  PERFORM 1 FROM public.team_members
+   WHERE id = p_to AND restaurant_id = p_restaurant_id
+     FOR KEY SHARE;
+  IF NOT FOUND THEN
     RAISE EXCEPTION 'hand_over_leaving_shifts: the person taking over is not on this house''s roster; nothing was changed';
   END IF;
   IF jsonb_typeof(coalesce(p_give, '[]'::jsonb)) <> 'array'
