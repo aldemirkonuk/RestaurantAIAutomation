@@ -236,6 +236,16 @@ could verify it. The CI-side script requests extended thinking with a bounded
 token budget as the closest verifiable equivalent. This is stated as a
 limitation, not a verified guarantee.
 
+
+### Correction — 2026-09-28 (ADR 0237)
+
+The Context paragraph above says "Both agent definitions carry `reasoning_effort: high` in frontmatter as a best-effort signal ... the mapping from 'high' to a concrete effort knob is not documented where I could verify it." That sentence is now wrong in three ways. It is kept, and this correction is added below it, because nothing here is deleted:
+- **The key is `effort`, not `reasoning_effort`.** Claude Code's subagent frontmatter documents `effort` (code.claude.com/docs/en/sub-agents, frontmatter table), and that is the key the files carry: `.claude/agents/pr-merge-planner.md:6`, `pr-merge-auditor.md:6`, `pr-merge-adversary.md:6`, each `effort: high`.
+- **There are three definitions, not two.** The 2026-09-17 amendment added the planner.
+- **The mapping is documented.** Frontmatter effort overrides the session's level for that agent.
+
+**Nothing changes in the gate.** All three stay at `effort: high`. The founder chose *"Keep high, test medium later (Recommended)"* for the planner on 2026-09-28. [ADR 0237](0237-effort-per-task-medium-by-default-high-where-costly.md) records the effort rules for every other dispatched agent, plus the owed replay of about 20 past audits with the planner at medium.
+
 ## Consequences
 
 - What becomes easier: PRs merge without the founder in the loop, at the
@@ -960,3 +970,4 @@ Five mutations each turn the self-test red:
 | 2026-09-22 | Aldemir (chat, main session effa5204, direct authorization) | No-credit bypass, verbatim: *"change the scope of credit api errors to silence them and let them bypass for now"*. The SDK's no-credit error, in its exact shape, exits 0 with a warning and no PR comment. Every other CANNOT CHECK still fails closed. Self-test 54 invariants, 5 mutations red. See "Amendment — 2026-09-22". |
 | 2026-09-22 | ADR 0090 pipeline on #442 `bfc19fcb7` (Opus plan, two Sonnet checkers, Opus final) | **BLOCK, text only.** The code held: the bypass fires only on the SDK's no-credit 400, and five mutations went red. Fixed in `de7c40a2b`: the gate's fail-closed docstring was bracketed, the removal recipe now works when applied, and the remove-before-required rule is stated. |
 | 2026-09-22 | Opus final say, delta `bfc19fcb7`..`de7c40a2b` | **BLOCK, one sentence.** "the 2026-09-12 Correction removed" named the wrong Correction: that one removed red-on-every-PR, while the sixth (2026-09-03, `wait_upstream`) removed a required SUCCESS that had audited nothing. The error came from the first audit's own verdict. Fixed in the next commit, together with the note to revert the four script brackets on removal. |
+| 2026-09-28 | Aldemir (founder), ADR 0237 | Correction: the frontmatter key is `effort` (not `reasoning_effort`), there are three definitions, and the mapping is documented. All three stay `effort: high` ("Keep high, test medium later"). No gate behaviour changes |
