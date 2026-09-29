@@ -4,7 +4,7 @@ Filed from the ADR 0090 audit of #508. This entry records the defect. The fork i
 
 **What.**
 - `logout()` (`apps/web/src/contexts/AuthContext.tsx:936-956`) clears tokens, the house id and the axios headers, but never touches the offline mutation queue.
-- `SyncManager.syncNow()` (`apps/web/src/lib/sync-manager.ts:213-247`) replays every pending mutation with the current session's headers. No entry records who queued it or for which house.
+- `SyncManager.syncNow()` (`apps/web/src/lib/sync-manager.ts:239-258`) replays every pending mutation with the current session's headers. No entry records who queued it or for which house.
 - So a mutation queued by person A in house X, still pending at sign-out, is sent later under person B, or under A's other house.
 - Separately, a mutation that has used up `MAX_RETRIES` is removed with only a `console.warn` / `console.error` (`sync-manager.ts:251-275`). A change the person believed was saved disappears, and nobody is told.
 
@@ -40,7 +40,7 @@ Filed from the ADR 0090 audit of #510. The entry is `tech-debt.d/2026-09-29-fix-
 - **Loose claim.** The claim `AUDIT-0090-PR510-CREATE-WAITS-FOR-SERVER` (`claims.d/fix-storage-location-writes.jsonl`) greps for three strings anywhere in the files. It should be scoped to `handleCreate` and `addLocation`, so that a copy elsewhere cannot satisfy it.
 - **Dead branch.** `if (!data?.id) return optimistic` (`useStorageLocations.ts:542`) is dead since `addLocation` resolves the stored zone or `null`. It also returns a temp-id zone as if it had been stored. Remove it, or make it return `null`.
 
-## OD-190–196, OD-201 and OD-202 still sit after `## Resolved` — OPEN (waived, own PR) — 2026-09-29
+## OD-190–196, OD-201 and OD-202 still sit after `## Resolved` — OPEN (waiver reported, own PR) — 2026-09-29
 
 These rows are OPEN, but they sit after `## Resolved` in `OPEN-DECISIONS.md`.
 
@@ -48,7 +48,7 @@ These rows are OPEN, but they sit after `## Resolved` in `OPEN-DECISIONS.md`.
 
 **Why it was deferred.** That breaks ADR 0231's 15-file PR cap, and a waiver needs its own founder answer (ADR 0231 bracket, 2026-09-29). It also cannot share a PR with other follow-ups.
 
-**Founder answer, 2026-09-29 (chat, relayed to this session by its coordinator; no session id was recorded here).** He picked *"Waive, own PR (Recommended)"*: one separate re-cite PR, over the 15-file cap, produced only by `--fix`, merged after this one. It moves the rows and runs `--fix`, with no wording changes, and it closes this entry.
+**Founder answer, 2026-09-29 (chat, relayed to this session by its coordinator; no session id was recorded here).** He picked *"Waive, own PR (Recommended)"*: one separate re-cite PR, over the 15-file cap, produced only by `--fix`, merged after this one. It moves the rows and runs `--fix`, with no wording changes, and it closes this entry. That PR must record the waiver traceably in ADR 0231, and it must move OD-203 and OD-204 too, since this PR also appends them after `## Resolved`.
 
 ## The gateway boot check never builds the OpenAPI document — OPEN — 2026-09-29
 
@@ -69,7 +69,7 @@ Found while merging the #502/#517 queue.
 This was flagged for a tenant-guard review. The route is `apps/api-gateway/src/settings/settings.controller.ts:606-621`. Read on `origin/main` at `87792901c`, not exercised against a running gateway.
 
 **It is tenant-safe as written.**
-- The controller carries `@UseGuards(JwtAuthGuard, TenantGuard)` at class level (`:66`), and the route has no bypass decorator.
+- The controller carries `@UseGuards(JwtAuthGuard, TenantGuard)` at class level (`:66`), and the route has no bypass decorator. The same tenant match also runs in `JwtAuthGuard` (`apps/api-gateway/src/auth/guards/jwt-auth.guard.ts:74`), with `TenantGuard` as the backstop.
 - `TenantGuard` calls `assertTenantMatch`, which is `apps/api-gateway/src/common/tenant/assert-tenant-match.ts:23`.
 - `assertTenantMatch` compares `params.restaurantId` with the JWT's `restaurantId`. It throws 403 on a mismatch, and also when the caller has no house.
 - So the route reads only the caller's own house.
