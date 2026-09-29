@@ -120,10 +120,11 @@ W7  AN IMPORTED QUERY HOOK THE PAGE DEPENDS ON IS ALSO TENANT-KEYED. W6 reads
 
 SCOPE. Six pages: `apps/web/src/pages/receiving/next`,
 `apps/web/src/pages/receipts/next`, `apps/web/src/pages/communications/next`,
-`apps/web/src/pages/documents-reports/next`, `apps/web/src/pages/team`
-(that one BOTH halves — the `next/` redesign and the `command/` legacy
-desk are one route behind one flag, and the tenant leak this guard's W6 exists
-for was on the redesigned half while the legacy half had it right) and
+`apps/web/src/pages/documents-reports/next`, `apps/web/src/pages/team/next`
+(until 2026-09-29 this held BOTH halves — the `next/` redesign and the
+`command/` legacy desk were one route behind one flag, and the tenant leak this
+guard's W6 exists for was on the redesigned half while the legacy half had it
+right; the ADR 0149 cutover, #494, deleted the legacy desk) and
 `apps/web/src/pages/logs/next`, plus the gateway files their registers cite and
 the shared query hooks they name. Each page declares its own register,
 renderers and nullable contract in PAGES below; adding a seventh page means
@@ -256,7 +257,6 @@ _RECEIPTS = Path("apps/web/src/pages/receipts/next")
 _COMMS = Path("apps/web/src/pages/communications/next")
 _SORTING_OFFICE = Path("apps/web/src/pages/documents-reports/next")
 _TEAM_NEXT = Path("apps/web/src/pages/team/next")
-_TEAM_CMD = Path("apps/web/src/pages/team/command")
 _LOGS = Path("apps/web/src/pages/logs/next")
 _QUERY_HOOKS = Path("apps/web/src/hooks/queries/useConversationQueries.ts")
 _DRAFT_HOOKS = Path("apps/web/src/hooks/queries/useDraftEmailQueries.ts")
@@ -395,12 +395,16 @@ PAGES = (
     PageSpec(
         name="/team",
         hooks=_TEAM_NEXT / "useTeamNextData.ts",
-        # BOTH halves. /team is one route behind one flag, and the two halves
-        # disagreed about this exact rule: the legacy desk keyed every query by
-        # `activeRestaurantId` from the day it shipped, and the redesign that
-        # replaces it shipped three bare keys. Listing only the half being
-        # rebuilt would have made a green run mean "the half that was already
-        # right is still right".
+        # This listed BOTH halves until 2026-09-29: the legacy desk
+        # (`team/command/`) keyed every query by `activeRestaurantId` from the
+        # day it shipped, and the redesign that replaced it shipped three bare
+        # keys. The ADR 0149 cutover (#494, founder-approved 2026-09-29)
+        # deleted the legacy desk, so its four renderers left this tuple in the
+        # same change that added the three rebuilt files below, which called
+        # `useQuery` and had never been listed (CLAIMS
+        # TD-2026-09-28-TEAM-WINDOWED-GUARD-UNLISTED-QUERIES). Dropping the four
+        # without adding the three would have been the "drop the anchor to go
+        # green" move this file's header forbids.
         # The parity build (2026-09-04) split the redesigned half into files;
         # every one of them is listed, because W6 can only see the files this
         # tuple names and a query in an unlisted renderer would be a bucket
@@ -414,10 +418,9 @@ PAGES = (
             _TEAM_NEXT / "TeamRecord.tsx",
             _TEAM_NEXT / "PerformanceCard.tsx",
             _TEAM_NEXT / "MyShiftsNext.tsx",
-            _TEAM_CMD / "ManagerShiftDesk.tsx",
-            _TEAM_CMD / "MyShifts.tsx",
-            _TEAM_CMD / "OpsRulesPanel.tsx",
-            _TEAM_CMD / "PerformancePanel.tsx",
+            _TEAM_NEXT / "FormerStaff.tsx",
+            _TEAM_NEXT / "SendGrantsSection.tsx",
+            _TEAM_NEXT / "useHouseAreas.ts",
         ),
         register="TEAM_SERVER_WINDOWS",
         # A ceiling, not a floor — see the header note. /team's one window caps
@@ -432,14 +435,15 @@ PAGES = (
             "TeamNextData": ["week", "coverageRules", "membersCount", "certsOnFile"],
         },
         # `activeRestaurantId` is spelled out because 'restaurantId' is NOT a
-        # substring of it (capital R) — the legacy half would have failed a
-        # token list that only carried the other two.
+        # substring of it (capital R) — the legacy half (deleted 2026-09-29)
+        # would have failed a token list that only carried the other two, and
+        # the self-test's desk-shaped fixtures still key by it.
         tenant_tokens=("rid", "restaurantId", "activeRestaurantId"),
         tenant_keyed=True,
         # W7 checks shared hooks a page DECLARES. /team declares none: every
-        # query it reads is a `useQuery` in one of the TWELVE files above —
-        # eight on the rebuilt half since the 2026-09-04 parity build split it,
-        # four on the legacy one — so W6 sees all of them. That is a
+        # query it reads is a `useQuery` in one of the ELEVEN files above —
+        # the hook plus the renderers of the rebuilt half; the four legacy
+        # files left with the cutover (2026-09-29) — so W6 sees all of them. That is a
         # measurement, not an omission, and it is printed on every clean run so
         # it cannot be read as "checked and fine". Keep this count honest: it is
         # the sentence a reader trusts instead of counting the tuple.
@@ -551,8 +555,14 @@ QUERY_KEY = re.compile(r"queryKey:\s*\[([^\]]*)\]")
 # `useQuery<T>({` bug above, and the reason both are tested below. At least one
 # dot is required so a bare local (`queryKey: key`) still trips the
 # no-keys-found CannotCheck rather than being judged on its variable name.
+# A BARE factory call (`queryKey: areasKey(rid)`) is matched too, since
+# 2026-09-29: /team's `useHouseAreas.ts` and `SendGrantsSection.tsx` key that
+# way, and without it adding them to the /team tuple would have listed two
+# files whose keys W6 never reads (the page-wide no-keys check does not fire
+# while any other file has one). The call's parentheses are required, so a
+# bare local still refuses.
 QUERY_KEY_CALL = re.compile(
-    r"queryKey:\s*([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)+(?:\s*\([^()]*\))?)"
+    r"queryKey:\s*([A-Za-z_$][\w$]*(?:(?:\.[A-Za-z_$][\w$]*)+(?:\s*\([^()]*\))?|\s*\([^()]*\)))"
 )
 
 
@@ -561,7 +571,7 @@ QUERY_KEY_CALL = re.compile(
 # unused import cannot stand in for a use.
 #
 # The optional semicolon is not cosmetic. The first version of this required
-# one, and /team's legacy half is written semicolon-free — so on that page a
+# one, and /team's legacy half was written semicolon-free — so on that page a
 # leftover `import { LE }` would have satisfied the marker check after every
 # use of it was deleted, which is vacuity #3 in this file's collection. It is
 # tested below on a semicolon-free renderer for exactly that reason.
@@ -1225,6 +1235,9 @@ export class ReportsService {
 # /team's hook. Note the semicolons here and their ABSENCE in the legacy
 # renderers below: the page is written in both styles and the guard has to cope
 # with both, which is why CLEAN_TEAM_PERF carries a semicolon-free import.
+# (The legacy desk itself was deleted by the ADR 0149 cutover on 2026-09-29;
+# its semicolon-free shapes stay here as fixtures on rebuilt-half file names,
+# because the matcher still has to read both styles.)
 CLEAN_TEAM_HOOKS = """
 export const TEAM_SERVER_WINDOWS = {
   /** performance.service.ts:139 — the team benchmark ends `.limit(200)`. */
@@ -1259,7 +1272,7 @@ export default function TeamNext() {
 }
 """
 
-# Semicolon-free, like the real legacy desk.
+# Semicolon-free, like the legacy desk was (written here as WeekGrid.tsx).
 CLEAN_TEAM_DESK = """
 import { useAuth } from '../../../contexts/AuthContext'
 export function ManagerShiftDesk() {
@@ -1308,6 +1321,46 @@ export class PerformanceService {
   async member() {
     return this.sb.from("server_sales").select("*").limit(200);
   }
+}
+"""
+
+# The three rebuilt /team files added to the tuple on 2026-09-29. Two of them
+# key through a BARE factory call, the shape QUERY_KEY_CALL learned that day.
+CLEAN_TEAM_FORMER = """
+import { useQuery } from '@tanstack/react-query';
+export function FormerStaffSheet() {
+  const rid = useActiveRestaurantId();
+  const q = useQuery({
+    queryKey: ['team-next-former-staff', rid],
+    queryFn: () => getFormerStaff(rid ?? undefined),
+    enabled: Boolean(rid),
+  });
+  return <div>{q.isError ? 'not known' : q.data?.length}</div>;
+}
+"""
+
+CLEAN_TEAM_GRANTS = """
+import { useQuery } from '@tanstack/react-query';
+const grantKeys = (restaurantId: string | null) => ['authority-grants', restaurantId] as const;
+export function SendGrantsSection({ restaurantId }: { restaurantId: string | null }) {
+  const grants = useQuery({
+    queryKey: grantKeys(restaurantId),
+    queryFn: () => apiClient.get('/authority/grants').then((r) => r.data),
+    enabled: !!restaurantId,
+  });
+  return <div>{grants.isError ? 'not known' : 'ok'}</div>;
+}
+"""
+
+CLEAN_TEAM_AREAS = """
+import { useQuery } from '@tanstack/react-query';
+export const areasKey = (rid: string | null) => ['house-areas', rid] as const;
+export const awayKey = (rid: string | null) => ['house-away', rid] as const;
+export function useHouseAreas() {
+  const rid = useActiveRestaurantId();
+  const areasQ = useQuery({ queryKey: areasKey(rid), queryFn: getAreas, enabled: !!rid });
+  const awayQ = useQuery({ queryKey: awayKey(rid), queryFn: getAway, enabled: !!rid });
+  return { areas: areasQ.data ?? null, away: awayQ.data ?? null };
 }
 """
 
@@ -1397,6 +1450,13 @@ _RCP = _BY_NAME["/receipts"]
 _CMS = _BY_NAME["/communications"]
 _SO = _BY_NAME["/documents-reports"]
 _TEAM = _BY_NAME["/team"]
+
+
+def _team_r(name: str) -> Path:
+    """A /team renderer BY FILE NAME. Positional indexes silently retargeted
+    once already (the parity build grew the tuple; the 2026-09-29 cutover
+    shrank it), so the cases below name the file they mean."""
+    return next(r for r in _TEAM.renderers if r.name == name)
 _LOGS_PAGE = _BY_NAME["/logs"]
 
 
@@ -1447,21 +1507,24 @@ def _scaffold(tmp: Path) -> None:
     )
 
     (tmp / _TEAM.hooks.parent).mkdir(parents=True, exist_ok=True)
-    (tmp / _TEAM_CMD).mkdir(parents=True, exist_ok=True)
     (tmp / GATEWAY_ROOT / "team").mkdir(parents=True, exist_ok=True)
     (tmp / _TEAM.hooks).write_text(CLEAN_TEAM_HOOKS, encoding="utf-8")
     # Every renderer the /team tuple names gets a clean body: `zip` against a
     # five-body tuple silently stopped at the fifth file once the parity build
     # (0bc70f76) grew the tuple to twelve, and the self-test then reported
     # `cannot-check: anchor file is missing` for a file that exists on disk.
+    # The legacy desk's four names left with the cutover (2026-09-29); its
+    # desk/ops shapes now stand in for WeekGrid and ShiftSheet, so the
+    # semicolon-free style keeps a clean fixture on the real tuple.
     _team_bodies = {
         "TeamNext.tsx": CLEAN_TEAM_NEXT,
-        "ManagerShiftDesk.tsx": CLEAN_TEAM_DESK,
-        "MyShifts.tsx": CLEAN_TEAM_MYSHIFTS,
+        "WeekGrid.tsx": CLEAN_TEAM_DESK,
+        "ShiftSheet.tsx": CLEAN_TEAM_OPS,
         "MyShiftsNext.tsx": CLEAN_TEAM_MYSHIFTS,
-        "OpsRulesPanel.tsx": CLEAN_TEAM_OPS,
-        "PerformancePanel.tsx": CLEAN_TEAM_PERF,
         "PerformanceCard.tsx": CLEAN_TEAM_PERF,
+        "FormerStaff.tsx": CLEAN_TEAM_FORMER,
+        "SendGrantsSection.tsx": CLEAN_TEAM_GRANTS,
+        "useHouseAreas.ts": CLEAN_TEAM_AREAS,
     }
     for rel in _TEAM.renderers:
         (tmp / rel).parent.mkdir(parents=True, exist_ok=True)
@@ -2098,8 +2161,8 @@ def self_test() -> int:
         "violation",
     )
     case(
-        "W6 the LEGACY desk's week key lost its tenant (the half that was right)",
-        lambda t: (t / _TEAM.renderers[1]).write_text(
+        "W6 the semicolon-free week grid's key lost its tenant (the legacy desk's shape)",
+        lambda t: (t / _team_r("WeekGrid.tsx")).write_text(
             CLEAN_TEAM_DESK.replace(
                 "'team', 'week', activeRestaurantId, weekStart]", "'team', 'week', weekStart]"
             ),
@@ -2108,8 +2171,8 @@ def self_test() -> int:
         "violation",
     )
     case(
-        "W6 the Ops drawer's rule key lost its tenant",
-        lambda t: (t / _TEAM.renderers[3]).write_text(
+        "W6 the shift sheet's rule key lost its tenant",
+        lambda t: (t / _team_r("ShiftSheet.tsx")).write_text(
             CLEAN_TEAM_OPS.replace(
                 "'coverage-templates', activeRestaurantId]", "'coverage-templates']"
             ),
@@ -2119,7 +2182,7 @@ def self_test() -> int:
     )
     case(
         "W6 the performance key lost its tenant",
-        lambda t: (t / _TEAM.renderers[4]).write_text(
+        lambda t: (t / _team_r("PerformanceCard.tsx")).write_text(
             CLEAN_TEAM_PERF.replace(
                 "'team', 'performance', activeRestaurantId, member?.id]",
                 "'team', 'performance', member?.id]",
@@ -2130,7 +2193,7 @@ def self_test() -> int:
     )
     case(
         "W2 the benchmark's window mark was deleted but its SEMICOLON-FREE import stayed",
-        lambda t: (t / _TEAM.renderers[4]).write_text(
+        lambda t: (t / _team_r("PerformanceCard.tsx")).write_text(
             CLEAN_TEAM_PERF.replace("{LE}{TEAM_SERVER_WINDOWS.BENCHMARK_SERVICES} of them", "{TEAM_SERVER_WINDOWS.BENCHMARK_SERVICES}"),
             encoding="utf-8",
         ),
@@ -2177,7 +2240,39 @@ def self_test() -> int:
     )
     case(
         "a team renderer is missing",
-        lambda t: (t / _TEAM.renderers[2]).unlink(),
+        lambda t: (t / _team_r("RosterSheet.tsx")).unlink(),
+        "cannot-check",
+    )
+    # The three rebuilt files listed on 2026-09-29 (they called useQuery and
+    # were never in the tuple). Each case proves its file is actually READ:
+    # remove the file from the tuple and its case goes back to "clean".
+    case(
+        "W6 the former-staff sheet's key lost its tenant",
+        lambda t: (t / _team_r("FormerStaff.tsx")).write_text(
+            CLEAN_TEAM_FORMER.replace("['team-next-former-staff', rid]", "['team-next-former-staff']"),
+            encoding="utf-8",
+        ),
+        "violation",
+    )
+    case(
+        "W6 the send-grants BARE factory key lost its tenant",
+        lambda t: (t / _team_r("SendGrantsSection.tsx")).write_text(
+            CLEAN_TEAM_GRANTS.replace("queryKey: grantKeys(restaurantId)", "queryKey: grantKeys()"),
+            encoding="utf-8",
+        ),
+        "violation",
+    )
+    case(
+        "W6 the house-areas BARE factory key lost its tenant",
+        lambda t: (t / _team_r("useHouseAreas.ts")).write_text(
+            CLEAN_TEAM_AREAS.replace("queryKey: awayKey(rid)", "queryKey: awayKey()"),
+            encoding="utf-8",
+        ),
+        "violation",
+    )
+    case(
+        "a newly listed team file is missing",
+        lambda t: (t / _team_r("useHouseAreas.ts")).unlink(),
         "cannot-check",
     )
     case(

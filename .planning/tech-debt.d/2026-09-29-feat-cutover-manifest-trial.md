@@ -1,4 +1,6 @@
-## /team's windowed-figures guard lists four legacy files and misses three rebuilt ones that query — OPEN — 2026-09-28
+## /team's windowed-figures guard lists four legacy files and misses three rebuilt ones that query — ~~OPEN~~ CLOSED on #494 — 2026-09-28
+
+**Closed 2026-09-29.** The founder approved the `team` group ("merge all five", #494 included), and the guard change described below landed on #494 itself: the four legacy renderers dropped, the three rebuilt files listed, bare factory-call keys read, the self-test retargeted by file name (93 cases ok). CLAIMS `TD-2026-09-28-TEAM-WINDOWED-GUARD-UNLISTED-QUERIES` is resolved (`claims.d/feat-cutover-manifest-trial.jsonl:3`).
 
 Found while fixing PR #494 (the ADR 0149 trial cutover), whose `team` group deletion made
 `scripts/check_windowed_figures.py` exit 2 (CANNOT CHECK).
