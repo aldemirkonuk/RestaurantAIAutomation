@@ -37,6 +37,8 @@ vi.mock('../../hooks/useStorageLocations', () => ({
     recalculateLocationCounts: vi.fn(),
     setLocations: vi.fn(),
   }),
+  // ADR 0238: an owner or manager (the create controls are offered).
+  useZoneSetupAccess: () => ({ maySetUp: true, unknown: false, loading: false, assigned: null }),
 }))
 
 import { StorageLocationManager } from './StorageLocationManager'

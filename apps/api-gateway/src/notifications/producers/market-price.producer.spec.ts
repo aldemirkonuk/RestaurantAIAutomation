@@ -57,6 +57,22 @@ function build(
   startAt: Date = NOW,
 ) {
   const db = new FakeDb();
+  // The producer narrows its audience to owners and managers (fix/websocket-
+  // role-gate, 2026-09-28), so the house's two members hold those roles here.
+  // The staff case below adds a third.
+  for (const [user_id, role] of [
+    [MEMBERS[0], "owner"],
+    [MEMBERS[1], "manager"],
+  ]) {
+    db.tables.user_restaurant_access.push({
+      user_id,
+      restaurant_id: TENANT,
+      role,
+      is_active: true,
+      valid_from: "2026-01-01T00:00:00Z",
+      valid_until: null,
+    });
+  }
   const database = fakeDatabase(db, MEMBERS);
   const notifications = fakeNotifications(MEMBERS);
   // EVERY instant in this suite comes from here. Before 2026-09-04 the ledger
@@ -292,6 +308,45 @@ describe("MarketPriceProducer", () => {
     expect(notifications.persistForRestaurant.calls[0][1].message).toContain(
       "a cheaper vendor appearing reads the same as a price falling",
     );
+  });
+
+  it("[REVERT-FAILS] a vendor's quoted price reaches owners and managers, never staff, and never a phone push", async () => {
+    // /vendor-intel refuses staff this read ("Vendor pricing is commercially
+    // sensitive", vendor-intel.controller.ts). Before 2026-09-28 the sentence
+    // went to every member as a row, a live toast and a push.
+    const { db, notifications, producer } = build();
+    bought(db);
+    db.tables.user_restaurant_access.push({
+      user_id: "user-staff",
+      restaurant_id: TENANT,
+      role: "staff",
+      is_active: true,
+      valid_from: "2026-01-01T00:00:00Z",
+      valid_until: null,
+    });
+
+    await producer.sweepTenant(
+      TENANT,
+      ZONE,
+      { ready: [...MEMBERS, "user-staff"], deferred: [] },
+      NOW,
+    );
+
+    const [, payload, opts] = notifications.persistForRestaurant.calls[0];
+    expect([...opts.onlyUserIds].sort()).toEqual([...MEMBERS].sort());
+    expect(opts.onlyUserIds).not.toContain("user-staff");
+    // "low" keeps the vendor name and amounts off a locked screen (ADR 0175 D3).
+    expect(payload.priority).toBe("low");
+  });
+
+  it("[REVERT-FAILS] sends nothing when the house's roles cannot be read", async () => {
+    const { db, notifications, producer } = build();
+    bought(db);
+    db.failures.user_restaurant_access = "connection reset";
+    await expect(
+      producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW),
+    ).rejects.toThrow(/user_restaurant_access/);
+    expect(notifications.persistForRestaurant.calls).toHaveLength(0);
   });
 
   it("throws when the house's own orders cannot be read", async () => {

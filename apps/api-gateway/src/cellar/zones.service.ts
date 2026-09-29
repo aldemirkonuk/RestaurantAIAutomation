@@ -1,5 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
+import { assertMaySetUpZones } from "../storage-locations/storage-locations.service";
 
 /**
  * THE HOUSE'S ZONES, AND WHETHER ANYBODY HAS EVER LOOKED AT THEM.
@@ -257,6 +258,13 @@ export class ZonesService {
     const next = (name ?? "").trim();
     const renamed = next !== "" && next !== current;
     const provenance: ZoneProvenance = renamed ? "renamed" : "confirmed";
+
+    // A rename is zone setup (ADR 0238, the founder 2026-09-29:
+    // "managers/owners+ the people they assign"): 403 with nothing written
+    // unless the caller is an owner or manager here, or was assigned.
+    // Confirming the detected name WITHOUT changing it is not named by that
+    // answer and stays open to every member, as before (OD-200).
+    if (renamed) await assertMaySetUpZones(client, userId, restaurantId);
 
     const patch: Record<string, unknown> = {
       zone_confirmed_at: new Date().toISOString(),

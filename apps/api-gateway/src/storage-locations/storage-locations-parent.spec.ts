@@ -41,8 +41,10 @@ function bodyMetatype(handler: "createLocation" | "updateLocation"): any {
     StorageLocationsController.prototype,
     handler,
   );
-  // createLocation(restaurantId, dto) / updateLocation(restaurantId, locationId, dto)
-  return handler === "createLocation" ? types?.[1] : types?.[2];
+  // The body is the last parameter: createLocation(user, restaurantId, dto) /
+  // updateLocation(user, restaurantId, locationId, dto) since ADR 0238 added
+  // the caller. Reading it by position from the end keeps this pin on the DTO.
+  return types?.[types.length - 1];
 }
 
 const validate = (
