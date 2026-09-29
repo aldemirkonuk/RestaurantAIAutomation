@@ -519,6 +519,24 @@ describe('useRecommendationsNextData — the shared state and the house log', ()
     }
   });
 
+  it('reads the role the way the shell does, so an unknown one is not owner or manager (founder item 87, OD-176)', async () => {
+    const { result, rerender } = renderHook(() => useRecommendationsNextData());
+    await waitFor(() => expect(result.current.phase).toBe('ready'));
+    expect(result.current.role).toBeNull();
+    for (const r of ['owner', 'manager', 'staff']) {
+      role.current = r;
+      rerender();
+      expect(result.current.role).toBe(r);
+    }
+    // the platform admin and a role spelled any other way are nobody's
+    // manager here, exactly as the rail reads them (shellRoleFlags normalRole)
+    for (const r of ['admin', 'Owner', 'area_lead']) {
+      role.current = r;
+      rerender();
+      expect(result.current.role).toBeNull();
+    }
+  });
+
   it("reads the gateway's undoableByYou off a tab row — only a boolean counts (round 4, answer 5)", async () => {
     api.get.mockImplementation(async (url: string) => {
       if (url.includes('/digest')) return { data: { digestEnabled: false, digestHour: 7 } };
