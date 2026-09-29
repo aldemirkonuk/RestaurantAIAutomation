@@ -440,7 +440,7 @@ route) — so there is no second runtime for this one to disagree with.]
     a stale `threadId` 404 closes its one draft the same way. This is within
     the founder's words ("Close it" for 403/404) and never risks a duplicate
     send; whether a mailbox-side 403 should park like 401 instead is filed as
-    OD-174 (OPEN-DECISIONS.md:102), part (b). Unchanged in code.]
+    OD-174 (OPEN-DECISIONS.md:113), part (b). Unchanged in code.]
     [RESOLVED 2026-09-27 — founder, merge-train item 69 / OD-174 (b),
     verbatim "Park quota/delegation 403 (Recommended)" (rejected: keep
     closing every 403 as item 66 built it). A Gmail API 403 whose TYPED
@@ -494,7 +494,7 @@ route) — so there is no second runtime for this one to disagree with.]
     `RELAY_PARKING_GMAIL_REASONS`: the relay answers 503 and the draft parks
     `SEND_UNCONFIRMED` like the quota/delegation 403s. A 404 carrying the
     same reason still closes. Recorded in the row of
-    OD-174 (OPEN-DECISIONS.md:102), not a new one. Tests:
+    OD-174 (OPEN-DECISIONS.md:113), not a new one. Tests:
     `send-failure.spec.ts` and `relay-email.doors.spec.ts`.]
 
   - **Deploy order, gateway older than agent (PR #429 audit F2).** [ADDED
@@ -519,7 +519,7 @@ route) — so there is no second runtime for this one to disagree with.]
     otherwise, the one function above is the whole change to revert.]
     [STATUS 2026-09-27, PR #429 audit fix round 2: this reading narrows a
     Locked founder ruling and was never put to him. It is now filed as
-    OD-174 (OPEN-DECISIONS.md:102), part (a), and stays an agent's reading —
+    OD-174 (OPEN-DECISIONS.md:113), part (a), and stays an agent's reading —
     not decided — until he answers.]
     [FOUNDER-APPROVED 2026-09-27 — merge-train item 68 / OD-174 (a),
     verbatim "Keep the retry (Recommended)" (rejected: close this 400 too

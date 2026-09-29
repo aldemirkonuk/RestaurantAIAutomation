@@ -40,7 +40,7 @@ Filed from the ADR 0090 audit of #510. The entry is `tech-debt.d/2026-09-29-fix-
 - **Loose claim.** The claim `AUDIT-0090-PR510-CREATE-WAITS-FOR-SERVER` (`claims.d/fix-storage-location-writes.jsonl`) greps for three strings anywhere in the files. It should be scoped to `handleCreate` and `addLocation`, so that a copy elsewhere cannot satisfy it.
 - **Dead branch.** `if (!data?.id) return optimistic` (`useStorageLocations.ts:542`) is dead since `addLocation` resolves the stored zone or `null`. It also returns a temp-id zone as if it had been stored. Remove it, or make it return `null`.
 
-## OD-190–196, OD-201 and OD-202 still sit after `## Resolved` — OPEN (waiver reported, own PR) — 2026-09-29
+## OD-190–196, OD-201 and OD-202 still sit after `## Resolved` — ~~OPEN~~ CLOSED 2026-09-29 by `docs/od-rows-into-open-2026-09-29` (all eleven rows, OD-203/204 included, moved into `## Open`; waiver traced to session a493af02, 15:58:20Z, in ADR 0231) — 2026-09-29
 
 These rows are OPEN, but they sit after `## Resolved` in `OPEN-DECISIONS.md`.
 
