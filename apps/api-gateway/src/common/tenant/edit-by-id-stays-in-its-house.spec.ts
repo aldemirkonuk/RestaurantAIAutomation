@@ -10,7 +10,8 @@
  *     that mounting it cannot open them);
  *   - `DELETE /mobile/devices/:token` (ExpoPushService.unregisterDevice), which
  *     deleted any person's device row given its push token.
- * Each case below fails on that code and passes on the fix.
+ * Each case below fails on that code and passes on the change. The device
+ * case proves a narrowing, not a closure (see the comment above its describe).
  */
 
 import { NotFoundException } from "@nestjs/common";

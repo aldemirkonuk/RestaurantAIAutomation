@@ -35,7 +35,7 @@ What the labels mean: **yes** — the write's WHERE carries the caller's house, 
 | `PATCH /organizations/chains/:id` | `organizations.service.ts:458`, gated on any `organization_members` row | **Not fixed — founder-deferred.** Organisation-scoped, not house-scoped: a member of any house in the organisation can rename a chain other houses belong to. This is OD-131 (b), which the founder answered on 2026-09-19 as "not now … decide later in a dedicated ADR" (`OPEN-DECISIONS.md:91`) |
 | `DELETE /organizations/chains/:id` | `organizations.service.ts:481,487`, same gate; also sets `restaurants.chain_id = null` for every house in the chain | **Not fixed — founder-deferred**, OD-131 (b), as above |
 
-Behaviour proof for the four fixes: `apps/api-gateway/src/common/tenant/edit-by-id-stays-in-its-house.spec.ts` (5 cases; each fails when its filter is removed — measured by deleting the filter line and re-running).
+Behaviour proof for the three fixes and the one narrowing: `apps/api-gateway/src/common/tenant/edit-by-id-stays-in-its-house.spec.ts` (5 cases; each fails when its filter is removed — measured by deleting the filter line and re-running).
 
 ## Limits of this census
 
