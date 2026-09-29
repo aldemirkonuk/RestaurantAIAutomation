@@ -46,7 +46,7 @@ Where the products agree, that is the standard applied here: retry until acknowl
 
 ## Decision
 
-**Every queued change carries the person and house of the session that made it; only that person in that house can see, send, count or clear it; a change is retried with backoff until the server takes it, and one the server refuses for good is kept and shown as "not sent"; signing out warns with the count and then removes that person's changes.**
+**Every queued change carries the person and house of the session that made it; only that person in that house can see, send, count or clear it (a legacy entry that names no one is the one exception — visible to every session only to be discarded, never sent); a change is retried with backoff until the server takes it, and one the server refuses for good is kept and shown as "not sent"; signing out warns with the count and then removes that person's changes.**
 
 What was built (`apps/web/src`):
 
