@@ -129,6 +129,38 @@ describe('#5 — a failed zone write is rolled back and said out loud', () => {
     expect(toastError).toHaveBeenCalledTimes(1)
   })
 
+  it('a refused create resolves null, drops the optimistic zone and shows an error', async () => {
+    const { result } = await mounted()
+    mockPost.mockRejectedValueOnce(rejected())
+    let stored: unknown = 'unset'
+    await act(async () => {
+      stored = await result.current.addLocation({
+        name: 'Back Cellar',
+        capacity: 24,
+        currentCount: 0,
+        color: '#be123c',
+      } as never)
+    })
+    expect(stored).toBeNull()
+    expect(cachedZones().some((l) => l.name === 'Back Cellar')).toBe(false)
+    expect(toastError).toHaveBeenCalledTimes(1)
+  })
+
+  it('a stored create resolves the server zone', async () => {
+    const { result } = await mounted()
+    mockPost.mockResolvedValueOnce({ data: { id: PARENT, name: 'Back Cellar', capacity: 24 } })
+    let stored: { id: string } | null = null
+    await act(async () => {
+      stored = (await result.current.addLocation({
+        name: 'Back Cellar',
+        capacity: 24,
+        currentCount: 0,
+        color: '#be123c',
+      } as never)) as { id: string } | null
+    })
+    expect(stored).toMatchObject({ id: PARENT })
+  })
+
   it('a refused delete brings the zone and its wines back', async () => {
     const { result } = await mounted()
     mockRequest.mockRejectedValueOnce(rejected())

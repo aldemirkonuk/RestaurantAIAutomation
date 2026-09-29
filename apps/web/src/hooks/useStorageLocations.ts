@@ -514,50 +514,48 @@ export function useStorageLocations() {
     [mappings, setMappings, setLocations, saveQuantity, restaurantId],
   )
 
+  /**
+   * Resolves to the stored zone, or `null` when the server refused it (the
+   * optimistic row is gone and the reason has been toasted). The caller must
+   * wait for this before closing its form: closing on click wiped what the
+   * person typed before the refusal arrived (PR #510 audit, 2026-09-29).
+   */
   const addLocation = useCallback(
-    (location: Omit<StorageLocation, 'id'>): StorageLocation => {
+    async (location: Omit<StorageLocation, 'id'>): Promise<StorageLocation | null> => {
       const tempId = `loc-${Date.now()}`
       const optimistic: StorageLocation = { ...location, id: tempId }
+      if (!restaurantId) return null
       setLocations((prev) => [...prev, optimistic])
 
-      if (restaurantId) {
-        apiClient
-          .post(`/storage-locations/${restaurantId}`, {
-            name: location.name,
-            description: location.description,
-            capacity: location.capacity,
-            temperature: location.temperature,
-            humidity: location.humidity,
-            notes: location.notes,
-            parent_id: location.parentId,
-            color: location.color,
-            location_type: 'cellar',
-          })
-          .then(({ data }) => {
-            if (data?.id) {
-              // Replace the temp ID with the real server UUID in both locations and any mappings
-              setLocations((prev) =>
-                prev.map((l) => (l.id === tempId ? mapServerLocation(data) : l)),
-              )
-              setMappings((prev) =>
-                prev.map((m) =>
-                  m.locationId === tempId ? { ...m, locationId: data.id as string } : m,
-                ),
-              )
-            }
-          })
-          .catch((err) => {
-            // Remove the optimistic entry if the server rejected it, and say
-            // so: a zone that vanishes without a word reads as a UI glitch.
-            setLocations((prev) => prev.filter((l) => l.id !== tempId))
-            toast.error(`Could not create the zone: ${reasonOf(err)}`)
-          })
-          .finally(() => {
-            queryClient.invalidateQueries({ queryKey: [LOCATIONS_KEY, restaurantId] })
-          })
+      try {
+        const { data } = await apiClient.post(`/storage-locations/${restaurantId}`, {
+          name: location.name,
+          description: location.description,
+          capacity: location.capacity,
+          temperature: location.temperature,
+          humidity: location.humidity,
+          notes: location.notes,
+          parent_id: location.parentId,
+          color: location.color,
+          location_type: 'cellar',
+        })
+        if (!data?.id) return optimistic
+        const stored = mapServerLocation(data)
+        // Replace the temp ID with the real server UUID in both locations and any mappings
+        setLocations((prev) => prev.map((l) => (l.id === tempId ? stored : l)))
+        setMappings((prev) =>
+          prev.map((m) => (m.locationId === tempId ? { ...m, locationId: data.id as string } : m)),
+        )
+        return stored
+      } catch (err) {
+        // Remove the optimistic entry if the server rejected it, and say
+        // so: a zone that vanishes without a word reads as a UI glitch.
+        setLocations((prev) => prev.filter((l) => l.id !== tempId))
+        toast.error(`Could not create the zone: ${reasonOf(err)}`)
+        return null
+      } finally {
+        queryClient.invalidateQueries({ queryKey: [LOCATIONS_KEY, restaurantId] })
       }
-
-      return optimistic
     },
     [restaurantId, setLocations, setMappings, queryClient],
   )

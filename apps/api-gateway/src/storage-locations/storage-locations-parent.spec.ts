@@ -108,6 +108,8 @@ function fakeDb() {
     is: () => chain,
     select: () => chain,
     single: async () => ({ data: row, error: null }),
+    // #516 moved update to `.maybeSingle()` (no row is a 404, not a 500).
+    maybeSingle: async () => ({ data: row, error: null }),
   };
   return { dbService: { supabase: chain } as any, calls };
 }
