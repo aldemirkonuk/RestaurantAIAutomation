@@ -480,6 +480,7 @@ In order:
    — blast radius 2 (auth, tenancy, an outward-facing surface), ambiguity 2 (every fork in
    step 1 is open) — so any agent that builds it runs on Opus, not Sonnet.
    **FOLLOWED:** built by an Opus agent on 2026-09-06.
+   **[2026-09-28: ADR 0050 is superseded by [ADR 0231](../decisions/0231-opus-as-much-as-the-work-needs-sonnet-where-it-is-fast-and-direct.md). The note still holds under 0231, because building this is Opus work (design, open forks, auth). There is no score any more.]**
 
 ## §9 Capacity and coverage — measured 2026-09-19
 
