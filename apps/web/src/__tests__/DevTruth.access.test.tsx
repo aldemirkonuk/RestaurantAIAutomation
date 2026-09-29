@@ -11,7 +11,8 @@ import { resolve } from 'node:path'
  *
  * The gate is the Studio `developer` role through ProtectedRoute, the same
  * mechanism /studio/queue and /studio/certify (where devs approve and certify)
- * use. The gateway refuses non-developers too (dev-truth.controller.spec.ts);
+ * use, with the developer role only (they also admit review_admin; this page
+ * does not). The gateway refuses non-developers too (dev-truth.controller.spec.ts);
  * this file pins the browser half and the two request-shape hardenings.
  */
 

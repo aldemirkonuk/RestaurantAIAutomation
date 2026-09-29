@@ -32,9 +32,11 @@ const TABS: readonly Tab[] = ['reach', 'asof', 'swallow']
 
 /**
  * Who may open this page (founder, 2026-09-29: "only devs can open it"). The
- * Studio `developer` role, the gate /studio/queue and /studio/certify already
- * use for the people who approve and certify; App.tsx wraps the route in it,
- * and the gateway checks the same `user_roles` rows before reading anything.
+ * Studio `developer` role only; `review_admin` is NOT admitted, unlike
+ * /studio/queue and /studio/certify, which gate on ['developer',
+ * 'review_admin']. Do not "align" it with them. App.tsx wraps the route in
+ * it, and the gateway checks the same `user_roles` rows before reading
+ * anything.
  */
 export const DEV_TRUTH_STUDIO_ROLES = ['developer'] as const
 
