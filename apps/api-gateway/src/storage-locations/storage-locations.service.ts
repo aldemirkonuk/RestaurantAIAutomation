@@ -27,7 +27,7 @@ import {
  * A zone SETUP write is allowed to an owner or manager of the house (their
  * role here, read strictly: a role that cannot be read is a 500, never a
  * pass), and to a staff member an owner or manager assigned it
- * (`user_restaurant_access.zone_setup_access`, migration 20261202120000).
+ * (`user_restaurant_access.zone_setup_access`, migration 20261202150000).
  * Nobody else. Placing and counting wines are NOT setup: the answer does not
  * separate them, so they stay open to every member as before (OD-200).
  *
