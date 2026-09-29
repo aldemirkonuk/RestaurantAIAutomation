@@ -248,9 +248,20 @@ export async function fetchProviderById(id: string): Promise<Provider> {
 /**
  * Create a new provider
  */
-export async function createProvider(data: CreateProviderInput): Promise<Provider> {
+export async function createProvider(
+  data: CreateProviderInput,
+  options: { idempotencyKey?: string } = {},
+): Promise<Provider> {
   const payload = mapProviderToApiPayload(data, { requireName: true })
-  const response = await apiClient.post<Provider>('/providers', payload)
+  // With a key, the gateway's global IdempotencyInterceptor answers a replay
+  // of the same key with the stored first response instead of creating the
+  // vendor again: a create whose reply was lost, then replayed from the
+  // offline queue, must not make a second vendor (PR #508 audit, 2026-09-29).
+  const response = await apiClient.post<Provider>(
+    '/providers',
+    payload,
+    options.idempotencyKey ? { headers: { 'Idempotency-Key': options.idempotencyKey } } : undefined,
+  )
   return response.data
 }
 

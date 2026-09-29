@@ -282,6 +282,26 @@ describe('door two — a vendor of your own', () => {
     expect(screen.getByTestId('vendor-failure')).not.toHaveTextContent(/Nothing was written/);
   });
 
+  // Web endpoint sweep 2026-09-28, row 15: a create queued offline carries a
+  // local temp id that names no row — nothing may be written against it, and
+  // the sheet must not say the vendor is in the book.
+  it('a create queued offline writes nothing against its temp id and says so', async () => {
+    create.mutateAsync = vi.fn().mockResolvedValue({ id: 'temp_1_abc', _pending: true });
+    const { onClose } = draw();
+    fillCleanly();
+    fireEvent.change(screen.getByTestId('vendor-address'), { target: { value: 'Ankara' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Tue' }));
+    fireEvent.click(screen.getByTestId('vendor-save'));
+
+    await screen.findByTestId('vendor-asides');
+    expect(screen.getByTestId('vendor-asides')).toHaveTextContent(/queued/);
+    expect(screen.getByTestId('vendor-asides')).toHaveTextContent(/NOT recorded/);
+    expect(terms.set).not.toHaveBeenCalled();
+    expect(providersApi.createLocation).not.toHaveBeenCalled();
+    expect(prefs.update).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
   it('does not close on an all-success create, so the asides can be read (lane E audit D10)', async () => {
     const { onClose } = draw();
     fillCleanly();
