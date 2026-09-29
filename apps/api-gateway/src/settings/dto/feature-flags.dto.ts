@@ -105,10 +105,19 @@ for (const key of ACTIVE_FEATURE_FLAG_KEYS) {
   if (HAND_DECLARED_FLAG_KEYS.has(key)) continue;
 
   const description = "Declared ACTIVE by the feature-flag registry.";
-  ApiProperty({ description })(FeatureFlagsDto.prototype, key);
+  // `type: Boolean` is required, not decoration. A property declared with `@`
+  // gets TypeScript's `design:type` metadata; one decorated by a direct call
+  // does not, and @nestjs/swagger reads a missing type as an unresolved lazy
+  // reference and throws "A circular dependency has been detected" from
+  // `SwaggerModule.createDocument` at boot. That crash kept the production
+  // gateway down from #509 (744874263) on; nothing in CI built the document.
+  ApiProperty({ description, type: Boolean })(FeatureFlagsDto.prototype, key);
   IsBoolean()(FeatureFlagsDto.prototype, key);
 
-  ApiPropertyOptional({ description })(UpdateFeatureFlagsDto.prototype, key);
+  ApiPropertyOptional({ description, type: Boolean })(
+    UpdateFeatureFlagsDto.prototype,
+    key,
+  );
   IsOptional()(UpdateFeatureFlagsDto.prototype, key);
   IsBoolean()(UpdateFeatureFlagsDto.prototype, key);
 }
