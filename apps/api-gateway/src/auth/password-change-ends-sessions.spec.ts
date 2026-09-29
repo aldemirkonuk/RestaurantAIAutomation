@@ -439,7 +439,13 @@ describe("the websocket: a signed-out session's sockets close and cannot reopen"
   function gatewayOver(db: StubDb) {
     const gateway = new WebsocketGateway(jwt, config, asDatabaseService(db));
     const sockets = new Map<string, any>();
-    (gateway as any).server = { sockets: { sockets } };
+    // The Namespace shape, which is what @WebSocketServer() injects under
+    // `namespace: "/ws"`: its `sockets` IS the id-to-socket Map. Until
+    // 2026-09-28 this mock was the root-Server shape `{ sockets: { sockets } }`,
+    // which is the only shape under which the old `server.sockets.sockets`
+    // read found anything, so this suite passed while production closed
+    // nothing (fix/websocket-role-gate).
+    (gateway as any).server = { sockets };
     const connect = async (id: string, token: string) => {
       const s = fakeSocket(id, token);
       sockets.set(id, s);

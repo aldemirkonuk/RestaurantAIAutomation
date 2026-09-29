@@ -22,13 +22,34 @@ import {
   WsException,
 } from "@nestjs/websockets";
 import { Logger, Injectable, UseGuards } from "@nestjs/common";
-import { Server, Socket } from "socket.io";
+import { Namespace, Server, Socket } from "socket.io";
 import { Interval } from "@nestjs/schedule";
 import { JwtService } from "@nestjs/jwt";
 import { ConfigService } from "@nestjs/config";
 import { resolveJwtSecret } from "../auth/jwt-secret";
 import { DatabaseService } from "../database/database.service";
 import { sessionIsCurrent, tokenSessionVersion } from "../auth/session-version";
+import {
+  houseMembersInRoles,
+  type HouseRoleName,
+} from "../common/tenant/live-membership";
+import { safeActionPath } from "../notifications/safe-action-path";
+
+/**
+ * The room for one person's sockets in one house (fix/websocket-role-gate,
+ * 2026-09-28). A socket joins it at connect only when its house passed the
+ * membership check. Owner/manager-only content is addressed to these rooms
+ * after a role read at send time (`emitToHouseRoles`), never to
+ * `restaurant:<id>`, which staff also join.
+ *
+ * It sits outside the `restaurant:` prefix on purpose. `subscribe:restaurant`
+ * builds its room as `restaurant:${restaurantId}` and needs an exact match
+ * with the connect-verified id, so no client-supplied value can name a member
+ * room, even if that check is loosened later.
+ */
+export function memberRoom(restaurantId: string, userId: string): string {
+  return `member:${restaurantId}:${userId}`;
+}
 
 // =============================================================================
 // TYPES & INTERFACES
@@ -175,6 +196,16 @@ class TokenBucketRateLimiter {
 export class WebsocketGateway
   implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect
 {
+  /**
+   * At runtime this is the "/ws" Namespace, not the root Server (see
+   * `socketOnNamespace`). Everything called on it outside this class is
+   * `.to(...)` or `.in(...)`, which a Namespace has. `getStats` and
+   * `cleanupIdleConnections` still read the root-Server shape, so they count
+   * 0 rooms and throw once any socket has been idle for 5 minutes. They are
+   * not fixed in this lane, because a working idle sweep would start
+   * disconnecting mobile sockets, which never send `ping`
+   * (apps/mobile/src/lib/socket.ts). See .planning/tech-debt.d/2026-09-28-fix-websocket-role-gate.md.
+   */
   @WebSocketServer()
   server: Server;
 
@@ -304,9 +335,13 @@ export class WebsocketGateway
     });
 
     client.join(`user:${userId}`);
-    client.join(`manager:${userId}`);
+    // `manager:${userId}` was joined here until 2026-09-28. Every socket
+    // joined its own, so it was never a managers room, and only the dead
+    // `emitNotification` addressed it. Owner/manager content now goes through
+    // `emitToHouseRoles`.
     if (restaurantId) {
       client.join(`restaurant:${restaurantId}`);
+      client.join(memberRoom(restaurantId, userId));
     }
   }
 
@@ -369,7 +404,7 @@ export class WebsocketGateway
       ) {
         continue;
       }
-      const socket = this.server?.sockets?.sockets?.get(clientId);
+      const socket = this.socketOnNamespace(clientId);
       if (socket) {
         socket.emit("session:ended", { reason: "password_changed" });
         socket.disconnect(true);
@@ -382,6 +417,23 @@ export class WebsocketGateway
       );
     }
     return closed;
+  }
+
+  /**
+   * The socket with this id on this gateway's namespace, or undefined.
+   *
+   * With `namespace: "/ws"` above, `@WebSocketServer()` injects the Namespace,
+   * not the root Server: @nestjs/websockets 10.4.21
+   * `socket-server-provider.js` `decorateWithNamespace` calls
+   * @nestjs/platform-socket.io `io-adapter.js` `create`, which returns
+   * `server.of(namespace)`. A Namespace's `sockets` is itself the id-to-Socket
+   * Map (socket.io 4.8.3 `namespace.d.ts`). So the root-Server path
+   * `server.sockets.sockets` is always undefined here. Until 2026-09-28,
+   * `endStaleSessions` read that path and closed nothing (ADR 0225).
+   */
+  private socketOnNamespace(clientId: string): Socket | undefined {
+    const sockets = (this.server as unknown as Namespace | undefined)?.sockets;
+    return sockets instanceof Map ? sockets.get(clientId) : undefined;
   }
 
   // =========================================================================
@@ -426,6 +478,13 @@ export class WebsocketGateway
   evictFromHouse(userId: string, restaurantId: string): void {
     const room = `restaurant:${restaurantId}`;
     this.server?.in(`user:${userId}`).socketsLeave(room);
+    // The member room goes too. Owner/manager emits would already skip this
+    // person, because `emitToHouseRoles` reads roles at send time and the
+    // membership row is gone. Leaving the room also stops the per-member
+    // addressing from reaching a socket that no longer belongs to the house.
+    this.server
+      ?.in(`user:${userId}`)
+      .socketsLeave(memberRoom(restaurantId, userId));
 
     for (const metadata of this.clients.values()) {
       if (metadata.userId === userId && metadata.restaurantId === restaurantId) {
@@ -588,22 +647,69 @@ export class WebsocketGateway
   }
 
   /**
-   * Emit notification to specific manager
+   * Emit to the members of `restaurantId` who hold one of `roles` now, and to
+   * nobody else (fix/websocket-role-gate, 2026-09-28).
+   *
+   * The audience is read at send time (`houseMembersInRoles`), and the emit
+   * goes to each person's member room. So a demotion or a removal takes effect
+   * at the next event, on every instance, with no hook on the role writers,
+   * and a staff member promoted to manager receives at once. A read that fails
+   * emits nothing and logs why, because "could not check" is never "yes".
+   * Returns how many people it was addressed to.
+   *
+   * Use this for owner/manager-only content, never `restaurant:<id>`, which
+   * every member's socket joins.
    */
-  emitNotification(managerId: string, data: NotificationPayload): void {
-    const room = `manager:${managerId}`;
-    const payload = {
-      event: "NewNotification",
-      data,
-      timestamp: new Date().toISOString(),
-    };
-
-    this.emitToRoom(room, "notification:new", payload);
-    this.logger.log(`🔔 notification:new → ${room}`);
+  async emitToHouseRoles(
+    restaurantId: string,
+    roles: readonly HouseRoleName[],
+    event: string,
+    payload: unknown,
+  ): Promise<number> {
+    let ids: string[];
+    try {
+      ids = await houseMembersInRoles(
+        this.databaseService.supabase,
+        restaurantId,
+        roles,
+      );
+    } catch (error) {
+      this.logger.error(
+        `⚠️ ${event} → ${restaurantId} [${roles.join(",")}] NOT sent: the role read failed: ${error?.message || error}`,
+      );
+      return 0;
+    }
+    if (ids.length === 0 || !this.server) return 0;
+    this.server
+      .to(ids.map((id) => memberRoom(restaurantId, id)))
+      .emit(event, payload);
+    this.totalMessagesSent++;
+    this.logger.log(
+      `🔔 ${event} → ${restaurantId} [${roles.join(",")}] (${ids.length})`,
+    );
+    return ids.length;
   }
 
   /**
-   * Emit notification to restaurant (all managers)
+   * `notification:new`, in the same envelope as `emitRestaurantNotification`,
+   * to the house's members in `roles` only. See `emitToHouseRoles`.
+   */
+  emitRoleNotification(
+    restaurantId: string,
+    roles: readonly HouseRoleName[],
+    data: NotificationPayload,
+  ): Promise<number> {
+    return this.emitToHouseRoles(restaurantId, roles, "notification:new", {
+      event: "NewNotification",
+      data: this.withSafeActionUrl(data),
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  /**
+   * Emit a notification to every member of the restaurant, staff included.
+   * Content that only owners or managers may read goes through
+   * `emitRoleNotification` instead.
    */
   emitRestaurantNotification(
     restaurantId: string,
@@ -612,12 +718,23 @@ export class WebsocketGateway
     const room = `restaurant:${restaurantId}`;
     const payload = {
       event: "NewNotification",
-      data,
+      data: this.withSafeActionUrl(data),
       timestamp: new Date().toISOString(),
     };
 
     this.emitToRoom(room, "notification:new", payload);
     this.logger.log(`🔔 notification:new → ${room}`);
+  }
+
+  /**
+   * The View button runs `window.location.href = action_url` (web
+   * `lib/websocket.tsx`), so a link that is not a path inside the app is
+   * dropped here rather than sent. See `safeActionPath`.
+   */
+  private withSafeActionUrl(data: NotificationPayload): NotificationPayload {
+    if (data.action_url === undefined) return data;
+    const safe = safeActionPath(data.action_url);
+    return { ...data, action_url: safe ?? undefined };
   }
 
   /**
@@ -693,25 +810,6 @@ export class WebsocketGateway
 
     this.emitToRoom(room, "conversation:summary_updated", payload);
     this.logger.debug(`💬 conversation:summary_updated → ${room}`);
-  }
-
-  /**
-   * Broadcast system-wide message
-   */
-  broadcastSystemMessage(
-    message: string,
-    level: "info" | "warning" | "error" = "info",
-  ): void {
-    const payload = {
-      message,
-      level,
-      timestamp: new Date().toISOString(),
-    };
-
-    this.server.emit("system:message", payload);
-    this.totalMessagesSent++;
-
-    this.logger.log(`📢 System broadcast: ${message} (${level})`);
   }
 
   // =========================================================================

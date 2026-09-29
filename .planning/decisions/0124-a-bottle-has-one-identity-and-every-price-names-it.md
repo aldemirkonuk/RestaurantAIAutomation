@@ -372,6 +372,25 @@ So the gate is drawn by **what the route exposes**, not by the module it sits in
 | `POST /vendor-intel/identity/decisions/undo` | owner · manager | Taking a decision back is a supervisory act; it is also refused inside `IdentityService.undo`, not only by the decorator. |
 | `identity/status`, `identity/lookup`, `identity/suggest`, `identity/assert`, and every other `/vendor-intel` route | owner · manager | Unchanged. `assert` MINTS an identity rather than confirming one, which is a different act from the one the founder opened. |
 
+**[2026-09-28, fix/websocket-role-gate (found by the ADR 0090 security review
+of PR #493): the same rule now covers the live channel and the bell, not only
+the HTTP routes.** Every verified member's socket joins `restaurant:<id>`, and
+the promotions toast, the daily promotions digest and the orchestrator's
+`notification.promo_alert` were broadcast there. So staff received vendor names
+and discounts that `GET /promotions` refuses them. The market-price producer
+also wrote a vendor's quoted price to every member's inbox, live toast and
+phone, which is the figure `/vendor-intel` gates. Content that the owner/manager
+gates above would refuse to staff now goes to the house's owners and managers
+only, and the role is read at send time
+(`common/tenant/live-membership.ts` `houseMembersInRoles`;
+`WebsocketGateway.emitToHouseRoles` / `emitRoleNotification` over per-member
+rooms `member:<house>:<user>`; the bridge's `NOTIFICATION_AUDIENCE_BY_KEY`).
+Nothing is filtered on the client. Content whose HTTP reads are open to staff
+keeps going to the whole house. Whether staff should see negotiation prompts,
+receipt-discrepancy figures and money figures on the bell is the founder's
+call, [OD-180](OPEN-DECISIONS.md). CLAIMS `SEC-2026-09-28-WEBSOCKET-ROLE-GATE`;
+tech-debt.d/2026-09-28-fix-websocket-role-gate.md.]**
+
 ### The log, and the one thing it had to be able to survive
 
 `beverage_identity_candidates` already carried `status`, `decided_by`,
