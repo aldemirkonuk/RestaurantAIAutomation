@@ -40,7 +40,7 @@ Filed from the ADR 0090 audit of #510. The entry is `tech-debt.d/2026-09-29-fix-
 - **Loose claim.** The claim `AUDIT-0090-PR510-CREATE-WAITS-FOR-SERVER` (`claims.d/fix-storage-location-writes.jsonl`) greps for three strings anywhere in the files. It should be scoped to `handleCreate` and `addLocation`, so that a copy elsewhere cannot satisfy it.
 - **Dead branch.** `if (!data?.id) return optimistic` (`useStorageLocations.ts:542`) is dead since `addLocation` resolves the stored zone or `null`. It also returns a temp-id zone as if it had been stored. Remove it, or make it return `null`.
 
-## OD-190–196, OD-201 and OD-202 still sit after `## Resolved` — DEFERRED — 2026-09-29
+## OD-190–196, OD-201 and OD-202 still sit after `## Resolved` — OPEN (waived, own PR) — 2026-09-29
 
 These rows are OPEN, but they sit after `## Resolved` in `OPEN-DECISIONS.md`.
 
@@ -48,7 +48,7 @@ These rows are OPEN, but they sit after `## Resolved` in `OPEN-DECISIONS.md`.
 
 **Why it was deferred.** That breaks ADR 0231's 15-file PR cap, and a waiver needs its own founder answer (ADR 0231 bracket, 2026-09-29). It also cannot share a PR with other follow-ups.
 
-**To do it.** Get one founder answer, "waive the cap for a pure re-cite PR". Then open one PR that only moves the rows and runs `--fix`. No wording changes.
+**Founder answer, 2026-09-29 (chat).** He picked *"Waive, own PR (Recommended)"*: one separate re-cite PR, over the 15-file cap, produced only by `--fix`, merged after this one. It moves the rows and runs `--fix`, with no wording changes, and it closes this entry.
 
 ## The gateway boot check never builds the OpenAPI document — OPEN — 2026-09-29
 
