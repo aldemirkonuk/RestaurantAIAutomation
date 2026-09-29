@@ -10,7 +10,7 @@ Filed from the ADR 0090 audit of #508. This entry records the defect. The fork i
 
 **Severity.** High while open for a shared device, such as a tablet at the pass. A write lands on the wrong person's or the wrong house's record. Medium otherwise.
 
-**Not covered.** The door-receipt and spot-count outboxes use the same queue with their own handlers. They are skipped at `sync-manager.ts:238-246` and were not reviewed here.
+**Not covered.** The door-receipt and spot-count outboxes use the same queue with their own handlers. They are skipped at `sync-manager.ts:239-248` and were not reviewed here.
 
 ## `MembersService.removeMember` is a second removal path that leaves shifts and the roster behind — OPEN — 2026-09-29
 
@@ -18,7 +18,7 @@ Filed from the ADR 0090 audit of #502. The fork is OD-204.
 
 **What.**
 - `TeamService.deleteMember` (#502) releases or hands over the leaving person's shifts and deletes their `team_members` row.
-- `MembersService.removeMember` (`apps/api-gateway/src/restaurants/members.service.ts:322`) revokes access with neither step: its body names no shift and no `team_members`.
+- `MembersService.removeMember` (`apps/api-gateway/src/restaurants/members.service.ts:323`) revokes access with neither step: its body names no shift and no `team_members`.
 - A person removed through that route keeps their future shifts, and stays on the roster, as someone who can no longer sign in.
 
 ## RosterSheet keeps a stale hand-over pick after a 400 "reload" refusal, and no CI job runs `supabase/tests` — OPEN — 2026-09-29
@@ -29,7 +29,7 @@ Filed from the ADR 0090 audit of #502.
   - `RosterSheet.tsx` holds the hand-over choice in `handover` state (`apps/web/src/pages/team/next/RosterSheet.tsx:566`).
   - When the gateway refuses the removal with a 400 that asks for a reload, the sheet shows the error (`:615-619`) but does not reset `handover` or refetch the preview (`:570-575`).
   - A retry re-sends the same stale pick.
-- **Unrun SQL tests.** `supabase/tests/*.sql` (10 files on main, including #502's) are run by no workflow: `grep -rn "supabase/tests" .github/workflows` finds nothing. So the SQL behaviour tests those PRs cite as evidence are not re-checked on any merge.
+- **Unrun SQL tests.** `supabase/tests/*.sql` (13 files on main at `26f0e6b80`, including #502's) are run by no workflow: `grep -rn "supabase/tests" .github/workflows` finds nothing. So the SQL behaviour tests those PRs cite as evidence are not re-checked on any merge.
 
 ## #510 leftovers: edit double-submit, `assignMany` snapshot, a loose claim, a dead branch — OPEN — 2026-09-29
 
@@ -48,7 +48,7 @@ These rows are OPEN, but they sit after `## Resolved` in `OPEN-DECISIONS.md`.
 
 **Why it was deferred.** That breaks ADR 0231's 15-file PR cap, and a waiver needs its own founder answer (ADR 0231 bracket, 2026-09-29). It also cannot share a PR with other follow-ups.
 
-**Founder answer, 2026-09-29 (chat).** He picked *"Waive, own PR (Recommended)"*: one separate re-cite PR, over the 15-file cap, produced only by `--fix`, merged after this one. It moves the rows and runs `--fix`, with no wording changes, and it closes this entry.
+**Founder answer, 2026-09-29 (chat, relayed to this session by its coordinator; no session id was recorded here).** He picked *"Waive, own PR (Recommended)"*: one separate re-cite PR, over the 15-file cap, produced only by `--fix`, merged after this one. It moves the rows and runs `--fix`, with no wording changes, and it closes this entry.
 
 ## The gateway boot check never builds the OpenAPI document — OPEN — 2026-09-29
 
