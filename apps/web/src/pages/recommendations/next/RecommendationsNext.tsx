@@ -126,6 +126,7 @@ import {
   failureSentence,
   fmtDay,
   fmtReadAt,
+  heldBy,
   type StakeId,
 } from './rec-format';
 import {
@@ -380,11 +381,19 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
    * is nothing to undo. The one act this page records is the briefing
    * (`brief` below), whose tap IS the act.]
    */
+  /*
+   * [2026-09-28, founder item 87 (OD-176), "Show card, hand to manager
+   * (Recommended)": a hand into a room this person's role cannot open is a
+   * manager's, and nothing sends them there. The Entry draws no Act control
+   * for it; this guard is for the `a` key, which reaches `act` directly.]
+   */
+  const viewerRole = data.role;
   const act = useCallback(
     async (e: EntryVM) => {
+      if (!heldBy(e.hand, viewerRole).yours) return;
       navigate(e.hand.href);
     },
-    [navigate],
+    [navigate, viewerRole],
   );
 
   /**
@@ -948,6 +957,7 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
                         siblings={data.entries}
                         canActRuleWide={data.canActRuleWide}
                         canSnoozeForEveryone={data.canSnoozeForEveryone}
+                        role={data.role}
                       />
                     ))}
                   </div>
