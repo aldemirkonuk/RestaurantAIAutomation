@@ -332,7 +332,7 @@ describe("SettingsAuditService.list — what a staff reader is never handed", ()
     },
   );
 
-  it("withholds exactly the six ADR 0218 person rows, all of which the trail still reads back", () => {
+  it("withholds exactly the six ADR 0218 person rows and the ADR 0238 zone switch, all of which the trail still reads back", () => {
     expect([...STAFF_WITHHELD_ACTIONS].sort()).toEqual(
       [
         "area_lead_granted",
@@ -341,6 +341,8 @@ describe("SettingsAuditService.list — what a staff reader is never handed", ()
         "area_member_removed",
         "away_ended_for_member",
         "away_set_for_member",
+        // ADR 0238: who else was assigned to set up zones is not a staff read.
+        "zone_setup_access_changed",
       ].sort(),
     );
     for (const a of STAFF_WITHHELD_ACTIONS) expect(READ_BACK_ACTIONS).toContain(a);

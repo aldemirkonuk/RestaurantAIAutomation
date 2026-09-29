@@ -209,6 +209,14 @@ export const READ_BACK_ACTIONS = [
   "area_lead_removed",
   "away_set_for_member",
   "away_ended_for_member",
+  /**
+   * ADR 0238 — an owner or manager assigned or withdrew one staff member's
+   * right to set up zones. Written by `recordAccessChange` from
+   * `StorageLocationsService.setSetupAccess`; read back for the same reason as
+   * a lead mark: an assignment the house log could not show would be one
+   * nobody can find.
+   */
+  "zone_setup_access_changed",
 ] as const;
 
 /**
@@ -229,6 +237,10 @@ export const READ_BACK_ACTIONS = [
  * page reads the trail today (`/team` draws My shifts for staff), so this
  * withholds nothing a staff surface shows. `house_area_changed` (a rename or
  * a switch-off) names no person and stays, as before.
+ *
+ * - `zone_setup_access_changed` (ADR 0238): `GET
+ *   /storage-locations/:rid/setup-access` tells a staff member only about
+ *   themself, so this trail does not hand them who else was assigned.
  */
 export const STAFF_WITHHELD_ACTIONS = [
   "area_member_added",
@@ -237,6 +249,7 @@ export const STAFF_WITHHELD_ACTIONS = [
   "area_lead_removed",
   "away_set_for_member",
   "away_ended_for_member",
+  "zone_setup_access_changed",
 ] as const;
 
 /**
