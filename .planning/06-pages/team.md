@@ -1085,3 +1085,15 @@ their other shifts. Every option below inherits that, unless it adds the check.
 (the manager is the one who knows who agreed to cover), and (c) later if open
 shifts pile up for other reasons. Until then (a) holds and is safe, because
 nothing unmoved is lost.
+
+**[2026-09-28, answered — founder, verbatim: Replacement "'Replace with'
+picker"; Picker checks "refuse overlap warn rest but owner has a say to
+change it into warn all four to allow double booking".]** Built as (b), ADR
+0215 item 27: the remove dialog's "Their upcoming shifts go to" picker; four
+gateway checks — overlap REFUSED (a WARN when the owner switches on "Allow
+double booking", `team_settings.allow_double_booking`), approved time off,
+role vs position/skills and the 45-hour week WARN, each to be acknowledged;
+all written in one transaction (`hand_over_leaving_shifts`); unticked shifts
+still open. Not built: adding a new person from the dialog (add them on Team
+first), (c) bulk reassign, (d) the notice (OD-196). Availability and a
+rest rule are not checks (OD-194, OD-195).

@@ -5,10 +5,14 @@ import {
 } from "@nestjs/common";
 import { ScheduleService } from "./schedule.service";
 import { TeamService } from "./team.service";
+import { handoverOf } from "./team.controller";
 import {
   art68BreakForWork,
   art68MinimumBreak,
   breakCounted,
+  doubleBookingRefusal,
+  handoverBlock,
+  handoverChecks,
   labourSettingsRefusal,
   leaveInWeek,
   priceShift,
@@ -98,7 +102,59 @@ function withReleaseRpc(db: StubDb): StubDb {
     db.ops.push({ table: `rpc:${fn}`, op: "update", filters: [], payload: args } as any);
     const forced = db.errors[`rpc:${fn}`];
     if (forced) return { data: null, error: forced };
+    if (fn === "hand_over_leaving_shifts") return handOver(args);
     if (fn !== "release_leaving_shifts") throw new Error(`stub: no rpc ${fn}`);
+    return release(args);
+  };
+  // `hand_over_leaving_shifts` (migration 20261202110000), over copies of the
+  // tables so a raise changes nothing, as the transaction does.
+  const handOver = (args: any) => {
+    const saved = db.tables.shifts.map((r) => ({ ...r }));
+    const fail = (message: string) => {
+      db.tables.shifts.splice(0, db.tables.shifts.length, ...saved);
+      return { data: null, error: { message } };
+    };
+    if (args.p_to === args.p_member_id) return fail("the person taking over is the person leaving");
+    if (!db.tables.team_members.some((m) => m.id === args.p_to && m.restaurant_id === args.p_restaurant_id))
+      return fail("not on this house's roster");
+    const r: any = release(args);
+    if (r.error) return fail(r.error.message);
+    const rows = db.tables.shifts;
+    const moved: any[] = [];
+    for (const g of args.p_give) {
+      const row = rows.find((x) => x.id === g.id);
+      if (!row || row.member_id !== args.p_member_id || row.shift_date !== g.shift_date ||
+          row.start_time !== g.start_time || row.state === "open" || row.state === "callout")
+        return fail("not as it was read");
+      Object.assign(row, { member_id: args.p_to, labor_cost: g.labor_cost });
+      moved.push(row);
+    }
+    for (const g of args.p_give_rests) {
+      const restId = r.data.rests.find((x: any) => x.id === g.id)?.rest_id;
+      const from = rows.find((x) => x.id === g.id);
+      const rest = rows.find((x) => x.id === restId);
+      if (!rest || !from || rest.member_id !== null || rest.state !== "open") return fail("not cut now");
+      Object.assign(rest, { member_id: args.p_to, state: from.state, shift_type: from.shift_type, labor_cost: g.labor_cost });
+      moved.push(rest);
+    }
+    const allow = db.tables.team_settings?.find((t) => t.restaurant_id === args.p_restaurant_id)?.allow_double_booking === true;
+    if (!(allow && args.p_accept_overlap)) {
+      const span = (x: any) => {
+        const m = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+        const at = Date.parse(`${x.shift_date}T00:00:00Z`) / 60_000 + m(x.start_time);
+        return [at, at + ((m(x.end_time) - m(x.start_time) + 1440) % 1440)];
+      };
+      for (const a of moved)
+        for (const b of rows)
+          if (b.id !== a.id && b.member_id === args.p_to && b.state !== "open" && b.state !== "callout") {
+            const [a0, a1] = span(a);
+            const [b0, b1] = span(b);
+            if (a0 < b1 && b0 < a1) return fail("overlaps");
+          }
+    }
+    return { data: { ...r.data, given: args.p_give.length, given_rests: args.p_give_rests.length }, error: null };
+  };
+  function release(args: any): any {
     const rows = db.tables.shifts;
     const find = (id: string) => rows.find((r) => r.id === id);
     const theirs = (r: any) =>
@@ -156,7 +212,7 @@ function withReleaseRpc(db: StubDb): StubDb {
       rests.push({ id: r.id, rest_id: rest.id });
     }
     return { data: { opened: args.p_open.length, split: args.p_split.length, rests }, error: null };
-  };
+  }
   return db;
 }
 
@@ -924,9 +980,10 @@ describe("S1 — only the owner switches tracking off or changes the target", ()
 
   it("tells each viewer what they may change", async () => {
     const db = seed();
-    expect((await teamOf(db).getSettings(OWNER, RID)).mayChange).toEqual({ trackingOff: true, trackingOn: true, target: true });
-    expect((await teamOf(db).getSettings(MANAGER, RID)).mayChange).toEqual({ trackingOff: false, trackingOn: true, target: false });
-    expect((await teamOf(db).getSettings(STAFF, RID)).mayChange).toEqual({ trackingOff: false, trackingOn: false, target: false });
+    // `doubleBooking` (ADR 0215 item 27): the owner's alone, like the target.
+    expect((await teamOf(db).getSettings(OWNER, RID)).mayChange).toEqual({ trackingOff: true, trackingOn: true, target: true, doubleBooking: true });
+    expect((await teamOf(db).getSettings(MANAGER, RID)).mayChange).toEqual({ trackingOff: false, trackingOn: true, target: false, doubleBooking: false });
+    expect((await teamOf(db).getSettings(STAFF, RID)).mayChange).toEqual({ trackingOff: false, trackingOn: false, target: false, doubleBooking: false });
   });
 
   it("the rule, on its own", () => {
@@ -1815,5 +1872,315 @@ describe("K3 — a removal mid-shift splits the shift at the removal minute", ()
     );
     expect(rpcAt).toBeGreaterThanOrEqual(0);
     expect(firstMembershipWrite === -1 || rpcAt < firstMembershipWrite).toBe(true);
+  });
+});
+
+// ── K4: "Replace with" on the remove dialog (ADR 0215 item 27) ───────────────
+
+/**
+ * The founder, 2026-09-28, verbatim: Replacement "'Replace with' picker";
+ * picker checks "refuse overlap warn rest but owner has a say to change it
+ * into warn all four to allow double booking". On 8dd9bfeaf this file does
+ * not compile (`handoverChecks`, `handoverBlock`, `handoverOf` and
+ * `doubleBookingRefusal` do not exist) and `deleteMember` takes no
+ * hand-over, so every shift would open: every K4 case fails there.
+ */
+describe("K4 — a removal can hand the leaving person's shifts to someone named", () => {
+  const GONE = "m-gone";
+  const SAM = "m-staff"; // wage 20
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  function at(iso: string) {
+    jest.useFakeTimers({ doNotFake: ["nextTick", "setImmediate"] }).setSystemTime(new Date(iso));
+  }
+
+  /** 2026-09-22 10:00 UTC = 13:00 Istanbul, a Tuesday. */
+  function seedGone() {
+    at("2026-09-22T10:00:00Z");
+    const db = seed();
+    db.tables.restaurants = [{ id: RID, timezone: "Europe/Istanbul", country: null }];
+    db.tables.team_members.push({ id: GONE, restaurant_id: RID, user_id: null, display_name: "Gone", hourly_wage: 25 });
+    db.tables.team_members.find((m) => m.id === SAM)!.position = "Server";
+    db.tables.shifts.push(
+      shift({ id: "thu", member_id: GONE, shift_date: "2026-09-24", role: "Server", labor_cost: 187.5 }),
+      shift({ id: "fri", member_id: GONE, shift_date: "2026-09-25", role: "Server", labor_cost: 187.5 }),
+    );
+    return db;
+  }
+  const byId = (db: StubDb, id: string) => db.tables.shifts.find((r) => r.id === id)!;
+  const handOver = (ids: string[], accept: string[] = [], to = SAM) => ({ to, shiftIds: ids, accept });
+  async function refusedWith(p: Promise<unknown>): Promise<any> {
+    try {
+      await p;
+    } catch (e: any) {
+      return e;
+    }
+    throw new Error("expected a refusal");
+  }
+  function nothingWritten(db: StubDb) {
+    expect(db.opsOn("rpc:hand_over_leaving_shifts")).toHaveLength(0);
+    expect(db.opsOn("rpc:release_leaving_shifts")).toHaveLength(0);
+    expect(byId(db, "thu")).toMatchObject({ member_id: GONE, state: "scheduled" });
+    expect(byId(db, "fri")).toMatchObject({ member_id: GONE, state: "scheduled" });
+    expect(db.tables.team_members.some((m) => m.id === GONE)).toBe(true);
+  }
+
+  it("moves the named shifts to the chosen person at their wage; the rest still opens", async () => {
+    const db = seedGone();
+    const receipt: any = await teamOf(db).deleteMember(MANAGER, RID, GONE, null, handOver(["thu"]));
+    // 8 h less the 30-minute Art. 68 minimum assumed = 7.5 h x Sam's 20.
+    expect(byId(db, "thu")).toMatchObject({ member_id: SAM, state: "scheduled", labor_cost: 150 });
+    expect(byId(db, "fri")).toMatchObject({ member_id: null, state: "open", labor_cost: null });
+    expect(receipt).toMatchObject({ removed: true, shiftsOpened: 1, shiftsHandedOver: 1, handedTo: SAM });
+    expect(db.tables.system_audit_log[0]?.changes).toMatchObject({
+      shifts_opened: 1,
+      shifts_handed_to: SAM,
+      shifts_handed_over: [{ id: "thu", row: "thu", part: "whole" }],
+      shifts_warnings_accepted: [],
+    });
+    expect(JSON.stringify(receipt)).not.toMatch(/labor_cost|hourly_wage|150/);
+    expect(db.tables.team_members.some((m) => m.id === GONE)).toBe(false);
+  });
+
+  it("hands over the rest of a shift in progress: the worked part stays theirs, the rest is the chosen person's", async () => {
+    const db = seedGone();
+    db.tables.shifts.push(shift({ id: "live", member_id: GONE, shift_date: "2026-09-22", role: "Server", shift_type: "am" }));
+    const receipt: any = await teamOf(db).deleteMember(MANAGER, RID, GONE, null, handOver(["live"]));
+    expect(byId(db, "live")).toMatchObject({ member_id: GONE, end_time: "13:00" });
+    const rest = db.tables.shifts.find((r) => String(r.id).startsWith("rest-"))!;
+    // 4 h less the 15-minute minimum assumed = 3.75 h x 20.
+    expect(rest).toMatchObject({ member_id: SAM, state: "scheduled", shift_type: "am", start_time: "13:00", end_time: "17:00", labor_cost: 75 });
+    expect(receipt).toMatchObject({ shiftsSplit: 1, shiftsHandedOver: 1, shiftsOpened: 2 });
+    expect(db.tables.system_audit_log[0]?.changes?.shifts_handed_over).toEqual([{ id: "live", row: rest.id, part: "rest" }]);
+  });
+
+  it("REFUSES an overlap by default, even when the remover accepts it: nothing is written, nobody removed", async () => {
+    const db = seedGone();
+    db.tables.shifts.push(shift({ id: "sam-thu", member_id: SAM, shift_date: "2026-09-24", start_time: "16:00", end_time: "23:00" }));
+    const e = await refusedWith(teamOf(db).deleteMember(MANAGER, RID, GONE, null, handOver(["thu"], ["overlap"])));
+    expect(e.getStatus()).toBe(409);
+    expect(e.getResponse()).toMatchObject({ refused: [{ id: "thu", check: { code: "overlap", level: "refuse" } }] });
+    nothingWritten(db);
+  });
+
+  it("with the owner's double booking on, an overlap is a warning: refused until accepted, then it lands", async () => {
+    const db = seedGone();
+    db.tables.team_settings[0].allow_double_booking = true;
+    db.tables.shifts.push(shift({ id: "sam-thu", member_id: SAM, shift_date: "2026-09-24", start_time: "16:00", end_time: "23:00" }));
+    const e = await refusedWith(teamOf(db).deleteMember(MANAGER, RID, GONE, null, handOver(["thu"])));
+    expect(e.getStatus()).toBe(409);
+    expect(e.getResponse()).toMatchObject({ refused: [], unaccepted: [{ id: "thu", check: { code: "overlap", level: "warn" } }] });
+    nothingWritten(db);
+    const receipt: any = await teamOf(db).deleteMember(MANAGER, RID, GONE, null, handOver(["thu"], ["overlap"]));
+    expect(byId(db, "thu").member_id).toBe(SAM);
+    expect(receipt.shiftsHandedOver).toBe(1);
+    expect(db.tables.system_audit_log[0]?.changes?.shifts_warnings_accepted).toEqual(["overlap"]);
+  });
+
+  it.each([
+    [
+      "time_off",
+      (db: StubDb) =>
+        db.tables.time_off_requests.push({ id: "t1", restaurant_id: RID, member_id: SAM, start_date: "2026-09-23", end_date: "2026-09-24", status: "approved" }),
+    ],
+    ["role", (db: StubDb) => (byId(db, "thu").role = "Bar")],
+    [
+      "weekly_hours",
+      (db: StubDb) => {
+        // Sam: 14 h less 60 min (13 worked) + 5 x 7.5 = 50.5 that week before Thursday.
+        for (const d of ["2026-09-22", "2026-09-23", "2026-09-25", "2026-09-26", "2026-09-27"])
+          db.tables.shifts.push(shift({ id: `sam-${d}`, member_id: SAM, shift_date: d }));
+        db.tables.shifts.push(shift({ id: "sam-mon", member_id: SAM, shift_date: "2026-09-21", start_time: "09:00", end_time: "23:00" }));
+      },
+    ],
+  ])("WARNS on %s: refused until the remover accepts that warning", async (code, arrange) => {
+    const db = seedGone();
+    arrange(db);
+    const e = await refusedWith(teamOf(db).deleteMember(MANAGER, RID, GONE, null, handOver(["thu"])));
+    expect(e.getStatus()).toBe(409);
+    expect(e.getResponse().refused).toEqual([]);
+    expect(e.getResponse().unaccepted.map((u: any) => u.check)).toEqual([expect.objectContaining({ code, level: "warn" })]);
+    nothingWritten(db);
+    // Accepting a different warning is not accepting this one.
+    const other = code === "role" ? "time_off" : "role";
+    await expect(teamOf(db).deleteMember(MANAGER, RID, GONE, null, handOver(["thu"], [other]))).rejects.toThrow();
+    nothingWritten(db);
+    await teamOf(db).deleteMember(MANAGER, RID, GONE, null, handOver(["thu"], [code]));
+    expect(byId(db, "thu").member_id).toBe(SAM);
+  });
+
+  it("a pending (not approved) time-off request, a call-out and an open shift are not clashes", async () => {
+    const db = seedGone();
+    db.tables.time_off_requests.push({ id: "t1", restaurant_id: RID, member_id: SAM, start_date: "2026-09-24", end_date: "2026-09-24", status: "pending" });
+    db.tables.shifts.push(
+      shift({ id: "sam-out", member_id: SAM, shift_date: "2026-09-24", state: "callout" }),
+      shift({ id: "pool", member_id: null, shift_date: "2026-09-24", state: "open" }),
+    );
+    await teamOf(db).deleteMember(MANAGER, RID, GONE, null, handOver(["thu"]));
+    expect(byId(db, "thu").member_id).toBe(SAM);
+  });
+
+  it("the chosen person must be on this house's roster: another house's person is not found, and nothing is written", async () => {
+    const db = seedGone();
+    db.tables.team_members.push({ id: "m-elsewhere", restaurant_id: "restaurant-2", display_name: "Elsewhere", position: "Server" });
+    await expect(
+      teamOf(db).deleteMember(MANAGER, RID, GONE, null, handOver(["thu"], [], "m-elsewhere")),
+    ).rejects.toThrow(/not on this house's roster/);
+    nothingWritten(db);
+  });
+
+  it("the chosen person cannot be the person leaving", async () => {
+    const db = seedGone();
+    await expect(teamOf(db).deleteMember(MANAGER, RID, GONE, null, handOver(["thu"], [], GONE))).rejects.toThrow(
+      /someone other than the person leaving/,
+    );
+    nothingWritten(db);
+  });
+
+  it("a shift that is not one of their upcoming ones (someone else's, or already past) is refused", async () => {
+    const db = seedGone();
+    db.tables.shifts.push(
+      shift({ id: "moe", member_id: "m-manager", shift_date: "2026-09-24" }),
+      shift({ id: "past", member_id: GONE, shift_date: "2026-09-21" }),
+    );
+    for (const id of ["moe", "past", "nope"]) {
+      await expect(teamOf(db).deleteMember(MANAGER, RID, GONE, null, handOver([id]))).rejects.toThrow(
+        /not one of their upcoming shifts/,
+      );
+    }
+    nothingWritten(db);
+    expect(byId(db, "moe").member_id).toBe("m-manager");
+  });
+
+  it("a failed read of the chosen person's shifts, leave or the owner's setting refuses; never read as 'no clash'", async () => {
+    for (const t of ["shifts", "time_off_requests", "team_settings"]) {
+      const db = seedGone();
+      const realFrom = db.supabase.from.bind(db.supabase);
+      let shiftReads = 0;
+      (db.supabase as any).from = (name: string) => {
+        // The first shifts read is the leaving person's; the second the chosen one's.
+        if (name === t && (t !== "shifts" || ++shiftReads === 2)) db.errors[`${t}:select`] = { message: "boom" };
+        return realFrom(name);
+      };
+      await expect(teamOf(db).deleteMember(MANAGER, RID, GONE, null, handOver(["thu"]))).rejects.toThrow(/nobody was removed/);
+      nothingWritten(db);
+    }
+  });
+
+  it("a clash added after the gateway's check is still refused by the write itself, and nobody is removed", async () => {
+    const db = seedGone();
+    const realRpc = (db.supabase as any).rpc;
+    (db.supabase as any).rpc = async (fn: string, args: any) => {
+      db.tables.shifts.push(shift({ id: "late", member_id: SAM, shift_date: "2026-09-24" }));
+      return realRpc(fn, args);
+    };
+    await expect(teamOf(db).deleteMember(MANAGER, RID, GONE, null, handOver(["thu"]))).rejects.toThrow(/nobody was removed/);
+    expect(byId(db, "thu").member_id).toBe(GONE);
+    expect(byId(db, "fri").member_id).toBe(GONE);
+    expect(db.tables.team_members.some((m) => m.id === GONE)).toBe(true);
+  });
+
+  it("the preview lists their upcoming shifts and, for a chosen person, the four checks — no money", async () => {
+    const db = seedGone();
+    db.tables.shifts.push(shift({ id: "sam-thu", member_id: SAM, shift_date: "2026-09-24", start_time: "16:00", end_time: "23:00" }));
+    const plain = await teamOf(db).handoverPreview(MANAGER, RID, GONE, null, null);
+    expect(plain.shifts.map((s) => [s.id, s.part, s.checks])).toEqual([
+      ["thu", "whole", []],
+      ["fri", "whole", []],
+    ]);
+    const withSam = await teamOf(db).handoverPreview(MANAGER, RID, GONE, SAM, null);
+    expect(withSam.doubleBooking).toBe("refuse");
+    expect(withSam.shifts.find((s) => s.id === "thu")!.checks).toEqual([expect.objectContaining({ code: "overlap", level: "refuse" })]);
+    expect(withSam.shifts.find((s) => s.id === "fri")!.checks).toEqual([]);
+    expect(JSON.stringify(withSam)).not.toMatch(/labor_cost|hourly_wage|wage/);
+    expect(db.opsOn("rpc:hand_over_leaving_shifts")).toHaveLength(0);
+    db.tables.team_members.push({ id: "m-elsewhere", restaurant_id: "restaurant-2", display_name: "E" });
+    await expect(teamOf(db).handoverPreview(MANAGER, RID, GONE, "m-elsewhere", null)).rejects.toThrow(/roster/);
+    await expect(teamOf(db).handoverPreview(STAFF, RID, GONE, SAM, null)).rejects.toThrow();
+  });
+
+  it("only the owner switches double booking, either way; the change is recorded", async () => {
+    const db = seedGone();
+    await expect(teamOf(db).updateSettings(MANAGER, RID, { allowDoubleBooking: true } as any)).rejects.toThrow(ForbiddenException);
+    await expect(teamOf(db).updateSettings(MANAGER, RID, { allowDoubleBooking: false } as any)).rejects.toThrow(ForbiddenException);
+    expect(db.tables.team_settings[0].allow_double_booking).toBeUndefined();
+    const saved = await teamOf(db).updateSettings(OWNER, RID, { allowDoubleBooking: true } as any);
+    expect(saved.allow_double_booking).toBe(true);
+    expect(db.tables.system_audit_log.at(-1)?.changes).toMatchObject({ allow_double_booking: { from: null, to: true } });
+    expect((await teamOf(db).getSettings(MANAGER, RID)).allow_double_booking).toBe(true);
+  });
+
+  it("reads double booking as off for a house that never set it", async () => {
+    const db = seed();
+    // A row saved before the column: off, and said as false, not left out.
+    expect((await teamOf(db).getSettings(OWNER, RID)).allow_double_booking).toBe(false);
+    db.tables.team_settings = [];
+    expect((await teamOf(db).getSettings(OWNER, RID)).allow_double_booking).toBe(false);
+  });
+});
+
+describe("K4 — the pure rules behind 'Replace with'", () => {
+  const g = (over: Record<string, any>) => ({ id: "g", shift_date: "2026-09-24", start_time: "09:00", end_time: "17:00", ...over });
+
+  it("an overnight shift overlaps the next morning; touching ends do not overlap", () => {
+    const over = handoverChecks([g({ shift_date: "2026-09-23", start_time: "22:00", end_time: "04:00" })], {}, [g({ id: "t", start_time: "03:00", end_time: "05:00" })], [], false);
+    expect(over.get("g")!.map((c) => c.code)).toEqual(["overlap"]);
+    const touch = handoverChecks([g({})], {}, [g({ id: "t", start_time: "17:00", end_time: "20:00" }), g({ id: "u", start_time: "06:00", end_time: "09:00" })], [], false);
+    expect(touch.get("g")).toEqual([]);
+  });
+
+  it("two handed-over shifts that overlap each other clash too", () => {
+    const c = handoverChecks([g({ id: "a" }), g({ id: "b", start_time: "12:00", end_time: "20:00" })], {}, [], [], false);
+    expect(c.get("a")!.map((x) => x.level)).toEqual(["refuse"]);
+    expect(c.get("b")!.map((x) => x.level)).toEqual(["refuse"]);
+  });
+
+  it("a role matches the position or a skill, case and spaces aside; no role on the shift is no check", () => {
+    expect(handoverChecks([g({ role: " bar " })], { position: "Server", skills: ["Bar"] }, [], [], false).get("g")).toEqual([]);
+    expect(handoverChecks([g({ role: null })], {}, [], [], false).get("g")).toEqual([]);
+    expect(handoverChecks([g({ role: "Chef" })], { position: "Server" }, [], [], false).get("g")!.map((c) => c.code)).toEqual(["role"]);
+  });
+
+  it("the week is the shift's Monday-week and 45 hours exactly is not over", () => {
+    // 5 theirs + the given one, each 7.5 worked = 45: not over. A seventh is.
+    const days = ["2026-09-21", "2026-09-22", "2026-09-23", "2026-09-25", "2026-09-26"];
+    const theirs = days.map((d, i) => g({ id: `t${i}`, shift_date: d }));
+    expect(handoverChecks([g({})], {}, theirs, [], false).get("g")).toEqual([]);
+    const more = [...theirs, g({ id: "t9", shift_date: "2026-09-27" })];
+    expect(handoverChecks([g({})], {}, more, [], false).get("g")!.map((c) => c.code)).toEqual(["weekly_hours"]);
+    // The Sunday before is last week's.
+    const lastWeek = [...theirs, g({ id: "t8", shift_date: "2026-09-20" })];
+    expect(handoverChecks([g({})], {}, lastWeek, [], false).get("g")).toEqual([]);
+  });
+
+  it("time off counts on its first and last day, approved only", () => {
+    const leave = [{ start_date: "2026-09-24", end_date: "2026-09-24", status: "approved" }];
+    expect(handoverChecks([g({})], {}, [], leave, false).get("g")!.map((c) => c.code)).toEqual(["time_off"]);
+    expect(handoverChecks([g({})], {}, [], [{ ...leave[0], status: "rejected" }], false).get("g")).toEqual([]);
+  });
+
+  it("a refusal cannot be accepted; a warning only by its own code", () => {
+    const checks = new Map([["a", [{ code: "overlap" as const, level: "refuse" as const, message: "" }]]]);
+    expect(handoverBlock(checks, new Set(["overlap"]))!.refused).toHaveLength(1);
+    const warn = new Map([["a", [{ code: "role" as const, level: "warn" as const, message: "" }]]]);
+    expect(handoverBlock(warn, new Set(["time_off"]))!.unaccepted).toHaveLength(1);
+    expect(handoverBlock(warn, new Set(["role"]))).toBeNull();
+  });
+
+  it("the double-booking switch is the owner's", () => {
+    expect(doubleBookingRefusal("owner", { allowDoubleBooking: true })).toBeNull();
+    expect(doubleBookingRefusal("manager", { allowDoubleBooking: false })).toMatch(/Only the owner/);
+    expect(doubleBookingRefusal("manager", {})).toBeNull();
+  });
+
+  it("the removal's query: replaceWith and handOver go together; unknown warning codes are refused", () => {
+    expect(handoverOf(undefined, undefined, undefined)).toBeNull();
+    expect(() => handoverOf(undefined, "a", undefined)).toThrow(BadRequestException);
+    expect(() => handoverOf("m", undefined, undefined)).toThrow(BadRequestException);
+    expect(() => handoverOf("m", "a", "overlap,sneaky")).toThrow(BadRequestException);
+    expect(handoverOf(" m ", "a, b", "overlap,role")).toEqual({ to: "m", shiftIds: ["a", "b"], accept: ["overlap", "role"] });
   });
 });

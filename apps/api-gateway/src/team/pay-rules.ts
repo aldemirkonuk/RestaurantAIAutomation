@@ -372,7 +372,8 @@ function dayNumber(iso: string): number {
   return Date.parse(`${iso}T00:00:00Z`) / 86_400_000;
 }
 
-function addDaysIso(iso: string, n: number): string {
+/** `iso` moved by `n` calendar days. */
+export function addDaysIso(iso: string, n: number): string {
   return new Date((dayNumber(iso) + n) * 86_400_000).toISOString().slice(0, 10);
 }
 
@@ -526,6 +527,179 @@ export function planLeavingShifts(
   return plan;
 }
 
+// ── "Replace with": a leaving person's shifts handed to someone (2026-09-28) ─
+
+/**
+ * The four checks a hand-over runs on the person chosen to take a leaving
+ * person's shifts (ADR 0215 item 27). The founder, 2026-09-28, verbatim:
+ * "refuse overlap warn rest but owner has a say to change it into warn all
+ * four to allow double booking".
+ *
+ *   overlap      — they already have a shift that overlaps it. REFUSED,
+ *                  unless the owner has allowed double booking
+ *                  (`team_settings.allow_double_booking`), then a warning.
+ *   time_off     — they have APPROVED time off on its date. A warning.
+ *   role         — the shift names a role their position and skills do not
+ *                  list. A warning.
+ *   weekly_hours — with it, their worked hours in its Monday-week pass the
+ *                  Turkish statutory week (`WEEKLY_REVIEW_HOURS`, 4857 Art.
+ *                  63). A warning.
+ *
+ * Chosen from what the code records. Not checks, and said so in ADR 0215:
+ * `team_availability` (a table no route writes, so it would never fire) and a
+ * rest-between-shifts rule (none exists in the code).
+ */
+export type HandoverCheckCode = "overlap" | "time_off" | "role" | "weekly_hours";
+export const HANDOVER_CHECK_CODES: readonly HandoverCheckCode[] = [
+  "overlap",
+  "time_off",
+  "role",
+  "weekly_hours",
+];
+
+export interface HandoverCheck {
+  code: HandoverCheckCode;
+  level: "refuse" | "warn";
+  message: string;
+}
+
+/** A shift being handed over: an unstarted one whole, or a cut one's rest. */
+export interface HandoverShift extends ShiftLike {
+  /** The leaving person's shift id (for a rest, the shift it was cut from). */
+  id: string;
+  shift_date: string;
+  role?: string | null;
+}
+
+/** A shift the chosen person already has, as the checks read it. */
+export interface TheirShift extends ShiftLike {
+  id: string;
+  shift_date: string;
+  state?: string | null;
+}
+
+/** [start, end) in wall-clock minutes from 1970-01-01; `null` if unreadable. */
+function wallSpan(s: { shift_date: string; start_time: string; end_time: string }): [number, number] | null {
+  const day = String(s?.shift_date ?? "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return null;
+  const start = hhmm(s.start_time);
+  if (start == null || hhmm(s.end_time) == null) return null;
+  const span = Math.round(hoursBetween(s.start_time, s.end_time) * 60);
+  if (span <= 0) return null;
+  const at = dayNumber(day) * DAY_MIN + start;
+  return [at, at + span];
+}
+
+/** The Monday of `iso`'s week, as the week rows key it. */
+export function mondayOf(iso: string): string {
+  const n = dayNumber(iso.slice(0, 10));
+  const dow = (new Date(n * 86_400_000).getUTCDay() + 6) % 7;
+  return addDaysIso(iso.slice(0, 10), -dow);
+}
+
+const norm = (v: unknown) => String(v ?? "").trim().toLowerCase();
+
+/**
+ * What the four checks say about each shift handed to `target`, keyed by the
+ * shift's id (an empty list = nothing to say). `theirs` are the target's
+ * other shifts (open and called-out rows are nobody's work and are skipped);
+ * `leave` their time-off rows (only `approved` counts); `allowDoubleBooking`
+ * the owner's house setting. Every given shift is also checked against the
+ * other given shifts, so two of them cannot land on one person at once.
+ */
+export function handoverChecks(
+  given: readonly HandoverShift[],
+  target: { position?: string | null; skills?: readonly string[] | null },
+  theirs: readonly TheirShift[],
+  leave: readonly { start_date: string; end_date: string; status?: string | null }[],
+  allowDoubleBooking: boolean,
+): Map<string, HandoverCheck[]> {
+  const out = new Map<string, HandoverCheck[]>();
+  const working = (theirs ?? []).filter(
+    (s) => s && s.state !== "open" && s.state !== "callout",
+  );
+  const roles = new Set(
+    [target?.position, ...(target?.skills ?? [])].map(norm).filter((r) => r),
+  );
+  const approved = (leave ?? []).filter((l) => l?.status === "approved");
+
+  // Worked hours per Monday-week: theirs, then the given ones added.
+  const week = new Map<string, number>();
+  const add = (s: ShiftLike & { shift_date: string }) => {
+    const k = mondayOf(s.shift_date);
+    week.set(k, (week.get(k) ?? 0) + workedHours(s));
+  };
+  working.forEach(add);
+  given.forEach(add);
+
+  for (const g of given) {
+    const checks: HandoverCheck[] = [];
+    const span = wallSpan(g);
+    const clash =
+      span &&
+      [...working, ...given.filter((o) => o !== g)].some((o) => {
+        const os = wallSpan(o);
+        return os != null && os[0] < span[1] && span[0] < os[1];
+      });
+    if (clash) {
+      checks.push({
+        code: "overlap",
+        level: allowDoubleBooking ? "warn" : "refuse",
+        message: allowDoubleBooking
+          ? "They already have a shift at this time (double booking is allowed in this house)."
+          : "They already have a shift at this time. Double booking is off in this house, so this shift cannot go to them.",
+      });
+    }
+    const day = g.shift_date.slice(0, 10);
+    if (approved.some((l) => l.start_date <= day && day <= l.end_date)) {
+      checks.push({
+        code: "time_off",
+        level: "warn",
+        message: "They have approved time off on this day.",
+      });
+    }
+    if (norm(g.role) && !roles.has(norm(g.role))) {
+      checks.push({
+        code: "role",
+        level: "warn",
+        message: `The shift is for ${String(g.role).trim()}, which their position and skills do not list.`,
+      });
+    }
+    const hours = week.get(mondayOf(day)) ?? 0;
+    if (hours > WEEKLY_REVIEW_HOURS) {
+      checks.push({
+        code: "weekly_hours",
+        level: "warn",
+        message: `With it they work ${Math.round(hours * 100) / 100} hours that week, over the ${WEEKLY_REVIEW_HOURS}-hour week.`,
+      });
+    }
+    out.set(g.id, checks);
+  }
+  return out;
+}
+
+/**
+ * Whether a hand-over may go ahead: `null` when it may, else what stops it.
+ * A `refuse` stops it outright; a `warn` stops it until the caller names its
+ * code in `accepted` — the page shows the warnings and sends back the ones
+ * the person pressing "Remove" saw, and the gateway re-runs the checks at the
+ * write, so a warning that appeared since is never accepted unseen.
+ */
+export function handoverBlock(
+  checks: ReadonlyMap<string, readonly HandoverCheck[]>,
+  accepted: ReadonlySet<string>,
+): { refused: { id: string; check: HandoverCheck }[]; unaccepted: { id: string; check: HandoverCheck }[] } | null {
+  const refused: { id: string; check: HandoverCheck }[] = [];
+  const unaccepted: { id: string; check: HandoverCheck }[] = [];
+  for (const [id, list] of checks) {
+    for (const c of list) {
+      if (c.level === "refuse") refused.push({ id, check: c });
+      else if (!accepted.has(c.code)) unaccepted.push({ id, check: c });
+    }
+  }
+  return refused.length || unaccepted.length ? { refused, unaccepted } : null;
+}
+
 /**
  * The owner periods of everyone who is not an owner here now, from the
  * house's `member_role_changed` audit rows (founder item 80). Per person, in
@@ -656,6 +830,21 @@ export function labourSettingsRefusal(
     return "Only the owner can change the labour target. Nothing was saved.";
   }
   return null;
+}
+
+/**
+ * Only the owner switches double booking on or off (founder, 2026-09-28:
+ * "owner has a say to change it into warn all four to allow double booking";
+ * ADR 0215 item 27). Either direction: on lets a hand-over put two shifts on
+ * one person at once, and off is the owner's call as much as on. Returns the
+ * refusal, in words, or `null` when the write may go ahead.
+ */
+export function doubleBookingRefusal(
+  role: TeamRole,
+  patch: { allowDoubleBooking?: boolean },
+): string | null {
+  if (role === "owner" || patch.allowDoubleBooking === undefined) return null;
+  return "Only the owner can change whether double booking is allowed. Nothing was saved.";
 }
 
 /** The money fields a shift row carries. */

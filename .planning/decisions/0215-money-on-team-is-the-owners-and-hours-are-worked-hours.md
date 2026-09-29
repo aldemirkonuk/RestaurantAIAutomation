@@ -27,7 +27,7 @@
   their owner period stay the owners', per row and in the week total; from
   the demotion on their pay is a manager's. Built as item 25; see
   "Answered, 2026-09-28 (item 80)". Nothing from this record is open for the
-  founder except OD-165 (question 6) and the literal "and off" of item 16.]** **[2026-09-28, founder item 93 (OD-181): a removed person's shifts that have not started yet go back to the open pool — "back to the open pool absolutely". Built as item 26; the replacement step he asked to be brainstormed is a fork in `.planning/06-pages/team.md` §15, not built.]**
+  founder except OD-165 (question 6) and the literal "and off" of item 16.]** **[2026-09-28, founder item 93 (OD-181): a removed person's shifts that have not started yet go back to the open pool — "back to the open pool absolutely". Built as item 26; the replacement step he asked to be brainstormed is a fork in `.planning/06-pages/team.md` §15, not built.]** **[2026-09-28, founder: the replacement is "'Replace with' picker", checks "refuse overlap warn rest but owner has a say to change it into warn all four to allow double booking". Built as item 27.]**
 - **Date:** 2026-09-21 (round 2 answers 2026-09-21; round 6y answers
   2026-09-22; round 4 answers 2026-09-25)
 - **Decider:** Aldemir (founder) — four picks and one answer to five forks
@@ -925,6 +925,147 @@ questions round 2 left open (see "Answered, 2026-09-22 (round 6y)" below):
     `ADR-0215-R9-A-REMOVAL-MID-SHIFT-SPLITS-THE-SHIFT`. Forks it found, not
     decided: OD-190 (a very short rest), OD-191 (paging for cover now),
     OD-192 (the device zone), OD-193 (DST hours are wall-clock).]**
+27. **"Replace with" — a leaving person's shifts can go to someone named
+    (founder, 2026-09-28, answering `.planning/06-pages/team.md` §15).**
+    **[2026-09-28, the founder's answers, verbatim — Replacement: "'Replace
+    with' picker"; Picker checks: "refuse overlap warn rest but owner has a
+    say to change it into warn all four to allow double booking".** The
+    lane's reading: option (b) of §15 — on the remove dialog, the remover
+    picks someone already on this house's roster, and the leaving person's
+    upcoming shifts (and the rest of one cut now, item 26) go to them instead
+    of the open pool; whatever is not handed over still opens. "Refuse
+    overlap" = a shift that overlaps one the chosen person already has is
+    REFUSED; "warn rest" = the other three checks WARN; "owner has a say ...
+    warn all four" = an owner-only house setting turns the overlap into a
+    warning too, which allows double booking. What was built:
+    - **The four checks** (`pay-rules.ts` `handoverChecks`), chosen from what
+      the code records, default level in brackets:
+      1. `overlap` [REFUSE; WARN when the owner allows double booking] — the
+         chosen person has another shift (not open, not a call-out) whose
+         wall-clock span overlaps it, overnight shifts wrapping; handed-over
+         shifts are checked against each other too; touching ends do not
+         overlap.
+      2. `time_off` [WARN] — an APPROVED `time_off_requests` row of theirs
+         covers its date (pending and rejected do not count).
+      3. `role` [WARN] — the shift names a `role` that their `position` and
+         `skills` do not list (case and spaces aside); a shift with no role
+         is not checked.
+      4. `weekly_hours` [WARN] — with it, their worked hours in its
+         Monday-week pass `WEEKLY_REVIEW_HOURS` (45, 4857 Art. 63; the same
+         review line the week's labour uses, item H2); 45 exactly is not over.
+      **Not checks, measured:** `team_availability` (baseline:5594) — a table
+      no route reads or writes (no gateway or web code names it; migration
+      20261201110210 only keeps it cascading on a removal), so a check on it
+      would never fire; a rest-between-shifts rule — none exists
+      anywhere in the code; `house_away` / Away (ADR 0218) — a hold on
+      MESSAGES, not a scheduling state. Filed as OD-194 and OD-195.
+    - **Where the owner's setting lives:** a new column
+      `team_settings.allow_double_booking boolean NOT NULL DEFAULT false`
+      (migration 20261202110000). `team_settings` is this house's team-rule
+      row and every rule on it is one typed column (`labor_tracking_enabled`,
+      `labor_target_pct`) read and written by `getSettings`/`updateSettings`
+      and recorded in `team_labour_settings_changed`; there is no settings
+      JSON on it to put a key in. **Rejected:** `restaurants.settings` jsonb
+      (the house profile's bag, not /team's, no owner-only write rule, and a
+      key there is invisible to the migration guards); a per-person flag (the
+      founder named one owner say for the house). Owner only, either way
+      (`doubleBookingRefusal`; a manager's write is a 403 before anything is
+      saved), recorded like the labour settings, returned as `false` for a
+      house that never set it, and offered as "Allow double booking" in
+      Settings → Team (`TeamLaborSettings.tsx`) only to the owner
+      (`mayChange.doubleBooking`).
+    - **Server-side, the page only shows.** `GET
+      /restaurants/:rid/team/members/:memberId/handover?to=` (owner or
+      manager; both people must be on this house's roster, another house's
+      person is a 404) returns the leaving person's upcoming shifts as the
+      removal would plan them and, with `to`, each shift's checks — no wage
+      or cost. `DELETE .../members/:memberId?replaceWith=&handOver=&accept=`
+      re-plans and re-runs every check at the write: a REFUSE stops the whole
+      removal (409 with `refused`), and every WARN whose code is not in
+      `accept` stops it too (409 with `unaccepted`) — so a warning that
+      appeared after the page looked is never accepted unseen. `handOver`
+      names shifts by the leaving shift's id; one that is not an upcoming
+      shift of theirs (someone else's, a past one, a stale id) is a 400; the
+      chosen person must not be the person leaving (400) and must be on this
+      roster (404, `.eq("restaurant_id", …)` on the read); an unknown
+      `accept` code or a `replaceWith` without shifts is a 400. A failed read
+      of the chosen person's shifts, leave or the setting refuses — never
+      "no clash". Handed-over shifts are re-priced at the NEW person's wage
+      (`priceShift`); the receipt (`shiftsHandedOver`, `handedTo`) carries no
+      money; the audit row adds `shifts_handed_to`, `shifts_handed_over
+      [{id, row, part}]` and `shifts_warnings_accepted` (only codes that were
+      raised and accepted).
+    - **All or none, and the database checks too:** one call to
+      `hand_over_leaving_shifts` (migration 20261202110000, SECURITY
+      INVOKER, service role only) runs `release_leaving_shifts` for what
+      opens and what is cut, then moves each named unstarted shift to the new
+      person whole (re-checked as read, keeping its `state`/`shift_type`) and
+      each named rest (the row step one inserted, given the cut shift's
+      `state`/`shift_type`), and raises — changing nothing — if the new
+      person is not on this house's roster, is the leaving person, or ends up
+      overlapping another of their shifts while the house's
+      `allow_double_booking` is off OR the remover did not accept the
+      overlap. It reads the setting and the other shifts in the transaction
+      that writes, so a shift added to them after the gateway's check is
+      still caught. The removal without a picker still calls
+      `release_leaving_shifts` exactly as item 26 built it.
+    - **The dialog** (`RosterSheet.tsx` `ReplaceWithPicker`): "Their upcoming
+      shifts go to" — the open pool (default) or anyone else on the roster
+      (`TeamNext.tsx` passes the roster). Choosing someone loads the checks;
+      every shift that may go is ticked, a refused one cannot be ticked and
+      says it goes to the open pool, warnings are shown under their shift and
+      "Remove and hand over N shifts" stays disabled until "I have read the
+      warnings above …" is ticked; unticking a shift leaves it for the pool.
+      A 409 is shown in the gateway's own words. The FAQ
+      (`/help#replace-team-member`, `hp-faq.ts`) now gives this procedure
+      instead of moving each shift by hand.
+    - **Researched (web search, 2026-09-28; the help-centre pages were
+      reached through search results only — direct fetches of
+      kb.7shifts.com, help.deputy.com and help.wheniwork.com were blocked by
+      this environment's egress proxy):** 7shifts has no hand-over at
+      termination — after deactivating, "you must manually manage any
+      remaining shifts" and future shifts stay on the schedule until deleted
+      or reassigned ([How to deactivate an employee](https://kb.7shifts.com/hc/en-us/articles/4417505066515-How-to-Make-an-Employee-Inactive),
+      [Reassign Shifts on the Schedule](https://kb.7shifts.com/hc/en-us/articles/33962078614419-Reassign-Shifts-on-the-Schedule));
+      Deputy will not archive a person until their shifts are removed from
+      the schedule ([Archiving and unarchiving team members](https://help.deputy.com/hc/en-au/articles/4764904256143-Archiving-and-unarchiving-team-members)),
+      and its picker lets a manager "override the 'Not Recommended' warning
+      for all factors ... EXCEPT OVERLAPPING" — the founder's default,
+      exactly ([Ensure a team member is recommended for a shift](https://help.deputy.com/hc/en-au/articles/4688700112015-Ensure-a-team-member-is-recommended-for-a-shift));
+      When I Work flags "Scheduling Concerns" on a shift — an overlapping
+      scheduled shift, a broken scheduling rule, time off, an unavailability
+      preference — and still lets a person be scheduled past their max hours
+      ([Identifying Scheduling Conflicts](https://help.wheniwork.com/articles/identifying-scheduling-conflicts/),
+      [Max Hours Enforcement Reference](https://help.wheniwork.com/articles/max-hours-enforcement-reference/));
+      Homebase names availability, double-booking and time-off conflicts and
+      overtime alerts ([Schedule Conflicts](https://www.joinhomebase.com/glossary/schedule-conflicts)).
+      So a one-step hand-over at removal is beyond what the four offer, and
+      "overlap blocks, the rest warn" is Deputy's rule.
+    - **Rejected here:** the picker adding a NEW person inline (§15 (b)
+      mentioned it; the founder's answer names the picker, and adding stays
+      on Team, before the removal, as the FAQ says); a per-shift choice of
+      person (one person per removal; unticked shifts go to the pool, and a
+      second person can take them from there); accepting warnings by a single
+      "force" flag (a warning that appears after the page looked would be
+      accepted unseen).
+    `team-pay.spec.ts` K4, 24 cases (all 24 fail on the branch head
+    `8dd9bfeaf` — measured by running the new spec against that head's four
+    gateway files — together with the re-cut `mayChange` case in S1); 21 of
+    21 service/pay-rules/controller mutants killed (one survived at first —
+    `getSettings` dropping the `false` default for a row saved before the
+    column — and a case was added that kills it);
+    `supabase/tests/20261202110000_a_leaving_persons_shifts_can_go_to_someone_named_test.sql`
+    fails without the migration (no function) and passes with it, 6 of 6 SQL
+    mutants killed (a stand-in schema of the five tables it reads, as item
+    26's test was run — not a full migrated database); `TeamPayRound4.test.tsx`
+    "Replace with" block, 5 cases, all fail on `8dd9bfeaf`'s
+    `RosterSheet.tsx` and `team.ts`. CLAIMS
+    `ADR-0215-R10-REPLACE-WITH-HANDS-SHIFTS-TO-SOMEONE-NAMED` and
+    `ADR-0215-R11-DOUBLE-BOOKING-IS-THE-OWNERS-SWITCH`; R8 and R9's anchors
+    re-cut for the reshaped `releaseShiftsOf` call (same behaviour). Forks
+    it found, not decided: OD-194 (availability as a check), OD-195 (a
+    rest-between-shifts rule), OD-196 (telling the person who was handed the
+    shifts).]**
 
 ## Consequences
 

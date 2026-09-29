@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Inject,
   Injectable,
@@ -19,6 +20,15 @@ import {
   formerOwnerPeriods,
   LeaveType,
   labourSettingsRefusal,
+  doubleBookingRefusal,
+  handoverBlock,
+  handoverChecks,
+  HandoverCheck,
+  HandoverShift,
+  LeavingPlan,
+  addDaysIso,
+  mondayOf,
+  priceShift,
   OwnerPeriod,
   RoleChangeRow,
   memberForViewer,
@@ -81,6 +91,32 @@ interface Released {
   }[];
   unjudged: string[];
   clock: RemovalClock;
+  /** "Replace with" (item 27): who took shifts, which, and the warnings accepted. */
+  handedTo: string | null;
+  handedOver: { id: string; row: string | null; part: "whole" | "rest" }[];
+  accepted: string[];
+}
+
+/**
+ * A removal's "Replace with" (ADR 0215 item 27): hand `shiftIds` — the
+ * leaving person's unstarted shifts, or a cut shift's rest, by the leaving
+ * shift's id — to `to`, a person on the same roster; `accept` names the
+ * warning codes the remover saw and accepted. Shifts not named still open.
+ */
+export interface Handover {
+  to: string;
+  shiftIds: string[];
+  accept: string[];
+}
+
+/** A checked hand-over, ready for `hand_over_leaving_shifts`. */
+interface HandoverReview {
+  to: string;
+  given: HandoverShift[];
+  give: { id: string; shift_date: string; start_time: string; labor_cost: number | null }[];
+  giveRests: { id: string; labor_cost: number | null }[];
+  checks: Map<string, HandoverCheck[]>;
+  allowDoubleBooking: boolean;
 }
 
 @Injectable()
@@ -1061,6 +1097,7 @@ export class TeamService {
     restaurantId: string,
     memberId: string,
     deviceZone?: string | null,
+    handover?: Handover | null,
   ): Promise<{
     removed: true;
     audited: boolean;
@@ -1074,6 +1111,9 @@ export class TeamService {
     shiftsUnjudged: number;
     /** The clock "started" was judged on, and where its zone came from. */
     clock: RemovalClock;
+    /** "Replace with" (item 27): shifts handed to `handedTo` instead of opened. */
+    shiftsHandedOver: number;
+    handedTo: string | null;
   }> {
     // Set once this removal has sent the person's unstarted shifts back to
     // the open pool and cut any in progress (item 26); `null` until then.
@@ -1158,7 +1198,12 @@ export class TeamService {
 
       // Every refusal has run: their unstarted shifts go back to the open
       // pool before the first membership write (item 26).
-      released = await this.releaseShiftsOf(restaurantId, memberId, deviceZone);
+      released = await this.releaseShiftsOf(
+        restaurantId,
+        memberId,
+        deviceZone,
+        handover ?? null,
+      );
 
       // Their calendar link in this house stops for good, audited, before the
       // first membership write (ADR 0111, 2026-09-21, round 6t: "Yes, revoke
@@ -1219,7 +1264,12 @@ export class TeamService {
     // A roster row with no account passed no refusal above; its shifts open
     // here, still before the roster row goes (item 26).
     if (released === null)
-      released = await this.releaseShiftsOf(restaurantId, memberId, deviceZone);
+      released = await this.releaseShiftsOf(
+        restaurantId,
+        memberId,
+        deviceZone,
+        handover ?? null,
+      );
 
     // Remove from team_members roster.
     const { error } = await this.sb
@@ -1250,6 +1300,10 @@ export class TeamService {
         shifts_split: released.split,
         shifts_unjudged: released.unjudged,
         shifts_clock: released.clock,
+        // "Replace with" (item 27): to whom, which rows, what was accepted.
+        shifts_handed_to: released.handedTo,
+        shifts_handed_over: released.handedOver,
+        shifts_warnings_accepted: released.accepted,
       },
       notice: {
         title: "Your access to this restaurant was removed",
@@ -1266,6 +1320,8 @@ export class TeamService {
       shiftsSplit: released.split.length,
       shiftsUnjudged: released.unjudged.length,
       clock: released.clock,
+      shiftsHandedOver: released.handedOver.length,
+      handedTo: released.handedTo,
       ...receipt,
     };
   }
@@ -1286,15 +1342,27 @@ export class TeamService {
    * shift that may or may not have started is kept whole and named
    * (`unjudged`), never cut at a guessed minute.
    *
-   * Every write goes in ONE call to `release_leaving_shifts` (migration
-   * 20261201130000), one transaction that re-checks each row is still as it
-   * was read, so either all of it lands or none does. A failed read or that
-   * call failing refuses the whole removal: nobody was removed.
+   * "REPLACE WITH" (ADR 0215 item 27; founder 2026-09-28: "'Replace with'
+   * picker"). With a `handover`, the shifts it names — unstarted ones whole,
+   * and the rest of one cut now — go to the chosen person on this house's
+   * roster instead of the open pool, re-priced at their wage; the ones it
+   * does not name still open. The four checks (`handoverChecks`) run here,
+   * before any write: an overlap is refused unless the owner allows double
+   * booking, and every warning must be named in `handover.accept`, or the
+   * whole removal is refused (409) with what was found.
+   *
+   * Every write goes in ONE call — `release_leaving_shifts` (migration
+   * 20261201130000), or with a hand-over `hand_over_leaving_shifts`
+   * (migration 20261202110000), which applies the same plan and the
+   * hand-over in one transaction and re-checks the chosen person and the
+   * overlap itself — so either all of it lands or none does. A failed read
+   * or that call failing refuses the whole removal: nobody was removed.
    */
   private async releaseShiftsOf(
     restaurantId: string,
     memberId: string,
     deviceZone: string | null | undefined,
+    handover: Handover | null = null,
   ): Promise<Released> {
     const refuse = (what: string, err: { message: string }): never => {
       this.logger.error(
@@ -1304,6 +1372,116 @@ export class TeamService {
         "Could not move this person's upcoming shifts to the open pool, so nobody was removed.",
       );
     };
+    const { clock, rows, plan } = await this.leavingPlan(
+      restaurantId,
+      memberId,
+      deviceZone,
+      refuse,
+    );
+    const released: Released = {
+      opened: 0,
+      split: [],
+      unjudged: plan.unjudged,
+      clock,
+      handedTo: null,
+      handedOver: [],
+      accepted: [],
+    };
+
+    let review: HandoverReview | null = null;
+    if (handover && handover.shiftIds.length > 0) {
+      review = await this.reviewHandover(
+        restaurantId,
+        memberId,
+        rows,
+        plan,
+        handover.to,
+        handover.shiftIds,
+        refuse,
+      );
+      const block = handoverBlock(review.checks, new Set(handover.accept));
+      if (block) {
+        throw new ConflictException({
+          message: block.refused.length
+            ? "Some of these shifts cannot go to the person you chose, so nobody was removed. Leave them for the open pool or choose someone else."
+            : "Handing these shifts over needs you to confirm the warnings first, so nobody was removed yet.",
+          refused: block.refused,
+          unaccepted: block.unaccepted,
+        });
+      }
+    }
+    if (plan.open.length === 0 && plan.split.length === 0) return released;
+
+    // The breaks on record as read, before the write replaces them.
+    const readBreak = new Map<string, number | null>(
+      rows.map((r) => [
+        r.id,
+        r.recorded_break_min == null ? null : Number(r.recorded_break_min),
+      ]),
+    );
+    const givenIds = new Set(review?.given.map((g) => g.id) ?? []);
+    const { data: done, error: writeErr } = review
+      ? await (this.sb as any).rpc("hand_over_leaving_shifts", {
+          p_restaurant_id: restaurantId,
+          p_member_id: memberId,
+          p_to: review.to,
+          p_open: plan.open.filter((o) => !givenIds.has(o.id)),
+          p_split: plan.split,
+          p_give: review.give,
+          p_give_rests: review.giveRests,
+          p_accept_overlap: handover!.accept.includes("overlap"),
+        })
+      : await (this.sb as any).rpc("release_leaving_shifts", {
+          p_restaurant_id: restaurantId,
+          p_member_id: memberId,
+          p_open: plan.open,
+          p_split: plan.split,
+        });
+    if (writeErr) refuse("open and split the upcoming shifts", writeErr);
+    const rests = new Map<string, string>(
+      ((done?.rests ?? []) as any[]).map((r) => [r.id, r.rest_id]),
+    );
+    released.opened = Number(done?.opened ?? 0);
+    released.split = plan.split.map((x) => ({
+      id: x.id,
+      cut: x.worked.end_time,
+      rest_id: rests.get(x.id) ?? null,
+      // What the cut replaced, for the record: the worked row no longer
+      // carries its old end or its recorded break (no money here).
+      was_end: x.was.end_time,
+      was_break_min: readBreak.get(x.id) ?? null,
+    }));
+    if (review) {
+      released.handedTo = review.to;
+      released.handedOver = [
+        ...review.give.map((g) => ({ id: g.id, row: g.id, part: "whole" as const })),
+        ...review.giveRests.map((g) => ({
+          id: g.id,
+          row: rests.get(g.id) ?? null,
+          part: "rest" as const,
+        })),
+      ];
+      // Only the warnings that were there and accepted, not every code sent.
+      const seen = new Set<string>();
+      for (const list of review.checks.values())
+        for (const c of list) if (c.level === "warn") seen.add(c.code);
+      released.accepted = handover!.accept.filter((c) => seen.has(c));
+    }
+    return released;
+  }
+
+  /**
+   * The leaving person's shifts on the house's clock, and what a removal now
+   * would do to each (`planLeavingShifts`), with a cut part re-priced at their
+   * wage. Shared by the removal and its preview, so the page is shown the
+   * plan the removal applies.
+   */
+  private async leavingPlan(
+    restaurantId: string,
+    memberId: string,
+    deviceZone: string | null | undefined,
+    refuse: (what: string, err: { message: string }) => never,
+  ): Promise<{ clock: RemovalClock; rows: any[]; plan: LeavingPlan }> {
     const { data: house, error: houseErr } = await this.sb
       .from("restaurants")
       .select("timezone, country")
@@ -1321,7 +1499,7 @@ export class TeamService {
     const { data: theirs, error: readErr } = await this.sb
       .from("shifts")
       .select(
-        "id, shift_date, start_time, end_time, state, recorded_break_min, shift_breaks(start_time, duration_min)",
+        "id, shift_date, start_time, end_time, state, role, recorded_break_min, shift_breaks(start_time, duration_min)",
       )
       .eq("restaurant_id", restaurantId)
       .eq("member_id", memberId)
@@ -1342,45 +1520,229 @@ export class TeamService {
       if (wageErr) refuse("read their wage to re-price the worked part", wageErr);
       plan = planLeavingShifts(rows, clock, now, m?.hourly_wage ?? null);
     }
-    const released: Released = {
-      opened: 0,
-      split: [],
-      unjudged: plan.unjudged,
-      clock,
-    };
-    if (plan.open.length === 0 && plan.split.length === 0) return released;
+    return { clock, rows, plan };
+  }
 
-    // The breaks on record as read, before the write replaces them.
-    const readBreak = new Map<string, number | null>(
-      rows.map((r) => [
-        r.id,
-        r.recorded_break_min == null ? null : Number(r.recorded_break_min),
-      ]),
+  /**
+   * The hand-over of `shiftIds` to `to`, checked (ADR 0215 item 27). `to`
+   * must be on THIS house's roster and not the person leaving (404 / 400
+   * otherwise: a person in another house is "not found", never probed).
+   * Each id must be one of the leaving person's shifts this removal would
+   * open (whole) or cut (its rest), or it is refused. Reads the chosen
+   * person's shifts around those dates, their leave, and the owner's
+   * double-booking setting; a failed read refuses (never "no clash").
+   */
+  private async reviewHandover(
+    restaurantId: string,
+    memberId: string,
+    rows: any[],
+    plan: LeavingPlan,
+    to: string,
+    shiftIds: readonly string[],
+    refuse: (what: string, err: { message: string }) => never,
+  ): Promise<HandoverReview> {
+    if (to === memberId)
+      throw new BadRequestException(
+        "Choose someone other than the person leaving to take their shifts. Nobody was removed.",
+      );
+    const { data: target, error: targetErr } = await this.sb
+      .from("team_members")
+      .select("id, position, skills, hourly_wage")
+      .eq("id", to)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (targetErr) refuse("read the person chosen to take the shifts", targetErr);
+    if (!target)
+      throw new NotFoundException(
+        "The person you chose is not on this house's roster. Nobody was removed.",
+      );
+
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    const given: HandoverShift[] = [];
+    const give: { id: string; shift_date: string; start_time: string; labor_cost: number | null }[] = [];
+    const giveRests: { id: string; labor_cost: number | null }[] = [];
+    for (const id of new Set(shiftIds)) {
+      const whole = plan.open.find((o) => o.id === id);
+      const cut = plan.split.find((x) => x.id === id);
+      const row = byId.get(id);
+      if (whole && row) {
+        const g: HandoverShift = {
+          id,
+          shift_date: whole.shift_date,
+          start_time: row.start_time,
+          end_time: row.end_time,
+          role: row.role ?? null,
+          recorded_break_min: row.recorded_break_min ?? null,
+          shift_breaks: row.shift_breaks ?? [],
+        };
+        given.push(g);
+        give.push({
+          id,
+          shift_date: whole.shift_date,
+          start_time: whole.start_time,
+          labor_cost: priceShift(target.hourly_wage, g),
+        });
+      } else if (cut) {
+        const g: HandoverShift = {
+          id,
+          shift_date: cut.rest.shift_date,
+          start_time: cut.rest.start_time,
+          end_time: cut.rest.end_time,
+          role: row?.role ?? null,
+          recorded_break_min: cut.rest.recorded_break_min,
+        };
+        given.push(g);
+        giveRests.push({ id, labor_cost: priceShift(target.hourly_wage, g) });
+      } else {
+        throw new BadRequestException(
+          "One of the shifts to hand over is not one of their upcoming shifts any more. Nobody was removed; reload and try again.",
+        );
+      }
+    }
+
+    const dates = given.map((g) => g.shift_date).sort();
+    const from = addDaysIso(mondayOf(dates[0]), -1); // an overnight shift from the Sunday before
+    const until = addDaysIso(mondayOf(dates[dates.length - 1]), 6);
+    const { data: theirs, error: theirsErr } = await this.sb
+      .from("shifts")
+      .select("id, shift_date, start_time, end_time, state, recorded_break_min, shift_breaks(duration_min)")
+      .eq("restaurant_id", restaurantId)
+      .eq("member_id", to)
+      .gte("shift_date", from)
+      .lte("shift_date", until);
+    if (theirsErr) refuse("read the chosen person's shifts", theirsErr);
+    const { data: leave, error: leaveErr } = await this.sb
+      .from("time_off_requests")
+      .select("start_date, end_date, status")
+      .eq("restaurant_id", restaurantId)
+      .eq("member_id", to)
+      .eq("status", "approved")
+      .lte("start_date", dates[dates.length - 1])
+      .gte("end_date", dates[0]);
+    if (leaveErr) refuse("read the chosen person's time off", leaveErr);
+    const allowDoubleBooking = await this.doubleBookingAllowed(restaurantId, refuse);
+
+    return {
+      to,
+      given,
+      give,
+      giveRests,
+      allowDoubleBooking,
+      checks: handoverChecks(
+        given,
+        { position: target.position, skills: target.skills },
+        (theirs ?? []) as any[],
+        (leave ?? []) as any[],
+        allowDoubleBooking,
+      ),
+    };
+  }
+
+  /** The owner's double-booking setting; off when never set (ADR 0215 item 27). */
+  private async doubleBookingAllowed(
+    restaurantId: string,
+    refuse: (what: string, err: { message: string }) => never,
+  ): Promise<boolean> {
+    const { data, error } = await this.sb
+      .from("team_settings")
+      .select("allow_double_booking")
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (error) refuse("read whether double booking is allowed", error);
+    return data?.allow_double_booking === true;
+  }
+
+  /**
+   * What removing `memberId` now would do to their shifts, and — with `to` —
+   * what the four checks say about handing each to that person (ADR 0215
+   * item 27). Read-only; the removal re-runs all of it at the write. Owner
+   * or manager; both people must be on this house's roster. No money: a
+   * manager may call it, so no wage or cost is in the answer.
+   */
+  async handoverPreview(
+    userId: string,
+    restaurantId: string,
+    memberId: string,
+    to: string | null,
+    deviceZone: string | null,
+  ): Promise<{
+    clock: RemovalClock;
+    doubleBooking: "refuse" | "warn";
+    unjudged: number;
+    shifts: {
+      id: string;
+      part: "whole" | "rest";
+      shift_date: string;
+      start_time: string;
+      end_time: string;
+      role: string | null;
+      checks: HandoverCheck[];
+    }[];
+  }> {
+    await this.assertAccess(userId, restaurantId, "manager");
+    await this.assertMemberInRestaurant(restaurantId, memberId);
+    const refuse = (what: string, err: { message: string }): never => {
+      this.logger.error(
+        `handoverPreview could not ${what} for ${memberId} in ${restaurantId}: ${err.message}`,
+      );
+      throw new InternalServerErrorException(
+        "Could not read this person's upcoming shifts.",
+      );
+    };
+    const { clock, rows, plan } = await this.leavingPlan(
+      restaurantId,
+      memberId,
+      deviceZone,
+      refuse,
     );
-    const { data: done, error: writeErr } = await (this.sb as any).rpc(
-      "release_leaving_shifts",
-      {
-        p_restaurant_id: restaurantId,
-        p_member_id: memberId,
-        p_open: plan.open,
-        p_split: plan.split,
-      },
-    );
-    if (writeErr) refuse("open and split the upcoming shifts", writeErr);
-    const rests = new Map<string, string>(
-      ((done?.rests ?? []) as any[]).map((r) => [r.id, r.rest_id]),
-    );
-    released.opened = Number(done?.opened ?? 0);
-    released.split = plan.split.map((x) => ({
-      id: x.id,
-      cut: x.worked.end_time,
-      rest_id: rests.get(x.id) ?? null,
-      // What the cut replaced, for the record: the worked row no longer
-      // carries its old end or its recorded break (no money here).
-      was_end: x.was.end_time,
-      was_break_min: readBreak.get(x.id) ?? null,
-    }));
-    return released;
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    const shifts = [
+      ...plan.open.map((o) => ({
+        id: o.id,
+        part: "whole" as const,
+        shift_date: o.shift_date,
+        start_time: o.start_time,
+        end_time: byId.get(o.id)?.end_time ?? "",
+        role: byId.get(o.id)?.role ?? null,
+        checks: [] as HandoverCheck[],
+      })),
+      ...plan.split.map((x) => ({
+        id: x.id,
+        part: "rest" as const,
+        shift_date: x.rest.shift_date,
+        start_time: x.rest.start_time,
+        end_time: x.rest.end_time,
+        role: byId.get(x.id)?.role ?? null,
+        checks: [] as HandoverCheck[],
+      })),
+    ];
+    let allow = false;
+    if (to && shifts.length > 0) {
+      const review = await this.reviewHandover(
+        restaurantId,
+        memberId,
+        rows,
+        plan,
+        to,
+        shifts.map((s) => s.id),
+        refuse,
+      );
+      allow = review.allowDoubleBooking;
+      for (const s of shifts) s.checks = review.checks.get(s.id) ?? [];
+    } else {
+      if (to) {
+        if (to === memberId)
+          throw new BadRequestException("Choose someone other than the person leaving.");
+        await this.assertMemberInRestaurant(restaurantId, to);
+      }
+      allow = await this.doubleBookingAllowed(restaurantId, refuse);
+    }
+    return {
+      clock,
+      doubleBooking: allow ? "warn" : "refuse",
+      unjudged: plan.unjudged.length,
+      shifts,
+    };
   }
 
   /**
@@ -1997,12 +2359,20 @@ export class TeamService {
      */
     if (data) {
       const { wage_visible: _retired, ...rest } = data;
-      return { ...rest, moneyVisibleTo: "owner", mayChange, configured: true };
+      return {
+        ...rest,
+        // Off unless the owner switched it on (ADR 0215 item 27).
+        allow_double_booking: data.allow_double_booking === true,
+        moneyVisibleTo: "owner",
+        mayChange,
+        configured: true,
+      };
     }
     return {
       restaurant_id: restaurantId,
       labor_tracking_enabled: true,
       labor_target_pct: null,
+      allow_double_booking: false,
       moneyVisibleTo: "owner",
       mayChange,
       configured: false,
@@ -2018,6 +2388,7 @@ export class TeamService {
     trackingOff: boolean;
     trackingOn: boolean;
     target: boolean;
+    doubleBooking: boolean;
   } {
     const saves = role === "owner" || role === "manager";
     return {
@@ -2029,6 +2400,8 @@ export class TeamService {
         labourSettingsRefusal(role, { laborTrackingEnabled: true }) === null,
       target:
         saves && labourSettingsRefusal(role, { laborTargetPct: 1 }) === null,
+      doubleBooking:
+        saves && doubleBookingRefusal(role, { allowDoubleBooking: true }) === null,
     };
   }
 
@@ -2051,12 +2424,15 @@ export class TeamService {
     // target (founder, 2026-09-21, ADR 0215). Refused before any write.
     const refusal = labourSettingsRefusal(role, dto);
     if (refusal) throw new ForbiddenException(refusal);
+    // Double booking is the owner's switch too (ADR 0215 item 27).
+    const bookingRefusal = doubleBookingRefusal(role, dto);
+    if (bookingRefusal) throw new ForbiddenException(bookingRefusal);
     // What the settings were, for the record below. A failed read is an
     // error, not "no settings yet": the record would otherwise say the change
     // started from nothing.
     const { data: before, error: beforeErr } = await this.sb
       .from("team_settings")
-      .select("labor_tracking_enabled, labor_target_pct")
+      .select("labor_tracking_enabled, labor_target_pct, allow_double_booking")
       .eq("restaurant_id", restaurantId)
       .maybeSingle();
     if (beforeErr) {
@@ -2076,6 +2452,8 @@ export class TeamService {
       patch.labor_tracking_enabled = dto.laborTrackingEnabled;
     if (dto.laborTargetPct !== undefined)
       patch.labor_target_pct = dto.laborTargetPct;
+    if (dto.allowDoubleBooking !== undefined)
+      patch.allow_double_booking = dto.allowDoubleBooking;
     const { data, error } = await this.sb
       .from("team_settings")
       .upsert(patch, { onConflict: "restaurant_id" })
@@ -2122,7 +2500,11 @@ export class TeamService {
     written: Record<string, any>,
   ): Promise<boolean | null> {
     const changes: Record<string, { from: unknown; to: unknown }> = {};
-    for (const k of ["labor_tracking_enabled", "labor_target_pct"]) {
+    for (const k of [
+      "labor_tracking_enabled",
+      "labor_target_pct",
+      "allow_double_booking",
+    ]) {
       if (!(k in written)) continue;
       const from = before?.[k] ?? null;
       const to = written[k] ?? null;

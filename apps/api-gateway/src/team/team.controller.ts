@@ -21,7 +21,8 @@ import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { NotificationsService } from "../notifications/notifications.service";
 import { ExpoPushService } from "../push/expo-push.service";
 import { NotesService } from "./notes.service";
-import { TeamService } from "./team.service";
+import { Handover, TeamService } from "./team.service";
+import { HANDOVER_CHECK_CODES } from "./pay-rules";
 import { ScheduleService } from "./schedule.service";
 import { PerformanceService } from "./performance.service";
 import { AwayHoldService } from "./away-hold.service";
@@ -142,8 +143,39 @@ export class TeamController {
     @Param("restaurantId") rid: string,
     @Param("memberId") memberId: string,
     @Query("deviceZone") deviceZone?: string,
+    @Query("replaceWith") replaceWith?: string,
+    @Query("handOver") handOver?: string,
+    @Query("accept") accept?: string,
   ) {
-    return this.team.deleteMember(this.uid(req), rid, memberId, deviceZone ?? null);
+    return this.team.deleteMember(
+      this.uid(req),
+      rid,
+      memberId,
+      deviceZone ?? null,
+      handoverOf(replaceWith, handOver, accept),
+    );
+  }
+
+  /**
+   * "Replace with" on the remove dialog (ADR 0215 item 27, founder
+   * 2026-09-28): the leaving person's upcoming shifts, and with `to` what
+   * the four checks say about handing each to that person. Read-only.
+   */
+  @Get("members/:memberId/handover")
+  handoverPreview(
+    @Req() req: any,
+    @Param("restaurantId") rid: string,
+    @Param("memberId") memberId: string,
+    @Query("to") to?: string,
+    @Query("deviceZone") deviceZone?: string,
+  ) {
+    return this.team.handoverPreview(
+      this.uid(req),
+      rid,
+      memberId,
+      to ? to : null,
+      deviceZone ?? null,
+    );
   }
 
   // ── Schedule / week ──────────────────────────────────────────────────────
@@ -788,4 +820,45 @@ export class TeamController {
   ) {
     return this.team.updateSettings(this.uid(req), rid, dto);
   }
+}
+
+/**
+ * The removal's "Replace with" from its query (ADR 0215 item 27):
+ * `replaceWith` a roster id, `handOver` and `accept` comma lists (shift ids;
+ * warning codes). `null` without `replaceWith`. A `handOver` without
+ * `replaceWith`, or a `replaceWith` naming no shift, is refused in words
+ * rather than read as "open them all".
+ */
+export function handoverOf(
+  replaceWith: string | undefined,
+  handOver: string | undefined,
+  accept: string | undefined,
+): Handover | null {
+  const list = (v: string | undefined) =>
+    String(v ?? "")
+      .split(",")
+      .map((x) => x.trim())
+      .filter((x) => x);
+  const to = String(replaceWith ?? "").trim();
+  const shiftIds = list(handOver);
+  if (!to) {
+    if (shiftIds.length)
+      throw new BadRequestException(
+        "Choose who takes these shifts (replaceWith). Nobody was removed.",
+      );
+    return null;
+  }
+  if (!shiftIds.length)
+    throw new BadRequestException(
+      "Choose which shifts go to them (handOver). Nobody was removed.",
+    );
+  const codes = list(accept);
+  const unknown = codes.filter(
+    (c) => !(HANDOVER_CHECK_CODES as readonly string[]).includes(c),
+  );
+  if (unknown.length)
+    throw new BadRequestException(
+      `Unknown warning ${unknown.join(", ")}. Nobody was removed.`,
+    );
+  return { to, shiftIds, accept: codes };
 }

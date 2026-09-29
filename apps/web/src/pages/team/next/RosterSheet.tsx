@@ -20,17 +20,21 @@
  * account's name so one save repairs the row for good.
  */
 
-import { useMemo, useState } from 'react';
-import { useMutation } from '@tanstack/react-query';
+import { useEffect, useMemo, useState } from 'react';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { Sheet } from '@/components/mudavym';
 import {
   createTeamMember,
   deleteTeamMember,
+  getHandoverPreview,
   setMemberPayAccess,
   updateTeamMember,
   type Certification,
+  type HandoverCheckCode,
+  type HandoverPreview,
   type HouseMoney,
+  type RemovalHandover,
   type Shift,
   type TeamMember,
 } from '../../../services/api/team';
@@ -442,11 +446,17 @@ export function MemberSheet({
   viewerIsOwner = false,
   viewerUserId = null,
   ownerCount,
+  roster = [],
   onClose,
   onChanged,
 }: {
   /** `null` for a new member. */
   member: TeamMember | null;
+  /**
+   * This house's roster, for "Replace with" on the remove dialog (ADR 0215
+   * item 27). Empty = no picker; everything goes to the open pool.
+   */
+  roster?: TeamMember[];
   /**
    * The owner only (ADR 0215): only an owner may set a wage, and the gateway
    * refuses anyone else. So the field is the owner's, and nobody else is shown
@@ -552,8 +562,17 @@ export function MemberSheet({
   // this device's zone because the house records none, or shifts it could
   // not judge at all. `null` = nothing to say, and the sheet closes.
   const [removedNotice, setRemovedNotice] = useState<string | null>(null);
+  // "Replace with" (ADR 0215 item 27): who takes which shifts, if anyone.
+  const [handover, setHandover] = useState<HandoverChoice>(NO_HANDOVER);
+  const handoverPreview = useQuery({
+    queryKey: ['team', 'handover', member?.id ?? null, handover.to],
+    queryFn: () => getHandoverPreview(member!.id, handover.to),
+    enabled: !!member && !!handover.to && confirmRemove,
+  });
+  const handingOver = handoverOf(handover, handoverPreview.data);
+  const needsAck = (handingOver?.accept.length ?? 0) > 0 && !handover.ack;
   const remove = useMutation({
-    mutationFn: () => deleteTeamMember(member!.id),
+    mutationFn: () => deleteTeamMember(member!.id, undefined, handingOver),
     onSuccess: (receipt) => {
       onChanged();
       const unjudged = receipt?.shiftsUnjudged ?? 0;
@@ -593,6 +612,7 @@ export function MemberSheet({
         <MutationError when={remove.isError}>
           The removal did not go through — this person is still on the roster and still
           has whatever access they had.
+          {removalRefusal(remove.error) ? ` ${removalRefusal(remove.error)}` : ''}
         </MutationError>
         {removedNotice && (
           <div className="tm-alert" role="status">
@@ -800,6 +820,15 @@ export function MemberSheet({
               shifts, leave, wage changes and credentials are kept for five years, for an owner
               only, in the former-staff history; their availability is not kept.
             </p>
+            {member && (
+              <ReplaceWithPicker
+                leaving={member}
+                roster={roster}
+                choice={handover}
+                preview={handoverPreview}
+                onChoice={setHandover}
+              />
+            )}
             <div className="tm-actions">
               <button
                 type="button"
@@ -811,10 +840,14 @@ export function MemberSheet({
               <button
                 type="button"
                 className="tm-ctl tm-ctl--sm"
-                disabled={remove.isPending}
+                disabled={remove.isPending || needsAck || (!!handover.to && handoverPreview.isFetching)}
                 onClick={() => remove.mutate()}
               >
-                {remove.isPending ? 'Removing…' : 'Remove and revoke access'}
+                {remove.isPending
+                  ? 'Removing…'
+                  : handingOver
+                    ? `Remove and hand over ${handingOver.shiftIds.length === 1 ? '1 shift' : `${handingOver.shiftIds.length} shifts`}`
+                    : 'Remove and revoke access'}
               </button>
             </div>
           </div>
@@ -844,4 +877,158 @@ export function MemberSheet({
       </div>
     </Sheet>
   );
+}
+
+/**
+ * "Replace with" on the remove dialog (ADR 0215 item 27; the founder,
+ * 2026-09-28: "'Replace with' picker"; checks: "refuse overlap warn rest but
+ * owner has a say to change it into warn all four to allow double booking").
+ *
+ * Pick someone on this roster and the leaving person's upcoming shifts —
+ * and the rest of one they are working now — go to them instead of the open
+ * pool; untick any to leave it for the pool. The page only SHOWS what the
+ * gateway's four checks said (`getHandoverPreview`): a refused shift cannot
+ * be ticked, and warnings must be acknowledged before the button works. The
+ * gateway re-runs every check when it writes and refuses on anything new.
+ */
+export interface HandoverChoice {
+  to: string | null;
+  picked: Set<string>;
+  ack: boolean;
+  /** The person whose checks ticked `picked`; a new person ticks afresh. */
+  seededFor: string | null;
+}
+
+export const NO_HANDOVER: HandoverChoice = { to: null, picked: new Set(), ack: false, seededFor: null };
+
+export function handoverOf(
+  choice: HandoverChoice,
+  preview: HandoverPreview | undefined,
+): RemovalHandover | null {
+  if (!choice.to || !preview) return null;
+  const shifts = preview.shifts.filter(
+    (s) => choice.picked.has(s.id) && !s.checks.some((c) => c.level === 'refuse'),
+  );
+  if (shifts.length === 0) return null;
+  const accept = new Set<HandoverCheckCode>();
+  for (const s of shifts) for (const c of s.checks) if (c.level === 'warn') accept.add(c.code);
+  return { to: choice.to, shiftIds: shifts.map((s) => s.id), accept: [...accept] };
+}
+
+function ReplaceWithPicker({
+  leaving,
+  roster,
+  choice,
+  preview,
+  onChoice,
+}: {
+  leaving: TeamMember;
+  roster: TeamMember[];
+  choice: HandoverChoice;
+  /** The gateway's checks for `choice.to` (`getHandoverPreview`). */
+  preview: { data?: HandoverPreview; isError: boolean; isFetching: boolean };
+  onChoice: (c: HandoverChoice) => void;
+}) {
+  const others = roster.filter((m) => m.id !== leaving.id);
+  const shifts = preview.data?.shifts ?? [];
+  const chosen = choice.to ? handoverOf(choice, preview.data) : null;
+  const warnings = chosen ? chosen.accept.length : 0;
+
+  const pick = (to: string | null) => onChoice({ ...NO_HANDOVER, to });
+  // Once this person's checks are in, tick every shift that may go to them;
+  // a refused one never is.
+  const data = preview.data;
+  useEffect(() => {
+    if (!choice.to || !data || preview.isFetching || choice.seededFor === choice.to) return;
+    const may = data.shifts.filter((s) => !s.checks.some((c) => c.level === 'refuse')).map((s) => s.id);
+    onChoice({ ...choice, picked: new Set(may), ack: false, seededFor: choice.to });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [choice.to, data, preview.isFetching]);
+
+  if (others.length === 0) return null;
+  return (
+    <div style={{ display: 'grid', gap: 8, margin: '10px 0' }}>
+      <label>
+        <span className="tm-label">Their upcoming shifts go to</span>
+        <select
+          className="tm-select"
+          aria-label="Replace with"
+          value={choice.to ?? ''}
+          onChange={(e) => pick(e.target.value || null)}
+        >
+          <option value="">The open pool (nobody yet)</option>
+          {others.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.display_name}
+              {m.position ? ` — ${m.position}` : ''}
+            </option>
+          ))}
+        </select>
+      </label>
+      {preview.isError && (
+        <p className="tm-hint" role="alert">
+          Could not read their upcoming shifts, so none can be handed over from here. Removing
+          them now sends every upcoming shift to the open pool.
+        </p>
+      )}
+      {choice.to && preview.data && shifts.length === 0 && (
+        <p className="tm-hint">They have no upcoming shifts to hand over.</p>
+      )}
+      {choice.to && preview.data && shifts.length > 0 && (
+        <ul aria-label="Shifts to hand over" style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 6 }}>
+          {shifts.map((s) => {
+            const refused = s.checks.find((c) => c.level === 'refuse');
+            return (
+              <li key={s.id}>
+                <label>
+                  <input
+                    type="checkbox"
+                    disabled={!!refused}
+                    checked={!refused && choice.picked.has(s.id)}
+                    onChange={(e) => {
+                      const picked = new Set(choice.picked);
+                      if (e.target.checked) picked.add(s.id);
+                      else picked.delete(s.id);
+                      onChoice({ ...choice, picked, ack: false });
+                    }}
+                  />{' '}
+                  {fmtDayShort(s.shift_date)} {fmtTime(s.start_time)}–{fmtTime(s.end_time)}
+                  {s.role ? ` · ${s.role}` : ''}
+                  {s.part === 'rest' ? ' · the rest of the shift they are on now' : ''}
+                </label>
+                {s.checks.map((c) => (
+                  <p key={c.code} className="tm-hint" data-level={c.level}>
+                    {c.level === 'refuse' ? 'Goes to the open pool: ' : 'Warning: '}
+                    {c.message}
+                  </p>
+                ))}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {choice.to && preview.data?.doubleBooking === 'refuse' && (
+        <p className="tm-hint">
+          Double booking is off in this house, so a shift that overlaps one of theirs cannot
+          go to them. The owner can allow it in Settings → Team.
+        </p>
+      )}
+      {warnings > 0 && (
+        <label className="tm-hint">
+          <input
+            type="checkbox"
+            checked={choice.ack}
+            onChange={(e) => onChoice({ ...choice, ack: e.target.checked })}
+          />{' '}
+          I have read the warnings above and want to hand these shifts over anyway.
+        </label>
+      )}
+    </div>
+  );
+}
+
+/** The gateway's words for a refused removal (a 409 from the hand-over checks), if any. */
+function removalRefusal(err: unknown): string | null {
+  const msg = (err as { response?: { data?: { message?: unknown } } })?.response?.data?.message;
+  return typeof msg === 'string' ? msg : null;
 }

@@ -229,6 +229,11 @@ export interface TeamSettings {
   labor_tracking_enabled: boolean
   labor_target_pct: number | null
   /**
+   * Owner only (ADR 0215 item 27): off (the default), a "Replace with"
+   * hand-over onto someone already working then is refused; on, a warning.
+   */
+  allow_double_booking?: boolean
+  /**
    * Who sees wages and labour cost: the owner, by role (ADR 0215). It replaced
    * `wage_visible`, which the gateway no longer returns or accepts.
    */
@@ -240,7 +245,7 @@ export interface TeamSettings {
    * target. Absent from an older gateway: the page then offers nothing it
    * cannot promise.
    */
-  mayChange?: { trackingOff: boolean; trackingOn: boolean; target: boolean }
+  mayChange?: { trackingOff: boolean; trackingOn: boolean; target: boolean; doubleBooking?: boolean }
 }
 
 export interface MemberPerformance {
@@ -295,6 +300,53 @@ export interface RemovalReceipt {
   /** With no clock at all: shifts that may have started, kept whole. */
   shiftsUnjudged?: number
   clock?: { zone: string | null; source: 'house' | 'country' | 'device' | 'none' }
+  /** "Replace with" (ADR 0215 item 27): shifts handed to `handedTo` instead of opened. */
+  shiftsHandedOver?: number
+  handedTo?: string | null
+}
+
+/** The four checks a hand-over runs (ADR 0215 item 27). */
+export type HandoverCheckCode = 'overlap' | 'time_off' | 'role' | 'weekly_hours'
+export interface HandoverCheck {
+  code: HandoverCheckCode
+  level: 'refuse' | 'warn'
+  message: string
+}
+export interface HandoverShiftPreview {
+  id: string
+  /** `rest` = the part after this minute of a shift they are working now. */
+  part: 'whole' | 'rest'
+  shift_date: string
+  start_time: string
+  end_time: string
+  role: string | null
+  checks: HandoverCheck[]
+}
+export interface HandoverPreview {
+  doubleBooking: 'refuse' | 'warn'
+  unjudged: number
+  shifts: HandoverShiftPreview[]
+}
+
+/**
+ * The leaving person's upcoming shifts and, with `to`, what the gateway's
+ * four checks say about handing each to that person. Read-only; the removal
+ * re-runs every check when it writes.
+ */
+export async function getHandoverPreview(memberId: string, to: string | null, rid?: string): Promise<HandoverPreview> {
+  const deviceZone = getBrowserTimezone()
+  const params: Record<string, string> = {}
+  if (to) params.to = to
+  if (deviceZone) params.deviceZone = deviceZone
+  const { data } = await apiClient.get<HandoverPreview>(`${base(rid)}/members/${memberId}/handover`, { params })
+  return data
+}
+
+/** A removal's "Replace with": who, which shifts, and the warnings accepted. */
+export interface RemovalHandover {
+  to: string
+  shiftIds: string[]
+  accept: HandoverCheckCode[]
 }
 
 /**
@@ -303,10 +355,21 @@ export interface RemovalReceipt {
  * only when the house records no zone (`removalClock`). Omitted when the
  * browser will not say.
  */
-export async function deleteTeamMember(memberId: string, rid?: string): Promise<RemovalReceipt> {
+export async function deleteTeamMember(
+  memberId: string,
+  rid?: string,
+  handover?: RemovalHandover | null,
+): Promise<RemovalReceipt> {
   const deviceZone = getBrowserTimezone()
+  const params: Record<string, string> = {}
+  if (deviceZone) params.deviceZone = deviceZone
+  if (handover && handover.shiftIds.length > 0) {
+    params.replaceWith = handover.to
+    params.handOver = handover.shiftIds.join(',')
+    if (handover.accept.length > 0) params.accept = handover.accept.join(',')
+  }
   const { data } = await apiClient.delete(`${base(rid)}/members/${memberId}`, {
-    params: deviceZone ? { deviceZone } : undefined,
+    params: Object.keys(params).length ? params : undefined,
   })
   return (data ?? {}) as RemovalReceipt
 }
