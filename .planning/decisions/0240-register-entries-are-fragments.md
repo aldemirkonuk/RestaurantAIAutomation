@@ -1,4 +1,4 @@
-# 0238 — New register entries go in their own files; the two hot registers are frozen in place
+# 0240 — New register entries go in their own files; the two hot registers are frozen in place
 
 - **Status:** Locked 2026-09-29 (founder). F1 answered, F2 deferred with a measurement plan, F3 open (§Forks). Supersedes nothing. It retires one convention — "append a row to the tail of `CLAIMS.jsonl` / `v3.0-TECH-DEBT.md`" — and no document.
 - **Date:** 2026-09-29
@@ -35,7 +35,7 @@ Constraints, checked on `origin/main` 446f49d75 and re-checked at 29daea03a (202
 
 ### 1. The freeze (both files, one rule)
 
-- `CLAIMS.jsonl` ends in `{"_comment": "FROZEN 2026-09-29 (ADR 0238). …"}`; `v3.0-TECH-DEBT.md` ends in `## FROZEN — new entries live in .planning/tech-debt.d/ (ADR 0238)` and one pointer paragraph.
+- `CLAIMS.jsonl` ends in `{"_comment": "FROZEN 2026-09-29 (ADR 0240). …"}`; `v3.0-TECH-DEBT.md` ends in `## FROZEN — new entries live in .planning/tech-debt.d/ (ADR 0240)` and one pointer paragraph.
 - `scripts/check_decision_claims.sh` holds `CLAIMS_FROZEN_LINES=746` and `DEBT_FROZEN_LINES=7063`, the counts at this PR's head (recomputed once already: #512 merged while this was built, appending to both files — the race §Transition 1 describes — and PR A was synced by merge, taking main's copy of each register plus the sentinel), and passes them explicitly (`_claims_parse.py --frozen-lines`, `_debt_frozen.py --frozen-lines`), so enforcement never depends on the sentinel being present. There is no override variable; the runner test rewrites the constants in its own *copy* of the runner.
 - **Exit 7** from the runner, with a message naming the fragment folder, when either file's newline count differs from its pin, CLAIMS's last non-blank line is not the sentinel, or TECH-DEBT's last `## ` heading is not `## FROZEN`. That covers a row after the sentinel, a row inserted above it (the classic careless conflict fix), a deleted or overwritten sentinel, and a "**Fix.**" paragraph added inside a legacy TECH-DEBT entry — which a heading-only check would miss.
 - **Closing a legacy entry:** flip a CLAIMS row in place (it stays one line); strike a TECH-DEBT heading in place (`~~OPEN~~ CLOSED on …`). A longer note goes in a `tech-debt.d/` fragment citing `v3.0-TECH-DEBT.md:<line>` plus the heading text.
@@ -73,9 +73,9 @@ Nothing above either sentinel moves, and the pin enforces it, so all 127 + 16 ex
 Built differently from the draft, and why: the draft's six claim rows became **one** (the runner's count is main's + 1, and the one row carries every mechanical check); the draft's `open` "CLAUDE.md points at fragments" row is **not** filed, so PR B is tracked by this section rather than by a claim; `scripts/check_new_tables_are_locked_down.py:2002` was **not** changed — on reading, it cites where the existing OD-59/OD-94 rows are, which stays true, and tells no one to add a row (no script under `scripts/` does, by grep); `.planning/handoff/PROGRESS.md` was not touched; the transition helper never pushes (it prints the push command on success).
 
 **PR B — gate-owned, the founder merges it. Nothing depends on it: exit 7 and the sentinels redirect on their own.**
-- `CLAUDE.md:124-125` — "the only top-level docs besides `v3.0-TECH-DEBT.md` and `config.json`" → "…besides `v3.0-TECH-DEBT.md` (frozen; new entries in `tech-debt.d/`, ADR 0238) and `config.json`".
-- `CLAUDE.md:130-131` — "`v3.0-TECH-DEBT.md` is the live defect register." → "`v3.0-TECH-DEBT.md` plus `.planning/tech-debt.d/` is the live defect register (ADR 0238); search both."
-- `CLAUDE.md:167-168` — "Add a line to [`.planning/decisions/CLAIMS.jsonl`](…)" → "Add a line to your branch's fragment, [`.planning/decisions/claims.d/<branch-slug>.jsonl`](.planning/decisions/claims.d/README.md) (`CLAIMS.jsonl` is frozen, ADR 0238)".
+- `CLAUDE.md:124-125` — "the only top-level docs besides `v3.0-TECH-DEBT.md` and `config.json`" → "…besides `v3.0-TECH-DEBT.md` (frozen; new entries in `tech-debt.d/`, ADR 0240) and `config.json`".
+- `CLAUDE.md:130-131` — "`v3.0-TECH-DEBT.md` is the live defect register." → "`v3.0-TECH-DEBT.md` plus `.planning/tech-debt.d/` is the live defect register (ADR 0240); search both."
+- `CLAUDE.md:167-168` — "Add a line to [`.planning/decisions/CLAIMS.jsonl`](…)" → "Add a line to your branch's fragment, [`.planning/decisions/claims.d/<branch-slug>.jsonl`](.planning/decisions/claims.d/README.md) (`CLAIMS.jsonl` is frozen, ADR 0240)".
 - `.planning/decisions/README.md` — this ADR's index row, after the 0237 row (line 172).
 
 **Not touched:** `ci.yml` (its :272 comment becomes slightly incomplete, not wrong); `pr-audit-gate.yml`, `pr_audit_gate.py`, `require_pr_audit.py`, `scripts/hooks/*`, `.claude/*`; `check_citation_pairing.py`, `check_no_conflict_markers.py`; ADR 0050 and 0090. `.claude/skills/pr-audit-gate/SKILL.md:193` and `e2e-prod.yml:28` mention the registers only in prose; the latter's citation points into the frozen file and still resolves.
@@ -108,3 +108,4 @@ Built differently from the draft, and why: the draft's six claim rows became **o
 | 2026-09-29 | Workflow: 3 candidates (fragments, union driver, audit carry-forward), each attacked adversarially; synthesis | Draft (`main-1ll9rp`). Fragments chosen and hardened with the attack's fixes: line-count pin on both files, explicit enforcement, Python listing, per-file error attribution, slug normalization, PR A/B split. Union rejected. Carry-forward left open as F2. |
 | 2026-09-29 | Founder | Locked. F1: "Yes, entries (Recommended)". F2: "Not now, measure first (Recommended)". |
 | 2026-09-29 | Build session (PR A) | Built as above; helper generalized from tail-only to whole-entry insertions after `feat/cutover-manifest-trial` showed rows placed mid-file by an earlier hand fix. |
+| 2026-09-29 | Build session (PR A) | Renumbered 0238 → 0240 before the PR opened: `check_adr_numbers_unique.py` found 0238 taken meanwhile by `feat/zone-edit-permission`. 0239 is left as a gap on purpose (CLAUDE.md §5b: prefer a gap over a collision), since another session was allocating from the same trunk. The first two commits on this branch still say 0238 in their messages. |

@@ -1,6 +1,6 @@
 # claims.d/ — new executable claims, one file per branch
 
-[ADR 0238](../0238-register-entries-are-fragments.md), locked 2026-09-29.
+[ADR 0240](../0240-register-entries-are-fragments.md), locked 2026-09-29.
 
 **This README is the index; the directory listing is the entry list.** A file
 here is an *entry* of the claims register, not a new document (the founder's

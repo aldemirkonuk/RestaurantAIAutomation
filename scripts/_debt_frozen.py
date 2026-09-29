@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Is .planning/v3.0-TECH-DEBT.md still frozen, and is tech-debt.d/ well formed?
 
-Helper for scripts/check_decision_claims.sh (ADR 0238, 2026-09-29). Kept as
+Helper for scripts/check_decision_claims.sh (ADR 0240, 2026-09-29). Kept as
 its own file for the same reason _claims_parse.py and _od_collisions.py are:
 a nested heredoc's shell quoting breaks silently, and a guard needs a
 self-test that does not depend on the real register.
@@ -54,7 +54,7 @@ def frozen_ok(path: str, frozen_lines: int) -> bool:
     if count != frozen_lines:
         print(
             f"FROZEN\t{path}\thas {count} lines; it is frozen at {frozen_lines} "
-            "(ADR 0238). No line may be added to or removed from it: 127 line "
+            "(ADR 0240). No line may be added to or removed from it: 127 line "
             "citations point into it. A new entry, or a closing note longer than "
             "a struck heading, goes in .planning/tech-debt.d/<YYYY-MM-DD>-<branch-slug>.md "
             "(cite the legacy entry as v3.0-TECH-DEBT.md:<line> plus its heading).",
@@ -159,7 +159,7 @@ def self_test() -> int:
     ok = True
     base = (
         "# register\n\n## An old entry — OPEN — 2026-01-01\n\nBody.\n\n"
-        "## FROZEN — new entries live in .planning/tech-debt.d/ (ADR 0238)\n\nPointer.\n"
+        "## FROZEN — new entries live in .planning/tech-debt.d/ (ADR 0240)\n\nPointer.\n"
     )
     good_frag = "## A new entry — OPEN — 2026-01-02\n\nBody.\n"
 

@@ -14,7 +14,7 @@
 # Each case pins one arm: removing the `*)` arm, the zero-claims check, or the
 # absolute script-dir resolution each turns at least one case red.
 #
-# ADR 0238 (2026-09-29) froze CLAIMS.jsonl and v3.0-TECH-DEBT.md at a pinned line
+# ADR 0240 (2026-09-29) froze CLAIMS.jsonl and v3.0-TECH-DEBT.md at a pinned line
 # count behind a sentinel, and moved new entries into claims.d/ and tech-debt.d/.
 # Every fixture tree therefore carries a sentinel, both fragment directories and a
 # small debt register, and `pin` rewrites the COPIED runner's two pin constants
@@ -42,7 +42,7 @@ SENTINEL='{"_comment": "FROZEN 2026-01-01 (fixture). Nothing may follow this lin
 PIN_FAILED="$WORK/PIN_FAILED"
 
 # pin <root>  -> sets the COPIED runner's two pins to the fixture's own line counts.
-# If the constants cannot be found (renamed, or a runner that predates ADR 0238)
+# If the constants cannot be found (renamed, or a runner that predates ADR 0240)
 # every case fails: a freeze case must never pass on a runner that has no pin.
 pin() {
   local run="$1/scripts/check_decision_claims.sh" c d
@@ -131,7 +131,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# ADR 0238 — fragments are read, and the two frozen registers stay frozen.
+# ADR 0240 — fragments are read, and the two frozen registers stay frozen.
 # ---------------------------------------------------------------------------
 C=".planning/decisions/CLAIMS.jsonl"; CD=".planning/decisions/claims.d"
 D=".planning/v3.0-TECH-DEBT.md"; DD=".planning/tech-debt.d"
@@ -220,7 +220,7 @@ expect "the debt freeze helper's own self-test passes" \
   0 "PASS" "$SRC" python3 "$SRC/_debt_frozen.py" --self-test
 
 # ---------------------------------------------------------------------------
-# The point of ADR 0238: three branches, one merges, the other two still merge
+# The point of ADR 0240: three branches, one merges, the other two still merge
 # clean. The control (the same three appending to the tail) must conflict, so
 # this case notices if the fixture ever stops exercising the real failure.
 # ---------------------------------------------------------------------------
@@ -258,7 +258,7 @@ if command -v git >/dev/null 2>&1; then
   expect "two branches choosing the same fragment slug conflict loudly (add/add)" \
     0 "addadd addadd" "$WORK" merge_sim addadd
 else
-  echo "   FAIL git unavailable — the merge cases are the point of ADR 0238"; fail=$((fail + 1))
+  echo "   FAIL git unavailable — the merge cases are the point of ADR 0240"; fail=$((fail + 1))
 fi
 
 if [ -e "$PIN_FAILED" ]; then

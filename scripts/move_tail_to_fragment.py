@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Move an open branch's new register entries into fragments (ADR 0238).
+"""Move an open branch's new register entries into fragments (ADR 0240).
 
 Run it ONCE on a branch that added rows to `.planning/decisions/CLAIMS.jsonl`
 and/or `## ` entries to `.planning/v3.0-TECH-DEBT.md` before those two files
@@ -284,7 +284,7 @@ def main(argv: list) -> int:
     git("add", "--", *writes.keys())
     git(
         "commit", "-q", "-m",
-        "chore(registers): move this branch's new register entries into fragments (ADR 0238)\n\n"
+        "chore(registers): move this branch's new register entries into fragments (ADR 0240)\n\n"
         "CLAIMS.jsonl and v3.0-TECH-DEBT.md are frozen on main; new entries live in\n"
         "claims.d/ and tech-debt.d/. This moves the entries this branch added since its\n"
         f"merge base ({base[:9]}) into fragments, leaves in-place edits where they are,\n"

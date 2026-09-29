@@ -36,7 +36,7 @@ one physical line — stays the required shape; this file is what enforces it,
 the same way the MUZZLED check enforces "no `2>` redirect" instead of silently
 tolerating it.
 
-SEVERAL FILES, ONE OF THEM FROZEN — ADR 0238, 2026-09-29
+SEVERAL FILES, ONE OF THEM FROZEN — ADR 0240, 2026-09-29
 -----------------------------------------------------------------------------
 Almost every PR appended one row to the tail of CLAIMS.jsonl, so two open PRs
 conflicted there as soon as one merged, and every conflict fix was a new head
@@ -180,7 +180,7 @@ def frozen_ok(path: str, frozen_lines: int) -> bool:
     if count != frozen_lines:
         print(
             f"FROZEN\t{path}\thas {count} lines; it is frozen at {frozen_lines} "
-            "(ADR 0238). No line may be added to or removed from it. A new "
+            "(ADR 0240). No line may be added to or removed from it. A new "
             "claim goes in .planning/decisions/claims.d/<branch-slug>.jsonl; a "
             "legacy row may still be edited in place if it stays one line.",
             file=sys.stderr,
@@ -276,7 +276,7 @@ def run(paths: list, fragments_dir: "str | None" = None, frozen_lines: "int | No
 
 
 def parse(path: str) -> int:
-    """One file, no pin and no fragments: the pre-ADR-0238 behaviour."""
+    """One file, no pin and no fragments: the pre-ADR-0240 behaviour."""
     return run([path])
 
 
@@ -402,7 +402,7 @@ def self_test() -> int:
     check("an empty verify fails loud (bash -c '' exits 0)", row(verify="  "), 3, "MALFORMED")
     check("an empty id fails loud", row(id=""), 3, "MALFORMED")
 
-    # ADR 0238 — several files, the first frozen behind a sentinel.
+    # ADR 0240 — several files, the first frozen behind a sentinel.
     sentinel = json.dumps({"_comment": "FROZEN 2026-01-01 (self-test)"}) + "\n"
     frozen = row() + sentinel
 

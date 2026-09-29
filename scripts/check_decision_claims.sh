@@ -88,7 +88,7 @@ cd "$HERE/.." || { echo "FAIL — cannot reach repo root"; exit 2; }
 CLAIMS=".planning/decisions/CLAIMS.jsonl"
 [ -f "$CLAIMS" ] || { echo "FAIL — $CLAIMS is missing; this guard has nothing to check"; exit 2; }
 
-# FROZEN REGISTERS, NEW ENTRIES AS FRAGMENTS (ADR 0238, 2026-09-29)
+# FROZEN REGISTERS, NEW ENTRIES AS FRAGMENTS (ADR 0240, 2026-09-29)
 # -----------------------------------------------------------------
 # Almost every PR appended a row to the tail of CLAIMS.jsonl, and many a `## `
 # entry to the tail of v3.0-TECH-DEBT.md. Two PRs appending at one tail conflict
@@ -142,7 +142,7 @@ case $plan_status in
      echo "       rows, which were then silently miscounted as REGRESSED/STALE claims."
      echo "       Join a multi-line verify command onto one physical line —"
      echo "       semicolon-separated Python statements is the established convention."; exit 2 ;;
-  7) echo "FAIL — $CLAIMS is FROZEN (ADR 0238) and its line count or its final sentinel"
+  7) echo "FAIL — $CLAIMS is FROZEN (ADR 0240) and its line count or its final sentinel"
      echo "       changed (see above). New claims go in $CLAIMS_FRAGMENTS/<branch-slug>.jsonl —"
      echo "       see its README. If a merge-conflict fix kept both tails, take main's copy of"
      echo "       the file and move your rows: scripts/move_tail_to_fragment.py does it."; exit 7 ;;
@@ -159,7 +159,7 @@ python3 "$HERE/_debt_frozen.py" --frozen-lines "$DEBT_FROZEN_LINES" --fragments 
 debt_status=$?
 case $debt_status in
   0) ;;
-  7) echo "FAIL — $DEBT is FROZEN (ADR 0238) and its line count or its final"
+  7) echo "FAIL — $DEBT is FROZEN (ADR 0240) and its line count or its final"
      echo "       '## FROZEN' section changed (see above). New entries go in"
      echo "       $DEBT_FRAGMENTS/<YYYY-MM-DD>-<branch-slug>.md — see its README. A legacy entry"
      echo "       is closed in place by striking its heading, which keeps the count."; exit 7 ;;
