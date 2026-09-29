@@ -19,6 +19,24 @@ export class PlatformOperatorService {
     }
     return grant.data?.enabled === true && Array.isArray(role.data) && role.data.length > 0;
   }
+
+  /**
+   * The Studio `developer` role alone, read from `user_roles` (not the JWT's
+   * cached copy) — the same rows the web's `requiredStudioRole={['developer']}`
+   * is built from (`auth.service.ts#generateTokens`). A surface that is for
+   * developers but is not platform authority (`/dev/truth`; founder
+   * 2026-09-29: "only devs can open it") uses this; platform authority still
+   * needs `isOperator`'s grant as well.
+   */
+  async isDeveloper(userId: string | undefined): Promise<boolean> {
+    if (!userId) return false;
+    const role = await this.database.client.from("user_roles").select("id")
+      .eq("user_id", userId).eq("role", "developer").is("revoked_at", null).limit(1);
+    if (role.error) {
+      throw new ServiceUnavailableException("Developer permission could not be verified.");
+    }
+    return Array.isArray(role.data) && role.data.length > 0;
+  }
 }
 
 @Injectable()

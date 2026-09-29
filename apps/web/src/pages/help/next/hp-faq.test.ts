@@ -34,6 +34,20 @@ describe('FAQ entries — re-checkable claims', () => {
     expect(findFaq('who-edits-settings')).not.toBeNull();
     expect(findFaq('reach-the-team')).not.toBeNull();
   });
+  it('says how to replace someone who is leaving: add, choose them on Remove, then remove; the rest goes to the open pool (founder item 93; ADR 0215 item 27)', () => {
+    const e = findFaq('replace-team-member');
+    expect(e).not.toBeNull();
+    const a = e!.answer;
+    // The order is the procedure: add, pick them in the remove dialog, remove.
+    expect(a.indexOf('Add the new person')).toBeGreaterThanOrEqual(0);
+    expect(a.indexOf('Add the new person')).toBeLessThan(a.indexOf('Their upcoming shifts go to'));
+    expect(a.indexOf('Their upcoming shifts go to')).toBeLessThan(a.indexOf('Remove the leaving person last'));
+    // The founder's checks: overlap refused unless the owner allows it; the rest warn.
+    expect(a).toMatch(/overlaps.*cannot go to them unless the owner allows double booking/);
+    expect(a).toMatch(/time off, a different role and a week over 45 hours are shown as warnings/);
+    expect(a).toMatch(/goes back to the open pool/);
+    expect(a).toMatch(/past shifts stay in the owner’s former-staff history/);
+  });
 });
 
 describe('findFaq', () => {

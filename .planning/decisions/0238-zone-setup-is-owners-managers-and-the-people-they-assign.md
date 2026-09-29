@@ -8,7 +8,7 @@
 
 ## Context
 
-PR #516 (`fix/storage-locations-house-scope`) found that every storage-locations route, and the cellar floor's `PUT /cellar/:rid/zones/:zoneId`, admit any member of the house, staff included, and filed "who may edit zones" as a founder fork in `v3.0-TECH-DEBT.md`. The founder was asked, 2026-09-29: *"who may create, rename, resize or delete a zone, and who may place wines in zones? Today every house member can do all of it"*. His answer, verbatim:
+PR #516 (`fix/storage-locations-house-scope`) found that every storage-locations route, and the cellar floor's `PUT /cellar/:rid/zones/:zoneId`, admit any member of the house, staff included, and filed "who may edit zones" as a founder fork in its defect-register entry (`.planning/tech-debt.d/2026-09-29-fix-storage-locations-house-scope.md`). The founder was asked, 2026-09-29: *"who may create, rename, resize or delete a zone, and who may place wines in zones? Today every house member can do all of it"*. His answer, verbatim:
 
 > "managers/owners+ the people they assign"
 

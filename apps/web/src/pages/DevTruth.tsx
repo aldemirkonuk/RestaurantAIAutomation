@@ -27,6 +27,19 @@ import { useAuth } from '../contexts/AuthContext'
 
 type Tab = 'reach' | 'asof' | 'swallow'
 
+/** The only tabs there are; anything else in `?tab=` falls back to reach. */
+const TABS: readonly Tab[] = ['reach', 'asof', 'swallow']
+
+/**
+ * Who may open this page (founder, 2026-09-29: "only devs can open it"). The
+ * Studio `developer` role only; `review_admin` is NOT admitted, unlike
+ * /studio/queue and /studio/certify, which gate on ['developer',
+ * 'review_admin']. Do not "align" it with them. App.tsx wraps the route in
+ * it, and the gateway checks the same `user_roles` rows before reading
+ * anything.
+ */
+export const DEV_TRUTH_STUDIO_ROLES = ['developer'] as const
+
 const mono: React.CSSProperties = {
   fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
   fontSize: 13,
@@ -88,27 +101,44 @@ function Num({ v }: { v: number | null | undefined }) {
 export default function DevTruth() {
   const { user } = useAuth()
   const [params, setParams] = useSearchParams()
-  const tab = (params.get('tab') as Tab) || 'reach'
-  const restaurantId = params.get('r') || (user as any)?.restaurantId || ''
+  // Both go into the request path, so neither is trusted as typed: an unknown
+  // tab is not requested, and `r` is encoded as exactly one path segment.
+  const rawTab = params.get('tab') as Tab
+  const tab: Tab = TABS.includes(rawTab) ? rawTab : 'reach'
+  const restaurantId = encodeURIComponent(params.get('r') || (user as any)?.restaurantId || '')
   const [cutoff, setCutoff] = useState(params.get('cutoff') || '')
 
-  const [data, setData] = useState<any>(null)
-  const [err, setErr] = useState<string | null>(null)
+  // Payload and error are stored WITH the tab that fetched them. The tab lives
+  // in the URL and changes on the click's render, but the fetch effect only
+  // runs after that render — so a bare `data` handed the new tab the old tab's
+  // payload for one render, and Swallow/Reach crashed on each other's shape
+  // (sweep 2026-09-28 defect 26). Only a result fetched for the current tab is
+  // ever rendered; anything else counts as still loading.
+  const [result, setResult] = useState<{ tab: Tab; data: any } | null>(null)
+  const [failure, setFailure] = useState<{ tab: Tab; message: string } | null>(null)
   const [loading, setLoading] = useState(false)
+  const data = result?.tab === tab ? result.data : null
+  const err = failure?.tab === tab ? failure.message : null
+  const pending = !!restaurantId && result?.tab !== tab && failure?.tab !== tab
 
   useEffect(() => {
     if (!restaurantId) return
     let cancelled = false
     setLoading(true)
-    setErr(null)
+    setFailure(null)
     const qs = tab === 'asof' && cutoff ? `?cutoff=${encodeURIComponent(cutoff)}` : ''
     apiClient
       .get(`/analytics/dev/${tab}/${restaurantId}${qs}`)
-      .then((r) => !cancelled && setData(r.data))
+      .then((r) => !cancelled && setResult({ tab, data: r.data }))
       // A failed request says so. It does not render as an empty screen — that
       // is the exact confusion these pages exist to expose.
-      .catch((e) =>
-        !cancelled && setErr(e?.response?.data?.message || e?.message || 'request failed'),
+      .catch(
+        (e) =>
+          !cancelled &&
+          setFailure({
+            tab,
+            message: e?.response?.data?.message || e?.message || 'request failed',
+          }),
       )
       .finally(() => !cancelled && setLoading(false))
     return () => {
@@ -130,7 +160,7 @@ export default function DevTruth() {
       </p>
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
-        {(['reach', 'asof', 'swallow'] as Tab[]).map((t) => (
+        {TABS.map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -156,7 +186,7 @@ export default function DevTruth() {
           No restaurant. Append <code>?r=&lt;uuid&gt;</code>.
         </p>
       )}
-      {loading && <p>loading…</p>}
+      {(loading || pending) && <p>loading…</p>}
       {err && (
         <p style={{ color: 'var(--danger, #b3261e)' }}>
           request failed: {err}

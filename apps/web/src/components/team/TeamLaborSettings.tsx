@@ -10,6 +10,11 @@
  * (ADR 0215; founder 2026-09-21, "Take all five"). The gateway refuses a
  * manager's attempt before it writes; this page reads `mayChange` from the
  * settings reply and does not offer what would be refused, and says why.
+ *
+ * Double booking (ADR 0215 item 27; founder 2026-09-28: "owner has a say to
+ * change it into warn all four to allow double booking"): the owner's switch,
+ * off by default. Off, "Replace with" on the remove dialog refuses a shift
+ * that overlaps one the chosen person already has; on, it only warns.
  */
 import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -104,7 +109,7 @@ export function TeamLaborSettings() {
 
   // What this viewer may change. An older gateway that does not say gets
   // nothing offered: a switch the gateway refuses is worse than none.
-  const may = data.mayChange ?? { trackingOff: false, trackingOn: false, target: false }
+  const may = data.mayChange ?? { trackingOff: false, trackingOn: false, target: false, doubleBooking: false }
   const trackingLocked = data.labor_tracking_enabled ? !may.trackingOff : !may.trackingOn
 
   const commitTarget = () => {
@@ -131,6 +136,17 @@ export function TeamLaborSettings() {
           trackingLocked && data.labor_tracking_enabled
             ? 'Only the owner can switch labour-cost tracking off.'
             : "Show the week's labour cost and the labour lens to the owner. Off = hours only."
+        }
+      />
+      <Toggle
+        on={data.allow_double_booking === true}
+        onChange={(v) => save.mutate({ allowDoubleBooking: v })}
+        disabled={!may.doubleBooking || save.isPending}
+        label="Allow double booking"
+        hint={
+          may.doubleBooking
+            ? 'When someone leaves and their shifts go to a colleague, a shift that overlaps one the colleague already has is refused while this is off, and only warned about while it is on.'
+            : 'Only the owner can change this. Off: a hand-over that would double-book someone is refused.'
         }
       />
       <div className="py-2.5 text-xs text-gray-500">
