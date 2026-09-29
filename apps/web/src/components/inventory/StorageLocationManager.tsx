@@ -27,7 +27,7 @@ import {
   RefreshCw,
   GripVertical,
 } from 'lucide-react'
-import { useStorageLocations } from '../../hooks/useStorageLocations'
+import { useStorageLocations, useZoneSetupAccess } from '../../hooks/useStorageLocations'
 import type { StorageLocation } from '../../hooks/useStorageLocations'
 export type { StorageLocation }
 
@@ -95,6 +95,9 @@ export function StorageLocationManager({
     recalculateLocationCounts,
     setLocations,
   } = useStorageLocations()
+  // ADR 0238: who may set up zones. Read only while the manager is open; the
+  // gateway's 403 is the gate, this only keeps refused controls off the page.
+  const setup = useZoneSetupAccess({ enabled: isOpen })
 
   const actualLocations = getLocationsWithActualCounts()
   const onLocationsChangeRef = useRef(onLocationsChange)
@@ -373,6 +376,7 @@ export function StorageLocationManager({
             <div className="w-1/2 border-r border-gray-200 p-4 overflow-y-auto">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-semibold text-gray-900">Your Locations</h3>
+                {setup.maySetUp && (
                 <button
                   onClick={startCreate}
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 transition-colors"
@@ -380,7 +384,18 @@ export function StorageLocationManager({
                   <Plus className="w-4 h-4" />
                   Add Location
                 </button>
+                )}
               </div>
+
+              {/* ADR 0238 — the founder, 2026-09-29: "managers/owners+ the
+                  people they assign". Said in words, not only by absence. */}
+              {!setup.maySetUp && !setup.loading && (
+                <p className="text-xs text-gray-500 mb-3" data-testid="zone-setup-note">
+                  {setup.unknown
+                    ? 'Whether you may set up zones here could not be read, so adding, renaming, resizing and deleting zones are not offered. You can still place and count wines.'
+                    : 'Adding, renaming, resizing and deleting zones is for owners, managers and the people they assign. You can place and count wines.'}
+                </p>
+              )}
 
               <div className="space-y-3">
                 {actualLocations.map(location => (
@@ -488,7 +503,7 @@ export function StorageLocationManager({
                                   No
                                 </button>
                               </div>
-                            ) : (
+                            ) : setup.maySetUp ? (
                               <button
                                 onClick={(e) => { e.stopPropagation(); handleDelete(location.id) }}
                                 className="p-1.5 hover:bg-rose-100 rounded-lg transition-colors"
@@ -496,7 +511,7 @@ export function StorageLocationManager({
                               >
                                 <Trash2 className="w-4 h-4 text-rose-500" />
                               </button>
-                            )}
+                            ) : null}
                           </div>
                         </div>
 
@@ -617,12 +632,14 @@ export function StorageLocationManager({
                   <div className="text-center py-8">
                     <FolderTree className="w-12 h-12 text-gray-300 mx-auto mb-3" />
                     <p className="text-gray-500">No storage locations defined</p>
+                    {setup.maySetUp && (
                     <button
                       onClick={startCreate}
                       className="mt-2 text-emerald-600 hover:text-emerald-700 text-sm font-medium"
                     >
                       Create your first location
                     </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -635,9 +652,18 @@ export function StorageLocationManager({
                 <div className="flex-1 overflow-y-auto p-6">
                 <div className="space-y-4">
                   <h3 className="font-semibold text-gray-900 mb-4">
-                    {isCreating ? 'Create New Location' : 'Edit Location'}
+                    {isCreating ? 'Create New Location' : setup.maySetUp ? 'Edit Location' : 'Location'}
                   </h3>
 
+                  {/* ADR 0238: the zone's setup is disabled, not hidden, for a
+                      member nobody assigned — they still read it, and place
+                      and count wines below (OD-200). */}
+                  <fieldset
+                    disabled={!setup.maySetUp}
+                    className="space-y-4"
+                    style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}
+                    data-testid="zone-setup-fields"
+                  >
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Location Name *
@@ -836,6 +862,7 @@ export function StorageLocationManager({
                       style={{ color: '#1f2937', WebkitTextFillColor: '#1f2937' }}
                     />
                   </div>
+                  </fieldset>
 
                   {editingLocation && (
                     <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
@@ -1075,6 +1102,7 @@ export function StorageLocationManager({
                         Select
                       </button>
                     )}
+                    {setup.maySetUp && (
                     <button
                       onClick={() => (isCreating ? void handleCreate() : handleUpdate())}
                       disabled={
@@ -1085,6 +1113,7 @@ export function StorageLocationManager({
                       <Save className="w-4 h-4" />
                       {isCreating ? 'Create' : 'Save'}
                     </button>
+                    )}
                 </div>
                 </>
               ) : (
