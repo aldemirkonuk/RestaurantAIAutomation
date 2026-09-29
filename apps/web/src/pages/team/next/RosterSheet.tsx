@@ -45,6 +45,48 @@ import {
   workedHours,
 } from './tm-format';
 import { Card, Fact, KV, Mark, MutationError, Tag } from './tm-bits';
+import {
+  useSetZoneSetupAccess,
+  useZoneSetupAccess,
+} from '../../../hooks/useStorageLocations';
+
+/**
+ * An owner or manager assigns this staff member to set up zones, or
+ * withdraws it (ADR 0238, the founder 2026-09-29: "managers/owners+ the
+ * people they assign"). Shown only when the gateway lists who is assigned,
+ * which it does for an owner or manager alone: anyone else is never offered a
+ * switch the server would refuse.
+ */
+function ZoneSetupSwitch({ userId }: { userId: string }) {
+  const access = useZoneSetupAccess();
+  const write = useSetZoneSetupAccess();
+  if (access.assigned === null) return null;
+  const on = write.isSuccess && write.variables?.userId === userId
+    ? write.data.allowed
+    : access.assigned.includes(userId);
+  return (
+    <div data-testid="zone-setup-access">
+      <span className="tm-label">Zones</span>
+      <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <input
+          type="checkbox"
+          checked={on}
+          disabled={write.isPending}
+          onChange={(e) => write.mutate({ userId, allowed: e.target.checked })}
+        />
+        <span style={{ fontSize: 12.5 }}>Sets up storage zones</span>
+      </label>
+      <p className="tm-hint">
+        On, this person can add, rename, resize and delete storage zones, as owners and
+        managers can. Everyone places and counts wines either way. Each switch is written to
+        the record, and they are told.
+      </p>
+      <MutationError when={write.isError}>
+        The switch did not save, so this person&apos;s zone access is as it was.
+      </MutationError>
+    </div>
+  );
+}
 import { PerformanceCard } from './PerformanceCard';
 import type { TimeOffRow } from './useTeamNextData';
 import { AwayMarker } from '@/components/mudavym/AwayMarker';
@@ -748,6 +790,10 @@ export function MemberSheet({
             </MutationError>
           </div>
         )}
+
+        {editing && member?.role === 'staff' && member.user_id ? (
+          <ZoneSetupSwitch userId={member.user_id} />
+        ) : null}
 
         {editing && isSoleOwner && (
           <p className="tm-hint">
