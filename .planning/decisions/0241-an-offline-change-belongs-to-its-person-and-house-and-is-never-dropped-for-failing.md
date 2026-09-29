@@ -46,7 +46,7 @@ Where the products agree, that is the standard applied here: retry until acknowl
 
 ## Decision
 
-**Every queued change carries the person and house of the session that made it; only that person in that house can see, send, count or clear it (a legacy entry that names no one is the one exception — every session loads it, the strip can discard it once the SyncManager has parked it, and any sign-out removes it; the SyncManager never sends one, but until the second OD-203 PR `spotCountOutbox` still sends a legacy spot count, because spot counts never carried a house); a change is retried with backoff until the server takes it, and one the server refuses for good is kept and shown as "not sent"; signing out warns with the count and then removes that person's changes.**
+**Every queued change carries the person and house of the session that made it; only that person in that house can see or send it, and signing out counts and clears that person's changes in every house (a legacy entry that names no one is the one exception — every session loads it, the strip can discard it once the SyncManager has parked it, and any sign-out removes it; the SyncManager never sends one, but until the second OD-203 PR `spotCountOutbox` still sends a legacy spot count, because spot counts never carried a house); a change is retried with backoff until the server takes it, and one the server refuses for good is kept and shown as "not sent"; signing out warns with the count and then removes that person's changes.**
 
 What was built (`apps/web/src`):
 
@@ -73,7 +73,7 @@ Not taken, stated: `ChooseHouse.tsx:389` and `VerifyEmail.tsx:95` call `logout()
 
 ## Consequences
 
-- **Easier.** A shared tablet can no longer send one person's change as another person or into another house. Nothing the app queued disappears without the person seeing it.
+- **Easier.** The SyncManager can no longer send one person's change as another person, or into another house. No change the SyncManager queues disappears without the person seeing it. Until the second OD-203 PR, two exceptions remain, both stated above. The door and spot-count outboxes still drop changes after 8 attempts. They also still send a legacy spot count, or the rest of a flush interrupted by a house switch, under the current session.
 - **Harder or given up.** A permanently stuck change now costs one request per 15 minutes until someone acts on the strip. A change retried after days can overwrite a newer server value (last-write-wins; no base version is sent) — the same exposure as before, now without the cap that hid it.
 - **Not solved.** Safari deletes script-writable storage after 7 days without a visit (webkit.org/blog/10218); a queue in a Safari tab left unopened for a week is lost with it. That is the platform, not this code; an installed home-screen app is exempt. `calendar.create` carries no idempotency key, so a create whose reply was lost can still be doubled by a retry (`provider.create` carries one).
 - **`window.confirm`, not a house modal.** The standard browser prompt, used by every sign-out door at once; ADR 0112's modal shape would need a sign-out host component. Revisit if the founder wants the branded prompt.
