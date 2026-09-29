@@ -52,6 +52,10 @@ const networkError = () =>
     response: undefined,
   })
 
+function setOnline(online: boolean) {
+  Object.defineProperty(window.navigator, 'onLine', { value: online, configurable: true })
+}
+
 const INPUT = { name: 'Kavaklıdere', paymentTerms: 'Net 30' } as never
 
 function run() {
@@ -64,6 +68,7 @@ describe('useCreateProvider — offline queueing only on a real network failure'
   beforeEach(() => {
     vi.clearAllMocks()
     sync.queueMutation.mockResolvedValue(undefined)
+    setOnline(false)
   })
 
   it('a 400 refusal rejects — nothing queued, no fake id, no "saved offline"', async () => {
@@ -134,6 +139,21 @@ describe('useCreateProvider — offline queueing only on a real network failure'
     const [a, b] = api.createProvider.mock.calls.map((c) => c[1]?.idempotencyKey)
     expect(a).toBeTruthy()
     expect(a).not.toBe(b)
+  })
+
+  it('no response while ONLINE (a timeout) rejects instead of queueing: the server may still be writing it', async () => {
+    setOnline(true)
+    api.createProvider.mockRejectedValue(networkError())
+    const result = run()
+    let caught: unknown
+    await act(async () => {
+      await result.current.mutateAsync(INPUT).catch((e) => {
+        caught = e
+      })
+    })
+    expect(caught).toBeDefined()
+    expect(sync.queueMutation).not.toHaveBeenCalled()
+    expect(toast.info).not.toHaveBeenCalled()
   })
 
   it('a plain throw with no network evidence rejects, not queued', async () => {

@@ -133,6 +133,10 @@ export function useRecommendedProviders(restaurantId: string, wineId: string) {
  * actually down. A 4xx or 5xx is an answer from the server, and a throw with
  * no request behind it is a bug; neither is "offline".
  */
+function isBrowserOffline(): boolean {
+  return typeof navigator !== 'undefined' && navigator.onLine === false
+}
+
 function newIdempotencyKey(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return `provider-create:${crypto.randomUUID()}`
@@ -171,6 +175,14 @@ export function useCreateProvider() {
         return await createProvider(data, { idempotencyKey })
       } catch (error) {
         if (!isNetworkFailure(error)) throw error
+        // Queue only when the browser says it is offline. No response while
+        // ONLINE is a timeout or a dropped reply: the server may have written
+        // the vendor, or may still be writing it, and the sync manager replays
+        // a queued create ~100 ms later while online, before the gateway has
+        // stored the key's first response, which would make a second vendor
+        // (PR #508 audit, 2026-09-29). That case rejects, and the sheet says
+        // the save could not be confirmed (`isUnconfirmedWrite`).
+        if (!isBrowserOffline()) throw error
         // Queue for offline sync
         await syncManager.queueMutation({
           type: 'provider.create',

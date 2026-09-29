@@ -44,7 +44,16 @@ field). The global `IdempotencyInterceptor` (`common/idempotency`, table
 and does not run the handler. Evidence: two cases in
 `useProviderQueries.create-offline.test.tsx`, one in `sync-manager.test.ts`,
 and `idempotency.interceptor.spec.ts` (replay returns the stored vendor, handler
-not called). **Residual:** the interceptor stores the response after the
-handler returns and fails open, so a replay that lands while the first request
-is still executing, or when the key table is unreachable, can still duplicate;
-entries queued before this change carry no key and replay as before.
+not called). **Second round (same day, planner's risk map at `f0cafe8b6`):** the sync
+manager replays a queued create about 100 ms after queueing whenever it thinks it
+is online (`sync-manager.ts` `queueMutation`), and a 30 s axios timeout leaves
+the browser online, so the replay could reach the gateway while the first
+request was still running. The key is stored only after the handler returns, so
+the replay missed it and made a second vendor. `useCreateProvider` now queues
+only when `navigator.onLine === false`. No response while online rejects, and
+the sheet shows its existing "could not be confirmed, check the book" message
+(`isUnconfirmedWrite`). Test: "no response while ONLINE (a timeout) rejects
+instead of queueing". **Residual:** the interceptor stores after the handler
+and fails open, so a request cut off by the browser going offline mid-flight,
+then replayed before the first request finishes, can still duplicate.
+Entries queued before this change carry no key and replay as before.
