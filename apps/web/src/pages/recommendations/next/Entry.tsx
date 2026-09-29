@@ -45,6 +45,7 @@ import {
   firingOf,
   fmtDay,
   fmtWakes,
+  heldBy,
   readKey,
   receiptFor,
   scopeLabel,
@@ -70,6 +71,7 @@ import {
   type MetricUnit,
 } from './rec-forward';
 import type { GoalScenario, GoalScenarioBook } from '@/hooks/useGoalScenarios';
+import type { ShellRole } from '@/lib/mudavym/rooms';
 import {
   DAYBOOK_LANDING,
   daybookHref,
@@ -197,6 +199,13 @@ export interface EntryProps {
    * 0191 round 3). Anyone else's snooze hides the entry from them alone.
    */
   canSnoozeForEveryone: boolean;
+  /**
+   * This person's role in this house, as the shell reads it (`normalRole`).
+   * Founder item 87 (OD-176): a hand into a room the role cannot open — today
+   * Promotions, for staff — reads "A manager’s, in Promotions" and draws no
+   * Act control. Null fails closed, as staff.
+   */
+  role: ShellRole;
 }
 
 function Fact({ label, children }: { label: string; children: ReactNode }) {
@@ -724,6 +733,8 @@ export default function Entry(props: EntryProps) {
 
   /** Sketch 122 Q7, "Keep both verbs": the floor's act is done now, here. */
   const briefs = filing.act === 'floor' && !!props.onBrief;
+  /** Whose hand the work is in for this person (founder item 87, OD-176). */
+  const held = heldBy(e.hand, props.role);
 
   const day = dateOfGrain(e.periodKey);
   /** This entry's firing, when its rule names no subject and no period. */
@@ -798,7 +809,7 @@ export default function Entry(props: EntryProps) {
         {/* ── the three facts, in the same place on every entry ─────────── */}
         <div className="rc-facts">
           <Fact label="Would change">{STAKE_LABEL[e.stake]}</Fact>
-          <Fact label="Whose hand">Yours, in {e.hand.where}</Fact>
+          <Fact label="Whose hand">{held.words}</Fact>
           <Fact label={leaf === 'snoozed' ? 'Wakes' : 'Standing'}>
             <span className="rc-num" title={leaf === 'snoozed' ? undefined : STANDING_BASIS[stood.basis]}>
               {standing}
@@ -857,12 +868,16 @@ export default function Entry(props: EntryProps) {
                   >
                     {e.acted ? 'Briefed' : 'Mark as briefed'}
                   </button>
-                  <Quiet onClick={props.onAct}>{e.hand.label} →</Quiet>
+                  {held.yours && <Quiet onClick={props.onAct}>{e.hand.label} →</Quiet>}
                 </>
               ) : (
-                <button type="button" className="rc-act" onClick={props.onAct}>
-                  {e.hand.label} →
-                </button>
+                // Founder item 87 (OD-176): no Act control at all for a hand
+                // that is not this person's — not a dark one, nothing to tap.
+                held.yours && (
+                  <button type="button" className="rc-act" onClick={props.onAct}>
+                    {e.hand.label} →
+                  </button>
+                )
               )}
               {props.daybook && (
                 <Quiet
@@ -1008,7 +1023,9 @@ export default function Entry(props: EntryProps) {
         */}
         {live && (
           <p className="rc-said rc-handoff" data-testid="rc-handoff">
-            {briefs
+            {!held.yours
+              ? `${briefs ? 'The tap is the briefing: it is recorded at once, stays standing, and can be undone for a few seconds. ' : ''}The work is done in ${e.hand.where}, which only ${held.opens} can open ${EM} this card keeps you informed, and nothing here sends you there.`
+              : briefs
               ? `The tap is the briefing: it is recorded at once, stays standing, and can be undone for a few seconds. “${e.hand.label}” opens ${e.hand.where} and records nothing.`
               : (e.hand.href ?? '').includes('draft=1')
                 ? `Opens ${e.hand.where} to draft it by hand ${EM} nothing is recorded here, and the order is sealed there with the hold.`

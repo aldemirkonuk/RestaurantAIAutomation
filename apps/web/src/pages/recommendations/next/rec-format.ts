@@ -8,6 +8,8 @@
  * unrecognised category is visible rather than silently binned.
  */
 
+import { roleAllows, roomFor, type ShellRole } from '@/lib/mudavym/rooms';
+
 export const EM = '—';
 
 export const SERIF = '"Fraunces", Georgia, "Times New Roman", serif';
@@ -152,6 +154,39 @@ export function handOf(ruleKey: string, category: string): Hand {
     goals: { href: `/reports?${q}`, label: 'Open Goals', where: 'Reports' },
   };
   return byCategory[category] ?? { href: `/reports?${q}`, label: 'Open Reports', where: 'Reports' };
+}
+
+/** A hand as the person looking at the card holds it. */
+export interface HandHeld {
+  /**
+   * This person may open the room the work lands in. Only then is the Act
+   * control drawn, and only then does `act` navigate.
+   */
+  yours: boolean;
+  /** The "Whose hand" fact: "Yours, in Orders", or "A manager’s, in Promotions". */
+  words: string;
+  /** Who may open the room, in words, when this person may not; null when they may. */
+  opens: string | null;
+}
+
+/**
+ * Whose hand the work is in, for THIS person (founder item 87, 2026-09-28,
+ * OD-176, ADR 0191: "Show card, hand to manager (Recommended)"). A staff
+ * member keeps a Promotions-bound card, but the card says it is a manager's
+ * and offers no Act, because `GET /promotions` refuses staff
+ * (ADR-0124-PROMOTIONS-ROLE-GATE). The gate is read from the shell's rooms
+ * table (`rooms.ts` `minRole`, through `roleAllows`), not restated here, so
+ * the card and the rail cannot disagree about who may open a room. A null
+ * role, or one the shell does not know, clears no gate: it fails closed.
+ * Today Promotions is the only hand-off target the table gates
+ * (`rec-format.test.ts` pins that).
+ */
+export function heldBy(hand: Hand, role: ShellRole): HandHeld {
+  const min = roomFor((hand.href ?? '').split(/[?#]/)[0])?.minRole;
+  if (roleAllows(role, min)) return { yours: true, words: `Yours, in ${hand.where}`, opens: null };
+  return min === 'owner'
+    ? { yours: false, words: `An owner’s, in ${hand.where}`, opens: 'an owner' }
+    : { yours: false, words: `A manager’s, in ${hand.where}`, opens: 'an owner or manager' };
 }
 
 /* ── The scope of a dismissal ────────────────────────────────────────────── */

@@ -14,7 +14,8 @@
  * ---------------
  * Hiding a row is not the boundary; the gateway is. So a room is hidden only
  * where the gateway refuses the person anyway (Vendor prices is owner/manager
- * at `vendor-intel.controller.ts`), or where the route itself is role-gated
+ * at `vendor-intel.controller.ts`; Promotions is owner/manager at
+ * `promotions.controller.ts`), or where the route itself is role-gated
  * (The desk, `/admin`, owner — `AdminDesk`'s own owner-or-operator check;
  * App.tsx's legacy slot says `['owner', 'manager']` since ADR 0164 made
  * `ProtectedRoute` exact, which is what its old widened "owner" admitted),
@@ -55,7 +56,10 @@ export const ROOM_GROUPS: readonly RoomGroup[] = [
       { name: 'Orders', path: '/orders' },
       { name: 'Receiving', path: '/receiving' },
       { name: 'Vendors', path: '/vendors' },
-      { name: 'Promotions', path: '/promotions' },
+      // The gateway refuses staff every GET /promotions read (owner/manager,
+      // promotions.controller.ts @Roles("owner", "manager")). TD-2026-09-27-
+      // PROMOTIONS-ROOM-SHOWN-TO-STAFF.
+      { name: 'Promotions', path: '/promotions', minRole: 'manager' },
       // The gateway refuses staff every /vendor-intel read (owner/manager).
       { name: 'Vendor prices', path: '/vendor-prices', minRole: 'manager' },
     ],
@@ -117,7 +121,13 @@ const OTHER_NAMES: ReadonlyArray<[string, string]> = [
 /** One incoming document (`/documents/:id`, ADR 0104 D12) — a record, not a room. */
 const DOCUMENT_RECORD = /^\/documents\/[^/]+/;
 
-function roleAllows(role: ShellRole, min: Room['minRole']): boolean {
+/**
+ * Whether `role` clears a room's `minRole`. A null role (not yet read, or not
+ * a house role) clears none, so it fails closed. Exported for pages that link
+ * INTO a room: a Recommendations hand-off reads this, not its own copy of the
+ * gate (founder item 87, OD-176; `rec-format.ts` `heldBy`).
+ */
+export function roleAllows(role: ShellRole, min: Room['minRole']): boolean {
   if (!min) return true;
   if (min === 'owner') return role === 'owner';
   return role === 'owner' || role === 'manager';
