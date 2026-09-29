@@ -23,6 +23,10 @@ import { SETTINGS_ROW_FLAG_NAME } from "../../settings/feature-flag-registry";
 // runtimes (OD-44) — the Python orchestrator's copy is generated from it by
 // scripts/sync_commitment_patterns.py. Edit commitment-patterns.ts, never a copy.
 import { COMMITMENT_PATTERNS } from "./commitment-patterns";
+import {
+  houseMembersInRoles,
+  type HouseRoleName,
+} from "../tenant/live-membership";
 
 // Claude Haiku 4.5 — fast/cheap, the right tier for this per-reply background call.
 // (Replaces claude-3-5-haiku-20241022, retired 2026-02-19.) For stronger negotiation
@@ -1504,6 +1508,13 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
    * member of the restaurant. The websocket emit alone is lost when no client is connected,
    * so an offline manager would miss an urgent deal/allocation (audit A8). Best-effort:
    * never throws, never blocks the responder.
+   *
+   * `opts.roles` narrows the rows to the house's members who hold one of those
+   * roles now (fix/websocket-role-gate, 2026-09-28), for content that only
+   * owners or managers may read, such as the promotions digest. It is read by
+   * `houseMembersInRoles`, which has no `users.restaurant_id` fallback. If
+   * that read fails, nothing is written and the failure is logged. Without
+   * `roles`, the audience is the whole house, as before.
    */
   async persistManagerNotification(
     restaurantId: string,
@@ -1515,9 +1526,16 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
       actionUrl?: string;
       metadata?: Record<string, any>;
     },
+    opts: { roles?: readonly HouseRoleName[] } = {},
   ): Promise<void> {
     try {
-      const userIds = await this.resolveRestaurantMemberIds(restaurantId);
+      const userIds = opts.roles
+        ? await houseMembersInRoles(
+            this.databaseService.supabase,
+            restaurantId,
+            opts.roles,
+          )
+        : await this.resolveRestaurantMemberIds(restaurantId);
       if (!userIds.length) return;
       const now = new Date().toISOString();
       const rows = userIds.map((userId) => ({
