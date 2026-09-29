@@ -1,0 +1,1 @@
+{"id": "ADR-0240-POINTERS-PR-B", "status": "resolved", "claim": "ADR 0240 PR B: CLAUDE.md points sessions at claims.d/ (and tech-debt.d/), and the decisions README indexes ADR 0240.", "verify": "grep -q 'claims\\.d' CLAUDE.md && grep -q 'tech-debt\\.d' CLAUDE.md && grep -q '0240' .planning/decisions/README.md", "verified": "2026-09-29"}

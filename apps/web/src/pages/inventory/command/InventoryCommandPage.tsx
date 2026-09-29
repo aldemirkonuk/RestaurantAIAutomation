@@ -184,7 +184,7 @@ export function InventoryCommandPage() {
     locations,
     setLocations,
     mappings,
-    assignWineToLocation,
+    assignMany,
     locationsLoading,
     locationsUnavailable,
     mappingsUnavailable,
@@ -312,17 +312,32 @@ export function InventoryCommandPage() {
     setShowAutoLocate(true);
   }, [inventory, locations, mappings, includeAssigned]);
 
+  // The count is what the server accepted, not what was asked for: it used to
+  // be `selected.length` whatever the writes did (sweep 2026-09-28 #5). Each
+  // refused write has already rolled back and shown its own error toast.
   const handleConfirmAutoLocate = useCallback(
-    (selected: WineLocationScore[]) => {
-      for (const a of selected)
-        assignWineToLocation(a.wineId, a.locationId, a.quantity);
+    async (selected: WineLocationScore[]) => {
       setShowAutoLocate(false);
       setAutoLocateResult(null);
-      toast.success(
-        `${selected.length} wine${selected.length === 1 ? "" : "s"} assigned to locations`,
+      const { assigned, failed } = await assignMany(
+        selected.map((a) => ({
+          wineId: a.wineId,
+          locationId: a.locationId,
+          quantity: a.quantity,
+        })),
       );
+      const plural = (n: number) => `${n} wine${n === 1 ? "" : "s"}`;
+      if (failed === 0) {
+        toast.success(`${plural(assigned)} assigned to locations`);
+      } else if (assigned === 0) {
+        toast.error(`No wines were assigned: ${plural(failed)} could not be saved`);
+      } else {
+        toast.warning(
+          `${plural(assigned)} assigned; ${plural(failed)} could not be saved`,
+        );
+      }
     },
-    [assignWineToLocation],
+    [assignMany],
   );
 
   // Active/inactive: a delisted wine stays in inventory but drops out of the
