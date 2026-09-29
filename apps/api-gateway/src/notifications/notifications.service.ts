@@ -6,8 +6,10 @@ import {
   Optional,
   forwardRef,
   NotFoundException,
+  BadRequestException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
+import { safeActionPath } from "./safe-action-path";
 import { WebsocketGateway } from "../websocket/websocket.gateway";
 import { CommunicationsService } from "../communications/communications.service";
 import { DatabaseService } from "../database/database.service";
@@ -522,6 +524,21 @@ export class NotificationsService {
     actionLabel?: string;
     metadata?: Record<string, any>;
   }) {
+    // The link is stored and sent as a path inside the app, or refused
+    // (fix/websocket-role-gate, 2026-09-28). This route takes the body of any
+    // member, and the web's View button navigates to whatever it holds, so a
+    // `javascript:` or off-site link here took over the account of whoever
+    // clicked. See `safe-action-path.ts` for why a prefix test is not enough.
+    let actionUrl: string | undefined;
+    if (data.actionUrl !== undefined && data.actionUrl !== null && data.actionUrl !== "") {
+      const safe = safeActionPath(data.actionUrl);
+      if (safe === null) {
+        throw new BadRequestException(
+          "actionUrl must be a path inside this app, starting with a single '/'.",
+        );
+      }
+      actionUrl = safe;
+    }
     const { data: row, error } = await this.databaseService.supabase
       .from("notifications")
       .insert({
@@ -538,7 +555,7 @@ export class NotificationsService {
         message: data.message,
         priority: data.priority ?? "medium",
         status: "unread",
-        action_url: data.actionUrl,
+        action_url: actionUrl,
         action_label: data.actionLabel,
         metadata: data.metadata ?? {},
         created_at: new Date().toISOString(),
@@ -553,7 +570,12 @@ export class NotificationsService {
 
     this.logger.log(`Notification created: ${row.id} for user ${data.userId}`);
 
-    // Emit real-time event so the frontend inbox updates instantly
+    // Emit real-time event so the frontend inbox updates instantly. The row
+    // belongs to one person, and every socket of theirs joins `user:<id>`, so
+    // this reaches all of their open sessions. Until 2026-09-28 the same text
+    // was also sent to `restaurant:<id>`. That put one person's row in front
+    // of the whole house, and it let any member, staff included, post a live
+    // toast, with a link, to the owner's screen (fix/websocket-role-gate).
     this.websocketGateway.server
       .to(`user:${data.userId}`)
       .emit("notification:new", {
@@ -563,30 +585,12 @@ export class NotificationsService {
           title: data.title,
           message: data.message,
           type: data.type,
-          action_url: data.actionUrl,
+          action_url: actionUrl,
           priority: data.priority ?? "medium",
           metadata: data.metadata ?? {},
         },
         timestamp: new Date().toISOString(),
       });
-    // Also fan out to the restaurant room (covers other open sessions)
-    if (data.restaurantId) {
-      this.websocketGateway.server
-        .to(`restaurant:${data.restaurantId}`)
-        .emit("notification:new", {
-          event: "NewNotification",
-          data: {
-            id: row.id,
-            title: data.title,
-            message: data.message,
-            type: data.type,
-            action_url: data.actionUrl,
-            priority: data.priority ?? "medium",
-            metadata: data.metadata ?? {},
-          },
-          timestamp: new Date().toISOString(),
-        });
-    }
 
     return this.mapNotificationRow(row);
   }

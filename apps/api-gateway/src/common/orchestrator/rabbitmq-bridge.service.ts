@@ -23,12 +23,83 @@ import { deriveTransportSignals, looksPromotional } from "./email-triage";
 import { createHash, randomUUID } from "crypto";
 import { PromotionExtractorService } from "./promotion-extractor.service";
 import { ProspectsService } from "./prospects.service";
+import { OWNER_AND_MANAGER } from "../tenant/live-membership";
 
 /** Mapping of RabbitMQ routing keys to handler methods */
 interface RouteHandler {
   exchange: string;
   routingKey: string;
-  handler: (msg: any) => void;
+  /**
+   * `deliveredKey` is the key the message was PUBLISHED with
+   * (`msg.fields.routingKey`), not the binding pattern: under
+   * `notification.#` it is `notification.promo_alert`, and so on.
+   */
+  handler: (msg: any, deliveredKey?: string) => void;
+}
+
+/**
+ * Who may see a `notification.*` event the orchestrator publishes, keyed by
+ * its routing key (fix/websocket-role-gate, 2026-09-28).
+ *
+ * "house" goes to `restaurant:<id>`, which every member joins, as every key did
+ * before this table. "owner_manager" goes only to the house's owners and
+ * managers, after a role read at send time (`emitRoleNotification`). The
+ * gateway decides this, not the publisher: one table, reviewed in one place.
+ *
+ * Every `notification.*` routing-key literal in services/agent-orchestrator
+ * must be listed here. CLAIMS `SEC-2026-09-28-WEBSOCKET-ROLE-GATE` fails the
+ * build otherwise, so a new publisher has to be classified before it ships.
+ * An unlisted key falls back to "house", because defaulting to owner_manager
+ * would silently drop the low-stock and inventory notices staff rely on.
+ *
+ * Only `promo_alert` is owner/manager today. It carries a vendor's promotion
+ * from `provider_promotions`, the rows GET /promotions refuses staff (ADR
+ * 0124:357-362). The negotiation keys (counter offer, order approval,
+ * rejection, voice negotiation, rfq winner) stay "house" until the founder
+ * answers OD-180 fork 1, because the HTTP reads they mirror are open to staff
+ * today.
+ */
+export const NOTIFICATION_AUDIENCE_BY_KEY: Readonly<
+  Record<string, "house" | "owner_manager">
+> = {
+  "notification.promo_alert": "owner_manager",
+
+  "notification.alert": "house",
+  "notification.approval_request": "house",
+  "notification.email_received": "house",
+  "notification.info": "house",
+  "notification.inventory_discrepancy": "house",
+  "notification.inventory_surplus": "house",
+  "notification.invariant_violation": "house",
+  "notification.low_stock_one_tap": "house",
+  "notification.order_approval": "house",
+  "notification.order_confirmed": "house",
+  "notification.procurement_counter_offer": "house",
+  "notification.procurement_oos": "house",
+  "notification.procurement_rejected": "house",
+  "notification.procurement_reorder_proposed": "house",
+  "notification.provider_contradiction": "house",
+  "notification.push.sent": "house",
+  "notification.relationship_health_alert": "house",
+  "notification.review_required": "house",
+  "notification.rfq_solicitation_proposed": "house",
+  "notification.rfq_winner": "house",
+  "notification.scarcity_auto_hold": "house",
+  "notification.send": "house",
+  "notification.vintage_conflict": "house",
+  "notification.vintage_mismatch": "house",
+  "notification.voice_negotiation_complete": "house",
+  "notification.voice_review_needed": "house",
+  "notification.weekly_report": "house",
+  "notification.wine_type_mismatch": "house",
+};
+
+export function notificationAudience(
+  deliveredKey: string | undefined,
+): "house" | "owner_manager" {
+  return (
+    (deliveredKey && NOTIFICATION_AUDIENCE_BY_KEY[deliveredKey]) || "house"
+  );
 }
 
 @Injectable()
@@ -185,7 +256,8 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
       {
         exchange: "notification.events",
         routingKey: "notification.#",
-        handler: (msg) => this.handleNotificationEvent(msg),
+        handler: (msg, deliveredKey) =>
+          this.handleNotificationEvent(msg, deliveredKey),
       },
 
       // --- Report events ---
@@ -268,7 +340,8 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
       {
         exchange: "invoice.events",
         routingKey: "invoice.processed",
-        handler: (msg) => this.handleNotificationEvent(msg),
+        handler: (msg, deliveredKey) =>
+          this.handleNotificationEvent(msg, deliveredKey),
       },
     ];
 
@@ -298,7 +371,7 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
             if (!msg) return;
             try {
               const body = JSON.parse(msg.content.toString());
-              route.handler(body);
+              route.handler(body, msg.fields?.routingKey);
               this.channel?.ack(msg);
             } catch (err) {
               this.logger.warn(
@@ -456,18 +529,32 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
     this.emitGenericEvent(restaurantId, "order_change", payload);
   }
 
-  private handleNotificationEvent(msg: any): void {
+  private handleNotificationEvent(msg: any, deliveredKey?: string): void {
     const restaurantId = msg?.restaurant_id || msg?.payload?.restaurant_id;
     if (!restaurantId) return;
 
     const payload = msg?.payload || msg;
-    this.websocketGateway.emitRestaurantNotification(restaurantId, {
+    const notification = {
       id: payload.notification_id || payload.event_id || "",
       title: payload.title || payload.event_type || "Notification",
       message: payload.message || payload.body || "",
       type: this.mapNotificationType(payload.urgency || payload.type),
       action_url: payload.action_url,
-    });
+    };
+    // The audience comes from the routing key, via the gateway's own table,
+    // never from the body the publisher wrote (NOTIFICATION_AUDIENCE_BY_KEY).
+    if (notificationAudience(deliveredKey) === "owner_manager") {
+      void this.websocketGateway.emitRoleNotification(
+        restaurantId,
+        OWNER_AND_MANAGER,
+        notification,
+      );
+    } else {
+      this.websocketGateway.emitRestaurantNotification(
+        restaurantId,
+        notification,
+      );
+    }
 
     // For inbound vendor emails, also push a conversation:updated event so the
     // CommsThreadDrawer refetches the thread without requiring a manual refresh.
@@ -640,7 +727,14 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
             result.restaurantId
           ) {
             const label = senderName || this.prospects.domainOf(senderEmail);
-            const message = `${label} reached out${attachments.length ? " with an attachment" : ""}. Review it in Promotions → Prospects.`;
+            // Prospects (the "Strangers" of sketch 113) moved to
+            // /communications under "Who is writing", and /promotions holds
+            // offers only (ADR 0160, Open item 3, answered 2026-09-18 and
+            // built 2026-09-19). The old link, /promotions?tab=prospects, pointed
+            // at a tab that no longer exists, on a page staff are refused.
+            // The audience is unchanged: GET /prospects is open to any member
+            // (prospects.controller.ts).
+            const message = `${label} reached out${attachments.length ? " with an attachment" : ""}. Review it in Communications, under Who is writing.`;
             this.websocketGateway.emitRestaurantNotification(
               result.restaurantId,
               {
@@ -648,7 +742,7 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
                 title: `New vendor prospect: ${label}`,
                 message,
                 type: "info",
-                action_url: "/promotions?tab=prospects",
+                action_url: "/communications",
               },
             );
             void this.inboundResponder.persistManagerNotification(
@@ -658,7 +752,7 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
                 title: `New vendor prospect: ${label}`,
                 message,
                 priority: "low",
-                actionUrl: "/promotions?tab=prospects",
+                actionUrl: "/communications",
                 metadata: { kind: "prospect", domain: result.domain },
               },
             );

@@ -6,6 +6,7 @@ import { looksPromotional, TransportSignals } from "./email-triage";
 import { extractPromotion } from "./promo-extract";
 import { computePriority } from "./priority";
 import { InboundResponderService } from "./inbound-responder.service";
+import { OWNER_AND_MANAGER } from "../tenant/live-membership";
 
 interface PromoContext {
   conversationId: string;
@@ -147,18 +148,27 @@ export class PromotionExtractorService {
       }
 
       // Notify by D4 bucket: interrupt (loud) / surface (info) / digest (filed, no toast → no fatigue).
+      // Owners and managers only (fix/websocket-role-gate, 2026-09-28). The
+      // toast names the vendor and its offer, which is what GET /promotions
+      // refuses staff (promotions.controller.ts, ADR 0124:357-362). It went
+      // to `restaurant:<id>`, which staff sockets join too. The link is
+      // /promotions: /providers now redirects to /vendors (web App.tsx).
       const relevant = applicableWines.length > 0;
       const provider = ctx.providerName || "A supplier";
       if (bucket !== "digest") {
-        this.websocketGateway.emitRestaurantNotification(ctx.restaurantId, {
-          id: inserted.id,
-          title: relevant
-            ? `${provider} promo on wines you buy`
-            : `${provider} promotion`,
-          message: `${promo.summary}${relevant ? ` — matches ${applicableWines.length} of your wines` : ""}.`,
-          type: bucket === "interrupt" ? "warning" : "info",
-          action_url: `/providers?promotions=1`,
-        });
+        await this.websocketGateway.emitRoleNotification(
+          ctx.restaurantId,
+          OWNER_AND_MANAGER,
+          {
+            id: inserted.id,
+            title: relevant
+              ? `${provider} promo on wines you buy`
+              : `${provider} promotion`,
+            message: `${promo.summary}${relevant ? ` — matches ${applicableWines.length} of your wines` : ""}.`,
+            type: bucket === "interrupt" ? "warning" : "info",
+            action_url: "/promotions",
+          },
+        );
       }
 
       this.logger.log(
@@ -213,27 +223,38 @@ export class PromotionExtractorService {
           ? `${lines.join(" · ")}${count > lines.length ? ` · +${count - lines.length} more` : ""}. Review them in Promotions.`
           : `${count} vendor offer${count !== 1 ? "s were" : " was"} filed since yesterday. Review them in Promotions.`;
 
-        // Live toast for connected clients …
-        this.websocketGateway.emitRestaurantNotification(restaurantId, {
-          id: `promo-digest-${restaurantId}-${Date.now()}`,
-          title,
-          message: detail,
-          type: "info",
-          action_url: "/promotions",
-        });
-        // … and a durable inbox notification so an offline manager still gets the digest (A8).
-        void this.inboundResponder?.persistManagerNotification(restaurantId, {
-          type: "promo_digest",
-          title,
-          message: detail,
-          priority: "low",
-          actionUrl: "/promotions",
-          metadata: {
-            kind: "promo_digest",
-            count,
-            date: new Date().toISOString().slice(0, 10),
+        // Live toast for connected owners and managers … The digest line
+        // names each vendor and its discount, which GET /promotions refuses
+        // staff (ADR 0124:357-362), so neither copy goes to the whole house
+        // (fix/websocket-role-gate, 2026-09-28).
+        await this.websocketGateway.emitRoleNotification(
+          restaurantId,
+          OWNER_AND_MANAGER,
+          {
+            id: `promo-digest-${restaurantId}-${Date.now()}`,
+            title,
+            message: detail,
+            type: "info",
+            action_url: "/promotions",
           },
-        });
+        );
+        // … and a durable inbox notification so an offline manager still gets the digest (A8).
+        void this.inboundResponder?.persistManagerNotification(
+          restaurantId,
+          {
+            type: "promo_digest",
+            title,
+            message: detail,
+            priority: "low",
+            actionUrl: "/promotions",
+            metadata: {
+              kind: "promo_digest",
+              count,
+              date: new Date().toISOString().slice(0, 10),
+            },
+          },
+          { roles: OWNER_AND_MANAGER },
+        );
       }
       if (byRestaurant.size)
         this.logger.log(
