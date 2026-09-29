@@ -214,8 +214,11 @@ export function useStorageLocations() {
       body: unknown,
       what: string,
       rollback: () => void,
+      // The house the write belongs to. Defaults to the current one; the
+      // stepper passes the house its click was made in (audit R2, below).
+      house: string = restaurantId,
     ): Promise<boolean> => {
-      if (!restaurantId) {
+      if (!house) {
         rollback()
         toast.error(`Could not ${what}: no house is selected.`)
         return false
@@ -250,8 +253,20 @@ export function useStorageLocations() {
   // Stepper debounce state, per wine: the pending timer, the arguments it
   // will save with (so an unmount can flush it), and the quantity the server
   // held before the burst began (what a refusal rolls back to).
+  //
+  // The pending arguments carry the HOUSE the click was made in. Until the
+  // ADR 0090 audit of #510 (R2, 2026-09-29) the unmount flush read the house
+  // from the latest render: click in house OLD, switch to NEW, close the sheet
+  // inside the debounce, and OLD's wine and OLD's zone were POSTed to
+  // /storage-locations/<NEW>/mappings. Flushing to the stored house was chosen
+  // over dropping the pending click on a house change: both never write to
+  // another house, but a drop loses the click in silence, while a flush either
+  // lands where it was made or, if the server refuses it because the session
+  // has moved on, rolls back and says so through the same error toast.
   const quantityTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>())
-  const quantityPending = useRef(new Map<string, { locationId: string; quantity: number }>())
+  const quantityPending = useRef(
+    new Map<string, { house: string; locationId: string; quantity: number }>(),
+  )
   const quantityBaseline = useRef(new Map<string, number>())
 
   const cancelPendingQuantity = useCallback((wineId: string) => {
@@ -263,29 +278,45 @@ export function useStorageLocations() {
   }, [])
 
   const saveQuantity = useCallback(
-    async (wineId: string, locationId: string, quantity: number): Promise<boolean> => {
+    async (
+      wineId: string,
+      args: { house: string; locationId: string; quantity: number },
+    ): Promise<boolean> => {
+      const { house, locationId, quantity } = args
       quantityTimers.current.delete(wineId)
       quantityPending.current.delete(wineId)
       const baseline = quantityBaseline.current.get(wineId)
       quantityBaseline.current.delete(wineId)
       return persistToServer(
         'POST',
-        `/storage-locations/${restaurantId}/mappings`,
+        `/storage-locations/${house}/mappings`,
         { wineId, locationId, quantity },
         'save the bottle count',
         () => {
+          // Roll back in the house the click was made in, not the one on
+          // screen now: the two caches are keyed apart.
           if (baseline === undefined) return
+          const mappingsKey = [MAPPINGS_KEY, house]
           const now = queryClient
-            .getQueryData<WineLocationMapping[]>([MAPPINGS_KEY, restaurantId])
+            .getQueryData<WineLocationMapping[]>(mappingsKey)
             ?.find((m) => m.wineId === wineId)
-          setMappings((prev) =>
-            prev.map((m) => (m.wineId === wineId ? { ...m, quantity: baseline } : m)),
+          queryClient.setQueryData<WineLocationMapping[]>(mappingsKey, (prev) =>
+            (prev ?? []).map((m) => (m.wineId === wineId ? { ...m, quantity: baseline } : m)),
           )
-          if (now) shiftCount(now.locationId, baseline - now.quantity)
+          if (now && baseline !== now.quantity) {
+            queryClient.setQueryData<StorageLocation[]>([LOCATIONS_KEY, house], (locs) =>
+              (locs ?? EMPTY_LOCATIONS).map((loc) =>
+                loc.id === now.locationId
+                  ? { ...loc, currentCount: Math.max(0, loc.currentCount + baseline - now.quantity) }
+                  : loc,
+              ),
+            )
+          }
         },
+        house,
       )
     },
-    [persistToServer, restaurantId, queryClient, setMappings, shiftCount],
+    [persistToServer, queryClient],
   )
 
   // A stepper click made just before the zone sheet closes is still a click:
@@ -299,7 +330,7 @@ export function useStorageLocations() {
       for (const [wineId, t] of timers) {
         clearTimeout(t)
         const args = pending.get(wineId)
-        if (args) void saveQuantityRef.current(wineId, args.locationId, args.quantity)
+        if (args) void saveQuantityRef.current(wineId, args)
       }
       timers.clear()
     }
@@ -471,16 +502,16 @@ export function useStorageLocations() {
       }
       const pending = quantityTimers.current.get(wineId)
       if (pending) clearTimeout(pending)
-      const args = { locationId: existing.locationId, quantity: newQuantity }
+      const args = { house: restaurantId, locationId: existing.locationId, quantity: newQuantity }
       quantityPending.current.set(wineId, args)
       quantityTimers.current.set(
         wineId,
         setTimeout(() => {
-          void saveQuantity(wineId, args.locationId, args.quantity)
+          void saveQuantity(wineId, args)
         }, QUANTITY_SAVE_DEBOUNCE_MS),
       )
     },
-    [mappings, setMappings, setLocations, saveQuantity],
+    [mappings, setMappings, setLocations, saveQuantity, restaurantId],
   )
 
   const addLocation = useCallback(

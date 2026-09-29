@@ -204,3 +204,68 @@ describe('#6 — the in-zone bottle stepper saves', () => {
     expect(cachedMappings()[0].quantity).toBe(3)
   })
 })
+
+// ADR 0090 audit of PR #510, blocker R2 (2026-09-29). The unmount flush read
+// the house from the LATEST render: click under house OLD, switch to NEW,
+// close the sheet inside the debounce window, and the hook POSTed OLD's wine
+// and OLD's zone to /storage-locations/<NEW>/mappings. A click is saved in
+// the house it was made in, or not at all, never in another one.
+describe('R2 — a pending stepper save stays in the house it was clicked in', () => {
+  const NEW_HOUSE = '55555555-5555-4555-8555-555555555555'
+  const switchHouse = (id: string) =>
+    (useAuth as ReturnType<typeof vi.fn>).mockReturnValue({
+      activeRestaurantId: id,
+      isAuthenticated: true,
+    })
+  const urls = () => mockRequest.mock.calls.map((c) => c[0].url as string)
+  const oldHouseMappings = () =>
+    client.getQueryData<{ wineId: string; quantity: number }[]>([
+      'storageLocationMappings',
+      RESTAURANT,
+    ]) ?? []
+
+  it('house switch then unmount inside the debounce: no POST to the new house', async () => {
+    const hook = await mounted()
+    act(() => {
+      hook.result.current.updateWineQuantityAtLocation('w1', 5)
+    })
+    switchHouse(NEW_HOUSE)
+    hook.rerender()
+    hook.unmount()
+    await waitFor(() => expect(mockRequest).toHaveBeenCalledTimes(1))
+    expect(urls().some((u) => u.includes(NEW_HOUSE))).toBe(false)
+    expect(mockRequest.mock.calls[0][0]).toMatchObject({
+      method: 'POST',
+      url: `/storage-locations/${RESTAURANT}/mappings`,
+      data: { wineId: 'w1', locationId: LOC, quantity: 5 },
+    })
+  })
+
+  it('house switch with the sheet still open: the timer saves to the old house', async () => {
+    const hook = await mounted()
+    act(() => {
+      hook.result.current.updateWineQuantityAtLocation('w1', 6)
+    })
+    switchHouse(NEW_HOUSE)
+    hook.rerender()
+    await waitFor(() => expect(mockRequest).toHaveBeenCalledTimes(1), {
+      timeout: QUANTITY_SAVE_DEBOUNCE_MS + 2000,
+    })
+    expect(urls()).toEqual([`/storage-locations/${RESTAURANT}/mappings`])
+  })
+
+  it('a refused flush rolls back in the old house cache and says so', async () => {
+    const hook = await mounted()
+    mockRequest.mockRejectedValueOnce(rejected())
+    act(() => {
+      hook.result.current.updateWineQuantityAtLocation('w1', 9)
+    })
+    expect(oldHouseMappings()[0].quantity).toBe(9)
+    switchHouse(NEW_HOUSE)
+    hook.rerender()
+    hook.unmount()
+    await waitFor(() => expect(toastError).toHaveBeenCalled())
+    expect(oldHouseMappings()[0].quantity).toBe(3)
+    expect(urls().some((u) => u.includes(NEW_HOUSE))).toBe(false)
+  })
+})
