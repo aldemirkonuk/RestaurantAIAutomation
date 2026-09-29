@@ -9,18 +9,18 @@ updated: 2026-09-29
 
 **Question.** For every `@Patch`/`@Put`/`@Delete` route in `apps/api-gateway/src` that takes a resource id, does the write filter by the caller's house (or assert ownership) before it changes the row? The risk: a request carrying an id from house B, sent while acting as house A, changes house B's row.
 
-**Measured on** `origin/main` at `71ae5449b` (2026-09-29), by reading each route from controller to the actual write (supabase `update`/`delete`/`upsert`, rpc — the SQL function read in `supabase/migrations` — or HTTP proxy). Three read-only passes over disjoint controller sets, then every "no" re-read by hand. Line numbers are that commit's.
+**Measured on** `origin/main` at `71ae5449b` (2026-09-29), plus the one mutating route `6fbd3efb7` (#518) added before this merged (`PUT /storage-locations/:restaurantId/setup-access/:userId`, graded the same way), by reading each route from controller to the actual write (supabase `update`/`delete`/`upsert`, rpc — the SQL function read in `supabase/migrations` — or HTTP proxy). Three read-only passes over disjoint controller sets, then every "no" re-read by hand. Line numbers are that commit's.
 
-**Answer: yes for 123 of 129 routes; 6 wrote by id alone.**
+**Answer: yes for 124 of 130 routes; 6 wrote by id alone.**
 
 | scoped | routes |
 |---|---|
-| yes | 80 |
+| yes | 81 |
 | yes (guard) | 10 |
 | yes (user) | 15 |
 | n/a (no resource id) | 18 |
 | no | 6 |
-| **total** | **129** |
+| **total** | **130** |
 
 What the labels mean: **yes** — the write's WHERE carries the caller's house, or a scoped read proves ownership and the write is keyed to that row; **yes (guard)** — the id *is* the caller's house id, which `JwtAuthGuard` → `assertTenantMatch` (`apps/api-gateway/src/common/tenant/assert-tenant-match.ts:23`) matches against the token; **yes (user)** — the row is the caller's own (their notifications, passkeys, preferences) and the write filters by their user id; **n/a** — no resource id in the route.
 
@@ -31,7 +31,7 @@ What the labels mean: **yes** — the write's WHERE carries the caller's house, 
 | `PATCH /contacts/:id` | `contacts.service.ts:231` `update().eq("id")` only; could also rewrite `restaurant_id` | **Fixed** by `fix/gateway-edit-by-id-house-scope`: `.eq("restaurant_id", <token house>)`, 404 otherwise; `restaurant_id` no longer editable. Not reachable today — `ContactsModule` is imported by no module — fixed so mounting it cannot open it |
 | `DELETE /contacts/:id` | `contacts.service.ts:251` soft-delete `.eq("id")` only | **Fixed**, same branch: house filter, 404 when no row matched. Unreachable today, as above |
 | `DELETE /contacts/addresses/:addressId` | `contacts.service.ts:319` hard delete `.eq("id")`; the parent contact's house never read | **Fixed**, same branch: reads the address through `contacts!inner` filtered to the caller's house, 404 otherwise, then deletes that row. Unreachable today, as above |
-| `DELETE /mobile/devices/:token` | `push/expo-push.service.ts:87` `.eq("expo_push_token")` only | **Fixed**, same branch: `.eq("user_id", <caller>)`, so a token alone cannot unregister another person's phone. Low severity (a push token is a random string) |
+| `DELETE /mobile/devices/:token` | `push/expo-push.service.ts:87` `.eq("expo_push_token")` only | **Fixed as a write**, same branch: `.eq("user_id", <caller>)`, so the DELETE removes only the caller's own row. **Not a closure on its own**: `registerDevice` upserts on `expo_push_token` and takes the row for the caller, so someone holding another person's token can re-register it to themselves and then delete it. That takeover is how a shared device legitimately moves to the next person who signs in, so it was not changed here; it is named under Limits. Low severity either way (a push token is a random string) |
 | `PATCH /organizations/chains/:id` | `organizations.service.ts:458`, gated on any `organization_members` row | **Not fixed — founder-deferred.** Organisation-scoped, not house-scoped: a member of any house in the organisation can rename a chain other houses belong to. This is OD-131 (b), which the founder answered on 2026-09-19 as "not now … decide later in a dedicated ADR" (`OPEN-DECISIONS.md:91`) |
 | `DELETE /organizations/chains/:id` | `organizations.service.ts:481,487`, same gate; also sets `restaurants.chain_id = null` for every house in the chain | **Not fixed — founder-deferred**, OD-131 (b), as above |
 
@@ -177,3 +177,4 @@ Behaviour proof for the four fixes: `apps/api-gateway/src/common/tenant/edit-by-
 | DELETE | `/mcp-server-keys/:id` | `apps/api-gateway/src/mcp-server/mcp-keys.controller.ts:114` | `apps/api-gateway/src/mcp-server/mcp-credentials.service.ts:174` | yes | Update .eq("id").eq("restaurant_id", JWT house) (178-179), after assertCanManageRestaurant. |
 | PUT | `/conversations/:conversationId/message` | `apps/api-gateway/src/conversations/conversations.controller.ts:587` | `apps/api-gateway/src/conversations/conversations.service.ts:350` | yes | updateOwned: .eq("id").eq("restaurant_id", houseOf(user)) (351-352), 404 on zero rows. |
 | DELETE | `/communications/text-senders/consent` | `apps/api-gateway/src/communications/text/text-senders.controller.ts:360` | `apps/api-gateway/src/communications/text/text-sender.service.ts:854` | n/a (no resource id) | Update .eq("restaurant_id").eq("user_id") from the JWT (858-859); no id from the request. |
+| PUT | `/storage-locations/:restaurantId/setup-access/:userId` | `apps/api-gateway/src/storage-locations/storage-locations.controller.ts:173` | `apps/api-gateway/src/storage-locations/storage-locations.service.ts:358` | yes | Added by #518 after the census base; path `:restaurantId` matched by JwtAuthGuard, and the update filters `.eq("user_id").eq("restaurant_id", restaurantId).eq("is_active", true)` after a scoped read that 404s another house's person. |

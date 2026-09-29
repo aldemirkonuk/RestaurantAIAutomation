@@ -121,6 +121,10 @@ describe("contacts: an id from another house changes nothing", () => {
   });
 });
 
+// The DELETE is scoped to the caller's own row. It is not a closure on its
+// own: registerDevice upserts on the token and hands the row to the caller (a
+// shared device moving to the next person), so a token holder can re-register
+// then delete. Named in the census's Limits, not changed here.
 describe("mobile devices: a push token alone cannot unregister someone else's phone", () => {
   it("DELETE /mobile/devices/:token removes only the caller's own row", async () => {
     const db = makeStubDb({
