@@ -142,7 +142,7 @@ asked to review, and the deletion manifest, group by group. Web only this deploy
 
 **DONE =** every route in §1a on a Mudavym design at the full-purpose bar, *every surface on
 it* rebuilt (G8: a live route is not the same as a rebuilt route), live for every house
-including houses created later, captions at AA (OD-112 (OPEN-DECISIONS.md:106): 322
+including houses created later, captions at AA (OD-112 (OPEN-DECISIONS.md:117): 322
 `var(--ink-3)` uses against 183 `var(--ink-4)` in `apps/web/src` today), the manifest
 approved group by group, one cutover PR merged and deployed, production verified at that
 commit.
@@ -468,7 +468,7 @@ Built on branch `fix/preview-notes-2026-09-22` (not merged).
 shell and admin in the database only (J1), `arrival` is overridden by ADR 0213; Q7 not built
 (F7); Q8 built (`ConnectionsNext.tsx:319`, ADR 0149 row 53); Q9 built on #434; Q10 recorded
 on OD-123 in this PR; Q11 recorded on OD-132 in this PR (see C22); §7.2 superseded by ADR
-0213 F7 (OD-141 (OPEN-DECISIONS.md:114)); preview rulings 1–3 merged via #458–#462, ruling 4
+0213 F7 (OD-141 (OPEN-DECISIONS.md:125)); preview rulings 1–3 merged via #458–#462, ruling 4
 is F2.
 
 ### 8.2 Round-5/6 rulings the corrections above rely on (memory `founder-answers-2026-09-21-round5.md`)
@@ -559,7 +559,7 @@ The verdict-ledger strip ruling cited in §0 (L6(b)) is in memory
 
 | Retired | Recover with | Why |
 |---|---|---|
-| `.planning/07-reference/deploy/PAGE-WAVE-BLOCKERS-2026-09-22.md` (245 lines) | `git show ddc5e094b:.planning/07-reference/deploy/PAGE-WAVE-BLOCKERS-2026-09-22.md` (its last change, #455; unchanged at `059169a59`) | Every PR in its §2–§3 has merged (#413, #414, #415, #419, #420, #426, #430, #434, #437, #439, #452, #454, #455; `gh pr view --json mergedAt`) or is re-planned in §3 here; its §5 questions are answered (Q1 → sketch 121, §8.1; Q2 → ADR 0213 F7; Q3 → Q12 confirmed). Prose mentions of its §5 Q2 in ADR 0213:48, OD-141 (OPEN-DECISIONS.md:114), `SKYLEAF-NEXT-ACT-BUILD-2026-09-22.md:168` and `research-122-squad/` resolve through the recovery command |
+| `.planning/07-reference/deploy/PAGE-WAVE-BLOCKERS-2026-09-22.md` (245 lines) | `git show ddc5e094b:.planning/07-reference/deploy/PAGE-WAVE-BLOCKERS-2026-09-22.md` (its last change, #455; unchanged at `059169a59`) | Every PR in its §2–§3 has merged (#413, #414, #415, #419, #420, #426, #430, #434, #437, #439, #452, #454, #455; `gh pr view --json mergedAt`) or is re-planned in §3 here; its §5 questions are answered (Q1 → sketch 121, §8.1; Q2 → ADR 0213 F7; Q3 → Q12 confirmed). Prose mentions of its §5 Q2 in ADR 0213:48, OD-141 (OPEN-DECISIONS.md:125), `SKYLEAF-NEXT-ACT-BUILD-2026-09-22.md:168` and `research-122-squad/` resolve through the recovery command |
 
 ---
 
@@ -942,7 +942,7 @@ still need his word. The audit skill lists it as gate-owned
 `grep -n 0050 scripts/pr_audit_gate.py` matches only the comment at `:66`. So the rule
 is enforced by the founder's word and the audit skill, not mechanically. **Owed:** a
 dated bracket in ADR 0050 for the 2026-09-27 judge's mix, landed through that path's
-own founder word.
+own founder word. **[2026-09-28, lane `docs/model-dispatch-adr-0231`: the owed bracket is overtaken. Asked whether to amend 0050, the founder answered as item 86, verbatim: *"remove ADR050, run opus as much as you need, while putting emphasis on sonnet when the tasks are fast, and direct, and other things that sonnet are highly capable of doing maximizng efficiency"*. That is his word on this gate-owned path. ADR 0050 now reads **Superseded by [ADR 0231](../../decisions/0231-opus-as-much-as-the-work-needs-sonnet-where-it-is-fast-and-direct.md)**. It is marked, not deleted (`decisions/README.md:10`). 0231 carries the judge's mix above as its working default. Still owed through a founder-approved gate PR: `SKILL.md:67` (whether 0231 replaces `0050-*.md` in the gate-owned list), `SKILL.md:153`, and the comment at `pr_audit_gate.py:66`.]**
 
 **OD-157, closed (2026-09-27, #466 audit fix round 1):** the register row is now in
 `OPEN-DECISIONS.md`'s Resolved table, matching its `resolved` CLAIMS row. The earlier

@@ -260,6 +260,9 @@ export class ProvidersService {
         minimum_order: dto.minimumOrder ?? null,
         lead_time_days: dto.leadTimeDays ?? null,
         tier: dto.tier ?? null,
+        // As stated on the sheet, or NULL. The column's 'Net 30' default was
+        // dropped on purpose (migration 20260903170000); nothing is assumed.
+        payment_terms: dto.paymentTerms || null,
         personality_notes: dto.notes ?? null,
         contact_phone: normalizeToE164(dto.phone),
         contact_email: dto.email ?? null,

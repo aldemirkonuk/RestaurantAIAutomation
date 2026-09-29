@@ -833,6 +833,7 @@ function TeamNextManager({
           viewerIsOwner={viewerIsOwner}
           viewerUserId={viewerUserId}
           ownerCount={ownerCount}
+          roster={data.members ?? []}
           onClose={() => setOverlay(null)}
           onChanged={refreshWeek}
         />

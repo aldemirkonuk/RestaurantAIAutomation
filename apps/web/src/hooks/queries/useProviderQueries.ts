@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
+import axios from 'axios'
 import { queryKeys } from '../../lib/query-keys'
 import type { ProviderFilters } from '../../lib/query-keys'
 import {
@@ -128,8 +129,34 @@ export function useRecommendedProviders(restaurantId: string, wineId: string) {
 }
 
 /**
+ * True only when the request went out and NOTHING came back — the network is
+ * actually down. A 4xx or 5xx is an answer from the server, and a throw with
+ * no request behind it is a bug; neither is "offline".
+ */
+function isBrowserOffline(): boolean {
+  return typeof navigator !== 'undefined' && navigator.onLine === false
+}
+
+function newIdempotencyKey(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return `provider-create:${crypto.randomUUID()}`
+  }
+  return `provider-create:${Date.now()}-${Math.random().toString(36).slice(2)}`
+}
+
+function isNetworkFailure(error: unknown): boolean {
+  return Boolean(axios.isAxiosError(error) && error.request && !error.response)
+}
+
+/**
  * Hook to create a new provider
- * With offline support: queues mutation when offline
+ * With offline support: queues the mutation ONLY on a real network failure.
+ *
+ * It used to queue on every failure, a 400 validation refusal included, and
+ * resolve with a fabricated `temp_…` id — so a refused create read as
+ * "Provider saved offline" and the vendor was never created (web endpoint
+ * sweep 2026-09-28, row 15). Any answer from the server now rejects, and the
+ * caller shows it.
  */
 export function useCreateProvider() {
   const queryClient = useQueryClient()
@@ -138,14 +165,28 @@ export function useCreateProvider() {
   return useMutation({
     mutationFn: async (data: CreateProviderInput) => {
       const tempId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-      
+      // One key per create, sent on the first attempt AND on the queued
+      // replay. "No response" includes a timeout after the server committed;
+      // the gateway's IdempotencyInterceptor returns the stored vendor for a
+      // repeated key, so the replay cannot make a duplicate.
+      const idempotencyKey = newIdempotencyKey()
+
       try {
-        return await createProvider(data)
+        return await createProvider(data, { idempotencyKey })
       } catch (error) {
+        if (!isNetworkFailure(error)) throw error
+        // Queue only when the browser says it is offline. No response while
+        // ONLINE is a timeout or a dropped reply: the server may have written
+        // the vendor, or may still be writing it, and the sync manager replays
+        // a queued create ~100 ms later while online, before the gateway has
+        // stored the key's first response, which would make a second vendor
+        // (PR #508 audit, 2026-09-29). That case rejects, and the sheet says
+        // the save could not be confirmed (`isUnconfirmedWrite`).
+        if (!isBrowserOffline()) throw error
         // Queue for offline sync
         await syncManager.queueMutation({
           type: 'provider.create',
-          data,
+          data: { ...data, idempotencyKey },
           tempId,
         })
         

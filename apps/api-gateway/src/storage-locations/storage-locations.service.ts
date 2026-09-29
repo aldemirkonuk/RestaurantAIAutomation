@@ -99,6 +99,39 @@ export class StorageLocationsService {
     };
   }
 
+  /**
+   * The path's house is checked by `JwtAuthGuard` (`assertTenantMatch`); a
+   * location id after it is not, and this client is service-role, so no RLS
+   * stands behind the query either. Every route that takes a location id asks
+   * here first. Another house's id answers exactly like a missing one, a 404,
+   * so the refusal does not confirm the id exists (ADR 0147).
+   */
+  private async assertLocationIsTheHouses(
+    restaurantId: string,
+    locationId: string,
+  ): Promise<void> {
+    const { data, error } = await this.dbService.supabase
+      .from("storage_locations")
+      .select("id")
+      .eq("id", locationId)
+      .eq("restaurant_id", restaurantId)
+      .is("deleted_at", null)
+      .maybeSingle();
+    if (error) {
+      this.logger.error(`Failed to read location: ${error.message}`);
+      throw new HttpException(
+        "The location could not be read, so nothing was done.",
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+    if (!data) {
+      throw new HttpException(
+        "No storage location of this house has that id.",
+        HttpStatus.NOT_FOUND,
+      );
+    }
+  }
+
   async listLocations(restaurantId: string) {
     const client = this.dbService.supabase;
     const { data, error } = await client
@@ -137,7 +170,24 @@ export class StorageLocationsService {
     );
   }
 
+  /**
+   * storage_locations has no parent column (baseline migration
+   * 20260805000000, table at :5487). Until it does, a stated parent cannot be
+   * recorded, and answering 200 while dropping it is the "shown as saved"
+   * defect (web endpoint sweep 2026-09-28, #4). Refuse it in words; a null
+   * parent is what the table already says, so it passes.
+   */
+  private refuseUnstoredParent(parentId: string | null | undefined) {
+    if (parentId != null) {
+      throw new HttpException(
+        "Zone parents are not stored yet: this zone was not changed. Save it without a parent.",
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    }
+  }
+
   async createLocation(restaurantId: string, dto: CreateStorageLocationDto) {
+    this.refuseUnstoredParent(dto.parent_id);
     const client = this.dbService.supabase;
     const payload: Record<string, unknown> = {
       restaurant_id: restaurantId,
@@ -173,6 +223,7 @@ export class StorageLocationsService {
     locationId: string,
     dto: UpdateStorageLocationDto,
   ) {
+    this.refuseUnstoredParent(dto.parent_id);
     const client = this.dbService.supabase;
     const payload: Record<string, unknown> = {};
     if (dto.name !== undefined) payload.zone = dto.name;
@@ -190,7 +241,9 @@ export class StorageLocationsService {
       .eq("restaurant_id", restaurantId)
       .is("deleted_at", null)
       .select("*")
-      .single();
+      // Not `.single()`: another house's (or a missing) id matched no row and
+      // `.single()` turned that into a 500. No row is the 404 below.
+      .maybeSingle();
 
     if (error) {
       this.logger.error(`Failed to update location: ${error.message}`);
@@ -207,17 +260,27 @@ export class StorageLocationsService {
 
   async deleteLocation(restaurantId: string, locationId: string) {
     const client = this.dbService.supabase;
-    const { error } = await client
+    const { data, error } = await client
       .from("storage_locations")
       .update({ deleted_at: new Date().toISOString() })
       .eq("id", locationId)
-      .eq("restaurant_id", restaurantId);
+      .eq("restaurant_id", restaurantId)
+      .is("deleted_at", null)
+      .select("id");
 
     if (error) {
       this.logger.error(`Failed to delete location: ${error.message}`);
       throw new HttpException(
         error.message || "Failed to delete location",
         HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+    // A delete that matched nothing (another house's id, a missing one, or one
+    // already deleted) used to answer `{ success: true }` having touched no row.
+    if (!data || (data as unknown[]).length === 0) {
+      throw new HttpException(
+        "No storage location of this house has that id.",
+        HttpStatus.NOT_FOUND,
       );
     }
     return { success: true };
@@ -227,6 +290,10 @@ export class StorageLocationsService {
     restaurantId: string,
     dto: AssignWineToLocationDto,
   ) {
+    // The mapping row carries the caller's house, but `location_id` is only a
+    // foreign key to `storage_locations(id)`: it would accept another house's
+    // zone. Refused before anything is written.
+    await this.assertLocationIsTheHouses(restaurantId, dto.locationId);
     const client = this.dbService.supabase;
     const quantity = dto.quantity ?? 1;
 
@@ -261,6 +328,8 @@ export class StorageLocationsService {
     restaurantId: string,
     locationId: string,
   ): Promise<EnrichedWineAtLocation[]> {
+    // Another house's zone is a 404, not an empty one.
+    await this.assertLocationIsTheHouses(restaurantId, locationId);
     const client = this.dbService.supabase;
 
     const { data: mappings, error: mappingsError } = await client

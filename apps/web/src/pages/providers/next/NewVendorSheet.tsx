@@ -345,8 +345,19 @@ export function NewVendorSheet({ open, onClose, onAdded }: NewVendorSheetProps) 
         notes: draft.notes.trim() || undefined,
       });
 
-      const id = result?.id;
+      // A create queued for offline sync (a real network failure — see
+      // useCreateProvider) carries a local `temp_…` id that names no row. The
+      // follow-up writes below must not be made against it, and the sheet must
+      // not say the vendor "is in the book" (web endpoint sweep 2026-09-28,
+      // row 15).
+      const pending = Boolean((result as { _pending?: boolean } | undefined)?._pending);
+      const id = pending ? undefined : result?.id;
       const said: string[] = [];
+      if (pending) {
+        said.push(
+          'There is no connection, so the vendor is queued and will be added when you are back online. Its rating, delivery days and address were NOT recorded — set them on the vendor’s row once it appears.',
+        );
+      }
 
       // The rating is this person's own note about the vendor, stored in their
       // preferences exactly where the legacy page stored it

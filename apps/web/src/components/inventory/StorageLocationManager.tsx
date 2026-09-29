@@ -185,13 +185,21 @@ export function StorageLocationManager({
     setConfirmRemoveWineId(null)
   }
 
-  // P0: use addLocation hook so creates are persisted to the server
-  const handleCreate = () => {
+  // P0: use addLocation hook so creates are persisted to the server.
+  // The form closes only once the server has stored the zone; a refused
+  // create keeps the form open with what the person typed (the hook has
+  // already removed the optimistic row and toasted the reason). No parent is
+  // sent: storage_locations has no parent column yet and the gateway refuses
+  // a stated one with a 422, so the create form does not offer the picker.
+  const [isSavingCreate, setIsSavingCreate] = useState(false)
+  const handleCreate = async () => {
+    if (isSavingCreate) return
     if (!formData.name) return
     // No `|| 100`. The server stores capacity NOT NULL, so a zone created
     // without one would be recorded as holding 100 bottles that nobody counted.
     if (!formData.capacity || formData.capacity <= 0) return
-    addLocation({
+    setIsSavingCreate(true)
+    const saved = await addLocation({
       name: formData.name,
       description: formData.description,
       capacity: formData.capacity,
@@ -199,15 +207,16 @@ export function StorageLocationManager({
       temperature: formData.temperature,
       humidity: formData.humidity,
       notes: formData.notes,
-      parentId: formData.parentId,
       color: formData.color || DEFAULT_COLORS[0],
     })
+    setIsSavingCreate(false)
+    if (!saved) return
     setIsCreating(false)
     resetForm()
   }
 
   // P0: use updateLocation hook so edits are persisted to the server
-  const handleUpdate = (forceCapacity = false) => {
+  const handleUpdate = async (forceCapacity = false) => {
     if (!editingLocation || !formData.name) return
 
     const newCapacity = formData.capacity ?? editingLocation.capacity
@@ -224,7 +233,12 @@ export function StorageLocationManager({
       return
     }
 
-    updateLocation(editingLocation.id, {
+    // `parentId` is always sent, so an empty picker clears the parent (the
+    // hook sends it as `parent_id: null`). A refused save has already rolled
+    // the zone back and shown the reason; keep the form open with what the
+    // person typed instead of closing it as if it had saved (sweep #4, #5).
+    setCapacityWarning(null)
+    const saved = await updateLocation(editingLocation.id, {
       name: formData.name,
       description: formData.description,
       capacity: newCapacity,
@@ -234,8 +248,8 @@ export function StorageLocationManager({
       parentId: formData.parentId,
       color: formData.color || editingLocation.color,
     })
+    if (!saved) return
     setEditingLocation(null)
-    setCapacityWarning(null)
     resetForm()
   }
 
@@ -651,7 +665,11 @@ export function StorageLocationManager({
                     />
                   </div>
 
-                  {/* P2: parentId field — hierarchy was modeled in data layer but unreachable from UI */}
+                  {/* P2: parentId field. Edit only: a create cannot state a parent
+                      until storage_locations has a parent column (the gateway
+                      refuses one with a 422), so the picker would only offer a
+                      guaranteed refusal. On edit it can still clear a parent. */}
+                  {!isCreating && (
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Parent Location
@@ -674,6 +692,7 @@ export function StorageLocationManager({
                         ))}
                     </select>
                   </div>
+                  )}
 
                   <div className="grid grid-cols-2 gap-4">
                     <div>
@@ -1057,8 +1076,10 @@ export function StorageLocationManager({
                       </button>
                     )}
                     <button
-                      onClick={() => (isCreating ? handleCreate() : handleUpdate())}
-                      disabled={!formData.name || !formData.capacity || formData.capacity <= 0}
+                      onClick={() => (isCreating ? void handleCreate() : handleUpdate())}
+                      disabled={
+                        isSavingCreate || !formData.name || !formData.capacity || formData.capacity <= 0
+                      }
                       className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
                     >
                       <Save className="w-4 h-4" />

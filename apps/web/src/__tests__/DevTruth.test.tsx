@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 
 /**
@@ -161,5 +161,96 @@ describe('dev/truth renders honestly', () => {
       expect(screen.getByText(/what this screen cannot do/i)).toBeInTheDocument(),
     )
     expect(screen.getByText(/not a general as-of engine/i)).toBeInTheDocument()
+  })
+})
+
+/**
+ * Sweep defect 26 (WEB-ENDPOINT-SWEEP-2026-09-28 §2 row 26). The tab lives in
+ * the URL and the payload lives in state, so on the render right after a click
+ * the NEW tab met the OLD tab's payload before the fetch effect ran: Swallow
+ * called `.map` on a reach payload that has no `rows`, and Reach on a swallow
+ * payload that has no `sources`. These cases click through both ways.
+ */
+const REACH = {
+  total: 573,
+  reachedByPresence: 386,
+  presencePct: 67.4,
+  reachedBySufficiency: 132,
+  sufficiencyPct: 23,
+  overstatement: 254,
+  sources: [],
+  leverage: [],
+  unreadable: [],
+  note: 'reach-note',
+}
+const SWALLOW = {
+  rows: [{ table: 'providers', rows: null, errorCode: '57014', state: 'BROKEN' }],
+  note: 'swallow-note',
+}
+const ASOF = {
+  cutoff: '2026-09-01T00:00:00.000Z',
+  error: null,
+  known: { checks: 40, revenue: 1200, covers: 90, firstAt: null, lastAt: null },
+  happened: { checks: 26, revenue: 800, covers: 60 },
+  limits: ['not a general as-of engine'],
+}
+const byUrl = (url: string) =>
+  Promise.resolve({
+    data: url.includes('/swallow/') ? SWALLOW : url.includes('/asof/') ? ASOF : REACH,
+  })
+
+describe('dev/truth tab switching (sweep defect 26)', () => {
+  it('switches reach -> swallow -> reach without crashing', async () => {
+    mockGet.mockImplementation(byUrl)
+    renderAt()
+    await waitFor(() => expect(screen.getByText('386')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: 'swallow' }))
+    await waitFor(() => expect(screen.getByText('BROKEN')).toBeInTheDocument())
+    expect(screen.queryByText('386')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'reach' }))
+    await waitFor(() => expect(screen.getByText('386')).toBeInTheDocument())
+    expect(screen.queryByText('BROKEN')).not.toBeInTheDocument()
+  })
+
+  it('switches swallow -> reach -> swallow without crashing', async () => {
+    mockGet.mockImplementation(byUrl)
+    renderAt('?tab=swallow')
+    await waitFor(() => expect(screen.getByText('BROKEN')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: 'reach' }))
+    await waitFor(() => expect(screen.getByText('386')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: 'swallow' }))
+    await waitFor(() => expect(screen.getByText('BROKEN')).toBeInTheDocument())
+  })
+
+  it('never hands one tab the previous tab\'s payload while the new read is in flight', async () => {
+    mockGet.mockImplementation(byUrl)
+    renderAt('?tab=asof')
+    await waitFor(() =>
+      expect(screen.getByText(/what this screen cannot do/i)).toBeInTheDocument(),
+    )
+    // The next read never settles: the screen must show loading, not the
+    // as-of payload rendered through the reach table.
+    mockGet.mockImplementation(() => new Promise(() => {}))
+    fireEvent.click(screen.getByRole('button', { name: 'reach' }))
+    expect(screen.getByText(/loading/)).toBeInTheDocument()
+    expect(screen.queryByText(/what this screen cannot do/i)).not.toBeInTheDocument()
+  })
+
+  it('does not carry one tab\'s failure onto the next tab', async () => {
+    mockGet.mockImplementation(() =>
+      Promise.reject(Object.assign(new Error('boom'), { response: { data: { message: 'boom' } } })),
+    )
+    renderAt()
+    await waitFor(() => expect(screen.getByText(/request failed: boom/)).toBeInTheDocument())
+    mockGet.mockImplementation(() => new Promise(() => {}))
+    fireEvent.click(screen.getByRole('button', { name: 'swallow' }))
+    // The swallow read has not failed; showing reach's error under it would be
+    // the wrong claim about the wrong endpoint.
+    expect(screen.queryByText(/request failed: boom/)).not.toBeInTheDocument()
+    expect(screen.getByText(/loading/)).toBeInTheDocument()
   })
 })

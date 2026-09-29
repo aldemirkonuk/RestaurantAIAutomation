@@ -35,6 +35,7 @@ vi.mock('../services/api/providers', () => ({
 
 import { offlineStorage } from './offline-storage'
 import { deleteCalendarEvent } from '../services/api/calendar'
+import { createProvider } from '../services/api/providers'
 import { syncManager } from './sync-manager'
 
 const mutation = (
@@ -104,5 +105,25 @@ describe('syncNow and foreign mutation types', () => {
 
     expect(removedIds()).toEqual(['cal-dead'])
     expect(deleteCalendarEvent).not.toHaveBeenCalled()
+  })
+})
+
+describe('provider.create replay (PR #508 audit, 2026-09-29)', () => {
+  it('sends the queued idempotency key as the key, not as a vendor field', async () => {
+    vi.mocked(createProvider).mockClear().mockResolvedValue({ id: 'p1' } as never)
+    vi.mocked(offlineStorage.getPendingMutations).mockResolvedValue([
+      {
+        id: 'm1',
+        type: 'provider.create',
+        data: { name: 'Kavaklıdere', idempotencyKey: 'provider-create:k1' },
+        timestamp: new Date(),
+        retryCount: 0,
+      },
+    ])
+    await syncManager.syncNow()
+    expect(createProvider).toHaveBeenCalledWith(
+      { name: 'Kavaklıdere' },
+      { idempotencyKey: 'provider-create:k1' },
+    )
   })
 })
