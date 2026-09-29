@@ -52,6 +52,8 @@ vi.mock('../index', async (importOriginal) => {
 });
 
 vi.mock('../../../hooks/useStorageLocations', () => ({
+  // ADR 0238: the manager asks who may set up zones (it is closed here).
+  useZoneSetupAccess: () => ({ maySetUp: false, unknown: true, loading: true, assigned: null }),
   useStorageLocations: () => ({
     locations: [],
     setLocations: vi.fn(),

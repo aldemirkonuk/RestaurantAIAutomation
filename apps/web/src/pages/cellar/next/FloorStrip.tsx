@@ -35,6 +35,7 @@ import { useState } from 'react';
 import { AlertTriangle, Check, MapPin, Pencil } from 'lucide-react';
 import { EM, count } from './cellar-format';
 import { useConfirmZone, useZones, type ZoneVM } from './useCellarNextData';
+import { useZoneSetupAccess } from '../../../hooks/useStorageLocations';
 
 function Zone({ z }: { z: ZoneVM }) {
   return (
@@ -61,6 +62,9 @@ export default function FloorStrip() {
   const zones = useZones();
   const write = useConfirmZone();
   const [asking, setAsking] = useState(false);
+  // ADR 0238: a rename is zone setup ("managers/owners+ the people they
+  // assign"); confirming the name as it stands stays open to everyone (OD-200).
+  const setup = useZoneSetupAccess({ enabled: asking });
   const [draft, setDraft] = useState<Record<string, string>>({});
 
   const data = zones.data;
@@ -125,6 +129,13 @@ export default function FloorStrip() {
                 actually goes by. Either way it is recorded against you and the
                 zone joins the floor.
               </p>
+              {!setup.maySetUp && !setup.loading ? (
+                <p className="cl-note" data-testid="floor-rename-note">
+                  {setup.unknown
+                    ? 'Whether you may rename zones here could not be read, so renaming is not offered. You can still confirm a name as it stands.'
+                    : 'Renaming a zone is for owners, managers and the people they assign. You can confirm a name as it stands.'}
+                </p>
+              ) : null}
               {write.error !== null ? (
                 <p className="cl-said" role="alert" data-testid="floor-confirm-error">
                   <AlertTriangle size={13} aria-hidden style={{ verticalAlign: '-2px', marginRight: 5 }} />
@@ -141,6 +152,7 @@ export default function FloorStrip() {
                     <input
                       id={`cl-zone-${z.id}`}
                       className="cl-field cl-focus"
+                      readOnly={!setup.maySetUp}
                       value={draft[z.id] ?? z.name}
                       onChange={(e) =>
                         setDraft((d) => ({ ...d, [z.id]: e.target.value }))
