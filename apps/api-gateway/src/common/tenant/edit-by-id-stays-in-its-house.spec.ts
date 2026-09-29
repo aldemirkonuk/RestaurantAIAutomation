@@ -88,7 +88,13 @@ describe("contacts: an id from another house changes nothing", () => {
         const eqs: Record<string, unknown> = {};
         let mode: "select" | "delete" = "select";
         const q: any = {
-          select: () => q,
+          // The read must be an INNER embed: without `!inner`, PostgREST's
+          // filter on `contacts.restaurant_id` nulls the embed instead of
+          // dropping the address row, and ownership is not proven.
+          select: (cols: string) => {
+            expect(cols).toContain("contacts!inner(restaurant_id)");
+            return q;
+          },
           delete: () => {
             mode = "delete";
             return q;
