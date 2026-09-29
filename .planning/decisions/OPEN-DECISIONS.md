@@ -230,3 +230,14 @@ sends mail, redeems an invite or changes a live password.
 after "## Resolved", as its own late-appended heading — outside the range the
 collision guard scans, and not recording the founder's own timing. It is now
 a normal row in the "## Open" table above, alongside OD-123; see it there.
+
+## Appended 2026-09-29 by #521 — belongs in "## Open" above
+
+OD-201 is OPEN and belongs in the "## Open" table above. It is appended here,
+at the end of the file (as OD-190–196 are on #502) for the same reason: inserting a row up there shifts
+the line of every register row below it and breaks the `OPEN-DECISIONS.md:NNN`
+citations that pin them (`scripts/check_citation_pairing.py`).
+
+| ID | Question | Why it matters now | What unblocks it |
+|---|---|---|---|
+| OD-201 | **Should `/dev-sandbox` also be developers-only, like `/dev/truth`?** Filed 2026-09-29 by #521. The founder's pick for `/dev/truth` was *"Devs only (Recommended)"*, option text *"Gate it like /dev-sandbox so only developers … can open it"*, and in chat *"only devs can open it"* (ADR 0143 §5 bracket). `/dev/truth` is now gated on the Studio `developer` role in the browser and the gateway. `/dev-sandbox` itself is gated on the house roles owner/manager (`App.tsx`, the `/dev-sandbox` route), which customers hold, so "like /dev-sandbox" was read as "gated the way an internal tool is", not that literal gate. | A customer owner or manager can open `/dev-sandbox` today. If the founder meant "internal tools are for developers", that route is gated wider than he intends; if not, nothing changes. | One founder answer: keep `/dev-sandbox` on owner/manager, or move it to the Studio `developer` role like `/dev/truth` (a small web + gateway change in its own PR). |

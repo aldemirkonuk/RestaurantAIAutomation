@@ -27,6 +27,19 @@ import { useAuth } from '../contexts/AuthContext'
 
 type Tab = 'reach' | 'asof' | 'swallow'
 
+/** The only tabs there are; anything else in `?tab=` falls back to reach. */
+const TABS: readonly Tab[] = ['reach', 'asof', 'swallow']
+
+/**
+ * Who may open this page (founder, 2026-09-29: "only devs can open it"). The
+ * Studio `developer` role only; `review_admin` is NOT admitted, unlike
+ * /studio/queue and /studio/certify, which gate on ['developer',
+ * 'review_admin']. Do not "align" it with them. App.tsx wraps the route in
+ * it, and the gateway checks the same `user_roles` rows before reading
+ * anything.
+ */
+export const DEV_TRUTH_STUDIO_ROLES = ['developer'] as const
+
 const mono: React.CSSProperties = {
   fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
   fontSize: 13,
@@ -88,8 +101,11 @@ function Num({ v }: { v: number | null | undefined }) {
 export default function DevTruth() {
   const { user } = useAuth()
   const [params, setParams] = useSearchParams()
-  const tab = (params.get('tab') as Tab) || 'reach'
-  const restaurantId = params.get('r') || (user as any)?.restaurantId || ''
+  // Both go into the request path, so neither is trusted as typed: an unknown
+  // tab is not requested, and `r` is encoded as exactly one path segment.
+  const rawTab = params.get('tab') as Tab
+  const tab: Tab = TABS.includes(rawTab) ? rawTab : 'reach'
+  const restaurantId = encodeURIComponent(params.get('r') || (user as any)?.restaurantId || '')
   const [cutoff, setCutoff] = useState(params.get('cutoff') || '')
 
   // Payload and error are stored WITH the tab that fetched them. The tab lives
@@ -144,7 +160,7 @@ export default function DevTruth() {
       </p>
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
-        {(['reach', 'asof', 'swallow'] as Tab[]).map((t) => (
+        {TABS.map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
