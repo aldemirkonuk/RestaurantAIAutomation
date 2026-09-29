@@ -59,7 +59,10 @@ export interface AccessChange {
     | "area_lead_granted"
     | "area_lead_removed"
     | "away_set_for_member"
-    | "away_ended_for_member";
+    | "away_ended_for_member"
+    // ADR 0238 — an owner or manager assigned or withdrew one staff member's
+    // right to set up zones (`StorageLocationsService.setSetupAccess`).
+    | "zone_setup_access_changed";
   entityType: "team_member" | "restaurant_member" | "house_area";
   entityId: string;
   /** Before → after, as it will be read back off the /logs timeline. */

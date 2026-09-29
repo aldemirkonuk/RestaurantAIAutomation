@@ -113,7 +113,7 @@ describe("storage-locations — the path's house is the caller's (pin)", () => {
 
   const routes = declaredRoutes();
 
-  it("declares the eight routes the web calls, all under :restaurantId", () => {
+  it("declares the ten routes the web calls, all under :restaurantId", () => {
     expect(routes.map((r) => r.handler).sort()).toEqual(
       [
         "assignWineToLocation",
@@ -122,7 +122,10 @@ describe("storage-locations — the path's house is the caller's (pin)", () => {
         "getWinesAtLocation",
         "listLocations",
         "listMappings",
+        // ADR 0238: who may set up zones, and the owner's/manager's switch.
+        "readSetupAccess",
         "removeWineFromLocation",
+        "setSetupAccess",
         "updateLocation",
       ].sort(),
     );
