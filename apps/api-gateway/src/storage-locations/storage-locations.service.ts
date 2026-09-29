@@ -211,11 +211,27 @@ export class StorageLocationsService {
    * CHECK storage_locations_parent_is_not_self, both 23514) and a parent id
    * that is no row at all (the foreign key, 23503) are the caller's to fix:
    * a 422 in the database's words, not a 500.
+   *
+   * A write that lost a lock race (40P01 deadlock_detected, 40001
+   * serialization_failure) wrote nothing and succeeds if sent again, so it is
+   * a 409 that says so. The known case (verifier nit on #515, 2026-09-29): a
+   * soft delete of a parent and a concurrent move of a zone under it take
+   * the parent's row, the child's row and the house's advisory lock in
+   * opposite orders, and Postgres aborts one. Taking the advisory lock first
+   * in the orphan trigger would not remove it: the delete's UPDATE locks the
+   * parent's row before any row trigger runs, and the move's guard waits on
+   * that row while holding the advisory lock.
    */
   private dbRefusal(
     error: { code?: string; message?: string },
     fallback: string,
   ) {
+    if (error.code === "40P01" || error.code === "40001") {
+      return new HttpException(
+        "Another change to this house's zones was being saved at the same moment, so this one was not saved. Nothing was changed: try again.",
+        HttpStatus.CONFLICT,
+      );
+    }
     const callersToFix = error.code === "23514" || error.code === "23503";
     return new HttpException(
       error.message || fallback,
@@ -307,10 +323,7 @@ export class StorageLocationsService {
 
     if (error) {
       this.logger.error(`Failed to delete location: ${error.message}`);
-      throw new HttpException(
-        error.message || "Failed to delete location",
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw this.dbRefusal(error, "Failed to delete location");
     }
     return { success: true };
   }

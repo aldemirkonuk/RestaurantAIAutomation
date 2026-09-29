@@ -91,6 +91,82 @@ export function parentChoices<T extends NestableZone>(
   return nestZones(zones).filter((n) => !excluded.has(n.zone.id) && UUID_RE.test(n.zone.id))
 }
 
+/**
+ * A parent zone's total for itself plus every zone below it, at any depth.
+ *
+ * Founder answer 2026-09-29, verbatim pick "Show both (Recommended)": "Parent
+ * shows its own bottles plus a rolled-up total for everything inside, clearly
+ * labelled. Nothing hidden, no double counting in reports." So this is shown
+ * NEXT TO a zone's own count, never instead of it, and nothing that totals the
+ * house may add these up: the own counts already hold every bottle once.
+ */
+export interface ZoneRollup {
+  /** Bottles in the zone itself and every zone below it. */
+  bottles: number
+  /** The recorded capacities in that subtree, summed; null if none is recorded. */
+  capacity: number | null
+  /** Zones in the subtree (the parent included) with no capacity recorded. */
+  capacityUnknown: number
+  /** Zones below the parent, at any depth. */
+  zonesInside: number
+}
+
+/**
+ * Roll-ups for every zone that has at least one zone inside it; a zone with
+ * nothing inside gets no entry. `ownBottles` is the caller's own per-zone
+ * count (the zone manager counts from mappings, the cellar map from inventory
+ * rows), so both surfaces roll up the same number they already show. A
+ * capacity nobody recorded is not summed as 0 or 100: it is counted, the same
+ * rule as `getLocationStats`. A loop in the data counts each zone once.
+ */
+export function rolledUpTotals<T extends NestableZone & { capacity: number | null }>(
+  zones: T[],
+  ownBottles: (zone: T) => number,
+): Map<string, ZoneRollup> {
+  const children = new Map<string, T[]>()
+  for (const z of zones) {
+    if (!z.parentId || z.parentId === z.id) continue
+    const list = children.get(z.parentId) ?? []
+    list.push(z)
+    children.set(z.parentId, list)
+  }
+  const out = new Map<string, ZoneRollup>()
+  for (const root of zones) {
+    if (!children.get(root.id)?.length) continue
+    const seen = new Set<string>([root.id])
+    const stack = [...(children.get(root.id) ?? [])]
+    const subtree: T[] = [root]
+    while (stack.length) {
+      const z = stack.pop() as T
+      if (seen.has(z.id)) continue
+      seen.add(z.id)
+      subtree.push(z)
+      stack.push(...(children.get(z.id) ?? []))
+    }
+    const recorded = subtree.filter((z) => z.capacity != null)
+    out.set(root.id, {
+      bottles: subtree.reduce((s, z) => s + ownBottles(z), 0),
+      capacity: recorded.length ? recorded.reduce((s, z) => s + (z.capacity as number), 0) : null,
+      capacityUnknown: subtree.length - recorded.length,
+      zonesInside: subtree.length - 1,
+    })
+  }
+  return out
+}
+
+/** The label a roll-up is drawn with: it always says what it adds up. */
+export function rollupLabel(r: ZoneRollup): string {
+  const scope = r.zonesInside === 1 ? 'With the zone inside' : `With the ${r.zonesInside} zones inside`
+  if (r.capacity == null) return `${scope}: ${r.bottles} bottles (no capacity recorded)`
+  const gap =
+    r.capacityUnknown === 0
+      ? ''
+      : r.capacityUnknown === 1
+        ? ' (1 zone has no capacity recorded)'
+        : ` (${r.capacityUnknown} zones have no capacity recorded)`
+  return `${scope}: ${r.bottles}/${r.capacity}${gap}`
+}
+
 /** How many zones sit directly inside `id`. */
 export function zonesInside<T extends NestableZone>(zones: T[], id: string): number {
   return zones.filter((z) => z.parentId === id && z.id !== id).length

@@ -85,6 +85,14 @@ function fakeDb(opts: { writeError?: { code: string; message: string } } = {}) {
         };
       },
       then: (resolve: any, reject: any) => {
+        // An awaited write with no .single() (the soft delete) answers the
+        // write error when one is configured.
+        if (state.write && opts.writeError) {
+          return Promise.resolve({ data: null, error: opts.writeError }).then(
+            resolve,
+            reject,
+          );
+        }
         reads.push({ cols: state.cols ?? "", filters: { ...state.filters } });
         const rows = state.filters.restaurant_id === R1 ? R1_ZONES : [];
         return Promise.resolve({ data: rows, error: null }).then(resolve, reject);
@@ -224,5 +232,67 @@ describe("a parent the tree cannot hold is refused, and nothing is written", () 
       svc.updateLocation(R1, LOOSE, { parent_id: CELLAR }),
     );
     expect(err.message).toMatch(/already inside this zone/);
+  });
+});
+
+/**
+ * Verifier nit on #515 (2026-09-29): a soft delete of a parent and a
+ * concurrent move of a zone under it take their locks in opposite orders
+ * (the delete holds the parent's row and its orphan trigger then waits for
+ * the child's row and the house's advisory lock; the move holds the child's
+ * row and the advisory lock and waits to FOR SHARE the parent), so Postgres
+ * aborts one with 40P01. Nothing was written by the aborted one, and trying
+ * again succeeds, so it is a 409 that says so, not a 500.
+ */
+describe("a write that lost a lock race is a retryable 409, not a 500", () => {
+  const deadlock = {
+    code: "40P01",
+    message: "deadlock detected",
+  };
+
+  async function conflict(p: Promise<unknown>) {
+    const err = await p.then(
+      () => undefined,
+      (e) => e,
+    );
+    expect(err).toBeInstanceOf(HttpException);
+    expect((err as HttpException).getStatus()).toBe(HttpStatus.CONFLICT);
+    expect((err as HttpException).message).toMatch(/at the same moment/i);
+    expect((err as HttpException).message).toMatch(/try again/i);
+    return err as HttpException;
+  }
+
+  it("a zone move that deadlocked (40P01) is a 409 that says try again", async () => {
+    const { dbService } = fakeDb({ writeError: deadlock });
+    const svc = new StorageLocationsService(dbService);
+    await conflict(svc.updateLocation(R1, LOOSE, { parent_id: CELLAR }));
+  });
+
+  it("a soft delete that deadlocked (40P01) is a 409 that says try again", async () => {
+    const { dbService } = fakeDb({ writeError: deadlock });
+    const svc = new StorageLocationsService(dbService);
+    await conflict(svc.deleteLocation(R1, CELLAR));
+  });
+
+  it("a serialization failure (40001) is the same retryable 409", async () => {
+    const { dbService } = fakeDb({
+      writeError: { code: "40001", message: "could not serialize access" },
+    });
+    const svc = new StorageLocationsService(dbService);
+    await conflict(svc.createLocation(R1, { name: "Rack Z", capacity: 12, parent_id: CELLAR }));
+  });
+
+  it("any other failed delete is still a 500", async () => {
+    const { dbService } = fakeDb({
+      writeError: { code: "08006", message: "connection failure" },
+    });
+    const svc = new StorageLocationsService(dbService);
+    const err = await svc.deleteLocation(R1, CELLAR).then(
+      () => undefined,
+      (e) => e,
+    );
+    expect((err as HttpException).getStatus()).toBe(
+      HttpStatus.INTERNAL_SERVER_ERROR,
+    );
   });
 });

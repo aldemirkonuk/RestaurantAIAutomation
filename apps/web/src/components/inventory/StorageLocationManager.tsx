@@ -29,7 +29,7 @@ import {
 } from 'lucide-react'
 import { useStorageLocations } from '../../hooks/useStorageLocations'
 import type { StorageLocation } from '../../hooks/useStorageLocations'
-import { nestZones, parentChoices, zonesInside } from './zoneNesting'
+import { nestZones, parentChoices, zonesInside, rolledUpTotals, rollupLabel } from './zoneNesting'
 export type { StorageLocation }
 
 interface StorageLocationManagerProps {
@@ -101,6 +101,11 @@ export function StorageLocationManager({
   // Zones nest (founder answer 2026-09-29, "Add parent column (Recommended)"):
   // the list is drawn as a tree, each zone under the one it sits inside.
   const nestedLocations = nestZones(actualLocations)
+  // Nested-zone totals (founder answer 2026-09-29, "Show both (Recommended)"):
+  // every row keeps its own count, and a parent row ALSO shows a labelled
+  // total for itself and every zone below it. The footer below keeps summing
+  // own counts, so each bottle is counted once.
+  const rollups = rolledUpTotals(actualLocations, (z) => z.currentCount)
   // Deleting a parent keeps its children and makes them top-level (the
   // database does the same); the confirm says so before it happens.
   const deleteQuestion = (id: string) => {
@@ -392,6 +397,7 @@ export function StorageLocationManager({
                     key={location.id}
                     style={depth > 0 ? { marginLeft: depth * 20 } : undefined}
                     data-zone-depth={depth}
+                    data-testid={`zone-row-${location.name}`}
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
                     whileHover={{ scale: draggedId ? 1 : 1.01 }}
@@ -523,6 +529,15 @@ export function StorageLocationManager({
                             <Package className="w-3.5 h-3.5" />
                             {location.currentCount}/{location.capacity}
                           </span>
+                          {rollups.has(location.id) && (
+                            <span
+                              className="flex items-center gap-1 font-medium text-gray-600"
+                              title="This zone's own bottles plus every zone inside it. Reports count each bottle once, in the zone that holds it."
+                            >
+                              <FolderTree className="w-3.5 h-3.5" />
+                              {rollupLabel(rollups.get(location.id)!)}
+                            </span>
+                          )}
                           {location.temperature && (
                             <span className="flex items-center gap-1">
                               <Thermometer className="w-3.5 h-3.5" />
