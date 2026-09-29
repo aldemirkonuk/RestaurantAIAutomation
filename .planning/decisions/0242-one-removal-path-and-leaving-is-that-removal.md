@@ -64,8 +64,9 @@ These were **not taken**, stated plainly:
 - **The `ModuleRef` lookup is proven by specs that stub it, not by booting the app.** The CI gateway-boot job builds the DI context but does not call the route.
 - **The last manager can leave.** Only the last owner is guarded, which is unchanged.
 - **`deleteAccount` can now stop part-way** (the audit's note). It leaves each house in turn, so a removal that fails in house 2, for example a shift-release error, leaves house 1 already left and the account still present. A retry re-reads the houses and carries on. A persistent failure in one house now blocks deletion rather than deleting while shifts stay on a person who no longer exists. It fails closed, and it widens OD-202 (a removal is several writes, not one transaction).
-- **Two log lines inside `removeFromHouse` still begin "deleteMember could not …"** whichever door ran it. They are left because ADR-0162-LEAVING-ENDS-MEMBERSHIP pins that text.
-- **The error codes for leaving changed.** A non-member who leaves now gets 403 from `assertMembership`, where it used to get 400. A member known only by a `users` row can now leave.
+- **Log lines on the removal path still begin "deleteMember could not …"**, whichever door ran it. There are four: the users-row clear and the access revoke in `removeFromHouse`, `releaseShiftsOf`'s refusal, and `cannotReadRemovalTarget`. ADR-0162-LEAVING-ENDS-MEMBERSHIP pins the first one's text, so all four were left as they were rather than renamed piecemeal.
+- **The error codes for leaving changed.** A non-member who leaves now gets 403 from `assertMembership`, where it used to get 400. The last-owner refusal is still a 400. When the `ModuleRef` lookup finds no `MembersService`, `get` throws, so the request fails with a 500 before any write. A member known only by a `users` row can now leave.
+- **Zone setup access (#518) goes with the access row.** `removeFromHouse` and the members door's access-only branch both delete `user_restaurant_access`, and with it `zone_setup_access`, so a returning person starts without it.
 
 ## Consequences
 
