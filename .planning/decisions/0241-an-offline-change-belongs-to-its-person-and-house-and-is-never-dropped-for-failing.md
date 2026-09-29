@@ -46,7 +46,7 @@ Where the products agree, that is the standard applied here: retry until acknowl
 
 ## Decision
 
-**Every queued change carries the person and house of the session that made it; only that person in that house can see, send, count or clear it (a legacy entry that names no one is the one exception — visible to every session and discardable by it; the SyncManager never sends one, but until the second OD-203 PR `spotCountOutbox` still sends a legacy spot count, because spot counts never carried a house); a change is retried with backoff until the server takes it, and one the server refuses for good is kept and shown as "not sent"; signing out warns with the count and then removes that person's changes.**
+**Every queued change carries the person and house of the session that made it; only that person in that house can see, send, count or clear it (a legacy entry that names no one is the one exception — every session loads it, the strip can discard it once the SyncManager has parked it, and any sign-out removes it; the SyncManager never sends one, but until the second OD-203 PR `spotCountOutbox` still sends a legacy spot count, because spot counts never carried a house); a change is retried with backoff until the server takes it, and one the server refuses for good is kept and shown as "not sent"; signing out warns with the count and then removes that person's changes.**
 
 What was built (`apps/web/src`):
 
@@ -84,6 +84,7 @@ Not taken, stated: `ChooseHouse.tsx:389` and `VerifyEmail.tsx:95` call `logout()
 - `spotCountOutbox`: no attempt ceiling, park on a permanent refusal (today it deletes silently).
 - `doorOutbox`: no attempt ceiling for transient failures (today 8, then a pinned drop); a permanent refusal keeps ADR 0140's pinned drop record, which names the order to the porter.
 - `ChooseHouse.tsx`, `VerifyEmail.tsx`: honour `logout()`'s `false`.
+- Not planned for either PR: a per-entry session re-check in the two outboxes (the SyncManager has one). It is named as a follow-up.
 - Close the tech-debt entry's heading.
 
 ## Review trail
