@@ -2,7 +2,12 @@
 
 ## ▶ PICK-UP CARD — read this first (updated 2026-09-28T22:30Z, cloud session c98bb6c5)
 
-**▶▶ Latest (23:30Z). Read this block first. Where it disagrees with the blocks below, this one wins.**
+**▶▶ Latest (03:35Z, 09-29). Merges now belong to another session; this one stays scoped.**
+- #522 (a6543bb77): the web test `ReceivingNext.test.tsx` "F9 … settled-claims failure while the headline figure stands" failed once in CI. It passed 3 of 3 runs locally on the same head, main is green, and the diff is docs-only. After one re-run of the failed jobs, CI is green. Flaky-test follow-up: the `/credits/stats` mock can resolve after the assertion under CI load.
+- The sync-and-migrate workflow (wf_c793d947-4fd) synced #508 (69599bdb6), #514 (6faf11497), #510 (a2a62e427), #502, #516, #521, #517 and #509; per-PR detail is in its journal. None of these heads is audited yet, so each needs a fresh ADR 0090 round.
+- #502: the windowed-figures guard caught a real bug. The handover preview's query key named no house, so after a switch it could serve the previous house's rows. Fixed at 6163a71dd; the team tests pass (13 files, 203 tests), web tsc passes and the guard passes. This needs a re-audit.
+
+**▶▶ (23:30Z). Where it disagrees with the blocks below, this one wins.**
 
 - **State at compact (2026-09-29):** merged today #511, #513, #512, #520 (ADR 0240: CLAIMS.jsonl + v3.0-TECH-DEBT.md FROZEN; new entries in `claims.d/<branch-slug>.jsonl` and `tech-debt.d/<date>-<slug>.md`; helper `scripts/move_tail_to_fragment.py`). Open for founder: **#522** (ADR 0240 PR B, gate-owned CLAUDE.md + README pointers) — founder reads diff and runs `bash ~/merge-audited-pr.sh 522 --gate-owned` once CI green (was BLOCKED only on 9 running checks). Running: wf_c793d947-4fd sync + fragment migration of #508 #514 #510 #502 #516 #521 #517 #509. Next: audit #508 on its new head (three roles), give command; then #514, #510, #502 (22-file waiver in ADR 0231), #516, #521, #517, #509, then stacked #515 (on #510) and #518/#519, then the rest (#492 #494–#497 #501 #503–#507, #504 last). Main still requires up-to-date PRs, so every merge = one clean update + one re-audit of the next PR (F2 carry-over deferred: count pure main-sync re-audits for a week). To build after: zone counts computed from placements; 409 lock-race retry once; #513 follow-up (first date of a series movable again) awaiting founder; follow-ups from audits (#508 duplicate-vendor idempotency, #512 500→400, #514/#521 dev-truth, #520 blank-row hardening + PR-B open fragment). Audit scratch: scratchpad/audits/INDEX.md (planner/reviewer agent ids); PASS reports committed under .planning/07-reference/pr-audits/.
 
