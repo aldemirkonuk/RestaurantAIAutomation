@@ -93,6 +93,16 @@ export class CreateProviderDto {
   @IsOptional()
   notes?: string;
 
+  // The new-vendor sheet sends this whenever a term is chosen. It was declared
+  // on UpdateProviderDto only, so the global pipe (main.ts: whitelist +
+  // forbidNonWhitelisted) refused every create that carried it with a 400
+  // (web endpoint sweep 2026-09-28, row 15). Unset means "not stated" and is
+  // written NULL — never a default.
+  @ApiPropertyOptional({ description: "Payment terms (e.g. Net 30, COD)" })
+  @IsString()
+  @IsOptional()
+  paymentTerms?: string;
+
   @ApiPropertyOptional({
     description:
       "Vendor type (distributor, importer, wholesaler, winery_direct, broker, other). Deprecated alias of primaryBusinessType, kept for older callers.",

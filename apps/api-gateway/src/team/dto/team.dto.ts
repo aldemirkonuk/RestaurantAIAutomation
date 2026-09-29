@@ -247,6 +247,12 @@ export class UpdateTeamSettingsDto {
    * refused in words (`updateSettings`), not silently stripped by the pipe.
    */
   @IsOptional() @IsBoolean() wageVisible?: boolean;
+  /**
+   * Owner only (ADR 0215 item 27, founder 2026-09-28): a "Replace with"
+   * hand-over onto someone who already has a shift at that time is refused
+   * while this is off (the default) and only warned about while it is on.
+   */
+  @IsOptional() @IsBoolean() allowDoubleBooking?: boolean;
   @IsOptional()
   @Type(() => Number)
   @IsNumber({ maxDecimalPlaces: 2 })

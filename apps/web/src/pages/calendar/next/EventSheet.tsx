@@ -7,14 +7,16 @@
  * with the email reminder channel, the meeting memo and the labels field
  * (calendar.md §10).
  *
- * The three honest refusals, each cited:
+ * The honest refusals, each cited:
  *  - **email reminders** — the server job writes the inbox row and pushes to
  *    phones (calendar-reminders.service.ts `deliver`); mail would need a
  *    recipient policy of its own, so the tick is drawn disabled;
  *  - **vendor link on edit** — UpdateCalendarEventDto has no `providerId`
  *    (calendar.dto.ts:229-296) and the gateway forbids non-whitelisted keys,
  *    so the field is create-time only;
- *  - **repeat rule on edit** — same DTO, no `recurrence`.
+ *  - **repeat rule on edit** — same DTO, no `recurrence`;
+ *  - **moving a drawn occurrence's date** — the PATCH goes to the series row,
+ *    whose start_date it would overwrite; see the note in `submit`.
  *
  * Deleting is the one irreversible act on this page, so it is the one place
  * that spends the house ceremony: HoldToApprove, completing into the seal.
@@ -142,6 +144,8 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
   const [remindDays, setRemindDays] = useState<number>(
     editing ? (editing.reminderDaysBefore ?? 1) : 1,
   );
+  // Set when a save of a drawn occurrence is refused because its date changed.
+  const [occurrenceRefusal, setOccurrenceRefusal] = useState<string | null>(null);
   const [newTypeName, setNewTypeName] = useState('');
   // Not a raw hex: the one named copy of `--seal`, and the note on SEAL_HEX
   // says why a stored swatch cannot be `var(--seal)`.
@@ -149,7 +153,14 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
 
   const custom = useMemo(() => data.eventTypes.filter((t) => !t.isDefault), [data.eventTypes]);
   const saving = data.create.isPending || data.update.isPending;
-  const failure = data.create.error ?? data.update.error ?? data.remove.error;
+  // Adding or deleting a custom type is a write too; its refusal must reach
+  // the same banner (sweep 2026-09-28 row 19 — it used to vanish silently).
+  const failure =
+    data.create.error ??
+    data.update.error ??
+    data.remove.error ??
+    data.createType.error ??
+    data.deleteType.error;
 
   /**
    * The server owns this entry's reminder from here on, so any copy the legacy
@@ -183,6 +194,25 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
       const patch: Partial<CalendarPayload> = { ...base };
       if (storedTypeOutside && !typeTouched) delete patch.eventType;
       if (storedStatusOutside && !statusTouched) delete patch.status;
+      if (editing.isOccurrence) {
+        // A drawn occurrence carries ITS date, not the series row's. The PATCH
+        // goes to the series id, and updateEvent writes `eventDate` straight
+        // onto the row's start_date (calendar.service.ts updateEvent): sending
+        // it would restart the series on this date, dropping every earlier one
+        // and restarting an after_count. The only per-occurrence route
+        // (`updateScope: 'this'`) needs a stored child row with a
+        // parentEventId, which a drawn date does not have — so a changed date
+        // is refused here, and an unchanged one is simply not sent.
+        if (date !== editing.date || endDate !== (editing.endDate ?? '')) {
+          setOccurrenceRefusal(
+            `This sheet cannot move one date of a repeating entry. The gateway has no route for a single drawn date, and saving would restart the whole series on ${longDay(date)}, dropping every date before it. Nothing was saved. Put the date back to ${longDay(editing.date)} to save the other fields.`,
+          );
+          return;
+        }
+        delete patch.eventDate;
+        delete patch.eventDateEnd;
+      }
+      setOccurrenceRefusal(null);
       data.update.mutate(
         { id: editing.seriesId, patch },
         {
@@ -245,7 +275,8 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
         {editing?.isOccurrence && (
           <p className="cn-quiet">
             This is one occurrence of a repeating entry. The gateway has no per-occurrence route,
-            so anything saved here changes the whole series.
+            so anything saved here changes the whole series. The series keeps its own start date:
+            this date cannot be moved from here.
           </p>
         )}
 
@@ -526,6 +557,12 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
             setRemindDays(next.daysBefore);
           }}
         />
+
+        {occurrenceRefusal && (
+          <p role="status" className="cn-notice" style={{ marginTop: 10 }}>
+            {occurrenceRefusal}
+          </p>
+        )}
 
         {failure && (
           <p role="status" className="cn-notice" style={{ marginTop: 10 }}>

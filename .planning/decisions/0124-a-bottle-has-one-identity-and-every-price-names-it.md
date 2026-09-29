@@ -389,7 +389,7 @@ Nothing is filtered on the client. Content whose HTTP reads are open to staff
 keeps going to the whole house. Whether staff should see negotiation prompts,
 receipt-discrepancy figures and money figures on the bell is the founder's
 call, [OD-180](OPEN-DECISIONS.md). CLAIMS `SEC-2026-09-28-WEBSOCKET-ROLE-GATE`;
-v3.0-TECH-DEBT.md, 2026-09-28.]**
+tech-debt.d/2026-09-28-fix-websocket-role-gate.md.]**
 
 ### The log, and the one thing it had to be able to survive
 

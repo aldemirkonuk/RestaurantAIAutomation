@@ -204,7 +204,7 @@ export class WebsocketGateway
    * 0 rooms and throw once any socket has been idle for 5 minutes. They are
    * not fixed in this lane, because a working idle sweep would start
    * disconnecting mobile sockets, which never send `ping`
-   * (apps/mobile/src/lib/socket.ts). See v3.0-TECH-DEBT.md, 2026-09-28.
+   * (apps/mobile/src/lib/socket.ts). See .planning/tech-debt.d/2026-09-28-fix-websocket-role-gate.md.
    */
   @WebSocketServer()
   server: Server;
