@@ -4,7 +4,7 @@
 - **Date:** 2026-09-29
 - **Decider:** Aldemir (founder). His ruling, verbatim, given in chat on 2026-09-29: *"make sure that offline changes still queue and always ends up uh, with our database. If the person signs out, however, the data is lose, lost, right? This is the best way since it's basically cache and you signed out basically. But if they do this action in, let's say, an app, I mean, like at a web app from Safari or somewhere else, and if we don't create our own app for this matter, then you're right, uh, do the standard industry application"*.
 - **Keywords:** offline queue, pending mutations, sync manager, retry, backoff, park, not sent, sign-out, shared tablet, owner stamp, house binding, door outbox, spot count, navigator.locks
-- **Links:** OD-203 (`OPEN-DECISIONS.md:101`); defect entry `tech-debt.d/2026-09-29-docs-merge-queue-followups-2026-09-29.md:1`; [[0140-the-door-outbox-keeps-the-receipt-and-claims-nothing-it-cannot-prove]] (door outbox drops and pins, unchanged here); [[0164-sessions-follow-membership-and-several-houses-choose]] (the token names the session's house); [[0112-one-modal-policy-three-shapes-one-primitive]] (modal shape, see Consequences).
+- **Links:** OD-203 (`OPEN-DECISIONS.md:98`); defect entry `tech-debt.d/2026-09-29-docs-merge-queue-followups-2026-09-29.md:1`; [[0140-the-door-outbox-keeps-the-receipt-and-claims-nothing-it-cannot-prove]] (door outbox drops and pins, unchanged here); [[0164-sessions-follow-membership-and-several-houses-choose]] (the token names the session's house); [[0112-one-modal-policy-three-shapes-one-primitive]] (modal shape, see Consequences).
 
 ## Context
 
@@ -84,7 +84,7 @@ Not taken, stated: `ChooseHouse.tsx:389` and `VerifyEmail.tsx:95` call `logout()
 - `spotCountOutbox`: no attempt ceiling, park on a permanent refusal (today it deletes silently).
 - `doorOutbox`: no attempt ceiling for transient failures (today 8, then a pinned drop); a permanent refusal keeps ADR 0140's pinned drop record, which names the order to the porter.
 - `ChooseHouse.tsx`, `VerifyEmail.tsx`: honour `logout()`'s `false`.
-- Not planned for either PR: a per-entry session re-check in the two outboxes (the SyncManager has one). It is named as a follow-up.
+- `doorOutbox` and `spotCountOutbox`: re-read the session before every send, as the SyncManager does, so a house switch in the middle of a flush stops the flush.
 - Close the tech-debt entry's heading.
 
 ## Review trail
