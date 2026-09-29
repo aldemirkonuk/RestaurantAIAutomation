@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import {
+  IsBoolean,
   IsString,
   IsNumber,
   IsOptional,
@@ -8,6 +9,20 @@ import {
   Min,
   MaxLength,
 } from "class-validator";
+
+/**
+ * An owner or manager assigns, or withdraws, one staff member's right to set
+ * up this house's zones (ADR 0238, the founder 2026-09-29: "managers/owners+
+ * the people they assign").
+ */
+export class SetZoneSetupAccessDto {
+  @ApiProperty({
+    description:
+      "true = this staff member may create, rename, resize and delete zones; false = withdrawn.",
+  })
+  @IsBoolean()
+  allowed!: boolean;
+}
 
 /**
  * DTO for creating a new storage location

@@ -230,3 +230,14 @@ sends mail, redeems an invite or changes a live password.
 after "## Resolved", as its own late-appended heading — outside the range the
 collision guard scans, and not recording the founder's own timing. It is now
 a normal row in the "## Open" table above, alongside OD-123; see it there.
+
+## Open — filed 2026-09-29 from feat/zone-edit-permission (ADR 0238)
+
+OPEN, and it belongs in the "## Open" table above. It is appended here, as
+OD-190–196 were on PR #502's branch, because a row inserted in that table moves
+every register line cited below it (PR #516 counted 57 citations across about 30
+files).
+
+| ID | Question | Why it matters now | What unblocks it |
+|---|---|---|---|
+| OD-200 | **Placing and counting wines in a zone: covered by the same "people they assign" right, or open to every member?** The founder answered, 2026-09-29, *"who may create, rename, resize or delete a zone, and who may place wines in zones? Today every house member can do all of it"*, verbatim: *"managers/owners+ the people they assign"*. The answer does not separate zone **setup** from **placing and counting**. [ADR 0238](0238-zone-setup-is-owners-managers-and-the-people-they-assign.md) gates setup only — create (`POST /storage-locations/:rid`), any `PATCH /storage-locations/:rid/:locationId` field but `current_count`, delete, and a rename on the cellar floor (`PUT /cellar/:rid/zones/:zoneId` when the name changes) — and leaves open to every member, as before: placing a wine (`POST …/mappings`), removing one (`DELETE …/mappings/:wineId`), counting (`current_count` alone, the per-wine `quantity` stepper), and confirming a detected zone name without changing it. Paths: **(A)** keep those open to every member (as built); **(B)** gate placing and removing wines with the same assignment, keep counting open to every member; **(C)** gate all of them with the same assignment, which takes counting from unassigned staff. | Under (B) or (C) every unassigned staff member loses the zone manager's wine controls on deploy, and the per-wine stepper shares `POST …/mappings` with placing, so (B) needs the count split from the placement on that route. Under (A) any member can still move a wine from one zone to another. | The founder picks A, B or C. The gate is one call (`assertMaySetUpZones`, `storage-locations.service.ts`) per route, so B or C is a small change; record it as a dated bracket in ADR 0238. |
