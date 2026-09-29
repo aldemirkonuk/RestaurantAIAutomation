@@ -94,7 +94,10 @@ export class MobileController {
   @Delete("devices/:token")
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: "Unregister a device push token (logout)" })
-  async unregisterDevice(@Param("token") token: string): Promise<void> {
-    await this.expoPushService.unregisterDevice(token);
+  async unregisterDevice(
+    @CurrentUser("userId") userId: string,
+    @Param("token") token: string,
+  ): Promise<void> {
+    await this.expoPushService.unregisterDevice(userId, token);
   }
 }

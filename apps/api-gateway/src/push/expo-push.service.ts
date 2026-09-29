@@ -81,11 +81,17 @@ export class ExpoPushService {
     }
   }
 
-  async unregisterDevice(expoPushToken: string): Promise<void> {
+  /**
+   * Only the caller's own device row: the token alone named any person's
+   * device, so anyone holding a token could unregister someone else's phone
+   * (`.planning/07-reference/GATEWAY-EDIT-BY-ID-SCOPE-2026-09-29.md`).
+   */
+  async unregisterDevice(userId: string, expoPushToken: string): Promise<void> {
     const { error } = await this.databaseService.supabase
       .from("mobile_devices")
       .delete()
-      .eq("expo_push_token", expoPushToken);
+      .eq("expo_push_token", expoPushToken)
+      .eq("user_id", userId);
     if (error) {
       this.logger.warn(`unregisterDevice failed: ${error.message}`);
     }
