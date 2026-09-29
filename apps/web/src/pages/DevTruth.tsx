@@ -106,23 +106,37 @@ export default function DevTruth() {
   const restaurantId = encodeURIComponent(params.get('r') || (user as any)?.restaurantId || '')
   const [cutoff, setCutoff] = useState(params.get('cutoff') || '')
 
-  const [data, setData] = useState<any>(null)
-  const [err, setErr] = useState<string | null>(null)
+  // Payload and error are stored WITH the tab that fetched them. The tab lives
+  // in the URL and changes on the click's render, but the fetch effect only
+  // runs after that render — so a bare `data` handed the new tab the old tab's
+  // payload for one render, and Swallow/Reach crashed on each other's shape
+  // (sweep 2026-09-28 defect 26). Only a result fetched for the current tab is
+  // ever rendered; anything else counts as still loading.
+  const [result, setResult] = useState<{ tab: Tab; data: any } | null>(null)
+  const [failure, setFailure] = useState<{ tab: Tab; message: string } | null>(null)
   const [loading, setLoading] = useState(false)
+  const data = result?.tab === tab ? result.data : null
+  const err = failure?.tab === tab ? failure.message : null
+  const pending = !!restaurantId && result?.tab !== tab && failure?.tab !== tab
 
   useEffect(() => {
     if (!restaurantId) return
     let cancelled = false
     setLoading(true)
-    setErr(null)
+    setFailure(null)
     const qs = tab === 'asof' && cutoff ? `?cutoff=${encodeURIComponent(cutoff)}` : ''
     apiClient
       .get(`/analytics/dev/${tab}/${restaurantId}${qs}`)
-      .then((r) => !cancelled && setData(r.data))
+      .then((r) => !cancelled && setResult({ tab, data: r.data }))
       // A failed request says so. It does not render as an empty screen — that
       // is the exact confusion these pages exist to expose.
-      .catch((e) =>
-        !cancelled && setErr(e?.response?.data?.message || e?.message || 'request failed'),
+      .catch(
+        (e) =>
+          !cancelled &&
+          setFailure({
+            tab,
+            message: e?.response?.data?.message || e?.message || 'request failed',
+          }),
       )
       .finally(() => !cancelled && setLoading(false))
     return () => {
@@ -170,7 +184,7 @@ export default function DevTruth() {
           No restaurant. Append <code>?r=&lt;uuid&gt;</code>.
         </p>
       )}
-      {loading && <p>loading…</p>}
+      {(loading || pending) && <p>loading…</p>}
       {err && (
         <p style={{ color: 'var(--danger, #b3261e)' }}>
           request failed: {err}
