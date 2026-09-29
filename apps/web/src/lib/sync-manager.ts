@@ -6,6 +6,16 @@
  */
 
 import { offlineStorage, PendingMutation } from './offline-storage'
+import {
+  currentQueueOwner,
+  isDue,
+  isVisibleTo,
+  isPermanentRefusal,
+  isReplayable,
+  nextAttemptAt,
+  statusOf,
+  STILL_TRYING_AFTER,
+} from './queue-owner'
 import { apiClient } from '../services/api/client'
 import { createCalendarEvent, updateCalendarEvent, deleteCalendarEvent } from '../services/api/calendar'
 import { createProvider, updateProvider } from '../services/api/providers'
@@ -17,7 +27,16 @@ import { createProvider, updateProvider } from '../services/api/providers'
 export interface SyncStatus {
   isOnline: boolean
   isSyncing: boolean
+  /** This session's changes still waiting to be sent (parked ones excluded). */
   pendingCount: number
+  /**
+   * This session's changes that will NOT be sent on their own: refused by the
+   * server, or queued before owners were stamped (ADR 0241, OD-203 (a)). They
+   * stay until the person retries or discards them.
+   */
+  notSentCount: number
+  /** Waiting changes that have failed `STILL_TRYING_AFTER` times or more. */
+  stillTryingCount: number
   lastSyncTime: Date | null
   lastError: string | null
 }
@@ -25,7 +44,10 @@ export interface SyncStatus {
 export interface SyncResult {
   success: boolean
   synced: number
+  /** Failed this pass and will be retried. */
   failed: number
+  /** Refused permanently this pass and parked (shown, never deleted). */
+  parked?: number
   errors: Array<{ mutationId: string; error: string }>
 }
 
@@ -107,13 +129,17 @@ class SyncManagerService {
   private _lastSyncTime: Date | null = null
   private _lastError: string | null = null
   private _pendingCount: number = 0
+  private _notSentCount: number = 0
+  private _stillTryingCount: number = 0
   
   private listeners: Set<SyncStatusListener> = new Set()
   private syncIntervalId: ReturnType<typeof setInterval> | null = null
   private retryTimeoutId: ReturnType<typeof setTimeout> | null = null
   
-  // Retry configuration
-  private readonly MAX_RETRIES = 3
+  // There is no retry cap (ADR 0241, OD-203 (a)): a change is retried with
+  // backoff (`nextAttemptAt`) until the server accepts it or refuses it for
+  // good, and a permanent refusal parks it where the person can see it. The
+  // old cap of 3 deleted the change with only a console line.
   private readonly SYNC_INTERVAL = 30000 // 30 seconds
 
   constructor() {
@@ -172,6 +198,8 @@ class SyncManagerService {
       isOnline: this._isOnline,
       isSyncing: this._isSyncing,
       pendingCount: this._pendingCount,
+      notSentCount: this._notSentCount,
+      stillTryingCount: this._stillTryingCount,
       lastSyncTime: this._lastSyncTime,
       lastError: this._lastError,
     }
@@ -208,9 +236,28 @@ class SyncManagerService {
   // ===========================================================================
 
   /**
-   * Force sync now
+   * Send what is due now. `ignoreBackoff` sends every waiting change at once —
+   * used when the network comes back and when the person taps "Try again".
    */
-  async syncNow(): Promise<SyncResult> {
+  async syncNow(options: { ignoreBackoff?: boolean } = {}): Promise<SyncResult> {
+    // One flush at a time across every tab of this browser (ADR 0241): two
+    // tabs walking the same queue would send the same change twice, and with
+    // no retry cap a doubled create is likelier than it was. A tab that finds
+    // the lock held skips this pass — the holder is sending.
+    const locks = (typeof navigator !== 'undefined'
+      ? (navigator as Navigator & { locks?: LockManager }).locks
+      : undefined)
+    if (locks?.request) {
+      return locks.request('mudavym.offline-queue', { ifAvailable: true }, (lock) =>
+        lock
+          ? this.runSync(options)
+          : Promise.resolve({ success: true, synced: 0, failed: 0, errors: [] }),
+      )
+    }
+    return this.runSync(options)
+  }
+
+  private async runSync(options: { ignoreBackoff?: boolean }): Promise<SyncResult> {
     if (this._isSyncing) {
       console.log('[SyncManager] Already syncing, skipping')
       return { success: true, synced: 0, failed: 0, errors: [] }
@@ -234,6 +281,7 @@ class SyncManagerService {
 
     try {
       const mutations = await offlineStorage.getPendingMutations()
+      const now = Date.now()
       console.log(`[SyncManager] Processing ${mutations.length} pending mutations`)
 
       for (const mutation of mutations) {
@@ -247,12 +295,27 @@ class SyncManagerService {
           continue
         }
 
-        // Skip and discard mutations that already exhausted retries
-        if (mutation.retryCount >= this.MAX_RETRIES) {
-          console.warn(`[SyncManager] Discarding dead mutation ${mutation.id} (type: ${mutation.type}, retries: ${mutation.retryCount})`)
-          await offlineStorage.removePendingMutation(mutation.id)
+        // Parked: waits for the person, never for a timer.
+        if (mutation.parked) continue
+
+        // Re-read the session for EVERY entry: the API client stamps the house
+        // header from storage at send time, so a house switch (in this tab or
+        // another) part-way through a pass must stop the rest of the pass from
+        // reaching the new house. An entry no longer this session's waits.
+        const session = currentQueueOwner()
+        if (!isVisibleTo(mutation, session)) continue
+
+        // Queued before owners were stamped, naming no house: it cannot be
+        // sent as anyone (sending it as whoever is signed in is OD-203's
+        // defect), so it is parked for the person to discard — not deleted.
+        if (!isReplayable(mutation, session)) {
+          await offlineStorage.updatePendingMutation(mutation.id, {
+            parked: { reason: 'unowned', at: new Date(now).toISOString() },
+          })
           continue
         }
+
+        if (!options.ignoreBackoff && !isDue(mutation, now)) continue
 
         try {
           await this.processMutation(mutation)
@@ -260,24 +323,30 @@ class SyncManagerService {
           result.synced++
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-          result.failed++
+          const status = statusOf(error)
           result.errors.push({ mutationId: mutation.id, error: errorMessage })
-          const newRetryCount = mutation.retryCount + 1
-          if (newRetryCount >= this.MAX_RETRIES) {
-            // Discard immediately — no point keeping a permanently-broken mutation
-            console.error(`[SyncManager] Max retries reached for mutation ${mutation.id}, discarding`)
-            await offlineStorage.removePendingMutation(mutation.id)
-          } else {
+          if (isPermanentRefusal(status)) {
+            // The server will not take it as it is. Kept and shown as
+            // "not sent" — the person retries or discards it.
+            result.parked = (result.parked ?? 0) + 1
             await offlineStorage.updatePendingMutation(mutation.id, {
-              retryCount: newRetryCount,
               lastError: errorMessage,
+              parked: { reason: 'refused', status, at: new Date(now).toISOString() },
+            })
+          } else {
+            result.failed++
+            const attempts = mutation.retryCount + 1
+            await offlineStorage.updatePendingMutation(mutation.id, {
+              retryCount: attempts,
+              lastError: errorMessage,
+              nextAttemptAt: nextAttemptAt(attempts, now),
             })
           }
         }
       }
 
       this._lastSyncTime = new Date()
-      result.success = result.failed === 0
+      result.success = result.failed === 0 && !result.parked
 
       if (result.synced > 0) {
         console.log(`[SyncManager] Synced ${result.synced} mutations`)
@@ -285,6 +354,9 @@ class SyncManagerService {
       if (result.failed > 0) {
         console.warn(`[SyncManager] Failed ${result.failed} mutations`)
         this._lastError = `${result.failed} mutations failed to sync`
+      }
+      if (result.parked) {
+        this._lastError = `${result.parked} refused by the server and kept as not sent`
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Sync failed'
@@ -323,6 +395,10 @@ class SyncManagerService {
     }
     
     this.syncIntervalId = setInterval(async () => {
+      // Re-read first: the counts are per person and house (ADR 0241), and
+      // either can change without anything being queued — a house switch, or
+      // the same person signing back in to a queue their session left.
+      await this.refresh()
       if (this._isOnline && !this._isSyncing && this._pendingCount > 0) {
         await this.syncNow()
       }
@@ -352,7 +428,8 @@ class SyncManagerService {
     
     this.retryTimeoutId = setTimeout(async () => {
       if (this._pendingCount > 0) {
-        await this.syncNow()
+        // The network is back: whatever was waiting out a backoff goes now.
+        await this.syncNow({ ignoreBackoff: true })
       }
     }, 1000)
   }
@@ -402,8 +479,76 @@ class SyncManagerService {
   // ===========================================================================
 
   private async updatePendingCount(): Promise<void> {
+    // This session's entries only (`getPendingMutations` filters by owner).
     const mutations = await offlineStorage.getPendingMutations()
-    this._pendingCount = mutations.length
+    const waiting = mutations.filter((m) => !m.parked)
+    this._pendingCount = waiting.length
+    this._notSentCount = mutations.length - waiting.length
+    this._stillTryingCount = waiting.filter(
+      (m) => m.retryCount >= STILL_TRYING_AFTER,
+    ).length
+  }
+
+  /** This session's changes that are parked as "not sent". */
+  async getNotSent(): Promise<PendingMutation[]> {
+    return (await offlineStorage.getPendingMutations()).filter((m) => !!m.parked)
+  }
+
+  /**
+   * "Try again" on the not-sent strip: un-park every refused change of this
+   * session, reset its backoff and send now. An `unowned` change cannot be
+   * retried — there is nobody to send it as — so it stays parked.
+   */
+  async retryNotSent(): Promise<SyncResult> {
+    for (const m of await this.getNotSent()) {
+      if (m.parked?.reason !== 'refused') continue
+      await offlineStorage.updatePendingMutation(m.id, {
+        parked: undefined,
+        nextAttemptAt: undefined,
+      })
+    }
+    await this.updatePendingCount()
+    this.notifyListeners()
+    return this.syncNow({ ignoreBackoff: true })
+  }
+
+  /** "Discard" on the not-sent strip: the person gives these changes up. */
+  async discardNotSent(): Promise<number> {
+    const parked = await this.getNotSent()
+    for (const m of parked) await offlineStorage.removePendingMutation(m.id)
+    await this.updatePendingCount()
+    this.notifyListeners()
+    return parked.length
+  }
+
+  /**
+   * Before sign-out: try once to send what this session has waiting, then say
+   * how many of THIS PERSON's changes (any house) are still unsent — the
+   * number the sign-out warning names (OD-203 (c)).
+   */
+  async unsentBeforeSignOut(userId: string): Promise<number> {
+    if (this._isOnline && this._pendingCount > 0) {
+      try {
+        await this.syncNow({ ignoreBackoff: true })
+      } catch {
+        /* counted below either way */
+      }
+    }
+    return offlineStorage.countPendingMutationsOf(userId)
+  }
+
+  /** Sign-out: this person's queued changes end with their session. */
+  async endSessionOf(userId: string): Promise<number> {
+    const removed = await offlineStorage.removePendingMutationsOf(userId)
+    await this.updatePendingCount()
+    this.notifyListeners()
+    return removed
+  }
+
+  /** Re-read the counts, e.g. after the signed-in person or house changed. */
+  async refresh(): Promise<void> {
+    await this.updatePendingCount()
+    this.notifyListeners()
   }
 
   /**

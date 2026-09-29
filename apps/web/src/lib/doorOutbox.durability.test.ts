@@ -60,6 +60,13 @@ beforeEach(async () => {
   for (const m of await offlineStorage.getPendingMutationsByType(TYPE))
     await offlineStorage.removePendingMutation(m.id)
   window.localStorage.clear()
+  // The queue is read only by the person and house that wrote it (ADR 0241,
+  // OD-203): these receipts are queued and flushed by one porter in rest-A.
+  window.localStorage.setItem(
+    'accessToken',
+    `h.${btoa(JSON.stringify({ sub: 'porter-1', restaurantId: RID }))}.s`,
+  )
+  window.localStorage.setItem('activeRestaurantId', RID)
   vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true)
 })
 

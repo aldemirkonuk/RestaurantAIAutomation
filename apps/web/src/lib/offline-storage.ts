@@ -5,6 +5,14 @@
  * Handles pending mutations, entity caching, and sync status tracking.
  */
 
+import {
+  currentQueueOwner,
+  endsWithSessionOf,
+  isVisibleTo,
+  type ParkedState,
+  type QueueOwner,
+} from './queue-owner'
+
 // =============================================================================
 // TYPES
 // =============================================================================
@@ -17,6 +25,22 @@ export interface PendingMutation {
   timestamp: Date
   retryCount: number
   lastError?: string
+  /**
+   * The person and house of the session that queued it (ADR 0241, OD-203 (b)).
+   * Stamped by `addPendingMutation`; absent only on entries queued before the
+   * stamp existed. An entry is read, sent and counted only by a session with
+   * this same person and house (`isVisibleTo`).
+   */
+  owner?: QueueOwner | null
+  /** Not before this instant (ISO): the backoff after a failed attempt. */
+  nextAttemptAt?: string
+  /**
+   * Set when the change will not be retried on its own: the server refused it
+   * permanently, or it names no owner. It stays in the queue, is shown as
+   * "not sent", and leaves only when the person retries or discards it — never
+   * deleted by a retry count (OD-203 (a)).
+   */
+  parked?: ParkedState
 }
 
 export interface CachedEntity<T = unknown> {
@@ -237,13 +261,18 @@ export const offlineStorage = {
   /**
    * Add a pending mutation to the queue
    */
-  async addPendingMutation(mutation: Omit<PendingMutation, 'id' | 'retryCount'>): Promise<string> {
+  async addPendingMutation(
+    mutation: Omit<PendingMutation, 'id' | 'retryCount' | 'owner'>,
+  ): Promise<string> {
     const id = `mutation_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
     const fullMutation: PendingMutation = {
       ...mutation,
       id,
       retryCount: 0,
       timestamp: new Date(mutation.timestamp),
+      // Who made it, read from the session at the moment it is queued — never
+      // at replay time, which is the defect OD-203 (b) closes.
+      owner: currentQueueOwner(),
     }
     
     await idbPut(STORES.PENDING_MUTATIONS, fullMutation)
@@ -252,13 +281,58 @@ export const offlineStorage = {
   },
 
   /**
-   * Get all pending mutations
+   * The pending mutations the CURRENT session may see, oldest first.
+   *
+   * Every reader goes through here — the SyncManager, `doorOutbox`,
+   * `spotCountOutbox`, the receiving rail — so another person's or another
+   * house's change is invisible to all of them at once: it is not sent, not
+   * counted, not listed and not cleared by this session (ADR 0241, OD-203 (b)).
    */
   async getPendingMutations(): Promise<PendingMutation[]> {
+    const session = currentQueueOwner()
+    return (await this.getAllPendingMutationsOnDevice()).filter((m) =>
+      isVisibleTo(m, session),
+    )
+  },
+
+  /**
+   * Every pending mutation on this device, whoever queued it. Only sign-out
+   * reads this, to remove the person's own changes (and unowned leftovers).
+   */
+  async getAllPendingMutationsOnDevice(): Promise<PendingMutation[]> {
     const mutations = await idbGetAll<PendingMutation>(STORES.PENDING_MUTATIONS)
     return mutations.sort(
       (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
     )
+  },
+
+  /**
+   * Sign-out (OD-203 (c)): the queue is a cache of this person's session, and
+   * signing out ends it. Removes every change this person queued, in any
+   * house, plus legacy changes that name no one (`endsWithSessionOf`).
+   * Another person's changes, and a legacy door receipt or spot count bound
+   * to its house, are left alone. Returns how many were removed.
+   */
+  async removePendingMutationsOf(userId: string): Promise<number> {
+    let removed = 0
+    for (const m of await this.getAllPendingMutationsOnDevice()) {
+      if (endsWithSessionOf(m, userId)) {
+        await idbDelete(STORES.PENDING_MUTATIONS, m.id)
+        removed++
+      }
+    }
+    return removed
+  },
+
+  /**
+   * How many changes signing this person out would remove — exactly the set
+   * `removePendingMutationsOf` deletes, so the warning never names fewer
+   * changes than are lost.
+   */
+  async countPendingMutationsOf(userId: string): Promise<number> {
+    return (await this.getAllPendingMutationsOnDevice()).filter((m) =>
+      endsWithSessionOf(m, userId),
+    ).length
   },
 
   /**
