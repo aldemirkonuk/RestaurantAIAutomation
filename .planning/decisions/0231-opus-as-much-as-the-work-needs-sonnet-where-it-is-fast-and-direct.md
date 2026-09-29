@@ -82,6 +82,18 @@ records it):
 - **Process:** parallel prep and a serial merge (main is strict); a lane waits for
   all 5 required checks before it reports.
 
+> **[2026-09-29 — one-PR waiver of the 15-file cap, founder's words]** The cap
+> stands. The waiver below covers exactly one PR and sets no precedent; a later PR
+> over 15 files needs its own founder answer.
+>
+> - **PR #502 (`fix/team-removed-shifts-open-pool-r2`, ADR 0215 items 26-27, 22
+>   files).** Founder, in chat in session 5e8d08 on 2026-09-29, verbatim: *"Waive
+>   for #502"*, recorded on the PR by the merging session. It covers the file count
+>   only; the audit still judges every file.
+> - **PR #517 (sketch 123)** needed no waiver in the end: it was split into #517
+>   (15 files) and #523 (5 files). An earlier draft of this bracket recorded a pick
+>   for #517 that could not be traced to a founder record, so it is not kept here.
+
 **3. Where Sonnet gets the emphasis** (item 86's *"fast, and direct"* work Sonnet is
 *"highly capable of"*): verification runs and check suites, mechanical edits to a spec,
 branch updates and merges of `main`, posting PRs and comments, the plan-scoped audit

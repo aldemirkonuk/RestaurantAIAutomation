@@ -34,6 +34,19 @@ export const FAQ_ENTRIES: readonly FaqEntry[] = [
     goes: { to: '/team', label: 'Open Team' },
   },
   {
+    // Founder item 93 (2026-09-28), ADR 0215 items 26 and 27. The picker is
+    // RosterSheet.tsx ReplaceWithPicker ("Their upcoming shifts go to") →
+    // TeamService.deleteMember with a hand-over (handoverChecks: overlap
+    // refused unless the owner's "Allow double booking" is on; time off,
+    // role and the 45-hour week warn). Shifts not handed over open
+    // (release_leaving_shifts); the past is kept.
+    slug: 'replace-team-member',
+    question: 'Someone is leaving and a new person is taking their shifts. What do I do?',
+    answer:
+      'Add the new person first, if they are not on Team yet. Then open the leaving person, press Remove, and under “Their upcoming shifts go to” choose who takes them; untick any shift you would rather leave open. A shift that overlaps one the new person already has cannot go to them unless the owner allows double booking in Settings under Team; time off, a different role and a week over 45 hours are shown as warnings for you to confirm. Remove the leaving person last. Anything you did not hand over goes back to the open pool, for anyone to take; their past shifts stay in the owner’s former-staff history.',
+    goes: { to: '/team', label: 'Open Team' },
+  },
+  {
     // Profile.tsx (Security, Linked accounts); ProfileNext Register II
     // (Security) and Register III (Connected accounts); AuthContext.loginWithGoogle/Microsoft.
     slug: 'password-or-login',
