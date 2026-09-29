@@ -206,10 +206,12 @@ const SETUP_ROUTES: Array<
       } as never),
   ],
   [
-    "re-parent",
+    // A non-null parent is refused with a 422 for everyone since #510 (the
+    // table has no parent column); clearing it is the parent edit that saves.
+    "clear the parent",
     (b, u) =>
       b.ctl.updateLocation(asUser(u), HOUSE_A, ZONE_OF_A, {
-        parent_id: "99999999-9999-4999-8999-999999999999",
+        parent_id: null,
       } as never),
   ],
   [
