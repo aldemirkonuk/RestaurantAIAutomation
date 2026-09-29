@@ -12,7 +12,11 @@ the first **judgment-class** skill — it calls Opus (corrected from the origina
 deliberately does not
 run through `run_card.py`, which is mechanical-only by design (see that script's
 own docstring) and stays that way so it never biases the open OD-03 harness
-choice. The census is `python3 scripts/agents/run_card.py --agent registry-clerk`
+choice. **[2026-09-28: ADR 0050 is superseded by
+[ADR 0231](../../.planning/decisions/0231-opus-as-much-as-the-work-needs-sonnet-where-it-is-fast-and-direct.md).
+The skill's own model routing (one Opus planner, two Sonnet reviewers, the Opus
+planner resumed to adjudicate) comes from ADR 0090's 2026-09-17 amendment, per
+`pr-audit-gate/SKILL.md:152-155`.]** The census is `python3 scripts/agents/run_card.py --agent registry-clerk`
 for the mechanical four; `pr-audit-gate` is event-triggered, not census-tracked.
 The census is never this paragraph.
 (The prior state — zero committed, one gitignored vendor `SKILL.md` at
