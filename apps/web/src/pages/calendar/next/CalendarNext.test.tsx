@@ -1135,3 +1135,52 @@ describe('connect my calendar (ADR 0111, 2026-09-21)', () => {
     expect(screen.queryByText(/shared calendar link for this house was switched off/i)).toBeNull();
   });
 });
+
+/* ── a drawn occurrence of a repeating entry (audit F1, PR #513) ──────────── */
+
+describe('CalendarNext — saving a drawn occurrence never moves the series', () => {
+  // The series row is anchored earlier; 2026-09-17 is a LATER date the
+  // expander drew, so its `date`/`endDate` are the occurrence's, not the row's.
+  // PATCHing them to the series id would rewrite the row's start_date
+  // (calendar.service.ts updateEvent) and drop every earlier date.
+  const occurrence = () =>
+    event({
+      id: 's1__occ_2026-09-17',
+      seriesId: 's1',
+      isOccurrence: true,
+      isRecurring: true,
+      title: 'Weekly count',
+      date: '2026-09-17',
+      endDate: '2026-09-18',
+    });
+
+  it('a title fix PATCHes the series without any date, so start_date is untouched', () => {
+    const update = mutation();
+    state.current = mkData({ events: [occurrence()], update });
+    draw();
+    fireEvent.click(screen.getAllByText('Weekly count')[0]);
+    const sheet = screen.getByRole('dialog');
+    fireEvent.change(within(sheet).getByPlaceholderText('What is happening'), {
+      target: { value: 'Weekly stock count' },
+    });
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Save the entry' }));
+    expect(update.mutate).toHaveBeenCalledTimes(1);
+    const [{ id, patch }] = update.mutate.mock.calls[0];
+    expect(id).toBe('s1');
+    expect(patch.title).toBe('Weekly stock count');
+    expect(patch).not.toHaveProperty('eventDate');
+    expect(patch).not.toHaveProperty('eventDateEnd');
+  });
+
+  it('a changed date on an occurrence is refused in the sheet, and nothing is written', () => {
+    const update = mutation();
+    state.current = mkData({ events: [occurrence()], update });
+    draw();
+    fireEvent.click(screen.getAllByText('Weekly count')[0]);
+    const sheet = screen.getByRole('dialog');
+    fireEvent.change(within(sheet).getByLabelText('Date'), { target: { value: '2026-09-19' } });
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Save the entry' }));
+    expect(update.mutate).not.toHaveBeenCalled();
+    expect(within(sheet).getByText(/cannot move one date of a repeating entry/i)).toBeInTheDocument();
+  });
+});
