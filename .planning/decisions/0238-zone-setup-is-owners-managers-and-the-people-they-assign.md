@@ -43,7 +43,7 @@ Why a column and not the grants register: the answer's shape (managers assign, s
 ## Consequences
 
 - Every staff member loses zone setup on deploy until an owner or manager assigns them — that is the answer, not a side effect. Owners and managers are unchanged.
-- The web does not yet hide or disable the setup controls or show the switch on the roster sheet: that is the stacked web PR (see the PR body), so until it merges a staff member who tries an edit sees the gateway's 403 sentence. The server refusal is the gate; the page is a courtesy.
+- [2026-09-29, `feat/zone-edit-permission-web`, after PR #518] The web reads `GET …/setup-access` (`useZoneSetupAccess`, `hooks/useStorageLocations.ts`) and offers nothing it would be refused: `StorageLocationManager` hides Add Location, Create-first and Delete, disables the zone's setup fields (a `fieldset`) and hides Save for a member nobody assigned, saying why in words (and saying so when the answer could not be read); the cellar floor keeps "It is called that" and makes the name read-only; the roster sheet shows a "Sets up storage zones" switch on a staff member to an owner or manager (the viewers the gateway lists the assigned to). Wines are placed and counted as before. The server refusal is the gate; the page is a courtesy.
 - A staff member assigned, promoted to manager, then demoted back to staff finds the assignment again (the column is untouched by a role change, as `team_pay_access` is). Clearing it on a role change needs `MembersService` and is not built.
 - Revisit when a second per-person right appears: two booleans on the membership row is the point at which a capabilities register (option 3) starts paying for itself.
 
