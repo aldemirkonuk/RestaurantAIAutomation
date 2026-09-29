@@ -99,6 +99,10 @@ records it):
 > - **The founder's words.** In chat on 2026-09-29, verbatim: *"Waive, own PR (Recommended)"*. This was the option label of his AskUserQuestion answer in session a493af02, at 2026-09-29T15:58:20Z, relayed to the merging session by that coordinator. The question named OD-190–196, OD-201 and OD-202.
 > - **What was not in his pick.** OD-203 and OD-204 were filed later the same day (#525), after his pick, and are moved here because they sit in the same misplaced section.
 > - **Scope.** It covers the file count only. The audit still judges every file.
+>
+> **[2026-09-29, a third one-PR waiver, founder's words as relayed]**
+> - **What it covers.** PR #497 (`fix/websocket-role-gate`, the live-channel and bell role gate, OD-180), 17 files when he answered; this bracket makes it 18. It covers the file count only; the ADR 0090 audit still judges every file.
+> - **The founder's words.** In chat on 2026-09-29, verbatim: *"Waive for #497 (Recommended)"*, the option label of his answer, relayed to the merging session by the coordinator of session a493af02 after the ADR 0090 planner stopped #497 at PLAN: BLOCK on this cap (comment on PR #497). His earlier "merge all five" (#518, #519, #497, #504, #494) was a merge instruction and is not read as a waiver.
 
 **3. Where Sonnet gets the emphasis** (item 86's *"fast, and direct"* work Sonnet is
 *"highly capable of"*): verification runs and check suites, mechanical edits to a spec,
