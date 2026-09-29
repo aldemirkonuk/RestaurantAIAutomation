@@ -126,10 +126,45 @@ whole file exists to prevent, one level up.
 The pre-fix state was reproduced by cloning from the remote in CI shape, never by
 `git stash`, which is repo-global across worktrees.
 
+## Amendment — 2026-09-28: preserve snapshots are not decisions in flight
+
+**Decision (founder, 2026-09-28, verbatim AskUserQuestion answer):** "Checker skips
+snapshots (Recommended)".
+
+**What happened.** `.planning/handoff/preserve-local-work.sh` froze uncommitted laptop
+work onto `wip/preserve-<stamp>/*` branches. One snapshot carried a draft ADR that
+still wore 0231 from the laptop. The guard, which sweeps every ref, then failed
+PR #490, the real ADR 0231, over a number the snapshot can never take. A snapshot is
+never edited, and a draft in it gets a fresh number when a lane carries it (this one is
+assigned 0235 in the carry lane, not yet merged).
+
+**Options considered.**
+- *Checker skips snapshots* — chosen. Refs whose name starts with `wip/preserve-`
+  (local, or under `origin/`) are left out of the collision map, but still count
+  toward the next free number, so nobody is handed a number a snapshot draft wears.
+- *Renumber the snapshot draft* — rejected: it means editing a frozen snapshot, which
+  defeats its purpose, and every future snapshot would trip the same check.
+- *Renumber ADR 0231* — rejected: it moves a real decision and its citations to
+  satisfy a draft that never becomes a decision under its old number.
+
+**Known limit, accepted with the pick.** Anyone who can push can name a branch
+`wip/preserve-*`, and a real ADR on such a branch is invisible to other PRs'
+collision checks. The PR from that branch is still checked against every other ref.
+Only the reverse direction is blind, and only until it merges to `main`. Nothing
+refuses a PR head with that prefix today. Candidate follow-ups (not built): the PR
+Audit Gate refuses `wip/preserve-*` heads, or `--audit` lists numbers only snapshots hold.
+
+**Where it lives.** `SNAPSHOT_PREFIXES`, `is_snapshot` and `decision_refs` in
+`scripts/check_adr_numbers_unique.py` (PR #500). `--self-test`'s `_snapshot_fixture`
+builds a bare remote and proves four things. A snapshot-only number passes. A real
+collision fails. The audit skips the snapshot yet fails on a real collision. And
+every next-free print still counts the snapshot's number.
+
 ## Consequences for the register
 
 No `OPEN-DECISIONS.md` row ([[0025-citations-must-disagree-loudly]]: a new row
-re-anchors citations). One `CLAIMS.jsonl` entry.
+re-anchors citations). Two `CLAIMS.jsonl` entries: `ADR-0085`, and
+`ADR-0085-SNAPSHOTS` for the 2026-09-28 amendment.
 
 ## Review trail
 
@@ -137,3 +172,4 @@ re-anchors citations). One `CLAIMS.jsonl` entry.
 |---|---|---|
 | 2026-09-02 | — | Created |
 | 2026-09-02 | Peer session (payment-reminder) | Found the failure and its cause independently; handed the fixture over rather than patching it, and reviewed the `file://` approach as preferable to their own network-based suggestion |
+| 2026-09-28 | Founder | Amended: preserve snapshots skipped for collisions, counted for next-free ("Checker skips snapshots (Recommended)"); PR #500 |
