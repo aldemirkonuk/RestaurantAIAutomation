@@ -8,7 +8,7 @@ Filed from the ADR 0090 audit of #508. This entry records the defect. The fork i
 - So a mutation queued by person A in house X, still pending at sign-out, is sent later under person B, or under A's other house.
 - Separately, a mutation that has used up `MAX_RETRIES` is removed with only a `console.warn` / `console.error` (`sync-manager.ts:251-275`). A change the person believed was saved disappears, and nobody is told.
 
-**Severity.** High while open for a shared device, such as a tablet at the pass. A write lands on the wrong person's or the wrong house's record. Medium otherwise.
+**Severity.** High while open for a shared device, such as a tablet at the pass. A replayed create (`calendar.create`, `provider.create`, `sync-manager.ts:52-76`) lands in whichever house is signed in, and any replayed write is attributed to whoever is signed in. An update or delete by id reaches another house only where the gateway's lookup by id is not scoped to the house. Medium otherwise.
 
 **Not covered.** The door-receipt and spot-count outboxes use the same queue with their own handlers. They are skipped at `sync-manager.ts:239-248` and were not reviewed here.
 
@@ -55,7 +55,7 @@ These rows are OPEN, but they sit after `## Resolved` in `OPEN-DECISIONS.md`.
 Found while merging the #502/#517 queue.
 
 **What happened.** #509 (`744874263`) made `SwaggerModule.createDocument` throw at boot: "A circular dependency has been detected (property key: "mudavym_design_arrival")". The production gateway on Railway was down from that merge until #524.
-- Every Deploy to Production audit in that window failed Stage 2 with HTTP 000.
+- Every deploy audit in that window that reached Stage 2 (6 runs, `744874263` through `79c255cd8`) failed it with HTTP 000. One more run (36588274446) stopped at CI Gate.
 - CI stayed green.
 
 **Why CI missed it.** `scripts/check_gateway_boots.sh` builds the DI context with `NestFactory.createApplicationContext` and never the HTTP app or the OpenAPI document.
