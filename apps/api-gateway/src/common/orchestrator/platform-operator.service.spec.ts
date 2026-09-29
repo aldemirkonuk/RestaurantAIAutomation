@@ -76,3 +76,25 @@ describe("platform authority (ADR 0143)", () => {
     expect(db.calls).toEqual(expect.arrayContaining([["eq", "user_id", USER], ["eq", "role", "developer"]]));
   });
 });
+
+describe("developer (dev/truth, founder 2026-09-29: \"only devs can open it\")", () => {
+  it.each([
+    ["no role", [], false],
+    ["a developer role, no operator grant", [role()], true],
+    ["a revoked developer role", [role({ revoked_at: "2026-09-17T00:00:00Z" })], false],
+    ["a certified_contributor role", [role({ role: "certified_contributor" })], false],
+    ["an owner role instead of developer", [role({ role: "owner" })], false],
+    ["another user's developer role", [role({ user_id: "someone-else" })], false],
+  ])("%s => developer=%s", async (_label, roles, expected) => {
+    const service = new PlatformOperatorService(database({ grants: [], roles: roles as Row[] }) as any);
+    expect(await service.isDeveloper(USER)).toBe(expected);
+  });
+
+  it("fails closed on a store error and never queries for a missing user", async () => {
+    await expect(new PlatformOperatorService(database({ grants: [], roles: [role()] }, true) as any).isDeveloper(USER))
+      .rejects.toMatchObject({ status: 503 });
+    const db = database({ grants: [], roles: [role()] });
+    expect(await new PlatformOperatorService(db as any).isDeveloper(undefined)).toBe(false);
+    expect(db.client.from).not.toHaveBeenCalled();
+  });
+});

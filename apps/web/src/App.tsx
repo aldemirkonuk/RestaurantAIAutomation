@@ -482,8 +482,11 @@ function App() {
                       numbers checkable (reach · as-of · swallow). The gateway
                       routes behind them 404 in production, so this renders its
                       own failure there rather than a blank screen. Throwaway:
-                      delete when the claims stop needing checking. */}
-                  <Route path="/dev/truth" element={<DevTruth />} />
+                      delete when the claims stop needing checking.
+                      [2026-09-29, founder: "only devs can open it" — gated on
+                      the Studio developer role, the gate the approve/certify
+                      pages use; the gateway refuses non-developers too.] */}
+                  <Route path="/dev/truth" element={<ProtectedRoute requiredStudioRole={['developer']}><DevTruth /></ProtectedRoute>} />
                   {/* Discovery moved into Vendors as a tab; keep the old path
                       working so existing links and bookmarks land in the right place
                       (ADR 0221 renamed the target from /providers to /vendors). */}

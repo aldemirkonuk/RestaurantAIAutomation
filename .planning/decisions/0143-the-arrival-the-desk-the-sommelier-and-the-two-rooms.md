@@ -135,6 +135,8 @@ believes, which is a diagnostic that has been used and that nothing replaces.
 
 [2026-09-17, ADR 0149 row 32: the Codex-conversation check found no Studio update (the founder never named Studio to Codex; the Studio pages date from April 2026). **Studio is kept as an internal tool**, beside SimPOS, `/dev-sandbox` and `/dev/truth`, outside the design and outside the legacy deletion.]
 
+[2026-09-29, founder, verbatim: "Devs only (Recommended)" — option text "Gate it like /dev-sandbox so only developers (your earlier F3 answer: devs approve and certify) can open it; customers never see it." — and in chat, "only devs can open it". The earlier F3 answer, verbatim: "let devs approve and certify. should contributors like outside party, verified person, sommelier see the metrics?" (`origin/main-1ll9rp:.planning/handoff/PROGRESS.md:76`; not yet on `main`). Built on `fix/devtruth-devs-only`: `/dev/truth` sits behind `ProtectedRoute requiredStudioRole={['developer']}` — the Studio role the approve and certify pages already gate on — and the gateway refuses anyone without a live `user_roles` `developer` row with 403 (`PlatformOperatorService.isDeveloper`), then refuses a `:restaurantId` other than the session's house; production still 404s for everybody. `/dev-sandbox` itself is gated on the house roles owner/manager (`App.tsx`), which customers hold, so "like /dev-sandbox" was taken as "gated the way an internal tool is", not that literal gate — whether `/dev-sandbox` should also become developers-only is a separate question, not decided here.]
+
 ## Alternatives rejected
 
 - **A treatment per signed-out page.** Maximum freedom, seven reviews, and the

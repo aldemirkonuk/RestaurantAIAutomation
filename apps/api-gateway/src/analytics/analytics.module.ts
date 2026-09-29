@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { AnalyticsController } from "./analytics.controller";
 import { DevTruthController } from "./dev-truth.controller";
 import { DevTruthService } from "./dev-truth.service";
+import { PlatformOperatorService } from "../common/orchestrator/platform-operator.service";
 import { AnalyticsService } from "./analytics.service";
 import { AdvancedAnalyticsService } from "./advanced-analytics.service";
 import { RecommendationsService } from "./recommendations.service";
@@ -53,6 +54,9 @@ import { PricingModule } from "../pricing/pricing.module";
     ConsultantsService,
     InsightGeneratorService,
     DevTruthService,
+    // dev/truth is for developers only (2026-09-29); the developer read is
+    // the one PlatformOperatorService already holds. Needs only DatabaseService.
+    PlatformOperatorService,
     InsightSchedulerService,
     // The engine's one hook for "do not count this day" — closures, buyouts,
     // outages the manager has ruled out of every baseline.
