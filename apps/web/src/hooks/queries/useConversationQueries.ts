@@ -314,7 +314,12 @@ export const procurementHistoryKeys = {
  * Keyed by the active restaurant, for the same reason `useConversationThreads`
  * above is — and more sharply here.
  *
- * `GET /procurement/conversations/history` is scoped ENTIRELY from the JWT:
+ * The path carries `/api/v1` itself: this module's `api` instance sits on the
+ * bare gateway origin, and the gateway mounts every route under the global
+ * prefix (`main.ts` `setGlobalPrefix`). Without it the book was a 404 for
+ * every house (sweep defect 21, 2026-09-28).
+ *
+ * `GET /api/v1/procurement/conversations/history` is scoped ENTIRELY from the JWT:
  * `procurement.controller.ts:737` reads `user.restaurantId` and the gateway
  * never reads the `X-Restaurant-Id` header this client stamps (a repo-wide
  * grep finds that header only in test fixtures). So the token is re-minted on
@@ -335,7 +340,7 @@ export function useProcurementConversationHistory() {
     queryKey: procurementHistoryKeys.forRestaurant(restaurantId),
     queryFn: () =>
       api
-        .get<ProcurementHistoryItem[]>('/procurement/conversations/history')
+        .get<ProcurementHistoryItem[]>('/api/v1/procurement/conversations/history')
         .then((r) => r.data),
     staleTime: 30_000,
   })
