@@ -27,7 +27,7 @@
   their owner period stay the owners', per row and in the week total; from
   the demotion on their pay is a manager's. Built as item 25; see
   "Answered, 2026-09-28 (item 80)". Nothing from this record is open for the
-  founder except OD-165 (question 6) and the literal "and off" of item 16.]**
+  founder except OD-165 (question 6) and the literal "and off" of item 16.]** **[2026-09-28, founder item 93 (OD-181): a removed person's shifts that have not started yet go back to the open pool — "back to the open pool absolutely". Built as item 26; the replacement step he asked to be brainstormed is a fork in `.planning/06-pages/team.md` §15, not built.]** **[2026-09-28, founder: the replacement is "'Replace with' picker", checks "refuse overlap warn rest but owner has a say to change it into warn all four to allow double booking". Built as item 27.]**
 - **Date:** 2026-09-21 (round 2 answers 2026-09-21; round 6y answers
   2026-09-22; round 4 answers 2026-09-25)
 - **Decider:** Aldemir (founder) — four picks and one answer to five forks
@@ -519,7 +519,7 @@ questions round 2 left open (see "Answered, 2026-09-22 (round 6y)" below):
       (past week included) shows them, and the owner reads them in the
       former-staff history — item 22. A removed person's unworked future
       shifts are kept and shown there like any other kept shift; nothing
-      reassigns them.]** **[2026-09-27, ADR 0090 audit of #440 at
+      reassigns them.]** **[2026-09-28, founder item 93: superseded for the unstarted ones — they go back to the open pool at removal (item 26); the started and past ones stay kept as above.]** **[2026-09-27, ADR 0090 audit of #440 at
       `ea4cc38d0`: "no page reads" them held for the week, copy and leave
       lists above but not for the by-id routes — a removed person's kept
       shift could still be edited, called out, offered, assigned or deleted
@@ -791,6 +791,281 @@ questions round 2 left open (see "Answered, 2026-09-22 (round 6y)" below):
       outside the gateway; that person reads as never having been an owner.
       Residual (t)'s remainder, stated, not guarded.
     CLAIMS `ADR-0215-R7-A-FORMER-OWNERS-OWNER-PERIOD-PAY-IS-THE-OWNERS`.
+26. **A removed person's unstarted shifts go back to the open pool
+    (founder item 93, 2026-09-28, OD-181), verbatim: "back to the open pool
+    absolutely".** It answers the fork the preserved wt-labor snapshot
+    (`4d299b231`, round 6z "Past shown, future open") and item 20's round-4
+    bracket ("nothing reassigns them") left unreconciled; the snapshot's own
+    items 21–23 are not carried (their numbers collide with, and two of them
+    contradict, items 21–23 above). How it is built
+    (`TeamService.openUnstartedShiftsOf`, called by `deleteMember`):
+    - **Which shifts**: the person's rows in this house not yet started by
+      the house's clock — dated after today, or today with a start time
+      still ahead (`pay-rules.ts` `shiftNotYetStarted`). A started, past or
+      unparseable one stays theirs, kept (item 20) and read in the
+      former-staff history (item 22). A call-out stays too: its slot is
+      already in the pool as the cover shift `reportCallout` opened, so
+      opening it would double the slot (the snapshot opened it; not carried).
+    - **Whose clock**: `common/house-frame.ts` `houseFrame` on
+      `restaurants.timezone`/`country` (the house's zone, else its country's
+      only zone). With no zone, the clock is read at UTC+14
+      (`houseWallClock`), so only a shift unstarted in every zone opens —
+      the house-frame rule, not ADR 0116's UTC fallback, because this is a
+      write that clears a cost and a wrong "future" loses history, while a
+      wrong "past" only leaves a hidden slot for the manager to refill.
+    - **The write**: `member_id` null, `state`/`shift_type` `open`,
+      `labor_cost` null (the cover-shift shape). The receipt carries
+      `shiftsOpened`; the `team_member_removed` audit row carries
+      `changes.shifts_opened`.
+    - **Order and failure**: after every refusal (owners manage owners, the
+      last owner) and before the first membership write (the calendar-link
+      stop for a person with an account; the roster delete for one
+      without), so a refused removal opens nothing and a failed open removes
+      nobody. A failed `restaurants` read, shifts read or shifts write is a
+      500 in words; nothing is guessed. Not atomic: if a LATER step fails
+      (calendar stop, `users` clear, access delete, roster delete), the
+      shifts are already open and the person is still listed; a retry opens
+      nothing more and finishes the removal.
+    - **The dialog** (`RosterSheet.tsx`) says the unstarted shifts go back
+      to the open pool; `/help#replace-team-member` (`hp-faq.ts`) gives
+      today's replace procedure (add, move, then remove).
+    `team-pay.spec.ts` K2, 10 cases (9 fail on `origin/main` `0d7af2975`;
+    the owner refusal is a control), 10 of 10 service and pay-rules mutations killed;
+    CLAIMS `ADR-0215-R8-A-REMOVED-PERSONS-UNSTARTED-SHIFTS-GO-TO-THE-OPEN-POOL`
+    (14 of 14 anchor mutants fail it).
+    **[2026-09-28, founder answer on PR #502, verbatim: "handle it sota, it
+    also has to take care of yhat exact edge case where it opens midahift
+    then everything changes accordingly".** The lane's reading, stated on
+    the PR: (1) "sota" = resolve the house's real zone before guessing, the
+    way mature scheduling tools do, and only with no source at all apply a
+    conservative rule and say so; (2) a removal WHILE a shift of theirs is
+    in progress splits it at the removal minute on the house clock, and
+    every figure derived from the shift follows. What was built, superseding
+    the "Whose clock", "The write" and "Which shifts" bullets above where
+    they differ:
+    - **Whose clock** (`pay-rules.ts` `removalClock`): the house's own
+      `restaurants.timezone` (the location row — `createLocation` writes a
+      `restaurants` row, and at sign-up it is the browser's zone, else none,
+      item 62), else its country's only zone (`houseFrame`), else **the
+      remover's device zone**, which the web now sends as `?deviceZone=`
+      and the gateway checks exactly as sign-up checks a browser's
+      (`resolveSignUpTimezone`: an IANA name `Intl` resolves, never a bare
+      offset), else none. Researched: 7shifts, Deputy and Homebase each set
+      the zone on the LOCATION and 7shifts says it "affects all schedule
+      times and labor reports"; Deputy shows each location's schedule in
+      its zone "regardless of the time zone for the scheduling manager" and
+      the mobile app defaults to the DEVICE zone; When I Work defaults a
+      workplace's zone to "the Admin's location when the workplace account
+      is created" and lets a schedule follow the zone 75% of its users set
+      in their profiles; the Google Calendar API reads a zoneless event time
+      in the calendar's default zone; RFC 5545 reads a zoneless ("floating")
+      time in whoever reads it. So location zone first, then a person's
+      local zone. **Rejected sources, measured:** the owner's profile — the
+      only per-person zone column is `manager_preferences.report_timezone`,
+      which no product path writes (the one writer is
+      `services/agent-orchestrator/demo/weekly_report_scheduler.py:127`,
+      writing the very `America/Los_Angeles` default migration
+      20260904190000 removed), keyed on `manager_id` with no foreign key;
+      `users` has no zone column; ADR 0116's UTC fallback — a claim about a
+      fact nobody holds, and here it would cut paid hours at a guessed
+      minute. **With no source at all:** a shift unstarted at UTC+14 opens,
+      one ended at UTC-12 is kept, anything between is kept whole and NAMED
+      (`shiftsUnjudged`, `changes.shifts_unjudged`), never cut; the web says
+      so before the sheet closes, and also says when the device's clock was
+      the one used (`RosterSheet.tsx`).
+    - **Which shifts** (`planLeavingShifts`): start minute now or later —
+      OPEN whole (a shift starting this very minute had no minute worked);
+      end minute now or earlier — kept; in between — SPLIT. The read now
+      reaches the day before the house's earliest "today"
+      (`leavingShiftsFrom`), so an overnight shift that began yesterday is
+      found. A call-out and an open row are left alone, as before.
+    - **The split**: the worked part keeps the row, `end_time` = the
+      removal minute, its break and `labor_cost` recomputed for the shorter
+      span at the person's wage (read before any write; a failed read
+      refuses). The rest is a NEW open shift — same `role` and `note`
+      (`shifts` has no area column: baseline:5378 and every later
+      migration), nobody on it, `labor_cost` null, `shift_type`/`state`
+      open; cut after midnight it is dated the next day and takes that
+      week's `schedules` row. Spans are wall-clock minutes, as every hour
+      rule counts them (`hoursBetween`), so the two parts add up to the
+      shift on a DST night too.
+    - **Breaks**: a planned `shift_breaks` row has a place on the clock, so
+      each part gets the minutes that fall inside it, written as a recorded
+      number (a row whose start does not parse counts as after the cut —
+      never lowering the worked pay); a recorded `0` stays `0` in both; any
+      other recorded number says how long, not when, so each part gets
+      `null` — the Art. 68 minimum for its own length, shown as ASSUMED
+      (round 6y) — and the audit keeps the old number
+      (`changes.shifts_split[].was_break_min`, `was_end`). A part too short
+      to hold that minimum (a stint "started but under a minimum length",
+      e.g. ten minutes) had no break: `0`, so ten minutes are paid as ten.
+    - **All or none**: every write is one call to
+      `release_leaving_shifts` (migration 20261201130000, SECURITY INVOKER,
+      service role only), one transaction that re-checks each row is still
+      as read (person, date, times, state) and that each cut adds up, and
+      raises otherwise, so nothing half-lands; the gateway then refuses
+      ("nobody was removed") before its first membership write — the
+      ordering above is unchanged. Rejected: two or three PostgREST writes
+      (a failure between them lands half a removal); one multi-row upsert
+      (atomic, but rewrites whole rows from the read and loses a concurrent
+      edit).
+    - **Everything follows**: the week (`getWeek`) and its labour, the
+      former-staff history, the calendar feeds and the roster notices all
+      read the stored rows, and the stored cost equals `priceShift` on the
+      stored worked row (asserted), so no reader recomputes anything
+      different. The week keeps hiding the removed person's worked part
+      (item 20; whether a past week should show it stays the founder's
+      question) and shows the rest as open.
+    `team-pay.spec.ts` K3, 25 cases (all fail on the branch head
+    `c2bad0f0e`, the pre-change merge) and 4 re-cut K2 cases; 22 of 22
+    service/pay-rules mutants killed;
+    `supabase/tests/20261201130000_a_removal_mid_shift_splits_the_shift_test.sql`
+    fails without the migration and passes with it, 12 of 12 SQL mutants
+    killed (run on a stand-in schema, not a full migrated database). CLAIMS
+    `ADR-0215-R9-A-REMOVAL-MID-SHIFT-SPLITS-THE-SHIFT`. Forks it found, not
+    decided: OD-190 (a very short rest), OD-191 (paging for cover now),
+    OD-192 (the device zone), OD-193 (DST hours are wall-clock).]**
+27. **"Replace with" — a leaving person's shifts can go to someone named
+    (founder, 2026-09-28, answering `.planning/06-pages/team.md` §15).**
+    **[2026-09-28, the founder's answers, verbatim — Replacement: "'Replace
+    with' picker"; Picker checks: "refuse overlap warn rest but owner has a
+    say to change it into warn all four to allow double booking".** The
+    lane's reading: option (b) of §15 — on the remove dialog, the remover
+    picks someone already on this house's roster, and the leaving person's
+    upcoming shifts (and the rest of one cut now, item 26) go to them instead
+    of the open pool; whatever is not handed over still opens. "Refuse
+    overlap" = a shift that overlaps one the chosen person already has is
+    REFUSED; "warn rest" = the other three checks WARN; "owner has a say ...
+    warn all four" = an owner-only house setting turns the overlap into a
+    warning too, which allows double booking. What was built:
+    - **The four checks** (`pay-rules.ts` `handoverChecks`), chosen from what
+      the code records, default level in brackets:
+      1. `overlap` [REFUSE; WARN when the owner allows double booking] — the
+         chosen person has another shift (not open, not a call-out) whose
+         wall-clock span overlaps it, overnight shifts wrapping; handed-over
+         shifts are checked against each other too; touching ends do not
+         overlap.
+      2. `time_off` [WARN] — an APPROVED `time_off_requests` row of theirs
+         covers its date (pending and rejected do not count).
+      3. `role` [WARN] — the shift names a `role` that their `position` and
+         `skills` do not list (case and spaces aside); a shift with no role
+         is not checked.
+      4. `weekly_hours` [WARN] — with it, their worked hours in its
+         Monday-week pass `WEEKLY_REVIEW_HOURS` (45, 4857 Art. 63; the same
+         review line the week's labour uses, item H2); 45 exactly is not over.
+      **Not checks, measured:** `team_availability` (baseline:5594) — a table
+      no route reads or writes (no gateway or web code names it; migration
+      20261201110210 only keeps it cascading on a removal), so a check on it
+      would never fire; a rest-between-shifts rule — none exists
+      anywhere in the code; `house_away` / Away (ADR 0218) — a hold on
+      MESSAGES, not a scheduling state. Filed as OD-194 and OD-195.
+    - **Where the owner's setting lives:** a new column
+      `team_settings.allow_double_booking boolean NOT NULL DEFAULT false`
+      (migration 20261202120000). `team_settings` is this house's team-rule
+      row and every rule on it is one typed column (`labor_tracking_enabled`,
+      `labor_target_pct`) read and written by `getSettings`/`updateSettings`
+      and recorded in `team_labour_settings_changed`; there is no settings
+      JSON on it to put a key in. **Rejected:** `restaurants.settings` jsonb
+      (the house profile's bag, not /team's, no owner-only write rule, and a
+      key there is invisible to the migration guards); a per-person flag (the
+      founder named one owner say for the house). Owner only, either way
+      (`doubleBookingRefusal`; a manager's write is a 403 before anything is
+      saved), recorded like the labour settings, returned as `false` for a
+      house that never set it, and offered as "Allow double booking" in
+      Settings → Team (`TeamLaborSettings.tsx`) only to the owner
+      (`mayChange.doubleBooking`).
+    - **Server-side, the page only shows.** `GET
+      /restaurants/:rid/team/members/:memberId/handover?to=` (owner or
+      manager; both people must be on this house's roster, another house's
+      person is a 404) returns the leaving person's upcoming shifts as the
+      removal would plan them and, with `to`, each shift's checks — no wage
+      or cost. `DELETE .../members/:memberId?replaceWith=&handOver=&accept=`
+      re-plans and re-runs every check at the write: a REFUSE stops the whole
+      removal (409 with `refused`), and every WARN whose code is not in
+      `accept` stops it too (409 with `unaccepted`) — so a warning that
+      appeared after the page looked is never accepted unseen. `handOver`
+      names shifts by the leaving shift's id; one that is not an upcoming
+      shift of theirs (someone else's, a past one, a stale id) is a 400; the
+      chosen person must not be the person leaving (400) and must be on this
+      roster (404, `.eq("restaurant_id", …)` on the read); an unknown
+      `accept` code or a `replaceWith` without shifts is a 400. A failed read
+      of the chosen person's shifts, leave or the setting refuses — never
+      "no clash". Handed-over shifts are re-priced at the NEW person's wage
+      (`priceShift`); the receipt (`shiftsHandedOver`, `handedTo`) carries no
+      money; the audit row adds `shifts_handed_to`, `shifts_handed_over
+      [{id, row, part}]` and `shifts_warnings_accepted` (only codes that were
+      raised and accepted).
+    - **All or none, and the database checks too:** one call to
+      `hand_over_leaving_shifts` (migration 20261202120000, SECURITY
+      INVOKER, service role only) runs `release_leaving_shifts` for what
+      opens and what is cut, then moves each named unstarted shift to the new
+      person whole (re-checked as read, keeping its `state`/`shift_type`) and
+      each named rest (the row step one inserted, given the cut shift's
+      `state`/`shift_type`), and raises — changing nothing — if the new
+      person is not on this house's roster, is the leaving person, or ends up
+      overlapping another of their shifts while the house's
+      `allow_double_booking` is off OR the remover did not accept the
+      overlap. It reads the setting and the other shifts in the transaction
+      that writes, so a shift added to them after the gateway's check is
+      still caught. The removal without a picker still calls
+      `release_leaving_shifts` exactly as item 26 built it.
+    - **The dialog** (`RosterSheet.tsx` `ReplaceWithPicker`): "Their upcoming
+      shifts go to" — the open pool (default) or anyone else on the roster
+      (`TeamNext.tsx` passes the roster). Choosing someone loads the checks;
+      every shift that may go is ticked, a refused one cannot be ticked and
+      says it goes to the open pool, warnings are shown under their shift and
+      "Remove and hand over N shifts" stays disabled until "I have read the
+      warnings above …" is ticked; unticking a shift leaves it for the pool.
+      A 409 is shown in the gateway's own words. The FAQ
+      (`/help#replace-team-member`, `hp-faq.ts`) now gives this procedure
+      instead of moving each shift by hand.
+    - **Researched (web search, 2026-09-28; the help-centre pages were
+      reached through search results only — direct fetches of
+      kb.7shifts.com, help.deputy.com and help.wheniwork.com were blocked by
+      this environment's egress proxy):** 7shifts has no hand-over at
+      termination — after deactivating, "you must manually manage any
+      remaining shifts" and future shifts stay on the schedule until deleted
+      or reassigned ([How to deactivate an employee](https://kb.7shifts.com/hc/en-us/articles/4417505066515-How-to-Make-an-Employee-Inactive),
+      [Reassign Shifts on the Schedule](https://kb.7shifts.com/hc/en-us/articles/33962078614419-Reassign-Shifts-on-the-Schedule));
+      Deputy will not archive a person until their shifts are removed from
+      the schedule ([Archiving and unarchiving team members](https://help.deputy.com/hc/en-au/articles/4764904256143-Archiving-and-unarchiving-team-members)),
+      and its picker lets a manager "override the 'Not Recommended' warning
+      for all factors ... EXCEPT OVERLAPPING" — the founder's default,
+      exactly ([Ensure a team member is recommended for a shift](https://help.deputy.com/hc/en-au/articles/4688700112015-Ensure-a-team-member-is-recommended-for-a-shift));
+      When I Work flags "Scheduling Concerns" on a shift — an overlapping
+      scheduled shift, a broken scheduling rule, time off, an unavailability
+      preference — and still lets a person be scheduled past their max hours
+      ([Identifying Scheduling Conflicts](https://help.wheniwork.com/articles/identifying-scheduling-conflicts/),
+      [Max Hours Enforcement Reference](https://help.wheniwork.com/articles/max-hours-enforcement-reference/));
+      Homebase names availability, double-booking and time-off conflicts and
+      overtime alerts ([Schedule Conflicts](https://www.joinhomebase.com/glossary/schedule-conflicts)).
+      So a one-step hand-over at removal is beyond what the four offer, and
+      "overlap blocks, the rest warn" is Deputy's rule.
+    - **Rejected here:** the picker adding a NEW person inline (§15 (b)
+      mentioned it; the founder's answer names the picker, and adding stays
+      on Team, before the removal, as the FAQ says); a per-shift choice of
+      person (one person per removal; unticked shifts go to the pool, and a
+      second person can take them from there); accepting warnings by a single
+      "force" flag (a warning that appears after the page looked would be
+      accepted unseen).
+    `team-pay.spec.ts` K4, 24 cases (all 24 fail on the branch head
+    `8dd9bfeaf` — measured by running the new spec against that head's four
+    gateway files — together with the re-cut `mayChange` case in S1); 21 of
+    21 service/pay-rules/controller mutants killed (one survived at first —
+    `getSettings` dropping the `false` default for a row saved before the
+    column — and a case was added that kills it);
+    `supabase/tests/20261202120000_a_leaving_persons_shifts_can_go_to_someone_named_test.sql`
+    fails without the migration (no function) and passes with it, 6 of 6 SQL
+    mutants killed (a stand-in schema of the five tables it reads, as item
+    26's test was run — not a full migrated database); `TeamPayRound4.test.tsx`
+    "Replace with" block, 5 cases, all fail on `8dd9bfeaf`'s
+    `RosterSheet.tsx` and `team.ts`. CLAIMS
+    `ADR-0215-R10-REPLACE-WITH-HANDS-SHIFTS-TO-SOMEONE-NAMED` and
+    `ADR-0215-R11-DOUBLE-BOOKING-IS-THE-OWNERS-SWITCH`; R8 and R9's anchors
+    re-cut for the reshaped `releaseShiftsOf` call (same behaviour). Forks
+    it found, not decided: OD-194 (availability as a check), OD-195 (a
+    rest-between-shifts rule), OD-196 (telling the person who was handed the
+    shifts).]**
 
 ## Consequences
 
@@ -1531,3 +1806,4 @@ Round 3 Opus last call, 2026-09-22, on the index tree (`wt-labor`):
 | 2026-09-27 | ADR 0090 audit of #440 at 56940e7d5 (BLOCK, fix round 1 of 2) | Security review BLOCKed on a cross-surface effect of item 20 that this ADR never named: the personal calendar feed's "all" scope served a removed person's kept shift, past or future, as "Someone — shift". Fixed in `readShifts` (`onTheRoster` against the live roster; residual (u); two cases, both killed by the mutation; CLAIMS row). The unbounded `member_role_changed` read of residual (t) now counts exactly and withholds on a short read (one case over a new stub `rowCap`; both mutations killed; CLAIMS row). The migration that drops the foreign keys said the kept rows were a record "which no page reads"; a dated bracket there now names the calendar feed (fixed) and `rosterAt` (residual (m)). `jest src/team src/restaurants src/calendar`: 27 of 27 suites, 638 of 638 tests; `check_decision_claims.sh` PASS. |
 | 2026-09-28 | Merge-train update of PR #440, CLAUDE.md-directed sync to `origin/main` | PR #436 (`feat/finish-action-integrity`) landed on `origin/main` at `fd73d0920` while this PR's required checks were settling, gaining `20261116101700_a_stale_name_ask_closes_by_itself.sql` and putting the branch's six migrations behind main's newest again; `mergeStateStatus` went DIRTY/CONFLICTING. Merged `origin/main` in worktree `wt-train-440` (branch `train/pr-440`): four conflicts, all disjoint appends kept both sides (`DELIVERY-AUDIT.md` two blocks of unrelated dated measurement bullets, `.planning/06-pages/team.md` this PR's numbered §14 beside an unrelated unnumbered Codex-execution note, `.planning/decisions/README.md` this ADR's index row beside ADR 0192's amendment row — the founder's standing rule already excuses an index-row-only README change), and one substantive conflict in `apps/web/src/pages/team/next/TeamNext.tsx` (both branches added `Overlay` union members and imports; unioned — `former`/`areas`/`export`/`rules`/`sales`, `areas` deduped, both `FormerStaffSheet` and `SendGrantsSection` imports kept). `CLAIMS.jsonl` merged clean with no `(id, verify)` duplicates (710 checked, 710 holding). Renumbered an eleventh time (bracket above, Links section) to `20261116110xxx`, past main's new ceiling; every live citation swept (this ADR's Links list and body prose, `CLAIMS.jsonl`, `OPEN-DECISIONS.md`, `README.md`'s index row, the nine `apps/api-gateway/src/team/*.ts`/`*.spec.ts` files, and the three migrations' own cross-referencing comments), the ten historical rename brackets and changelog rows above left citing the numbers true when they were written. `check_migration_order.py` and `check_migration_versions_unique.py` re-run clean on the merged tree; `check_decision_claims.sh` PASS (710/710). |
 | 2026-09-28 | Merge-train update of PR #440, CLAUDE.md-directed sync to `origin/main` | `origin/main` gained PR #479 (passkeys/sign-in) past the branch's six migrations, and the widest open-PR ceiling moved further still to PR #480's door-record migration; `check_migration_order.py` refused all six again. Merged `origin/main` in worktree `wt-train-440` (branch `train/pr-440`): two conflicts, both disjoint-id appends kept both sides (`CLAIMS.jsonl` — this branch's five `ADR-0215-R6`/`ADR-0215-R7` rows beside `main`'s seven `ADR-0229-FORK-*` rows; `.planning/v3.0-TECH-DEBT.md` — this PR's new "owner-period pay" section beside `main`'s update closing the unrelated verification-link/invite-membership section, adjacent `##` headers only). Renumbered a twelfth time (bracket above, Links section), past both ceilings; every live citation swept (this ADR's Links list and body prose, `CLAIMS.jsonl`, `OPEN-DECISIONS.md`, `README.md`'s index row, the team files, and the three migrations' own cross-referencing comments), the eleven historical rename brackets and changelog rows above left citing the numbers true when they were written. Per the founder's 2026-09-27 migrations-numbered-at-merge rule, this row and the new bracket cite the six migrations by slug, not by version. `check_migration_order.py` and `check_migration_versions_unique.py` re-run clean on the merged tree; `check_decision_claims.sh` re-run on the merged tree. |
+| 2026-09-28 | Founder item 93 (lane fix/team-removed-shifts-open-pool) | Item 26 built from the preserved wt-labor snapshot `4d299b231`'s `shiftsOpened` logic and K2 tests, re-cut to main's `deleteMember`: the house's clock (not the UTC day), a call-out kept, the open before the first membership write. Status and item-20 brackets; OD-181 filed resolved; the replacement step brainstormed in `06-pages/team.md` §15 (a fork, not built); FAQ entry and remove-dialog copy. Gateway `jest src/team src/restaurants src/calendar src/auth` 1091/1091; web `vitest src/pages/help src/pages/team` 266/266. |

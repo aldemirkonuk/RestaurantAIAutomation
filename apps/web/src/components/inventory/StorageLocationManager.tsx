@@ -27,7 +27,7 @@ import {
   RefreshCw,
   GripVertical,
 } from 'lucide-react'
-import { useStorageLocations } from '../../hooks/useStorageLocations'
+import { useStorageLocations, useZoneSetupAccess } from '../../hooks/useStorageLocations'
 import type { StorageLocation } from '../../hooks/useStorageLocations'
 export type { StorageLocation }
 
@@ -95,6 +95,9 @@ export function StorageLocationManager({
     recalculateLocationCounts,
     setLocations,
   } = useStorageLocations()
+  // ADR 0238: who may set up zones. Read only while the manager is open; the
+  // gateway's 403 is the gate, this only keeps refused controls off the page.
+  const setup = useZoneSetupAccess({ enabled: isOpen })
 
   const actualLocations = getLocationsWithActualCounts()
   const onLocationsChangeRef = useRef(onLocationsChange)
@@ -185,13 +188,21 @@ export function StorageLocationManager({
     setConfirmRemoveWineId(null)
   }
 
-  // P0: use addLocation hook so creates are persisted to the server
-  const handleCreate = () => {
+  // P0: use addLocation hook so creates are persisted to the server.
+  // The form closes only once the server has stored the zone; a refused
+  // create keeps the form open with what the person typed (the hook has
+  // already removed the optimistic row and toasted the reason). No parent is
+  // sent: storage_locations has no parent column yet and the gateway refuses
+  // a stated one with a 422, so the create form does not offer the picker.
+  const [isSavingCreate, setIsSavingCreate] = useState(false)
+  const handleCreate = async () => {
+    if (isSavingCreate) return
     if (!formData.name) return
     // No `|| 100`. The server stores capacity NOT NULL, so a zone created
     // without one would be recorded as holding 100 bottles that nobody counted.
     if (!formData.capacity || formData.capacity <= 0) return
-    addLocation({
+    setIsSavingCreate(true)
+    const saved = await addLocation({
       name: formData.name,
       description: formData.description,
       capacity: formData.capacity,
@@ -199,15 +210,16 @@ export function StorageLocationManager({
       temperature: formData.temperature,
       humidity: formData.humidity,
       notes: formData.notes,
-      parentId: formData.parentId,
       color: formData.color || DEFAULT_COLORS[0],
     })
+    setIsSavingCreate(false)
+    if (!saved) return
     setIsCreating(false)
     resetForm()
   }
 
   // P0: use updateLocation hook so edits are persisted to the server
-  const handleUpdate = (forceCapacity = false) => {
+  const handleUpdate = async (forceCapacity = false) => {
     if (!editingLocation || !formData.name) return
 
     const newCapacity = formData.capacity ?? editingLocation.capacity
@@ -224,7 +236,12 @@ export function StorageLocationManager({
       return
     }
 
-    updateLocation(editingLocation.id, {
+    // `parentId` is always sent, so an empty picker clears the parent (the
+    // hook sends it as `parent_id: null`). A refused save has already rolled
+    // the zone back and shown the reason; keep the form open with what the
+    // person typed instead of closing it as if it had saved (sweep #4, #5).
+    setCapacityWarning(null)
+    const saved = await updateLocation(editingLocation.id, {
       name: formData.name,
       description: formData.description,
       capacity: newCapacity,
@@ -234,8 +251,8 @@ export function StorageLocationManager({
       parentId: formData.parentId,
       color: formData.color || editingLocation.color,
     })
+    if (!saved) return
     setEditingLocation(null)
-    setCapacityWarning(null)
     resetForm()
   }
 
@@ -359,6 +376,7 @@ export function StorageLocationManager({
             <div className="w-1/2 border-r border-gray-200 p-4 overflow-y-auto">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-semibold text-gray-900">Your Locations</h3>
+                {setup.maySetUp && (
                 <button
                   onClick={startCreate}
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 transition-colors"
@@ -366,7 +384,18 @@ export function StorageLocationManager({
                   <Plus className="w-4 h-4" />
                   Add Location
                 </button>
+                )}
               </div>
+
+              {/* ADR 0238 — the founder, 2026-09-29: "managers/owners+ the
+                  people they assign". Said in words, not only by absence. */}
+              {!setup.maySetUp && !setup.loading && (
+                <p className="text-xs text-gray-500 mb-3" data-testid="zone-setup-note">
+                  {setup.unknown
+                    ? 'Whether you may set up zones here could not be read, so adding, renaming, resizing and deleting zones are not offered. You can still place and count wines.'
+                    : 'Adding, renaming, resizing and deleting zones is for owners, managers and the people they assign. You can place and count wines.'}
+                </p>
+              )}
 
               <div className="space-y-3">
                 {actualLocations.map(location => (
@@ -474,7 +503,7 @@ export function StorageLocationManager({
                                   No
                                 </button>
                               </div>
-                            ) : (
+                            ) : setup.maySetUp ? (
                               <button
                                 onClick={(e) => { e.stopPropagation(); handleDelete(location.id) }}
                                 className="p-1.5 hover:bg-rose-100 rounded-lg transition-colors"
@@ -482,7 +511,7 @@ export function StorageLocationManager({
                               >
                                 <Trash2 className="w-4 h-4 text-rose-500" />
                               </button>
-                            )}
+                            ) : null}
                           </div>
                         </div>
 
@@ -603,12 +632,14 @@ export function StorageLocationManager({
                   <div className="text-center py-8">
                     <FolderTree className="w-12 h-12 text-gray-300 mx-auto mb-3" />
                     <p className="text-gray-500">No storage locations defined</p>
+                    {setup.maySetUp && (
                     <button
                       onClick={startCreate}
                       className="mt-2 text-emerald-600 hover:text-emerald-700 text-sm font-medium"
                     >
                       Create your first location
                     </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -621,9 +652,18 @@ export function StorageLocationManager({
                 <div className="flex-1 overflow-y-auto p-6">
                 <div className="space-y-4">
                   <h3 className="font-semibold text-gray-900 mb-4">
-                    {isCreating ? 'Create New Location' : 'Edit Location'}
+                    {isCreating ? 'Create New Location' : setup.maySetUp ? 'Edit Location' : 'Location'}
                   </h3>
 
+                  {/* ADR 0238: the zone's setup is disabled, not hidden, for a
+                      member nobody assigned — they still read it, and place
+                      and count wines below (OD-200). */}
+                  <fieldset
+                    disabled={!setup.maySetUp}
+                    className="space-y-4"
+                    style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}
+                    data-testid="zone-setup-fields"
+                  >
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Location Name *
@@ -651,7 +691,11 @@ export function StorageLocationManager({
                     />
                   </div>
 
-                  {/* P2: parentId field — hierarchy was modeled in data layer but unreachable from UI */}
+                  {/* P2: parentId field. Edit only: a create cannot state a parent
+                      until storage_locations has a parent column (the gateway
+                      refuses one with a 422), so the picker would only offer a
+                      guaranteed refusal. On edit it can still clear a parent. */}
+                  {!isCreating && (
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Parent Location
@@ -674,6 +718,7 @@ export function StorageLocationManager({
                         ))}
                     </select>
                   </div>
+                  )}
 
                   <div className="grid grid-cols-2 gap-4">
                     <div>
@@ -817,6 +862,7 @@ export function StorageLocationManager({
                       style={{ color: '#1f2937', WebkitTextFillColor: '#1f2937' }}
                     />
                   </div>
+                  </fieldset>
 
                   {editingLocation && (
                     <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
@@ -1056,14 +1102,18 @@ export function StorageLocationManager({
                         Select
                       </button>
                     )}
+                    {setup.maySetUp && (
                     <button
-                      onClick={() => (isCreating ? handleCreate() : handleUpdate())}
-                      disabled={!formData.name || !formData.capacity || formData.capacity <= 0}
+                      onClick={() => (isCreating ? void handleCreate() : handleUpdate())}
+                      disabled={
+                        isSavingCreate || !formData.name || !formData.capacity || formData.capacity <= 0
+                      }
                       className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
                     >
                       <Save className="w-4 h-4" />
                       {isCreating ? 'Create' : 'Save'}
                     </button>
+                    )}
                 </div>
                 </>
               ) : (

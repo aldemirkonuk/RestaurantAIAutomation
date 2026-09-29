@@ -1,0 +1,1002 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Sketch 123 · The first proof</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600&family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+/* ---------------------------------------------------------------
+   Tokens carried verbatim from sketch 122 (mudavym.css @ origin/main
+   3579fa0c7). Paper default (ADR 0169); charcoal on the toggle.
+   New in 123: --graphite, the pencil. It is never the seal colour —
+   the seal means "act here", the pencil means "we'd look again".
+   --------------------------------------------------------------- */
+:root, body[data-ground='paper'] {
+  --seal: #1a5e6b;
+  --seal-deep: #14515c;
+  --seal-tint: rgba(26, 94, 107, 0.08);
+  --seal-ring: rgba(26, 94, 107, 0.32);
+  --paper-0: #fffdf8;
+  --paper-1: #f7f4ec;
+  --paper-2: #eae4d8;
+  --ink-1: #211c16;
+  --ink-2: #4f473c;
+  --ink-3: #7c7365;
+  --ink-4: #665d50;
+  --rule: rgba(33, 28, 22, 0.11);
+  --rule-2: rgba(33, 28, 22, 0.20);
+  --graphite: #767064;
+  --graphite-soft: rgba(118, 112, 100, 0.10);
+  --lift: 0 1px 0 rgba(33,28,22,.04), 0 8px 28px -18px rgba(33,28,22,.28);
+  --sans: 'DM Sans', system-ui, sans-serif;
+  --serif: 'Fraunces', Georgia, 'Times New Roman', serif;
+  --mono: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+  --stage: #efebe2;
+}
+body[data-ground='charcoal'] {
+  --seal: #5FB0BC;
+  --seal-deep: #7DC3CD;
+  --seal-tint: rgba(95, 176, 188, 0.12);
+  --seal-ring: rgba(95, 176, 188, 0.38);
+  --paper-0: #15130F;
+  --paper-1: #1D1813;
+  --paper-2: #262019;
+  --ink-1: #EFE7D9;
+  --ink-2: #C0B6A5;
+  --ink-3: #8E8576;
+  --ink-4: #ABA294;
+  --rule: rgba(239, 231, 217, 0.10);
+  --rule-2: rgba(239, 231, 217, 0.20);
+  --graphite: #A39B8C;
+  --graphite-soft: rgba(163, 155, 140, 0.12);
+  --lift: 0 8px 28px -18px rgba(0,0,0,.6);
+  --stage: #0e0c0a;
+}
+
+/* motion tokens — turn, settle, ink, tally. Nothing loops. */
+@keyframes settle { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@keyframes turn   { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; transform: none; } }
+@keyframes ink    { from { color: var(--graphite); background: var(--graphite-soft); } to { color: var(--ink-1); background: transparent; } }
+@keyframes tally  { from { opacity: .4; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0; background: var(--stage); color: var(--ink-1);
+  font-family: var(--sans); font-size: 15px; line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  transition: background .2s ease, color .2s ease;
+}
+button, input { font: inherit; color: inherit; }
+
+/* --- sketch chrome (not the design) ------------------------------ */
+.chrome {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap;
+  padding: 12px 40px; background: var(--paper-1);
+  border-bottom: 1px solid var(--rule-2); font-size: 12.5px; color: var(--ink-4);
+}
+.chrome strong { font-family: var(--serif); font-weight: 500; font-size: 14px; color: var(--ink-1); }
+.chrome a { color: var(--ink-4); text-decoration: none; border-bottom: 1px solid var(--rule-2); }
+.chrome a:hover { color: var(--seal); border-bottom-color: var(--seal-ring); }
+.chrome button {
+  margin-left: auto; cursor: pointer; background: none; color: var(--ink-2);
+  border: 1px solid var(--rule-2); border-radius: 4px; padding: 4px 12px; font-size: 12.5px;
+}
+.frames { max-width: 1440px; margin: 0 auto; padding: 0 40px 120px; }
+.frame { padding: 52px 0 8px; scroll-margin-top: 90px; }
+.frame + .frame { border-top: 1px solid var(--rule-2); }
+.cap { font-size: 12px; letter-spacing: .10em; text-transform: uppercase; color: var(--ink-4); margin: 0 0 6px; }
+.cap b { color: var(--seal); font-weight: 500; }
+.say { max-width: 74ch; color: var(--ink-2); margin: 0 0 24px; font-size: 13.5px; }
+.say code { font-family: var(--mono); font-size: 12px; }
+.mini { font-size: 12px; color: var(--ink-4); margin: 10px 2px 0; }
+
+/* --- the app window + 56px bar (122) ------------------------------ */
+.win { background: var(--paper-0); border: 1px solid var(--rule-2); border-radius: 10px; overflow: hidden; box-shadow: var(--lift); }
+.bar { height: 56px; display: flex; align-items: center; gap: 14px; padding: 0 24px; border-bottom: 1px solid var(--rule); }
+.lockup { display: inline-flex; align-items: center; gap: 8px; }
+.lockup svg { width: 20px; height: 24px; color: var(--seal); flex: none; }
+.lockup .name { font-family: var(--serif); font-weight: 600; font-size: 17px; letter-spacing: -.02em; line-height: 1; }
+.lockup .name i { font-style: normal; color: var(--seal); }
+.bar .sep { width: 1px; height: 20px; background: var(--rule-2); }
+.house { display: inline-flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--ink-2); animation: settle .4s ease both; }
+.house .dot { width: 22px; height: 22px; border-radius: 5px; background: var(--paper-2); display: grid; place-items: center; font-size: 11px; font-weight: 600; }
+.bar .grow { flex: 1; }
+.bar .meta-r { font-size: 12.5px; color: var(--ink-4); }
+.bar .me { width: 28px; height: 28px; border-radius: 50%; background: var(--seal-tint); color: var(--seal); display: grid; place-items: center; font-size: 12px; font-weight: 600; border: 1px solid var(--seal-ring); }
+.steps3 { display: inline-flex; gap: 5px; margin-left: 10px; vertical-align: middle; }
+.steps3 i { width: 18px; height: 2px; background: var(--rule-2); display: block; }
+.steps3 i[data-on] { background: var(--seal); }
+
+/* --- type ---------------------------------------------------------- */
+.meta { font-size: 11.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-4); margin: 0 0 12px; }
+h1 { font-family: var(--serif); font-weight: 400; font-size: 36px; line-height: 1.14; margin: 0 0 12px; letter-spacing: -.012em; }
+h2 { font-family: var(--serif); font-weight: 400; font-size: 23px; line-height: 1.2; margin: 0 0 10px; }
+h3 { font-family: var(--serif); font-weight: 400; font-size: 16.5px; margin: 0; }
+.lede { color: var(--ink-2); max-width: 52ch; margin: 0 0 30px; font-size: 15.5px; }
+.note { font-size: 12.5px; color: var(--ink-4); margin: 0; }
+
+/* --- buttons ------------------------------------------------------- */
+.press { cursor: pointer; font-size: 14px; font-weight: 500; background: var(--seal); color: #fffdf8; border: 0; border-radius: 6px; padding: 10px 18px; }
+/* charcoal: the filled seal press takes dark ink; the quiet press is excluded so it keeps
+   --ink-2 (#C0B6A5 on --paper-0 #15130F, 9.25:1, AA; hover --seal #5FB0BC is 7.44:1) and its seal hover */
+body[data-ground='charcoal'] .press:not([data-quiet]) { color: #15130F; }
+.press:hover { background: var(--seal-deep); }
+.press[data-quiet] { background: transparent; color: var(--ink-2); border: 1px solid var(--rule-2); font-weight: 400; }
+.press[data-quiet]:hover { color: var(--seal); border-color: var(--seal-ring); }
+.link { background: none; border: 0; padding: 0 0 1px; cursor: pointer; color: var(--ink-3); font-size: 13px; border-bottom: 1px solid var(--rule-2); }
+.link:hover { color: var(--seal); border-bottom-color: var(--seal-ring); }
+.acts { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-top: 30px; }
+
+/* --- setup pages: one centred column, ruled fields (121) ---------- */
+.page { max-width: 580px; margin: 0 auto; padding: 68px 24px 76px; animation: settle .4s ease both; }
+.field { display: grid; grid-template-columns: 150px 1fr; gap: 6px 20px; align-items: baseline; padding: 15px 0 13px; border-bottom: 1px solid var(--rule); }
+.fields .field:first-child { border-top: 1px solid var(--rule); }
+.field:focus-within { border-bottom-color: var(--seal); }
+.field label { font-size: 13px; color: var(--ink-3); }
+.field label em { font-style: normal; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-4); margin-left: 6px; }
+.field input { border: 0; background: transparent; outline: none; font-family: var(--serif); font-size: 18px; color: var(--ink-1); padding: 0; width: 100%; }
+.field input::placeholder { color: var(--ink-3); opacity: .6; }
+.field small { grid-column: 2; font-size: 12px; color: var(--ink-4); line-height: 1.45; }
+.field small.tbd { color: var(--graphite); font-style: italic; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.opt { background: var(--paper-0); border: 1px solid var(--rule-2); border-radius: 999px; padding: 4px 12px; font-size: 12.5px; color: var(--ink-2); cursor: pointer; }
+.opt:hover { border-color: var(--seal-ring); color: var(--seal); }
+.opt[aria-pressed='true'] { background: var(--seal); color: #fffdf8; border-color: var(--seal); }
+body[data-ground='charcoal'] .opt[aria-pressed='true'] { color: #15130F; }
+.opt[data-guess] { border-style: dashed; border-color: var(--graphite); }
+
+/* register */
+.google { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; cursor: pointer; background: var(--paper-0); border: 1px solid var(--rule-2); border-radius: 6px; padding: 11px 16px; font-size: 14px; font-weight: 500; }
+.google:hover { border-color: var(--seal-ring); }
+.or { display: grid; grid-template-columns: 1fr auto 1fr; gap: 14px; align-items: center; margin: 22px 0 6px; font-size: 12px; color: var(--ink-4); }
+.or::before, .or::after { content: ''; height: 1px; background: var(--rule); }
+.fine { margin-top: 26px; font-size: 12px; color: var(--ink-4); line-height: 1.5; }
+
+/* restaurant search */
+.search { display: grid; grid-template-columns: 22px 1fr; gap: 12px; align-items: center; padding: 14px 0 12px; border-bottom: 1.5px solid var(--seal); }
+.search svg { color: var(--ink-3); }
+.search input { border: 0; background: transparent; outline: none; font-family: var(--serif); font-size: 20px; padding: 0; }
+.near { display: flex; gap: 10px; align-items: baseline; margin: 12px 0 0; font-size: 12.5px; color: var(--ink-4); }
+.near .link { color: var(--seal); border-bottom-color: var(--seal-ring); display: inline-flex; gap: 5px; align-items: center; }
+.results { margin: 18px 0 0; }
+.res { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: baseline; width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--rule); padding: 13px 10px; cursor: pointer; }
+.res:first-child { border-top: 1px solid var(--rule); }
+.res b { font-family: var(--serif); font-weight: 400; font-size: 16.5px; display: block; }
+.res small { color: var(--ink-4); font-size: 12.5px; }
+.res span.d { font-size: 12px; color: var(--ink-4); }
+.res[aria-selected='true'] { background: var(--seal-tint); box-shadow: inset 2px 0 0 var(--seal); }
+.res mark { background: none; color: inherit; font-weight: 600; }
+.powered { display: flex; justify-content: space-between; margin-top: 10px; font-size: 11.5px; color: var(--ink-4); }
+.found { border-top: 1px solid var(--rule-2); border-bottom: 1px solid var(--rule-2); padding: 20px 0 6px; margin: 6px 0 0; }
+.found h2 { margin-bottom: 4px; }
+.found .addr { color: var(--ink-2); font-size: 14px; margin: 0 0 14px; }
+.drv { display: grid; grid-template-columns: 150px 1fr auto; gap: 20px; align-items: baseline; padding: 11px 0; border-top: 1px solid var(--rule); font-size: 14px; }
+.drv span:first-child { font-size: 13px; color: var(--ink-3); }
+.drv .link { font-size: 12.5px; }
+
+/* --- frame 03: the menu drop (122 well, lighter) ------------------ */
+.arrive { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 64px; padding: 64px 72px 72px; animation: settle .4s ease both; }
+.well {
+  border: 1.5px dashed var(--seal-ring); border-radius: 12px; background: var(--seal-tint);
+  padding: 56px 40px 50px; text-align: center;
+}
+.well:hover { border-color: var(--seal); }
+.well .ico { width: 52px; height: 52px; margin: 0 auto 16px; border-radius: 50%; background: var(--paper-0); border: 1px solid var(--rule-2); display: grid; place-items: center; color: var(--seal); }
+.well h2 { margin-bottom: 4px; }
+.well p { margin: 0 0 22px; color: var(--ink-3); font-size: 13.5px; }
+.ways { margin: 22px 0 0; }
+.way { display: grid; grid-template-columns: 30px 1fr auto; gap: 14px; align-items: baseline; width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--rule); padding: 15px 2px; cursor: pointer; }
+.way:first-child { border-top: 1px solid var(--rule); }
+.way:hover, .way:hover .go { color: var(--seal); }
+.way .num { font-family: var(--mono); font-size: 11.5px; color: var(--ink-4); }
+.way b { font-family: var(--serif); font-weight: 400; font-size: 16.5px; }
+.way small { display: block; color: var(--ink-4); font-size: 12.5px; margin-top: 2px; }
+.way .go { font-size: 12.5px; color: var(--ink-3); }
+.escape { margin-top: 40px; padding-top: 18px; border-top: 1px solid var(--rule); display: flex; gap: 18px; align-items: baseline; flex-wrap: wrap; }
+.next { list-style: none; margin: 0; padding: 0; }
+.next li { display: grid; grid-template-columns: 22px 1fr; gap: 10px; padding: 12px 0; border-top: 1px solid var(--rule); }
+.next li:last-child { border-bottom: 1px solid var(--rule); }
+.next .n { font-family: var(--mono); font-size: 11px; color: var(--ink-4); padding-top: 3px; }
+.next b { display: block; font-weight: 500; font-size: 13.5px; }
+.next small { display: block; color: var(--ink-4); font-size: 12px; line-height: 1.45; margin-top: 2px; }
+.later { margin-top: 22px; padding: 12px 14px; border: 1px dashed var(--rule-2); border-radius: 8px; color: var(--ink-4); font-size: 12.5px; line-height: 1.5; }
+.later b { display: block; font-weight: 500; color: var(--ink-3); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; margin-bottom: 2px; }
+
+/* --- the book spread (reading + house) ---------------------------- */
+.book { display: grid; grid-template-columns: 290px 1fr; min-height: 560px; }
+.verso { border-right: 1px solid var(--rule); padding: 30px 24px 28px 28px; }
+.recto { padding: 36px 52px 44px; animation: turn .34s ease both; min-width: 0; }
+.contents { list-style: none; margin: 10px 0 18px; padding: 0; }
+.tocline { display: grid; grid-template-columns: 22px 1fr; gap: 10px; align-items: baseline; padding: 12px 2px; border-bottom: 1px solid var(--rule); }
+.contents li:first-child .tocline { border-top: 1px solid var(--rule); }
+.tocline .n { font-family: var(--mono); font-size: 11px; color: var(--ink-4); }
+.tocline b { font-weight: 500; display: block; font-size: 13.5px; }
+.tocline small { display: block; color: var(--ink-4); font-size: 12px; margin-top: 2px; line-height: 1.4; animation: tally .5s ease both; }
+.tocline[aria-current] b { color: var(--seal); }
+.tocline[data-asking] { background: var(--seal-tint); margin: 0 -10px; padding-left: 12px; padding-right: 10px; box-shadow: inset 2px 0 0 var(--seal); }
+.tocline[data-asking] b { color: var(--seal); }
+.tocline[data-asking] small { color: var(--seal-deep); }
+.tocline[data-future] { opacity: .62; }
+.tocline[data-future] b { font-weight: 400; font-style: italic; font-family: var(--serif); font-size: 14.5px; }
+.tocline .tick { color: var(--seal); font-size: 11px; }
+.file { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); max-width: 560px; margin: 0 0 22px; }
+.file .doc { width: 28px; height: 34px; border-radius: 3px; background: var(--paper-1); border: 1px solid var(--rule-2); display: grid; place-items: center; font-family: var(--mono); font-size: 9px; color: var(--ink-3); }
+.file b { font-weight: 500; font-size: 13.5px; display: block; }
+.file small { color: var(--ink-4); font-size: 12px; }
+.lines { max-width: 600px; }
+.line { display: grid; grid-template-columns: 18px 1fr auto; gap: 12px; align-items: baseline; padding: 12px 2px; border-bottom: 1px solid var(--rule); color: var(--ink-3); font-size: 14px; }
+.line:first-child { border-top: 1px solid var(--rule); }
+.line .g { font-size: 12px; color: var(--ink-4); }
+.line em { font-style: normal; font-size: 11px; letter-spacing: .09em; text-transform: uppercase; color: var(--ink-4); }
+.line[data-done] { color: var(--ink-1); animation: settle .42s ease both; }
+.line[data-done] .g, .line[data-done] em { color: var(--seal); }
+.line[data-fail] em, .line[data-fail] .g { color: #9E4249; }
+.why { border-left: 2px solid var(--seal); padding: 4px 0 4px 16px; margin: 20px 0 0; max-width: 62ch; }
+.why p { margin: 0; color: var(--ink-2); font-size: 14px; }
+.why p + p { margin-top: 6px; color: var(--ink-4); font-size: 12.5px; }
+.opt-tag { font-family: var(--sans); font-size: 11px; letter-spacing: .09em; text-transform: uppercase; color: var(--seal); border: 1px solid var(--seal-ring); border-radius: 999px; padding: 2px 8px; vertical-align: middle; margin-left: 8px; }
+
+/* ---------------------------------------------------------------
+   THE FIRST PROOF — the menu reset in Mudavym type.
+   Ink lines carry no mark and no label. Pencil lines carry a margin
+   stroke and "Worth a second look". An open ring is "Needs a place".
+   --------------------------------------------------------------- */
+.proof { display: grid; grid-template-columns: 1fr; }
+.proof[data-original] { grid-template-columns: 420px 1fr; }
+.orig { display: none; background: var(--paper-1); border-right: 1px solid var(--rule); padding: 28px 26px; }
+.proof[data-original] .orig { display: block; }
+.orig .meta { margin-bottom: 14px; }
+.scanpage { background: #ece6d8; color: #3b352c; border-radius: 3px; padding: 16px 16px 18px; margin: 0 0 14px; box-shadow: 0 1px 2px rgba(0,0,0,.18); transform: rotate(-.4deg); font-family: var(--mono); font-size: 10.5px; line-height: 1.75; letter-spacing: .03em; text-transform: uppercase; }
+.scanpage:nth-child(odd) { transform: rotate(.3deg); }
+.scanpage h6 { margin: 0 0 6px; font: inherit; font-weight: 500; letter-spacing: .14em; color: #6b6356; }
+.scanpage div { display: flex; justify-content: space-between; gap: 8px; opacity: .88; text-shadow: 0 0 .5px rgba(59,53,44,.5); }
+.scanpage div[data-hi] { background: rgba(26,94,107,.14); outline: 1px solid rgba(26,94,107,.4); opacity: 1; }
+.scanpage .pgno { margin-top: 8px; text-align: right; color: #8a8173; }
+
+.sheet { padding: 48px 72px 56px; min-width: 0; animation: settle .42s ease both; }
+.masthead { text-align: center; margin: 0 auto 26px; max-width: 640px; }
+.masthead .meta { margin-bottom: 18px; }
+.masthead h1 { font-size: 44px; margin-bottom: 2px; }
+.masthead .kind { font-family: var(--serif); font-style: italic; font-size: 19px; color: var(--ink-3); margin: 0 0 18px; }
+.masthead .say-it { color: var(--ink-2); font-size: 15px; margin: 0 auto; max-width: 50ch; }
+.tallies { display: flex; justify-content: center; margin: 26px auto 0; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); max-width: 560px; }
+.tallies div { flex: 1; padding: 12px 0 10px; text-align: center; }
+.tallies div + div { border-left: 1px solid var(--rule); }
+.tallies span { display: block; font-size: 11px; letter-spacing: .10em; text-transform: uppercase; color: var(--ink-4); }
+.tallies strong { font-family: var(--serif); font-weight: 400; font-size: 30px; line-height: 1.2; font-variant-numeric: tabular-nums; display: inline-block; }
+.tallies div[data-pencil] strong, .tallies div[data-pencil] span { color: var(--graphite); }
+.tallies div[data-pencil] strong { font-style: italic; }
+.proof-acts { display: flex; justify-content: center; gap: 12px; align-items: center; flex-wrap: wrap; margin: 22px 0 0; }
+.hint { text-align: center; font-size: 12.5px; color: var(--ink-4); margin: 12px 0 0; }
+.hint svg { vertical-align: -2px; color: var(--graphite); }
+
+.menu { display: grid; grid-template-columns: 1fr 1fr; gap: 0 72px; margin: 44px 0 0; position: relative; }
+.menu::before { content: ''; position: absolute; left: 50%; top: 6px; bottom: 6px; width: 1px; background: var(--rule); }
+.proof[data-original] .menu { grid-template-columns: 1fr; }
+.proof[data-original] .menu::before { display: none; }
+.proof[data-original] .sheet { padding: 40px 48px 52px; }
+.sec { margin: 0 0 34px; animation: settle .42s ease both; }
+.sec > h2 { font-style: italic; font-size: 27px; margin: 0 0 4px; }
+.sub { font-size: 10.8px; letter-spacing: .16em; text-transform: uppercase; color: var(--ink-4); margin: 16px 0 2px; }
+
+.it { position: relative; display: block; width: 100%; text-align: left; background: none; border: 0; padding: 8px 0 7px; cursor: default; border-radius: 3px; }
+.it .top { display: flex; align-items: baseline; gap: 8px; }
+.it .nm { font-family: var(--serif); font-size: 16.5px; color: var(--ink-1); }
+.it .nm i { font-style: normal; color: var(--ink-3); font-size: 14.5px; margin-left: 4px; }
+.it .ld { flex: 1; border-bottom: 1px dotted var(--rule-2); transform: translateY(-4px); min-width: 20px; }
+.it .pr { font-family: var(--serif); font-size: 15.5px; font-variant-numeric: tabular-nums; color: var(--ink-1); }
+.it .by { display: block; font-size: 12.3px; color: var(--ink-4); margin-top: 1px; }
+.it .pn { display: none; font-family: var(--serif); font-style: italic; font-size: 13px; color: var(--graphite); margin-top: 2px; }
+.it .mk { position: absolute; left: -26px; top: 12px; width: 16px; height: 16px; color: var(--graphite); display: none; }
+.it[data-k='pencil'], .it[data-k='ring'] { cursor: pointer; }
+.it[data-k='pencil'] .nm, .it[data-k='ring'] .nm, .it[data-k='pencil'] .pr, .it[data-k='ring'] .pr { color: var(--ink-2); }
+.it[data-k='pencil'] .pn, .it[data-k='ring'] .pn, .it[data-k='pencil'] .mk, .it[data-k='ring'] .mk { display: block; }
+.it[data-k='pencil']:hover .pn, .it[data-k='ring']:hover .pn { text-decoration: underline; text-decoration-color: var(--rule-2); text-underline-offset: 3px; }
+.it[data-k='pencil']:hover, .it[data-k='ring']:hover { background: var(--graphite-soft); box-shadow: -8px 0 0 var(--graphite-soft), 8px 0 0 var(--graphite-soft); }
+.it[data-fresh] { animation: ink .9s ease both; }
+.it[data-fresh] .nm, .it[data-fresh] .pr { animation: ink .9s ease both; }
+.it[aria-expanded='true'] { background: var(--graphite-soft); box-shadow: -8px 0 0 var(--graphite-soft), 8px 0 0 var(--graphite-soft); }
+
+.open { display: grid; grid-template-columns: 236px 1fr; gap: 18px; margin: 4px -8px 12px; padding: 14px 8px 16px; border-top: 1px dashed var(--rule-2); border-bottom: 1px dashed var(--rule-2); animation: settle .32s ease both; }
+.crop { margin: 0; }
+.crop .scan { white-space: nowrap; overflow: hidden; background: #ece6d8; color: #3b352c; font-family: var(--mono); font-size: 10px; letter-spacing: .04em; text-transform: uppercase; padding: 14px 12px; border-radius: 3px; transform: rotate(-.8deg); box-shadow: 0 1px 2px rgba(0,0,0,.18); line-height: 1.6; text-shadow: 0 0 .6px rgba(59,53,44,.55); }
+.crop .scan s { text-decoration: none; opacity: .45; display: block; }
+.crop figcaption { font-size: 11.5px; color: var(--ink-4); margin-top: 8px; }
+.open .reason { margin: 0 0 12px; font-size: 13.5px; color: var(--ink-2); }
+.open .reason em { font-family: var(--serif); color: var(--graphite); font-size: 14.5px; }
+.open .qh { font-size: 11px; letter-spacing: .10em; text-transform: uppercase; color: var(--ink-4); margin: 0 0 8px; }
+.open .later-l { margin-top: 12px; }
+
+.unplaced { margin: 8px 0 0; padding: 22px 0 0; border-top: 1px solid var(--rule); max-width: calc(50% - 36px); }
+.proof[data-original] .unplaced { max-width: none; }
+.unplaced > h2 { font-style: italic; font-size: 22px; color: var(--graphite); }
+.setaside, .notmenu { margin: 26px 0 0; padding: 14px 0; border-top: 1px solid var(--rule); font-size: 13.5px; color: var(--ink-3); display: flex; gap: 14px; align-items: baseline; flex-wrap: wrap; }
+.setaside details { width: 100%; }
+.setaside summary { cursor: pointer; list-style: none; display: flex; gap: 14px; align-items: baseline; flex-wrap: wrap; }
+.setaside summary::-webkit-details-marker { display: none; }
+.setaside summary .link { font-size: 12.5px; }
+.setaside .k { columns: 3; column-gap: 28px; margin: 12px 0 0; padding: 0; list-style: none; font-size: 12.5px; color: var(--ink-4); animation: settle .32s ease both; }
+.notmenu { justify-content: center; border-bottom: 1px solid var(--rule); margin-top: 0; font-family: var(--serif); font-style: italic; font-size: 15px; color: var(--ink-3); }
+.notmenu .link { font-family: var(--sans); font-style: normal; }
+.sheet-foot { text-align: center; margin-top: 30px; }
+
+.twoup { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.twoup .page { padding: 48px 36px 52px; }
+.twoup .sheet { padding: 36px 40px 40px; }
+.twoup .masthead h1 { font-size: 32px; }
+.twoup .menu { grid-template-columns: 1fr; margin-top: 30px; }
+.twoup .menu::before { display: none; }
+.twoup .unplaced { max-width: none; }
+
+/* ---------------------------------------------------------------
+   Phone fold (≤860px). The proof becomes one plain scroll; inline
+   expansion stacks the crop above the choices. No sheet, no modal.
+   --------------------------------------------------------------- */
+@media (max-width: 860px) {
+  .chrome { padding: 10px 16px; gap: 10px; }
+  .frames { padding: 0 12px 80px; }
+  .frame { padding: 34px 0 8px; }
+  h1 { font-size: 27px; } h2 { font-size: 20px; }
+  .bar { padding: 0 14px; gap: 10px; }
+  .bar .sep, .house span:last-child, .bar .meta-r .lbl { display: none; }
+  .page, .twoup .page { padding: 34px 18px 40px; }
+  .field { grid-template-columns: 1fr; gap: 4px; }
+  .field small { grid-column: 1; }
+  .drv { grid-template-columns: 1fr auto; gap: 4px 12px; }
+  .drv span:first-child { grid-column: 1 / -1; }
+  .arrive { grid-template-columns: 1fr; gap: 30px; padding: 30px 18px 36px; }
+  .well { padding: 32px 20px 30px; }
+  .well .acts .press { flex: 1 1 100%; }
+  .book { grid-template-columns: 1fr; }
+  .verso { border-right: 0; border-bottom: 1px solid var(--rule); padding: 16px 18px; }
+  .recto { padding: 24px 18px 30px; }
+  .sheet, .twoup .sheet, .proof[data-original] .sheet { padding: 30px 20px 36px 30px; }
+  .proof[data-original] { grid-template-columns: 1fr; }
+  .masthead h1 { font-size: 32px; }
+  .tallies strong { font-size: 24px; }
+  .menu { grid-template-columns: 1fr; margin-top: 32px; }
+  .menu::before { display: none; }
+  .unplaced { max-width: none; }
+  .open { grid-template-columns: 1fr; }
+  .crop .scan { max-width: 260px; }
+  .setaside .k { columns: 2; }
+  .proof-acts .press { flex: 1 1 100%; }
+  .acts .press { flex: 1 1 100%; }
+  .twoup { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body data-ground="paper">
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <!-- ADR 0047 A+M interlock, geometry verbatim from components/brand/BrandMark.tsx -->
+  <symbol id="am" viewBox="0 0 483 574"><g fill="currentColor">
+    <path d="M0 38H72V540H0Z"/><path d="M15 38H96L460 574H379Z"/><path d="M0 346H305L353 416H0Z"/>
+    <path d="M0 470H137V540H0Z"/><path d="M99 0H151L278.7 187.8L284.8 273Z"/><path d="M389.5 40H460.9L284.8 273L251.4 224Z"/>
+    <path d="M412 40H483V574H412Z"/><path d="M80 150V192H108Z"/><path d="M142 346H206L174 292Z"/>
+    <path d="M404 138L376 157L404 176Z"/><path d="M383 430H404V470Z"/>
+  </g></symbol>
+  <!-- the pencil: a proofreader's margin stroke, slightly uneven on purpose -->
+  <symbol id="pencil" viewBox="0 0 16 16"><path d="M2.5 12.8 C4.6 10.9 6.9 7.6 9.4 5.2 C10.6 4.1 11.8 3.3 13.4 2.6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M3.6 14.2 C5.4 12.9 6.6 11.6 7.8 10.4" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" opacity=".55"/></symbol>
+  <!-- the open ring: needs a place -->
+  <symbol id="ring" viewBox="0 0 16 16"><path d="M12.6 6.2 A5.2 5.2 0 1 0 10.4 12.6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></symbol>
+</svg>
+
+<div class="chrome">
+  <strong>Sketch 123 · The first proof</strong>
+  <span>Account → you → your restaurant → your menu → reading → the menu set by Mudavym, in ink and pencil.</span>
+  <a href="#f0">00 account</a><a href="#f1">01 you</a><a href="#f2">02 restaurant</a><a href="#f3">03 menu</a>
+  <a href="#f4">04 reading</a><a href="#f5">05 first proof</a><a href="#f6">06 the house</a><a href="#f7">07 thin &amp; failed</a>
+  <button id="ground">Charcoal (their choice)</button>
+</div>
+
+<div class="frames">
+
+  <!-- 00 ------------------------------------------------------------ -->
+  <section class="frame" id="f0">
+    <p class="cap">Frame 00 · <b>/register — the account, nothing else</b> · F1 A, F4 A</p>
+    <p class="say">Account only: name, email, password — or Google. No restaurant, no address; the house is created on
+      screen 02. <em>Continue with Google</em> is sign-in, which is the honest meaning of “Gmail” today — inbox reading is a
+      restricted scope (verdict §1, R3) and is not offered here. Costs a tenant-creation change
+      (<code>register-restaurant.dto.ts</code> creates the restaurant today).</p>
+    <div class="win">
+      <div class="bar">
+        <span class="lockup"><svg><use href="#am"/></svg><span class="name">Mudavym<i>.</i></span></span>
+        <span class="grow"></span>
+        <span class="meta-r">Have an account? <button class="link">Sign in</button></span>
+      </div>
+      <div class="page" style="max-width:460px">
+        <h1>Create your account.</h1>
+        <p class="lede" style="margin-bottom:26px">Your restaurant comes next.</p>
+        <button class="google">
+          <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>
+          Continue with Google
+        </button>
+        <div class="or">or with email</div>
+        <div class="fields">
+          <div class="field"><label>Your name</label><input value="Selin Aydın" /></div>
+          <div class="field"><label>Email</label><input value="selin@lokantameyhane.com" /></div>
+          <div class="field"><label>Password</label><input type="password" value="correcthorse" /><small>Ten characters or more.</small></div>
+        </div>
+        <div class="acts"><button class="press">Create account</button></div>
+        <p class="fine">Google is used to sign you in. Mudavym doesn’t read your inbox.
+          <br />By creating an account you agree to the terms and the privacy notice.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 01 ------------------------------------------------------------ -->
+  <section class="frame" id="f1">
+    <p class="cap">Frame 01 · <b>You</b></p>
+    <p class="say">The welcome is this screen’s headline, not its own screen. Three ruled fields in 121’s book type — no
+      boxes. Name is carried from the account. Mobile is the owner’s, not the restaurant’s, and says what it is for. Role is
+      one optional tap, never preselected. The grey italic line under mobile is a placeholder: SMS-consent wording
+      (KVKK / TCPA) is unresearched (R5).</p>
+    <div class="win">
+      <div class="bar">
+        <span class="lockup"><svg><use href="#am"/></svg><span class="name">Mudavym<i>.</i></span></span>
+        <span class="grow"></span>
+        <span class="meta-r"><span class="lbl">Setting up</span><span class="steps3"><i data-on></i><i></i><i></i></span></span>
+        <span class="me">S</span>
+      </div>
+      <div class="page">
+        <p class="meta">1 of 3 · You</p>
+        <h1>Welcome, Selin.<br />Let’s set up your restaurant.</h1>
+        <p class="lede">First, a little about you.</p>
+        <div class="fields">
+          <div class="field"><label>Your name</label><input value="Selin Aydın" /></div>
+          <div class="field"><label>Mobile <em>Optional</em></label><input placeholder="+90 5__ ___ __ __" />
+            <small>For urgent stock alerts. Never marketing.</small>
+            <small class="tbd">[SMS consent line — wording open, R5]</small></div>
+          <div class="field"><label>Your role <em>Optional</em></label>
+            <span class="chips" data-single>
+              <button class="opt">Owner</button><button class="opt">General manager</button><button class="opt">Beverage lead</button><button class="opt">Chef</button><button class="opt">Something else</button>
+            </span>
+            <small>Changes what the house shows you first.</small></div>
+        </div>
+        <div class="acts"><button class="press">Continue</button></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 02 ------------------------------------------------------------ -->
+  <section class="frame" id="f2">
+    <p class="cap">Frame 02 · <b>Your restaurant — find it, then confirm it</b> · F2 A, F3 A</p>
+    <p class="say">Left: Places search, with <em>Use my location</em> as a bias, not a requirement. Right: the confirm, which is
+      where the house is created. Currency and time are never asked — they are read from the address, shown, and editable.
+      The address is required: vendor matching (<code>match_restaurant_providers(p_address…)</code>) and prices in ₺
+      depend on it, and the screen says so in one line. <em>Enter it by hand</em> is the escape for places Google doesn’t know.</p>
+    <div class="twoup">
+      <div class="win">
+        <div class="bar">
+          <span class="lockup"><svg><use href="#am"/></svg><span class="name">Mudavym<i>.</i></span></span>
+          <span class="grow"></span>
+          <span class="meta-r"><span class="steps3"><i data-on></i><i data-on></i><i></i></span></span>
+          <span class="me">S</span>
+        </div>
+        <div class="page">
+          <p class="meta">2 of 3 · Your restaurant</p>
+          <h1>Find your restaurant.</h1>
+          <p class="lede" style="margin-bottom:22px">Its address is how Mudavym finds your suppliers and prices things in your currency.</p>
+          <div class="search">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+            <input value="lokanta meyh" />
+          </div>
+          <p class="near">
+            <button class="link"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 22s7-6.2 7-12a7 7 0 0 0-14 0c0 5.8 7 12 7 12z"/><circle cx="12" cy="10" r="2.5"/></svg>Use my location</button>
+            <span>puts places near you first</span>
+          </p>
+          <div class="results" role="listbox">
+            <button class="res" aria-selected="true"><span><b><mark>Lokanta Meyh</mark>ane</b><small>Kemankeş Karamustafa Paşa, Kemankeş Cd. 12, Beyoğlu, İstanbul</small></span><span class="d">0.3 km</span></button>
+            <button class="res"><span><b><mark>Lokanta</mark> Maya</b><small>Kemankeş Cd. 35A, Karaköy, Beyoğlu, İstanbul</small></span><span class="d">0.4 km</span></button>
+            <button class="res"><span><b><mark>Meyh</mark>ane <mark>Lokanta</mark>sı</b><small>Moda Cd. 88, Kadıköy, İstanbul</small></span><span class="d">6.1 km</span></button>
+          </div>
+          <div class="powered"><button class="link">Not listed? Enter it by hand</button><span>Powered by Google</span></div>
+        </div>
+      </div>
+      <div class="win">
+        <div class="bar">
+          <span class="lockup"><svg><use href="#am"/></svg><span class="name">Mudavym<i>.</i></span></span>
+          <span class="sep"></span>
+          <span class="house"><span class="dot">LM</span><span>Lokanta Meyhane</span></span>
+          <span class="grow"></span>
+          <span class="meta-r"><span class="steps3"><i data-on></i><i data-on></i><i></i></span></span>
+          <span class="me">S</span>
+        </div>
+        <div class="page">
+          <p class="meta">2 of 3 · Your restaurant</p>
+          <h1>Is this you?</h1>
+          <p class="lede" style="margin-bottom:22px">Check it once. You can change any of it later.</p>
+          <div class="found">
+            <h2>Lokanta Meyhane</h2>
+            <p class="addr">Kemankeş Karamustafa Paşa, Kemankeş Cd. 12<br />34425 Beyoğlu, İstanbul, Türkiye</p>
+            <div class="drv"><span>Restaurant phone</span><span>+90 212 244 00 00</span><button class="link">Change</button></div>
+            <div class="drv"><span>Prices in</span><span>₺ Turkish lira</span><button class="link">Change</button></div>
+            <div class="drv"><span>Time</span><span>İstanbul · GMT+3</span><button class="link">Change</button></div>
+          </div>
+          <p class="note" style="margin-top:10px">Currency and time are read from the address.</p>
+          <div class="acts"><button class="press">This is us</button><button class="link">Search again</button><button class="link">Enter it by hand</button></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 03 ------------------------------------------------------------ -->
+  <section class="frame" id="f3">
+    <p class="cap">Frame 03 · <b>Your menu — the drop stays open</b></p>
+    <p class="say">122’s well, kept generous and centred, but with one button and no inner icon tile. The two other ways in
+      are 121’s ruled lines under it. <em>Skip for now</em> skips the menu only (F2 A) — the restaurant already exists, so
+      it opens the house. The side column says what happens next in the proof’s own words (ink, pencil), and the last
+      invoice is a dashed hint, not a step.</p>
+    <div class="win">
+      <div class="bar">
+        <span class="lockup"><svg><use href="#am"/></svg><span class="name">Mudavym<i>.</i></span></span>
+        <span class="sep"></span>
+        <span class="house"><span class="dot">LM</span><span>Lokanta Meyhane</span></span>
+        <span class="grow"></span>
+        <span class="meta-r"><span class="steps3"><i data-on></i><i data-on></i><i data-on></i></span></span>
+        <span class="me">S</span>
+      </div>
+      <div class="arrive">
+        <div>
+          <p class="meta">3 of 3 · Your menu</p>
+          <h1>Now, your menu.</h1>
+          <p class="lede">Mudavym reads it and sets it as your drinks list — wine, beer, whiskey, soft drinks and the rest. You see every line before anything counts.</p>
+          <div class="well">
+            <span class="ico"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg></span>
+            <h2>Drop your menu here</h2>
+            <p>PDF, photo, or spreadsheet — whatever you already keep. Up to 20 MB.</p>
+            <div class="acts" style="justify-content:center;margin-top:0"><button class="press">Choose a file</button></div>
+          </div>
+          <div class="ways">
+            <button class="way"><span class="num">02</span><span><b>Take a photo of the card</b><small>On your phone, at the table.</small></span><span class="go">Open camera →</span></button>
+            <button class="way"><span class="num">03</span><span><b>Type the lines yourself</b><small>For a short list or a chalkboard.</small></span><span class="go">Start typing →</span></button>
+          </div>
+          <div class="escape">
+            <button class="link">Skip for now — open the house</button>
+            <p class="note">Your restaurant is saved. The menu stays first on the house’s list until it’s read.</p>
+          </div>
+        </div>
+        <aside>
+          <p class="meta">What happens next</p>
+          <ol class="next">
+            <li><span class="n">1</span><span><b>It reads every line</b><small>About a minute for a three-page menu.</small></span></li>
+            <li><span class="n">2</span><span><b>It sets your drinks list</b><small>In sections, in Mudavym type, with your prices.</small></span></li>
+            <li><span class="n">3</span><span><b>It pencils what’s worth a second look</b><small>Those lines are the ones that ask you anything.</small></span></li>
+          </ol>
+          <div class="later"><b>Later</b>Your last invoice — read the same way, set beside the menu.</div>
+        </aside>
+      </div>
+    </div>
+  </section>
+
+  <!-- 04 ------------------------------------------------------------ -->
+  <section class="frame" id="f4">
+    <p class="cap">Frame 04 · <b>Reading — 122 frame 02, carried</b></p>
+    <p class="say">Unchanged in behaviour: facts settle once, no loop, no percentage. Two edits — the verbs follow the proof
+      (“set”, not “placed”), and kitchen lines are counted as set aside rather than silently dropped (R2 is open: what the
+      extractor does with food today is unverified). The verso loses 122’s fill; the contents now start from the restaurant.</p>
+    <div class="win">
+      <div class="bar">
+        <span class="lockup"><svg><use href="#am"/></svg><span class="name">Mudavym<i>.</i></span></span>
+        <span class="sep"></span>
+        <span class="house"><span class="dot">LM</span><span>Lokanta Meyhane</span></span>
+        <span class="grow"></span><span class="meta-r"><span class="lbl">Reading your menu</span></span><span class="me">S</span>
+      </div>
+      <div class="book">
+        <aside class="verso">
+          <p class="meta">The house</p>
+          <ol class="contents">
+            <li><div class="tocline"><span class="n">01</span><span><b>Your restaurant <span class="tick">✓</span></b><small>Karaköy · ₺ · İstanbul time</small></span></div></li>
+            <li><div class="tocline" aria-current="page"><span class="n">02</span><span><b>Your menu</b><small>Reading…</small></span></div></li>
+            <li><div class="tocline"><span class="n">03</span><span><b>Whom we buy from</b><small>Optional</small></span></div></li>
+            <li><div class="tocline"><span class="n">04</span><span><b>What we hear about</b><small>Your own preferences</small></span></div></li>
+          </ol>
+        </aside>
+        <article class="recto">
+          <p class="meta">Your menu</p>
+          <h1>Reading your menu</h1>
+          <div class="file"><span class="doc">PDF</span><span><b>menu-guz-2026.pdf</b><small>2.1 MB · 3 pages · received 13:51</small></span></div>
+          <div class="lines">
+            <div class="line" data-done><span class="g">✓</span><span>Three pages taken in</span><em>read</em></div>
+            <div class="line" data-done><span class="g">✓</span><span>42 lines that name a drink</span><em>read</em></div>
+            <div class="line" data-done><span class="g">✓</span><span>31 kitchen lines, set aside</span><em>counted</em></div>
+            <div class="line" data-done><span class="g">✓</span><span>18 wines, in four sections</span><em>set</em></div>
+            <div class="line"><span class="g">·</span><span>Setting the other 24</span><em>setting</em></div>
+          </div>
+          <p class="note" style="margin-top:22px">Nothing is committed while this runs. You’ll see the whole menu before it counts.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- 05 ------------------------------------------------------------ -->
+  <section class="frame" id="f5">
+    <p class="cap">Frame 05 · <b>The first proof</b> · F5 A, F6 A, F7 A — interactive</p>
+    <p class="say">The menu comes back typeset as the house’s own drinks list, at <code>/house/menu</code> — a page, not an
+      overlay. Ink lines carry no label at all. Pencilled lines carry a margin stroke and <em>Worth a second look</em>;
+      two lines with no candidate section wear an open ring and <em>Needs a place</em>. Tap any pencilled line: it opens in
+      place with the crop of the original and one-tap sections — the guess dashed, never pressed, no “all”. Choosing erases
+      the pencil, the line settles into ink (or moves to its section) and the counts tick. <em>Show my original</em> opens
+      the split view. Empty sections are not printed; one line at the foot names them. Chivas is pre-opened for the shot.
+      <strong>Drawn ahead of the service:</strong> the per-line pencil signal (R1) and per-line crops (R4) do not exist yet.</p>
+    <div class="win">
+      <div class="bar">
+        <span class="lockup"><svg><use href="#am"/></svg><span class="name">Mudavym<i>.</i></span></span>
+        <span class="sep"></span>
+        <span class="house"><span class="dot">LM</span><span>Lokanta Meyhane</span></span>
+        <span class="grow"></span><span class="meta-r"><span class="lbl">Your menu</span></span><span class="me">S</span>
+      </div>
+      <div class="proof" id="proof">
+        <aside class="orig" id="orig"></aside>
+        <article class="sheet">
+          <header class="masthead">
+            <p class="meta">First proof · from menu-guz-2026.pdf · 22 Sep, 13:52</p>
+            <h1>Lokanta Meyhane</h1>
+            <p class="kind">Drinks</p>
+            <p class="say-it">Here’s your menu, set by Mudavym. It’s a first proof — we’ve pencilled the lines worth a second look.</p>
+            <div class="tallies">
+              <div><span>Read</span><strong id="t-read">42</strong></div>
+              <div><span>Set</span><strong id="t-set">25</strong></div>
+              <div data-pencil><span>Pencilled</span><strong id="t-pen">17</strong></div>
+            </div>
+            <div class="proof-acts">
+              <button class="press" id="checkfirst">Check the <span id="t-pen2">17</span> pencilled lines</button>
+              <button class="press" data-quiet>Open the house</button>
+              <button class="link" id="origtoggle">Show my original</button>
+            </div>
+            <p class="hint"><svg width="14" height="14"><use href="#pencil"/></svg> Pencil marks are ours. Tap one to settle it — the rest of the menu is already set.</p>
+          </header>
+
+          <div class="menu">
+            <div id="col-l"></div>
+            <div id="col-r"></div>
+          </div>
+          <div class="unplaced" id="unplaced"></div>
+
+          <div class="setaside">
+            <details>
+              <summary><span><span id="t-kitchen">31</span> kitchen lines set aside — not Mudavym’s job yet.</span><span class="link">Show them</span></summary>
+              <ul class="k">
+                <li>Beyaz peynir</li><li>Kavun</li><li>Haydari</li><li>Acılı ezme</li><li>Patlıcan salatası</li><li>Fava</li>
+                <li>Şakşuka</li><li>Midye tava</li><li>Kalamar</li><li>Ahtapot ızgara</li><li>Levrek</li><li>Çupra</li>
+                <li>…and 19 more</li>
+              </ul>
+            </details>
+          </div>
+          <p class="notmenu">Not on this menu: sake, cider. Pour any of these? <button class="link">Add it</button></p>
+          <div class="sheet-foot"><button class="press" data-quiet>Open the house</button></div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- 06 ------------------------------------------------------------ -->
+  <section class="frame" id="f6">
+    <p class="cap">Frame 06 · <b>The house — one line asks</b></p>
+    <p class="say">121’s rule, drawn with less: every contents line states, exactly one is set in the seal with its reason.
+      The menu line says “17 pencilled” as a fact, not a demand. The last invoice is a greyed future inscription — a hint
+      that the same proof will come for invoices, not a step anyone can take yet.</p>
+    <div class="win">
+      <div class="bar">
+        <span class="lockup"><svg><use href="#am"/></svg><span class="name">Mudavym<i>.</i></span></span>
+        <span class="sep"></span>
+        <span class="house"><span class="dot">LM</span><span>Lokanta Meyhane</span></span>
+        <span class="grow"></span><span class="me">S</span>
+      </div>
+      <div class="book">
+        <aside class="verso">
+          <p class="meta">The house</p>
+          <ol class="contents">
+            <li><div class="tocline"><span class="n">01</span><span><b>Your restaurant <span class="tick">✓</span></b><small>Karaköy · ₺ · İstanbul time</small></span></div></li>
+            <li><div class="tocline"><span class="n">02</span><span><b>Your menu <span class="tick">✓</span></b><small>42 lines set · 17 pencilled</small></span></div></li>
+            <li><div class="tocline" data-asking aria-current="page"><span class="n">03</span><span><b>Whom we buy from</b><small>Optional. Your menu names Efes and Kavaklıdere.</small></span></div></li>
+            <li><div class="tocline"><span class="n">04</span><span><b>What we hear about</b><small>Your own preferences · untouched</small></span></div></li>
+            <li><div class="tocline"><span class="n">05</span><span><b>The team</b><small>Invite when you’re ready</small></span></div></li>
+            <li><div class="tocline" data-future><span class="n">—</span><span><b>The last invoice</b><small>Later — read the same way as your menu.</small></span></div></li>
+          </ol>
+          <p class="note">One line asks at a time; the rest state.</p>
+        </aside>
+        <article class="recto">
+          <p class="meta">03</p>
+          <h1>Whom we buy from <span class="opt-tag">Optional</span></h1>
+          <p class="lede">Write what somebody has told you. A guessed delivery day is worse than a blank one.</p>
+          <div class="why">
+            <p>Asked because your menu lists Efes and Kavaklıdere, and no supplier for either is written in the house.</p>
+            <p>That’s the whole reason. Nothing else waits on it.</p>
+          </div>
+          <div class="lines" style="margin-top:24px">
+            <div class="line"><span class="g">·</span><span>Supplier name</span><em>not written</em></div>
+            <div class="line"><span class="g">·</span><span>Delivery days</span><em>not written</em></div>
+            <div class="line"><span class="g">·</span><span>Payment terms</span><em>not written</em></div>
+          </div>
+          <div class="acts">
+            <button class="press" data-quiet>Not yet — carry it forward</button>
+            <button class="press">Write this supplier</button>
+          </div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- 07 ------------------------------------------------------------ -->
+  <section class="frame" id="f7">
+    <p class="cap">Frame 07 · <b>A thin proof, and a read that failed</b></p>
+    <p class="say">Left: a nine-line chalkboard photo still gets a real proof — mostly ink, one pencil, the absent sections
+      named once at the foot. Right: the read failed; it says which step failed and what survived. A failed read is never
+      shown as an empty proof.</p>
+    <div class="twoup">
+      <div>
+        <div class="win">
+          <div class="bar"><span class="lockup"><svg><use href="#am"/></svg><span class="name">Mudavym<i>.</i></span></span><span class="sep"></span><span class="house"><span class="dot">KB</span><span>Köşe Bar</span></span><span class="grow"></span><span class="me">S</span></div>
+          <article class="sheet">
+            <header class="masthead">
+              <p class="meta">First proof · from a photo · 22 Sep, 13:52</p>
+              <h1>Köşe Bar</h1>
+              <p class="kind">Drinks</p>
+              <div class="tallies"><div><span>Read</span><strong>9</strong></div><div><span>Set</span><strong>8</strong></div><div data-pencil><span>Pencilled</span><strong>1</strong></div></div>
+            </header>
+            <div class="menu">
+              <div>
+                <section class="sec"><h2>Wine</h2>
+                  <p class="sub">By the glass</p>
+                  <div class="it" data-k="ink"><span class="top"><span class="nm">Ev şarabı, kırmızı</span><span class="ld"></span><span class="pr">₺240</span></span></div>
+                  <div class="it" data-k="ink"><span class="top"><span class="nm">Ev şarabı, beyaz</span><span class="ld"></span><span class="pr">₺240</span></span></div>
+                </section>
+                <section class="sec"><h2>Beer</h2>
+                  <div class="it" data-k="ink"><span class="top"><span class="nm">Efes Pilsen <i>50cl</i></span><span class="ld"></span><span class="pr">₺170</span></span></div>
+                  <div class="it" data-k="ink"><span class="top"><span class="nm">Bomonti Filtresiz <i>50cl</i></span><span class="ld"></span><span class="pr">₺200</span></span></div>
+                </section>
+                <section class="sec"><h2>Rakı &amp; spirits</h2>
+                  <div class="it" data-k="ink"><span class="top"><span class="nm">Yeni Rakı <i>duble</i></span><span class="ld"></span><span class="pr">₺300</span></span></div>
+                  <div class="it" data-k="pencil"><span class="mk"><svg width="16" height="16"><use href="#pencil"/></svg></span><span class="top"><span class="nm">“Yaş üzüm”</span><span class="ld"></span><span class="pr">₺320</span></span><span class="pn">Worth a second look</span></div>
+                </section>
+                <section class="sec"><h2>Soft drinks</h2>
+                  <div class="it" data-k="ink"><span class="top"><span class="nm">Ayran</span><span class="ld"></span><span class="pr">₺70</span></span></div>
+                  <div class="it" data-k="ink"><span class="top"><span class="nm">Soda</span><span class="ld"></span><span class="pr">₺60</span></span></div>
+                  <div class="it" data-k="ink"><span class="top"><span class="nm">Çay</span><span class="ld"></span><span class="pr">₺40</span></span></div>
+                </section>
+              </div>
+            </div>
+            <p class="notmenu">Not on this menu: whiskey, cocktails, sparkling, sake, cider. <button class="link">Add one</button></p>
+          </article>
+        </div>
+        <p class="mini">Nine is small and the proof says nine. No ring of progress, no “great job”.</p>
+      </div>
+      <div>
+        <div class="win">
+          <div class="bar"><span class="lockup"><svg><use href="#am"/></svg><span class="name">Mudavym<i>.</i></span></span><span class="sep"></span><span class="house"><span class="dot">LM</span><span>Lokanta Meyhane</span></span><span class="grow"></span><span class="me">S</span></div>
+          <article class="recto" style="animation:none">
+            <p class="meta">Your menu · 22 Sep, 13:52</p>
+            <h2>We couldn’t read this file.</h2>
+            <div class="why">
+              <p>The file arrived and is stored. The step that turns a page into lines returned nothing — a failure to read, not an empty menu.</p>
+              <p style="font-family:var(--mono);font-size:12px">menu-guz-2026.pdf · 2.1 MB · stored · 0 lines read</p>
+            </div>
+            <div class="lines" style="margin-top:20px">
+              <div class="line" data-done><span class="g">✓</span><span>File stored</span><em>kept</em></div>
+              <div class="line" data-fail><span class="g">×</span><span>Lines read</span><em>failed</em></div>
+              <div class="line"><span class="g">·</span><span>Menu set</span><em>not attempted</em></div>
+            </div>
+            <div class="acts">
+              <button class="press">Try again</button>
+              <button class="press" data-quiet>Take a photo instead</button>
+            </div>
+          </article>
+        </div>
+        <p class="mini">The house’s menu line reads “couldn’t be read”, not “nothing”.</p>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<script>
+/* ------------------------------------------------------------------
+   Fixture: a 42-line mixed menu. k = ink | pencil | ring.
+   25 ink · 15 pencil · 2 ring. Reasons are the one-line "why" a
+   pencil carries. The service does not return these yet (R1).
+   ------------------------------------------------------------------ */
+const SECTIONS = {
+  wine: { label: 'Wine', subs: [['red', 'Red'], ['white', 'White'], ['rose', 'Rosé'], ['sparkling', 'Sparkling'], ['glass', 'By the glass']] },
+  beer: { label: 'Beer' },
+  spirits: { label: 'Rakı & spirits' },
+  whiskey: { label: 'Whiskey' },
+  cocktails: { label: 'Cocktails' },
+  soft: { label: 'Soft drinks' },
+};
+const LEFT = ['wine'], RIGHT = ['beer', 'spirits', 'whiskey', 'cocktails', 'soft'];
+const CHIP = {
+  'wine:red': 'Red wine', 'wine:white': 'White wine', 'wine:rose': 'Rosé', 'wine:sparkling': 'Sparkling', 'wine:glass': 'Wine by the glass',
+  beer: 'Beer', spirits: 'Rakı & spirits', whiskey: 'Whiskey', cocktails: 'Cocktails', soft: 'Soft drinks', none: 'Not a drink',
+};
+const I = (id, sec, n, y, by, p, pg, k = 'ink', why = '', opts = null, guess = null, src = null) => ({ id, sec, n, y, by, p, pg, k, why, opts, guess, src });
+const WINE4 = ['wine:red', 'wine:white', 'wine:rose', 'wine:sparkling'];
+const items = [
+  I('w1', 'wine:red', 'Kavaklıdere Yakut', '2021', 'Kavaklıdere · Öküzgözü, Boğazkere', '₺1.450', 1),
+  I('w2', 'wine:red', 'Doluca Karma', '2020', 'Doluca · Öküzgözü, Cabernet Sauvignon', '₺1.380', 1),
+  I('w3', 'wine:red', 'Kayra Buzbağ Rezerv', '2019', 'Kayra · Öküzgözü, Boğazkere', '₺1.900', 1),
+  I('w4', 'wine:red', 'Suvla Karasakız', '2022', 'Suvla · Karasakız', '₺1.650', 1),
+  I('w5', 'wine:red', 'Chamlija Papaskarası', '2021', 'Chamlija · Papaskarası', '₺1.720', 1),
+  I('w6', 'wine:red', 'Vinkara Kalecik Karası', '2022', 'Vinkara · Kalecik Karası', '₺1.290', 1),
+  I('w7', 'wine:red', 'Paşaeli 6 N', '2019', 'Paşaeli', '₺2.100', 1, 'pencil',
+    'Set as red from the producer’s other wines — the line itself names no grape or colour.', WINE4, 'wine:red', ['PAŞAELİ 6 N  2019 ....... 2.100']),
+  I('w8', 'wine:white', 'Sevilen Plato Narince', '2022', 'Sevilen · Narince', '₺1.320', 1),
+  I('w9', 'wine:white', 'Kavaklıdere Çankaya', '2023', 'Kavaklıdere · Emir, Narince, Sultaniye', '₺980', 1),
+  I('w10', 'wine:white', 'Chamlija Albariño', '2022', 'Chamlija · Albariño', '₺1.580', 1),
+  I('w11', 'wine:white', 'Umurbey Sauvignon Blanc', '2022', 'Umurbey · Sauvignon Blanc', '₺1.240', 1),
+  I('w12', 'wine:white', 'Ev şarabı, beyaz', 'kadeh', 'House pour · by the glass', '₺260', 1, 'pencil',
+    'Set as white from the word ‘beyaz’. No producer is named, so it can’t be matched to a bottle yet.', ['wine:white', 'wine:glass', 'none'], 'wine:white', ['EV ŞARABI BEYAZ (KADEH) ... 260']),
+  I('w13', 'wine:rose', 'Suvla Rosé', '2023', 'Suvla · Karasakız, Kuntra', '₺1.150', 1),
+  I('w14', 'wine:rose', 'Kayra Allure Rosé', '2023', 'Kayra · Çalkarası', '₺1.090', 1),
+  I('w15', 'wine:rose', 'Kavaklıdere Lal', '2023', 'Kavaklıdere · Çalkarası', '₺990', 1, 'pencil',
+    'Set as rosé from the name ‘Lal’ — the line gives no colour.', WINE4, 'wine:rose', ['LAL  2023 .............. 990']),
+  I('w16', 'wine:sparkling', 'Kavaklıdere Altın Köpük', 'NV', 'Kavaklıdere · Emir', '₺1.100', 1),
+  I('w17', 'wine:sparkling', 'Mionetto Prosecco DOC', 'NV', 'Mionetto · Glera', '₺1.450', 1),
+  I('w18', 'wine:sparkling', 'Moët & Chandon Brut Impérial', 'NV', 'Champagne', '₺6.800', 1),
+  I('b1', 'beer', 'Efes Pilsen', '50cl', 'Efes', '₺180', 2),
+  I('b2', 'beer', 'Efes Özel Seri', '50cl', 'Efes', '₺210', 2),
+  I('b3', 'beer', 'Bomonti Filtresiz', '50cl', 'Bomonti', '₺220', 2),
+  I('b4', 'beer', 'Gara Guzu IPA', '33cl', 'Gara Guzu', '₺290', 2, 'pencil',
+    'Set as beer from the word ‘IPA’.', ['beer', 'cocktails', 'none'], 'beer', ['GARA GUZU IPA 33 ......... 290']),
+  I('s1', 'spirits', 'Yeni Rakı', '35cl', 'Rakı · for the table', '₺1.150', 3),
+  I('s2', 'spirits', 'Tekirdağ Gold', '70cl', 'Rakı · for the table', '₺2.300', 3),
+  I('s3', 'spirits', 'Efe Yaş Üzüm', 'duble', 'Rakı', '₺320', 3, 'pencil',
+    'Set with spirits from the word ‘duble’. The line doesn’t say rakı.', ['spirits', 'whiskey', 'cocktails'], 'spirits', ['EFE YAŞ ÜZÜM ........ DUBLE 320']),
+  I('s4', 'spirits', 'Beefeater London Dry', 'duble', 'Gin', '₺380', 3, 'pencil',
+    'Set as a spirit from ‘London Dry’. It also appears on the cocktail card, as a gin tonic.', ['spirits', 'cocktails'], 'spirits', ['BEEFEATER ........... DUBLE 380']),
+  I('s5', 'spirits', 'Absolut', 'duble', 'Vodka', '₺340', 3),
+  I('s6', 'spirits', 'Jägermeister', 'shot', 'Liqueur', '₺260', 3, 'pencil',
+    'Set as a spirit from the name. It’s a liqueur — it may sit better with the cocktails.', ['spirits', 'cocktails'], 'spirits', ['JÄGERMEISTER ........ SHOT 260']),
+  I('x1', 'whiskey', 'Chivas Regal 12', 'duble', 'Blended Scotch', '₺420', 3, 'pencil',
+    'Set as whiskey from ‘Chivas’ — but your menu prints it under ‘Sofra’, not with the whiskies.', ['whiskey', 'spirits', 'none'], 'whiskey', ['— SOFRA —', 'CHIVAS 12 ........... DUBLE 420', 'YENİ RAKI 35 ......... 1.150']),
+  I('x2', 'whiskey', 'Jameson', 'duble', 'Irish', '₺360', 3),
+  I('x3', 'whiskey', 'Jack Daniel’s No. 7', 'duble', 'Tennessee', '₺390', 3, 'pencil',
+    'Your menu says ‘Tennessee No. 7’ — we read it as Jack Daniel’s.', ['whiskey', 'spirits'], 'whiskey', ['TENNESSEE NO.7 ....... DUBLE 390']),
+  I('x4', 'whiskey', 'Glenfiddich 12', 'duble', 'Single malt', '₺520', 3),
+  I('c1', 'cocktails', 'Aperol Spritz', '', 'Aperol, prosecco, soda', '₺420', 2),
+  I('c2', 'cocktails', 'Negroni Sbagliato', '', 'Campari, vermut, prosecco', '₺460', 2, 'pencil',
+    'The cocktail heading didn’t come through on the scan — set from the name.', ['cocktails', 'wine:sparkling', 'spirits'], 'cocktails', ['NEGRONI SBAGLIATO ....... 460']),
+  I('c3', 'cocktails', 'Rakı Sour', '', 'Rakı, limon, yumurta akı', '₺440', 2, 'pencil',
+    'Named for rakı — it could sit with the spirits.', ['cocktails', 'spirits'], 'cocktails', ['RAKI SOUR ............... 440']),
+  I('c4', 'cocktails', 'Espresso Martini', '', 'Vodka, kahve, Kahlúa', '₺460', 2, 'pencil',
+    'Set as a cocktail from the word ‘Martini’.', ['cocktails', 'spirits'], 'cocktails', ['ESPRESSO MARTINI ........ 460']),
+  I('d1', 'soft', 'Sade soda', '', '', '₺70', 3),
+  I('d2', 'soft', 'Ev limonatası', '', 'House lemonade', '₺120', 3, 'pencil',
+    'Printed beside the desserts — set from the word ‘limonata’.', ['soft', 'cocktails', 'none'], 'soft', ['KÜNEFE ................. 280', 'EV LİMONATASI ........... 120']),
+  I('d3', 'soft', 'Şalgam', '', '', '₺90', 3, 'pencil',
+    'Listed with both the drinks and the meze — it could be either.', ['soft', 'none'], 'soft', ['ŞALGAM (ACILI/ACISIZ) ..... 90']),
+  I('d4', 'soft', 'Ayran', '', '', '₺80', 3, 'pencil',
+    'Printed with the kitchen lines on page 3.', ['soft', 'none'], 'soft', ['CACIK ................... 110', 'AYRAN .................... 80']),
+  I('u1', null, 'Günün kadehi', '', '', '₺280', 1, 'ring',
+    'We couldn’t tell which section this belongs in.', ['wine:glass', 'cocktails', 'soft', 'none'], null, ['GÜNÜN KADEHİ ............ 280']),
+  I('u2', null, 'Tadım — 3 kadeh', '', '', '₺750', 1, 'ring',
+    'We couldn’t tell which section this belongs in.', ['wine:glass', 'cocktails', 'none'], null, ['TADIM (3 KADEH) ......... 750']),
+];
+
+let openId = 'x1', kitchen = 31, fresh = null;
+const $ = (s) => document.querySelector(s);
+const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+
+function row(it) {
+  const mark = it.k === 'pencil' ? '#pencil' : it.k === 'ring' ? '#ring' : null;
+  const pn = it.k === 'pencil' ? 'Worth a second look' : it.k === 'ring' ? 'Needs a place' : '';
+  const tag = it.k === 'ink' ? 'div' : 'button';
+  let h = `<${tag} class="it" data-k="${it.k}" data-id="${it.id}"${it.id === fresh ? ' data-fresh' : ''}${it.k !== 'ink' ? ` aria-expanded="${it.id === openId}"` : ''}>`
+    + (mark ? `<span class="mk"><svg width="16" height="16"><use href="${mark}"/></svg></span>` : '')
+    + `<span class="top"><span class="nm">${esc(it.n)}${it.y ? ` <i>${esc(it.y)}</i>` : ''}</span><span class="ld"></span><span class="pr">${it.p}</span></span>`
+    + (it.by ? `<span class="by">${esc(it.by)}</span>` : '')
+    + (pn ? `<span class="pn">${pn}</span>` : '')
+    + `</${tag}>`;
+  if (it.id === openId && it.k !== 'ink') h += panel(it);
+  return h;
+}
+
+function panel(it) {
+  const chips = it.opts.map(o => `<button class="opt" data-for="${it.id}" data-to="${o}"${o === it.guess ? ' data-guess' : ''}>${CHIP[o]}${o === it.guess ? '?' : ''}</button>`).join('');
+  return `<div class="open" data-panel="${it.id}">
+    <figure class="crop"><div class="scan">${cropHtml(it)}</div><figcaption>Page ${it.pg} · as written on your menu</figcaption></figure>
+    <div>
+      <p class="reason"><em>${it.k === 'ring' ? 'Needs a place.' : 'Worth a second look.'}</em> ${esc(it.why)}</p>
+      <p class="qh">Where does it belong?</p>
+      <div class="chips">${chips}</div>
+      <p class="later-l"><button class="link" data-close>Leave it pencilled</button></p>
+    </div>
+  </div>`;
+}
+
+/* the line itself in full ink, its neighbours faded — the crop shows context */
+const OWN = { x1: 'CHIVAS', d2: 'LİMONATA', d4: 'AYRAN' };
+function cropHtml(it) {
+  const src = it.src || [it.n.toUpperCase()];
+  const own = OWN[it.id];
+  return src.map(l => (l.startsWith('—') || (own && !l.includes(own))) ? `<s>${esc(l)}</s>` : esc(l)).join('<br>');
+}
+
+function section(key) {
+  const s = SECTIONS[key];
+  const mine = items.filter(i => i.sec && i.sec.split(':')[0] === key);
+  if (!mine.length) return '';
+  let h = `<section class="sec"><h2>${s.label.replace('&', '&amp;')}</h2>`;
+  if (s.subs) {
+    for (const [sub, label] of s.subs) {
+      const rows = mine.filter(i => i.sec === `${key}:${sub}`);
+      if (rows.length) h += `<p class="sub">${label}</p>` + rows.map(row).join('');
+    }
+  } else h += mine.map(row).join('');
+  return h + '</section>';
+}
+
+function render() {
+  $('#col-l').innerHTML = LEFT.map(section).join('');
+  $('#col-r').innerHTML = RIGHT.map(section).join('');
+  const un = items.filter(i => !i.sec);
+  $('#unplaced').style.display = un.length ? '' : 'none';
+  $('#unplaced').innerHTML = un.length ? `<h2>Needs a place</h2>` + un.map(row).join('') : '';
+  const read = items.length, set = items.filter(i => i.k === 'ink').length, pen = read - set;
+  tick('#t-read', read); tick('#t-set', set); tick('#t-pen', pen); tick('#t-pen2', pen); tick('#t-kitchen', kitchen);
+  $('#checkfirst').style.display = pen ? '' : 'none';
+  renderOriginal();
+}
+function tick(sel, v) {
+  const el = $(sel); if (el.textContent === String(v)) return;
+  el.textContent = v; el.style.animation = 'none'; el.offsetHeight; el.style.animation = 'tally .5s ease both';
+}
+
+function renderOriginal() {
+  const pages = [1, 2, 3].map(pg => {
+    const rows = items.filter(i => i.pg === pg).map(i => `<div${i.id === openId ? ' data-hi' : ''}><span>${esc(i.n.toUpperCase())}</span><span>${i.p.replace('₺', '')}</span></div>`).join('');
+    return `<div class="scanpage"><h6>${['Şaraplar', 'Bira · Kokteyl', 'Sofra · İçecek'][pg - 1]}</h6>${rows}<div class="pgno">${pg} / 3</div></div>`;
+  }).join('');
+  $('#orig').innerHTML = `<p class="meta">Your original · menu-guz-2026.pdf</p>${pages}`;
+}
+
+document.getElementById('proof').addEventListener('click', (e) => {
+  const chip = e.target.closest('.opt[data-for]');
+  if (chip) {
+    const it = items.find(i => i.id === chip.dataset.for);
+    const to = chip.dataset.to;
+    if (to === 'none') { items.splice(items.indexOf(it), 1); kitchen += 1; }
+    else { it.sec = to; it.k = 'ink'; fresh = it.id; }
+    openId = null; render();
+    const el = document.querySelector(`[data-id="${it.id}"]`);
+    if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    return;
+  }
+  if (e.target.closest('[data-close]')) { openId = null; fresh = null; render(); return; }
+  const r = e.target.closest('.it[data-k="pencil"], .it[data-k="ring"]');
+  if (r) { openId = openId === r.dataset.id ? null : r.dataset.id; fresh = null; render(); }
+});
+document.getElementById('checkfirst').addEventListener('click', () => {
+  const first = document.querySelector('#proof .it[data-k="pencil"], #proof .it[data-k="ring"]');
+  if (!first) return;
+  openId = first.dataset.id; fresh = null; render();
+  document.querySelector(`[data-id="${openId}"]`).scrollIntoView({ block: 'center', behavior: 'smooth' });
+});
+document.getElementById('origtoggle').addEventListener('click', (e) => {
+  const p = document.getElementById('proof');
+  const on = p.toggleAttribute('data-original');
+  e.target.textContent = on ? 'Hide my original' : 'Show my original';
+});
+
+document.querySelectorAll('.chips[data-single] .opt').forEach(o => o.addEventListener('click', () => {
+  o.parentElement.querySelectorAll('.opt').forEach(x => x.setAttribute('aria-pressed', String(x === o && x.getAttribute('aria-pressed') !== 'true')));
+}));
+
+const b = document.body, g = document.getElementById('ground');
+g.addEventListener('click', () => {
+  const dark = b.dataset.ground === 'charcoal';
+  b.dataset.ground = dark ? 'paper' : 'charcoal';
+  g.textContent = dark ? 'Charcoal (their choice)' : 'Paper (default)';
+});
+
+render();
+</script>
+</body>
+</html>

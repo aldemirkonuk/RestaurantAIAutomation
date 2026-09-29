@@ -558,6 +558,15 @@ export default function CalendarNext({ ground }: CalendarNextProps) {
           </p>
         )}
 
+        {data.unexpandedSeries.length > 0 && (
+          <p role="status" className="cn-notice">
+            {data.unexpandedSeries.length === 1 ? 'One repeating entry' : `${data.unexpandedSeries.length} repeating entries`}{' '}
+            could not be drawn on every date it falls on —{' '}
+            {data.unexpandedSeries.map((s) => `“${s.title || s.id}”: ${s.reason}`).join('; ')}. Only its
+            stored first date is drawn, and only when that date is in view.
+          </p>
+        )}
+
         {/* The sky, and what it is allowed to claim. Every branch is a
             sentence: a silently blank weather column is indistinguishable from
             a week of clear skies (ADR 0111 §2, DESIGN-FOUNDATION §6). */}

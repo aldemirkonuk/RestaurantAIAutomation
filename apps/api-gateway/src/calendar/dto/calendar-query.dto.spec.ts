@@ -73,4 +73,26 @@ describe("GetCalendarEventsQueryDto (query-string coercion)", () => {
     expect(out.endDate).toBe("2026-09-30");
     expect(out.limit).toBe(500);
   });
+
+  // Sweep 2026-09-28 row 16: the web calendar asks for series that began
+  // before its window. Without the field, `forbidNonWhitelisted` 400s the
+  // whole read; without the explicit transform, "false" would be truthy.
+  it("accepts includeEarlierSeries=true as boolean true", async () => {
+    const out = await pipe.transform(
+      { startDate: "2026-09-01", includeEarlierSeries: "true" },
+      meta,
+    );
+    expect(out.includeEarlierSeries).toBe(true);
+  });
+
+  it("coerces includeEarlierSeries=false to boolean false, not truthy", async () => {
+    const out = await pipe.transform({ includeEarlierSeries: "false" }, meta);
+    expect(out.includeEarlierSeries).toBe(false);
+  });
+
+  it("still rejects includeEarlierSeries=maybe", async () => {
+    await expect(
+      pipe.transform({ includeEarlierSeries: "maybe" }, meta),
+    ).rejects.toThrow();
+  });
 });

@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import {
+  IsBoolean,
   IsString,
   IsNumber,
   IsOptional,
@@ -8,6 +9,20 @@ import {
   Min,
   MaxLength,
 } from "class-validator";
+
+/**
+ * An owner or manager assigns, or withdraws, one staff member's right to set
+ * up this house's zones (ADR 0238, the founder 2026-09-29: "managers/owners+
+ * the people they assign").
+ */
+export class SetZoneSetupAccessDto {
+  @ApiProperty({
+    description:
+      "true = this staff member may create, rename, resize and delete zones; false = withdrawn.",
+  })
+  @IsBoolean()
+  allowed!: boolean;
+}
 
 /**
  * DTO for creating a new storage location
@@ -52,10 +67,18 @@ export class CreateStorageLocationDto {
   @IsOptional()
   notes?: string;
 
-  @ApiPropertyOptional({ description: "Parent location ID for hierarchy" })
+  /**
+   * `null` means "no parent" and is how the web clears one (@IsOptional lets
+   * null through). storage_locations has no parent column yet, so the service
+   * refuses a non-null value with a 422 instead of dropping it (sweep #4).
+   */
+  @ApiPropertyOptional({
+    description: "Parent location ID for hierarchy (null = no parent)",
+    nullable: true,
+  })
   @IsUUID()
   @IsOptional()
-  parent_id?: string;
+  parent_id?: string | null;
 
   @ApiPropertyOptional({ description: "Hex color for UI (e.g. #be123c)" })
   @IsString()
@@ -116,10 +139,18 @@ export class UpdateStorageLocationDto {
   @IsOptional()
   notes?: string;
 
-  @ApiPropertyOptional({ description: "Parent location ID for hierarchy" })
+  /**
+   * `null` means "no parent" and is how the web clears one (@IsOptional lets
+   * null through). storage_locations has no parent column yet, so the service
+   * refuses a non-null value with a 422 instead of dropping it (sweep #4).
+   */
+  @ApiPropertyOptional({
+    description: "Parent location ID for hierarchy (null = no parent)",
+    nullable: true,
+  })
   @IsUUID()
   @IsOptional()
-  parent_id?: string;
+  parent_id?: string | null;
 
   @ApiPropertyOptional({ description: "Hex color for UI" })
   @IsString()
