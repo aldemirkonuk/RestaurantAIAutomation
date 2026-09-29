@@ -46,6 +46,9 @@
 -- then revokes access, then deletes the roster row, in separate calls, so a
 -- hand-over to them that commits after their shifts were released but
 -- before their roster row goes still lands on someone about to be removed.
+-- So does ANY shift written to them in that gap (a swap, a schedule edit),
+-- and a later step failing leaves the shifts moved, the person on the
+-- roster, and no audit row: OD-202.
 -- Two-session proof of the part this closes: supabase/tests/20261202120000_*
 -- block T7 (red on the unlocked function).
 --
