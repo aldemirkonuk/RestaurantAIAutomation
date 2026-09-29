@@ -29,9 +29,9 @@ import { apiClient } from '../../../services/api/client';
 import { fetchProviders, type Provider } from '../../../services/api/providers';
 import { useOrders } from '../../../hooks/queries/useOrderQueries';
 import { canonicalStatus } from '../../../lib/mudavym/status';
-import { expandAllRecurringEvents } from '../../../lib/calendar/recurrence';
+import { expandSeries } from './expand-series';
 import type { Order } from '../../../services/api/types';
-import { dayKey, rangeFor, type CalView } from './cal-format';
+import { rangeFor, type CalView } from './cal-format';
 
 /* ── The gateway's own shape (calendar.dto.ts CalendarEventResponseDto) ───── */
 
@@ -447,7 +447,9 @@ export function useCalendarNextData(view: CalView, cursor: Date, filter: Calenda
     staleTime: 60_000,
     queryFn: async () => {
       const res = await apiClient.get<{ events: ApiEvent[]; total?: number; hasMore?: boolean }>(
-        `/calendar/events?startDate=${start}&endDate=${end}&limit=${EVENT_WINDOW_LIMIT}`,
+        // `includeEarlierSeries`: a series that began before the window still
+        // falls inside it (sweep 2026-09-28 row 16).
+        `/calendar/events?startDate=${start}&endDate=${end}&limit=${EVENT_WINDOW_LIMIT}&includeEarlierSeries=true`,
       );
       return {
         rows: (res.data?.events ?? []).map(toCalEvent),
@@ -544,25 +546,19 @@ export function useCalendarNextData(view: CalView, cursor: Date, filter: Calenda
 
   /* ── The window, with recurring series expanded into their occurrences ──── */
 
-  const events: CalEvent[] = useMemo(() => {
+  const series = useMemo(() => {
     const rows = eventsQ.data?.rows;
-    if (!rows) return [];
-    // The shared expander (lib/calendar/recurrence.ts) reads `recurrenceRule`
-    // and stamps each occurrence with `isVirtualOccurrence` + `parentEventId`.
-    const expanded = expandAllRecurringEvents(
-      rows as unknown as Array<Record<string, unknown> & { id: string; title: string; date: string }>,
-      start,
-      end,
-    ) as unknown as Array<
-      CalEvent & { isVirtualOccurrence?: boolean; parentEventId?: string }
-    >;
-    return expanded.map((e) => ({
-      ...e,
-      date: typeof e.date === 'string' ? e.date : dayKey(e.date as unknown as Date),
-      seriesId: e.isVirtualOccurrence ? (e.parentEventId ?? e.seriesId) : e.seriesId,
-      isOccurrence: !!e.isVirtualOccurrence,
-    }));
+    if (!rows) return { events: [] as CalEvent[], unexpanded: [] as Array<{ id: string; title: string; reason: string }> };
+    // Day-key arithmetic only (expand-series.ts): the browser's zone never
+    // moves a house calendar day.
+    const out = expandSeries(rows, start, end);
+    const titleOf = new Map(rows.map((r) => [r.id, r.title]));
+    return {
+      events: out.events as CalEvent[],
+      unexpanded: out.unexpanded.map((u) => ({ ...u, title: titleOf.get(u.id) ?? '' })),
+    };
   }, [eventsQ.data, start, end]);
+  const events = series.events;
 
   const providersById = useMemo(() => {
     const rows = providersQ.data;
@@ -711,6 +707,8 @@ export function useCalendarNextData(view: CalView, cursor: Date, filter: Calenda
     /** The gateway paged this window — say so rather than draw a short month. */
     truncated: eventsQ.data?.hasMore === true,
     windowTotal: eventsQ.data?.total ?? null,
+    /** Repeating entries whose dates could not be drawn — the page names them. */
+    unexpandedSeries: series.unexpanded,
     isLoading: eventsQ.isLoading,
     isError: eventsQ.isError,
     forbidden,
