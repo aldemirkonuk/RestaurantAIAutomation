@@ -4,7 +4,7 @@
 - **Date:** 2026-09-29
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** storage locations, zones, cellar floor, zone setup, permission, capability, assign, staff, manager, owner, user_restaurant_access, zone_setup_access
-- **Links:** [[0147-the-pages-endpoints-answer-only-for-the-callers-house-and-person]] (house scope of the same routes, PR #516), [[0215-money-on-team-is-the-owners-and-hours-are-worked-hours]] (the per-membership switch this copies), [[0218-an-alert-finds-its-area-first-a-lead-acts-on-cards-only-and-away-is-dates]] (lead marks, rejected below), [[0175-one-tap-from-the-notification-is-staged]] D10 (`authority_grants`, rejected below), [[0162-managers-grant-manager-or-staff-on-both-doors]], OD-200, `v3.0-TECH-DEBT.md` "Storage locations took a location id from another house on trust"
+- **Links:** [[0147-the-pages-endpoints-answer-only-for-the-callers-house-and-person]] (house scope of the same routes, PR #516), [[0215-money-on-team-is-the-owners-and-hours-are-worked-hours]] (the per-membership switch this copies), [[0218-an-alert-finds-its-area-first-a-lead-acts-on-cards-only-and-away-is-dates]] (lead marks, rejected below), [[0175-one-tap-from-the-notification-is-staged]] D10 (`authority_grants`, rejected below), [[0162-managers-grant-manager-or-staff-on-both-doors]], OD-200, `.planning/tech-debt.d/2026-09-29-fix-storage-locations-house-scope.md` "Storage locations took a location id from another house on trust"
 
 ## Context
 
