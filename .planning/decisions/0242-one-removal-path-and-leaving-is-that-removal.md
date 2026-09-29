@@ -47,7 +47,7 @@ Four of these sources returned 403 or 401 to the research agent (7shifts' deacti
 - `MembersService.removeMember` keeps its own gate (owner or manager, or oneself), owners-manage-owners and the last-owner guard, all before any write. It then hands a target who has a roster row to `removeFromHouse`. There is one roster row per person per house (`uq_team_members_user`, baseline :11957). If TeamService is not wired, it refuses with a 500. It never falls back to revoking access alone. A person with no roster row has no shifts to release, so they keep the old access-only path.
 - `AuthService.leaveRestaurant` and `deleteAccount` look `MembersService` up through `ModuleRef` at call time and run `removeMember(self)`. `deleteAccount` does this for each active house, before any account row goes. Without the lookup, both refuse with a 500 and change nothing. They look it up rather than inject it because `RestaurantsModule` imports `AuthModule`, so an import the other way would be a module ring. `RestaurantsModule` now imports `TeamModule`. That graph has no ring: it was checked over every `*.module.ts`.
 - **Self-leave.** The leaver gets no "you were removed" notice. The audit row carries `self_leave: true` and `via`. If the leave opened or split shifts, or left shifts the house had no clock to judge (`unjudged`, which are still on the leaver's name), `noticeToHouseLeads` writes an inbox notice to every active owner and manager except the leaver, and `ExpoPushService.sendToUsers` pushes the same words. For example: *"Sam left the team — 2 of their upcoming shifts are open again and need someone on them."*
-- A removal by an owner through Settings now says "An owner removed you". The Team page's wording is unchanged.
+- A removal by an owner through Settings now says "An owner removed you". On the Team page, removing someone else keeps its wording ("A manager removed you …"). A manager removing their own roster row there is now a self-leave: they get no removal notice, and the other owners and managers get the leave notice.
 
 ## Adversarial pass (a separate agent, told to kill it)
 
@@ -63,6 +63,9 @@ These were **not taken**, stated plainly:
 - **`removeMember` still returns nothing to the Settings caller.** Returning the receipt needs a controller change that did not fit the 15-file cap.
 - **The `ModuleRef` lookup is proven by specs that stub it, not by booting the app.** The CI gateway-boot job builds the DI context but does not call the route.
 - **The last manager can leave.** Only the last owner is guarded, which is unchanged.
+- **`deleteAccount` can now stop part-way** (the audit's note). It leaves each house in turn, so a removal that fails in house 2, for example a shift-release error, leaves house 1 already left and the account still present. A retry re-reads the houses and carries on. A persistent failure in one house now blocks deletion rather than deleting while shifts stay on a person who no longer exists. It fails closed, and it widens OD-202 (a removal is several writes, not one transaction).
+- **Two log lines inside `removeFromHouse` still begin "deleteMember could not …"** whichever door ran it. They are left because ADR-0162-LEAVING-ENDS-MEMBERSHIP pins that text.
+- **The error codes for leaving changed.** A non-member who leaves now gets 403 from `assertMembership`, where it used to get 400. A member known only by a `users` row can now leave.
 
 ## Consequences
 
