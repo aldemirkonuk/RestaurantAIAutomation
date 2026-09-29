@@ -1,6 +1,6 @@
 ## /dev/truth opened for any signed-in user and its gateway read any house's row counts — CLOSED on `fix/devtruth-devs-only` — 2026-09-29
 
-Found by the PR #514 audit (`origin/main-1ll9rp:.planning/07-reference/pr-audits/514-19df181.md:14,23-24`); founder answer 2026-09-29, verbatim: "Devs only (Recommended)" and "only devs can open it" (bracket in ADR 0143 §5).
+Found by the PR #514 audit (`e58688f08:.planning/07-reference/pr-audits/514-19df181.md:14,23-24`, a commit on the handoff branch `main-1ll9rp`); founder answer 2026-09-29, verbatim: "Devs only (Recommended)" and "only devs can open it" (bracket in ADR 0143 §5).
 
 **What.** `/dev/truth` (`apps/web/src/App.tsx`) sat inside the signed-in shell with no role gate, so any owner, manager or staff member who typed the URL opened it. Its gateway routes (`apps/api-gateway/src/analytics/dev-truth.controller.ts`, `GET /analytics/dev/{reach,swallow,asof}/:restaurantId`) carried only `JwtAuthGuard` and a production 404. The page also put `?tab=` and `?r=` into the request path unchecked. **Correction to the audit:** it said the controller had "no tenant check". `JwtAuthGuard` already runs `assertTenantMatch` over path params (`jwt-auth.guard.ts`, `assert-tenant-match.ts`), so a foreign `:restaurantId` was refused before this change as well. What was missing was a check the controller owns and a spec that pins it.
 
