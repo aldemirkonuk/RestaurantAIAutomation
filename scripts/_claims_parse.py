@@ -35,20 +35,49 @@ The existing worked-around convention — semicolon-join the verify command onto
 one physical line — stays the required shape; this file is what enforces it,
 the same way the MUZZLED check enforces "no `2>` redirect" instead of silently
 tolerating it.
+
+SEVERAL FILES, ONE OF THEM FROZEN — ADR 0240, 2026-09-29
+-----------------------------------------------------------------------------
+Almost every PR appended one row to the tail of CLAIMS.jsonl, so two open PRs
+conflicted there as soon as one merged, and every conflict fix was a new head
+and a new ADR 0090 audit. New claims now go in
+`.planning/decisions/claims.d/<branch-slug>.jsonl`, one file per branch, and
+CLAIMS.jsonl is frozen behind a final `{"_comment": "FROZEN ..."}` sentinel at
+a pinned line count.
+
+    _claims_parse.py [--frozen-lines N] [--fragments DIR] [PATH ...]
+
+The first PATH is the frozen register (default CLAIMS.jsonl). `--frozen-lines`
+checks it: its newline count must equal N and its last non-blank line must be
+the sentinel, else FROZEN (exit 7). That covers a row after the sentinel, a row
+inserted above it, and the sentinel itself deleted or overwritten.
+`--fragments` lists DIR in Python (a shell glob stays literal when nothing
+matches), sorted by name, and parses every `<slug>.jsonl` in it with exactly the
+per-line rules the frozen file gets. Anything else in DIR except README.md — a
+bad name, a `.json`, an upper-case name, a subdirectory — is FRAGMENT (exit 8),
+and so is a fragment with zero claims: a file that checks nothing must not look
+like one that checks something. Every stderr line names `<file>:<line>`.
+
+When several apply, the worst wins: 3 > 5 > 6 > 7 > 8 > 4. "Zero claims" (4) is
+the total across all files; only a fragment is held to a per-file rule.
 """
 
 import json
+import os
 import re
 import sys
 
 FIELDS = ("id", "status", "verify", "claim")
+FRAGMENT_NAME = re.compile(r"^[a-z0-9][a-z0-9.-]*\.jsonl$")
+SENTINEL_PREFIX = "FROZEN"
 
 
-def parse(path: str) -> int:
+def parse_file(path: str, rows: list) -> set:
+    """Append one file's claims to `rows`; return the problem kinds found
+    ("bad", "muzzled", "multiline"). Every message names `path:line`."""
     bad = False
     muzzled = False
     multiline = False
-    rows = []
     with open(path, encoding="utf-8") as fh:
         for n, line in enumerate(fh, 1):
             line = line.strip()
@@ -57,7 +86,7 @@ def parse(path: str) -> int:
             try:
                 o = json.loads(line)
             except Exception as e:
-                print(f"MALFORMED\t{n}\t{e}", file=sys.stderr)
+                print(f"MALFORMED\t{path}:{n}\t{e}", file=sys.stderr)
                 bad = True
                 continue
             # Every value below is used as a str. A row that is not an object, or a
@@ -66,7 +95,7 @@ def parse(path: str) -> int:
             # catch, so the whole guard printed PASS over zero claims. Now a
             # wrong type is MALFORMED like any other unparseable row.
             if not isinstance(o, dict):
-                print(f"MALFORMED\t{n}\tnot a JSON object: {line[:80]}", file=sys.stderr)
+                print(f"MALFORMED\t{path}:{n}\tnot a JSON object: {line[:80]}", file=sys.stderr)
                 bad = True
                 continue
             if "_comment" in o:
@@ -74,7 +103,7 @@ def parse(path: str) -> int:
             missing = [k for k in FIELDS + ("verified",) if k not in o]
             if missing:
                 print(
-                    f"MALFORMED\t{n}\t{o.get('id', '?')} missing {missing}",
+                    f"MALFORMED\t{path}:{n}\t{o.get('id', '?')} missing {missing}",
                     file=sys.stderr,
                 )
                 bad = True
@@ -82,7 +111,7 @@ def parse(path: str) -> int:
             not_str = [k for k in FIELDS if not isinstance(o[k], str)]
             if not_str:
                 print(
-                    f"MALFORMED\t{n}\t{o.get('id')!r} field(s) {not_str} must be "
+                    f"MALFORMED\t{path}:{n}\t{o.get('id')!r} field(s) {not_str} must be "
                     "JSON strings (quote them)",
                     file=sys.stderr,
                 )
@@ -95,14 +124,14 @@ def parse(path: str) -> int:
             empty = [k for k in ("id", "verify") if not o[k].strip()]
             if empty:
                 print(
-                    f"MALFORMED\t{n}\t{o['id']!r} field(s) {empty} are empty",
+                    f"MALFORMED\t{path}:{n}\t{o['id']!r} field(s) {empty} are empty",
                     file=sys.stderr,
                 )
                 bad = True
                 continue
             if o["status"] not in ("open", "resolved"):
                 print(
-                    f"MALFORMED\t{n}\t{o['id']} status must be open|resolved, "
+                    f"MALFORMED\t{path}:{n}\t{o['id']} status must be open|resolved, "
                     f"got {o['status']!r}",
                     file=sys.stderr,
                 )
@@ -117,7 +146,7 @@ def parse(path: str) -> int:
             ]
             if bad_fields:
                 print(
-                    f"MULTILINE\t{n}\t{o['id']} field(s) {bad_fields} contain an "
+                    f"MULTILINE\t{path}:{n}\t{o['id']} field(s) {bad_fields} contain an "
                     "embedded newline or tab — join a multi-line verify command "
                     "onto one physical line (e.g. semicolon-separated Python "
                     "statements) before it can be framed as one PLAN row",
@@ -130,18 +159,115 @@ def parse(path: str) -> int:
             # ONE broken claim found when this was measured did exactly that.
             if re.search(r"2\s*>", o["verify"]):
                 print(
-                    f"MUZZLED\t{n}\t{o['id']} redirects stderr: {o['verify']}",
+                    f"MUZZLED\t{path}:{n}\t{o['id']} redirects stderr: {o['verify']}",
                     file=sys.stderr,
                 )
                 muzzled = True
                 continue
             rows.append("\t".join([o["id"], o["status"], o["verify"], o["claim"]]))
-    if bad:
+    return {k for k, v in (("bad", bad), ("muzzled", muzzled), ("multiline", multiline)) if v}
+
+
+def frozen_ok(path: str, frozen_lines: int) -> bool:
+    """The pin: newline count == frozen_lines, and the last non-blank line is
+    the sentinel. Counting newlines matches `wc -l`, which the ADR's own claim
+    uses. A row appended with no trailing newline keeps that count, but it is
+    then the last non-blank line, so the sentinel half catches it."""
+    with open(path, encoding="utf-8") as fh:
+        data = fh.read()
+    ok = True
+    count = data.count("\n")
+    if count != frozen_lines:
+        print(
+            f"FROZEN\t{path}\thas {count} lines; it is frozen at {frozen_lines} "
+            "(ADR 0240). No line may be added to or removed from it. A new "
+            "claim goes in .planning/decisions/claims.d/<branch-slug>.jsonl; a "
+            "legacy row may still be edited in place if it stays one line.",
+            file=sys.stderr,
+        )
+        ok = False
+    lines = data.split("\n")
+    last_n = max((i for i, ln in enumerate(lines, 1) if ln.strip()), default=0)
+    try:
+        o = json.loads(lines[last_n - 1]) if last_n else None
+    except ValueError:
+        o = None
+    if not (
+        isinstance(o, dict)
+        and set(o) == {"_comment"}
+        and isinstance(o["_comment"], str)
+        and o["_comment"].startswith(SENTINEL_PREFIX)
+    ):
+        print(
+            f"FROZEN\t{path}:{last_n}\tthe last non-blank line is not the FROZEN "
+            'sentinel ({"_comment": "FROZEN ..."}). Nothing may follow it; a new '
+            "claim goes in .planning/decisions/claims.d/<branch-slug>.jsonl.",
+            file=sys.stderr,
+        )
+        ok = False
+    return ok
+
+
+def list_fragments(d: str) -> "tuple[list, bool]":
+    """Every `<slug>.jsonl` in d, sorted by name, and whether anything else
+    (other than README.md) is there. Raises OSError if d cannot be listed —
+    a missing claims.d/ is a cannot-check, not zero fragments."""
+    paths, stray = [], False
+    for name in sorted(os.listdir(d)):
+        p = os.path.join(d, name)
+        if name == "README.md" and os.path.isfile(p):
+            continue
+        if os.path.isdir(p):
+            print(
+                f"FRAGMENT\t{p}\tis a subdirectory; claims.d/ is flat, one "
+                "<branch-slug>.jsonl per branch",
+                file=sys.stderr,
+            )
+            stray = True
+        elif not FRAGMENT_NAME.match(name) or not os.path.isfile(p):
+            print(
+                f"FRAGMENT\t{p}\tis not read: a claims fragment is named "
+                f"<branch-slug>.jsonl matching {FRAGMENT_NAME.pattern} (README.md "
+                "is the only other file allowed). Rename it: a file this guard "
+                "skips is a claim nobody checks.",
+                file=sys.stderr,
+            )
+            stray = True
+        else:
+            paths.append(p)
+    return paths, stray
+
+
+def run(paths: list, fragments_dir: "str | None" = None, frozen_lines: "int | None" = None) -> int:
+    problems: set = set()
+    rows: list = []
+    frozen_bad = frozen_lines is not None and not frozen_ok(paths[0], frozen_lines)
+    fragment_bad = False
+    for p in paths:
+        problems |= parse_file(p, rows)
+    if fragments_dir is not None:
+        frags, fragment_bad = list_fragments(fragments_dir)
+        for p in frags:
+            before = len(rows)
+            found = parse_file(p, rows)
+            problems |= found
+            if len(rows) == before and not found:
+                print(
+                    f"FRAGMENT\t{p}\tholds zero claims (only blank or _comment "
+                    "lines). Delete it, or put in it the claim it was meant to hold.",
+                    file=sys.stderr,
+                )
+                fragment_bad = True
+    if "bad" in problems:
         return 3
-    if muzzled:
+    if "muzzled" in problems:
         return 5
-    if multiline:
+    if "multiline" in problems:
         return 6
+    if frozen_bad:
+        return 7
+    if fragment_bad:
+        return 8
     if not rows:
         print("EMPTY", file=sys.stderr)
         return 4
@@ -149,12 +275,39 @@ def parse(path: str) -> int:
     return 0
 
 
-def main() -> int:
-    path = sys.argv[1] if len(sys.argv) > 1 else ".planning/decisions/CLAIMS.jsonl"
+def parse(path: str) -> int:
+    """One file, no pin and no fragments: the pre-ADR-0240 behaviour."""
+    return run([path])
+
+
+def main(argv: list) -> int:
+    frozen_lines = None
+    fragments_dir = None
+    paths = []
+    args = iter(argv)
+    for a in args:
+        if a == "--frozen-lines":
+            v = next(args, "")
+            if not v.isdigit() or int(v) < 1:
+                print(f"--frozen-lines needs a positive integer, got {v!r}", file=sys.stderr)
+                return 2
+            frozen_lines = int(v)
+        elif a == "--fragments":
+            fragments_dir = next(args, "")
+            if not fragments_dir:
+                print("--fragments needs a directory", file=sys.stderr)
+                return 2
+        elif a.startswith("--"):
+            print(f"unknown option {a}", file=sys.stderr)
+            return 2
+        else:
+            paths.append(a)
+    if not paths:
+        paths = [".planning/decisions/CLAIMS.jsonl"]
     try:
-        return parse(path)
+        return run(paths, fragments_dir, frozen_lines)
     except OSError as e:
-        print(f"cannot read {path}: {e}", file=sys.stderr)
+        print(f"cannot read {e.filename or paths[0]}: {e}", file=sys.stderr)
         return 2
 
 
@@ -249,6 +402,93 @@ def self_test() -> int:
     check("an empty verify fails loud (bash -c '' exits 0)", row(verify="  "), 3, "MALFORMED")
     check("an empty id fails loud", row(id=""), 3, "MALFORMED")
 
+    # ADR 0240 — several files, the first frozen behind a sentinel.
+    sentinel = json.dumps({"_comment": "FROZEN 2026-01-01 (self-test)"}) + "\n"
+    frozen = row() + sentinel
+
+    def tree(label, claims, frags, want_code, want_stderr="", want_stdout="", pin="auto", absent=False):
+        """frags: {name: text}; a text of None makes a subdirectory."""
+        nonlocal ok
+        import contextlib
+        import io
+
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "CLAIMS.jsonl")
+            with open(p, "w", encoding="utf-8") as fh:
+                fh.write(claims)
+            fd = os.path.join(d, "claims.d")
+            if not absent:
+                os.mkdir(fd)
+            for name, text in frags.items():
+                q = os.path.join(fd, name)
+                if text is None:
+                    os.mkdir(q)
+                else:
+                    with open(q, "w", encoding="utf-8") as fh:
+                        fh.write(text)
+            n = frozen.count("\n") if pin == "auto" else pin
+            out, err = io.StringIO(), io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                code = main(["--frozen-lines", str(n), "--fragments", fd, p])
+        good = code == want_code
+        if want_stderr:
+            good = good and want_stderr in err.getvalue()
+        if want_stdout:
+            good = good and want_stdout in out.getvalue()
+        print(f"   {'ok  ' if good else 'FAIL'} {label}")
+        if not good:
+            ok = False
+            print(
+                f"        wanted code={want_code} stderr~{want_stderr!r} "
+                f"stdout~{want_stdout!r}, got code={code} "
+                f"stderr={err.getvalue()!r} stdout={out.getvalue()!r}"
+            )
+
+    readme = {"README.md": "# claims.d\n"}
+    frag = {"feat-x.jsonl": row(id="OD-2"), **readme}
+    tree("frozen file + one fragment: both rows emitted, frozen file first", frozen, frag, 0,
+         want_stdout="OD-1\tresolved\ttrue\ta thing\nOD-2\tresolved")
+    tree("fragments are read in sorted name order",
+         frozen, {"b-x.jsonl": row(id="OD-B"), "a-x.jsonl": row(id="OD-A")}, 0,
+         want_stdout="OD-A\tresolved\ttrue\ta thing\nOD-B")
+    tree("README.md alone in claims.d is fine (zero fragments)", frozen, readme, 0)
+    tree("a row after the sentinel is FROZEN", frozen + row(id="OD-9"), frag, 7, "FROZEN")
+    tree("a row inserted above the sentinel is FROZEN", row() + row(id="OD-9") + sentinel, frag, 7,
+         "has 3 lines; it is frozen at 2")
+    tree("a row appended with no trailing newline (count kept) is FROZEN", frozen + row(id="OD-9").rstrip("\n"),
+         frag, 7, "not the FROZEN sentinel")
+    tree("the sentinel overwritten by a row (count kept) is FROZEN", row() + row(id="OD-9"), frag, 7,
+         "not the FROZEN sentinel")
+    tree("a sentinel whose text does not start FROZEN is not a sentinel",
+         row() + json.dumps({"_comment": "frozen, honest"}) + "\n", frag, 7, "not the FROZEN sentinel")
+    tree("a malformed fragment is MALFORMED and names its file:line",
+         frozen, {"feat-x.jsonl": row(id="OD-2") + "{not json\n"}, 3, "feat-x.jsonl:2")
+    tree("MUZZLED applies inside a fragment", frozen, {"feat-x.jsonl": row(verify="true 2>&1")}, 5, "MUZZLED")
+    tree("MULTILINE applies inside a fragment", frozen, {"feat-x.jsonl": row(verify="a\nb")}, 6, "MULTILINE")
+    tree("an upper-case fragment name is FRAGMENT", frozen, {"Feat-X.jsonl": row()}, 8, "Feat-X.jsonl")
+    tree("a .json in claims.d is FRAGMENT", frozen, {"feat-x.json": row()}, 8, "feat-x.json")
+    tree("a name starting with a dot or dash is FRAGMENT", frozen, {".x.jsonl": row(), "-x.jsonl": row()}, 8,
+         "-x.jsonl")
+    tree("a subdirectory in claims.d is FRAGMENT", frozen, {"sub": None}, 8, "subdirectory")
+    tree("a fragment of only a _comment is FRAGMENT", frozen,
+         {"feat-x.jsonl": json.dumps({"_comment": "x"}) + "\n\n"}, 8, "zero claims")
+    tree("a zero-byte fragment is FRAGMENT", frozen, {"feat-x.jsonl": ""}, 8, "zero claims")
+    tree("MALFORMED outranks FROZEN (3 > 7)", frozen + "{bad\n", {}, 3, "MALFORMED")
+    tree("FROZEN outranks FRAGMENT (7 > 8)", frozen + row(), {"X.jsonl": row()}, 7, "FRAGMENT")
+    tree("zero claims is the TOTAL: an empty frozen file and one fragment pass",
+         sentinel, {"feat-x.jsonl": row()}, 0, pin=1)
+    tree("zero claims in total still fails", sentinel, readme, 4, "EMPTY", pin=1)
+    tree("a missing claims.d is cannot-read (2), not zero fragments", frozen, {}, 2, "cannot read", absent=True)
+    for bad_pin in (["--frozen-lines", "x"], ["--frozen-lines", "0"], ["--frozen-lines"], ["--nope"]):
+        import contextlib
+        import io
+
+        with contextlib.redirect_stderr(io.StringIO()):
+            code = main(bad_pin + [os.devnull])
+        good = code == 2
+        print(f"   {'ok  ' if good else 'FAIL'} a bad option {bad_pin} is exit 2, not a run without the pin")
+        ok = ok and good
+
     print("PASS" if ok else "FAIL")
     return 0 if ok else 1
 
@@ -256,4 +496,4 @@ def self_test() -> int:
 if __name__ == "__main__":
     if "--self-test" in sys.argv:
         sys.exit(self_test())
-    sys.exit(main())
+    sys.exit(main(sys.argv[1:]))
