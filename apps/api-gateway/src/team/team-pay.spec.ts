@@ -2317,6 +2317,17 @@ describe("K5 — every door out of a house releases the person's shifts (ADR 024
     );
   });
 
+  it("a lead whose membership has lapsed (valid_until past) is not told", async () => {
+    const db = world();
+    const mgr = db.tables.user_restaurant_access.find((r) => r.user_id === MANAGER)!;
+    mgr.valid_until = "2026-01-01T00:00:00Z";
+
+    await membersOf(db).removeMember(STAFF, RID, STAFF);
+
+    const leads = db.tables.notifications.filter((n) => n.metadata?.action === "team_member_left");
+    expect(leads.map((n) => n.user_id)).toEqual([OWNER]);
+  });
+
   it("the Team page's remove still hands nobody a leaver notice (a manager chose it)", async () => {
     const db = world();
     await teamOf(db).deleteMember(MANAGER, RID, "m-staff");

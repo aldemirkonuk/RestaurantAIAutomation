@@ -1,4 +1,5 @@
 import { Logger } from "@nestjs/common";
+import { houseMembersInRoles } from "../common/tenant/live-membership";
 
 /**
  * A change to somebody's access files itself, and tells them.
@@ -173,23 +174,18 @@ export async function noticeToHouseLeads(
 ): Promise<string[]> {
   const told: string[] = [];
   try {
-    const { data, error } = await sb
-      .from("user_restaurant_access")
-      .select("user_id, role")
-      .eq("restaurant_id", n.restaurantId)
-      .eq("is_active", true)
-      .in("role", ["owner", "manager"]);
-    if (error) {
-      logger.error(`${n.metadata.action}: could not read who to tell — ${error.message}`);
+    // Who is an owner or manager here right now: the one shared reader
+    // (fix/websocket-role-gate), which applies `isLiveMembership`, so a lapsed
+    // membership (`valid_until` past) is not told. A failed read throws and
+    // tells nobody, logged below.
+    let leadIds: string[];
+    try {
+      leadIds = await houseMembersInRoles(sb, n.restaurantId, ["owner", "manager"]);
+    } catch (err: any) {
+      logger.error(`${n.metadata.action}: could not read who to tell — ${err?.message}`);
       return told;
     }
-    const leads = [
-      ...new Set(
-        ((data ?? []) as { user_id: string | null }[])
-          .map((r) => r.user_id)
-          .filter((u): u is string => !!u && u !== n.exceptUserId),
-      ),
-    ];
+    const leads = leadIds.filter((u) => u !== n.exceptUserId);
     for (const userId of leads) {
       const { error: insErr } = await sb.from("notifications").insert({
         user_id: userId,
