@@ -50,7 +50,7 @@ import {
 } from './tm-format';
 import { Card, Fact, KV, Mark, MutationError, Tag } from './tm-bits';
 import { PerformanceCard } from './PerformanceCard';
-import type { TimeOffRow } from './useTeamNextData';
+import { useActiveRestaurantId, type TimeOffRow } from './useTeamNextData';
 import { AwayMarker } from '@/components/mudavym/AwayMarker';
 import { AwayCard } from './AwayCard';
 import type { HouseAreasData } from './useHouseAreas';
@@ -564,8 +564,11 @@ export function MemberSheet({
   const [removedNotice, setRemovedNotice] = useState<string | null>(null);
   // "Replace with" (ADR 0215 item 27): who takes which shifts, if anyone.
   const [handover, setHandover] = useState<HandoverChoice>(NO_HANDOVER);
+  // Keyed by house: the gateway scopes the preview by restaurant, so a key
+  // without it would serve the previous house's shifts after a switch.
+  const rid = useActiveRestaurantId();
   const handoverPreview = useQuery({
-    queryKey: ['team', 'handover', member?.id ?? null, handover.to],
+    queryKey: ['team', 'handover', rid, member?.id ?? null, handover.to],
     queryFn: () => getHandoverPreview(member!.id, handover.to),
     enabled: !!member && !!handover.to && confirmRemove,
   });
