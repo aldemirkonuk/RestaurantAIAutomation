@@ -30,3 +30,21 @@ one case in `NewVendor.test.tsx`; all failed on main. CLAIMS
 **Left open.** The catalogue path (`catalogue_vendor_id`) still ignores
 `paymentTerms`; `useUpdateProvider` and the legacy `pages/Providers.tsx`
 still share the queue-on-any-failure / temp-id pattern — not in this row.
+
+**[Amended 2026-09-29, ADR 0090 audit of #508 at `8e5a5098b`, adversary blocker.]**
+"No response" (`error.request && !error.response`) includes a timeout after the
+gateway committed the vendor, so the queued replay (`sync-manager.ts`
+`provider.create`) could create a second vendor, and the custom-vendor branch
+of `providers.service.ts` has no duplicate guard. Fixed with the replay
+mechanism the gateway already has: `useCreateProvider` mints one
+`Idempotency-Key` per create, sends it on the first attempt and stores it in
+the queued data; the sync handler sends it back as the header (not as a vendor
+field). The global `IdempotencyInterceptor` (`common/idempotency`, table
+`api_idempotency_keys`) answers a repeated key with the stored first response
+and does not run the handler. Evidence: two cases in
+`useProviderQueries.create-offline.test.tsx`, one in `sync-manager.test.ts`,
+and `idempotency.interceptor.spec.ts` (replay returns the stored vendor, handler
+not called). **Residual:** the interceptor stores the response after the
+handler returns and fails open, so a replay that lands while the first request
+is still executing, or when the key table is unreachable, can still duplicate;
+entries queued before this change carry no key and replay as before.

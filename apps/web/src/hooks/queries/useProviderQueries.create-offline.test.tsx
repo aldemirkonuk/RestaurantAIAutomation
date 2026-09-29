@@ -110,6 +110,32 @@ describe('useCreateProvider — offline queueing only on a real network failure'
     expect(toast.info).toHaveBeenCalled()
   })
 
+  it('committed but reply lost: the queued replay carries the key the first attempt was sent with', async () => {
+    // "No response" includes a timeout after the server wrote the vendor. The
+    // replay must be recognisable as the same create, or it makes a duplicate.
+    api.createProvider.mockRejectedValue(networkError())
+    const result = run()
+    await act(async () => {
+      await result.current.mutateAsync(INPUT)
+    })
+    const firstKey = api.createProvider.mock.calls[0][1]?.idempotencyKey
+    expect(typeof firstKey).toBe('string')
+    expect(firstKey.length).toBeGreaterThan(10)
+    expect(sync.queueMutation.mock.calls[0][0].data).toMatchObject({ idempotencyKey: firstKey })
+  })
+
+  it('two separate creates never share a key', async () => {
+    api.createProvider.mockResolvedValue({ id: 'p1', name: 'x' })
+    const result = run()
+    await act(async () => {
+      await result.current.mutateAsync(INPUT)
+      await result.current.mutateAsync(INPUT)
+    })
+    const [a, b] = api.createProvider.mock.calls.map((c) => c[1]?.idempotencyKey)
+    expect(a).toBeTruthy()
+    expect(a).not.toBe(b)
+  })
+
   it('a plain throw with no network evidence rejects, not queued', async () => {
     api.createProvider.mockRejectedValue(new TypeError('x is undefined'))
     const result = run()

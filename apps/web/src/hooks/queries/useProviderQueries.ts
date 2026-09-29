@@ -133,6 +133,13 @@ export function useRecommendedProviders(restaurantId: string, wineId: string) {
  * actually down. A 4xx or 5xx is an answer from the server, and a throw with
  * no request behind it is a bug; neither is "offline".
  */
+function newIdempotencyKey(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return `provider-create:${crypto.randomUUID()}`
+  }
+  return `provider-create:${Date.now()}-${Math.random().toString(36).slice(2)}`
+}
+
 function isNetworkFailure(error: unknown): boolean {
   return Boolean(axios.isAxiosError(error) && error.request && !error.response)
 }
@@ -154,15 +161,20 @@ export function useCreateProvider() {
   return useMutation({
     mutationFn: async (data: CreateProviderInput) => {
       const tempId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-      
+      // One key per create, sent on the first attempt AND on the queued
+      // replay. "No response" includes a timeout after the server committed;
+      // the gateway's IdempotencyInterceptor returns the stored vendor for a
+      // repeated key, so the replay cannot make a duplicate.
+      const idempotencyKey = newIdempotencyKey()
+
       try {
-        return await createProvider(data)
+        return await createProvider(data, { idempotencyKey })
       } catch (error) {
         if (!isNetworkFailure(error)) throw error
         // Queue for offline sync
         await syncManager.queueMutation({
           type: 'provider.create',
-          data,
+          data: { ...data, idempotencyKey },
           tempId,
         })
         
