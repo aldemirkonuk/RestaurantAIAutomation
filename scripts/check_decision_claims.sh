@@ -104,8 +104,8 @@ CLAIMS=".planning/decisions/CLAIMS.jsonl"
 # the sentinel fails too. Changing a pin is deliberate and shows in review.
 # Exit 7 is a pin or sentinel violation. The runner test's fixtures rewrite
 # these two lines in their COPY of this file; there is no override here.
-CLAIMS_FROZEN_LINES=745
-DEBT_FROZEN_LINES=7053
+CLAIMS_FROZEN_LINES=746
+DEBT_FROZEN_LINES=7063
 CLAIMS_FRAGMENTS=".planning/decisions/claims.d"
 DEBT=".planning/v3.0-TECH-DEBT.md"
 DEBT_FRAGMENTS=".planning/tech-debt.d"
