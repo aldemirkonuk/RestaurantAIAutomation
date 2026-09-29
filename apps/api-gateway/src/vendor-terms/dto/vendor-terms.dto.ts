@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import {
   ArrayMaxSize,
   IsArray,
+  IsBoolean,
   IsInt,
   IsNumber,
   IsOptional,
@@ -100,7 +101,12 @@ export class SetApprovalThresholdDto {
   @Matches(/^(manager_ceiling|new_vendor|price_jump)$/)
   rule!: "manager_ceiling" | "new_vendor" | "price_jump";
 
+  // `@IsBoolean()` is load-bearing, not decoration: under the global pipe's
+  // `whitelist` + `forbidNonWhitelisted` (main.ts), a property with no
+  // class-validator decorator is refused as "should not exist", which 400'd
+  // every save from /settings (web endpoint sweep 2026-09-28, row 23).
   @ApiProperty({ description: "Whether the house wants this rule at all." })
+  @IsBoolean()
   enabled!: boolean;
 
   @ApiPropertyOptional({
