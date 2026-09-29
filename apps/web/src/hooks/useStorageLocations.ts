@@ -20,7 +20,7 @@
  */
 
 import { useCallback, useEffect, useRef } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { apiClient } from '../services/api/client'
 import { useAuth } from '../contexts/AuthContext'
@@ -730,4 +730,82 @@ export function useWinesAtLocation(locationId: string | null) {
     wines: query.data ?? [],
     isLoading: query.isLoading,
   }
+}
+
+/* ── who may set up zones (ADR 0238) ───────────────────────────────────────
+ *
+ * The founder, 2026-09-29: "managers/owners+ the people they assign". The
+ * gateway refuses a setup write (create, rename, resize, delete) with a 403;
+ * this is what the pages read so they do not offer a control that would be
+ * refused. Placing and counting wines are not gated (OD-200).
+ */
+
+export interface ZoneSetupAccess {
+  mine: { allowed: boolean; via: 'house_role' | 'assigned' | null }
+  /** User ids assigned by an owner or manager; `null` unless the viewer is one. */
+  assigned: string[] | null
+}
+
+const ZONE_SETUP_KEY = 'zoneSetupAccess'
+
+/** A body is an answer only if it has the shape the gateway sends. */
+function asZoneSetupAccess(raw: unknown): ZoneSetupAccess | null {
+  const r = raw as Partial<ZoneSetupAccess> | null
+  if (!r || typeof r !== 'object' || !r.mine || typeof r.mine.allowed !== 'boolean') return null
+  return {
+    mine: { allowed: r.mine.allowed, via: r.mine.via ?? null },
+    assigned: Array.isArray(r.assigned) ? r.assigned.filter((u) => typeof u === 'string') : null,
+  }
+}
+
+/**
+ * `maySetUp` is true only on the gateway's word. Loading, a failed read, or a
+ * body of the wrong shape all read as "not offered" (the server would refuse
+ * anyway); `unknown` says which, so a page can say it could not read it.
+ */
+export function useZoneSetupAccess(opts: { enabled?: boolean } = {}) {
+  const { activeRestaurantId, isAuthenticated } = useAuth()
+  const restaurantId = activeRestaurantId ?? ''
+  const query = useQuery<ZoneSetupAccess | null>({
+    queryKey: [ZONE_SETUP_KEY, restaurantId],
+    queryFn: async () => {
+      const { data } = await apiClient.get(`/storage-locations/${restaurantId}/setup-access`)
+      return asZoneSetupAccess(data)
+    },
+    enabled: (opts.enabled ?? true) && !!restaurantId && isAuthenticated,
+    staleTime: 30_000,
+  })
+  const answer = query.data ?? null
+  return {
+    maySetUp: answer?.mine.allowed === true,
+    /** The read has not answered, failed, or answered in a shape we do not know. */
+    unknown: answer === null,
+    loading: query.isPending,
+    /** Owners and managers only; `null` otherwise or when unknown. */
+    assigned: answer?.assigned ?? null,
+  }
+}
+
+/** An owner or manager assigns or withdraws one staff member's zone setup. */
+export function useSetZoneSetupAccess() {
+  const { activeRestaurantId } = useAuth()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (input: { userId: string; allowed: boolean }) => {
+      const { data } = await apiClient.put(
+        `/storage-locations/${activeRestaurantId}/setup-access/${input.userId}`,
+        { allowed: input.allowed },
+      )
+      return data as {
+        userId: string
+        allowed: boolean
+        changed: boolean
+        audited: boolean
+        notified: boolean
+      }
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: [ZONE_SETUP_KEY, activeRestaurantId] })
+    },
+  })
 }

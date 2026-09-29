@@ -88,6 +88,13 @@ vi.mock('../../../hooks/queries/useProviderQueries', () => ({
   useRecommendedProviders: () => ({ data: undefined, isError: false }),
 }));
 
+// ADR 0238: the floor asks who may rename a zone. These tests are about the
+// floor's states, as a manager sees them; the refusal side is pinned in
+// components/inventory/zone-setup-access.test.tsx.
+vi.mock('../../../hooks/useStorageLocations', () => ({
+  useZoneSetupAccess: () => ({ maySetUp: true, unknown: false, loading: false, assigned: [] }),
+}));
+
 import CellarNext from './CellarNext';
 import type { CellarNextProps } from './CellarNext';
 
