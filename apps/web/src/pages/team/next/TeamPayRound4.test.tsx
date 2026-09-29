@@ -15,11 +15,14 @@ const api = vi.hoisted(() => ({
   setMemberPayAccess: vi.fn(),
   getFormerStaff: vi.fn(),
   updateTeamMember: vi.fn((..._a: unknown[]) => Promise.resolve({})),
+  deleteTeamMember: vi.fn((..._a: unknown[]) => Promise.resolve({} as Record<string, unknown>)),
+  getHandoverPreview: vi.fn((..._a: unknown[]) => Promise.resolve({} as Record<string, unknown>)),
 }));
 
 vi.mock('../../../services/api/team', () => ({
   createTeamMember: vi.fn(() => Promise.resolve({})),
-  deleteTeamMember: vi.fn(() => Promise.resolve(undefined)),
+  deleteTeamMember: api.deleteTeamMember,
+  getHandoverPreview: api.getHandoverPreview,
   updateTeamMember: api.updateTeamMember,
   setMemberPayAccess: api.setMemberPayAccess,
   getFormerStaff: api.getFormerStaff,
@@ -68,6 +71,8 @@ beforeEach(() => {
   api.setMemberPayAccess.mockReset();
   api.getFormerStaff.mockReset();
   api.updateTeamMember.mockClear();
+  api.deleteTeamMember.mockReset();
+  api.getHandoverPreview.mockReset();
 });
 
 describe('the pay switch on a manager’s row', () => {
@@ -230,6 +235,75 @@ describe('the pay switch on a manager’s row', () => {
     expect(screen.getByText(/kept for five years, for an owner only/)).toHaveTextContent(
       /availability is not kept/,
     );
+    // ADR 0215 item 26 (founder item 93): what has not started goes back to
+    // the open pool; what is kept is the PAST shifts, not every shift.
+    expect(screen.getByText(/kept for five years, for an owner only/)).toHaveTextContent(
+      /shifts that have not started yet go back to the open pool.*Their past shifts, leave/,
+    );
+    // The founder, 2026-09-28: a shift being worked right now is cut at the
+    // removal minute (ADR 0215 item 26's 2026-09-28 bracket).
+    expect(screen.getByText(/kept for five years, for an owner only/)).toHaveTextContent(
+      /working right now is cut at this minute: the part worked stays theirs, paid for the time worked, and the rest of it goes to the open pool/,
+    );
+  });
+
+  function removeWith(receipt: Record<string, unknown>) {
+    api.deleteTeamMember.mockResolvedValue(receipt);
+    const onClose = vi.fn();
+    const onChanged = vi.fn();
+    render(
+      wrap(
+        <MemberSheet
+          member={member({ role: 'staff' }) as never}
+          moneyVisible
+          viewerIsOwner
+          viewerUserId="u-owner"
+          ownerCount={1}
+          onClose={onClose}
+          onChanged={onChanged}
+        />,
+      ),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove and revoke access' }));
+    return { onClose, onChanged };
+  }
+
+  it('closes after a removal judged on the house\'s own clock, with nothing to say', async () => {
+    const { onClose, onChanged } = removeWith({
+      shiftsOpened: 2,
+      shiftsSplit: 1,
+      shiftsUnjudged: 0,
+      clock: { zone: 'Europe/Istanbul', source: 'house' },
+    });
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(onChanged).toHaveBeenCalled();
+    expect(screen.queryByRole('status')).toBeNull();
+  });
+
+  it('says when the removal was judged on this device\'s clock, and waits to be closed', async () => {
+    const { onClose, onChanged } = removeWith({
+      shiftsSplit: 1,
+      shiftsUnjudged: 0,
+      clock: { zone: 'Europe/Istanbul', source: 'device' },
+    });
+    const note = await screen.findByRole('status');
+    expect(note).toHaveTextContent(/no time zone set.*this device's clock \(Europe\/Istanbul\).*Set the restaurant's time zone in Settings/);
+    expect(onChanged).toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it('names the shifts it could not judge with no clock at all', async () => {
+    const { onClose } = removeWith({
+      shiftsSplit: 0,
+      shiftsUnjudged: 2,
+      clock: { zone: null, source: 'none' },
+    });
+    const note = await screen.findByRole('status');
+    expect(note).toHaveTextContent(/2 shifts of theirs may already have started.*kept with them, whole/);
+    expect(onClose).not.toHaveBeenCalled();
   });
 });
 
@@ -320,5 +394,119 @@ describe('the former-staff history', () => {
     unmount();
     render(wrap(<TeamRecordSection {...props} viewerIsOwner={false} onOpenFormerStaff={open} />));
     expect(screen.queryByRole('button', { name: 'Open the former-staff history' })).toBeNull();
+  });
+});
+
+// ADR 0215 item 27 (founder, 2026-09-28): "'Replace with' picker"; checks
+// "refuse overlap warn rest but owner has a say to change it into warn all
+// four to allow double booking". The page only shows what the gateway's
+// checks said; it never decides a check itself. Fails on 8dd9bfeaf: there is
+// no picker there, and the removal sends no hand-over.
+describe('"Replace with" on the remove dialog', () => {
+  const sam = member({ id: 'm-sam', user_id: 'u-sam', display_name: 'Sam', position: 'Server', role: 'staff' });
+  const leaving = member({ id: 'm-gone', user_id: 'u-gone', display_name: 'Gone', role: 'staff' });
+
+  function openRemove(preview: Record<string, unknown>) {
+    api.getHandoverPreview.mockResolvedValue(preview);
+    api.deleteTeamMember.mockResolvedValue({ shiftsOpened: 1, shiftsHandedOver: 1, clock: { zone: 'Europe/Istanbul', source: 'house' } });
+    const onClose = vi.fn();
+    render(
+      wrap(
+        <MemberSheet
+          member={leaving as never}
+          roster={[leaving, sam] as never}
+          moneyVisible
+          viewerIsOwner
+          viewerUserId="u-owner"
+          ownerCount={1}
+          onClose={onClose}
+          onChanged={vi.fn()}
+        />,
+      ),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+    return { onClose };
+  }
+  const shiftOf = (id: string, checks: unknown[] = [], over: Record<string, unknown> = {}) => ({
+    id,
+    part: 'whole',
+    shift_date: '2026-09-24',
+    start_time: '09:00',
+    end_time: '17:00',
+    role: 'Server',
+    checks,
+    ...over,
+  });
+
+  it('lists everyone else on the roster, and with nobody chosen removes as before (open pool)', async () => {
+    openRemove({ doubleBooking: 'refuse', unjudged: 0, shifts: [] });
+    const picker = screen.getByRole('combobox', { name: 'Replace with' });
+    expect(Array.from((picker as HTMLSelectElement).options).map((o) => o.textContent)).toEqual([
+      'The open pool (nobody yet)',
+      'Sam — Server',
+    ]);
+    fireEvent.click(screen.getByRole('button', { name: 'Remove and revoke access' }));
+    await waitFor(() => expect(api.deleteTeamMember).toHaveBeenCalledWith('m-gone', undefined, null));
+    expect(api.getHandoverPreview).not.toHaveBeenCalled();
+  });
+
+  it('hands the ticked shifts to the chosen person; an unticked one stays for the open pool', async () => {
+    openRemove({ doubleBooking: 'refuse', unjudged: 0, shifts: [shiftOf('thu'), shiftOf('fri', [], { shift_date: '2026-09-25', part: 'rest' })] });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Replace with' }), { target: { value: 'm-sam' } });
+    await waitFor(() => expect(api.getHandoverPreview).toHaveBeenCalledWith('m-gone', 'm-sam'));
+    const boxes = await screen.findAllByRole('checkbox');
+    await waitFor(() => expect(boxes.every((b) => (b as HTMLInputElement).checked)).toBe(true));
+    expect(screen.getByText(/the rest of the shift they are on now/)).toBeInTheDocument();
+    fireEvent.click(boxes[1]);
+    fireEvent.click(screen.getByRole('button', { name: 'Remove and hand over 1 shift' }));
+    await waitFor(() =>
+      expect(api.deleteTeamMember).toHaveBeenCalledWith('m-gone', undefined, { to: 'm-sam', shiftIds: ['thu'], accept: [] }),
+    );
+  });
+
+  it('a refused shift (an overlap, double booking off) cannot be ticked and says it goes to the open pool', async () => {
+    openRemove({
+      doubleBooking: 'refuse',
+      unjudged: 0,
+      shifts: [shiftOf('thu', [{ code: 'overlap', level: 'refuse', message: 'They already have a shift at this time.' }]), shiftOf('fri')],
+    });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Replace with' }), { target: { value: 'm-sam' } });
+    const boxes = await screen.findAllByRole('checkbox');
+    expect(boxes[0]).toBeDisabled();
+    expect(boxes[0]).not.toBeChecked();
+    expect(screen.getByText(/Goes to the open pool: They already have a shift at this time/)).toBeInTheDocument();
+    expect(screen.getByText(/Double booking is off in this house/)).toBeInTheDocument();
+    await waitFor(() => expect(boxes[1]).toBeChecked());
+    fireEvent.click(screen.getByRole('button', { name: 'Remove and hand over 1 shift' }));
+    await waitFor(() =>
+      expect(api.deleteTeamMember).toHaveBeenCalledWith('m-gone', undefined, { to: 'm-sam', shiftIds: ['fri'], accept: [] }),
+    );
+  });
+
+  it('a warning must be acknowledged before the removal is sent, and its code goes with it', async () => {
+    openRemove({
+      doubleBooking: 'warn',
+      unjudged: 0,
+      shifts: [shiftOf('thu', [{ code: 'time_off', level: 'warn', message: 'They have approved time off on this day.' }])],
+    });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Replace with' }), { target: { value: 'm-sam' } });
+    expect(await screen.findByText(/Warning: They have approved time off on this day/)).toBeInTheDocument();
+    const go = await screen.findByRole('button', { name: 'Remove and hand over 1 shift' });
+    expect(go).toBeDisabled();
+    fireEvent.click(screen.getByRole('checkbox', { name: /I have read the warnings/ }));
+    expect(go).not.toBeDisabled();
+    fireEvent.click(go);
+    await waitFor(() =>
+      expect(api.deleteTeamMember).toHaveBeenCalledWith('m-gone', undefined, { to: 'm-sam', shiftIds: ['thu'], accept: ['time_off'] }),
+    );
+  });
+
+  it("says the gateway's refusal in its own words", async () => {
+    openRemove({ doubleBooking: 'refuse', unjudged: 0, shifts: [shiftOf('thu')] });
+    api.deleteTeamMember.mockRejectedValue({ response: { status: 409, data: { message: 'Some of these shifts cannot go to the person you chose, so nobody was removed.' } } });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Replace with' }), { target: { value: 'm-sam' } });
+    const go = await screen.findByRole('button', { name: 'Remove and hand over 1 shift' });
+    fireEvent.click(go);
+    expect(await screen.findByText(/cannot go to the person you chose, so nobody was removed/)).toBeInTheDocument();
   });
 });
