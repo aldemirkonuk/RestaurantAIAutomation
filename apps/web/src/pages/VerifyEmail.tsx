@@ -92,7 +92,10 @@ export function VerifyEmail() {
   }
 
   const signOutThenSignIn = () =>
-    void logout().then(() => navigate(signInHref, { replace: true }))
+    void logout().then((out) => {
+      // `false`: they chose to keep unsent changes and stay signed in (ADR 0241).
+      if (out) navigate(signInHref, { replace: true })
+    })
 
   /** What the page says for a link it cannot honour yet (fork 12). */
   const linkGate = mustSignIn ? (

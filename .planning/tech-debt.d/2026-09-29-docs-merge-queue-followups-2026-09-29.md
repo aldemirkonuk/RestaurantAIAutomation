@@ -1,4 +1,4 @@
-## Offline mutations replay under whoever is signed in at replay time, and are dropped in silence after three failures — OPEN — 2026-09-29
+## Offline mutations replay under whoever is signed in at replay time, and are dropped in silence after three failures — ~~OPEN~~ CLOSED 2026-09-29 by `fix/od-203-offline-queue-binds-and-never-drops` and `fix/od-203-outboxes-never-drop` (OD-203, [ADR 0241](../decisions/0241-an-offline-change-belongs-to-its-person-and-house-and-is-never-dropped-for-failing.md); the door and spot-count outboxes named under "Not covered" are covered by the second) — 2026-09-29
 
 Filed from the ADR 0090 audit of #508. This entry records the defect. The fork is OD-203.
 

@@ -15,11 +15,22 @@
 
 import { offlineStorage } from './offline-storage'
 import { recordSpotCount } from '../services/api/inventory'
+import {
+  currentQueueOwner,
+  isPermanentRefusal,
+  isReplayable,
+  isVisibleTo,
+  statusOf,
+} from './queue-owner'
 
 const MUTATION_TYPE = 'inventory.spotCount'
 
-/** Give up after this many attempts and surface it, rather than retrying forever. */
-const MAX_ATTEMPTS = 8
+// No attempt ceiling (ADR 0241, OD-203 (a)). This queue used to delete a
+// count after 8 failed attempts, and on any permanent refusal, with nothing
+// said to anyone. A count now leaves the queue only when the server takes it,
+// or when the person discards it from the "not sent" strip; a permanent
+// refusal parks it there, and a transient failure is tried again on the next
+// flush (triggered by 'online' and 'visibilitychange', never a timer).
 
 export interface QueuedSpotCount {
   itemId: string
@@ -84,46 +95,64 @@ export async function pendingSpotCountCount(): Promise<number> {
 }
 
 /**
- * Push everything queued. Safe to call repeatedly and concurrently — the
- * idempotency key makes a double-send a no-op on the server.
+ * Push everything queued that belongs to this session. Safe to call
+ * repeatedly and concurrently — the idempotency key makes a double-send a
+ * no-op on the server.
+ *
+ * `parked` counts the counts the server refused for good this pass: they stay
+ * in the queue as "not sent" (the app-wide strip shows them), never deleted.
  */
 export async function flushSpotCountOutbox(): Promise<{
   sent: number
   failed: number
+  parked: number
 }> {
-  if (!navigator.onLine) return { sent: 0, failed: 0 }
+  if (!navigator.onLine) return { sent: 0, failed: 0, parked: 0 }
 
+  // Only this session's person and house (`getPendingMutations` filters).
   const pending = await offlineStorage.getPendingMutationsByType(MUTATION_TYPE)
+  const session = currentQueueOwner()
+  const now = Date.now()
   let sent = 0
   let failed = 0
+  let parked = 0
 
   for (const m of pending) {
+    if (m.parked) continue
+    if (!isVisibleTo(m, session)) continue
+    if (!isReplayable(m, session)) {
+      await offlineStorage.updatePendingMutation(m.id, {
+        parked: { reason: 'unowned', at: new Date(now).toISOString() },
+      })
+      parked++
+      continue
+    }
     const entry = m.data as QueuedSpotCount
     try {
       await recordSpotCount(entry.itemId, entry.body, entry.restaurantId)
       await offlineStorage.removePendingMutation(m.id)
       sent++
     } catch (err) {
-      const status = (err as { response?: { status?: number } })?.response
-        ?.status
-      const permanent =
-        status && status >= 400 && status < 500 && status !== 408 && status !== 429
-
-      if (permanent || m.retryCount + 1 >= MAX_ATTEMPTS) {
-        await offlineStorage.removePendingMutation(m.id)
-        failed++
+      const status = statusOf(err)
+      const lastError = (err as Error)?.message ?? 'sync failed'
+      if (isPermanentRefusal(status)) {
+        await offlineStorage.updatePendingMutation(m.id, {
+          lastError,
+          parked: { reason: 'refused', status, at: new Date(now).toISOString() },
+        })
+        parked++
         continue
       }
 
       await offlineStorage.updatePendingMutation(m.id, {
         retryCount: m.retryCount + 1,
-        lastError: (err as Error)?.message ?? 'sync failed',
+        lastError,
       })
       failed++
     }
   }
 
-  return { sent, failed }
+  return { sent, failed, parked }
 }
 
 /**

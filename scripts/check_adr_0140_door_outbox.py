@@ -48,7 +48,10 @@ for pattern, why in [
 cited = set(re.findall(r"ADR[ -](\d{4})", door))
 if "0140" not in cited:
     bad.append("doorOutbox.ts does not cite ADR 0140")
-if cited - {"0140", "0104", "0042", "0138"}:
+# 0241 (2026-09-29, OD-203): the outbox's retry rule and owner binding are
+# decided there — no attempt ceiling for a transient failure, the queue read
+# only by the person and house that wrote it — so the module cites it.
+if cited - {"0140", "0104", "0042", "0138", "0241"}:
     bad.append("doorOutbox.ts cites an unexpected ADR: " + ", ".join(sorted(cited - {"0140"})))
 
 # D4 — no screen carries a standing strand surface.

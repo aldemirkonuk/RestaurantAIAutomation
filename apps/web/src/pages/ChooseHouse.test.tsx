@@ -297,6 +297,21 @@ describe("ChooseHouse", () => {
     await waitFor(() => expect(logout).toHaveBeenCalled());
   });
 
+  it('"Not you?" goes to /login only when the sign-out happened (ADR 0241)', async () => {
+    housesAnswer([MODA, KADIKOY]);
+    // They kept their unsent changes: still signed in, so they stay here.
+    logout.mockResolvedValueOnce(false);
+    renderAt();
+    fireEvent.click(await screen.findByRole("button", { name: "Sign out" }));
+    await waitFor(() => expect(logout).toHaveBeenCalledTimes(1));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(screen.queryByTestId("where")).toBeNull();
+
+    logout.mockResolvedValueOnce(true);
+    fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+    await waitFor(() => expect(screen.getByTestId("where")).toHaveTextContent("/login"));
+  });
+
   // ADR 0229 fork 13 (the founder, 2026-09-28, item 82, "Hold until accepted
   // (Recommended)"): a membership an invite join granted before the address
   // was proved waits here, and opens only when the person joins it.

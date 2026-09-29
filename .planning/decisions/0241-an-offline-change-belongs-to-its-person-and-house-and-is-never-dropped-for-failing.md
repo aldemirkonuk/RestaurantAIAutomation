@@ -74,12 +74,13 @@ Not taken, stated: `ChooseHouse.tsx:389` and `VerifyEmail.tsx:95` call `logout()
 - **`window.confirm`, not a house modal.** The standard browser prompt, used by every sign-out door at once; ADR 0112's modal shape would need a sign-out host component. Revisit if the founder wants the branded prompt.
 - **Revisit when** a "not sent" entry is reported that the person could not explain (the classifier's 4xx rule is then wrong for that route), or the second PR's door/spot-count change lands.
 
-## What is left (the second OD-203 PR)
+## The second OD-203 PR (`fix/od-203-outboxes-never-drop`)
 
-- `spotCountOutbox`: no attempt ceiling, park on a permanent refusal (today it deletes silently).
-- `doorOutbox`: no attempt ceiling for transient failures (today 8, then a pinned drop); a permanent refusal keeps ADR 0140's pinned drop record, which names the order to the porter.
-- `ChooseHouse.tsx`, `VerifyEmail.tsx`: honour `logout()`'s `false`.
-- Close the tech-debt entry's heading.
+- `spotCountOutbox`: no attempt ceiling. A permanent refusal parks the count as "not sent", and the app-wide strip shows it. A transient failure is retried on the next flush. Before this, it deleted the count after 8 attempts or on any 4xx, and said nothing.
+- `doorOutbox`: no attempt ceiling for transient failures. Before this, a receipt was dropped after 8 attempts. A 401 is now transient: the receipt is kept until the same person signs in again, which closes C4, where a 401 used to delete the receipt. A permanent refusal (any other 4xx) **keeps ADR 0140's pinned drop record**, which names the order on the receiving rail. This is the one place the rule "a refusal is parked, not deleted" is not applied. ADR 0140's rail is the surface porters already read. A door receipt the server refused as it stands (order closed, not found) cannot succeed by retrying. The pin keeps the order name and the reason, which is what the porter acts on. Revisit if a refused receipt is ever one the porter could have re-sent unchanged.
+- Neither outbox backs off. Each flush is triggered by mount, `online` or `visibilitychange`, never by a timer, so there is nothing to throttle, and a flush when the network returns should send at once.
+- `ChooseHouse.tsx` and `VerifyEmail.tsx` honour `logout()` returning `false`.
+- The tech-debt entry's heading is closed.
 
 ## Review trail
 
@@ -89,3 +90,4 @@ Not taken, stated: `ChooseHouse.tsx:389` and `VerifyEmail.tsx:95` call `logout()
 | 2026-09-29 | Research agent | Industry table above; Google Docs help page unreachable (bot check). |
 | 2026-09-29 | Adversarial agent | SURVIVES with four fixes, all built; two items deferred to the second PR, named above. |
 | 2026-09-29 | Build session | Tests fail on the old code: each production file reverted to `origin/main` fails the new tests (offline-storage 6, sync-manager 9, AuthContext 2, AppOfflineBanner 2). |
+| 2026-09-29 | Build session (second PR) | `spotCountOutbox.test.ts` (7; all fail on `origin/main`'s outbox), `doorOutbox.test.ts` re-cut (4 fail on main's outbox), `ChooseHouse.test.tsx` cancel case (fails on main's page). |

@@ -63,6 +63,13 @@ const settle = () => new Promise((resolve) => setTimeout(resolve, 10))
 beforeEach(() => {
   vi.clearAllMocks()
   window.localStorage.clear()
+  // A porter signed in to rest-A: since ADR 0241 (OD-203) a receipt is sent
+  // only by a session of the house it names.
+  window.localStorage.setItem(
+    'accessToken',
+    `h.${btoa(JSON.stringify({ sub: 'porter-1', restaurantId: RID }))}.s`,
+  )
+  window.localStorage.setItem('activeRestaurantId', RID)
   store.removePendingMutation.mockResolvedValue(undefined)
   store.updatePendingMutation.mockResolvedValue(undefined)
   vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true)
@@ -81,14 +88,19 @@ describe('flushDoorOutbox — the drop is counted where it happens', () => {
     expect(res).toEqual({ sent: 0, failed: 1, dropped: 1, stranded: 0, unreachable: false })
   })
 
-  it('counts an exhausted retry budget as dropped', async () => {
+  it('never gives up on a transient failure, however many came before (ADR 0241)', async () => {
+    // Before ADR 0241 the eighth attempt dropped this receipt.
     store.getPendingMutationsByType.mockResolvedValue([pending('b', 7)])
     recordDoorReceipt.mockRejectedValue(httpError(500))
 
     const res = await flushDoorOutbox()
 
-    expect(store.removePendingMutation).toHaveBeenCalledWith('b')
-    expect(res).toEqual({ sent: 0, failed: 1, dropped: 1, stranded: 0, unreachable: false })
+    expect(store.removePendingMutation).not.toHaveBeenCalled()
+    expect(store.updatePendingMutation).toHaveBeenCalledWith(
+      'b',
+      expect.objectContaining({ retryCount: 8 }),
+    )
+    expect(res).toEqual({ sent: 0, failed: 1, dropped: 0, stranded: 0, unreachable: false })
   })
 
   it('does NOT count a retryable failure as dropped — it is still in the queue', async () => {
@@ -208,25 +220,24 @@ describe('flushDoorOutbox — the drop outlives the screen that saw it', () => {
     expect(Number.isNaN(Date.parse(persistedDrops()[0].droppedAt))).toBe(false)
   })
 
-  it('calls an expired session what it is, so the notice can name the right remedy', async () => {
+  it('keeps a receipt refused with 401 — the session ended; it goes after the same person signs in (ADR 0241)', async () => {
     store.getPendingMutationsByType.mockResolvedValue([pending('a')])
     recordDoorReceipt.mockRejectedValue(httpError(401))
 
     await flushDoorOutbox()
 
-    // C4: a 401 that survived the api client's refresh-and-retry still deletes
-    // the receipt. That is filed, not fixed here — but "sign in again" and
-    // "tell a manager" are different instructions and the record says which.
-    expect(persistedDrops()[0].reason).toBe('auth')
+    // C4 is closed: a 401 used to delete the receipt with reason 'auth'.
+    expect(persistedDrops()).toEqual([])
+    expect(store.removePendingMutation).not.toHaveBeenCalled()
   })
 
-  it('distinguishes a spent retry budget from a refusal', async () => {
-    store.getPendingMutationsByType.mockResolvedValue([pending('b', 7)])
-    recordDoorReceipt.mockRejectedValue(httpError(500))
+  it('names a 403 as a sign-in problem, so the notice can name the right remedy', async () => {
+    store.getPendingMutationsByType.mockResolvedValue([pending('a')])
+    recordDoorReceipt.mockRejectedValue(httpError(403))
 
     await flushDoorOutbox()
 
-    expect(persistedDrops()[0]).toMatchObject({ id: 'b', reason: 'retries' })
+    expect(persistedDrops()[0].reason).toBe('auth')
   })
 
   it('records nothing for a retryable failure — that receipt is still in the queue', async () => {
@@ -350,9 +361,11 @@ describe('H2 — a receipt cannot vanish because this phone could not write it d
     expect(res.dropped).toBe(0)
     expect(res.stranded).toBe(1)
     expect(res.failed).toBe(1)
+    // Kept with its attempt counted — no longer parked at a ceiling, since
+    // ADR 0241 removed the ceiling; the next flush tries the record again.
     expect(store.updatePendingMutation).toHaveBeenCalledWith(
       'm-77',
-      expect.objectContaining({ retryCount: 8 }),
+      expect.objectContaining({ retryCount: 1 }),
     )
   })
 })
@@ -413,25 +426,27 @@ describe('L1 — a pass that cannot read the queue reports that, not health', ()
  * fault, one layer down.
  */
 describe('H1 — a drop with no house recorded is still shown to someone', () => {
-  it('files an unstamped entry where the adoption will find it, marked', async () => {
+  it('never SENDS an entry that names no house or person — it is parked as not sent (ADR 0241)', async () => {
     store.getPendingMutationsByType.mockResolvedValue([
       {
         id: 'pre',
         type: 'receiving.door',
-        // No restaurantId: queued before the stamp existed.
+        // No restaurantId and no owner: queued before either stamp existed.
         data: { orderId: 'o-pre', orderLabel: 'PO-PRE', body: {} },
         timestamp: new Date(),
         retryCount: 0,
       },
     ])
-    recordDoorReceipt.mockRejectedValue(httpError(422))
 
     await flushDoorOutbox()
 
-    expect(window.localStorage.getItem('mudavym.receiving.outboxDrops.unscoped')).toBeNull()
-
-    const seen = readDroppedDoorReceipts('rest-A')
-    expect(seen).toMatchObject([{ id: 'pre', orderLabel: 'PO-PRE', tenantUnknown: true }])
+    // Sending it as whoever is signed in is the defect OD-203 closed.
+    expect(recordDoorReceipt).not.toHaveBeenCalled()
+    expect(store.removePendingMutation).not.toHaveBeenCalled()
+    expect(store.updatePendingMutation).toHaveBeenCalledWith(
+      'pre',
+      expect.objectContaining({ parked: expect.objectContaining({ reason: 'unowned' }) }),
+    )
   })
 
   it('shows but does not adopt an unattributed record when no house is active', () => {
