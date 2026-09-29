@@ -121,14 +121,14 @@ archive folder; a retirement lists the file in the retiring ADR with its
 recovery commit. Ongoing rules:
 
 - Treat `PROJECT.md`, `STATE.md`, `ROADMAP.md`, `FUTURES.md`, `YC_WEDGE_PLAN.md`
-  as the live spine — the only top-level docs besides `v3.0-TECH-DEBT.md` and
-  `config.json`.
+  as the live spine — the only top-level docs besides `v3.0-TECH-DEBT.md` (frozen; new entries
+  in `tech-debt.d/`, ADR 0240) and `config.json`.
 - Closed records and reference corpora (REQUIREMENTS ledger, milestone audits,
   the `*_PLAN` / `*_CATALOG` files) live in `.planning/07-reference/` — grep
   them, cite them by `file.md:line`, do not restate them. `07-reference/INDEX.md`
   says what each one is.
-- `v3.0-TECH-DEBT.md` is the live defect register. Check it before claiming
-  something is broken or fixed.
+- `v3.0-TECH-DEBT.md` plus `.planning/tech-debt.d/` is the live defect register
+  (ADR 0240); search both. Check them before claiming something is broken or fixed.
 - Do **not** create new top-level `.planning/*.md` files. New long-form docs go in
   a subdirectory with an index entry.
 - **Retire-to-write (adopted 2026-08-24, org-wide).** Adding a document means naming
@@ -165,7 +165,8 @@ None of that was carelessness. **Prose rots because nothing re-reads it.** A
 claim written as a sentence is checked exactly once — the day it is written.
 
 - **If a claim can be checked by a command, write it as one.** Add a line to
-  [`.planning/decisions/CLAIMS.jsonl`](.planning/decisions/CLAIMS.jsonl);
+  your branch's fragment, [`.planning/decisions/claims.d/<branch-slug>.jsonl`](.planning/decisions/claims.d/README.md)
+  (`CLAIMS.jsonl` is frozen, ADR 0240);
   `scripts/check_decision_claims.sh` runs them all and blocks CI. `status`
   drives the expectation: `resolved` means the claim **must** hold, `open` means
   it must **not** hold yet — so a fixed-but-unstruck entry fails the build.
