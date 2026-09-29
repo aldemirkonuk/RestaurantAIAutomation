@@ -1033,3 +1033,67 @@ The founder's three answers of 2026-09-25 (round 4, item 19), verbatim in ADR 02
 ### Codex execution — overlay packet, 2026-09-13
 
 The recovered team overlays and their interaction regressions were reconciled with current main. The cross-page seal, partial-result and validation account is appended to ADR 0118 under “overlay commitments”; the workspace immutable manifest records exactly what was integrated. This is implementation evidence, not a new design decision.
+
+## 15. Someone leaves, someone replaces them — 2026-09-28 (founder item 93; ADR 0215 item 26; OD-181)
+
+The founder, verbatim: *"back to the open pool absolutely, but also brainstorm
+of what if there will be a replacemnt with a different employee. Then create
+new user, replace shifts with new employee -> then deleted back to opn pool ->
+add this to FAQ's."*
+
+**Built (PR from `fix/team-removed-shifts-open-pool-r2`):** removing a person
+sends their shifts that have not started yet, on the house's clock, back to the
+open pool; started and past shifts stay theirs in the owner's former-staff
+history (`TeamService.openUnstartedShiftsOf`, `team-pay.spec.ts` K2). The remove
+dialog says so (`RosterSheet.tsx`), and `/help#replace-team-member`
+(`hp-faq.ts`) gives today's procedure: add the new person, move each upcoming
+shift to them with the shift sheet's Who picker, remove the leaving person
+last; whatever was not moved goes to the open pool.
+
+**Not built — the replacement step. A founder fork, not decided here.** What
+the gateway checks today when a shift is moved (`schedule.service.ts`
+`updateShift`): the caller is a manager or owner, and the new person is on this
+house's roster (`assertMemberInRestaurant`). It does not check the new
+person's availability, their areas (ADR 0218), an away hold, or a clash with
+their other shifts. Every option below inherits that, unless it adds the check.
+
+- **(a) Rely on the FAQ (what exists now).** Cost: none. The manager moves
+  shifts one at a time, then removes; forgetting a shift is safe (it opens).
+  Enforces: nothing new. Weak when someone leaves with weeks of rota.
+- **(b) "Replace with" on the remove dialog.** The dialog lists the person's
+  upcoming shifts and offers a picker of existing roster people (and "add a
+  new person" inline); on confirm, one request moves the chosen shifts and
+  removes the person, the rest opening as today. Cost: a new gateway route
+  (or a `replaceWith` field on the delete) and a dialog state, about a day
+  with tests. The gateway must enforce: same role rules as `updateShift`
+  (manager/owner; owners manage owners for the removal), the target is on
+  the roster and is not the person leaving, the move and the removal in one
+  order that fails closed (move first, remove last, as the open does now),
+  re-pricing each moved shift at the new person's wage (`priceShift`) and the
+  money masking of ADR 0215 items 24–25 on the reply. Open sub-question: warn
+  or refuse on availability/area/away/overlap clashes.
+- **(c) Bulk reassign from the open pool.** No change to removal; a
+  "fill open shifts" action on the week assigns several open shifts to one
+  person at once. Cost: a bulk route plus a grid selection mode, one to two
+  days. Enforces the same as `updateShift` per shift, plus all-or-nothing
+  or per-row receipts. Helps every open shift (call-outs too), not only
+  departures, but the link "these were Ayşe's" is lost once they are open.
+- **(d) (b) with a notice to the new person.** As (b), and the new person is
+  told which shifts they were given. Cost: (b) plus a notification row; small.
+
+**Recommendation:** (b), with clashes shown as warnings rather than refusals
+(the manager is the one who knows who agreed to cover), and (c) later if open
+shifts pile up for other reasons. Until then (a) holds and is safe, because
+nothing unmoved is lost.
+
+**[2026-09-28, answered — founder, verbatim: Replacement "'Replace with'
+picker"; Picker checks "refuse overlap warn rest but owner has a say to
+change it into warn all four to allow double booking".]** Built as (b), ADR
+0215 item 27: the remove dialog's "Their upcoming shifts go to" picker; four
+gateway checks — overlap REFUSED (a WARN when the owner switches on "Allow
+double booking", `team_settings.allow_double_booking`), approved time off,
+role vs position/skills and the 45-hour week WARN, each to be acknowledged;
+all written in one transaction (`hand_over_leaving_shifts`); unticked shifts
+still open. Not built: adding a new person from the dialog (add them on Team
+first), (c) bulk reassign, (d) the notice (OD-196). Availability and a
+rest rule are not checks (OD-194, OD-195).

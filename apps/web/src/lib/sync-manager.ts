@@ -65,8 +65,14 @@ const mutationHandlers: Record<
 
   // Provider mutations
   'provider.create': async (mutation) => {
-    const data = (mutation.data ?? {}) as Record<string, unknown>
-    return createProvider(data as any)
+    // The key the first attempt was sent with travels in the queued data, so
+    // a replay of a create the server committed (reply lost) returns that
+    // vendor instead of making a second one. Entries queued before the key
+    // existed have none and replay as before.
+    const { idempotencyKey, ...data } = (mutation.data ?? {}) as Record<string, unknown>
+    return createProvider(data as any, {
+      idempotencyKey: typeof idempotencyKey === 'string' ? idempotencyKey : undefined,
+    })
   },
   'provider.update': async (mutation) => {
     const data = mutation.data as { id: string; [key: string]: unknown }
