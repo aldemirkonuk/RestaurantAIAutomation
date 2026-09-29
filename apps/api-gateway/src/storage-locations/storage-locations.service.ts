@@ -170,7 +170,24 @@ export class StorageLocationsService {
     );
   }
 
+  /**
+   * storage_locations has no parent column (baseline migration
+   * 20260805000000, table at :5487). Until it does, a stated parent cannot be
+   * recorded, and answering 200 while dropping it is the "shown as saved"
+   * defect (web endpoint sweep 2026-09-28, #4). Refuse it in words; a null
+   * parent is what the table already says, so it passes.
+   */
+  private refuseUnstoredParent(parentId: string | null | undefined) {
+    if (parentId != null) {
+      throw new HttpException(
+        "Zone parents are not stored yet: this zone was not changed. Save it without a parent.",
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    }
+  }
+
   async createLocation(restaurantId: string, dto: CreateStorageLocationDto) {
+    this.refuseUnstoredParent(dto.parent_id);
     const client = this.dbService.supabase;
     const payload: Record<string, unknown> = {
       restaurant_id: restaurantId,
@@ -206,6 +223,7 @@ export class StorageLocationsService {
     locationId: string,
     dto: UpdateStorageLocationDto,
   ) {
+    this.refuseUnstoredParent(dto.parent_id);
     const client = this.dbService.supabase;
     const payload: Record<string, unknown> = {};
     if (dto.name !== undefined) payload.zone = dto.name;
