@@ -1,0 +1,7 @@
+## /dev/truth crashed when switching between the reach and swallow tabs — CLOSED on `fix/devtruth-tab-crash` — 2026-09-28
+
+Found by the web endpoint sweep (`WEB-ENDPOINT-SWEEP-2026-09-28.md` §2 row 26, on branch `main-1ll9rp`), which worked it out from render order and did not run it. Re-verified on `origin/main` at `5e876f39d` by the new click-through tests in `apps/web/src/__tests__/DevTruth.test.tsx`: three of them failed with `TypeError: Cannot read properties of undefined (reading 'map')`.
+
+**Root cause.** Not a hook-order issue; state shaped for one tab was read by another. The tab lives in the URL (`useSearchParams`), the payload in a bare `useState` (`DevTruth.tsx`, old :95). A click changes the tab on the next render, but the fetch effect (old :99-117) only runs after that render, so for one render `loading` was still false and `data` still held the previous tab's payload. `<Swallow>` then ran `d.rows.map` on a reach payload (old :356) and `<Reach>` ran `d.sources.map` on a swallow or as-of payload (old :219). The same stale render also carried one tab's error onto the next.
+
+**Fix.** The payload and the error are stored with the tab that fetched them (`result: { tab, data }`, `failure: { tab, message }`), and only a result whose tab matches the URL's tab is rendered; otherwise the screen says `loading…`. A failed read still says it failed and is never shown as empty. Gateway (`dev-truth.controller.ts`) untouched. CLAIMS `WEB-SWEEP-26-DEVTRUTH-TAB-SHAPE`.
