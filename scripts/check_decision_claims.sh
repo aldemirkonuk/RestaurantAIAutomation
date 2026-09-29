@@ -88,6 +88,29 @@ cd "$HERE/.." || { echo "FAIL — cannot reach repo root"; exit 2; }
 CLAIMS=".planning/decisions/CLAIMS.jsonl"
 [ -f "$CLAIMS" ] || { echo "FAIL — $CLAIMS is missing; this guard has nothing to check"; exit 2; }
 
+# FROZEN REGISTERS, NEW ENTRIES AS FRAGMENTS (ADR 0238, 2026-09-29)
+# -----------------------------------------------------------------
+# Almost every PR appended a row to the tail of CLAIMS.jsonl, and many a `## `
+# entry to the tail of v3.0-TECH-DEBT.md. Two PRs appending at one tail conflict
+# the moment either merges; on 2026-09-29 one merge made three open PRs
+# CONFLICTING on exactly these two files, and each fix was a new head and a new
+# ADR 0090 audit. So both files are frozen at the line counts below, behind a
+# final sentinel, and new entries go in one file per branch:
+#   claims:  .planning/decisions/claims.d/<branch-slug>.jsonl
+#   debt:    .planning/tech-debt.d/<YYYY-MM-DD>-<branch-slug>.md
+# Two branches never write the same path, and no line above either sentinel
+# moves, so the 127 + 16 line citations into the frozen files keep resolving.
+# The pins are passed explicitly, never inferred from the sentinel, so deleting
+# the sentinel fails too. Changing a pin is deliberate and shows in review.
+# Exit 7 is a pin or sentinel violation. The runner test's fixtures rewrite
+# these two lines in their COPY of this file; there is no override here.
+CLAIMS_FROZEN_LINES=745
+DEBT_FROZEN_LINES=7053
+CLAIMS_FRAGMENTS=".planning/decisions/claims.d"
+DEBT=".planning/v3.0-TECH-DEBT.md"
+DEBT_FRAGMENTS=".planning/tech-debt.d"
+[ -f "$DEBT" ] || { echo "FAIL — $DEBT is missing; the freeze on it cannot be checked"; exit 2; }
+
 command -v python3 >/dev/null 2>&1 || { echo "FAIL — python3 unavailable"; exit 2; }
 
 # Parse once, emit a tab-separated plan. A malformed line is a hard failure:
@@ -96,7 +119,8 @@ command -v python3 >/dev/null 2>&1 || { echo "FAIL — python3 unavailable"; exi
 # _od_collisions.py and _migration_versions.py are (see that file's docstring):
 # a nested heredoc's shell quoting breaks silently, and this parser is load-
 # bearing enough to need its own self-test independent of the real register.
-PLAN="$(python3 "$HERE/_claims_parse.py" "$CLAIMS")"
+PLAN="$(python3 "$HERE/_claims_parse.py" --frozen-lines "$CLAIMS_FROZEN_LINES" \
+          --fragments "$CLAIMS_FRAGMENTS" "$CLAIMS")"
 plan_status=$?
 # Every exit code is named, and anything unnamed is exit 2. Until 2026-09-26 this
 # case had no `0)` and no `*)`: a parser that crashed (exit 1 — e.g. a TypeError on
@@ -106,8 +130,8 @@ plan_status=$?
 # not `set -e`; an unmatched case is silence, so the default arm has to fail.
 case $plan_status in
   0) ;;
-  3) echo "FAIL — $CLAIMS has malformed lines (see above). A claim that cannot be parsed is not being checked."; exit 2 ;;
-  4) echo "FAIL — $CLAIMS parsed to zero claims. A guard with nothing to check must not report success."; exit 2 ;;
+  3) echo "FAIL — $CLAIMS or a fragment in $CLAIMS_FRAGMENTS has malformed lines (see above). A claim that cannot be parsed is not being checked."; exit 2 ;;
+  4) echo "FAIL — $CLAIMS and $CLAIMS_FRAGMENTS parsed to zero claims. A guard with nothing to check must not report success."; exit 2 ;;
   5) echo "FAIL — a claim suppresses its own stderr (see above). Strict mode reads stderr to"
      echo "       tell 'ran and disagreed' from 'never ran'; a muzzled claim certifies itself."
      echo "       Drop the '2>' redirect. Ordinary noise is fine — only stderr is inspected,"
@@ -118,9 +142,30 @@ case $plan_status in
      echo "       rows, which were then silently miscounted as REGRESSED/STALE claims."
      echo "       Join a multi-line verify command onto one physical line —"
      echo "       semicolon-separated Python statements is the established convention."; exit 2 ;;
+  7) echo "FAIL — $CLAIMS is FROZEN (ADR 0238) and its line count or its final sentinel"
+     echo "       changed (see above). New claims go in $CLAIMS_FRAGMENTS/<branch-slug>.jsonl —"
+     echo "       see its README. If a merge-conflict fix kept both tails, take main's copy of"
+     echo "       the file and move your rows: scripts/move_tail_to_fragment.py does it."; exit 7 ;;
+  8) echo "FAIL — $CLAIMS_FRAGMENTS holds something this guard will not read (see above): a"
+     echo "       misnamed file, a subdirectory, or a fragment with zero claims. A file the"
+     echo "       guard skips is a claim nobody checks, so it is an error, never a skip."; exit 2 ;;
   *) echo "FAIL — the claims parser exited $plan_status (see above) without a verdict this"
      echo "       guard knows. It crashed, or could not read $CLAIMS or itself. No claim"
      echo "       was checked, so this is exit 2, never a PASS over zero claims."; exit 2 ;;
+esac
+
+# The same freeze on the debt register, and the same strictness on its folder.
+python3 "$HERE/_debt_frozen.py" --frozen-lines "$DEBT_FROZEN_LINES" --fragments "$DEBT_FRAGMENTS" "$DEBT"
+debt_status=$?
+case $debt_status in
+  0) ;;
+  7) echo "FAIL — $DEBT is FROZEN (ADR 0238) and its line count or its final"
+     echo "       '## FROZEN' section changed (see above). New entries go in"
+     echo "       $DEBT_FRAGMENTS/<YYYY-MM-DD>-<branch-slug>.md — see its README. A legacy entry"
+     echo "       is closed in place by striking its heading, which keeps the count."; exit 7 ;;
+  8) echo "FAIL — $DEBT_FRAGMENTS holds something this guard will not read (see above)."; exit 2 ;;
+  *) echo "FAIL — the debt freeze check exited $debt_status (see above) without a verdict this"
+     echo "       guard knows, so the freeze was not checked."; exit 2 ;;
 esac
 
 # ---------------------------------------------------------------------------
