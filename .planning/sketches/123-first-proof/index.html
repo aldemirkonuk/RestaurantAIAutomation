@@ -123,10 +123,11 @@ h3 { font-family: var(--serif); font-weight: 400; font-size: 16.5px; margin: 0; 
 
 /* --- buttons ------------------------------------------------------- */
 .press { cursor: pointer; font-size: 14px; font-weight: 500; background: var(--seal); color: #fffdf8; border: 0; border-radius: 6px; padding: 10px 18px; }
-body[data-ground='charcoal'] .press { color: #15130F; }
+/* charcoal: the filled seal press takes dark ink; the quiet press is excluded so it keeps
+   --ink-2 (#C0B6A5 on --paper-0 #15130F, 9.25:1, AA; hover --seal #5FB0BC is 7.44:1) and its seal hover */
+body[data-ground='charcoal'] .press:not([data-quiet]) { color: #15130F; }
 .press:hover { background: var(--seal-deep); }
 .press[data-quiet] { background: transparent; color: var(--ink-2); border: 1px solid var(--rule-2); font-weight: 400; }
-body[data-ground='charcoal'] .press[data-quiet] { color: var(--ink-2); }
 .press[data-quiet]:hover { color: var(--seal); border-color: var(--seal-ring); }
 .link { background: none; border: 0; padding: 0 0 1px; cursor: pointer; color: var(--ink-3); font-size: 13px; border-bottom: 1px solid var(--rule-2); }
 .link:hover { color: var(--seal); border-bottom-color: var(--seal-ring); }

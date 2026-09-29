@@ -1,14 +1,19 @@
 // Frame-by-frame shots for review. Run: node shoot.mjs
-import { chromium } from 'playwright'
+// Playwright comes from @playwright/test, resolved through apps/web the way sketch 119's
+// measure-paper.mjs does -- no new dependency. Set PW_CHROMIUM to a chromium binary if
+// Playwright's bundled browser is not installed (e.g. /opt/pw-browsers/chromium).
+import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { mkdirSync } from 'node:fs'
 
 const here = dirname(fileURLToPath(import.meta.url))
+const require = createRequire(join(here, '../../../apps/web/package.json'))
+const { chromium } = require('@playwright/test')
 const url = 'file://' + join(here, 'index.html')
 mkdirSync(join(here, 'shots'), { recursive: true })
 
-const browser = await chromium.launch()
+const browser = await chromium.launch(process.env.PW_CHROMIUM ? { executablePath: process.env.PW_CHROMIUM } : {})
 for (const [width, tag] of [[1440, '1440'], [390, '390']]) {
   const page = await browser.newPage({ viewport: { width, height: 1000 } })
   await page.goto(url)
