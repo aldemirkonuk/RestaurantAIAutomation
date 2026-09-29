@@ -143,7 +143,14 @@ class SyncManagerService {
   private readonly SYNC_INTERVAL = 30000 // 30 seconds
 
   constructor() {
-    this.initialize()
+    // Fire-and-forget, so it must not reject unhandled: a queue that cannot
+    // be read at start-up (IndexedDB blocked, a test's partial storage mock)
+    // is reported and retried by the periodic pass, never thrown at the app.
+    // Since ADR 0241 AuthContext imports this module, so every screen and
+    // test that mounts auth constructs it.
+    this.initialize().catch((error) => {
+      console.error('[SyncManager] Could not start:', error)
+    })
   }
 
   // ===========================================================================
@@ -155,11 +162,12 @@ class SyncManagerService {
     window.addEventListener('online', this.handleOnline)
     window.addEventListener('offline', this.handleOffline)
     
+    // Start periodic sync check first: it re-reads the queue itself, so a
+    // start-up read that fails below is retried rather than ending the loop.
+    this.startPeriodicSync()
+
     // Initial pending count
     await this.updatePendingCount()
-    
-    // Start periodic sync check
-    this.startPeriodicSync()
     
     // If online, attempt initial sync
     if (this._isOnline) {
@@ -398,7 +406,12 @@ class SyncManagerService {
       // Re-read first: the counts are per person and house (ADR 0241), and
       // either can change without anything being queued — a house switch, or
       // the same person signing back in to a queue their session left.
-      await this.refresh()
+      try {
+        await this.refresh()
+      } catch (error) {
+        console.error('[SyncManager] Could not read the queue:', error)
+        return
+      }
       if (this._isOnline && !this._isSyncing && this._pendingCount > 0) {
         await this.syncNow()
       }
