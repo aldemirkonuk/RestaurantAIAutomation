@@ -342,6 +342,21 @@ export class GetCalendarEventsQueryDto {
   @IsOptional()
   includeRecurring?: boolean;
 
+  // Also return repeating series whose first date is before `startDate`, so a
+  // caller that expands rules itself (the web calendar) sees a series that
+  // began last month. Opt-in: callers that count the rows as dated entries
+  // (house-day, /calendar/today, /calendar/upcoming) must not receive a
+  // series master dated outside their window. Sweep 2026-09-28 row 16.
+  @ApiPropertyOptional({ default: false })
+  @Transform(({ value }) => {
+    if (value === "true" || value === true) return true;
+    if (value === "false" || value === false) return false;
+    return value;
+  })
+  @IsBoolean()
+  @IsOptional()
+  includeEarlierSeries?: boolean;
+
   @ApiPropertyOptional({ default: 1 })
   @Type(() => Number)
   @IsInt()
