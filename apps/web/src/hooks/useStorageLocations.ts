@@ -19,8 +19,9 @@
  * is gone; so is the effect that wrote it down.
  */
 
-import { useCallback } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { apiClient } from '../services/api/client'
 import { useAuth } from '../contexts/AuthContext'
 
@@ -79,6 +80,45 @@ const WINES_AT_LOCATION_KEY = 'winesAtLocation'
 // array identity on every render.
 const EMPTY_LOCATIONS: StorageLocation[] = []
 const EMPTY_MAPPINGS: WineLocationMapping[] = []
+
+/**
+ * How long the in-zone bottle stepper waits after the last click before it
+ * saves (sweep 2026-09-28 #6). Three quick clicks are one POST, not three.
+ */
+export const QUANTITY_SAVE_DEBOUNCE_MS = 500
+
+/** What the gateway said, in words a toast can carry. */
+function reasonOf(err: unknown): string {
+  const data = (err as { response?: { data?: { message?: unknown } } })?.response?.data
+  const msg = data?.message
+  if (Array.isArray(msg) && msg.length) return msg.join('; ')
+  if (typeof msg === 'string' && msg) return msg
+  return err instanceof Error && err.message ? err.message : 'the server did not answer'
+}
+
+/**
+ * The PATCH body UpdateStorageLocationDto accepts, built from the web's
+ * camelCase zone. main.ts runs the pipe with forbidNonWhitelisted, so a key
+ * the DTO does not declare (the old `parentId`) turns the whole edit into a
+ * 400 (sweep 2026-09-28 #4). A `parentId` key that is present but undefined
+ * means "no parent" and is sent as `parent_id: null`, which is how it clears.
+ */
+function toUpdateBody(updates: Partial<StorageLocation>): Record<string, unknown> {
+  const body: Record<string, unknown> = {}
+  const pass = ['name', 'description', 'capacity', 'temperature', 'humidity', 'notes', 'color'] as const
+  for (const k of pass) {
+    if (updates[k] !== undefined) body[k] = updates[k]
+  }
+  if (updates.currentCount !== undefined) body.current_count = updates.currentCount
+  if ('parentId' in updates) body.parent_id = updates.parentId ?? null
+  return body
+}
+
+export interface ZoneAssignment {
+  wineId: string
+  locationId: string
+  quantity: number
+}
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
@@ -160,21 +200,141 @@ export function useStorageLocations() {
     [queryClient, restaurantId],
   )
 
+  /**
+   * One zone write. Resolves true only when the gateway accepted it. On any
+   * failure it runs `rollback` (so the screen goes back to what the server
+   * holds), shows an error toast, and resolves false. Until 2026-09-28 this
+   * helper caught and discarded every error, so a refused write stood on
+   * screen as saved (sweep #5).
+   */
   const persistToServer = useCallback(
-    async (method: string, path: string, body?: any) => {
-      if (!restaurantId) return
+    async (
+      method: string,
+      path: string,
+      body: unknown,
+      what: string,
+      rollback: () => void,
+      // The house the write belongs to. Defaults to the current one; the
+      // stepper passes the house its click was made in (audit R2, below).
+      house: string = restaurantId,
+    ): Promise<boolean> => {
+      if (!house) {
+        rollback()
+        toast.error(`Could not ${what}: no house is selected.`)
+        return false
+      }
       try {
-        await apiClient.request({
-          method,
-          url: path,
-          data: body,
-        })
-      } catch {
-        // Server unavailable - optimistic state is already in React Query cache
+        await apiClient.request({ method, url: path, data: body })
+        return true
+      } catch (err) {
+        rollback()
+        toast.error(`Could not ${what}: ${reasonOf(err)}`)
+        return false
       }
     },
     [restaurantId],
   )
+
+  /** Adds `delta` bottles to a zone's count in the cache (negative removes). */
+  const shiftCount = useCallback(
+    (locationId: string, delta: number) => {
+      if (!delta) return
+      setLocations((locs) =>
+        locs.map((loc) =>
+          loc.id === locationId
+            ? { ...loc, currentCount: Math.max(0, loc.currentCount + delta) }
+            : loc,
+        ),
+      )
+    },
+    [setLocations],
+  )
+
+  // Stepper debounce state, per wine: the pending timer, the arguments it
+  // will save with (so an unmount can flush it), and the quantity the server
+  // held before the burst began (what a refusal rolls back to).
+  //
+  // The pending arguments carry the HOUSE the click was made in. Until the
+  // ADR 0090 audit of #510 (R2, 2026-09-29) the unmount flush read the house
+  // from the latest render: click in house OLD, switch to NEW, close the sheet
+  // inside the debounce, and OLD's wine and OLD's zone were POSTed to
+  // /storage-locations/<NEW>/mappings. Flushing to the stored house was chosen
+  // over dropping the pending click on a house change: both never write to
+  // another house, but a drop loses the click in silence, while a flush either
+  // lands where it was made or, if the server refuses it because the session
+  // has moved on, rolls back and says so through the same error toast.
+  const quantityTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>())
+  const quantityPending = useRef(
+    new Map<string, { house: string; locationId: string; quantity: number }>(),
+  )
+  const quantityBaseline = useRef(new Map<string, number>())
+
+  const cancelPendingQuantity = useCallback((wineId: string) => {
+    const t = quantityTimers.current.get(wineId)
+    if (t) clearTimeout(t)
+    quantityTimers.current.delete(wineId)
+    quantityPending.current.delete(wineId)
+    quantityBaseline.current.delete(wineId)
+  }, [])
+
+  const saveQuantity = useCallback(
+    async (
+      wineId: string,
+      args: { house: string; locationId: string; quantity: number },
+    ): Promise<boolean> => {
+      const { house, locationId, quantity } = args
+      quantityTimers.current.delete(wineId)
+      quantityPending.current.delete(wineId)
+      const baseline = quantityBaseline.current.get(wineId)
+      quantityBaseline.current.delete(wineId)
+      return persistToServer(
+        'POST',
+        `/storage-locations/${house}/mappings`,
+        { wineId, locationId, quantity },
+        'save the bottle count',
+        () => {
+          // Roll back in the house the click was made in, not the one on
+          // screen now: the two caches are keyed apart.
+          if (baseline === undefined) return
+          const mappingsKey = [MAPPINGS_KEY, house]
+          const now = queryClient
+            .getQueryData<WineLocationMapping[]>(mappingsKey)
+            ?.find((m) => m.wineId === wineId)
+          queryClient.setQueryData<WineLocationMapping[]>(mappingsKey, (prev) =>
+            (prev ?? []).map((m) => (m.wineId === wineId ? { ...m, quantity: baseline } : m)),
+          )
+          if (now && baseline !== now.quantity) {
+            queryClient.setQueryData<StorageLocation[]>([LOCATIONS_KEY, house], (locs) =>
+              (locs ?? EMPTY_LOCATIONS).map((loc) =>
+                loc.id === now.locationId
+                  ? { ...loc, currentCount: Math.max(0, loc.currentCount + baseline - now.quantity) }
+                  : loc,
+              ),
+            )
+          }
+        },
+        house,
+      )
+    },
+    [persistToServer, queryClient],
+  )
+
+  // A stepper click made just before the zone sheet closes is still a click:
+  // on unmount, save what is pending instead of dropping it with the timer.
+  const saveQuantityRef = useRef(saveQuantity)
+  saveQuantityRef.current = saveQuantity
+  useEffect(() => {
+    const timers = quantityTimers.current
+    const pending = quantityPending.current
+    return () => {
+      for (const [wineId, t] of timers) {
+        clearTimeout(t)
+        const args = pending.get(wineId)
+        if (args) void saveQuantityRef.current(wineId, args)
+      }
+      timers.clear()
+    }
+  }, [])
 
   const getWineLocation = useCallback(
     (wineId: string): StorageLocation | null => {
@@ -193,7 +353,7 @@ export function useStorageLocations() {
   )
 
   const assignWineToLocation = useCallback(
-    (wineId: string, locationId: string, quantity: number = 1) => {
+    async (wineId: string, locationId: string, quantity: number = 1): Promise<boolean> => {
       // Read the current mapping from cache BEFORE mutating, so the location-count
       // adjustment is a separate top-level update instead of a side effect nested
       // inside the setMappings updater — that nesting made counts lag by one
@@ -231,23 +391,62 @@ export function useStorageLocations() {
         }),
       )
 
-      // Only hit the server when locationId is a real UUID (not a temp/default ID)
-      if (UUID_RE.test(locationId)) {
-        persistToServer('POST', `/storage-locations/${restaurantId}/mappings`, {
-          wineId,
-          locationId,
-          quantity,
+      cancelPendingQuantity(wineId)
+      const rollback = () => {
+        setMappings((prev) => {
+          const rest = prev.filter((m) => m.wineId !== wineId)
+          return existing ? [...rest, existing] : rest
         })
+        // Mirrors the optimistic count update above, branch for branch.
+        shiftCount(locationId, -quantity)
+        if (existing && existing.locationId !== locationId) {
+          shiftCount(existing.locationId, existing.quantity)
+        }
       }
+
+      // A zone still carrying its temp id has not been created on the server
+      // yet, so there is nothing to attach the wine to. Counting it as
+      // assigned would report a write that never happened.
+      if (!UUID_RE.test(locationId)) {
+        rollback()
+        toast.error('Could not assign the wine: that zone is still being created. Try again in a moment.')
+        return false
+      }
+
+      const ok = await persistToServer(
+        'POST',
+        `/storage-locations/${restaurantId}/mappings`,
+        { wineId, locationId, quantity },
+        'assign the wine to that zone',
+        rollback,
+      )
       queryClient.invalidateQueries({ queryKey: [WINES_AT_LOCATION_KEY, restaurantId] })
+      return ok
     },
-    [mappings, setMappings, setLocations, persistToServer, restaurantId, queryClient],
+    [mappings, setMappings, setLocations, shiftCount, cancelPendingQuantity, persistToServer, restaurantId, queryClient],
+  )
+
+  /**
+   * Auto-locate's bulk write. Counts what the server accepted, not what was
+   * asked for: "N wines assigned" used to be the length of the request list
+   * (sweep #5). Sequential, so each rollback lands on a settled cache.
+   */
+  const assignMany = useCallback(
+    async (list: ZoneAssignment[]): Promise<{ assigned: number; failed: number }> => {
+      let assigned = 0
+      for (const a of list) {
+        if (await assignWineToLocation(a.wineId, a.locationId, a.quantity)) assigned += 1
+      }
+      return { assigned, failed: list.length - assigned }
+    },
+    [assignWineToLocation],
   )
 
   const removeWineFromLocation = useCallback(
-    (wineId: string) => {
+    async (wineId: string): Promise<boolean> => {
       const mapping = mappings.find((m) => m.wineId === wineId)
-      if (!mapping) return
+      if (!mapping) return false
+      cancelPendingQuantity(wineId)
 
       setMappings((prev) => prev.filter((m) => m.wineId !== wineId))
       setLocations((locs) =>
@@ -258,10 +457,20 @@ export function useStorageLocations() {
         ),
       )
 
-      persistToServer('DELETE', `/storage-locations/${restaurantId}/mappings/${wineId}`)
+      const ok = await persistToServer(
+        'DELETE',
+        `/storage-locations/${restaurantId}/mappings/${wineId}`,
+        undefined,
+        'remove the wine from its zone',
+        () => {
+          setMappings((prev) => [...prev.filter((m) => m.wineId !== wineId), mapping])
+          shiftCount(mapping.locationId, mapping.quantity)
+        },
+      )
       queryClient.invalidateQueries({ queryKey: [WINES_AT_LOCATION_KEY, restaurantId] })
+      return ok
     },
-    [mappings, setMappings, setLocations, persistToServer, restaurantId],
+    [mappings, setMappings, setLocations, shiftCount, cancelPendingQuantity, persistToServer, restaurantId, queryClient],
   )
 
   const updateWineQuantityAtLocation = useCallback(
@@ -282,86 +491,127 @@ export function useStorageLocations() {
             : loc,
         ),
       )
+
+      // Until 2026-09-28 the stepper stopped here: the cache moved and the
+      // server never heard, so the count went back on the next refresh
+      // (sweep #6). Now the last value of a burst of clicks is POSTed to the
+      // existing mappings upsert, and a refusal puts the count back to what
+      // the server held before the burst began.
+      if (!quantityBaseline.current.has(wineId)) {
+        quantityBaseline.current.set(wineId, existing.quantity)
+      }
+      const pending = quantityTimers.current.get(wineId)
+      if (pending) clearTimeout(pending)
+      const args = { house: restaurantId, locationId: existing.locationId, quantity: newQuantity }
+      quantityPending.current.set(wineId, args)
+      quantityTimers.current.set(
+        wineId,
+        setTimeout(() => {
+          void saveQuantity(wineId, args)
+        }, QUANTITY_SAVE_DEBOUNCE_MS),
+      )
     },
-    [mappings, setMappings, setLocations],
+    [mappings, setMappings, setLocations, saveQuantity, restaurantId],
   )
 
+  /**
+   * Resolves to the stored zone, or `null` when the server refused it (the
+   * optimistic row is gone and the reason has been toasted). The caller must
+   * wait for this before closing its form: closing on click wiped what the
+   * person typed before the refusal arrived (PR #510 audit, 2026-09-29).
+   */
   const addLocation = useCallback(
-    (location: Omit<StorageLocation, 'id'>): StorageLocation => {
+    async (location: Omit<StorageLocation, 'id'>): Promise<StorageLocation | null> => {
       const tempId = `loc-${Date.now()}`
       const optimistic: StorageLocation = { ...location, id: tempId }
+      if (!restaurantId) return null
       setLocations((prev) => [...prev, optimistic])
 
-      if (restaurantId) {
-        apiClient
-          .post(`/storage-locations/${restaurantId}`, {
-            name: location.name,
-            description: location.description,
-            capacity: location.capacity,
-            temperature: location.temperature,
-            humidity: location.humidity,
-            notes: location.notes,
-            parent_id: location.parentId,
-            color: location.color,
-            location_type: 'cellar',
-          })
-          .then(({ data }) => {
-            if (data?.id) {
-              // Replace the temp ID with the real server UUID in both locations and any mappings
-              setLocations((prev) =>
-                prev.map((l) => (l.id === tempId ? mapServerLocation(data) : l)),
-              )
-              setMappings((prev) =>
-                prev.map((m) =>
-                  m.locationId === tempId ? { ...m, locationId: data.id as string } : m,
-                ),
-              )
-            }
-          })
-          .catch(() => {
-            // Remove the optimistic entry if the server rejected it
-            setLocations((prev) => prev.filter((l) => l.id !== tempId))
-          })
-          .finally(() => {
-            queryClient.invalidateQueries({ queryKey: [LOCATIONS_KEY, restaurantId] })
-          })
+      try {
+        const { data } = await apiClient.post(`/storage-locations/${restaurantId}`, {
+          name: location.name,
+          description: location.description,
+          capacity: location.capacity,
+          temperature: location.temperature,
+          humidity: location.humidity,
+          notes: location.notes,
+          parent_id: location.parentId,
+          color: location.color,
+          location_type: 'cellar',
+        })
+        if (!data?.id) return optimistic
+        const stored = mapServerLocation(data)
+        // Replace the temp ID with the real server UUID in both locations and any mappings
+        setLocations((prev) => prev.map((l) => (l.id === tempId ? stored : l)))
+        setMappings((prev) =>
+          prev.map((m) => (m.locationId === tempId ? { ...m, locationId: data.id as string } : m)),
+        )
+        return stored
+      } catch (err) {
+        // Remove the optimistic entry if the server rejected it, and say
+        // so: a zone that vanishes without a word reads as a UI glitch.
+        setLocations((prev) => prev.filter((l) => l.id !== tempId))
+        toast.error(`Could not create the zone: ${reasonOf(err)}`)
+        return null
+      } finally {
+        queryClient.invalidateQueries({ queryKey: [LOCATIONS_KEY, restaurantId] })
       }
-
-      return optimistic
     },
     [restaurantId, setLocations, setMappings, queryClient],
   )
 
   const updateLocation = useCallback(
-    (id: string, updates: Partial<StorageLocation>) => {
+    async (id: string, updates: Partial<StorageLocation>): Promise<boolean> => {
+      const before = locations.find((loc) => loc.id === id)
       setLocations((prev) =>
         prev.map((loc) => (loc.id === id ? { ...loc, ...updates } : loc)),
       )
 
-      if (restaurantId) {
-        persistToServer(
-          'PATCH',
-          `/storage-locations/${restaurantId}/${id}`,
-          updates,
-        )
-      }
+      return persistToServer(
+        'PATCH',
+        `/storage-locations/${restaurantId}/${id}`,
+        toUpdateBody(updates),
+        'save the zone',
+        () => {
+          if (!before) return
+          setLocations((prev) => prev.map((loc) => (loc.id === id ? before : loc)))
+        },
+      )
     },
-    [restaurantId, persistToServer, setLocations],
+    [restaurantId, locations, persistToServer, setLocations],
   )
 
   const deleteLocation = useCallback(
-    (id: string) => {
+    async (id: string): Promise<boolean> => {
+      const index = locations.findIndex((loc) => loc.id === id)
+      const removedZone = index >= 0 ? locations[index] : undefined
+      const removedMappings = mappings.filter((m) => m.locationId === id)
+      removedMappings.forEach((m) => cancelPendingQuantity(m.wineId))
       setMappings((prev) => prev.filter((m) => m.locationId !== id))
       setLocations((prev) => prev.filter((loc) => loc.id !== id))
 
-      if (restaurantId) {
-        persistToServer(
-          'DELETE',
-          `/storage-locations/${restaurantId}/${id}`,
-        )
-      }
+      return persistToServer(
+        'DELETE',
+        `/storage-locations/${restaurantId}/${id}`,
+        undefined,
+        'delete the zone',
+        () => {
+          if (removedZone) {
+            setLocations((prev) => {
+              if (prev.some((loc) => loc.id === id)) return prev
+              const next = [...prev]
+              next.splice(Math.min(index, next.length), 0, removedZone)
+              return next
+            })
+          }
+          setMappings((prev) => [
+            ...prev.filter((m) => !removedMappings.some((r) => r.wineId === m.wineId)),
+            ...removedMappings,
+          ])
+        },
+      )
     },
-    [restaurantId, persistToServer, setMappings, setLocations],
+    [restaurantId, locations, mappings, cancelPendingQuantity, persistToServer, setMappings, setLocations],
   )
 
   const getLocationStats = useCallback(() => {
@@ -435,6 +685,7 @@ export function useStorageLocations() {
     getWineLocation,
     getWinesInLocation,
     assignWineToLocation,
+    assignMany,
     removeWineFromLocation,
     updateWineQuantityAtLocation,
     addLocation,

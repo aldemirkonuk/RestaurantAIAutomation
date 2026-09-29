@@ -127,7 +127,7 @@ const LABELS = {
 /** Route each owned source to its own client so one can fail alone. */
 function sources(fail: Partial<Record<keyof typeof LABELS, boolean>>) {
   mockAxiosGet.mockImplementation((url: string) => {
-    if (url.includes('/procurement/conversations/history')) {
+    if (url === '/api/v1/procurement/conversations/history') {
       return fail.history ? Promise.reject(new Error('history 500')) : Promise.resolve({ data: [] });
     }
     if (url.includes('/conversations/threads')) {

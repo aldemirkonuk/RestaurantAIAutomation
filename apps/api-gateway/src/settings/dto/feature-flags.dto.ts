@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { IsBoolean, IsOptional, IsString, IsUUID } from "class-validator";
+import { ACTIVE_FEATURE_FLAG_KEYS } from "../feature-flag-registry";
 
 /**
  * Only flags that a real column stores AND real code branches on appear here.
@@ -30,6 +31,9 @@ export class FeatureFlagsDto {
   })
   @IsBoolean()
   enable_house_inbox_read: boolean;
+
+  /** Every other ACTIVE_FEATURE_FLAG_KEYS entry — decorated below the classes. */
+  [key: string]: boolean;
 }
 
 export class UpdateFeatureFlagsDto {
@@ -67,6 +71,58 @@ export class UpdateFeatureFlagsDto {
   @IsOptional()
   @IsBoolean()
   enable_house_inbox_read?: boolean;
+
+  /** Every other ACTIVE_FEATURE_FLAG_KEYS entry — decorated below the classes. */
+  [key: string]: boolean | undefined;
+}
+
+/**
+ * THE REGISTRY SAYS WHICH KEYS THIS ROUTE ACCEPTS, NOT A SECOND LIST (ADR 0236).
+ *
+ * The global pipe (`main.ts:53-57`) is `whitelist: true,
+ * forbidNonWhitelisted: true`, so a body key with no validation decorator on
+ * the DTO is a 400 — while `settings.service.ts` `updateFeatureFlags` reads
+ * every key in `ACTIVE_FEATURE_FLAG_KEYS`. When `mudavym_design_arrival` joined
+ * the registry (column 20260922231300) nothing added it here, and the Arrival
+ * toggle in Settings answered `400 "property mudavym_design_arrival should not
+ * exist"` (measured with the real pipe on 2ba1326e3). The index signatures
+ * above are compile-time only and change nothing at runtime.
+ *
+ * So every ACTIVE key the three hand-written properties do not cover is
+ * decorated here, at module load. `class-validator` and `@nestjs/swagger`
+ * decorators are plain functions that register metadata on the prototype,
+ * so they can be called directly. A direct call is NOT everything `@` does:
+ * `@` on a declared property also emits TypeScript's `design:type`, and a
+ * direct call does not, so every Swagger call below must pass `type`
+ * explicitly (its absence crashed the gateway at boot, #509 → #524).
+ * The loop assumes every ACTIVE flag is a boolean, as `ActiveFeatureFlagSpec.defaultValue` types it —
+ * a non-boolean flag would need its own hand-written property.
+ */
+const HAND_DECLARED_FLAG_KEYS = new Set<string>([
+  "enable_ai_negotiation",
+  "enable_ai_autonomous_send",
+  "enable_house_inbox_read",
+]);
+
+for (const key of ACTIVE_FEATURE_FLAG_KEYS) {
+  if (HAND_DECLARED_FLAG_KEYS.has(key)) continue;
+
+  const description = "Declared ACTIVE by the feature-flag registry.";
+  // `type: Boolean` is required, not decoration. A property declared with `@`
+  // gets TypeScript's `design:type` metadata; one decorated by a direct call
+  // does not, and @nestjs/swagger reads a missing type as an unresolved lazy
+  // reference and throws "A circular dependency has been detected" from
+  // `SwaggerModule.createDocument` at boot. That crash kept the production
+  // gateway down from #509 (744874263) on; nothing in CI built the document.
+  ApiProperty({ description, type: Boolean })(FeatureFlagsDto.prototype, key);
+  IsBoolean()(FeatureFlagsDto.prototype, key);
+
+  ApiPropertyOptional({ description, type: Boolean })(
+    UpdateFeatureFlagsDto.prototype,
+    key,
+  );
+  IsOptional()(UpdateFeatureFlagsDto.prototype, key);
+  IsBoolean()(UpdateFeatureFlagsDto.prototype, key);
 }
 
 export class CheckFeatureFlagDto {
