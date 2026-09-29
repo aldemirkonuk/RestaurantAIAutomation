@@ -93,6 +93,12 @@ records it):
 > - **PR #517 (sketch 123)** needed no waiver in the end: it was split into #517
 >   (15 files) and #523 (5 files). An earlier draft of this bracket recorded a pick
 >   for #517 that could not be traced to a founder record, so it is not kept here.
+>
+> **[2026-09-29, a second one-PR waiver, founder's words as relayed]**
+> - **What it covers.** The re-cite PR `docs/od-rows-into-open-2026-09-29`, 41 files. It moves OD-190–196 and OD-201–204 from after `## Resolved` into the `## Open` table. It removes the two appendix headings that held them, runs `scripts/check_citation_pairing.py --fix` (40 files), and adds this bracket.
+> - **The founder's words.** In chat on 2026-09-29, verbatim: *"Waive, own PR (Recommended)"*. This was relayed to the merging session by its coordinator session, and no session id was recorded there.
+> - **What was not in his pick.** OD-203 and OD-204 were filed later the same day (#525), after his pick, and are moved here because they sit in the same misplaced section.
+> - **Scope.** It covers the file count only. The audit still judges every file.
 
 **3. Where Sonnet gets the emphasis** (item 86's *"fast, and direct"* work Sonnet is
 *"highly capable of"*): verification runs and check suites, mechanical edits to a spec,
