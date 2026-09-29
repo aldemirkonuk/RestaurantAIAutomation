@@ -50,6 +50,7 @@ directly; neither runs a body through the pipe.
    register metadata on the prototype; calling `IsBoolean()(Dto.prototype, key)`
    is what `@IsBoolean()` does. The three keys with real descriptions stay
    hand-written; every other ACTIVE key is decorated in a loop.
+   **[Corrected 2026-09-29, ADR 0090 audit of #524: the premise is false. `@` on a declared property also emits TypeScript's `design:type` metadata; a direct call does not. `@nestjs/swagger` read the missing type as a circular reference, and `SwaggerModule.createDocument` threw at boot, so the production gateway was down from #509 until #524, which adds `type: Boolean` to both direct `ApiProperty` calls. The same sentence in the comment at `feature-flags.dto.ts:94-96` still needs correcting. See `tech-debt.d/2026-09-29-docs-merge-queue-followups-2026-09-29.md:53`.]**
 5. **Do nothing.** The Arrival toggle in Settings stays a 400.
 
 ## Proposed decision
