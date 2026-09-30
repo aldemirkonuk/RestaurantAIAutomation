@@ -1,6 +1,0 @@
-export { Orders } from '../Orders'
-export { Orders as default } from '../Orders'
-export { useOrdersPage } from './useOrdersPage'
-export { OrderSummary } from './OrderSummary'
-export { OrderFilters } from './OrderFilters'
-export { CreateOrderModal } from './CreateOrderModal'

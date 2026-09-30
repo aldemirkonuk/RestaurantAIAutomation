@@ -63,7 +63,6 @@ import { DashboardLayout } from './components/layout/DashboardLayout'
 import { ProtectedRoute } from './components/ProtectedRoute'
 
 // Critical pages (loaded immediately)
-import { Dashboard } from './pages/Dashboard'
 import { Login } from './pages/Login'
 import { Register } from './pages/Register'
 import { ForgotPassword } from './pages/ForgotPassword'
@@ -73,10 +72,8 @@ import { InviteLanding } from './pages/InviteLanding'
 import { NoAccess } from './pages/NoAccess'
 import { ChooseHouse } from './pages/ChooseHouse'
 import { InventoryCommandPage } from './pages/inventory/command/InventoryCommandPage'
-import { Orders } from './pages/Orders'
 import { PageGate } from './components/mudavym'
 import { ShellCatchAll } from './components/mudavym/ShellCatchAll'
-import { TeamCommandPage } from './pages/team/command/TeamCommandPage'
 
 // Onboarding pages (lazy loaded)
 // Mudavym redesign variants (ADR 0044) — reachable only behind their per-page flag
@@ -108,57 +105,36 @@ const CanonicalDocumentPage = lazyWithRefresh(() => import('./pages/documents/ne
 const GetStarted = lazyWithRefresh(() => import('./pages/GetStarted'))
 const HouseContents = lazyWithRefresh(() => import('./pages/HouseContents'))
 const HouseMenu = lazyWithRefresh(() => import('./pages/HouseMenu'))
-const Arrival = lazyWithRefresh(() => import('./pages/arrival/Arrival'))
-const DoorReceipt = lazyWithRefresh(() => import('./pages/receiving/DoorReceipt'))
-const ReceivingHome = lazyWithRefresh(() => import('./pages/receiving/ReceivingHome'))
 const DeliveryRedirect = lazyWithRefresh(() => import('./pages/receiving/DeliveryRedirect'))
 const SimposTerminalPage = lazyWithRefresh(() => import('./pages/simpos/SimposTerminalPage'))
 const SimposOrderLogPage = lazyWithRefresh(() => import('./pages/simpos/SimposOrderLogPage'))
 const SimposScenariosPage = lazyWithRefresh(() => import('./pages/simpos/SimposScenariosPage'))
 
 // Heavy pages (lazy loaded)
-const Reports = lazyWithRefresh(() => import('./pages/Reports'))
-const Recommendations = lazyWithRefresh(() => import('./pages/Recommendations'))
-const InsightCatalog = lazyWithRefresh(() => import('./pages/InsightCatalog'))
-const WineLibrary = lazyWithRefresh(() => import('./pages/wine-library'))
-const SommelierAI = lazyWithRefresh(() => import('./pages/SommelierAI'))
 // ADR 0145 — `/ask`, live for every house in code (LIVE_PAGES).
 const AskNext = lazyWithRefresh(() => import('./pages/ask/next/AskNext'))
-const AdminPanel = lazyWithRefresh(() => import('./pages/AdminPanel'))
 const AuthorizeIntegrationNext = lazyWithRefresh(() => import('./pages/authorize-integration/next/AuthorizeIntegrationNext'))
 const CompleteIntegrationConsent = lazyWithRefresh(() => import('./pages/authorize-integration/CompleteIntegrationConsent'))
 const AdminDesk = lazyWithRefresh(() => import('./pages/admin/next/AdminDesk'))
-const AdminHealth = lazyWithRefresh(() => import('./pages/AdminHealth'))
 
 // Standard pages (lazy loaded)
-const Providers = lazyWithRefresh(() => import('./pages/Providers'))
-const Promotions = lazyWithRefresh(() => import('./pages/Promotions'))
 // Sketch 113 direction B (ADR 0160 §113 / ADR 0165), behind
 // `mudavym_design_promotions` — OFF by default, so `Promotions` above stays
 // every house's page until the founder turns it on. [2026-09-27, ADR 0149 row
 // 54: superseded — founder item 53 put `promotions` in LIVE_PAGES, so every
 // house gets PromotionsNext; `Promotions` is reachable only by QA override.]
+// [2026-09-28, ADR 0149 cutover (CUTOVER-MANIFEST-2026-09-28.md, group `promotions`): `Promotions.tsx`
+// is deleted; the gate has no legacy slot.]
 const PromotionsNext = lazyWithRefresh(() => import('./pages/promotions/next/PromotionsNext'))
-const Communications = lazyWithRefresh(() => import('./pages/Communications'))
-const DocumentsPage = lazyWithRefresh(() => import('./pages/DocumentsPage'))
-const ReceiptsPage = lazyWithRefresh(() => import('./pages/ReceiptsPage'))
-const LogsTimelinePage = lazyWithRefresh(() => import('./pages/LogsTimelinePage'))
 const LogsNext = lazyWithRefresh(() => import('./pages/logs/next/LogsNext'))
-const Notifications = lazyWithRefresh(() => import('./pages/Notifications'))
-const CalendarModular = lazyWithRefresh(() => import('./pages/CalendarModular'))
-const Settings = lazyWithRefresh(() => import('./pages/Settings'))
-const Help = lazyWithRefresh(() => import('./pages/Help'))
 const HelpNext = lazyWithRefresh(() => import('./pages/help/next/HelpNext'))
-const Profile = lazyWithRefresh(() => import('./pages/Profile'))
-const AuthorizeIntegration = lazyWithRefresh(() => import('./pages/AuthorizeIntegration'))
 const Privacy = lazyWithRefresh(() => import('./pages/Privacy'))
 const Terms = lazyWithRefresh(() => import('./pages/Terms'))
 // Public vendor catalogue — resolved by slug, also served on a vendors.* subdomain.
 const VendorPortal = lazyWithRefresh(() => import('./pages/VendorPortal'))
 // Owner/manager only — vendor pricing is the restaurant's negotiating position.
-// `VendorPriceCompare.tsx` is routed as PageGate's `legacy` branch — see the
-// route comment below for the flag this page ships behind.
-const VendorPriceCompare = lazyWithRefresh(() => import('./pages/VendorPriceCompare'))
+// [2026-09-28, ADR 0149 cutover (CUTOVER-MANIFEST-2026-09-28.md, group `vendor_prices`): the legacy
+// `VendorPriceCompare.tsx` this line named is deleted.]
 const VendorPricesNext = lazyWithRefresh(() => import('./pages/vendor-prices/next/VendorPricesNext'))
 const DevTruth = lazyWithRefresh(() => import('./pages/DevTruth'))
 
@@ -232,11 +208,16 @@ function App() {
                 {/* Public vendor catalogue. No auth: this is what a vendor chose
                     to publish, and our own ingester reads it back as structured data. */}
                 <Route path="/v/:slug" element={<VendorPortal />} />
-                {/* Flag off: #455 first-proof GetStarted (ADR 0213). Flag on: #414 Skyleaf Arrival. */}
+                {/* ADR 0213's first-proof GetStarted (#455) is the plan of record. [2026-09-28,
+                    ADR 0149 cutover (CUTOVER-MANIFEST-2026-09-28.md, group `arrival_book`): #414's Skyleaf
+                    Arrival book, which sat in this route's `next` slot behind
+                    `mudavym_design_arrival`, is deleted, so the route renders
+                    GetStarted directly — what every house already got with the
+                    flag off (ON for 0 of 14, census J1).] */}
                 <Route
                   path="/get-started"
                   element={
-                    <PageGate page="arrival" legacy={<GetStarted />} next={<Arrival />} />
+                    <GetStarted />
                   }
                 />
                 <Route
@@ -309,7 +290,7 @@ function App() {
                   path="/receiving/:orderId/door"
                   element={
                     <ProtectedRoute>
-                      <PageGate page="receiving_door" legacy={<DoorReceipt />} next={<DoorNext />} />
+                      <PageGate page="receiving_door" next={<DoorNext />} />
                     </ProtectedRoute>
                   }
                 />
@@ -365,7 +346,7 @@ function App() {
                   path="/authorize/:integrationId"
                   element={
                     <ProtectedRoute>
-                      <PageGate page="authorize_integration" legacy={<AuthorizeIntegration />} next={<AuthorizeIntegrationNext />} />
+                      <PageGate page="authorize_integration" next={<AuthorizeIntegrationNext />} />
                     </ProtectedRoute>
                   }
                 />
@@ -378,7 +359,7 @@ function App() {
                     </ProtectedRoute>
                   }
                 >
-                  <Route path="/" element={<PageGate page="dashboard" legacy={<Dashboard />} next={<DashboardNext />} />} />
+                  <Route path="/" element={<PageGate page="dashboard" next={<DashboardNext />} />} />
                   {/* `/inventory` is enrolled in the gate (founder, 2026-09-04) with the
                       SAME page on both branches. The command page is not being
                       redesigned — the gate is what mounts `HouseHeader`
@@ -393,19 +374,20 @@ function App() {
                       still do the job. Without this it fell to the catch-all and
                       landed on the Dashboard, which reads as a broken app. */}
                   <Route path="/inventory-legacy" element={<Navigate to="/inventory" replace />} />
-                  <Route path="/orders" element={<PageGate page="orders" legacy={<Orders />} next={<OrdersNext />} />} />
+                  <Route path="/orders" element={<PageGate page="orders" next={<OrdersNext />} />} />
                   {/* One order, asked for by id — an email/SMS/push deep link
                       (notification_agent.py, email_composer_service.py) or a
                       hand-off from another page. Same gate, same two trees as
-                      `/orders`: `Orders` (legacy) ignores the extra param and
-                      renders exactly as it does today; `OrdersNext` reads it
+                      `/orders`: [2026-09-28 cutover: `Orders` (legacy) deleted —
+                      CUTOVER-MANIFEST-2026-09-28.md]; `OrdersNext` reads it
                       and opens that order's row (OrdersNext.tsx). */}
-                  <Route path="/orders/:id" element={<PageGate page="orders" legacy={<Orders />} next={<OrdersNext />} />} />
+                  <Route path="/orders/:id" element={<PageGate page="orders" next={<OrdersNext />} />} />
                   {/* One event, three renderings, chosen by role — see ReceivingHome.
                       [2026-09-26, ADR 0149 row 54: the desk is in LIVE_PAGES,
                       so every house gets ReceivingNext; ReceivingHome is
-                      reachable only through the QA override.] */}
-                  <Route path="/receiving" element={<PageGate page="receiving" legacy={<ReceivingHome />} next={<ReceivingNext />} />} />
+                      reachable only through the QA override.] [2026-09-28:
+                      ReceivingHome deleted at the cutover, CUTOVER-MANIFEST-2026-09-28.md.] */}
+                  <Route path="/receiving" element={<PageGate page="receiving" next={<ReceivingNext />} />} />
                   {/* One delivery, asked for by id — the in-app notification
                       actionUrls `delivery-clock.service.ts` and
                       `delivery.service.ts` already build (`/deliveries/:id`),
@@ -421,31 +403,31 @@ function App() {
                       vendor's proposal, a paperwork mismatch — none of which
                       the door screen has any control for. */}
                   <Route path="/deliveries/:id" element={<DeliveryRedirect />} />
-                  <Route path="/wines" element={<PageGate page="cellar" legacy={<WineLibrary />} next={<CellarNext category="wines" />} />} />
+                  <Route path="/wines" element={<PageGate page="cellar" next={<CellarNext category="wines" />} />} />
                   {/* `/cellar` is the parent surface (founder, 2026-08-29/30): what is in
                       the building, with /wines /beer /whiskey /cocktails as its children.
                       Flag off, the parent and the three new children land on the shipping
                       wine list rather than the catch-all — a bookmark still does the job. */}
-                  <Route path="/cellar" element={<PageGate page="cellar" legacy={<Navigate to="/wines" replace />} next={<CellarNext />} />} />
-                  <Route path="/beer" element={<PageGate page="cellar" legacy={<Navigate to="/wines" replace />} next={<CellarNext category="beer" />} />} />
-                  <Route path="/whiskey" element={<PageGate page="cellar" legacy={<Navigate to="/wines" replace />} next={<CellarNext category="whiskey" />} />} />
-                  <Route path="/cocktails" element={<PageGate page="cellar" legacy={<Navigate to="/wines" replace />} next={<CellarNext category="cocktails" />} />} />
-                  <Route path="/spirits" element={<PageGate page="cellar" legacy={<Navigate to="/wines" replace />} next={<CellarNext category="spirits" />} />} />
-                  <Route path="/non-alcoholic" element={<PageGate page="cellar" legacy={<Navigate to="/wines" replace />} next={<CellarNext category="non_alcoholic" />} />} />
-                  <Route path="/soft-drinks" element={<PageGate page="cellar" legacy={<Navigate to="/wines" replace />} next={<CellarNext category="soft_drinks" />} />} />
-                  {/* ADR 0160 sec110 item 7 — a NEW route with no legacy page, so
-                      `legacy` here is a redirect to /cellar (the surface it is
+                  <Route path="/cellar" element={<PageGate page="cellar" next={<CellarNext />} />} />
+                  <Route path="/beer" element={<PageGate page="cellar" next={<CellarNext category="beer" />} />} />
+                  <Route path="/whiskey" element={<PageGate page="cellar" next={<CellarNext category="whiskey" />} />} />
+                  <Route path="/cocktails" element={<PageGate page="cellar" next={<CellarNext category="cocktails" />} />} />
+                  <Route path="/spirits" element={<PageGate page="cellar" next={<CellarNext category="spirits" />} />} />
+                  <Route path="/non-alcoholic" element={<PageGate page="cellar" next={<CellarNext category="non_alcoholic" />} />} />
+                  <Route path="/soft-drinks" element={<PageGate page="cellar" next={<CellarNext category="soft_drinks" />} />} />
+                  {/* [2026-09-28 cutover, CUTOVER-MANIFEST-2026-09-28.md: the redirect slot below is gone too.]
+                      ADR 0160 sec110 item 7 — a NEW route with no legacy page, so
+                      `legacy` here was a redirect to /cellar (the surface it is
                       linked from) rather than a real fallback — see the
                       `MenuNext` import above for why the flag is always on. */}
-                  <Route path="/menu" element={<PageGate page="menu" legacy={<Navigate to="/cellar" replace />} next={<MenuNext />} />} />
-                  <Route path="/reports" element={<PageGate page="reports" legacy={<Reports />} next={<ReportsNext />} />} />
-                  <Route path="/recommendations" element={<PageGate page="recommendations" legacy={<Recommendations />} next={<RecommendationsNext />} />} />
+                  <Route path="/menu" element={<PageGate page="menu" next={<MenuNext />} />} />
+                  <Route path="/reports" element={<PageGate page="reports" next={<ReportsNext />} />} />
+                  <Route path="/recommendations" element={<PageGate page="recommendations" next={<RecommendationsNext />} />} />
                   <Route
                     path="/recommendations/catalog"
                     element={
                       <PageGate
                         page="recommendations"
-                        legacy={<InsightCatalog />}
                         next={<RecommendationsCatalogView />}
                       />
                     }
@@ -453,7 +435,7 @@ function App() {
                   {/* ADR 0221: the word is "vendors". The page slug and flag stay
                       `providers` (mudavym_design_providers), as do the gateway's
                       /providers API paths; only the address and the words moved. */}
-                  <Route path="/vendors" element={<PageGate page="providers" legacy={<Providers />} next={<ProvidersNext />} />} />
+                  <Route path="/vendors" element={<PageGate page="providers" next={<ProvidersNext />} />} />
                   {/* The old address, kept for good: stored notifications, bookmarks
                       and mail carry it. The rest of the path, the query
                       (`?vendor=<id>` opens that card) and the hash come along. */}
@@ -476,8 +458,9 @@ function App() {
                       every house, superseding the per-house flip above, after
                       its provenance lane (#482) merged. The PageGate stays so
                       the QA override can still reach the legacy page until
-                      the deletion manifest removes it.] */}
-                  <Route path="/vendor-prices" element={<PageGate page="vendor_prices" legacy={<VendorPriceCompare />} next={<VendorPricesNext />} />} />
+                      the deletion manifest removes it.] [2026-09-28: removed —
+                      CUTOVER-MANIFEST-2026-09-28.md.] */}
+                  <Route path="/vendor-prices" element={<PageGate page="vendor_prices" next={<VendorPricesNext />} />} />
                   {/* dev/truth — three instruments that make the product's own
                       numbers checkable (reach · as-of · swallow). The gateway
                       routes behind them 404 in production, so this renders its
@@ -502,8 +485,9 @@ function App() {
                       writing" renders on /communications ungated; founder
                       item 53 ("Live in code at cutover (Recommended)") put
                       promotions in LIVE_PAGES for every house. The PageGate
-                      stays for the QA override only.] */}
-                  <Route path="/promotions" element={<PageGate page="promotions" legacy={<Promotions />} next={<PromotionsNext />} />} />
+                      stays for the QA override only.] [2026-09-28: the legacy
+                      page is deleted — CUTOVER-MANIFEST-2026-09-28.md; the gate stays for the header.] */}
+                  <Route path="/promotions" element={<PageGate page="promotions" next={<PromotionsNext />} />} />
                   {/* Both halves split by role INSIDE the element: the legacy
                       entry always did (TeamCommandPage.tsx:36-37) and TeamNext
                       now does too. Routed straight to the manager surface, a
@@ -511,52 +495,51 @@ function App() {
                       `GET certifications` carries no role requirement
                       server-side, so the whole credential file rendered to any
                       member. */}
-                  <Route path="/team" element={<PageGate page="team" legacy={<TeamCommandPage />} next={<TeamNext />} />} />
-                  <Route path="/calendar" element={<PageGate page="calendar" legacy={<CalendarModular />} next={<CalendarNext />} />} />
+                  <Route path="/team" element={<PageGate page="team" next={<TeamNext />} />} />
+                  <Route path="/calendar" element={<PageGate page="calendar" next={<CalendarNext />} />} />
                   {/* Same reasoning as `/inventory-legacy` above: `/calendar-classic`
                       is retired (ADR 0019 §B) and its one exclusive — reminders that
                       actually fire — was ported onto `/calendar` first. */}
                   <Route path="/calendar-classic" element={<Navigate to="/calendar" replace />} />
-                  <Route path="/communications" element={<PageGate page="communications" legacy={<Communications />} next={<CommunicationsNext />} />} />
-                  <Route path="/documents-reports" element={<PageGate page="documents_reports" legacy={<DocumentsPage />} next={<DocumentsReportsNext />} />} />
-                  <Route path="/receipts" element={<PageGate page="receipts" legacy={<ReceiptsPage />} next={<ReceiptsNext />} />} />
+                  <Route path="/communications" element={<PageGate page="communications" next={<CommunicationsNext />} />} />
+                  <Route path="/documents-reports" element={<PageGate page="documents_reports" next={<DocumentsReportsNext />} />} />
+                  <Route path="/receipts" element={<PageGate page="receipts" next={<ReceiptsNext />} />} />
                   <Route path="/credits" element={<Navigate to="/receipts?tab=credits" replace />} />
                   {/* ADR 0104 D12 slice 2 — one incoming document as the canonical
                       Mudavym document. Live in code for every house since ADR
                       0149 row 36 (2026-09-17, mudavym_design_document no longer
-                      read); the legacy branch is a redirect to /receipts rather
+                      read); the legacy branch was a redirect to /receipts rather
                       than a second page, because /receipts already IS this
-                      view's other face. */}
+                      view's other face. [2026-09-28: redirect slot removed, CUTOVER-MANIFEST-2026-09-28.md.] */}
                   <Route
                     path="/documents/:id"
                     element={
                       <PageGate
                         page="document"
-                        legacy={<Navigate to="/receipts" replace />}
                         next={<CanonicalDocumentPage />}
                       />
                     }
                   />
-                  <Route path="/logs" element={<PageGate page="logs" legacy={<LogsTimelinePage />} next={<LogsNext />} />} />
-                  <Route path="/notifications" element={<PageGate page="notifications" legacy={<Notifications />} next={<NotificationsNext />} />} />
-                  <Route path="/settings" element={<PageGate page="settings" legacy={<Settings />} next={<SettingsNext />} />} />
-                  <Route path="/profile" element={<PageGate page="profile" legacy={<Profile />} next={<ProfileNext />} />} />
+                  <Route path="/logs" element={<PageGate page="logs" next={<LogsNext />} />} />
+                  <Route path="/notifications" element={<PageGate page="notifications" next={<NotificationsNext />} />} />
+                  <Route path="/settings" element={<PageGate page="settings" next={<SettingsNext />} />} />
+                  <Route path="/profile" element={<PageGate page="profile" next={<ProfileNext />} />} />
                   {/* `/connections` — what acts for this house (ADR 0114). A NEW
-                      route, not a redesign, so its `legacy` is a redirect: with the
-                      flag off the URL is inert and lands on `/profile`, where the
-                      three house registers still live. The page refuses in words
+                      route, not a redesign, so its `legacy` was a redirect to
+                      `/profile` [2026-09-28: removed at the cutover, CUTOVER-MANIFEST-2026-09-28.md]. The page refuses in words
                       for a non-manager, and the two registers that would leak are
                       role-gated at the gateway as well (G19). */}
-                  <Route path="/connections" element={<PageGate page="connections" legacy={<Navigate to="/profile" replace />} next={<ConnectionsNext />} />} />
+                  <Route path="/connections" element={<PageGate page="connections" next={<ConnectionsNext />} />} />
                   {/* ADR 0160 §111 / ADR 0149 row 52: resolves to the Mudavym
                       redesign for every house in code (LIVE_PAGES) — no
                       `mudavym_design_help` ACTIVE flag. `legacy` stays mounted,
-                      untouched, until the founder approves its deletion. */}
-                  <Route path="/help" element={<PageGate page="help" legacy={<Help />} next={<HelpNext />} />} />
+                      untouched, until the founder approves its deletion.
+                      [2026-09-28: `Help.tsx` deleted, CUTOVER-MANIFEST-2026-09-28.md.] */}
+                  <Route path="/help" element={<PageGate page="help" next={<HelpNext />} />} />
                   {/* Gated: the sidebar link is owner-only, but the URL was not —
                       any authenticated staff member could open the admin UI. */}
-                  <Route path="/admin" element={<PageGate page="admin" legacy={<ProtectedRoute requiredRole={['owner', 'manager']}><AdminPanel /></ProtectedRoute>} next={<AdminDesk />} />} />
-                  <Route path="/admin/health" element={<PageGate page="admin" legacy={<ProtectedRoute requiredRole={['owner', 'manager']}><AdminHealth /></ProtectedRoute>} next={<Navigate to="/admin" replace />} />} />
+                  <Route path="/admin" element={<PageGate page="admin" next={<AdminDesk />} />} />
+                  <Route path="/admin/health" element={<PageGate page="admin" next={<Navigate to="/admin" replace />} />} />
                   
                   {/* AI Assistants.
                       `/wine-agent` and `/wineagent` are retired (ADR 0019 §B): both
@@ -567,9 +550,10 @@ function App() {
                       founder's 2026-09-12 answer "/sommelier redirects here".
                       `ask` is in LIVE_PAGES, so every house gets `AskNext`; the
                       old chat stays mounted only as `legacy` (a per-browser QA
-                      override) until the ADR 0149 cutover deletes it.] */}
-                  <Route path="/ask" element={<PageGate page="ask" legacy={<SommelierAI />} next={<AskNext />} />} />
-                  <Route path="/ask/f/:folioId" element={<PageGate page="ask" legacy={<SommelierAI />} next={<AskNext />} />} />
+                      override) until the ADR 0149 cutover deletes it.]
+                      [2026-09-28: `SommelierAI.tsx` deleted, CUTOVER-MANIFEST-2026-09-28.md.] */}
+                  <Route path="/ask" element={<PageGate page="ask" next={<AskNext />} />} />
+                  <Route path="/ask/f/:folioId" element={<PageGate page="ask" next={<AskNext />} />} />
                   <Route path="/sommelier" element={<Navigate to="/ask" replace state={{ from: 'sommelier' }} />} />
                   <Route path="/services" element={<Navigate to="/settings?tab=services" replace />} />
                   

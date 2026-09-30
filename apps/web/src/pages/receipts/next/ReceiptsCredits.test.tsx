@@ -41,11 +41,9 @@ vi.mock('@/contexts/AuthContext', () => ({
   AuthContext: createContext<{ activeRestaurantId: string | null } | null>(null),
 }));
 
-// The legacy page must never be loaded by the rebuilt route. If anything on
-// this page imports it again, this factory throws and the test fails.
-vi.mock('../../ReceiptsPage', () => {
-  throw new Error('the legacy ReceiptsPage was imported by the rebuilt /receipts');
-});
+// The legacy `ReceiptsPage` this file once refused to load (a throwing
+// vi.mock) was deleted at the ADR 0149 cutover — there is nothing left to
+// import by mistake, so the guard went with it.
 
 vi.mock('../../../services/api/credits', () => ({
   creditsApi: {

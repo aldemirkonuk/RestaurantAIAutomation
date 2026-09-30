@@ -188,8 +188,10 @@ the pages reported in words:
 
 1. Enrol the page in `MUDAVYM_PAGES` and register its flag, as usual.
 2. Add an entry to `manifest.pages`:
-   `slug`, `flag` (`mudavym_design_<slug>`), `route`, `legacy` (`page`, `same`
-   or `redirect:/x`), `source` (the page's own directory), and the page's own
+   `slug`, `flag` (`mudavym_design_<slug>`), `route`, `legacy` (`page`, `same`,
+   `redirect:/x`, or `none` once the page's legacy slot is deleted — ADR 0149's
+   cutover; the flag-off pass then asserts the Mudavym page renders),
+   `source` (the page's own directory), and the page's own
    sentences: `empty`, `failed_read`, optional `provenance` and `*_testids`.
    A route with a parameter needs `needs` (a list endpoint to take an id from).
 3. Copy each sentence from the page's source as **one run of text**. If the page

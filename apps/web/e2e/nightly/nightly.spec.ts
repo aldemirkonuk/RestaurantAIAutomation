@@ -368,6 +368,12 @@ async function walk(page: Page, request: APIRequestContext, mode: Mode, override
       } else if (entry.legacy.startsWith('redirect:')) {
         const target = entry.legacy.slice('redirect:'.length)
         recordAndAssert({ id: `page.${entry.slug}.legacy`, state: landed.startsWith(target) ? 'pass' : 'fail', reason: landed.startsWith(target) ? `${route} with the flag off redirected to ${target} as documented` : `${route} with the flag off landed on ${landed}, expected ${target}`, evidence })
+      } else if (entry.legacy === 'none') {
+        // The ADR 0149 cutover deleted this route's legacy slot, so forcing the
+        // flag off can no longer show a legacy page: PageGate renders `next`
+        // whatever it resolves (PageGate.noLegacy.test.tsx). Asserted, not
+        // recorded — "same" would stop checking that a Mudavym root renders.
+        recordAndAssert({ id: `page.${entry.slug}.legacy`, state: reading.nextRoots > 0 ? 'pass' : 'fail', reason: reading.nextRoots > 0 ? `${route} has no legacy page since the cutover; with the flag off it rendered the Mudavym design (${reading.nextRoots} root${reading.nextRoots === 1 ? '' : 's'})` : `${route} rendered no ${manifest.next_root_selector} root with the flag off although its legacy slot is deleted — the gate blanked it, or production is behind the cutover`, evidence })
       } else {
         recordAndAssert({ id: `page.${entry.slug}.legacy`, state: reading.nextRoots === 0 ? 'pass' : 'fail', reason: reading.nextRoots === 0 ? `${route} rendered the legacy page (no ${manifest.next_root_selector} root)` : `${route} rendered ${reading.nextRoots} Mudavym root(s) although the flag is off`, evidence })
       }

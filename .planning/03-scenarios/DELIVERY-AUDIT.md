@@ -132,6 +132,8 @@ reads as *"nothing to report"* forever.
 | Fixed on `fix/swallowed-read-errors-and-guard` | 8 | 5 |
 | **Remaining, baselined and non-growing** | **191 of 215** | 42 |
 
+> **151 as of 2026-09-28, on `feat/cutover-manifest-trial` (origin/main `c8bbf95de` + #487 `d3bfacb82` + the ADR 0149 trial cutover)** (`check_read_errors_not_swallowed.py` on that tree: 1698 files scanned, 151 sites, 151 baselined, 0 allowlisted). The legacy `/reports` page's `SeatingDensityPanel.tsx` (a detector false match) is deleted with its manifest group; the baseline had also drifted, recording 159 while its rows summed to 152 on the pre-cutover tree. Holds only if the founder approves group `reports` ([cutover manifest](../07-reference/deploy/CUTOVER-MANIFEST-2026-09-28.md)). Re-measure before citing.
+
 > **159 as of 2026-09-27, on #440 (`fix/team-pay-defects`) merged onto `origin/main` 4b2a8e389 (#438)** (`check_read_errors_not_swallowed.py` on that tree: 1789 files scanned, 159 sites, 159 baselined, 0 allowlisted): #438 retired `calendar.service.ts` calendar_recurrence_rules/rules and ADR 0215 retires `schedule.service.ts` team_members/m. Re-measure before citing.
 
 > **160 as of 2026-09-27, on #440 (`fix/team-pay-defects`) merged onto `origin/main` ef8ecdf30** (`check_read_errors_not_swallowed.py` on that tree: 1774 files scanned, 160 sites, 160 baselined, 0 allowlisted): one below the 161 main carried at that merge (its line below); the 166 line below it was measured on an older base. Re-measure before citing.
