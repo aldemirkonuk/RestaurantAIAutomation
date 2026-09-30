@@ -12,6 +12,8 @@ import {
   Optional,
   forwardRef,
 } from "@nestjs/common";
+import { ModuleRef } from "@nestjs/core";
+import { MembersService } from "../restaurants/members.service";
 import { JwtService } from "@nestjs/jwt";
 import { ConfigService } from "@nestjs/config";
 import { DatabaseService } from "../database/database.service";
@@ -333,6 +335,19 @@ export class AuthService {
   @Optional()
   @Inject(forwardRef(() => WebsocketGateway))
   private websocketGateway?: WebsocketGateway;
+
+  /**
+   * How `leaveRestaurant` reaches THE removal (ADR 0242, OD-204):
+   * `MembersService.removeMember`, which hands a rostered person to
+   * `TeamService.removeFromHouse`. Looked up at call time, not injected,
+   * because `RestaurantsModule` imports `AuthModule` — an import the other way
+   * would be a module ring — and property-injected for the same reason as
+   * `websocketGateway` above. Without it a leave REFUSES; it never falls back
+   * to the old access-only leave that kept the person's shifts.
+   */
+  @Optional()
+  @Inject(ModuleRef)
+  private moduleRef?: ModuleRef;
 
   constructor(
     private readonly jwtService: JwtService,
@@ -4411,104 +4426,45 @@ export class AuthService {
     return this.getLinkedProviders(userId);
   }
 
+  /**
+   * Leaving a house on one's own (`POST /auth/me/leave-restaurant`).
+   *
+   * ONE REMOVAL PATH (ADR 0242, OD-204). This used to be a third, separate
+   * removal: it revoked access and left the person's future shifts assigned to
+   * someone who could no longer sign in, and left them on the roster. It is
+   * now the members door's self-leave, which runs the same removal as the Team
+   * page: unstarted shifts back to the open pool, one in progress cut, the
+   * roster row gone, the leave filed, the owners and managers told what opened,
+   * the membership stamped 'left' (so the leaver goes to /get-started), sockets
+   * evicted and their pending invites cancelled.
+   */
   async leaveRestaurant(userId: string, restaurantId: string): Promise<void> {
-    const { data: targetAccess } = await this.databaseService.supabase
-      .from("user_restaurant_access")
-      .select("role")
-      .eq("user_id", userId)
-      .eq("restaurant_id", restaurantId)
-      .eq("is_active", true)
-      .maybeSingle();
-
-    if (!targetAccess) {
-      throw new BadRequestException("You are not a member of this restaurant");
-    }
-
-    if (targetAccess.role === "owner") {
-      const { count } = await this.databaseService.supabase
-        .from("user_restaurant_access")
-        .select("*", { count: "exact", head: true })
-        .eq("restaurant_id", restaurantId)
-        .eq("role", "owner")
-        .eq("is_active", true);
-
-      if ((count ?? 0) <= 1) {
-        throw new BadRequestException(
-          "You're the only owner. Transfer ownership first.",
-        );
-      }
-    }
-
-    // Their calendar link in this house stops for good, audited, before the
-    // first membership write (ADR 0111, 2026-09-21, round 6t: "Yes, revoke on
-    // leaving (Recommended)"). A stop that fails throws here, so nothing about
-    // the membership has changed (`calendar/stop-links-on-leaving.ts`).
-    await stopCalendarLinksOnLeaving(
-      this.databaseService.supabase,
-      this.logger,
-      {
-        restaurantId,
-        userId,
-        actorUserId: userId,
-        via: "AuthService.leaveRestaurant",
-      },
-    );
-
-    // The `users` row stops naming this house BEFORE the access row goes, and
-    // only when it names this house (a `users` row naming another house is that
-    // house's business). Until 2026-09-18 only the access row was deleted, so
-    // `users.restaurant_id` still named the house and the `users`-row fallback
-    // (`assertMembership`, `generateInvite`, `updateMemberRole`'s target read,
-    // `JwtStrategy`'s role) still counted the leaver as a member at
-    // `users.role` (v3.0-TECH-DEBT 44.1j). The order is the safe one of two
-    // non-atomic writes: if the delete below fails, the person is still a
-    // member by their access row and can try again; the other order would
-    // leave them a member by a row they meant to be gone.
-    const { error: usersError } = await this.databaseService.supabase
-      .from("users")
-      .update({ restaurant_id: null })
-      .eq("user_id", userId)
-      .eq("restaurant_id", restaurantId);
-
-    if (usersError) {
+    const members = this.moduleRef?.get(MembersService, { strict: false });
+    if (!members) {
       this.logger.error(
-        `leaveRestaurant could not clear users.restaurant_id for ${userId} in ` +
-          `${restaurantId}: ${usersError.message}`,
+        "leaveRestaurant: the removal path is not wired, so nobody left",
       );
       throw new InternalServerErrorException(
         "Could not leave this restaurant. Nothing was changed; try again.",
       );
     }
-
-    const { error } = await this.databaseService.supabase
-      .from("user_restaurant_access")
-      .delete()
-      .eq("user_id", userId)
-      .eq("restaurant_id", restaurantId);
-
-    if (error) {
-      this.logger.error(`leaveRestaurant failed: ${error.message}`);
-      throw new BadRequestException("Failed to leave restaurant");
-    }
-
-    // They ended it themselves (ADR 0164, round 5, item 26): with no house
-    // left they go to /get-started, not /no-access.
-    await markMembershipLeft(
-      this.databaseService.supabase,
-      userId,
-      restaurantId,
-      this.logger,
-    );
-    this.websocketGateway?.evictFromHouse(userId, restaurantId);
-    await cancelPendingInvitesFrom(
-      this.databaseService.supabase,
-      userId,
-      restaurantId,
-      this.logger,
-    );
+    await members.removeMember(userId, restaurantId, userId);
   }
 
   async deleteAccount(userId: string): Promise<void> {
+    // ADR 0242 (OD-204): an account that goes leaves each house through the one
+    // removal path first. Checked before anything is written, so a gateway
+    // without it refuses rather than deleting the account and leaving its
+    // shifts on a person who no longer exists.
+    const members = this.moduleRef?.get(MembersService, { strict: false });
+    if (!members) {
+      this.logger.error(
+        "deleteAccount: the removal path is not wired, so nothing was deleted",
+      );
+      throw new InternalServerErrorException(
+        "Could not delete your account. Nothing was changed; try again.",
+      );
+    }
     // Soft-guard: block if sole owner of any restaurant
     const { data: ownerRows } = await this.databaseService.supabase
       .from("user_restaurant_access")
@@ -4572,6 +4528,14 @@ export class AuthService {
       throw new ServiceUnavailableException(
         "Could not read your houses. Nothing was deleted; try again.",
       );
+    }
+
+    // Leave every house through THE removal (ADR 0242): unstarted shifts back
+    // to the open pool, one in progress cut, the roster row gone, the leave
+    // filed, owners and managers told what opened. Before the account rows
+    // go, since a removal needs the person to still exist to be filed.
+    for (const leaving of activeHouses ?? []) {
+      await members.removeMember(userId, leaving.restaurant_id, userId);
     }
 
     await this.databaseService.supabase

@@ -1,5 +1,7 @@
 import { BadRequestException, ServiceUnavailableException } from "@nestjs/common";
 import { AuthService } from "./auth.service";
+import { MembersService } from "../restaurants/members.service";
+import { TeamService } from "../team/team.service";
 import { asDatabaseService, makeStubDb } from "../team/testing/supabase-stub";
 
 /**
@@ -47,6 +49,9 @@ function makeService(seed: {
       organization_invites: seed.invites ?? [],
       users: seed.users ?? [{ user_id: USER, email: "leaving@example.com" }],
       user_oauth_accounts: [],
+      team_members: [],
+      notifications: [],
+      system_audit_log: [],
     },
     seed.errors ?? {},
   );
@@ -59,8 +64,28 @@ function makeService(seed: {
   );
   const gateway = { evictFromHouse: jest.fn() };
   (svc as any).websocketGateway = gateway;
+  wireRemoval(svc, db, gateway);
   return { svc, db, gateway };
 }
+
+/**
+ * ADR 0242 (OD-204): an account that goes leaves each house through the one
+ * removal path (`MembersService.removeMember` → `TeamService.removeFromHouse`
+ * for a rostered person), looked up at call time. That leave evicts and
+ * cancels too, so a house is evicted from more than once; what these cases
+ * pin is WHICH houses, never how many calls.
+ */
+function wireRemoval(svc: AuthService, db: any, gateway?: any) {
+  const members = new MembersService(
+    asDatabaseService(db),
+    gateway,
+    new TeamService(asDatabaseService(db), gateway),
+  );
+  (svc as any).moduleRef = { get: () => members };
+}
+
+const housesEvicted = (gateway: { evictFromHouse: jest.Mock }) =>
+  [...new Set(gateway.evictFromHouse.mock.calls.map((c) => `${c[0]}@${c[1]}`))].sort();
 
 describe("deleteAccount — evicts sockets and cancels pending invites for every house it removed", () => {
   it("evicts the deleted account from its one active house and cancels the invite it issued there", async () => {
@@ -73,8 +98,7 @@ describe("deleteAccount — evicts sockets and cancels pending invites for every
 
     await svc.deleteAccount(USER);
 
-    expect(gateway.evictFromHouse).toHaveBeenCalledTimes(1);
-    expect(gateway.evictFromHouse).toHaveBeenCalledWith(USER, HOUSE_A);
+    expect(housesEvicted(gateway)).toEqual([`${USER}@${HOUSE_A}`]);
     expect(
       new Date(db.tables.organization_invites[0].expires_at).getTime(),
     ).toBeLessThanOrEqual(Date.now());
@@ -90,9 +114,9 @@ describe("deleteAccount — evicts sockets and cancels pending invites for every
 
     await svc.deleteAccount(USER);
 
-    expect(gateway.evictFromHouse).toHaveBeenCalledTimes(2);
-    expect(gateway.evictFromHouse).toHaveBeenCalledWith(USER, HOUSE_A);
-    expect(gateway.evictFromHouse).toHaveBeenCalledWith(USER, HOUSE_B);
+    expect(housesEvicted(gateway)).toEqual(
+      [`${USER}@${HOUSE_A}`, `${USER}@${HOUSE_B}`].sort(),
+    );
   });
 
   it("does not evict from an already-inactive row, and does not crash with no websocketGateway wired", async () => {
@@ -110,6 +134,7 @@ describe("deleteAccount — evicts sockets and cancels pending invites for every
       { sendEmail: async () => undefined } as any,
     );
     // websocketGateway left undefined, same as every pre-existing spec here.
+    wireRemoval(svc, db);
 
     await expect(svc.deleteAccount(USER)).resolves.toBeUndefined();
   });

@@ -14,7 +14,7 @@ Filed from the ADR 0090 audit of #508. This entry records the defect. The fork i
 
 **Not covered.** The door-receipt and spot-count outboxes use the same queue with their own handlers. They are skipped at `sync-manager.ts:239-248` and were not reviewed here.
 
-## `MembersService.removeMember` is a second removal path that leaves shifts and the roster behind — OPEN — 2026-09-29
+## `MembersService.removeMember` is a second removal path that leaves shifts and the roster behind — ~~OPEN~~ CLOSED 2026-09-29 by `fix/od-204-one-removal-path` (OD-204, [ADR 0242](../decisions/0242-one-removal-path-and-leaving-is-that-removal.md): every door, leave and account deletion included, ends in `TeamService.removeFromHouse`) — 2026-09-29
 
 Filed from the ADR 0090 audit of #502. The fork is OD-204.
 
