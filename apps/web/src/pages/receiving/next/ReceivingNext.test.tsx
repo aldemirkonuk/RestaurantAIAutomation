@@ -392,7 +392,7 @@ describe('F12 — the rail shows a parked door receipt as Not sent, with Send ag
 
     expect(await screen.findByText('PO-403')).toBeInTheDocument()
     expect(screen.getAllByText('Not sent')).toHaveLength(2)
-    expect(screen.getByText(/this account is not allowed to record deliveries/)).toBeInTheDocument()
+    expect(screen.getByText(/the server turned this account away for this house/)).toBeInTheDocument()
     expect(screen.getByText(/cannot be sent as anyone/)).toBeInTheDocument()
     // The pre-fix rendering: a parked unowned receipt read "0 tries", as if
     // it were still being attempted.

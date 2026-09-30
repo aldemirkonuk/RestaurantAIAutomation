@@ -516,14 +516,17 @@ export default function DoorNext() {
               ? `Delivery ${drops[0].orderLabel} was saved on this phone and never sent.`
               : `${drops.length} deliveries saved on this phone were never sent.`}{' '}
             {/* Only a remedy the cause supports. A stored `auth` record means
-                a 403 — this account was not allowed to record it — since ADR
-                0241 retries a 401 instead of dropping it. So it must NOT say
+                an account the server turned away: a 403 since ADR 0241 retries a
+                401 instead of dropping it (the gateway's 403s on this route are
+                a house the account is not in, no house chosen, or an email not
+                yet verified), and possibly a 401 in a record written before
+                that. So it claims no narrower cause. So it must NOT say
                 "signed out" or send the porter to sign in again; the remedy is
                 the paperwork and a manager. Mixed or anything else: no cause
                 is claimed at all. (These are records written before the ADR
                 0241 amendment; a refusal is now parked, not dropped.) */}
             {drops.every((d) => d.reason === 'auth')
-              ? 'This account is not allowed to record deliveries, so the server refused it. Keep the paperwork and tell a manager: the count is not on the server.'
+              ? 'The server turned this account away, so it was never recorded. Keep the paperwork and tell a manager: the count is not on the server.'
               : 'The app has given up. Keep the paperwork and tell a manager: the count is not on the server.'}
           </p>
           {drops.length > 1 && (

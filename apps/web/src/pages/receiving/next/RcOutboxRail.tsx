@@ -49,7 +49,7 @@ function notSentReason(p: NonNullable<QueuedReceiptVM['parked']>): string {
     return 'saved before the app recorded who took it, so it cannot be sent as anyone';
   switch (p.status) {
     case 403:
-      return 'the server refused it: this account is not allowed to record deliveries';
+      return 'the server turned this account away for this house — check the house, and that the email is verified';
     case 404:
       return 'the server refused it: it could not find this order';
     case 409:

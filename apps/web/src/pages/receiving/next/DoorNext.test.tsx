@@ -237,19 +237,19 @@ describe('DoorNext — a drop recorded before the amendment is still shown', () 
 })
 
 /**
- * A stored `auth` reason means a 403 — the account was not allowed — because
+ * A stored `auth` reason means the server turned the account away — a 403 — because
  * ADR 0241 retries a 401 and never drops it. The notice used to say "The app
  * was signed out. Sign in again", which sent the porter after the wrong fix
  * and dropped "tell a manager" (#530 audit).
  */
 describe('DoorNext — a 403 drop is not "signed out"', () => {
-  it('says the account is not allowed, keeps the paperwork, tells a manager', async () => {
+  it('says the server turned the account away, keeps the paperwork, tells a manager', async () => {
     record = [oldDrop('PO-9', 'auth')]
     renderPage()
 
     await waitFor(() => expect(alarm()).not.toBeNull())
     const text = alarm()?.textContent ?? ''
-    expect(text).toContain('not allowed to record deliveries')
+    expect(text).toContain('The server turned this account away')
     expect(text).toContain('Keep the paperwork')
     expect(text).toContain('tell a manager')
     expect(text).not.toContain('signed out')
