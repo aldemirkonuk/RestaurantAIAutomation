@@ -23,7 +23,7 @@ trend maths, never newest-against-oldest**.
 The research that produced this brief (`scratchpad/backend-1/sentiment-research.md`, on
 `origin/main` @ `60ed83a7`) found the sentiment feature **hollow**: two unrelated writers of a
 label, no evaluation, no calibration, `provider_sentiment_history` at **0 rows** in production
-(`decisions/OD-72-rls-census.md:307`), `provider_performance_metrics` at **0 rows** with a
+(`decisions/OD-72-rls-census.md:307`, retired 2026-09-29 — `git show d80e41e69:.planning/decisions/OD-72-rls-census.md`), `provider_performance_metrics` at **0 rows** with a
 reader and no writer, `procurement_conversations` at **27 rows from one vendor**, a Python
 trend that reads a flat series as *declining* (`provider-intelligence.service.ts:399-404`,
 first point against last), and a live cross-tenant read on

@@ -2,7 +2,7 @@
 id: OD-72-RLS-POSTURE
 status: evidence + recommendation, undecided
 measured: 2026-08-26 against production
-supersedes: nothing — extends .planning/decisions/OD-72-rls-census.md with a fresh measurement
+supersedes: nothing — extends .planning/decisions/OD-72-rls-census.md (retired 2026-09-29; `git show d80e41e69:.planning/decisions/OD-72-rls-census.md`) with a fresh measurement
 related: "[[0012-reports-through-the-gateway]], OD-73, supabase/migrations/20260825200000_od73_close_anon_dml.sql"
 ---
 
