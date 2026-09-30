@@ -174,14 +174,60 @@ export function normaliseSealTotal(value: unknown): string {
 }
 
 /**
- * The canonical arguments for an order seal.
+ * The shape version of an APPROVAL seal's arguments (ADR 0244 D3, the
+ * founder's answer 10 of 2026-09-30, verbatim pick "Add unit price, versioned
+ * (Recommended)"). Version 2 adds the order's unit price; version 1 was the
+ * total and the vendor alone. The tag is hashed with the rest, so a v2 seal
+ * can never be mistaken for a v1 one.
+ */
+export const ORDER_SEAL_VERSION = 2;
+
+/**
+ * The canonical arguments for an order seal (version 2).
  *
- * "unknown" is a real value here and not a hole: an order whose total cannot be
- * read hashes to "unknown" at BOTH ends, so the seal still works — and it
- * changes the moment the total becomes readable, which is a change worth
- * refusing on. Substituting 0 would have hashed an unknown price as a free one.
+ * The total, the vendor, and — since answer 10 — the UNIT PRICE the approval
+ * rules test: final, then negotiated, then quoted (`effectiveUnitPrice`, the
+ * chain the re-check and the approve act use). Before it, a negotiated price
+ * changed between the hold and the approval was re-checked by the rules but
+ * was not part of what the person held over; now a different unit price is a
+ * different seal and is refused by name.
+ *
+ * "unknown" is a real value here and not a hole: an order whose total or unit
+ * price cannot be read hashes to "unknown" at BOTH ends, so the seal still
+ * works — and it changes the moment the figure becomes readable, which is a
+ * change worth refusing on. Substituting 0 would have hashed an unknown price
+ * as a free one. Both money fields use `normaliseSealTotal`, a fixed-precision
+ * string, for the reason given above it.
+ *
+ * `unitPrice` omitted reads as unknown, so the specs that seed an approval seal
+ * for an order with no price stay honest; the one production caller
+ * (`readOrderSealArgs`) always passes it.
  */
 export function orderSealArgs(order: {
+  id: string;
+  total: unknown;
+  providerId: string | null | undefined;
+  unitPrice?: unknown;
+}): Record<string, unknown> {
+  return {
+    sealVersion: ORDER_SEAL_VERSION,
+    orderId: order.id,
+    total: normaliseSealTotal(order.total),
+    providerId: order.providerId ?? null,
+    unitPrice: normaliseSealTotal(order.unitPrice),
+  };
+}
+
+/**
+ * The version-1 shape: the arguments every approval seal was minted over
+ * before answer 10 (the total and the vendor, no unit price, no tag).
+ *
+ * ACCEPTED AT REDEMPTION ONLY, NEVER MINTED. A hold opened on the old code
+ * just before a deploy was minted over this shape and may finish under it; a
+ * challenge lives `SEAL_TTL_MS` (two minutes), so after that nothing minted
+ * this way is left to redeem. `issueOrderSealChallenge` mints version 2 only.
+ */
+export function orderSealArgsV1(order: {
   id: string;
   total: unknown;
   providerId: string | null | undefined;

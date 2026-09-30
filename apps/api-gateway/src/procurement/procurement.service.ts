@@ -158,6 +158,7 @@ import {
   letterVersionHash,
   orderCancelSealArgs,
   orderSealArgs,
+  orderSealArgsV1,
 } from "./order-seal";
 import {
   ORDER_APPROVE_PRICE_CHANGE_ACT,
@@ -5708,7 +5709,10 @@ export class ProcurementService {
       );
     }
 
-    const args = await this.readOrderSealArgs(restaurantId, orderId);
+    const { args, legacyArgs } = await this.readOrderSealArgsWithLegacy(
+      restaurantId,
+      orderId,
+    );
     await this.sealChallenges.redeem({
       restaurantId,
       actorUserId: userId,
@@ -5716,6 +5720,10 @@ export class ProcurementService {
       subjectId: orderId,
       action: ORDER_SEAL_ACT,
       args,
+      // A hold opened before answer 10's deploy was minted over version 1
+      // (the total and the vendor); it may finish under it. New holds are
+      // version 2 only (`issueOrderSealChallenge`).
+      legacyArgs,
       challenge: challenge ?? null,
     });
   }
@@ -5728,9 +5736,24 @@ export class ProcurementService {
     restaurantId: string,
     orderId: string,
   ): Promise<Record<string, unknown>> {
+    return (await this.readOrderSealArgsWithLegacy(restaurantId, orderId)).args;
+  }
+
+  /**
+   * The one read behind both ends of an approval seal: version 2 (total,
+   * vendor, unit price; ADR 0244 D3 answer 10) to mint and redeem, and the
+   * version-1 shape of the SAME row, accepted only at redemption.
+   */
+  private async readOrderSealArgsWithLegacy(
+    restaurantId: string,
+    orderId: string,
+  ): Promise<{
+    args: Record<string, unknown>;
+    legacyArgs: Record<string, unknown>[];
+  }> {
     const { data, error } = await this.databaseService.supabase
       .from("procurement_orders")
-      .select("id, total_cost, provider_id")
+      .select("id, total_cost, provider_id, final_price, negotiated_price, quoted_price")
       .eq("restaurant_id", restaurantId)
       .eq("id", orderId)
       .maybeSingle();
@@ -5749,12 +5772,23 @@ export class ProcurementService {
       id: string;
       total_cost: string | number | null;
       provider_id: string | null;
+      final_price?: string | number | null;
+      negotiated_price?: string | number | null;
+      quoted_price?: string | number | null;
     };
-    return orderSealArgs({
-      id: row.id,
-      total: row.total_cost,
-      providerId: row.provider_id,
-    });
+    return {
+      args: orderSealArgs({
+        id: row.id,
+        total: row.total_cost,
+        providerId: row.provider_id,
+        // The same chain the approval rules test (answer 9): final, then
+        // negotiated, then quoted.
+        unitPrice: effectiveUnitPrice(row),
+      }),
+      legacyArgs: [
+        orderSealArgsV1({ id: row.id, total: row.total_cost, providerId: row.provider_id }),
+      ],
+    };
   }
 
   /* ── The approval gate ──────────────────────────────────────────────────── */
@@ -5838,11 +5872,16 @@ export class ProcurementService {
         orderId,
         row.provider_id,
       ),
+      // ADR 0244 D3, answer 9 (2026-09-30), verbatim pick "Match the
+      // re-check (Recommended)": the jump is measured on the unit price the
+      // re-check uses — final, then negotiated, then quoted — so an order
+      // with no final price is no longer exempt. The price it is compared
+      // with is still the last one PAID (a prior order's final price).
       pricePremiumPct: await this.pricePremiumPct(
         restaurantId,
         orderId,
         row.inventory_id,
-        toFiniteNumber(row.final_price),
+        effectiveUnitPrice(row),
       ),
     };
 
@@ -6137,14 +6176,20 @@ export class ProcurementService {
         const isFirst = vendor ? !seenVendors.has(vendor) : null;
         if (vendor) seenVendors.add(vendor);
 
-        const unit = toFiniteNumber(raw.final_price);
+        // Answer 9 (2026-09-30): the order's own unit price is the re-check's
+        // chain (final, negotiated, quoted); the price it is compared with is
+        // the last one PAID, so only a final price enters the history.
+        const unit = effectiveUnitPrice(raw);
+        const paid = toFiniteNumber(raw.final_price);
         let premium: number | null = null;
         if (raw.inventory_id && unit !== null && unit > 0) {
           const prior = lastPriceByItem.get(raw.inventory_id);
           if (prior !== undefined && prior > 0) {
             premium = ((unit - prior) / prior) * 100;
           }
-          lastPriceByItem.set(raw.inventory_id, unit);
+        }
+        if (raw.inventory_id && paid !== null && paid > 0) {
+          lastPriceByItem.set(raw.inventory_id, paid);
         }
 
         rows.push({

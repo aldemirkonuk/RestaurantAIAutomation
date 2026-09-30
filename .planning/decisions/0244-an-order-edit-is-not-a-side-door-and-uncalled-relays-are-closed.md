@@ -103,6 +103,15 @@ An 817-route audit at 5a20d774b found two live holes. Both were re-verified at c
          - `policyForChange` drops only `new_vendor` from the policy for such a change.
          - The row records `decrease_only`, and the approver's check, the readout and the decline honour it.
          - For the POST orders fold, "pure" is judged on everything the fold moves (D2's `mergeMoves`, units and bottles included).
+    - **[Answers 8, 9 and 10, 2026-09-30 — the founder's verbatim picks on the three questions left after answers 1-7, relayed by the coordinating session. Built on `fix/approval-reads-one-price`, stacked on #542.]**
+      8. *"Use the larger figure (Recommended)"*. The settings register's retrospective ("how often each rule would have fired", `ApprovalThresholdsService.readOrdersUnderTest`) counts on `max(total_cost, unit price × quantity)`: the same `effectiveTotal` the approve act and `/orders` use after #542, imported rather than restated.
+      9. *"Match the re-check (Recommended)"*. The price-jump rule measures the order's unit price down the re-check's chain (final, then negotiated, then quoted) in all three readers: the approve act, the `/orders` walk, and the register's retrospective. An order with no final price is no longer exempt. The price it is compared with is still the last one PAID: only a prior order's final price enters the history, so a price that was only negotiated or quoted is never "what the house paid".
+      10. *"Add unit price, versioned (Recommended)"*.
+          - The approval seal (`orderSealArgs`, version 2, tagged `sealVersion: 2`) covers the total, the vendor and the unit price down the same chain. Both money fields keep `order-seal.ts`'s discipline: a fixed-precision string, and "unknown" hashed the same at both ends.
+          - `issueOrderSealChallenge` mints version 2 only.
+          - Redemption also accepts the version-1 shape of the same row (`orderSealArgsV1`, total and vendor), through `SealChallengeService.redeem`'s new `legacyArgs`. A hold opened on the old code before the deploy can therefore finish within its two-minute TTL; after that, nothing minted as version 1 is left.
+          - A changed total still refuses every shape.
+          - The cancel seal is unchanged.
     - **Found and fixed on the way:** the responder's order read never selected `restaurant_id`, so its "vendor declined" notice went to restaurant `""` and reached nobody. The read now selects it (with `total_cost`, `provider_id` and `inventory_id`, which the F3 gate needs).
 - **D4. The two alert relays are closed.**
   - The handlers go, along with `resolveAlertTenant` and `DailySummaryDto`.
@@ -157,3 +166,5 @@ An 817-route audit at 5a20d774b found two live holes. Both were re-verified at c
 | 2026-09-30 | Claude (Opus 5.5), lane C builder, `fix/order-price-recheck` | D3 built as amended above; the POST orders merge added to F4 on the coordinator's relay of #538's audit; builder's readings (a)–(d) and F3's option filed as open questions |
 | 2026-09-30 | Aldemir (founder), relayed by the coordinating session | The seven answers: "Both use the larger", "Not a price change", "Fail closed", "Log only, as built", "Stay negotiating", "Decline + withdraw", "Decreases skip new-vendor" (all "(Recommended)") |
 | 2026-09-30 | Claude (Opus 5.5), lane C builder, `fix/order-price-recheck` | Answers 6 and 7 built in #541; answer 1 in the follow-up PR stacked on it, for the file cap |
+| 2026-09-30 | Aldemir (founder), relayed by the coordinating session | Answers 8-10: "Use the larger figure", "Match the re-check", "Add unit price, versioned" (all "(Recommended)") |
+| 2026-09-30 | Claude (Opus 5.5), lane C builder, `fix/approval-reads-one-price` | Answers 8-10 built, stacked on #542 |

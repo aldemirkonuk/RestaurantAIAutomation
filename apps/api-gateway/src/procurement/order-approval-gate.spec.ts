@@ -399,6 +399,23 @@ describe("approveOrder — the ceiling", () => {
     expect(calls.orderUpdates.some((u) => u.status === "APPROVED")).toBe(true);
   });
 
+  // ADR 0244 D3, answer 9 (2026-09-30), verbatim pick "Match the re-check
+  // (Recommended)": the price-jump rule measures the order's unit price down
+  // the re-check's chain (final, negotiated, quoted), so an order with no
+  // final price is no longer exempt; it is compared with the last price PAID.
+  it("[REVERT-FAILS] answer 9: the approve act measures the jump on the negotiated price when there is no final one", async () => {
+    const jump = { ...ceiling(0), rule: "price_jump" as const, amountLimit: null, percentLimit: 10 };
+    const { db, calls } = makeDb({
+      order: { ...ORDER_ROW, final_price: null, negotiated_price: 500, total_cost: 2500 },
+      priorPrices: [{ final_price: 400, requested_at: "2026-08-01T00:00:00Z" }],
+    });
+    const svc = service(db, thresholdsStub([jump]), orgsStub("manager"));
+
+    await expect(svc.approveOrder(REST, ORDER, USER)).rejects.toBeInstanceOf(ForbiddenException);
+    expect(calls.orderUpdates.some((u) => u.status === "APPROVED")).toBe(false);
+    expect(calls.auditInserts[0].changes.firedBy).toEqual(["price_jump"]);
+  });
+
   it("ABOVE the ceiling: a manager is refused with the rule and the number in words", async () => {
     const { db, calls } = makeDb({ order: { ...ORDER_ROW, total_cost: 1001 } });
     const svc = service(db, thresholdsStub([ceiling(1000)]), orgsStub("manager"));
@@ -596,6 +613,36 @@ describe("approvalGate — what the page is allowed to draw", () => {
     const gate = await svc.approvalGate(REST, USER);
 
     expect(gate.orders[0]).toMatchObject({ orderId: "o-under", mayApprove: false, requiredRole: "owner" });
+  });
+
+  it("[REVERT-FAILS] answer 9: the page measures the jump on the same chain", async () => {
+    const jump = { ...ceiling(0), rule: "price_jump" as const, amountLimit: null, percentLimit: 10 };
+    const { db } = makeDb({
+      ledgerRows: [
+        { id: "o-paid", status: "DELIVERED", provider_id: "p1", inventory_id: "i1", total_cost: 2000, final_price: 400 },
+        { id: "o-now", status: "PENDING", provider_id: "p1", inventory_id: "i1", total_cost: 2500, final_price: null, negotiated_price: 500 },
+      ],
+    });
+    const svc = service(db, thresholdsStub([jump]), orgsStub("manager"));
+
+    const gate = await svc.approvalGate(REST, USER);
+
+    expect(gate.orders[0]).toMatchObject({ orderId: "o-now", mayApprove: false, firedBy: ["price_jump"] });
+  });
+
+  it("answer 9: a price never paid is not the last price paid", async () => {
+    const jump = { ...ceiling(0), rule: "price_jump" as const, amountLimit: null, percentLimit: 10 };
+    const { db } = makeDb({
+      ledgerRows: [
+        { id: "o-quoted", status: "CANCELLED", provider_id: "p1", inventory_id: "i1", total_cost: 2000, final_price: null, negotiated_price: 400 },
+        { id: "o-now", status: "PENDING", provider_id: "p1", inventory_id: "i1", total_cost: 2500, final_price: null, negotiated_price: 500 },
+      ],
+    });
+    const svc = service(db, thresholdsStub([jump]), orgsStub("manager"));
+
+    const gate = await svc.approvalGate(REST, USER);
+
+    expect(gate.orders[0]).toMatchObject({ orderId: "o-now", mayApprove: true });
   });
 
   it("an unreadable ledger says so and lists NOTHING — never an empty book", async () => {

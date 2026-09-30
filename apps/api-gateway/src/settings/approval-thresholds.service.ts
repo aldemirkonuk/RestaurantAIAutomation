@@ -13,6 +13,12 @@ import {
   type ThresholdRow,
 } from "./approval-thresholds";
 import type { SetApprovalThresholdDto } from "../vendor-terms/dto/vendor-terms.dto";
+// The money and the unit price the approve act tests (ADR 0244 D3 answers 8
+// and 9): ONE definition, imported rather than restated, so the register's
+// retrospective and the gate cannot drift. A pure module (no Nest, no
+// database): this adds no module edge, and nothing it imports reaches back
+// into settings.
+import { effectiveTotal, effectiveUnitPrice } from "../procurement/order-price-recheck";
 
 /**
  * The house's own ceiling — stored, audited, and now enforced.
@@ -126,6 +132,9 @@ interface OrderRow {
   requested_at: string | null;
   total_cost: string | number | null;
   final_price: string | number | null;
+  negotiated_price?: string | number | null;
+  quoted_price?: string | number | null;
+  quantity?: string | number | null;
 }
 
 function num(v: string | number | null | undefined): number | null {
@@ -306,7 +315,9 @@ export class ApprovalThresholdsService {
     try {
       const { data, error } = await this.databaseService.client
         .from("procurement_orders")
-        .select("provider_id, inventory_id, requested_at, total_cost, final_price")
+        .select(
+          "provider_id, inventory_id, requested_at, total_cost, final_price, negotiated_price, quoted_price, quantity",
+        )
         .eq("restaurant_id", restaurantId)
         .gte("requested_at", since)
         .order("requested_at", { ascending: true })
@@ -341,18 +352,28 @@ export class ApprovalThresholdsService {
       const isFirst = vendor ? !seenVendors.has(vendor) : null;
       if (vendor) seenVendors.add(vendor);
 
-      const unit = num(r.final_price);
+      // The same money and the same unit price the approve act tests, so
+      // "how often each rule would have fired" answers the question the gate
+      // actually asks (ADR 0244 D3; founder, 2026-09-30, answer 8 "Use the
+      // larger figure (Recommended)" and answer 9 "Match the re-check
+      // (Recommended)"). The order's unit price is the re-check's chain
+      // (final, negotiated, quoted); the price it is compared with is the
+      // last one PAID, so only a final price enters the history.
+      const unit = effectiveUnitPrice(r);
+      const paid = num(r.final_price);
       let premium: number | null = null;
       if (r.inventory_id && unit !== null && unit > 0) {
         const prior = lastPriceByItem.get(r.inventory_id);
         if (prior !== undefined && prior > 0) {
           premium = ((unit - prior) / prior) * 100;
         }
-        lastPriceByItem.set(r.inventory_id, unit);
+      }
+      if (r.inventory_id && paid !== null && paid > 0) {
+        lastPriceByItem.set(r.inventory_id, paid);
       }
 
       tests.push({
-        total: num(r.total_cost),
+        total: effectiveTotal({ totalCost: r.total_cost, unitPrice: unit, quantity: r.quantity }),
         isFirstOrderToVendor: isFirst,
         pricePremiumPct: premium,
       });

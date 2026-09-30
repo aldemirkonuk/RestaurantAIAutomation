@@ -409,7 +409,7 @@ Two things about that are decisions, not details:
    act check gone a 403 still arrives, carrying *"this order changed after the seal
    was issued"*, so the test asserts the SENTENCE and not merely the status.
 2. **What the args hash covers is the STOCK, not the money.** An approval's seal is
-   over the total and the vendor (`order-seal.ts`); a delivery's is over the card,
+   over the total and the vendor (`order-seal.ts`) **[2026-09-30, ADR 0244 D3 answer 10: and the unit price (final, then negotiated, then quoted), under seal version 2; a hold minted over version 1 before the deploy may still finish within its two minutes]**; a delivery's is over the card,
    the order, the quantity and bottles about to be booked, and the order's state
    (`one-tap-workflow.ts`). Refusing a delivery because a price note changed would
    teach operators to mash the control; refusing it because the quantity changed is
@@ -476,6 +476,7 @@ the MCP case becomes an instance of the rule rather than the shape of it:
 - **The order's own money is hashed into the seal** (`procurement/order-seal.ts`):
   a token minted over an order of 2,000 cannot be spent after somebody made it
   20,000. That is the property the assertion model could not express.
+  **[2026-09-30, ADR 0244 D3 answer 10: the unit price is hashed too, so a negotiated price changed between the hold and the approval also refuses the seal.]**
 - The ROLE and the POLICY are checked when the seal is ISSUED **and** again when
   it is redeemed, so a manager demoted between the two cannot spend a token they
   were legitimately given — and nobody is handed a seal that will be refused two
