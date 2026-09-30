@@ -104,6 +104,11 @@ records it):
 > - **What it covers.** PR #497 (`fix/websocket-role-gate`, the live-channel and bell role gate, OD-180), 17 files when he answered; this bracket makes it 18. It covers the file count only; the ADR 0090 audit still judges every file.
 > - **The founder's words.** In chat on 2026-09-29, verbatim: *"Waive for #497 (Recommended)"*, the option label of his answer, relayed to the merging session by the coordinator of session a493af02 after the ADR 0090 planner stopped #497 at PLAN: BLOCK on this cap (comment on PR #497). His earlier "merge all five" (#518, #519, #497, #504, #494) was a merge instruction and is not read as a waiver.
 
+> **[2026-09-29, a fourth waiver, founder's words as relayed — the open-PR batch]**
+> - **What it covers.** One PR, `batch/open-prs-2026-09-29`, that merges every still-open PR except #530 and #531 (which another session was landing) into one branch, one audit and one merge. Its file count is the sum of its constituents'. The PR body lists every constituent included, and every one dropped with its reason.
+> - **The founder's words.** In chat on 2026-09-29, verbatim: *"combine couple branches into one big merge at the same time? don't care how much it takes but gets the job done in one go"*. To the scope question, the option label *"All still-open PRs (Recommended)"*; to the cap question, the option label *"Waive for the batch (Recommended)"*. Relayed to the merging session by the coordinator of session a493af02.
+> - **Scope.** The file count only. The ADR 0090 audit still judges every file of every constituent, one constituent at a time; gate-owned files in the batch still need the founder's own sign-off before merge. The cap stands for every later PR.
+
 **3. Where Sonnet gets the emphasis** (item 86's *"fast, and direct"* work Sonnet is
 *"highly capable of"*): verification runs and check suites, mechanical edits to a spec,
 branch updates and merges of `main`, posting PRs and comments, the plan-scoped audit
