@@ -29,6 +29,7 @@ import {
   type QueuedDoorReceipt,
 } from '@/lib/doorOutbox';
 import { offlineStorage, type PendingMutation } from '@/lib/offline-storage';
+import { currentQueueOwner, isReplayable } from '@/lib/queue-owner';
 import { num } from './rc-format';
 
 /* ─────────────────────────────────────────── the shape of a failure ─────── */
@@ -730,7 +731,7 @@ export interface QueuedReceiptVM {
   id: string;
   label: string;
   queuedAt: string | null;
-  /** Attempt N of 8 (doorOutbox MAX_ATTEMPTS). 0 = not yet tried. */
+  /** Attempts made so far (no ceiling since ADR 0241). 0 = not yet tried. */
   retryCount: number;
   lastError: string | null;
 }
@@ -816,8 +817,8 @@ function belongsToRestaurant(m: PendingMutation, restaurantId: string): boolean 
 /**
  * The pending-outbox rail's data. This is the defect fix the motion canvas
  * named (inv-09, "Nothing vanishes; the drop becomes a pin"): `flushDoorOutbox`
- * DELETES a receipt it gives up on (a 4xx, or the eighth failed attempt — the
- * `if (permanent || m.retryCount + 1 >= MAX_ATTEMPTS)` branch of
+ * DELETES a receipt it gives up on (a permanent 4xx refusal — the
+ * `if (permanent)` branch of
  * `flushDoorOutbox`, lib/doorOutbox.ts), so the pending count falls by one
  * exactly as it does on a delivery and a permanent loss is indistinguishable
  * from a success.
@@ -896,13 +897,19 @@ export function useDoorOutbox(): OutboxData {
       //
       //  1. the same predicate it guards on, read here first;
       //  2. its own `unreachable` flag;
-      //  3. its loop invariant — it iterates the pending queue and every
-      //     iteration increments exactly one of sent/failed, so a non-empty
-      //     queue returning 0+0 cannot have run.
+      //  3. its loop invariant — every receipt it can SEND increments exactly
+      //     one of sent/failed, so a queue holding a sendable receipt that
+      //     returns 0+0 cannot have run. Since ADR 0241 the flush also skips
+      //     some entries without counting them (parked, not this session's,
+      //     naming no one), so only the sendable ones count here.
       const offlineNow = typeof navigator !== 'undefined' && navigator.onLine === false;
+      // Read before the flush, so the "sendable" filter judges `before` by the
+      // session the flush started under, not one a house switch left behind.
+      const session = currentQueueOwner();
       const res = offlineNow ? null : await flushDoorOutbox();
+      const sendable = before.filter((m) => !m.parked && isReplayable(m, session));
       const raced =
-        beforeKnown && before.length > 0 && res !== null && res.sent + res.failed === 0;
+        beforeKnown && sendable.length > 0 && res !== null && res.sent + res.failed === 0;
       const at = new Date().toISOString();
       if (res === null || raced) {
         setLastFlush({ attempted: false, reason: 'offline', at });

@@ -19,17 +19,32 @@
 
 import { offlineStorage } from './offline-storage'
 import { receivingApi, type DoorReceiptRequest } from '../services/api/receiving'
+import {
+  currentQueueOwner,
+  isPermanentRefusal,
+  isReplayable,
+  isVisibleTo,
+  statusOf,
+} from './queue-owner'
 
 const MUTATION_TYPE = 'receiving.door'
 
-/** Give up after this many attempts and surface it, rather than retrying forever. */
-const MAX_ATTEMPTS = 8
+// NO ATTEMPT CEILING (ADR 0241, OD-203 (a); the founder: offline changes
+// "always ends up uh, with our database"). A receipt that fails for a
+// transient reason — no network, a 5xx, 408/425/429, or a 401 because the
+// session ended — stays queued and is tried again on the next flush (each
+// flush is triggered by mount, 'online' or 'visibilitychange', never a timer).
+// It used to be given up on after 8 attempts. Only a PERMANENT refusal (any
+// other 4xx) still ends it, as ADR 0140 built: a drop record the receiving
+// rail pins, naming the order, because that request will never be accepted
+// as it is.
 
 /**
  * Stamped on a queue entry the flush gave up on but could NOT write a record
- * for. It is the on-disk MARK of a stranded receipt: the entry is parked at the
- * attempt ceiling and deliberately kept, and this string is what tells it apart
- * from an entry that merely ran out of retries and is about to be dropped.
+ * for. It is the on-disk MARK of a stranded receipt: the entry is refused for
+ * good but deliberately kept, and this string is what tells it apart from an
+ * entry that is merely waiting for the network (there is no attempt ceiling
+ * since ADR 0241, so nothing else is ever about to be dropped).
  *
  * It is the entry's `lastError`, and nothing derives an alarm from it — see the
  * block below on why the outbox reports no strand. It is here so the receiving
@@ -99,10 +114,12 @@ export interface DroppedDoorReceipt {
   /**
    * Why it was given up on, kept because the REMEDY differs and a notice that
    * names the wrong one wastes the only minutes in which anything can be done:
-   *   auth    — 401/403. The app was signed out; the next move is signing in
-   *             again, not walking upstairs.
+   *   auth    — 403 (401 before ADR 0241; a 401 is now kept and retried
+   *             after the same person signs in again). The session may not
+   *             do this; the next move is signing in as someone who may.
    *   refused — any other 4xx. The server understood and said no.
-   *   retries — the attempt budget ran out.
+   *   retries — the attempt budget ran out. Only on records written before
+   *             ADR 0241 removed the budget.
    *   unknown — inherited from a pre-scoping record that never stored one.
    * None of these recovers the receipt. They only stop the notice sending a
    * porter after the wrong fix.
@@ -567,6 +584,28 @@ async function runFlush(onSnapshot: () => void): Promise<DoorFlushResult> {
 
   try {
     for (const m of pending) {
+      // Re-read for EVERY receipt (ADR 0241): the API client stamps the house
+      // header at send time, so a house switch in the middle of this flush
+      // must leave the rest queued for their own house, not send them to the
+      // new one.
+      const session = currentQueueOwner()
+      // ADR 0241 (OD-203 (b)): `pending` already holds only this session's
+      // person and house. A parked receipt waits for the person. A legacy
+      // receipt that names no house cannot be sent as anyone, so it is parked
+      // as "not sent" for the person to discard — never sent as whoever is
+      // signed in, which is the defect OD-203 closes.
+      if (m.parked) continue
+      if (!isVisibleTo(m, session)) continue
+      if (!isReplayable(m, session)) {
+        try {
+          await offlineStorage.updatePendingMutation(m.id, {
+            parked: { reason: 'unowned', at: new Date().toISOString() },
+          })
+        } catch {
+          /* it stays queued and unsent either way */
+        }
+        continue
+      }
       const entry = m.data as QueuedDoorReceipt | undefined
       try {
         await receivingApi.recordDoorReceipt(entry!.orderId, entry!.body)
@@ -579,15 +618,14 @@ async function runFlush(onSnapshot: () => void): Promise<DoorFlushResult> {
         }
         sent++
       } catch (err) {
-        const status = (err as { response?: { status?: number } })?.response
-          ?.status
-        const permanent =
-          status && status >= 400 && status < 500 && status !== 408 && status !== 429
+        const status = statusOf(err)
+        const permanent = isPermanentRefusal(status)
 
         // Drop a permanently-rejected item rather than retrying it forever. A
         // queue that never drains stops being watched, and then a real failure
-        // hides behind the stuck one.
-        if (permanent || m.retryCount + 1 >= MAX_ATTEMPTS) {
+        // hides behind the stuck one. A transient failure is NEVER dropped any
+        // more (ADR 0241): it falls through to the retry below.
+        if (permanent) {
           // Written BEFORE the delete and keyed on the queue id: the count
           // alone cannot say WHICH order left, and after the delete nothing
           // anywhere else in the app can.
@@ -595,18 +633,17 @@ async function runFlush(onSnapshot: () => void): Promise<DoorFlushResult> {
             id: m.id,
             orderLabel: entry?.orderLabel || entry?.orderId || 'Door receipt',
             droppedAt: new Date().toISOString(),
-            reason: permanent
-              ? status === 401 || status === 403
-                ? 'auth'
-                : 'refused'
-              : 'retries',
+            // 401 no longer reaches here (the session ended: the receipt is
+            // kept for the same person's next sign-in). 'retries' is kept in
+            // the type only for records written before ADR 0241.
+            reason: status === 403 ? 'auth' : 'refused',
           })
 
           if (!written) {
             // THE RECEIPT IS NOT DELETED. Storage was full or unavailable, so
             // the queue is now the only copy of this delivery; deleting it
             // would destroy the count with nothing on screen and nothing on
-            // disk. It is parked at the ceiling with the reason on it, which
+            // disk. It is kept, with the reason written on it, which
             // the rail renders, and every later flush retries the record —
             // so the moment storage frees up it becomes an ordinary drop.
             // Best-effort, and nothing depends on it landing: the storage that
@@ -614,7 +651,7 @@ async function runFlush(onSnapshot: () => void): Promise<DoorFlushResult> {
             // for the rail's `last error` line, not for a witness.
             try {
               await offlineStorage.updatePendingMutation(m.id, {
-                retryCount: MAX_ATTEMPTS,
+                retryCount: m.retryCount + 1,
                 lastError: STRANDED_MARKER,
               })
             } catch {
