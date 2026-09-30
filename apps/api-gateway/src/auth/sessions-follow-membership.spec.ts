@@ -1,3 +1,5 @@
+import { MembersService } from "../restaurants/members.service";
+import { TeamService } from "../team/team.service";
 import "reflect-metadata";
 import {
   ForbiddenException,
@@ -91,13 +93,22 @@ function service(db: StubDb): AuthService {
     JWT_SECRET: "test-secret-for-sessions-spec",
     JWT_REFRESH_SECRET: "test-refresh-secret-for-sessions-spec",
   };
-  return new AuthService(
+  const auth = new AuthService(
     jwt,
     { get: (k: string) => secrets[k] } as any,
     asDatabaseService(db),
     { isBlacklisted: async () => false } as any,
     { sendEmail: async () => undefined } as any,
   );
+  // ADR 0242 (OD-204): leaving is the members door's self-leave, which hands
+  // a rostered person to TeamService's one removal path.
+  const members = new MembersService(
+    asDatabaseService(db),
+    undefined,
+    new TeamService(asDatabaseService(db)),
+  );
+  (auth as any).moduleRef = { get: () => members };
+  return auth;
 }
 
 const claims = (token: string) => jwt.decode(token) as JwtPayload;

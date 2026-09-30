@@ -12,9 +12,10 @@ import {
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { WebsocketGateway } from "../websocket/websocket.gateway";
+import { ExpoPushService } from "../push/expo-push.service";
 import { cancelPendingInvitesFrom } from "../auth/cancel-house-invites";
 import { markMembershipLeft } from "../auth/membership-ended";
-import { recordAccessChange } from "./access-audit";
+import { noticeToHouseLeads, recordAccessChange } from "./access-audit";
 import { recordOwnWageChange, type OwnWageReceipt } from "./own-wage-notice";
 import {
   formerOwnerPeriods,
@@ -119,6 +120,32 @@ interface HandoverReview {
   allowDoubleBooking: boolean;
 }
 
+/** Who is removing, as the door that let them in established it (ADR 0242). */
+export interface RemovalActor {
+  userId: string;
+  role: string | null;
+  via: "TeamService.deleteMember" | "MembersService.removeMember";
+}
+
+/** What a removal did: the Team page's receipt, and every other door's. */
+export interface RemovalReceipt {
+  removed: true;
+  audited: boolean;
+  notified: boolean;
+  accessRevoked: boolean;
+  /** Unstarted shifts of theirs this removal turned into open shifts (ADR 0215 item 26). */
+  shiftsOpened: number;
+  /** In-progress shifts of theirs cut at the removal minute, the rest opened. */
+  shiftsSplit: number;
+  /** With no clock at all: shifts that may have started, kept whole and named. */
+  shiftsUnjudged: number;
+  /** The clock "started" was judged on, and where its zone came from. */
+  clock: RemovalClock;
+  /** "Replace with" (item 27): shifts handed to `handedTo` instead of opened. */
+  shiftsHandedOver: number;
+  handedTo: string | null;
+}
+
 @Injectable()
 export class TeamService {
   private readonly logger = new Logger(TeamService.name);
@@ -128,6 +155,11 @@ export class TeamService {
     @Optional()
     @Inject(forwardRef(() => WebsocketGateway))
     private readonly websocketGateway?: WebsocketGateway,
+    // A leave that opens shifts pushes to the house's owners and managers
+    // (ADR 0242). Optional so the many specs that build this service with one
+    // argument still compile; the inbox notice is written either way.
+    @Optional()
+    private readonly push?: ExpoPushService,
   ) {}
 
   private get sb() {
@@ -1098,27 +1130,47 @@ export class TeamService {
     memberId: string,
     deviceZone?: string | null,
     handover?: Handover | null,
-  ): Promise<{
-    removed: true;
-    audited: boolean;
-    notified: boolean;
-    accessRevoked: boolean;
-    /** Unstarted shifts of theirs this removal turned into open shifts (ADR 0215 item 26). */
-    shiftsOpened: number;
-    /** In-progress shifts of theirs cut at the removal minute, the rest opened. */
-    shiftsSplit: number;
-    /** With no clock at all: shifts that may have started, kept whole and named. */
-    shiftsUnjudged: number;
-    /** The clock "started" was judged on, and where its zone came from. */
-    clock: RemovalClock;
-    /** "Replace with" (item 27): shifts handed to `handedTo` instead of opened. */
-    shiftsHandedOver: number;
-    handedTo: string | null;
-  }> {
+  ): Promise<RemovalReceipt> {
+    const actor = await this.assertAccess(userId, restaurantId, "manager");
+    return this.removeFromHouse(
+      { userId, role: actor.role, via: "TeamService.deleteMember" },
+      restaurantId,
+      memberId,
+      deviceZone,
+      handover,
+    );
+  }
+
+  /**
+   * THE removal of a person on the roster (ADR 0242, OD-204). Every door that
+   * takes a rostered person out of a house ends here, so every one of them
+   * sends the person's unstarted shifts to the open pool, cuts one in
+   * progress, stops their calendar link, revokes access, deletes the roster
+   * row and files the audit row — the same way, in the same order:
+   *   - `deleteMember` (the Team page; manager-gated; may hand shifts over);
+   *   - `MembersService.removeMember` (Settings' remove, and a person leaving
+   *     on their own), which keeps its own gate (owner|manager, or oneself)
+   *     and hands shifts to nobody — they go back to the open pool.
+   * The founder, 2026-09-29, on OD-204, verbatim: "Open Decision, I leave that
+   * to you, do the best approach". Before this, the members door revoked
+   * access and left the person's future shifts assigned to someone who could
+   * no longer sign in, and left them on the roster.
+   *
+   * The caller has already authorised `actor`. This method re-runs every rule
+   * that depends on the target (owners manage owners, the last owner) against
+   * `actor.role`, so no door skips them.
+   */
+  async removeFromHouse(
+    actor: RemovalActor,
+    restaurantId: string,
+    memberId: string,
+    deviceZone?: string | null,
+    handover?: Handover | null,
+  ): Promise<RemovalReceipt> {
+    const userId = actor.userId;
     // Set once this removal has sent the person's unstarted shifts back to
     // the open pool and cut any in progress (item 26); `null` until then.
     let released: Released | null = null;
-    const actor = await this.assertAccess(userId, restaurantId, "manager");
 
     // Capture the before-state while it still exists. Nothing below can
     // reconstruct it once the rows are gone. Every read before the first write
@@ -1213,7 +1265,7 @@ export class TeamService {
         restaurantId,
         userId: member.user_id,
         actorUserId: userId,
-        via: "TeamService.deleteMember",
+        via: actor.via,
       });
 
       // The `users` row stops naming this house (only this house) before the
@@ -1280,6 +1332,9 @@ export class TeamService {
     if (error)
       throw new InternalServerErrorException("Failed to remove member");
 
+    // Leaving on one's own (ADR 0242): the same removal, recorded as a leave,
+    // with no "you were removed" notice to the person who chose it.
+    const selfLeave = !!member?.user_id && member.user_id === userId;
     const receipt = await recordAccessChange(this.sb, this.logger, {
       restaurantId,
       actorUserId: userId,
@@ -1304,14 +1359,72 @@ export class TeamService {
         shifts_handed_to: released.handedTo,
         shifts_handed_over: released.handedOver,
         shifts_warnings_accepted: released.accepted,
+        // Which door, and whether the person left on their own (ADR 0242).
+        via: actor.via,
+        self_leave: selfLeave,
       },
-      notice: {
-        title: "Your access to this restaurant was removed",
-        message:
-          "A manager removed you from the team, so your access to this restaurant has ended. " +
-          "Talk to them if this was not expected.",
-      },
+      notice: selfLeave
+        ? undefined
+        : {
+            title: "Your access to this restaurant was removed",
+            message:
+              actor.via === "TeamService.deleteMember" || actor.role !== "owner"
+                ? "A manager removed you from the team, so your access to this restaurant has ended. " +
+                  "Talk to them if this was not expected."
+                : "An owner removed you from the team, so your access to this restaurant has ended. " +
+                  "Talk to them if this was not expected.",
+          },
     });
+
+    // A person who leaves on their own leaves nobody watching the shifts they
+    // held (ADR 0242, the adversarial pass): the owners and managers are told
+    // how many went back to the open pool, so a gap is not first found at
+    // opening time. A manager's removal needs no such notice — they made it.
+    // Shifts kept whole because the house has no clock to judge "started" by
+    // (`unjudged`) are still on the leaver's name: they need a person most of
+    // all, so they are named too, and they alone also send the notice.
+    const reopened = released.opened + released.split.length;
+    const unjudged = released.unjudged.length;
+    if (selfLeave && reopened + unjudged > 0) {
+      const who = member?.display_name ?? "Someone";
+      const parts: string[] = [];
+      if (reopened > 0)
+        parts.push(
+          `${reopened} of their upcoming shifts ${reopened === 1 ? "is" : "are"} open again and need someone on them.`,
+        );
+      if (unjudged > 0)
+        parts.push(
+          `${unjudged} ${unjudged === 1 ? "shift" : "shifts"} this house has no clock to judge ` +
+            `${unjudged === 1 ? "is" : "are"} still on their name — give ${unjudged === 1 ? "it" : "them"} to someone.`,
+        );
+      const title = `${who} left the team`;
+      const message = parts.join(" ");
+      const told = await noticeToHouseLeads(this.sb, this.logger, {
+        restaurantId,
+        exceptUserId: userId,
+        title,
+        message,
+        metadata: {
+          action: "team_member_left",
+          member_id: memberId,
+          shifts_opened: released.opened,
+          shifts_split: released.split.length,
+          shifts_unjudged: unjudged,
+        },
+      });
+      if (told.length && this.push) {
+        try {
+          await this.push.sendToUsers(told, {
+            title,
+            body: message,
+            priority: "high",
+            data: { type: "team_member_left", actionUrl: "/team" },
+          });
+        } catch (err: any) {
+          this.logger.error(`team_member_left: push threw — ${err?.message}`);
+        }
+      }
+    }
 
     return {
       removed: true,

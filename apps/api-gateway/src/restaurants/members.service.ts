@@ -21,6 +21,7 @@ import {
   orgRoleForHouseGrant,
 } from "../organizations/org-role";
 import { WebsocketGateway } from "../websocket/websocket.gateway";
+import { TeamService } from "../team/team.service";
 
 @Injectable()
 export class MembersService {
@@ -31,6 +32,12 @@ export class MembersService {
     @Optional()
     @Inject(forwardRef(() => WebsocketGateway))
     private readonly websocketGateway?: WebsocketGateway,
+    // THE removal of a rostered person (ADR 0242, OD-204). Optional only so
+    // the many specs that build this service for its other methods still
+    // compile; a removal of a rostered person without it REFUSES (500), it
+    // never falls back to revoking access alone.
+    @Optional()
+    private readonly team?: TeamService,
   ) {}
 
   /**
@@ -380,34 +387,22 @@ export class MembersService {
       );
     }
 
-    if (!targetAccess) {
-      if (targetRole === "owner") {
-        const { count } = await this.databaseService.supabase
-          .from("users")
-          .select("*", { count: "exact", head: true })
-          .eq("restaurant_id", restaurantId)
-          .eq("role", "owner");
+    // The last owner stays, on both shapes of membership. Before any write,
+    // and before the hand-off below, so every door answers it the same way.
+    if (!targetAccess && targetRole === "owner") {
+      const { count } = await this.databaseService.supabase
+        .from("users")
+        .select("*", { count: "exact", head: true })
+        .eq("restaurant_id", restaurantId)
+        .eq("role", "owner");
 
-        if ((count ?? 0) <= 1) {
-          throw new BadRequestException(
-            "You're the only owner. Transfer ownership or delete the restaurant first.",
-          );
-        }
+      if ((count ?? 0) <= 1) {
+        throw new BadRequestException(
+          "You're the only owner. Transfer ownership or delete the restaurant first.",
+        );
       }
-
-      await this.stopCalendarLinkOfLeaver(actorUserId, restaurantId, targetUserId);
-      await this.clearUsersRowHouse(targetUserId, restaurantId);
-      this.websocketGateway?.evictFromHouse(targetUserId, restaurantId);
-      await cancelPendingInvitesFrom(
-        this.databaseService.supabase,
-        targetUserId,
-        restaurantId,
-        this.logger,
-      );
-      return;
     }
-
-    if (targetAccess.role === "owner") {
+    if (targetAccess?.role === "owner") {
       const { count } = await this.databaseService.supabase
         .from("user_restaurant_access")
         .select("*", { count: "exact", head: true })
@@ -420,6 +415,59 @@ export class MembersService {
           "You're the only owner. Transfer ownership or delete the restaurant first.",
         );
       }
+    }
+
+    // ONE REMOVAL PATH (ADR 0242, OD-204). A person on this house's roster is
+    // removed by `TeamService.removeFromHouse`, the same code the Team page
+    // runs: their unstarted shifts go back to the open pool, one in progress
+    // is cut, the roster row goes, and the audit row is filed. This door used
+    // to revoke access only, leaving future shifts on someone who could no
+    // longer sign in. That includes leaving on one's own: the leave is the
+    // same removal, and the owners and managers are told what opened.
+    // One roster row per person per house: `uq_team_members_user` is unique
+    // on (restaurant_id, user_id) where user_id is set (baseline :11957).
+    const { data: rosterRow, error: rosterErr } =
+      await this.databaseService.supabase
+        .from("team_members")
+        .select("id")
+        .eq("restaurant_id", restaurantId)
+        .eq("user_id", targetUserId)
+        .maybeSingle();
+    if (rosterErr) {
+      this.cannotReadRemovalTarget(targetUserId, restaurantId, rosterErr);
+    }
+    if (rosterRow?.id) {
+      if (!this.team) {
+        this.logger.error(
+          "removeMember: TeamService is not wired, so a rostered person cannot be removed",
+        );
+        throw new InternalServerErrorException(
+          "Could not remove this member: their shifts could not be released, so nothing was changed.",
+        );
+      }
+      await this.team.removeFromHouse(
+        { userId: actorUserId, role: actor.role, via: "MembersService.removeMember" },
+        restaurantId,
+        rosterRow.id,
+        null,
+        null,
+      );
+      return;
+    }
+
+    // Not on the roster: there are no shifts or roster row to release, and
+    // this door revokes the access it knows (unchanged).
+    if (!targetAccess) {
+      await this.stopCalendarLinkOfLeaver(actorUserId, restaurantId, targetUserId);
+      await this.clearUsersRowHouse(targetUserId, restaurantId);
+      this.websocketGateway?.evictFromHouse(targetUserId, restaurantId);
+      await cancelPendingInvitesFrom(
+        this.databaseService.supabase,
+        targetUserId,
+        restaurantId,
+        this.logger,
+      );
+      return;
     }
 
     // The `users` row first, then the access row: if the delete fails the

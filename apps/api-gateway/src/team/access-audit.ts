@@ -1,4 +1,5 @@
 import { Logger } from "@nestjs/common";
+import { houseMembersInRoles } from "../common/tenant/live-membership";
 
 /**
  * A change to somebody's access files itself, and tells them.
@@ -148,4 +149,69 @@ export async function recordAccessChange(
   }
 
   return receipt;
+}
+
+/**
+ * Tell a house's owners and managers something, in their inbox (ADR 0242).
+ *
+ * Used when a person LEAVES on their own and their upcoming shifts go back to
+ * the open pool: nobody chose that removal, so without this the gap is first
+ * found when the shift comes and nobody arrives. Same row shape and the same
+ * never-throws rule as `recordAccessChange`: the leave has already happened,
+ * and a notice that failed is logged, not allowed to undo it. Returns the ids
+ * of the people told (the caller pushes to the same people).
+ */
+export async function noticeToHouseLeads(
+  sb: any,
+  logger: Logger,
+  n: {
+    restaurantId: string;
+    exceptUserId: string;
+    title: string;
+    message: string;
+    metadata: Record<string, unknown>;
+  },
+): Promise<string[]> {
+  const told: string[] = [];
+  try {
+    // Who is an owner or manager here right now: the one shared reader
+    // (fix/websocket-role-gate), which applies `isLiveMembership`, so a lapsed
+    // membership (`valid_until` past) is not told. A failed read throws and
+    // tells nobody, logged below.
+    let leadIds: string[];
+    try {
+      leadIds = await houseMembersInRoles(sb, n.restaurantId, ["owner", "manager"]);
+    } catch (err: any) {
+      logger.error(`${n.metadata.action}: could not read who to tell — ${err?.message}`);
+      return told;
+    }
+    const leads = leadIds.filter((u) => u !== n.exceptUserId);
+    for (const userId of leads) {
+      const { error: insErr } = await sb.from("notifications").insert({
+        user_id: userId,
+        // Legacy NOT-NULL columns still on the live notifications table.
+        recipient_id: userId,
+        notification_type: "system",
+        channels: ["in_app"],
+        restaurant_id: n.restaurantId,
+        type: "system",
+        title: n.title.slice(0, 500),
+        message: n.message,
+        priority: "high",
+        status: "unread",
+        action_url: "/team",
+        action_label: "Open the schedule",
+        metadata: n.metadata,
+        created_at: new Date().toISOString(),
+      });
+      if (insErr) {
+        logger.error(`${n.metadata.action}: ${userId} was not told — ${insErr.message}`);
+      } else {
+        told.push(userId);
+      }
+    }
+  } catch (err: any) {
+    logger.error(`${n.metadata.action}: the notice threw — ${err?.message}`);
+  }
+  return told;
 }

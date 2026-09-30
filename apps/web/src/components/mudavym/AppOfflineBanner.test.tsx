@@ -6,10 +6,21 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
+
+type SyncState = {
+  isOnline: boolean;
+  isSyncing: boolean;
+  pendingCount: number;
+  lastError: string | null;
+  notSentCount?: number;
+  stillTryingCount?: number;
+  retryNotSent?: () => Promise<unknown>;
+  discardNotSent?: () => Promise<number>;
+};
 
 const syncState = vi.hoisted(() => ({
-  current: { isOnline: true, isSyncing: false, pendingCount: 0, lastError: null as string | null },
+  current: { isOnline: true, isSyncing: false, pendingCount: 0, lastError: null } as SyncState,
 }));
 
 vi.mock('../../hooks/useSyncManager', () => ({
@@ -81,5 +92,51 @@ describe('shell on (the default: live in code since 2026-09-25, no override, no 
     syncState.current = { isOnline: true, isSyncing: false, pendingCount: 0, lastError: null };
     const { container } = render(<AppOfflineBanner />);
     expect(container.textContent).toBe('');
+  });
+});
+
+describe('not sent (ADR 0241, OD-203 (a)): a refused change is kept and named, never dropped', () => {
+  it('names the parked changes, and Try again / Discard reach the queue', () => {
+    const retryNotSent = vi.fn().mockResolvedValue({});
+    const discardNotSent = vi.fn().mockResolvedValue(2);
+    syncState.current = {
+      isOnline: true,
+      isSyncing: false,
+      pendingCount: 0,
+      lastError: null,
+      notSentCount: 2,
+      retryNotSent,
+      discardNotSent,
+    };
+    render(<AppOfflineBanner />);
+    expect(screen.getByRole('alert').textContent).toMatch(/Not sent.*2 changes could not be saved and are kept on this device/);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(retryNotSent).toHaveBeenCalledTimes(1);
+
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+    expect(discardNotSent).not.toHaveBeenCalled();
+    confirm.mockReturnValueOnce(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+    expect(discardNotSent).toHaveBeenCalledTimes(1);
+    confirm.mockRestore();
+  });
+
+  it('a change that keeps failing is "still trying", with a way to try now', () => {
+    const retryNotSent = vi.fn().mockResolvedValue({});
+    syncState.current = {
+      isOnline: true,
+      isSyncing: false,
+      pendingCount: 1,
+      lastError: null,
+      stillTryingCount: 1,
+      retryNotSent,
+    };
+    render(<AppOfflineBanner />);
+    expect(screen.getByText('Still trying')).toBeTruthy();
+    expect(screen.getByText(/retried until the house takes it/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Try now' }));
+    expect(retryNotSent).toHaveBeenCalledTimes(1);
   });
 });
