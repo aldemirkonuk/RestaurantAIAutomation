@@ -75,6 +75,10 @@ const state: {
   failOrderRead: boolean;
   /** Line writes (`procurement_order_items` delete + insert) the merge made. */
   lineWrites: string[];
+  /** The order line's insert fails (the merge's second write). */
+  failLineInsert: boolean;
+  /** Runs once, right after the dedup lookup reads the open order. */
+  afterLookup: (() => void) | null;
 } = {
   order: {},
   writes: [],
@@ -82,6 +86,8 @@ const state: {
   audits: [],
   failOrderRead: false,
   lineWrites: [],
+  failLineInsert: false,
+  afterLookup: null,
 };
 
 function seed(status: S): void {
@@ -100,6 +106,8 @@ function seed(status: S): void {
   state.audits = [];
   state.failOrderRead = false;
   state.lineWrites = [];
+  state.failLineInsert = false;
+  state.afterLookup = null;
 }
 
 /**
@@ -123,11 +131,42 @@ function seedOpenOrder(status: S): void {
   });
 }
 
+/**
+ * Does a stored value satisfy a PostgREST `eq` / `is` filter? Numbers compare
+ * as numbers (a stored "300.00" is `eq.300`), everything else as text.
+ */
+function holds(stored: unknown, op: "eq" | "is", value: unknown): boolean {
+  if (op === "is") return (stored ?? null) === value;
+  if (stored === null || stored === undefined) return false;
+  const a = Number(stored);
+  const b = Number(value);
+  if (Number.isFinite(a) && Number.isFinite(b) && String(value).trim() !== "")
+    return a === b;
+  return String(stored) === String(value);
+}
+
 const supabase: any = {
   from(table: string) {
+    // An UPDATE is applied when its chain ends, and only to a row every
+    // filter matches: the way PostgREST applies `?col=eq.x` to a PATCH. A
+    // write whose filters no longer match changes nothing and returns no row.
+    let pending: Row | null = null;
+    let inserting = false;
+    const filters: Array<[string, "eq" | "is", unknown]> = [];
+    const settle = (): Row | null => {
+      const sent = pending;
+      pending = null;
+      if (!sent || table !== "procurement_orders") return null;
+      if (!filters.every(([c, op, v]) => holds(state.order[c], op, v)))
+        return null;
+      state.writes.push(sent);
+      Object.assign(state.order, sent);
+      return { ...state.order };
+    };
     const q: any = {
       select: () => q,
       insert: (row: Row) => {
+        inserting = true;
         if (table === "system_audit_log") state.audits.push(row);
         if (table === "procurement_order_items")
           state.lineWrites.push("insert");
@@ -140,45 +179,78 @@ const supabase: any = {
       },
       update: (payload: Row) => {
         // supabase-js drops `undefined` keys before PostgREST sees them.
-        const sent = Object.fromEntries(
+        pending = Object.fromEntries(
           Object.entries(payload).filter(([, v]) => v !== undefined),
         );
-        if (table === "procurement_orders") {
-          state.writes.push(sent);
-          Object.assign(state.order, sent);
-        }
         return q;
       },
-      eq: () => q,
+      eq: (c: string, v: unknown) => {
+        filters.push([c, "eq", v]);
+        return q;
+      },
+      is: (c: string, v: unknown) => {
+        filters.push([c, "is", v]);
+        return q;
+      },
       in: () => q,
-      is: () => q,
       not: () => q,
       neq: () => q,
       order: () => q,
       limit: () => q,
-      maybeSingle: async () =>
-        table === "procurement_orders"
+      maybeSingle: async () => {
+        if (pending) return { data: settle(), error: null };
+        return table === "procurement_orders"
           ? state.failOrderRead
             ? { data: null, error: { message: "connection reset" } }
             : { data: { ...state.order }, error: null }
           : table === "restaurant_inventory"
             ? { data: { id: INVENTORY, wine_name: "Barolo 2019" }, error: null }
-            : { data: null, error: null },
-      single: async () =>
-        table === "procurement_orders"
+            : { data: null, error: null };
+      },
+      single: async () => {
+        if (pending) {
+          const row = settle();
+          return row
+            ? { data: row, error: null }
+            : {
+                data: null,
+                error: { code: "PGRST116", message: "no rows returned" },
+              };
+        }
+        return table === "procurement_orders"
           ? { data: { ...state.order }, error: null }
-          : { data: null, error: null },
+          : { data: null, error: null };
+      },
       // A list read. `providers` is only ever counted here (the vendor is the
       // house's, and the house has an active vendor); `procurement_orders` as
       // a list is the dedup lookup, which finds the one open order.
-      then: (resolve: any, reject: any) =>
-        Promise.resolve(
-          table === "providers"
-            ? { count: 1, data: [], error: null }
-            : table === "procurement_orders"
-              ? { data: [{ ...state.order }], error: null }
-              : { data: [], error: null },
-        ).then(resolve, reject),
+      then: (resolve: any, reject: any) => {
+        if (pending) {
+          settle();
+          return Promise.resolve({ data: [], error: null }).then(
+            resolve,
+            reject,
+          );
+        }
+        if (
+          table === "procurement_order_items" &&
+          inserting &&
+          state.failLineInsert
+        )
+          return Promise.resolve({
+            data: null,
+            error: { message: "line refused" },
+          }).then(resolve, reject);
+        let result: Row;
+        if (table === "providers") result = { count: 1, data: [], error: null };
+        else if (table === "procurement_orders") {
+          result = { data: [{ ...state.order }], error: null };
+          const after = state.afterLookup;
+          state.afterLookup = null;
+          after?.();
+        } else result = { data: [], error: null };
+        return Promise.resolve(result).then(resolve, reject);
+      },
     };
     return q;
   },
@@ -578,6 +650,51 @@ describe("a new order folded into an open one moves its money only for a manager
     expect(state.writes).toHaveLength(1);
     expect(state.audits).toHaveLength(1);
     expect(state.audits[0].actor_id).toBe(STAFF);
+    expect(state.audits[0].changes.door).toBe("merge");
+  });
+
+  it("[REVERT-FAILS] an order approved between the lookup and the write is not repriced by a staff fold", async () => {
+    // The gate decided on the status the lookup read (PENDING, so no role was
+    // needed); a manager approves before the write lands. The write is
+    // conditional on that status, so it matches nothing and is refused whole.
+    seedOpenOrder(S.PENDING);
+    state.afterLookup = () => {
+      state.order.status = S.APPROVED;
+    };
+    const res = await place(STAFF, { quantity: 6, finalPrice: 400 });
+    expect(res.status).toBe(409);
+    expect(res.body.reason).toBe("merge_target_changed");
+    expect(String(res.body.message)).toMatch(
+      /Nothing was changed|nothing was changed/,
+    );
+    expect(state.writes).toHaveLength(0);
+    expect(state.lineWrites).toHaveLength(0);
+    expect(state.audits).toHaveLength(0);
+    expect(state.order.status).toBe(S.APPROVED);
+    expect(state.order.final_price).toBe("300.00");
+  });
+
+  it("[REVERT-FAILS] a price somebody else set in between is not overwritten by a stale fold", async () => {
+    seedOpenOrder(S.APPROVED);
+    state.afterLookup = () => {
+      state.order.final_price = "450.00";
+      state.order.total_cost = "2700.00";
+    };
+    const res = await place(MANAGER, { quantity: 6, finalPrice: 350 });
+    expect(res.status).toBe(409);
+    expect(state.writes).toHaveLength(0);
+    expect(state.audits).toHaveLength(0);
+    expect(state.order.final_price).toBe("450.00");
+  });
+
+  it("[REVERT-FAILS] the paper is filed with the header, before the line that can still fail", async () => {
+    seedOpenOrder(S.APPROVED);
+    state.failLineInsert = true;
+    const res = await place(MANAGER, { quantity: 6, finalPrice: 400 });
+    expect(res.status).toBe(500);
+    // The header moved; the log says so even though the line write failed.
+    expect(state.writes).toHaveLength(1);
+    expect(state.audits).toHaveLength(1);
     expect(state.audits[0].changes.door).toBe("merge");
   });
 

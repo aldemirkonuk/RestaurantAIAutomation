@@ -39,6 +39,8 @@ An 817-route audit at 5a20d774b found two live holes. Both were re-verified at c
     - Quantity is money here: the approval rules test the order's total, and the fold recomputes that total from the quantity. A body that holds the total while raising the quantity is still refused.
     - A fold into a PENDING order keeps today's re-quote for every member, because nobody has approved it and approving it tests the new figures. It now files `order_price_changed` too (door `merge`).
     - A re-post that moves no figure is neither refused nor filed.
+    - **The write is conditional on what the gate read** (the audit planner's race finding at d033412f5). The header UPDATE matches only the house, the id, the status and each money column the lookup returned (`eq`, or `is null`). An order approved, or repriced by somebody else, between the lookup and the write therefore matches nothing. The fold is then refused with 409 `merge_target_changed`: nothing is changed, and no line and no audit row are written. It is 409 here, not 403, because the refusal is about state, and re-reading the order is the remedy.
+    - **The paper is filed right after the header write,** before the order line is rewritten. If the line write then fails, the request errors, but the header has moved and the log already says so. The line and the header are two writes, not one transaction, so a failed line can still leave a header that disagrees with its line. That was already true before this change, and it is not fixed here.
   - The notes stay open to every member.
 - **D3. A price edit on an approved order re-checks the editor's limit (founder, 2026-09-30). RULED, NOT BUILT: its design waits on four founder calls.** The approval gate runs again for the person making the edit. If the new figure is beyond their limit, the order goes back to APPROVAL_NEEDED for someone whose limit covers it.
   - **Why it is not built yet.** A separate adversarial pass on 2026-09-30 killed the literal build (park the order at APPROVAL_NEEDED, release its reservation, hold its staged mail). The builder checked its load-bearing findings:
@@ -73,11 +75,12 @@ An 817-route audit at 5a20d774b found two live holes. Both were re-verified at c
 
 ## Evidence
 
-- **`order-patch-is-not-a-side-door.spec.ts`:** 42 cases over HTTP, through the real controller and service behind main.ts's ValidationPipe.
+- **`order-patch-is-not-a-side-door.spec.ts`:** 45 cases over HTTP, through the real controller and service behind main.ts's ValidationPipe.
   - 27 were red on c47fd8a01.
   - The four `order_price_changed` cases came later: two of them are red against the D1/D2 service without the audit row.
   - The eight merge cases came in round 1: seven of them are red at e5edf9af1, 201 where 403 was expected. The eighth pins the harmless re-post.
-  - Service and controller mutations killed: 6 of 6 for D1/D2, 3 of 3 for the audit row, 7 of 7 for the merge.
+  - The three race and ordering cases came next, all red at d033412f5. On the two races the fold answered 201 where 409 was expected; on the third, no audit row had been filed.
+  - Service and controller mutations killed: 6 of 6 for D1/D2, 3 of 3 for the audit row, 7 of 7 for the merge gate, and 4 of 4 for the conditional write and the order of the paper. The house filter on the merge write is not tested on its own, because the lookup before it is already house-scoped.
 - **`alert-relays-are-closed.spec.ts`:** 5 cases, 4 red against the base controller and DTO.
 - **Claim `SEC-2026-09-29-ORDER-PATCH-AND-ALERT-RELAYS`:** static, red on c47fd8a01, and every one of its tripwire checks has been mutated and caught.
 
@@ -88,3 +91,4 @@ An 817-route audit at 5a20d774b found two live holes. Both were re-verified at c
 | 2026-09-30 | — | Created on `fix/order-approval-and-alert-relays` |
 | 2026-09-30 | Adversarial pass (separate agent), with its findings re-verified by the builder | D3's literal build is unsafe (stock, vendor mail, door, readers of APPROVAL_NEEDED), and confirm-deal and the autonomy accept bypass the gate. D3 is held for four founder calls |
 | 2026-09-30 | ADR 0090 audit of #538 at e5edf9af1 (security BLOCK, correctness APPROVE) | Round 1: the dedup merge was a second staff door to an open order's money and is closed (D2). D1's caller sentence and D2's paper sentence were narrowed to the code. D3 is untouched |
+| 2026-09-30 | Audit planner, at d033412f5 | The merge gate read the status at lookup and wrote by id alone, a stale-status race. The write is now conditional on the status and figures it gated on (409 when they moved), and the paper is filed before the line |
