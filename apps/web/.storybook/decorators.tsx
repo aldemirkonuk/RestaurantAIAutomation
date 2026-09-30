@@ -74,7 +74,7 @@ export const mockAuthValue: AuthContextType = {
   // Storybook has no gateway, so this resolves the way the real client does
   // when the call fails: the standard set, flagged `assumed`. See ADR 0024.
   resolveSignInMethods: async (email: string) => fallbackSignInMethods(email),
-  logout: noop,
+  logout: async () => true,
   refreshToken: noop,
   refreshBranches: noop,
   isAuthenticated: true,

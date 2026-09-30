@@ -23,6 +23,10 @@ import {
   tokenHouse,
 } from "../lib/houseMemory";
 import { doRefresh } from "../lib/sessionRefresh";
+import { syncManager } from "../lib/sync-manager";
+import { flushDoorOutbox } from "../lib/doorOutbox";
+import { flushSpotCountOutbox } from "../lib/spotCountOutbox";
+import { currentQueueOwner, signOutWarning } from "../lib/queue-owner";
 
 /**
  * Thrown by `login()` for backend auth failures. `code`/`provider` carry the
@@ -194,7 +198,13 @@ export interface AuthContextType {
    * form it had before rather than locking the user out. See ADR 0024.
    */
   resolveSignInMethods: (email: string) => Promise<SignInMethodsResult>;
-  logout: () => Promise<void>;
+  /**
+   * The person signing out (ADR 0241, OD-203 (c)). With changes of theirs not
+   * yet sent it first tries to send them, then asks; `false` means they chose
+   * to stay signed in and nothing changed. On sign-out their queued changes on
+   * this device are removed — the queue is a cache of their session.
+   */
+  logout: () => Promise<boolean>;
   refreshToken: () => Promise<void>;
   refreshBranches: () => Promise<void>;
   isAuthenticated: boolean;
@@ -933,7 +943,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const logout = useCallback(async () => {
+  // The session ends without the person choosing it (a refused refresh). Their
+  // queued changes are KEPT, bound to them and their house, and sent after
+  // they sign in again; no one else's session can send them (ADR 0241).
+  const endSession = useCallback(async () => {
     try {
       await api.post("/api/v1/auth/logout");
     } catch (err) {
@@ -955,6 +968,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  // The founder, 2026-09-29 (OD-203): "If the person signs out, however, the
+  // data is lose, lost, right? This is the best way since it's basically cache
+  // and you signed out basically." And for the web app: "do the standard
+  // industry application" — try to send, warn with the count, then clear.
+  const logout = useCallback(async (): Promise<boolean> => {
+    const who = currentQueueOwner()?.userId ?? null;
+    if (who) {
+      let unsent = 0;
+      try {
+        // Door receipts and spot counts flush themselves; give them their
+        // chance too before anything is counted as lost.
+        if (navigator.onLine)
+          await Promise.allSettled([flushDoorOutbox(), flushSpotCountOutbox()]);
+        unsent = await syncManager.unsentBeforeSignOut(who);
+      } catch {
+        unsent = 0;
+      }
+      if (unsent > 0 && !window.confirm(signOutWarning(unsent))) return false;
+    }
+    await endSession();
+    if (who) {
+      try {
+        await syncManager.endSessionOf(who);
+      } catch (err) {
+        console.error("Could not clear the signed-out person's queue:", err);
+      }
+    }
+    return true;
+  }, [endSession]);
+
   // Delegates to the same single-flight `doRefresh` the axios interceptor and
   // `authStore.ts` use (ADR 0164, item 2/3) — this used to be a fourth,
   // independent refresh implementation with its own copy of the
@@ -971,7 +1014,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const refreshTokenFn = useCallback(async () => {
     const hadRefreshToken = !!localStorage.getItem("refreshToken");
     if (!hadRefreshToken) {
-      await logout();
+      await endSession();
       return;
     }
     const accessToken = await doRefresh();
@@ -980,9 +1023,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     if (!localStorage.getItem("refreshToken")) {
-      await logout();
+      await endSession();
     }
-  }, [logout]);
+  }, [endSession]);
 
   const clearError = useCallback(() => setError(null), []);
 

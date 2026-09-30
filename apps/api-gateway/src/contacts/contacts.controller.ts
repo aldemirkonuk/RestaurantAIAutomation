@@ -19,6 +19,7 @@ import {
   PaginatedResult,
 } from "./contacts.service";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { CurrentUser } from "../auth/decorators/current-user.decorator";
 
 /**
  * OD-20 — guarded at class level 2026-08-25.
@@ -89,9 +90,10 @@ export class ContactsController {
   @Patch(":id")
   async update(
     @Param("id") id: string,
+    @CurrentUser("restaurantId") restaurantId: string,
     @Body() dto: Partial<ContactDto>,
   ): Promise<ContactWithAddresses> {
-    return this.contactsService.update(id, dto);
+    return this.contactsService.update(id, restaurantId, dto);
   }
 
   /**
@@ -100,8 +102,11 @@ export class ContactsController {
    */
   @Delete(":id")
   @HttpCode(HttpStatus.NO_CONTENT)
-  async remove(@Param("id") id: string): Promise<void> {
-    return this.contactsService.remove(id);
+  async remove(
+    @Param("id") id: string,
+    @CurrentUser("restaurantId") restaurantId: string,
+  ): Promise<void> {
+    return this.contactsService.remove(id, restaurantId);
   }
 
   /**
@@ -131,7 +136,10 @@ export class ContactsController {
    */
   @Delete("addresses/:addressId")
   @HttpCode(HttpStatus.NO_CONTENT)
-  async removeAddress(@Param("addressId") addressId: string): Promise<void> {
-    return this.contactsService.removeAddress(addressId);
+  async removeAddress(
+    @Param("addressId") addressId: string,
+    @CurrentUser("restaurantId") restaurantId: string,
+  ): Promise<void> {
+    return this.contactsService.removeAddress(addressId, restaurantId);
   }
 }
