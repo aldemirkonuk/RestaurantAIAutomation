@@ -130,19 +130,19 @@ describe('App.tsx routes these paths through the same gates', () => {
   const app = readFileSync(join(__dirname, '..', '..', 'App.tsx'), 'utf8');
 
   it('/admin: PageGate page="admin", next is the admin desk', () => {
-    expect(app).toMatch(/<Route path="\/admin" element=\{<PageGate page="admin" legacy=\{[^\n]*\} next=\{<AdminDesk \/>\} \/>\} \/>/);
+    expect(app).toMatch(/<Route path="\/admin" element=\{<PageGate page="admin" next=\{<AdminDesk \/>\} \/>\} \/>/);
   });
 
   it('/admin/health: PageGate page="admin", next redirects to /admin', () => {
     expect(app).toMatch(
-      /<Route path="\/admin\/health" element=\{<PageGate page="admin" legacy=\{[^\n]*\} next=\{<Navigate to="\/admin" replace \/>\} \/>\} \/>/,
+      /<Route path="\/admin\/health" element=\{<PageGate page="admin" next=\{<Navigate to="\/admin" replace \/>\} \/>\} \/>/,
     );
   });
 
   it('/authorize/:integrationId: PageGate page="authorize_integration", next is the Mudavym consent page', () => {
     expect(app).toMatch(/path="\/authorize\/:integrationId"/);
     expect(app).toMatch(
-      /<PageGate page="authorize_integration" legacy=\{<AuthorizeIntegration \/>\} next=\{<AuthorizeIntegrationNext \/>\} \/>/,
+      /<PageGate page="authorize_integration" next=\{<AuthorizeIntegrationNext \/>\} \/>/,
     );
   });
 });
@@ -196,7 +196,7 @@ describe('2026-09-26 (ADR 0149 row 54)', () => {
   it('App.tsx routes /receiving through the same gate', () => {
     const app = readFileSync(join(__dirname, '..', '..', 'App.tsx'), 'utf8');
     expect(app).toMatch(
-      /<Route path="\/receiving" element=\{<PageGate page="receiving" legacy=\{<ReceivingHome \/>\} next=\{<ReceivingNext \/>\} \/>\} \/>/,
+      /<Route path="\/receiving" element=\{<PageGate page="receiving" next=\{<ReceivingNext \/>\} \/>\} \/>/,
     );
   });
 });
@@ -216,7 +216,7 @@ describe('2026-09-27 (ADR 0149 row 54, founder item 53)', () => {
       legacyText: 'legacy promotions tabs',
       testId: 'promotions-next',
       appRoute:
-        /<Route path="\/promotions" element=\{<PageGate page="promotions" legacy=\{<Promotions \/>\} next=\{<PromotionsNext \/>\} \/>\} \/>/,
+        /<Route path="\/promotions" element=\{<PageGate page="promotions" next=\{<PromotionsNext \/>\} \/>\} \/>/,
     },
     {
       page: 'vendor_prices' as const,
@@ -224,7 +224,7 @@ describe('2026-09-27 (ADR 0149 row 54, founder item 53)', () => {
       legacyText: 'legacy vendor price compare',
       testId: 'vendor-prices-next',
       appRoute:
-        /<Route path="\/vendor-prices" element=\{<PageGate page="vendor_prices" legacy=\{<VendorPriceCompare \/>\} next=\{<VendorPricesNext \/>\} \/>\} \/>/,
+        /<Route path="\/vendor-prices" element=\{<PageGate page="vendor_prices" next=\{<VendorPricesNext \/>\} \/>\} \/>/,
     },
   ];
 
