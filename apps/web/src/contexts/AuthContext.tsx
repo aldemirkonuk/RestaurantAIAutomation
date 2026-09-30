@@ -30,6 +30,9 @@ import { currentQueueOwner, signOutWarning } from "../lib/queue-owner";
 import { offlineStorage } from "../lib/offline-storage";
 import { ensurePersisted } from "../lib/deviceStorage";
 
+/** How long sign-out waits for the read-cache clear before finishing anyway. */
+export const SIGN_OUT_CACHE_CLEAR_MAX_MS = 2000;
+
 /**
  * Thrown by `login()` for backend auth failures. `code`/`provider` carry the
  * structured fields the API sends for OAuth-only accounts (see
@@ -969,8 +972,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       clearHouseEnded();
       // The read cache was this session's: the next person on a shared device
       // must not see it. Cache only — unsent work is ADR 0241's to decide.
+      // Bounded: IndexedDB's open has no timeout and has hung on WebKit, and a
+      // clear that never settles must not leave the screen signed in with the
+      // tokens already gone. The cache rows expire in minutes either way.
       try {
-        await offlineStorage.clearEntityCache();
+        await Promise.race([
+          offlineStorage.clearEntityCache(),
+          new Promise<void>((resolve) => setTimeout(resolve, SIGN_OUT_CACHE_CLEAR_MAX_MS)),
+        ]);
       } catch (err) {
         console.error("Could not clear the read cache at sign-out:", err);
       }

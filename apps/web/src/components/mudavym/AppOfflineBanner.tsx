@@ -139,8 +139,8 @@ function DeviceStorageNote() {
       )}
       {waited && (
         <div data-ux-key="shell.offline.device-storage.waited">
-          Some changes on this device have waited over a day to send — open with signal, or
-          tell a manager.
+          Some changes on this device have waited over a day to send — open the app where there
+          is signal, check anything marked “Not sent”, or tell a manager.
         </div>
       )}
     </div>
@@ -183,7 +183,7 @@ function HouseOfflineBanner() {
           style={ACT}
           onClick={() => {
             const n = notSentCount
-            if (window.confirm(`Discard ${pluralChange(n)} that ${n === 1 ? 'was' : 'were'} not sent? This cannot be undone.`))
+            if (window.confirm(`Discard ${pluralChange(n)} that ${n === 1 ? 'was' : 'were'} not sent? ${n === 1 ? 'It is' : 'They are'} only on this device, not on the server — keep the paperwork for any delivery among them. This cannot be undone.`))
               void discardNotSent?.()
           }}
         >
