@@ -86,7 +86,7 @@ pytz==2024.1  # Timezone support for manager preferences
 surya-ocr>=0.6.0  # Surya OCR for scanned PDFs (self-hosted, Apache 2.0)
 PyPDF2>=3.0.0  # PDF text extraction (digital PDFs)
 pdf2image>=1.17.0  # PDF to image conversion (for scanned PDFs)
-playwright>=1.40.0  # Headless browser for web crawling + DOM extraction
+playwright>=1.62.0  # Headless browser for web crawling + DOM extraction
 
 # =============================================================================
 # HTTP CLIENTS
