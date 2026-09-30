@@ -1,3 +1,4 @@
+import { LEAVE_ROUTE_ENV } from "../__tests__/leave-route-outside-services";
 import {
   ExecutionContext,
   INestApplication,
@@ -269,21 +270,10 @@ let db: StubDb;
 let app: INestApplication;
 let base: string;
 
-// The same placeholder credentials `health/liveness.route.spec.ts` sets: the
-// real `DatabaseService` is replaced, but a provider elsewhere in the graph
-// that reads them at construction must not see a developer's real project.
-// The booted app also reads a repo-root `.env` (app.module.ts ConfigModule),
-// and the environment wins over that file, so every outside service it could
-// reach is pinned here too: no cache, no error reporting, the orchestrator on
-// an address that cannot resolve, and the broker on CI's own unused default.
-const ENV = {
-  SUPABASE_URL: "http://leave-route.invalid",
-  SUPABASE_SERVICE_ROLE_KEY: "test-service-role-key-not-a-real-secret",
-  REDIS_URL: "",
-  SENTRY_DSN: "",
-  AGENT_ORCHESTRATOR_URL: "http://orchestrator.invalid",
-  RABBITMQ_URL: "amqp://localhost:5672",
-};
+// The same placeholder credentials `health/liveness.route.spec.ts` sets, plus
+// the outside services the boot reaches; see __tests__/leave-route-outside-services.ts,
+// imported first so the pins precede AppModule's own imports.
+const ENV = LEAVE_ROUTE_ENV;
 const saved: Record<string, string | undefined> = {};
 
 async function boot(
