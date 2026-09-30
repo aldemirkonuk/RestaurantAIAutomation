@@ -81,8 +81,10 @@ jobs:
           echo "Re-run once CI is green:  gh workflow run deploy.yml -f mode=deploy-audit"
           exit 1
 
-      # Only this repository's own CI runs on main -- a push, or a manual
-      # (workflow_dispatch) run -- may drive the stages below. Founder,
+      # A workflow_run of this workflow drives the stages below only for this
+      # repository's own CI runs on main -- a push, or a manual
+      # (workflow_dispatch) run. (A direct workflow_dispatch of this workflow,
+      # writer-only, runs them too, as before.) Founder,
       # 2026-09-30, on #534, verbatim picks: "Sign off, add deploy fix
       # (Recommended)" and then "Also allow manual runs". The trigger's
       # `branches: [main]` filter also matches a fork's pull request whose

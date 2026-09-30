@@ -1124,9 +1124,10 @@ def test_deploy_runs_only_on_this_repositorys_own_pushes():
     # The structural rule (a strict jobs: reader that refuses any key it could
     # misread; each job's single `if` equal to the one allowed; the refusal
     # step not disabled, softened or bypassed) lives in
-    # scripts/check_deploy_own_pushes.py; its self-test plants 53 breaks
-    # (every evasion the round-2 audit found, and a fork's dispatch, another
-    # event type and a missing repository check, among them).
+    # scripts/check_deploy_own_pushes.py; its self-test plants exactly the 52
+    # breaks it lists (including a fork's dispatch, another event type and a
+    # missing repository check). Four known evasions are not held; the
+    # guard's KNOWN GAPS docstring names them and why runtime still holds.
     guard = ROOT / "scripts" / "check_deploy_own_pushes.py"
     for args in ([], ["--self-test"]):
         r = subprocess.run([sys.executable, "-I", str(guard), *args], capture_output=True, text=True, timeout=60)

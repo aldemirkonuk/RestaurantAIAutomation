@@ -364,7 +364,7 @@ certified MATCH against a stale, too-narrow mirror) is exactly this ADR's own
 "never weaken anything to make this green" line, reached from a different
 angle than the one this ADR's Decision section anticipated.
 
-## Amendment — 2026-09-30: the deploy chain acts only on this repository's own CI runs on main (founder, on #534)
+## Amendment — 2026-09-30: the deploy chain's workflow_run trigger acts only on this repository's own CI runs on main (founder, on #534)
 
 **The defect.** Found by the ADR 0090 audit of #534 (round 1, planner and both
 reviewers). `on: workflow_run: branches: [main]` also matches a fork's pull
@@ -396,8 +396,8 @@ verbatim picks:
 
 **Held by.**
 - `scripts/check_deploy_own_pushes.py`, which is gate-owned. It is a strict
-  text reader. Its self-test plants every evasion the three audit rounds
-  found.
+  text reader. Its self-test plants exactly the 52 breaks it lists; it does
+  not plant every evasion the audit rounds found (see "Not held").
 - `scripts/test_pr_audit_gate.py`.
 - The claim `DEPLOY-RUNS-ONLY-ON-OWN-PUSHES` in
   `claims.d/batch-open-prs-2026-09-29.jsonl`.
@@ -412,4 +412,20 @@ verbatim picks:
 - GitHub's own YAML evaluation. `workflow_run` runs main's copy of the file,
   so the step first runs for real on #534's merge commit.
 - Whether `workflow_run` fires for a CI run dispatched with `GITHUB_TOKEN`.
+- Four known evasions pass the guard. For each, runtime still holds because
+  every stage's and `deploy-audit`'s `if` independently requires the own-run
+  group, and `deploy.yml` is gate-owned. Founder, 2026-09-30, verbatim:
+  *"Honest record (Recommended)"*.
+  - A job-level key such as `concurrency: |` before the refusal step, which
+    turns the following steps into a string (`ci-gate` would stay green).
+  - A column-0 comment inside `on:`, which ends the guard's `on:` read, so a
+    trigger added after it is not compared.
+  - A job-level `env: BASH_ENV` on `ci-gate`, which is not pinned.
+  - A `GITHUB_PATH` write in a `ci-gate` step (only `GITHUB_ENV` and
+    `GITHUB_OUTPUT` are refused).
+
+  Closing them is filed in
+  `tech-debt.d/2026-09-30-batch-open-prs-2026-09-29.md`.
+- A direct `workflow_dispatch` of `deploy.yml` itself (writer-only) runs the
+  stages, as before. This amendment covers the `workflow_run` trigger.
 

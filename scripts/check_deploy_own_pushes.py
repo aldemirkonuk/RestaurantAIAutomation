@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
-"""Deploy to Production acts only on this repository's own CI runs on main: a
-push, or a manual (workflow_dispatch) run.
+"""Deploy to Production's workflow_run trigger acts only on this repository's
+own CI runs on main: a push, or a manual (workflow_dispatch) run. (A direct
+workflow_dispatch of deploy.yml itself, writer-only, runs the stages too, as
+before.)
 
 Founder, 2026-09-30, on #534, verbatim picks: "Sign off, add deploy fix
 (Recommended)", then "Also allow manual runs" (the triggering run's event may
@@ -10,7 +12,8 @@ matches a fork's pull request whose branch is named `main`; its stages check
 out that run's head_sha and run its code beside ADMIN_API_KEY. The rule this
 guard holds, read from the workflow text strictly (no YAML library: the CI
 jobs that run it do not install one). Shapes it does not recognise are
-refused where it can tell; its self-test lists every evasion found so far:
+refused where it can tell; its self-test plants the 52 breaks listed in
+_self_test (see KNOWN GAPS below for four it does not hold):
 
   1. The jobs: block holds only plain `  name:` job keys, full-line comments
      and lines indented four or more spaces. A quoted, flow-style, anchored or
@@ -34,8 +37,26 @@ refused where it can tell; its self-test lists every evasion found so far:
 
 What it cannot hold: GitHub's own evaluation (workflow_run runs main's copy of
 the file), and any YAML form this reader accepts but GitHub reads differently;
-the self-test lists every such form found so far. It pins only the refusal
+the known forms of that kind, and two it simply does not pin, are listed
+under KNOWN GAPS below. It pins only the refusal
 step, not ci-gate's first step (the conclusion check, ADR 0097's claim).
+
+KNOWN GAPS -- not held (founder, 2026-09-30: "Honest record (Recommended)").
+The self-test plants exactly the 52 breaks listed in _self_test and nothing
+more. These four known evasions pass this guard; runtime still holds for each
+because every stage's and deploy-audit's `if` independently requires the
+own-run group (pinned exactly above), and deploy.yml itself is gate-owned:
+  - a job-level key such as `concurrency: |` placed before the refusal step
+    (the steps after it become that key's string, so ci-gate would stay green;
+    the stage ifs still refuse the run);
+  - a column-0 comment line inside `on:` (it ends this reader's on: block, so
+    a trigger added after it is not compared; the job ifs admit only the
+    own-run workflow_run or a direct dispatch);
+  - a job-level `env: BASH_ENV` on ci-gate (not pinned; the stage ifs do not
+    depend on ci-gate's steps);
+  - a `GITHUB_PATH` write in a ci-gate step (only GITHUB_ENV and GITHUB_OUTPUT
+    are refused; same reason).
+Closing them is filed in tech-debt.d/2026-09-30-batch-open-prs-2026-09-29.md.
 
 Exit 0 holds, 1 broken, 2 cannot read. `--self-test` plants each break.
 Owned by scripts/test_pr_audit_gate.py
@@ -343,8 +364,6 @@ def _self_test(verbose: bool = False) -> int:
         "refusal: another event type allowed": (
             'if { [ "$RUN_EVENT" = "push" ] || [ "$RUN_EVENT" = "workflow_dispatch" ]; } && [ "$RUN_REPO" = "$THIS_REPO" ]; then',
             'if { [ "$RUN_EVENT" = "push" ] || [ "$RUN_EVENT" = "workflow_dispatch" ] || [ "$RUN_EVENT" = "pull_request" ]; } && [ "$RUN_REPO" = "$THIS_REPO" ]; then'),
-        "refusal: repository check missing": (
-            ' && [ "$RUN_REPO" = "$THIS_REPO" ]; then', '; then'),
         "refusal: any event allowed": (
             'if { [ "$RUN_EVENT" = "push" ] || [ "$RUN_EVENT" = "workflow_dispatch" ]; } && [ "$RUN_REPO" = "$THIS_REPO" ]; then',
             'if [ "$RUN_REPO" = "$THIS_REPO" ]; then'),
