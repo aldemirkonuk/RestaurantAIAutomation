@@ -167,7 +167,9 @@ import {
   figuresMovedSince,
   figuresThatMove,
   isPriceRecheckStatus,
+  isPureDecrease,
   pendingSentence,
+  policyForChange,
   presentPriceChange,
   priceChangeSealArgs,
   readIsFirstOrderToVendor,
@@ -1325,13 +1327,25 @@ export class ProcurementService {
           quantity: dto.quantity,
         };
         const proposal = figuresThatMove(existing, mergedFigures);
-        const verdict = await this.priceRecheck(restaurantId, existing.id, userId, {
-          totalCost,
-          unitPrice: effectiveUnitPrice(mergedFigures),
-          quantity: dto.quantity,
-          providerId: existing.provider_id ?? null,
-          inventoryId: existing.inventory_id ?? null,
-        });
+        // Pure decrease is judged on EVERYTHING the fold moves (D2's own
+        // measure, units and bottles included), not only the prices.
+        const decreaseOnly = isPureDecrease(
+          Object.fromEntries(Object.entries(mergeMoves).map(([k, v]) => [k, v.from])),
+          Object.fromEntries(Object.entries(mergeMoves).map(([k, v]) => [k, v.to])),
+        );
+        const verdict = await this.priceRecheck(
+          restaurantId,
+          existing.id,
+          userId,
+          {
+            totalCost,
+            unitPrice: effectiveUnitPrice(mergedFigures),
+            quantity: dto.quantity,
+            providerId: existing.provider_id ?? null,
+            inventoryId: existing.inventory_id ?? null,
+          },
+          { decreaseOnly },
+        );
         if (!verdict.covered) {
           const held = await this.proposePriceChange({
             restaurantId,
@@ -1340,6 +1354,7 @@ export class ProcurementService {
             source: "order_merge",
             from: proposal.from,
             to: proposal.to,
+            decreaseOnly,
             terms: {
               request: JSON.parse(JSON.stringify(dto)) as Record<string, unknown>,
               source: provenance?.source ?? null,
@@ -3657,13 +3672,20 @@ export class ProcurementService {
       priceFiguresMoved = proposal.moved.length > 0;
       if (priceFiguresMoved && isPriceRecheckStatus(moneyBefore.status)) {
         const after: Record<string, unknown> = { ...moneyBefore, ...proposal.to };
-        const verdict = await this.priceRecheck(restaurantId, orderId, opts.actorUserId, {
-          totalCost: after.total_cost,
-          unitPrice: effectiveUnitPrice(after),
-          quantity: moneyBefore.quantity,
-          providerId: moneyBefore.provider_id ?? null,
-          inventoryId: moneyBefore.inventory_id ?? null,
-        });
+        const decreaseOnly = isPureDecrease(proposal.from, proposal.to);
+        const verdict = await this.priceRecheck(
+          restaurantId,
+          orderId,
+          opts.actorUserId,
+          {
+            totalCost: after.total_cost,
+            unitPrice: effectiveUnitPrice(after),
+            quantity: moneyBefore.quantity,
+            providerId: moneyBefore.provider_id ?? null,
+            inventoryId: moneyBefore.inventory_id ?? null,
+          },
+          { decreaseOnly },
+        );
         if (!verdict.covered) {
           pendingPriceChange = await this.proposePriceChange({
             restaurantId,
@@ -3673,6 +3695,7 @@ export class ProcurementService {
             from: proposal.from,
             to: proposal.to,
             terms: null,
+            decreaseOnly,
             verdict,
           });
         }
@@ -3918,6 +3941,12 @@ export class ProcurementService {
       providerId: string | null;
       inventoryId: string | null;
     },
+    /**
+     * Every figure the change moves goes down (`isPureDecrease`). The founder,
+     * 2026-09-30, answer 7 "Decreases skip new-vendor (Recommended)": such a
+     * change does not re-trigger `new_vendor`; every other rule still runs.
+     */
+    opts: { decreaseOnly: boolean },
   ): Promise<{
     covered: boolean;
     decision: ApprovalDecision;
@@ -3947,7 +3976,7 @@ export class ProcurementService {
       isFirstOrderToVendor: await this.isFirstOrderToVendor(restaurantId, orderId, after.providerId),
       pricePremiumPct: await this.pricePremiumPct(restaurantId, orderId, after.inventoryId, after.unitPrice),
     };
-    const decision = decideApproval(readout.thresholds, facts);
+    const decision = decideApproval(policyForChange(readout.thresholds, opts.decreaseOnly), facts);
     const actorRole = await this.organizations.resolveRestaurantRole(userId, restaurantId);
     const covered =
       decision.requiredRole === null || roleSatisfies(actorRole, decision.requiredRole);
@@ -3970,6 +3999,7 @@ export class ProcurementService {
     from: Partial<Record<ChangeFigure, number | null>>;
     to: Partial<Record<ChangeFigure, number | null>>;
     terms: Record<string, unknown> | null;
+    decreaseOnly: boolean;
     verdict: { decision: ApprovalDecision; actorRole: string | null; total: number | null };
   }): Promise<{ change: PriceChangeView; sentence: string }> {
     const { decision, actorRole } = input.verdict;
@@ -4000,6 +4030,7 @@ export class ProcurementService {
         required_role: decision.requiredRole ?? "owner",
         fired_by: decision.firedBy,
         reasons: decision.reasons,
+        decrease_only: input.decreaseOnly,
         state: "waiting",
       })
       .select("*")
@@ -4056,7 +4087,11 @@ export class ProcurementService {
 
   /** File one event in the life of a price change in `system_audit_log`. Never throws. */
   private async auditPriceChange(
-    action: "order_price_change_waiting" | "order_price_change_approved",
+    action:
+      | "order_price_change_waiting"
+      | "order_price_change_approved"
+      | "order_price_change_declined"
+      | "order_price_change_withdrawn",
     restaurantId: string,
     actorUserId: string,
     change: PriceChangeView,
@@ -4240,7 +4275,9 @@ export class ProcurementService {
     const stale = this.staleness(row, order);
     const change = { ...presentPriceChange(row), stale };
     if (stale) return { change, mayApprove: false, sentence: stale };
-    const verdict = await this.priceRecheck(restaurantId, orderId, userId, this.figuresAfterChange(row, order));
+    const verdict = await this.priceRecheck(restaurantId, orderId, userId, this.figuresAfterChange(row, order), {
+      decreaseOnly: row.decrease_only === true,
+    });
     return {
       change,
       mayApprove: verdict.covered,
@@ -4285,7 +4322,9 @@ export class ProcurementService {
       await this.closeWaitingPriceChanges(restaurantId, orderId, "stale", stale, { id: String(row.id) });
       throw new ConflictException({ reason: "price_change_stale", message: stale });
     }
-    const verdict = await this.priceRecheck(restaurantId, orderId, userId, this.figuresAfterChange(row, order));
+    const verdict = await this.priceRecheck(restaurantId, orderId, userId, this.figuresAfterChange(row, order), {
+      decreaseOnly: row.decrease_only === true,
+    });
     if (!verdict.covered) {
       throw new ForbiddenException(this.mayNotApproveSentence(verdict.decision, verdict.actorRole));
     }
@@ -4585,6 +4624,165 @@ export class ProcurementService {
         });
       }
       throw err;
+    }
+  }
+
+  /**
+   * An approver declines a waiting price change, saying why — the founder,
+   * 2026-09-30, answer 6, verbatim pick "Decline + withdraw (Recommended)".
+   *
+   * WHO: someone whose rules cover the change (the same re-check the approval
+   * runs, `decrease_only` included) — the people who could have approved it
+   * are the people who may refuse it. No seal: nothing is applied and nothing
+   * is sent; the answer is a record, like a declined deal request (ADR 0175,
+   * round 6z). The reason is required and kept on the row; the person who
+   * raised it is told who declined it and why. Conditional on `waiting`, so a
+   * change approved a moment ago is not declined after the fact.
+   */
+  async declinePriceChange(
+    restaurantId: string,
+    orderId: string,
+    userId: string,
+    reason: string,
+  ): Promise<{ id: string; state: string; says: string }> {
+    const why = String(reason ?? "").trim();
+    if (!why) {
+      throw new BadRequestException(
+        "A decline has to say why; the person who raised the change reads it. Nothing was declined.",
+      );
+    }
+    const row = await this.readWaitingPriceChange(restaurantId, orderId);
+    if (!row) {
+      throw new NotFoundException("No price change is waiting on this order. Nothing was declined.");
+    }
+    const order = await this.readOrderForPriceChange(restaurantId, orderId);
+    const verdict = await this.priceRecheck(restaurantId, orderId, userId, this.figuresAfterChange(row, order), {
+      decreaseOnly: row.decrease_only === true,
+    });
+    if (!verdict.covered) {
+      throw new ForbiddenException(
+        this.mayNotApproveSentence(verdict.decision, verdict.actorRole).replace(
+          "may approve it",
+          "may approve or decline it",
+        ),
+      );
+    }
+    const closed = await this.closeDecidedPriceChange(row, "declined", userId, why);
+    const change = presentPriceChange(closed);
+    await this.auditPriceChange("order_price_change_declined", restaurantId, userId, change, why);
+    await this.tellRaiserOfPriceChange(restaurantId, change, userId, "declined", why);
+    return {
+      id: change.id,
+      state: change.state,
+      says: "Declined. The person who raised it was told why, and nothing about the order changed.",
+    };
+  }
+
+  /**
+   * The person who raised a waiting price change withdraws it (answer 6,
+   * 2026-09-30). Only them: an approver declines instead. Conditional on
+   * `waiting`; nothing about the order changes.
+   */
+  async withdrawPriceChange(
+    restaurantId: string,
+    orderId: string,
+    userId: string,
+  ): Promise<{ id: string; state: string; says: string }> {
+    const row = await this.readWaitingPriceChange(restaurantId, orderId);
+    if (!row) {
+      throw new NotFoundException("No price change is waiting on this order. Nothing was withdrawn.");
+    }
+    const me = asUuid(userId);
+    if (!me || row.raised_by !== me) {
+      throw new ForbiddenException(
+        "Only the person who raised this price change may withdraw it; someone who may approve it declines it instead. Nothing was withdrawn.",
+      );
+    }
+    const closed = await this.closeDecidedPriceChange(
+      row,
+      "withdrawn",
+      userId,
+      "Withdrawn by the person who raised it.",
+    );
+    const change = presentPriceChange(closed);
+    await this.auditPriceChange(
+      "order_price_change_withdrawn",
+      restaurantId,
+      userId,
+      change,
+      "Withdrawn by the person who raised it.",
+    );
+    return {
+      id: change.id,
+      state: change.state,
+      says: "Withdrawn. It no longer waits for anyone, and nothing about the order changed.",
+    };
+  }
+
+  /** Close ONE waiting change as declined or withdrawn, by a named person; conditional on `waiting`. */
+  private async closeDecidedPriceChange(
+    row: Record<string, any>,
+    state: "declined" | "withdrawn",
+    userId: string,
+    reason: string,
+  ): Promise<Record<string, any>> {
+    const { data, error } = await this.databaseService.supabase
+      .from("procurement_order_price_changes")
+      .update({
+        state,
+        decided_by: asUuid(userId),
+        decided_at: new Date().toISOString(),
+        closed_reason: reason.slice(0, 500),
+      })
+      .eq("id", row.id)
+      .eq("state", "waiting")
+      .select("*");
+    if (error) {
+      throw new InternalServerErrorException(
+        `The change could not be marked ${state} (${error.message}), so it still waits.`,
+      );
+    }
+    const hit = Array.isArray(data) ? data[0] : null;
+    if (!hit) {
+      throw new ConflictException(
+        "This price change was decided a moment ago by someone else, so it was not " + state + ".",
+      );
+    }
+    return { ...row, ...hit };
+  }
+
+  /** Tell the person who raised a change that it was declined, by whom and why. Best effort; the bell only. */
+  private async tellRaiserOfPriceChange(
+    restaurantId: string,
+    change: PriceChangeView,
+    deciderId: string,
+    how: "declined",
+    why: string,
+  ): Promise<void> {
+    const raiser = change.raisedBy;
+    if (!raiser || raiser === deciderId) return;
+    if (!this.notificationsService || !this.vendorSendAuthority) {
+      this.logger.warn(`A price change on order ${change.orderId} was ${how}, but its raiser cannot be told on this server.`);
+      return;
+    }
+    try {
+      const who = (await this.vendorSendAuthority.namesOf([deciderId])).get(deciderId) ?? "An approver";
+      await this.notificationsService.persistForRestaurant(
+        restaurantId,
+        {
+          type: "order_price_change_declined",
+          title: "Your price change was declined",
+          message: `${who} declined your change to an order's price: "${why}". The order's price did not change.`,
+          priority: "low",
+          actionUrl: `/orders?order=${change.orderId}`,
+          actionLabel: "Read the order",
+          groupKey: `order_price_change_declined:${change.id}`,
+          metadata: { orderId: change.orderId, priceChangeId: change.id, declinedBy: deciderId },
+        },
+        { onlyUserIds: [raiser] },
+      );
+    } catch (err: any) {
+      this.logger.warn(`A declined price change's raiser could not be told: ${err?.message}`);
     }
   }
 
@@ -10456,13 +10654,23 @@ export class ProcurementService {
       final_price: opts.finalPrice ?? current.final_price,
       quantity: opts.quantity ?? current.quantity,
     };
-    const verdict = await this.priceRecheck(restaurantId, orderId, userId, {
-      totalCost: (order as any).total_cost,
-      unitPrice: opts.finalPrice ?? effectiveUnitPrice(order as Record<string, unknown>),
-      quantity: dealFigures.quantity,
-      providerId: (order as any).provider_id ?? null,
-      inventoryId: (order as any).inventory_id ?? null,
-    });
+    const DEAL_FIGURES = ["negotiated_price", "final_price", "quantity"] as const;
+    const dealFrom = snapshotFigures(current, DEAL_FIGURES);
+    const dealTo = snapshotFigures(dealFigures, DEAL_FIGURES);
+    const decreaseOnly = isPureDecrease(dealFrom, dealTo);
+    const verdict = await this.priceRecheck(
+      restaurantId,
+      orderId,
+      userId,
+      {
+        totalCost: (order as any).total_cost,
+        unitPrice: opts.finalPrice ?? effectiveUnitPrice(order as Record<string, unknown>),
+        quantity: dealFigures.quantity,
+        providerId: (order as any).provider_id ?? null,
+        inventoryId: (order as any).inventory_id ?? null,
+      },
+      { decreaseOnly },
+    );
 
     // Spent BEFORE the first write: a refused seal means nothing was committed
     // and nothing was mailed. Spent on the wait too: the held deal is a proven
@@ -10482,14 +10690,14 @@ export class ProcurementService {
       // mechanism): nothing is committed, nothing is mailed, the vendor's
       // offer and any staff request stay open, and the terms are kept exactly
       // so the approval confirms what this person held over.
-      const DEAL_FIGURES = ["negotiated_price", "final_price", "quantity"] as const;
       const held = await this.proposePriceChange({
         restaurantId,
         orderId,
         userId,
         source: "confirm_deal",
-        from: snapshotFigures(current, DEAL_FIGURES),
-        to: snapshotFigures(dealFigures, DEAL_FIGURES),
+        from: dealFrom,
+        to: dealTo,
+        decreaseOnly,
         terms: {
           finalPrice: opts.finalPrice ?? null,
           quantity: opts.quantity ?? null,

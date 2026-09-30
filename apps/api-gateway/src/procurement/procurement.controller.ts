@@ -640,6 +640,48 @@ export class ProcurementController {
   }
 
   /**
+   * Decline the price change waiting on this order, saying why (founder,
+   * 2026-09-30, answer 6 "Decline + withdraw (Recommended)"). Someone whose
+   * rules cover the change may decline it; the person who raised it is told.
+   * Nothing about the order changes. The body is the deal request's decline
+   * body (a reason, 1-500 characters): the same shape, the same rule.
+   */
+  @Post("orders/:id/price-change/decline")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Decline the price change waiting on this order, with a reason" })
+  @ApiResponse({ status: 403, description: "The caller's approval rules do not cover the change." })
+  @ApiResponse({ status: 404, description: "No price change waits on this order." })
+  @ApiResponse({ status: 409, description: "Someone decided it a moment ago." })
+  async declinePriceChange(
+    @Param("id", new ParseUUIDPipe()) orderId: string,
+    @Body() body: DeclineDealRequestDto,
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ) {
+    return this.procurementService.declinePriceChange(
+      user.restaurantId,
+      orderId,
+      user.userId,
+      body.reason,
+    );
+  }
+
+  /**
+   * The person who raised the price change waiting on this order withdraws
+   * it (answer 6, 2026-09-30). Nobody else may; an approver declines instead.
+   */
+  @Post("orders/:id/price-change/withdraw")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Withdraw the price change you raised on this order" })
+  @ApiResponse({ status: 403, description: "The caller did not raise this change." })
+  @ApiResponse({ status: 404, description: "No price change waits on this order." })
+  async withdrawPriceChange(
+    @Param("id", new ParseUUIDPipe()) orderId: string,
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ) {
+    return this.procurementService.withdrawPriceChange(user.restaurantId, orderId, user.userId);
+  }
+
+  /**
    * Begin the hold. Returns a one-time seal, once.
    *
    * The token is returned HERE and nowhere else, and it is minted at the moment

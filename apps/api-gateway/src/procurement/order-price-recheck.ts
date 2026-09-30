@@ -127,6 +127,47 @@ export function snapshotFigures(
  * figure the change touches must still read what it read then, or the change
  * is a proposal against an order that no longer exists.
  */
+/**
+ * Does every figure the change moves go DOWN? The founder, 2026-09-30,
+ * answer 7, verbatim pick "Decreases skip new-vendor (Recommended)": every
+ * rule still runs on every price change, except that a pure decrease does not
+ * re-trigger `new_vendor`. Pure means at least one figure moved and every
+ * figure that moved has a known value before and after, lower after. A figure
+ * that goes up, a figure that appears from nothing (a first price), or a
+ * non-numeric move (a unit) makes it not pure. Figures present on both sides
+ * with the same value (a deal's full snapshot) are not moves.
+ */
+export function isPureDecrease(
+  from: Record<string, unknown>,
+  to: Record<string, unknown>,
+): boolean {
+  let moved = 0;
+  for (const column of Object.keys(to ?? {})) {
+    const before = finiteOrNull(from?.[column]);
+    const after = finiteOrNull(to[column]);
+    if (before !== null && after !== null && before === after) continue;
+    if (
+      before === null &&
+      after === null &&
+      (from?.[column] ?? null) === (to[column] ?? null)
+    )
+      continue;
+    if (before === null || after === null || !(after < before)) return false;
+    moved += 1;
+  }
+  return moved > 0;
+}
+
+/** The approval policy a re-check applies: all of it, except `new_vendor` for a pure decrease (answer 7). */
+export function policyForChange<T extends { rule: string }>(
+  policy: readonly T[],
+  decreaseOnly: boolean,
+): T[] {
+  return decreaseOnly
+    ? policy.filter((row) => row.rule !== "new_vendor")
+    : [...policy];
+}
+
 export function figuresMovedSince(
   current: Partial<Record<ChangeFigure, unknown>>,
   proposedFrom: Partial<Record<ChangeFigure, unknown>>,
@@ -288,6 +329,8 @@ export interface PriceChangeView {
   requiredRole: "owner" | "manager";
   firedBy: string[];
   reasons: string[];
+  /** Every figure it moves goes down, so `new_vendor` was not re-run (answer 7). */
+  decreaseOnly: boolean;
 }
 
 export function presentPriceChange(row: Record<string, any>): PriceChangeView {
@@ -307,6 +350,7 @@ export function presentPriceChange(row: Record<string, any>): PriceChangeView {
     requiredRole: row.required_role === "manager" ? "manager" : "owner",
     firedBy: Array.isArray(row.fired_by) ? row.fired_by : [],
     reasons: Array.isArray(row.reasons) ? row.reasons : [],
+    decreaseOnly: row.decrease_only === true,
   };
 }
 

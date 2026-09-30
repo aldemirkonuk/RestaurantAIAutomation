@@ -20,6 +20,9 @@
  * the roles, the seals and the send authority are the production code, and
  * only the mailbox and the bell are recorders.
  *
+ * [REVERT-FAILS@e892b6a85] marks a case added for the founder's answers 6
+ * and 7 (2026-09-30) that fails on e892b6a85, this PR's head before them.
+ *
  * [REVERT-FAILS] marks a case that fails on e9c6ffe89 (the head of #538,
  * where D3 was ruled and not built).
  */
@@ -338,14 +341,84 @@ describe("F4: any price change re-runs every rule", () => {
     });
   });
 
-  it("[REVERT-FAILS] new_vendor fires on any change to a first order with that vendor, a decrease included", async () => {
+  // The founder, 2026-09-30, answer 7, verbatim pick "Decreases skip
+  // new-vendor (Recommended)": every rule still runs on every price change,
+  // except that a pure decrease does not re-trigger new_vendor.
+  it("[REVERT-FAILS@e892b6a85] a pure decrease to a first order with that vendor does not re-trigger new_vendor", async () => {
     const t = build({ rules: [rule("new_vendor", { role: "owner" })] });
     await edit(t, MANAGER, { totalCost: 4000 });
+    expect(t.order().total_cost).toBe(4000);
+    expect(t.changes()).toHaveLength(0);
+  });
+
+  it("[REVERT-FAILS@e892b6a85] new_vendor still fires on an increase to a first order with that vendor", async () => {
+    const t = build({ rules: [rule("new_vendor", { role: "owner" })] });
+    await edit(t, MANAGER, { totalCost: 4300 });
     expect(t.order().total_cost).toBe(4200);
     expect(t.waiting()[0]).toMatchObject({
       fired_by: ["new_vendor"],
       required_role: "owner",
+      decrease_only: false,
     });
+  });
+
+  it("[REVERT-FAILS] one figure down and another up is not a decrease: new_vendor fires", async () => {
+    const t = build({ rules: [rule("new_vendor", { role: "owner" })] });
+    await edit(t, MANAGER, { totalCost: 4000, negotiatedPrice: 750 });
+    expect(t.order()).toMatchObject({
+      total_cost: 4200,
+      negotiated_price: 700,
+    });
+    expect(t.waiting()[0]).toMatchObject({ fired_by: ["new_vendor"] });
+  });
+
+  it("[REVERT-FAILS@e892b6a85] every other rule still runs on a decrease: over the ceiling it waits, recorded as a decrease", async () => {
+    const t = build({
+      rules: [CEILING_5000, rule("new_vendor", { role: "owner" })],
+      order: { total_cost: 8000 },
+    });
+    await edit(t, MANAGER, { totalCost: 7000 });
+    expect(t.order().total_cost).toBe(8000);
+    expect(t.waiting()[0]).toMatchObject({
+      fired_by: ["manager_ceiling"],
+      decrease_only: true,
+    });
+  });
+
+  it("[REVERT-FAILS@e892b6a85] the approver's check honours a held decrease: new_vendor is skipped for them too", async () => {
+    // A held decrease that needs a manager (raised, say, by a grantee through
+    // confirm-deal), on a first order with a new_vendor rule for owners. The
+    // manager may approve it only because answer 7 skips new_vendor for a
+    // pure decrease on BOTH sides of the change.
+    const t = build({ rules: [rule("new_vendor", { role: "owner" })] });
+    const heldRow = (decreaseOnly: boolean) => ({
+      id: "chg-1",
+      restaurant_id: HOUSE,
+      order_id: ORDER,
+      source: "order_edit",
+      raised_by: STAFF,
+      raised_at: "2026-09-30T00:00:00Z",
+      figures_from: { total_cost: 4200 },
+      figures_to: { total_cost: 4000 },
+      terms: null,
+      required_role: "manager",
+      fired_by: [],
+      reasons: [],
+      decrease_only: decreaseOnly,
+      state: "waiting",
+    });
+    t.db.tables.procurement_order_price_changes = [heldRow(true)];
+    const asManager = await t.service.priceChangeReadout(HOUSE, ORDER, MANAGER);
+    expect(asManager.mayApprove).toBe(true);
+    await expect(
+      t.service.issuePriceChangeSeal(HOUSE, ORDER, MANAGER),
+    ).resolves.toMatchObject({
+      act: "approve_price_change",
+    });
+    t.db.tables.procurement_order_price_changes = [heldRow(false)];
+    expect(
+      (await t.service.priceChangeReadout(HOUSE, ORDER, MANAGER)).mayApprove,
+    ).toBe(false);
   });
 
   it("new_vendor does not fire once the house has another order with that vendor", async () => {
@@ -741,6 +814,61 @@ describe("F2: confirming a deal runs the approval rules for the confirming perso
     ).rejects.toThrow(/No price change is waiting/);
   });
 
+  it("[REVERT-FAILS@e892b6a85] answer 7: a deal that only lowers an approved first order's price is not re-held for new_vendor", async () => {
+    const t = build({
+      status: S.APPROVED,
+      order: {
+        quoted_price: 200,
+        negotiated_price: 200,
+        final_price: 200,
+        total_cost: 1200,
+      },
+      rules: [rule("new_vendor", { role: "owner" })],
+    });
+    const lower = { finalPrice: 180, quantity: 6, sendConfirmation: false };
+    const { challenge } = await t.service.issueConfirmDealSeal(
+      HOUSE,
+      ORDER,
+      MANAGER,
+      lower,
+    );
+    const out = await t.service.confirmDeal(
+      HOUSE,
+      ORDER,
+      MANAGER,
+      lower,
+      challenge,
+    );
+    expect(out.confirmed).toBe(true);
+    expect(t.changes()).toHaveLength(0);
+  });
+
+  it("[REVERT-FAILS@e892b6a85] answer 7: a deal that sets a first price is not a decrease, so new_vendor still holds it", async () => {
+    const t = build({
+      status: S.NEGOTIATING,
+      order: { quoted_price: 200, negotiated_price: null, total_cost: 1200 },
+      rules: [rule("new_vendor", { role: "owner" })],
+    });
+    const { challenge } = await t.service.issueConfirmDealSeal(
+      HOUSE,
+      ORDER,
+      MANAGER,
+      terms,
+    );
+    const out = await t.service.confirmDeal(
+      HOUSE,
+      ORDER,
+      MANAGER,
+      terms,
+      challenge,
+    );
+    expect(out.confirmed).toBe(false);
+    expect(t.waiting()[0]).toMatchObject({
+      fired_by: ["new_vendor"],
+      decrease_only: false,
+    });
+  });
+
   it("[REVERT-FAILS] the ruling reaches an approved order too: a manager re-confirming it higher waits", async () => {
     const t = build({
       status: S.APPROVED,
@@ -880,6 +1008,26 @@ describe("F4: a re-quote merged into an approved order is a price change", () =>
     expect(t.order()).toMatchObject({ quantity: 6, total_cost: 4200 });
   });
 
+  it("[REVERT-FAILS@e892b6a85] answer 7: a re-quote that only lowers an approved first order's figures merges without new_vendor", async () => {
+    const t = mergeHouse(S.APPROVED);
+    t.db.tables.restaurant_approval_thresholds = [
+      rule("new_vendor", { role: "owner" }),
+    ];
+    t.order().final_price = 700;
+    const smaller = {
+      inventoryId: "inv-1",
+      providerId: "prov-1",
+      quantity: 5,
+      finalPrice: 700,
+    } as any;
+    const out = await t.service.createOrder(HOUSE, MANAGER, smaller, {
+      source: "manual",
+    });
+    expect(out.pendingPriceChange).toBeUndefined();
+    expect(t.order()).toMatchObject({ quantity: 5, total_cost: 3500 });
+    expect(t.changes()).toHaveLength(0);
+  });
+
   it("the merge into an order not yet approved is unchanged: it applies", async () => {
     const t = mergeHouse(S.NEGOTIATING);
     const out = await t.service.createOrder(HOUSE, MANAGER, requote, {
@@ -888,5 +1036,89 @@ describe("F4: a re-quote merged into an approved order is a price change", () =>
     expect(out.pendingPriceChange).toBeUndefined();
     expect(t.order()).toMatchObject({ quantity: 10, total_cost: 7000 });
     expect(t.changes()).toHaveLength(0);
+  });
+});
+
+// ===========================================================================
+// Answer 6 (founder, 2026-09-30): "Decline + withdraw (Recommended)"
+// ===========================================================================
+
+describe("answer 6: an approver declines a held change, and its raiser withdraws it", () => {
+  async function held() {
+    const t = build();
+    await edit(t, MANAGER, { totalCost: 6000 });
+    return t;
+  }
+
+  it("[REVERT-FAILS@e892b6a85] the owner declines with a reason: closed on the record, the raiser told, the order unchanged", async () => {
+    const t = await held();
+    const out = await t.service.declinePriceChange(
+      HOUSE,
+      ORDER,
+      OWNER,
+      "  The vendor has not agreed to this.  ",
+    );
+    expect(out.state).toBe("declined");
+    expect(t.order().total_cost).toBe(4200);
+    expect(t.changes()[0]).toMatchObject({
+      state: "declined",
+      decided_by: OWNER,
+      closed_reason: "The vendor has not agreed to this.",
+    });
+    expect(t.audits("order_price_change_declined")).toHaveLength(1);
+    const told = t.bell.persistForRestaurant.calls.find(
+      (c: any[]) => c[1]?.type === "order_price_change_declined",
+    );
+    expect(told?.[2].onlyUserIds).toEqual([MANAGER]);
+    expect(told?.[1].message).toMatch(/The vendor has not agreed to this\./);
+    await expect(
+      t.service.issuePriceChangeSeal(HOUSE, ORDER, OWNER),
+    ).rejects.toThrow(/No price change is waiting/);
+  });
+
+  it("[REVERT-FAILS@e892b6a85] a decline must say why", async () => {
+    const t = await held();
+    await expect(
+      t.service.declinePriceChange(HOUSE, ORDER, OWNER, "   "),
+    ).rejects.toThrow(/has to say why/);
+    expect(t.waiting()).toHaveLength(1);
+  });
+
+  it("[REVERT-FAILS@e892b6a85] someone whose rules do not cover the change cannot decline it", async () => {
+    const t = await held();
+    await expect(
+      t.service.declinePriceChange(HOUSE, ORDER, MANAGER, "no"),
+    ).rejects.toThrow(/only an owner may approve or decline it/);
+    expect(t.waiting()).toHaveLength(1);
+  });
+
+  it("[REVERT-FAILS@e892b6a85] the raiser withdraws it; nobody else may, not even an owner", async () => {
+    const t = await held();
+    await expect(
+      t.service.withdrawPriceChange(HOUSE, ORDER, OWNER),
+    ).rejects.toThrow(/Only the person who raised/);
+    expect(t.waiting()).toHaveLength(1);
+    const out = await t.service.withdrawPriceChange(HOUSE, ORDER, MANAGER);
+    expect(out.state).toBe("withdrawn");
+    expect(t.changes()[0]).toMatchObject({
+      state: "withdrawn",
+      decided_by: MANAGER,
+    });
+    expect(t.audits("order_price_change_withdrawn")).toHaveLength(1);
+    expect(t.order().total_cost).toBe(4200);
+  });
+
+  it("[REVERT-FAILS@e892b6a85] a change decided a moment ago is not declined after the fact", async () => {
+    const t = await held();
+    const { challenge } = await t.service.issuePriceChangeSeal(
+      HOUSE,
+      ORDER,
+      OWNER,
+    );
+    await t.service.approvePriceChange(HOUSE, ORDER, OWNER, challenge);
+    await expect(
+      t.service.declinePriceChange(HOUSE, ORDER, OWNER, "late"),
+    ).rejects.toThrow(/No price change is waiting/);
+    expect(t.changes()[0]).toMatchObject({ state: "approved" });
   });
 });

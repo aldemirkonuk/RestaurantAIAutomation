@@ -66,7 +66,7 @@ An 817-route audit at 5a20d774b found two live holes. Both were re-verified at c
       - **The dedup merge in `POST orders`** (found by #538's audit, relayed by the coordinator). A re-quote folded into an APPROVED order is re-checked for the requester. The re-check runs after D2's role gate on the fold, so staff are refused as before and never hold a change. Over their rules the fold is held as an `order_merge` change that keeps the request. Approving it replays the request into that order and no other; if that order has closed, nothing is merged and no new order is made.
       - **The vendor's word on an APPROVED order** (`syncOrderState` wrote the vendor's price over the negotiated one with no gate). It is now written only within the rules. A decline is exempt, because it takes the order out of approval.
       - **Confirm-deal**, above.
-    - **Builder's readings, each an open question for the founder (not decided by the builder, only built one way):**
+    - **Builder's readings, each an open question for the founder (not decided by the builder, only built one way):** **[Answered by the founder, 2026-09-30; see "the seven answers" below.]**
       - (a) The ceiling on a re-check tests the **effective total**, `max(total_cost, unit price × quantity)`. Confirm-deal never writes `total_cost`, and a PATCH may move the unit price alone, so `total_cost` alone would leave both around the ceiling. The product is unit-naive, as confirm-deal's grant limit already is: an over-statement can only make a change wait, never let one through. The approve act still tests `total_cost` alone.
       - (b) `price_verified` is a verdict, not a figure. Flipping it alone re-runs nothing.
       - (c) The autonomy is not "within" a rule it cannot test. A person's approval passes an untestable rule; the autonomy's does not.
@@ -77,9 +77,24 @@ An 817-route audit at 5a20d774b found two live holes. Both were re-verified at c
       - Refusing an over-limit confirm-deal with a 403 and leaving the proposal open: the confirmer's terms would be lost.
       - Parking at APPROVAL_NEEDED: ruled out by F1, and unsafe per the adversarial findings above.
     - **Does any rule make a legitimate flow impossible (the F4 instruction)?** Not while the house has an owner: an owner satisfies every rule, so every held change can be approved. Three cases are hard but possible, and they are reported rather than softened:
-      - With `new_vendor` set to owner, every price correction to a first order with that vendor, a decrease included, waits for an owner.
+      - With `new_vendor` set to owner, every price correction to a first order with that vendor, a decrease included, waits for an owner. **[Superseded 2026-09-30 by answer 7: a pure decrease no longer re-triggers `new_vendor`.]**
       - With the effective total, a stale `total_cost` above a manager's ceiling makes even a cheaper deal on that order wait for an owner.
       - A house whose rule requires an owner and which has no active owner can never approve the held change. It cannot approve such an order today either.
+    - **[The seven answers, 2026-09-30 — the founder's verbatim picks on the questions above, relayed by the coordinating session.]**
+      1. *"Both use the larger (Recommended)"*: the approve act (`POST orders/:id/approve`, `assertApprovalAllowed`) must test the same effective total as the re-check, `max(total_cost, unit price × quantity)`. **Built in the follow-up PR stacked on #541, not in #541.** It needs a sixteenth file (`order-approval-gate.spec.ts`, whose fixtures price an order above its own `total_cost`), and #541 is at the 15-file cap.
+      2. *"Not a price change (Recommended)"*: `price_verified` alone re-runs nothing, as built.
+      3. *"Fail closed (Recommended)"*: the autonomy is not "within" a rule it cannot test, as built.
+      4. *"Log only, as built (Recommended)"*: after delivery, a manager's price edit still applies directly with D2's paper.
+      5. *"Stay negotiating (Recommended)"*: F3 as built, with the offer waiting on its deal proposal.
+      6. *"Decline + withdraw (Recommended)"*: built in #541. Two routes are new:
+         - `POST orders/:id/price-change/decline` takes a reason of 1 to 500 characters (the deal request's decline body). Someone whose rules cover the change (the approval's own re-check) may decline it. There is no seal, because nothing is applied or sent. The raiser is told who declined it and why on the bell.
+         - `POST orders/:id/price-change/withdraw` is for the person who raised the change only; an approver declines instead.
+         - Both are conditional on `waiting`, filed (`order_price_change_declined` / `_withdrawn`), and closed on the row as `declined` / `withdrawn` with who, when and why. The migration's state CHECK carries both.
+      7. *"Decreases skip new-vendor (Recommended)"*: every rule still runs on every price change, except that a pure decrease does not re-trigger `new_vendor`; stale totals still wait. Built in #541:
+         - `isPureDecrease` means at least one figure moved, and every moved figure has a known value before and after, lower after. A first price, an increase beside a decrease, or a unit change is not pure.
+         - `policyForChange` drops only `new_vendor` from the policy for such a change.
+         - The row records `decrease_only`, and the approver's check, the readout and the decline honour it.
+         - For the POST orders fold, "pure" is judged on everything the fold moves (D2's `mergeMoves`, units and bottles included).
     - **Found and fixed on the way:** the responder's order read never selected `restaurant_id`, so its "vendor declined" notice went to restaurant `""` and reached nobody. The read now selects it (with `total_cost`, `provider_id` and `inventory_id`, which the F3 gate needs).
 - **D4. The two alert relays are closed.**
   - The handlers go, along with `resolveAlertTenant` and `DailySummaryDto`.
@@ -91,7 +106,7 @@ An 817-route audit at 5a20d774b found two live holes. Both were re-verified at c
 - **Easier.** An approval, a cancellation, a delivery or a placement can no longer be asserted through an edit. A price change, through the PATCH or through a fold, now names its author when the log can be written.
 - **Given up.** Nobody can set an order's status by hand. If a manual "placed with the vendor" act is wanted again, it needs its own act and its own rule. Staff can no longer correct a price; a manager or an owner does.
 - **Contract change.** `PATCH` with any `status` is now a 422, and a price field from staff is a 403. No client sends either. A staff `POST /procurement/orders` that would reprice, or change the quantity of, an open order past PENDING is now a 403 naming that order, where it used to rewrite it.
-- **[D3 amendment, 2026-09-30] Contract change.** A price edit on an approved order that the editor's rules do not cover answers **202** with `pendingPriceChange`, and no figure moves. Confirm-deal over the confirmer's rules answers 202 with `confirmed: false`. `POST orders` answers 202 when its merge into an approved order is held. Three routes are new: `GET orders/:id/price-change`, `POST orders/:id/price-change-seal-challenge` and `POST orders/:id/price-change/approve`. **No web surface shows or approves a held change yet.** No web client sends a price PATCH or calls confirm-deal (`git grep`, 2026-09-30), so no web flow creates one. The order sheet's "see and approve" is a follow-up PR.
+- **[D3 amendment, 2026-09-30] Contract change.** A price edit on an approved order that the editor's rules do not cover answers **202** with `pendingPriceChange`, and no figure moves. Confirm-deal over the confirmer's rules answers 202 with `confirmed: false`. `POST orders` answers 202 when its merge into an approved order is held. Three routes are new: `GET orders/:id/price-change`, `POST orders/:id/price-change-seal-challenge` and `POST orders/:id/price-change/approve`. **[Answer 6, 2026-09-30: two more, `POST orders/:id/price-change/decline` and `/withdraw`.]** **No web surface shows or approves a held change yet.** No web client sends a price PATCH or calls confirm-deal (`git grep`, 2026-09-30), so no web flow creates one. The order sheet's "see and approve" is a follow-up PR.
 - **Not covered** (`tech-debt.d/2026-09-29-fix-order-approval-and-alert-relays.md`):
   - `rejectionReason`, `discrepancyNotes` and `invoiceImageUrl` are still writable by any member.
   - The web's order-edit helpers are dead.
@@ -110,13 +125,17 @@ An 817-route audit at 5a20d774b found two live holes. Both were re-verified at c
 - **Claim `SEC-2026-09-29-ORDER-PATCH-AND-ALERT-RELAYS`:** static, red on c47fd8a01, and every one of its tripwire checks has been mutated and caught.
 
 - **[D3 amendment, 2026-09-30] The build:**
-  - `order-price-recheck.spec.ts`: 39 cases over the real thresholds, organizations, seal, send-authority and requests services, on an in-memory store. 29 are marked `[REVERT-FAILS]`, and all 29 fail on e9c6ffe89 (#538's head after its audit fixes). One unmarked case also fails there, only because that head's `readOrderMoneyBefore` returned the row object the store aliases.
+  - `order-price-recheck.spec.ts`: 51 cases over the real thresholds, organizations, seal, send-authority and requests services, on an in-memory store.
+    - 29 are marked `[REVERT-FAILS]`, and all 29 fail on e9c6ffe89 (#538's head after its audit fixes). One unmarked case also fails there, only because that head's `readOrderMoneyBefore` returned the row object the store aliases.
+    - The 12 marked `[REVERT-FAILS@e892b6a85]` cover answers 6 and 7. All 12 fail on e892b6a85, #541's head before those answers.
   - `inbound-responder.service.spec.ts`: 9 new F3/F4 cases; the 6 marked `[REVERT-FAILS]` fail on e9c6ffe89 and the 3 unmarked pass there.
   - `order-patch-is-not-a-side-door.spec.ts` (#538's) now supplies an empty, readable policy: its fold into an APPROVED order re-runs the rules, which refuse when unreadable.
-  - 22 of 22 mutations killed: every gate, the stale check, the seal's change id, the supersede, the un-claim, the merge and its place after the D2 role gate, the autonomy's four refusals, and the 202.
-  - PGlite: the full corpus applies (282 files); a control build without the migration has no table; the table is locked down; every CHECK, the one-waiting index and both `public.users` keys bite; the file re-runs cleanly.
+  - 31 of 31 mutations killed:
+    - every gate, the stale check, the seal's change id, the supersede, the un-claim, the merge and its place after the D2 role gate, the autonomy's four refusals, and the 202;
+    - for answers 6 and 7: the new_vendor skip, the two ways a change is not pure, the decline's rules, its reason and its message to the raiser, the raiser-only withdraw, the recorded decrease flag, and the approver side of the flag.
+  - PGlite: 30 of 30 checks pass. The full corpus applies (282 files); a control build without the migration has no table; the table is locked down; every CHECK (the declined and withdrawn states included), the one-waiting index and both `public.users` keys bite; `decrease_only` defaults to false; the file re-runs cleanly.
   - `check_gateway_boots.sh` passes (with `@simplewebauthn/server` supplied on `NODE_PATH`, since it is not installed in the worktree), and in the booted app the responder's `ModuleRef` resolves the same `ApprovalThresholdsService` singleton.
-  - Claim `SEC-2026-09-30-ORDER-PRICE-RECHECK` (`claims.d/fix-order-price-recheck.jsonl`) is static. It gives 31 reasons on e9c6ffe89, and 23 of 23 tripwire mutations were caught.
+  - Claim `SEC-2026-09-30-ORDER-PRICE-RECHECK` (`claims.d/fix-order-price-recheck.jsonl`) is static. It gives 39 reasons on e9c6ffe89 and 13 on e892b6a85, and 32 of 32 tripwire mutations were caught.
 
 ## Review trail
 
@@ -128,3 +147,5 @@ An 817-route audit at 5a20d774b found two live holes. Both were re-verified at c
 | 2026-09-30 | Audit planner, at d033412f5 | The merge gate read the status at lookup and wrote by id alone, a stale-status race. The write is now conditional on the status and figures it gated on (409 when they moved), and the paper is filed before the line |
 | 2026-09-30 | Aldemir (founder), relayed by the coordinating session | F1 "Pending price change (Recommended)", F2 "Yes, gate it (Recommended)", F3 "Yes, wait (Recommended)", F4 "Any price change" |
 | 2026-09-30 | Claude (Opus 5.5), lane C builder, `fix/order-price-recheck` | D3 built as amended above; the POST orders merge added to F4 on the coordinator's relay of #538's audit; builder's readings (a)–(d) and F3's option filed as open questions |
+| 2026-09-30 | Aldemir (founder), relayed by the coordinating session | The seven answers: "Both use the larger", "Not a price change", "Fail closed", "Log only, as built", "Stay negotiating", "Decline + withdraw", "Decreases skip new-vendor" (all "(Recommended)") |
+| 2026-09-30 | Claude (Opus 5.5), lane C builder, `fix/order-price-recheck` | Answers 6 and 7 built in #541; answer 1 in the follow-up PR stacked on it, for the file cap |

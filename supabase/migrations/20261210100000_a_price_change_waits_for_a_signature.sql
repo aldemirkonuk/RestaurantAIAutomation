@@ -42,9 +42,17 @@
 --                   source. NULL for order_edit, whose figures ARE the change.
 --   required_role   who has to approve it (owner | manager), from the rules
 --   fired_by        which rules fired; reasons: one sentence per rule
---   state           waiting -> approved | superseded | stale
---   decided_*       who approved it (approved), or when it was closed
---   closed_reason   why a superseded or stale row stopped waiting
+--   decrease_only   every figure the change moves goes DOWN (founder,
+--                   2026-09-30, answer 7 "Decreases skip new-vendor
+--                   (Recommended)": such a change does not re-trigger the
+--                   new_vendor rule; every other rule still runs)
+--   state           waiting -> approved | declined | withdrawn | superseded
+--                   | stale (answer 6 "Decline + withdraw (Recommended)":
+--                   an approver declines with a reason, the person who
+--                   raised it withdraws it)
+--   decided_*       who approved, declined or withdrew it, and when; or
+--                   when it was closed
+--   closed_reason   why a row stopped waiting without being approved
 --
 -- One waiting change per order: a later proposal supersedes the waiting one
 -- in the same request (the code closes it first), and an applied price change
@@ -69,6 +77,7 @@ CREATE TABLE IF NOT EXISTS public.procurement_order_price_changes (
   required_role TEXT NOT NULL,
   fired_by TEXT[] NOT NULL DEFAULT '{}',
   reasons TEXT[] NOT NULL DEFAULT '{}',
+  decrease_only BOOLEAN NOT NULL DEFAULT false,
   state TEXT NOT NULL DEFAULT 'waiting',
   decided_by UUID REFERENCES public.users(user_id) ON DELETE SET NULL,
   decided_at TIMESTAMPTZ,
@@ -76,7 +85,7 @@ CREATE TABLE IF NOT EXISTS public.procurement_order_price_changes (
   CONSTRAINT procurement_order_price_changes_source_known
     CHECK (source IN ('order_edit', 'confirm_deal', 'order_merge')),
   CONSTRAINT procurement_order_price_changes_state_known
-    CHECK (state IN ('waiting', 'approved', 'superseded', 'stale')),
+    CHECK (state IN ('waiting', 'approved', 'declined', 'withdrawn', 'superseded', 'stale')),
   CONSTRAINT procurement_order_price_changes_role_known
     CHECK (required_role IN ('owner', 'manager')),
   CONSTRAINT procurement_order_price_changes_figures_are_objects
@@ -86,7 +95,7 @@ CREATE TABLE IF NOT EXISTS public.procurement_order_price_changes (
   CONSTRAINT procurement_order_price_changes_decided_when_not_waiting
     CHECK ((state = 'waiting') = (decided_at IS NULL)),
   CONSTRAINT procurement_order_price_changes_close_says_why
-    CHECK ((state IN ('superseded', 'stale')) = (closed_reason IS NOT NULL))
+    CHECK ((state IN ('declined', 'withdrawn', 'superseded', 'stale')) = (closed_reason IS NOT NULL))
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS uniq_procurement_order_price_changes_one_waiting

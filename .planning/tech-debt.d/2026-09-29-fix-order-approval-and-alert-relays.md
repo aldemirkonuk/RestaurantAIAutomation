@@ -30,7 +30,12 @@ The two bypasses in F2 and F3 are also defects in their own right, and they are 
 - The vendor's word no longer rewrites an approved order's price over the rules.
 - The two bypasses above are closed. Claim `SEC-2026-09-30-ORDER-PRICE-RECHECK`.
 
-**Still open from item 1, for the founder** (builder's readings, built one way and listed in the ADR):
+**Still open from item 1, for the founder** (builder's readings, built one way and listed in the ADR): **[Answered 2026-09-30, verbatim picks, recorded in ADR 0244 D3 "the seven answers":]**
+- (1) "Both use the larger (Recommended)": the approve act must also test the effective total. This is built in the follow-up PR stacked on #541, because of the file cap.
+- (2) "Not a price change (Recommended)", (3) "Fail closed (Recommended)", (4) "Log only, as built (Recommended)" and (5) "Stay negotiating (Recommended)" stand as built.
+- (6) "Decline + withdraw (Recommended)" and (7) "Decreases skip new-vendor (Recommended)" are built in #541.
+
+The readings as they were first filed:
 - the ceiling on a re-check tests `max(total_cost, unit price × quantity)`, while the approve act still tests `total_cost` alone;
 - `price_verified` alone is not a price change;
 - the autonomy is not "within" a rule it cannot test;
@@ -38,7 +43,7 @@ The two bypasses in F2 and F3 are also defects in their own right, and they are 
 
 **Still open from item 1, for the build** (follow-ups):
 - **No web surface shows or approves a held change.** The routes exist, and no web flow creates a held change today (no client sends a price PATCH or calls confirm-deal).
-- A held change can be superseded, but not declined or withdrawn.
+- A held change can be superseded, but not declined or withdrawn. **[Built 2026-09-30, answer 6: `price-change/decline` (an approver, with a reason; the raiser is told) and `price-change/withdraw` (the raiser only).]**
 - Three older defects are near this one:
   - `dealTarget` has no status filter, so confirm-deal on a CONFIRMED order would rewind it to APPROVED (the held deal's approval refuses that move);
   - `confirmDeal` and the autonomy accept still reserve no stock;
