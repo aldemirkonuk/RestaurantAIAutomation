@@ -48,6 +48,7 @@ import { InventoryLedgerService } from "../inventory-ledger/inventory-ledger.ser
 import { OrchestratorService } from "../common/orchestrator/orchestrator.service";
 import { SealChallengeService } from "../common/seal/seal-challenge.service";
 import { OrganizationsService } from "../organizations/organizations.service";
+import { ApprovalThresholdsService } from "../settings/approval-thresholds.service";
 import { ProcurementOrderStatus as S } from "./dto/procurement.dto";
 import { ProcurementController } from "./procurement.controller";
 import { ProcurementService } from "./procurement.service";
@@ -319,9 +320,27 @@ beforeAll(async () => {
         provide: SealChallengeService,
         useValue: new SealChallengeService(db as any),
       },
+      // A house that has set no approval rule (ADR 0244 D3): since
+      // 2026-09-30 a price change on an approved order, by the PATCH or by a
+      // fold, re-runs the rules, and refuses when it cannot read them. An
+      // empty, readable policy fires nothing, so these cases stay about D1/D2;
+      // the rules themselves are `order-price-recheck.spec.ts`'s.
+      {
+        provide: ApprovalThresholdsService,
+        useValue: {
+          read: async (restaurantId: string) => ({
+            restaurantId,
+            thresholds: [],
+            policyEmpty: true,
+            readable: true,
+            reason: null,
+          }),
+        },
+      },
       {
         provide: OrganizationsService,
         useValue: {
+          resolveRestaurantRole: async (userId: string) => ROLE[userId] ?? null,
           assertCanManageRestaurant: async (
             userId: string,
             _restaurantId: string,

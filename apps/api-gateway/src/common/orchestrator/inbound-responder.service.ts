@@ -1,5 +1,20 @@
 import { Injectable, Logger, Optional } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
+import { ModuleRef } from "@nestjs/core";
+// ADR 0244 D3 F3: the autonomy's accept runs the house's approval rules. The
+// SERVICE class is imported as a lookup token only — resolved through
+// `ModuleRef` at the moment of the accept, so `OrchestratorModule` gains no
+// module edge to `SettingsModule` (whose AuthModule import closes a cycle back
+// through CommunicationsModule to here).
+import { ApprovalThresholdsService } from "../../settings/approval-thresholds.service";
+import { decideApproval } from "../../settings/approval-thresholds";
+import {
+  effectiveTotal,
+  finiteOrNull,
+  isPriceRecheckStatus,
+  readIsFirstOrderToVendor,
+  readPricePremiumPct,
+} from "../../procurement/order-price-recheck";
 import { DatabaseService } from "../../database/database.service";
 import {
   ModelClientService,
@@ -195,6 +210,12 @@ export class InboundResponderService {
     private readonly websocketGateway: WebsocketGateway,
     private readonly nfVerdicts: NfVerdictService,
     @Optional() private readonly senderReputation?: SenderReputationService,
+    // How the autonomy reaches the house's approval rules (ADR 0244 D3 F3).
+    // Absent (a positional spec, a wiring fault) means the rules cannot be
+    // consulted, and the autonomy then approves NOTHING: the offer waits for
+    // a person. A gate that opens when its own dependency is missing is not a
+    // gate.
+    @Optional() private readonly moduleRef?: ModuleRef,
   ) {}
 
   /**
@@ -241,7 +262,8 @@ export class InboundResponderService {
         .from("procurement_orders")
         .select(
           `
-          id, order_number, quantity, quoted_price, negotiated_price, final_price, status,
+          id, restaurant_id, order_number, quantity, quoted_price, negotiated_price, final_price, status,
+          total_cost, provider_id, inventory_id,
           ai_autonomy_paused, negotiation_attempts,
           providers!left(name, contact_email, contact_first_name, primary_contact),
           restaurant_inventory:inventory_id(wine_name, target_price)
@@ -1201,7 +1223,34 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
         last_negotiation_at: new Date().toISOString(),
         negotiation_attempts: (this.toNum(order.negotiation_attempts) ?? 0) + 1,
       };
-      if (vendorPrice != null) update.negotiated_price = vendorPrice;
+      // ADR 0244 D3 F4 (founder, 2026-09-30: "Any price change"). On an order
+      // that is sealed and not yet delivered, the vendor's word moving its
+      // negotiated price IS a price change on an approved order, and the
+      // autonomy that would write it holds no role — so it is written only
+      // within the house's rules, like the accept below (F3). Otherwise the
+      // price stays what was approved and the vendor's figure stays on the
+      // inbound row and the deal proposal, for a person to confirm. A decline
+      // is exempt: it takes the order out of approval (back to NEGOTIATING),
+      // and whoever approves it again is gated then.
+      if (vendorPrice != null) {
+        const movesAnApprovedPrice =
+          isPriceRecheckStatus(currentStatus) &&
+          !isDecline &&
+          finiteOrNull(order.negotiated_price) !== vendorPrice;
+        if (!movesAnApprovedPrice) {
+          update.negotiated_price = vendorPrice;
+        } else {
+          const gate = await this.autonomyWithinRules(order, vendorPrice, orderedQty);
+          if (gate.within) {
+            update.negotiated_price = vendorPrice;
+          } else {
+            this.logger.log(
+              `Order ${order.id}: the vendor's price ${vendorPrice} was not written over the approved ` +
+                `price, because ${gate.reason}. It waits for a person on the deal proposal.`,
+            );
+          }
+        }
+      }
 
       /** The agreed price this sync commits to, if any. Written to the LINE below. */
       let agreedPriceToWrite: number | null = null;
@@ -1283,10 +1332,40 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
         }
         // Otherwise stay APPROVED — a mismatched/unclear receipt needs manager review.
       } else if (accepted && autonomyFull && vendorPrice != null) {
-        // Vendor accepted our terms and full autonomy is on: we agree the deal, but
-        // this is APPROVED (not yet placed) until a matching receipt arrives.
-        update.status = "APPROVED";
-        agreedPriceToWrite = vendorPrice;
+        // ADR 0244 D3 F3 (founder, 2026-09-30: "Yes, wait"). The autonomy may
+        // approve only WITHIN the house's approval rules: it holds no role, so
+        // any rule that fires — or cannot be tested — on the vendor's figures
+        // means a person has to sign. Then the order does what it does with
+        // autonomy off: it is in negotiation (a letter has left, so never
+        // APPROVAL_NEEDED, which its readers take as "the vendor never saw
+        // it"), the vendor's price is recorded as the negotiated one, and the
+        // offer waits on the deal proposal for a person's sealed confirm-deal —
+        // which runs the same rules for that person (F2).
+        const gate = await this.autonomyWithinRules(order, vendorPrice, orderedQty);
+        if (gate.within) {
+          // Vendor accepted our terms and full autonomy is on: we agree the deal, but
+          // this is APPROVED (not yet placed) until a matching receipt arrives.
+          update.status = "APPROVED";
+          agreedPriceToWrite = vendorPrice;
+        } else {
+          if (currentStatus === "PENDING" || currentStatus === "APPROVAL_NEEDED") {
+            update.status = "NEGOTIATING";
+          }
+          this.logger.log(
+            `Order ${order.id}: the vendor accepted at ${vendorPrice}, and the autonomy did not ` +
+              `approve it because ${gate.reason}. It waits for a person to confirm the deal.`,
+          );
+          void this.persistManagerNotification(String(order.restaurant_id ?? ""), {
+            type: "vendor_reply",
+            title: "A vendor accepted — a person has to confirm it",
+            message:
+              `The vendor accepted at ${vendorPrice}. The AI did not approve the order, because ${gate.reason}. ` +
+              "It stays in negotiation until someone whose approval rules cover it confirms the deal.",
+            priority: "high",
+            actionUrl: `/orders?order=${order.id}`,
+            metadata: { order_id: order.id, vendor_price: vendorPrice, autonomy_within_rules: false },
+          });
+        }
       } else if (
         currentStatus === "PENDING" ||
         currentStatus === "APPROVAL_NEEDED"
@@ -1356,6 +1435,75 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
       this.logger.warn(
         `syncOrderState failed for order ${order.id}: ${e?.message}`,
       );
+    }
+  }
+
+  /**
+   * May the autonomy act on this vendor price without a person? (ADR 0244 D3
+   * F3/F4.) The same house rules and the same pure decision the approve act
+   * uses (`decideApproval`), over the vendor's figures: the larger of the
+   * order's total and the vendor's price times the quantity, the first-order
+   * fact and the premium over the last price paid, read by the one shared
+   * reader (`order-price-recheck.ts`).
+   *
+   * The autonomy holds no role, so "within the rules" means no rule fires —
+   * AND none is untestable: a person's approval passes an untestable rule
+   * (`assertApprovalAllowed`), but an agent cannot claim to be within a rule
+   * nobody could test (builder's reading, recorded in ADR 0244 D3). Every
+   * failure to consult the rules answers "not within", with the reason.
+   * Never throws.
+   */
+  private async autonomyWithinRules(
+    order: any,
+    vendorPrice: number,
+    quantity: number,
+  ): Promise<{ within: boolean; reason: string }> {
+    try {
+      const restaurantId = String(order?.restaurant_id ?? "");
+      if (!restaurantId) {
+        return { within: false, reason: "the order's house could not be read" };
+      }
+      let thresholds: ApprovalThresholdsService | null = null;
+      try {
+        thresholds = this.moduleRef?.get(ApprovalThresholdsService, { strict: false }) ?? null;
+      } catch {
+        thresholds = null;
+      }
+      if (!thresholds) {
+        return { within: false, reason: "this house's approval rules could not be consulted" };
+      }
+      const readout = await thresholds.read(restaurantId);
+      if (!readout.readable) {
+        return {
+          within: false,
+          reason: `this house's approval rules could not be read (${readout.reason ?? "no reason given"})`,
+        };
+      }
+      const sb = this.databaseService.supabase;
+      const decision = decideApproval(readout.thresholds, {
+        total: effectiveTotal({ totalCost: order.total_cost, unitPrice: vendorPrice, quantity }),
+        isFirstOrderToVendor: await readIsFirstOrderToVendor(sb, restaurantId, order.id, order.provider_id ?? null),
+        pricePremiumPct: await readPricePremiumPct(sb, restaurantId, order.id, order.inventory_id ?? null, vendorPrice),
+      });
+      if (decision.requiredRole) {
+        const who = decision.requiredRole === "owner" ? "an owner" : "a manager or an owner";
+        return {
+          within: false,
+          reason: `it is ${decision.reasons.join("; ") || "over a rule this house set"}, so ${who} has to sign`,
+        };
+      }
+      if (decision.untestable.length > 0) {
+        return {
+          within: false,
+          reason: `whether ${decision.untestable.join(", ")} applies could not be established`,
+        };
+      }
+      return { within: true, reason: "" };
+    } catch (err: any) {
+      return {
+        within: false,
+        reason: `this house's approval rules could not be consulted (${err?.message ?? String(err)})`,
+      };
     }
   }
 
