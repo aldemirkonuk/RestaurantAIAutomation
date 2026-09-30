@@ -84,6 +84,9 @@ function fakeDb(opts: { writeError?: { code: string; message: string } } = {}) {
           error: null,
         };
       },
+      // #516 moved updateLocation to `.maybeSingle()` (no row is a 404, not a
+      // 500); every row this fake answers exists, so it answers like single().
+      maybeSingle: async () => chain.single(),
       then: (resolve: any, reject: any) => {
         // An awaited write with no .single() (the soft delete) answers the
         // write error when one is configured.
