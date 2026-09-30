@@ -1259,27 +1259,41 @@ export class ProcurementService {
         );
       }
 
-      const { data: updated, error: updateError } =
-        await this.databaseService.supabase
-          .from("procurement_orders")
-          .update({
-            quantity: dto.quantity,
-            unit_type: units.unitType,
-            bottles_total: bottlesTotal,
-            quoted_price: dto.quotedPrice ?? existing.quoted_price ?? null,
-            negotiated_price:
-              dto.negotiatedPrice ?? existing.negotiated_price ?? null,
-            final_price: finalPrice,
-            total_cost: totalCost,
-            is_emergency: dto.isEmergency ?? existing.is_emergency,
-            priority_level: dto.priorityLevel ?? existing.priority_level,
-            manager_notes: dto.managerNotes ?? existing.manager_notes,
-            expected_delivery_date:
-              dto.expectedDeliveryDate ?? existing.expected_delivery_date,
-          })
-          .eq("id", existing.id)
-          .select("*, inventory:inventory_id(wine_name)")
-          .single();
+      // The write is CONDITIONAL on the order still being what the gate read
+      // (ADR 0244 D2, found by the audit's planner at d033412f5). The gate
+      // above decided on the status and figures of the lookup; without these
+      // filters, an order approved between the lookup and this write took a
+      // staff fold's prices as if it were still PENDING, and a price another
+      // person set in between was overwritten by a stale re-post.
+      let mergeWrite = this.databaseService.supabase
+        .from("procurement_orders")
+        .update({
+          quantity: dto.quantity,
+          unit_type: units.unitType,
+          bottles_total: bottlesTotal,
+          quoted_price: dto.quotedPrice ?? existing.quoted_price ?? null,
+          negotiated_price:
+            dto.negotiatedPrice ?? existing.negotiated_price ?? null,
+          final_price: finalPrice,
+          total_cost: totalCost,
+          is_emergency: dto.isEmergency ?? existing.is_emergency,
+          priority_level: dto.priorityLevel ?? existing.priority_level,
+          manager_notes: dto.managerNotes ?? existing.manager_notes,
+          expected_delivery_date:
+            dto.expectedDeliveryDate ?? existing.expected_delivery_date,
+        })
+        .eq("id", existing.id)
+        .eq("restaurant_id", restaurantId);
+      for (const column of ["status", ...MERGE_MONEY_COLUMNS]) {
+        const held = existing[column] ?? null;
+        mergeWrite =
+          held === null
+            ? mergeWrite.is(column, null)
+            : mergeWrite.eq(column, held);
+      }
+      const { data: updated, error: updateError } = await mergeWrite
+        .select("*, inventory:inventory_id(wine_name)")
+        .maybeSingle();
 
       if (updateError) {
         this.logger.error("Failed to update existing procurement order", {
@@ -1289,6 +1303,34 @@ export class ProcurementService {
         });
         throw updateError;
       }
+      if (!updated) {
+        // Nothing matched: the order moved between the lookup and the write.
+        // Refused whole, before the line or the paper — nothing was changed,
+        // and a person reading it again decides whether to post again.
+        const which = existing.order_number
+          ? ` (${existing.order_number})`
+          : "";
+        throw new ConflictException({
+          reason: "merge_target_changed",
+          message:
+            `The open order for this wine from this vendor${which} changed while this one was ` +
+            "being folded into it, so nothing was changed. Look at that order again, and place " +
+            "this one again if it is still needed.",
+        });
+      }
+
+      // The paper right after the header write and BEFORE the line: if the
+      // line write below throws, the header has already moved, and the log
+      // must say so (the planner's ordering finding at d033412f5).
+      const updatedRow = updated as any;
+      await this.recordOrderPriceChanged({
+        restaurantId,
+        orderId: existing.id,
+        actorUserId: userId,
+        door: "merge",
+        status: updatedRow?.status ?? existing.status ?? null,
+        fields: movedOrderFigures(existing, updatedRow, MERGE_MONEY_COLUMNS),
+      });
 
       this.logger.log("Merged order request into existing open order", {
         restaurantId,
@@ -1311,15 +1353,6 @@ export class ProcurementService {
         fees,
       });
 
-      const updatedRow = updated as any;
-      await this.recordOrderPriceChanged({
-        restaurantId,
-        orderId: existing.id,
-        actorUserId: userId,
-        door: "merge",
-        status: updatedRow?.status ?? existing.status ?? null,
-        fields: movedOrderFigures(existing, updatedRow, MERGE_MONEY_COLUMNS),
-      });
       const mergedRow: ProcurementOrderRow = {
         ...updatedRow,
         wine_name:
