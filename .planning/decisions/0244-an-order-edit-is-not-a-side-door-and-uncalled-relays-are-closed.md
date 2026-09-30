@@ -21,7 +21,7 @@ An 817-route audit at 5a20d774b found two live holes. Both were re-verified at c
 
 - **For the PATCH status:** (a) refuse only the statuses that have a sealed act; (b) route each status through its act's service method; (c) refuse every status. (a) leaves FAILED (an unsealed way to end an order), NEGOTIATING from APPROVED (un-approving without the role that approves) and APPROVAL_NEEDED (faking a rule firing) open. (b) builds doors nobody calls. **(c) taken.**
 - **For the relays:** NonProductionGuard, a service-key door, owner/manager with recipients restricted to the house's register, or closing both routes. A door for no caller is still a door. **Closing taken**, the posture of ADR 0149 answer 15 and of the SMS route in ADR 0084.
-- **For a price edit after approval** (the fork left open on 2026-09-29): (a) refuse price edits once approved; (b) re-check the editor's limit and send the order back for approval if the new figure exceeds it; (c) allow the edit and only record it. **(b) ruled by the founder, 2026-09-30.**
+- **For a price edit after approval** (the fork left open on 2026-09-29): (a) refuse price edits once approved; (b) re-check the editor's limit and send the order back for approval if the new figure exceeds it; (c) allow the edit and only record it. **(b) ruled by the founder, 2026-09-30.** The adversarial pass then found that "send the order back" can be built two ways, and that two other doors approve without the gate at all. See D3.
 
 ## Decision
 
@@ -35,10 +35,21 @@ An 817-route audit at 5a20d774b found two live holes. Both were re-verified at c
   - The figures are read before the write, and a failed read refuses the edit.
   - Every figure that actually moved is filed as `order_price_changed` in `system_audit_log` (who, and each column from and to).
   - The notes stay open to every member.
-- **D3. A price edit on an approved order re-checks the editor's limit (founder, 2026-09-30).** The approval gate runs again for the person making the edit. If the new figure is beyond their limit, the order goes back to APPROVAL_NEEDED for someone whose limit covers it.
-  - This needs a new transition edge, and so a migration that regenerates the trigger. With it, the change is more than one PR can carry under the 15-file cap, so D3 is built in the follow-up PR `fix/order-price-recheck`.
-  - That PR amends this ADR with its design choices: which states it covers, what happens to the stock reservation and to staged vendor mail, the adversarial pass and the evidence.
-  - Until it lands, a manager can still reprice an approved order within the role gate. The edit is on paper (D2) but not re-checked.
+- **D3. A price edit on an approved order re-checks the editor's limit (founder, 2026-09-30). RULED, NOT BUILT: its design waits on four founder calls.** The approval gate runs again for the person making the edit. If the new figure is beyond their limit, the order goes back to APPROVAL_NEEDED for someone whose limit covers it.
+  - **Why it is not built yet.** A separate adversarial pass on 2026-09-30 killed the literal build (park the order at APPROVAL_NEEDED, release its reservation, hold its staged mail). The builder checked its load-bearing findings:
+    - An APPROVED order may already have its letter at the vendor: `approveDraft` sends it and the order stays APPROVED. Parked, it could not be received at the door, since APPROVAL_NEEDED has no edge to DELIVERED. Re-approving it would publish a second vendor inquiry, and `approveOrder` would reserve its stock again.
+    - `approveOrder` is the only writer that reserves stock. `confirmDeal` and the inbound responder's autonomy accept both write APPROVED without reserving, so a release on park would release other orders' stock.
+    - A one-time hold on staged mail misses a send already claimed, and the responder keeps drafting for any open order unless `ai_autonomy_paused` is set.
+    - The vendor scorecard, analytics and `cancel-reason.ts` all read APPROVAL_NEEDED as "the vendor never saw it".
+    - **Two existing doors approve at any price with no gate at all.** `confirmDeal` does not limit owners or managers (ADR 0175, locked) and does not filter by status, so a manager can take any order, a parked one included, to APPROVED at any price. `syncOrderState` under full autonomy writes APPROVED at the vendor's price. Each of these steps around the ceiling whatever the PATCH does.
+  - **The four calls it waits on:**
+    - F1: park the whole order, or hold a pending price change that waits for approval while the order keeps its state.
+    - F2: whether confirm-deal runs the approval gate. This supersedes part of the locked ADR 0175.
+    - F3: whether the autonomy accept is gated.
+    - F4: which rules and which direction trigger the re-check (decreases; `new_vendor`; the effective total when a unit price changes).
+
+    They are in `tech-debt.d/2026-09-29-fix-order-approval-and-alert-relays.md` item 1 and in the coordinator's report.
+  - **Until then:** a manager can still reprice an approved order within the role gate. The edit is on paper (D2) but not re-checked.
 - **D4. The two alert relays are closed.**
   - The handlers go, along with `resolveAlertTenant` and `DailySummaryDto`.
   - `CommunicationsService.sendLowStockAlert` and `sendDailySummary` stay, for `ScheduledTasksService`, which passes each tenant's own id as the websocket room. The in-app low-stock notice therefore still fires.
@@ -68,3 +79,4 @@ An 817-route audit at 5a20d774b found two live holes. Both were re-verified at c
 | Date | Reviewer | Outcome |
 |---|---|---|
 | 2026-09-30 | — | Created on `fix/order-approval-and-alert-relays` |
+| 2026-09-30 | Adversarial pass (separate agent), with its findings re-verified by the builder | D3's literal build is unsafe (stock, vendor mail, door, readers of APPROVAL_NEEDED), and confirm-deal and the autonomy accept bypass the gate. D3 is held for four founder calls |
