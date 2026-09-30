@@ -293,7 +293,7 @@ being read as correctness, which is this ADR's own subject.
   orchestrator is up and its agents are Active. The same fault, one service over.
 - **Vercel is unverified.** Stage 3 builds the frontend in CI and curls the
   production URL; nothing compares the deployed frontend's revision to the merged
-  one.
+  one. **[Corrected 2026-09-22, in place, per memory correcting-a-record-needs-the-same-rigour-as-writing-code — closed by [[0219-a-merge-to-main-reaches-mudavym-com-and-we-can-prove-it-did]]:** the gap named here is exactly what let two production merges (#421, #424) sit unnoticed behind a stale build on 2026-09-21. The web build now embeds its commit in the served page (`apps/web/src/lib/build-provenance.ts`) and Stage 3 polls it with `scripts/check_web_deployed_sha.py`, which resolves FLOOR with the same `resolve_watched_commit.py` Stage 2 uses for the gateway but requires the range FLOOR ⪯ running ⪯ tip(main) rather than Stage 2's equality, because Vercel builds every push. Stage 3's old curl did not run either: `VERCEL_PRODUCTION_URL` is not set on this repository, so the step concluded `skipped` in all 37 of the last 40 deploy runs (2026-09-11 to 2026-09-22) that reached Stage 3. This sentence stays as the historical record of the gap; it is no longer the current state.]**
 - **The 49 skipped audits are not retroactively performed.**
   `check_deploy_audit_ran.sh` makes their absence *visible*; it cannot make them
   have happened.

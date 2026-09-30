@@ -1,0 +1,9 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "extends": ["//"],
+  "pipeline": {
+    "build": {
+      "env": ["VERCEL_GIT_COMMIT_SHA", "RAILWAY_GIT_COMMIT_SHA"]
+    }
+  }
+}
