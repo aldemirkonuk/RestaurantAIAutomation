@@ -13,8 +13,6 @@ export interface GuidanceState {
   global: {
     hide_all_tips: boolean;
     tips_snoozed_until?: string;
-    show_wine_agent_fab: boolean;
-    wine_agent_fab_unlocked?: boolean;
   };
   pages: Partial<Record<PageTourId, PageGuidanceState>>;
   guide: {
@@ -25,7 +23,6 @@ export interface GuidanceState {
 export const DEFAULT_GUIDANCE_STATE: GuidanceState = {
   global: {
     hide_all_tips: false,
-    show_wine_agent_fab: true,
   },
   pages: {},
   guide: {

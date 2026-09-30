@@ -588,7 +588,15 @@ export function useStorageLocations() {
       const removedMappings = mappings.filter((m) => m.locationId === id)
       removedMappings.forEach((m) => cancelPendingQuantity(m.wineId))
       setMappings((prev) => prev.filter((m) => m.locationId !== id))
-      setLocations((prev) => prev.filter((loc) => loc.id !== id))
+      // The zones inside it are not deleted: they become top-level, which is
+      // what the database does on the same delete (trigger
+      // storage_locations_orphans_go_top_level, migration 20261203110000).
+      const liftedIds = locations.filter((loc) => loc.parentId === id).map((loc) => loc.id)
+      setLocations((prev) =>
+        prev
+          .filter((loc) => loc.id !== id)
+          .map((loc) => (loc.parentId === id ? { ...loc, parentId: undefined } : loc)),
+      )
 
       return persistToServer(
         'DELETE',
@@ -598,8 +606,13 @@ export function useStorageLocations() {
         () => {
           if (removedZone) {
             setLocations((prev) => {
-              if (prev.some((loc) => loc.id === id)) return prev
-              const next = [...prev]
+              const restored = prev.map((loc) =>
+                liftedIds.includes(loc.id) && loc.parentId === undefined
+                  ? { ...loc, parentId: id }
+                  : loc,
+              )
+              if (restored.some((loc) => loc.id === id)) return restored
+              const next = [...restored]
               next.splice(Math.min(index, next.length), 0, removedZone)
               return next
             })

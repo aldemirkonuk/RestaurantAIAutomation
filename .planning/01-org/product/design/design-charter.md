@@ -189,9 +189,9 @@ someone grepped for it.
   proposed, or the reduced set in §5.3? Design is 4 of the 17.
 - ✅ **ID collision resolved by [[decision-office-charter]].** `product.md:858-862`
   proposed IDs OD-20 through OD-24, but the register already assigns
-  OD-20 (analytics spend, `decisions/OPEN-DECISIONS.md:168`),
-  OD-21 (Obsidian workflow, `decisions/OPEN-DECISIONS.md:195`),
-  OD-22 (tooling library, `decisions/OPEN-DECISIONS.md:178`) and
+  OD-20 (analytics spend, `decisions/OPEN-DECISIONS.md:170`),
+  OD-21 (Obsidian workflow, `decisions/OPEN-DECISIONS.md:197`),
+  OD-22 (tooling library, `decisions/OPEN-DECISIONS.md:180`) and
   OD-23 (revenue target, unverified, `decisions/OPEN-DECISIONS.md:37`) — four of the five
   were taken. The forks above now carry **PROD-F1…PROD-F5** ([[FORK-REGISTRY]]) and should
   be cited by ID.

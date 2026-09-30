@@ -924,6 +924,21 @@ Genuinely still open:
 
 ## 9. Read models: one source of truth, two audiences
 
+> **Superseded 2026-09-18 by [`wine-intelligence-foundations.md`](wine-intelligence-foundations.md)**
+> (for §9 and §10). This section and the next are kept as the reasoning of record,
+> but they are no longer the plan. The foundations doc carries forward by citation
+> the rules that are still true: §9.1 one write model with disposable read models,
+> §9.3's provenance, stable ids and grain per question, and the §10.6 premortem. It
+> corrects three measurements that went stale here:
+> - §10.4: `embedding` is on 3,430 live rows, not 0.
+> - §10.3: the typed sensory columns are generated columns
+>   (`20260818030000_sensory_columns_generated.sql`).
+> - §9.3 item 2: `enrichment_observed_at` exists, as a last-changed stamp with no
+>   history (`20260817010000_enrichment_observed_at.sql`).
+>
+> The §9.3 knowledge counts are also superseded: production reads inferred 2,773,
+> known 432, sourced 3 and unknown 68 on 2026-09-18.
+
 ### 9.0 The vendor model is the house pattern, and it was right
 
 An earlier draft called the `providers` / `vendor_catalogue` split an identity
@@ -1123,6 +1138,8 @@ again. Analysts get a mart; the mart gets rebuilt; the truth stays in one place.
 ---
 
 ## 10. Fitness for the goal: pairing, ingredients, preference, and speed
+
+> **Superseded 2026-09-18** — see the banner under §9 and [`wine-intelligence-foundations.md`](wine-intelligence-foundations.md).
 
 The stated end goal is to predict how well a bottle matches a **meal**, its
 **ingredients**, and a **person's** tendency to like it — while the app stays

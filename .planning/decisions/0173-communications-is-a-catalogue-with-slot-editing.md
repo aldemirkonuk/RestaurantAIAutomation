@@ -4,7 +4,7 @@
 - **Date:** 2026-09-19
 - **Decider:** Aldemir (founder). Decisions are locked by the founder, never by an agent.
 - **Keywords:** communications, templates, catalogue, slot editing, system mail, PAR, reminders, weekly report, versions, reset to default, preview, owner, manager, destinations, buttons, escaping, emailTemplateCategories, email-templates, template_engine, message_templates, communication_templates
-- **Links:** [[0170-a-vendor-email-body-is-text-never-markup]] (its step 2 is closed by this build), [[0174-email-is-a-paper-sheet-and-the-house-signs-it]] (how the mail looks), [[0175-one-tap-from-the-notification-is-staged]] (where a seal-needing destination lands), [[0118-the-house-writes-its-own-mail]] (vendor letters, D1 and D4), [[0149-mudavym-is-the-only-design-finish-every-page-then-delete-legacy-once]] (the legacy delete), [[0020-no-fabricated-answers]], [[0083-a-page-may-not-claim-a-write-it-never-makes]]. Approved mockup: <https://claude.ai/artifact/F2u35LMP415GAmGcfjgnX6>, Version 5 (mocks 1a–1d). CLAIMS row `ADR-0173-WEB-HOLDS-NO-TEMPLATE-CONTENT`.
+- **Links:** **Amended by** [[0180-house-mail-is-a-composition-grammar]] (decision 2: slots → typed composition grammar; this file's D2 text is not rewritten). [[0170-a-vendor-email-body-is-text-never-markup]] (its step 2 is closed by this build), [[0174-email-is-a-paper-sheet-and-the-house-signs-it]] (how the mail looks), [[0175-one-tap-from-the-notification-is-staged]] (where a seal-needing destination lands), [[0118-the-house-writes-its-own-mail]] (vendor letters, D1 and D4), [[0149-mudavym-is-the-only-design-finish-every-page-then-delete-legacy-once]] (the legacy delete), [[0020-no-fabricated-answers]], [[0083-a-page-may-not-claim-a-write-it-never-makes]]. Approved mockup: <https://claude.ai/artifact/F2u35LMP415GAmGcfjgnX6>, Version 5 (mocks 1a–1d). CLAIMS row `ADR-0173-WEB-HOLDS-NO-TEMPLATE-CONTENT`.
 
 ## Context
 
@@ -47,7 +47,7 @@ Why this answer: the slot model is the reading of "fully editable" that the rese
 - **Prerequisites the build owns.** A send ledger, so "last sent" is a fact and not a guess. It should unify `notification_deliveries` and `notifications.delivery_status` and store counts or user ids, never addresses (ADR 0040). The report builders must be extracted from the cron service, with `restaurantId` taken from the token only, because they read with the service role. Crons must fire in the house's own zone, or the row says "New York time" until they do.
 - **Harder / given up.** Free-text slots can contradict state-dependent data (a "nothing urgent" intro above a critical table). The registry must mark which slots are state-independent. Raw HTML editing is given up for good.
 - **Retired by this (retire-to-write).** `apps/web/src/data/emailTemplateCategories.ts`, `types/emailTemplates.ts`, the two legacy builders, and the dead templates in `email-templates-legacy.ts`, all under ADR 0149's manifest. CLAIMS row `ADR-0173-WEB-HOLDS-NO-TEMPLATE-CONTENT` stays `open` until the web file is gone.
-- **Revisit when** a house asks for block-level editing (adding or removing sections), which the slot model does not give.
+- **Revisit when** a house asks for block-level editing (adding or removing sections), which the slot model does not give. **Triggered 2026-09-20:** [[0180-house-mail-is-a-composition-grammar]] amends D2.
 
 ## Open
 
@@ -68,3 +68,4 @@ Not decided here. Each is the founder's call, and none is in `OPEN-DECISIONS.md`
 | 2026-09-19 | Aldemir (founder), AskUserQuestion batches 1–4 and mockup approval | Catalogue first; fully editable per restaurant with the four guardrails; owner and manager edit; buttons from destinations only |
 | 2026-09-19 | Claude (Opus 5) | Created from the lane research and the founder record; not yet reviewed |
 | 2026-09-19 | PR #403 audit gate (3 angles, APPROVE WITH NOTES) | Status set to Locked with decision 3 labelled a recommendation; slot text may not carry a URL; destination URLs carry ids only |
+| 2026-09-20 | Aldemir (founder) | D2 amended by 0180: house mail is a typed composition grammar, not slots-only |

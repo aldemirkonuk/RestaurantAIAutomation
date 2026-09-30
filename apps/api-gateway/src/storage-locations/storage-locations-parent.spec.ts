@@ -1,9 +1,8 @@
 import "reflect-metadata";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { HttpException, HttpStatus, ValidationPipe } from "@nestjs/common";
+import { ValidationPipe } from "@nestjs/common";
 import { StorageLocationsController } from "./storage-locations.controller";
-import { StorageLocationsService } from "./storage-locations.service";
 
 /**
  * Web endpoint sweep 2026-09-28, defect #4 (/inventory zones).
@@ -15,11 +14,13 @@ import { StorageLocationsService } from "./storage-locations.service";
  *
  *  - the pipe is main.ts's own (read from source, not restated);
  *  - `parent_id: null` and a UUID pass the pipe; the camelCase key does not;
- *  - `storage_locations` has NO parent column (baseline migration,
- *    20260805000000_baseline_from_production.sql:5487-5511), so a non-null
- *    parent cannot be stored. It used to be dropped in silence and answered
- *    200. It is now refused with a 422 that says so, and a null parent (the
- *    only thing the table can hold) is accepted.
+ *
+ * What the service then does with a parent (stores it, or refuses another
+ * restaurant's zone, the zone itself, or a cycle) is pinned in
+ * storage-locations-hierarchy.spec.ts. The 422 "zone parents are not stored
+ * yet" this suite used to pin is gone: migration
+ * 20261203110000_a_zone_can_sit_inside_another_zone added the column
+ * (founder answer 2026-09-29, "Add parent column (Recommended)").
  */
 
 const mainSource = readFileSync(join(__dirname, "..", "main.ts"), "utf8");
@@ -89,66 +90,5 @@ describe("zone parent through main.ts's ValidationPipe", () => {
     await expect(
       validate("createLocation", { name: "Rack A", capacity: 12, parent_id: null }),
     ).resolves.toMatchObject({ parent_id: null });
-  });
-});
-
-/** A supabase chain that records the payload and answers one row. */
-function fakeDb() {
-  const calls: { op: string; payload: unknown }[] = [];
-  const row = { id: "loc-1", zone: "Rack A", capacity_bottles: 12 };
-  const chain: any = {
-    from: () => chain,
-    update: (payload: unknown) => {
-      calls.push({ op: "update", payload });
-      return chain;
-    },
-    insert: (payload: unknown) => {
-      calls.push({ op: "insert", payload });
-      return chain;
-    },
-    eq: () => chain,
-    is: () => chain,
-    select: () => chain,
-    single: async () => ({ data: row, error: null }),
-    // #516 moved update to `.maybeSingle()` (no row is a 404, not a 500).
-    maybeSingle: async () => ({ data: row, error: null }),
-  };
-  return { dbService: { supabase: chain } as any, calls };
-}
-
-describe("a parent the table cannot hold is refused, not dropped", () => {
-  it("update with a non-null parent_id answers 422 and writes nothing", async () => {
-    const { dbService, calls } = fakeDb();
-    const svc = new StorageLocationsService(dbService);
-    const err = await svc
-      .updateLocation("r1", "loc-1", { name: "Rack A", parent_id: PARENT })
-      .catch((e) => e);
-    expect(err).toBeInstanceOf(HttpException);
-    expect((err as HttpException).getStatus()).toBe(
-      HttpStatus.UNPROCESSABLE_ENTITY,
-    );
-    expect(String((err as HttpException).message)).toMatch(/parent/i);
-    expect(calls).toHaveLength(0);
-  });
-
-  it("create with a non-null parent_id answers 422 and inserts nothing", async () => {
-    const { dbService, calls } = fakeDb();
-    const svc = new StorageLocationsService(dbService);
-    const err = await svc
-      .createLocation("r1", { name: "Rack A", capacity: 12, parent_id: PARENT })
-      .catch((e) => e);
-    expect(err).toBeInstanceOf(HttpException);
-    expect((err as HttpException).getStatus()).toBe(
-      HttpStatus.UNPROCESSABLE_ENTITY,
-    );
-    expect(calls).toHaveLength(0);
-  });
-
-  it("update with parent_id: null saves the rest of the edit", async () => {
-    const { dbService, calls } = fakeDb();
-    const svc = new StorageLocationsService(dbService);
-    await svc.updateLocation("r1", "loc-1", { name: "Rack B", parent_id: null });
-    expect(calls).toHaveLength(1);
-    expect(calls[0].payload).toMatchObject({ zone: "Rack B" });
   });
 });

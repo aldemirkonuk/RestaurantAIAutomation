@@ -12,7 +12,7 @@ After #494, `/get-started` renders `GetStarted` with no PageGate (`apps/web/src/
 
 ## OD-133's resolved row cites the wrong charter line — OPEN — 2026-09-29
 
-OD-133 (OPEN-DECISIONS.md:107) says it "does not classify TypeSafe in `compliance-privacy-charter.md:202`'s subprocessor register (still 0/50 there)". Line 202 of `.planning/01-org/corporate/compliance-privacy/compliance-privacy-charter.md` says there is "no subprocessor register"; the 0 / 50 metric (`compliance.subprocessor_classification`) is at `:124`, and the charter's own bracket (from `:204`) says a register now exists in `.planning/foundation/EXTERNAL_CONNECTIONS.md`. The row's meaning holds (it classifies nothing); the citation is wrong. Found by the #504 audit. Fix: cite `:124`, in place, as a bracket.
+OD-133 (OPEN-DECISIONS.md:109) says it "does not classify TypeSafe in `compliance-privacy-charter.md:202`'s subprocessor register (still 0/50 there)". Line 202 of `.planning/01-org/corporate/compliance-privacy/compliance-privacy-charter.md` says there is "no subprocessor register"; the 0 / 50 metric (`compliance.subprocessor_classification`) is at `:124`, and the charter's own bracket (from `:204`) says a register now exists in `.planning/foundation/EXTERNAL_CONNECTIONS.md`. The row's meaning holds (it classifies nothing); the citation is wrong. Found by the #504 audit. Fix: cite `:124`, in place, as a bracket.
 
 ## The compliance charter still says TypeSafe's DPA is "already done" — OPEN — 2026-09-29
 
