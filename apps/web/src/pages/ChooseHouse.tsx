@@ -386,7 +386,11 @@ export function ChooseHouse() {
           <button
             type="button"
             onClick={() =>
-              void logout().then(() => navigate("/login", { replace: true }))
+              void logout().then((out) => {
+                // `false`: the person kept their unsent changes and stayed
+                // signed in (ADR 0241) — nothing to navigate to.
+                if (out) navigate("/login", { replace: true });
+              })
             }
             className={
               on

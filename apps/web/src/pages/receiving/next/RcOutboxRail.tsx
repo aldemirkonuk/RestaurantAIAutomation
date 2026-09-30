@@ -6,11 +6,11 @@
  *
  * 1. QUEUED — receipts saved on a phone that have not reached the server yet
  *    (`doorOutbox`'s pending-mutation queue), each named, with its attempt
- *    count out of 8 and the last error verbatim.
+ *    attempt count (no ceiling since ADR 0241) and the last error verbatim.
  * 2. DROPPED — the defect fix (v3.0-TECH-DEBT / motion canvas inv-09):
- *    `flushDoorOutbox` permanently discards a receipt on a 4xx or after 8
- *    attempts (the `if (permanent || m.retryCount + 1 >= MAX_ATTEMPTS)` branch
- *    in `flushDoorOutbox`, lib/doorOutbox.ts), deleting it from the queue, so
+ *    `flushDoorOutbox` permanently discards a receipt on a permanent 4xx
+ *    refusal (the `if (permanent)` branch in `flushDoorOutbox`,
+ *    lib/doorOutbox.ts; before ADR 0241 also after 8 attempts), deleting it from the queue, so
  *    the pending count falls exactly as it does on a delivery and a dropped
  *    receipt looks identical to a delivered one. Here every drop is pinned by
  *    name and stays until a person dismisses it. Nothing vanishes; the drop
@@ -133,7 +133,7 @@ function PinnedDrop({
         {label}
       </p>
       <p style={{ fontSize: 11, color: 'var(--ink-2, #4F473C)', margin: '3px 0 0', lineHeight: 1.5 }}>
-        The server refused it or eight attempts failed, and the outbox gave up on{' '}
+        The server refused it, and the outbox gave up on{' '}
         {fmtDate(droppedAt)}. The count exists only on the phone that took it — re-enter it from
         the paper record, or the stock it booked never happened.
         {/* No "best candidate" hedge any more: the outbox writes the record
@@ -253,7 +253,7 @@ export function RcOutboxRail({ data }: { data: OutboxData }) {
                 </span>
               </span>
               <span
-                title="Attempts made of the 8 the outbox allows before giving up"
+                title="Attempts made so far. The outbox keeps trying until the server takes it or refuses it for good (ADR 0241)"
                 style={{
                   flex: 'none',
                   fontFamily: MONO,
@@ -263,7 +263,7 @@ export function RcOutboxRail({ data }: { data: OutboxData }) {
                   transition: `color ${ink.ms}ms ${ink.easing}`,
                 }}
               >
-                {r.retryCount}/8
+                {r.retryCount} {r.retryCount === 1 ? 'try' : 'tries'}
               </span>
             </div>
           ))}
