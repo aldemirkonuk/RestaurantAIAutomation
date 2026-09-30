@@ -643,7 +643,7 @@ async function runFlush(onSnapshot: () => void): Promise<DoorFlushResult> {
             // THE RECEIPT IS NOT DELETED. Storage was full or unavailable, so
             // the queue is now the only copy of this delivery; deleting it
             // would destroy the count with nothing on screen and nothing on
-            // disk. It is parked at the ceiling with the reason on it, which
+            // disk. It is kept, with the reason written on it, which
             // the rail renders, and every later flush retries the record —
             // so the moment storage frees up it becomes an ordinary drop.
             // Best-effort, and nothing depends on it landing: the storage that

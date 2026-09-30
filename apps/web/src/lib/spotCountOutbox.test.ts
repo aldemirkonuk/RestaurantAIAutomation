@@ -161,3 +161,17 @@ describe('flushSpotCountOutbox — a house switch in the middle of a flush', () 
   })
 })
 
+
+describe('flushSpotCountOutbox — a failed mark never ends the flush', () => {
+  it('still sends the counts after one whose queue update failed', async () => {
+    store.getPendingMutationsByType.mockResolvedValue([count('bad'), count('good')])
+    recordSpotCount.mockRejectedValueOnce(httpError(503)).mockResolvedValueOnce({})
+    store.updatePendingMutation.mockRejectedValueOnce(new Error('QuotaExceededError'))
+
+    const res = await flushSpotCountOutbox()
+
+    expect(recordSpotCount).toHaveBeenCalledTimes(2)
+    expect(store.removePendingMutation).toHaveBeenCalledWith('good')
+    expect(res).toEqual({ sent: 1, failed: 1, parked: 0 })
+  })
+})

@@ -123,7 +123,9 @@ export async function flushSpotCountOutbox(): Promise<{
     if (m.parked) continue
     if (!isVisibleTo(m, session)) continue
     if (!isReplayable(m, session)) {
-      await offlineStorage.updatePendingMutation(m.id, {
+      // A write that fails here leaves the entry as it was (still queued,
+      // still unsent); it must not end the flush for the counts after it.
+      await markQuietly(m.id, {
         parked: { reason: 'unowned', at: new Date(now).toISOString() },
       })
       parked++
@@ -138,7 +140,7 @@ export async function flushSpotCountOutbox(): Promise<{
       const status = statusOf(err)
       const lastError = (err as Error)?.message ?? 'sync failed'
       if (isPermanentRefusal(status)) {
-        await offlineStorage.updatePendingMutation(m.id, {
+        await markQuietly(m.id, {
           lastError,
           parked: { reason: 'refused', status, at: new Date(now).toISOString() },
         })
@@ -146,7 +148,7 @@ export async function flushSpotCountOutbox(): Promise<{
         continue
       }
 
-      await offlineStorage.updatePendingMutation(m.id, {
+      await markQuietly(m.id, {
         retryCount: m.retryCount + 1,
         lastError,
       })
@@ -155,6 +157,22 @@ export async function flushSpotCountOutbox(): Promise<{
   }
 
   return { sent, failed, parked }
+}
+
+/**
+ * Update a queue entry, and never let a failed write end the flush. The entry
+ * stays as it was — still in the queue, still unsent — and the next flush sees
+ * it again, so a failed mark costs one retry, never a count.
+ */
+async function markQuietly(
+  id: string,
+  patch: Parameters<typeof offlineStorage.updatePendingMutation>[1],
+): Promise<void> {
+  try {
+    await offlineStorage.updatePendingMutation(id, patch)
+  } catch {
+    /* kept as it was; retried next flush */
+  }
 }
 
 /**
