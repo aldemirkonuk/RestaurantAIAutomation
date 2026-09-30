@@ -5785,7 +5785,7 @@ export class ProcurementService {
       await this.databaseService.supabase
         .from("procurement_orders")
         .select(
-          "id, total_cost, provider_id, inventory_id, final_price, status",
+          "id, total_cost, provider_id, inventory_id, final_price, negotiated_price, quoted_price, quantity, status",
         )
         .eq("restaurant_id", restaurantId)
         .eq("id", orderId)
@@ -5816,11 +5816,23 @@ export class ProcurementService {
       provider_id: string | null;
       inventory_id: string | null;
       final_price: string | number | null;
+      negotiated_price?: string | number | null;
+      quoted_price?: string | number | null;
+      quantity?: string | number | null;
       status: string | null;
     };
 
     const order: OrderUnderTest = {
-      total: toFiniteNumber(row.total_cost),
+      // ADR 0244 D3, the founder's answer 1 (2026-09-30), verbatim pick "Both
+      // use the larger (Recommended)": the approve act tests the same money the
+      // price re-check does, the larger of the order's total and its unit price
+      // times its quantity (`effectiveTotal`). A total_cost that understates
+      // the order can no longer carry it under a ceiling.
+      total: effectiveTotal({
+        totalCost: row.total_cost,
+        unitPrice: effectiveUnitPrice(row),
+        quantity: row.quantity,
+      }),
       isFirstOrderToVendor: await this.isFirstOrderToVendor(
         restaurantId,
         orderId,
@@ -6094,7 +6106,7 @@ export class ProcurementService {
       const { data, error } = await this.databaseService.supabase
         .from("procurement_orders")
         .select(
-          "id, status, provider_id, inventory_id, requested_at, total_cost, final_price",
+          "id, status, provider_id, inventory_id, requested_at, total_cost, final_price, negotiated_price, quoted_price, quantity",
         )
         .eq("restaurant_id", restaurantId)
         .gte("requested_at", since)
@@ -6117,6 +6129,9 @@ export class ProcurementService {
         inventory_id: string | null;
         total_cost: string | number | null;
         final_price: string | number | null;
+        negotiated_price?: string | number | null;
+        quoted_price?: string | number | null;
+        quantity?: string | number | null;
       }>) {
         const vendor = raw.provider_id;
         const isFirst = vendor ? !seenVendors.has(vendor) : null;
@@ -6136,7 +6151,13 @@ export class ProcurementService {
           id: raw.id,
           status: raw.status,
           test: {
-            total: toFiniteNumber(raw.total_cost),
+            // The approve act's own money (answer 1, 2026-09-30), so the
+            // page's "who may seal this" and the act cannot disagree.
+            total: effectiveTotal({
+              totalCost: raw.total_cost,
+              unitPrice: effectiveUnitPrice(raw),
+              quantity: raw.quantity,
+            }),
             isFirstOrderToVendor: isFirst,
             pricePremiumPct: premium,
           },

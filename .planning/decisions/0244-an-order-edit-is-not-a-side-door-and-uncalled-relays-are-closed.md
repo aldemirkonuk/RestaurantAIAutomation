@@ -81,7 +81,15 @@ An 817-route audit at 5a20d774b found two live holes. Both were re-verified at c
       - With the effective total, a stale `total_cost` above a manager's ceiling makes even a cheaper deal on that order wait for an owner.
       - A house whose rule requires an owner and which has no active owner can never approve the held change. It cannot approve such an order today either.
     - **[The seven answers, 2026-09-30 — the founder's verbatim picks on the questions above, relayed by the coordinating session.]**
-      1. *"Both use the larger (Recommended)"*: the approve act (`POST orders/:id/approve`, `assertApprovalAllowed`) must test the same effective total as the re-check, `max(total_cost, unit price × quantity)`. **Built in the follow-up PR stacked on #541, not in #541.** It needs a sixteenth file (`order-approval-gate.spec.ts`, whose fixtures price an order above its own `total_cost`), and #541 is at the 15-file cap.
+      1. *"Both use the larger (Recommended)"*: the approve act (`POST orders/:id/approve`, `assertApprovalAllowed`) must test the same effective total as the re-check, `max(total_cost, unit price × quantity)`. **Built in the follow-up PR stacked on #541, not in #541.** It needs a sixteenth file (`order-approval-gate.spec.ts`, whose fixtures price an order above its own `total_cost`), and #541 is at the 15-file cap. **[Built 2026-09-30 on `fix/approve-act-effective-total`, stacked on #541:**
+         - `assertApprovalAllowed` tests `effectiveTotal({ total_cost, final ?? negotiated ?? quoted, quantity })`.
+         - The `/orders` readout's walk (`approvalGate`) tests the same money, so the page and the act cannot disagree.
+         - The gate spec's two fixtures that priced an order above its own total now state consistent figures.
+         - `order-approval-gate.spec.ts`: 2 new `[REVERT-FAILS]` cases red on d06aa4de4, plus one pinning that an order with no unit price is judged on its total alone.
+         - Mutations: the act and the page falling back to `total_cost` are killed in jest. Dropping the quantity or the prices from either read survives jest, because the stub ignores select lists; the claim's static check catches both.
+         - Claim `SEC-2026-09-30-APPROVE-ACT-EFFECTIVE-TOTAL`.
+         - Not changed: the settings register's retrospective ("how often each rule would have fired") still counts on `total_cost`. That is a third reader, in `settings/approval-thresholds.service.ts`, and is left as an open question.
+         **]**
       2. *"Not a price change (Recommended)"*: `price_verified` alone re-runs nothing, as built.
       3. *"Fail closed (Recommended)"*: the autonomy is not "within" a rule it cannot test, as built.
       4. *"Log only, as built (Recommended)"*: after delivery, a manager's price edit still applies directly with D2's paper.

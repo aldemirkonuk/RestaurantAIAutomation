@@ -31,7 +31,7 @@ The two bypasses in F2 and F3 are also defects in their own right, and they are 
 - The two bypasses above are closed. Claim `SEC-2026-09-30-ORDER-PRICE-RECHECK`.
 
 **Still open from item 1, for the founder** (builder's readings, built one way and listed in the ADR): **[Answered 2026-09-30, verbatim picks, recorded in ADR 0244 D3 "the seven answers":]**
-- (1) "Both use the larger (Recommended)": the approve act must also test the effective total. This is built in the follow-up PR stacked on #541, because of the file cap.
+- (1) "Both use the larger (Recommended)": the approve act must also test the effective total. This is built in the follow-up PR stacked on #541, because of the file cap. **[Built on `fix/approve-act-effective-total`: the approve act and the `/orders` readout. The settings register's retrospective still counts on `total_cost`, which is open.]**
 - (2) "Not a price change (Recommended)", (3) "Fail closed (Recommended)", (4) "Log only, as built (Recommended)" and (5) "Stay negotiating (Recommended)" stand as built.
 - (6) "Decline + withdraw (Recommended)" and (7) "Decreases skip new-vendor (Recommended)" are built in #541.
 

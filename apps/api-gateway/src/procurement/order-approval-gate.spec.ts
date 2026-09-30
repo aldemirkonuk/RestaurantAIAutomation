@@ -354,7 +354,10 @@ describe("refusalSentence and policyNote — the words the person reads", () => 
 
 describe("approveOrder — the ceiling", () => {
   it("BELOW the ceiling: a manager seals it, and no refusal is filed", async () => {
-    const { db, calls } = makeDb({ order: { ...ORDER_ROW, total_cost: 900 } });
+    // Its figures agree with each other (5 x 180 = 900): since answer 1
+    // (2026-09-30) the ceiling tests the larger of the total and price x
+    // quantity, so a fixture that priced it at 5 x 400 would be a 2,000 order.
+    const { db, calls } = makeDb({ order: { ...ORDER_ROW, total_cost: 900, final_price: 180 } });
     const svc = service(db, thresholdsStub([ceiling(1000)]), orgsStub("manager"));
 
     await sealedApprove(svc);
@@ -364,12 +367,35 @@ describe("approveOrder — the ceiling", () => {
   });
 
   it("AT the ceiling: a manager seals it — a house that set 1000 allowed 1000", async () => {
-    const { db, calls } = makeDb({ order: { ...ORDER_ROW, total_cost: 1000 } });
+    const { db, calls } = makeDb({ order: { ...ORDER_ROW, total_cost: 1000, final_price: 200 } });
     const svc = service(db, thresholdsStub([ceiling(1000)]), orgsStub("manager"));
 
     await sealedApprove(svc);
 
     expect(calls.auditInserts).toHaveLength(0);
+    expect(calls.orderUpdates.some((u) => u.status === "APPROVED")).toBe(true);
+  });
+
+  // ADR 0244 D3, the founder's answer 1 (2026-09-30), verbatim pick "Both use
+  // the larger (Recommended)": the approve act tests the effective total,
+  // max(total_cost, unit price x quantity), the same money the re-check tests.
+  it("[REVERT-FAILS] answer 1: a total_cost that understates the order does not carry it under the ceiling", async () => {
+    // total_cost says 900; 5 x 400 says 2,000.
+    const { db, calls } = makeDb({ order: { ...ORDER_ROW, total_cost: 900 } });
+    const svc = service(db, thresholdsStub([ceiling(1000)]), orgsStub("manager"));
+
+    await expect(svc.approveOrder(REST, ORDER, USER)).rejects.toBeInstanceOf(ForbiddenException);
+    expect(calls.orderUpdates.some((u) => u.status === "APPROVED")).toBe(false);
+    expect(calls.auditInserts).toHaveLength(1);
+    expect(calls.auditInserts[0].changes.total).toBe(2000);
+  });
+
+  it("answer 1: with no unit price the total alone decides, as before", async () => {
+    const { db, calls } = makeDb({ order: { ...ORDER_ROW, total_cost: 900, final_price: null } });
+    const svc = service(db, thresholdsStub([ceiling(1000)]), orgsStub("manager"));
+
+    await sealedApprove(svc);
+
     expect(calls.orderUpdates.some((u) => u.status === "APPROVED")).toBe(true);
   });
 
@@ -557,6 +583,19 @@ describe("approvalGate — what the page is allowed to draw", () => {
     expect(big.mayApprove).toBe(false);
     expect(big.requiredRole).toBe("owner");
     expect(big.sentence).toContain("1000 ceiling");
+  });
+
+  it("[REVERT-FAILS] answer 1: the page reads the same money as the act", async () => {
+    const { db } = makeDb({
+      ledgerRows: [
+        { id: "o-under", status: "PENDING", provider_id: "p1", inventory_id: null, total_cost: 100, final_price: 400, quantity: 5 },
+      ],
+    });
+    const svc = service(db, thresholdsStub([ceiling(1000)]), orgsStub("manager"));
+
+    const gate = await svc.approvalGate(REST, USER);
+
+    expect(gate.orders[0]).toMatchObject({ orderId: "o-under", mayApprove: false, requiredRole: "owner" });
   });
 
   it("an unreadable ledger says so and lists NOTHING — never an empty book", async () => {
