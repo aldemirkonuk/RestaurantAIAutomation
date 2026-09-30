@@ -337,11 +337,12 @@ describe('F4 — an offline non-attempt does not render as a clean sync', () => 
   })
 
   it('catches the race: a queue that returned 0+0 cannot have been walked', async () => {
-    // doorOutbox iterates the pending queue and every iteration increments
-    // exactly one of sent/failed, so a non-empty queue returning 0+0 proves the
-    // early return fired — even if navigator flipped after our own check.
+    // doorOutbox increments exactly one of sent/failed for every receipt it
+    // can send, so a queue holding a sendable receipt that returns 0+0 proves
+    // the early return fired — even if navigator flipped after our own check.
+    signInPorter()
     pendingByType.mockResolvedValue([
-      { id: 'm1', type: 'receiving.door', data: { orderId: 'o', orderLabel: 'PO-1' }, timestamp: new Date(), retryCount: 0 },
+      { id: 'm1', type: 'receiving.door', data: { orderId: 'o', orderLabel: 'PO-1' }, timestamp: new Date(), retryCount: 0, owner: { userId: 'u1', restaurantId: 'rest-A' } },
     ])
     flushDoorOutbox.mockResolvedValue({
       sent: 0,
@@ -354,7 +355,27 @@ describe('F4 — an offline non-attempt does not render as a clean sync', () => 
 
     expect(await screen.findByText(/no sync attempted — offline/)).toBeInTheDocument()
   })
+
+  it('does not call a real pass "offline" when the queue holds only receipts it skips (ADR 0241)', async () => {
+    // A parked receipt is skipped without touching sent/failed; online, that
+    // is a real pass that found nothing to send, not a non-attempt.
+    signInPorter()
+    pendingByType.mockResolvedValue([
+      { id: 'm2', type: 'receiving.door', data: { orderId: 'o', orderLabel: 'PO-2', restaurantId: 'rest-A' }, timestamp: new Date(), retryCount: 0, owner: { userId: 'u1', restaurantId: 'rest-A' }, parked: { reason: 'unowned', at: 'x' } },
+    ])
+    flushDoorOutbox.mockResolvedValue({ sent: 0, failed: 0, dropped: 0, stranded: 0, unreachable: false })
+    harness(OutboxBody)
+
+    expect(await screen.findByText(/last sync .* · sent 0 · failed 0/)).toBeInTheDocument()
+    expect(screen.queryByText(/no sync attempted — offline/)).not.toBeInTheDocument()
+  })
 })
+
+/** A porter signed in to rest-A, as the queue's owner rule reads it (ADR 0241). */
+function signInPorter() {
+  window.localStorage.setItem('accessToken', `h.${btoa(JSON.stringify({ sub: 'u1', restaurantId: 'rest-A' }))}.s`)
+  window.localStorage.setItem('activeRestaurantId', 'rest-A')
+}
 
 /* ════════════════════════════════════════ F5 — windowed figures are floors ══ */
 
