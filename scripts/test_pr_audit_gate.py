@@ -1128,8 +1128,9 @@ def test_deploy_runs_only_on_this_repositorys_own_pushes():
     # breaks it lists (including a fork's dispatch, another event type and a
     # missing repository check). It does not pin how ci-gate executes, or
     # workflow-level keys; the guard's KNOWN GAPS docstring names that class,
-    # its known examples, what still holds (the stage ifs, for most) and the
-    # one member only gate ownership stops (a ci-gate step running head_sha).
+    # its known examples, what the stage ifs still refuse, and that any
+    # ci-gate step running, sourcing or interpolating into a shell anything
+    # the triggering run controls is stopped only by gate ownership.
     guard = ROOT / "scripts" / "check_deploy_own_pushes.py"
     for args in ([], ["--self-test"]):
         r = subprocess.run([sys.executable, "-I", str(guard), *args], capture_output=True, text=True, timeout=60)

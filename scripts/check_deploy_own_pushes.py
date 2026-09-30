@@ -55,14 +55,16 @@ more. Changes of these kinds pass the guard unnoticed:
     function, `permissions:`, `run-name:`), which the guard never reads;
   - a column-0 comment inside `on:`, which ends this reader's on: block and
     hides a trigger added after it.
-Two kinds of harm follow. Most members can only turn ci-gate green on a
-foreign or non-push run; for those the stage and deploy-audit ifs, pinned
-exactly here and unchanged by any of them, still refuse the run. One member
-reopens the original exposure: a ci-gate step that checks out the triggering
-run's head_sha and runs its code. ci-gate has no `if`, so it runs on every
-workflow_run (a fork's included), and it inherits ADMIN_API_KEY from the
-workflow env; for that member ONLY gate ownership of deploy.yml protects, not
-the stage ifs. Known examples, all passing the guard at this writing:
+Changes that only alter whether ci-gate goes green on a foreign or non-push
+run are still refused by the stage and deploy-audit ifs, pinned exactly here
+and unchanged by any of them. But (founder, 2026-09-30, verbatim: "Describe the whole class, then fix the key (Recommended)"):
+Any ci-gate step that runs, sources, or interpolates into a shell anything the
+triggering run controls reopens the original exposure. That includes its
+checkout, its artifacts or caches, and event fields the fork writes, such as
+`head_commit.message` and `display_title`. ci-gate has no `if` and inherits
+`ADMIN_API_KEY`, so only gate ownership stops it. (Scoping ADMIN_API_KEY out
+of the workflow env is the follow-up: see the tech-debt fragment.)
+Known examples, all passing the guard at this writing:
   - `concurrency: |` before the refusal step (the steps after it become that
     key's string);
   - `container:`, `runs-on: self-hosted` or `services:` on ci-gate;
@@ -71,8 +73,10 @@ the stage ifs. Known examples, all passing the guard at this writing:
     (in local bash; GitHub untested) makes the refusal step exit 0;
   - a `uses: actions/github-script` step exporting BASH_ENV;
   - a `GITHUB_PATH` write, or an indirect write to the env file;
-  - a ci-gate step that checks out head_sha and runs a script (the member
-    above: fork code beside ADMIN_API_KEY);
+  - ci-gate steps that run what the triggering run controls: checking out
+    head_sha and running a script, running a downloaded artifact of that run,
+    or echoing `${{ github.event.workflow_run.head_commit.message }}` into a
+    shell (fork code or fork text beside ADMIN_API_KEY);
   - a column-0 comment inside `on:` followed by an added trigger.
 deploy.yml is gate-owned, so each needs an ADR 0090 audit and the founder's
 sign-off. Closing the class: tech-debt.d/2026-09-30-batch-open-prs-2026-09-29.md.

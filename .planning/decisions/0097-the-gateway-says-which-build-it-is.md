@@ -424,15 +424,14 @@ verbatim picks:
     - a workflow-level key: `env:` (including `BASH_ENV` or a `BASH_FUNC_*`
       function), `permissions:` or `run-name:`;
     - a column-0 comment inside `on:`, which hides a trigger added after it.
-  - **Two kinds of harm.**
-    - Most of these can only turn `ci-gate` green on a foreign or non-push
-      run. For those, the stage and `deploy-audit` `if`s still refuse the run:
-      the guard pins them exactly, and none of these changes an `if`.
-    - One reopens the original exposure: a `ci-gate` step that checks out the
-      triggering run's `head_sha` and runs its code. `ci-gate` has no `if`,
-      so it runs on every `workflow_run`, a fork's included, and it inherits
-      `ADMIN_API_KEY` from the workflow env. For that one, only the gate
-      ownership of `deploy.yml` protects; the stage `if`s do not.
+  - **What still holds, and what does not.**
+    - Changes that only alter whether `ci-gate` goes green on a foreign or
+      non-push run are still refused by the stage and `deploy-audit` `if`s.
+      The guard pins those `if`s exactly, and no such change touches them.
+    - Founder, 2026-09-30, verbatim: *Describe the whole class, then fix the key (Recommended)*.
+      Any ci-gate step that runs, sources, or interpolates into a shell anything the triggering run controls reopens the original exposure. That includes its checkout, its artifacts or caches, and event fields the fork writes, such as `head_commit.message` and `display_title`. ci-gate has no `if` and inherits `ADMIN_API_KEY`, so only gate ownership stops it.
+    - Scoping `ADMIN_API_KEY` out of the workflow env is the follow-up that
+      closes this. It is filed in the tech-debt fragment.
   - **Known examples.** Each passes the guard at this writing:
     - `concurrency: |` before the refusal step;
     - `container:`, `runs-on: self-hosted` or `services:` on `ci-gate`;
@@ -441,7 +440,9 @@ verbatim picks:
       step exit 0 in local bash (GitHub untested);
     - an `actions/github-script` step exporting `BASH_ENV`;
     - a `GITHUB_PATH` write, or an indirect write to the env file;
-    - a `ci-gate` step that checks out `head_sha` and runs a script;
+    - `ci-gate` steps that run what the triggering run controls: checking out
+      `head_sha` and running a script, running a downloaded artifact of that
+      run, or echoing `head_commit.message` into a shell;
     - a column-0 comment inside `on:` with a trigger added after it.
   - **Why none is live today.** Each needs an edit to `deploy.yml`, which is
     gate-owned and so needs an ADR 0090 audit and the founder's sign-off.
