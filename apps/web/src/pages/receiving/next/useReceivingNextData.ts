@@ -903,8 +903,10 @@ export function useDoorOutbox(): OutboxData {
       //     some entries without counting them (parked, not this session's,
       //     naming no one), so only the sendable ones count here.
       const offlineNow = typeof navigator !== 'undefined' && navigator.onLine === false;
-      const res = offlineNow ? null : await flushDoorOutbox();
+      // Read before the flush, so the "sendable" filter judges `before` by the
+      // session the flush started under, not one a house switch left behind.
       const session = currentQueueOwner();
+      const res = offlineNow ? null : await flushDoorOutbox();
       const sendable = before.filter((m) => !m.parked && isReplayable(m, session));
       const raced =
         beforeKnown && sendable.length > 0 && res !== null && res.sent + res.failed === 0;
