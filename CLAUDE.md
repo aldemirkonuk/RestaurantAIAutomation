@@ -116,9 +116,9 @@ point can and should be as deep as the decision warrants.
 `.planning/` holds ~30 top-level files after the OD-01 cleanup
 ([ADR 0032](.planning/decisions/0032-vault-cleanup-cut-line.md), 2026-08-27 —
 closed build trees deleted, recoverable via its tombstone index). **Archive
-means delete + tombstone**: nothing is ever copied or moved into an in-tree
-archive folder; a retirement lists the file in the retiring ADR with its
-recovery commit. Ongoing rules:
+means delete + tombstone**: nothing is copied or moved into an in-tree archive unless the founder grants an exception in an ADR
+(so far [ADR 0032 §Scoped exception](.planning/decisions/0032-vault-cleanup-cut-line.md), the #494 legacy-web `.tar.gz`, 2026-09-29; `archive/`'s two pre-P2 snapshots predate the rule);
+a retirement lists the file in the retiring ADR with its recovery commit. Ongoing rules:
 
 - Treat `PROJECT.md`, `STATE.md`, `ROADMAP.md`, `FUTURES.md`, `YC_WEDGE_PLAN.md`
   as the live spine — the only top-level docs besides `v3.0-TECH-DEBT.md` (frozen; new entries
