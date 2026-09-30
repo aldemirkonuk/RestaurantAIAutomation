@@ -207,18 +207,25 @@ export class ContactsService {
   /**
    * Update a contact
    */
+  /**
+   * Edit and delete by id answer only for the caller's house
+   * (`.planning/07-reference/GATEWAY-EDIT-BY-ID-SCOPE-2026-09-29.md`): the
+   * write's WHERE carries `restaurant_id = <the token's house>`, so an id from
+   * another house matches no row and is a 404. `restaurant_id` is no longer
+   * editable: it moved a contact between houses.
+   */
   async update(
     id: string,
+    restaurantId: string,
     dto: Partial<ContactDto>,
   ): Promise<ContactWithAddresses> {
+    if (!restaurantId) throw new NotFoundException(`Contact ${id} not found`);
     const client = this.databaseService.getClient();
 
     const updateData: Record<string, any> = {};
     if (dto.type !== undefined) updateData.type = dto.type;
     if (dto.display_name !== undefined)
       updateData.display_name = dto.display_name;
-    if (dto.restaurant_id !== undefined)
-      updateData.restaurant_id = dto.restaurant_id;
     if (dto.linked_user_id !== undefined)
       updateData.linked_user_id = dto.linked_user_id;
     if (dto.linked_provider_id !== undefined)
@@ -230,6 +237,7 @@ export class ContactsService {
       .from("contacts")
       .update(updateData)
       .eq("id", id)
+      .eq("restaurant_id", restaurantId)
       .select()
       .single();
 
@@ -243,15 +251,20 @@ export class ContactsService {
   /**
    * Soft-delete a contact
    */
-  async remove(id: string): Promise<void> {
+  async remove(id: string, restaurantId: string): Promise<void> {
+    if (!restaurantId) throw new NotFoundException(`Contact ${id} not found`);
     const client = this.databaseService.getClient();
 
-    const { error } = await client
+    const { data, error } = await client
       .from("contacts")
       .update({ is_active: false })
-      .eq("id", id);
+      .eq("id", id)
+      .eq("restaurant_id", restaurantId)
+      .select("id");
 
     if (error) throw error;
+    if (!data || data.length === 0)
+      throw new NotFoundException(`Contact ${id} not found`);
   }
 
   /**
@@ -311,13 +324,26 @@ export class ContactsService {
   /**
    * Delete an address
    */
-  async removeAddress(addressId: string): Promise<void> {
+  async removeAddress(addressId: string, restaurantId: string): Promise<void> {
+    if (!restaurantId)
+      throw new NotFoundException(`Address ${addressId} not found`);
     const client = this.databaseService.getClient();
+
+    // The address row carries no house; its contact does. Prove the contact
+    // is this house's before deleting, and delete only that proven row.
+    const { data: owned, error: readErr } = await client
+      .from("contact_addresses")
+      .select("id, contacts!inner(restaurant_id)")
+      .eq("id", addressId)
+      .eq("contacts.restaurant_id", restaurantId)
+      .maybeSingle();
+    if (readErr) throw readErr;
+    if (!owned) throw new NotFoundException(`Address ${addressId} not found`);
 
     const { error } = await client
       .from("contact_addresses")
       .delete()
-      .eq("id", addressId);
+      .eq("id", (owned as { id: string }).id);
 
     if (error) throw error;
   }

@@ -26,8 +26,6 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import { createContext, type ReactNode } from 'react';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import type { ProcurementDocument } from '../../../services/api/documents';
 
 const api = vi.hoisted(() => ({
@@ -378,37 +376,7 @@ describe('SwipeToConfirm carries the same onChallenge contract as HoldToApprove'
   });
 });
 
-/* ─── 4. The legacy page, as a source contract ─────────────────────────── */
-
-describe('the legacy /receipts page cannot verify without a seal', () => {
-  const SOURCE =
-    process.env.RECEIPTS_LEGACY_SOURCE ??
-    resolve(__dirname, '../../ReceiptsPage.tsx');
-  const src = readFileSync(SOURCE, 'utf8');
-  /** Comment lines stripped, so prose about the seal is not a call. */
-  const code = src
-    .split('\n')
-    .map((l) => l.replace(/^\s*(\/\/|\*|\/\*).*$/, ''))
-    .join('\n');
-
-  it('mints a verify seal', () => {
-    expect(code).toMatch(/documentsApi\.mintVerifySeal\(/);
-  });
-
-  it('passes a challenge to every verify it makes', () => {
-    const calls = [...code.matchAll(/documentsApi\.verify\(([^)]*)\)/g)].map((m) => m[1]);
-    expect(calls.length).toBeGreaterThan(0);
-    for (const args of calls) expect(args).toMatch(/challenge/);
-  });
-
-  it('reaches the verify route through no other path', () => {
-    // An `apiClient.post(.../verify...)` in this file would be a verification
-    // that carries no `X-Seal-Challenge` header at all.
-    expect(code).not.toMatch(/apiClient\.post\([^)]*\/verify/);
-  });
-
-  it('drives it from the house hold-to-approve control, not a bare button', () => {
-    expect(code).toMatch(/<HoldToApprove/);
-    expect(code).toMatch(/onChallenge=\{onMintSeal\}/);
-  });
-});
+/* ─── 4. The legacy page ────────────────────────────────────────────────
+ * Deleted at the ADR 0149 cutover (CUTOVER-MANIFEST-2026-09-28.md, group
+ * `receipts`): `ReceiptsPage.tsx` is gone, so there is no second verify
+ * path left to hold to the seal. Sections 1-3 above hold the only one. */

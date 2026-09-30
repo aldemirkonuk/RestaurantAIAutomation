@@ -50,7 +50,12 @@ export const INACTIVE_FEATURES: InactiveFeature[] = [
   },
   {
     label: 'Check Scanning',
-    description: 'The check scanner is always available from Reports.',
+    // [2026-09-28, ADR 0149 cutover: this said "always available from Reports".
+    // The only scanner was a panel on the legacy /reports page whose scans were
+    // always [] and whose upload only logged the file name (Reports.tsx:554,926
+    // at c8bbf95de). It was deleted with that page (CUTOVER-MANIFEST-2026-09-28.md,
+    // group `reports`); nothing reads a check today.]
+    description: 'Not built yet: nothing reads a check today.',
     icon: Receipt,
     category: 'inventory',
   },
