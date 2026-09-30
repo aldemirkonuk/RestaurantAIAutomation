@@ -1357,7 +1357,7 @@ PASS). Evidence: see the review trail.
   is opted out, on a question asked while opted in, is exported once the
   house opts back in. His answer covers questions asked; a label is not a
   question, so this is recorded, not decided (KL5 last-call report). [Answered 2026-09-22, round 6z,
-  "Leave it out (Recommended)"; built 2026-09-28, migration `20261202100000`.
+  "Leave it out (Recommended)"; built 2026-09-28, migration `20261203100000`.
   See the round-6z amendment below.]
 - [Last call] `/privacy` does not say that a question is sent to an AI model
   provider to be answered. That was never part of this round's notice; it
@@ -1872,7 +1872,7 @@ his):
    ("no web-reachable /ask", "settings not in LIVE_PAGES") were true on
    2026-09-22 and are false on `main`.
 2. **A label snapshots its own opt-out** (answer 2). Migration
-   `20261202100000_ask_feedback_label_opt_out_snapshot.sql` is the snapshot's
+   `20261203100000_ask_feedback_label_opt_out_snapshot.sql` is the snapshot's
    `20260922023000`, renumbered past every version on every origin ref
    (ceiling 20261201120000) and re-cited to `main`'s versions (`20260922220600`
    for the snapshot's `20260922014000`, and so on).
@@ -1922,7 +1922,7 @@ his):
 
 - Added: `ADR-0145-ASK-FEEDBACK-LABEL-OPT-OUT-SNAPSHOT`, which also pins the
   new backfill.
-- Re-pointed to read the view body from `20261202100000`:
+- Re-pointed to read the view body from `20261203100000`:
   `ADR-0145-ASK-EXPORT-LEAVES-OUT-OPTED-OUT-HOUSES-AND-FREE-TEXT` and
   `ADR-0145-ASK-TRAINING-OPT-OUT-SNAPSHOT-AT-ASK-TIME`. The second still reads
   its trigger and column checks from `20260922220600`.
@@ -1936,7 +1936,7 @@ his):
   `main`'s five ask migrations (`20260922220000`, `…220300`, `…220400`,
   `…220500`, `…220600`) over stub `restaurants`, `users` and
   `ai_proposed_actions` tables and the three client roles, then applies
-  `20261202100000`. It covers the founder's scenario verbatim, a forged
+  `20261203100000`. It covers the founder's scenario verbatim, a forged
   value, an opted-in label, `pick` and `knowledge`, an earlier label surviving
   a later relabel, the re-ask label and kind, EXECUTE for anon and
   authenticated, the four backfill shapes, and an idempotent re-run.
@@ -1993,4 +1993,4 @@ his):
 | 2026-09-26 | W5-ask lane (build, PR #475) | Built `askLastMode` in the existing `user_preferences` blob (no new store, no migration -- the lane brief's own fallback, a `localStorage` key, did not apply once this was found); hydrate/persist effects in `AskPanel.tsx`. `AskPanel.test.tsx` +6 tests; three other suites that render `AskPanel` with no `QueryClientProvider` gained the same `useUserPreferences` mock `GroundChoiceSync.test.tsx` already uses. Measured: affected suites 14 files / 168 tests, the lane's wider run 125 files / 1305 tests, web `tsc` and eslint (6 changed files) both exit 0 -- all green. Not built: optimistic rollback on a failed write (a stated shortcut; see the amendment); no browser render. |
 | 2026-09-26 | W4-ask lane (build, PR #475) | Built one Ask panel with an explicit mode switch and a suggestion that never acts; docked in the counter slot at ≥ ~1280 px, lying over below; `AskAiBar` retired; build task 14 closed. Measured in the section above and in the PR. |
 | 2026-09-22 | Aldemir (founder), round 6z, relayed by the orchestrating session (recorded 2026-09-28 from preserved snapshot `2f9a1e0d3`) | His picks, verbatim: "/ask waits for new Settings (Recommended)" (Settings reach); "Leave it out (Recommended)" (labels given while opted out); "Add a plain line now (Recommended)" (the AI model provider, over the lawyer-review default). See the round-6z amendment. |
-| 2026-09-28 | `fix/ask-round-6z` lane (build, against `main` 0d7af2975) | Answer 1 met by #419, nothing built for it; the snapshot's 503 gate is not carried. Answer 2 built as `20261202100000`, with the backfill changed so it cannot export an opted-out label now that production may hold labels (PGlite 17/17 on the five ask migrations over stubs; mutations listed in the amendment). Answer 3 built in both copies (vitest 7/7). The label-disclosure gap filed as OD-182, open. |
+| 2026-09-28 | `fix/ask-round-6z` lane (build, against `main` 0d7af2975) | Answer 1 met by #419, nothing built for it; the snapshot's 503 gate is not carried. Answer 2 built as `20261203100000`, with the backfill changed so it cannot export an opted-out label now that production may hold labels (PGlite 17/17 on the five ask migrations over stubs; mutations listed in the amendment). Answer 3 built in both copies (vitest 7/7). The label-disclosure gap filed as OD-182, open. |

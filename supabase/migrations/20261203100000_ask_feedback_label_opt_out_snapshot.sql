@@ -7,7 +7,7 @@
 -- opted in.
 --
 -- Carried from the preserved snapshot 2f9a1e0d3 (branch r5/KL, where it was
--- 20260922023000). Renumbered to 20261202100000, past every version on every
+-- 20260922023000). Renumbered to 20261203100000, past every version on every
 -- origin ref (ceiling 20261201120000 on 2026-09-28), and its header rewritten:
 -- the snapshot said no production row could exist; that is no longer true.
 -- /ask is live (#475, ASK_LAUNCHED set on Railway by the founder, ADR 0145
