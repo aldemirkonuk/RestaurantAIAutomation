@@ -79,6 +79,10 @@ const state: {
   failLineInsert: boolean;
   /** Runs once, right after the dedup lookup reads the open order. */
   afterLookup: (() => void) | null;
+  /** The order's lines (`procurement_order_items`), as the merge reads them. */
+  lines: Row[];
+  /** The held-line read fails. */
+  failLineRead: boolean;
 } = {
   order: {},
   writes: [],
@@ -88,6 +92,8 @@ const state: {
   lineWrites: [],
   failLineInsert: false,
   afterLookup: null,
+  lines: [],
+  failLineRead: false,
 };
 
 function seed(status: S): void {
@@ -108,6 +114,8 @@ function seed(status: S): void {
   state.lineWrites = [];
   state.failLineInsert = false;
   state.afterLookup = null;
+  state.lines = [];
+  state.failLineRead = false;
 }
 
 /**
@@ -128,7 +136,28 @@ function seedOpenOrder(status: S): void {
     negotiated_price: null,
     final_price: "300.00",
     total_cost: "1800.00",
+    currency: "EUR",
   });
+  // The line `createOrder` wrote for it: six bottles at 300.00, in euros.
+  state.lines = [
+    {
+      id: "line-1",
+      quantity: 6,
+      unit_type: "bottle",
+      bottles_per_unit: 1,
+      quoted_unit_price: null,
+      negotiated_unit_price: null,
+      final_unit_price: "300.00",
+      price_uom: null,
+      price_pack_size: null,
+      currency: "EUR",
+      allowance: null,
+      deposit: null,
+      freight: null,
+      line_total: "1800.00",
+      vendor_sku: null,
+    },
+  ];
 }
 
 /**
@@ -152,6 +181,8 @@ const supabase: any = {
     // write whose filters no longer match changes nothing and returns no row.
     let pending: Row | null = null;
     let inserting = false;
+    let deleting = false;
+    let inserted: Row | null = null;
     const filters: Array<[string, "eq" | "is", unknown]> = [];
     const settle = (): Row | null => {
       const sent = pending;
@@ -167,12 +198,14 @@ const supabase: any = {
       select: () => q,
       insert: (row: Row) => {
         inserting = true;
+        inserted = row;
         if (table === "system_audit_log") state.audits.push(row);
         if (table === "procurement_order_items")
           state.lineWrites.push("insert");
         return q;
       },
       delete: () => {
+        deleting = true;
         if (table === "procurement_order_items")
           state.lineWrites.push("delete");
         return q;
@@ -232,15 +265,25 @@ const supabase: any = {
             reject,
           );
         }
-        if (
-          table === "procurement_order_items" &&
-          inserting &&
-          state.failLineInsert
-        )
-          return Promise.resolve({
-            data: null,
-            error: { message: "line refused" },
-          }).then(resolve, reject);
+        if (table === "procurement_order_items") {
+          if (inserting && state.failLineInsert)
+            return Promise.resolve({
+              data: null,
+              error: { message: "line refused" },
+            }).then(resolve, reject);
+          if (deleting) state.lines = [];
+          else if (inserting && inserted) state.lines.push({ ...inserted });
+          else
+            return Promise.resolve(
+              state.failLineRead
+                ? { data: null, error: { message: "connection reset" } }
+                : { data: state.lines.map((l) => ({ ...l })), error: null },
+            ).then(resolve, reject);
+          return Promise.resolve({ data: [], error: null }).then(
+            resolve,
+            reject,
+          );
+        }
         let result: Row;
         if (table === "providers") result = { count: 1, data: [], error: null };
         else if (table === "procurement_orders") {
@@ -635,9 +678,13 @@ describe("a new order folded into an open one moves its money only for a manager
     expect(row.actor_id).toBe(MANAGER);
     expect(row.changes.door).toBe("merge");
     expect(row.changes.status).toBe(S.APPROVED);
+    // The header's two figures, and (round 3) the line's two that moved with
+    // them, named as `line.<column>`.
     expect(row.changes.fields).toEqual({
       final_price: { from: "300.00", to: 400 },
       total_cost: { from: "1800.00", to: 2400 },
+      "line.final_unit_price": { from: "300.00", to: 400 },
+      "line.line_total": { from: "1800.00", to: 2400 },
     });
   });
 
@@ -704,6 +751,191 @@ describe("a new order folded into an open one moves its money only for a manager
     expect(res.status).toBe(201);
     expect(state.roleAsks).toHaveLength(0);
     expect(state.audits).toHaveLength(0);
+  });
+});
+
+// ===========================================================================
+// 2d. The fold's LINE is held to the same rule (ADR 0244 D2, round 3)
+// ===========================================================================
+//
+// Found by the v3 audit at e9c6ffe89 (the adversary's BLOCK, reproduced by the
+// correctness reviewer): the gate compared the header's seven columns only,
+// while `upsertOrderLine` deleted and rewrote the whole line on every fold —
+// the unit pair, the fees, the currency, the unit prices and the SKU the
+// invoice is paired on. A staff re-post that held the header could rewrite an
+// approved order's line with no role and no paper; one that merely omitted
+// those fields wiped them. The founder's pick, 2026-09-30: "Third round: gate
+// the line".
+
+describe("the line a fold would write is gated like the header", () => {
+  // The header held exactly: same quantity, price and total as stored.
+  const HELD = { quantity: 6, finalPrice: 300, totalCost: 1800 };
+
+  it("[REVERT-FAILS] staff moving only the line's fees and currency past PENDING is a 403, with no line write and no paper", async () => {
+    seedOpenOrder(S.APPROVED);
+    const res = await place(STAFF, {
+      ...HELD,
+      deposit: 50,
+      freight: 20,
+      currency: "USD",
+    });
+    expect(res.status).toBe(403);
+    expect(res.body.reason).toBe("merge_would_change_price");
+    expect(state.writes).toHaveLength(0);
+    expect(state.lineWrites).toHaveLength(0);
+    expect(state.audits).toHaveLength(0);
+    expect(state.lines[0].currency).toBe("EUR");
+    expect(state.lines[0].deposit).toBeNull();
+  });
+
+  it("[REVERT-FAILS] staff changing only the vendor SKU of an approved order is a 403", async () => {
+    // Not a price, but it decides which invoice line the agreed price is held
+    // against (the delivery comparison pairs lines by vendor SKU).
+    seedOpenOrder(S.APPROVED);
+    const res = await place(STAFF, { ...HELD, vendorSku: "OTHER-1" });
+    expect(res.status).toBe(403);
+    expect(state.lineWrites).toHaveLength(0);
+  });
+
+  it("[REVERT-FAILS] a manager may move the line, and the paper names each line column", async () => {
+    seedOpenOrder(S.APPROVED);
+    const res = await place(MANAGER, {
+      ...HELD,
+      deposit: 50,
+      currency: "USD",
+    });
+    expect(res.status).toBe(201);
+    expect(state.roleAsks).toContain("change an order's price");
+    expect(state.lineWrites).toEqual(["delete", "insert"]);
+    expect(state.audits).toHaveLength(1);
+    const fields = state.audits[0].changes.fields;
+    expect(fields["line.deposit"]).toEqual({ from: null, to: 50 });
+    expect(fields["line.currency"]).toEqual({ from: "EUR", to: "USD" });
+    expect(fields).not.toHaveProperty("total_cost");
+    expect(state.lines[0].deposit).toBe(50);
+  });
+
+  it("[REVERT-FAILS] a re-post that omits the line's unit prices, currency and SKU does not wipe them", async () => {
+    seedOpenOrder(S.APPROVED);
+    Object.assign(state.order, {
+      quoted_price: "280.00",
+      negotiated_price: "290.00",
+    });
+    Object.assign(state.lines[0], {
+      quoted_unit_price: "280.00",
+      negotiated_unit_price: "290.00",
+      vendor_sku: "BAR-19",
+    });
+    const res = await place(STAFF, { quantity: 6, finalPrice: 300 });
+    expect(res.status).toBe(201);
+    expect(state.lineWrites).toHaveLength(0);
+    expect(state.lines[0]).toMatchObject({
+      quoted_unit_price: "280.00",
+      negotiated_unit_price: "290.00",
+      currency: "EUR",
+      vendor_sku: "BAR-19",
+    });
+  });
+
+  it("[REVERT-FAILS] omitting a fee the line holds is a change, and staff are refused it past PENDING", async () => {
+    // The fees and the unit pair are not carried forward: the header's total
+    // is worked out from the request's fees and unit, so an omission there
+    // changes the money, and it is decided like any other change.
+    seedOpenOrder(S.APPROVED);
+    // A consistent order with a 50.00 deposit: header and line both 1,850.00.
+    state.order.total_cost = "1850.00";
+    Object.assign(state.lines[0], { deposit: "50.00", line_total: "1850.00" });
+    // The header held exactly (its total stated), the deposit left out.
+    const res = await place(STAFF, { ...HELD, totalCost: 1850 });
+    expect(res.status).toBe(403);
+    expect(state.lineWrites).toHaveLength(0);
+    expect(state.lines[0].deposit).toBe("50.00");
+  });
+
+  it("[REVERT-FAILS] a manager's re-post that leaves out a held fee clears it, and the paper says so", async () => {
+    seedOpenOrder(S.APPROVED);
+    state.order.total_cost = "1850.00";
+    Object.assign(state.lines[0], { deposit: "50.00", line_total: "1850.00" });
+    const res = await place(MANAGER, { ...HELD, totalCost: 1850 });
+    expect(res.status).toBe(201);
+    expect(state.lines[0].deposit).toBeNull();
+    const fields = state.audits[0].changes.fields;
+    expect(fields["line.deposit"]).toEqual({ from: "50.00", to: null });
+    expect(fields["line.line_total"]).toEqual({ from: "1850.00", to: 1800 });
+  });
+
+  it("[REVERT-FAILS] a re-post that changes nothing writes no header and no line", async () => {
+    seedOpenOrder(S.APPROVED);
+    const res = await place(STAFF, { quantity: 6, finalPrice: 300 });
+    expect(res.status).toBe(201);
+    expect(state.writes).toHaveLength(0);
+    expect(state.lineWrites).toHaveLength(0);
+    expect(state.audits).toHaveLength(0);
+  });
+
+  it("[REVERT-FAILS] a notes-only re-post writes the header, never the line", async () => {
+    // Before round 3 every fold rewrote the line, and a re-post that restated
+    // nothing about the fees wiped them. Now only a line that moves is written.
+    seedOpenOrder(S.APPROVED);
+    state.order.total_cost = "1850.00";
+    Object.assign(state.lines[0], { deposit: "50.00", line_total: "1850.00" });
+    const res = await place(STAFF, {
+      quantity: 6,
+      finalPrice: 300,
+      deposit: 50,
+      managerNotes: "call the rep before Friday",
+    });
+    expect(res.status).toBe(201);
+    expect(state.writes).toHaveLength(1);
+    expect(state.writes[0].manager_notes).toBe("call the rep before Friday");
+    expect(state.lineWrites).toHaveLength(0);
+    expect(state.audits).toHaveLength(0);
+  });
+
+  it("[REVERT-FAILS] a PENDING fold stays free for staff, rewrites the line, and names it on paper", async () => {
+    seedOpenOrder(S.PENDING);
+    const res = await place(STAFF, { ...HELD, deposit: 50 });
+    expect(res.status).toBe(201);
+    expect(state.roleAsks).toHaveLength(0);
+    expect(state.lineWrites).toEqual(["delete", "insert"]);
+    expect(state.audits).toHaveLength(1);
+    expect(state.audits[0].changes.fields["line.deposit"]).toEqual({
+      from: null,
+      to: 50,
+    });
+  });
+
+  it("[REVERT-FAILS] an order holding two lines is a change a fold would make, refused for staff past PENDING", async () => {
+    seedOpenOrder(S.APPROVED);
+    state.lines.push({ ...state.lines[0], id: "line-2" });
+    const res = await place(STAFF, { quantity: 6, finalPrice: 300 });
+    expect(res.status).toBe(403);
+    expect(state.lines).toHaveLength(2);
+  });
+
+  it("[REVERT-FAILS] an order touched between the lookup and the write is not folded into (updated_at)", async () => {
+    // A line price written by confirm-deal or the vendor's acceptance reaches
+    // the header through the echo trigger, and the table stamps updated_at on
+    // every update: the write is conditional on it.
+    seedOpenOrder(S.APPROVED);
+    state.order.updated_at = "2026-09-30T10:00:00.000001+00:00";
+    state.afterLookup = () => {
+      state.order.updated_at = "2026-09-30T10:00:05.000001+00:00";
+    };
+    const res = await place(MANAGER, { ...HELD, deposit: 50 });
+    expect(res.status).toBe(409);
+    expect(state.writes).toHaveLength(0);
+    expect(state.lineWrites).toHaveLength(0);
+    expect(state.audits).toHaveLength(0);
+  });
+
+  it("[REVERT-FAILS] refuses the fold when the held line cannot be read", async () => {
+    seedOpenOrder(S.APPROVED);
+    state.failLineRead = true;
+    const res = await place(MANAGER, { ...HELD, deposit: 50 });
+    expect(res.status).toBe(500);
+    expect(state.writes).toHaveLength(0);
+    expect(state.lineWrites).toHaveLength(0);
   });
 });
 
