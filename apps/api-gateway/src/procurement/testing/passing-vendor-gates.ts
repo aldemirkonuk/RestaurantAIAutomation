@@ -30,6 +30,31 @@ export const PASSING_AUTHORITY = {
   witnessGrantUse: async () => undefined,
 };
 
+/**
+ * The approval rules, as a house that has set none (ADR 0244 D3). Since
+ * 2026-09-30 `confirmDeal` runs the house's approval rules for the confirming
+ * person (founder F2) and refuses when it cannot read them; a readable, empty
+ * policy fires nothing, so a spec about what a confirmation WRITES is not a
+ * spec about the rules. The rules themselves are exercised in
+ * `order-price-recheck.spec.ts` and `order-approval-gate.spec.ts`.
+ */
+export const PASSING_THRESHOLDS = {
+  read: async (restaurantId: string) => ({
+    restaurantId,
+    thresholds: [],
+    policyEmpty: true,
+    readable: true,
+    reason: null,
+    actorNamesReason: null,
+  }),
+};
+
+/** A manager, for the role reads the rules make. Asserts nothing about who may act. */
+export const PASSING_ORGANIZATIONS = {
+  resolveRestaurantRole: async () => "manager",
+  assertCanManageRestaurant: async () => undefined,
+};
+
 /** The eight positional `@Optional()`s after the ledger, then the two gates. */
 export const GATES_AFTER_LEDGER = [
   undefined, // orchestrator
@@ -38,12 +63,12 @@ export const GATES_AFTER_LEDGER = [
   undefined, // websocket
   undefined, // inbound address
   undefined, // notifications
-  undefined, // approval thresholds
-  undefined, // organizations
+  PASSING_THRESHOLDS, // approval thresholds (a house with no rule)
+  PASSING_ORGANIZATIONS, // organizations (a manager)
   PASSING_SEAL,
   PASSING_AUTHORITY,
 ] as unknown as [
-  undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, any, any,
+  undefined, undefined, undefined, undefined, undefined, undefined, any, any, any, any,
 ];
 
 /** The actor and the seal a gated call carries in these specs. */

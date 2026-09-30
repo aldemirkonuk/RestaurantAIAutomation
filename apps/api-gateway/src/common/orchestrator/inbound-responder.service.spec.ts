@@ -385,11 +385,34 @@ describe("InboundResponderService (deterministic core)", () => {
      * `lineRead` lets a case make that read FAIL, which is its own asserted
      * behaviour: the status still advances and no price is written anywhere.
      */
+    /**
+     * The house's approval rules as the autonomy reads them (ADR 0244 D3 F3),
+     * through the `ModuleRef` lookup the service makes. The default is a
+     * house that has set NO rule — readable and empty — so every case written
+     * before the gate keeps its meaning. `"unwired"` builds the service with
+     * no ModuleRef at all: the rules cannot be consulted.
+     */
+    type Rules = { thresholds: any[]; readable?: boolean } | "unwired";
+    const moduleRefFor = (rules: Rules) =>
+      rules === "unwired"
+        ? undefined
+        : {
+            get: () => ({
+              read: async (restaurantId: string) => ({
+                restaurantId,
+                thresholds: rules.thresholds,
+                policyEmpty: rules.thresholds.length === 0,
+                readable: rules.readable !== false,
+                reason: rules.readable === false ? "relation unavailable" : null,
+              }),
+            }),
+          };
     const withCapturingDb = (
       lineRead: { data: any; error: any } = {
         data: { id: "line1" },
         error: null,
       },
+      rules: Rules = { thresholds: [] },
     ) => {
       const updates: Record<string, Record<string, any>> = {};
       const captured: { update?: Record<string, any> } = {};
@@ -419,6 +442,8 @@ describe("InboundResponderService (deterministic core)", () => {
         {} as any, // modelClient — unused by the deterministic core under test
         {} as any,
         {} as any, // nfVerdicts — the graded path is not the core under test
+        undefined, // senderReputation
+        moduleRefFor(rules) as any,
       );
       // The decline path tells a manager. Captured rather than stubbed away:
       // "the order moved and nobody was told" is the failure this replaces.
@@ -452,6 +477,7 @@ describe("InboundResponderService (deterministic core)", () => {
       const { s, updates } = withCapturingDb();
       const order = {
         id: "o1",
+        restaurant_id: "rest-A",
         status: "NEGOTIATING",
         quantity: 6,
         final_price: null,
@@ -483,6 +509,7 @@ describe("InboundResponderService (deterministic core)", () => {
       });
       const order = {
         id: "o5",
+        restaurant_id: "rest-A",
         status: "NEGOTIATING",
         quantity: 6,
         final_price: null,
@@ -557,6 +584,144 @@ describe("InboundResponderService (deterministic core)", () => {
       };
       await s.syncOrderState(order, acceptanceAnalysis(), 1090, 6, true);
       expect(captured.update).toBeUndefined();
+    });
+
+    /**
+     * ADR 0244 D3 F3 (founder, 2026-09-30, verbatim pick "Yes, wait
+     * (Recommended)"): under full autonomy the vendor-reply accept approves
+     * ONLY within the house's approval rules. A vendor price the rules put
+     * above what the autonomy may sign waits for a person: the order stays in
+     * negotiation, the price is recorded as the negotiated one, no agreed
+     * price is written to the line, and a manager is told.
+     *
+     * [REVERT-FAILS] marks a case that fails against e9c6ffe89 (#538), where the
+     * accept wrote APPROVED at any price.
+     */
+    describe("syncOrderState — the autonomy approves only within the house's rules (ADR 0244 D3 F3)", () => {
+      const ceiling = (amountLimit: number, requiredRole: "owner" | "manager" = "owner") => ({
+        rule: "manager_ceiling",
+        enabled: true,
+        amountLimit,
+        percentLimit: null,
+        requiredRole,
+        setBy: null,
+        updatedAt: null,
+      });
+      const negotiating = (id: string, extra: Record<string, any> = {}) => ({
+        id,
+        restaurant_id: "rest-A",
+        status: "NEGOTIATING",
+        quantity: 6,
+        total_cost: 6000,
+        provider_id: "prov-1",
+        inventory_id: null,
+        final_price: null,
+        negotiated_price: null,
+        ...extra,
+      });
+
+      it("[REVERT-FAILS] a vendor price over the ceiling is not approved: it waits, in negotiation, and a manager is told", async () => {
+        // 1050 x 6 = 6,300 > the 5,000 ceiling; the order's own total is 6,000.
+        const { s, updates, notes } = withCapturingDb(undefined, { thresholds: [ceiling(5000)] });
+        await s.syncOrderState(negotiating("f3a"), acceptanceAnalysis(), 1090, 6, true);
+        expect(updates.procurement_orders?.status).toBeUndefined();
+        expect(updates.procurement_orders?.negotiated_price).toBe(1050);
+        expect(updates.procurement_order_items).toBeUndefined();
+        expect(notes).toHaveLength(1);
+        expect(notes[0].restaurantId).toBe("rest-A");
+        expect(notes[0].n.message).toMatch(/did not approve/);
+        expect(notes[0].n.message).toMatch(/5000 ceiling/);
+      });
+
+      it("[REVERT-FAILS] a PENDING order the autonomy may not approve moves to NEGOTIATING, never APPROVED or APPROVAL_NEEDED", async () => {
+        const { s, updates } = withCapturingDb(undefined, { thresholds: [ceiling(5000)] });
+        await s.syncOrderState(negotiating("f3b", { status: "PENDING" }), acceptanceAnalysis(), 1090, 6, true);
+        expect(updates.procurement_orders?.status).toBe("NEGOTIATING");
+      });
+
+      it("the same accept INSIDE the ceiling is approved, as before", async () => {
+        const { s, updates, notes } = withCapturingDb(undefined, { thresholds: [ceiling(7000)] });
+        await s.syncOrderState(negotiating("f3c"), acceptanceAnalysis(), 1090, 6, true);
+        expect(updates.procurement_orders?.status).toBe("APPROVED");
+        expect(updates.procurement_order_items?.final_unit_price).toBe(1050);
+        expect(notes).toHaveLength(0);
+      });
+
+      it("[REVERT-FAILS] rules that cannot be read approve nothing", async () => {
+        const { s, updates } = withCapturingDb(undefined, { thresholds: [], readable: false });
+        await s.syncOrderState(negotiating("f3d"), acceptanceAnalysis(), 1090, 6, true);
+        expect(updates.procurement_orders?.status).toBeUndefined();
+        expect(updates.procurement_order_items).toBeUndefined();
+      });
+
+      it("[REVERT-FAILS] rules that cannot be consulted at all (no ModuleRef) approve nothing", async () => {
+        const { s, updates } = withCapturingDb(undefined, "unwired");
+        await s.syncOrderState(negotiating("f3e"), acceptanceAnalysis(), 1090, 6, true);
+        expect(updates.procurement_orders?.status).toBeUndefined();
+        expect(updates.procurement_order_items).toBeUndefined();
+      });
+
+      it("[REVERT-FAILS] a rule the autonomy cannot test (first order to this vendor, unknown) is not 'within' the rules", async () => {
+        const newVendor = { ...ceiling(0), rule: "new_vendor", amountLimit: null };
+        // No provider on the order: whether it is a first order cannot be told.
+        const { s, updates } = withCapturingDb(undefined, { thresholds: [newVendor] });
+        await s.syncOrderState(
+          negotiating("f3f", { provider_id: null }),
+          acceptanceAnalysis(),
+          1090,
+          6,
+          true,
+        );
+        expect(updates.procurement_orders?.status).toBeUndefined();
+      });
+
+      it("[REVERT-FAILS] F4: the vendor's word does not move an APPROVED order's price over the rules", async () => {
+        const { s, updates } = withCapturingDb(undefined, { thresholds: [ceiling(5000)] });
+        const approved = negotiating("f4a", {
+          status: "APPROVED",
+          total_cost: 4200,
+          final_price: null,
+          negotiated_price: 700,
+        });
+        const mismatchedReceipt = acceptanceAnalysis({
+          intent: "order_confirmation",
+          deal_kind: "verification",
+          vendor_offers: [
+            { price_per_bottle: 1200, quantity: 6, unit: "bottle", conditions: "", quote: "confirmed at 1200" },
+          ],
+        });
+        await s.syncOrderState(approved, mismatchedReceipt, 1090, 6, false);
+        expect(updates.procurement_orders).not.toHaveProperty("negotiated_price");
+        expect(updates.procurement_orders?.status).toBeUndefined();
+      });
+
+      it("F4: within the rules, the vendor's price on an APPROVED order is recorded as before", async () => {
+        const { s, updates } = withCapturingDb(undefined, { thresholds: [ceiling(9000)] });
+        const approved = negotiating("f4b", { status: "APPROVED", negotiated_price: 700 });
+        const mismatchedReceipt = acceptanceAnalysis({
+          intent: "order_confirmation",
+          deal_kind: "verification",
+          vendor_offers: [
+            { price_per_bottle: 1200, quantity: 6, unit: "bottle", conditions: "", quote: "confirmed at 1200" },
+          ],
+        });
+        await s.syncOrderState(approved, mismatchedReceipt, 1090, 6, false);
+        expect(updates.procurement_orders?.negotiated_price).toBe(1200);
+      });
+
+      it("F4 exempts a decline: it takes the order out of approval, and its price is the negotiation's", async () => {
+        const { s, updates } = withCapturingDb(undefined, { thresholds: [ceiling(10)] });
+        const confirmed = negotiating("f4c", { status: "CONFIRMED", negotiated_price: 700 });
+        await s.syncOrderState(
+          confirmed,
+          acceptanceAnalysis({ intent: "rejection", deal_kind: "none" }),
+          1090,
+          6,
+          false,
+        );
+        expect(updates.procurement_orders?.status).toBe("NEGOTIATING");
+        expect(updates.procurement_orders?.negotiated_price).toBe(1050);
+      });
     });
 
     /**

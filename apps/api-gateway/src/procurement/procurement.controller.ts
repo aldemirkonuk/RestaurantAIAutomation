@@ -15,6 +15,7 @@ import {
   Patch,
   Post,
   Query,
+  Res,
   UseGuards,
 } from "@nestjs/common";
 import { ApiOperation, ApiQuery, ApiResponse, ApiTags } from "@nestjs/swagger";
@@ -37,7 +38,25 @@ import {
   DraftSendRequestDto,
   ManualReplyDto,
 } from "./dto/approve-draft.dto";
-import { ProcurementService, type SendOrAsk } from "./procurement.service";
+import {
+  ProcurementService,
+  type SendOrAsk,
+  type UpdatedOrder,
+} from "./procurement.service";
+import type { PriceChangeView } from "./order-price-recheck";
+
+/**
+ * The status a response that HELD a price change answers with (ADR 0244 D3):
+ * 202 Accepted — the request was taken and a change waits for a signature;
+ * the figures in the body are the order's own, unchanged. Only the status is
+ * set on the Express response; Nest still serialises the return value.
+ */
+function acceptedWhenHeld(
+  res: { status: (code: number) => unknown } | undefined,
+  held: unknown,
+): void {
+  if (held && res) res.status(HttpStatus.ACCEPTED);
+}
 
 /**
  * `?quantityReceivedInOrderUom=` -> a whole non-negative count, or a 400 that
@@ -130,9 +149,10 @@ export class ProcurementController {
   async createOrder(
     @Body() dto: CreateOrderDto,
     @CurrentUser() user: { userId: string; restaurantId: string },
-  ): Promise<OrderResponseDto> {
+    @Res({ passthrough: true }) res?: { status: (code: number) => unknown },
+  ): Promise<UpdatedOrder> {
     try {
-      return await this.procurementService.createOrder(
+      const order = await this.procurementService.createOrder(
         user.restaurantId,
         user.userId,
         dto,
@@ -141,6 +161,10 @@ export class ProcurementController {
         // client must not be able to claim an agent order was manual.
         { source: "manual" },
       );
+      // A re-quote folded into an approved order that the caller's approval
+      // rules do not cover waits for a signature (ADR 0244 D3).
+      acceptedWhenHeld(res, order.pendingPriceChange);
+      return order;
     } catch (error) {
       // Re-throw every deliberate HTTP refusal as-is. Flattening them to 500
       // turned the unit guard's 400 ("an order in cases needs a pack size")
@@ -272,18 +296,26 @@ export class ProcurementController {
     description:
       "The body carries a `status`. An order changes state only through its own act; `reason` is `status_through_its_act` (or `cancel_through_the_sealed_act`) and `message` names where the move is made.",
   })
+  @ApiResponse({
+    status: 202,
+    description:
+      "ADR 0244 D3: the order is approved and not yet delivered, and the caller's approval rules do not cover the new figures. No figure was changed; `pendingPriceChange` is the change now waiting for someone whose rules cover it, with its `sentence`. The rest of the edit (notes) applied.",
+  })
   async updateOrder(
     @Param("id") orderId: string,
     @Body() dto: UpdateOrderDto,
     @CurrentUser() user: { userId: string; restaurantId: string },
-  ): Promise<OrderResponseDto> {
+    @Res({ passthrough: true }) res?: { status: (code: number) => unknown },
+  ): Promise<UpdatedOrder> {
     try {
-      return await this.procurementService.updateOrder(
+      const order = await this.procurementService.updateOrder(
         user.restaurantId,
         orderId,
         dto,
         { actorUserId: user.userId },
       );
+      acceptedWhenHeld(res, order.pendingPriceChange);
+      return order;
     } catch (error) {
       if (error instanceof HttpException) throw error;
       throw new HttpException(
@@ -518,6 +550,93 @@ export class ProcurementController {
       providerId.trim(),
       inventoryId.trim(),
     );
+  }
+
+  /**
+   * The price change waiting on this order, if any (ADR 0244 D3): what it
+   * moves from and to, who proposed it, which rules fired, whether it is
+   * still current, and whether the caller's rules cover it. A courtesy for
+   * the order sheet; `price-change/approve` decides independently.
+   */
+  @Get("orders/:id/price-change")
+  @ApiOperation({ summary: "The price change waiting on this order for a signature" })
+  @ApiResponse({
+    status: 200,
+    description:
+      "`change: null` when nothing waits. Otherwise the change, `stale` (a sentence when it can no longer be approved as it stood), `mayApprove` for the caller, and the `sentence` when they may not.",
+  })
+  async priceChange(
+    @Param("id", new ParseUUIDPipe()) orderId: string,
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ) {
+    return this.procurementService.priceChangeReadout(user.restaurantId, orderId, user.userId);
+  }
+
+  /**
+   * Begin the hold on approving a waiting price change. The seal is over the
+   * change itself (its id, its source, every figure from and to, and what it
+   * replays), so it cannot approve a different or a later proposal.
+   */
+  @Post("orders/:id/price-change-seal-challenge")
+  @ApiOperation({ summary: "Mint the one-time seal a price change's approval has to carry back" })
+  @ApiResponse({
+    status: 403,
+    description: "The caller's approval rules do not cover the change: the same refusal the approval would give.",
+  })
+  @ApiResponse({
+    status: 409,
+    description:
+      "`reason: price_change_stale` — the order's figures or state moved since the change was proposed; the change is closed as stale.",
+  })
+  async issuePriceChangeSeal(
+    @Param("id", new ParseUUIDPipe()) orderId: string,
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ): Promise<{ challenge: string; expiresAt: string; act: string }> {
+    return this.procurementService.issuePriceChangeSeal(user.restaurantId, orderId, user.userId);
+  }
+
+  /**
+   * Approve the price change waiting on this order, behind a redeemed seal
+   * (ADR 0244 D3, founder F1: it *"takes effect only when someone whose limit
+   * covers it approves it through a sealed act"*). The change is applied by
+   * the act it came from, as the approver: the figures written, the deal
+   * confirmed on its held terms, or the held order request merged into this
+   * order.
+   */
+  @Post("orders/:id/price-change/approve")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Approve the price change waiting on this order, behind a redeemed seal" })
+  @ApiResponse({ status: 200, description: "Approved and applied." })
+  @ApiResponse({
+    status: 403,
+    description:
+      "The caller's approval rules do not cover the change, or the seal was absent, spent, issued to somebody else or over a different change.",
+  })
+  @ApiResponse({ status: 404, description: "No price change waits on this order." })
+  @ApiResponse({
+    status: 409,
+    description:
+      "The change is stale (the order moved since it was proposed; closed as stale), or someone else decided it a moment ago.",
+  })
+  async approvePriceChange(
+    @Param("id", new ParseUUIDPipe()) orderId: string,
+    @CurrentUser() user: { userId: string; restaurantId: string },
+    @Headers("x-seal-challenge") challenge?: string,
+  ) {
+    try {
+      return await this.procurementService.approvePriceChange(
+        user.restaurantId,
+        orderId,
+        user.userId,
+        challenge ?? null,
+      );
+    } catch (error: any) {
+      if (error instanceof HttpException) throw error;
+      throw new HttpException(
+        error?.message || "Failed to approve the price change",
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
   }
 
   /**
@@ -1150,14 +1269,24 @@ export class ProcurementController {
     description:
       "The seal was absent, spent or over different terms, or the caller is not an owner, a manager or a grantee whose limit covers this deal",
   })
+  @ApiResponse({
+    status: 202,
+    description:
+      "ADR 0244 D3 F2: this house's approval rules do not cover the deal for the caller. `confirmed: false`; nothing was committed or mailed; `pendingPriceChange` holds the exact terms for someone whose rules cover them.",
+  })
   async confirmDeal(
     @Param("id") orderId: string,
     @Body() body: ConfirmDealDto,
     @CurrentUser() user: { userId: string; restaurantId: string },
     @Headers("x-seal-challenge") challenge?: string,
-  ): Promise<{ confirmed: boolean; sentConfirmation: boolean }> {
+    @Res({ passthrough: true }) res?: { status: (code: number) => unknown },
+  ): Promise<{
+    confirmed: boolean;
+    sentConfirmation: boolean;
+    pendingPriceChange?: PriceChangeView & { sentence: string };
+  }> {
     try {
-      return await this.procurementService.confirmDeal(
+      const out = await this.procurementService.confirmDeal(
         user.restaurantId,
         orderId,
         user.userId,
@@ -1168,6 +1297,8 @@ export class ProcurementController {
         },
         challenge,
       );
+      acceptedWhenHeld(res, out.pendingPriceChange);
+      return out;
     } catch (error: any) {
       if (error instanceof HttpException) throw error;
       throw new HttpException(

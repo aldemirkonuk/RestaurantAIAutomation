@@ -17,6 +17,8 @@ import { SealChallengeService } from "../common/seal/seal-challenge.service";
 import { VendorSendAuthorityService } from "../organizations/vendor-send-authority.service";
 import { VendorSendRequestsService } from "../organizations/vendor-send-requests.service";
 import { installGrantLedger } from "../organizations/testing/grant-ledger-fake";
+import { OrganizationsService } from "../organizations/organizations.service";
+import { PASSING_THRESHOLDS } from "./testing/passing-vendor-gates";
 import {
   FakeDb,
   fakeNotifications,
@@ -94,8 +96,10 @@ function build() {
     undefined,
     undefined,
     fakeNotifications([OWNER, MANAGER, STAFF, GRANTEE]) as any,
-    undefined,
-    undefined,
+    // A house with no approval rule (ADR 0244 D3 F2 runs them on every
+    // confirmation; the rules themselves are `order-price-recheck.spec.ts`'s).
+    PASSING_THRESHOLDS as any,
+    new OrganizationsService(database),
     seal,
     authority,
     new VendorSendRequestsService(database, authority),

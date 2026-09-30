@@ -160,6 +160,24 @@ import {
   orderSealArgs,
 } from "./order-seal";
 import {
+  ORDER_APPROVE_PRICE_CHANGE_ACT,
+  ORDER_PRICE_FIGURES,
+  effectiveTotal,
+  effectiveUnitPrice,
+  figuresMovedSince,
+  figuresThatMove,
+  isPriceRecheckStatus,
+  pendingSentence,
+  presentPriceChange,
+  priceChangeSealArgs,
+  readIsFirstOrderToVendor,
+  readPricePremiumPct,
+  snapshotFigures,
+  staleSentence,
+  type ChangeFigure,
+  type PriceChangeView,
+} from "./order-price-recheck";
+import {
   VendorSendAuthorityService,
   type SendOrAsk,
   type VendorSendReading,
@@ -568,13 +586,25 @@ const ORDER_MONEY_COLUMNS = [
   "price_verified",
 ] as const;
 
-/** An order's money as it stood before a price edit (ADR 0244). */
+/**
+ * An order's money as it stood before a price edit (ADR 0244), with the three
+ * facts the D3 re-check needs besides the figures: how many, from whom, of
+ * what (the ceiling's quantity, `new_vendor`'s vendor, `price_jump`'s item).
+ */
 type OrderMoneyBefore = {
   status: string | null;
+  quantity?: string | number | null;
+  provider_id?: string | null;
+  inventory_id?: string | null;
 } & Record<
   (typeof ORDER_MONEY_COLUMNS)[number],
   string | number | boolean | null
 >;
+
+/** What `updateOrder` returns: the order, and a price change that waits instead of applying. */
+export type UpdatedOrder = OrderResponseDto & {
+  pendingPriceChange?: PriceChangeView & { sentence: string };
+};
 
 /**
  * What `createOrder`'s dedup merge rewrites on an open order that moves its
@@ -970,10 +1000,19 @@ export class ProcurementService {
         /** The occurrence date this child is for, YYYY-MM-DD. */
         occurrenceOn: string;
       };
+      /**
+       * ADR 0244 D3 — replaying a merge that waited for a signature, set ONLY
+       * by `approvePriceChange` after the approver's rules, the stale check
+       * and the seal have all passed. It names the ONE order the merge may
+       * land on: the dedup lookup is pinned to it, and if that order is no
+       * longer open nothing is merged and no new order is made.
+       */
+      approvedPriceChange?: { orderId: string };
     },
-  ): Promise<OrderResponseDto> {
+  ): Promise<UpdatedOrder> {
     const fulfilled = provenance?.alreadyFulfilled;
     const recurrence = provenance?.recurrence ?? null;
+    const mergeInto = provenance?.approvedPriceChange?.orderId ?? null;
 
     // TENANCY, BEFORE THE ORDER EXISTS (ADR 0141).
     //
@@ -1201,16 +1240,19 @@ export class ProcurementService {
     // `provenance.recurrence`.
     let existing: any | undefined;
     if (!fulfilled && !recurrence) {
-      const { data: existingRows, error: existingError } =
-        await this.databaseService.supabase
-          .from("procurement_orders")
-          .select("*, inventory:inventory_id(wine_name)")
-          .eq("restaurant_id", restaurantId)
-          .eq("inventory_id", dto.inventoryId)
-          .eq("provider_id", dto.providerId ?? "")
-          .not("status", "in", `(${TERMINAL_STATUSES.join(",")})`)
-          .order("requested_at", { ascending: false })
-          .limit(1);
+      let lookup = this.databaseService.supabase
+        .from("procurement_orders")
+        .select("*, inventory:inventory_id(wine_name)")
+        .eq("restaurant_id", restaurantId)
+        .eq("inventory_id", dto.inventoryId)
+        .eq("provider_id", dto.providerId ?? "")
+        .not("status", "in", `(${TERMINAL_STATUSES.join(",")})`);
+      // An approved merge lands on the order it was proposed for, never on
+      // whichever open order is newest now (ADR 0244 D3).
+      if (mergeInto) lookup = lookup.eq("id", mergeInto);
+      const { data: existingRows, error: existingError } = await lookup
+        .order("requested_at", { ascending: false })
+        .limit(1);
 
       if (existingError) {
         this.logger.warn("Dedup lookup for procurement order failed", {
@@ -1220,6 +1262,17 @@ export class ProcurementService {
       }
 
       existing = existingRows?.[0] as any | undefined;
+    }
+
+    if (mergeInto && (!existing || !dto.providerId)) {
+      // The approved merge's order closed, moved on, or changed vendor or item
+      // since the change was held. Making a NEW order here would be a
+      // purchase nobody approved.
+      throw new ConflictException({
+        reason: "price_change_stale",
+        message:
+          "The order this change was held for is no longer open for this wine and vendor, so nothing was merged and no new order was made.",
+      });
     }
 
     if (existing && dto.providerId) {
@@ -1253,6 +1306,53 @@ export class ProcurementService {
           existing,
           existingStatus,
         );
+      }
+
+      // ADR 0244 D3 F4 (founder, 2026-09-30: "Any price change"). AFTER the
+      // D2 role gate above, so staff are refused as before and never hold a
+      // change: on an order that is sealed and not yet delivered, a fold that
+      // moves its money (D2's own measure, `mergeMoves`) is a price change
+      // like any other. Every approval rule re-runs for the person asking,
+      // and a change their rules do not cover waits for a signature instead
+      // of merging (F1). The held change keeps the request, and its approval
+      // replays it into THIS order.
+      if (Object.keys(mergeMoves).length > 0 && isPriceRecheckStatus(existing.status)) {
+        const mergedFigures: Record<string, unknown> = {
+          quoted_price: dto.quotedPrice ?? existing.quoted_price ?? null,
+          negotiated_price: dto.negotiatedPrice ?? existing.negotiated_price ?? null,
+          final_price: finalPrice,
+          total_cost: totalCost,
+          quantity: dto.quantity,
+        };
+        const proposal = figuresThatMove(existing, mergedFigures);
+        const verdict = await this.priceRecheck(restaurantId, existing.id, userId, {
+          totalCost,
+          unitPrice: effectiveUnitPrice(mergedFigures),
+          quantity: dto.quantity,
+          providerId: existing.provider_id ?? null,
+          inventoryId: existing.inventory_id ?? null,
+        });
+        if (!verdict.covered) {
+          const held = await this.proposePriceChange({
+            restaurantId,
+            orderId: existing.id,
+            userId,
+            source: "order_merge",
+            from: proposal.from,
+            to: proposal.to,
+            terms: {
+              request: JSON.parse(JSON.stringify(dto)) as Record<string, unknown>,
+              source: provenance?.source ?? null,
+            },
+            verdict,
+          });
+          const unchanged: UpdatedOrder = this.mapOrderRow({
+            ...existing,
+            wine_name: existing.inventory?.wine_name || null,
+          } as ProcurementOrderRow);
+          unchanged.pendingPriceChange = { ...held.change, sentence: held.sentence };
+          return unchanged;
+        }
       }
 
       // The write is CONDITIONAL on the order still being what the gate read
@@ -3451,7 +3551,7 @@ export class ProcurementService {
       cancelledFromStatus?: ProcurementOrderStatus;
       cancelledAt?: string;
     },
-  ): Promise<OrderResponseDto> {
+  ): Promise<UpdatedOrder> {
     // ADR 0192 — WHAT AN ORDER RECEIVED IS NOT TYPED IN. This route used to
     // write `procurement_orders.quantity_received` from the body with no stock
     // movement behind it, so any caller could make an order "receive" a number
@@ -3538,6 +3638,47 @@ export class ProcurementService {
       moneyBefore = await this.readOrderMoneyBefore(restaurantId, orderId);
     }
 
+    // ADR 0244 D3 (founder, 2026-09-30). On an order that is sealed and not
+    // yet delivered (F1), ANY move of a figure — up or down (F4) — re-runs
+    // EVERY approval rule for the person making it, against the figures as
+    // they would stand. A change their rules do not cover does not apply: it
+    // is held as a pending change for someone whose rules cover it, and the
+    // order keeps its state, its stock and its mail (F1). Before approval the
+    // approval act tests the figures itself; after delivery is not ruled.
+    let pendingPriceChange: { change: PriceChangeView; sentence: string } | null = null;
+    let priceFiguresMoved = false;
+    if (moneyBefore && opts?.actorUserId) {
+      const proposal = figuresThatMove(moneyBefore as Record<string, unknown>, {
+        quoted_price: dto.quotedPrice,
+        negotiated_price: dto.negotiatedPrice,
+        final_price: dto.finalPrice,
+        total_cost: dto.totalCost,
+      });
+      priceFiguresMoved = proposal.moved.length > 0;
+      if (priceFiguresMoved && isPriceRecheckStatus(moneyBefore.status)) {
+        const after: Record<string, unknown> = { ...moneyBefore, ...proposal.to };
+        const verdict = await this.priceRecheck(restaurantId, orderId, opts.actorUserId, {
+          totalCost: after.total_cost,
+          unitPrice: effectiveUnitPrice(after),
+          quantity: moneyBefore.quantity,
+          providerId: moneyBefore.provider_id ?? null,
+          inventoryId: moneyBefore.inventory_id ?? null,
+        });
+        if (!verdict.covered) {
+          pendingPriceChange = await this.proposePriceChange({
+            restaurantId,
+            orderId,
+            userId: opts.actorUserId,
+            source: "order_edit",
+            from: proposal.from,
+            to: proposal.to,
+            terms: null,
+            verdict,
+          });
+        }
+      }
+    }
+
     // D-06: Block location assignment while order is in a pending state.
     if (dto.locationId !== undefined) {
       const BLOCKED_STATUSES = [
@@ -3589,14 +3730,27 @@ export class ProcurementService {
       cancelled_from_status: opts?.cancelledFromStatus ?? undefined,
       cancelled_at: opts?.cancelledAt ?? undefined,
     };
+    // A change that waits writes none of its figures (ADR 0244 D3 F1). The
+    // rest of the edit — notes, tracking — is not a price and still applies.
+    if (pendingPriceChange) {
+      for (const column of ORDER_PRICE_FIGURES) delete updatePayload[column];
+    }
+    const writesSomething = Object.values(updatePayload).some((v) => v !== undefined);
 
-    const { data, error } = await this.databaseService.supabase
-      .from("procurement_orders")
-      .update(updatePayload)
-      .eq("restaurant_id", restaurantId)
-      .eq("id", orderId)
-      .select("*, inventory:inventory_id(wine_name)")
-      .single();
+    const { data, error } = writesSomething
+      ? await this.databaseService.supabase
+          .from("procurement_orders")
+          .update(updatePayload)
+          .eq("restaurant_id", restaurantId)
+          .eq("id", orderId)
+          .select("*, inventory:inventory_id(wine_name)")
+          .single()
+      : await this.databaseService.supabase
+          .from("procurement_orders")
+          .select("*, inventory:inventory_id(wine_name)")
+          .eq("restaurant_id", restaurantId)
+          .eq("id", orderId)
+          .single();
 
     if (error) {
       this.logger.error("Failed to update procurement order", {
@@ -3625,7 +3779,26 @@ export class ProcurementService {
       });
     }
 
-    return this.mapOrderRow(orderRow);
+    // A price change that APPLIED makes any change still waiting on this
+    // order a proposal against figures that are gone (ADR 0244 D3). Best
+    // effort: approval re-reads the figures and refuses a stale one anyway.
+    if (priceFiguresMoved && !pendingPriceChange && opts?.actorUserId) {
+      await this.closeWaitingPriceChanges(
+        restaurantId,
+        orderId,
+        "superseded",
+        "The order's price was changed directly by someone whose approval rules covered it, after this change was proposed.",
+      );
+    }
+
+    const mapped: UpdatedOrder = this.mapOrderRow(orderRow);
+    if (pendingPriceChange) {
+      mapped.pendingPriceChange = {
+        ...pendingPriceChange.change,
+        sentence: pendingPriceChange.sentence,
+      };
+    }
+    return mapped;
   }
 
   /**
@@ -3640,7 +3813,7 @@ export class ProcurementService {
     const { data, error } = await this.databaseService.supabase
       .from("procurement_orders")
       .select(
-        "status, quoted_price, negotiated_price, final_price, total_cost, price_verified",
+        "status, quoted_price, negotiated_price, final_price, total_cost, price_verified, quantity, provider_id, inventory_id",
       )
       .eq("restaurant_id", restaurantId)
       .eq("id", orderId)
@@ -3655,7 +3828,9 @@ export class ProcurementService {
         "No order with that id belongs to this restaurant, so there was nothing to change.",
       );
     }
-    return data as OrderMoneyBefore;
+    // A copy: the paper compares it with the row the UPDATE returns, and the
+    // two must never be one object.
+    return { ...(data as OrderMoneyBefore) };
   }
 
   /**
@@ -3710,6 +3885,656 @@ export class ProcurementService {
         `order_price_changed happened but the audit row threw: ${err?.message}. ` +
           `Order ${record.orderId}'s figures ARE changed and the log does not say so.`,
       );
+    }
+  }
+
+  // ==========================================================================
+  // A PRICE CHANGE WAITS FOR A SIGNATURE — ADR 0244 D3, the founder's four
+  // calls of 2026-09-30 (F1 pending price change, F2 confirm-deal gated,
+  // F3 the autonomy waits, F4 any price change re-runs every rule).
+  // ==========================================================================
+
+  /**
+   * Re-run this house's approval rules for ONE person against an order's
+   * figures as they would stand after a change.
+   *
+   * The same rules, the same pure decision and the same rank rule as
+   * `assertApprovalAllowed` (`decideApproval`, `roleSatisfies`), and the same
+   * fail-closed reads: an unwired service or an unreadable policy refuses
+   * with a 500, never answers "covered". What differs is the money the
+   * ceiling tests — `effectiveTotal`, see `order-price-recheck.ts` — and that
+   * nothing here parks, files or throws for a person who is not covered: the
+   * caller decides whether that means "wait" (a change) or "refuse" (an
+   * approval of one).
+   */
+  private async priceRecheck(
+    restaurantId: string,
+    orderId: string,
+    userId: string,
+    after: {
+      totalCost: unknown;
+      unitPrice: number | null;
+      quantity: unknown;
+      providerId: string | null;
+      inventoryId: string | null;
+    },
+  ): Promise<{
+    covered: boolean;
+    decision: ApprovalDecision;
+    actorRole: string | null;
+    total: number | null;
+  }> {
+    if (!this.approvalThresholds || !this.organizations) {
+      throw new InternalServerErrorException(
+        "The approval policy could not be consulted (the thresholds service is not wired into procurement), " +
+          "so this price change was neither applied nor held. This is a gateway fault, not a decision about this order.",
+      );
+    }
+    const readout = await this.approvalThresholds.read(restaurantId);
+    if (!readout.readable) {
+      throw new InternalServerErrorException(
+        `This house's approval rules could not be read (${readout.reason ?? "no reason given"}), ` +
+          "so this price change was neither applied nor held. A rule that cannot be read is not a rule that does not exist.",
+      );
+    }
+    const total = effectiveTotal({
+      totalCost: after.totalCost,
+      unitPrice: after.unitPrice,
+      quantity: after.quantity,
+    });
+    const facts: OrderUnderTest = {
+      total,
+      isFirstOrderToVendor: await this.isFirstOrderToVendor(restaurantId, orderId, after.providerId),
+      pricePremiumPct: await this.pricePremiumPct(restaurantId, orderId, after.inventoryId, after.unitPrice),
+    };
+    const decision = decideApproval(readout.thresholds, facts);
+    const actorRole = await this.organizations.resolveRestaurantRole(userId, restaurantId);
+    const covered =
+      decision.requiredRole === null || roleSatisfies(actorRole, decision.requiredRole);
+    return { covered, decision, actorRole, total };
+  }
+
+  /**
+   * Hold a change that the proposer's rules did not cover (F1). A waiting
+   * change on the same order is superseded first — one waits per order — and
+   * a failure to close it refuses the new one rather than leaving two
+   * accounts of what the order should cost. The change is filed and the
+   * people who can approve it are told on the bell. Nothing on the order is
+   * written.
+   */
+  private async proposePriceChange(input: {
+    restaurantId: string;
+    orderId: string;
+    userId: string;
+    source: PriceChangeView["source"];
+    from: Partial<Record<ChangeFigure, number | null>>;
+    to: Partial<Record<ChangeFigure, number | null>>;
+    terms: Record<string, unknown> | null;
+    verdict: { decision: ApprovalDecision; actorRole: string | null; total: number | null };
+  }): Promise<{ change: PriceChangeView; sentence: string }> {
+    const { decision, actorRole } = input.verdict;
+    const sentence = pendingSentence(decision, actorRole, input.source);
+    const closed = await this.closeWaitingPriceChanges(
+      input.restaurantId,
+      input.orderId,
+      "superseded",
+      "A newer change to this order's price was proposed, and it replaces this one.",
+    );
+    if (!closed.ok) {
+      throw new InternalServerErrorException(
+        `The change already waiting on this order could not be closed (${closed.reason}), so this one was not held and nothing was changed.`,
+      );
+    }
+    const { data, error } = await this.databaseService.supabase
+      .from("procurement_order_price_changes")
+      .insert({
+        restaurant_id: input.restaurantId,
+        order_id: input.orderId,
+        source: input.source,
+        raised_by: asUuid(input.userId),
+        raised_at: new Date().toISOString(),
+        raised_by_role: actorRole,
+        figures_from: input.from,
+        figures_to: input.to,
+        terms: input.terms,
+        required_role: decision.requiredRole ?? "owner",
+        fired_by: decision.firedBy,
+        reasons: decision.reasons,
+        state: "waiting",
+      })
+      .select("*")
+      .single();
+    if (error || !data) {
+      if ((error as { code?: string } | null)?.code === "23505") {
+        throw new ConflictException(
+          "Another change to this order's price was proposed at the same moment and is waiting. Nothing was changed; read it and propose again if this one still stands.",
+        );
+      }
+      throw new InternalServerErrorException(
+        `This price change could not be held (${error?.message ?? "no row came back"}), so nothing was changed.`,
+      );
+    }
+    const change = presentPriceChange(data as Record<string, any>);
+    await this.auditPriceChange("order_price_change_waiting", input.restaurantId, input.userId, change, sentence);
+    await this.tellApproversOfPriceChange(input.restaurantId, change, input.userId);
+    return { change, sentence };
+  }
+
+  /**
+   * Close every change still waiting on this order, saying why. Returns
+   * whether the write succeeded; the caller decides whether a failure refuses
+   * (a new proposal must not sit beside an old one) or is only logged (an
+   * applied change: approval re-reads the figures and refuses a stale one).
+   */
+  private async closeWaitingPriceChanges(
+    restaurantId: string,
+    orderId: string,
+    state: "superseded" | "stale",
+    reason: string,
+    only?: { id?: string; source?: PriceChangeView["source"] },
+  ): Promise<{ ok: boolean; reason: string | null }> {
+    try {
+      let q = this.databaseService.supabase
+        .from("procurement_order_price_changes")
+        .update({ state, closed_reason: reason, decided_at: new Date().toISOString() })
+        .eq("restaurant_id", restaurantId)
+        .eq("order_id", orderId)
+        .eq("state", "waiting");
+      if (only?.id) q = q.eq("id", only.id);
+      if (only?.source) q = q.eq("source", only.source);
+      const { error } = await q;
+      if (error) {
+        this.logger.warn(`Waiting price changes on order ${orderId} were not closed as ${state}: ${error.message}`);
+        return { ok: false, reason: error.message };
+      }
+      return { ok: true, reason: null };
+    } catch (err: any) {
+      this.logger.warn(`Waiting price changes on order ${orderId} were not closed as ${state}: ${err?.message}`);
+      return { ok: false, reason: err?.message ?? String(err) };
+    }
+  }
+
+  /** File one event in the life of a price change in `system_audit_log`. Never throws. */
+  private async auditPriceChange(
+    action: "order_price_change_waiting" | "order_price_change_approved",
+    restaurantId: string,
+    actorUserId: string,
+    change: PriceChangeView,
+    reason: string,
+  ): Promise<void> {
+    try {
+      const { error } = await this.databaseService.supabase.from("system_audit_log").insert({
+        actor_type: asUuid(actorUserId) ? "user" : "system",
+        actor_id: asUuid(actorUserId),
+        action,
+        entity_type: "procurement_order",
+        entity_id: change.orderId,
+        changes: {
+          register: "orders",
+          subject: change.orderId,
+          priceChangeId: change.id,
+          source: change.source,
+          raisedBy: change.raisedBy,
+          requiredRole: change.requiredRole,
+          firedBy: change.firedBy,
+          from: change.from,
+          to: change.to,
+        },
+        restaurant_id: restaurantId,
+        reason,
+      });
+      if (error) {
+        this.logger.error(`${action} happened but the audit row failed to write: ${error.message}`);
+      }
+    } catch (err: any) {
+      this.logger.error(`${action} happened but the audit row threw: ${err?.message}`);
+    }
+  }
+
+  /**
+   * Tell the people who can approve a waiting change: the owners, and the
+   * managers too when a manager may sign. The web bell only (priority low),
+   * no vendor name, never the proposer. Best effort: the change waits either
+   * way; a failure is logged, never read as "told".
+   */
+  private async tellApproversOfPriceChange(
+    restaurantId: string,
+    change: PriceChangeView,
+    proposerId: string,
+  ): Promise<number> {
+    if (!this.notificationsService || !this.vendorSendAuthority) {
+      this.logger.warn(`A price change waits on order ${change.orderId}, but nobody can be told on this server.`);
+      return 0;
+    }
+    try {
+      const { owners, managers } = await this.vendorSendAuthority.ownersAndManagers(restaurantId);
+      const audience = [
+        ...new Set(change.requiredRole === "manager" ? [...owners, ...managers] : owners),
+      ].filter((id) => id !== proposerId);
+      if (audience.length === 0) {
+        this.logger.warn(`A price change waits on order ${change.orderId}, but this house has nobody else who may approve it.`);
+        return 0;
+      }
+      const who = change.requiredRole === "owner" ? "an owner" : "an owner or a manager";
+      const because = change.reasons.length > 0 ? change.reasons.join("; ") : "a rule this house set";
+      const { inserted } = await this.notificationsService.persistForRestaurant(
+        restaurantId,
+        {
+          type: "order_price_change_waiting",
+          title: "A price change waits for your approval",
+          message: `A change to an order's price is ${because}, so it waits for ${who}. Nothing about the order has changed yet.`,
+          priority: "low",
+          actionUrl: `/orders?order=${change.orderId}`,
+          actionLabel: "Read the change",
+          groupKey: `order_price_change_waiting:${change.id}`,
+          metadata: { orderId: change.orderId, priceChangeId: change.id, source: change.source },
+        },
+        { onlyUserIds: audience },
+      );
+      return inserted;
+    } catch (err: any) {
+      this.logger.warn(`A price change waits on order ${change.orderId}, but its approvers could not be told: ${err?.message}`);
+      return 0;
+    }
+  }
+
+  /** The one change waiting on this order, or null. A failed read is an error, never "none". */
+  private async readWaitingPriceChange(
+    restaurantId: string,
+    orderId: string,
+  ): Promise<Record<string, any> | null> {
+    const { data, error } = await this.databaseService.supabase
+      .from("procurement_order_price_changes")
+      .select("*")
+      .eq("restaurant_id", restaurantId)
+      .eq("order_id", orderId)
+      .eq("state", "waiting")
+      .maybeSingle();
+    if (error) {
+      throw new InternalServerErrorException(
+        `Whether a price change waits on this order could not be read (${error.message}).`,
+      );
+    }
+    return (data as Record<string, any> | null) ?? null;
+  }
+
+  /** The order as a waiting change is judged against: its state and every figure a change may move. */
+  private async readOrderForPriceChange(
+    restaurantId: string,
+    orderId: string,
+  ): Promise<Record<string, any>> {
+    const { data, error } = await this.databaseService.supabase
+      .from("procurement_orders")
+      .select(
+        "id, status, quoted_price, negotiated_price, final_price, total_cost, quantity, provider_id, inventory_id",
+      )
+      .eq("restaurant_id", restaurantId)
+      .eq("id", orderId)
+      .maybeSingle();
+    if (error) {
+      throw new InternalServerErrorException(
+        `The order could not be read (${error.message}), so no price change on it was approved.`,
+      );
+    }
+    if (!data) {
+      throw new NotFoundException("No order with that id belongs to this restaurant.");
+    }
+    // A copy: it is the "before" the approval's paper is written against.
+    return { ...(data as Record<string, any>) };
+  }
+
+  /**
+   * Whether a waiting change can still be approved as it stood: every figure
+   * it touches must still read what it read when proposed, and the order must
+   * still be where the change's act could land. `null` when it can; the
+   * sentence why not, otherwise.
+   */
+  private staleness(row: Record<string, any>, order: Record<string, any>): string | null {
+    const moved = figuresMovedSince(order, (row.figures_from ?? {}) as Record<string, unknown>);
+    const status = String(order.status ?? "").toUpperCase();
+    // Where each act can still land: a deal's confirmation moves the order to
+    // APPROVED, so the move must still be legal; the POST orders merge folds
+    // only into an order still open to it, and of the re-checked states that
+    // is APPROVED alone (the merge treats CONFIRMED and IN_TRANSIT as closed);
+    // an edit applies while the order is sealed and not yet delivered.
+    const statusOk =
+      row.source === "confirm_deal"
+        ? decideTransition(order.status, ProcurementOrderStatus.APPROVED).allowed
+        : row.source === "order_merge"
+          ? status === ProcurementOrderStatus.APPROVED
+          : isPriceRecheckStatus(status);
+    if (moved.length === 0 && statusOk) return null;
+    return staleSentence(moved, status || null);
+  }
+
+  /** What a waiting change would leave the order at, as the rules test it. */
+  private figuresAfterChange(row: Record<string, any>, order: Record<string, any>) {
+    const after: Record<string, unknown> = { ...order, ...(row.figures_to ?? {}) };
+    return {
+      totalCost: after.total_cost,
+      unitPrice: effectiveUnitPrice(after),
+      quantity: after.quantity,
+      providerId: (order.provider_id as string | null) ?? null,
+      inventoryId: (order.inventory_id as string | null) ?? null,
+    };
+  }
+
+  /**
+   * The change waiting on this order, whether it is still current, and
+   * whether THIS person's rules cover it — the read behind the order sheet's
+   * "hold to approve the change". A courtesy, not the gate: the approval
+   * re-runs every check.
+   */
+  async priceChangeReadout(
+    restaurantId: string,
+    orderId: string,
+    userId: string,
+  ): Promise<{
+    change: (PriceChangeView & { stale: string | null }) | null;
+    mayApprove: boolean;
+    sentence: string | null;
+  }> {
+    const row = await this.readWaitingPriceChange(restaurantId, orderId);
+    if (!row) return { change: null, mayApprove: false, sentence: null };
+    const order = await this.readOrderForPriceChange(restaurantId, orderId);
+    const stale = this.staleness(row, order);
+    const change = { ...presentPriceChange(row), stale };
+    if (stale) return { change, mayApprove: false, sentence: stale };
+    const verdict = await this.priceRecheck(restaurantId, orderId, userId, this.figuresAfterChange(row, order));
+    return {
+      change,
+      mayApprove: verdict.covered,
+      sentence: verdict.covered ? null : this.mayNotApproveSentence(verdict.decision, verdict.actorRole),
+    };
+  }
+
+  private mayNotApproveSentence(decision: ApprovalDecision, actorRole: string | null): string {
+    const who = decision.requiredRole === "manager" ? "a manager or an owner" : "an owner";
+    const because = decision.reasons.length > 0 ? decision.reasons.join("; ") : "a rule this house set";
+    const as = actorRole
+      ? `You are signed in as ${actorRole} at this house`
+      : "This session could not be shown to hold any role at this house";
+    return `This price change is ${because}, so only ${who} may approve it. ${as}, so nothing was approved and the change still waits.`;
+  }
+
+  /**
+   * Everything that must hold before a waiting change may be approved by
+   * this person, in the order the refusals should be heard: there is a
+   * change; it is still current (a stale one is closed and refused); this
+   * person's rules cover it; and, for a deal, this person may send to the
+   * vendor and no newer reply is still being read. Shared by the mint and
+   * the act, so the two cannot disagree.
+   */
+  private async assertMayApprovePriceChange(
+    restaurantId: string,
+    orderId: string,
+    userId: string,
+  ): Promise<{
+    row: Record<string, any>;
+    order: Record<string, any>;
+    standing: Extract<VendorSendReading, { mode: "send" }> | null;
+    dealOrder: any | null;
+  }> {
+    const row = await this.readWaitingPriceChange(restaurantId, orderId);
+    if (!row) {
+      throw new NotFoundException("No price change is waiting on this order. Nothing was approved.");
+    }
+    const order = await this.readOrderForPriceChange(restaurantId, orderId);
+    const stale = this.staleness(row, order);
+    if (stale) {
+      await this.closeWaitingPriceChanges(restaurantId, orderId, "stale", stale, { id: String(row.id) });
+      throw new ConflictException({ reason: "price_change_stale", message: stale });
+    }
+    const verdict = await this.priceRecheck(restaurantId, orderId, userId, this.figuresAfterChange(row, order));
+    if (!verdict.covered) {
+      throw new ForbiddenException(this.mayNotApproveSentence(verdict.decision, verdict.actorRole));
+    }
+    if (row.source !== "confirm_deal") return { row, order, standing: null, dealOrder: null };
+
+    // A deal's approval IS the deal's confirmation, by this person: the same
+    // doors `confirmDeal` walks before it commits.
+    const dealOrder = await this.dealTarget(restaurantId, orderId);
+    if (await this.newerReplyStillAnalyzing(orderId, null)) {
+      throw new BadRequestException(
+        "A newer vendor reply just arrived and the AI is still reading it. Read the updated terms before approving this deal.",
+      );
+    }
+    const terms = (row.terms ?? {}) as { finalPrice?: number | null; quantity?: number | null };
+    const standing = await this.requireSendAuthority(userId, restaurantId, "confirm this deal", {
+      amount: this.dealAmount(dealOrder, {
+        finalPrice: terms.finalPrice ?? undefined,
+        quantity: terms.quantity ?? undefined,
+      }),
+      canAsk: false,
+    });
+    if (dealOrder?.providers?.restaurant_id && dealOrder.providers.restaurant_id !== restaurantId) {
+      throw new ForbiddenException("The vendor does not belong to this house. Nothing was approved.");
+    }
+    return { row, order, standing, dealOrder };
+  }
+
+  /**
+   * Mint the seal a price change's approval must carry back — at the moment
+   * the hold BEGINS, and only for a person the approval would not refuse.
+   */
+  async issuePriceChangeSeal(
+    restaurantId: string,
+    orderId: string,
+    userId: string,
+  ): Promise<{ challenge: string; expiresAt: string; act: string }> {
+    if (!this.sealChallenges) {
+      throw new InternalServerErrorException(
+        "The seal could not be issued (the seal service is not wired into procurement), so no price change can be approved.",
+      );
+    }
+    const { row } = await this.assertMayApprovePriceChange(restaurantId, orderId, userId);
+    const issued = await this.sealChallenges.issue({
+      restaurantId,
+      actorUserId: userId,
+      subjectKind: "procurement_order",
+      subjectId: orderId,
+      action: ORDER_APPROVE_PRICE_CHANGE_ACT,
+      args: this.priceChangeSeal(row),
+    });
+    return { challenge: issued.challenge, expiresAt: issued.expiresAt, act: issued.action };
+  }
+
+  private priceChangeSeal(row: Record<string, any>): Record<string, unknown> {
+    return priceChangeSealArgs({
+      id: String(row.id),
+      orderId: String(row.order_id),
+      source: String(row.source),
+      from: (row.figures_from ?? {}) as Record<string, unknown>,
+      to: (row.figures_to ?? {}) as Record<string, unknown>,
+      terms: (row.terms ?? null) as Record<string, unknown> | null,
+    });
+  }
+
+  /**
+   * Approve a waiting price change: the act F1 names — *"takes effect only
+   * when someone whose limit covers it approves it through a sealed act"*.
+   *
+   * Every check first (`assertMayApprovePriceChange`), then the seal is spent
+   * over this exact change, then the row is CLAIMED (conditionally on
+   * `waiting`, so two approvers cannot both apply it), then the change is
+   * applied by the act it came from, as this person:
+   *   - order_edit: the figures are written and `order_price_changed` names
+   *     the approver and the proposer;
+   *   - confirm_deal: the deal is confirmed on the held terms, exactly as
+   *     `confirmDeal` commits it (status, line price, price history, the
+   *     vendor's confirmation letter, any waiting staff request answered);
+   *   - order_merge: the held order request is folded into THIS order, the
+   *     way `createOrder` merges it, and into no other.
+   * A failure after the claim puts the row back to waiting, so a change is
+   * never recorded as approved when it did not apply.
+   */
+  async approvePriceChange(
+    restaurantId: string,
+    orderId: string,
+    userId: string,
+    challenge: string | null | undefined,
+  ): Promise<{
+    approved: true;
+    source: PriceChangeView["source"];
+    order?: OrderResponseDto;
+    confirmed?: boolean;
+    sentConfirmation?: boolean;
+  }> {
+    if (!this.sealChallenges) {
+      throw new InternalServerErrorException(
+        "The seal could not be checked (the seal service is not wired into procurement), so no price change was approved.",
+      );
+    }
+    const ready = await this.assertMayApprovePriceChange(restaurantId, orderId, userId);
+    const { row } = ready;
+    await this.sealChallenges.redeem({
+      restaurantId,
+      actorUserId: userId,
+      subjectKind: "procurement_order",
+      subjectId: orderId,
+      action: ORDER_APPROVE_PRICE_CHANGE_ACT,
+      args: this.priceChangeSeal(row),
+      challenge,
+    });
+
+    const { data: claimed, error: claimError } = await this.databaseService.supabase
+      .from("procurement_order_price_changes")
+      .update({ state: "approved", decided_by: asUuid(userId), decided_at: new Date().toISOString() })
+      .eq("restaurant_id", restaurantId)
+      .eq("id", row.id)
+      .eq("state", "waiting")
+      .select("id");
+    if (claimError) {
+      throw new InternalServerErrorException(
+        `The change could not be marked approved (${claimError.message}), so it was not applied.`,
+      );
+    }
+    if (!Array.isArray(claimed) || claimed.length === 0) {
+      throw new ConflictException(
+        "This price change was decided a moment ago by someone else, so it was not applied again.",
+      );
+    }
+    const unclaim = async (why: string) => {
+      const { error } = await this.databaseService.supabase
+        .from("procurement_order_price_changes")
+        .update({ state: "waiting", decided_by: null, decided_at: null })
+        .eq("id", row.id)
+        .eq("state", "approved");
+      if (error) {
+        this.logger.error(
+          `PRICE_CHANGE_CLAIM_STUCK change=${row.id} order=${orderId} — it did not apply (${why}) and could not be put back to waiting (${error.message}).`,
+        );
+      }
+    };
+
+    const change = presentPriceChange(row);
+    const approvedWords = `Approved a price change proposed by ${change.raisedBy ?? "an unrecorded person"}.`;
+    try {
+      if (row.source === "order_edit") {
+        const to = (row.figures_to ?? {}) as Record<string, number | null | undefined>;
+        // An object literal, so `check_orders_column_writes.py` can read every
+        // key; a figure the change does not move is left out, never nulled.
+        const payload: Record<string, number | null | undefined> = {
+          quoted_price: to.quoted_price,
+          negotiated_price: to.negotiated_price,
+          final_price: to.final_price,
+          total_cost: to.total_cost,
+        };
+        for (const column of ORDER_PRICE_FIGURES) {
+          if (!(column in to)) delete payload[column];
+        }
+        const { data, error } = await this.databaseService.supabase
+          .from("procurement_orders")
+          .update(payload)
+          .eq("restaurant_id", restaurantId)
+          .eq("id", orderId)
+          .select("*, inventory:inventory_id(wine_name)")
+          .single();
+        if (error || !data) throw new InternalServerErrorException(error?.message ?? "the order row did not come back");
+        const updated = data as any;
+        // The same paper as a direct edit (door "patch": the change came in
+        // through the edit), naming the APPROVER as the one who changed it;
+        // `order_price_change_approved` below names who raised it.
+        await this.recordOrderPriceChanged({
+          restaurantId,
+          orderId,
+          actorUserId: userId,
+          door: "patch",
+          status: updated?.status ?? ready.order.status ?? null,
+          fields: movedOrderFigures(ready.order, updated, ORDER_MONEY_COLUMNS),
+        });
+        await this.auditPriceChange("order_price_change_approved", restaurantId, userId, change, approvedWords);
+        return {
+          approved: true,
+          source: "order_edit",
+          order: this.mapOrderRow({
+            ...updated,
+            wine_name: updated.inventory?.wine_name || null,
+          } as ProcurementOrderRow),
+        };
+      }
+
+      if (row.source === "confirm_deal") {
+        const terms = (row.terms ?? {}) as {
+          finalPrice?: number | null;
+          quantity?: number | null;
+          sendConfirmation?: boolean;
+        };
+        await this.vendorSendAuthority?.witnessGrantUse(
+          ready.standing?.basis === "grant" ? ready.standing.grant.id : null,
+          { userId, restaurantId, act: ORDER_CONFIRM_DEAL_ACT, subject: `procurement_order:${orderId}` },
+        );
+        const done = await this.commitConfirmedDeal(
+          restaurantId,
+          orderId,
+          userId,
+          ready.dealOrder,
+          {
+            finalPrice: terms.finalPrice ?? undefined,
+            quantity: terms.quantity ?? undefined,
+            sendConfirmation: terms.sendConfirmation !== false,
+          },
+          ready.standing!,
+        );
+        await this.auditPriceChange("order_price_change_approved", restaurantId, userId, change, approvedWords);
+        return { approved: true, source: "confirm_deal", ...done };
+      }
+
+      // order_merge: the held request, folded into THIS order only.
+      const terms = (row.terms ?? {}) as { request?: CreateOrderDto; source?: OrderSource | null };
+      if (!terms.request) {
+        throw new InternalServerErrorException("The held order request is missing from this change, so nothing was merged.");
+      }
+      const merged = await this.createOrder(restaurantId, userId, terms.request, {
+        source: terms.source ?? "manual",
+        approvedPriceChange: { orderId },
+      });
+      if ((merged as UpdatedOrder).pendingPriceChange) {
+        // Unreachable while the checks above hold; refused rather than reported as approved.
+        throw new ConflictException("The merge still waits for a signature, so nothing was merged.");
+      }
+      await this.auditPriceChange("order_price_change_approved", restaurantId, userId, change, approvedWords);
+      return { approved: true, source: "order_merge", order: merged };
+    } catch (err: any) {
+      const why = err?.message ?? String(err);
+      if (err?.response?.reason === "price_change_stale") {
+        // The act itself found the order gone from under the change: it can
+        // never apply, so it is closed as stale rather than left waiting.
+        const { error } = await this.databaseService.supabase
+          .from("procurement_order_price_changes")
+          .update({
+            state: "stale",
+            closed_reason: String(err?.response?.message ?? why),
+            decided_by: null,
+            decided_at: new Date().toISOString(),
+          })
+          .eq("id", row.id)
+          .eq("state", "approved");
+        if (error) await unclaim(why);
+      } else {
+        await unclaim(why);
+      }
+      throw err;
     }
   }
 
@@ -5020,19 +5845,14 @@ export class ProcurementService {
     orderId: string,
     providerId: string | null,
   ): Promise<boolean | null> {
-    if (!providerId) return null;
-    try {
-      const { count, error } = await this.databaseService.supabase
-        .from("procurement_orders")
-        .select("id", { count: "exact", head: true })
-        .eq("restaurant_id", restaurantId)
-        .eq("provider_id", providerId)
-        .neq("id", orderId);
-      if (error || count === null || count === undefined) return null;
-      return count === 0;
-    } catch {
-      return null;
-    }
+    // One reader, shared with the inbound responder's autonomy gate
+    // (`order-price-recheck.ts`; ADR 0244 D3 F3).
+    return readIsFirstOrderToVendor(
+      this.databaseService.supabase,
+      restaurantId,
+      orderId,
+      providerId,
+    );
   }
 
   /**
@@ -5047,26 +5867,13 @@ export class ProcurementService {
     inventoryId: string | null,
     unitPrice: number | null,
   ): Promise<number | null> {
-    if (!inventoryId || unitPrice === null || unitPrice <= 0) return null;
-    try {
-      const { data, error } = await this.databaseService.supabase
-        .from("procurement_orders")
-        .select("final_price, requested_at")
-        .eq("restaurant_id", restaurantId)
-        .eq("inventory_id", inventoryId)
-        .neq("id", orderId)
-        .order("requested_at", { ascending: false })
-        .limit(1);
-      if (error) return null;
-      const prior = toFiniteNumber(
-        (data as Array<{ final_price: string | number | null }> | null)?.[0]
-          ?.final_price ?? null,
-      );
-      if (prior === null || prior <= 0) return null;
-      return ((unitPrice - prior) / prior) * 100;
-    } catch {
-      return null;
-    }
+    return readPricePremiumPct(
+      this.databaseService.supabase,
+      restaurantId,
+      orderId,
+      inventoryId,
+      unitPrice,
+    );
   }
 
   /**
@@ -9345,7 +10152,7 @@ export class ProcurementService {
     const { data: order, error } = await this.databaseService.supabase
       .from("procurement_orders")
       .select(
-        "id, provider_id, inventory_id, quantity, bottles_total, final_price, negotiated_price, quoted_price, currency, providers!left(name, contact_email, contact_first_name, primary_contact, restaurant_id), restaurant_inventory:inventory_id(wine_name)",
+        "id, status, provider_id, inventory_id, quantity, bottles_total, final_price, negotiated_price, quoted_price, total_cost, currency, providers!left(name, contact_email, contact_first_name, primary_contact, restaurant_id), restaurant_inventory:inventory_id(wine_name)",
       )
       .eq("id", orderId)
       .eq("restaurant_id", restaurantId)
@@ -9363,7 +10170,9 @@ export class ProcurementService {
    * The money a deal confirmation commits, for a grant's limit: the confirmed
    * price (or the order's own, when the person did not change it) times the
    * quantity, in the order's currency. Either unreadable → `null`, which a
-   * grantee's limit cannot cover (owners and managers are not limited here).
+   * grantee's limit cannot cover (owners and managers are not limited HERE,
+   * by the send authority — but since ADR 0244 D3 F2 the house's approval
+   * rules limit them in `confirmDeal`, through `priceRecheck`).
    */
   private dealAmount(
     order: any,
@@ -9606,7 +10415,11 @@ export class ProcurementService {
       sendConfirmation?: boolean;
     },
     challenge: string | null | undefined,
-  ): Promise<{ confirmed: boolean; sentConfirmation: boolean }> {
+  ): Promise<{
+    confirmed: boolean;
+    sentConfirmation: boolean;
+    pendingPriceChange?: PriceChangeView & { sentence: string };
+  }> {
     const order = await this.dealTarget(restaurantId, orderId);
 
     // Gate: don't commit terms while a newer reply is still being analyzed.
@@ -9626,8 +10439,34 @@ export class ProcurementService {
     if (!this.sealChallenges) {
       throw new InternalServerErrorException("The deal's seal cannot be checked. Nothing was confirmed.");
     }
+
+    // ADR 0244 D3 F2 (founder, 2026-09-30: "Yes, gate it"). Confirming a deal
+    // approves the order at the deal's figures, so the house's approval rules
+    // run for the confirming person exactly as they do on the approve act —
+    // an owner or a manager included, which supersedes ADR 0175's "owners and
+    // managers are not limited here". Read BEFORE the seal is spent, so an
+    // unreadable policy refuses without burning the hold.
+    const current: Record<string, unknown> = {
+      negotiated_price: (order as any).negotiated_price,
+      final_price: (order as any).final_price,
+      quantity: (order as any).quantity,
+    };
+    const dealFigures: Record<string, unknown> = {
+      negotiated_price: opts.finalPrice ?? current.negotiated_price,
+      final_price: opts.finalPrice ?? current.final_price,
+      quantity: opts.quantity ?? current.quantity,
+    };
+    const verdict = await this.priceRecheck(restaurantId, orderId, userId, {
+      totalCost: (order as any).total_cost,
+      unitPrice: opts.finalPrice ?? effectiveUnitPrice(order as Record<string, unknown>),
+      quantity: dealFigures.quantity,
+      providerId: (order as any).provider_id ?? null,
+      inventoryId: (order as any).inventory_id ?? null,
+    });
+
     // Spent BEFORE the first write: a refused seal means nothing was committed
-    // and nothing was mailed.
+    // and nothing was mailed. Spent on the wait too: the held deal is a proven
+    // hold over exactly these terms.
     await this.sealChallenges.redeem({
       restaurantId,
       actorUserId: userId,
@@ -9637,13 +10476,60 @@ export class ProcurementService {
       args: this.dealSeal(orderId, order, opts),
       challenge,
     });
+
+    if (!verdict.covered) {
+      // The deal waits for someone whose rules cover it (F2 with F1's
+      // mechanism): nothing is committed, nothing is mailed, the vendor's
+      // offer and any staff request stay open, and the terms are kept exactly
+      // so the approval confirms what this person held over.
+      const DEAL_FIGURES = ["negotiated_price", "final_price", "quantity"] as const;
+      const held = await this.proposePriceChange({
+        restaurantId,
+        orderId,
+        userId,
+        source: "confirm_deal",
+        from: snapshotFigures(current, DEAL_FIGURES),
+        to: snapshotFigures(dealFigures, DEAL_FIGURES),
+        terms: {
+          finalPrice: opts.finalPrice ?? null,
+          quantity: opts.quantity ?? null,
+          sendConfirmation: opts.sendConfirmation !== false,
+        },
+        verdict,
+      });
+      this.emitConvUpdate(restaurantId, orderId, (order as any).provider_id ?? null, orderId);
+      return {
+        confirmed: false,
+        sentConfirmation: false,
+        pendingPriceChange: { ...held.change, sentence: held.sentence },
+      };
+    }
+
     await this.vendorSendAuthority?.witnessGrantUse(standing.basis === "grant" ? standing.grant.id : null, {
       userId,
       restaurantId,
       act: ORDER_CONFIRM_DEAL_ACT,
       subject: `procurement_order:${orderId}`,
     });
+    return this.commitConfirmedDeal(restaurantId, orderId, userId, order, opts, standing);
+  }
 
+  /**
+   * Commit a deal every check has already passed for: the status, the line
+   * price, the price history, the vendor's confirmation letter, any waiting
+   * staff request answered, the proposal resolved. Split out of `confirmDeal`
+   * unchanged (ADR 0244 D3) so a held deal's approval commits it the same way
+   * — one commit, never two that drift. Callers: `confirmDeal` and
+   * `approvePriceChange`, each after its own gate, seal and authority.
+   */
+  private async commitConfirmedDeal(
+    restaurantId: string,
+    orderId: string,
+    userId: string,
+    order: any,
+    opts: { finalPrice?: number; quantity?: number; sendConfirmation?: boolean },
+    standing: Extract<VendorSendReading, { mode: "send" }>,
+  ): Promise<{ confirmed: boolean; sentConfirmation: boolean }> {
     const providerEmail = (order as any)?.providers?.contact_email ?? null;
     const greetName =
       this.resolveFirstName((order as any)?.providers) || "there";
@@ -9957,6 +10843,16 @@ export class ProcurementService {
       (order as any).provider_id,
       orderId,
     );
+    // A change still waiting on this order was proposed against terms this
+    // confirmation has just replaced (ADR 0244 D3). Best effort: an approval
+    // re-reads the figures and refuses a stale change anyway.
+    await this.closeWaitingPriceChanges(
+      restaurantId,
+      orderId,
+      "superseded",
+      "The deal on this order was confirmed by someone whose approval rules covered it, after this change was proposed.",
+    );
+
     this.logger.log(
       `Deal confirmed for order ${orderId} (price=${finalPrice ?? "unchanged"}, qty=${quantity}, emailed=${sentConfirmation}).`,
     );
@@ -9982,6 +10878,20 @@ export class ProcurementService {
     const requestsClosed = this.vendorSendRequests
       ? await this.vendorSendRequests.closeWaitingDeal(restaurantId, orderId, "deal_dismissed")
       : 0;
+    // A deal held for a signature (ADR 0244 D3 F2) closes with it too, for the
+    // same reason: an owner must not later approve a deal the house dismissed.
+    const heldDeal = await this.closeWaitingPriceChanges(
+      restaurantId,
+      orderId,
+      "superseded",
+      "The deal was dismissed, so the confirmation held for a signature was closed with it.",
+      { source: "confirm_deal" },
+    );
+    if (!heldDeal.ok) {
+      throw new InternalServerErrorException(
+        `The deal held for a signature on this order could not be closed (${heldDeal.reason}), so the deal was not dismissed.`,
+      );
+    }
     await this.resolveLatestDealProposal(orderId, "dismissed");
     this.emitConvUpdate(restaurantId, orderId, null, orderId);
     return { dismissed: true, requestsClosed };

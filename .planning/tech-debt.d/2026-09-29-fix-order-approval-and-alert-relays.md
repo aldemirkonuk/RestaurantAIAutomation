@@ -22,6 +22,28 @@ Two more doors step around the ceiling today whatever the PATCH does. `confirmDe
 
 The two bypasses in F2 and F3 are also defects in their own right, and they are filed here until the founder rules.
 
+**[BUILT 2026-09-30 on `fix/order-price-recheck`, stacked on #538; ADR 0244 D3 amendment. The founder's verbatim picks: F1 "Pending price change (Recommended)", F2 "Yes, gate it (Recommended)", F3 "Yes, wait (Recommended)", F4 "Any price change".]** What changed:
+- A price change on an APPROVED, CONFIRMED or IN_TRANSIT order that the editor's rules do not cover is held in `procurement_order_price_changes` (migration `a_price_change_waits_for_a_signature`). It applies only through the sealed `approve_price_change` act of someone whose rules cover it.
+- Confirm-deal runs the rules for the confirmer, owners and managers included, and holds a deal over them.
+- The autonomy accept approves only within the rules.
+- The POST orders dedup merge into an approved order is re-checked too.
+- The vendor's word no longer rewrites an approved order's price over the rules.
+- The two bypasses above are closed. Claim `SEC-2026-09-30-ORDER-PRICE-RECHECK`.
+
+**Still open from item 1, for the founder** (builder's readings, built one way and listed in the ADR):
+- the ceiling on a re-check tests `max(total_cost, unit price × quantity)`, while the approve act still tests `total_cost` alone;
+- `price_verified` alone is not a price change;
+- the autonomy is not "within" a rule it cannot test;
+- after delivery (PARTIALLY_RECEIVED, DELIVERED, COMPLETED) a manager's edit still applies directly.
+
+**Still open from item 1, for the build** (follow-ups):
+- **No web surface shows or approves a held change.** The routes exist, and no web flow creates a held change today (no client sends a price PATCH or calls confirm-deal).
+- A held change can be superseded, but not declined or withdrawn.
+- Three older defects are near this one:
+  - `dealTarget` has no status filter, so confirm-deal on a CONFIRMED order would rewind it to APPROVED (the held deal's approval refuses that move);
+  - `confirmDeal` and the autonomy accept still reserve no stock;
+  - the receipt check's `approvedPrice` ignores `quoted_price`.
+
 **2. Three record fields are still writable by any member.** `rejectionReason` writes `rejection_reason`, the cancel act's own account of why the wine was not bought (ADR 0125). `discrepancyNotes` and `invoiceImageUrl` write columns that `verifyReceipt` fills. Any member can overwrite all three through the PATCH. The ruling covered status and money, so they were left open.
 
 **3. The web's order-edit helpers are dead, and one of them is wrong.** `apps/web/src/services/api/orders.ts` `updateOrder` and `updateOrderStatus` have no caller. `updateOrderStatus` can now only be refused (the claim fails if a web or mobile file starts calling it). The web type `UpdateOrderRequest` (`notes`, `quantity`, `unitPrice`) names fields that `UpdateOrderDto` does not declare, so main.ts's `forbidNonWhitelisted` would reject it with a 400. `apps/web/src/lib/supabase.ts` `updateOrderStatus` writes `procurement_orders` directly, keyed on an `order_id` column that does not exist. It is uncalled, and since OD-72 (`od72_revoke_client_grants`) no client role holds a grant on that table.
@@ -30,4 +52,4 @@ The two bypasses in F2 and F3 are also defects in their own right, and they are 
 
 **5. Two other callers of the merge, found in passing.** Ask-AI's confirmed reorder (`ask-ai.service.ts` `execute`) passes no price. `createOrder` therefore computes `final_price` 0 and `total_cost` 0. If an open order for the same wine and vendor exists, the fold writes those zeros onto it. On an order past PENDING it now needs a manager, and it is filed either way. When the order has a priced line, the header-echo trigger should refuse the write, which surfaces as a 500. Either outcome is wrong: a reorder confirmation should not reprice the open order. The legacy recurring cron (`recurring-orders.service.ts`) creates as `created_by || "system"`. If that person is not a manager, its fold into an open order past PENDING is now refused where it used to rewrite the order. That is the intended stop, but the cron's per-schedule catch logs it as an error on that schedule, and nobody is told to sign. Neither is fixed here. One more gap: a fold's header and its order line are two writes, not one transaction. If the line write fails after the header moved, the request errors and the header and line disagree until the next write. The audit row does record the header change. This was true before this branch, and it is not fixed here.
 
-**Severity:** high while (1) is open. A manager's approval ceiling can be stepped around, after the seal through the PATCH and at any time through confirm-deal. (2) to (4) are low.
+**Severity:** high while (1) is open. **[2026-09-30: (1) is built as above. What remains of it is medium (no web surface for a held change) and the founder's readings. (2) to (4) stay low.]** A manager's approval ceiling can be stepped around, after the seal through the PATCH and at any time through confirm-deal. (2) to (4) are low.
