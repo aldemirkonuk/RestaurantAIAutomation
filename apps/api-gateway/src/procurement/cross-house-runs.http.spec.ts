@@ -1,22 +1,26 @@
 /**
- * Two routes that ran EVERY house's scheduled work for any signed-in member
- * of ANY house (fix/tenant-guard-and-cross-house-runs, 817-route audit,
- * 2026-09-29).
+ * Two routes that, at c47fd8a01, ran scheduled work across every house for
+ * any signed-in member of any house (fix/tenant-guard-and-cross-house-runs,
+ * 817-route audit, 2026-09-29).
  *
  *   POST /procurement/deliveries/clocks/run
  *     The hourly delivery-clock poller (ADR 0103 A10), with a body `now` that
  *     "runs the ladder as if it were that moment". A member of house A could
- *     send `now` a year ahead and lapse every house's open timers: the LAPSED
- *     state with the legal deeming text, plus high-priority notices and pushes.
+ *     send `now` a year ahead and fire, up to 500 per call, every open timer
+ *     from every house due before it: LAPSED with `lapse_deemed` written
+ *     where the delivery was not already settled, and a high-priority
+ *     `delivery_lapsed` notice to the house.
  *
  *   POST /recurring-orders/:restaurantId/execute-check
  *     The 08:00 recurring-order cron, which ignores the path house and executes
- *     every house's due schedules. Summarised "(dev/test)", gated by nothing.
+ *     every house's due schedules. Summarised "(dev/test)", with no
+ *     environment or role gate.
  *
- * Callers found (git grep over apps/, services/, scripts/, .github/, .railway/,
- * vercel.json): none for either route. The real runners are the in-process
- * `@Cron`s (`DeliveryClockService.pollHourly`, `executeDueRecurringOrders`),
- * which never cross HTTP and are unaffected.
+ * Callers: git grep over apps/, services/, scripts/, .github/, .railway/ and
+ * vercel.json found none for either route. The runners that exist are the
+ * in-process `@Cron`s (`DeliveryClockService.pollHourly`,
+ * `executeDueRecurringOrders`), which call the services directly and are
+ * unaffected.
  *
  * The app below runs the REAL JwtAuthGuard (only passport is stood in for,
  * setting `request.user` from test headers as JwtStrategy.validate would), the
@@ -286,7 +290,7 @@ describe("POST /recurring-orders/:restaurantId/execute-check — non-production,
     expect(recurring.executeDueRecurringOrders).not.toHaveBeenCalled();
   });
 
-  it("answers 404 in production to everyone, operators included", async () => {
+  it("answers 404 in production to every signed-in caller, operators included", async () => {
     process.env.NODE_ENV = "production";
     for (const as of [
       { user: OWNER_OF_A },

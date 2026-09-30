@@ -196,22 +196,25 @@ describe("assertTenantMatch — allowBodyTenantChange", () => {
  * value it could not compare was treated as a value that was not there. Express
  * 4's query parser (qs) turns `?restaurantId[]=B` into `["B"]` and a repeated
  * key into `["A", "B"]`; the JSON and urlencoded body parsers deliver arrays and
- * objects as-is. postgrest-js then renders `.eq(col, ["B"])` as `eq.B`, so a
- * member of house A could read house B wherever a controller takes the house
- * from the query or body (analytics.controller.ts `insight-catalog/types`,
- * auth.controller.ts `me/role`, the toast routes, …) — and the guard, having
- * seen "no house named", waved it through.
+ * objects as-is. postgrest-js then renders `.eq(col, ["B"])` as `eq.B`, so on
+ * a route whose controller takes the house from one of these top-level keys a
+ * member of house A could name house B (analytics.controller.ts
+ * `insight-catalog/types`, auth.controller.ts `me/role`, the toast routes, …)
+ * — and the guard, having seen "no house named", waved it through.
  *
  * The refusal is the guard's existing one — `ForbiddenException("Tenant
- * isolation violation")` — not a 400: every caller of this function (JwtAuthGuard,
- * TenantGuard, DevTruthController) and every test above expects that one
- * exception, and "a house this guard cannot prove is yours" is exactly what a
- * mismatch is. `null`, `undefined` and `""` still mean "not named": a client
- * sending `restaurantId: null` names nothing, and none of the three can reach
- * another house's rows.
+ * isolation violation")` — not a 400: the three callers of this function
+ * (JwtAuthGuard, TenantGuard, DevTruthController) and the refusal tests above
+ * expect that one exception, and "a house this guard cannot prove is yours"
+ * is exactly what a mismatch is. `null`, `undefined` and `""` still mean "not
+ * named": none of them names another house to this guard. A controller that
+ * turns "nothing named" into "no house filter" can still read every house;
+ * see the `""` entry in tech-debt.d/2026-09-30-fix-tenant-guard-and-cross-house-runs.md.
  *
- * Every case below that expects a throw was run against the pre-fix
- * implementation and observed to FAIL before being kept.
+ * The ten refusal cases below were run against the pre-fix implementation and
+ * observed to FAIL before being kept. "still refuses a single string naming
+ * another house" is a pin that passed before and after, like the two "still
+ * passes/treats" cases.
  */
 describe("assertTenantMatch — a house is named by one string", () => {
   const user = { userId: "u1", restaurantId: "rest-a" };

@@ -291,15 +291,18 @@ export class DeliveriesController {
   /**
    * PLATFORM OPERATORS ONLY, AND NO `now` IN PRODUCTION (ADR 0243).
    *
-   * `runDue` reads `delivery_timers` across every house — it is the hourly
-   * poller, not a house's own clock. Until this fix the route carried only
-   * `JwtAuthGuard`, so any verified member of any house could POST
-   * `{ "now": "<a year ahead>" }` and lapse every house's open timers: LAPSED
-   * with the legal deeming text written on the delivery, plus high-priority
-   * notices and pushes to each house's owners (817-route audit).
+   * `runDue` reads up to 500 open, notified_half or escalated
+   * `delivery_timers` from every house, with no house filter; it is the
+   * hourly poller, not a house's own clock. At c47fd8a01 this route's only
+   * controller or route guard was `JwtAuthGuard`, so any signed-in member of
+   * any house could POST `{ "now": "<a year ahead>" }`. Each of those timers
+   * due before that date would then fire, up to 500 per call: where its
+   * delivery was not already settled, the delivery moves to LAPSED with the
+   * deeming text in `lapse_deemed`, and a high-priority `delivery_lapsed`
+   * notice goes to the house (817-route audit).
    *
-   * Callers: none. `git grep` over apps/, services/, scripts/, .github/,
-   * .railway/ and vercel.json finds no HTTP caller; the hourly runner is
+   * Callers: `git grep` over apps/, services/, scripts/, .github/, .railway/
+   * and vercel.json found no HTTP caller; the hourly runner is
    * `DeliveryClockService.pollHourly`, an in-process `@Cron` that calls
    * `runDue()` directly and is untouched. So the catch-up after an outage this
    * route exists for is an operator's act, and `PlatformOperatorGuard` (the
@@ -308,9 +311,10 @@ export class DeliveriesController {
    * one that fits. It runs after the class's `JwtAuthGuard`.
    *
    * `now` — "run the ladder as if it were that moment" — is refused in
-   * production for everyone, operators included: a deadline that passes early
-   * writes legal text that cannot be taken back, and nothing in production
-   * needs to time-travel. Outside production it stays, for tests and demos.
+   * production for every caller the guards admit, operators included. A
+   * deadline fired early writes `lapse_deemed`, which a later document amends
+   * (LAPSED_AMENDED) but does not clear, and no production use of `now` was
+   * found. Outside production it stays, for tests and demos.
    */
   @Post("clocks/run")
   @UseGuards(PlatformOperatorGuard)

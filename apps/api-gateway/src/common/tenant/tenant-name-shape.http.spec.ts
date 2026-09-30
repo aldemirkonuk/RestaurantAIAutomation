@@ -2,17 +2,19 @@
  * The house-name shape, at the HTTP seam (fix/tenant-guard-and-cross-house-runs).
  *
  * `assert-tenant-match.spec.ts` pins the comparison with hand-built request
- * objects. This file proves the hole was real and is closed where it lived: a
- * real Express app (Nest's platform-express, the same qs query parser and
- * body parsers production runs), the REAL `JwtAuthGuard` — only passport is
+ * objects. This file shows the hole was real and is closed where it lived: a
+ * real Express app (Nest's platform-express with Express 4's qs query parser,
+ * and Nest's default JSON and urlencoded body parsers; production configures
+ * the same two parsers with its own size limits), the REAL `JwtAuthGuard` —
+ * only passport is
  * stood in for, setting `request.user` as `JwtStrategy.validate` would — and a
  * probe controller that echoes the house it was handed, the way
  * `@Query("restaurantId") restaurantId?: string` does in
  * analytics.controller.ts and auth.controller.ts.
  *
- * On `origin/main` c47fd8a01 every "array/object" case below answered 200 with
- * the foreign house echoed back; the public probe shows why (Express really
- * does deliver `?restaurantId[]=B` as `["B"]`).
+ * On `origin/main` c47fd8a01 the nine array/object cases below answered 200
+ * (GET) or 201 (POST), echoing back the value they sent; the public probe
+ * shows why (Express 4 delivers `?restaurantId[]=B` as `["B"]`).
  */
 import {
   Body,

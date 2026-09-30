@@ -159,16 +159,17 @@ export class RecurringOrdersController {
    * This runs the 08:00 cron body, `executeDueRecurringOrders`, which reads
    * every house's due `recurring_orders` and executes them. It never used the
    * `:restaurantId` in its path, so "your house" was only what the URL said:
-   * until this fix any verified member of any house could fire every house's
-   * due schedules early, with nothing but `JwtAuthGuard` in the way (817-route
-   * audit). The path house is still compared with the session's by
+   * at c47fd8a01 any signed-in member of any house could fire every house's
+   * due schedules early, with `JwtAuthGuard` as the route's only controller or
+   * route guard (817-route audit). The path house is still compared with the session's by
    * `JwtAuthGuard`; it does not narrow the run.
    *
-   * Callers: none — not the web (`RecurringOrders.tsx` calls list, create,
-   * update and delete only), not mobile, not services/, scripts/ or any
-   * workflow. It was dev/test scaffolding by its own summary, so it gets the
-   * dev/test posture: `NonProductionGuard` first (404 in production, for
-   * everyone, so production does not confirm the route exists), then
+   * Callers: a search of the web (`RecurringOrders.tsx` calls list, create,
+   * update and delete only), mobile, services/, scripts/ and the workflows
+   * found none. It was dev/test scaffolding by its own summary, so it gets the
+   * dev/test posture: `NonProductionGuard` first (in production a signed-in
+   * caller gets 404; an unauthenticated one gets the class `JwtAuthGuard`'s
+   * 401 first, because class guards run before route guards), then
    * `PlatformOperatorGuard` (the `/health/agent-operations` gate). The real
    * runner, the in-process `@Cron("0 8 * * *")`, is untouched.
    */

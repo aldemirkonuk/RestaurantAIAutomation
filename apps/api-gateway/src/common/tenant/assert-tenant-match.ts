@@ -63,17 +63,21 @@ export function assertTenantMatch(
   // mismatch gets: it is a name this function cannot compare, so it cannot
   // vouch for it.
   //
-  // [Until 2026-09-29 non-strings were FILTERED OUT here, i.e. treated as if
+  // [At c47fd8a01 non-strings were FILTERED OUT here, i.e. treated as if
   // absent. Express 4's query parser (qs) turns `?restaurantId[]=B` into
   // `["B"]` and a repeated key into `["A","B"]`, the body parsers deliver JSON
   // arrays and objects as-is, and postgrest-js renders `.eq(col, ["B"])` as
-  // `eq.B` — so a member of house A could read house B wherever a controller
-  // takes the house from the query or body, while this guard saw "no house
-  // named" (found by the 817-route audit; e.g. analytics.controller.ts
-  // `insight-catalog/types`, auth.controller.ts `me/role`, the toast routes).
-  // No web or mobile client sends a non-string house id, and every DTO types
-  // it `string`. This applies on the tenant-change route too: its exemption
-  // lets the body name ANOTHER house, never a malformed one.]
+  // `eq.B`. So on a route where this runs and the controller takes the house
+  // from one of these top-level keys, a member of house A could name house B
+  // while this guard saw "no house named" (817-route audit; e.g.
+  // analytics.controller.ts `insight-catalog/types`, auth.controller.ts
+  // `me/role`, the toast routes). A search of apps/web/src and apps/mobile
+  // found no restaurantId/restaurant_id written as an array literal, and every
+  // such field in the gateway's *.dto.ts files is typed `string`. This applies
+  // on the tenant-change route too: its exemption lets the body name ANOTHER
+  // house, and a non-string body name there is still refused. Nested keys and
+  // other key names are not read here, and JwtAuthGuard does not call this on
+  // `@Public()` routes; see ADR 0243.]
   const clean = (values: unknown[]): string[] => {
     const named: string[] = [];
     for (const value of values) {
