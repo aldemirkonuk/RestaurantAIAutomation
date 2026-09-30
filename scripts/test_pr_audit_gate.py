@@ -1120,9 +1120,9 @@ def test_deploy_runs_only_on_this_repositorys_own_pushes():
     # The structural rule (a strict jobs: reader that refuses any key it could
     # misread; each job's single `if` equal to the one allowed; the refusal
     # step not disabled, softened or bypassed) lives in
-    # scripts/check_deploy_own_pushes.py; its self-test plants 22 breaks
-    # (the round-2 audit's M1-M5 and B1-B9 among them).
+    # scripts/check_deploy_own_pushes.py; its self-test plants 30 breaks
+    # (every evasion the round-2 audit found among them).
     guard = ROOT / "scripts" / "check_deploy_own_pushes.py"
     for args in ([], ["--self-test"]):
-        r = subprocess.run([sys.executable, str(guard), *args], capture_output=True, text=True, timeout=60)
+        r = subprocess.run([sys.executable, "-I", str(guard), *args], capture_output=True, text=True, timeout=60)
         assert r.returncode == 0, (args, r.stdout, r.stderr)

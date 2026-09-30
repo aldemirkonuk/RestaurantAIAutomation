@@ -6,8 +6,8 @@ Founder, 2026-09-30, on #534, verbatim pick: "Sign off, add deploy fix
 matches a fork's pull request whose branch is named `main`; its stages check
 out that run's head_sha and run its code beside ADMIN_API_KEY. The rule this
 guard holds, read from the workflow text strictly (no YAML library: the CI
-jobs that run it do not install one; so anything this reader could misread
-is refused rather than guessed):
+jobs that run it do not install one). Shapes it does not recognise are
+refused where it can tell; its self-test lists every evasion found so far:
 
   1. The jobs: block holds only plain `  name:` job keys, full-line comments
      and lines indented four or more spaces. A quoted, flow-style, anchored or
@@ -16,11 +16,11 @@ is refused rather than guessed):
      `if` equals, whitespace-normalised, the one EXPECTED_IF allows: each job a
      workflow_run can start requires this repository's own push; rollback-guide
      is dispatch-only; ci-gate has none. No job is a reusable-workflow call.
-  3. ci-gate has one step named "The run is this repository's own push to
-     main" whose `if` is exactly `github.event_name == 'workflow_run'`, reading
-     the event and repository through env and exiting 1 unless they are
-     'push' and this repository, with no earlier exit 0; ci-gate writes
-     neither GITHUB_ENV nor GITHUB_OUTPUT.
+  3. ci-gate has exactly one step named "The run is this repository's own
+     push to main", equal to REFUSAL_STEP line for line (blank and comment
+     lines dropped); ci-gate writes neither GITHUB_ENV nor GITHUB_OUTPUT.
+  3b. The on: block equals ON_BLOCK (no added trigger, same workflow_run
+     filter), and the file sets no defaults:.
   4. No line of deploy.yml sets `continue-on-error`.
 
 What it cannot hold: GitHub's own evaluation (workflow_run runs main's copy of
@@ -43,6 +43,38 @@ OWN = ("(github.event_name == 'workflow_run' && github.event.workflow_run.event 
 STEP = "The run is this repository's own push to main"
 
 
+ON_BLOCK = """  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "deploy-audit (post-push health check) or rollback-guide (print revert steps)"
+        type: choice
+        options:
+          - deploy-audit
+          - rollback-guide
+        default: deploy-audit
+      rollback_target_sha:
+        description: "Git SHA to roll back to (rollback-guide mode only)"
+        type: string
+        default: \"\"
+"""
+# The refusal step, verbatim (blank lines and full-line comments dropped).
+REFUSAL_STEP = """- name: The run is this repository's own push to main
+        if: github.event_name == 'workflow_run'
+        env:
+          RUN_EVENT: ${{ github.event.workflow_run.event }}
+          RUN_REPO: ${{ github.event.workflow_run.head_repository.full_name }}
+          THIS_REPO: ${{ github.repository }}
+        run: |
+          if [ "$RUN_EVENT" = "push" ] && [ "$RUN_REPO" = "$THIS_REPO" ]; then
+            echo "CI run is a push to $THIS_REPO; proceeding"
+            exit 0
+          fi
+          echo "::error::Refusing: the CI run that triggered this was event '$RUN_EVENT' from '$RUN_REPO', not a push to '$THIS_REPO'. No stage runs its code."
+          exit 1"""
 DISPATCH = "(github.event_name == 'workflow_dispatch' && inputs.mode == 'deploy-audit')"
 # The only job-level `if` each job may carry, whitespace-normalised. A job not
 # named here fails: adding one means adding its `if` to this gate-owned table.
@@ -94,23 +126,25 @@ def _jobs(text: str) -> tuple[dict[str, str], list[str]]:
 
 
 def _job_ifs(job: str) -> list[str]:
+    """Every job-level `if` key (plain, quoted or spaced: `if:`, `"if":`,
+    `if :`), with a block scalar read the way YAML reads it: blank lines are
+    part of the scalar, and it ends only at a non-blank line indented less
+    than six spaces."""
     lines = job.split("\n")
     out = []
     for i, line in enumerate(lines):
-        m = re.match(r"^    if:(.*)$", line)
+        m = re.match(r"""^    (["']?)if\1\s*:(.*)$""", line)
         if not m:
             continue
-        head = m.group(1).strip()
-        if head in (">-", ">", "|", "|-"):
+        head = m.group(2).strip()
+        if re.fullmatch(r"[>|][+-]?\d?|[>|]\d?[+-]?", head):
             val = []
             for nxt in lines[i + 1:]:
-                if nxt.startswith("      ") and not nxt.strip().startswith("#"):
+                if not nxt.strip() or nxt.startswith("      "):
                     val.append(nxt.strip())
-                elif nxt.strip().startswith("#") and nxt.startswith("      "):
-                    val.append(nxt.strip())  # a comment line inside a folded scalar is TEXT to GitHub
                 else:
                     break
-            out.append(" ".join(val))
+            out.append(" ".join(v for v in val if v))
         else:
             out.append(head)
     return out
@@ -153,23 +187,19 @@ def problems(text: str) -> list[str]:
     gate_job = jobs.get("ci-gate", "")
     if "GITHUB_ENV" in gate_job or "GITHUB_OUTPUT" in gate_job:
         out.append("ci-gate writes GITHUB_ENV or GITHUB_OUTPUT (a later step's values could be overridden)")
+    on_block = text.split("\non:\n", 1)[1].split("\n\n", 1)[0] if "\non:\n" in text else ""
+    if _code(on_block).strip("\n") != ON_BLOCK.strip("\n"):
+        out.append("the on: block differs from the one allowed (a new trigger, or a changed workflow_run filter)")
+    if re.search(r"(?m)^\s*defaults\s*:", _code(text)):
+        out.append("deploy.yml sets defaults: (a run shell or directory override)")
     gate = [s for s in _steps(gate_job) if s.startswith(f"name: {STEP}\n")]
     if len(gate) != 1:
         out.append(f"ci-gate: expected one step named {STEP!r}, found {len(gate)}")
     else:
-        s = gate[0]
-        ifs = re.findall(r"(?m)^        if:(.*)$", s)
-        if [i.strip() for i in ifs] != ["github.event_name == 'workflow_run'"]:
-            out.append(f"ci-gate refusal step: if is {ifs!r}, not exactly github.event_name == 'workflow_run'")
-        for need in ("          RUN_EVENT: ${{ github.event.workflow_run.event }}\n",
-                     "          RUN_REPO: ${{ github.event.workflow_run.head_repository.full_name }}\n",
-                     "          THIS_REPO: ${{ github.repository }}\n",
-                     '          if [ "$RUN_EVENT" = "push" ] && [ "$RUN_REPO" = "$THIS_REPO" ]; then\n'):
-            if need not in s:
-                out.append(f"ci-gate refusal step: missing {need.strip()!r}")
-        tail = s.split("          fi\n", 1)[1] if "          fi\n" in s else ""
-        if not re.search(r"(?m)^\s+exit 1\s*$", tail) or re.search(r"(?m)^\s+(exit 0|true|:)\s*$", tail):
-            out.append("ci-gate refusal step: does not exit 1 after the check (or exits 0 first)")
+        body = "- " + gate[0].rstrip("\n")
+        body = "\n".join(l.rstrip() for l in body.split("\n") if l.strip())
+        if body != REFUSAL_STEP.strip("\n"):
+            out.append("ci-gate refusal step differs from the one allowed, byte for byte (any added line, a changed if, env or run)")
     return out
 
 
@@ -215,6 +245,19 @@ def _self_test(verbose: bool = False) -> int:
         "reusable-workflow stage": ("    needs: [verify-api-gateway]\n", "    needs: [verify-api-gateway]\n    uses: ./.github/workflows/other.yml\n"),
         "ci-gate writes GITHUB_ENV": ('          if [ "$CONCLUSION" = "success" ]; then\n', '          echo "RUN_EVENT=push" >> "$GITHUB_ENV"\n          if [ "$CONCLUSION" = "success" ]; then\n'),
         "a tab": ("\n  rollback-guide:\n", "\n\t\n  rollback-guide:\n"),
+        # round-2 adversarial reviewer (2026-09-30):
+        "blank line then || always() in a folded if": (
+            "    needs: [verify-api-gateway]\n    if: >-\n      " + OWN + "\n      || " + DISPATCH + "\n",
+            "    needs: [verify-api-gateway]\n    if: >-\n      " + OWN + "\n      || " + DISPATCH + "\n\n      || always()\n"),
+        "blank line then || always() in a literal if": (
+            "    needs: [verify-api-gateway]\n    if: >-\n      " + OWN + "\n      || " + DISPATCH + "\n",
+            "    needs: [verify-api-gateway]\n    if: |-\n      " + OWN + "\n      || " + DISPATCH + "\n\n      || always()\n"),
+        "quoted if key on ci-gate": ("  ci-gate:\n    name: CI Gate\n", "  ci-gate:\n    name: CI Gate\n    \"if\": false\n"),
+        "spaced if key on ci-gate": ("  ci-gate:\n    name: CI Gate\n", "  ci-gate:\n    name: CI Gate\n    if : false\n"),
+        "exit 0 before the check": ('        run: |\n          if [ "$RUN_EVENT" = "push" ]', '        run: |\n          exit 0\n          if [ "$RUN_EVENT" = "push" ]'),
+        "RUN_EVENT reassigned before the check": ('        run: |\n          if [ "$RUN_EVENT" = "push" ]', '        run: |\n          RUN_EVENT=push\n          if [ "$RUN_EVENT" = "push" ]'),
+        "defaults run shell": ("\njobs:\n", "\ndefaults:\n  run:\n    shell: bash\n\njobs:\n"),
+        "a pull_request_target trigger": ("\non:\n", "\non:\n  pull_request_target:\n"),
     }
     failed = []
     for name, (old, new) in muts.items():

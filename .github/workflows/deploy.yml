@@ -88,6 +88,12 @@ jobs:
       # execute its code beside ADMIN_API_KEY. A run from any other event or
       # repository fails here, red, and every stage skips beneath it (each
       # stage's `if` repeats the same condition, so this is not the only line).
+      # Consequence, disclosed to the founder with #534: a CI run started by
+      # workflow_dispatch on main is refused too. That is how
+      # scripts/pr_audit_gate.py's CI-side merge re-enters this chain after a
+      # GITHUB_TOKEN merge (ADR 0090); that path has never merged (no API
+      # credit), and every CI run on main to date is a push. Allowing it back
+      # (event 'workflow_dispatch' from this repository) is his call.
       - name: The run is this repository's own push to main
         if: github.event_name == 'workflow_run'
         env:
