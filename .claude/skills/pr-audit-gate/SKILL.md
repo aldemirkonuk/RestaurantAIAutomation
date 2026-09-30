@@ -104,7 +104,7 @@ individually while what they don't cover reaches production — this gate exists
      was merged in the 2026-09-29 batch), `.trivyignore`,
      `scripts/check_security_gate_can_fail.py` and
      `scripts/trivy-baseline-2026-09-12.txt` (ADR 0142, #362),
-     `scripts/check_deploy_own_pushes.py` (the deploy.yml own-push guard, founder 2026-09-30),
+     `scripts/check_deploy_own_pushes.py` (the deploy.yml own-run guard: a push or manual run of this repository, founder 2026-09-30),
      `.planning/decisions/0050-*`, `.planning/decisions/0090-*`, anything inside a
      `.claude` directory and any `.mcp.json`, `CLAUDE.md`, `CLAUDE.local.md` or
      `AGENTS.md`, each at any depth (a nested `.claude/skills/` loads when Claude

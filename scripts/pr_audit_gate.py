@@ -518,7 +518,7 @@ GATE_OWNED_PREFIXES = (
     "scripts/check_security_gate_can_fail.py",
     "scripts/trivy-baseline-2026-09-12.txt",
     # Founder, 2026-09-30 (#534, "Sign off, add deploy fix"): the guard that
-    # holds deploy.yml to this repository's own pushes. Owning the workflow
+    # holds deploy.yml to this repository's own pushes and manual runs. Owning the workflow
     # and not its guard would release a PR that guts the guard.
     "scripts/check_deploy_own_pushes.py",
 )

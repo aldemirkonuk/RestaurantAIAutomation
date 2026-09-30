@@ -81,31 +81,30 @@ jobs:
           echo "Re-run once CI is green:  gh workflow run deploy.yml -f mode=deploy-audit"
           exit 1
 
-      # Only this repository's own pushes to main may drive the stages below
-      # (founder, 2026-09-30, on #534: "Sign off, add deploy fix"). The trigger's
-      # `branches: [main]` filter matches a fork's pull request whose branch is
-      # also named `main`, and Stages 2 and 3 check out that run's head_sha and
-      # execute its code beside ADMIN_API_KEY. A run from any other event or
-      # repository fails here, red, and every stage skips beneath it (each
-      # stage's `if` repeats the same condition, so this is not the only line).
-      # Consequence, disclosed to the founder with #534: a CI run started by
-      # workflow_dispatch on main is refused too. That is how
-      # scripts/pr_audit_gate.py's CI-side merge re-enters this chain after a
-      # GITHUB_TOKEN merge (ADR 0090); that path has never merged (no API
-      # credit), and every CI run on main to date is a push. Allowing it back
-      # (event 'workflow_dispatch' from this repository) is his call.
-      - name: The run is this repository's own push to main
+      # Only this repository's own CI runs on main -- a push, or a manual
+      # (workflow_dispatch) run -- may drive the stages below. Founder,
+      # 2026-09-30, on #534, verbatim picks: "Sign off, add deploy fix
+      # (Recommended)" and then "Also allow manual runs". The trigger's
+      # `branches: [main]` filter also matches a fork's pull request whose
+      # branch is named `main`, and Stages 2 and 3 check out that run's
+      # head_sha and execute its code beside ADMIN_API_KEY. A run of any other
+      # event, or from any other repository (a dispatch included), fails here,
+      # red, and every stage skips beneath it (each stage's `if` repeats the
+      # same condition, so this is not the only line). Allowing
+      # workflow_dispatch keeps scripts/pr_audit_gate.py's CI-side merge
+      # re-entry (`gh workflow run ci.yml --ref main`, ADR 0090) working.
+      - name: The run is this repository's own push or manual run on main
         if: github.event_name == 'workflow_run'
         env:
           RUN_EVENT: ${{ github.event.workflow_run.event }}
           RUN_REPO: ${{ github.event.workflow_run.head_repository.full_name }}
           THIS_REPO: ${{ github.repository }}
         run: |
-          if [ "$RUN_EVENT" = "push" ] && [ "$RUN_REPO" = "$THIS_REPO" ]; then
-            echo "CI run is a push to $THIS_REPO; proceeding"
+          if { [ "$RUN_EVENT" = "push" ] || [ "$RUN_EVENT" = "workflow_dispatch" ]; } && [ "$RUN_REPO" = "$THIS_REPO" ]; then
+            echo "CI run is a $RUN_EVENT on $THIS_REPO; proceeding"
             exit 0
           fi
-          echo "::error::Refusing: the CI run that triggered this was event '$RUN_EVENT' from '$RUN_REPO', not a push to '$THIS_REPO'. No stage runs its code."
+          echo "::error::Refusing: the CI run that triggered this was event '$RUN_EVENT' from '$RUN_REPO', not a push or manual run on '$THIS_REPO'. No stage runs its code."
           exit 1
 
       - name: Manual dispatch acknowledged
@@ -118,7 +117,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [ci-gate]
     if: >-
-      (github.event_name == 'workflow_run' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.full_name == github.repository)
+      (github.event_name == 'workflow_run' && (github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'workflow_dispatch') && github.event.workflow_run.head_repository.full_name == github.repository)
       || (github.event_name == 'workflow_dispatch' && inputs.mode == 'deploy-audit')
     steps:
       - name: Check orchestrator URL
@@ -183,7 +182,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [verify-orchestrator]
     if: >-
-      (github.event_name == 'workflow_run' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.full_name == github.repository)
+      (github.event_name == 'workflow_run' && (github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'workflow_dispatch') && github.event.workflow_run.head_repository.full_name == github.repository)
       || (github.event_name == 'workflow_dispatch' && inputs.mode == 'deploy-audit')
     # Exposed so deploy-audit (a separate job) can record what was actually
     # VERIFIED, not just what was merged — see the audit-summary step below;
@@ -376,7 +375,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [verify-api-gateway]
     if: >-
-      (github.event_name == 'workflow_run' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.full_name == github.repository)
+      (github.event_name == 'workflow_run' && (github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'workflow_dispatch') && github.event.workflow_run.head_repository.full_name == github.repository)
       || (github.event_name == 'workflow_dispatch' && inputs.mode == 'deploy-audit')
     # Exposed for the same reason Stage 2 exposes gateway_commit: deploy-audit
     # records what was actually VERIFIED (FLOOR — see resolve_watched_commit.py),
@@ -520,7 +519,7 @@ jobs:
     if: >-
       always()
       && needs.ci-gate.result == 'success'
-      && ((github.event_name == 'workflow_run' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.full_name == github.repository)
+      && ((github.event_name == 'workflow_run' && (github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'workflow_dispatch') && github.event.workflow_run.head_repository.full_name == github.repository)
           || (github.event_name == 'workflow_dispatch' && inputs.mode == 'deploy-audit'))
     steps:
       # `provenance_verified` is the field that matters. Stage results alone say

@@ -1094,16 +1094,19 @@ def _deploy_jobs(text: str) -> dict[str, str]:
 
 
 def test_deploy_runs_only_on_this_repositorys_own_pushes():
-    """Founder, 2026-09-30, on #534: "Sign off, add deploy fix (Recommended)".
+    """Founder, 2026-09-30, on #534: "Sign off, add deploy fix (Recommended)",
+    then "Also allow manual runs".
     deploy.yml's `workflow_run` trigger with `branches: [main]` also matches a
     fork's pull request whose branch is named `main`; Stages 2 and 3 check out
     that run's head_sha and run its code beside ADMIN_API_KEY. Every job that
-    a workflow_run can start must require the triggering run to be a push to
-    this repository, and ci-gate must refuse (red, not skip) any other run."""
+    a workflow_run can start must require the triggering run to be a push or a
+    manual (workflow_dispatch) run of this repository, and ci-gate must refuse
+    (red, not skip) any other run -- a fork's, whatever its event."""
     text = (WORKFLOWS_DIR / "deploy.yml").read_text()
     jobs = _deploy_jobs(text)
     assert "ci-gate" in jobs and "verify-api-gateway" in jobs and "verify-frontend" in jobs, sorted(jobs)
-    push = "github.event.workflow_run.event == 'push'"
+    push = ("(github.event.workflow_run.event == 'push' "
+            "|| github.event.workflow_run.event == 'workflow_dispatch')")
     repo = "github.event.workflow_run.head_repository.full_name == github.repository"
     started = [name for name, j in jobs.items()
                if re.search(r"(?m)^    if:", j) and "github.event_name == 'workflow_run'" in j.split("steps:", 1)[0]]
@@ -1114,14 +1117,16 @@ def test_deploy_runs_only_on_this_repositorys_own_pushes():
     gate = jobs["ci-gate"]
     assert 'RUN_EVENT: ${{ github.event.workflow_run.event }}' in gate
     assert 'RUN_REPO: ${{ github.event.workflow_run.head_repository.full_name }}' in gate
-    assert '[ "$RUN_EVENT" = "push" ] && [ "$RUN_REPO" = "$THIS_REPO" ]' in gate
-    refuse = gate.split("The run is this repository's own push to main", 1)[1].split("- name:", 1)[0]
+    assert ('{ [ "$RUN_EVENT" = "push" ] || [ "$RUN_EVENT" = "workflow_dispatch" ]; }'
+            ' && [ "$RUN_REPO" = "$THIS_REPO" ]') in gate
+    refuse = gate.split("The run is this repository's own push or manual run on main", 1)[1].split("- name:", 1)[0]
     assert "exit 1" in refuse, "ci-gate does not fail a foreign or non-push run"
     # The structural rule (a strict jobs: reader that refuses any key it could
     # misread; each job's single `if` equal to the one allowed; the refusal
     # step not disabled, softened or bypassed) lives in
-    # scripts/check_deploy_own_pushes.py; its self-test plants 45 breaks
-    # (every evasion the round-2 audit found among them).
+    # scripts/check_deploy_own_pushes.py; its self-test plants 52 breaks
+    # (every evasion the round-2 audit found, and a fork's dispatch, another
+    # event type and a missing repository check, among them).
     guard = ROOT / "scripts" / "check_deploy_own_pushes.py"
     for args in ([], ["--self-test"]):
         r = subprocess.run([sys.executable, "-I", str(guard), *args], capture_output=True, text=True, timeout=60)

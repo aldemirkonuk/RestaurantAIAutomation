@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
-"""Deploy to Production acts only on this repository's own pushes to main.
+"""Deploy to Production acts only on this repository's own CI runs on main: a
+push, or a manual (workflow_dispatch) run.
 
-Founder, 2026-09-30, on #534, verbatim pick: "Sign off, add deploy fix
-(Recommended)". deploy.yml's `workflow_run: branches: [main]` trigger also
+Founder, 2026-09-30, on #534, verbatim picks: "Sign off, add deploy fix
+(Recommended)", then "Also allow manual runs" (the triggering run's event may
+be push or workflow_dispatch, and its head repository must be this one in both
+cases). deploy.yml's `workflow_run: branches: [main]` trigger also
 matches a fork's pull request whose branch is named `main`; its stages check
 out that run's head_sha and run its code beside ADMIN_API_KEY. The rule this
 guard holds, read from the workflow text strictly (no YAML library: the CI
@@ -18,7 +21,7 @@ refused where it can tell; its self-test lists every evasion found so far:
      scalar it does not close on its own line.
   2. The job set is exactly EXPECTED_IF's, and each job's single job-level
      `if` equals, whitespace-normalised, the one EXPECTED_IF allows: each job a
-     workflow_run can start requires this repository's own push; rollback-guide
+     workflow_run can start requires this repository's own push or manual run; rollback-guide
      is dispatch-only; ci-gate has none. No job is a reusable-workflow call.
   3. ci-gate has exactly one step named "The run is this repository's own
      push to main", equal to REFUSAL_STEP line for line (blank and comment
@@ -46,9 +49,10 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 DEPLOY = ROOT / ".github" / "workflows" / "deploy.yml"
-OWN = ("(github.event_name == 'workflow_run' && github.event.workflow_run.event == 'push' "
+OWN = ("(github.event_name == 'workflow_run' && (github.event.workflow_run.event == 'push' "
+       "|| github.event.workflow_run.event == 'workflow_dispatch') "
        "&& github.event.workflow_run.head_repository.full_name == github.repository)")
-STEP = "The run is this repository's own push to main"
+STEP = "The run is this repository's own push or manual run on main"
 
 
 ON_BLOCK = """  workflow_run:
@@ -70,21 +74,22 @@ ON_BLOCK = """  workflow_run:
         default: \"\"
 """
 # The refusal step, verbatim (blank lines and full-line comments dropped).
-REFUSAL_STEP = """- name: The run is this repository's own push to main
+REFUSAL_STEP = """- name: The run is this repository's own push or manual run on main
         if: github.event_name == 'workflow_run'
         env:
           RUN_EVENT: ${{ github.event.workflow_run.event }}
           RUN_REPO: ${{ github.event.workflow_run.head_repository.full_name }}
           THIS_REPO: ${{ github.repository }}
         run: |
-          if [ "$RUN_EVENT" = "push" ] && [ "$RUN_REPO" = "$THIS_REPO" ]; then
-            echo "CI run is a push to $THIS_REPO; proceeding"
+          if { [ "$RUN_EVENT" = "push" ] || [ "$RUN_EVENT" = "workflow_dispatch" ]; } && [ "$RUN_REPO" = "$THIS_REPO" ]; then
+            echo "CI run is a $RUN_EVENT on $THIS_REPO; proceeding"
             exit 0
           fi
-          echo "::error::Refusing: the CI run that triggered this was event '$RUN_EVENT' from '$RUN_REPO', not a push to '$THIS_REPO'. No stage runs its code."
+          echo "::error::Refusing: the CI run that triggered this was event '$RUN_EVENT' from '$RUN_REPO', not a push or manual run on '$THIS_REPO'. No stage runs its code."
           exit 1"""
 STAGE3_NAME = "  verify-frontend:\n    name: \"Stage 3 — Frontend Build\"\n"
 STAGE3_HIDE = "  verify-frontend:\n    name: \"Stage 3 — Frontend Build\n    if: x\"\n"
+REPO_COND = " && github.event.workflow_run.head_repository.full_name == github.repository"
 DISPATCH = "(github.event_name == 'workflow_dispatch' && inputs.mode == 'deploy-audit')"
 # The only job-level `if` each job may carry, whitespace-normalised. A job not
 # named here fails: adding one means adding its `if` to this gate-owned table.
@@ -257,9 +262,9 @@ def _self_test(verbose: bool = False) -> int:
             "  verify-frontend:\n    name: \"Stage 3 — Frontend Build\"\n    runs-on: ubuntu-latest\n    needs: [verify-api-gateway]\n    if: >-\n      # " + OWN + "\n      github.event_name == 'workflow_run'"),
         "a new always() job": ("\n  rollback-guide:\n", "\n  sneak:\n    runs-on: ubuntu-latest\n    if: always()\n    steps:\n      - run: pnpm install\n\n  rollback-guide:\n"),
         "a new job with no if": ("\n  rollback-guide:\n", "\n  sneak:\n    runs-on: ubuntu-latest\n    steps:\n      - run: pnpm install\n\n  rollback-guide:\n"),
-        "push condition dropped from Stage 2": (
+        "event condition dropped from Stage 2": (
             "    needs: [verify-orchestrator]\n    if: >-\n      " + OWN,
-            "    needs: [verify-orchestrator]\n    if: >-\n      " + OWN.replace(" && github.event.workflow_run.event == 'push'", "")),
+            "    needs: [verify-orchestrator]\n    if: >-\n      " + OWN.replace("(github.event.workflow_run.event == \'push\' || github.event.workflow_run.event == \'workflow_dispatch\') && ", "")),
         "ci-gate given a job-level if": ("  ci-gate:\n    name: CI Gate\n", "  ci-gate:\n    name: CI Gate\n    if: github.event_name != 'workflow_run'\n"),
         # round-2 planner's B1-B9 on the first strict version (2026-09-30):
         "B1 own group || always()": (
@@ -291,8 +296,8 @@ def _self_test(verbose: bool = False) -> int:
             "    needs: [verify-api-gateway]\n    if: |-\n      " + OWN + "\n      || " + DISPATCH + "\n\n      || always()\n"),
         "quoted if key on ci-gate": ("  ci-gate:\n    name: CI Gate\n", "  ci-gate:\n    name: CI Gate\n    \"if\": false\n"),
         "spaced if key on ci-gate": ("  ci-gate:\n    name: CI Gate\n", "  ci-gate:\n    name: CI Gate\n    if : false\n"),
-        "exit 0 before the check": ('        run: |\n          if [ "$RUN_EVENT" = "push" ]', '        run: |\n          exit 0\n          if [ "$RUN_EVENT" = "push" ]'),
-        "RUN_EVENT reassigned before the check": ('        run: |\n          if [ "$RUN_EVENT" = "push" ]', '        run: |\n          RUN_EVENT=push\n          if [ "$RUN_EVENT" = "push" ]'),
+        "exit 0 before the check": ('        run: |\n          if { [ "$RUN_EVENT" = "push" ]', '        run: |\n          exit 0\n          if { [ "$RUN_EVENT" = "push" ]'),
+        "RUN_EVENT reassigned before the check": ('        run: |\n          if { [ "$RUN_EVENT" = "push" ]', '        run: |\n          RUN_EVENT=push\n          if { [ "$RUN_EVENT" = "push" ]'),
         "defaults run shell": ("\njobs:\n", "\ndefaults:\n  run:\n    shell: bash\n\njobs:\n"),
         "a pull_request_target trigger": ("\non:\n", "\non:\n  pull_request_target:\n"),
         # round-2 correctness reviewer (2026-09-30):
@@ -319,6 +324,28 @@ def _self_test(verbose: bool = False) -> int:
         "tagged if key, no hidden name": (STAGE3_NAME, STAGE3_NAME + "    !!str if: always()\n"),
         "merge key, no hidden name": (STAGE3_NAME, STAGE3_NAME + "    <<: {if: always()}\n"),
         "an odd-indented line in a job": (STAGE3_NAME, STAGE3_NAME + "     if: always()\n"),
+        # founder 2026-09-30, "Also allow manual runs": push OR workflow_dispatch,
+        # and this repository in both cases.
+        "stage: a dispatch from a fork allowed": (
+            "    needs: [verify-orchestrator]\n    if: >-\n      " + OWN,
+            "    needs: [verify-orchestrator]\n    if: >-\n      (github.event_name == 'workflow_run' && ((github.event.workflow_run.event == 'push'" + REPO_COND + ") || github.event.workflow_run.event == 'workflow_dispatch'))"),
+        "stage: another event type allowed": (
+            "    needs: [verify-orchestrator]\n    if: >-\n      " + OWN,
+            "    needs: [verify-orchestrator]\n    if: >-\n      " + OWN.replace("|| github.event.workflow_run.event == 'workflow_dispatch')", "|| github.event.workflow_run.event == 'workflow_dispatch' || github.event.workflow_run.event == 'pull_request')")),
+        "stage: repository check missing": (
+            "    needs: [verify-api-gateway]\n    if: >-\n      " + OWN,
+            "    needs: [verify-api-gateway]\n    if: >-\n      " + OWN.replace(REPO_COND, "")),
+        "deploy-audit: repository check missing": (
+            "      && (" + OWN, "      && (" + OWN.replace(REPO_COND, "")),
+        "refusal: a dispatch from a fork allowed": (
+            'if { [ "$RUN_EVENT" = "push" ] || [ "$RUN_EVENT" = "workflow_dispatch" ]; } && [ "$RUN_REPO" = "$THIS_REPO" ]; then',
+            'if [ "$RUN_EVENT" = "workflow_dispatch" ] || { [ "$RUN_EVENT" = "push" ] && [ "$RUN_REPO" = "$THIS_REPO" ]; }; then'),
+        "refusal: another event type allowed": (
+            'if { [ "$RUN_EVENT" = "push" ] || [ "$RUN_EVENT" = "workflow_dispatch" ]; } && [ "$RUN_REPO" = "$THIS_REPO" ]; then',
+            'if { [ "$RUN_EVENT" = "push" ] || [ "$RUN_EVENT" = "workflow_dispatch" ] || [ "$RUN_EVENT" = "pull_request" ]; } && [ "$RUN_REPO" = "$THIS_REPO" ]; then'),
+        "refusal: any event allowed": (
+            'if { [ "$RUN_EVENT" = "push" ] || [ "$RUN_EVENT" = "workflow_dispatch" ]; } && [ "$RUN_REPO" = "$THIS_REPO" ]; then',
+            'if [ "$RUN_REPO" = "$THIS_REPO" ]; then'),
         "a trigger after a blank line in on:": ('        default: ""\n\nconcurrency:', '        default: ""\n\n  pull_request_target:\n\nconcurrency:'),
     }
     failed = []
@@ -348,9 +375,9 @@ def main(argv: list[str]) -> int:
         print(f"CANNOT CHECK: {exc}")
         return 2
     if found:
-        print("FAIL -- deploy.yml can act on a run that is not this repository's own push:\n  " + "\n  ".join(found))
+        print("FAIL -- deploy.yml can act on a run that is not this repository's own push or manual run:\n  " + "\n  ".join(found))
         return 1
-    print("PASS -- every deploy.yml job a workflow_run can start requires this repository's own push to main.")
+    print("PASS -- every deploy.yml job a workflow_run can start requires this repository's own push or manual run on main.")
     return 0
 
 
