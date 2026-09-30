@@ -9,6 +9,7 @@ import { cn } from '../../../lib/utils'
 import type { StorageLocation } from '../../../hooks/useStorageLocations'
 import type { InventoryItem } from '../useInventoryPage'
 import { StockGauge } from './bits'
+import { rolledUpTotals, rollupLabel } from '../../../components/inventory/zoneNesting'
 
 interface Props {
   items: InventoryItem[]
@@ -43,6 +44,18 @@ export function CellarMapView({
     }
     return map
   }, [items])
+
+  // Nested-zone totals (founder answer 2026-09-29, "Show both (Recommended)"):
+  // each card keeps its own bottles / slots, and a zone with zones inside it
+  // also shows a labelled total for itself and everything below it, counted
+  // from the same inventory rows as the cards.
+  const rollups = useMemo(
+    () =>
+      rolledUpTotals(locations, (z) =>
+        (byLocation.get(z.id) ?? []).reduce((s, w) => s + w.qty, 0),
+      ),
+    [locations, byLocation],
+  )
 
   const selectedLoc = locations.find((l) => l.id === selected)
   const selectedWines = (selected && byLocation.get(selected)) || []
@@ -103,7 +116,7 @@ export function CellarMapView({
             ? Math.min(100, (bottleCount / capacity) * 100)
             : null
           return (
-            <div key={zone.id} className="bg-white border border-gray-100 rounded-2xl p-4">
+            <div key={zone.id} data-testid={`zone-card-${zone.name}`} className="bg-white border border-gray-100 rounded-2xl p-4">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2.5 text-sm font-bold text-gray-900">
                   <span className="w-2 h-2 rounded-full" style={{ background: zone.color || '#be123c' }} />
@@ -116,6 +129,14 @@ export function CellarMapView({
                   {bottleCount} / {capacity ?? '—'} slots{zone.temperature ? `, ${zone.temperature}` : ''}
                 </div>
               </div>
+              {rollups.has(zone.id) && (
+                <p
+                  className="font-mono text-[11px] text-gray-500 -mt-2 mb-3"
+                  title="This zone's own bottles plus every zone inside it. Reports count each bottle once, in the zone that holds it."
+                >
+                  {rollupLabel(rollups.get(zone.id)!)}
+                </p>
+              )}
               {pct == null ? (
                 <p className="text-[10.5px] text-gray-400 mb-3.5">
                   Capacity not recorded — no fill shown.

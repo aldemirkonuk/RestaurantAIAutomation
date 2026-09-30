@@ -68,9 +68,10 @@ export class CreateStorageLocationDto {
   notes?: string;
 
   /**
-   * `null` means "no parent" and is how the web clears one (@IsOptional lets
-   * null through). storage_locations has no parent column yet, so the service
-   * refuses a non-null value with a 422 instead of dropping it (sweep #4).
+   * `null` means "no parent" (top level) and is how the web clears one
+   * (@IsOptional lets null through). Stored in storage_locations.parent_id
+   * (migration 20261203110000); the service refuses another restaurant's
+   * zone, the zone itself, and a cycle with a 422.
    */
   @ApiPropertyOptional({
     description: "Parent location ID for hierarchy (null = no parent)",
@@ -140,9 +141,10 @@ export class UpdateStorageLocationDto {
   notes?: string;
 
   /**
-   * `null` means "no parent" and is how the web clears one (@IsOptional lets
-   * null through). storage_locations has no parent column yet, so the service
-   * refuses a non-null value with a 422 instead of dropping it (sweep #4).
+   * `null` means "no parent" (top level) and is how the web clears one
+   * (@IsOptional lets null through). Stored in storage_locations.parent_id
+   * (migration 20261203110000); the service refuses another restaurant's
+   * zone, the zone itself, and a cycle with a 422.
    */
   @ApiPropertyOptional({
     description: "Parent location ID for hierarchy (null = no parent)",
