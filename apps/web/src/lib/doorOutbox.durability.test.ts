@@ -13,6 +13,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
  * its own header advertises for "the old iPads a receiving desk actually has".
  * That is the device this is about.
  *
+ * Since the ADR 0241 amendment (2026-09-29) a receipt the server refuses for
+ * good is PARKED as "Not sent" in the queue, never deleted — so this file now
+ * pins that the refusal keeps it, and that a park write storage refuses keeps
+ * it too.
+ *
  * What is NOT tested here, because it deliberately no longer exists: any
  * durable, screen-facing claim that a receipt was given up on without a record.
  * See ADR 0140.
@@ -24,7 +29,13 @@ vi.mock('../services/api/receiving', () => ({
 }))
 
 import { offlineStorage } from './offline-storage'
-import { flushDoorOutbox, readDroppedDoorReceipts, pendingDoorCount } from './doorOutbox'
+import {
+  flushDoorOutbox,
+  notSentDoorCount,
+  pendingDoorCount,
+  readDroppedDoorReceipts,
+  resendDoorReceipt,
+} from './doorOutbox'
 
 const RID = 'rest-A'
 const TYPE = 'receiving.door'
@@ -70,39 +81,51 @@ beforeEach(async () => {
   vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true)
 })
 
-describe('a receipt whose loss cannot be recorded is KEPT, not destroyed', () => {
-  it('keeps the queue entry when the drop record cannot be written', async () => {
+const signInAt = (restaurantId: string) => {
+  window.localStorage.setItem(
+    'accessToken',
+    `h.${btoa(JSON.stringify({ sub: 'porter-1', restaurantId }))}.s`,
+  )
+  window.localStorage.setItem('activeRestaurantId', restaurantId)
+}
+
+describe('a refused receipt is PARKED, kept on the phone, never destroyed', () => {
+  it('parks a refused receipt as Not sent and keeps it in the queue', async () => {
     const m = await queueOne('PO-1')
     recordDoorReceipt.mockRejectedValue(httpError(400))
 
-    const jam = jamStorage()
     const pass = await flushDoorOutbox()
-    jam.mockRestore()
 
-    // Nothing claims it was recorded...
-    expect(pass.dropped).toBe(0)
-    expect(pass.stranded).toBe(1)
-    expect(pass.failed).toBe(1)
-    expect(readDroppedDoorReceipts(RID)).toEqual([])
-    // ...and the delivery still exists, which is the property that matters.
+    expect(pass).toMatchObject({ sent: 0, failed: 0, parked: 1 })
     const still = await offlineStorage.getPendingMutationsByType(TYPE)
     expect(still.map((x) => x.id)).toEqual([m.id])
-    expect(await pendingDoorCount()).toBe(1)
+    expect(still[0].parked).toMatchObject({ reason: 'refused', status: 400 })
+    // Not waiting (nothing will send it on its own) — but not gone either.
+    expect(await pendingDoorCount()).toBe(0)
+    expect(await notSentDoorCount()).toBe(1)
+    // And no drop record: nothing was dropped.
+    expect(readDroppedDoorReceipts(RID)).toEqual([])
   })
 
-  it('records the loss, and only then deletes it, once storage recovers', async () => {
-    await queueOne('PO-2')
+  it('keeps the receipt when storage refuses the park write, and parks it once storage recovers', async () => {
+    const m = await queueOne('PO-2')
     recordDoorReceipt.mockRejectedValue(httpError(400))
 
     const jam = jamStorage()
-    await flushDoorOutbox()
+    const first = await flushDoorOutbox()
     jam.mockRestore()
-    expect(await pendingDoorCount()).toBe(1)
+
+    // Whatever the pass could claim, the delivery still exists.
+    expect(first.sent).toBe(0)
+    expect(first.failed + first.parked).toBe(1)
+    expect((await offlineStorage.getPendingMutationsByType(TYPE)).map((x) => x.id)).toEqual([m.id])
 
     await flushDoorOutbox()
 
-    expect(readDroppedDoorReceipts(RID)).toMatchObject([{ orderLabel: 'PO-2' }])
-    expect(await pendingDoorCount()).toBe(0)
+    const still = await offlineStorage.getPendingMutationsByType(TYPE)
+    expect(still.map((x) => x.id)).toEqual([m.id])
+    expect(still[0].parked).toMatchObject({ reason: 'refused' })
+    expect(readDroppedDoorReceipts(RID)).toEqual([])
   })
 
   it('still delivers a kept receipt when the network comes back', async () => {
@@ -131,35 +154,46 @@ describe('a receipt whose loss cannot be recorded is KEPT, not destroyed', () =>
     const blip = await flushDoorOutbox()
     blind.mockRestore()
 
-    expect(blip).toMatchObject({ sent: 0, failed: 0, dropped: 0, stranded: 0 })
+    expect(blip).toMatchObject({ sent: 0, failed: 0, parked: 0 })
     expect(readDroppedDoorReceipts(RID)).toEqual([])
     expect(await pendingDoorCount()).toBe(1)
   })
 
-  it('reports the pass honestly and claims nothing beyond it', async () => {
+  it('reports the pass honestly: a parked receipt is not re-sent or re-counted by the next pass', async () => {
     await queueOne('PO-5')
-    recordDoorReceipt.mockRejectedValue(httpError(400))
+    recordDoorReceipt.mockRejectedValue(httpError(422))
 
-    const jam = jamStorage()
     const first = await flushDoorOutbox()
     const second = await flushDoorOutbox()
-    jam.mockRestore()
 
-    // Each pass says what IT did. Neither claims a running total, and the
-    // module exposes no reader that would let a screen build one — that is the
-    // mechanism ADR 0140 withdrew, five defects deep.
-    expect(first.stranded).toBe(1)
-    expect(second.stranded).toBe(1)
+    expect(first.parked).toBe(1)
+    expect(second.parked).toBe(0)
+    expect(recordDoorReceipt).toHaveBeenCalledTimes(1)
     const api = await import('./doorOutbox')
     expect(Object.keys(api)).not.toContain('readStrandedDoorReceipts')
   })
 
-  it('does not leak one house\'s lost receipt to another', async () => {
-    await queueOne('PO-B', 'rest-B')
-    recordDoorReceipt.mockRejectedValue(httpError(422))
+  it("does not show one house's parked receipt to another", async () => {
+    await queueOne('PO-A')
+    recordDoorReceipt.mockRejectedValue(httpError(404))
     await flushDoorOutbox()
 
-    expect(readDroppedDoorReceipts('rest-A')).toEqual([])
-    expect(readDroppedDoorReceipts('rest-B')).toMatchObject([{ orderLabel: 'PO-B' }])
+    signInAt('rest-B')
+    expect(await notSentDoorCount()).toBe(0)
+    signInAt(RID)
+    expect(await notSentDoorCount()).toBe(1)
+  })
+
+  it('Send again delivers it once the server will take it', async () => {
+    const m = await queueOne('PO-6')
+    recordDoorReceipt.mockRejectedValueOnce(httpError(409))
+    await flushDoorOutbox()
+    expect(await notSentDoorCount()).toBe(1)
+
+    recordDoorReceipt.mockResolvedValue({ alreadyRecorded: false })
+    expect(await resendDoorReceipt(m.id)).toBe(true)
+
+    expect(await notSentDoorCount()).toBe(0)
+    expect(await pendingDoorCount()).toBe(0)
   })
 })

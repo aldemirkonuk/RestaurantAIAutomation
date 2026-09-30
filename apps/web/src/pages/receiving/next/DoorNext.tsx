@@ -15,9 +15,10 @@
  *     shown calm, explicitly unsent, a manager approves it later;
  *  5. offline is the assumption — the tap always succeeds locally ("saved on
  *     this phone, will send when you're back inside"), and a send that
- *     PERMANENTLY failed is VISIBLY different from a sent one. The flush's
- *     `dropped` count carries that — not `failed`, which counts a retryable
- *     pass the queue will send itself;
+ *     PERMANENTLY failed is VISIBLY different from a sent one. Since the ADR
+ *     0241 amendment (2026-09-29) such a receipt is PARKED as "Not sent" and
+ *     kept, and this screen says so from the queue itself — not from
+ *     `failed`, which counts a retryable pass the queue will send itself;
  *  6. who signed — initials, no ceremony.
  *
  * The one thing deliberately NOT here: a line-item editor. Line-by-line
@@ -47,6 +48,7 @@ import {
   clearDroppedDoorReceipts,
   flushDoorOutbox,
   newIdempotencyKey,
+  notSentDoorCount,
   pendingDoorCount,
   readDroppedDoorReceipts,
   submitDoorReceipt,
@@ -152,6 +154,14 @@ export default function DoorNext() {
   const [pendingQueue, setPendingQueue] = useState(0);
   const [lastFlush, setLastFlush] = useState<DoorFlushResult | null>(null);
   /**
+   * Receipts on this phone the server refused for good, PARKED as "Not sent"
+   * (ADR 0241 amendment, 2026-09-29). Read from the queue, which holds only
+   * this session's person and house, so another house's are never counted.
+   * Said quietly: nothing is lost — each can be sent again or discarded from
+   * Receiving — but nothing will send them on its own either.
+   */
+  const [notSent, setNotSent] = useState(0);
+  /**
    * Receipts the outbox GAVE UP ON — read from the outbox's own durable
    * record, not counted up here.
    *
@@ -230,8 +240,7 @@ export default function DoorNext() {
   //
   // NOT because that helper discards the flush result — it no longer does; it
   // hands the `DoorFlushResult` to its callback (lib/doorOutbox.ts,
-  // `onChange?.(result)`), which is how DoorReceipt.tsx gets the same
-  // `dropped`/`failed` split. The reason is the `offline`/`online` pair below:
+  // `onChange?.(result)`) with its `failed`/`parked` split. The reason is the `offline`/`online` pair below:
   // this screen RENDERS connectivity, and watchDoorOutbox listens for `online`
   // without exposing it and has no `offline` handler at all. Flushing twice is
   // safe (idempotent).
@@ -246,6 +255,7 @@ export default function DoorNext() {
     let alive = true;
     const refresh = () => {
       void pendingDoorCount().then((n) => alive && setPendingQueue(n));
+      void notSentDoorCount().then((n) => alive && setNotSent(n));
       // Both records re-read on every pass rather than patched from the
       // result: this is also what makes the `[rid]` note below true, since a
       // lazy `useState` initializer does not re-run on a house switch.
@@ -505,12 +515,15 @@ export default function DoorNext() {
             {drops.length === 1
               ? `Delivery ${drops[0].orderLabel} was saved on this phone and never sent.`
               : `${drops.length} deliveries saved on this phone were never sent.`}{' '}
-            {/* Only a remedy the cause supports. An expired session is the one
-                cause the record can tell apart, and the one the porter can fix
-                at the door in ten seconds instead of upstairs. Mixed or
-                anything else: no cause is claimed at all. */}
+            {/* Only a remedy the cause supports. A stored `auth` record means
+                a 403 — this account was not allowed to record it — since ADR
+                0241 retries a 401 instead of dropping it. So it must NOT say
+                "signed out" or send the porter to sign in again; the remedy is
+                the paperwork and a manager. Mixed or anything else: no cause
+                is claimed at all. (These are records written before the ADR
+                0241 amendment; a refusal is now parked, not dropped.) */}
             {drops.every((d) => d.reason === 'auth')
-              ? 'The app was signed out. Sign in again before recording another — and keep the paperwork: the count is not on the server.'
+              ? 'This account is not allowed to record deliveries, so the server refused it. Keep the paperwork and tell a manager: the count is not on the server.'
               : 'The app has given up. Keep the paperwork and tell a manager: the count is not on the server.'}
           </p>
           {drops.length > 1 && (
@@ -541,11 +554,25 @@ export default function DoorNext() {
       {/* A retryable failure is not a loss — the receipt is still queued and
           the next flush sends it. Said quietly, in the chrome's own voice, so
           it never reads as the alarm above. */}
-      {lastFlush !== null && lastFlush.failed - lastFlush.dropped > 0 && (
+      {/* `failed` counts only receipts still waiting since the ADR 0241
+          amendment: a refusal is `parked`, not failed, and said below. */}
+      {lastFlush !== null && lastFlush.failed > 0 && (
         <p data-ux-key="door:retrying" className="mx-4 mt-2 text-xs text-inkm-3">
-          {lastFlush.failed - lastFlush.dropped}{' '}
-          {lastFlush.failed - lastFlush.dropped === 1 ? 'report' : 'reports'} did not send yet —
+          {lastFlush.failed} {lastFlush.failed === 1 ? 'report' : 'reports'} did not send yet —
           still on this phone, still trying.
+        </p>
+      )}
+
+      {/* Refused by the server and kept, not lost: quiet, because nothing is
+          gone and nothing has to happen at the door. */}
+      {notSent > 0 && (
+        <p data-ux-key="door:not-sent" className="mx-4 mt-2 text-xs text-inkm-3">
+          {notSent === 1
+            ? '1 delivery report was refused by the server.'
+            : `${notSent} delivery reports were refused by the server.`}{' '}
+          {notSent === 1 ? 'It is' : 'They are'} kept on this phone as “Not sent” — send{' '}
+          {notSent === 1 ? 'it' : 'them'} again or discard {notSent === 1 ? 'it' : 'them'} from
+          Receiving.
         </p>
       )}
 

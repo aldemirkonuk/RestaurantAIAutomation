@@ -1,0 +1,19 @@
+## #530 follow-ups closed by parking a refused door receipt — ~~OPEN~~ CLOSED 2026-09-29 by `fix/door-refusal-parks-not-sent` ([ADR 0241](../decisions/0241-an-offline-change-belongs-to-its-person-and-house-and-is-never-dropped-for-failing.md) §Amendment 2026-09-29) — 2026-09-29
+
+The founder ruled the door-refusal fork on 2026-09-29: "option 1, not sent." This branch builds it. It closes these items from `tech-debt.d/2026-09-29-docs-merge-queue-followups-2026-09-29.md`. They are closed here, not struck in place, because this PR is at the 15-file cap.
+
+- **`:113` "A door 4xx is still dropped and pinned, not parked."** Closed. `doorOutbox` parks a permanent refusal as "Not sent" and never deletes it, so a proxy or captive-portal 4xx on dock wifi no longer loses a receipt. The receipt waits on the receiving rail for Send again or Discard.
+- **`:116` "Two views of a parked door receipt."** Closed. `pendingDoorCount` excludes parked receipts, and `notSentDoorCount` counts them.
+- **`:117` "The door drop notice names the wrong cause."** Closed. For an `auth` (403) drop record, `DoorNext` now says the account is not allowed to record deliveries, keep the paperwork, and tell a manager. It never says "signed out" or "sign in". Tested in `DoorNext.test.tsx`, `describe('DoorNext — a 403 drop is not "signed out"')`.
+- **`:122` `doorOutbox.ts:460` ("retry budget spent").** Closed. That `DoorFlushResult` doc is rewritten, and `dropped` and `stranded` are gone.
+- **"Try again" on the app-wide "not sent" strip did nothing for door receipts and spot counts.** This was not filed before. `syncManager.retryNotSent` un-parked them, but `syncNow` skips both outboxes' types. It now flushes both outboxes. Tested in `sync-manager.test.ts`.
+- **The rail showed a parked `unowned` door receipt as "0 tries".** This was not filed before. It is now shown as "Not sent", with Discard only.
+
+## Door outbox residuals after parking — OPEN — 2026-09-29
+
+Deferred from `fix/door-refusal-parks-not-sent`. Read on that branch, not exercised against a running gateway.
+
+- **A house switch during a 401 refresh parks under the wrong reason.** If the house changes while the API client refreshes a 401 (`services/api/client.ts` 401 path), the retried receipt can go out under the new house. A 404 comes back, and the receipt is now parked as `refused`. Before this branch it was dropped. Nothing is lost, but the rail blames the server for a refusal the house switch caused. This is related to `:114` ("Door 401 refresh race") in the #530 fragment, which is still open.
+- **The online submit path does not queue what the flush would park.** `submitDoorReceipt` (`apps/web/src/lib/doorOutbox.ts`, the `catch` after `recordDoorReceipt` in `submitDoorReceipt`) throws on any 4xx except 408 and 429. So 401 and 425 are thrown instead of queued, even though the flush treats both as transient. A permanent 4xx on the first, online attempt reaches the screen as an error and is never parked.
+- **Neither outbox backs off.** ADR 0241 §The second OD-203 PR records this as deliberate: flushes are event-triggered only. But `lib/queue-owner.ts` exports `BACKOFF_BASE_MS` and `nextAttemptAt`, which only the SyncManager uses, and its docstring (`:14`, "adopt them in OD-203's second PR", and `:26`, "retried with backoff") implies that the outboxes back off too. Correct the docstring, or give the outboxes backoff.
+- **The per-device storage half of the ruling** ("optimize storage using per device") is a separate amendment, not built here.

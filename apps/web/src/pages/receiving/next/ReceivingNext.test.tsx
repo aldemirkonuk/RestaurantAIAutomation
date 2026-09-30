@@ -163,7 +163,7 @@ beforeEach(() => {
   pendingByType.mockReset().mockResolvedValue([])
   flushDoorOutbox
     .mockReset()
-    .mockResolvedValue({ sent: 0, failed: 0, dropped: 0, stranded: 0, unreachable: false })
+    .mockResolvedValue({ sent: 0, failed: 0, parked: 0, unreachable: false })
   activeRestaurantId.current = 'rest-A'
   window.localStorage.clear()
   Object.defineProperty(navigator, 'onLine', { value: true, configurable: true })
@@ -280,9 +280,9 @@ describe('F3 — a dropped receipt does not follow the tablet into another resta
   })
 
   it('writes back to the scoped key when a pin is dismissed, never the global one', async () => {
-    // The flush is now the only thing that CREATES a pin (doorOutbox.test.ts
-    // pins that it lands under the receiving house's key). What this side
-    // still writes is the dismissal, and it must write to the same key.
+    // Nothing creates a pin any more (ADR 0241 amendment: a refusal is parked,
+    // not dropped); the ones already on devices remain. What this side still
+    // writes is the dismissal, and it must write to the same key.
     window.localStorage.setItem(pinFor('rest-A'), JSON.stringify([drop]))
     harness(OutboxBody)
 
@@ -327,8 +327,7 @@ describe('F4 — an offline non-attempt does not render as a clean sync', () => 
     flushDoorOutbox.mockResolvedValue({
       sent: 0,
       failed: 0,
-      dropped: 0,
-      stranded: 0,
+      parked: 0,
       unreachable: false,
     })
     harness(OutboxBody)
@@ -347,8 +346,7 @@ describe('F4 — an offline non-attempt does not render as a clean sync', () => 
     flushDoorOutbox.mockResolvedValue({
       sent: 0,
       failed: 0,
-      dropped: 0,
-      stranded: 0,
+      parked: 0,
       unreachable: false,
     })
     harness(OutboxBody)
@@ -363,7 +361,88 @@ describe('F4 — an offline non-attempt does not render as a clean sync', () => 
     pendingByType.mockResolvedValue([
       { id: 'm2', type: 'receiving.door', data: { orderId: 'o', orderLabel: 'PO-2', restaurantId: 'rest-A' }, timestamp: new Date(), retryCount: 0, owner: { userId: 'u1', restaurantId: 'rest-A' }, parked: { reason: 'unowned', at: 'x' } },
     ])
-    flushDoorOutbox.mockResolvedValue({ sent: 0, failed: 0, dropped: 0, stranded: 0, unreachable: false })
+    flushDoorOutbox.mockResolvedValue({ sent: 0, failed: 0, parked: 0, unreachable: false })
+    harness(OutboxBody)
+
+    expect(await screen.findByText(/last sync .* · sent 0 · failed 0/)).toBeInTheDocument()
+    expect(screen.queryByText(/no sync attempted — offline/)).not.toBeInTheDocument()
+  })
+})
+
+/* ═══════════════ F12 — a refused receipt is parked as "Not sent", not dropped ══ */
+
+describe('F12 — the rail shows a parked door receipt as Not sent, with Send again and Discard', () => {
+  const doorEntry = (id: string, label: string, over: Record<string, unknown> = {}) => ({
+    id,
+    type: 'receiving.door',
+    data: { orderId: `o-${id}`, orderLabel: label, restaurantId: 'rest-A' },
+    timestamp: new Date('2026-09-29T09:00:00.000Z'),
+    retryCount: 0,
+    owner: { userId: 'u1', restaurantId: 'rest-A' },
+    ...over,
+  })
+
+  it('names the refusal in plain words instead of an attempt count', async () => {
+    signInPorter()
+    pendingByType.mockResolvedValue([
+      doorEntry('r1', 'PO-403', { parked: { reason: 'refused', status: 403, at: 'x' }, lastError: 'HTTP 403' }),
+      doorEntry('u1', 'PO-OLD', { parked: { reason: 'unowned', at: 'x' } }),
+    ])
+    harness(OutboxBody)
+
+    expect(await screen.findByText('PO-403')).toBeInTheDocument()
+    expect(screen.getAllByText('Not sent')).toHaveLength(2)
+    expect(screen.getByText(/this account is not allowed to record deliveries/)).toBeInTheDocument()
+    expect(screen.getByText(/cannot be sent as anyone/)).toBeInTheDocument()
+    // The pre-fix rendering: a parked unowned receipt read "0 tries", as if
+    // it were still being attempted.
+    expect(screen.queryByText(/0 tries/)).not.toBeInTheDocument()
+    // Send again only for the refused one; Discard for both.
+    expect(screen.getAllByRole('button', { name: /^Send .* again$/ })).toHaveLength(1)
+    expect(screen.getByRole('button', { name: 'Send PO-403 again' })).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: /^Discard / })).toHaveLength(2)
+  })
+
+  it('Discard asks first, and removes the entry only on a yes', async () => {
+    signInPorter()
+    const { offlineStorage } = await import('../../../lib/offline-storage')
+    vi.mocked(offlineStorage.removePendingMutation).mockClear()
+    pendingByType.mockResolvedValue([
+      doorEntry('r1', 'PO-422', { parked: { reason: 'refused', status: 422, at: 'x' } }),
+    ])
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true)
+    harness(OutboxBody)
+
+    const discard = await screen.findByRole('button', { name: 'Discard PO-422' })
+    fireEvent.click(discard)
+    expect(confirm).toHaveBeenCalledTimes(1)
+    expect(String(confirm.mock.calls[0][0])).toContain('not on the server')
+    expect(offlineStorage.removePendingMutation).not.toHaveBeenCalled()
+
+    fireEvent.click(discard)
+    await waitFor(() => expect(offlineStorage.removePendingMutation).toHaveBeenCalledWith('r1'))
+    confirm.mockRestore()
+  })
+
+  it('Send again un-parks the receipt', async () => {
+    signInPorter()
+    const { offlineStorage } = await import('../../../lib/offline-storage')
+    vi.mocked(offlineStorage.updatePendingMutation).mockClear()
+    pendingByType.mockResolvedValue([
+      doorEntry('r1', 'PO-404', { parked: { reason: 'refused', status: 404, at: 'x' } }),
+    ])
+    harness(OutboxBody)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Send PO-404 again' }))
+    await waitFor(() =>
+      expect(offlineStorage.updatePendingMutation).toHaveBeenCalledWith('r1', { parked: undefined }),
+    )
+  })
+
+  it('does not call a pass "offline" when it parked the only sendable receipt', async () => {
+    signInPorter()
+    pendingByType.mockResolvedValue([doorEntry('s1', 'PO-S')])
+    flushDoorOutbox.mockResolvedValue({ sent: 0, failed: 0, parked: 1, unreachable: false })
     harness(OutboxBody)
 
     expect(await screen.findByText(/last sync .* · sent 0 · failed 0/)).toBeInTheDocument()
