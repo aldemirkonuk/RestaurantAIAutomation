@@ -11,7 +11,11 @@ refused where it can tell; its self-test lists every evasion found so far:
 
   1. The jobs: block holds only plain `  name:` job keys, full-line comments
      and lines indented four or more spaces. A quoted, flow-style, anchored or
-     aliased key, a tab, a CR or a duplicate key fails.
+     aliased key, a tab, a CR or a duplicate key fails. Inside a job, every
+     line indented exactly four spaces must be a plain lowercase key (a
+     WHITELIST: no quoted, tagged, anchored, explicit `?` or merge `<<` key),
+     no line may be indented five, and no job-level value may open a quoted
+     scalar it does not close on its own line.
   2. The job set is exactly EXPECTED_IF's, and each job's single job-level
      `if` equals, whitespace-normalised, the one EXPECTED_IF allows: each job a
      workflow_run can start requires this repository's own push; rollback-guide
@@ -19,8 +23,10 @@ refused where it can tell; its self-test lists every evasion found so far:
   3. ci-gate has exactly one step named "The run is this repository's own
      push to main", equal to REFUSAL_STEP line for line (blank and comment
      lines dropped); ci-gate writes neither GITHUB_ENV nor GITHUB_OUTPUT.
-  3b. The on: block equals ON_BLOCK (no added trigger, same workflow_run
-     filter), and the file sets no defaults:.
+  3b. The on: block, up to the next top-level key, equals ON_BLOCK (no added
+     trigger, same workflow_run filter), and the file sets no defaults:.
+  A job-level `if` is read whole: a block scalar with its blank lines, and a
+  plain scalar with its deeper continuation lines.
   4. No line of deploy.yml sets `continue-on-error`.
 
 What it cannot hold: GitHub's own evaluation (workflow_run runs main's copy of
@@ -77,6 +83,8 @@ REFUSAL_STEP = """- name: The run is this repository's own push to main
           fi
           echo "::error::Refusing: the CI run that triggered this was event '$RUN_EVENT' from '$RUN_REPO', not a push to '$THIS_REPO'. No stage runs its code."
           exit 1"""
+STAGE3_NAME = "  verify-frontend:\n    name: \"Stage 3 — Frontend Build\"\n"
+STAGE3_HIDE = "  verify-frontend:\n    name: \"Stage 3 — Frontend Build\n    if: x\"\n"
 DISPATCH = "(github.event_name == 'workflow_dispatch' && inputs.mode == 'deploy-audit')"
 # The only job-level `if` each job may carry, whitespace-normalised. A job not
 # named here fails: adding one means adding its `if` to this gate-owned table.
@@ -148,7 +156,15 @@ def _job_ifs(job: str) -> list[str]:
                     break
             out.append(" ".join(v for v in val if v))
         else:
-            out.append(head)
+            val = [head]
+            for nxt in lines[i + 1:]:
+                if nxt.strip() and len(nxt) - len(nxt.lstrip(" ")) >= 5:
+                    val.append(nxt.strip())  # a plain scalar continues on deeper lines
+                elif not nxt.strip():
+                    continue
+                else:
+                    break
+            out.append(" ".join(val))
     return out
 
 
@@ -174,8 +190,23 @@ def problems(text: str) -> list[str]:
     for name, job in jobs.items():
         code = _code(job)
         for line in code.split("\n"):
-            if re.match(r"""^    ["']""", line) or re.match(r"^    [A-Za-z_-]+ +:", line):
-                out.append(f"{name}: a job-level key that is quoted or spaced: {line.strip()[:50]!r}")
+            if not line.strip():
+                continue
+            ind = len(line) - len(line.lstrip(" "))
+            if ind < 4 or ind == 5:
+                out.append(f"{name}: a line indented {ind} inside a job: {line.strip()[:50]!r}")
+            elif ind == 4:
+                # WHITELIST: a job-level line is a plain lowercase key and nothing
+                # else -- no quoted, tagged, anchored, explicit (?) or merge (<<) key.
+                m = re.match(r"^    ([a-z][a-z-]*):( |$)(.*)$", line)
+                if not m:
+                    out.append(f"{name}: a job-level line that is not a plain key: {line.strip()[:50]!r}")
+                    continue
+                val = m.group(3).strip()
+                if val[:1] in ("'", '"') and (len(val) < 2 or val[-1] != val[0]):
+                    out.append(f"{name}: job-level key {m.group(1)!r} opens a quoted scalar it does not close on its line")
+                if val[:1] in ("&", "*", "!"):
+                    out.append(f"{name}: job-level key {m.group(1)!r} carries an anchor, alias or tag")
         if re.search(r"(?m)^    uses:", code):
             out.append(f"{name}: is a reusable-workflow call")
         ifs = _job_ifs(job)
@@ -192,8 +223,9 @@ def problems(text: str) -> list[str]:
     gate_job = jobs.get("ci-gate", "")
     if "GITHUB_ENV" in gate_job or "GITHUB_OUTPUT" in gate_job:
         out.append("ci-gate writes GITHUB_ENV or GITHUB_OUTPUT (a later step's values could be overridden)")
-    on_block = text.split("\non:\n", 1)[1].split("\n\n", 1)[0] if "\non:\n" in text else ""
-    if _code(on_block).strip("\n") != ON_BLOCK.strip("\n"):
+    on_block = re.split(r"(?m)^\S", text.split("\non:\n", 1)[1], 1)[0] if "\non:\n" in text else ""
+    on_code = "\n".join(l for l in _code(on_block).split("\n") if l.strip())
+    if on_code != "\n".join(l for l in ON_BLOCK.split("\n") if l.strip()):
         out.append("the on: block differs from the one allowed (a new trigger, or a changed workflow_run filter)")
     if re.search(r"(?m)^\s*defaults\s*:", _code(text)):
         out.append("deploy.yml sets defaults: (a run shell or directory override)")
@@ -271,6 +303,23 @@ def _self_test(verbose: bool = False) -> int:
             "        if: github.event_name == 'workflow_run'\n        env:\n          RUN_EVENT:",
             "        if: github.event_name == 'workflow_run'\n        shell: bash -c 'exit 0' {0}\n        env:\n          RUN_EVENT:"),
         "job-level defaults on ci-gate": ("  ci-gate:\n    name: CI Gate\n", "  ci-gate:\n    name: CI Gate\n    defaults:\n      run:\n        shell: bash -c 'exit 0' {0}\n"),
+        # round-2b reviewers (2026-09-30): a plain-scalar continuation, and key spellings
+        "one-line if with a plain-scalar continuation": (
+            "    needs: [verify-api-gateway]\n    if: >-\n      " + OWN + "\n      || " + DISPATCH + "\n",
+            "    needs: [verify-api-gateway]\n    if: " + OWN + " || " + DISPATCH + "\n      || always()\n"),
+        "continuation with && !cancelled() || always()": (
+            "    needs: [verify-api-gateway]\n    if: >-\n      " + OWN + "\n      || " + DISPATCH + "\n",
+            "    needs: [verify-api-gateway]\n    if: " + OWN + " || " + DISPATCH + "\n        && !cancelled() || always()\n"),
+        "explicit-key if": (STAGE3_NAME, STAGE3_HIDE + "    ? if\n    : always()\n"),
+        "anchored if key": (STAGE3_NAME, STAGE3_HIDE + "    &a if: always()\n"),
+        "tagged if key": (STAGE3_NAME, STAGE3_HIDE + "    !!str if: always()\n"),
+        "merge key": (STAGE3_NAME, STAGE3_HIDE + "    <<: {if: always()}\n"),
+        "explicit-key if, no hidden name": (STAGE3_NAME, STAGE3_NAME + "    ? if\n    : always()\n"),
+        "anchored if key, no hidden name": (STAGE3_NAME, STAGE3_NAME + "    &a if: always()\n"),
+        "tagged if key, no hidden name": (STAGE3_NAME, STAGE3_NAME + "    !!str if: always()\n"),
+        "merge key, no hidden name": (STAGE3_NAME, STAGE3_NAME + "    <<: {if: always()}\n"),
+        "an odd-indented line in a job": (STAGE3_NAME, STAGE3_NAME + "     if: always()\n"),
+        "a trigger after a blank line in on:": ('        default: ""\n\nconcurrency:', '        default: ""\n\n  pull_request_target:\n\nconcurrency:'),
     }
     failed = []
     for name, (old, new) in muts.items():
