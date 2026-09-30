@@ -428,10 +428,20 @@ verbatim picks:
     - Changes that only alter whether `ci-gate` goes green on a foreign or
       non-push run are still refused by the stage and `deploy-audit` `if`s.
       The guard pins those `if`s exactly, and no such change touches them.
-    - Founder, 2026-09-30, verbatim: *Describe the whole class, then fix the key (Recommended)*.
+    - The founder's pick, 2026-09-30, verbatim: *"Describe the whole class,
+      then fix the key (Recommended)"*. The class, as the round-5 ADR 0090
+      planner defined it:
       Any ci-gate step that runs, sources, or interpolates into a shell anything the triggering run controls reopens the original exposure. That includes its checkout, its artifacts or caches, and event fields the fork writes, such as `head_commit.message` and `display_title`. ci-gate has no `if` and inherits `ADMIN_API_KEY`, so only gate ownership stops it.
-    - Scoping `ADMIN_API_KEY` out of the workflow env is the follow-up that
-      closes this. It is filed in the tech-debt fragment.
+    - Scoping `ADMIN_API_KEY` out of the workflow env removes the key from
+      that reach, but on its own it does not close the class. Such a step
+      would still run in main's context, with:
+      - the workflow's `GITHUB_TOKEN` (`actions: write`);
+      - main-scoped cache writes, which Stage 3 restores (`cache: pnpm`);
+      - any other workflow-level secret.
+
+      So the follow-up also gives `ci-gate` `permissions: {}` and no cache
+      save, and adds a guard that the workflow-level env holds no secrets.
+      It is filed in the tech-debt fragment.
   - **Known examples.** Each passes the guard at this writing:
     - `concurrency: |` before the refusal step;
     - `container:`, `runs-on: self-hosted` or `services:` on `ci-gate`;

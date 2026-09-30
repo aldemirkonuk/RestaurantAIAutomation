@@ -57,13 +57,21 @@ more. Changes of these kinds pass the guard unnoticed:
     hides a trigger added after it.
 Changes that only alter whether ci-gate goes green on a foreign or non-push
 run are still refused by the stage and deploy-audit ifs, pinned exactly here
-and unchanged by any of them. But (founder, 2026-09-30, verbatim: "Describe the whole class, then fix the key (Recommended)"):
+and unchanged by any of them. The founder's pick, 2026-09-30, verbatim:
+"Describe the whole class, then fix the key (Recommended)". The class, as the
+round-5 ADR 0090 planner defined it:
 Any ci-gate step that runs, sources, or interpolates into a shell anything the
 triggering run controls reopens the original exposure. That includes its
 checkout, its artifacts or caches, and event fields the fork writes, such as
 `head_commit.message` and `display_title`. ci-gate has no `if` and inherits
-`ADMIN_API_KEY`, so only gate ownership stops it. (Scoping ADMIN_API_KEY out
-of the workflow env is the follow-up: see the tech-debt fragment.)
+`ADMIN_API_KEY`, so only gate ownership stops it.
+(Scoping ADMIN_API_KEY out of the workflow env removes the key from that
+reach but does not close the class alone: such a step would still run in
+main's context with the workflow's GITHUB_TOKEN (`actions: write`), with
+main-scoped cache writes that Stage 3 restores (`cache: pnpm`), and with any
+other workflow-level secret. The follow-up therefore also gives ci-gate
+`permissions: {}` and no cache save, and guards that the workflow-level env
+holds no secrets; see the tech-debt fragment.)
 Known examples, all passing the guard at this writing:
   - `concurrency: |` before the refusal step (the steps after it become that
     key's string);
