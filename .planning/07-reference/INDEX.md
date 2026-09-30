@@ -75,3 +75,4 @@ others like them). None of those input files were kept. ADR 0032's waiver covers
 summaries; the raw logs, finder reports and input files they cite stay in the local scratch folder they
 were written in, which a reboot clears (ADR 0032, "Retire-to-write waiver — the 2026-09-21 research
 judges").
+| [ENDPOINT-UNIVERSE-PLAN.md](ENDPOINT-UNIVERSE-PLAN.md) | 2026-09-20 founder brief, adopted: 888 vs 1,559, Phase 0 then 1 (ADR 0178), compositional mail (0180), guests reserved not built (0181), unmounted Python deleted (0179). Scratchpad `plan/synth/S1`–`S8` | Plan of record (ADRs 0178–0181) |
