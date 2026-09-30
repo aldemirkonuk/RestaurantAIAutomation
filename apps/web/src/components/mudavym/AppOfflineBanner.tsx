@@ -183,7 +183,7 @@ function HouseOfflineBanner() {
           style={ACT}
           onClick={() => {
             const n = notSentCount
-            if (window.confirm(`Discard ${pluralChange(n)} that ${n === 1 ? 'was' : 'were'} not sent? ${n === 1 ? 'It is' : 'They are'} only on this device, not on the server — keep the paperwork for any delivery among them. This cannot be undone.`))
+            if (window.confirm(`Discard ${pluralChange(n)} that ${n === 1 ? 'was' : 'were'} not sent? ${n === 1 ? 'It is' : 'They are'} kept only on this device and the server has not accepted them — keep the paperwork for any delivery among them. This cannot be undone.`))
               void discardNotSent?.()
           }}
         >

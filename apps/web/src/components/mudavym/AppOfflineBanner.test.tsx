@@ -143,9 +143,9 @@ describe('not sent (ADR 0241, OD-203 (a)): a refused change is kept and named, n
     confirm.mockReturnValueOnce(true);
     fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
     expect(discardNotSent).toHaveBeenCalledTimes(1);
-    // Door receipts park here too since ADR 0241's 2026-09-29 amendment: the
-    // confirm must say the count is only on this device, as the rail's does.
-    expect(confirm).toHaveBeenLastCalledWith(expect.stringMatching(/only on this device, not on the server — keep the paperwork/));
+    // Refused door receipts park here too (ADR 0241's 2026-09-29 amendment,
+    // PR #535): the confirm must say the server has not accepted them.
+    expect(confirm).toHaveBeenLastCalledWith(expect.stringMatching(/kept only on this device and the server has not accepted them — keep the paperwork/));
     confirm.mockRestore();
   });
 
