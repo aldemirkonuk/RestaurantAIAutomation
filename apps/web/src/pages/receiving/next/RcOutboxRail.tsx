@@ -13,24 +13,20 @@
  *    "Discard" (confirmed first: the count is not on the server).
  * 2. DROPPED — records written BEFORE that amendment, still shown and
  *    dismissable; nothing writes a new one. The original defect fix
- *    (v3.0-TECH-DEBT / motion canvas inv-09):
- *    `flushDoorOutbox` permanently discards a receipt on a permanent 4xx
- *    refusal (the `if (permanent)` branch in `flushDoorOutbox`,
- *    lib/doorOutbox.ts; before ADR 0241 also after 8 attempts), deleting it from the queue, so
- *    the pending count falls exactly as it does on a delivery and a dropped
- *    receipt looks identical to a delivered one. Here every drop is pinned by
- *    name and stays until a person dismisses it. Nothing vanishes; the drop
- *    becomes a pin (turn, then the stamp landing).
+ *    (v3.0-TECH-DEBT / motion canvas inv-09): until that amendment,
+ *    `flushDoorOutbox` permanently discarded a receipt on a permanent 4xx
+ *    refusal (and, before ADR 0241, after 8 attempts), deleting it from the
+ *    queue, so the pending count fell exactly as it does on a delivery and a
+ *    dropped receipt looked identical to a delivered one. That branch no
+ *    longer exists: a refusal is parked (item 1). The drop records it wrote
+ *    are still pinned here by name until a person dismisses them.
  *
- *    (This sentence has now rotted twice in four days — first claiming the
- *    legacy page "throws that `failed` count away", then claiming it
- *    "accumulates `dropped`" from the flush result. Neither describes the
- *    tree. State the mechanism instead: grep `watchDoorOutbox(` in
- *    DoorReceipt.tsx — that page consults NO field of the result; it re-reads
- *    `readDroppedDoorReceipts` on every pass,
- *    and it names the orders, as this rail does. What is left to this rail
- *    alone is the QUEUE: the entries still waiting, with their attempt count
- *    and last error, which neither door screen shows.)
+ *    [Corrected 2026-09-29: a paragraph here pointed at `watchDoorOutbox(` in
+ *    `DoorReceipt.tsx`. That page no longer exists and nothing in the web app
+ *    calls `watchDoorOutbox` now; the door screen (`DoorNext.tsx`) re-reads
+ *    the drop records and the not-sent count from storage on every pass. What
+ *    is left to this rail alone is the QUEUE: each entry with its attempt
+ *    count, last error or "Not sent" reason, and the actions it allows.]
  *
  * Honesty: a storage read that throws renders as "unknown", never as an
  * empty queue — and the empty state says what emptiness means.

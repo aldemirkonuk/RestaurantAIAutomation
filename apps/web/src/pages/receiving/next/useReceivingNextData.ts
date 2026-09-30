@@ -841,15 +841,13 @@ function belongsToRestaurant(m: PendingMutation, restaurantId: string): boolean 
  * here as "Not sent" with Send again and Discard; nothing is deleted, so the
  * pins below are only the records written before it.]
  *
- * ON THE LEGACY PAGE, stated as a mechanism rather than as a description,
- * because this paragraph has been wrong twice in four days — once saying that
- * page "throws the flush result away", once saying it "accumulates `dropped`".
- * Grep `watchDoorOutbox(` in DoorReceipt.tsx: the callback takes no argument.
- * That page consults no field of the result at all; it re-reads the drop record
- * and the strand on every pass, which is the same thing this hook does, for the
- * same reason — a count cannot say WHICH receipt, and a count in component
- * state does not survive the navigate. The distinction is held on both pages;
- * neither holds it in a number.
+ * [Corrected 2026-09-29: a paragraph here described "the legacy page",
+ * `DoorReceipt.tsx`, and its `watchDoorOutbox(` callback. That page no longer
+ * exists and nothing in the web app calls `watchDoorOutbox` now. The door
+ * screen (`DoorNext.tsx`) does what this hook does: it re-reads the drop
+ * records and the not-sent count from storage on every pass rather than
+ * holding the distinction in a number, because a count cannot say WHICH
+ * receipt and a count in component state does not survive the navigate.]
  *
  * CORRECTED AGAIN 2026-09-12 — the paragraph here used to say this hook "keeps
  * its own reconstruction rather than reading `dropped`", snapshotting the queue
