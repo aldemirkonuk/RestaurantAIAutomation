@@ -50,8 +50,14 @@ const STAFF = "user-staff";
 
 // Far enough out that no clock makes them started, and far enough back that
 // none makes them unstarted: the test runs on the real clock, not a faked one,
-// because the whole app (its timers included) is running.
-const FUTURE = "2030-10-07"; // a Monday
+// because the whole app (its timers included) is running. FUTURE is the first
+// Monday a year from today, so the case never ages into the past.
+const FUTURE = ((): string => {
+  const d = new Date();
+  d.setUTCFullYear(d.getUTCFullYear() + 1);
+  d.setUTCDate(d.getUTCDate() + ((8 - d.getUTCDay()) % 7));
+  return d.toISOString().slice(0, 10);
+})();
 const PAST = "2020-09-07"; // a Monday
 
 function shift(over: Record<string, any>) {
@@ -266,9 +272,17 @@ let base: string;
 // The same placeholder credentials `health/liveness.route.spec.ts` sets: the
 // real `DatabaseService` is replaced, but a provider elsewhere in the graph
 // that reads them at construction must not see a developer's real project.
+// The booted app also reads a repo-root `.env` (app.module.ts ConfigModule),
+// and the environment wins over that file, so every outside service it could
+// reach is pinned here too: no cache, no error reporting, the orchestrator on
+// an address that cannot resolve, and the broker on CI's own unused default.
 const ENV = {
   SUPABASE_URL: "http://leave-route.invalid",
   SUPABASE_SERVICE_ROLE_KEY: "test-service-role-key-not-a-real-secret",
+  REDIS_URL: "",
+  SENTRY_DSN: "",
+  AGENT_ORCHESTRATOR_URL: "http://orchestrator.invalid",
+  RABBITMQ_URL: "amqp://localhost:5672",
 };
 const saved: Record<string, string | undefined> = {};
 
@@ -501,10 +515,14 @@ describe("leave and delete account reach THE removal over the real routes (ADR 0
   });
 });
 
-describe("negative control: the same routes with the removal unwired refuse and change nothing", () => {
+describe("negative control: the same routes with the removal unwired refuse before any roster or account write", () => {
   // Proves the cases above can fail. `TeamService` resolves to nothing, so the
-  // `MembersService` the lazy lookup finds has no removal to run. Everything
-  // else is the same boot.
+  // `MembersService` the lazy lookup finds has no removal to run (the refusal
+  // at members.service.ts, not AuthService's own "no MembersService" branch).
+  // Everything else is the same boot. The leave case compares every table; the
+  // delete case checks the account, roster and access rows only, because
+  // `deleteAccount` stops the person's calendar links before its removal loop
+  // (ADR 0242, "can stop part-way") and the seed has none to see.
   let removeFromHouse: jest.SpyInstance;
 
   beforeAll(async () => {
@@ -540,7 +558,7 @@ describe("negative control: the same routes with the removal unwired refuse and 
     expect(JSON.stringify(db.tables)).toBe(before);
   });
 
-  it("delete account answers the documented 500 and deletes nothing", async () => {
+  it("delete account answers the documented 500 and keeps the account, roster and access rows", async () => {
     const res = await call("DELETE", "/auth/me", { user: STAFF });
 
     expect(res.status).toBe(500);
