@@ -275,7 +275,12 @@ merged. What it adds:
 - **Writer change 2, confirmed deal** (`dealMessageFor` → `pickDealMessage`).
   The price names the newest inbound message carrying an unresolved
   `deal_proposal`. `resolveLatestDealProposal` now uses the same function, so
-  the price names the message the manager confirmed.
+  the price names the message the manager confirmed. **[2026-09-28,
+  `fix/deal-proposal-house-scope`: that held only when the two reads saw the
+  same rows. `dealMessageFor` was house-scoped, but `resolveLatestDealProposal`
+  and the modal's `getDealProposal` read by order id alone. All three are now
+  house-scoped (`v3.0-TECH-DEBT.md`, "The deal and reply paths read and wrote
+  another house's vendor messages on the same order id").]**
 - **Attach-a-paper upload** (`RecordPriceForm`). The file goes through the
   house's one document door, `POST /procurement/documents`, and the price is
   recorded with the returned id. A failed upload records nothing and says so.

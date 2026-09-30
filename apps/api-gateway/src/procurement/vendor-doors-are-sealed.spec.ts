@@ -445,3 +445,241 @@ describe("a waiting deal request may be declined or withdrawn, exactly like a le
     await expect(t.service.withdrawDealRequest(HOUSE, ORDER, STAFF)).rejects.toMatchObject({ status: 404 });
   });
 });
+
+describe("a deal proposal is resolved only inside the caller's house (#482 merge-audit follow-up)", () => {
+  // `resolveLatestDealProposal` read and wrote `procurement_conversations` by
+  // order id alone, while `dealMessageFor` — which must pick the same row —
+  // filtered by house too. A row carrying the same order id under another
+  // house must be neither marked resolved nor discarded.
+  const FOREIGN = "house-2";
+  const proposal = (id: string, house: string, created_at: string) => ({
+    id,
+    order_id: ORDER,
+    restaurant_id: house,
+    direction: "inbound",
+    created_at,
+    conversation_context: { deal_proposal: { finalPrice: 190, quantity: 6 } },
+  });
+
+  it("dismissDeal marks this house's proposal and leaves another house's untouched", async () => {
+    const t = build();
+    // The foreign row is NEWER, so an unscoped read would pick it first.
+    t.db.tables.procurement_conversations.push(
+      proposal("conv-own", HOUSE, "2026-09-20T10:00:00Z"),
+      proposal("conv-foreign", FOREIGN, "2026-09-21T10:00:00Z"),
+    );
+    await t.service.dismissDeal(HOUSE, ORDER);
+    const byId = (id: string) => t.db.tables.procurement_conversations.find((r) => r.id === id);
+    expect(byId("conv-own")?.conversation_context).toMatchObject({ deal_resolution: "dismissed" });
+    expect(byId("conv-foreign")?.conversation_context?.deal_resolved_at).toBeUndefined();
+    expect(byId("conv-foreign")?.conversation_context?.deal_resolution).toBeUndefined();
+  });
+
+  it("dismissDeal resolves nothing when the only proposal on the order id is another house's", async () => {
+    const t = build();
+    t.db.tables.procurement_conversations.push(proposal("conv-foreign", FOREIGN, "2026-09-21T10:00:00Z"));
+    await t.service.dismissDeal(HOUSE, ORDER);
+    expect(t.db.tables.procurement_conversations[0].conversation_context?.deal_resolved_at).toBeUndefined();
+  });
+
+  it("confirmDeal resolves and discards only this house's rows", async () => {
+    const t = build();
+    const terms = { finalPrice: 190, quantity: 6, sendConfirmation: false };
+    t.db.tables.procurement_conversations.push(
+      proposal("conv-own", HOUSE, "2026-09-20T10:00:00Z"),
+      proposal("conv-foreign", FOREIGN, "2026-09-21T10:00:00Z"),
+      { id: "draft-own", order_id: ORDER, restaurant_id: HOUSE, direction: "outbound", status: "PENDING_APPROVAL", created_at: "2026-09-20T11:00:00Z" },
+      { id: "draft-foreign", order_id: ORDER, restaurant_id: FOREIGN, direction: "outbound", status: "PENDING_APPROVAL", created_at: "2026-09-21T11:00:00Z" },
+    );
+    const { challenge } = await t.service.issueConfirmDealSeal(HOUSE, ORDER, MANAGER, terms);
+    await t.service.confirmDeal(HOUSE, ORDER, MANAGER, terms, challenge);
+    const byId = (id: string) => t.db.tables.procurement_conversations.find((r) => r.id === id);
+    expect(byId("conv-own")?.conversation_context).toMatchObject({ deal_resolution: "confirmed" });
+    expect(byId("conv-foreign")?.conversation_context?.deal_resolved_at).toBeUndefined();
+    expect(byId("draft-own")?.status).toBe("DISCARDED");
+    expect(byId("draft-foreign")?.status).toBe("PENDING_APPROVAL");
+  });
+});
+
+describe("every order-keyed conversation read on the deal and reply paths is this house's own", () => {
+  // `procurement_conversations.order_id` is a plain FK to `procurement_orders(id)`
+  // with nothing tying the row's `restaurant_id` to the order's house, and the
+  // gateway reads with the service role, so these filters are the only fence.
+  // A house letter names its order from the request body unchecked, and the
+  // mail bridge threads a vendor's answer onto whatever order the letter named,
+  // under the letter's house — so a row on this order id can be another house's.
+  // In each case the other house's row is the NEWER one, so an unscoped read
+  // picks it first; each case also carries this house's own row, so a path
+  // that simply did nothing would fail.
+  const FOREIGN = "house-2";
+  const inbound = (id: string, house: string, created_at: string, extra: Record<string, any> = {}) => ({
+    id,
+    order_id: ORDER,
+    restaurant_id: house,
+    provider_id: house === HOUSE ? "prov-1" : "prov-foreign",
+    direction: "inbound",
+    created_at,
+    detected_intent: "counter_offer",
+    gmail_thread_id: `thread-${id}`,
+    message_id: `<${id}@mail.example>`,
+    email_headers: { subject: `Re: ${id}`, references: `<${id}-ref@mail.example>` },
+    ...extra,
+  });
+  const proposal = { deal_proposal: { finalPrice: 190, quantity: 6, sourceQuote: "190 per bottle" } };
+
+  it("getDealProposal shows this house's proposal, never another house's newer one on the same order id", async () => {
+    const t = build();
+    t.db.tables.procurement_conversations.push(
+      inbound("conv-own", HOUSE, "2026-09-20T10:00:00Z", { conversation_context: proposal }),
+      inbound("conv-foreign", FOREIGN, "2026-09-21T10:00:00Z", {
+        conversation_context: { deal_proposal: { finalPrice: 99, quantity: 60, sourceQuote: "another house's terms" } },
+      }),
+    );
+    const shown = await t.service.getDealProposal(HOUSE, ORDER);
+    expect(shown).toMatchObject({ conversationId: "conv-own", finalPrice: 190, sourceQuote: "190 per bottle" });
+  });
+
+  it("getDealProposal answers null when the only proposal on the order id is another house's", async () => {
+    const t = build();
+    t.db.tables.procurement_conversations.push(
+      inbound("conv-foreign", FOREIGN, "2026-09-21T10:00:00Z", { conversation_context: proposal }),
+    );
+    await expect(t.service.getDealProposal(HOUSE, ORDER)).resolves.toBeNull();
+  });
+
+  it("manual-reply threads onto this house's latest reply and discards only this house's waiting drafts", async () => {
+    const t = build();
+    t.db.tables.procurement_conversations.push(
+      inbound("conv-own", HOUSE, "2026-09-20T10:00:00Z"),
+      inbound("conv-foreign", FOREIGN, "2026-09-21T10:00:00Z"),
+      { id: "draft-own", order_id: ORDER, restaurant_id: HOUSE, direction: "outbound", status: "AUTO_SEND_SCHEDULED", created_at: "2026-09-20T11:00:00Z" },
+      { id: "draft-foreign", order_id: ORDER, restaurant_id: FOREIGN, direction: "outbound", status: "AUTO_SEND_SCHEDULED", created_at: "2026-09-21T11:00:00Z" },
+    );
+    const { challenge } = await t.service.issueManualReplySeal(HOUSE, ORDER, MANAGER, { content: "Tuesday works." });
+    await t.service.manualReply(HOUSE, ORDER, MANAGER, "Tuesday works.", [], challenge);
+    expect(t.gmail.sendEmail.calls).toHaveLength(1);
+    expect(t.gmail.sendEmail.calls[0][0]).toMatchObject({
+      subject: "Re: conv-own",
+      threadId: "thread-conv-own",
+      inReplyTo: "<conv-own@mail.example>",
+      references: "<conv-own-ref@mail.example>",
+    });
+    const byId = (id: string) => t.db.tables.procurement_conversations.find((r) => r.id === id);
+    expect(byId("draft-own")?.status).toBe("DISCARDED");
+    expect(byId("draft-foreign")?.status).toBe("AUTO_SEND_SCHEDULED");
+  });
+
+  it("the deal confirmation letter threads onto this house's latest reply, not another house's", async () => {
+    const t = build();
+    const terms = { finalPrice: 190, quantity: 6, sendConfirmation: true };
+    t.db.tables.procurement_conversations.push(
+      inbound("conv-own", HOUSE, "2026-09-20T10:00:00Z", { conversation_context: proposal }),
+      inbound("conv-foreign", FOREIGN, "2026-09-21T10:00:00Z", { conversation_context: proposal }),
+    );
+    const { challenge } = await t.service.issueConfirmDealSeal(HOUSE, ORDER, MANAGER, terms);
+    await t.service.confirmDeal(HOUSE, ORDER, MANAGER, terms, challenge);
+    expect(t.gmail.sendEmail.calls).toHaveLength(1);
+    expect(t.gmail.sendEmail.calls[0][0]).toMatchObject({
+      subject: "Re: conv-own",
+      threadId: "thread-conv-own",
+      inReplyTo: "<conv-own@mail.example>",
+      references: "<conv-own-ref@mail.example>",
+    });
+  });
+
+  it("another house's reply still being read does not hold this house's confirmation; this house's own does", async () => {
+    const terms = { finalPrice: 190, quantity: 6, sendConfirmation: false };
+    const justNow = () => new Date().toISOString();
+
+    const held = build();
+    held.db.tables.procurement_conversations.push(
+      inbound("conv-own", HOUSE, justNow(), { detected_intent: null }),
+    );
+    const heldSeal = await held.service.issueConfirmDealSeal(HOUSE, ORDER, MANAGER, terms);
+    await expect(
+      held.service.confirmDeal(HOUSE, ORDER, MANAGER, terms, heldSeal.challenge),
+    ).rejects.toThrow(/still reading it/);
+    expect(held.order().status).toBe("NEGOTIATING");
+
+    const t = build();
+    t.db.tables.procurement_conversations.push(
+      inbound("conv-foreign", FOREIGN, justNow(), { detected_intent: null }),
+    );
+    const { challenge } = await t.service.issueConfirmDealSeal(HOUSE, ORDER, MANAGER, terms);
+    await expect(t.service.confirmDeal(HOUSE, ORDER, MANAGER, terms, challenge)).resolves.toMatchObject({
+      confirmed: true,
+    });
+    expect(t.order().status).toBe("APPROVED");
+  });
+
+  it("generate-reply hands the responder this house's latest reply, and finds none when only another house's exists", async () => {
+    const asked: any[] = [];
+    const withResponder = () => {
+      const t = build();
+      t.db.tables.conversation_attachments = [];
+      (t.service as any).inboundResponder = {
+        analyzeAndDraftReply: async (args: any) => {
+          asked.push(args);
+          return { drafted: true, draftId: "d-1", needsApproval: true, autoSendScheduled: false };
+        },
+      };
+      return t;
+    };
+
+    const t = withResponder();
+    t.db.tables.procurement_conversations.push(
+      inbound("conv-own", HOUSE, "2026-09-20T10:00:00Z"),
+      inbound("conv-foreign", FOREIGN, "2026-09-21T10:00:00Z"),
+    );
+    await t.service.generateAiReply(HOUSE, ORDER);
+    expect(asked).toHaveLength(1);
+    expect(asked[0]).toMatchObject({
+      inboundConversationId: "conv-own",
+      restaurantId: HOUSE,
+      providerId: "prov-1",
+      gmailThreadId: "thread-conv-own",
+      inboundSubject: "Re: conv-own",
+    });
+
+    const only = withResponder();
+    only.db.tables.procurement_conversations.push(inbound("conv-foreign", FOREIGN, "2026-09-21T10:00:00Z"));
+    await expect(only.service.generateAiReply(HOUSE, ORDER)).resolves.toMatchObject({
+      triggered: false,
+      reason: "No inbound vendor reply found for this order",
+    });
+    expect(asked).toHaveLength(1);
+  });
+
+  it("a scheduled auto-send is held by this house's newer reply, and not by another house's", async () => {
+    const scheduled = {
+      id: "auto-1",
+      order_id: ORDER,
+      restaurant_id: HOUSE,
+      provider_id: "prov-1",
+      direction: "outbound",
+      status: "AUTO_SEND_SCHEDULED",
+      scheduled_send_at: "2026-09-20T09:00:00Z",
+      content: "Six cases, Tuesday.",
+      email_headers: { subject: "Re: Yakut" },
+      created_at: "2026-09-20T08:00:00Z",
+    };
+
+    const held = build();
+    held.db.tables.procurement_conversations.push(
+      { ...scheduled },
+      inbound("conv-own", HOUSE, "2026-09-20T08:30:00Z"),
+    );
+    await held.service.processScheduledAutoSends();
+    expect(held.db.tables.procurement_conversations.find((r) => r.id === "auto-1")?.status).toBe("PENDING_APPROVAL");
+    expect(held.gmail.sendEmail.calls).toHaveLength(0);
+
+    const t = build();
+    t.db.tables.procurement_conversations.push(
+      { ...scheduled },
+      inbound("conv-foreign", FOREIGN, "2026-09-20T08:30:00Z"),
+    );
+    await t.service.processScheduledAutoSends();
+    expect(t.db.tables.procurement_conversations.find((r) => r.id === "auto-1")?.status).toBe("AUTO_SENT");
+    expect(t.gmail.sendEmail.calls).toHaveLength(1);
+  });
+});
