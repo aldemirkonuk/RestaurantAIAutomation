@@ -513,3 +513,24 @@ describe('dismiss/clear reach the key the read actually used', () => {
     expect(readDroppedDoorReceipts('rest-B')).toEqual([])
   })
 })
+
+describe('ADR 0241 — a house switch in the middle of a flush', () => {
+  it('leaves the rest of the flush queued for its own house', async () => {
+    store.getPendingMutationsByType.mockResolvedValue([pending('a'), pending('b')])
+    recordDoorReceipt.mockImplementationOnce(async () => {
+      window.localStorage.setItem(
+        'accessToken',
+        `h.${btoa(JSON.stringify({ sub: 'porter-1', restaurantId: 'rest-B' }))}.s`,
+      )
+      window.localStorage.setItem('activeRestaurantId', 'rest-B')
+      return {}
+    })
+
+    const res = await flushDoorOutbox()
+
+    expect(recordDoorReceipt).toHaveBeenCalledTimes(1)
+    expect(res.sent).toBe(1)
+    expect(store.removePendingMutation).not.toHaveBeenCalledWith('b')
+  })
+})
+

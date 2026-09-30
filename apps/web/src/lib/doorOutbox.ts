@@ -582,9 +582,13 @@ async function runFlush(onSnapshot: () => void): Promise<DoorFlushResult> {
   }
   onSnapshot()
 
-  const session = currentQueueOwner()
   try {
     for (const m of pending) {
+      // Re-read for EVERY receipt (ADR 0241): the API client stamps the house
+      // header at send time, so a house switch in the middle of this flush
+      // must leave the rest queued for their own house, not send them to the
+      // new one.
+      const session = currentQueueOwner()
       // ADR 0241 (OD-203 (b)): `pending` already holds only this session's
       // person and house. A parked receipt waits for the person. A legacy
       // receipt that names no house cannot be sent as anyone, so it is parked

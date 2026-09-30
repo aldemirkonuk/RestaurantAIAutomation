@@ -111,13 +111,15 @@ export async function flushSpotCountOutbox(): Promise<{
 
   // Only this session's person and house (`getPendingMutations` filters).
   const pending = await offlineStorage.getPendingMutationsByType(MUTATION_TYPE)
-  const session = currentQueueOwner()
   const now = Date.now()
   let sent = 0
   let failed = 0
   let parked = 0
 
   for (const m of pending) {
+    // Re-read for every count (ADR 0241): a house switch in the middle of this
+    // flush leaves the rest queued for their own house.
+    const session = currentQueueOwner()
     if (m.parked) continue
     if (!isVisibleTo(m, session)) continue
     if (!isReplayable(m, session)) {

@@ -140,3 +140,24 @@ describe('flushSpotCountOutbox — only as the person and house that took it', (
     )
   })
 })
+
+describe('flushSpotCountOutbox — a house switch in the middle of a flush', () => {
+  it('stops sending the rest once the session is in another house', async () => {
+    store.getPendingMutationsByType.mockResolvedValue([count('a'), count('b')])
+    recordSpotCount.mockImplementationOnce(async () => {
+      window.localStorage.setItem(
+        'accessToken',
+        `h.${btoa(JSON.stringify({ sub: U1, restaurantId: H2 }))}.s`,
+      )
+      window.localStorage.setItem('activeRestaurantId', H2)
+      return {}
+    })
+
+    await flushSpotCountOutbox()
+
+    expect(recordSpotCount).toHaveBeenCalledTimes(1)
+    expect(store.removePendingMutation).toHaveBeenCalledWith('a')
+    expect(store.removePendingMutation).not.toHaveBeenCalledWith('b')
+  })
+})
+
