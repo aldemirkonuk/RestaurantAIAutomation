@@ -412,20 +412,33 @@ verbatim picks:
 - GitHub's own YAML evaluation. `workflow_run` runs main's copy of the file,
   so the step first runs for real on #534's merge commit.
 - Whether `workflow_run` fires for a CI run dispatched with `GITHUB_TOKEN`.
-- Four known evasions pass the guard. For each, runtime still holds because
-  every stage's and `deploy-audit`'s `if` independently requires the own-run
-  group, and `deploy.yml` is gate-owned. Founder, 2026-09-30, verbatim:
-  *"Honest record (Recommended)"*.
-  - A job-level key such as `concurrency: |` before the refusal step, which
-    turns the following steps into a string (`ci-gate` would stay green).
-  - A column-0 comment inside `on:`, which ends the guard's `on:` read, so a
-    trigger added after it is not compared.
-  - A job-level `env: BASH_ENV` on `ci-gate`, which is not pinned.
-  - A `GITHUB_PATH` write in a `ci-gate` step (only `GITHUB_ENV` and
-    `GITHUB_OUTPUT` are refused).
-
-  Closing them is filed in
-  `tech-debt.d/2026-09-30-batch-open-prs-2026-09-29.md`.
+- How `ci-gate` executes. The guard pins the refusal step's text and each job's
+  `if`, not `ci-gate`'s execution. Founder, 2026-09-30, verbatim: *"Honest
+  record (Recommended)"*.
+  - **What passes the guard.** Anything else that changes how `ci-gate` runs
+    can turn it green on a foreign or non-push run without the guard
+    noticing:
+    - a job-level key other than `if`;
+    - another step or action before the refusal step;
+    - a write to the runner's env or path files other than the literal
+      `GITHUB_ENV` or `GITHUB_OUTPUT`;
+    - a column-0 comment inside `on:`, which ends the guard's `on:` read and
+      so hides a trigger added after it.
+  - **Known examples.** Each of these passes the guard at this writing:
+    - `concurrency: |` placed before the refusal step, which turns the
+      following steps into a string;
+    - `container:`, `runs-on: self-hosted` or `services:` on `ci-gate`;
+    - a job-level `env: BASH_ENV`;
+    - an `actions/github-script` step before the refusal step that exports
+      `BASH_ENV`;
+    - a `GITHUB_PATH` write, or an indirect write to the env file;
+    - a column-0 comment inside `on:` with a trigger added after it.
+  - **Why runtime still holds.** Every stage's and `deploy-audit`'s `if`
+    independently requires the own-run group, and the guard pins those `if`s
+    exactly. None of the examples changes a job `if`. `deploy.yml` is also
+    gate-owned.
+  - **Closing the class** is filed in
+    `tech-debt.d/2026-09-30-batch-open-prs-2026-09-29.md`.
 - A direct `workflow_dispatch` of `deploy.yml` itself (writer-only) runs the
   stages, as before. This amendment covers the `workflow_run` trigger.
 

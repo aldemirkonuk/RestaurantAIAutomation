@@ -1121,13 +1121,14 @@ def test_deploy_runs_only_on_this_repositorys_own_pushes():
             ' && [ "$RUN_REPO" = "$THIS_REPO" ]') in gate
     refuse = gate.split("The run is this repository's own push or manual run on main", 1)[1].split("- name:", 1)[0]
     assert "exit 1" in refuse, "ci-gate does not fail a foreign or non-push run"
-    # The structural rule (a strict jobs: reader that refuses any key it could
-    # misread; each job's single `if` equal to the one allowed; the refusal
-    # step not disabled, softened or bypassed) lives in
+    # The structural rule (a strict jobs: reader that refuses the key forms it
+    # knows it could misread; each job's single `if` equal to the one allowed;
+    # the refusal step's text pinned line for line) lives in
     # scripts/check_deploy_own_pushes.py; its self-test plants exactly the 52
     # breaks it lists (including a fork's dispatch, another event type and a
-    # missing repository check). Four known evasions are not held; the
-    # guard's KNOWN GAPS docstring names them and why runtime still holds.
+    # missing repository check). It does not pin how ci-gate executes; the
+    # guard's KNOWN GAPS docstring names that class, its known examples, and
+    # why runtime still holds (the stage ifs).
     guard = ROOT / "scripts" / "check_deploy_own_pushes.py"
     for args in ([], ["--self-test"]):
         r = subprocess.run([sys.executable, "-I", str(guard), *args], capture_output=True, text=True, timeout=60)

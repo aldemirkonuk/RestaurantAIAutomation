@@ -13,7 +13,7 @@ out that run's head_sha and run its code beside ADMIN_API_KEY. The rule this
 guard holds, read from the workflow text strictly (no YAML library: the CI
 jobs that run it do not install one). Shapes it does not recognise are
 refused where it can tell; its self-test plants the 52 breaks listed in
-_self_test (see KNOWN GAPS below for four it does not hold):
+_self_test (see KNOWN GAPS below for what it does not hold):
 
   1. The jobs: block holds only plain `  name:` job keys, full-line comments
      and lines indented four or more spaces. A quoted, flow-style, anchored or
@@ -28,7 +28,8 @@ _self_test (see KNOWN GAPS below for four it does not hold):
      is dispatch-only; ci-gate has none. No job is a reusable-workflow call.
   3. ci-gate has exactly one step named "The run is this repository's own
      push or manual run on main", equal to REFUSAL_STEP line for line (blank and comment
-     lines dropped); ci-gate writes neither GITHUB_ENV nor GITHUB_OUTPUT.
+     lines dropped); no line of ci-gate names GITHUB_ENV or GITHUB_OUTPUT
+     literally (an indirect write is not seen; see KNOWN GAPS).
   3b. The on: block, up to the next top-level key, equals ON_BLOCK (no added
      trigger, same workflow_run filter), and the file sets no defaults:.
   A job-level `if` is read whole: a block scalar with its blank lines, and a
@@ -37,26 +38,33 @@ _self_test (see KNOWN GAPS below for four it does not hold):
 
 What it cannot hold: GitHub's own evaluation (workflow_run runs main's copy of
 the file), and any YAML form this reader accepts but GitHub reads differently;
-the known forms of that kind, and two it simply does not pin, are listed
-under KNOWN GAPS below. It pins only the refusal
+known forms of that kind, and what it does not pin at all, are under KNOWN
+GAPS below. It pins only the refusal
 step, not ci-gate's first step (the conclusion check, ADR 0097's claim).
 
 KNOWN GAPS -- not held (founder, 2026-09-30: "Honest record (Recommended)").
-The self-test plants exactly the 52 breaks listed in _self_test and nothing
-more. These four known evasions pass this guard; runtime still holds for each
-because every stage's and deploy-audit's `if` independently requires the
-own-run group (pinned exactly above), and deploy.yml itself is gate-owned:
-  - a job-level key such as `concurrency: |` placed before the refusal step
-    (the steps after it become that key's string, so ci-gate would stay green;
-    the stage ifs still refuse the run);
-  - a column-0 comment line inside `on:` (it ends this reader's on: block, so
-    a trigger added after it is not compared; the job ifs admit only the
-    own-run workflow_run or a direct dispatch);
-  - a job-level `env: BASH_ENV` on ci-gate (not pinned; the stage ifs do not
-    depend on ci-gate's steps);
-  - a `GITHUB_PATH` write in a ci-gate step (only GITHUB_ENV and GITHUB_OUTPUT
-    are refused; same reason).
-Closing them is filed in tech-debt.d/2026-09-30-batch-open-prs-2026-09-29.md.
+This guard pins the refusal step's TEXT and each job's `if`; it does not pin
+how ci-gate EXECUTES. The self-test plants exactly the 52 breaks listed in
+_self_test and nothing more. So anything else that changes how ci-gate runs
+can turn it green on a foreign or non-push run without this guard noticing:
+a job-level key other than `if`, another step or action before the refusal
+step, or a write to the runner's env/path files other than the literal text
+GITHUB_ENV / GITHUB_OUTPUT; and a column-0 comment inside `on:` ends this
+reader's on: block, hiding a trigger added after it. Known examples, all
+passing the guard at this writing:
+  - a job-level key such as `concurrency: |` before the refusal step (the
+    steps after it become that key's string);
+  - `container:`, `runs-on: self-hosted` or `services:` on ci-gate;
+  - a job-level `env: BASH_ENV` on ci-gate;
+  - a `uses: actions/github-script` step before the refusal step exporting
+    BASH_ENV;
+  - a `GITHUB_PATH` write, or an indirect write to the env file (e.g. a path
+    computed from printenv);
+  - a column-0 comment inside `on:` followed by an added trigger.
+Runtime still holds for every one: each stage's and deploy-audit's `if`
+independently requires the own-run group and is pinned exactly here, and
+none of these changes a job `if`; deploy.yml itself is gate-owned. Closing
+the class is filed in tech-debt.d/2026-09-30-batch-open-prs-2026-09-29.md.
 
 Exit 0 holds, 1 broken, 2 cannot read. `--self-test` plants each break.
 Owned by scripts/test_pr_audit_gate.py
