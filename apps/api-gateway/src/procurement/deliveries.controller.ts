@@ -15,6 +15,7 @@ import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { DeliverySpineService } from "./canonical/delivery-spine.service";
 import { DeliveryService } from "./canonical/delivery.service";
 import { DeliveryClockService } from "./canonical/delivery-clock.service";
+import { PlatformOperatorGuard } from "../common/orchestrator/platform-operator.service";
 import {
   AcceptAsBilledDto,
   CreateDeliveryDto,
@@ -40,9 +41,12 @@ type AuthedUser = { userId: string; restaurantId: string };
  *   POST /procurement/deliveries/:id/agree     D3 — and it says which rule fired
  *   POST /procurement/deliveries/:id/verify    D6 — a human, and idempotent
  *   POST /procurement/deliveries/clocks/run    the catch-up for D9's ladder
+ *                                              (platform operators only)
  *
  * `restaurantId` comes from the token on every route, never from the request —
  * the gateway holds the service role, so that filter IS the tenant isolation.
+ * The one exception is `clocks/run`, which works EVERY house's due clocks and
+ * is therefore a platform act, not a house one; see its own comment.
  *
  * NO ROUTE HERE WRITES STOCK OR COST. See `DeliveryService`'s header: the
  * columns ADR 0103 A1 will use have no writer on this build, and `verify` is
@@ -284,13 +288,43 @@ export class DeliveriesController {
     return res.value;
   }
 
+  /**
+   * PLATFORM OPERATORS ONLY, AND NO `now` IN PRODUCTION (ADR 0243).
+   *
+   * `runDue` reads `delivery_timers` across every house — it is the hourly
+   * poller, not a house's own clock. Until this fix the route carried only
+   * `JwtAuthGuard`, so any verified member of any house could POST
+   * `{ "now": "<a year ahead>" }` and lapse every house's open timers: LAPSED
+   * with the legal deeming text written on the delivery, plus high-priority
+   * notices and pushes to each house's owners (817-route audit).
+   *
+   * Callers: none. `git grep` over apps/, services/, scripts/, .github/,
+   * .railway/ and vercel.json finds no HTTP caller; the hourly runner is
+   * `DeliveryClockService.pollHourly`, an in-process `@Cron` that calls
+   * `runDue()` directly and is untouched. So the catch-up after an outage this
+   * route exists for is an operator's act, and `PlatformOperatorGuard` (the
+   * `/health/agent-operations` gate: an enabled `platform_operator_grants` row
+   * AND a live `developer` role, read from the database, never the JWT) is the
+   * one that fits. It runs after the class's `JwtAuthGuard`.
+   *
+   * `now` — "run the ladder as if it were that moment" — is refused in
+   * production for everyone, operators included: a deadline that passes early
+   * writes legal text that cannot be taken back, and nothing in production
+   * needs to time-travel. Outside production it stays, for tests and demos.
+   */
   @Post("clocks/run")
+  @UseGuards(PlatformOperatorGuard)
   @ApiOperation({
-    summary: "Work the due clocks now (ADR 0103 A10)",
+    summary: "Work the due clocks now (ADR 0103 A10) — platform operators only",
     description:
-      "The same idempotent poller the hourly cron runs, exposed so a catch-up after an outage is a deliberate act rather than a wait. `now` runs the ladder as if it were that moment. Returns what it DID per rung, so a caller can assert on the work rather than on the absence of an exception.",
+      "The same idempotent poller the hourly cron runs, across every house, exposed so a catch-up after an outage is a deliberate act rather than a wait. Platform operators only (403 otherwise). `now` runs the ladder as if it were that moment, and is refused with 400 in production. Returns what it DID per rung, so a caller can assert on the work rather than on the absence of an exception.",
   })
   async runClocks(@Body() body: RunClocksDto) {
+    if (body?.now && process.env.NODE_ENV === "production")
+      throw new HttpException(
+        "`now` is not accepted in production: the ladder runs at the real time. Send no `now` to run the catch-up.",
+        HttpStatus.BAD_REQUEST,
+      );
     const at = body?.now ? new Date(body.now) : new Date();
     if (!Number.isFinite(at.getTime()))
       throw new HttpException(

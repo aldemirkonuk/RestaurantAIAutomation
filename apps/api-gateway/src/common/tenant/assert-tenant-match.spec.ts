@@ -187,3 +187,172 @@ describe("assertTenantMatch — allowBodyTenantChange", () => {
     ).toThrow();
   });
 });
+
+/**
+ * A house is named by ONE string, or it is not named at all.
+ *
+ * Found 2026-09-29 by the 817-route audit: this function kept only the STRING
+ * values of `restaurantId` / `restaurant_id` and skipped everything else, so a
+ * value it could not compare was treated as a value that was not there. Express
+ * 4's query parser (qs) turns `?restaurantId[]=B` into `["B"]` and a repeated
+ * key into `["A", "B"]`; the JSON and urlencoded body parsers deliver arrays and
+ * objects as-is. postgrest-js then renders `.eq(col, ["B"])` as `eq.B`, so a
+ * member of house A could read house B wherever a controller takes the house
+ * from the query or body (analytics.controller.ts `insight-catalog/types`,
+ * auth.controller.ts `me/role`, the toast routes, …) — and the guard, having
+ * seen "no house named", waved it through.
+ *
+ * The refusal is the guard's existing one — `ForbiddenException("Tenant
+ * isolation violation")` — not a 400: every caller of this function (JwtAuthGuard,
+ * TenantGuard, DevTruthController) and every test above expects that one
+ * exception, and "a house this guard cannot prove is yours" is exactly what a
+ * mismatch is. `null`, `undefined` and `""` still mean "not named": a client
+ * sending `restaurantId: null` names nothing, and none of the three can reach
+ * another house's rows.
+ *
+ * Every case below that expects a throw was run against the pre-fix
+ * implementation and observed to FAIL before being kept.
+ */
+describe("assertTenantMatch — a house is named by one string", () => {
+  const user = { userId: "u1", restaurantId: "rest-a" };
+  const refused = (fn: () => void) => {
+    expect(fn).toThrow(ForbiddenException);
+    expect(fn).toThrow("Tenant isolation violation");
+  };
+
+  it("refuses an array in the query (?restaurantId[]=rest-b)", () => {
+    refused(() =>
+      assertTenantMatch(req({ user, query: { restaurantId: ["rest-b"] } })),
+    );
+    refused(() =>
+      assertTenantMatch(req({ user, query: { restaurant_id: ["rest-b"] } })),
+    );
+  });
+
+  it("refuses a repeated query key (?restaurantId=rest-a&restaurantId=rest-b)", () => {
+    // qs turns a repeated key into an array; leading with the caller's own
+    // house must not launder the second one.
+    refused(() =>
+      assertTenantMatch(
+        req({ user, query: { restaurantId: ["rest-a", "rest-b"] } }),
+      ),
+    );
+  });
+
+  it("refuses an array even when it holds only the caller's own house", () => {
+    // Not a single string, so not a name this guard can vouch for; what a
+    // controller does with an array is not something to bet on.
+    refused(() =>
+      assertTenantMatch(req({ user, query: { restaurantId: ["rest-a"] } })),
+    );
+  });
+
+  it("refuses an object in the query (?restaurant_id[x]=rest-b)", () => {
+    refused(() =>
+      assertTenantMatch(
+        req({ user, query: { restaurant_id: { x: "rest-b" } } }),
+      ),
+    );
+  });
+
+  it("refuses an array in the body", () => {
+    refused(() =>
+      assertTenantMatch(req({ user, body: { restaurantId: ["rest-b"] } })),
+    );
+    refused(() =>
+      assertTenantMatch(req({ user, body: { restaurant_id: ["rest-b"] } })),
+    );
+  });
+
+  it("refuses an object in the body", () => {
+    refused(() =>
+      assertTenantMatch(
+        req({ user, body: { restaurantId: { id: "rest-b" } } }),
+      ),
+    );
+    refused(() =>
+      assertTenantMatch(
+        req({ user, body: { restaurant_id: { $ne: "rest-a" } } }),
+      ),
+    );
+  });
+
+  it("refuses a number or a boolean in the body", () => {
+    refused(() => assertTenantMatch(req({ user, body: { restaurantId: 42 } })));
+    refused(() =>
+      assertTenantMatch(req({ user, body: { restaurant_id: true } })),
+    );
+  });
+
+  it("refuses a non-string path param (defence in depth; Express gives strings)", () => {
+    refused(() =>
+      assertTenantMatch(req({ user, params: { restaurantId: ["rest-b"] } })),
+    );
+  });
+
+  it("refuses a tenantless session sending an array", () => {
+    // Before: an array was "nothing named", so a session in no house passed
+    // the one branch written to stop it reaching into a house.
+    refused(() =>
+      assertTenantMatch(
+        req({ user: { userId: "u1" }, query: { restaurantId: ["rest-b"] } }),
+      ),
+    );
+  });
+
+  it("refuses a non-string body name even on the tenant-change route", () => {
+    // The exemption lets the body name ANOTHER house; it does not make a
+    // malformed name acceptable, and switchRestaurant should never see one.
+    refused(() =>
+      assertTenantMatch(req({ user, body: { restaurantId: ["rest-b"] } }), {
+        allowBodyTenantChange: true,
+      }),
+    );
+    refused(() =>
+      assertTenantMatch(
+        req({
+          user: { userId: "u1" },
+          body: { restaurantId: { id: "rest-b" } },
+        }),
+        { allowBodyTenantChange: true },
+      ),
+    );
+  });
+
+  it("still passes a single string naming the caller's house, in each place", () => {
+    expect(() =>
+      assertTenantMatch(
+        req({
+          user,
+          params: { restaurantId: "rest-a" },
+          query: { restaurant_id: "rest-a" },
+          body: { restaurantId: "rest-a", restaurant_id: "rest-a" },
+        }),
+      ),
+    ).not.toThrow();
+  });
+
+  it("still treats null, undefined and an empty string as not named", () => {
+    expect(() =>
+      assertTenantMatch(
+        req({
+          user,
+          query: { restaurantId: "" },
+          body: { restaurantId: null, restaurant_id: undefined },
+        }),
+      ),
+    ).not.toThrow();
+    // …including for a session in no house (onboarding forms send nulls).
+    expect(() =>
+      assertTenantMatch(
+        req({ user: { userId: "u1" }, body: { restaurantId: null } }),
+      ),
+    ).not.toThrow();
+  });
+
+  it("still refuses a single string naming another house", () => {
+    refused(() =>
+      assertTenantMatch(req({ user, query: { restaurantId: "rest-b" } })),
+    );
+  });
+});

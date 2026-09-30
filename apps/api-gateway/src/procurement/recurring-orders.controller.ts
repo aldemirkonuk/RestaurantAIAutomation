@@ -17,6 +17,8 @@ import {
   UpdateRecurringOrderDto,
 } from "./dto/recurring-order.dto";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { NonProductionGuard } from "../communications/guards/non-production.guard";
+import { PlatformOperatorGuard } from "../common/orchestrator/platform-operator.service";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 
 @ApiTags("recurring-orders")
@@ -151,9 +153,30 @@ export class RecurringOrdersController {
     }
   }
 
+  /**
+   * NON-PRODUCTION, PLATFORM OPERATORS ONLY (ADR 0243).
+   *
+   * This runs the 08:00 cron body, `executeDueRecurringOrders`, which reads
+   * every house's due `recurring_orders` and executes them. It never used the
+   * `:restaurantId` in its path, so "your house" was only what the URL said:
+   * until this fix any verified member of any house could fire every house's
+   * due schedules early, with nothing but `JwtAuthGuard` in the way (817-route
+   * audit). The path house is still compared with the session's by
+   * `JwtAuthGuard`; it does not narrow the run.
+   *
+   * Callers: none — not the web (`RecurringOrders.tsx` calls list, create,
+   * update and delete only), not mobile, not services/, scripts/ or any
+   * workflow. It was dev/test scaffolding by its own summary, so it gets the
+   * dev/test posture: `NonProductionGuard` first (404 in production, for
+   * everyone, so production does not confirm the route exists), then
+   * `PlatformOperatorGuard` (the `/health/agent-operations` gate). The real
+   * runner, the in-process `@Cron("0 8 * * *")`, is untouched.
+   */
   @Post(":restaurantId/execute-check")
+  @UseGuards(NonProductionGuard, PlatformOperatorGuard)
   @ApiOperation({
-    summary: "Manually trigger recurring order check (dev/test)",
+    summary:
+      "Run the daily recurring-order check for EVERY house's due schedules (dev/test; non-production, platform operators only)",
   })
   async manualExecuteCheck() {
     try {

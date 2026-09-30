@@ -58,8 +58,33 @@ export function assertTenantMatch(
       ? (request.body as Record<string, unknown>)
       : undefined;
 
-  const clean = (values: unknown[]) =>
-    values.filter((v) => typeof v === "string" && v.length > 0).map(String);
+  // A house is named by ONE non-empty string (ADR 0243). `undefined`, `null` and `""`
+  // name nothing. Anything else is refused outright, with the same exception a
+  // mismatch gets: it is a name this function cannot compare, so it cannot
+  // vouch for it.
+  //
+  // [Until 2026-09-29 non-strings were FILTERED OUT here, i.e. treated as if
+  // absent. Express 4's query parser (qs) turns `?restaurantId[]=B` into
+  // `["B"]` and a repeated key into `["A","B"]`, the body parsers deliver JSON
+  // arrays and objects as-is, and postgrest-js renders `.eq(col, ["B"])` as
+  // `eq.B` — so a member of house A could read house B wherever a controller
+  // takes the house from the query or body, while this guard saw "no house
+  // named" (found by the 817-route audit; e.g. analytics.controller.ts
+  // `insight-catalog/types`, auth.controller.ts `me/role`, the toast routes).
+  // No web or mobile client sends a non-string house id, and every DTO types
+  // it `string`. This applies on the tenant-change route too: its exemption
+  // lets the body name ANOTHER house, never a malformed one.]
+  const clean = (values: unknown[]): string[] => {
+    const named: string[] = [];
+    for (const value of values) {
+      if (value === undefined || value === null || value === "") continue;
+      if (typeof value !== "string") {
+        throw new ForbiddenException("Tenant isolation violation");
+      }
+      named.push(value);
+    }
+    return named;
+  };
 
   const fromPathAndQuery = clean([
     request.params?.restaurantId,
