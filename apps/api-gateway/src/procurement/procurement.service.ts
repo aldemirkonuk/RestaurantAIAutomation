@@ -545,6 +545,61 @@ export class SendRefusedBeforeSendError extends BadRequestException {
 export const DRAFT_SEND_REFUSED = "draft_send_refused";
 
 /**
+ * The fields of `PATCH orders/:id` that are the order's money (ADR 0244 D2):
+ * the figures the approval rules test and the approval seal is taken over,
+ * and `price_verified`, the receipt verification's recorded verdict. Only a
+ * manager or an owner changes them (`updateOrder`).
+ */
+export const ORDER_MONEY_FIELDS = [
+  "quotedPrice",
+  "negotiatedPrice",
+  "finalPrice",
+  "totalCost",
+  "priceVerified",
+] as const satisfies ReadonlyArray<keyof UpdateOrderDto>;
+
+/** The columns those fields write — what `order_price_changed` names. */
+const ORDER_MONEY_COLUMNS = [
+  "quoted_price",
+  "negotiated_price",
+  "final_price",
+  "total_cost",
+  "price_verified",
+] as const;
+
+/** An order's money as it stood before a price edit (ADR 0244). */
+type OrderMoneyBefore = {
+  status: string | null;
+} & Record<
+  (typeof ORDER_MONEY_COLUMNS)[number],
+  string | number | boolean | null
+>;
+
+/**
+ * Where a move to `to` is actually made — the first half of the sentence
+ * `PATCH orders/:id` refuses a status with, so the caller learns the door and
+ * not only the wall. CANCELLED keeps its own, older refusal in `updateOrder`.
+ */
+export function whereThisMoveIsMade(to: ProcurementOrderStatus): string {
+  switch (to) {
+    case ProcurementOrderStatus.APPROVED:
+      return "An order is approved by holding to approve, which checks this house's approval rules and records who sealed it";
+    case ProcurementOrderStatus.DELIVERED:
+    case ProcurementOrderStatus.PARTIALLY_RECEIVED:
+    case ProcurementOrderStatus.COMPLETED:
+      return "What an order received is recorded where the wine is counted: at the receiving door, by marking it delivered, or by verifying the receipt";
+    case ProcurementOrderStatus.REJECTED:
+    case ProcurementOrderStatus.FAILED:
+    case ProcurementOrderStatus.CANCELLED:
+      return "An order is ended through its own act, which asks whose failure it was and is held to confirm";
+    case ProcurementOrderStatus.CONFIRMED:
+      return "An order is placed with its vendor when the vendor's own confirmation matches its terms";
+    default:
+      return "An order moves through the act that moves it (approval, cancellation, the vendor's confirmation, the receiving door)";
+  }
+}
+
+/**
  * The result of the founder's box on a never-arrived cancel (ADR 0207 round
  * 5, question 20): "We paid for this, we are owed {total}." `opened` is true
  * only the FIRST time this order's claim is raised; a repeat of the box on
@@ -3266,6 +3321,12 @@ export class ProcurementService {
      * change, and there is exactly one such caller, named here.
      */
     opts?: {
+      /**
+       * The person asking — the JWT's user, passed by `PATCH orders/:id`.
+       * Required for a change to the order's money (2026-09-29): a price
+       * change that names nobody is refused, never let through.
+       */
+      actorUserId?: string;
       statusTransitionAlreadyChecked?: boolean;
       /**
        * ADR 0207 round 4. Set only by `cancelOrder`, which has already run
@@ -3314,8 +3375,53 @@ export class ProcurementService {
           "An order is cancelled through its own act, which asks whose failure it was and is held to confirm — not by editing its status. Nothing was changed.",
       });
     }
+    // ADR 0244 D1 (founder, 2026-09-29) — NO status moves through here.
+    // Until this, any status the transition table permitted was written for
+    // any member of the house: PENDING -> APPROVED with no seal, no approval
+    // rule, no `approved_by` and no stock reservation, and REJECTED, FAILED,
+    // DELIVERED, CONFIRMED, COMPLETED the same way. Every one of those moves
+    // has its own act that checks more than the table (approve, cancel, the
+    // receiving door, verifying the receipt, the vendor's confirmation), and
+    // no client sends a status here any more (the legacy desk's "Mark as
+    // Ordered" went with #494). The one caller that writes a status through
+    // this method is `cancelOrder`, which has already run the transition, the
+    // category, the role and the seal, and says so through `opts`.
     if (dto.status !== undefined && !opts?.statusTransitionAlreadyChecked) {
-      await this.assertStatusTransition(restaurantId, orderId, dto.status);
+      throw new UnprocessableEntityException({
+        reason: "status_through_its_act",
+        to: dto.status,
+        message: `${whereThisMoveIsMade(dto.status)} — not by editing its status. Nothing was changed.`,
+      });
+    }
+
+    // The order's money is a manager's or an owner's to change (ADR 0244 D2).
+    // These are the figures the approval rules test and the approval seal is
+    // taken over (`order-seal.ts`), and `price_verified` is the verification's
+    // recorded verdict the vendor scorecard reads; any member could rewrite
+    // them here. The SAME helper cancel and the settings registers use.
+    // Refused BEFORE anything is read or written, and fails closed: an
+    // unwired helper or an unnamed actor refuses rather than writes.
+    // The figures as they stood, read once before the write, so the paper
+    // below can say what each price was changed FROM (ADR 0244).
+    let moneyBefore: OrderMoneyBefore | null = null;
+    if (ORDER_MONEY_FIELDS.some((field) => dto[field] != null)) {
+      if (!this.organizations) {
+        throw new InternalServerErrorException(
+          "Who may change an order's price could not be established (the organizations service is not " +
+            "wired into procurement), so nothing was changed. This is a gateway fault, not a decision about this order.",
+        );
+      }
+      if (!opts?.actorUserId) {
+        throw new ForbiddenException(
+          "Who is changing this order's price was not established, so it was not changed.",
+        );
+      }
+      await this.organizations.assertCanManageRestaurant(
+        opts.actorUserId,
+        restaurantId,
+        "change an order's price",
+      );
+      moneyBefore = await this.readOrderMoneyBefore(restaurantId, orderId);
     }
 
     // D-06: Block location assignment while order is in a pending state.
@@ -3394,7 +3500,106 @@ export class ProcurementService {
         row.inventory?.wine_name || (row.inventory as any)?.wine?.name || null,
     };
 
+    if (moneyBefore && opts?.actorUserId) {
+      await this.recordOrderPriceChanged({
+        restaurantId,
+        orderId,
+        actorUserId: opts.actorUserId,
+        before: moneyBefore,
+        after: row,
+      });
+    }
+
     return this.mapOrderRow(orderRow);
+  }
+
+  /**
+   * An order's money as it stands, read before a price edit. A failed read or
+   * a missing order refuses the edit: the paper has to be able to say what a
+   * price was changed from, and a gone row has nothing to change.
+   */
+  private async readOrderMoneyBefore(
+    restaurantId: string,
+    orderId: string,
+  ): Promise<OrderMoneyBefore> {
+    const { data, error } = await this.databaseService.supabase
+      .from("procurement_orders")
+      .select(
+        "status, quoted_price, negotiated_price, final_price, total_cost, price_verified",
+      )
+      .eq("restaurant_id", restaurantId)
+      .eq("id", orderId)
+      .maybeSingle();
+    if (error) {
+      throw new InternalServerErrorException(
+        `This order's current figures could not be read (${error.message}), so its price was not changed.`,
+      );
+    }
+    if (!data) {
+      throw new NotFoundException(
+        "No order with that id belongs to this restaurant, so there was nothing to change.",
+      );
+    }
+    return data as OrderMoneyBefore;
+  }
+
+  /**
+   * File `order_price_changed` in `system_audit_log`: who changed which of
+   * the order's figures, from what, to what (ADR 0244). Only the columns that
+   * actually moved are named; an edit that moved none files nothing. Never
+   * throws — the edit has happened, and a 500 because the log failed would
+   * say otherwise — but a failed write is logged loudly. Shaped like
+   * `order_cancelled`, one register for the life of one order.
+   */
+  private async recordOrderPriceChanged(record: {
+    restaurantId: string;
+    orderId: string;
+    actorUserId: string;
+    before: OrderMoneyBefore;
+    after: Record<string, any>;
+  }): Promise<void> {
+    const fields: Record<string, { from: unknown; to: unknown }> = {};
+    for (const column of ORDER_MONEY_COLUMNS) {
+      const from = record.before[column] ?? null;
+      const to = record.after?.[column] ?? null;
+      const same =
+        column === "price_verified"
+          ? from === to
+          : toFiniteNumber(from as any) === toFiniteNumber(to as any);
+      if (!same) fields[column] = { from, to };
+    }
+    if (Object.keys(fields).length === 0) return;
+
+    try {
+      const { error } = await this.databaseService.supabase
+        .from("system_audit_log")
+        .insert({
+          actor_type: "user",
+          actor_id: record.actorUserId,
+          action: "order_price_changed",
+          entity_type: "procurement_order",
+          entity_id: record.orderId,
+          changes: {
+            register: "orders",
+            subject: record.orderId,
+            status: record.after?.status ?? record.before.status ?? null,
+            fields,
+          },
+          restaurant_id: record.restaurantId,
+          reason: "A manager or an owner changed this order's price.",
+        });
+      if (error) {
+        this.logger.error(
+          `order_price_changed happened but the audit row failed to write: ${error.message}. ` +
+            `Order ${record.orderId}'s price IS changed and the log does not say so.`,
+        );
+      }
+    } catch (err: any) {
+      this.logger.error(
+        `order_price_changed happened but the audit row threw: ${err?.message}. ` +
+          `Order ${record.orderId}'s price IS changed and the log does not say so.`,
+      );
+    }
   }
 
   /**

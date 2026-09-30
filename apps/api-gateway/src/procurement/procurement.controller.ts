@@ -248,9 +248,30 @@ export class ProcurementController {
     }
   }
 
+  /**
+   * Edit an order's notes — and, for a manager or an owner, its money.
+   *
+   * Never its state (ADR 0244): a `status` in the body is refused with a
+   * 422 naming the act that makes that move (approve, cancel, the receiving
+   * door, verifying the receipt, the vendor's confirmation). The actor is
+   * passed so the price fields can be gated on the SAME role helper cancel
+   * uses; nothing else reaches `updateOrder`'s `opts` from a request.
+   */
   @Patch("orders/:id")
-  @ApiOperation({ summary: "Update procurement order" })
+  @ApiOperation({
+    summary: "Edit a procurement order's notes, or (manager/owner) its prices",
+  })
   @ApiResponse({ status: 200, type: OrderResponseDto })
+  @ApiResponse({
+    status: 403,
+    description:
+      "The body changes the order's money (`quotedPrice`, `negotiatedPrice`, `finalPrice`, `totalCost`, `priceVerified`) and the caller is not a manager or an owner of this house.",
+  })
+  @ApiResponse({
+    status: 422,
+    description:
+      "The body carries a `status`. An order changes state only through its own act; `reason` is `status_through_its_act` (or `cancel_through_the_sealed_act`) and `message` names where the move is made.",
+  })
   async updateOrder(
     @Param("id") orderId: string,
     @Body() dto: UpdateOrderDto,
@@ -261,6 +282,7 @@ export class ProcurementController {
         user.restaurantId,
         orderId,
         dto,
+        { actorUserId: user.userId },
       );
     } catch (error) {
       if (error instanceof HttpException) throw error;
