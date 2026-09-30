@@ -56,6 +56,8 @@ Three rules:
 
 What carried it: the guard is the single choke point, and the two routes act on every house, which makes running them a platform act.
 
+**The operator registry.** ADR 0143 keeps a reviewed registry of every route that needs platform authority: `scripts/registries/platform-operator-routes.json`. `scripts/check_platform_operator_routes.cjs` (CI, "Gateway dependency graph resolves") fails when the routes carrying `PlatformOperatorGuard` differ from it. Both routes are added to it here, which takes it from 3 entries to 5. Nothing else reads the file.
+
 **Side effect, deliberate.** `JwtAuthGuard` does not read `@TenantBypass()` before it calls `assertTenantMatch`. The non-string refusal therefore also applies on bypass routes (the Studio proxy, agent operations). No client sends such a value there.
 
 ## Consequences
