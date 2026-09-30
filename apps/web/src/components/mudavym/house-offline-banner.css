@@ -42,3 +42,27 @@ body:has(.mdv-doors) .mdv-offlinebar {
 .mdv-offlinebar--failed .mdv-offlinebar__word {
   color: var(--seal-deep);
 }
+
+/* The status bar and the device-storage note (lib/deviceStorage.ts) share one
+   fixed stack, so two lines never land on top of each other. Inside it each
+   bar is in flow; the stack carries the foot-of-window rule above. An empty
+   stack has no height and covers nothing. */
+.mdv-offlinebar-stack {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 45;
+}
+
+body:has(.mdv-doors) .mdv-offlinebar-stack {
+  bottom: calc(57px + env(safe-area-inset-bottom, 0px));
+}
+
+.mdv-offlinebar-stack > .mdv-offlinebar {
+  position: static;
+}
+
+.mdv-offlinebar-stack > .mdv-offlinebar + .mdv-offlinebar--note {
+  border-top: 0;
+}

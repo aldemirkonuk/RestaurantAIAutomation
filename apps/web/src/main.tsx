@@ -7,6 +7,7 @@ import { initErrorTracking } from './lib/error-tracking'
 import { startReminderScheduler } from './lib/reminder-scheduler'
 import { registerServiceWorker } from './lib/register-sw'
 import { applyDevAuthBypass } from './lib/devAuthBypass'
+import { offlineStorage } from './lib/offline-storage'
 
 // Initialize global error handler
 initGlobalErrorHandler()
@@ -23,6 +24,10 @@ startReminderScheduler()
 
 // PWA service worker (production builds)
 registerServiceWorker()
+
+// Sweep read-cache rows that expired and were never read again (they were
+// only deleted on read). Cache store only — never the unsent-work queue.
+void offlineStorage.pruneExpiredCache().catch(() => {})
 
 // A no-op await outside dev-bypass mode (see the file for the full gate), so
 // this does not delay a normal or production boot.
