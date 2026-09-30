@@ -1,4 +1,6 @@
-## `PATCH /menus/items/:id` and `POST /menus/items` write into any house's menu — no tenant check — OPEN — 2026-09-22
+## `PATCH /menus/items/:id` and `POST /menus/items` write into any house's menu — no tenant check — ~~OPEN~~ CLOSED by #446 — 2026-09-22
+
+**[Closed 2026-09-30, found by the ADR 0090 audit of #534 (round 4) when this entry landed through that batch: #446 (merged 2026-09-26) scoped both routes. `MenusService.addMenuItem` and `reviewMenuItem` take `callerRestaurantId` from the token and refuse a menu or item of another house (`menus.service.ts`, `addMenuItem` and `reviewMenuItem` on main at c47fd8a01).]**
 
 Found by `price-judge.md:119-124` (`.planning/07-reference/research/2026-09-21/`) for the PATCH
 route; confirmed by the PR #443 audit and re-read here on `origin/main` `f80754129`. The gateway's
@@ -20,7 +22,9 @@ so row-level security does not stand in for a missing check.
 caller's house from the token on both routes. Close this row when it merges, with a CLAIMS row that
 proves both routes filter by the caller's house.
 
-## Two wage leaks in `/team`: `wage_visible` is defeated, and any wage can be set unaudited — OPEN — 2026-09-22
+## Two wage leaks in `/team`: `wage_visible` is defeated, and any wage can be set unaudited — ~~OPEN~~ CLOSED by #440 — 2026-09-22
+
+**[Closed 2026-09-30, same audit: #440 (ADR 0215, merged 2026-09-28) retired `wage_visible` (money on /team is the owner's; `team.service.ts` says "wage_visible is RETIRED (ADR 0215)") and made every wage write carry `wage_changed_by`, from which a trigger writes a `team_member_wage_changes` row (old, new, who, when) in the same statement (`team.service.ts`, `updateMember`, on main at c47fd8a01).]**
 
 Found by `labor-judge.md:171-185` (`.planning/07-reference/research/2026-09-21/`); every citation
 below re-read on `origin/main` `f80754129`.
@@ -39,7 +43,9 @@ including their own, unrecorded.
 **Fix in flight:** PR #440 (branch `fix/team-pay-defects`, ADR 0215) makes money owner-only, retires
 `wage_visible` and records every wage change; open, not merged. Close this row when it merges.
 
-## `approve-draft`, `manual-reply` and `confirm-deal` let any house member send vendor mail, and record no one — OPEN — 2026-09-22
+## `approve-draft`, `manual-reply` and `confirm-deal` let any house member send vendor mail, and record no one — ~~OPEN~~ CLOSED by #436 — 2026-09-22
+
+**[Closed 2026-09-30, same audit: #436 (ADR 0175, merged 2026-09-28) passes the caller to all three: `approveDraft` takes an `actor` (`userId`, seal challenge, grant) and refuses without a user, and `manualReply` / `confirmDeal` take `userId` (`procurement.service.ts` on main at c47fd8a01).]**
 
 Found by `seal-judge.md:22-27` (`.planning/07-reference/research/2026-09-21/`, measured on lane E's
 branch at `8d409bd79`); re-read here on `origin/main` `f80754129`. The judge names `manual-reply`

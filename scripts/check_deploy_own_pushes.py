@@ -44,27 +44,38 @@ step, not ci-gate's first step (the conclusion check, ADR 0097's claim).
 
 KNOWN GAPS -- not held (founder, 2026-09-30: "Honest record (Recommended)").
 This guard pins the refusal step's TEXT and each job's `if`; it does not pin
-how ci-gate EXECUTES. The self-test plants exactly the 52 breaks listed in
-_self_test and nothing more. So anything else that changes how ci-gate runs
-can turn it green on a foreign or non-push run without this guard noticing:
-a job-level key other than `if`, another step or action before the refusal
-step, or a write to the runner's env/path files other than the literal text
-GITHUB_ENV / GITHUB_OUTPUT; and a column-0 comment inside `on:` ends this
-reader's on: block, hiding a trigger added after it. Known examples, all
-passing the guard at this writing:
-  - a job-level key such as `concurrency: |` before the refusal step (the
-    steps after it become that key's string);
+how ci-gate EXECUTES, nor any workflow-level key but `on:` and `defaults:`.
+The self-test plants exactly the 52 breaks listed in _self_test and nothing
+more. Changes of these kinds pass the guard unnoticed:
+  - a job-level key on ci-gate other than `if`;
+  - another step or action in ci-gate, before or beside the refusal step;
+  - a write to the runner's env/path files other than the literal text
+    GITHUB_ENV / GITHUB_OUTPUT;
+  - a workflow-level key (`env:`, including BASH_ENV or a `BASH_FUNC_*`
+    function, `permissions:`, `run-name:`), which the guard never reads;
+  - a column-0 comment inside `on:`, which ends this reader's on: block and
+    hides a trigger added after it.
+Two kinds of harm follow. Most members can only turn ci-gate green on a
+foreign or non-push run; for those the stage and deploy-audit ifs, pinned
+exactly here and unchanged by any of them, still refuse the run. One member
+reopens the original exposure: a ci-gate step that checks out the triggering
+run's head_sha and runs its code. ci-gate has no `if`, so it runs on every
+workflow_run (a fork's included), and it inherits ADMIN_API_KEY from the
+workflow env; for that member ONLY gate ownership of deploy.yml protects, not
+the stage ifs. Known examples, all passing the guard at this writing:
+  - `concurrency: |` before the refusal step (the steps after it become that
+    key's string);
   - `container:`, `runs-on: self-hosted` or `services:` on ci-gate;
   - a job-level `env: BASH_ENV` on ci-gate;
-  - a `uses: actions/github-script` step before the refusal step exporting
-    BASH_ENV;
-  - a `GITHUB_PATH` write, or an indirect write to the env file (e.g. a path
-    computed from printenv);
+  - a workflow-level env entry `BASH_FUNC_exit%%: "() { return 0; }"`, which
+    (in local bash; GitHub untested) makes the refusal step exit 0;
+  - a `uses: actions/github-script` step exporting BASH_ENV;
+  - a `GITHUB_PATH` write, or an indirect write to the env file;
+  - a ci-gate step that checks out head_sha and runs a script (the member
+    above: fork code beside ADMIN_API_KEY);
   - a column-0 comment inside `on:` followed by an added trigger.
-Runtime still holds for every one: each stage's and deploy-audit's `if`
-independently requires the own-run group and is pinned exactly here, and
-none of these changes a job `if`; deploy.yml itself is gate-owned. Closing
-the class is filed in tech-debt.d/2026-09-30-batch-open-prs-2026-09-29.md.
+deploy.yml is gate-owned, so each needs an ADR 0090 audit and the founder's
+sign-off. Closing the class: tech-debt.d/2026-09-30-batch-open-prs-2026-09-29.md.
 
 Exit 0 holds, 1 broken, 2 cannot read. `--self-test` plants each break.
 Owned by scripts/test_pr_audit_gate.py

@@ -412,31 +412,39 @@ verbatim picks:
 - GitHub's own YAML evaluation. `workflow_run` runs main's copy of the file,
   so the step first runs for real on #534's merge commit.
 - Whether `workflow_run` fires for a CI run dispatched with `GITHUB_TOKEN`.
-- How `ci-gate` executes. The guard pins the refusal step's text and each job's
-  `if`, not `ci-gate`'s execution. Founder, 2026-09-30, verbatim: *"Honest
-  record (Recommended)"*.
-  - **What passes the guard.** Anything else that changes how `ci-gate` runs
-    can turn it green on a foreign or non-push run without the guard
-    noticing:
-    - a job-level key other than `if`;
-    - another step or action before the refusal step;
+- How `ci-gate` executes, and workflow-level keys. The guard pins the refusal
+  step's text and each job's `if`. It does not pin how `ci-gate` executes, or
+  any workflow-level key other than `on:` and `defaults:`. Founder,
+  2026-09-30, verbatim: *"Honest record (Recommended)"*.
+  - **What passes the guard unnoticed:**
+    - a job-level key on `ci-gate` other than `if`;
+    - another step or action in `ci-gate`;
     - a write to the runner's env or path files other than the literal
       `GITHUB_ENV` or `GITHUB_OUTPUT`;
-    - a column-0 comment inside `on:`, which ends the guard's `on:` read and
-      so hides a trigger added after it.
-  - **Known examples.** Each of these passes the guard at this writing:
-    - `concurrency: |` placed before the refusal step, which turns the
-      following steps into a string;
+    - a workflow-level key: `env:` (including `BASH_ENV` or a `BASH_FUNC_*`
+      function), `permissions:` or `run-name:`;
+    - a column-0 comment inside `on:`, which hides a trigger added after it.
+  - **Two kinds of harm.**
+    - Most of these can only turn `ci-gate` green on a foreign or non-push
+      run. For those, the stage and `deploy-audit` `if`s still refuse the run:
+      the guard pins them exactly, and none of these changes an `if`.
+    - One reopens the original exposure: a `ci-gate` step that checks out the
+      triggering run's `head_sha` and runs its code. `ci-gate` has no `if`,
+      so it runs on every `workflow_run`, a fork's included, and it inherits
+      `ADMIN_API_KEY` from the workflow env. For that one, only the gate
+      ownership of `deploy.yml` protects; the stage `if`s do not.
+  - **Known examples.** Each passes the guard at this writing:
+    - `concurrency: |` before the refusal step;
     - `container:`, `runs-on: self-hosted` or `services:` on `ci-gate`;
     - a job-level `env: BASH_ENV`;
-    - an `actions/github-script` step before the refusal step that exports
-      `BASH_ENV`;
+    - a workflow-level env entry `BASH_FUNC_exit%%`, which makes the refusal
+      step exit 0 in local bash (GitHub untested);
+    - an `actions/github-script` step exporting `BASH_ENV`;
     - a `GITHUB_PATH` write, or an indirect write to the env file;
+    - a `ci-gate` step that checks out `head_sha` and runs a script;
     - a column-0 comment inside `on:` with a trigger added after it.
-  - **Why runtime still holds.** Every stage's and `deploy-audit`'s `if`
-    independently requires the own-run group, and the guard pins those `if`s
-    exactly. None of the examples changes a job `if`. `deploy.yml` is also
-    gate-owned.
+  - **Why none is live today.** Each needs an edit to `deploy.yml`, which is
+    gate-owned and so needs an ADR 0090 audit and the founder's sign-off.
   - **Closing the class** is filed in
     `tech-debt.d/2026-09-30-batch-open-prs-2026-09-29.md`.
 - A direct `workflow_dispatch` of `deploy.yml` itself (writer-only) runs the
