@@ -24,7 +24,7 @@ refused where it can tell; its self-test lists every evasion found so far:
      workflow_run can start requires this repository's own push or manual run; rollback-guide
      is dispatch-only; ci-gate has none. No job is a reusable-workflow call.
   3. ci-gate has exactly one step named "The run is this repository's own
-     push to main", equal to REFUSAL_STEP line for line (blank and comment
+     push or manual run on main", equal to REFUSAL_STEP line for line (blank and comment
      lines dropped); ci-gate writes neither GITHUB_ENV nor GITHUB_OUTPUT.
   3b. The on: block, up to the next top-level key, equals ON_BLOCK (no added
      trigger, same workflow_run filter), and the file sets no defaults:.
@@ -343,6 +343,8 @@ def _self_test(verbose: bool = False) -> int:
         "refusal: another event type allowed": (
             'if { [ "$RUN_EVENT" = "push" ] || [ "$RUN_EVENT" = "workflow_dispatch" ]; } && [ "$RUN_REPO" = "$THIS_REPO" ]; then',
             'if { [ "$RUN_EVENT" = "push" ] || [ "$RUN_EVENT" = "workflow_dispatch" ] || [ "$RUN_EVENT" = "pull_request" ]; } && [ "$RUN_REPO" = "$THIS_REPO" ]; then'),
+        "refusal: repository check missing": (
+            ' && [ "$RUN_REPO" = "$THIS_REPO" ]; then', '; then'),
         "refusal: any event allowed": (
             'if { [ "$RUN_EVENT" = "push" ] || [ "$RUN_EVENT" = "workflow_dispatch" ]; } && [ "$RUN_REPO" = "$THIS_REPO" ]; then',
             'if [ "$RUN_REPO" = "$THIS_REPO" ]; then'),

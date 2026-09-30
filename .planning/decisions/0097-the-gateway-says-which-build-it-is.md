@@ -363,3 +363,53 @@ CLAUDE.md §0.1, and the concrete failure direction (a real failed deploy
 certified MATCH against a stale, too-narrow mirror) is exactly this ADR's own
 "never weaken anything to make this green" line, reached from a different
 angle than the one this ADR's Decision section anticipated.
+
+## Amendment — 2026-09-30: the deploy chain acts only on this repository's own CI runs on main (founder, on #534)
+
+**The defect.** Found by the ADR 0090 audit of #534 (round 1, planner and both
+reviewers). `on: workflow_run: branches: [main]` also matches a fork's pull
+request whose branch is named `main`. This repository is public. Stage 2
+checks out that run's `head_sha` and runs its scripts, and after #432 Stage 3
+does the same and runs `pnpm install`. Both do it beside the workflow-level
+`ADMIN_API_KEY`. `ci-gate` checked only the run's conclusion.
+
+**The founder's words.** In chat on 2026-09-30, relayed by the coordinator,
+verbatim picks:
+- *"Sign off, add deploy fix (Recommended)"*;
+- *"Yes, covered (Recommended)"*: his sign-off covers the guard and its
+  claim fragment, 33 gate-owned files in all;
+- *"Also allow manual runs"*: the triggering run's event may be `push` or
+  `workflow_dispatch`, and `head_repository.full_name == github.repository`
+  in both cases.
+
+**The decision.**
+- `ci-gate` gains a second step, "The run is this repository's own push or
+  manual run on main". It reads the event and repository through `env` and
+  exits 1 (red, not skip, in this ADR's own sense) for anything else.
+- Stages 1–3 and `deploy-audit` carry the same group in their job-level
+  `if`, so the refusal is not a single line.
+- The step sits after the conclusion check, because this ADR's CLAIMS row
+  pins `steps[0]`.
+- Allowing `workflow_dispatch` keeps `scripts/pr_audit_gate.py`'s CI-side
+  merge re-entry (`gh workflow run ci.yml --ref main`) reaching the deploy
+  audit.
+
+**Held by.**
+- `scripts/check_deploy_own_pushes.py`, which is gate-owned. It is a strict
+  text reader. Its self-test plants every evasion the three audit rounds
+  found.
+- `scripts/test_pr_audit_gate.py`.
+- The claim `DEPLOY-RUNS-ONLY-ON-OWN-PUSHES` in
+  `claims.d/batch-open-prs-2026-09-29.jsonl`.
+
+**Rejected.**
+- *Push only* (the first build). It turned the gate's own dispatch re-entry
+  red. The founder chose to allow manual runs.
+- *A condition on `ci-gate` alone.* One disabled step would expose the
+  secrets again.
+
+**Not held.**
+- GitHub's own YAML evaluation. `workflow_run` runs main's copy of the file,
+  so the step first runs for real on #534's merge commit.
+- Whether `workflow_run` fires for a CI run dispatched with `GITHUB_TOKEN`.
+

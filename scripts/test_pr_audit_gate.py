@@ -1124,7 +1124,7 @@ def test_deploy_runs_only_on_this_repositorys_own_pushes():
     # The structural rule (a strict jobs: reader that refuses any key it could
     # misread; each job's single `if` equal to the one allowed; the refusal
     # step not disabled, softened or bypassed) lives in
-    # scripts/check_deploy_own_pushes.py; its self-test plants 52 breaks
+    # scripts/check_deploy_own_pushes.py; its self-test plants 53 breaks
     # (every evasion the round-2 audit found, and a fork's dispatch, another
     # event type and a missing repository check, among them).
     guard = ROOT / "scripts" / "check_deploy_own_pushes.py"
