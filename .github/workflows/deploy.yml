@@ -81,6 +81,27 @@ jobs:
           echo "Re-run once CI is green:  gh workflow run deploy.yml -f mode=deploy-audit"
           exit 1
 
+      # Only this repository's own pushes to main may drive the stages below
+      # (founder, 2026-09-30, on #534: "Sign off, add deploy fix"). The trigger's
+      # `branches: [main]` filter matches a fork's pull request whose branch is
+      # also named `main`, and Stages 2 and 3 check out that run's head_sha and
+      # execute its code beside ADMIN_API_KEY. A run from any other event or
+      # repository fails here, red, and every stage skips beneath it (each
+      # stage's `if` repeats the same condition, so this is not the only line).
+      - name: The run is this repository's own push to main
+        if: github.event_name == 'workflow_run'
+        env:
+          RUN_EVENT: ${{ github.event.workflow_run.event }}
+          RUN_REPO: ${{ github.event.workflow_run.head_repository.full_name }}
+          THIS_REPO: ${{ github.repository }}
+        run: |
+          if [ "$RUN_EVENT" = "push" ] && [ "$RUN_REPO" = "$THIS_REPO" ]; then
+            echo "CI run is a push to $THIS_REPO; proceeding"
+            exit 0
+          fi
+          echo "::error::Refusing: the CI run that triggered this was event '$RUN_EVENT' from '$RUN_REPO', not a push to '$THIS_REPO'. No stage runs its code."
+          exit 1
+
       - name: Manual dispatch acknowledged
         if: github.event_name == 'workflow_dispatch'
         run: echo "Manual deploy audit mode=${{ inputs.mode }} sha=${{ github.sha }}"
@@ -91,7 +112,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [ci-gate]
     if: >-
-      github.event_name == 'workflow_run'
+      (github.event_name == 'workflow_run' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.full_name == github.repository)
       || (github.event_name == 'workflow_dispatch' && inputs.mode == 'deploy-audit')
     steps:
       - name: Check orchestrator URL
@@ -156,7 +177,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [verify-orchestrator]
     if: >-
-      github.event_name == 'workflow_run'
+      (github.event_name == 'workflow_run' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.full_name == github.repository)
       || (github.event_name == 'workflow_dispatch' && inputs.mode == 'deploy-audit')
     # Exposed so deploy-audit (a separate job) can record what was actually
     # VERIFIED, not just what was merged — see the audit-summary step below;
@@ -349,7 +370,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [verify-api-gateway]
     if: >-
-      github.event_name == 'workflow_run'
+      (github.event_name == 'workflow_run' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.full_name == github.repository)
       || (github.event_name == 'workflow_dispatch' && inputs.mode == 'deploy-audit')
     # Exposed for the same reason Stage 2 exposes gateway_commit: deploy-audit
     # records what was actually VERIFIED (FLOOR — see resolve_watched_commit.py),
@@ -493,7 +514,7 @@ jobs:
     if: >-
       always()
       && needs.ci-gate.result == 'success'
-      && (github.event_name == 'workflow_run'
+      && ((github.event_name == 'workflow_run' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.full_name == github.repository)
           || (github.event_name == 'workflow_dispatch' && inputs.mode == 'deploy-audit'))
     steps:
       # `provenance_verified` is the field that matters. Stage results alone say

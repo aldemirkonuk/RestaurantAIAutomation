@@ -1085,3 +1085,35 @@ def test_deploy_stage3_checkout_pins_the_audited_ref():
     assert checkout and "ref:" in checkout.group(0), (
         f"verify-frontend's checkout step has no ref: {checkout.group(0) if checkout else '(no with: block)'!r}")
     assert "github.event.workflow_run.head_sha" in checkout.group(0)
+
+
+def _deploy_jobs(text: str) -> dict[str, str]:
+    body = text.split("\njobs:\n", 1)[1]
+    parts = re.split(r"(?m)^  ([A-Za-z0-9_-]+):\n", body)
+    return {parts[i]: parts[i + 1] for i in range(1, len(parts) - 1, 2)}
+
+
+def test_deploy_runs_only_on_this_repositorys_own_pushes():
+    """Founder, 2026-09-30, on #534: "Sign off, add deploy fix (Recommended)".
+    deploy.yml's `workflow_run` trigger with `branches: [main]` also matches a
+    fork's pull request whose branch is named `main`; Stages 2 and 3 check out
+    that run's head_sha and run its code beside ADMIN_API_KEY. Every job that
+    a workflow_run can start must require the triggering run to be a push to
+    this repository, and ci-gate must refuse (red, not skip) any other run."""
+    text = (WORKFLOWS_DIR / "deploy.yml").read_text()
+    jobs = _deploy_jobs(text)
+    assert "ci-gate" in jobs and "verify-api-gateway" in jobs and "verify-frontend" in jobs, sorted(jobs)
+    push = "github.event.workflow_run.event == 'push'"
+    repo = "github.event.workflow_run.head_repository.full_name == github.repository"
+    started = [name for name, j in jobs.items()
+               if re.search(r"(?m)^    if:", j) and "github.event_name == 'workflow_run'" in j.split("steps:", 1)[0]]
+    assert {"verify-orchestrator", "verify-api-gateway", "verify-frontend", "deploy-audit"} <= set(started), started
+    for name in started:
+        head = jobs[name].split("steps:", 1)[0]
+        assert push in head and repo in head, f"{name}: a workflow_run can start it without the own-push condition"
+    gate = jobs["ci-gate"]
+    assert 'RUN_EVENT: ${{ github.event.workflow_run.event }}' in gate
+    assert 'RUN_REPO: ${{ github.event.workflow_run.head_repository.full_name }}' in gate
+    assert '[ "$RUN_EVENT" = "push" ] && [ "$RUN_REPO" = "$THIS_REPO" ]' in gate
+    refuse = gate.split("The run is this repository's own push to main", 1)[1].split("- name:", 1)[0]
+    assert "exit 1" in refuse, "ci-gate does not fail a foreign or non-push run"
