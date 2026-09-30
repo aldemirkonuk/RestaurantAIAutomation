@@ -103,6 +103,13 @@ bare `Intl` expression this bracket replaces below. It never writes New York,
 so it is outside item 62's words, but it is the same class of gap — filed in
 `v3.0-TECH-DEBT.md` (2026-09-27) with the open CLAIMS row
 `TD-2026-09-27-CREATE-LOCATION-TIMEZONE-UNVALIDATED`.**
+**[2026-09-28, branch `fix/create-location-timezone`: the third route is now
+covered. `createLocation` writes `resolveSignUpTimezone(dto.timezone)`, and
+`AddLocationDialog.tsx` sends `getBrowserTimezone()`. So all three gateway
+routes that insert a `restaurants` row (`auth.service.ts` twice,
+`organizations.service.ts` once; grepped 2026-09-28) follow item 62: the
+browser's zone, else none. That CLAIMS
+row is now resolved, and the register entry is struck.]**
 **What a `null` zone means downstream is not uniform yet, and this bracket
 does not change it. At `origin/main` 29ba4e820 the low-stock digest runs
 EVERY house on a hard-coded New York clock

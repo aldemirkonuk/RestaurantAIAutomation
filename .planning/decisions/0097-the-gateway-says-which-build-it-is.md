@@ -293,7 +293,7 @@ being read as correctness, which is this ADR's own subject.
   orchestrator is up and its agents are Active. The same fault, one service over.
 - **Vercel is unverified.** Stage 3 builds the frontend in CI and curls the
   production URL; nothing compares the deployed frontend's revision to the merged
-  one.
+  one. **[Corrected 2026-09-22, in place, per memory correcting-a-record-needs-the-same-rigour-as-writing-code — closed by [[0219-a-merge-to-main-reaches-mudavym-com-and-we-can-prove-it-did]]:** the gap named here is exactly what let two production merges (#421, #424) sit unnoticed behind a stale build on 2026-09-21. The web build now embeds its commit in the served page (`apps/web/src/lib/build-provenance.ts`) and Stage 3 polls it with `scripts/check_web_deployed_sha.py`, which resolves FLOOR with the same `resolve_watched_commit.py` Stage 2 uses for the gateway but requires the range FLOOR ⪯ running ⪯ tip(main) rather than Stage 2's equality, because Vercel builds every push. Stage 3's old curl did not run either: `VERCEL_PRODUCTION_URL` is not set on this repository, so the step concluded `skipped` in all 37 of the last 40 deploy runs (2026-09-11 to 2026-09-22) that reached Stage 3. This sentence stays as the historical record of the gap; it is no longer the current state.]**
 - **The 49 skipped audits are not retroactively performed.**
   `check_deploy_audit_ran.sh` makes their absence *visible*; it cannot make them
   have happened.
@@ -363,3 +363,101 @@ CLAUDE.md §0.1, and the concrete failure direction (a real failed deploy
 certified MATCH against a stale, too-narrow mirror) is exactly this ADR's own
 "never weaken anything to make this green" line, reached from a different
 angle than the one this ADR's Decision section anticipated.
+
+## Amendment — 2026-09-30: the deploy chain's workflow_run trigger acts only on this repository's own CI runs on main (founder, on #534)
+
+**The defect.** Found by the ADR 0090 audit of #534 (round 1, planner and both
+reviewers). `on: workflow_run: branches: [main]` also matches a fork's pull
+request whose branch is named `main`. This repository is public. Stage 2
+checks out that run's `head_sha` and runs its scripts, and after #432 Stage 3
+does the same and runs `pnpm install`. Both do it beside the workflow-level
+`ADMIN_API_KEY`. `ci-gate` checked only the run's conclusion.
+
+**The founder's words.** In chat on 2026-09-30, relayed by the coordinator,
+verbatim picks:
+- *"Sign off, add deploy fix (Recommended)"*;
+- *"Yes, covered (Recommended)"*: his sign-off covers the guard and its
+  claim fragment, 33 gate-owned files in all;
+- *"Also allow manual runs"*: the triggering run's event may be `push` or
+  `workflow_dispatch`, and `head_repository.full_name == github.repository`
+  in both cases.
+
+**The decision.**
+- `ci-gate` gains a second step, "The run is this repository's own push or
+  manual run on main". It reads the event and repository through `env` and
+  exits 1 (red, not skip, in this ADR's own sense) for anything else.
+- Stages 1–3 and `deploy-audit` carry the same group in their job-level
+  `if`, so the refusal is not a single line.
+- The step sits after the conclusion check, because this ADR's CLAIMS row
+  pins `steps[0]`.
+- Allowing `workflow_dispatch` keeps `scripts/pr_audit_gate.py`'s CI-side
+  merge re-entry (`gh workflow run ci.yml --ref main`) reaching the deploy
+  audit.
+
+**Held by.**
+- `scripts/check_deploy_own_pushes.py`, which is gate-owned. It is a strict
+  text reader. Its self-test plants exactly the 52 breaks it lists; it does
+  not plant every evasion the audit rounds found (see "Not held").
+- `scripts/test_pr_audit_gate.py`.
+- The claim `DEPLOY-RUNS-ONLY-ON-OWN-PUSHES` in
+  `claims.d/batch-open-prs-2026-09-29.jsonl`.
+
+**Rejected.**
+- *Push only* (the first build). It turned the gate's own dispatch re-entry
+  red. The founder chose to allow manual runs.
+- *A condition on `ci-gate` alone.* One disabled step would expose the
+  secrets again.
+
+**Not held.**
+- GitHub's own YAML evaluation. `workflow_run` runs main's copy of the file,
+  so the step first runs for real on #534's merge commit.
+- Whether `workflow_run` fires for a CI run dispatched with `GITHUB_TOKEN`.
+- How `ci-gate` executes, and workflow-level keys. The guard pins the refusal
+  step's text and each job's `if`. It does not pin how `ci-gate` executes, or
+  any workflow-level key other than `on:` and `defaults:`. Founder,
+  2026-09-30, verbatim: *"Honest record (Recommended)"*.
+  - **What passes the guard unnoticed:**
+    - a job-level key on `ci-gate` other than `if`;
+    - another step or action in `ci-gate`;
+    - a write to the runner's env or path files other than the literal
+      `GITHUB_ENV` or `GITHUB_OUTPUT`;
+    - a workflow-level key: `env:` (including `BASH_ENV` or a `BASH_FUNC_*`
+      function), `permissions:` or `run-name:`;
+    - a column-0 comment inside `on:`, which hides a trigger added after it.
+  - **What still holds, and what does not.**
+    - Changes that only alter whether `ci-gate` goes green on a foreign or
+      non-push run are still refused by the stage and `deploy-audit` `if`s.
+      The guard pins those `if`s exactly, and no such change touches them.
+    - The founder's pick, 2026-09-30, verbatim: *"Describe the whole class,
+      then fix the key (Recommended)"*. The class, as the round-5 ADR 0090
+      planner defined it:
+      Any ci-gate step that runs, sources, or interpolates into a shell anything the triggering run controls reopens the original exposure. That includes its checkout, its artifacts or caches, and event fields the fork writes, such as `head_commit.message` and `display_title`. ci-gate has no `if` and inherits `ADMIN_API_KEY`, so only gate ownership stops it.
+    - Scoping `ADMIN_API_KEY` out of the workflow env removes the key from
+      that reach, but on its own it does not close the class. Such a step
+      would still run in main's context, with:
+      - the workflow's `GITHUB_TOKEN` (`actions: write`);
+      - main-scoped cache writes, which Stage 3 restores (`cache: pnpm`);
+      - any other workflow-level secret.
+
+      So the follow-up also gives `ci-gate` `permissions: {}` and no cache
+      save, and adds a guard that the workflow-level env holds no secrets.
+      It is filed in the tech-debt fragment.
+  - **Known examples.** Each passes the guard at this writing:
+    - `concurrency: |` before the refusal step;
+    - `container:`, `runs-on: self-hosted` or `services:` on `ci-gate`;
+    - a job-level `env: BASH_ENV`;
+    - a workflow-level env entry `BASH_FUNC_exit%%`, which makes the refusal
+      step exit 0 in local bash (GitHub untested);
+    - an `actions/github-script` step exporting `BASH_ENV`;
+    - a `GITHUB_PATH` write, or an indirect write to the env file;
+    - `ci-gate` steps that run what the triggering run controls: checking out
+      `head_sha` and running a script, running a downloaded artifact of that
+      run, or echoing `head_commit.message` into a shell;
+    - a column-0 comment inside `on:` with a trigger added after it.
+  - **Why none is live today.** Each needs an edit to `deploy.yml`, which is
+    gate-owned and so needs an ADR 0090 audit and the founder's sign-off.
+  - **Closing the class** is filed in
+    `tech-debt.d/2026-09-30-batch-open-prs-2026-09-29.md`.
+- A direct `workflow_dispatch` of `deploy.yml` itself (writer-only) runs the
+  stages, as before. This amendment covers the `workflow_run` trigger.
+

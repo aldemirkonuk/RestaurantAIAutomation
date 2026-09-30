@@ -66,7 +66,7 @@ export default function WineAgentScreen() {
         {WEB_URL ? (
           <PressableScale
             onPress={async () => {
-              trackGuidance("wine_agent_fab_clicked", { source: "placeholder" });
+              trackGuidance("wine_agent_opened", { source: "placeholder" });
               // Web `/wineagent` is retired (ADR 0019 §B) — it was the same
               // under-construction placeholder. `/sommelier` is the real
               // inventory & ordering help surface, and is where the web app's

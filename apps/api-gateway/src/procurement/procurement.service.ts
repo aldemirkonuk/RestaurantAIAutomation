@@ -698,10 +698,14 @@ export class ProcurementService {
         .in("status", ["PENDING_APPROVAL", "AUTO_SEND_SCHEDULED"]);
     }
 
-    // Find the most recent inbound vendor reply for this order.
+    // Find the most recent inbound vendor reply for this order — this house's.
+    // `order_id` is a plain FK with nothing tying a message's house to the
+    // order's, so without the house filter the responder could be handed
+    // another house's vendor message, its thread and its vendor.
     const { data: inbound } = await this.databaseService.supabase
       .from("procurement_conversations")
       .select("id, provider_id, gmail_thread_id, message_id, email_headers")
+      .eq("restaurant_id", restaurantId)
       .eq("order_id", orderId)
       .eq("direction", "inbound")
       .order("created_at", { ascending: false })
@@ -7636,7 +7640,11 @@ export class ProcurementService {
     // Gate: don't send a draft that's stale because a newer vendor reply just
     // arrived and is still being analyzed.
     if (
-      await this.newerReplyStillAnalyzing(orderId, (conv as any).created_at)
+      await this.newerReplyStillAnalyzing(
+        restaurantId,
+        orderId,
+        (conv as any).created_at,
+      )
     ) {
       throw new BadRequestException(
         "A newer vendor reply just arrived and the AI is still reading it. Please wait a moment and review the updated draft before sending.",
@@ -8341,7 +8349,13 @@ export class ProcurementService {
         // staged, so the reply is now potentially answering the wrong message. Revert
         // to a one-tap approval draft and let the manager review against the latest reply
         // (the responder will re-draft against it). Never auto-send a stale reply.
-        if (await this.newerInboundSince(row.order_id, row.created_at)) {
+        if (
+          await this.newerInboundSince(
+            row.restaurant_id,
+            row.order_id,
+            row.created_at,
+          )
+        ) {
           await this.revertScheduledToDraft(
             row.id,
             "newer vendor reply arrived",
@@ -8640,10 +8654,12 @@ export class ProcurementService {
       subject: `procurement_order:${orderId}`,
     });
 
-    // Thread to the vendor's latest inbound message if there is one.
+    // Thread to the vendor's latest inbound message if there is one — this
+    // house's, or the reply would carry another house's subject and headers.
     const { data: lastInbound } = await this.databaseService.supabase
       .from("procurement_conversations")
       .select("gmail_thread_id, message_id, email_headers")
+      .eq("restaurant_id", restaurantId)
       .eq("order_id", orderId)
       .eq("direction", "inbound")
       .order("created_at", { ascending: false })
@@ -8709,6 +8725,7 @@ export class ProcurementService {
     await this.databaseService.supabase
       .from("procurement_conversations")
       .update({ status: "DISCARDED", scheduled_send_at: null })
+      .eq("restaurant_id", restaurantId)
       .eq("order_id", orderId)
       .in("status", ["PENDING_APPROVAL", "AUTO_SEND_SCHEDULED"]);
 
@@ -8790,8 +8807,11 @@ export class ProcurementService {
    * but the AI hasn't analyzed it yet (detected_intent null) AND it arrived within the
    * last 10 minutes. Blocks acting on a now-stale draft/deal while the AI is still
    * reading the latest reply — but won't lock forever if analysis permanently failed.
+   * This house's replies only: another house's message on the same order id is
+   * not this conversation, and must not hold this house's approval.
    */
   private async newerReplyStillAnalyzing(
+    restaurantId: string,
     orderId: string,
     draftCreatedAt?: string | null,
   ): Promise<boolean> {
@@ -8799,6 +8819,7 @@ export class ProcurementService {
     let q = this.databaseService.supabase
       .from("procurement_conversations")
       .select("id")
+      .eq("restaurant_id", restaurantId)
       .eq("order_id", orderId)
       .eq("direction", "inbound")
       .is("detected_intent", null)
@@ -8864,8 +8885,11 @@ export class ProcurementService {
    * A17 — true if any inbound vendor reply arrived after `sinceIso` (the draft's staging
    * time). Unlike newerReplyStillAnalyzing, this fires whether or not the AI has analyzed
    * the new reply: a scheduled auto-send should never fire once the vendor has spoken again.
+   * "The vendor" is this house's: another house's message on the same order id
+   * is not a reply in this conversation.
    */
   private async newerInboundSince(
+    restaurantId: string,
     orderId: string,
     sinceIso?: string | null,
   ): Promise<boolean> {
@@ -8873,6 +8897,7 @@ export class ProcurementService {
     const { data } = await this.databaseService.supabase
       .from("procurement_conversations")
       .select("id")
+      .eq("restaurant_id", restaurantId)
       .eq("order_id", orderId)
       .eq("direction", "inbound")
       .gt("created_at", sinceIso)
@@ -8905,9 +8930,13 @@ export class ProcurementService {
     if (terminal.includes(String((order as any).status || "").toUpperCase()))
       return null;
 
+    // House-scoped like `dealMessageFor` and `resolveLatestDealProposal`: the
+    // modal must show the row the confirmation names and the dismissal marks,
+    // and never another house's vendor terms on the same order id.
     const { data: rows } = await this.databaseService.supabase
       .from("procurement_conversations")
       .select("id, conversation_context, rolling_summary, created_at")
+      .eq("restaurant_id", restaurantId)
       .eq("order_id", orderId)
       .eq("direction", "inbound")
       .order("created_at", { ascending: false })
@@ -8951,12 +8980,17 @@ export class ProcurementService {
 
   /** Mark the latest deal proposal on an order resolved so the modal stops showing it. */
   private async resolveLatestDealProposal(
+    restaurantId: string,
     orderId: string,
     resolution: string,
   ): Promise<void> {
+    // House-scoped like `dealMessageFor`, which this must agree with row for
+    // row: without the filter the two reads saw different candidate sets, and
+    // this one could mark another house's message on the same order id.
     const { data: rows } = await this.databaseService.supabase
       .from("procurement_conversations")
       .select("id, conversation_context")
+      .eq("restaurant_id", restaurantId)
       .eq("order_id", orderId)
       .eq("direction", "inbound")
       .order("created_at", { ascending: false })
@@ -8971,7 +9005,8 @@ export class ProcurementService {
     await this.databaseService.supabase
       .from("procurement_conversations")
       .update({ conversation_context: ctx })
-      .eq("id", (row as any).id);
+      .eq("id", (row as any).id)
+      .eq("restaurant_id", restaurantId);
   }
 
   /** The order a deal confirmation commits, read the same way for the mint and the act. */
@@ -9244,7 +9279,7 @@ export class ProcurementService {
     const order = await this.dealTarget(restaurantId, orderId);
 
     // Gate: don't commit terms while a newer reply is still being analyzed.
-    if (await this.newerReplyStillAnalyzing(orderId, null)) {
+    if (await this.newerReplyStillAnalyzing(restaurantId, orderId, null)) {
       throw new BadRequestException(
         "A newer vendor reply just arrived and the AI is still reading it. Please review the updated terms before confirming.",
       );
@@ -9470,9 +9505,12 @@ export class ProcurementService {
     let sentConfirmation = false;
     if (opts.sendConfirmation !== false && providerEmail) {
       try {
+        // This house's latest reply: the letter carries its subject and
+        // headers, which must never be another house's.
         const { data: lastInbound } = await this.databaseService.supabase
           .from("procurement_conversations")
           .select("gmail_thread_id, message_id, email_headers")
+          .eq("restaurant_id", restaurantId)
           .eq("order_id", orderId)
           .eq("direction", "inbound")
           .order("created_at", { ascending: false })
@@ -9578,10 +9616,11 @@ export class ProcurementService {
     }
 
     // Resolve the proposal + clear any waiting drafts; the deal is done.
-    await this.resolveLatestDealProposal(orderId, "confirmed");
+    await this.resolveLatestDealProposal(restaurantId, orderId, "confirmed");
     await this.databaseService.supabase
       .from("procurement_conversations")
       .update({ status: "DISCARDED", scheduled_send_at: null })
+      .eq("restaurant_id", restaurantId)
       .eq("order_id", orderId)
       .in("status", ["PENDING_APPROVAL", "AUTO_SEND_SCHEDULED"]);
 
@@ -9616,7 +9655,7 @@ export class ProcurementService {
     const requestsClosed = this.vendorSendRequests
       ? await this.vendorSendRequests.closeWaitingDeal(restaurantId, orderId, "deal_dismissed")
       : 0;
-    await this.resolveLatestDealProposal(orderId, "dismissed");
+    await this.resolveLatestDealProposal(restaurantId, orderId, "dismissed");
     this.emitConvUpdate(restaurantId, orderId, null, orderId);
     return { dismissed: true, requestsClosed };
   }

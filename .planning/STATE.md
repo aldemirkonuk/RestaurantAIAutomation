@@ -7,6 +7,12 @@
 >
 > **2026-09-25 — web rebuild census.** Where the rebuild stands, route by route, what production serves, the 17-lane plan, the open founder forks and his 2026-09-22 answers that had lived only in memory: [07-reference/deploy/WEB-REBUILD-CENSUS-2026-09-25.md](07-reference/deploy/WEB-REBUILD-CENSUS-2026-09-25.md). It supersedes the retired `PAGE-WAVE-BLOCKERS-2026-09-22.md`.
 >
+> **2026-09-28 — records refresh.** #487 (flags-to-code: receiving desk, promotions,
+> vendor prices live in code for every house) is **MERGED** (`dcdb6d5e9`), along with
+> #436, #440, #479, #480 and #484. Every cell the census still called OPEN for
+> them is now bracketed (§13.1–§17, #492 audit fix). Re-read state, merge shas, and founder item 86 (ADR 0050 → ADR 0231):
+> census [§18](07-reference/deploy/WEB-REBUILD-CENSUS-2026-09-25.md#18-state-as-of-2026-09-28-records-lane-docsrecords-2026-09-28).
+>
 > **2026-09-22 — get-started lock.** Founder approved all 17 Opus recs as A. [ADR 0213](decisions/0213-get-started-is-account-then-house-then-first-proof.md) (OD-134–139, OD-141). Build on `feat/arrival-first-proof`: account-only `/register`, four arrival screens, first proof at `/house/menu`. Do not merge #414/#454; do not flip `mudavym_design_arrival`; gate-owned #415/#430/#434 stay with their owner. **[CORRECTED 2026-09-25, [web-rebuild census](07-reference/deploy/WEB-REBUILD-CENSUS-2026-09-25.md) §1c.1: false on the day it landed. #415 (`cc73f9f66`, 23:53Z), #430 (`e2abd7844`, 00:43Z), #434 (`92ea9cecc`, 01:29Z), #454 (`162f25ade`, 01:42Z) and #414 (`8ec925aa7`, 01:59Z) had all merged before #455 (`ddc5e094b`, 02:33Z, 2026-09-22/23 UTC, `gh pr view <n> --json mergedAt`) carried this line. The intent held: `mudavym_design_arrival` is OFF for 14 of 14 houses (production read, 2026-09-25T21:11Z), so every house gets ADR 0213's flow, which `App.tsx:215-219` mounts in the `legacy` slot while #414's Arrival sits dormant in `next`. `feat/arrival-first-proof` is #455, merged.]**
 
 > **2026-09-12 handoff:** the merge queue, the seven unlanded branches, and the page wave in flight are in [handoff/PROGRESS.md](handoff/PROGRESS.md). Read it before continuing any of them.

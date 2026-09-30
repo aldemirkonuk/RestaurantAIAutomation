@@ -28,6 +28,8 @@ The choice, in one sentence. Then the reasoning that actually carried it.
 
 ## Review trail
 
+Cite an audit as `audit of PR #M, round N` with its report path under `.planning/07-reference/pr-audits/`.
+
 | Date | Reviewer | Outcome |
 |---|---|---|
 | YYYY-MM-DD | — | Created |
