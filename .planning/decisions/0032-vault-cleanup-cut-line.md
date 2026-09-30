@@ -1,6 +1,6 @@
 # 0032 — Delete closed build artifacts; a tombstone index replaces the archive tree
 
-- **Status:** Locked
+- **Status:** Locked (scoped exception added 2026-09-29, founder: §Scoped exception — the legacy web archive)
 - **Date:** 2026-08-27
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** vault, cleanup, archive, phases, quick, tombstone, OD-01, retire-to-write, corpus
@@ -133,6 +133,60 @@ it: it is live.
 
 Vault: 1,677 → 1,152 files. Top level: 35 → 30.
 
+## Scoped exception — the legacy web archive (2026-09-29)
+
+**Founder call 2026-09-29, verbatim**, given about PR #494 (the ADR 0149
+cutover) while approving it with "merge all five" (#518, #519, #497, #504,
+#494): *"Change 494 to deleting but archiving those uh, legacy web pages so we
+can have access to what we were doing back in the day when we were trying to
+get some inspiration in a compressed folder so that it doesn't take up any
+much more space than what it needs. And I, I approve that change to happen
+right now."*
+
+**What it does.** The files #494 deletes from `apps/web/src` are also kept, in
+one compressed file, in the working tree:
+`.planning/07-reference/legacy-web-archive-2026-09-29.tar.gz` — **236 files**
+(79,370 lines), **734,018 bytes** (gzip -9; the same tar under `xz -9e` would be
+518,004 bytes, not taken: `.tar.gz` opens anywhere), sha256
+`d33be0983cdae0f37e061a259e02e01761d2ba8ae47bf0b010b423e27f347fb6`, built with
+`git archive` from `origin/main` `71ae5449b` so every member keeps its original
+repo path. Every member was extracted and compared byte for byte with
+`git show 71ae5449b:<path>` (236 of 236 identical). Its index,
+[`legacy-web-archive-2026-09-29.md`](../07-reference/legacy-web-archive-2026-09-29.md),
+lists each path, its lines, its manifest group and its last commit, and says
+how to extract one file. The claim
+`claims.d/feat-cutover-manifest-trial.jsonl` (`LEGACY-WEB-ARCHIVE-2026-09-29`)
+holds that the file exists, is a readable gzip tar, and has exactly 236 regular
+members.
+
+**Scope, and only this scope.** The legacy web pages the cutover deletes (the
+file groups of `07-reference/deploy/CUTOVER-MANIFEST-2026-09-28.md` §4). The
+standing rule above — archive means delete + tombstone, nothing copied into an
+in-tree archive — still governs every other retirement, planning documents
+included. It is one compressed file under `07-reference/`, not an archive
+folder, and nothing is added to it later: a future deletion that should also be
+kept at hand needs its own founder call.
+
+**Never built.** The archive is under `.planning/`, which no build reads:
+`.vercelignore:165` excludes `.planning` from the Vercel upload; the web build is
+`turbo run build --filter=@wineops/web` (`vercel.json:4`) → Vite over
+`apps/web` (`apps/web/vite.config.ts:35`, `outDir: 'dist'`), whose TypeScript
+scope is `apps/web/tsconfig.json:33` (`src`, `.storybook`, `middleware.ts`);
+web ESLint runs `eslint . --ext ts,tsx` inside `apps/web`
+(`apps/web/package.json:13`); the gateway image copies only named paths
+(`apps/api-gateway/Dockerfile:15-16,25`); the orchestrator image's `COPY . .`
+(`services/agent-orchestrator/Dockerfile:29`) runs with Railway's root directory
+set to `services/agent-orchestrator` (the dashboard setting that
+`services/agent-orchestrator/railway.toml:3` records; not read from Railway here).
+Checked after the build: `apps/web/dist` holds nothing from `.planning`.
+
+**Rejected alternative — tombstone only** (this ADR's default: delete, and list
+the recovery commit). Every byte would still be in git history, three commands
+away. Rejected because the founder asked for the pages to be at hand, in one
+compressed file, for inspiration — a tombstone gives recovery, not a place to
+browse. The cost accepted: 734 KB of binary in the working tree and in every
+clone, and one exception to a rule that exists to stop in-tree copies.
+
 ## Consequences
 
 - Vault search, the Obsidian graph, and the unique-filename rule now operate on
@@ -174,3 +228,7 @@ Vault: 1,677 → 1,152 files. Top level: 35 → 30.
   `fix/md-sql-schema-debt`: production probes showed none of their DDL was ever
   applied and nothing queries it; guard inventory shrank 5 lines; both trees
   are now empty and gone.
+- 2026-09-29 — founder call on PR #494: the cutover's deleted legacy web pages
+  are also kept in one compressed file, `07-reference/legacy-web-archive-2026-09-29.tar.gz`
+  (236 files, 734,018 bytes). Recorded as §Scoped exception; the standing
+  delete-plus-tombstone rule is otherwise unchanged.

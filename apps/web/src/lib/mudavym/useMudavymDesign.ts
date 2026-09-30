@@ -8,7 +8,7 @@
  *    forces the new design, `"0" | "false" | "off"` forces legacy — this is
  *    the ONLY way to see legacy on a `LIVE_PAGES` page, and it stays QA-only:
  *    it never reaches another browser or another house. Anything else (or
- *    absence) falls through.
+ *    absence) falls through. [2026-09-28 cutover: a PageGate with no `legacy` renders `next` under "0" too — PageGate.tsx `legacy`.]
  * 2. `LIVE_PAGES` — ADR 0149 row 36 (2026-09-17, "16 locked pages"). These
  *    keys resolve to the Mudavym design for every house, in code, regardless
  *    of the `restaurant_feature_flags` row: no flag request is spent, a

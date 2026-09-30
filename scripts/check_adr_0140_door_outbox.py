@@ -21,7 +21,10 @@ DOOR = "apps/web/src/lib/doorOutbox.ts"
 DUR = "apps/web/src/lib/doorOutbox.durability.test.ts"
 SCREENS = [
     "apps/web/src/pages/receiving/next/DoorNext.tsx",
-    "apps/web/src/pages/receiving/DoorReceipt.tsx",
+    # [2026-09-28, ADR 0149 cutover: the legacy door screen
+    # apps/web/src/pages/receiving/DoorReceipt.tsx was deleted
+    # (.planning/07-reference/deploy/CUTOVER-MANIFEST-2026-09-28.md, group
+    # `receiving_door`); DoorNext is the only door screen left to hold.]
 ]
 
 missing = [p for p in [DOOR, DUR] + SCREENS if not os.path.exists(p)]

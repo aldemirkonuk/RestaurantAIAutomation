@@ -45,7 +45,11 @@ export interface PageEntry {
   slug: string
   flag: string
   route: string
-  /** "page" = a legacy page renders; "same" = no page swap; "redirect:/x" = legacy redirects. */
+  /**
+   * "page" = a legacy page renders; "same" = no page swap; "redirect:/x" = legacy
+   * redirects; "none" = the legacy slot was deleted at the ADR 0149 cutover, so
+   * the flag-off pass must render the Mudavym page too (asserted in both passes).
+   */
   legacy: string
   aliases?: { route: string; legacy: string }[]
   needs?: PageNeeds
