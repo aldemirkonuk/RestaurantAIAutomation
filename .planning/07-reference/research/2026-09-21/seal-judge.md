@@ -28,7 +28,7 @@ So the hierarchy is not an open question. It is owner, then manager, then a name
 2. **Staff hit a dead end.** No send control shows a role-aware state before the hold. A staffer holds, then reads "Only managers and owners can send a drafted reply" (`seal-code.md` §5, confirmed at `DraftedReplyPanel.tsx` and `draftReplyApproval.ts:45-48`). Nothing is queued for a manager.
 3. **Lane E is narrower than the locked rule.** `assertCanManageRestaurant` admits only owner or manager (`organizations.service.ts:130-137,193-199`), so it has no grantee path. The grant row does not exist yet: a search of migrations and the gateway for `grantor` found nothing.
 4. **The seal grace protects nobody.**
-   - `REQUIRE_DRAFT_SEND_SEAL` (`procurement.service.ts:469`) exists for "native installs predating the seal", but OD-109 (main `OPEN-DECISIONS.md:28`) says the app has never been run.
+   - `REQUIRE_DRAFT_SEND_SEAL` (`procurement.service.ts:469`) exists for "native installs predating the seal", but OD-109 (main `OPEN-DECISIONS.md:30`) says the app has never been run.
    - ADR 0175 `:17` records 0 `mobile_devices` rows on 2026-09-19.
    - The repo has no `eas.json`, no `expo-updates`, no `ios/` or `android/` directory, and the bundle id is still `ai.wineops.mobile` (`apps/mobile/app.json:18,29`).
    - Every lane E client already sends a seal: `Orders.tsx:3286-3291`, `DraftRail.tsx:396-399`, `DraftedReplyPanel.tsx:238,263` and `draftReplyApproval.ts:29-38`.
