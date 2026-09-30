@@ -494,7 +494,6 @@ describe('"Replace with" on the remove dialog', () => {
   it('sends what the button says, even when clicked the moment it says it', async () => {
     let t = 0;
     const clock = vi.spyOn(performance, 'now').mockImplementation(() => (t += 10));
-    openRemove({ doubleBooking: 'refuse', unjudged: 0, shifts: [shiftOf('fri')] });
     let clicked = false;
     const watch = new MutationObserver(() => {
       const go = screen.queryByRole('button', { name: 'Remove and hand over 1 shift' });
@@ -503,11 +502,17 @@ describe('"Replace with" on the remove dialog', () => {
       fireEvent.click(go);
       clicked = true;
     });
-    watch.observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true });
-    fireEvent.change(screen.getByRole('combobox', { name: 'Replace with' }), { target: { value: 'm-sam' } });
-    await waitFor(() => expect(clicked).toBe(true));
-    watch.disconnect();
-    clock.mockRestore();
+    // Restored whatever happens, so a red run cannot leave the next test
+    // with a jumping clock or a stray click.
+    try {
+      openRemove({ doubleBooking: 'refuse', unjudged: 0, shifts: [shiftOf('fri')] });
+      watch.observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true });
+      fireEvent.change(screen.getByRole('combobox', { name: 'Replace with' }), { target: { value: 'm-sam' } });
+      await waitFor(() => expect(clicked).toBe(true));
+    } finally {
+      watch.disconnect();
+      clock.mockRestore();
+    }
     await waitFor(() =>
       expect(api.deleteTeamMember).toHaveBeenCalledWith('m-gone', undefined, { to: 'm-sam', shiftIds: ['fri'], accept: [] }),
     );

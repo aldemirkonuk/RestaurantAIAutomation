@@ -7,11 +7,12 @@ Found by CI run 36728755317, the web job on PR #537, whose diff changes no `apps
 - React Query 5.90 (`useMutation.js:20-21`) hands a new `mutationFn` to its observer in a `useEffect`, after the paint. `mutate()` then runs whichever function the last effect installed.
 - The shifts are ticked by the picker's own effect once the gateway's checks arrive. That update renders on React's default lane, and its passive effects run as a separate Scheduler task.
 - When the render uses up React's 5 ms slice, Scheduler yields between the paint and the effects. A click in that gap finds a button already reading "Remove and hand over 1 shift", but `mutate()` runs the previous render's function, which carries `null`.
-- A test that clicks straight after a `waitFor` lands in that gap on a slow runner.
+- A test that clicks straight after a `waitFor` can land in that gap on a slow runner.
 
 **Fix.**
 - The hand-over now travels with the click: `mutationFn: (sent) => deleteTeamMember(member!.id, undefined, sent)` and `onClick={() => remove.mutate(handingOver)}`.
-- React updates a DOM node's handler at commit, not in an effect, so the value sent is always the one the button shows.
+- React updates a DOM node's handler at commit, not in an effect, so the value sent is the one computed in the same render that drew the button's label.
+- Unchanged: `onSuccess` still closes over `onChanged`, `onClose` and `member`, installed in the same effect. None of them is per-click state, and none changes while the dialog is open.
 
 **Regression test.** "sends what the button says, even when clicked the moment it says it" forces the gap on every run:
 - `performance.now` jumps 10 ms per read, so Scheduler yields after every task.
@@ -23,8 +24,9 @@ CLAIMS `WEB-TEAMPAY-REMOVE-SENDS-WHAT-THE-BUTTON-SAYS`. The verify exits 1 on `5
 
 ## Other `mutationFn` closures may carry the same gap — OPEN — 2026-09-30
 
-`grep -rn 'mutationFn: () =>' apps/web/src` (tests excluded) finds 26 closure-style mutations in 16 files at `597f728d9`. Most are probably safe, but none has been audited.
-- **Only some shapes are exposed.** A closure is exposed only when the value it reads changes in a render that is not a direct response to user input. For example, it is derived from query data or set by an effect, and the render's passive effects are deferred.
-- **Most sites close over stable ids or typed form state.** A keystroke renders on the sync lane, and React flushes that render's passive effects before the commit returns.
-- **The fix is the same shape as above:** pass the per-click value to `mutate(...)` instead of closing over it.
+`grep -rn -E 'mutationFn:\s*(async\s*)?\(\s*\)\s*=>' apps/web/src` (tests excluded) finds 30 zero-argument closure mutations in 19 files at this branch's head. That is 26 of the form `() =>` and 4 of the form `async () =>`. The pattern is a heuristic. It misses a `mutationFn` that takes arguments and still reads component state, and it counts sites that close over nothing but stable ids. None of the 30 has been audited.
+- **When a site is exposed.** A site is exposed only when the value it reads changes in a render whose passive effects React defers, and a click lands before they run.
+  - A render caused by a `setState` inside an effect, as the picker's ticking is, is on the default lane, and its effects are deferred. A React Query result arrives through `useSyncExternalStore` on the sync lane, but an effect that reacts to it is back on the default lane.
+  - A keystroke's update is a discrete, sync-lane update, whose effects React flushes before the commit returns. That no longer holds once the update is wrapped in `startTransition` or read through `useDeferredValue`.
+- **The fix is the same shape as above.** Pass the per-click value to `mutate(...)` instead of closing over it.
 - **A check that would close it:** a lint rule or grep guard that flags a `mutationFn` reading component state other than ids.
