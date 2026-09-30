@@ -24,7 +24,9 @@ refused where it can tell; its self-test lists every evasion found so far:
   4. No line of deploy.yml sets `continue-on-error`.
 
 What it cannot hold: GitHub's own evaluation (workflow_run runs main's copy of
-the file), and any YAML form this reader refuses but GitHub would also reject.
+the file), and any YAML form this reader accepts but GitHub reads differently;
+the self-test lists every such form found so far. It pins only the refusal
+step, not ci-gate's first step (the conclusion check, ADR 0097's claim).
 
 Exit 0 holds, 1 broken, 2 cannot read. `--self-test` plants each break.
 Owned by scripts/test_pr_audit_gate.py
@@ -171,6 +173,9 @@ def problems(text: str) -> list[str]:
         out.append("continue-on-error appears in deploy.yml")
     for name, job in jobs.items():
         code = _code(job)
+        for line in code.split("\n"):
+            if re.match(r"""^    ["']""", line) or re.match(r"^    [A-Za-z_-]+ +:", line):
+                out.append(f"{name}: a job-level key that is quoted or spaced: {line.strip()[:50]!r}")
         if re.search(r"(?m)^    uses:", code):
             out.append(f"{name}: is a reusable-workflow call")
         ifs = _job_ifs(job)
@@ -258,6 +263,14 @@ def _self_test(verbose: bool = False) -> int:
         "RUN_EVENT reassigned before the check": ('        run: |\n          if [ "$RUN_EVENT" = "push" ]', '        run: |\n          RUN_EVENT=push\n          if [ "$RUN_EVENT" = "push" ]'),
         "defaults run shell": ("\njobs:\n", "\ndefaults:\n  run:\n    shell: bash\n\njobs:\n"),
         "a pull_request_target trigger": ("\non:\n", "\non:\n  pull_request_target:\n"),
+        # round-2 correctness reviewer (2026-09-30):
+        "quoted if after a hidden one in a multi-line name": (
+            "  verify-frontend:\n    name: \"Stage 3 — Frontend Build\"\n",
+            "  verify-frontend:\n    name: \"Stage 3 — Frontend Build\n    if: x\"\n    \"if\": always()\n"),
+        "shell override on the refusal step": (
+            "        if: github.event_name == 'workflow_run'\n        env:\n          RUN_EVENT:",
+            "        if: github.event_name == 'workflow_run'\n        shell: bash -c 'exit 0' {0}\n        env:\n          RUN_EVENT:"),
+        "job-level defaults on ci-gate": ("  ci-gate:\n    name: CI Gate\n", "  ci-gate:\n    name: CI Gate\n    defaults:\n      run:\n        shell: bash -c 'exit 0' {0}\n"),
     }
     failed = []
     for name, (old, new) in muts.items():
