@@ -223,7 +223,7 @@ Two inputs are estimates:
   Clopper-Pearson 299, not smaller. The Clopper-Pearson table itself reproduces
   exactly.
 - **ft-release §4.2:** the retention of reviewer-corrected data is not OD-133.
-  OD-133 is TypeSafe's retention (`OPEN-DECISIONS.md:108`).
+  OD-133 is TypeSafe's retention (`OPEN-DECISIONS.md:109`).
 - **ft-data §1.2, §4 and §10.1:** the claim-versus-span fork is now **decided**. It
   keys on the span ("review by the menu line", round 8, `0163:1146-1159`).
 - **ft-methods (bottom line and §3):** it calls `kdh` Jev's "one false accept on Menu

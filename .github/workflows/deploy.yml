@@ -357,14 +357,21 @@ jobs:
     outputs:
       web_commit_expected: ${{ steps.web-expect.outputs.expect }}
     steps:
-      # fetch-depth: 0 (full history), same requirement as Stage 2 and for the
-      # same reason: scripts/check_web_deployed_sha.py and
-      # scripts/resolve_watched_commit.py both walk `git log`/`merge-base`
-      # against this checkout, which a shallow clone cannot answer (their own
-      # self-tests build a full throwaway repo precisely because a partial one
-      # would prove nothing).
+      # gate-r3 ci-deploy-stage3-checkout-not-pinned (2026-09-19): every other
+      # job in this workflow_run-triggered chain pins `ref:` explicitly (see
+      # Stage 2 above) because an unpinned checkout in a workflow_run context
+      # resolves `github.sha` to the default branch's CURRENT tip at run
+      # time, not the commit that finished the triggering run — this job
+      # alone did not, so `pnpm install`/`pnpm run build` below could build a
+      # different commit than the one deploy-audit.json then records this
+      # stage's result against.
       - uses: actions/checkout@v7
         with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          # fetch-depth: 0 (full history), carried from main (#445): scripts/
+          # check_web_deployed_sha.py and scripts/resolve_watched_commit.py
+          # walk `git log`/`merge-base` against this checkout, which a shallow
+          # clone cannot answer.
           fetch-depth: 0
 
       - uses: pnpm/action-setup@v6

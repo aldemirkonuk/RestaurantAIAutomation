@@ -15,6 +15,7 @@
 - Decisions locked **before** this log existed remain canonical where they were
   written. This index links to them; we do not copy them (one source of truth per
   decision).
+- **Adding an ADR:** append its row in the same PR as its file, inside the Locked or Proposed table, with the number and link of that new file. Changing any other line of this file (editing, moving or deleting a row, or this preamble) needs the founder's word before it merges.
 
 ## Locked — recorded in this log
 
