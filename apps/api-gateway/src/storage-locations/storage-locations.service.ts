@@ -135,6 +135,8 @@ interface StorageLocationRow {
   created_at?: string | null;
   updated_at?: string | null;
   deleted_at?: string | null;
+  /** The zone this one sits inside; NULL = top level (migration 20261203110000). */
+  parent_id?: string | null;
 }
 
 interface WineLocationMappingRow {
@@ -192,6 +194,7 @@ export class StorageLocationsService {
           : undefined,
       notes: row.notes ?? undefined,
       color: row.color_code ?? "#6b7280",
+      parent_id: row.parent_id ?? null,
       created_at: row.created_at ?? undefined,
       updated_at: row.updated_at ?? undefined,
     };
@@ -436,26 +439,112 @@ export class StorageLocationsService {
   }
 
   /**
-   * storage_locations has no parent column (baseline migration
-   * 20260805000000, table at :5487). Until it does, a stated parent cannot be
-   * recorded, and answering 200 while dropping it is the "shown as saved"
-   * defect (web endpoint sweep 2026-09-28, #4). Refuse it in words; a null
-   * parent is what the table already says, so it passes.
+   * A zone's parent must be a live zone of the same restaurant, not the zone
+   * itself, and not a zone already inside it (a cycle). Founder answer
+   * 2026-09-29 ("Add parent column (Recommended)"), migration
+   * 20261203110000_a_zone_can_sit_inside_another_zone. The database enforces
+   * the same rules in trigger storage_locations_parent_guard, so this is the
+   * wording a person reads, not the only wall; `dbRefusal` turns the trigger's
+   * 23514 into the same 422 for a race this read could not see.
+   *
+   * One read of the restaurant's live zones (id, parent_id), walked in memory.
+   * A parent that is not in that set is answered the same whether it belongs
+   * to another restaurant or does not exist, so the answer says nothing about
+   * another house's zones.
    */
-  private refuseUnstoredParent(parentId: string | null | undefined) {
-    if (parentId != null) {
+  private async refuseBadParent(
+    restaurantId: string,
+    locationId: string | null,
+    parentId: string | null | undefined,
+  ) {
+    if (parentId == null) return;
+    if (locationId !== null && parentId === locationId) {
       throw new HttpException(
-        "Zone parents are not stored yet: this zone was not changed. Save it without a parent.",
+        "A zone cannot sit inside itself: this zone was not changed.",
         HttpStatus.UNPROCESSABLE_ENTITY,
       );
     }
+    const { data, error } = await this.dbService.supabase
+      .from("storage_locations")
+      .select("id, parent_id")
+      .eq("restaurant_id", restaurantId)
+      .is("deleted_at", null);
+    if (error) {
+      this.logger.error(`Failed to read the zone tree: ${error.message}`);
+      throw new HttpException(
+        error.message || "Failed to check the parent zone",
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+    const parentOf = new Map<string, string | null>();
+    for (const r of (data ?? []) as {
+      id: string;
+      parent_id?: string | null;
+    }[]) {
+      parentOf.set(r.id, r.parent_id ?? null);
+    }
+    if (!parentOf.has(parentId)) {
+      throw new HttpException(
+        "The parent zone is not a zone of this restaurant: this zone was not changed.",
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    }
+    if (locationId === null) return; // a new zone has nothing inside it yet
+    const seen = new Set<string>();
+    let at: string | null = parentId;
+    while (at != null && !seen.has(at)) {
+      if (at === locationId) {
+        throw new HttpException(
+          "That parent is already inside this zone; a zone cannot sit inside its own contents. This zone was not changed.",
+          HttpStatus.UNPROCESSABLE_ENTITY,
+        );
+      }
+      seen.add(at);
+      at = parentOf.get(at) ?? null;
+    }
+  }
+
+  /**
+   * The parent guard's refusals (trigger storage_locations_parent_guard and
+   * CHECK storage_locations_parent_is_not_self, both 23514) and a parent id
+   * that is no row at all (the foreign key, 23503) are the caller's to fix:
+   * a 422 in the database's words, not a 500.
+   *
+   * A write that lost a lock race (40P01 deadlock_detected, 40001
+   * serialization_failure) wrote nothing and succeeds if sent again, so it is
+   * a 409 that says so. The known case (verifier nit on #515, 2026-09-29): a
+   * soft delete of a parent and a concurrent move of a zone under it take
+   * the parent's row, the child's row and the house's advisory lock in
+   * opposite orders, and Postgres aborts one. Taking the advisory lock first
+   * in the orphan trigger would not remove it: the delete's UPDATE locks the
+   * parent's row before any row trigger runs, and the move's guard waits on
+   * that row while holding the advisory lock.
+   */
+  private dbRefusal(
+    error: { code?: string; message?: string },
+    fallback: string,
+  ) {
+    if (error.code === "40P01" || error.code === "40001") {
+      return new HttpException(
+        "Another change to this house's zones was being saved at the same moment, so this one was not saved. Nothing was changed: try again.",
+        HttpStatus.CONFLICT,
+      );
+    }
+    const callersToFix = error.code === "23514" || error.code === "23503";
+    return new HttpException(
+      error.message || fallback,
+      callersToFix
+        ? HttpStatus.UNPROCESSABLE_ENTITY
+        : HttpStatus.INTERNAL_SERVER_ERROR,
+    );
   }
 
   async createLocation(restaurantId: string, dto: CreateStorageLocationDto) {
-    this.refuseUnstoredParent(dto.parent_id);
+    await this.refuseBadParent(restaurantId, null, dto.parent_id);
     const client = this.dbService.supabase;
     const payload: Record<string, unknown> = {
       restaurant_id: restaurantId,
+      parent_id: dto.parent_id ?? null,
       zone: dto.name ?? "New Location",
       // capacity_bottles is NOT NULL, so this column cannot hold "unknown".
       // The honest consequence is that the caller must supply one — the DTO
@@ -475,10 +564,7 @@ export class StorageLocationsService {
 
     if (error) {
       this.logger.error(`Failed to create location: ${error.message}`);
-      throw new HttpException(
-        error.message || "Failed to create location",
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw this.dbRefusal(error, "Failed to create location");
     }
     return this.mapLocation(data as StorageLocationRow);
   }
@@ -488,9 +574,11 @@ export class StorageLocationsService {
     locationId: string,
     dto: UpdateStorageLocationDto,
   ) {
-    this.refuseUnstoredParent(dto.parent_id);
+    await this.refuseBadParent(restaurantId, locationId, dto.parent_id);
     const client = this.dbService.supabase;
     const payload: Record<string, unknown> = {};
+    // Absent = leave the parent alone; null = move the zone to the top level.
+    if (dto.parent_id !== undefined) payload.parent_id = dto.parent_id;
     if (dto.name !== undefined) payload.zone = dto.name;
     if (dto.capacity !== undefined) payload.capacity_bottles = dto.capacity;
     if (dto.current_count !== undefined)
@@ -512,10 +600,7 @@ export class StorageLocationsService {
 
     if (error) {
       this.logger.error(`Failed to update location: ${error.message}`);
-      throw new HttpException(
-        error.message || "Failed to update location",
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw this.dbRefusal(error, "Failed to update location");
     }
     if (!data) {
       throw new HttpException("Location not found", HttpStatus.NOT_FOUND);
@@ -523,6 +608,11 @@ export class StorageLocationsService {
     return this.mapLocation(data as StorageLocationRow);
   }
 
+  /**
+   * A soft delete. The zones inside it are not deleted: trigger
+   * storage_locations_orphans_go_top_level (migration 20261203110000) clears
+   * their parent_id in the same statement, so they become top-level zones.
+   */
   async deleteLocation(restaurantId: string, locationId: string) {
     const client = this.dbService.supabase;
     const { data, error } = await client
@@ -535,10 +625,7 @@ export class StorageLocationsService {
 
     if (error) {
       this.logger.error(`Failed to delete location: ${error.message}`);
-      throw new HttpException(
-        error.message || "Failed to delete location",
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw this.dbRefusal(error, "Failed to delete location");
     }
     // A delete that matched nothing (another house's id, a missing one, or one
     // already deleted) used to answer `{ success: true }` having touched no row.

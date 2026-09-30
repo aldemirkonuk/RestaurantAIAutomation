@@ -29,6 +29,7 @@ import {
 } from 'lucide-react'
 import { useStorageLocations, useZoneSetupAccess } from '../../hooks/useStorageLocations'
 import type { StorageLocation } from '../../hooks/useStorageLocations'
+import { nestZones, parentChoices, zonesInside, rolledUpTotals, rollupLabel } from './zoneNesting'
 export type { StorageLocation }
 
 interface StorageLocationManagerProps {
@@ -100,6 +101,23 @@ export function StorageLocationManager({
   const setup = useZoneSetupAccess({ enabled: isOpen })
 
   const actualLocations = getLocationsWithActualCounts()
+  // Zones nest (founder answer 2026-09-29, "Add parent column (Recommended)"):
+  // the list is drawn as a tree, each zone under the one it sits inside.
+  const nestedLocations = nestZones(actualLocations)
+  // Nested-zone totals (founder answer 2026-09-29, "Show both (Recommended)"):
+  // every row keeps its own count, and a parent row ALSO shows a labelled
+  // total for itself and every zone below it. The footer below keeps summing
+  // own counts, so each bottle is counted once.
+  const rollups = rolledUpTotals(actualLocations, (z) => z.currentCount)
+  // Deleting a parent keeps its children and makes them top-level (the
+  // database does the same); the confirm says so before it happens.
+  const deleteQuestion = (id: string) => {
+    const n = zonesInside(locations, id)
+    if (n === 0) return 'Delete?'
+    return n === 1
+      ? 'Delete? The zone inside moves to the top level.'
+      : `Delete? The ${n} zones inside move to the top level.`
+  }
   const onLocationsChangeRef = useRef(onLocationsChange)
   onLocationsChangeRef.current = onLocationsChange
 
@@ -398,9 +416,12 @@ export function StorageLocationManager({
               )}
 
               <div className="space-y-3">
-                {actualLocations.map(location => (
+                {nestedLocations.map(({ zone: location, depth, parentName }) => (
                   <motion.div
                     key={location.id}
+                    style={depth > 0 ? { marginLeft: depth * 20 } : undefined}
+                    data-zone-depth={depth}
+                    data-testid={`zone-row-${location.name}`}
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
                     whileHover={{ scale: draggedId ? 1 : 1.01 }}
@@ -476,6 +497,12 @@ export function StorageLocationManager({
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
                             <h4 className="font-semibold text-gray-900">{location.name}</h4>
+                            {parentName && (
+                              <span className="flex items-center gap-1 text-xs text-gray-500">
+                                <FolderTree className="w-3 h-3" />
+                                inside {parentName}
+                              </span>
+                            )}
                             {!onSelectLocation && (
                               <span className="text-xs text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity">
                                 {editingLocation?.id === location.id ? 'Click to close' : 'Click to edit'}
@@ -489,7 +516,9 @@ export function StorageLocationManager({
                                 className="flex items-center gap-1"
                                 onClick={e => e.stopPropagation()}
                               >
-                                <span className="text-xs text-rose-700 font-medium">Delete?</span>
+                                <span className="text-xs text-rose-700 font-medium">
+                                  {deleteQuestion(location.id)}
+                                </span>
                                 <button
                                   onClick={() => confirmDelete(location.id)}
                                   className="px-1.5 py-0.5 text-xs bg-rose-600 text-white rounded font-medium hover:bg-rose-700 transition-colors"
@@ -524,6 +553,15 @@ export function StorageLocationManager({
                             <Package className="w-3.5 h-3.5" />
                             {location.currentCount}/{location.capacity}
                           </span>
+                          {rollups.has(location.id) && (
+                            <span
+                              className="flex items-center gap-1 font-medium text-gray-600"
+                              title="This zone's own bottles plus every zone inside it. Reports count each bottle once, in the zone that holds it."
+                            >
+                              <FolderTree className="w-3.5 h-3.5" />
+                              {rollupLabel(rollups.get(location.id)!)}
+                            </span>
+                          )}
                           {location.temperature && (
                             <span className="flex items-center gap-1">
                               <Thermometer className="w-3.5 h-3.5" />
@@ -691,11 +729,9 @@ export function StorageLocationManager({
                     />
                   </div>
 
-                  {/* P2: parentId field. Edit only: a create cannot state a parent
-                      until storage_locations has a parent column (the gateway
-                      refuses one with a 422), so the picker would only offer a
-                      guaranteed refusal. On edit it can still clear a parent. */}
-                  {!isCreating && (
+                  {/* Stored as storage_locations.parent_id (migration 20261203110000). The
+                      picker never offers this zone or a zone inside it: the gateway and
+                      the database refuse both (a cycle). */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Parent Location
@@ -709,16 +745,16 @@ export function StorageLocationManager({
                       style={{ color: '#1f2937' }}
                     >
                       <option value="">None (top-level)</option>
-                      {locations
-                        .filter(l => l.id !== editingLocation?.id)
-                        .map(l => (
-                          <option key={l.id} value={l.id}>
-                            {l.name}
-                          </option>
-                        ))}
+                      {parentChoices(locations, editingLocation?.id).map(({ zone: l, depth }) => (
+                        <option key={l.id} value={l.id}>
+                          {`${'\u00A0\u00A0'.repeat(depth)}${depth > 0 ? '└ ' : ''}${l.name}`}
+                        </option>
+                      ))}
                     </select>
+                    <p className="mt-1 text-xs text-gray-500">
+                      Deleting a zone does not delete the zones inside it: they move to the top level.
+                    </p>
                   </div>
-                  )}
 
                   <div className="grid grid-cols-2 gap-4">
                     <div>
