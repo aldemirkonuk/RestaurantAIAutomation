@@ -296,6 +296,68 @@ describe("ApprovalThresholdsService", () => {
     });
   });
 
+  // ADR 0244 D3, the founder's answers of 2026-09-30: 8 "Use the larger
+  // figure (Recommended)" and 9 "Match the re-check (Recommended)". The
+  // register's "how often each rule would have fired" tests the money and the
+  // unit price the approve act tests.
+  const ceilingRow = (amount: string) => ({
+    rule: "manager_ceiling",
+    enabled: true,
+    amount_limit: amount,
+    percent_limit: null,
+    required_role: "owner",
+    set_by: null,
+    updated_at: null,
+  });
+  const jumpRow = (pct: string) => ({
+    rule: "price_jump",
+    enabled: true,
+    amount_limit: null,
+    percent_limit: pct,
+    required_role: "owner",
+    set_by: null,
+    updated_at: null,
+  });
+  const retro = async (thresholds: unknown[], orders: unknown[]) => {
+    const { databaseService } = makeDb({
+      restaurant_approval_thresholds: thresholds,
+      procurement_orders: orders,
+      users: [],
+    });
+    return new ApprovalThresholdsService(databaseService, makeAudit().service).read("rest-1");
+  };
+
+  it("[REVERT-FAILS] answer 8: counts the larger of the total and price x quantity", async () => {
+    // total_cost says 500; 5 x 300 says 1,500 — over the 1,000 ceiling.
+    const out = await retro(
+      [ceilingRow("1000.00")],
+      [{ provider_id: "p1", inventory_id: "i1", requested_at: "2026-09-01T08:00:00Z", total_cost: "500", final_price: "300", quantity: 5 }],
+    );
+    expect(out.retrospective.counts).toContainEqual({ rule: "manager_ceiling", tested: 1, wouldHaveFired: 1 });
+  });
+
+  it("[REVERT-FAILS] answer 9: an order with no final price is measured by its negotiated price", async () => {
+    const out = await retro(
+      [jumpRow("12")],
+      [
+        { provider_id: "p1", inventory_id: "i1", requested_at: "2026-09-01T08:00:00Z", total_cost: "100", final_price: "10" },
+        { provider_id: "p1", inventory_id: "i1", requested_at: "2026-09-02T08:00:00Z", total_cost: "130", final_price: null, negotiated_price: "13" },
+      ],
+    );
+    expect(out.retrospective.counts).toContainEqual({ rule: "price_jump", tested: 1, wouldHaveFired: 1 });
+  });
+
+  it("answer 9: a price never paid does not become the last price paid", async () => {
+    const out = await retro(
+      [jumpRow("12")],
+      [
+        { provider_id: "p1", inventory_id: "i1", requested_at: "2026-09-01T08:00:00Z", total_cost: "100", final_price: null, negotiated_price: "10" },
+        { provider_id: "p1", inventory_id: "i1", requested_at: "2026-09-02T08:00:00Z", total_cost: "130", final_price: null, negotiated_price: "13" },
+      ],
+    );
+    expect(out.retrospective.counts).toContainEqual({ rule: "price_jump", tested: 0, wouldHaveFired: 0 });
+  });
+
   it("reports an unreadable ledger rather than a retrospective of zero", async () => {
     const { databaseService } = makeDb(
       { restaurant_approval_thresholds: [], users: [] },

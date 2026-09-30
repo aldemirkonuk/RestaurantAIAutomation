@@ -154,6 +154,15 @@ export class SealChallengeService {
     subjectId: string;
     action: string;
     args: Record<string, unknown>;
+    /**
+     * Older SHAPES of the same arguments, accepted as well as `args` — only
+     * for an act whose seal gained a field (the order approval's version 2,
+     * ADR 0244 D3 answer 10). A hold opened on the old code just before a
+     * deploy was minted over the old shape and may finish under it within its
+     * `SEAL_TTL_MS`. They are the same facts re-read now, never looser ones:
+     * a changed total still fails every shape. `issue` never mints them.
+     */
+    legacyArgs?: ReadonlyArray<Record<string, unknown>>;
     challenge: string | null | undefined;
   }): Promise<{ sealId: string }> {
     const refuse = async (reason: SealRefusal): Promise<never> => {
@@ -204,7 +213,10 @@ export class SealChallengeService {
     ) {
       return refuse("other_action");
     }
-    if (String(seal.args_hash) !== hashCallArgs(params.args)) {
+    const acceptedHashes = [params.args, ...(params.legacyArgs ?? [])].map((a) =>
+      hashCallArgs(a),
+    );
+    if (!acceptedHashes.includes(String(seal.args_hash))) {
       return refuse("arguments_changed");
     }
     if (new Date(String(seal.expires_at)).getTime() <= Date.now()) {
