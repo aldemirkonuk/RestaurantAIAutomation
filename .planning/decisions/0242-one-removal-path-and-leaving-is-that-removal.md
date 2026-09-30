@@ -4,7 +4,7 @@
 - **Date:** 2026-09-29
 - **Decider:** Aldemir (founder), by delegation. His answer, verbatim, given in chat on 2026-09-29: *"Open Decision, I leave that to you, do the best approach"*.
 - **Keywords:** removal, remove member, leave house, self-leave, delete account, open pool, shifts, roster, team_members, removeFromHouse, deleteMember, removeMember, leaveRestaurant, notify managers
-- **Links:** OD-204 (`OPEN-DECISIONS.md:99`); defect entry `tech-debt.d/2026-09-29-docs-merge-queue-followups-2026-09-29.md:15`; [[0215-money-on-team-is-the-owners-and-hours-are-worked-hours]] (item 26: shifts go back to the open pool; item 27: "Replace with"); [[0162-managers-grant-manager-or-staff-on-both-doors]] (owners manage owners); [[0164-sessions-follow-membership-and-several-houses-choose]] (a leave is stamped `left`); [[0088-a-team-change-is-recorded-and-a-wage-is-not-invented]] (a removal is recorded).
+- **Links:** OD-204 (`OPEN-DECISIONS.md:99`); defect entry `tech-debt.d/2026-09-29-docs-merge-queue-followups-2026-09-29.md:17`; [[0215-money-on-team-is-the-owners-and-hours-are-worked-hours]] (item 26: shifts go back to the open pool; item 27: "Replace with"); [[0162-managers-grant-manager-or-staff-on-both-doors]] (owners manage owners); [[0164-sessions-follow-membership-and-several-houses-choose]] (a leave is stamped `left`); [[0088-a-team-change-is-recorded-and-a-wage-is-not-invented]] (a removal is recorded).
 
 ## Context
 
