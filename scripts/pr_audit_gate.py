@@ -517,6 +517,10 @@ GATE_OWNED_PREFIXES = (
     ".trivyignore",
     "scripts/check_security_gate_can_fail.py",
     "scripts/trivy-baseline-2026-09-12.txt",
+    # Founder, 2026-09-30 (#534, "Sign off, add deploy fix"): the guard that
+    # holds deploy.yml to this repository's own pushes. Owning the workflow
+    # and not its guard would release a PR that guts the guard.
+    "scripts/check_deploy_own_pushes.py",
 )
 # An instruction or MCP configuration file an agent loads by name, at any depth.
 OWNED_BASENAMES = frozenset({"claude.md", "claude.local.md", "agents.md", ".mcp.json"})
@@ -2032,6 +2036,7 @@ def run_self_test() -> int:
         # branched (ADR 0212, ADR 0142), carried into GATE_OWNED_PREFIXES
         "supabase/migration-order-exceptions.txt", ".trivyignore",
         "scripts/check_security_gate_can_fail.py", "scripts/trivy-baseline-2026-09-12.txt",
+        "scripts/check_deploy_own_pushes.py",
     ]
     _FLIP = ("# 0161 \u2014 x\n\n- **Status:** Rejected\n" + "\nfiller\n" * 10
              + "\nDocs PRs are exempt from ADR 0090's escalation.\n")

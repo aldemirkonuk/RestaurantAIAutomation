@@ -943,7 +943,7 @@ def cached_inputs(scratch):
 
 
 def test_the_mutation_list_covers_every_prefix_and_token():
-    assert len(_PREFIXES) == 16 and len(_ALTS) == 15
+    assert len(_PREFIXES) == 17 and len(_ALTS) == 15
 
 
 @pytest.mark.parametrize("name,old,new,live", MUTATIONS, ids=[m[0] for m in MUTATIONS])
@@ -1117,3 +1117,11 @@ def test_deploy_runs_only_on_this_repositorys_own_pushes():
     assert '[ "$RUN_EVENT" = "push" ] && [ "$RUN_REPO" = "$THIS_REPO" ]' in gate
     refuse = gate.split("The run is this repository's own push to main", 1)[1].split("- name:", 1)[0]
     assert "exit 1" in refuse, "ci-gate does not fail a foreign or non-push run"
+    # The structural rule (every job's if, comments stripped; no job without
+    # an if; the refusal step not disabled, softened or bypassed) lives in
+    # scripts/check_deploy_own_pushes.py; its self-test plants 10 breaks
+    # (the round-2 audit's five surviving mutants among them).
+    guard = ROOT / "scripts" / "check_deploy_own_pushes.py"
+    for args in ([], ["--self-test"]):
+        r = subprocess.run([sys.executable, str(guard), *args], capture_output=True, text=True, timeout=60)
+        assert r.returncode == 0, (args, r.stdout, r.stderr)
