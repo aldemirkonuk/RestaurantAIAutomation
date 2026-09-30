@@ -84,7 +84,7 @@ This was flagged for a tenant-guard review. The route is `apps/api-gateway/src/s
 
 ## Follow-ups owed from the ADR 0090 audits of #527, #528, #529 and #530 — OPEN — 2026-09-29
 
-These came out of the full-gate audits on the three PRs, which merged as e9fa899, d80e41e and 72e4529. Each planner's verdict named them as owed after merge, and none blocked the merge.
+These came out of the full-gate audits on #527, #528 and #529 (merged as e9fa899, d80e41e and 72e4529) and on #530. Each planner's verdict named them as owed after merge, and none blocked the merge.
 
 - **Gates and last-owner counts read `is_active` alone (#528, ADR 0242).**
   - `TeamService.assertAccess` (`apps/api-gateway/src/team/team.service.ts` ~198-204) and `MembersService.assertMembership` (`apps/api-gateway/src/restaurants/members.service.ts` ~56-62) ignore `valid_until`.
@@ -114,7 +114,12 @@ These came out of the full-gate audits on the three PRs, which merged as e9fa899
   - **Door 401 refresh race.** If a second tab signs in as someone else while this tab's refresh is in flight, the retried receipt carries that person's token (`services/api/client.ts` 401 path). The 401 retry window above applies to door receipts too.
   - **No cross-tab lock.** `doorOutbox` has no `navigator.locks`. The idempotency key absorbs a double send.
   - **Two views of a parked door receipt.** `pendingDoorCount` counts parked door receipts as waiting, while the app-wide strip shows them as not sent.
+- **The door drop notice names the wrong cause (#530).** `apps/web/src/pages/receiving/next/DoorNext.tsx:508-513` shows "The app was signed out. Sign in again …" when every drop's reason is `auth`. Since #530 a 401 is retried and never dropped, so `auth` means 403 only: this account may not record deliveries. The copy is now false for every new `auth` record, and it drops "tell a manager". It should say the account cannot record deliveries, keep the paperwork, tell a manager. Fix the copy and its comment, with a test.
 - **Stale text left for a later docs pass.**
   - `apps/web/src/lib/queue-owner.ts:14` still says the outboxes adopt the retry rules "in OD-203's second PR".
   - ADR 0242 line 7 cites this file's OD-204 heading at `:15`; it is at `:17`, and the OD-204 row already says `:17`.
-
+  - Text from the time of the 8-attempt budget:
+    - `apps/web/src/lib/doorOutbox.ts:460` ("retry budget spent");
+    - `apps/web/src/pages/receiving/next/DoorNext.test.tsx:12-13`;
+    - `apps/web/src/pages/receiving/next/MOTIONS-receiving.md:18`;
+    - `apps/web/src/lib/sync-manager.ts:297-299` ("attempt budgets").
