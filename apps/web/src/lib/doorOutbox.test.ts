@@ -521,8 +521,20 @@ describe('Send again and Discard — one parked receipt, by a person', () => {
   })
 
   it('Discard removes the entry — the only path that does', async () => {
-    await discardDoorReceipt('u')
+    store.getPendingMutationsByType.mockResolvedValue([parked('u', 'unowned')])
+
+    expect(await discardDoorReceipt('u')).toBe(true)
     expect(store.removePendingMutation).toHaveBeenCalledWith('u')
+  })
+
+  it('Discard never removes a receipt that is queued to send, or one this session cannot see', async () => {
+    // A stale rail row: another tab un-parked it, or the house changed since
+    // the row was drawn. The scoped read no longer shows it as parked.
+    store.getPendingMutationsByType.mockResolvedValue([pending('q')])
+
+    expect(await discardDoorReceipt('q')).toBe(false)
+    expect(await discardDoorReceipt('elsewhere')).toBe(false)
+    expect(store.removePendingMutation).not.toHaveBeenCalled()
   })
 
   it('counts a parked receipt as Not sent, never as waiting', async () => {

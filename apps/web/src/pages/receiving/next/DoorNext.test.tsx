@@ -147,7 +147,7 @@ describe('DoorNext — a refused door report is parked as Not sent, never an ala
     renderPage()
 
     await waitFor(() => expect(notSent()).not.toBeNull())
-    expect(notSent()?.textContent).toContain('1 delivery report was refused by the server')
+    expect(notSent()?.textContent).toContain('1 delivery report on this phone was not sent')
     expect(notSent()?.textContent).toContain('Not sent')
     expect(notSent()?.textContent).toContain('Receiving')
     // Kept, not lost: no red alarm, and not "still trying" either — nothing
@@ -165,7 +165,7 @@ describe('DoorNext — a refused door report is parked as Not sent, never an ala
 
     await waitFor(() => expect(notSent()).not.toBeNull())
     expect(quiet()?.textContent).toContain('1 report did not send yet')
-    expect(notSent()?.textContent).toContain('2 delivery reports were refused by the server')
+    expect(notSent()?.textContent).toContain('2 delivery reports on this phone were not sent')
     expect(alarm()).toBeNull()
   })
 
@@ -184,7 +184,7 @@ describe('DoorNext — a refused door report is parked as Not sent, never an ala
     })
 
     // The page re-READS the queue rather than adding the count.
-    expect(notSent()?.textContent).toContain('1 delivery report was refused')
+    expect(notSent()?.textContent).toContain('1 delivery report on this phone was not sent')
   })
 
   it('stays silent when nothing failed at all', async () => {

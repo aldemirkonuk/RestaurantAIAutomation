@@ -416,9 +416,18 @@ export async function resendDoorReceipt(id: string): Promise<boolean> {
 /**
  * "Discard" on one parked receipt: the person gives it up, having been told
  * the count is not on the server. The only path that removes a parked receipt.
+ *
+ * Looked up through the session-scoped read first, and only a PARKED entry is
+ * removed: a stale rail row (another tab un-parked it, or the house changed
+ * since the row was drawn) must not delete a receipt that is queued to send,
+ * or one that belongs to another person or house. Returns whether it removed.
  */
-export async function discardDoorReceipt(id: string): Promise<void> {
+export async function discardDoorReceipt(id: string): Promise<boolean> {
+  const all = await offlineStorage.getPendingMutationsByType(MUTATION_TYPE)
+  const m = all.find((x) => x.id === id)
+  if (!m || !m.parked) return false
   await offlineStorage.removePendingMutation(id)
+  return true
 }
 
 export interface DoorFlushResult {

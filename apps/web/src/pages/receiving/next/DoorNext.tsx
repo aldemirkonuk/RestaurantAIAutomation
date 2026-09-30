@@ -567,12 +567,16 @@ export default function DoorNext() {
           gone and nothing has to happen at the door. */}
       {notSent > 0 && (
         <p data-ux-key="door:not-sent" className="mx-4 mt-2 text-xs text-inkm-3">
+          {/* Counts every parked receipt: most were refused by the server, but a
+              very old one may name no one to send it as. So no cause is claimed
+              here; the Receiving rail names each one's reason and offers only
+              the actions that reason allows. */}
           {notSent === 1
-            ? '1 delivery report was refused by the server.'
-            : `${notSent} delivery reports were refused by the server.`}{' '}
-          {notSent === 1 ? 'It is' : 'They are'} kept on this phone as “Not sent” — send{' '}
-          {notSent === 1 ? 'it' : 'them'} again or discard {notSent === 1 ? 'it' : 'them'} from
-          Receiving.
+            ? '1 delivery report on this phone was not sent.'
+            : `${notSent} delivery reports on this phone were not sent.`}{' '}
+          {notSent === 1 ? 'It is' : 'They are'} kept here as “Not sent” — Receiving shows why,
+          and lets you send {notSent === 1 ? 'it' : 'them'} again where that is possible, or discard{' '}
+          {notSent === 1 ? 'it' : 'them'}.
         </p>
       )}
 
