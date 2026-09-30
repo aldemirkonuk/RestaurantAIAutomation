@@ -3,7 +3,8 @@
 Filed by `fix/order-approval-and-alert-relays` (founder ruling 2026-09-29: fix the verified live holes; recorded as [ADR 0244](../decisions/0244-an-order-edit-is-not-a-side-door-and-uncalled-relays-are-closed.md)). That branch closed three things in `PATCH /procurement/orders/:id`:
 - it no longer moves an order at all: every `status` gets a 422 `status_through_its_act`;
 - its price fields (`quotedPrice`, `negotiatedPrice`, `finalPrice`, `totalCost`, `priceVerified`) need a manager or an owner, through `OrganizationsService.assertCanManageRestaurant`;
-- every price change files `order_price_changed`, naming who changed which column, from what and to what.
+- every price change files `order_price_changed`, naming who changed which column, from what and to what (best-effort: a failed write is logged, never thrown);
+- the second door, `createOrder`'s dedup merge (a `POST /procurement/orders` for the same wine and vendor folds into the open order), needs a manager or an owner to move the quantity or any price of an order past PENDING, and files the same row (ADR 0090 review of #538, round 1).
 
 Claim `SEC-2026-09-29-ORDER-PATCH-AND-ALERT-RELAYS`. These are the gaps it knowingly left.
 
@@ -26,5 +27,7 @@ The two bypasses in F2 and F3 are also defects in their own right, and they are 
 **3. The web's order-edit helpers are dead, and one of them is wrong.** `apps/web/src/services/api/orders.ts` `updateOrder` and `updateOrderStatus` have no caller. `updateOrderStatus` can now only be refused (the claim fails if a web or mobile file starts calling it). The web type `UpdateOrderRequest` (`notes`, `quantity`, `unitPrice`) names fields that `UpdateOrderDto` does not declare, so main.ts's `forbidNonWhitelisted` would reject it with a 400. `apps/web/src/lib/supabase.ts` `updateOrderStatus` writes `procurement_orders` directly, keyed on an `order_id` column that does not exist. It is uncalled, and since OD-72 (`od72_revoke_client_grants`) no client role holds a grant on that table.
 
 **4. The generated docs still list the closed relays.** `.planning/00-index/DESIGN-MAP.html`, `atlas-graph.json` and `.planning/foundation/ENDPOINTS.md` still show `POST /communications/alerts/low-stock` and `/alerts/daily-summary` until the next regeneration (`scripts/generate_design_atlas.py`). Those files are never edited by hand.
+
+**5. Two other callers of the merge, found in passing.** Ask-AI's confirmed reorder (`ask-ai.service.ts` `execute`) passes no price. `createOrder` therefore computes `final_price` 0 and `total_cost` 0. If an open order for the same wine and vendor exists, the fold writes those zeros onto it. On an order past PENDING it now needs a manager, and it is filed either way. When the order has a priced line, the header-echo trigger should refuse the write, which surfaces as a 500. Either outcome is wrong: a reorder confirmation should not reprice the open order. The legacy recurring cron (`recurring-orders.service.ts`) creates as `created_by || "system"`. If that person is not a manager, its fold into an open order past PENDING is now refused where it used to rewrite the order. That is the intended stop, but the cron's per-schedule catch logs it as an error on that schedule, and nobody is told to sign. Neither is fixed here.
 
 **Severity:** high while (1) is open. A manager's approval ceiling can be stepped around, after the seal through the PATCH and at any time through confirm-deal. (2) to (4) are low.

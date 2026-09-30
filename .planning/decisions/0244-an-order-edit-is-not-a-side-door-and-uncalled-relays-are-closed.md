@@ -14,7 +14,7 @@ An 817-route audit at 5a20d774b found two live holes. Both were re-verified at c
 2. **`POST /communications/alerts/low-stock` and `/alerts/daily-summary` were relays.** Any signed-in member could make the platform's Plivo number text any phone, and the shared Gmail mailbox mail any address, with words of their choosing (`wineName`, `restaurantName`). There was no role check, no recipient allow-list and no record.
 
 **Callers, measured 2026-09-29 with `git grep` over apps/web/src, apps/mobile, packages, services, supabase, scripts and apps/web/e2e:**
-- **The PATCH:** no client sends a `status`. `ordersApi.updateOrder` and `updateOrderStatus` are exported and uncalled, and the legacy desk's "Mark as Ordered" went with #494. The one caller of the service method is `cancelOrder`, which has already run the transition, the category, the role and the seal.
+- **The PATCH:** no client sends a `status`. `ordersApi.updateOrder` and `updateOrderStatus` are exported and uncalled, and the legacy desk's "Mark as Ordered" went with #494. The service method has two callers: the PATCH controller, and `cancelOrder`, which has already run the transition, the category, the role and the seal before it writes CANCELLED through it.
 - **The relays:** no caller at all, the orchestrator included. What the product actually sends goes through `ScheduledTasksService`, which resolves recipients from the house's own register.
 
 ## Options considered
@@ -28,12 +28,17 @@ An 817-route audit at 5a20d774b found two live holes. Both were re-verified at c
 - **D1. `PATCH orders/:id` moves no order.**
   - Any `status` is refused with 422 `status_through_its_act`, and the message names the act that makes that move: holding to approve, the receiving door or verifying the receipt, the cancel act, or the vendor's own confirmation.
   - The older `cancel_through_the_sealed_act` refusal stays.
-  - A status is written through `updateOrder` only by a caller that has already run the transition, which today is `cancelOrder` alone.
-- **D2. The order's money is a manager's or an owner's to change, and every change leaves paper.**
+  - `updateOrder` has two callers, the controller and `cancelOrder`. Only a caller that has already run the transition may write a status through it, and of the two that is `cancelOrder` alone. The controller never passes the flag that allows it.
+- **D2. The order's money is a manager's or an owner's to change, and each change is filed, best-effort.**
   - `quotedPrice`, `negotiatedPrice`, `finalPrice`, `totalCost` and `priceVerified` need `OrganizationsService.assertCanManageRestaurant(actor, house, "change an order's price")`, the same helper cancel uses.
   - The check fails closed: an unwired helper is a 500, and an unnamed actor is a 403.
   - The figures are read before the write, and a failed read refuses the edit.
-  - Every figure that actually moved is filed as `order_price_changed` in `system_audit_log` (who, and each column from and to).
+  - Every figure that actually moved is filed as `order_price_changed` in `system_audit_log`: who, which door, and each column from and to. The filing is best-effort. `recordOrderPriceChanged` never throws, because the change has already happened, and a failed write is logged loudly as `order_price_changed happened but the audit row failed`. This is the same contract as `order_cancelled`, so the log can miss a change it cannot write.
+  - **The second door, `createOrder`'s dedup merge, is closed too** (ADR 0090 security review of #538, round 1). `POST /procurement/orders` checks no role. When an open order exists for the same house, wine and vendor, the new request is folded into it. On an APPROVAL_NEEDED, NEGOTIATING or APPROVED order, that fold rewrote the quantity, unit, bottles and every price for any member, with no paper.
+    - A fold that moves any of those figures on an order past PENDING now needs the same helper and the same action words, and gets the same 403 (`merge_would_change_price`). The actor is the JWT's user, threaded from the controller.
+    - Quantity is money here: the approval rules test the order's total, and the fold recomputes that total from the quantity. A body that holds the total while raising the quantity is still refused.
+    - A fold into a PENDING order keeps today's re-quote for every member, because nobody has approved it and approving it tests the new figures. It now files `order_price_changed` too (door `merge`).
+    - A re-post that moves no figure is neither refused nor filed.
   - The notes stay open to every member.
 - **D3. A price edit on an approved order re-checks the editor's limit (founder, 2026-09-30). RULED, NOT BUILT: its design waits on four founder calls.** The approval gate runs again for the person making the edit. If the new figure is beyond their limit, the order goes back to APPROVAL_NEEDED for someone whose limit covers it.
   - **Why it is not built yet.** A separate adversarial pass on 2026-09-30 killed the literal build (park the order at APPROVAL_NEEDED, release its reservation, hold its staged mail). The builder checked its load-bearing findings:
@@ -57,9 +62,9 @@ An 817-route audit at 5a20d774b found two live holes. Both were re-verified at c
 
 ## Consequences
 
-- **Easier.** An approval, a cancellation, a delivery or a placement can no longer be asserted through an edit. A price change now names its author.
+- **Easier.** An approval, a cancellation, a delivery or a placement can no longer be asserted through an edit. A price change, through the PATCH or through a fold, now names its author when the log can be written.
 - **Given up.** Nobody can set an order's status by hand. If a manual "placed with the vendor" act is wanted again, it needs its own act and its own rule. Staff can no longer correct a price; a manager or an owner does.
-- **Contract change.** `PATCH` with any `status` is now a 422, and a price field from staff is a 403. No client sends either.
+- **Contract change.** `PATCH` with any `status` is now a 422, and a price field from staff is a 403. No client sends either. A staff `POST /procurement/orders` that would reprice, or change the quantity of, an open order past PENDING is now a 403 naming that order, where it used to rewrite it.
 - **Not covered** (`tech-debt.d/2026-09-29-fix-order-approval-and-alert-relays.md`):
   - `rejectionReason`, `discrepancyNotes` and `invoiceImageUrl` are still writable by any member.
   - The web's order-edit helpers are dead.
@@ -68,9 +73,11 @@ An 817-route audit at 5a20d774b found two live holes. Both were re-verified at c
 
 ## Evidence
 
-- **`order-patch-is-not-a-side-door.spec.ts`:** 34 cases over HTTP, through the real controller and service behind main.ts's ValidationPipe.
-  - 27 were red on c47fd8a01. The four `order_price_changed` cases came later: two of them are red against the D1/D2 service without the audit row.
-  - Service and controller mutations killed: 6 of 6 for D1/D2, 3 of 3 for the audit row.
+- **`order-patch-is-not-a-side-door.spec.ts`:** 42 cases over HTTP, through the real controller and service behind main.ts's ValidationPipe.
+  - 27 were red on c47fd8a01.
+  - The four `order_price_changed` cases came later: two of them are red against the D1/D2 service without the audit row.
+  - The eight merge cases came in round 1: seven of them are red at e5edf9af1, 201 where 403 was expected. The eighth pins the harmless re-post.
+  - Service and controller mutations killed: 6 of 6 for D1/D2, 3 of 3 for the audit row, 7 of 7 for the merge.
 - **`alert-relays-are-closed.spec.ts`:** 5 cases, 4 red against the base controller and DTO.
 - **Claim `SEC-2026-09-29-ORDER-PATCH-AND-ALERT-RELAYS`:** static, red on c47fd8a01, and every one of its tripwire checks has been mutated and caught.
 
@@ -80,3 +87,4 @@ An 817-route audit at 5a20d774b found two live holes. Both were re-verified at c
 |---|---|---|
 | 2026-09-30 | — | Created on `fix/order-approval-and-alert-relays` |
 | 2026-09-30 | Adversarial pass (separate agent), with its findings re-verified by the builder | D3's literal build is unsafe (stock, vendor mail, door, readers of APPROVAL_NEEDED), and confirm-deal and the autonomy accept bypass the gate. D3 is held for four founder calls |
+| 2026-09-30 | ADR 0090 audit of #538 at e5edf9af1 (security BLOCK, correctness APPROVE) | Round 1: the dedup merge was a second staff door to an open order's money and is closed (D2). D1's caller sentence and D2's paper sentence were narrowed to the code. D3 is untouched |
