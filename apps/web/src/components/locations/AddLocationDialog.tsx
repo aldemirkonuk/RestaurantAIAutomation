@@ -42,6 +42,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import { useProviders } from '../../hooks/queries'
 import { BranchProviderTransferModal } from '../providers/BranchProviderTransferModal'
 import { apiClient } from '../../services/api/client'
+import { getBrowserTimezone } from '../../lib/browserTimezone'
 import { Sheet } from '../mudavym/Sheet'
 import { useMudavymShell } from '../../lib/mudavym/shellGround'
 import './locations-mudavym.css'
@@ -134,7 +135,9 @@ export function AddLocationDialog({ open, onClose, onLocationAdded, anchorRef }:
         postalCode: postalCode.trim() || undefined,
         phone: phone.trim() ? toE164(phone, countryToPhoneDefault(country)) : undefined,
         cuisineType: cuisineType.trim() || undefined,
-        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        // Omitted, not thrown, when the browser will not say (item 62); the
+        // gateway re-checks whatever arrives (resolveSignUpTimezone).
+        timezone: getBrowserTimezone(),
         chainId: chainId || undefined,
       })
       toast.success(`${name} added successfully!`)

@@ -11,6 +11,7 @@ import {
 } from "@nestjs/common";
 import { ORG_OWNER } from "./org-role";
 import { DatabaseService } from "../database/database.service";
+import { resolveSignUpTimezone } from "../auth/sign-up-timezone";
 
 /**
  * What this person is at this restaurant — the ONE implementation of the
@@ -780,7 +781,16 @@ export class OrganizationsService {
         // carry the absence and run that house's per-tenant work in UTC while
         // saying so (`communications/scheduled-tenants.service.ts`,
         // TIMEZONE_NOT_SET).
-        timezone: dto.timezone ?? null,
+        //
+        // And a sent zone is trusted no further than `Intl` vouches for it
+        // (founder item 62, 2026-09-27, "Browser zone, else none"): this
+        // route's only caller, AddLocationDialog, sends the browser's zone
+        // exactly as the two sign-up routes do, so it gets the same rule —
+        // Intl's resolved name, or nothing for an absent, unknown or
+        // bare-offset value. Until 2026-09-28 any string the client sent
+        // became the new house's clock (TD-2026-09-27-CREATE-LOCATION-
+        // TIMEZONE-UNVALIDATED, v3.0-TECH-DEBT.md).
+        timezone: resolveSignUpTimezone(dto.timezone),
         organization_id: organizationId,
         chain_id: dto.chainId ?? null,
       })
