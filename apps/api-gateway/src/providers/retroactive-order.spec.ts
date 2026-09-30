@@ -455,6 +455,11 @@ describe("createRetroactiveOrder — the wine is already in the cellar", () => {
     // The positive half first: a normal order with an open match DOES merge.
     const openOrder = {
       id: "existing-1",
+      // A request nobody has approved yet: the re-quote a merge exists for.
+      // Stated, because a merge into anything past PENDING that moves the
+      // money now needs a manager or an owner (ADR 0244 D2), and an order
+      // whose state cannot be read is not assumed to be PENDING.
+      status: "PENDING",
       quoted_price: 40,
       negotiated_price: null,
       is_emergency: false,

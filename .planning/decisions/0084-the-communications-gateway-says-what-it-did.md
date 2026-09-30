@@ -200,7 +200,8 @@ Concretely:
    would later hand the carrier.
 4. **The low-stock alert's broadcast room is derived from the JWT.** A body
    `restaurantId` that disagrees is refused with 400, never silently rewritten.
-   **[Superseded 2026-09-29, `fix/order-approval-and-alert-relays`: `POST
+
+   **[Item 4 superseded 2026-09-29, `fix/order-approval-and-alert-relays`: `POST
    /communications/alerts/low-stock` and `/alerts/daily-summary` are CLOSED (they
    relayed mail and SMS to any address for any member, and nothing called them),
    with `resolveAlertTenant` and `DailySummaryDto`. The scheduled sender passes each

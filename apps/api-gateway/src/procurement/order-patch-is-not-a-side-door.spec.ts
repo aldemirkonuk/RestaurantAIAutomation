@@ -18,9 +18,10 @@
  * apps/mobile, packages, services, scripts, apps/web/e2e): NONE in any client.
  * `ordersApi.updateOrder` / `updateOrderStatus` in apps/web are exported and
  * called by nothing; the legacy desk's "Mark as Ordered" that sent
- * `status: CONFIRMED` here was deleted in #494. The one caller of the SERVICE
- * method is `cancelOrder`, which has already run the transition, the category,
- * the role and the seal, and says so through `opts`.
+ * `status: CONFIRMED` here was deleted in #494. The SERVICE method has two
+ * callers: this controller, and `cancelOrder` — the only one that writes a
+ * status through it, having already run the transition, the category, the
+ * role and the seal, and saying so through `opts`.
  *
  * The app runs the REAL ProcurementController and the REAL ProcurementService
  * behind a global ValidationPipe with main.ts's options, over an in-memory
@@ -72,12 +73,15 @@ const state: {
   roleAsks: string[];
   audits: Row[];
   failOrderRead: boolean;
+  /** Line writes (`procurement_order_items` delete + insert) the merge made. */
+  lineWrites: string[];
 } = {
   order: {},
   writes: [],
   roleAsks: [],
   audits: [],
   failOrderRead: false,
+  lineWrites: [],
 };
 
 function seed(status: S): void {
@@ -95,6 +99,28 @@ function seed(status: S): void {
   state.roleAsks = [];
   state.audits = [];
   state.failOrderRead = false;
+  state.lineWrites = [];
+}
+
+/**
+ * An open order the dedup merge in `createOrder` will find: same house, same
+ * item, same vendor, six bottles at 300.00, total 1,800.00.
+ */
+const INVENTORY = "33333333-3333-4333-8333-333333333333";
+const VENDOR = "44444444-4444-4444-8444-444444444444";
+function seedOpenOrder(status: S): void {
+  seed(status);
+  Object.assign(state.order, {
+    inventory_id: INVENTORY,
+    provider_id: VENDOR,
+    quantity: 6,
+    unit_type: "bottle",
+    bottles_total: 6,
+    quoted_price: null,
+    negotiated_price: null,
+    final_price: "300.00",
+    total_cost: "1800.00",
+  });
 }
 
 const supabase: any = {
@@ -103,6 +129,13 @@ const supabase: any = {
       select: () => q,
       insert: (row: Row) => {
         if (table === "system_audit_log") state.audits.push(row);
+        if (table === "procurement_order_items")
+          state.lineWrites.push("insert");
+        return q;
+      },
+      delete: () => {
+        if (table === "procurement_order_items")
+          state.lineWrites.push("delete");
         return q;
       },
       update: (payload: Row) => {
@@ -128,13 +161,24 @@ const supabase: any = {
           ? state.failOrderRead
             ? { data: null, error: { message: "connection reset" } }
             : { data: { ...state.order }, error: null }
-          : { data: null, error: null },
+          : table === "restaurant_inventory"
+            ? { data: { id: INVENTORY, wine_name: "Barolo 2019" }, error: null }
+            : { data: null, error: null },
       single: async () =>
         table === "procurement_orders"
           ? { data: { ...state.order }, error: null }
           : { data: null, error: null },
+      // A list read. `providers` is only ever counted here (the vendor is the
+      // house's, and the house has an active vendor); `procurement_orders` as
+      // a list is the dedup lookup, which finds the one open order.
       then: (resolve: any, reject: any) =>
-        Promise.resolve({ data: [], error: null }).then(resolve, reject),
+        Promise.resolve(
+          table === "providers"
+            ? { count: 1, data: [], error: null }
+            : table === "procurement_orders"
+              ? { data: [{ ...state.order }], error: null }
+              : { data: [], error: null },
+        ).then(resolve, reject),
     };
     return q;
   },
@@ -147,8 +191,29 @@ async function patch(
   as: string,
   body: unknown,
 ): Promise<{ status: number; body: any }> {
-  const res = await fetch(`${base}/procurement/orders/${ORDER}`, {
-    method: "PATCH",
+  return send("PATCH", `/procurement/orders/${ORDER}`, as, body);
+}
+
+/** `POST /procurement/orders` for the seeded open order's wine and vendor. */
+async function place(
+  as: string,
+  body: Row,
+): Promise<{ status: number; body: any }> {
+  return send("POST", "/procurement/orders", as, {
+    inventoryId: INVENTORY,
+    providerId: VENDOR,
+    ...body,
+  });
+}
+
+async function send(
+  method: "PATCH" | "POST",
+  path: string,
+  as: string,
+  body: unknown,
+): Promise<{ status: number; body: any }> {
+  const res = await fetch(`${base}${path}`, {
+    method,
     headers: { "content-type": "application/json", "x-test-user": as },
     body: JSON.stringify(body),
   });
@@ -430,6 +495,98 @@ describe("a price change leaves paper", () => {
     expect(res.status).toBe(500);
     expect(String(res.body.message)).toMatch(/price was not changed/);
     expect(state.writes).toHaveLength(0);
+  });
+});
+
+// ===========================================================================
+// 2c. The dedup merge is the second door to an open order's money (ADR 0244)
+// ===========================================================================
+//
+// `POST /procurement/orders` checks no role. When an open order already exists
+// for the same house, wine and vendor, `createOrder` folds the new request into
+// it — and on c47fd8a01 and at e5edf9af1 that fold rewrote the quantity and
+// every price of an APPROVAL_NEEDED, NEGOTIATING or APPROVED order for any
+// member, with no paper. Found by the ADR 0090 security review of #538.
+
+describe("a new order folded into an open one moves its money only for a manager or an owner", () => {
+  it.each([S.APPROVAL_NEEDED, S.NEGOTIATING, S.APPROVED])(
+    "[REVERT-FAILS] staff re-pricing a %s order by posting it again is a 403, and nothing is written",
+    async (status) => {
+      seedOpenOrder(status);
+      const res = await place(STAFF, { quantity: 6, finalPrice: 400 });
+      expect(res.status).toBe(403);
+      expect(res.body.reason).toBe("merge_would_change_price");
+      expect(String(res.body.message)).toMatch(
+        /only managers and owners can change an order's price\. Nothing was changed\.$/,
+      );
+      expect(state.writes).toHaveLength(0);
+      expect(state.lineWrites).toHaveLength(0);
+      expect(state.audits).toHaveLength(0);
+      expect(state.order.final_price).toBe("300.00");
+    },
+  );
+
+  it("[REVERT-FAILS] raising only the quantity of an approved order is money too", async () => {
+    // The approval rules test the order's TOTAL, and the merge recomputes the
+    // total from the quantity: 12 bottles at 300 is 3,600, not 1,800.
+    seedOpenOrder(S.APPROVED);
+    const res = await place(STAFF, { quantity: 12, finalPrice: 300 });
+    expect(res.status).toBe(403);
+    expect(state.writes).toHaveLength(0);
+    expect(state.order.quantity).toBe(6);
+  });
+
+  it("[REVERT-FAILS] a quantity change with the total held is still money", async () => {
+    // The body can state its own total, so the quantity has to be tested on
+    // its own: twelve bottles "for" 1,800 is still twice the wine approved.
+    seedOpenOrder(S.APPROVED);
+    const res = await place(STAFF, {
+      quantity: 12,
+      finalPrice: 300,
+      totalCost: 1800,
+    });
+    expect(res.status).toBe(403);
+    expect(state.writes).toHaveLength(0);
+  });
+
+  it("[REVERT-FAILS] a manager may fold it in, the role helper is asked, and it leaves paper", async () => {
+    seedOpenOrder(S.APPROVED);
+    const res = await place(MANAGER, { quantity: 6, finalPrice: 400 });
+    expect(res.status).toBe(201);
+    expect(state.roleAsks).toContain("change an order's price");
+    expect(state.writes).toHaveLength(1);
+    expect(state.writes[0].final_price).toBe(400);
+    expect(state.writes[0].total_cost).toBe(2400);
+    expect(state.audits).toHaveLength(1);
+    const row = state.audits[0];
+    expect(row.action).toBe("order_price_changed");
+    expect(row.actor_id).toBe(MANAGER);
+    expect(row.changes.door).toBe("merge");
+    expect(row.changes.status).toBe(S.APPROVED);
+    expect(row.changes.fields).toEqual({
+      final_price: { from: "300.00", to: 400 },
+      total_cost: { from: "1800.00", to: 2400 },
+    });
+  });
+
+  it("[REVERT-FAILS] a PENDING order keeps today's re-quote for staff, and now leaves paper", async () => {
+    // Nobody has approved a PENDING order; approving it tests the new figures.
+    seedOpenOrder(S.PENDING);
+    const res = await place(STAFF, { quantity: 6, finalPrice: 400 });
+    expect(res.status).toBe(201);
+    expect(state.roleAsks).toHaveLength(0);
+    expect(state.writes).toHaveLength(1);
+    expect(state.audits).toHaveLength(1);
+    expect(state.audits[0].actor_id).toBe(STAFF);
+    expect(state.audits[0].changes.door).toBe("merge");
+  });
+
+  it("a re-post that moves no figure is not refused and files nothing", async () => {
+    seedOpenOrder(S.APPROVED);
+    const res = await place(STAFF, { quantity: 6, finalPrice: 300 });
+    expect(res.status).toBe(201);
+    expect(state.roleAsks).toHaveLength(0);
+    expect(state.audits).toHaveLength(0);
   });
 });
 

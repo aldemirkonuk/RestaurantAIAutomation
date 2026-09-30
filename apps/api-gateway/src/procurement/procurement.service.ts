@@ -176,6 +176,7 @@ import {
   decideTransition,
   readOrderStatus,
   refuseUnreadableStatus,
+  statusInWords,
 } from "./order-transitions";
 import { toPostgrestInList } from "./order-status";
 import {
@@ -574,6 +575,46 @@ type OrderMoneyBefore = {
   (typeof ORDER_MONEY_COLUMNS)[number],
   string | number | boolean | null
 >;
+
+/**
+ * What `createOrder`'s dedup merge rewrites on an open order that moves its
+ * money (ADR 0244 D2). Quantity is money here: the approval rules test the
+ * order's total, and the merge recomputes that total from the quantity.
+ */
+const MERGE_MONEY_COLUMNS = [
+  "quantity",
+  "unit_type",
+  "bottles_total",
+  "quoted_price",
+  "negotiated_price",
+  "final_price",
+  "total_cost",
+] as const;
+
+/**
+ * The columns whose value differs between two readings of one order, each
+ * with its from and to. Numbers compare as numbers (a stored "300.00" and a
+ * sent 300 are the same price); `unit_type` and `price_verified` compare as
+ * they are.
+ */
+function movedOrderFigures(
+  before: Record<string, unknown> | null | undefined,
+  after: Record<string, unknown> | null | undefined,
+  columns: readonly string[],
+): Record<string, { from: unknown; to: unknown }> {
+  const fields: Record<string, { from: unknown; to: unknown }> = {};
+  for (const column of columns) {
+    const from = before?.[column] ?? null;
+    const to = after?.[column] ?? null;
+    const same =
+      column === "price_verified" || column === "unit_type"
+        ? from === to
+        : toFiniteNumber(from as string | number | null) ===
+          toFiniteNumber(to as string | number | null);
+    if (!same) fields[column] = { from, to };
+  }
+  return fields;
+}
 
 /**
  * Where a move to `to` is actually made — the first half of the sentence
@@ -1182,6 +1223,38 @@ export class ProcurementService {
     }
 
     if (existing && dto.providerId) {
+      // ADR 0244 D2 — the merge is the second door to an open order's money.
+      // What it is about to write, compared with what the order holds, BEFORE
+      // anything is written: a fold that moves nothing is today's harmless
+      // re-post; one that moves the quantity or a price on an order past
+      // PENDING needs a manager or an owner.
+      const mergeMoves = movedOrderFigures(
+        existing,
+        {
+          quantity: dto.quantity,
+          unit_type: units.unitType,
+          bottles_total: bottlesTotal,
+          quoted_price: dto.quotedPrice ?? existing.quoted_price ?? null,
+          negotiated_price:
+            dto.negotiatedPrice ?? existing.negotiated_price ?? null,
+          final_price: finalPrice,
+          total_cost: totalCost,
+        },
+        MERGE_MONEY_COLUMNS,
+      );
+      const existingStatus = readOrderStatus(existing.status);
+      if (
+        Object.keys(mergeMoves).length > 0 &&
+        existingStatus !== ProcurementOrderStatus.PENDING
+      ) {
+        await this.assertMayMergeMoneyInto(
+          restaurantId,
+          userId,
+          existing,
+          existingStatus,
+        );
+      }
+
       const { data: updated, error: updateError } =
         await this.databaseService.supabase
           .from("procurement_orders")
@@ -1235,6 +1308,14 @@ export class ProcurementService {
       });
 
       const updatedRow = updated as any;
+      await this.recordOrderPriceChanged({
+        restaurantId,
+        orderId: existing.id,
+        actorUserId: userId,
+        door: "merge",
+        status: updatedRow?.status ?? existing.status ?? null,
+        fields: movedOrderFigures(existing, updatedRow, MERGE_MONEY_COLUMNS),
+      });
       const mergedRow: ProcurementOrderRow = {
         ...updatedRow,
         wine_name:
@@ -3505,8 +3586,9 @@ export class ProcurementService {
         restaurantId,
         orderId,
         actorUserId: opts.actorUserId,
-        before: moneyBefore,
-        after: row,
+        door: "patch",
+        status: row?.status ?? moneyBefore.status ?? null,
+        fields: movedOrderFigures(moneyBefore, row, ORDER_MONEY_COLUMNS),
       });
     }
 
@@ -3545,60 +3627,106 @@ export class ProcurementService {
 
   /**
    * File `order_price_changed` in `system_audit_log`: who changed which of
-   * the order's figures, from what, to what (ADR 0244). Only the columns that
-   * actually moved are named; an edit that moved none files nothing. Never
-   * throws — the edit has happened, and a 500 because the log failed would
-   * say otherwise — but a failed write is logged loudly. Shaped like
-   * `order_cancelled`, one register for the life of one order.
+   * the order's figures, through which door, from what, to what (ADR 0244
+   * D2). The two doors are `PATCH orders/:id` and `createOrder`'s dedup merge.
+   * An edit that moved nothing files nothing. Best-effort, like
+   * `order_cancelled`: it never throws, because the change has already
+   * happened and a 500 because the log failed would say otherwise, and a
+   * failed write is logged loudly instead.
    */
   private async recordOrderPriceChanged(record: {
     restaurantId: string;
     orderId: string;
     actorUserId: string;
-    before: OrderMoneyBefore;
-    after: Record<string, any>;
+    door: "patch" | "merge";
+    status: string | null;
+    fields: Record<string, { from: unknown; to: unknown }>;
   }): Promise<void> {
-    const fields: Record<string, { from: unknown; to: unknown }> = {};
-    for (const column of ORDER_MONEY_COLUMNS) {
-      const from = record.before[column] ?? null;
-      const to = record.after?.[column] ?? null;
-      const same =
-        column === "price_verified"
-          ? from === to
-          : toFiniteNumber(from as any) === toFiniteNumber(to as any);
-      if (!same) fields[column] = { from, to };
-    }
-    if (Object.keys(fields).length === 0) return;
-
+    if (Object.keys(record.fields).length === 0) return;
+    const actor = asUuid(record.actorUserId);
     try {
       const { error } = await this.databaseService.supabase
         .from("system_audit_log")
         .insert({
-          actor_type: "user",
-          actor_id: record.actorUserId,
+          actor_type: actor ? "user" : "system",
+          actor_id: actor,
           action: "order_price_changed",
           entity_type: "procurement_order",
           entity_id: record.orderId,
           changes: {
             register: "orders",
             subject: record.orderId,
-            status: record.after?.status ?? record.before.status ?? null,
-            fields,
+            status: record.status,
+            door: record.door,
+            fields: record.fields,
           },
           restaurant_id: record.restaurantId,
-          reason: "A manager or an owner changed this order's price.",
+          reason:
+            record.door === "patch"
+              ? "A manager or an owner changed this order's price by editing it."
+              : "A new order for the same wine and vendor was folded into this open order, changing its figures.",
         });
       if (error) {
         this.logger.error(
           `order_price_changed happened but the audit row failed to write: ${error.message}. ` +
-            `Order ${record.orderId}'s price IS changed and the log does not say so.`,
+            `Order ${record.orderId}'s figures ARE changed and the log does not say so.`,
         );
       }
     } catch (err: any) {
       this.logger.error(
         `order_price_changed happened but the audit row threw: ${err?.message}. ` +
-          `Order ${record.orderId}'s price IS changed and the log does not say so.`,
+          `Order ${record.orderId}'s figures ARE changed and the log does not say so.`,
       );
+    }
+  }
+
+  /**
+   * May this person fold a new order into an open one past PENDING, when the
+   * fold would move its money (ADR 0244 D2)?
+   *
+   * The dedup merge in `createOrder` is the second door to an open order's
+   * figures, beside `PATCH orders/:id`. `POST /procurement/orders` checks no
+   * role, so without this a member of staff re-posting the same wine and
+   * vendor rewrote an APPROVED order's quantity and prices, with no role and
+   * no paper. The same helper, the same action words and the same 403 as the
+   * PATCH: a manager making the same request succeeds, so this is a refusal
+   * of authority (403), not of the order's state (409). A PENDING order keeps
+   * today's re-quote behaviour; nobody has approved it yet, and approving it
+   * tests the new figures.
+   */
+  private async assertMayMergeMoneyInto(
+    restaurantId: string,
+    userId: string,
+    existing: { order_number?: string | null },
+    status: ProcurementOrderStatus | null,
+  ): Promise<void> {
+    if (!this.organizations) {
+      throw new InternalServerErrorException(
+        "Who may change an order's price could not be established (the organizations service is not " +
+          "wired into procurement), so nothing was changed. This is a gateway fault, not a decision about this order.",
+      );
+    }
+    try {
+      await this.organizations.assertCanManageRestaurant(
+        userId,
+        restaurantId,
+        "change an order's price",
+      );
+    } catch (err) {
+      if (err instanceof ForbiddenException) {
+        const which = existing.order_number
+          ? ` (${existing.order_number})`
+          : "";
+        const where = status ? statusInWords(status) : "past pending";
+        throw new ForbiddenException({
+          reason: "merge_would_change_price",
+          message:
+            `An open order for this wine from this vendor${which} is already ${where}. ` +
+            "This one would be folded into it and change its quantity or price, and only " +
+            "managers and owners can change an order's price. Nothing was changed.",
+        });
+      }
+      throw err;
     }
   }
 
