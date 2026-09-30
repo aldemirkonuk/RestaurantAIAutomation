@@ -117,7 +117,7 @@ point can and should be as deep as the decision warrants.
 ([ADR 0032](.planning/decisions/0032-vault-cleanup-cut-line.md), 2026-08-27 —
 closed build trees deleted, recoverable via its tombstone index). **Archive
 means delete + tombstone**: nothing is copied or moved into an in-tree archive unless the founder grants an exception in an ADR
-(the only one: [ADR 0032 §Scoped exception](.planning/decisions/0032-vault-cleanup-cut-line.md), the #494 legacy-web `.tar.gz`, 2026-09-29);
+(so far [ADR 0032 §Scoped exception](.planning/decisions/0032-vault-cleanup-cut-line.md), the #494 legacy-web `.tar.gz`, 2026-09-29; `archive/`'s two pre-P2 snapshots predate the rule);
 a retirement lists the file in the retiring ADR with its recovery commit. Ongoing rules:
 
 - Treat `PROJECT.md`, `STATE.md`, `ROADMAP.md`, `FUTURES.md`, `YC_WEDGE_PLAN.md`
