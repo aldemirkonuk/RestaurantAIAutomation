@@ -452,10 +452,10 @@ jobs:
           echo "web's watched paths were last touched at: $RESOLVED"
           echo "expect=$RESOLVED" >> "$GITHUB_OUTPUT"
 
-      # tip(main) is fetched here, not read from HEAD: with no `ref`,
-      # actions/checkout checks out github.sha, which for a workflow_run event
-      # is main's tip when the event fired, so HEAD is already behind any
-      # merge that landed while Stages 1-2 and the build above ran. The check also
+      # tip(main) is fetched here, not read from HEAD: this stage's checkout
+      # is pinned to the commit whose CI run triggered it (`ref:` above, #432),
+      # so HEAD is that commit, which is already behind any merge that landed
+      # while Stages 1-2 and the build above ran. The check also
       # gets --refresh-remote origin, so a merge that lands (and that Vercel
       # serves) during its own poll is fetched and classified against, rather
       # than read as DIVERGENT.
