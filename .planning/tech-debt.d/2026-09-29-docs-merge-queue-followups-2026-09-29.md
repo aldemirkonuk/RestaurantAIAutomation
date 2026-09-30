@@ -10,6 +10,8 @@ Filed from the ADR 0090 audit of #508. This entry records the defect. The fork i
 
 **Severity.** High while open for a shared device, such as a tablet at the pass. A replayed create (`calendar.create`, `provider.create`, `sync-manager.ts:52-76`) lands in whichever house is signed in, and any replayed write is attributed to whoever is signed in. An update or delete by id reaches another house only where the gateway's lookup by id is not scoped to the house. Medium otherwise.
 
+**Measured 2026-09-29 — which edits by id could cross houses.** The severity above turned on whether the gateway scopes a write by id to the caller's house. It was measured for every `PATCH`/`PUT`/`DELETE` route at `71ae5449b` plus #518's one addition: `.planning/07-reference/GATEWAY-EDIT-BY-ID-SCOPE-2026-09-29.md` — 130 routes, 124 scoped. None of the six that were not is a route the offline queue replays (`calendar.*`, `provider.*`, `notification.*` are all scoped); `fix/gateway-edit-by-id-house-scope` fixed three (unmounted contacts routes) and narrowed one (`DELETE /mobile/devices/:token`, which a token holder can still reach by registering the token first), and two (`/organizations/chains/:id`) stay on OD-131 (b). So, at that commit, a replayed update or delete by id could not reach another house's row; a replayed create could (it lands in whichever house is signed in), which ADR 0241 (in open PR #527 when this was written) closes by binding each entry to its house.
+
 **Not covered.** The door-receipt and spot-count outboxes use the same queue with their own handlers. They are skipped at `sync-manager.ts:239-248` and were not reviewed here.
 
 ## `MembersService.removeMember` is a second removal path that leaves shifts and the roster behind — OPEN — 2026-09-29
