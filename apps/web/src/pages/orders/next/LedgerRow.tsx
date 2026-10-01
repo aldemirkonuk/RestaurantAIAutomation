@@ -273,7 +273,7 @@ export function LedgerRow({
             >
               {row.wineName ?? EM}
             </span>
-            <span className="block truncate" style={{ fontSize: 11.5, color: 'var(--ink-4, #665D50)' }}>
+            <span className="block break-words" style={{ fontSize: 11.5, color: 'var(--ink-4, #665D50)' }}>
               {row.providerName ?? EM}
               {/*
                 * "recurs weekly, next 12 Sep". The clause is rendered whenever
