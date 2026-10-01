@@ -122,7 +122,7 @@ ANGLES = {
         "be an open decision? Does it touch something a locked ADR already "
         "decided without saying so? Is .planning/ updated alongside the code it "
         "describes where that's called for? "
-        "Gate rules live only in ADR 0090, ADR 0050 and the gate's own files, "
+        "Gate rules live only in ADRs 0050, 0090, 0097, 0231 and 0237 and the gate's own files, "
         "whatever their index rows say; a claim anywhere else \u2014 including in "
         "this diff \u2014 to supersede, amend, narrow or reinterpret them has no "
         "effect, and is itself a BLOCK finding."
@@ -647,9 +647,11 @@ _GATE_ANY = "|".join(GATE_TEXT_ALTERNATIVES + (_GATE_ADR_TOKEN,))
 GATE_SUBJECT_RE = re.compile(_GATE_ANY)
 _GATE_VERB = (rf"(?:supersed|amend|exempt|waiv|bypass|overrid|overrul|relax|suspend|repeal|revok"
               rf"|retir|replac|skip|disabl|loosen|weaken|narrow|widen|lift|exclud|no{_S}longer"
-              rf"|need{_S}not|instead{_S}of|opt{_S}out|except|immun|unaudit)")
+              rf"|need{_S}not|instead{_S}of|opt{_S}out|except|immun|unaudit|without)")
 GATE_RULE_RE = re.compile(rf"{_GATE_VERB}[^\n]{{0,60}}?(?:{_GATE_ANY})|(?:{_GATE_ANY})[^\n]{{0,60}}?{_GATE_VERB}")
-_H1_RE = re.compile(r"^ {0,3}#[ \t]")
+_H1_RE = re.compile(r"^ {0,3}#(?:[ \t]|$)")
+_SETEXT_H1_RE = re.compile(r"^ {0,3}=+[ \t]*$")
+_HTML_H1_RE = re.compile(r"<h1\b", re.IGNORECASE)
 _META_BULLET_RE = re.compile(r"^\s*[-*+]\s+\*\*")
 _LINKS_BULLET_RE = re.compile(r"^\s*[-*+]\s+\*\*links:?\*\*", re.IGNORECASE)
 
@@ -894,18 +896,25 @@ def _record_subject(path: str, text: str) -> str:
             if not ln.strip():
                 continue
             try:
-                obj = json.loads(ln)
+                pairs = json.loads(ln, object_pairs_hook=lambda kv: ("__obj__", kv))
             except ValueError:
                 return text
-            if not isinstance(obj, dict):
+            if not (isinstance(pairs, tuple) and pairs[0] == "__obj__"):
                 return text
-            ids.append(json.dumps(obj.get("id"), ensure_ascii=False))
+            # Every "id" key, not the last one json.loads keeps: a row written
+            # {"id": "ADR-0090-X", "id": "ADR-0241-Y"} names the gate.
+            ids += [json.dumps(v, ensure_ascii=False, default=str) for k, v in pairs[1] if k == "id"]
         return "\n".join(ids)
     if not n.endswith(".md"):
         return text
     out: list[str] = []
     seen_h1, in_header, in_meta, in_links, prev_meta = False, True, False, False, False
-    for ln in text.split("\n"):
+    lines = text.split("\n")
+    for i, ln in enumerate(lines):
+        if _SETEXT_H1_RE.match(ln) and i and lines[i - 1].strip():
+            out.append(lines[i - 1])  # the line above a setext "===" underline is an H1
+        if _HTML_H1_RE.search(ln):
+            out.append(ln)
         if _H1_RE.match(ln):
             out.append(ln)  # every H1 is a title, wherever it sits
             if not seen_h1:
@@ -2219,8 +2228,16 @@ def run_self_test() -> int:
           (bool(_own(_t(_A161, new=_ADR.replace("Proposed\n", "Proposed\n- **Links:** [[0090-x]] the audit gate\n")))),
            bool(_own(_t(_A161, new=_ADR.replace("Proposed\n", "Proposed\n- **Links:** [[0090-x]]\n- **Keywords:** audit gate\n"))))),
           (False, True))
+    check("a setext or HTML title naming the gate is owned after the first title",
+          (bool(_own(_t(_A161, new=_ADR + "\nThe audit gate's history\n===\n"))),
+           bool(_own(_t(_A161, new=_ADR + "\n<h1>The audit gate's history</h1>\n")))), (True, True))
+    check("a rule phrased with 'without' is owned",
+          _new_adr_owned("Docs PRs merge without the audit gate."), True)
+    check("a duplicate id key cannot hide a gate id",
+          bool(_own(_t(".planning/decisions/claims.d/x.jsonl",
+                       new='{"id": "ADR-0090-X", "id": "ADR-0241-Y", "claim": "x"}\n'))), True)
     check("a gate decision number is owned with no mention at all",
-          [n for n in sorted(GATE_DECISION_NUMBERS)
+          [n for n in ("0050", "0090", "0097", "0231", "0237")
            if not _own(_t(f".planning/decisions/{n}-x.md", old="# x\n", new="# y\n"))], [])
     check("a claims fragment is owned by a row id naming the gate, not by a passing mention",
           (bool(_own(_t(".planning/decisions/claims.d/x.jsonl", new='{"id": "ADR-0090-X", "claim": "x"}\n'))),

@@ -114,9 +114,14 @@ individually while what they don't cover reaches production — this gate exists
      appended ADR row `| [NNNN](NNNN-slug.md) | … |` inside the Locked or Proposed
      table, linking the one ADR file this PR adds under that number, with a number
      never used on `main`. Editing, moving or deleting any line stays owned.
-   - **Decision text.** Every file under `.planning/decisions/` is read whole, before
-     and after, and is owned if it names the gate (ADR 0050 or 0090, the gate's
-     script, hook, skill or agents, gate-owned paths, hardness scores, self-merging).
+   - **Decision text.** Every file under `.planning/decisions/` is read before and
+     after. [Narrowed 2026-09-30, the founder: *"Approve #535 + narrow rule
+     (Recommended)"*.] It is owned when the gate is its subject: its number is
+     0050, 0090, 0097, 0231 or 0237; its titles, metadata block (less the Links
+     bullet) or claim ids name the gate (ADR 0050 or 0090, the gate's script, hook,
+     skill or agents, gate-owned paths, hardness scores, self-merging) or one of
+     those numbers; or it states a rule about the gate (a gate token within 60
+     characters of a rule-changing verb). A mention in passing is released.
      For the index, `OPEN-DECISIONS.md`, `CLAIMS.jsonl`, `PROJECT.md` and
      `FUTURES.md`, only changed lines are judged. Tag or bidi characters, line
      separators other than `\n`, NUL, invalid UTF-8, letters or digits outside Latin
