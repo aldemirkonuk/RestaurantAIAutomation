@@ -744,6 +744,19 @@ def _snapshot_fixture() -> str | None:
             if p.returncode != 1 or "COLLISION: ADR 9001" not in out:
                 return (f"{name} beside 9001-synthetic-base.md in one tree did not fail "
                         f"(exit {p.returncode}), want 1 and COLLISION: {out.strip()[:300]}")
+        # Two new slugs for one new number, staged in this tree only: no ref holds
+        # either, so only the same-tree check (`| mine[number]`) can see them.
+        run("checkout", "--quiet", "-B", "mine", "origin/main", cwd=clone)
+        for name in ("9005-a.md", "9005-B.md"):
+            with open(os.path.join(clone, DECISIONS_DIR, name), "w", encoding="utf-8") as fh:
+                fh.write(f"# {name}\n")
+        run("add", "-A", cwd=clone)
+        p = guard_run()
+        out = p.stdout + p.stderr
+        run("reset", "--quiet", "--hard", "origin/main", cwd=clone)
+        if p.returncode != 1 or "COLLISION: ADR 9005" not in out:
+            return ("9005-a.md and 9005-B.md, staged in one tree and on no ref, did not fail "
+                    f"(exit {p.returncode}), want 1 and COLLISION: {out.strip()[:300]}")
         p = introduce("9004-my-other-decision.md")
         # The branch `mine` now wears 9004 against docs/real: the audit must fail, and
         # its next-free print must still count the snapshot.
@@ -823,7 +836,7 @@ def run_self_test() -> int:
         return 1
     print("SELF-TEST OK -- collision detected, non-collision not flagged, "
           "next-free swept across refs, README not parsed as an ADR, a capital-letter "
-          "slug still parsed, a same-tree second slug caught, a snapshot "
+          "slug still parsed, a same-tree second slug caught (committed or only staged), a snapshot "
           "draft skipped while a real collision still fails, a "
           "concurrent push re-fetched and passed, a branch the fetch cannot "
           "resolve still exit 2.")
