@@ -145,6 +145,11 @@ records it):
 > - **A second commit, same round.** Before any reviewer read round 3, the planner found ADR 0246's sentence that every caller who is not an owner or a manager gets 403. That sentence is broader than the helper, which also admits a legacy role behind an inactive access row and an expired manager row. Asked whether to add the fix to round 3, the founder chose, verbatim, *"Fold into round 3 (Recommended)"*. The commit narrows that sentence and adds the two paths to ADR 0246's open items. It is still wording only.
 > - **Scope.** Once, for this round of this PR. It sets no precedent.
 
+> **[2026-10-01, a file-cap exception, founder's words — the 15-file cap, PR #561]**
+> - **What it covers.** PR #561 (ADR 0248) changes the shared role helper so that an access-register read that errors, or a row that is not live, gives no role. PRs #550 and #558 describe and pin today's fallback, and #550 has a test, with a claim pinning its title, that expects a legacy manager to pass when the access read fails. The founder chose to land #547, #538, #550 and #558 first and #561 last. #561's rebase then flips #550's test and its claim pin, which takes #561 to 16 files. A separate docs PR corrects the fallback sentences in ADRs 0246 and 0247 and their claim texts.
+> - **The founder's words.** In chat on 2026-10-01, session 9512567d, verbatim: *"#561 last + docs PR (Recommended)"*. The option it picked read: "Merge #547, #538, #550 and #558 first. Then #561 rebases and flips #550's test and claim pin, which makes 16 files: one over the 15 cap, allowed once. A small docs PR corrects the fallback sentences in ADRs 0246 and 0247 and the claim texts. #561 and the docs PR each get a full review. No waived rounds on #550 or #558."
+> - **Scope.** Once, for PR #561 at 16 files. It sets no precedent.
+
 > **[2026-10-01, where these waivers are recorded — the founder's routing]**
 > - Asked how PRs whose decision records quoted his waivers should be routed, the founder chose, verbatim, *"Move waivers to #547 (Recommended)"*. Every fix-round waiver is recorded here. The other records carry only a pointer to this file.
 
