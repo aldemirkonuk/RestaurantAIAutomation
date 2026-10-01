@@ -31,11 +31,12 @@ The two bypasses in F2 and F3 are also defects in their own right, and they are 
 
 **5. Two other callers of the merge, found in passing.** Ask-AI's confirmed reorder (`ask-ai.service.ts` `execute`) passes no price. `createOrder` therefore computes `final_price` 0 and `total_cost` 0. If an open order for the same wine and vendor exists, the fold writes those zeros onto it. On an order past PENDING it now needs a manager, and it is filed either way. When the order has a priced line, the header-echo trigger should refuse the write, which surfaces as a 500. Either outcome is wrong: a reorder confirmation should not reprice the open order. The legacy recurring cron (`recurring-orders.service.ts`) creates as `created_by || "system"`. If that person is not a manager, its fold into an open order past PENDING is now refused where it used to rewrite the order. That is the intended stop, but the cron's per-schedule catch logs it as an error on that schedule, and nobody is told to sign. Neither is fixed here.
 
-**[Added 2026-10-01, round 6.] The other direction is a disclosed exception, not closed here.**
-- A staff member can edit a manager's schedule: `PUT /recurring-orders/:restaurantId/:id` (`recurring-orders.controller.ts:115-135`) has no role check, and `created_by` is not updatable.
-- The 08:00 cron then folds that edit as the manager (`recurring-orders.service.ts:849`, `:861`), into an open order past PENDING, with the `order_price_changed` row naming the manager.
-- The round-7 adversary reproduced it with the real controller and service.
-- It predates this PR. Per the founder's round-6 pick of 2026-10-01, "Wording now + separate gate PR (Recommended)", a separate PR off main closes it by letting only managers and owners PUT or DELETE a schedule (ADR 0244 D2).
+**[Added 2026-10-01.] The other direction is a disclosed exception, not closed here.**
+- A staff member can edit a schedule a manager or owner created: `PUT /recurring-orders/:restaurantId/:id` (`recurring-orders.controller.ts:115-135`) has no role check, and `created_by` is not updatable.
+- The 08:00 cron then folds that edit as the schedule's creator (`recurring-orders.service.ts:849`, `:861`), into an open order past PENDING, with the `order_price_changed` row naming the creator.
+- The adversarial reviewer in the audit of PR #538 at 46c74b08f reproduced it with the real controller and service.
+- It predates this PR. Per the founder's ruling of 2026-10-01, "Wording now + separate gate PR (Recommended)", a separate PR off main stops further staff edits: PUT and DELETE need a manager or an owner. A schedule staff edited earlier keeps that edit and still runs under its `created_by` (ADR 0244 D2).
+- `auto_approve` is in `UPDATABLE` but does not widen this. The cron's `approveOrder` carries no seal challenge, so the seal refuses it as absent (403, filed as `seal_refused`). Measured in the audit of PR #538 at f66ec0d53, in four cases.
 
 **6. Gaps the round-3 line gate leaves, and one that predates it.**
 - (a) **[Rewritten 2026-09-30, round 4, to the v4 reviewers' measured wording.]** The `updated_at` guard covers only the interval between the fold's read and its conditional header write (`procurement.service.ts:1444`). After that write come four awaited round trips with nothing guarding the line: the audit insert (`:1513`), the inventory read in `upsertOrderLine`, the line delete (`:1948-1949`) and the insert (`:1959-1960`). What can land in that window:
@@ -46,22 +47,23 @@ The two bypasses in F2 and F3 are also defects in their own right, and they are 
   - The guard also has a gap: the echo trigger writes the header only when the price differs (`20260905072000_the_header_price_echoes_the_line.sql:147-150`), so a line write that leaves it unchanged does not stamp `updated_at`.
   - Cites re-measured on main dc7d4f523, again on e98abbb4d, and against this PR's head itself (its own docstring edit near `:3950` moves every later line by one). Neither #534 nor #537 added a writer of either table, a `createOrder` caller or an `approveOrder` change.
   - Closing it needs one transaction (an RPC). That is the next PR, per the founder's round-4 pick of 2026-09-30, "Disclose + pin tests; RPC next (Recommended)".
-- (c) **[Added 2026-09-30/10-01, round 5; outcomes rewritten 2026-10-01, round 6.] Interleaving (iv), the approve step: its own window, and not closed by the transaction in (a).**
+- (c) **[Added 2026-09-30/10-01, round 5; rewritten 2026-10-01 as one bounded statement.] Interleaving (iv), the approve step: its own window, and not closed by the transaction in (a).**
   - `approveOrder` runs the rules (`procurement.service.ts:4744`; their read is at `:4981-4987`) and then redeems the seal (`:4745`; its read is at `:4928-4933`), before an UPDATE (`:4747-4757`) that filters only on `restaurant_id` and `id` (`:4754-4755`).
-  - The rules test the total, the vendor and the price premium. The seal hashes only the order id, the total and the vendor (`order-seal.ts:184-194`).
-  - A staff PENDING fold in that step does one of three things. Each was reproduced by the round-7 adversary with the real seal service, in-memory seals and a staff actor; nothing was run against Postgres.
-    - (a) If it changes the total and lands before the seal's read, the seal refuses it.
-    - (b) If it keeps the total and the vendor and moves quantity, unit price or fees, the seal never sees it, and the rules never test quantity or fees. If it lands between the rules' read and the seal's read, the price-premium verdict was taken on the old `final_price`.
-    - (c) If it lands after the seal is spent and before the UPDATE, it is approved at a total nothing tested. Reproduced: APPROVED at 9,000 over a 5,000 manager ceiling.
+  - The rules and the seal each read the order once, at different moments, and the approve UPDATE re-checks neither. So a staff PENDING fold that lands between either read and the UPDATE can be approved at figures one or both checks never saw. The rules test the total, the vendor and the price premium; the seal hashes the id, the total and the vendor (`order-seal.ts:184-194`); neither tests quantity, unit or fees.
+  - Measured examples, which do not list every case. The adversarial reviewers in the audits of PR #538 at 46c74b08f and f66ec0d53 used the real seal service over in-memory seals and a staff actor; nothing was run against Postgres.
+    - Approved, including: an order at 9,000 over a 5,000 manager ceiling; and quantity 12 with line freight 40 at a held total.
+    - Refused, including:
+      - a fold before the rules' read that takes the total over a rule the actor cannot meet: the rules refuse it and move the order to APPROVAL_NEEDED (`:5043`, `:5202-5226`);
+      - a total-changing fold between the two reads: the seal refuses it.
   - One member of staff can do it alone: approve an order that fires no rule, and fold into it in parallel. That steps around the approval limit.
   - It predates this PR: at base, staff could PATCH straight to APPROVED.
   - Closing it needs the approve UPDATE to be conditional on the status and `updated_at`, or on the figures. Per the founder's round-5 pick, "Record it now, close it next PR (Recommended)", that goes in the next PR together with the RPC.
 - (d) **[Added 2026-09-30/10-01, round 5.] Document intake's line links race a fold.**
   - Document intake writes `order_line_id` from line ids it read earlier (`apps/api-gateway/src/procurement/documents/document-intake.service.ts:1715` and `:1782`, after the read at `:1673`).
-  - **[Corrected 2026-10-01, round 6, to the round-7 correctness reviewer's wording.]**
+  - **[Corrected 2026-10-01 to the wording of the correctness reviewer in the audit of PR #538 at 46c74b08f.]**
     - A fold landing between the read and a write gives a foreign-key error on that write, which is logged as a warning (`:1728-1731`, `:1793-1796`).
     - A fold landing after the write unlinks the document line at `:1715` (`procurement_document_lines.order_line_id`, ON DELETE SET NULL, baseline `:13062`). It also deletes the suggestion row at `:1782` (`procurement_line_match_suggestions.order_line_id`, ON DELETE CASCADE, `20260901200000_receiving_preserves_the_pair.sql:134-135`). Both happen in silence.
-  - **Whether a later run repairs it is not verified.** A later match run happens at intake (`:1174`, `:1591`) or on the documents route (`documents.controller.ts:1363`), and treats an unlinked line as open again (`:1681`). By its own contract it re-writes only an exact-SKU pair and returns the rest as suggestions. I did not run it, so this can lose evidence until the next match run.
+  - **Whether a later run repairs it is not verified.** A later match run happens at intake (`:1174`, `:1591`) or on the documents route (`documents.controller.ts:1363`), and treats an unlinked line as open again (`:1681`). By its own contract it re-writes only an exact-SKU pair and returns the rest as suggestions. The match run was not executed, so this can lose evidence until the next match run.
   - This loses evidence, not money. Item 7 covers only the sequential case.
 - (e) **[Added 2026-09-30/10-01, round 5.] The shadow-stock reservation does not follow a fold.** `approveOrder` reserves the order's quantity (`procurement.service.ts:4778`). A manager's fold that later changes the quantity leaves that reservation at the old figure. This predates this PR.
 - (b) A fold that changes `final_price` on an order with a priced line writes the header before the line, so the header-echo trigger (`the_header_price_echoes_the_line`) should refuse it with a 500. This comes from the trigger's contract and was not run against Postgres. The fix is line-first, as confirm-deal already does, which means re-deciding where the race guard sits.
