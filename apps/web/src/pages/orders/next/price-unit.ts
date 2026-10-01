@@ -22,6 +22,8 @@
  * bargain, and no later reader can tell them apart.
  */
 
+import { fmtMoney } from './format';
+
 /**
  * The seven the database accepts.
  *
@@ -82,7 +84,8 @@ export function describeStatedPrice(
   stated: StatedPriceUnit | null,
 ): string | null {
   if (price == null || !Number.isFinite(Number(price))) return null;
-  const money = `$${Number(price).toFixed(2)}`;
+  // Grouped like every other figure on the page ($1,090.00, not $1090.00; ORD-W14).
+  const money = fmtMoney(Number(price));
   if (!stated) return money;
   const pack =
     stated.pricePackSize > 1 ? ` (${stated.pricePackSize} bottles)` : '';

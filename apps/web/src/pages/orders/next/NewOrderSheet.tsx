@@ -423,7 +423,10 @@ export function NewOrderSheet({ open, onClose, onNoVendors, onPlaced }: NewOrder
         </div>
       }
     >
-      <div style={{ fontFamily: SANS, fontSize: 12.5 }}>
+      {/* The sheet's body carries no inset of its own (sheet.css
+          `.mdv-ovl__body`); each sheet pads its content, as ResponsesSheet
+          does. Without it the fields ran edge to edge (ORD-W12). */}
+      <div style={{ fontFamily: SANS, fontSize: 12.5, padding: '10px 16px 14px' }}>
         {/* ── the register, searched ─────────────────────────────────── */}
         <label style={labelStyle} htmlFor="no-search">
           Search the register

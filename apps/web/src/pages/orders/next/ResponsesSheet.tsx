@@ -378,7 +378,10 @@ export function ResponsesSheet({
       label={`Vendor answers for ${row.wineName ?? 'this order'}`}
       eyebrow="Vendor answers"
       title={row.wineName ?? 'This order'}
-      closeLabel="Leave it open"
+      // "Leave it open" means "leave the decision open" — true only while
+      // there is one to make. On an approved or delivered order it read as a
+      // control that would not close the sheet (ORD-W13).
+      closeLabel={isPending ? 'Leave it open' : 'Close'}
       footer={
         isPending ? (
           <div style={{ display: 'grid', gap: 10 }} data-testid="responses-acts">

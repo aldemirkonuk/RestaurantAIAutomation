@@ -528,6 +528,17 @@ describe('the ledger row opens it', () => {
 });
 
 describe('an order past the pending stage', () => {
+  // ORD-W13: "Leave it open" means leave the DECISION open; with none to make
+  // it read as a control that would not close the sheet.
+  it('closes with "Close", and keeps "Leave it open" for a pending order', () => {
+    const { unmount } = mount({ stage: 'approved', status: 'approved' });
+    expect(screen.getByRole('button', { name: 'Close' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Leave it open' })).not.toBeInTheDocument();
+    unmount();
+    mount();
+    expect(screen.getByRole('button', { name: 'Leave it open' })).toBeInTheDocument();
+  });
+
   it('offers neither act and says so', () => {
     mount({ stage: 'delivered', status: 'delivered' });
     expect(screen.queryByTestId('responses-acts')).not.toBeInTheDocument();
