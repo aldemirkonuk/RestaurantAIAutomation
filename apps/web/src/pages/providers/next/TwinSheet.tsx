@@ -3,8 +3,7 @@
  *
  * The founder's MERGE verdict draws the line this component enforces: the
  * card stays small and closed; everything the platform has learned about the
- * vendor (the "digital twin") lives here, in the sheet, fetched on open by
- * ProviderIntelligencePanel.
+ * vendor lives here, in the sheet, fetched on open by LearnedSection.
  *
  * ── Second pass: the house primitive ──────────────────────────────────────
  * This used to be a hand-rolled `fixed inset-0` overlay with its own scrim
@@ -26,7 +25,6 @@
  * until now editable only in the legacy sheet's Locations tab.
  */
 
-import { Suspense, lazy } from 'react';
 import type { Provider } from '../../../services/api/providers';
 import { Sheet } from '../../../components/mudavym/Sheet';
 import { EM, MONO, SANS, fmtDays, fmtLastContact, visibleRegions } from './pv-format';
@@ -37,13 +35,8 @@ import { BranchesSection } from './BranchesSection';
 import { VendorRecordEdit, businessTypeLabel } from './VendorRecordEdit';
 import { LedgerCard } from './scorecard/LedgerCard';
 import { MailTone } from './scorecard/MailTone';
+import { LearnedSection } from './LearnedSection';
 import { useAuth } from '../../../contexts/AuthContext';
-
-const ProviderIntelligencePanel = lazy(() =>
-  import('../../../components/providers/ProviderIntelligencePanel').then((m) => ({
-    default: m.ProviderIntelligencePanel,
-  })),
-);
 
 interface Props {
   provider: Provider;
@@ -156,8 +149,8 @@ export function TwinSheet({ provider, onClose, focusUsualCurrency, onProviderSav
 
       {/* what they DID — the operational vendor scorecard (ADR 0207, sketch
           117 A). Five measured lines from this house's own records, each
-          opening to its rows. Placed above the legacy panel, whose Sentiment
-          tab retired in round 3 (its reading lives in the section below). */}
+          opening to its rows. (The legacy panel's Sentiment tab retired in
+          round 3; its reading lives in the section below.) */}
       <div className="px-4 pb-4" style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
         <LedgerCard providerId={provider.id} providerName={provider.name} />
       </div>
@@ -172,42 +165,11 @@ export function TwinSheet({ provider, onClose, focusUsualCurrency, onProviderSav
         </div>
       )}
 
-      {/* the twin — fetched on open, never on the grid */}
+      {/* what their mail has told this house — facts, offers, messages
+          (VEN-W14, founder 2026-10-01). A Mudavym section like its siblings,
+          so the legacy panel's `data-ground="paper"` workaround is gone. */}
       <div className="px-4 pb-6" style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
-        <h3
-          style={{
-            fontFamily: MONO,
-            fontSize: 9.5,
-            fontWeight: 600,
-            letterSpacing: '0.14em',
-            textTransform: 'uppercase',
-            color: 'var(--ink-4, #665D50)',
-            margin: '14px 0 6px',
-          }}
-        >
-          What the platform has learned
-        </h3>
-        {/*
-          `data-ground="paper"` because the panel below is a LEGACY component —
-          hard-coded light Tailwind cards that read none of the Mudavym tokens.
-          Since 2026-09-12 the bare `.mudavym` selector paints Warm Charcoal in
-          every app theme (ADR 0138), so without this the panel sits as a white
-          card on charcoal, and `color-scheme: dark` reaches its native controls.
-          The escape is the decided one (ADR 0104 D9) and wins on specificity —
-          (0,2,0) over the base `.mudavym`'s (0,1,0) — but only on the SAME
-          element, which is why the class is repeated here.
-        */}
-        <div className="mudavym" data-ground="paper">
-          <Suspense
-            fallback={
-              <p style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-4, #665D50)' }}>
-                Opening the vendor’s record…
-              </p>
-            }
-          >
-            <ProviderIntelligencePanel providerId={provider.id} providerName={provider.name} />
-          </Suspense>
-        </div>
+        <LearnedSection providerId={provider.id} providerName={provider.name} />
       </div>
     </Sheet>
   );

@@ -17,8 +17,10 @@ vi.mock('./useProvidersNextData', () => ({
   useProvidersNextData: () => mockData.current,
 }));
 
-vi.mock('../../../components/providers/ProviderIntelligencePanel', () => ({
-  ProviderIntelligencePanel: ({ providerName }: { providerName: string }) => (
+// What their mail has told this house (VEN-W14) reads four routes of its own;
+// its states are asserted in LearnedSection.test.tsx against a mocked apiClient.
+vi.mock('./LearnedSection', () => ({
+  LearnedSection: ({ providerName }: { providerName: string }) => (
     <div data-testid="twin-panel">twin of {providerName}</div>
   ),
 }));
