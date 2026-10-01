@@ -92,7 +92,7 @@ export function KpiRow({ stats, pendingCount, lowStockCount }: KpiRowProps) {
         label="In the cellar"
         value={bottles}
         format={(n) => formatNumber(Math.round(n))}
-        sub={wines != null ? `across ${formatNumber(wines)} wines` : undefined}
+        sub={wines != null ? `across ${formatNumber(wines)} ${wines === 1 ? 'wine' : 'wines'}` : undefined}
         to="/inventory"
         loading={loading}
       />

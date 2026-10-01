@@ -135,7 +135,7 @@ export function SalesCalendar({ restaurantId, alerts, activity }: SalesCalendarP
           >
             {month.state === 'ready' ? formatNumber(month.ledger.monthlyBottles) : DASH}
           </span>{' '}
-          bottles in
+          {month.state === 'ready' && month.ledger.monthlyBottles === 1 ? 'bottle' : 'bottles'} in
         </p>
       </div>
 

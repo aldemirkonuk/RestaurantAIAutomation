@@ -36,7 +36,6 @@ import SalesCalendar from './SalesCalendar';
 import WaitingOnYou from './WaitingOnYou';
 import OneTapPanel from './OneTapPanel';
 import { ActivityPanel, LowStockPanel, WeekAhead } from './RailPanels';
-import { noteCloseReportLine, useNoteCloseReport } from './note-close-experiment';
 import './dashboard-next.css';
 
 /** Time-of-day voice — the Editorial opening the founder named as liked. */
@@ -61,8 +60,6 @@ export interface DashboardNextProps {
 export default function DashboardNext({ ground }: DashboardNextProps) {
   const { user, activeRestaurantId } = useAuth();
   const spine = useDashboardSpine(activeRestaurantId);
-  const noteReport = useNoteCloseReport(activeRestaurantId);
-  const reportLine = noteCloseReportLine(noteReport);
   const headRef = useRef<HTMLElement | null>(null);
 
   // One quiet entrance for the opening line — settle, 6px, once.
@@ -180,22 +177,11 @@ export default function DashboardNext({ ground }: DashboardNextProps) {
               Figures on this page are procurement — money paid to vendors — not sales.
             </p>
           </div>
-          {/* The note-control experiment's standing count.
-              WHY HERE AND NOT ON /notifications. The day-book is a RECORD —
-              lines the house wrote, worked downwards until the account is ruled
-              off — and that is the argument by which the one-tap desk was moved
-              off it on 2026-09-03 (notifications.md §1b). A running tally is
-              not a line the house wrote either, so the same reasoning keeps it
-              off the book. It sits at the foot of the page that holds the
-              control instead: readable by whoever is here, and out from under
-              the card it is counting.
-              COUNTS, NEVER A VERDICT — the sentence is built in
-              `noteCloseReportLine`, which has no comparison in it. */}
-          {reportLine && (
-            <p className="mt-2 text-[11px] text-inkm-4" data-note-report>
-              {reportLine}
-            </p>
-          )}
+          {/* The note-control experiment's standing count used to sit here
+              (ADR 0127 D8). It is a count for the founder, not a line a manager
+              needs before service, so it moves to /logs, the operator page
+              (founder, 2026-10-01, DASH-W5). `noteCloseReportLine` is unchanged
+              for that page to use. */}
         </footer>
       </div>
     </div>

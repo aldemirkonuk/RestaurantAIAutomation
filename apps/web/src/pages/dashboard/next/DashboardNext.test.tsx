@@ -11,10 +11,10 @@
  * honest `unknown` state the code exists to show.
  *
  * This file closes both gaps: real hooks (`useDashboardSpine`,
- * `useMonthLedger`, `useDayOrders`, `useNoteCloseReport`,
- * `useCalendarEvents`), with HTTP mocked at `apiClient` — the one layer every
- * service module this tree calls (`services/api/{dashboard,orders,inventory,
- * calendar}.ts`) is built on, so one mock covers the whole page rather than
+ * `useMonthLedger`, `useDayOrders`, `useCalendarEvents`), with HTTP mocked
+ * at `apiClient` — the one layer every service module this tree calls
+ * (`services/api/{dashboard,orders,inventory,calendar}.ts`) is built on, so
+ * one mock covers the whole page rather than
  * hiding the hook under test behind a mocked hook.
  */
 
@@ -150,6 +150,47 @@ describe('DashboardNext', () => {
     expect(errorSpy).not.toHaveBeenCalled();
     expect(unhandled).toEqual([]);
     errorSpy.mockRestore();
+  });
+
+  // DASH-W5 (founder, 2026-10-01): the note-control count left the footer for
+  // /logs. Nothing on this page may print it or ask the gateway for it.
+  it('keeps the note-control count off the dashboard footer', async () => {
+    routeGets();
+
+    mount();
+
+    await waitFor(() => expect(screen.queryByText('Taking the room’s temperature…')).not.toBeInTheDocument());
+    expect(document.querySelector('[data-note-report]')).toBeNull();
+    expect(screen.queryByText(/Note control/)).not.toBeInTheDocument();
+    expect(
+      api.get.mock.calls.some((call) => typeof call[0] === 'string' && /\/ux\/experiments\/.*\/report/.test(call[0])),
+    ).toBe(false);
+  });
+
+  // DASH-W7 (founder, 2026-10-01): one bottle and one wine read in the
+  // singular — the live page said "1 bottles in" and "across 1 wines".
+  it('says one bottle and one wine in the singular', async () => {
+    routeGets({
+      '/dashboard/stats/': {
+        totalWines: 1,
+        totalBottles: 1,
+        lowStockItems: 0,
+        pendingOrders: 0,
+        totalVolumeMl: 750,
+        totalVolumeOz: 25.36,
+      },
+      '/dashboard/calendar-revenue/': { ...monthLedger(), monthly_procurement_spend: 50, monthly_bottles: 1 },
+    });
+
+    mount();
+
+    await waitFor(() => expect(screen.getByText('across 1 wine')).toBeInTheDocument());
+    await waitFor(() =>
+      expect(
+        screen.getByText((_, el) => el?.tagName === 'P' && /·\s*1\s+bottle in$/.test(el.textContent ?? '')),
+      ).toBeInTheDocument(),
+    );
+    expect(screen.queryByText(/across 1 wines/)).not.toBeInTheDocument();
   });
 
   it('does not crash or hang when calendar-revenue resolves a null body (defect 6, live-review.md 2026-09-17)', async () => {
