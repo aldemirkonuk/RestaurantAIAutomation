@@ -69,7 +69,9 @@ import {
 } from "./order-recurrence";
 
 /**
- * Every recurrence column, written out rather than `*`.
+ * Every recurrence column, written out rather than `*`, plus `created_by`:
+ * who placed the order, which decides whether staff may set its first rule
+ * (ADR 0247).
  *
  * A literal for the same reason `RECURRING_SELECT` is one: a column removed
  * from the table breaks this query loudly instead of arriving as `undefined`,
@@ -82,7 +84,8 @@ export const RECURRENCE_SELECT =
   "total_cost, status, approved_at, manager_notes, expected_delivery_date, " +
   "recurrence_frequency, recurrence_anchor_day, recurrence_anchored_on, " +
   "recurrence_next_due_on, recurrence_status, recurrence_status_by, " +
-  "recurrence_status_at, recurrence_parent_order_id, recurrence_occurrence_on";
+  "recurrence_status_at, recurrence_parent_order_id, recurrence_occurrence_on, " +
+  "created_by";
 
 /** One recurring order's row, as the table actually is after the migration. */
 export interface RecurrenceRow {
@@ -114,6 +117,8 @@ export interface RecurrenceRow {
   recurrence_status_at: string | null;
   recurrence_parent_order_id: string | null;
   recurrence_occurrence_on: string | null;
+  /** Who placed the order (`public.users.user_id`); NULL when nobody is recorded. */
+  created_by?: string | null;
 }
 
 /**
@@ -175,9 +180,10 @@ export class OrderRecurrenceService {
    *
    * Founder, 2026-10-01, asked whether staff may pause, resume or end a
    * manager's order recurrence: "Managers and owners only (Recommended)".
-   * Pause, resume and end call this before the order is read; replacing a rule
-   * calls it once the read has shown there is a rule to replace. Setting the
-   * first rule on an order does not call it: staff may still set one up.
+   * Pause, resume and end call this before the order is read. Replacing a rule
+   * calls it once the read has shown there is a rule to replace, and so does
+   * setting a first rule on an order the caller did not place. A first rule on
+   * one's own order does not call it.
    *
    * It is `assertCanManageRestaurant`, the check order cancel uses
    * (`ProcurementService.assertMayCancelOrder`). That check reads a role it
@@ -255,8 +261,13 @@ export class OrderRecurrenceService {
      * the start date it is given. On an order that already carries a rule, that
      * resumes a paused rule, restarts an ended one, or puts an active one's next
      * date as far out as the caller likes. Those are the acts the founder kept
-     * for managers and owners, so a replace takes the same check. A first rule
-     * does not.
+     * for managers and owners, so a replace takes the same check. Founder,
+     * 2026-10-01: "Yes, replace needs a manager (Recommended)".
+     *
+     * A FIRST RULE GOES ON ONE'S OWN ORDER, OR NEEDS A MANAGER OR AN OWNER.
+     * Founder, 2026-10-01: "Only on their own order (Recommended)". The order
+     * is one's own when its `created_by` is the caller. Any other order,
+     * including one with no recorded creator, takes the same check.
      */
     const replacing =
       order.recurrence_status !== null || order.recurrence_frequency !== null;
@@ -265,6 +276,12 @@ export class OrderRecurrenceService {
         restaurantId,
         userId,
         "replace an order's recurrence",
+      );
+    } else if (!placedBy(order, userId)) {
+      await this.assertMayChangeARule(
+        restaurantId,
+        userId,
+        "set a recurrence on an order someone else placed",
       );
     }
 
@@ -943,6 +960,17 @@ export class OrderRecurrenceService {
       );
     }
   }
+}
+
+/** Did this person place this order? Never true for an unrecorded creator. */
+function placedBy(order: { created_by?: string | null }, userId: string): boolean {
+  const creator = order.created_by;
+  return (
+    typeof creator === "string" &&
+    typeof userId === "string" &&
+    creator !== "" &&
+    creator.toLowerCase() === userId.toLowerCase()
+  );
 }
 
 /** PostgREST/Postgres unique violation, by code rather than by message text. */

@@ -1,8 +1,10 @@
 /**
  * Pause, resume and end on an order's recurrence need a manager or an owner,
- * and so does replacing a rule an order already carries. Setting the first
- * rule does not (ADR 0247, founder ruling 2026-10-01: "Managers and owners
- * only (Recommended)").
+ * and so does replacing a rule an order already carries. A first rule may be
+ * set by the person who placed the order, or by a manager or an owner on any
+ * order (ADR 0247, founder rulings 2026-10-01: "Managers and owners only
+ * (Recommended)", "Yes, replace needs a manager (Recommended)", "Only on their
+ * own order (Recommended)").
  *
  * Why: the four routes under `POST /procurement/orders/:id/recurrence` had only
  * the class-level JwtAuthGuard, so any member of the house could pause, resume
@@ -14,8 +16,8 @@
  * OrderRecurrenceService and the REAL OrganizationsService (the role check
  * order cancel uses) over an in-memory store, and the REAL JwtAuthGuard with
  * passport stubbed: it sets `request.user` from a test header. Every case
- * marked [REVERT-FAILS] was run against the service on origin/main c4fe6a68b
- * and observed to fail.
+ * marked [REVERT-FAILS] was run against the service on origin/main and
+ * observed to fail.
  */
 import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
@@ -33,7 +35,14 @@ const OWNER = "a0000000-0000-4000-8000-000000000001";
 const MANAGER = "a0000000-0000-4000-8000-000000000002";
 const STAFF = "a0000000-0000-4000-8000-000000000003";
 const UNREADABLE = "a0000000-0000-4000-8000-000000000004";
+/** No rule; placed by STAFF. */
 const NO_RULE = "b0000000-0000-4000-8000-000000000001";
+/** No rule; placed by MANAGER. */
+const MANAGERS_NO_RULE = "b0000000-0000-4000-8000-000000000005";
+/** No rule; no recorded creator. */
+const NOBODYS_NO_RULE = "b0000000-0000-4000-8000-000000000006";
+/** No rule; placed by UNREADABLE. */
+const UNREADABLES_NO_RULE = "b0000000-0000-4000-8000-000000000007";
 const ACTIVE = "b0000000-0000-4000-8000-000000000002";
 const PAUSED = "b0000000-0000-4000-8000-000000000003";
 const ENDED = "b0000000-0000-4000-8000-000000000004";
@@ -44,9 +53,14 @@ let writes: string[];
 /** Runs once, just before the next update is applied: a write landing between. */
 let beforeNextUpdate: (() => void) | null;
 
-function order(id: string, status: string | null): Row {
+function order(
+  id: string,
+  status: string | null,
+  createdBy: string | null = MANAGER,
+): Row {
   return {
     id,
+    created_by: createdBy,
     order_number: `ORD-${id.slice(-4)}`,
     restaurant_id: HOUSE,
     inventory_id: "inv-1",
@@ -86,7 +100,10 @@ function fresh() {
     ],
     users: [],
     procurement_orders: [
-      order(NO_RULE, null),
+      order(NO_RULE, null, STAFF),
+      order(MANAGERS_NO_RULE, null, MANAGER),
+      order(NOBODYS_NO_RULE, null, null),
+      order(UNREADABLES_NO_RULE, null, UNREADABLE),
       order(ACTIVE, "active"),
       order(PAUSED, "paused"),
       order(ENDED, "ended"),
@@ -97,8 +114,10 @@ function fresh() {
 
 /**
  * eq and is(null) filters, insert/update/select, awaitable, single and
- * maybeSingle. Reads of the role tables for UNREADABLE fail, the way a
- * database outage would.
+ * maybeSingle. A select returns only the columns it names, so a column the
+ * service forgot to read arrives as absent, as it would from PostgREST.
+ * Reads of the role tables for UNREADABLE fail, the way a database outage
+ * would.
  */
 const client: any = {
   from(table: string) {
@@ -106,6 +125,13 @@ const client: any = {
     let readsUnreadable = false;
     let op: "select" | "insert" | "update" = "select";
     let payload: Row | null = null;
+    let columns: string[] | null = null;
+    const project = (r: Row): Row =>
+      columns
+        ? Object.fromEntries(
+            columns.filter((c) => c in r).map((c) => [c, r[c]]),
+          )
+        : { ...r };
     const run = (): { data: any; error: any } => {
       if (
         (table === "user_restaurant_access" || table === "users") &&
@@ -129,10 +155,16 @@ const client: any = {
         matched.forEach((r) => Object.assign(r, payload));
         if (matched.length) writes.push(`update:${table}`);
       }
-      return { data: matched.map((r) => ({ ...r })), error: null };
+      return { data: matched.map(project), error: null };
     };
     const builder: any = {
-      select: () => builder,
+      select: (cols?: string) => {
+        columns =
+          cols && cols.trim() !== "*"
+            ? cols.split(",").map((c) => c.trim())
+            : null;
+        return builder;
+      },
       insert: (row: Row) => {
         op = "insert";
         payload = row;
@@ -338,8 +370,8 @@ describe("managers and owners may", () => {
   });
 });
 
-describe("staff may still set up the first rule on an order", () => {
-  it("sets one, recorded as the staff member's", async () => {
+describe("a first rule goes on one's own order, or needs a manager or an owner", () => {
+  it("lets staff set one on an order they placed, recorded as the staff member's", async () => {
     const res = await setRule(NO_RULE, STAFF);
     expect(res.status).toBe(201);
     expect(row(NO_RULE)).toMatchObject({
@@ -347,6 +379,54 @@ describe("staff may still set up the first rule on an order", () => {
       recurrence_frequency: "monthly",
       recurrence_next_due_on: "2027-06-01",
       recurrence_status_by: STAFF,
+    });
+  });
+
+  it.each([
+    ["a manager placed", MANAGERS_NO_RULE],
+    ["with no recorded creator", NOBODYS_NO_RULE],
+  ])(
+    "[REVERT-FAILS] refuses staff a first rule on an order %s, with 403, and writes nothing",
+    async (_label, id) => {
+      const res = await setRule(id, STAFF);
+      expect(res.status).toBe(403);
+      expect(res.body.message).toBe(
+        "Only managers and owners can set a recurrence on an order someone else placed",
+      );
+      expect(row(id)).toMatchObject({
+        recurrence_status: null,
+        recurrence_frequency: null,
+      });
+      expect(writes).toEqual([]);
+    },
+  );
+
+  it("[REVERT-FAILS] refuses a caller whose role cannot be read a first rule on an order someone else placed, with 403, and writes nothing", async () => {
+    const res = await setRule(MANAGERS_NO_RULE, UNREADABLE);
+    expect(res.status).toBe(403);
+    expect(row(MANAGERS_NO_RULE).recurrence_status).toBeNull();
+    expect(writes).toEqual([]);
+  });
+
+  it("asks no role of the person who placed the order, so an unreadable role may still set one there", async () => {
+    const res = await setRule(UNREADABLES_NO_RULE, UNREADABLE);
+    expect(res.status).toBe(201);
+    expect(row(UNREADABLES_NO_RULE)).toMatchObject({
+      recurrence_status: "active",
+      recurrence_status_by: UNREADABLE,
+    });
+  });
+
+  it.each([
+    ["a manager", "staff placed", MANAGER, NO_RULE],
+    ["an owner", "staff placed", OWNER, NO_RULE],
+    ["a manager", "with no recorded creator", MANAGER, NOBODYS_NO_RULE],
+  ])("lets %s set one on an order %s", async (_label, _where, as, id) => {
+    const res = await setRule(id, as);
+    expect(res.status).toBe(201);
+    expect(row(id)).toMatchObject({
+      recurrence_status: "active",
+      recurrence_status_by: as,
     });
   });
 

@@ -1242,6 +1242,14 @@ export class OrderResponseDto {
       "The occurrence date this child was minted for. Travels with recurrenceParentOrderId: both set or both null. A partial unique index over the pair is what stops two orders being raised for one occurrence.",
   })
   recurrenceOccurrenceOn?: string | null;
+
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    description:
+      "Who placed the order: the public.users id in procurement_orders.created_by. null = nobody is recorded. Key ABSENT = this route does not read it. Staff may set a first recurrence only on an order they placed (ADR 0247).",
+  })
+  createdBy?: string | null;
 }
 
 export class OrderListResponseDto {

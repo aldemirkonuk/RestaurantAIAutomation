@@ -166,6 +166,12 @@ export interface OrderRowVM {
   approvedAt: string | null;
   deliveredAt: string | null;
   notes: string | null;
+  /**
+   * Who placed the order, or null when the route did not say or nobody is
+   * recorded. RecurrenceSheet offers staff a first rule only on their own
+   * order (ADR 0247); the gateway checks it again.
+   */
+  createdBy?: string | null;
 }
 
 export interface MonthFigure {
@@ -376,6 +382,7 @@ export function toRow(o: OrderWire, providerNameById: Map<string, string>): Orde
     approvedAt: o.approvedAt ?? null,
     deliveredAt: o.deliveredAt ?? null,
     notes: null,
+    createdBy: typeof o.createdBy === 'string' && o.createdBy !== '' ? o.createdBy : null,
   };
 }
 

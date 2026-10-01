@@ -24,12 +24,12 @@
  *     says why: they commit no money. Only approving an occurrence does, and
  *     that keeps its hold.
  *
- * WHO MAY CHANGE A RULE (ADR 0247, founder 2026-10-01: "Managers and owners
- * only"). Pause, resume, end and replace need a manager or an owner; the
- * gateway refuses anyone else with 403 and that refusal is the real gate. This
- * sheet only stops offering those controls to a role that would be refused,
- * and says why in words. Staff still see the rule and may still set the first
- * rule on an approved order.
+ * WHO MAY CHANGE A RULE (ADR 0247, founder rulings of 2026-10-01). Pause,
+ * resume, end and replace need a manager or an owner. A first rule may be set
+ * by the person who placed the order, or by a manager or an owner on any
+ * order. The gateway refuses anyone else with 403 and that refusal is the real
+ * gate. This sheet only stops offering the controls to someone who would be
+ * refused, and says why in words. Staff still see the rule.
  */
 
 import { useMemo, useState } from 'react';
@@ -174,6 +174,17 @@ export const RECURRENCE_ROLE_UNKNOWN =
   'end or replace this rule is unknown. It is not assumed. If this does not clear in a ' +
   'moment, reload.';
 
+/** Shown in place of the first-rule form to staff on an order they did not place. */
+export const RECURRENCE_NOT_YOUR_ORDER =
+  'Staff may set a recurrence only on an order they placed, and this order is not ' +
+  'recorded as placed by you. Ask a manager or an owner to set it.';
+
+/** The same, while the role has not been read. */
+export const RECURRENCE_FIRST_RULE_ROLE_UNKNOWN =
+  'Your role at this restaurant has not been read yet, and this order is not recorded ' +
+  'as placed by you, so whether you may set a recurrence on it is unknown. It is not ' +
+  'assumed. If this does not clear in a moment, reload.';
+
 /** A refusal from the gateway, in words, and what it left unchanged. */
 function refusalWords(message: string): string {
   const said = message.trim().replace(/[.!]?$/, '.');
@@ -188,7 +199,7 @@ export interface RecurrenceSheetProps {
 
 export function RecurrenceSheet({ open, onClose, row }: RecurrenceSheetProps) {
   const queryClient = useQueryClient();
-  const { activeRole } = useAuth();
+  const { activeRole, user } = useAuth();
   const [frequency, setFrequency] = useState<RecurrenceFrequency | null>(null);
   const [anchorDay, setAnchorDay] = useState<number | null>(null);
   const [startsOn, setStartsOn] = useState<string>(todayIso());
@@ -205,13 +216,26 @@ export function RecurrenceSheet({ open, onClose, row }: RecurrenceSheetProps) {
    * both lose the controls, and each is told its own reason.
    */
   const mayChangeRule = activeRole === 'owner' || activeRole === 'manager';
+  const roleUnknown = activeRole === null || activeRole === undefined;
   const roleNote = mayChangeRule
     ? null
-    : activeRole === null || activeRole === undefined
+    : roleUnknown
       ? RECURRENCE_ROLE_UNKNOWN
       : RECURRENCE_NEEDS_A_MANAGER;
-  /** Replacing a rule is changing it; the first rule on an order is not. */
+  /** Replacing a rule is changing it. */
   const replaceRefused = alreadyRecurs && !mayChangeRule;
+  /** A first rule: one's own order, or a manager or an owner on any order. */
+  const placedByMe =
+    typeof row?.createdBy === 'string' &&
+    typeof user?.userId === 'string' &&
+    row.createdBy.toLowerCase() === user.userId.toLowerCase();
+  const firstRuleNote =
+    !alreadyRecurs && !mayChangeRule && !placedByMe
+      ? roleUnknown
+        ? RECURRENCE_FIRST_RULE_ROLE_UNKNOWN
+        : RECURRENCE_NOT_YOUR_ORDER
+      : null;
+  const changeRefused = replaceRefused || firstRuleNote !== null;
 
   /*
    * THE REFUSAL, SHOWN BEFORE THE BUTTON.
@@ -258,7 +282,7 @@ export function RecurrenceSheet({ open, onClose, row }: RecurrenceSheetProps) {
     }
   }
 
-  const canSave = !!frequency && !blockedReason && !replaceRefused && !busy;
+  const canSave = !!frequency && !blockedReason && !changeRefused && !busy;
 
   return (
     <Panel
@@ -274,7 +298,7 @@ export function RecurrenceSheet({ open, onClose, row }: RecurrenceSheetProps) {
             {/* The one sentence an operator must not have to discover. */}
             Every occurrence is raised for approval. Nothing is ever bought without a hold.
           </span>
-          {!replaceRefused && (
+          {!changeRefused && (
             <button
               type="button"
               onClick={() =>
@@ -387,7 +411,16 @@ export function RecurrenceSheet({ open, onClose, row }: RecurrenceSheetProps) {
           </div>
         )}
 
-        {!blockedReason && !replaceRefused && (
+        {!blockedReason && firstRuleNote && (
+          <p
+            data-testid="recurrence-first-rule-note"
+            style={{ color: 'var(--ink-2, #4A4237)', lineHeight: 1.5 }}
+          >
+            {firstRuleNote}
+          </p>
+        )}
+
+        {!blockedReason && !changeRefused && (
           <>
             <fieldset className="flex flex-col gap-2" style={{ border: 0, padding: 0, margin: 0 }}>
               <legend style={{ color: 'var(--ink-4, #665D50)', fontSize: 11.5 }}>How often</legend>

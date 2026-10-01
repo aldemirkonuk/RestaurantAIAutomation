@@ -7,11 +7,11 @@
  * verified JWT. This follows the second, because a recurrence is a standing
  * commitment to buy and the tenant it belongs to is not a caller's opinion.
  *
- * WHO MAY (ADR 0247, founder 2026-10-01: "Managers and owners only"). Pause,
- * resume and end need a manager or an owner, and so does replacing a rule an
- * order already carries. Setting the first rule on an approved order is open
- * to every member of the house. The checks live in `OrderRecurrenceService`,
- * beside the writes they guard.
+ * WHO MAY (ADR 0247, founder 2026-10-01). Pause, resume and end need a
+ * manager or an owner, and so does replacing a rule an order already carries.
+ * A first rule on an approved order may be set by the person who placed it, or
+ * by a manager or an owner on any order. The checks live in
+ * `OrderRecurrenceService`, beside the writes they guard.
  */
 
 import {

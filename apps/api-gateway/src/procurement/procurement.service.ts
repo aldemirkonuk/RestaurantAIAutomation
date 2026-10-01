@@ -425,6 +425,8 @@ interface ProcurementOrderRow {
   recurrence_anchor_day?: number | null;
   recurrence_next_due_on?: string | null;
   recurrence_status?: string | null;
+  /** Who placed the order (`public.users.user_id`). ADR 0247 reads it. */
+  created_by?: string | null;
   recurrence_parent_order_id?: string | null;
   recurrence_occurrence_on?: string | null;
   /**
@@ -7226,6 +7228,11 @@ export class ProcurementService {
       recurrenceOccurrenceOn: recurrenceRead
         ? (row.recurrence_occurrence_on ?? null)
         : undefined,
+      // Who placed the order, by the key test: `null` is "nobody recorded",
+      // absence is "this route did not read it". RecurrenceSheet uses it to
+      // offer a first rule to staff only on an order they placed (ADR 0247);
+      // the gateway makes that check again itself.
+      createdBy: "created_by" in row ? (row.created_by ?? null) : undefined,
       // Both keys, always written, and both `undefined` when the line was not
       // read — absence on the wire, never a null that would read as "the line
       // states no unit". See `AgreedPriceUnitReading`.
