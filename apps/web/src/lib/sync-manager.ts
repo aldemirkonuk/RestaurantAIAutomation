@@ -17,6 +17,10 @@ import {
   STILL_TRYING_AFTER,
 } from './queue-owner'
 import { apiClient } from '../services/api/client'
+// No cycle: neither outbox imports this module (they flush the shared queue
+// themselves), so a static import is safe here.
+import { flushDoorOutbox } from './doorOutbox'
+import { flushSpotCountOutbox } from './spotCountOutbox'
 import { createCalendarEvent, updateCalendarEvent, deleteCalendarEvent } from '../services/api/calendar'
 import { createProvider, updateProvider } from '../services/api/providers'
 
@@ -296,7 +300,7 @@ class SyncManagerService {
         // Mutations whose type has no handler here belong to another owner
         // (doorOutbox's 'receiving.door', spotCountOutbox's
         // 'inventory.spotCount' — both flush the shared queue themselves,
-        // with their own idempotency keys and attempt budgets). Leave them
+        // with their own idempotency keys and retry rules). Leave them
         // untouched: processing them throws, and three throws used to
         // DELETE a door receipt that was never sent.
         if (!(mutation.type in mutationHandlers)) {
@@ -522,7 +526,17 @@ class SyncManagerService {
     }
     await this.updatePendingCount()
     this.notifyListeners()
-    return this.syncNow({ ignoreBackoff: true })
+    // The two outboxes' entries are skipped by `syncNow` (they flush the shared
+    // queue themselves), so un-parking a refused door receipt or spot count
+    // did nothing until something else flushed its outbox: "Try again" on the
+    // strip was a no-op for them. Flush both here. Neither rejects the retry:
+    // a failed outbox pass leaves its entries queued, and the counts below are
+    // re-read either way.
+    await Promise.allSettled([flushDoorOutbox(), flushSpotCountOutbox()])
+    const result = await this.syncNow({ ignoreBackoff: true })
+    await this.updatePendingCount()
+    this.notifyListeners()
+    return result
   }
 
   /** "Discard" on the not-sent strip: the person gives these changes up. */

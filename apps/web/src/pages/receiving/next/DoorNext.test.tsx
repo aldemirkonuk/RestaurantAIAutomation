@@ -4,30 +4,32 @@ import { MemoryRouter } from 'react-router-dom'
 import DoorNext from './DoorNext'
 
 /**
- * The rebuilt door screen, and the one distinction it was crying wolf over.
+ * The rebuilt door screen, and the distinctions it has to keep.
  *
  * `flushDoorOutbox` counts a RETRYABLE pass in `failed` — the receipt is still
- * in the queue and the next flush sends it (the `updatePendingMutation` retry
- * path in `flushDoorOutbox`, lib/doorOutbox.ts). Only `dropped` means the app
- * has given up: a 4xx, or the retry budget spent, with the item deleted from
- * the queue (the `if (permanent || m.retryCount + 1 >= MAX_ATTEMPTS)` branch in
- * the same loop).
+ * in the queue and the next flush sends it. A receipt the server refuses for
+ * good is PARKED as "Not sent" (ADR 0241 amendment, 2026-09-29 — the founder:
+ * "option 1, not sent."): kept in the queue, counted in `parked`, never
+ * deleted. Neither is a loss, so neither may raise the red alarm; the alarm is
+ * reserved for a drop RECORD, which only receipts dropped before the amendment
+ * have.
  *
- * This page rendered its red "did not send — tell a manager" banner on
+ * This page once rendered its red "did not send — tell a manager" banner on
  * `failed`, so a single flaky flush on a phone at the dock sent a receiver to
  * find a manager about a delivery that was about to arrive on the server by
- * itself. The legacy page pins the same pair — DoorReceipt.test.tsx,
- * `describe('DoorReceipt — a dropped receipt is not a delivered one')`; this
- * pins it here, on the version the founder's house has switched ON.
+ * itself. These tests pin the split on the version the founder's house has
+ * switched ON.
  */
 
 const flushDoorOutbox = vi.hoisted(() => vi.fn())
 const pendingDoorCount = vi.hoisted(() => vi.fn())
+const notSentDoorCount = vi.hoisted(() => vi.fn())
 const readDroppedDoorReceipts = vi.hoisted(() => vi.fn())
 const clearDroppedDoorReceipts = vi.hoisted(() => vi.fn())
 vi.mock('@/lib/doorOutbox', () => ({
   flushDoorOutbox,
   pendingDoorCount,
+  notSentDoorCount,
   readDroppedDoorReceipts,
   clearDroppedDoorReceipts,
   submitDoorReceipt: vi.fn(),
@@ -59,8 +61,7 @@ vi.mock('react-router-dom', async () => {
 type Flush = {
   sent: number
   failed: number
-  dropped: number
-  stranded?: number
+  parked: number
   unreachable?: boolean
 }
 
@@ -72,37 +73,40 @@ type Drop = {
 }
 
 /**
- * Stands in for the outbox's durable record — the thing this page now reads
- * instead of keeping a count in state that died on the Finish navigate.
+ * Drop records written BEFORE the ADR 0241 amendment. Nothing writes a new
+ * one; the page still reads and shows the ones already on a device.
  */
 let record: Drop[] = []
+const oldDrop = (orderLabel: string, reason: Drop['reason'] = 'refused'): Drop => ({
+  id: `d-${orderLabel}`,
+  orderLabel,
+  droppedAt: '2026-09-12T09:15:00.000Z',
+  reason,
+})
+
+/** Stands in for the queue's parked entries — what `notSentDoorCount` reads. */
+let parkedOnPhone = 0
 
 /**
- * A pass, mirrored the way the real outbox behaves: it writes one record per
- * dropped receipt, from the flush that caused it, BEFORE returning the count.
- * The page reads the record; the count only tells it to re-read.
+ * A pass, mirrored the way the real outbox behaves: a refusal is parked in the
+ * queue (so the parked count on the phone grows) BEFORE the count returns.
  */
 const pass = (r: Flush): Flush => {
-  for (let i = 0; i < r.dropped; i += 1) {
-    record.push({
-      id: `d${record.length + 1}`,
-      orderLabel: `PO-${record.length + 1}`,
-      droppedAt: '2026-09-12T09:15:00.000Z',
-      reason: 'refused',
-    })
-  }
-  return { stranded: 0, unreachable: false, ...r }
+  parkedOnPhone += r.parked
+  return { unreachable: false, ...r }
 }
 
 beforeEach(() => {
   vi.clearAllMocks()
   record = []
+  parkedOnPhone = 0
   pendingDoorCount.mockResolvedValue(0)
+  notSentDoorCount.mockImplementation(async () => parkedOnPhone)
   readDroppedDoorReceipts.mockImplementation(() => record)
   clearDroppedDoorReceipts.mockImplementation(() => {
     record = []
   })
-  flushDoorOutbox.mockResolvedValue(pass({ sent: 0, failed: 0, dropped: 0 }))
+  flushDoorOutbox.mockResolvedValue(pass({ sent: 0, failed: 0, parked: 0 }))
 })
 
 const renderPage = () =>
@@ -123,9 +127,11 @@ const flushAgain = async (r: Flush) => {
 const alarm = () => screen.queryByRole('alert')
 const quiet = () => document.querySelector('[data-ux-key="door:retrying"]')
 
-describe('DoorNext — a dropped door report is not a retried one', () => {
+const notSent = () => document.querySelector('[data-ux-key="door:not-sent"]')
+
+describe('DoorNext — a refused door report is parked as Not sent, never an alarm', () => {
   it('does NOT cry wolf over a retryable failure — that one is still queued', async () => {
-    flushDoorOutbox.mockResolvedValue(pass({ sent: 0, failed: 1, dropped: 0 }))
+    flushDoorOutbox.mockResolvedValue(pass({ sent: 0, failed: 1, parked: 0 }))
     renderPage()
 
     // The quiet line proves the flush was actually observed, so the absent
@@ -133,10 +139,72 @@ describe('DoorNext — a dropped door report is not a retried one', () => {
     await waitFor(() => expect(quiet()).not.toBeNull())
     expect(quiet()?.textContent).toContain('still trying')
     expect(alarm()).toBeNull()
+    expect(notSent()).toBeNull()
   })
 
-  it('says so, in words a receiver can act on, when the outbox gives one up', async () => {
-    flushDoorOutbox.mockResolvedValue(pass({ sent: 0, failed: 1, dropped: 1 }))
+  it('says a refused report is kept as Not sent, quietly, and where to act on it', async () => {
+    flushDoorOutbox.mockResolvedValue(pass({ sent: 0, failed: 0, parked: 1 }))
+    renderPage()
+
+    await waitFor(() => expect(notSent()).not.toBeNull())
+    expect(notSent()?.textContent).toContain('1 delivery report on this phone was not sent')
+    expect(notSent()?.textContent).toContain('Not sent')
+    expect(notSent()?.textContent).toContain('Receiving')
+    // Kept, not lost: no red alarm, and not "still trying" either — nothing
+    // will send it on its own.
+    expect(alarm()).toBeNull()
+    expect(quiet()).toBeNull()
+  })
+
+  it('keeps the still-trying count and the Not sent count apart in one pass', async () => {
+    renderPage()
+    await waitFor(() => expect(flushDoorOutbox).toHaveBeenCalled())
+
+    // Three did not send: one is still waiting, two were refused and parked.
+    await flushAgain({ sent: 1, failed: 1, parked: 2 })
+
+    await waitFor(() => expect(notSent()).not.toBeNull())
+    expect(quiet()?.textContent).toContain('1 report did not send yet')
+    expect(notSent()?.textContent).toContain('2 delivery reports on this phone were not sent')
+    expect(alarm()).toBeNull()
+  })
+
+  it('counts ONE refused report once when two triggers join the same pass', async () => {
+    // The walk from the dock to the office raises 'online' and
+    // 'visibilitychange' in the same tick, and the outbox hands both callers
+    // the SAME in-flight pass — one promise, not two.
+    const onePass = Promise.resolve(pass({ sent: 0, failed: 0, parked: 1 }))
+    flushDoorOutbox.mockReturnValue(onePass)
+    renderPage()
+    await waitFor(() => expect(notSent()).not.toBeNull())
+
+    await act(async () => {
+      window.dispatchEvent(new Event('online'))
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+
+    // The page re-READS the queue rather than adding the count.
+    expect(notSent()?.textContent).toContain('1 delivery report on this phone was not sent')
+  })
+
+  it('stays silent when nothing failed at all', async () => {
+    flushDoorOutbox.mockResolvedValue(pass({ sent: 2, failed: 0, parked: 0 }))
+    renderPage()
+
+    await waitFor(() => expect(flushDoorOutbox).toHaveBeenCalled())
+    expect(alarm()).toBeNull()
+    expect(quiet()).toBeNull()
+    expect(notSent()).toBeNull()
+  })
+})
+
+/**
+ * Drop records written before the amendment are still on devices. They stay
+ * loud — the receipt really is gone — and they must name the right remedy.
+ */
+describe('DoorNext — a drop recorded before the amendment is still shown', () => {
+  it('says so, in words a receiver can act on', async () => {
+    record = [oldDrop('PO-1')]
     renderPage()
 
     await waitFor(() => expect(alarm()).not.toBeNull())
@@ -147,100 +215,66 @@ describe('DoorNext — a dropped door report is not a retried one', () => {
     // The two things only the person standing at the door can still do.
     expect(notice?.textContent).toContain('Keep the paperwork')
     expect(notice?.textContent).toContain('tell a manager')
-    // A drop is not also "still trying".
-    expect(quiet()).toBeNull()
   })
 
   it('stays on screen after a later flush succeeds — a drop is permanent', async () => {
-    flushDoorOutbox.mockResolvedValue(pass({ sent: 0, failed: 1, dropped: 1 }))
+    record = [oldDrop('PO-1')]
     renderPage()
     await waitFor(() => expect(alarm()).not.toBeNull())
 
-    await flushAgain({ sent: 3, failed: 0, dropped: 0 })
+    await flushAgain({ sent: 3, failed: 0, parked: 0 })
 
     expect(alarm()?.textContent).toContain('never sent')
   })
 
-  it('accumulates, so a second drop does not overwrite the first', async () => {
-    flushDoorOutbox.mockResolvedValue(pass({ sent: 0, failed: 1, dropped: 1 }))
+  it('names several recorded drops together', async () => {
+    record = [oldDrop('PO-1'), oldDrop('PO-2'), oldDrop('PO-3')]
     renderPage()
+
     await waitFor(() => expect(alarm()).not.toBeNull())
-
-    // Three failures in that pass, two of them permanent: the alarm counts the
-    // two drops (plus the first), the quiet line counts the one still queued.
-    await flushAgain({ sent: 1, failed: 3, dropped: 2 })
-
     expect(alarm()?.textContent).toContain('3 deliveries saved on this phone were never sent')
-    expect(quiet()?.textContent).toContain('1 report did not send yet')
-    expect(quiet()?.textContent).toContain('still trying')
-  })
-
-  it('counts ONE lost report once when two triggers join the same pass', async () => {
-    // The walk from the dock to the office raises 'online' and
-    // 'visibilitychange' in the same tick, and the outbox hands both callers
-    // the SAME in-flight pass (lib/doorOutbox.ts, `inFlight`) — so this returns
-    // one promise, not two. Adding its `dropped` once per caller reported two
-    // lost reports where one was lost.
-    const onePass = Promise.resolve(pass({ sent: 0, failed: 1, dropped: 1 }))
-    flushDoorOutbox.mockReturnValue(onePass)
-    renderPage()
-    await waitFor(() => expect(alarm()).not.toBeNull())
-
-    await act(async () => {
-      window.dispatchEvent(new Event('online'))
-      document.dispatchEvent(new Event('visibilitychange'))
-    })
-
-    // The page re-READS the record rather than adding the count, so a pass
-    // reported to two callers cannot turn one lost delivery into two.
-    expect(alarm()?.textContent).toContain('was saved on this phone and never sent')
-    expect(alarm()?.textContent).not.toContain('2 deliveries')
-  })
-
-  it('stays silent when nothing failed at all', async () => {
-    flushDoorOutbox.mockResolvedValue(pass({ sent: 2, failed: 0, dropped: 0 }))
-    renderPage()
-
-    await waitFor(() => expect(flushDoorOutbox).toHaveBeenCalled())
-    expect(alarm()).toBeNull()
-    expect(quiet()).toBeNull()
   })
 })
 
 /**
- * The strand has NO screen of its own, deliberately — ADR 0140.
- *
- * Five successive attempts to give a receipt-the-outbox-gave-up-on-but-could-
- * not-record a durable, screen-facing witness each shipped a defect: a count
- * that inflated one loss into three, a mark that could not be written in the
- * one condition that creates it (so the alarm went silent), a strand that
- * became unclearable over a delivery the server had accepted, a ledger erased
- * by one unreadable read, and a conversion that fabricated a permanent loss
- * record from a read blip. The outbox now keeps the RECEIPT and claims nothing
- * more. This pins that: no alarm is raised off a flush result alone.
+ * A stored `auth` reason means the server turned the account away — a 403 — because
+ * ADR 0241 retries a 401 and never drops it. The notice used to say "The app
+ * was signed out. Sign in again", which sent the porter after the wrong fix
+ * and dropped "tell a manager" (#530 audit).
+ */
+describe('DoorNext — a 403 drop is not "signed out"', () => {
+  it('says the server turned the account away, keeps the paperwork, tells a manager', async () => {
+    record = [oldDrop('PO-9', 'auth')]
+    renderPage()
+
+    await waitFor(() => expect(alarm()).not.toBeNull())
+    const text = alarm()?.textContent ?? ''
+    expect(text).toContain('The server turned this account away')
+    expect(text).toContain('Keep the paperwork')
+    expect(text).toContain('tell a manager')
+    expect(text).not.toContain('signed out')
+    expect(text).not.toMatch(/sign in/i)
+  })
+})
+
+/**
+ * The strand has NO screen of its own, deliberately — ADR 0140 — and since the
+ * amendment a refusal cannot strand at all (nothing is deleted). This pins
+ * that no pass result alone raises an alarm.
  */
 describe('DoorNext raises no standing alarm off a pass result', () => {
   const strand = () => document.querySelector('[data-ux-key="door:stranded"]')
 
-  it('renders no strand alarm, however many passes report one', async () => {
-    flushDoorOutbox.mockResolvedValue(pass({ sent: 0, failed: 1, dropped: 0, stranded: 1 }))
+  it('renders no alarm, however many passes report failures or parks', async () => {
+    flushDoorOutbox.mockResolvedValue(pass({ sent: 0, failed: 1, parked: 0 }))
     renderPage()
     await waitFor(() => expect(quiet()).not.toBeNull())
 
-    await flushAgain({ sent: 0, failed: 1, dropped: 0, stranded: 1 })
-    await flushAgain({ sent: 0, failed: 1, dropped: 0, stranded: 1 })
+    await flushAgain({ sent: 0, failed: 1, parked: 1 })
+    await flushAgain({ sent: 0, failed: 1, parked: 0 })
 
     expect(strand()).toBeNull()
-    // And it is NOT dressed up as a delivered one either: the receipt is still
-    // queued, so the quiet line still says it has not sent.
+    expect(alarm()).toBeNull()
     expect(quiet()?.textContent).toContain('still trying')
-  })
-
-  it('still raises the drop alarm, which is backed by a record', async () => {
-    flushDoorOutbox.mockResolvedValue(pass({ sent: 0, failed: 1, dropped: 1 }))
-    renderPage()
-
-    await waitFor(() => expect(alarm()).not.toBeNull())
-    expect(alarm()?.textContent).toContain('PO-1')
   })
 })

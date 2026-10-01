@@ -22,9 +22,11 @@ import {
   type UnverifiedDelivery,
 } from '@/services/api/receiving';
 import {
+  discardDoorReceipt,
   dismissDroppedDoorReceipt,
   flushDoorOutbox,
   readDroppedDoorReceipts,
+  resendDoorReceipt,
   type DroppedDoorReceipt,
   type QueuedDoorReceipt,
 } from '@/lib/doorOutbox';
@@ -734,6 +736,14 @@ export interface QueuedReceiptVM {
   /** Attempts made so far (no ceiling since ADR 0241). 0 = not yet tried. */
   retryCount: number;
   lastError: string | null;
+  /**
+   * Set when the receipt is PARKED as "Not sent" (ADR 0241 amendment,
+   * 2026-09-29): the server refused it for good (`refused`, with its HTTP
+   * status), or it names no person or house to send it as (`unowned`). It is
+   * not retried on its own. A refused one can be sent again; either can be
+   * discarded. Null for a receipt that is simply waiting.
+   */
+  parked: { reason: 'refused' | 'unowned'; status: number | null } | null;
 }
 
 export interface DroppedReceiptVM {
@@ -785,6 +795,10 @@ export interface OutboxData {
   online: boolean;
   dismissDrop: (id: string) => void;
   flushNow: () => void;
+  /** Send one parked `refused` receipt again (un-park, then flush). */
+  resend: (id: string) => void;
+  /** Give one parked receipt up. The caller confirms first: the count is not on the server. */
+  discard: (id: string) => void;
 }
 
 function toQueuedVM(m: PendingMutation): QueuedReceiptVM {
@@ -795,6 +809,9 @@ function toQueuedVM(m: PendingMutation): QueuedReceiptVM {
     queuedAt: m.timestamp ? new Date(m.timestamp).toISOString() : null,
     retryCount: m.retryCount ?? 0,
     lastError: m.lastError ?? null,
+    parked: m.parked
+      ? { reason: m.parked.reason, status: typeof m.parked.status === 'number' ? m.parked.status : null }
+      : null,
   };
 }
 
@@ -817,21 +834,20 @@ function belongsToRestaurant(m: PendingMutation, restaurantId: string): boolean 
 /**
  * The pending-outbox rail's data. This is the defect fix the motion canvas
  * named (inv-09, "Nothing vanishes; the drop becomes a pin"): `flushDoorOutbox`
- * DELETES a receipt it gives up on (a permanent 4xx refusal — the
- * `if (permanent)` branch of
- * `flushDoorOutbox`, lib/doorOutbox.ts), so the pending count falls by one
- * exactly as it does on a delivery and a permanent loss is indistinguishable
- * from a success.
+ * used to DELETE a receipt it gave up on (a permanent 4xx refusal), so the
+ * pending count fell by one exactly as it does on a delivery and a permanent
+ * loss was indistinguishable from a success. [Superseded 2026-09-29 by the
+ * ADR 0241 amendment: a refused receipt is now PARKED in the queue and listed
+ * here as "Not sent" with Send again and Discard; nothing is deleted, so the
+ * pins below are only the records written before it.]
  *
- * ON THE LEGACY PAGE, stated as a mechanism rather than as a description,
- * because this paragraph has been wrong twice in four days — once saying that
- * page "throws the flush result away", once saying it "accumulates `dropped`".
- * Grep `watchDoorOutbox(` in DoorReceipt.tsx: the callback takes no argument.
- * That page consults no field of the result at all; it re-reads the drop record
- * and the strand on every pass, which is the same thing this hook does, for the
- * same reason — a count cannot say WHICH receipt, and a count in component
- * state does not survive the navigate. The distinction is held on both pages;
- * neither holds it in a number.
+ * [Corrected 2026-09-29: a paragraph here described "the legacy page",
+ * `DoorReceipt.tsx`, and its `watchDoorOutbox(` callback. That page no longer
+ * exists and nothing in the web app calls `watchDoorOutbox` now. The door
+ * screen (`DoorNext.tsx`) does what this hook does: it re-reads the drop
+ * records and the not-sent count from storage on every pass rather than
+ * holding the distinction in a number, because a count cannot say WHICH
+ * receipt and a count in component state does not survive the navigate.]
  *
  * CORRECTED AGAIN 2026-09-12 — the paragraph here used to say this hook "keeps
  * its own reconstruction rather than reading `dropped`", snapshotting the queue
@@ -908,8 +924,13 @@ export function useDoorOutbox(): OutboxData {
       const session = currentQueueOwner();
       const res = offlineNow ? null : await flushDoorOutbox();
       const sendable = before.filter((m) => !m.parked && isReplayable(m, session));
+      // A refusal is now PARKED rather than failed (ADR 0241 amendment), so a
+      // pass that parked the only sendable receipt did run: `parked` counts.
       const raced =
-        beforeKnown && sendable.length > 0 && res !== null && res.sent + res.failed === 0;
+        beforeKnown &&
+        sendable.length > 0 &&
+        res !== null &&
+        res.sent + res.failed + res.parked === 0;
       const at = new Date().toISOString();
       if (res === null || raced) {
         setLastFlush({ attempted: false, reason: 'offline', at });
@@ -919,20 +940,12 @@ export function useDoorOutbox(): OutboxData {
         setLastFlush({ attempted: true, sent: res.sent, failed: res.failed, at });
       }
 
-      // The drops are READ, not reconstructed. The flush wrote each one down
-      // itself, keyed on the queue id and scoped to this restaurant, so there
-      // is nothing left to infer from a before/after diff — and nothing that
-      // can point at the wrong receipt when a pass both sends and drops.
-      //
-      // A receipt the flush gave up on but could not RECORD produces no drop
-      // pin: it was not dropped, it is still in the queue, and it renders in
-      // the queue list above like any other entry. The flush tries to leave the
-      // reason on it as `lastError`, which this rail shows — best-effort, since
-      // that write goes through the storage that refused the record in the
-      // first place. ADR 0140 is why nothing here claims more than that.
-      if (res !== null && res.dropped > 0) {
-        setDrops(readDroppedDoorReceipts(rid).map(toDroppedVM));
-      }
+      // Drop records are READ, never reconstructed — and since the ADR 0241
+      // amendment (2026-09-29) nothing writes a new one: a refused receipt is
+      // parked in the queue and shows in the queue list as "Not sent". The
+      // records already on this device are re-read so a dismissal elsewhere
+      // (the door screen's acknowledgement) is reflected here.
+      setDrops(readDroppedDoorReceipts(rid).map(toDroppedVM));
       await refreshQueue();
     } finally {
       busyRef.current = false;
@@ -971,5 +984,42 @@ export function useDoorOutbox(): OutboxData {
     [rid],
   );
 
-  return { queued, drops, lastFlush, online, dismissDrop, flushNow: () => void flushNow() };
+  const resend = useCallback(
+    (id: string) => {
+      void (async () => {
+        try {
+          await resendDoorReceipt(id);
+        } catch {
+          /* the entry is left as it was; the re-read below shows its state */
+        }
+        await refreshQueue();
+      })();
+    },
+    [refreshQueue],
+  );
+
+  const discard = useCallback(
+    (id: string) => {
+      void (async () => {
+        try {
+          await discardDoorReceipt(id);
+        } catch {
+          /* storage refused the delete — the entry is still listed below */
+        }
+        await refreshQueue();
+      })();
+    },
+    [refreshQueue],
+  );
+
+  return {
+    queued,
+    drops,
+    lastFlush,
+    online,
+    dismissDrop,
+    flushNow: () => void flushNow(),
+    resend,
+    discard,
+  };
 }

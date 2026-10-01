@@ -7,24 +7,26 @@
  * 1. QUEUED — receipts saved on a phone that have not reached the server yet
  *    (`doorOutbox`'s pending-mutation queue), each named, with its attempt
  *    attempt count (no ceiling since ADR 0241) and the last error verbatim.
- * 2. DROPPED — the defect fix (v3.0-TECH-DEBT / motion canvas inv-09):
- *    `flushDoorOutbox` permanently discards a receipt on a permanent 4xx
- *    refusal (the `if (permanent)` branch in `flushDoorOutbox`,
- *    lib/doorOutbox.ts; before ADR 0241 also after 8 attempts), deleting it from the queue, so
- *    the pending count falls exactly as it does on a delivery and a dropped
- *    receipt looks identical to a delivered one. Here every drop is pinned by
- *    name and stays until a person dismisses it. Nothing vanishes; the drop
- *    becomes a pin (turn, then the stamp landing).
+ *    A receipt the server refused for good is PARKED in the same list as
+ *    "Not sent" (ADR 0241 amendment, 2026-09-29 — the founder: "option 1, not
+ *    sent."), with the refusal in plain words, "Send again" (refused only) and
+ *    "Discard" (confirmed first: the count is not on the server).
+ * 2. DROPPED — records written BEFORE that amendment, still shown and
+ *    dismissable; nothing writes a new one. The original defect fix
+ *    (v3.0-TECH-DEBT / motion canvas inv-09): until that amendment,
+ *    `flushDoorOutbox` permanently discarded a receipt on a permanent 4xx
+ *    refusal (and, before ADR 0241, after 8 attempts), deleting it from the
+ *    queue, so the pending count fell exactly as it does on a delivery and a
+ *    dropped receipt looked identical to a delivered one. That branch no
+ *    longer exists: a refusal is parked (item 1). The drop records it wrote
+ *    are still pinned here by name until a person dismisses them.
  *
- *    (This sentence has now rotted twice in four days — first claiming the
- *    legacy page "throws that `failed` count away", then claiming it
- *    "accumulates `dropped`" from the flush result. Neither describes the
- *    tree. State the mechanism instead: grep `watchDoorOutbox(` in
- *    DoorReceipt.tsx — that page consults NO field of the result; it re-reads
- *    `readDroppedDoorReceipts` on every pass,
- *    and it names the orders, as this rail does. What is left to this rail
- *    alone is the QUEUE: the entries still waiting, with their attempt count
- *    and last error, which neither door screen shows.)
+ *    [Corrected 2026-09-29: a paragraph here pointed at `watchDoorOutbox(` in
+ *    `DoorReceipt.tsx`. That page no longer exists and nothing in the web app
+ *    calls `watchDoorOutbox` now; the door screen (`DoorNext.tsx`) re-reads
+ *    the drop records and the not-sent count from storage on every pass. What
+ *    is left to this rail alone is the QUEUE: each entry with its attempt
+ *    count, last error or "Not sent" reason, and the actions it allows.]
  *
  * Honesty: a storage read that throws renders as "unknown", never as an
  * empty queue — and the empty state says what emptiness means.
@@ -33,9 +35,39 @@
 import { useEffect, useRef } from 'react';
 import { animate, ink, stamp, turn, useReducedMotion } from '@/lib/mudavym/motion';
 import { EM, MONO, SANS, SERIF, capStyle, fmtDate } from './rc-format';
-import type { OutboxData } from './useReceivingNextData';
+import type { OutboxData, QueuedReceiptVM } from './useReceivingNextData';
 
 const timeShort = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit' });
+
+/**
+ * Why a parked receipt was not sent, in words a porter can act on. The HTTP
+ * status is kept on the entry; only the ones with a clear meaning are named,
+ * and everything else says what is certain — the server refused it.
+ */
+function notSentReason(p: NonNullable<QueuedReceiptVM['parked']>): string {
+  if (p.reason === 'unowned')
+    return 'saved before the app recorded who took it, so it cannot be sent as anyone';
+  switch (p.status) {
+    case 403:
+      return 'the server turned this account away for this house — check the house, and that the email is verified';
+    case 404:
+      return 'the server refused it: it could not find this order';
+    case 409:
+      return 'the server refused it: it clashes with what is already recorded';
+    default:
+      return 'the server refused it';
+  }
+}
+
+const linkButton = {
+  background: 'none',
+  border: 'none',
+  padding: 0,
+  fontSize: 11,
+  textDecoration: 'underline',
+  cursor: 'pointer',
+  fontFamily: SANS,
+} as const;
 
 function PinnedDrop({
   label,
@@ -153,7 +185,7 @@ function PinnedDrop({
 }
 
 export function RcOutboxRail({ data }: { data: OutboxData }) {
-  const { queued, drops, lastFlush, online, dismissDrop, flushNow } = data;
+  const { queued, drops, lastFlush, online, dismissDrop, flushNow, resend, discard } = data;
   const prevDropIds = useRef<Set<string>>(new Set(drops.map((d) => d.id)));
   const newIds = new Set(drops.filter((d) => !prevDropIds.current.has(d.id)).map((d) => d.id));
   useEffect(() => {
@@ -215,15 +247,22 @@ export function RcOutboxRail({ data }: { data: OutboxData }) {
           {queued.map((r) => (
             <div
               key={r.id}
+              data-ux-key={r.parked ? 'receiving-next:outbox-not-sent' : undefined}
+              style={{
+                border: r.parked
+                  ? '1px solid var(--ink-1, #211C16)'
+                  : '1px solid var(--paper-2, #EAE4D8)',
+                borderRadius: 10,
+                background: 'var(--paper-1, #F3EFE6)',
+                padding: '8px 12px',
+              }}
+            >
+            <div
               style={{
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'baseline',
                 gap: 10,
-                border: '1px solid var(--paper-2, #EAE4D8)',
-                borderRadius: 10,
-                background: 'var(--paper-1, #F3EFE6)',
-                padding: '8px 12px',
               }}
             >
               <span style={{ minWidth: 0 }}>
@@ -249,22 +288,79 @@ export function RcOutboxRail({ data }: { data: OutboxData }) {
                   }}
                 >
                   saved {r.queuedAt ? timeShort.format(new Date(r.queuedAt)) : EM}
-                  {r.lastError ? ` · last error: ${r.lastError}` : ''}
+                  {r.parked
+                    ? ` · ${notSentReason(r.parked)}`
+                    : r.lastError
+                      ? ` · last error: ${r.lastError}`
+                      : ''}
                 </span>
               </span>
-              <span
-                title="Attempts made so far. The outbox keeps trying until the server takes it or refuses it for good (ADR 0241)"
-                style={{
-                  flex: 'none',
-                  fontFamily: MONO,
-                  fontSize: 11,
-                  fontVariantNumeric: 'tabular-nums',
-                  color: r.retryCount >= 6 ? 'var(--ink-1, #211C16)' : 'var(--ink-4, #665D50)',
-                  transition: `color ${ink.ms}ms ${ink.easing}`,
-                }}
-              >
-                {r.retryCount} {r.retryCount === 1 ? 'try' : 'tries'}
-              </span>
+              {r.parked ? (
+                // Parked: nothing will send it on its own, so an attempt count
+                // ("0 tries" on an unowned one) would say it is still trying.
+                <span
+                  style={{
+                    flex: 'none',
+                    fontFamily: MONO,
+                    fontSize: 8.5,
+                    fontWeight: 700,
+                    letterSpacing: '0.14em',
+                    textTransform: 'uppercase',
+                    color: 'var(--paper-0, #FAF7F1)',
+                    background: 'var(--ink-1, #211C16)',
+                    borderRadius: 3,
+                    padding: '2px 6px',
+                  }}
+                >
+                  Not sent
+                </span>
+              ) : (
+                <span
+                  title="Attempts made so far. The outbox keeps trying until the server takes it or refuses it for good (ADR 0241)"
+                  style={{
+                    flex: 'none',
+                    fontFamily: MONO,
+                    fontSize: 11,
+                    fontVariantNumeric: 'tabular-nums',
+                    color: r.retryCount >= 6 ? 'var(--ink-1, #211C16)' : 'var(--ink-4, #665D50)',
+                    transition: `color ${ink.ms}ms ${ink.easing}`,
+                  }}
+                >
+                  {r.retryCount} {r.retryCount === 1 ? 'try' : 'tries'}
+                </span>
+              )}
+            </div>
+            {r.parked && (
+              <div style={{ display: 'flex', gap: 14, marginTop: 6 }}>
+                {r.parked.reason === 'refused' && (
+                  <button
+                    type="button"
+                    onClick={() => resend(r.id)}
+                    data-ux-key="receiving-next:outbox-send-again"
+                    aria-label={`Send ${r.label} again`}
+                    style={{ ...linkButton, color: 'var(--seal-deep, #14515C)' }}
+                  >
+                    Send again
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (
+                      window.confirm(
+                        `Discard ${r.label}? The count is not on the server — it exists only on this phone. Keep the paperwork.`,
+                      )
+                    )
+                      discard(r.id);
+                  }}
+                  data-ux-key="receiving-next:outbox-discard"
+                  aria-label={`Discard ${r.label}`}
+                  style={{ ...linkButton, color: 'var(--ink-4, #665D50)' }}
+                >
+                  Discard
+                </button>
+              </div>
+            )}
             </div>
           ))}
         </div>
