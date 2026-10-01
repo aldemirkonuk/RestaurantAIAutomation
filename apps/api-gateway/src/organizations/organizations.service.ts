@@ -32,16 +32,22 @@ import {
  * `users.role = 'owner'` and `acceptHeldMembership` later sets only
  * `users.restaurant_id`, so an account made by `registerAccount` that joined a
  * house as staff that way read as the house's owner whenever this read failed,
- * and passed its manager checks.
+ * and passed its manager checks here. Over HTTP the JWT step
+ * (`AuthService.validateJwtPayload`) reads the token's house's row first and
+ * answers 503 or 401, so a caller reaches this path when its house is not the
+ * token's, when that read succeeded and this one failed, or when it has no
+ * JWT step (ADR 0248, "Reachability end to end").
  *
  * A ROW THAT EXISTS DECIDES ALONE (founder, 2026-10-01: "Close both in #561",
  * ADR 0248). Only an access read that SUCCEEDED and found NO row for this
  * person here, active or not, sends us to `users.role`. A row that exists
  * gives its role only while `isLiveMembership` holds (`is_active` exactly
- * true, `valid_from` not in the future, `valid_until` null or in the
- * future); otherwise the answer is `role: null`. Before this change the
+ * true, `valid_from` no more than `VALID_FROM_CLOCK_TOLERANCE_MS`, 120 s,
+ * ahead of the gateway's clock, `valid_until` null or later than that
+ * clock); otherwise the answer is `role: null`. Before this change the
  * lookup read only active rows and ignored the window, so an inactive row
- * sent it to `users.role` and an expired or not-yet-valid row gave its role.
+ * sent it to `users.role`, and a row whose `valid_from` was ahead of the
+ * clock or whose `valid_until` had passed gave its role.
  *
  * Module-level so the vendor-send authority (`vendor-send-authority.service.ts`,
  * ADR 0175 D10) can use the same rule without importing this whole service and
@@ -79,9 +85,10 @@ export async function lookupRestaurantRole(
   }
 
   // A row exists, so it decides alone (founder, 2026-10-01: "Close both in
-  // #561", ADR 0248). A row that is inactive, not yet valid or expired gives
-  // no role, and the legacy row is not read: `isLiveMembership` is the same
-  // test every other "is this a member now" reader applies.
+  // #561", ADR 0248). A row that is inactive, whose `valid_from` is more than
+  // 120 s ahead of the gateway's clock, or whose `valid_until` has passed
+  // gives no role, and the legacy row is not read: `isLiveMembership` is the
+  // same test every other "is this a member now" reader applies.
   if (access) {
     const row = access as MembershipWindow & { role?: string | null };
     return {

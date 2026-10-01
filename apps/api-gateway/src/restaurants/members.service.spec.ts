@@ -792,6 +792,14 @@ describe("MembersService.updateMemberRole — a role changes in this house only"
  *   - a row that EXISTS decides alone, and only while `isLiveMembership` holds;
  *   - only a read that found NO row falls back to `users.role || "staff"`.
  * Cases marked [REVERT-FAILS] fail on 2019ae7f6.
+ *
+ * These cases call the service directly, so `AuthService.validateJwtPayload`
+ * never runs. The members and operating-hours routes take the house from a
+ * tenant-compared `:restaurantId`, so over HTTP the JWT step reads the same
+ * table for that house first: an access-read error there answers 503, and an
+ * inactive row or no row answers 401. The error, inactive and no-row cases
+ * below therefore measure the helper; the expired and not-yet-valid cases pass
+ * the JWT step. ADR 0248, "Reachability end to end".
  */
 describe("MembersService.assertMembership — the access row decides, and an unreadable one is no role", () => {
   const ACTOR = "user-actor";
@@ -843,7 +851,7 @@ describe("MembersService.assertMembership — the access row decides, and an unr
   it.each([
     ["an INACTIVE row", { role: "owner", is_active: false }],
     ["an EXPIRED row (valid_until in the past)", { role: "manager", is_active: true, valid_until: PAST }],
-    ["a NOT-YET-VALID row (valid_from in the future)", { role: "manager", is_active: true, valid_from: FUTURE }],
+    ["a NOT-YET-VALID row (valid_from years ahead, past the two-minute tolerance)", { role: "manager", is_active: true, valid_from: FUTURE }],
   ])(
     "[REVERT-FAILS] %s plus a users row saying owner of this house is refused with 403",
     async (_label, row) => {

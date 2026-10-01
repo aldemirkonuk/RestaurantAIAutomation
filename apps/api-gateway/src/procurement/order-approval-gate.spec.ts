@@ -549,6 +549,13 @@ describe("approveOrder — the refusal is filed", () => {
  * tries again. Cases marked [REVERT-FAILS] fail on main 2019ae7f6: there the
  * seal read the role non-strictly, and an access-read error fell back to
  * `users.role`.
+ *
+ * These cases call the service directly. Over HTTP (`POST
+ * /procurement/orders/:id/approve`, house from the token) the JWT step reads
+ * the same table first and answers 503 when its own read errors, so the seal's
+ * 500 shows there only when that read succeeded and the seal's own read
+ * errors. The recurring-orders cron calls `approveOrder` with no JWT step
+ * (`recurring-orders.service.ts:888`). ADR 0248, "Reachability end to end".
  */
 describe("approveOrder — a role that cannot be read", () => {
   /**

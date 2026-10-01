@@ -21,6 +21,24 @@
  * Cases marked [REVERT-FAILS] fail on 2019ae7f6. The others pin behaviour the
  * change keeps: the no-row fallback, a live row deciding alone, and the strict
  * reading throwing.
+ *
+ * THESE CASES MEASURE THE HELPER, NOT THE HTTP REQUEST. They call the lookup,
+ * `OrganizationsService` and `DistributorFeedController.declareCode` directly,
+ * so `AuthService.validateJwtPayload` never runs. Over HTTP, on a route that
+ * uses the token's house (`declareCode` does), that JWT step reads the same
+ * table first: an access-read error there answers 503, and a house with no
+ * active row (an inactive row, or none at all) answers 401. So:
+ *   - the access-read-error cases measure the narrow window in which the JWT
+ *     step's read succeeded and this read errors;
+ *   - the inactive-row cases, and "a legacy manager of this house is still a
+ *     manager, and the route admits them" (no row at all), measure outcomes
+ *     the JWT step refuses first on such a route; they hold over HTTP only
+ *     where the helper's house is not the token's
+ *     (`GET`/`PATCH /organizations/locations/:id`) and for callers with no JWT
+ *     step;
+ *   - the expired, not-yet-valid and empty-role cases pass the JWT step, which
+ *     reads neither the window nor the role.
+ * ADR 0248, "Reachability end to end".
  */
 
 import { ForbiddenException, InternalServerErrorException } from "@nestjs/common";
@@ -269,7 +287,7 @@ describe("a row that exists decides alone, live or not (Close both in #561)", ()
   const cases: Array<[string, AccessRow]> = [
     ["an INACTIVE row", { role: "owner", is_active: false }],
     ["an EXPIRED row (valid_until in the past)", { role: "manager", is_active: true, valid_until: PAST }],
-    ["a NOT-YET-VALID row (valid_from in the future)", { role: "manager", is_active: true, valid_from: FUTURE }],
+    ["a NOT-YET-VALID row (valid_from years ahead, past the two-minute tolerance)", { role: "manager", is_active: true, valid_from: FUTURE }],
     ["a live row with no role", { role: null, is_active: true }],
   ];
 

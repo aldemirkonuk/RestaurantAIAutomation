@@ -54,8 +54,9 @@ export class MembersService {
    *   - An access read that ERRORS gives no role: 403, and the `users` row is
    *     not read.
    *   - A row that EXISTS decides alone. It gives its role only while
-   *     `isLiveMembership` holds; an inactive, not-yet-valid or expired row
-   *     gives no role.
+   *     `isLiveMembership` holds; a row that is inactive, whose `valid_from`
+   *     is more than 120 s ahead of the gateway's clock, or whose
+   *     `valid_until` has passed gives no role.
    *   - Only a read that succeeded and found NO row for this person here falls
    *     back to the `users` row, unchanged.
    */

@@ -2,12 +2,14 @@
 
 - **Status:** Locked 2026-10-01.
 - **Date:** 2026-10-01
-- **Decider:** Aldemir (founder). Five answers, all 2026-10-01 in session 9512567d, each relayed to the fix lane by the lane coordinator. The picked options are quoted verbatim with their option text.
-  1. **What an access-read error means.** He answered *"Next PR: error means no role (Recommended)"*. The option read: *"Fall back to users.role only when the access read SUCCEEDED and found no row. On a read error, return no role, so managers get 403 during an outage on these routes. One-file change plus tests; behaviour for accounts that predate the access register is unchanged."*
-  2. **What the order seal does with a role it cannot read.** The caller sweep below found six callers that do more than refuse once the lookup returns no role. He answered *"Strict for the order seal (Recommended)"*. The option read: *"Ship as decided. The order seal alone reads the role strictly: an unreadable role returns 500 with nothing parked and no audit row, and the person retries. This matches ADR 0020's rule that an outage must not be reported as a fact about the person. The five read views degrade, are recorded in the ADR, and grant nothing. About one extra file plus a spec."*
-  3. **The second copy of the rule, `MembersService.assertMembership`.** He answered *"Fold into #561 (Recommended)"*. The option read: *"Apply the same rule to this copy: an access-read error means no role, so the caller gets a 403. That is about 2 more files and a spec, making 9 files. One review covers both copies of the rule."* Rejected: *"Separate PR after #561"* and *"Record only"*.
-  4. **Inactive rows and the validity window.** He answered *"Close both in #561"*. The option read: *"Fall back to users.role only when no access row exists at all, and honour the validity window. This widens #561 and changes more callers."* Rejected: *"Count in production, then record (Recommended)"*, which would have run two read-only count queries and recorded the items as OPEN if both were 0; and *"Record only"*.
-  5. **The clock the window is read with.** The caller re-sweep found that `valid_from` is stamped by the database and compared with the gateway's clock. He answered *"Small tolerance on valid_from (Recommended)"*. The option read: *"The shared check treats a valid_from up to 2 minutes in the future as already started. Since only the database's now() ever writes it, this cannot let anyone in early in practice. The predicate is also used by the recipient resolver, which gets the same tolerance. That is one line plus a spec in #561."* Rejected: *"Record it as open"* (leave the check exact, and record the skew as open and unmeasured) and *"Ignore valid_from, check only valid_until"*.
+- **Decider:** Aldemir (founder). Seven answers, all 2026-10-01 in session 9512567d, each relayed to the fix lane by the lane coordinator. Each question, every option's label and text, and the picked label are copied verbatim from the session transcript under "Options considered".
+  1. **What an access-read error means.** He picked "Next PR: error means no role (Recommended)".
+  2. **What the order seal and five other callers do with a role they cannot read.** He picked "Strict for the order seal (Recommended)".
+  3. **The second copy of the rule, `MembersService.assertMembership`.** He picked "Fold into #561 (Recommended)".
+  4. **An inactive row and the validity window.** He picked "Close both in #561".
+  5. **The clock the window is read with.** He picked "Small tolerance on valid_from (Recommended)".
+  6. **The order in which #561 and the PRs it meets land.** He picked "#561 last + docs PR (Recommended)".
+  7. **Whether to fix the record before review.** He picked "Fix now, before review (Recommended)".
 - **Keywords:** VALID_FROM_CLOCK_TOLERANCE_MS, clock skew, lookupRestaurantRole, MembersService.assertMembership, isLiveMembership, is_active, valid_from, valid_until, inactive row, held membership, readRestaurantRole, resolveRestaurantRole, assertCanManageRestaurant, user_restaurant_access, users.role, legacy fallback, access-read error, outage, readError, RestaurantRoleUnreadableError, assertApprovalAllowed, order seal, APPROVAL_NEEDED, order_approval_refused, registerAccount, acceptHeldMembership
 - **Links:**
   - [[0020-no-fabricated-answers]] (an outage is not a fact about the person).
@@ -23,16 +25,51 @@ Line numbers are at `origin/main` 2019ae7f6 unless marked "this branch". The swe
 
 **The lookup.** `lookupRestaurantRole` (`apps/api-gateway/src/organizations/organizations.service.ts:35`) reads the active `user_restaurant_access` row (`:40-46`). If no role comes back, it reads `users.role` and returns it when `users.restaurant_id` is this house. An access read that errors returns no data, so it also reached the `users` read. It set `readError` (`:59-63`) and still returned the legacy role. `readRestaurantRole` with `strict: false` (`:78-94`), which `OrganizationsService.resolveRestaurantRole` (`:254`) uses, returned that role and dropped `readError`. With `strict: true` it threw.
 
-**Why that is a hole.** `registerAccount` inserts `users.role = 'owner'` with `restaurant_id: null` (`apps/api-gateway/src/auth/auth.service.ts:1557-1566`). `acceptHeldMembership` later sets only `users.restaurant_id` (`:3152-3157`), and `users.role` is `varchar(20) DEFAULT 'manager' NOT NULL` (`supabase/migrations/20260805000000_baseline_from_production.sql:5854`). So an account made by `registerAccount` that later joined a house as staff through `acceptHeldMembership` read as that house's owner whenever the access read errored. It then passed `assertCanManageRestaurant` (`organizations.service.ts:297`) and the other non-strict callers below that ask for an owner or a manager.
+**Why that is a hole.** `registerAccount` inserts `users.role = 'owner'` with `restaurant_id: null` (`apps/api-gateway/src/auth/auth.service.ts:1557-1566`). `acceptHeldMembership` later sets only `users.restaurant_id` (`:3152-3157`), and `users.role` is `varchar(20) DEFAULT 'manager' NOT NULL` (`supabase/migrations/20260805000000_baseline_from_production.sql:5854`). So, at the helper, an account made by `registerAccount` that later joined a house as staff through `acceptHeldMembership` read as that house's owner whenever the helper's access read errored. It then passed `assertCanManageRestaurant` (`organizations.service.ts:297`) and the other non-strict callers below that ask for an owner or a manager. Which callers reach that over HTTP is measured under "Reachability end to end": most sit behind a JWT step that reads the same table first.
 
-**It reached every member, not only accounts that predate the access register.** During an access-read error the access row is unreadable for everyone. So everyone whose `users.restaurant_id` named the house was read at `users.role`, including people whose access row says `staff`.
+**At the helper, it reached every member, not only accounts that predate the access register.** When the helper's access read errored, everyone whose `users.restaurant_id` named the house was read at `users.role`, including people whose access row says `staff`.
 
 **A row that exists did not decide alone.** The lookup selected only rows with `is_active = true` (`:45`) and returned a role only when it was non-empty (`:48-49`). So:
 - an inactive row sent it to `users.role`;
 - so did an active row with no role;
-- an active row outside its window (`valid_from` in the future, or `valid_until` past) still gave its role, because the window was not read.
+- an active row whose `valid_from` was ahead of the clock, or whose `valid_until` had passed, still gave its role, because the window was not read.
 
 **The second copy.** `MembersService.assertMembership` (`apps/api-gateway/src/restaurants/members.service.ts:49-91`) carried the same rule with its own contract: a `users` row with no role reads as `staff` (`:74`), and the answer is a 403 rather than `null`. It discarded the access read's error (`:56`), so an error also reached the `users` row. It filtered `is_active = true` (`:61`) and ignored the window.
+
+## Reachability end to end
+
+[Correction, 2026-10-01, measured at `origin/main` 1c1a676f8. Nothing under `apps/` changed between 2019ae7f6 and 1c1a676f8. The questions put to the founder, and the first drafts of this ADR, described each path as if every caller reached the helper directly.]
+
+**The JWT step.** Every route behind `JwtAuthGuard` runs `AuthService.validateJwtPayload` through `JwtStrategy` (`apps/api-gateway/src/auth/auth.service.ts:1426-1493`), in the same request and before any helper.
+- It reads the access row for the token's house, filtered on `is_active = true` (`:1435-1442`).
+- A read error answers 503, "Could not confirm your role in this house" (`:1471-1479`).
+- No active row answers 401 `HOUSE_ACCESS_ENDED` (`:1481-1487`).
+- Otherwise it sets `house_role` from that row's role, which can be null (`:1489-1492`). It does not read `valid_from` or `valid_until`.
+- `JwtAuthGuard` then requires a house unless the route carries `@AllowsNoHouse()` (`auth/guards/jwt-auth.guard.ts:94`; `common/tenant/assert-house-chosen.ts:16-21`).
+- It also requires any `restaurantId` or `restaurant_id` in the path, query or body to equal the token's house (`jwt-auth.guard.ts:74`; `common/tenant/assert-tenant-match.ts`).
+
+**Which callers sit behind it, and for which house.**
+- **The token's house, behind `JwtAuthGuard`.** Every controller caller in the sweep below except the two named next takes its house either from the token (`@CurrentUser("restaurantId")`, `user.restaurantId`, `houseOf`, `houseActor`, or the controllers' `scope`/`house` helpers) or from a tenant-compared `:restaurantId` (members, operating hours, logs, inventory). The leave route compares `body.restaurantId` the same way (`auth/auth.controller.ts:429-436`). No route in the sweep carries `@AllowsNoHouse()`.
+  - That includes the procurement routes for cancel, approve and the credit claim (`procurement/procurement.controller.ts:336`, `:555`, `:392`), and the approval gate (`:423`).
+  - The relay's person door also runs the JWT step: `RelayDoorGuard` extends `JwtAuthGuard` (`communications/relay/relay-door.guard.ts:58`, `:78`).
+- **A house the JWT step did not check, behind `JwtAuthGuard`.**
+  - `GET` and `PATCH /organizations/locations/:id` take the house from `:id`, which is not tenant-compared (`organizations/organizations.controller.ts:96-121`). They reach `assertManagerOrOwner` for that house.
+  - `DELETE` of the account calls `removeMember`, and so `assertMembership` for the person themself, for every house where they hold an active row, not only the token's (`auth.service.ts:4538`).
+- **No JWT step.** The recurring-orders cron (`procurement/recurring-orders.service.ts:640`, `@Cron("0 8 * * *")`) calls `approveOrder` for a schedule set to auto-approve (`:888`). That reaches the seal's strict read, when a threshold rule fires, with no JWT step in front of it.
+  - This was found by searching the 34 files under `apps/api-gateway/src` that declare `@Cron`, `@Interval`, `setInterval`, `@SubscribeMessage`, `@OnEvent`, `@EventPattern` or `@MessagePattern` for calls into the helpers and their callers. The procurement auto-send interval (`procurement.service.ts:8286`) calls none.
+  - The `isLiveMembership` audience readers (Decision 7) compute who receives a message; they gain only the tolerance.
+
+**Each path, end to end.**
+- **An access-read error.**
+  - Over HTTP on a token-house route, the JWT step's own read of the same table answers 503 first when it errors.
+  - The helper's path is reached only in a narrow window: the JWT step's read succeeds and the helper's separate read in the same request errors.
+  - It is also reached on `/organizations/locations/:id`, and from the recurring-orders cron.
+- **An inactive row, or no row at all, at the token's house.** The JWT step answers 401 first. Over HTTP the helper's inactive-row path and its no-row fallback are reached only on `/organizations/locations/:id`, and from the cron.
+  - `DELETE` of the account reads only active rows, so it does not meet an inactive one.
+- **An active row outside its window.** The JWT step passes it. On 1c1a676f8 the helpers gave its role; now they give no role. That is reachable over HTTP, including the leave route and `DELETE` of the account, which now answer 403 for such a row.
+- **An active row with no role.** The JWT step passes it with `house_role: null`. On 1c1a676f8 the shared lookup then fell back to `users.role`; now it gives no role. That is reachable over HTTP.
+
+**Specs measure the helper.** The specs on this PR call the helpers, the services and the controllers directly. They never run `validateJwtPayload`. Where a case measures an outcome that the JWT step reaches first over HTTP, the spec says so in its header.
 
 ## The caller sweep
 
@@ -45,7 +82,7 @@ This is every caller of `lookupRestaurantRole`, `readRestaurantRole`, `resolveRe
   - `storage-locations/storage-locations.service.ts:56`
 - `OrganizationsService.readRestaurantRole` (`organizations.service.ts:276-286`), which throws `RestaurantRoleUnreadableError`: `communications/relay/relay-email.service.ts:494`.
 
-**Refuses with 403 and writes nothing.** This is the founder's first answer. During an access-read error these refuse every member, where before `users.role` decided:
+**Refuses with 403 and writes nothing.** This is the founder's first answer. When the helper's access read errors, these refuse every member, where before `users.role` decided. Over HTTP the JWT step answers 503 first when its own read errors (see "Reachability end to end"):
 - **`assertManagerOrOwner`:** `updateLocation` (`organizations.service.ts:402`) and `getLocation` (`:355`). `getLocation` is a GET: the restaurant record is refused.
 - **`assertCanManageRestaurant` on writes:**
   - `settings/settings.controller.ts:136, 201, 271, 335, 402`
@@ -82,16 +119,16 @@ This is every caller of `lookupRestaurantRole`, `readRestaurantRole`, `resolveRe
 **Does more than refuse: the order seal.** This is the founder's second answer, built on this branch.
 - `assertApprovalAllowed` (`procurement/procurement.service.ts:4384`) read the role at `:4455` after a threshold rule fired.
 - On a role that does not satisfy the rule, it moves a PENDING order to APPROVAL_NEEDED (`parkOrderAwaitingApproval`, `:4461`, body `:4620-4646`). It then inserts an `order_approval_refused` row into `system_audit_log` (`recordApprovalRefusal`, `:4464`; insert at `order-approval-gate.ts:134`) and throws 403.
-- With the lookup change alone, every member's threshold-tripping seal during an access-read error would be parked and filed as "This session could not be shown to hold any role at this house".
+- With the lookup change alone, every member's threshold-tripping seal, when the seal's own access read errored, would be parked and filed as "This session could not be shown to hold any role at this house". Over HTTP that is the narrow window after the JWT step's read succeeded; from the recurring-orders cron it is any such error.
 
-**Does more than refuse: five callers that degrade.** These are recorded, not changed. None of them grants anything.
+**Does more than refuse: five callers that degrade.** These are recorded, not changed. None of them grants anything. All five sit behind `JwtAuthGuard` and use the token's house. Over HTTP they degrade on an access-read error only when the JWT step's read succeeded and the helper's own read errored. They also degrade for a row the JWT step passes but the helper does not: one outside its window, or one with no role.
 1. **The approval ceremony.** `approvalGate` (`procurement.service.ts:4504`, role at `:4555`) serves `GET /procurement/order-approval-gate` (`procurement/procurement.controller.ts:413`). It returns `callerRole: null`, with `mayApprove: false` and a refusal sentence on each order a rule gates.
 2. **Arrival asks.** `arrival-asks.service.ts:116-123` (`mayAnswer`) feeds `asks()` (`:213-215`) and `incomplete()` (`:229-239`), which back `arrival-asks.controller.ts:58` and `:102`. They return `forYou: false`, an empty list and the "not for you" sentence.
 3. **The arrival read.** `arrival.service.ts:92-103` serves `GET /arrival` (`arrival.controller.ts:32`). It catches the 403 and sets `canManage = false`, so vendor terms and the vendors' usual currencies are withheld with "Vendor terms are available to this house's owner or manager." (`:125-143`).
 4. **Catalogue admission.** This one is part of an upload, not a read view. `catalog-ingest.service.ts:214-227` runs inside `POST /procurement/documents` (`documents.controller.ts:995`, `:1101`). It catches the refusal: the file is stored, its prices are not admitted, and the 2xx body says admitting is a manager's act.
 5. **Texting senders.** `text-senders.controller.ts:98-108` (`GET`) returns `crewConsents: null` ("not yours to see") instead of the count.
 
-**Changed by the row-decides and window rules (answer 4).** The answer changes only for a person whose access row here EXISTS and is not live: inactive, `valid_from` in the future, or `valid_until` past. It also changes for a live row with no role. That person now gets no role, where before an inactive row or an empty role sent the lookup to `users.role`, and an out-of-window row gave its own role.
+**Changed by the row-decides and window rules (answer 4).** The answer changes only for a person whose access row here EXISTS and is not live: inactive, `valid_from` more than 120 s ahead of the gateway's clock (Decision 7), or `valid_until` at or before that clock. It also changes for a live row with no role. At the helper, that person now gets no role, where before an inactive row or an empty role sent the lookup to `users.role`, and an out-of-window row gave its own role. Over HTTP on a token-house route, the JWT step refuses an inactive row first, so there only the window and empty-role cases reach the helper (see "Reachability end to end").
 - **Every caller of the shared lookup listed above, the strict ones included.** A strict reading does not throw here, because no read failed: `null` is a role that satisfies nothing.
   - `authority-grants.service.ts:145`, `vendor-send-authority.service.ts:89` and `:111`, and `storage-locations.service.ts:56` refuse.
   - The relay door (`relay-email.service.ts:494`) reads no role.
@@ -101,10 +138,17 @@ This is every caller of `lookupRestaurantRole`, `readRestaurantRole`, `resolveRe
   - `members.service.ts:94` `getMembers`, `:153` `getInvites`, `:199` `updateMemberRole` (owner), `:338-339` `removeMember`, `:583` `addMember` and `:672` `revokeInvite`.
   - `restaurants/operating-hours.service.ts:63` (read) and `:100` (write).
   - `logs/logs.controller.ts:73` `getTimeline`.
-  - `removeMember` asks for membership even when a person removes themself (`:338`). Before, an inactive row plus a `users` row naming the house, or an out-of-window row, admitted that person. Now they can no longer leave through it, and their row does not make them a member.
+  - `removeMember` asks for membership even when a person removes themself (`:338`). At the helper, an inactive row plus a `users` row naming the house, or an out-of-window row, used to admit that person; now it does not.
+  - Over HTTP, the leave route's JWT step already refuses a token whose house has no active row. So what changes there is an active row outside its window: leaving, and `DELETE` of the account for that house, now answer 403. Such a row comes only from a hand-written value.
 
-**Who can be in that newly changed state.** This is the lockout check: could a legitimate owner or manager be refused at their own house? It was measured by reading code; no production query was run.
-- **No code path deactivates an existing row or writes `valid_until`.** `calendar/stop-links-on-leaving.ts:28-30` says the same. The three removals delete the row after clearing `users.restaurant_id`: `members.service.ts:462` and `:478-483`, and `team/team.service.ts:1274-1294`.
+**Who can be in that newly changed state.** This is the lockout check: could a legitimate owner or manager be refused at their own house? It was measured by reading code; no production query was run. On a token-house route over HTTP, the JWT step already refuses an inactive row with 401 whatever this PR does. So for an inactive row the check matters at `/organizations/locations/:id` and the cron; for the window it matters everywhere.
+- **No gateway code deactivates an existing row, and no code in this repository writes `valid_until`.** `calendar/stop-links-on-leaving.ts:28-30` says the same for the gateway. The three removals delete the row after clearing `users.restaurant_id`: `members.service.ts:462` and `:478-483`, and `team/team.service.ts:1274-1294`.
+- **One SQL function can set `is_active` on an existing row: `seed_sim_restaurant(jsonb)`.**
+  - It upserts each access row in its payload, setting `is_active` from the payload (default true) and, on conflict, overwriting the existing row's `is_active` (`20260805000000_baseline_from_production.sql:1489-1500`).
+  - Only `service_role` may execute it (`20260917010400_a_security_definer_rpc_answers_only_to_the_server.sql:73-75`).
+  - It refuses a payload restaurant whose slug does not start with `sim-` (`20260805000000_baseline_from_production.sql:1417-1420`). It does not check the access rows' own `restaurant_id`.
+  - Its one caller, `scripts/synth/seed.py`, builds those rows for the sim house with `is_active: True` (`:371-378`), and its direct-SQL path runs the same upsert (`:564-576`).
+  - So no code in the repository passes it an inactive row today; a hand-built payload could.
 - **One path writes an inactive row: `joinViaInvite`'s held membership** (`auth/auth.service.ts:2903`). `acceptHeldMembership` activates it and stamps `valid_from` with the gateway's clock (`:3127-3134`).
   - A new account names no house while it is held (`:2867`), so it has no fallback to lose.
   - An existing account can be held only at a house where it has no row at all (`:2793-2806` refuses one that has any row).
@@ -130,43 +174,91 @@ This is every caller of `lookupRestaurantRole`, `readRestaurantRole`, `resolveRe
 
 ## Options considered
 
-**First question: what an access-read error means.** The coordinator relayed the options he did not pick by these names; their full option text is not in this record.
-1. **Error means no role** (picked). One file plus tests. It leaves the stale `users.role` data in place.
-2. **"Fix the stale data"**: `acceptHeldMembership` writes the invited role, plus a backfill. It fixes the data the hole reads, and leaves the fallback reading `users.role` during an outage.
-3. **"Both, in two PRs."**
-4. **"Record only."**
+Copied verbatim from the session transcript (`AskUserQuestion` calls at the times shown, UTC). The question is quoted as it was put; where its premise was wrong, see "Corrected premises" below.
 
-**Second question: the six callers that do more than refuse.**
-1. **"Strict for the order seal (Recommended)"** (picked).
-2. **"Ship as decided, record all six"** (rejected). The seal would park the order and file a refusal during an outage.
-3. **"Tell all six apart from 'no role'"** (rejected). About six to eight files: each caller would answer "could not be read" instead of degrading.
+**First question, asked 2026-10-01T13:25:31.178Z.** Picked: "Next PR: error means no role (Recommended)".
 
-**Third question: `MembersService.assertMembership`, which this sweep found with the same access-read-error fallback.**
-1. **"Fold into #561 (Recommended)"** (picked).
-2. **"Separate PR after #561"** (rejected).
-3. **"Record only"** (rejected).
+> The hole itself predates these PRs and sits in the shared role helper (organizations.service.ts:40-64). It affects order cancel, recurring-schedule edits (#550) and order recurrence (#558). When the access-register read errors, a staff member whose account was made before joining gets 'owner' from the stale users.role and passes the manager check. How should it be closed?
 
-**Fourth question: an inactive row and the validity window, both left open by the first answer.**
-1. **"Close both in #561"** (picked).
-2. **"Count in production, then record (Recommended)"** (rejected): two read-only counts, then record as OPEN if both were 0.
-3. **"Record only"** (rejected).
+- "Next PR: error means no role (Recommended)" (picked): "Fall back to users.role only when the access read SUCCEEDED and found no row. On a read error, return no role, so managers get 403 during an outage on these routes. One-file change plus tests; behaviour for accounts that predate the access register is unchanged."
+- "Next PR: fix the stale data" (not picked): "Accepting an invite also writes the invited role to users.role, plus a migration to backfill existing rows. Fixes the source, but touches a legacy column other code may read; needs a sweep of its readers first."
+- "Both, in two PRs" (not picked): "Error means no role now, then the data fix after a reader sweep. Most complete, two PRs of review."
+- "Record only" (not picked): "File it in the tech-debt register as OPEN with no fix scheduled."
 
-**Fifth question: `valid_from` is stamped by the database and read with the gateway's clock.**
-1. **"Small tolerance on valid_from (Recommended)"** (picked).
-2. **"Record it as open"** (rejected): leave the check exact, and record the skew as open and unmeasured.
-3. **"Ignore valid_from, check only valid_until"** (rejected).
+**Second question, asked 2026-10-01T13:34:20.667Z.** Picked: "Strict for the order seal (Recommended)".
+
+> Building 'error means no role', the builder stopped at its caller sweep. Most of the roughly 60 callers simply refuse with 403, as you chose, but six do more than refuse when the role comes back empty. One writes: an order seal that trips an approval rule is moved to APPROVAL_NEEDED, with an audit row saying the person holds no role (procurement.service.ts:4455). Five are read views that quietly degrade: the approve button disabled, arrival asks hidden, vendor terms withheld, catalogue prices stored but not admitted, and a crew-consent count hidden. Today all six take the stale users.role during an access-read outage. How should they behave?
+
+- "Strict for the order seal (Recommended)" (picked): "Ship as decided. The order seal alone reads the role strictly: an unreadable role returns 500 with nothing parked and no audit row, and the person retries. This matches ADR 0020's rule that an outage must not be reported as a fact about the person. The five read views degrade, are recorded in the ADR, and grant nothing. About one extra file plus a spec."
+- "Ship as decided, record all six" (not picked): "One-file fix plus tests. During an outage the seal parks the order for a manager and writes an audit row with no role, and the five views degrade. All six are recorded in the ADR as how the system behaves when it fails closed."
+- "Tell all six apart from 'no role'" (not picked): "Each of the six shows 'could not be read' or returns 503 instead of degrading. The most precise option, at about 6-8 files plus specs, still within 15. The most review surface."
+
+**Third question, asked 2026-10-01T14:08:12.255Z.** Picked: "Fold into #561 (Recommended)".
+
+> The role-fallback PR is open as #561 (ADR 0248, 7 files, 20 new cases, red on main). Its builder found a second copy of the same hole: MembersService.assertMembership (restaurants/members.service.ts:56-74) ignores its access-read error, then takes users.role. It gates the owner and manager actions on members, at members.service :153, 199, 339, 586 and 672, plus the operating-hours routes. A staff member with a stale 'owner' users row could act as owner there during an access-read outage. What should happen?
+
+- "Fold into #561 (Recommended)" (picked): "Apply the same rule to this copy: an access-read error means no role, so the caller gets a 403. That is about 2 more files and a spec, making 9 files. One review covers both copies of the rule."
+- "Separate PR after #561" (not picked): "#561 stays as reviewed so far. A second small PR fixes the members copy. Smaller diffs, but two review cycles, and the hole stays open longer."
+- "Record only" (not picked): "File it OPEN in #561's tech-debt fragment with no fix scheduled."
+
+**Fourth question, asked 2026-10-01T14:08:12.255Z.** Picked: "Close both in #561".
+
+> Measured in code for the two paths you said to decide after measurement. (1) Inactive access row plus legacy users.role: no gateway code ever sets is_active=false on an existing row, and every removal clears users.restaurant_id first. It is reachable only through hand-run SQL, one held-invite edge case, or rows left over from before an older fix. (2) valid_from/valid_until: no code or migration ever writes them, so they are reachable only through a hand-written value. Production was not queried. What next?
+
+- "Count in production, then record (Recommended)" (not picked): "Run two read-only count queries on production: inactive access rows whose user's restaurant_id still names that house, and access rows with valid_from or valid_until set. If both are 0, record both as OPEN in ADR 0248 with the counts. If either is not 0, I come back to you."
+- "Record only" (not picked): "Record both as OPEN in ADR 0248 from the code measurement alone, without querying production."
+- "Close both in #561" (picked): "Fall back to users.role only when no access row exists at all, and honour the validity window. This widens #561 and changes more callers."
+
+**Fifth question, asked 2026-10-01T14:51:41.409Z.** Picked: "Small tolerance on valid_from (Recommended)".
+
+> #561 now covers all four of your answers (13 files, 26 cases that fail on main, 0c72d4e51). Its builder found no path that locks a legitimate owner out for good, but did find one short-lived risk. The access row's valid_from is stamped by the database clock (now()), while the new window check compares it with the gateway's clock. If the gateway's clock runs even slightly behind the database's, a brand-new row reads as 'not yet valid'. That includes a new house's first owner row. The person gets 403 on manager routes until the clocks pass each other, usually milliseconds to seconds, and it heals on its own. It was not measured. Nothing else ever writes valid_from. How should it be handled?
+
+- "Small tolerance on valid_from (Recommended)" (picked): "The shared check treats a valid_from up to 2 minutes in the future as already started. Since only the database's now() ever writes it, this cannot let anyone in early in practice. The predicate is also used by the recipient resolver, which gets the same tolerance. That is one line plus a spec in #561."
+- "Record it as open" (not picked): "Leave the check exact and record the skew risk in ADR 0248 as open and unmeasured. A new owner could briefly see a 403 if the gateway's clock lags."
+- "Ignore valid_from, check only valid_until" (not picked): "Since nothing writes a future start date, honour only the end of the window. This drops half of your 'honour the validity window' answer for a value nothing sets today."
+
+**Sixth question, asked 2026-10-01T16:33:38.415Z.** Picked: "#561 last + docs PR (Recommended)".
+
+> #561's planner found a merge-order problem. #550 (already PASSed) has a test, 'lets a legacy manager of this house edit and deactivate', that fails the access read and expects success; its claim pins that title. #561 makes that case a 403. Whichever PR lands second goes red. ADRs 0246 and 0247 (#550, #558) also describe today's fallback, which becomes false once #561 lands. #550 and #558 have no fix rounds left. How should they land?
+
+- "#561 last + docs PR (Recommended)" (picked): "Merge #547, #538, #550 and #558 first. Then #561 rebases and flips #550's test and claim pin, which makes 16 files: one over the 15 cap, allowed once. A small docs PR corrects the fallback sentences in ADRs 0246 and 0247 and the claim texts. #561 and the docs PR each get a full review. No waived rounds on #550 or #558."
+- "#561 last, stay within 15" (not picked): "Same order. #561 moves its ADR 0248 caller-list additions and its tech-debt fragment into the docs PR to stay at 15 files. ADR 0248 is briefly incomplete until the docs PR lands."
+- "#561 first" (not picked): "Merge #561 before #550 and #558. Each then needs another fix round to flip its test, claim and prose. Both are at their cap, so that is two more waivers and two more full reviews."
+
+**Seventh question, asked 2026-10-01T16:33:38.415Z.** Picked: "Fix now, before review (Recommended)".
+
+> Before review, #561's planner also found these in ADR 0248. (a) The rejected options it records for your answers are paraphrased or missing, although they are in the transcript. (b) 'No code path deactivates an existing row' is too broad, because seed_sim_restaurant can set is_active. (c) Two sentences still say 'valid_from not in the future' after the 2-minute tolerance. (d) One premise I gave you was wrong: acceptHeldMembership does write valid_from, from the gateway's own clock. The planner judges that your tolerance answer stands, because it compares against that same clock. Fix these before the reviewers run?
+
+- "Fix now, before review (Recommended)" (picked): "Treat it as part of the build, since no reviewer has ruled. Copy every option verbatim from the transcript, scope the two sentences, and record the corrected premise. Then run the full review on the new head."
+- "Review as is" (not picked): "Run both reviewers now. A block on the verbatim records is likely, and the fix would then use #561's first fix round."
+## Corrected premises
+
+Two questions above rested on statements about the code that were wrong. They are corrected here; the answers stand, for the reasons given.
+
+- **Who writes `valid_from`.**
+  - What the questions said: the fourth question said of `valid_from`/`valid_until`, "no code or migration ever writes them". The fifth said "Nothing else ever writes valid_from", and its picked option said "Since only the database's now() ever writes it".
+  - The fact: `acceptHeldMembership` writes `valid_from` from the gateway's clock when it activates a held row: `valid_from: new Date().toISOString()` (`apps/api-gateway/src/auth/auth.service.ts:3133`).
+  - Why the answers stand: that value is stamped by a gateway clock and compared against a gateway clock. It reads as ahead only when the two readings come from clocks that differ (two gateway instances, or one clock set back after the write). That is the same case the tolerance covers for the database's stamp. The database-stamped inserts, which the tolerance was chosen for, are unchanged.
+- **Who can deactivate a row.**
+  - What the fourth question said: "no gateway code ever sets is_active=false on an existing row". That holds for the gateway.
+  - The fact: this ADR's own first draft said "No code path deactivates an existing row". That was too broad: the SQL function `seed_sim_restaurant(jsonb)` can (see "Who can be in that newly changed state").
+  - Why the answer stands: under the fourth answer an inactive row gives no role whoever wrote it.
+- **How far the paths reach.**
+  - What the questions said: the first question said a staff member "passes the manager check" when the access-register read errors. The third said a staff member "could act as owner there during an access-read outage". The fourth described an inactive row plus `users.role` as a path in use.
+  - The fact: those premises overstated end-to-end reachability. Over HTTP on a token-house route, the JWT step answers 503 when its own read of the same table errors, and 401 when the house has no active row, before any helper runs (see "Reachability end to end").
+  - Why the answers stand: each decision stands as defence in depth. It covers callers with no JWT step (the recurring-orders cron), routes whose house the JWT step did not check (`/organizations/locations/:id`), and the narrow window where the JWT step's read succeeds and the helper's own read errors.
 
 ## Decision
 
-1. **An access read that errors returns `role: null` with `readError` set, and the `users` row is not read** (this branch, `organizations.service.ts:74-79`). `readRestaurantRole` with `strict: true`, and `OrganizationsService.readRestaurantRole`, still throw on that error, with the same message.
+1. **An access read that errors returns `role: null` with `readError` set, and the `users` row is not read** (this branch, `organizations.service.ts:80-85`). `readRestaurantRole` with `strict: true`, and `OrganizationsService.readRestaurantRole`, still throw on that error, with the same message.
 2. **The order seal reads the role strictly** (this branch, `procurement.service.ts:4458-4480`). `assertApprovalAllowed` calls `OrganizationsService.readRestaurantRole`. On `RestaurantRoleUnreadableError` it throws 500 before `parkOrderAwaitingApproval` and before `recordApprovalRefusal`: the order is not moved and no refusal row is written. That covers an access-read error, and also a `users` read that errors after the access read found no row. Before, that second case was read as no role: a PENDING order was parked and a refusal was filed. The role is read only when a rule fires (`:4456`), so a seal that no rule gates is unchanged.
 3. **The five degrading callers above stay as they are.** `approvalGate` keeps the non-strict reading; this branch pins that it shows `callerRole: null` during an access-read error.
-4. **A row that exists decides alone** (this branch, `organizations.service.ts:61-70` and `:85-91`).
+4. **A row that exists decides alone** (this branch, `organizations.service.ts:67-76` and `:92-98`).
    - The lookup reads the person's one row here whatever its `is_active`. `(user_id, restaurant_id)` is UNIQUE (baseline `:8152`), so there is at most one.
    - It selects `is_active, valid_from, valid_until`, and gives the row's role only while `isLiveMembership` holds and the role is non-empty. Otherwise it gives `role: null` with no `readError`, and the `users` row is not read.
-   - Only a read that succeeded and found no row falls back to `users.role` when `users.restaurant_id` is this house (`:93-106`), unchanged.
+   - Only a read that succeeded and found no row falls back to `users.role` when `users.restaurant_id` is this house (`:100-113`), unchanged.
    - `isLiveMembership` is imported, not copied. It treats an absent bound as open, an unparseable one as failing the row, and compares with `Date.now()`, with the `valid_from` tolerance of Decision 7.
-5. **`MembersService.assertMembership` keeps the same three rules as its own copy** (this branch, `members.service.ts:62-109`).
+5. **`MembersService.assertMembership` keeps the same three rules as its own copy** (this branch, `members.service.ts:63-110`).
    - An access read that errors is logged and answers 403, and the `users` row is not read.
    - A row that exists gives its role only while `isLiveMembership` holds.
    - Only no row at all reads `users.role || "staff"`, unchanged.
@@ -180,11 +272,16 @@ This is every caller of `lookupRestaurantRole`, `readRestaurantRole`, `resolveRe
    - The constant is the exported `VALID_FROM_CLOCK_TOLERANCE_MS = 120_000`, and the boundary is inclusive: exactly 120 s ahead is live, 120,001 ms is not.
    - `valid_until` has no tolerance.
    - Every caller of the predicate gets the tolerance, and for each the only change is that a row whose `valid_from` sits at most two minutes ahead of the gateway's clock reads as started. The callers on this branch:
-     - `organizations/organizations.service.ts:88`, `lookupRestaurantRole`: the role lookups.
-     - `restaurants/members.service.ts:83`, `assertMembership`.
+     - `organizations/organizations.service.ts:95`, `lookupRestaurantRole`: the role lookups.
+     - `restaurants/members.service.ts:84`, `assertMembership`.
      - `communications/recipient-resolver.service.ts:403`, `getUserIdsForRoles` (`:377`): who receives a notification addressed to a role.
      - `common/tenant/live-membership.ts:133`, `houseMembersInRoles`. It is read by `websocket/websocket.gateway.ts:671` (owner- and manager-only emits), `common/orchestrator/inbound-responder.service.ts:1533` (manager notifications), `notifications/producers/market-price.producer.ts:132` and `team/access-audit.ts:183` (who is told of an access change).
-   - Every code path writes its own `now` into `valid_from`. A start that reads as ahead of the gateway's clock comes from a clock difference, or from a hand-written value.
+   - Every code path writes its own `now` into `valid_from`: the database's on insert, the gateway's in `acceptHeldMembership`. A start that reads as ahead of the gateway's clock comes from a clock difference, or from a hand-written value. See "Corrected premises".
+8. **Merge order (the sixth answer): #561 lands last.** #547, #538, #550 and #558 merge first. Then this branch rebases onto that main and does three things, which are planned and not yet done:
+   - **#550's test.** `apps/api-gateway/src/procurement/recurring-schedule-edits-need-a-manager.http.spec.ts` has a case named "lets a legacy manager of this house edit and deactivate". It fails the access read and expects 200. That spec stubs the JWT step, so the case measures the helper: over HTTP the JWT step would answer 503 first if its own read failed. Under Decision 1 that caller gets 403 at the helper, so the case is changed to expect 403 with nothing written. The verify of claim `RECURRING-SCHEDULE-EDITS-NEED-A-MANAGER` names that title, so it is updated with it.
+   - **The caller list.** It gains the `assertCanManageRestaurant` callers those PRs add: two in `procurement/procurement.service.ts` (#538), PUT and DELETE in `procurement/recurring-orders.controller.ts` (#550), and one in `procurement/order-recurrence.service.ts` (#558).
+   - **The docs PR.** A separate docs PR corrects the fallback sentences in ADRs 0246 and 0247 and the claim texts of #550 and #558.
+   - With the two #550 files, this PR has 16 files, one over the 15-file cap. The extra file on this PR is recorded in ADR 0231.
 
 ## Consequences
 
@@ -193,7 +290,7 @@ This is every caller of `lookupRestaurantRole`, `readRestaurantRole`, `resolveRe
   - The seal no longer turns an access-read error into a parked order and a refusal row.
   - The two helpers and `isLiveMembership` now agree on what a current membership is.
 - **Harder.**
-  - During an access-read error, every member is refused on the routes listed under "Refuses with 403", including legitimate owners and managers.
+  - When the helper's access read errors, every member is refused on the routes listed under "Refuses with 403", including legitimate owners and managers. Over HTTP that shows only in the narrow window where the JWT step's read succeeded, and on `/organizations/locations/:id`.
   - The five callers above degrade.
   - The seal answers 500 when a rule fires and the role cannot be read.
   - None of the above happens when the access read succeeds, except the seal's 500 on a failed `users` read.
@@ -226,3 +323,4 @@ Each item was measured on this branch by reading code. No production query was r
 | 2026-10-01 | — | Created on `fix/role-read-error-means-no-role`, with answers 1 and 2. |
 | 2026-10-01 | — | Widened on the same branch with answers 3 and 4: the row-decides and window rules, and `MembersService.assertMembership`. |
 | 2026-10-01 | — | Answer 5 on the same branch: the two-minute `valid_from` tolerance in `isLiveMembership`. |
+| 2026-10-01 | — | Answers 6 and 7, before review: every question and option copied verbatim from the transcript, the deactivation sentence scoped, the `valid_from` sentences corrected for the tolerance, the corrected premises recorded, and the merge order with its planned rebase work. |
