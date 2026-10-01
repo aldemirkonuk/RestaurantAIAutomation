@@ -74,8 +74,9 @@ describe("readVendorCurrency — what a person typed", () => {
 describe("vendorCurrencySentence — the profile says what it is FOR", () => {
   it("a vendor nobody has asked gets a sentence, never an empty box", () => {
     const s = vendorCurrencySentence({ code: null, vendorName: "Bir Dagitim" });
-    expect(s).toContain("has not stated a usual currency");
-    expect(s).toContain("Nothing is assumed in its place");
+    // Wording changed by 354fd7288 (founder walk-through, 2026-10-01).
+    expect(s).toContain("has no usual currency on file");
+    expect(s).toContain("an order to them starts with no currency");
   });
 
   it("NAMES a stored value that is not a currency, rather than calling it absent", () => {
@@ -114,6 +115,21 @@ describe("orderCurrencyOffer — only the vendor's own stated currency is pre-fi
     expect(o.code).toBe("TRY");
     expect(o.basis).toBe("vendor_usual");
     expect(o.sentence).toContain("the currency this vendor usually uses");
+  });
+
+  it("VEN-W13: an invoice-written code credits the invoices, never a person", () => {
+    const o = orderCurrencyOffer({
+      vendorUsualCurrency: "USD",
+      vendorUsualSource: "invoices",
+      vendorUsualInvoiceCount: 4,
+      vendorPaperCurrency: "USD",
+      houseCurrency: "TRY",
+      vendorName: "ALDEMIR DISTRIBUTION",
+    });
+    expect(o.code).toBe("USD");
+    expect(o.basis).toBe("vendor_usual");
+    expect(o.sentence).toContain("from 4 of their invoices");
+    expect(o.sentence).not.toMatch(/stated|profile/);
   });
 
   it("offers NOTHING when the vendor has stated none, even though the house has one", () => {

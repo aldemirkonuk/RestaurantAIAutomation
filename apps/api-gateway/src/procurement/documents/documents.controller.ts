@@ -1,3 +1,4 @@
+import { learnUsualCurrencyFromInvoices } from "../../providers/usual-currency-from-invoices";
 import {
   Body,
   Controller,
@@ -1745,7 +1746,7 @@ export class DocumentsController {
     const { data: doc, error: readError } = await this.db
       .getClient()
       .from("procurement_documents")
-      .select("id, restaurant_id, currency, status, extracted, total")
+      .select("id, restaurant_id, provider_id, doc_type, currency, status, extracted, total")
       .eq("id", id)
       .eq("restaurant_id", user.restaurantId)
       .maybeSingle();
@@ -1934,6 +1935,31 @@ export class DocumentsController {
         `The currency is now ${next} and the change is logged, but the figures could not be re-filed (${msg.replace(/^REFILE_(READ|WRITE)_FAILED:/, "")}). The document is labelled and its money is unchanged — restate it again once the write works.`,
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
+    }
+
+    /*
+     * VEN-W13 (founder, 2026-10-01). A restated invoice leaves the count of
+     * what this vendor's invoices printed, which can settle a disagreement —
+     * so look again. Never fails the restatement: the learner returns its
+     * failures, and they are logged here.
+     */
+    const docVendor = (doc as { provider_id?: string | null }).provider_id;
+    if ((doc as { doc_type?: string | null }).doc_type === "invoice" && docVendor) {
+      try {
+        const learned = await learnUsualCurrencyFromInvoices(
+          this.db.getClient(),
+          user.restaurantId,
+          docVendor,
+        );
+        if (learned.kind === "failed")
+          this.logger.warn(
+            `vendor ${docVendor}'s usual currency was not re-checked after restating ${id}: ${learned.because}`,
+          );
+      } catch (err: any) {
+        this.logger.warn(
+          `vendor ${docVendor}'s usual currency was not re-checked after restating ${id}: ${err?.message ?? "unknown error"}`,
+        );
+      }
     }
 
     return {

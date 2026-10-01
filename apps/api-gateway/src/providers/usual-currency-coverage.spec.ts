@@ -39,6 +39,7 @@ type Row = {
   id: string;
   name?: string | null;
   usual_currency?: string | null;
+  usual_currency_source?: string | null;
   is_active?: boolean | null;
   deleted_at?: string | null;
 };
@@ -119,6 +120,7 @@ describe("usualCurrencyCoverage — the count", () => {
     expect(counted).toEqual({
       stated: 1,
       total: 2,
+      fromInvoices: 0,
       unstated: [{ id: "b", name: "Bodega Álvaro", recorded: null }],
     });
   });
@@ -145,7 +147,7 @@ describe("usualCurrencyCoverage — the count", () => {
     expect(seen).toHaveLength(1);
     expect(seen[0].table).toBe("providers");
     expect(seen[0].columns).toBe(
-      "id, name, usual_currency, is_active, deleted_at",
+      "id, name, usual_currency, usual_currency_source, is_active, deleted_at",
     );
     expect(seen[0].restaurantId).toBe("rest-9");
   });
@@ -153,7 +155,12 @@ describe("usualCurrencyCoverage — the count", () => {
   it("is zero of zero for a house with no vendors, not an error", async () => {
     const { supabase } = makeDb({ rows: [] });
     const counted = await svc(supabase).usualCurrencyCoverage("rest-1");
-    expect(counted).toEqual({ stated: 0, total: 0, unstated: [] });
+    expect(counted).toEqual({
+      stated: 0,
+      total: 0,
+      fromInvoices: 0,
+      unstated: [],
+    });
   });
 
   it("counts none of them when nobody has been asked", async () => {
@@ -207,6 +214,53 @@ describe("usualCurrencyCoverage — the count", () => {
     await expect(
       svc(supabase).usualCurrencyCoverage("rest-1"),
     ).rejects.toThrow(/statement timeout/);
+  });
+});
+
+describe("usualCurrencyCoverage — VEN-W13, codes written from invoices", () => {
+  it("counts them as on file and says how many came from invoices", async () => {
+    const { supabase } = makeDb({
+      rows: [
+        { id: "a", name: "A", usual_currency: "USD", usual_currency_source: "invoices" },
+        { id: "b", name: "B", usual_currency: "EUR", usual_currency_source: "person" },
+        { id: "c", name: "C", usual_currency: null },
+      ],
+    });
+    const counted = await svc(supabase).usualCurrencyCoverage("rest-1");
+    expect(counted.stated).toBe(2);
+    expect(counted.fromInvoices).toBe(1);
+    expect(
+      usualCurrencyCoverageSentence({ stated: 2, total: 3, fromInvoices: 1 }),
+    ).toBe(
+      "2 of your 3 vendors have a usual currency on file. Orders to the other 1 start with no currency until you add one. 1 of them was filled in from their invoices.",
+    );
+  });
+
+  it("falls back to the old columns before the migration is applied (42703)", async () => {
+    const calls: string[] = [];
+    const supabase: any = {
+      from() {
+        let cols = "";
+        const q: any = {
+          select: (c: string) => {
+            cols = c;
+            calls.push(c);
+            return q;
+          },
+          eq: () => q,
+          then: (res: any) =>
+            res(
+              cols.includes("usual_currency_source")
+                ? { data: null, error: { code: "42703", message: "column does not exist" } }
+                : { data: [{ id: "a", name: "A", usual_currency: "USD" }], error: null },
+            ),
+        };
+        return q;
+      },
+    };
+    const counted = await svc(supabase).usualCurrencyCoverage("rest-1");
+    expect(calls).toHaveLength(2);
+    expect(counted).toMatchObject({ stated: 1, total: 1, fromInvoices: 0 });
   });
 });
 

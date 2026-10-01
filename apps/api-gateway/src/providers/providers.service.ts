@@ -33,6 +33,12 @@ import { ProcurementService } from "../procurement/procurement.service";
 import { resolveOrderUnits } from "../procurement/order-units";
 import { isIso4217 } from "../common/iso-4217";
 import {
+  decideUsualCurrency,
+  readInvoiceCurrencyEvidence,
+  type UsualCurrencyDecision,
+  type UsualCurrencySource,
+} from "./usual-currency-from-invoices";
+import {
   readVendorMenuSupply,
   TooManyRowsError,
   type VendorMenuSupply,
@@ -1688,13 +1694,36 @@ export class ProvidersService {
     setAt: string | null;
     setByName: string | null;
     vendorName: string | null;
+    /** VEN-W13: who put it there — a person, or the vendor's invoices. */
+    source: UsualCurrencySource | null;
+    /** How many agreeing invoices an invoice-written code stood on. */
+    invoiceCount: number | null;
+    /**
+     * What this vendor's invoices say now, and which of the sheet's five states
+     * that puts it in. NULL when the invoices could not be read — said in
+     * `evidenceUnreadable`, never shown as "no invoices".
+     */
+    decision: UsualCurrencyDecision | null;
+    evidenceUnreadable: string | null;
   }> {
-    const { data, error } = await this.databaseService.supabase
-      .from("providers")
-      .select("name, usual_currency, usual_currency_set_by, usual_currency_set_at")
-      .eq("id", providerId)
-      .eq("restaurant_id", restaurantId)
-      .maybeSingle();
+    const client = this.databaseService.supabase;
+    const read = (cols: string) =>
+      client
+        .from("providers")
+        .select(cols)
+        .eq("id", providerId)
+        .eq("restaurant_id", restaurantId)
+        .maybeSingle();
+    let { data, error } = await read(
+      "name, usual_currency, usual_currency_set_by, usual_currency_set_at, usual_currency_source, usual_currency_invoice_count",
+    );
+    // THE COLUMNS ARRIVE WITH THEIR MIGRATION. Until it is applied PostgREST
+    // answers 42703 for the whole select; read the three columns that exist
+    // and treat every code as a person's (before VEN-W13 every one was).
+    if (error && (error as { code?: string }).code === "42703")
+      ({ data, error } = await read(
+        "name, usual_currency, usual_currency_set_by, usual_currency_set_at",
+      ));
     if (error) {
       this.logger.error("Failed to read a vendor's usual currency", {
         providerId,
@@ -1706,12 +1735,46 @@ export class ProvidersService {
     }
     if (!data) throw new NotFoundException(`Provider ${providerId} not found`);
 
-    const row = data as {
+    const row = data as unknown as {
       name?: string | null;
       usual_currency?: string | null;
       usual_currency_set_by?: string | null;
       usual_currency_set_at?: string | null;
+      usual_currency_source?: string | null;
+      usual_currency_invoice_count?: number | null;
     };
+    const source: UsualCurrencySource | null =
+      row.usual_currency_source === "invoices"
+        ? "invoices"
+        : row.usual_currency_source === "person" ||
+            (row.usual_currency && row.usual_currency_set_by)
+          ? "person"
+          : null;
+    const invoiceCount =
+      source === "invoices" ? (row.usual_currency_invoice_count ?? null) : null;
+
+    // The vendor's invoices, NEVER load-bearing for the code itself: a failed
+    // read leaves the sheet's ordinary sentence in place and says the
+    // invoices could not be read, rather than hiding a currency on file.
+    let decision: UsualCurrencyDecision | null = null;
+    let evidenceUnreadable: string | null = null;
+    try {
+      const evidence = await readInvoiceCurrencyEvidence(
+        client,
+        restaurantId,
+        providerId,
+      );
+      decision = decideUsualCurrency({
+        evidence,
+        onFile: { code: row.usual_currency ?? null, source, invoiceCount },
+      });
+    } catch (err) {
+      evidenceUnreadable =
+        (err as { message?: string })?.message ?? "unknown error";
+      this.logger.warn(
+        `What ${providerId}'s invoices printed could not be read (${evidenceUnreadable}); the sheet shows the currency on file without them.`,
+      );
+    }
 
     // The author's name, read separately and NEVER load-bearing: a name that
     // cannot be read leaves the attribution off the sentence rather than
@@ -1737,6 +1800,10 @@ export class ProvidersService {
       setAt: row.usual_currency_set_at ?? null,
       setByName,
       vendorName: row.name ?? null,
+      source,
+      invoiceCount,
+      decision,
+      evidenceUnreadable,
     };
   }
 
@@ -1764,7 +1831,7 @@ export class ProvidersService {
     );
     const setAt = new Date().toISOString();
 
-    const { data, error } = await this.databaseService.supabase
+    let { data, error } = await this.databaseService.supabase
       .from("providers")
       .update({
         usual_currency: args.code,
@@ -1773,11 +1840,30 @@ export class ProvidersService {
         // `auth.users` 23503s on every write.
         usual_currency_set_by: args.userId,
         usual_currency_set_at: setAt,
+        // VEN-W13: a person's answer, always — including a one-tap "keep" or
+        // "switch" on an invoice-written value, which makes it theirs. The
+        // invoice count belongs only to an invoice-written code.
+        usual_currency_source: "person",
+        usual_currency_invoice_count: null,
       })
       .eq("id", args.providerId)
       .eq("restaurant_id", args.restaurantId)
       .select("usual_currency, usual_currency_set_at")
       .maybeSingle();
+    // Before the VEN-W13 migration is applied the two columns are absent
+    // (42703) and the old three-column rule is the one in force.
+    if (error && (error as { code?: string }).code === "42703")
+      ({ data, error } = await this.databaseService.supabase
+        .from("providers")
+        .update({
+          usual_currency: args.code,
+          usual_currency_set_by: args.userId,
+          usual_currency_set_at: setAt,
+        })
+        .eq("id", args.providerId)
+        .eq("restaurant_id", args.restaurantId)
+        .select("usual_currency, usual_currency_set_at")
+        .maybeSingle());
 
     if (error) {
       this.logger.error("Failed to state a vendor's usual currency", {
@@ -1830,12 +1916,24 @@ export class ProvidersService {
   async usualCurrencyCoverage(restaurantId: string): Promise<{
     stated: number;
     total: number;
+    /** VEN-W13: how many of `stated` were filled in from their invoices. */
+    fromInvoices: number;
     unstated: { id: string; name: string; recorded: string | null }[];
   }> {
-    const { data, error } = await this.databaseService.supabase
-      .from("providers")
-      .select("id, name, usual_currency, is_active, deleted_at")
-      .eq("restaurant_id", restaurantId);
+    const read = (cols: string) =>
+      this.databaseService.supabase
+        .from("providers")
+        .select(cols)
+        .eq("restaurant_id", restaurantId);
+    let { data, error } = await read(
+      "id, name, usual_currency, usual_currency_source, is_active, deleted_at",
+    );
+    // Before the VEN-W13 migration is applied the source column is absent
+    // (42703); every code then was a person's.
+    if (error && (error as { code?: string }).code === "42703")
+      ({ data, error } = await read(
+        "id, name, usual_currency, is_active, deleted_at",
+      ));
 
     if (error) {
       this.logger.error("Failed to count stated vendor currencies", {
@@ -1847,10 +1945,11 @@ export class ProvidersService {
       );
     }
 
-    const rows = (data ?? []) as {
+    const rows = (data ?? []) as unknown as {
       id: string;
       name?: string | null;
       usual_currency?: string | null;
+      usual_currency_source?: string | null;
       is_active?: boolean | null;
       deleted_at?: string | null;
     }[];
@@ -1861,10 +1960,12 @@ export class ProvidersService {
 
     const unstated: { id: string; name: string; recorded: string | null }[] = [];
     let stated = 0;
+    let fromInvoices = 0;
     for (const r of live) {
       const code = (r.usual_currency ?? "").trim().toUpperCase();
       if (code !== "" && isIso4217(code)) {
         stated += 1;
+        if (r.usual_currency_source === "invoices") fromInvoices += 1;
         continue;
       }
       unstated.push({
@@ -1875,7 +1976,7 @@ export class ProvidersService {
     }
     unstated.sort((a, b) => a.name.localeCompare(b.name));
 
-    return { stated, total: live.length, unstated };
+    return { stated, total: live.length, fromInvoices, unstated };
   }
 
   /**

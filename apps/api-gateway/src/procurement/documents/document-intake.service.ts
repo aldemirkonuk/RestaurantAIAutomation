@@ -7,6 +7,7 @@ import {
   stripJsonFence,
 } from "./document-extractor.service";
 import { normalizeUom, SourceChannel, toBottles } from "./document-types";
+import { learnUsualCurrencyFromInvoices } from "../../providers/usual-currency-from-invoices";
 import {
   applyCurrencyRules,
   planRefile,
@@ -1234,6 +1235,15 @@ export class DocumentIntakeService {
         documentId,
         resolution,
       );
+      // VEN-W13 — with the vendor known, see whether their invoices now say
+      // what they usually invoice in. `applyToDocument` never overwrites a
+      // vendor the caller named, so that one is the document's vendor.
+      await this.learnVendorCurrency(
+        input.restaurantId,
+        input.providerId ?? resolution.providerId ?? null,
+        parsed.docType,
+        documentId,
+      );
       return resolution;
     } catch (err: any) {
       // A THROW here is our own failure, not the document's, so it is reported
@@ -1249,6 +1259,45 @@ export class DocumentIntakeService {
         identity: null,
         reason: `The vendor could not be resolved because the resolution itself failed: ${err?.message ?? "unknown error"}`,
       };
+    }
+  }
+
+  /**
+   * VEN-W13 (founder, 2026-10-01: "write auto ... 3 invoices"). After an
+   * INVOICE is matched to a vendor, write that vendor's usual currency from
+   * their invoices when at least three printed the same code and nothing is on
+   * file (`providers/usual-currency-from-invoices.ts` holds every rule).
+   *
+   * Credit memos are not counted, so they do not trigger it either.
+   *
+   * NEVER FAILS THE INTAKE. The learner returns its failures instead of
+   * throwing; this logs them, and a throw that escapes anyway is caught here.
+   */
+  private async learnVendorCurrency(
+    restaurantId: string,
+    providerId: string | null,
+    docType: string,
+    documentId: string,
+  ): Promise<void> {
+    if (docType !== "invoice" || !providerId) return;
+    try {
+      const outcome = await learnUsualCurrencyFromInvoices(
+        this.db.getClient(),
+        restaurantId,
+        providerId,
+      );
+      if (outcome.kind === "failed")
+        this.logger.warn(
+          `vendor ${providerId}'s usual currency was not learned from invoice ${documentId}: ${outcome.because}`,
+        );
+      else if (outcome.kind === "written")
+        this.logger.log(
+          `vendor ${providerId}'s usual currency written as ${outcome.code} from ${outcome.invoiceCount} of their invoices`,
+        );
+    } catch (err: any) {
+      this.logger.warn(
+        `vendor ${providerId}'s usual currency was not learned from invoice ${documentId}: ${err?.message ?? "unknown error"}`,
+      );
     }
   }
 

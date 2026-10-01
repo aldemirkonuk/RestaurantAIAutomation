@@ -24,6 +24,18 @@
  *
  * STAFF SEE THE CONTROL, DISABLED, WITH THE REASON. Never hidden: a person who
  * cannot do something should learn who can, not that the thing does not exist.
+ *
+ * VEN-W13 (founder, 2026-10-01: "write auto ... 3 invoices", "Person's value
+ * stays, sheet shows the clash", "Keep it, switch to the one-tap offer"). The
+ * code can now also be written from the vendor's own invoices, and the
+ * section is in one of five states the gateway names (`evidence.state`):
+ *   A  written from invoices                 — "from N of their invoices"
+ *   B  nothing on file, invoices disagree    — one tap per printed code
+ *   C  a person stated it, invoices differ   — one tap to switch
+ *   D  written from invoices, then disagreed — keep it, or use the other
+ *   E  too few invoices yet                  — the count and the chooser
+ * Every tap is the same PATCH a person's choice always was, so it records
+ * their name. The sentence under the code is the gateway's, verbatim.
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -34,12 +46,55 @@ import { apiClient } from '../../../services/api/client';
 import { CURRENCY_CODES, currencyLabel } from '../../../lib/currency';
 import { EM, MONO, SANS } from './pv-format';
 
+type SheetState = 'A' | 'B' | 'C' | 'D' | 'E' | 'stated';
+
 interface UsualCurrency {
   providerId: string;
   code: string | null;
   setAt: string | null;
   setByName: string | null;
+  /** Who put the code there; absent from a gateway that predates VEN-W13. */
+  source?: 'person' | 'invoices' | null;
+  invoiceCount?: number | null;
+  /** What the vendor's invoices say; null when they could not be read. */
+  evidence?: {
+    state: SheetState;
+    counted: number;
+    counts: { code: string; invoices: number }[];
+    clash: { code: string; lastInvoices: number } | null;
+    needed: number;
+  } | null;
+  evidenceUnreadable?: string | null;
   sentence: string;
+}
+
+interface OneTap {
+  code: string;
+  label: string;
+  primary: boolean;
+}
+
+/** The one-tap offers for states B, C and D — the approved sketch's buttons. */
+function oneTapsFor(data: UsualCurrency | undefined): OneTap[] {
+  const ev = data?.evidence;
+  if (!ev) return [];
+  const code = data?.code ?? null;
+  if (ev.state === 'B')
+    return ev.counts.map((c, i) => ({
+      code: c.code,
+      label: `${c.code} · ${c.invoices} ${c.invoices === 1 ? 'invoice' : 'invoices'}`,
+      primary: i === 0,
+    }));
+  if (ev.state === 'C' && ev.clash)
+    return [{ code: ev.clash.code, label: `Switch to ${ev.clash.code}`, primary: false }];
+  if (ev.state === 'D' && code)
+    return [
+      { code, label: `Keep ${code}`, primary: true },
+      ...ev.counts
+        .filter((c) => c.code !== code)
+        .map((c) => ({ code: c.code, label: `Use ${c.code}`, primary: false })),
+    ];
+  return [];
 }
 
 function serverMessage(e: unknown, fallback: string): string {
@@ -76,6 +131,8 @@ export function UsualCurrencySection({
 
   const sectionRef = useRef<HTMLElement | null>(null);
   const selectRef = useRef<HTMLSelectElement | null>(null);
+  // In states B, C and D there is no chooser; the first one-tap takes focus.
+  const firstTapRef = useRef<HTMLButtonElement | null>(null);
   const tookFocus = useRef(false);
 
   const [choice, setChoice] = useState('');
@@ -94,10 +151,12 @@ export function UsualCurrencySection({
   });
 
   const save = useMutation({
-    mutationFn: async () => {
+    // A one-tap passes its code; the chooser's button passes nothing and
+    // sends what was chosen. Both are the same PATCH, so both name the person.
+    mutationFn: async (tapped?: string) => {
       const { data } = await apiClient.patch<{ sentence: string }>(
         `/providers/${providerId}/usual-currency`,
-        { currency: choice },
+        { currency: tapped ?? choice },
       );
       return data;
     },
@@ -127,7 +186,7 @@ export function UsualCurrencySection({
     // A disabled control cannot hold focus, so a staff member is brought to the
     // section and reads why they cannot use it, rather than being sent to a
     // field that refuses them silently.
-    selectRef.current?.focus();
+    (selectRef.current ?? firstTapRef.current)?.focus();
   }, [takeFocus, settled]);
 
   const label = (
@@ -202,6 +261,11 @@ export function UsualCurrencySection({
     );
 
   const code = stated.data?.code ?? null;
+  const fromInvoices = stated.data?.source === 'invoices';
+  const sheetState = stated.data?.evidence?.state ?? null;
+  const taps = oneTapsFor(stated.data);
+  // States B, C and D are answered by a tap; the free chooser is for the rest.
+  const showChooser = taps.length === 0;
 
   return (
     <section data-testid="vendor-usual-currency" ref={sectionRef}>
@@ -219,7 +283,21 @@ export function UsualCurrencySection({
         >
           {code ?? EM}
         </span>
-        {code && stated.data?.setByName ? (
+        {code && fromInvoices ? (
+          <span
+            data-testid="vendor-usual-currency-from-invoices"
+            style={{
+              fontFamily: SANS,
+              fontSize: 11,
+              color: 'var(--ink-4, #665D50)',
+              textAlign: 'right',
+            }}
+          >
+            {/* Never a person's name: nobody stated it. */}
+            from {stated.data?.invoiceCount ?? stated.data?.evidence?.counted ?? 0} of
+            their invoices{sheetState === 'A' ? ' · nobody has stated it' : ''}
+          </span>
+        ) : code && stated.data?.setByName ? (
           <span
             style={{
               fontFamily: SANS,
@@ -238,6 +316,48 @@ export function UsualCurrencySection({
           importantly, what it is NOT for. */}
       {note(stated.data?.sentence ?? '')}
 
+      {/* The invoices could not be read: say so, never "no invoices". */}
+      {stated.data?.evidenceUnreadable
+        ? note(
+            `What their invoices printed could not be read (${stated.data.evidenceUnreadable}). That is a failed read, not a vendor with no invoices.`,
+          )
+        : null}
+
+      {taps.length ? (
+        <div
+          data-testid="vendor-usual-currency-taps"
+          className="flex flex-wrap gap-2 items-center"
+          style={{ marginTop: 10 }}
+        >
+          {taps.map((t, i) => (
+            <button
+              key={`${t.code}-${t.label}`}
+              ref={i === 0 ? firstTapRef : undefined}
+              type="button"
+              data-testid={`vendor-usual-currency-tap-${t.code}`}
+              disabled={!canManage || save.isPending}
+              onClick={() => save.mutate(t.code)}
+              style={{
+                fontFamily: MONO,
+                fontSize: 10,
+                letterSpacing: '0.1em',
+                textTransform: 'uppercase',
+                padding: '7px 12px',
+                borderRadius: 6,
+                border: '1px solid var(--seal-ring, #14515C)',
+                background: t.primary ? 'var(--seal-deep, #14515C)' : 'transparent',
+                color: t.primary ? 'var(--paper-0, #FDFBF6)' : 'var(--seal-deep, #14515C)',
+                opacity: !canManage ? 0.45 : 1,
+                cursor: !canManage ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      {showChooser ? (
       <div className="flex gap-2 items-center" style={{ marginTop: 10 }}>
         <select
           ref={selectRef}
@@ -269,7 +389,7 @@ export function UsualCurrencySection({
           type="button"
           data-testid="vendor-usual-currency-save"
           disabled={!canManage || !choice || save.isPending}
-          onClick={() => save.mutate()}
+          onClick={() => save.mutate(undefined)}
           style={{
             fontFamily: MONO,
             fontSize: 10,
@@ -287,6 +407,7 @@ export function UsualCurrencySection({
           {save.isPending ? 'Saving…' : code ? 'Change it' : 'State it'}
         </button>
       </div>
+      ) : null}
 
       {!canManage
         ? note(

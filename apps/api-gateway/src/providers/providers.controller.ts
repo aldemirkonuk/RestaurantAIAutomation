@@ -47,6 +47,7 @@ import {
   usualCurrencyCoverageSentence,
   vendorCurrencySentence,
 } from "./vendor-currency";
+import { INVOICES_TO_WRITE } from "./usual-currency-from-invoices";
 
 type AuthUser = { userId?: string; restaurantId?: string | null };
 
@@ -207,6 +208,7 @@ export class ProvidersController {
   async usualCurrencyCoverage(@CurrentUser() user: AuthUser): Promise<{
     stated: number;
     total: number;
+    fromInvoices: number;
     unstated: { id: string; name: string; recorded: string | null }[];
     sentence: string;
   }> {
@@ -218,6 +220,7 @@ export class ProvidersController {
       sentence: usualCurrencyCoverageSentence({
         stated: counted.stated,
         total: counted.total,
+        fromInvoices: counted.fromInvoices,
       }),
     };
   }
@@ -422,16 +425,36 @@ export class ProvidersController {
       providerId,
       houseOf(user),
     );
+    const d = stated.decision;
     return {
       providerId,
       code: stated.code,
       setAt: stated.setAt,
       setByName: stated.setByName,
+      // VEN-W13 (founder, 2026-10-01): where the code came from and what the
+      // vendor's invoices say now, so the sheet can show one of its five
+      // states. `evidence` is NULL when the invoices could not be read, and
+      // `evidenceUnreadable` says so — never an empty count.
+      source: stated.source,
+      invoiceCount: stated.invoiceCount,
+      evidence: d
+        ? {
+            state: d.state,
+            counted: d.counted,
+            counts: d.counts,
+            clash: d.clash,
+            needed: INVOICES_TO_WRITE,
+          }
+        : null,
+      evidenceUnreadable: stated.evidenceUnreadable,
       sentence: vendorCurrencySentence({
         code: stated.code,
         setByName: stated.setByName,
         setAt: stated.setAt,
         vendorName: stated.vendorName,
+        source: stated.source,
+        invoiceCount: stated.invoiceCount,
+        decision: d,
       }),
     };
   }
