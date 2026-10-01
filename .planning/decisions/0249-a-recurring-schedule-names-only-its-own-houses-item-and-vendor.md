@@ -1,8 +1,8 @@
 # 0249 — A recurring schedule names only its own house's item and vendor
 
-- **Status:** Proposed — founder review pending. It applies two locked rules to two more routes and adds no rule: the item rule of [[0141-a-stock-write-names-the-house-it-is-for]] and the vendor rule of [[0147-the-pages-endpoints-answer-only-for-the-callers-house-and-person]] with [[0221-each-house-owns-its-vendors-now-a-shared-vendor-layer-comes-later-the-word-is-vendors]]. The lane brief defined the fix as unambiguous only if it reused existing checks with their existing answers; the measurement below found that to hold, so no fork went to the founder.
+- **Status:** Accepted 2026-10-01 by the founder (his two answers are under Founder answers). It applies two locked rules to two more routes and adds no rule: the item rule of [[0141-a-stock-write-names-the-house-it-is-for]] and the vendor rule of [[0147-the-pages-endpoints-answer-only-for-the-callers-house-and-person]] with [[0221-each-house-owns-its-vendors-now-a-shared-vendor-layer-comes-later-the-word-is-vendors]]. The lane brief defined the fix as unambiguous only if it reused existing checks with their existing answers. The measurement below found that to hold, so the record was first written as Proposed; the founder then accepted it and chose to keep the 403/404 pair.
 - **Date:** 2026-10-01
-- **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
+- **Decider:** Aldemir (founder), 2026-10-01, session 9512567d, relayed by the lane coordinator. Both answers are quoted verbatim under Founder answers.
 - **Keywords:** recurring orders, recurring_orders, schedule, inventory_id, provider_id, house, tenant, cross-house, assertInventoryBelongsToRestaurant, assertProviderBelongsToRestaurant, Vendor not found, calendar_events, createRecurringOrder, updateRecurringOrder
 - **Links:** found by the audit of PR #550 on 2026-10-01 (that PR, `fix/recurring-schedule-edits-need-a-manager`, limits PUT and DELETE on these schedules to managers and owners; it is open); claim `claims.d/fix-recurring-schedule-ids-belong-to-the-house.jsonl:1`; spec `apps/api-gateway/src/procurement/recurring-schedule-ids-belong-to-the-house.http.spec.ts`; register entry `tech-debt.d/2026-10-01-fix-recurring-schedule-ids-belong-to-the-house.md`.
 
@@ -55,7 +55,7 @@ Where a request body names an item or a vendor, the checks above agree per id: 4
 ## Options considered
 
 1. **Check both ids on create, and the ids the body sends on update, with the two checks `createOrder` runs.** Taken. A schedule then cannot be given an item or vendor that its own 08:00 run would refuse as another house's, and the answers match `createOrder`'s.
-2. **Answer 404 for a foreign item as well, as ADR 0147 does for a row that is not the caller's.** Not taken. This route would be the only item check answering 404, and changing the shared helper's answer changes every caller's. Recorded under Consequences.
+2. **Answer 404 for a foreign item as well, as ADR 0147 does for a row that is not the caller's.** Not taken; the founder chose to keep the pair (Q2 below). This route would be the only item check answering 404, and changing the shared helper's answer changes every caller's. Recorded under Consequences.
 3. **Check at read time instead (filter the embeds by house).** Not taken. The calendar rows and the approval event are written at create, before any read, and the bad id would stay stored.
 4. *(Do nothing.)* The 08:00 run stays safe, but a member keeps the ability to store another house's id, read back its names, and write calendar rows in the caller's house that carry them.
 
@@ -82,10 +82,23 @@ The spec pins it with 13 cases. With the two service files restored to 1c1a676f8
   - **Calendar rows already written** with another house's `provider_id` or wine name stay as they are.
   - **`calendar_events.provider_id` keeps no `ON DELETE` rule**, and `POST /calendar/events` takes a body `providerId` and stores it without a house check (`calendar.service.ts:118`). Both are filed in the register entry linked above.
   - **The PostgreSQL answer to a `null` id on update** (`@IsOptional()` admits `null`) was not run against a database. The check runs on it before any write either way.
-- **Revisit** if the founder rules that a body id naming another house's row answers 404 for items as for vendors. That would change `assertInventoryBelongsToRestaurant` for every caller, this one included.
+- **Revisit** if the founder rules that a body id naming another house's row answers 404 for items as for vendors. That would change `assertInventoryBelongsToRestaurant` for every caller, this one included. On 2026-10-01 he chose to keep the pair and revisit it separately (Q2 below); the trigger stands.
+
+## Founder answers
+
+Given 2026-10-01 (session 9512567d) and relayed by the lane coordinator. The picks and option texts are quoted verbatim.
+
+**Q1, whether to accept this record.** His pick: *"Accept ADR 0249 (Recommended)"*. The option read: *"Mark it Accepted with your words, then run the full review. Create checks both ids. Update checks the ids it is given, before any write. The answers match createOrder's."* Rejected: *"Hold it"* (*"Leave #563 open as Proposed and come back to it later"*).
+
+**Q2, items answering 403 while vendors answer 404.** His pick: *"Keep, revisit separately (Recommended)"*. The option read: *"#563 matches today's answers, and ADR 0249 records the mismatch as a revisit trigger. Changing the shared item check to 404 touches every route that uses it, so it should be its own PR with its own sweep."* Rejected:
+- *"Items to 404 in a separate PR now"*: open a follow-up that makes the shared item check answer 404 everywhere, after sweeping its callers and clients that may branch on 403.
+- *"Items to 404 inside #563"*: widens #563 to every route that uses the shared check. That means more files and more review, and it mixes two changes.
+
+So #563 keeps 403 for a foreign item and 404 for a foreign vendor, and the revisit trigger under Consequences stands. No follow-up PR is opened by this answer.
 
 ## Review trail
 
 | Date | Reviewer | Outcome |
 |---|---|---|
 | 2026-10-01 | fix lane | Created with the measurement and the fix on `fix/recurring-schedule-ids-belong-to-the-house` |
+| 2026-10-01 | Aldemir (founder) | Accepted (Q1); the 403/404 pair kept, to be revisited separately (Q2) |
