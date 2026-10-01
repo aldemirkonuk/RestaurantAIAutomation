@@ -18,13 +18,14 @@
  * - countdowns drain un-eased.
  *
  * Honesty rules: unknowns are em dashes, never zeros; a failed fetch is said
- * in words; the rehearsal die (shown when no pending order is loaded) is
- * wired to NOTHING and says so.
+ * in words. The real seal lives only on a pending row — the rehearsal die
+ * that stood here when nothing was pending was removed on the founder's
+ * word (ORD-W2, 2026-10-01).
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
-import { HoldToApprove, Wordmark } from '@/components/mudavym';
+import { Wordmark } from '@/components/mudavym';
 import { AgreementSheet } from './AgreementSheet';
 import { BulkApproveBar } from './BulkApproveBar';
 import { DraftRail } from './DraftRail';
@@ -44,72 +45,6 @@ import { useProviders } from '@/hooks/queries/useProviderQueries';
 
 const monthName = new Intl.DateTimeFormat('en-GB', { month: 'long' });
 const VALID_STATIONS = new Set<string>([...STAGES, 'recurring']);
-
-/** The die with nothing behind it — clearly guarded demo state. */
-function RehearsalCard() {
-  const [runs, setRuns] = useState(0);
-  const [sealedOnce, setSealedOnce] = useState(false);
-  return (
-    <div
-      style={{
-        border: '1px dashed var(--ink-3, #7C7365)',
-        borderRadius: 12,
-        padding: '12px 14px',
-        background: 'var(--paper-1, #F3EFE6)',
-        fontFamily: SANS,
-      }}
-      data-testid="rehearsal-die"
-    >
-      <div className="mb-1 flex items-center justify-between">
-        <span style={{ fontFamily: SERIF, fontSize: 14, fontWeight: 600, color: 'var(--ink-1, #211C16)' }}>
-          The die, at rest
-        </span>
-        <span
-          style={{
-            fontFamily: MONO,
-            fontSize: 8.5,
-            fontWeight: 600,
-            letterSpacing: '0.14em',
-            textTransform: 'uppercase',
-            color: 'var(--ink-4, #665D50)',
-            border: '1px dashed var(--ink-3, #7C7365)',
-            borderRadius: 3,
-            padding: '2px 6px',
-          }}
-        >
-          Rehearsal · no order attached
-        </span>
-      </div>
-      <p style={{ fontSize: 11.5, color: 'var(--ink-4, #665D50)', margin: '0 0 8px' }}>
-        No pending order is loaded, so the ceremony has nothing to act on. Completing this hold approves
-        nothing and sends nothing — it only shows the gesture.
-      </p>
-      <HoldToApprove
-        key={`rehearsal-${runs}`}
-        label="Hold to try the seal — approves nothing"
-        approvedLabel="Sealed — a rehearsal only"
-        onApprove={() => setSealedOnce(true)}
-      />
-      {sealedOnce && (
-        <button
-          type="button"
-          onClick={() => setRuns((r) => r + 1)}
-          style={{
-            marginTop: 4,
-            fontSize: 11,
-            color: 'var(--ink-4, #665D50)',
-            textDecoration: 'underline',
-            background: 'none',
-            border: 'none',
-            cursor: 'pointer',
-          }}
-        >
-          Reset the rehearsal
-        </button>
-      )}
-    </div>
-  );
-}
 
 export default function OrdersNext() {
   const data = useOrdersNextData();
@@ -232,8 +167,6 @@ export default function OrdersNext() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [targetOrderId, targetRow]);
 
-  const pendingKnownEmpty = data.hasData && data.counts.pending === 0;
-  const showRehearsal = data.isError || pendingKnownEmpty;
 
   const setRowSelected = (id: string, next: boolean) =>
     setSelected((prev) => {
@@ -564,12 +497,6 @@ export default function OrdersNext() {
                     />
                   </div>
                 ))}
-              </div>
-            )}
-
-            {showRehearsal && (
-              <div className="mt-4">
-                <RehearsalCard />
               </div>
             )}
 

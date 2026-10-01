@@ -268,7 +268,7 @@ export function LedgerRow({
         >
           <span className="min-w-0 flex-1">
             <span
-              className="block truncate"
+              className="line-clamp-2 break-words"
               style={{ fontFamily: SERIF, fontSize: 15, fontWeight: 600, color: 'var(--ink-1, #211C16)' }}
             >
               {row.wineName ?? EM}
