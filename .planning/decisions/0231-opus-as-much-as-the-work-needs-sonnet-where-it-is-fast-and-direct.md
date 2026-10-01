@@ -134,6 +134,11 @@ records it):
 > - **The founder's words.** In chat on 2026-10-01, session 9512567d, verbatim: *"Wording now + separate gate PR (Recommended)"*. To the follow-on question, *"Managers and owners only (Recommended)"*.
 > - **Scope.** Once, for this round of this PR. It sets no precedent.
 
+> **[2026-10-01, a tenth waiver, founder's words — the fix-round cap, PR #538 round 7]**
+> - **What it covers.** PR #538 again. Each wording round since round 3 was blocked because the ADR listed the ways a staff merge can slip into the approve step, and the next review found one more. The round is wording only. The list becomes one bounded sentence, followed by measured examples introduced with "including".
+> - **The founder's words.** In chat on 2026-10-01, session 9512567d, verbatim: *"Round 7: stop listing cases (Recommended)"*.
+> - **Scope.** Once, for this round of this PR. It sets no precedent.
+
 > **[2026-10-01, where these waivers are recorded — the founder's routing]**
 > - Asked how PRs whose decision records quoted his waivers should be routed, the founder chose, verbatim, *"Move waivers to #547 (Recommended)"*. Every fix-round waiver is recorded here. The other records carry only a pointer to this file.
 
