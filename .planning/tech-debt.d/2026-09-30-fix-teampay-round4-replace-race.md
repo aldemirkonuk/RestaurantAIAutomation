@@ -12,7 +12,7 @@ Found by CI run 36728755317, the web job on PR #537, whose diff changes no `apps
 **Fix.**
 - The hand-over now travels with the click: `mutationFn: (sent) => deleteTeamMember(member!.id, undefined, sent)` and `onClick={() => remove.mutate(handingOver)}`.
 - React 18.3.1 updates a DOM node's handler props at commit (`updateFiberProps` in `commitUpdate`), not in an effect, so the value sent is the one computed in the same render that drew the button's label.
-- Unchanged: `onSuccess` still closes over `onChanged`, `onClose` and `member`, installed in the same effect. None of them is per-click state. `onClose` and `onChanged` are new arrows on every TeamNext render (`TeamNext.tsx:830-840`), but a stale copy does the same thing; `member` is the sheet's overlay state.
+- Unchanged, and not audited here: the rest of the mutation's options are still installed by that same effect. `mutationFn` reads `member!.id`, and `onSuccess` calls the `onChanged` and `onClose` props. So the one-render gap applies to them too. This PR moves only the hand-over, the one value that changes per click, out of that path.
 
 **Regression test.** "sends what the button says, even when clicked the moment it says it" forces the gap on every run:
 - `performance.now` jumps 10 ms per read, so Scheduler yields after every task.
