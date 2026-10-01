@@ -78,6 +78,21 @@ describe('page tips', () => {
     expect(tip()).toBeNull();
   });
 
+  it('"Not now" is a four-hour snooze: off on a later visit inside it, back on one after it', () => {
+    const first = mount('/orders');
+    fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
+    first.unmount();
+    window.sessionStorage.clear(); // a new sitting
+    const second = mount('/orders');
+    expect(tip()).toBeNull();
+    second.unmount();
+    window.sessionStorage.clear();
+    const later = Date.now() + 4 * 60 * 60 * 1000 + 60_000;
+    vi.spyOn(Date, 'now').mockReturnValue(later);
+    mount('/orders');
+    expect(tip()).toBeTruthy();
+  });
+
   it('"Don\'t show tips again" takes it off at once and keeps every other page\'s tip off', () => {
     mount('/orders');
     fireEvent.click(screen.getByRole('button', { name: "Don't show tips again" }));

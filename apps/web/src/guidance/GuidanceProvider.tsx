@@ -270,7 +270,9 @@ export function GuidanceProvider({ children }: { children: ReactNode }) {
     if (!pageId) return null
 
     const page = state.pages[pageId] ?? defaultPageState()
-    if (page.tip !== 'unseen') return null
+    // "Not now" is a four-hour snooze, not a goodbye (ADR 0251 D2): a snoozed
+    // tip may come back on a later visit once its snooze has run out.
+    if (page.tip !== 'unseen' && page.tip !== 'snoozed') return null
     if (page.snooze_until && new Date(page.snooze_until).getTime() > Date.now()) {
       return null
     }
