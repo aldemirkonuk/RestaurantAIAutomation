@@ -87,3 +87,20 @@ describe('the header names the page by its room, or not at all', () => {
     expect(isCurrentRoom('/orders', cellar)).toBe(false);
   });
 });
+
+describe('every room says what it is for (the rail hint)', () => {
+  it.each(ALL.map((r) => [r.name, r.description] as const))('%s has one short line', (_name, d) => {
+    expect(d.trim().length).toBeGreaterThan(0);
+    expect(d.length).toBeLessThanOrEqual(64);
+    expect(d.endsWith('.')).toBe(true);
+  });
+
+  it("the Dashboard's line is the founder's own words", () => {
+    expect(ALL.find((r) => r.path === '/')!.description).toBe('The overall look, in one glance.');
+  });
+
+  it('no two rooms share a line', () => {
+    const lines = ALL.map((r) => r.description);
+    expect(new Set(lines).size).toBe(lines.length);
+  });
+});
