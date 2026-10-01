@@ -25,8 +25,8 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 const state = vi.hoisted(() => ({ current: null as unknown }));
@@ -247,5 +247,45 @@ describe('?tab=recurring — scheduled-tasks.service.ts\'s in-app notification f
     harness('/orders?tab=recurring');
 
     expect(await screen.findByRole('tab', { name: /recurring/i, selected: true })).toBeInTheDocument();
+  });
+});
+
+/*
+ * ORD-W5, 2026-10-01: a station picked by hand is WRITTEN to the URL too, so a
+ * reload or a shared link returns to it (ADR 0160). Before, the page only
+ * read `?station=` on load and the address stayed `/orders`.
+ */
+function Probe() {
+  const loc = useLocation();
+  return <output data-testid="search">{loc.search}</output>;
+}
+
+describe('a station picked by hand is kept in the URL', () => {
+  it('writes ?station=, and clears it when the station is toggled off', async () => {
+    state.current = ordersData({ rows: [row({ id: 'o-1' })] });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={['/orders?order=o-1']}>
+          <Routes>
+            <Route
+              path="/orders"
+              element={
+                <>
+                  <OrdersNext />
+                  <Probe />
+                </>
+              }
+            />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole('tab', { name: /delivered/i }));
+    expect(screen.getByTestId('search').textContent).toBe('?station=delivered');
+
+    fireEvent.click(screen.getByRole('tab', { name: /delivered/i }));
+    expect(screen.getByTestId('search').textContent).toBe('');
   });
 });

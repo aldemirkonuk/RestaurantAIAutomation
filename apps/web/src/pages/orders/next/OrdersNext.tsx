@@ -63,7 +63,7 @@ export default function OrdersNext() {
    * job to react to.
    */
   const { id: routeOrderId } = useParams<{ id?: string }>();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const targetOrderId = routeOrderId ?? searchParams.get('order');
   /** Which target id this page has already acted on, so a manual collapse by
    *  the person afterwards is not fought by re-expanding on every render. */
@@ -80,6 +80,26 @@ export default function OrdersNext() {
     const requested = searchParams.get('station') ?? searchParams.get('tab');
     return requested && VALID_STATIONS.has(requested) ? (requested as SpineStation) : null;
   });
+  /**
+   * The chosen station lives in the URL (ADR 0160, ORD-W5): a reload, a shared
+   * link or Back returns to the same station. `replace`, so stepping through
+   * stations does not stack history entries; a deep-link `order` is dropped,
+   * since the person has moved on from that one order.
+   */
+  const selectStation = (next: SpineStation | null) => {
+    setStation(next);
+    setSearchParams(
+      (prev) => {
+        const p = new URLSearchParams(prev);
+        p.delete('tab');
+        p.delete('order');
+        if (next) p.set('station', next);
+        else p.delete('station');
+        return p;
+      },
+      { replace: true },
+    );
+  };
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [bulkRunning, setBulkRunning] = useState(false);
@@ -427,7 +447,7 @@ export default function OrdersNext() {
           counts={data.counts}
           recurringCount={data.recurringCount}
           active={station}
-          onSelect={setStation}
+          onSelect={selectStation}
         />
 
         <div className="mt-5 grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px]">
