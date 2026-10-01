@@ -139,6 +139,11 @@ records it):
 > - **The founder's words.** In chat on 2026-10-01, session 9512567d, verbatim: *"Round 7: stop listing cases (Recommended)"*.
 > - **Scope.** Once, for this round of this PR. It sets no precedent.
 
+> **[2026-10-01, an eleventh waiver, founder's words — the fix-round cap, PR #550 round 3]**
+> - **What it covers.** PR #550 (ADR 0246), which gates recurring-schedule edits on a manager or an owner. After its second round, the planner found that ADR 0246 understates the shared role helper's fallback. When the access-register read errors, the helper reads the old `users.role` column. That column says 'owner' for a staff member who made an account before joining the house. The round is wording only: it names who the fallback lets in, corrects the cost the ADR gives for it, and fixes one citation. Closing the fallback is a separate PR.
+> - **The founder's words.** In chat on 2026-10-01, session 9512567d, verbatim: *"Waive once, text-only (Recommended)"*. To the follow-on question on the fallback itself, *"Next PR: error means no role (Recommended)"*.
+> - **Scope.** Once, for this round of this PR. It sets no precedent.
+
 > **[2026-10-01, where these waivers are recorded — the founder's routing]**
 > - Asked how PRs whose decision records quoted his waivers should be routed, the founder chose, verbatim, *"Move waivers to #547 (Recommended)"*. Every fix-round waiver is recorded here. The other records carry only a pointer to this file.
 
