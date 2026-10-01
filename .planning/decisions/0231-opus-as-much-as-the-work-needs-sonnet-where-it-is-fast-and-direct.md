@@ -124,6 +124,19 @@ records it):
 > - **The founder's words.** In chat on 2026-09-30, session 9512567d, verbatim: *"Disclose + pin tests; RPC next (Recommended)"*, the option label of his answer. ADR 0244 D2 quotes the option text.
 > - **Scope.** Once, for this round of this PR. It sets no precedent.
 
+> **[2026-09-30, an eighth waiver, founder's words — the fix-round cap, PR #538 round 5]**
+> - **What it covers.** PR #538 again. The final ruling after round 4 found an older approval-limit gap. `approveOrder` checks the seal and the rules, then writes APPROVED with an UPDATE filtered only on house and id, so a fold landing in between is approved at a total that was never checked. #538's own record overclaimed around it. The round is wording only: it records the gap, and states that one transaction does not close it.
+> - **The founder's words.** In chat on 2026-09-30, session 9512567d, verbatim: *"Record it now, close it next PR (Recommended)"*, the option label of his answer.
+> - **Scope.** Once, for this round of this PR. It sets no precedent.
+
+> **[2026-10-01, a ninth waiver, founder's words — the fix-round cap, PR #538 round 6]**
+> - **What it covers.** PR #538 again. The round-5 review reproduced a staff path through the recurring-order schedule: a staff member can edit a manager's schedule, and the 08:00 job then folds that edit into an open order as the manager. The review also found that round-5 sentences claimed more than approval actually checks. The round is wording only. A separate PR (#550, ADR 0246) gates schedule edits.
+> - **The founder's words.** In chat on 2026-10-01, session 9512567d, verbatim: *"Wording now + separate gate PR (Recommended)"*. To the follow-on question, *"Managers and owners only (Recommended)"*.
+> - **Scope.** Once, for this round of this PR. It sets no precedent.
+
+> **[2026-10-01, where these waivers are recorded — the founder's routing]**
+> - Asked how PRs whose decision records quoted his waivers should be routed, the founder chose, verbatim, *"Move waivers to #547 (Recommended)"*. Every fix-round waiver is recorded here. The other records carry only a pointer to this file.
+
 **3. Where Sonnet gets the emphasis** (item 86's *"fast, and direct"* work Sonnet is
 *"highly capable of"*): verification runs and check suites, mechanical edits to a spec,
 branch updates and merges of `main`, posting PRs and comments, the plan-scoped audit
