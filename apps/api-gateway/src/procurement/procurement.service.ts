@@ -43,6 +43,7 @@ import {
   type RaiseOutcome,
 } from "./delivery-item-to-name";
 import { assertInventoryBelongsToRestaurant } from "../common/tenant/assert-inventory-belongs-to-restaurant";
+import { assertProviderBelongsToRestaurant } from "../common/tenant/assert-provider-belongs-to-restaurant";
 import { EventType, SourcePage } from "../events/dto/event.dto";
 import {
   CreateOrderDto,
@@ -913,30 +914,19 @@ export class ProcurementService {
     // `POST /procurement/orders`, Ask-AI's reorder, the recurrences and the
     // retroactive order — passes through here, so the fence is here. Another
     // house's vendor, a vendor row with no house, and a missing id are the same
-    // 404 (ADR 0147: a 403 would confirm the id exists). A failed read refuses:
-    // the absence of an answer is not a yes (ADR 0051).
-    const { count: ownVendor, error: vendorError } = await this.databaseService.supabase
-      .from("providers")
-      .select("id", { count: "exact", head: true })
-      .eq("id", dto.providerId)
-      .eq("restaurant_id", restaurantId);
-    if (vendorError) {
-      this.logger.error("createOrder could not confirm the vendor's house", {
-        restaurantId,
-        providerId: dto.providerId,
-        error: vendorError.message,
-      });
-      throw new ServiceUnavailableException(
-        "Could not confirm this vendor belongs to this restaurant, so no order was placed. Please try again.",
-      );
-    }
-    if (!ownVendor) {
-      this.logger.warn("createOrder refused a vendor that is not this house's", {
-        restaurantId,
-        providerId: dto.providerId,
-      });
-      throw new NotFoundException("Vendor not found");
-    }
+    // 404 (ADR 0147: a 403 would confirm the id exists). A failed read refuses
+    // with a 503: the absence of an answer is not a yes (ADR 0051). The check
+    // now lives in `common/tenant/assert-provider-belongs-to-restaurant.ts`
+    // with the same query, logs and answers, so the recurring schedule routes
+    // run the same one (ADR 0249).
+    await assertProviderBelongsToRestaurant(
+      this.databaseService.supabase,
+      restaurantId,
+      dto.providerId,
+      "createOrder",
+      "no order was placed",
+      this.logger,
+    );
 
     // Guard: restaurant must have at least one active provider before placing orders
     const { count: providerCount, error: countError } =
