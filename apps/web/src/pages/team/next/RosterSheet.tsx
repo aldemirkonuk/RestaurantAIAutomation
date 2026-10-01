@@ -617,10 +617,11 @@ export function MemberSheet({
   const handingOver = handoverOf(handover, handoverPreview.data);
   const needsAck = (handingOver?.accept.length ?? 0) > 0 && !handover.ack;
   // The hand-over travels WITH the click (`remove.mutate(handingOver)`), not
-  // in a closure: React Query takes a new mutationFn in an effect after the
-  // paint, so a click between the two sent the previous render's hand-over —
-  // `null` from a button already reading "hand over 1 shift" (CI run
-  // 36728755317). The click handler is the committed render's own.
+  // in a closure: React Query takes a new mutationFn in a passive effect,
+  // after the commit, so a click between the two sent the previous render's
+  // hand-over — `null` from a button already reading "hand over 1 shift" (CI
+  // run 36728755317). React 18 updates a DOM node's handler props at commit,
+  // so this click handler is the committed render's own.
   const remove = useMutation({
     mutationFn: (sent: RemovalHandover | null) => deleteTeamMember(member!.id, undefined, sent),
     onSuccess: (receipt) => {

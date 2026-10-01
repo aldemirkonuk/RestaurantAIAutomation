@@ -485,9 +485,10 @@ describe('"Replace with" on the remove dialog', () => {
 
   // CI run 36728755317 sent `null` from a button that already read "Remove and
   // hand over 1 shift": the removal read the hand-over React Query had been
-  // given one render earlier (it takes a new mutationFn in an effect, after
-  // the paint). On a slow runner React's scheduler runs out of its 5ms slice
-  // between the paint and the effects and lets the test click in between.
+  // given one render earlier (it takes a new mutationFn in a passive effect,
+  // after the commit). On a slow runner React's scheduler runs out of its 5ms
+  // slice between the commit and the passive effects and lets the test click
+  // in between.
   // Here every slice runs out (the clock jumps 10ms a read) and the click
   // lands the moment the label changes, so the gap fails every time instead
   // of once in a while. Fails on 597f728d9.
