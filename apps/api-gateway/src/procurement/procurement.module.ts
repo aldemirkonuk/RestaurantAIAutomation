@@ -16,6 +16,10 @@ import { AuthModule } from "../auth/auth.module";
 import { EventsModule } from "../events/events.module";
 import { InventoryLedgerModule } from "../inventory-ledger/inventory-ledger.module";
 import { OrchestratorModule } from "../common/orchestrator/orchestrator.module";
+import {
+  PlatformOperatorGuard,
+  PlatformOperatorService,
+} from "../common/orchestrator/platform-operator.service";
 import { CommunicationsModule } from "../communications/communications.module";
 import { WebsocketModule } from "../websocket/websocket.module";
 import { NotificationsModule } from "../notifications/notifications.module";
@@ -116,6 +120,12 @@ import { DeliveryClockService } from "./canonical/delivery-clock.service";
     DeliveryService,
     DeliveryStockService,
     DeliveryClockService,
+    // The operator gate on `clocks/run` and `execute-check` (2026-09-29): both
+    // run every house's scheduled work. OrchestratorModule provides these but
+    // does not export them; like AnalyticsModule, this module provides its own
+    // (they need only DatabaseService), rather than widening that module.
+    PlatformOperatorService,
+    PlatformOperatorGuard,
   ],
   // Exported for callers that already depend on procurement. The inbound-email
   // path deliberately does NOT call it directly — ProcurementModule imports
