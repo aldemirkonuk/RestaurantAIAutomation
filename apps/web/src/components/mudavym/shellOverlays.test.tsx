@@ -15,7 +15,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ShortcutsSheet } from '../command/ShortcutsSheet';
 import { RecentlyViewed } from '../command/RecentlyViewed';
 import { CommandPalette } from '../command/CommandPalette';
-import { AskPanel } from '../askai/AskPanel';
+import { AskPanel, type AskPanelProps } from '../askai/AskPanel';
+import { useAskSession } from '../askai/useAskSession';
 import { Header } from '../layout/Header';
 import { RestaurantBranchSwitcher } from '../layout/RestaurantBranchSwitcher';
 import { DashboardLayout } from '../layout/DashboardLayout';
@@ -103,6 +104,13 @@ const BRANCHES = [
 /** Router + toasts + theme, and nothing else: `test-utils` would pull in its
  *  own AuthContext mock, which has no `AuthContext` export for the design-flag
  *  hook to read. */
+/* The Ask panel's session belongs to its owner (`useAskPanel`); here the test
+   is the owner. */
+function OwnedAskPanel(props: Omit<AskPanelProps, 'session'>) {
+  const session = useAskSession();
+  return <AskPanel {...props} session={session} />;
+}
+
 function renderShell(ui: React.ReactElement) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -182,7 +190,7 @@ describe('with no Mudavym page on screen', () => {
   it('the Ask panel is the house Panel even with no Mudavym page on screen', () => {
     render(
       <MemoryRouter>
-        <AskPanel placement="overlay" open onClose={() => {}} />
+        <OwnedAskPanel placement="overlay" open onClose={() => {}} />
       </MemoryRouter>,
     );
     expect(document.querySelector('.mdv-ovl--panel')).not.toBeNull();
@@ -283,7 +291,7 @@ describe('with a Mudavym page on screen', () => {
     expect(document.querySelector('.bg-gray-900\\/40')).toBeNull();
     unmount();
 
-    renderShell(<AskPanel placement="overlay" open onClose={() => {}} />);
+    renderShell(<OwnedAskPanel placement="overlay" open onClose={() => {}} />);
     expect(document.querySelector('.mdv-ovl--panel')).not.toBeNull();
     expect(document.querySelector('.bg-gray-900\\/40')).toBeNull();
   });

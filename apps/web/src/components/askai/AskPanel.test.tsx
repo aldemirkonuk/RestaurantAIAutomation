@@ -20,10 +20,13 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
-import { AskPanel, STAFF_PROPOSE_LINE } from './AskPanel'
+import { AskPanel, STAFF_PROPOSE_LINE, type AskPanelProps } from './AskPanel'
+import { useAskSession } from './useAskSession'
+import { useAskPanel } from './useAskPanel'
+import { openAskAi } from './events'
 import { AuthContext } from '../../contexts/AuthContext'
 import { completeHold } from '../../__tests__/utils/seal'
 import { STAFF_LINE } from '../../pages/ask/next/ask-format'
@@ -132,6 +135,12 @@ function folio(over: Partial<AskFolio>): AskFolio {
   } as AskFolio
 }
 
+/** The panel's session belongs to its owner (`useAskPanel`); here the test is the owner. */
+function OwnedPanel(props: Omit<AskPanelProps, 'session'>) {
+  const session = useAskSession()
+  return <AskPanel {...props} session={session} />
+}
+
 type Role = 'owner' | 'manager' | 'staff'
 function renderPanel(
   opts: { route?: string; role?: Role; placement?: 'docked' | 'overlay'; followUp?: { folioId: string; utterance: string }; onClose?: () => void } = {},
@@ -141,7 +150,7 @@ function renderPanel(
     <AuthContext.Provider value={{ activeRole: role, activeRestaurantId: 'r-1' } as never}>
       <MemoryRouter initialEntries={[route]}>
         <div data-testid="page-column">
-          <AskPanel placement={placement} open onClose={onClose} followUp={followUp} onDropFollowUp={() => {}} />
+          <OwnedPanel placement={placement} open onClose={onClose} followUp={followUp} onDropFollowUp={() => {}} />
         </div>
       </MemoryRouter>
     </AuthContext.Provider>,
@@ -519,7 +528,7 @@ describe('opens on the person’s last used mode (ADR 0145, founder round 7)', (
     const view = render(
       <AuthContext.Provider value={{ activeRole: 'owner', activeRestaurantId: 'r-1' } as never}>
         <MemoryRouter initialEntries={['/inventory']}>
-          <AskPanel placement="overlay" open onClose={() => {}} />
+          <OwnedPanel placement="overlay" open onClose={() => {}} />
         </MemoryRouter>
       </AuthContext.Provider>,
     )
@@ -530,7 +539,7 @@ describe('opens on the person’s last used mode (ADR 0145, founder round 7)', (
     view.rerender(
       <AuthContext.Provider value={{ activeRole: 'owner', activeRestaurantId: 'r-1' } as never}>
         <MemoryRouter initialEntries={['/inventory']}>
-          <AskPanel placement="overlay" open onClose={() => {}} />
+          <OwnedPanel placement="overlay" open onClose={() => {}} />
         </MemoryRouter>
       </AuthContext.Provider>,
     )
@@ -543,7 +552,7 @@ describe('opens on the person’s last used mode (ADR 0145, founder round 7)', (
     const tree = () => (
       <AuthContext.Provider value={{ activeRole: 'owner', activeRestaurantId: 'r-1' } as never}>
         <MemoryRouter initialEntries={['/inventory']}>
-          <AskPanel placement="overlay" open onClose={() => {}} />
+          <OwnedPanel placement="overlay" open onClose={() => {}} />
         </MemoryRouter>
       </AuthContext.Provider>
     )
@@ -638,5 +647,157 @@ describe('where it sits', () => {
     expect(screen.queryByRole('dialog')).toBeNull()
     fireEvent.keyDown(screen.getByLabelText(/your question for the books/i), { key: 'Escape' })
     expect(onClose).toHaveBeenCalled()
+  })
+})
+
+// Founder, 2026-10-01, "Keep answering (Recommended)" (ADR 0145, amendment of
+// that date). The body unmounts on close, so before this a question in flight
+// was dropped from view, and asking again minted a new request id: a second
+// paid answer (PR #575 audit). These render the REAL owner, `useAskPanel`.
+describe('closing keeps the question in flight (ADR 0145, 2026-10-01)', () => {
+  function Owner() {
+    const ask = useAskPanel()
+    return (
+      <AskPanel
+        placement="docked"
+        open={ask.open}
+        onClose={ask.close}
+        followUp={ask.followUp}
+        onDropFollowUp={ask.dropFollowUp}
+        session={ask.session}
+      />
+    )
+  }
+  function renderOwner() {
+    render(
+      <AuthContext.Provider value={{ activeRole: 'owner', activeRestaurantId: 'r-1' } as never}>
+        <MemoryRouter initialEntries={['/inventory']}>
+          <Owner />
+        </MemoryRouter>
+      </AuthContext.Provider>,
+    )
+    act(() => openAskAi())
+  }
+  function deferred<T>() {
+    let resolve!: (v: T) => void
+    let reject!: (e: unknown) => void
+    const promise = new Promise<T>((res, rej) => {
+      resolve = res
+      reject = rej
+    })
+    return { promise, resolve, reject }
+  }
+  const panel = () => screen.queryByRole('complementary', { name: 'Ask Mudavym' })
+  const box = () => screen.getByLabelText(/your question for the books/i)
+  const QUESTION = 'how much house red is left?'
+  const TWELVE = { kind: 'model_knowledge', sourceLabel: 'Not from the books', text: 'Twelve.' } as AskFolio['answer']
+
+  async function askThenClose(user: ReturnType<typeof userEvent.setup>) {
+    await user.type(box(), `${QUESTION}{Enter}`)
+    expect(await screen.findByTestId('askpanel-pending')).toHaveTextContent(`Still answering “${QUESTION}”`)
+    await user.click(screen.getByRole('button', { name: 'Close' }))
+    expect(panel()).toBeNull()
+  }
+
+  it('an answer that lands after a close is there on reopening, and was paid for once', async () => {
+    const user = userEvent.setup()
+    const answer = deferred<AskFolio>()
+    api.submit.mockReturnValue(answer.promise)
+    renderOwner()
+    await askThenClose(user)
+
+    await act(async () => answer.resolve(folio({ utterance: QUESTION, answer: TWELVE })))
+    act(() => openAskAi())
+
+    expect(await screen.findByTestId('askpanel-folio')).toHaveTextContent('Twelve.')
+    expect(screen.queryByTestId('askpanel-pending')).toBeNull()
+    expect(box()).toBeEnabled()
+    expect(api.submit).toHaveBeenCalledTimes(1)
+  })
+
+  it('reopened while still answering, it says so and stays busy, so nothing can buy a second answer', async () => {
+    const user = userEvent.setup()
+    const answer = deferred<AskFolio>()
+    api.submit.mockReturnValue(answer.promise)
+    renderOwner()
+    await askThenClose(user)
+
+    act(() => openAskAi())
+    expect(screen.getByTestId('askpanel-pending')).toHaveTextContent(`Still answering “${QUESTION}”`)
+    expect(box()).toBeDisabled()
+
+    await act(async () => answer.resolve(folio({ utterance: QUESTION, answer: TWELVE })))
+    expect(await screen.findByTestId('askpanel-folio')).toHaveTextContent('Twelve.')
+    expect(box()).toBeEnabled()
+    expect(api.submit).toHaveBeenCalledTimes(1)
+  })
+
+  it('a question that timed out while closed offers "Check again", which re-sends the same request id', async () => {
+    const user = userEvent.setup()
+    const { AxiosError } = await import('axios')
+    const answer = deferred<AskFolio>()
+    api.submit.mockReturnValueOnce(answer.promise).mockResolvedValueOnce(folio({ utterance: QUESTION, answer: TWELVE }))
+    renderOwner()
+    await askThenClose(user)
+
+    await act(async () => answer.reject(new AxiosError('timeout of 60000ms exceeded', 'ECONNABORTED')))
+    act(() => openAskAi())
+    const failure = await screen.findByTestId('askpanel-failure')
+    expect(failure).toHaveAttribute('data-kind', 'timeout')
+
+    await user.click(screen.getByRole('button', { name: /check again/i }))
+    expect(await screen.findByTestId('askpanel-folio')).toHaveTextContent('Twelve.')
+    expect(api.submit).toHaveBeenCalledTimes(2)
+    expect(api.submit.mock.calls[1][0].requestId).toBe(api.submit.mock.calls[0][0].requestId)
+  })
+
+  it('an answer landing after a close does not drop the follow-up a later open carried in', async () => {
+    const user = userEvent.setup()
+    const answer = deferred<AskFolio>()
+    api.submit.mockReturnValue(answer.promise)
+    renderOwner()
+    await askThenClose(user)
+
+    act(() => openAskAi({ followUp: { folioId: 'f-9', utterance: 'what arrived on Monday' } }))
+    expect(screen.getByTestId('askpanel-followup')).toHaveTextContent('what arrived on Monday')
+    await act(async () => answer.resolve(folio({ utterance: QUESTION, answer: TWELVE })))
+    await screen.findByTestId('askpanel-folio')
+    expect(screen.getByTestId('askpanel-followup')).toHaveTextContent('what arrived on Monday')
+  })
+
+  it('an action being drafted is kept too: reopened, it says so, stays busy, and the proposal arrives once', async () => {
+    const user = userEvent.setup()
+    const drafted = deferred<Awaited<ReturnType<typeof proposeAction>>>()
+    api.propose.mockReturnValue(drafted.promise)
+    renderOwner()
+    await user.click(modeRadio(/propose an action/i))
+    await user.type(screen.getByLabelText(/the action to propose/i), 'reorder 6 bottles of the Barolo{Enter}')
+    expect(await screen.findByTestId('askpanel-pending')).toHaveTextContent('Still drafting “reorder 6 bottles of the Barolo”')
+    await user.click(screen.getByRole('button', { name: 'Close' }))
+
+    act(() => openAskAi())
+    await waitFor(() => expect(api.list).toHaveBeenCalledTimes(2))
+    expect(screen.getByTestId('askpanel-pending')).toHaveAttribute('data-kind', 'propose')
+    expect(screen.getByRole('textbox')).toBeDisabled()
+
+    await act(async () => drafted.resolve({ proposed: true, proposal: reorder }))
+    expect(await screen.findByText(reorder.summary)).toBeInTheDocument()
+    expect(api.propose).toHaveBeenCalledTimes(1)
+  })
+
+  it('the session itself refuses a second send while one is in flight', async () => {
+    const answer = deferred<AskFolio>()
+    api.submit.mockReturnValue(answer.promise)
+    const { result } = renderHook(() => useAskSession())
+    let first!: Promise<boolean>
+    let second!: Promise<boolean>
+    act(() => {
+      first = result.current.sendAsk({ requestId: 'r-1', utterance: QUESTION })
+      second = result.current.sendAsk({ requestId: 'r-2', utterance: QUESTION })
+    })
+    expect(await second).toBe(false)
+    await act(async () => answer.resolve(folio({ utterance: QUESTION })))
+    expect(await first).toBe(true)
+    expect(api.submit).toHaveBeenCalledTimes(1)
   })
 })

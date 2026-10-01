@@ -1971,6 +1971,66 @@ his):
   and its answer. The snapshot noticed this and did not decide it; neither
   does this record.
 
+## Amendment, 2026-10-01 -- closing the panel keeps the question in flight
+
+### The founder's answer
+
+Asked with `AskUserQuestion` on 2026-10-01: "If someone closes the Ask panel
+while it is still answering, what should happen to that question?" His pick,
+verbatim: "Keep answering (Recommended)". The option as offered: closing
+never drops the question; reopened, the panel shows "still answering" or the
+answer; "Check again" reuses the same id, so nothing is paid twice; an action
+being drafted is kept the same way. Rejected: "Keep, plus recent answers"
+(also list the person's latest panel answers from the server on every open),
+"Cancel on close" (the server has already started, so the first answer is
+still paid, and asking again still pays a second time) and "Ask before
+closing" (a step on every close, and a confirmed close keeps the second
+charge).
+
+### The defect it closes
+
+Found by the audit of PR #575 (`.planning/07-reference/pr-audits/575-a83e5cb78.md`,
+local). `AskPanel` returns null when closed, in both placements, so its body
+unmounts. The body held the question in flight, its request id and the
+answers. Closing mid-answer (the panel's Close, Escape, ⌘⇧K, the counter strip's
+control, or since #575 the header's Counter button) dropped them. The
+gateway still answered and saved the folio, which was paid for. The panel
+reopened blank, and asking again minted a new request id, so the house paid a
+second time. The gateway already charges once per request id: a repeated id
+returns the saved folio, pending or finished (`bound-ask.service.ts`, "never
+duplicate paid work for one request id"). So the fix is client-side only.
+
+### Built (branch `fix/ask-close-no-second-spend`, against `main` 5a330a88e)
+
+- `useAskSession` holds the answers, the failure, the request kept for "Check
+  again", the proposer's refusal or error, the waiting proposals and what is
+  in flight. `useAskPanel` owns it, so it lives as long as the shell, or the
+  legacy layout's `AskAiSurface`, not the panel's body. `AskPanel` takes it
+  as a required `session` prop, so a new owner cannot forget it.
+- Reopened mid-answer, the panel says "Still answering “…”" (or "Still
+  drafting “…”") and stays busy, so the box cannot send a second question.
+  The session also refuses a second send while one is in flight.
+- An answer that lands after a close does not clear a later open's typing or
+  the follow-up it carried in.
+- A reload still starts blank. The second option, which would have listed
+  recent answers from the server on every open, was not chosen.
+- The same rule now covers the header's Counter button too (PR #575, merged
+  `5a330a88e`): while Ask holds the counter's slot, that button closes Ask and
+  gives the slot back without rewriting the remembered counter width, the
+  same as the strip's control above.
+
+### Not built, not verified
+
+- The proposer takes no request id. Keeping the panel busy across a close
+  stops the second call from this panel, but a reload mid-draft, or a second
+  tab, can still pay twice. Giving `POST /ask-ai/propose` a request id is
+  gateway work this lane did not do.
+- Pre-existing and unchanged: when the panel opens, the waiting proposals
+  are re-read and replace the list. A proposal that lands while that read is
+  still in flight can be dropped from view until the next open. The server
+  still holds it.
+- No browser render; vitest only.
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
@@ -1994,3 +2054,5 @@ his):
 | 2026-09-26 | W4-ask lane (build, PR #475) | Built one Ask panel with an explicit mode switch and a suggestion that never acts; docked in the counter slot at ≥ ~1280 px, lying over below; `AskAiBar` retired; build task 14 closed. Measured in the section above and in the PR. |
 | 2026-09-22 | Aldemir (founder), round 6z, relayed by the orchestrating session (recorded 2026-09-28 from preserved snapshot `2f9a1e0d3`) | His picks, verbatim: "/ask waits for new Settings (Recommended)" (Settings reach); "Leave it out (Recommended)" (labels given while opted out); "Add a plain line now (Recommended)" (the AI model provider, over the lawyer-review default). See the round-6z amendment. |
 | 2026-09-28 | `fix/ask-round-6z` lane (build, against `main` 0d7af2975) | Answer 1 met by #419, nothing built for it; the snapshot's 503 gate is not carried. Answer 2 built as `20261203100000`, with the backfill changed so it cannot export an opted-out label now that production may hold labels (PGlite 17/17 on the five ask migrations over stubs; mutations listed in the amendment). Answer 3 built in both copies (vitest 7/7). The label-disclosure gap filed as OD-182, open. |
+| 2026-10-01 | Aldemir (founder), `AskUserQuestion` "If someone closes the Ask panel while it is still answering, what should happen to that question?" | His pick, verbatim: "Keep answering (Recommended)" (rejected: "Keep, plus recent answers", "Cancel on close", "Ask before closing"). See "Amendment, 2026-10-01". |
+| 2026-10-01 | `fix/ask-close-no-second-spend` lane (build, against `main` 5a330a88e) | Built `useAskSession`, owned by `useAskPanel`. `AskPanel.test.tsx` gained 6 tests rendering the real owner; the affected suites ran 8 files / 126 tests green. Six mutations each turned at least one new test red: the body owning a fresh session (5 red), no in-flight gate (1), "Check again" minting a new id (1), no mounted guard (1), no pending line (5), and the body not busy from the session (2). Files restored byte-identically. Web eslint clean on the 7 changed files. Web `tsc` is clean apart from `passkeys.ts`'s missing `@simplewebauthn/browser`, which this worktree's symlinked `node_modules` lacks; this diff does not touch that file. |

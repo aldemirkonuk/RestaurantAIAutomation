@@ -9,6 +9,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { ASK_AI_OPEN_EVENT, type AskOpenDetail } from './events'
+import { useAskSession, type AskSession } from './useAskSession'
 
 export interface AskPanelState {
   open: boolean
@@ -16,11 +17,14 @@ export interface AskPanelState {
   /** The folio "Keep asking" carried in, until the person drops it or the panel closes. */
   followUp: AskOpenDetail['followUp'] | null
   dropFollowUp: () => void
+  /** What has been asked this sitting, held here so a close never drops a question in flight. */
+  session: AskSession
 }
 
 export function useAskPanel(): AskPanelState {
   const [open, setOpen] = useState(false)
   const [followUp, setFollowUp] = useState<AskOpenDetail['followUp'] | null>(null)
+  const session = useAskSession()
 
   useEffect(() => {
     const onOpen = (e: Event) => {
@@ -42,7 +46,7 @@ export function useAskPanel(): AskPanelState {
 
   const close = useCallback(() => setOpen(false), [])
   const dropFollowUp = useCallback(() => setFollowUp(null), [])
-  return { open, close, followUp, dropFollowUp }
+  return { open, close, followUp, dropFollowUp, session }
 }
 
 /**
