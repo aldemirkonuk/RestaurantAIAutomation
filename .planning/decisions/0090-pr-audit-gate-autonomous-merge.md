@@ -2524,7 +2524,7 @@ The hygiene checks still judge the whole text. These are: NUL, line separators, 
 
 Two neighbouring cases are not releases:
 - A claims row nested about 990 levels deep raises `RecursionError`. The CI and hook paths report that as CANNOT CHECK, which is owned.
-- A gate decision whose file name differs in letter case (`0097-X.md`) misses the number rule, but its subject and rule are still scanned. `main` released such a file too.
+- A gate decision whose file name differs in letter case (`0097-X.md`) misses the number rule, but its subject and rule are still scanned. `main` released such a file too. [Closed 2026-10-01, see the case follow-up below: all five numbers are now owned by path in any letter case.]
 
 Gate rules bind only from ADR 0050, ADR 0090 and the gate's own files, and the reviewers are told so. 0097, 0231 and 0237 are owned by number. So such a sentence changes no gate behaviour. It can only steer a reader. This change does not touch what the reviewers are told. [Superseded 2026-10-01 by the follow-up below: the reviewers are now told all five numbers.]
 
@@ -2532,6 +2532,12 @@ Gate rules bind only from ADR 0050, ADR 0090 and the gate's own files, and the r
 - `.claude/agents/pr-merge-{planner,auditor,adversary}.md`, `.claude/skills/pr-audit-gate/SKILL.md` and the CI compliance prompt in `scripts/pr_audit_gate.py` now say the gate rules live in ADRs 0050, 0090, 0097, 0231 and 0237 and the gate's own files. A claim elsewhere has no effect until one of those five is edited to point at it.
 - This changes what every reviewer is told, not what the classifier owns: all five were already owned by number (`GATE_DECISION_NUMBERS`).
 - The same answer confirms the narrowed rule as merged in #548: the five gate numbers, the rule-verb list without delete, drop and change, ADR 0243 newly owned and 37 records released.
+- #557 merged on the founder's word, chat, 2026-10-01, verbatim: *"Yes, merge #557 (Recommended)"*. That answer explicitly covers the two #548 wording corrections it carried (the hygiene list; only "drop" owns ADR 0241).
+
+**Follow-up — 2026-10-01: a gate decision is owned in any letter case.** #557's final audit found that a look-alike such as `0097-X.md` (a capital letter in its slug) was released: `ADR_FILE_RE`'s number rule matches lowercase slugs only, and the owned prefixes named only 0050 and 0090. `scripts/check_adr_numbers_unique.py` used the same lowercase pattern, so that file could also reuse a number unseen. Once reviewers are told the rules live in all five ADRs, such a file could mislead one. The founder, chat, 2026-10-01, verbatim: *"Close it (Recommended)"*.
+- `GATE_OWNED_PREFIXES` gains `.planning/decisions/0097-`, `0231-` and `0237-`. Prefixes are compared after casefold, so any letter case is owned.
+- `check_adr_numbers_unique.py` ignores letter case when it parses a decision file name.
+- Tests: cases P1–P3 (released on the old code, owned now; each kills the deletion of its own prefix), a self-test invariant that the number rule still owns a gate decision on its own (the new prefixes would otherwise hide its removal), and the guard's self-test parsing three capital-letter names (fails on the old pattern).
 
 ## Review trail
 
@@ -2568,3 +2574,5 @@ Gate rules bind only from ADR 0050, ADR 0090 and the gate's own files, and the r
 | 2026-09-28 | Aldemir (founder), ADR 0237 | Correction: the frontmatter key is `effort` (not `reasoning_effort`), there are three definitions, and the mapping is documented. All three stay `effort: high` ("Keep high, test medium later"). No gate behaviour changes |
 | 2026-09-30 | Aldemir (chat) | *"Approve #535 + narrow rule (Recommended)"*. A decision record is owned when its number, title, metadata or claim id names the gate, or when it states a rule about the gate; a mention in passing is released (amendment of this date). 58 → 22 owned records on `main` at `e88593bf8`. This change edits owned paths and is covered by the same approval. |
 | 2026-10-01 | Aldemir (chat) | *"Yes, update them (Recommended)"*, answering #548's final-audit question. The reviewer agents, the skill and the CI prompt now name ADRs 0050, 0090, 0097, 0231 and 0237 as where the gate rules live; the narrowed rule as merged in #548 is confirmed. Two #548 wording follow-ups fixed in the same PR (the hygiene list; only "drop" owns ADR 0241). Edits owned paths; covered by this approval. |
+| 2026-10-01 | Aldemir (chat) | *"Yes, merge #557 (Recommended)"*: #557 merged at `98dfcb5af` after Opus HOLDS at `93a847b6e` and a delta HOLDS at `d8324dfa5` (a clean merge of main). His answer explicitly covers the two #548 wording corrections. |
+| 2026-10-01 | Aldemir (chat) | *"Close it (Recommended)"*: the five gate decision numbers are owned by path in any letter case, and the ADR-number guard ignores letter case (case follow-up above). Edits owned paths; covered by this approval. |
