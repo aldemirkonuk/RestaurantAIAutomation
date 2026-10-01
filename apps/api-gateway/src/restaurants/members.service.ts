@@ -16,6 +16,7 @@ import { grantRefusal } from "../auth/role-grant";
 import { stopCalendarLinksOnLeaving } from "../calendar/stop-links-on-leaving";
 import { cancelPendingInvitesFrom } from "../auth/cancel-house-invites";
 import { markMembershipLeft } from "../auth/membership-ended";
+import { isLiveMembership } from "../common/tenant/live-membership";
 import {
   ORG_ROW_INSERT_ONLY,
   orgRoleForHouseGrant,
@@ -45,6 +46,18 @@ export class MembersService {
    * reuses it for the operating-hours endpoints rather than writing a second
    * one). Two membership checks in the same module is how a role gate ends up
    * enforced on one route and not the next.
+   *
+   * THE SAME THREE RULES AS `lookupRestaurantRole` (founder, 2026-10-01: "Fold
+   * into #561 (Recommended)" and "Close both in #561", ADR 0248). It stays its
+   * own copy because its contract differs: a `users` row with no role reads as
+   * `staff`, and the answer is a 403 rather than a `null`.
+   *   - An access read that ERRORS gives no role: 403, and the `users` row is
+   *     not read.
+   *   - A row that EXISTS decides alone. It gives its role only while
+   *     `isLiveMembership` holds; an inactive, not-yet-valid or expired row
+   *     gives no role.
+   *   - Only a read that succeeded and found NO row for this person here falls
+   *     back to the `users` row, unchanged.
    */
   async assertMembership(
     actorUserId: string,
@@ -53,16 +66,21 @@ export class MembersService {
   ): Promise<{ role: string }> {
     let accessRole: string | null = null;
 
-    const { data: access } = await this.databaseService.supabase
-      .from("user_restaurant_access")
-      .select("role")
-      .eq("user_id", actorUserId)
-      .eq("restaurant_id", restaurantId)
-      .eq("is_active", true)
-      .maybeSingle();
+    const { data: access, error: accessError } =
+      await this.databaseService.supabase
+        .from("user_restaurant_access")
+        .select("role, is_active, valid_from, valid_until")
+        .eq("user_id", actorUserId)
+        .eq("restaurant_id", restaurantId)
+        .maybeSingle();
 
-    if (access) {
-      accessRole = access.role;
+    if (accessError) {
+      this.logger.error(
+        `assertMembership could not read ${actorUserId}'s access row in ` +
+          `${restaurantId}: ${accessError.message}`,
+      );
+    } else if (access) {
+      accessRole = isLiveMembership(access) ? access.role : null;
     } else {
       const { data: user } = await this.databaseService.supabase
         .from("users")
