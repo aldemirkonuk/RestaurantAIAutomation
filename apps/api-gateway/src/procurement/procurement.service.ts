@@ -1178,6 +1178,8 @@ export class ProcurementService {
       // behind would produce an order whose header says 5 cases and whose only
       // line says 2 — and the invoice matcher reads the LINE, so the discrepancy
       // would surface as a vendor overage rather than as our own stale row.
+      // Only while the order is still open (ADR 0254 rule 3): see the check
+      // inside `upsertOrderLine` for what it closes and what it cannot.
       await this.upsertOrderLine({
         restaurantId,
         orderId: existing.id,
@@ -1186,6 +1188,7 @@ export class ProcurementService {
         finalPrice,
         statedPriceUnit,
         fees,
+        onlyWhileStatusIn: ORDER_MERGEABLE_STATUSES,
       });
 
       const updatedRow = updated as any;
@@ -1467,7 +1470,13 @@ export class ProcurementService {
      * distinguishable for the whole life of the row.
      */
     fees?: AgreementFees;
-  }): Promise<void> {
+    /**
+     * Write the line only while the order is still in one of these states,
+     * checked just before the line is replaced. The create-order merge passes
+     * `ORDER_MERGEABLE_STATUSES` (ADR 0254 rule 3); a new order passes nothing.
+     */
+    onlyWhileStatusIn?: readonly ProcurementOrderStatus[];
+  }): Promise<boolean> {
     const { restaurantId, orderId, dto, units, finalPrice } = args;
     const statedPriceUnit = args.statedPriceUnit ?? null;
     const fees = args.fees ?? NO_AGREEMENT_FEES;
@@ -1589,6 +1598,43 @@ export class ProcurementService {
       line_no: 1,
     };
 
+    // The merge's header UPDATE was conditioned on the order still being open,
+    // but this line is two more statements, after it. An approval landing in
+    // between would otherwise have its line — and through
+    // `trg_procurement_line_price_echoes_to_header` its header price, and the
+    // line-only money (currency, price unit, fees) the seal does not bind —
+    // rewritten by a request it never saw (ADR 0254 rule 3). Read as late as
+    // this method allows; a failed read is a refusal, not a pass. What it
+    // cannot close: PostgREST cannot make a DELETE or INSERT on this table
+    // conditional on the parent order's status, so an approval landing between
+    // this read and the two writes below still lands. Closing that needs the
+    // header and the line written in one transaction (a database function).
+    if (args.onlyWhileStatusIn) {
+      const { data: stillOpen, error: stillOpenErr } =
+        await this.databaseService.supabase
+          .from("procurement_orders")
+          .select("id")
+          .eq("id", orderId)
+          .eq("restaurant_id", restaurantId)
+          .in("status", [...args.onlyWhileStatusIn])
+          .maybeSingle();
+      if (stillOpenErr || !stillOpen) {
+        // Not thrown: the header was already merged while the order was open,
+        // and a throw here would tell the desk nothing was done. Said loudly
+        // instead, because the header now carries this request and the line
+        // does not, and the receiving check reads the line.
+        this.logger.error(
+          "The order left negotiation before its line was rewritten; the line keeps the earlier request",
+          {
+            restaurantId,
+            orderId,
+            error: stillOpenErr?.message ?? null,
+          },
+        );
+        return false;
+      }
+    }
+
     // One line per order today: CreateOrderDto carries exactly one inventory id.
     // Delete-then-insert rather than an upsert because there is no unique
     // constraint on (order_id, line_no) to conflict against, and a merge that
@@ -1625,6 +1671,7 @@ export class ProcurementService {
       bottlesPerUnit: units.bottlesPerUnit,
       totalBottles: units.bottlesTotal,
     });
+    return true;
   }
 
   /**

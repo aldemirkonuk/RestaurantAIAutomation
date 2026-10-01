@@ -15,8 +15,10 @@ import { GATES_AFTER_LEDGER } from "./testing/passing-vendor-gates";
  * An order is approved by a person holding Approve, and its approved price is
  * not edited afterwards (fix/order-patch-cannot-approve, 2026-10-01).
  *
- * WHAT WOULD HAVE PASSED BEFORE THIS FIX: nothing in the first two blocks and
- * the first and last cases of the third.
+ * WHAT PASSED BEFORE THIS FIX, measured against 4bd11a00e: 7 of 37 — only the
+ * cases that pin what must keep working (an open order still takes a price, a
+ * note on an approved order, the two folds into an open order and the fold's
+ * line write). The other 30 failed. Rules: ADR 0254.
  *
  *   * `PATCH procurement/orders/:id` has no `@Roles` and hands the service no
  *     user. `updateOrder` refused only CANCELLED, and PENDING, APPROVAL_NEEDED
@@ -54,21 +56,34 @@ interface Db {
   orderInserts: Row[];
   /** Every UPDATE sent to `procurement_orders`, whether or not it matched a row. */
   updateAttempts: () => number;
+  /** Every read of `procurement_orders`. */
+  orderReads: () => number;
+  /** Every DELETE or INSERT sent to `procurement_order_items`, with its order id. */
+  lineWrites: Row[];
 }
 
 /**
  * `afterOrderRead` runs once, right after the first read of
  * `procurement_orders` settles — the window between a check and its write.
+ * `afterOrderUpdate` runs once, right after the first UPDATE of
+ * `procurement_orders` that matched a row — the window between the merge's
+ * header and its line.
  */
 function makeDb(
   seed: Row[],
-  opts: { afterOrderRead?: (orders: Row[]) => void } = {},
+  opts: {
+    afterOrderRead?: (orders: Row[]) => void;
+    afterOrderUpdate?: (orders: Row[]) => void;
+  } = {},
 ): Db {
   const orders: Row[] = seed.map((r) => ({ ...r }));
   const orderUpdates: Row[] = [];
   const orderInserts: Row[] = [];
+  const lineWrites: Row[] = [];
   let updateAttempts = 0;
+  let orderReads = 0;
   let afterOrderRead = opts.afterOrderRead;
+  let afterOrderUpdate = opts.afterOrderUpdate;
 
   const supabase: any = {
     from(table: string) {
@@ -77,6 +92,7 @@ function makeDb(
       let lastSelect = "";
       let limit: number | null = null;
       const filters: Array<(r: Row) => boolean> = [];
+      const eqs: Row = {};
 
       const pick = (shape: "one" | "maybe" | "many", rows: Row[]) => {
         if (shape === "many") return { data: rows, error: null };
@@ -100,6 +116,15 @@ function makeDb(
             return { data: { id: INVENTORY }, error: null };
           return { data: { master_wine_id: null, wine_name: "Barolo" }, error: null };
         }
+        if (
+          table === "procurement_order_items" &&
+          (op === "delete" || op === "insert")
+        ) {
+          lineWrites.push({
+            op,
+            orderId: op === "insert" ? payload.order_id : eqs.order_id,
+          });
+        }
         if (table !== "procurement_orders")
           return { data: shape === "many" ? [] : null, error: null };
 
@@ -121,9 +146,16 @@ function makeDb(
             Object.assign(r, payload);
             orderUpdates.push({ id: r.id, ...payload });
           }
-          return pick(shape, hit.map((r) => ({ ...r })));
+          const out = pick(shape, hit.map((r) => ({ ...r })));
+          if (afterOrderUpdate && hit.length > 0) {
+            const hook = afterOrderUpdate;
+            afterOrderUpdate = undefined;
+            hook(orders);
+          }
+          return out;
         }
 
+        orderReads++;
         const rows = hit.map((r) => ({ ...r }));
         const out = pick(shape, limit === null ? rows : rows.slice(0, limit));
         if (afterOrderRead) {
@@ -157,6 +189,7 @@ function makeDb(
           return q;
         },
         eq: (col: string, v: unknown) => {
+          eqs[col] = v;
           filters.push((r) => r[col] === v);
           return q;
         },
@@ -204,6 +237,8 @@ function makeDb(
     orderUpdates,
     orderInserts,
     updateAttempts: () => updateAttempts,
+    orderReads: () => orderReads,
+    lineWrites,
   };
 }
 
@@ -271,9 +306,24 @@ describe("PATCH orders/:id cannot approve an order", () => {
       expect(bodyOf(err).message).toMatch(/holding Approve/);
       expect(bodyOf(err).message).toMatch(/Nothing was changed\.$/);
       expect(h.updateAttempts()).toBe(0);
+      expect(h.orderReads()).toBe(0);
       expect(h.orders[0].status).toBe(from);
     },
   );
+
+  // The refusal is the first thing `updateOrder` does with a status: it reads
+  // nothing, so it cannot be raced and does not depend on the order existing.
+  // Moved after the transition read, this case would read once and answer 404.
+  it("refuses before it reads the order, so a missing order gets the same answer", async () => {
+    const h = makeDb([]);
+    const err = await refusal(() =>
+      service(h.db).updateOrder(HOUSE, ORDER_ID, { status: S.APPROVED } as any),
+    );
+    expect(err.getStatus()).toBe(422);
+    expect(bodyOf(err).reason).toBe("approve_through_the_sealed_act");
+    expect(h.orderReads()).toBe(0);
+    expect(h.updateAttempts()).toBe(0);
+  });
 
   it("refuses it with a price riding along, and the price is not written either", async () => {
     const h = makeDb([anOrder(S.PENDING)]);
@@ -332,6 +382,41 @@ describe("PATCH orders/:id cannot reprice an order once it is approved", () => {
     );
     expect(err.getStatus()).toBe(422);
     expect(bodyOf(err).message).toMatch(/Nothing was changed\.$/);
+    expect(h.orders[0].total_cost).toBe(240);
+  });
+
+  // Zero is a price. A truthiness test would read it as "no price sent" and
+  // let an approved order be zeroed.
+  it.each([
+    ["totalCost", "total_cost"],
+    ["finalPrice", "final_price"],
+  ])("refuses a zero %s on an APPROVED order", async (field, column) => {
+    const h = makeDb([anOrder(S.APPROVED)]);
+    const before = h.orders[0][column];
+    const err = await refusal(() =>
+      service(h.db).updateOrder(HOUSE, ORDER_ID, { [field]: 0 } as any),
+    );
+    expect(err.getStatus()).toBe(422);
+    expect(bodyOf(err).reason).toBe("price_settled_by_approval");
+    expect(h.updateAttempts()).toBe(0);
+    expect(h.orders[0][column]).toBe(before);
+  });
+
+  // A stored state outside the vocabulary is not "open": the read decides
+  // nothing it cannot name.
+  it("refuses a price on an order whose stored state this house does not know", async () => {
+    const h = makeDb([anOrder("ON_HOLD" as S)]);
+    const err = await refusal(() =>
+      service(h.db).updateOrder(HOUSE, ORDER_ID, { totalCost: 1 } as any),
+    );
+    expect(err.getStatus()).toBe(422);
+    expect(bodyOf(err).reason).toBe("price_settled_by_approval");
+    expect(bodyOf(err).status).toBeNull();
+    expect(bodyOf(err).message).toMatch(
+      /could not be read as one this house knows/,
+    );
+    expect(bodyOf(err).message).toMatch(/Nothing was changed\.$/);
+    expect(h.updateAttempts()).toBe(0);
     expect(h.orders[0].total_cost).toBe(240);
   });
 
@@ -448,5 +533,36 @@ describe("createOrder's merge never writes over an order past negotiation", () =
     const kept = h.orders.find((r) => r.id === ORDER_ID)!;
     expect(kept.quantity).toBe(6);
     expect(kept.total_cost).toBe(240);
+  });
+
+  it("rewrites the line of the open order it folds into", async () => {
+    const h = makeDb([anOrder(S.PENDING)]);
+    await service(h.db).createOrder(HOUSE, USER, request);
+
+    expect(h.lineWrites).toEqual([
+      { op: "delete", orderId: ORDER_ID },
+      { op: "insert", orderId: ORDER_ID },
+    ]);
+  });
+
+  // The header UPDATE carries the open-states condition; the line is two more
+  // statements after it. An approval landing in between must not have its
+  // line (and, through the echo trigger, its header price) rewritten.
+  it("leaves the line alone when the order is approved between the header and the line", async () => {
+    const h = makeDb([anOrder(S.PENDING)], {
+      afterOrderUpdate: (orders) => {
+        orders[0].status = S.APPROVED;
+      },
+    });
+    const svc = service(h.db);
+    await svc.createOrder(HOUSE, USER, request);
+
+    expect(h.orderUpdates).toHaveLength(1);
+    expect(h.orderInserts).toHaveLength(0);
+    expect(h.lineWrites.filter((w) => w.orderId === ORDER_ID)).toEqual([]);
+    expect((svc as any).logger.error).toHaveBeenCalledWith(
+      expect.stringMatching(/left negotiation before its line was rewritten/),
+      expect.objectContaining({ orderId: ORDER_ID }),
+    );
   });
 });
