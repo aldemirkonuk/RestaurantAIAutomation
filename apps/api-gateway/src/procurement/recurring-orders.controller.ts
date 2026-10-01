@@ -121,8 +121,13 @@ export class RecurringOrdersController {
    * cron raises a schedule's order as the schedule's `created_by`, so a staff
    * edit to a manager's schedule was raised as the manager. These two routes
    * now run `assertCanManageRestaurant`, the check that order cancel and the
-   * settings registers use, before anything is read or written. A role that
-   * cannot be read is no role to that check, so it is refused too (403).
+   * settings registers use, before the schedule row is read or written. That
+   * check reads the caller's active access row for this house and, when that
+   * read fails or finds no active row, falls back to the legacy `users` row
+   * (its role, when its restaurant_id is this house; organizations.service.ts
+   * lookupRestaurantRole). A caller with neither an owner/manager access row
+   * nor a legacy owner/manager role on this house gets 403, including one for
+   * whom both reads fail; a legacy owner/manager of this house is admitted.
    * Creating a schedule is unchanged: staff may.
    */
   @Put(":restaurantId/:id")

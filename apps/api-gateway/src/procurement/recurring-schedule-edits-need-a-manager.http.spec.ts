@@ -35,6 +35,10 @@ const OWNER = "a0000000-0000-4000-8000-000000000001";
 const MANAGER = "a0000000-0000-4000-8000-000000000002";
 const STAFF = "a0000000-0000-4000-8000-000000000003";
 const UNREADABLE = "a0000000-0000-4000-8000-000000000004";
+// Their house access read fails; the legacy `users` row decides (or not).
+const LEGACY_MANAGER = "a0000000-0000-4000-8000-000000000005";
+const LEGACY_STAFF = "a0000000-0000-4000-8000-000000000006";
+const NO_LEGACY = "a0000000-0000-4000-8000-000000000007";
 const INVENTORY = "33333333-3333-4333-8333-333333333333";
 const VENDOR = "44444444-4444-4444-8444-444444444444";
 const OF_MANAGER = "55555555-5555-4555-8555-555555555555";
@@ -81,7 +85,10 @@ function fresh() {
       },
       { user_id: STAFF, restaurant_id: HOUSE, role: "staff", is_active: true },
     ],
-    users: [],
+    users: [
+      { user_id: LEGACY_MANAGER, role: "manager", restaurant_id: HOUSE },
+      { user_id: LEGACY_STAFF, role: "staff", restaurant_id: HOUSE },
+    ],
     recurring_orders: [
       schedule(OF_MANAGER, MANAGER),
       schedule(OF_STAFF, STAFF),
@@ -90,17 +97,22 @@ function fresh() {
 }
 
 /**
- * eq filters, insert/update/select, awaitable, single/maybeSingle. Reads of
- * the role tables for UNREADABLE fail, the way a database outage would.
+ * eq filters, insert/update/select, awaitable, single/maybeSingle. For
+ * UNREADABLE both role reads fail; for LEGACY_MANAGER, LEGACY_STAFF and
+ * NO_LEGACY only the `user_restaurant_access` read fails, the way a database
+ * outage would.
  */
 const client: any = {
   from(table: string) {
     const filters: Array<[string, unknown]> = [];
     let op: "select" | "insert" | "update" = "select";
     let payload: Row | Row[] | null = null;
+    const asks = (who: string[]) =>
+      filters.some(([c, v]) => c === "user_id" && who.includes(String(v)));
     const failsForUnreadable = () =>
-      (table === "user_restaurant_access" || table === "users") &&
-      filters.some(([c, v]) => c === "user_id" && v === UNREADABLE);
+      (table === "users" && asks([UNREADABLE])) ||
+      (table === "user_restaurant_access" &&
+        asks([UNREADABLE, LEGACY_MANAGER, LEGACY_STAFF, NO_LEGACY]));
     const run = (): { data: any; error: any } => {
       if (failsForUnreadable()) {
         return { data: null, error: { message: "connection refused" } };
@@ -279,9 +291,9 @@ describe("staff may not edit or deactivate a schedule", () => {
     },
   );
 
-  it("[REVERT-FAILS] refuses a caller whose role cannot be read, with 403, and writes nothing", async () => {
-    // The role helper reads a failed lookup as no role (`strict: false`), so
-    // an outage is refused the same way staff are: closed, not open.
+  it("[REVERT-FAILS] refuses a caller when both role reads fail, with 403, and writes nothing", async () => {
+    // Both the access read and the legacy `users` read fail, so the helper
+    // (`strict: false`) has no role for the caller and refuses.
     expect((await put(OF_MANAGER, UNREADABLE)).status).toBe(403);
     expect((await del(OF_MANAGER, UNREADABLE)).status).toBe(403);
     expect(row(OF_MANAGER)).toMatchObject({
@@ -291,6 +303,35 @@ describe("staff may not edit or deactivate a schedule", () => {
     });
     expect(writes).toEqual([]);
   });
+});
+
+describe("when the access read fails, the legacy users row decides", () => {
+  // `lookupRestaurantRole` (organizations.service.ts:40-64) falls back to the
+  // legacy `users` row (its role, when its restaurant_id is this house) when
+  // the access read fails or finds no active row. These pin both directions.
+  it("lets a legacy manager of this house edit and deactivate", async () => {
+    expect((await put(OF_STAFF, LEGACY_MANAGER)).status).toBe(200);
+    expect(row(OF_STAFF)).toMatchObject({ quantity: 60 });
+    expect((await del(OF_MANAGER, LEGACY_MANAGER)).status).toBe(200);
+    expect(row(OF_MANAGER).active).toBe(false);
+  });
+
+  it.each([
+    ["a legacy staff member of this house", LEGACY_STAFF],
+    ["a caller with no legacy row", NO_LEGACY],
+  ])(
+    "[REVERT-FAILS] refuses %s, with 403, and writes nothing",
+    async (_label, as) => {
+      expect((await put(OF_MANAGER, as)).status).toBe(403);
+      expect((await del(OF_MANAGER, as)).status).toBe(403);
+      expect(row(OF_MANAGER)).toMatchObject({
+        quantity: 6,
+        active: true,
+        updated_at: "t0",
+      });
+      expect(writes).toEqual([]);
+    },
+  );
 });
 
 describe("managers and owners may", () => {

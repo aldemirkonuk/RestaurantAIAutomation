@@ -22,4 +22,6 @@ They carry the class-level `JwtAuthGuard` and no role check. A search of the con
 
 **Open question for the founder.** Do these four routes follow ADR 0246's rule? That would mean create for everyone, while changing an existing rule, pause, resume and end need a manager or an owner. Or do they stay open to every member?
 
-No claim is filed. The question is a decision not yet taken, not a defect with a fixed shape.
+[Corrected 2026-10-01: the founder has ruled. For order recurrence's pause, resume and end, his answer, verbatim, was *"Managers and owners only (Recommended)"*. PR #558 (ADR 0247, `fix/order-recurrence-needs-a-manager`) builds it. That PR is open, so this entry stays OPEN until it merges: the ruling is in flight, not closed.]
+
+No claim is filed. The question is a decision not yet taken, not a defect with a fixed shape. [Corrected 2026-10-01: the decision is now taken (above). This entry still files no claim.]
