@@ -158,9 +158,15 @@ export function GuidanceProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient()
   const userId = useAuthStore((s) => s.user?.userId) ?? null
   const { preferences, updatePreferences } = useUserPreferences()
+  // `localTick` re-reads the local mirror after every write, so a tip the
+  // person dismissed leaves at once even when the server copy has not come
+  // back (or there is no person id to cache it under) — "make sure they
+  // disappear every time" (founder, 2026-10-01).
+  const [localTick, setLocalTick] = useState(0)
   const state = useMemo(
     () => mergeGuidance(preferences.guidance),
-    [preferences.guidance],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [preferences.guidance, localTick],
   )
   const [tourRunning, setTourRunning] = useState(false)
   const sessionRef = useRef(readSession())
@@ -172,6 +178,7 @@ export function GuidanceProvider({ children }: { children: ReactNode }) {
   const persist = useCallback(
     (next: GuidanceState) => {
       writeLocalGuidance(next)
+      setLocalTick((n) => n + 1)
       if (userId) {
         queryClient.setQueryData<UserPreferences>(
           queryKeys.user.preferences(userId),
@@ -301,15 +308,27 @@ export function GuidanceProvider({ children }: { children: ReactNode }) {
     [patchPage],
   )
 
+  // "Don't show tips again" turns EVERY page's tip off, not this page's alone,
+  // until the person turns them back on (/help, "Page tips"). The founder,
+  // 2026-10-01: "if I say don't ever show again then I don't want to see it
+  // again until I press or check for it." A tour the person starts on
+  // purpose still plays; only the unasked strip stops.
   const dismissTip = useCallback(
     (pageId: PageTourId) => {
       sessionRef.current.skips += 1
       writeSession(sessionRef.current)
       setSessionTick((n) => n + 1)
       trackGuidance('tip_dismissed', { pageId })
-      patchPage(pageId, { tip: 'dismissed' })
+      persistGuidance((prev) => {
+        const pagePrev = prev.pages[pageId] ?? defaultPageState()
+        return {
+          ...prev,
+          global: { ...prev.global, hide_all_tips: true },
+          pages: { ...prev.pages, [pageId]: { ...pagePrev, tip: 'dismissed' } },
+        }
+      })
     },
-    [patchPage],
+    [persistGuidance],
   )
 
   const completeTipViaTour = useCallback(

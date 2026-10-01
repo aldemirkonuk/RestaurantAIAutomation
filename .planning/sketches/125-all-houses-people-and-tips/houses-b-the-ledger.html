@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>125 · All houses · B · The Ledger</title>
+<style>
+.mudavym{
+  --seal:#1a5e6b;--seal-deep:#14515c;--seal-tint:rgba(26,94,107,.1);--seal-ring:rgba(26,94,107,.32);
+  --paper-0:#fffdf8;--paper-1:#f3efe6;--paper-2:#eae4d8;
+  --ink-1:#211c16;--ink-2:#4f473c;--ink-3:#7c7365;
+  --warn:#96601A;--warn-tint:rgba(150,96,26,.12);--loss:#A8402C;--loss-tint:rgba(168,64,44,.1);
+  color-scheme:light;background:var(--paper-0);color:var(--ink-1)}
+*{box-sizing:border-box} html,body{margin:0;padding:0}
+body{background:#f7f3ea;font-family:"DM Sans","Plus Jakarta Sans",system-ui,-apple-system,"Segoe UI",sans-serif;font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased}
+a{color:var(--seal-deep)}
+.serif{font-family:Fraunces,"Iowan Old Style",Georgia,serif;letter-spacing:-.015em}
+.mono{font-family:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;font-variant-numeric:tabular-nums}
+.banner{background:var(--seal);color:#fffdf8;font:500 11px/1.3 "JetBrains Mono",ui-monospace,monospace;letter-spacing:.14em;text-transform:uppercase;padding:8px 16px;display:flex;gap:14px;flex-wrap:wrap}
+.banner a{color:#fffdf8}
+.note{max-width:1200px;margin:18px auto 0;padding:0 16px;color:var(--ink-2);font-size:13.5px}
+.note b{color:var(--ink-1);font-weight:600}
+.cap{max-width:1200px;margin:26px auto 0;padding:0 16px;font:500 11px/1 "JetBrains Mono",ui-monospace,monospace;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3)}
+.frame{max-width:1200px;margin:10px auto 30px;border:1px solid var(--paper-2);border-radius:10px;overflow:hidden;background:var(--paper-0)}
+.page{padding:24px 24px 32px}
+.eyebrow{font:500 11px/1.3 "JetBrains Mono",ui-monospace,monospace;text-transform:uppercase;letter-spacing:.14em;color:var(--ink-3);margin:0}
+h1{font-family:Fraunces,Georgia,serif;font-weight:420;font-size:34px;line-height:1.08;margin:6px 0 0}
+h2{font-family:Fraunces,Georgia,serif;font-weight:500;font-size:19px;margin:0 0 8px}
+h3{font-family:Fraunces,Georgia,serif;font-weight:500;font-size:15.5px;margin:0 0 6px}
+.standing{font-family:Fraunces,Georgia,serif;font-style:italic;font-size:16px;color:var(--ink-2);margin:10px 0 0;max-width:860px}
+.standing b{font-style:normal;font-weight:500;color:var(--ink-1)}
+.readat{font:10.5px/1.5 "JetBrains Mono",ui-monospace,monospace;color:var(--ink-3);margin-top:6px}
+.muted{color:var(--ink-3)} .small{font-size:12px}
+.chip{display:inline-flex;align-items:center;gap:4px;font:500 10px/1.4 "JetBrains Mono",ui-monospace,monospace;letter-spacing:.05em;text-transform:uppercase;border:1px solid var(--paper-2);border-radius:4px;padding:2px 6px;color:var(--ink-2);white-space:nowrap}
+.chip.on{border-color:var(--seal);background:var(--seal-tint);color:var(--seal-deep)}
+.chip.warn{border-color:rgba(150,96,26,.45);color:var(--warn)}
+.chip.loss{border-color:rgba(168,64,44,.45);color:var(--loss)}
+.chip.off{color:var(--ink-3);border-style:dashed}
+.btn{border:1px solid var(--paper-2);background:var(--paper-0);color:var(--ink-1);border-radius:8px;padding:6px 12px;font:13px inherit;font-family:inherit;display:inline-flex;gap:6px;align-items:center;cursor:default;white-space:nowrap}
+.btn.primary{border-color:var(--seal);background:var(--seal);color:#fffdf8}
+.btn.soft{border-color:var(--seal);background:var(--seal-tint);color:var(--seal-deep)}
+.btn.quiet{border-color:transparent;background:transparent;color:var(--ink-3);padding-left:4px;padding-right:4px}
+.btn.big{padding:12px 18px;font-size:15px;border-radius:10px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.spread{display:flex;justify-content:space-between;gap:10px;align-items:baseline;flex-wrap:wrap}
+.card{border:1px solid var(--paper-2);border-radius:12px;background:var(--paper-1);padding:14px 16px;min-width:0}
+.card.white{background:var(--paper-0)}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.g3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.fig{font-family:Fraunces,Georgia,serif;font-weight:500;letter-spacing:-.03em;line-height:.95;font-variant-numeric:tabular-nums}
+.up{color:var(--seal-deep)} .down{color:var(--loss)} .amber{color:var(--warn)}
+.bar{display:flex;height:12px;border-radius:6px;overflow:hidden;background:var(--paper-2)}
+.bar span{display:block;height:100%}
+.h1c{background:#1a5e6b}.h2c{background:#4f8a93}.h3c{background:#8fb5b9}.h4c{background:#c9a46a}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;vertical-align:middle}
+.track{position:relative;height:8px;border-radius:4px;background:var(--paper-2)}
+.track i{position:absolute;left:0;top:0;bottom:0;border-radius:4px;background:var(--seal)}
+.track b{position:absolute;top:-4px;bottom:-4px;width:2px;background:var(--ink-1)}
+.list{display:grid;gap:0}
+.list > div{display:grid;gap:10px;align-items:center;padding:10px 0;border-top:1px solid var(--paper-2)}
+.list > div:first-child{border-top:0}
+table.t{width:100%;border-collapse:collapse;font-size:13px}
+table.t th{font:500 10px/1.3 "JetBrains Mono",ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);text-align:right;padding:8px 8px;border-bottom:1px solid var(--paper-2);font-weight:500}
+table.t th:first-child,table.t td:first-child{text-align:left}
+table.t td{padding:9px 8px;border-bottom:1px solid var(--paper-2);text-align:right;font-variant-numeric:tabular-nums}
+table.t tr.total td{font-weight:600;background:var(--paper-1);border-bottom:2px solid var(--ink-3)}
+table.t tr.out td{color:var(--ink-3);font-style:italic}
+/* app chrome */
+.topbar{display:flex;align-items:center;gap:12px;padding:10px 18px;border-bottom:1px solid var(--paper-2);background:var(--paper-0);flex-wrap:wrap}
+.mark{font-family:Fraunces,Georgia,serif;font-weight:500;font-size:17px;color:var(--seal-deep)}
+.switch{border:1px solid var(--paper-2);border-radius:8px;padding:4px 10px;font-size:12.5px;display:inline-flex;gap:6px;align-items:center;background:var(--paper-1)}
+.switch b{font-weight:600}
+.grow{flex:1}
+.shell{display:grid;grid-template-columns:190px 1fr;min-height:420px}
+.shell.counter{grid-template-columns:190px 1fr 250px}
+.rail{border-right:1px solid var(--paper-2);padding:14px 12px;background:var(--paper-1);font-size:12.5px}
+.rail p{margin:12px 0 4px;font:500 9.5px/1 "JetBrains Mono",ui-monospace,monospace;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3)}
+.rail p:first-child{margin-top:0}
+.rail div{padding:3px 8px;border-radius:6px;color:var(--ink-2)}
+.rail div.here{background:var(--seal-tint);color:var(--seal-deep);font-weight:600}
+.rail div.new{color:var(--seal-deep);font-weight:600}
+.rail div.new::after{content:" new";font:500 9px "JetBrains Mono",monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--warn)}
+.ctr{border-left:1px solid var(--paper-2);padding:14px;background:var(--paper-1);font-size:12.5px}
+.sheet{max-width:620px;margin:0 auto;border:1px solid var(--paper-2);border-radius:14px;background:var(--paper-0);box-shadow:0 18px 40px rgba(33,28,22,.12);padding:20px 22px}
+.veil{background:rgba(33,28,22,.06);padding:28px 16px}
+.field{display:grid;gap:4px;margin-top:14px}
+.field label{font:500 10.5px/1 "JetBrains Mono",ui-monospace,monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3)}
+.input{border:1px solid var(--paper-2);border-radius:8px;padding:8px 10px;background:var(--paper-1);font-size:14px}
+.radio{display:flex;gap:8px;align-items:flex-start;padding:8px 10px;border:1px solid var(--paper-2);border-radius:8px;margin-top:6px;background:var(--paper-0)}
+.radio .o{width:14px;height:14px;border-radius:50%;border:1.5px solid var(--ink-3);flex:none;margin-top:2px}
+.radio.sel{border-color:var(--seal);background:var(--seal-tint)} .radio.sel .o{border:4px solid var(--seal)}
+.callout{border-left:3px solid var(--warn);background:var(--warn-tint);padding:10px 12px;border-radius:0 8px 8px 0;margin-top:14px;font-size:13px}
+.callout.seal{border-left-color:var(--seal);background:var(--seal-tint)}
+.callout.loss{border-left-color:var(--loss);background:var(--loss-tint)}
+.tog{display:inline-block;width:30px;height:17px;border-radius:9px;background:var(--paper-2);position:relative;vertical-align:middle;flex:none}
+.tog::after{content:"";position:absolute;top:2px;left:2px;width:13px;height:13px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.2)}
+.tog.on{background:var(--seal)} .tog.on::after{left:15px}
+.lock{font-size:11px;color:var(--ink-3)}
+.rules{max-width:1200px;margin:0 auto 18px;padding:0 16px}
+.rules .card{background:var(--paper-0)}
+.rules li,.forks li{margin:5px 0}
+.forks{max-width:1200px;margin:0 auto 60px;padding:0 16px;color:var(--ink-2);font-size:13.5px}
+.before{border:1px dashed var(--ink-3);border-radius:10px;padding:12px;background:#fff;opacity:.92}
+.ring{outline:2px solid var(--seal);outline-offset:4px;box-shadow:0 0 0 9px var(--seal-tint);border-radius:8px}
+.phone{width:340px;max-width:100%;border:1px solid var(--paper-2);border-radius:26px;background:var(--paper-0);padding:16px 14px 18px;box-shadow:0 10px 30px rgba(33,28,22,.08);margin:0 auto}
+@media (max-width:1000px){.g4{grid-template-columns:1fr 1fr}.shell.counter{grid-template-columns:170px 1fr}.shell.counter .ctr{grid-column:1/-1;border-left:0;border-top:1px solid var(--paper-2)}}
+@media (max-width:780px){
+  h1{font-size:27px}.page{padding:18px 16px 26px}
+  .g2,.g3,.g4{grid-template-columns:1fr}
+  .shell,.shell.counter{grid-template-columns:1fr}
+  .rail{border-right:0;border-bottom:1px solid var(--paper-2);display:flex;flex-wrap:wrap;gap:4px}
+  .rail p{width:100%;margin:6px 0 2px}
+  table.t thead{display:none}
+  table.t tr{display:grid;grid-template-columns:1fr 1fr;padding:8px 0;border-bottom:1px solid var(--paper-2)}
+  table.t td{border:0;padding:3px 4px;text-align:left}
+  table.t td:first-child{grid-column:1/-1;font-weight:600}
+  table.t td[data-l]::before{content:attr(data-l) " ";font:500 9.5px "JetBrains Mono",monospace;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3)}
+  .veil{padding:12px 8px}.sheet{padding:16px}
+  .list>div{grid-template-columns:1fr !important;gap:4px}.phone{width:auto}
+}
+</style></head>
+<body class="mudavym">
+<div class="banner"><b>Sketch 125 · All houses · B · The Ledger</b><span>the total on top, the houses as rows</span><span>example data</span><a href="index.html">all frames</a></div>
+<p class="note"><b>The idea.</b> What Toast and MarginEdge ship: <b>a totals row first, every house as a row under it</b>, sortable. Dense, exact, good for an owner who reads numbers. Goals and decisions become house-by-house grids.</p>
+<div class="frame "><div class="topbar"><span class="mark">Mudavym</span><span class="switch"><b>All houses · 4 of 5 read</b> ▾</span><span class="grow"></span><span class="btn quiet">Ask</span><span class="btn quiet">Counter</span><span class="chip">You · owner</span></div>
+<div class="page">
+<p class="eyebrow">All houses · September 1–30 · in US dollars</p>
+<h1>All houses.</h1>
+<p class="standing"><b>$169,200 profit across four houses</b> in September — up 12% at the three houses open both Septembers. YARDOM is not in it: no till is connected there, so its sales are unknown.</p>
+<p class="readat">Read Oct 1, 09:14 · each house counted on its own business day · Vanilla Kaleiçi in dollars at September's average rate, ₺1 = $0.0293 · profit = till sales − goods delivered − hours worked · example data</p>
+<div class="row" style="margin-top:16px"><span class="small muted">Sort by</span><span class="chip on">profit</span><span class="chip">kept of sales</span><span class="chip">sales</span><span class="chip">goods %</span>
+<span class="grow"></span><span class="chip">September</span><span class="chip">this week</span><span class="chip">this year</span></div>
+<div class="card white" style="margin-top:10px;padding:6px 12px">
+<table class="t"><thead><tr><th>House</th><th>Sales</th><th>Goods</th><th>Hours</th><th>Profit</th><th>Kept</th><th>vs last Sep</th></tr></thead>
+<tbody><tr class="total"><td>All four</td><td data-l="Sales">$491.1k</td><td data-l="Goods">$173.4k <span class="muted">35.3%</span></td><td data-l="Hours">$148.5k <span class="muted">30.2%</span></td><td data-l="Profit">$169.2k</td><td data-l="Kept">34.5%</td><td data-l="vs last Sep">+12%*</td></tr>
+<tr><td><span class="dot h1c"></span> Meyhouse Palo Alto</td><td data-l="Sales">$184.2k</td><td data-l="Goods">$61.9k <span class="muted">33.6%</span></td><td data-l="Hours">$52.3k <span class="muted">28.4%</span></td><td data-l="Profit"><b>$70.0k</b></td><td data-l="Kept">38.0%</td><td data-l="vs last Sep">+9%</td></tr><tr><td><span class="dot h2c"></span> Sim Meyhouse</td><td data-l="Sales">$142.8k</td><td data-l="Goods">$51.4k <span class="muted">36.0%</span></td><td data-l="Hours">$44.9k <span class="muted">31.4%</span></td><td data-l="Profit"><b>$46.5k</b></td><td data-l="Kept">32.6%</td><td data-l="vs last Sep">+14%</td></tr><tr><td><span class="dot h3c"></span> Sim Bistro</td><td data-l="Sales">$96.4k</td><td data-l="Goods">$33.7k <span class="muted">35.0%</span></td><td data-l="Hours">$31.1k <span class="muted">32.3%</span></td><td data-l="Profit"><b>$31.6k</b></td><td data-l="Kept">32.8%</td><td data-l="vs last Sep">opened in March</td></tr><tr><td><span class="dot h4c"></span> Vanilla Kaleiçi<div class=small muted>₺2.31M sales · ₺718k profit</div></td><td data-l="Sales">$67.7k</td><td data-l="Goods">$26.4k <span class="muted">39.0%</span></td><td data-l="Hours">$20.2k <span class="muted">29.8%</span></td><td data-l="Profit"><b>$21.1k</b></td><td data-l="Kept">31.2%</td><td data-l="vs last Sep">+21%</td></tr>
+<tr class="out"><td>YARDOM</td><td colspan="6" data-l="">not read — no till connected</td></tr></tbody></table>
+<p class="small muted" style="margin:6px 4px">* the three houses open both Septembers. Sim Bistro opened in March.</p></div>
+<div class="g2" style="margin-top:14px"><div class="card white"><h2>Goals, house by house</h2><table class="t"><thead><tr><th></th><th>Palo Alto</th><th>Sim Meyhouse</th><th>Sim Bistro</th><th>Kaleiçi</th></tr></thead><tbody><tr><td>Goods under 34%</td><td data-l="Palo Alto">✓ 33.6%</td><td data-l="Sim Meyhouse">! 36.0%</td><td data-l="Sim Bistro">! 35.0%</td><td data-l="Kaleiçi">✗ 39.0%</td></tr><tr><td>$180k profit, together</td><td data-l="Palo Alto">—</td><td data-l="Sim Meyhouse">—</td><td data-l="Sim Bistro">—</td><td data-l="Kaleiçi">—</td></tr><tr><td>4 in 10 order wine</td><td data-l="Palo Alto">! 38%</td><td data-l="Sim Meyhouse">✓ 41%</td><td data-l="Sim Bistro">not set</td><td data-l="Kaleiçi">not set</td></tr></tbody></table></div><div class="card white"><h2>Decisions, house by house</h2><table class="t"><thead><tr><th></th><th>Palo Alto</th><th>Sim Meyhouse</th><th>Sim Bistro</th><th>Kaleiçi</th></tr></thead><tbody><tr><td>Owner approves over $1,500</td><td data-l="Palo Alto">Follows</td><td data-l="Sim Meyhouse">Follows</td><td data-l="Sim Bistro">Follows</td><td data-l="Kaleiçi">Follows</td></tr><tr><td>House pour 150 ml</td><td data-l="Palo Alto">Follows</td><td data-l="Sim Meyhouse">Waiting</td><td data-l="Sim Bistro">Keeps 175 ml</td><td data-l="Kaleiçi">not asked</td></tr><tr><td>Spirits from Empire first</td><td data-l="Palo Alto">Follows</td><td data-l="Sim Meyhouse">Follows</td><td data-l="Sim Bistro">Follows</td><td data-l="Kaleiçi">not asked</td></tr></tbody></table></div></div>
+<div class="row" style="margin-top:12px"><span class="btn soft">Set a goal</span><span class="btn soft">Make a decision</span></div>
+</div></div>
+<div class="forks"><h2>Open — yours to decide</h2><ol><li><b>Which direction</b> — A One Total, B The Ledger, C The Letter (or A with B one tap away).</li><li><b>Who sees "All houses"</b> — owners of 2+ houses only; or managers too, without money; or a new "group" role.</li><li><b>Which houses are "all"</b> — every house you own; your whole organisation; or saved sets like "the Antalya houses".</li><li><b>What "profit" means today</b> — till sales − goods delivered − hours worked needs a till in every house; without one, the house is named and left out.</li><li><b>A house that can't be read</b> — hold the total back, or show it marked partial.</li><li><b>Two currencies</b> — one total in one currency at the month's average rate, or a total per currency.</li><li><b>Group goals</b> — each house on its own (rolls up), or one target on the total; can a house change its own.</li><li><b>Group decisions</b> — per kind (prices, vendors, approvals, stock levels, how we serve): applies outright, may keep its own, or each manager accepts.</li></ol></div>
+<script>addEventListener('load',()=>{new Image().src='/__seen?b='+(/Chrome\//.test(navigator.userAgent)?'chrome':'safari')+'&p='+location.pathname.split('/').pop()+'&w='+[...document.images].map(i=>i.naturalWidth).join('-')})</script>
+</body></html>

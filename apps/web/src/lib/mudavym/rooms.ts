@@ -29,6 +29,12 @@ export type ShellRole = 'owner' | 'manager' | 'staff' | null;
 export interface Room {
   name: string;
   path: string;
+  /**
+   * One line, in the house's words, shown when the pointer rests on the room
+   * in the rail (founder, 2026-10-01: "when cursor comes on /dashboard … says
+   * overall look in one glance"). Required, so a new room cannot ship without one.
+   */
+  description: string;
   /** Hidden below this role. `manager` admits owner and manager. */
   minRole?: 'manager' | 'owner';
   /** Shown only while this Mudavym page flag is on (its route redirects otherwise). */
@@ -44,56 +50,56 @@ export const ROOM_GROUPS: readonly RoomGroup[] = [
   {
     name: 'The floor',
     rooms: [
-      { name: 'Dashboard', path: '/' },
-      { name: 'Notifications', path: '/notifications' },
-      { name: 'Calendar', path: '/calendar' },
-      { name: 'Recommendations', path: '/recommendations' },
+      { name: 'Dashboard', path: '/', description: 'The overall look, in one glance.' },
+      { name: 'Notifications', path: '/notifications', description: 'Everything that asked for you, newest first.' },
+      { name: 'Calendar', path: '/calendar', description: 'Deliveries, tastings and meetings, by day.' },
+      { name: 'Recommendations', path: '/recommendations', description: 'What Mudavym suggests next, and your goals.' },
     ],
   },
   {
     name: 'The door',
     rooms: [
-      { name: 'Orders', path: '/orders' },
-      { name: 'Receiving', path: '/receiving' },
-      { name: 'Vendors', path: '/vendors' },
+      { name: 'Orders', path: '/orders', description: 'Draft, send and follow orders until they arrive.' },
+      { name: 'Receiving', path: '/receiving', description: 'Check a delivery in at the door.' },
+      { name: 'Vendors', path: '/vendors', description: 'The people you buy from, and how to reach them.' },
       // The gateway refuses staff every GET /promotions read (owner/manager,
       // promotions.controller.ts @Roles("owner", "manager")). TD-2026-09-27-
       // PROMOTIONS-ROOM-SHOWN-TO-STAFF.
-      { name: 'Promotions', path: '/promotions', minRole: 'manager' },
+      { name: 'Promotions', path: '/promotions', description: "Offers from your vendors, and what they're worth to you.", minRole: 'manager' },
       // The gateway refuses staff every /vendor-intel read (owner/manager).
-      { name: 'Vendor prices', path: '/vendor-prices', minRole: 'manager' },
+      { name: 'Vendor prices', path: '/vendor-prices', description: 'What each vendor charges, side by side.', minRole: 'manager' },
     ],
   },
   {
     name: 'The cellar',
     rooms: [
-      { name: 'Inventory', path: '/inventory' },
-      { name: 'Cellar', path: '/cellar' },
+      { name: 'Inventory', path: '/inventory', description: "What's on hand, what's low, and what it's worth." },
+      { name: 'Cellar', path: '/cellar', description: 'Where every bottle sits, zone by zone.' },
     ],
   },
   {
     name: 'The books',
     rooms: [
-      { name: 'Receipts & Credits', path: '/receipts' },
-      { name: 'Documents & Reports', path: '/documents-reports' },
-      { name: 'Reports', path: '/reports' },
-      { name: 'Logs', path: '/logs' },
+      { name: 'Receipts & Credits', path: '/receipts', description: 'Invoices to check, and credits to chase.' },
+      { name: 'Documents & Reports', path: '/documents-reports', description: 'Every document in, and every report out.' },
+      { name: 'Reports', path: '/reports', description: 'Sales, costs and stock over time.' },
+      { name: 'Logs', path: '/logs', description: 'What happened, when, and who did it.' },
     ],
   },
   {
     name: 'The people',
     rooms: [
-      { name: 'Team', path: '/team' },
-      { name: 'Communications', path: '/communications' },
+      { name: 'Team', path: '/team', description: 'Who works here, their roles and their hours.' },
+      { name: 'Communications', path: '/communications', description: 'Your vendor emails and messages, ready to answer.' },
     ],
   },
 ];
 
 export const ROOM_FOOT: readonly Room[] = [
-  { name: 'Settings', path: '/settings' },
-  { name: 'Connections', path: '/connections', minRole: 'manager', needsFlag: 'connections' },
-  { name: 'The desk', path: '/admin', minRole: 'owner' },
-  { name: 'Help', path: '/help' },
+  { name: 'Settings', path: '/settings', description: 'Your house, your account and your preferences.' },
+  { name: 'Connections', path: '/connections', description: 'The till, email and other services Mudavym reads.', minRole: 'manager', needsFlag: 'connections' },
+  { name: 'The desk', path: '/admin', description: 'The services behind Mudavym, and how each is running.', minRole: 'owner' },
+  { name: 'Help', path: '/help', description: 'How things work, and how to turn tips back on.' },
 ];
 
 /** Never a room. A test asserts none of these reaches the table. */

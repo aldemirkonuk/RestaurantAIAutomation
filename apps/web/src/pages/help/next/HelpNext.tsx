@@ -98,6 +98,7 @@ import {
 import { nextUpEntries, type NextUpEntry } from './hp-nextup';
 import { SupportPanel } from './SupportPanel';
 import { useHelpNextData } from './useHelpNextData';
+import { useGuidanceOptional } from '../../../guidance/GuidanceProvider';
 
 export interface HelpNextProps {
   /** Force a ground regardless of app theme (ADR 0042). Default: charcoal. */
@@ -111,6 +112,37 @@ function Eyebrow({ children }: { children: React.ReactNode }) {
     <p style={{ fontFamily: MONO, fontSize: 11, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--ink-4)', margin: 0 }}>
       {children}
     </p>
+  );
+}
+
+/**
+ * The one place page tips come back from. "Don't show tips again" on any tip
+ * turns them all off and they stay off until the person turns them on here
+ * (founder, 2026-10-01). Outside the guidance provider it draws nothing.
+ */
+function PageTipsSwitch() {
+  const guidance = useGuidanceOptional();
+  if (!guidance) return null;
+  const off = guidance.state.global.hide_all_tips;
+  return (
+    <div className="hp-card" data-testid="hp-page-tips">
+      <p style={{ fontFamily: SANS, fontSize: 13.5, fontWeight: 600, color: 'var(--ink-1)', margin: 0 }}>
+        {off ? 'Page tips are off' : 'Page tips are on'}
+      </p>
+      <Prose muted>
+        {off
+          ? 'You turned them off. They stay off until you turn them back on here.'
+          : 'A short tip the first time you open a page. "Don\'t show tips again" on any tip turns them all off.'}
+      </Prose>
+      <button
+        type="button"
+        className="hp-btn hp-ink hp-focus"
+        style={{ marginTop: 10 }}
+        onClick={() => (off ? guidance.resetTips() : guidance.hideAllTips())}
+      >
+        {off ? 'Turn tips back on' : 'Turn tips off'}
+      </button>
+    </div>
   );
 }
 
@@ -587,6 +619,7 @@ export default function HelpNext({ ground }: HelpNextProps) {
               <p style={{ fontFamily: SANS, fontSize: 13.5, fontWeight: 600, color: 'var(--ink-1)', margin: 0 }}>Your profile</p>
               <Prose muted>Password, connected accounts, and your own linked services.</Prose>
             </a>
+            <PageTipsSwitch />
           </div>
         </Section>
 

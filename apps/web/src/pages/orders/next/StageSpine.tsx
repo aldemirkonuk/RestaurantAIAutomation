@@ -49,6 +49,7 @@ export function StageSpine({ counts, recurringCount, active, onSelect }: StageSp
             type="button"
             role="tab"
             aria-selected={isActive}
+            data-tour={`orders-stage-${station}`}
             onClick={() => onSelect(isActive ? null : station)}
             className="group relative flex-1 px-3 py-3 text-left"
             style={style}

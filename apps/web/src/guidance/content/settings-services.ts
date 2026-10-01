@@ -1,37 +1,36 @@
 import type { TourDefinition } from '../tours/registry'
 
+// Lives at /connections since the Connections page replaced Settings → Services
+// (`/settings?tab=services` redirects to `/connections#grants`).
+// Steps follow the job, not the screen (ADR 0251 D3). Each element must exist
+// on the live page; a step whose element is missing is left out by TourEngine.
+
 export const settingsServicesTip = {
   pageId: 'settings-services' as const,
-  title: 'Services & permissions',
-  body: 'Everything here is opt-in — email, web apps, and privacy toggles stay under your control.',
+  title: 'Connections',
+  body: 'What the house has attached, what it pays with, and whose own accounts act inside it.',
 }
 
 export const settingsServicesTour: TourDefinition = {
   pageId: 'settings-services',
   steps: [
     {
-      element: '[data-tour="services-intro"]',
-      title: 'What this page controls',
+      element: 'section#attached',
+      title: 'What the house has attached',
       description:
-        'Optional access for email, web, and privacy — separate from product tours and Wine Agent.',
+        'The till, email and other services that belong to the house. They stay when the person who connected them leaves.',
     },
     {
-      element: '[data-tour="services-email"]',
-      title: 'Email access',
+      element: 'section#payment',
+      title: 'What the house pays with',
       description:
-        'Allow operational email (invites, digests) from your connected sender. Does not open a mailbox for Wine Agent.',
+        'The payment details on file for this house, as the provider gave them.',
     },
     {
-      element: '[data-tour="services-web"]',
-      title: 'Web & connected apps',
+      element: 'section#grants',
+      title: 'Accounts that belong to a person',
       description:
-        'Manage calendar feeds and vendor link permissions. Revoke anytime.',
-    },
-    {
-      element: '[data-tour="services-privacy"]',
-      title: 'Privacy choices',
-      description:
-        'Turn product analytics on or off. Partner data sharing stays off until you connect a partner.',
+        "A person's own accounts that act inside this house. They are listed here because they act here.",
     },
   ],
 }
