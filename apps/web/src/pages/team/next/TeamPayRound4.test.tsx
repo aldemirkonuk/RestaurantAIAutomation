@@ -483,6 +483,42 @@ describe('"Replace with" on the remove dialog', () => {
     );
   });
 
+  // CI run 36728755317 sent `null` from a button that already read "Remove and
+  // hand over 1 shift": the removal read the hand-over React Query had been
+  // given one render earlier (it takes a new mutationFn in a passive effect,
+  // after the commit). On a slow runner React's scheduler runs out of its 5ms
+  // slice between the commit and the passive effects and lets the test click
+  // in between.
+  // Here every slice runs out (the clock jumps 10ms a read) and the click
+  // lands the moment the label changes, so the gap fails every time instead
+  // of once in a while. Fails on 597f728d9.
+  it('sends what the button says, even when clicked the moment it says it', async () => {
+    let t = 0;
+    const clock = vi.spyOn(performance, 'now').mockImplementation(() => (t += 10));
+    let clicked = false;
+    const watch = new MutationObserver(() => {
+      const go = screen.queryByRole('button', { name: 'Remove and hand over 1 shift' });
+      if (!go || (go as HTMLButtonElement).disabled) return;
+      watch.disconnect();
+      fireEvent.click(go);
+      clicked = true;
+    });
+    // Restored whatever happens, so a red run cannot leave the next test
+    // with a jumping clock or a stray click.
+    try {
+      openRemove({ doubleBooking: 'refuse', unjudged: 0, shifts: [shiftOf('fri')] });
+      watch.observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true });
+      fireEvent.change(screen.getByRole('combobox', { name: 'Replace with' }), { target: { value: 'm-sam' } });
+      await waitFor(() => expect(clicked).toBe(true));
+    } finally {
+      watch.disconnect();
+      clock.mockRestore();
+    }
+    await waitFor(() =>
+      expect(api.deleteTeamMember).toHaveBeenCalledWith('m-gone', undefined, { to: 'm-sam', shiftIds: ['fri'], accept: [] }),
+    );
+  });
+
   it('a warning must be acknowledged before the removal is sent, and its code goes with it', async () => {
     openRemove({
       doubleBooking: 'warn',
