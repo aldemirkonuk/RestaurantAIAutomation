@@ -152,13 +152,15 @@ export function HouseShell({ children }: { children?: ReactNode } = {}) {
 
   const width = counterWidthFor(pathname, vw, prefs);
 
+  // One choice for every page: closing the counter here keeps it closed on
+  // the next page (founder, 2026-10-01).
   const toggleCounter = useCallback(() => {
     setPrefs((p) => {
-      const next = rememberCounterWidth(p, pathname, width === 'open' ? 'tucked' : 'open');
+      const next = rememberCounterWidth(p, width === 'open' ? 'tucked' : 'open');
       writeShellPrefs(userId, next);
       return next;
     });
-  }, [pathname, width, userId]);
+  }, [width, userId]);
 
   const toggleRail = useCallback(() => {
     setPrefs((p) => {
