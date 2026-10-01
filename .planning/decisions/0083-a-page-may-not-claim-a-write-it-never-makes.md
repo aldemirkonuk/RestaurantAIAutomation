@@ -469,7 +469,7 @@ lane brief (round 2); the wording is the relay's, not a verbatim quotation.
 1. **A lot in a foreign currency states its cost in the house's money** (answer 10):
    *record the exchange rate the person states AND let them type the per-bottle cost in
    the house currency (people round); a typed house cost wins, both are recorded,
-   nothing inferred.* This closes the stated limit of the first addendum (the lot's
+   nothing inferred.* **[2026-10-01, ADR 0252 round 6: the founder narrowed "nothing inferred" to records and books. A DISPLAY figure on "All houses" may convert at the ECB daily reference rate when no rate has been typed (*"Yes, ECB daily, dated (Recommended)"*), every such figure naming the rate and its date, and a typed rate wins from its date. Nothing here changes what a lot records.]** This closes the stated limit of the first addendum (the lot's
    per-bottle cost landed in `inventory_lots.unit_cost`, which every reader takes as the
    house's own money). Built: one rule on both sides (`AuctionLotStart`'s
    `auctionLotCost.ts` and the gateway's `inventory/auction-lot-cost.ts`) — a typed house
