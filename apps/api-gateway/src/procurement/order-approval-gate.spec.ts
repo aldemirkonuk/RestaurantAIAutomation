@@ -555,7 +555,7 @@ describe("approveOrder — the refusal is filed", () => {
  * the same table first and answers 503 when its own read errors, so the seal's
  * 500 shows there only when that read succeeded and the seal's own read
  * errors. The recurring-orders cron calls `approveOrder` with no JWT step
- * (`recurring-orders.service.ts:888`). ADR 0248, "Reachability end to end".
+ * (`recurring-orders.service.ts:956`). ADR 0248, "Reachability end to end".
  */
 describe("approveOrder — a role that cannot be read", () => {
   /**

@@ -1,17 +1,17 @@
 ## An access-register read error let `users.role` decide a person's role at a house — CLOSED on `fix/role-read-error-means-no-role` — 2026-10-01
 
-Filed and closed on `fix/role-read-error-means-no-role` ([ADR 0248](../decisions/0248-an-access-register-that-cannot-be-read-gives-no-role.md)). Line numbers are at `origin/main` 2019ae7f6 unless marked "this branch".
+Filed and closed on `fix/role-read-error-means-no-role` ([ADR 0248](../decisions/0248-an-access-register-that-cannot-be-read-gives-no-role.md)). Line numbers are at `origin/main` 2019ae7f6 unless marked "this branch". Lines in `procurement.service.ts` and `recurring-orders.service.ts` are at 4bd11a00e, after #563.
 
 **What it was.**
 - `lookupRestaurantRole` (`apps/api-gateway/src/organizations/organizations.service.ts:35-64`) read `users.role` whenever no access role came back, including when the access read ERRORED. It set `readError` and still returned that role.
 - `resolveRestaurantRole` (strict: false) dropped the error and returned the role.
 - `registerAccount` writes `users.role = 'owner'` (`auth/auth.service.ts:1557-1566`), and `acceptHeldMembership` later sets only `users.restaurant_id` (`:3152-3157`). So, at the helper, an account made by `registerAccount` that later joined a house as staff through `acceptHeldMembership` read as that house's owner when the helper's access read errored, and passed `assertCanManageRestaurant`.
-- The order seal (`assertApprovalAllowed`, `procurement/procurement.service.ts:4455`) read the role the same way. With the lookup fixed alone, an access-read error would have parked a threshold-tripping order as APPROVAL_NEEDED and filed an `order_approval_refused` row saying the person holds no role.
+- The order seal (`assertApprovalAllowed`, `procurement/procurement.service.ts:4445`) read the role the same way. With the lookup fixed alone, an access-read error would have parked a threshold-tripping order as APPROVAL_NEEDED and filed an `order_approval_refused` row saying the person holds no role.
 
 **How far it reached.** Over HTTP, `AuthService.validateJwtPayload` (`auth/auth.service.ts:1426-1493`) reads the token's house's access row before any helper runs. It answers 503 when that read errors and 401 when there is no active row. So the helper's path was reached:
 - in the narrow window where that read succeeded and the helper's own read errored;
 - on `GET`/`PATCH /organizations/locations/:id`, whose house the JWT step does not check;
-- from the recurring-orders cron (`procurement/recurring-orders.service.ts:888`), which has no JWT step.
+- from the recurring-orders cron (`procurement/recurring-orders.service.ts:956`), which has no JWT step.
 
 The earlier premises put to the founder overstated this. The decisions stand as defence in depth for those paths. ADR 0248, "Reachability end to end".
 
@@ -21,7 +21,7 @@ The earlier premises put to the founder overstated this. The decisions stand as 
 
 **How it is closed.**
 - An access read that errors now returns no role with `readError` set, and the `users` row is not read (this branch, `organizations.service.ts:80-85`).
-- The seal reads the role through `OrganizationsService.readRestaurantRole` and answers 500 before it parks or files anything (this branch, `procurement.service.ts:4458-4480`).
+- The seal reads the role through `OrganizationsService.readRestaurantRole` and answers 500 before it parks or files anything (this branch, `procurement.service.ts:4448-4470`).
 - Five callers degrade during such an error instead of refusing. ADR 0248 lists them by `file:line`, and none of them grants anything.
 
 **Pinned by:**

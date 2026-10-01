@@ -2,7 +2,7 @@
 
 - **Status:** Locked 2026-10-01.
 - **Date:** 2026-10-01
-- **Decider:** Aldemir (founder). Eight answers, all 2026-10-01 in session 9512567d, each relayed to the fix lane by the lane coordinator. Each question, every option's label and text, and the picked label are copied verbatim from the session transcript under "Options considered".
+- **Decider:** Aldemir (founder). Nine answers, all 2026-10-01 in session 9512567d, each relayed to the fix lane by the lane coordinator. Each question, every option's label and text, and the picked label are copied verbatim from the session transcript under "Options considered".
   1. **What an access-read error means.** He picked "Next PR: error means no role (Recommended)".
   2. **What the order seal and five other callers do with a role they cannot read.** He picked "Strict for the order seal (Recommended)".
   3. **The second copy of the rule, `MembersService.assertMembership`.** He picked "Fold into #561 (Recommended)".
@@ -11,6 +11,7 @@
   6. **The order in which #561 and the PRs it meets land.** He picked "#561 last + docs PR (Recommended)".
   7. **Whether to fix the record before review.** He picked "Fix now, before review (Recommended)".
   8. **Whether leaving a house and deleting an account honour the window.** He picked "Let leaving and deletion through (Recommended)".
+  9. **How many files #561 may land with.** He picked "Allow 17, keep route tests (Recommended)".
 - **Keywords:** VALID_FROM_CLOCK_TOLERANCE_MS, clock skew, lookupRestaurantRole, MembersService.assertMembership, isLiveMembership, is_active, valid_from, valid_until, inactive row, held membership, readRestaurantRole, resolveRestaurantRole, assertCanManageRestaurant, user_restaurant_access, users.role, legacy fallback, access-read error, outage, readError, RestaurantRoleUnreadableError, assertApprovalAllowed, order seal, APPROVAL_NEEDED, order_approval_refused, registerAccount, acceptHeldMembership
 - **Links:**
   - [[0020-no-fabricated-answers]] (an outage is not a fact about the person).
@@ -22,7 +23,7 @@
 
 ## Context
 
-Line numbers are at `origin/main` 2019ae7f6 unless marked "this branch". The sweep was first run at 98dfcb5af. Nothing under `apps/` or `supabase/` changed between 98dfcb5af and 2019ae7f6.
+Line numbers are at `origin/main` 2019ae7f6 unless marked "this branch". The sweep was first run at 98dfcb5af. Nothing under `apps/` or `supabase/` changed between 98dfcb5af and 2019ae7f6. [Re-measured 2026-10-01 after rebasing onto `origin/main` 4bd11a00e (#563). #563 changed `procurement/procurement.service.ts` and `procurement/recurring-orders.service.ts`, so every line cited in those two files is at 4bd11a00e. No other cited file changed between 2019ae7f6 and 4bd11a00e.]
 
 **The lookup.** `lookupRestaurantRole` (`apps/api-gateway/src/organizations/organizations.service.ts:35`) reads the active `user_restaurant_access` row (`:40-46`). If no role comes back, it reads `users.role` and returns it when `users.restaurant_id` is this house. An access read that errors returns no data, so it also reached the `users` read. It set `readError` (`:59-63`) and still returned the legacy role. `readRestaurantRole` with `strict: false` (`:78-94`), which `OrganizationsService.resolveRestaurantRole` (`:254`) uses, returned that role and dropped `readError`. With `strict: true` it threw.
 
@@ -39,7 +40,7 @@ Line numbers are at `origin/main` 2019ae7f6 unless marked "this branch". The swe
 
 ## Reachability end to end
 
-[Correction, 2026-10-01, measured at `origin/main` 1c1a676f8. Nothing under `apps/` changed between 2019ae7f6 and 1c1a676f8. The questions put to the founder, and the first drafts of this ADR, described each path as if every caller reached the helper directly.]
+[Correction, 2026-10-01, measured at `origin/main` 1c1a676f8. Nothing under `apps/` changed between 2019ae7f6 and 1c1a676f8. Lines in `procurement.service.ts` and `recurring-orders.service.ts` are re-measured at 4bd11a00e. The questions put to the founder, and the first drafts of this ADR, described each path as if every caller reached the helper directly.]
 
 **The JWT step.** Every route behind `JwtAuthGuard` runs `AuthService.validateJwtPayload` through `JwtStrategy` (`apps/api-gateway/src/auth/auth.service.ts:1426-1493`), in the same request and before any helper.
 - It reads the access row for the token's house, filtered on `is_active = true` (`:1435-1442`).
@@ -56,8 +57,8 @@ Line numbers are at `origin/main` 2019ae7f6 unless marked "this branch". The swe
 - **A house the JWT step did not check, behind `JwtAuthGuard`.**
   - `GET` and `PATCH /organizations/locations/:id` take the house from `:id`, which is not tenant-compared (`organizations/organizations.controller.ts:96-121`). They reach `assertManagerOrOwner` for that house.
   - `DELETE` of the account calls `removeMember`, and so `assertMembership` for the person themself, for every house where they hold an active row, not only the token's (`auth.service.ts:4538`).
-- **No JWT step.** The recurring-orders cron (`procurement/recurring-orders.service.ts:640`, `@Cron("0 8 * * *")`) calls `approveOrder` for a schedule set to auto-approve (`:888`). That reaches the seal's strict read, when a threshold rule fires, with no JWT step in front of it.
-  - This was found by searching the 34 files under `apps/api-gateway/src` that declare `@Cron`, `@Interval`, `setInterval`, `@SubscribeMessage`, `@OnEvent`, `@EventPattern` or `@MessagePattern` for calls into the helpers and their callers. The procurement auto-send interval (`procurement.service.ts:8286`) calls none.
+- **No JWT step.** The recurring-orders cron (`procurement/recurring-orders.service.ts:708`, `@Cron("0 8 * * *")`) calls `approveOrder` for a schedule set to auto-approve (`:956`). That reaches the seal's strict read, when a threshold rule fires, with no JWT step in front of it.
+  - This was found by searching the 34 files under `apps/api-gateway/src` that declare `@Cron`, `@Interval`, `setInterval`, `@SubscribeMessage`, `@OnEvent`, `@EventPattern` or `@MessagePattern` for calls into the helpers and their callers. The procurement auto-send interval (`procurement.service.ts:8255`) calls none.
   - The `isLiveMembership` audience readers (Decision 7) compute who receives a message; they gain only the tolerance.
 
 **Each path, end to end.**
@@ -92,7 +93,7 @@ This is every caller of `lookupRestaurantRole`, `readRestaurantRole`, `resolveRe
   - `mcp-server/mcp-keys.controller.ts:95` and `:121`
   - `integrations/integrations-oauth.controller.ts:154`
   - `distributor-feed/distributor-feed.controller.ts:95` and `:158`
-  - `procurement/procurement.service.ts:3441` (order cancel, via `:3477` and `:3609`) and `:5761` (never-arrived credit claim)
+  - `procurement/procurement.service.ts:3431` (order cancel, via `:3467` and `:3599`) and `:5751` (never-arrived credit claim)
   - `procurement/documents/documents.controller.ts:1671/1676` (currency restate and its seal mint)
   - `inventory/inventory.controller.ts:60`
   - `menus/menus.controller.ts:115` and `:228`
@@ -118,12 +119,12 @@ This is every caller of `lookupRestaurantRole`, `readRestaurantRole`, `resolveRe
   - `procurement/arrival-asks.service.ts` `notYet` (`:254-260`)
 
 **Does more than refuse: the order seal.** This is the founder's second answer, built on this branch.
-- `assertApprovalAllowed` (`procurement/procurement.service.ts:4384`) read the role at `:4455` after a threshold rule fired.
-- On a role that does not satisfy the rule, it moves a PENDING order to APPROVAL_NEEDED (`parkOrderAwaitingApproval`, `:4461`, body `:4620-4646`). It then inserts an `order_approval_refused` row into `system_audit_log` (`recordApprovalRefusal`, `:4464`; insert at `order-approval-gate.ts:134`) and throws 403.
+- `assertApprovalAllowed` (`procurement/procurement.service.ts:4374`) read the role at `:4445` after a threshold rule fired.
+- On a role that does not satisfy the rule, it moves a PENDING order to APPROVAL_NEEDED (`parkOrderAwaitingApproval`, `:4451`, body `:4610-4636`). It then inserts an `order_approval_refused` row into `system_audit_log` (`recordApprovalRefusal`, `:4454`; insert at `order-approval-gate.ts:134`) and throws 403.
 - With the lookup change alone, every member's threshold-tripping seal, when the seal's own access read errored, would be parked and filed as "This session could not be shown to hold any role at this house". Over HTTP that is the narrow window after the JWT step's read succeeded; from the recurring-orders cron it is any such error.
 
 **Does more than refuse: five callers that degrade.** These are recorded, not changed. None of them grants anything. All five sit behind `JwtAuthGuard` and use the token's house. Over HTTP they degrade on an access-read error only when the JWT step's read succeeded and the helper's own read errored. They also degrade for a row the JWT step passes but the helper does not: one outside its window, or one with no role.
-1. **The approval ceremony.** `approvalGate` (`procurement.service.ts:4504`, role at `:4555`) serves `GET /procurement/order-approval-gate` (`procurement/procurement.controller.ts:413`). It returns `callerRole: null`, with `mayApprove: false` and a refusal sentence on each order a rule gates.
+1. **The approval ceremony.** `approvalGate` (`procurement.service.ts:4494`, role at `:4545`) serves `GET /procurement/order-approval-gate` (`procurement/procurement.controller.ts:413`). It returns `callerRole: null`, with `mayApprove: false` and a refusal sentence on each order a rule gates.
 2. **Arrival asks.** `arrival-asks.service.ts:116-123` (`mayAnswer`) feeds `asks()` (`:213-215`) and `incomplete()` (`:229-239`), which back `arrival-asks.controller.ts:58` and `:102`. They return `forYou: false`, an empty list and the "not for you" sentence.
 3. **The arrival read.** `arrival.service.ts:92-103` serves `GET /arrival` (`arrival.controller.ts:32`). It catches the 403 and sets `canManage = false`, so vendor terms and the vendors' usual currencies are withheld with "Vendor terms are available to this house's owner or manager." (`:125-143`).
 4. **Catalogue admission.** This one is part of an upload, not a read view. `catalog-ingest.service.ts:214-227` runs inside `POST /procurement/documents` (`documents.controller.ts:995`, `:1101`). It catches the refusal: the file is stored, its prices are not admitted, and the 2xx body says admitting is a manager's act.
@@ -171,6 +172,7 @@ This is every caller of `lookupRestaurantRole`, `readRestaurantRole`, `resolveRe
 - `pricing/price-locks.service.ts:578-612` reads access rows in a batch and, on an error, skips the marker it would draw (`accessKnown`).
 - `team/team.service.ts:185-220` (`TeamService.assertAccess`) discards the access read's error (`:198`). On no active row it reads a matching `users` row as `staff`, never `users.role` (`:216`). It reads `is_active` alone.
 - `AuthService.generateInvite`, and the target reads in `MembersService.updateMemberRole` and `removeMember`, read the access row and the `users` row their own way.
+- `assertProviderBelongsToRestaurant` (`common/tenant/assert-provider-belongs-to-restaurant.ts:31`, added by #563 at 4bd11a00e) reads only `providers` (`id`, `restaurant_id`) and no role. #563 adds no call to either helper; its only mention of `assertCanManageRestaurant` is a stub in its spec.
 
 ## Options considered
 
@@ -238,6 +240,13 @@ Copied verbatim from the session transcript (`AskUserQuestion` calls at the time
 
 - "Let leaving and deletion through (Recommended)" (picked): "Removing yourself and deleting your account need only an existing row, not a live one, so nobody is ever trapped. Every other check keeps honouring the window. A small change plus a spec in #561, still within its 16 files."
 - "Record it as open" (not picked): "Keep #561 as built, and record the trap in ADR 0248 as open. It is reachable only through a hand-written date."
+
+**Ninth question, asked 2026-10-01T17:42:22.365Z.** Picked: "Allow 17, keep route tests (Recommended)".
+
+> #561 now has the leave-and-delete fix, at 15 files. The only spec that drives leaving and account deletion end to end is a file #561 did not touch before. It now pins: an expired row can leave (200), DELETE /auth/me completes for an expired row, and an expired manager still cannot remove someone else. The rebase onto #550 adds 2 more files, so #561 would land at 17, not the 16 you allowed. Which do you want?
+
+- "Allow 17, keep route tests (Recommended)" (picked): "Keep the end-to-end route cases. I change the twelfth bracket on #547 to 17 before you merge it, and ADR 0248 says 17. It is one more file of review, with stronger evidence."
+- "Stay at 16, service tests only" (not picked): "Move the cases into members.service.spec.ts as service-level tests. That loses the route-level 200s and the end-to-end account-deletion case, but keeps your 16-file allowance as written."
 ## Corrected premises
 
 Two questions above rested on statements about the code that were wrong. They are corrected here; the answers stand, for the reasons given.
@@ -258,7 +267,7 @@ Two questions above rested on statements about the code that were wrong. They ar
 ## Decision
 
 1. **An access read that errors returns `role: null` with `readError` set, and the `users` row is not read** (this branch, `organizations.service.ts:80-85`). `readRestaurantRole` with `strict: true`, and `OrganizationsService.readRestaurantRole`, still throw on that error, with the same message.
-2. **The order seal reads the role strictly** (this branch, `procurement.service.ts:4458-4480`). `assertApprovalAllowed` calls `OrganizationsService.readRestaurantRole`. On `RestaurantRoleUnreadableError` it throws 500 before `parkOrderAwaitingApproval` and before `recordApprovalRefusal`: the order is not moved and no refusal row is written. That covers an access-read error, and also a `users` read that errors after the access read found no row. Before, that second case was read as no role: a PENDING order was parked and a refusal was filed. The role is read only when a rule fires (`:4456`), so a seal that no rule gates is unchanged.
+2. **The order seal reads the role strictly** (this branch, `procurement.service.ts:4448-4470`). `assertApprovalAllowed` calls `OrganizationsService.readRestaurantRole`. On `RestaurantRoleUnreadableError` it throws 500 before `parkOrderAwaitingApproval` and before `recordApprovalRefusal`: the order is not moved and no refusal row is written. That covers an access-read error, and also a `users` read that errors after the access read found no row. Before, that second case was read as no role: a PENDING order was parked and a refusal was filed. The role is read only when a rule fires (`:4446`), so a seal that no rule gates is unchanged.
 3. **The five degrading callers above stay as they are.** `approvalGate` keeps the non-strict reading; this branch pins that it shows `callerRole: null` during an access-read error.
 4. **A row that exists decides alone** (this branch, `organizations.service.ts:67-76` and `:92-98`).
    - The lookup reads the person's one row here whatever its `is_active`. `(user_id, restaurant_id)` is UNIQUE (baseline `:8152`), so there is at most one.
@@ -284,7 +293,7 @@ Two questions above rested on statements about the code that were wrong. They ar
      - `communications/recipient-resolver.service.ts:403`, `getUserIdsForRoles` (`:377`): who receives a notification addressed to a role.
      - `common/tenant/live-membership.ts:133`, `houseMembersInRoles`. It is read by `websocket/websocket.gateway.ts:671` (owner- and manager-only emits), `common/orchestrator/inbound-responder.service.ts:1533` (manager notifications), `notifications/producers/market-price.producer.ts:132` and `team/access-audit.ts:183` (who is told of an access change).
    - Every code path writes its own `now` into `valid_from`: the database's on insert, the gateway's in `acceptHeldMembership`. A start that reads as ahead of the gateway's clock comes from a clock difference, or from a hand-written value. See "Corrected premises".
-8. **Merge order (the sixth answer): #561 lands last.** #547, #538, #550 and #558 merge first. With the two #550 files below, this PR then has 16 files, one over the 15-file cap. The extra file on this PR is recorded in ADR 0231.
+8. **Merge order (the sixth answer): #561 lands last.** #547, #538, #550 and #558 merge first. With the two #550 files below, this PR then has 17 files, two over the 15-file cap, as the founder's ninth answer chose. The extra file on this PR is recorded in ADR 0231.
    Then this branch rebases onto that main and does three things, which are planned and not yet done:
    - **#550's test.** `apps/api-gateway/src/procurement/recurring-schedule-edits-need-a-manager.http.spec.ts` has a case named "lets a legacy manager of this house edit and deactivate". It fails the access read and expects 200. That spec stubs the JWT step, so the case measures the helper: over HTTP the JWT step would answer 503 first if its own read failed. Under Decision 1 that caller gets 403 at the helper, so the case is changed to expect 403 with nothing written. The verify of claim `RECURRING-SCHEDULE-EDITS-NEED-A-MANAGER` names that title, so it is updated with it.
    - **The caller list.** It gains the `assertCanManageRestaurant` callers those PRs add: two in `procurement/procurement.service.ts` (#538), PUT and DELETE in `procurement/recurring-orders.controller.ts` (#550), and one in `procurement/order-recurrence.service.ts` (#558).
@@ -343,3 +352,4 @@ Each item was measured on this branch by reading code. No production query was r
 | 2026-10-01 | — | Answer 5 on the same branch: the two-minute `valid_from` tolerance in `isLiveMembership`. |
 | 2026-10-01 | — | Answers 6 and 7, before review: every question and option copied verbatim from the transcript, the deactivation sentence scoped, the `valid_from` sentences corrected for the tolerance, the corrected premises recorded, and the merge order with its planned rebase work. |
 | 2026-10-01 | — | Answer 8, before review: a person removing themself needs only a row that exists. |
+| 2026-10-01 | — | Answer 9, before review: the PR may land with 17 files and keeps the route-level leave and delete cases. Rebased onto 4bd11a00e (#563); the lines cited in `procurement.service.ts` and `recurring-orders.service.ts` are re-measured there. |
