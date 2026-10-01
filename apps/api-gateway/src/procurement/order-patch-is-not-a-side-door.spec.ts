@@ -31,7 +31,12 @@
  * the real helper's contract — owner or manager returns, anything else throws
  * the real sentence (its own rule is `organizations.service.ts`'s spec).
  *
- * [REVERT-FAILS] marks a case that fails on c47fd8a01.
+ * [REVERT-FAILS] marks a case that fails against the service as it stands
+ * without this PR: base 597f728d9, where `git diff c47fd8a01 597f728d9` over
+ * `apps/api-gateway/src/procurement` and `src/communications` is empty (#532
+ * touched only auth), so the two are the same service for these cases.
+ * Untagged cases pin behaviour that already held there, or that a named
+ * mutation of this PR's code would break.
  */
 import {
   ExecutionContext,
@@ -596,7 +601,7 @@ describe("a price change leaves paper", () => {
     expect(state.audits).toHaveLength(0);
   });
 
-  it("files nothing for a refused price change, or for notes", async () => {
+  it("[REVERT-FAILS] files nothing for a refused price change, or for notes", async () => {
     seed(S.PENDING);
     expect((await patch(STAFF, { totalCost: 1 })).status).toBe(403);
     expect((await patch(STAFF, { managerNotes: "n" })).status).toBe(200);
@@ -927,6 +932,68 @@ describe("the line a fold would write is gated like the header", () => {
     expect(state.writes).toHaveLength(0);
     expect(state.lineWrites).toHaveLength(0);
     expect(state.audits).toHaveLength(0);
+  });
+
+  // ROUND 4 (founder, 2026-09-30: "Disclose + pin tests; RPC next
+  // (Recommended)"). Three pins, each killing a mutation the v4 reviewers
+  // found surviving at 0167bcbb9.
+
+  it.each([
+    ["an APPROVED order, by a manager", S.APPROVED, MANAGER],
+    ["a PENDING order, by staff", S.PENDING, STAFF],
+  ])(
+    "[REVERT-FAILS] a fold that rewrites the line keeps the unit prices, currency and SKU it left out (%s)",
+    async (_label, status, who) => {
+      // Kills: `held: heldLine` dropped from the fold's upsertOrderLine call.
+      // The carry has to survive the WRITE, not only the gate's no-move path.
+      seedOpenOrder(status as S);
+      Object.assign(state.order, {
+        quoted_price: "280.00",
+        negotiated_price: "290.00",
+      });
+      Object.assign(state.lines[0], {
+        quoted_unit_price: "280.00",
+        negotiated_unit_price: "290.00",
+        vendor_sku: "BAR-19",
+      });
+      const res = await place(who as string, { ...HELD, deposit: 50 });
+      expect(res.status).toBe(201);
+      expect(state.lineWrites).toEqual(["delete", "insert"]);
+      expect(state.lines).toHaveLength(1);
+      expect(state.lines[0]).toMatchObject({
+        quoted_unit_price: "280.00",
+        negotiated_unit_price: "290.00",
+        currency: "EUR",
+        vendor_sku: "BAR-19",
+        deposit: 50,
+      });
+    },
+  );
+
+  it("[REVERT-FAILS] staff changing only the unit (bottle to each) past PENDING is a 403, and nothing is written", async () => {
+    // Kills: `unit_type` dropped from TEXT_FIGURES. Compared as numbers, two
+    // unit words both read as "not a number" and look the same.
+    seedOpenOrder(S.APPROVED);
+    const res = await place(STAFF, { ...HELD, unitType: "each" });
+    expect(res.status).toBe(403);
+    expect(state.writes).toHaveLength(0);
+    expect(state.lineWrites).toHaveLength(0);
+    expect(state.lines[0].unit_type).toBe("bottle");
+  });
+
+  it("[REVERT-FAILS] a manager's new vendor SKU is the one written on the line, on paper", async () => {
+    // Kills: the carry's precedence swapped to `held ?? dto`, which would keep
+    // the old SKU over the one the manager stated. The base wrote the
+    // request's SKU too; it is red there only because the base files no row.
+    seedOpenOrder(S.APPROVED);
+    state.lines[0].vendor_sku = "BAR-19";
+    const res = await place(MANAGER, { ...HELD, vendorSku: "BAR-20" });
+    expect(res.status).toBe(201);
+    expect(state.lines[0].vendor_sku).toBe("BAR-20");
+    expect(state.audits[0].changes.fields["line.vendor_sku"]).toEqual({
+      from: "BAR-19",
+      to: "BAR-20",
+    });
   });
 
   it("[REVERT-FAILS] refuses the fold when the held line cannot be read", async () => {

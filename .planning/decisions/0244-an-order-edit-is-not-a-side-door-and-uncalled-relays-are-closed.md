@@ -43,7 +43,7 @@ An 817-route audit at 5a20d774b found two live holes. Both were re-verified at c
     - **The paper is filed right after the header write,** before the order line is rewritten. If the line write then fails, the request errors, but the header has moved and the log already says so. The line and the header are two writes, not one transaction, so a failed line can still leave a header that disagrees with its line. That was already true before this change, and it is not fixed here.
     - **The line is held to the same rule (round 3).**
       - **Why there was a round 3.** The v3 audit at e9c6ffe89 found the gate above compared only the header's seven columns, while `upsertOrderLine` deleted and rewrote the whole line on every fold. The adversary blocked it and the correctness reviewer reproduced it. The line carries money the header does not: the unit pair, the three fees, the currency, the unit prices, and the vendor SKU. `readAgreedLine`, `verifyReceipt` and the delivery comparison read those columns. So a staff re-post that held the header could rewrite an approved order's line with no role check and no paper, and a re-post that simply left those fields out wiped them.
-      - **The founder waived ADR 0231's two-round cap once, by name, on 2026-09-30,** and picked *"Third round: gate the line"*. The option's text: *"Opus reads the existing line and applies the same rule to it as to the header: past PENDING, any change to a money field on the line needs a manager or owner and files an audit row. A re-post that changes nothing skips the line rewrite."*
+      - **The founder waived ADR 0231's two-round cap once, by name, on 2026-09-30,** and picked, verbatim, *"Third round: gate the line (Recommended)"*. The option's text: *"Opus reads the existing line and applies the same rule to it as to the header: past PENDING, any change to a money field on the line needs a manager or owner and files an audit row. A re-post that changes nothing skips the line rewrite."*
       - **What is built:**
         - Before any write, the fold reads the order's line or lines. A failed read refuses the fold with a 500.
         - It works out the line it would write with `lineMoneyFor`, the same builder `upsertOrderLine` now writes with, and compares the two over `LINE_MONEY_COLUMNS`: quantity, unit_type, bottles_per_unit, quoted, negotiated and final unit price, price_uom, price_pack_size, currency, allowance, deposit, freight, line_total and vendor_sku.
@@ -55,11 +55,27 @@ An 817-route audit at 5a20d774b found two live holes. Both were re-verified at c
         - The unit pair and the three fees are not carried forward. The header's total is worked out from the request's unit and fees, so carrying them would make the line and the header disagree, and carrying a unit would reinterpret the request's price. For those, leaving a held value out is a change, and it is decided and filed like any other.
         - That carry-forward also applies to PENDING folds, which used to wipe these four columns on omission. That changes today's re-quote, and the reason is that the old wipe left the line disagreeing with the header the same fold kept.
       - **`vendor_sku` counts as money** even though it is not a price. The delivery comparison pairs order lines with invoice lines by vendor SKU, so the SKU decides which billed price the agreed price is held against.
-      - **The line's own race.**
-        - The header write's conditions now include `updated_at`. The table's own trigger stamps it on every update, and a line price written by confirm-deal or by the vendor's acceptance reaches the header through the echo trigger. So a line that moved since the read makes the header write match nothing, and the fold gets a 409.
-        - Every fold that moves anything writes the header first, which stamps it.
-        - **Not closed:** one window remains. Between another fold's header write and its line write, a fold that reads the header already stamped, but the line not yet rewritten, can overwrite that other fold's new line. Closing it needs the header and the line in one transaction (an RPC), which is not built here.
+      - **The line's own race.** [Rewritten 2026-09-30, round 4, to the v4 reviewers' measured wording.]
+        - **What the `updated_at` guard covers.** The header write's conditions include `updated_at`, which the table's trigger stamps on every update. So a change that reaches the header between the fold's read and its header write makes that write match nothing, and the fold answers 409. That is the only interval it guards.
+        - **The gap in the guard.** The echo trigger writes the header only when the line's price differs from it (`20260905072000_the_header_price_echoes_the_line.sql:147-150`). A line write that leaves the header price unchanged does not stamp `updated_at`, and the guard does not see it.
+        - **Not closed: the window after the header write.** The conditional header write (`procurement.service.ts:1440`) is followed by the audit insert (`:1509`), the inventory read inside `upsertOrderLine`, the line delete (`:1944-1945`) and the insert (`:1955-1956`). That is four awaited round trips, and nothing guards the line during them. What can land there:
+          - **(i) another fold.** It can overwrite this fold's line. If both deletes land before either insert, the order ends up with two lines.
+          - **(ii) confirm-deal or the vendor's acceptance.** Both update the line by an id they read earlier: `procurement.service.ts:9904-9906` and `inbound-responder.service.ts:1333-1334`. Once a fold has replaced the line, that update matches zero rows with no error; the adversary confirmed the zero-row update on PGlite. The writer's price is silently lost while the order still advances, and the echo trigger returns the header to the fold's price.
+          - **(iii) an approval.** A staff fold that began on a PENDING order can write line money onto an order approved in the window, with no role check.
+        - **What the paper misses.** The `order_price_changed` row does not record a price lost this way, and its `from` figures can be stale.
+        - **Closing it** needs the header and the line in one database transaction (an RPC). Per the founder's round-4 pick of 2026-09-30, *"Disclose + pin tests; RPC next (Recommended)"*, that is the next PR. Nothing in this PR closes it.
       - **Not changed:** a fold that changes `final_price` on an order with a priced line should still be refused by the header-echo trigger, because the header is written before the line, and it would answer 500. That comes from the trigger's own contract (`the_header_price_echoes_the_line`). It was not run against Postgres here, and the spec stub has no triggers. It was true before round 3 and is filed in the tech-debt fragment.
+    - **Round 4 (founder, 2026-09-30).** He authorised a fourth round and picked, verbatim, *"Disclose + pin tests; RPC next (Recommended)"*. The option's text: *"Round 4 makes no code change. It rewrites the 'not closed' text to the reviewers' measured wording and adds three tests: carry-forward survives a rewrite, a staff unit-only change is refused, and a manager's new SKU is saved. Then the full review runs again. Closing the race (header and line in one database transaction) becomes the next PR."*
+      - Built: no service code changed.
+      - The race text above is rewritten.
+      - Three pins are added:
+        - the carried columns survive the line rewrite;
+        - a staff unit-only change past PENDING is a 403;
+        - a manager's new vendor SKU is the one written.
+      - Each pin kills a mutation the v4 reviewers found surviving at 0167bcbb9:
+        - `held: heldLine` dropped from the fold's `upsertOrderLine` call;
+        - `unit_type` dropped from `TEXT_FIGURES`;
+        - the SKU carry's precedence swapped to `held ?? dto`.
   - The notes stay open to every member.
 - **D3. A price edit on an approved order re-checks the editor's limit (founder, 2026-09-30). RULED, NOT BUILT: its design waits on four founder calls.** The approval gate runs again for the person making the edit. If the new figure is beyond their limit, the order goes back to APPROVAL_NEEDED for someone whose limit covers it.
   - **Why it is not built yet.** A separate adversarial pass on 2026-09-30 killed the literal build (park the order at APPROVAL_NEEDED, release its reservation, hold its staged mail). The builder checked its load-bearing findings:
@@ -94,13 +110,15 @@ An 817-route audit at 5a20d774b found two live holes. Both were re-verified at c
 
 ## Evidence
 
-- **`order-patch-is-not-a-side-door.spec.ts`:** 57 cases over HTTP, through the real controller and service behind main.ts's ValidationPipe.
+- **`order-patch-is-not-a-side-door.spec.ts`:** 61 cases over HTTP, through the real controller and service behind main.ts's ValidationPipe.
   - 27 were red on c47fd8a01.
   - The four `order_price_changed` cases came later: two of them are red against the D1/D2 service without the audit row.
   - The eight merge cases came in round 1: seven of them are red at e5edf9af1, 201 where 403 was expected. The eighth pinned the re-post that moves no header figure.
   - The three race and ordering cases came next, all red at d033412f5. On the two races the fold answered 201 where 409 was expected; on the third, no audit row had been filed.
   - The twelve round-3 line cases, plus the round-1 manager case whose paper now also names the line, are all red at e9c6ffe89. That is 13 failures there.
-  - Service and controller mutations killed: 6 of 6 for D1/D2, 3 of 3 for the audit row, 7 of 7 for the merge gate, 4 of 4 for the conditional write and the order of the paper, and 10 of 10 for the line gate. The house filter on the merge write is not tested on its own, because the lookup before it is already house-scoped.
+  - The round-4 pins are four cases. All are red against the base service at 597f728d9.
+  - Against that base, all 56 cases tagged `[REVERT-FAILS]` fail and the 5 untagged ones pass. `git diff c47fd8a01 597f728d9` over procurement and communications is empty.
+  - Service and controller mutations killed: 6 of 6 for D1/D2, 3 of 3 for the audit row, 7 of 7 for the merge gate, 4 of 4 for the conditional write and the order of the paper, 10 of 10 for the line gate, and 3 of 3 for the round-4 survivors. The house filter on the merge write is not tested on its own, because the lookup before it is already house-scoped.
 - **`alert-relays-are-closed.spec.ts`:** 5 cases, 4 red against the base controller and DTO.
 - **Claim `SEC-2026-09-29-ORDER-PATCH-AND-ALERT-RELAYS`:** static, red on c47fd8a01, and every one of its tripwire checks has been mutated and caught.
 
@@ -113,3 +131,4 @@ An 817-route audit at 5a20d774b found two live holes. Both were re-verified at c
 | 2026-09-30 | ADR 0090 audit of #538 at e5edf9af1 (security BLOCK, correctness APPROVE) | Round 1: the dedup merge was a second staff door to an open order's money and is closed (D2). D1's caller sentence and D2's paper sentence were narrowed to the code. D3 is untouched |
 | 2026-09-30 | Audit planner, at d033412f5 | The merge gate read the status at lookup and wrote by id alone, a stale-status race. The write is now conditional on the status and figures it gated on (409 when they moved), and the paper is filed before the line |
 | 2026-09-30 | v3 audit at e9c6ffe89 (adversary BLOCK; the correctness reviewer reproduced the same hole) | Round 3, under the founder's waiver of ADR 0231's cap and his pick "Third round: gate the line": the fold's line is gated and filed like the header, a re-post that changes nothing writes nothing, omission no longer wipes carried columns, and the header write is also conditional on `updated_at` |
+| 2026-09-30 | v4 audit at 0167bcbb9 (correctness BLOCK on the race wording and one missing pin; adversary APPROVE) | Round 4, under the founder's pick "Disclose + pin tests; RPC next (Recommended)": no service code changed. The race text was rewritten to the measured wording, and three pins kill the three surviving mutations |
