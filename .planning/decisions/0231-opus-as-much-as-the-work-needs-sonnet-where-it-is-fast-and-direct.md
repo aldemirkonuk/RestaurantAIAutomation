@@ -109,6 +109,21 @@ records it):
 > - **The founder's words.** In chat on 2026-09-29, verbatim: *"combine couple branches into one big merge at the same time? don't care how much it takes but gets the job done in one go"*. To the scope question, the option label *"All still-open PRs (Recommended)"*; to the cap question, the option label *"Waive for the batch (Recommended)"*. Relayed to the merging session by the coordinator of session a493af02.
 > - **Scope.** The file count only. The ADR 0090 audit still judges every file of every constituent, one constituent at a time; gate-owned files in the batch still need the founder's own sign-off before merge. The cap stands for every later PR.
 
+> **[2026-09-30, a fifth waiver, founder's words — the two-round fix cap, PR #538 round 3]**
+> - **What it covers.** PR #538 (`fix/order-approval-and-alert-relays`, ADR 0244), one third fix round after its second. The v3 security review reproduced a third door: the dedup fold rewrote the order line, including fees, unit pair, currency, unit prices and SKU, with no role check and no audit row past PENDING. The round gates the line like the header.
+> - **The founder's words.** In chat on 2026-09-30, session 9512567d, verbatim: *"Third round: gate the line (Recommended)"*, the option label of his AskUserQuestion answer. ADR 0244 D2 quotes the option text.
+> - **Scope.** It waives the "Fix: Opus, at most 2 rounds" line once, for this round of this PR, and sets no precedent.
+
+> **[2026-09-30, a sixth waiver, founder's words — the two-round fix cap, PR #537 text round]**
+> - **What it covers.** PR #537 (`fix/tenant-guard-and-cross-house-runs`, ADR 0243), one third fix round after its second. The round is text only: wording changes to what the reviewers measured, with no code change beyond comments, two test titles, and the one claim verify string that pins a title. A full re-audit follows.
+> - **The founder's words.** In chat on 2026-09-30, session 9512567d, verbatim: *"Waive once, text-only round (Recommended)"*, the option label of his answer.
+> - **Scope.** It waives the round cap once, for this PR, and sets no precedent. This bracket was first written into #537 itself. It moved here because any edit to this file puts a PR under the founder's own merge, and the founder chose to release #537 from that (2026-10-01, *"Re-cite and release (Recommended)"*).
+
+> **[2026-09-30, a seventh waiver, founder's words — the fix-round cap, PR #538 round 4]**
+> - **What it covers.** PR #538, a fourth round after the round-3 review. The correctness reviewer BLOCKed because the residual line race was understated: confirm-deal and the vendor's acceptance lose their price, and an approval landing in the window carries a staff fold's line changes. It also found carry-forward test gaps. The round is disclosure and tests only, with no service code. The one-transaction fix (an RPC) is the next PR.
+> - **The founder's words.** In chat on 2026-09-30, session 9512567d, verbatim: *"Disclose + pin tests; RPC next (Recommended)"*, the option label of his answer. ADR 0244 D2 quotes the option text.
+> - **Scope.** Once, for this round of this PR. It sets no precedent.
+
 **3. Where Sonnet gets the emphasis** (item 86's *"fast, and direct"* work Sonnet is
 *"highly capable of"*): verification runs and check suites, mechanical edits to a spec,
 branch updates and merges of `main`, posting PRs and comments, the plan-scoped audit
