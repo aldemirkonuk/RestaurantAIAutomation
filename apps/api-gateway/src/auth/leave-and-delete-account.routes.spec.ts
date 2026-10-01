@@ -503,6 +503,87 @@ describe("leave and delete account reach THE removal over the real routes (ADR 0
       "m-owner-b",
     ]);
   });
+
+  /*
+   * A ROW OUTSIDE ITS WINDOW STILL LETS ITS PERSON LEAVE (founder, 2026-10-01:
+   * "Let leaving and deletion through (Recommended)", ADR 0248). Removing
+   * oneself, here and in account deletion, needs only a row that exists;
+   * every other check keeps the window. These cases set `valid_from` /
+   * `valid_until` on rows that stay `is_active`, so the stubbed JWT step
+   * (overridden above, as it would pass them: `validateJwtPayload` reads
+   * `is_active` alone) is not what decides.
+   *
+   * [REVERT-FAILS] here means red with `restaurants/members.service.ts` as it
+   * was at 48226f6d1, before this change, when `assertMembership` refused a row
+   * outside its window even to the person removing themself. The last case is
+   * a pin of the window rule itself: it passes at 48226f6d1 and is red at
+   * 2019ae7f6, where the window was not read.
+   */
+  const LONG_AGO = "2020-01-01T00:00:00.000Z";
+  const FAR_AHEAD = "2999-01-01T00:00:00.000Z";
+  const rowOf = (id: string) =>
+    db.tables.user_restaurant_access.find((r) => r.id === id)!;
+
+  it.each([
+    ["an EXPIRED row (valid_until in the past)", { valid_until: LONG_AGO }],
+    ["a NOT-YET-VALID row (valid_from years ahead)", { valid_from: FAR_AHEAD }],
+  ])(
+    "[REVERT-FAILS] POST /auth/me/leave-restaurant lets %s leave, and the removal runs",
+    async (_label, window) => {
+      Object.assign(rowOf("a-staff-a"), window);
+
+      const res = await call(
+        "POST",
+        "/auth/me/leave-restaurant",
+        { user: STAFF, house: HOUSE_A, role: "staff" },
+        { restaurantId: HOUSE_A },
+      );
+
+      expect(res).toEqual({
+        status: 200,
+        body: { success: true, message: "Left restaurant" },
+      });
+      expect(removeFromHouse).toHaveBeenCalledTimes(1);
+      expect(
+        db.tables.user_restaurant_access.some((r) => r.id === "a-staff-a"),
+      ).toBe(false);
+      expect(db.tables.team_members.some((m) => m.id === "m-staff-a")).toBe(
+        false,
+      );
+    },
+  );
+
+  it("[REVERT-FAILS] DELETE /auth/me completes when one of the person's rows is EXPIRED", async () => {
+    Object.assign(rowOf("a-staff-b"), { valid_until: LONG_AGO });
+
+    const res = await call("DELETE", "/auth/me", { user: STAFF });
+
+    expect(res).toEqual({
+      status: 200,
+      body: { success: true, message: "Account deleted" },
+    });
+    expect(removeFromHouse).toHaveBeenCalledTimes(2);
+    expect(db.tables.users.some((u) => u.user_id === STAFF)).toBe(false);
+    expect(
+      db.tables.user_restaurant_access.some((r) => r.user_id === STAFF),
+    ).toBe(false);
+  });
+
+  it("an EXPIRED manager row still cannot remove ANOTHER member: 403, and nothing is removed", async () => {
+    Object.assign(rowOf("a-manager-a"), { valid_until: LONG_AGO });
+
+    const res = await call(
+      "DELETE",
+      `/restaurants/${HOUSE_A}/members/${STAFF}`,
+      { user: MANAGER, house: HOUSE_A, role: "manager" },
+    );
+
+    expect(res.status).toBe(403);
+    expect(removeFromHouse).not.toHaveBeenCalled();
+    expect(rowOf("a-staff-a")).toMatchObject({ is_active: true });
+    expect(db.tables.team_members.some((m) => m.id === "m-staff-a")).toBe(true);
+    expect(removals()).toHaveLength(0);
+  });
 });
 
 describe("negative control: the same routes with the removal unwired refuse before any roster or account write", () => {

@@ -70,12 +70,26 @@ Filed by `fix/role-read-error-means-no-role` (ADR 0248, "What stays open" (d)), 
 - Its route callers take the house from a tenant-compared `:restaurantId`, and the leave route from a tenant-compared `body.restaurantId`. So over HTTP the JWT step reads that house's row first, and the error path showed at the helper only when that read succeeded and this one errored.
 - `DELETE` of the account calls it for each house with an active row, including houses the JWT step did not check.
 
-**How it is closed** (this branch, `members.service.ts:63-110`).
+**How it is closed** (this branch, `members.service.ts:71-123`).
 - An access read that errors is logged and answers 403, and the `users` row is not read.
-- A row that exists gives its role only while `isLiveMembership` holds.
+- A row that exists gives its role only while `isLiveMembership` holds, except for a person removing themself (entry below).
 - Only no row at all reads `users.role || "staff"`, unchanged.
 - `scripts/read_error_baseline.json` drops `members.service.ts::user_restaurant_access::access`, so the baseline goes from 151 to 150.
 - Pinned by `apps/api-gateway/src/restaurants/members.service.spec.ts`, describe "MembersService.assertMembership — the access row decides, and an unreadable one is no role".
+
+## Leaving a house or deleting an account was refused for a row outside its window — ~~OPEN~~ CLOSED on `fix/role-read-error-means-no-role` — 2026-10-01
+
+Found and closed on `fix/role-read-error-means-no-role` (ADR 0248, Decision 9), before review.
+
+**What it was.** Once both helpers honoured the window, a person whose access row was still active but outside its dates was refused when removing themself. `MembersService.removeMember` checks the actor with `assertMembership`, so the leave route and `DELETE` of the account answered 403 at that house. Such a row comes only from a hand-written date.
+
+**The ruling.** The founder answered *"Let leaving and deletion through (Recommended)"*. The option read: *"Removing yourself and deleting your account need only an existing row, not a live one, so nobody is ever trapped. Every other check keeps honouring the window. A small change plus a spec in #561, still within its 16 files."* Rejected: *"Record it as open"*.
+
+**How it is closed.**
+- `assertMembership` takes `opts.removingSelf`, and `removeMember` passes it only when the actor is the target (this branch, `restaurants/members.service.ts:369-376`). Then any existing row admits the person (`:92-97`).
+- An access-read error still gives no role.
+- Removing someone else still needs a live owner or manager row.
+- Pinned by `apps/api-gateway/src/auth/leave-and-delete-account.routes.spec.ts`.
 
 ## The no-row fallback still contradicts `team.service.ts` — OPEN — 2026-10-01
 

@@ -2,7 +2,7 @@
 
 - **Status:** Locked 2026-10-01.
 - **Date:** 2026-10-01
-- **Decider:** Aldemir (founder). Seven answers, all 2026-10-01 in session 9512567d, each relayed to the fix lane by the lane coordinator. Each question, every option's label and text, and the picked label are copied verbatim from the session transcript under "Options considered".
+- **Decider:** Aldemir (founder). Eight answers, all 2026-10-01 in session 9512567d, each relayed to the fix lane by the lane coordinator. Each question, every option's label and text, and the picked label are copied verbatim from the session transcript under "Options considered".
   1. **What an access-read error means.** He picked "Next PR: error means no role (Recommended)".
   2. **What the order seal and five other callers do with a role they cannot read.** He picked "Strict for the order seal (Recommended)".
   3. **The second copy of the rule, `MembersService.assertMembership`.** He picked "Fold into #561 (Recommended)".
@@ -10,6 +10,7 @@
   5. **The clock the window is read with.** He picked "Small tolerance on valid_from (Recommended)".
   6. **The order in which #561 and the PRs it meets land.** He picked "#561 last + docs PR (Recommended)".
   7. **Whether to fix the record before review.** He picked "Fix now, before review (Recommended)".
+  8. **Whether leaving a house and deleting an account honour the window.** He picked "Let leaving and deletion through (Recommended)".
 - **Keywords:** VALID_FROM_CLOCK_TOLERANCE_MS, clock skew, lookupRestaurantRole, MembersService.assertMembership, isLiveMembership, is_active, valid_from, valid_until, inactive row, held membership, readRestaurantRole, resolveRestaurantRole, assertCanManageRestaurant, user_restaurant_access, users.role, legacy fallback, access-read error, outage, readError, RestaurantRoleUnreadableError, assertApprovalAllowed, order seal, APPROVAL_NEEDED, order_approval_refused, registerAccount, acceptHeldMembership
 - **Links:**
   - [[0020-no-fabricated-answers]] (an outage is not a fact about the person).
@@ -66,7 +67,7 @@ Line numbers are at `origin/main` 2019ae7f6 unless marked "this branch". The swe
   - It is also reached on `/organizations/locations/:id`, and from the recurring-orders cron.
 - **An inactive row, or no row at all, at the token's house.** The JWT step answers 401 first. Over HTTP the helper's inactive-row path and its no-row fallback are reached only on `/organizations/locations/:id`, and from the cron.
   - `DELETE` of the account reads only active rows, so it does not meet an inactive one.
-- **An active row outside its window.** The JWT step passes it. On 1c1a676f8 the helpers gave its role; now they give no role. That is reachable over HTTP, including the leave route and `DELETE` of the account, which now answer 403 for such a row.
+- **An active row outside its window.** The JWT step passes it. On 1c1a676f8 the helpers gave its role; now they give no role. That is reachable over HTTP. A person removing themself is the one exception: under the eighth answer, the leave route and `DELETE` of the account let such a row through (Decision 9).
 - **An active row with no role.** The JWT step passes it with `house_role: null`. On 1c1a676f8 the shared lookup then fell back to `users.role`; now it gives no role. That is reachable over HTTP.
 
 **Specs measure the helper.** The specs on this PR call the helpers, the services and the controllers directly. They never run `validateJwtPayload`. Where a case measures an outcome that the JWT step reaches first over HTTP, the spec says so in its header.
@@ -134,12 +135,11 @@ This is every caller of `lookupRestaurantRole`, `readRestaurantRole`, `resolveRe
   - The relay door (`relay-email.service.ts:494`) reads no role.
   - When a threshold rule fires, the order seal treats the person as holding no role: it parks a PENDING order and files a refusal, as it does for staff.
   - The 403 routes refuse, and the five callers above degrade.
-- **Every caller of `assertMembership` (answer 3)** answers 403 "Access denied to this restaurant" for that person, and for anyone during an access-read error. Lines are at `origin/main` 2019ae7f6:
+- **Every caller of `assertMembership` (answer 3)** answers 403 "Access denied to this restaurant" for that person, and for anyone during an access-read error. The exception is a person removing themself, admitted by any row that exists (Decision 9). Lines are at `origin/main` 2019ae7f6:
   - `members.service.ts:94` `getMembers`, `:153` `getInvites`, `:199` `updateMemberRole` (owner), `:338-339` `removeMember`, `:583` `addMember` and `:672` `revokeInvite`.
   - `restaurants/operating-hours.service.ts:63` (read) and `:100` (write).
   - `logs/logs.controller.ts:73` `getTimeline`.
-  - `removeMember` asks for membership even when a person removes themself (`:338`). At the helper, an inactive row plus a `users` row naming the house, or an out-of-window row, used to admit that person; now it does not.
-  - Over HTTP, the leave route's JWT step already refuses a token whose house has no active row. So what changes there is an active row outside its window: leaving, and `DELETE` of the account for that house, now answer 403. Such a row comes only from a hand-written value.
+  - `removeMember` asks for membership even when a person removes themself (`:338`). The window rule made a row outside its window refuse that person, so leaving and `DELETE` of the account answered 403 for such a row. The founder's eighth answer closed that before review: see Decision 9. A person removing themself is admitted by any row that exists, and the window still applies to every other caller.
 
 **Who can be in that newly changed state.** This is the lockout check: could a legitimate owner or manager be refused at their own house? It was measured by reading code; no production query was run. On a token-house route over HTTP, the JWT step already refuses an inactive row with 401 whatever this PR does. So for an inactive row the check matters at `/organizations/locations/:id` and the cron; for the window it matters everywhere.
 - **No gateway code deactivates an existing row, and no code in this repository writes `valid_until`.** `calendar/stop-links-on-leaving.ts:28-30` says the same for the gateway. The three removals delete the row after clearing `users.restaurant_id`: `members.service.ts:462` and `:478-483`, and `team/team.service.ts:1274-1294`.
@@ -231,6 +231,13 @@ Copied verbatim from the session transcript (`AskUserQuestion` calls at the time
 
 - "Fix now, before review (Recommended)" (picked): "Treat it as part of the build, since no reviewer has ruled. Copy every option verbatim from the transcript, scope the two sentences, and record the corrected premise. Then run the full review on the new head."
 - "Review as is" (not picked): "Run both reviewers now. A block on the verbatim records is likely, and the fix would then use #561's first fix round."
+
+**Eighth question, asked 2026-10-01T17:18:48.480Z.** Picked: "Let leaving and deletion through (Recommended)".
+
+> One consequence of 'Close both in #561', newly measured: once the validity window is honoured, a person whose access row is still active but outside its dates is refused when they try to leave that house (403). Deleting their whole account also stops with a 403 at that house. Such a row exists only if someone writes a date by hand; no code writes valid_until. But it would block someone from leaving or deleting their account. How should #561 handle it?
+
+- "Let leaving and deletion through (Recommended)" (picked): "Removing yourself and deleting your account need only an existing row, not a live one, so nobody is ever trapped. Every other check keeps honouring the window. A small change plus a spec in #561, still within its 16 files."
+- "Record it as open" (not picked): "Keep #561 as built, and record the trap in ADR 0248 as open. It is reachable only through a hand-written date."
 ## Corrected premises
 
 Two questions above rested on statements about the code that were wrong. They are corrected here; the answers stand, for the reasons given.
@@ -258,9 +265,9 @@ Two questions above rested on statements about the code that were wrong. They ar
    - It selects `is_active, valid_from, valid_until`, and gives the row's role only while `isLiveMembership` holds and the role is non-empty. Otherwise it gives `role: null` with no `readError`, and the `users` row is not read.
    - Only a read that succeeded and found no row falls back to `users.role` when `users.restaurant_id` is this house (`:100-113`), unchanged.
    - `isLiveMembership` is imported, not copied. It treats an absent bound as open, an unparseable one as failing the row, and compares with `Date.now()`, with the `valid_from` tolerance of Decision 7.
-5. **`MembersService.assertMembership` keeps the same three rules as its own copy** (this branch, `members.service.ts:63-110`).
+5. **`MembersService.assertMembership` keeps the same three rules as its own copy** (this branch, `members.service.ts:71-123`).
    - An access read that errors is logged and answers 403, and the `users` row is not read.
-   - A row that exists gives its role only while `isLiveMembership` holds.
+   - A row that exists gives its role only while `isLiveMembership` holds. The one exception is a person removing themself: Decision 9.
    - Only no row at all reads `users.role || "staff"`, unchanged.
    - It is not routed through the shared lookup because its contract differs: `|| "staff"` and a 403 rather than `null`.
    - Its access read is no longer a swallowed read, so `scripts/read_error_baseline.json` drops `members.service.ts::user_restaurant_access::access` (151 to 150).
@@ -273,7 +280,7 @@ Two questions above rested on statements about the code that were wrong. They ar
    - `valid_until` has no tolerance.
    - Every caller of the predicate gets the tolerance, and for each the only change is that a row whose `valid_from` sits at most two minutes ahead of the gateway's clock reads as started. The callers on this branch:
      - `organizations/organizations.service.ts:95`, `lookupRestaurantRole`: the role lookups.
-     - `restaurants/members.service.ts:84`, `assertMembership`.
+     - `restaurants/members.service.ts:95`, `assertMembership`.
      - `communications/recipient-resolver.service.ts:403`, `getUserIdsForRoles` (`:377`): who receives a notification addressed to a role.
      - `common/tenant/live-membership.ts:133`, `houseMembersInRoles`. It is read by `websocket/websocket.gateway.ts:671` (owner- and manager-only emits), `common/orchestrator/inbound-responder.service.ts:1533` (manager notifications), `notifications/producers/market-price.producer.ts:132` and `team/access-audit.ts:183` (who is told of an access change).
    - Every code path writes its own `now` into `valid_from`: the database's on insert, the gateway's in `acceptHeldMembership`. A start that reads as ahead of the gateway's clock comes from a clock difference, or from a hand-written value. See "Corrected premises".
@@ -282,6 +289,16 @@ Two questions above rested on statements about the code that were wrong. They ar
    - **#550's test.** `apps/api-gateway/src/procurement/recurring-schedule-edits-need-a-manager.http.spec.ts` has a case named "lets a legacy manager of this house edit and deactivate". It fails the access read and expects 200. That spec stubs the JWT step, so the case measures the helper: over HTTP the JWT step would answer 503 first if its own read failed. Under Decision 1 that caller gets 403 at the helper, so the case is changed to expect 403 with nothing written. The verify of claim `RECURRING-SCHEDULE-EDITS-NEED-A-MANAGER` names that title, so it is updated with it.
    - **The caller list.** It gains the `assertCanManageRestaurant` callers those PRs add: two in `procurement/procurement.service.ts` (#538), PUT and DELETE in `procurement/recurring-orders.controller.ts` (#550), and one in `procurement/order-recurrence.service.ts` (#558).
    - **The docs PR.** A separate docs PR corrects the fallback sentences in ADRs 0246 and 0247 and the claim texts of #550 and #558.
+
+9. **Removing oneself needs only a row that exists** (the eighth answer; this branch, `restaurants/members.service.ts:63-76` and `:92-97`, called at `:369-376`).
+   - `assertMembership` takes `opts.removingSelf`. When it is set, a row that exists admits the person whether or not it is live, at its role, or `staff` when the role is empty.
+   - `removeMember` passes it only when the actor is the target. That covers the leave route (`auth.service.ts:4451`), `DELETE` of the account (`:4538`), and `DELETE /restaurants/:restaurantId/members/:memberId` when a person names themself (`restaurants/members.controller.ts:74-84`).
+   - No other caller passes it.
+   - An access read that errors still gives no role, and no row at all still goes to the `users` fallback.
+   - Removing someone else still needs a live owner or manager row.
+   - Over HTTP the JWT step passes an active row outside its window, so the leave route and `DELETE` of the account answer 200 for it. An inactive row at the token's house is still refused 401 by the JWT step first.
+   - Pinned by `apps/api-gateway/src/auth/leave-and-delete-account.routes.spec.ts` (the full app, with the JWT step stubbed): an expired and a not-yet-valid row can leave, an account with an expired row is deleted, and an expired manager is refused when removing another member.
+   - The resolved claim `ADR-0162-OWNERS-REMOVE-OWNERS` (`CLAIMS.jsonl:358`) and the OPEN tripwire `ADR-0162-USERS-ROW-FALLBACK-RETIRED` (`:361`) pin that text exactly. Both are re-pinned in place.
 
 ## Consequences
 
@@ -315,6 +332,7 @@ Each item was measured on this branch by reading code. No production query was r
 - **(b) The validity window is honoured** by both helpers, through `isLiveMembership`.
 - **(d) `MembersService.assertMembership`'s access-read-error fallback is closed.** This is the founder's third answer.
 - **The clock skew on `valid_from` is covered up to two minutes.** This is the founder's fifth answer; see Decision 7.
+- **Leaving and account deletion are not trapped by a row outside its window.** This is the founder's eighth answer; see Decision 9.
 
 ## Review trail
 
@@ -324,3 +342,4 @@ Each item was measured on this branch by reading code. No production query was r
 | 2026-10-01 | — | Widened on the same branch with answers 3 and 4: the row-decides and window rules, and `MembersService.assertMembership`. |
 | 2026-10-01 | — | Answer 5 on the same branch: the two-minute `valid_from` tolerance in `isLiveMembership`. |
 | 2026-10-01 | — | Answers 6 and 7, before review: every question and option copied verbatim from the transcript, the deactivation sentence scoped, the `valid_from` sentences corrected for the tolerance, the corrected premises recorded, and the merge order with its planned rebase work. |
+| 2026-10-01 | — | Answer 8, before review: a person removing themself needs only a row that exists. |
