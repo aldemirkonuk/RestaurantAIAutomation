@@ -18,9 +18,18 @@ import { resolveSignUpTimezone } from "../auth/sign-up-timezone";
  * two-step lookup (`user_restaurant_access`, then the legacy `users.role`).
  *
  * `readError` is set whenever a read the answer depends on failed: the access
- * row (whose absence is what sends us to the legacy home, so an unreadable one
- * leaves the answer unknown even when the legacy row names a role), or the
- * legacy row when it was needed.
+ * row, or the legacy row when it was needed.
+ *
+ * AN UNREADABLE ACCESS REGISTER IS NOT AN EMPTY ONE (founder, 2026-10-01:
+ * "Next PR: error means no role (Recommended)", ADR 0248). Only an access read
+ * that SUCCEEDED and found no active row sends us to `users.role`. When the
+ * access read errors, the answer is `role: null` with `readError` set, and the
+ * legacy row is not read at all. Before this change the legacy role was
+ * returned on an access-read error. `registerAccount` writes
+ * `users.role = 'owner'` and `acceptHeldMembership` later sets only
+ * `users.restaurant_id`, so an account made by `registerAccount` that joined a
+ * house as staff that way read as the house's owner whenever this read failed,
+ * and passed its manager checks.
  *
  * Module-level so the vendor-send authority (`vendor-send-authority.service.ts`,
  * ADR 0175 D10) can use the same rule without importing this whole service and
@@ -45,9 +54,20 @@ export async function lookupRestaurantRole(
     .eq("is_active", true)
     .maybeSingle();
 
+  // An errored read decides nothing, and it does not send us to the legacy
+  // row either: see the header.
+  if (accessError) {
+    return {
+      role: null,
+      readError: `this house's access register could not be read (${accessError.message})`,
+    };
+  }
+
   const fromAccess = (access as { role?: string } | null)?.role;
   if (fromAccess) return { role: fromAccess, readError: null };
 
+  // The access read succeeded and found no active row: the legacy home decides,
+  // unchanged.
   const { data: user, error: userError } = await supabase
     .from("users")
     .select("role, restaurant_id")
@@ -56,11 +76,9 @@ export async function lookupRestaurantRole(
   const legacy = user as { role?: string; restaurant_id?: string } | null;
   const role =
     legacy?.restaurant_id === restaurantId ? (legacy.role ?? null) : null;
-  const readError = accessError
-    ? `this house's access register could not be read (${accessError.message})`
-    : userError
-      ? `the person's home house could not be read (${userError.message})`
-      : null;
+  const readError = userError
+    ? `the person's home house could not be read (${userError.message})`
+    : null;
   return { role, readError };
 }
 

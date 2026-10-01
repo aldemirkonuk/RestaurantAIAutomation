@@ -139,7 +139,10 @@ import {
   type ApprovalDecision,
   type OrderUnderTest,
 } from "../settings/approval-thresholds";
-import { OrganizationsService } from "../organizations/organizations.service";
+import {
+  OrganizationsService,
+  RestaurantRoleUnreadableError,
+} from "../organizations/organizations.service";
 import {
   policyNote,
   recordApprovalRefusal,
@@ -4442,10 +4445,28 @@ export class ProcurementService {
     const decision = decideApproval(readout.thresholds, order);
     if (!decision.requiredRole) return; // No rule fired — seal as before.
 
-    const actorRole = await this.organizations.resolveRestaurantRole(
-      userId,
-      restaurantId,
-    );
+    // THE SEAL READS THE ROLE STRICTLY (founder, 2026-10-01: "Strict for the
+    // order seal (Recommended)", ADR 0248). A role that could not be read is
+    // not a person with no role: reading it as `null` would park the order
+    // below and file a refusal saying this person holds no role, an outage
+    // reported as a fact about the person (ADR 0020). So an unreadable role
+    // answers 500 BEFORE anything is written: the order is not parked, no
+    // refusal row is filed, and the person can try again. `approvalGate` (the
+    // page's read, below) keeps the non-strict reading, where an unreadable
+    // role reads as no role.
+    let actorRole: string | null;
+    try {
+      actorRole = await this.organizations.readRestaurantRole(
+        userId,
+        restaurantId,
+      );
+    } catch (err) {
+      if (!(err instanceof RestaurantRoleUnreadableError)) throw err;
+      throw new InternalServerErrorException(
+        `Your role at this house could not be read (${err.message}), so nothing was sealed, ` +
+          "the order was not moved and no refusal was filed. Try again in a moment.",
+      );
+    }
     if (roleSatisfies(actorRole, decision.requiredRole)) return;
 
     await this.parkOrderAwaitingApproval(restaurantId, orderId, row.status);
