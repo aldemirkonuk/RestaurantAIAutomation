@@ -16,7 +16,8 @@ import {
   useTodayPulse,
 } from "@/api/queries";
 import type { InventoryItem } from "@/api/types";
-import { salesWithheld } from "@/components/today/pulseStripView";
+import { drawSalesCard } from "@/components/today/pulseStripView";
+import { useSession } from "@/state/session";
 
 const WEB_URL = process.env.EXPO_PUBLIC_WEB_URL;
 
@@ -44,6 +45,7 @@ const CATEGORY_LABEL: Record<string, string> = {
 export default function InsightsScreen() {
   const router = useRouter();
   const pulse = useTodayPulse();
+  const role = useSession((s) => s.user?.role);
   const inventory = useInventory();
   const summary = useInventorySummary();
   const insights = useInsightFeed();
@@ -193,9 +195,11 @@ export default function InsightsScreen() {
         </Card>
 
         {/* Sales — owners and managers only (ADR 0253 round 2): when the
-            gateway leaves the figures out for this role, the card is not drawn
-            at all, so staff never read the "Connect Toast" line as a fact. */}
-        {pulse.data && salesWithheld(pulse.data) ? null : (
+            gateway leaves the figures out for this role, or the request failed
+            and the session's role is not owner or manager, the card is not
+            drawn at all, so staff never read the "Connect Toast" line as a
+            fact (`drawSalesCard`). */}
+        {!drawSalesCard(pulse.data, role) ? null : (
           <Card style={{ gap: space.md }}>
             <AppText variant="caption" tone="tertiary">
               Sales tonight

@@ -47,6 +47,25 @@ export function salesWithheld(data: TodayPulse): boolean {
   return !Object.prototype.hasOwnProperty.call(data, "revenueToday");
 }
 
+/**
+ * Whether the Insights tab draws its "Sales tonight" card.
+ *
+ * With a pulse in hand, the gateway's answer decides (`salesWithheld`), even
+ * against the role the phone remembers. Without one (still loading, or the
+ * request failed) the phone falls back on the role `/auth/me` gave the
+ * session: only an owner or a manager is drawn the card, so a staff member
+ * whose request failed is not told to "Connect Toast", a line about the house
+ * that is false for them. A role the phone does not know gets no card. This is
+ * a display choice, never the gate: the gateway decides what is sent.
+ */
+export function drawSalesCard(
+  data: TodayPulse | undefined,
+  role: string | undefined,
+): boolean {
+  if (data) return !salesWithheld(data);
+  return role === "owner" || role === "manager";
+}
+
 export interface PulseStripView {
   revenue: PulseRevenueView;
   /**

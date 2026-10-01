@@ -1,5 +1,6 @@
 import {
   REVENUE_UNAVAILABLE_MESSAGE,
+  drawSalesCard,
   resolvePulseStripView,
   salesWithheld,
 } from "@/components/today/pulseStripView";
@@ -121,5 +122,38 @@ describe("resolvePulseStripView — sales withheld for this role", () => {
 
     expect(view.revenue.status).toBe("withheld");
     expect(view.decisionsLabel).toBeNull();
+  });
+});
+
+/**
+ * The Insights tab's "Sales tonight" card. When the pulse request has failed
+ * there is no body to read the withholding from, and the card used to fall
+ * through to "Connect Toast on the web dashboard", which is false for a staff
+ * member. Without a body, the card is drawn for an owner or a manager only.
+ */
+describe("drawSalesCard", () => {
+  const staffBody: TodayPulse = {
+    pendingDecisions: 1,
+    criticalCount: 0,
+    windowStart: "2026-10-01T00:00:00.000Z",
+    windowEnd: "2026-10-01T20:00:00.000Z",
+    generatedAt: "2026-10-01T20:00:00.000Z",
+  };
+
+  it("draws nothing for a staff member, or an unknown role, with no pulse body", () => {
+    expect(drawSalesCard(undefined, "staff")).toBe(false);
+    expect(drawSalesCard(undefined, undefined)).toBe(false);
+    expect(drawSalesCard(undefined, "OWNER")).toBe(false);
+  });
+
+  it("draws the card for an owner or a manager with no pulse body", () => {
+    expect(drawSalesCard(undefined, "owner")).toBe(true);
+    expect(drawSalesCard(undefined, "manager")).toBe(true);
+  });
+
+  it("lets the gateway's body decide once there is one", () => {
+    expect(drawSalesCard(staffBody, "owner")).toBe(false);
+    expect(drawSalesCard(pulse({ revenueToday: 4210 }), "staff")).toBe(true);
+    expect(drawSalesCard(pulse({ revenueToday: null }), "manager")).toBe(true);
   });
 });

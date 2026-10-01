@@ -28,7 +28,11 @@
  */
 
 import { MobileController } from "./mobile.controller";
-import { MobileService } from "./mobile.service";
+import {
+  MobileService,
+  MONEY_FREE_NOTIFICATION_TYPES,
+  NON_MONEY_META_KEYS,
+} from "./mobile.service";
 
 const HOUSE = "house-1";
 
@@ -64,7 +68,7 @@ const VERIFY_DELIVERY = {
   createdAt: "2026-10-01T08:00:00.000Z",
 };
 
-function build() {
+function build(notifications: unknown[] = [VERIFY_DELIVERY]) {
   const procurementService = {
     listPendingOrders: jest.fn().mockResolvedValue([PENDING_ORDER]),
   };
@@ -72,7 +76,7 @@ function build() {
     getPendingConversations: jest.fn().mockResolvedValue([PENDING_DRAFT]),
   };
   const notificationsService = {
-    getUnreadNotifications: jest.fn().mockResolvedValue([VERIFY_DELIVERY]),
+    getUnreadNotifications: jest.fn().mockResolvedValue(notifications),
   };
   const toastService = {
     getSalesData: jest
@@ -105,6 +109,17 @@ function build() {
 
 const caller = (role: unknown) =>
   ({ userId: "user-1", restaurantId: HOUSE, role }) as never;
+
+/**
+ * What goes on the wire, less the two values the clock writes: `score` (an
+ * age nudge with a long fractional part) and `generatedAt`. Left in,
+ * a figure search would fail at random whenever the clock's digits spelled one.
+ */
+function wire(body: object): string {
+  return JSON.stringify(body, (key, value) =>
+    key === "score" || key === "generatedAt" ? undefined : value,
+  );
+}
 
 /** Every way a role can fail to be a money role. */
 const NOT_MONEY_ROLES: Array<[string, unknown]> = [
@@ -149,9 +164,9 @@ describe("GET /mobile/feed — money only for owners and managers (ADR 0253 roun
       ).toBe(false);
 
       // Belt and braces: the figure appears nowhere in what goes on the wire.
-      const wire = JSON.stringify(feed);
-      expect(wire).not.toContain("1234");
-      expect(wire).not.toContain("1,234");
+      const onTheWire = wire(feed);
+      expect(onTheWire).not.toContain("1234");
+      expect(onTheWire).not.toContain("1,234");
     });
 
     it("still gets the cards that carry no money (vendor reply, delivery check)", async () => {
@@ -163,6 +178,348 @@ describe("GET /mobile/feed — money only for owners and managers (ADR 0253 roun
         "receipt_verification",
       ]);
       expect(feed.counts.total).toBe(2);
+    });
+  });
+});
+
+/**
+ * NOTIFICATION CARDS
+ * ------------------
+ * The feed also turns the caller's unread notifications into cards, and those
+ * rows are written by many writers, several of them to every member of the
+ * house (`NotificationsService.persistForRestaurant`, and the producers'
+ * whole-house audience). Before this round a card's subtitle was the row's
+ * `message` and its `meta` was the row's whole `metadata`, so a staff member
+ * read "62 checks, $6,123.45." off a sale record. Each fixture below has the
+ * shape its writer produces (cited), with figures picked so a leak is findable
+ * on the wire.
+ */
+
+/** `sale-record.producer.ts:162-195` — to every member of the house. */
+const SERVICE_CLOSED = {
+  id: "notif-sale",
+  type: "service_closed",
+  title: "Service record for 2026-09-30",
+  message:
+    "62 checks, $6,123.45. 140 covers. Best seller by revenue: Sancerre 2022, 12 sold for $871.50.",
+  priority: "low",
+  metadata: {
+    serviceDate: "2026-09-30",
+    checks: 62,
+    revenue: 6123.45,
+    currency: "USD",
+    covers: 140,
+    checksWithoutCovers: 0,
+    topItem: { name: "Sancerre 2022", qty: 12, revenue: 871.5 },
+    revenueBasis: "sum of pos_checks.total where voided = false",
+    timeZone: "America/New_York",
+  },
+  createdAt: "2026-10-01T04:00:00.000Z",
+};
+
+/** `invoice-confirmed.producer.ts:149-185` — to every member of the house. */
+const INVOICE_CERTIFIED = {
+  id: "notif-invoice",
+  type: "invoice_received",
+  title: "Invoice INV-77 certified — Cave Vendor",
+  message:
+    "$2,981.25 from Cave Vendor. The lines do not tie out: $35.75 apart from the stated total.",
+  priority: "medium",
+  metadata: {
+    documentId: "doc-77",
+    docType: "invoice",
+    docNumber: "INV-77",
+    providerId: "vendor-1",
+    vendorName: "Cave Vendor",
+    total: 2981.25,
+    currency: "USD",
+    tiesOut: false,
+    tieOutDelta: 35.75,
+  },
+  createdAt: "2026-10-01T05:00:00.000Z",
+};
+
+/** `procurement.service.ts:6866-6886` — to every member of the house. */
+const DELIVERY_DISCREPANCY = {
+  id: "notif-discrepancy",
+  type: "invoice_received",
+  title: "Delivery discrepancy: Chablis",
+  message: "Billed $31.25 against an agreed $28.00.",
+  priority: "critical",
+  metadata: {
+    orderId: "order-9",
+    inventoryId: "inv-9",
+    matchStatus: "price_mismatch",
+    backorderQty: 0,
+    creditDue: 191.5,
+    effectiveUnitCost: 31.25,
+    providerId: "vendor-1",
+  },
+  createdAt: "2026-10-01T06:00:00.000Z",
+};
+
+/** `goal-reached.producer.ts:178-215`, a currency goal — to every member. */
+const GOAL_REACHED = {
+  id: "notif-goal",
+  type: "goal_reached",
+  title: "September revenue reached its target",
+  message: "Revenue stands at $52,517.00 against a target of $50,013.00.",
+  priority: "medium",
+  metadata: {
+    goalId: "goal-1",
+    metricKey: "revenue",
+    unit: "currency",
+    target: 50013,
+    current: 52517,
+  },
+  createdAt: "2026-10-01T07:00:00.000Z",
+};
+
+/**
+ * `market-price.producer.ts:232-282`. Written to owners and managers only, but
+ * a row written before a demotion stays in the demoted member's unread list.
+ */
+const PRICE_CHANGE = {
+  id: "notif-price",
+  type: "price_change",
+  title: "Barolo 2019 is 19% below its 30-day average",
+  message:
+    "Cave Vendor is quoting $41.37 for Barolo 2019, against a 30-day average of $50.83 across 4 earlier sightings.",
+  priority: "low",
+  metadata: {
+    productKey: "barolo-2019",
+    productName: "Barolo 2019",
+    currency: "USD",
+    latestPrice: 41.37,
+    averagePrice: 50.83,
+    absoluteBelow: 9.46,
+    fractionBelow: 0.186,
+  },
+  createdAt: "2026-10-01T07:30:00.000Z",
+};
+
+/**
+ * `own-wage-notice.ts:115-140`. Written to owners only, under the shared
+ * `system` type, which is why `system` cannot be on the money-free list.
+ */
+const OWN_WAGE = {
+  id: "notif-wage",
+  type: "system",
+  title: "Dana set their own wage",
+  message:
+    "Dana changed their own hourly wage on Team from $18.35 to $21.65. A manager you allowed to see pay may do this; every wage change is kept with who made it.",
+  priority: "high",
+  metadata: {
+    action: "own_wage_set",
+    member_id: "member-1",
+    hourly_wage: { from: 18.35, to: 21.65 },
+    currency: "USD",
+  },
+  createdAt: "2026-10-01T08:00:00.000Z",
+};
+
+/** `promotion-extractor.service.ts:242-277` — owners and managers. */
+const PROMO_DIGEST = {
+  id: "notif-promo",
+  type: "promo_digest",
+  title: "2 vendor deals today",
+  message: "Cave Vendor — $45.50 off",
+  priority: "low",
+  metadata: { count: 2 },
+  createdAt: "2026-10-01T08:10:00.000Z",
+};
+
+/** A type no writer uses yet: a new writer's money must not pass by default. */
+const FUTURE_TYPE = {
+  id: "notif-future",
+  type: "spend_forecast",
+  title: "Next week's spend",
+  message: "Expect $7,777.00 of spend next week.",
+  priority: "medium",
+  metadata: { orderId: "order-7", spend: 7777, budgetLeft: 1313 },
+  createdAt: "2026-10-01T08:30:00.000Z",
+};
+
+/**
+ * Money-free from both of its writers: `notifications.service.ts:418-431` and
+ * `delivery-recorded.producer.ts:154-190`.
+ */
+const DELIVERY_ARRIVED = {
+  id: "notif-arrived",
+  type: "order_delivered",
+  title: "Delivery arrived: Chablis",
+  message: "6 bottles of Chablis from Cave Vendor",
+  priority: "medium",
+  metadata: {
+    orderId: "order-8",
+    wineName: "Chablis",
+    quantity: 6,
+    provider: "Cave Vendor",
+  },
+  createdAt: "2026-10-01T09:15:00.000Z",
+};
+
+const MONEY_NOTIFICATIONS = [
+  SERVICE_CLOSED,
+  INVOICE_CERTIFIED,
+  DELIVERY_DISCREPANCY,
+  GOAL_REACHED,
+  PRICE_CHANGE,
+  OWN_WAGE,
+  PROMO_DIGEST,
+  FUTURE_TYPE,
+];
+const ALL_NOTIFICATIONS = [...MONEY_NOTIFICATIONS, DELIVERY_ARRIVED];
+
+/** Every figure above, as it could appear on the wire. */
+const MONEY_ON_THE_WIRE = [
+  "6123",
+  "6,123",
+  "871.5",
+  "2981",
+  "2,981",
+  "35.75",
+  "31.25",
+  "28.00",
+  "191.5",
+  "52517",
+  "52,517",
+  "50013",
+  "50,013",
+  "41.37",
+  "50.83",
+  "9.46",
+  "7777",
+  "7,777",
+  "1313",
+  "18.35",
+  "21.65",
+  "45.50",
+  "$",
+];
+
+/** Every money key the fixtures carry. */
+const MONEY_KEYS = [
+  "revenue",
+  "topItem",
+  "revenueBasis",
+  "total",
+  "tieOutDelta",
+  "currency",
+  "creditDue",
+  "effectiveUnitCost",
+  "target",
+  "current",
+  "latestPrice",
+  "averagePrice",
+  "absoluteBelow",
+  "fractionBelow",
+  "spend",
+  "budgetLeft",
+  "hourly_wage",
+];
+
+describe("GET /mobile/feed — notification cards carry no money to staff (ADR 0253 round 2)", () => {
+  it("keeps every type a writer fills with money or someone else's words off the money-free list", () => {
+    for (const type of [
+      "service_closed",
+      "invoice_received",
+      "goal_reached",
+      "price_change",
+      "price_index_upload",
+      "promo_digest",
+      "delivery_proposal",
+      "authority_grant_issued",
+      "authority_grant_reapproved",
+      "system",
+      "system_alert",
+      "deal",
+      "order_verification",
+      "vendor_reply",
+      "vendor_deal_declined",
+      "vendor_letter_declined",
+    ]) {
+      expect(MONEY_FREE_NOTIFICATION_TYPES.has(type)).toBe(false);
+    }
+  });
+
+  describe.each(["owner", "manager"])("a %s", (role) => {
+    it("gets every notification's own message and whole metadata, unchanged", async () => {
+      const { controller } = build(ALL_NOTIFICATIONS);
+      const feed = await controller.getFeed(caller(role));
+
+      for (const n of ALL_NOTIFICATIONS) {
+        const card = feed.items.find((i) => i.notificationId === n.id);
+        expect(card).toBeDefined();
+        expect(card!.title).toBe(n.title);
+        expect(card!.subtitle).toBe(n.message);
+        // The very object the row carried, not a copy and not a cut.
+        expect(card!.meta).toBe(n.metadata);
+      }
+    });
+  });
+
+  describe.each(NOT_MONEY_ROLES)("%s", (_label, role) => {
+    it("gets no notification's money, in the subtitle, in meta or anywhere on the wire", async () => {
+      const { controller } = build(ALL_NOTIFICATIONS);
+      const feed = await controller.getFeed(caller(role));
+
+      const cards = feed.items.filter((i) => i.notificationId !== null);
+      expect(cards).toHaveLength(ALL_NOTIFICATIONS.length);
+      for (const card of cards) {
+        for (const key of Object.keys(card.meta)) {
+          expect(NON_MONEY_META_KEYS.has(key)).toBe(true);
+        }
+        for (const key of MONEY_KEYS) {
+          expect(Object.prototype.hasOwnProperty.call(card.meta, key)).toBe(
+            false,
+          );
+        }
+      }
+      const onTheWire = wire(feed);
+      for (const figure of MONEY_ON_THE_WIRE) {
+        expect(onTheWire).not.toContain(figure);
+      }
+    });
+
+    it("gets the neutral line, not the message, for every type not known to be money-free", async () => {
+      const { controller } = build(MONEY_NOTIFICATIONS);
+      const feed = await controller.getFeed(caller(role));
+
+      const subtitle = (id: string) =>
+        feed.items.find((i) => i.notificationId === id)!.subtitle;
+      expect(subtitle(SERVICE_CLOSED.id)).toBe("");
+      expect(subtitle(GOAL_REACHED.id)).toBe("");
+      expect(subtitle(PRICE_CHANGE.id)).toBe("");
+      expect(subtitle(FUTURE_TYPE.id)).toBe("");
+      expect(subtitle(OWN_WAGE.id)).toBe("");
+      expect(subtitle(PROMO_DIGEST.id)).toBe("");
+      expect(subtitle(INVOICE_CERTIFIED.id)).toBe(
+        "Confirm the physical count against the invoice.",
+      );
+      expect(subtitle(DELIVERY_DISCREPANCY.id)).toBe(
+        "Confirm the physical count against the invoice.",
+      );
+    });
+
+    it("keeps a money-free type's message and the non-money keys", async () => {
+      const { controller } = build([DELIVERY_ARRIVED, DELIVERY_DISCREPANCY]);
+      const feed = await controller.getFeed(caller(role));
+
+      const arrived = feed.items.find(
+        (i) => i.notificationId === DELIVERY_ARRIVED.id,
+      )!;
+      expect(arrived.subtitle).toBe("6 bottles of Chablis from Cave Vendor");
+      expect(arrived.meta).toEqual({
+        orderId: "order-8",
+        wineName: "Chablis",
+        quantity: 6,
+      });
+      const discrepancy = feed.items.find(
+        (i) => i.notificationId === DELIVERY_DISCREPANCY.id,
+      )!;
+      expect(discrepancy.meta).toEqual({ orderId: "order-9" });
+      expect(discrepancy.orderId).toBe("order-9");
     });
   });
 });
@@ -203,9 +560,9 @@ describe("GET /mobile/today-pulse — revenue only for owners and managers (ADR 
         expect(Object.prototype.hasOwnProperty.call(pulse, key)).toBe(false);
       }
       expect(toastService.getSalesData).not.toHaveBeenCalled();
-      const wire = JSON.stringify(pulse);
-      expect(wire).not.toContain("4210");
-      expect(wire).not.toContain("3900");
+      const onTheWire = wire(pulse);
+      expect(onTheWire).not.toContain("4210");
+      expect(onTheWire).not.toContain("3900");
       // The decisions count is the caller's own cards, without the approve card.
       expect(pulse.pendingDecisions).toBe(2);
       expect(pulse.criticalCount).toBe(1);

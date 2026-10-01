@@ -37,6 +37,98 @@ export function seesHouseMoney(role: string | null | undefined): boolean {
 }
 
 /**
+ * Notification types whose `message` is money-free from EVERY writer of the
+ * type (enumerated 2026-10-01; the writers are listed in
+ * `.planning/tech-debt.d/2026-10-01-fix-phone-feed-no-money-for-staff.md`).
+ *
+ * For a caller who does not see money, a notification card's subtitle is the
+ * row's `message` only when its type is on this list. Every other type falls
+ * back to the card's neutral line, and that includes a type nobody has written
+ * yet, so a new writer that puts money in its sentence cannot reach staff by
+ * default. The text is never scrubbed: a pattern that misses one way of
+ * writing an amount leaks it. Adding a type here means reading every writer of
+ * it first.
+ *
+ * Left off on purpose, because at least one writer puts money or another
+ * person's free text in the sentence: `service_closed`, `invoice_received`,
+ * `goal_reached`, `price_change`, `price_index_upload`, `promo_digest`,
+ * `delivery_proposal`, `authority_grant_issued`, `authority_grant_reapproved`,
+ * `system` (the own-wage notice shares it), `system_alert`, `deal`,
+ * `order_verification`, `vendor_reply`, `vendor_deal_declined` and
+ * `vendor_letter_declined`.
+ */
+export const MONEY_FREE_NOTIFICATION_TYPES: ReadonlySet<string> = new Set([
+  // Deliveries and stock.
+  "order_delivered",
+  "delivery_differs",
+  "delivery_clock",
+  "delivery_lapsed",
+  "delivery_item_to_name",
+  "delivery_scheduled",
+  "order_pending",
+  "inventory_low_stock",
+  "report",
+  // Asking an owner or a manager to send, and what came of it.
+  "vendor_send_requested",
+  "vendor_send_released",
+  "vendor_deal_requested",
+  "vendor_letter_requested",
+  "vendor_deal_released",
+  "vendor_letter_released",
+  "vendor_deal_withdrawn",
+  "vendor_letter_withdrawn",
+  "vendor_letter_rewaiting",
+  "vendor_letter_send_failed",
+  "authority_grant_revoked",
+  "authority_grant_deleted",
+  "authority_grant_hidden",
+  "authority_grant_shown",
+  "authority_grant_suspended",
+  // Vendor mail and the drafting agent.
+  "unknown_sender",
+  "draft_ready",
+  "constraint_triggered",
+  "rate_limit_reached",
+  "off_app_invoice",
+  "scarcity_hold_not_sent",
+  "conversation_reapproval_needed",
+  "mail_retention_deleted",
+  "security_alert",
+  "prospect",
+  // Connections.
+  "grant_suspended",
+  "mcp_tool_added",
+  "mail_grant_absent",
+  // A person's own reminders.
+  "calendar_reminder",
+  "custom_reminder",
+]);
+
+/**
+ * The only notification `metadata` keys a caller who does not see money gets
+ * on a card's `meta`: identifiers and the two labels the card already lifts
+ * (`wineName`, `quantity`). Every other key, including one a writer adds
+ * later, is left out. The phone reads no `meta` key today (apps/mobile), so
+ * nothing it draws depends on the rest.
+ */
+export const NON_MONEY_META_KEYS: ReadonlySet<string> = new Set([
+  "orderId",
+  "orderNumber",
+  "wineName",
+  "quantity",
+]);
+
+/** `meta` cut down to `NON_MONEY_META_KEYS`. */
+export function nonMoneyMeta(meta: unknown): Record<string, unknown> {
+  const kept: Record<string, unknown> = {};
+  if (!meta || typeof meta !== "object" || Array.isArray(meta)) return kept;
+  for (const [key, value] of Object.entries(meta)) {
+    if (NON_MONEY_META_KEYS.has(key)) kept[key] = value;
+  }
+  return kept;
+}
+
+/**
  * Composes the mobile decision feed and today-pulse from existing domain
  * services. One round trip for the app; the ranking lives here so every
  * client (and silent-push cache warms) sees the same order.
@@ -159,6 +251,14 @@ export class MobileService {
       const notifOrderId = meta.orderId ?? null;
       const type = n.type ?? "";
 
+      // A notification's own words and metadata reach a caller who does not
+      // see money only through two allowlists: the message only for a type
+      // every writer keeps money-free, and the metadata only under a non-money
+      // key. Anything else, including a type or key added later, falls back to
+      // the card's neutral line and is left out (ADR 0253 round 2).
+      const sayMessage = money || MONEY_FREE_NOTIFICATION_TYPES.has(type);
+      const cardMeta = money ? meta : nonMoneyMeta(meta);
+
       if (type === "invoice_received") {
         items.push(
           this.makeItem({
@@ -166,14 +266,15 @@ export class MobileService {
             entityId: notifOrderId ?? n.id,
             title: n.title ?? "Verify delivery",
             subtitle:
-              n.message ?? "Confirm the physical count against the invoice.",
+              (sayMessage ? n.message : null) ??
+              "Confirm the physical count against the invoice.",
             wineName: meta.wineName ?? null,
             quantity: meta.quantity ?? null,
             priority: "critical",
             createdAt: n.createdAt ?? n.created_at ?? new Date().toISOString(),
             orderId: notifOrderId,
             notificationId: n.id,
-            meta,
+            meta: cardMeta,
           }),
         );
         continue;
@@ -188,12 +289,12 @@ export class MobileService {
           kind: "alert",
           entityId: n.id,
           title: n.title ?? "Notification",
-          subtitle: n.message ?? "",
+          subtitle: (sayMessage ? n.message : null) ?? "",
           priority: this.normalizePriority(n.priority),
           createdAt: n.createdAt ?? n.created_at ?? new Date().toISOString(),
           notificationId: n.id,
           orderId: notifOrderId,
-          meta,
+          meta: cardMeta,
         }),
       );
     }
