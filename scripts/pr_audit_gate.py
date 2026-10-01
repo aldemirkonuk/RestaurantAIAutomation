@@ -617,6 +617,42 @@ GATE_TEXT_ALTERNATIVES = (
 )
 GATE_TEXT_RE = re.compile("|".join(GATE_TEXT_ALTERNATIVES))
 
+# NARROWED 2026-09-30. The founder, in chat, verbatim: "Approve #535 + narrow
+# rule (Recommended)". Until then a decision record (any non-register file under
+# DECISIONS_DIR) was owned when ANY line of it named the gate, so an ADR about
+# offline receipts that cited "the ADR 0090 reviewer" once needed the founder's
+# word. A record is now owned only when the gate is its SUBJECT:
+#   1. its number is one of GATE_DECISION_NUMBERS (0050 and 0090 are also owned
+#      by path above; 0097 is the deploy verification deploy.yml runs, 0231
+#      supersedes 0050, 0237 sets the audit planner's and reviewers' effort);
+#   2. its title or metadata block (_record_subject) names the gate or one of
+#      those numbers -- this is where "Supersedes ADR 0090" or "Status: Locked"
+#      lives on a record about the gate;
+#   3. anywhere in its text, a gate token sits within 60 characters of a verb
+#      that changes a rule (GATE_RULE_RE): "exempt from ADR 0090's escalation",
+#      "supersedes ADR 0090", "the audit gate is retired". This keeps the status
+#      flip far from a gate RULE owned (the case the whole-text scan existed
+#      for), while "re-measured by the ADR 0090 reviewer" is released.
+# A claims fragment's subject is its rows' ids. A file that is neither Markdown
+# nor JSON lines, or a JSON-lines file with a line that is not a JSON object, is
+# still judged on its whole text. The hygiene checks (NUL, separators, tag and
+# bidi characters, letters outside Latin and Greek) still run on the whole text.
+# Residual, stated rather than closed: a rule about the gate phrased with no
+# listed verb, in a record whose subject is something else, is released. Gate
+# rules bind only from ADR 0050, ADR 0090 and the gate's own files (the
+# reviewers are told so), so such a sentence changes no gate behaviour.
+GATE_DECISION_NUMBERS = frozenset({"0050", "0090", "0097", "0231", "0237"})
+_GATE_ADR_TOKEN = rf"\badr{_S}0{{0,2}}(?:97|231|237)(?![a-z0-9])"
+_GATE_ANY = "|".join(GATE_TEXT_ALTERNATIVES + (_GATE_ADR_TOKEN,))
+GATE_SUBJECT_RE = re.compile(_GATE_ANY)
+_GATE_VERB = (rf"(?:supersed|amend|exempt|waiv|bypass|overrid|overrul|relax|suspend|repeal|revok"
+              rf"|retir|replac|skip|disabl|loosen|weaken|narrow|widen|lift|exclud|no{_S}longer"
+              rf"|need{_S}not|instead{_S}of|opt{_S}out|except|immun|unaudit)")
+GATE_RULE_RE = re.compile(rf"{_GATE_VERB}[^\n]{{0,60}}?(?:{_GATE_ANY})|(?:{_GATE_ANY})[^\n]{{0,60}}?{_GATE_VERB}")
+_H1_RE = re.compile(r"^ {0,3}#[ \t]")
+_META_BULLET_RE = re.compile(r"^\s*[-*+]\s+\*\*")
+_LINKS_BULLET_RE = re.compile(r"^\s*[-*+]\s+\*\*links:?\*\*", re.IGNORECASE)
+
 # Line separators other than "\n": a bare CR can forge a line in one renderer and
 # hide it in another.
 _SEPARATORS = frozenset("\r\x0b\x0c\x1c\x1d\x1e\x85\u2028\u2029")
@@ -845,6 +881,76 @@ def _scan_text(text: str) -> str | None:
     return None
 
 
+def _record_subject(path: str, text: str) -> str:
+    """The part of a decision record that says what it is ABOUT (see
+    GATE_SUBJECT_RE): a claims fragment's row ids; a Markdown record's every H1,
+    plus everything up to the end of the metadata block that follows its first
+    H1, less the Links bullet (a cross-reference is a mention by definition).
+    Anything else is its whole text."""
+    n = _norm_path(path)
+    if n.endswith(".jsonl"):
+        ids = []
+        for ln in text.split("\n"):
+            if not ln.strip():
+                continue
+            try:
+                obj = json.loads(ln)
+            except ValueError:
+                return text
+            if not isinstance(obj, dict):
+                return text
+            ids.append(json.dumps(obj.get("id"), ensure_ascii=False))
+        return "\n".join(ids)
+    if not n.endswith(".md"):
+        return text
+    out: list[str] = []
+    seen_h1, in_header, in_meta, in_links, prev_meta = False, True, False, False, False
+    for ln in text.split("\n"):
+        if _H1_RE.match(ln):
+            out.append(ln)  # every H1 is a title, wherever it sits
+            if not seen_h1:
+                seen_h1 = True
+                continue
+        if not in_header:
+            continue
+        if not seen_h1:
+            out.append(ln)  # nothing precedes a record's title but what it is about
+            continue
+        if not ln.strip():
+            prev_meta = False
+            continue
+        if _META_BULLET_RE.match(ln):
+            in_meta, prev_meta = True, True
+            in_links = bool(_LINKS_BULLET_RE.match(ln))
+        elif in_meta and (ln[:1].isspace() or prev_meta) and not ln.lstrip().startswith("#"):
+            prev_meta = True  # an indented or lazy continuation of the bullet above
+        else:
+            in_header = False
+            continue
+        if not in_links:
+            out.append(ln)
+    return "\n".join(out)
+
+
+def _scan_record(path: str, b: bytes) -> str | None:
+    """A decision record: owned when the gate is its subject or a rule about the
+    gate is stated in it (NARROWED 2026-09-30, see GATE_DECISION_NUMBERS)."""
+    text = _decode(b)
+    if text is None:
+        return "is not valid UTF-8"
+    why = _scan_text(text)
+    if why is not None and why != "names the audit gate":
+        return why  # the hygiene checks still judge the whole text
+    m = ADR_FILE_RE.fullmatch(path)
+    if m and m.group(1) in GATE_DECISION_NUMBERS:
+        return "is a decision about the audit gate (GATE_DECISION_NUMBERS)"
+    if GATE_SUBJECT_RE.search(skeleton(_record_subject(path, text))[0]):
+        return "names the audit gate in its title, metadata or claim id"
+    if GATE_RULE_RE.search(skeleton(text)[0]):
+        return "states a rule about the audit gate"
+    return None
+
+
 def _decode(b: bytes) -> str | None:
     try:
         return b.decode("utf-8")
@@ -968,13 +1074,14 @@ def gate_ownership(records, blob, head_paths, base_numbers, base_index_rows) -> 
         old = blob(r["old_sha"]) if r["old_sha"] != _ZERO_SHA and r["old_mode"] != "160000" else b""
         new = blob(r["new_sha"]) if r["new_sha"] != _ZERO_SHA and r["new_mode"] != "160000" else b""
         if reg is None:
-            # A RECORD is judged on its whole text, before and after: the only
-            # mechanical closure of a status flip far from a gate mention.
+            # A RECORD is judged before and after by _scan_record: its subject,
+            # and any rule about the gate stated anywhere in it (narrowed
+            # 2026-09-30 from "any mention anywhere", see GATE_DECISION_NUMBERS).
             for side, sha, mode, b in (("base", r["old_sha"], r["old_mode"], old),
                                        ("head", r["new_sha"], r["new_mode"], new)):
                 if sha == _ZERO_SHA or mode == "160000":
                     continue
-                why = _scan_bytes(b)
+                why = _scan_record(p, b)
                 if why:
                     reasons.append(f"{p} ({side} version): {why}")
             continue
@@ -1997,6 +2104,13 @@ def run_self_test() -> int:
     def _new_adr_owned(extra):
         return bool(_own(_t(_A161, new=_ADR + extra + "\n")))
 
+    # NARROWED 2026-09-30 (founder: "Approve #535 + narrow rule (Recommended)"):
+    # the spellings are judged where a record says what it is about, its
+    # metadata block; a passing mention in its body is released.
+    def _new_adr_subject_owned(extra):
+        meta = _ADR.replace("Proposed\n", "Proposed; " + extra.replace("\n", "\n  ") + "\n")
+        return bool(_own(_t(_A161, new=meta)))
+
     _GATE_PHRASES = (
         # one phrase per token, in GATE_TEXT_ALTERNATIVES order
         "see ADR 90", "per 0090's rule", "scripts/pr_audit_gate.py", "the audit gate",
@@ -2083,10 +2197,39 @@ def run_self_test() -> int:
           bool(_own(_t(_IX, old=_IDX, new=_IDX, new_mode="100755"))), True)
     check("a new ADR that supersedes ADR 0090 is owned without any index row",
           _new_adr_owned("This supersedes ADR 0090 for docs PRs."), True)
-    check("every spelling of the gate in a new ADR is owned",
-          [p for p in _GATE_PHRASES if not _new_adr_owned(p)], [])
-    check("near-miss words, Greek math and Turkish letters are released",
-          [p for p in _CLEAN if _new_adr_owned(p)], [])
+    check("every spelling of the gate in a new ADR's metadata is owned",
+          [p for p in _GATE_PHRASES if not _new_adr_subject_owned(p)], [])
+    check("a passing mention of the gate in an ADR's body is released",
+          [p for p in ("Re-measured by the ADR 0090 correctness reviewer after the test was added.",
+                       "Found by the pr-audit-gate, round 2.", "The audit gate passed this at eb52e08.",
+                       "See ADR 0097 for how a deploy is verified.")
+           if _new_adr_owned(p)], [])
+    check("a rule about the gate stated in an ADR's body is owned",
+          [p for p in ("This supersedes ADR 0090 for docs PRs.", "Docs PRs are exempt from the audit gate.",
+                       "The pr-merge-planner no longer runs on docs.", "ADR 0237's effort is relaxed for docs.")
+           if not _new_adr_owned(p)], [])
+    check("a title naming the gate is owned, wherever the H1 sits",
+          (bool(_own(_t(_A161, new="# 0161 \u2014 The audit gate skips docs\n\nShelf labels.\n"))),
+           bool(_own(_t(_A161, new=_ADR + "\n# The audit gate's history\n")))), (True, True))
+    check("text before a record's first title is its subject",
+          bool(_own(_t(_A161, new="The audit gate skips docs.\n\n" + _ADR))), True)
+    check("a lazy continuation of a metadata bullet is still metadata",
+          bool(_own(_t(_A161, new=_ADR.replace("Proposed\n", "Proposed; this is the\naudit gate's record\n")))), True)
+    check("a Links bullet naming the gate is released, and only the Links bullet",
+          (bool(_own(_t(_A161, new=_ADR.replace("Proposed\n", "Proposed\n- **Links:** [[0090-x]] the audit gate\n")))),
+           bool(_own(_t(_A161, new=_ADR.replace("Proposed\n", "Proposed\n- **Links:** [[0090-x]]\n- **Keywords:** audit gate\n"))))),
+          (False, True))
+    check("a gate decision number is owned with no mention at all",
+          [n for n in sorted(GATE_DECISION_NUMBERS)
+           if not _own(_t(f".planning/decisions/{n}-x.md", old="# x\n", new="# y\n"))], [])
+    check("a claims fragment is owned by a row id naming the gate, not by a passing mention",
+          (bool(_own(_t(".planning/decisions/claims.d/x.jsonl", new='{"id": "ADR-0090-X", "claim": "x"}\n'))),
+           bool(_own(_t(".planning/decisions/claims.d/x.jsonl",
+                        new='{"id": "ADR-0241-X", "claim": "re-measured by the ADR 0090 reviewer"}\n'))),
+           bool(_own(_t(".planning/decisions/claims.d/x.jsonl", new='{"id": "ADR-0241-X"}\nthe audit gate\n')))),
+          (True, False, True))
+    check("near-miss words, Greek math and Turkish letters are released, even in metadata",
+          [p for p in _CLEAN if _new_adr_owned(p) or _new_adr_subject_owned(p)], [])
     check("a pure rename into decisions/ is judged by the file's whole text",
           bool(_own(_t("docs/x.md", old="Supersedes ADR 0090.\n"),
                     _t(".planning/decisions/0161-x.md", new="Supersedes ADR 0090.\n"))), True)

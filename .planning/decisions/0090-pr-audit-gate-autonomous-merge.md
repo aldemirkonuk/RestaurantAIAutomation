@@ -98,7 +98,10 @@ owned (founder's word required; no model review can clear it) when any of these 
 3. **Decision text.** Every file under `.planning/decisions/` is read whole, before
    and after the change. It is owned if it names the gate: ADR 0050 or 0090, the
    gate's script, hook, skill or agents, gate-owned paths, hardness scores, or
-   self-merging (15 identity tokens). For the index, `OPEN-DECISIONS.md`,
+   self-merging (15 identity tokens). [Narrowed 2026-09-30, the founder: *"Approve
+   #535 + narrow rule (Recommended)"*. A non-register record is now owned for its
+   number, title, metadata or claim id, or for a rule about the gate stated in it,
+   not for a mention in passing. See the amendment of that date.] For the index, `OPEN-DECISIONS.md`,
    `CLAIMS.jsonl`, `PROJECT.md` and `FUTURES.md`, only changed lines are judged;
    `CLAIMS.jsonl` lines must parse as JSON and are judged with escapes decoded.
    - Text is normalized before matching: entities, URL escapes, NFKC, invisible
@@ -136,7 +139,9 @@ was the only mechanical route by which an ordinary ADR reached the founder at me
 
 **Witness-citation convention (founder answer 4, no carve-out).** A new decision
 file that names the gate escalates, including one that only cites an audit as a
-witness. Cite audits as `audit of PR #M, round N`, with the report path under
+witness. [Superseded for a citation in a record's body, 2026-09-30, the founder:
+*"Approve #535 + narrow rule (Recommended)"*. A witness citation in passing is now
+released; in a record's title or metadata it is still owned.] Cite audits as `audit of PR #M, round N`, with the report path under
 `.planning/07-reference/pr-audits/` (now in `TEMPLATE.md`). Never reword a line
 that states a rule about the gate, or says what it does, to get past the check.
 
@@ -2474,6 +2479,39 @@ Five mutations each turn the self-test red:
 - the bypass widened to every cause;
 - the tag test dropped.
 
+## Amendment — 2026-09-30: a decision record is owned by its subject, not by a mention
+
+**The founder, in chat, 2026-09-30, verbatim:** *"Approve #535 + narrow rule (Recommended)"*.
+He was asked about PR #535. The 2026-09-18 rule owned a decision record when any line of it named
+the gate. Under that rule ADR 0241, which is about offline receipts, needed his word because its review
+log said once that a figure was *"re-measured by the ADR 0090 correctness reviewer"*. Its claims row needed it for the same reason.
+
+**The rule now** (`_scan_record` and `_record_subject` in `scripts/pr_audit_gate.py`). A non-register
+file under `.planning/decisions/` is owned when any of these holds:
+1. Its number is in `GATE_DECISION_NUMBERS`: 0050, 0090, 0097, 0231 and 0237.
+   - 0050 and 0090 are also owned by path.
+   - 0097 is the deploy verification `deploy.yml` runs.
+   - 0231 supersedes 0050.
+   - 0237 sets the planner's and reviewers' effort.
+2. Its subject names the gate or one of those numbers. The subject depends on the file type:
+   - For Markdown, it is every H1, everything before the first H1, and the metadata block after the first H1. The metadata block runs bullet by bullet, including indented and lazy continuations. The Links bullet is left out, because a cross-reference is a mention by definition.
+   - For a claims fragment, it is its rows' ids.
+   - For anything else, it is the whole text, as before.
+3. Anywhere in its text, a gate token sits within 60 characters of a verb that changes a rule (`GATE_RULE_RE`). Examples are "supersedes ADR 0090", "exempt from the audit gate", "the pr-merge-planner no longer runs" and "gate opt-out applies".
+
+The hygiene checks still judge the whole text. These are: NUL, line separators, tag and bidi characters, and letters outside Latin and Greek. Registers keep their line-diff rules unchanged.
+
+**Measured** on `main` at `e88593bf8`: 58 of the 234 non-register files under `decisions/` were owned before, and 22 are owned now. ADR 0241 and `claims.d/fix-door-refusal-parks-not-sent.jsonl` are released.
+
+**Tests.**
+- `--self-test`: 102 → 110 invariants.
+- `scripts/test_pr_audit_gate.py`:
+  - O35 and O36 were bare mentions in a body, so they flip to released.
+  - The new cases N1–N5 cover two #535 shapes that are released and three subject shapes that stay owned.
+  - Thirteen new mutations, one per switch. They include the planted mutant "the narrowing reverted", which is killed by N1, N2 and the self-test's passing-mention check.
+
+**Residual, stated rather than closed.** A record whose subject is something else can still state a rule about the gate without any listed verb, and that is released. Gate rules bind only from ADR 0050, ADR 0090 and the gate's own files, and the reviewers are told so (`pr_audit_gate.py`'s auditor prompt). So such a sentence changes no gate behaviour. It can only steer a reader.
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
@@ -2507,3 +2545,4 @@ Five mutations each turn the self-test red:
 | 2026-09-22 | ADR 0090 pipeline on #442 `bfc19fcb7` (Opus plan, two Sonnet checkers, Opus final) | **BLOCK, text only.** The code held: the bypass fires only on the SDK's no-credit 400, and five mutations went red. Fixed in `de7c40a2b`: the gate's fail-closed docstring was bracketed, the removal recipe now works when applied, and the remove-before-required rule is stated. |
 | 2026-09-22 | Opus final say, delta `bfc19fcb7`..`de7c40a2b` | **BLOCK, one sentence.** "the 2026-09-12 Correction removed" named the wrong Correction: that one removed red-on-every-PR, while the sixth (2026-09-03, `wait_upstream`) removed a required SUCCESS that had audited nothing. The error came from the first audit's own verdict. Fixed in the next commit, together with the note to revert the four script brackets on removal. |
 | 2026-09-28 | Aldemir (founder), ADR 0237 | Correction: the frontmatter key is `effort` (not `reasoning_effort`), there are three definitions, and the mapping is documented. All three stay `effort: high` ("Keep high, test medium later"). No gate behaviour changes |
+| 2026-09-30 | Aldemir (chat) | *"Approve #535 + narrow rule (Recommended)"*. A decision record is owned when its number, title, metadata or claim id names the gate, or when it states a rule about the gate; a mention in passing is released (amendment of this date). 58 → 22 owned records on `main` at `e88593bf8`. This change edits owned paths and is covered by the same approval. |
