@@ -4,7 +4,7 @@ Found by CI run 36728755317, the web job on PR #537, whose diff changes no `apps
 
 **Root cause.** This was a product bug that the test happened to hit, not a test bug.
 - `RosterSheet.tsx` built the removal as `useMutation({ mutationFn: () => deleteTeamMember(member!.id, undefined, handingOver) })`, closing over the render's `handingOver`.
-- React Query 5.90.16 (`build/modern/useMutation.js:20-22`) hands a new `mutationFn` to its observer in a `useEffect`, a passive effect that runs after the commit (in a browser, after the paint). `mutate()` then runs whichever function the last effect installed.
+- React Query 5.90.16 (`build/modern/useMutation.js:20-22`) hands a new `mutationFn` to its observer in a `useEffect`, a passive effect that runs after the commit. For a default-lane render such as this one, that is a separate Scheduler task, which in a browser normally runs after the paint. A call that starts at once runs whichever function the last effect installed.
 - The shifts are ticked by the picker's own effect once the gateway's checks arrive. That update renders on React's default lane, and its passive effects run as a separate Scheduler task.
 - When the render uses up React's 5 ms slice, Scheduler yields between the commit and the passive effects. A click in that gap finds a button already reading "Remove and hand over 1 shift", but `mutate()` runs the previous render's function, which carries `null`.
 - A test that clicks straight after a `waitFor` can land in that gap on a slow runner.
@@ -12,10 +12,7 @@ Found by CI run 36728755317, the web job on PR #537, whose diff changes no `apps
 **Fix.**
 - The hand-over now travels with the click: `mutationFn: (sent) => deleteTeamMember(member!.id, undefined, sent)` and `onClick={() => remove.mutate(handingOver)}`.
 - React 18.3.1 updates a DOM node's handler props at commit (`updateFiberProps` in `commitUpdate`), not in an effect, so the value sent is the one computed in the same render that drew the button's label.
-- Unchanged, and not audited here:
-  - `mutationFn` still reads `member!.id` from the options in place at the click (query-core 5.90.16 `build/modern/mutationObserver.js:59`), so it carries the same one-render gap.
-  - `onSuccess`, which calls the `onChanged` and `onClose` props, is read only when the call resolves. A pending mutation takes options installed after the click (`mutationObserver.js:34-35`), so `onSuccess` is stale only if the call resolves before that effect runs.
-  - This PR moves only the hand-over, the one value that changes per click.
+- Unchanged, and not audited here: the mutation's other options, namely `mutationFn`'s `member!.id` and the `onChanged` and `onClose` props that `onSuccess` calls. This PR moves only the hand-over, the one value that changes per click, out of the options and into the click.
 
 **Regression test.** "sends what the button says, even when clicked the moment it says it" forces the gap on every run:
 - `performance.now` jumps 10 ms per read, so Scheduler yields after every task.
