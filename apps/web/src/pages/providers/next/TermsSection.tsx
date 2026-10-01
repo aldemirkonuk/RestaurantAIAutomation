@@ -545,8 +545,8 @@ export function TermsSection({ providerId, providerName }: { providerId: string;
             {row.statedBy || row.statedAt
               ? `Last written down by ${row.statedBy?.name ?? 'someone whose name is not on the row'} ${fmtWhen(row.statedAt)}.`
               : 'Nobody has written these down for this house yet.'}{' '}
-            Inference looks back {reg.windowDays} days over this restaurant’s own
-            orders, and it is never written to the vendor record.
+            Unknown terms are worked out from this house’s own orders of the last{' '}
+            {reg.windowDays} days, and are never saved to the vendor.
           </p>
 
           {terms.saveError && (

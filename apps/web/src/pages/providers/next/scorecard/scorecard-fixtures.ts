@@ -177,7 +177,7 @@ export function card(over: Partial<VendorScorecard> = {}): VendorScorecard {
     alerting: {
       built: false,
       sentence:
-        'No alert is sent from these figures. A labelled set and a shadow run come first, and neither is built yet.',
+        'These figures send no alerts.',
     },
     ...over,
   };

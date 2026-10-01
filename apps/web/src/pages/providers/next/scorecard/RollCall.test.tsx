@@ -70,7 +70,7 @@ function vendor(
 const alerting = {
   built: false as const,
   sentence:
-    'No alert is sent from these figures. A labelled set and a shadow run come first, and neither is built yet.',
+    'These figures send no alerts.',
 };
 
 beforeEach(() => {
@@ -91,7 +91,7 @@ describe('the Roll Call', () => {
     expect(cell).toHaveTextContent('70%7 of 10');
     expect(cell).toHaveTextContent('prior 90 d · 69% · 9 of 13');
     expect(screen.getByTestId('rc-cell-a-linesAsOrdered')).toHaveTextContent('too few2 of 5');
-    expect(screen.getByTestId('rc-alerting')).toHaveTextContent('neither is built yet');
+    expect(screen.getByTestId('rc-alerting')).toHaveTextContent('These figures send no alerts.');
     expect(api.get).toHaveBeenCalledWith('/vendor-scorecard', {
       params: { window: 90 },
     });

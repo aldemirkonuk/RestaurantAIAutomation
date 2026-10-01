@@ -116,10 +116,8 @@ export function vendorCurrencySentence(args: {
     );
   if (!isCurrency(code))
     return (
-      `${who} has not stated a usual currency. Nothing is assumed in its place — ` +
-      `not this house's currency and not the currency of their last invoice — so ` +
-      `an order to them starts with an empty currency field. Type the code they ` +
-      `usually invoice in and it will be offered there.`
+      `${who} has no usual currency on file, so an order to them starts with no ` +
+      `currency. Choose the one they invoice in and orders to them will start in it.`
     );
 
   const name = args.setByName?.trim();

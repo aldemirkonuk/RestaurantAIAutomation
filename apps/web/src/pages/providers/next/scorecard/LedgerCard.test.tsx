@@ -113,7 +113,7 @@ describe('the ledger card', () => {
     await screen.findByTestId('ledger-line-onTime');
     expect(screen.queryByTestId('ledger-tone')).not.toBeInTheDocument();
     expect(screen.getByTestId('ledger-card')).not.toHaveTextContent(/tone of/i);
-    expect(screen.getByTestId('ledger-alerting')).toHaveTextContent('neither is built yet');
+    expect(screen.getByTestId('ledger-alerting')).toHaveTextContent('These figures send no alerts.');
   });
 
   // The founder, 2026-09-21: "The font size are a little big". One step down
