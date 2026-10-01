@@ -290,7 +290,7 @@ describe("POST /recurring-orders/:restaurantId/execute-check — non-production,
     expect(recurring.executeDueRecurringOrders).not.toHaveBeenCalled();
   });
 
-  it("answers 404 in production to every signed-in caller, operators included", async () => {
+  it("answers 404 in production to a signed-in caller that JwtAuthGuard admits, operators included", async () => {
     process.env.NODE_ENV = "production";
     for (const as of [
       { user: OWNER_OF_A },

@@ -167,11 +167,17 @@ export class RecurringOrdersController {
    * Callers: a search of the web (`RecurringOrders.tsx` calls list, create,
    * update and delete only), mobile, services/, scripts/ and the workflows
    * found none. It was dev/test scaffolding by its own summary, so it gets the
-   * dev/test posture: `NonProductionGuard` first (in production a signed-in
-   * caller gets 404; an unauthenticated one gets the class `JwtAuthGuard`'s
-   * 401 first, because class guards run before route guards), then
-   * `PlatformOperatorGuard` (the `/health/agent-operations` gate). The real
-   * runner, the in-process `@Cron("0 8 * * *")`, is untouched.
+   * dev/test posture: `NonProductionGuard` first, then
+   * `PlatformOperatorGuard`. In production the action runs for no one: a
+   * caller that the class `JwtAuthGuard` admits (verified email, a chosen
+   * house, and a path house equal to the session's) gets 404 from
+   * `NonProductionGuard`, operators included; anyone else gets
+   * `JwtAuthGuard`'s answer first, because class guards run before route
+   * guards: 401 if not signed in, 403 for a path naming another house, an
+   * unverified email, or a session in no house. Outside production,
+   * `PlatformOperatorGuard` (the `/health/agent-operations` gate) admits only
+   * a platform operator. The real runner, the in-process
+   * `@Cron("0 8 * * *")`, is untouched.
    */
   @Post(":restaurantId/execute-check")
   @UseGuards(NonProductionGuard, PlatformOperatorGuard)

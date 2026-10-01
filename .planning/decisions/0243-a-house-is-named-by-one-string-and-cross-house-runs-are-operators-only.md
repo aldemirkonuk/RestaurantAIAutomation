@@ -45,7 +45,11 @@ In September 2026 an audit traced 817 gateway routes. It is on the branch `docs/
 
 ### execute-check
 
-1. **Non-production, then platform operators only (`NonProductionGuard`, then `PlatformOperatorGuard`).** **Taken**, as the brief laid down for a dev/test route with no caller found. In production a signed-in caller gets 404. An unauthenticated caller gets the class-level `JwtAuthGuard`'s 401 first, because that guard runs before the route's.
+1. **Non-production, then platform operators only (`NonProductionGuard`, then `PlatformOperatorGuard`).** **Taken**, as the brief laid down for a dev/test route with no caller found. In production the action runs for no one, and the status depends on who is asking:
+   - a caller that `JwtAuthGuard` admits gets 404 from `NonProductionGuard`, operators included. Admitted means a verified email, a chosen house, and a path house equal to the session's;
+   - anyone else gets `JwtAuthGuard`'s answer first, because the class guard runs before the route's: 401 for a caller not signed in, and 403 for a path naming another house, an unverified email, or a session in no house. The checks are at `jwt-auth.guard.ts:74`, `:84` and `:94`. A session in no house is refused at `:74` here, because the path names a house.
+
+   The v5 adversarial reviewer measured these statuses with the real guards under `NODE_ENV=production` (report at df35e3259).
 2. **Owners or managers, scoped to the path house.** Rejected. It would build a new product surface out of scaffolding with no caller found, and the service would need a per-house variant.
 
 ## Decision
@@ -59,21 +63,28 @@ Three rules:
 
   It also holds on the tenant-change route: that exemption lets the body name *another* house, and a non-string body name there is still refused.
 - `clocks/run` is for platform operators, and it refuses a body `now` with 400 in production.
-- `execute-check` answers 404 to a signed-in caller in production, and admits only platform operators elsewhere.
+- `execute-check` never runs in production. There, a caller that `JwtAuthGuard` admits gets 404, and anyone else gets `JwtAuthGuard`'s 401 or 403 first. Outside production it runs only for a platform operator that `JwtAuthGuard` admits (so naming their own house).
 
 What carried it: `JwtAuthGuard` already sends the top-level house names of every non-`@Public()` route it guards through this one comparison, so the fix belongs there. And the two routes act on every house, which makes running them a platform act.
 
-**What the guard does not read.** An adversarial reviewer measured these shapes with real qs. None of them is compared:
+**What the guard does not read.** None of these is compared. The PR #537 adversarial reviewers sent the body, query and key-name shapes through real qs and the real guard (reports at 81f2f7a3d and df35e3259):
 - a top-level array body, `[{"restaurantId":"B"}]`;
 - nested keys: `{contact:{restaurant_id}}`, `{items:[{restaurantId}]}`, `?filter[restaurantId]=B`;
-- other key names: `tenantId`, `RestaurantId`, or a generic `:id`;
+- other key names: `tenantId`, `RestaurantId`; and a house named by a generic path `:id`, found by reading the code (below);
 - routes where the check does not run: `@Public()` routes (`JwtAuthGuard` returns early for them), and routes authenticated only by a machine credential, such as the `ServiceKeyGuard` route `POST /communications/text-credits/reconcile` (`communications/text/credits/text-credits.controller.ts:487-509`), where there is no user to compare against.
 
-Both PR #537 reviewers swept the controllers for a house read from a top-level array body or a nested key, and reported none. For other key names, a reviewer found one route family: `PATCH` and `GET /organizations/locations/:id` (`organizations.controller.ts:96-121`). There the house is the path `:id`, which `organizations.service.ts:327-329` names `restaurantId`. `assertTenantMatch` never compares it. The service authorises it instead:
-- the restaurant must belong to one of the caller's organizations, else 404;
+The reviewers' own words, from their reports:
+- **Adversarial reviewer at 81f2f7a3d:** "No current controller reads those shapes" (the top-level array body, the nested keys, and `tenantId`/`RestaurantId`).
+- **Adversarial reviewer at df35e3259:** a grep of the gateway (non-spec) found no reader of `restaurantID` or `restaurant-id`, no `x-restaurant*` header read, and no `@Query`/`@Body`/`@Param` DTO field that is not a string.
+- **Correctness reviewer at df35e3259:** a heuristic grep of the controllers found no array-typed `@Body` and no item-map read of `restaurantId`, and the reviewer states it was not a full sweep. The same reviewer counted 27 `restaurantId`/`restaurant_id` fields in `*.dto.ts`; this lane re-counted 27, all typed `string`.
+
+These are search results, not a guarantee.
+
+For other key names, a reviewer found one route family: `PATCH` and `GET /organizations/locations/:id` (`organizations.controller.ts:96-121`). There the house is the path `:id`, which `organizations.service.ts:327-329` names `restaurantId`. `assertTenantMatch` never compares it. The service authorises it instead:
+- the caller must have an organization (403 "User has no organization" if none: `organizations.service.ts:339-340`, `:382-383`), and the restaurant must belong to one of them (404 if not: `:349-350`, `:391-392`);
 - `getLocation`, and an `updateLocation` that changes the chain, name, city, email or phone, also require an owner or manager role at that restaurant (`assertManagerOrOwner`).
 
-These are findings about today's controllers from the searches described in the fragment, not a guarantee. The per-controller sweep is filed in `tech-debt.d/2026-09-30-fix-tenant-guard-and-cross-house-runs.md`. So is `""`: the guard treats it as "names nothing", and a controller that turns "nothing named" into "no filter" answers for every house.
+The per-controller sweep is filed in `tech-debt.d/2026-09-30-fix-tenant-guard-and-cross-house-runs.md`. So is `""`: the guard treats it as "names nothing", and a controller that turns "nothing named" into "no filter" answers for every house.
 
 **The operator registry.** ADR 0143 keeps a reviewed registry of the routes that carry `PlatformOperatorGuard`: `scripts/registries/platform-operator-routes.json`. `scripts/check_platform_operator_routes.cjs` (CI, "Gateway dependency graph resolves") fails when the routes carrying `PlatformOperatorGuard` differ from it. Both routes are added to it here, which takes it from 3 entries to 5. A repository search found no other reader of the file.
 
@@ -85,6 +96,7 @@ These are findings about today's controllers from the searches described in the 
 - **Easier.** The two cross-house runs are no longer reachable without platform operator authority (the grant and the `developer` role), and `execute-check` not at all in production. The in-process crons are unchanged.
 - **Harder.** A future client that sends a number or an array as the top-level `restaurantId`/`restaurant_id` on a non-`@Public()` `JwtAuthGuard` route gets 403. Every field of that name in the gateway's `*.dto.ts` files is typed `string` today.
 - **Given up.** A house member without a platform operator grant cannot trigger a clock catch-up, and `execute-check` has no production use.
+- **Not covered.** A platform operator whose session is in no house cannot run the clocks catch-up. `JwtAuthGuard` answers 403 "Choose a house first." (`jwt-auth.guard.ts:94`, `assert-house-chosen.ts:17-18`) before `PlatformOperatorGuard` runs, as the v5 adversarial reviewer measured. This fails safe: the operator chooses a house, then runs it.
 - **Not changed.** The controllers named in Context still take the house from the query or the body. Moving them to `user.restaurantId`, and checking the shapes the guard does not read, is left for a separate sweep (tech-debt fragment above).
 - **Revisit if** a house-facing "catch up my deadlines" action is wanted. That means a per-house `runDue` and option 2 above. Also revisit if a scheduler outside the process needs `clocks/run`: that means the service-key door, option 3.
 
@@ -118,3 +130,4 @@ Each of the three claims in the fragment was mutated against the unfixed files a
 | 2026-09-30 | — | Created on `fix/tenant-guard-and-cross-house-runs`. No independent adversarial review yet; the PR audit gate is where that happens. |
 | 2026-09-30 | ADR 0090 audit of PR #537 at 81f2f7a3d | Both reviewers APPROVE. The planner withheld HOLDS until the record was as narrow as the code. Narrowed in the next commit: "What the guard does not read" was added, the Consequences and option 4 were narrowed to the top-level keys on `JwtAuthGuard` routes, the evidence row for the boot spec now names the spec and its local stub, and the anchors are marked "lands with #539". The deferred sweep and the `""` hole are filed in `tech-debt.d/2026-09-30-fix-tenant-guard-and-cross-house-runs.md`. |
 | 2026-09-30 | ADR 0090 re-plan of PR #537 at c28e90ae8 | NOT READY: the record was still broader than the code. Fix round 2, doc and claims only: (1) the open contacts claim was withdrawn after two measured misses; (2) the organizations `locations/:id` exception was named, with what authorises it; (3) `TenantGuard`'s early return on `@Public()`/`@TenantBypass()` was stated; (4) this ADR, the fragment, the claims and the PR body were swept for "none", "no controller", "every", "cannot", "always", "never", "only" and "all", and each one that went beyond what was measured was narrowed or removed; (5) the same over-broad wording was narrowed in the code comments of `deliveries.controller.ts`, `recurring-orders.controller.ts` and `assert-tenant-match.ts`, in the headers of the three specs, and in one test title in `cross-house-runs.http.spec.ts` (comment and title text only, no behaviour change; claim 3's verify follows the new title). |
+| 2026-09-30 | ADR 0090 full re-audit of PR #537 at df35e3259 (after the rebase onto 597f728d9) | Correctness BLOCK (F1, F2, F3), adversarial APPROVE. ADR 0231 caps fix rounds at two; the founder waived that once, on 2026-09-30, verbatim: *"Waive once, text-only round (Recommended)"*, the option that said the wording changes only to what the reviewers measured, with no code change, then a full re-audit (bracket in ADR 0231). Round 3 is text only: F1: `execute-check`'s production statuses are stated as measured, in the options, the Decision, claim 3, the controller comment and the spec title (claim 3's verify follows the title). F2: the reviewers' search results are quoted in their own words, not as "both reviewers swept". F3: the organizations check says 403 with no organization and 404 for a restaurant outside them. Also a narrowed `describe` title in `tenant-name-shape.http.spec.ts`, and the no-house operator note under Consequences. |

@@ -1,6 +1,6 @@
 ## House names the tenant guard does not read — OPEN — 2026-09-30
 
-Filed by `fix/tenant-guard-and-cross-house-runs` (PR #537, [ADR 0243](../decisions/0243-a-house-is-named-by-one-string-and-cross-house-runs-are-operators-only.md)). The PR #537 adversarial reviewer measured the shapes below against real qs.
+Filed by `fix/tenant-guard-and-cross-house-runs` (PR #537, [ADR 0243](../decisions/0243-a-house-is-named-by-one-string-and-cross-house-runs-are-operators-only.md)). The PR #537 adversarial reviewers sent the body, query and key-name shapes below through real qs and the real guard (reports at 81f2f7a3d and df35e3259).
 
 **What.** `assertTenantMatch` (`apps/api-gateway/src/common/tenant/assert-tenant-match.ts`) compares only the **top-level** `restaurantId` and `restaurant_id` of `params`, `query` and `body`. It runs in three places:
 
@@ -17,9 +17,14 @@ ADR 0243 made it refuse non-string values under those two key names, in those th
 
 **Today.** What was searched, and what was found:
 
-- **Nested shapes.** Both PR #537 reviewers swept the controllers for a house read from a top-level array body or a nested key, and reported none. This lane found no class in the gateway's `*.dto.ts` files that declares a `restaurantId`/`restaurant_id` and is referenced with `@Type(() => …)` in `src/`. The only array-typed uses of such classes are response DTOs.
+- **Nested shapes, in the reviewers' own words.**
+  - The adversarial reviewer at 81f2f7a3d wrote "No current controller reads those shapes" (the top-level array body, the nested keys, and `tenantId`/`RestaurantId`).
+  - The adversarial reviewer at df35e3259 grepped the gateway (non-spec) and found no reader of `restaurantID` or `restaurant-id`, no `x-restaurant*` header read, and no `@Query`/`@Body`/`@Param` DTO field that is not a string.
+  - The correctness reviewer at df35e3259 ran a heuristic grep of the controllers, found no array-typed `@Body` and no item-map read of `restaurantId`, and states it was not a full sweep. The same reviewer counted 27 `restaurantId`/`restaurant_id` fields in `*.dto.ts`; this lane re-counted 27, all typed `string`.
+
+  These are search results, not a guarantee. This lane also found no class in the gateway's `*.dto.ts` files that declares a `restaurantId`/`restaurant_id` and is referenced with `@Type(() => …)` in `src/`. The only array-typed uses of such classes are response DTOs.
 - **Other key names.** A reviewer found one route family that names a house by another key: `PATCH` and `GET /organizations/locations/:id` (`organizations.controller.ts:96-121`). The house is the path `:id`, which `organizations.service.ts:327-329` names `restaurantId`, so `assertTenantMatch` never compares it. The service authorises it instead:
-  - the restaurant must belong to one of the caller's organizations (`getUserOrgIdsWithFallback`, then `.in("organization_id", orgIds)`, else 404);
+  - the caller must have an organization (403 "User has no organization" if none: `organizations.service.ts:339-340`, `:382-383`), and the restaurant must belong to one of them (`getUserOrgIdsWithFallback`, then `.in("organization_id", orgIds)`; 404 if not: `:349-350`, `:391-392`);
   - `getLocation`, and an `updateLocation` that changes the chain, name, city, email or phone, also require an owner or manager role at that restaurant (`assertManagerOrOwner`).
 - **What this lane's own grep covered.** It looked for `@Query`/`@Body`/`@Headers` keys named `houseId`, `house_id`, `rid`, `restaurant`, `tenantId`, `x-restaurant-id` or `x-tenant-id`, and for `@Param` keys named `rid`, `houseId`, `house_id`, `tenantId`, `restaurant`, `venueId` or `locationId`. The only hits were provider and storage `locationId`, which are not houses. It did not look for houses named by a generic `:id`, which is how it missed the organizations routes.
 

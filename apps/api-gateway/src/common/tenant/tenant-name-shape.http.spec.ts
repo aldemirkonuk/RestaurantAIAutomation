@@ -134,7 +134,7 @@ describe("the parser really hands the guard non-strings", () => {
   });
 });
 
-describe("a member of house A cannot name house B in a shape the guard skipped", () => {
+describe("a member of house A cannot name house B in a non-string top-level house key", () => {
   it.each([
     ["?restaurantId[]=B", `?restaurantId[]=${HOUSE_B}`],
     ["?restaurant_id[]=B", `?restaurant_id[]=${HOUSE_B}`],
