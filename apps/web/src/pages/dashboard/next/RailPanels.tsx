@@ -182,7 +182,7 @@ export function LowStockPanel({ items }: { items: InventoryItem[] | null | undef
 
 /* ── Activity tape ──────────────────────────────────────────────────────── */
 
-export function ActivityPanel({ items }: { items: ActivityItem[] | undefined }) {
+export function ActivityPanel({ items }: { items: ActivityItem[] | null | undefined }) {
   return (
     <Panel title="Lately">
       {items === undefined && (
@@ -190,6 +190,9 @@ export function ActivityPanel({ items }: { items: ActivityItem[] | undefined }) 
           <div className="dn-skel h-6" aria-hidden />
           <div className="dn-skel h-6 w-3/4" aria-hidden />
         </div>
+      )}
+      {items === null && (
+        <EmptyLine>{DASH} Activity couldn’t be reached just now.</EmptyLine>
       )}
       {items != null && items.length === 0 && (
         <EmptyLine>Quiet. Activity lands here as the day moves.</EmptyLine>

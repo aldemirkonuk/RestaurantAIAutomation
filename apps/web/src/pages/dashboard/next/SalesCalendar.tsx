@@ -31,8 +31,8 @@ const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 export interface SalesCalendarProps {
   restaurantId: string | null;
-  alerts: AlertItem[] | undefined;
-  activity: ActivityItem[] | undefined;
+  alerts: AlertItem[] | null | undefined;
+  activity: ActivityItem[] | null | undefined;
 }
 
 export function SalesCalendar({ restaurantId, alerts, activity }: SalesCalendarProps) {

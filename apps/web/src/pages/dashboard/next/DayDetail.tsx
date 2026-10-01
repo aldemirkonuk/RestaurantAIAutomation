@@ -129,8 +129,10 @@ export interface DayDetailProps {
   day: DayLedger | null; // null only while the panel is closing
   daily: DayLedger[];
   dayOrders: DayOrdersState;
-  alerts: AlertItem[] | undefined;
-  activity: ActivityItem[] | undefined;
+  /** undefined = loading · null = unreachable · [] = genuinely nothing */
+  alerts: AlertItem[] | null | undefined;
+  /** undefined = loading · null = unreachable · [] = genuinely nothing */
+  activity: ActivityItem[] | null | undefined;
   onScrub: (date: string) => void;
   onClose: () => void;
 }
@@ -251,8 +253,19 @@ export function DayDetail({ day, daily, dayOrders, alerts, activity, onScrub, on
           ))}
         </Section>
 
+        {/*
+          "No alerts" / "no activity" is a claim about the day, so it prints
+          only over a list that was actually read. A failed read says so; a
+          read still in flight is a skeleton, not an empty day.
+        */}
         <Section title="Alerts raised">
-          {dayAlerts.length === 0 && <EmptyLine>No alerts carry this date.</EmptyLine>}
+          {alerts === undefined && <div className="dn-skel h-9" aria-hidden />}
+          {alerts === null && (
+            <EmptyLine>{DASH} Alerts couldn’t be reached just now.</EmptyLine>
+          )}
+          {alerts != null && dayAlerts.length === 0 && (
+            <EmptyLine>No alerts carry this date.</EmptyLine>
+          )}
           {dayAlerts.map((a) => (
             <div key={a.id} className="flex items-baseline gap-2 text-[13px]">
               <span
@@ -267,7 +280,13 @@ export function DayDetail({ day, daily, dayOrders, alerts, activity, onScrub, on
         </Section>
 
         <Section title="Activity">
-          {dayActivity.length === 0 && <EmptyLine>No recorded activity for this day.</EmptyLine>}
+          {activity === undefined && <div className="dn-skel h-9" aria-hidden />}
+          {activity === null && (
+            <EmptyLine>{DASH} Activity couldn’t be reached just now.</EmptyLine>
+          )}
+          {activity != null && dayActivity.length === 0 && (
+            <EmptyLine>No recorded activity for this day.</EmptyLine>
+          )}
           {dayActivity.map((a) => (
             <div key={a.id} className="flex items-baseline justify-between gap-3 text-[13px]">
               <span className="min-w-0 truncate text-inkm-2">
