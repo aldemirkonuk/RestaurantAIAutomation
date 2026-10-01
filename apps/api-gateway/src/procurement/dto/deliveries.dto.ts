@@ -318,7 +318,7 @@ export class LinkDocumentDto {
 export class RunClocksDto {
   @ApiPropertyOptional({
     description:
-      "Run the ladder as if it were this moment (ISO). For a catch-up after an outage and for tests; the hourly cron passes nothing.",
+      "Run the ladder as if it were this moment (ISO). Tests and demos only: refused with 400 in production. The hourly cron passes nothing, and a production catch-up after an outage runs at the real time.",
   })
   @IsOptional()
   @IsString()
