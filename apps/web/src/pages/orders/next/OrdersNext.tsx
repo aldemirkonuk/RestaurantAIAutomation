@@ -528,7 +528,12 @@ export default function OrdersNext() {
           </section>
 
           {/* ── the drafted-order rail ─────────────────────────────────── */}
-          <DraftRail />
+          <DraftRail
+            focusOrderId={expandedId}
+            onOpenResponses={(orderId) =>
+              data.rows.some((r) => r.id === orderId) ? () => setResponsesFor(orderId) : undefined
+            }
+          />
         </div>
       </div>
     </div>

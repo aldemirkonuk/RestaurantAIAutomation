@@ -19,6 +19,7 @@ const seams = vi.hoisted(() => ({
   requestDraftSend: vi.fn(),
   issueDraftSendChallenge: vi.fn(),
   approveMutateAsync: vi.fn(),
+  editMutate: vi.fn(),
   drafts: [] as unknown[],
 }));
 
@@ -31,6 +32,7 @@ vi.mock('@/hooks/queries/useDraftEmailQueries', () => ({
   requestDraftSend: (...a: unknown[]) => seams.requestDraftSend(...a),
   useCancelScheduledSend: () => ({ mutate: vi.fn(), isPending: false }),
   useDiscardDraft: () => ({ mutate: vi.fn(), isPending: false }),
+  useEditDraft: () => ({ mutate: seams.editMutate, isPending: false }),
   useOrderConversations: () => ({ data: [], isError: false }),
   useDraftStanding: () =>
     seams.standingFailed
@@ -192,5 +194,76 @@ describe('a draft with a blank the house did not fill', () => {
   it('says nothing about a draft with no blanks', () => {
     draw();
     expect(screen.queryByTestId('draft-unfilled')).not.toBeInTheDocument();
+  });
+});
+
+/*
+ * ORD-W8, W10, W11 (DASH-W16 a, c, d), 2026-10-01: the order opened on the
+ * ledger opens and marks its letter; the words can be edited on the card; and
+ * the vendor's answers open from the card.
+ */
+describe('the card, from the order and for the letter', () => {
+  function drawWith(props: Parameters<typeof DraftRail>[0]) {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <DraftRail {...props} />
+      </QueryClientProvider>,
+    );
+  }
+
+  it('opens and marks the letter of the order opened on the ledger', () => {
+    drawWith({ focusOrderId: 'ord-1' });
+    expect(screen.getByTestId('draft-card-ord-1')).toHaveAttribute('data-focused', 'true');
+    expect(screen.getByText(/This order.s letter/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Öküzgözü 2022/ })).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('leaves another order’s letter closed and unmarked', () => {
+    drawWith({ focusOrderId: 'ord-other' });
+    expect(screen.getByTestId('draft-card-ord-1')).not.toHaveAttribute('data-focused');
+    expect(screen.getByRole('button', { name: /Öküzgözü 2022/ })).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('saves edited words through PATCH …/draft, and shuts the hold while the box is open', async () => {
+    seams.issueDraftSendChallenge.mockResolvedValue('proof-1');
+    draw();
+    fireEvent.click(screen.getByRole('button', { name: 'Edit the words' }));
+    const box = screen.getByRole('textbox', { name: /The letter.s words/ });
+    expect(screen.getByRole('button', { name: 'Save the words' })).toBeDisabled();
+    fireEvent.change(box, { target: { value: 'Dear Hasan, six cases. Ayşe' } });
+    holdIt(/Hold to approve & send to Kavaklıdere/);
+    await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+    expect(seams.issueDraftSendChallenge).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Save the words' }));
+    expect(seams.editMutate).toHaveBeenCalledWith(
+      { orderId: 'ord-1', content: 'Dear Hasan, six cases. Ayşe' },
+      expect.anything(),
+    );
+  });
+
+  it('keeps the old words without writing anything', () => {
+    draw();
+    fireEvent.click(screen.getByRole('button', { name: 'Edit the words' }));
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'changed' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Keep the old words' }));
+    expect(seams.editMutate).not.toHaveBeenCalled();
+    expect(screen.getByText('Six cases at 2,400, delivered Tuesday.')).toBeInTheDocument();
+  });
+
+  it('opens the vendor’s answers for that order from the card', () => {
+    const open = vi.fn();
+    const byOrder = vi.fn(() => open);
+    drawWith({ onOpenResponses: byOrder });
+    fireEvent.click(screen.getByRole('button', { name: /Öküzgözü 2022/ }));
+    fireEvent.click(screen.getByTestId('draft-open-responses'));
+    expect(byOrder).toHaveBeenCalledWith('ord-1');
+    expect(open).toHaveBeenCalledOnce();
+  });
+
+  it('offers no answers button when the page cannot open that order', () => {
+    drawWith({ onOpenResponses: () => undefined });
+    fireEvent.click(screen.getByRole('button', { name: /Öküzgözü 2022/ }));
+    expect(screen.queryByTestId('draft-open-responses')).not.toBeInTheDocument();
   });
 });

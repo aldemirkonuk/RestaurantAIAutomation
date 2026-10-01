@@ -29,7 +29,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
-const state = vi.hoisted(() => ({ current: null as unknown }));
+const state = vi.hoisted(() => ({ current: null as unknown, drafts: [] as unknown[] }));
 
 vi.mock('./useOrdersNextData', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./useOrdersNextData')>();
@@ -42,11 +42,20 @@ vi.mock('@/hooks/queries/useOrderQueries', () => ({
 }));
 
 vi.mock('@/hooks/queries/useDraftEmailQueries', () => ({
-  useActiveConversations: () => ({ data: [], isError: false }),
+  useActiveConversations: () => ({ data: state.drafts, isError: false }),
+  useDraftStanding: () => ({ data: undefined, isPending: true, isError: false }),
+  useEditDraft: () => ({ mutate: vi.fn(), isPending: false }),
   useOrderConversations: () => ({ data: [], isError: false }),
   useApproveDraft: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
   useDiscardDraft: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
   useCancelScheduledSend: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
+}));
+
+// jsdom has no Element.animate; the draft card's reveal is skipped under
+// reduced motion (as DraftRail.test.tsx does).
+vi.mock('@/lib/mudavym/motion', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/mudavym/motion')>()),
+  useReducedMotion: () => true,
 }));
 
 vi.mock('@/contexts/AuthContext', () => ({
@@ -126,6 +135,7 @@ function harness(initialPath: string) {
 
 beforeEach(() => {
   state.current = null;
+  state.drafts = [];
 });
 
 afterEach(() => {
@@ -287,5 +297,20 @@ describe('a station picked by hand is kept in the URL', () => {
 
     fireEvent.click(screen.getByRole('tab', { name: /delivered/i }));
     expect(screen.getByTestId('search').textContent).toBe('');
+  });
+});
+
+/*
+ * ORD-W8, 2026-10-01: the order a link opens is handed to the drafts rail,
+ * which opens and marks that order's letter.
+ */
+describe('the opened order focuses its letter on the rail', () => {
+  it('marks the draft of the order a path id opened', async () => {
+    state.current = ordersData({ rows: [row({ id: 'o-1' })] });
+    state.drafts = [
+      { id: 'c-1', orderId: 'o-1', wineName: 'Barolo Riserva', providerName: 'Anadolu', draftContent: 'Six cases.', createdAt: '2026-09-01T10:00:00Z', sendRequest: null },
+    ];
+    harness('/orders/o-1');
+    expect(await screen.findByTestId('draft-card-o-1')).toHaveAttribute('data-focused', 'true');
   });
 });
