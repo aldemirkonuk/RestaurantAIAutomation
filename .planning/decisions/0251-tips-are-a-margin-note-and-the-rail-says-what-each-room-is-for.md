@@ -4,7 +4,7 @@
 - **Date:** 2026-10-01
 - **Decider:** Aldemir (founder). Voice note, 2026-10-01: *"Make sure they disappear every time. If I don't say, show tutorial or later show again and later show again is okay but if i say don't ever show again then i won't want i don't want to see it again until i press or check for it and improve those steps as well they are old garbage um, tutorial designs."* Design pick, `AskUserQuestion` 2026-10-01: *"margin role lock it"* (Tips A, the margin note). Same answer: *"the appearing texts that gives little description to each side tab pages are gone add them, like when cursor comes on /dashboard -> it appears and says overall look in one glance as decsription"*.
 - **Keywords:** guidance, page tips, tours, driver.js, Don't show tips again, Not now, hide_all_tips, margin note, rail, room hint, hover description, tooltip, rooms.ts
-- **Links:** sketch [125](../sketches/125-all-houses-people-and-tips/README.md) (`tips-a-margin-note.html`); [[0160-the-founders-sketch-review-what-he-valued-and-what-each-page-becomes]] (the shell, sketch 119 D; its counter rule amended the same day); branch `fix/closed-stays-closed`.
+- **Links:** sketch [125](../sketches/125-all-houses-people-and-tips/README.md) (`tips-a-margin-note.html`); [[0160-the-founders-sketch-review-what-he-valued-and-what-each-page-becomes]] (the shell, sketch 119 D; its counter rule amended the same day); built on branch `fix/closed-stays-closed`, shipped as PRs #568 (counter), #569 (rail hints), #570 (tip note and tour card), #571 and #572 (tours on live anchors).
 
 ## Context
 

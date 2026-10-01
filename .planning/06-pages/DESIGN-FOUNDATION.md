@@ -323,7 +323,8 @@ studio — plus deliberate chrome-free escapes (door receipt, SimPOS terminal,
      person's first visits; tucked below 1280 px and on `/reports` and
      `/inventory` to a ~52 px strip that still shows each verb with its count (a
      ring for a verb with a register not read, a dash for one refused — never a
-     blank edge); after that each person's choice per page wins. Kept per device
+     blank edge); after that each person's choice per page wins. **[2026-10-01: one
+     choice for every page, not one per page; ADR 0160 §(10) amendment, PR #568.]** Kept per device
      in localStorage keyed by the person (`lib/mudavym/counterPrefs.ts` says why
      not the server route).
    - **The house said** — the sitting's own log of what the house sealed,
