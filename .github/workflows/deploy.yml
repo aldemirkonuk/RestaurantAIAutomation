@@ -29,12 +29,13 @@ permissions:
   contents: read
   actions: write
 
+# No secret sits in the workflow-level env: every job and step inherits it,
+# ci-gate included, and ci-gate runs on every workflow_run. Each secret is
+# given only to the job or step that uses it (ADR 0097, 2026-09-30 key
+# amendment; founder, 2026-09-30, verbatim: "Approve all + widen
+# (Recommended)"). scripts/check_deploy_own_pushes.py holds this.
 env:
   NODE_VERSION: "20.x"
-  ORCHESTRATOR_URL: ${{ secrets.RAILWAY_ORCHESTRATOR_URL }}
-  API_GATEWAY_URL: ${{ secrets.API_GATEWAY_URL }}
-  ADMIN_API_KEY: ${{ secrets.ADMIN_API_KEY }}
-  VERCEL_PRODUCTION_URL: ${{ secrets.VERCEL_PRODUCTION_URL }}
 
 jobs:
   # A GATE THAT DID NOT RUN MUST NOT LOOK LIKE A GATE THAT PASSED.
@@ -63,6 +64,9 @@ jobs:
   ci-gate:
     name: CI Gate
     runs-on: ubuntu-latest
+    # No token scope and no action step, so no cache save: ci-gate runs on
+    # every workflow_run, a fork's included (ADR 0097, 2026-09-30 key amendment).
+    permissions: {}
     steps:
       - name: CI must have succeeded
         if: github.event_name == 'workflow_run'
@@ -89,7 +93,7 @@ jobs:
       # (Recommended)" and then "Also allow manual runs". The trigger's
       # `branches: [main]` filter also matches a fork's pull request whose
       # branch is named `main`, and Stages 2 and 3 check out that run's
-      # head_sha and execute its code beside ADMIN_API_KEY. A run of any other
+      # head_sha and execute its code beside the stage's secrets. A run of any other
       # event, or from any other repository (a dispatch included), fails here,
       # red, and every stage skips beneath it (each stage's `if` repeats the
       # same condition, so this is not the only line). Allowing
@@ -121,6 +125,8 @@ jobs:
     if: >-
       (github.event_name == 'workflow_run' && (github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'workflow_dispatch') && github.event.workflow_run.head_repository.full_name == github.repository)
       || (github.event_name == 'workflow_dispatch' && inputs.mode == 'deploy-audit')
+    env:
+      ORCHESTRATOR_URL: ${{ secrets.RAILWAY_ORCHESTRATOR_URL }}
     steps:
       - name: Check orchestrator URL
         id: check
@@ -155,6 +161,9 @@ jobs:
           exit 1
 
       - name: Verify 9/9 agents Active
+        # The only step that uses ADMIN_API_KEY, so the only one that gets it.
+        env:
+          ADMIN_API_KEY: ${{ secrets.ADMIN_API_KEY }}
         run: |
           set -euo pipefail
           URL="${ORCHESTRATOR_URL%/}/api/v1/health/agents"
@@ -186,6 +195,8 @@ jobs:
     if: >-
       (github.event_name == 'workflow_run' && (github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'workflow_dispatch') && github.event.workflow_run.head_repository.full_name == github.repository)
       || (github.event_name == 'workflow_dispatch' && inputs.mode == 'deploy-audit')
+    env:
+      API_GATEWAY_URL: ${{ secrets.API_GATEWAY_URL }}
     # Exposed so deploy-audit (a separate job) can record what was actually
     # VERIFIED, not just what was merged — see the audit-summary step below;
     # a false "provenance_verified: true" against the raw merge sha, on the
@@ -599,6 +610,7 @@ jobs:
           && needs.verify-frontend.result == 'success'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERCEL_PRODUCTION_URL: ${{ secrets.VERCEL_PRODUCTION_URL }}
         run: |
           gh workflow run e2e-prod.yml \
             -f triggered_by_deploy=true \
