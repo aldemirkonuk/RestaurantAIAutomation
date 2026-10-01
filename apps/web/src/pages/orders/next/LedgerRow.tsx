@@ -373,9 +373,17 @@ export function LedgerRow({
         }}
       >
         <div style={{ overflow: 'hidden' }}>
-          <div className="grid gap-4 px-10 pb-4 pt-1 sm:grid-cols-[1fr_auto]" style={{ fontFamily: SANS }}>
+          {/*
+            The working and the action column sit side by side only when the
+            ROW has room for both. The old `sm:grid-cols-[1fr_auto]` keyed on
+            the viewport, so at 1024px — where the ledger column is ~340px wide
+            beside the drafts rail — the 230px action column took the row and
+            squeezed the working into a one-word-wide strip (DASH-W15). A
+            wrapping flex row decides by the row's own width instead.
+          */}
+          <div className="flex flex-wrap gap-4 px-10 pb-4 pt-1" style={{ fontFamily: SANS }}>
             {/* the working — how the total is arrived at, stated in full */}
-            <div>
+            <div style={{ flex: '1 1 16rem', minWidth: 0 }}>
               {label('The working')}
               <div
                 style={{
@@ -522,7 +530,7 @@ export function LedgerRow({
             </div>
 
             {/* the action column — one honest control per stage */}
-            <div style={{ minWidth: 230 }}>
+            <div style={{ flex: '0 0 230px', maxWidth: '100%' }}>
               {/*
                 The correspondence, at every stage. It is not a stage control:
                 what a vendor said about an order is worth reading after the

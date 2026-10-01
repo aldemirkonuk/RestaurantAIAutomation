@@ -1254,3 +1254,11 @@ receipt exists, and expands the row while the order is pending** (the approve ho
   `OrdersNext.receipt.test.tsx` now opens the sheet with the bare row click. Mutations
   (rule → `false`, rule → every live stage, click → always toggle, `aria-haspopup`
   dropped) each fail the suite.
+
+## 14. Founder walk-through — 2026-10-01 (branch fix/review-orders)
+
+Session R5, worktree `wt-review-5`, web :5305, gateway :4105 as `me`, house ALDEMIR. Chrome extension not connected, so P10's live tab is read from the deploy commit only.
+
+| Id | What | Evidence | Ask | Founder's words | Status |
+|---|---|---|---|---|---|
+| ORD-W1 | An opened order's working squeezed into a one-word-wide strip at 1024px (queued as DASH-W15 by R1b, approved there). Cause: `sm:grid-cols-[1fr_auto]` keyed on the viewport, not the row; the 230px action column took the ~340px ledger row. Fix: a wrapping flex row, working `flex 1 1 16rem`, actions `flex 0 0 230px` — buttons go under the working when the row is narrow, beside it when wide (1680px checked). | `LedgerRow.tsx:376-385,532`; `p4-scratch/review-snap-5/sketches/ORD-W1-{before,after,after-actions}.jpg`; order TEST-R1-DASH-W6 | approve/deny/rework | DASH-W15: approved; ORD-W1: Approve | proposed → approved → built (this commit) → verified in pane at 1024 and 1680, vitest orders/next 183/183, no console error |
