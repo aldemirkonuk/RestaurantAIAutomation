@@ -1,16 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 /**
- * The outbox is the only place in the app that knows the difference between a
- * receipt that was DELIVERED and one it GAVE UP ON — both leave the queue, so
- * downstream every trace of the distinction is a pending count that fell by
- * one. These tests pin `dropped`, the number that carries it out.
+ * A door receipt the server refuses for good is PARKED as "Not sent", never
+ * dropped (ADR 0241 amendment, 2026-09-29 — the founder: "option 1, not
+ * sent."). It stays in the queue, is counted in `parked` (not `failed`), and
+ * leaves only when a person discards it. These tests pin that, and that a
+ * transient failure — a 401 included — is kept unparked and retried.
  *
- * `failed` deliberately still counts both kinds (a retryable failure did not
- * send either, and two consumers gate on it), so `dropped` is a subset of it,
- * never a replacement.
+ * Before the amendment a refusal deleted the entry and wrote ADR 0140's drop
+ * record instead; the tests that pinned that (`dropped`, `stranded`) describe
+ * superseded behaviour and were rewritten here, not deleted: each property
+ * they guarded — nothing counted twice, nothing leaked across houses, nothing
+ * destroyed when storage refuses a write — is still asserted, against parking.
  */
-
 const recordDoorReceipt = vi.hoisted(() => vi.fn())
 vi.mock('../services/api/receiving', () => ({
   receivingApi: { recordDoorReceipt },
@@ -26,9 +28,13 @@ vi.mock('./offline-storage', () => ({ offlineStorage: store }))
 
 import {
   clearDroppedDoorReceipts,
+  discardDoorReceipt,
   dismissDroppedDoorReceipt,
   flushDoorOutbox,
+  notSentDoorCount,
+  pendingDoorCount,
   readDroppedDoorReceipts,
+  resendDoorReceipt,
   watchDoorOutbox,
   type DoorFlushResult,
 } from './doorOutbox'
@@ -75,17 +81,26 @@ beforeEach(() => {
   vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true)
 })
 
-describe('flushDoorOutbox — the drop is counted where it happens', () => {
-  it('counts a 4xx refusal as dropped, not merely failed', async () => {
+const parkedWith = (status: number) =>
+  expect.objectContaining({
+    lastError: `HTTP ${status}`,
+    parked: expect.objectContaining({ reason: 'refused', status }),
+  })
+
+describe('flushDoorOutbox — a refused receipt is parked as Not sent, never dropped', () => {
+  it.each([403, 404, 422, 400])('parks a %i and never deletes it', async (status) => {
     store.getPendingMutationsByType.mockResolvedValue([pending('a')])
-    recordDoorReceipt.mockRejectedValue(httpError(422))
+    recordDoorReceipt.mockRejectedValue(httpError(status))
 
     const res = await flushDoorOutbox()
 
-    // Deleted from the queue: the pending badge falls by one exactly as it
-    // would on a delivery. That is the whole defect.
-    expect(store.removePendingMutation).toHaveBeenCalledWith('a')
-    expect(res).toEqual({ sent: 0, failed: 1, dropped: 1, stranded: 0, unreachable: false })
+    // Kept: the queue is the only copy of the count.
+    expect(store.removePendingMutation).not.toHaveBeenCalled()
+    expect(store.updatePendingMutation).toHaveBeenCalledWith('a', parkedWith(status))
+    // Counted as parked, not as a failure that will be retried.
+    expect(res).toEqual({ sent: 0, failed: 0, parked: 1, unreachable: false })
+    // And no ADR 0140 drop record is written for it any more.
+    expect(persistedDrops()).toEqual([])
   })
 
   it('never gives up on a transient failure, however many came before (ADR 0241)', async () => {
@@ -100,58 +115,67 @@ describe('flushDoorOutbox — the drop is counted where it happens', () => {
       'b',
       expect.objectContaining({ retryCount: 8 }),
     )
-    expect(res).toEqual({ sent: 0, failed: 1, dropped: 0, stranded: 0, unreachable: false })
+    expect(res).toEqual({ sent: 0, failed: 1, parked: 0, unreachable: false })
   })
 
-  it('does NOT count a retryable failure as dropped — it is still in the queue', async () => {
-    store.getPendingMutationsByType.mockResolvedValue([pending('c', 1)])
-    recordDoorReceipt.mockRejectedValue(httpError(503))
+  it('keeps a 401 queued and UNPARKED — the session ended; it goes after the same person signs in', async () => {
+    store.getPendingMutationsByType.mockResolvedValue([pending('a')])
+    recordDoorReceipt.mockRejectedValue(httpError(401))
 
     const res = await flushDoorOutbox()
 
     expect(store.removePendingMutation).not.toHaveBeenCalled()
-    expect(res).toEqual({ sent: 0, failed: 1, dropped: 0, stranded: 0, unreachable: false })
+    expect(store.updatePendingMutation).toHaveBeenCalledWith(
+      'a',
+      expect.objectContaining({ retryCount: 1 }),
+    )
+    expect(store.updatePendingMutation).not.toHaveBeenCalledWith(
+      'a',
+      expect.objectContaining({ parked: expect.anything() }),
+    )
+    expect(res).toEqual({ sent: 0, failed: 1, parked: 0, unreachable: false })
+    expect(persistedDrops()).toEqual([])
   })
 
-  it('reports a delivery and a drop from the same pass separately', async () => {
+  it('reports a delivery and a park from the same pass separately', async () => {
     store.getPendingMutationsByType.mockResolvedValue([pending('d'), pending('e')])
     recordDoorReceipt
       .mockResolvedValueOnce({ alreadyRecorded: false })
       .mockRejectedValueOnce(httpError(400))
 
-    expect(await flushDoorOutbox()).toEqual({
-      sent: 1,
-      failed: 1,
-      dropped: 1,
-      stranded: 0,
-      unreachable: false,
-    })
+    expect(await flushDoorOutbox()).toEqual({ sent: 1, failed: 0, parked: 1, unreachable: false })
+    expect(store.removePendingMutation).toHaveBeenCalledTimes(1)
+    expect(store.removePendingMutation).toHaveBeenCalledWith('d')
+  })
+
+  it('never sends a parked receipt on its own — it waits for Send again', async () => {
+    store.getPendingMutationsByType.mockResolvedValue([
+      { ...pending('p'), parked: { reason: 'refused', status: 422, at: '2026-09-29T00:00:00.000Z' } },
+    ])
+
+    const res = await flushDoorOutbox()
+
+    expect(recordDoorReceipt).not.toHaveBeenCalled()
+    expect(store.removePendingMutation).not.toHaveBeenCalled()
+    expect(res).toEqual({ sent: 0, failed: 0, parked: 0, unreachable: false })
   })
 
   it('is zero on every axis when offline — nothing was attempted, nothing was lost', async () => {
     vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false)
 
-    expect(await flushDoorOutbox()).toEqual({
-      sent: 0,
-      failed: 0,
-      dropped: 0,
-      stranded: 0,
-      unreachable: false,
-    })
+    expect(await flushDoorOutbox()).toEqual({ sent: 0, failed: 0, parked: 0, unreachable: false })
     expect(store.getPendingMutationsByType).not.toHaveBeenCalled()
   })
 })
 
-
 /**
- * C1. `flushDoorOutbox` used to read the whole pending list before removing
+ * C1. `flushDoorOutbox` used to read the whole pending list before touching
  * anything, with no in-flight guard, while three triggers fire it — mount,
  * 'online' and 'visibilitychange' — and the walk from the dock to the office
  * raises the last two together. Two passes over ONE pending receipt therefore
- * each returned `dropped: 1`, and the screen accumulates that number: the
- * porter was told two deliveries were lost when one was.
+ * each reported it, and the porter was told two when there was one.
  */
-describe('flushDoorOutbox — two passes over one receipt are one loss', () => {
+describe('flushDoorOutbox — two passes over one receipt are one refusal', () => {
   it('joins the pass already running instead of attempting the same receipt twice', async () => {
     store.getPendingMutationsByType.mockResolvedValue([pending('a')])
     recordDoorReceipt.mockRejectedValue(httpError(422))
@@ -159,13 +183,14 @@ describe('flushDoorOutbox — two passes over one receipt are one loss', () => {
     const [first, second] = await Promise.all([flushDoorOutbox(), flushDoorOutbox()])
 
     expect(recordDoorReceipt).toHaveBeenCalledTimes(1)
-    expect(store.removePendingMutation).toHaveBeenCalledTimes(1)
+    expect(store.updatePendingMutation).toHaveBeenCalledTimes(1)
+    expect(store.removePendingMutation).not.toHaveBeenCalled()
     // One pass, so one result: there is no second reading to add to the first.
     expect(first).toBe(second)
-    expect(first.dropped).toBe(1)
+    expect(first.parked).toBe(1)
   })
 
-  it('reports one lost receipt ONCE when online and visibilitychange fire together', async () => {
+  it('reports one refused receipt ONCE when online and visibilitychange fire together', async () => {
     store.getPendingMutationsByType.mockResolvedValue([pending('a')])
     recordDoorReceipt.mockRejectedValue(httpError(422))
 
@@ -176,9 +201,7 @@ describe('flushDoorOutbox — two passes over one receipt are one loss', () => {
     await settle()
     stop()
 
-    // The number the screen adds up. Summed across every callback, because
-    // that is exactly what the screen does with it.
-    expect(seen.reduce((n, r) => n + r.dropped, 0)).toBe(1)
+    expect(seen.reduce((n, r) => n + r.parked, 0)).toBe(1)
     expect(recordDoorReceipt).toHaveBeenCalledTimes(1)
   })
 
@@ -200,44 +223,22 @@ describe('flushDoorOutbox — two passes over one receipt are one loss', () => {
 })
 
 /**
- * C2. A drop deletes the queue entry, so before this the only record of a
- * permanent loss was a counter in component state on one phone — gone on the
- * next navigation. The flush writes the loss down itself.
+ * C2 as it stands after the amendment. The drop record survived the screen
+ * that saw it; it is now READ-ONLY — the flush writes none — while the records
+ * already on devices are still read, scoped by house, and adopted from the
+ * legacy keys (H1 below).
  */
-describe('flushDoorOutbox — the drop outlives the screen that saw it', () => {
-  it('persists the lost receipt, named, with the reason it was given up on', async () => {
-    store.getPendingMutationsByType.mockResolvedValue([pending('a')])
-    recordDoorReceipt.mockRejectedValue(httpError(422))
+describe('flushDoorOutbox — writes no drop record any more', () => {
+  it('writes nothing for a refusal, a 403 included (it is parked instead)', async () => {
+    store.getPendingMutationsByType.mockResolvedValue([pending('a'), pending('b')])
+    recordDoorReceipt.mockRejectedValueOnce(httpError(422)).mockRejectedValueOnce(httpError(403))
 
     await flushDoorOutbox()
 
-    expect(persistedDrops()).toHaveLength(1)
-    expect(persistedDrops()[0]).toMatchObject({
-      id: 'a',
-      orderLabel: 'a',
-      reason: 'refused',
-    })
-    expect(Number.isNaN(Date.parse(persistedDrops()[0].droppedAt))).toBe(false)
-  })
-
-  it('keeps a receipt refused with 401 — the session ended; it goes after the same person signs in (ADR 0241)', async () => {
-    store.getPendingMutationsByType.mockResolvedValue([pending('a')])
-    recordDoorReceipt.mockRejectedValue(httpError(401))
-
-    await flushDoorOutbox()
-
-    // C4 is closed: a 401 used to delete the receipt with reason 'auth'.
     expect(persistedDrops()).toEqual([])
-    expect(store.removePendingMutation).not.toHaveBeenCalled()
-  })
-
-  it('names a 403 as a sign-in problem, so the notice can name the right remedy', async () => {
-    store.getPendingMutationsByType.mockResolvedValue([pending('a')])
-    recordDoorReceipt.mockRejectedValue(httpError(403))
-
-    await flushDoorOutbox()
-
-    expect(persistedDrops()[0].reason).toBe('auth')
+    expect(window.localStorage.getItem('mudavym.receiving.outboxDrops')).toBeNull()
+    expect(window.localStorage.getItem('mudavym.door.drops.v1')).toBeNull()
+    expect(store.updatePendingMutation).toHaveBeenCalledWith('b', parkedWith(403))
   })
 
   it('records nothing for a retryable failure — that receipt is still in the queue', async () => {
@@ -247,17 +248,6 @@ describe('flushDoorOutbox — the drop outlives the screen that saw it', () => {
     await flushDoorOutbox()
 
     expect(persistedDrops()).toEqual([])
-  })
-
-  it('is keyed on the queue id, so seeing the same drop again does not double it', async () => {
-    // A store that did not complete the delete hands the same entry back.
-    store.getPendingMutationsByType.mockResolvedValue([pending('a')])
-    recordDoorReceipt.mockRejectedValue(httpError(422))
-
-    await flushDoorOutbox()
-    await flushDoorOutbox()
-
-    expect(persistedDrops()).toHaveLength(1)
   })
 })
 
@@ -282,30 +272,19 @@ const scoped = (rid: string): Array<Record<string, unknown>> =>
   JSON.parse(window.localStorage.getItem(SCOPED(rid)) ?? '[]')
 
 /**
- * H1. The record landed on ONE global key. A receiving tablet at the door is
- * shared and restaurant switching is a first-class gesture, so one house's
- * dropped order label rendered on another's screen — the exact leak the
- * sibling store (useReceivingNextData.ts, `dropsKey`) had already closed.
+ * H1. Drop records were once written to ONE global key. A receiving tablet at
+ * the door is shared and restaurant switching is a first-class gesture, so one
+ * house's dropped order label rendered on another's screen. The records already
+ * on devices are still read under that scoping.
  */
-describe('H1 — a lost delivery belongs to the house that took it', () => {
-  it('writes the record under the receiving restaurant, never a global key', async () => {
-    store.getPendingMutationsByType.mockResolvedValue([pendingAt('a', 'rest-A')])
-    recordDoorReceipt.mockRejectedValue(httpError(422))
-
-    await flushDoorOutbox()
-
-    expect(scoped('rest-A')).toHaveLength(1)
-    expect(window.localStorage.getItem('mudavym.door.drops.v1')).toBeNull()
-    expect(window.localStorage.getItem('mudavym.receiving.outboxDrops')).toBeNull()
-  })
-
-  it("does not show restaurant A's lost delivery to restaurant B", async () => {
-    store.getPendingMutationsByType.mockResolvedValue([
-      pendingAt('a', 'rest-A', 0, 'PO-SECRET · Restaurant A'),
-    ])
-    recordDoorReceipt.mockRejectedValue(httpError(422))
-
-    await flushDoorOutbox()
+describe('H1 — a recorded lost delivery belongs to the house that took it', () => {
+  it("does not show restaurant A's recorded delivery to restaurant B", () => {
+    window.localStorage.setItem(
+      SCOPED('rest-A'),
+      JSON.stringify([
+        { id: 'a', orderLabel: 'PO-SECRET · Restaurant A', droppedAt: '2026-09-01T10:00:00.000Z', reason: 'refused' },
+      ]),
+    )
 
     expect(readDroppedDoorReceipts('rest-A')).toHaveLength(1)
     expect(readDroppedDoorReceipts('rest-B')).toEqual([])
@@ -329,44 +308,23 @@ describe('H1 — a lost delivery belongs to the house that took it', () => {
 })
 
 /**
- * H2 — the adversary's probe, verbatim. Queue [PO-77], server 400, storage
- * throws QuotaExceededError. Before this the flush deleted the queue entry,
- * failed to write the record, and returned `dropped: 1` with nothing on screen
- * and nothing on disk: a permanently lost delivery with no trace, produced by
- * the commit whose whole purpose was to stop exactly that.
+ * H2 — the adversary's probe, re-cut for parking. Queue [PO-77], server 400,
+ * and the park write itself fails. Before ADR 0140 the flush deleted the entry
+ * with nothing on disk; the entry must be kept, queued and unparked, and the
+ * next flush meets it again.
  */
-describe('H2 — a receipt cannot vanish because this phone could not write it down', () => {
-  it('keeps the queue entry when the record cannot be written, and says so', async () => {
-    store.getPendingMutationsByType.mockResolvedValue([
-      pendingAt('m-77', 'rest-A', 0, 'PO-77'),
-    ])
+describe('H2 — a receipt cannot vanish because this phone could not park it', () => {
+  it('keeps the queue entry, unparked, when the park write fails', async () => {
+    store.getPendingMutationsByType.mockResolvedValue([pendingAt('m-77', 'rest-A', 0, 'PO-77')])
     recordDoorReceipt.mockRejectedValue(httpError(400))
-    // Spied on the INSTANCE, not on Storage.prototype: in this jsdom a
-    // prototype spy never reaches `window.localStorage`, so the probe would
-    // pass without ever simulating a full disk.
-    const setItem = vi
-      .spyOn(window.localStorage, 'setItem')
-      .mockImplementation(() => {
-        const e = new Error('The quota has been exceeded.')
-        e.name = 'QuotaExceededError'
-        throw e
-      })
+    store.updatePendingMutation.mockRejectedValue(new Error('QuotaExceededError'))
 
     const res = await flushDoorOutbox()
-    setItem.mockRestore()
 
     // Nothing was destroyed.
     expect(store.removePendingMutation).not.toHaveBeenCalled()
-    // And nothing claims it was recorded.
-    expect(res.dropped).toBe(0)
-    expect(res.stranded).toBe(1)
-    expect(res.failed).toBe(1)
-    // Kept with its attempt counted — no longer parked at a ceiling, since
-    // ADR 0241 removed the ceiling; the next flush tries the record again.
-    expect(store.updatePendingMutation).toHaveBeenCalledWith(
-      'm-77',
-      expect.objectContaining({ retryCount: 1 }),
-    )
+    // And nothing claims it was parked: it is still waiting, so it is `failed`.
+    expect(res).toEqual({ sent: 0, failed: 1, parked: 0, unreachable: false })
   })
 })
 
@@ -414,11 +372,10 @@ describe('L1 — a pass that cannot read the queue reports that, not health', ()
 
     const [a, b] = await Promise.all([flushDoorOutbox(), flushDoorOutbox()])
 
-    expect(a).toEqual({ sent: 0, failed: 0, dropped: 0, stranded: 0, unreachable: true })
+    expect(a).toEqual({ sent: 0, failed: 0, parked: 0, unreachable: true })
     expect(b).toEqual(a)
   })
 })
-
 /**
  * The gap the scoping opens: a receipt queued BEFORE `restaurantId` existed on
  * the entry has no house to file under. Writing it to a `.unscoped` bucket no
@@ -534,3 +491,60 @@ describe('ADR 0241 — a house switch in the middle of a flush', () => {
   })
 })
 
+
+describe('Send again and Discard — one parked receipt, by a person', () => {
+  const parked = (id: string, reason: 'refused' | 'unowned') => ({
+    ...pending(id),
+    parked: { reason, status: reason === 'refused' ? 422 : undefined, at: '2026-09-29T00:00:00.000Z' },
+  })
+
+  it('Send again un-parks a refused receipt and flushes it', async () => {
+    store.getPendingMutationsByType
+      .mockResolvedValueOnce([parked('r', 'refused')])
+      .mockResolvedValue([pending('r')])
+    recordDoorReceipt.mockResolvedValue({ alreadyRecorded: false })
+
+    expect(await resendDoorReceipt('r')).toBe(true)
+
+    expect(store.updatePendingMutation).toHaveBeenCalledWith('r', { parked: undefined })
+    expect(recordDoorReceipt).toHaveBeenCalledTimes(1)
+    expect(store.removePendingMutation).toHaveBeenCalledWith('r')
+  })
+
+  it('cannot send an unowned receipt again — there is nobody to send it as', async () => {
+    store.getPendingMutationsByType.mockResolvedValue([parked('u', 'unowned')])
+
+    expect(await resendDoorReceipt('u')).toBe(false)
+
+    expect(store.updatePendingMutation).not.toHaveBeenCalled()
+    expect(recordDoorReceipt).not.toHaveBeenCalled()
+  })
+
+  it('Discard removes the entry — the only path that does', async () => {
+    store.getPendingMutationsByType.mockResolvedValue([parked('u', 'unowned')])
+
+    expect(await discardDoorReceipt('u')).toBe(true)
+    expect(store.removePendingMutation).toHaveBeenCalledWith('u')
+  })
+
+  it('Discard never removes a receipt that is queued to send, or one this session cannot see', async () => {
+    // A stale rail row: another tab un-parked it, or the house changed since
+    // the row was drawn. The scoped read no longer shows it as parked.
+    store.getPendingMutationsByType.mockResolvedValue([pending('q')])
+
+    expect(await discardDoorReceipt('q')).toBe(false)
+    expect(await discardDoorReceipt('elsewhere')).toBe(false)
+    expect(store.removePendingMutation).not.toHaveBeenCalled()
+  })
+
+  it('counts a parked receipt as Not sent, never as waiting', async () => {
+    store.getPendingMutationsByType.mockResolvedValue([
+      pending('w'),
+      parked('r', 'refused'),
+      parked('u', 'unowned'),
+    ])
+
+    expect(await pendingDoorCount()).toBe(1)
+    expect(await notSentDoorCount()).toBe(2)
+  })
+})

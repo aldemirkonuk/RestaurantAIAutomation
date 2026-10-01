@@ -1,6 +1,7 @@
-import { describe, it, expect } from 'vitest'
+import { afterEach, describe, it, expect } from 'vitest'
 import { screen } from '@testing-library/react'
 import { renderWithProviders } from '../__tests__/utils/test-utils'
+import { PUBLIC_OVERRIDE_KEY } from '../lib/mudavym/publicDesign'
 import Privacy from './Privacy'
 
 /**
@@ -10,6 +11,11 @@ import Privacy from './Privacy'
  * keeps, that the owner can opt out, that nothing asked while opted out is
  * ever used (even after opting back in), and that an export carries no
  * question text.
+ *
+ * ADR 0145, round 6z, founder's pick verbatim: "Add a plain line now
+ * (Recommended)". The last block asserts the model-provider sentence in BOTH
+ * copies of the section: the plate (the page that ships) and the legacy
+ * `<Section>` copy, reachable only through the QA override.
  */
 describe('Privacy page', () => {
   it('renders the page', () => {
@@ -40,5 +46,27 @@ describe('Privacy page', () => {
   it('states that an export carries no question text', () => {
     renderWithProviders(<Privacy />)
     expect(screen.getByText(/that export carries no question text at all/i)).toBeInTheDocument()
+  })
+})
+
+describe('Privacy page: where a question goes to be answered (round 6z)', () => {
+  const sentence = /to answer it, the question is sent to an ai model provider outside turkey/i
+
+  afterEach(() => {
+    window.localStorage.removeItem(PUBLIC_OVERRIDE_KEY)
+  })
+
+  it('says it on the plate copy that ships', () => {
+    renderWithProviders(<Privacy />)
+    expect(document.querySelector('.mdv-pub__plate')).not.toBeNull()
+    expect(screen.getByText(sentence)).toBeInTheDocument()
+  })
+
+  it('says it on the legacy Section copy too', () => {
+    window.localStorage.setItem(PUBLIC_OVERRIDE_KEY, 'off')
+    renderWithProviders(<Privacy />)
+    expect(document.querySelector('.mdv-pub__plate')).toBeNull()
+    expect(screen.getByRole('heading', { name: /questions you ask mudavym/i })).toBeInTheDocument()
+    expect(screen.getByText(sentence)).toBeInTheDocument()
   })
 })

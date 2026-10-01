@@ -78,12 +78,15 @@ describe('zone create waits for the server', () => {
     )
   })
 
-  it('the create form offers no parent and sends none', async () => {
+  // #510 hid the parent picker on create because storage_locations had no
+  // parent column; #515 (founder 2026-09-29, "Add parent column") stores
+  // parent_id, so the create form offers it. Left empty, it sends none.
+  it('the create form offers a parent, and sends none when it is left empty', async () => {
     addLocation.mockResolvedValue(null)
     openCreateForm()
-    expect(screen.queryByText('Parent Location')).not.toBeInTheDocument()
+    expect(screen.getByText('Parent Location')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /^Create$/ }))
     await waitFor(() => expect(addLocation).toHaveBeenCalledTimes(1))
-    expect(addLocation.mock.calls[0][0]).not.toHaveProperty('parentId')
+    expect(addLocation.mock.calls[0][0].parentId ?? undefined).toBeUndefined()
   })
 })

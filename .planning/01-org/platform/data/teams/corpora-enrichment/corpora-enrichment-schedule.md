@@ -13,6 +13,14 @@ links: ["[[corpora-enrichment-charter]]", "[[corpora-enrichment-loops]]", "[[cor
 
 ## Recurring work
 
+> **Merged 2026-09-18 into [`07-reference/wine-intelligence-foundations.md`](../../../../../07-reference/wine-intelligence-foundations.md) §3.**
+> None of the rows below runs on a schedule. `enrichment_queue` has 0 rows, and no
+> scheduled job has written to the library. The daily batch exists only as an
+> undeployed Celery beat entry. The repair pass has run by hand only: 1,086
+> `wine_repair_log` rows, 2026-08-13..08-23. The measured job census and the schedule
+> the library needs (S1–S8) live there now. The table below is kept only because this
+> unit's artifact set is fixed (ADR 0034). Do not extend it; amend §3 there instead.
+
 | Cadence | Job | Emits |
 |---|---|---|
 | Daily | Enrichment batch, drawn from `enrichment_demand_priority` | `nf_a.task_success_rate`, `nf_a.cost_per_task`, enriched rows |

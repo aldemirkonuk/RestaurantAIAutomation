@@ -86,14 +86,14 @@ pytz==2024.1  # Timezone support for manager preferences
 surya-ocr>=0.6.0  # Surya OCR for scanned PDFs (self-hosted, Apache 2.0)
 PyPDF2>=3.0.0  # PDF text extraction (digital PDFs)
 pdf2image>=1.17.0  # PDF to image conversion (for scanned PDFs)
-playwright>=1.40.0  # Headless browser for web crawling + DOM extraction
+playwright>=1.62.0  # Headless browser for web crawling + DOM extraction
 
 # =============================================================================
 # HTTP CLIENTS
 # =============================================================================
 httpx>=0.28.1
 aiohttp==3.14.3
-requests==2.31.0
+requests==2.34.2
 urllib3==2.1.0
 
 # =============================================================================
@@ -156,7 +156,7 @@ cryptography==50.0.0
 python-dotenv==1.0.0
 python-multipart==0.0.6
 typer==0.9.0  # CLI tools
-rich==13.7.0  # Pretty printing
+rich==15.0.0  # Pretty printing
 
 # =============================================================================
 # SCHEDULING
@@ -180,7 +180,7 @@ faker==22.4.0  # Test data generation
 black==24.1.1
 ruff==0.1.14
 mypy==1.8.0
-isort==5.13.2
+isort==9.0.1
 
 # =============================================================================
 # TYPE STUBS

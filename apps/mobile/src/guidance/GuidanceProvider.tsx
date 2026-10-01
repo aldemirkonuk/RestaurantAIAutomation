@@ -69,8 +69,6 @@ interface GuidanceContextValue {
   dismissTip: (pageId: PageTourId) => void;
   completeTipViaTour: (pageId: PageTourId) => void;
   resetTips: () => void;
-  setShowWineAgentFab: (show: boolean) => void;
-  unlockWineAgentFab: () => void;
   servicePermissions: Record<string, boolean>;
   setServicePermission: (key: string, value: boolean) => void;
   onboarding: {
@@ -287,27 +285,6 @@ export function GuidanceProvider({ children }: { children: ReactNode }) {
     });
   }, [persistGuidance, state]);
 
-  const setShowWineAgentFab = useCallback(
-    (show: boolean) => {
-      persistGuidance({
-        ...state,
-        global: { ...state.global, show_wine_agent_fab: show },
-      });
-    },
-    [persistGuidance, state],
-  );
-
-  const unlockWineAgentFab = useCallback(() => {
-    persistGuidance({
-      ...state,
-      global: {
-        ...state.global,
-        wine_agent_fab_unlocked: true,
-        show_wine_agent_fab: true,
-      },
-    });
-  }, [persistGuidance, state]);
-
   const setServicePermission = useCallback(
     (key: string, value: boolean) => {
       persistMutation.mutate({
@@ -329,8 +306,6 @@ export function GuidanceProvider({ children }: { children: ReactNode }) {
     dismissTip,
     completeTipViaTour,
     resetTips,
-    setShowWineAgentFab,
-    unlockWineAgentFab,
     servicePermissions,
     setServicePermission,
     onboarding: onboardingQuery.data ?? null,
