@@ -23,12 +23,20 @@
  *  4. **Pausing and ending are plain acts, not sealed ones**, and the sheet
  *     says why: they commit no money. Only approving an occurrence does, and
  *     that keeps its hold.
+ *
+ * WHO MAY CHANGE A RULE (ADR 0247, founder 2026-10-01: "Managers and owners
+ * only"). Pause, resume, end and replace need a manager or an owner; the
+ * gateway refuses anyone else with 403 and that refusal is the real gate. This
+ * sheet only stops offering those controls to a role that would be refused,
+ * and says why in words. Staff still see the rule and may still set the first
+ * rule on an approved order.
  */
 
 import { useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Panel } from '@/components/mudavym';
-import { apiClient, getErrorMessage } from '@/services/api/client';
+import { useAuth } from '@/contexts/AuthContext';
+import { apiClient, getErrorMessage, getErrorStatus } from '@/services/api/client';
 import { SANS, SERIF } from './format';
 import {
   RECURRENCE_FREQUENCIES,
@@ -155,6 +163,23 @@ export function projectOccurrences(
   return out;
 }
 
+/** Shown in place of pause, resume, end and replace to a role the gateway refuses. */
+export const RECURRENCE_NEEDS_A_MANAGER =
+  'Pausing, resuming, ending or replacing this rule is a manager\u2019s or an owner\u2019s ' +
+  'act in this house, and your role here is not one of those. Ask a manager or an owner.';
+
+/** Shown instead while the role has not been read. `null` is not `staff`. */
+export const RECURRENCE_ROLE_UNKNOWN =
+  'Your role at this restaurant has not been read yet, so whether you may pause, resume, ' +
+  'end or replace this rule is unknown. It is not assumed. If this does not clear in a ' +
+  'moment, reload.';
+
+/** A refusal from the gateway, in words, and what it left unchanged. */
+function refusalWords(message: string): string {
+  const said = message.trim().replace(/[.!]?$/, '.');
+  return `${said} Nothing was changed.`;
+}
+
 export interface RecurrenceSheetProps {
   open: boolean;
   onClose: () => void;
@@ -163,6 +188,7 @@ export interface RecurrenceSheetProps {
 
 export function RecurrenceSheet({ open, onClose, row }: RecurrenceSheetProps) {
   const queryClient = useQueryClient();
+  const { activeRole } = useAuth();
   const [frequency, setFrequency] = useState<RecurrenceFrequency | null>(null);
   const [anchorDay, setAnchorDay] = useState<number | null>(null);
   const [startsOn, setStartsOn] = useState<string>(todayIso());
@@ -172,6 +198,20 @@ export function RecurrenceSheet({ open, onClose, row }: RecurrenceSheetProps) {
 
   const existing = row?.recurrence ?? null;
   const alreadyRecurs = !!existing?.frequency;
+
+  /*
+   * THE ROLE, AS THREE STATES. Changing a rule that is already there needs a
+   * manager or an owner (ADR 0247). `null` means "not read yet", not "staff";
+   * both lose the controls, and each is told its own reason.
+   */
+  const mayChangeRule = activeRole === 'owner' || activeRole === 'manager';
+  const roleNote = mayChangeRule
+    ? null
+    : activeRole === null || activeRole === undefined
+      ? RECURRENCE_ROLE_UNKNOWN
+      : RECURRENCE_NEEDS_A_MANAGER;
+  /** Replacing a rule is changing it; the first rule on an order is not. */
+  const replaceRefused = alreadyRecurs && !mayChangeRule;
 
   /*
    * THE REFUSAL, SHOWN BEFORE THE BUTTON.
@@ -210,13 +250,15 @@ export function RecurrenceSheet({ open, onClose, row }: RecurrenceSheetProps) {
       await queryClient.invalidateQueries({ queryKey: ['orders'] });
       setDone('Saved.');
     } catch (e) {
-      setError(getErrorMessage(e));
+      // A 403 is the gateway's own rule, said in its own words. The sheet's
+      // role check above is a courtesy; this is the gate.
+      setError(getErrorStatus(e) === 403 ? refusalWords(getErrorMessage(e)) : getErrorMessage(e));
     } finally {
       setBusy(false);
     }
   }
 
-  const canSave = !!frequency && !blockedReason && !busy;
+  const canSave = !!frequency && !blockedReason && !replaceRefused && !busy;
 
   return (
     <Panel
@@ -232,30 +274,32 @@ export function RecurrenceSheet({ open, onClose, row }: RecurrenceSheetProps) {
             {/* The one sentence an operator must not have to discover. */}
             Every occurrence is raised for approval. Nothing is ever bought without a hold.
           </span>
-          <button
-            type="button"
-            onClick={() =>
-              post('/recurrence', {
-                frequency,
-                ...(anchorDay === null ? {} : { anchorDay }),
-                startsOn,
-              })
-            }
-            disabled={!canSave}
-            data-testid="recurrence-save"
-            style={{
-              fontFamily: SANS,
-              fontSize: 12.5,
-              padding: '7px 14px',
-              borderRadius: 3,
-              border: '1px solid var(--seal, #1A5E6B)',
-              background: canSave ? 'var(--seal, #1A5E6B)' : 'transparent',
-              color: canSave ? 'var(--paper-0, #FBF8F1)' : 'var(--ink-4, #665D50)',
-              cursor: canSave ? 'pointer' : 'not-allowed',
-            }}
-          >
-            {alreadyRecurs ? 'Replace the rule' : 'Set the rule'}
-          </button>
+          {!replaceRefused && (
+            <button
+              type="button"
+              onClick={() =>
+                post('/recurrence', {
+                  frequency,
+                  ...(anchorDay === null ? {} : { anchorDay }),
+                  startsOn,
+                })
+              }
+              disabled={!canSave}
+              data-testid="recurrence-save"
+              style={{
+                fontFamily: SANS,
+                fontSize: 12.5,
+                padding: '7px 14px',
+                borderRadius: 3,
+                border: '1px solid var(--seal, #1A5E6B)',
+                background: canSave ? 'var(--seal, #1A5E6B)' : 'transparent',
+                color: canSave ? 'var(--paper-0, #FBF8F1)' : 'var(--ink-4, #665D50)',
+                cursor: canSave ? 'pointer' : 'not-allowed',
+              }}
+            >
+              {alreadyRecurs ? 'Replace the rule' : 'Set the rule'}
+            </button>
+          )}
         </div>
       }
     >
@@ -288,50 +332,62 @@ export function RecurrenceSheet({ open, onClose, row }: RecurrenceSheetProps) {
             }}
           >
             <p>{recurrenceLabel(existing) ?? 'This order repeats.'}</p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {existing.status === 'active' && (
-                <button
-                  type="button"
-                  onClick={() => post('/recurrence/pause')}
-                  disabled={busy}
-                  data-testid="recurrence-pause"
-                  style={plainAct}
-                >
-                  Pause it
-                </button>
-              )}
-              {existing.status === 'paused' && (
-                <button
-                  type="button"
-                  onClick={() => post('/recurrence/resume')}
-                  disabled={busy}
-                  data-testid="recurrence-resume"
-                  style={plainAct}
-                >
-                  Resume it
-                </button>
-              )}
-              {existing.status !== 'ended' && (
-                <button
-                  type="button"
-                  onClick={() => post('/recurrence/end')}
-                  disabled={busy}
-                  data-testid="recurrence-end"
-                  style={plainAct}
-                >
-                  End it
-                </button>
-              )}
-            </div>
-            <p className="mt-2" style={{ fontSize: 11.5, color: 'var(--ink-4, #665D50)' }}>
-              {/* Why these three are plain buttons and the approval is a hold. */}
-              Pausing and ending are recorded with your name and the time. They are not
-              sealed: neither spends money — each occurrence is still approved on its own.
-            </p>
+            {roleNote ? (
+              <p
+                className="mt-2"
+                data-testid="recurrence-role-note"
+                style={{ fontSize: 11.5, color: 'var(--ink-2, #4A4237)' }}
+              >
+                {roleNote}
+              </p>
+            ) : (
+              <>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {existing.status === 'active' && (
+                    <button
+                      type="button"
+                      onClick={() => post('/recurrence/pause')}
+                      disabled={busy}
+                      data-testid="recurrence-pause"
+                      style={plainAct}
+                    >
+                      Pause it
+                    </button>
+                  )}
+                  {existing.status === 'paused' && (
+                    <button
+                      type="button"
+                      onClick={() => post('/recurrence/resume')}
+                      disabled={busy}
+                      data-testid="recurrence-resume"
+                      style={plainAct}
+                    >
+                      Resume it
+                    </button>
+                  )}
+                  {existing.status !== 'ended' && (
+                    <button
+                      type="button"
+                      onClick={() => post('/recurrence/end')}
+                      disabled={busy}
+                      data-testid="recurrence-end"
+                      style={plainAct}
+                    >
+                      End it
+                    </button>
+                  )}
+                </div>
+                <p className="mt-2" style={{ fontSize: 11.5, color: 'var(--ink-4, #665D50)' }}>
+                  {/* Why these three are plain buttons and the approval is a hold. */}
+                  Pausing and ending are recorded with your name and the time. They are not
+                  sealed: neither spends money — each occurrence is still approved on its own.
+                </p>
+              </>
+            )}
           </div>
         )}
 
-        {!blockedReason && (
+        {!blockedReason && !replaceRefused && (
           <>
             <fieldset className="flex flex-col gap-2" style={{ border: 0, padding: 0, margin: 0 }}>
               <legend style={{ color: 'var(--ink-4, #665D50)', fontSize: 11.5 }}>How often</legend>

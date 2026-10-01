@@ -47,12 +47,16 @@
 
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
+  InternalServerErrorException,
   Logger,
   NotFoundException,
+  Optional,
 } from "@nestjs/common";
 import { Cron } from "@nestjs/schedule";
 import { DatabaseService } from "../database/database.service";
+import { OrganizationsService } from "../organizations/organizations.service";
 import { CreateOrderDto } from "./dto/procurement.dto";
 import { ProcurementService, asUuid } from "./procurement.service";
 import {
@@ -163,7 +167,45 @@ export class OrderRecurrenceService {
   constructor(
     private readonly databaseService: DatabaseService,
     private readonly procurementService: ProcurementService,
+    @Optional() private readonly organizations?: OrganizationsService,
   ) {}
+
+  /**
+   * CHANGING A RULE THAT IS ALREADY THERE NEEDS A MANAGER OR AN OWNER (ADR 0247).
+   *
+   * Founder, 2026-10-01, asked whether staff may pause, resume or end a
+   * manager's order recurrence: "Managers and owners only (Recommended)".
+   * Pause, resume and end call this before the order is read; replacing a rule
+   * calls it once the read has shown there is a rule to replace. Setting the
+   * first rule on an order does not call it: staff may still set one up.
+   *
+   * It is `assertCanManageRestaurant`, the check order cancel uses
+   * (`ProcurementService.assertMayCancelOrder`). That check reads a role it
+   * cannot read as no role, so an unreadable role is refused (403) too.
+   *
+   * REFUSES when the helper is not wired, rather than letting the change
+   * through: `ProcurementModule` imports `OrganizationsModule`, so this branch
+   * is unreachable in the running gateway, and a wiring mistake must not drop
+   * the only role check on these writes.
+   */
+  private async assertMayChangeARule(
+    restaurantId: string,
+    userId: string,
+    act: string,
+  ): Promise<void> {
+    if (!this.organizations) {
+      throw new InternalServerErrorException(
+        `Who may ${act} could not be established (the organizations service is not ` +
+          `wired into procurement), so nothing was changed. This is a gateway fault, ` +
+          `not a decision about this order.`,
+      );
+    }
+    await this.organizations.assertCanManageRestaurant(
+      userId,
+      restaurantId,
+      act,
+    );
+  }
 
   /** Today in UTC, YYYY-MM-DD. Overridable so the tests do not need a clock. */
   private today(now: Date = new Date()): string {
@@ -206,6 +248,26 @@ export class OrderRecurrenceService {
   ): Promise<RecurrenceRow> {
     const order = await this.readOrder(restaurantId, orderId);
 
+    /*
+     * REPLACING A RULE IS CHANGING IT (ADR 0247).
+     *
+     * This write sets the status to `active` and derives a new next date from
+     * the start date it is given. On an order that already carries a rule, that
+     * resumes a paused rule, restarts an ended one, or puts an active one's next
+     * date as far out as the caller likes. Those are the acts the founder kept
+     * for managers and owners, so a replace takes the same check. A first rule
+     * does not.
+     */
+    const replacing =
+      order.recurrence_status !== null || order.recurrence_frequency !== null;
+    if (replacing) {
+      await this.assertMayChangeARule(
+        restaurantId,
+        userId,
+        "replace an order's recurrence",
+      );
+    }
+
     if (order.recurrence_parent_order_id) {
       throw new BadRequestException({
         reason: "child_cannot_recur",
@@ -242,7 +304,7 @@ export class OrderRecurrenceService {
     }
 
     const now = new Date().toISOString();
-    const { data, error } = await this.databaseService.supabase
+    let write = this.databaseService.supabase
       .from("procurement_orders")
       .update({
         recurrence_frequency: plan.value.frequency,
@@ -254,11 +316,23 @@ export class OrderRecurrenceService {
         recurrence_status_at: now,
       })
       .eq("restaurant_id", restaurantId)
-      .eq("id", orderId)
-      .select(RECURRENCE_SELECT)
-      .single();
+      .eq("id", orderId);
+    // A first rule lands only on an order that still carries none. Without
+    // this, a rule set between the read above and this write would be replaced
+    // by a caller the replace check never asked about.
+    if (!replacing) write = write.is("recurrence_status", null);
+    const { data, error } = await write.select(RECURRENCE_SELECT).single();
 
     if (error) {
+      if (!replacing && (error as { code?: unknown }).code === "PGRST116") {
+        throw new ConflictException({
+          reason: "rule_set_meanwhile",
+          message:
+            `Order ${order.order_number} changed while this recurrence was being set, so ` +
+            `nothing was changed. Reload it: if it now carries a rule, replacing that rule ` +
+            `is a manager's or an owner's act.`,
+        });
+      }
       this.logger.error(
         `Could not set a recurrence on order ${orderId}: ${error.message}`,
       );
@@ -318,6 +392,14 @@ export class OrderRecurrenceService {
     to: OrderRecurrenceStatus,
     action: string,
   ): Promise<RecurrenceRow> {
+    // Before the order is read: a refused caller reads nothing and writes
+    // nothing (ADR 0247).
+    await this.assertMayChangeARule(
+      restaurantId,
+      userId,
+      `${to === "ended" ? "end" : to === "paused" ? "pause" : "resume"} an order's recurrence`,
+    );
+
     const order = await this.readOrder(restaurantId, orderId);
     const from = readRecurrenceStatus(order.recurrence_status);
 
