@@ -12,7 +12,7 @@ matches a fork's pull request whose branch is named `main`; its stages check
 out that run's head_sha and run its code beside the stages' secrets. The rule this
 guard holds, read from the workflow text strictly (no YAML library: the CI
 jobs that run it do not install one). Shapes it does not recognise are
-refused where it can tell; its self-test plants the 74 breaks listed in
+refused where it can tell; its self-test plants the 76 breaks listed in
 _self_test (see KNOWN GAPS below for what it does not hold):
 
   1. The jobs: block holds only plain `  name:` job keys, full-line comments
@@ -38,7 +38,8 @@ _self_test (see KNOWN GAPS below for what it does not hold):
   5. The key fix (founder, 2026-09-30, verbatim: "Approve all + widen
      (Recommended)"), read case-insensitively as GitHub reads contexts: no
      workflow-level key names `secrets`; nothing reads `toJSON(secrets)` or
-     `secrets[...]`; ci-gate's job-level `permissions` is exactly `{}`, and
+     `secrets[...]` or `secrets.*`, and no YAML \\u/\\x escape appears;
+     ci-gate's job-level `permissions` is exactly `{}`, and
      ci-gate has no `uses` key in any step form (block, flow-style or quoted;
      so no cache save) and no secret; `secrets.ADMIN_API_KEY` appears exactly once, in the env of
      verify-orchestrator's step "Verify 9/9 agents Active".
@@ -53,7 +54,7 @@ KNOWN GAPS -- not held (founder, 2026-09-30: "Honest record (Recommended)").
 This guard pins the refusal step's TEXT, each job's `if`, and rule 5's key
 reach; it does not pin how ci-gate's `run:` steps EXECUTE, nor any
 workflow-level key but `on:` and `defaults:` beyond rule 5's no-secret rule.
-The self-test plants exactly the 74 breaks listed in _self_test and nothing
+The self-test plants exactly the 76 breaks listed in _self_test and nothing
 more. Changes of these kinds pass the guard unnoticed:
   - a job-level key on ci-gate other than `if` and `permissions`
     (`container:`, `services:`, `runs-on:`, an `env:` with no secret);
@@ -321,8 +322,12 @@ def _key_problems(text: str, jobs: dict[str, str]) -> list[str]:
     # GitHub reads context names case-insensitively, so every match here is too.
     if re.search(r"(?i)\bsecrets\b", head):
         out.append("a workflow-level key references secrets (every job and step, ci-gate included, would inherit it)")
-    if re.search(r"(?i)\btojson\s*\(\s*secrets\s*\)|\bsecrets\s*\[", code):
-        out.append("deploy.yml reads secrets whole or by computed name (toJSON(secrets) or secrets[...])")
+    if re.search(r"(?i)\btojson\s*\(\s*secrets\s*\)|\bsecrets\s*\[|\bsecrets\s*\.\s*\*", code):
+        out.append("deploy.yml reads secrets whole, by filter or by computed name (toJSON(secrets), secrets.* or secrets[...])")
+    # A YAML escape (\u0073 for "s") could spell a context name these
+    # matches cannot see; deploy.yml has none, so any is refused.
+    if re.search(r"\\[uUxN]", text):
+        out.append("deploy.yml contains a YAML \\u/\\U/\\x/\\N escape (it could spell a secret this guard cannot read)")
     gate = _code(jobs.get("ci-gate", ""))
     perms = re.findall(r"(?m)^    permissions\s*:(.*)$", gate)
     if [p.strip() for p in perms] != ["{}"]:
@@ -473,6 +478,8 @@ def _self_test(verbose: bool = False) -> int:
         "K20 ci-gate quoted uses key": (GATE_STEPS, GATE_STEPS + "      - \"uses\": actions/cache@v4\n"),
         "K21 ci-gate mixed-case Secrets": (GATE_STEPS, GATE_STEPS + "      - run: echo ok\n        env:\n          T: ${{ Secrets.GITHUB_TOKEN }}\n"),
         "K22 the key named again in lower case": ("          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n", "          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n          K: ${{ secrets.admin_api_key }}\n"),
+        "K23 secrets.* filter in a step": ("          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n", "          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n          ALL: ${{ join(secrets.*, ',') }}\n"),
+        "K24 a YAML escape spelling secrets": ("          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n", "          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n          K: \"${{ \\u0073ecrets.ADMIN_API_KEY }}\"\n"),
     }
     failed = []
     for name, edits in muts.items():
