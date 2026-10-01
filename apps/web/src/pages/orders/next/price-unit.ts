@@ -68,6 +68,22 @@ export const PRICE_UOM_LABEL: Record<PriceUom, string> = {
   liter: 'per litre',
 };
 
+/** A count of a unit in words: "1 bottle", "6 split cases" — never "bottle(s)" (ORD-W17). */
+const UOM_COUNT: Record<PriceUom, [string, string]> = {
+  bottle: ['bottle', 'bottles'],
+  case: ['case', 'cases'],
+  keg: ['keg', 'kegs'],
+  pack: ['pack', 'packs'],
+  split_case: ['split case', 'split cases'],
+  each: ['item', 'items'],
+  liter: ['litre', 'litres'],
+};
+
+export function uomCountWord(quantity: number | null, uom: PriceUom): string {
+  const [one, many] = UOM_COUNT[uom];
+  return quantity === 1 ? one : many;
+}
+
 export interface StatedPriceUnit {
   priceUom: PriceUom;
   pricePackSize: number;

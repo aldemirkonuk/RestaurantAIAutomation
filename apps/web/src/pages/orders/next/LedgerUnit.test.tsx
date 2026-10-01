@@ -251,3 +251,17 @@ describe('the ledger row names the vendor the route sends', () => {
     );
   });
 });
+
+describe('a count is said in words (ORD-W17)', () => {
+  it('says "5 cases", never "case(s)"', () => {
+    mount({ priceUom: null, pricePackSize: null });
+    const said = screen.getByTestId('row-no-working').textContent ?? '';
+    expect(said).toContain('5 cases —');
+    expect(said).not.toContain('(s)');
+  });
+
+  it('says one of a unit in the singular, and a split case as two words', () => {
+    mount({ priceUom: null, pricePackSize: null, quantity: 1, unitType: 'split_case' });
+    expect(screen.getByTestId('row-no-working').textContent).toContain('1 split case —');
+  });
+});

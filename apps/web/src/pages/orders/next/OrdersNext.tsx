@@ -483,7 +483,7 @@ export default function OrdersNext() {
 
             {!data.hasData && !data.isError ? (
               <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-4, #665D50)' }}>
-                Reaching the gateway…
+                Reading the order book…
               </p>
             ) : visibleRows.length === 0 && !data.isError ? (
               <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-4, #665D50)' }}>

@@ -33,6 +33,7 @@ import {
   ROW_UNSTATED_PRICE_UNIT,
   describeFees,
   describeStatedPrice,
+  uomCountWord,
 } from './price-unit';
 import { STAGE_LABEL, type ApprovalGateRow, type OrderRowVM } from './useOrdersNextData';
 
@@ -442,7 +443,7 @@ export function LedgerRow({
                     */
                     <span data-testid="row-no-working" style={{ color: 'var(--ink-4, #665D50)' }}>
                       {row.quantity !== null ? row.quantity : EM}{' '}
-                      {row.unitType ? `${row.unitType}(s)` : 'ordered'} —{' '}
+                      {row.unitType ? uomCountWord(row.quantity, row.unitType) : 'ordered'} —{' '}
                       {!row.priceUnit.read
                         ? 'no working can be shown, because this view never read the unit the price is in. The figure above is the ledger’s own.'
                         : row.priceUnit.stated === null

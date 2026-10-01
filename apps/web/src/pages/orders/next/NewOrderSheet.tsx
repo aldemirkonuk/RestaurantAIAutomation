@@ -337,7 +337,7 @@ export function NewOrderSheet({ open, onClose, onNoVendors, onPlaced }: NewOrder
           },
         );
         if (!stillCurrent()) return;
-        if (!data?.id && !data?.orderNumber) throw new Error('The gateway returned no order receipt. Check the order book before trying again.');
+        if (!data?.id && !data?.orderNumber) throw new Error('Mudavym sent back no receipt for this order. Check the order book before trying again.');
         placed += 1;
         // The placed line leaves the composer, but it leaves a RECEIPT: the
         // account below is what the gateway answered, order number and all.
