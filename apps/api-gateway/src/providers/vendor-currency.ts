@@ -171,28 +171,24 @@ export function usualCurrencyCoverageSentence(args: {
   // heading on it: a reader cannot tell it from a panel that failed to load.
   if (total === 0)
     return (
-      "There are no vendors on this house's book, so there is nothing to state a " +
-      "usual currency for. When a vendor is added, an order to them starts with an " +
-      "empty currency field until somebody states what they usually invoice in."
+      "No vendors yet. When you add one, you can note the currency they invoice in."
     );
+  if (total === 1)
+    return stated === 1
+      ? "Your one vendor has a usual currency on file. Orders to them start in it, and you can change it on the order."
+      : "Your one vendor has no usual currency on file. Add one and orders to them start in it; until then an order starts with no currency.";
   if (stated === 0)
     return (
-      `None of your ${total} ${vendors} has stated a usual currency. ` +
-      `Nothing is assumed in their place — not this house's currency and not the ` +
-      `currency of their last invoice — so every order starts with an empty ` +
-      `currency field, and an invoice matched to such an order is filed under this ` +
-      `house's currency rather than the order's.`
+      `None of your ${total} ${vendors} has a usual currency on file. ` +
+      `Add one and orders to that vendor start in it; until then an order starts with no currency.`
     );
   if (stated === total)
     return (
-      `All ${total} of your ${vendors} ${total === 1 ? "has" : "have"} stated a usual currency. ` +
-      `Each one is offered as the starting currency on an order to that vendor and can ` +
-      `be changed there; none of them files an invoice.`
+      `All ${total} of your ${vendors} ${total === 1 ? "has" : "have"} a usual currency on file. ` +
+      `Orders to them start in it, and you can change it on the order.`
     );
   return (
-    `${stated} of your ${total} ${vendors} ${stated === 1 ? "has" : "have"} stated a usual currency. ` +
-    `An order to one of the remaining ${total - stated} starts with an empty currency ` +
-    `field — nothing is assumed in its place — and an invoice matched to such an order ` +
-    `is filed under this house's currency rather than the order's.`
+    `${stated} of your ${total} ${vendors} ${stated === 1 ? "has" : "have"} a usual currency on file. ` +
+    `Orders to the other ${total - stated} start with no currency until you add one.`
   );
 }

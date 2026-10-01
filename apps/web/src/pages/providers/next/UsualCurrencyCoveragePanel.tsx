@@ -63,7 +63,7 @@ const heading = (
       margin: '0 0 6px',
     }}
   >
-    Usual currencies stated
+    Usual currency
   </h2>
 );
 

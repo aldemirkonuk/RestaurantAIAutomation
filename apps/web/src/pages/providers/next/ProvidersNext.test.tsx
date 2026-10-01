@@ -254,13 +254,13 @@ describe('ProvidersNext', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
-  it('a card says "Not stated" when nobody stated the vendor\'s type (founder answer 12)', () => {
+  it('a card says "Type not stated" when nobody stated the vendor\'s type (founder answer 12)', () => {
     mockData.current = {
       ...base,
       cards: [{ provider: provider({ primaryBusinessType: undefined }), openOrders: 0, leadTimeDays: null, lastContact: null }],
     };
     render(<ProvidersNext />);
-    expect(screen.getByText('Not stated')).toBeInTheDocument();
+    expect(screen.getByText('Type not stated')).toBeInTheDocument();
   });
 
   it('the vendor sheet offers the edit path, type first', async () => {

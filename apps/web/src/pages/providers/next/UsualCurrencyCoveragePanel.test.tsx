@@ -142,6 +142,6 @@ describe('the usual-currency coverage panel', () => {
     await waitFor(() =>
       expect(screen.getByText(/Counting how many vendors/)).toBeInTheDocument(),
     );
-    expect(screen.getByText('Usual currencies stated')).toBeInTheDocument();
+    expect(screen.getByText('Usual currency')).toBeInTheDocument();
   });
 });

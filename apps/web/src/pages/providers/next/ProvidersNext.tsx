@@ -135,7 +135,7 @@ function BucketCard({
           }}
         >
           {/* "Not stated" when nobody stated one (founder answer 12, 2026-09-21) — never blank, never a guessed type. */}
-          {businessTypeLabel(p.primaryBusinessType)}
+          {(p.primaryBusinessType ?? '').trim() === '' ? 'Type not stated' : businessTypeLabel(p.primaryBusinessType)}
         </span>
         <span
           style={{
@@ -185,7 +185,7 @@ function BucketCard({
           <dd style={{ margin: 0 }}>{fmtDays(vm.leadTimeDays)}</dd>
         </div>
         <div className="flex justify-between gap-3">
-          <dt style={{ color: "var(--ink-4, #665D50)" }}>Contact</dt>
+          <dt style={{ color: "var(--ink-4, #665D50)" }}>Last contact</dt>
           <dd style={{ margin: 0 }}>{fmtLastContact(vm.lastContact)}</dd>
         </div>
         <div className="flex justify-between gap-3" data-testid="pv-card-did">
@@ -339,7 +339,7 @@ export default function ProvidersNext() {
             </span>
             <span style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-4, #665D50)' }}>
               {data.hasData
-                ? `${data.cards.length} vendors — the learned detail lives inside each card`
+                ? `${data.cards.length} ${data.cards.length === 1 ? 'vendor' : 'vendors'}`
                 : 'Reaching the gateway…'}
             </span>
             <button
@@ -403,13 +403,6 @@ export default function ProvidersNext() {
           <RollCall />
         ) : (
         <>
-        {/* The prompt that keeps the order-currency chain alive (founder,
-            2026-09-06 batch 66). It counts and links; it pre-fills nothing. */}
-        <UsualCurrencyCoveragePanel
-          knownIds={knownIds}
-          onOpenVendor={openById}
-        />
-
         <VendorScopeBar scopes={scopes} />
         <ScopeNotice scopes={scopes} />
         {scopes.scope === "find" && (
@@ -488,6 +481,14 @@ export default function ProvidersNext() {
               }}
             />
           ))}
+        </div>
+        <div style={{ marginTop: 24 }}>
+        {/* The prompt that keeps the order-currency chain alive (founder,
+            2026-09-06 batch 66). It counts and links; it pre-fills nothing. */}
+        <UsualCurrencyCoveragePanel
+          knownIds={knownIds}
+          onOpenVendor={openById}
+        />
         </div>
         </>
         )}

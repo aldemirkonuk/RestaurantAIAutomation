@@ -213,40 +213,41 @@ describe("usualCurrencyCoverage — the count", () => {
 describe("usualCurrencyCoverageSentence — never an empty panel", () => {
   it("says none of them, with the number, when nobody has stated one", () => {
     const s = usualCurrencyCoverageSentence({ stated: 0, total: 14 });
-    expect(s).toContain("None of your 14 vendors has stated a usual currency");
-    expect(s).toContain("Nothing is assumed in their place");
+    expect(s).toContain("None of your 14 vendors has a usual currency on file");
+    // Nothing is assumed in their place: the sentence says an order starts empty.
+    expect(s).toContain("an order starts with no currency");
   });
 
   it("prints the fraction the founder asked for", () => {
     expect(usualCurrencyCoverageSentence({ stated: 3, total: 14 })).toContain(
-      "3 of your 14 vendors have stated a usual currency",
+      "3 of your 14 vendors have a usual currency on file",
     );
   });
 
   it("counts down the remainder so the reader knows what is left", () => {
     expect(usualCurrencyCoverageSentence({ stated: 3, total: 14 })).toContain(
-      "remaining 11",
+      "the other 11",
     );
   });
 
   it("says so when every vendor has been asked", () => {
     expect(usualCurrencyCoverageSentence({ stated: 14, total: 14 })).toContain(
-      "All 14 of your vendors have stated a usual currency",
+      "All 14 of your vendors have a usual currency on file",
     );
   });
 
   it("has a sentence for a house with no vendors at all", () => {
     const s = usualCurrencyCoverageSentence({ stated: 0, total: 0 });
-    expect(s).toContain("no vendors on this house's book");
+    expect(s).toContain("No vendors yet");
     expect(s.trim()).not.toBe("");
   });
 
   it("agrees with itself in the singular", () => {
     expect(usualCurrencyCoverageSentence({ stated: 1, total: 1 })).toContain(
-      "All 1 of your vendor has stated",
+      "Your one vendor has a usual currency on file",
     );
     expect(usualCurrencyCoverageSentence({ stated: 0, total: 1 })).toContain(
-      "None of your 1 vendor has stated",
+      "Your one vendor has no usual currency on file",
     );
   });
 

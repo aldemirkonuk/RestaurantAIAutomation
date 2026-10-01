@@ -215,7 +215,9 @@ export; **discover** — the U.S. distributor catalogue on a map, one-tap add (S
     `@Get(":id")` or Nest would never reach them), `providers.service.ts`
     (`getUsualCurrency` / `setUsualCurrency`).
 - **"Usual currencies stated" — the prompt panel** (redesign only, above the grid,
-  2026-09-06 batch 66). The founder, verbatim:
+  2026-09-06 batch 66). [changed 2026-10-01, VEN-W4: heading "Usual currency", two short
+  sentences, and the panel now sits BELOW the vendor cards; the invoice-filing clause
+  stays in each vendor's own currency section.] The founder, verbatim:
 
   > **"Add the prompt panel"** — "One panel on the providers page (and the orders sheet's
   > empty field) saying how many vendors have stated a usual currency and linking to the
@@ -756,3 +758,18 @@ it watches the select snap back to "Nobody has said." Should "Main line" ever be
 recordable as a stated answer? See ADR 0121's 2026-09-17 review-trail row.
 
 See ADR 0121 for local safety and migration evidence.
+
+## 14. Founder walk-through — 2026-10-01 (branch fix/review-vendors)
+
+Session R7, house YAREN (3 live vendors + 5 retired; Sim Bistro holds 0 vendors,
+measured read-only 2026-10-01). Gateway `review-gw.sh … me` on :4107, web :5307.
+
+| Id | What | Evidence | Ask | Founder | Status |
+|---|---|---|---|---|---|
+| VEN-W1 | Header count: "N vendors — the learned detail lives inside each card" → "N vendors" / "1 vendor" (also fixes "1 vendors") | `ProvidersNext.tsx:342`; sketch VEN-W1 | approve | "Approve" | proposed → approved → built (pane reload 16:52, no new console error) |
+| VEN-W2 | Card eyebrow "NOT STATED" → "TYPE NOT STATED" (founder answer 12 kept: never blank, never guessed; the bare words did not say what was missing) | `ProvidersNext.tsx:138`; sketch VEN-W1 | approve | "Approve" | proposed → approved → built (pane reload 16:52, no new console error) |
+| VEN-W3 | Card row "Contact" → "Last contact", the sheet's own label | `ProvidersNext.tsx:188`, `TwinSheet.tsx:118`; sketch VEN-W1 | approve | "Approve" | proposed → approved → built (pane reload 16:52, no new console error) |
+| VEN-W4 | "Usual currency" panel: A today (top, 4-line engineer paragraph) / B two short sentences, heading "Usual currency" / C B's words below the cards | `vendor-currency.ts:162` (gateway sentence), `UsualCurrencyCoveragePanel.tsx:66`, `ProvidersNext.tsx:405`; sketch VEN-W4 | approve: C | "C: short + below (Recommended)" | proposed → approved → built (pane reload 17:02; jest usual-currency-coverage 19/19, vitest providers/next 170/170). Also fixed the singular ("All 1 of your vendor" → "Your one vendor …") inside the same sentence |
+
+**Passes**
+- P1 Purpose — done. Who: owner/manager. Job: "who do I buy from, how do I reach them, what is open with them, can I trust them." Verdict **partial**: the facts are honest and the absence-is-not-health rule holds everywhere, but the reach/order actions are missing from the card and the sheet top, and much copy is written in the engineer's voice, not the house's. No `mudavym.design.providers` override set.
