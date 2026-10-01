@@ -151,6 +151,11 @@ records it):
 > - **Raised to 17, same day.** The founder later chose to let a person always leave a house and delete their account, whatever their access row's dates. The only spec that drives those routes end to end was new to #561, so the rebase would take it to 17 files. Asked to choose between keeping those route tests at 17 files and moving them to service-level tests at 16, the founder chose, verbatim, *"Allow 17, keep route tests (Recommended)"*.
 > - **Scope.** Once, for PR #561 at 17 files. It sets no precedent.
 
+> **[2026-10-01, a thirteenth waiver, founder's words — the fix-round cap, PR #562 round 3]**
+> - **What it covers.** PR #562 rewrites the cancel control's false "reload" role message and two report messages with the same promise. After its second round, one reviewer found that the claim text says its check catches the old phrase split across joined string literals, but the check joins only single-quoted literals. A double-quoted or template-literal split passes. Three lower sentences were also broader than the code. The round extends the check so it joins those forms too, mutation-tests it, and rewords the three sentences.
+> - **The founder's words.** In chat on 2026-10-01, session 9512567d, verbatim: *"Waive once: make the check match (Recommended)"*.
+> - **Scope.** Once, for this round of this PR. It sets no precedent.
+
 > **[2026-10-01, where these waivers are recorded — the founder's routing]**
 > - Asked how PRs whose decision records quoted his waivers should be routed, the founder chose, verbatim, *"Move waivers to #547 (Recommended)"*. Every fix-round waiver is recorded here. The other records carry only a pointer to this file.
 
