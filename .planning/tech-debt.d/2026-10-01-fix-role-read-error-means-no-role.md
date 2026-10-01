@@ -13,7 +13,7 @@ Filed and closed on `fix/role-read-error-means-no-role` ([ADR 0248](../decisions
 - on `GET`/`PATCH /organizations/locations/:id`, whose house the JWT step does not check;
 - from the recurring-orders cron (`procurement/recurring-orders.service.ts:956`), which has no JWT step.
 
-The earlier premises put to the founder overstated this. The decisions stand as defence in depth for those paths. ADR 0248, "Reachability end to end".
+The earlier premises put to the founder overstated this. When the correction was put to him, the question said the #561 decisions "still add defence in depth, for callers outside a request and for that narrow window", and he picked "Keep course, correct in docs PR (Recommended)". ADR 0248, "Reachability end to end".
 
 **The rulings**, 2026-10-01:
 - *"Next PR: error means no role (Recommended)"*.

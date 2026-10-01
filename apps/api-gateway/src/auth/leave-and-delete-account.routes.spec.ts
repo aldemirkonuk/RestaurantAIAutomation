@@ -514,9 +514,9 @@ describe("leave and delete account reach THE removal over the real routes (ADR 0
    * `is_active` alone) is not what decides.
    *
    * [REVERT-FAILS] here means red with `restaurants/members.service.ts` as it
-   * was at 48226f6d1, before this change, when `assertMembership` refused a row
+   * was at `5cd2fb001^`, before this change, when `assertMembership` refused a row
    * outside its window even to the person removing themself. The last case is
-   * a pin of the window rule itself: it passes at 48226f6d1 and is red at
+   * a pin of the window rule itself: it passes at `5cd2fb001^` and is red at
    * 2019ae7f6, where the window was not read.
    */
   const LONG_AGO = "2020-01-01T00:00:00.000Z";

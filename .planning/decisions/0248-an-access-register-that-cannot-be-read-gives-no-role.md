@@ -2,7 +2,7 @@
 
 - **Status:** Locked 2026-10-01.
 - **Date:** 2026-10-01
-- **Decider:** Aldemir (founder). Nine answers, all 2026-10-01 in session 9512567d, each relayed to the fix lane by the lane coordinator. Each question, every option's label and text, and the picked label are copied verbatim from the session transcript under "Options considered".
+- **Decider:** Aldemir (founder). Ten answers, all 2026-10-01 in session 9512567d, each relayed to the fix lane by the lane coordinator. Each question, every option's label and text, and the picked label are copied verbatim from the session transcript under "Options considered".
   1. **What an access-read error means.** He picked "Next PR: error means no role (Recommended)".
   2. **What the order seal and five other callers do with a role they cannot read.** He picked "Strict for the order seal (Recommended)".
   3. **The second copy of the rule, `MembersService.assertMembership`.** He picked "Fold into #561 (Recommended)".
@@ -10,8 +10,9 @@
   5. **The clock the window is read with.** He picked "Small tolerance on valid_from (Recommended)".
   6. **The order in which #561 and the PRs it meets land.** He picked "#561 last + docs PR (Recommended)".
   7. **Whether to fix the record before review.** He picked "Fix now, before review (Recommended)".
-  8. **Whether leaving a house and deleting an account honour the window.** He picked "Let leaving and deletion through (Recommended)".
-  9. **How many files #561 may land with.** He picked "Allow 17, keep route tests (Recommended)".
+  8. **Whether to keep course after the reachability correction.** He picked "Keep course, correct in docs PR (Recommended)".
+  9. **Whether leaving a house and deleting an account honour the window.** He picked "Let leaving and deletion through (Recommended)".
+ 10. **How many files #561 may land with.** He picked "Allow 17, keep route tests (Recommended)".
 - **Keywords:** VALID_FROM_CLOCK_TOLERANCE_MS, clock skew, lookupRestaurantRole, MembersService.assertMembership, isLiveMembership, is_active, valid_from, valid_until, inactive row, held membership, readRestaurantRole, resolveRestaurantRole, assertCanManageRestaurant, user_restaurant_access, users.role, legacy fallback, access-read error, outage, readError, RestaurantRoleUnreadableError, assertApprovalAllowed, order seal, APPROVAL_NEEDED, order_approval_refused, registerAccount, acceptHeldMembership
 - **Links:**
   - [[0020-no-fabricated-answers]] (an outage is not a fact about the person).
@@ -40,7 +41,7 @@ Line numbers are at `origin/main` 2019ae7f6 unless marked "this branch". The swe
 
 ## Reachability end to end
 
-[Correction, 2026-10-01, measured at `origin/main` 1c1a676f8. Nothing under `apps/` changed between 2019ae7f6 and 1c1a676f8. Lines in `procurement.service.ts` and `recurring-orders.service.ts` are re-measured at 4bd11a00e. The questions put to the founder, and the first drafts of this ADR, described each path as if every caller reached the helper directly.]
+[Correction, 2026-10-01, measured at `origin/main` 1c1a676f8. Nothing under `apps/` changed between 2019ae7f6 and 1c1a676f8. Lines in `procurement.service.ts` and `recurring-orders.service.ts` are re-measured at 4bd11a00e. The questions put to the founder, and the first drafts of this ADR, described each path as if every caller reached the helper directly. This correction was put to the founder as the eighth question, and he picked "Keep course, correct in docs PR (Recommended)".]
 
 **The JWT step.** Every route behind `JwtAuthGuard` runs `AuthService.validateJwtPayload` through `JwtStrategy` (`apps/api-gateway/src/auth/auth.service.ts:1426-1493`), in the same request and before any helper.
 - It reads the access row for the token's house, filtered on `is_active = true` (`:1435-1442`).
@@ -68,7 +69,7 @@ Line numbers are at `origin/main` 2019ae7f6 unless marked "this branch". The swe
   - It is also reached on `/organizations/locations/:id`, and from the recurring-orders cron.
 - **An inactive row, or no row at all, at the token's house.** The JWT step answers 401 first. Over HTTP the helper's inactive-row path and its no-row fallback are reached only on `/organizations/locations/:id`, and from the cron.
   - `DELETE` of the account reads only active rows, so it does not meet an inactive one.
-- **An active row outside its window.** The JWT step passes it. On 1c1a676f8 the helpers gave its role; now they give no role. That is reachable over HTTP. A person removing themself is the one exception: under the eighth answer, the leave route and `DELETE` of the account let such a row through (Decision 9).
+- **An active row outside its window.** The JWT step passes it. On 1c1a676f8 the helpers gave its role; now they give no role. That is reachable over HTTP. A person removing themself is the one exception: under the ninth answer, the leave route and `DELETE` of the account let such a row through (Decision 9).
 - **An active row with no role.** The JWT step passes it with `house_role: null`. On 1c1a676f8 the shared lookup then fell back to `users.role`; now it gives no role. That is reachable over HTTP.
 
 **Specs measure the helper.** The specs on this PR call the helpers, the services and the controllers directly. They never run `validateJwtPayload`. Where a case measures an outcome that the JWT step reaches first over HTTP, the spec says so in its header.
@@ -140,7 +141,7 @@ This is every caller of `lookupRestaurantRole`, `readRestaurantRole`, `resolveRe
   - `members.service.ts:94` `getMembers`, `:153` `getInvites`, `:199` `updateMemberRole` (owner), `:338-339` `removeMember`, `:583` `addMember` and `:672` `revokeInvite`.
   - `restaurants/operating-hours.service.ts:63` (read) and `:100` (write).
   - `logs/logs.controller.ts:73` `getTimeline`.
-  - `removeMember` asks for membership even when a person removes themself (`:338`). The window rule made a row outside its window refuse that person, so leaving and `DELETE` of the account answered 403 for such a row. The founder's eighth answer closed that before review: see Decision 9. A person removing themself is admitted by any row that exists, and the window still applies to every other caller.
+  - `removeMember` asks for membership even when a person removes themself (`:338`). The window rule made a row outside its window refuse that person, so leaving and `DELETE` of the account answered 403 for such a row. The founder's ninth answer closed that before review: see Decision 9. A person removing themself is admitted by any row that exists, and the window still applies to every other caller.
 
 **Who can be in that newly changed state.** This is the lockout check: could a legitimate owner or manager be refused at their own house? It was measured by reading code; no production query was run. On a token-house route over HTTP, the JWT step already refuses an inactive row with 401 whatever this PR does. So for an inactive row the check matters at `/organizations/locations/:id` and the cron; for the window it matters everywhere.
 - **No gateway code deactivates an existing row, and no code in this repository writes `valid_until`.** `calendar/stop-links-on-leaving.ts:28-30` says the same for the gateway. The three removals delete the row after clearing `users.restaurant_id`: `members.service.ts:462` and `:478-483`, and `team/team.service.ts:1274-1294`.
@@ -234,14 +235,28 @@ Copied verbatim from the session transcript (`AskUserQuestion` calls at the time
 - "Fix now, before review (Recommended)" (picked): "Treat it as part of the build, since no reviewer has ruled. Copy every option verbatim from the transcript, scope the two sentences, and record the corrected premise. Then run the full review on the new head."
 - "Review as is" (not picked): "Run both reviewers now. A block on the verbatim records is likely, and the fix would then use #561's first fix round."
 
-**Eighth question, asked 2026-10-01T17:18:48.480Z.** Picked: "Let leaving and deletion through (Recommended)".
+**Eighth question, asked 2026-10-01T16:44:34.087Z.** Picked: "Keep course, correct in docs PR (Recommended)". The question ran over several lines, so it is quoted as a block.
+
+```text
+Correction to what I told you earlier. Every request first passes validateJwtPayload (auth.service.ts ~:1405-1490). It refuses with 401 a token whose house has no active access row, and it turns an access-read error into a 503. So end to end, the role fallback is much narrower than I described:
+- An inactive row plus a legacy owner cannot reach any route.
+- An access-read error usually stops at that first step. The fallback is reached only if a second read in the same request fails.
+- Still reachable: an active row with a NULL role, which falls back to users.role, and an expired manager row. #561 closes both.
+The tests that showed '200' had stubbed out that first step. Your #561 decisions still add defence in depth, for callers outside a request and for that narrow window. But ADRs 0246 and 0247 (#550, #558, both already approved) overstate the hole. How should this be handled?
+```
+
+- "Keep course, correct in docs PR (Recommended)" (picked): "#561 proceeds as you decided, with ADR 0248 stating each path's real reachability, measured end to end. The docs PR planned after #561 also corrects how far ADRs 0246 and 0247 overstate reachability. #550 and #558 merge as approved. No new rounds."
+- "Narrow #561 to reachable paths" (not picked): "Keep the expired-row and null-role fixes and the strict seal. Drop the changes that guard only unreachable paths, such as the members copy's read-error branch. A smaller diff, but less defence in depth for callers outside a request."
+- "Re-open #550 and #558 first" (not picked): "Correct their reachability sentences before they merge. Both are at their fix-round cap, so that takes two waivers and two more full reviews."
+
+**Ninth question, asked 2026-10-01T17:18:48.480Z.** Picked: "Let leaving and deletion through (Recommended)".
 
 > One consequence of 'Close both in #561', newly measured: once the validity window is honoured, a person whose access row is still active but outside its dates is refused when they try to leave that house (403). Deleting their whole account also stops with a 403 at that house. Such a row exists only if someone writes a date by hand; no code writes valid_until. But it would block someone from leaving or deleting their account. How should #561 handle it?
 
 - "Let leaving and deletion through (Recommended)" (picked): "Removing yourself and deleting your account need only an existing row, not a live one, so nobody is ever trapped. Every other check keeps honouring the window. A small change plus a spec in #561, still within its 16 files."
 - "Record it as open" (not picked): "Keep #561 as built, and record the trap in ADR 0248 as open. It is reachable only through a hand-written date."
 
-**Ninth question, asked 2026-10-01T17:42:22.365Z.** Picked: "Allow 17, keep route tests (Recommended)".
+**Tenth question, asked 2026-10-01T17:42:22.365Z.** Picked: "Allow 17, keep route tests (Recommended)".
 
 > #561 now has the leave-and-delete fix, at 15 files. The only spec that drives leaving and account deletion end to end is a file #561 did not touch before. It now pins: an expired row can leave (200), DELETE /auth/me completes for an expired row, and an expired manager still cannot remove someone else. The rebase onto #550 adds 2 more files, so #561 would land at 17, not the 16 you allowed. Which do you want?
 
@@ -262,7 +277,7 @@ Two questions above rested on statements about the code that were wrong. They ar
 - **How far the paths reach.**
   - What the questions said: the first question said a staff member "passes the manager check" when the access-register read errors. The third said a staff member "could act as owner there during an access-read outage". The fourth described an inactive row plus `users.role` as a path in use.
   - The fact: those premises overstated end-to-end reachability. Over HTTP on a token-house route, the JWT step answers 503 when its own read of the same table errors, and 401 when the house has no active row, before any helper runs (see "Reachability end to end").
-  - Why the answers stand: each decision stands as defence in depth. It covers callers with no JWT step (the recurring-orders cron), routes whose house the JWT step did not check (`/organizations/locations/:id`), and the narrow window where the JWT step's read succeeds and the helper's own read errors.
+  - What the founder decided: this correction was put to him as the eighth question. That question said the #561 decisions "still add defence in depth, for callers outside a request and for that narrow window". He picked "Keep course, correct in docs PR (Recommended)", so #561 proceeds as decided and this ADR states each path's reach. The paths the decisions still cover are measured under "Reachability end to end": callers with no JWT step (the recurring-orders cron), routes whose house the JWT step did not check (`/organizations/locations/:id`), and the narrow window where the JWT step's read succeeds and the helper's own read errors.
 
 ## Decision
 
@@ -293,13 +308,13 @@ Two questions above rested on statements about the code that were wrong. They ar
      - `communications/recipient-resolver.service.ts:403`, `getUserIdsForRoles` (`:377`): who receives a notification addressed to a role.
      - `common/tenant/live-membership.ts:133`, `houseMembersInRoles`. It is read by `websocket/websocket.gateway.ts:671` (owner- and manager-only emits), `common/orchestrator/inbound-responder.service.ts:1533` (manager notifications), `notifications/producers/market-price.producer.ts:132` and `team/access-audit.ts:183` (who is told of an access change).
    - Every code path writes its own `now` into `valid_from`: the database's on insert, the gateway's in `acceptHeldMembership`. A start that reads as ahead of the gateway's clock comes from a clock difference, or from a hand-written value. See "Corrected premises".
-8. **Merge order (the sixth answer): #561 lands last.** #547, #538, #550 and #558 merge first. With the two #550 files below, this PR then has 17 files, two over the 15-file cap, as the founder's ninth answer chose. The extra file on this PR is recorded in ADR 0231.
+8. **Merge order (the sixth answer): #561 lands last.** #547, #538, #550 and #558 merge first. With the two #550 files below, this PR then has 17 files, two over the 15-file cap, as the founder's tenth answer chose. The extra file on this PR is recorded in ADR 0231.
    Then this branch rebases onto that main and does three things, which are planned and not yet done:
    - **#550's test.** `apps/api-gateway/src/procurement/recurring-schedule-edits-need-a-manager.http.spec.ts` has a case named "lets a legacy manager of this house edit and deactivate". It fails the access read and expects 200. That spec stubs the JWT step, so the case measures the helper: over HTTP the JWT step would answer 503 first if its own read failed. Under Decision 1 that caller gets 403 at the helper, so the case is changed to expect 403 with nothing written. The verify of claim `RECURRING-SCHEDULE-EDITS-NEED-A-MANAGER` names that title, so it is updated with it.
    - **The caller list.** It gains the `assertCanManageRestaurant` callers those PRs add: two in `procurement/procurement.service.ts` (#538), PUT and DELETE in `procurement/recurring-orders.controller.ts` (#550), and one in `procurement/order-recurrence.service.ts` (#558).
    - **The docs PR.** A separate docs PR corrects the fallback sentences in ADRs 0246 and 0247 and the claim texts of #550 and #558.
 
-9. **Removing oneself needs only a row that exists** (the eighth answer; this branch, `restaurants/members.service.ts:63-76` and `:92-97`, called at `:369-376`).
+9. **Removing oneself needs only a row that exists** (the ninth answer; this branch, `restaurants/members.service.ts:63-76` and `:92-97`, called at `:369-376`).
    - `assertMembership` takes `opts.removingSelf`. When it is set, a row that exists admits the person whether or not it is live, at its role, or `staff` when the role is empty.
    - `removeMember` passes it only when the actor is the target. That covers the leave route (`auth.service.ts:4451`), `DELETE` of the account (`:4538`), and `DELETE /restaurants/:restaurantId/members/:memberId` when a person names themself (`restaurants/members.controller.ts:74-84`).
    - No other caller passes it.
@@ -341,7 +356,7 @@ Each item was measured on this branch by reading code. No production query was r
 - **(b) The validity window is honoured** by both helpers, through `isLiveMembership`.
 - **(d) `MembersService.assertMembership`'s access-read-error fallback is closed.** This is the founder's third answer.
 - **The clock skew on `valid_from` is covered up to two minutes.** This is the founder's fifth answer; see Decision 7.
-- **Leaving and account deletion are not trapped by a row outside its window.** This is the founder's eighth answer; see Decision 9.
+- **Leaving and account deletion are not trapped by a row outside its window.** This is the founder's ninth answer; see Decision 9.
 
 ## Review trail
 
@@ -353,3 +368,4 @@ Each item was measured on this branch by reading code. No production query was r
 | 2026-10-01 | — | Answers 6 and 7, before review: every question and option copied verbatim from the transcript, the deactivation sentence scoped, the `valid_from` sentences corrected for the tolerance, the corrected premises recorded, and the merge order with its planned rebase work. |
 | 2026-10-01 | — | Answer 8, before review: a person removing themself needs only a row that exists. |
 | 2026-10-01 | — | Answer 9, before review: the PR may land with 17 files and keeps the route-level leave and delete cases. Rebased onto 4bd11a00e (#563); the lines cited in `procurement.service.ts` and `recurring-orders.service.ts` are re-measured there. |
+| 2026-10-01 | — | Text only, before review: the reachability correction and its answer, "Keep course, correct in docs PR (Recommended)", recorded verbatim as the eighth question. The later answers are renumbered ninth and tenth. |
