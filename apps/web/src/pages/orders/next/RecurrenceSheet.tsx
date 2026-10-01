@@ -27,9 +27,14 @@
  * WHO MAY CHANGE A RULE (ADR 0247, founder rulings of 2026-10-01). Pause,
  * resume, end and replace need a manager or an owner. A first rule may be set
  * by the person who placed the order, or by a manager or an owner on any
- * order. The gateway refuses anyone else with 403 and that refusal is the real
- * gate. This sheet only stops offering the controls to someone who would be
- * refused, and says why in words. Staff still see the rule.
+ * order. The gateway refuses, with 403, a caller its role check does not
+ * admit, and that refusal is the real gate. This sheet decides what to offer
+ * from `useAuth().activeRole` and the order's `createdBy`. `activeRole` is read
+ * from the caller's active access row only, when the user or the active house
+ * changes, so it can lag a role change and can differ from the gateway's check
+ * (which falls back to the legacy `users` row) in either direction. When the
+ * sheet offers an act the gateway refuses, it shows the 403 in words. Staff
+ * still see the rule.
  */
 
 import { useMemo, useState } from 'react';
@@ -163,23 +168,23 @@ export function projectOccurrences(
   return out;
 }
 
-/** Shown in place of pause, resume, end and replace to a role the gateway refuses. */
+/** Shown in place of pause, resume, end and replace when `activeRole` is a role other than owner or manager. */
 export const RECURRENCE_NEEDS_A_MANAGER =
   'Pausing, resuming, ending or replacing this rule is a manager\u2019s or an owner\u2019s ' +
   'act in this house, and your role here is not one of those. Ask a manager or an owner.';
 
-/** Shown instead while the role has not been read. `null` is not `staff`. */
+/** Shown instead when `activeRole` is null, including before it is read. `null` is not `staff`. */
 export const RECURRENCE_ROLE_UNKNOWN =
   'Your role at this restaurant has not been read yet, so whether you may pause, resume, ' +
   'end or replace this rule is unknown. It is not assumed. If this does not clear in a ' +
   'moment, reload.';
 
-/** Shown in place of the first-rule form to staff on an order they did not place. */
+/** Shown in place of the first-rule form when `activeRole` is a role other than owner or manager and the order is not recorded as placed by the caller. */
 export const RECURRENCE_NOT_YOUR_ORDER =
   'Staff may set a recurrence only on an order they placed, and this order is not ' +
   'recorded as placed by you. Ask a manager or an owner to set it.';
 
-/** The same, while the role has not been read. */
+/** The same, when `activeRole` is null. */
 export const RECURRENCE_FIRST_RULE_ROLE_UNKNOWN =
   'Your role at this restaurant has not been read yet, and this order is not recorded ' +
   'as placed by you, so whether you may set a recurrence on it is unknown. It is not ' +
@@ -212,8 +217,9 @@ export function RecurrenceSheet({ open, onClose, row }: RecurrenceSheetProps) {
 
   /*
    * THE ROLE, AS THREE STATES. Changing a rule that is already there needs a
-   * manager or an owner (ADR 0247). `null` means "not read yet", not "staff";
-   * both lose the controls, and each is told its own reason.
+   * manager or an owner (ADR 0247). `null` means "not known here", including
+   * not read yet and a read that failed, not "staff"; both lose the controls,
+   * and each is told its own reason.
    */
   const mayChangeRule = activeRole === 'owner' || activeRole === 'manager';
   const roleUnknown = activeRole === null || activeRole === undefined;

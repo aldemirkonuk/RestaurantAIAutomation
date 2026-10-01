@@ -186,8 +186,11 @@ export class OrderRecurrenceService {
    * one's own order does not call it.
    *
    * It is `assertCanManageRestaurant`, the check order cancel uses
-   * (`ProcurementService.assertMayCancelOrder`). That check reads a role it
-   * cannot read as no role, so an unreadable role is refused (403) too.
+   * (`ProcurementService.assertMayCancelOrder`). It answers 403 unless the
+   * caller's active access row for this house, or, when that read fails or
+   * finds no active row, the caller's legacy `users` row for this house, names
+   * owner or manager (`lookupRestaurantRole`). It does not throw on a failed
+   * read, so both reads failing is refused like no role.
    *
    * REFUSES when the helper is not wired, rather than letting the change
    * through: `ProcurementModule` imports `OrganizationsModule`, so this branch
@@ -409,7 +412,7 @@ export class OrderRecurrenceService {
     to: OrderRecurrenceStatus,
     action: string,
   ): Promise<RecurrenceRow> {
-    // Before the order is read: a refused caller reads nothing and writes
+    // Before the order is read: a refused call reads no order and writes
     // nothing (ADR 0247).
     await this.assertMayChangeARule(
       restaurantId,
@@ -433,9 +436,9 @@ export class OrderRecurrenceService {
         reason: "already_ended",
         message:
           `The recurrence on order ${order.order_number} was ended on ` +
-          `${order.recurrence_status_at ?? "a date this row does not record"} and an ended ` +
-          `series is not restarted — a second life for the same rule would make one ` +
-          `standing order look like two. Set a new recurrence on a current order instead.`,
+          `${order.recurrence_status_at ?? "a date this row does not record"}, and pause, ` +
+          `resume and end do not restart an ended rule. A manager or an owner may restart ` +
+          `it by setting a new rule on this order.`,
       });
     }
     if (from === to) {

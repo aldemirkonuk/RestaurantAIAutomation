@@ -298,9 +298,11 @@ describe("staff may not pause, resume or end a rule", () => {
     },
   );
 
-  it("[REVERT-FAILS] refuses a caller whose role cannot be read, with 403, and writes nothing", async () => {
-    // The role helper reads a failed lookup as no role (`strict: false`), so
-    // an outage is refused the same way staff are: closed, not open.
+  it("[REVERT-FAILS] refuses a caller for whom both role reads fail, with 403, and writes nothing", async () => {
+    // Both reads fail here: the access register and the legacy `users` row.
+    // The helper (`strict: false`) does not throw on that; it finds no role
+    // and refuses. A failed access read with a legacy owner or manager row for
+    // this house would be admitted; this spec has no case for it.
     for (const [verb, id] of VERBS) {
       expect((await act(verb, id, UNREADABLE)).status).toBe(403);
     }
@@ -401,14 +403,14 @@ describe("a first rule goes on one's own order, or needs a manager or an owner",
     },
   );
 
-  it("[REVERT-FAILS] refuses a caller whose role cannot be read a first rule on an order someone else placed, with 403, and writes nothing", async () => {
+  it("[REVERT-FAILS] refuses a caller for whom both role reads fail a first rule on an order someone else placed, with 403, and writes nothing", async () => {
     const res = await setRule(MANAGERS_NO_RULE, UNREADABLE);
     expect(res.status).toBe(403);
     expect(row(MANAGERS_NO_RULE).recurrence_status).toBeNull();
     expect(writes).toEqual([]);
   });
 
-  it("asks no role of the person who placed the order, so an unreadable role may still set one there", async () => {
+  it("asks no role of the person who placed the order, so a caller for whom both role reads fail may still set one there", async () => {
     const res = await setRule(UNREADABLES_NO_RULE, UNREADABLE);
     expect(res.status).toBe(201);
     expect(row(UNREADABLES_NO_RULE)).toMatchObject({
