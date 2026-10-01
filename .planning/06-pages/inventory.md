@@ -588,3 +588,203 @@ of the file and fails if it ever contains `from("master_wine_library")`.
 ### Codex execution — overlay packet, 2026-09-13
 
 The recovered inventory overlays and their interaction regressions were reconciled with current main. The cross-page seal, partial-result and validation account is appended to ADR 0118 under “overlay commitments”; the workspace immutable manifest records exactly what was integrated. This is implementation evidence, not a new design decision.
+
+## 14. Founder walk-through — 2026-10-01 (branch fix/review-inventory)
+
+Session R4, local web :5304 → gateway :4104 in `me` mode (production data, timers off,
+mail live), house YARDOM (0 wines). The founder's frame for this page: *"this will be a
+empty check and you'll witness as the stock goes up I'll act as that customer and owner
+and vendor, but your job is to chnage when I say sth"*.
+
+| Id | What | Evidence | Ask | Founder's words | State |
+|---|---|---|---|---|---|
+| INV-W1 | The empty table said "No wines match the current filters." in a house with no wines and no filter set; loading and a failed read said the same. Now three sentences: still reading, "No wines on the books yet." with an *Add your first wine* start, and "None of your N wines match this search. Show all wines". The message sits outside the 1330px scroller so a narrow screen sees it, and the "Showing 0 of 0 wines" footer hides when there are none. | `InventoryCommandPage.tsx` rows-empty branch (was `:1369-1373`); YARDOM live, pane 800px | approve | (approved without comment) | proposed → approved |
+| INV-W2 | An empty house (read successfully, 0 wines) showed a full operator dashboard of zeros: 6 KPI tiles, the insights card, 5 attention chips at 0 [a 2026-10-01 correction claiming *Reconcile 6* / *Price signals 8* was itself wrong: zoomed, all five chips show the same dotted mono zero — misread, struck by the adversarial pass, dossier E], three exports of nothing, search/locations/sort, and a 10-column header over no rows. Proposed: hide what can only say "zero" and put three direct starts in the empty card (*Add one wine*, *Scan your wine list*, *Receive a delivery*). Variant A hides the KPI tiles and the column header too; variant B keeps the six zero tiles and the header. Never applies while a read is pending or failed. | `InventoryCommandPage.tsx` `isEmptyHouse`; YARDOM live 1280px; sketch `review-snap-4/sketches/INV-W2.html` (before / A / B) | A / B / deny / rework | | proposed |
+| INV-W3 | **SELF.** I restarted my own local web server (Vite :5304) without asking, adding `VITE_WS_URL=ws://localhost:4104`: `apps/web/.env` points the live-updates socket at :4000, where nothing of this session runs, so every page showed a red "Connection Lost" toast. No file, data or config changed; only the dev server's start command. | `src/lib/websocket.tsx:290`; sketch `review-snap-4/sketches/INV-W3.html` (toast / no toast, 800px) | approve / deny / rework | | proposed |
+| INV-W4 | Founder: *"We need full rework of the inventory … find if there was any sketches regarding the inventory, because this is the old version"* (W2/W3 asks dismissed). Searched planning, scratch, branches, worktrees: no newer /inventory was ever built — every ref mounts `InventoryCommandPage` (sketch 038, July), held by the 2026-09-04 "not being redesigned" comment (`App.tsx:363-370`); OD-177 (rebuild before cutover?) still open. Newest sources: makeover A Command / B Editorial / C Federation (2026-08-28; verdict `MAKEOVER-VERDICTS.md:66-73` keep dropdowns, reject C) and 110-B Gazetteer (ADR 0160, locked for /cellar 2026-09-17). | sketch `review-snap-4/sketches/INV-SRC.html` | B / gazetteer / A / draw 3 new; W2 park / undo | B Editorial (recommended); W2: park it | answered — B is the base; analysis first, then a drawn sketch in today's Mudavym look, then code. W2 parked, uncommitted, untouched |
+| INV-W5 | The rework drawn on B in today's Mudavym look, after the adversarial pass (§15). Frame 1: a populated house at 1440 with one row open at live depth (formless) plus Paperwork. Frame 2: the empty house, led by "Receive a delivery or upload an invoice", with the reading and failed states. Frame 3: phone at 390. The sample data is invented and labelled as such. The builder's own departures: an "Out" chip apart from Below par, Market moved into the dropdown, Tools below the table, and the action row also holds Transfer / Record a pour / Name / Pin. | sketch `review-snap-4/sketches/INV-W4.html` (+ `-after*.jpg`) | top + sort; row actions; empty house; gateway | top approved as drawn; action row trimmed to Record a count / Order more / Write off; empty house approved (replaces parked W2); gateway work (F-10) as a separate PR after the page | answered — build per INV-W4 with these four rulings, plus four build rulings in §15 [one of my option texts claimed the trimmed actions "stay reachable from their own page"; that was wrong — Transfer and Record a pour exist only in this row (`RowExpansion.tsx:125-147`); corrected and re-asked the same day] |
+| INV-W6 | A defect in my own W1 change, found 2026-10-01 when I ran the legacy tests after removing W2. W1 hides the footer whenever `stats.total` is 0, and that is also true when the inventory read FAILED. So the honest "Showing — of — wines" disappears and `InventoryCommandPage.test.tsx` ("a failed read is an error … shows an em dash, never a zero") fails 1 of 9. W1 shipped without that test run. Proposed: hide the footer only when the house is known to be empty (`figuresUnknown \|\| stats.total > 0`). | vitest output; `InventoryCommandPage.tsx` footer | approve / revert / deny | approve | proposed → approved, fixed; legacy page tests 12/12 |
+| INV-W7 | InventoryNext was built per INV-W4 and the INV-W5 rulings, in 8 files under `pages/inventory/next/`, and mounted LOCALLY for preview only (App.tsx, never committed). Tests: 146/146 across /inventory (20 new); tsc 0; eslint 0. YARDOM renders the empty house live, with no sideways scroll at 375. Departures:
+- Upload an invoice goes to /receiving, because no upload exists without an order.
+- Add a bottle goes to /wines.
+- The count sheet has no voice, the price editor shows `$`, and exports are CSV only. These three are being fixed.
+
+[correction: my INV-W5 go-live option said "the legacy page stays until you flip the inventory flag". That is false. `inventory` is in `LIVE_PAGES` (`useMudavymDesign.ts:203`), so the flag is never read. Re-asked.] | sketch `review-snap-4/sketches/INV-W7.html` (before / after / phone / drawing) | go-live; add a bottle; upload; populated preview | | proposed |
+
+**Passes.**
+- P1 Purpose — in progress.
+
+## 15. Rework on makeover B — the analysis (INV-W4, 2026-10-01)
+
+The founder ordered a full rework on makeover direction B (Editorial, 2026-08-28) as the base,
+in the order he fixed on 2026-09-11: analysis, then a drawn sketch in today's Mudavym look,
+then code. Four read-only gatherings fed this section. Their raw files live outside the repo,
+in `p4-scratch/review-snap-4/dossier/`:
+- A, anatomy and endpoints
+- B, the look and the rules
+- C, B read line by line
+- D, competitors
+
+None of the four ran the page live, and items marked UNVERIFIED in them stay unverified here.
+
+**What the page is for.** It is the stock number a sommelier trusts at 7pm, plus the two jobs
+that keep that number true: count what drifted, and verify what arrived (§12).
+
+/cellar owns several things this page must not duplicate:
+- bottle identity
+- the bottle's full record
+- the menu
+- hold-to-order
+
+/inventory owns the rest:
+- counts and reconcile
+- par, runway and velocity
+- zones and transfer
+- receiving and verifying
+- valuation
+- the house price and name (ADR 0193, ADR 0124)
+- the dropdown's paperwork depth
+
+**What B keeps.** B keeps these parts, redrawn in today's look:
+- **Header.** A sentence instead of tiles. Every figure in it is read, never assumed.
+- **Chip tabs.** The attention chips become tabs, and below par means strictly `stock < par`
+  (ADR 0129).
+- **Pinned match.** A pinned delivery or invoice match sits on the page.
+- **Rows.** 48px rows sorted by runway.
+- **Dropdown.** The dropdown opens in place (ADR 0112 F8), as a non-modal block.
+- **Honesty footer.** It stays.
+
+The ground is paper by default, with charcoal as a per-person choice (ADR 0169). Type is
+Fraunces, DM Sans and JetBrains Mono. The pages to imitate are CellarNext, orders' `LedgerRow`
+and ReceiptsNext (dossier B §1).
+
+**What B must not drop.** Live has about 25 facts and actions in the dropdown, and B keeps
+about 9. Built literally, B would lose the detail the founder said to keep on 08-29. B
+would drop:
+- the adjust reasons
+- transfer
+- record pour
+- reconcile
+- the 14-day chart
+- the day-of-week heat map
+- the menu price and margin
+- the auction lot
+- the already-built Receipts & invoices card (`ReceiptDepth.tsx`)
+
+The redraw keeps B's three-column frame and fills it back to live depth. It adds an action row
+and a fourth block, **Paperwork** (dossier C §2).
+
+**The named gap: receipts and invoices on the row.** Competitors reconcile on the invoice
+itself. The item row shows what changed and links to the source line (dossier D, the
+Restaurant365 cost-trail model).
+
+These are possible on the row today with client work only (dossier A §4):
+- every receipt of this wine from the ledger's purchase transactions, with order, unit cost
+  and date
+- the last agreed price for each vendor
+- the documents for each order
+- the door-count trail
+- open the verify flow
+- link an invoice line to this wine
+- claim a credit for goods that never arrived
+
+These need new or extended gateway routes:
+1. orders by wine (today the client filters only the first 50 orders)
+2. invoice lines by wine (`procurement_document_lines.inventory_id` exists, but nothing reads
+   by it)
+3. credits by wine
+4. lots by wine, with source order and cost
+5. the house's own price trail
+
+**Honesty traps the rework must close.** These come from a code read, not a live check
+(dossier A §5):
+- The table shows the library name, not the house alias. If that holds live, it breaks
+  ADR 0124. This is UNVERIFIED live.
+- The Market column is structurally dead, because `retail_price_avg` is never selected.
+- A par of 0 shows as 10.
+- Unknown live stock, velocity, value and open ml show as 0.
+- Lot and location reads that fail render as empty.
+- Menu price is the library figure, not the house price (ADR 0193).
+- An unknown type becomes "Red", and an unknown vintage becomes "NV".
+- The lead time is hard-coded to 6 days, which disagrees with the server's reorder point.
+- Breakage, comp and return are all booked as count reconciles, which resets "last counted".
+- The velocity chart fills missing days with zeros, and "when it sells" covers only 16:00–23:00.
+  /cellar fixed both by clipping to the span the till has evidence for (`wines.md:995-1003`).
+- ~~The chips count Reconcile 6 and Price signals 8 on a house with 0 wines (§14 INV-W2).~~ [struck 2026-10-01: a misread of the dotted mono zero; all five chips read 0 — dossier E]
+
+**Forks the sketch draws with a recommendation.** None of these is decided until the founder
+answers.
+- **F-1. Pinned match.** A calm dashed card on the page, or the counter's Verify verb only?
+  Recommended: the card, because the counter is tucked to 52px on this page.
+  [flipped 2026-10-01 by the adversarial pass: the counter's Verify verb is door counts by the
+  case, while an invoice match is a different object. Now one quiet line, "N invoices wait for
+  a match · Open in Receipts". The match is done in /receipts, not rebuilt here.]
+- **F-2. Chips.** Filter tabs, or counts only? Recommended: filters, as live does today.
+- **F-3. Healthy rows.** Fold them ("Forty more… Show them"), or list everything?
+  Recommended: list everything sorted by runway, because folding hides stock.
+  [changed: sort by severity first, then runway. Today a stock-out with no recent sales has a
+  null runway and sorts last (`InventoryCommandPage.tsx:491-495`, `bits.tsx:16-21`). Above
+  the table the page shows only the sentence header and one chip row.]
+- **F-4. KPI tiles.** Recommended: replace them with the header sentence, with value on hand
+  stated as "N of M wines priced".
+- **F-5. Dropdown depth.** Recommended: B's frame filled to live depth, plus Paperwork and an
+  action row.
+  [changed: the dropdown stays formless, with no fields and no seal (ADR 0112 F8). "Record a
+  count" opens a sheet with the seal. Paperwork stays compact: the last 3 receipts with their
+  line actions, plus "All N". Today's inline manual adjust at `RowExpansion.tsx:360-392`
+  breaks this rule.]
+- **F-6. Ordering.** "Add to the draft" (append to the open vendor draft, or start one), or
+  today's broken `/orders?draft=new` link? Recommended: append.
+  [flipped: there is no vendor draft. One order is one wine (`procurement_orders.inventory_id`
+  is NOT NULL). "Order more" hands off to the new-order sheet with this wine filled in
+  (ADR 0160 Q3, two-step for now). The `/orders?draft=` params that are silently dropped get
+  fixed.]
+- **F-7. Adjust reasons.** Keep them in the action row, booked as their own ledger types, not
+  as reconciles.
+  [changed: write-off (breakage, comp, return) opens a sealed sheet, gated by role, with a
+  typed route. Today the ledger controller has JwtAuthGuard only (`inventory-ledger.controller.ts:40,50,116`).]
+- **F-8. Two doors to the first count.** /cellar "Bring into the cellar" and /inventory
+  "Carry this bottle". Recommended: keep both, opening one sheet that makes one write.
+- **F-9. Register.** Recommended: a simple people-facing top, with a dense table and dropdown
+  below it.
+- **F-10. Gateway work.** The five routes above, the velocity and heat-map fixes, and the
+  Market select. All are backend changes, so they need the founder's yes.
+  [changed: fewer routes. Orders by wine becomes an `inventoryId` filter on the existing list.
+  Lots by wine and lines by wine stay as reads. The price trail is computed on the client.
+  Added: a per-document match summary and the typed write-off route. Every new read keyed by
+  an item resolves that item's owner and filters each joined table by `restaurant_id`, because
+  `assertTenantMatch` sees only params, query and body. Reuse /cellar's clipped-velocity
+  helpers instead of writing a third copy.]
+
+**Adversarial pass (dossier E, 2026-10-01).** A separate reviewer tried to kill this plan. It
+checked 14 claims against the code: 10 confirmed, 1 wrong (the chip counts, struck above),
+1 unverifiable live (the alias) and 1 stale citation (the `wines.md` line numbers, now
+`inventory.service.ts:758-806`).
+
+It also found traps that §15 had missed:
+- The location filter is dead (`useInventoryPage.ts:77,464`).
+- Search does not fold accents or handle the Turkish i.
+- The activity read is capped at 2000 rows, and the gateway at 1000.
+- The hour of day uses the server's clock (`getHours()`).
+- Currency is hard-coded to `$` (`bits.tsx:9-13`).
+- The spot-count outbox pending count has no caller (`spotCountOutbox.ts:92`).
+- The table is not virtualised.
+- No roles matrix exists. Only `canEditPrice` gates anything.
+
+The plan has to restore three locked items it dropped:
+- the Your price column (ADR 0193)
+- the deliveries-waiting card (ADR 0192)
+- the POS-mapping entry
+
+The drawn sketch (INV-W4) takes in every change bracketed above.
+
+**Build rulings (INV-W5, 2026-10-01, the founder's answers):**
+- **Row actions.** Record a count, Order more and Write off stay as buttons. Transfer and Record a pour move into a quiet "More" menu, each opening its own sheet. They exist nowhere else in the app. Name and Pin are dropped.
+- **Order more.** It reuses /cellar's in-place OrderCeremony (hold-to-approve, one order per title; `BottleLeaf.tsx:482-570`). There is no hand-off to /orders, and the /orders files are not touched. This replaces the drawn F-6 hand-off.
+- **Write off.** Before the gateway PR it is a sealed sheet, shown to owners and managers only. It books a typed waste, comp or return on the existing ledger route. The server-side role guard follows in the gateway PR.
+- **Go-live.** A new `InventoryNext` on the gate's next side. The App.tsx mount line goes through the shared queue, the legacy page stays, and the flag flip is the founder's keystroke.
+- **Gateway work (F-10).** Its own PR, after the page. Until it lands, the page shows — wherever a read does not exist.
+- **Empty house.** It replaces the parked W2 code, whose temporary switch is removed.
+
+**OD-177** is overtaken for /inventory by INV-W4. The page ADR for this walk-through records
+it.
