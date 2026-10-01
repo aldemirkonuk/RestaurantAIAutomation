@@ -187,10 +187,10 @@ export class OrderRecurrenceService {
    *
    * It is `assertCanManageRestaurant`, the check order cancel uses
    * (`ProcurementService.assertMayCancelOrder`). It answers 403 unless the
-   * caller's active access row for this house, or, when that read fails or
-   * finds no active row, the caller's legacy `users` row for this house, names
-   * owner or manager (`lookupRestaurantRole`). It does not throw on a failed
-   * read, so both reads failing is refused like no role.
+   * caller's `is_active = true` access row here (dates unread) or, when that
+   * read fails or finds no such row with a role, the legacy `users` row for
+   * this house names owner or manager (`lookupRestaurantRole`). A failed read
+   * is not thrown, so both reads failing is refused like no role.
    *
    * REFUSES when the helper is not wired, rather than letting the change
    * through: `ProcurementModule` imports `OrganizationsModule`, so this branch

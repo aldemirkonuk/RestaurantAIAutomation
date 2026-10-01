@@ -145,8 +145,8 @@ describe('staff', () => {
   );
 });
 
-describe('a role that has not been read', () => {
-  it('[REVERT-FAILS] gets no controls on a rule either, and is told the role is unknown rather than staff', () => {
+describe('a role that is not known', () => {
+  it('[REVERT-FAILS] gets no controls on a rule either, and is told its role is not confirmed, not that it is staff', () => {
     auth.activeRole = null;
     draw('active', ME);
     for (const id of ACTS) expect(screen.queryByTestId(id)).toBeNull();
@@ -156,7 +156,7 @@ describe('a role that has not been read', () => {
     );
   });
 
-  it('[REVERT-FAILS] is not offered a first rule on an order someone else placed, and is told the role is unknown', () => {
+  it('[REVERT-FAILS] is not offered a first rule on an order someone else placed, and is told its role is not confirmed', () => {
     auth.activeRole = null;
     draw(null, SOMEONE_ELSE);
     expectNoFirstRuleForm();
