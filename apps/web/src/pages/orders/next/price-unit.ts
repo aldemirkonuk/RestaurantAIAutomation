@@ -300,7 +300,7 @@ export function describeFees(fees: AgreementFees): string | null {
  * announce that the agreement names no deposit.
  */
 export const ROW_FEES_NOT_READ =
-  'This view did not read what the agreement charges outside the price of the wine. ' +
+  'This view did not read what the agreement charges outside the item’s price. ' +
   'That is not the same as the agreement charging nothing.';
 
 /**

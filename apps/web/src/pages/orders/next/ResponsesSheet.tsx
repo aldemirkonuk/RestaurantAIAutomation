@@ -104,7 +104,7 @@ import type { ApprovalGateRow, OrderRowVM } from './useOrdersNextData';
 export const REJECT_SEAL_NOTE =
   'The hold mints a one-time seal for this order, spent exactly once on the ' +
   'cancellation — the same proof an approval carries, for a different act. The ' +
-  'reason is written to the order, and an order whose wine has already arrived ' +
+  'reason is written to the order, and an order whose delivery has already arrived ' +
   'cannot be cancelled at all.';
 
 const label = (text: string) => (

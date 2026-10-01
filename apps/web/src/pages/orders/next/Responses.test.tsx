@@ -600,3 +600,11 @@ describe('a vendor decline', () => {
     expect(screen.queryByTestId('response-declined')).toBeNull();
   });
 });
+
+describe('words that hold for any item, not only wine (ORD-W20)', () => {
+  it('the cancellation note speaks of a delivery, not wine', async () => {
+    const { REJECT_SEAL_NOTE } = await import('./ResponsesSheet');
+    expect(REJECT_SEAL_NOTE).toContain('whose delivery has already arrived');
+    expect(REJECT_SEAL_NOTE).not.toMatch(/wine/i);
+  });
+});
