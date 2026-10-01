@@ -90,6 +90,14 @@ Asked for in ADR 0252 round 5 (*"come up with pacakgaes to give options, like fu
 - **Changing a package later:** *"No, you're asked (Recommended)"*. Managers keep what they were given; the owner sees who is on the old version and applies the new one per person.
 - **Staff:** *"Jobs list only (Recommended)"*. Packages are for managers; staff rights come from the Jobs rows and from jobs.
 
+## Answered 2026-10-01 (round 9) — the phone's money, after the fix was built
+
+The phone-feed fix (branch `fix/phone-feed-no-money-for-staff`) left three questions the round-2 ruling did not settle:
+
+- **Vendor reply cards:** *"Keep them (Recommended)"*. Staff keep the cards for a drafted letter to a vendor, though its text may name a price; they are letters, which ADR 0175 lets staff hold as a request.
+- **A staff member given a right:** *"What they can approve (Recommended)"*. A send right alone shows no money. Once ADR 0175 D7 lets someone given the right approve orders, they see approve cards and amounts only for the orders their right covers.
+- **The phone's other money:** *"Close all three (Recommended)"*. The Supply tab's order amounts, the Insights tab's cellar value, and the credit due and unit cost on delivery-difference notices close to staff too: server first, as its own fix.
+
 ## Open — the founder's to decide (sketch 125 forks 9–12, 14)
 
 1. **The rights list.** The seven drawn in the sketch, more, or fewer.
