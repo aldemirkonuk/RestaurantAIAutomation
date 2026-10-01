@@ -38,11 +38,21 @@
  *    disappears teaches nothing). The founder, 2026-09-05, answering ADR 0125
  *    Q1: *"Manager or owner, like approval."* The gate is the endpoint's —
  *    `assertCanManageRestaurant` runs on the mint AND the write — and this is
- *    the courtesy in front of it. **An UNRESOLVED role disables too**: the role
- *    comes from `/auth/me/role` and is `null` while it is loading and `null`
- *    again when that read FAILED. Treating "I don't know" as "yes" is the
- *    house's [[absence-reported-as-health]] fault pointed at a destructive
- *    write, and the sentence says which of the two it is.
+ *    the courtesy in front of it. The role this control reads is
+ *    `useAuth().activeRole`: the role on this person's access row for this
+ *    house with `is_active = true`, read from `/auth/me/role` when the user or
+ *    the active house changes. It keeps its old value until a new read
+ *    returns, including the previous house's role after a house switch, so it
+ *    can differ from the gateway's check (which falls back to the legacy
+ *    `users` row) in either direction. **A `null` role disables too.** `null`
+ *    covers more than one state, including before the first read returns,
+ *    after a failed read, and when the read finds no role for this person
+ *    here. A member with no `is_active = true` access row naming a role here,
+ *    whom the gateway can still admit through the legacy `users` row, is in
+ *    that last state. Treating "I don't know" as "yes" is the house's
+ *    [[absence-reported-as-health]] fault pointed at a destructive write.
+ *    `null` and `staff` each get their own sentence, and neither says the
+ *    state will clear.
  * 5. A REFUSAL IS PRINTED AS ITSELF. 400 (no reason), 403 (the seal or the
  *    role) and 422 (the state) all carry a whole sentence written to be read;
  *    `services/api/orders.ts` promotes it onto `.message`. Wrapping those in
@@ -69,21 +79,21 @@ export const REJECT_NEEDS_A_REASON_LEGACY =
   'Say why this order is being rejected. The reason is written onto the order ' +
   'and is the only account anyone will have of why this wine was not bought.';
 
-/** Said to somebody whose role cannot end an order. Never hidden — ADR 0083. */
+/** Said when `activeRole` is `staff`, which can lag a role change (rule 4 above). Never hidden — ADR 0083. */
 export const REJECT_NEEDS_A_MANAGER =
-  'Cancelling an order is a manager\u2019s or an owner\u2019s act in this house, and your ' +
-  'role here is not one of those. Nothing was changed. Ask a manager to reject it, or ' +
-  'ask an owner to change your role.';
+  'Cancelling an order is a manager\u2019s or an owner\u2019s act in this house, and this ' +
+  'page has you as staff at this restaurant. Nothing was changed. Ask a manager to ' +
+  'reject it, or ask an owner to change your role.';
 
 /**
- * Said while the role is unknown — which is BOTH "still loading" and "that read
- * failed", because `/auth/me/role` resolves `null` for each and the browser
- * cannot tell them apart. Either way it is not permission.
+ * Said when `activeRole` is null: including before the first read returns,
+ * after a failed read, and when the read finds no role for this person here
+ * (rule 4 above). `null` is not permission, and nothing here says the state
+ * will clear.
  */
 export const REJECT_ROLE_UNKNOWN =
-  'Your role at this restaurant has not been read yet, so whether you may cancel an ' +
-  'order is unknown. It is not assumed. If this does not clear in a moment, reload \u2014 ' +
-  'a role that cannot be read is not a role that allows this.';
+  'Your role at this restaurant is not confirmed here, so cancelling this order is ' +
+  'not available. Ask a manager or an owner.';
 
 /** Said when the seal could not be minted for a reason the gateway did not give. */
 export const REJECT_SEAL_NOT_ISSUED =
@@ -188,8 +198,9 @@ export function SealedRejectDie({
 
   /**
    * The role, as three states rather than two. `null` is not `staff`: one means
-   * "this person may not", the other means "nobody has said yet", and a control
-   * that collapsed them would either accuse a manager or admit a stranger.
+   * "this page has this person as staff", the other means "not confirmed here"
+   * (rule 4 above), and a control that collapsed them would either accuse a
+   * manager or admit a stranger.
    */
   const mayCancel = activeRole === 'owner' || activeRole === 'manager';
   const roleUnknown = activeRole === null || activeRole === undefined;
