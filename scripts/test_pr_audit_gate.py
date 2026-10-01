@@ -996,6 +996,9 @@ MUTATIONS: list[tuple[str, str, str, bool]] = [
     ("'avoid' counted as 'void'", "(?<!a)void", "void", False),
     ("zero-cost rule verbs dropped", '|revert|rescind|(?<!a)void|obsolet|abolish|remov|allow|stop|lower|reduc"', '"', False),
     ("ignore's trivy/git lookbehind dropped", "(?<!trivy)(?<!git)ignor", "ignor", False),
+    ("ignore bounded after its stem (a stripped tag glues the next word on)",
+     "ignor(?!ance|ant)", "ignor(?:e|es|ed|ing)?(?![a-z])", False),
+    ("ignorance counted as ignore", "ignor(?!ance|ant)", "ignor", False),
     ("a claims line that is not JSON no longer judged whole", "            except ValueError:\n                return text\n",
      "            except ValueError:\n                continue\n", False),
 ] + [

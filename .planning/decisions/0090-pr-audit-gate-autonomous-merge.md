@@ -187,7 +187,9 @@ word on its merge covers them or strikes them.
   copied from here (its answer moved from 0161 to 0164 during 2026-09-18 alone).
 - One cleanup PR re-citing the nine ADRs that name the gate as a witness — 0097,
   0106, 0131, 0136, 0137, 0139, 0140, 0146 and 0158 (answer 4). Until it merges,
-  any edit to one of them escalates under the whole-file rule.
+  any edit to one of them escalates under the whole-file rule. [2026-09-30: the
+  whole-file rule is narrowed (amendment of that date); a passing mention no
+  longer escalates.]
 - Narrowing `ci.yml` ownership to the `on:` triggers and the `workflow_dispatch`
   path the CI merge step depends on (answer 6). `ci.yml` stays fully owned here;
   it is the largest escalation source (58 of the 104 owned commits below). The
@@ -197,7 +199,9 @@ word on its merge covers them or strikes them.
   the orchestrating session after this merges. No repo file changes for it.
 
 **Accepted costs.**
-- A new ADR that cites the gate by name escalates (convention above).
+- A new ADR that cites the gate by name escalates (convention above). [2026-09-30:
+  only in its title, metadata or claim id, or in a rule about the gate; see the
+  amendment of that date.]
 - Edits to existing index rows escalate: 12 of the 87 first-parent `main` commits
   since 2026-09-03 (measured 2026-09-18). PR #391 at `6a270a0d` is owned for one
   reason only: it rewrites ADR 0121's existing row. Its appended 0159 row and its
@@ -2497,23 +2501,27 @@ file under `.planning/decisions/` is owned when any of these holds:
    - For Markdown, it is every title (an ATX `#` heading, the line above a setext `===` underline, or a line holding an HTML `<h1>`), everything before the first ATX H1, and the metadata block after it. The metadata block runs bullet by bullet, including indented and lazy continuations. The Links bullet is left out, because a cross-reference is a mention by definition.
    - For a claims fragment, it is its rows' ids, every `id` key in a row, not only the last one a JSON parser keeps.
    - For anything else, it is the whole text, as before.
-3. Anywhere in its text, a gate token sits within 60 characters of a verb that changes a rule (`GATE_RULE_RE`). The verb is matched anywhere, not only at a word start, because a stripped tag (`are<br>exempt`) glues it to the word before. In a claims fragment, each raw line is scanned together with every key and value in it, with escapes decoded. A key given twice is counted twice; a plain JSON parser would keep only its last value. Examples are "supersedes ADR 0090", "exempt from the audit gate", "the pr-merge-planner no longer runs", "the audit gate opt-out applies", "merge without the audit gate", "ADR 0090 does not apply", "the audit gate is deprecated", "this reverts ADR 0090" and "ignore the audit gate". "ignore" is matched except inside "trivyignore" and "gitignore", and "void" except inside "avoid".
+3. Anywhere in its text, a gate token sits within 60 characters of a verb that changes a rule (`GATE_RULE_RE`). The verb is matched anywhere, not only at a word start, because a stripped tag (`are<br>exempt`) glues it to the word before. In a claims fragment, each raw line is scanned together with every key and value in it, with escapes decoded. A key given twice is counted twice; a plain JSON parser would keep only its last value. Examples are "supersedes ADR 0090", "exempt from the audit gate", "the pr-merge-planner no longer runs", "the audit gate opt-out applies", "merge without the audit gate", "ADR 0090 does not apply", "the audit gate is deprecated", "this reverts ADR 0090" and "ignore the audit gate". "ignore" is matched except inside "trivyignore", "gitignore" and "ignorance", and "void" except inside "avoid".
 
 The hygiene checks still judge the whole text. These are: NUL, line separators, tag and bidi characters, and letters outside Latin and Greek. Registers keep their line-diff rules unchanged.
 
-**Measured** on `main` at `e88593bf8`: 58 of the 234 non-register files under `decisions/` were owned before, and 22 are owned now. ADR 0241 and `claims.d/fix-door-refusal-parks-not-sent.jsonl` are released. The change is not strictly a narrowing: 37 records are released, and one is newly owned. That record is ADR 0243, whose review trail says "ADR 0231 … waived", and "ADR 0231" is now a gate token.
+**Measured** on `main` at `e88593bf8`: 58 of the 231 non-register files under `decisions/` (234 files, less three registers) were owned before, and 22 are owned now. ADR 0241 and `claims.d/fix-door-refusal-parks-not-sent.jsonl` are released. The change is not strictly a narrowing: 37 records are released, and one is newly owned. That record is ADR 0243, whose review trail says "ADR 0231 … waived", and "ADR 0231" is now a gate token.
 
 **Tests.**
-- `--self-test`: 102 → 120 invariants.
+- `--self-test`: 102 → 121 invariants.
 - `scripts/test_pr_audit_gate.py`:
   - O35 and O36 were bare mentions in a body, so they flip to released.
   - The new cases N1–N5 cover two #535 shapes that are released and three subject shapes that stay owned.
-  - Twenty-five new mutations, one per switch. They include the planted mutant "the narrowing reverted", which is killed by N1, N2 and the self-test's passing-mention check.
+  - Twenty-seven new mutations, one per switch. They include the planted mutant "the narrowing reverted", which is killed by N1, N2 and the self-test's passing-mention check.
 
 **Residual, stated rather than closed.** A record whose subject is something else can still state a rule about the gate in a way that is released. There are three ways:
 - It uses no listed verb. "delete", "drop" and "change" are left out on purpose: each owns records on `main` that only cite an audit, ADR 0241 among them. The verbs added after review (revert, rescind, void, obsolete, abolish, remove, allow, stop, lower, reduce, and ignore with the "trivyignore" and "gitignore" exceptions) were measured to add none.
 - Its verb is more than 60 characters from the gate token.
 - It is a title that names the gate only on the earlier line of a two-line setext or split `<h1>`, or a gate-naming metadata line that comes after a non-bullet line.
+
+Two neighbouring cases are not releases:
+- A claims row nested about 990 levels deep raises `RecursionError`. The CI and hook paths report that as CANNOT CHECK, which is owned.
+- A gate decision whose file name differs in letter case (`0097-X.md`) misses the number rule, but its subject and rule are still scanned. `main` released such a file too.
 
 Gate rules bind only from ADR 0050, ADR 0090 and the gate's own files, and the reviewers are told so. 0097, 0231 and 0237 are owned by number. So such a sentence changes no gate behaviour. It can only steer a reader. This change does not touch what the reviewers are told.
 

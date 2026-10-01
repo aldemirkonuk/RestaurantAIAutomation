@@ -652,7 +652,7 @@ _GATE_VERB = (rf"(?:supersed|amend|exempt|waiv|bypass|overrid|overrul|relax|susp
               rf"|need{_S}not|instead{_S}of|opt{_S}out|except|immun|unaudit|without"
               rf"|permit|deprecat|turn{_S}off|not{_S}appl|not{_S}requir|may{_S}(?:self|merge)"
               rf"|revert|rescind|(?<!a)void|obsolet|abolish|remov|allow|stop|lower|reduc"
-              rf"|(?<!trivy)(?<!git)ignor(?:e|es|ed|ing)?(?![a-z]))")
+              rf"|(?<!trivy)(?<!git)ignor(?!ance|ant))")
 GATE_RULE_RE = re.compile(rf"{_GATE_VERB}[^\n]{{0,60}}?(?:{_GATE_ANY})|(?:{_GATE_ANY})[^\n]{{0,60}}?{_GATE_VERB}")
 _H1_RE = re.compile(r"^ {0,3}#(?:[ \t]|$)")
 _SETEXT_H1_RE = re.compile(r"^ {0,3}=+[ \t]*$")
@@ -2280,6 +2280,9 @@ def run_self_test() -> int:
     check("a claim key given twice cannot hide an escaped rule in its first value",
           bool(_own(_t(".planning/decisions/claims.d/x.jsonl",
                        new='{"id": "X", "claim": "This sup\\u0065rsedes ADR 0090.", "claim": "c"}\n'))), True)
+    check("'ignore' glued to the next word by a stripped tag still counts; 'ignorance' does not",
+          ([p for p in ("Ignore<br>the audit gate.", "Ignore**the** audit gate.", "Ignores\u200bthe audit gate.")
+            if not _new_adr_owned(p)], _new_adr_owned("Ignorance of the audit gate is common.")), ([], False))
     check("'avoid' is not 'void'",
           _new_adr_owned("We avoid touching the audit gate."), False)
     check("a claim key given twice cannot hide a rule in its first value",
