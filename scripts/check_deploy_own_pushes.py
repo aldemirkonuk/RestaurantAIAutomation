@@ -12,7 +12,7 @@ matches a fork's pull request whose branch is named `main`; its stages check
 out that run's head_sha and run its code beside the stages' secrets. The rule this
 guard holds, read from the workflow text strictly (no YAML library: the CI
 jobs that run it do not install one). Shapes it does not recognise are
-refused where it can tell; its self-test plants the 86 breaks listed in
+refused where it can tell; its self-test plants the 88 breaks listed in
 _self_test (see KNOWN GAPS below for what it does not hold):
 
   1. The jobs: block holds only plain `  name:` job keys, full-line comments
@@ -42,7 +42,8 @@ _self_test (see KNOWN GAPS below for what it does not hold):
      case-insensitively as GitHub reads contexts: no workflow-level key names
      `secrets`; nothing reads `toJSON(secrets)`, `secrets[...]` or
      `secrets.*`; deploy.yml holds no backslash escape but `\\$`, a
-     backslash-backtick, `\\"` or a line break, and no YAML anchor or alias; ci-gate's job-level `permissions` is exactly `{}`,
+     backslash-backtick, `\\"` or a line break, and no YAML anchor or alias
+     (but see KNOWN GAPS); ci-gate's job-level `permissions` is exactly `{}`,
      and ci-gate has no `uses` key in any step form (block, flow-style or
      quoted; so no cache save) and no secret; `secrets.ADMIN_API_KEY` appears
      exactly once, in the env of verify-orchestrator's step "Verify 9/9
@@ -58,7 +59,7 @@ KNOWN GAPS -- not held (founder, 2026-09-30: "Honest record (Recommended)").
 This guard pins the refusal step's TEXT, each job's `if`, and rule 5's key
 reach; it does not pin how ci-gate's `run:` steps EXECUTE, nor any
 workflow-level key but `on:` and `defaults:` beyond rule 5's no-secret rule.
-The self-test plants exactly the 86 breaks listed in _self_test and nothing
+The self-test plants exactly the 88 breaks listed in _self_test and nothing
 more. Changes of these kinds pass the guard unnoticed:
   - a job-level key on ci-gate other than `if` and `permissions`
     (`container:`, `services:`, `runs-on:`, an `env:` with no secret);
@@ -67,6 +68,9 @@ more. Changes of these kinds pass the guard unnoticed:
     GITHUB_ENV / GITHUB_OUTPUT;
   - a workflow-level key (`env:`, including BASH_ENV or a `BASH_FUNC_*`
     function, `permissions:`, `run-name:`) that names no secret;
+  - a YAML anchor or alias whose name starts with `&` or `*` (`&&u`), which
+    rule 5's anchor check does not match so that `&&` stays legal (PyYAML
+    rejects such a name; GitHub's parser is untested);
   - a column-0 comment inside `on:`, which ends this reader's on: block and
     hides a trigger added after it.
 Changes that only alter whether ci-gate goes green on a foreign or non-push
@@ -348,11 +352,14 @@ def _key_problems(text: str, jobs: dict[str, str]) -> list[str]:
     if re.search(r'\\(?![$`"\r\n])', text):
         out.append("deploy.yml contains a backslash escape other than \\$, \\`, \\\" or a line break (a YAML escape could spell a secret this guard cannot read)")
     # A YAML anchor or alias could copy a step (an action, or a secret) into
-    # ci-gate without its text being there. deploy.yml has none: any `&name`
-    # or `*name` after a line start, whitespace, or `-`, `?`, `:`, `!`, `[`,
-    # `{`, `,` is refused outside full-line comments (YAML comments cannot
-    # hold one; a block-scalar line that looks like one is refused too).
-    if re.search(r"(?m)(^|[\s!\[{,?:-])[&*][A-Za-z0-9_]", _code(text)):
+    # ci-gate without its text being there. deploy.yml has none: a `&` or `*`
+    # after a line start, whitespace, or `-`, `?`, `:`, `!`, `[`, `{`, `,`,
+    # followed by any character but whitespace, `&`, `*` or a flow indicator
+    # (YAML lets an anchor name start with almost anything, `-` included), is
+    # refused outside full-line comments. `&&`, `2>&1` and a trailing `&`
+    # are not matched; a block-scalar line that looks like an anchor is
+    # refused too.
+    if re.search(r"(?m)(^|[\s!\[{,?:-])[&*](?![\s&*\[\]{},])", _code(text)):
         out.append("deploy.yml contains a YAML anchor or alias (it could copy a step or a secret into ci-gate unseen)")
     gate_raw = _join(jobs.get("ci-gate", ""))
     gate = _code(jobs.get("ci-gate", ""))
@@ -520,6 +527,9 @@ def _self_test(verbose: bool = False) -> int:
         "K32 the key behind an escaped space": ("          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n", "          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n          K: \"${{ secrets\\ .ADMIN_API_KEY }}\"\n"),
         "K33 uses anchored in the workflow env, aliased as a ci-gate key": [(WF_ENV, WF_ENV + "  X:\n    &u uses\n"), (GATE_STEPS, GATE_STEPS + "      - name: n\n        *u : actions/cache@v4\n")],
         "K34 the key's env anchored on its own line, aliased into another step": [("        env:\n" + KEY_LINE + "\n", "        env:\n          &e\n" + KEY_LINE + "\n"), ("      - name: API gateway URL is configured\n", "      - name: API gateway URL is configured\n        env:\n          *e\n")],
+        # round-2 planner addendum: an anchor name may start with `-` or `.`:
+        "K35 uses anchored as &-u, aliased as a ci-gate key": [(WF_ENV, WF_ENV + "  X:\n    &-u uses\n"), (GATE_STEPS, GATE_STEPS + "      - name: n\n        *-u : actions/cache@v4\n")],
+        "K36 the key's env anchored as &.e, aliased into another step": [("        env:\n" + KEY_LINE + "\n", "        env:\n          &.e\n" + KEY_LINE + "\n"), ("      - name: API gateway URL is configured\n", "      - name: API gateway URL is configured\n        env:\n          *.e\n")],
     }
     failed = []
     for name, edits in muts.items():
