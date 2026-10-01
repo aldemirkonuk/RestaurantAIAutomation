@@ -596,6 +596,18 @@ def _(s): s.write(".planning/decisions/0097-the-gateway-says-which-build-it-is.m
 def _(s): s.write(".planning/decisions/claims.d/x.jsonl",
                   '{"id": "ADR-0090-DOCS", "status": "resolved", "claim": "x", "verify": "true"}\n')
 
+# ---------------- added by the case fix (2026-10-01) ----------------
+# The founder, chat, verbatim: "Close it (Recommended)". A gate decision number
+# in a file name whose slug has a capital letter missed ADR_FILE_RE's number rule
+# and, for 0097, 0231 and 0237, every owned prefix: released with no gate words.
+# Each kills the deletion of its own prefix and fails on the code before the fix.
+@case("P1 a look-alike 0097 decision whose slug has a capital letter", True)
+def _(s): s.write(".planning/decisions/0097-X.md", "# 0097 \u2014 x\n\nDeploys.\n")
+@case("P2 a look-alike 0231 decision whose slug has a capital letter", True)
+def _(s): s.write(".planning/decisions/0231-Model-dispatch.md", "# 0231 \u2014 x\n\nModels.\n")
+@case("P3 a look-alike 0237 decision whose slug is all capitals", True)
+def _(s): s.write(".planning/decisions/0237-EFFORT.md", "# 0237 \u2014 x\n\nEffort.\n")
+
 
 def pairs(s: Scratch) -> list[tuple[str, bool, str, str]]:
     """(name, expect_owned, base sha, head sha) for every case."""
@@ -700,6 +712,12 @@ def test_the_narrowing_added_5_cases(scratch):
     """2026-09-30, the founder: "Approve #535 + narrow rule (Recommended)"."""
     names = [p[0] for p in scratch[1]]
     assert len([n for n in names if n[0] == "N"]) == 5
+
+
+def test_the_case_fix_added_3_cases(scratch):
+    """2026-10-01, the founder: "Close it (Recommended)"."""
+    names = [p[0] for p in scratch[1]]
+    assert len([n for n in names if n[0] == "P"]) == 3
 
 
 def test_html_tag_re_does_not_catastrophically_backtrack_on_an_unclosed_tag():
@@ -1027,7 +1045,7 @@ def cached_inputs(scratch):
 
 
 def test_the_mutation_list_covers_every_prefix_and_token():
-    assert len(_PREFIXES) == 17 and len(_ALTS) == 15
+    assert len(_PREFIXES) == 20 and len(_ALTS) == 15
 
 
 @pytest.mark.parametrize("name,old,new,live", MUTATIONS, ids=[m[0] for m in MUTATIONS])

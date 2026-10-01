@@ -124,7 +124,10 @@ import sys
 import tempfile
 from collections import defaultdict
 
-ADR_RE = re.compile(r"^\.planning/decisions/(\d{4})-([a-z0-9-]+)\.md$")
+# Letter case ignored (founder, chat, 2026-10-01, verbatim: "Close it
+# (Recommended)"): `0097-X.md` was invisible here, so a look-alike could reuse a
+# number -- a gate decision's included -- with no collision reported.
+ADR_RE = re.compile(r"^\.planning/decisions/(\d{4})-([a-z0-9-]+)\.md$", re.IGNORECASE)
 DECISIONS_DIR = ".planning/decisions"
 MAIN_REF = "origin/main"
 
@@ -761,6 +764,9 @@ def run_self_test() -> int:
         failures.append("README.md was parsed as an ADR")
     if not ADR_RE.match(".planning/decisions/0049-ecosystem-division-layer.md"):
         failures.append("a real ADR filename did not parse")
+    for name in ("0097-X.md", "0231-Model-dispatch.md", "0237-EFFORT.MD"):
+        if not ADR_RE.match(f".planning/decisions/{name}"):
+            failures.append(f"{name} did not parse: letter case must not hide a number")
 
     # Snapshots: skipped for collisions, and ONLY snapshots. A prefix that also
     # matched ordinary wip/ branches, or a branch merely containing the word, would
@@ -792,7 +798,8 @@ def run_self_test() -> int:
             print(f"SELF-TEST FAILED: {f}")
         return 1
     print("SELF-TEST OK -- collision detected, non-collision not flagged, "
-          "next-free swept across refs, README not parsed as an ADR, a snapshot "
+          "next-free swept across refs, README not parsed as an ADR, a capital-letter "
+          "slug still parsed, a snapshot "
           "draft skipped while a real collision still fails, a "
           "concurrent push re-fetched and passed, a branch the fetch cannot "
           "resolve still exit 2.")
