@@ -396,8 +396,8 @@ verbatim picks:
 
 **Held by.**
 - `scripts/check_deploy_own_pushes.py`, which is gate-owned. It is a strict
-  text reader. Its self-test plants exactly the 76 breaks it lists (52 for
-  the own-run rule, 24 for the key fix below); it does not plant every
+  text reader. Its self-test plants exactly the 83 breaks it lists (52 for
+  the own-run rule, 31 for the key fix below); it does not plant every
   evasion the audit rounds found (see "Not held").
 - `scripts/test_pr_audit_gate.py`.
 - The claim `DEPLOY-RUNS-ONLY-ON-OWN-PUSHES` in
@@ -443,7 +443,10 @@ verbatim picks:
       step's JavaScript, and a `container:` or `services:` image. `ci-gate`
       has no `if`, so only gate ownership stops such a member from running.
     - **What such a member reaches since the key fix** (below): no secret,
-      no token scope and no action step. The guard holds each of those. It
+      no token scope and no action step. The guard holds each of those as
+      far as a strict text reader can (a job-level `needs:` or a
+      `${{ github.token }}` still passes; neither carries a secret, and the
+      token has no scope). It
       would still run on the runner in main's `workflow_run` context, and a
       `runs-on: self-hosted` would put it on a machine that outlives the run;
       neither is pinned.
@@ -494,10 +497,14 @@ HOLDS, and the OVERTURNED verdict was not acted on (disclosed on #534).]
 - `ci-gate` carries `permissions: {}` and has no action step, so it saves no
   cache and its token has no scope.
 
-**Held by** `scripts/check_deploy_own_pushes.py` rule 5 (24 planted breaks,
-K1–K24), read case-insensitively as GitHub reads contexts: no `secrets` in any workflow-level key; no `toJSON(secrets)`, `secrets.*` or
+**Held by** `scripts/check_deploy_own_pushes.py` rule 5 (31 planted breaks,
+K1–K31), as far as a strict text reader can hold it. It reads the raw text,
+comment lines included (a `#` line in a block scalar is content), with escaped
+line breaks joined, case-insensitively as GitHub reads contexts: no `secrets`
+in any workflow-level key; no `toJSON(secrets)`, `secrets.*` or
 `secrets[...]` anywhere, and no YAML `\u`/`\U`/`\x`/`\N` escape (which could spell a
-secret unseen); `ci-gate`'s job-level `permissions` is exactly `{}`
+secret unseen) and no YAML anchor or alias (which could copy a step into
+`ci-gate` unseen); `ci-gate`'s job-level `permissions` is exactly `{}`
 and it has no `uses:` key in any step form (block, flow-style or quoted)
 and no secret; `secrets.ADMIN_API_KEY` appears once, in
 that step's env.

@@ -12,7 +12,7 @@ matches a fork's pull request whose branch is named `main`; its stages check
 out that run's head_sha and run its code beside the stages' secrets. The rule this
 guard holds, read from the workflow text strictly (no YAML library: the CI
 jobs that run it do not install one). Shapes it does not recognise are
-refused where it can tell; its self-test plants the 76 breaks listed in
+refused where it can tell; its self-test plants the 83 breaks listed in
 _self_test (see KNOWN GAPS below for what it does not hold):
 
   1. The jobs: block holds only plain `  name:` job keys, full-line comments
@@ -36,13 +36,17 @@ _self_test (see KNOWN GAPS below for what it does not hold):
   plain scalar with its deeper continuation lines.
   4. No line of deploy.yml sets `continue-on-error`.
   5. The key fix (founder, 2026-09-30, verbatim: "Approve all + widen
-     (Recommended)"), read case-insensitively as GitHub reads contexts: no
-     workflow-level key names `secrets`; nothing reads `toJSON(secrets)` or
-     `secrets[...]` or `secrets.*`, and no YAML \\u/\\x escape appears;
-     ci-gate's job-level `permissions` is exactly `{}`, and
-     ci-gate has no `uses` key in any step form (block, flow-style or quoted;
-     so no cache save) and no secret; `secrets.ADMIN_API_KEY` appears exactly once, in the env of
-     verify-orchestrator's step "Verify 9/9 agents Active".
+     (Recommended)"), as far as a strict text reader can hold it. Every
+     scan reads the raw text, comment lines included (a `#` line inside a
+     block scalar is content), with escaped line breaks joined, and matches
+     case-insensitively as GitHub reads contexts: no workflow-level key names
+     `secrets`; nothing reads `toJSON(secrets)`, `secrets[...]` or
+     `secrets.*`; deploy.yml holds no YAML \\u/\\U/\\x/\\N escape and no
+     YAML anchor or alias; ci-gate's job-level `permissions` is exactly `{}`,
+     and ci-gate has no `uses` key in any step form (block, flow-style or
+     quoted; so no cache save) and no secret; `secrets.ADMIN_API_KEY` appears
+     exactly once, in the env of verify-orchestrator's step "Verify 9/9
+     agents Active".
 
 What it cannot hold: GitHub's own evaluation (workflow_run runs main's copy of
 the file), and any YAML form this reader accepts but GitHub reads differently;
@@ -54,7 +58,7 @@ KNOWN GAPS -- not held (founder, 2026-09-30: "Honest record (Recommended)").
 This guard pins the refusal step's TEXT, each job's `if`, and rule 5's key
 reach; it does not pin how ci-gate's `run:` steps EXECUTE, nor any
 workflow-level key but `on:` and `defaults:` beyond rule 5's no-secret rule.
-The self-test plants exactly the 76 breaks listed in _self_test and nothing
+The self-test plants exactly the 83 breaks listed in _self_test and nothing
 more. Changes of these kinds pass the guard unnoticed:
   - a job-level key on ci-gate other than `if` and `permissions`
     (`container:`, `services:`, `runs-on:`, an `env:` with no secret);
@@ -76,8 +80,10 @@ triggering run controls. That includes its checkout, its artifacts or
 caches, event fields the fork writes (`head_commit.message`,
 `display_title`), a github-script step's JavaScript, and a `container:` or
 `services:` image. ci-gate has no `if`, so only gate ownership stops such a
-member from running; since rule 5 it reaches no secret, no token scope and
-no action. It still runs on the runner in main's workflow_run context, and
+member from running; since rule 5, as far as this text reader can tell, it
+reaches no secret, no token scope and no action (a job-level `needs:` or a
+`${{ github.token }}` still passes: neither carries a secret, and the token
+has no scope under `permissions: {}`). It still runs on the runner in main's workflow_run context, and
 `runs-on: self-hosted` would put it on a machine that outlives the run.
 Known examples (each passed when #534 merged; each still does unless marked):
   - `concurrency: |` before the refusal step (the steps after it become that
@@ -312,13 +318,23 @@ def problems(text: str) -> list[str]:
     return out
 
 
+def _join(text: str) -> str:
+    """The text with every backslash-newline removed. In a YAML double-quoted
+    scalar an escaped line break joins the two lines, so `sec\\` + newline +
+    `rets` reads as `secrets`; joining first lets the scans below see it."""
+    return re.sub(r"\\\r?\n[ \t]*", "", text)
+
+
 def _key_problems(text: str, jobs: dict[str, str]) -> list[str]:
     """Rule 5, the key fix: no secret in the workflow-level keys; ci-gate has
     `permissions: {}`, no secret and no action step (so no cache save); the
-    ADMIN_API_KEY secret is referenced once, in the env of KEY_STEP only."""
+    ADMIN_API_KEY secret is referenced once, in the env of KEY_STEP only.
+    The scans read the RAW text, comment lines included: a `#` line inside a
+    block scalar is content, and GitHub expands `${{ }}` in it. They also read
+    it with escaped line breaks joined (_join)."""
     out: list[str] = []
-    code = _code(text)
-    head = _code(text.split("\njobs:\n", 1)[0])
+    code = _join(text)
+    head = _join(text.split("\njobs:\n", 1)[0])
     # GitHub reads context names case-insensitively, so every match here is too.
     if re.search(r"(?i)\bsecrets\b", head):
         out.append("a workflow-level key references secrets (every job and step, ci-gate included, would inherit it)")
@@ -328,14 +344,19 @@ def _key_problems(text: str, jobs: dict[str, str]) -> list[str]:
     # matches cannot see; deploy.yml has none, so any is refused.
     if re.search(r"\\[uUxN]", text):
         out.append("deploy.yml contains a YAML \\u/\\U/\\x/\\N escape (it could spell a secret this guard cannot read)")
+    # A YAML anchor or alias could copy a step (an action, or a secret) into
+    # ci-gate without its text being there; deploy.yml has none, so any is refused.
+    if re.search(r"(?m)(^[ \t]*-[ \t]+|:[ \t]+|[\[{,][ \t]*)[&*][A-Za-z0-9_]", text):
+        out.append("deploy.yml contains a YAML anchor or alias (it could copy a step or a secret into ci-gate unseen)")
+    gate_raw = _join(jobs.get("ci-gate", ""))
     gate = _code(jobs.get("ci-gate", ""))
     perms = re.findall(r"(?m)^    permissions\s*:(.*)$", gate)
     if [p.strip() for p in perms] != ["{}"]:
         out.append(f"ci-gate: job-level permissions must be exactly `{{}}`, found {perms!r}")
     # Any `uses` key: block, flow-style (`- {uses: ...}`) or quoted.
-    if re.search(r"(?i)[\"']?\buses[\"']?\s*:", gate):
+    if re.search(r"(?i)[\"']?\buses[\"']?\s*:", gate_raw):
         out.append("ci-gate: runs an action (a `uses:` step can save a cache or run script text)")
-    if re.search(r"(?i)\bsecrets\b", gate):
+    if re.search(r"(?i)\bsecrets\b", gate_raw):
         out.append("ci-gate: references a secret")
     if len(re.findall(r"(?i)\bsecrets\s*\.\s*ADMIN_API_KEY\b", code)) != 1:
         out.append("ADMIN_API_KEY: the secret must be referenced exactly once (in its one step's env)")
@@ -480,6 +501,15 @@ def _self_test(verbose: bool = False) -> int:
         "K22 the key named again in lower case": ("          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n", "          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n          K: ${{ secrets.admin_api_key }}\n"),
         "K23 secrets.* filter in a step": ("          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n", "          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n          ALL: ${{ join(secrets.*, ',') }}\n"),
         "K24 a YAML escape spelling secrets": ("          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n", "          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n          K: \"${{ \\u0073ecrets.ADMIN_API_KEY }}\"\n"),
+        # round-1 adversary of #546: a `#` line inside a block scalar is content,
+        # an escaped line break joins words, and an alias copies a step:
+        "K25 workflow env block scalar, secret on a # line": (WF_ENV, WF_ENV + "  K: |\n    # ${{ secrets.GITHUB_TOKEN }}\n"),
+        "K26 ci-gate env block scalar, secret on a # line": (GATE_STEPS, GATE_STEPS + "      - run: echo ok\n        env:\n          K: |\n            # ${{ secrets.GITHUB_TOKEN }}\n"),
+        "K27 the key on a # line of another step's block scalar": ("          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n", "          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n          K: |\n            # ${{ secrets.ADMIN_API_KEY }}\n"),
+        "K28 ci-gate secret split by an escaped line break": (GATE_STEPS, GATE_STEPS + "      - run: echo ok\n        env:\n          T: \"${{ sec\\\n            rets.GITHUB_TOKEN }}\"\n"),
+        "K29 the key split by an escaped line break in another step": ("          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n", "          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n          K: \"${{ secrets.ADMIN_\\\n            API_KEY }}\"\n"),
+        "K30 ci-gate uses key split by an escaped line break": (GATE_STEPS, GATE_STEPS + "      - \"us\\\n         es\": actions/cache@v4\n"),
+        "K31 ci-gate step copied by an alias": [("      - uses: actions/checkout@v7\n", "      - &co\n        uses: actions/checkout@v7\n"), (GATE_STEPS, GATE_STEPS + "      - *co\n")],
     }
     failed = []
     for name, edits in muts.items():

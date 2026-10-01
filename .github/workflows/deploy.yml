@@ -93,7 +93,7 @@ jobs:
       # (Recommended)" and then "Also allow manual runs". The trigger's
       # `branches: [main]` filter also matches a fork's pull request whose
       # branch is named `main`, and Stages 2 and 3 check out that run's
-      # head_sha and execute its code beside the stage's secrets. A run of any other
+      # head_sha and execute its code beside the stage's credentials. A run of any other
       # event, or from any other repository (a dispatch included), fails here,
       # red, and every stage skips beneath it (each stage's `if` repeats the
       # same condition, so this is not the only line). Allowing
