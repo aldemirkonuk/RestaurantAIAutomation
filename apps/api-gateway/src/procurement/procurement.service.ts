@@ -3943,9 +3943,9 @@ export class ProcurementService {
    * no paper. The same helper, the same action words and the same 403 as the
    * PATCH: a manager making the same request succeeds, so this is a refusal
    * of authority (403), not of the order's state (409). A PENDING order keeps
-   * today's re-quote behaviour; nobody has approved it yet, and approving it
-   * tests the figures it finds, except a fold landing inside the approve step
-   * itself (ADR 0244 D2, interleaving (iv), not closed here).
+   * today's re-quote behaviour; nobody has approved it yet. Approving it tests
+   * only the total, the vendor and the price premium, and a fold inside the
+   * approve step is not closed here (ADR 0244 D2, interleaving (iv)).
    */
   private async assertMayMergeMoneyInto(
     restaurantId: string,
