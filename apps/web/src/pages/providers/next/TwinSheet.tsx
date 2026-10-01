@@ -29,7 +29,7 @@
 import { Suspense, lazy } from 'react';
 import type { Provider } from '../../../services/api/providers';
 import { Sheet } from '../../../components/mudavym/Sheet';
-import { EM, MONO, SANS, fmtDays, fmtLastContact } from './pv-format';
+import { EM, MONO, SANS, fmtDays, fmtLastContact, visibleRegions } from './pv-format';
 import { TermsSection } from './TermsSection';
 import { UsualCurrencySection } from './UsualCurrencySection';
 import { ContactsSection } from './ContactsSection';
@@ -63,7 +63,7 @@ interface Props {
   onProviderSaved?: (updated: Provider) => void;
 }
 
-function FactRow({ label, value }: { label: string; value: string }) {
+function FactRow({ label, value, href }: { label: string; value: string; href?: string }) {
   return (
     <div className="flex items-baseline justify-between gap-4 py-1.5">
       <span
@@ -79,14 +79,20 @@ function FactRow({ label, value }: { label: string; value: string }) {
         {label}
       </span>
       <span style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-1, #211C16)', textAlign: 'right' }}>
-        {value}
+        {href ? (
+          <a href={href} style={{ color: 'var(--seal-deep, #14515C)', textDecoration: 'underline', textUnderlineOffset: 2 }}>
+            {value}
+          </a>
+        ) : (
+          value
+        )}
       </span>
     </div>
   );
 }
 
 export function TwinSheet({ provider, onClose, focusUsualCurrency, onProviderSaved }: Props) {
-  const regions = provider.regionsCovered ?? provider.statesOrRegionsServed ?? [];
+  const regions = visibleRegions(provider.regionsCovered ?? provider.statesOrRegionsServed ?? []);
   // "How their mail reads" is for owners and managers only (the founder,
   // 2026-09-21: staff never see it). The gateway refuses anyone else with 403;
   // this only keeps staff from asking.
@@ -99,20 +105,20 @@ export function TwinSheet({ provider, onClose, focusUsualCurrency, onProviderSav
       open
       onClose={onClose}
       label={`${provider.name} — details`}
-      eyebrow={businessTypeLabel(provider.primaryBusinessType)}
+      eyebrow={(provider.primaryBusinessType ?? '').trim() === '' ? 'Type not stated' : businessTypeLabel(provider.primaryBusinessType)}
       title={provider.name}
     >
       <div className="px-4 py-4" style={{ fontFamily: SANS }}>
         {/* the vendor's own record — the type first, editable here */}
         <VendorRecordEdit provider={provider} onSaved={(p) => onProviderSaved?.(p)} />
         {/* plain facts, EM for absences */}
-        <FactRow label="Contact" value={provider.email || EM} />
-        <FactRow label="Phone" value={provider.phone || EM} />
+        <FactRow label="Email" value={provider.email || EM} href={provider.email ? `mailto:${provider.email}` : undefined} />
+        <FactRow label="Phone" value={provider.phone || EM} href={provider.phone ? `tel:${provider.phone.replace(/[^\d+]/g, '')}` : undefined} />
         <FactRow label="Lead time" value={fmtDays(provider.leadTimeDays)} />
         <FactRow label="Payment terms" value={provider.paymentTerms || EM} />
         <FactRow
           label="Minimum order"
-          value={typeof provider.minimumOrder === 'number' ? `$${provider.minimumOrder}` : EM}
+          value={typeof provider.minimumOrder === 'number' ? `${provider.minimumOrder.toLocaleString('en-US')} (currency not recorded)` : EM}
         />
         <FactRow label="Regions" value={regions.length ? regions.join(', ') : EM} />
         <FactRow label="Last contact" value={fmtLastContact(provider.lastContactDate)} />

@@ -556,7 +556,9 @@ in it cannot be proven a picker artefact rather than a place somebody meant —
 Sunday is a town in Louisiana — so removing one would destroy a row of somebody's
 data on an inference. `scripts/list_weekdays_in_regions_covered.py` lists every
 affected row with the value it would leave behind, and has **no `--apply`**. The
-rows are the founder's call.
+rows are the founder's call. [changed 2026-10-01, VEN-W8: founder chose "Hide weekdays on screen" —
+the sheet drops bare weekday names from Regions (`visibleRegions`, `pv-format.ts`); no
+row is cleaned.]
 
 **Also closed here: the form no longer seeds `paymentTerms: 'Net 30'`.** Both
 dialogs defaulted the field to Net 30 in the browser, so every provider saved
@@ -770,6 +772,10 @@ measured read-only 2026-10-01). Gateway `review-gw.sh … me` on :4107, web :530
 | VEN-W2 | Card eyebrow "NOT STATED" → "TYPE NOT STATED" (founder answer 12 kept: never blank, never guessed; the bare words did not say what was missing) | `ProvidersNext.tsx:138`; sketch VEN-W1 | approve | "Approve" | proposed → approved → built (pane reload 16:52, no new console error) |
 | VEN-W3 | Card row "Contact" → "Last contact", the sheet's own label | `ProvidersNext.tsx:188`, `TwinSheet.tsx:118`; sketch VEN-W1 | approve | "Approve" | proposed → approved → built (pane reload 16:52, no new console error) |
 | VEN-W4 | "Usual currency" panel: A today (top, 4-line engineer paragraph) / B two short sentences, heading "Usual currency" / C B's words below the cards | `vendor-currency.ts:162` (gateway sentence), `UsualCurrencyCoveragePanel.tsx:66`, `ProvidersNext.tsx:405`; sketch VEN-W4 | approve: C | "C: short + below (Recommended)" | proposed → approved → built (pane reload 17:02; jest usual-currency-coverage 19/19, vitest providers/next 170/170). Also fixed the singular ("All 1 of your vendor" → "Your one vendor …") inside the same sentence |
+| VEN-W5 | Sheet eyebrow "NOT STATED" → "TYPE NOT STATED" (as VEN-W2) | `TwinSheet.tsx:102`; sketch VEN-W5 | approve | "Approve" | proposed → approved → built (pane 17:12, vitest providers/next 173/173) |
+| VEN-W6 | Sheet "Contact" (holds the email) → "Email"; email → `mailto:`, phone → `tel:` links (the house's own mail app / phone; nothing sent by Mudavym) | `TwinSheet.tsx:108-109`; sketch VEN-W5 | approve | "Approve" | proposed → approved → built (pane 17:12, vitest providers/next 173/173) |
+| VEN-W7 | Sheet "Minimum order $1000" invents a dollar sign (Terms in the same sheet says "currency not recorded") → "1,000 (currency not recorded)" | `TwinSheet.tsx:112-115`, `TermsSection.tsx:358`; sketch VEN-W5 | approve | "Approve" | proposed → approved → built (pane 17:12, vitest providers/next 173/173) |
+| VEN-W8 | Fork: the sheet's "Regions" shows "Monday, Tuesday, Wednesday, Friday, Saturday" — weekday names left in `regions_covered` by the old picker; the doc parks the cleanup as the founder's call | live sheet; `providers.md` §9 (weekday note), `scripts/list_weekdays_in_regions_covered.py` | hide on screen | "Hide weekdays on screen (Recommended)" | proposed → approved → built: `visibleRegions` in `pv-format.ts` (+3 vitest cases); no row written; ALDEMIR DISTRIBUTION now shows "—" |
 
 **Passes**
 - P1 Purpose — done. Who: owner/manager. Job: "who do I buy from, how do I reach them, what is open with them, can I trust them." Verdict **partial**: the facts are honest and the absence-is-not-health rule holds everywhere, but the reach/order actions are missing from the card and the sheet top, and much copy is written in the engineer's voice, not the house's. No `mudavym.design.providers` override set.

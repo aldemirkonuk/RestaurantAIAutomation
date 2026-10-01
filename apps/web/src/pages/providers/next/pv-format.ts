@@ -35,3 +35,17 @@ export function fmtLastContact(iso: string | null | undefined): string {
   const months = Math.floor(days / 30);
   return months === 1 ? 'contacted a month ago' : `contacted ${months} months ago`;
 }
+
+const WEEKDAY_NAMES = new Set(['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']);
+
+/**
+ * The regions a vendor serves, as shown. Bare weekday names were written into
+ * the free-text `regions_covered` by the old delivery-day picker; they are
+ * hidden here and never deleted from the row (founder, 2026-10-01, VEN-W8:
+ * "Hide weekdays on screen").
+ */
+export function visibleRegions(regions: readonly unknown[]): string[] {
+  return regions
+    .map((r) => String(r ?? '').trim())
+    .filter((r) => r !== '' && !WEEKDAY_NAMES.has(r.toLowerCase()));
+}
