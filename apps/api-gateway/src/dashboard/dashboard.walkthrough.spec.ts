@@ -148,6 +148,21 @@ describe("DashboardService — the founder walk-through, 2026-10-01", () => {
       );
       const stats: any = await service.getStats("r1");
       expect(stats.todayProcurementSpend).toBe(384); // Oct 2 in UTC is "today"
+      expect(stats.timezone).toBe("UTC");
+    });
+
+    // DASH-W20: the page's "today" reads the clock the figures were bucketed in.
+    it("says which zone it bucketed the figures in", async () => {
+      const stats: any = await service.getStats("r1");
+      expect(stats.timezone).toBe("America/Chicago");
+    });
+
+    // DASH-W22: the counts staff read in place of the money cards, on the
+    // same house days as the spend (Sept's delivery is not this month's).
+    it("counts today's deliveries and this month's bottles on the house's days", async () => {
+      const stats: any = await service.getStats("r1");
+      expect(stats.todayDeliveries).toBe(1);
+      expect(stats.monthBottlesIn).toBe(12);
     });
   });
 

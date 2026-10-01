@@ -29,7 +29,7 @@ interface KpiTileProps {
 function KpiTile({ label, value, format, sub, to, loading, accent }: KpiTileProps) {
   const body = (
     <div className="dn-ink h-full rounded-md border border-paper-2 bg-paper-1 px-4 py-3 hover:border-seal-ring">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-inkm-3">{label}</p>
+      <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-inkm-4">{label}</p>
       {loading ? (
         <div className="dn-skel mt-2 h-7 w-16" aria-hidden />
       ) : (
@@ -40,7 +40,9 @@ function KpiTile({ label, value, format, sub, to, loading, accent }: KpiTileProp
           <CountUp value={value} format={format} />
         </p>
       )}
-      <p className="mt-1 truncate text-[11px] text-inkm-3">{loading ? ' ' : sub ?? ' '}</p>
+      {/* DASH-W26 (P5): the sub wraps instead of being cut mid-word; the
+          tiles are h-full in their grid row, so a row keeps one height. */}
+      <p className="mt-1 text-[11px] leading-snug text-inkm-4">{loading ? ' ' : sub ?? ' '}</p>
     </div>
   );
   return to ? (
@@ -59,9 +61,16 @@ export interface KpiRowProps {
   pendingCount: number | null | undefined;
   /** Count of low-stock wines — undefined loading, null unknown. */
   lowStockCount: number | null | undefined;
+  /**
+   * DASH-W22 (founder, 2026-10-01, "A: hide amounts for staff"): false for a
+   * role that sees counts, not money. The two spend tiles become today's
+   * deliveries and this month's bottles in; the gateway withholds the spend
+   * for that role too, so this is the page agreeing with it, not the guard.
+   */
+  seesAmounts?: boolean;
 }
 
-export function KpiRow({ stats, pendingCount, lowStockCount }: KpiRowProps) {
+export function KpiRow({ stats, pendingCount, lowStockCount, seesAmounts = true }: KpiRowProps) {
   const loading = stats === undefined;
   const s = stats ?? null;
 
@@ -85,14 +94,21 @@ export function KpiRow({ stats, pendingCount, lowStockCount }: KpiRowProps) {
         ? legacy.todaySales
         : null
     : null;
+  // Counts the gateway adds beside the spend (DASH-W22); a gateway older than
+  // that sends neither, and an absent count is unknown, never zero.
+  const counts = (s ?? {}) as { todayDeliveries?: number; monthBottlesIn?: number };
+  const todayDeliveries = typeof counts.todayDeliveries === 'number' ? counts.todayDeliveries : null;
+  const monthBottlesIn = typeof counts.monthBottlesIn === 'number' ? counts.monthBottlesIn : null;
 
+  // DASH-W37: "items", never "wines" — the house holds every drink (ADR 0115,
+  // ADR 0186), and the founder chose the word that still holds when food lands.
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
       <KpiTile
         label="In the cellar"
         value={bottles}
         format={(n) => formatNumber(Math.round(n))}
-        sub={wines != null ? `across ${formatNumber(wines)} ${wines === 1 ? 'wine' : 'wines'}` : undefined}
+        sub={wines != null ? `across ${formatNumber(wines)} ${wines === 1 ? 'item' : 'items'}` : undefined}
         to="/inventory"
         loading={loading}
       />
@@ -100,7 +116,7 @@ export function KpiRow({ stats, pendingCount, lowStockCount }: KpiRowProps) {
         label="Running low"
         value={lowStockCount === undefined ? null : lowStockCount}
         format={(n) => formatNumber(Math.round(n))}
-        sub={lowStockCount != null && lowStockCount > 0 ? 'below their minimum' : 'wines below minimum'}
+        sub={lowStockCount != null && lowStockCount > 0 ? 'below their minimum' : 'items below minimum'}
         to="/inventory"
         loading={lowStockCount === undefined}
         accent
@@ -110,26 +126,48 @@ export function KpiRow({ stats, pendingCount, lowStockCount }: KpiRowProps) {
         value={pendingCount === undefined ? null : pendingCount}
         format={(n) => formatNumber(Math.round(n))}
         sub="approvals in the queue"
-        to="/orders"
+        to="/orders?station=pending"
         loading={pendingCount === undefined}
         accent
       />
-      <KpiTile
-        label="Paid to vendors · today"
-        value={todaySpend}
-        format={(n) => formatMoney(n, 'compact')}
-        sub="delivered purchase orders"
-        to="/orders"
-        loading={loading}
-      />
-      <KpiTile
-        label="Paid to vendors · month"
-        value={monthSpend}
-        format={(n) => formatMoney(n, 'compact')}
-        sub="procurement, not sales"
-        to="/reports"
-        loading={loading}
-      />
+      {seesAmounts ? (
+        <>
+          <KpiTile
+            label="Paid to vendors · today"
+            value={todaySpend}
+            format={(n) => formatMoney(n, 'compact')}
+            sub="delivered purchase orders"
+            to="/orders?station=delivered"
+            loading={loading}
+          />
+          <KpiTile
+            label="Paid to vendors · month"
+            value={monthSpend}
+            format={(n) => formatMoney(n, 'compact')}
+            sub="procurement, not sales"
+            to="/reports"
+            loading={loading}
+          />
+        </>
+      ) : (
+        <>
+          <KpiTile
+            label="Deliveries · today"
+            value={todayDeliveries}
+            format={(n) => formatNumber(Math.round(n))}
+            sub="orders received today"
+            to="/orders?station=delivered"
+            loading={loading}
+          />
+          <KpiTile
+            label="Bottles in · month"
+            value={monthBottlesIn}
+            format={(n) => formatNumber(Math.round(n))}
+            sub="received this month"
+            loading={loading}
+          />
+        </>
+      )}
     </div>
   );
 }

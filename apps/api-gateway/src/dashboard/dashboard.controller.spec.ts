@@ -1,5 +1,5 @@
 import { Test, TestingModule } from "@nestjs/testing";
-import { HttpException, HttpStatus } from "@nestjs/common";
+import { ForbiddenException, HttpException, HttpStatus } from "@nestjs/common";
 import { DashboardController } from "./dashboard.controller";
 import { DashboardService } from "./dashboard.service";
 import {
@@ -10,6 +10,9 @@ import {
   InventoryBreakdownDto,
 } from "./dto/dashboard-summary.dto";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+
+/** The token's role in its house (jwt.strategy.ts); DASH-W22 reads it. */
+const OWNER = { role: "owner" };
 
 describe("DashboardController", () => {
   let controller: DashboardController;
@@ -68,9 +71,9 @@ describe("DashboardController", () => {
 
       mockDashboardService.getStats.mockResolvedValue(expectedResponse);
 
-      const result = await controller.getStats(restaurantId);
+      const result = await controller.getStats(restaurantId, OWNER);
 
-      expect(result).toEqual(expectedResponse);
+      expect(result).toEqual({ ...expectedResponse, amounts: "shown" });
       expect(result).toHaveProperty("totalWines");
       expect(result).toHaveProperty("totalBottles");
       expect(result).toHaveProperty("lowStockItems");
@@ -83,7 +86,7 @@ describe("DashboardController", () => {
         new Error("Database error"),
       );
 
-      await expect(controller.getStats(restaurantId)).rejects.toThrow(
+      await expect(controller.getStats(restaurantId, OWNER)).rejects.toThrow(
         new HttpException("Database error", HttpStatus.INTERNAL_SERVER_ERROR),
       );
     });
@@ -224,7 +227,7 @@ describe("DashboardController", () => {
 
       mockDashboardService.getSalesChart.mockResolvedValue(expectedResponse);
 
-      const result = await controller.getSalesChart(restaurantId);
+      const result = await controller.getSalesChart(restaurantId, undefined, OWNER);
 
       expect(result).toEqual(expectedResponse);
       expect(Array.isArray(result)).toBe(true);
@@ -245,7 +248,7 @@ describe("DashboardController", () => {
     it("should accept period query parameter", async () => {
       mockDashboardService.getSalesChart.mockResolvedValue([]);
 
-      await controller.getSalesChart(restaurantId, "week");
+      await controller.getSalesChart(restaurantId, "week", OWNER);
 
       expect(mockDashboardService.getSalesChart).toHaveBeenCalledWith(
         restaurantId,
@@ -263,7 +266,7 @@ describe("DashboardController", () => {
 
       for (const period of periods) {
         mockDashboardService.getSalesChart.mockResolvedValue([]);
-        await controller.getSalesChart(restaurantId, period);
+        await controller.getSalesChart(restaurantId, period, OWNER);
         expect(mockDashboardService.getSalesChart).toHaveBeenCalledWith(
           restaurantId,
           period,
@@ -298,7 +301,7 @@ describe("DashboardController", () => {
         expectedResponse,
       );
 
-      const result = await controller.getInventoryBreakdown(restaurantId);
+      const result = await controller.getInventoryBreakdown(restaurantId, OWNER);
 
       expect(result).toEqual(expectedResponse);
       expect(result).toHaveProperty("byType");
@@ -318,10 +321,68 @@ describe("DashboardController", () => {
       );
 
       await expect(
-        controller.getInventoryBreakdown(restaurantId),
+        controller.getInventoryBreakdown(restaurantId, OWNER),
       ).rejects.toThrow(
         new HttpException("Database error", HttpStatus.INTERNAL_SERVER_ERROR),
       );
+    });
+  });
+  // DASH-W22 (founder, 2026-10-01): "A: hide amounts for staff" — the counts
+  // stay, the money is not sent.
+  describe("DASH-W22 — staff get counts, not money", () => {
+    const restaurantId = "restaurant-123";
+    const stats = {
+      totalWines: 3, totalBottles: 40, totalVolumeMl: 30000, totalVolumeOz: 1014,
+      lowStockItems: 1, pendingOrders: 2,
+      todayProcurementSpend: 384, weekProcurementSpend: 900, monthProcurementSpend: 4210,
+      todayDeliveries: 2, monthBottlesIn: 48, timezone: "America/Chicago",
+    };
+
+    it.each([["staff"], [null], [undefined]])("withholds the spend on the stat cards for role %p", async (role) => {
+      mockDashboardService.getStats.mockResolvedValue({ ...stats });
+      const result: any = await controller.getStats(restaurantId, { role } as any);
+      expect(result.todayProcurementSpend).toBeNull();
+      expect(result.weekProcurementSpend).toBeNull();
+      expect(result.monthProcurementSpend).toBeNull();
+      expect(result.amounts).toBe("withheld");
+      expect(result.todayDeliveries).toBe(2);
+      expect(result.monthBottlesIn).toBe(48);
+      expect(result.totalBottles).toBe(40);
+    });
+
+    it("keeps the spend for an owner and a manager", async () => {
+      for (const role of ["owner", "manager"]) {
+        mockDashboardService.getStats.mockResolvedValue({ ...stats });
+        const result: any = await controller.getStats(restaurantId, { role });
+        expect(result.monthProcurementSpend).toBe(4210);
+        expect(result.amounts).toBe("shown");
+      }
+    });
+
+    it("withholds each day's spend on the month ledger, keeping deliveries and bottles", async () => {
+      (mockDashboardService as any).getCalendarRevenue = jest.fn().mockResolvedValue({
+        year: 2026, month: 10, restaurant_id: restaurantId,
+        daily: [{ date: "2026-10-01", procurement_spend: 384, bottles_sold: 12, events: [], order_count: 1 }],
+        monthly_procurement_spend: 384, monthly_bottles: 12,
+      });
+      const result: any = await controller.getCalendarRevenue(restaurantId, "2026", "10", { role: "staff" });
+      expect(result.daily[0]).toMatchObject({ procurement_spend: null, bottles_sold: 12, order_count: 1 });
+      expect(result.monthly_procurement_spend).toBeNull();
+      expect(result.monthly_bottles).toBe(12);
+      expect(result.amounts).toBe("withheld");
+    });
+
+    it("refuses the money-only routes to staff, in words, before reading anything", async () => {
+      (mockDashboardService as any).getDashboardSummary = jest.fn();
+      const staff = { role: "staff" };
+      await expect(controller.getSalesChart(restaurantId, "month", staff)).rejects.toThrow(
+        "Amounts are for the house's owners and managers.",
+      );
+      await expect(controller.getInventoryBreakdown(restaurantId, staff)).rejects.toThrow(ForbiddenException);
+      await expect(controller.getDashboardSummary(restaurantId, staff)).rejects.toThrow(ForbiddenException);
+      expect(mockDashboardService.getSalesChart).not.toHaveBeenCalled();
+      expect(mockDashboardService.getInventoryBreakdown).not.toHaveBeenCalled();
+      expect((mockDashboardService as any).getDashboardSummary).not.toHaveBeenCalled();
     });
   });
 });

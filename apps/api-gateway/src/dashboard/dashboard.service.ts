@@ -673,7 +673,7 @@ export class DashboardService {
             .eq("restaurant_id", restaurantId),
           client
             .from("procurement_orders")
-            .select("id, status, total_cost, final_price, delivered_at")
+            .select("id, status, total_cost, final_price, bottles_total, quantity, delivered_at")
             .eq("restaurant_id", restaurantId),
           this.houseZone(client, restaurantId),
         ]);
@@ -729,6 +729,14 @@ export class DashboardService {
       const deliveredOrders = orders.filter((o) =>
         hasStatus(o.status, ORDER_SPEND_STATUSES),
       );
+      // DASH-W22: the counts staff read in place of the two money cards, on
+      // the same days and the same orders as the spend.
+      const deliveredOn = (onDay: (day: string) => boolean) =>
+        deliveredOrders.filter(
+          (o) =>
+            o.delivered_at &&
+            onDay(localDateIn(new Date(o.delivered_at), zone)),
+        );
 
       return {
         totalWines,
@@ -749,6 +757,12 @@ export class DashboardService {
           deliveredOrders,
           (day) => day.slice(0, 7) === monthLocal,
         ),
+        todayDeliveries: deliveredOn((day) => day === todayLocal).length,
+        monthBottlesIn: deliveredOn((day) => day.slice(0, 7) === monthLocal).reduce(
+          (sum, o) => sum + (o.bottles_total || o.quantity || 0),
+          0,
+        ),
+        timezone: zone,
       };
     } catch (error) {
       this.logger.error(`Stats fetch failed: ${error.message}`);
