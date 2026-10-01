@@ -1,4 +1,8 @@
-import { REVENUE_UNAVAILABLE_MESSAGE, resolvePulseStripView } from "@/components/today/pulseStripView";
+import {
+  REVENUE_UNAVAILABLE_MESSAGE,
+  resolvePulseStripView,
+  salesWithheld,
+} from "@/components/today/pulseStripView";
 import type { TodayPulse } from "@/api/types";
 
 function pulse(overrides: Partial<TodayPulse>): TodayPulse {
@@ -74,5 +78,48 @@ describe("resolvePulseStripView", () => {
     const view = resolvePulseStripView(pulse({ revenueToday: 100, checksToday: null }));
 
     expect(view.revenue.status === "known" && view.revenue.checksLabel).toBe("sales so far");
+  });
+});
+
+/**
+ * Sales withheld for the signed-in role (ADR 0253, answered 2026-10-01 round
+ * 2: owners and managers only). The gateway leaves the four sales keys out of
+ * `GET /mobile/today-pulse` for anyone else (`mobile.service.ts`
+ * `getTodayPulse`), and the phone must render no figure, no zero, and not the
+ * "Connect Toast" line — that line would tell a staff member something false
+ * about the house.
+ */
+describe("resolvePulseStripView — sales withheld for this role", () => {
+  /** The body the gateway sends a staff member: the sales keys are absent. */
+  function staffPulse(pendingDecisions: number): TodayPulse {
+    return {
+      pendingDecisions,
+      criticalCount: 0,
+      windowStart: "2026-10-01T00:00:00.000Z",
+      windowEnd: "2026-10-01T20:00:00.000Z",
+      generatedAt: "2026-10-01T20:00:00.000Z",
+    };
+  }
+
+  it("reads absent sales keys as withheld, and null ones as unavailable", () => {
+    expect(salesWithheld(staffPulse(0))).toBe(true);
+    expect(salesWithheld(pulse({ revenueToday: null }))).toBe(false);
+    expect(salesWithheld(pulse({ revenueToday: 4210 }))).toBe(false);
+  });
+
+  it("shows no revenue and not the Connect Toast line", () => {
+    const view = resolvePulseStripView(staffPulse(2));
+
+    expect(view.revenue).toEqual({ status: "withheld" });
+    expect(JSON.stringify(view)).not.toContain(REVENUE_UNAVAILABLE_MESSAGE);
+    expect(JSON.stringify(view)).not.toContain("$");
+    expect(view.decisionsLabel).toBe("2 decisions waiting");
+  });
+
+  it("does not claim All clear for a role that cannot see the sales", () => {
+    const view = resolvePulseStripView(staffPulse(0));
+
+    expect(view.revenue.status).toBe("withheld");
+    expect(view.decisionsLabel).toBeNull();
   });
 });

@@ -39,7 +39,12 @@ export interface FeedItem {
   subtitle: string;
   wineName: string | null;
   providerName: string | null;
-  amount: number | null;
+  /**
+   * The order's money. ABSENT, not null and not 0, when the caller's role in
+   * this house does not see money (ADR 0253 round 2: owners and managers only).
+   * `null` still means "this card has no amount".
+   */
+  amount?: number | null;
   quantity: number | null;
   priority: FeedPriority;
   score: number;
@@ -56,7 +61,8 @@ export interface FeedResponse {
   items: FeedItem[];
   counts: {
     total: number;
-    orderApprovals: number;
+    /** Absent for a caller who does not see money: they get no approve cards. */
+    orderApprovals?: number;
     draftApprovals: number;
     receiptVerifications: number;
     alerts: number;
@@ -64,11 +70,17 @@ export interface FeedResponse {
   generatedAt: string;
 }
 
+/**
+ * The four sales figures are ABSENT for a caller whose role in this house does
+ * not see money (ADR 0253 round 2: owners and managers only). Absent is not
+ * `null`: `null` means the sales could not be read (no POS feed, a failed
+ * read); absent means they are not this person's to see.
+ */
 export interface TodayPulseResponse {
-  revenueToday: number | null;
-  checksToday: number | null;
-  revenueLastWeek: number | null;
-  deltaPct: number | null;
+  revenueToday?: number | null;
+  checksToday?: number | null;
+  revenueLastWeek?: number | null;
+  deltaPct?: number | null;
   pendingDecisions: number;
   criticalCount: number;
   windowStart: string;

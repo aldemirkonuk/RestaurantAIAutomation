@@ -4,6 +4,7 @@ import { ProcurementService } from "../procurement/procurement.service";
 import { ConversationsService } from "../conversations/conversations.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { ToastService } from "../toast/toast.service";
+import { roleSatisfies } from "../procurement/order-approval-gate";
 import {
   DecisionKind,
   FeedItem,
@@ -11,6 +12,29 @@ import {
   FeedResponse,
   TodayPulseResponse,
 } from "./dto/mobile.dto";
+
+/**
+ * Does this caller see the house's money on the phone?
+ *
+ * The founder, 2026-10-01 (ADR 0253, "Answered 2026-10-01 (round 2)"), to "On
+ * the web, staff never see prices. The phone's Today feed shows staff order
+ * amounts, approve cards and today's revenue. Close that?": *"Close it to
+ * staff (Recommended)"*.
+ *
+ * Owners and managers only. `role` is the caller's role IN THIS HOUSE
+ * (`req.user.role`, re-read from `user_restaurant_access` on every request,
+ * ADR 0162). The rank rule is `roleSatisfies`, the one the order-approval gate
+ * already uses, so `null`, an absent role, `"staff"` and any string nobody has
+ * heard of all rank below manager: a role that cannot be established gets the
+ * staff view, never the money view.
+ *
+ * A staff member holding a live `vendor_send` grant is still not a money role
+ * here. The grant is read by the send gate at the act; this feed does not read
+ * it, so it cannot widen what the feed shows.
+ */
+export function seesHouseMoney(role: string | null | undefined): boolean {
+  return roleSatisfies(role, "manager");
+}
 
 /**
  * Composes the mobile decision feed and today-pulse from existing domain
@@ -29,7 +53,16 @@ export class MobileService {
     private readonly toastService: ToastService,
   ) {}
 
-  async getFeed(userId: string, restaurantId: string): Promise<FeedResponse> {
+  /**
+   * `role` is required, not defaulted, so a new caller cannot forget it; a
+   * caller that passes `null` gets the staff view (`seesHouseMoney`).
+   */
+  async getFeed(
+    userId: string,
+    restaurantId: string,
+    role: string | null,
+  ): Promise<FeedResponse> {
+    const money = seesHouseMoney(role);
     const [orders, conversations, notifications] = await Promise.all([
       this.procurementService.listPendingOrders(restaurantId).catch((e) => {
         this.logger.warn(`feed orders collector failed: ${e?.message}`);
@@ -60,7 +93,11 @@ export class MobileService {
 
     const items: FeedItem[] = [];
 
-    for (const order of orders as any[]) {
+    // Approve cards carry the order's money (in `amount` and the subtitle), so
+    // they are built only for a caller who sees money (ADR 0253 round 2). The
+    // orders are still read for anyone: `pendingOrderIds` below keeps the
+    // "approval needed" notification echo out of everyone's feed.
+    for (const order of (money ? orders : []) as any[]) {
       const amount =
         order.totalCost ??
         order.finalPrice ??
@@ -163,16 +200,30 @@ export class MobileService {
 
     items.sort((a, b) => b.score - a.score);
 
+    // For a caller who does not see money, `amount` is taken off every card
+    // and the order-approval count is left out: absent, never `null` or `0`,
+    // because a withheld figure is not "no amount" and not "none pending"
+    // (ADR 0016, ADR 0020).
+    const served: FeedItem[] = money
+      ? items
+      : items.map(({ amount: _withheld, ...card }) => card);
+
     return {
-      items,
+      items: served,
       counts: {
-        total: items.length,
-        orderApprovals: items.filter((i) => i.kind === "order_approval").length,
-        draftApprovals: items.filter((i) => i.kind === "draft_approval").length,
-        receiptVerifications: items.filter(
+        total: served.length,
+        ...(money
+          ? {
+              orderApprovals: served.filter((i) => i.kind === "order_approval")
+                .length,
+            }
+          : {}),
+        draftApprovals: served.filter((i) => i.kind === "draft_approval")
+          .length,
+        receiptVerifications: served.filter(
           (i) => i.kind === "receipt_verification",
         ).length,
-        alerts: items.filter((i) => i.kind === "alert").length,
+        alerts: served.filter((i) => i.kind === "alert").length,
       },
       generatedAt: new Date().toISOString(),
     };
@@ -182,13 +233,21 @@ export class MobileService {
    * Sales snapshot for the pulse strip. The client sends its local midnight
    * as `start` so "today" is defined by the phone in the manager's pocket,
    * not a server timezone guess.
+   *
+   * The sales figures go to owners and managers only (ADR 0253 round 2). For
+   * anyone else the sales are not read at all and the four figures are left
+   * out of the response; the decision counts are the caller's own feed.
+   * `checksToday` goes with revenue: it is the same sales read and the phone
+   * has only ever shown it beside the revenue figure.
    */
   async getTodayPulse(
     userId: string,
     restaurantId: string,
+    role: string | null,
     startIso?: string,
     endIso?: string,
   ): Promise<TodayPulseResponse> {
+    const money = seesHouseMoney(role);
     const end = this.parseDate(endIso) ?? new Date();
     const start = this.parseDate(startIso) ?? this.utcMidnight(end);
     const weekMs = 7 * 24 * 60 * 60 * 1000;
@@ -196,13 +255,17 @@ export class MobileService {
     const lastWeekEnd = new Date(end.getTime() - weekMs);
 
     const [today, lastWeek, feed] = await Promise.all([
-      this.toastService
-        .getSalesData(restaurantId, start, end)
-        .catch(() => null),
-      this.toastService
-        .getSalesData(restaurantId, lastWeekStart, lastWeekEnd)
-        .catch(() => null),
-      this.getFeed(userId, restaurantId).catch(() => null),
+      money
+        ? this.toastService
+            .getSalesData(restaurantId, start, end)
+            .catch(() => null)
+        : null,
+      money
+        ? this.toastService
+            .getSalesData(restaurantId, lastWeekStart, lastWeekEnd)
+            .catch(() => null)
+        : null,
+      this.getFeed(userId, restaurantId, role).catch(() => null),
     ]);
 
     const revenueToday = today?.totalRevenue ?? null;
@@ -213,10 +276,14 @@ export class MobileService {
         : null;
 
     return {
-      revenueToday,
-      checksToday: today?.total ?? null,
-      revenueLastWeek,
-      deltaPct,
+      ...(money
+        ? {
+            revenueToday,
+            checksToday: today?.total ?? null,
+            revenueLastWeek,
+            deltaPct,
+          }
+        : {}),
       pendingDecisions: feed?.counts.total ?? 0,
       criticalCount:
         feed?.items.filter((i) => i.priority === "critical").length ?? 0,
