@@ -18,7 +18,14 @@ import { Logger } from "@nestjs/common";
  *                             house, and a wage there would hand it to people
  *                             the money rule withholds it from.
  *   notifications             one in-app notice per active owner, WITH the
- *                             figures: an owner sees money always.
+ *                             figures: an owner sees money always. Its type
+ *                             is its own, `team_member_own_wage_set`, not the
+ *                             shared `system` (the founder, 2026-10-01: "Give
+ *                             wages its own type (Recommended)"; recorded in
+ *                             the tech-debt.d entry of
+ *                             fix/phone-feed-no-money-for-staff), so the phone
+ *                             feed can show staff every `system` sentence and
+ *                             still never a wage (`mobile/mobile.service.ts`).
  *
  * Same shape and the same trade-off as `access-audit.ts`: a plain function,
  * never throws (the wage is already saved; the paper failing must not undo
@@ -120,10 +127,10 @@ export async function recordOwnWageChange(
         user_id: ownerId,
         // Legacy NOT-NULL columns still on the live notifications table.
         recipient_id: ownerId,
-        notification_type: "system",
+        notification_type: OWN_WAGE_ACTION,
         channels: ["in_app"],
         restaurant_id: change.restaurantId,
-        type: "system",
+        type: OWN_WAGE_ACTION,
         title: title.slice(0, 500),
         message,
         priority: "high",

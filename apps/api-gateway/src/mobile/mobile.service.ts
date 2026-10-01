@@ -5,6 +5,7 @@ import { ConversationsService } from "../conversations/conversations.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { ToastService } from "../toast/toast.service";
 import { roleSatisfies } from "../procurement/order-approval-gate";
+import { OWN_WAGE_ACTION } from "../team/own-wage-notice";
 import {
   DecisionKind,
   FeedItem,
@@ -53,9 +54,15 @@ export function seesHouseMoney(role: string | null | undefined): boolean {
  * person's free text in the sentence: `service_closed`, `invoice_received`,
  * `goal_reached`, `price_change`, `price_index_upload`, `promo_digest`,
  * `delivery_proposal`, `authority_grant_issued`, `authority_grant_reapproved`,
- * `system` (the own-wage notice shares it), `system_alert`, `deal`,
- * `order_verification`, `vendor_reply`, `vendor_deal_declined` and
- * `vendor_letter_declined`.
+ * `team_member_own_wage_set` (a manager's own wage, owners only),
+ * `system_alert`, `deal`, `order_verification`, `vendor_reply`,
+ * `vendor_deal_declined` and `vendor_letter_declined`.
+ *
+ * `system` is on the list since the own-wage notice moved to its own type
+ * (the founder, 2026-10-01: "Give wages its own type (Recommended)"). Every
+ * writer of `system` was re-read that day and none puts money in the
+ * sentence; a row stored as `system` before the move is still kept quiet by
+ * `isOwnWageNotice`.
  */
 export const MONEY_FREE_NOTIFICATION_TYPES: ReadonlySet<string> = new Set([
   // Deliveries and stock.
@@ -102,7 +109,23 @@ export const MONEY_FREE_NOTIFICATION_TYPES: ReadonlySet<string> = new Set([
   // A person's own reminders.
   "calendar_reminder",
   "custom_reminder",
+  // Team and account notices: a published schedule, a call-out, a team
+  // message or note in its author's words, Away dates, a change to one's own
+  // access or role, a passkey added or removed.
+  "system",
 ]);
+
+/**
+ * Is this notification a manager's own-wage notice? Its metadata names the
+ * action whatever its type, so a row written as `system` before the notice
+ * had its own type (team/own-wage-notice.ts) is still recognised. Such a row
+ * reaches a caller who does not see money only as an owner later demoted in
+ * the same house, and its sentence holds two wages.
+ */
+export function isOwnWageNotice(meta: unknown): boolean {
+  if (!meta || typeof meta !== "object" || Array.isArray(meta)) return false;
+  return (meta as { action?: unknown }).action === OWN_WAGE_ACTION;
+}
 
 /**
  * The only notification `metadata` keys a caller who does not see money gets
@@ -255,8 +278,11 @@ export class MobileService {
       // see money only through two allowlists: the message only for a type
       // every writer keeps money-free, and the metadata only under a non-money
       // key. Anything else, including a type or key added later, falls back to
-      // the card's neutral line and is left out (ADR 0253 round 2).
-      const sayMessage = money || MONEY_FREE_NOTIFICATION_TYPES.has(type);
+      // the card's neutral line and is left out (ADR 0253 round 2). A wage
+      // notice stays quiet under any type.
+      const sayMessage =
+        money ||
+        (MONEY_FREE_NOTIFICATION_TYPES.has(type) && !isOwnWageNotice(meta));
       const cardMeta = money ? meta : nonMoneyMeta(meta);
 
       if (type === "invoice_received") {

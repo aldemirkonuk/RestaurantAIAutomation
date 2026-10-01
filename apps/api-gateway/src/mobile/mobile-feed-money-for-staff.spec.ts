@@ -27,12 +27,15 @@
  * the send gate, not by this feed.
  */
 
+import { Logger } from "@nestjs/common";
 import { MobileController } from "./mobile.controller";
 import {
   MobileService,
   MONEY_FREE_NOTIFICATION_TYPES,
   NON_MONEY_META_KEYS,
 } from "./mobile.service";
+import { NotificationsService } from "../notifications/notifications.service";
+import { OWN_WAGE_ACTION, recordOwnWageChange } from "../team/own-wage-notice";
 
 const HOUSE = "house-1";
 
@@ -299,23 +302,62 @@ const PRICE_CHANGE = {
 };
 
 /**
- * `own-wage-notice.ts:115-140`. Written to owners only, under the shared
- * `system` type, which is why `system` cannot be on the money-free list.
+ * `own-wage-notice.ts` `recordOwnWageChange`, owners only. Since 2026-10-01 it
+ * has its own type (the founder: "Give wages its own type (Recommended)"); the
+ * writer test below checks this fixture against what the writer really writes.
  */
 const OWN_WAGE = {
   id: "notif-wage",
-  type: "system",
+  type: "team_member_own_wage_set",
   title: "Dana set their own wage",
   message:
-    "Dana changed their own hourly wage on Team from $18.35 to $21.65. A manager you allowed to see pay may do this; every wage change is kept with who made it.",
+    "Dana changed their own hourly wage on Team from 18.35 USD to 21.65 USD. A manager you allowed to see pay may do this; every wage change is kept with who made it.",
   priority: "high",
   metadata: {
-    action: "own_wage_set",
+    action: "team_member_own_wage_set",
     member_id: "member-1",
     hourly_wage: { from: 18.35, to: 21.65 },
     currency: "USD",
   },
   createdAt: "2026-10-01T08:00:00.000Z",
+};
+
+/**
+ * The same notice as written before 2026-10-01, under the shared `system`
+ * type. It reaches a non-money role as an owner later demoted in the house;
+ * `system` is money-free now, so only its metadata keeps it quiet.
+ */
+const OWN_WAGE_STORED_AS_SYSTEM = {
+  id: "notif-wage-old",
+  type: "system",
+  title: "Lee set their own wage",
+  message:
+    "Lee changed their own hourly wage on Team from 17.15 USD to 20.45 USD. A manager you allowed to see pay may do this; every wage change is kept with who made it.",
+  priority: "high",
+  metadata: {
+    action: "team_member_own_wage_set",
+    member_id: "member-2",
+    hourly_wage: { from: 17.15, to: 20.45 },
+    currency: "USD",
+  },
+  createdAt: "2026-09-29T08:00:00.000Z",
+};
+
+/**
+ * `authority-grants.service.ts` `tell()`: every owner and the grantee get the
+ * same sentence with the grant's limit, and the row carries no grantee id
+ * (`metadata: { grantId, change }`). Kept quiet for every non-money role
+ * until the grantee can be told apart from someone else reading it.
+ */
+const GRANT_ISSUED = {
+  id: "notif-grant",
+  type: "authority_grant_issued",
+  title: "Sam may now send to vendors",
+  message:
+    "Ava named Sam to send to vendors with one hold (up to 4321.5 USD, until revoked). A security change: every owner is told.",
+  priority: "low",
+  metadata: { grantId: "grant-1", change: "issued" },
+  createdAt: "2026-10-01T08:20:00.000Z",
 };
 
 /** `promotion-extractor.service.ts:242-277` — owners and managers. */
@@ -359,6 +401,45 @@ const DELIVERY_ARRIVED = {
   createdAt: "2026-10-01T09:15:00.000Z",
 };
 
+/**
+ * `system` rows, money-free from every writer (re-read 2026-10-01):
+ * `schedule.service.ts:549-558`, `team.controller.ts:619-628` (a team message
+ * in its author's words) and `access-audit.ts:122-138` from
+ * `members.service.ts:299-311`.
+ */
+const SCHEDULE_PUBLISHED = {
+  id: "notif-schedule",
+  type: "system",
+  title: "Schedule published",
+  message: "The week of 2026-10-05 is live. Open it to see your shifts.",
+  priority: "high",
+  metadata: { scheduleId: "schedule-1", weekStart: "2026-10-05" },
+  createdAt: "2026-10-01T09:20:00.000Z",
+};
+const TEAM_MESSAGE = {
+  id: "notif-broadcast",
+  type: "system",
+  title: "Team broadcast",
+  message: "Inventory count moves to Thursday afternoon.",
+  priority: "high",
+  metadata: {},
+  createdAt: "2026-10-01T09:25:00.000Z",
+};
+const ROLE_CHANGED = {
+  id: "notif-role",
+  type: "system",
+  title: "Your role in this restaurant changed",
+  message:
+    "An owner changed your role to staff. What you can see and do here has changed with it.",
+  priority: "high",
+  metadata: {
+    action: "member_role_changed",
+    changes: { role: { from: "manager", to: "staff" } },
+  },
+  createdAt: "2026-10-01T09:28:00.000Z",
+};
+const SYSTEM_NOTICES = [SCHEDULE_PUBLISHED, TEAM_MESSAGE, ROLE_CHANGED];
+
 const MONEY_NOTIFICATIONS = [
   SERVICE_CLOSED,
   INVOICE_CERTIFIED,
@@ -366,10 +447,16 @@ const MONEY_NOTIFICATIONS = [
   GOAL_REACHED,
   PRICE_CHANGE,
   OWN_WAGE,
+  OWN_WAGE_STORED_AS_SYSTEM,
+  GRANT_ISSUED,
   PROMO_DIGEST,
   FUTURE_TYPE,
 ];
-const ALL_NOTIFICATIONS = [...MONEY_NOTIFICATIONS, DELIVERY_ARRIVED];
+const ALL_NOTIFICATIONS = [
+  ...MONEY_NOTIFICATIONS,
+  DELIVERY_ARRIVED,
+  ...SYSTEM_NOTICES,
+];
 
 /** Every figure above, as it could appear on the wire. */
 const MONEY_ON_THE_WIRE = [
@@ -394,6 +481,9 @@ const MONEY_ON_THE_WIRE = [
   "1313",
   "18.35",
   "21.65",
+  "17.15",
+  "20.45",
+  "4321",
   "45.50",
   "$",
 ];
@@ -431,7 +521,7 @@ describe("GET /mobile/feed — notification cards carry no money to staff (ADR 0
       "delivery_proposal",
       "authority_grant_issued",
       "authority_grant_reapproved",
-      "system",
+      "team_member_own_wage_set",
       "system_alert",
       "deal",
       "order_verification",
@@ -441,6 +531,68 @@ describe("GET /mobile/feed — notification cards carry no money to staff (ADR 0
     ]) {
       expect(MONEY_FREE_NOTIFICATION_TYPES.has(type)).toBe(false);
     }
+  });
+
+  it("has `system` on the money-free list, now that the wage notice has its own type", () => {
+    expect(MONEY_FREE_NOTIFICATION_TYPES.has("system")).toBe(true);
+    expect(OWN_WAGE_ACTION).toBe("team_member_own_wage_set");
+    expect(MONEY_FREE_NOTIFICATION_TYPES.has(OWN_WAGE_ACTION)).toBe(false);
+  });
+
+  it("the own-wage writer files its notice under its own type, with the action the feed recognises", async () => {
+    const inserted: Array<{ table: string; row: any }> = [];
+    const sb = {
+      from: (table: string) => ({
+        insert: async (row: any) => {
+          inserted.push({ table, row });
+          return { error: null };
+        },
+        select: () => ({
+          eq: () => ({
+            eq: () => ({
+              eq: async () => ({ data: [{ user_id: "owner-1" }], error: null }),
+            }),
+          }),
+        }),
+      }),
+    };
+    const receipt = await recordOwnWageChange(sb, new Logger("spec"), {
+      restaurantId: HOUSE,
+      actorUserId: "user-manager",
+      memberId: "member-1",
+      displayName: "Dana",
+      before: 18.35,
+      after: 21.65,
+      currency: "USD",
+    });
+    expect(receipt.ownersNotified).toBe(1);
+    const notices = inserted.filter((i) => i.table === "notifications");
+    expect(notices).toHaveLength(1);
+    const row = notices[0].row;
+    expect(row.type).toBe("team_member_own_wage_set");
+    expect(row.notification_type).toBe("team_member_own_wage_set");
+    // The fixture above is what the writer writes, not a guess at it.
+    expect(row.title).toBe(OWN_WAGE.title);
+    expect(row.message).toBe(OWN_WAGE.message);
+    expect(row.metadata).toEqual(OWN_WAGE.metadata);
+  });
+
+  it("the system-alert sender files its caller's words as `system_alert`, never `system`", async () => {
+    const service = Object.create(NotificationsService.prototype) as any;
+    service.sendToRestaurant = jest.fn().mockResolvedValue(undefined);
+    service.persistForRestaurant = jest
+      .fn()
+      .mockResolvedValue({ inserted: 1, ids: ["n-1"] });
+    await service.sendSystemAlert({
+      restaurantId: HOUSE,
+      title: "Payroll export",
+      message: "Payroll this week is $9,999.",
+      severity: "info",
+    });
+    expect(service.persistForRestaurant).toHaveBeenCalledTimes(1);
+    expect(service.persistForRestaurant.mock.calls[0][1].type).toBe(
+      "system_alert",
+    );
   });
 
   describe.each(["owner", "manager"])("a %s", (role) => {
@@ -493,6 +645,8 @@ describe("GET /mobile/feed — notification cards carry no money to staff (ADR 0
       expect(subtitle(PRICE_CHANGE.id)).toBe("");
       expect(subtitle(FUTURE_TYPE.id)).toBe("");
       expect(subtitle(OWN_WAGE.id)).toBe("");
+      expect(subtitle(OWN_WAGE_STORED_AS_SYSTEM.id)).toBe("");
+      expect(subtitle(GRANT_ISSUED.id)).toBe("");
       expect(subtitle(PROMO_DIGEST.id)).toBe("");
       expect(subtitle(INVOICE_CERTIFIED.id)).toBe(
         "Confirm the physical count against the invoice.",
@@ -520,6 +674,18 @@ describe("GET /mobile/feed — notification cards carry no money to staff (ADR 0
       )!;
       expect(discrepancy.meta).toEqual({ orderId: "order-9" });
       expect(discrepancy.orderId).toBe("order-9");
+    });
+
+    it("gets a `system` notice's own sentence, and none of its metadata", async () => {
+      const { controller } = build(SYSTEM_NOTICES);
+      const feed = await controller.getFeed(caller(role));
+
+      for (const n of SYSTEM_NOTICES) {
+        const card = feed.items.find((i) => i.notificationId === n.id)!;
+        expect(card.title).toBe(n.title);
+        expect(card.subtitle).toBe(n.message);
+        expect(card.meta).toEqual({});
+      }
     });
   });
 });

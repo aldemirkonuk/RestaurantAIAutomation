@@ -499,8 +499,14 @@ export class NotificationsService {
 
     await this.sendToRestaurant(data.restaurantId, payload);
 
+    // Stored as `system_alert`, never the shared `system`: this sender takes
+    // any caller's words and writes them to every member, while the phone
+    // feed shows staff a `system` row's sentence because every other `system`
+    // writer was read and none carries money (2026-10-01,
+    // `mobile/mobile.service.ts` MONEY_FREE_NOTIFICATION_TYPES). The web inbox
+    // already files `system_alert` under System (`nt-format.ts`).
     await this.persistForRestaurant(data.restaurantId, {
-      type: "system",
+      type: "system_alert",
       title: data.title,
       message: data.message,
       priority: data.severity === "error" ? "high" : "medium",
