@@ -1,37 +1,40 @@
 import type { TourDefinition } from '../tours/registry'
 
+// Steps follow the job, not the screen (ADR 0251 D3). Each element must exist
+// on the live page; a step whose element is missing is left out by TourEngine.
+
 export const communicationsTip = {
   pageId: 'communications' as const,
   title: 'Communications',
-  body: 'Pick a workspace, filter by channel, then build or reuse a template.',
+  body: 'Every letter with your vendors in one book, and the replies drafted for you.',
 }
 
 export const communicationsTour: TourDefinition = {
   pageId: 'communications',
   steps: [
     {
-      element: '[data-tour="communications-tabs"]',
-      title: 'Four workspaces',
+      element: 'section[aria-label="Conversation book"]',
+      title: 'Read the book',
       description:
-        'Switch between Templates, Send History, Scheduled Reports, and Procurement Emails.',
+        'Every conversation with your vendors, in one place.',
     },
     {
-      element: '[data-tour="communications-channels"]',
-      title: 'Filter by channel',
+      element: 'section[aria-label="Drafts waiting"]',
+      title: 'Answer what is drafted',
       description:
-        'Show all templates or only Email or SMS before you create or edit one.',
+        'Replies drafted for you. Read one, change it if you need to, and send it.',
     },
     {
-      element: '[data-tour="communications-new-template"]',
-      title: 'Create a template',
+      element: '[data-tour="comms-write"]',
+      title: 'Write a letter',
       description:
-        'Start an email canvas or SMS template with preview — reusable for the next send.',
+        "Write to a vendor from scratch, or start from one of the house's templates.",
     },
     {
-      element: '[data-tour="communications-template-library"]',
-      title: 'Saved templates',
+      element: 'section[aria-label="Who is writing"]',
+      title: 'Know who is writing',
       description:
-        'Edit, duplicate, or send from templates you already built.',
+        'People who wrote to the house. Trust one, or add them as a vendor.',
     },
   ],
 }

@@ -1,37 +1,40 @@
 import type { TourDefinition } from '../tours/registry'
 
+// Steps follow the job, not the screen (ADR 0251 D3). Each element must exist
+// on the live page; a step whose element is missing is left out by TourEngine.
+
 export const calendarTip = {
   pageId: 'calendar' as const,
   title: 'Calendar',
-  body: 'Add events, switch views, filter types, then drag on the grid to reschedule.',
+  body: 'Deliveries, tastings and meetings, by day. Put something in the book, or see it on your own phone.',
 }
 
 export const calendarTour: TourDefinition = {
   pageId: 'calendar',
   steps: [
     {
-      element: '[data-tour="calendar-new-event"]',
-      title: 'Schedule something',
+      element: 'header.cn-head button[data-primary="true"]',
+      title: 'Put something in the book',
       description:
-        'Create tastings, deliveries, meetings, or reminders without leaving the calendar.',
+        'A delivery, a tasting or a meeting, on the day it happens.',
     },
     {
-      element: '[data-tour="calendar-view-switcher"]',
-      title: 'Change the view',
+      element: '[role="grid"][aria-label^="Month ledger"]',
+      title: 'Read the month',
       description:
-        'Month, week, day, or agenda — pick the scale that matches how you plan the week.',
+        'Each day shows what is booked. Pick a day to see it in full.',
     },
     {
-      element: '[data-tour="calendar-sidebar"]',
-      title: 'Navigate & filter',
+      element: '[aria-label="Search the entries in this period"]',
+      title: 'Find an entry',
       description:
-        'Jump dates on the mini calendar and toggle event types to focus on what matters now.',
+        'Search everything booked in the period you are looking at.',
     },
     {
-      element: '[data-tour="calendar-grid"]',
-      title: 'Main calendar',
+      element: '[data-tour="calendar-connect"]',
+      title: 'See it on your own calendar',
       description:
-        'Click a day or slot to create an event; drag to move or resize existing ones.',
+        'Get your own link, and the entries show up in the calendar app on your phone.',
     },
   ],
 }
