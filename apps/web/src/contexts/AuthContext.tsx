@@ -27,6 +27,11 @@ import { syncManager } from "../lib/sync-manager";
 import { flushDoorOutbox } from "../lib/doorOutbox";
 import { flushSpotCountOutbox } from "../lib/spotCountOutbox";
 import { currentQueueOwner, signOutWarning } from "../lib/queue-owner";
+import { offlineStorage } from "../lib/offline-storage";
+import { ensurePersisted } from "../lib/deviceStorage";
+
+/** How long sign-out waits for the read-cache clear before finishing anyway. */
+export const SIGN_OUT_CACHE_CLEAR_MAX_MS = 2000;
 
 /**
  * Thrown by `login()` for backend auth failures. `code`/`provider` carry the
@@ -343,6 +348,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         id: user.userId,
         restaurantId: user.restaurantId,
       });
+      // Signed in or restored: ask the browser to keep this device's unsent
+      // work (once per page load, only where asking is silent — see
+      // lib/deviceStorage.ts). Never awaited, never in a write path.
+      void ensurePersisted().catch(() => {});
     } else {
       errorTracking.setUser(null);
     }
@@ -961,6 +970,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // only ids and times, and it is what lets this person go straight back
       // into their house tomorrow.
       clearHouseEnded();
+      // The read cache was this session's: the next person on a shared device
+      // must not see it. Cache only — unsent work is ADR 0241's to decide.
+      // Bounded: IndexedDB's open has no timeout and has hung on WebKit, and a
+      // clear that never settles must not leave the screen signed in with the
+      // tokens already gone. The cache rows expire in minutes either way.
+      try {
+        await Promise.race([
+          offlineStorage.clearEntityCache(),
+          new Promise<void>((resolve) => setTimeout(resolve, SIGN_OUT_CACHE_CLEAR_MAX_MS)),
+        ]);
+      } catch (err) {
+        console.error("Could not clear the read cache at sign-out:", err);
+      }
       delete api.defaults.headers.common["Authorization"];
       delete api.defaults.headers.common["X-Restaurant-Id"];
       setUser(null);

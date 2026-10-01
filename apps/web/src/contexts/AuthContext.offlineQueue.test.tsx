@@ -247,3 +247,34 @@ describe("OD-203 (c) — signing out warns, then clears; a session that ends kee
     expect(left.sort()).toEqual([waiting, other].sort());
   });
 });
+
+describe("founder storage ruling 2026-09-29 — sign-out clears the read cache, and never hangs on it", () => {
+  it("clears the read cache on a confirmed sign-out", async () => {
+    signInAs(U1, H1);
+    const clear = vi.spyOn(offlineStorage, "clearEntityCache").mockResolvedValue(undefined);
+    const auth = await mountAs(U1, H1);
+    let out: boolean | undefined;
+    await act(async () => {
+      out = await auth().logout();
+    });
+    expect(out).toBe(true);
+    expect(clear).toHaveBeenCalledTimes(1);
+  });
+
+  it("finishes signing out even when the cache clear never settles", async () => {
+    signInAs(U1, H1);
+    vi.spyOn(offlineStorage, "clearEntityCache").mockReturnValue(new Promise<void>(() => {}));
+    const auth = await mountAs(U1, H1);
+    let done = false;
+    await act(async () => {
+      void auth()
+        .logout()
+        .then(() => {
+          done = true;
+        });
+    });
+    await waitFor(() => expect(done).toBe(true), { timeout: 5000 });
+    expect(localStorage.getItem("accessToken")).toBeNull();
+    await waitFor(() => expect(auth().user).toBeNull());
+  }, 10000);
+});

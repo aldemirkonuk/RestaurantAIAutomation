@@ -249,6 +249,53 @@ function localStorageDelete(storeName: string, key: string): void {
   }
 }
 
+/**
+ * Remove the read cache's localStorage fallback copies that `shouldRemove`
+ * picks: each `entity_cache_<key>` row and its entry in `entity_cache_all`.
+ * Reads and writes ONLY keys under the entity-cache prefix, so the pending
+ * queue's `pending_mutations_*` copies can never be touched. Returns how many
+ * cache rows were removed.
+ */
+function sweepLocalStorageCache(
+  shouldRemove: (row: CachedEntity | null) => boolean,
+): number {
+  const prefix = `${STORES.ENTITY_CACHE}_`
+  const allKey = `${prefix}all`
+  let removed = 0
+  try {
+    // Every copy `localStoragePut` writes is also listed in `entity_cache_all`;
+    // a key scan adds any copy the collection lost (a half-failed write).
+    const all = localStorageGetAll<CachedEntity>(STORES.ENTITY_CACHE)
+    const keys = new Set<string>(all.map((row) => `${prefix}${row.key}`))
+    const n = typeof localStorage.length === 'number' ? localStorage.length : 0
+    for (let i = 0; i < n; i++) {
+      const k = localStorage.key(i)
+      if (k && k.startsWith(prefix) && k !== allKey) keys.add(k)
+    }
+    for (const k of keys) {
+      if (localStorage.getItem(k) === null) continue
+      let row: CachedEntity | null = null
+      try {
+        row = JSON.parse(localStorage.getItem(k) ?? 'null')
+      } catch {
+        row = null
+      }
+      if (shouldRemove(row)) {
+        localStorage.removeItem(k)
+        removed++
+      }
+    }
+    const kept = all.filter((row) => !shouldRemove(row))
+    if (kept.length !== all.length) {
+      if (kept.length) localStorage.setItem(allKey, JSON.stringify(kept))
+      else localStorage.removeItem(allKey)
+    }
+  } catch (error) {
+    console.warn('[OfflineStorage] Cache sweep of localStorage failed', error)
+  }
+  return removed
+}
+
 // =============================================================================
 // OFFLINE STORAGE API
 // =============================================================================
@@ -432,6 +479,50 @@ export const offlineStorage = {
       }
     }
     console.log(`[OfflineStorage] Invalidated caches with prefix:`, prefix)
+  },
+
+  /**
+   * Delete every EXPIRED read-cache row: in IndexedDB, and any localStorage
+   * fallback copy left by a write that fell back (`entity_cache_<key>` and the
+   * `entity_cache_all` collection). Run at boot. Before this, an expired row
+   * was deleted only when something read that exact key again, so a key read
+   * once stayed on the device for good. Touches the ENTITY_CACHE store only —
+   * never the pending-mutation queue, whose rows are unsent work (ADR 0241).
+   * A row with no `expiresAt` is not expired. Returns how many were removed.
+   */
+  async pruneExpiredCache(now: Date = new Date()): Promise<number> {
+    const expired = (c: { expiresAt?: Date | string } | null | undefined) =>
+      !!c?.expiresAt && new Date(c.expiresAt).getTime() < now.getTime()
+    let removed = 0
+    try {
+      for (const cached of await idbGetAll<CachedEntity>(STORES.ENTITY_CACHE)) {
+        if (expired(cached)) {
+          await idbDelete(STORES.ENTITY_CACHE, cached.key)
+          removed++
+        }
+      }
+    } catch (error) {
+      console.warn('[OfflineStorage] Cache prune could not read IndexedDB', error)
+    }
+    removed += sweepLocalStorageCache((c) => expired(c))
+    return removed
+  },
+
+  /**
+   * Sign-out: the read cache belonged to the session that fetched it, so the
+   * next person on a shared device must not see it. Empties the ENTITY_CACHE
+   * store and its localStorage fallback copies, and NOTHING else — what
+   * happens to unsent work at sign-out is ADR 0241's rule, not this one's.
+   */
+  async clearEntityCache(): Promise<void> {
+    try {
+      for (const cached of await idbGetAll<CachedEntity>(STORES.ENTITY_CACHE)) {
+        await idbDelete(STORES.ENTITY_CACHE, cached.key)
+      }
+    } catch (error) {
+      console.warn('[OfflineStorage] Cache clear could not read IndexedDB', error)
+    }
+    sweepLocalStorageCache(() => true)
   },
 
   // =========================================================================
