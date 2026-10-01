@@ -10,7 +10,7 @@
  */
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 const seams = vi.hoisted(() => ({
@@ -154,5 +154,43 @@ describe('the drafted-order rail — send or ask', () => {
     draw();
     expect(screen.getByRole('button', { name: /Hold to approve & send/ })).toBeDisabled();
     expect(screen.getByTestId('rail-standing')).toHaveTextContent(/network down/);
+  });
+});
+
+/*
+ * ORD-W7, 2026-10-01: the only house draft in production still read
+ * "Dear [Provider First Name]" and was signed "[Your Name]". The card names
+ * the blanks and keeps both holds shut; the gateway refuses the same letter
+ * (apps/api-gateway/src/procurement/unfilled-slots.spec.ts).
+ */
+describe('a draft with a blank the house did not fill', () => {
+  const BLANKED = { ...DRAFT, draftContent: 'Dear [Provider First Name],\n\nSix cases.\n\n[Your Name]' };
+
+  // A hold's mint and send are async: give them a tick to happen, so a
+  // "not called" is a fact rather than an assertion that ran too early.
+  const settleHold = () => act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+
+  it('names the blanks and will not mint a seal over them', async () => {
+    seams.drafts = [BLANKED];
+    draw();
+    expect(screen.getByTestId('draft-unfilled')).toHaveTextContent(/\[Provider First Name\], \[Your Name\]/);
+    holdIt(/Hold to approve & send to Kavaklıdere/);
+    await settleHold();
+    expect(seams.issueDraftSendChallenge).not.toHaveBeenCalled();
+    expect(seams.approveMutateAsync).not.toHaveBeenCalled();
+  });
+
+  it('will not ask a manager to send it either', async () => {
+    seams.drafts = [BLANKED];
+    seams.standing = AS_STAFF;
+    draw();
+    holdIt(/Hold to ask a manager to send it/);
+    await settleHold();
+    expect(seams.requestDraftSend).not.toHaveBeenCalled();
+  });
+
+  it('says nothing about a draft with no blanks', () => {
+    draw();
+    expect(screen.queryByTestId('draft-unfilled')).not.toBeInTheDocument();
   });
 });

@@ -22,6 +22,7 @@ import { getErrorMessage, getErrorStatus } from "@/services/api/client";
 import { HoldToApprove } from "@/components/mudavym";
 import { ink, settle, turn, useReducedMotion } from "@/lib/mudavym/motion";
 import { useQueryClient } from "@tanstack/react-query";
+import { unfilledSlots } from "./unfilledSlots";
 import {
   activeConversationKeys,
   draftKeys,
@@ -255,6 +256,7 @@ function DraftDetail({ draft }: { draft: ActiveConversationDto }) {
   const cancelSend = useCancelScheduledSend();
   const [attempt, setAttempt] = useState(0);
   const [actionError, setActionError] = useState<string | null>(null);
+  const slots = unfilledSlots(draft.draftContent);
   const contentRef = useRef<HTMLDivElement | null>(null);
   const reduced = useReducedMotion();
 
@@ -394,13 +396,23 @@ function DraftDetail({ draft }: { draft: ActiveConversationDto }) {
         </p>
       )}
 
+      {slots.length > 0 && (
+        <p
+          data-testid="draft-unfilled"
+          role="status"
+          style={{ fontFamily: SANS, fontSize: 12, color: "var(--ink-1, #211C16)", margin: 0 }}
+        >
+          This draft still has {slots.length === 1 ? "a blank" : "blanks"} the house did not fill:{" "}
+          {slots.join(", ")}. It cannot be sent until {slots.length === 1 ? "it is" : "they are"} written in.
+        </p>
+      )}
       <div className="grid gap-1">
         {act === "ask" ? (
           <HoldToApprove
             key={`ask-${draft.orderId}-${attempt}`}
             label="Hold to ask a manager to send it"
             approvedLabel="Asked — waiting for a manager"
-            disabled={discardDraft.isPending || !!asked || !(draft.draftContent ?? "").trim()}
+            disabled={discardDraft.isPending || !!asked || !(draft.draftContent ?? "").trim() || slots.length > 0}
             onApprove={async () => {
               setActionError(null);
               try {
@@ -424,7 +436,7 @@ function DraftDetail({ draft }: { draft: ActiveConversationDto }) {
             key={`send-${draft.orderId}-${attempt}`}
             label={`Hold to approve & send to ${draft.providerName ?? "the vendor"}`}
             approvedLabel="Approved — leaving the house"
-            disabled={approveDraft.isPending || discardDraft.isPending || act !== "send"}
+            disabled={approveDraft.isPending || discardDraft.isPending || act !== "send" || slots.length > 0}
             onChallenge={() =>
               issueDraftSendChallenge({
                 orderId: draft.orderId,
@@ -662,7 +674,10 @@ export function DraftRail() {
           letter here first.
         </p>
       ) : (
-        <div className="grid gap-2">
+        // `grid-cols-1` is `minmax(0, 1fr)`: without it the implicit track
+        // sized to the card's nowrap title and pushed a 470px card out of the
+        // 320px rail at 1024px (ORD-W6).
+        <div className="grid grid-cols-1 gap-2">
           {list.map((d) => (
             <DraftCard key={d.id} draft={d} />
           ))}

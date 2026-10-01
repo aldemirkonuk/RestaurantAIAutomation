@@ -185,6 +185,7 @@ import {
   verdictFor as cancelReasonVerdictFor,
 } from "./cancel-reason";
 import { deadlineOf } from "./delivery-deadline";
+import { unfilledSlotsRefusal, unfilledTemplateSlots } from "./unfilled-slots";
 import { houseFrame } from "../common/house-frame";
 import {
   DELIVERY_REFUSED_ALREADY_ARRIVED,
@@ -7309,6 +7310,10 @@ export class ProcurementService {
       throw new BadRequestException("The vendor address changed or could not be confirmed. Review the draft before holding again.");
     }
     if (!letter.body?.trim()) throw new BadRequestException("An empty letter cannot be sent.");
+    // ORD-W7: a template blank the house never filled is refused before a seal
+    // is issued over it, the same as an empty letter.
+    const blanks = unfilledTemplateSlots(letter.body);
+    if (blanks.length) throw new BadRequestException(unfilledSlotsRefusal(blanks, "No seal was issued and nothing was sent."));
     const issued = await this.sealChallenges.issue({
       restaurantId,
       actorUserId: userId,
@@ -7399,6 +7404,8 @@ export class ProcurementService {
   ): Promise<{ conversationId: string; requestedAt: string; told: number; says: string }> {
     const content = input.content ?? "";
     if (!content.trim()) throw new BadRequestException("An empty letter cannot be asked for. Nothing was asked.");
+    const blanks = unfilledTemplateSlots(content);
+    if (blanks.length) throw new BadRequestException(unfilledSlotsRefusal(blanks, "Nothing was asked."));
     if (!userId?.trim()) throw new ForbiddenException("A named person is required to ask. Nothing was asked.");
     if (!this.vendorSendAuthority) {
       throw new InternalServerErrorException(
@@ -7642,6 +7649,10 @@ export class ProcurementService {
     }
 
     const rawEmailBody = dto.modifiedContent ?? (conv as any).content ?? "";
+    // ORD-W7: the last door before the mail leaves. Checked before the seal is
+    // spent, so a refusal here leaves the hold unspent and nothing sent.
+    const blanks = unfilledTemplateSlots(rawEmailBody);
+    if (blanks.length) throw new BadRequestException(unfilledSlotsRefusal(blanks, "Nothing was sent."));
     const providerEmail = (conv as any).providers?.contact_email ?? null;
     const rawOrder = (conv as any).procurement_orders;
     const wineName =
