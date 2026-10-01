@@ -267,7 +267,7 @@ afterAll(async () => {
 
 beforeEach(() => fresh());
 
-describe("staff may not edit or deactivate a schedule", () => {
+describe("an active staff row, or a caller whose two role reads both fail, may not edit or deactivate a schedule", () => {
   it.each([
     ["a manager's", OF_MANAGER],
     ["their own", OF_STAFF],

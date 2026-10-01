@@ -8,7 +8,7 @@
 
 ## Context
 
-All line numbers are at `origin/main` b9932e256. The cited files under `apps/api-gateway/src/procurement/`, `src/organizations/`, `src/common/seal/`, `src/auth/`, `src/restaurants/` and `src/team/`, the baseline migration `supabase/migrations/20260805000000_baseline_from_production.sql`, and `recurring_order_agent.py`, are unchanged from e88593bf8 through 98dfcb5af.
+All line numbers are at `origin/main` b9932e256. The cited files under `apps/api-gateway/src/procurement/`, `src/organizations/`, `src/common/seal/`, `src/common/tenant/`, `src/auth/`, `src/restaurants/` and `src/team/`, the baseline migration `supabase/migrations/20260805000000_baseline_from_production.sql`, and `recurring_order_agent.py`, are unchanged from e88593bf8 through 98dfcb5af.
 
 **The two routes had no role check.** `PUT /recurring-orders/:restaurantId/:id` and `DELETE /recurring-orders/:restaurantId/:id` carried only the class-level `JwtAuthGuard` (`recurring-orders.controller.ts:39`). Neither route had a role check, and neither recorded an actor.
 - `updateRecurringOrder` writes any of the fields in `UPDATABLE` (`recurring-orders.service.ts:525-538`): `inventory_id`, `provider_id`, `quantity`, `unit_type`, `bottles_per_unit`, `target_price`, `frequency`, `frequency_day`, `auto_approve`, `next_order_date`, `active` and `notes`.
@@ -43,8 +43,8 @@ All line numbers are at `origin/main` b9932e256. The cited files under `apps/api
 
 **PUT and DELETE now need a manager or an owner.** `PUT` and `DELETE /recurring-orders/:restaurantId/:id` call `OrganizationsService.assertCanManageRestaurant(user.userId, restaurantId, action)` before the service is called, so before the schedule row is read or written. The check itself reads the caller's role.
 - That is the helper that order cancel (`assertMayCancelOrder`, `procurement.service.ts:3441-3445`) and the settings registers use.
-- A caller whose role at the house is not owner or manager gets 403: "Only managers and owners can edit a recurring order schedule", or "… deactivate a recurring order schedule".
-- **What the check reads** (`lookupRestaurantRole`, `organizations.service.ts:40-64`). It reads the caller's active `user_restaurant_access` row for this house first. When that read fails or finds no active row, it falls back to the legacy `users` row: that row's `role`, when its `restaurant_id` is this house. So:
+- A caller the check does not admit (below) gets 403: "Only managers and owners can edit a recurring order schedule", or "… deactivate a recurring order schedule".
+- **What the check reads** (`lookupRestaurantRole`, `organizations.service.ts:40-64`). It reads the caller's `user_restaurant_access` row for this house where `is_active` is true (`:45`) first. It does not read that row's `valid_from` or `valid_until` (see Not closed). When that read fails or finds no active row, it falls back to the legacy `users` row: that row's `role`, when its `restaurant_id` is this house. So:
   - an active access row decides on its own (`if (fromAccess) return`, `:48-49`): an active staff row gets 403 even when the legacy row names manager;
   - a caller with neither an active owner/manager access row nor a legacy owner/manager role on this house gets 403;
   - that includes a caller for whom both reads fail;
@@ -74,7 +74,7 @@ All line numbers are at `origin/main` b9932e256. The cited files under `apps/api
 ## Consequences
 
 - **Easier.** A caller the role check does not admit (above) can no longer change, through these two routes, a schedule that the 08:00 cron will raise under a manager's name. That covers `auto_approve`, `quantity`, `target_price` and the vendor.
-- **Harder.** Staff who used to correct a schedule now ask a manager. No mounted web page calls these routes today (see Context).
+- **Harder.** A staff member the check does not admit now asks a manager to correct a schedule. No mounted web page calls these routes today (see Context).
 - **Not closed by this decision:**
   - **The fold's line race.** PR #538's record covers the window after the header write, its cases (i) to (iii). This decision changes nothing there.
   - **The approve step's window (iv)** in PR #538's record: a fold landing between `approveOrder`'s reads and its UPDATE. Unchanged.
@@ -91,7 +91,17 @@ All line numbers are at `origin/main` b9932e256. The cited files under `apps/api
     - So the callers it admits include a staff member who signed up through `registerAccount` and, while their `users` row named no house, joined a house as staff through `acceptHeldMembership`. After the join, their access row at that house names staff and their `users` row names owner and that house. Whenever the access read fails and the `users` read does not, they read as owner and pass this check on PUT and DELETE. A throwaway copy of the spec with that caller measured 200 on both at ee5d2017d; it was not committed.
     - A member removed through `MembersService.removeMember` or `TeamService.removeFromHouse` is not admitted this way: both clear `users.restaurant_id` for the house (`members.service.ts:550`, `team.service.ts:1276`).
     - It is the shared helper, as it stood before this change, and order cancel (`assertMayCancelOrder`) gets the same answer from it.
-    - A separate PR is to close it. The founder's answer, verbatim, 2026-10-01: *"Next PR: error means no role (Recommended)"*. That PR is to make the helper fall back to `users.role` only when the access read succeeded and found no row.
+    - A separate PR, #561 (ADR 0248), is to close it; it is not merged. The founder's answer, verbatim, 2026-10-01: *"Next PR: error means no role (Recommended)"*. That PR is to make the helper fall back to `users.role` only when the access read succeeded and found no row.
+  - **An inactive access row reads as no row.**
+    - The access read filters on `is_active = true` (`organizations.service.ts:45`), so an inactive row for this house reads as no row, and the legacy `users` row decides: its `role`, when its `restaurant_id` is this house (`:51-58`). A caller whose only access row for this house is inactive, and whose `users` row names owner or manager for this house, is admitted.
+    - A throwaway copy of the spec measured it at 94c9189b2, with an inactive staff row and a `users` row naming owner for the house: 200 on PUT and on DELETE. It was not committed.
+    - The first ruling for #561, "error means no role", kept the fallback on an access read that succeeds and finds no row, and an inactive row reads that way. The founder's later ruling for #561 (below) covers this path.
+    - On product flows: the two removal paths read for this record clear `users.restaurant_id` for the house (above). This record did not check every path that leaves an access row inactive, so it does not say whether this state arises in production.
+  - **The access row's validity window is not read.**
+    - `lookupRestaurantRole` selects only `role`, with filters on `user_id`, `restaurant_id` and `is_active` (`organizations.service.ts:40-46`). It never reads `valid_from` or `valid_until`.
+    - `isLiveMembership` (`live-membership.ts:39-54`) does: the rows it fails include one whose `valid_from` is in the future and one whose `valid_until` has passed.
+    - So an active manager or owner row past its `valid_until`, or before its `valid_from`, is admitted here. A throwaway copy of the spec measured both, with an active manager row, at 94c9189b2: 200 on PUT and on DELETE. It was not committed.
+  - Both come from the shared helper as it stood before this change. After measurement, the founder chose, verbatim, 2026-10-01: *"Close both in #561"*. #561 is to make the helper fall back to `users.role` only when no access row exists at all, and to honour `valid_from` and `valid_until`. It is not merged; until it lands, both paths stand as described above.
   - **Recurrence on an order** (above), filed OPEN. [Corrected 2026-10-01: ruled by the founder for pause, resume and end; in flight in PR #558 (ADR 0247), not closed.]
 - **Revisit if** staff need to correct schedules without a manager. That would be option 2 or 3, and it needs the founder's word.
 
@@ -140,5 +150,6 @@ The last row is equivalent. `JwtAuthGuard` refuses a path `:restaurantId` that d
 | 2026-10-01 | Audit of PR #550 at b068bc984 (plan) | The plan asked for these corrections before review: (F1) a failed access read falls back to the legacy `users` row, so "a caller whose role cannot be read gets 403" was too broad; it is now stated as the helper reads, with three new cases; (F2) the merge role check in Context is PR #538's code, which is open; that is now scoped, and main's ungated merge is listed under Not closed; (F3) the order-recurrence OPEN entry is bracket-corrected: the founder ruled, and PR #558 is in flight; (minor) the Python agent's `next_order_date` writer is named. Also, from the Audit of PR #538 at f66ec0d53, the `auto_approve` item is now stated as measured: the seal refuses the cron's challenge-less approve. |
 | 2026-10-01 | Audit of PR #550 at c688ea534 (plan) | The plan asked for two more corrections before review. (G1) "A legacy owner/manager of this house is admitted" was unscoped in the claim and the controller comment: an active access row decides on its own (`organizations.service.ts:48-49`). The clause is now scoped, the Decision names the active-row case, and a [REVERT-FAILS] case pins an active staff row with a legacy manager row (403). (G2) "The only HTTP route that changes `next_order_date`" now reads "through which a caller supplies", and it names `execute-check`, which writes a computed `next_order_date` through the cron body. |
 | 2026-10-01 | Audit of PR #550 at ee5d2017d (plan) | The plan asked for two more corrections, text only. (H1) Option 4 named one cost of `strict: false`; it now names a second, and Not closed now says whom the legacy fallback admits when the access read fails, measured with a throwaway copy of the spec. The founder chose a separate PR to close it (Not closed). (H2) The `execute-check` cite, `:216-224`, did not match main, where this record's line numbers are taken; it now reads `:182-190` and names `manualExecuteCheck`. |
+| 2026-10-01 | Audit of PR #550 at 94c9189b2 (plan) | Folded into the same text-only round by the founder. (K1) "A caller whose role at the house is not owner or manager gets 403" was broader than the check; it now reads "A caller the check does not admit (below) gets 403", the Decision says the access read filters on `is_active` and does not read the validity window, and the Harder line is scoped the same way. (K2) Not closed now names two more inherited paths, each measured with a throwaway copy of the spec: an inactive access row, and the unread validity window. After that measurement the founder chose to close both in #561, which is not merged; Not closed says so. |
 
 The extra fix rounds on this PR are recorded in ADR 0231.
