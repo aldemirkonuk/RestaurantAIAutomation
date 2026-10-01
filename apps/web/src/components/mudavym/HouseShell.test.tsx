@@ -9,7 +9,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { Link, MemoryRouter, Route, Routes } from 'react-router-dom';
 
 const readCounter = vi.hoisted(() => vi.fn());
 const checkFlag = vi.hoisted(() => vi.fn());
@@ -175,12 +175,28 @@ describe('the width rule — open first, then remember', () => {
     expect(screen.getByRole('complementary', { name: 'The counter, tucked' })).toBeTruthy();
   });
 
-  it("remembers the person's choice for that page", () => {
-    mount('/orders');
+  it("remembers the person's choice: closed here stays closed on the next page (founder, 2026-10-01)", () => {
+    mount('/orders', 'owner', <Link to="/calendar">next page</Link>);
     fireEvent.click(screen.getByRole('button', { name: 'Tuck the counter' }));
     expect(screen.getByRole('complementary', { name: 'The counter, tucked' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('link', { name: 'next page' }));
+    expect(screen.getByRole('complementary', { name: 'The counter, tucked' })).toBeTruthy();
+    expect(screen.queryByRole('complementary', { name: 'The counter' })).toBeNull();
     const stored = JSON.parse(window.localStorage.getItem(prefsKeyFor('u-1')) ?? '{}');
-    expect(stored.counter['/orders']).toBe('tucked');
+    expect(stored.counter).toBe('tucked');
+  });
+
+  it('an opened counter stays open on the next page, a wide one included', () => {
+    mount('/reports', 'owner', <Link to="/inventory">next page</Link>);
+    fireEvent.click(screen.getByRole('button', { name: 'Open the counter' }));
+    fireEvent.click(screen.getByRole('link', { name: 'next page' }));
+    expect(screen.getByRole('complementary', { name: 'The counter' })).toBeTruthy();
+  });
+
+  it('a per-page record from the first build is read as never chosen', () => {
+    window.localStorage.setItem(prefsKeyFor('u-1'), JSON.stringify({ counter: { '/orders': 'tucked' }, railTucked: false }));
+    mount('/orders');
+    expect(screen.getByRole('complementary', { name: 'The counter' })).toBeTruthy();
   });
 });
 
