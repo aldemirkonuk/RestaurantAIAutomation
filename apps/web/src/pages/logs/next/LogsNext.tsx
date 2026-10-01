@@ -64,6 +64,7 @@ import { Wordmark } from '@/components/mudavym';
 import { useAuth } from '@/contexts/AuthContext';
 import { animate, ink, settle, springs, tally, turn, useReducedMotion } from '@/lib/mudavym/motion';
 import { useMudavymDesign } from '@/lib/mudavym/useMudavymDesign';
+import { noteCloseReportLine, useNoteCloseReport } from '@/pages/dashboard/next/note-close-experiment';
 import { EventSheet } from './EventSheet';
 import {
   EM,
@@ -265,6 +266,10 @@ const PAGE_CSS = `
 .mudavym .lg-foot p { margin: 0; }
 .mudavym .lg-page-foot { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap; border-top: 1px solid var(--paper-2); margin-top: 40px; padding-top: 14px; font-size: 11px; color: var(--ink-4); }
 .mudavym .lg-page-foot p { margin: 0; max-width: 720px; }
+/* The standing count takes a line of its own under the signature, ruled off
+   from the page's own footnote by the dotted rule .lg-tail already uses: it
+   is a sentence about an experiment, not about the six registers. */
+.mudavym .lg-page-foot .lg-standing { flex: 1 0 100%; padding-top: 8px; border-top: 1px dotted var(--paper-2); }
 .mudavym .lg-keys { border: 1px solid var(--paper-2); background: var(--paper-1); border-radius: 12px; padding: 12px 14px; margin: 28px 0 0; }
 .mudavym .lg-keys h2 { font-family: ${MONO}; font-size: 10px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-4); margin: 0; }
 .mudavym .lg-keys dl { display: grid; grid-template-columns: 1fr; gap: 3px 14px; margin: 8px 0 0; font-size: 11.5px; }
@@ -584,6 +589,8 @@ export default function LogsNext({ ground }: LogsNextProps) {
   const { activeRestaurantId } = useAuth();
   const documentPageOn = useMudavymDesign('document');
   const data = useLogsNextData(correlationId);
+  const noteReport = useNoteCloseReport(activeRestaurantId);
+  const noteReportLine = noteCloseReportLine(noteReport);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const headRef = useRef<HTMLElement | null>(null);
   const ledgerRef = useRef<HTMLElement | null>(null);
@@ -1047,6 +1054,26 @@ export default function LogsNext({ ground }: LogsNextProps) {
               the floor mark was taken inside a window; the window is stated at the foot of the list. Nothing on this
               page is written by it.
             </p>
+            {/* The note-control experiment's standing count.
+                WHY HERE AND NOT ON THE DASHBOARD. The experiment began on
+                2026-09-05; this line sat at the foot of `/` from 2026-09-12
+                (#289), on the page that holds the control. The founder
+                moved it on 2026-10-01 (ADR 0127's amendment, DASH-W5): it is a
+                count for the founder, not a line a manager needs before service.
+                This is the operator page, so it stands at the foot, under the
+                signature — out of the feed's way, and further still from the
+                card it counts. /notifications stays ruled out for the reason it
+                always was: the day-book is a RECORD, and a tally is not a line
+                the house wrote (notifications.md §1b).
+                COUNTS, NEVER A VERDICT — the sentence is built in
+                `noteCloseReportLine`, which has no comparison in it. An
+                unreadable report is named there and never printed as a zero; one
+                still being read draws nothing. */}
+            {noteReportLine ? (
+              <p className="lg-standing" data-note-report>
+                {noteReportLine}
+              </p>
+            ) : null}
           </footer>
         </div>
       </div>
