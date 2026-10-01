@@ -6,7 +6,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 type SyncState = {
   isOnline: boolean;
@@ -27,6 +27,26 @@ vi.mock('../../hooks/useSyncManager', () => ({
   useSyncManager: () => syncState.current,
 }));
 
+// The device-storage note reads lib/deviceStorage; its reads are replaced, its
+// threshold logic (unsentWaitedTooLong, UNSENT_NUDGE_AFTER_MS) is the real one.
+const storage = vi.hoisted(() => ({
+  health: null as null | Record<string, unknown>,
+  prompts: false,
+  request: null as null | ReturnType<typeof import('vitest').vi.fn>,
+}));
+vi.mock('../../lib/deviceStorage', async (importActual) => {
+  const actual = await importActual<typeof import('../../lib/deviceStorage')>();
+  return {
+    ...actual,
+    readStorageHealth: async () =>
+      storage.health ?? {
+        persisted: true, usage: null, quota: null, pending: 0, parked: 0, oldestUnsentAt: null,
+      },
+    persistShowsAPrompt: () => storage.prompts,
+    requestPersistence: (...a: unknown[]) => storage.request?.(...a) ?? Promise.resolve(null),
+  };
+});
+
 import { AppOfflineBanner } from './AppOfflineBanner';
 import { clearMudavymDesignCache } from '../../lib/mudavym/useMudavymDesign';
 
@@ -34,6 +54,9 @@ beforeEach(() => {
   clearMudavymDesignCache();
   window.localStorage.clear();
   syncState.current = { isOnline: true, isSyncing: false, pendingCount: 0, lastError: null };
+  storage.health = null;
+  storage.prompts = false;
+  storage.request = null;
 });
 afterEach(() => window.localStorage.clear());
 
@@ -120,6 +143,9 @@ describe('not sent (ADR 0241, OD-203 (a)): a refused change is kept and named, n
     confirm.mockReturnValueOnce(true);
     fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
     expect(discardNotSent).toHaveBeenCalledTimes(1);
+    // Refused door receipts park here too (ADR 0241's 2026-09-29 amendment,
+    // PR #535): the confirm must say the server has not accepted them.
+    expect(confirm).toHaveBeenLastCalledWith(expect.stringMatching(/kept only on this device and the server has not accepted them — keep the paperwork/));
     confirm.mockRestore();
   });
 
@@ -138,5 +164,110 @@ describe('not sent (ADR 0241, OD-203 (a)): a refused change is kept and named, n
     expect(screen.getByText(/retried until the house takes it/)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Try now' }));
     expect(retryNotSent).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('device storage note (founder storage ruling 2026-09-29): unsent work waited or unprotected', () => {
+  const DAY = 24 * 60 * 60 * 1000;
+  const health = (over: Record<string, unknown>) => ({
+    persisted: true, usage: null, quota: null, pending: 1, parked: 0,
+    oldestUnsentAt: new Date(Date.now() - 1000), ...over,
+  });
+
+  it('says so when the oldest unsent change has waited over a day', async () => {
+    syncState.current = { isOnline: false, isSyncing: false, pendingCount: 1, lastError: null };
+    storage.health = health({ oldestUnsentAt: new Date(Date.now() - DAY - 60_000) });
+    render(<AppOfflineBanner />);
+    expect(
+      await screen.findByText(/Some changes on this device have waited over a day to send/),
+    ).toBeTruthy();
+    expect(screen.getByText(/check anything marked “Not sent”, or tell a manager/)).toBeTruthy();
+  });
+
+  it('a parked change counts too: waited over a day, still named', async () => {
+    syncState.current = {
+      isOnline: true, isSyncing: false, pendingCount: 0, lastError: null, notSentCount: 1,
+    };
+    storage.health = health({ pending: 0, parked: 1, oldestUnsentAt: new Date(Date.now() - 2 * DAY) });
+    render(<AppOfflineBanner />);
+    expect(await screen.findByText(/waited over a day to send/)).toBeTruthy();
+  });
+
+  it('says nothing about waiting for a change under a day old on protected storage', async () => {
+    syncState.current = { isOnline: false, isSyncing: false, pendingCount: 1, lastError: null };
+    storage.health = health({});
+    const { container } = render(<AppOfflineBanner />);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(container.querySelector('[data-ux-key="shell.offline.device-storage"]')).toBeNull();
+  });
+
+  it('not persistent with unsent work: says the browser may clear it, with the Home Screen hint', async () => {
+    syncState.current = { isOnline: false, isSyncing: false, pendingCount: 2, lastError: null };
+    storage.health = health({ persisted: false, pending: 2 });
+    render(<AppOfflineBanner />);
+    expect(await screen.findByText(/This browser may clear changes that are not sent yet/)).toBeTruthy();
+    expect(screen.getByText('Add to Home Screen')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Keep them on this device' })).toBeNull();
+  });
+
+  it('cannot be dismissed while storage is not persistent and work is unsent', async () => {
+    syncState.current = { isOnline: false, isSyncing: false, pendingCount: 1, lastError: null };
+    storage.health = health({ persisted: false });
+    const { container, rerender } = render(<AppOfflineBanner />);
+    const line = await screen.findByText('Add to Home Screen');
+    // No control that hides it: the only buttons anywhere in it act on storage.
+    const note = container.querySelector('[data-ux-key="shell.offline.device-storage"]')!;
+    const names = [...note.querySelectorAll('button')].map((b) => b.textContent);
+    expect(names.filter((n) => /dismiss|close|hide|later|got it|ok/i.test(n ?? ''))).toEqual([]);
+    fireEvent.click(line);
+    fireEvent.keyDown(note, { key: 'Escape' });
+    rerender(<AppOfflineBanner />);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(screen.getByText('Add to Home Screen')).toBeTruthy();
+  });
+
+  it('goes away once the queue empties', async () => {
+    syncState.current = { isOnline: false, isSyncing: false, pendingCount: 1, lastError: null };
+    storage.health = health({ persisted: false });
+    const { rerender } = render(<AppOfflineBanner />);
+    expect(await screen.findByText('Add to Home Screen')).toBeTruthy();
+    storage.health = health({ persisted: false, pending: 0, parked: 0, oldestUnsentAt: null });
+    syncState.current = { isOnline: true, isSyncing: false, pendingCount: 0, lastError: null };
+    rerender(<AppOfflineBanner />);
+    await waitFor(() => expect(screen.queryByText('Add to Home Screen')).toBeNull());
+  });
+
+  it('goes away once the storage becomes persistent (re-read on return to the app)', async () => {
+    syncState.current = { isOnline: false, isSyncing: false, pendingCount: 1, lastError: null };
+    storage.health = health({ persisted: false });
+    render(<AppOfflineBanner />);
+    expect(await screen.findByText('Add to Home Screen')).toBeTruthy();
+    storage.health = health({ persisted: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+    await waitFor(() => expect(screen.queryByText('Add to Home Screen')).toBeNull());
+  });
+
+  it('unknown persistence is not read as safe', async () => {
+    syncState.current = { isOnline: false, isSyncing: false, pendingCount: 1, lastError: null };
+    storage.health = health({ persisted: null });
+    render(<AppOfflineBanner />);
+    expect(await screen.findByText(/This browser may clear changes/)).toBeTruthy();
+  });
+
+  it('on Firefox (asking shows a prompt) the note offers a button that asks', async () => {
+    syncState.current = { isOnline: false, isSyncing: false, pendingCount: 1, lastError: null };
+    storage.health = health({ persisted: false });
+    storage.prompts = true;
+    storage.request = vi.fn(async () => true);
+    render(<AppOfflineBanner />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Keep them on this device' }));
+    expect(storage.request).toHaveBeenCalledTimes(1);
+  });
+
+  it('no unsent work: no note, even on storage that is not persistent', async () => {
+    storage.health = health({ persisted: false, pending: 0, parked: 0, oldestUnsentAt: null });
+    const { container } = render(<AppOfflineBanner />);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(container.textContent).toBe('');
   });
 });

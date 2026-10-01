@@ -19,8 +19,16 @@
  * GATED like every shell chrome piece: off, `OfflineBanner` unchanged.
  */
 
+import { useEffect, useState } from 'react'
 import { useMudavymDesign } from '../../lib/mudavym/useMudavymDesign'
 import { useSyncManager } from '../../hooks/useSyncManager'
+import {
+  persistShowsAPrompt,
+  readStorageHealth,
+  requestPersistence,
+  unsentWaitedTooLong,
+  type StorageHealth,
+} from '../../lib/deviceStorage'
 import { OfflineBanner } from '../ui/SyncStatus'
 import './house-offline-banner.css'
 
@@ -42,7 +50,101 @@ function pluralChange(n: number): string {
 export function AppOfflineBanner() {
   const shellOn = useMudavymDesign('shell')
   if (!shellOn) return <OfflineBanner />
-  return <HouseOfflineBanner />
+  // One fixed stack at the foot of the window, so the storage note sits under
+  // the status bar instead of on top of it (house-offline-banner.css).
+  return (
+    <div className="mdv-offlinebar-stack">
+      <HouseOfflineBanner />
+      <DeviceStorageNote />
+    </div>
+  )
+}
+
+/** How often the note re-reads the queue's age while the app stays open. */
+const STORAGE_NOTE_REREAD_MS = 10 * 60 * 1000
+
+/**
+ * A second line under the bar, only when there is unsent work on this device
+ * and something about it is worth saying (the founder's storage ruling and
+ * answers, 2026-09-29; lib/deviceStorage.ts):
+ *   - it has waited longer than UNSENT_NUDGE_AFTER_MS (24 h): a quiet nudge;
+ *   - the browser has not promised to keep it (not persistent, or cannot
+ *     say — unknown is never read as safe): the Home Screen line. The founder
+ *     made the Home Screen a strong hint, not a requirement, that ESCALATES:
+ *     it has no dismiss and stays until the storage is persistent or the
+ *     queue is empty. On Firefox, where asking shows a prompt, a button asks.
+ * Nothing when there is no unsent work. It never blocks anything.
+ */
+function DeviceStorageNote() {
+  const { pendingCount, notSentCount = 0, stillTryingCount = 0 } = useSyncManager()
+  const [health, setHealth] = useState<StorageHealth | null>(null)
+  const [reread, setReread] = useState(0)
+
+  useEffect(() => {
+    let live = true
+    readStorageHealth()
+      .then((h) => {
+        if (live) setHealth(h)
+      })
+      .catch(() => {
+        if (live) setHealth(null)
+      })
+    const again = () => setReread((n) => n + 1)
+    const t = setInterval(again, STORAGE_NOTE_REREAD_MS)
+    // Coming back to the app (e.g. after adding it to the Home Screen) re-reads.
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') again()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      live = false
+      clearInterval(t)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [pendingCount, notSentCount, stillTryingCount, reread])
+
+  if (!health) return null
+  const unsent = (health.pending ?? 0) + (health.parked ?? 0)
+  if (unsent === 0) return null
+  const waited = unsentWaitedTooLong(health)
+  const unprotected = health.persisted !== true
+  if (!waited && !unprotected) return null
+
+  return (
+    <div
+      className="mdv-offlinebar mdv-offlinebar--note mudavym"
+      role="status"
+      data-ux-key="shell.offline.device-storage"
+    >
+      {unprotected && (
+        <div data-ux-key="shell.offline.device-storage.unprotected">
+          <span className="mdv-offlinebar__word">Add to Home Screen</span>
+          <span>
+            {' '}
+            &middot; This browser may clear changes that are not sent yet. Adding Mudavym to
+            the Home Screen keeps them safer.{' '}
+          </span>
+          {persistShowsAPrompt() && (
+            <button
+              type="button"
+              style={ACT}
+              onClick={() => {
+                void requestPersistence().then(() => setReread((n) => n + 1))
+              }}
+            >
+              Keep them on this device
+            </button>
+          )}
+        </div>
+      )}
+      {waited && (
+        <div data-ux-key="shell.offline.device-storage.waited">
+          Some changes on this device have waited over a day to send — open the app where there
+          is signal, check anything marked “Not sent”, or tell a manager.
+        </div>
+      )}
+    </div>
+  )
 }
 
 function HouseOfflineBanner() {
@@ -81,7 +183,7 @@ function HouseOfflineBanner() {
           style={ACT}
           onClick={() => {
             const n = notSentCount
-            if (window.confirm(`Discard ${pluralChange(n)} that ${n === 1 ? 'was' : 'were'} not sent? This cannot be undone.`))
+            if (window.confirm(`Discard ${pluralChange(n)} that ${n === 1 ? 'was' : 'were'} not sent? ${n === 1 ? 'It is' : 'They are'} kept only on this device and the server has not accepted them — keep the paperwork for any delivery among them. This cannot be undone.`))
               void discardNotSent?.()
           }}
         >
