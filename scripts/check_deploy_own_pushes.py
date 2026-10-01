@@ -12,7 +12,7 @@ matches a fork's pull request whose branch is named `main`; its stages check
 out that run's head_sha and run its code beside the stages' secrets. The rule this
 guard holds, read from the workflow text strictly (no YAML library: the CI
 jobs that run it do not install one). Shapes it does not recognise are
-refused where it can tell; its self-test plants the 89 breaks listed in
+refused where it can tell; its self-test plants the 92 breaks listed in
 _self_test (see KNOWN GAPS below for what it does not hold):
 
   1. The jobs: block holds only plain `  name:` job keys, full-line comments
@@ -40,12 +40,13 @@ _self_test (see KNOWN GAPS below for what it does not hold):
      scan reads the raw text, comment lines included (a `#` line inside a
      block scalar is content), with escaped line breaks joined, and matches
      case-insensitively as GitHub reads contexts: no workflow-level key names
-     `secrets`; nothing reads `toJSON(secrets)`, `secrets[...]` or
-     `secrets.*`; deploy.yml holds no backslash escape but `\\$`, a
+     `secrets`; `secrets` appears only as `secrets.NAME` (never whole, as in
+     `toJSON((secrets))`, `join(secrets, ...)`, `secrets[...]` or
+     `secrets.*`); deploy.yml holds no backslash escape but `\\$`, a
      backslash-backtick, `\\"` or a line break, and no YAML anchor or alias;
      ci-gate's job-level `permissions` is exactly `{}`,
-     and ci-gate has no `uses` key in any step form (block, flow-style or
-     quoted; so no cache save) and no secret; `secrets.ADMIN_API_KEY` appears
+     and the word `uses` appears nowhere in ci-gate (so no action step in
+     any YAML form, and no cache save) and no secret does; `secrets.ADMIN_API_KEY` appears
      exactly once, in the env of verify-orchestrator's step "Verify 9/9
      agents Active".
 
@@ -59,7 +60,7 @@ KNOWN GAPS -- not held (founder, 2026-09-30: "Honest record (Recommended)").
 This guard pins the refusal step's TEXT, each job's `if`, and rule 5's key
 reach; it does not pin how ci-gate's `run:` steps EXECUTE, nor any
 workflow-level key but `on:` and `defaults:` beyond rule 5's no-secret rule.
-The self-test plants exactly the 89 breaks listed in _self_test and nothing
+The self-test plants exactly the 92 breaks listed in _self_test and nothing
 more. Changes of these kinds pass the guard unnoticed:
   - a job-level key on ci-gate other than `if` and `permissions`
     (`container:`, `services:`, `runs-on:`, an `env:` with no secret);
@@ -339,8 +340,11 @@ def _key_problems(text: str, jobs: dict[str, str]) -> list[str]:
     # GitHub reads context names case-insensitively, so every match here is too.
     if re.search(r"(?i)\bsecrets\b", head):
         out.append("a workflow-level key references secrets (every job and step, ci-gate included, would inherit it)")
-    if re.search(r"(?i)\btojson\s*\(\s*secrets\s*\)|\bsecrets\s*\[|\bsecrets\s*\.\s*\*", code):
-        out.append("deploy.yml reads secrets whole, by filter or by computed name (toJSON(secrets), secrets.* or secrets[...])")
+    # `secrets` may appear only as `secrets.NAME`: as a whole object (toJSON
+    # of it, in any grouping or operator, join(), format(), secrets[...] or
+    # secrets.*) it carries every secret, ADMIN_API_KEY included.
+    if re.search(r"(?i)\bsecrets\b(?!\s*\.\s*[A-Za-z_])", code):
+        out.append("deploy.yml uses `secrets` other than as `secrets.NAME` (whole, filtered or by computed name, it carries every secret)")
     # A YAML escape in a double-quoted scalar (\u0073 for "s", "\ " for a
     # space, and the rest) could spell a context name these matches cannot
     # see. A backslash is allowed only where deploy.yml uses one today: before
@@ -364,8 +368,10 @@ def _key_problems(text: str, jobs: dict[str, str]) -> list[str]:
     perms = re.findall(r"(?m)^    permissions\s*:(.*)$", gate)
     if [p.strip() for p in perms] != ["{}"]:
         out.append(f"ci-gate: job-level permissions must be exactly `{{}}`, found {perms!r}")
-    # Any `uses` key: block, flow-style (`- {uses: ...}`) or quoted.
-    if re.search(r"(?i)[\"']?\buses[\"']?\s*:", gate_raw):
+    # The word `uses` anywhere in ci-gate: a key in any form (block,
+    # flow-style, quoted, or explicit `? uses # comment`) is refused, and so
+    # is the word in a run line (accepted: it fails closed).
+    if re.search(r"(?i)\buses\b", gate_raw):
         out.append("ci-gate: runs an action (a `uses:` step can save a cache or run script text)")
     if re.search(r"(?i)\bsecrets\b", gate_raw):
         out.append("ci-gate: references a secret")
@@ -529,6 +535,11 @@ def _self_test(verbose: bool = False) -> int:
         "K35 uses anchored as &-u, aliased as a ci-gate key": [(WF_ENV, WF_ENV + "  X:\n    &-u uses\n"), (GATE_STEPS, GATE_STEPS + "      - name: n\n        *-u : actions/cache@v4\n")],
         "K36 the key's env anchored as &.e, aliased into another step": [("        env:\n" + KEY_LINE + "\n", "        env:\n          &.e\n" + KEY_LINE + "\n"), ("      - name: API gateway URL is configured\n", "      - name: API gateway URL is configured\n        env:\n          *.e\n")],
         "K37 uses anchored as &&u, aliased as a ci-gate key": [(WF_ENV, WF_ENV + "  X:\n    &&u uses\n"), (GATE_STEPS, GATE_STEPS + "      - name: n\n        *&u : actions/cache@v4\n")],
+        # round-2 adversary of #546: `secrets` whole in any expression, and an
+        # explicit `? uses` key with a comment before its colon:
+        "K38 toJSON((secrets)) in a step": ("          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n", "          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n          ALL: ${{ toJSON((secrets)) }}\n"),
+        "K39 join(secrets) in a step": ("          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n", "          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n          ALL: ${{ join(secrets, ',') }}\n"),
+        "K40 ci-gate explicit uses key with a comment": (GATE_STEPS, GATE_STEPS + "      - ? uses # c\n        : actions/cache@v4\n"),
     }
     failed = []
     for name, edits in muts.items():

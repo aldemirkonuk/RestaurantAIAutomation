@@ -396,8 +396,8 @@ verbatim picks:
 
 **Held by.**
 - `scripts/check_deploy_own_pushes.py`, which is gate-owned. It is a strict
-  text reader. Its self-test plants exactly the 89 breaks it lists (52 for
-  the own-run rule, 37 for the key fix below); it does not plant every
+  text reader. Its self-test plants exactly the 92 breaks it lists (52 for
+  the own-run rule, 40 for the key fix below); it does not plant every
   evasion the audit rounds found (see "Not held").
 - `scripts/test_pr_audit_gate.py`.
 - The claim `DEPLOY-RUNS-ONLY-ON-OWN-PUSHES` in
@@ -497,16 +497,17 @@ HOLDS, and the OVERTURNED verdict was not acted on (disclosed on #534).]
 - `ci-gate` carries `permissions: {}` and has no action step, so it saves no
   cache and its token has no scope.
 
-**Held by** `scripts/check_deploy_own_pushes.py` rule 5 (37 planted breaks,
-K1–K37), as far as a strict text reader can hold it. It reads the raw text,
+**Held by** `scripts/check_deploy_own_pushes.py` rule 5 (40 planted breaks,
+K1–K40), as far as a strict text reader can hold it. It reads the raw text,
 comment lines included (a `#` line in a block scalar is content), with escaped
 line breaks joined, case-insensitively as GitHub reads contexts: no `secrets`
-in any workflow-level key; no `toJSON(secrets)`, `secrets.*` or
-`secrets[...]` anywhere, and no backslash escape other than one before `$`, a backtick, `"` or a
+in any workflow-level key; `secrets` only as `secrets.NAME` anywhere (never
+whole, as in `toJSON((secrets))`, `join(secrets, ...)`, `secrets.*` or
+`secrets[...]`), and no backslash escape other than one before `$`, a backtick, `"` or a
 line break (a YAML escape could spell a secret unseen) and no YAML anchor or alias (which could copy a step into
 `ci-gate` unseen), whatever its name's first character; `ci-gate`'s job-level `permissions` is exactly `{}`
-and it has no `uses:` key in any step form (block, flow-style or quoted)
-and no secret; `secrets.ADMIN_API_KEY` appears once, in
+and the word `uses` appears nowhere in it (so no action step in any YAML
+form) and no secret does; `secrets.ADMIN_API_KEY` appears once, in
 that step's env.
 
 **Not held.** Whether a `run:` step can reach the cache service without an
