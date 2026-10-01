@@ -277,11 +277,11 @@ Two questions above rested on statements about the code that were wrong. They ar
      - `communications/recipient-resolver.service.ts:403`, `getUserIdsForRoles` (`:377`): who receives a notification addressed to a role.
      - `common/tenant/live-membership.ts:133`, `houseMembersInRoles`. It is read by `websocket/websocket.gateway.ts:671` (owner- and manager-only emits), `common/orchestrator/inbound-responder.service.ts:1533` (manager notifications), `notifications/producers/market-price.producer.ts:132` and `team/access-audit.ts:183` (who is told of an access change).
    - Every code path writes its own `now` into `valid_from`: the database's on insert, the gateway's in `acceptHeldMembership`. A start that reads as ahead of the gateway's clock comes from a clock difference, or from a hand-written value. See "Corrected premises".
-8. **Merge order (the sixth answer): #561 lands last.** #547, #538, #550 and #558 merge first. Then this branch rebases onto that main and does three things, which are planned and not yet done:
+8. **Merge order (the sixth answer): #561 lands last.** #547, #538, #550 and #558 merge first. With the two #550 files below, this PR then has 16 files, one over the 15-file cap. The extra file on this PR is recorded in ADR 0231.
+   Then this branch rebases onto that main and does three things, which are planned and not yet done:
    - **#550's test.** `apps/api-gateway/src/procurement/recurring-schedule-edits-need-a-manager.http.spec.ts` has a case named "lets a legacy manager of this house edit and deactivate". It fails the access read and expects 200. That spec stubs the JWT step, so the case measures the helper: over HTTP the JWT step would answer 503 first if its own read failed. Under Decision 1 that caller gets 403 at the helper, so the case is changed to expect 403 with nothing written. The verify of claim `RECURRING-SCHEDULE-EDITS-NEED-A-MANAGER` names that title, so it is updated with it.
    - **The caller list.** It gains the `assertCanManageRestaurant` callers those PRs add: two in `procurement/procurement.service.ts` (#538), PUT and DELETE in `procurement/recurring-orders.controller.ts` (#550), and one in `procurement/order-recurrence.service.ts` (#558).
    - **The docs PR.** A separate docs PR corrects the fallback sentences in ADRs 0246 and 0247 and the claim texts of #550 and #558.
-   - With the two #550 files, this PR has 16 files, one over the 15-file cap. The extra file on this PR is recorded in ADR 0231.
 
 ## Consequences
 
