@@ -118,7 +118,10 @@ owned (founder's word required; no model review can clear it) when any of these 
    (`ownership-incomplete`), not a claim that the PR is gate-owned.
 
 **Where the gate's rules live.** They are this ADR, ADR 0050 and the owned files,
-whatever their index rows or tables say.
+whatever their index rows or tables say. [Widened 2026-10-01, the founder: *"Yes,
+update them (Recommended)"*. The rules now live in ADRs 0050, 0090, 0097, 0231 and
+0237 and the owned files, and "this ADR or 0050" below reads "one of those five".
+See the 2026-09-30 amendment's 2026-10-01 follow-up.]
 - Text anywhere else that claims to supersede, amend, narrow or reinterpret them
   has no effect until this ADR or 0050 is edited to point at it. That edit is
   itself owned.
@@ -2503,7 +2506,7 @@ file under `.planning/decisions/` is owned when any of these holds:
    - For anything else, it is the whole text, as before.
 3. Anywhere in its text, a gate token sits within 60 characters of a verb that changes a rule (`GATE_RULE_RE`). The verb is matched anywhere, not only at a word start, because a stripped tag (`are<br>exempt`) glues it to the word before. In a claims fragment, each raw line is scanned together with every key and value in it, with escapes decoded. A key given twice is counted twice; a plain JSON parser would keep only its last value. Examples are "supersedes ADR 0090", "exempt from the audit gate", "the pr-merge-planner no longer runs", "the audit gate opt-out applies", "merge without the audit gate", "ADR 0090 does not apply", "the audit gate is deprecated", "this reverts ADR 0090" and "ignore the audit gate". "ignore" is matched except inside "trivyignore", "gitignore" and "ignorance", and "void" except inside "avoid".
 
-The hygiene checks still judge the whole text. These are: NUL, line separators, tag and bidi characters, and letters outside Latin and Greek. Registers keep their line-diff rules unchanged.
+The hygiene checks still judge the whole text. These are: NUL, line separators, tag and bidi characters, invalid UTF-8, and letters or digits outside Latin and Greek. [Corrected 2026-10-01: invalid UTF-8 and digits were left out; the code and `SKILL.md` always had them.] Registers keep their line-diff rules unchanged.
 
 **Measured** on `main` at `e88593bf8`: 58 of the 231 non-register files under `decisions/` (234 files, less three registers) were owned before, and 22 are owned now. ADR 0241 and `claims.d/fix-door-refusal-parks-not-sent.jsonl` are released. The change is not strictly a narrowing: 37 records are released, and one is newly owned. That record is ADR 0243, whose review trail says "ADR 0231 … waived", and "ADR 0231" is now a gate token.
 
@@ -2515,7 +2518,7 @@ The hygiene checks still judge the whole text. These are: NUL, line separators, 
   - Twenty-seven new mutations, one per switch. They include the planted mutant "the narrowing reverted", which is killed by N1, N2 and the self-test's passing-mention check.
 
 **Residual, stated rather than closed.** A record whose subject is something else can still state a rule about the gate in a way that is released. There are three ways:
-- It uses no listed verb. "delete", "drop" and "change" are left out on purpose: each owns records on `main` that only cite an audit, ADR 0241 among them. The verbs added after review (revert, rescind, void, obsolete, abolish, remove, allow, stop, lower, reduce, and ignore with the "trivyignore" and "gitignore" exceptions) were measured to add none.
+- It uses no listed verb. "delete", "drop" and "change" are left out on purpose: each owns records on `main` that only cite an audit. [Corrected 2026-10-01: of the three, only "drop" owns ADR 0241; "delete" and "change" own other records.] The verbs added after review (revert, rescind, void, obsolete, abolish, remove, allow, stop, lower, reduce, and ignore with the "trivyignore" and "gitignore" exceptions) were measured to add none.
 - Its verb is more than 60 characters from the gate token.
 - It is a title that names the gate only on the earlier line of a two-line setext or split `<h1>`, or a gate-naming metadata line that comes after a non-bullet line.
 
@@ -2523,7 +2526,12 @@ Two neighbouring cases are not releases:
 - A claims row nested about 990 levels deep raises `RecursionError`. The CI and hook paths report that as CANNOT CHECK, which is owned.
 - A gate decision whose file name differs in letter case (`0097-X.md`) misses the number rule, but its subject and rule are still scanned. `main` released such a file too.
 
-Gate rules bind only from ADR 0050, ADR 0090 and the gate's own files, and the reviewers are told so. 0097, 0231 and 0237 are owned by number. So such a sentence changes no gate behaviour. It can only steer a reader. This change does not touch what the reviewers are told.
+Gate rules bind only from ADR 0050, ADR 0090 and the gate's own files, and the reviewers are told so. 0097, 0231 and 0237 are owned by number. So such a sentence changes no gate behaviour. It can only steer a reader. This change does not touch what the reviewers are told. [Superseded 2026-10-01 by the follow-up below: the reviewers are now told all five numbers.]
+
+**Follow-up — 2026-10-01: the reviewers are told all five gate decisions.** #548's final audit put this question to the founder: should the three reviewer agents, the skill and the CI prompt name all five gate decisions (0050, 0090, 0097, 0231, 0237), and does he confirm the narrowed rule as merged in #548? His answer, chat, 2026-10-01, verbatim: *"Yes, update them (Recommended)"*.
+- `.claude/agents/pr-merge-{planner,auditor,adversary}.md`, `.claude/skills/pr-audit-gate/SKILL.md` and the CI compliance prompt in `scripts/pr_audit_gate.py` now say the gate rules live in ADRs 0050, 0090, 0097, 0231 and 0237 and the gate's own files. A claim elsewhere has no effect until one of those five is edited to point at it.
+- This changes what every reviewer is told, not what the classifier owns: all five were already owned by number (`GATE_DECISION_NUMBERS`).
+- The same answer confirms the narrowed rule as merged in #548: the five gate numbers, the rule-verb list without delete, drop and change, ADR 0243 newly owned and 37 records released.
 
 ## Review trail
 
@@ -2559,3 +2567,4 @@ Gate rules bind only from ADR 0050, ADR 0090 and the gate's own files, and the r
 | 2026-09-22 | Opus final say, delta `bfc19fcb7`..`de7c40a2b` | **BLOCK, one sentence.** "the 2026-09-12 Correction removed" named the wrong Correction: that one removed red-on-every-PR, while the sixth (2026-09-03, `wait_upstream`) removed a required SUCCESS that had audited nothing. The error came from the first audit's own verdict. Fixed in the next commit, together with the note to revert the four script brackets on removal. |
 | 2026-09-28 | Aldemir (founder), ADR 0237 | Correction: the frontmatter key is `effort` (not `reasoning_effort`), there are three definitions, and the mapping is documented. All three stay `effort: high` ("Keep high, test medium later"). No gate behaviour changes |
 | 2026-09-30 | Aldemir (chat) | *"Approve #535 + narrow rule (Recommended)"*. A decision record is owned when its number, title, metadata or claim id names the gate, or when it states a rule about the gate; a mention in passing is released (amendment of this date). 58 → 22 owned records on `main` at `e88593bf8`. This change edits owned paths and is covered by the same approval. |
+| 2026-10-01 | Aldemir (chat) | *"Yes, update them (Recommended)"*, answering #548's final-audit question. The reviewer agents, the skill and the CI prompt now name ADRs 0050, 0090, 0097, 0231 and 0237 as where the gate rules live; the narrowed rule as merged in #548 is confirmed. Two #548 wording follow-ups fixed in the same PR (the hygiene list; only "drop" owns ADR 0241). Edits owned paths; covered by this approval. |

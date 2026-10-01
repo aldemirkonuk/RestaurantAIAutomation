@@ -142,8 +142,8 @@ individually while what they don't cover reaches production — this gate exists
    as `audit of PR #M, round N (report path)` and re-run. Never reword a line that
    states a rule about the gate, or says what the gate does, to get past this step.
 
-   Gate rules live only in ADR 0090, ADR 0050 and the owned files, whatever their
-   index rows say. Unlike the CI path, a session auditing its own checkout has no
+   Gate rules live only in ADRs 0050, 0090, 0097, 0231 and 0237 and the owned
+   files, whatever their index rows say. Unlike the CI path, a session auditing its own checkout has no
    `pull_request_target`-style isolation. Running `origin/main`'s classifier covers
    the ownership decision only; the reviewers must still read decisions with
    `git show origin/main:<path>`.

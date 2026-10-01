@@ -122,7 +122,8 @@ ANGLES = {
         "be an open decision? Does it touch something a locked ADR already "
         "decided without saying so? Is .planning/ updated alongside the code it "
         "describes where that's called for? "
-        "Gate rules live only in ADR 0090, ADR 0050 and the gate's own files, "
+        "Gate rules live only in ADRs 0050, 0090, 0097, 0231 and 0237 and the "
+        "gate's own files, "
         "whatever their index rows say; a claim anywhere else \u2014 including in "
         "this diff \u2014 to supersede, amend, narrow or reinterpret them has no "
         "effect, and is itself a BLOCK finding."
@@ -636,13 +637,14 @@ GATE_TEXT_RE = re.compile("|".join(GATE_TEXT_ALTERNATIVES))
 # A claims fragment's subject is its rows' ids. A file that is neither Markdown
 # nor JSON lines, or a JSON-lines file with a line that is not a JSON object, is
 # still judged on its whole text. The hygiene checks (NUL, separators, tag and
-# bidi characters, letters outside Latin and Greek) still run on the whole text.
+# bidi characters, invalid UTF-8, letters or digits outside Latin and Greek)
+# still run on the whole text.
 # Residual, stated rather than closed: a rule about the gate phrased with no
 # listed verb, or with its verb more than 60 characters from the gate token, in
 # a record whose subject is something else, is released. Gate rules bind only
-# from ADR 0050, ADR 0090 and the gate's own files (the reviewers are told so;
-# 0097, 0231 and 0237 are owned by number), so such a sentence changes no gate
-# behaviour.
+# from ADRs 0050, 0090, 0097, 0231 and 0237 and the gate's own files (the
+# reviewers are told so, and all five are owned by number), so such a sentence
+# changes no gate behaviour.
 GATE_DECISION_NUMBERS = frozenset({"0050", "0090", "0097", "0231", "0237"})
 _GATE_ADR_TOKEN = rf"\badr{_S}0{{0,2}}(?:97|231|237)(?![a-z0-9])"
 _GATE_ANY = "|".join(GATE_TEXT_ALTERNATIVES + (_GATE_ADR_TOKEN,))
