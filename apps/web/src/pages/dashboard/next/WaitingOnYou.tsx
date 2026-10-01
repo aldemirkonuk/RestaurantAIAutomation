@@ -1,9 +1,11 @@
 /**
  * "Waiting on you" — the pending-approvals queue (Federation's panel, the
- * founder-liked block). Every order the gateway says needs approval, oldest
- * first; a row expands (settle 0fr→1fr) into the real hold ceremony, which
- * calls the real approve endpoint — no fabricated success: the seal only
- * stays if the server said yes.
+ * founder-liked block). Every order the gateway says needs approval, in the
+ * gateway's order — flagged first, then the rest, each oldest first (ADR 0256;
+ * not re-sorted here) — with `WaitingFlag` saying why a row is flagged. A row
+ * expands (settle 0fr→1fr) into the real hold ceremony, which calls the real
+ * approve endpoint — no fabricated success: the seal only stays if the server
+ * said yes.
  *
  * THE SEAL IS REDEEMED, NOT ASSERTED (founder, 2026-09-04; ADR 0116 addendum).
  * This card used to call `ordersApi.approveOrder(order.id)` with an id alone,
@@ -23,6 +25,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Seal } from '@/components/mudavym';
+import { WaitingFlag } from './WaitingFlag';
 import { SealedApproveDie } from '@/components/orders/SealedApproveDie';
 import type { Order } from '@/services/api/types';
 import { vendorLine } from '@/lib/mudavym/vendor';
@@ -119,6 +122,7 @@ export function WaitingOnYou({ pending, onChanged }: WaitingOnYouProps) {
                   <span className="block truncate text-[11px] text-inkm-3">
                     {vendorLine(o)} · requested {timeAgo(o.requestedAt)}
                   </span>
+                  <WaitingFlag priority={o.priority} />
                 </span>
                 <span
                   className="shrink-0 text-[13px] text-inkm-1"
