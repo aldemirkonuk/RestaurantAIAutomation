@@ -12,7 +12,7 @@ matches a fork's pull request whose branch is named `main`; its stages check
 out that run's head_sha and run its code beside the stages' secrets. The rule this
 guard holds, read from the workflow text strictly (no YAML library: the CI
 jobs that run it do not install one). Shapes it does not recognise are
-refused where it can tell; its self-test plants the 68 breaks listed in
+refused where it can tell; its self-test plants the 74 breaks listed in
 _self_test (see KNOWN GAPS below for what it does not hold):
 
   1. The jobs: block holds only plain `  name:` job keys, full-line comments
@@ -36,10 +36,11 @@ _self_test (see KNOWN GAPS below for what it does not hold):
   plain scalar with its deeper continuation lines.
   4. No line of deploy.yml sets `continue-on-error`.
   5. The key fix (founder, 2026-09-30, verbatim: "Approve all + widen
-     (Recommended)"): no workflow-level key names `secrets`; nothing reads
-     `toJSON(secrets)` or `secrets[...]`; ci-gate's job-level `permissions`
-     is exactly `{}`, and ci-gate has no `uses:` (so no cache save) and no
-     secret; `secrets.ADMIN_API_KEY` appears exactly once, in the env of
+     (Recommended)"), read case-insensitively as GitHub reads contexts: no
+     workflow-level key names `secrets`; nothing reads `toJSON(secrets)` or
+     `secrets[...]`; ci-gate's job-level `permissions` is exactly `{}`, and
+     ci-gate has no `uses` key in any step form (block, flow-style or quoted;
+     so no cache save) and no secret; `secrets.ADMIN_API_KEY` appears exactly once, in the env of
      verify-orchestrator's step "Verify 9/9 agents Active".
 
 What it cannot hold: GitHub's own evaluation (workflow_run runs main's copy of
@@ -52,7 +53,7 @@ KNOWN GAPS -- not held (founder, 2026-09-30: "Honest record (Recommended)").
 This guard pins the refusal step's TEXT, each job's `if`, and rule 5's key
 reach; it does not pin how ci-gate's `run:` steps EXECUTE, nor any
 workflow-level key but `on:` and `defaults:` beyond rule 5's no-secret rule.
-The self-test plants exactly the 68 breaks listed in _self_test and nothing
+The self-test plants exactly the 74 breaks listed in _self_test and nothing
 more. Changes of these kinds pass the guard unnoticed:
   - a job-level key on ci-gate other than `if` and `permissions`
     (`container:`, `services:`, `runs-on:`, an `env:` with no secret);
@@ -317,19 +318,21 @@ def _key_problems(text: str, jobs: dict[str, str]) -> list[str]:
     out: list[str] = []
     code = _code(text)
     head = _code(text.split("\njobs:\n", 1)[0])
-    if re.search(r"\bsecrets\b", head):
+    # GitHub reads context names case-insensitively, so every match here is too.
+    if re.search(r"(?i)\bsecrets\b", head):
         out.append("a workflow-level key references secrets (every job and step, ci-gate included, would inherit it)")
-    if re.search(r"toJSON\(\s*secrets\s*\)|\bsecrets\s*\[", code):
+    if re.search(r"(?i)\btojson\s*\(\s*secrets\s*\)|\bsecrets\s*\[", code):
         out.append("deploy.yml reads secrets whole or by computed name (toJSON(secrets) or secrets[...])")
     gate = _code(jobs.get("ci-gate", ""))
     perms = re.findall(r"(?m)^    permissions\s*:(.*)$", gate)
     if [p.strip() for p in perms] != ["{}"]:
         out.append(f"ci-gate: job-level permissions must be exactly `{{}}`, found {perms!r}")
-    if re.search(r"(?m)^\s+(-\s+)?uses\s*:", gate):
+    # Any `uses` key: block, flow-style (`- {uses: ...}`) or quoted.
+    if re.search(r"(?i)[\"']?\buses[\"']?\s*:", gate):
         out.append("ci-gate: runs an action (a `uses:` step can save a cache or run script text)")
-    if re.search(r"\bsecrets\b", gate):
+    if re.search(r"(?i)\bsecrets\b", gate):
         out.append("ci-gate: references a secret")
-    if len(re.findall(r"secrets\.ADMIN_API_KEY\b", code)) != 1:
+    if len(re.findall(r"(?i)\bsecrets\s*\.\s*ADMIN_API_KEY\b", code)) != 1:
         out.append("ADMIN_API_KEY: the secret must be referenced exactly once (in its one step's env)")
     steps = [s for s in _steps(jobs.get(KEY_JOB, "")) if s.startswith(f"name: {KEY_STEP}\n")]
     if len(steps) != 1 or not re.search(r"(?m)^        env:\n(?:          \S.*\n|\s*#.*\n)*" + re.escape(KEY_LINE) + r"$",
@@ -463,6 +466,13 @@ def _self_test(verbose: bool = False) -> int:
         "K14 the key moved to the job env": [(KEY_STEP_ENV, ""), (ORCH_ENV, ORCH_ENV + "      ADMIN_API_KEY: ${{ secrets.ADMIN_API_KEY }}\n")],
         "K15 the key given to a second step": ("          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n", "          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n          ADMIN_API_KEY: ${{ secrets.ADMIN_API_KEY }}\n"),
         "K16 secrets read by computed name": ("          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n", "          GH_TOKEN: ${{ secrets['GITHUB_TOKEN'] }}\n"),
+        # case variants and other step forms (round-1 planner of #546):
+        "K17 upper-case SECRETS in the workflow env": (WF_ENV, WF_ENV + "  K: ${{ SECRETS.ADMIN_API_KEY }}\n"),
+        "K18 lower-case tojson(secrets) in a step": ("          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n", "          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n          ALL: ${{ tojson(secrets) }}\n"),
+        "K19 ci-gate flow-style uses step": (GATE_STEPS, GATE_STEPS + "      - {uses: actions/cache@v4}\n"),
+        "K20 ci-gate quoted uses key": (GATE_STEPS, GATE_STEPS + "      - \"uses\": actions/cache@v4\n"),
+        "K21 ci-gate mixed-case Secrets": (GATE_STEPS, GATE_STEPS + "      - run: echo ok\n        env:\n          T: ${{ Secrets.GITHUB_TOKEN }}\n"),
+        "K22 the key named again in lower case": ("          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n", "          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n          K: ${{ secrets.admin_api_key }}\n"),
     }
     failed = []
     for name, edits in muts.items():
