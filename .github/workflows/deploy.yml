@@ -161,7 +161,7 @@ jobs:
           exit 1
 
       - name: Verify 9/9 agents Active
-        # The only step that uses ADMIN_API_KEY, so the only one that gets it.
+        # The only step that uses ADMIN_API_KEY, so the only one given it.
         env:
           ADMIN_API_KEY: ${{ secrets.ADMIN_API_KEY }}
         run: |

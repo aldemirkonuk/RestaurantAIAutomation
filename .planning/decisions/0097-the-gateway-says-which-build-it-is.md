@@ -510,7 +510,10 @@ and the word `uses` appears nowhere in it (so no action step in any YAML
 form) and no secret does; `secrets.ADMIN_API_KEY` appears once, in
 that step's env.
 
-**Not held.** Whether a `run:` step can reach the cache service without an
+**Not held.** What the key step's own script does with `ADMIN_API_KEY` at
+runtime: a write to `$GITHUB_ENV`, `$GITHUB_OUTPUT` or a file would carry it to
+Stage 1's later steps; rule 5 pins where the key is given, not where it
+travels after. Whether a `run:` step can reach the cache service without an
 action (the runtime token is given to actions, not to the shell; untested
 here). GitHub's own evaluation of `permissions: {}` on a `workflow_run` job;
 the merge commit's Deploy run is its first real run.

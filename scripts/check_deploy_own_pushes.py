@@ -57,8 +57,8 @@ GAPS below. It pins only the refusal
 step, not ci-gate's first step (the conclusion check, ADR 0097's claim).
 
 KNOWN GAPS -- not held (founder, 2026-09-30: "Honest record (Recommended)").
-This guard pins the refusal step's TEXT, each job's `if`, and rule 5's key
-reach; it does not pin how ci-gate's `run:` steps EXECUTE, nor any
+This guard pins the refusal step's TEXT, each job's `if`, and where rule 5
+GIVES the key (one step's env); it does not pin how ci-gate's `run:` steps EXECUTE, nor any
 workflow-level key but `on:` and `defaults:` beyond rule 5's no-secret rule.
 The self-test plants exactly the 92 breaks listed in _self_test and nothing
 more. Changes of these kinds pass the guard unnoticed:
@@ -69,6 +69,10 @@ more. Changes of these kinds pass the guard unnoticed:
     GITHUB_ENV / GITHUB_OUTPUT;
   - a workflow-level key (`env:`, including BASH_ENV or a `BASH_FUNC_*`
     function, `permissions:`, `run-name:`) that names no secret;
+  - what the key step's own `run:` script does with ADMIN_API_KEY at
+    runtime: a write to $GITHUB_ENV or $GITHUB_OUTPUT, or to a file, would
+    carry it to Stage 1's later steps (rule 5 pins where the key is GIVEN,
+    in the text, not where it travels after);
   - a column-0 comment inside `on:`, which ends this reader's on: block and
     hides a trigger added after it.
 Changes that only alter whether ci-gate goes green on a foreign or non-push
@@ -172,7 +176,9 @@ EXPECTED_IF = {
 }
 JOB_KEY = re.compile(r"^  ([a-z][a-z0-9-]*):$")
 # The key fix (founder, 2026-09-30, verbatim: "Approve all + widen
-# (Recommended)"): ADMIN_API_KEY reaches exactly one step, the one that sends it.
+# (Recommended)"): ADMIN_API_KEY is given (referenced) in exactly one step's env,
+# the one that sends it. What that step's script does with it at runtime is not
+# read (see KNOWN GAPS).
 KEY_JOB = "verify-orchestrator"
 KEY_STEP = "Verify 9/9 agents Active"
 KEY_LINE = "          ADMIN_API_KEY: ${{ secrets.ADMIN_API_KEY }}"
