@@ -823,7 +823,7 @@ export function DraftRail({
             color: "var(--ink-4, #665D50)",
           }}
         >
-          Reaching the gateway…
+          Reading the house’s drafts…
         </p>
       ) : list.length === 0 ? (
         <p
