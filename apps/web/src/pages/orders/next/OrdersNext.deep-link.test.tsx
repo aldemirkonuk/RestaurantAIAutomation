@@ -343,3 +343,19 @@ describe('the opened order focuses its letter on the rail', () => {
     expect(await screen.findByTestId('draft-card-o-1')).toHaveAttribute('data-focused', 'true');
   });
 });
+
+describe('the stage strip at phone width (ORD-W18)', () => {
+  it('sits 3 + 2 under sm and one row from sm up, ruling the second row', async () => {
+    state.current = ordersData({ rows: [row({ id: 'o-1' })] });
+    harness('/orders');
+    const strip = await screen.findByRole('tablist', { name: 'Order stages' });
+    expect(strip.className).toMatch(/\bgrid-cols-3\b/);
+    expect(strip.className).toMatch(/\bsm:flex\b/);
+    const tabs = screen.getAllByRole('tab');
+    expect(tabs).toHaveLength(5);
+    expect(tabs[3].className).toMatch(/max-sm:border-l-0/);
+    expect(tabs[3].className).toMatch(/max-sm:border-t/);
+    expect(tabs[4].className).toMatch(/max-sm:border-t/);
+    expect(tabs[0].className).not.toMatch(/\bborder-l\b/);
+  });
+});

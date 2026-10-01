@@ -280,3 +280,13 @@ describe('the card, from the order and for the letter', () => {
     expect(screen.queryByTestId('draft-open-responses')).not.toBeInTheDocument();
   });
 });
+
+describe('the discard link is a 24px target (ORD-W19)', () => {
+  it('keeps its link look with a 24px hit area', () => {
+    draw();
+    const discard = screen.getByTestId('draft-discard');
+    expect(discard).toHaveTextContent('Discard the draft');
+    expect(discard.style.minHeight).toBe('24px');
+    expect(discard.style.textDecoration).toBe('underline');
+  });
+});

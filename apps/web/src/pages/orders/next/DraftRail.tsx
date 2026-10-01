@@ -601,8 +601,13 @@ function DraftDetail({
             setActionError(null);
             discardDraft.mutate(draft.orderId, { onError: fail("discarded") });
           }}
+          data-testid="draft-discard"
           style={{
             justifySelf: "end",
+            // A 24px hit area (WCAG 2.5.8) with the same plain-link look —
+            // it was 17px tall, the one undersized control on the card (ORD-W19).
+            minHeight: 24,
+            padding: "0 4px",
             fontFamily: SANS,
             fontSize: 11.5,
             color: "var(--ink-4, #665D50)",
