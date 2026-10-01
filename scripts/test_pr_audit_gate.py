@@ -1124,9 +1124,9 @@ def test_deploy_runs_only_on_this_repositorys_own_pushes():
     # The structural rule (a strict jobs: reader that refuses the key forms it
     # knows it could misread; each job's single `if` equal to the one allowed;
     # the refusal step's text pinned line for line) lives in
-    # scripts/check_deploy_own_pushes.py; its self-test plants exactly the 83
+    # scripts/check_deploy_own_pushes.py; its self-test plants exactly the 86
     # breaks it lists (including a fork's dispatch, another event type and a
-    # missing repository check, and 31 for the key fix: no secret in a
+    # missing repository check, and 34 for the key fix: no secret in a
     # workflow-level key, ci-gate `permissions: {}` with no `uses:` step and
     # no secret, ADMIN_API_KEY in one step's env only; founder, 2026-09-30,
     # verbatim: "Approve all + widen (Recommended)"). It does not pin how
