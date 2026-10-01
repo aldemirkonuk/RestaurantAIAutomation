@@ -318,7 +318,13 @@ studio — plus deliberate chrome-free escapes (door receipt, SimPOS terminal,
      (`POST /ask-ai/actions/:id/seal-challenge` then `sealed-confirm`, subject
      kind `ai_proposed_action`, migration `20260921114400`) — applied only by the
      seal, never by a click. Verify, Reply and invitations open their own page;
-     identity candidates say no page decides them yet.
+     identity candidates say no page decides them yet. A sheet's *Open in
+     <Room>* lands on the record the act names, not the bare room
+     (`roomForAct`, `lib/mudavym/counterRead.ts`; founder, 2026-10-01, page
+     walk-through DASH-W16e): `/orders?order=`, `/receiving?order=`,
+     `/receipts?tab=credits&credit=`, `/communications?reply=<order id>`;
+     invitations stay on bare `/team`, and *N more on <Room>* opens the whole
+     room.
    - **The width rule, "Open first, then remember"** — open at normal widths on a
      person's first visits; tucked below 1280 px and on `/reports` and
      `/inventory` to a ~52 px strip that still shows each verb with its count (a
