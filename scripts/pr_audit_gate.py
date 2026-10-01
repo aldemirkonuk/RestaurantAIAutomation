@@ -645,9 +645,10 @@ GATE_DECISION_NUMBERS = frozenset({"0050", "0090", "0097", "0231", "0237"})
 _GATE_ADR_TOKEN = rf"\badr{_S}0{{0,2}}(?:97|231|237)(?![a-z0-9])"
 _GATE_ANY = "|".join(GATE_TEXT_ALTERNATIVES + (_GATE_ADR_TOKEN,))
 GATE_SUBJECT_RE = re.compile(_GATE_ANY)
-_GATE_VERB = (rf"(?:supersed|amend|exempt|waiv|bypass|overrid|overrul|relax|suspend|repeal|revok"
+_GATE_VERB = (rf"\b(?:supersed|amend|exempt|waiv|bypass|overrid|overrul|relax|suspend|repeal|revok"
               rf"|retir|replac|skip|disabl|loosen|weaken|narrow|widen|lift|exclud|no{_S}longer"
-              rf"|need{_S}not|instead{_S}of|opt{_S}out|except|immun|unaudit|without)")
+              rf"|need{_S}not|instead{_S}of|opt{_S}out|except|immun|unaudit|without"
+              rf"|ignor|permit|deprecat|turn{_S}off|not{_S}appl|not{_S}requir|may{_S}(?:self|merge))")
 GATE_RULE_RE = re.compile(rf"{_GATE_VERB}[^\n]{{0,60}}?(?:{_GATE_ANY})|(?:{_GATE_ANY})[^\n]{{0,60}}?{_GATE_VERB}")
 _H1_RE = re.compile(r"^ {0,3}#(?:[ \t]|$)")
 _SETEXT_H1_RE = re.compile(r"^ {0,3}=+[ \t]*$")
@@ -955,6 +956,10 @@ def _scan_record(path: str, b: bytes) -> str | None:
         return "is a decision about the audit gate (GATE_DECISION_NUMBERS)"
     if GATE_SUBJECT_RE.search(skeleton(_record_subject(path, text))[0]):
         return "names the audit gate in its title, metadata or claim id"
+    if _norm_path(path).endswith(".jsonl"):
+        # JSON escapes decoded first, as the register branch does: a row's
+        # "\u0065xempt" is "exempt" to every reader of the claim.
+        text = "\n".join(_jsonl_text(ln) or ln for ln in text.split("\n"))
     if GATE_RULE_RE.search(skeleton(text)[0]):
         return "states a rule about the audit gate"
     return None
@@ -2233,6 +2238,16 @@ def run_self_test() -> int:
            bool(_own(_t(_A161, new=_ADR + "\n<h1>The audit gate's history</h1>\n")))), (True, True))
     check("a rule phrased with 'without' is owned",
           _new_adr_owned("Docs PRs merge without the audit gate."), True)
+    check("a rule phrased with the widened verbs is owned",
+          [p for p in ("Turn off the pr-audit-gate for docs.", "Ignore the audit gate for docs.",
+                       "Docs PRs may merge with no audit gate review.", "The audit gate is deprecated.",
+                       "ADR 0090 does not apply to docs.", "The audit gate is not required for docs.")
+           if not _new_adr_owned(p)], [])
+    check("a rule verb inside another word does not count",
+          _new_adr_owned("The trivyignore file sits beside the audit gate."), False)
+    check("a JSON-escaped verb in a claims fragment is decoded before the rule check",
+          bool(_own(_t(".planning/decisions/claims.d/x.jsonl",
+                       new='{"id": "ADR-0241-X", "claim": "Docs PRs are \\u0065xempt from the audit gate."}\n'))), True)
     check("a duplicate id key cannot hide a gate id",
           bool(_own(_t(".planning/decisions/claims.d/x.jsonl",
                        new='{"id": "ADR-0090-X", "id": "ADR-0241-Y", "claim": "x"}\n'))), True)

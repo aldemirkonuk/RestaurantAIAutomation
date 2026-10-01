@@ -2497,20 +2497,23 @@ file under `.planning/decisions/` is owned when any of these holds:
    - For Markdown, it is every title (an ATX `#` heading, the line above a setext `===` underline, or a line holding an HTML `<h1>`), everything before the first ATX H1, and the metadata block after it. The metadata block runs bullet by bullet, including indented and lazy continuations. The Links bullet is left out, because a cross-reference is a mention by definition.
    - For a claims fragment, it is its rows' ids, every `id` key in a row, not only the last one a JSON parser keeps.
    - For anything else, it is the whole text, as before.
-3. Anywhere in its text, a gate token sits within 60 characters of a verb that changes a rule (`GATE_RULE_RE`). Examples are "supersedes ADR 0090", "exempt from the audit gate", "the pr-merge-planner no longer runs", "gate opt-out applies" and "merge without the audit gate".
+3. Anywhere in its text, a gate token sits within 60 characters of a verb that changes a rule (`GATE_RULE_RE`). The verb must start a word. In a claims fragment, JSON escapes are decoded first. Examples are "supersedes ADR 0090", "exempt from the audit gate", "the pr-merge-planner no longer runs", "the audit gate opt-out applies", "merge without the audit gate", "ADR 0090 does not apply" and "the audit gate is deprecated".
 
 The hygiene checks still judge the whole text. These are: NUL, line separators, tag and bidi characters, and letters outside Latin and Greek. Registers keep their line-diff rules unchanged.
 
 **Measured** on `main` at `e88593bf8`: 58 of the 234 non-register files under `decisions/` were owned before, and 22 are owned now. ADR 0241 and `claims.d/fix-door-refusal-parks-not-sent.jsonl` are released.
 
 **Tests.**
-- `--self-test`: 102 → 113 invariants.
+- `--self-test`: 102 → 116 invariants.
 - `scripts/test_pr_audit_gate.py`:
   - O35 and O36 were bare mentions in a body, so they flip to released.
   - The new cases N1–N5 cover two #535 shapes that are released and three subject shapes that stay owned.
-  - Seventeen new mutations, one per switch. They include the planted mutant "the narrowing reverted", which is killed by N1, N2 and the self-test's passing-mention check.
+  - Twenty new mutations, one per switch. They include the planted mutant "the narrowing reverted", which is killed by N1, N2 and the self-test's passing-mention check.
 
-**Residual, stated rather than closed.** A record whose subject is something else can still state a rule about the gate without any listed verb, and that is released. Gate rules bind only from the gate decisions (0050, 0090, 0097, 0231, 0237) and the gate's own files, and the reviewers are told so. The CI auditor prompt in `pr_audit_gate.py` now names all five; it named only 0050 and 0090 before this change. So such a sentence changes no gate behaviour. It can only steer a reader.
+**Residual, stated rather than closed.** A record whose subject is something else can still state a rule about the gate in a way that is released. There are three ways:
+- It uses no listed verb. Broad verbs such as remove, delete, drop, change, allow, stop, lower and reduce are left out on purpose: with them, 29 records on `main` were owned instead of 22, ADR 0241 among them.
+- Its verb is more than 60 characters from the gate token.
+- It is a title that names the gate only on the earlier line of a two-line setext or split `<h1>`. Gate rules bind only from the gate decisions (0050, 0090, 0097, 0231, 0237) and the gate's own files, and the reviewers are told so. The CI auditor prompt in `pr_audit_gate.py`, the three `pr-merge-*` agent definitions and the skill now name all five; they named only 0050 and 0090 before this change. So such a sentence changes no gate behaviour. It can only steer a reader.
 
 ## Review trail
 
