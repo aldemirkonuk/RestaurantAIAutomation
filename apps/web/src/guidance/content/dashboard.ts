@@ -22,7 +22,7 @@ export const dashboardTour: TourDefinition = {
       element: 'section[aria-label="Waiting on you"]',
       title: 'Approve what waits on you',
       description:
-        'Orders waiting for your approval, oldest first. Open one and hold to approve it.',
+        'Orders waiting for your approval. Open one and hold to approve it.',
     },
     {
       element: 'section[aria-label="Running low"]',
