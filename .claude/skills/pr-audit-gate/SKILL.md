@@ -105,7 +105,10 @@ individually while what they don't cover reaches production — this gate exists
      `scripts/check_security_gate_can_fail.py` and
      `scripts/trivy-baseline-2026-09-12.txt` (ADR 0142, #362),
      `scripts/check_deploy_own_pushes.py` (the deploy.yml own-run guard: a push or manual run of this repository, founder 2026-09-30),
-     `.planning/decisions/0050-*`, `.planning/decisions/0090-*`, anything inside a
+     `.planning/decisions/0050-*`, `.planning/decisions/0090-*`,
+     `.planning/decisions/0097-*`, `.planning/decisions/0231-*` and
+     `.planning/decisions/0237-*` (in any letter case; founder 2026-10-01, "Close it
+     (Recommended)"), anything inside a
      `.claude` directory and any `.mcp.json`, `CLAUDE.md`, `CLAUDE.local.md` or
      `AGENTS.md`, each at any depth (a nested `.claude/skills/` loads when Claude
      works in that directory), a path with a control character, and any path

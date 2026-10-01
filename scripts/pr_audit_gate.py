@@ -506,6 +506,13 @@ GATE_OWNED_PREFIXES = (
     ".github/actions/",  # local actions a workflow runs with its token
     ".planning/decisions/0050-",
     ".planning/decisions/0090-",
+    # Founder, chat, 2026-10-01, verbatim: "Close it (Recommended)". The other
+    # three GATE_DECISION_NUMBERS are owned by path too, so a look-alike such as
+    # `0097-X.md` (which ADR_FILE_RE's lowercase slug misses) is owned: prefixes
+    # are compared after casefold (O1).
+    ".planning/decisions/0097-",
+    ".planning/decisions/0231-",
+    ".planning/decisions/0237-",
     # Carried from main's static tuple when #432 was merged in the 2026-09-29
     # batch: owned there after #432 branched, and dropping them would release
     # them. ADR 0212 (founder 2026-09-22): a version listed here skips
@@ -623,8 +630,8 @@ GATE_TEXT_RE = re.compile("|".join(GATE_TEXT_ALTERNATIVES))
 # DECISIONS_DIR) was owned when ANY line of it named the gate, so an ADR about
 # offline receipts that cited "the ADR 0090 reviewer" once needed the founder's
 # word. A record is now owned only when the gate is its SUBJECT:
-#   1. its number is one of GATE_DECISION_NUMBERS (0050 and 0090 are also owned
-#      by path above; 0097 is the deploy verification deploy.yml runs, 0231
+#   1. its number is one of GATE_DECISION_NUMBERS (all five are also owned by
+#      path above, in any letter case, since 2026-10-01; 0097 is the deploy verification deploy.yml runs, 0231
 #      supersedes 0050, 0237 sets the audit planner's and reviewers' effort);
 #   2. its title or metadata block (_record_subject) names the gate or one of
 #      those numbers -- this is where "Supersedes ADR 0090" or "Status: Locked"
@@ -2184,6 +2191,10 @@ def run_self_test() -> int:
         ".github/workflows/ci.yml", ".github/workflows/deploy.yml", ".claude/agents/pr-merge-planner.md",
         ".claude/settings.local.json", ".claude/rules/x.md", ".mcp.json",
         ".planning/decisions/0050-x.md", ".planning/decisions/0090-x.md",
+        # 2026-10-01, "Close it (Recommended)": a look-alike in another letter
+        # case missed the number rule; each was released before
+        ".planning/decisions/0097-X.md", ".planning/decisions/0231-Model.md",
+        ".planning/decisions/0237-EFFORT.md",
         # fixer round, 2026-09-18: each was released by the list above
         ".github/workflows/zzz-automerge.yml", ".github/actions/merge/action.yml",
         "scripts/check_deployed_sha.py", "scripts/resolve_watched_commit.py",
@@ -2204,6 +2215,10 @@ def run_self_test() -> int:
 
     check("a new ADR plus its appended row is released",
           bool(_own(_t(_A161, new=_ADR), _t(_IX, old=_IDX, new=_idx_after("| [0147]", _R161)))), False)
+    # 2026-10-01: the five numbers are also owned by path now, so the number rule
+    # is checked on its own here; nothing else would notice it removed.
+    check("the number rule owns a gate decision by itself",
+          _scan_record(".planning/decisions/0097-x.md", b"# 0097\n\nDeploys.\n") is not None, True)
     check("a new ADR with no index row is released",
           bool(_own(_t(_A161, new=_ADR))), False)
     check("an appended row in the Locked table is released",
