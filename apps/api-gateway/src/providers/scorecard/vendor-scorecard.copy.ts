@@ -271,7 +271,7 @@ export const COPY = {
   prior: {
     label: (days: number): string => `prior ${days} d`,
     couldNotRead: "could not be read",
-    notCollected: "not collected",
+    notCollected: "not recorded",
     nothing: "nothing to compare with",
     tooFew: (sample: number): string => `${sample} — too few to compare`,
   },

@@ -26,7 +26,7 @@ export const SC = {
 
   figure: {
     didNotAnswer: 'did not answer',
-    notCollected: 'not collected',
+    notCollected: 'not recorded',
     nothingToScore: 'nothing to score',
     tooFew: 'too few',
     ofMinimum: (sample: number, minimum: number) => `${sample} of ${minimum}`,
@@ -65,7 +65,6 @@ export const SC = {
     readFailedTail: 'That is a failed read, not a clean record — no line here is claimed.',
     tryAgain: 'Try again',
     reading: 'Reading the orders, the door, the invoices, the mail and the credits…',
-    noRows: 'no rows',
     claimsBelowMinimum: (minimum: number) =>
       `Under ${minimum} claims there is no percent — these are the claims themselves:`,
     howScored: 'How this is scored',

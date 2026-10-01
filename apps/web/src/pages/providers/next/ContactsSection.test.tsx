@@ -59,7 +59,7 @@ const DEFAULTED = {
   reach: 'landline' as const,
   phoneTypeStated: false,
   reachSays:
-    'This number is recorded as a main line, which is also what the book writes when nobody has said. Nothing is texted to it until somebody confirms the type on the vendor’s contact sheet.',
+    'Nobody has said what kind of number this is, so it shows as a main line. Nothing is texted to it until someone confirms it is a mobile or WhatsApp number on the vendor’s contact sheet.',
 };
 
 beforeEach(() => {
