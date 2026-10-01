@@ -27,6 +27,9 @@ export function PageTipStrip({ className }: { className?: string }) {
       role="region"
       aria-label="Page tip"
       data-guidance="tip-strip"
+      // The note paints no ground of its own; it sits on the shell's light
+      // page area, so its tokens resolve as paper even under a charcoal choice.
+      data-ground="paper"
       className={['mudavym mdv-tipnote', className].filter(Boolean).join(' ')}
     >
       <p className="mdv-tipnote__line" id={bodyId}>
