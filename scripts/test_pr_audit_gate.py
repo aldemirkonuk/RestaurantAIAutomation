@@ -720,6 +720,25 @@ def test_the_case_fix_added_3_cases(scratch):
     assert len([n for n in names if n[0] == "P"]) == 3
 
 
+def test_the_adr_guard_keeps_every_slug_a_number_wears_in_one_tree():
+    """2026-10-01, the founder: "Close it (Recommended)". The ADR-number guard kept
+    one slug per number per tree, so a same-tree second slug sorting before the
+    real one (`0097-X.md`, `0097-a.md`) was overwritten and never reported."""
+    spec = importlib.util.spec_from_file_location(
+        "adr_guard", ROOT / "scripts/check_adr_numbers_unique.py")
+    guard = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(guard)
+    real = "the-gateway-says-which-build-it-is"
+    for slug in ("X", "a"):
+        lines = [f".planning/decisions/0097-{slug}.md", f".planning/decisions/0097-{real}.md"]
+        tree = guard.parse_adrs(lines)
+        assert tree["0097"] == {slug, real}, tree
+    # End to end, on a real clone: the self-test introduces 9001-X.md and 9001-a.md
+    # beside main's 9001-synthetic-base.md and requires exit 1 with a COLLISION.
+    with contextlib.redirect_stdout(io.StringIO()) as out:
+        assert guard.run_self_test() == 0, out.getvalue()
+
+
 def test_html_tag_re_does_not_catastrophically_backtrack_on_an_unclosed_tag():
     """r5-gate.json must-fix 2: `_HTML_TAG_RE`'s attribute-name class
     (`[^\\s=/>]+`) and unquoted-value class (`[^\\s>]+`) both used to allow a
