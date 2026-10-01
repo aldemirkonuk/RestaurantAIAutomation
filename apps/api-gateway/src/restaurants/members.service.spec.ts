@@ -872,6 +872,17 @@ describe("MembersService.assertMembership — the access row decides, and an unr
     });
   });
 
+  it("[REVERT-FAILS] a just-created manager row stamped 1 s ahead of the gateway's clock is a manager (the valid_from tolerance)", async () => {
+    const db = seedActor(
+      { role: "manager", is_active: true, valid_from: new Date(Date.now() + 1_000).toISOString() },
+      { role: "staff", restaurant_id: RID },
+    );
+
+    await expect(
+      service(db).assertMembership(ACTOR, RID, "owner|manager"),
+    ).resolves.toEqual({ role: "manager" });
+  });
+
   it("a live row inside its window decides, whatever the users row says", async () => {
     const manager = seedActor(
       { role: "manager", is_active: true, valid_from: PAST, valid_until: FUTURE },

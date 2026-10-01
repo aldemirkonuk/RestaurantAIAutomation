@@ -45,7 +45,10 @@ Filed by `fix/role-read-error-means-no-role` (ADR 0248, "What stays open" (b)), 
 - `lookupRestaurantRole` and `MembersService.assertMembership` give a row's role only while `isLiveMembership` holds (`common/tenant/live-membership.ts:39-55`, imported, not copied).
 - `TeamService.assertAccess` still reads `is_active` alone. Its entry at `tech-debt.d/2026-09-29-docs-merge-queue-followups-2026-09-29.md:89-94` stays OPEN for it and for the last-owner counts.
 
-**What is left.** `isLiveMembership` compares `valid_from` with the gateway's clock, while every access-row insert takes `valid_from` from the database's `now()`. So a new row reads as not yet valid while the gateway's clock is behind the database's. The skew was not measured.
+**The clock.** `isLiveMembership` compares `valid_from` with the gateway's clock, while every access-row insert takes `valid_from` from the database's `now()`.
+- On the founder's answer *"Small tolerance on valid_from (Recommended)"*, it now treats a `valid_from` up to two minutes ahead as started (`VALID_FROM_CLOCK_TOLERANCE_MS = 120_000`, this branch, `common/tenant/live-membership.ts:41`). The option read: *"The shared check treats a valid_from up to 2 minutes in the future as already started. Since only the database's now() ever writes it, this cannot let anyone in early in practice. The predicate is also used by the recipient resolver, which gets the same tolerance. That is one line plus a spec in #561."*
+- Rejected: *"Record it as open"* and *"Ignore valid_from, check only valid_until"*.
+- **What is left:** a gateway clock more than two minutes behind the database's. The skew was not measured.
 
 ## `MembersService.assertMembership` read `users.role` when its access read errored — ~~OPEN~~ CLOSED on `fix/role-read-error-means-no-role` — 2026-10-01
 

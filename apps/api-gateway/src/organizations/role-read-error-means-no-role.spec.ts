@@ -31,6 +31,10 @@ import {
   readRestaurantRole,
 } from "./organizations.service";
 import { DatabaseService } from "../database/database.service";
+import {
+  VALID_FROM_CLOCK_TOLERANCE_MS,
+  isLiveMembership,
+} from "../common/tenant/live-membership";
 import { DistributorFeedController } from "../distributor-feed/distributor-feed.controller";
 import { DistributorFeedService } from "../distributor-feed/distributor-feed.service";
 import { PriceCodeMappingsService } from "../distributor-feed/price-code-mappings.service";
@@ -311,6 +315,62 @@ describe("a row that exists decides alone, live or not (Close both in #561)", ()
     await expect(
       readRestaurantRole(supabase, PERSON, HOUSE, { strict: true }),
     ).resolves.toBeNull();
+  });
+});
+
+/**
+ * The `valid_from` clock tolerance (founder, 2026-10-01: "Small tolerance on
+ * valid_from (Recommended)", ADR 0248). The database stamps `valid_from`; the
+ * gateway's clock compares it. Cases marked [REVERT-FAILS] here fail with
+ * `common/tenant/live-membership.ts` at 1c1a676f8, which had no tolerance.
+ */
+describe("isLiveMembership — a valid_from up to two minutes ahead counts as started", () => {
+  const NOW = Date.parse("2026-10-01T12:00:00.000Z");
+  const at = (offsetMs: number) => new Date(NOW + offsetMs).toISOString();
+
+  it("[REVERT-FAILS] the tolerance is two minutes", () => {
+    expect(VALID_FROM_CLOCK_TOLERANCE_MS).toBe(120_000);
+  });
+
+  it("[REVERT-FAILS] valid_from 30 s ahead of now is live", () => {
+    expect(isLiveMembership({ is_active: true, valid_from: at(30_000) }, NOW)).toBe(true);
+  });
+
+  it("[REVERT-FAILS] valid_from exactly 120 s ahead of now is live (the boundary)", () => {
+    expect(isLiveMembership({ is_active: true, valid_from: at(120_000) }, NOW)).toBe(true);
+  });
+
+  it("valid_from 1 ms past the boundary is not live", () => {
+    expect(isLiveMembership({ is_active: true, valid_from: at(120_001) }, NOW)).toBe(false);
+  });
+
+  it("valid_from 3 min ahead of now is not live", () => {
+    expect(isLiveMembership({ is_active: true, valid_from: at(180_000) }, NOW)).toBe(false);
+  });
+
+  it("valid_until has no tolerance: at now it has ended, 1 ms later it has not", () => {
+    expect(isLiveMembership({ is_active: true, valid_until: at(0) }, NOW)).toBe(false);
+    expect(isLiveMembership({ is_active: true, valid_until: at(1) }, NOW)).toBe(true);
+  });
+
+  it("[REVERT-FAILS] through the shared lookup: a just-created owner row stamped 1 s ahead gives owner", async () => {
+    const { db, supabase } = makeDb({
+      access: {
+        role: "owner",
+        is_active: true,
+        valid_from: new Date(Date.now() + 1_000).toISOString(),
+        valid_until: null,
+      },
+      user: { role: "owner", restaurant_id: HOUSE },
+    });
+
+    expect(await lookupRestaurantRole(supabase, PERSON, HOUSE)).toEqual({
+      role: "owner",
+      readError: null,
+    });
+    await expect(
+      new OrganizationsService(db).assertCanManageRestaurant(PERSON, HOUSE, "test"),
+    ).resolves.toBeUndefined();
   });
 });
 

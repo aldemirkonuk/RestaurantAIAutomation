@@ -2,12 +2,13 @@
 
 - **Status:** Locked 2026-10-01.
 - **Date:** 2026-10-01
-- **Decider:** Aldemir (founder). Four answers, all 2026-10-01 in session 9512567d, each relayed to the fix lane by the lane coordinator. The picked options are quoted verbatim with their option text.
+- **Decider:** Aldemir (founder). Five answers, all 2026-10-01 in session 9512567d, each relayed to the fix lane by the lane coordinator. The picked options are quoted verbatim with their option text.
   1. **What an access-read error means.** He answered *"Next PR: error means no role (Recommended)"*. The option read: *"Fall back to users.role only when the access read SUCCEEDED and found no row. On a read error, return no role, so managers get 403 during an outage on these routes. One-file change plus tests; behaviour for accounts that predate the access register is unchanged."*
   2. **What the order seal does with a role it cannot read.** The caller sweep below found six callers that do more than refuse once the lookup returns no role. He answered *"Strict for the order seal (Recommended)"*. The option read: *"Ship as decided. The order seal alone reads the role strictly: an unreadable role returns 500 with nothing parked and no audit row, and the person retries. This matches ADR 0020's rule that an outage must not be reported as a fact about the person. The five read views degrade, are recorded in the ADR, and grant nothing. About one extra file plus a spec."*
   3. **The second copy of the rule, `MembersService.assertMembership`.** He answered *"Fold into #561 (Recommended)"*. The option read: *"Apply the same rule to this copy: an access-read error means no role, so the caller gets a 403. That is about 2 more files and a spec, making 9 files. One review covers both copies of the rule."* Rejected: *"Separate PR after #561"* and *"Record only"*.
   4. **Inactive rows and the validity window.** He answered *"Close both in #561"*. The option read: *"Fall back to users.role only when no access row exists at all, and honour the validity window. This widens #561 and changes more callers."* Rejected: *"Count in production, then record (Recommended)"*, which would have run two read-only count queries and recorded the items as OPEN if both were 0; and *"Record only"*.
-- **Keywords:** lookupRestaurantRole, MembersService.assertMembership, isLiveMembership, is_active, valid_from, valid_until, inactive row, held membership, readRestaurantRole, resolveRestaurantRole, assertCanManageRestaurant, user_restaurant_access, users.role, legacy fallback, access-read error, outage, readError, RestaurantRoleUnreadableError, assertApprovalAllowed, order seal, APPROVAL_NEEDED, order_approval_refused, registerAccount, acceptHeldMembership
+  5. **The clock the window is read with.** The caller re-sweep found that `valid_from` is stamped by the database and compared with the gateway's clock. He answered *"Small tolerance on valid_from (Recommended)"*. The option read: *"The shared check treats a valid_from up to 2 minutes in the future as already started. Since only the database's now() ever writes it, this cannot let anyone in early in practice. The predicate is also used by the recipient resolver, which gets the same tolerance. That is one line plus a spec in #561."* Rejected: *"Record it as open"* (leave the check exact, and record the skew as open and unmeasured) and *"Ignore valid_from, check only valid_until"*.
+- **Keywords:** VALID_FROM_CLOCK_TOLERANCE_MS, clock skew, lookupRestaurantRole, MembersService.assertMembership, isLiveMembership, is_active, valid_from, valid_until, inactive row, held membership, readRestaurantRole, resolveRestaurantRole, assertCanManageRestaurant, user_restaurant_access, users.role, legacy fallback, access-read error, outage, readError, RestaurantRoleUnreadableError, assertApprovalAllowed, order seal, APPROVAL_NEEDED, order_approval_refused, registerAccount, acceptHeldMembership
 - **Links:**
   - [[0020-no-fabricated-answers]] (an outage is not a fact about the person).
   - `v3.0-TECH-DEBT.md` 44.1i (the `users`-row fallback admits a stale row as well as a legacy one). This ADR narrows it for these two helpers and does not close it: see "What stays open".
@@ -112,10 +113,10 @@ This is every caller of `lookupRestaurantRole`, `readRestaurantRole`, `resolveRe
   - After that migration was applied, a read-only re-measure the same day found 0 `users` rows naming a house without an active row there. This is recorded in the ADR 0164 bracket of claim `ADR-0162-USERS-ROW-FALLBACK-RETIRED`, `CLAIMS.jsonl:361`.
   - Not re-measured since. One writer can still leave a `users` row naming a house with no row: `registerRestaurant` does not read the error of its owner-row insert (`auth.service.ts:1882-1890`). That person keeps the fallback, because the new rule bites only when a row exists.
 - **The window.**
-  - Every access-row insert takes `valid_from` from the database default `now()` (baseline `:5817`). The inserts are at `auth.service.ts:1719, 1882, 2628, 2898`, `organizations.service.ts:812` and `restaurants/members.service.ts:631`.
-  - `isLiveMembership` compares `valid_from` with the gateway's `Date.now()` (`live-membership.ts:39-55`). So a row inserted with the database's clock reads as not yet valid while the gateway's clock is behind the database's.
-  - That includes a new house's first owner row (`createFirstHouse`, `auth.service.ts:1719-1725`, before its tokens are minted at `:1740`), for the length of that skew and no longer.
-  - The skew was not measured.
+  - Every access-row insert takes `valid_from` from the database default `now()` (baseline `:5817`). The inserts are at `auth.service.ts:1719, 1882, 2628, 2898`, `organizations.service.ts:812` and `restaurants/members.service.ts:631`. `acceptHeldMembership` writes the gateway's time (`auth.service.ts:3133`).
+  - `isLiveMembership` compared `valid_from` with the gateway's `Date.now()` exactly (`live-membership.ts:39-55`). So a row inserted with the database's clock read as not yet valid while the gateway's clock was behind the database's.
+  - That included a new house's first owner row (`createFirstHouse`, `auth.service.ts:1719-1725`, before its tokens are minted at `:1740`), for the length of that skew and no longer.
+  - The skew was not measured. The founder's fifth answer adds a two-minute tolerance: see Decision 7.
 - **A live row with no role.** The role CHECK admits NULL (`20260902200000_team_access_role_is_a_known_role.sql:62-63`). Every insert passes a role. Production on 2026-09-02 held 0 NULL roles (that migration's header, `:29-30`).
 - **First-house and onboarding flows.**
   - `registerAccount` writes no row and names no house (`auth.service.ts:1557-1566`).
@@ -150,6 +151,11 @@ This is every caller of `lookupRestaurantRole`, `readRestaurantRole`, `resolveRe
 2. **"Count in production, then record (Recommended)"** (rejected): two read-only counts, then record as OPEN if both were 0.
 3. **"Record only"** (rejected).
 
+**Fifth question: `valid_from` is stamped by the database and read with the gateway's clock.**
+1. **"Small tolerance on valid_from (Recommended)"** (picked).
+2. **"Record it as open"** (rejected): leave the check exact, and record the skew as open and unmeasured.
+3. **"Ignore valid_from, check only valid_until"** (rejected).
+
 ## Decision
 
 1. **An access read that errors returns `role: null` with `readError` set, and the `users` row is not read** (this branch, `organizations.service.ts:74-79`). `readRestaurantRole` with `strict: true`, and `OrganizationsService.readRestaurantRole`, still throw on that error, with the same message.
@@ -159,7 +165,7 @@ This is every caller of `lookupRestaurantRole`, `readRestaurantRole`, `resolveRe
    - The lookup reads the person's one row here whatever its `is_active`. `(user_id, restaurant_id)` is UNIQUE (baseline `:8152`), so there is at most one.
    - It selects `is_active, valid_from, valid_until`, and gives the row's role only while `isLiveMembership` holds and the role is non-empty. Otherwise it gives `role: null` with no `readError`, and the `users` row is not read.
    - Only a read that succeeded and found no row falls back to `users.role` when `users.restaurant_id` is this house (`:93-106`), unchanged.
-   - `isLiveMembership` is imported, not copied. It treats an absent bound as open, an unparseable one as failing the row, and compares with `Date.now()`.
+   - `isLiveMembership` is imported, not copied. It treats an absent bound as open, an unparseable one as failing the row, and compares with `Date.now()`, with the `valid_from` tolerance of Decision 7.
 5. **`MembersService.assertMembership` keeps the same three rules as its own copy** (this branch, `members.service.ts:62-109`).
    - An access read that errors is logged and answers 403, and the `users` row is not read.
    - A row that exists gives its role only while `isLiveMembership` holds.
@@ -170,6 +176,15 @@ This is every caller of `lookupRestaurantRole`, `readRestaurantRole`, `resolveRe
    - It fired because it pins the exact text of both fallbacks.
    - The fallback still exists for a person with no row at all, so the claim stays OPEN.
    - Its indexes 0 and 1 now pin the new text.
+7. **`isLiveMembership` treats a `valid_from` up to two minutes ahead of `now` as started** (this branch, `common/tenant/live-membership.ts:41` and `:63`).
+   - The constant is the exported `VALID_FROM_CLOCK_TOLERANCE_MS = 120_000`, and the boundary is inclusive: exactly 120 s ahead is live, 120,001 ms is not.
+   - `valid_until` has no tolerance.
+   - Every caller of the predicate gets the tolerance, and for each the only change is that a row whose `valid_from` sits at most two minutes ahead of the gateway's clock reads as started. The callers on this branch:
+     - `organizations/organizations.service.ts:88`, `lookupRestaurantRole`: the role lookups.
+     - `restaurants/members.service.ts:83`, `assertMembership`.
+     - `communications/recipient-resolver.service.ts:403`, `getUserIdsForRoles` (`:377`): who receives a notification addressed to a role.
+     - `common/tenant/live-membership.ts:133`, `houseMembersInRoles`. It is read by `websocket/websocket.gateway.ts:671` (owner- and manager-only emits), `common/orchestrator/inbound-responder.service.ts:1533` (manager notifications), `notifications/producers/market-price.producer.ts:132` and `team/access-audit.ts:183` (who is told of an access change).
+   - Every code path writes its own `now` into `valid_from`. A start that reads as ahead of the gateway's clock comes from a clock difference, or from a hand-written value.
 
 ## Consequences
 
@@ -185,7 +200,7 @@ This is every caller of `lookupRestaurantRole`, `readRestaurantRole`, `resolveRe
   - A person whose row here is inactive, outside its window or empty gets no role from either helper, whatever `users.role` says.
 - **Revisit when:**
   - Access-read errors are seen in production often enough that the 403s or the 500 reach real people. The 500 message names the read that failed.
-  - A legitimate owner or manager is refused because their row here is not live. The likeliest cause is the clock skew under "Who can be in that newly changed state".
+  - A legitimate owner or manager is refused because their row here is not live. A gateway clock more than two minutes behind the database's would do it.
 
 ## What stays open
 
@@ -196,12 +211,13 @@ Each item was measured on this branch by reading code. No production query was r
 - **Other readers of the same two tables are unchanged.** They are listed under "Outside both helpers".
   - `TeamService.assertAccess` still reads `is_active` alone. Its `valid_until` gap stays filed at `tech-debt.d/2026-09-29-docs-merge-queue-followups-2026-09-29.md:89-94`, which this ADR closes for `MembersService.assertMembership` only.
   - The last-owner counts that entry names are also unchanged.
-- **The clock.** A row inserted with the database's `now()` reads as not yet valid while the gateway's clock is behind the database's. The skew was not measured.
+- **A clock more than two minutes behind the database's.** Beyond the tolerance, a just-written row still reads as not yet started. The skew was not measured.
 
 **Closed by this ADR:**
 - **(a) An inactive row plus a `users` row naming this house no longer reads `users.role`.** This is the founder's fourth answer. Who could be in that state is measured under "Who can be in that newly changed state".
 - **(b) The validity window is honoured** by both helpers, through `isLiveMembership`.
 - **(d) `MembersService.assertMembership`'s access-read-error fallback is closed.** This is the founder's third answer.
+- **The clock skew on `valid_from` is covered up to two minutes.** This is the founder's fifth answer; see Decision 7.
 
 ## Review trail
 
@@ -209,3 +225,4 @@ Each item was measured on this branch by reading code. No production query was r
 |---|---|---|
 | 2026-10-01 | — | Created on `fix/role-read-error-means-no-role`, with answers 1 and 2. |
 | 2026-10-01 | — | Widened on the same branch with answers 3 and 4: the row-decides and window rules, and `MembersService.assertMembership`. |
+| 2026-10-01 | — | Answer 5 on the same branch: the two-minute `valid_from` tolerance in `isLiveMembership`. |

@@ -13,8 +13,8 @@
  * A row is live when ALL of:
  *   - `is_active` is exactly `true`
  *     (baseline `user_restaurant_access.is_active boolean DEFAULT true NOT NULL`);
- *   - `valid_from` is not in the future
- *     (`valid_from timestamptz DEFAULT now() NOT NULL`);
+ *   - `valid_from` is not more than `VALID_FROM_CLOCK_TOLERANCE_MS` ahead of
+ *     `now` (`valid_from timestamptz DEFAULT now() NOT NULL`);
  *   - `valid_until` is null or in the future (`valid_until timestamptz`).
  *
  * A timestamp that is present but cannot be parsed fails the row (closed, not
@@ -23,6 +23,22 @@
  * it — so every reader selects all three columns, spelled out as a literal
  * so `scripts/check_read_columns_exist.py` verifies them against the schema.
  */
+
+/**
+ * How far ahead of `now` a `valid_from` may sit and still count as started:
+ * two minutes (founder, 2026-10-01: "Small tolerance on valid_from
+ * (Recommended)", ADR 0248).
+ *
+ * The two sides of the comparison usually come from different clocks. Every
+ * insert into `user_restaurant_access` takes `valid_from` from the DATABASE
+ * (`DEFAULT now()`; `acceptHeldMembership` alone writes the gateway's time);
+ * this predicate compares it with the GATEWAY's `Date.now()`. Without a
+ * tolerance, a row written a moment ago reads as not yet started for as long
+ * as the gateway's clock runs behind the database's, and the role lookups
+ * that apply this predicate (ADR 0248) refuse that person, a new house's
+ * first owner included. `valid_until` has no tolerance.
+ */
+export const VALID_FROM_CLOCK_TOLERANCE_MS = 120_000;
 
 export interface MembershipWindow {
   is_active?: boolean | null;
@@ -44,7 +60,7 @@ export function isLiveMembership(
 
   const from = instant(row.valid_from);
   if (from === "unparseable") return false;
-  if (from !== null && from > now) return false;
+  if (from !== null && from > now + VALID_FROM_CLOCK_TOLERANCE_MS) return false;
 
   const until = instant(row.valid_until);
   if (until === "unparseable") return false;
