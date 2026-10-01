@@ -10,7 +10,8 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render as rtlRender, screen, waitFor, within } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import type { ProspectDto, SenderReputationDto } from '../../../hooks/queries/usePromotionsQueries';
 
 const h = vi.hoisted(() => ({
@@ -42,6 +43,13 @@ vi.mock('../../../contexts/AuthContext', async (importOriginal) => ({
 }));
 
 import WhoIsWriting from './WhoIsWriting';
+
+// COMMS-W5 (2026-10-01): the section folds to its summary line and opens from
+// `?senders=open`. Every test below reads the OPEN section; the fold itself is
+// proved at the bottom of this file.
+function render(ui: React.ReactElement, at = '/communications?senders=open') {
+  return rtlRender(<MemoryRouter initialEntries={[at]}>{ui}</MemoryRouter>);
+}
 
 const sender = (over: Partial<SenderReputationDto> = {}): SenderReputationDto => ({
   id: 's-skurnik',
@@ -324,5 +332,18 @@ describe('more than one house', () => {
     expect(screen.getByText(/Belongs to another house/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Add Bodega Norte as a vendor' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Add Tuscan Direct Imports as a vendor' })).toBeInTheDocument();
+  });
+});
+
+describe('the fold (COMMS-W5)', () => {
+  it('rests folded to its summary line, and Show opens it', () => {
+    render(<WhoIsWriting />, '/communications');
+    expect(screen.getByTestId('who-summary')).toBeInTheDocument();
+    expect(screen.queryByText('Trusted senders')).toBeNull();
+    const show = screen.getByRole('button', { name: 'Show' });
+    expect(show.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(show);
+    expect(screen.getByText('Trusted senders')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Hide' }).getAttribute('aria-expanded')).toBe('true');
   });
 });

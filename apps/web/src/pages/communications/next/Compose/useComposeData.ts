@@ -271,7 +271,20 @@ export function useComposeData() {
  * requests panel offers a release exactly when the composer would offer a
  * send. `restaurantId` is the key both share.
  */
-export function useLetterSenderStanding(): { restaurantId: string; canRelease: boolean } {
+export function useLetterSenderStanding(): {
+  restaurantId: string;
+  canRelease: boolean;
+  /** This person may send, but the house has no mailbox to send from (COMMS-W11). */
+  noMailbox: boolean;
+  /** Why this person may send: owner, manager or a grant (COMMS-W11b). */
+  basis: 'owner' | 'manager' | 'grant' | null;
+  /** The mailbox is being read again right now. */
+  checking: boolean;
+  /** When the mailbox was last read (ms), 0 when it never was. */
+  checkedAt: number;
+  /** Read the mailbox again, so a mailbox connected elsewhere unlocks the send here. */
+  recheck: () => void;
+} {
   const { user, activeRestaurantId } = useAuth();
   const restaurantId = activeRestaurantId ?? user?.restaurantId ?? '';
   const senderQ = useQuery<SenderIdentity>({
@@ -287,6 +300,11 @@ export function useLetterSenderStanding(): { restaurantId: string; canRelease: b
   return {
     restaurantId,
     canRelease: Boolean(senderQ.data?.sendable && standing?.readable && standing.maySend),
+    noMailbox: Boolean(senderQ.data && !senderQ.data.sendable && standing?.readable && standing.maySend),
+    basis: standing?.readable ? standing.basis : null,
+    checking: senderQ.isFetching,
+    checkedAt: senderQ.dataUpdatedAt,
+    recheck: () => void senderQ.refetch(),
   };
 }
 

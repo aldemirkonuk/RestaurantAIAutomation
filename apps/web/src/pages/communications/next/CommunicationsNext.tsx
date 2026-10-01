@@ -48,7 +48,7 @@ import { TemplateSheet } from './TemplateSheet';
 import WhoIsWriting from './WhoIsWriting';
 import { ComposeSheet } from './Compose/ComposeSheet';
 import { DraftedReplyPanel, type DraftedReply } from './DraftedReplyPanel';
-import { LetterRequestsPanel } from './LetterRequestsPanel';
+import { LetterRequestsPanel, useLetterRequests } from './LetterRequestsPanel';
 import { useLetterSenderStanding } from './Compose/useComposeData';
 import { HouseDrafts, useHouseDrafts, type HouseDraft } from './Compose/HouseDrafts';
 import { COMMS_SERVER_WINDOWS, useCommsNextData } from './useCommsNextData';
@@ -246,7 +246,7 @@ function StateChip({
   );
 }
 
-function LedgerRow({ item }: { item: ProcurementHistoryItem }) {
+function LedgerRow({ item, hideVendor = false }: { item: ProcurementHistoryItem; hideVendor?: boolean }) {
   const [open, setOpen] = useState(false);
   return (
     <div style={{ borderBottom: '1px solid var(--paper-2, #EAE4D8)' }}>
@@ -265,9 +265,11 @@ function LedgerRow({ item }: { item: ProcurementHistoryItem }) {
         <span style={{ fontFamily: MONO, fontSize: 10.5, color: 'var(--ink-4, #665D50)', minWidth: 44 }}>
           {fmtWhen(item.sentAt ?? item.createdAt)}
         </span>
-        <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--ink-1, #211C16)' }}>
-          {item.providerName ?? EM}
-        </span>
+        {!hideVendor && (
+          <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--ink-1, #211C16)' }}>
+            {item.providerName ?? EM}
+          </span>
+        )}
         <span style={{ fontSize: 12, color: 'var(--ink-2, #4F473C)' }}>
           {typeLabel(item.emailType, TYPE_LABELS, item.direction)}
           {item.wineName ? ` · ${item.wineName}` : ''}
@@ -332,6 +334,126 @@ function LedgerRow({ item }: { item: ProcurementHistoryItem }) {
   );
 }
 
+/* COMMS-W7 preview (walk-through 2026-10-01). Three book layouts for the
+   founder to compare; `?book=compare` draws them side by side. Whichever he
+   picks stays and the rest of this block leaves with the preview switch. */
+type BookGroup = { key: string; vendor: string; order: string | null; items: ProcurementHistoryItem[] };
+
+function groupBook(rows: ProcurementHistoryItem[], by: 'vendor' | 'conversation'): BookGroup[] {
+  // `rows` arrive newest first, so a group's first row is its newest letter
+  // and Map insertion order is newest activity first.
+  const groups = new Map<string, BookGroup>();
+  for (const item of rows) {
+    const vendorKey = item.providerId ?? item.providerName ?? 'unknown';
+    const key = by === 'vendor' ? vendorKey : `${vendorKey}|${item.orderId ?? ''}`;
+    const g = groups.get(key) ?? {
+      key,
+      vendor: item.providerName ?? EM,
+      order: by === 'vendor' ? null : item.orderNumber ?? 'no order',
+      items: [],
+    };
+    g.items.push(item);
+    groups.set(key, g);
+  }
+  return [...groups.values()];
+}
+
+function ConversationRow({ group }: { group: BookGroup }) {
+  const [open, setOpen] = useState(false);
+  const latest = group.items[0];
+  // ADR 0020: a newer letter must never hide an older one that did not leave.
+  const earlier = group.items.slice(1).filter((i) => i.direction !== 'INBOUND');
+  const earlierNotSent = earlier.filter((i) => sendState(i.status) === 'failed').length;
+  const earlierUnconfirmed = earlier.filter((i) => sendState(i.status) === 'unconfirmed').length;
+  const n = group.items.length;
+  return (
+    <div style={{ borderBottom: '1px solid var(--paper-2, #EAE4D8)' }}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className="cm-row flex w-full items-start gap-3 py-2.5 text-left"
+        style={{ border: 'none', cursor: 'pointer', fontFamily: SANS, transition: `background ${ink.ms}ms ${ink.easing}` }}
+      >
+        <span style={{ fontFamily: MONO, fontSize: 10.5, color: 'var(--ink-4, #665D50)', minWidth: 44, paddingTop: 2 }}>
+          {fmtWhen(latest.sentAt ?? latest.createdAt)}
+        </span>
+        <span className="flex min-w-0 flex-col gap-0.5">
+          <span style={{ fontSize: 13, color: 'var(--ink-1, #211C16)' }}>
+            <span style={{ fontWeight: 600 }}>{group.vendor}</span>
+            <span style={{ color: 'var(--ink-4, #665D50)' }}> · {group.order}</span>
+          </span>
+          <span style={{ fontSize: 12, color: 'var(--ink-2, #4F473C)' }}>
+            {typeLabel(latest.emailType, TYPE_LABELS, latest.direction)}
+            {latest.wineName ? ` · ${latest.wineName}` : ''}
+          </span>
+          {(earlierNotSent > 0 || earlierUnconfirmed > 0) && (
+            <span style={{ fontSize: 11.5, color: 'var(--alarm-deep, #8C3322)' }}>
+              {[
+                earlierNotSent > 0 ? `${earlierNotSent} earlier letter${earlierNotSent === 1 ? '' : 's'} not sent` : null,
+                earlierUnconfirmed > 0 ? `${earlierUnconfirmed} earlier sent · unconfirmed` : null,
+              ]
+                .filter(Boolean)
+                .join(' · ')}
+            </span>
+          )}
+        </span>
+        <span className="ml-auto" />
+        <span style={{ fontFamily: MONO, fontSize: 9.5, color: 'var(--ink-4, #665D50)', whiteSpace: 'nowrap', paddingTop: 3 }}>
+          {n} letter{n === 1 ? '' : 's'}
+        </span>
+        <StateChip status={latest.status} direction={latest.direction} reason={latest.relayRefusalReason} />
+      </button>
+      {open && (
+        <div className="pb-2 pl-14" style={{ animation: `cm-settle ${settle.ms}ms ${settle.easing} both` }}>
+          {[...group.items].reverse().map((item) => (
+            <LedgerRow key={item.id} item={item} hideVendor />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BookByVendor({ rows }: { rows: ProcurementHistoryItem[] }) {
+  return (
+    <>
+      {groupBook(rows, 'vendor').map((g) => (
+        <div key={g.key} style={{ marginBottom: 14 }}>
+          <h3
+            style={{
+              fontFamily: MONO,
+              fontSize: 9.5,
+              fontWeight: 600,
+              letterSpacing: '0.14em',
+              textTransform: 'uppercase',
+              color: 'var(--ink-3, #7C7365)',
+              margin: '10px 0 2px',
+            }}
+          >
+            {g.vendor}
+          </h3>
+          <div style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
+            {g.items.map((item) => (
+              <LedgerRow key={item.id} item={item} hideVendor />
+            ))}
+          </div>
+        </div>
+      ))}
+    </>
+  );
+}
+
+function BookByConversation({ rows }: { rows: ProcurementHistoryItem[] }) {
+  return (
+    <div style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
+      {groupBook(rows, 'conversation').map((g) => (
+        <ConversationRow key={g.key} group={g} />
+      ))}
+    </div>
+  );
+}
+
 export default function CommunicationsNext() {
   const data = useCommsNextData();
   // Letters staff asked a manager to send (founder answer 3, 2026-09-21).
@@ -361,6 +483,21 @@ export default function CommunicationsNext() {
       setParams(params, { replace: true });
     }
   };
+
+  /* Everything waiting on a person, from the three reads that list it: letters
+     staff asked a manager to send, replies the house drafted on orders, and the
+     house's own drafted letters. The count is null until all three have
+     answered, so it can never undercount a list still in flight. */
+  const letterQ = useLetterRequests(letterStanding.restaurantId);
+  const waitingParts = [
+    letterStanding.restaurantId ? letterQ.data?.requests.length ?? null : 0,
+    data.draftsKnown ? data.drafts.length : null,
+    houseDrafts.drafts ? houseDrafts.drafts.length : null,
+  ];
+  const waitingCount = waitingParts.some((n) => n === null)
+    ? null
+    : waitingParts.reduce<number>((a, n) => a + (n ?? 0), 0);
+  const waitingFailed = letterQ.isError || data.failed.drafts || houseDrafts.failed;
 
   return (
     <div
@@ -398,15 +535,17 @@ export default function CommunicationsNext() {
           </div>
           {/* the at-a-glance strip the old page earned its keep with */}
           <div className="flex flex-wrap gap-6">
-            <GlanceFigure label="Threads" value={data.glance.threads} failed={data.failed.threads} />
-            <GlanceFigure
-              label="Drafts waiting"
-              value={data.glance.draftsPending}
-              failed={data.failed.drafts}
-            />
+            <GlanceFigure label="Waiting on you" value={waitingCount} failed={waitingFailed} />
             <GlanceFigure
               label="Sent · 30 days"
               value={data.glance.sentLast30}
+              floor={data.glance.sentLast30Truncated}
+              floorNote={`At least this many: the history endpoint serves at most ${COMMS_SERVER_WINDOWS.HISTORY_ROWS} rows, and that window is full.`}
+              failed={data.failed.history}
+            />
+            <GlanceFigure
+              label="Replies · 30 days"
+              value={data.glance.repliesLast30}
               floor={data.glance.sentLast30Truncated}
               floorNote={`At least this many: the history endpoint serves at most ${COMMS_SERVER_WINDOWS.HISTORY_ROWS} rows, and that window is full.`}
               failed={data.failed.history}
@@ -474,84 +613,129 @@ export default function CommunicationsNext() {
           </div>
         )}
 
-        {letterStanding.restaurantId && (
-          <LetterRequestsPanel
-            restaurantId={letterStanding.restaurantId}
-            canRelease={letterStanding.canRelease}
-          />
-        )}
-
-        {/* ── the drafts waiting, which the strip could only count ────
-            The act the census calls owed: a letter the house drafted, read and
-            sent by a person's hold (ADR 0118). The list and the strip's figure
-            come from the SAME read, so they cannot disagree. */}
-        {data.draftsKnown && data.drafts.length > 0 && (
-          <section
-            aria-label="Drafts waiting"
-            className="mb-6 rounded-xl p-4"
-            style={{ fontFamily: SANS, border: '1px solid var(--paper-2, #EAE4D8)', background: 'var(--paper-1, #F3EFE6)' }}
+        <section aria-label="Waiting on you" data-tour="communications-waiting" className="mb-6">
+          <h2
+            style={{
+              fontFamily: MONO,
+              fontSize: 11,
+              fontWeight: 600,
+              letterSpacing: '0.14em',
+              textTransform: 'uppercase',
+              color: 'var(--ink-2, #4F473C)',
+              margin: '0 0 10px',
+            }}
           >
-            <h2
-              style={{
-                fontFamily: MONO,
-                fontSize: 9.5,
-                fontWeight: 600,
-                letterSpacing: '0.14em',
-                textTransform: 'uppercase',
-                color: 'var(--ink-4, #665D50)',
-                margin: '0 0 8px',
-              }}
-            >
-              The house has written · {data.drafts.length} waiting
-            </h2>
-            <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-              {data.drafts.map((d) => (
-                <li key={d.id} className="flex flex-wrap items-baseline justify-between gap-2 py-1">
-                  <span style={{ fontSize: 12.5, color: 'var(--ink-2, #4F473C)' }}>
-                    {d.wineName ?? 'An order'}
-                    {d.providerName ? ` · ${d.providerName}` : ''}
-                    {d.orderNumber ? ` · ${d.orderNumber}` : ''}
-                  </span>
-                  <button
-                    type="button"
-                    data-testid="open-drafted-reply"
-                    onClick={() => setDraftOpen(d.orderId)}
-                    style={{
-                      fontSize: 11.5,
-                      fontWeight: 600,
-                      padding: '4px 10px',
-                      borderRadius: 3,
-                      border: '1px solid var(--seal-ring, rgba(26,94,107,.32))',
-                      background: 'transparent',
-                      color: 'var(--seal-deep, #14515C)',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    Read it
-                  </button>
-                </li>
-              ))}
-            </ul>
-            <p style={{ fontSize: 11, color: 'var(--ink-4, #665D50)', margin: '8px 0 0' }}>
-              Nothing here has been sent. A letter reaches a vendor only when a person holds the
-              seal on it.
+            Waiting on you · {waitingCount ?? EM}
+          </h2>
+          {waitingCount === 0 && (
+            <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-4, #665D50)', margin: 0 }}>
+              Nothing is waiting on you.
             </p>
-          </section>
-        )}
-        {data.failed.drafts && (
-          <p
-            role="status"
-            className="mb-6"
-            style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-2, #4F473C)' }}
-          >
-            The drafts register could not be read, so no letter can be opened from here. That is a
-            failed read, not an empty desk.
-          </p>
-        )}
+          )}
+          {letterStanding.restaurantId && (
+            <LetterRequestsPanel
+              restaurantId={letterStanding.restaurantId}
+              canRelease={letterStanding.canRelease}
+              noMailbox={letterStanding.noMailbox}
+              mailbox={letterStanding}
+            />
+          )}
+
+          {/* ── the drafts waiting, which the strip could only count ────
+              The act the census calls owed: a letter the house drafted, read and
+              sent by a person's hold (ADR 0118). The list and the strip's figure
+              come from the SAME read, so they cannot disagree. */}
+          {data.draftsKnown && data.drafts.length > 0 && (
+            <section
+              aria-label="Drafts waiting"
+              className="mb-6 rounded-xl p-4"
+              style={{ fontFamily: SANS, border: '1px solid var(--paper-2, #EAE4D8)', background: 'var(--paper-1, #F3EFE6)' }}
+            >
+              <h2
+                style={{
+                  fontFamily: MONO,
+                  fontSize: 9.5,
+                  fontWeight: 600,
+                  letterSpacing: '0.14em',
+                  textTransform: 'uppercase',
+                  color: 'var(--ink-4, #665D50)',
+                  margin: '0 0 8px',
+                }}
+              >
+                The house has written · {data.drafts.length} waiting
+              </h2>
+              <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+                {data.drafts.map((d) => (
+                  <li key={d.id} className="flex flex-wrap items-baseline justify-between gap-2 py-1">
+                    <span style={{ fontSize: 12.5, color: 'var(--ink-2, #4F473C)' }}>
+                      {d.wineName ?? 'An order'}
+                      {d.providerName ? ` · ${d.providerName}` : ''}
+                      {d.orderNumber ? ` · ${d.orderNumber}` : ''}
+                    </span>
+                    <button
+                      type="button"
+                      data-testid="open-drafted-reply"
+                      onClick={() => setDraftOpen(d.orderId)}
+                      style={{
+                        fontSize: 11.5,
+                        fontWeight: 600,
+                        padding: '4px 10px',
+                        borderRadius: 3,
+                        border: '1px solid var(--seal-ring, rgba(26,94,107,.32))',
+                        background: 'transparent',
+                        color: 'var(--seal-deep, #14515C)',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Read it
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <p style={{ fontSize: 11, color: 'var(--ink-4, #665D50)', margin: '8px 0 0' }}>
+                Nothing here has been sent. A letter reaches a vendor only when a person holds the
+                seal on it.
+              </p>
+            </section>
+          )}
+          {data.failed.drafts && (
+            <p
+              role="status"
+              className="mb-6"
+              style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-2, #4F473C)' }}
+            >
+              The drafts register could not be read, so no letter can be opened from here. That is a
+              failed read, not an empty desk.
+            </p>
+          )}
+          {(houseDrafts.failed || (houseDrafts.drafts?.length ?? 0) > 0) && (
+            <div
+              className="rounded-xl p-4"
+              style={{ fontFamily: SANS, border: '1px solid var(--paper-2, #EAE4D8)', background: 'var(--paper-1, #F3EFE6)' }}
+            >
+              <HouseDrafts
+                drafts={houseDrafts.drafts}
+                failed={houseDrafts.failed}
+                error={houseDrafts.error}
+                onOpen={setDraft}
+              />
+            </div>
+          )}
+          {linked && houseDrafts.drafts && !houseDrafts.drafts.some((d) => d.id === linked) && (
+            <p role="status" style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-2, #4F473C)', margin: '8px 0 0' }}>
+              The letter this link points to is no longer a draft — it was sent or discarded. The
+              conversation book says which.
+            </p>
+          )}
+        </section>
 
         <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_300px]">
           {/* ── the conversation book ─────────────────────────────────── */}
-          <section aria-label="Conversation book">
+          <section
+            aria-label="Conversation book"
+            data-tour="communications-book"
+            style={params.get('book') === 'compare' ? { gridColumn: '1 / -1' } : undefined}
+          >
             {!data.hasData && !data.isError ? (
               <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-4, #665D50)' }}>
                 Reaching the gateway…
@@ -560,6 +744,27 @@ export default function CommunicationsNext() {
               <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-4, #665D50)' }}>
                 The book is open and empty — no vendor exchanges yet.
               </p>
+            ) : params.get('book') === 'compare' ? (
+              <div className="grid gap-6 lg:grid-cols-3" data-r2-compare style={{ width: 'calc(100vw - 320px)', maxWidth: 1280 }}>
+                {(
+                  [
+                    ['1 · Now: flat, newest first', <div key="flat" style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>{data.rows.map((item) => <LedgerRow key={item.id} item={item} />)}</div>],
+                    ['2 · Grouped under each vendor', <BookByVendor key="vendor" rows={data.rows} />],
+                    ['3 · One row per conversation', <BookByConversation key="conv" rows={data.rows} />],
+                  ] as const
+                ).map(([title, body]) => (
+                  <div key={title} className="min-w-0" style={{ fontFamily: SANS }}>
+                    <p style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--seal-deep, #14515C)', margin: '0 0 6px' }}>
+                      {title}
+                    </p>
+                    {body}
+                  </div>
+                ))}
+              </div>
+            ) : params.get('book') === 'vendor' ? (
+              <BookByVendor rows={data.rows} />
+            ) : params.get('book') === 'conversation' ? (
+              <BookByConversation rows={data.rows} />
             ) : (
               <div style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
                 {data.rows.map((item) => (
@@ -570,7 +775,7 @@ export default function CommunicationsNext() {
           </section>
 
           {/* ── the channels rail: what this page is wired to ─────────── */}
-          <aside className="flex flex-col gap-4" style={{ fontFamily: SANS }}>
+          <aside className="flex flex-col gap-4" style={{ fontFamily: SANS }} data-tour="communications-write">
             <div
               className="rounded-xl p-4"
               style={{ border: '1px solid var(--paper-2, #EAE4D8)', background: 'var(--paper-1, #F3EFE6)' }}
@@ -586,7 +791,7 @@ export default function CommunicationsNext() {
                   margin: '0 0 8px',
                 }}
               >
-                Channels & templates
+                Write to a vendor
               </h2>
               {/* The Gmail inbound-watch line moved to the admin desk on
                   2026-09-25 (ADR 0083 amendment; ADR 0143 §2 made /admin the
@@ -604,10 +809,6 @@ export default function CommunicationsNext() {
                   writes email only. A free-text SMS composer would re-open
                   exactly what that deletion closed — it is a founder question,
                   filed in §13, not a gap to fill quietly. */}
-              <p style={{ fontSize: 11.5, color: 'var(--ink-2, #4F473C)', margin: '0 0 10px' }}>
-                SMS: no SMS sender is reachable from anywhere in the app, and every conversation
-                recorded so far is email. The composer writes letters, not messages.
-              </p>
               <div className="flex flex-col gap-2">
                 <button type="button" onClick={() => setCompose(true)} className="cm-row cm-card flex items-center gap-2 rounded-lg px-3 py-2 text-left"
                   style={{ border: '1px solid var(--seal-ring, rgba(26,94,107,.32))', fontSize: 12.5, fontWeight: 600, color: 'var(--seal-deep, #14515C)', cursor: 'pointer' }}>
@@ -620,18 +821,6 @@ export default function CommunicationsNext() {
                   The house's letter templates
                 </button>
               </div>
-              <HouseDrafts
-                drafts={houseDrafts.drafts}
-                failed={houseDrafts.failed}
-                error={houseDrafts.error}
-                onOpen={setDraft}
-              />
-              {linked && houseDrafts.drafts && !houseDrafts.drafts.some((d) => d.id === linked) && (
-                <p role="status" style={{ fontSize: 11.5, color: 'var(--ink-2, #4F473C)', margin: '8px 0 0' }}>
-                  The letter this link points to is no longer a draft — it was sent or discarded. The
-                  conversation book says which.
-                </p>
-              )}
             </div>
 
             {/* The "Scheduled reports" card left this page on 2026-09-25 (ADR

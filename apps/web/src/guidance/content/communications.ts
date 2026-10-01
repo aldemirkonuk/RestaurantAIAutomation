@@ -1,37 +1,40 @@
 import type { TourDefinition } from '../tours/registry'
 
+// Rewritten 2026-10-01 (walk-through COMMS-W6): the old copy described the
+// legacy page's four workspaces and template builder, deleted 2026-09-28, and
+// every step pointed at an anchor no page rendered, so "Take tour" could only
+// say the tour was unavailable.
 export const communicationsTip = {
   pageId: 'communications' as const,
   title: 'Communications',
-  body: 'Pick a workspace, filter by channel, then build or reuse a template.',
+  body: 'What waits on you sits at the top. Below it is every letter to and from your vendors, newest first.',
 }
 
 export const communicationsTour: TourDefinition = {
   pageId: 'communications',
   steps: [
     {
-      element: '[data-tour="communications-tabs"]',
-      title: 'Four workspaces',
+      element: '[data-tour="communications-waiting"]',
+      title: 'Waiting on you',
       description:
-        'Switch between Templates, Send History, Scheduled Reports, and Procurement Emails.',
+        'Letters your staff asked you to send, replies the house drafted on orders, and letters the house drafted for you. Nothing here has been sent.',
     },
     {
-      element: '[data-tour="communications-channels"]',
-      title: 'Filter by channel',
+      element: '[data-tour="communications-book"]',
+      title: 'The conversation book',
       description:
-        'Show all templates or only Email or SMS before you create or edit one.',
+        'Every letter to and from your vendors, newest first. Open a row to read it and to see whether it was sent.',
     },
     {
-      element: '[data-tour="communications-new-template"]',
-      title: 'Create a template',
-      description:
-        'Start an email canvas or SMS template with preview — reusable for the next send.',
+      element: '[data-tour="communications-write"]',
+      title: 'Write to a vendor',
+      description: "Write a letter from a blank page, or start from one of the house's templates.",
     },
     {
-      element: '[data-tour="communications-template-library"]',
-      title: 'Saved templates',
+      element: '[data-tour="communications-senders"]',
+      title: 'Who is writing',
       description:
-        'Edit, duplicate, or send from templates you already built.',
+        'The vendor addresses you trust, and mail from senders who are not your vendors yet.',
     },
   ],
 }

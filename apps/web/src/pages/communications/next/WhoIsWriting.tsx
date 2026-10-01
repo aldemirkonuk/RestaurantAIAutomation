@@ -19,6 +19,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../../contexts/AuthContext';
 import type { ProspectDto, SenderReputationDto } from '../../../hooks/queries/usePromotionsQueries';
 import { MONO, SANS } from './cm-format';
@@ -338,10 +339,18 @@ export default function WhoIsWriting() {
   const [allHouses, setAllHouses] = useState(false);
   const senders = useSenderRegister();
   const strangers = useStrangers(houseCount > 1 && allHouses);
+  // Folded to its one-line summary; `?senders=open` keeps it open across a reload.
+  const [params, setParams] = useSearchParams();
+  const open = params.get('senders') === 'open';
+  const toggle = () => {
+    if (open) params.delete('senders');
+    else params.set('senders', 'open');
+    setParams(params, { replace: true });
+  };
 
   return (
-    <section aria-label="Who is writing" style={{ marginTop: 40 }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 16, flexWrap: 'wrap', marginBottom: 14 }}>
+    <section aria-label="Who is writing" data-tour="communications-senders" style={{ marginTop: 40 }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 16, flexWrap: 'wrap', marginBottom: open ? 14 : 0 }}>
         <h2 style={{ ...H3, fontSize: 11, margin: 0 }}>Who is writing</h2>
         <span style={{ fontFamily: MONO, fontSize: 11, color: 'var(--ink-2, #4F473C)' }} data-testid="who-summary">
           {whoIsWritingSummary(
@@ -350,7 +359,11 @@ export default function WhoIsWriting() {
             SENDERS_SERVER_WINDOWS.PROSPECTS,
           )}
         </span>
+        <button type="button" style={BTN_QUIET} aria-expanded={open} onClick={toggle}>
+          {open ? 'Hide' : 'Show'}
+        </button>
       </div>
+      {open && (
       <div className="grid gap-8 lg:grid-cols-2">
         <TrustedSenders senders={senders} houseName={houseName} />
         <Strangers
@@ -363,6 +376,7 @@ export default function WhoIsWriting() {
           setAllHouses={setAllHouses}
         />
       </div>
+      )}
     </section>
   );
 }

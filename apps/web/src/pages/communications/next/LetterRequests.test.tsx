@@ -9,6 +9,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MemoryRouter } from 'react-router-dom';
 
 const api = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }));
 vi.mock('../../../services/api/client', () => ({
@@ -31,11 +32,13 @@ const REQ: LetterRequest = {
   state: 'waiting',
 };
 
-function draw(canRelease: boolean) {
+function draw(canRelease: boolean, more: Partial<Parameters<typeof LetterRequestsPanel>[0]> = {}) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={qc}>
-      <LetterRequestsPanel restaurantId="r1" canRelease={canRelease} />
+      <MemoryRouter>
+        <LetterRequestsPanel restaurantId="r1" canRelease={canRelease} {...more} />
+      </MemoryRouter>
     </QueryClientProvider>,
   );
 }
@@ -53,7 +56,9 @@ describe('letters waiting for a manager', () => {
     );
     draw(true);
     const die = await screen.findByRole('button', { name: /Hold to send it as written/ });
-    expect(screen.getByTestId('letter-requests')).toHaveTextContent('Ayşe asked for this letter to fikri@fikritarim.com to be sent');
+    expect(screen.getByTestId('letter-requests')).toHaveTextContent('Ayşe asked to send a letter');
+    expect(screen.getByTestId('letter-request-paper')).toHaveTextContent(/To\s*fikri@fikritarim\.com/);
+    expect(screen.getByTestId('letter-request-state')).toHaveTextContent('Ready to send');
     fireEvent.keyDown(die, { key: 'Enter' });
     fireEvent.keyDown(die, { key: 'Enter' });
     const body = releaseBody(REQ);
@@ -181,5 +186,46 @@ describe('a released letter that could not be sent', () => {
     draw(false);
     await screen.findByTestId('letter-requests');
     expect(screen.queryByTestId('letter-request-send-failed')).toBeNull();
+  });
+});
+
+// COMMS-W11 / W11c (walk-through 2026-10-01): an owner in a house with no
+// mailbox was told to "wait for an owner or a manager". The card now says
+// which step is missing, keeps the hold visible but locked, and reads the
+// mailbox again on request; the letter shows as a letter, with nothing added.
+describe('a waiting letter in a house with no mailbox', () => {
+  const LETTER: LetterRequest = {
+    ...REQ,
+    payload: { ...REQ.payload, body: 'Hello,\n\nOne case was missing.\nPlease send it Friday.\n\nThanks' },
+  };
+  const mailbox = { basis: 'owner' as const, checking: false, checkedAt: Date.parse('2026-10-01T09:00:00Z'), recheck: vi.fn() };
+
+  it('tells an owner which step is missing, links to it, and offers no working send', async () => {
+    api.get.mockResolvedValue({ data: { requests: [LETTER] } });
+    draw(false, { noMailbox: true, mailbox });
+    const steps = await screen.findByTestId('letter-request-readiness');
+    expect(steps).toHaveTextContent('You may send for this house as the owner.');
+    expect(steps).toHaveTextContent('Not yet: This house has no mailbox to send from.');
+    expect(screen.getByTestId('letter-request-connect')).toHaveAttribute('href', '/connections');
+    expect(screen.getByTestId('letter-request-state')).toHaveTextContent('Can’t send yet');
+    expect(screen.getByRole('button', { name: /Hold to send it as written/ })).toBeDisabled();
+    expect(screen.queryByText(/Waiting for an owner or a manager/)).toBeNull();
+    expect(api.post).not.toHaveBeenCalled();
+  });
+
+  it('reads the mailbox again when asked', async () => {
+    api.get.mockResolvedValue({ data: { requests: [LETTER] } });
+    const recheck = vi.fn();
+    draw(false, { noMailbox: true, mailbox: { ...mailbox, recheck } });
+    fireEvent.click(await screen.findByRole('button', { name: 'Check again' }));
+    expect(recheck).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows the letter in the paragraphs and lines it was written in, adding nothing', async () => {
+    api.get.mockResolvedValue({ data: { requests: [LETTER] } });
+    draw(false, { noMailbox: true, mailbox });
+    const paper = await screen.findByTestId('letter-request-paper');
+    const paras = [...paper.querySelectorAll('p')].map((p) => p.textContent);
+    expect(paras).toEqual(['Hello,', 'One case was missing.\nPlease send it Friday.', 'Thanks']);
   });
 });

@@ -44,8 +44,12 @@ vi.mock('./TemplateSheet', () => ({
 }));
 // The letters staff asked a manager to send (founder answer 3) are proved in
 // LetterRequests.test.tsx; here the panel is stubbed and its standing is fixed.
+const mockLetters = vi.hoisted(() => ({
+  current: { data: { requests: [] as unknown[] } as { requests: unknown[] } | undefined, isError: false },
+}));
 vi.mock('./LetterRequestsPanel', () => ({
   LetterRequestsPanel: () => <div data-testid="letter-requests-stub" />,
+  useLetterRequests: () => mockLetters.current,
 }));
 vi.mock('./Compose/useComposeData', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./Compose/useComposeData')>()),
@@ -97,13 +101,12 @@ function item(over: Partial<ProcurementHistoryItem>): ProcurementHistoryItem {
 
 const noFailures = {
   history: false,
-  threads: false,
   drafts: false,
 };
 
 const base = {
   rows: [] as ProcurementHistoryItem[],
-  glance: { threads: 4, draftsPending: 1, sentLast30: 9 },
+  glance: { draftsPending: 1, sentLast30: 9, repliesLast30: 4 },
   // The drafts THEMSELVES, added 2026-09-06 with the drafted-reply panel: the
   // strip's figure and this list come from one read, so a mock that carries the
   // count and not the rows is a mock of a state the hook cannot produce.
@@ -119,19 +122,22 @@ const base = {
 
 beforeEach(() => {
   mockData.current = { ...base };
+  mockLetters.current = { data: { requests: [] }, isError: false };
+  mockDrafts.current = { drafts: [], failed: false, error: null, refetch: () => {} };
 });
 
 describe('CommunicationsNext', () => {
   it('shows the glance strip from settled queries and EM for unanswered ones', () => {
     mockData.current = {
       ...base,
-      glance: { threads: null, draftsPending: 1, sentLast30: null },
+      glance: { draftsPending: 1, sentLast30: null, repliesLast30: null },
     };
     render(<CommunicationsNext />);
-    expect(screen.getByText('Threads')).toBeInTheDocument();
+    expect(screen.getByText('Replies · 30 days')).toBeInTheDocument();
+    // COMMS-W3: no figure counts a list the page does not show
+    expect(screen.queryByText('Threads')).toBeNull();
     // two unanswered figures render as em dashes, never zeros
     expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(2);
-    expect(screen.getByText('1')).toBeInTheDocument();
   });
 
   it('keeps the row short and the prose inside the expansion', () => {
@@ -180,7 +186,7 @@ describe('CommunicationsNext', () => {
   it('a truncated history window renders the sent figure as a floor', () => {
     mockData.current = {
       ...base,
-      glance: { threads: 4, draftsPending: 1, sentLast30: 97, sentLast30Truncated: true },
+      glance: { draftsPending: 1, sentLast30: 97, repliesLast30: 3, sentLast30Truncated: true },
     };
     render(<CommunicationsNext />);
     expect(screen.getByText('≥97')).toBeInTheDocument();
@@ -314,37 +320,68 @@ describe('CommunicationsNext', () => {
   it('a failed figure is distinguishable from an unanswered one', () => {
     mockData.current = {
       ...base,
-      glance: { threads: null, draftsPending: null, sentLast30: 9 },
-      failed: { ...noFailures, threads: true },
-      failedSources: ['the thread index'],
+      glance: { draftsPending: null, sentLast30: 9, repliesLast30: 2 },
+      drafts: [],
+      draftsKnown: false,
+      failed: { ...noFailures, drafts: true },
+      failedSources: ['the drafts awaiting action'],
     };
     render(<CommunicationsNext />);
     // the failed figure names its failure
-    expect(screen.getByLabelText(/Threads: could not be loaded/i)).toBeInTheDocument();
-    // the merely-unanswered one does not
-    expect(screen.queryByLabelText(/Drafts waiting: could not be loaded/i)).toBeNull();
+    expect(screen.getByLabelText(/Waiting on you: could not be loaded/i)).toBeInTheDocument();
+    // the answered ones do not
+    expect(screen.queryByLabelText(/Sent · 30 days: could not be loaded/i)).toBeNull();
   });
 
   it('the banner names every failed owned source, not only the conversation book', () => {
     mockData.current = {
       ...base,
-      glance: { threads: null, draftsPending: null, sentLast30: 9 },
-      failed: { ...noFailures, threads: true, drafts: true },
-      failedSources: ['the thread index', 'the drafts awaiting action'],
+      glance: { draftsPending: null, sentLast30: null, repliesLast30: null },
+      hasData: false,
+      isError: true,
+      errorMessage: 'history 500',
+      failed: { history: true, drafts: true },
+      failedSources: ['the conversation book', 'the drafts awaiting action'],
     };
     render(<CommunicationsNext />);
     const alert = screen.getByRole('alert');
-    expect(alert).toHaveTextContent('the thread index');
+    expect(alert).toHaveTextContent('The conversation book could not be reached');
     expect(alert).toHaveTextContent('the drafts awaiting action');
     // and the retry is reachable when something other than the history failed
     expect(screen.getByText('Try again')).toBeInTheDocument();
   });
 
-  // ── P5: the SMS line describes a channel that exists ──────────────────────
-  it('does not claim SMS staging for a messaging channel nothing can reach', () => {
+  // ── COMMS-W4 (2026-10-01): the rail says nothing about a channel it lacks ──
+  it('the rail holds the two write acts and no paragraph about SMS', () => {
     render(<CommunicationsNext />);
+    expect(screen.getByText('Write to a vendor')).toBeInTheDocument();
+    expect(screen.queryByText(/SMS/)).toBeNull();
     expect(screen.queryByText(/stage for the messaging channel/i)).toBeNull();
-    expect(screen.getByText(/no SMS sender is reachable/i)).toBeInTheDocument();
+  });
+
+  // ── COMMS-W2 (2026-10-01): one place for everything waiting on a person ──
+  it('counts the three waiting lists in one figure, and the heading agrees', () => {
+    mockLetters.current = { data: { requests: [{ id: 'r1' }] }, isError: false };
+    mockDrafts.current = { ...mockDrafts.current, drafts: [
+      { id: 'D1', providerId: 'p1', providerName: 'Bodega Álvaro', orderId: null, subject: 'A letter', to: 'v@x.example', category: null, creditId: null, body: 'Hello', createdAt: '2026-09-25T09:00:00Z' },
+    ] };
+    mockData.current = { ...base, drafts: [{ id: 'a1', orderId: 'o1' }, { id: 'a2', orderId: 'o2' }] };
+    render(<CommunicationsNext />);
+    expect(screen.getByText('Waiting on you · 4')).toBeInTheDocument();
+    expect(screen.getByLabelText('Waiting on you')).toContainElement(screen.getByTestId('letter-requests-stub'));
+  });
+
+  it('the waiting figure is unknown while any of its lists is unanswered', () => {
+    mockDrafts.current = { ...mockDrafts.current, drafts: null };
+    render(<CommunicationsNext />);
+    expect(screen.getByText('Waiting on you · —')).toBeInTheDocument();
+    expect(screen.queryByText('Nothing is waiting on you.')).toBeNull();
+  });
+
+  it('says plainly when nothing is waiting, once every list has answered', () => {
+    render(<CommunicationsNext />);
+    expect(screen.getByText('Waiting on you · 0')).toBeInTheDocument();
+    expect(screen.getByText('Nothing is waiting on you.')).toBeInTheDocument();
   });
   // ── ADR 0084 put inbound vendor replies on this page; ADR 0083's row could
   //    not render one. All three of these throw on the merged tree. ──────────
