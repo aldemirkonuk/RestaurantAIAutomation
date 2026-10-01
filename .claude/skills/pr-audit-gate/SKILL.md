@@ -135,12 +135,14 @@ individually while what they don't cover reaches production — this gate exists
    `pr-merge-planner`. Never run the checkout's copy: on a PR branch, it is the code
    under review.
 
+   [2026-09-30, the narrowing above: a witness citation in a record's body is
+   released, so this applies only to one in a title, metadata block or claim id.]
    If the only reasons are lines in a NEW decision file that cite the gate as a
    witness (for example "pr-audit-gate round 2 found X"), the author may re-cite them
    as `audit of PR #M, round N (report path)` and re-run. Never reword a line that
    states a rule about the gate, or says what the gate does, to get past this step.
 
-   Gate rules live only in ADRs 0050, 0090, 0097, 0231 and 0237 and the owned files, whatever their
+   Gate rules live only in ADR 0090, ADR 0050 and the owned files, whatever their
    index rows say. Unlike the CI path, a session auditing its own checkout has no
    `pull_request_target`-style isolation. Running `origin/main`'s classifier covers
    the ownership decision only; the reviewers must still read decisions with
