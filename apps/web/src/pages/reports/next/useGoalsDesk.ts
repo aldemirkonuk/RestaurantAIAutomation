@@ -18,9 +18,12 @@
  *     `user_restaurant_access` — not the role on the user row, which is the
  *     role somewhere else. Owners and managers write; everyone else sees the
  *     desk read-only with one line saying why, rather than a button that 403s.
- *     The gateway is the real gate (§9): the analytics routes are guarded by
- *     `JwtAuthGuard` at class level but not by role, so this is a courtesy, and
- *     the page note says so rather than implying an enforcement that is not there.
+ *     The gateway is the real gate: since ADR 0250 (2026-10-01) create, edit,
+ *     status and "Ask the book" carry `RolesGuard` with `@Roles("owner",
+ *     "manager")`, reading the same active access row `activeRole` reads, so
+ *     this hook and the gateway agree. A refusal that still reaches the page —
+ *     a role changed while it was open — is said in words
+ *     (`goalWriteRoleRefusal`), never as the gateway's "Forbidden resource".
  *  2. **The assistant proposes; it never applies.** `ask()` returns a spec that
  *     the gateway has already validated against a closed catalogue
  *     (`report-cuttings.ts`). Nothing is placed on the sheet until the reader
@@ -41,6 +44,28 @@ import { num } from './rp-format';
 
 /** The window the till cutting offers. A proposal outside it is refused. */
 const OFFERED_WINDOWS = [7, 30, 90];
+
+/**
+ * A goal write the gateway refused by ROLE (ADR 0250), in words.
+ *
+ * `RolesGuard` refuses with Nest's own body, `403 { message: "Forbidden
+ * resource" }` (pinned in `goal-writes-need-a-manager.spec.ts`). That is a
+ * sentence about the server, not about the person, so it is never shown. Only
+ * that exact refusal is translated: any other 403 (the tenant check, an
+ * unverified address) keeps its own message, because this sentence would be
+ * untrue of it. Shared with `/recommendations`' goal sheet, so the two doors
+ * say the same thing.
+ */
+export const GOAL_WRITE_ROLE_REFUSED =
+  'Only an owner or a manager of this house can do this, and this house does not have you as one. Nothing was changed.';
+
+export function goalWriteRoleRefusal(err: unknown): string | null {
+  const res = (err as { response?: { status?: unknown; data?: { message?: unknown } } } | null)
+    ?.response;
+  return res?.status === 403 && res.data?.message === 'Forbidden resource'
+    ? GOAL_WRITE_ROLE_REFUSED
+    : null;
+}
 
 export interface NewGoal {
   name: string;
@@ -157,6 +182,7 @@ export function useGoalsDesk({ place, queryRoot }: GoalsDeskOptions): GoalsDesk 
         refresh();
       } catch (err: unknown) {
         const detail =
+          goalWriteRoleRefusal(err) ??
           (err as { response?: { data?: { message?: string } } })?.response?.data?.message ??
           (err as { message?: string })?.message ??
           'the request failed';
@@ -292,6 +318,7 @@ export function useGoalsDesk({ place, queryRoot }: GoalsDeskOptions): GoalsDesk 
           });
         } catch (err: unknown) {
           const detail =
+            goalWriteRoleRefusal(err) ??
             (err as { response?: { data?: { message?: string } } })?.response?.data?.message ??
             (err as { message?: string })?.message ??
             'the request failed';

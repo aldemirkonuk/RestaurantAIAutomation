@@ -23,9 +23,11 @@ const api = vi.hoisted(() => ({
 }));
 
 const role = vi.hoisted(() => ({ current: null as string | null }));
+/** The account-wide `users` row's role — the shell's fallback, never the gateway's. */
+const account = vi.hoisted(() => ({ current: null as { role: string } | null }));
 
 vi.mock('@/contexts/AuthContext', () => ({
-  useAuth: () => ({ activeRestaurantId: auth.rid, activeRole: role.current }),
+  useAuth: () => ({ activeRestaurantId: auth.rid, activeRole: role.current, user: account.current }),
 }));
 vi.mock('@/services/api/client', () => ({ apiClient: api }));
 vi.mock('@/services/api/team', () => ({ getTeamMembers: vi.fn(async () => []) }));
@@ -52,6 +54,7 @@ const FEED = {
 beforeEach(() => {
   auth.rid = 'r1';
   role.current = null;
+  account.current = null;
   api.get.mockReset();
   api.post.mockReset();
   api.get.mockImplementation(async (url: string) => {
@@ -810,5 +813,99 @@ describe('round 6 reads and writes', () => {
       await result.current.setDisposition(result.current.entries[0], { feedback: 'helpful' }, 'Noted.', false);
     });
     expect(result.current.undo).toBeNull();
+  });
+});
+
+/**
+ * ADR 0250 (the founder, 2026-10-01). Goal writes are an owner's or a
+ * manager's at the gateway (`RolesGuard`, the role on this house's active
+ * access row). The page offers them from `activeRole` alone — the same row —
+ * and says the gateway's role refusal in words, never as "Forbidden resource".
+ */
+describe('useRecommendationsNextData — who may set a goal (ADR 0250)', () => {
+  const STAFF_REASON = 'Goals are set by owners and managers.';
+  const UNCONFIRMED_REASON =
+    'Your role at this restaurant is not confirmed here, so setting a goal is not offered. ' +
+    'Ask a manager or an owner to set one.';
+  const ROLE_REFUSED =
+    'Only an owner or a manager of this house can do this, and this house does not have you as one. Nothing was changed.';
+
+  it.each([
+    ['owner', null],
+    ['manager', null],
+  ])('[REVERT-FAILS] as %s, a goal is offered: the reason is null', async (r, expected) => {
+    role.current = r;
+    const { result } = renderHook(() => useRecommendationsNextData());
+    await waitFor(() => expect(result.current.phase).toBe('ready'));
+    expect(result.current.goalRoleReason).toBe(expected);
+  });
+
+  it.each([
+    ['staff', STAFF_REASON],
+    ['null (not confirmed here)', UNCONFIRMED_REASON],
+    ['an unknown role', UNCONFIRMED_REASON],
+  ])('[REVERT-FAILS] %s is not offered a goal, with the reason', async (label, expected) => {
+    role.current = label === 'staff' ? 'staff' : label === 'an unknown role' ? 'guest' : null;
+    const { result } = renderHook(() => useRecommendationsNextData());
+    await waitFor(() => expect(result.current.phase).toBe('ready'));
+    expect(result.current.goalRoleReason).toBe(expected);
+  });
+
+  it('[REVERT-FAILS] reads activeRole alone: an account-wide manager with no confirmed role here is not offered', async () => {
+    role.current = null;
+    account.current = { role: 'manager' };
+    const { result } = renderHook(() => useRecommendationsNextData());
+    await waitFor(() => expect(result.current.phase).toBe('ready'));
+    // The shell's own reading still falls back to the account role…
+    expect(result.current.role).toBe('manager');
+    // …but the gateway does not, so neither does the goal door.
+    expect(result.current.goalRoleReason).toBe(UNCONFIRMED_REASON);
+  });
+
+  it('[REVERT-FAILS] a role refusal from the gateway is said in words, never as the raw Forbidden resource', async () => {
+    role.current = 'manager';
+    api.post.mockRejectedValue({
+      response: { status: 403, data: { message: 'Forbidden resource' } },
+      message: 'Request failed with status code 403',
+    });
+    const { result } = renderHook(() => useRecommendationsNextData());
+    await waitFor(() => expect(result.current.phase).toBe('ready'));
+    let answer: { ok: boolean; message?: string } = { ok: true };
+    await act(async () => {
+      answer = (await result.current.createGoal({
+        name: 'x',
+        metricKey: 'wine_revenue',
+        targetValue: 10,
+        direction: 'at_least',
+        period: 'week',
+        deadline: '2026-10-10',
+      })) as { ok: boolean; message?: string };
+    });
+    expect(answer.ok).toBe(false);
+    expect(answer.message).toBe(ROLE_REFUSED);
+    expect(result.current.note).toBe(`No goal was set (${ROLE_REFUSED}).`);
+    expect(result.current.note).not.toContain('Forbidden resource');
+  });
+
+  it('a 403 that is not the role refusal keeps its own words', async () => {
+    role.current = 'manager';
+    api.post.mockRejectedValue({
+      response: { status: 403, data: { message: 'Tenant isolation violation' } },
+      message: 'Request failed with status code 403',
+    });
+    const { result } = renderHook(() => useRecommendationsNextData());
+    await waitFor(() => expect(result.current.phase).toBe('ready'));
+    let answer: { ok: boolean; message?: string } = { ok: true };
+    await act(async () => {
+      answer = (await result.current.createGoal({
+        name: 'x',
+        metricKey: 'wine_revenue',
+        targetValue: 10,
+        direction: 'at_least',
+        period: 'week',
+        deadline: '2026-10-10',
+      })) as { ok: boolean; message?: string };
+    });
+    expect(answer.message).toBe('Tenant isolation violation');
   });
 });
