@@ -79,7 +79,7 @@ schedules it stages surface as `calendar_events` on `/calendar`.
 | `POST /recurring-orders/:restaurantId` | `:78` |
 | `PUT /recurring-orders/:restaurantId/:id` | `:102` |
 | `DELETE /recurring-orders/:restaurantId/:id` | `:123` |
-| `POST /recurring-orders/:restaurantId/execute-check` | `:142` |
+| `POST /recurring-orders/:restaurantId/execute-check` | `:142` [2026-09-30, `fix/tenant-guard-and-cross-house-runs`: runs EVERY house's due schedules whatever the path says, so it is now non-production and platform-operator only (`NonProductionGuard`, `PlatformOperatorGuard`); no caller existed. Claim `FIX-RECURRING-EXECUTE-CHECK-GATED`.] |
 
 ⚠️ **The "unguarded" flag on this cluster is out of date.** `@UseGuards(JwtAuthGuard)` sits
 at class level on `:35`, added under **OD-20 on 2026-08-25**. The controller carries a

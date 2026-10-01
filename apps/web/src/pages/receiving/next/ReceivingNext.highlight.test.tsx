@@ -107,6 +107,8 @@ const outboxData: OutboxData = {
   online: true,
   dismissDrop: vi.fn(),
   flushNow: vi.fn(),
+  resend: vi.fn(),
+  discard: vi.fn(),
 };
 
 vi.mock('./useReceivingNextData', async (importOriginal) => {

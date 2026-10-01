@@ -1,5 +1,7 @@
 [
   { "method": "GET", "path": "/api/v1/health/agent-operations", "controller": "AgentOperationsController", "handler": "recent" },
   { "method": "POST", "path": "/api/v1/health/agent-operations/:name/:action", "controller": "AgentOperationsController", "handler": "operate" },
-  { "method": "GET", "path": "/api/v1/metrics", "controller": "MetricsProxyController", "handler": "getMetrics" }
+  { "method": "GET", "path": "/api/v1/metrics", "controller": "MetricsProxyController", "handler": "getMetrics" },
+  { "method": "POST", "path": "/api/v1/procurement/deliveries/clocks/run", "controller": "DeliveriesController", "handler": "runClocks" },
+  { "method": "POST", "path": "/api/v1/recurring-orders/:restaurantId/execute-check", "controller": "RecurringOrdersController", "handler": "manualExecuteCheck" }
 ]

@@ -34,73 +34,37 @@ const MUTATION_TYPE = 'receiving.door'
 // transient reason — no network, a 5xx, 408/425/429, or a 401 because the
 // session ended — stays queued and is tried again on the next flush (each
 // flush is triggered by mount, 'online' or 'visibilitychange', never a timer).
-// It used to be given up on after 8 attempts. Only a PERMANENT refusal (any
-// other 4xx) still ends it, as ADR 0140 built: a drop record the receiving
-// rail pins, naming the order, because that request will never be accepted
-// as it is.
-
-/**
- * Stamped on a queue entry the flush gave up on but could NOT write a record
- * for. It is the on-disk MARK of a stranded receipt: the entry is refused for
- * good but deliberately kept, and this string is what tells it apart from an
- * entry that is merely waiting for the network (there is no attempt ceiling
- * since ADR 0241, so nothing else is ever about to be dropped).
- *
- * It is the entry's `lastError`, and nothing derives an alarm from it — see the
- * block below on why the outbox reports no strand. It is here so the receiving
- * rail, which renders `lastError` for every queued entry, says something true
- * about this one instead of leaving it looking like an ordinary retry. If the
- * write does not land the rail simply shows the entry without it; the receipt
- * itself is kept either way, and that is the property that matters.
- */
-const STRANDED_MARKER =
-  'Given up on, and this device could not save a record of it. Kept here so the delivery is not lost — keep the paperwork.'
-
-/**
- * THE OUTBOX DOES NOT REPORT A STRAND. Read ADR 0140 before adding one back.
- *
- * A "strand" is a receipt the outbox gave up on and could NOT write the drop
- * record for. The receipt is kept — see the `permanent` branch below, which is
- * the part that matters and is not going anywhere — but no screen is told, and
- * no durable witness is kept, because five successive attempts to build one
- * each shipped a defect and each was measured, never spotted:
- *
- *   a per-pass count, accumulated  -> one loss read as "3 deliveries"
- *   a mark on the queue entry      -> the mark cannot be written in the one
- *                                     condition that creates a strand, so the
- *                                     alarm went SILENT and the screen said
- *                                     "still trying" about a lost delivery
- *   mark + attempt ceiling         -> the strand became unclearable, and a
- *                                     delivery the server ACCEPTED alarmed
- *                                     forever, undismissably
- *   an in-memory ledger, pruned    -> one unreadable read erased the witness
- *   orphans settled into drops     -> one read blip wrote a permanent "we gave
- *                                     up on this" record for a receipt that was
- *                                     still queued, and then it delivered
- *
- * They are one defect, not five. The outbox is being asked to record, durably,
- * a fact whose CAUSE is that durable storage failed — and the storage layer
- * underneath reports both a failed write and a failed read as success
- * (`localStoragePut` swallows its quota error; `idbGetAll` falls through to an
- * empty array). Nothing built on top can tell absence from failure. That is a
- * real, filed defect — `v3.0-TECH-DEBT.md`, "The offline queue reports a write
- * it swallowed as a write that succeeded" — and it is where this gets fixed.
- *
- * What survives without any witness at all, because it is read from data that
- * is actually there: the receipt stays in the queue, `pendingDoorCount` counts
- * it, and the receiving rail lists it with its attempt count and its last
- * error. `DoorFlushResult.stranded` still reports what a PASS saw, which is
- * honest about that pass and must never be accumulated or turned into a
- * standing alarm — that was the first of the five.
- */
+// It used to be given up on after 8 attempts.
+//
+// A PERMANENT refusal (any other 4xx, `isPermanentRefusal`) is PARKED, not
+// dropped (ADR 0241, amendment 2026-09-29 — the founder: "option 1, not
+// sent."). The entry stays in the queue with `parked: { reason: 'refused' }`,
+// exactly as spotCountOutbox parks a refused count; the receiving rail shows it
+// as "Not sent" with Send again and Discard, and it leaves the queue only when
+// a person discards it. Before the amendment it was deleted and replaced by
+// ADR 0140's pinned drop record, which named the order but lost the counts.
+//
+// ADR 0140's principle — keep the receipt when storage fails, claim nothing
+// the storage cannot prove — still stands, and parking makes its "strand" case
+// moot for new refusals: nothing is deleted, so there is no record whose
+// failed write could leave a receipt deleted-but-unrecorded. If the park write
+// itself fails, the entry is simply left as it was — queued, unparked — and
+// the next flush meets it again. The drop records already on devices are
+// still READ, dismissed and cleared below (and their legacy keys adopted), so
+// a loss recorded before the amendment is never hidden; nothing writes a new
+// one.
 
 /**
  * A receipt the outbox GAVE UP ON, kept after the receipt itself is gone.
  *
- * The queue entry is deleted on a drop, so without this the only record of a
+ * The queue entry was deleted on a drop, so without this the only record of a
  * permanent loss was a counter in one component's state, on one phone, erased
- * by the next navigation. It is written here, from the flush that caused it,
- * so it survives a remount and can still name the order it lost.
+ * by the next navigation. It was written from the flush that caused it, so it
+ * survives a remount and can still name the order it lost.
+ *
+ * READ-ONLY SINCE THE ADR 0241 AMENDMENT (2026-09-29). A refused receipt is
+ * now parked in the queue as "not sent" and never deleted, so nothing writes a
+ * new record. The ones already on devices are still read, shown and dismissed.
  */
 export interface DroppedDoorReceipt {
   /**
@@ -115,8 +79,9 @@ export interface DroppedDoorReceipt {
    * Why it was given up on, kept because the REMEDY differs and a notice that
    * names the wrong one wastes the only minutes in which anything can be done:
    *   auth    — 403 (401 before ADR 0241; a 401 is now kept and retried
-   *             after the same person signs in again). The session may not
-   *             do this; the next move is signing in as someone who may.
+   *             after the same person signs in again). The account was not
+   *             allowed to record it: keep the paperwork, tell a manager.
+   *             NOT "signed out" — that wording was true only of the 401s.
    *   refused — any other 4xx. The server understood and said no.
    *   retries — the attempt budget ran out. Only on records written before
    *             ADR 0241 removed the budget.
@@ -140,8 +105,8 @@ export interface DroppedDoorReceipt {
  * This is deliberately the key family `useReceivingNextData.ts` already uses
  * (`DROPS_KEY_PREFIX` there), not a second convention: a drop is one event and
  * two stores for it meant a single loss written to two places and dismissed in
- * neither. The rail reads and dismisses through this module now; the flush is
- * the only writer.
+ * neither. The rail reads and dismisses through this module. Nothing writes a
+ * new record since the ADR 0241 amendment (a refusal is parked instead).
  *
  * Scoping is restaurant, not user, for the same reason the rail chose it: the
  * tablet at the door is shared and the porter signing in is not who the lost
@@ -157,15 +122,6 @@ const DROPS_KEY_PREFIX = 'mudavym.receiving.outboxDrops'
  * `door.drops.v1` — which re-created the leak the rail had already closed.
  */
 const LEGACY_DROPS_KEYS = ['mudavym.receiving.outboxDrops', 'mudavym.door.drops.v1']
-
-/**
- * Where a drop goes when the queue entry predates the tenant stamp and there
- * is no house to file it under. It is `LEGACY_DROPS_KEYS[0]` on purpose: the
- * adoption below picks it up on the next read and shows it marked, rather than
- * leaving it in a bucket no screen ever reads — which is the fault this file
- * exists to stop, wearing a different hat.
- */
-const UNATTRIBUTED_DROPS_KEY = LEGACY_DROPS_KEYS[0]
 
 function dropsKey(restaurantId: string): string {
   // An empty id would collapse back onto the legacy key and re-create the leak.
@@ -340,34 +296,6 @@ export function clearDroppedDoorReceipts(restaurantId: string): void {
   forgetFromLegacyKeys(restaurantId, () => false)
 }
 
-/**
- * Write the record down. Returns whether it is now DURABLE.
- *
- * The return value is the whole point and the caller must obey it: a `false`
- * here means the only trace of the loss is in memory, and deleting the queue
- * entry on top of that destroys the delivery outright. Measured, not
- * theoretical — a full or unavailable localStorage on a shared dock tablet is
- * the ordinary case, not the exotic one.
- *
- * Not capped. A record is ~90 bytes, and evicting the oldest to make room
- * would be this same defect one layer down: a loss disappearing quietly.
- */
-function recordDrop(restaurantId: string, drop: DroppedDoorReceipt): boolean {
-  const key = restaurantId ? dropsKey(restaurantId) : UNATTRIBUTED_DROPS_KEY
-  try {
-    const all = restaurantId
-      ? readDroppedDoorReceipts(restaurantId)
-      : parseDrops(window.localStorage.getItem(key))
-    // Already written by an earlier pass: durable, and writing it again would
-    // turn one lost receipt into two.
-    if (all.some((d) => d.id === drop.id)) return true
-    window.localStorage.setItem(key, JSON.stringify([...all, drop]))
-    return true
-  } catch {
-    return false
-  }
-}
-
 export interface QueuedDoorReceipt {
   orderId: string
   orderLabel: string
@@ -445,45 +373,79 @@ async function queue(entry: QueuedDoorReceipt): Promise<void> {
   })
 }
 
-/** How many door receipts are waiting to sync. Drives the pending badge. */
+/**
+ * How many door receipts are WAITING to sync. Drives the pending badge.
+ *
+ * A parked receipt is not waiting — nothing will send it until a person says
+ * Send again — so it is not counted here; `notSentDoorCount` counts those.
+ * (Counting both as "to send" was the two-views defect the #530 audit filed:
+ * the badge said "sending" about a receipt the app-wide strip called not sent.)
+ */
 export async function pendingDoorCount(): Promise<number> {
   const all = await offlineStorage.getPendingMutationsByType(MUTATION_TYPE)
-  return all.length
+  return all.filter((m) => !m.parked).length
+}
+
+/**
+ * How many door receipts on this device are parked as "Not sent" for this
+ * session's person and house: refused by the server for good, or naming no
+ * one to send them as. Kept until a person sends them again or discards them.
+ */
+export async function notSentDoorCount(): Promise<number> {
+  const all = await offlineStorage.getPendingMutationsByType(MUTATION_TYPE)
+  return all.filter((m) => !!m.parked).length
+}
+
+/**
+ * "Send again" on one parked receipt: un-park it and flush.
+ *
+ * Only a `refused` receipt can be sent again. An `unowned` one names no person
+ * or house, so there is nobody to send it as — it can only be discarded (the
+ * same rule as `syncManager.retryNotSent`). Returns false when the entry was
+ * not there or could not be sent again; the entry is left exactly as it was.
+ */
+export async function resendDoorReceipt(id: string): Promise<boolean> {
+  const all = await offlineStorage.getPendingMutationsByType(MUTATION_TYPE)
+  const m = all.find((x) => x.id === id)
+  if (!m || m.parked?.reason !== 'refused') return false
+  await offlineStorage.updatePendingMutation(id, { parked: undefined })
+  await flushDoorOutbox()
+  return true
+}
+
+/**
+ * "Discard" on one parked receipt: the person gives it up, having been told
+ * the count is not on the server. The only path that removes a parked receipt.
+ *
+ * Looked up through the session-scoped read first, and only a PARKED entry is
+ * removed: a stale rail row (another tab un-parked it, or the house changed
+ * since the row was drawn) must not delete a receipt that is queued to send,
+ * or one that belongs to another person or house. Returns whether it removed.
+ */
+export async function discardDoorReceipt(id: string): Promise<boolean> {
+  const all = await offlineStorage.getPendingMutationsByType(MUTATION_TYPE)
+  const m = all.find((x) => x.id === id)
+  if (!m || !m.parked) return false
+  await offlineStorage.removePendingMutation(id)
+  return true
 }
 
 export interface DoorFlushResult {
   sent: number
-  /** Did not reach the server this pass — retryable ones included. */
+  /**
+   * Did not reach the server this pass and is still waiting: a transient
+   * failure (no network, 5xx, 401/408/425/429), or a refusal whose park write
+   * failed. Every one of them is still in the queue and is tried again.
+   */
   failed: number
   /**
-   * How many receipts this pass GAVE UP ON **and wrote down**: a 4xx, or the
-   * retry budget spent. A subset of `failed`, and the only permanent part of
-   * it — the item is deleted from the queue, so the pending badge decrements
-   * exactly as it does on a delivery. Reported separately because a caller
-   * that sees only `failed` cannot tell a receipt that will be retried from
-   * one nobody will ever send, and a screen that cannot tell them apart
-   * renders a loss as a success.
+   * Refused by the server for good this pass and PARKED as "not sent" (ADR
+   * 0241 amendment, 2026-09-29): kept in the queue, never deleted, and shown
+   * on the receiving rail with Send again and Discard. Disjoint from `failed`.
+   * One pass's count, like the others — a parked receipt is skipped by later
+   * passes, so it is not reported twice.
    */
-  dropped: number
-  /**
-   * Gave up on, and this device could NOT write the record — so the queue
-   * entry was KEPT rather than deleted.
-   *
-   * Disjoint from `dropped`, a subset of `failed`. The receipt still exists, on
-   * this phone only, and the next flush will try to record it again; the moment
-   * it succeeds the strand becomes an ordinary drop, which the porter can
-   * acknowledge. A caller must render this LOUDLY: the one outcome that is
-   * never acceptable is the screen saying nothing while a delivery is gone.
-   *
-   * THIS NUMBER DESCRIBES ONE PASS. It is true about that pass and nothing
-   * else. A later pass sees the same still-queued receipt and reports it again,
-   * correctly — so accumulating it turns one lost delivery into three, and
-   * holding it in component state loses it on the next navigate. Both were
-   * shipped and measured. Render it, if at all, beside the rest of the pass
-   * result and never as a standing alarm: ADR 0140 has the five ways this has
-   * gone wrong and why the outbox keeps no durable witness for it.
-   */
-  stranded: number
+  parked: number
   /**
    * The queue itself could not be read or walked this pass. The counters are
    * then a statement about nothing — not a clean sync — and the caller must
@@ -500,7 +462,7 @@ export interface DoorFlushResult {
  * walk from the dock to the office raises the last two in the same tick.
  * Without this each pass read the whole pending list BEFORE any of them
  * removed anything, so a single lost receipt was attempted once per pass and
- * reported as one drop per pass: one loss, counted twice.
+ * reported once per pass: one refusal, counted twice.
  */
 let inFlight: Promise<DoorFlushResult> | null = null
 
@@ -510,7 +472,7 @@ let inFlight: Promise<DoorFlushResult> | null = null
  * This is the difference between joining a pass and being lied to by one. A
  * caller arriving BEFORE the snapshot is genuinely covered by it. A caller
  * arriving after it is not: its receipt was queued too late to be in that
- * list, and handing it that pass's `{sent, failed, dropped}` reports success
+ * list, and handing it that pass's `{sent, failed, parked}` reports success
  * for work nobody did. Those callers get a pass of their own instead.
  */
 let snapshotTaken = false
@@ -554,13 +516,11 @@ export function flushDoorOutbox(): Promise<DoorFlushResult> {
 async function runFlush(onSnapshot: () => void): Promise<DoorFlushResult> {
   let sent = 0
   let failed = 0
-  let dropped = 0
-  let stranded = 0
+  let parked = 0
   const result = (unreachable: boolean): DoorFlushResult => ({
     sent,
     failed,
-    dropped,
-    stranded,
+    parked,
     unreachable,
   })
 
@@ -619,70 +579,33 @@ async function runFlush(onSnapshot: () => void): Promise<DoorFlushResult> {
         sent++
       } catch (err) {
         const status = statusOf(err)
-        const permanent = isPermanentRefusal(status)
+        const lastError = (err as Error)?.message ?? 'sync failed'
 
-        // Drop a permanently-rejected item rather than retrying it forever. A
-        // queue that never drains stops being watched, and then a real failure
-        // hides behind the stuck one. A transient failure is NEVER dropped any
-        // more (ADR 0241): it falls through to the retry below.
-        if (permanent) {
-          // Written BEFORE the delete and keyed on the queue id: the count
-          // alone cannot say WHICH order left, and after the delete nothing
-          // anywhere else in the app can.
-          const written = recordDrop(entry?.restaurantId ?? '', {
-            id: m.id,
-            orderLabel: entry?.orderLabel || entry?.orderId || 'Door receipt',
-            droppedAt: new Date().toISOString(),
-            // 401 no longer reaches here (the session ended: the receipt is
-            // kept for the same person's next sign-in). 'retries' is kept in
-            // the type only for records written before ADR 0241.
-            reason: status === 403 ? 'auth' : 'refused',
-          })
-
-          if (!written) {
-            // THE RECEIPT IS NOT DELETED. Storage was full or unavailable, so
-            // the queue is now the only copy of this delivery; deleting it
-            // would destroy the count with nothing on screen and nothing on
-            // disk. It is kept, with the reason written on it, which
-            // the rail renders, and every later flush retries the record —
-            // so the moment storage frees up it becomes an ordinary drop.
-            // Best-effort, and nothing depends on it landing: the storage that
-            // would carry it is the storage that just refused a write. It is
-            // for the rail's `last error` line, not for a witness.
-            try {
-              await offlineStorage.updatePendingMutation(m.id, {
-                retryCount: m.retryCount + 1,
-                lastError: STRANDED_MARKER,
-              })
-            } catch {
-              /* The mark is a courtesy for the rail's `last error` line and
-                 nothing reads it as a witness (ADR 0140), so a failure here
-                 costs a sentence, never the receipt. THE ENTRY SURVIVES, which
-                 is the whole property: it is still in the queue, still counted
-                 by `pendingDoorCount`, still listed on the receiving rail. */
-            }
-            failed++
-            stranded++
-            continue
-          }
-
+        // A permanent refusal is PARKED as "not sent", never deleted (ADR 0241
+        // amendment, 2026-09-29; the same shape spotCountOutbox parks a refused
+        // count with). Sending it again unchanged will not help, so it is not
+        // retried on its own; it waits on the rail for a person to Send again
+        // or Discard. A transient failure falls through to the retry below.
+        if (isPermanentRefusal(status)) {
           try {
-            await offlineStorage.removePendingMutation(m.id)
+            await offlineStorage.updatePendingMutation(m.id, {
+              lastError,
+              parked: { reason: 'refused', status, at: new Date().toISOString() },
+            })
+            parked++
           } catch {
-            // The record is already durable and keyed on this id, so a retry
-            // that sees the entry again cannot double-count the loss — and the
-            // reader excludes any entry that has a drop record, so an entry
-            // that lingers here cannot be read as a strand either.
+            // The park did not land. The entry is left exactly as it was —
+            // queued, unparked — and the next flush meets it again. It is
+            // NEVER deleted here: the queue is the only copy of the count.
+            failed++
           }
-          failed++
-          dropped++
           continue
         }
 
         try {
           await offlineStorage.updatePendingMutation(m.id, {
             retryCount: m.retryCount + 1,
-            lastError: (err as Error)?.message ?? 'sync failed',
+            lastError,
           })
         } catch {
           /* the entry stays as it was and will be retried */

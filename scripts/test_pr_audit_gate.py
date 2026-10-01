@@ -305,12 +305,22 @@ for _name, _extra in [
     ("O32 bidi control", "Shelf \u202eetag tidua\u202c labels."),
     ("O33 U+2028 line separator", "Shelf\u2028labels."),
     ("O34 bare CR", "Status: Locked\rSupersedes nothing."),
-    ("O35 ADR0090 without separator", "See ADR0090."),
-    ("O36 witness citation", "| 2026-09-18 | pr-audit-gate round 1 (PR #400) | BLOCK |"),
     ("O37 middle-dot separators", "The pr\u00b7audit\u00b7gate is retired."),
     ("O38 Arabic-Indic digits", "ADR \u0660\u0660\u0669\u0660 is narrowed."),
 ]:
     case(_name, True)(_adr(_extra))
+
+# NARROWED 2026-09-30 (the founder, chat, verbatim: "Approve #535 + narrow rule
+# (Recommended)"): a decision record is owned when the gate is its subject or a
+# rule about the gate is stated in it, not for a mention in passing. O35 and O36
+# were each a bare mention in an ADR's body, so their expectation flips to
+# released; the spelling O35 tests ("ADR0090" with no separator) is still judged,
+# in a record's metadata, by --self-test's _GATE_PHRASES check.
+for _name, _extra in [
+    ("O35 ADR0090 without separator, a mention in passing", "See ADR0090."),
+    ("O36 witness citation, a mention in passing", "| 2026-09-18 | pr-audit-gate round 1 (PR #400) | BLOCK |"),
+]:
+    case(_name, False)(_adr(_extra))
 
 
 def _two_commits(s, base, first, second):
@@ -566,6 +576,26 @@ def _(s): s.write(ADR161, CLEAN_ADR + "The audit<?x?>gate opt-out applies to doc
 @case("I3 a CDATA section hides the words in prose", True)
 def _(s): s.write(ADR161, CLEAN_ADR + "The audit <![CDATA[x]]> gate opt-out applies to docs-only changes.\n")
 
+# ---------------- added by the narrowing (2026-09-30) ----------------
+# The founder, chat, verbatim: "Approve #535 + narrow rule (Recommended)". N1 and
+# N2 are the shapes that made #535 owned (ADR 0241's body and its claims row each
+# cited the ADR 0090 reviewer once); each was OWNED before the narrowing and is
+# the case that kills "the narrowing reverted". N3-N5 stay owned under it.
+@case("N1 a claims fragment whose claim cites the ADR 0090 reviewer in passing", False)
+def _(s): s.write(".planning/decisions/claims.d/fix-door.jsonl",
+                  '{"id": "ADR-0241-DOOR", "status": "resolved", "claim": "27/6/4/3/2 fail, re-measured '
+                  'by the ADR 0090 reviewer", "verify": "true"}\n')
+@case("N2 an ADR body that cites the ADR 0090 reviewer in passing", False)
+def _(s): s.write(ADR161, CLEAN_ADR + "| 2026-09-29 | Build | [Re-measured by the ADR 0090 correctness "
+                  "reviewer after the discard-scope test was added: **27**.] |\n")
+@case("N3 an ADR whose metadata names the gate", True)
+def _(s): s.write(ADR161, CLEAN_ADR.replace("Proposed\n", "Proposed. Amends the audit gate's review scope.\n"))
+@case("N4 a gate decision by number, edited with no gate words", True)
+def _(s): s.write(".planning/decisions/0097-the-gateway-says-which-build-it-is.md", "# 0097 \u2014 x\n\nDeploys.\n")
+@case("N5 a claims fragment whose row id names the gate", True)
+def _(s): s.write(".planning/decisions/claims.d/x.jsonl",
+                  '{"id": "ADR-0090-DOCS", "status": "resolved", "claim": "x", "verify": "true"}\n')
+
 
 def pairs(s: Scratch) -> list[tuple[str, bool, str, str]]:
     """(name, expect_owned, base sha, head sha) for every case."""
@@ -664,6 +694,12 @@ def test_the_gate_r5_last_call_added_3_cases(scratch):
     delimiter."""
     names = [p[0] for p in scratch[1]]
     assert len([n for n in names if n[0] == "I"]) == 3
+
+
+def test_the_narrowing_added_5_cases(scratch):
+    """2026-09-30, the founder: "Approve #535 + narrow rule (Recommended)"."""
+    names = [p[0] for p in scratch[1]]
+    assert len([n for n in names if n[0] == "N"]) == 5
 
 
 def test_html_tag_re_does_not_catastrophically_backtrack_on_an_unclosed_tag():
@@ -917,6 +953,54 @@ MUTATIONS: list[tuple[str, str, str, bool]] = [
     # gate-r5 last-call round (2026-09-20, r5-gate.json must-fix 1)
     ("processing-instruction strip removed", 's = _HTML_PI_RE.sub("", s)', "s = s", False),
     ("CDATA-section strip removed", 's = _HTML_CDATA_RE.sub("", s)', "s = s", False),
+    # the narrowing (2026-09-30, the founder: "Approve #535 + narrow rule
+    # (Recommended)"): every switch of _scan_record and _record_subject. The
+    # first is the planted mutant for the narrowing itself.
+    ("the narrowing reverted: a decision record owned for any mention",
+     '    return None\n\n\ndef _decode(', '    return "names the audit gate" if why else None\n\n\ndef _decode(', False),
+    ("gate decision numbers not owned", "if m and m.group(1) in GATE_DECISION_NUMBERS:", "if False:", False),
+    ("subject check removed", "if GATE_SUBJECT_RE.search(skeleton(_record_subject(path, text))[0]):", "if False:", False),
+    ("rule check removed", "if GATE_RULE_RE.search(skeleton(text)[0]):", "if False:", False),
+    ("hygiene no longer judges the whole record",
+     'if why is not None and why != "names the audit gate":', "if False:", False),
+    ("Links bullet no longer excluded", "in_links = bool(_LINKS_BULLET_RE.match(ln))", "in_links = False", False),
+    ("Links exclusion swallows the next bullet", "in_links = bool(_LINKS_BULLET_RE.match(ln))",
+     "in_links = in_links or bool(_LINKS_BULLET_RE.match(ln))", False),
+    ("lazy continuation dropped", "elif in_meta and (ln[:1].isspace() or prev_meta) and",
+     "elif in_meta and ln[:1].isspace() and", False),
+    ("text before the first title dropped", "out.append(ln)  # nothing precedes", "pass  # nothing precedes", False),
+    ("only the first H1 is a title", "out.append(ln)  # every H1 is a title",
+     "out.append(ln) if not seen_h1 else None  # every H1 is a title", False),
+    ("claims subject widened to the whole row",
+     'ids += [json.dumps(v, ensure_ascii=False, default=str) for k, v in pairs[1] if k == "id"]', "ids.append(ln)", False),
+    ("claims ids dropped from the subject",
+     'ids += [json.dumps(v, ensure_ascii=False, default=str) for k, v in pairs[1] if k == "id"]', "pass", False),
+    ("duplicate id keys collapsed to the last",
+     'ids += [json.dumps(v, ensure_ascii=False, default=str) for k, v in pairs[1] if k == "id"]',
+     'ids += [json.dumps(dict(pairs[1]).get("id"), ensure_ascii=False, default=str)]', False),
+    ("setext titles dropped", "out.append(lines[i - 1])  # the line above", "pass  # the line above", False),
+    ("HTML h1 titles dropped", "        if _HTML_H1_RE.search(ln):\n            out.append(ln)\n", "", False),
+    ("'without' dropped from the rule verbs", '|unaudit|without"', '|unaudit"', False),
+    ("widened verbs dropped", 'rf"|permit|deprecat|turn{_S}off|not{_S}appl|not{_S}requir|may{_S}(?:self|merge)"', 'rf""', False),
+    ("rule verbs anchored at a word start (a stripped <br> glues the verb on)",
+     '_GATE_VERB = (rf"(?:supersed', '_GATE_VERB = (rf"\\b(?:supersed', False),
+    ("claims fragments scanned without decoding JSON escapes",
+     '        text = "\\n".join(ln + "\\n" + _jsonl_every_text(ln) for ln in text.split("\\n"))\n',
+     "        pass\n", False),
+    ("claims fragments scanned decoded only (a repeated key hides its first value)",
+     'text = "\\n".join(ln + "\\n" + _jsonl_every_text(ln) for ln in text.split("\\n"))',
+     'text = "\\n".join(_jsonl_text(ln) or ln for ln in text.split("\\n"))', False),
+    ("claims fragments decoded with the last value of a repeated key only",
+     'text = "\\n".join(ln + "\\n" + _jsonl_every_text(ln) for ln in text.split("\\n"))',
+     'text = "\\n".join(ln + "\\n" + (_jsonl_text(ln) or "") for ln in text.split("\\n"))', False),
+    ("'avoid' counted as 'void'", "(?<!a)void", "void", False),
+    ("zero-cost rule verbs dropped", '|revert|rescind|(?<!a)void|obsolet|abolish|remov|allow|stop|lower|reduc"', '"', False),
+    ("ignore's trivy/git lookbehind dropped", "(?<!trivy)(?<!git)ignor", "ignor", False),
+    ("ignore bounded after its stem (a stripped tag glues the next word on)",
+     "ignor(?!ance|ant)", "ignor(?:e|es|ed|ing)?(?![a-z])", False),
+    ("ignorance counted as ignore", "ignor(?!ance|ant)", "ignor", False),
+    ("a claims line that is not JSON no longer judged whole", "            except ValueError:\n                return text\n",
+     "            except ValueError:\n                continue\n", False),
 ] + [
     (f"owned prefix {p!r} deleted", f'\n    "{p}",', "\n", False) for p in _PREFIXES
 ] + [

@@ -32,6 +32,16 @@ vi.mock('../services/api/providers', () => ({
   createProvider: vi.fn(),
   updateProvider: vi.fn(),
 }))
+// The two self-flushing outboxes. `retryNotSent` must flush them, since
+// `syncNow` skips their entries.
+const flushDoorOutbox = vi.hoisted(() =>
+  vi.fn().mockResolvedValue({ sent: 0, failed: 0, parked: 0, unreachable: false }),
+)
+const flushSpotCountOutbox = vi.hoisted(() =>
+  vi.fn().mockResolvedValue({ sent: 0, failed: 0, parked: 0 }),
+)
+vi.mock('./doorOutbox', () => ({ flushDoorOutbox }))
+vi.mock('./spotCountOutbox', () => ({ flushSpotCountOutbox }))
 
 import { offlineStorage } from './offline-storage'
 import { deleteCalendarEvent } from '../services/api/calendar'
@@ -268,5 +278,41 @@ describe('provider.create replay (PR #508 audit, 2026-09-29)', () => {
       { name: 'Kavaklıdere' },
       { idempotencyKey: 'provider-create:k1' },
     )
+  })
+})
+
+describe('retryNotSent reaches the door and spot-count outboxes (ADR 0241 amendment, 2026-09-29)', () => {
+  beforeEach(() => {
+    vi.mocked(offlineStorage.updatePendingMutation).mockClear()
+    flushDoorOutbox.mockClear()
+    flushSpotCountOutbox.mockClear()
+  })
+
+  it('un-parks a refused door receipt and flushes the door outbox after it', async () => {
+    const door: PendingMutation = {
+      ...mutation('door-1', 'receiving.door', 0),
+      parked: { reason: 'refused', status: 422, at: '2026-09-29T00:00:00.000Z' },
+    }
+    vi.mocked(offlineStorage.getPendingMutations).mockResolvedValue([door])
+
+    await syncManager.retryNotSent()
+
+    expect(offlineStorage.updatePendingMutation).toHaveBeenCalledWith(
+      'door-1',
+      expect.objectContaining({ parked: undefined }),
+    )
+    // `syncNow` skips 'receiving.door', so without this "Try again" was a no-op.
+    expect(flushDoorOutbox).toHaveBeenCalledTimes(1)
+    expect(flushSpotCountOutbox).toHaveBeenCalledTimes(1)
+    const unparkedAt = vi.mocked(offlineStorage.updatePendingMutation).mock.invocationCallOrder[0]
+    expect(flushDoorOutbox.mock.invocationCallOrder[0]).toBeGreaterThan(unparkedAt)
+  })
+
+  it('still finishes the retry when an outbox pass rejects', async () => {
+    vi.mocked(offlineStorage.getPendingMutations).mockResolvedValue([])
+    flushSpotCountOutbox.mockRejectedValueOnce(new Error('offline'))
+
+    await expect(syncManager.retryNotSent()).resolves.toBeDefined()
+    expect(flushDoorOutbox).toHaveBeenCalledTimes(1)
   })
 })
