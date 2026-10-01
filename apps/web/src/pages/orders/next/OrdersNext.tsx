@@ -37,7 +37,7 @@ import { ReceiptSheet } from './ReceiptSheet';
 import { ResponsesSheet } from './ResponsesSheet';
 import { StageSpine, type SpineStation } from './StageSpine';
 import { Tally } from './Tally';
-import { EM, MONO, SANS, SERIF, fmtMoneyWhole } from './format';
+import { EM, MONO, SANS, SERIF, fmtMoneyWhole, fmtReadTime } from './format';
 import { emptyStationSentence } from './recurrence';
 import { STAGES, useOrdersNextData, type OrderRowVM } from './useOrdersNextData';
 import { useAuth } from '@/contexts/AuthContext';
@@ -376,9 +376,24 @@ export default function OrdersNext() {
               background: 'var(--paper-1, #F3EFE6)',
             }}
           >
-            <span style={{ fontSize: 12.5, color: 'var(--ink-2, #4F473C)' }}>
-              The gateway could not be reached ({data.errorMessage}). Every figure on this page is
-              unknown — shown as {EM}, never as zero.
+            {/* A re-read that fails keeps the last rows on screen (React Query
+                holds data across a refetch error), so "every figure is unknown"
+                would be false over them — say how old they are (ORD-W15). */}
+            <span
+              data-testid="orders-read-error"
+              style={{ fontSize: 12.5, color: 'var(--ink-2, #4F473C)' }}
+            >
+              {data.hasData && data.dataUpdatedAt ? (
+                <>
+                  The orders could not be re-read ({data.errorMessage}). What you see is the last
+                  read, from {fmtReadTime(data.dataUpdatedAt)} — it may be out of date.
+                </>
+              ) : (
+                <>
+                  The orders could not be read ({data.errorMessage}). Every figure on this page is
+                  unknown — shown as {EM}, never as zero.
+                </>
+              )}
             </span>
             <button
               type="button"

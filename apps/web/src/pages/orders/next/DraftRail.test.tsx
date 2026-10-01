@@ -101,6 +101,19 @@ beforeEach(() => {
   seams.standingFailed = false;
 });
 
+describe('the rail heading, for every role (ORD-W16)', () => {
+  it('never tells the reader it waits on THEIR approval — staff cannot give it', () => {
+    seams.standing = AS_STAFF;
+    draw();
+    const rail = screen.getByRole('region', { name: 'Drafted orders awaiting approval' });
+    expect(rail).toHaveTextContent('1 waiting');
+    expect(rail).toHaveTextContent(
+      'Nothing here reaches a vendor until someone who may send it approves it.',
+    );
+    expect(rail).not.toHaveTextContent(/your approval|awaiting your hand/);
+  });
+});
+
 describe('the drafted-order rail — send or ask', () => {
   it('a staff member holds to ASK: the draft’s words are requested and no seal is minted', async () => {
     seams.standing = AS_STAFF;

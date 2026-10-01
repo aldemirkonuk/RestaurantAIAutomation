@@ -227,6 +227,12 @@ export interface OrdersNextData {
    * context) — never "no orders". The page must not claim an empty book on it.
    */
   hasData: boolean;
+  /**
+   * When the rows on screen were last read (ms epoch), or null before the
+   * first read. A re-read that fails keeps the last rows — the page says how
+   * old they are instead of calling them unknown (ORD-W15).
+   */
+  dataUpdatedAt: number | null;
   isLoading: boolean;
   isError: boolean;
   errorMessage: string | null;
@@ -497,10 +503,11 @@ export function useOrdersNextData(): OrdersNextData {
       cancelledCount,
       month,
       hasData: known,
+      dataUpdatedAt: known && ordersQuery.dataUpdatedAt ? ordersQuery.dataUpdatedAt : null,
       isLoading: ordersQuery.isLoading,
       isError: ordersQuery.isError,
       errorMessage: ordersQuery.isError ? err?.message ?? 'request failed' : null,
       refetch: () => void ordersQuery.refetch(),
     };
-  }, [ordersQuery.data, ordersQuery.isLoading, ordersQuery.isError, ordersQuery.error, ordersQuery.refetch, providerNameById, gateQuery.data, gateQuery.isError, gateQuery.error]);
+  }, [ordersQuery.data, ordersQuery.isLoading, ordersQuery.isError, ordersQuery.error, ordersQuery.refetch, ordersQuery.dataUpdatedAt, providerNameById, gateQuery.data, gateQuery.isError, gateQuery.error]);
 }

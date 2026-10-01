@@ -783,7 +783,7 @@ export function DraftRail({
             color: "var(--ink-4, #665D50)",
           }}
         >
-          {known ? list.length : EM} awaiting your hand
+          {known ? list.length : EM} waiting
         </span>
       </div>
       <p
@@ -794,7 +794,10 @@ export function DraftRail({
           margin: "0 0 10px",
         }}
       >
-        Nothing here can reach a vendor without your approval.
+        {/* One sentence true for every role (ORD-W16): staff cannot approve a
+            send — their hold asks a manager — so "your approval" was false for
+            them. Each card's SendStandingNote says what THIS reader may do. */}
+        Nothing here reaches a vendor until someone who may send it approves it.
       </p>
       {drafts.isError ? (
         <p

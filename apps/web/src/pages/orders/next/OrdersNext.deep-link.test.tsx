@@ -115,6 +115,7 @@ function ordersData(over: Partial<OrdersNextData> = {}): OrdersNextData {
     approvalByOrder: new Map(),
     approvalGateError: null,
     approvalPolicyNote: null,
+    dataUpdatedAt: null,
     ...over,
   };
 }
@@ -220,6 +221,34 @@ describe('an id the book does not have', () => {
     harness('/orders/ghost-id');
     expect(await screen.findByRole('alert')).toHaveTextContent('timeout');
     expect(screen.queryByTestId('target-order-missing')).not.toBeInTheDocument();
+  });
+});
+
+describe('a read that fails (ORD-W15)', () => {
+  it('a first read that fails calls every figure unknown', async () => {
+    state.current = ordersData({ rows: [], hasData: false, isError: true, errorMessage: 'timeout' });
+    harness('/orders');
+    const say = await screen.findByTestId('orders-read-error');
+    expect(say).toHaveTextContent('The orders could not be read (timeout)');
+    expect(say).toHaveTextContent('Every figure on this page is unknown');
+  });
+
+  it('a re-read that fails over kept rows says how old they are, not that they are unknown', async () => {
+    const at = new Date();
+    at.setHours(17, 58, 0, 0);
+    state.current = ordersData({
+      rows: [row({ id: 'o-1' })],
+      hasData: true,
+      isError: true,
+      errorMessage: 'Network Error',
+      dataUpdatedAt: at.getTime(),
+    });
+    harness('/orders');
+    const say = await screen.findByTestId('orders-read-error');
+    expect(say).toHaveTextContent('The orders could not be re-read (Network Error)');
+    expect(say).toHaveTextContent('the last read, from 17:58');
+    expect(say).not.toHaveTextContent('unknown');
+    expect(screen.getByTestId('order-row-o-1')).toBeInTheDocument();
   });
 });
 
