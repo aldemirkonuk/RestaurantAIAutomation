@@ -51,10 +51,12 @@
  *    failed read, and when the read finds no role for this person here. The
  *    active house can differ from the house the stored token names, for
  *    example after a switch that lands in another house, or when another tab
- *    stores a new token. `JwtAuthGuard` refuses with 403 a role read that
- *    names any house but the token's (`assertTenantMatch`), and the page
- *    records that refusal as a failed read. For the token's house,
- *    `AuthService.validateJwtPayload`, which `JwtStrategy` calls, refuses a
+ *    stores a new token. `JwtAuthGuard` refuses a role read that names any
+ *    house but the token's: 403 from the tenant check (`assertTenantMatch`)
+ *    once the checks on the token itself pass (the blacklist, then the JWT
+ *    strategy, which calls `validateJwtPayload`), or 401 or 503 when one of
+ *    those fails first. A refusal that reaches the role read is recorded as
+ *    a failed read. For the token's house, `validateJwtPayload` refuses a
  *    token whose house holds no active access row for the person (401
  *    `HOUSE_ACCESS_ENDED`). So the states the code allows in which a read
  *    finds no role include an active row whose `role` is NULL (the column is
