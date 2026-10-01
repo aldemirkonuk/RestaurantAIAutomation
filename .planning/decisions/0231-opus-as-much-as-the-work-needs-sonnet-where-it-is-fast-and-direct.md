@@ -109,11 +109,6 @@ records it):
 > - **The founder's words.** In chat on 2026-09-29, verbatim: *"combine couple branches into one big merge at the same time? don't care how much it takes but gets the job done in one go"*. To the scope question, the option label *"All still-open PRs (Recommended)"*; to the cap question, the option label *"Waive for the batch (Recommended)"*. Relayed to the merging session by the coordinator of session a493af02.
 > - **Scope.** The file count only. The ADR 0090 audit still judges every file of every constituent, one constituent at a time; gate-owned files in the batch still need the founder's own sign-off before merge. The cap stands for every later PR.
 
-> **[2026-09-30, a fifth waiver, founder's words as relayed — the two-round fix cap, PR #537]**
-> - **What it covers.** PR #537 (`fix/tenant-guard-and-cross-house-runs`, ADR 0243), one third fix round after the ADR 0090 re-plan's second. The round is text only: wording is changed to what the reviewers measured, with no code change beyond comments, test titles and the one claim verify string that pins a title; then a full re-audit.
-> - **The founder's words.** On 2026-09-30, verbatim: *"Waive once, text-only round (Recommended)"*, the option label of his answer, relayed to the fix lane by the lane coordinator.
-> - **Scope.** It waives the "Fix: Opus, at most 2 rounds" line once, for this PR, and sets no precedent. The 15-file cap still applies: with this bracket #537 is 14 files.
-
 **3. Where Sonnet gets the emphasis** (item 86's *"fast, and direct"* work Sonnet is
 *"highly capable of"*): verification runs and check suites, mechanical edits to a spec,
 branch updates and merges of `main`, posting PRs and comments, the plan-scoped audit
