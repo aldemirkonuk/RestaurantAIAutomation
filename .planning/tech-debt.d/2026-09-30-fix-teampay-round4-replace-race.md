@@ -6,7 +6,7 @@ Found by CI run 36728755317, the web job on PR #537, whose diff changes no `apps
 - `RosterSheet.tsx` built the removal as `useMutation({ mutationFn: () => deleteTeamMember(member!.id, undefined, handingOver) })`, closing over the render's `handingOver`.
 - React Query 5.90.16 (`build/modern/useMutation.js:20-22`) hands a new `mutationFn` to its observer in a `useEffect`, a passive effect that runs after the commit. For a default-lane render such as this one, that is a separate Scheduler task, which in a browser normally runs after the paint. A call that starts at once runs whichever function the last effect installed.
 - The shifts are ticked by the picker's own effect once the gateway's checks arrive. That update renders on React's default lane, and its passive effects run as a separate Scheduler task.
-- When the render uses up React's 5 ms slice, Scheduler yields between the commit and the passive effects. A click in that gap finds a button already reading "Remove and hand over 1 shift", but `mutate()` runs the previous render's function, which carries `null`.
+- When the render uses up React's 5 ms slice, Scheduler yields between the commit and the passive effects. When the call starts at once, as it did in CI run 36728755317, a click in that gap finds a button already reading "Remove and hand over 1 shift", but `mutate()` runs the previous render's function, which carries `null`.
 - A test that clicks straight after a `waitFor` can land in that gap on a slow runner.
 
 **Fix.**
