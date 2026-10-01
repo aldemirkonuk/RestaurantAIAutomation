@@ -23,8 +23,8 @@ built in code the same day and needs no drawing. The other three are drawn here.
 - **Tips.** "Change them … they are old garbage tutorial designs." "Don't show again" must mean never,
   "until I press or check for it". The behaviour was built the same day; the design is drawn here.
 
-Open `index.html`; every frame links from it. Each page is self-contained: inline CSS, no network
-requests, fonts falling back to Georgia and system faces. The pages use the paper ground and the house
+Open `index.html`; every frame links from it. Each page is self-contained: inline CSS, and one network request: a render beacon, an image request
+to `/__seen` on whatever host serves the page (nothing outside that host); fonts falling back to Georgia and system faces. The pages use the paper ground and the house
 tokens from sketch 124. Every page folds to one column at ≤780px with no horizontal scroll. That was
 checked at 390px and 1280px on 2026-10-01: all 10 pages, no element past the viewport.
 
@@ -66,7 +66,8 @@ the record.
 - **Zones.** Owners, managers "+ the people they assign" (ADR 0238, built).
 - **Pay.** Pay is the owner's; an owner may let a manager see and set it (ADR 0215).
 - **Sending to vendors.** Only an owner lets someone send, and each send is sealed (ADR 0175 D10,
-  `authority_grants`).
+  `authority_grants`). **[2026-10-01, round 6: an owner may let a manager issue send and money
+  rights for named actions; without that, only owners issue (ADR 0253, amending D10).]**
 - **Granting.** Managers grant manager or staff (ADR 0162). Area leads act on cards only (ADR 0218).
 - **One register.** ADR 0238's Consequences say a capabilities register starts paying for itself at
   the second per-person right. There are two today, `team_pay_access` and `zone_setup_access`. The
@@ -76,7 +77,7 @@ the record.
 - **Precedent for per-role screens.** Today the rail hides four rooms from staff (`rooms.ts`
   `minRole`), and only `/receiving` already draws three ways by role (`ReceivingNext.tsx:56`).
 
-### Tips (built 2026-10-01 on `fix/closed-stays-closed`)
+### Tips (built 2026-10-01 on `fix/closed-stays-closed`; shipping as PR #570)
 
 - **"Not now"** (was "Later") hides the tip at once; it may come back on a later visit (a four-hour snooze, and once per browser session).
 - **"Don't show tips again"** turns off every page's tip until it is turned back on in Help → Ways back
@@ -94,8 +95,8 @@ the record.
    revenue is a bottle-price proxy (`analytics.service.ts:431`), labour is a typed `?labor=`, and POS
    revenue is null without a till. A house without a till is named and left out.
 5. **An unread house.** ~~Hold the total back, or show it marked partial.~~ **Answered 2026-10-01:** *"Show it, from N of M (Recommended)"* (ADR 0252).
-6. **Two currencies.** **Answered 2026-10-01:** per currency at the owner's rate, chosen from a popover on the currency sign — no extra combined line (ADR 0252, verbatim there). One total at the month's average rate (Fathom's method), or a total per
-   currency. Currency and time zone may be NULL per house today.
+6. **Two currencies.** **Answered 2026-10-01:** per currency at the owner's rate, chosen from a popover on the currency sign — no extra combined line (ADR 0252, verbatim there); with no typed rate, the ECB daily rate, dated (round 6, ADR 0252). ~~One total at the month's average rate (Fathom's method), or a total per
+   currency.~~ Currency and time zone may be NULL per house today.
 7. **Group goals.** **Answered 2026-10-01:** *"Each house its own, linked (Recommended)"* (ADR 0252). Each house on its own, rolling up (R365), or one target on the total; and whether a
    house can change its own. `analytics_goals` is per house and has no profit, cost or labour metric
    (`goals.service.ts:74`).
@@ -106,7 +107,7 @@ the record.
 
 9. **The rights list.** The seven drawn, more, or fewer.
 10. **"Just for this job".** ~~Does such a right end when the job is done?~~ **Answered 2026-10-01, with a new ask:** *"the job might be both so make it select, permanent and for this maybe we can in /team add a jobs or labels section where we can identify those people? with that each job could have the potential to add to this person to this job, with a dropdown right? research industry,, use case, test cases find the most plausible smooth route for this"* — the grant is a choice of permanent or for this job; /team gets a jobs-or-labels section; a job picks its person from a dropdown. Research done; answered round 7: listed means allowed, a job's right ends with the job, never at due (ADR 0253).
-11. **Order limits.** Can a manager set a staff limit above their own?
+11. **Order limits.** ~~Can a manager set a staff limit above their own?~~ **Answered 2026-10-01 (round 6):** managers issue money rights only where an owner allowed them; the amount goes with the packages (ADR 0253).
 12. **Late jobs.** ~~Who is told when a job is late?~~ **Answered 2026-10-01:** *"Person, then giver (Recommended)"* — reminder before due, the giver told once when late, the area lead only if the giver is away; never locked.
 13. **Where staff work.** ~~Phone app and web, or phone only.~~ **Answered 2026-10-01:** phone app and web (*"Phone app and web (Recommended)"*).
 14. **Staff and other rooms.** ~~Do staff see rooms outside their jobs?~~ **Answered 2026-10-01:** *"Only what rights open (Recommended)"* (ADR 0253).
