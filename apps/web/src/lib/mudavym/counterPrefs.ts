@@ -1,12 +1,20 @@
 /**
  * The counter's width — "Open first, then remember" (the founder's pick,
- * 2026-09-21, sketch 119 fork 10).
+ * 2026-09-21, sketch 119 fork 10), narrowed 2026-10-01 to ONE choice.
  *
  *   - Open on a person's first visits and at normal widths.
  *   - Tucked below ~1280 px, and on the wide pages (/reports, /inventory), to a
  *     ~52 px strip that still shows each verb with its count — never a blank
  *     edge.
- *   - After that, each person's choice PER PAGE is remembered, and wins.
+ *   - After that, the person's choice is remembered and wins on EVERY page.
+ *
+ * WHY ONE CHOICE, NOT ONE PER PAGE (founder, 2026-10-01)
+ * ------------------------------------------------------
+ * The first build remembered the choice per page, so a person who closed the
+ * counter on one page saw it open again on the next: "even if I close the
+ * counter, when I change pages, it reopens itself. That shouldn't happen." A
+ * record written by that build (an object of page → width) carries no single
+ * answer, so it is read as "never chosen", and the next toggle writes the one.
  *
  * WHERE THE CHOICE IS KEPT, AND WHY (the pick allowed either)
  * ------------------------------------------------------------
@@ -30,22 +38,22 @@ export const WIDE_PAGES: readonly string[] = ['/reports', '/inventory'];
 export type CounterWidth = 'open' | 'tucked';
 
 export interface ShellPrefs {
-  /** The person's own choice, per page key. Absent = never chosen there. */
-  counter: Record<string, CounterWidth>;
+  /** The person's own choice, for every page. Null = never chosen. */
+  counter: CounterWidth | null;
   /** The rooms rail tucked to its strip (⌘\). One choice, not per page. */
   railTucked: boolean;
 }
 
-const EMPTY: ShellPrefs = { counter: {}, railTucked: false };
+const EMPTY: ShellPrefs = { counter: null, railTucked: false };
 
 export function prefsKeyFor(userId: string): string {
   return `mudavym.shell.v1.${userId}`;
 }
 
 /**
- * The page a choice is remembered for: the path's first segment, so
- * `/documents/abc` and `/documents/def` are one page and `/reports?tab=x` is
- * `/reports`. The query and hash never name a page.
+ * The page a path belongs to, for the wide-page default: the path's first
+ * segment, so `/documents/abc` and `/documents/def` are one page and
+ * `/reports?tab=x` is `/reports`. The query and hash never name a page.
  */
 export function pageKeyOf(pathname: string): string {
   const clean = (pathname || '/').split(/[?#]/)[0];
@@ -53,35 +61,31 @@ export function pageKeyOf(pathname: string): string {
   return first ? `/${first}` : '/';
 }
 
-/** The rule. A remembered choice wins; otherwise width, then the page. */
+/** The rule. A remembered choice wins everywhere; otherwise width, then the page. */
 export function counterWidthFor(
   pathname: string,
   viewportWidth: number,
   prefs: ShellPrefs,
 ): CounterWidth {
-  const key = pageKeyOf(pathname);
-  const chosen = prefs.counter[key];
-  if (chosen === 'open' || chosen === 'tucked') return chosen;
+  if (prefs.counter === 'open' || prefs.counter === 'tucked') return prefs.counter;
   if (viewportWidth < TUCK_BELOW_PX) return 'tucked';
-  if (WIDE_PAGES.includes(key)) return 'tucked';
+  if (WIDE_PAGES.includes(pageKeyOf(pathname))) return 'tucked';
   return 'open';
 }
 
 export function readShellPrefs(userId: string | null | undefined): ShellPrefs {
-  if (!userId) return { ...EMPTY, counter: {} };
+  if (!userId) return { ...EMPTY };
   try {
     const raw = window.localStorage.getItem(prefsKeyFor(userId));
-    if (!raw) return { ...EMPTY, counter: {} };
-    const parsed = JSON.parse(raw) as Partial<ShellPrefs>;
-    const counter: Record<string, CounterWidth> = {};
-    if (parsed && typeof parsed.counter === 'object' && parsed.counter) {
-      for (const [k, v] of Object.entries(parsed.counter)) {
-        if (v === 'open' || v === 'tucked') counter[k] = v;
-      }
-    }
+    if (!raw) return { ...EMPTY };
+    const parsed = JSON.parse(raw) as { counter?: unknown; railTucked?: unknown } | null;
+    // Only a width is a choice. The per-page object the first build wrote,
+    // and anything else, reads as never chosen.
+    const c = parsed?.counter;
+    const counter: CounterWidth | null = c === 'open' || c === 'tucked' ? c : null;
     return { counter, railTucked: parsed?.railTucked === true };
   } catch {
-    return { ...EMPTY, counter: {} };
+    return { ...EMPTY };
   }
 }
 
@@ -94,11 +98,7 @@ export function writeShellPrefs(userId: string | null | undefined, prefs: ShellP
   }
 }
 
-/** The person chose `width` on this page; remember it. */
-export function rememberCounterWidth(
-  prefs: ShellPrefs,
-  pathname: string,
-  width: CounterWidth,
-): ShellPrefs {
-  return { ...prefs, counter: { ...prefs.counter, [pageKeyOf(pathname)]: width } };
+/** The person chose `width`; remember it for every page. */
+export function rememberCounterWidth(prefs: ShellPrefs, width: CounterWidth): ShellPrefs {
+  return { ...prefs, counter: width };
 }
