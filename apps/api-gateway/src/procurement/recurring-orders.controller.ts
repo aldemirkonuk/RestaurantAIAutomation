@@ -125,10 +125,11 @@ export class RecurringOrdersController {
    * check reads the caller's active access row for this house and, when that
    * read fails or finds no active row, falls back to the legacy `users` row
    * (its role, when its restaurant_id is this house; organizations.service.ts
-   * lookupRestaurantRole). A caller with neither an owner/manager access row
-   * nor a legacy owner/manager role on this house gets 403, including one for
-   * whom both reads fail; a legacy owner/manager of this house is admitted.
-   * Creating a schedule is unchanged: staff may.
+   * lookupRestaurantRole). An active access row decides on its own, so an
+   * active staff row gets 403 even when the legacy row says manager. When the
+   * access read fails or finds no active row, a legacy owner/manager of this
+   * house is admitted, and anyone else gets 403, including a caller for whom
+   * both reads fail. Creating a schedule is unchanged: staff may.
    */
   @Put(":restaurantId/:id")
   @ApiOperation({

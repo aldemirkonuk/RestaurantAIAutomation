@@ -43,14 +43,15 @@ All line numbers are at `origin/main` b9932e256. The cited files under `apps/api
 - That is the helper that order cancel (`assertMayCancelOrder`, `procurement.service.ts:3441-3445`) and the settings registers use.
 - A caller whose role at the house is not owner or manager gets 403: "Only managers and owners can edit a recurring order schedule", or "… deactivate a recurring order schedule".
 - **What the check reads** (`lookupRestaurantRole`, `organizations.service.ts:40-64`). It reads the caller's active `user_restaurant_access` row for this house first. When that read fails or finds no active row, it falls back to the legacy `users` row: that row's `role`, when its `restaurant_id` is this house. So:
+  - an active access row decides on its own (`if (fromAccess) return`, `:48-49`): an active staff row gets 403 even when the legacy row names manager;
   - a caller with neither an active owner/manager access row nor a legacy owner/manager role on this house gets 403;
   - that includes a caller for whom both reads fail;
-  - a caller whose access read fails but whose legacy row names owner or manager for this house is admitted.
+  - a caller whose access read fails or finds no active row, and whose legacy row names owner or manager for this house, is admitted.
 
   Nothing is written when the check refuses.
 
 **Each recurring-schedule mutation route, as decided under the founder's rule:**
-- **`PUT /recurring-orders/:restaurantId/:id`:** managers and owners only. In the gateway it is the only HTTP route that changes `next_order_date` or `auto_approve` on an existing schedule, and one of the two that change `active`. The gateway has no separate pause, resume, toggle or next-date route for `recurring_orders`.
+- **`PUT /recurring-orders/:restaurantId/:id`:** managers and owners only. In the gateway it is the only HTTP route through which a caller supplies `next_order_date` or `auto_approve` for an existing schedule, and one of the two that change `active` (the other is DELETE). `POST execute-check` (`recurring-orders.controller.ts:216-224`; non-production, platform operators only, ADR 0243) runs the cron body, which also writes `next_order_date`, with a value it computes (`recurring-orders.service.ts:1050-1058`). The gateway has no separate pause, resume, toggle or next-date route for `recurring_orders`.
 - **`DELETE /recurring-orders/:restaurantId/:id`:** managers and owners only. It sets `active` to false.
 - **`POST /recurring-orders/:restaurantId` (create):** unchanged. Staff may create a schedule, and it is recorded as theirs (`created_by` comes from the token, `recurring-orders.service.ts:415`).
 - **`GET` list and get-one:** unchanged; they are reads.
@@ -87,16 +88,17 @@ All line numbers are at `origin/main` b9932e256. The cited files under `apps/api
 
 ## Evidence
 
-`recurring-schedule-edits-need-a-manager.http.spec.ts` has 13 cases. It runs the real `RecurringOrdersController`, `RecurringOrdersService` and `OrganizationsService` over an in-memory store, and the real `JwtAuthGuard` with passport stubbed.
+`recurring-schedule-edits-need-a-manager.http.spec.ts` has 14 cases. It runs the real `RecurringOrdersController`, `RecurringOrdersService` and `OrganizationsService` over an in-memory store, and the real `JwtAuthGuard` with passport stubbed.
 
-**The seven [REVERT-FAILS] cases.** Each answered 200 where 403 was expected on main's controller (98dfcb5af, unchanged since e88593bf8):
+**The eight [REVERT-FAILS] cases.** Each answered 200 where 403 was expected on main's controller (98dfcb5af, unchanged since e88593bf8):
 - staff PUT on a manager's schedule;
 - staff PUT on their own schedule;
 - staff DELETE on a manager's schedule;
 - staff DELETE on their own schedule;
 - both role reads failing (PUT and DELETE);
 - the access read failing, with a legacy `users` row naming staff for this house;
-- the access read failing, with no legacy row.
+- the access read failing, with no legacy row;
+- an active staff access row, with a legacy row naming manager.
 
 **The six pins**, which pass before and after:
 - a legacy manager of this house whose access read fails may PUT and DELETE;
@@ -108,15 +110,16 @@ All line numbers are at `origin/main` b9932e256. The cited files under `apps/api
 
 | Mutation | Spec | Claim |
 |---|---|---|
-| Remove the PUT check | 5 of 13 fail | exit 1 |
-| Remove the DELETE check | 5 of 13 fail | exit 1 |
-| Run the PUT check after the update | 5 of 13 fail | exit 1 |
-| Refuse only a caller with no role (staff passes) | 3 of 13 fail | not run |
-| Refuse only `staff` (no role passes) | 2 of 13 fail | not run |
-| Add the check to create as well | 1 of 13 fails | exit 1 |
-| Move DELETE's check inside its `try` (its catch turns the 403 into a 500) | 5 of 13 fail | exit 1 |
-| Swap the two action strings | 4 of 13 fail | exit 1 |
-| Check `user.restaurantId` instead of the path's `restaurantId` | 0 of 13 fail | not run |
+| Remove the PUT check | 6 of 14 fail | exit 1 |
+| Remove the DELETE check | 6 of 14 fail | exit 1 |
+| Run the PUT check after the update | 6 of 14 fail | exit 1 |
+| Refuse only a caller with no role (staff passes) | 4 of 14 fail | not run |
+| Refuse only `staff` (no role passes) | 2 of 14 fail | not run |
+| Add the check to create as well | 1 of 14 fails | exit 1 |
+| Move DELETE's check inside its `try` (its catch turns the 403 into a 500) | 6 of 14 fail | exit 1 |
+| Swap the two action strings | 4 of 14 fail | exit 1 |
+| Check `user.restaurantId` instead of the path's `restaurantId` | 0 of 14 fail | not run |
+| In the shared helper, let an active staff access row fall through to the legacy row (restored afterwards; not part of this PR) | 1 of 14 fails | not run |
 
 The last row is equivalent. `JwtAuthGuard` refuses a path `:restaurantId` that differs from the session's house before the handler runs (`assertTenantMatch`), so the two values are equal on every request that reaches the check.
 
@@ -126,3 +129,4 @@ The last row is equivalent. `JwtAuthGuard` refuses a path `:restaurantId` that d
 |---|---|---|
 | 2026-10-01 | — | Created on `fix/recurring-schedule-edits-need-a-manager`. No independent review yet. |
 | 2026-10-01 | Audit of PR #550 at b068bc984 (plan) | The plan asked for these corrections before review: (F1) a failed access read falls back to the legacy `users` row, so "a caller whose role cannot be read gets 403" was too broad; it is now stated as the helper reads, with three new cases; (F2) the merge role check in Context is PR #538's code, which is open; that is now scoped, and main's ungated merge is listed under Not closed; (F3) the order-recurrence OPEN entry is bracket-corrected: the founder ruled, and PR #558 is in flight; (minor) the Python agent's `next_order_date` writer is named. Also, from the Audit of PR #538 at f66ec0d53, the `auto_approve` item is now stated as measured: the seal refuses the cron's challenge-less approve. |
+| 2026-10-01 | Audit of PR #550 at c688ea534 (plan) | The plan asked for two more corrections before review. (G1) "A legacy owner/manager of this house is admitted" was unscoped in the claim and the controller comment: an active access row decides on its own (`organizations.service.ts:48-49`). The clause is now scoped, the Decision names the active-row case, and a [REVERT-FAILS] case pins an active staff row with a legacy manager row (403). (G2) "The only HTTP route that changes `next_order_date`" now reads "through which a caller supplies", and it names `execute-check`, which writes a computed `next_order_date` through the cron body. |

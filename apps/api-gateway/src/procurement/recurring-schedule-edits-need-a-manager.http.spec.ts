@@ -39,6 +39,8 @@ const UNREADABLE = "a0000000-0000-4000-8000-000000000004";
 const LEGACY_MANAGER = "a0000000-0000-4000-8000-000000000005";
 const LEGACY_STAFF = "a0000000-0000-4000-8000-000000000006";
 const NO_LEGACY = "a0000000-0000-4000-8000-000000000007";
+// An active staff access row, and a legacy `users` row naming manager.
+const STAFF_ROW_LEGACY_MANAGER = "a0000000-0000-4000-8000-000000000008";
 const INVENTORY = "33333333-3333-4333-8333-333333333333";
 const VENDOR = "44444444-4444-4444-8444-444444444444";
 const OF_MANAGER = "55555555-5555-4555-8555-555555555555";
@@ -84,10 +86,21 @@ function fresh() {
         is_active: true,
       },
       { user_id: STAFF, restaurant_id: HOUSE, role: "staff", is_active: true },
+      {
+        user_id: STAFF_ROW_LEGACY_MANAGER,
+        restaurant_id: HOUSE,
+        role: "staff",
+        is_active: true,
+      },
     ],
     users: [
       { user_id: LEGACY_MANAGER, role: "manager", restaurant_id: HOUSE },
       { user_id: LEGACY_STAFF, role: "staff", restaurant_id: HOUSE },
+      {
+        user_id: STAFF_ROW_LEGACY_MANAGER,
+        role: "manager",
+        restaurant_id: HOUSE,
+      },
     ],
     recurring_orders: [
       schedule(OF_MANAGER, MANAGER),
@@ -332,6 +345,23 @@ describe("when the access read fails, the legacy users row decides", () => {
       expect(writes).toEqual([]);
     },
   );
+});
+
+describe("an active access row decides, whatever the legacy row says", () => {
+  // `if (fromAccess) return` (organizations.service.ts:48-49): the legacy
+  // `users` row is read only when the access read fails or finds no active
+  // row, so an active staff row is refused even if the legacy row says
+  // manager.
+  it("[REVERT-FAILS] refuses an active staff access row with a legacy manager row, with 403, and writes nothing", async () => {
+    expect((await put(OF_MANAGER, STAFF_ROW_LEGACY_MANAGER)).status).toBe(403);
+    expect((await del(OF_MANAGER, STAFF_ROW_LEGACY_MANAGER)).status).toBe(403);
+    expect(row(OF_MANAGER)).toMatchObject({
+      quantity: 6,
+      active: true,
+      updated_at: "t0",
+    });
+    expect(writes).toEqual([]);
+  });
 });
 
 describe("managers and owners may", () => {
