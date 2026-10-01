@@ -20,6 +20,7 @@ import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { NonProductionGuard } from "../communications/guards/non-production.guard";
 import { PlatformOperatorGuard } from "../common/orchestrator/platform-operator.service";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
+import { OrganizationsService } from "../organizations/organizations.service";
 
 @ApiTags("recurring-orders")
 /**
@@ -41,6 +42,7 @@ import { CurrentUser } from "../auth/decorators/current-user.decorator";
 export class RecurringOrdersController {
   constructor(
     private readonly recurringOrdersService: RecurringOrdersService,
+    private readonly organizations: OrganizationsService,
   ) {}
 
   @Get(":restaurantId")
@@ -112,13 +114,32 @@ export class RecurringOrdersController {
     }
   }
 
+  /**
+   * EDIT AND DEACTIVATE NEED A MANAGER OR AN OWNER (ADR 0246).
+   *
+   * Founder, 2026-10-01: "Managers and owners only (Recommended)". The 08:00
+   * cron raises a schedule's order as the schedule's `created_by`, so a staff
+   * edit to a manager's schedule was raised as the manager. These two routes
+   * now run `assertCanManageRestaurant`, the check that order cancel and the
+   * settings registers use, before anything is read or written. A role that
+   * cannot be read is no role to that check, so it is refused too (403).
+   * Creating a schedule is unchanged: staff may.
+   */
   @Put(":restaurantId/:id")
-  @ApiOperation({ summary: "Update a recurring order" })
+  @ApiOperation({
+    summary: "Update a recurring order (managers and owners only)",
+  })
   async update(
     @Param("restaurantId") restaurantId: string,
     @Param("id") id: string,
     @Body() body: UpdateRecurringOrderDto,
+    @CurrentUser() user: { userId: string; restaurantId: string },
   ) {
+    await this.organizations.assertCanManageRestaurant(
+      user?.userId,
+      restaurantId,
+      "edit a recurring order schedule",
+    );
     try {
       return await this.recurringOrdersService.updateRecurringOrder(
         restaurantId,
@@ -135,11 +156,19 @@ export class RecurringOrdersController {
   }
 
   @Delete(":restaurantId/:id")
-  @ApiOperation({ summary: "Deactivate a recurring order" })
+  @ApiOperation({
+    summary: "Deactivate a recurring order (managers and owners only)",
+  })
   async deactivate(
     @Param("restaurantId") restaurantId: string,
     @Param("id") id: string,
+    @CurrentUser() user: { userId: string; restaurantId: string },
   ) {
+    await this.organizations.assertCanManageRestaurant(
+      user?.userId,
+      restaurantId,
+      "deactivate a recurring order schedule",
+    );
     try {
       return await this.recurringOrdersService.deleteRecurringOrder(
         restaurantId,
