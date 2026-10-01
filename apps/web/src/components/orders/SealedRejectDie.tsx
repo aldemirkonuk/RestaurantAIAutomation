@@ -39,27 +39,35 @@
  *    Q1: *"Manager or owner, like approval."* The gate is the endpoint's —
  *    `assertCanManageRestaurant` runs on the mint AND the write — and this is
  *    the courtesy in front of it. The role this control reads is
- *    `useAuth().activeRole`: the role on this person's access row for this
- *    house with `is_active = true`, read from `/auth/me/role` when the user or
- *    the active house changes. It keeps its old value until a new read
- *    returns, including the previous house's role after a house switch, so it
- *    can differ from the gateway's check (which falls back to the legacy
- *    `users` row) in either direction. **A `null` role disables too.** `null`
- *    covers more than one state, including before the first read returns,
- *    after a failed read, and when the read finds no role for this person
- *    here. A token naming a house where the person holds no active access row
- *    is refused on every request `JwtStrategy` checks
- *    (`AuthService.validateJwtPayload`, 401 `HOUSE_ACCESS_ENDED`), and
- *    `AuthContext` asks about the token's house only. So a read that finds no
- *    role includes an active row whose `role` is NULL (the column is
- *    nullable, and its CHECK lets NULL through), and a failure of the route's
- *    own read of that row, which `getUserRoleAtRestaurant` answers as no role
- *    because it does not look at the read's error. For a NULL role the cancel
- *    gate's role check reads the legacy `users` row instead
- *    (`lookupRestaurantRole`), so a member whose `users` row names this house
- *    with the role manager or owner passes that check while this control
- *    shows `null`. Treating "I don't know" as "yes" is the house's
- *    [[absence-reported-as-health]] fault pointed at a destructive write.
+ *    `useAuth().activeRole`: the role on this person's access row with
+ *    `is_active = true` for the page's active house (`activeRestaurantId`),
+ *    read from `/auth/me/role` when the user or the active house changes.
+ *    When a read is made, `activeRole` keeps its old value until that read
+ *    returns, including the previous house's role after a house switch; with
+ *    no user, no token or no valid house it is set to null at once. So it can
+ *    differ from the gateway's check (which falls back to the legacy `users`
+ *    row) in either direction. **A `null` role disables too.** `null` covers
+ *    more than one state, including before the first read returns, after a
+ *    failed read, and when the read finds no role for this person here. The
+ *    active house can differ from the house the stored token names, for
+ *    example after a switch that lands in another house, or when another tab
+ *    stores a new token. `JwtAuthGuard` refuses with 403 a role read that
+ *    names any house but the token's (`assertTenantMatch`), and the page
+ *    records that refusal as a failed read. For the token's house,
+ *    `AuthService.validateJwtPayload`, which `JwtStrategy` calls, refuses a
+ *    token whose house holds no active access row for the person (401
+ *    `HOUSE_ACCESS_ENDED`). So the states the code allows in which a read
+ *    finds no role include an active row whose `role` is NULL (the column is
+ *    nullable, and its CHECK lets NULL through; production held no NULL role
+ *    on 2026-09-02, per the header of migration 20260902200000), and a
+ *    failure of the route's own read of that row, which
+ *    `getUserRoleAtRestaurant` answers as no role because it does not look at
+ *    the read's error. For a NULL role the cancel gate's role check reads the
+ *    legacy `users` row instead (`lookupRestaurantRole`), so a member whose
+ *    `users` row names this house with the role manager or owner passes that
+ *    check while `activeRole` here is `null`. Treating "I don't know" as
+ *    "yes" is the house's [[absence-reported-as-health]] fault pointed at a
+ *    destructive write.
  *    `null` and `staff` each get their own sentence, and neither says the
  *    state will clear.
  * 5. A REFUSAL IS PRINTED AS ITSELF. 400 (no reason), 403 (the seal or the
@@ -88,7 +96,11 @@ export const REJECT_NEEDS_A_REASON_LEGACY =
   'Say why this order is being rejected. The reason is written onto the order ' +
   'and is the only account anyone will have of why this wine was not bought.';
 
-/** Said when `activeRole` is `staff`, which can lag a role change (rule 4 above). Never hidden — ADR 0083. */
+/**
+ * Said when `activeRole` is `staff`, which can lag a role change (rule 4
+ * above). This control shows it with the disabled hold rather than hiding the
+ * hold (ADR 0083).
+ */
 export const REJECT_NEEDS_A_MANAGER =
   'Cancelling an order is a manager\u2019s or an owner\u2019s act in this house, and this ' +
   'page has you as staff at this restaurant. Nothing was changed. Ask a manager to ' +

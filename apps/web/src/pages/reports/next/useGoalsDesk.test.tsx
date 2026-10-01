@@ -40,7 +40,7 @@ describe('useGoalsDesk — who may write', () => {
     expect(d.readOnlyReason).toBeNull();
   });
 
-  it('keeps the desk read-only for staff, and says goals are theirs to set', () => {
+  it('keeps the desk read-only for staff, with the staff sentence', () => {
     auth.role = 'staff';
     const d = desk();
     expect(d.canWrite).toBe(false);

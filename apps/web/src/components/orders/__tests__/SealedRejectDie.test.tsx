@@ -144,7 +144,7 @@ describe('who may end an order', () => {
     expect(screen.queryByTestId('legacy-reject-needs-reason')).toBeNull();
   });
 
-  it('treats a role that is not known as not confirmed, never as permission', () => {
+  it('treats a role that is not known as not confirmed, and disables the hold', () => {
     roleMock.current = null;
     render(<SealedRejectDie orderId="ord-1" />);
     expect(die()).toBeDisabled();
