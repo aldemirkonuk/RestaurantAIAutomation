@@ -173,9 +173,12 @@ import {
 } from "../organizations/vendor-send-requests.service";
 import {
   ORDER_GOODS_ARRIVED_STATUSES,
+  ORDER_MERGEABLE_STATUSES,
+  ORDER_PRICE_OPEN_STATUSES,
   ORDER_TERMINAL_STATUSES,
   decideTransition,
   readOrderStatus,
+  refusePriceChange,
   refuseUnreadableStatus,
 } from "./order-transitions";
 import { toPostgrestInList } from "./order-status";
@@ -1073,18 +1076,14 @@ export class ProcurementService {
 
     // Dedup guard: a price/quantity change for the same wine+vendor should
     // update the existing open order, not spawn a second one. Match on
-    // restaurant + inventory + provider, excluding orders already past
-    // negotiation (confirmed/delivered/cancelled/rejected/failed).
-    const TERMINAL_STATUSES = [
-      ProcurementOrderStatus.CONFIRMED,
-      ProcurementOrderStatus.IN_TRANSIT,
-      ProcurementOrderStatus.DELIVERED,
-      ProcurementOrderStatus.COMPLETED,
-      ProcurementOrderStatus.CANCELLED,
-      ProcurementOrderStatus.REJECTED,
-      ProcurementOrderStatus.FAILED,
-    ];
-
+    // restaurant + inventory + provider, and only an order whose figures are
+    // still nobody's decision (`ORDER_MERGEABLE_STATUSES`: pending or in
+    // negotiation). This excluded seven "finished" states and so wrote over
+    // APPROVED, APPROVAL_NEEDED and PARTIALLY_RECEIVED orders too — a sealed
+    // total, a total a manager was being asked to seal, and an order with
+    // stock booked against it (fix/order-patch-cannot-approve, 2026-10-01).
+    // Anything else starts a new order.
+    //
     // Skipped entirely for an order that RECORDS a completed purchase. The
     // merge folds a re-quote into an open REQUEST; an off-app invoice is a
     // second, separate purchase, and folding it into a live pending order would
@@ -1093,10 +1092,11 @@ export class ProcurementService {
     //
     // Skipped for the same reason, one turn stronger, for an occurrence of a
     // recurrence: its parent is BY CONSTRUCTION the same restaurant + inventory
-    // + provider, and an APPROVED parent is not in TERMINAL_STATUSES, so the
-    // merge would fire on every single occurrence — overwriting the standing
-    // order with a copy of itself and never creating the child at all. See
-    // `provenance.recurrence`.
+    // + provider, and an APPROVED parent used to be mergeable, so the merge
+    // fired on every single occurrence — overwriting the standing order with a
+    // copy of itself and never creating the child at all. An APPROVED parent is
+    // outside `ORDER_MERGEABLE_STATUSES` now; the skip stays, because a parent
+    // back in negotiation is inside it. See `provenance.recurrence`.
     let existing: any | undefined;
     if (!fulfilled && !recurrence) {
       const { data: existingRows, error: existingError } =
@@ -1106,7 +1106,7 @@ export class ProcurementService {
           .eq("restaurant_id", restaurantId)
           .eq("inventory_id", dto.inventoryId)
           .eq("provider_id", dto.providerId ?? "")
-          .not("status", "in", `(${TERMINAL_STATUSES.join(",")})`)
+          .in("status", [...ORDER_MERGEABLE_STATUSES])
           .order("requested_at", { ascending: false })
           .limit(1);
 
@@ -1120,8 +1120,13 @@ export class ProcurementService {
       existing = existingRows?.[0] as any | undefined;
     }
 
+    // The write carries the lookup's condition too. They are two statements,
+    // and an approval landing between them would otherwise have its sealed
+    // figures overwritten here; with the condition the UPDATE matches no row,
+    // and a new order is started below instead.
+    let updated: any = null;
     if (existing && dto.providerId) {
-      const { data: updated, error: updateError } =
+      const { data: mergedInto, error: updateError } =
         await this.databaseService.supabase
           .from("procurement_orders")
           .update({
@@ -1140,8 +1145,9 @@ export class ProcurementService {
               dto.expectedDeliveryDate ?? existing.expected_delivery_date,
           })
           .eq("id", existing.id)
+          .in("status", [...ORDER_MERGEABLE_STATUSES])
           .select("*, inventory:inventory_id(wine_name)")
-          .single();
+          .maybeSingle();
 
       if (updateError) {
         this.logger.error("Failed to update existing procurement order", {
@@ -1151,7 +1157,16 @@ export class ProcurementService {
         });
         throw updateError;
       }
+      if (!mergedInto) {
+        this.logger.warn(
+          "The open order left negotiation before the merge wrote; starting a new order",
+          { restaurantId, orderId: existing.id },
+        );
+      }
+      updated = mergedInto;
+    }
 
+    if (updated) {
       this.logger.log("Merged order request into existing open order", {
         restaurantId,
         orderId: existing.id,
@@ -3308,8 +3323,41 @@ export class ProcurementService {
           "An order is cancelled through its own act, which asks whose failure it was and is held to confirm — not by editing its status. Nothing was changed.",
       });
     }
+    // An order is approved by a person holding Approve: `POST
+    // orders/:id/seal-challenge` mints a seal over the order's own total, and
+    // `POST orders/:id/approve` checks the house's approval rules and spends it
+    // (ADR 0116; the seal, founder 2026-09-04). This route has no `@Roles` and
+    // passes no user, and PENDING, APPROVAL_NEEDED and NEGOTIATING -> APPROVED
+    // are legal edges because `approveOrder` walks them — so `status: APPROVED`
+    // here approved an order with no seal, no rule and no approver, from any
+    // member of the house. Refused for everyone, before anything is read:
+    // nothing in this codebase approves through this method
+    // (fix/order-patch-cannot-approve, 2026-10-01).
+    if (dto.status === ProcurementOrderStatus.APPROVED) {
+      throw new UnprocessableEntityException({
+        reason: "approve_through_the_sealed_act",
+        message: ProcurementService.APPROVE_THROUGH_THE_HOLD,
+      });
+    }
     if (dto.status !== undefined && !opts?.statusTransitionAlreadyChecked) {
       await this.assertStatusTransition(restaurantId, orderId, dto.status);
+    }
+
+    // Once an order is approved its price is the one that was sealed, and once
+    // it is closed its price is its record; neither is edited here (same fix).
+    // Checked against the order's CURRENT state, so a PATCH that also moves it
+    // cannot lift the rule in the same request, and repeated as a condition on
+    // the UPDATE below, so an approval landing between this read and that
+    // write is not overwritten either. A null price says nothing and is let
+    // through, as every other field here treats it.
+    const writesPrice = [
+      dto.quotedPrice,
+      dto.negotiatedPrice,
+      dto.finalPrice,
+      dto.totalCost,
+    ].some((v) => v != null);
+    if (writesPrice) {
+      await this.assertPriceStillOpen(restaurantId, orderId);
     }
 
     // D-06: Block location assignment while order is in a pending state.
@@ -3364,13 +3412,20 @@ export class ProcurementService {
       cancelled_at: opts?.cancelledAt ?? undefined,
     };
 
-    const { data, error } = await this.databaseService.supabase
+    let write = this.databaseService.supabase
       .from("procurement_orders")
       .update(updatePayload)
       .eq("restaurant_id", restaurantId)
-      .eq("id", orderId)
-      .select("*, inventory:inventory_id(wine_name)")
-      .single();
+      .eq("id", orderId);
+    if (writesPrice) {
+      write = write.in("status", [...ORDER_PRICE_OPEN_STATUSES]);
+    }
+    const selected = write.select("*, inventory:inventory_id(wine_name)");
+    // `maybeSingle` on the price path only: there, no row means the condition
+    // above refused the write, which is a refusal and not a server fault.
+    const { data, error } = writesPrice
+      ? await selected.maybeSingle()
+      : await selected.single();
 
     if (error) {
       this.logger.error("Failed to update procurement order", {
@@ -3379,6 +3434,13 @@ export class ProcurementService {
         error: error.message,
       });
       throw error;
+    }
+    if (writesPrice && !data) {
+      throw new UnprocessableEntityException({
+        reason: "price_settled_by_approval",
+        message:
+          "This order was approved or closed while its price was being changed, so the price it had then stands. Nothing was changed.",
+      });
     }
 
     const row = data as any;
@@ -3389,6 +3451,55 @@ export class ProcurementService {
     };
 
     return this.mapOrderRow(orderRow);
+  }
+
+  /**
+   * The sentence `PATCH orders/:id` carrying `status: APPROVED` is refused
+   * with. It names the act a person uses instead, in the words the page shows
+   * on it ("Hold to approve").
+   */
+  static readonly APPROVE_THROUGH_THE_HOLD =
+    "An order is approved through its own act — holding Approve, which checks " +
+    "this house's approval rules and seals the approval to the person holding " +
+    "— not by editing its status. Nothing was changed.";
+
+  /**
+   * Throw unless this order's price may still be edited: it is pending,
+   * waiting for approval or in negotiation (`ORDER_PRICE_OPEN_STATUSES`).
+   *
+   * A failed read is a refusal, never a pass, and a missing order is a 404 —
+   * the same three rules as `assertStatusTransition`, for the same reasons.
+   */
+  private async assertPriceStillOpen(
+    restaurantId: string,
+    orderId: string,
+  ): Promise<void> {
+    const { data, error } = await this.databaseService.supabase
+      .from("procurement_orders")
+      .select("id, status")
+      .eq("restaurant_id", restaurantId)
+      .eq("id", orderId)
+      .maybeSingle();
+
+    if (error) {
+      throw new InternalServerErrorException(
+        `This order's current state could not be read (${error.message}), so ` +
+          `whether its price may change was not decided and nothing was changed.`,
+      );
+    }
+    if (!data) {
+      throw new NotFoundException(
+        "No order with that id belongs to this restaurant, so there was nothing to change.",
+      );
+    }
+
+    const status = readOrderStatus((data as { status: unknown }).status);
+    if (status !== null && ORDER_PRICE_OPEN_STATUSES.includes(status)) return;
+    throw new UnprocessableEntityException({
+      reason: "price_settled_by_approval",
+      status,
+      message: refusePriceChange(status),
+    });
   }
 
   /**
