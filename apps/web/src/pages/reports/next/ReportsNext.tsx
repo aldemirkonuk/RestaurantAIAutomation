@@ -90,13 +90,16 @@ function Action({
   children,
   onClick,
   strong,
+  tour,
 }: {
   children: React.ReactNode;
   onClick: () => void;
   strong?: boolean;
+  /** The page tour's anchor (guidance/content/reports.ts). */
+  tour?: string;
 }) {
   return (
-    <button type="button" className="rp-btn rp-ink rp-focus" data-strong={strong} onClick={onClick}>
+    <button type="button" className="rp-btn rp-ink rp-focus" data-strong={strong} data-tour={tour} onClick={onClick}>
       {children}
     </button>
   );
@@ -365,7 +368,7 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
                 Ruled off.
               </span>
             )}
-            <Action onClick={() => setAsking(true)}>Ask the book ⌘K</Action>
+            <Action tour="reports-ask" onClick={() => setAsking(true)}>Ask the book ⌘K</Action>
             {arranging ? (
               <>
                 <Action onClick={putBack}>Put it all back</Action>
@@ -374,7 +377,7 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
                 </Action>
               </>
             ) : (
-              <Action onClick={startArranging}>Arrange the sheet</Action>
+              <Action tour="reports-arrange" onClick={startArranging}>Arrange the sheet</Action>
             )}
           </div>
         </header>

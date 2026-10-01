@@ -1,37 +1,40 @@
 import type { TourDefinition } from '../tours/registry'
 
+// Steps follow the job, not the screen (ADR 0251 D3). Each element must exist
+// on the live page; a step whose element is missing is left out by TourEngine.
+
 export const ordersTip = {
   pageId: 'orders' as const,
   title: 'Orders',
-  body: 'Filter by pipeline stage, find a PO, then create or follow it through delivery.',
+  body: 'Write an order, approve it, follow it, and check it in when it arrives.',
 }
 
 export const ordersTour: TourDefinition = {
   pageId: 'orders',
   steps: [
     {
-      element: '[data-tour="orders-status"]',
-      title: 'Pipeline at a glance',
+      element: '[data-testid="write-order"]',
+      title: 'Write an order',
       description:
-        'Click a stage card (Pending, Approved, Ordered, Delivered) to filter the list to that status.',
+        'Choose a vendor and the wines. The order waits as a draft until it is approved.',
     },
     {
-      element: '[data-tour="orders-toolbar"]',
-      title: 'Find and switch views',
+      element: '[data-tour="orders-stage-pending"]',
+      title: 'Approve it',
       description:
-        'Search by wine or vendor (/), toggle Unified vs Split, or export the current list.',
+        'Drafts wait here. Open one and hold to approve it.',
     },
     {
-      element: '[data-tour="orders-list"]',
-      title: 'Work the order table',
+      element: '[data-tour="orders-stage-ordered"]',
+      title: 'Follow it',
       description:
-        'Open a row for details, select rows for bulk approve/order/deliver, or jump into a vendor thread.',
+        'Sent orders wait here until they arrive. Open one and mark it delivered.',
     },
     {
-      element: '[data-tour="orders-create"]',
-      title: 'Start an order',
+      element: '[data-tour="orders-stage-delivered"]',
+      title: 'Check what arrived',
       description:
-        'Open the PO builder when inventory flags low stock (⌘N). You will pick wines, quantities, and a vendor next.',
+        'Orders that arrived, each with what came and its receipt.',
     },
   ],
 }

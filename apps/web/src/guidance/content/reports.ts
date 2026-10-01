@@ -1,37 +1,40 @@
 import type { TourDefinition } from '../tours/registry'
 
+// Steps follow the job, not the screen (ADR 0251 D3). Each element must exist
+// on the live page; a step whose element is missing is left out by TourEngine.
+
 export const reportsTip = {
   pageId: 'reports' as const,
   title: 'Reports',
-  body: 'Set the time window, arrange charts, read the canvas, then search the insights behind the numbers.',
+  body: 'Sales, costs and stock on one sheet. Ask it a question, or arrange it your way.',
 }
 
 export const reportsTour: TourDefinition = {
   pageId: 'reports',
   steps: [
     {
-      element: '[data-tour="reports-topbar"]',
-      title: 'Time range & export',
+      element: '.rp-sheet',
+      title: 'Read the sheet',
       description:
-        'Switch 7D / 30D / 90D, compare periods, or export the data behind the current view.',
+        'Sales, costs and stock for the period. A figure that could not be worked out says so; it is never shown as 0.',
     },
     {
-      element: '[data-tour="reports-edit-layout"]',
-      title: 'Customize the dashboard',
+      element: '[data-tour="reports-ask"]',
+      title: 'Ask the book',
       description:
-        'Turn on Edit Layout to add blocks, apply a preset, or reset the canvas to a clean default.',
+        'Ask a question in plain words. ⌘K opens it too.',
     },
     {
-      element: '[data-tour="reports-canvas"]',
-      title: 'Your analytics canvas',
+      element: '[data-tour="reports-arrange"]',
+      title: 'Arrange it your way',
       description:
-        'Drag and resize charts in edit mode. Click a KPI tile for a deeper spotlight panel.',
+        'Move and hide parts of the sheet, then rule it off. Put it all back undoes it.',
     },
     {
-      element: '[data-tour="reports-ai-pill"]',
-      title: 'Search your insights',
+      element: '#rp-exports',
+      title: 'Take it with you',
       description:
-        'Open the palette (⌘K) to filter the insights the analytics engine computed from your data. It does not answer free-text questions yet.',
+        'Write the sheet up as a CSV, or as a page laid out for print.',
     },
   ],
 }
