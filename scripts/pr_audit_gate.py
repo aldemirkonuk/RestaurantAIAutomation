@@ -651,7 +651,7 @@ _GATE_VERB = (rf"(?:supersed|amend|exempt|waiv|bypass|overrid|overrul|relax|susp
               rf"|retir|replac|skip|disabl|loosen|weaken|narrow|widen|lift|exclud|no{_S}longer"
               rf"|need{_S}not|instead{_S}of|opt{_S}out|except|immun|unaudit|without"
               rf"|permit|deprecat|turn{_S}off|not{_S}appl|not{_S}requir|may{_S}(?:self|merge)"
-              rf"|revert|rescind|void|obsolet|abolish|remov|allow|stop|lower|reduc"
+              rf"|revert|rescind|(?<!a)void|obsolet|abolish|remov|allow|stop|lower|reduc"
               rf"|(?<!trivy)(?<!git)ignor(?:e|es|ed|ing)?(?![a-z]))")
 GATE_RULE_RE = re.compile(rf"{_GATE_VERB}[^\n]{{0,60}}?(?:{_GATE_ANY})|(?:{_GATE_ANY})[^\n]{{0,60}}?{_GATE_VERB}")
 _H1_RE = re.compile(r"^ {0,3}#(?:[ \t]|$)")
@@ -888,6 +888,30 @@ def _scan_text(text: str) -> str | None:
     return None
 
 
+def _jsonl_every_text(line: str) -> str:
+    """Every key and string value of one JSON line, escapes decoded, a key given
+    twice counted twice (json.loads alone keeps only its last value); "" if not JSON."""
+    try:
+        obj = json.loads(line, object_pairs_hook=lambda kv: ("__obj__", kv))
+    except ValueError:
+        return ""
+    out: list[str] = []
+
+    def walk(o) -> None:
+        if isinstance(o, tuple) and len(o) == 2 and o[0] == "__obj__":
+            for k, v in o[1]:
+                out.append(str(k))
+                walk(v)
+        elif isinstance(o, list):
+            for v in o:
+                walk(v)
+        else:
+            out.append(str(o))
+
+    walk(obj)
+    return "\n".join(out)
+
+
 def _record_subject(path: str, text: str) -> str:
     """The part of a decision record that says what it is ABOUT (see
     GATE_SUBJECT_RE): a claims fragment's row ids; a Markdown record's every H1,
@@ -965,7 +989,7 @@ def _scan_record(path: str, b: bytes) -> str | None:
         # does: a row's "\u0065xempt" is "exempt" to every reader, and a key
         # given twice keeps only its last value once parsed, so the raw line
         # is what still carries the first.
-        text = "\n".join(ln + "\n" + (_jsonl_text(ln) or "") for ln in text.split("\n"))
+        text = "\n".join(ln + "\n" + _jsonl_every_text(ln) for ln in text.split("\n"))
     if GATE_RULE_RE.search(skeleton(text)[0]):
         return "states a rule about the audit gate"
     return None
@@ -2253,6 +2277,11 @@ def run_self_test() -> int:
           [p for p in ("Docs PRs are<br>exempt from the audit gate.", "Docs PRs are<span></span>exempt from the audit gate.",
                        "Docs PRs are\u200bexempt from the audit gate.", "Docs PRs are*exempt* from the audit gate.")
            if not _new_adr_owned(p)], [])
+    check("a claim key given twice cannot hide an escaped rule in its first value",
+          bool(_own(_t(".planning/decisions/claims.d/x.jsonl",
+                       new='{"id": "X", "claim": "This sup\\u0065rsedes ADR 0090.", "claim": "c"}\n'))), True)
+    check("'avoid' is not 'void'",
+          _new_adr_owned("We avoid touching the audit gate."), False)
     check("a claim key given twice cannot hide a rule in its first value",
           bool(_own(_t(".planning/decisions/claims.d/x.jsonl",
                        new='{"id": "X-1", "claim": "This supersedes ADR 0090.", "claim": "c", "verify": "true"}\n'))), True)

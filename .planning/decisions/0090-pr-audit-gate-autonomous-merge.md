@@ -2497,18 +2497,18 @@ file under `.planning/decisions/` is owned when any of these holds:
    - For Markdown, it is every title (an ATX `#` heading, the line above a setext `===` underline, or a line holding an HTML `<h1>`), everything before the first ATX H1, and the metadata block after it. The metadata block runs bullet by bullet, including indented and lazy continuations. The Links bullet is left out, because a cross-reference is a mention by definition.
    - For a claims fragment, it is its rows' ids, every `id` key in a row, not only the last one a JSON parser keeps.
    - For anything else, it is the whole text, as before.
-3. Anywhere in its text, a gate token sits within 60 characters of a verb that changes a rule (`GATE_RULE_RE`). The verb is matched anywhere, not only at a word start, because a stripped tag (`are<br>exempt`) glues it to the word before. In a claims fragment, each raw line is scanned together with its decoded keys and values. Decoding catches an escaped verb, and the raw line catches a key given twice, whose first value a parser drops. Examples are "supersedes ADR 0090", "exempt from the audit gate", "the pr-merge-planner no longer runs", "the audit gate opt-out applies", "merge without the audit gate", "ADR 0090 does not apply", "the audit gate is deprecated", "this reverts ADR 0090" and "ignore the audit gate". "ignore" is matched except inside "trivyignore" and "gitignore".
+3. Anywhere in its text, a gate token sits within 60 characters of a verb that changes a rule (`GATE_RULE_RE`). The verb is matched anywhere, not only at a word start, because a stripped tag (`are<br>exempt`) glues it to the word before. In a claims fragment, each raw line is scanned together with every key and value in it, with escapes decoded. A key given twice is counted twice; a plain JSON parser would keep only its last value. Examples are "supersedes ADR 0090", "exempt from the audit gate", "the pr-merge-planner no longer runs", "the audit gate opt-out applies", "merge without the audit gate", "ADR 0090 does not apply", "the audit gate is deprecated", "this reverts ADR 0090" and "ignore the audit gate". "ignore" is matched except inside "trivyignore" and "gitignore", and "void" except inside "avoid".
 
 The hygiene checks still judge the whole text. These are: NUL, line separators, tag and bidi characters, and letters outside Latin and Greek. Registers keep their line-diff rules unchanged.
 
 **Measured** on `main` at `e88593bf8`: 58 of the 234 non-register files under `decisions/` were owned before, and 22 are owned now. ADR 0241 and `claims.d/fix-door-refusal-parks-not-sent.jsonl` are released. The change is not strictly a narrowing: 37 records are released, and one is newly owned. That record is ADR 0243, whose review trail says "ADR 0231 … waived", and "ADR 0231" is now a gate token.
 
 **Tests.**
-- `--self-test`: 102 → 118 invariants.
+- `--self-test`: 102 → 120 invariants.
 - `scripts/test_pr_audit_gate.py`:
   - O35 and O36 were bare mentions in a body, so they flip to released.
   - The new cases N1–N5 cover two #535 shapes that are released and three subject shapes that stay owned.
-  - Twenty-three new mutations, one per switch. They include the planted mutant "the narrowing reverted", which is killed by N1, N2 and the self-test's passing-mention check.
+  - Twenty-five new mutations, one per switch. They include the planted mutant "the narrowing reverted", which is killed by N1, N2 and the self-test's passing-mention check.
 
 **Residual, stated rather than closed.** A record whose subject is something else can still state a rule about the gate in a way that is released. There are three ways:
 - It uses no listed verb. "delete", "drop" and "change" are left out on purpose: each owns records on `main` that only cite an audit, ADR 0241 among them. The verbs added after review (revert, rescind, void, obsolete, abolish, remove, allow, stop, lower, reduce, and ignore with the "trivyignore" and "gitignore" exceptions) were measured to add none.
