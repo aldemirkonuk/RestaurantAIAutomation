@@ -155,7 +155,7 @@ describe('who may end an order', () => {
   });
 
   it('[REVERT-FAILS] does not tell a person whose role is not known that it will clear, or to reload', () => {
-    // `null` includes a read that found no role here, a state that does not
+    // `null` includes an active access row whose role is NULL, which does not
     // clear on its own, so the sentence promises nothing about later.
     roleMock.current = null;
     render(<SealedRejectDie orderId="ord-1" />);

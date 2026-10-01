@@ -47,9 +47,18 @@
  *    `users` row) in either direction. **A `null` role disables too.** `null`
  *    covers more than one state, including before the first read returns,
  *    after a failed read, and when the read finds no role for this person
- *    here. A member with no `is_active = true` access row naming a role here,
- *    whom the gateway can still admit through the legacy `users` row, is in
- *    that last state. Treating "I don't know" as "yes" is the house's
+ *    here. A token naming a house where the person holds no active access row
+ *    is refused on every request `JwtStrategy` checks
+ *    (`AuthService.validateJwtPayload`, 401 `HOUSE_ACCESS_ENDED`), and
+ *    `AuthContext` asks about the token's house only. So a read that finds no
+ *    role includes an active row whose `role` is NULL (the column is
+ *    nullable, and its CHECK lets NULL through), and a failure of the route's
+ *    own read of that row, which `getUserRoleAtRestaurant` answers as no role
+ *    because it does not look at the read's error. For a NULL role the cancel
+ *    gate's role check reads the legacy `users` row instead
+ *    (`lookupRestaurantRole`), so a member whose `users` row names this house
+ *    with the role manager or owner passes that check while this control
+ *    shows `null`. Treating "I don't know" as "yes" is the house's
  *    [[absence-reported-as-health]] fault pointed at a destructive write.
  *    `null` and `staff` each get their own sentence, and neither says the
  *    state will clear.
