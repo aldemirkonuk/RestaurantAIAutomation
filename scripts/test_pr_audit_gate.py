@@ -1182,7 +1182,7 @@ def test_deploy_runs_only_on_this_repositorys_own_pushes():
     then "Also allow manual runs".
     deploy.yml's `workflow_run` trigger with `branches: [main]` also matches a
     fork's pull request whose branch is named `main`; Stages 2 and 3 check out
-    that run's head_sha and run its code beside ADMIN_API_KEY. Every job that
+    that run's head_sha and run its code beside the deploy's secrets. Every job that
     a workflow_run can start must require the triggering run to be a push or a
     manual (workflow_dispatch) run of this repository, and ci-gate must refuse
     (red, not skip) any other run -- a fork's, whatever its event."""
@@ -1208,13 +1208,18 @@ def test_deploy_runs_only_on_this_repositorys_own_pushes():
     # The structural rule (a strict jobs: reader that refuses the key forms it
     # knows it could misread; each job's single `if` equal to the one allowed;
     # the refusal step's text pinned line for line) lives in
-    # scripts/check_deploy_own_pushes.py; its self-test plants exactly the 52
+    # scripts/check_deploy_own_pushes.py; its self-test plants exactly the 92
     # breaks it lists (including a fork's dispatch, another event type and a
-    # missing repository check). It does not pin how ci-gate executes, or
-    # workflow-level keys; the guard's KNOWN GAPS docstring names that class,
-    # its known examples, what the stage ifs still refuse, and that any
-    # ci-gate step running, sourcing or interpolating into a shell anything
-    # the triggering run controls is stopped only by gate ownership.
+    # missing repository check, and 40 for the key fix: no secret in a
+    # workflow-level key, ci-gate `permissions: {}` with no `uses:` step and
+    # no secret, ADMIN_API_KEY in one step's env only; founder, 2026-09-30,
+    # verbatim: "Approve all + widen (Recommended)"). It does not pin how
+    # ci-gate's run: steps execute, or workflow-level keys that name no
+    # secret; the guard's KNOWN GAPS docstring names that class, its known
+    # examples and what the stage ifs still refuse. The class, in the
+    # founder's widened words: any ci-gate step or job-level value that runs,
+    # sources, or interpolates into any interpreter, image or environment
+    # anything the triggering run controls. Only gate ownership stops it.
     guard = ROOT / "scripts" / "check_deploy_own_pushes.py"
     for args in ([], ["--self-test"]):
         r = subprocess.run([sys.executable, "-I", str(guard), *args], capture_output=True, text=True, timeout=60)

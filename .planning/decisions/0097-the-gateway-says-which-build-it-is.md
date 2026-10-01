@@ -396,8 +396,9 @@ verbatim picks:
 
 **Held by.**
 - `scripts/check_deploy_own_pushes.py`, which is gate-owned. It is a strict
-  text reader. Its self-test plants exactly the 52 breaks it lists; it does
-  not plant every evasion the audit rounds found (see "Not held").
+  text reader. Its self-test plants exactly the 92 breaks it lists (52 for
+  the own-run rule, 40 for the key fix below); it does not plant every
+  evasion the audit rounds found (see "Not held").
 - `scripts/test_pr_audit_gate.py`.
 - The claim `DEPLOY-RUNS-ONLY-ON-OWN-PUSHES` in
   `claims.d/batch-open-prs-2026-09-29.jsonl`.
@@ -417,42 +418,54 @@ verbatim picks:
   any workflow-level key other than `on:` and `defaults:`. Founder,
   2026-09-30, verbatim: *"Honest record (Recommended)"*.
   - **What passes the guard unnoticed:**
-    - a job-level key on `ci-gate` other than `if`;
-    - another step or action in `ci-gate`;
+    - a job-level key on `ci-gate` other than `if` and `permissions`
+      (`container:`, `services:`, `runs-on:`, `env:` without a secret);
+    - another `run:` step in `ci-gate` (an action step is refused since the
+      key fix);
     - a write to the runner's env or path files other than the literal
       `GITHUB_ENV` or `GITHUB_OUTPUT`;
     - a workflow-level key: `env:` (including `BASH_ENV` or a `BASH_FUNC_*`
-      function), `permissions:` or `run-name:`;
+      function), `permissions:` or `run-name:`, so long as it names no secret
+      (a secret there is refused since the key fix);
     - a column-0 comment inside `on:`, which hides a trigger added after it.
   - **What still holds, and what does not.**
     - Changes that only alter whether `ci-gate` goes green on a foreign or
       non-push run are still refused by the stage and `deploy-audit` `if`s.
       The guard pins those `if`s exactly, and no such change touches them.
-    - The founder's pick, 2026-09-30, verbatim: *"Describe the whole class,
-      then fix the key (Recommended)"*. The class, as the round-5 ADR 0090
-      planner defined it:
-      Any ci-gate step that runs, sources, or interpolates into a shell anything the triggering run controls reopens the original exposure. That includes its checkout, its artifacts or caches, and event fields the fork writes, such as `head_commit.message` and `display_title`. ci-gate has no `if` and inherits `ADMIN_API_KEY`, so only gate ownership stops it.
-    - Scoping `ADMIN_API_KEY` out of the workflow env removes the key from
-      that reach, but on its own it does not close the class. Such a step
-      would still run in main's context, with:
-      - the workflow's `GITHUB_TOKEN` (`actions: write`);
-      - main-scoped cache writes, which Stage 3 restores (`cache: pnpm`);
-      - any other workflow-level secret.
-
-      So the follow-up also gives `ci-gate` `permissions: {}` and no cache
-      save, and adds a guard that the workflow-level env holds no secrets.
-      It is filed in the tech-debt fragment.
-  - **Known examples.** Each passes the guard at this writing:
+    - **The class.** Founder, 2026-09-30, verbatim picks: *"Describe the
+      whole class, then fix the key (Recommended)"*, then *"Approve all +
+      widen (Recommended)"*, which widened the round-5 ADR 0090 planner's
+      sentence to his own words: any `ci-gate` step or job-level value that
+      runs, sources, or interpolates into any interpreter, image or
+      environment anything the triggering run controls. That includes its
+      checkout, its artifacts or caches, event fields the fork writes (such
+      as `head_commit.message` and `display_title`), a `github-script`
+      step's JavaScript, and a `container:` or `services:` image. `ci-gate`
+      has no `if`, so only gate ownership stops such a member from running.
+    - **What such a member reaches since the key fix** (below): no secret,
+      no token scope and no action step. The guard holds each of those as
+      far as a strict text reader can (a job-level `needs:` or a
+      `${{ github.token }}` still passes; neither carries a secret, and the
+      token has no scope). It
+      would still run on the runner in main's `workflow_run` context, and a
+      `runs-on: self-hosted` would put it on a machine that outlives the run;
+      neither is pinned.
+  - **Known examples.** Each passed the guard when #534 merged; each still
+    does unless struck:
     - `concurrency: |` before the refusal step;
     - `container:`, `runs-on: self-hosted` or `services:` on `ci-gate`;
     - a job-level `env: BASH_ENV`;
     - a workflow-level env entry `BASH_FUNC_exit%%`, which makes the refusal
       step exit 0 in local bash (GitHub untested);
-    - an `actions/github-script` step exporting `BASH_ENV`;
+    - ~~an `actions/github-script` step exporting `BASH_ENV`~~ [2026-09-30:
+      refused since the key fix, which refuses any `uses:` in `ci-gate`];
     - a `GITHUB_PATH` write, or an indirect write to the env file;
     - `ci-gate` steps that run what the triggering run controls: checking out
       `head_sha` and running a script, running a downloaded artifact of that
-      run, or echoing `head_commit.message` into a shell;
+      run, or echoing `head_commit.message` into a shell [2026-09-30: through
+      an action such as `actions/checkout`, refused since the key fix;
+      through a `run:` step such as `git fetch`, still passes, with no secret
+      and no token scope in reach];
     - a column-0 comment inside `on:` with a trigger added after it.
   - **Why none is live today.** Each needs an edit to `deploy.yml`, which is
     gate-owned and so needs an ADR 0090 audit and the founder's sign-off.
@@ -461,3 +474,57 @@ verbatim picks:
 - A direct `workflow_dispatch` of `deploy.yml` itself (writer-only) runs the
   stages, as before. This amendment covers the `workflow_run` trigger.
 
+### Key fix — 2026-09-30 (founder, after #534 merged)
+
+**The founder's words.** In chat on 2026-09-30, relayed by the coordinator,
+verbatim: *"Approve all + widen (Recommended)"*. He approved each of the
+three changes below and widened the class sentence (above) to his wording.
+[Correction 2026-09-30: #534's record said all three changes were "approved
+in the same answer" as *"Describe the whole class, then fix the key
+(Recommended)"*. That answer approved scoping the key only; `permissions: {}`,
+no cache save and the secrets guard were the ADR 0090 planners' additions,
+approved in this later answer. One of the two round-6 planner runs on #534's
+head 380b14262 returned OVERTURNED on this; #534 merged on the other run's
+HOLDS, and the OVERTURNED verdict was not acted on (disclosed on #534).]
+
+**What changed in `deploy.yml`.**
+- The workflow-level `env:` holds only `NODE_VERSION`. Each secret moved to
+  the job or step that uses it: `RAILWAY_ORCHESTRATOR_URL` to Stage 1's job
+  env, `API_GATEWAY_URL` to Stage 2's, `VERCEL_PRODUCTION_URL` to
+  `deploy-audit`'s dispatch step.
+- `ADMIN_API_KEY` is given to one step only, Stage 1's "Verify 9/9 agents
+  Active", the one that sends it.
+- `ci-gate` carries `permissions: {}` and has no action step, so it saves no
+  cache and its token has no scope.
+
+**Held by** `scripts/check_deploy_own_pushes.py` rule 5 (40 planted breaks,
+K1–K40), as far as a strict text reader can hold it. It reads the raw text,
+comment lines included (a `#` line in a block scalar is content), with escaped
+line breaks joined, case-insensitively as GitHub reads contexts: no `secrets`
+in any workflow-level key; `secrets` only as `secrets.NAME` anywhere (never
+whole, as in `toJSON((secrets))`, `join(secrets, ...)`, `secrets.*` or
+`secrets[...]`), and no backslash escape other than one before `$`, a backtick, `"` or a
+line break (a YAML escape could spell a secret unseen) and no YAML anchor or alias (which could copy a step into
+`ci-gate` unseen), whatever its name's first character; `ci-gate`'s job-level `permissions` is exactly `{}`
+and the word `uses` appears nowhere in it (so no action step in any YAML
+form) and no secret does; `secrets.ADMIN_API_KEY` appears once, in
+that step's env.
+
+**Not held.** What the key step's own script does with `ADMIN_API_KEY` at
+runtime: a write to `$GITHUB_ENV`, `$GITHUB_OUTPUT` or a file would carry it to
+Stage 1's later steps; rule 5 pins where the key is given, not where it
+travels after. Whether a `run:` step can reach the cache service without an
+action (the runtime token is given to actions, not to the shell; untested
+here). GitHub's own evaluation of `permissions: {}` on a `workflow_run` job;
+the merge commit's Deploy run is its first real run.
+
+**A note (round-6 adversary, point 2).** `deploy-audit` and the stages keep
+the workflow's `actions: write`, which can dispatch `e2e-prod.yml`. Its
+`api_url` and `base_url` inputs (`e2e-prod.yml:110-117`) reach the steps that
+hold the test account's password, but `e2e-prod.yml:203-215` refuses any
+input host other than the ones the repository's secrets already name
+(re-audit 2026-09-17, N4). `deploy_url` and `pr_number` flow only into env of
+the report steps (`e2e-prod.yml:446-480`); not traced further. Only jobs
+behind the own-run `if`s hold that token now; `ci-gate` does not. A
+dispatch also chooses the ref it runs from, but only among this repository's
+refs, which only writers can create.

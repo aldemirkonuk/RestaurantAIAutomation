@@ -9,10 +9,10 @@ Founder, 2026-09-30, on #534, verbatim picks: "Sign off, add deploy fix
 be push or workflow_dispatch, and its head repository must be this one in both
 cases). deploy.yml's `workflow_run: branches: [main]` trigger also
 matches a fork's pull request whose branch is named `main`; its stages check
-out that run's head_sha and run its code beside ADMIN_API_KEY. The rule this
+out that run's head_sha and run its code beside the stages' secrets. The rule this
 guard holds, read from the workflow text strictly (no YAML library: the CI
 jobs that run it do not install one). Shapes it does not recognise are
-refused where it can tell; its self-test plants the 52 breaks listed in
+refused where it can tell; its self-test plants the 92 breaks listed in
 _self_test (see KNOWN GAPS below for what it does not hold):
 
   1. The jobs: block holds only plain `  name:` job keys, full-line comments
@@ -35,6 +35,20 @@ _self_test (see KNOWN GAPS below for what it does not hold):
   A job-level `if` is read whole: a block scalar with its blank lines, and a
   plain scalar with its deeper continuation lines.
   4. No line of deploy.yml sets `continue-on-error`.
+  5. The key fix (founder, 2026-09-30, verbatim: "Approve all + widen
+     (Recommended)"), as far as a strict text reader can hold it. Every
+     scan reads the raw text, comment lines included (a `#` line inside a
+     block scalar is content), with escaped line breaks joined, and matches
+     case-insensitively as GitHub reads contexts: no workflow-level key names
+     `secrets`; `secrets` appears only as `secrets.NAME` (never whole, as in
+     `toJSON((secrets))`, `join(secrets, ...)`, `secrets[...]` or
+     `secrets.*`); deploy.yml holds no backslash escape but `\\$`, a
+     backslash-backtick, `\\"` or a line break, and no YAML anchor or alias;
+     ci-gate's job-level `permissions` is exactly `{}`,
+     and the word `uses` appears nowhere in ci-gate (so no action step in
+     any YAML form, and no cache save) and no secret does; `secrets.ADMIN_API_KEY` appears
+     exactly once, in the env of verify-orchestrator's step "Verify 9/9
+     agents Active".
 
 What it cannot hold: GitHub's own evaluation (workflow_run runs main's copy of
 the file), and any YAML form this reader accepts but GitHub reads differently;
@@ -43,51 +57,58 @@ GAPS below. It pins only the refusal
 step, not ci-gate's first step (the conclusion check, ADR 0097's claim).
 
 KNOWN GAPS -- not held (founder, 2026-09-30: "Honest record (Recommended)").
-This guard pins the refusal step's TEXT and each job's `if`; it does not pin
-how ci-gate EXECUTES, nor any workflow-level key but `on:` and `defaults:`.
-The self-test plants exactly the 52 breaks listed in _self_test and nothing
+This guard pins the refusal step's TEXT, each job's `if`, and where rule 5
+GIVES the key (one step's env); it does not pin how ci-gate's `run:` steps EXECUTE, nor any
+workflow-level key but `on:` and `defaults:` beyond rule 5's no-secret rule.
+The self-test plants exactly the 92 breaks listed in _self_test and nothing
 more. Changes of these kinds pass the guard unnoticed:
-  - a job-level key on ci-gate other than `if`;
-  - another step or action in ci-gate, before or beside the refusal step;
+  - a job-level key on ci-gate other than `if` and `permissions`
+    (`container:`, `services:`, `runs-on:`, an `env:` with no secret);
+  - another `run:` step in ci-gate, before or beside the refusal step;
   - a write to the runner's env/path files other than the literal text
     GITHUB_ENV / GITHUB_OUTPUT;
   - a workflow-level key (`env:`, including BASH_ENV or a `BASH_FUNC_*`
-    function, `permissions:`, `run-name:`), which the guard never reads;
+    function, `permissions:`, `run-name:`) that names no secret;
+  - what the key step's own `run:` script does with ADMIN_API_KEY at
+    runtime: a write to $GITHUB_ENV or $GITHUB_OUTPUT, or to a file, would
+    carry it to Stage 1's later steps (rule 5 pins where the key is GIVEN,
+    in the text, not where it travels after);
   - a column-0 comment inside `on:`, which ends this reader's on: block and
     hides a trigger added after it.
 Changes that only alter whether ci-gate goes green on a foreign or non-push
 run are still refused by the stage and deploy-audit ifs, pinned exactly here
-and unchanged by any of them. The founder's pick, 2026-09-30, verbatim:
-"Describe the whole class, then fix the key (Recommended)". The class, as the
-round-5 ADR 0090 planner defined it:
-Any ci-gate step that runs, sources, or interpolates into a shell anything the
-triggering run controls reopens the original exposure. That includes its
-checkout, its artifacts or caches, and event fields the fork writes, such as
-`head_commit.message` and `display_title`. ci-gate has no `if` and inherits
-`ADMIN_API_KEY`, so only gate ownership stops it.
-(Scoping ADMIN_API_KEY out of the workflow env removes the key from that
-reach but does not close the class alone: such a step would still run in
-main's context with the workflow's GITHUB_TOKEN (`actions: write`), with
-main-scoped cache writes that Stage 3 restores (`cache: pnpm`), and with any
-other workflow-level secret. The follow-up therefore also gives ci-gate
-`permissions: {}` and no cache save, and guards that the workflow-level env
-holds no secrets; see the tech-debt fragment.)
-Known examples, all passing the guard at this writing:
+and unchanged by any of them. The class (founder, 2026-09-30, verbatim picks
+"Describe the whole class, then fix the key (Recommended)", then "Approve
+all + widen (Recommended)", which widened the round-5 planner's sentence to
+his words): any ci-gate step or job-level value that runs, sources, or
+interpolates into any interpreter, image or environment anything the
+triggering run controls. That includes its checkout, its artifacts or
+caches, event fields the fork writes (`head_commit.message`,
+`display_title`), a github-script step's JavaScript, and a `container:` or
+`services:` image. ci-gate has no `if`, so only gate ownership stops such a
+member from running; since rule 5, as far as this text reader can tell, it
+reaches no secret, no token scope and no action (a job-level `needs:` or a
+`${{ github.token }}` still passes: neither carries a secret, and the token
+has no scope under `permissions: {}`). It still runs on the runner in main's workflow_run context, and
+`runs-on: self-hosted` would put it on a machine that outlives the run.
+Known examples (each passed when #534 merged; each still does unless marked):
   - `concurrency: |` before the refusal step (the steps after it become that
     key's string);
   - `container:`, `runs-on: self-hosted` or `services:` on ci-gate;
   - a job-level `env: BASH_ENV` on ci-gate;
   - a workflow-level env entry `BASH_FUNC_exit%%: "() { return 0; }"`, which
     (in local bash; GitHub untested) makes the refusal step exit 0;
-  - a `uses: actions/github-script` step exporting BASH_ENV;
+  - a `uses: actions/github-script` step exporting BASH_ENV [refused by rule 5];
   - a `GITHUB_PATH` write, or an indirect write to the env file;
   - ci-gate steps that run what the triggering run controls: checking out
     head_sha and running a script, running a downloaded artifact of that run,
     or echoing `${{ github.event.workflow_run.head_commit.message }}` into a
-    shell (fork code or fork text beside ADMIN_API_KEY);
+    shell (fork code or fork text, no longer beside ADMIN_API_KEY; through
+    an action such as actions/checkout it is refused by rule 5, through a
+    `run:` step such as `git fetch` it still passes);
   - a column-0 comment inside `on:` followed by an added trigger.
 deploy.yml is gate-owned, so each needs an ADR 0090 audit and the founder's
-sign-off. Closing the class: tech-debt.d/2026-09-30-batch-open-prs-2026-09-29.md.
+sign-off. What is left open: tech-debt.d/2026-09-30-batch-open-prs-2026-09-29.md.
 
 Exit 0 holds, 1 broken, 2 cannot read. `--self-test` plants each break.
 Owned by scripts/test_pr_audit_gate.py
@@ -154,6 +175,13 @@ EXPECTED_IF = {
     "rollback-guide": "github.event_name == 'workflow_dispatch' && inputs.mode == 'rollback-guide'",
 }
 JOB_KEY = re.compile(r"^  ([a-z][a-z0-9-]*):$")
+# The key fix (founder, 2026-09-30, verbatim: "Approve all + widen
+# (Recommended)"): ADMIN_API_KEY is given (referenced) in exactly one step's env,
+# the one that sends it. What that step's script does with it at runtime is not
+# read (see KNOWN GAPS).
+KEY_JOB = "verify-orchestrator"
+KEY_STEP = "Verify 9/9 agents Active"
+KEY_LINE = "          ADMIN_API_KEY: ${{ secrets.ADMIN_API_KEY }}"
 
 
 def _norm(v: str) -> str:
@@ -286,6 +314,7 @@ def problems(text: str) -> list[str]:
         out.append("the on: block differs from the one allowed (a new trigger, or a changed workflow_run filter)")
     if re.search(r"(?m)^\s*defaults\s*:", _code(text)):
         out.append("deploy.yml sets defaults: (a run shell or directory override)")
+    out += _key_problems(text, jobs)
     gate = [s for s in _steps(gate_job) if s.startswith(f"name: {STEP}\n")]
     if len(gate) != 1:
         out.append(f"ci-gate: expected one step named {STEP!r}, found {len(gate)}")
@@ -297,11 +326,80 @@ def problems(text: str) -> list[str]:
     return out
 
 
+def _join(text: str) -> str:
+    """The text with every backslash-newline removed. In a YAML double-quoted
+    scalar an escaped line break joins the two lines, so `sec\\` + newline +
+    `rets` reads as `secrets`; joining first lets the scans below see it."""
+    return re.sub(r"\\\r?\n[ \t]*", "", text)
+
+
+def _key_problems(text: str, jobs: dict[str, str]) -> list[str]:
+    """Rule 5, the key fix: no secret in the workflow-level keys; ci-gate has
+    `permissions: {}`, no secret and no action step (so no cache save); the
+    ADMIN_API_KEY secret is referenced once, in the env of KEY_STEP only.
+    The scans read the RAW text, comment lines included: a `#` line inside a
+    block scalar is content, and GitHub expands `${{ }}` in it. They also read
+    it with escaped line breaks joined (_join)."""
+    out: list[str] = []
+    code = _join(text)
+    head = _join(text.split("\njobs:\n", 1)[0])
+    # GitHub reads context names case-insensitively, so every match here is too.
+    if re.search(r"(?i)\bsecrets\b", head):
+        out.append("a workflow-level key references secrets (every job and step, ci-gate included, would inherit it)")
+    # `secrets` may appear only as `secrets.NAME`: as a whole object (toJSON
+    # of it, in any grouping or operator, join(), format(), secrets[...] or
+    # secrets.*) it carries every secret, ADMIN_API_KEY included.
+    if re.search(r"(?i)\bsecrets\b(?!\s*\.\s*[A-Za-z_])", code):
+        out.append("deploy.yml uses `secrets` other than as `secrets.NAME` (whole, filtered or by computed name, it carries every secret)")
+    # A YAML escape in a double-quoted scalar (\u0073 for "s", "\ " for a
+    # space, and the rest) could spell a context name these matches cannot
+    # see. A backslash is allowed only where deploy.yml uses one today: before
+    # `$`, a backtick, `"`, or a line break (joined by _join); any other is
+    # refused.
+    if re.search(r'\\(?![$`"\r\n])', text):
+        out.append("deploy.yml contains a backslash escape other than \\$, \\`, \\\" or a line break (a YAML escape could spell a secret this guard cannot read)")
+    # A YAML anchor or alias could copy a step (an action, or a secret) into
+    # ci-gate without its text being there. deploy.yml has none: a `&` or `*`
+    # after a line start, whitespace, or `-`, `?`, `:`, `!`, `[`, `{`, `,`,
+    # followed by any character but whitespace, `&`, `*` or a flow indicator
+    # (YAML lets an anchor name start with almost anything, `-` included), is
+    # refused outside full-line comments; so is a run of two or more `&`/`*`
+    # followed by anything but whitespace (`&&u`, a name that starts with
+    # `&`). `a && b`, `2>&1` and a trailing `&` are not matched; a
+    # block-scalar line that looks like an anchor is refused too.
+    if re.search(r"(?m)(^|[\s!\[{,?:-])([&*](?![\s&*\[\]{},])|[&*]{2,}(?!\s))", _code(text)):
+        out.append("deploy.yml contains a YAML anchor or alias (it could copy a step or a secret into ci-gate unseen)")
+    gate_raw = _join(jobs.get("ci-gate", ""))
+    gate = _code(jobs.get("ci-gate", ""))
+    perms = re.findall(r"(?m)^    permissions\s*:(.*)$", gate)
+    if [p.strip() for p in perms] != ["{}"]:
+        out.append(f"ci-gate: job-level permissions must be exactly `{{}}`, found {perms!r}")
+    # The word `uses` anywhere in ci-gate: a key in any form (block,
+    # flow-style, quoted, or explicit `? uses # comment`) is refused, and so
+    # is the word in a run line (accepted: it fails closed).
+    if re.search(r"(?i)\buses\b", gate_raw):
+        out.append("ci-gate: runs an action (a `uses:` step can save a cache or run script text)")
+    if re.search(r"(?i)\bsecrets\b", gate_raw):
+        out.append("ci-gate: references a secret")
+    if len(re.findall(r"(?i)\bsecrets\s*\.\s*ADMIN_API_KEY\b", code)) != 1:
+        out.append("ADMIN_API_KEY: the secret must be referenced exactly once (in its one step's env)")
+    steps = [s for s in _steps(jobs.get(KEY_JOB, "")) if s.startswith(f"name: {KEY_STEP}\n")]
+    if len(steps) != 1 or not re.search(r"(?m)^        env:\n(?:          \S.*\n|\s*#.*\n)*" + re.escape(KEY_LINE) + r"$",
+                                          "      - " + steps[0] if steps else ""):
+        out.append(f"ADMIN_API_KEY: not given in the env of {KEY_JOB}'s step {KEY_STEP!r}")
+    return out
+
+
 def _self_test(verbose: bool = False) -> int:
     base = DEPLOY.read_text()
     if problems(base):
         print("SELF-TEST CANNOT RUN: the real deploy.yml does not hold:", problems(base))
         return 2
+    WF_ENV = 'env:\n  NODE_VERSION: "20.x"\n'
+    GATE_PERMS = "    permissions: {}\n"
+    GATE_STEPS = "    permissions: {}\n    steps:\n"
+    KEY_STEP_ENV = "        env:\n" + KEY_LINE + "\n"
+    ORCH_ENV = "    env:\n      ORCHESTRATOR_URL: ${{ secrets.RAILWAY_ORCHESTRATOR_URL }}\n"
     step_if = "      - name: " + STEP + "\n        if: github.event_name == 'workflow_run'\n"
     muts = {
         "refusal step if: false": (step_if, step_if.replace("github.event_name == 'workflow_run'", "false")),
@@ -399,13 +497,68 @@ def _self_test(verbose: bool = False) -> int:
             'if { [ "$RUN_EVENT" = "push" ] || [ "$RUN_EVENT" = "workflow_dispatch" ]; } && [ "$RUN_REPO" = "$THIS_REPO" ]; then',
             'if [ "$RUN_REPO" = "$THIS_REPO" ]; then'),
         "a trigger after a blank line in on:": ('        default: ""\n\nconcurrency:', '        default: ""\n\n  pull_request_target:\n\nconcurrency:'),
+        # rule 5, the key fix (founder, 2026-09-30: "Approve all + widen (Recommended)"):
+        "K1 ADMIN_API_KEY back in the workflow env": (WF_ENV, WF_ENV + "  ADMIN_API_KEY: ${{ secrets.ADMIN_API_KEY }}\n"),
+        "K2 another secret in the workflow env": (WF_ENV, WF_ENV + "  VERCEL_PRODUCTION_URL: ${{ secrets.VERCEL_PRODUCTION_URL }}\n"),
+        "K3 all secrets in the workflow env": (WF_ENV, WF_ENV + "  ALL: ${{ toJSON(secrets) }}\n"),
+        "K4 a secret in run-name": ("\nenv:\n", "\nrun-name: ${{ secrets.ADMIN_API_KEY }}\nenv:\n"),
+        "K5 ci-gate permissions removed": (GATE_PERMS, ""),
+        "K6 ci-gate permissions write-all": (GATE_PERMS, "    permissions: write-all\n"),
+        "K7 ci-gate permissions actions: write": (GATE_PERMS, "    permissions:\n      actions: write\n"),
+        "K8 ci-gate second permissions key": (GATE_PERMS, GATE_PERMS + "    permissions: write-all\n"),
+        "K9 ci-gate cache step": (GATE_STEPS, GATE_STEPS + "      - uses: actions/cache@v4\n        with:\n          path: x\n          key: k\n"),
+        "K10 ci-gate setup-node with cache": (GATE_STEPS, GATE_STEPS + "      - name: n\n        uses: actions/setup-node@v4\n        with:\n          cache: pnpm\n"),
+        "K11 ci-gate github-script step": (GATE_STEPS, GATE_STEPS + "      - uses: actions/github-script@v7\n        with:\n          script: console.log(1)\n"),
+        "K12 ci-gate job env with the key": (GATE_PERMS, GATE_PERMS + "    env:\n      K: ${{ secrets.ADMIN_API_KEY }}\n"),
+        "K13 ci-gate step with another secret": (GATE_STEPS, GATE_STEPS + "      - run: echo ok\n        env:\n          T: ${{ secrets.GITHUB_TOKEN }}\n"),
+        # K14 applies two edits: the key leaves its step and joins the job env.
+        "K14 the key moved to the job env": [(KEY_STEP_ENV, ""), (ORCH_ENV, ORCH_ENV + "      ADMIN_API_KEY: ${{ secrets.ADMIN_API_KEY }}\n")],
+        "K15 the key given to a second step": ("          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n", "          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n          ADMIN_API_KEY: ${{ secrets.ADMIN_API_KEY }}\n"),
+        "K16 secrets read by computed name": ("          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n", "          GH_TOKEN: ${{ secrets['GITHUB_TOKEN'] }}\n"),
+        # case variants and other step forms (round-1 planner of #546):
+        "K17 upper-case SECRETS in the workflow env": (WF_ENV, WF_ENV + "  K: ${{ SECRETS.ADMIN_API_KEY }}\n"),
+        "K18 lower-case tojson(secrets) in a step": ("          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n", "          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n          ALL: ${{ tojson(secrets) }}\n"),
+        "K19 ci-gate flow-style uses step": (GATE_STEPS, GATE_STEPS + "      - {uses: actions/cache@v4}\n"),
+        "K20 ci-gate quoted uses key": (GATE_STEPS, GATE_STEPS + "      - \"uses\": actions/cache@v4\n"),
+        "K21 ci-gate mixed-case Secrets": (GATE_STEPS, GATE_STEPS + "      - run: echo ok\n        env:\n          T: ${{ Secrets.GITHUB_TOKEN }}\n"),
+        "K22 the key named again in lower case": ("          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n", "          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n          K: ${{ secrets.admin_api_key }}\n"),
+        "K23 secrets.* filter in a step": ("          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n", "          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n          ALL: ${{ join(secrets.*, ',') }}\n"),
+        "K24 a YAML escape spelling secrets": ("          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n", "          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n          K: \"${{ \\u0073ecrets.ADMIN_API_KEY }}\"\n"),
+        # round-1 adversary of #546: a `#` line inside a block scalar is content,
+        # an escaped line break joins words, and an alias copies a step:
+        "K25 workflow env block scalar, secret on a # line": (WF_ENV, WF_ENV + "  K: |\n    # ${{ secrets.GITHUB_TOKEN }}\n"),
+        "K26 ci-gate env block scalar, secret on a # line": (GATE_STEPS, GATE_STEPS + "      - run: echo ok\n        env:\n          K: |\n            # ${{ secrets.GITHUB_TOKEN }}\n"),
+        "K27 the key on a # line of another step's block scalar": ("          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n", "          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n          K: |\n            # ${{ secrets.ADMIN_API_KEY }}\n"),
+        "K28 ci-gate secret split by an escaped line break": (GATE_STEPS, GATE_STEPS + "      - run: echo ok\n        env:\n          T: \"${{ sec\\\n            rets.GITHUB_TOKEN }}\"\n"),
+        "K29 the key split by an escaped line break in another step": ("          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n", "          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n          K: \"${{ secrets.ADMIN_\\\n            API_KEY }}\"\n"),
+        "K30 ci-gate uses key split by an escaped line break": (GATE_STEPS, GATE_STEPS + "      - \"us\\\n         es\": actions/cache@v4\n"),
+        "K31 ci-gate step copied by an alias": [("      - uses: actions/checkout@v7\n", "      - &co\n        uses: actions/checkout@v7\n"), (GATE_STEPS, GATE_STEPS + "      - *co\n")],
+        # round-2 planner of #546: other escapes, and anchors on their own line:
+        "K32 the key behind an escaped space": ("          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n", "          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n          K: \"${{ secrets\\ .ADMIN_API_KEY }}\"\n"),
+        "K33 uses anchored in the workflow env, aliased as a ci-gate key": [(WF_ENV, WF_ENV + "  X:\n    &u uses\n"), (GATE_STEPS, GATE_STEPS + "      - name: n\n        *u : actions/cache@v4\n")],
+        "K34 the key's env anchored on its own line, aliased into another step": [("        env:\n" + KEY_LINE + "\n", "        env:\n          &e\n" + KEY_LINE + "\n"), ("      - name: API gateway URL is configured\n", "      - name: API gateway URL is configured\n        env:\n          *e\n")],
+        # round-2 planner addendum: an anchor name may start with `-` or `.`:
+        "K35 uses anchored as &-u, aliased as a ci-gate key": [(WF_ENV, WF_ENV + "  X:\n    &-u uses\n"), (GATE_STEPS, GATE_STEPS + "      - name: n\n        *-u : actions/cache@v4\n")],
+        "K36 the key's env anchored as &.e, aliased into another step": [("        env:\n" + KEY_LINE + "\n", "        env:\n          &.e\n" + KEY_LINE + "\n"), ("      - name: API gateway URL is configured\n", "      - name: API gateway URL is configured\n        env:\n          *.e\n")],
+        "K37 uses anchored as &&u, aliased as a ci-gate key": [(WF_ENV, WF_ENV + "  X:\n    &&u uses\n"), (GATE_STEPS, GATE_STEPS + "      - name: n\n        *&u : actions/cache@v4\n")],
+        # round-2 adversary of #546: `secrets` whole in any expression, and an
+        # explicit `? uses` key with a comment before its colon:
+        "K38 toJSON((secrets)) in a step": ("          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n", "          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n          ALL: ${{ toJSON((secrets)) }}\n"),
+        "K39 join(secrets) in a step": ("          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n", "          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n          ALL: ${{ join(secrets, ',') }}\n"),
+        "K40 ci-gate explicit uses key with a comment": (GATE_STEPS, GATE_STEPS + "      - ? uses # c\n        : actions/cache@v4\n"),
     }
     failed = []
-    for name, (old, new) in muts.items():
-        if base.count(old) < 1:
+    for name, edits in muts.items():
+        text, missing = base, False
+        for old, new in (edits if isinstance(edits, list) else [edits]):
+            if text.count(old) < 1:
+                missing = True
+                break
+            text = text.replace(old, new, 1)
+        if missing or text == base:
             failed.append(f"{name}: no-op (target text not found)")
             continue
-        found = problems(base.replace(old, new, 1))
+        found = problems(text)
         if not found:
             failed.append(f"{name}: survived")
         elif verbose:
