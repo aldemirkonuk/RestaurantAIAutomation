@@ -8,7 +8,7 @@
 
 ## Context
 
-All line numbers are at `origin/main` b9932e256. The cited files under `apps/api-gateway/src/procurement/`, `src/organizations/` and `src/common/seal/`, and `recurring_order_agent.py`, are unchanged from e88593bf8 through 98dfcb5af.
+All line numbers are at `origin/main` b9932e256. The cited files under `apps/api-gateway/src/procurement/`, `src/organizations/`, `src/common/seal/`, `src/auth/`, `src/restaurants/` and `src/team/`, the baseline migration `supabase/migrations/20260805000000_baseline_from_production.sql`, and `recurring_order_agent.py`, are unchanged from e88593bf8 through 98dfcb5af.
 
 **The two routes had no role check.** `PUT /recurring-orders/:restaurantId/:id` and `DELETE /recurring-orders/:restaurantId/:id` carried only the class-level `JwtAuthGuard` (`recurring-orders.controller.ts:39`). Neither route had a role check, and neither recorded an actor.
 - `updateRecurringOrder` writes any of the fields in `UPDATABLE` (`recurring-orders.service.ts:525-538`): `inventory_id`, `provider_id`, `quantity`, `unit_type`, `bottles_per_unit`, `target_price`, `frequency`, `frequency_day`, `auto_approve`, `next_order_date`, `active` and `notes`.
@@ -34,7 +34,9 @@ All line numbers are at `origin/main` b9932e256. The cited files under `apps/api
    - It changes whose name the cron raises the order under, not who may make the change.
 4. **Read the role strictly, so that a failed read answers 503.** Not taken.
    - The order-money checks use `assertCanManageRestaurant`, which reads the role with `strict: false` (`organizations.service.ts:254-261`). It does not throw on a failed read; it uses whatever role the lookup still finds (see Decision).
-   - Using the same helper keeps one rule. The cost is that a caller refused during an outage is told 403, not 503. Nothing is written.
+   - Using the same helper keeps one rule. Its costs include:
+     - a caller refused during an outage is told 403, not 503, and nothing is written;
+     - `strict: false` drops `readError` (`organizations.service.ts:89-94`), so when the access read fails, the legacy `users` row's role decides, and that role can be owner for a caller whose access row at this house names staff. A strict read throws on that failed read instead of returning the role. That caller is described under Not closed.
 5. **Do nothing.** A staff edit to a manager's schedule would still be raised under the manager's name at 08:00.
 
 ## Decision
@@ -46,12 +48,12 @@ All line numbers are at `origin/main` b9932e256. The cited files under `apps/api
   - an active access row decides on its own (`if (fromAccess) return`, `:48-49`): an active staff row gets 403 even when the legacy row names manager;
   - a caller with neither an active owner/manager access row nor a legacy owner/manager role on this house gets 403;
   - that includes a caller for whom both reads fail;
-  - a caller whose access read fails or finds no active row, and whose legacy row names owner or manager for this house, is admitted.
+  - a caller whose access read fails or finds no active row, and whose legacy row names owner or manager for this house, is admitted. The legacy role need not be the caller's role at this house (see Not closed).
 
   Nothing is written when the check refuses.
 
 **Each recurring-schedule mutation route, as decided under the founder's rule:**
-- **`PUT /recurring-orders/:restaurantId/:id`:** managers and owners only. In the gateway it is the only HTTP route through which a caller supplies `next_order_date` or `auto_approve` for an existing schedule, and one of the two that change `active` (the other is DELETE). `POST execute-check` (`recurring-orders.controller.ts:216-224`; non-production, platform operators only, ADR 0243) runs the cron body, which also writes `next_order_date`, with a value it computes (`recurring-orders.service.ts:1050-1058`). The gateway has no separate pause, resume, toggle or next-date route for `recurring_orders`.
+- **`PUT /recurring-orders/:restaurantId/:id`:** managers and owners only. In the gateway it is the only HTTP route through which a caller supplies `next_order_date` or `auto_approve` for an existing schedule, and one of the two that change `active` (the other is DELETE). `POST execute-check` (`manualExecuteCheck`, `recurring-orders.controller.ts:182-190`; non-production, platform operators only, ADR 0243) runs the cron body, which also writes `next_order_date`, with a value it computes (`recurring-orders.service.ts:1050-1058`). The gateway has no separate pause, resume, toggle or next-date route for `recurring_orders`.
 - **`DELETE /recurring-orders/:restaurantId/:id`:** managers and owners only. It sets `active` to false.
 - **`POST /recurring-orders/:restaurantId` (create):** unchanged. Staff may create a schedule, and it is recorded as theirs (`created_by` comes from the token, `recurring-orders.service.ts:415`).
 - **`GET` list and get-one:** unchanged; they are reads.
@@ -83,6 +85,13 @@ All line numbers are at `origin/main` b9932e256. The cited files under `apps/api
     - The Audit of PR #538 at f66ec0d53 measured that path with the real seal service, in four cases: a 403, `approved_by` stayed null, `seal_refused` was filed, and no order was approved. This lane read the main lines above but did not run that measurement on main.
     - A pre-existing side effect: the order the cron raised, or the fold into an open order, is written before the refused approve (`:861` runs before `:887`).
   - **Main's merge has no role check until PR #538 merges.** `createOrder`'s merge (`procurement.service.ts:1110-1133`) folds into the newest open order for the same wine and vendor that is not in a terminal status. So, until #538 merges, two paths can still fold quantity and price into an order past PENDING with no role check: a schedule a staff member created, when the cron runs it, and a staff member's direct `POST /procurement/orders`.
+  - **The legacy role can admit a staff member when the access read fails.**
+    - `lookupRestaurantRole` reads the legacy `users` row whenever the access read returns no active row, including when that read fails (`organizations.service.ts:40-64`). `readRestaurantRole` with `strict: false` returns that row's role and drops `readError` (`:78-95`).
+    - The two writers read for this record do not keep the legacy `role` in step with the access row. `users.role` is `NOT NULL DEFAULT 'manager'` (baseline migration, `:5854`). `registerAccount` writes `role: "owner"` with `restaurant_id: null` (`auth.service.ts:1559-1565`). `acceptHeldMembership` sets `users.restaurant_id` to the house only when it is null (`auth.service.ts:3152-3157`), and writes no `role` to `users`.
+    - So the callers it admits include a staff member who signed up through `registerAccount` and, while their `users` row named no house, joined a house as staff through `acceptHeldMembership`. After the join, their access row at that house names staff and their `users` row names owner and that house. Whenever the access read fails and the `users` read does not, they read as owner and pass this check on PUT and DELETE. A throwaway copy of the spec with that caller measured 200 on both at ee5d2017d; it was not committed.
+    - A member removed through `MembersService.removeMember` or `TeamService.removeFromHouse` is not admitted this way: both clear `users.restaurant_id` for the house (`members.service.ts:550`, `team.service.ts:1276`).
+    - It is the shared helper, as it stood before this change, and order cancel (`assertMayCancelOrder`) gets the same answer from it.
+    - A separate PR is to close it. The founder's answer, verbatim, 2026-10-01: *"Next PR: error means no role (Recommended)"*. That PR is to make the helper fall back to `users.role` only when the access read succeeded and found no row.
   - **Recurrence on an order** (above), filed OPEN. [Corrected 2026-10-01: ruled by the founder for pause, resume and end; in flight in PR #558 (ADR 0247), not closed.]
 - **Revisit if** staff need to correct schedules without a manager. That would be option 2 or 3, and it needs the founder's word.
 
@@ -130,3 +139,6 @@ The last row is equivalent. `JwtAuthGuard` refuses a path `:restaurantId` that d
 | 2026-10-01 | — | Created on `fix/recurring-schedule-edits-need-a-manager`. No independent review yet. |
 | 2026-10-01 | Audit of PR #550 at b068bc984 (plan) | The plan asked for these corrections before review: (F1) a failed access read falls back to the legacy `users` row, so "a caller whose role cannot be read gets 403" was too broad; it is now stated as the helper reads, with three new cases; (F2) the merge role check in Context is PR #538's code, which is open; that is now scoped, and main's ungated merge is listed under Not closed; (F3) the order-recurrence OPEN entry is bracket-corrected: the founder ruled, and PR #558 is in flight; (minor) the Python agent's `next_order_date` writer is named. Also, from the Audit of PR #538 at f66ec0d53, the `auto_approve` item is now stated as measured: the seal refuses the cron's challenge-less approve. |
 | 2026-10-01 | Audit of PR #550 at c688ea534 (plan) | The plan asked for two more corrections before review. (G1) "A legacy owner/manager of this house is admitted" was unscoped in the claim and the controller comment: an active access row decides on its own (`organizations.service.ts:48-49`). The clause is now scoped, the Decision names the active-row case, and a [REVERT-FAILS] case pins an active staff row with a legacy manager row (403). (G2) "The only HTTP route that changes `next_order_date`" now reads "through which a caller supplies", and it names `execute-check`, which writes a computed `next_order_date` through the cron body. |
+| 2026-10-01 | Audit of PR #550 at ee5d2017d (plan) | The plan asked for two more corrections, text only. (H1) Option 4 named one cost of `strict: false`; it now names a second, and Not closed now says whom the legacy fallback admits when the access read fails, measured with a throwaway copy of the spec. The founder chose a separate PR to close it (Not closed). (H2) The `execute-check` cite, `:216-224`, did not match main, where this record's line numbers are taken; it now reads `:182-190` and names `manualExecuteCheck`. |
+
+The extra fix rounds on this PR are recorded in ADR 0231.
