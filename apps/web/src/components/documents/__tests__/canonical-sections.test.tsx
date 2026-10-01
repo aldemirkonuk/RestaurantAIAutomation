@@ -258,7 +258,7 @@ describe('VerdictBlock (ADR 0104 D4)', () => {
     ]
     const { container } = render(<VerdictBlock doc={d} />)
     expect(container.textContent).toMatch(/1 line differs/)
-    expect(container.textContent).toMatch(/billed 12 bottle, received 10 bottle/)
+    expect(container.textContent).toMatch(/billed 12 bottles, received 10 bottles/)
     expect(container.textContent).toMatch(/₺840,00/)
     assertNoConfidenceNumber(container)
   })
@@ -498,6 +498,23 @@ describe('DoorFrame (ADR 0104 D11, S10)', () => {
  * The first render against real documents (findings 1, 2, 5 and 9 of
  * `v3.0-TECH-DEBT.md`, 2026-09-04). Every name and number below is SYNTHETIC.
  */
+describe('VerdictBlock — unit words (walk-through W6, 2026-10-01)', () => {
+  it('says one bottle, and two split cases, never a stored code', () => {
+    const d = doc()
+    d.layer3.lines = [adjudicated({ verdict: 'short_ship', received: 0, billed: 1, moneyAtRisk: 70 })]
+    const one = render(<VerdictBlock doc={d} />)
+    expect(one.container.textContent).toMatch(/billed 1 bottle, received 0 bottles/)
+    one.unmount()
+
+    const e = doc()
+    e.layer1.lines = [line({ unit: env('split_case') })]
+    e.layer3.lines = [adjudicated({ verdict: 'short_ship', received: 1, billed: 2, moneyAtRisk: 70 })]
+    const { container } = render(<VerdictBlock doc={e} />)
+    expect(container.textContent).toMatch(/billed 2 split cases, received 1 split case/)
+    expect(container.textContent).not.toMatch(/split_case/)
+  })
+})
+
 describe('VerdictBlock — not compared is not a difference (finding 1, ADR 0103 A6)', () => {
   /** No order line, no despatch line, nobody at the door. */
   const uncompared = () => {

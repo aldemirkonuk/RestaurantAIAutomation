@@ -24,6 +24,28 @@ import type {
 import { EM, MONO, SERIF, fmtMoney, fmtQty, fmtReceived } from './canonical-format'
 
 /**
+ * "6 bottles", "1 bottle", "2 split cases" (founder walk-through, 2026-10-01,
+ * W6). The sentence printed the stored unit code as-is, so every quantity
+ * other than one read "6 bottle" and a split case read "split_case". A unit
+ * outside the gateway's `UOMS` list is printed as it came.
+ */
+const UNIT_WORDS: Record<string, readonly [string, string]> = {
+  bottle: ['bottle', 'bottles'],
+  case: ['case', 'cases'],
+  keg: ['keg', 'kegs'],
+  pack: ['pack', 'packs'],
+  split_case: ['split case', 'split cases'],
+  each: ['each', 'each'],
+  liter: ['liter', 'liters'],
+}
+function unitSuffix(unit: string, qty: unknown): string {
+  if (!unit) return ''
+  const words = UNIT_WORDS[unit]
+  if (!words) return ` ${unit}`
+  return ` ${typeof qty === 'number' && qty === 1 ? words[0] : words[1]}`
+}
+
+/**
  * Whether this line had anything to be compared AGAINST.
  *
  * ADR 0103 A6, applied to the verdict rather than to the door column. A line
@@ -55,7 +77,8 @@ export function exceptionSentences(doc: CanonicalDocument): {
       const line = doc.layer1.lines[l.lineIndex]
       const name = line?.description.value ?? `Line ${l.lineIndex + 1}`
       const unit = line?.unit.value ?? ''
-      const suffix = unit ? ` ${unit}` : ''
+      const billedUnit = unitSuffix(unit, l.billed)
+      const receivedUnit = unitSuffix(unit, l.received)
       /**
        * NOT COMPARED IS NOT A DIFFERENCE.
        *
@@ -74,18 +97,18 @@ export function exceptionSentences(doc: CanonicalDocument): {
           // would be the same mis-column the four-way table just stopped making.
           sentence:
             l.billed == null && l.received !== 'not_counted'
-              ? `${name} — counted ${fmtReceived(l.received, currency)}${suffix} at the door. Nothing has been ordered, despatched or billed against it, so nothing was compared.`
-              : `${name} — billed ${fmtQty(l.billed, currency)}${suffix}. Nothing was ordered, despatched or counted against it, so nothing was compared.`,
+              ? `${name} — counted ${fmtReceived(l.received, currency)}${receivedUnit} at the door. Nothing has been ordered, despatched or billed against it, so nothing was compared.`
+              : `${name} — billed ${fmtQty(l.billed, currency)}${billedUnit}. Nothing was ordered, despatched or counted against it, so nothing was compared.`,
           money: null,
           compared: false,
         }
       let sentence: string
       switch (l.verdict) {
         case 'short_ship':
-          sentence = `${name} — billed ${fmtQty(l.billed, currency)}${suffix}, received ${fmtReceived(l.received, currency)}${l.received === 'not_counted' ? '' : suffix}.`
+          sentence = `${name} — billed ${fmtQty(l.billed, currency)}${billedUnit}, received ${fmtReceived(l.received, currency)}${l.received === 'not_counted' ? '' : receivedUnit}.`
           break
         case 'over_ship':
-          sentence = `${name} — received ${fmtReceived(l.received, currency)}${suffix} against ${fmtQty(l.billed, currency)}${suffix} billed.`
+          sentence = `${name} — received ${fmtReceived(l.received, currency)}${receivedUnit} against ${fmtQty(l.billed, currency)}${billedUnit} billed.`
           break
         case 'price_variance':
           sentence = `${name} — the unit price differs from what was agreed.`

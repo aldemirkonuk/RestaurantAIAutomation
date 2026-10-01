@@ -70,6 +70,9 @@ vi.mock('../../../services/api/documents', async (importOriginal) => {
 vi.mock('../../../services/api/receiving', () => ({
   receivingApi: { listUnverified: () => Promise.resolve({ items: [] }) },
 }));
+vi.mock('../../../services/api/canonical', () => ({
+  canonicalApi: { document: () => new Promise(() => {}) },
+}));
 vi.mock('../../documents/next/CanonicalDocumentPage', () => ({
   CanonicalDocumentPage: () => <div data-testid="formatted-document" />,
 }));
@@ -198,6 +201,11 @@ async function openFirstDoc() {
   await screen.findByLabelText('Quantity, line 1');
 }
 
+/** A filed, unheld currency folds to one line (walk-through W9); open the changer. */
+function openCurrencyChanger() {
+  fireEvent.click(screen.getByRole('button', { name: 'Change the currency' }));
+}
+
 function holdToApprove(name: RegExp) {
   const control = screen.getByRole('button', { name });
   fireEvent.keyDown(control, { key: 'Enter' });
@@ -220,7 +228,7 @@ describe('the sealed page still prints the document\'s own money', () => {
     // be a premise nobody reads.
     const { container } = render(<ReceiptsNext />, { wrapper });
     await openFirstDoc();
-    expect(container.textContent).toContain('Filed in EUR - Euro');
+    expect(container.textContent).toContain('filed in EUR - Euro');
     expect(container.textContent).not.toContain('$412.50');
   });
 });
@@ -240,6 +248,7 @@ describe('the seal is minted when the gesture begins, not by the write', () => {
   it('mints the currency seal BEFORE the restatement is sent', async () => {
     render(<ReceiptsNext />, { wrapper });
     await openFirstDoc();
+    openCurrencyChanger();
     fireEvent.change(screen.getByLabelText('Currency this invoice is denominated in'), {
       target: { value: 'TRY' },
     });
@@ -280,6 +289,7 @@ describe('a failed mint sends nothing, and says so', () => {
     api.mintCurrencySeal.mockResolvedValue(null);
     render(<ReceiptsNext />, { wrapper });
     await openFirstDoc();
+    openCurrencyChanger();
     fireEvent.change(screen.getByLabelText('Currency this invoice is denominated in'), {
       target: { value: 'TRY' },
     });
@@ -307,6 +317,7 @@ describe('a failed mint sends nothing, and says so', () => {
     api.role = 'staff';
     render(<ReceiptsNext />, { wrapper });
     await openFirstDoc();
+    openCurrencyChanger();
     // DISABLED WITH THE SENTENCE, NEVER HIDDEN. The picker is disabled, so a
     // staff member cannot choose a code, and the hold stays on its "choose a
     // currency first" face — visible, refused in words.
@@ -330,6 +341,7 @@ describe('a failed mint sends nothing, and says so', () => {
     api.role = 'staff';
     render(<ReceiptsNext />, { wrapper });
     await openFirstDoc();
+    openCurrencyChanger();
     fireEvent.change(screen.getByLabelText('Currency this invoice is denominated in'), {
       target: { value: 'TRY' },
     });

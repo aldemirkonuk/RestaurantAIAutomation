@@ -213,6 +213,26 @@ describe('CanonicalDocumentPage', () => {
     expect(screen.queryByTestId('spine')).toBeNull()
   })
 
+  it('says where the paper came from in the house’s words, with the model on hover', async () => {
+    const r = response({ intake: { ...response().intake, extractionModel: 'model-syn-1' } })
+    ;(r.canonical as { jurisdiction: string | null }).jurisdiction = null
+    documentMock.mockResolvedValue(r)
+    const { container } = mount()
+    await waitFor(() => expect(screen.getByTestId('received-cell')).toBeTruthy())
+    const read = screen.getByText('read automatically')
+    expect(read.getAttribute('title')).toBe('model-syn-1')
+    expect(container.textContent).toMatch(/file fingerprint abc123/)
+    expect(container.textContent).not.toMatch(/sha256|read by|jurisdiction not set/)
+  })
+
+  it('names the jurisdiction only when one is set', async () => {
+    documentMock.mockResolvedValue(response())
+    const { container } = mount()
+    await waitFor(() => expect(screen.getByTestId('received-cell')).toBeTruthy())
+    expect(container.textContent).toMatch(/file fingerprint abc123… · TR/)
+    expect(container.textContent).toMatch(/no record of how it was read/)
+  })
+
   it('renders an ERROR, not an empty sheet, when the read fails', async () => {
     documentMock.mockRejectedValue(new Error('502 from the gateway'))
     mount()

@@ -43,6 +43,7 @@ import {
   fmtReceived,
   showsClaimBlock,
   showsMoney,
+  printedVintageOf,
 } from './canonical-format'
 
 const KICK: React.CSSProperties = {
@@ -235,6 +236,8 @@ export interface CanonicalSheetProps {
   ) => Promise<void>
   onChooseItem?: (lineId: string) => void
   itemName?: (inventoryId: string) => string | null
+  /** An item's vintage, for the shelf proposal's mismatch note (W8). */
+  itemVintage?: (inventoryId: string) => number | null
 }
 
 export function CanonicalSheet({
@@ -247,6 +250,7 @@ export function CanonicalSheet({
   onLinkItem,
   onChooseItem,
   itemName,
+  itemVintage,
 }: CanonicalSheetProps) {
   const l1 = doc.layer1
   const currency = l1.currency.value
@@ -620,6 +624,8 @@ export function CanonicalSheet({
                       itemName={itemName ?? (() => null)}
                       onLink={onLinkItem}
                       onChoose={onChooseItem}
+                      printedVintage={printedVintageOf(line.vintage.value, line.description.value)}
+                      itemVintage={itemVintage}
                     />
                   )}
                 </td>

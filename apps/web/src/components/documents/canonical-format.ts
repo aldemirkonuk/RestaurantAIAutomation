@@ -307,3 +307,15 @@ export function envelopeAt(
   if (!/^[A-Za-z]+$/.test(path)) return null
   return (root[path] as { value?: unknown } | undefined) ?? null
 }
+
+/**
+ * The vintage a line or an item carries (walk-through W8, 2026-10-01): its own
+ * vintage field, else the one year its printed name carries. Two different
+ * years in one name, or none, give null, so the shelf proposal says nothing
+ * rather than guessing which one is the vintage.
+ */
+export function printedVintageOf(vintage: number | null, description: string | null): number | null {
+  if (vintage != null) return vintage
+  const years = new Set((description ?? '').match(/\b(?:19[5-9]\d|20[0-4]\d)\b/g) ?? [])
+  return years.size === 1 ? Number([...years][0]) : null
+}

@@ -30,7 +30,7 @@
  * tuck on early release); row settle for the doc open; ink micro-states.
  */
 
-import { lazy, Suspense, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useMudavymDesign } from '../../../lib/mudavym/useMudavymDesign';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -42,6 +42,7 @@ import {
   type ProcurementDocumentLine,
 } from '../../../services/api/documents';
 import { getOrder } from '../../../services/api/orders';
+import { canonicalApi } from '../../../services/api/canonical';
 import { useAuth } from '@/contexts/AuthContext';
 // The ONE ISO 4217 list, shared with the sign-up currency step. A second list
 // here is how `TL` becomes a fourth kind of lira.
@@ -179,6 +180,25 @@ function CurrencyBlock({
   const [reason, setReason] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [moved, setMoved] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
+
+  /*
+   * FOCUS FOLLOWS THE FOLD (walk-through W12, 2026-10-01). Opening or keeping
+   * removes the button that was pressed, so focus fell to the page body and a
+   * keyboard reader lost their place. Opening now lands on the currency
+   * picker (or "Keep" when the role cannot pick); keeping lands back on
+   * "Change the currency". Only a press moves focus, never the first render.
+   */
+  const changeRef = useRef<HTMLButtonElement>(null);
+  const pickRef = useRef<HTMLSelectElement>(null);
+  const keepRef = useRef<HTMLButtonElement>(null);
+  const pressed = useRef(false);
+  useEffect(() => {
+    if (!pressed.current) return;
+    pressed.current = false;
+    if (open) (pickRef.current && !pickRef.current.disabled ? pickRef.current : keepRef.current)?.focus();
+    else changeRef.current?.focus();
+  }, [open]);
 
   const restate = useMutation({
     /**
@@ -216,6 +236,46 @@ function CurrencyBlock({
 
   const filed = doc.currency && /^[A-Z]{3}$/.test(doc.currency) ? doc.currency : null;
 
+  /*
+   * SETTLED MONEY IS ONE LINE (walk-through W9, 2026-10-01). A filed currency
+   * with no hold is the usual case, and the full changer sat between the
+   * verdict and the lines on every review. It folds to a sentence and a
+   * "Change the currency" button, which every role sees, so the act is never
+   * hidden. A hold, a result or an error always opens it.
+   */
+  const settled = !!filed && held.length === 0 && !moved && !error && !restate.isPending;
+  if (settled && !open)
+    return (
+      <p
+        aria-label="What money this invoice is in"
+        style={{ fontSize: 12, color: 'var(--ink-2, #4F473C)', margin: 0 }}
+      >
+        This invoice&rsquo;s money is filed in {currencyLabel(filed)}.{' '}
+        <button
+          ref={changeRef}
+          type="button"
+          onClick={() => {
+            pressed.current = true;
+            setOpen(true);
+          }}
+          aria-expanded={false}
+          className="rc-ink"
+          style={{
+            fontSize: 11.5,
+            fontWeight: 600,
+            border: 'none',
+            background: 'transparent',
+            padding: 0,
+            color: 'var(--seal-deep, #14515C)',
+            textDecoration: 'underline',
+            cursor: 'pointer',
+          }}
+        >
+          Change the currency
+        </button>
+      </p>
+    );
+
   return (
     <section
       aria-label="What money this invoice is in"
@@ -223,14 +283,12 @@ function CurrencyBlock({
         border: '1px solid var(--paper-2, #EAE4D8)',
         borderRadius: 10,
         padding: '10px 12px',
-        marginBottom: 14,
         background: held.length ? 'var(--paper-2, #EAE4D8)' : undefined,
       }}
     >
-      <p style={{ fontFamily: MONO, fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--ink-4, #665D50)', margin: 0 }}>
-        this invoice&rsquo;s money
-      </p>
-      <p style={{ fontSize: 12.5, color: 'var(--ink-1, #211C16)', margin: '3px 0 0' }}>
+      {/* W10: the card names this part "The money", so the box no longer
+          repeats it as a label of its own. */}
+      <p style={{ fontSize: 12.5, color: 'var(--ink-1, #211C16)', margin: 0 }}>
         {filed
           ? `Filed in ${currencyLabel(filed)}.`
           : `${CURRENCY_NOT_RECORDED} — nothing on this document is priced.`}
@@ -261,6 +319,7 @@ function CurrencyBlock({
         <label style={{ fontSize: 11.5, color: 'var(--ink-2, #4F473C)' }}>
           Change it to{' '}
           <select
+            ref={pickRef}
             value={choice}
             onChange={(e) => setChoice(e.target.value)}
             disabled={!canManage || restate.isPending}
@@ -345,6 +404,32 @@ function CurrencyBlock({
         figures stay as they are and only the money they are stated in changes. Who changed it,
         when, and what it was before are recorded.
       </p>
+      {settled && (
+        <button
+          ref={keepRef}
+          type="button"
+          onClick={() => {
+            pressed.current = true;
+            setOpen(false);
+            setChoice('');
+            setReason('');
+          }}
+          aria-expanded
+          className="rc-ink"
+          style={{
+            fontSize: 11.5,
+            fontWeight: 600,
+            border: 'none',
+            background: 'transparent',
+            padding: 0,
+            marginTop: 6,
+            color: 'var(--seal-deep, #14515C)',
+            cursor: 'pointer',
+          }}
+        >
+          Keep {filed}
+        </button>
+      )}
     </section>
   );
 }
@@ -619,6 +704,12 @@ const EDITABLE_FIELDS = [
 
 type EditableKey = (typeof EDITABLE_FIELDS)[number]['key'];
 
+/** The vendor the list endpoint names for a row (walk-through W8), if any. */
+function vendorOf(d: ProcurementDocument): string | null {
+  const name = (d as ProcurementDocument & { vendorName?: string | null }).vendorName;
+  return name?.trim() ? name.trim() : null;
+}
+
 /**
  * What the pairing badge means.
  *
@@ -633,7 +724,21 @@ type EditableKey = (typeof EDITABLE_FIELDS)[number]['key'];
  * ordered wine, the ordered quantity, and the order-line reference — not an
  * invented line description. When the order query has not answered, the badge
  * says the target is unread rather than naming nothing.
+ *
+ * Walk-through W6 (2026-10-01): the sheet above pairs a line with a SHELF; this
+ * card pairs it with an ORDER LINE. Both said "paired", so the column now names
+ * what it holds, and the method reads as a sentence, not the stored code. The
+ * words cover every value `procurement_document_lines_match_method_check`
+ * allows (baseline migration); an unknown code is printed as-is, never hidden.
  */
+const MATCH_METHOD_WORDS: Record<string, string> = {
+  vendor_sku: "matched by the supplier's code",
+  description: 'matched by the description',
+  qty_price: 'matched by quantity and price',
+  manual: 'confirmed by hand',
+  edi_reference: "matched by the supplier's reference",
+};
+
 function PairedCell({
   line,
   order,
@@ -646,17 +751,19 @@ function PairedCell({
   if (!line.order_line_id)
     return (
       <span style={{ color: 'var(--ink-4, #665D50)' }}>
-        not paired
+        no order line yet
       </span>
     );
   const ref = `#${line.order_line_id.slice(0, 8)}`;
   const conf = fmtConfidence(line.match_confidence);
-  const how = line.match_method === 'manual' ? 'confirmed by hand' : line.match_method ?? 'unrecorded method';
+  const how = line.match_method
+    ? MATCH_METHOD_WORDS[line.match_method] ?? line.match_method
+    : 'how it was matched is not recorded';
   return (
     <span style={{ color: 'var(--seal-deep, #14515C)' }}>
       {orderUnread
-        ? `paired → order line ${ref} (the order could not be read, so the wine is unnamed)`
-        : `paired → ${order?.wineName ?? 'the ordered wine is unnamed'} · ${
+        ? `order line ${ref} (the order could not be read, so the wine is unnamed)`
+        : `${order?.wineName ?? 'the ordered wine is unnamed'} · ${
             order?.quantity == null ? EM : order.quantity
           } ordered · order line ${ref}`}
       {` · ${how} · confidence ${conf}`}
@@ -664,19 +771,79 @@ function PairedCell({
   );
 }
 
+/**
+ * ONE PART OF THE CARD, NAMED (walk-through W10, 2026-10-01). The founder:
+ * "every component and detail can be read easily … clear divisions". The card
+ * stacked the verdict, the order, the money, the lines and the confirm with no
+ * line between them; each now sits under its own label and a rule.
+ */
+function CardPart({ label, first = false, children }: { label: string; first?: boolean; children: ReactNode }) {
+  return (
+    <div
+      style={{
+        borderTop: first ? 'none' : '1px solid var(--paper-2, #EAE4D8)',
+        marginTop: first ? 0 : 14,
+        paddingTop: first ? 0 : 12,
+      }}
+    >
+      <h3
+        style={{
+          fontFamily: MONO,
+          fontSize: 8.5,
+          fontWeight: 600,
+          letterSpacing: '0.13em',
+          textTransform: 'uppercase',
+          color: 'var(--ink-4, #665D50)',
+          margin: '0 0 6px',
+        }}
+      >
+        {label}
+      </h3>
+      {children}
+    </div>
+  );
+}
+
 function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: () => void }) {
   const qc = useQueryClient();
   const rid = useActiveRestaurantId();
   const detailKey = ['receipts-next', 'doc', rid, doc.id];
+  /**
+   * The formatted sheet above this card reads the same rows under its own keys
+   * (founder walk-through, 2026-10-01, W2). A correction or a pairing saved
+   * here left it showing the old figures until a reload — two faces of one
+   * document disagreeing on screen. Every write that touches lines refreshes it.
+   */
+  const refreshSheet = () => {
+    for (const k of ['canonical-document', 'canonical-document-items', 'canonical-document-mappings']) {
+      void qc.invalidateQueries({ queryKey: [k, doc.id] });
+    }
+  };
   const detailQ = useQuery({
     queryKey: detailKey,
     queryFn: () => documentsApi.detail(doc.id),
     staleTime: 30_000,
   });
+  /**
+   * THE LINKED ORDER COMES FROM THE LINKS, NOT THE ROW (walk-through W4,
+   * 2026-10-01). `procurement_documents` has no `order_id` column — a document
+   * pairs with its orders through `procurement_document_links`, many-to-many,
+   * and the matcher reads exactly that table. This card read `doc.order_id`,
+   * which the gateway can never send, so every document said "No order is
+   * linked" and the pairing check was disabled for good. `undefined` while the
+   * detail is still loading: an unread link is not an absent one.
+   */
+  const linkedOrderIds: string[] | undefined = useMemo(() => {
+    if (doc.order_id) return [doc.order_id];
+    const links = detailQ.data?.links as Array<{ order_id?: string | null }> | undefined;
+    if (!links) return undefined;
+    return [...new Set(links.map((l) => l.order_id).filter((x): x is string => !!x))];
+  }, [doc.order_id, detailQ.data]);
+  const orderId = linkedOrderIds?.[0] ?? null;
   const orderQ = useQuery({
-    queryKey: ['receipts-next', 'order', rid, doc.order_id],
-    queryFn: () => getOrder(doc.order_id!),
-    enabled: !!doc.order_id,
+    queryKey: ['receipts-next', 'order', rid, orderId],
+    queryFn: () => getOrder(orderId!),
+    enabled: !!orderId,
     staleTime: 60_000,
   });
   const [matchResult, setMatchResult] = useState<Awaited<ReturnType<typeof documentsApi.match>> | null>(null);
@@ -769,6 +936,7 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
             ? { ...cur, lines: cur.lines.map((l) => (l.id === res.line.id ? { ...l, ...res.line } : l)) }
             : cur,
       );
+      refreshSheet();
     },
     onError: (e) => setEditError(serverMessage(e, 'The correction did not save.')),
   });
@@ -806,6 +974,7 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
       setMatchResult(res);
       // `applied` was WRITTEN by that call. The rows on screen are now stale.
       void qc.invalidateQueries({ queryKey: detailKey });
+      refreshSheet();
     },
   });
 
@@ -823,6 +992,7 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
           : cur,
       );
       void qc.invalidateQueries({ queryKey: detailKey });
+      refreshSheet();
     },
     onError: (e) => setEditError(serverMessage(e, 'The pairing change did not save.')),
   });
@@ -843,11 +1013,32 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
     },
   });
 
+  /**
+   * ONE VERDICT ON ONE SCREEN (walk-through W6, 2026-10-01). The sheet above
+   * recomputes the tie-out from the rows on every read; this card printed the
+   * verdict SAVED at intake. Once the VAT-breakdown rule was fixed (W5) the two
+   * disagreed a few centimetres apart — "adds up" over "off by $43.47". The
+   * card now shows the sheet's verdict: the same query key and fetch the sheet
+   * uses, so React Query shares the one request. A correction made here still
+   * wins, because its response is newer than either.
+   */
+  const sheetQ = useQuery({
+    queryKey: ['canonical-document', doc.id],
+    queryFn: () => canonicalApi.document(doc.id),
+    staleTime: 30_000,
+  });
+  const sheetVerdict = sheetQ.data?.canonical.layer3;
   const shownTieOut: ProcurementDocument = tieOut
     ? { ...shownDoc, ties_out: tieOut.tiesOut, tie_out_delta: tieOut.tieOutDelta }
-    : shownDoc;
+    : sheetVerdict
+      ? {
+          ...shownDoc,
+          ties_out: sheetVerdict.tiesOut,
+          tie_out_delta: sheetVerdict.tieOutDeltaCents == null ? null : sheetVerdict.tieOutDeltaCents / 100,
+        }
+      : shownDoc;
 
-  const orderUnread = !!doc.order_id && orderQ.data === undefined;
+  const orderUnread = !!orderId && orderQ.data === undefined;
 
   const appliedByLine = useMemo(() => {
     const m = new Map<string, DocumentLineMatch>();
@@ -866,120 +1057,208 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
         fontFamily: SANS,
       }}
     >
-      {/* the right invoice: what was ordered, above what the paper says */}
+      {/*
+        THE ACTS, NOT A SECOND HEADER (founder walk-through, 2026-10-01, W2:
+        "Sheet first, card trimmed"). The formatted sheet above already states
+        the type, number, date, total and the paper itself; this card used to
+        restate all of it. It now opens on what only it does — check, correct,
+        pair, confirm — and keeps the tie-out because a correction here moves it.
+      */}
       <header className="mb-3 flex flex-wrap items-baseline justify-between gap-3">
-        <div>
-          <span
-            style={{
-              fontFamily: MONO,
-              fontSize: 9,
-              fontWeight: 600,
-              letterSpacing: '0.14em',
-              textTransform: 'uppercase',
-              color: 'var(--seal-deep, #14515C)',
-            }}
-          >
-            {TYPE_LABELS[shownDoc.doc_type] ?? shownDoc.doc_type} · {shownDoc.doc_number || EM} ·{' '}
-            {fmtDate(shownDoc.doc_date)}
-          </span>
-          <h2 style={{ fontFamily: SERIF, fontSize: 19, fontWeight: 600, margin: '2px 0 0' }}>
-            {shownDoc.total == null ? 'No stated total' : fmtMoney(shownDoc.total, shownDoc.currency)}
-            <span style={{ fontSize: 12, fontWeight: 400, color: 'var(--ink-4, #665D50)', marginLeft: 10 }}>
-              <TieOutLine doc={shownTieOut} />
-            </span>
-          </h2>
-          {/*
-            HOW GOOD THE READING IS, stated. This screen asks for trust in a
-            transcription; hiding the model's own confidence in it made that
-            an unqualified ask. `—` when the record holds no score: an
-            unrecorded confidence is not a low one, and not a high one either.
-          */}
-          <p style={{ fontFamily: MONO, fontSize: 10.5, color: 'var(--ink-4, #665D50)', margin: '3px 0 0' }}>
-            extraction confidence {fmtConfidence(shownDoc.extraction_confidence)}
-            {shownDoc.extraction_confidence == null ? ' (none recorded for this document)' : ''}
+        <h2
+          style={{
+            fontFamily: MONO,
+            fontSize: 9,
+            fontWeight: 600,
+            letterSpacing: '0.14em',
+            textTransform: 'uppercase',
+            color: 'var(--seal-deep, #14515C)',
+            margin: 0,
+          }}
+        >
+          Check and correct
+        </h2>
+        {/*
+          ADR 0104 D12 slice 2. The canonical view is the SECOND FACE of this
+          page, not a replacement for it — so the way in is one link, and it
+          exists only where the `document` gate is on. A tenant with the gate
+          off sees this page byte-for-byte as it was: no link, and the route
+          itself redirects back here.
+        */}
+        {canonicalOn && (
+          <p style={{ margin: 0 }}>
+            <Link
+              to={`/documents/${doc.id}`}
+              style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--seal-deep, #14515C)' }}
+            >
+              Open as the canonical document →
+            </Link>
           </p>
-          {/*
-            ADR 0104 D12 slice 2. The canonical view is the SECOND FACE of this
-            page, not a replacement for it — so the way in is one link, and it
-            exists only where the `document` gate is on. A tenant with the gate
-            off sees this page byte-for-byte as it was: no link, and the route
-            itself redirects back here.
-          */}
-          {canonicalOn && (
-            <p style={{ margin: '4px 0 0' }}>
-              <Link
-                to={`/documents/${doc.id}`}
-                style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--seal-deep, #14515C)' }}
-              >
-                Open as the canonical document →
-              </Link>
-            </p>
-          )}
-          {doc.order_id ? (
-            orderQ.data ? (
-              <p style={{ fontSize: 12, color: 'var(--ink-2, #4F473C)', margin: '4px 0 0' }}>
-                {/*
-                  `totalCost` is OrderResponseDto's own key. The cast that stood
-                  here read `totalPrice`, which the route has never sent, so the
-                  typeof guard was always false and the "ordered $X" clause
-                  silently vanished from every receipt — the route HAD the
-                  figure and this line dropped it.
-
-                  The vendor clause is back and REAL: `GET
-                  /procurement/orders/:id` joins `providers` since 2026-09-05.
-                  `vendorClause` prints nothing when there is no name — this is
-                  a running sentence with no slot to leave empty, and "Vendor
-                  not named" appended to every row of a receipts feed is news
-                  about the query, not about the pairing. `vendor.ts` argues
-                  that choice against the list rows, which do say the words.
-                */}
-                Against order {orderQ.data.orderNumber ?? doc.order_id.slice(0, 8)}
-                {vendorClause(orderQ.data)}
-                {/*
-                  THE ORDER'S OWN CURRENCY, WHICH DOES NOT EXIST. Neither
-                  `procurement_orders` nor `procurement_order_items` has a
-                  currency column (measured 2026-09-05,
-                  `procurement/price-currency.ts`'s `agreementCurrencyClaim`),
-                  so `null` is passed deliberately and this figure prints
-                  "(currency not recorded)". Borrowing the DOCUMENT's currency
-                  would state that the order was agreed in the money the vendor
-                  happened to bill in — a claim nobody made, and exactly wrong
-                  on a cross-currency order.
-                */}
-                {typeof orderQ.data.totalCost === 'number'
-                  ? ` · ordered ${fmtMoney(orderQ.data.totalCost, null)}`
-                  : ''}
-              </p>
-            ) : orderQ.isError ? (
-              <p style={{ fontSize: 12, color: 'var(--ink-2, #4F473C)', margin: '4px 0 0' }}>
-                The linked order could not be read — the pairing is unverified, not wrong.
-              </p>
-            ) : (
-              <p style={{ fontSize: 12, color: 'var(--ink-4, #665D50)', margin: '4px 0 0' }}>
-                Reading the linked order…
-              </p>
-            )
-          ) : (
-            <p style={{ fontSize: 12, color: 'var(--ink-2, #4F473C)', margin: '4px 0 0' }}>
-              No order is linked to this document yet — pair it before trusting any line.
-            </p>
-          )}
-        </div>
+        )}
       </header>
 
+      <CardPart label="The reading" first>
+        <p style={{ fontSize: 12, color: 'var(--ink-4, #665D50)', margin: 0 }}>
+          <TieOutLine doc={shownTieOut} />
+        </p>
+        {/*
+          HOW GOOD THE READING IS, stated. This screen asks for trust in a
+          transcription; hiding the model's own confidence in it made that
+          an unqualified ask. `—` when the record holds no score: an
+          unrecorded confidence is not a low one, and not a high one either.
+        */}
+        <p style={{ fontFamily: MONO, fontSize: 10.5, color: 'var(--ink-4, #665D50)', margin: '3px 0 0' }}>
+          extraction confidence {fmtConfidence(shownDoc.extraction_confidence)}
+          {shownDoc.extraction_confidence == null ? ' (none recorded for this document)' : ''}
+        </p>
+      </CardPart>
+
+      <CardPart label="The order">
+        {orderId ? (
+          orderQ.data ? (
+            <p style={{ fontSize: 12, color: 'var(--ink-2, #4F473C)', margin: '4px 0 0' }}>
+              {/*
+                `totalCost` is OrderResponseDto's own key. The cast that stood
+                here read `totalPrice`, which the route has never sent, so the
+                typeof guard was always false and the "ordered $X" clause
+                silently vanished from every receipt — the route HAD the
+                figure and this line dropped it.
+
+                The vendor clause is back and REAL: `GET
+                /procurement/orders/:id` joins `providers` since 2026-09-05.
+                `vendorClause` prints nothing when there is no name — this is
+                a running sentence with no slot to leave empty, and "Vendor
+                not named" appended to every row of a receipts feed is news
+                about the query, not about the pairing. `vendor.ts` argues
+                that choice against the list rows, which do say the words.
+              */}
+              Against order {orderQ.data.orderNumber ?? orderId.slice(0, 8)}
+              {vendorClause(orderQ.data)}
+              {/*
+                THE ORDER'S OWN CURRENCY, WHICH DOES NOT EXIST. Neither
+                `procurement_orders` nor `procurement_order_items` has a
+                currency column (measured 2026-09-05,
+                `procurement/price-currency.ts`'s `agreementCurrencyClaim`),
+                so `null` is passed deliberately and this figure prints
+                "(currency not recorded)". Borrowing the DOCUMENT's currency
+                would state that the order was agreed in the money the vendor
+                happened to bill in — a claim nobody made, and exactly wrong
+                on a cross-currency order.
+              */}
+              {typeof orderQ.data.totalCost === 'number'
+                ? ` · ordered ${fmtMoney(orderQ.data.totalCost, null)}`
+                : ''}
+              {(linkedOrderIds?.length ?? 0) > 1
+                ? ` · and ${linkedOrderIds!.length - 1} more order${linkedOrderIds!.length - 1 === 1 ? '' : 's'}`
+                : ''}
+            </p>
+          ) : orderQ.isError ? (
+            <p style={{ fontSize: 12, color: 'var(--ink-2, #4F473C)', margin: '4px 0 0' }}>
+              The linked order could not be read — the pairing is unverified, not wrong.
+            </p>
+          ) : (
+            <p style={{ fontSize: 12, color: 'var(--ink-4, #665D50)', margin: '4px 0 0' }}>
+              Reading the linked order…
+            </p>
+          )
+        ) : linkedOrderIds === undefined ? (
+          <p style={{ fontSize: 12, color: 'var(--ink-4, #665D50)', margin: '4px 0 0' }}>
+            {detailQ.isError
+              ? 'Whether an order is linked could not be read.'
+              : 'Reading which order this pairs with…'}
+          </p>
+        ) : (
+          <p style={{ fontSize: 12, color: 'var(--ink-2, #4F473C)', margin: '4px 0 0' }}>
+            No order is linked to this document yet — pair it before trusting any line.
+          </p>
+        )}
+        {/* the pairing check — the matcher WRITES its certain half, so say so */}
+        <div className="mt-2 flex flex-wrap items-start gap-3">
+          <button
+            type="button"
+            onClick={() => runMatch.mutate()}
+            disabled={runMatch.isPending || !orderId}
+            className="rc-ink"
+            style={{
+              fontSize: 12,
+              fontWeight: 600,
+              padding: '5px 12px',
+              borderRadius: 8,
+              border: '1px solid var(--seal-ring, rgba(26,94,107,.32))',
+              color: orderId ? 'var(--seal-deep, #14515C)' : 'var(--ink-4, #665D50)',
+              cursor: orderId ? 'pointer' : 'not-allowed',
+            }}
+          >
+            {runMatch.isPending ? 'Checking the pairing…' : 'Check line pairing'}
+          </button>
+          {linkedOrderIds?.length === 0 && (
+            <span style={{ fontSize: 11, color: 'var(--ink-4, #665D50)', alignSelf: 'center' }}>
+              needs a linked order first
+            </span>
+          )}
+          {runMatch.isError && (
+            <span role="alert" style={{ fontSize: 11.5, color: 'var(--ink-1, #211C16)', flexBasis: '100%' }}>
+              {serverMessage(runMatch.error, 'The pairing check did not run.')}
+            </span>
+          )}
+          {matchResult && (
+            <div style={{ flexBasis: '100%', fontSize: 12 }}>
+              <p style={{ color: 'var(--ink-2, #4F473C)', margin: '2px 0 6px' }}>
+                {matchResult.applied.length} written to the record by this check ·{' '}
+                {matchResult.suggested.length} awaiting your confirmation ·{' '}
+                {matchResult.unmatchedDocumentLineIds.length} on the paper with no order line
+              </p>
+              {matchResult.applied.length > 0 && (
+                <p style={{ color: 'var(--ink-2, #4F473C)', margin: '0 0 6px' }}>
+                  The {matchResult.applied.length} above were saved without asking — the matcher
+                  writes an unambiguous vendor-SKU pairing. They are marked in the table and each
+                  one can be unlinked there.
+                </p>
+              )}
+              {matchResult.suggested.map((s) => (
+                <div key={s.documentLineId} className="flex flex-wrap items-center gap-2 py-1" style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
+                  <span style={{ color: 'var(--ink-2, #4F473C)' }}>
+                    {s.reason}
+                    {s.substitution ? ' — a substitution; accept it knowingly' : ''}
+                  </span>
+                  <span style={{ fontFamily: MONO, fontSize: 10.5, color: 'var(--ink-4, #665D50)' }}>
+                    confidence {fmtConfidence(s.confidence)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => link.mutate({ lineId: s.documentLineId, orderLineId: s.orderLineId })}
+                    disabled={link.isPending}
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 600,
+                      padding: '3px 9px',
+                      borderRadius: 6,
+                      border: '1px solid var(--seal-ring, rgba(26,94,107,.32))',
+                      background: 'transparent',
+                      color: 'var(--seal-deep, #14515C)',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Confirm pairing
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </CardPart>
+
       {/* RULE 3 — the house's deliberate restatement of this invoice's money */}
-      <CurrencyBlock doc={shownDoc} onChanged={() => void detailQ.refetch()} />
+      <CardPart label="The money">
+        <CurrencyBlock doc={shownDoc} onChanged={() => void detailQ.refetch()} />
+      </CardPart>
 
-      {/* the paper beside the lines — the adjudication this page exists for */}
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,0.85fr)_minmax(0,1fr)]">
-        <PaperPane
-          doc={shownDoc}
-          detailKnown={detailQ.data !== undefined}
-          fetchedAt={detailQ.dataUpdatedAt}
-          onRefresh={() => void detailQ.refetch()}
-          refreshing={detailQ.isFetching}
-        />
-
+      {/*
+        The paper is no longer beside these lines: the sheet above brings it on
+        demand ("Bring the original"), and a second copy here pushed the lines
+        into half the width (W2). `PaperPane` lives on as that on-demand pane.
+      */}
+      <CardPart label="The lines">
         <div>
           {/* the lines — editable in place while the document awaits review */}
           {detailQ.isError ? (
@@ -1027,7 +1306,7 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
                     <th style={{ textAlign: 'right', padding: '4px 6px' }}>Qty</th>
                     <th style={{ textAlign: 'right', padding: '4px 6px' }}>Unit</th>
                     <th style={{ textAlign: 'right', padding: '4px 6px' }}>Total</th>
-                    <th style={{ textAlign: 'left', padding: '4px 6px' }}>Paired with</th>
+                    <th style={{ textAlign: 'left', padding: '4px 6px' }}>Order line</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1211,105 +1490,33 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
             </p>
           )}
 
-          {/* the pairing check — the matcher WRITES its certain half, so say so */}
-          <div className="mt-3 flex flex-wrap items-start gap-3">
-            <button
-              type="button"
-              onClick={() => runMatch.mutate()}
-              disabled={runMatch.isPending || !doc.order_id}
-              className="rc-ink"
-              style={{
-                fontSize: 12,
-                fontWeight: 600,
-                padding: '5px 12px',
-                borderRadius: 8,
-                border: '1px solid var(--seal-ring, rgba(26,94,107,.32))',
-                color: doc.order_id ? 'var(--seal-deep, #14515C)' : 'var(--ink-4, #665D50)',
-                cursor: doc.order_id ? 'pointer' : 'not-allowed',
-              }}
-            >
-              {runMatch.isPending ? 'Checking the pairing…' : 'Check line pairing'}
-            </button>
-            {!doc.order_id && (
-              <span style={{ fontSize: 11, color: 'var(--ink-4, #665D50)', alignSelf: 'center' }}>
-                needs a linked order first
-              </span>
-            )}
-            {runMatch.isError && (
-              <span role="alert" style={{ fontSize: 11.5, color: 'var(--ink-1, #211C16)', flexBasis: '100%' }}>
-                {serverMessage(runMatch.error, 'The pairing check did not run.')}
-              </span>
-            )}
-            {matchResult && (
-              <div style={{ flexBasis: '100%', fontSize: 12 }}>
-                <p style={{ color: 'var(--ink-2, #4F473C)', margin: '2px 0 6px' }}>
-                  {matchResult.applied.length} written to the record by this check ·{' '}
-                  {matchResult.suggested.length} awaiting your confirmation ·{' '}
-                  {matchResult.unmatchedDocumentLineIds.length} on the paper with no order line
-                </p>
-                {matchResult.applied.length > 0 && (
-                  <p style={{ color: 'var(--ink-2, #4F473C)', margin: '0 0 6px' }}>
-                    The {matchResult.applied.length} above were saved without asking — the matcher
-                    writes an unambiguous vendor-SKU pairing. They are marked in the table and each
-                    one can be unlinked there.
-                  </p>
-                )}
-                {matchResult.suggested.map((s) => (
-                  <div key={s.documentLineId} className="flex flex-wrap items-center gap-2 py-1" style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
-                    <span style={{ color: 'var(--ink-2, #4F473C)' }}>
-                      {s.reason}
-                      {s.substitution ? ' — a substitution; accept it knowingly' : ''}
-                    </span>
-                    <span style={{ fontFamily: MONO, fontSize: 10.5, color: 'var(--ink-4, #665D50)' }}>
-                      confidence {fmtConfidence(s.confidence)}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => link.mutate({ lineId: s.documentLineId, orderLineId: s.orderLineId })}
-                      disabled={link.isPending}
-                      style={{
-                        fontSize: 11,
-                        fontWeight: 600,
-                        padding: '3px 9px',
-                        borderRadius: 6,
-                        border: '1px solid var(--seal-ring, rgba(26,94,107,.32))',
-                        background: 'transparent',
-                        color: 'var(--seal-deep, #14515C)',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      Confirm pairing
-                    </button>
-                  </div>
-                ))}
-              </div>
+        </div>
+      </CardPart>
+
+      {/* the ceremony — verify asserts the transcription, nothing more */}
+      {editable && (
+        <CardPart label="Confirm">
+          <div className="mt-2">
+            <SwipeToConfirm
+              key={`swipe-${verify.failureCount}`}
+              label="Swipe up to confirm"
+              assertion="Confirms this transcription matches the paper. It does not accept charges or touch stock. A one-time seal is taken when the gesture starts."
+              disabled={verify.isPending}
+              onChallenge={() => documentsApi.mintVerifySeal(doc.id)}
+              onConfirm={(challenge) => verify.mutate(challenge)}
+            />
+            {verify.isError && (
+              <p role="alert" style={{ textAlign: 'center', fontSize: 11.5, color: 'var(--ink-1, #211C16)', margin: '6px 0 0' }}>
+                {serverMessage(
+                  verify.error,
+                  'The confirmation did not reach the gateway.',
+                )}{' '}
+                The document is still unverified.
+              </p>
             )}
           </div>
-
-          {/* the ceremony — verify asserts the transcription, nothing more */}
-          {editable && (
-            <div className="mt-5">
-              <SwipeToConfirm
-                key={`swipe-${verify.failureCount}`}
-                label="Swipe up to confirm"
-                assertion="Confirms this transcription matches the paper. It does not accept charges or touch stock. A one-time seal is taken when the gesture starts."
-                disabled={verify.isPending}
-                onChallenge={() => documentsApi.mintVerifySeal(doc.id)}
-                onConfirm={(challenge) => verify.mutate(challenge)}
-              />
-              {verify.isError && (
-                <p role="alert" style={{ textAlign: 'center', fontSize: 11.5, color: 'var(--ink-1, #211C16)', margin: '6px 0 0' }}>
-                  {serverMessage(
-                    verify.error,
-                    'The confirmation did not reach the gateway.',
-                  )}{' '}
-                  The document is still unverified.
-                </p>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
+        </CardPart>
+      )}
     </div>
   );
 }
@@ -1334,13 +1541,21 @@ export default function ReceiptsNext() {
    * `?doc=<id>` opens that document straight away. The receiving workspace links
    * here when it refuses a unit price for an invoice whose money is held
    * (founder, 2026-09-06 batch 64), and a link that lands on the queue without
-   * opening the document names an act the reader then has to go and find. Seeded
-   * once from the URL rather than synced to it: a person who clicks another row
-   * has chosen it, and re-selecting from the query string would fight them.
+   * opening the document names an act the reader then has to go and find.
+   *
+   * THE URL IS THE SELECTION (ADR 0160; walk-through W3, 2026-10-01). It was
+   * seeded once and then held in memory, so a reload, a shared link or the
+   * browser's Back lost the open document. A click now writes `?doc=`, which
+   * is also why it cannot fight the reader: the click and the query string
+   * are the same act.
    */
-  const [selectedId, setSelectedId] = useState<string | null>(
-    () => searchParams.get('doc'),
-  );
+  const selectedId = searchParams.get('doc');
+  const select = (id: string | null) => {
+    const params = new URLSearchParams(searchParams);
+    if (id) params.set('doc', id);
+    else params.delete('doc');
+    setSearchParams(params);
+  };
   const [showVerified, setShowVerified] = useState(false);
   const selected =
     data.queue.find((d) => d.id === selectedId) ??
@@ -1519,9 +1734,22 @@ export default function ReceiptsNext() {
           </div>
         )}
 
-        <div className="grid gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
+        {/*
+          AN OPEN DOCUMENT TAKES THE WIDTH (walk-through W3, 2026-10-01). Beside
+          a 320px queue and the counter, the document got 336px at 1280 — the
+          sheet's table needs ~450 and the lines table ~380, so both scrolled
+          sideways. Below 1536px the queue folds behind a back link while a
+          document is open; at 1536px and up they sit side by side as before.
+        */}
+        <div
+          className={
+            selected
+              ? 'grid gap-6 2xl:grid-cols-[320px_minmax(0,1fr)]'
+              : 'grid gap-6 lg:grid-cols-[320px_minmax(0,1fr)]'
+          }
+        >
           {/* the queue */}
-          <section aria-label="Awaiting review">
+          <section aria-label="Awaiting review" className={selected ? 'hidden 2xl:block' : undefined}>
             {data.queueKnown && data.queue.length === 0 && !data.isError && !data.noRestaurant ? (
               <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-2, #4F473C)' }}>
                 Nothing awaits review — the paper trail is caught up.
@@ -1532,7 +1760,7 @@ export default function ReceiptsNext() {
                   <button
                     key={d.id}
                     type="button"
-                    onClick={() => setSelectedId(d.id)}
+                    onClick={() => select(d.id)}
                     aria-pressed={selectedId === d.id}
                     className="rc-row block w-full text-left"
                     style={{
@@ -1547,7 +1775,32 @@ export default function ReceiptsNext() {
                       fontFamily: SANS,
                     }}
                   >
-                    <span style={{ display: 'block', fontSize: 12.5, fontWeight: 600, color: 'var(--ink-1, #211C16)' }}>
+                    {/* W8 (2026-10-01): who sent it comes first. Six invoices
+                        from one day read alike until the vendor is named;
+                        a row without one keeps the number as its title. */}
+                    {vendorOf(d) && (
+                      <span
+                        title={vendorOf(d) ?? undefined}
+                        style={{
+                          display: 'block',
+                          fontSize: 12.5,
+                          fontWeight: 600,
+                          color: 'var(--ink-1, #211C16)',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {vendorOf(d)}
+                      </span>
+                    )}
+                    <span
+                      style={
+                        vendorOf(d)
+                          ? { display: 'block', fontSize: 11.5, color: 'var(--ink-2, #4F473C)' }
+                          : { display: 'block', fontSize: 12.5, fontWeight: 600, color: 'var(--ink-1, #211C16)' }
+                      }
+                    >
                       {TYPE_LABELS[d.doc_type] ?? d.doc_type} · {d.doc_number || EM}
                     </span>
                     <span style={{ display: 'block', fontSize: 11, color: 'var(--ink-4, #665D50)' }}>
@@ -1589,7 +1842,7 @@ export default function ReceiptsNext() {
                       <button
                         key={d.id}
                         type="button"
-                        onClick={() => setSelectedId(d.id)}
+                        onClick={() => select(d.id)}
                         aria-pressed={selectedId === d.id}
                         className="rc-row block w-full text-left"
                         style={{
@@ -1617,12 +1870,29 @@ export default function ReceiptsNext() {
           <section aria-label="Document detail">
             {selected ? (
               <>
+                <button
+                  type="button"
+                  onClick={() => select(null)}
+                  className="rc-ink mb-3 2xl:hidden"
+                  style={{
+                    fontFamily: SANS,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: 'var(--seal-deep, #14515C)',
+                    border: 'none',
+                    background: 'transparent',
+                    padding: '2px 0',
+                    cursor: 'pointer',
+                  }}
+                >
+                  ← All receipts · {data.queueCapped ? GE : ''}{data.queue.length} awaiting review
+                </button>
                 <div aria-label="Formatted document" className="mb-6">
                   <Suspense fallback={null}>
                     <CanonicalDocumentPage documentId={selected.id} embedded />
                   </Suspense>
                 </div>
-                <DocView key={selected.id} doc={selected} onVerified={() => setSelectedId(null)} />
+                <DocView key={selected.id} doc={selected} onVerified={() => select(null)} />
               </>
             ) : (
               <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-4, #665D50)' }}>

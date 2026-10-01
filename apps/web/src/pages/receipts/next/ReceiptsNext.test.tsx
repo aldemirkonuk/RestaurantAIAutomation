@@ -8,7 +8,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import { createContext, type ReactNode } from 'react';
 import type { ProcurementDocument } from '../../../services/api/documents';
 
@@ -23,6 +23,8 @@ const api = vi.hoisted(() => ({
   linkLine: vi.fn(() => Promise.resolve()),
   verify: vi.fn(() => Promise.resolve()),
   restaurantId: 'rest-A' as string | null,
+  /** The sheet's recomputed verdict; `null` leaves the canonical read pending. */
+  sheetLayer3: null as null | { tiesOut: boolean | null; tieOutDeltaCents: number | null },
   /** The caller's role at this house, for rule 3's control. */
   role: 'manager' as 'owner' | 'manager' | 'staff' | null,
   restateCurrency: vi.fn(),
@@ -69,6 +71,14 @@ vi.mock('../../../services/api/receiving', () => ({
   receivingApi: {
     listUnverified: () =>
       api.unverifiedFails ? Promise.reject(api.unverifiedFails) : Promise.resolve(api.unverified),
+  },
+}));
+vi.mock('../../../services/api/canonical', () => ({
+  canonicalApi: {
+    document: () =>
+      api.sheetLayer3
+        ? Promise.resolve({ canonical: { layer3: api.sheetLayer3 } })
+        : new Promise(() => {}),
   },
 }));
 vi.mock('../../documents/next/CanonicalDocumentPage', () => ({
@@ -177,6 +187,7 @@ beforeEach(() => {
   api.detailFails = null;
   api.unverifiedFails = null;
   api.restaurantId = 'rest-A';
+  api.sheetLayer3 = null;
   api.linkLine.mockClear();
   api.editLine.mockReset();
   api.editLine.mockResolvedValue({
@@ -281,7 +292,31 @@ describe('ReceiptsNext', () => {
   it('renders the stored scan from the DETAIL response, not the list row', async () => {
     // The gateway signs `imageUrl` only inside the detail handler
     // (documents.controller.ts:189-203). The list row never carries one, which
-    // is why the old `doc.imageUrl` gate never fired.
+    // is why the old `doc.imageUrl` gate never fired. Since the 2026-10-01
+    // walk-through (W2) the pane is brought on demand from the formatted sheet
+    // (`OriginalPane` reuses `PaperPane`), so the pane is asserted directly.
+    render(
+      <PaperPane
+        doc={doc({ storage_path: 'r/1/inv.jpg', imageUrl: 'https://signed.example/inv.jpg?token=x' })}
+        detailKnown
+        fetchedAt={Date.now()}
+        onRefresh={() => {}}
+        refreshing={false}
+      />,
+      { wrapper },
+    );
+    const img = await screen.findByAltText('Stored document');
+    expect(img).toHaveAttribute('src', 'https://signed.example/inv.jpg?token=x');
+    expect(screen.getByText('Open the paper ↗')).toHaveAttribute(
+      'href',
+      'https://signed.example/inv.jpg?token=x',
+    );
+  });
+
+  it('the review card does not restate the paper or the money the sheet above shows', async () => {
+    // Founder, 2026-10-01 (W2): "Sheet first, card trimmed". The paper and the
+    // stated total belong to the formatted sheet; a second copy in the card
+    // squeezed the lines into half the width.
     api.detail = {
       document: doc({ storage_path: 'r/1/inv.jpg', imageUrl: 'https://signed.example/inv.jpg?token=x' }),
       lines: [line],
@@ -289,12 +324,23 @@ describe('ReceiptsNext', () => {
     };
     render(<ReceiptsNext />, { wrapper });
     await openFirstDoc();
-    const img = await screen.findByAltText('Stored document');
-    expect(img).toHaveAttribute('src', 'https://signed.example/inv.jpg?token=x');
-    expect(screen.getByText('Open the paper ↗')).toHaveAttribute(
-      'href',
-      'https://signed.example/inv.jpg?token=x',
-    );
+    expect(screen.getByRole('heading', { name: 'Check and correct' })).toBeInTheDocument();
+    expect(screen.queryByAltText('Stored document')).not.toBeInTheDocument();
+    expect(screen.queryByText('Open the paper ↗')).not.toBeInTheDocument();
+  });
+
+  it('names each part of the card, and the pairing check sits with the order', async () => {
+    // Founder, 2026-10-01 (W9/W10): "every component and detail can be read
+    // easily … clear divisions".
+    api.detail = { document: doc({}), lines: [line], links: [] };
+    render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    const parts =screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent);
+    expect(parts).toEqual(['The reading', 'The order', 'The money', 'The lines', 'Confirm']);
+    const order = screen.getByRole('heading', { name: 'The order' }).parentElement!;
+    expect(order).toHaveTextContent('Check line pairing');
+    const lines = screen.getByRole('heading', { name: 'The lines' }).parentElement!;
+    expect(lines).not.toHaveTextContent('Check line pairing');
   });
 
   it('an aged-out signed link says it aged out instead of rendering a dead image', async () => {
@@ -322,15 +368,14 @@ describe('ReceiptsNext', () => {
   });
 
   it('distinguishes "no file was stored" from "the link could not be made"', async () => {
-    api.detail = { document: doc({ storage_path: null, source_channel: 'edi' }), lines: [line], links: [] };
-    const view = render(<ReceiptsNext />, { wrapper });
-    await openFirstDoc();
+    const pane = (d: ReturnType<typeof doc>) => (
+      <PaperPane doc={d} detailKnown fetchedAt={Date.now()} onRefresh={() => {}} refreshing={false} />
+    );
+    const view = render(pane(doc({ storage_path: null, source_channel: 'edi' })), { wrapper });
     expect(await screen.findByText(/No file was stored for this document/)).toBeInTheDocument();
     view.unmount();
 
-    api.detail = { document: doc({ storage_path: 'r/1/inv.jpg', imageUrl: null }), lines: [line], links: [] };
-    render(<ReceiptsNext />, { wrapper });
-    await openFirstDoc();
+    render(pane(doc({ storage_path: 'r/1/inv.jpg', imageUrl: null })), { wrapper });
     expect(await screen.findByText(/a viewing link could not be created/)).toBeInTheDocument();
   });
 
@@ -413,17 +458,21 @@ describe('ReceiptsNext', () => {
     };
     const { container } = render(<ReceiptsNext />, { wrapper });
     await openFirstDoc();
-    await waitFor(() => expect(container.textContent).toContain('paired → Albariño'));
+    await waitFor(() => expect(container.textContent).toContain('Albariño'));
     expect(container.textContent).toContain('order line #ol-abcde');
     expect(container.textContent).toContain('confidence 97%');
+    // W6 (2026-10-01): the method in words, the column named for what it holds.
+    expect(container.textContent).toContain("matched by the supplier's code");
+    expect(container.textContent).not.toContain('vendor_sku');
+    expect(screen.getByRole('columnheader', { name: 'Order line' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Unlink' }));
     await waitFor(() => expect(api.linkLine).toHaveBeenCalledWith('d1', 'l1', null));
   });
 
-  it('an unpaired line says "not paired", not a bare dash', async () => {
+  it('an unpaired line says it has no order line yet, not a bare dash', async () => {
     const { container } = render(<ReceiptsNext />, { wrapper });
     await openFirstDoc();
-    expect(container.textContent).toContain('not paired');
+    expect(container.textContent).toContain('no order line yet');
   });
 
   /* ─── R6 — the server's own words, and the pre-edit figure ────────────── */
@@ -481,7 +530,7 @@ describe('ReceiptsNext — what money this invoice is in', () => {
     api.detail = { document: api.queue[0], lines: [line], links: [] };
     const { container } = render(<ReceiptsNext />, { wrapper });
     await openFirstDoc();
-    expect(container.textContent).toContain('Filed in TRY - Turkish lira');
+    expect(container.textContent).toContain('filed in TRY - Turkish lira');
     expect(container.textContent).not.toContain('$412.50');
   });
 
@@ -510,6 +559,7 @@ describe('ReceiptsNext — what money this invoice is in', () => {
   it('restates the currency and shows what the server said moved', async () => {
     render(<ReceiptsNext />, { wrapper });
     await openFirstDoc();
+    fireEvent.click(screen.getByRole('button', { name: 'Change the currency' }));
     fireEvent.change(screen.getByLabelText("Currency this invoice is denominated in"), {
       target: { value: 'TRY' },
     });
@@ -525,6 +575,8 @@ describe('ReceiptsNext — what money this invoice is in', () => {
     api.role = 'staff';
     const { container } = render(<ReceiptsNext />, { wrapper });
     await openFirstDoc();
+    // The fold never hides the act: staff see the opener too (W9).
+    fireEvent.click(screen.getByRole('button', { name: 'Change the currency' }));
     // Visible, and refused in words that name who can do it.
     const picker = screen.getByLabelText("Currency this invoice is denominated in");
     expect((picker as HTMLSelectElement).disabled).toBe(true);
@@ -539,11 +591,48 @@ describe('ReceiptsNext — what money this invoice is in', () => {
     });
     render(<ReceiptsNext />, { wrapper });
     await openFirstDoc();
+    fireEvent.click(screen.getByRole('button', { name: 'Change the currency' }));
     fireEvent.change(screen.getByLabelText("Currency this invoice is denominated in"), {
       target: { value: 'EUR' },
     });
     holdToApprove(/Hold to file this invoice in EUR/);
     expect(await screen.findByText(/the change could not be recorded/)).toBeTruthy();
+  });
+
+  it('folds a filed, unheld currency to one line, and "Keep" folds it back (W9)', async () => {
+    api.queue = [doc({ currency: 'TRY', total: 412.5 })];
+    api.detail = { document: api.queue[0], lines: [line], links: [] };
+    render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    expect(screen.getByLabelText('What money this invoice is in')).toHaveTextContent(
+      "This invoice’s money is filed in TRY - Turkish lira.",
+    );
+    expect(screen.queryByLabelText('Currency this invoice is denominated in')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Change the currency' }));
+    expect(screen.getByLabelText('Currency this invoice is denominated in')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Keep TRY' }));
+    expect(screen.queryByLabelText('Currency this invoice is denominated in')).toBeNull();
+  });
+
+  it('moves focus with the fold: into the picker on open, back to "Change" on keep (W12)', async () => {
+    api.queue = [doc({ currency: 'TRY', total: 412.5 })];
+    api.detail = { document: api.queue[0], lines: [line], links: [] };
+    render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    fireEvent.click(screen.getByRole('button', { name: 'Change the currency' }));
+    expect(screen.getByLabelText('Currency this invoice is denominated in')).toHaveFocus();
+    fireEvent.click(screen.getByRole('button', { name: 'Keep TRY' }));
+    expect(screen.getByRole('button', { name: 'Change the currency' })).toHaveFocus();
+  });
+
+  it('never folds a held document: the hold and the changer show at once (W9)', async () => {
+    const held = 'MONEY HELD, NOT FILED. This document would be filed under USD.';
+    api.queue = [doc({ currency: 'USD', total: 412.5, notes: held })];
+    api.detail = { document: api.queue[0], lines: [line], links: [] };
+    render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    expect(screen.getByLabelText('Currency this invoice is denominated in')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Change the currency' })).toBeNull();
   });
 });
 
@@ -595,5 +684,105 @@ describe('ReceiptsNext — ?doc=<id> opens that document', () => {
       await screen.findByText((_, el) => el?.tagName === 'SPAN' && /Invoice · INV-99/.test(el.textContent ?? '')),
     );
     await waitFor(() => expect(screen.getAllByText(/INV-99/).length).toBeGreaterThan(0));
+  });
+});
+
+/* ─── 2026-10-01 walk-through — the order and the sheet ─────────────────── */
+
+describe('ReceiptsNext — the linked order comes from the links, not the row', () => {
+  // `procurement_documents` has no `order_id` column, so the gateway never
+  // sends one. Every fixture above sets `order_id: 'o1'`, which is the premise
+  // that hid a pairing check disabled for every real document.
+  const unpaired = () => doc({ order_id: undefined });
+
+  it('names the order a link pairs it with, and enables the pairing check', async () => {
+    api.queue = [unpaired()];
+    api.detail = {
+      document: unpaired(),
+      lines: [line],
+      links: [{ id: 'k1', document_id: 'd1', order_id: 'o1' }] as never[],
+    };
+    render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    expect(await screen.findByText(/Against order PO-14/)).toBeInTheDocument();
+    expect(screen.queryByText(/No order is linked/)).toBeNull();
+    expect(screen.getByRole('button', { name: 'Check line pairing' })).toBeEnabled();
+  });
+
+  it('says no order is linked only once the links are read and empty', async () => {
+    api.queue = [unpaired()];
+    api.detail = { document: unpaired(), lines: [line], links: [] };
+    render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    expect(await screen.findByText(/No order is linked to this document yet/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Check line pairing' })).toBeDisabled();
+    expect(screen.getByText('needs a linked order first')).toBeInTheDocument();
+  });
+});
+
+describe('ReceiptsNext — a correction refreshes the sheet above it', () => {
+  it('invalidates the formatted sheet once the sealed correction lands', async () => {
+    render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    const spy = vi.spyOn(lastQc, 'invalidateQueries');
+    const qty = screen.getByLabelText('Quantity, line 1');
+    fireEvent.change(qty, { target: { value: '11' } });
+    fireEvent.blur(qty);
+    await screen.findByText(/Nothing has been written yet/);
+    holdToApprove(/Hold to seal this correction/);
+    await waitFor(() => expect(api.editLine).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(spy).toHaveBeenCalledWith({ queryKey: ['canonical-document', 'd1'] }),
+    );
+    expect(spy).toHaveBeenCalledWith({ queryKey: ['canonical-document-items', 'd1'] });
+  });
+});
+
+describe('ReceiptsNext — the open document lives in the URL (ADR 0160)', () => {
+  function Where() {
+    return <output data-testid="where">{useLocation().search}</output>;
+  }
+
+  it('writes ?doc= on a click and clears it from the back link', async () => {
+    render(
+      <>
+        <ReceiptsNext />
+        <Where />
+      </>,
+      { wrapper },
+    );
+    await openFirstDoc();
+    expect(screen.getByTestId('where').textContent).toBe('?doc=d1');
+    fireEvent.click(screen.getByRole('button', { name: /All receipts · 1 awaiting review/ }));
+    await waitFor(() => expect(screen.getByTestId('where').textContent).toBe(''));
+    expect(screen.queryByLabelText('Quantity, line 1')).toBeNull();
+  });
+});
+
+describe("ReceiptsNext — the card shows the sheet's verdict, not the saved one", () => {
+  it('prints the recomputed tie-out when the saved verdict is stale', async () => {
+    // Saved at intake: off by 43.47 (the VAT the old rule ignored). The sheet
+    // recomputes from the rows and says it adds up; the card must not argue.
+    api.queue = [doc({ ties_out: false, tie_out_delta: 43.47 })];
+    api.detail = { document: doc({ ties_out: false, tie_out_delta: 43.47 }), lines: [line], links: [] };
+    api.sheetLayer3 = { tiesOut: true, tieOutDeltaCents: 0 };
+    const { container } = render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    await waitFor(() => expect(container.textContent).toContain('ties out within tolerance'));
+    expect(container.textContent).not.toContain('off by $43.47');
+  });
+});
+
+describe('ReceiptsNext — a list row names who sent it (walk-through W8)', () => {
+  it('leads with the vendor the list names, and keeps the number as the title without one', async () => {
+    api.queue = [
+      doc({ id: 'd1', doc_number: 'INV-1', vendorName: 'SYNTHETIC VENDOR CO.' } as Partial<ProcurementDocument>),
+      doc({ id: 'd2', doc_number: 'INV-2' }),
+    ];
+    render(<ReceiptsNext />, { wrapper });
+    const named = await screen.findByRole('button', { name: /SYNTHETIC VENDOR CO\.\s*Invoice · INV-1/ });
+    expect(named.querySelector('span')).toHaveTextContent('SYNTHETIC VENDOR CO.');
+    const unnamed = screen.getByRole('button', { name: /^Invoice · INV-2/ });
+    expect(unnamed.querySelector('span')).toHaveTextContent('Invoice · INV-2');
   });
 });
