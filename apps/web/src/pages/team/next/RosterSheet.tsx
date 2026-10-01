@@ -616,8 +616,15 @@ export function MemberSheet({
   });
   const handingOver = handoverOf(handover, handoverPreview.data);
   const needsAck = (handingOver?.accept.length ?? 0) > 0 && !handover.ack;
+  // The hand-over travels WITH the click (`remove.mutate(handingOver)`), not
+  // in a closure: React Query takes a new mutationFn in a passive effect,
+  // after the commit, so a click that started the call at once, between the
+  // two, sent the previous render's hand-over — `null` from a button already
+  // reading "hand over 1 shift" (CI run 36728755317). React 18 updates a
+  // DOM node's handler props at commit, so this click handler is the
+  // committed render's own.
   const remove = useMutation({
-    mutationFn: () => deleteTeamMember(member!.id, undefined, handingOver),
+    mutationFn: (sent: RemovalHandover | null) => deleteTeamMember(member!.id, undefined, sent),
     onSuccess: (receipt) => {
       onChanged();
       const unjudged = receipt?.shiftsUnjudged ?? 0;
@@ -890,7 +897,7 @@ export function MemberSheet({
                 type="button"
                 className="tm-ctl tm-ctl--sm"
                 disabled={remove.isPending || needsAck || (!!handover.to && handoverPreview.isFetching)}
-                onClick={() => remove.mutate()}
+                onClick={() => remove.mutate(handingOver)}
               >
                 {remove.isPending
                   ? 'Removing…'
