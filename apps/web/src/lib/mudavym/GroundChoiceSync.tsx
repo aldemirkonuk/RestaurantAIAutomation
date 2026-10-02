@@ -43,9 +43,10 @@
  *   - the account answered → `applyAccountGround`, marked `account`, or
  *     `default` when the person has simply never chosen;
  *   - the account could NOT be read → `reportGroundReadFailure`. It is not
- *     reported as paper-by-default: `ThemeMenu` marks no option active and
- *     says the ground could not be read. A failed read is never an answer
- *     (CLAUDE.md §9).
+ *     reported as paper-by-default: the Theme control on `/profile`
+ *     (`IdentityRegister.tsx`, via `groundIsKnown` / `groundNote`) presses
+ *     no option and says the ground could not be read. A failed read is never
+ *     an answer (CLAUDE.md §9).
  */
 
 import { useEffect } from 'react';

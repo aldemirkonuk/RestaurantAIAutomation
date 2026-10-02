@@ -5,7 +5,9 @@
  * ---------------
  * The app shell renders nine overlays over EVERY page (command palette, Ask AI,
  * shortcuts, recently-viewed, the notifications popover, the user menu, the
- * theme menu, the branch switcher, the mobile scrim). They are shared by the
+ * theme menu, the branch switcher, the mobile scrim) [2026-10-01: eight — the
+ * theme menu was deleted when the ground control moved to `/profile`, founder,
+ * page walk-through DASH-W23]. They are shared by the
  * legacy pages and the rebuilt ones. ADR 0042's promise is that a page with its
  * flag off renders byte-for-byte as it always has — so the shell may not simply
  * be restyled. It has to ask, at render time, whether the page underneath is a
