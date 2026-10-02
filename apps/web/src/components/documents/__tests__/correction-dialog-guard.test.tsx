@@ -73,3 +73,13 @@ describe('CorrectionDialog — a figure the field cannot take is never sent', ()
     expect((control() as HTMLButtonElement).disabled).toBe(true)
   })
 })
+
+describe('CorrectionDialog — boxes with an edge you can see (RECEIPTS-W39)', () => {
+  it('edges the value and the reason at 3:1 (--line-control, stand-in #8F8674), not paper-2', () => {
+    render(<CorrectionDialog {...props(vi.fn())} />)
+    for (const id of ['correction-value', 'correction-reason']) {
+      expect(screen.getByTestId(id).getAttribute('style')).toContain('var(--line-control, #8F8674)')
+    }
+  })
+})
+

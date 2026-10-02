@@ -32,6 +32,9 @@ import {
  * WHAT IT READS FROM `extracted`, AND WHY ONLY THAT.
  * `procurement_documents` has no vendor-name, delivered-date, VAT-breakdown or
  * line-kind column, so the intake snapshot is the ONLY place those four exist.
+ * [changed 2026-10-01, walk-through RECEIPTS-W41: nor an order-number column,
+ * so BT-13 is read from the snapshot too — it was hard NULL here, and the
+ * sheet said "Order reference —" under a paper that printed one.]
  * Everything else is read from the COLUMNS, because `editLine` corrects the
  * columns and does not rewrite the snapshot — reading a corrected field from
  * the snapshot would silently show the pre-correction value.
@@ -81,6 +84,15 @@ export interface SnapshotOnlyFields {
   vendorCountry: string | null;
   buyerTaxId: string | null;
   deliveredDate: string | null;
+  /**
+   * BT-13, the order number the PAGE printed. Intake already reads it to link
+   * the document to its order (`autoLink`), but no column keeps it, so
+   * until 2026-10-01 the read-back set it to NULL and the sheet showed
+   * "Order reference —" beside a printed SYN-PO-0001 (walk-through
+   * RECEIPTS-W41). Document-level only: a number printed on a single line is
+   * that line's reference, not the document's.
+   */
+  poNumber: string | null;
   taxBreakdown: ParsedTaxBreakdownRow[] | undefined;
 }
 
@@ -111,6 +123,7 @@ export function readSnapshot(extracted: unknown): SnapshotOnlyFields {
       vendorCountry: null,
       buyerTaxId: null,
       deliveredDate: null,
+      poNumber: null,
       taxBreakdown: undefined,
     };
 
@@ -141,6 +154,7 @@ export function readSnapshot(extracted: unknown): SnapshotOnlyFields {
     vendorCountry: snapshotStr(snap.vendorCountry),
     buyerTaxId: snapshotStr(snap.buyerTaxId),
     deliveredDate: snapshotStr(snap.deliveredDate),
+    poNumber: snapshotStr(snap.poNumber),
     taxBreakdown,
   };
 }
@@ -237,7 +251,8 @@ export function parsedFromDocumentRows(
     // not named on this document" on every document read 2026-09-04.
     deliveredDate: snapshot.deliveredDate,
     referencesDocNumber: rowStr(document.references_doc_number),
-    poNumber: null,
+    // From the snapshot, like the seller's name: there is no column (W41).
+    poNumber: snapshot.poNumber,
     vendorName: snapshot.vendorName,
     vendorTaxId: snapshot.vendorTaxId,
     vendorTaxOffice: snapshot.vendorTaxOffice,
