@@ -36,11 +36,16 @@
  * shell is mounted once and a branch switch happens in place, so without
  * this house A's answers showed in house B, and "Check again" re-sent house
  * A's request id in house B, where the once-per-id key includes the house:
- * a new paid call. When the scope changes the session starts again, and the
- * epoch moves on, so anything begun under the old scope (an answer, a
- * refusal, a proposal, a failure) lands nowhere and does not let go of a
- * newer request's gate. The answer itself is still in that house's book at
- * /ask.
+ * a new paid call. When the scope changes the session starts again (except
+ * at the first naming, no one yet and then someone, which keeps what is
+ * there), and the epoch moves on: every answer, refusal, proposal and
+ * failure begun under the old scope lands nowhere, and no work begun under
+ * it lets go of a newer request's gate. A re-read of a saved folio has no
+ * epoch check: its answer is dropped because the switch emptied the list,
+ * and a re-read only replaces a folio already in it. The answer itself is
+ * still in that house's book at /ask. The reset runs after the render in
+ * which the scope changed; that render is already given none of the old
+ * scope's answers, failure, request, refusal, error, proposals or pending.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -51,6 +56,9 @@ import { askFailure, type AskFailure } from '../../pages/ask/next/ask-format'
 
 /** How many of this sitting's answers the panel keeps in view; the rest are in the book at /ask. */
 const PANEL_FOLIOS = 5
+/** What a stale render is given (see `stale`): one array each, so it is the same value from render to render. */
+const NO_FOLIOS: AskFolio[] = []
+const NO_PROPOSALS: AskAiProposal[] = []
 
 /** What is being answered right now. `check` is a re-read of a saved folio, which spends nothing. */
 export interface AskPending {
@@ -94,9 +102,11 @@ export function useAskSession(scope: string | null, open: boolean): AskSession {
   // reads `pending` from a later render, but two sends in one tick must
   // still see each other.
   const inFlight = useRef(false)
-  /** Moves on when the scope changes. Work begun under an older epoch lands nowhere. */
+  /** Moves on when the scope changes. An answer, refusal, proposal or failure begun under an older epoch lands nowhere (a re-read's answer: see `checkFolio`). */
   const epoch = useRef(0)
   const boundScope = useRef(scope)
+  /** The scope the state above belongs to. It trails `scope` by one render: see `stale`. */
+  const [owner, setOwner] = useState(scope)
   /** Cards that settled this sitting. They leave the list at the close. */
   const settled = useRef(new Set<string>())
   const isOpen = useRef(open)
@@ -125,6 +135,7 @@ export function useAskSession(scope: string | null, open: boolean): AskSession {
     if (boundScope.current === scope) return
     const previous = boundScope.current
     boundScope.current = scope
+    setOwner(scope)
     if (previous === null) return
     epoch.current += 1
     inFlight.current = false
@@ -231,15 +242,20 @@ export function useAskSession(scope: string | null, open: boolean): AskSession {
 
   const clearRefusal = useCallback(() => setRefusal(null), [])
 
+  // The reset above runs after the render in which the scope changed, so in
+  // that render the state is still the old scope's: one pass of house A's
+  // answers under house B (PR #584 gate). Until the reset has run, give none
+  // of it. A first naming keeps what is there, so it is not stale.
+  const stale = owner !== null && owner !== scope
   return {
     scope,
-    folios,
-    failure,
-    lastRequest,
-    refusal,
-    error,
-    proposals,
-    pending,
+    folios: stale ? NO_FOLIOS : folios,
+    failure: stale ? null : failure,
+    lastRequest: stale ? null : lastRequest,
+    refusal: stale ? null : refusal,
+    error: stale ? null : error,
+    proposals: stale ? NO_PROPOSALS : proposals,
+    pending: stale ? null : pending,
     sendAsk,
     sendPropose,
     checkFolio,

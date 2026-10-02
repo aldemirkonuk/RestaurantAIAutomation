@@ -1269,6 +1269,32 @@ describe('closing keeps the question in flight (ADR 0145, 2026-10-01)', () => {
       switchTo(B)
       expect(screen.queryByTestId('askpanel-followup')).toBeNull()
     })
+
+    it('the render in which the house changes is given no follow-up from the old one', () => {
+      const passes: string[] = []
+      function Probe() {
+        const ask = useAskPanel()
+        passes.push(`${ask.session.scope}|${ask.followUp?.folioId ?? '-'}`)
+        return null
+      }
+      const at = (who: Who) => (
+        <AuthContext.Provider value={{ activeRole: 'owner', activeRestaurantId: who.house, user: { userId: who.userId } } as never}>
+          <Probe />
+        </AuthContext.Provider>
+      )
+      const view = render(at(A))
+      act(() => openAskAi({ followUp: { folioId: 'f-9', utterance: 'what arrived on Monday' } }))
+      expect(passes.at(-1)).toBe('u-1@r-1|f-9')
+
+      view.rerender(at(B))
+      const underB = passes.filter((p) => p.startsWith('u-1@r-2|'))
+      expect(underB.length).toBeGreaterThan(0)
+      expect(new Set(underB)).toEqual(new Set(['u-1@r-2|-']))
+
+      // and one carried in after the switch is the new house's own
+      act(() => openAskAi({ followUp: { folioId: 'f-10', utterance: 'what is late?' } }))
+      expect(passes.at(-1)).toBe('u-1@r-2|f-10')
+    })
   })
 })
 
@@ -1358,6 +1384,60 @@ describe('the session’s own gates', () => {
     expect(api.folio).not.toHaveBeenCalled()
     await act(async () => answer.resolve(folio({})))
     await asking
+  })
+
+  /** Every render pass of the hook, as `scope|answers|failure|request|refusal|error|proposals|pending`. */
+  function renderPasses(initial: string | null) {
+    const passes: string[] = []
+    const on = (v: unknown) => (v ? 1 : 0)
+    const view = renderHook(
+      ({ scope }: { scope: string | null }) => {
+        const s = useAskSession(scope, true)
+        passes.push([s.scope, s.folios.length, on(s.failure), on(s.lastRequest), on(s.refusal), on(s.error), s.proposals.length, on(s.pending)].join('|'))
+        return s
+      },
+      { initialProps: { scope: initial } },
+    )
+    return { passes, ...view }
+  }
+
+  // PR #584 gate, finding 2: the reset runs in an effect, after the render in
+  // which the scope changed, and that render carried house A's sitting.
+  it.each([
+    ['refusal', () => api.propose.mockResolvedValueOnce({ proposed: false, reason: 'Could not resolve which vendor to order from.' }), '1|0'],
+    ['transport error', () => api.propose.mockRejectedValueOnce(new Error('Network Error')), '0|1'],
+  ] as const)('the render in which the scope changes is given none of the old sitting (with a %s)', async (_, proposer, refusalError) => {
+    const { AxiosError } = await import('axios')
+    const reread = deferred<AskFolio>()
+    api.submit.mockResolvedValueOnce(folio({})).mockRejectedValueOnce(new AxiosError('timeout of 60000ms exceeded', 'ECONNABORTED'))
+    api.folio.mockReturnValueOnce(reread.promise)
+    proposer()
+    const { passes, result, rerender } = renderPasses('u-1@r-1')
+    await act(() => result.current.sendAsk({ requestId: 'r-1', utterance: 'how much house red is left?' }))
+    await act(() => result.current.sendPropose('chase Acme', 'chase Acme'))
+    act(() => result.current.setProposals([reorder]))
+    await act(() => result.current.sendAsk({ requestId: 'r-2', utterance: 'and the white?' }))
+    act(() => {
+      void result.current.checkFolio(folio({}))
+    })
+    expect(passes.at(-1)).toBe(`u-1@r-1|1|1|1|${refusalError}|1|1`)
+
+    rerender({ scope: 'u-1@r-2' })
+    const underB = passes.filter((p) => p.startsWith('u-1@r-2|'))
+    expect(underB.length).toBeGreaterThan(0)
+    expect(new Set(underB)).toEqual(new Set(['u-1@r-2|0|0|0|0|0|0|0']))
+    await act(async () => reread.resolve(folio({})))
+  })
+
+  it('the render that first names the sitting still shows what was asked', async () => {
+    api.submit.mockResolvedValueOnce(folio({}))
+    const { passes, result, rerender } = renderPasses(null)
+    await act(() => result.current.sendAsk({ requestId: 'r-1', utterance: 'how much house red is left?' }))
+
+    rerender({ scope: 'u-1@r-1' })
+    const named = passes.filter((p) => p.startsWith('u-1@r-1|'))
+    expect(named.length).toBeGreaterThan(0)
+    expect(named.filter((p) => !p.startsWith('u-1@r-1|1|'))).toEqual([])
   })
 })
 

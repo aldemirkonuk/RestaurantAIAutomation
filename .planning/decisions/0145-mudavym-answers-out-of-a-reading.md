@@ -2204,6 +2204,44 @@ red under mutation", and the "Guards pinned" paragraph above said every
 guard round 1 added was mutated. Both were true only of the 32 mutations
 round 1 ran. Both are corrected in place.
 
+### Gate round 1, 2026-10-02 -- the render in which the scope changes
+
+The ADR 0090 gate at 5ab269ccc returned BLOCK on one sentence, with no code
+defect (`.planning/07-reference/pr-audits/584-5ab269ccc.md`).
+
+**Narrowed (the block).** The PR body and the hook's own note said an epoch
+drops anything begun under the old key. A folio re-read's answer has no
+epoch check, by design (E7 above). The note now says that every answer,
+refusal, proposal and failure begun under the old scope lands nowhere, and
+that a re-read's answer is dropped because the switch emptied the list
+(`useAskSession.ts:39-48`). The `epoch` ref's own one-line note said the
+same broad thing and is narrowed with it.
+
+**Fixed (finding 2).** The reset runs in an effect, after the render in
+which the scope changed, so that one render still carried the old scope's
+sitting: a reviewer recorded the passes `A@h2:1`, then `A@h2:0`. The gate
+found it could not cross persons, since a person change unmounts the shell.
+The hook now records the scope its state belongs to (`owner`, set by the
+reset at `:138`), and until the reset has run it gives none of the old
+answers, failure, request, refusal, error, proposals or pending (`:244-258`).
+A first naming is not masked, since it keeps what is there. The follow-up
+"Keep asking" carried in had the same one-render pass under the new house
+(`useAskPanel.ts`, its scope effect); it is masked the same way. Pinned by
+four tests in `AskPanel.test.tsx` (85 to 89): the switch render is empty,
+with a refusal and with a transport error; the first-naming render keeps
+the answer; the switch render carries no follow-up, and one carried in
+after the switch shows. 12 mutations, each from a `cp -p` snapshot and
+restored byte-identical (`cmp`), all red: the mask off, the first-naming
+clause dropped, `setOwner` dropped, each of the seven fields unmasked, the
+follow-up mask off and its scope never moved on. Not checked: a browser
+paint of either pass.
+
+**Narrowed (finding 3).** The PR body said a close keeps the waiting
+proposals. That holds for the gateway's rows. On screen, the next open's
+re-read replaces the list (`AskPanel.tsx:273`), so a proposal that lands
+during that read can be dropped from view until the next open, as recorded
+under "Not built, not verified" above.
+
 ## Review trail
 
 | Date | Reviewer | Outcome |

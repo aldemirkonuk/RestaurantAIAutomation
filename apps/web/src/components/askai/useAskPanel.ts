@@ -31,6 +31,8 @@ export function useAskPanel(): AskPanelState {
   const scope = userId && houseId ? `${userId}@${houseId}` : null
   const [open, setOpen] = useState(false)
   const [followUp, setFollowUp] = useState<AskOpenDetail['followUp'] | null>(null)
+  /** The scope the follow-up was carried into. It trails `scope` by one render, as the session's state does. */
+  const [followUpScope, setFollowUpScope] = useState(scope)
   const session = useAskSession(scope, open)
 
   useEffect(() => {
@@ -52,14 +54,16 @@ export function useAskPanel(): AskPanelState {
   }, [open])
 
   // A follow-up names a folio in the house it came from; it does not carry
-  // into another.
+  // into another. This runs after the render in which the scope changed, so
+  // that render is given no follow-up (`followUpScope`), not the old one.
   useEffect(() => {
     setFollowUp(null)
+    setFollowUpScope(scope)
   }, [scope])
 
   const close = useCallback(() => setOpen(false), [])
   const dropFollowUp = useCallback(() => setFollowUp(null), [])
-  return { open, close, followUp, dropFollowUp, session }
+  return { open, close, followUp: followUpScope === scope ? followUp : null, dropFollowUp, session }
 }
 
 /**
