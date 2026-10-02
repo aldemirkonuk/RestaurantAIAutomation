@@ -23,9 +23,9 @@ built in code the same day and needs no drawing. The other three are drawn here.
 - **Tips.** "Change them … they are old garbage tutorial designs." "Don't show again" must mean never,
   "until I press or check for it". The behaviour is built on PR #570 (open); the design is drawn here.
 
-The decisions are ADRs 0251, 0252 and 0253, on PR #566 (open; its head `21e87278a` carries round 12 of 0253).
-Round 13 (2026-10-02) is cited as "ADR 0253 round 13, on PR #566"; it was not yet on `21e87278a` when
-this was written, and is being added to that PR.
+The decisions are ADRs 0251, 0252 and 0253, on PR #566 (open; its head `475ac5cd8` carries round 13 of
+0253, at that ADR's line 197, with OD-211 and OD-213 resolved in place). Round 13 is cited as "ADR 0253
+round 13, on PR #566".
 Until #566 merges, those three ADRs are only on that branch.
 
 Open `index.html`; every frame links from it. Each page is self-contained: inline CSS, and one network
@@ -51,8 +51,8 @@ generator was outside the repo and is not committed; the HTML is the record.
 | `houses-b-the-ledger.html` | **B · The Ledger — the second view, one tap from A.** A totals row, then one row per house, sorted by sales. Goals and decisions as house-by-house grids. |
 | `houses-c-the-letter.html` | **C · The Letter — not taken.** A written morning briefing and a figure strip that opens the ledger, redrawn so nothing on it contradicts his picks. |
 | `houses-frames.html` | Shared by A, B and C. **Entry**: "All houses" tops the chooser and the house switch. **Goal sheet**: each house its own target, linked. **Group decision sheet**: copied once into the chosen houses; each house then shows as copied, changed since, or didn't save. **Honesty states**: "from 3 of 4", a house not set up, two currencies through the popover at ECB rates. |
-| `people-jobs-and-rights.html` | **Give a job**, granting the missing right in the same step: "just for this job" or "from now on". **Who may do what**, per house: staff closed until given, "listed" or "this job" per right. Manager Ayla, on Full, gives Deniz Place orders with a $500 amount under the owner's allowance, inside a $750 cap the owner set. One person across houses. **Jobs you gave**, and the job on the person's phone. |
-| `people-role-screens.html` | The same Friday morning as **owner**, **manager (Full)** and two **staff**. Staff get a different, phone-first "today's jobs" screen. Mert's screen shows the three rights the grid gives him. **Deniz after a new right** shows the screen growing by exactly one tile. A table maps each right to what appears for it. |
+| `people-jobs-and-rights.html` | **Give a job**, granting the missing right in the same step: "just for this job" or "from now on". **Who may do what**, per house: staff closed until given, "listed" or "this job" per right. Manager Ayla, "Full, adjusted", gives Deniz Place orders and sets a $500 approval-rule amount under the owner's allowance, inside a $750 cap the owner set. One person across houses. **Jobs you gave**, and the job on the person's phone. |
+| `people-role-screens.html` | The same Friday morning as **owner**, **manager ("Full, adjusted")** and two **staff**. Staff get a different, phone-first "today's jobs" screen. Mert's screen shows the three rights the grid gives him. **Deniz after a new right** shows the screen growing by exactly one tile. A table maps each right to what appears for it. |
 | `tips-a-margin-note.html` | **A — his pick.** The tip is one line, drawn under the title; it is built at the top of the page column (ADR 0251 D1). "Show me" rings the real button. No dark veil. The steps are the built Orders tour. |
 | `tips-b-in-the-counter.html` | **B — not taken.** Tips live as a quiet card in the counter. When the counter is tucked, a tip is only a count on its button. |
 | `tips-c-guide-card.html` | **C — not taken.** A corner checklist that ticks when you do each step; moot with a tip per page. It folds to a pill. |
@@ -93,7 +93,8 @@ ADR 0149.]
   notice (round 13, *"When the job closes (Recommended)"*, OD-211).
 - **Packages.** Managers get Full, Standard or Light (round 8, *"Yes, as drawn (Recommended)"*). Full
   comes with "may give" ticked for each money and send action, with the owner's cap; the owner can
-  untick any one (round 13, *"Full pre-ticks, you adjust (Recommended)"*). Ayla is drawn as Full.
+  untick any one (round 13, *"Full pre-ticks, you adjust (Recommended)"*). Ayla is drawn as "Full,
+  adjusted": Full with "may give" Send to vendors unticked, the label sketch 126 (PR #574) uses.
 - **Zones.** Owners, managers "+ the people they assign" (ADR 0238, built).
 - **Pay.** Pay is the owner's. An owner switches it on for a manager (ADR 0215), and only for
   someone who sees the house's money; profit needs both (ADR 0253 F14, *"Needs money and pay
@@ -109,9 +110,10 @@ ADR 0149.]
 - **One order right.** There is one Place orders right. Each person's amount lives in the house's
   approval rule: under it goes through, over it waits. Until approvals are built, every order waits for
   an owner or a manager (round 13, *"One right, amount in approvals (Recommended)"*; rejected *"Two
-  rights"*). Deniz's $500 is an approval-rule amount, not a second right. The sketch reads the money
-  action a manager "may give" as setting someone's amount; giving Place orders with no amount is
-  not money (round 12).
+  rights"*). Deniz's $500 is an approval-rule amount, not a second right. No label calls Place orders a
+  money right: Standard's order right is not one (round 12). **The sketch's reading:** the money
+  action a manager "may give" is setting someone's approval-rule amount, which a Full manager may do
+  up to the owner's cap.
 - **Granting.** Managers grant manager or staff (ADR 0162). Area leads act on cards only (ADR 0218).
 - **One register.** ADR 0238's Consequences say a capabilities register starts paying for itself at
   the second per-person right. There are two today, `team_pay_access` and `zone_setup_access`. The
