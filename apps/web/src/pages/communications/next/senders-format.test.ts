@@ -115,13 +115,15 @@ describe('whoIsWritingSummary', () => {
 
 describe('failures are said in words', () => {
   it('reads: 401, 403 and other are three different sentences, none an empty list', () => {
-    const expired = readFailureSentence('the register', readFailure({ response: { status: 401 } }));
-    const forbidden = readFailureSentence('the register', readFailure({ response: { status: 403 } }));
-    const other = readFailureSentence('the register', readFailure({ message: 'boom' }));
+    const expired = readFailureSentence('the trusted senders', readFailure({ response: { status: 401 } }));
+    const forbidden = readFailureSentence('the trusted senders', readFailure({ response: { status: 403 } }));
+    const other = readFailureSentence('the trusted senders', readFailure({ message: 'boom' }));
     expect(new Set([expired, forbidden, other]).size).toBe(3);
     expect(forbidden).toMatch(/owner or manager/);
     expect(other).toMatch(/boom/);
-    for (const s of [expired, forbidden, other]) expect(s).toMatch(/Nothing below is claimed/);
+    for (const s of [expired, forbidden, other]) expect(s).toMatch(/That does not mean there are none\.$/);
+    // COMMS-W32: no machinery words in the reader's sentence.
+    for (const s of [expired, forbidden, other]) expect(s).not.toMatch(/register|claimed|withheld|empty list/);
   });
   it('a validation array body is joined, not printed as [object]', () => {
     expect(readFailure({ response: { status: 400, data: { message: ['a', 'b'] } } }).message).toBe('a, b');
@@ -136,6 +138,10 @@ describe('promoteOutcome', () => {
   it('a 200 with promoted:false is NOT an add', () => {
     expect(promoteOutcome({ promoted: false }, 'Acme').kind).toBe('not-added');
     expect(promoteOutcome(undefined, 'Acme').kind).toBe('not-added');
+    // COMMS-W27: said without naming the machinery.
+    expect(promoteOutcome({ promoted: false }, 'Acme').sentence).toBe(
+      'Acme was not added — no vendor was made. It may belong to another house, or already be gone.',
+    );
   });
   it('a reused vendor is linked, not called new', () => {
     const r = promoteOutcome({ promoted: true, reused: true }, 'Acme');

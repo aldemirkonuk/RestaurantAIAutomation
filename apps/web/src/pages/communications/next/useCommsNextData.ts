@@ -4,10 +4,13 @@
  * same live sources (no new endpoints, no invented figures), and each glance
  * figure stays null until its query has actually answered.
  *
- * Sources — the THREE this page owns (ADR 0083, amended 2026-09-25):
- * useProcurementConversationHistory (the outbound negotiation book),
- * useConversationThreads (inbound/outbound thread summaries), and the drafts
- * awaiting action.
+ * Sources — the TWO this page owns here (ADR 0083, amended 2026-09-25 and
+ * 2026-10-01): useProcurementConversationHistory (the conversation book) and
+ * the drafts awaiting action.
+ *
+ * The thread index left on 2026-10-01 (walk-through COMMS-W3, founder:
+ * "Approve"): its only use was a "Threads" figure counting a list this page
+ * never shows. The strip reads "Replies · 30 days" from the book instead.
  *
  * Two sources left this page on that date, by the founder's answer
  * ("amend ADR 0083", option a):
@@ -37,12 +40,11 @@
 
 import { useMemo } from 'react';
 import {
-  useConversationThreads,
   useProcurementConversationHistory,
   type ProcurementHistoryItem,
 } from '../../../hooks/queries/useConversationQueries';
 import { useActiveConversations } from '../../../hooks/queries/useDraftEmailQueries';
-import { sendState } from './cm-format';
+import { failedReadWords, sendState } from './cm-format';
 
 /**
  * Server-imposed windows this page renders behind. Each entry cites the query
@@ -71,29 +73,46 @@ export const COMMS_SERVER_WINDOWS = {
 
 export interface CommsGlance {
   /** null = the query behind the figure has not answered (or has failed). */
-  threads: number | null;
   draftsPending: number | null;
   sentLast30: number | null;
-  /** True when the history window hit its server cap — the figure is a floor. */
+  /** Vendor replies in the book over the last 30 days. */
+  repliesLast30: number | null;
+  /** True when the history window hit its server cap — both 30-day figures are floors. */
   sentLast30Truncated: boolean;
 }
 
 /** Which of the three owned sources returned a failure. Never merged with "unknown". */
 export interface CommsFailures {
   history: boolean;
-  threads: boolean;
   drafts: boolean;
 }
 
 /** Reader-facing names, in strip order, for the sentence the banner prints. */
 const SOURCE_LABELS: Array<[keyof CommsFailures, string]> = [
   ['history', 'the conversation book'],
-  ['threads', 'the thread index'],
-  ['drafts', 'the drafts awaiting action'],
+  // COMMS-W33: named as the page heads them ("The house has written").
+  ['drafts', 'the replies the house has written'],
 ];
 
-function errText(e: unknown): string {
-  return e instanceof Error ? e.message : 'unknown error';
+/**
+ * One waiting draft per order, the newest (COMMS-W24). The panel and the send
+ * both act on an order's newest pending draft (`getPendingDraft`: newest
+ * PENDING_APPROVAL, limit 1), so an older one on the same order used to be
+ * listed and counted but could never be opened, sent or thrown away here.
+ * `replaces` says how many older ones it stands in front of. Closing those
+ * rows on the server is the INV-W26 branch's (founder, 2026-10-01).
+ */
+export function newestDraftPerOrder<T extends { orderId: string; createdAt: string }>(
+  rows: readonly T[],
+): (T & { replaces: number })[] {
+  const byOrder = new Map<string, T & { replaces: number }>();
+  const newestFirst = [...rows].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  for (const row of newestFirst) {
+    const kept = byOrder.get(row.orderId);
+    if (kept) kept.replaces += 1;
+    else byOrder.set(row.orderId, { ...row, replaces: 0 });
+  }
+  return [...byOrder.values()];
 }
 
 export function useCommsNextData() {
@@ -101,12 +120,12 @@ export function useCommsNextData() {
   // house (`scripts/check_windowed_figures.py` W7 reads those keys). The two
   // page-local keys that also carried it left with their sources, 2026-09-25.
   const historyQ = useProcurementConversationHistory();
-  const threadsQ = useConversationThreads();
   // Drafts awaiting action come from the same live source the orders DraftRail
   // uses — the history endpoint filters drafts out at the SQL level, so
   // deriving "drafts waiting" from it was a structurally guaranteed false
   // zero (communications-audit.md, BLOCKER 2).
   const activeQ = useActiveConversations();
+  const drafts = useMemo(() => newestDraftPerOrder(activeQ.data ?? []), [activeQ.data]);
 
   const rows: ProcurementHistoryItem[] = useMemo(() => {
     const items = historyQ.data ?? [];
@@ -117,29 +136,27 @@ export function useCommsNextData() {
 
   const glance: CommsGlance = useMemo(() => {
     const cutoff = Date.now() - 30 * 86_400_000;
+    const within30 = (i: ProcurementHistoryItem) => new Date(i.sentAt ?? i.createdAt).getTime() >= cutoff;
     return {
-      // The thread list is paginated — .threads.length is a page, .total is
-      // the book (audit BLOCKER 3).
-      threads: threadsQ.data === undefined ? null : threadsQ.data.total,
-      draftsPending: activeQ.data === undefined ? null : activeQ.data.length,
+      draftsPending: activeQ.data === undefined ? null : drafts.length,
       sentLast30:
         historyQ.data === undefined
           ? null
-          : historyQ.data.filter(
-              (i) =>
-                sendState(i.status) === 'sent' &&
-                new Date(i.sentAt ?? i.createdAt).getTime() >= cutoff,
-            ).length,
+          : historyQ.data.filter((i) => i.direction !== 'INBOUND' && sendState(i.status) === 'sent' && within30(i))
+              .length,
+      repliesLast30:
+        historyQ.data === undefined
+          ? null
+          : historyQ.data.filter((i) => i.direction === 'INBOUND' && within30(i)).length,
       // The history endpoint serves at most COMMS_SERVER_WINDOWS.HISTORY_ROWS;
-      // when the window is full the 30-day figure is a floor, and the strip
+      // when the window is full both 30-day figures are floors, and the strip
       // says so with GE.
       sentLast30Truncated: (historyQ.data?.length ?? 0) >= COMMS_SERVER_WINDOWS.HISTORY_ROWS,
     };
-  }, [historyQ.data, threadsQ.data, activeQ.data]);
+  }, [historyQ.data, activeQ.data, drafts]);
 
   const failed: CommsFailures = {
     history: historyQ.isError,
-    threads: threadsQ.isError,
     drafts: activeQ.isError,
   };
 
@@ -156,12 +173,17 @@ export function useCommsNextData() {
      * never disagree — a figure and a list from two reads is how a page ends up
      * saying "3 waiting" over an empty column.
      */
-    drafts: activeQ.data ?? [],
+    drafts,
     /** True only when the drafts register actually answered. */
     draftsKnown: activeQ.data !== undefined,
     hasData: historyQ.data !== undefined,
     isError: historyQ.isError,
-    errorMessage: errText(historyQ.error),
+    /** The server's words for why the book failed (COMMS-W33), never "status code 500". */
+    errorMessage: failedReadWords(historyQ.error),
+    /** When each read last answered (`dataUpdatedAt`, 0 = never): a failed refresh says it (COMMS-W33). */
+    historyAt: historyQ.dataUpdatedAt,
+    draftsAt: activeQ.dataUpdatedAt,
+    draftsError: activeQ.isError ? failedReadWords(activeQ.error) : null,
     /** Per-source failure. The banner and the strip both read this. */
     failed,
     /**
@@ -172,7 +194,6 @@ export function useCommsNextData() {
     failedSources,
     refetch: () => {
       void historyQ.refetch();
-      void threadsQ.refetch();
       void activeQ.refetch();
     },
   };

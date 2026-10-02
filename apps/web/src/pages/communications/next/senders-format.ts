@@ -41,10 +41,11 @@ export function readFailure(err: unknown): ReadFailure {
  * is never an empty list: the sentence says nothing below it is claimed.
  */
 export function readFailureSentence(what: string, f: ReadFailure): string {
-  if (f.expired) return `Your session has expired — sign in again and ${what} will read. Nothing below is claimed.`;
-  if (f.forbidden)
-    return `This account is not owner or manager, so ${what} is withheld. Nothing below is claimed — this is not an empty list.`;
-  return `${what[0].toUpperCase()}${what.slice(1)} could not be read (${f.message}). Nothing below is claimed — this is not an empty list.`;
+  // COMMS-W32: said in the house's words. "Nothing below is claimed — this is
+  // not an empty list" became the page's own "That does not mean there are none."
+  if (f.expired) return `Your session has expired — sign in again to see ${what}. That does not mean there are none.`;
+  if (f.forbidden) return `Only an owner or manager can see ${what}. That does not mean there are none.`;
+  return `${what[0].toUpperCase()}${what.slice(1)} could not be read (${f.message}). That does not mean there are none.`;
 }
 
 /** The sentence for a failed WRITE — said in words, next to the act that failed. */
@@ -139,9 +140,9 @@ export function promoteOutcome(
   if (!r || r.promoted !== true)
     return {
       kind: 'not-added',
-      sentence: `${who} was not added — the gateway did not create a vendor. It may belong to another house, or already be gone.`,
+      sentence: `${who} was not added — no vendor was made. It may belong to another house, or already be gone.`,
     };
   if (r.reused)
-    return { kind: 'reused', sentence: `${who} is already a vendor of this house (same email) — linked, not duplicated.` };
+    return { kind: 'reused', sentence: `${who} is already a vendor of this house (same email address), so no second one was made.` };
   return { kind: 'added', sentence: `${who} is now a vendor of this house. Nothing about them is trusted yet.` };
 }
