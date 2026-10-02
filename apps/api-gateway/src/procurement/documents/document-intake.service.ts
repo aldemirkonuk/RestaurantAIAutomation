@@ -16,6 +16,7 @@ import {
   type RefileSource,
 } from "./invoice-currency";
 import { applyTieOut, ParsedDocument, ParsedLine } from "./parsed-document";
+import { readSnapshot } from "../canonical/from-document-rows";
 import { LineMatch, matchLines, MatchLinesResult } from "./line-matcher";
 import { looksLikeX12, parseX12 } from "./x12";
 // A pure reader, no Nest dependency and no network: the 832 the document door
@@ -2462,7 +2463,7 @@ export class DocumentIntakeService {
     const { data: doc, error: docErr } = await client
       .from("procurement_documents")
       .select(
-        "id, status, total, freight, fuel_surcharge, split_case_fee, delivery_fee, deposit_total, tax, other_charges, discount_total",
+        "id, status, total, freight, fuel_surcharge, split_case_fee, delivery_fee, deposit_total, tax, other_charges, discount_total, extracted",
       )
       .eq("id", documentId)
       .eq("restaurant_id", restaurantId)
@@ -2605,6 +2606,9 @@ export class DocumentIntakeService {
       deliveryFee: doc.delivery_fee,
       depositTotal: doc.deposit_total,
       tax: doc.tax,
+      // The printed VAT breakdown rides along, so a document whose tax was read
+      // only there is not "off by" its tax after an edit (RECEIPTS-W5).
+      taxBreakdown: readSnapshot(doc.extracted).taxBreakdown,
       otherCharges: doc.other_charges,
       discountTotal: doc.discount_total,
       lines: (allLines ?? []).map((l) => ({

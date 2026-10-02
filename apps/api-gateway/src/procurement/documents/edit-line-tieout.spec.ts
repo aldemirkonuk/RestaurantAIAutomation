@@ -46,3 +46,36 @@ describe("editLine's applyTieOut cast", () => {
     expect(out.tieOutDelta).toBeNull();
   });
 });
+
+/**
+ * RECEIPTS-W5 (founder walk-through, 2026-10-01): a document that prints its
+ * tax only as a VAT breakdown row read as "off by" exactly that tax, because
+ * the tie-out added `tax` (null) and never looked at the breakdown.
+ */
+describe("a tax stated only in the VAT breakdown", () => {
+  const breakdown = (amounts: Array<number | null>) =>
+    amounts.map((amount) => ({ rate: 8.625, taxableBase: 100, amount }));
+
+  it("ties out when the breakdown carries the tax the header left empty", () => {
+    const out = applyTieOut(
+      editLineCast({ total: 108.63, taxBreakdown: breakdown([8.63]) }),
+    );
+    expect(out.tiesOut).toBe(true);
+    expect(out.tieOutDelta).toBe(0);
+  });
+
+  it("never counts the tax twice when the header has it too", () => {
+    const out = applyTieOut(
+      editLineCast({ total: 108.63, tax: 8.63, taxBreakdown: breakdown([8.63]) }),
+    );
+    expect(out.tieOutDelta).toBe(0);
+  });
+
+  it("a breakdown row with no amount is partial, so it is not used", () => {
+    const out = applyTieOut(
+      editLineCast({ total: 108.63, taxBreakdown: breakdown([8.63, null]) }),
+    );
+    expect(out.tiesOut).toBe(false);
+    expect(out.tieOutDelta).toBe(8.63);
+  });
+});
