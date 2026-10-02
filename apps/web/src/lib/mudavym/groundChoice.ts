@@ -11,9 +11,16 @@
  * FIRST VISIT IS ALWAYS PAPER (founder, 2026-09-21). Not the device's
  * light/dark setting: nothing in this module, in `index.html`'s pre-paint
  * script, or in `styles/mudavym.css` reads `prefers-color-scheme` or
- * `matchMedia`, and the header menu offers exactly two options — there is no
- * third "match my device". A person who has never chosen sees paper, on every
- * device, every time, and that is a decision rather than an accident.
+ * `matchMedia`, and the control offers exactly two options (`GROUND_OPTIONS`)
+ * — there is no third "match my device". A person who has never chosen sees
+ * paper, on every device, every time, and that is a decision rather than an
+ * accident.
+ *
+ * WHERE THE CONTROL LIVES (founder, 2026-10-01, page walk-through DASH-W23).
+ * The header's theme button is gone; the one control is the Theme row of the
+ * Preferences card on `/profile` (`pages/profile/next/IdentityRegister.tsx`),
+ * which every role can reach. ADR 0169's 2026-10-01 amendment records the
+ * move and the alternatives it rejected.
  *
  * PER ACCOUNT, NOT PER DEVICE (founder, 2026-09-21 — "Always paper, follows
  * account"). The round-4 build kept the choice in a single device-wide
@@ -52,9 +59,9 @@
  * `absence-reported-as-health`). `choice` always has a value because a page
  * must paint something, and that value is paper when nothing is known — but
  * `source` says which of five different things that paper actually is, and
- * `ThemeMenu` marks NO option active under `'unknown'` and `'unreadable'`
- * rather than putting a checkmark next to Paper as though the person had
- * chosen it.
+ * the control marks NO option pressed under `'unknown'` and `'unreadable'`
+ * (`groundIsKnown`) rather than pressing Paper as though the person had
+ * chosen it, and says why underneath (`groundNote`).
  *
  * WHERE THE CHOICE ACTUALLY REACHES THE PAGE. This module does not walk the
  * DOM setting `data-ground` on every `.mudavym` root — that would mean
@@ -141,7 +148,7 @@ const DEFAULT_CHOICE: GroundChoice = 'paper';
 
 /** Saves the choice to the person's account. Registered by
  *  `GroundChoiceSync`; absent in tests and on any surface that renders the
- *  menu without the sync mounted, in which case a choice applies to the page
+ *  control without the sync mounted, in which case a choice applies to the page
  *  view and reports itself unsaved. */
 export type GroundWriter = (choice: GroundChoice) => Promise<unknown>;
 
@@ -274,7 +281,7 @@ export function setGroundOwner(userId: string | null): void {
  * repaint. The person picked a ground moments ago, the save failed, and
  * `useUserPreferences`' optimistic mutation rolls its cache back to the
  * server's older value and refetches — so without this guard the ground would
- * silently snap back underneath them a moment after the menu told them it had
+ * silently snap back underneath them a moment after the control told them it had
  * not been saved. The unsaved choice governs this page view, says so, and
  * does not survive a reload (the mirror was never written).
  */
@@ -323,7 +330,7 @@ export function applyAccountGround(raw: unknown): void {
 /**
  * The account read failed. Keeps painting whatever is on screen — this device's
  * mirror if it has one, otherwise paper — and records that nobody has confirmed
- * it. The menu wears this; it is never silently folded into "paper by default".
+ * it. The control wears this; it is never silently folded into "paper by default".
  */
 export function reportGroundReadFailure(detail: string): void {
   const mirrored = readMirror(ownerId);
@@ -446,10 +453,53 @@ export function useGroundChoice(): [GroundChoice, (choice: GroundChoice) => void
   return [current.choice, setGroundChoice];
 }
 
-/** The painted ground and its provenance. `ThemeMenu` uses this so it never
- *  marks an option chosen that nobody chose. */
+/** The painted ground and its provenance. The `/profile` control uses this so
+ *  it never marks an option chosen that nobody chose. */
 export function useGroundState(): GroundState {
   return useSyncExternalStore(subscribe, getGroundState, getServerSnapshot);
+}
+
+/* ── what a control says ────────────────────────────────────────────────── */
+
+/**
+ * The two options, in order. Two, never three (founder, 2026-09-21 — "Always
+ * paper, follows account"): there is deliberately no "System".
+ */
+export const GROUND_OPTIONS: ReadonlyArray<{ value: GroundChoice; label: string }> = [
+  { value: 'paper', label: 'Paper' },
+  { value: 'charcoal', label: 'Charcoal' },
+];
+
+/**
+ * Under these, nobody has told us what this person chose — so a control marks
+ * nothing chosen. `default` is NOT one of them: paper-because-they-never-chose
+ * is a real, confirmed answer.
+ */
+export function groundIsKnown(state: GroundState): boolean {
+  return state.source !== 'unknown' && state.source !== 'unreadable';
+}
+
+/**
+ * What a control says under its options, or null when the ground on screen is
+ * simply this person's confirmed answer and needs no caveat. A write failure
+ * outranks a read one: it is the thing that just happened.
+ */
+export function groundNote(state: GroundState): string | null {
+  if (state.writeError) return state.writeError;
+  switch (state.source) {
+    case 'unknown':
+      return 'Reading the ground you saved to your account. Paper until it answers.';
+    case 'unreadable':
+      return state.readFailed
+        ? `The ground you saved could not be read (${state.detail ?? 'unknown reason'}). Paper until it can be.`
+        : 'The ground you saved could not be read. Paper until it can be.';
+    case 'device-cache':
+      return state.readFailed
+        ? `Your account could not be reached (${state.detail ?? 'unknown reason'}). This is the last ground this device saw you choose.`
+        : 'This is the last ground this device saw you choose, while your account answers.';
+    default:
+      return null;
+  }
 }
 
 /** Tests only — `ownerId`, `writer` and `state` are module state and would

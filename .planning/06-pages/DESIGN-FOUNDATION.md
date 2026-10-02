@@ -218,7 +218,12 @@ studio — plus deliberate chrome-free escapes (door receipt, SimPOS terminal,
    `house-header.css`), mounted by `PageGate` above every `next` tree — one
    place, no page edits, and structurally incapable of appearing over a legacy
    page. The legacy `Header` is untouched and stays for legacy pages until they
-   are retired.
+   are retired. **[2026-10-01: the theme switch has left BOTH headers — founder,
+   2026-10-01, page walk-through DASH-W23: "approve + remove the system theme from
+   top bar into settings". `ThemeMenu.tsx` is deleted, and with it the legacy
+   Light/Dark/System app-theme menu; the person's ground (Paper / Charcoal, ADR
+   0169) is chosen in `/profile`'s Preferences card, which every role can reach.
+   ADR 0169 §Amendment 2026-10-01.]**
 
    - **The chrome-free list is now two, and both are decided, not accidental:**
      `receiving_door` (routed outside `DashboardLayout` on purpose — "used at a
@@ -297,6 +302,10 @@ studio — plus deliberate chrome-free escapes (door receipt, SimPOS terminal,
      one control, the counter's toggle, with a dot when acts wait (a hollow dot
      when a register was not read — never a number). Under the shell `PageGate`
      mounts no second header and the legacy `Header` keeps only its title.
+     **[2026-10-01, DASH-W23: the header's right-hand controls are the house (or
+     branch switcher), the counter's toggle, Ask, the bell and the account menu —
+     no theme control. The ground is chosen on `/profile` (founder, 2026-10-01,
+     page walk-through DASH-W23).]**
    - **The counter** — a 320 px right column holding what waits on the signed-in
      person, by verb: **Seal** (orders awaiting the seal), **Verify** (deliveries
      counted by case, credits promised), **Reply** (vendor replies waiting),
