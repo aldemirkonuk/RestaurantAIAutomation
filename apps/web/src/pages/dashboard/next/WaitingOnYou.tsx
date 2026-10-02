@@ -1,7 +1,8 @@
 /**
  * "Waiting on you" — the pending-approvals queue (Federation's panel, the
- * founder-liked block). Every order the gateway says needs approval, oldest
- * first; a row expands (settle 0fr→1fr) into the real hold ceremony, which
+ * founder-liked block). Every order the gateway says needs approval, newest
+ * first (procurement.service.ts listPendingOrders sorts created_at descending;
+ * this panel does not re-sort); a row expands (settle 0fr→1fr) into the real hold ceremony, which
  * calls the real approve endpoint — no fabricated success: the seal only
  * stays if the server said yes.
  *
