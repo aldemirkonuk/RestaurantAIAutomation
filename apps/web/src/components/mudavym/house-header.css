@@ -11,12 +11,14 @@
    token from lib/mudavym/motion.ts:106. Nothing in this bar moves more than a
    colour: it is chrome, and chrome that animates is chrome you look at.
 
-   The last block re-dresses two LEGACY triggers this header reuses whole
-   (`RestaurantBranchSwitcher`, `ThemeMenu`). Their popovers are already the
-   house shape while the shell is on; only their buttons still wear Tailwind's
-   wine palette. Restyling them here — scoped inside `.mdv-hdr`, never
-   globally — keeps both components byte-identical for the legacy header that
-   also renders them (ADR 0042's promise). */
+   The last block re-dresses the LEGACY trigger this header reuses whole
+   (`RestaurantBranchSwitcher`). Its popover is already the house shape while
+   the shell is on; only its button still wears Tailwind's wine palette.
+   Restyling it here — scoped inside `.mdv-hdr`, never globally — keeps the
+   component byte-identical for the legacy header that also renders it (ADR
+   0042's promise). [2026-10-01: `ThemeMenu` was the second reused trigger;
+   it left the header (founder, 2026-10-01, page walk-through DASH-W23) and
+   its rules here went with it.] */
 
 .mdv-hdr {
   /* `sheet.css` declares --mdv-mono on `.mdv-ovl`, so it does not reach a bar
@@ -153,7 +155,7 @@
   }
 }
 
-/* ── right: where you are, the bell, the theme, the account ──────────── */
+/* ── right: where you are, the bell, the account ─────────────────────── */
 
 .mdv-hdr__right {
   display: flex;
@@ -353,9 +355,8 @@
   }
 }
 
-/* ── the two reused legacy triggers, re-dressed in place ─────────────── */
+/* ── the reused legacy trigger, re-dressed in place ──────────────────── */
 
-.mdv-hdr .mdv-hdr__theme > button,
 .mdv-hdr .mdv-hdr__branch > button {
   background: transparent;
   border: 1px solid transparent;
@@ -367,15 +368,10 @@
     border-color 160ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.mdv-hdr .mdv-hdr__theme > button:hover,
 .mdv-hdr .mdv-hdr__branch > button:hover {
   background: var(--paper-1);
   border-color: var(--paper-2);
   box-shadow: none;
-}
-
-.mdv-hdr .mdv-hdr__theme > button {
-  padding: 7px;
 }
 
 .mdv-hdr .mdv-hdr__branch > button {
@@ -406,7 +402,6 @@
   color: var(--ink-4);
 }
 
-.mdv-hdr .mdv-hdr__theme > button svg,
 .mdv-hdr .mdv-hdr__branch > button svg,
 .mdv-hdr .mdv-hdr__branch > button:hover svg {
   color: var(--ink-4);

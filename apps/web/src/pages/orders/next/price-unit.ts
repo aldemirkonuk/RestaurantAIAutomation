@@ -22,6 +22,8 @@
  * bargain, and no later reader can tell them apart.
  */
 
+import { fmtMoney } from './format';
+
 /**
  * The seven the database accepts.
  *
@@ -66,6 +68,22 @@ export const PRICE_UOM_LABEL: Record<PriceUom, string> = {
   liter: 'per litre',
 };
 
+/** A count of a unit in words: "1 bottle", "6 split cases" — never "bottle(s)" (ORD-W17). */
+const UOM_COUNT: Record<PriceUom, [string, string]> = {
+  bottle: ['bottle', 'bottles'],
+  case: ['case', 'cases'],
+  keg: ['keg', 'kegs'],
+  pack: ['pack', 'packs'],
+  split_case: ['split case', 'split cases'],
+  each: ['item', 'items'],
+  liter: ['litre', 'litres'],
+};
+
+export function uomCountWord(quantity: number | null, uom: PriceUom): string {
+  const [one, many] = UOM_COUNT[uom];
+  return quantity === 1 ? one : many;
+}
+
 export interface StatedPriceUnit {
   priceUom: PriceUom;
   pricePackSize: number;
@@ -82,7 +100,8 @@ export function describeStatedPrice(
   stated: StatedPriceUnit | null,
 ): string | null {
   if (price == null || !Number.isFinite(Number(price))) return null;
-  const money = `$${Number(price).toFixed(2)}`;
+  // Grouped like every other figure on the page ($1,090.00, not $1090.00; ORD-W14).
+  const money = fmtMoney(Number(price));
   if (!stated) return money;
   const pack =
     stated.pricePackSize > 1 ? ` (${stated.pricePackSize} bottles)` : '';
@@ -281,7 +300,7 @@ export function describeFees(fees: AgreementFees): string | null {
  * announce that the agreement names no deposit.
  */
 export const ROW_FEES_NOT_READ =
-  'This view did not read what the agreement charges outside the price of the wine. ' +
+  'This view did not read what the agreement charges outside the item’s price. ' +
   'That is not the same as the agreement charging nothing.';
 
 /**

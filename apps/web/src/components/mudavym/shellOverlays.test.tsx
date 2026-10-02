@@ -19,7 +19,6 @@ import { AskPanel } from '../askai/AskPanel';
 import { Header } from '../layout/Header';
 import { RestaurantBranchSwitcher } from '../layout/RestaurantBranchSwitcher';
 import { DashboardLayout } from '../layout/DashboardLayout';
-import { ThemeMenu } from '../layout/ThemeMenu';
 import { ThemeProvider } from '../../contexts/ThemeContext';
 import { ToastProvider } from '../../contexts/ToastContext';
 import { useAuth } from '../../contexts/AuthContext';
@@ -88,8 +87,6 @@ const USER_MENU =
 const SWITCHER_MENU =
   'absolute right-0 mt-2 w-80 bg-white rounded-2xl shadow-[0_20px_60px_-12px_rgba(0,0,0,0.18),0_4px_16px_-4px_rgba(0,0,0,0.08)] border border-gray-100 overflow-hidden z-50';
 const MOBILE_SCRIM = 'fixed inset-0 z-[45] bg-black/40 md:hidden';
-const THEME_MENU =
-  'absolute right-0 mt-2 w-40 rounded-xl border border-gray-200 bg-white p-1 shadow-xl z-50 dark:border-gray-700 dark:bg-gray-800';
 
 beforeEach(() => {
   resetMudavymShell();
@@ -231,15 +228,15 @@ describe('with no Mudavym page on screen', () => {
     }
   });
 
-  it('ThemeMenu renders its legacy menu, class string for class string', () => {
-    render(
-      <ThemeProvider>
-        <ThemeMenu />
-      </ThemeProvider>,
-    );
-    fireEvent.click(screen.getByRole('button', { name: 'Theme' }));
-    expect(screen.getByRole('menu').getAttribute('class')).toBe(THEME_MENU);
-    expect(document.querySelector('.mdv-ovl')).toBeNull();
+  // The legacy Light/Dark/System theme menu is deleted, not merely unmounted
+  // (founder, 2026-10-01, page walk-through DASH-W23: "remove the system theme
+  // from top bar into settings"). The person's ground is chosen on /profile;
+  // the legacy Header keeps its other controls.
+  it('the legacy Header carries no theme menu', () => {
+    renderShell(<Header title="Dashboard" />);
+    expect(screen.getByRole('button', { name: /^Notifications/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /theme/i })).toBeNull();
+    expect(screen.queryByTitle(/theme/i)).toBeNull();
   });
 });
 
@@ -263,18 +260,6 @@ describe('with a Mudavym page on screen', () => {
       </MemoryRouter>,
     );
     expect(document.querySelector('.mdv-ovl--panel')).not.toBeNull();
-  });
-
-  it('ThemeMenu becomes the house Popover — non-modal, still a dialog', () => {
-    render(
-      <ThemeProvider>
-        <ThemeMenu />
-      </ThemeProvider>,
-    );
-    fireEvent.click(screen.getByRole('button', { name: 'Theme' }));
-    expect(document.querySelector('.mdv-ovl--popover')).not.toBeNull();
-    expect(screen.queryByRole('menu')).toBeNull();
-    expect(screen.getByRole('dialog')).not.toHaveAttribute('aria-modal');
   });
 
   it('CommandPalette and the Ask panel become the house Panel', () => {
@@ -352,7 +337,6 @@ function gitShow(path: string): string | null {
 const SOURCES: Array<[string, string[]]> = [
   ['components/command/ShortcutsSheet.tsx', [PANEL_POSITIONER, PANEL_SCRIM, PANEL_CARD]],
   ['components/command/RecentlyViewed.tsx', [RECENTS_POSITIONER, RECENTS_CARD]],
-  ['components/layout/ThemeMenu.tsx', [THEME_MENU]],
   ['components/command/CommandPalette.tsx', [PALETTE_POSITIONER, PALETTE_SCRIM, PALETTE_CARD]],
   ['components/layout/Header.tsx', [BELL_MENU, USER_MENU]],
   ['components/layout/RestaurantBranchSwitcher.tsx', [SWITCHER_MENU]],
@@ -360,7 +344,10 @@ const SOURCES: Array<[string, string[]]> = [
 ];
 
 describe('the pinned strings are origin/main\'s own', () => {
-  const available = gitShow('components/layout/ThemeMenu.tsx') !== null;
+  // Probed on a file that still exists: ThemeMenu.tsx was the probe until it
+  // was deleted on 2026-10-01 (DASH-W23), and a probe on a deleted path would
+  // skip every case below forever once origin/main caught up.
+  const available = gitShow('components/layout/Header.tsx') !== null;
   it.skipIf(!available).each(SOURCES)('%s', (path, strings) => {
     const src = gitShow(path);
     expect(src, `origin/main:apps/web/src/${path} could not be read`).not.toBeNull();
@@ -369,7 +356,7 @@ describe('the pinned strings are origin/main\'s own', () => {
     }
   });
   it('says so when it could not read origin/main at all', () => {
-    // Not a no-op: if the ref is missing the eight cases above are SKIPPED, and
+    // Not a no-op: if the ref is missing the cases above are SKIPPED, and
     // a skipped provenance check must be visible rather than read as a pass.
     expect(typeof available).toBe('boolean');
     if (!available) {
