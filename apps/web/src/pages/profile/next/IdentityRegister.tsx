@@ -28,6 +28,12 @@
  * (`groundIsKnown`), and whatever stands between the screen and a confirmed
  * answer — still reading, this device's copy, unreadable, not saved — is said
  * under the buttons (`groundNote`).
+ *
+ * [2026-10-01, ADR 0169 amendment batch 4: three buttons now — Paper /
+ * Charcoal / System, the founder's words. A button is pressed by the person's
+ * STORED setting (`ground.setting`), not the painted ground, so System stays
+ * pressed while it paints charcoal on a dark device. Same rule as before:
+ * nothing pressed until the account has answered.]
  */
 
 import { useState } from 'react';
@@ -166,16 +172,19 @@ export function IdentityRegister({ data }: { data: ProfileNextData }) {
           Theme
         </span>
         <div role="group" aria-labelledby="pf-ground-label" style={{ display: 'flex', gap: 8 }}>
-          {GROUND_OPTIONS.map(({ value, label }) => {
+          {GROUND_OPTIONS.map(({ value, label, hint }) => {
             // Pressed only when the account (or its confirmed mirror) said so:
             // paper painted while the read is pending or failed is not a choice.
-            const pressed = groundKnown && ground.choice === value;
+            // The STORED setting decides, so System reads as System whichever
+            // ground the device resolved it to.
+            const pressed = groundKnown && ground.setting === value;
             return (
               <button
                 key={value}
                 type="button"
                 className="pf-btn pf-focus"
                 aria-pressed={pressed}
+                aria-describedby={hint ? `pf-ground-hint-${value}` : undefined}
                 onClick={() => setGroundChoice(value)}
                 style={{
                   fontFamily: SANS,
@@ -195,6 +204,13 @@ export function IdentityRegister({ data }: { data: ProfileNextData }) {
             );
           })}
         </div>
+        {GROUND_OPTIONS.filter((o) => o.hint).map(({ value, label, hint }) => (
+          <div key={value} id={`pf-ground-hint-${value}`} data-ground-hint style={{ marginTop: 6 }}>
+            <Note>
+              {label}: {hint}
+            </Note>
+          </div>
+        ))}
         {groundSays &&
           (ground.writeError ? (
             <div data-ground-note>
