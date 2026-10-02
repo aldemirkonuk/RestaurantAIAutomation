@@ -1850,9 +1850,14 @@ export class ProvidersService {
       .eq("restaurant_id", args.restaurantId)
       .select("usual_currency, usual_currency_set_at")
       .maybeSingle();
-    // Before the VEN-W13 migration is applied the two columns are absent
-    // (42703) and the old three-column rule is the one in force.
-    if (error && (error as { code?: string }).code === "42703")
+    // Before the VEN-W13 migration is applied the two columns are absent and
+    // the old three-column rule is the one in force. An UPDATE naming a missing
+    // column is refused by PostgREST itself as PGRST204 ("not in the schema
+    // cache"), not by Postgres as 42703 — a live save on 2026-10-01 503'd on it.
+    if (
+      error &&
+      ["42703", "PGRST204"].includes((error as { code?: string }).code ?? "")
+    )
       ({ data, error } = await this.databaseService.supabase
         .from("providers")
         .update({

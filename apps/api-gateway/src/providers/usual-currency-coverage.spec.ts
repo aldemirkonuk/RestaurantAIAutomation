@@ -264,6 +264,46 @@ describe("usualCurrencyCoverage — VEN-W13, codes written from invoices", () =>
   });
 });
 
+describe("setUsualCurrency before the VEN-W13 migration", () => {
+  it("a missing source column (PGRST204 on an UPDATE) falls back to the three old columns, and the save lands", async () => {
+    const writes: Record<string, unknown>[] = [];
+    const supabase: any = {
+      from() {
+        let patch: Record<string, unknown> | null = null;
+        const q: any = {
+          select: () => q,
+          eq: () => q,
+          update: (p: Record<string, unknown>) => {
+            patch = p;
+            writes.push(p);
+            return q;
+          },
+          maybeSingle: async () => {
+            if (!patch) return { data: { usual_currency: null }, error: null };
+            return "usual_currency_source" in patch
+              ? {
+                  data: null,
+                  error: {
+                    code: "PGRST204",
+                    message:
+                      "Could not find the 'usual_currency_invoice_count' column of 'providers' in the schema cache",
+                  },
+                }
+              : { data: { usual_currency: "USD", usual_currency_set_at: "2026-10-01T00:00:00Z" }, error: null };
+          },
+        };
+        return q;
+      },
+    };
+    const s = svc(supabase);
+    (s as any).getUsualCurrency = async () => ({ code: null });
+    const out = await s.setUsualCurrency({ providerId: "p1", restaurantId: "rest-1", code: "USD", userId: "u1" });
+    expect(out.code).toBe("USD");
+    expect(writes).toHaveLength(2);
+    expect(writes[1]).not.toHaveProperty("usual_currency_source");
+  });
+});
+
 describe("usualCurrencyCoverageSentence — never an empty panel", () => {
   it("says none of them, with the number, when nobody has stated one", () => {
     const s = usualCurrencyCoverageSentence({ stated: 0, total: 14 });
