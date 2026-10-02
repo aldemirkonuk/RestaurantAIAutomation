@@ -122,6 +122,27 @@ These were asked by `AskUserQuestion` from the coordinating session while the ph
 
 **Not covered by these answers.** The grant notice's full sentence still reaches every recipient on both Notifications screens and on the live `notification:new` event. That includes an owner who is later demoted. Grant notices are `low`, so they are never pushed. These are filed as open items 2 and 3 in `tech-debt.d/2026-10-01-fix-phone-feed-no-money-for-staff.md`.
 
+## Answered 2026-10-01 (round 10) — who sees the house's money in notices, verbatim
+
+Asked by `AskUserQuestion` after the phone-feed fix (#582) was opened. Its open item 3 (push and the live `notification:new` event) and item 2 (both Notifications screens) still carry money to staff: invoice totals, delivery credit due, goal figures and tonight's revenue.
+
+- **Should the feed's rule cover them?**
+  - **Answer:** *"owners and managers get it and some authorized staff this rule can be opt out for managers too"*. These are his own words, not one of the options.
+  - **Options offered:** "Same rule everywhere (Recommended)", "Stop sending them to staff" and "Push and live only".
+  - **Read as:** owners and managers see the money by default; an owner can let a staff member see it; an owner can turn it off for a manager. That was put back to him as two questions.
+- **What makes a staff member authorized:** *"Its own right (Recommended)"*. A new right, "Sees the house's money", sits on /team's Jobs and packages. An owner gives it to staff or takes it from a manager. It is separate from approving or sending.
+  - **Rejected:** "Any money right" (an approve or send limit would carry it) and "Follow the package" (Full sees money; Standard and Light do not).
+- **Someone not allowed to see money:** *"Title, no figures (Recommended)"*. They still get the notice, with a neutral line and no amounts, as the Today feed does on #582.
+  - **Rejected:** "Not sent at all".
+- **What it means for the build:**
+  - One rule decides who sees the house's money in every reader: the Today feed, push, the live `notification:new` event, and both Notifications screens.
+  - The rule is the person's right in that house. Their role only sets the default: on for owners and managers, off for staff.
+  - #582 decides by role alone (`seesHouseMoney(role)`). It is the first step, and this right replaces its test.
+  - Not settled here:
+    - whether an owner can turn it off for another owner;
+    - how it reads beside round 8's packages (Standard and Light show no profit or pay);
+    - whether round 9's "what they can approve" stays a separate, narrower view for grantees.
+
 ## Open — the founder's to decide (sketch 125 forks 9–12, 14)
 
 1. **The rights list.** The seven drawn in the sketch, more, or fewer.
@@ -169,3 +190,4 @@ Research on these runs as parallel agents, not a Workflow fan-out. The first fin
 | 2026-10-01 | Aldemir (founder, `AskUserQuestion`, round 8) + Claude (Opus 5.5) | Manager packages Full / Standard / Light confirmed; copy-once, adjustable, never live; staff use the Jobs list |
 | 2026-10-01 | Aldemir (founder, `AskUserQuestion`, round 9) + Claude (Opus 5.5) | Answered — vendor reply cards stay for staff; someone given a right sees what they can approve; the Supply tab's order amounts, the cellar value and delivery-difference money close to staff, server first [row added late, with the next one: round 9 had none] |
 | 2026-10-01 | Aldemir (founder, `AskUserQuestion`, fix rounds of the phone-feed fix) + Claude (Opus 5.5; `fix/phone-feed-no-money-for-staff` at 7fdf4f95f, PR #582, and `fix/phone-feed-own-grant-limit` at e68bd3cdf, PR #583, neither merged) | Answered — the wage notice gets its own type; a grantee sees their own grant limit on the Today feed, by recording the grantee on new notices; read beside round 9 as their own right's bound, not the house's money |
+| 2026-10-01 | Aldemir (founder, `AskUserQuestion`, round 10) + Claude (Opus 5.5) | Answered — owners and managers see the house's money in notices by default; a new right, "Sees the house's money", lets an owner give it to staff or take it from a manager; anyone without it gets the title and no figures, in every reader; not built |
