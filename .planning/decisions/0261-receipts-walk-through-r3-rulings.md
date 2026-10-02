@@ -89,6 +89,7 @@ The founder's words, verbatim, per item:
 | RECEIPTS-W47, the house in the sheet's keys (found on #586's CI) | "House in all 4 keys (Recommended)" |
 | RECEIPTS-W48, "caught up" before the clean read lands (found by #586's audit gate) | "\"Reading…\" first (Recommended)" |
 | RECEIPTS-W48b, a document with no stored lines on the list (found by #586's audit gate) | "Keep it, record it (Recommended)" |
+| RECEIPTS-W49, the failure alert for a read that never answered (found by #586's round-2 audit plan) | "Say it per lane (Recommended)" |
 
 The founder's W9 clause stands for the whole page: each region reads on its own and is clearly divided from the next.
 
@@ -139,6 +140,7 @@ Words:
 - W22: the year once; "per 12 bottles"; no bare code 7161; "A PDF".
 - W23: "Open this document on its own page →"; the reading in sentences; the order sentence; "Turkish lira (TRY)".
 - W24, W28, W29: "Reading the queue…", not "Reaching the gateway…". A failure says, per item, that no answer came back, that it was refused with no reason, or the server's own sentence. "Mudavym", not "gateway". No "ceremony". The header says "not read" when a read fails.
+- W49: once the queue is in, the failure alert is said per read. A read that answered before still says "Could not refresh … What is below is the last answer, not the present." A read that never answered says "Could not read … — nothing is claimed about them" ("it" for one singular read). This covers the clean papers, the verified book and the door.
 - W25: ₺ for lira; a code stays where no one-character sign exists. W27: the list says "adds up", as the card does.
 - W33: the Confirm dialog no longer prints a field's internal key.
 - W37 and W38: no database ids; "the item", not "the wine"; "94% sure of the match"; "24 counted", "quantity 2"; an order with no number says so.

@@ -101,6 +101,16 @@ export interface ReceiptsNextData {
   /** One sentence per query that failed, so a dead endpoint is never silent. */
   failures: string[];
   errorMessage: string;
+  /**
+   * The failures split by whether that read had answered before (walk-through
+   * RECEIPTS-W49). A read that answered before still shows its last answer; a
+   * read that never answered shows nothing, so calling what is below "the last
+   * answer" would claim one that never came.
+   */
+  failuresStale: string[];
+  failuresUnread: string[];
+  /** "them" rather than "it" for the unread ones: more than one, or a plural read. */
+  failuresUnreadPlural: boolean;
   /** No restaurant resolved: the tenant-scoped endpoints were never asked. */
   noRestaurant: boolean;
   refetch: () => void;
@@ -162,24 +172,37 @@ export function useReceiptsNextData(): ReceiptsNextData {
    * alone, so a dead uncounted-deliveries endpoint rendered exactly like a
    * caught-up door — absence reported as health.
    */
-  const failures = useMemo(() => {
-    const out: string[] = [];
-    if (queueQ.isError) out.push(`the review queue (${msg(queueQ.error)})`);
-    if (verifiedQ.isError) out.push(`the verified book (${msg(verifiedQ.error)})`);
-    if (cleanQ.isError) out.push(`the papers that read cleanly (${msg(cleanQ.error)})`);
+  const failed = useMemo(() => {
+    const out: { sentence: string; read: boolean; plural: boolean }[] = [];
+    if (queueQ.isError)
+      out.push({ sentence: `the review queue (${msg(queueQ.error)})`, read: queueQ.data !== undefined, plural: false });
+    if (verifiedQ.isError)
+      out.push({ sentence: `the verified book (${msg(verifiedQ.error)})`, read: verifiedQ.data !== undefined, plural: false });
+    if (cleanQ.isError)
+      out.push({ sentence: `the papers that read cleanly (${msg(cleanQ.error)})`, read: cleanQ.data !== undefined, plural: true });
     if (unverifiedQ.isError)
-      out.push(`the deliveries counted at the door (${msg(unverifiedQ.error)})`);
+      out.push({
+        sentence: `the deliveries counted at the door (${msg(unverifiedQ.error)})`,
+        read: unverifiedQ.data !== undefined,
+        plural: true,
+      });
     return out;
   }, [
     queueQ.isError,
     queueQ.error,
+    queueQ.data,
     verifiedQ.isError,
     verifiedQ.error,
+    verifiedQ.data,
     cleanQ.isError,
     cleanQ.error,
+    cleanQ.data,
     unverifiedQ.isError,
     unverifiedQ.error,
+    unverifiedQ.data,
   ]);
+  const failures = failed.map((f) => f.sentence);
+  const unread = failed.filter((f) => !f.read);
 
   const queue = queueQ.data ?? [];
   const verified = verifiedQ.data ?? [];
@@ -207,6 +230,9 @@ export function useReceiptsNextData(): ReceiptsNextData {
     isError: failures.length > 0,
     failures,
     errorMessage: failures.join('; ') || 'unknown error',
+    failuresStale: failed.filter((f) => f.read).map((f) => f.sentence),
+    failuresUnread: unread.map((f) => f.sentence),
+    failuresUnreadPlural: unread.length > 1 || unread.some((f) => f.plural),
     noRestaurant: !enabled,
     refetch: () => {
       void queueQ.refetch();

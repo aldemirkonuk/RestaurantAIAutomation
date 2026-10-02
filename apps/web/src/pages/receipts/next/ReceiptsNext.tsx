@@ -1833,8 +1833,18 @@ export default function ReceiptsNext() {
             style={{ fontFamily: SANS, border: '1px solid var(--paper-2, #EAE4D8)', background: 'var(--paper-1, #F3EFE6)' }}
           >
             <span style={{ fontSize: 12.5, color: 'var(--ink-2, #4F473C)' }}>
+              {/* Said per read once the queue is in (walk-through RECEIPTS-W49): a
+                  read that answered before is "the last answer"; one that never
+                  answered has no last answer, so nothing about it is claimed. */}
               {data.queueKnown
-                ? `Could not refresh ${data.errorMessage}. What is below is the last answer, not the present.`
+                ? [
+                    data.failuresStale.length > 0 &&
+                      `Could not refresh ${data.failuresStale.join('; ')}. What is below is the last answer, not the present.`,
+                    data.failuresUnread.length > 0 &&
+                      `Could not read ${data.failuresUnread.join('; ')} — nothing is claimed about ${data.failuresUnreadPlural ? 'them' : 'it'}.`,
+                  ]
+                    .filter(Boolean)
+                    .join(' ')
                 : `Could not read ${data.errorMessage}. The paper trail is unknown — nothing below is claimed.`}
             </span>
             <button

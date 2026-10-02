@@ -25,6 +25,10 @@ const api = vi.hoisted(() => ({
   listFails: null as unknown,
   /** Holds the clean-papers read (`status = received`) open forever when set (W48). */
   cleanPending: false,
+  /** Rejects only the clean-papers read when set (W49). */
+  cleanFails: null as unknown,
+  /** Rejects only the verified-book read when set (W49). */
+  verifiedFails: null as unknown,
   editLine: vi.fn(),
   linkLine: vi.fn(() => Promise.resolve()),
   /** W37: rejects the order read when set; `orderOver` overrides its fields. */
@@ -66,6 +70,10 @@ vi.mock('../../../services/api/documents', async (importOriginal) => {
       list: (opts: { status?: string }) =>
         api.listFails
           ? Promise.reject(api.listFails)
+          : opts.status === 'received' && api.cleanFails
+            ? Promise.reject(api.cleanFails)
+          : opts.status === 'verified' && api.verifiedFails
+            ? Promise.reject(api.verifiedFails)
           : opts.status === 'received' && api.cleanPending
             ? new Promise<never>(() => {})
             : Promise.resolve(
@@ -214,6 +222,8 @@ beforeEach(() => {
   api.unverifiedFails = null;
   api.listFails = null;
   api.cleanPending = false;
+  api.cleanFails = null;
+  api.verifiedFails = null;
   api.restaurantId = 'rest-A';
   api.sheetLayer3 = null;
   api.linkLine.mockClear();
@@ -1021,6 +1031,48 @@ describe('ReceiptsNext — a failed read in words (W26)', () => {
       'Could not read the review queue (no answer came back); the verified book (no answer came back); the papers that read cleanly (no answer came back). The paper trail is unknown — nothing below is claimed.',
     );
     expect(document.body.textContent).not.toMatch(/Network Error|gateway/);
+  });
+
+  /* RECEIPTS-W49: a read that never answered has no "last answer". */
+  const noAnswer = () => Object.assign(new Error('Network Error'), { request: {}, code: 'ERR_NETWORK' });
+
+  it('says a read that never answered was not read, not that below is its last answer (W49)', async () => {
+    api.queue = [];
+    api.cleanFails = noAnswer();
+    render(<ReceiptsNext />, { wrapper });
+    const alert = await screen.findByRole('alert');
+    await waitFor(() =>
+      expect(alert.textContent).toContain(
+        'Could not read the papers that read cleanly (no answer came back) — nothing is claimed about them.',
+      ),
+    );
+    expect(alert.textContent).not.toMatch(/last answer|Could not refresh/);
+  });
+
+  it('says "it" for one singular read that never answered (W49)', async () => {
+    api.verifiedFails = noAnswer();
+    render(<ReceiptsNext />, { wrapper });
+    const alert = await screen.findByRole('alert');
+    await waitFor(() =>
+      expect(alert.textContent).toContain('Could not read the verified book (no answer came back) — nothing is claimed about it.'),
+    );
+  });
+
+  it('keeps "the last answer" for a read that answered before and then failed (W49)', async () => {
+    api.unverifiedFails = new Error('receiving endpoint 500');
+    render(<ReceiptsNext />, { wrapper });
+    // The door fails first; the clean papers answer (empty) on this first load.
+    const first = await screen.findByRole('alert');
+    await waitFor(() => expect(first.textContent).toContain('the deliveries counted at the door'));
+    api.unverifiedFails = null;
+    api.cleanFails = noAnswer();
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await waitFor(() =>
+      // The alert's sentence, without its "Try again" button.
+      expect(screen.getByRole('alert').querySelector('span')?.textContent).toBe(
+        'Could not refresh the papers that read cleanly (no answer came back). What is below is the last answer, not the present.',
+      ),
+    );
   });
 
   it('stops saying "Reading the queue…" once the read has failed', async () => {
