@@ -1136,9 +1136,17 @@ export class DocumentsController {
    * they are (W5, "leave rows").
    *
    * A failed or partial line read keeps the stored verdict for EVERY row and
-   * says so in the log. It never computes from a short list: a document whose
+   * says so in the log. It never computes from a short READ: a document whose
    * lines did not all arrive would read as billing less than it does, which is
    * a wrong verdict, not a missing one.
+   *
+   * A document with NO stored lines is another matter. Its lines may have failed
+   * to save at intake (document-intake.service.ts, "stored but its lines
+   * failed"), and nothing here can tell that apart from a paper with no lines.
+   * It computes as billing nothing, so it reads "does not tie out", the same as
+   * its sheet. That over-alarms; it never says "adds up". It stays that way so
+   * the list says what the sheet says (walk-through RECEIPTS-W48b, 2026-10-02).
+   * A "lines not read" state of its own is a follow-up in the tech-debt fragment.
    */
   private async tieOutsAsRuledNow(
     rows: Record<string, unknown>[],

@@ -87,6 +87,8 @@ The founder's words, verbatim, per item:
 | RECEIPTS-W45d, built (names W45c-SELF as done) | "Approve (Recommended)" |
 | RECEIPTS-W46, the PR | "Commit + open PR (Recommended)" |
 | RECEIPTS-W47, the house in the sheet's keys (found on #586's CI) | "House in all 4 keys (Recommended)" |
+| RECEIPTS-W48, "caught up" before the clean read lands (found by #586's audit gate) | "\"Reading…\" first (Recommended)" |
+| RECEIPTS-W48b, a document with no stored lines on the list (found by #586's audit gate) | "Keep it, record it (Recommended)" |
 
 The founder's W9 clause stands for the whole page: each region reads on its own and is clearly divided from the next.
 
@@ -124,10 +126,12 @@ The list and the URL:
 
 - W3: below 1536px an open document takes the full width, with "← All receipts". The open document is in the URL as `?doc=` (ADR 0160).
 - W7: each listed row's verdict is recomputed on read, as the sheet does it. Nothing is written; a failed read keeps the stored verdicts.
+- W48b: a document with a total and no stored lines reads "does not tie out" on the list, as on its sheet. Its lines may have failed to save at intake, and the list cannot tell that from a paper with no lines. It over-alarms and never says "adds up". The code comment that said the list "never computes from a short list" now says a short *read*.
 - W8-A: each row leads with its vendor.
 - W19: a `?doc=` this house does not hold says so, with "Show the queue".
 - W20: `?credit=` opens that claim on the Credits tab; one not in the ledger says so.
 - W44: papers that read cleanly are listed after those that need a look, under "Read cleanly · not yet confirmed", counted on their own. The house's own papers are left out.
+- W48: with the review queue empty, the page says "Reading…" until the clean papers' read lands, then "caught up" or "Nothing needs a look." It no longer calls an unread lane caught up.
 
 Words:
 
@@ -186,6 +190,7 @@ Deferred forks, as §14 writes them. Filed in `OPEN-DECISIONS.md` as one block, 
 
 - Easier: the list, the card and the sheet give one verdict for a document. A paper that read cleanly now reaches a person's swipe. The card reads as five named parts. The page fits a phone, and a keyboard reaches the swipe through a skip link and 15 Tabs.
 - Also on Documents & Reports and in print: the sheet's parts are shared, so W11, W15, W22, W26, W30–W33, W35, W36, W41 and W45c also change `/documents/:id`. W39's edge reaches its correction form. W45c's letterhead also prints. W35 changes the screen only: print keeps the table.
+- Also on every screen that reads the documents list: W7's recomputed verdict and W8-A's vendor name come from `GET /procurement/documents`. So the Sorting Office (`useSortingOfficeData`), SimPOS, and the order-scoped reads behind `ReceivingWorkspace` and `ReceiptDepth` change too. Their counts and "off by" labels can shift for documents stored before W5. The invoice-confirmed notification still reads the stored verdict, so for such a document it can disagree with the list until the row is written again (W5 left stored verdicts as they were).
 - Given up: rewriting the stored verdicts (W5); unlinking the wrong-year item (W16); hand-picked engine reasons until OD-207 is answered (W14); pictures inside an email's text (W43); the page's own dialog helper (W31).
 - Left open, recorded elsewhere:
   - The three forks above, OD-205 to OD-207.

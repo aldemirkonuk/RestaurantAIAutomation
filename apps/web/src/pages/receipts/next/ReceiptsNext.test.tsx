@@ -23,6 +23,8 @@ const api = vi.hoisted(() => ({
   unverifiedFails: null as unknown,
   /** Rejects both list reads (queue and verified book) when set. */
   listFails: null as unknown,
+  /** Holds the clean-papers read (`status = received`) open forever when set (W48). */
+  cleanPending: false,
   editLine: vi.fn(),
   linkLine: vi.fn(() => Promise.resolve()),
   /** W37: rejects the order read when set; `orderOver` overrides its fields. */
@@ -64,7 +66,9 @@ vi.mock('../../../services/api/documents', async (importOriginal) => {
       list: (opts: { status?: string }) =>
         api.listFails
           ? Promise.reject(api.listFails)
-          : Promise.resolve(
+          : opts.status === 'received' && api.cleanPending
+            ? new Promise<never>(() => {})
+            : Promise.resolve(
               opts.status === 'verified'
                 ? api.verified
                 : opts.status === 'received'
@@ -209,6 +213,7 @@ beforeEach(() => {
   api.orderOver = {};
   api.unverifiedFails = null;
   api.listFails = null;
+  api.cleanPending = false;
   api.restaurantId = 'rest-A';
   api.sheetLayer3 = null;
   api.linkLine.mockClear();
@@ -809,6 +814,23 @@ describe('ReceiptsNext — papers that read cleanly reach a swipe (W44)', () => 
     const { container } = render(<ReceiptsNext />, { wrapper });
     expect(await screen.findByText('Nothing needs a look.')).toBeTruthy();
     expect(container.textContent).not.toMatch(/caught up/);
+  });
+
+  it('says "Reading…", not "caught up", while the clean papers are still being read (W48)', async () => {
+    api.queue = [];
+    api.cleanPending = true;
+    const { container } = render(<ReceiptsNext />, { wrapper });
+    expect(await screen.findByText('Reading…')).toBeTruthy();
+    expect(container.textContent).toMatch(/0 awaiting review/);
+    expect(container.textContent).not.toMatch(/caught up/);
+    expect(screen.queryByText('Nothing needs a look.')).toBeNull();
+  });
+
+  it('says "caught up" once the clean read lands empty (W48)', async () => {
+    api.queue = [];
+    api.clean = [];
+    render(<ReceiptsNext />, { wrapper });
+    expect(await screen.findByText('Nothing awaits review — the paper trail is caught up.')).toBeTruthy();
   });
 
   it('opens a clean paper like any other, by click and by link', async () => {

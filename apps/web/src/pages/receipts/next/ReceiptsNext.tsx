@@ -1909,10 +1909,14 @@ export default function ReceiptsNext() {
           <section aria-label="Awaiting review" className={selected ? 'hidden 2xl:block' : undefined}>
             {data.queueKnown && data.queue.length === 0 && !data.isError && !data.noRestaurant ? (
               <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-2, #4F473C)' }}>
-                {/* Not "caught up" while clean papers still wait for a swipe (W44). */}
-                {data.cleanKnown && data.clean.length > 0
-                  ? 'Nothing needs a look.'
-                  : 'Nothing awaits review — the paper trail is caught up.'}
+                {/* Not "caught up" while clean papers still wait for a swipe (W44),
+                    nor before their read has landed: an unread lane is not an
+                    empty one (audit of #586, walk-through RECEIPTS-W48). */}
+                {!data.cleanKnown
+                  ? 'Reading…'
+                  : data.clean.length > 0
+                    ? 'Nothing needs a look.'
+                    : 'Nothing awaits review — the paper trail is caught up.'}
               </p>
             ) : (
               <div style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
