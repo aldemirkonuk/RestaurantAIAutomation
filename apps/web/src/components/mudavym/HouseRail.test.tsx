@@ -46,7 +46,7 @@ describe('the room hint', () => {
     const link = screen.getByRole('link', { name: 'Receiving' });
     fireEvent.mouseEnter(link);
     act(() => vi.advanceTimersByTime(320));
-    expect(hint()).toHaveTextContent('Check a delivery in at the door.');
+    expect(hint()).toHaveTextContent('Check deliveries in at the door, and decide on the short ones.');
     fireEvent.mouseLeave(link);
     expect(hint()).toBeNull();
 
@@ -75,7 +75,7 @@ describe('the room hint', () => {
       'The overall look, in one glance.',
     );
     expect(screen.getByRole('link', { name: 'Help' })).toHaveAccessibleDescription(
-      'How things work, and how to turn tips back on.',
+      'Guides, questions people ask, and how to reach a person.',
     );
   });
 });

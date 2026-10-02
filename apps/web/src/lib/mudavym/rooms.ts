@@ -33,6 +33,9 @@ export interface Room {
    * One line, in the house's words, shown when the pointer rests on the room
    * in the rail (founder, 2026-10-01: "when cursor comes on /dashboard … says
    * overall look in one glance"). Required, so a new room cannot ship without one.
+   * It says only what the room's page shows on main today, never a control
+   * still on another branch (the PR #569 audit: Help's line promised a tips
+   * switch the rebuilt Help page does not have).
    */
   description: string;
   /** Hidden below this role. `manager` admits owner and manager. */
@@ -51,7 +54,7 @@ export const ROOM_GROUPS: readonly RoomGroup[] = [
     name: 'The floor',
     rooms: [
       { name: 'Dashboard', path: '/', description: 'The overall look, in one glance.' },
-      { name: 'Notifications', path: '/notifications', description: 'Everything that asked for you, newest first.' },
+      { name: 'Notifications', path: '/notifications', description: 'What the house noticed, and what still needs a hand.' },
       { name: 'Calendar', path: '/calendar', description: 'Deliveries, tastings and meetings, by day.' },
       { name: 'Recommendations', path: '/recommendations', description: 'What Mudavym suggests next, and your goals.' },
     ],
@@ -60,7 +63,7 @@ export const ROOM_GROUPS: readonly RoomGroup[] = [
     name: 'The door',
     rooms: [
       { name: 'Orders', path: '/orders', description: 'Draft, send and follow orders until they arrive.' },
-      { name: 'Receiving', path: '/receiving', description: 'Check a delivery in at the door.' },
+      { name: 'Receiving', path: '/receiving', description: 'Check deliveries in at the door, and decide on the short ones.' },
       { name: 'Vendors', path: '/vendors', description: 'The people you buy from, and how to reach them.' },
       // The gateway refuses staff every GET /promotions read (owner/manager,
       // promotions.controller.ts @Roles("owner", "manager")). TD-2026-09-27-
@@ -74,16 +77,16 @@ export const ROOM_GROUPS: readonly RoomGroup[] = [
     name: 'The cellar',
     rooms: [
       { name: 'Inventory', path: '/inventory', description: "What's on hand, what's low, and what it's worth." },
-      { name: 'Cellar', path: '/cellar', description: 'Where every bottle sits, zone by zone.' },
+      { name: 'Cellar', path: '/cellar', description: 'What the house keeps, register by register.' },
     ],
   },
   {
     name: 'The books',
     rooms: [
       { name: 'Receipts & Credits', path: '/receipts', description: 'Invoices to check, and credits to chase.' },
-      { name: 'Documents & Reports', path: '/documents-reports', description: 'Every document in, and every report out.' },
+      { name: 'Documents & Reports', path: '/documents-reports', description: 'Vendor paper and house reports, each in its own drawer.' },
       { name: 'Reports', path: '/reports', description: 'Sales, costs and stock over time.' },
-      { name: 'Logs', path: '/logs', description: 'What happened, when, and who did it.' },
+      { name: 'Logs', path: '/logs', description: 'What the till, stock, paper and agents recorded, and when.' },
     ],
   },
   {
@@ -97,9 +100,9 @@ export const ROOM_GROUPS: readonly RoomGroup[] = [
 
 export const ROOM_FOOT: readonly Room[] = [
   { name: 'Settings', path: '/settings', description: 'Your house, your account and your preferences.' },
-  { name: 'Connections', path: '/connections', description: 'The till, email and other services Mudavym reads.', minRole: 'manager', needsFlag: 'connections' },
+  { name: 'Connections', path: '/connections', description: 'The till, payments, mail and other services that act here.', minRole: 'manager', needsFlag: 'connections' },
   { name: 'The desk', path: '/admin', description: 'The services behind Mudavym, and how each is running.', minRole: 'owner' },
-  { name: 'Help', path: '/help', description: 'How things work, and how to turn tips back on.' },
+  { name: 'Help', path: '/help', description: 'Guides, questions people ask, and how to reach a person.' },
 ];
 
 /** Never a room. A test asserts none of these reaches the table. */
