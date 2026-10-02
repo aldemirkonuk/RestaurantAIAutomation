@@ -16,6 +16,18 @@
  * `support@mudavym.com` on the shipping page (Profile.tsx:445) — the address
  * ADR 0143 row 8 named for every contact surface. An unconfigured deployment
  * gets a sentence here, not a mailto that goes nowhere.
+ *
+ * THE THEME ROW IS THE PERSON'S GROUND (founder, 2026-10-01, page walk-through
+ * DASH-W23 — "remove the system theme from top bar into settings"; he picked
+ * this card so every role can reach it). It used to offer Light / Dark /
+ * System against the app's `ThemeContext`, which no Mudavym page follows (ADR
+ * 0138 D1), so clicking it changed nothing on screen. It now drives the real
+ * thing: Paper or Charcoal from `lib/mudavym/groundChoice.ts`, saved to the
+ * person's account (ADR 0169). The header's theme button is gone; this is the
+ * one control. Nothing is pressed until the account has answered
+ * (`groundIsKnown`), and whatever stands between the screen and a confirmed
+ * answer — still reading, this device's copy, unreadable, not saved — is said
+ * under the buttons (`groundNote`).
  */
 
 import { useState } from 'react';
@@ -23,6 +35,13 @@ import { UserRound } from 'lucide-react';
 import { EM, MONO, SANS, roleLabel } from './pf-format';
 import { Btn, Card, Field, Note, Register, StatusLine } from './pf-ui';
 import type { ProfileNextData } from './useProfileNextData';
+import {
+  GROUND_OPTIONS,
+  groundIsKnown,
+  groundNote,
+  setGroundChoice,
+  useGroundState,
+} from '../../../lib/mudavym/groundChoice';
 
 const SUPPORT_EMAIL = import.meta.env.VITE_SUPPORT_EMAIL as string | undefined;
 
@@ -31,6 +50,10 @@ export function IdentityRegister({ data }: { data: ProfileNextData }) {
   const [phoneDraft, setPhoneDraft] = useState<string | null>(null);
   const [savingAccount, setSavingAccount] = useState(false);
   const [accountMsg, setAccountMsg] = useState<{ tone: 'error' | 'done'; text: string } | null>(null);
+
+  const ground = useGroundState();
+  const groundKnown = groundIsKnown(ground);
+  const groundSays = groundNote(ground);
 
   const recordRead = data.meState === 'ok';
   const name = nameDraft ?? data.user?.name ?? '';
@@ -135,36 +158,53 @@ export function IdentityRegister({ data }: { data: ProfileNextData }) {
         {accountMsg && <StatusLine tone={accountMsg.tone}>{accountMsg.text}</StatusLine>}
       </Card>
 
-      <Card title="Preferences" lead="Kept in this browser.">
-        <span style={{ display: 'block', marginBottom: 6, fontFamily: SANS, fontSize: 11.5, fontWeight: 600, color: 'var(--ink-2)' }}>
+      <Card title="Preferences" lead="Saved to your account, so it follows you to any device you sign in on.">
+        <span
+          id="pf-ground-label"
+          style={{ display: 'block', marginBottom: 6, fontFamily: SANS, fontSize: 11.5, fontWeight: 600, color: 'var(--ink-2)' }}
+        >
           Theme
         </span>
-        <div style={{ display: 'flex', gap: 8 }}>
-          {(['light', 'dark', 'system'] as const).map((t) => (
-            <button
-              key={t}
-              type="button"
-              className="pf-btn pf-focus"
-              aria-pressed={data.theme === t}
-              onClick={() => data.setTheme(t)}
-              style={{
-                fontFamily: SANS,
-                fontSize: 12,
-                fontWeight: 600,
-                textTransform: 'capitalize',
-                padding: '6px 12px',
-                borderRadius: 8,
-                border: `1px solid ${data.theme === t ? 'var(--seal-ring)' : 'var(--paper-2)'}`,
-                background: data.theme === t ? 'var(--seal-tint)' : 'transparent',
-                color: 'var(--ink-1)',
-                cursor: 'pointer',
-              }}
-            >
-              {t}
-            </button>
-          ))}
+        <div role="group" aria-labelledby="pf-ground-label" style={{ display: 'flex', gap: 8 }}>
+          {GROUND_OPTIONS.map(({ value, label }) => {
+            // Pressed only when the account (or its confirmed mirror) said so:
+            // paper painted while the read is pending or failed is not a choice.
+            const pressed = groundKnown && ground.choice === value;
+            return (
+              <button
+                key={value}
+                type="button"
+                className="pf-btn pf-focus"
+                aria-pressed={pressed}
+                onClick={() => setGroundChoice(value)}
+                style={{
+                  fontFamily: SANS,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  textTransform: 'capitalize',
+                  padding: '6px 12px',
+                  borderRadius: 8,
+                  border: `1px solid ${pressed ? 'var(--seal-ring)' : 'var(--paper-2)'}`,
+                  background: pressed ? 'var(--seal-tint)' : 'transparent',
+                  color: 'var(--ink-1)',
+                  cursor: 'pointer',
+                }}
+              >
+                {label}
+              </button>
+            );
+          })}
         </div>
-        <Note>Warm Charcoal is the dark ground. “System” follows your device.</Note>
+        {groundSays &&
+          (ground.writeError ? (
+            <div data-ground-note>
+              <StatusLine tone="error">{groundSays}</StatusLine>
+            </div>
+          ) : (
+            <div role="status" data-ground-note style={{ marginTop: 8 }}>
+              <Note>{groundSays}</Note>
+            </div>
+          ))}
       </Card>
     </Register>
   );

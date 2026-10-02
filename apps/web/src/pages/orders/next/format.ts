@@ -55,6 +55,17 @@ export function fmtDate(iso: string | null | undefined): string {
   return d.getFullYear() === new Date().getFullYear() ? sameYear.format(d) : otherYear.format(d);
 }
 
+const clock = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit' });
+
+/** When a read landed: "17:58" today, "30 Sept, 17:58" on another day (ORD-W15). */
+export function fmtReadTime(ms: number): string {
+  const d = new Date(ms);
+  if (Number.isNaN(d.getTime())) return EM;
+  return d.toDateString() === new Date().toDateString()
+    ? clock.format(d)
+    : `${fmtDate(d.toISOString())}, ${clock.format(d)}`;
+}
+
 /** m:ss for the auto-send countdown. Clamped at zero — time owed, not negative. */
 export function fmtCountdown(ms: number): string {
   const s = Math.max(0, Math.ceil(ms / 1000));
