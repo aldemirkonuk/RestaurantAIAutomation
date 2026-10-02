@@ -576,7 +576,17 @@ export class AuthorityGrantsService {
         priority: "low",
         actionUrl: "/team",
         actionLabel: "See who may send",
-        metadata: { grantId: grant.id, change: what },
+        // `granteeUserId` says whose grant this is. Every copy carries the
+        // grantee's limit in its sentence, but the phone feed shows a reader
+        // who does not see money that sentence only when the grant is their
+        // own (the founder, 2026-10-01: "Record the grantee (Recommended)";
+        // `mobile/mobile.service.ts` isOwnGrantNotice). A row written before
+        // this line carries no grantee and never shows the limit there.
+        metadata: {
+          grantId: grant.id,
+          change: what,
+          granteeUserId: grant.grantee.userId,
+        },
       },
       { onlyUserIds: [...new Set(audience)] },
     );

@@ -53,7 +53,8 @@ export function seesHouseMoney(role: string | null | undefined): boolean {
  * Left off on purpose, because at least one writer puts money or another
  * person's free text in the sentence: `service_closed`, `invoice_received`,
  * `goal_reached`, `price_change`, `price_index_upload`, `promo_digest`,
- * `delivery_proposal`, `authority_grant_issued`, `authority_grant_reapproved`,
+ * `delivery_proposal`, `authority_grant_issued`, `authority_grant_reapproved`
+ * (said to the grantee alone, `isOwnGrantNotice`),
  * `team_member_own_wage_set` (a manager's own wage, owners only),
  * `system_alert`, `deal`, `order_verification`, `vendor_reply`,
  * `vendor_deal_declined` and `vendor_letter_declined`.
@@ -125,6 +126,35 @@ export const MONEY_FREE_NOTIFICATION_TYPES: ReadonlySet<string> = new Set([
 export function isOwnWageNotice(meta: unknown): boolean {
   if (!meta || typeof meta !== "object" || Array.isArray(meta)) return false;
   return (meta as { action?: unknown }).action === OWN_WAGE_ACTION;
+}
+
+/**
+ * The grant notices whose sentence names the grant's money limit
+ * (`organizations/authority-grants.service.ts`, `tell()`). Each copy goes to
+ * every owner and to the grantee, so a reader who does not see money holds
+ * one either as the grantee or as an owner later demoted in the same house.
+ */
+export const OWN_LIMIT_NOTIFICATION_TYPES: ReadonlySet<string> = new Set([
+  "authority_grant_issued",
+  "authority_grant_reapproved",
+]);
+
+/**
+ * Is this a grant notice about the reader's own grant? A grantee sees their
+ * own limit (the founder, 2026-10-01: "Show their own limit (Recommended)",
+ * then "Record the grantee (Recommended)"). The writer records the grantee
+ * as `granteeUserId`. A row without it (written before the grantee was
+ * recorded) or naming anyone else is not the reader's own, and stays quiet.
+ */
+export function isOwnGrantNotice(
+  type: string,
+  meta: unknown,
+  userId: string,
+): boolean {
+  if (!OWN_LIMIT_NOTIFICATION_TYPES.has(type)) return false;
+  if (!meta || typeof meta !== "object" || Array.isArray(meta)) return false;
+  const grantee = (meta as { granteeUserId?: unknown }).granteeUserId;
+  return typeof grantee === "string" && grantee !== "" && grantee === userId;
 }
 
 /**
@@ -279,10 +309,12 @@ export class MobileService {
       // every writer keeps money-free, and the metadata only under a non-money
       // key. Anything else, including a type or key added later, falls back to
       // the card's neutral line and is left out (ADR 0253 round 2). A wage
-      // notice stays quiet under any type.
+      // notice stays quiet under any type. A grant notice names a limit, so
+      // it is said only to the grantee, `userId` being the caller's own id.
       const sayMessage =
         money ||
-        (MONEY_FREE_NOTIFICATION_TYPES.has(type) && !isOwnWageNotice(meta));
+        (MONEY_FREE_NOTIFICATION_TYPES.has(type) && !isOwnWageNotice(meta)) ||
+        isOwnGrantNotice(type, meta, userId);
       const cardMeta = money ? meta : nonMoneyMeta(meta);
 
       if (type === "invoice_received") {
