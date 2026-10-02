@@ -1,40 +1,44 @@
 import type { TourDefinition } from '../tours/registry'
 
-// Rewritten 2026-10-01 (walk-through COMMS-W6): the old copy described the
-// legacy page's four workspaces and template builder, deleted 2026-09-28, and
-// every step pointed at an anchor no page rendered, so "Take tour" could only
-// say the tour was unavailable.
+// Steps follow the job, not the screen (ADR 0251 D3). Each element must exist
+// on the live page; a step whose element is missing is left out by TourEngine.
+
 export const communicationsTip = {
   pageId: 'communications' as const,
   title: 'Communications',
-  body: 'What waits on you sits at the top. Below it is every letter to and from your vendors, newest first.',
+  body: 'Your latest letters with vendors, and the letters drafted for you.',
 }
 
 export const communicationsTour: TourDefinition = {
   pageId: 'communications',
   steps: [
     {
-      element: '[data-tour="communications-waiting"]',
-      title: 'Waiting on you',
+      element: 'section[aria-label="Conversation book"]',
+      title: 'Read the book',
       description:
-        'Letters your staff asked you to send, replies the house drafted on orders, and letters the house drafted for you. Nothing here has been sent.',
+        'The latest letters between you and your vendors.',
     },
     {
-      element: '[data-tour="communications-book"]',
-      title: 'The conversation book',
+      // COMMS-W38 (founder: "#571's order, step 2 widened"): the whole waiting
+      // region, which is always drawn; "Drafts waiting" is drawn only while a
+      // drafted reply waits, and letters staff asked a manager to send sit
+      // beside it.
+      element: 'section[aria-label="Waiting on you"]',
+      title: 'Answer what waits',
       description:
-        'Every letter to and from your vendors, newest first. Open a row to read it and to see whether it was sent.',
+        'Letters your staff asked you to send and replies drafted for you. Read one, change it if you need to, then hold to send it, or to ask a manager to send it.',
     },
     {
-      element: '[data-tour="communications-write"]',
-      title: 'Write to a vendor',
-      description: "Write a letter from a blank page, or start from one of the house's templates.",
+      element: '[data-tour="comms-write"]',
+      title: 'Write a letter',
+      description:
+        "Write to a vendor from scratch, or start from one of the house's templates.",
     },
     {
-      element: '[data-tour="communications-senders"]',
-      title: 'Who is writing',
+      element: 'section[aria-label="Who is writing"]',
+      title: 'Know who is writing',
       description:
-        'The vendor addresses you trust, and mail from senders who are not your vendors yet.',
+        'People who wrote to the house. An owner or a manager can trust one, or add them as a vendor.',
     },
   ],
 }

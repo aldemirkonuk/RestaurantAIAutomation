@@ -77,9 +77,28 @@ type SendState =
   | { kind: 'asked'; says: string }
   | { kind: 'refused'; message: string; guardrails: GuardrailHit[] };
 
+/**
+ * The words a person left the composer with (COMMS-W34). The page holds them on
+ * a stub where the sheet was opened (the house's Stub, sketch 103 · 1b) and
+ * hands them back as `prefill` on Resume or Put it back.
+ */
+export interface HeldLetter {
+  to: Recipient | null;
+  subject: string;
+  body: string;
+  insights: InsightSentence[];
+  templateId: string;
+}
+
 export interface ComposeSheetProps {
   open: boolean;
   onClose: () => void;
+  /**
+   * Called as the sheet leaves holding words nobody has sent (COMMS-W34) — by
+   * Escape, a click outside, or Close. A letter that was queued, asked for or
+   * discarded leaves nothing to hold.
+   */
+  onHold?: (held: HeldLetter) => void;
   /** Prefill from a recommendation's "Write to the vendor", when there is one. */
   prefill?: {
     providerId?: string;
@@ -92,12 +111,20 @@ export interface ComposeSheetProps {
     draftId?: string;
     /** The booked address the draft was written to, when it had one. */
     to?: string | null;
+    /** Sentences and template a held letter carried (COMMS-W34), so Put it back loses neither. */
+    insights?: InsightSentence[];
+    templateId?: string;
+    /**
+     * What "unchanged" means. A drafted letter's own words, when the subject and
+     * body above are a person's held changes to it; blank for a new letter.
+     */
+    baseline?: { subject: string; body: string; to: string | null };
   } | null;
   /** Called once a draft was discarded, so the page can drop it. */
   onDiscarded?: () => void;
 }
 
-export function ComposeSheet({ open, onClose, prefill, onDiscarded }: ComposeSheetProps) {
+export function ComposeSheet({ open, onClose, onHold, prefill, onDiscarded }: ComposeSheetProps) {
   const data = useComposeData();
   const [to, setTo] = useState<Recipient | null>(null);
   const draftId = prefill?.draftId;
@@ -116,8 +143,8 @@ export function ComposeSheet({ open, onClose, prefill, onDiscarded }: ComposeShe
   }, [to, booked?.id, booked?.email, data.book]); // eslint-disable-line react-hooks/exhaustive-deps
   const [subject, setSubject] = useState(prefill?.subject ?? '');
   const [body, setBody] = useState(prefill?.body ?? '');
-  const [chosen, setChosen] = useState<InsightSentence[]>([]);
-  const [templateId, setTemplateId] = useState<string>('');
+  const [chosen, setChosen] = useState<InsightSentence[]>(prefill?.insights ?? []);
+  const [templateId, setTemplateId] = useState<string>(prefill?.templateId ?? '');
   const [send, setSend] = useState<SendState>({ kind: 'idle' });
   const [tick, setTick] = useState(0);
   const bodyRef = useRef<HTMLTextAreaElement | null>(null);
@@ -164,6 +191,32 @@ export function ComposeSheet({ open, onClose, prefill, onDiscarded }: ComposeShe
     send.kind !== 'queueing' &&
     // A draft that has been queued or discarded is not sent again from here.
     !(draftId && (send.kind === 'queued' || send.kind === 'cancelled' || discarded !== null));
+
+  // COMMS-W34: what the person would lose by leaving. A drafted letter is kept
+  // on the server as it was drafted, so only changes to it count; a new letter
+  // counts whatever was written. Fixed when the sheet opens.
+  const [base] = useState(
+    () =>
+      prefill?.baseline ??
+      (draftId
+        ? { subject: prefill?.subject ?? '', body: prefill?.body ?? '', to: prefill?.to ?? null }
+        : { subject: '', body: '', to: null }),
+  );
+  const gone =
+    send.kind === 'queueing' ||
+    send.kind === 'queued' ||
+    send.kind === 'asked' ||
+    discarded !== null ||
+    (!!draftId && send.kind === 'cancelled');
+  const changed =
+    (to !== null && to.email.toLowerCase() !== (base.to ?? '').toLowerCase()) ||
+    subject.trim() !== base.subject.trim() ||
+    body.trim() !== base.body.trim();
+  const dirty = !gone && changed;
+  const leave = () => {
+    if (dirty) onHold?.({ to, subject, body, insights: chosen, templateId });
+    onClose();
+  };
 
   const applyTemplate = useCallback(
     (t: LetterTemplate | undefined) => {
@@ -326,7 +379,8 @@ export function ComposeSheet({ open, onClose, prefill, onDiscarded }: ComposeShe
   return (
     <Sheet
       open={open}
-      onClose={onClose}
+      onClose={leave}
+      dirty={dirty}
       wide
       label={draftId ? 'A drafted letter from the house, not sent' : 'Write a letter from the house'}
       eyebrow={draftId ? 'Drafted · not sent' : 'The house writes'}
@@ -662,7 +716,9 @@ export function ComposeSheet({ open, onClose, prefill, onDiscarded }: ComposeShe
               : !sender
                 ? 'Send is disabled until the sender line has answered.'
                 : !sender.sendable
-                  ? `Send is disabled: ${sender.words}`
+                  ? sender.kind === 'none'
+                    ? 'Send is disabled until this house has a mailbox to send from.'
+                    : `Send is disabled: ${sender.words}`
                   : !standing
                     ? 'Send is disabled: whether you may send letters to vendors has not been answered yet.'
                     : mayAsk

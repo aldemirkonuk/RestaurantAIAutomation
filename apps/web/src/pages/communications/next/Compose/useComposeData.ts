@@ -183,12 +183,7 @@ export function useComposeData() {
 
   const queuedQ = useQuery<QueuedLetter[]>({
     queryKey: ['house-letter-queued', restaurantId],
-    queryFn: async () => {
-      const { data } = await apiClient.get<{ queued: QueuedLetter[] }>(
-        '/communications/letters/queued',
-      );
-      return data.queued;
-    },
+    queryFn: readQueued,
     staleTime: 15_000,
   });
 
@@ -306,6 +301,32 @@ export function useLetterSenderStanding(): {
     checkedAt: senderQ.dataUpdatedAt,
     recheck: () => void senderQ.refetch(),
   };
+}
+
+async function readQueued(): Promise<QueuedLetter[]> {
+  const { data } = await apiClient.get<{ queued: QueuedLetter[] }>('/communications/letters/queued');
+  return data.queued;
+}
+
+/**
+ * The letters still inside their undo window, read by the conversation book
+ * so a queued row can be pulled back after the sheet is closed (COMMS-W23).
+ * Same cache entry as the composer's read: one request serves both.
+ */
+export function useQueuedLetters(): {
+  restaurantId: string;
+  queued: QueuedLetter[] | null;
+  failed: boolean;
+} {
+  const { user, activeRestaurantId } = useAuth();
+  const restaurantId = activeRestaurantId ?? user?.restaurantId ?? '';
+  const queuedQ = useQuery<QueuedLetter[]>({
+    queryKey: ['house-letter-queued', restaurantId],
+    queryFn: readQueued,
+    staleTime: 15_000,
+    enabled: Boolean(restaurantId),
+  });
+  return { restaurantId, queued: queuedQ.data ?? null, failed: queuedQ.isError };
 }
 
 /** The waiting letters' query key, shared by the composer and the requests panel. */

@@ -11,11 +11,12 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render as rtlRender, screen, waitFor, within } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import type { ProspectDto, SenderReputationDto } from '../../../hooks/queries/usePromotionsQueries';
 
 const h = vi.hoisted(() => ({
   senders: {} as Record<string, unknown>,
+  sendersArg: undefined as boolean | undefined,
   strangers: {} as Record<string, unknown>,
   strangersArg: undefined as boolean | undefined,
   setTrust: { mutateAsync: vi.fn(), isPending: false },
@@ -27,7 +28,10 @@ const h = vi.hoisted(() => ({
 
 vi.mock('./useSendersDeskData', () => ({
   SENDERS_SERVER_WINDOWS: { PROSPECTS: 100 },
-  useSenderRegister: () => h.senders,
+  useSenderRegister: (enabled?: boolean) => {
+    h.sendersArg = enabled;
+    return h.senders;
+  },
   useSetSenderTrust: () => h.setTrust,
   useStrangers: (all: boolean) => {
     h.strangersArg = all;
@@ -96,8 +100,10 @@ beforeEach(() => {
   h.senders = ok([sender()]);
   h.strangers = ok([stranger()]);
   h.strangersArg = undefined;
+  h.sendersArg = undefined;
   h.auth = {
     activeRestaurantId: 'r1',
+    activeRole: 'owner',
     availableRestaurants: [{ id: 'r1', name: 'Müdavim Brooklyn', city: null, chain_id: null, chain_name: null }],
   };
 });
@@ -107,9 +113,13 @@ describe('the two registers', () => {
     render(<WhoIsWriting />);
     expect(screen.getByRole('region', { name: 'Who is writing' })).toBeInTheDocument();
     expect(screen.getByText('skurnik.com')).toBeInTheDocument();
+    // COMMS-W30: a long domain wraps instead of pushing the page sideways.
+    expect(screen.getByText('skurnik.com').style.overflowWrap).toBe('anywhere');
     expect(screen.getByText(/not trusted · updated 9 Sep/)).toBeInTheDocument();
-    expect(screen.getByText(/18 orders · 0 inj\. · 1 spam/)).toBeInTheDocument();
+    expect(screen.getByText(/18 orders · 0 with hidden instructions · 1 spam/)).toBeInTheDocument();
     expect(screen.getByText('Tuscan Direct Imports')).toBeInTheDocument();
+    expect(screen.getByText('Tuscan Direct Imports').style.overflowWrap).toBe('anywhere');
+    expect(screen.getByText(/<sales@tuscandirect\.co>/).style.overflowWrap).toBe('anywhere');
     expect(screen.getByText('has an attachment')).toBeInTheDocument();
     expect(screen.getByTestId('who-summary')).toHaveTextContent('0 trusted senders · 0 suspended · 1 stranger waiting');
   });
@@ -128,9 +138,8 @@ describe('a failed read is never an empty register', () => {
     h.senders = { ...ok(undefined), isError: true, error: { response: { status: 403 } } };
     render(<WhoIsWriting />);
     const alert = screen.getByRole('alert');
-    expect(alert).toHaveTextContent(/not owner or manager/);
-    expect(alert).toHaveTextContent(/not an empty list/);
-    expect(screen.queryByText(/No sender records yet/)).toBeNull();
+    expect(alert).toHaveTextContent('Only an owner or manager can see the trusted senders. That does not mean there are none.');
+    expect(screen.queryByText(/No senders yet/)).toBeNull();
     expect(screen.getByText('Tuscan Direct Imports')).toBeInTheDocument();
     expect(screen.getByTestId('who-summary')).toHaveTextContent('— trusted senders · — suspended · 1 stranger waiting');
   });
@@ -139,7 +148,7 @@ describe('a failed read is never an empty register', () => {
     const refetch = vi.fn();
     h.strangers = { ...ok(undefined, refetch), isError: true, error: { message: 'boom' } };
     render(<WhoIsWriting />);
-    expect(screen.getByRole('alert')).toHaveTextContent(/boom.*not an empty list/s);
+    expect(screen.getByRole('alert')).toHaveTextContent(/The strangers could not be read \(boom\)\. That does not mean there are none\./);
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(refetch).toHaveBeenCalled();
   });
@@ -148,8 +157,9 @@ describe('a failed read is never an empty register', () => {
     h.senders = ok([]);
     h.strangers = ok([]);
     render(<WhoIsWriting />);
-    expect(screen.getByText(/No sender records yet/)).toBeInTheDocument();
-    expect(screen.getByText(/No strangers waiting/)).toBeInTheDocument();
+    expect(screen.getByText('No senders yet. A vendor appears here once they email the house.')).toBeInTheDocument();
+    // COMMS-W32: the empty strangers list no longer claims the lane is "active and listening".
+    expect(screen.getByText('No strangers waiting. Mail from vendors you have not added yet lands here.')).toBeInTheDocument();
   });
 });
 
@@ -162,8 +172,8 @@ describe('hold to trust', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Trust skurnik.com' }));
     const dialog = await screen.findByRole('dialog');
-    expect(within(dialog).getByText(/skips the spoof quarantine for Müdavim Brooklyn/)).toBeInTheDocument();
-    expect(within(dialog).getByText('completed_orders')).toBeInTheDocument();
+    expect(within(dialog).getByText(/Mudavym will no longer wait for a person before\s+answering it for Müdavim Brooklyn/)).toBeInTheDocument();
+    expect(within(dialog).getByText('Completed orders')).toBeInTheDocument();
     // Nothing is written by opening the ask.
     expect(h.setTrust.mutateAsync).not.toHaveBeenCalled();
 
@@ -185,7 +195,7 @@ describe('hold to trust', () => {
     const dialog = await screen.findByRole('dialog');
     arm(/Hold to trust/);
 
-    expect(await within(dialog).findByRole('alert')).toHaveTextContent(/Trusting this domain was not saved.*does not show skurnik\.com as trusted/);
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(/Trusting this domain was not saved.*skurnik\.com did not read back as trusted/);
     expect(within(dialog).queryByRole('status')).toBeNull();
     expect(within(dialog).queryByText('Trusted')).toBeNull();
   });
@@ -272,12 +282,12 @@ describe('add as a vendor', () => {
     expect(within(dialog).getByRole('button', { name: 'Create the vendor' })).toBeInTheDocument();
   });
 
-  it('a reused vendor says linked, not duplicated', async () => {
+  it('a reused vendor says no second one was made', async () => {
     h.promote.mutateAsync.mockResolvedValue({ promoted: true, reused: true });
     render(<WhoIsWriting />);
     const dialog = await open();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Create the vendor' }));
-    expect(await within(dialog).findByRole('status')).toHaveTextContent(/linked, not duplicated/);
+    expect(await within(dialog).findByRole('status')).toHaveTextContent(/already a vendor of this house \(same email address\), so no second one was made/);
   });
 
   it('a failure is said in words', async () => {
@@ -335,6 +345,47 @@ describe('more than one house', () => {
   });
 });
 
+// COMMS-W35 (founder, 2026-10-01: "A: page + queue back"): the scope is in the
+// address, so a refresh or a shared link keeps it.
+describe('the scope in the address (COMMS-W35)', () => {
+  const two = [
+    { id: 'r1', name: 'Müdavim Brooklyn', city: null, chain_id: null, chain_name: null },
+    { id: 'r2', name: 'Müdavim Queens', city: null, chain_id: null, chain_name: null },
+  ];
+  function Where() {
+    const l = useLocation();
+    return <output data-testid="where">{l.pathname + l.search}</output>;
+  }
+
+  it('all houses writes ?senders=all, this house ?senders=open, and Hide drops it', () => {
+    h.auth = { activeRestaurantId: 'r1', availableRestaurants: two };
+    render(
+      <>
+        <WhoIsWriting />
+        <Where />
+      </>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'all 2 houses' }));
+    expect(screen.getByTestId('where')).toHaveTextContent('/communications?senders=all');
+    expect(h.strangersArg).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'this house' }));
+    expect(screen.getByTestId('where')).toHaveTextContent('/communications?senders=open');
+    expect(h.strangersArg).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: 'all 2 houses' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Hide' }));
+    expect(screen.getByTestId('where')).toHaveTextContent(/^\/communications$/);
+    expect(h.strangersArg).toBe(false);
+  });
+
+  it('?senders=all opens it with every house read', () => {
+    h.auth = { activeRestaurantId: 'r1', availableRestaurants: two };
+    render(<WhoIsWriting />, '/communications?senders=all');
+    expect(screen.getByText('Trusted senders')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'all 2 houses' }).getAttribute('aria-pressed')).toBe('true');
+    expect(h.strangersArg).toBe(true);
+  });
+});
+
 describe('the fold (COMMS-W5)', () => {
   it('rests folded to its summary line, and Show opens it', () => {
     render(<WhoIsWriting />, '/communications');
@@ -345,5 +396,109 @@ describe('the fold (COMMS-W5)', () => {
     fireEvent.click(show);
     expect(screen.getByText('Trusted senders')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Hide' }).getAttribute('aria-expanded')).toBe('true');
+  });
+});
+
+// COMMS-W31: the trusted-senders register and adding a vendor are an owner's or
+// manager's (`/senders/*`, `POST prospects/:id/promote`). A staff member is not
+// asked to read a refusal as a failure, and is told why the add is held.
+describe('a staff member (COMMS-W31)', () => {
+  beforeEach(() => {
+    h.auth = { ...h.auth, activeRole: 'staff', user: { role: 'owner' } };
+  });
+
+  it('is not asked to read the trusted senders, and is told whose they are', () => {
+    render(<WhoIsWriting />);
+    expect(h.sendersArg).toBe(false);
+    expect(screen.getByText('Only an owner or manager sees which senders are trusted.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Trust skurnik.com' })).toBeNull();
+  });
+
+  it('sees "Add as a vendor" held with the reason, and can still put a stranger away', () => {
+    render(<WhoIsWriting />);
+    const add = screen.getByRole('button', { name: 'Add Tuscan Direct Imports as a vendor' });
+    expect(add).toBeDisabled();
+    expect(add).toHaveAccessibleDescription('Only an owner or manager can add a vendor.');
+    expect(screen.getByRole('button', { name: 'Put Tuscan Direct Imports away' })).toBeEnabled();
+  });
+
+  it('the role in this house wins over the account-wide one', () => {
+    h.auth = { ...h.auth, activeRole: 'manager', user: { role: 'staff' } };
+    render(<WhoIsWriting />);
+    expect(h.sendersArg).toBe(true);
+    expect(screen.getByRole('button', { name: 'Add Tuscan Direct Imports as a vendor' })).toBeEnabled();
+    expect(screen.queryByText(/Only an owner or manager/)).toBeNull();
+  });
+});
+
+// COMMS-W32: the section speaks the house's words — no machinery names.
+describe('words (COMMS-W32)', () => {
+  it('names no register, lane, quarantine, injection or column', async () => {
+    h.senders = ok([sender({ trusted: false })]);
+    render(<WhoIsWriting />);
+    const section = screen.getByRole('region', { name: 'Who is writing' });
+    expect(section.textContent).not.toMatch(/register|triage|lane|quarantine|spoof|injection|inj\.|column|header fields|vendor row/i);
+    fireEvent.click(screen.getByRole('button', { name: 'Trust skurnik.com' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog.textContent).not.toMatch(/register|quarantine|spoof|injection|guardrail|_/i);
+    expect(dialog.getAttribute('aria-label') ?? '').not.toMatch(/register|quarantine|spoof/i);
+  });
+});
+
+describe('a read that fails after it answered (COMMS-W33)', () => {
+  // Founder, 2026-10-01: "A: keep, say when". What was last read stays, and the
+  // line under it says when that was; a refusal still says why.
+  const today = (hh: number, mm: number) => {
+    const d = new Date();
+    d.setHours(hh, mm, 0, 0);
+    return d.getTime();
+  };
+  const failedAgain = (data: unknown, at: number, refetch = vi.fn(), error: unknown = { response: { status: 500, data: { message: 'Internal server error' } } }) => ({
+    ...ok(data, refetch),
+    isError: true,
+    error,
+    dataUpdatedAt: at,
+  });
+
+  it('trusted senders keep their rows and say when they are from', () => {
+    h.senders = failedAgain([sender({ trusted: true })], today(20, 43));
+    render(<WhoIsWriting />);
+    expect(screen.getByText('skurnik.com')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getByText('The trusted senders could not be read again (Internal server error). This is as it was at 20:43; there may be more or fewer now.')).toHaveAttribute('role', 'status');
+    expect(screen.getByTestId('who-summary')).toHaveTextContent('1 trusted sender · 0 suspended · 1 stranger waiting · as it was at 20:43');
+  });
+
+  it('strangers that were none say "none then", not "none", and keep Retry', () => {
+    const refetch = vi.fn();
+    h.strangers = failedAgain([], today(20, 43), refetch);
+    render(<WhoIsWriting />);
+    expect(screen.queryByText(/No strangers waiting/)).toBeNull();
+    expect(screen.getByRole('status')).toHaveTextContent('The strangers could not be read again (Internal server error). At 20:43 there were none; there may be some now.');
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(refetch).toHaveBeenCalled();
+  });
+
+  it('strangers keep their rows and their acts, with the line and Retry under them', () => {
+    h.strangers = failedAgain([stranger()], today(20, 43));
+    render(<WhoIsWriting />);
+    expect(screen.getByText('Tuscan Direct Imports')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Put Tuscan Direct Imports away' })).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent(/^The strangers could not be read again \(Internal server error\)\. This is as it was at 20:43; there may be more or fewer now\. Retry$/);
+  });
+
+  it('a refusal after answering is not a blip: it still says why, and the summary does not count', () => {
+    h.senders = failedAgain([sender({ trusted: true })], today(20, 43), vi.fn(), { response: { status: 403 } });
+    render(<WhoIsWriting />);
+    expect(screen.getByRole('alert')).toHaveTextContent('Only an owner or manager can see the trusted senders.');
+    expect(screen.queryByText('skurnik.com')).toBeNull();
+    expect(screen.getByTestId('who-summary')).toHaveTextContent(/^— trusted senders · — suspended · 1 stranger waiting$/);
+  });
+
+  it('the summary says the older of two times', () => {
+    h.senders = failedAgain([sender()], today(20, 43));
+    h.strangers = failedAgain([stranger()], today(19, 5));
+    render(<WhoIsWriting />);
+    expect(screen.getByTestId('who-summary')).toHaveTextContent(/· as it was at 19:05$/);
   });
 });

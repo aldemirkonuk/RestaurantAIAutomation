@@ -120,7 +120,7 @@ describe('useCommsNextData — every cache bucket names the tenant (P2)', () => 
 
 const LABELS = {
   history: 'the conversation book',
-  drafts: 'the drafts awaiting action',
+  drafts: 'the replies the house has written',
 } as const;
 
 /** Route each owned source to its own client so one can fail alone. */
@@ -236,5 +236,33 @@ describe('useCommsNextData — the two 30-day figures split the book by directio
     await waitFor(() => expect(result.current.hasData).toBe(true));
     expect(result.current.glance.sentLast30).toBe(1);
     expect(result.current.glance.repliesLast30).toBe(2);
+  });
+});
+
+describe('useCommsNextData — one waiting draft per order (COMMS-W24)', () => {
+  const draft = (id: string, orderId: string, createdAt: string) => ({ id, orderId, createdAt });
+
+  it('keeps the newest draft of an order, counts what it replaces, and counts orders', async () => {
+    auth('active-rest-B');
+    mockApiGet.mockImplementation((url: string) =>
+      url === '/procurement/conversations/active'
+        ? Promise.resolve({
+            data: [
+              draft('old', 'o1', '2026-10-01T08:00:00Z'),
+              draft('other', 'o2', '2026-10-01T09:00:00Z'),
+              draft('new', 'o1', '2026-10-01T10:00:00Z'),
+            ],
+          })
+        : Promise.resolve({ data: [] }),
+    );
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { result } = renderHook(() => useCommsNextData(), { wrapper: wrapper(qc) });
+
+    await waitFor(() => expect(result.current.draftsKnown).toBe(true));
+    expect(result.current.drafts.map((d) => [d.id, d.replaces])).toEqual([
+      ['new', 1],
+      ['other', 0],
+    ]);
+    expect(result.current.glance.draftsPending).toBe(2);
   });
 });

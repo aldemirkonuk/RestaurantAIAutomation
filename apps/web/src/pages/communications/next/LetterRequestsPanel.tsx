@@ -23,12 +23,13 @@
  */
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
-import { Link } from 'react-router-dom';
-import { HoldToApprove } from '@/components/mudavym';
+import { Fragment, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { AtSign } from 'lucide-react';
+import { Link, useLocation } from 'react-router-dom';
+import { HoldToApprove, Popover } from '@/components/mudavym';
 import { apiClient } from '../../../services/api/client';
 import { errText, letterRequestKeys } from './Compose/useComposeData';
-import { fmtWhen } from './cm-format';
+import { failedReadWords, fmtWhen, readAgainFailed } from './cm-format';
 
 export interface LetterRequest {
   id: string;
@@ -213,17 +214,27 @@ export function LetterRequestsPanel({
   };
 
   if (requests.isPending) return null;
-  if (requests.isError) {
+  // COMMS-W33 (founder: "A: keep, say when"): a read that fails after it has
+  // answered keeps the letters it read, under a line saying when that was — they
+  // used to vanish while the page's "Waiting on you" figure still counted them.
+  const stale = requests.isError && requests.data !== undefined;
+  if (requests.isError && !stale) {
     return (
       <p role="status" data-testid="letter-requests-unread" style={{ fontSize: 12, color: 'var(--ink-2, #4F473C)' }}>
-        The letters waiting for a manager could not be read ({errText(requests.error)}). That is a failed read, not
-        an empty list.
+        The letters waiting for a manager could not be read ({failedReadWords(requests.error)}). That does not mean
+        none are waiting.
       </p>
     );
   }
   const waiting = requests.data?.requests ?? [];
   const viewer = requests.data?.viewer ?? { userId: null, mayDecline: false };
-  if (waiting.length === 0 && !says) return null;
+  if (waiting.length === 0 && !says) {
+    return stale ? (
+      <p role="status" data-testid="letter-requests-stale" style={{ fontSize: 12, color: 'var(--ink-2, #4F473C)' }}>
+        {readAgainFailed(failedReadWords(requests.error), requests.dataUpdatedAt, true, 'the letters waiting for a manager')}
+      </p>
+    ) : null;
+  }
   const tone: PillTone = canRelease
     ? 'ready'
     : noMailbox
@@ -246,9 +257,11 @@ export function LetterRequestsPanel({
       className="mb-6 rounded-xl p-4"
       style={{ border: '1px solid var(--paper-2, #EAE4D8)', background: 'var(--paper-1, #F3EFE6)' }}
     >
-      <h2 style={{ fontSize: 12, fontWeight: 600, margin: '0 0 8px', color: 'var(--ink-2, #4F473C)' }}>
+      {/* COMMS-W36: under "Waiting on you", so one level below it; the line and
+          spacing it had as an h2 are kept, so only its level changed. */}
+      <h3 style={{ fontSize: 12, fontWeight: 600, lineHeight: '2rem', letterSpacing: '-0.02em', margin: '0 0 8px', color: 'var(--ink-2, #4F473C)' }}>
         Letters waiting for a manager · {waiting.length}
-      </h2>
+      </h3>
       <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 8 }}>
         {waiting.map((r) => (
           <li key={r.id} style={cardStyle}>
@@ -350,8 +363,13 @@ export function LetterRequestsPanel({
           </li>
         ))}
       </ul>
+      {stale && (
+        <p role="status" data-testid="letter-requests-stale" style={{ margin: '8px 0 0', fontSize: 11.5, color: 'var(--ink-2, #4F473C)' }}>
+          {readAgainFailed(failedReadWords(requests.error), requests.dataUpdatedAt, false)}
+        </p>
+      )}
       {says && (
-        <p role="status" data-testid="letter-requests-says" style={{ margin: '8px 0 0', fontSize: 12 }}>
+        <p role="status" data-testid="letter-requests-says" style={{ margin: '8px 0 0', fontSize: 12, color: 'var(--ink-1, #211C16)' }}>
           {says}
         </p>
       )}
@@ -361,7 +379,7 @@ export function LetterRequestsPanel({
         </button>
       )}
       {problem && (
-        <p role="alert" data-testid="letter-requests-problem" style={{ margin: '8px 0 0', fontSize: 12 }}>
+        <p role="alert" data-testid="letter-requests-problem" style={{ margin: '8px 0 0', fontSize: 12, color: 'var(--ink-1, #211C16)' }}>
           {problem}
         </p>
       )}
@@ -395,7 +413,7 @@ export type MailboxRead = {
 
 type PillTone = 'ready' | 'blocked' | 'checking' | 'waiting';
 
-const PILL: Record<PillTone, { words: string; bg: string; fg: string }> = {
+export const PILL: Record<PillTone, { words: string; bg: string; fg: string }> = {
   ready: { words: 'Ready to send', bg: 'var(--seal-tint, rgba(26,94,107,0.1))', fg: 'var(--seal-deep, #14515C)' },
   blocked: { words: 'Can’t send yet', bg: 'var(--warn-tint, rgba(150,96,26,0.14))', fg: 'var(--warn, #96601A)' },
   checking: { words: 'Checking the mailbox…', bg: 'var(--paper-2, #EAE4D8)', fg: 'var(--ink-2, #4F473C)' },
@@ -523,7 +541,7 @@ function LetterPaper({ r, open, long }: { r: LetterRequest; open: boolean; long:
         </div>
         <div style={row}>
           <span style={{ color: 'var(--ink-4, #665D50)' }}>Subject</span>
-          <span style={{ color: 'var(--ink-1, #211C16)', fontWeight: 600 }}>{r.payload.subject ?? '(no subject)'}</span>
+          <span style={{ color: 'var(--ink-1, #211C16)', fontWeight: 600, overflowWrap: 'anywhere' }}>{r.payload.subject ?? '(no subject)'}</span>
         </div>
       </div>
       <div
@@ -541,7 +559,9 @@ function LetterPaper({ r, open, long }: { r: LetterRequest; open: boolean; long:
           <p style={{ margin: 0, color: 'var(--ink-4, #665D50)' }}>The letter has no text.</p>
         ) : (
           paras.map((p, i) => (
-            <p key={i} style={{ margin: i === 0 ? 0 : '0.8em 0 0', whiteSpace: 'pre-line' }}>
+            // COMMS-W30: an unbroken run (a pasted link) wraps; the card hides overflow, so it was cut off.
+            // COMMS-W36: the letter's own ink, which the dark theme's `p` rule would otherwise replace.
+            <p key={i} style={{ margin: i === 0 ? 0 : '0.8em 0 0', whiteSpace: 'pre-line', overflowWrap: 'anywhere', color: 'var(--ink-1, #211C16)' }}>
               {p}
             </p>
           ))
@@ -564,29 +584,208 @@ function LetterPaper({ r, open, long }: { r: LetterRequest; open: boolean; long:
   );
 }
 
-function ConnectLink() {
+/* COMMS-W16 (founder, 2026-10-01): "replace with a popover that shows couple
+   gmail options in simple bar like Gmail, apple, outlook, and at last a 'show
+   more'", then "more small, 4 small bars", then "smaller, use real app icons
+   not placeholders". Only Gmail sending exists today
+   (integrations-oauth.constants.ts `gmail_send`); Outlook and iCloud are shown
+   but cannot be pressed, and say so. COMMS-W16c (founder): "as built now,
+   where we need google's permission and microsoft license only if its to get
+   otherwise sign in marks". Google asks partners to request permission before
+   showing the Gmail icon, and Microsoft licenses the Outlook app icon, so each
+   app icon waits behind its own grant in ICON_GRANT; until then the bar shows
+   the mark that company publishes for signing in with it. Apple licenses none
+   of its icons, so iCloud keeps our own envelope.
+   COMMS-W20 (founder, 2026-10-01): "either the own houses mail will send with
+   the extension of our 'Sent via Mudavym' or we will give ...@mudavym.com
+   account"; W20b: both paths, the Mudavym address "Not yet" until the
+   created-mailbox build (COMMS-W13b) lands. */
+type MailboxId = 'gmail_send' | 'outlook' | 'icloud' | 'mudavym';
+const MAILBOXES: { id: MailboxId; name: string; ready: boolean; words: string; why?: string }[] = [
+  { id: 'gmail_send', name: 'Gmail', ready: true, words: 'Sending only' },
+  { id: 'outlook', name: 'Outlook', ready: false, words: 'Not yet' },
+  { id: 'icloud', name: 'iCloud Mail', ready: false, words: 'Not yet' },
+  {
+    id: 'mudavym',
+    name: '@mudavym.com',
+    ready: false,
+    words: 'Not yet',
+    why: 'A name@mudavym.com address for this house cannot be given yet; Gmail is the only way to send today.',
+  },
+];
+
+/** Where each app icon's permission is recorded once granted (who, when, reference); null shows the sign-in mark. */
+const ICON_GRANT: Record<'gmail_send' | 'outlook', string | null> = {
+  gmail_send: null, // Google Partner Marketing Hub approval form
+  outlook: null, // Microsoft trademark licence, trademarks@microsoft.com
+};
+
+/** The mailbox's own app icon once its company has said yes; until then the mark it publishes for sign-in. */
+function MailIcon({ id }: { id: MailboxId }) {
+  if (id === 'mudavym') return <AtSign size={14} strokeWidth={1.8} aria-hidden="true" style={{ flex: 'none' }} />;
+  if (id === 'gmail_send' && ICON_GRANT.gmail_send) {
+    return (
+      <svg width="16" height="12" viewBox="52 42 88 66" aria-hidden="true" style={{ flex: 'none' }}>
+        <path fill="#4285F4" d="M58 108h14V74L52 59v43c0 3.32 2.69 6 6 6" />
+        <path fill="#34A853" d="M120 108h14c3.32 0 6-2.69 6-6V59l-20 15" />
+        <path fill="#FBBC04" d="M120 48v26l20-15v-8c0-7.42-8.47-11.65-14.4-7.2" />
+        <path fill="#EA4335" d="M72 74V48l24 18 24-18v26L96 92" />
+        <path fill="#C5221F" d="M52 51v8l20 15V48l-5.6-4.2c-5.94-4.45-14.4-.22-14.4 7.2" />
+      </svg>
+    );
+  }
+  if (id === 'outlook' && ICON_GRANT.outlook) {
+    return (
+      <svg width="16" height="16" viewBox="0 0 32 32" aria-hidden="true" style={{ flex: 'none' }}>
+        <rect x="10" y="4" width="20" height="24" rx="2.5" fill="#0078D4" />
+        <path d="M10 14.5 20 21l10-6.5V25.5a2.5 2.5 0 0 1-2.5 2.5h-15A2.5 2.5 0 0 1 10 25.5Z" fill="#28A8EA" />
+        <rect x="2" y="8" width="16" height="16" rx="2.5" fill="#0F6CBD" />
+        <ellipse cx="10" cy="16" rx="3.9" ry="4.7" fill="none" stroke="#fff" strokeWidth="2.2" />
+      </svg>
+    );
+  }
+  if (id === 'gmail_send') {
+    return (
+      <svg width="14" height="14" viewBox="0 0 48 48" aria-hidden="true" style={{ flex: 'none' }}>
+        <path
+          fill="#EA4335"
+          d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"
+        />
+        <path
+          fill="#4285F4"
+          d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"
+        />
+        <path
+          fill="#FBBC05"
+          d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"
+        />
+        <path
+          fill="#34A853"
+          d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"
+        />
+      </svg>
+    );
+  }
+  if (id === 'outlook') {
+    return (
+      <svg width="14" height="14" viewBox="0 0 22 22" aria-hidden="true" style={{ flex: 'none' }}>
+        <rect x="0" y="0" width="10" height="10" fill="#F25022" />
+        <rect x="12" y="0" width="10" height="10" fill="#7FBA00" />
+        <rect x="0" y="12" width="10" height="10" fill="#00A4EF" />
+        <rect x="12" y="12" width="10" height="10" fill="#FFB900" />
+      </svg>
+    );
+  }
   return (
-    <Link
-      to="/connections"
-      data-testid="letter-request-connect"
-      style={{
-        display: 'inline-block',
-        padding: '6px 12px',
-        borderRadius: 8,
-        background: 'var(--seal, #1A5E6B)',
-        color: 'var(--paper-0, #FFFDF8)',
-        fontSize: 12,
-        fontWeight: 600,
-        textDecoration: 'none',
-        whiteSpace: 'nowrap',
-      }}
+    <svg
+      width="15"
+      height="15"
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      style={{ flex: 'none' }}
     >
-      Connect “Gmail — sending only”
-    </Link>
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <path d="m3.5 6.5 8.5 6 8.5-6" />
+    </svg>
   );
 }
 
-function Recheck({ mailbox }: { mailbox: MailboxRead }) {
+const barStyle: CSSProperties = { padding: '5px 12px', gap: 8, fontSize: 12.5, textDecoration: 'none' };
+
+export function ConnectLink() {
+  const [open, setOpen] = useState(false);
+  const anchor = useRef<HTMLButtonElement>(null);
+  const { pathname, search } = useLocation();
+  const back = encodeURIComponent(`${pathname}${search}`);
+  return (
+    <>
+      <button
+        ref={anchor}
+        type="button"
+        data-testid="letter-request-connect"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+        style={{
+          display: 'inline-block',
+          padding: '6px 12px',
+          borderRadius: 8,
+          border: 0,
+          background: 'var(--seal, #1A5E6B)',
+          color: 'var(--paper-0, #FFFDF8)',
+          fontSize: 12,
+          fontWeight: 600,
+          whiteSpace: 'nowrap',
+          cursor: 'pointer',
+        }}
+      >
+        Connect a mailbox
+      </button>
+      <Popover
+        open={open}
+        onClose={() => setOpen(false)}
+        anchorRef={anchor}
+        width={196}
+        showClose={false}
+        label="Choose the mailbox this house sends from"
+      >
+        <div data-testid="mailbox-choices" style={{ padding: '3px 0' }}>
+          {MAILBOXES.map((m) => (
+            <Fragment key={m.id}>
+              {m.id === 'mudavym' && (
+                // the house's own mailbox above, an address Mudavym gives below
+                <div role="separator" style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)', margin: '3px 0' }} />
+              )}
+              {m.ready ? (
+                <Link
+                  to={`/authorize/${m.id}?returnPath=${back}`}
+                  className="mdv-item"
+                  data-testid={`mailbox-${m.id}`}
+                  style={barStyle}
+                >
+                  <MailIcon id={m.id} />
+                  <span className="mdv-item__text">{m.name}</span>
+                  <span style={{ fontSize: 10.5, color: 'var(--ink-4, #665D50)' }}>{m.words}</span>
+                </Link>
+              ) : (
+                <button
+                  type="button"
+                  className="mdv-item"
+                  disabled
+                  data-testid={`mailbox-${m.id}`}
+                  title={m.why ?? `${m.name} cannot be connected yet; Gmail is the only mailbox Mudavym can send from today.`}
+                  style={{ ...barStyle, cursor: 'not-allowed', color: 'var(--ink-4, #665D50)' }}
+                >
+                  <span style={{ opacity: 0.55, display: 'flex' }}>
+                    <MailIcon id={m.id} />
+                  </span>
+                  <span className="mdv-item__text">{m.name}</span>
+                  <span style={{ fontSize: 10.5 }}>{m.words}</span>
+                </button>
+              )}
+            </Fragment>
+          ))}
+          <Link
+            to="/connections#sender"
+            className="mdv-item"
+            data-testid="mailbox-more"
+            style={{ ...barStyle, color: 'var(--seal-deep, #14515C)', fontWeight: 600 }}
+          >
+            <span className="mdv-item__text">Show more</span>
+            <span aria-hidden="true">›</span>
+          </Link>
+        </div>
+      </Popover>
+    </>
+  );
+}
+
+export function Recheck({ mailbox }: { mailbox: MailboxRead }) {
   return (
     <p role="status" style={{ margin: '6px 0 0', fontSize: 11, color: 'var(--ink-4, #665D50)' }}>
       {mailbox.checking
@@ -602,7 +801,7 @@ function Recheck({ mailbox }: { mailbox: MailboxRead }) {
   );
 }
 
-function Check({ ok, children }: { ok: boolean; children: ReactNode }) {
+export function Check({ ok, children }: { ok: boolean; children: ReactNode }) {
   return (
     <li style={{ display: 'flex', gap: 8, fontSize: 12, color: ok ? 'var(--ink-2, #4F473C)' : 'var(--ink-1, #211C16)' }}>
       <span aria-hidden="true" style={{ width: 12, fontWeight: 700, color: ok ? 'var(--seal, #1A5E6B)' : 'var(--warn, #96601A)' }}>

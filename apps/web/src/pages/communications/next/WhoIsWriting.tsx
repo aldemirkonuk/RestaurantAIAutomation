@@ -22,7 +22,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNod
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../../contexts/AuthContext';
 import type { ProspectDto, SenderReputationDto } from '../../../hooks/queries/usePromotionsQueries';
-import { MONO, SANS } from './cm-format';
+import { MONO, SANS, failedReadWords, fmtAsOf, managesHouse, readAgainFailed } from './cm-format';
 import { AddVendorPanel, BTN_PRIMARY, BTN_QUIET, TrustPanel } from './SenderActs';
 import {
   fmtCount,
@@ -80,29 +80,64 @@ function Quiet({ children }: { children: ReactNode }) {
   return <p style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-4, #665D50)', margin: 0 }}>{children}</p>;
 }
 
+/**
+ * COMMS-W33 (founder: "A: keep, say when"): a read that answered once and then
+ * failed keeps its rows on screen and says when they are from. A refusal
+ * (expired session, a role that changed) is not a blip — that one still says why.
+ */
+function staleRead(q: { isError: boolean; error: unknown; data?: readonly unknown[] }): boolean {
+  if (!q.isError || q.data === undefined) return false;
+  const f = readFailure(q.error);
+  return !f.expired && !f.forbidden;
+}
+
+function Stale({ q, what, children }: { q: { error: unknown; dataUpdatedAt: number; data?: readonly unknown[] }; what?: string; children?: ReactNode }) {
+  return (
+    <p role="status" style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-2, #4F473C)', margin: '6px 0 0' }}>
+      {readAgainFailed(failedReadWords(q.error), q.dataUpdatedAt, (q.data?.length ?? 0) === 0, what)}
+      {children}
+    </p>
+  );
+}
+
 function useHouse() {
-  const { availableRestaurants, activeRestaurantId } = useAuth();
+  const { availableRestaurants, activeRestaurantId, activeRole, user } = useAuth();
   const houseName = availableRestaurants.find((b) => b.id === activeRestaurantId)?.name ?? null;
   const nameById = useMemo(() => new Map(availableRestaurants.map((b) => [b.id, b.name] as const)), [availableRestaurants]);
-  return { houseName, nameById, activeRestaurantId, houseCount: availableRestaurants.length };
+  return {
+    houseName,
+    nameById,
+    activeRestaurantId,
+    houseCount: availableRestaurants.length,
+    manages: managesHouse(activeRole, user?.role),
+  };
 }
 
 /* ── Trusted senders ─────────────────────────────────────────────────── */
 
-function TrustedSenders({ senders, houseName }: { senders: ReturnType<typeof useSenderRegister>; houseName: string | null }) {
+function TrustedSenders({
+  senders,
+  houseName,
+  manages,
+}: {
+  senders: ReturnType<typeof useSenderRegister>;
+  houseName: string | null;
+  manages: boolean;
+}) {
   const setTrust = useSetSenderTrust();
   const [trusting, setTrusting] = useState<SenderReputationDto | null>(null);
   const [untrustFailure, setUntrustFailure] = useState<string | null>(null);
   const { data, isLoading, isError, error, refetch } = senders;
+  const stale = staleRead(senders);
 
   /** Write, then read the register back. The 200 alone is not proof (see file header). */
   const writeAndConfirm = async (s: SenderReputationDto, trusted: boolean) => {
     await setTrust.mutateAsync({ domain: s.domain, trusted, providerId: s.provider_id ?? undefined });
     const fresh = await refetch();
-    if (fresh.isError) throw new Error('the register could not be re-read to confirm');
+    if (fresh.isError) throw new Error('it could not be read back to confirm');
     const row = fresh.data?.find((r) => r.domain === s.domain);
     const nowTrusted = !!row && row.trusted && !row.suspended;
-    if (nowTrusted !== trusted) throw new Error(`the register does not show ${s.domain} as ${trusted ? 'trusted' : 'not trusted'}`);
+    if (nowTrusted !== trusted) throw new Error(`${s.domain} did not read back as ${trusted ? 'trusted' : 'not trusted'}`);
   };
 
   const untrust = async (s: SenderReputationDto) => {
@@ -118,15 +153,24 @@ function TrustedSenders({ senders, houseName }: { senders: ReturnType<typeof use
     <div>
       <h3 style={H3}>Trusted senders</h3>
       <p style={LEDE}>
-        Trusting a domain lifts the spoof quarantine on its future mail — nothing else. Every figure below is a column of
-        the sender register: state, completed orders, injection signals, spam signals, last update.
+        {/* COMMS-W32: what trust does, in the house's words (`inbound-responder.service.ts`: a trusted domain lifts
+            only the "sender unverified" hold on answering by itself). */}
+        When mail cannot prove it came from the vendor, Mudavym waits for a person before answering it. Trusting a sender
+        lifts that one hold for their future mail — nothing else. Each row counts their completed orders, the mail of
+        theirs that tried to give Mudavym instructions, and the mail that looked like spam.
       </p>
-      {isLoading ? (
-        <Quiet>Reading the sender register…</Quiet>
-      ) : isError ? (
-        <Failed>{readFailureSentence('the trusted-senders register', readFailure(error))}</Failed>
+      {!manages ? (
+        // COMMS-W31: the gateway answers this register for an owner or manager only, so a staff member is not asked
+        // to read a refusal as a failure.
+        <Quiet>Only an owner or manager sees which senders are trusted.</Quiet>
+      ) : isLoading ? (
+        <Quiet>Reading the trusted senders…</Quiet>
+      ) : isError && !stale ? (
+        <Failed>{readFailureSentence('the trusted senders', readFailure(error))}</Failed>
+      ) : stale && data?.length === 0 ? (
+        <Stale q={senders} what="the trusted senders" />
       ) : !data || data.length === 0 ? (
-        <Quiet>No sender records yet. A domain appears here once a vendor emails the house.</Quiet>
+        <Quiet>No senders yet. A vendor appears here once they email the house.</Quiet>
       ) : (
         <div style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
           {data.map((s) => {
@@ -134,7 +178,8 @@ function TrustedSenders({ senders, houseName }: { senders: ReturnType<typeof use
             return (
               <div key={s.id} style={{ ...ROW, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                 <div style={{ flex: '1 1 200px', minWidth: 0 }}>
-                  <span style={{ fontFamily: MONO, fontSize: 12.5, fontWeight: 600, color: 'var(--ink-1, #211C16)' }}>{s.domain}</span>
+                  {/* COMMS-W30: a long domain or address wraps instead of pushing the page sideways. */}
+                  <span style={{ fontFamily: MONO, fontSize: 12.5, fontWeight: 600, color: 'var(--ink-1, #211C16)', overflowWrap: 'anywhere' }}>{s.domain}</span>
                   <span
                     data-tone={st.tone}
                     style={{
@@ -151,8 +196,8 @@ function TrustedSenders({ senders, houseName }: { senders: ReturnType<typeof use
                   >
                     {st.word} · updated {fmtDay(s.updated_at)}
                   </span>
-                  <span style={{ display: 'block', fontFamily: MONO, fontSize: 11, color: 'var(--ink-2, #4F473C)', marginTop: 2 }} title="completed orders · injection signals · spam signals — as the triage lane recorded them, not a judgement of the vendor">
-                    {fmtCount(s.completed_orders)} orders · {fmtCount(s.injection_signals)} inj. · {fmtCount(s.spam_signals)} spam
+                  <span style={{ display: 'block', fontFamily: MONO, fontSize: 11, color: 'var(--ink-2, #4F473C)', marginTop: 2 }} title="Completed orders · mail that tried to give Mudavym instructions · mail that looked like spam — as Mudavym counted them, not a judgement of the vendor">
+                    {fmtCount(s.completed_orders)} orders · {fmtCount(s.injection_signals)} with hidden instructions · {fmtCount(s.spam_signals)} spam
                   </span>
                 </div>
                 {st.tone === 'trusted' ? (
@@ -169,10 +214,11 @@ function TrustedSenders({ senders, houseName }: { senders: ReturnType<typeof use
           })}
         </div>
       )}
+      {manages && stale && (data?.length ?? 0) > 0 && <Stale q={senders} what="the trusted senders" />}
       {untrustFailure && <p role="alert" style={ALERT}>{untrustFailure}</p>}
       <p style={HONEST}>
-        The counts are what the triage lane recorded, not a judgement of the vendor. Trust suspends itself on an injection
-        attempt or sustained spam; trusting a suspended domain again clears the suspension.
+        The counts are what Mudavym saw in their mail, not a judgement of the vendor. Trust is suspended on its own if their
+        mail tries to give Mudavym instructions or keeps looking like spam; trusting them again lifts the suspension.
       </p>
       <TrustPanel
         key={trusting?.id ?? 'none'}
@@ -197,11 +243,13 @@ function Strangers({
   strangers,
   allHouses,
   setAllHouses,
+  manages,
 }: {
   houseName: string | null;
   nameById: Map<string, string>;
   activeRestaurantId: string | null;
   houseCount: number;
+  manages: boolean;
   strangers: ReturnType<typeof useStrangers>;
   allHouses: boolean;
   setAllHouses: (v: boolean) => void;
@@ -215,6 +263,15 @@ function Strangers({
   const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => { if (undoTimer.current) clearTimeout(undoTimer.current); }, []);
   const { data, isLoading, isError, error, refetch } = strangers;
+  const stale = staleRead(strangers);
+  const retry = (
+    <>
+      {' '}
+      <button type="button" style={BTN_QUIET} onClick={() => refetch()}>
+        Retry
+      </button>
+    </>
+  );
   const busy = promote.isPending || putAway.isPending || restore.isPending;
 
   const onPutAway = async (p: ProspectDto) => {
@@ -222,7 +279,7 @@ function Strangers({
     const name = p.sender_name || p.domain;
     try {
       const r = await putAway.mutateAsync(p.id);
-      if (r?.dismissed === false) throw new Error('the gateway did not put it away');
+      if (r?.dismissed === false) throw new Error('it was not put away');
       setUndo({ id: p.id, name });
       if (undoTimer.current) clearTimeout(undoTimer.current);
       undoTimer.current = setTimeout(() => setUndo((u) => (u?.id === p.id ? null : u)), UNDO_MS);
@@ -257,8 +314,8 @@ function Strangers({
         )}
       </div>
       <p style={LEDE}>
-        Mail from senders who match no vendor of yours. Nothing here is trusted; the triage lane kept it because it carried
-        an attachment or read like an offer. It is never auto-replied to and its content is treated as untrusted.
+        Mail from senders who are not one of your vendors. Mudavym kept it because it carried an attachment or read like an
+        offer. Nothing here is trusted, and Mudavym never answers it on its own.
       </p>
       {undo && (
         <p role="status" style={{ ...LEDE, display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -269,16 +326,17 @@ function Strangers({
         </p>
       )}
       {isLoading ? (
-        <Quiet>Reading the strangers register…</Quiet>
-      ) : isError ? (
+        <Quiet>Reading the strangers…</Quiet>
+      ) : isError && !stale ? (
         <Failed>
-          {readFailureSentence('the strangers register', readFailure(error))}{' '}
-          <button type="button" style={BTN_QUIET} onClick={() => refetch()}>
-            Retry
-          </button>
+          {readFailureSentence('the strangers', readFailure(error))}
+          {retry}
         </Failed>
+      ) : stale && data?.length === 0 ? (
+        <Stale q={strangers} what="the strangers">{retry}</Stale>
       ) : !data || data.length === 0 ? (
-        <Quiet>No strangers waiting. This lane is active and listening — genuine outreach from vendors you have not added lands here.</Quiet>
+        // COMMS-W32: "active and listening" claimed a health nothing on this page measures.
+        <Quiet>No strangers waiting. Mail from vendors you have not added yet lands here.</Quiet>
       ) : (
         <div style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
           {data.map((p) => {
@@ -287,8 +345,8 @@ function Strangers({
             return (
               <div key={p.id} style={ROW}>
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-                  <span style={{ fontFamily: SANS, fontSize: 13, fontWeight: 600, color: 'var(--ink-1, #211C16)' }}>{name}</span>
-                  <span style={{ fontFamily: MONO, fontSize: 10.5, color: 'var(--ink-4, #665D50)' }}>
+                  <span style={{ fontFamily: SANS, fontSize: 13, fontWeight: 600, color: 'var(--ink-1, #211C16)', overflowWrap: 'anywhere' }}>{name}</span>
+                  <span style={{ fontFamily: MONO, fontSize: 10.5, color: 'var(--ink-4, #665D50)', overflowWrap: 'anywhere', minWidth: 0 }}>
                     {p.sender_email ? `<${p.sender_email}>` : p.domain} · {fmtDay(p.last_seen_at ?? p.first_seen_at)}
                   </span>
                 </div>
@@ -302,13 +360,26 @@ function Strangers({
                 {elsewhere ? (
                   <Quiet>Belongs to another house — switch to it to add or put it away.</Quiet>
                 ) : (
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <button type="button" style={BTN_PRIMARY} disabled={busy} aria-label={`Add ${name} as a vendor`} onClick={() => setAdding(p)}>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                    {/* COMMS-W31: adding a vendor is an owner's or manager's; staff learned that only after filling the ask. */}
+                    <button
+                      type="button"
+                      style={manages ? BTN_PRIMARY : { ...BTN_PRIMARY, opacity: 0.5, cursor: 'not-allowed' }}
+                      disabled={busy || !manages}
+                      aria-label={`Add ${name} as a vendor`}
+                      aria-describedby={manages ? undefined : `add-why-${p.id}`}
+                      onClick={() => setAdding(p)}
+                    >
                       Add as a vendor…
                     </button>
                     <button type="button" style={BTN_QUIET} disabled={busy} aria-label={`Put ${name} away`} onClick={() => onPutAway(p)}>
                       Put away
                     </button>
+                    {!manages && (
+                      <span id={`add-why-${p.id}`} style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-4, #665D50)' }}>
+                        Only an owner or manager can add a vendor.
+                      </span>
+                    )}
                   </div>
                 )}
               </div>
@@ -316,10 +387,11 @@ function Strangers({
           })}
         </div>
       )}
+      {stale && (data?.length ?? 0) > 0 && <Stale q={strangers} what="the strangers">{retry}</Stale>}
       {actFailure && <p role="alert" style={ALERT}>{actFailure}</p>}
       <p style={HONEST}>
-        “Add as a vendor” opens the ask and creates a real vendor row; it trusts nothing. The offer grader only grades their
-        mail once an invoice from them has been accepted — until then their offers read “cannot be graded”.
+        “Add as a vendor” makes them a vendor of this house; it trusts nothing. Mudavym grades their offers only once an
+        invoice from them has been accepted — until then their offers read “cannot be graded”.
       </p>
       <AddVendorPanel
         key={adding?.id ?? 'none'}
@@ -335,29 +407,44 @@ function Strangers({
 /* ── the section ─────────────────────────────────────────────────────── */
 
 export default function WhoIsWriting() {
-  const { houseName, nameById, activeRestaurantId, houseCount } = useHouse();
-  const [allHouses, setAllHouses] = useState(false);
-  const senders = useSenderRegister();
-  const strangers = useStrangers(houseCount > 1 && allHouses);
-  // Folded to its one-line summary; `?senders=open` keeps it open across a reload.
+  const { houseName, nameById, activeRestaurantId, houseCount, manages } = useHouse();
+  // Folded to its one-line summary; `?senders=open` keeps it open across a
+  // reload, `?senders=all` open with every house's strangers (COMMS-W35,
+  // founder: "A: page + queue back") — a refresh or a shared link keeps the
+  // scope. Hide drops both, so the folded line always counts this house.
   const [params, setParams] = useSearchParams();
-  const open = params.get('senders') === 'open';
+  const shown = params.get('senders');
+  const open = shown === 'open' || shown === 'all';
+  const allHouses = shown === 'all';
+  const setAllHouses = (all: boolean) => {
+    params.set('senders', all ? 'all' : 'open');
+    setParams(params, { replace: true });
+  };
   const toggle = () => {
     if (open) params.delete('senders');
     else params.set('senders', 'open');
     setParams(params, { replace: true });
   };
+  const senders = useSenderRegister(manages);
+  const strangers = useStrangers(houseCount > 1 && allHouses);
+  const sendersStale = manages && staleRead(senders);
+  const strangersStale = staleRead(strangers);
+  const staleAts = [sendersStale && senders.dataUpdatedAt, strangersStale && strangers.dataUpdatedAt].filter(
+    (t): t is number => typeof t === 'number' && t > 0,
+  );
+  const staleAt = staleAts.length ? Math.min(...staleAts) : 0;
 
   return (
-    <section aria-label="Who is writing" data-tour="communications-senders" style={{ marginTop: 40 }}>
+    <section aria-label="Who is writing" style={{ marginTop: 40 }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 16, flexWrap: 'wrap', marginBottom: open ? 14 : 0 }}>
         <h2 style={{ ...H3, fontSize: 11, margin: 0 }}>Who is writing</h2>
         <span style={{ fontFamily: MONO, fontSize: 11, color: 'var(--ink-2, #4F473C)' }} data-testid="who-summary">
           {whoIsWritingSummary(
-            senders.isError ? undefined : senders.data,
-            strangers.isError ? undefined : strangers.data,
+            senders.isError && !sendersStale ? undefined : senders.data,
+            strangers.isError && !strangersStale ? undefined : strangers.data,
             SENDERS_SERVER_WINDOWS.PROSPECTS,
           )}
+          {staleAt > 0 && ` · as it was ${fmtAsOf(staleAt)}`}
         </span>
         <button type="button" style={BTN_QUIET} aria-expanded={open} onClick={toggle}>
           {open ? 'Hide' : 'Show'}
@@ -365,7 +452,7 @@ export default function WhoIsWriting() {
       </div>
       {open && (
       <div className="grid gap-8 lg:grid-cols-2">
-        <TrustedSenders senders={senders} houseName={houseName} />
+        <TrustedSenders senders={senders} houseName={houseName} manages={manages} />
         <Strangers
           houseName={houseName}
           nameById={nameById}
@@ -374,6 +461,7 @@ export default function WhoIsWriting() {
           strangers={strangers}
           allHouses={allHouses}
           setAllHouses={setAllHouses}
+          manages={manages}
         />
       </div>
       )}

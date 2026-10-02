@@ -27,10 +27,11 @@
  * them any more.
  */
 
-import { useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { Link, useSearchParams } from 'react-router-dom';
 import { PenLine, Library } from 'lucide-react';
-import { Wordmark } from '@/components/mudavym';
+import { Stub, Wordmark } from '@/components/mudavym';
 import type { ProcurementHistoryItem } from '../../../hooks/queries/useConversationQueries';
 import { ink, settle } from '../../../lib/mudavym/motion';
 import {
@@ -40,15 +41,22 @@ import {
   SANS,
   SERIF,
   draftChipText,
+  failedReadsSentence,
+  fmtAsOf,
   fmtWhen,
+  heldBecause,
+  readAgainFailed,
   sendState,
   typeLabel,
+  type FailedRead,
 } from './cm-format';
-import { TemplateSheet } from './TemplateSheet';
+import { TemplateSheet, type HeldTemplate } from './TemplateSheet';
+import { changedLine, heldLine, useHeldWords } from './held-words';
 import WhoIsWriting from './WhoIsWriting';
-import { ComposeSheet } from './Compose/ComposeSheet';
+import { ComposeSheet, type HeldLetter } from './Compose/ComposeSheet';
 import { DraftedReplyPanel, type DraftedReply } from './DraftedReplyPanel';
-import { LetterRequestsPanel, useLetterRequests } from './LetterRequestsPanel';
+import { QueuedPullBack } from './QueuedPullBack';
+import { LetterRequestsPanel, PILL, useLetterRequests } from './LetterRequestsPanel';
 import { useLetterSenderStanding } from './Compose/useComposeData';
 import { HouseDrafts, useHouseDrafts, type HouseDraft } from './Compose/HouseDrafts';
 import { COMMS_SERVER_WINDOWS, useCommsNextData } from './useCommsNextData';
@@ -74,9 +82,12 @@ function GlanceFigure({
   floor = false,
   failed = false,
   floorNote,
+  at = 0,
 }: {
   label: string;
   value: number | null;
+  /** When the figure's reads last answered (`dataUpdatedAt`); said when a later read failed. */
+  at?: number;
   /** Says, on hover, WHY the figure is a floor — the cap and where it comes from. */
   floorNote?: string;
   /** True when the figure is a floor (its source window was truncated). */
@@ -93,6 +104,17 @@ function GlanceFigure({
   failed?: boolean;
 }) {
   const unknown = value === null;
+  // COMMS-W33 (founder: "A: keep, say when"): a figure whose read failed after
+  // answering keeps its number, and says when it is from. It used to show 4 in
+  // red while its accessible name said only "could not be loaded" and the
+  // banner said it showed an em dash.
+  const said = failed
+    ? unknown
+      ? `${label}: could not be read`
+      : `${label}: ${floor ? GE : ''}${value} as it was ${fmtAsOf(at)}. It could not be read again.`
+    : unknown
+      ? `${label}: has not answered yet`
+      : undefined;
   return (
     <div style={{ minWidth: 96 }}>
       <span
@@ -110,14 +132,8 @@ function GlanceFigure({
       </span>
       <span
         data-state={failed ? 'failed' : unknown ? 'unanswered' : 'measured'}
-        aria-label={
-          failed
-            ? `${label}: could not be loaded`
-            : unknown
-              ? `${label}: has not answered yet`
-              : undefined
-        }
-        title={failed ? `${label}: could not be loaded` : floor ? floorNote : undefined}
+        aria-label={said}
+        title={failed ? said : floor ? floorNote : undefined}
         style={{
           fontFamily: MONO,
           fontSize: 22,
@@ -246,7 +262,7 @@ function StateChip({
   );
 }
 
-function LedgerRow({ item, hideVendor = false }: { item: ProcurementHistoryItem; hideVendor?: boolean }) {
+function LedgerRow({ item }: { item: ProcurementHistoryItem }) {
   const [open, setOpen] = useState(false);
   return (
     <div style={{ borderBottom: '1px solid var(--paper-2, #EAE4D8)' }}>
@@ -265,11 +281,9 @@ function LedgerRow({ item, hideVendor = false }: { item: ProcurementHistoryItem;
         <span style={{ fontFamily: MONO, fontSize: 10.5, color: 'var(--ink-4, #665D50)', minWidth: 44 }}>
           {fmtWhen(item.sentAt ?? item.createdAt)}
         </span>
-        {!hideVendor && (
-          <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--ink-1, #211C16)' }}>
-            {item.providerName ?? EM}
-          </span>
-        )}
+        <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--ink-1, #211C16)' }}>
+          {item.providerName ?? EM}
+        </span>
         <span style={{ fontSize: 12, color: 'var(--ink-2, #4F473C)' }}>
           {typeLabel(item.emailType, TYPE_LABELS, item.direction)}
           {item.wineName ? ` · ${item.wineName}` : ''}
@@ -278,6 +292,8 @@ function LedgerRow({ item, hideVendor = false }: { item: ProcurementHistoryItem;
         <span className="ml-auto" />
         <StateChip status={item.status} direction={item.direction} reason={item.relayRefusalReason} />
       </button>
+      {/* COMMS-W23: a queued letter can be pulled back from the book, not only from the open sheet. */}
+      {item.direction !== 'INBOUND' && sendState(item.status) === 'queued' && <QueuedPullBack id={item.id} />}
       {open && (
         <div
           className="pb-3 pl-14 pr-2"
@@ -296,6 +312,9 @@ function LedgerRow({ item, hideVendor = false }: { item: ProcurementHistoryItem;
               fontSize: 12,
               color: 'var(--ink-2, #4F473C)',
               whiteSpace: 'pre-wrap',
+              // COMMS-W30: a pasted link or any unbroken run wraps inside the row
+              // instead of pushing the whole page sideways.
+              overflowWrap: 'anywhere',
               maxWidth: '68ch',
               maxHeight: 220,
               overflowY: 'auto',
@@ -316,140 +335,33 @@ function LedgerRow({ item, hideVendor = false }: { item: ProcurementHistoryItem;
           {item.direction !== 'INBOUND' && item.status === 'RELAY_REFUSED' && (
             // ADR 0099, founder 2026-09-21: the draft closed, not retried, and
             // the manager sees why — the gateway's own sentence, verbatim.
-            <p style={{ fontSize: 12, color: 'var(--alarm-deep, #8C3322)', maxWidth: '68ch', margin: '6px 0 0' }}>
-              Not sent — the relay refused it: {item.relayRefusalReason || 'no reason was recorded with this refusal.'}
+            <p style={{ fontSize: 12, color: 'var(--alarm-deep, #8C3322)', maxWidth: '68ch', margin: '6px 0 0', overflowWrap: 'anywhere' }}>
+              Not sent — it was refused on the way out: {item.relayRefusalReason || 'no reason was recorded with this refusal.'}
             </p>
           )}
           {item.constraintFlags && item.constraintFlags.hard.length > 0 && (
             <p style={{ fontSize: 11, color: 'var(--ink-4, #665D50)', margin: '6px 0 0' }}>
-              Held by rule: {item.constraintFlags.hard.join(', ')}
+              {heldBecause(item.constraintFlags.hard)}
             </p>
           )}
           <p style={{ fontFamily: MONO, fontSize: 9.5, color: 'var(--ink-4, #665D50)', margin: '6px 0 0' }}>
-            {item.orderNumber ? `order ${item.orderNumber} · ` : ''}round {item.roundCount}
+            {/* COMMS-W22: a letter about an order opens that order. */}
+            {item.orderNumber && item.orderId ? (
+              <>
+                <Link to={`/orders/${item.orderId}`} style={{ color: 'var(--seal-deep, #14515C)' }}>
+                  order {item.orderNumber}
+                </Link>
+                {' · '}
+              </>
+            ) : item.orderNumber ? (
+              `order ${item.orderNumber} · `
+            ) : (
+              ''
+            )}
+            round {item.roundCount}
           </p>
         </div>
       )}
-    </div>
-  );
-}
-
-/* COMMS-W7 preview (walk-through 2026-10-01). Three book layouts for the
-   founder to compare; `?book=compare` draws them side by side. Whichever he
-   picks stays and the rest of this block leaves with the preview switch. */
-type BookGroup = { key: string; vendor: string; order: string | null; items: ProcurementHistoryItem[] };
-
-function groupBook(rows: ProcurementHistoryItem[], by: 'vendor' | 'conversation'): BookGroup[] {
-  // `rows` arrive newest first, so a group's first row is its newest letter
-  // and Map insertion order is newest activity first.
-  const groups = new Map<string, BookGroup>();
-  for (const item of rows) {
-    const vendorKey = item.providerId ?? item.providerName ?? 'unknown';
-    const key = by === 'vendor' ? vendorKey : `${vendorKey}|${item.orderId ?? ''}`;
-    const g = groups.get(key) ?? {
-      key,
-      vendor: item.providerName ?? EM,
-      order: by === 'vendor' ? null : item.orderNumber ?? 'no order',
-      items: [],
-    };
-    g.items.push(item);
-    groups.set(key, g);
-  }
-  return [...groups.values()];
-}
-
-function ConversationRow({ group }: { group: BookGroup }) {
-  const [open, setOpen] = useState(false);
-  const latest = group.items[0];
-  // ADR 0020: a newer letter must never hide an older one that did not leave.
-  const earlier = group.items.slice(1).filter((i) => i.direction !== 'INBOUND');
-  const earlierNotSent = earlier.filter((i) => sendState(i.status) === 'failed').length;
-  const earlierUnconfirmed = earlier.filter((i) => sendState(i.status) === 'unconfirmed').length;
-  const n = group.items.length;
-  return (
-    <div style={{ borderBottom: '1px solid var(--paper-2, #EAE4D8)' }}>
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        aria-expanded={open}
-        className="cm-row flex w-full items-start gap-3 py-2.5 text-left"
-        style={{ border: 'none', cursor: 'pointer', fontFamily: SANS, transition: `background ${ink.ms}ms ${ink.easing}` }}
-      >
-        <span style={{ fontFamily: MONO, fontSize: 10.5, color: 'var(--ink-4, #665D50)', minWidth: 44, paddingTop: 2 }}>
-          {fmtWhen(latest.sentAt ?? latest.createdAt)}
-        </span>
-        <span className="flex min-w-0 flex-col gap-0.5">
-          <span style={{ fontSize: 13, color: 'var(--ink-1, #211C16)' }}>
-            <span style={{ fontWeight: 600 }}>{group.vendor}</span>
-            <span style={{ color: 'var(--ink-4, #665D50)' }}> · {group.order}</span>
-          </span>
-          <span style={{ fontSize: 12, color: 'var(--ink-2, #4F473C)' }}>
-            {typeLabel(latest.emailType, TYPE_LABELS, latest.direction)}
-            {latest.wineName ? ` · ${latest.wineName}` : ''}
-          </span>
-          {(earlierNotSent > 0 || earlierUnconfirmed > 0) && (
-            <span style={{ fontSize: 11.5, color: 'var(--alarm-deep, #8C3322)' }}>
-              {[
-                earlierNotSent > 0 ? `${earlierNotSent} earlier letter${earlierNotSent === 1 ? '' : 's'} not sent` : null,
-                earlierUnconfirmed > 0 ? `${earlierUnconfirmed} earlier sent · unconfirmed` : null,
-              ]
-                .filter(Boolean)
-                .join(' · ')}
-            </span>
-          )}
-        </span>
-        <span className="ml-auto" />
-        <span style={{ fontFamily: MONO, fontSize: 9.5, color: 'var(--ink-4, #665D50)', whiteSpace: 'nowrap', paddingTop: 3 }}>
-          {n} letter{n === 1 ? '' : 's'}
-        </span>
-        <StateChip status={latest.status} direction={latest.direction} reason={latest.relayRefusalReason} />
-      </button>
-      {open && (
-        <div className="pb-2 pl-14" style={{ animation: `cm-settle ${settle.ms}ms ${settle.easing} both` }}>
-          {[...group.items].reverse().map((item) => (
-            <LedgerRow key={item.id} item={item} hideVendor />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function BookByVendor({ rows }: { rows: ProcurementHistoryItem[] }) {
-  return (
-    <>
-      {groupBook(rows, 'vendor').map((g) => (
-        <div key={g.key} style={{ marginBottom: 14 }}>
-          <h3
-            style={{
-              fontFamily: MONO,
-              fontSize: 9.5,
-              fontWeight: 600,
-              letterSpacing: '0.14em',
-              textTransform: 'uppercase',
-              color: 'var(--ink-3, #7C7365)',
-              margin: '10px 0 2px',
-            }}
-          >
-            {g.vendor}
-          </h3>
-          <div style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
-            {g.items.map((item) => (
-              <LedgerRow key={item.id} item={item} hideVendor />
-            ))}
-          </div>
-        </div>
-      ))}
-    </>
-  );
-}
-
-function BookByConversation({ rows }: { rows: ProcurementHistoryItem[] }) {
-  return (
-    <div style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
-      {groupBook(rows, 'conversation').map((g) => (
-        <ConversationRow key={g.key} group={g} />
-      ))}
     </div>
   );
 }
@@ -469,12 +381,48 @@ export default function CommunicationsNext() {
   const houseDrafts = useHouseDrafts();
   const [params, setParams] = useSearchParams();
   const [draft, setDraft] = useState<HouseDraft | null>(null);
+  // COMMS-W34: words a person left a sheet with stay on a stub where it was
+  // opened — "new" for Write a letter, a drafted letter by its id, "t" for the
+  // templates. Opening the sheet again hands them back and takes the stub away.
+  const letters = useHeldWords<HeldLetter>();
+  const templatesHeld = useHeldWords<HeldTemplate>();
+  const [draftFrom, setDraftFrom] = useState<HeldLetter | null>(null);
+  const [composeKey, setComposeKey] = useState(0);
+  const [composeFrom, setComposeFrom] = useState<HeldLetter | null>(null);
+  const [templateFrom, setTemplateFrom] = useState<HeldTemplate | null>(null);
+  // Resume takes its own stub away, and the button with it. Focus moves to the
+  // row's own opener first, so the sheet hands focus back there when it closes
+  // instead of dropping it on the page (ADR 0112: focus returns to the opener).
+  const writeRef = useRef<HTMLButtonElement>(null);
+  const libraryRef = useRef<HTMLButtonElement>(null);
+  const openDraft = (d: HouseDraft) => {
+    setDraftFrom(letters.words(d.id));
+    letters.drop(d.id);
+    setDraft(d);
+    // COMMS-W35 (founder: "A: page + queue back"): an opened letter is in the
+    // address its links already use, so a refresh reopens it. In place, not a
+    // new step back.
+    if (params.get('draft') !== d.id) {
+      params.set('draft', d.id);
+      setParams(params, { replace: true });
+    }
+  };
+  const openCompose = () => {
+    // The composer stays mounted, so a held letter is still in it.
+    letters.drop('new');
+    setCompose(true);
+  };
+  const openLibrary = () => {
+    setTemplateFrom(templatesHeld.words('t'));
+    templatesHeld.drop('t');
+    setLibrary(true);
+  };
   const linked = params.get('draft');
   useEffect(() => {
     if (!linked || !houseDrafts.drafts) return;
     const hit = houseDrafts.drafts.find((d) => d.id === linked);
-    if (hit) setDraft(hit);
-  }, [linked, houseDrafts.drafts]);
+    if (hit && draft?.id !== hit.id) openDraft(hit);
+  }, [linked, houseDrafts.drafts]); // eslint-disable-line react-hooks/exhaustive-deps
   const closeDraft = () => {
     setDraft(null);
     houseDrafts.refetch();
@@ -482,6 +430,35 @@ export default function CommunicationsNext() {
       params.delete('draft');
       setParams(params, { replace: true });
     }
+  };
+
+  /* `?reply=<orderId>` is the house counter's "Replies waiting" link (COMMS-W19,
+     shared batch 2 / DASH-W16e). Once the drafts read has answered it opens that
+     order's drafted reply, as clicking its row does; when no draft matches, the
+     page says so rather than opening nothing. The param goes when the panel or
+     the note closes. */
+  const replyLinked = params.get('reply');
+  const replyHit = !!replyLinked && data.drafts.some((d) => d.orderId === replyLinked);
+  // The draft the link already opened: once it is sent from the panel it leaves
+  // the list, and that is not a link that found nothing.
+  const [replyOpened, setReplyOpened] = useState<string | null>(null);
+  useEffect(() => {
+    if (!replyLinked || !replyHit) return;
+    setDraftOpen(replyLinked);
+    setReplyOpened(replyLinked);
+  }, [replyLinked, replyHit]);
+  const dropReply = () => {
+    if (!params.has('reply')) return;
+    params.delete('reply');
+    setParams(params, { replace: true });
+  };
+  // A reply opened from its row writes the same link (COMMS-W35); the effect
+  // above then counts it as opened here, so sending it is not later called a
+  // link that found nothing.
+  const openReply = (orderId: string) => {
+    setDraftOpen(orderId);
+    params.set('reply', orderId);
+    setParams(params, { replace: true });
   };
 
   /* Everything waiting on a person, from the three reads that list it: letters
@@ -498,6 +475,32 @@ export default function CommunicationsNext() {
     ? null
     : waitingParts.reduce<number>((a, n) => a + (n ?? 0), 0);
   const waitingFailed = letterQ.isError || data.failed.drafts || houseDrafts.failed;
+  // COMMS-W33: every read on the page that could not be read, for the banner.
+  // Each part of the page says its own reason and when its rows are from.
+  const failedReads: FailedRead[] = [
+    ...(data.failed.history ? [{ name: 'the conversation book', stale: data.hasData, at: data.historyAt ?? 0 }] : []),
+    ...(data.failed.drafts
+      ? [{ name: 'the replies the house has written', stale: data.draftsKnown, at: data.draftsAt ?? 0 }]
+      : []),
+    ...(letterQ.isError
+      ? [{ name: 'the letters waiting for a manager', stale: letterQ.data !== undefined, at: letterQ.dataUpdatedAt ?? 0 }]
+      : []),
+    ...(houseDrafts.failed
+      ? [{ name: 'the drafted letters', stale: houseDrafts.drafts !== null, at: houseDrafts.at ?? 0 }]
+      : []),
+  ];
+  const waitingAt = Math.min(
+    ...failedReads.filter((r) => r.name !== 'the conversation book' && r.stale).map((r) => r.at),
+  );
+  // "Try again" re-reads everything on the page; it used to re-read two of six.
+  const queryClient = useQueryClient();
+  const readAgain = () => {
+    data.refetch();
+    void letterQ.refetch();
+    houseDrafts.refetch();
+    for (const key of ['comms-senders', 'comms-strangers', 'house-letter-queued'])
+      void queryClient.invalidateQueries({ queryKey: [key] });
+  };
 
   return (
     <div
@@ -528,6 +531,10 @@ export default function CommunicationsNext() {
                 letterSpacing: '-0.015em',
                 lineHeight: 1.1,
                 margin: '4px 0 0',
+                // COMMS-W36: its own ink, so the old Dark theme a browser may still
+                // keep (`html.dark`; #576 took its control off /profile) cannot
+                // turn it pale on the paper ground.
+                color: 'var(--ink-1, #211C16)',
               }}
             >
               Communications
@@ -535,20 +542,27 @@ export default function CommunicationsNext() {
           </div>
           {/* the at-a-glance strip the old page earned its keep with */}
           <div className="flex flex-wrap gap-6">
-            <GlanceFigure label="Waiting on you" value={waitingCount} failed={waitingFailed} />
+            <GlanceFigure
+              label="Waiting on you"
+              value={waitingCount}
+              failed={waitingFailed}
+              at={Number.isFinite(waitingAt) ? waitingAt : 0}
+            />
             <GlanceFigure
               label="Sent · 30 days"
               value={data.glance.sentLast30}
               floor={data.glance.sentLast30Truncated}
-              floorNote={`At least this many: the history endpoint serves at most ${COMMS_SERVER_WINDOWS.HISTORY_ROWS} rows, and that window is full.`}
+              floorNote={`At least this many: the book holds only the latest ${COMMS_SERVER_WINDOWS.HISTORY_ROWS} letters, and it is full.`}
               failed={data.failed.history}
+              at={data.historyAt}
             />
             <GlanceFigure
               label="Replies · 30 days"
               value={data.glance.repliesLast30}
               floor={data.glance.sentLast30Truncated}
-              floorNote={`At least this many: the history endpoint serves at most ${COMMS_SERVER_WINDOWS.HISTORY_ROWS} rows, and that window is full.`}
+              floorNote={`At least this many: the book holds only the latest ${COMMS_SERVER_WINDOWS.HISTORY_ROWS} letters, and it is full.`}
               failed={data.failed.history}
+              at={data.historyAt}
             />
           </div>
         </header>
@@ -568,7 +582,12 @@ export default function CommunicationsNext() {
             every house on every visit, and the second is deployment plumbing
             that now reads on the admin desk. A real failure of any of the
             three owned sources still raises this banner. */}
-        {data.failedSources.length > 0 && (
+        {/* COMMS-W33: the banner now names every read on the page that failed
+            and says when what is on screen is from (`failedReadsSentence`). It
+            said "Request failed with status code 500" and "those figures show —
+            because they failed, not because they are still in flight" over
+            figures that showed 4, 3 and 3. */}
+        {failedReads.length > 0 && (
           <div
             role="alert"
             className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl px-4 py-3"
@@ -578,25 +597,10 @@ export default function CommunicationsNext() {
               background: 'var(--paper-1, #F3EFE6)',
             }}
           >
-            <span style={{ fontSize: 12.5, color: 'var(--ink-2, #4F473C)' }}>
-              {data.failed.history
-                ? data.hasData
-                  ? `The conversation book could not be refreshed (${data.errorMessage}) — its rows and figures show the last answer, not the present.`
-                  : `The conversation book could not be reached (${data.errorMessage}) — its figures show ${EM}.`
-                : null}
-              {data.failed.history && data.failedSources.length > 1 ? ' ' : null}
-              {data.failedSources.length > (data.failed.history ? 1 : 0) ? (
-                <>
-                  {data.failed.history ? 'These also failed' : 'Could not be loaded'}:{' '}
-                  {data.failedSources.filter((s) => s !== 'the conversation book').join(', ')} — those
-                  figures show {EM} because they failed, not because they are still in flight. Any
-                  figure that did answer keeps its answer.
-                </>
-              ) : null}
-            </span>
+            <span style={{ fontSize: 12.5, color: 'var(--ink-2, #4F473C)' }}>{failedReadsSentence(failedReads)}</span>
             <button
               type="button"
-              onClick={data.refetch}
+              onClick={readAgain}
               style={{
                 fontSize: 12,
                 fontWeight: 600,
@@ -613,7 +617,7 @@ export default function CommunicationsNext() {
           </div>
         )}
 
-        <section aria-label="Waiting on you" data-tour="communications-waiting" className="mb-6">
+        <section aria-label="Waiting on you" className="mb-6">
           <h2
             style={{
               fontFamily: MONO,
@@ -627,7 +631,27 @@ export default function CommunicationsNext() {
           >
             Waiting on you · {waitingCount ?? EM}
           </h2>
-          {waitingCount === 0 && (
+          {replyLinked && !replyHit && replyOpened !== replyLinked && (data.draftsKnown || data.failed.drafts) && (
+            <p
+              role="status"
+              data-testid="reply-link-missing"
+              className="mb-3 flex flex-wrap items-baseline gap-2"
+              style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-2, #4F473C)', margin: '0 0 12px' }}
+            >
+              {data.draftsKnown && !data.failed.drafts
+                ? 'That reply is no longer waiting.'
+                : 'That reply could not be looked up: the replies the house has written could not be read.'}
+              <button
+                type="button"
+                onClick={dropReply}
+                style={{ fontSize: 12, color: 'var(--seal-deep, #14515C)', fontWeight: 600, background: 'none', border: 0, padding: 0, cursor: 'pointer' }}
+              >
+                Dismiss
+              </button>
+            </p>
+          )}
+          {/* COMMS-W33: a zero from a read that then failed is not "nothing waiting"; the failed part says it. */}
+          {waitingCount === 0 && !waitingFailed && (
             <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-4, #665D50)', margin: 0 }}>
               Nothing is waiting on you.
             </p>
@@ -651,11 +675,14 @@ export default function CommunicationsNext() {
               className="mb-6 rounded-xl p-4"
               style={{ fontFamily: SANS, border: '1px solid var(--paper-2, #EAE4D8)', background: 'var(--paper-1, #F3EFE6)' }}
             >
-              <h2
+              {/* COMMS-W36: under "Waiting on you", so one level below it; the
+                  line it had as an h2 is kept, so only its level changed. */}
+              <h3
                 style={{
                   fontFamily: MONO,
                   fontSize: 9.5,
                   fontWeight: 600,
+                  lineHeight: '2rem',
                   letterSpacing: '0.14em',
                   textTransform: 'uppercase',
                   color: 'var(--ink-4, #665D50)',
@@ -663,7 +690,7 @@ export default function CommunicationsNext() {
                 }}
               >
                 The house has written · {data.drafts.length} waiting
-              </h2>
+              </h3>
               <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
                 {data.drafts.map((d) => (
                   <li key={d.id} className="flex flex-wrap items-baseline justify-between gap-2 py-1">
@@ -672,10 +699,39 @@ export default function CommunicationsNext() {
                       {d.providerName ? ` · ${d.providerName}` : ''}
                       {d.orderNumber ? ` · ${d.orderNumber}` : ''}
                     </span>
+                    {/* COMMS-W24: one row per order; the older drafts it stands in front of are said, not hidden. */}
+                    {d.replaces > 0 && (
+                      <span
+                        data-testid="draft-replaces"
+                        style={{ order: 3, flexBasis: '100%', fontSize: 11, color: 'var(--ink-4, #665D50)' }}
+                      >
+                        {d.replaces === 1
+                          ? 'An earlier draft for this order was replaced by this one.'
+                          : `${d.replaces} earlier drafts for this order were replaced by this one.`}
+                      </span>
+                    )}
+                    {/* COMMS-W13: a draft in a house with no mailbox cannot leave. */}
+                    {letterStanding.noMailbox && (
+                      <span
+                        data-testid="draft-row-blocked"
+                        style={{
+                          marginLeft: 'auto',
+                          fontSize: 11,
+                          fontWeight: 600,
+                          padding: '2px 8px',
+                          borderRadius: 999,
+                          whiteSpace: 'nowrap',
+                          background: PILL.blocked.bg,
+                          color: PILL.blocked.fg,
+                        }}
+                      >
+                        {PILL.blocked.words}
+                      </span>
+                    )}
                     <button
                       type="button"
                       data-testid="open-drafted-reply"
-                      onClick={() => setDraftOpen(d.orderId)}
+                      onClick={() => openReply(d.orderId)}
                       style={{
                         fontSize: 11.5,
                         fontWeight: 600,
@@ -695,17 +751,28 @@ export default function CommunicationsNext() {
               <p style={{ fontSize: 11, color: 'var(--ink-4, #665D50)', margin: '8px 0 0' }}>
                 Nothing here has been sent. A letter reaches a vendor only when a person holds the
                 seal on it.
+                {letterStanding.noMailbox &&
+                  ' This house has no mailbox to send from yet, so none of these can leave.'}
               </p>
+              {/* COMMS-W33: the rows above stay openable; this says when they are from. It used
+                  to say "none can be opened from here" under rows that could be. */}
+              {data.failed.drafts && (
+                <p role="status" data-testid="drafts-stale" style={{ fontSize: 11, color: 'var(--ink-2, #4F473C)', margin: '6px 0 0' }}>
+                  {readAgainFailed(data.draftsError ?? '', data.draftsAt ?? 0, false)}
+                </p>
+              )}
             </section>
           )}
-          {data.failed.drafts && (
+          {data.failed.drafts && !(data.draftsKnown && data.drafts.length > 0) && (
             <p
               role="status"
+              data-testid="drafts-unread"
               className="mb-6"
               style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-2, #4F473C)' }}
             >
-              The drafts register could not be read, so no letter can be opened from here. That is a
-              failed read, not an empty desk.
+              {data.draftsKnown
+                ? readAgainFailed(data.draftsError ?? '', data.draftsAt ?? 0, true, 'the replies the house has written')
+                : `The replies the house has written could not be read (${data.draftsError ?? ''}). That does not mean none are waiting.`}
             </p>
           )}
           {(houseDrafts.failed || (houseDrafts.drafts?.length ?? 0) > 0) && (
@@ -717,14 +784,36 @@ export default function CommunicationsNext() {
                 drafts={houseDrafts.drafts}
                 failed={houseDrafts.failed}
                 error={houseDrafts.error}
-                onOpen={setDraft}
+                at={houseDrafts.at}
+                onOpen={openDraft}
+                below={(d, focusRow) => {
+                  const h = letters.get(d.id);
+                  return h ? (
+                    <Stub
+                      key={h.n}
+                      words={changedLine(h.words, { subject: d.subject ?? '', body: d.body })}
+                      onResume={() => {
+                        focusRow();
+                        openDraft(d);
+                      }}
+                      onDiscard={() => letters.discard(d.id)}
+                      onRestore={() => letters.restore(d.id)}
+                      discardLabel="Discard my changes"
+                      footer="The drafted letter itself stays as it was; only your changes are held here, until you leave this page."
+                    />
+                  ) : null;
+                }}
               />
             </div>
           )}
-          {linked && houseDrafts.drafts && !houseDrafts.drafts.some((d) => d.id === linked) && (
+          {/* Not while that letter is open here: one sent from its sheet leaves the
+              list before the sheet closes, and the address goes with the sheet. */}
+          {linked && draft?.id !== linked && houseDrafts.drafts && !houseDrafts.drafts.some((d) => d.id === linked) && (
             <p role="status" style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-2, #4F473C)', margin: '8px 0 0' }}>
-              The letter this link points to is no longer a draft — it was sent or discarded. The
-              conversation book says which.
+              {/* COMMS-W31: for staff the letter may well still be a draft — it is just not theirs to open. */}
+              {houseDrafts.withheld
+                ? 'The letter this link points to is opened by an owner or manager of this house.'
+                : 'The letter this link points to is no longer a draft — it was sent or discarded. The conversation book says which.'}
             </p>
           )}
         </section>
@@ -733,38 +822,43 @@ export default function CommunicationsNext() {
           {/* ── the conversation book ─────────────────────────────────── */}
           <section
             aria-label="Conversation book"
-            data-tour="communications-book"
-            style={params.get('book') === 'compare' ? { gridColumn: '1 / -1' } : undefined}
           >
+            {/* COMMS-W36 (founder: "Visible label"): the book was the one region a
+                heading list skipped. The house's small mono label, as the rail's. */}
+            <h2
+              style={{
+                fontFamily: MONO,
+                fontSize: 9.5,
+                fontWeight: 600,
+                letterSpacing: '0.14em',
+                textTransform: 'uppercase',
+                color: 'var(--ink-4, #665D50)',
+                margin: '0 0 8px',
+              }}
+            >
+              The conversation book
+            </h2>
+            {/* COMMS-W33: the book says its own failure where its rows are; it used to leave an
+                empty ruled box, with the reason only in the banner, as "status code 500". */}
+            {data.isError && (
+              <p
+                role="status"
+                data-testid="book-unread"
+                style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-2, #4F473C)', margin: '0 0 8px' }}
+              >
+                {data.hasData
+                  ? readAgainFailed(data.errorMessage, data.historyAt ?? 0, data.rows.length === 0, 'the conversation book')
+                  : `The conversation book could not be read (${data.errorMessage}). That does not mean nothing was written.`}
+              </p>
+            )}
             {!data.hasData && !data.isError ? (
               <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-4, #665D50)' }}>
-                Reaching the gateway…
+                Reading the conversation book…
               </p>
             ) : data.rows.length === 0 && !data.isError ? (
               <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-4, #665D50)' }}>
                 The book is open and empty — no vendor exchanges yet.
               </p>
-            ) : params.get('book') === 'compare' ? (
-              <div className="grid gap-6 lg:grid-cols-3" data-r2-compare style={{ width: 'calc(100vw - 320px)', maxWidth: 1280 }}>
-                {(
-                  [
-                    ['1 · Now: flat, newest first', <div key="flat" style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>{data.rows.map((item) => <LedgerRow key={item.id} item={item} />)}</div>],
-                    ['2 · Grouped under each vendor', <BookByVendor key="vendor" rows={data.rows} />],
-                    ['3 · One row per conversation', <BookByConversation key="conv" rows={data.rows} />],
-                  ] as const
-                ).map(([title, body]) => (
-                  <div key={title} className="min-w-0" style={{ fontFamily: SANS }}>
-                    <p style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--seal-deep, #14515C)', margin: '0 0 6px' }}>
-                      {title}
-                    </p>
-                    {body}
-                  </div>
-                ))}
-              </div>
-            ) : params.get('book') === 'vendor' ? (
-              <BookByVendor rows={data.rows} />
-            ) : params.get('book') === 'conversation' ? (
-              <BookByConversation rows={data.rows} />
             ) : (
               <div style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
                 {data.rows.map((item) => (
@@ -775,7 +869,7 @@ export default function CommunicationsNext() {
           </section>
 
           {/* ── the channels rail: what this page is wired to ─────────── */}
-          <aside className="flex flex-col gap-4" style={{ fontFamily: SANS }} data-tour="communications-write">
+          <aside className="flex flex-col gap-4" style={{ fontFamily: SANS }}>
             <div
               className="rounded-xl p-4"
               style={{ border: '1px solid var(--paper-2, #EAE4D8)', background: 'var(--paper-1, #F3EFE6)' }}
@@ -810,16 +904,57 @@ export default function CommunicationsNext() {
                   exactly what that deletion closed — it is a founder question,
                   filed in §13, not a gap to fill quietly. */}
               <div className="flex flex-col gap-2">
-                <button type="button" onClick={() => setCompose(true)} className="cm-row cm-card flex items-center gap-2 rounded-lg px-3 py-2 text-left"
+                <button type="button" ref={writeRef} data-tour="comms-write" onClick={openCompose} className="cm-row cm-card flex items-center gap-2 rounded-lg px-3 py-2 text-left"
                   style={{ border: '1px solid var(--seal-ring, rgba(26,94,107,.32))', fontSize: 12.5, fontWeight: 600, color: 'var(--seal-deep, #14515C)', cursor: 'pointer' }}>
                   <PenLine size={13} strokeWidth={1.75} aria-hidden />
                   Write a letter
                 </button>
-                <button type="button" onClick={() => setLibrary(true)} className="cm-row cm-card flex items-center gap-2 rounded-lg px-3 py-2 text-left"
+                {(() => {
+                  const h = letters.get('new');
+                  return h ? (
+                    <Stub
+                      key={`new-${h.n}`}
+                      words={heldLine(h.words.subject, h.words.body)}
+                      onResume={() => {
+                        writeRef.current?.focus();
+                        openCompose();
+                      }}
+                      onDiscard={() => {
+                        // The composer is emptied by mounting a fresh one; Put it back mounts it with these words.
+                        letters.discard('new');
+                        setComposeFrom(null);
+                        setComposeKey((k) => k + 1);
+                      }}
+                      onRestore={() => {
+                        letters.restore('new');
+                        setComposeFrom(h.words);
+                        setComposeKey((k) => k + 1);
+                      }}
+                      footer={`${h.words.to ? `To ${h.words.to.providerName}. ` : ''}Not sent. Kept on this page until you leave it.`}
+                    />
+                  ) : null;
+                })()}
+                <button type="button" ref={libraryRef} onClick={openLibrary} className="cm-row cm-card flex items-center gap-2 rounded-lg px-3 py-2 text-left"
                   style={{ border: '1px solid var(--paper-2, #EAE4D8)', fontSize: 12.5, fontWeight: 600, color: 'var(--ink-1, #211C16)', cursor: 'pointer' }}>
                   <Library size={13} strokeWidth={1.75} aria-hidden />
                   The house's letter templates
                 </button>
+                {(() => {
+                  const h = templatesHeld.get('t');
+                  return h ? (
+                    <Stub
+                      key={`t-${h.n}`}
+                      words={heldLine(h.words.draft.name || 'A new template', h.words.draft.body)}
+                      onResume={() => {
+                        libraryRef.current?.focus();
+                        openLibrary();
+                      }}
+                      onDiscard={() => templatesHeld.discard('t')}
+                      onRestore={() => templatesHeld.restore('t')}
+                      footer="Not saved. Kept on this page until you leave it."
+                    />
+                  ) : null;
+                })()}
               </div>
             </div>
 
@@ -839,30 +974,56 @@ export default function CommunicationsNext() {
         <WhoIsWriting />
       </div>
 
-      <ComposeSheet open={compose} onClose={() => setCompose(false)} />
+      <ComposeSheet
+        key={composeKey}
+        open={compose}
+        onClose={() => setCompose(false)}
+        onHold={(w) => letters.hold('new', w)}
+        prefill={
+          composeFrom
+            ? {
+                providerId: composeFrom.to?.providerId,
+                to: composeFrom.to?.email ?? null,
+                subject: composeFrom.subject,
+                body: composeFrom.body,
+                insights: composeFrom.insights,
+                templateId: composeFrom.templateId,
+              }
+            : null
+        }
+      />
       {draft && (
         <ComposeSheet
           key={draft.id}
           open
           onClose={closeDraft}
+          onHold={(w) => letters.hold(draft.id, w)}
           onDiscarded={houseDrafts.refetch}
           prefill={{
             draftId: draft.id,
-            providerId: draft.providerId,
-            to: draft.to,
-            subject: draft.subject ?? '',
-            body: draft.body,
+            providerId: draftFrom?.to?.providerId ?? draft.providerId,
+            to: draftFrom?.to?.email ?? draft.to,
+            subject: draftFrom?.subject ?? draft.subject ?? '',
+            body: draftFrom?.body ?? draft.body,
+            insights: draftFrom?.insights,
+            templateId: draftFrom?.templateId,
+            baseline: { subject: draft.subject ?? '', body: draft.body, to: draft.to },
           }}
         />
       )}
-      {library && <TemplateSheet onClose={() => setLibrary(false)} />}
+      {library && (
+        <TemplateSheet held={templateFrom} onHold={(h) => templatesHeld.hold('t', h)} onClose={() => setLibrary(false)} />
+      )}
 
       <DraftedReplyPanel
         open={draftOpen !== null}
         reply={
           (data.drafts.find((d) => d.orderId === draftOpen) as DraftedReply | undefined) ?? null
         }
-        onClose={() => setDraftOpen(null)}
+        onClose={() => {
+          setDraftOpen(null);
+          dropReply();
+        }}
         onSent={() => data.refetch()}
         onDiscarded={() => data.refetch()}
       />

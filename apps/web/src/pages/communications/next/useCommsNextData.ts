@@ -44,7 +44,7 @@ import {
   type ProcurementHistoryItem,
 } from '../../../hooks/queries/useConversationQueries';
 import { useActiveConversations } from '../../../hooks/queries/useDraftEmailQueries';
-import { sendState } from './cm-format';
+import { failedReadWords, sendState } from './cm-format';
 
 /**
  * Server-imposed windows this page renders behind. Each entry cites the query
@@ -90,11 +90,29 @@ export interface CommsFailures {
 /** Reader-facing names, in strip order, for the sentence the banner prints. */
 const SOURCE_LABELS: Array<[keyof CommsFailures, string]> = [
   ['history', 'the conversation book'],
-  ['drafts', 'the drafts awaiting action'],
+  // COMMS-W33: named as the page heads them ("The house has written").
+  ['drafts', 'the replies the house has written'],
 ];
 
-function errText(e: unknown): string {
-  return e instanceof Error ? e.message : 'unknown error';
+/**
+ * One waiting draft per order, the newest (COMMS-W24). The panel and the send
+ * both act on an order's newest pending draft (`getPendingDraft`: newest
+ * PENDING_APPROVAL, limit 1), so an older one on the same order used to be
+ * listed and counted but could never be opened, sent or thrown away here.
+ * `replaces` says how many older ones it stands in front of. Closing those
+ * rows on the server is the INV-W26 branch's (founder, 2026-10-01).
+ */
+export function newestDraftPerOrder<T extends { orderId: string; createdAt: string }>(
+  rows: readonly T[],
+): (T & { replaces: number })[] {
+  const byOrder = new Map<string, T & { replaces: number }>();
+  const newestFirst = [...rows].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  for (const row of newestFirst) {
+    const kept = byOrder.get(row.orderId);
+    if (kept) kept.replaces += 1;
+    else byOrder.set(row.orderId, { ...row, replaces: 0 });
+  }
+  return [...byOrder.values()];
 }
 
 export function useCommsNextData() {
@@ -107,6 +125,7 @@ export function useCommsNextData() {
   // deriving "drafts waiting" from it was a structurally guaranteed false
   // zero (communications-audit.md, BLOCKER 2).
   const activeQ = useActiveConversations();
+  const drafts = useMemo(() => newestDraftPerOrder(activeQ.data ?? []), [activeQ.data]);
 
   const rows: ProcurementHistoryItem[] = useMemo(() => {
     const items = historyQ.data ?? [];
@@ -119,7 +138,7 @@ export function useCommsNextData() {
     const cutoff = Date.now() - 30 * 86_400_000;
     const within30 = (i: ProcurementHistoryItem) => new Date(i.sentAt ?? i.createdAt).getTime() >= cutoff;
     return {
-      draftsPending: activeQ.data === undefined ? null : activeQ.data.length,
+      draftsPending: activeQ.data === undefined ? null : drafts.length,
       sentLast30:
         historyQ.data === undefined
           ? null
@@ -134,7 +153,7 @@ export function useCommsNextData() {
       // says so with GE.
       sentLast30Truncated: (historyQ.data?.length ?? 0) >= COMMS_SERVER_WINDOWS.HISTORY_ROWS,
     };
-  }, [historyQ.data, activeQ.data]);
+  }, [historyQ.data, activeQ.data, drafts]);
 
   const failed: CommsFailures = {
     history: historyQ.isError,
@@ -154,12 +173,17 @@ export function useCommsNextData() {
      * never disagree — a figure and a list from two reads is how a page ends up
      * saying "3 waiting" over an empty column.
      */
-    drafts: activeQ.data ?? [],
+    drafts,
     /** True only when the drafts register actually answered. */
     draftsKnown: activeQ.data !== undefined,
     hasData: historyQ.data !== undefined,
     isError: historyQ.isError,
-    errorMessage: errText(historyQ.error),
+    /** The server's words for why the book failed (COMMS-W33), never "status code 500". */
+    errorMessage: failedReadWords(historyQ.error),
+    /** When each read last answered (`dataUpdatedAt`, 0 = never): a failed refresh says it (COMMS-W33). */
+    historyAt: historyQ.dataUpdatedAt,
+    draftsAt: activeQ.dataUpdatedAt,
+    draftsError: activeQ.isError ? failedReadWords(activeQ.error) : null,
     /** Per-source failure. The banner and the strip both read this. */
     failed,
     /**
