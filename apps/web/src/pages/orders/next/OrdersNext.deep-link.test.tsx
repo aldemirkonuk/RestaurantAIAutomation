@@ -25,11 +25,11 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
-const state = vi.hoisted(() => ({ current: null as unknown }));
+const state = vi.hoisted(() => ({ current: null as unknown, drafts: [] as unknown[] }));
 
 vi.mock('./useOrdersNextData', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./useOrdersNextData')>();
@@ -42,11 +42,20 @@ vi.mock('@/hooks/queries/useOrderQueries', () => ({
 }));
 
 vi.mock('@/hooks/queries/useDraftEmailQueries', () => ({
-  useActiveConversations: () => ({ data: [], isError: false }),
+  useActiveConversations: () => ({ data: state.drafts, isError: false }),
+  useDraftStanding: () => ({ data: undefined, isPending: true, isError: false }),
+  useEditDraft: () => ({ mutate: vi.fn(), isPending: false }),
   useOrderConversations: () => ({ data: [], isError: false }),
   useApproveDraft: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
   useDiscardDraft: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
   useCancelScheduledSend: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
+}));
+
+// jsdom has no Element.animate; the draft card's reveal is skipped under
+// reduced motion (as DraftRail.test.tsx does).
+vi.mock('@/lib/mudavym/motion', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/mudavym/motion')>()),
+  useReducedMotion: () => true,
 }));
 
 vi.mock('@/contexts/AuthContext', () => ({
@@ -106,6 +115,7 @@ function ordersData(over: Partial<OrdersNextData> = {}): OrdersNextData {
     approvalByOrder: new Map(),
     approvalGateError: null,
     approvalPolicyNote: null,
+    dataUpdatedAt: null,
     ...over,
   };
 }
@@ -126,6 +136,7 @@ function harness(initialPath: string) {
 
 beforeEach(() => {
   state.current = null;
+  state.drafts = [];
 });
 
 afterEach(() => {
@@ -213,6 +224,34 @@ describe('an id the book does not have', () => {
   });
 });
 
+describe('a read that fails (ORD-W15)', () => {
+  it('a first read that fails calls every figure unknown', async () => {
+    state.current = ordersData({ rows: [], hasData: false, isError: true, errorMessage: 'timeout' });
+    harness('/orders');
+    const say = await screen.findByTestId('orders-read-error');
+    expect(say).toHaveTextContent('The orders could not be read (timeout)');
+    expect(say).toHaveTextContent('Every figure on this page is unknown');
+  });
+
+  it('a re-read that fails over kept rows says how old they are, not that they are unknown', async () => {
+    const at = new Date();
+    at.setHours(17, 58, 0, 0);
+    state.current = ordersData({
+      rows: [row({ id: 'o-1' })],
+      hasData: true,
+      isError: true,
+      errorMessage: 'Network Error',
+      dataUpdatedAt: at.getTime(),
+    });
+    harness('/orders');
+    const say = await screen.findByTestId('orders-read-error');
+    expect(say).toHaveTextContent('The orders could not be re-read (Network Error)');
+    expect(say).toHaveTextContent('the last read, from 17:58');
+    expect(say).not.toHaveTextContent('unknown');
+    expect(screen.getByTestId('order-row-o-1')).toBeInTheDocument();
+  });
+});
+
 describe('a cancelled order asked for by id', () => {
   it('says why it is not in the ledger, instead of opening nothing silently', async () => {
     state.current = ordersData({
@@ -247,5 +286,76 @@ describe('?tab=recurring — scheduled-tasks.service.ts\'s in-app notification f
     harness('/orders?tab=recurring');
 
     expect(await screen.findByRole('tab', { name: /recurring/i, selected: true })).toBeInTheDocument();
+  });
+});
+
+/*
+ * ORD-W5, 2026-10-01: a station picked by hand is WRITTEN to the URL too, so a
+ * reload or a shared link returns to it (ADR 0160). Before, the page only
+ * read `?station=` on load and the address stayed `/orders`.
+ */
+function Probe() {
+  const loc = useLocation();
+  return <output data-testid="search">{loc.search}</output>;
+}
+
+describe('a station picked by hand is kept in the URL', () => {
+  it('writes ?station=, and clears it when the station is toggled off', async () => {
+    state.current = ordersData({ rows: [row({ id: 'o-1' })] });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={['/orders?order=o-1']}>
+          <Routes>
+            <Route
+              path="/orders"
+              element={
+                <>
+                  <OrdersNext />
+                  <Probe />
+                </>
+              }
+            />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole('tab', { name: /delivered/i }));
+    expect(screen.getByTestId('search').textContent).toBe('?station=delivered');
+
+    fireEvent.click(screen.getByRole('tab', { name: /delivered/i }));
+    expect(screen.getByTestId('search').textContent).toBe('');
+  });
+});
+
+/*
+ * ORD-W8, 2026-10-01: the order a link opens is handed to the drafts rail,
+ * which opens and marks that order's letter.
+ */
+describe('the opened order focuses its letter on the rail', () => {
+  it('marks the draft of the order a path id opened', async () => {
+    state.current = ordersData({ rows: [row({ id: 'o-1' })] });
+    state.drafts = [
+      { id: 'c-1', orderId: 'o-1', wineName: 'Barolo Riserva', providerName: 'Anadolu', draftContent: 'Six cases.', createdAt: '2026-09-01T10:00:00Z', sendRequest: null },
+    ];
+    harness('/orders/o-1');
+    expect(await screen.findByTestId('draft-card-o-1')).toHaveAttribute('data-focused', 'true');
+  });
+});
+
+describe('the stage strip at phone width (ORD-W18)', () => {
+  it('sits 3 + 2 under sm and one row from sm up, ruling the second row', async () => {
+    state.current = ordersData({ rows: [row({ id: 'o-1' })] });
+    harness('/orders');
+    const strip = await screen.findByRole('tablist', { name: 'Order stages' });
+    expect(strip.className).toMatch(/\bgrid-cols-3\b/);
+    expect(strip.className).toMatch(/\bsm:flex\b/);
+    const tabs = screen.getAllByRole('tab');
+    expect(tabs).toHaveLength(5);
+    expect(tabs[3].className).toMatch(/max-sm:border-l-0/);
+    expect(tabs[3].className).toMatch(/max-sm:border-t/);
+    expect(tabs[4].className).toMatch(/max-sm:border-t/);
+    expect(tabs[0].className).not.toMatch(/\bborder-l\b/);
   });
 });

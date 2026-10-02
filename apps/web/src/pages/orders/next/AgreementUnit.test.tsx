@@ -281,6 +281,13 @@ describe('the page arithmetic agrees with the words it prints', () => {
     );
   });
 
+  it('groups thousands like every other figure on the page (ORD-W14)', () => {
+    expect(describeStatedPrice(1090, null)).toBe('$1,090.00');
+    expect(describeStatedPrice(2400, { priceUom: 'case', pricePackSize: 6 })).toBe(
+      '$2,400.00 per case (6 bottles)',
+    );
+  });
+
   it('never renders an absent price as $0.00', () => {
     expect(describeStatedPrice(null, null)).toBeNull();
     expect(
