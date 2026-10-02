@@ -43,6 +43,7 @@ vi.mock('../../../services/api/canonical', () => ({
   },
 }))
 
+import { AuthContext } from '@/contexts/AuthContext'
 import { CanonicalDocumentPage } from './CanonicalDocumentPage'
 
 const env = (value: unknown, extra: Record<string, unknown> = {}) => ({
@@ -201,6 +202,31 @@ describe('CanonicalDocumentPage', () => {
     expect(documentMock).toHaveBeenCalledWith('doc-syn')
     expect(screen.queryByText(/Back to the documents/)).toBeNull()
     expect(container.querySelector('.cd-page')?.getAttribute('data-embedded')).toBe('true')
+  })
+
+  it('keys every read by the house, so a house switch reads afresh (ADR 0051, RECEIPTS-W47)', async () => {
+    documentMock.mockResolvedValue(response())
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    // Only the house fields are read; the rest of the auth value is not.
+    const tree = (rid: string) => (
+      <AuthContext.Provider value={{ activeRestaurantId: rid, user: null } as never}>
+        <QueryClientProvider client={qc}>
+          <MemoryRouter initialEntries={['/orders']}>
+            <CanonicalDocumentPage documentId="doc-syn" embedded />
+          </MemoryRouter>
+        </QueryClientProvider>
+      </AuthContext.Provider>
+    )
+    const { rerender } = render(tree('rest-A'))
+    await waitFor(() => expect(screen.getByTestId('received-cell')).toBeTruthy())
+    for (const k of ['canonical-document', 'canonical-document-items', 'canonical-document-mappings']) {
+      expect(qc.getQueryCache().find({ queryKey: [k, 'rest-A', 'doc-syn'], exact: true })).toBeTruthy()
+    }
+    expect(documentMock).toHaveBeenCalledTimes(1)
+    // Within the 30s stale window a house-less key would answer from the cache.
+    rerender(tree('rest-B'))
+    await waitFor(() => expect(documentMock).toHaveBeenCalledTimes(2))
+    expect(qc.getQueryCache().find({ queryKey: ['canonical-document', 'rest-B', 'doc-syn'], exact: true })).toBeTruthy()
   })
 
   it('renders the verdict, the sheet and the not-counted words', async () => {

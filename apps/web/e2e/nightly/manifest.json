@@ -170,8 +170,8 @@
       "failed_read": [
         "The linked order could not be read",
         "This document could not be read",
-        "The paper trail could not be refreshed",
-        "The gateway could not be reached"
+        "What is below is the last answer, not the present.",
+        "The paper trail is unknown — nothing below is claimed."
       ]
     },
     {

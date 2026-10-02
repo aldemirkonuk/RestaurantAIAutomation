@@ -85,6 +85,8 @@ The founder's words, verbatim, per item:
 | RECEIPTS-W45b | "Both" |
 | RECEIPTS-W45c, the pick | "A · Letterhead" |
 | RECEIPTS-W45d, built (names W45c-SELF as done) | "Approve (Recommended)" |
+| RECEIPTS-W46, the PR | "Commit + open PR (Recommended)" |
+| RECEIPTS-W47, the house in the sheet's keys (found on #586's CI) | "House in all 4 keys (Recommended)" |
 
 The founder's W9 clause stands for the whole page: each region reads on its own and is clearly divided from the next.
 
@@ -106,6 +108,7 @@ The sheet (the formatted document, `components/documents`):
 - W26: a document nothing was compared with says "not compared" once.
 - W41: the order number is shown; the VAT sentence says what was read and what was not; Billed carries its unit when it equals the printed quantity.
 - W45c: the sheet is framed as a letterhead, with the Mudavym mark at top right (24px, in a `paper` tone that stays dark on the light sheet).
+- W47: the sheet's three reads name the house in their keys (ADR 0051), as does the review card's read of the sheet, so the two still share one request and a house switch reads afresh. This also changes `/documents/:id`.
 
 The review card ("Check and correct"):
 

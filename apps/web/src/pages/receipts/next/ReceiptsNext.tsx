@@ -839,7 +839,7 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
    */
   const refreshSheet = () => {
     for (const k of ['canonical-document', 'canonical-document-items', 'canonical-document-mappings']) {
-      void qc.invalidateQueries({ queryKey: [k, doc.id] });
+      void qc.invalidateQueries({ queryKey: [k, rid, doc.id] });
     }
   };
   const detailQ = useQuery({
@@ -1043,10 +1043,11 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
    * disagreed a few centimetres apart — "adds up" over "off by $43.47". The
    * card now shows the sheet's verdict: the same query key and fetch the sheet
    * uses, so React Query shares the one request. A correction made here still
-   * wins, because its response is newer than either.
+   * wins, because its response is newer than either. The key names the house,
+   * as the sheet's does (ADR 0051, walk-through W47).
    */
   const sheetQ = useQuery({
-    queryKey: ['canonical-document', doc.id],
+    queryKey: ['canonical-document', rid, doc.id],
     queryFn: () => canonicalApi.document(doc.id),
     staleTime: 30_000,
   });

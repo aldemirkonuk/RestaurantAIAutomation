@@ -901,9 +901,12 @@ describe('ReceiptsNext — a correction refreshes the sheet above it', () => {
     holdToApprove(/Hold to seal this correction/);
     await waitFor(() => expect(api.editLine).toHaveBeenCalled());
     await waitFor(() =>
-      expect(spy).toHaveBeenCalledWith({ queryKey: ['canonical-document', 'd1'] }),
+      expect(spy).toHaveBeenCalledWith({ queryKey: ['canonical-document', 'rest-A', 'd1'] }),
     );
-    expect(spy).toHaveBeenCalledWith({ queryKey: ['canonical-document-items', 'd1'] });
+    // The sheet's keys name the house (W47), so the refresh must name it too:
+    // a house-less prefix would no longer reach the sheet's buckets.
+    expect(spy).toHaveBeenCalledWith({ queryKey: ['canonical-document-items', 'rest-A', 'd1'] });
+    expect(spy).toHaveBeenCalledWith({ queryKey: ['canonical-document-mappings', 'rest-A', 'd1'] });
   });
 });
 
