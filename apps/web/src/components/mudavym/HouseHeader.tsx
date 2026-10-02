@@ -9,6 +9,10 @@
  * no theme switch and no way to change house: those four controls existed only
  * on the pages the wave had not reached yet. The founder's call, asked directly:
  * "Build a Mudavym header this wave."
+ * [2026-10-01: the theme switch has left this header — founder, 2026-10-01,
+ * page walk-through DASH-W23: "remove the system theme from top bar into
+ * settings". The person's ground (Paper / Charcoal) is chosen on `/profile`,
+ * Register I's Preferences card; ADR 0169's 2026-10-01 amendment.]
  *
  * WHERE IT MOUNTS
  * ---------------
@@ -66,7 +70,6 @@ import { useContext, useEffect, useState, type ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Search } from 'lucide-react';
 import { BrandMark } from '../brand/BrandMark';
-import { ThemeMenu } from '../layout/ThemeMenu';
 import { RestaurantBranchSwitcher } from '../layout/RestaurantBranchSwitcher';
 import { AuthContext } from '../../contexts/AuthContext';
 import type { MudavymGround } from '../../lib/mudavym/shellGround';
@@ -240,7 +243,6 @@ export function HouseHeader({ page, ground, name, trailing, shell = false }: Hou
           <HouseOfRecord />
           {trailing}
           <HouseBell />
-          <ThemeMenu className="mdv-hdr__theme" />
           <HouseUserMenu />
         </div>
       </div>

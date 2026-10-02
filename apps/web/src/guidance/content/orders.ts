@@ -1,37 +1,40 @@
 import type { TourDefinition } from '../tours/registry'
 
+// Steps follow the job, not the screen (ADR 0251 D3). Each element must exist
+// on the live page; a step whose element is missing is left out by TourEngine.
+
 export const ordersTip = {
   pageId: 'orders' as const,
   title: 'Orders',
-  body: 'Filter by pipeline stage, find a PO, then create or follow it through delivery.',
+  body: 'Write an order, approve it, follow it, and mark it delivered when it arrives.',
 }
 
 export const ordersTour: TourDefinition = {
   pageId: 'orders',
   steps: [
     {
-      element: '[data-tour="orders-status"]',
-      title: 'Pipeline at a glance',
+      element: '[data-testid="write-order"]',
+      title: 'Write an order',
       description:
-        'Click a stage card (Pending, Approved, Ordered, Delivered) to filter the list to that status.',
+        'Add what you need from the shelf and name a vendor for each line. Each line becomes a pending order waiting for approval; nothing is sent to a vendor yet.',
     },
     {
-      element: '[data-tour="orders-toolbar"]',
-      title: 'Find and switch views',
+      element: '[data-tour="orders-stage-pending"]',
+      title: 'Approve it',
       description:
-        'Search by wine or vendor (/), toggle Unified vs Split, or export the current list.',
+        'Orders waiting for approval. Open one and hold to approve it. If it needs a manager or an owner, the hold stays shut and says who it is waiting on.',
     },
     {
-      element: '[data-tour="orders-list"]',
-      title: 'Work the order table',
+      element: '[data-tour="orders-stage-ordered"]',
+      title: 'Follow it',
       description:
-        'Open a row for details, select rows for bulk approve/order/deliver, or jump into a vendor thread.',
+        'Orders placed with the vendor stay here until they arrive. When one is at the door, open it and mark it delivered.',
     },
     {
-      element: '[data-tour="orders-create"]',
-      title: 'Start an order',
+      element: '[data-tour="orders-stage-delivered"]',
+      title: 'Check what arrived',
       description:
-        'Open the PO builder when inventory flags low stock (⌘N). You will pick wines, quantities, and a vendor next.',
+        'Orders that arrived. Open one to see its receipt; if none has been attached yet, it says so.',
     },
   ],
 }

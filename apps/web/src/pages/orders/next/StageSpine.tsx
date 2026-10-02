@@ -52,6 +52,7 @@ export function StageSpine({ counts, recurringCount, active, onSelect }: StageSp
             type="button"
             role="tab"
             aria-selected={isActive}
+            data-tour={`orders-stage-${station}`}
             onClick={() => onSelect(isActive ? null : station)}
             // Dividers by class, not inline, so the 3 + 2 grid can drop the
             // left rule that opens its second row and rule that row's top.
