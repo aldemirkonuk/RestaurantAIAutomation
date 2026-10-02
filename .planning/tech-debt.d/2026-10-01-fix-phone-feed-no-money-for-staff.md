@@ -84,7 +84,7 @@ Tests that pin it:
      - (b) Look up each grant row's grantee by `grantId` at feed time. Old rows are covered too, but every feed read touches the grants table, and a deleted grant reads as "not yours".
      - (c) Leave it as is. The limit stays on the Notifications screen, which shows every row in full (Open item 2 below).
    - **Answered 2026-10-01 (AskUserQuestion, relayed by the coordinator).** The founder: *"Record the grantee (Recommended)"*. That is option (a): write the grantee's id on new notices and show the limit only to that person; older notices never show the limit. Rejected: "Look it up each load" and "Leave it".
-   - **Not yet built.** The build needs `authority-grants.service.ts`, which would be a 16th file against the branch's 15-file cap. The split was put back to the coordinator. Until it lands, both grant types stay off the list and every reader gets the money-free version.
+   - **Built on a stacked branch, not here.** The build needs `authority-grants.service.ts`, a 16th file against this branch's 15-file cap, so the coordinator put it on `fix/phone-feed-own-grant-limit`, cut from this branch's ebd69b364. There `tell()` records the grantee as `metadata.granteeUserId`. The feed then says an issued or re-approved grant notice to a reader who does not see money only when that reader is the recorded grantee. Older rows, someone else's grant and a caller with no id keep the neutral line, and the card's `meta` stays cut. That branch's own entry and claim (`ADR-0253-PHONE-FEED-OWN-GRANT-LIMIT`) record it. **On this branch alone**, both grant types stay off the list and every reader who does not see money gets the neutral line.
 2. **Staff notices: *"Give wages its own type (Recommended)"*. Built.**
    - **The type.** The own-wage notice (`team/own-wage-notice.ts`, `recordOwnWageChange`, owners only) is now stored with `type` and `notification_type` set to `team_member_own_wage_set`. That is the action name it already wrote to `system_audit_log` and to its own metadata (`OWN_WAGE_ACTION`). It follows the `team_member_*` audit-action naming that the notice was already read by.
    - **No migration.** `notifications.type` is `varchar(100) DEFAULT 'system'` with no CHECK constraint and no enum. The only constraints are the primary key and the restaurant foreign key (`20260805000000_baseline_from_production.sql:3952-3982`). No later migration adds one: grep of `supabase/migrations` for `notifications` constraints.
@@ -103,14 +103,14 @@ Tests that pin it:
      - `schedule.service.ts:955`: a call-out, with role, date and times.
      - `team.controller.ts:621`: a team broadcast, in its author's words.
      - `notes.service.ts:471`: a note, in its author's words.
-     
+
      Writers whose type is a variable never produce `system`:
      - `inbound-responder` `n.type`;
      - scheduled-tasks `payload.type`;
      - vendor-send-requests `notice.type`;
      - producer-ledger `event.payload.type`;
      - `POST /notifications`, which writes the caller's own rows only (`notifications.controller.ts:257-258`). Its `notification_type` is NOT NULL, so a body without a type fails rather than defaulting to `system`.
-     
+
      `git log -S'type: "system"'` shows no removed writer.
    - **`sendSystemAlert` now stores `system_alert`** (`notifications.service.ts:509`), not `system`. It writes any caller's words to every member. It has no caller today: its route was closed under ADR 0149.
    - **Old wage rows: the guard is kept.** Rows written as `system` by the wage notice from #440 (0c16f8434, 2026-09-28) until this deploys may exist. Production was **not queried**, so whether any exist is unverified. `isOwnWageNotice(meta)` (`mobile.service.ts:125-128`) blanks a row whose metadata `action` is `team_member_own_wage_set`, under any type. It compares against the writer's imported constant. The wage writer always stamped that action (0c16f8434), so every old row is recognised.
@@ -122,7 +122,7 @@ Tests that pin it:
      - `system` on the list and the wage type off it;
      - three `system` notices (schedule, team message, role change) giving staff their sentence and no metadata;
      - an old `system`-typed wage row and a grant notice giving staff `""`.
-     
+
      Each of these mutations failed the spec:
 
      | Mutation | Cases failed |
@@ -136,7 +136,7 @@ Tests that pin it:
      | Round-1 sources (b02d931cd) | 9 |
      | Round-0 behaviour | 24 |
      | Round 1's eleven, re-anchored | 2 to 18 each |
-     
+
      `nt-format.test.ts` is 13 of 13. Dropping the wage mapping fails 1.
    - **The claim** now also pins:
      - the wage type at the writer;
@@ -145,12 +145,37 @@ Tests that pin it:
      - the guard: imported, reading metadata, joined with `&&`;
      - the exact set of literal `type: "system"` writers in the gateway, so a new one fails the build until it is read;
      - the web mapping.
-     
+
      It kills 41 of 41 mutations, run on a scratch copy of the gateway src. That is round 1's twenty-one, less "system called money-free", which is now the opposite, plus twenty-one new. It fails on 4bd11a00e, 6a714f2a4, b02d931cd and on `origin/main` 5a330a88e.
+
+**Fix round 3 (docs only, 2026-10-01): from the Sonnet verify** (`p4-scratch/phone-feed-verify.md`, findings A1-A4).
+- **Push and the live event** are added as Open item 3. They were missing from the list.
+- **The claim's first sentence** now names the ruled exception: staff keep vendor-draft cards with their text (ADR 0253 round 9).
+- **"Not settled by the ruling"** items 1-3 now carry the round-9 answers. Fix round 2, item 1 now says what the stacked branch builds.
+- **The decision record.** The fix-round answers (*"Give wages its own type (Recommended)"*, *"Show their own limit (Recommended)"*, *"Record the grantee (Recommended)"*) were recorded only in tech-debt entries. They go into ADR 0253 as a dated amendment, which the coordinator applies on #566's branch. This branch does not edit the ADR.
+- **Test counts that reproduce.** ffa94a26b's message says "gateway mobile + team-pay + notifications 541/541". That is `src/mobile`, `src/notifications` and `src/team/team-pay-round4.spec.ts` only; all of `team-pay*` gives a different total. Measured again at this head (node_modules linked), from `apps/api-gateway` unless named:
+
+  | Command | Result |
+  |---|---|
+  | `npx jest src/mobile/mobile-feed-money-for-staff.spec.ts` | 52/52 |
+  | `npx jest src/mobile src/notifications src/team/team-pay-round4.spec.ts` | 541/541, 30 suites |
+  | `npx jest src/mobile src/team src/notifications src/organizations` | 976/976, 50 suites |
+  | phone suite, `apps/mobile/src/**/__tests__/*.test.ts` through api-gateway's ts-jest (diagnostics off; the linked phone node_modules has no `jest`) | 285/285, 21 suites |
+  | `apps/web`: `npx vitest run src/pages/notifications/next/nt-format.test.ts` | 13/13 |
+  | `bash scripts/check_decision_claims.sh` | 814/814 holding |
 
 **Open, not fixed here (pre-existing, same class of leak).**
 1. **WebSocket order events go to the whole house.** `order:created` and `order:status_changed` are emitted to the `restaurant:<id>` room (`websocket.gateway.ts:622-645`), which every socket with a house joins, staff included (`:342-345`). `rabbitmq-bridge.service.ts:489-496` puts `target_price` in the `order:created` payload, then sends the whole payload again as `order_change` (`:498`). — OPEN.
 2. **The same notification rows reach staff in full through the inbox.** `GET /notifications` returns `message` and `metadata` as written (`notifications.service.ts:845-858`, controller `:272`, no `@Roles`). The phone's Notifications screen draws `item.message` (`apps/mobile/app/notifications.tsx:102`), and so does the web inbox (`apps/web/src/pages/notifications/next/BookRow.tsx:132`, `:182`). This round closes the feed only. The writers that send money to every member are the root: `sale-record.producer.ts`, `invoice-confirmed.producer.ts`, the goal producers, and `procurement.service.ts:6866`. — OPEN.
+3. **Push and the live event carry the same rows to staff.** Found by the Sonnet verify of 2026-10-01; re-read at this head.
+   - **Push.** `persistForRestaurant` pushes every row it writes, at any priority but `low`, to everyone the row went to (`notifications.service.ts:803-826`). The push carries the title, `body: payload.message` (`:818`) and the whole metadata in `data`. `ExpoPushService.sendToUsers` reads device tokens for the ids it is handed and checks no role (`push/expo-push.service.ts:126-172`).
+   - **Live event.** The same funnel emits `notification:new` with `message` and `metadata`, at any priority, to the house room for a write addressed to everyone (`notifications.service.ts:770-801`). Every socket with a house joins that room, staff included (`websocket.gateway.ts:343`).
+   - **Money that reaches staff this way:**
+     - the delivery-discrepancy notice (`invoice_received`, `critical`): `match.summary` as the message, `creditDue` and `effectiveUnitCost` in the metadata (`procurement.service.ts:6866-6886`);
+     - the certified-invoice notice (`invoice_received`, `medium`): the invoice total in the sentence (`invoice-confirmed.producer.ts:153-166`);
+     - goal notices (`goal_reached`, `medium`, `goal-reached.producer.ts:192`, `ceiling-held.producer.ts:212`): a currency goal's figures;
+     - the closed-service notice (`service_closed`): its revenue goes out on the live event only, since it is `low` and so is not pushed (`sale-record.producer.ts:173`).
+   - **What the ruling says.** ADR 0253 round 9 closes the credit due and unit cost on delivery-difference notices to staff, "server first, as its own fix", but names no channel. This branch closes the Today feed only. — OPEN.
 
 **Disclosed limits.**
 - **A same-house demotion can render once from cache.** The phone persists its query cache, so after an owner or manager is demoted, the last feed and pulse they were served, with money, can draw once before the refetch replaces it.
@@ -159,7 +184,7 @@ Tests that pin it:
   - a type built in a variable;
   - an existing writer whose sentence gains a figure;
   - the Python writers (`services/agent-orchestrator`). None writes `system` today. `email_intel_agent.py:913` and `research_tasks.py:933` set their own types and omit NOT NULL columns, so they always fail.
-  
+
   Rows written by code older than this repo cannot be enumerated without a production query, and none was run.
 - **The web inbox's System filter chip misses the new type (fix round 2).**
   - **What changes.** The chip sends an exact `type=system` query (`nt-book.ts:253`, `useNotificationsNextData.ts:255`). So an owner who filters by System no longer sees a wage notice written after this fix. The notice still shows under All, filed and drawn under System (`nt-format.ts:122`).
@@ -167,14 +192,14 @@ Tests that pin it:
   - **Not fixed here.** A chip for the new type, or a filter that takes a register rather than one type, is left as a follow-up, because the branch is at its 15-file cap.
 - **Words typed by a person (fix round 2).** Three `system` writers carry a person's typed text to the people it was sent to: a team broadcast, a note, and a held team message. Staff now see that text on the feed card, as they already did on the Notifications screen. If an author types a price, it shows. No writer adds the house's money to these sentences.
 
-**Not settled by the ruling (put to the founder; nothing below was changed).**
-1. **Vendor reply cards.** Staff still get `draft_approval` cards. A card shows the first 110 characters of the draft, and `draftContent` holds the full text, which can name prices. The ruling says "approve cards". The vendor-send rule (ADR 0175 D10) lets staff hold a letter as a request, and lets a grantee send. So whether these cards count as approve cards is open.
-2. **Money right.** (The grant-limit part was answered in fix round 2, item 1; the approve-card part below is still open.) The ruling says "a staff member with a money right sees what that right needs". ADR 0253's second finding records approving an order as ruled for owner, manager or grantee (ADR 0175 D7), but not built. This fix gives a grantee the staff view. Whether a grantee should see approve cards and amounts is open.
-   ~~The same question now applies to a grant's own limit.~~ The founder answered the limit question on 2026-10-01: *"Show their own limit (Recommended)"*. It is **not built**, because a notification row does not say whose grant it is. The founder then answered the how, *"Record the grantee (Recommended)"* (2026-10-01). That build waits on the file-cap split. See "Fix round 2", item 1.
-3. **Other phone screens.** The phone still shows staff money from other endpoints:
+**Not settled by the round-2 ruling: answered 2026-10-01 (ADR 0253 round 9).** Items 1-3 were put to the founder after the build; item 4 is a limit, not a question. His answers are recorded in ADR 0253 "Answered 2026-10-01 (round 9)", which is on `docs/houses-decisions-0251-0253` (#566), not yet on `main`.
+1. ~~**Vendor reply cards.** Whether staff's `draft_approval` cards count as approve cards is open.~~ **Answered:** *"Keep them (Recommended)"*. Staff keep the cards for a drafted letter to a vendor, though the text may name a price; ADR 0175 D10 lets staff hold a letter as a request. A card's subtitle is the first 110 characters of the draft and `draftContent` holds the full text (`mobile.service.ts:244-266`). Nothing changes; the claim names this exception.
+2. ~~**Money right.** Whether a grantee should see approve cards and amounts is open.~~ **Answered:** *"What they can approve (Recommended)"*. A send right alone shows no money. Once ADR 0175 D7 lets someone given the right approve orders, they see approve cards and amounts only for the orders their right covers. D7 approval is unbuilt (CLAIMS `ADR-0175-APPROVE-ORDER-ALWAYS-NEEDS-AUTHORITY` is open), so there is nothing to show yet, and a grantee keeps the staff view here.
+   The grant's own limit is a separate answer, given in fix round 2: *"Show their own limit (Recommended)"*, then *"Record the grantee (Recommended)"*. It is built on the stacked branch `fix/phone-feed-own-grant-limit` (fix round 2, item 1, above). How it reads beside "a send right alone shows no money" goes into ADR 0253 as an amendment, which the coordinator applies to #566.
+3. **Other phone screens: answered, not built here.** The founder: *"Close all three (Recommended)"*. The Supply tab's order amounts, the Insights tab's cellar value, and the credit due and unit cost on delivery-difference notices close to staff too, "server first, as its own fix". None of it is done on this branch. The phone still shows staff money from:
    - the Supply tab: order amounts from `GET /procurement/orders/pending`, `/history` and `/:id`;
    - the Insights tab: cellar value from `GET /inventory/:id/summary`;
    - the Notifications screen: every notification's full message and metadata (Open item 2 above). Fix round 1 closed this for the feed's cards only.
 
-   None of these endpoints carries `@Roles` (`procurement.controller.ts:201`, `:217`; `inventory.controller.ts:290`, read only, not run). The ruling names only `GET /mobile/feed`.
+   None of these endpoints carries `@Roles` (`procurement.controller.ts:201`, `:217`; `inventory.controller.ts:290`, read only, not run). The round-2 ruling named only `GET /mobile/feed`; round 9 rules the first two and the delivery-difference figures for their own fix (Open item 3 above for the push path). — OPEN.
 4. **Older phone builds.** A phone build from before this fix still shows staff the "Connect Toast on the web dashboard" line. It reads the missing revenue as unavailable. Only an app update clears it.
