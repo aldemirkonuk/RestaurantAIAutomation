@@ -13,7 +13,7 @@ Filed from the founder's /receipts walk-through of 2026-10-01 (session R3, branc
 - Documents & Reports' provenance strip says "read automatically" (`pages/documents/next/CanonicalDocumentPage.tsx:736`) for a document a person read and entered through the stand-in route.
 - A delivery-note row in the list reads "— · no stated total" (`pages/receipts/next/ReceiptsNext.tsx:1678`): a despatch advice has no total by nature, so the clause says nothing.
 - The verdict pairs each count with the printed unit (`components/documents/VerdictBlock.tsx:66-67`). A case converted to bottles would read "12 cases": the same hazard W41 guarded against in the Billed cell, not guarded here.
-- The order's name reaches the page as the field `wineName` (the order mapper, `api-gateway/src/procurement/procurement.service.ts:7178`, after merging main on 2026-10-02) for any item.
+- The order's name reaches the page as the field `wineName` (the order mapper, `api-gateway/src/procurement/procurement.service.ts:7316`, after merging main again on 2026-10-02 with #581) for any item.
 
 **Verdicts stored before the VAT fix (RECEIPTS-W5, the founder: "Fix rule, leave rows").** The tie-out now counts the printed VAT breakdown when the tax total is missing. But a verdict already stored on a document ("does not tie out", "off by $43.47") is not recomputed. The queue rows, the card and the invoice-confirmed notice still show the old verdict until a person edits a line or the currency is restated. The edit-line and restatement wiring that passes the breakdown has no test of its own.
 
