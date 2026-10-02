@@ -41,7 +41,7 @@ import { HoldToApprove } from './HoldToApprove';
 import { SealedApproveDie } from '../orders/SealedApproveDie';
 import { applyProposalSealed, mintProposalSeal } from '../../services/api/askAi';
 import {
-  REGISTER_ROOM,
+  roomForAct,
   REGISTER_WORD,
   VERB_WORD,
   type CounterOrderRow,
@@ -179,7 +179,7 @@ export function CounterActSheet({ target, read, onClose, onChanged }: CounterAct
   }
   const { register, row } = target;
   const line = actLine(register.key, row, read);
-  const room = REGISTER_ROOM[register.key];
+  const room = roomForAct(register.key, row);
   const isOrder = register.key === 'orders';
   const order = isOrder ? (row as CounterOrderRow) : null;
 
