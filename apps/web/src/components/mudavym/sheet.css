@@ -698,6 +698,11 @@
 }
 
 /* ── form vocabulary — a shared dialog that asks for values ───────────────── */
+/* `.mdv-select` is qualified to the `<select>` element throughout: the
+   `<Select>` component (Select.tsx, form-controls.css) wraps its control in a
+   `<span class="mdv-select">`, and the bare class drew this field box round
+   that wrapper, so every `<Select>` outside a dialog sat in a full-width box
+   (INV-W10, founder-approved page walk-through 2026-10-01). */
 .mdv-form {
   display: grid;
   gap: 12px;
@@ -714,7 +719,7 @@
   margin-bottom: 4px;
 }
 .mdv-input,
-.mdv-select {
+select.mdv-select {
   display: block;
   width: 100%;
   font-family: var(--mdv-sans);
@@ -727,7 +732,7 @@
   outline: none;
 }
 .mdv-input:focus-visible,
-.mdv-select:focus-visible {
+select.mdv-select:focus-visible {
   outline: 2px solid var(--seal);
   outline-offset: 1px;
 }
@@ -743,13 +748,13 @@
    auth-house.css` (auth fields). `color-scheme: inherit` takes light|dark from
    the overlay's ground so the caret and a select's native list turn with it. */
 html .mdv-ovl .mdv-input,
-html .mdv-ovl .mdv-select {
+html .mdv-ovl select.mdv-select {
   color: var(--ink-1) !important;
   -webkit-text-fill-color: var(--ink-1) !important;
   background-color: var(--paper-0) !important;
   color-scheme: inherit !important;
 }
-html .mdv-ovl .mdv-select option {
+html .mdv-ovl select.mdv-select option {
   color: var(--ink-1) !important;
   -webkit-text-fill-color: var(--ink-1) !important;
   background: var(--paper-0) !important;
