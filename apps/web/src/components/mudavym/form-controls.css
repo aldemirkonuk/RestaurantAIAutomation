@@ -9,6 +9,14 @@
   flex-direction: column;
   gap: 4px;
 }
+/* In a row, a Select shares the row's width evenly with its siblings rather
+   than shrinking to its 200px floor (founder, 2026-10-01, INV-W10 rework:
+   "Share the row"). `span.` because dialogs put `.mdv-select` on a bare
+   `<select>` (sheet.css); `flex` is inert outside a flex parent, so a Select
+   in a block or grid keeps its old sizing. */
+span.mdv-select {
+  flex: 1 1 0;
+}
 .mdv-select__label,
 .mdv-count__label {
   font-family: var(--mdv-sans, inherit);

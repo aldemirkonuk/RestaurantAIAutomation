@@ -25,8 +25,8 @@
  * a list rendered nothing — which a scaffold would also satisfy.
  */
 
-import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { cleanup, render, screen, fireEvent, within, waitFor } from '@testing-library/react';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import { act, cleanup, render, screen, fireEvent, within, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
@@ -74,6 +74,25 @@ vi.mock('./useProfileNextData', () => ({
 }));
 
 /**
+ * The ground store is REAL (founder, 2026-10-01, page walk-through DASH-W23:
+ * the theme row on this page is now the person's Paper/Charcoal ground). Only
+ * `setGroundChoice` is wrapped, to record what the page asked for, and it
+ * still calls through — so these cases measure what painted and what was
+ * sent to the account, not just that a function was called.
+ */
+const groundSpy = vi.hoisted(() => ({ set: vi.fn() }));
+vi.mock('../../../lib/mudavym/groundChoice', async (orig) => {
+  const real = await orig<typeof import('../../../lib/mudavym/groundChoice')>();
+  return {
+    ...real,
+    setGroundChoice: (choice: 'paper' | 'charcoal') => {
+      groundSpy.set(choice);
+      real.setGroundChoice(choice);
+    },
+  };
+});
+
+/**
  * Stripe.js, stubbed at the LOADER (2026-09-05, with the panel's port).
  *
  * The real module injects a `<script>` from `js.stripe.com`; in jsdom that is a
@@ -116,6 +135,16 @@ vi.mock('../../../lib/mudavym/useMudavymDesign', () => ({
 }));
 
 import ProfileNext from './ProfileNext';
+import {
+  GROUND_CHOICE_ATTR,
+  applyAccountGround,
+  getGroundChoice,
+  groundMirrorKey,
+  registerGroundWriter,
+  reportGroundReadFailure,
+  resetGroundChoiceForTests,
+  setGroundOwner,
+} from '../../../lib/mudavym/groundChoice';
 
 const deleteAccount = vi.fn(() => Promise.resolve());
 const saveRestaurant = vi.fn(() => Promise.resolve());
@@ -223,8 +252,6 @@ function base(over: Record<string, unknown> = {}) {
     activeRestaurantId: 'r1',
     memberships: [{ id: 'r1', name: 'Ada Lokantası', city: 'İzmir', chain_id: null, chain_name: null }],
     switchRestaurant: vi.fn(),
-    theme: 'system',
-    setTheme: vi.fn(),
 
     meState: 'ok',
     meError: null,
@@ -1467,5 +1494,181 @@ describe('the collapse — /profile becomes personal', () => {
     expect(
       screen.getByText(/has declared no model-context server.*reporting nothing, not the/s),
     ).toBeInTheDocument();
+  });
+});
+
+/**
+ * The Theme row is the person's ground (founder, 2026-10-01, page walk-through
+ * DASH-W23 — "remove the system theme from top bar into settings"; this card
+ * is where he put it). Ported from the deleted `ThemeMenu.test.tsx` ground
+ * branch: two options, never three; nothing pressed until the account has
+ * answered; a failed read or a failed save is said, never called an answer.
+ * The popover-only cases (it closes on a choice; the trigger's title) have no
+ * counterpart here — there is no popover and no trigger.
+ */
+describe('ProfileNext — the Theme row is the ground, saved to the account', () => {
+  const ALICE = 'user-alice';
+
+  function themeGroup(): HTMLElement {
+    return screen.getByRole('group', { name: 'Theme' });
+  }
+  function option(name: 'Paper' | 'Charcoal'): HTMLElement {
+    return within(themeGroup()).getByRole('button', { name });
+  }
+  function groundNoteEl(): Element | null {
+    return document.querySelector('[data-ground-note]');
+  }
+  /** Alice is signed in and her account has answered: she has never chosen. */
+  function signedInAndAnswered() {
+    setGroundOwner(ALICE);
+    applyAccountGround(undefined);
+  }
+  function acceptingWriter() {
+    const saved: string[] = [];
+    registerGroundWriter((choice) => {
+      saved.push(choice);
+      return Promise.resolve();
+    });
+    return saved;
+  }
+  async function settle(): Promise<void> {
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+  }
+
+  beforeEach(() => {
+    window.localStorage.clear();
+    document.documentElement.removeAttribute(GROUND_CHOICE_ATTR);
+    resetGroundChoiceForTests();
+  });
+  afterEach(() => {
+    cleanup();
+    window.localStorage.clear();
+    document.documentElement.removeAttribute(GROUND_CHOICE_ATTR);
+    resetGroundChoiceForTests();
+  });
+
+  it('offers Paper and Charcoal — not Light / Dark / System — and says where it is kept', () => {
+    signedInAndAnswered();
+    draw();
+    expect(within(themeGroup()).getAllByRole('button').map((b) => b.textContent)).toEqual([
+      'Paper',
+      'Charcoal',
+    ]);
+    for (const gone of [/^light$/i, /^dark$/i, /^system$/i]) {
+      expect(within(themeGroup()).queryByRole('button', { name: gone })).toBeNull();
+    }
+    expect(screen.getByText(/Saved to your account/)).toBeInTheDocument();
+    expect(screen.queryByText(/Kept in this browser/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/follows your device/)).not.toBeInTheDocument();
+  });
+
+  it('presses Paper for a person whose account says they never chose, and adds no caveat', () => {
+    signedInAndAnswered();
+    draw();
+    expect(option('Paper')).toHaveAttribute('aria-pressed', 'true');
+    expect(option('Charcoal')).toHaveAttribute('aria-pressed', 'false');
+    expect(groundNoteEl()).toBeNull();
+  });
+
+  it('a click calls setGroundChoice with that value, paints it and saves it to the account', async () => {
+    signedInAndAnswered();
+    const saved = acceptingWriter();
+    draw();
+    fireEvent.click(option('Charcoal'));
+    await settle();
+
+    expect(groundSpy.set).toHaveBeenCalledTimes(1);
+    expect(groundSpy.set).toHaveBeenCalledWith('charcoal');
+    expect(getGroundChoice()).toBe('charcoal');
+    expect(document.documentElement.getAttribute(GROUND_CHOICE_ATTR)).toBe('charcoal');
+    expect(saved).toEqual(['charcoal']);
+    // The device mirrors what the ACCOUNT accepted, under her id — never a
+    // device-wide key the next person to sign in would inherit.
+    expect(window.localStorage.getItem(groundMirrorKey(ALICE))).toBe('charcoal');
+    expect(window.localStorage.getItem('mudavym.ground')).toBeNull();
+    expect(option('Charcoal')).toHaveAttribute('aria-pressed', 'true');
+    expect(option('Paper')).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('choosing Paper after Charcoal presses Paper, not stuck on Charcoal', async () => {
+    signedInAndAnswered();
+    acceptingWriter();
+    draw();
+    fireEvent.click(option('Charcoal'));
+    await settle();
+    fireEvent.click(option('Paper'));
+    await settle();
+    expect(groundSpy.set.mock.calls).toEqual([['charcoal'], ['paper']]);
+    expect(option('Paper')).toHaveAttribute('aria-pressed', 'true');
+    expect(option('Charcoal')).toHaveAttribute('aria-pressed', 'false');
+    expect(getGroundChoice()).toBe('paper');
+  });
+
+  it('presses the ground the account already holds on a fresh mount', () => {
+    setGroundOwner(ALICE);
+    applyAccountGround('charcoal');
+    draw();
+    expect(option('Charcoal')).toHaveAttribute('aria-pressed', 'true');
+    expect(option('Paper')).toHaveAttribute('aria-pressed', 'false');
+    expect(groundNoteEl()).toBeNull();
+  });
+
+  it('presses NOTHING while the account has not answered, and says it is still reading', () => {
+    setGroundOwner(ALICE); // signed in; no account answer, no mirror -> `unknown`
+    draw();
+    expect(option('Paper')).toHaveAttribute('aria-pressed', 'false');
+    expect(option('Charcoal')).toHaveAttribute('aria-pressed', 'false');
+    expect(groundNoteEl()).toHaveTextContent(
+      'Reading the ground you saved to your account. Paper until it answers.',
+    );
+  });
+
+  it('presses NOTHING when the account could not be read, and names the reason', () => {
+    setGroundOwner(ALICE);
+    reportGroundReadFailure('Network Error'); // no mirror -> `unreadable`
+    draw();
+    expect(option('Paper')).toHaveAttribute('aria-pressed', 'false');
+    expect(option('Charcoal')).toHaveAttribute('aria-pressed', 'false');
+    expect(groundNoteEl()).toHaveTextContent(
+      'The ground you saved could not be read (Network Error). Paper until it can be.',
+    );
+  });
+
+  it("shows this device's copy, labelled as such, when the account is unreachable", () => {
+    window.localStorage.setItem(groundMirrorKey(ALICE), 'charcoal');
+    setGroundOwner(ALICE);
+    reportGroundReadFailure('Network Error');
+    draw();
+    // It IS charcoal on screen and charcoal is what she last chose, so it is
+    // pressed — but the row says the account was not reached.
+    expect(option('Charcoal')).toHaveAttribute('aria-pressed', 'true');
+    expect(groundNoteEl()).toHaveTextContent(/could not be reached \(Network Error\)/);
+  });
+
+  it('keeps the chosen ground on screen when the save fails, and says it was not saved', async () => {
+    signedInAndAnswered();
+    registerGroundWriter(() => Promise.reject(new Error('Request failed with status code 503')));
+    draw();
+    fireEvent.click(option('Charcoal'));
+    await settle();
+
+    expect(getGroundChoice()).toBe('charcoal');
+    const note = groundNoteEl();
+    expect(note).toHaveTextContent(/not saved to your account/i);
+    expect(note).toHaveTextContent(/503/);
+    expect(within(note as HTMLElement).getByRole('status')).toBeInTheDocument();
+    // The mirror still holds the account's confirmed paper — the charcoal that
+    // failed to save was never written to it.
+    expect(window.localStorage.getItem(groundMirrorKey(ALICE))).toBe('paper');
+  });
+
+  it('with nobody signed in, it says there is no account to remember it', () => {
+    draw();
+    fireEvent.click(option('Charcoal'));
+    expect(groundSpy.set).toHaveBeenCalledWith('charcoal');
+    expect(groundNoteEl()).toHaveTextContent(/no one is signed in/i);
   });
 });

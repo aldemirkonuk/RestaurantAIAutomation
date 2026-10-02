@@ -250,3 +250,19 @@ describe('a proposal is applied only by the seal', () => {
     expect(screen.getByText(/applied only by the seal/i)).toBeTruthy();
   });
 });
+
+describe('"Open in <Room>" opens the record the act names (DASH-W16e)', () => {
+  const href = () => screen.getByRole('link', { name: /open in/i }).getAttribute('href');
+  it('an order opens that order', () => {
+    mount(orderTarget('not_yours'));
+    expect(href()).toBe('/orders?order=o-1');
+  });
+  it('a reply waiting opens its thread', () => {
+    const register: CounterRegisterAnswered = {
+      key: 'threads', verb: 'reply', state: 'answered', readAt: READ.readAt, ms: 4, count: 1, complete: true, act: 'yours',
+      rows: [{ id: 't-1', vendor: 'Revel Wine', orderNumber: 'ORD-3', channel: 'email', intent: 'price_offer', aiGenerated: true, createdAt: null, orderId: 'o-9' }],
+    };
+    mount({ register, row: register.rows[0] });
+    expect(href()).toBe('/communications?reply=o-9');
+  });
+});

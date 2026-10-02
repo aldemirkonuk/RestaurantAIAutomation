@@ -22,6 +22,7 @@ import { getErrorMessage, getErrorStatus } from "@/services/api/client";
 import { HoldToApprove } from "@/components/mudavym";
 import { ink, settle, turn, useReducedMotion } from "@/lib/mudavym/motion";
 import { useQueryClient } from "@tanstack/react-query";
+import { unfilledSlots } from "./unfilledSlots";
 import {
   activeConversationKeys,
   draftKeys,
@@ -32,6 +33,7 @@ import {
   useCancelScheduledSend,
   useDiscardDraft,
   useDraftStanding,
+  useEditDraft,
   useOrderConversations,
   type ActiveConversationDto,
   type OrderConversationDto,
@@ -243,7 +245,26 @@ function ThreadLine({ row }: { row: OrderConversationDto }) {
 
 /* ── the expanded body of one draft card ────────────────────────────────── */
 
-function DraftDetail({ draft }: { draft: ActiveConversationDto }) {
+/** A plain secondary control on the card (Edit, the vendor's answers). */
+const TOOL = {
+  padding: "5px 10px",
+  borderRadius: 8,
+  border: "1px solid var(--paper-2, #EAE4D8)",
+  background: "transparent",
+  color: "var(--seal-deep, #14515C)",
+  fontFamily: SANS,
+  fontSize: 12,
+  fontWeight: 600,
+  cursor: "pointer",
+} as const;
+
+function DraftDetail({
+  draft,
+  onOpenResponses,
+}: {
+  draft: ActiveConversationDto;
+  onOpenResponses?: () => void;
+}) {
   const conversations = useOrderConversations(draft.orderId);
   // WHO (founder, 2026-09-21): does this viewer's hold send, or ask a manager?
   const standing = useDraftStanding(draft.orderId);
@@ -255,6 +276,23 @@ function DraftDetail({ draft }: { draft: ActiveConversationDto }) {
   const cancelSend = useCancelScheduledSend();
   const [attempt, setAttempt] = useState(0);
   const [actionError, setActionError] = useState<string | null>(null);
+  // ORD-W7, reworked (founder, 2026-10-01: "Only unfillable"): the gateway
+  // says which blanks its send fills and which it cannot. Until it has said so
+  // over THESE words, every blank counts, so the card never opens a hold the
+  // gateway would refuse.
+  const standingDraft = standing.data?.draft;
+  const atSend =
+    standingDraft?.id === draft.id && (standingDraft.content ?? "") === (draft.draftContent ?? "")
+      ? standingDraft.at_send ?? null
+      : null;
+  const slots = atSend ? atSend.unfillable : unfilledSlots(draft.draftContent);
+  const fills = atSend?.fills ?? [];
+  // ORD-W10: the words can be changed on the card (PATCH …/draft). While the
+  // box is open both holds stay shut, so a hold is always over saved words.
+  const editDraft = useEditDraft();
+  const [editing, setEditing] = useState(false);
+  const [words, setWords] = useState("");
+  const saveShut = editDraft.isPending || !words.trim() || words === (draft.draftContent ?? "");
   const contentRef = useRef<HTMLDivElement | null>(null);
   const reduced = useReducedMotion();
 
@@ -316,6 +354,28 @@ function DraftDetail({ draft }: { draft: ActiveConversationDto }) {
         />
       )}
 
+      {!editing && (
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setActionError(null);
+              setWords(draft.draftContent ?? "");
+              setEditing(true);
+            }}
+            disabled={approveDraft.isPending || discardDraft.isPending}
+            style={TOOL}
+          >
+            Edit the words
+          </button>
+          {onOpenResponses && (
+            <button type="button" data-testid="draft-open-responses" onClick={onOpenResponses} style={TOOL}>
+              The vendor&rsquo;s answers
+            </button>
+          )}
+        </div>
+      )}
+
       {/* the draft itself — dashed edge, no timestamp, incapable of "sent" */}
       <div
         style={{
@@ -351,21 +411,91 @@ function DraftDetail({ draft }: { draft: ActiveConversationDto }) {
             round {draft.roundCount ?? EM}
           </span>
         </div>
-        <p
-          style={{
-            fontFamily: SANS,
-            fontSize: 12.5,
-            lineHeight: 1.55,
-            color: "var(--ink-2, #4F473C)",
-            whiteSpace: "pre-wrap",
-            maxHeight: 180,
-            overflow: "auto",
-            margin: 0,
-          }}
-        >
-          {draft.draftContent ?? "The draft body has not arrived yet."}
-        </p>
+        {editing ? (
+          <textarea
+            aria-label="The letter's words"
+            value={words}
+            onChange={(e) => setWords(e.target.value)}
+            rows={9}
+            style={{
+              width: "100%",
+              boxSizing: "border-box",
+              fontFamily: SANS,
+              fontSize: 12.5,
+              lineHeight: 1.55,
+              color: "var(--ink-1, #211C16)",
+              border: "1.5px solid var(--seal-deep, #14515C)",
+              borderRadius: 8,
+              padding: "8px 10px",
+              background: "var(--paper-0, #FAF7F1)",
+              resize: "vertical",
+            }}
+          />
+        ) : (
+          <p
+            style={{
+              fontFamily: SANS,
+              fontSize: 12.5,
+              lineHeight: 1.55,
+              color: "var(--ink-2, #4F473C)",
+              whiteSpace: "pre-wrap",
+              maxHeight: 180,
+              overflow: "auto",
+              margin: 0,
+            }}
+          >
+            {draft.draftContent ?? "The draft body has not arrived yet."}
+          </p>
+        )}
       </div>
+      {editing && (
+        <div className="grid gap-1">
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={saveShut}
+              onClick={() => {
+                setActionError(null);
+                editDraft.mutate(
+                  { orderId: draft.orderId, content: words },
+                  {
+                    onSuccess: async () => {
+                      setEditing(false);
+                      await queryClient.invalidateQueries({ queryKey: activeConversationKeys.all });
+                    },
+                    onError: (err) =>
+                      setActionError(`The words were not saved (${getErrorMessage(err)}). The letter is as it was.`),
+                  },
+                );
+              }}
+              style={{
+                ...TOOL,
+                background: "var(--seal-deep, #14515C)",
+                color: "var(--paper-0, #FAF7F1)",
+                opacity: saveShut ? 0.45 : 1,
+                cursor: saveShut ? "default" : "pointer",
+              }}
+            >
+              {editDraft.isPending ? "Saving…" : "Save the words"}
+            </button>
+            <button
+              type="button"
+              disabled={editDraft.isPending}
+              onClick={() => {
+                setActionError(null);
+                setEditing(false);
+              }}
+              style={TOOL}
+            >
+              Keep the old words
+            </button>
+          </div>
+          <p style={{ fontSize: 11, color: "var(--ink-4, #665D50)", margin: 0 }}>
+            Saving keeps the letter a draft; nothing is sent.
+            {draft.sendRequest?.current ? " The waiting request will read “since changed”." : ""}
+          </p>
+        </div>
+      )}
 
       {/* the thread it belongs to — sent rows carry their proof, drafts do not */}
       {rows.length > 0 && (
@@ -394,13 +524,38 @@ function DraftDetail({ draft }: { draft: ActiveConversationDto }) {
         </p>
       )}
 
+      {slots.length > 0 && (
+        <p
+          data-testid="draft-unfilled"
+          role="status"
+          style={{ fontFamily: SANS, fontSize: 12, color: "var(--ink-1, #211C16)", margin: 0 }}
+        >
+          This draft still has {slots.length === 1 ? "a blank" : "blanks"} the house did not fill:{" "}
+          {slots.join(", ")}. It cannot be sent until {slots.length === 1 ? "it is" : "they are"} written in.
+        </p>
+      )}
+      {fills.length > 0 && (
+        <p
+          data-testid="draft-fills"
+          style={{ fontFamily: SANS, fontSize: 12, color: "var(--ink-1, #211C16)", margin: 0 }}
+        >
+          When it sends, Mudavym fills{" "}
+          {fills.map((f, i) => (
+            <span key={f.slot}>
+              {i > 0 && (i === fills.length - 1 ? " and " : ", ")}
+              {f.slot} with “{f.value}”
+            </span>
+          ))}
+          .
+        </p>
+      )}
       <div className="grid gap-1">
         {act === "ask" ? (
           <HoldToApprove
             key={`ask-${draft.orderId}-${attempt}`}
             label="Hold to ask a manager to send it"
             approvedLabel="Asked — waiting for a manager"
-            disabled={discardDraft.isPending || !!asked || !(draft.draftContent ?? "").trim()}
+            disabled={discardDraft.isPending || !!asked || !(draft.draftContent ?? "").trim() || slots.length > 0 || editing}
             onApprove={async () => {
               setActionError(null);
               try {
@@ -424,7 +579,7 @@ function DraftDetail({ draft }: { draft: ActiveConversationDto }) {
             key={`send-${draft.orderId}-${attempt}`}
             label={`Hold to approve & send to ${draft.providerName ?? "the vendor"}`}
             approvedLabel="Approved — leaving the house"
-            disabled={approveDraft.isPending || discardDraft.isPending || act !== "send"}
+            disabled={approveDraft.isPending || discardDraft.isPending || act !== "send" || slots.length > 0 || editing}
             onChallenge={() =>
               issueDraftSendChallenge({
                 orderId: draft.orderId,
@@ -466,13 +621,18 @@ function DraftDetail({ draft }: { draft: ActiveConversationDto }) {
         )}
         <button
           type="button"
-          disabled={discardDraft.isPending || approveDraft.isPending}
+          disabled={discardDraft.isPending || approveDraft.isPending || editing}
           onClick={() => {
             setActionError(null);
             discardDraft.mutate(draft.orderId, { onError: fail("discarded") });
           }}
+          data-testid="draft-discard"
           style={{
             justifySelf: "end",
+            // A 24px hit area (WCAG 2.5.8) with the same plain-link look —
+            // it was 17px tall, the one undersized control on the card (ORD-W19).
+            minHeight: 24,
+            padding: "0 4px",
             fontFamily: SANS,
             fontSize: 11.5,
             color: "var(--ink-4, #665D50)",
@@ -499,16 +659,36 @@ function DraftDetail({ draft }: { draft: ActiveConversationDto }) {
 
 /* ── one draft card ─────────────────────────────────────────────────────── */
 
-function DraftCard({ draft }: { draft: ActiveConversationDto }) {
-  const [expanded, setExpanded] = useState(false);
+function DraftCard({
+  draft,
+  focused,
+  onOpenResponses,
+}: {
+  draft: ActiveConversationDto;
+  focused: boolean;
+  onOpenResponses?: () => void;
+}) {
+  const [expanded, setExpanded] = useState(focused);
+  const cardRef = useRef<HTMLDivElement | null>(null);
+  const reduced = useReducedMotion();
+  // ORD-W8: opening an order on the ledger opens its letter here and brings it
+  // into view. Closing the order leaves the card as the reader left it.
+  useEffect(() => {
+    if (!focused) return;
+    setExpanded(true);
+    cardRef.current?.scrollIntoView?.({ block: "nearest", behavior: reduced ? "auto" : "smooth" });
+  }, [focused, reduced]);
   const qty = num(draft.quantity);
   const price = num(draft.quotedPrice);
   const total = qty !== null && price !== null ? qty * price : null;
 
   return (
     <div
+      ref={cardRef}
+      data-testid={`draft-card-${draft.orderId}`}
+      data-focused={focused || undefined}
       style={{
-        border: "1px dashed var(--ink-3, #7C7365)",
+        border: focused ? "1.5px solid var(--seal-deep, #14515C)" : "1px dashed var(--ink-3, #7C7365)",
         borderRadius: 12,
         background: "var(--paper-1, #F3EFE6)",
         padding: "10px 12px",
@@ -546,6 +726,15 @@ function DraftCard({ draft }: { draft: ActiveConversationDto }) {
                 }`
               : ""}
           </span>
+          {/* Its own line: the subtitle above truncates, and this must not. */}
+          {focused && (
+            <span
+              className="block"
+              style={{ fontSize: 11, fontWeight: 600, color: "var(--seal-deep, #14515C)" }}
+            >
+              This order&rsquo;s letter
+            </span>
+          )}
         </span>
         <span
           style={{
@@ -579,7 +768,7 @@ function DraftCard({ draft }: { draft: ActiveConversationDto }) {
         }}
       >
         <div style={{ overflow: "hidden" }}>
-          {expanded && <DraftDetail draft={draft} />}
+          {expanded && <DraftDetail draft={draft} onOpenResponses={onOpenResponses} />}
         </div>
       </div>
     </div>
@@ -588,7 +777,15 @@ function DraftCard({ draft }: { draft: ActiveConversationDto }) {
 
 /* ── the rail ───────────────────────────────────────────────────────────── */
 
-export function DraftRail() {
+export function DraftRail({
+  focusOrderId = null,
+  onOpenResponses,
+}: {
+  /** The order opened on the ledger; its letter is opened and marked (ORD-W8). */
+  focusOrderId?: string | null;
+  /** Opens the vendor's answers for an order, when the page can (ORD-W11). */
+  onOpenResponses?: (orderId: string) => (() => void) | undefined;
+} = {}) {
   const drafts = useActiveConversations();
   const list = drafts.data ?? [];
   // Data absent means UNKNOWN (fetching, retrying, or no restaurant context
@@ -616,7 +813,7 @@ export function DraftRail() {
             color: "var(--ink-4, #665D50)",
           }}
         >
-          {known ? list.length : EM} awaiting your hand
+          {known ? list.length : EM} waiting
         </span>
       </div>
       <p
@@ -627,7 +824,10 @@ export function DraftRail() {
           margin: "0 0 10px",
         }}
       >
-        Nothing here can reach a vendor without your approval.
+        {/* One sentence true for every role (ORD-W16): staff cannot approve a
+            send — their hold asks a manager — so "your approval" was false for
+            them. Each card's SendStandingNote says what THIS reader may do. */}
+        Nothing here reaches a vendor until someone who may send it approves it.
       </p>
       {drafts.isError ? (
         <p
@@ -648,7 +848,7 @@ export function DraftRail() {
             color: "var(--ink-4, #665D50)",
           }}
         >
-          Reaching the gateway…
+          Reading the house’s drafts…
         </p>
       ) : list.length === 0 ? (
         <p
@@ -662,9 +862,17 @@ export function DraftRail() {
           letter here first.
         </p>
       ) : (
-        <div className="grid gap-2">
+        // `grid-cols-1` is `minmax(0, 1fr)`: without it the implicit track
+        // sized to the card's nowrap title and pushed a 470px card out of the
+        // 320px rail at 1024px (ORD-W6).
+        <div className="grid grid-cols-1 gap-2">
           {list.map((d) => (
-            <DraftCard key={d.id} draft={d} />
+            <DraftCard
+              key={d.id}
+              draft={d}
+              focused={focusOrderId !== null && d.orderId === focusOrderId}
+              onOpenResponses={onOpenResponses?.(d.orderId)}
+            />
           ))}
         </div>
       )}
