@@ -346,6 +346,22 @@ describe('the Ask panel in the counter slot', () => {
     expect(window.localStorage.getItem(prefsKeyFor('u-1'))).toBeNull();
   });
 
+  it("while Ask holds the slot, the header's Counter shows the counter tucked and gives the slot back without rewriting the choice", async () => {
+    mount('/orders');
+    const header = within(screen.getByRole('banner'));
+    const counterButton = header.getByRole('button', { name: /^The counter/ });
+    expect(counterButton.getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(screen.getByRole('button', { name: /Ask Mudavym\./ }));
+    expect(await screen.findByRole('complementary', { name: 'Ask Mudavym' })).toBeTruthy();
+    expect(counterButton.getAttribute('aria-pressed')).toBe('false');
+
+    fireEvent.click(counterButton);
+    expect(screen.queryByRole('complementary', { name: 'Ask Mudavym' })).toBeNull();
+    expect(screen.getByRole('complementary', { name: 'The counter' })).toBeTruthy();
+    expect(counterButton.getAttribute('aria-pressed')).toBe('true');
+    expect(window.localStorage.getItem(prefsKeyFor('u-1'))).toBeNull();
+  });
+
   it('below ~1280 px the same panel lies over the page, and the counter keeps its place', async () => {
     setWidth(1180);
     mount('/orders');
