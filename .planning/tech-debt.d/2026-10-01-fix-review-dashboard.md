@@ -48,7 +48,7 @@ Found by the PR #579 audit (both reviewers). Line citations are at `6806498668cb
 
 **What.**
 - DASH-W22 withholds money from staff on the dashboard's own routes (`apps/api-gateway/src/dashboard/amounts-for-role.ts`).
-- The page also reads `GET /procurement/orders/pending` and `GET /procurement/orders/history` (`apps/web/src/pages/dashboard/next/useDashboardNextData.ts:138,315`). Those routes carry only the class-level `JwtAuthGuard` (`apps/api-gateway/src/procurement/procurement.controller.ts:119,201,217`) and answer `totalCost` and `finalPrice` to any role.
+- The page also reads `GET /procurement/orders/pending` and `GET /procurement/orders/history` (`apps/web/src/pages/dashboard/next/useDashboardNextData.ts:139,315-317`). Those routes carry only the class-level `JwtAuthGuard` (`apps/api-gateway/src/procurement/procurement.controller.ts:119,201,217`) and answer `totalCost` and `finalPrice` to any role.
 - The page hides those prices from staff (`WaitingOnYou.tsx`, `DayDetail.tsx`); the server does not. The founder's reason for W22 was that hiding money only on the page "would not keep them private".
 - This exposure is not new: staff could always reach those routes. W22's §14 row records it as not covered, and it is queued for the /orders session (`p4-scratch/review-shared-queue.md`, R1b line).
 
@@ -82,7 +82,7 @@ Found by the PR #579 audit.
 Found by the PR #579 audit; the founder ruled on it as DASH-G2.
 
 **What.**
-- `houseZone` returns `"UTC"` when `restaurants.timezone` is null (`apps/api-gateway/src/dashboard/dashboard.service.ts:175-183`). So "today", the week, the month and the calendar are quietly bucketed on UTC for that house.
+- `houseZone` returns `"UTC"` when `restaurants.timezone` is null (`apps/api-gateway/src/dashboard/dashboard.service.ts:176-183`). So "today", the week, the month and the calendar are quietly bucketed on UTC for that house.
 - The founder's rule of 2026-09-03 is that an unset value reads as unknown (`supabase/migrations/20260903170000_a_default_is_not_an_answer.sql:4`). That migration dropped the column's default and set the defaulted rows back to null.
 - A malformed zone name makes `Intl` throw a `RangeError`, so stats and the calendar answer 500.
 - ALDEMIR has its zone set (America/Chicago).
