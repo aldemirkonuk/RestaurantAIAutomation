@@ -569,7 +569,14 @@ the real control.
 change no rendered control sets `ThemeContext` (`components/layout/ThemeToggle.tsx` exists but
 has no importer). A browser that had stored `dark` or `system` under `wineops-theme` keeps
 that class on `<html>` with no control to clear it. Mudavym pages ignore it (ADR 0138 D1); only
-a surface that still uses Tailwind `dark:` utilities could show it. **[2026-10-01 (batch 4):
+a surface that still uses Tailwind `dark:` utilities could show it. **[2026-10-02: the last
+sentence names the wrong mechanism — #576's audit, note 2. Two readers of `html.dark` are not
+Tailwind `dark:`: `styles/globals.css` repaints legacy pages under `.dark` (`:63`, `:116`,
+`:256` and on), and `components/orders/useStandaloneGround.ts:55-56` turns the sealed
+approve / reject dies charcoal when they sit outside `.mudavym`. Inside `.mudavym` (the ask
+panel, every Sheet) that hook returns `undefined`, so the exposure was close to what the
+sentence said, but the stated cause was wrong. The v3 reset below clears all three.]**
+**[2026-10-01 (batch 4):
 closed — the founder, "Reset once, Mudavym only (Recommended)". `THEME_MIGRATION_KEY` in
 `contexts/ThemeContext.tsx` is now `wineops-theme-v3`, so every browser, including one that
 already ran the v2 reset, goes back to light exactly once. §Amendment 2026-10-01 (batch 4).]**
