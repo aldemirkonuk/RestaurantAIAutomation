@@ -148,9 +148,15 @@ export function useUserPreferences() {
         queryKeys.user.preferences(userId),
       )
 
+      // Only over an answer the account has given. With none yet (the first
+      // read still loading, or failed), returning `undefined` leaves the
+      // cache alone: TanStack would record `{ ...partial }` as a successful
+      // read, clearing the error, and every reader would take that one key
+      // for the whole account (PR #570, gate round 3). The save still goes
+      // out; it shows once a read succeeds (`onSettled` refetches).
       queryClient.setQueryData<UserPreferences>(
         queryKeys.user.preferences(userId),
-        (old) => ({ ...old, ...partial }),
+        (old) => (old ? { ...old, ...partial } : old),
       )
 
       return { previous }
@@ -199,6 +205,15 @@ export function useUserPreferences() {
      * `isLoading` is false before the gateway has said anything.
      */
     isPlaceholderData: query.isPlaceholderData,
+    /**
+     * True once a read of the account has succeeded, and still true if a
+     * later refetch fails: TanStack keeps the last good data and sets `error`
+     * beside it. False while the placeholder shows and after a first read
+     * that failed. It counts any data in the cache as read: a save through
+     * this hook adds to data only when there is some (`onMutate` above),
+     * and the guidance provider writes to the cache only once this is true.
+     */
+    isAccountRead: !query.isPlaceholderData && query.data !== undefined,
     error: query.error,
     updatePreferences,
     updatePreferencesAsync,

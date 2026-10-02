@@ -5,18 +5,18 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Link, MemoryRouter } from 'react-router-dom';
 import type { ReactNode } from 'react';
 
 const updatePreferences = vi.fn();
-// What the account's copy says, and whether it has answered yet. By default it
-// is empty and has answered, so anything that leaves the screen does so on
-// the provider's own local read.
-let account: { preferences: Record<string, unknown>; isPlaceholderData: boolean; error: Error | null } = {
+// What the account's copy says, and whether a read of it has succeeded. By
+// default it is empty and has been read, so anything that leaves the screen
+// does so on the provider's own local read.
+let account: { preferences: Record<string, unknown>; isAccountRead: boolean; error: Error | null } = {
   preferences: {},
-  isPlaceholderData: false,
+  isAccountRead: true,
   error: null,
 };
 vi.mock('../hooks/useUserPreferences', () => ({
@@ -57,6 +57,10 @@ function TipsSwitch() {
       </button>
       <span data-testid="nudge-due">{String(g.isSetupNudgeDue)}</span>
       <span data-testid="account-copy">{g.accountCopy}</span>
+      <span data-testid="paused">{String(g.tipsPausedInThisTab)}</span>
+      <button type="button" onClick={() => g.startTour('orders')}>
+        start orders tour
+      </button>
       <button type="button" onClick={() => g.markSetupNudgeShown()}>
         nudge shown
       </button>
@@ -98,7 +102,7 @@ beforeEach(() => {
   window.localStorage.clear();
   window.sessionStorage.clear();
   updatePreferences.mockReset();
-  account = { preferences: {}, isPlaceholderData: false, error: null };
+  account = { preferences: {}, isAccountRead: true, error: null };
 });
 afterEach(() => vi.restoreAllMocks());
 
@@ -255,37 +259,43 @@ describe('the newer copy wins, across browsers', () => {
 
 describe('before the account\'s copy answers', () => {
   it('shows no tip and holds the setup nudge, so neither acts on a stand-in', () => {
-    account.isPlaceholderData = true;
+    account.isAccountRead = false;
     const first = mount('/calendar');
     expect(tip()).toBeNull();
     expect(screen.getByTestId('nudge-due')).toHaveTextContent('false');
     first.unmount();
-    account.isPlaceholderData = false;
+    account.isAccountRead = true;
     mount('/calendar');
     expect(tip()).toBeTruthy();
     expect(screen.getByTestId('nudge-due')).toHaveTextContent('true');
   });
   it('tells the rest of the app whether the account copy is loading, failed or read', () => {
     // Help's "Page tips" switch reads this to hold its on/off and its button.
-    account.isPlaceholderData = true;
+    account.isAccountRead = false;
     const first = mount('/help');
     expect(screen.getByTestId('account-copy')).toHaveTextContent('loading');
     first.unmount();
-    account = { preferences: {}, isPlaceholderData: false, error: new Error('read failed') };
+    account = { preferences: {}, isAccountRead: false, error: new Error('read failed') };
     const second = mount('/help');
     expect(screen.getByTestId('account-copy')).toHaveTextContent('failed');
     second.unmount();
-    account = { preferences: {}, isPlaceholderData: false, error: null };
+    account = { preferences: {}, isAccountRead: true, error: null };
+    const third = mount('/help');
+    expect(screen.getByTestId('account-copy')).toHaveTextContent('read');
+    third.unmount();
+    // A refetch that fails after a good read: TanStack keeps the copy it read.
+    account = { preferences: {}, isAccountRead: true, error: new Error('refetch failed') };
     mount('/help');
     expect(screen.getByTestId('account-copy')).toHaveTextContent('read');
   });
 });
 
 describe('when the account\'s copy could not be read', () => {
-  // What TanStack hands back after the read and its one retry fail: no
-  // placeholder any more, `preferences` falls back to {}, and an error.
+  // What the hook hands back after the first read and its one retry fail,
+  // with nothing read before: `preferences` falls back to {}, nothing has been
+  // read, and an error.
   beforeEach(() => {
-    account = { preferences: {}, isPlaceholderData: false, error: new Error('read failed') };
+    account = { preferences: {}, isAccountRead: false, error: new Error('read failed') };
   });
 
   it('shows no tip and holds the setup nudge', () => {
@@ -306,9 +316,58 @@ describe('when the account\'s copy could not be read', () => {
   it('saves again once a read succeeds', () => {
     const first = mount('/calendar');
     first.unmount();
-    account = { preferences: {}, isPlaceholderData: false, error: null };
+    account = { preferences: {}, isAccountRead: true, error: null };
     mount('/calendar');
     fireEvent.click(screen.getByRole('button', { name: 'nudge shown' }));
     expect(updatePreferences).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('when a refetch fails after a good read', () => {
+  // TanStack keeps the copy it read and sets the error beside it.
+  beforeEach(() => {
+    account = { preferences: {}, isAccountRead: true, error: new Error('refetch failed') };
+  });
+
+  it('goes on from the copy it read: the tip shows, the nudge is due, and saves go out', () => {
+    mount('/calendar');
+    expect(tip()).toBeTruthy();
+    expect(screen.getByTestId('nudge-due')).toHaveTextContent('true');
+    fireEvent.click(screen.getByRole('button', { name: 'hide all' }));
+    expect(updatePreferences).toHaveBeenCalledWith({
+      guidance: expect.objectContaining({ global: expect.objectContaining({ hide_all_tips: true }) }),
+    });
+  });
+});
+
+describe('two tips or tours turned away in one tab', () => {
+  it('pause tips in this tab after two "Not now", and "Turn tips back on" ends the pause', () => {
+    mount('/orders');
+    fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
+    expect(screen.getByTestId('paused')).toHaveTextContent('false');
+    fireEvent.click(screen.getByRole('link', { name: 'calendar' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
+    expect(screen.getByTestId('paused')).toHaveTextContent('true');
+    fireEvent.click(screen.getByRole('link', { name: 'inventory' }));
+    expect(tip()).toBeNull();
+    // Tips are still on: only this tab is paused.
+    expect(screen.getByRole('button', { name: 'tips on' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'tips on' }));
+    expect(screen.getByTestId('paused')).toHaveTextContent('false');
+    expect(tip()).toBeTruthy();
+  });
+
+  it('counts a tour that cannot start (no step on the page) as turned away', async () => {
+    // TourEngine reads `window.matchMedia` before it looks for steps.
+    vi.spyOn(window, 'matchMedia').mockReturnValue({ matches: false } as unknown as MediaQueryList);
+    mount('/calendar');
+    fireEvent.click(screen.getByRole('button', { name: 'start orders tour' }));
+    await waitFor(() =>
+      expect(JSON.parse(window.sessionStorage.getItem('wineops_guidance_session') ?? '{}').skips).toBe(1),
+    );
+    expect(screen.getByTestId('paused')).toHaveTextContent('false');
+    fireEvent.click(screen.getByRole('button', { name: 'start orders tour' }));
+    await waitFor(() => expect(screen.getByTestId('paused')).toHaveTextContent('true'));
+    expect(tip()).toBeNull();
   });
 });

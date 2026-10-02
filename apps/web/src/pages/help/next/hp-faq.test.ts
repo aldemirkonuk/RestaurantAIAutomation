@@ -7,6 +7,7 @@ const APP_TSX = readFileSync(resolve(__dirname, '../../../App.tsx'), 'utf8');
 const HELP_TSX = readFileSync(resolve(__dirname, 'HelpNext.tsx'), 'utf8');
 const TIP_TSX = readFileSync(resolve(__dirname, '../../../guidance/components/PageTipStrip.tsx'), 'utf8');
 const PROVIDER_TSX = readFileSync(resolve(__dirname, '../../../guidance/GuidanceProvider.tsx'), 'utf8');
+const ENGINE_TSX = readFileSync(resolve(__dirname, '../../../guidance/tours/TourEngine.tsx'), 'utf8');
 
 describe('FAQ entries — re-checkable claims', () => {
   it('every slug is unique and URL-safe', () => {
@@ -71,14 +72,23 @@ describe('FAQ entries — re-checkable claims', () => {
     const a = findFaq('page-tours')!.answer;
     expect(a).toMatch(/Every page’s tip then comes back in this tab/);
     expect(a).toMatch(/In another browser, a tip you put off with "Not now" can stay hidden for up to four hours/);
-    expect(a).toMatch(/two tips or tours in one tab, that tab shows no more tips until it is closed/);
+    expect(a).toMatch(/two tips or tours in one tab are put off, stopped or cannot start, that tab shows no more tips until it is closed, or until you press "Turn tips back on" on this page in that tab/);
     expect(a).not.toMatch(/: every page’s tip returns|In this browser every page’s tip returns/);
   });
   it('states the numbers the provider uses: four hours for "Not now", two turned away per tab', () => {
     const a = findFaq('page-tours')!.answer;
     expect(a).toContain('"Not now" puts that tip off for four hours');
     expect(PROVIDER_TSX).toContain('const until = new Date(Date.now() + 4 * 60 * 60 * 1000)');
-    expect(PROVIDER_TSX).toContain('if (sessionRef.current.skips >= 2) return null');
+    expect(PROVIDER_TSX).toContain('const tipsPausedInThisTab = sessionRef.current.skips >= 2');
+    expect(PROVIDER_TSX).toContain('if (tipsPausedInThisTab) return null');
+  });
+  it('promises "Turn tips back on" for a tab paused by two turned away, which the Help card draws then', () => {
+    // A tab paused by skips alone still has tips on, so the card must draw its
+    // own paused state with the button the answer names.
+    expect(HELP_TSX).toContain('const paused = !off && guidance.tipsPausedInThisTab;');
+    expect(HELP_TSX).toContain("{off || paused ? 'Turn tips back on' : 'Turn tips off'}");
+    // "cannot start": a tour with no step on the page counts as turned away.
+    expect(ENGINE_TSX).toMatch(/if \(!availableSteps\.length\) \{[^}]*handlersRef\.current\.onSkipped\(pageId\)/);
   });
 });
 

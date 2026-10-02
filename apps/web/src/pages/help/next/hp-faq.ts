@@ -84,12 +84,16 @@ export const FAQ_ENTRIES: readonly FaqEntry[] = [
     // gateway deep-merges the save, so the account keeps a "Not now" snooze
     // and another browser that loads it hides that tip until the snooze runs
     // out (OPEN in .planning/tech-debt.d/2026-10-02-feat-tips-margin-note-and-tour-card.md).
-    // "Two in one tab": tipVisibleFor stops at sessionRef skips >= 2, counted
-    // in sessionStorage by snoozeTip, dismissTip and a tour's onSkipped.
+    // "Two in one tab": tipVisibleFor stops at tipsPausedInThisTab (session
+    // skips >= 2), counted in sessionStorage by snoozeTip, dismissTip and a
+    // tour's onSkipped, which tours/TourEngine.tsx also calls when a tour
+    // cannot start (no step on the page, or driver.js failed to load).
+    // PageTipsSwitch then says tips are paused in this tab and draws "Turn
+    // tips back on".
     slug: 'page-tours',
     question: 'Where are the page tours and the tips?',
     answer:
-      'Some pages open with a one-line tip at the top. Its "Show me" walks you through that page step by step, and is offered only when the page has steps to show. "Not now" puts that tip off for four hours. "Don\'t show tips again" turns every page’s tip off. To bring them back, use "Turn tips back on" under Ways back in, on this page. Every page’s tip then comes back in this tab, including ones you closed, so you can take a tour again from its tip. In another browser, a tip you put off with "Not now" can stay hidden for up to four hours. Once you put off or stop two tips or tours in one tab, that tab shows no more tips until it is closed or you press "Turn tips back on" in it.',
+      'Some pages open with a one-line tip at the top. Its "Show me" walks you through that page step by step, and is offered only when the page has steps to show. "Not now" puts that tip off for four hours. "Don\'t show tips again" turns every page’s tip off. To bring them back, use "Turn tips back on" under Ways back in, on this page. Every page’s tip then comes back in this tab, including ones you closed, so you can take a tour again from its tip. In another browser, a tip you put off with "Not now" can stay hidden for up to four hours. If two tips or tours in one tab are put off, stopped or cannot start, that tab shows no more tips until it is closed, or until you press "Turn tips back on" on this page in that tab.',
   },
   {
     // settings/next/st-format.ts SECTION_IDS/COLLAPSED_SECTIONS: `services`

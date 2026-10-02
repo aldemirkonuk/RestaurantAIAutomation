@@ -29,21 +29,32 @@ import { TIP_REGISTRY } from './tours/registry'
 
 /**
  * Where the signed-in person's account copy of guidance stands, read from the
- * preferences query: `'failed'` when it holds an error, `'loading'` while it
- * still shows the empty placeholder, `'read'` otherwise. Signed out, it is
- * `'read'`: there is no account copy to wait for.
+ * preferences query. `'read'` once a read of it has succeeded, and still
+ * `'read'` if a later refetch fails (the last good copy is kept). Before any
+ * read has succeeded: `'failed'` when the last one failed, `'loading'`
+ * otherwise (one under way, waiting for a connection, or held back until a
+ * preferences save settles). Signed out, it is `'read'`: there is no account
+ * copy to wait for.
  */
 export type AccountCopy = 'loading' | 'failed' | 'read'
 
 interface GuidanceContextValue {
   state: GuidanceState
   /**
-   * Until this is `'read'`, `state` is this browser's copy over an empty
-   * stand-in. While it is not, no tip shows, the setup nudge is not due, and
-   * every guidance save is dropped (`persistGuidance`), here and to the
-   * account. Help's "Page tips" card reads it to hold its on/off and button.
+   * Until this is `'read'`, no read of the account's copy has succeeded and
+   * `state` is this browser's copy over an empty stand-in. Then no tip
+   * shows, the setup nudge is not due, and `persistGuidance` drops every
+   * guidance save, here and to the account. Help's "Page tips" card reads it
+   * to hold its on/off and button.
    */
   accountCopy: AccountCopy
+  /**
+   * Two tips or tours turned away in this tab (`snoozeTip`, `dismissTip`, a
+   * tour's `onSkipped`) stop tips in this tab until it is closed or
+   * `resetTips` runs. Help's "Page tips" card reads it to say so and offer
+   * "Turn tips back on".
+   */
+  tipsPausedInThisTab: boolean
   tipVisibleFor: PageTourId | null
   isTourRunning: boolean
   startTour: (pageId: PageTourId) => void
@@ -198,23 +209,21 @@ export function GuidanceProvider({ children }: { children: ReactNode }) {
   const location = useLocation()
   const queryClient = useQueryClient()
   const userId = useAuthStore((s) => s.user?.userId) ?? null
-  const { preferences, isPlaceholderData, error, updatePreferences } = useUserPreferences()
-  // Signed in, and the account's copy has not been read: still loading, or
-  // the read failed. Either way `preferences` is an empty stand-in (TanStack
-  // shows the placeholder only while the query is pending; after a failed
-  // read `preferences` falls back to `{}`), so this browser would decide from
-  // its own copy alone and could flash a tip the person turned off in another
-  // browser. Tips wait, the setup nudge waits (showing it saves), and no save
-  // is made: one built from the stand-in, setup-nudge counts included, would
-  // be deep-merged over the account's copy. `error` is checked first, as
-  // GroundChoiceSync does.
-  const accountCopy: AccountCopy = !userId
+  const { preferences, isAccountRead, error, updatePreferences } = useUserPreferences()
+  // Signed in, and no read of the account's copy has succeeded yet (the first
+  // is loading, or it failed): `preferences` is an empty stand-in, the
+  // placeholder or `{}`, so this browser would decide from its own copy
+  // alone and could flash a tip the person turned off in another browser.
+  // Tips wait, the setup nudge waits (showing it saves), and no save is made:
+  // one built from the stand-in, setup-nudge counts included, would be
+  // deep-merged over the account's copy. Once a read has succeeded, a failed
+  // refetch changes nothing here: TanStack keeps that copy beside the error,
+  // and guidance goes on from it.
+  const accountCopy: AccountCopy = !userId || isAccountRead
     ? 'read'
     : error
       ? 'failed'
-      : isPlaceholderData
-        ? 'loading'
-        : 'read'
+      : 'loading'
   const accountCopyRead = accountCopy === 'read'
   // `localTick` re-reads the local mirror after every write, so a tip the
   // person dismissed leaves at once even when the server copy has not come
@@ -317,6 +326,12 @@ export function GuidanceProvider({ children }: { children: ReactNode }) {
     [location.search],
   )
 
+  // Read from the ref on every render. Each skip also changes state, so the
+  // provider re-renders with the new count: `snoozeTip` and `dismissTip` bump
+  // `sessionTick`, and a tour's `onSkipped` ends `tourRunning`, which
+  // `startTour` set.
+  const tipsPausedInThisTab = sessionRef.current.skips >= 2
+
   const tipVisibleFor = useMemo((): PageTourId | null => {
     if (!accountCopyRead) return null
     if (state.global.hide_all_tips) return null
@@ -329,7 +344,7 @@ export function GuidanceProvider({ children }: { children: ReactNode }) {
     // fatigue guard only kicks in once the user has actively snoozed/dismissed
     // a couple of tips this session — it does not cap the *number of distinct
     // pages* offered, only repeat nagging after explicit rejection.
-    if (sessionRef.current.skips >= 2) return null
+    if (tipsPausedInThisTab) return null
 
     const pageId = resolveGuidancePageId(location.pathname, location.search)
     if (!pageId) return null
@@ -345,7 +360,7 @@ export function GuidanceProvider({ children }: { children: ReactNode }) {
     return pageId
     // sessionTick forces recompute after skip/offer mutations
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accountCopyRead, state, tourRunning, location.pathname, location.search, sessionTick])
+  }, [accountCopyRead, state, tipsPausedInThisTab, tourRunning, location.pathname, location.search, sessionTick])
 
   useEffect(() => {
     if (!tipVisibleFor) return
@@ -499,6 +514,7 @@ export function GuidanceProvider({ children }: { children: ReactNode }) {
   const value: GuidanceContextValue = {
     state,
     accountCopy,
+    tipsPausedInThisTab,
     tipVisibleFor,
     isTourRunning: tourRunning,
     startTour,
