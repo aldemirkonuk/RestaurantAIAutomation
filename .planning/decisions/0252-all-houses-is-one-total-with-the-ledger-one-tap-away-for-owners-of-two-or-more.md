@@ -7,7 +7,7 @@
   - `AskUserQuestion`, 2026-10-01, on the direction: *"research for all and more, even from this question i can say A with B one tap away is great"*.
   - On who sees it: *"Owners of 2+ houses (Recommended)"*.
 - **Keywords:** all houses, group view, consolidation, multi-location, profit, goals, group decisions, owner, roll-up
-- **Links:** sketch [125](../sketches/125-all-houses-people-and-tips/README.md): `houses-a-one-total.html`, `houses-b-the-ledger.html`, `houses-frames.html`. Related records:
+- **Links:** sketch [125](../sketches/125-all-houses-people-and-tips/README.md): `houses-a-one-total.html`, `houses-b-the-ledger.html`, `houses-frames.html`. [Corrected 2026-10-02, gate at dde13f0de: sketch 125's folder is on PR #573 (open), not on main, so the link resolves only there.] Related records:
   - [[0164-sessions-follow-membership-and-several-houses-choose]]: one house per session.
   - [[0016-ledgers-must-express-unknown]] and [[0020-no-fabricated-answers]]: an unknown is never a zero, and nothing fails quietly.
   - [[0147-the-pages-endpoints-answer-only-for-the-callers-house-and-person]]: a read answers only for the caller's house.
@@ -34,15 +34,15 @@ An owner of several houses sees them one at a time. A session is in one house (A
 ### Who sees it
 
 1. **Owners of two or more houses.** **Taken.**
-2. **Managers too, without money.** Not taken now. It stays open for a manager of two houses (Open 9).
+2. **Managers too, without money.** Not taken now. It stays open for a manager of two houses (Open 8). [Corrected 2026-10-02, gate at dde13f0de: this said "Open 9"; the fork is Open 8, and it is no longer open. Round 5 answered it: managers of two or more houses get the view, and ADR 0253 round 8 narrowed that to Full and Standard managers.]
 3. **A new group role.** Not taken.
 
 ## Decision
 
-- **What it is.** "All houses" opens on one total: profit for the houses chosen, with each house shown as its share. The per-house ledger is one tap away on the same page.
-- **Who sees it.** It is offered only to a person who is an owner in two or more houses.
+- **What it is.** "All houses" opens on one total: profit for the houses chosen, with each house shown as its share. The per-house ledger is one tap away on the same page. [Corrected 2026-10-02, gate at dde13f0de: round 2 (below) put sales in the lead until profit can be subtracted in one currency.]
+- **Who sees it.** It is offered only to a person who is an owner in two or more houses. [Corrected 2026-10-02, gate at dde13f0de: round 5 (below) widened this to managers of two or more houses, and ADR 0253 round 8 narrowed that to Full and Standard managers; Light managers do not get it.]
 - **How it reads.** It reads each house with the reader's role in that house. A session stays in one house: "All houses" is a read across houses, not a session in all of them.
-- **Honesty.** A house that cannot be read is named, never counted as zero. The total never shrinks without saying so (ADRs 0016, 0020). [Corrected 2026-10-01: this sentence and sketch 125 first cited ADR 0147 for that rule; 0147 holds no such rule. Found by the all-houses money research.]
+- **Honesty.** A house that cannot be read is named, never counted as zero. The total never shrinks without saying so (ADRs 0016, 0020). [Corrected 2026-10-01: this sentence and sketch 125 first cited ADR 0147 for that rule; 0147 holds no such rule. Found by the all-houses money research.] [Corrected 2026-10-02, gate at dde13f0de: "no such rule" was too broad. ADR 0147 does hold the failed-read rule: its Context names "A failed read reported as an empty one" (ADR 0147, line 22) and its Decision says "A failed read throws" (line 35). What 0147 does not hold is the rule for a group total: a house that cannot be read is named and the total says it shrank. That rests on ADRs 0016 and 0020.]
 
 Nothing is built yet.
 
@@ -65,12 +65,12 @@ Asked by `AskUserQuestion` after the independent adversarial pass (below); his w
 - **Readiness (Open 10):** *"Only when 2 can be read (Recommended)"*. Until two of the owner's houses can be measured, the entry opens a short setup list of what each house still needs.
 - **Stake (Open 9):** *"Whole houses, said so (Recommended)"*. Totals add whole houses and say "whole houses, not your share". No ownership percentage is stored or asked for.
 - **History (Open 11):** *"Houses you own today (Recommended)"*. Past totals cover the houses owned now, so periods compare the same houses; the page says "houses you own today".
-- **Managers and profit (Open 7):** *"Only with pay access"* — against the recommendation ("owners only"). A manager the owner has given pay access (`team_pay_access`, ADR 0215) sees profit for their own house, with owners' wages left out of it (ADR 0215 item 24: an owner's wage is invisible to managers, pay access or not). Every other manager sees sales, goods and hours, not profit.
+- **Managers and profit (Open 7):** *"Only with pay access"* — against the recommendation ("owners only"). A manager the owner has given pay access (`team_pay_access`, ADR 0215) sees profit for their own house, with owners' wages left out of it (ADR 0215 item 24: an owner's wage is invisible to managers, pay access or not). Every other manager sees sales, goods and hours, not profit. [Amended 2026-10-02, gate at dde13f0de: ADR 0253 round 11 (F14) answered *"Needs money and pay (Recommended)"*, whose option read "Profit shows only to someone with both rights. The pay switch is then offered only to someone who sees money." So pay access alone no longer shows profit: a manager needs pay access and the house's money right. Not built.]
 
 **Round 5, same day, verbatim:**
-- **A manager of two houses (Open 8):** *"yes they see all with profit if authorized, come up with pacakgaes to give options, like full access, one low, one more lower"*. **This widens the locked audience** ("owners of two or more") to managers of two or more houses: they get "All houses", with profit where they are authorized (round 4: pay access, owners' wages left out). He also asks for **access packages** an owner picks from — full access, a lower one, a lower one still. The packages are designed with ADR 0253's rights and labels research and put back to him; nothing about their contents is decided here. **[Answered the same day, ADR 0253 round 8: Full and Standard managers get "All houses" (Full with profit and pay, Standard without); Light managers do not.]**
+- **A manager of two houses (Open 8):** *"yes they see all with profit if authorized, come up with pacakgaes to give options, like full access, one low, one more lower"*. **This widens the locked audience** ("owners of two or more") to managers of two or more houses: they get "All houses", with profit where they are authorized (round 4: pay access, owners' wages left out) [amended 2026-10-02: ADR 0253 F14 makes it money and pay; see round 4]. He also asks for **access packages** an owner picks from — full access, a lower one, a lower one still. The packages are designed with ADR 0253's rights and labels research and put back to him; nothing about their contents is decided here. **[Answered the same day, ADR 0253 round 8: Full and Standard managers get "All houses" (Full with profit and pay, Standard without); Light managers do not.]**
 
-**The exchange-rate research (2026-10-01, Workflow: 3 finders, 1 adversary, 1 judge; findings `p4-scratch/takeover/houses-scratch/research-fx-rate-source.md`).** No product sampled takes rates from web search or stock charts: each takes one dated rate a day from one named vendor through an API, stores it, and lets the user type over it. Its recommendation (the ECB daily reference rate, each day converted at that day's rate then summed, every converted figure saying "ECB rates, <dates>", a weekend using Friday's rate, a house with no usable rate left in its own currency and counted in "N of M", a rate the owner types winning from its date) would narrow ADR 0083's "nothing inferred" to records and ledgers and replace ADR 0117 §3 for display figures. Put back to the founder; not decided here.
+**The exchange-rate research (2026-10-01, Workflow: 3 finders, 1 adversary, 1 judge; findings `p4-scratch/takeover/houses-scratch/research-fx-rate-source.md`, outside the repo, so not re-checkable from it).** No product sampled takes rates from web search or stock charts: each takes one dated rate a day from one named vendor through an API, stores it, and lets the user type over it. Its recommendation (the ECB daily reference rate, each day converted at that day's rate then summed, every converted figure saying "ECB rates, <dates>", a weekend using Friday's rate, a house with no usable rate left in its own currency and counted in "N of M", a rate the owner types winning from its date) would narrow ADR 0083's "nothing inferred" to records and ledgers and replace ADR 0117 §3 for display figures. Put back to the founder; not decided here.
 
 **Round 6, same day, verbatim:**
 - **A currency with no typed rate (Open 13):** *"Yes, ECB daily, dated (Recommended)"*. The ECB daily reference rate converts display figures when no rate is typed; every converted figure says "ECB rates, <dates>"; a weekend uses Friday's rate with Friday's date; a rate the owner types wins from its date; a house with no usable rate stays in its own currency and counts in "from N of M". **This narrows ADR 0083's "nothing inferred" to records and books and supersedes ADR 0117 rule 3 for display figures** (both bracketed 2026-10-01). It also reverses the adversarial pass's "rate source killed" verdict, which rested on that rule. The question stated the narrowing.
@@ -95,7 +95,7 @@ Asked by `AskUserQuestion` after the independent adversarial pass (below); his w
 4. ~~Two currencies: one total at an average rate, or a total per currency.~~ Answered (round 2): a currency popover at the owner's rate; the no-rate case is open.
 5. ~~Group goals: each house rolling up, or one target on the total; and whether a house may change its own.~~ Answered (round 3).
 6. ~~Group decisions, per kind: applies outright, applies with a manager's override, or each manager accepts.~~ Answered (round 3).
-7. ~~Whether managers see profit.~~ Answered (round 4): only with pay access, owners' wages left out.
+7. ~~Whether managers see profit.~~ Answered (round 4): only with pay access, owners' wages left out. [Amended 2026-10-02, gate at dde13f0de: ADR 0253 F14 makes it money and pay, not pay alone. See round 4.]
 8. ~~Whether a manager of two houses gets "All houses".~~ Answered (round 5): yes, profit where authorized; access packages to design.
 
 9. ~~Stake and one business: is a co-owner's total the whole house or their share; is an owner of unrelated houses one total?~~ Answered (round 4): whole houses, said so.
@@ -125,7 +125,7 @@ Its recommendations per fork (profit as a staged, named measure; "from N of M ho
 
 ## Consequences
 
-- The design question is settled. A build waits on Open 2 above all, because the lead figure is profit, and profit is not computed today.
+- The design question is settled. A build waits on Open 2 above all, because the lead figure is profit, and profit is not computed today. [Corrected 2026-10-02, gate at dde13f0de: stale after round 2, which put sales in the lead. Profit is still not computed. The first finding's money defects still stand, and a group total cannot be trusted until they are fixed.]
 - Revisit if owners of a single house ask for the view, or if the research shows that leading with one figure hides a failing house.
 
 ## Review trail
@@ -138,3 +138,4 @@ Its recommendations per fork (profit as a staged, named measure; "from N of M ho
 | 2026-10-01 | Aldemir (founder, `AskUserQuestion`, round 4) + Claude (Opus 5.5) | Answered Open 7, 9, 10, 11 (7 against the recommendation) |
 | 2026-10-01 | Aldemir (founder, `AskUserQuestion`, round 5) + Claude (Opus 5.5) | Answered Open 8 (widens the audience to managers of 2+, packages asked); exchange-rate research folded, put back to him |
 | 2026-10-01 | Aldemir (founder, `AskUserQuestion`, round 6) + Claude (Opus 5.5) | Answered Open 13 and the rate day; ADR 0083 and 0117 bracketed |
+| 2026-10-02 | Claude (Opus 5.5; PR #566 gate round, audit at `dde13f0de`) | Corrected in brackets, no decision changed: Open 8 (was "Open 9"); who sees it and what leads, after rounds 2 and 5; the ADR 0147 bracket; Consequences after round 2. Round 4 and Open 7 amended for ADR 0253 F14 (profit needs money and pay). The fx research file marked as outside the repo |

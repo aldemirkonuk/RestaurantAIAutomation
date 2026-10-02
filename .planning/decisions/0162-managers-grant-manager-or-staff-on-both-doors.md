@@ -53,7 +53,7 @@ settle (CLAUDE.md §0.1).
 
 **Option 3.** An owner grants owner, manager or staff. A manager grants manager or
 staff, never owner. Staff grant nothing. A missing role, or any value that is not one
-of those three, grants nothing and cannot be granted. This holds on both doors.
+of those three, grants nothing and cannot be granted. This holds on both doors. [Amended 2026-10-02 by ADR 0253 round 11 (F10), bracketed by PR #566's gate round (audit at `dde13f0de`). The founder picked *"Close both (Recommended)"*, whose option read: "A manager cannot remove someone whose money an owner took. Someone without the right may invite or add staff only. Changes ADR 0162 for those cases; an owner is needed for those removals." "The right" is ADR 0253's "Sees the house's money". So a manager without it grants staff only, and only an owner removes someone whose money right an owner took. Not built.]
 
 One implementation serves both doors: `grantRefusal` in
 `apps/api-gateway/src/auth/role-grant.ts`, called by `generateInvite` and by
@@ -468,3 +468,4 @@ and the `users`-row fallback still admitted them there at `users.role`, so the h
 | 2026-09-18 | PR #393 round-6 build | Made `req.user.role` the role in the token's house, cleared `users.restaurant_id` for the house left on all three exits, put the owner rule on the Team page's remove, stopped both removals on a failed read, filtered the role change's UPDATE to the active row; re-measured production read-only; 49 claim mutants and 3 controls, 41 jest mutants (1 equivalent survivor) |
 | 2026-09-18 | Aldemir (AskUserQuestion) | On the round-6 verifier's findings: "Membership only" for sessions (44.1r), "Keep managers in" for owner-only routes (44.1s); fourth addendum |
 | 2026-09-18 | ADR 0164 build (`fix/sessions-follow-membership`) | Bracket-corrected the fourth addendum (44.1t came from #393's own fix; its remedy is ADR 0164's, not a reset) and the decorator counts (10 owner-only, 37 in all); built 44.1r, 44.1s and 44.1t in ADR 0164 |
+| 2026-10-02 | Claude (Opus 5.5; PR #566 gate round, audit at `dde13f0de`) | Bracketed the Decision for ADR 0253 F10: a manager without the money right grants staff only, and only an owner removes someone whose money an owner took. Not built |
