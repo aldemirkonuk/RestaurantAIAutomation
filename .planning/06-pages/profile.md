@@ -44,7 +44,15 @@ Personal account page for every role: Account (name/phone; email read-only), Sec
 - Account: edit name and phone (email read-only)
 - Security: change password
 - Linked accounts: link/unlink Google
-- Preferences: theme
+- Preferences: theme — ~~Light / Dark / System, kept in this browser~~ **the person's ground,
+  Paper or Charcoal, saved to their account and loaded on any device they sign in on (ADR
+  0169). Nothing is pressed until the account has answered; a pending read, this device's
+  copy, an unreadable value or a failed save is said in words under the two buttons.**
+  **[2026-10-01 — founder, 2026-10-01, page walk-through DASH-W23: "approve + remove the
+  system theme from top bar into settings"; asked where, he picked `/profile` so every role
+  can reach it. The old row drove `ThemeContext`, which no Mudavym page follows (ADR 0138
+  D1), so it changed nothing on screen. The header's theme button is deleted with
+  `ThemeMenu.tsx`; this row is the one control. ADR 0169 §Amendment 2026-10-01.]**
 - Managers/owners additionally: Restaurant details (name/city/billing contact), Payment, Memberships
 - Danger zone: leave the active restaurant; delete your account behind a type-DELETE confirmation
 
@@ -242,7 +250,9 @@ behind it exists:
 > header — `apps/web/src/components/mudavym/HouseHeader.tsx`, mounted by
 > `PageGate` above every `next` tree: the A+M mark, this page's name, the ⌘K
 > "Search or act" trigger, the house (or the branch switcher when there is more
-> than one), the bell, the theme menu and the account menu. Chrome is excluded
+> than one), the bell, ~~the theme menu~~ and the account menu **[2026-10-01: the theme
+> menu left the header — founder, page walk-through DASH-W23; the ground is chosen in this
+> page's Preferences card]**. Chrome is excluded
 > from §Surface by PAGE-CONTRACT, so it is named here and nowhere else in this
 > note; its motions live in `components/mudavym/MOTIONS.md`, not the table
 > below.
@@ -1157,7 +1167,10 @@ Core, every role. No `S..` touches it directly (OD-48).
   Google row says Google sign-in is not configured on this deployment rather than
   rendering a button that cannot work.
 - Role gating in-page: `isManagerOrOwner` gates the Restaurant/Payment/Memberships sections and the locations fetch (`Profile.tsx:127,158`). The rebuild keeps the gate on the *fetch and the controls* but renders the section either way (permission-denied is a state, not an absence).
-- Theme via `ThemeContext`.
+- ~~Theme via `ThemeContext`.~~ **[2026-10-01, DASH-W23: the Theme row reads and writes the
+  person's ground — `lib/mudavym/groundChoice.ts` (`useGroundState`, `setGroundChoice`,
+  `groundIsKnown`, `groundNote`), saved to `user_preferences.preferences.ground` by
+  `GroundChoiceSync`. `useProfileNextData` no longer carries `theme` / `setTheme`.]**
 - **Stripe (third pass, ADR 0110) — three variables in two processes.**
   `STRIPE_SECRET_KEY` (gateway) mints the SetupIntent and reads instruments
   back; `STRIPE_WEBHOOK_SECRET` (gateway) authenticates deliveries and, when

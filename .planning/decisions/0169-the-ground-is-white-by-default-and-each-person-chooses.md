@@ -8,7 +8,8 @@
   **follows the person, not the browser** — it lives on their account and loads on sign-in on
   any device (Fork B: Option 1 superseded). See **§The founder's answer, 2026-09-21** below;
   **Still open** is now empty.**]
-- **Date:** 2026-09-19 · amended 2026-09-21 (the two open forks, answered)
+- **Date:** 2026-09-19 · amended 2026-09-21 (the two open forks, answered) · amended 2026-10-01
+  (DASH-W23: the control moved from the header to `/profile` — see §Amendment 2026-10-01)
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** ground, paper, charcoal, theme, ThemeMenu, ThemeContext, data-ground,
   data-mudavym-ground, groundChoice, GroundChoiceSync, per-device, per-account,
@@ -96,7 +97,9 @@ The published guidance cited above was heard and overruled by the person whose p
 Mechanically enforced — `groundChoiceNoFlash.test.ts` executes the shipped pre-paint script
 against a `matchMedia` that reports a dark machine and asserts paper, `groundChoice.test.ts`
 asserts the store never calls `matchMedia` at all, `ThemeMenu.test.tsx` asserts no third
-option, and the `ADR-0169-GROUND-FOLLOWS-ACCOUNT` claim fails the build if `matchMedia` or
+option [2026-10-01: that file is deleted with the header control; `groundChoice.test.ts`
+(`GROUND_OPTIONS`) and `ProfileNext.test.tsx` (the Theme row's two buttons) assert it now —
+§Amendment 2026-10-01], and the `ADR-0169-GROUND-FOLLOWS-ACCOUNT` claim fails the build if `matchMedia` or
 `prefers-color-scheme` appears anywhere on the path.**]
 
 ### Fork B — where does the choice live: this device, or the account?
@@ -234,7 +237,9 @@ receiving door's charcoal (`DoorNext`) — still outranks both, unchanged, becau
   Paper and Charcoal, persisted immediately. Off a Mudavym page it is byte-for-byte unchanged —
   still the legacy Light/Dark/System menu against `ThemeContext`, which this record does not
   touch. No new UI surface was added; the one that was already on every page's header, already
-  labelled "Theme," was wired to something real instead of duplicated.
+  labelled "Theme," was wired to something real instead of duplicated. **[2026-10-01: this
+  file is deleted. The control moved to `/profile`'s Preferences card and the legacy menu went
+  with it — §Amendment 2026-10-01 (DASH-W23).]**
 - `apps/web/src/pages/receiving/next/DoorNext.tsx` — comment corrected in place (its
   `data-ground="charcoal"` used to merely CONFIRM the default; it now FORCES it, unchanged in
   effect either way).
@@ -327,7 +332,9 @@ does not read it. The pre-paint script's every failure path assigns `'paper'`, t
 suites now hold that shut mechanically rather than by reading: `groundChoiceNoFlash.test.ts`
 *executes the shipped script out of `index.html`* against a seeded store and a `matchMedia` that
 reports a dark machine, `groundChoice.test.ts` asserts the store never calls `matchMedia`, and
-`ThemeMenu.test.tsx` asserts there is no third option.
+`ThemeMenu.test.tsx` asserts there is no third option. **[2026-10-01: `GROUND_OPTIONS` now
+lives in `groundChoice.ts`, and both `ThemeMenu` files are deleted — the no-third-option
+assertion moved to `groundChoice.test.ts` and `ProfileNext.test.tsx`. §Amendment 2026-10-01.]**
 
 ### Part 2 — the choice lives on the account
 
@@ -387,6 +394,10 @@ different situations into the word "paper". `GroundState.source` keeps them apar
 | `unknown` | signed in, no answer yet, no mirror | **marks nothing**, says it is still reading |
 | `unreadable` | the read failed, or the account holds a value this app does not know, and there is no mirror | **marks nothing**, says it could not be read, and names the reason |
 
+**[2026-10-01: "the header menu" in this table is now the Theme row on `/profile` — same
+five rows, `aria-pressed` in place of a checkmark, `groundNote` under the two buttons in place
+of the menu note. There is no trigger tooltip any more. §Amendment 2026-10-01.]**
+
 So a failed preferences read is never "paper by default": the trigger's tooltip reads
 `Ground: not read yet`, no option carries a checkmark, and the menu carries the reason.
 Symmetrically, a failed **save** does not report success — the chosen ground stays on screen
@@ -411,9 +422,14 @@ after the menu said so.
   `isLoading` cannot tell "the account answered with nothing" from "the account has not
   answered".
 - `apps/web/src/components/layout/ThemeMenu.tsx` + `components/mudavym/sheet.css` — the menu
-  reports the state above instead of always checkmarking something.
+  reports the state above instead of always checkmarking something. **[2026-10-01: both
+  `ThemeMenu` files and sheet.css's `.mdv-menu-note` are deleted; `groundNote` /
+  `groundIsKnown` live in `groundChoice.ts` and the Theme row on `/profile` reports the state —
+  §Amendment 2026-10-01.]**
 - Suites: `groundChoice.test.ts` (24), `GroundChoiceSync.test.tsx` (13, new file),
-  `groundChoiceNoFlash.test.ts` (17), `ThemeMenu.test.tsx` (14).
+  `groundChoiceNoFlash.test.ts` (17), `ThemeMenu.test.tsx` (14). **[2026-10-01:
+  `ThemeMenu.test.tsx` deleted, its ground cases ported to `groundChoice.test.ts` (33) and
+  `ProfileNext.test.tsx`'s Theme-row block (10).]**
 
 ### Measured, 2026-09-21 (round 6)
 
@@ -472,6 +488,61 @@ pass remains the outstanding item.
   `matchMedia` or `prefers-color-scheme`. Static (grep/python only) and mutation-tested against
   five independent breaks — see §The founder's answer.]**
 
+## Amendment 2026-10-01 (DASH-W23) — the control moves from the header to `/profile`
+
+**The founder, 2026-10-01, page walk-through DASH-W23:** *"approve + remove the system theme
+from top bar into settings".* Asked where the control should go, he picked **"/profile
+(Recommended)"**.
+
+**What changed.** The header's theme button is gone from both headers — `HouseHeader.tsx`
+(the shell's) and the legacy `Header.tsx` (which only runs with the shell off) — and
+`components/layout/ThemeMenu.tsx` + its test are deleted. The one control is now the
+**Theme** row of `/profile`'s Preferences card (`pages/profile/next/IdentityRegister.tsx`,
+Register I): **Paper** and **Charcoal**, driven by the same store this record built
+(`useGroundState` / `setGroundChoice`) and saved to the person's account exactly as before.
+Every rule in §A read that failed is not an answer carries over unchanged: a button is
+`aria-pressed` only when the ground is known AND matches (`groundIsKnown` — nothing pressed
+under `unknown` / `unreadable`), and whatever stands between the screen and a confirmed
+answer is said under the buttons (`groundNote`; a failed save outranks a failed read). The
+two helpers and `GROUND_OPTIONS` moved out of `ThemeMenu.tsx` into `lib/mudavym/groundChoice.ts`.
+The card's lead, which said "Kept in this browser.", now says the choice is saved to the
+account.
+
+**Why `/profile` had a dead row first.** Its old Theme row offered Light / Dark / System
+against `ThemeContext`. Verified live on 2026-10-01 by the coordinating session: clicking
+"dark" there set `<html class="dark">`, and the `.mudavym` page background stayed paper —
+Mudavym pages ignore the app theme by design (ADR 0138 D1). It was the same defect this
+record opened on (§Context), surviving on a second surface. It is replaced, not kept beside
+the real control.
+
+**Alternatives rejected.**
+
+1. **`/settings`, for every role.** `/settings` is staff-gated today (a staff member gets
+   `StaffAskManager` instead of the page, `pages/settings/next/SettingsNext.tsx:186`), so this
+   would mean opening that page to staff — a larger change than the move it serves, made only to host
+   one personal control.
+2. **`/settings`, for managers and owners only.** Staff would lose the control altogether;
+   the ground is a per-person choice and every person must be able to make it.
+3. **Keep it in the header.** Ruled out by the founder's words.
+
+`/profile` is reachable by every role, and it makes the ground one control in one place.
+
+**Given up, stated plainly.** The legacy Light / Dark / System app-theme menu went with
+`ThemeMenu.tsx`, and nothing replaces it (the ruling was to remove it, not move it). After this
+change no rendered control sets `ThemeContext` (`components/layout/ThemeToggle.tsx` exists but
+has no importer). A browser that had stored `dark` or `system` under `wineops-theme` keeps
+that class on `<html>` with no control to clear it. Mudavym pages ignore it (ADR 0138 D1); only
+a surface that still uses Tailwind `dark:` utilities could show it.
+
+**Tests.** `ThemeMenu.test.tsx`'s ground-branch assertions are ported, not dropped: the
+helpers and the exact note texts to `lib/mudavym/groundChoice.test.ts`, and the rendered
+behaviour (two options, nothing pressed under `unknown` / `unreadable` with the note shown,
+a click calls `setGroundChoice` with its value and saves it, a failed save is said) to
+`pages/profile/next/ProfileNext.test.tsx`. Its two popover-only cases (closes on a choice;
+the trigger's title) have no counterpart, because there is no popover and no trigger.
+`HouseHeader.test.tsx`, `HouseShell.test.tsx` and `shellOverlays.test.tsx` now assert that
+neither header carries a theme control.
+
 ## Still open — nothing
 
 **[2026-09-21.]** Both sub-questions this record left open were put to the founder and both are
@@ -507,3 +578,4 @@ is more useful than a deleted paragraph. His words: **"Always paper, follows acc
 | 2026-09-21 | — (round 5) | Both must-fix items closed: merged current `origin/main` (8 commits by then; one genuine conflict on ADR 0138's status line, resolved by keeping both dated brackets) and reran claims (370/370) and the full suite (green) on the merged tree; fixed `PageGate.tsx` and `shellGround.ts` per the Mechanism note above, with a new regression suite that fails pre-fix and passes post-fix, mutation-tested against each half of the fix independently |
 | 2026-09-21 | Aldemir (founder), answering this record's two open forks | **"Always paper, follows account."** Fork A2 rejected (no OS preference, no third option); Fork B reversed (per account, not per device) |
 | 2026-09-21 | — (round 6) | Built: the device-wide key replaced by a per-person mirror of the account value, `GroundChoiceSync` joining the store to `/users/:userId/preferences`, the pre-paint script taking the person from the session token, and the header menu reporting a pending/failed read instead of checkmarking Paper. No migration — see Fork B's 2026-09-21 bracket. `apps/web`: 200 files, 2902 passed, 14 skipped; `tsc --noEmit` 0 errors |
+| 2026-10-01 | Aldemir (founder), page walk-through DASH-W23 | **"approve + remove the system theme from top bar into settings"**, and asked where, **"/profile (Recommended)"**. The header control and `ThemeMenu.tsx` are deleted; the ground is chosen on `/profile`'s Preferences card. See §Amendment 2026-10-01 |
