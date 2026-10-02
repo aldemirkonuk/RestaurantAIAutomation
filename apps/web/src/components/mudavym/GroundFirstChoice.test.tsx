@@ -288,7 +288,7 @@ describe('answering it', () => {
   });
 });
 
-describe('closing without saving writes nothing (built, not ruled — the founder\'s open fork)', () => {
+describe('closing without saving writes nothing (ruled 2026-10-01: ask again next load)', () => {
   for (const [how, close] of [
     ['Not now', () => fireEvent.click(screen.getByRole('button', { name: 'Not now' }))],
     ['Escape', () => fireEvent.keyDown(window, { key: 'Escape' })],
