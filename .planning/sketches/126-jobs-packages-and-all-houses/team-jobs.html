@@ -221,19 +221,26 @@ body{font-size:14.5px}
 <div class="banner"><b>Sketch 126 · Team · Jobs</b><span>who does which work here, and so may do it</span><span>example data</span><a href="index.html">all frames</a></div>
 <p class="note"><b>The idea.</b> You answered <b>"Listed means allowed"</b>. Team gets a <b>Jobs</b> section with one row per kind of work. Being on a row lets that person do that work here, from now on. A job you hand someone carries its own permission while it is open, so a person can do one delivery without being on the row.</p>
 <div class="rules"><div class="card"><h3>Already decided, drawn as decided</h3><ul>
-<li>One row per kind of work: Receive deliveries, Count stock, Place orders, Set up zones. Being listed is the right from now on, per person and per house. No separate label list, no template (ADR 0253, round 7).</li>
-<li>Staff can't do these until given (round 2: <i>"Closed until given"</i>). Owners and managers do all four by role.</li>
-<li>A job carries its own right while it is open. That right ends when the job ends, never at the due time (round 7). Late is a notice, never a lock (round 2).</li>
-<li>Set up zones is the switch already built for zones (ADR 0238). It moves here; nothing about who may set up zones changes.</li>
+<li>Being on a row means that person may do that work from now on. There is one list, so who does the work and who may do it never disagree (ADR 0253 round 7, <i>"Listed means allowed (Recommended)"</i>).</li>
+<li>Giving a job to someone not on the row asks: for this job, or from now on? The giver picks (round 7; round 2, <i>"make it select, permanent and for this"</i>).</li>
+<li>Staff can't receive, count stock or place orders until given (round 2: <i>"Closed until given"</i>). The question was about staff; owners and managers keep them by role. Whether a Light manager places orders by role is open (see Managers' access).</li>
+<li>Late is a notice, never a lock: the person is reminded, then the giver is told once (round 2).</li>
+</ul></div>
+<div class="card" style="margin-top:10px"><h3>Drawn as proposed, not decided</h3><ul>
+<li>The four rows (Receive deliveries, Count stock, Place orders, Set up zones), with Set up zones being the zone switch already built (ADR 0238) moved here. They come from the jobs-and-labels research; which rights there are is open (OD-208).</li>
+<li>When a "for this job" right ends. Drawn as the research proposes: when the job is done, cancelled or given to someone else, never at the due time (OD-211).</li>
+<li>A receive job covers one vendor's delivery on one day (OD-214).</li>
+<li>Place orders stays open to everyone until order approval is fixed (OD-213).</li>
+<li>Take back's three buttons, "via job", and "Jobs you gave" with its Open, Late, Asked and Done states are the research's wording.</li>
 </ul></div></div>
 
 <p class="cap">1 · Team → Jobs, the owner's view</p>
-<p class="fcap">Draws <b>ADR 0253 round 7</b>, <i>"Listed means allowed (Recommended)"</i>, with the research's Jobs section (§6.1): chips, "by role", + Add, "via job", and "Jobs you gave".</p>
+<p class="fcap">Draws <b>ADR 0253 round 7</b>, <i>"Listed means allowed (Recommended)"</i>. The rows, chips, "by role", + Add, "via job" and "Jobs you gave" are the jobs-and-labels research's proposal (outside the repo), marked <span class="tag">proposed</span> where a rule is not decided.</p>
 <div class="frame"><div class="topbar"><span class="mark">Mudavym</span><span class="switch"><b>Sim Bistro</b> ▾</span><span class="grow"></span><span class="btn quiet">Ask</span><span class="btn quiet">Counter</span><span class="chip">You · owner</span></div>
 <div class="page">
 <div class="spread"><div><p class="eyebrow">Sim Bistro · Team</p><h1>Jobs.</h1></div><span class="btn primary">+ Give a job</span></div>
 <div class="tabs"><span>Roster</span><span>Areas</span><span class="here">Jobs</span></div>
-<p class="standing">Who does which work here. <b>Being on a row lets them do it</b> until you take it back. Owners and managers do all of it already.</p>
+<p class="standing">Who does which work here. <b>Being on a row lets them do it</b> until it is taken back. Owners and managers do it by role.</p>
 
 <div class="card white" style="margin-top:16px;padding:4px 18px">
 <div class="jobrow"><div><h3>Receive deliveries</h3><div class="small muted">count what arrives and sign for it at the door</div></div>
@@ -242,7 +249,7 @@ body{font-size:14.5px}
 <span class="person via"><span class="av">DA</span>Deniz Aksoy <span class="tag">via job</span></span></div>
 <div class="g2" style="margin-top:10px;gap:10px">
 <div class="menu"><b>Mert Kaya</b><div class="small muted">On this row since 12 Sep · given by you</div><span class="btn loss">Take back</span></div>
-<div class="small muted" style="align-self:center">Deniz isn't on this row. Deniz can receive today only because of one job: <b style="color:var(--ink-1)">Sysco's delivery, today</b>. When that's in, it ends.</div></div></div>
+<div class="small muted" style="align-self:center">Deniz isn't on this row. Deniz can receive today only because of one job: <b style="color:var(--ink-1)">Sysco's delivery, today</b>. When that's in, it ends. <span class="tag">proposed · OD-211, OD-214</span></div></div></div>
 <span class="btn soft">+ Add</span></div>
 
 <div class="jobrow"><div><h3>Count stock</h3><div class="small muted">count a zone: shelves, the walk-in, the cellar</div></div>
@@ -251,10 +258,10 @@ body{font-size:14.5px}
 <span class="person"><span class="av">JP</span>Jonah Price</span></div>
 <span class="btn soft">+ Add</span></div>
 
-<div class="jobrow"><div><h3>Place orders</h3><div class="small muted">start an order to a vendor; it waits for approval</div></div>
+<div class="jobrow"><div><h3>Place orders</h3><div class="small muted">start an order; no amount comes with it, the house's approval rule decides. Until approvals are built, it waits for an owner or a manager</div></div>
 <div><div class="people"><span class="byrole">You and Ayla, by role</span>
 <span class="person"><span class="av">MK</span>Mert Kaya</span></div>
-<div class="callout" style="margin-top:10px">Not closed yet. <b>Everyone here can still place orders</b> until order approval is fixed. This row starts to count then.</div></div>
+<div class="callout" style="margin-top:10px">Not closed yet. <b>Everyone here can still place orders</b> until order approval is fixed. This row starts to count then. <span class="tag">proposed · OD-213</span></div></div>
 <span class="btn soft">+ Add</span></div>
 
 <div class="jobrow"><div><h3>Set up zones</h3><div class="small muted">add and change storage zones</div></div>
@@ -277,7 +284,7 @@ body{font-size:14.5px}
 </div></div>
 
 <p class="cap">2 · Take back asks first</p>
-<p class="fcap">Draws <b>ADR 0253 round 7</b>: a job carries its own right until it ends, so taking Mert off the row leaves today's delivery with him. The wording and the three buttons are the research's (§6.1).</p>
+<p class="fcap"><span class="tag">proposed</span> Drawn as the jobs-and-labels research proposes, not decided: a job keeps its own right until it ends (OD-211), so taking Mert off the row leaves today's delivery with him. The wording, the three buttons and who is told are the research's.</p>
 <div class="frame"><div class="veil" style="padding:34px 16px">
 <div class="ghost card white" style="max-width:820px;margin:0 auto -150px;padding:14px 18px"><h3>Receive deliveries</h3><div class="people"><span class="byrole">You and Ayla, by role</span><span class="person"><span class="av">MK</span>Mert Kaya</span><span class="person"><span class="av">DA</span>Deniz Aksoy</span></div><div style="height:110px"></div></div>
 <div class="dlg" style="position:relative">
@@ -292,7 +299,7 @@ body{font-size:14.5px}
 </div></div></div>
 
 <div class="forks"><h2>Open, noticed while drawing</h2><ol>
-<li><b>Place orders before approval is fixed.</b> Drawn as the research proposes: the row exists, but everyone can still place orders until the two order-approval holes are fixed. ADR 0253 round 7 lists this as "still to confirm".</li>
+<li><b>Place orders before approval is fixed.</b> Drawn as the research proposes: the row exists, but everyone can still place orders until the two order-approval holes are fixed. ADR 0253 round 7 lists this as "still to confirm" (OD-213).</li>
 <li><b>Ending a job on Take back.</b> When "Take back and end his job" leaves a delivery with no one on it, is the giver asked to pick someone, or does the delivery just go unassigned? Not settled.</li>
 <li><b>Whose jobs show in "Jobs you gave".</b> Drawn as the giver's own. Whether an owner also sees the jobs a manager gave is not settled.</li>
 </ol></div>

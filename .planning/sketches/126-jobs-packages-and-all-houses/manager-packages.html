@@ -221,15 +221,17 @@ body{font-size:14.5px}
 <div class="banner"><b>Sketch 126 · Managers' access</b><span>Full, Standard, Light: filled in once, then adjusted per person</span><span>example data</span><a href="index.html">all frames</a></div>
 <p class="note"><b>The idea.</b> A manager gets one of three packages: <b>Full</b>, <b>Standard</b> or <b>Light</b>. The package fills in their access once. After that you can add or take away single things, and Team shows it as <b>"Standard, adjusted"</b>. A package changing later never changes anyone by itself: you are asked, person by person.</p>
 <div class="rules"><div class="card"><h3>Already decided, drawn as decided</h3><ul>
-<li>The three packages and what each opens: <i>"Yes, as drawn (Recommended)"</i> (ADR 0253, round 8). A manager with no package gets Light.</li>
+<li>The three packages and what each opens: <i>"Yes, as drawn (Recommended)"</i> (ADR 0253, round 8). A manager with no package gets Light. Light's card follows round 11's F2, below.</li>
 <li>Adjusting one person: <i>"Yes, shown as adjusted (Recommended)"</i>. The package fills in once; single rights can then be added or removed (round 8).</li>
 <li>Changing a package later: <i>"No, you're asked (Recommended)"</i>. Managers keep what they were given; you apply the new version per person (round 8).</li>
 <li>Staff: <i>"Jobs list only (Recommended)"</i>. Packages are for managers; staff rights come from the Jobs rows and from jobs (round 8).</li>
-<li>An owner's wage is never shown to a manager, pay access or not (ADR 0215 item 24). A manager with pay access sees profit for their own house (ADR 0252, round 4).</li>
+<li>Every package turns on the house's money, Light too; Light's "no money" means it gives no money rights (round 11, F2: <i>"Every package turns it on (Recommended)"</i>). An owner, or a Full manager an owner allowed, may take it from one person, and Team shows the package as adjusted (F2; F4, <i>"Owners + allowed Full managers"</i>). A role change resets it to the new role (F9: <i>"Resets to the new role (Recommended)"</i>).</li>
+<li>Profit shows only to someone with both the house's money and pay; the pay switch is offered only to someone who sees money (F14: <i>"Needs money and pay (Recommended)"</i>, amending ADR 0252 round 4). An owner's wage is never shown to a manager, pay access or not (ADR 0215 item 24).</li>
+<li>An owner allows each money or sending action separately, and sets up to how much a manager may give, above the manager's own limit if the owner wants (2 Oct: <i>"Yes, per action (Recommended)"</i>, <i>"Owner sets the cap (Recommended)"</i>). Standard's order work carries no amount of its own; the house's approval rule decides (2 Oct: <i>"No amount of its own (Recommended)"</i>).</li>
 </ul></div></div>
 
 <p class="cap">1 · The three packages, and the managers on them</p>
-<p class="fcap">Cards draw <b>ADR 0253 round 8</b>, <i>"Yes, as drawn"</i>. Ayla's row draws <i>"Yes, shown as adjusted"</i>, with the difference listed. Her pay line draws <b>ADR 0252 round 4</b> (<i>"Only with pay access"</i>).</p>
+<p class="fcap">Cards draw <b>ADR 0253 round 8</b>, <i>"Yes, as drawn"</i>. Ayla's row draws <i>"Yes, shown as adjusted"</i>, with the difference listed. Her pay line draws round 11's <b>F14</b> (<i>"Needs money and pay"</i>), which amends ADR 0252 round 4: profit needs the house's money and pay.</p>
 <div class="frame"><div class="topbar"><span class="mark">Mudavym</span><span class="switch"><b>Sim Bistro</b> ▾</span><span class="grow"></span><span class="btn quiet">Ask</span><span class="btn quiet">Counter</span><span class="chip">You · owner</span></div>
 <div class="page">
 <p class="eyebrow">Sim Bistro · Team</p><h1>Managers' access.</h1>
@@ -238,23 +240,23 @@ body{font-size:14.5px}
 
 <div class="pkgs">
 <div class="pkg"><div class="name">Full</div>
-<p class="lbl">Opens</p><ul class="yes"><li>All houses, with profit and pay</li><li>Every job</li><li>Can let others approve orders and send to vendors, because you allow it here</li></ul>
+<p class="lbl">Opens</p><ul class="yes"><li>All houses, with profit and pay</li><li>The house's money</li><li>Every job</li><li>Gives the money and sending rights you allow, one by one, up to the amount you set</li></ul>
 <p class="lbl">Never</p><ul class="no"><li>Owners' wages</li></ul></div>
 <div class="pkg"><div class="name">Standard</div>
-<p class="lbl">Opens</p><ul class="yes"><li>All houses, with sales, goals and decisions</li><li>Gives receive, count, order and zone work</li></ul>
+<p class="lbl">Opens</p><ul class="yes"><li>All houses, with sales, goals and decisions</li><li>The house's money</li><li>Gives receive, count, order and zone work; order work carries no amount</li></ul>
 <p class="lbl">Doesn't open</p><ul class="no"><li>Profit and pay</li><li>Giving money or sending</li></ul></div>
 <div class="pkg"><div class="name">Light</div>
-<p class="lbl">Opens</p><ul class="yes"><li>Their own house only</li><li>Runs jobs there</li><li>Gives receive, count and zone work there</li></ul>
-<p class="lbl">Doesn't open</p><ul class="no"><li>Money and pay</li><li>All houses</li><li>Giving order work</li></ul>
-<p class="small muted" style="margin:auto 0 0">A manager with no package gets Light.</p></div>
+<p class="lbl">Opens</p><ul class="yes"><li>Their own house only</li><li>The house's money there</li><li>Runs jobs there</li><li>Gives receive, count and zone work there</li></ul>
+<p class="lbl">Doesn't open</p><ul class="no"><li>Pay</li><li>Giving money rights</li><li>All houses</li><li>Giving order work</li></ul>
+<p class="small muted" style="margin:auto 0 0">A manager with no package gets Light. Like every package, Light sees the house's money; an owner, or a Full manager an owner allowed, can take it from one person, and a role change resets it.</p></div>
 </div>
 
 <div class="card white" style="margin-top:16px;padding:4px 18px">
 <div class="mgr"><div><b>Ayla Demir</b><div class="small muted">manager at Sim Bistro and Sim Meyhouse</div>
 <div class="diff"><div class="small muted" style="grid-column:1/-1;display:block">Different from Standard:</div>
 <div><span class="p">+</span><span>Sees and sets pay at Sim Bistro <span class="small muted">· you added it, 28 Sep</span></span></div>
-<div><span class="m">–</span><span>Doesn't give Place orders <span class="small muted">· you took it away, 28 Sep</span></span></div></div>
-<p class="small muted" style="margin:8px 0 0">With pay, Ayla also sees Sim Bistro's profit. Owners' wages stay hidden from her.</p></div>
+<div><span class="m">–</span><span>Doesn't give Place orders at Sim Meyhouse <span class="small muted">· you took it away, 28 Sep</span></span></div></div>
+<p class="small muted" style="margin:8px 0 0">With pay and the house's money (every package turns it on), Ayla also sees Sim Bistro's profit. Owners' wages stay hidden from her.</p></div>
 <span class="chip warn" style="justify-self:start">Standard, adjusted</span><span class="btn">Change</span></div>
 <div class="mgr"><div><b>Burak Yıldız</b><div class="small muted">manager at Sim Bistro and Sim Meyhouse</div></div><span class="chip on" style="justify-self:start">Full</span><span class="btn">Change</span></div>
 <div class="mgr"><div><b>Can Yılmaz</b><div class="small muted">manager at Sim Bistro · no package was chosen, so Light</div></div><span class="chip" style="justify-self:start">Light</span><span class="btn">Change</span></div>
@@ -270,12 +272,12 @@ body{font-size:14.5px}
 </div></div>
 
 <div class="forks"><h2>Open, noticed while drawing</h2><ol>
-<li><b>Which money actions Full may give, and up to how much.</b> Round 6 lets an owner allow a manager to give money and sending rights "for named actions"; round 8's Full says "may give money and send rights". Which actions, and what amount, are not named. Drawn as approving orders and sending to vendors, no amount.</li>
+<li><b>Which money actions there are.</b> The owner allows each one separately and sets the amount (2 Oct). The 2 Oct questions named two, placing orders up to an amount and sending to vendors; whether there are more is the rights list (OD-208). Not drawn on the card.</li>
 <li><b>One package per person, or one per house.</b> Ayla manages two houses. Drawn as one package for the person with an adjustment for one house. Not settled.</li>
 <li><b>Who may set a manager's package.</b> Drawn as the owner. Managers may make someone a manager (ADR 0162); whether they may pick that person's package is not settled.</li>
 <li><b>Who changes a package's contents.</b> Round 8 settles that managers are asked when a package changes, not who may change it: each owner, or only Mudavym.</li>
 <li><b>An adjusted manager when the package changes.</b> If Standard changes, does Ayla keep her two adjustments on top of the new version, or start over? Not settled.</li>
-<li><b>Pay added to Standard, and All houses.</b> With pay at Sim Bistro, Ayla sees Sim Bistro's profit (ADR 0252, round 4). Whether that profit also appears in her All houses, which Standard opens without profit, is not settled.</li>
+<li><b>Pay added to Standard, and All houses.</b> With pay and the house's money at Sim Bistro, Ayla sees Sim Bistro's profit (F14). Whether that profit also appears in her All houses, which Standard opens without profit, is not settled.</li>
 <li><b>A Light manager placing orders themselves.</b> Light doesn't give order work. Whether a Light manager may still place orders by role is not settled.</li>
 </ol></div>
 <script>addEventListener('load',()=>{const u=navigator.userAgent,i=[...document.images];new Image().src='/__seen?p='+location.pathname.split('/').pop()+'&b='+(/Chrome\//.test(u)?'chrome':/Version\/[\d.]+ Safari\//.test(u)?'safari':'other')+'&n='+i.length+'&w='+i.map(x=>x.naturalWidth).join('-')})</script>

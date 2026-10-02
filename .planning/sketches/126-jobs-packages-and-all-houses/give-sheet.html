@@ -222,13 +222,23 @@ body{font-size:14.5px}
 <p class="note"><b>The idea.</b> One sheet hands someone a job and, if they need it, the permission to do it. The person list has two groups: <b>the people who already do this work</b>, and <b>everyone else</b>. For someone in the second group you choose <b>For this job</b> or <b>From now on</b>. Nothing is chosen for you, and the sheet says in plain words what the person will be able to do.</p>
 <div class="rules"><div class="card"><h3>Already decided, drawn as decided</h3><ul>
 <li>A job and the right to do it are given in one step (ADR 0253, Decision).</li>
-<li>The dropdown groups "Does this" and "Everyone else". For someone not listed it offers For this job and From now on, neither preselected (round 7, settling round 2's <i>"make it select, permanent and for this"</i>).</li>
-<li>A job's right ends when the job ends, never at the due time. A late job: the person is reminded, then the giver is told once (round 2).</li>
-<li>Managers give money or sending rights only where an owner has allowed it (round 6, <i>"managers can give only if the owner accpeted to give access for those actions"</i>; ADR 0175 D10 as amended). A Standard manager gives receive, count, order and zone work, not money (round 8).</li>
+<li>Giving a job to someone not listed asks: for this job, or from now on? The giver picks (round 7's option text; round 2, <i>"make it select, permanent and for this"</i>).</li>
+<li>A late job: the person is reminded, then the giver is told once. It is never locked (round 2).</li>
+<li>A manager gives a money or sending right only where an owner allowed it, and the owner allows each action separately (round 6, <i>"managers can give only if the owner accpeted to give access for those actions"</i>, read per action and confirmed on 2 Oct: <i>"Yes, per action (Recommended)"</i>).</li>
+<li>With that allowance, the owner sets up to how much the manager may give, above the manager's own limit if the owner wants (2 Oct: <i>"Owner sets the cap (Recommended)"</i>).</li>
+<li>A Standard manager gives receive, count, order and zone work, not money (round 8). Standard's order right carries no amount of its own: the house's approval rule decides every amount, and until approvals are built, orders wait for an owner or a manager (2 Oct: <i>"No amount of its own (Recommended)"</i>).</li>
+<li>Someone who may place orders but lacks the money right sees amounts on the orders they may place or approve, plus their own limit, and nothing else of the house's money (2 Oct: <i>"As F3 said (Recommended)"</i>).</li>
+</ul></div>
+<div class="card" style="margin-top:10px"><h3>Drawn as proposed, not decided</h3><ul>
+<li>The dropdown of people (his round-2 words read so; research owed), its two groups, "Does this" and "Everyone else", and For this job and From now on with neither preselected. These are the jobs-and-labels research's, not his pick.</li>
+<li>When a "for this job" right ends: when the delivery is in, the job is cancelled or given to someone else, never at the due time (OD-211).</li>
+<li>A receive job covers one vendor's delivery on one day (OD-214).</li>
+<li>Who may take a "from now on" right back: drawn as "you or a manager". Not filed on its own; OD-216 asks who may move or cancel a job.</li>
+<li>Receive is the door count only: "count in and sign for", no prices (OD-212).</li>
 </ul></div></div>
 
 <p class="cap">1 · Choosing who: the list, open</p>
-<p class="fcap">Draws <b>ADR 0253 round 7</b>: the dropdown's two groups, "Does this" and "Everyone else", each name with its reason.</p>
+<p class="fcap">Draws the dropdown of people his <b>ADR 0253 round 2</b> answer asked for (<i>"with a dropdown right?"</i>; research owed). Its two groups, "Does this" and "Everyone else", each name with its reason, are the research's <span class="tag">proposed</span>.</p>
 <div class="frame"><div class="veil"><div class="sheet">
 <h2>Give a job</h2>
 <div class="field"><label>What</label><div class="input"><b>Receive deliveries</b> · Empire Merchants</div><div class="small muted">2 orders expected today · 14 cases</div></div>
@@ -250,15 +260,15 @@ body{font-size:14.5px}
 </div></div></div>
 
 <p class="cap">2 · Someone not on the row: two buttons, neither chosen</p>
-<p class="fcap">Draws <b>ADR 0253 round 7</b> (<i>"For this job</i> and <i>From now on</i>, neither preselected"), answering <b>round 2</b>'s <i>"make it select, permanent and for this"</i>. Tapping one is the confirm; no second dialog.</p>
+<p class="fcap">Draws <b>ADR 0253 round 7</b>'s option text (<i>"Giving a job to someone not listed asks: for this job, or from now on?"</i>), answering <b>round 2</b>'s <i>"make it select, permanent and for this"</i>. Neither preselected, and when each ends, are the research's <span class="tag">proposed</span>. Tapping one is the confirm; no second dialog.</p>
 <div class="frame"><div class="veil"><div class="sheet">
 <h2>Give a job</h2>
 <div class="field"><label>What</label><div class="input"><b>Receive deliveries</b> · Empire Merchants · today, Thu 1 Oct</div></div>
 <div class="field"><label>Who</label><div class="input"><b>Deniz Aksoy</b> <span class="small muted">· staff · not on the Receive row</span></div></div>
 <div class="callout seal"><b>Deniz can't receive deliveries here yet.</b> Choose how long Deniz may.</div>
 <div class="choice">
-<div class="pick"><div class="t">For this job</div><p><b>Deniz can count in and sign for Empire Merchants' delivery today.</b> Nothing else.</p><p>It ends when that delivery is in, or if you cancel the job or give it to someone else. Running late doesn't end it.</p></div>
-<div class="pick"><div class="t">From now on</div><p><b>Deniz can receive any delivery at Sim Bistro</b>, until you or a manager take it back.</p><p>Deniz joins the Receive deliveries row on Team.</p></div>
+<div class="pick"><div class="t">For this job</div><p><b>Deniz can count in and sign for Empire Merchants' delivery today.</b> Nothing else.</p><p>It ends when that delivery is in, or if you cancel the job or give it to someone else. Running late doesn't end it. <span class="tag">proposed · OD-211, OD-214</span></p></div>
+<div class="pick"><div class="t">From now on</div><p><b>Deniz can receive any delivery at Sim Bistro</b>, until you or a manager take it back. <span class="tag">proposed · who takes back</span></p><p>Deniz joins the Receive deliveries row on Team.</p></div>
 </div>
 <p class="small muted" style="margin:12px 0 0">Tapping one gives Deniz the job. Deniz is told on their phone. If it runs late, Deniz is reminded first, then you are told once.</p>
 <div class="row" style="margin-top:12px;justify-content:flex-end"><span class="btn quiet">Cancel</span></div>
@@ -275,7 +285,7 @@ body{font-size:14.5px}
 </div></div></div>
 
 <p class="cap">4 · A manager giving: money greyed out</p>
-<p class="fcap">Draws <b>ADR 0253 round 6</b> (managers give money rights only where the owner allowed it; ADR 0175 D10 as amended) and <b>round 8</b> (Ayla is on Standard: receive, count, order and zone work, not money).</p>
+<p class="fcap">Draws <b>ADR 0253 round 6</b> as confirmed on 2 Oct (an owner allows each money or sending action separately) and <b>round 8</b> (Ayla is on Standard: receive, count, order and zone work, not money). At Sim Bistro her package still gives order work; her adjustment takes it away at Sim Meyhouse only (see Managers' access).</p>
 <div class="frame"><div class="topbar"><span class="mark">Mudavym</span><span class="switch"><b>Sim Bistro</b> ▾</span><span class="grow"></span><span class="btn quiet">Ask</span><span class="btn quiet">Counter</span><span class="chip">Ayla · manager</span></div>
 <div class="veil"><div class="sheet">
 <h2>Give a job</h2>
@@ -284,21 +294,21 @@ body{font-size:14.5px}
 <div class="grp">Work</div>
 <div class="opt"><span class="av">R</span><div><b>Receive deliveries</b><div class="why">count what arrives and sign for it</div></div><span></span></div>
 <div class="opt"><span class="av">C</span><div><b>Count stock</b><div class="why">a zone and the zones inside it</div></div><span></span></div>
-<div class="opt hl"><span class="av s">O</span><div><b>Place orders</b><div class="why">start an order to one vendor</div></div><span></span></div>
+<div class="opt hl"><span class="av s">O</span><div><b>Place orders</b><div class="why">no amount of its own; the house's approval rule decides</div></div><span></span></div>
 <div class="opt"><span class="av">Z</span><div><b>Set up zones</b><div class="why">add and change storage zones</div></div><span></span></div>
 <div class="grp">Money and sending</div>
-<div class="opt grey"><span class="av">$</span><div><b>Approve orders</b><div class="why">Your owner hasn't allowed this</div></div><span class="small muted">can't be given by you</span></div>
+<div class="opt grey"><span class="av">$</span><div><b>Place orders up to an amount</b><div class="why">Your owner hasn't allowed this</div></div><span class="small muted">can't be given by you</span></div>
 <div class="opt grey"><span class="av">S</span><div><b>Send orders to vendors</b><div class="why">Your owner hasn't allowed this</div></div><span class="small muted">can't be given by you</span></div>
 </div></div>
-<div class="say"><b>Place orders:</b> the person you choose can start orders to the vendor you pick. <b>Each one waits for approval</b> from an owner, a manager, or someone allowed to approve.</div>
+<div class="say"><b>Place orders:</b> the person you choose can start orders. No amount comes with it: <b>the house's approval rule decides every amount</b>, and until approvals are built, each order waits for an owner or a manager. Without the money right, they see amounts only on orders they may place or approve, plus their own limit.</div>
 <div class="row" style="margin-top:16px;justify-content:flex-end"><span class="btn quiet">Cancel</span><span class="btn primary dis">Next</span></div>
 </div></div></div>
 
 <div class="forks"><h2>Open, noticed while drawing</h2><ol>
-<li><b>A backup person on a job.</b> The research proposes one optional backup; ADR 0253 round 7 lists it as "still to confirm". Not drawn.</li>
-<li><b>Receive as the door count only.</b> The research proposes that staff on Receive see counts, not invoice prices; round 7 lists it as "still to confirm". The sheet says "count in and sign for" and says nothing about prices.</li>
+<li><b>A backup person on a job.</b> The research proposes one optional backup; ADR 0253 round 7 lists it as "still to confirm" (OD-215). Not drawn.</li>
+<li><b>Receive as the door count only.</b> The research proposes that staff on Receive see counts, not invoice prices; round 7 lists it as "still to confirm" (OD-212). The sheet says "count in and sign for" and says nothing about prices.</li>
 <li><b>Where a greyed money line leads.</b> Drawn as plain text. Whether it offers Ayla a way to ask her owner is not settled.</li>
-<li><b>How much a manager may give.</b> Round 6 says the amount a manager with the owner's allowance may grant is "designed with the packages"; round 8 confirmed the packages but names no amount.</li>
+<li><b>Place orders, twice.</b> Standard's order right carries no amount (2 Oct), while the money line an owner may allow is "place orders up to an amount" (2 Oct, the cap question). Drawn as two lines. Whether they are one right with an optional amount or two rights belongs to the rights list (OD-208).</li>
 </ol></div>
 <script>addEventListener('load',()=>{const u=navigator.userAgent,i=[...document.images];new Image().src='/__seen?p='+location.pathname.split('/').pop()+'&b='+(/Chrome\//.test(u)?'chrome':/Version\/[\d.]+ Safari\//.test(u)?'safari':'other')+'&n='+i.length+'&w='+i.map(x=>x.naturalWidth).join('-')})</script>
 </body></html>
