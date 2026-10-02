@@ -47,6 +47,13 @@ export interface GuidanceState {
     use_cards_seen: string[]
   }
   setup_nudge: SetupNudgeState
+  /**
+   * When the web app last saved this copy (ISO time, from the saving device's
+   * clock). The browser's own copy and the account's copy both carry it, and
+   * the newer one wins (`mergeGuidance` in GuidanceProvider). Copies saved
+   * before it existed have none, and the phone app does not set it.
+   */
+  saved_at?: string
 }
 
 export const DEFAULT_GUIDANCE_STATE: GuidanceState = {
