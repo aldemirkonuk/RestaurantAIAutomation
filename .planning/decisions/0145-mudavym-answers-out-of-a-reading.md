@@ -2069,7 +2069,10 @@ its answer. The session keeps:
 
 - the question in flight, its request id and the answers (the last five);
 - a failure that offers "Check again" (a timeout, no reply, or a 503 other
-  than "not open yet"), with the request it re-sends;
+  than "not open yet"), with the request it re-sends; [Round 2: the code kept
+  one by its kind alone, so a folio re-read that timed out, with no request
+  behind it, came back after a reopen as an alert with no button. Fixed; see
+  "Round 2".]
 - the proposer's refusal of a drafted action, with the words it declined,
   until the next draft or "Ask the books this instead" ("an action being
   drafted is kept the same way");
@@ -2094,15 +2097,105 @@ also shown for a re-read (M3), the refusal not cleared when a draft starts
 that turns red. M2, the mounted guard on clearing the box after a draft, is
 removed rather than pinned: it guarded the body's own state, which a close
 discards. Every guard this round added is mutated too (listed in the review
-trail). One, an epoch check on a folio re-read's answer, survived as an
-equivalent mutant and is removed: a scope change empties the answers, and a
-re-read only replaces an answer already in the list.
+trail). [Corrected in round 2: not every one. Each of the 32 mutations round
+1 ran turned a test red, but four lines of the scope reset (clearing the
+proposals, the refusal and the error, and moving the bound scope on) were not
+among them, and the verify's mutations of those four stayed green; see
+"Round 2".] One,
+an epoch check on a folio re-read's answer, survived as an equivalent mutant
+and is removed: a scope change empties the answers, and a re-read only
+replaces an answer already in the list.
 
 **Corrected claims.** The first commit and the tech-debt fragment said six
 tests render the real owner; five did, and the sixth calls `useAskSession`
 through `renderHook`. They said each guard was mutation-tested; M1-M6
 survived. Both are corrected here and in the fragment; the first commit is
 not rewritten.
+
+### Round 2, 2026-10-01 -- what a close keeps, held to the panel's own test
+
+A Sonnet verify of round 1 returned FIX, with no blocker: the code did what
+round 1 said on every path it ran, but four defects remained, three of them
+tests the prose promised and did not have.
+
+**A failure with nothing to retry came back (fixed).** The close kept a
+failure by its kind (`checkAgain`). A folio re-read ("Check again" on a
+pending answer) that timed out has that kind but no request behind it, so
+its alert showed no button, and it came back after every reopen. The close
+now keeps a failure only when its alert offers "Check again", the panel's
+own test for the button: a retryable kind AND the request it re-sends. The
+other way, tagging a re-read's failure as not retryable, was not taken: when
+an earlier question's request is still held, that alert does show the
+button, and it should then be kept. Dropped at the close, the timed-out
+re-read leaves its answer in the list with that answer's own "Check again".
+
+**An apply in flight across a close and a reopen (checked; refused, not
+paid twice).** Held to apply, closed before the gateway answered, and
+reopened: the card is offered again, because the session holds the proposal
+and the first card's state went with the body. A second hold sends a second
+mint and possibly a second apply for the same action id. The gateway applies
+one action id at most once (`apps/api-gateway/src/ask-ai/ask-ai.service.ts`,
+at `origin/main` 5a330a88e): the apply's claim is a compare-and-swap that
+moves the row from `proposed` to `confirmed` only while it is still
+`proposed` (`:633-645`), and the loser gets a 404, "That action is no longer
+waiting for confirmation." (`:651-657`). A seal is minted, and a seal's
+redemption read, only for a row still `proposed` (`readProposalSealArgs`,
+`:849-852`, from `issueProposalSeal` `:892` and `confirmSealed` `:957`). A
+second seal is a new seal, so it is the claim, not the seal, that stops the
+second apply. A second apply runs only if the first gave its claim back
+(`releaseClaim`, `:1032`: a refused edit, a stale id or a failed check), and
+then the first ran nothing. The card reads a 404 as "gone" (`askAi.ts:150`)
+and says "It was already handled — nothing ran twice." So the card is not
+kept busy across the close: the second hold is harmless, and an open re-read
+made after the first claim landed does not return the card (it lists only
+`proposed` rows, `:577`). Pinned: a test each for the refusal at the seal and at the
+apply. Not pinned on the gateway: its specs check the 404 for a row already
+`executed` (`ask-ai-sealed-apply.spec.ts:228`, `:356`), and the same
+`status !== "proposed"` line answers for a row mid-apply, but the spec's
+client double ignores the claim's status filter, so the lost race between
+two seals minted before either claim is a code reading. Recorded, not
+changed: when the first apply failed (the row is `failed`), the second hold
+also says "already handled", which the card cannot tell apart from applied.
+
+**Pinned.** `AskPanel.test.tsx` went from 68 to 85 tests:
+
+- the four scope-reset lines the verify's mutations left green (S6, S9, S10,
+  S12): a switch made while the panel is closed leaves none of the old
+  house's proposals, even when the re-read fails; the proposer's refusal and
+  its transport error from the old house are not shown in the new one;
+  switching back to the first house starts again; and a sitting first named
+  after it began still starts again on the next switch. Lifted from the
+  verify's probes;
+- the failure rule above, both halves (a timed-out re-read, and a re-read's
+  failure while an earlier request is still held);
+- the three settle paths that had no test (D3, D5, D6): failed at the apply,
+  already handled at the seal, already handled at the discard, each gone at
+  the close;
+- the apply in flight, above;
+- five lines from the verify's nit list: a failed ask keeps the words typed
+  and the follow-up (W1), a new draft clears the last transport error when it
+  starts (G5), the request is let go once its answer is in (G7), only the
+  last five answers are kept, newest first (X5), and the newest proposal
+  comes first (X6).
+
+**Mutations.** 64, on `AskPanel.test.tsx`, each started from a snapshot,
+each file restored with `cp -p` and checked byte-identical with `cmp`: the
+verify's own 60 (its C1-C3 re-pointed at the round-2 close line) and four of
+round 2's (R1, the close keeping a failure by its kind alone, as round 1 did;
+R2, by its request alone; R3, the close never seeing the request; X7, answers
+appended oldest first). 61 turned at least one test red, among them all
+twelve the verify found green (S6, S9, S10, S12, D3, D5, D6, W1, G5, G7, X5,
+X6: one test each, S12 two). Three stayed green, each equivalent: E7 (an
+epoch check on a re-read's answer, removed in round 1); S4 (the reset
+keeping the held request: every later failure that could show it sets it
+first, and a re-read needs an answer in the new house, whose arrival lets
+the request go, which G7 now pins); S7 (the reset keeping the settled set:
+action ids are unique per house).
+
+**Corrected claims.** The tech-debt fragment said "each guard turned a test
+red under mutation", and the "Guards pinned" paragraph above said every
+guard round 1 added was mutated. Both were true only of the 32 mutations
+round 1 ran. Both are corrected in place.
 
 ## Review trail
 
@@ -2130,3 +2223,4 @@ not rewritten.
 | 2026-10-01 | Aldemir (founder), `AskUserQuestion` "If someone closes the Ask panel while it is still answering, what should happen to that question?" | His pick, verbatim: "Keep answering (Recommended)" (rejected: "Keep, plus recent answers", "Cancel on close", "Ask before closing"). See "Amendment, 2026-10-01". |
 | 2026-10-01 | `fix/ask-close-no-second-spend` lane (build, against `main` 5a330a88e) | Built `useAskSession`, owned by `useAskPanel`. `AskPanel.test.tsx` gained 6 tests rendering the real owner [corrected in round 1: five render the real owner, the sixth calls `useAskSession` through `renderHook`]; the affected suites ran 8 files / 126 tests green. Six mutations each turned at least one new test red: the body owning a fresh session (5 red), no in-flight gate (1), "Check again" minting a new id (1), no mounted guard (1), no pending line (5), and the body not busy from the session (2). Files restored byte-identically. Web eslint clean on the 7 changed files. Web `tsc` is clean apart from `passkeys.ts`'s missing `@simplewebauthn/browser`, which this worktree's symlinked `node_modules` lacks; this diff does not touch that file. |
 | 2026-10-01 | `fix/ask-close-no-second-spend` round 1 (fix, after a Sonnet verify returned FIX) | The house-switch defect found and fixed: the session is keyed `<person>@<house>`, with an epoch guard, the open body keyed by the same scope, and the follow-up dropped on a switch. What a close keeps narrowed, and settled proposals leave at the close through `ProposalCard`'s `onSettled` (see "Round 1"). `AskPanel.test.tsx` went from 42 to 68 tests; round 0's 8 files ran 152 tests green, and 12 files with every other suite that mounts the shell or `ProposalCard` ran 210 green. 32 mutations, each red, each file restored byte-identically: round 0's six re-run (12, 1, 1, 1, 14 and 5 red); the verify's M1 and M3-M6 (1 each); eleven on the scope and epoch (B1-B11: 9, 2, 1, 1, 2, 1, 1, 1, 2, 1, 1); ten on what a close keeps (C1-C10: 2, 1, 1, 1, 3, 3, 1, 4, 4, 1). M2's guard removed; an epoch check on a re-read's answer survived a first pass as an equivalent mutant and was removed. Web eslint 0 errors on the 8 touched source and test files (one `ProposalCard` warning, also on `main`). Web `tsc`: only the pre-existing `passkeys.ts` error. Decision claims 813/813. No browser render. |
+| 2026-10-01 | `fix/ask-close-no-second-spend` round 2 (fix, after a Sonnet verify of round 1 returned FIX, no blocker) | The failure with nothing to retry fixed: a close keeps a failure only when its alert offers "Check again" (a retryable kind and the request it re-sends). The apply in flight across a close checked on the gateway (`ask-ai.service.ts` at `origin/main` 5a330a88e): a second apply for one action id is refused, at the seal or at the claim's compare-and-swap, so the card is not held busy; the panel's honest answer is pinned. `AskPanel.test.tsx` went from 68 to 85 tests (see "Round 2"). 12 files with every suite that mounts the shell or `ProposalCard` ran 227 green; `src/components/askai` and `src/components/mudavym` ran 32 files / 486 green. 64 mutations on `AskPanel.test.tsx`: 61 red, 3 equivalent (E7, S4, S7), each file restored byte-identically. Web eslint 0 errors on the 8 touched source and test files (the one `ProposalCard` warning, also on `main`). Web `tsc`: only the pre-existing `passkeys.ts` error. Decision claims 813/813. No browser render; no gateway test run (the gateway is unchanged, and its behaviour is cited from the code). |

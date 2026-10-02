@@ -143,14 +143,21 @@ function OwnedPanel(props: Omit<AskPanelProps, 'session'>) {
 
 type Role = 'owner' | 'manager' | 'staff'
 function renderPanel(
-  opts: { route?: string; role?: Role; placement?: 'docked' | 'overlay'; followUp?: { folioId: string; utterance: string }; onClose?: () => void } = {},
+  opts: {
+    route?: string
+    role?: Role
+    placement?: 'docked' | 'overlay'
+    followUp?: { folioId: string; utterance: string }
+    onClose?: () => void
+    onDropFollowUp?: () => void
+  } = {},
 ) {
-  const { route = '/inventory', role = 'owner', placement = 'overlay', followUp = null, onClose = () => {} } = opts
+  const { route = '/inventory', role = 'owner', placement = 'overlay', followUp = null, onClose = () => {}, onDropFollowUp = () => {} } = opts
   return render(
     <AuthContext.Provider value={{ activeRole: role, activeRestaurantId: 'r-1' } as never}>
       <MemoryRouter initialEntries={[route]}>
         <div data-testid="page-column">
-          <OwnedPanel placement={placement} open onClose={onClose} followUp={followUp} onDropFollowUp={() => {}} />
+          <OwnedPanel placement={placement} open onClose={onClose} followUp={followUp} onDropFollowUp={onDropFollowUp} />
         </div>
       </MemoryRouter>
     </AuthContext.Provider>,
@@ -840,6 +847,46 @@ describe('closing keeps the question in flight (ADR 0145, 2026-10-01)', () => {
       expect(screen.queryByTestId('askpanel-failure')).toBeNull()
     })
 
+    // The close keeps a failure only when its alert offers "Check again":
+    // that needs the request it re-sends, not just a retryable kind.
+    it('a folio re-read that timed out is dropped at the close: it has no request to re-send, and the folio keeps its own "Check again"', async () => {
+      const user = userEvent.setup()
+      api.submit.mockResolvedValue(folio({ utterance: QUESTION, status: 'pending' }))
+      api.folio.mockRejectedValue(await timeoutError())
+      renderOwner()
+      await user.type(box(), `${QUESTION}{Enter}`)
+      await user.click(await screen.findByRole('button', { name: /check again/i }))
+      const failure = await screen.findByTestId('askpanel-failure')
+      expect(failure).toHaveAttribute('data-kind', 'timeout')
+      expect(within(failure).queryByRole('button')).toBeNull()
+
+      await close(user)
+      reopen()
+      expect(screen.queryByTestId('askpanel-failure')).toBeNull()
+      expect(within(screen.getByTestId('askpanel-folio')).getByRole('button', { name: /check again/i })).toBeEnabled()
+    })
+
+    it('a re-read’s failure with nothing to retry is dropped at the close, even while an earlier question’s request is still held', async () => {
+      const user = userEvent.setup()
+      api.submit
+        .mockResolvedValueOnce(folio({ utterance: QUESTION, status: 'pending' }))
+        .mockRejectedValueOnce(await timeoutError())
+      api.folio.mockRejectedValue(await httpError(404, 'That question is not in this house’s book.'))
+      renderOwner()
+      await user.type(box(), `${QUESTION}{Enter}`)
+      const pendingFolio = await screen.findByTestId('askpanel-folio')
+      await user.type(box(), 'and the white?{Enter}')
+      expect(await screen.findByTestId('askpanel-failure')).toHaveAttribute('data-kind', 'timeout')
+
+      await user.click(within(pendingFolio).getByRole('button', { name: /check again/i }))
+      await waitFor(() => expect(screen.getByTestId('askpanel-failure')).toHaveAttribute('data-kind', 'rejected'))
+      expect(within(screen.getByTestId('askpanel-failure')).queryByRole('button')).toBeNull()
+
+      await close(user)
+      reopen()
+      expect(screen.queryByTestId('askpanel-failure')).toBeNull()
+    })
+
     it('the proposer’s transport error is dropped at the close', async () => {
       const user = userEvent.setup()
       api.propose.mockRejectedValue(new Error('Network Error'))
@@ -886,9 +933,25 @@ describe('closing keeps the question in flight (ADR 0145, 2026-10-01)', () => {
         /nothing has been sent/i,
       ],
       [
-        'already handled',
+        'already handled at the apply',
         async (_user, card) => {
           api.apply.mockRejectedValue(new AskAiActionError('gone', 'That action is no longer waiting for confirmation.'))
+          completeHold(card.getByRole('button', { name: /^hold to apply$/i }))
+        },
+        /nothing ran twice/i,
+      ],
+      [
+        'failed at the apply',
+        async (_user, card) => {
+          api.apply.mockRejectedValue(new AskAiActionError('failed', 'The draft order could not be written.'))
+          completeHold(card.getByRole('button', { name: /^hold to apply$/i }))
+        },
+        /the draft order could not be written/i,
+      ],
+      [
+        'already handled at the seal',
+        async (_user, card) => {
+          api.mint.mockRejectedValue(new AskAiActionError('gone', 'That action is no longer waiting for confirmation.'))
           completeHold(card.getByRole('button', { name: /^hold to apply$/i }))
         },
         /nothing ran twice/i,
@@ -900,6 +963,14 @@ describe('closing keeps the question in flight (ADR 0145, 2026-10-01)', () => {
           await user.click(card.getByRole('button', { name: /discard/i }))
         },
         /discarded\. nothing ran/i,
+      ],
+      [
+        'already handled at the discard',
+        async (user, card) => {
+          api.discard.mockRejectedValue(new AskAiActionError('gone', 'That action is no longer waiting for confirmation.'))
+          await user.click(card.getByRole('button', { name: /discard/i }))
+        },
+        /nothing ran twice/i,
       ],
     ]
     it.each(settle)('a proposal %s before the close does not come back as a card to seal', async (_, act_, said) => {
@@ -929,6 +1000,55 @@ describe('closing keeps the question in flight (ADR 0145, 2026-10-01)', () => {
       await close(user)
 
       await act(async () => discarding.resolve(undefined))
+      reopen()
+      await screen.findByTestId('askpanel-proposals-unread')
+      expect(screen.queryByText(reorder.summary)).toBeNull()
+    })
+
+    // An apply still in flight at the close: the card is offered again on
+    // reopening (the session holds the proposal, the old card's state went
+    // with the body), but the gateway applies one action id at most once. Its
+    // claim is a compare-and-swap on `status = 'proposed'`, and a seal is
+    // minted only for a row still `proposed` (`ask-ai.service.ts`), so a
+    // second hold is refused, at the seal or at the apply.
+    const secondHold: Array<[string, () => void]> = [
+      [
+        'at the seal',
+        () => api.mint.mockRejectedValue(new AskAiActionError('gone', 'That action is no longer waiting for confirmation.')),
+      ],
+      [
+        'at the apply',
+        () => {
+          api.mint.mockResolvedValue('seal-2')
+          api.apply.mockRejectedValueOnce(new AskAiActionError('gone', 'That action is no longer waiting for confirmation.'))
+        },
+      ],
+    ]
+    it.each(secondHold)('an apply in flight at the close: a second hold is refused %s, and the card says nothing ran twice', async (_, refuse) => {
+      const user = userEvent.setup()
+      const applying = deferred<Awaited<ReturnType<typeof applyProposalSealed>>>()
+      api.list.mockResolvedValue([reorder])
+      api.apply.mockReturnValueOnce(applying.promise)
+      renderOwner()
+      const cardOf = async () =>
+        within((await screen.findByText(reorder.summary)).closest('[data-testid="askai-proposal-card"]') as HTMLElement)
+      completeHold((await cardOf()).getByRole('button', { name: /^hold to apply$/i }))
+      await waitFor(() => expect(api.apply).toHaveBeenCalledTimes(1))
+      await close(user)
+
+      refuse()
+      reopen()
+      await waitFor(() => expect(api.list).toHaveBeenCalledTimes(2))
+      const again = await cardOf()
+      completeHold(again.getByRole('button', { name: /^hold to apply$/i }))
+      expect(await again.findByText(/nothing ran twice/i)).toBeInTheDocument()
+      expect(again.queryByRole('alert')).toBeNull()
+      expect(again.queryByRole('button', { name: /^hold to apply$/i })).toBeNull()
+
+      // The first apply lands; at the close the card leaves for good.
+      await act(async () => applying.resolve({ executed: true, actionId: reorder.actionId, executionRef: 'order-99', edited: false }))
+      await close(user)
+      api.list.mockRejectedValue(new Error('The gateway did not answer.'))
       reopen()
       await screen.findByTestId('askpanel-proposals-unread')
       expect(screen.queryByText(reorder.summary)).toBeNull()
@@ -1083,6 +1203,64 @@ describe('closing keeps the question in flight (ADR 0145, 2026-10-01)', () => {
       expect(api.list).toHaveBeenCalledTimes(2)
     })
 
+    it('a switch made while the panel is closed leaves none of the old house’s proposals, even when the re-read fails', async () => {
+      const user = userEvent.setup()
+      api.list.mockResolvedValueOnce([reorder]).mockRejectedValue(new Error('The gateway did not answer.'))
+      const { switchTo } = renderOwner(A)
+      await screen.findByText(reorder.summary)
+      await close(user)
+
+      switchTo(B)
+      reopen()
+      await screen.findByTestId('askpanel-proposals-unread')
+      expect(screen.queryByText(reorder.summary)).toBeNull()
+    })
+
+    it.each([
+      ['refusal', () => api.propose.mockResolvedValue({ proposed: false, reason: 'Could not resolve which vendor to order from.' }), 'askai-refusal'],
+      ['transport error', () => api.propose.mockRejectedValue(new Error('Network Error')), 'askai-error'],
+    ] as const)('the proposer’s %s in the old house is not shown in the new one', async (_, answer, shown) => {
+      const user = userEvent.setup()
+      answer()
+      const { switchTo } = renderOwner(A)
+      await user.click(modeRadio(/propose an action/i))
+      await user.type(screen.getByLabelText(/the action to propose/i), 'reorder the Barolo{Enter}')
+      expect(await screen.findByTestId(shown)).toBeInTheDocument()
+
+      switchTo(B)
+      await user.click(modeRadio(/propose an action/i))
+      expect(screen.queryByTestId(shown)).toBeNull()
+    })
+
+    it('switching back to the first house starts the session again too', async () => {
+      const user = userEvent.setup()
+      api.submit
+        .mockResolvedValueOnce(folio({ id: 'f-a', utterance: 'in A', answer: TWELVE }))
+        .mockResolvedValueOnce(folio({ id: 'f-b', utterance: 'in B', answer: TWELVE }))
+      const { switchTo } = renderOwner(A)
+      await user.type(box(), 'in A{Enter}')
+      await screen.findByTestId('askpanel-folio')
+      switchTo(B)
+      expect(screen.queryByTestId('askpanel-folio')).toBeNull()
+      await user.type(box(), 'in B{Enter}')
+      expect(await screen.findByTestId('askpanel-folio')).toHaveTextContent('in B')
+
+      switchTo(A)
+      expect(screen.queryByTestId('askpanel-folio')).toBeNull()
+    })
+
+    it('a sitting named after it began still starts again on the next switch', async () => {
+      const user = userEvent.setup()
+      api.submit.mockResolvedValue(folio({ utterance: QUESTION, answer: TWELVE }))
+      const { switchTo } = renderOwner(null)
+      switchTo(A)
+      await user.type(box(), `${QUESTION}{Enter}`)
+      await screen.findByTestId('askpanel-folio')
+
+      switchTo(B)
+      expect(screen.queryByTestId('askpanel-folio')).toBeNull()
+    })
+
     it('a follow-up does not carry into another house', () => {
       const { switchTo } = renderOwner(A)
       act(() => openAskAi({ followUp: { folioId: 'f-9', utterance: 'what arrived on Monday' } }))
@@ -1140,6 +1318,34 @@ describe('the session’s own gates', () => {
     expect(result.current.lastRequest).toBeNull()
   })
 
+  it('lets go of the request once its answer is in', async () => {
+    const { AxiosError } = await import('axios')
+    api.submit.mockRejectedValueOnce(new AxiosError('timeout of 60000ms exceeded', 'ECONNABORTED')).mockResolvedValueOnce(folio({}))
+    const { result } = renderHook(() => useAskSession(null, true))
+    await act(() => result.current.sendAsk({ requestId: 'r-1', utterance: 'how much house red is left?' }))
+    expect(result.current.lastRequest?.requestId).toBe('r-1')
+    await act(() => result.current.sendAsk({ requestId: 'r-1', utterance: 'how much house red is left?' }))
+    expect(result.current.failure).toBeNull()
+    expect(result.current.lastRequest).toBeNull()
+  })
+
+  it('keeps the last five answers, newest first; the rest are in the book at /ask', async () => {
+    const { result } = renderHook(() => useAskSession(null, true))
+    for (const n of [1, 2, 3, 4, 5, 6]) {
+      api.submit.mockResolvedValueOnce(folio({ id: `f-${n}`, utterance: `question ${n}` }))
+      await act(() => result.current.sendAsk({ requestId: `r-${n}`, utterance: `question ${n}` }))
+    }
+    expect(result.current.folios.map((f) => f.id)).toEqual(['f-6', 'f-5', 'f-4', 'f-3', 'f-2'])
+  })
+
+  it('puts the newest proposal first', async () => {
+    api.propose.mockResolvedValueOnce({ proposed: true, proposal: reorder }).mockResolvedValueOnce({ proposed: true, proposal: vendorDraft })
+    const { result } = renderHook(() => useAskSession(null, true))
+    await act(() => result.current.sendPropose('reorder the Barolo', 'reorder the Barolo'))
+    await act(() => result.current.sendPropose('chase Acme', 'chase Acme'))
+    expect(result.current.proposals.map((p) => p.actionId)).toEqual([vendorDraft.actionId, reorder.actionId])
+  })
+
   it('does not re-read a folio while a question is in flight', async () => {
     const answer = deferred<AskFolio>()
     api.submit.mockReturnValue(answer.promise)
@@ -1186,6 +1392,37 @@ describe('what the panel says while it works', () => {
     expect(screen.queryByTestId('askai-refusal')).toBeNull()
     await act(async () => second.resolve({ proposed: true, proposal: reorder }))
     expect(await screen.findByText(reorder.summary)).toBeInTheDocument()
+  })
+
+  it('a new draft clears the last transport error the moment it starts', async () => {
+    const user = userEvent.setup()
+    const second = deferred<Awaited<ReturnType<typeof proposeAction>>>()
+    api.propose.mockRejectedValueOnce(new Error('Network Error')).mockReturnValueOnce(second.promise)
+    renderPanel()
+    await user.click(modeRadio(/propose an action/i))
+    const input = screen.getByLabelText(/the action to propose/i)
+    await user.type(input, 'reorder the Barolo{Enter}')
+    expect(await screen.findByTestId('askai-error')).toBeInTheDocument()
+
+    await user.type(input, ' from Acme{Enter}')
+    expect(await screen.findByTestId('askpanel-pending')).toHaveAttribute('data-kind', 'propose')
+    expect(screen.queryByTestId('askai-error')).toBeNull()
+    await act(async () => second.resolve({ proposed: true, proposal: reorder }))
+    expect(await screen.findByText(reorder.summary)).toBeInTheDocument()
+  })
+
+  it('a failed ask keeps the words typed and the follow-up carried in', async () => {
+    const user = userEvent.setup()
+    const { AxiosError } = await import('axios')
+    api.submit.mockRejectedValue(new AxiosError('429', 'ERR_BAD_REQUEST', undefined, undefined, { status: 429, data: {} } as never))
+    const onDropFollowUp = vi.fn()
+    renderPanel({ followUp: { folioId: 'f-9', utterance: 'what arrived on Monday' }, onDropFollowUp })
+    await user.type(screen.getByLabelText(/your question for the books/i), 'and on Tuesday?{Enter}')
+    expect(await screen.findByTestId('askpanel-failure')).toHaveAttribute('data-kind', 'too_fast')
+
+    expect(screen.getByLabelText(/your question for the books/i)).toHaveValue('and on Tuesday?')
+    expect(onDropFollowUp).not.toHaveBeenCalled()
+    expect(api.submit.mock.calls[0][0].previousFolioId).toBe('f-9')
   })
 })
 
