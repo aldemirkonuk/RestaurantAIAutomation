@@ -38,7 +38,7 @@ export class MobileController {
   @ApiOperation({
     summary: "Unified ranked decision feed for the mobile app",
     description:
-      "Owners and managers get every card as written. Anyone else in the house gets no order-approval cards, no `amount` on any card and no `counts.orderApprovals`; on a card built from a notification, the subtitle is the notification's message only for a type on the service's money-free list (otherwise the card's neutral line), and `meta` carries only the non-money keys `orderId`, `orderNumber`, `wineName` and `quantity` (ADR 0253, answered 2026-10-01 round 2).",
+      "Owners and managers get every card as written. Anyone else in the house gets no order-approval cards, no `amount` on any card and no `counts.orderApprovals`; on a card built from a notification, the subtitle is the notification's message only for a type on the service's money-free list, or for a grant notice whose recorded grantee is the caller (otherwise the card's neutral line), and `meta` carries only the non-money keys `orderId`, `orderNumber`, `wineName` and `quantity` (ADR 0253, answered 2026-10-01 round 2).",
   })
   async getFeed(
     @CurrentUser()

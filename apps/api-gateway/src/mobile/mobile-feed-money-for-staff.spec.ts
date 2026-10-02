@@ -33,8 +33,10 @@ import {
   MobileService,
   MONEY_FREE_NOTIFICATION_TYPES,
   NON_MONEY_META_KEYS,
+  OWN_LIMIT_NOTIFICATION_TYPES,
 } from "./mobile.service";
 import { NotificationsService } from "../notifications/notifications.service";
+import { AuthorityGrantsService } from "../organizations/authority-grants.service";
 import { OWN_WAGE_ACTION, recordOwnWageChange } from "../team/own-wage-notice";
 
 const HOUSE = "house-1";
@@ -360,6 +362,23 @@ const GRANT_ISSUED = {
   createdAt: "2026-10-01T08:20:00.000Z",
 };
 
+/**
+ * The same notice once the writer records the grantee
+ * (fix/phone-feed-own-grant-limit), as `tell()` writes it: the copy every
+ * owner gets names the grantee's limit. Here the grantee is someone other
+ * than the reader `user-1`, who holds the copy as an owner since demoted.
+ */
+const GRANT_ISSUED_TO_SOMEONE_ELSE = {
+  id: "notif-grant-other",
+  type: "authority_grant_issued",
+  title: "Lee may now send to vendors",
+  message:
+    "Ava named Lee to send to vendors with one hold (up to 3456.5 USD, until revoked). A security change: every owner is told.",
+  priority: "low",
+  metadata: { grantId: "grant-3", change: "issued", granteeUserId: "user-2" },
+  createdAt: "2026-10-01T08:21:00.000Z",
+};
+
 /** `promotion-extractor.service.ts:242-277` — owners and managers. */
 const PROMO_DIGEST = {
   id: "notif-promo",
@@ -449,6 +468,7 @@ const MONEY_NOTIFICATIONS = [
   OWN_WAGE,
   OWN_WAGE_STORED_AS_SYSTEM,
   GRANT_ISSUED,
+  GRANT_ISSUED_TO_SOMEONE_ELSE,
   PROMO_DIGEST,
   FUTURE_TYPE,
 ];
@@ -484,6 +504,7 @@ const MONEY_ON_THE_WIRE = [
   "17.15",
   "20.45",
   "4321",
+  "3456",
   "45.50",
   "$",
 ];
@@ -647,6 +668,7 @@ describe("GET /mobile/feed — notification cards carry no money to staff (ADR 0
       expect(subtitle(OWN_WAGE.id)).toBe("");
       expect(subtitle(OWN_WAGE_STORED_AS_SYSTEM.id)).toBe("");
       expect(subtitle(GRANT_ISSUED.id)).toBe("");
+      expect(subtitle(GRANT_ISSUED_TO_SOMEONE_ELSE.id)).toBe("");
       expect(subtitle(PROMO_DIGEST.id)).toBe("");
       expect(subtitle(INVOICE_CERTIFIED.id)).toBe(
         "Confirm the physical count against the invoice.",
@@ -685,6 +707,194 @@ describe("GET /mobile/feed — notification cards carry no money to staff (ADR 0
         expect(card.title).toBe(n.title);
         expect(card.subtitle).toBe(n.message);
         expect(card.meta).toEqual({});
+      }
+    });
+  });
+});
+
+/**
+ * A grantee sees their own grant's limit (fix/phone-feed-own-grant-limit).
+ * The founder, 2026-10-01, verbatim: *"Show their own limit (Recommended)"*,
+ * then, on how: *"Record the grantee (Recommended)"* (rejected: "Look it up
+ * each load", "Leave it"). The writer records `granteeUserId`; the feed says
+ * the sentence to a reader who does not see money only when that is them.
+ */
+const GRANT_WORDS = {
+  issued: {
+    type: "authority_grant_issued",
+    title: "Sam may now send to vendors",
+    message:
+      "Ava named Sam to send to vendors with one hold (up to 1234.5 USD, until revoked). A security change: every owner is told.",
+    expiresAt: null,
+  },
+  reapproved: {
+    type: "authority_grant_reapproved",
+    title: "Sam may send to vendors again",
+    message:
+      "Ava re-approved Sam's grant to send to vendors (up to 1234.5 USD, until 2026-12-31); it now rests on Ava. A security change: every owner is told.",
+    expiresAt: "2026-12-31T23:59:59.000Z",
+  },
+} as const;
+
+/** The reader's own grant notices, as `tell()` writes them (pinned below). */
+const OWN_GRANT_ISSUED = {
+  id: "notif-own-grant-issued",
+  type: GRANT_WORDS.issued.type,
+  title: GRANT_WORDS.issued.title,
+  message: GRANT_WORDS.issued.message,
+  priority: "low",
+  metadata: { grantId: "grant-2", change: "issued", granteeUserId: "user-1" },
+  createdAt: "2026-10-01T08:22:00.000Z",
+};
+const OWN_GRANT_REAPPROVED = {
+  id: "notif-own-grant-reapproved",
+  type: GRANT_WORDS.reapproved.type,
+  title: GRANT_WORDS.reapproved.title,
+  message: GRANT_WORDS.reapproved.message,
+  priority: "low",
+  metadata: {
+    grantId: "grant-2",
+    change: "reapproved",
+    granteeUserId: "user-1",
+  },
+  createdAt: "2026-10-01T08:23:00.000Z",
+};
+const OWN_GRANTS = [OWN_GRANT_ISSUED, OWN_GRANT_REAPPROVED];
+
+/** A type that is not a grant notice, naming the reader as grantee anyway. */
+const SALES_NAMING_READER = {
+  ...SERVICE_CLOSED,
+  id: "notif-sales-naming-reader",
+  metadata: { ...SERVICE_CLOSED.metadata, granteeUserId: "user-1" },
+};
+
+/** Grant notices that are not the reader's own, in every shape the gate meets. */
+const NOT_OWN_GRANTS = [
+  GRANT_ISSUED, // written before the grantee was recorded
+  GRANT_ISSUED_TO_SOMEONE_ELSE, // an owner's copy, the owner since demoted
+  {
+    ...OWN_GRANT_ISSUED,
+    id: "notif-grant-grantee-in-a-list",
+    metadata: { ...OWN_GRANT_ISSUED.metadata, granteeUserId: ["user-1"] },
+  },
+  { ...OWN_GRANT_ISSUED, id: "notif-grant-no-metadata", metadata: null },
+];
+
+describe("GET /mobile/feed — a grant notice's limit only to its grantee (fix/phone-feed-own-grant-limit)", () => {
+  it("gates exactly the two grant notices that name a limit, neither of them money-free", () => {
+    expect([...OWN_LIMIT_NOTIFICATION_TYPES].sort()).toEqual([
+      "authority_grant_issued",
+      "authority_grant_reapproved",
+    ]);
+    for (const type of OWN_LIMIT_NOTIFICATION_TYPES) {
+      expect(MONEY_FREE_NOTIFICATION_TYPES.has(type)).toBe(false);
+    }
+  });
+
+  it.each(["issued", "reapproved"] as const)(
+    "the grant writer records the grantee on the %s notice it sends every owner and the grantee",
+    async (what) => {
+      const service = Object.create(AuthorityGrantsService.prototype) as any;
+      service.logger = new Logger("spec");
+      service.authority = {
+        ownersAndManagers: jest
+          .fn()
+          .mockResolvedValue({ owners: ["owner-1", "owner-2"] }),
+        namesOf: jest.fn().mockResolvedValue(new Map([["owner-1", "Ava"]])),
+      };
+      service.notifications = {
+        persistForRestaurant: jest.fn().mockResolvedValue({ inserted: 3 }),
+      };
+      const grant = {
+        id: "grant-2",
+        grantee: { userId: "user-1", name: "Sam" },
+        limitAmount: 1234.5,
+        limitCurrency: "USD",
+        expiresAt: GRANT_WORDS[what].expiresAt,
+      };
+      await service.tell(HOUSE, grant, what, "owner-1");
+
+      expect(service.notifications.persistForRestaurant).toHaveBeenCalledTimes(
+        1,
+      );
+      const [house, payload, options] =
+        service.notifications.persistForRestaurant.mock.calls[0];
+      expect(house).toBe(HOUSE);
+      expect([...options.onlyUserIds].sort()).toEqual([
+        "owner-1",
+        "owner-2",
+        "user-1",
+      ]);
+      // The fixtures above are what the writer writes, not a guess at it.
+      const own = what === "issued" ? OWN_GRANT_ISSUED : OWN_GRANT_REAPPROVED;
+      expect(payload.type).toBe(own.type);
+      expect(payload.title).toBe(own.title);
+      expect(payload.message).toBe(own.message);
+      expect(payload.metadata).toEqual(own.metadata);
+    },
+  );
+
+  describe.each(["owner", "manager"])("a %s", (role) => {
+    it("gets every grant notice's message and metadata, whoever the grantee", async () => {
+      const notices = [...OWN_GRANTS, ...NOT_OWN_GRANTS];
+      const { controller } = build(notices);
+      const feed = await controller.getFeed(caller(role));
+      for (const n of notices) {
+        const card = feed.items.find((i) => i.notificationId === n.id)!;
+        expect(card.subtitle).toBe(n.message);
+        // The very object, untouched; a row with no metadata reads as {}.
+        if (n.metadata) expect(card.meta).toBe(n.metadata);
+        else expect(card.meta).toEqual({});
+      }
+    });
+  });
+
+  describe.each(NOT_MONEY_ROLES)("%s", (_label, role) => {
+    it("gets their own grant's limit, and none of its metadata", async () => {
+      const { controller } = build(OWN_GRANTS);
+      const feed = await controller.getFeed(caller(role));
+      for (const n of OWN_GRANTS) {
+        const card = feed.items.find((i) => i.notificationId === n.id)!;
+        expect(card.title).toBe(n.title);
+        expect(card.subtitle).toBe(n.message);
+        expect(card.meta).toEqual({});
+      }
+    });
+
+    it("gets no limit from an older notice, someone else's grant, or another type naming them", async () => {
+      const notices = [...NOT_OWN_GRANTS, SALES_NAMING_READER];
+      const { controller } = build(notices);
+      const feed = await controller.getFeed(caller(role));
+      for (const n of notices) {
+        const card = feed.items.find((i) => i.notificationId === n.id)!;
+        expect(card.subtitle).toBe("");
+      }
+      const onTheWire = wire(feed);
+      for (const figure of ["4321", "3456", "1234", "6123", "6,123", "$"]) {
+        expect(onTheWire).not.toContain(figure);
+      }
+    });
+
+    it("gets no limit when the reader's own id is missing or empty", async () => {
+      const notices = [
+        GRANT_ISSUED,
+        {
+          ...OWN_GRANT_ISSUED,
+          id: "notif-grant-empty-grantee",
+          metadata: { ...OWN_GRANT_ISSUED.metadata, granteeUserId: "" },
+        },
+      ];
+      for (const userId of [undefined, ""]) {
+        const { controller } = build(notices);
+        const feed = await controller.getFeed({
+          userId,
+          restaurantId: HOUSE,
+          role,
+        } as never);
+        for (const n of notices) {
+          const card = feed.items.find((i) => i.notificationId === n.id)!;
+          expect(card.subtitle).toBe("");
+        }
       }
     });
   });
