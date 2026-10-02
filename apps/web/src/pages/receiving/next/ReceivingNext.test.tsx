@@ -881,8 +881,10 @@ describe('F9 — the trend says when it broke, instead of being honest by accide
 
     expect(await screen.findByText(/settled-claims list did not load/i)).toBeInTheDocument()
     expect(screen.getByText(/not zero, and not "nothing settled"/)).toBeInTheDocument()
-    // The recovered figure comes from a different query and keeps its answer.
-    expect(screen.getByText('≥$900')).toBeInTheDocument()
+    // The recovered figure comes from a different query (/stats) and keeps its
+    // answer. It is not guaranteed to have painted when the failure line has —
+    // RcTally sets its display in a post-commit effect — so wait for it.
+    expect(await screen.findByText('≥$900')).toBeInTheDocument()
   })
 
   it('says nothing when the list simply came back empty', async () => {
