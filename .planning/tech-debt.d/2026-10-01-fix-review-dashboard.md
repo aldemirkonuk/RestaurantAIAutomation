@@ -54,17 +54,30 @@ Found by the PR #579 audit (both reviewers). Line citations are at `6806498668cb
 
 **Fix.** Withhold the price fields for a role that does not see `money`, read through `seesHouseAmounts`, on both routes, with the same `amounts` flag the dashboard routes return.
 
-## The shared web client turns a failed alerts or activity read into an empty list — OPEN — 2026-10-01
+## A failed alerts or activity read shows as an empty list on the page — OPEN — 2026-10-01
 
-Found by the PR #579 audit.
+Found by the PR #579 audit. **[changed 2026-10-01: the second audit (on 3a72c2f) found the page's own hook does the same, and that the page has no failure line for these two reads; the title said "the shared web client" only.]**
 
 **What.**
 - DASH-W3 and W11 made the gateway fail the call when a read fails.
 - `getRecentActivity` and `getAlerts` in `apps/web/src/services/api/dashboard.ts:81-82,96-97` catch the failure and return `[]`, so the page still shows "no alerts" when the alert read failed. That is absence reported as health.
 - A failed `/stats` falls back to counts built from the inventory summary (`:25-46`). It carries no money and no time zone.
 - `services/api/` is a shared part, so it is not changed from a page branch. Both catches are queued in `p4-scratch/review-shared-queue.md` (R1 lines).
+- The page's own hook does the same: `useDashboardNextData.ts:148-149` turns a missing activity or alerts answer into `[]`.
+- Lately (`ActivityPanel`, `RailPanels.tsx:217-228`) and the calendar's alerts have no failure line: they show a skeleton, an empty line or the rows.
 
-**Fix.** Let the failure reach the page, which already has the "couldn't be reached" line and "Try again" (W19; the lines themselves land with PR #565).
+**Fix.** All three move together: the shared client stops catching, the hook keeps a failed read as `null`, and Lately and the alerts get the "couldn't be reached" line and "Try again" that the other panels have (W19). The client half is shared code; the hook and panel halves need a sketch first.
+
+## Three dashboard reads no page uses still answer empty when a read fails — OPEN — 2026-10-01
+
+Found by the second PR #579 audit (on 3a72c2f).
+
+**What.**
+- W3, W6 and W11 made the four routes the page reads (stats, activity, alerts, calendar-revenue) fail the call when a read fails.
+- The other three still answer empty or zero: `getSalesChart` (`dashboard.service.ts:1069-1076`), `getInventoryBreakdown` (`:1141-1144`), and the summary's sub-reads (`getDashboardSummary`, `:327-345`, `:476-481`, `:541-546`).
+- No web or mobile page calls them today (`services/api/dashboard.ts` exports them; nothing imports them).
+
+**Fix.** Treat them as W3 did, before any page reads them, or retire them.
 
 ## Read errors reach the client with table names and PostgREST text — OPEN — 2026-10-01
 
@@ -82,7 +95,7 @@ Found by the PR #579 audit.
 Found by the PR #579 audit; the founder ruled on it as DASH-G2.
 
 **What.**
-- `houseZone` returns `"UTC"` when `restaurants.timezone` is null (`apps/api-gateway/src/dashboard/dashboard.service.ts:176-183`). So "today", the week, the month and the calendar are quietly bucketed on UTC for that house.
+- `houseZone` returns `"UTC"` when `restaurants.timezone` is null (`apps/api-gateway/src/dashboard/dashboard.service.ts:175-183`). So "today", the week, the month and the calendar are quietly bucketed on UTC for that house.
 - The founder's rule of 2026-09-03 is that an unset value reads as unknown (`supabase/migrations/20260903170000_a_default_is_not_an_answer.sql:4`). That migration dropped the column's default and set the defaulted rows back to null.
 - A malformed zone name makes `Intl` throw a `RangeError`, so stats and the calendar answer 500.
 - ALDEMIR has its zone set (America/Chicago).

@@ -75,8 +75,12 @@ export default function DashboardNext({ ground }: DashboardNextProps) {
   // that role and says so in `amounts` — so its word wins; the role only
   // covers a gateway too old to say, and the approvals queue, whose order
   // routes still carry prices.
+  // DASH-G5 (founder, 2026-10-01, "Hide money, this PR"): a role the page does
+  // not know yet sees no money — only a known owner or manager does — so a
+  // failed role read can never open the prices to staff.
   const statsAmounts = (spine.stats as { amounts?: string } | null | undefined)?.amounts;
-  const seesAmounts = statsAmounts !== 'withheld' && activeRole !== 'staff';
+  const roleSeesAmounts = activeRole === 'owner' || activeRole === 'manager';
+  const seesAmounts = statsAmounts !== 'withheld' && roleSeesAmounts;
   const headRef = useRef<HTMLElement | null>(null);
 
   // One quiet entrance for the opening line — settle, 6px, once.

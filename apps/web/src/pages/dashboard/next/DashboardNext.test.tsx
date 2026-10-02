@@ -222,6 +222,8 @@ describe('DashboardNext', () => {
       '/low-stock': [
         { id: 'inv-1', wine_name: 'Barolo Cannubi', vintage: 2019, stock_live: 1, threshold_min: 6 },
         { id: 'inv-2', wine_name: 'Peroni', vintage: null, stock_live: 2, threshold_min: 24 },
+        // A row with no name at all (DASH-G4: the Running-low panel said "Unnamed wine").
+        { id: 'inv-3', wine_name: null, vintage: null, stock_live: 0, threshold_min: 6 },
       ],
       '/orders/pending': [
         { id: 'o-1', orderNumber: 'ORD-2026-00042', quantity: 1, unitType: 'case', totalCost: 90, status: 'APPROVAL_NEEDED', requestedAt: '2026-09-01T10:00:00Z' },
@@ -230,8 +232,9 @@ describe('DashboardNext', () => {
 
     mount();
 
-    expect(await screen.findByText('1 approval and 2 low-stock items are waiting on you.')).toBeInTheDocument();
-    expect(await screen.findByText('Unnamed item')).toBeInTheDocument();
+    expect(await screen.findByText('1 approval and 3 low-stock items are waiting on you.')).toBeInTheDocument();
+    // One in the approvals queue, one in Running low.
+    expect(await screen.findAllByText('Unnamed item')).toHaveLength(2);
     expect(document.body.textContent).not.toMatch(/\bwines?\b/i);
   });
 
@@ -511,6 +514,22 @@ describe('DashboardNext', () => {
       } finally {
         vi.useRealTimers();
       }
+    });
+
+    // DASH-G5 (founder, 2026-10-01, "Hide money, this PR"): a role the page
+    // does not know yet sees no money, even when the gateway could not say.
+    it('shows no money while the role is unknown and the stats read failed', async () => {
+      auth.role = null;
+      staffHouse();
+      const routed = api.get.getMockImplementation()!;
+      api.get.mockImplementation((url: string) =>
+        url.includes('/dashboard/stats/') ? Promise.reject(new Error('stats down')) : routed(url),
+      );
+
+      const { container } = mount();
+
+      await screen.findByRole('button', { name: /Barolo Riserva/ });
+      expect(container.textContent).not.toMatch(/\$/);
     });
 
     it('shows an owner the money', async () => {

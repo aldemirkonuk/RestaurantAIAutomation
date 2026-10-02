@@ -377,7 +377,7 @@ describe("DashboardService — the founder walk-through, 2026-10-01", () => {
         [
           "1er Cru Montmains 2023 — 1 bottle left, you keep at least 6",
           "Sancerre 2022 — out of stock",
-          "A wine with no name — out of stock",
+          "An item with no name — out of stock",
         ].sort(),
       );
       expect(messages.join(" ")).not.toMatch(/inv-|bottles \(min/);

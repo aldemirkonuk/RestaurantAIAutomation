@@ -36,6 +36,10 @@ Items that were rejected, reworked or decided as a fork:
 7. **G1, vendor names in "Lately" for staff.** Found by the PR #579 audit: the /ask table withholds vendor names from staff, and this page shows them. The options were keep them, or withhold them for staff. The founder chose keep.
 8. **G2, a house with no time zone.** Found by the same audit: the dashboard reads a missing zone as UTC, against the rule that an unset value reads as unknown. The options were: follow the rule in a follow-up PR, follow it in this PR, or keep UTC. The founder chose a follow-up PR.
 9. **G3, the audit's fix round.** The options were approve it (commit, push, re-run the full audit) or hold it. The founder approved.
+10. **G4, the second audit's fix round.** The second audit (on 3a72c2f) returned BLOCK: Running low still said "Unnamed wine", and the W37 claim could not see it. The options were approve round 2 (the word, a test, a claim that sees bare text, the prose corrected, three claims tightened, then the full audit again) or hold. The founder approved.
+11. **G5, a role the page has not read.** When both the role read and the stats read fail, the page treated the person as one who sees money. The options were hide money while the role is unknown, in this PR, or record it as debt. The founder chose to hide it in this PR.
+12. **G6, free text and staff.** An event's description is free text and reaches staff on the calendar and in Lately; it can hold a figure. The options were narrow the claim and record debt, withhold descriptions for staff (sketch first), or leave it and fix only the sentence. The founder chose to narrow the claim, and added a direction for later (below).
+13. **G7, the gateway's alert text.** An alert said "A wine with no name". The options were change it to "An item with no name" in this PR, or queue it with the other pages' "items" pass. The founder chose this PR.
 
 ## Decision
 
@@ -64,16 +68,23 @@ The founder's words, verbatim, per item:
 | DASH-G1 | "Keep (Recommended)" |
 | DASH-G2 | "Follow rule, follow-up PR (Recommended)" |
 | DASH-G3 | "Approve (Recommended)" |
+| DASH-G4 | "Approve (Recommended)" |
+| DASH-G5 | "Hide money, this PR (Recommended)" |
+| DASH-G6 | "narrow claim,. + but keep in my mind when we integrate the POS and when system start to work we're going to using floor coverage software we're going save the stats of each waiter, and they'll be able to see table invoices." |
+| DASH-G7 | "Yes, this PR (Recommended)" |
 
 These were built as approved. *What follows is my synthesis, proposed. It is not the founder's words.*
 
 - **The house's clock and honest reads.**
   - Every figure, "today", the greeting and the calendar are bucketed on the house's zone (W2, W20).
-  - On the gateway, a read that fails fails the call instead of answering empty (W3, W6, W11). On the page, a failed read is said in the house's words with "Try again" (W19).
-  - Not yet everywhere: the shared web client still turns a failed alerts or activity read into an empty list, and a failed stats read into counts taken from the inventory summary (shared code, queued).
+  - On the gateway, the four routes the page reads (stats, activity, alerts, calendar-revenue) fail the call when a read fails, instead of answering empty (W3, W6, W11). Three dashboard routes no page reads still answer empty (debt).
+  - On the page, a failed read of the figures, the approvals, Running low, the month or the week is said in the house's words with "Try again" (W19).
+  - Not yet everywhere: Lately and the calendar's alerts have no failure line. Both the shared web client (shared code, queued) and the page's own hook turn a failed alerts or activity read into an empty list. A failed stats read falls back to counts taken from the inventory summary.
   - The unused read is gone (W8), and the cellar tile reads the low-stock view rather than every row (W10).
 - **Roles.**
-  - On the dashboard's own routes, staff see counts, never money. The gateway withholds the amounts there and says `amounts: "withheld"`, so a withheld figure never reads as a failed one (W22).
+  - On the dashboard's own routes, staff see counts, never amounts. The gateway withholds the amount fields there and says `amounts: "withheld"`, so a withheld figure never reads as a failed one (W22).
+  - Free text is not withheld: an event's description, on the calendar and in Lately, can hold a figure someone wrote (G6).
+  - A role the page has not read yet sees no amounts, so a failed role read never opens the prices (G5).
   - Not yet everywhere: the page also reads `/procurement/orders/pending` and `/procurement/orders/history`, which still send prices to staff. The page hides them; the server does not yet. This is queued with the /orders session.
   - The approval hold is offered only to a role that may approve (W21).
   - Staff do see vendor names in "Lately" here, unlike /ask's table (G1).
@@ -105,11 +116,17 @@ These were built as approved. *What follows is my synthesis, proposed. It is not
 - **"Bottles" and "In the cellar" stay** until food lands; the founder is to be asked again then (W37).
 - **What the PR #579 audit found.** The open entries are in `.planning/tech-debt.d/2026-10-01-fix-review-dashboard.md`:
   - the two order routes that still send prices to staff;
-  - the shared client's empty-list fallback for alerts and activity;
-  - read errors reaching the client with table names and PostgREST text, through `HttpException(error.message)`.
-- **Fixed in the same round.**
+  - a failed alerts or activity read shown as an empty list, by the shared client and the page's own hook;
+  - read errors reaching the client with table names and PostgREST text, through `HttpException(error.message)`;
+  - three dashboard routes no page reads that still answer empty on a failed read (second audit).
+- **Fixed in the first audit's round (G3).**
   - `seesHouseAmounts` now reads the /ask table through `policyFor`, as /ask does: it ignores case, and `admin` reads the owner row.
   - An add with no count reads "added", not "added, ".
+- **Fixed in the second audit's round (G4, G5, G7).**
+  - Running low and the gateway's alert say "Unnamed item" and "An item with no name" (W37, G7), and the W37 claim now sees bare text.
+  - The page shows no amounts while the role is unknown (G5).
+  - Three claims were tightened so that a comment, a one-route fix or `return true` no longer satisfies them.
+- **Free text and staff (G6).** The claim is narrowed to the amount fields; descriptions still reach staff, as before this PR. This is recorded here, not as a debt entry, because the founder named only the claim and gave a direction that redraws the line: once the POS is integrated and floor-coverage software runs, each waiter's stats are saved and waiters will be able to see table invoices. The staff-and-money line (W22) is to be redrawn then, not hardened now.
 - **A house with no time zone (G2)** still reads as UTC on this branch. The fix, "—" and a line saying the zone is not set, is a follow-up PR, sketched first. It is tracked as an open claim and debt entry.
 - **Not verified:**
   - real touch;

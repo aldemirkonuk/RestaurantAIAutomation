@@ -70,8 +70,8 @@ function wineLabel(row: any): string {
     : name;
 }
 
-/** What an alert says when the cellar row carries no name at all. */
-const UNNAMED_WINE = "A wine with no name";
+/** What an alert says when a cellar row has no name: an item, never a wine (DASH-W37, DASH-G7). */
+const UNNAMED_ITEM = "An item with no name";
 
 /** Where an order stands, in the words Lately uses. */
 const ORDER_VERB: Record<string, string> = {
@@ -947,7 +947,7 @@ export class DashboardService {
           wineLabel({
             wine_name: item.wine_name,
             master_wine_library: { vintage: item.vintage },
-          }) || UNNAMED_WINE;
+          }) || UNNAMED_ITEM;
         alerts.push({
           id: `low-stock-${item.id}`,
           type: "low_stock",
@@ -986,7 +986,7 @@ export class DashboardService {
             type: "out_of_stock",
             severity: "critical",
             title: "Out of Stock",
-            message: `${wineLabel(item) || UNNAMED_WINE} — out of stock`,
+            message: `${wineLabel(item) || UNNAMED_ITEM} — out of stock`,
             actionUrl: `/inventory?highlight=${item.id}`,
             createdAt: item.updated_at || new Date().toISOString(),
           });

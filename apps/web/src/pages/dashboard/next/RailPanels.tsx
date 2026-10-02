@@ -188,7 +188,7 @@ export function LowStockPanel({
                 </Link>
               ) : (
                 <span className="min-w-0 line-clamp-2 leading-snug text-inkm-1">
-                  Unnamed wine
+                  Unnamed item
                   {it.vintage ? <span className="text-inkm-4"> {it.vintage}</span> : null}
                 </span>
               )}
