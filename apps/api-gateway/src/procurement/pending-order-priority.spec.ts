@@ -233,7 +233,7 @@ describe("the pending queue is oldest first, flagged first", () => {
     });
     expect(log.listOrder[0]).toEqual(["created_at", { ascending: true }]);
     expect(out.map((o) => o.id)).toEqual(["a", "b", "c"]);
-    expect(out.every((o) => o.priority.flagged === false)).toBe(true);
+    expect(out.every((o) => o.priority?.flagged === false)).toBe(true);
   });
 
   it("breaks a tie in created_at by id, ascending", async () => {
