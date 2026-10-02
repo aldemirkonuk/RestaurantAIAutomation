@@ -33,6 +33,7 @@ import {
   ROW_UNSTATED_PRICE_UNIT,
   describeFees,
   describeStatedPrice,
+  uomCountWord,
 } from './price-unit';
 import { STAGE_LABEL, type ApprovalGateRow, type OrderRowVM } from './useOrdersNextData';
 
@@ -268,12 +269,12 @@ export function LedgerRow({
         >
           <span className="min-w-0 flex-1">
             <span
-              className="block truncate"
+              className="line-clamp-2 break-words"
               style={{ fontFamily: SERIF, fontSize: 15, fontWeight: 600, color: 'var(--ink-1, #211C16)' }}
             >
               {row.wineName ?? EM}
             </span>
-            <span className="block truncate" style={{ fontSize: 11.5, color: 'var(--ink-4, #665D50)' }}>
+            <span className="block break-words" style={{ fontSize: 11.5, color: 'var(--ink-4, #665D50)' }}>
               {row.providerName ?? EM}
               {/*
                 * "recurs weekly, next 12 Sep". The clause is rendered whenever
@@ -373,9 +374,17 @@ export function LedgerRow({
         }}
       >
         <div style={{ overflow: 'hidden' }}>
-          <div className="grid gap-4 px-10 pb-4 pt-1 sm:grid-cols-[1fr_auto]" style={{ fontFamily: SANS }}>
+          {/*
+            The working and the action column sit side by side only when the
+            ROW has room for both. The old `sm:grid-cols-[1fr_auto]` keyed on
+            the viewport, so at 1024px — where the ledger column is ~340px wide
+            beside the drafts rail — the 230px action column took the row and
+            squeezed the working into a one-word-wide strip (DASH-W15). A
+            wrapping flex row decides by the row's own width instead.
+          */}
+          <div className="flex flex-wrap gap-4 px-10 pb-4 pt-1" style={{ fontFamily: SANS }}>
             {/* the working — how the total is arrived at, stated in full */}
-            <div>
+            <div style={{ flex: '1 1 16rem', minWidth: 0 }}>
               {label('The working')}
               <div
                 style={{
@@ -434,7 +443,7 @@ export function LedgerRow({
                     */
                     <span data-testid="row-no-working" style={{ color: 'var(--ink-4, #665D50)' }}>
                       {row.quantity !== null ? row.quantity : EM}{' '}
-                      {row.unitType ? `${row.unitType}(s)` : 'ordered'} —{' '}
+                      {row.unitType ? uomCountWord(row.quantity, row.unitType) : 'ordered'} —{' '}
                       {!row.priceUnit.read
                         ? 'no working can be shown, because this view never read the unit the price is in. The figure above is the ledger’s own.'
                         : row.priceUnit.stated === null
@@ -522,7 +531,7 @@ export function LedgerRow({
             </div>
 
             {/* the action column — one honest control per stage */}
-            <div style={{ minWidth: 230 }}>
+            <div style={{ flex: '0 0 230px', maxWidth: '100%' }}>
               {/*
                 The correspondence, at every stage. It is not a stage control:
                 what a vendor said about an order is worth reading after the

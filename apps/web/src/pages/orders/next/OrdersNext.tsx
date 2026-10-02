@@ -18,13 +18,14 @@
  * - countdowns drain un-eased.
  *
  * Honesty rules: unknowns are em dashes, never zeros; a failed fetch is said
- * in words; the rehearsal die (shown when no pending order is loaded) is
- * wired to NOTHING and says so.
+ * in words. The real seal lives only on a pending row — the rehearsal die
+ * that stood here when nothing was pending was removed on the founder's
+ * word (ORD-W2, 2026-10-01).
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
-import { HoldToApprove, Wordmark } from '@/components/mudavym';
+import { Wordmark } from '@/components/mudavym';
 import { AgreementSheet } from './AgreementSheet';
 import { BulkApproveBar } from './BulkApproveBar';
 import { DraftRail } from './DraftRail';
@@ -36,7 +37,7 @@ import { ReceiptSheet } from './ReceiptSheet';
 import { ResponsesSheet } from './ResponsesSheet';
 import { StageSpine, type SpineStation } from './StageSpine';
 import { Tally } from './Tally';
-import { EM, MONO, SANS, SERIF, fmtMoneyWhole } from './format';
+import { EM, MONO, SANS, SERIF, fmtMoneyWhole, fmtReadTime } from './format';
 import { emptyStationSentence } from './recurrence';
 import { STAGES, useOrdersNextData, type OrderRowVM } from './useOrdersNextData';
 import { useAuth } from '@/contexts/AuthContext';
@@ -44,72 +45,6 @@ import { useProviders } from '@/hooks/queries/useProviderQueries';
 
 const monthName = new Intl.DateTimeFormat('en-GB', { month: 'long' });
 const VALID_STATIONS = new Set<string>([...STAGES, 'recurring']);
-
-/** The die with nothing behind it — clearly guarded demo state. */
-function RehearsalCard() {
-  const [runs, setRuns] = useState(0);
-  const [sealedOnce, setSealedOnce] = useState(false);
-  return (
-    <div
-      style={{
-        border: '1px dashed var(--ink-3, #7C7365)',
-        borderRadius: 12,
-        padding: '12px 14px',
-        background: 'var(--paper-1, #F3EFE6)',
-        fontFamily: SANS,
-      }}
-      data-testid="rehearsal-die"
-    >
-      <div className="mb-1 flex items-center justify-between">
-        <span style={{ fontFamily: SERIF, fontSize: 14, fontWeight: 600, color: 'var(--ink-1, #211C16)' }}>
-          The die, at rest
-        </span>
-        <span
-          style={{
-            fontFamily: MONO,
-            fontSize: 8.5,
-            fontWeight: 600,
-            letterSpacing: '0.14em',
-            textTransform: 'uppercase',
-            color: 'var(--ink-4, #665D50)',
-            border: '1px dashed var(--ink-3, #7C7365)',
-            borderRadius: 3,
-            padding: '2px 6px',
-          }}
-        >
-          Rehearsal · no order attached
-        </span>
-      </div>
-      <p style={{ fontSize: 11.5, color: 'var(--ink-4, #665D50)', margin: '0 0 8px' }}>
-        No pending order is loaded, so the ceremony has nothing to act on. Completing this hold approves
-        nothing and sends nothing — it only shows the gesture.
-      </p>
-      <HoldToApprove
-        key={`rehearsal-${runs}`}
-        label="Hold to try the seal — approves nothing"
-        approvedLabel="Sealed — a rehearsal only"
-        onApprove={() => setSealedOnce(true)}
-      />
-      {sealedOnce && (
-        <button
-          type="button"
-          onClick={() => setRuns((r) => r + 1)}
-          style={{
-            marginTop: 4,
-            fontSize: 11,
-            color: 'var(--ink-4, #665D50)',
-            textDecoration: 'underline',
-            background: 'none',
-            border: 'none',
-            cursor: 'pointer',
-          }}
-        >
-          Reset the rehearsal
-        </button>
-      )}
-    </div>
-  );
-}
 
 export default function OrdersNext() {
   const data = useOrdersNextData();
@@ -128,7 +63,7 @@ export default function OrdersNext() {
    * job to react to.
    */
   const { id: routeOrderId } = useParams<{ id?: string }>();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const targetOrderId = routeOrderId ?? searchParams.get('order');
   /** Which target id this page has already acted on, so a manual collapse by
    *  the person afterwards is not fought by re-expanding on every render. */
@@ -145,6 +80,26 @@ export default function OrdersNext() {
     const requested = searchParams.get('station') ?? searchParams.get('tab');
     return requested && VALID_STATIONS.has(requested) ? (requested as SpineStation) : null;
   });
+  /**
+   * The chosen station lives in the URL (ADR 0160, ORD-W5): a reload, a shared
+   * link or Back returns to the same station. `replace`, so stepping through
+   * stations does not stack history entries; a deep-link `order` is dropped,
+   * since the person has moved on from that one order.
+   */
+  const selectStation = (next: SpineStation | null) => {
+    setStation(next);
+    setSearchParams(
+      (prev) => {
+        const p = new URLSearchParams(prev);
+        p.delete('tab');
+        p.delete('order');
+        if (next) p.set('station', next);
+        else p.delete('station');
+        return p;
+      },
+      { replace: true },
+    );
+  };
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [bulkRunning, setBulkRunning] = useState(false);
@@ -232,8 +187,6 @@ export default function OrdersNext() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [targetOrderId, targetRow]);
 
-  const pendingKnownEmpty = data.hasData && data.counts.pending === 0;
-  const showRehearsal = data.isError || pendingKnownEmpty;
 
   const setRowSelected = (id: string, next: boolean) =>
     setSelected((prev) => {
@@ -423,9 +376,24 @@ export default function OrdersNext() {
               background: 'var(--paper-1, #F3EFE6)',
             }}
           >
-            <span style={{ fontSize: 12.5, color: 'var(--ink-2, #4F473C)' }}>
-              The gateway could not be reached ({data.errorMessage}). Every figure on this page is
-              unknown — shown as {EM}, never as zero.
+            {/* A re-read that fails keeps the last rows on screen (React Query
+                holds data across a refetch error), so "every figure is unknown"
+                would be false over them — say how old they are (ORD-W15). */}
+            <span
+              data-testid="orders-read-error"
+              style={{ fontSize: 12.5, color: 'var(--ink-2, #4F473C)' }}
+            >
+              {data.hasData && data.dataUpdatedAt ? (
+                <>
+                  The orders could not be re-read ({data.errorMessage}). What you see is the last
+                  read, from {fmtReadTime(data.dataUpdatedAt)} — it may be out of date.
+                </>
+              ) : (
+                <>
+                  The orders could not be read ({data.errorMessage}). Every figure on this page is
+                  unknown — shown as {EM}, never as zero.
+                </>
+              )}
             </span>
             <button
               type="button"
@@ -494,7 +462,7 @@ export default function OrdersNext() {
           counts={data.counts}
           recurringCount={data.recurringCount}
           active={station}
-          onSelect={setStation}
+          onSelect={selectStation}
         />
 
         <div className="mt-5 grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px]">
@@ -515,7 +483,7 @@ export default function OrdersNext() {
 
             {!data.hasData && !data.isError ? (
               <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-4, #665D50)' }}>
-                Reaching the gateway…
+                Reading the order book…
               </p>
             ) : visibleRows.length === 0 && !data.isError ? (
               <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-4, #665D50)' }}>
@@ -567,12 +535,6 @@ export default function OrdersNext() {
               </div>
             )}
 
-            {showRehearsal && (
-              <div className="mt-4">
-                <RehearsalCard />
-              </div>
-            )}
-
             {data.cancelledCount !== null && data.cancelledCount > 0 && (
               <p style={{ fontFamily: SANS, fontSize: 11, color: 'var(--ink-4, #665D50)', marginTop: 10 }}>
                 {data.cancelledCount} cancelled — kept in the book, off the figures.
@@ -581,7 +543,12 @@ export default function OrdersNext() {
           </section>
 
           {/* ── the drafted-order rail ─────────────────────────────────── */}
-          <DraftRail />
+          <DraftRail
+            focusOrderId={expandedId}
+            onOpenResponses={(orderId) =>
+              data.rows.some((r) => r.id === orderId) ? () => setResponsesFor(orderId) : undefined
+            }
+          />
         </div>
       </div>
     </div>

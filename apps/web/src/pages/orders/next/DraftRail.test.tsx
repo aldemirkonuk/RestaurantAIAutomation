@@ -10,15 +10,17 @@
  */
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 const seams = vi.hoisted(() => ({
   standing: null as unknown,
   standingFailed: false,
+  standingDraft: null as unknown,
   requestDraftSend: vi.fn(),
   issueDraftSendChallenge: vi.fn(),
   approveMutateAsync: vi.fn(),
+  editMutate: vi.fn(),
   drafts: [] as unknown[],
 }));
 
@@ -31,11 +33,12 @@ vi.mock('@/hooks/queries/useDraftEmailQueries', () => ({
   requestDraftSend: (...a: unknown[]) => seams.requestDraftSend(...a),
   useCancelScheduledSend: () => ({ mutate: vi.fn(), isPending: false }),
   useDiscardDraft: () => ({ mutate: vi.fn(), isPending: false }),
+  useEditDraft: () => ({ mutate: seams.editMutate, isPending: false }),
   useOrderConversations: () => ({ data: [], isError: false }),
   useDraftStanding: () =>
     seams.standingFailed
       ? { data: undefined, isPending: false, isError: true, error: new Error('network down') }
-      : { data: { draft: null, sendOrAsk: seams.standing }, isPending: false, isError: false },
+      : { data: { draft: seams.standingDraft, sendOrAsk: seams.standing }, isPending: false, isError: false },
 }));
 
 // jsdom has no Element.animate; the rail's reveal is skipped under reduced
@@ -97,6 +100,20 @@ beforeEach(() => {
   seams.drafts = [DRAFT];
   seams.standing = AS_MANAGER;
   seams.standingFailed = false;
+  seams.standingDraft = null;
+});
+
+describe('the rail heading, for every role (ORD-W16)', () => {
+  it('never tells the reader it waits on THEIR approval — staff cannot give it', () => {
+    seams.standing = AS_STAFF;
+    draw();
+    const rail = screen.getByRole('region', { name: 'Drafted orders awaiting approval' });
+    expect(rail).toHaveTextContent('1 waiting');
+    expect(rail).toHaveTextContent(
+      'Nothing here reaches a vendor until someone who may send it approves it.',
+    );
+    expect(rail).not.toHaveTextContent(/your approval|awaiting your hand/);
+  });
 });
 
 describe('the drafted-order rail — send or ask', () => {
@@ -154,5 +171,176 @@ describe('the drafted-order rail — send or ask', () => {
     draw();
     expect(screen.getByRole('button', { name: /Hold to approve & send/ })).toBeDisabled();
     expect(screen.getByTestId('rail-standing')).toHaveTextContent(/network down/);
+  });
+});
+
+/*
+ * ORD-W7, 2026-10-01: the only house draft in production still read
+ * "Dear [Provider First Name]" and was signed "[Your Name]". The card names
+ * the blanks and keeps both holds shut; the gateway refuses the same letter
+ * (apps/api-gateway/src/procurement/unfilled-slots.spec.ts).
+ */
+describe('a draft with a blank the house did not fill', () => {
+  const BLANKED = { ...DRAFT, draftContent: 'Dear [Provider First Name],\n\nSix cases.\n\n[Your Name]' };
+
+  // A hold's mint and send are async: give them a tick to happen, so a
+  // "not called" is a fact rather than an assertion that ran too early.
+  const settleHold = () => act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+
+  it('names the blanks and will not mint a seal over them', async () => {
+    seams.drafts = [BLANKED];
+    draw();
+    expect(screen.getByTestId('draft-unfilled')).toHaveTextContent(/\[Provider First Name\], \[Your Name\]/);
+    holdIt(/Hold to approve & send to Kavaklıdere/);
+    await settleHold();
+    expect(seams.issueDraftSendChallenge).not.toHaveBeenCalled();
+    expect(seams.approveMutateAsync).not.toHaveBeenCalled();
+  });
+
+  it('will not ask a manager to send it either', async () => {
+    seams.drafts = [BLANKED];
+    seams.standing = AS_STAFF;
+    draw();
+    holdIt(/Hold to ask a manager to send it/);
+    await settleHold();
+    expect(seams.requestDraftSend).not.toHaveBeenCalled();
+  });
+
+  it('says nothing about a draft with no blanks', () => {
+    draw();
+    expect(screen.queryByTestId('draft-unfilled')).not.toBeInTheDocument();
+  });
+
+  // Reworked the same day (founder: "Only unfillable"): the send fills the
+  // greeting and the signature, so only what it cannot fill shuts the hold.
+  it('opens the hold when the gateway fills every blank, and says with what', async () => {
+    seams.drafts = [BLANKED];
+    seams.standingDraft = {
+      id: 'conv-1',
+      content: BLANKED.draftContent,
+      send_request: null,
+      at_send: {
+        unfillable: [],
+        fills: [
+          { slot: '[Provider First Name]', value: 'Hasan' },
+          { slot: '[Your Name]', value: 'Meyhouse' },
+        ],
+      },
+    };
+    seams.issueDraftSendChallenge.mockResolvedValue('proof-1');
+    seams.approveMutateAsync.mockResolvedValue({});
+    draw();
+    expect(screen.queryByTestId('draft-unfilled')).not.toBeInTheDocument();
+    expect(screen.getByTestId('draft-fills')).toHaveTextContent(
+      'When it sends, Mudavym fills [Provider First Name] with “Hasan” and [Your Name] with “Meyhouse”.',
+    );
+    holdIt(/Hold to approve & send to Kavaklıdere/);
+    await waitFor(() => expect(seams.issueDraftSendChallenge).toHaveBeenCalled());
+  });
+
+  it('names only the blanks the send cannot fill', () => {
+    const words = 'Dear [Provider First Name],\n\nSix cases by [Delivery Date].';
+    seams.drafts = [{ ...DRAFT, draftContent: words }];
+    seams.standingDraft = {
+      id: 'conv-1',
+      content: words,
+      send_request: null,
+      at_send: { unfillable: ['[Delivery Date]'], fills: [{ slot: '[Provider First Name]', value: 'Hasan' }] },
+    };
+    draw();
+    expect(screen.getByTestId('draft-unfilled')).toHaveTextContent(/fill: \[Delivery Date\]\. It cannot/);
+  });
+
+  it('counts every blank while the gateway has not read these words', () => {
+    seams.drafts = [BLANKED];
+    seams.standingDraft = {
+      id: 'conv-1',
+      content: 'an older version',
+      send_request: null,
+      at_send: { unfillable: [], fills: [] },
+    };
+    draw();
+    expect(screen.getByTestId('draft-unfilled')).toHaveTextContent(/\[Provider First Name\], \[Your Name\]/);
+  });
+});
+
+/*
+ * ORD-W8, W10, W11 (DASH-W16 a, c, d), 2026-10-01: the order opened on the
+ * ledger opens and marks its letter; the words can be edited on the card; and
+ * the vendor's answers open from the card.
+ */
+describe('the card, from the order and for the letter', () => {
+  function drawWith(props: Parameters<typeof DraftRail>[0]) {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <DraftRail {...props} />
+      </QueryClientProvider>,
+    );
+  }
+
+  it('opens and marks the letter of the order opened on the ledger', () => {
+    drawWith({ focusOrderId: 'ord-1' });
+    expect(screen.getByTestId('draft-card-ord-1')).toHaveAttribute('data-focused', 'true');
+    expect(screen.getByText(/This order.s letter/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Öküzgözü 2022/ })).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('leaves another order’s letter closed and unmarked', () => {
+    drawWith({ focusOrderId: 'ord-other' });
+    expect(screen.getByTestId('draft-card-ord-1')).not.toHaveAttribute('data-focused');
+    expect(screen.getByRole('button', { name: /Öküzgözü 2022/ })).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('saves edited words through PATCH …/draft, and shuts the hold while the box is open', async () => {
+    seams.issueDraftSendChallenge.mockResolvedValue('proof-1');
+    draw();
+    fireEvent.click(screen.getByRole('button', { name: 'Edit the words' }));
+    const box = screen.getByRole('textbox', { name: /The letter.s words/ });
+    expect(screen.getByRole('button', { name: 'Save the words' })).toBeDisabled();
+    fireEvent.change(box, { target: { value: 'Dear Hasan, six cases. Ayşe' } });
+    holdIt(/Hold to approve & send to Kavaklıdere/);
+    await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+    expect(seams.issueDraftSendChallenge).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Save the words' }));
+    expect(seams.editMutate).toHaveBeenCalledWith(
+      { orderId: 'ord-1', content: 'Dear Hasan, six cases. Ayşe' },
+      expect.anything(),
+    );
+  });
+
+  it('keeps the old words without writing anything', () => {
+    draw();
+    fireEvent.click(screen.getByRole('button', { name: 'Edit the words' }));
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'changed' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Keep the old words' }));
+    expect(seams.editMutate).not.toHaveBeenCalled();
+    expect(screen.getByText('Six cases at 2,400, delivered Tuesday.')).toBeInTheDocument();
+  });
+
+  it('opens the vendor’s answers for that order from the card', () => {
+    const open = vi.fn();
+    const byOrder = vi.fn(() => open);
+    drawWith({ onOpenResponses: byOrder });
+    fireEvent.click(screen.getByRole('button', { name: /Öküzgözü 2022/ }));
+    fireEvent.click(screen.getByTestId('draft-open-responses'));
+    expect(byOrder).toHaveBeenCalledWith('ord-1');
+    expect(open).toHaveBeenCalledOnce();
+  });
+
+  it('offers no answers button when the page cannot open that order', () => {
+    drawWith({ onOpenResponses: () => undefined });
+    fireEvent.click(screen.getByRole('button', { name: /Öküzgözü 2022/ }));
+    expect(screen.queryByTestId('draft-open-responses')).not.toBeInTheDocument();
+  });
+});
+
+describe('the discard link is a 24px target (ORD-W19)', () => {
+  it('keeps its link look with a 24px hit area', () => {
+    draw();
+    const discard = screen.getByTestId('draft-discard');
+    expect(discard).toHaveTextContent('Discard the draft');
+    expect(discard.style.minHeight).toBe('24px');
+    expect(discard.style.textDecoration).toBe('underline');
   });
 });
