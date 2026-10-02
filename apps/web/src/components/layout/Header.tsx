@@ -13,7 +13,6 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { cn } from '../../lib/utils'
-import { ThemeMenu } from './ThemeMenu'
 import { RestaurantBranchSwitcher } from './RestaurantBranchSwitcher'
 import { useNotifications, useMarkNotificationAsRead, useMarkAllNotificationsAsRead } from '../../hooks/queries'
 import type { Notification } from '../../services/api/notifications'
@@ -95,11 +94,13 @@ export function Header({ title, subtitle }: HeaderProps) {
     }
   }
 
-  // Under the Mudavym app shell (sketch 119 D) the search, bell, theme,
-  // branch and account controls are the shell's own header; repeating them
-  // here would be a second banner with the same five controls. The page's
-  // title and subtitle are the page's, so they stay. Outside the shell this
-  // branch never runs and the header is byte-for-byte what it was.
+  // Under the Mudavym app shell (sketch 119 D) the search, bell, branch and
+  // account controls are the shell's own header; repeating them here would be
+  // a second banner with the same controls. The page's title and subtitle are
+  // the page's, so they stay. Outside the shell this branch never runs and the
+  // header is what it was, minus the theme menu: that left both headers on
+  // 2026-10-01 (founder, page walk-through DASH-W23) and the person's ground
+  // is chosen on /profile.
   if (inHouseShell) {
     if (!title && !subtitle) return null
     return (
@@ -138,9 +139,6 @@ export function Header({ title, subtitle }: HeaderProps) {
               <Command className="w-3 h-3" />K
             </kbd>
           </button>
-
-          {/* Theme Toggle */}
-          <ThemeMenu />
 
           {/* Notifications */}
           <div className="relative">
