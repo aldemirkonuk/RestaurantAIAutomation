@@ -36,9 +36,10 @@
  * three seconds later, and a person can type in between.
  */
 
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { HoldToApprove } from '../mudavym/HoldToApprove'
-import { MONO, SERIF } from './canonical-format'
+import { Panel } from '../mudavym/Sheet'
+import { MONO } from './canonical-format'
 
 /**
  * Paths whose field is a number when the document stated nothing there.
@@ -117,10 +118,6 @@ export function CorrectionDialog({
    */
   const held = useRef<unknown>(null)
 
-  useEffect(() => {
-    first.current?.focus()
-  }, [])
-
   /**
    * What would be sent, or why it cannot be read.
    *
@@ -145,53 +142,69 @@ export function CorrectionDialog({
 
   const read = reading()
 
+  /*
+   * THE HOUSE'S CENTRED PANEL (ADR 0112; walk-through RECEIPTS-W32, 2026-10-01).
+   * This dialog was drawn by hand after the overlay census, and measured: Tab
+   * left it at the fifth press, its Escape worked only from inside it, focus
+   * ended on <body>, and the page scrolled behind the dim. `Panel` owns all of
+   * that once — focus in and back to the field, Tab kept inside, Escape from
+   * anywhere, the counted scroll lock, the page's ground, reduced motion — so
+   * this file keeps only what it asks.
+   */
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label={`Correct ${label}`}
-      data-testid="correction-dialog"
+    <Panel
+      open
+      onClose={onCancel}
+      label={`Correct ${label}: what the paper says, and why. Sealing appends a new revision and keeps the old one; leaving writes nothing.`}
+      contract="This does not edit the document. It appends a new revision and keeps what was there before, permanently — which is why it takes a hold rather than a click."
+      eyebrow="Correct one field"
+      title={label}
+      closeLabel="Cancel"
+      initialFocusRef={first}
       className="cd-no-print"
-      style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 60,
-        display: 'grid',
-        placeItems: 'center',
-        background: 'rgba(33,28,22,.34)',
-        padding: 16,
-      }}
-      onKeyDown={(e) => {
-        if (e.key === 'Escape') onCancel()
-      }}
+      footer={
+        <div data-testid="correction-submit">
+          {!read.ok && (
+            <p
+              data-testid="correction-unreadable"
+              style={{ margin: '0 0 6px', fontSize: 11, color: 'var(--ink-2, #4F473C)' }}
+            >
+              {read.why}
+            </p>
+          )}
+          <HoldToApprove
+            label={
+              read.ok
+                ? `Hold to seal this correction to ${label}`
+                : 'Type a value this field can take'
+            }
+            approvedLabel={busy ? 'Recording…' : 'Correction sealed'}
+            disabled={!!busy || !read.ok}
+            onChallenge={
+              onChallenge
+                ? () => {
+                    const now = reading()
+                    if (!now.ok) return Promise.resolve(null)
+                    held.current = now.value
+                    return onChallenge(now.value)
+                  }
+                : undefined
+            }
+            onApprove={(challenge) =>
+              onSubmit(
+                // The value the hold was begun over when a seal was minted;
+                // otherwise whatever the form reads now, which is the unsealed
+                // path the gateway refuses in words.
+                onChallenge ? held.current : (reading() as { value: unknown }).value,
+                reason,
+                challenge,
+              )
+            }
+          />
+        </div>
+      }
     >
-      <div
-        style={{
-          width: 380,
-          maxWidth: '100%',
-          background: 'var(--paper-0, #FFFDF8)',
-          border: '1px solid var(--paper-2, #EAE4D8)',
-          borderRadius: 14,
-          padding: '14px 16px',
-          boxShadow: '0 18px 50px rgba(33,28,22,.22)',
-        }}
-      >
-        <span
-          style={{
-            fontFamily: MONO,
-            fontSize: 8,
-            fontWeight: 600,
-            letterSpacing: '.12em',
-            textTransform: 'uppercase',
-            color: 'var(--ink-4, #665D50)',
-          }}
-        >
-          Correct one field
-        </span>
-        <h2 style={{ margin: '2px 0 6px', fontFamily: SERIF, fontSize: 16, fontWeight: 600 }}>
-          {label}
-        </h2>
-
+      <div data-testid="correction-dialog" style={{ padding: '12px 16px 14px' }}>
         <p
           data-testid="correction-before"
           style={{ margin: '0 0 8px', fontSize: 11, color: 'var(--ink-2, #4F473C)' }}
@@ -223,7 +236,7 @@ export function CorrectionDialog({
               padding: '6px 8px',
               fontFamily: numeric ? MONO : 'inherit',
               fontSize: 13,
-              border: '1px solid var(--paper-2, #EAE4D8)',
+              border: '1px solid var(--line-control, #8F8674)', // RECEIPTS-W39: a control's edge at 3:1
               borderRadius: 8,
               background: clearIt ? 'var(--paper-1, #F3EFE6)' : 'var(--paper-0, #FFFDF8)',
             }}
@@ -263,7 +276,7 @@ export function CorrectionDialog({
               marginTop: 3,
               padding: '6px 8px',
               fontSize: 12,
-              border: '1px solid var(--paper-2, #EAE4D8)',
+              border: '1px solid var(--line-control, #8F8674)', // RECEIPTS-W39: a control's edge at 3:1
               borderRadius: 8,
               background: 'var(--paper-0, #FFFDF8)',
               resize: 'vertical',
@@ -280,73 +293,8 @@ export function CorrectionDialog({
             {error}
           </p>
         )}
-
-        <p style={{ margin: '8px 0 0', fontSize: 10, color: 'var(--ink-4, #665D50)' }}>
-          This does not edit the document. It appends a new revision and keeps what was
-          there before, permanently — which is why it takes a hold rather than a click.
-        </p>
-
-        {!read.ok && (
-          <p
-            data-testid="correction-unreadable"
-            style={{ margin: '6px 0 0', fontSize: 11, color: 'var(--ink-2, #4F473C)' }}
-          >
-            {read.why}
-          </p>
-        )}
-
-        <div style={{ marginTop: 10 }} data-testid="correction-submit">
-          <HoldToApprove
-            label={
-              read.ok
-                ? `Hold to seal this correction to ${label}`
-                : 'Type a value this field can take'
-            }
-            approvedLabel={busy ? 'Recording…' : 'Correction sealed'}
-            disabled={!!busy || !read.ok}
-            onChallenge={
-              onChallenge
-                ? () => {
-                    const now = reading()
-                    if (!now.ok) return Promise.resolve(null)
-                    held.current = now.value
-                    return onChallenge(now.value)
-                  }
-                : undefined
-            }
-            onApprove={(challenge) =>
-              onSubmit(
-                // The value the hold was begun over when a seal was minted;
-                // otherwise whatever the form reads now, which is the unsealed
-                // path the gateway refuses in words.
-                onChallenge ? held.current : (reading() as { value: unknown }).value,
-                reason,
-                challenge,
-              )
-            }
-          />
-        </div>
-
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
-          <button
-            type="button"
-            onClick={onCancel}
-            style={{
-              fontSize: 12,
-              fontWeight: 600,
-              padding: '5px 11px',
-              borderRadius: 8,
-              border: '1px solid var(--paper-2, #EAE4D8)',
-              background: 'transparent',
-              color: 'var(--ink-2, #4F473C)',
-              cursor: 'pointer',
-            }}
-          >
-            Cancel
-          </button>
-        </div>
       </div>
-    </div>
+    </Panel>
   )
 }
 

@@ -16,6 +16,8 @@
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { CanonicalSheet } from '../CanonicalSheet'
 import { VerdictBlock } from '../VerdictBlock'
 import { DeliverySpine } from '../DeliverySpine'
@@ -203,7 +205,7 @@ describe('CanonicalSheet — conditional sections (ADR 0104 D2)', () => {
   it('prints the price base as a sub-line when the paper stated one', () => {
     const { getByTestId } = render(<CanonicalSheet doc={doc()} />)
     // `142,00 / KS(12)` — the factor of twelve, on screen.
-    expect(getByTestId('price-base').textContent).toMatch(/per 12 bottle/)
+    expect(getByTestId('price-base').textContent).toMatch(/per 12 bottles$/)
   })
 
   it('prints no price-base sub-line when the paper printed none', () => {
@@ -258,7 +260,7 @@ describe('VerdictBlock (ADR 0104 D4)', () => {
     ]
     const { container } = render(<VerdictBlock doc={d} />)
     expect(container.textContent).toMatch(/1 line differs/)
-    expect(container.textContent).toMatch(/billed 12 bottle, received 10 bottle/)
+    expect(container.textContent).toMatch(/billed 12 bottles, received 10 bottles/)
     expect(container.textContent).toMatch(/₺840,00/)
     assertNoConfidenceNumber(container)
   })
@@ -498,6 +500,23 @@ describe('DoorFrame (ADR 0104 D11, S10)', () => {
  * The first render against real documents (findings 1, 2, 5 and 9 of
  * `v3.0-TECH-DEBT.md`, 2026-09-04). Every name and number below is SYNTHETIC.
  */
+describe('VerdictBlock — unit words (walk-through W6, 2026-10-01)', () => {
+  it('says one bottle, and two split cases, never a stored code', () => {
+    const d = doc()
+    d.layer3.lines = [adjudicated({ verdict: 'short_ship', received: 0, billed: 1, moneyAtRisk: 70 })]
+    const one = render(<VerdictBlock doc={d} />)
+    expect(one.container.textContent).toMatch(/billed 1 bottle, received 0 bottles/)
+    one.unmount()
+
+    const e = doc()
+    e.layer1.lines = [line({ unit: env('split_case') })]
+    e.layer3.lines = [adjudicated({ verdict: 'short_ship', received: 1, billed: 2, moneyAtRisk: 70 })]
+    const { container } = render(<VerdictBlock doc={e} />)
+    expect(container.textContent).toMatch(/billed 2 split cases, received 1 split case/)
+    expect(container.textContent).not.toMatch(/split_case/)
+  })
+})
+
 describe('VerdictBlock — not compared is not a difference (finding 1, ADR 0103 A6)', () => {
   /** No order line, no despatch line, nobody at the door. */
   const uncompared = () => {
@@ -525,22 +544,25 @@ describe('VerdictBlock — not compared is not a difference (finding 1, ADR 0103
     expect(container.textContent).not.toMatch(/Nothing on this document differs/)
   })
 
-  it('labels every line card `not compared`, never NOT ADJUDICATED', () => {
+  it('draws no card per line when no line was compared, and never says ADJUDICATED', () => {
+    // Said once (walk-through W26, 2026-10-01): four cards repeating the
+    // heading added nothing the four-way table does not already show.
     const { queryAllByTestId, container } = render(<VerdictBlock doc={uncompared()} />)
-    const cards = queryAllByTestId('not-compared-card')
-    expect(cards).toHaveLength(4)
+    expect(queryAllByTestId('not-compared-card')).toHaveLength(0)
     expect(queryAllByTestId('exception-card')).toHaveLength(0)
     // ADJUDICATED asserts something was judged. Nothing was.
     expect(container.textContent?.toLowerCase()).not.toMatch(/adjudicated/)
-    expect(cards[0].textContent).toMatch(/not compared/)
-    expect(cards[0].textContent).toMatch(/nothing was compared/i)
+    expect(container.textContent?.match(/not compared/gi)).toHaveLength(1)
   })
 
   it('claims no amount, and does not print a zero at risk', () => {
-    const { getByTestId, container } = render(<VerdictBlock doc={uncompared()} />)
-    expect(getByTestId('money-at-risk').textContent).toMatch(/nothing is being claimed/)
+    const { getByTestId, queryByTestId, container } = render(<VerdictBlock doc={uncompared()} />)
+    // The note says it once; the money line no longer repeats it (W26).
+    expect(queryByTestId('money-at-risk')).toBeNull()
     expect(container.textContent).not.toMatch(/at risk/)
-    expect(getByTestId('not-compared-note').textContent).toMatch(/missing counterpart/)
+    expect(getByTestId('not-compared-note').textContent).toMatch(
+      /^That is not a discrepancy: no amount is claimed, and none is ruled\s+out\.$/,
+    )
   })
 
   it('still says "1 line differs" the moment ONE line has a comparison source', () => {
@@ -558,7 +580,10 @@ describe('VerdictBlock — not compared is not a difference (finding 1, ADR 0103
     expect(container.textContent).toMatch(/1 line differs from the delivery/)
     expect(queryAllByTestId('exception-card')).toHaveLength(1)
     // …and the three uncompared lines still say so rather than joining the count.
-    expect(queryAllByTestId('not-compared-card')).toHaveLength(3)
+    const cards = queryAllByTestId('not-compared-card')
+    expect(cards).toHaveLength(3)
+    expect(cards[0].textContent).toMatch(/not compared/)
+    expect(cards[0].textContent).toMatch(/nothing was compared/i)
   })
 
   it('is still clean when every line WAS compared and none differs', () => {
@@ -1051,5 +1076,168 @@ describe('the vendor resolution line (ADR 0104 D15)', () => {
   it('never prints a confidence number beside any of it', () => {
     const { container } = render(<CanonicalSheet doc={withResolution({})} />)
     expect(container.textContent).not.toMatch(/\b0\.\d+\b/)
+  })
+})
+
+/* The sheet in words (walk-through W22, 2026-10-01): a year said once, units
+ * in the plural, no bare charge code. */
+describe('CanonicalSheet — the sheet in words (W22)', () => {
+  it('adds the year only when the printed name does not already carry it', () => {
+    const d = doc()
+    d.layer1.lines = [line({ description: env('SYNTHETIC Öküzgözü 2021 · 750 ml') })]
+    const once = render(<CanonicalSheet doc={d} />)
+    expect(once.container.textContent).toContain('SYNTHETIC Öküzgözü 2021 · 750 ml')
+    expect(once.container.textContent).not.toContain('750 ml · 2021')
+    once.unmount()
+    const { container } = render(<CanonicalSheet doc={doc()} />)
+    expect(container.textContent).toContain('SYNTHETIC Öküzgözü · 2021')
+  })
+
+  it('names a charge by its reason, and prints the code only when no reason came', () => {
+    const d = doc()
+    d.layer1.allowancesCharges = [
+      { isCharge: env(true), amount: env(180), reasonCode: env('7161'), reason: env('Returnable container / deposit') },
+    ]
+    const named = render(<CanonicalSheet doc={d} />)
+    expect(named.container.textContent).toContain('Returnable container / deposit')
+    expect(named.container.textContent).not.toContain('7161')
+    named.unmount()
+    d.layer1.allowancesCharges = [
+      { isCharge: env(true), amount: env(180), reasonCode: env('7161'), reason: env<string>(null) },
+    ]
+    const { container } = render(<CanonicalSheet doc={d} />)
+    expect(container.textContent).toContain('reason code 7161')
+  })
+})
+
+/*
+ * ON A PHONE, EACH LINE IS A SHORT BLOCK (walk-through RECEIPTS-W35,
+ * 2026-10-01). Measured at 375px, the eight-column line table was 395px wide in
+ * a 343px box, so the line total started past the edge. Below 640px each row
+ * becomes a grid and every figure carries its column's word. jsdom applies no
+ * media query, so the layout half is read from the stylesheet; the labels and
+ * the roles — which a change of display drops in some screen readers — are read
+ * from the rendered table.
+ */
+describe('CanonicalSheet — the line table on a phone (W35)', () => {
+  it('names every figure and keeps the table\'s roles spelled out', () => {
+    const { container } = render(<CanonicalSheet doc={doc()} />)
+    const table = container.querySelector('table.cd-lines') as HTMLTableElement
+    expect(table.getAttribute('role')).toBe('table')
+    expect([...table.querySelectorAll('thead, tbody')].map((g) => g.getAttribute('role'))).toEqual([
+      'rowgroup',
+      'rowgroup',
+    ])
+    expect([...table.querySelectorAll('th')].every((th) => th.getAttribute('role') === 'columnheader')).toBe(true)
+    const row = table.querySelector('tbody tr') as HTMLTableRowElement
+    expect(row.getAttribute('role')).toBe('row')
+    const cells = [...row.querySelectorAll('td')]
+    expect(cells.every((td) => td.getAttribute('role') === 'cell')).toBe(true)
+    expect(cells.map((td) => td.dataset.cell)).toEqual([
+      'n', 'item', 'ordered', 'shipped', 'received', 'billed', 'unit', 'line',
+    ])
+    expect(cells.filter((td) => td.dataset.label).map((td) => td.dataset.label)).toEqual([
+      'Ordered', 'Shipped', 'Received', 'Billed', 'Unit', 'Line',
+    ])
+  })
+
+  it('stacks the rows below the phone width, on screen only', () => {
+    const css = readFileSync(
+      join(__dirname, '../../../pages/documents/next/canonical-document.css'),
+      'utf8',
+    )
+    const phone = css.slice(css.indexOf('@media screen and (max-width: 639px) {'), css.indexOf('@media print {'))
+    expect(phone).toMatch(/\.cd-lines thead \{\s*display: none;/)
+    expect(phone).toMatch(/\.cd-lines tr \{\s*display: grid;\s*grid-template-columns: 18px repeat\(3, minmax\(0, 1fr\)\);/)
+    expect(phone).toMatch(/\.cd-lines td\[data-label\]::before \{\s*content: attr\(data-label\);/)
+    // Paper keeps the table: nothing in the print block stacks it.
+    expect(css.slice(css.indexOf('@media print {'))).not.toMatch(/cd-lines/)
+  })
+})
+
+/* ─── walk-through RECEIPTS-W41 (2026-10-01) — paper against page ───────── */
+
+describe('CanonicalSheet — what the reader kept, said as such (W41)', () => {
+  const billedCell = (c: HTMLElement, i = 0) =>
+    c.querySelectorAll('td[data-cell="billed"]')[i]?.textContent ?? ''
+
+  it('puts the unit beside the billed count when the count IS the printed quantity', () => {
+    const { container } = render(<CanonicalSheet doc={doc()} />)
+    expect(billedCell(container)).toBe('12 bottles')
+  })
+
+  it('says one in the singular, and a deposit piece in its own word', () => {
+    const d = doc()
+    d.layer1.lines = [line({ quantity: env(1), unit: env('bottle') }), line({ quantity: env(2), unit: env('each') })]
+    d.layer3.lines = [adjudicated({ billed: 1 }), adjudicated({ lineIndex: 1, billed: 2 })]
+    const { container } = render(<CanonicalSheet doc={d} />)
+    expect(billedCell(container, 0)).toBe('1 bottle')
+    expect(billedCell(container, 1)).toBe('2 each')
+  })
+
+  it('leaves a converted count bare rather than call 12 bottles "12 cases"', () => {
+    const d = doc()
+    d.layer1.lines = [line({ quantity: env(1), unit: env('case') })]
+    d.layer3.lines = [adjudicated({ billed: 12 })]
+    const { container } = render(<CanonicalSheet doc={d} />)
+    expect(billedCell(container)).toBe('12')
+  })
+
+  it('leaves the count bare when the unit was not read — never a guessed unit', () => {
+    const d = doc()
+    d.layer1.lines = [line({ unit: env<string>(null) })]
+    const { container } = render(<CanonicalSheet doc={d} />)
+    expect(billedCell(container)).toBe('12')
+  })
+
+  it('says the VAT rate was not read, rather than that the paper stated none', () => {
+    const { container } = render(<CanonicalSheet doc={doc()} />)
+    expect(container.textContent).toContain('Tax of ₺28,40 was read, but not its rate or what it was charged on.')
+    expect(container.textContent).not.toMatch(/states no VAT breakdown/)
+  })
+
+  it('with no tax read at all, says no breakdown was read', () => {
+    const d = doc()
+    d.layer1.totals = { ...totals(), taxAmount: env<number>(null) }
+    const { container } = render(<CanonicalSheet doc={d} />)
+    expect(container.textContent).toContain('No VAT breakdown was read from this document.')
+  })
+})
+
+describe('CanonicalSheet — the letterhead (W45, frame A)', () => {
+  it('frames the sheet with a control-strength edge and near-square corners', () => {
+    const { container } = render(<CanonicalSheet doc={doc()} />)
+    const sheet = container.querySelector('article.cd-sheet') as HTMLElement
+    expect(sheet.getAttribute('style')).toContain('var(--line-control, #8F8674)')
+    expect(sheet.style.borderRadius).toBe('4px')
+  })
+
+  it('carries the Mudavym mark in the header, at the 24px brand minimum', () => {
+    const { container } = render(<CanonicalSheet doc={doc()} />)
+    const header = container.querySelector('article.cd-sheet > header') as HTMLElement
+    const mark = within(header).getByRole('img', { name: 'Mudavym' })
+    expect(mark.querySelector('svg')?.getAttribute('height')).toBe('24')
+    expect(mark.textContent).toBe('Mudavym.')
+  })
+
+  it("takes the paper's own colours, never the theme's dark: classes", () => {
+    const { container } = render(<CanonicalSheet doc={doc()} />)
+    const mark = within(container.querySelector('header') as HTMLElement).getByRole('img', { name: 'Mudavym' })
+    expect(mark.outerHTML).not.toMatch(/dark:/)
+    expect(mark.getAttribute('style')).toContain('var(--ink-1, #211C16)')
+    expect(mark.querySelector('svg')?.getAttribute('style')).toContain('var(--seal, #1A5E6B)')
+    expect(mark.querySelector(':scope > span > span')?.getAttribute('style')).toContain('var(--seal, #1A5E6B)')
+  })
+
+  it('keeps the document number whole rather than break it at a hyphen', () => {
+    render(<CanonicalSheet doc={doc()} />)
+    expect(screen.getByText('SYN-A-88214').style.whiteSpace).toBe('nowrap')
+  })
+
+  it('keeps the issued-by-us note beside the mark', () => {
+    const { container } = render(<CanonicalSheet doc={doc({ direction: 'issued_by_us' })} />)
+    const header = container.querySelector('header') as HTMLElement
+    expect(within(header).getByTestId('direction-ours')).toBeTruthy()
+    expect(within(header).getByRole('img', { name: 'Mudavym' })).toBeTruthy()
   })
 })

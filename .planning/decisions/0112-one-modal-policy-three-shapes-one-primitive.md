@@ -365,12 +365,12 @@ with three amendments, verbatim where it matters:
    member an order limit above their own. In round 6 he wrote *"managers can give only if the
    owner accpeted to give access for those actions"*. ADR 0253 reads this as: a manager may also
    authorize, where an owner allowed it. He has not confirmed that reading. How much is
-   OD-209 (OPEN-DECISIONS.md:285). Not built.]**
+   OD-209 (OPEN-DECISIONS.md:295). Not built.]**
    **[Confirmed 2026-10-02 by ADR 0253 round 12: the founder confirmed that reading, per action.
    He picked *"Yes, per action (Recommended)"*: "The owner allows each action separately, e.g.
    'may give Place orders' yes, 'may give Send to vendor' no." How much a manager may give is
    the owner's to set with the allowance, and it may be higher than the manager's own limit:
-   OD-209 (OPEN-DECISIONS.md:285), answered. Not built.]**
+   OD-209 (OPEN-DECISIONS.md:295), answered. Not built.]**
 3. *"check for any security changes"* — a security change is always told to every owner: a bank
    detail, an authority grant or revocation, a passcode reset, a limit change, a device added to
    the house. A producer, not a ceremony.
