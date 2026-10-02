@@ -20,6 +20,7 @@ import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { NonProductionGuard } from "../communications/guards/non-production.guard";
 import { PlatformOperatorGuard } from "../common/orchestrator/platform-operator.service";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
+import { OrganizationsService } from "../organizations/organizations.service";
 
 @ApiTags("recurring-orders")
 /**
@@ -41,6 +42,7 @@ import { CurrentUser } from "../auth/decorators/current-user.decorator";
 export class RecurringOrdersController {
   constructor(
     private readonly recurringOrdersService: RecurringOrdersService,
+    private readonly organizations: OrganizationsService,
   ) {}
 
   @Get(":restaurantId")
@@ -112,13 +114,38 @@ export class RecurringOrdersController {
     }
   }
 
+  /**
+   * EDIT AND DEACTIVATE NEED A MANAGER OR AN OWNER (ADR 0246).
+   *
+   * Founder, 2026-10-01: "Managers and owners only (Recommended)". The 08:00
+   * cron raises a schedule's order as the schedule's `created_by`, so a staff
+   * edit to a manager's schedule was raised as the manager. These two routes
+   * now run `assertCanManageRestaurant`, the check that order cancel and the
+   * settings registers use, before the schedule row is read or written. That
+   * check reads the caller's active access row for this house and, when that
+   * read fails or finds no active row, falls back to the legacy `users` row
+   * (its role, when its restaurant_id is this house; organizations.service.ts
+   * lookupRestaurantRole). An active access row decides on its own, so an
+   * active staff row gets 403 even when the legacy row says manager. When the
+   * access read fails or finds no active row, a legacy owner/manager of this
+   * house is admitted, and anyone else gets 403, including a caller for whom
+   * both reads fail. Creating a schedule is unchanged: staff may.
+   */
   @Put(":restaurantId/:id")
-  @ApiOperation({ summary: "Update a recurring order" })
+  @ApiOperation({
+    summary: "Update a recurring order (managers and owners only)",
+  })
   async update(
     @Param("restaurantId") restaurantId: string,
     @Param("id") id: string,
     @Body() body: UpdateRecurringOrderDto,
+    @CurrentUser() user: { userId: string; restaurantId: string },
   ) {
+    await this.organizations.assertCanManageRestaurant(
+      user?.userId,
+      restaurantId,
+      "edit a recurring order schedule",
+    );
     try {
       return await this.recurringOrdersService.updateRecurringOrder(
         restaurantId,
@@ -135,11 +162,19 @@ export class RecurringOrdersController {
   }
 
   @Delete(":restaurantId/:id")
-  @ApiOperation({ summary: "Deactivate a recurring order" })
+  @ApiOperation({
+    summary: "Deactivate a recurring order (managers and owners only)",
+  })
   async deactivate(
     @Param("restaurantId") restaurantId: string,
     @Param("id") id: string,
+    @CurrentUser() user: { userId: string; restaurantId: string },
   ) {
+    await this.organizations.assertCanManageRestaurant(
+      user?.userId,
+      restaurantId,
+      "deactivate a recurring order schedule",
+    );
     try {
       return await this.recurringOrdersService.deleteRecurringOrder(
         restaurantId,
