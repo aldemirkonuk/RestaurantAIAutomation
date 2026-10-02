@@ -1,9 +1,26 @@
 import { useCallback, useRef } from 'react'
 import type { PageTourId } from '../types'
-import { TOUR_REGISTRY } from './registry'
+import { TOUR_REGISTRY, type TourStep } from './registry'
 import { trackGuidance } from '../analytics'
 import { announceGuidance, focusTourHelpButton } from '../announce'
 import '../components/guidance-note.css'
+
+/**
+ * The steps of `pageId`'s tour whose element is on the page right now. The
+ * tour plays exactly these and leaves the rest out (ADR 0251 D3), so the page
+ * tip counts with this same function before it offers "Show me — N steps".
+ */
+export function stepsOnPage(pageId: PageTourId): TourStep[] {
+  const def = TOUR_REGISTRY[pageId]
+  if (!def?.steps?.length || typeof document === 'undefined') return []
+  return def.steps.filter((s) => {
+    try {
+      return !!document.querySelector(s.element)
+    } catch {
+      return false
+    }
+  })
+}
 
 export interface TourEngineApi {
   startTour: (pageId: PageTourId) => Promise<void>
@@ -52,13 +69,7 @@ export function useTourEngine(handlers: {
         const { driver } = await import('driver.js')
         await import('driver.js/dist/driver.css')
 
-        const availableSteps = def.steps.filter((s) => {
-          try {
-            return !!document.querySelector(s.element)
-          } catch {
-            return false
-          }
-        })
+        const availableSteps = stepsOnPage(pageId)
 
         if (!availableSteps.length) {
           announceGuidance('Tour unavailable — page sections not ready yet.')
@@ -137,13 +148,34 @@ export function useTourEngine(handlers: {
                 target.scrollIntoView({ block: 'center', behavior: reduceMotion ? 'auto' : 'smooth' })
                 // A ring may sit on a group, not one control; give the group a
                 // focus stop so focus lands on the ringed thing, not the page.
-                if (!target.hasAttribute('tabindex') && target.tabIndex < 0) {
-                  target.setAttribute('tabindex', '-1')
-                }
+                // The stop is taken away again when focus leaves the group (or
+                // at once, if the group could not take focus), so a later click
+                // inside it does not focus the whole group.
+                const addedStop = !target.hasAttribute('tabindex') && target.tabIndex < 0
+                if (addedStop) target.setAttribute('tabindex', '-1')
                 target.focus({ preventScroll: true })
+                if (addedStop) {
+                  if (document.activeElement === target) {
+                    target.addEventListener('blur', () => target.removeAttribute('tabindex'), {
+                      once: true,
+                    })
+                  } else {
+                    target.removeAttribute('tabindex')
+                  }
+                }
               })
             })
             popover.footerButtons.prepend(tryIt)
+            // driver.js focuses the card's first button as soon as this hook
+            // returns, and the first button is now "Try it", so a first Enter
+            // would end the tour at step 1. Once it has, hand focus to Next
+            // ("Done" on the last step) so Enter walks the tour forward.
+            const next = popover.nextButton
+            queueMicrotask(() => {
+              if (document.activeElement === tryIt && next.isConnected && !next.disabled) {
+                next.focus()
+              }
+            })
           },
           onHighlightStarted: (_el, _step, { state }) => {
             const idx = state.activeIndex ?? 0
