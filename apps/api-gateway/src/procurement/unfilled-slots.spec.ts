@@ -181,6 +181,8 @@ describe("the gateway refuses a letter with a blank the send cannot fill", () =>
     const { service } = serviceWith(pendingRow);
     jest.spyOn(service as any, "sendRequestViews").mockResolvedValue([null]);
     const draft = await service.getPendingDraft(REST, ORDER);
+    // The first name is read for the check, not handed to the page.
+    expect(draft?.providers).toEqual({ name: "Vendor", contact_email: VENDOR, restaurant_id: REST });
     expect(draft?.at_send).toEqual({
       unfillable: [],
       fills: [

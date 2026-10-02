@@ -7,9 +7,12 @@
  * the greeting with the vendor's first name, the signature with the house's
  * sender name (`applyEmailPlaceholders`) — so a blank is refused only when it
  * would still stand in the letter as sent (founder, 2026-10-01: "Only
- * unfillable"). Every route that sends a house letter checks it: the card's
- * seal, a staff request, approveDraft, the automatic send sweep and a
- * hand-written reply (founder, 2026-10-01: "Add sweep + manual").
+ * unfillable"). Six procurement routes check it: the card's seal, a staff
+ * request, approveDraft, the automatic send sweep and a hand-written reply's
+ * seal and send (founder, 2026-10-01: "Add sweep + manual"). Other senders do
+ * NOT: the communications service's house letters, the relay
+ * (communications/relay) and the deal confirmation, whose words are built in
+ * code. See .planning/tech-debt.d/2026-10-01-fix-review-orders.md.
  *
  * The same pattern as `unfilledSlots` in apps/web/src/pages/orders/next/
  * DraftRail.tsx: a bracketed run of one to four Capitalised words. A lower-case

@@ -21,6 +21,17 @@ Filed from fix/review-orders (/orders walk-through, ADR 0255).
 
 **Fix.** The draft generator should mark its own slots (for example `{{slot:name}}`), so nobody has to guess blanks from brackets. Until then, any wider pattern trades one list above for the other, so it needs the founder's call with real drafts in hand.
 
+## Senders outside procurement do not check for blanks — OPEN — 2026-10-01
+
+**What.** ORD-W7's blank check (`blanksAtSend`) runs on six procurement routes only: `issueDraftSendSeal`, `requestDraftSend`, `approveDraft`, `processScheduledAutoSends`, `issueManualReplySeal` and `manualReply`. These senders do not check, and they fill no blanks either:
+- the communications service's house letters (`apps/api-gateway/src/communications/communications.service.ts`);
+- the relay (`communications/relay/relay-email.service.ts`);
+- `confirmDeal`'s confirmation. Its words are built in code from `describeConfirmedOrderTerms`, so no template blank can appear there today.
+
+Found by the second #578 pr-audit.
+
+**Fix.** Move the check into the one place every vendor-bound send passes through, then delete the per-route calls. The founder's ruling covered the sweep and the hand-written reply only, so ask first.
+
 ## The shell asks for the same thing two and three times on load — OPEN — 2026-10-01
 
 **What.** On a fresh load of /orders as `me`: `auth/me` ×3, `users/:id/preferences` ×2 and `organizations/branches` ×2 (pane network log, 2026-10-01). All three come from shared contexts (`contexts/`), not from this page.

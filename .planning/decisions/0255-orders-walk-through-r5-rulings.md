@@ -42,7 +42,7 @@ The founder's words, verbatim, per item:
 These were built as approved:
 
 - The draft card serves the order that is open. W8 marks the open order's card, W10 lets its words be edited, and W11 opens the vendor's answers from it.
-- A `[Bracketed Blank]` the send cannot fill does not reach a vendor (W7, reworked). Five gateway routes refuse it: the seal, a staff request, approveDraft, the automatic send sweep (it holds the letter unsent and tells the house), and the hand-written reply. A hand-written reply's send fills nothing, so every blank there is refused. The card shows what the send will fill, and with what. The check only sees one to four Capitalised ASCII words in brackets: see the tech-debt fragment for what it misses and what it wrongly refuses.
+- A `[Bracketed Blank]` the send cannot fill is refused by six procurement routes (W7, reworked): the seal, a staff request, approveDraft, the automatic send sweep (it holds the letter unsent and tells the house), and the hand-written reply's seal and send. Senders outside procurement are not checked: the communications service's house letters, the relay, and `confirmDeal`, whose words are built in code (tech-debt). A hand-written reply's send fills nothing, so every blank there is refused. The card shows what the send will fill, and with what. The check only sees one to four Capitalised ASCII words in brackets: see the tech-debt fragment for what it misses and what it wrongly refuses.
 - The page says only what it knows:
   - W4: the vendor name is read from the order.
   - W15: a failed re-read is no longer called "unknown" over rows that are still drawn.
@@ -62,13 +62,13 @@ These were built as approved:
 
 ## Consequences
 
-- Easier: the open order's letter, its words and its answers sit together on one card. A letter with a blank the send cannot fill is refused on every route that sends a house letter. Blanks the send fills itself are shown on the card with their values.
+- Easier: the open order's letter, its words and its answers sit together on one card. A letter with a blank the send cannot fill is refused by the six procurement routes that seal, ask for, approve, auto-send or hand-write an order letter to a vendor: issueDraftSendSeal, requestDraftSend, approveDraft, processScheduledAutoSends, issueManualReplySeal and manualReply. Other senders are not checked: the communications service's house letters, the relay and `confirmDeal`, whose words are built in code. Blanks the send fills itself are shown on the card with their values. [corrected 2026-10-01: this line first said every route that sends a house letter, which the second #578 pr-audit refuted.]
 - Given up: the rehearsal die (W2). Discard keeps no hold (W9).
 - Left open, recorded elsewhere:
   - OD-TBD (filed from this branch): may staff discard or rewrite a letter they may not send?
   - The AI-draft button, parked on an authority check in `common/`.
   - "gateway" on 17 other pages, in the shared queue.
-  - The 50-order list cap, and `issueManualReplySeal` not refusing blanks, in tech-debt.
+  - The 50-order list cap, and the senders outside procurement that do not check for blanks, in tech-debt. [corrected 2026-10-01: this line first listed `issueManualReplySeal` as unchecked; the W7 rework made it refuse blanks.]
 - Revisit when: the AI-draft authority check lands in `common/` (unparks W8's add-on), or the founder answers the OD.
 
 ## Review trail

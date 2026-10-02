@@ -9876,8 +9876,12 @@ export class ProcurementService {
       send_requested_cc: _cc,
       ...rest
     } = row;
+    // The first-name columns are read for `at_send` only; the page gets the
+    // vendor's name and address as before, never its whole primary_contact.
+    const { contact_first_name: _first, primary_contact: _contact, ...vendor } = row.providers ?? {};
     return {
       ...rest,
+      providers: row.providers ? vendor : row.providers,
       content,
       provider_name: row.providers?.name ?? null,
       provider_email: row.providers?.contact_email ?? null,
