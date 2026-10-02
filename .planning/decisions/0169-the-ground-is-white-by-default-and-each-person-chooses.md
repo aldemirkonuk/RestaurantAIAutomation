@@ -570,12 +570,18 @@ change no rendered control sets `ThemeContext` (`components/layout/ThemeToggle.t
 has no importer). A browser that had stored `dark` or `system` under `wineops-theme` keeps
 that class on `<html>` with no control to clear it. Mudavym pages ignore it (ADR 0138 D1); only
 a surface that still uses Tailwind `dark:` utilities could show it. **[2026-10-02: the last
-sentence names the wrong mechanism — #576's audit, note 2. Two readers of `html.dark` are not
-Tailwind `dark:`: `styles/globals.css` repaints legacy pages under `.dark` (`:63`, `:116`,
-`:256` and on), and `components/orders/useStandaloneGround.ts:55-56` turns the sealed
-approve / reject dies charcoal when they sit outside `.mudavym`. Inside `.mudavym` (the ask
-panel, every Sheet) that hook returns `undefined`, so the exposure was close to what the
-sentence said, but the stated cause was wrong. The v3 reset below clears all three.]**
+sentence names the wrong mechanism — #576's audit, note 2. `html.dark` has more readers than
+Tailwind `dark:` (10 component files under `darkMode: ['class']`). By grep at #580's head
+(`git grep -n "contains('dark')"` and `\.dark` selectors in `src/**/*.css`) they are:
+`styles/globals.css`, which repaints legacy pages under `.dark` (54 selector lines, from `:63`);
+`components/mudavym/sheet.css:34-37`, a heavier scrim under every `.dark .mdv-ovl` /
+`.mdv-scrim`, inside `.mudavym` too; `components/orders/useStandaloneGround.ts:55-56`, which
+turns the sealed approve / reject dies charcoal outside `.mudavym`; and
+`components/askai/ProposalCard.tsx:256`, which turns its seal track charcoal wherever the card
+is mounted, the house `Panel` included. So the exposure was wider than the sentence said, not
+just differently caused. Two writers set the class: `ThemeContext` and the legacy `uiStore`
+(`stores/uiStore.ts`, persisted as `ui-storage`, re-applied on every load). The v3 reset below,
+together with `ui-storage`'s version-2 reset added in the same PR, clears both.]**
 **[2026-10-01 (batch 4):
 closed — the founder, "Reset once, Mudavym only (Recommended)". `THEME_MIGRATION_KEY` in
 `contexts/ThemeContext.tsx` is now `wineops-theme-v3`, so every browser, including one that
@@ -630,7 +636,7 @@ weighed it and chose it; that is the whole of the "why".
    stand-alone seals dark. Its cost, stated to him: old pages have never been reviewed in dark.
 6. **"Park it"** — leave it an open queue row until after the page walk-throughs.
 
-**What was built** (branch `fix/review-shared-batch-4`, on PR #576):
+**What was built** (branch `fix/review-shared-batch-4`, PR #580, built on #576's branch):
 
 1. **The store** (`lib/mudavym/groundChoice.ts`). `GroundSetting = 'paper' | 'charcoal' |
    'system'` is what the account and the per-person mirror hold (`GroundState.setting`);
@@ -664,7 +670,13 @@ weighed it and chose it; that is the whole of the "why".
    first signs in there is asked on their next `DashboardLayout` page.
 5. **The old app theme.** `THEME_MIGRATION_KEY` is `wineops-theme-v3` (`contexts/ThemeContext.tsx`,
    with a comment naming #576), so every browser goes back to light once more — this closes the
-   DASH-W23 amendment's "Given up" paragraph. The ground choice never drives `ThemeContext` or
+   DASH-W23 amendment's "Given up" paragraph. **[2026-10-02, found by #580's audit plan: the
+   legacy `uiStore` also writes `html.dark`, from its persisted `ui-storage` theme on every load
+   (and follows the device when that says `system`); its v1 reset ran on 2026-07-26 and no
+   rendered control has called its `setTheme` since, so the risk was small but unproven.
+   `ui-storage` is now version 2 with the same light reset, so "every browser goes back to light
+   once" holds for both writers. This applies the founder's "Reset once, Mudavym only" ruling to
+   the second writer; it is not a new choice.]** The ground choice never drives `ThemeContext` or
    `html.dark`: none of the ground files, the sheet or the `/profile` Theme row imports
    `ThemeContext`.
 

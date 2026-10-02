@@ -132,7 +132,10 @@ export const useUIStore = create<UIState>()(
       name: 'ui-storage',
       // v1: product default switched to light; reset themes stored under the
       // old default (system/dark) exactly once.
-      version: 1,
+      // v2 (ADR 0169 batch 4, with ThemeContext's wineops-theme-v3): the theme
+      // control is gone, so reset once more — this store writes `html.dark` on
+      // every load, and nothing could clear a stored dark or system.
+      version: 2,
       migrate: (persistedState) => {
         const state = persistedState as Partial<UIState>
         return { sidebarCollapsed: state.sidebarCollapsed ?? false, theme: 'light' as Theme }

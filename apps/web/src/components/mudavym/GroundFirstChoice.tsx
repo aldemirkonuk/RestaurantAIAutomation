@@ -24,9 +24,9 @@
  *
  * CLOSING SAVES NOTHING. "Not now", Escape, or a click outside closes it for
  * this page load and writes nothing, so the account still says "never chosen"
- * and the next load asks again. That is BUILT, NOT RULED: the alternative
- * (closing saves Paper, so it never asks again) is the founder's open call —
- * see ADR 0169's batch-4 amendment.
+ * and the next load asks again. The founder ruled this on 2026-10-01 ("Ask
+ * again next load"); the rejected alternative — closing saves Paper, so it
+ * never asks again — is recorded in ADR 0169's batch-4 amendment.
  *
  * SHAPE: `Panel` (ADR 0112) — centered, because this is an ask the reader
  * answers, not a record or a menu; content in `sheet.css`'s vocabulary
