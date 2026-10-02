@@ -23,10 +23,10 @@ Filed from fix/review-orders (/orders walk-through, ADR 0255).
 
 ## Senders outside procurement do not check for blanks — OPEN — 2026-10-01
 
-**What.** ORD-W7's blank check (`blanksAtSend`) runs on six procurement routes only: `issueDraftSendSeal`, `requestDraftSend`, `approveDraft`, `processScheduledAutoSends`, `issueManualReplySeal` and `manualReply`. These senders do not check, and they fill no blanks either:
-- the communications service's house letters (`apps/api-gateway/src/communications/communications.service.ts`);
+**What.** ORD-W7's blank check (`blanksAtSend`) runs on six procurement routes only: `issueDraftSendSeal`, `requestDraftSend`, `approveDraft`, `processScheduledAutoSends`, `issueManualReplySeal` and `manualReply`. These senders do not check:
+- house letters (`apps/api-gateway/src/communications/letters/house-letters.service.ts`) [corrected 2026-10-01: first cited `communications.service.ts`];
 - the relay (`communications/relay/relay-email.service.ts`);
-- `confirmDeal`'s confirmation. Its words are built in code from `describeConfirmedOrderTerms`, so no template blank can appear there today.
+- `confirmDeal`'s confirmation. It sends through `sendProviderEmail`, so the signature blanks are filled. But its words are built in code from `describeConfirmedOrderTerms`, so no template blank can appear there today. [corrected 2026-10-01: an earlier version said none of these senders fill blanks.]
 
 Found by the second #578 pr-audit.
 
@@ -42,9 +42,9 @@ Found by the second #578 pr-audit.
 
 **What.** While visible, /orders polls on four timers:
 - the list, every 60s (`hooks/queries/useOrderQueries.ts:39`);
-- active drafts, every 30s (`useDraftEmailQueries.ts:233`);
-- the opened order's conversations, every 15s (`:434`);
-- its deal, every 20s (`:636`).
+- active drafts, every 30s (`useDraftEmailQueries.ts:248`);
+- the opened order's conversations, every 15s (`:449`);
+- its deal, every 20s (`:651`).
 
 The page also has a WebSocket invalidation. On the local review gateway the socket never connects (`ws://localhost:4105/socket.io/` fails), so the timers are the only refresh there. Production was not checked.
 

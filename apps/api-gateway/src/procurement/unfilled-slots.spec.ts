@@ -77,7 +77,13 @@ const pendingRow = {
   content: BLANKED,
   created_at: "2026-10-01T10:00:00Z",
   email_headers: {},
-  providers: { name: "Vendor", contact_first_name: "Hasan", contact_email: VENDOR, restaurant_id: REST },
+  providers: {
+    name: "Vendor",
+    contact_first_name: "Hasan",
+    primary_contact: { name: "Hasan Bey", phone: "+90 555 000 00 00" },
+    contact_email: VENDOR,
+    restaurant_id: REST,
+  },
   procurement_orders: { inventory: { wine_name: "Barolo" } },
 };
 
