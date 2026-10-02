@@ -1085,6 +1085,33 @@ describe('ReceiptsNext — a failed read in words (W26)', () => {
     expect(screen.queryByTestId('doc-not-here')).toBeNull();
   });
 
+  it('says a linked document cannot be opened when no house is selected, so no list was asked (W51)', async () => {
+    api.restaurantId = null;
+    render(<ReceiptsNext />, { wrapper: wrapperAt('/receipts?doc=elsewhere') });
+    expect(await screen.findByText(/No restaurant is selected/)).toBeTruthy();
+    expect(screen.getByText('Could not open the linked document: see the note above.')).toBeTruthy();
+    expect(screen.queryByText('Opening the linked document…')).toBeNull();
+  });
+
+  // A list that answered before and then failed still holds its last answer,
+  // so it is not "never answered": while another list is still being read,
+  // the link is still opening (round-4 audit of #586, W50c's data clause).
+  it('keeps "Opening…" when a list that answered before fails while another is still being read (W50c)', async () => {
+    api.unverifiedFails = new Error('receiving endpoint 500');
+    api.cleanPending = true;
+    render(<ReceiptsNext />, { wrapper: wrapperAt('/receipts?doc=elsewhere') });
+    const first = await screen.findByRole('alert');
+    await waitFor(() => expect(first.textContent).toContain('the deliveries counted at the door'));
+    expect(screen.getByText('Opening the linked document…')).toBeTruthy();
+    api.verifiedFails = noAnswer();
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await waitFor(() =>
+      expect(screen.getByRole('alert').textContent).toContain('Could not refresh the verified book'),
+    );
+    expect(screen.getByText('Opening the linked document…')).toBeTruthy();
+    expect(screen.queryByText('Could not open the linked document: see the note above.')).toBeNull();
+  });
+
   it('keeps "the last answer" for a read that answered before and then failed (W49)', async () => {
     api.unverifiedFails = new Error('receiving endpoint 500');
     render(<ReceiptsNext />, { wrapper });

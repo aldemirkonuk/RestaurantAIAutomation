@@ -29,6 +29,12 @@ For each item: build it as sketched (Approve), leave the page as it is (Deny), o
 13. **W41, seven gaps between the paper and the sheet.** Fix three here: (b) the order number, (c) the VAT sentence, (g) the unit beside Billed. Rejected for this branch: (a) the deposit counted twice, (d) the seller's tax number, (e) the VAT rate and base, (f) Ordered / Shipped / Received. Those went to the defect list.
 14. **W43, ways an invoice photo comes in.** "Pictures in email text" was offered and not picked.
 15. **W45c, framing the sheet.** A letterhead, B stamp, C band. The founder chose A. Rejected: B and C.
+16. **W48, "caught up" before the clean read lands.** "Reading…" first, or say nothing until both reads land. The founder chose "Reading…" first. Rejected: saying nothing.
+17. **W48b, a document with no stored lines.** Keep it and record it, keep the stored verdict (so the list and the sheet disagree), or a "lines not read" state in both. The founder chose keep and record. Rejected: the other two; "lines not read" is a follow-up in the tech-debt fragment.
+18. **W49, the alert for a read that never answered.** Say it per lane, or leave it for the audit to judge. The founder chose per lane. Rejected: leaving it.
+19. **W50, the Closed list a frame late.** Unfold in the same render, keep it open whenever a closed claim is selected, fix the test only, or re-run CI and change nothing. The founder chose the same render. Rejected: always open (the toggle could not fold it), test only (the one-frame jump stays), re-run (the race stays).
+20. **W50b, two smaller absences shown as health.** Fix both here, or file both. The founder chose to fix both. Rejected: filing.
+21. **W50c and W51, a `?doc=` link that can never open.** For a list that failed without answering (W50c), and for no house selected (W51): say it cannot open, or narrow the records and file it. The founder chose to say it, both times. Rejected: filing.
 
 ## Decision
 
@@ -93,6 +99,7 @@ The founder's words, verbatim, per item:
 | RECEIPTS-W50, the Closed list unfolded a frame late under a linked closed claim (found by #586's round-3 audit gate, red CI) | "Unfold in the same render (Recommended)" |
 | RECEIPTS-W50b, "caught up" while the door read is in flight, and "No claim is being chased" while the claims refresh fails (the same audit) | "Fix both here (Recommended)" |
 | RECEIPTS-W50c, "Opening the linked document…" forever when a list it searches never answered (the same audit) | "Say it can't open (Recommended)" |
+| RECEIPTS-W51, the same line forever with no house selected (found by #586's round-4 audit, final Opus call) | "Say it can't open (Recommended)" |
 
 The founder's W9 clause stands for the whole page: each region reads on its own and is clearly divided from the next.
 
@@ -137,8 +144,8 @@ The list and the URL:
 - W50: a linked claim that is already closed opens with the Closed list unfolded on the first paint, set in the same render rather than an effect. The list no longer shows folded for a frame and then jumps; the toggle works as before.
 - W44: papers that read cleanly are listed after those that need a look, under "Read cleanly · not yet confirmed", counted on their own. The house's own papers are left out.
 - W48: with the review queue empty, the page says "Reading…" until the clean papers' read lands, then "caught up" or "Nothing needs a look." It no longer calls an unread lane caught up.
-- W50b: "caught up" also waits for the door's count; until it lands the page says "Reading…". On Credits, while the claims refresh is failing, an empty list says "Not read: see the note above." instead of "No claim is being chased right now."
-- W50c: when a list a `?doc=` link searches never answered, the page says "Could not open the linked document: see the note above." instead of "Opening the linked document…" forever.
+- W50b: "caught up" also waits for the door's count; until it lands the page says "Reading…". On Credits, while the claims read is failing, the "Being chased" section, when it is drawn and has no claim to list, says "Not read: see the note above." instead of "No claim is being chased right now." (When freshly read figures already say no claim was ever opened, W24 does not draw that section.)
+- W50c, W51: when a list a `?doc=` link searches failed without ever answering, or no house is selected so none was asked, the page says "Could not open the linked document: see the note above." instead of "Opening the linked document…" forever. A list that answered before and then failed still holds its last answer, so while another list is being read the link still says "Opening…".
 
 Words:
 

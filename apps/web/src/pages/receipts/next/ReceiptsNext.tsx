@@ -2104,11 +2104,12 @@ export default function ReceiptsNext() {
               </div>
             ) : (
               <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-4, #665D50)' }}>
-                {/* A list it searches never answered: the link can be neither
-                    opened nor ruled out, so "Opening…" would never finish
-                    (audit of #586, walk-through RECEIPTS-W50c). */}
+                {/* A list it searches never answered, or with no house none was
+                    asked: the link can be neither opened nor ruled out, so
+                    "Opening…" would never finish (audit of #586, walk-through
+                    RECEIPTS-W50c; the no-house case RECEIPTS-W51). */}
                 {selectedId
-                  ? data.documentsUnread
+                  ? data.documentsUnread || data.noRestaurant
                     ? 'Could not open the linked document: see the note above.'
                     : 'Opening the linked document…'
                   : 'Choose a document from the queue to see its lines and its order, and to confirm it.'}
