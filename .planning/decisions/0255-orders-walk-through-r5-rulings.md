@@ -14,9 +14,10 @@ The founder walked `/orders` (OrdersNext, flag `mudavym_design_orders`) on 2026-
 
 For each item: build it as sketched (Approve), leave the page as it is (Deny), or change the proposal (Rework). Those rejected or reworked:
 
-1. **ORD-W2, the "die, at rest" rehearsal card.** The options were (A) remove it, (B) keep it only when there is no order at all, or (C) keep it. The founder chose A.
+1. **ORD-W2, the "die, at rest" rehearsal card.** The options were (A) remove it or (B) replace it with one quiet line (sketch `ORD-W2.html`, after-A and after-B), or deny. The founder chose A. [corrected 2026-10-01: this line first listed three options the sketch never showed; the pr-audit of #578 caught it.]
 2. **ORD-W7, unfilled template blanks.** The options were a UI-only refusal or the UI plus a gateway refusal. The founder chose "+ gateway". With a UI-only refusal, any other caller of the send routes could still mail `[Your Name]`.
-3. **ORD-W8 add-on, "let AI draft for you".** The options were to build it with W8 or to park it. The founder parked it. `generate-ai-reply` has no who-may-send check, and it stages `AUTO_SEND_SCHEDULED` under full autonomy (`inbound-responder.service.ts:543`). The fix belongs in `common/`, which a page branch may not commit.
+   **Reworked the same day.** The #578 pr-audit found the premise wrong: the send already fills the signature blanks ([Your Name], [Manager Name], [Name], [Signature], [Manager]) with the house's sender name, and fills the greeting with the vendor's first name (`applyEmailPlaceholders`, `personalizeGreeting`). It also found that the automatic send sweep and the hand-written reply checked nothing. The founder then ruled "Only unfillable (Rec.)" and "Add sweep + manual (Rec.)". A blank is now refused only when it would still stand in the letter as sent; the gateway renders the letter the way the send does (`blanksAtSend`). Rejected: refusing every blank (it blocks letters that send correctly), and warning without refusing (an unfillable blank reaches the vendor). Rejected for the routes: narrowing the wording instead of checking the sweep and the hand-written reply.
+3. **ORD-W8 add-on, "let AI draft for you".** The options were to build it with W8 or to park it. The founder parked it. `generate-ai-reply` has no who-may-send check, and it stages `AUTO_SEND_SCHEDULED` under full autonomy (`common/orchestrator/inbound-responder.service.ts:561`) [corrected 2026-10-01: was cited as :543]. The fix belongs in `common/`, which a page branch may not commit.
 4. **ORD-W9, a hold for Discard.** Denied. Discard stays a plain link.
 5. **P3 write controls.** The options were to press nothing live, or to press writes against a test order. The founder chose to press nothing live; the vitest suite covers the writes.
 
@@ -30,6 +31,8 @@ The founder's words, verbatim, per item:
 | ORD-W2 | "A: remove it" |
 | ORD-W3, W4, W5, W6 | "Approve" |
 | ORD-W7 | "Approve + gateway (Recommended)" |
+| ORD-W7 rework: what to refuse | "Only unfillable (Rec.)" |
+| ORD-W7 rework: which routes | "Add sweep + manual (Rec.)" |
 | ORD-W8 (DASH-W16a) | "approved + a let AI draft for you button or similar"; then, on the AI fork: "W8 now, park AI (Rec.)" |
 | ORD-W9 (DASH-W16b) | "Deny" |
 | ORD-W10, W11 (DASH-W16c, d) | "Approve" |
@@ -39,7 +42,7 @@ The founder's words, verbatim, per item:
 These were built as approved:
 
 - The draft card serves the order that is open. W8 marks the open order's card, W10 lets its words be edited, and W11 opens the vendor's answers from it.
-- An unfilled `[Bracketed Blank]` cannot reach a vendor (W7). The card and three gateway routes refuse it: seal, ask and send.
+- A `[Bracketed Blank]` the send cannot fill does not reach a vendor (W7, reworked). Five gateway routes refuse it: the seal, a staff request, approveDraft, the automatic send sweep (it holds the letter unsent and tells the house), and the hand-written reply. A hand-written reply's send fills nothing, so every blank there is refused. The card shows what the send will fill, and with what. The check only sees one to four Capitalised ASCII words in brackets: see the tech-debt fragment for what it misses and what it wrongly refuses.
 - The page says only what it knows:
   - W4: the vendor name is read from the order.
   - W15: a failed re-read is no longer called "unknown" over rows that are still drawn.
@@ -59,7 +62,7 @@ These were built as approved:
 
 ## Consequences
 
-- Easier: the open order's letter, its words and its answers sit together on one card. A letter with a blank in it cannot be sent by any route the page uses.
+- Easier: the open order's letter, its words and its answers sit together on one card. A letter with a blank the send cannot fill is refused on every route that sends a house letter. Blanks the send fills itself are shown on the card with their values.
 - Given up: the rehearsal die (W2). Discard keeps no hold (W9).
 - Left open, recorded elsewhere:
   - OD-TBD (filed from this branch): may staff discard or rewrite a letter they may not send?

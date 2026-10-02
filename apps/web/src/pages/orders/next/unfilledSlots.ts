@@ -4,7 +4,10 @@
  * verbatim, so the card names them and keeps both holds shut until the draft
  * is changed. One to four capitalised words in square brackets; a bracketed
  * lowercase aside or a number ("[1]") is not a slot. The gateway refuses the
- * same pattern (apps/api-gateway/src/procurement/unfilled-slots.ts).
+ * same pattern (apps/api-gateway/src/procurement/unfilled-slots.ts), but only
+ * the blanks its send cannot fill. The card uses the gateway's own answer
+ * (`at_send` on the draft read) and falls back to this — every blank — only
+ * while the gateway has not read the words on screen.
  */
 const SLOT_RE = /\[(?:[A-Z][A-Za-z']*)(?: [A-Z][A-Za-z']*){0,3}\]/g;
 export function unfilledSlots(text: string | null | undefined): string[] {

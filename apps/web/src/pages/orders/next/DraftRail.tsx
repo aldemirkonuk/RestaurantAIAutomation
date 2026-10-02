@@ -276,7 +276,17 @@ function DraftDetail({
   const cancelSend = useCancelScheduledSend();
   const [attempt, setAttempt] = useState(0);
   const [actionError, setActionError] = useState<string | null>(null);
-  const slots = unfilledSlots(draft.draftContent);
+  // ORD-W7, reworked (founder, 2026-10-01: "Only unfillable"): the gateway
+  // says which blanks its send fills and which it cannot. Until it has said so
+  // over THESE words, every blank counts, so the card never opens a hold the
+  // gateway would refuse.
+  const standingDraft = standing.data?.draft;
+  const atSend =
+    standingDraft?.id === draft.id && (standingDraft.content ?? "") === (draft.draftContent ?? "")
+      ? standingDraft.at_send ?? null
+      : null;
+  const slots = atSend ? atSend.unfillable : unfilledSlots(draft.draftContent);
+  const fills = atSend?.fills ?? [];
   // ORD-W10: the words can be changed on the card (PATCH …/draft). While the
   // box is open both holds stay shut, so a hold is always over saved words.
   const editDraft = useEditDraft();
@@ -522,6 +532,21 @@ function DraftDetail({
         >
           This draft still has {slots.length === 1 ? "a blank" : "blanks"} the house did not fill:{" "}
           {slots.join(", ")}. It cannot be sent until {slots.length === 1 ? "it is" : "they are"} written in.
+        </p>
+      )}
+      {fills.length > 0 && (
+        <p
+          data-testid="draft-fills"
+          style={{ fontFamily: SANS, fontSize: 12, color: "var(--ink-1, #211C16)", margin: 0 }}
+        >
+          When it sends, Mudavym fills{" "}
+          {fills.map((f, i) => (
+            <span key={f.slot}>
+              {i > 0 && (i === fills.length - 1 ? " and " : ", ")}
+              {f.slot} with “{f.value}”
+            </span>
+          ))}
+          .
         </p>
       )}
       <div className="grid gap-1">

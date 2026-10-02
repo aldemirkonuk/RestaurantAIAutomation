@@ -16,6 +16,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 const seams = vi.hoisted(() => ({
   standing: null as unknown,
   standingFailed: false,
+  standingDraft: null as unknown,
   requestDraftSend: vi.fn(),
   issueDraftSendChallenge: vi.fn(),
   approveMutateAsync: vi.fn(),
@@ -37,7 +38,7 @@ vi.mock('@/hooks/queries/useDraftEmailQueries', () => ({
   useDraftStanding: () =>
     seams.standingFailed
       ? { data: undefined, isPending: false, isError: true, error: new Error('network down') }
-      : { data: { draft: null, sendOrAsk: seams.standing }, isPending: false, isError: false },
+      : { data: { draft: seams.standingDraft, sendOrAsk: seams.standing }, isPending: false, isError: false },
 }));
 
 // jsdom has no Element.animate; the rail's reveal is skipped under reduced
@@ -99,6 +100,7 @@ beforeEach(() => {
   seams.drafts = [DRAFT];
   seams.standing = AS_MANAGER;
   seams.standingFailed = false;
+  seams.standingDraft = null;
 });
 
 describe('the rail heading, for every role (ORD-W16)', () => {
@@ -207,6 +209,58 @@ describe('a draft with a blank the house did not fill', () => {
   it('says nothing about a draft with no blanks', () => {
     draw();
     expect(screen.queryByTestId('draft-unfilled')).not.toBeInTheDocument();
+  });
+
+  // Reworked the same day (founder: "Only unfillable"): the send fills the
+  // greeting and the signature, so only what it cannot fill shuts the hold.
+  it('opens the hold when the gateway fills every blank, and says with what', async () => {
+    seams.drafts = [BLANKED];
+    seams.standingDraft = {
+      id: 'conv-1',
+      content: BLANKED.draftContent,
+      send_request: null,
+      at_send: {
+        unfillable: [],
+        fills: [
+          { slot: '[Provider First Name]', value: 'Hasan' },
+          { slot: '[Your Name]', value: 'Meyhouse' },
+        ],
+      },
+    };
+    seams.issueDraftSendChallenge.mockResolvedValue('proof-1');
+    seams.approveMutateAsync.mockResolvedValue({});
+    draw();
+    expect(screen.queryByTestId('draft-unfilled')).not.toBeInTheDocument();
+    expect(screen.getByTestId('draft-fills')).toHaveTextContent(
+      'When it sends, Mudavym fills [Provider First Name] with “Hasan” and [Your Name] with “Meyhouse”.',
+    );
+    holdIt(/Hold to approve & send to Kavaklıdere/);
+    await waitFor(() => expect(seams.issueDraftSendChallenge).toHaveBeenCalled());
+  });
+
+  it('names only the blanks the send cannot fill', () => {
+    const words = 'Dear [Provider First Name],\n\nSix cases by [Delivery Date].';
+    seams.drafts = [{ ...DRAFT, draftContent: words }];
+    seams.standingDraft = {
+      id: 'conv-1',
+      content: words,
+      send_request: null,
+      at_send: { unfillable: ['[Delivery Date]'], fills: [{ slot: '[Provider First Name]', value: 'Hasan' }] },
+    };
+    draw();
+    expect(screen.getByTestId('draft-unfilled')).toHaveTextContent(/fill: \[Delivery Date\]\. It cannot/);
+  });
+
+  it('counts every blank while the gateway has not read these words', () => {
+    seams.drafts = [BLANKED];
+    seams.standingDraft = {
+      id: 'conv-1',
+      content: 'an older version',
+      send_request: null,
+      at_send: { unfillable: [], fills: [] },
+    };
+    draw();
+    expect(screen.getByTestId('draft-unfilled')).toHaveTextContent(/\[Provider First Name\], \[Your Name\]/);
   });
 });
 

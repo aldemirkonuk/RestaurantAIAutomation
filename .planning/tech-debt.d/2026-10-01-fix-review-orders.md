@@ -11,11 +11,15 @@ Filed from fix/review-orders (/orders walk-through, ADR 0255).
 
 **Fix.** Either paginate the ledger and read the counts and month figure from a server-side aggregate, or, as a first step, have the page say "the newest 50" whenever it receives exactly 50.
 
-## Manual replies are not checked for unfilled template blanks — OPEN — 2026-10-01
+## The blank check sees one shape of blank — OPEN — 2026-10-01
 
-**What.** ORD-W7 refuses an unfilled `[Bracketed Blank]` in `issueDraftSendSeal`, `requestDraftSend` and `approveDraft` (`unfilled-slots.ts`). It does not refuse one in `issueManualReplySeal` or `send-drafted-reply`, which the founder's ruling did not cover.
+[replaces an entry filed earlier the same day. That entry said manual replies and `send-drafted-reply` went unchecked. `send-drafted-reply` was always checked, because it goes through `approveDraft`. Manual replies and the automatic send sweep are now checked too (ORD-W7 rework, ADR 0255).]
 
-**Fix.** Call `unfilledTemplateSlots` in the same position in `issueManualReplySeal` and add a spec case for it. Ask the founder first, because a manual reply is typed by a person.
+**What.** `unfilledTemplateSlots` (`apps/api-gateway/src/procurement/unfilled-slots.ts`, mirrored in `apps/web/src/pages/orders/next/unfilledSlots.ts`) matches one to four Capitalised ASCII words in square brackets. From the #578 pr-audit:
+- **Missed (a blank still reaches the vendor):** lowercase or underscored blanks (`[vendor name]`, `[VENDOR_NAME]`), `{{x}}`, blanks with digits, and Turkish or other non-ASCII blanks (`[Şirket Adı]`).
+- **Wrongly refused (a sound letter is blocked):** quoted-thread markers such as `[EXTERNAL]` and `[Quoted Text Hidden]`, and a bracketed wine term such as `[Riserva]`.
+
+**Fix.** The draft generator should mark its own slots (for example `{{slot:name}}`), so nobody has to guess blanks from brackets. Until then, any wider pattern trades one list above for the other, so it needs the founder's call with real drafts in hand.
 
 ## The shell asks for the same thing two and three times on load — OPEN — 2026-10-01
 
