@@ -44,7 +44,7 @@ Measured on `fix/closed-stays-closed` (base `059169a59`), 2026-10-01:
 - **Staff get a jobs-first screen, on the phone app and on the web.** It opens on today's jobs and what each needs, not on the manager's pages.
 - **The screen grows with the rights.** A new right adds what it needs to the person's screen, and a right that ends takes it away again. Owner, manager and staff screens differ by what each may do, not by a fixed layout per role.
 
-Nothing is built yet.
+Nothing is built yet. [Corrected 2026-10-01: true when written. Round 2's phone-money ruling is now built on two open PRs, #582 and #583 (see the fix-rounds section below). The jobs, the rights given with them and the jobs-first screens are not built.]
 
 ## Answered 2026-10-01 (round 2)
 
@@ -98,6 +98,30 @@ The phone-feed fix (branch `fix/phone-feed-no-money-for-staff`) left three quest
 - **A staff member given a right:** *"What they can approve (Recommended)"*. A send right alone shows no money. Once ADR 0175 D7 lets someone given the right approve orders, they see approve cards and amounts only for the orders their right covers.
 - **The phone's other money:** *"Close all three (Recommended)"*. The Supply tab's order amounts, the Insights tab's cellar value, and the credit due and unit cost on delivery-difference notices close to staff too: server first, as its own fix.
 
+## Answered 2026-10-01 (fix rounds of the phone-feed fix) — the wage notice and a grantee's own limit, verbatim
+
+These were asked by `AskUserQuestion` from the coordinating session while the phone-feed fix was built, after round 9. His answers are verbatim.
+
+- **Staff notices.**
+  - **Asked:** "Staff schedule, broadcast, note and Away notices share one notice type with the own-wage notice, so on staff phones those cards now show only their title. Fix that?"
+  - **Answer:** *"Give wages its own type (Recommended)"*. Rejected: "Keep titles only".
+  - **What it means:** the own-wage notice is stored under its own type, `team_member_own_wage_set`. So `system` notices show staff their sentence on the Today feed again. A wage notice written before the change is still blanked for staff, by its metadata.
+  - **Built on:** `fix/phone-feed-no-money-for-staff` (PR #582, open).
+- **A grantee's own limit.**
+  - **Asked:** "A staff member given a money right (for example "approve up to 500 USD") gets a notice. Should their phone card show their own limit?"
+  - **Answer:** *"Show their own limit (Recommended)"*. The recommended option was described as "Fits your earlier answer that staff see what they can approve. It is their own figure, not the house's money." Rejected: "Keep it off, as built".
+- **How the feed knows whose grant it is.**
+  - **Asked:** once the build found that a grant notice did not record whose grant it was.
+  - **Answer:** *"Record the grantee (Recommended)"*. Rejected:
+    - "Look it up each load". It covers older notices, but every feed read hits the grants table, and a deleted grant reads as not yours.
+    - "Leave it".
+  - **What it means:** new grant notices record the grantee. The Today feed shows an issued or re-approved grant's sentence to someone who does not see the house's money only when they are that grantee. Notices written before the change never show the limit there.
+  - **Built on:** `fix/phone-feed-own-grant-limit` (PR #583, open), stacked on #582.
+
+**How this fits round 9's "a send right alone shows no money".** Round 9 answered what a staff member given a right sees of the house's money on the feed: order amounts, approve cards and revenue. A send right alone still shows none of these. The own limit is a different figure: the bound of the grantee's own right, in the notice that tells them they hold it. The question was asked after round 9 and named that answer ("Fits your earlier answer…"). So the two read together: a grantee sees their own limit in their own grant notice, and nothing more of the house's money until ADR 0175 D7's approval exists. It also matches round 2's "a staff member with a money right sees what that right needs". *This reading is recorded, not separately confirmed. If the founder reads "shows no money" to cover a grantee's own limit, the stacked branch's gate is the one line to remove.*
+
+**Not covered by these answers.** The grant notice's full sentence still reaches every recipient on both Notifications screens and on the live `notification:new` event. That includes an owner who is later demoted. Grant notices are `low`, so they are never pushed. These are filed as open items 2 and 3 in `tech-debt.d/2026-10-01-fix-phone-feed-no-money-for-staff.md`.
+
 ## Open — the founder's to decide (sketch 125 forks 9–12, 14)
 
 1. **The rights list.** The seven drawn in the sketch, more, or fewer.
@@ -143,3 +167,5 @@ Research on these runs as parallel agents, not a Workflow fan-out. The first fin
 | 2026-10-01 | Aldemir (founder, `AskUserQuestion`, round 6) + Claude (Opus 5.5) | Order limits: owner-allowed manager grants; ADR 0175 bracketed |
 | 2026-10-01 | Aldemir (founder, `AskUserQuestion`, round 7) + Claude (Opus 5.5) | Jobs-and-labels research folded; its four questions answered (all recommended); PATCH approval hole filed |
 | 2026-10-01 | Aldemir (founder, `AskUserQuestion`, round 8) + Claude (Opus 5.5) | Manager packages Full / Standard / Light confirmed; copy-once, adjustable, never live; staff use the Jobs list |
+| 2026-10-01 | Aldemir (founder, `AskUserQuestion`, round 9) + Claude (Opus 5.5) | Answered — vendor reply cards stay for staff; someone given a right sees what they can approve; the Supply tab's order amounts, the cellar value and delivery-difference money close to staff, server first [row added late, with the next one: round 9 had none] |
+| 2026-10-01 | Aldemir (founder, `AskUserQuestion`, fix rounds of the phone-feed fix) + Claude (Opus 5.5; `fix/phone-feed-no-money-for-staff` at 7fdf4f95f, PR #582, and `fix/phone-feed-own-grant-limit` at e68bd3cdf, PR #583, neither merged) | Answered — the wage notice gets its own type; a grantee sees their own grant limit on the Today feed, by recording the grantee on new notices; read beside round 9 as their own right's bound, not the house's money |
