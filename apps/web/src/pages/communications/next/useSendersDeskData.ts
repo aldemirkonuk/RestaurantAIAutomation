@@ -35,10 +35,12 @@ function useRid(): string {
   return activeRestaurantId ?? user?.restaurantId ?? '';
 }
 
-export function useSenderRegister() {
+/** `enabled` is false for a staff member: the register is an owner's or manager's to read (COMMS-W31). */
+export function useSenderRegister(enabled = true) {
   const restaurantId = useRid();
   return useQuery({
     queryKey: ['comms-senders', restaurantId],
+    enabled,
     queryFn: () => apiClient.get('/senders/reputation').then((r) => r.data as SenderReputationDto[]),
     staleTime: 30_000,
     retry: false,

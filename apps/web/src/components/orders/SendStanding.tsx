@@ -87,8 +87,13 @@ export function SendStandingNote({
   if (loading) {
     lines.push('Reading whether your hold sends this or asks a manager to…');
   } else if (error) {
+    // A reason that is already a sentence is said whole, never bracketed
+    // inside ours (COMMS-W14); a bare reason ("Network Error") keeps the brackets.
+    const reason = error.trim();
     lines.push(
-      `Whether your hold sends or asks could not be read (${error}). Nothing can be held until it can.`,
+      /[.!?]$/.test(reason)
+        ? `${reason} Nothing can be held until it can be read.`
+        : `Whether your hold sends or asks could not be read (${reason}). Nothing can be held until it can.`,
     );
   } else if (standing && !standing.readable) {
     lines.push(standing.sentence ?? 'Whether your hold sends could not be read. Nothing can be held until it can.');
