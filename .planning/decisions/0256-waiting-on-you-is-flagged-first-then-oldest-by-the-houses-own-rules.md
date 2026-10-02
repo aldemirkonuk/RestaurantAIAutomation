@@ -1,9 +1,9 @@
 # 0256 — "Waiting on you" is flagged first, then oldest, by the house's own rules
 
-- **Status:** Locked 2026-10-01 by the founder. His four answers are quoted verbatim under Founder answers.
+- **Status:** Locked 2026-10-01 by the founder. His nine answers, in two rounds, are quoted verbatim under Founder answers. Answers 8 and 9 change the approve gate and are ruled, not built here (see Consequences).
 - **Date:** 2026-10-01
 - **Decider:** Aldemir (founder), 2026-10-01, through AskUserQuestion, relayed by the lane coordinator.
-- **Keywords:** Waiting on you, pending orders, listPendingOrders, GET /procurement/orders/pending, oldest first, flagged first, priority, price_jump, manager_ceiling, needs_signature, running_out, decideApproval, orderUnderTest, isBelowPar, unknown, WaitingFlag
+- **Keywords:** Waiting on you, pending orders, listPendingOrders, GET /procurement/orders/pending, oldest first, flagged first, priority, price_jump, manager_ceiling, needs_signature, running_out, decideApproval, orderUnderTest, isBelowPar, unknown, WaitingFlag, readPricePremium, untestable, last price, approvalGate
 - **Links:** branch `fix/waiting-on-you-oldest-first-flagged`; claim `claims.d/fix-waiting-on-you-oldest-first-flagged.jsonl:1`; specs `apps/api-gateway/src/procurement/pending-order-priority.spec.ts`, `apps/web/src/pages/dashboard/next/WaitingOnYou.flag.test.tsx`; rule sources [[0020-no-fabricated-answers]] (unknown is said, never silent); the approve gate this reuses is `ProcurementService.assertApprovalAllowed`; the stock predicate is `apps/api-gateway/src/common/stock-status.ts` `isBelowPar`.
 
 ## Context
@@ -23,10 +23,67 @@ holds the seal (`assertApprovalAllowed`, `procurement.service.ts:4374`), and its
 
 ## Founder answers
 
+### Round 1: the brief
+
 1. Order: **"oldest first, flag priority ones"**.
 2. Which flags: **"focus on this, money issue, order approval, large amount of order, item running out"**.
 3. Mapping (offered: money issue = the price jumped against what the house last paid, by the house's `price_jump` rule and its threshold; order approval = a house rule says someone must sign, so the order is `APPROVAL_NEEDED` or an approval rule fired; large amount = over `manager_ceiling`; item running out = below its minimum or out of stock; no new settings): **"Yes, use the house rules (Recommended)"**.
 4. Placement: **"Flagged first, then oldest (Recommended)"** — flagged rows on top, oldest first among them, then the rest oldest first.
+
+### Round 2: the build's forks, 2026-10-01
+
+Asked after the first build (c4731a3cb). Each question, the answer chosen, and
+the options he turned down are quoted as they were put to him. Answers 5-7
+confirm what was built. Answers 8 and 9 are about the approve gate.
+
+5. Unknown-only rows. Asked: "In 'Waiting on you', where should an order sort
+   when none of its flags could be checked (e.g. the rules read failed)?"
+   Chosen: **"With unflagged, say so (Recommended)"**: "Sort it among the
+   unflagged orders, oldest first, with a 'Couldn’t check … just now' line. If
+   unknowns sorted first, one failed read would flag every row." Turned down:
+   "With flagged": "Sort it to the top with the flagged orders."
+6. The mark. Asked: "In 'Waiting on you', a flagged order carries a mark that
+   reads 'Focus on this' plus its reasons. Is that mark all you meant by 'flag
+   priority ones'?" Chosen: **"Yes, the house-rules mark (Recommended)"**:
+   "Built: the mark comes only from the house's own rules (price jumped, needs a
+   signature, large order, running out)." Turned down: "Also a hand flag": "Add
+   a flag a person can set on any order by hand. That's a new feature, built
+   separately."
+7. Two reasons. Asked: "When a large order or a price jump also needs a
+   signature, the mark lists both, e.g. 'price jumped · needs a signature'. Keep
+   both?" Chosen: **"Show every reason (Recommended)"**: "List each reason that
+   fired; you named them as separate flags." Turned down: "Signature only as
+   fallback": "Show 'needs a signature' only when nothing more specific fired."
+8. A failed last-price read in the gate. Asked: "The approval check treats a
+   failed 'last price' read as 'no earlier price', so the seal passes without a
+   price-jump test. This predates the queue work. What should happen when it
+   can't read the last price?" Chosen: **"Park for the rule's role
+   (Recommended)"**: "Hold the order for whoever the price-jump rule names, the
+   same way an untestable rule is handled today." Turned down: "Refuse, in
+   words": "Refuse the approval with a sentence saying the last price couldn't
+   be read; try again later."
+9. One meaning of "the last price". Asked: "'The last price' means two
+   different things today. The approval check uses the most recent other order
+   of any age, even a later one. The 'held' line uses the order just before it,
+   within 365 days. So the flag and 'held' can disagree. Which one should be
+   used everywhere?" Chosen: **"Last approved/delivered before
+   (Recommended)"**: "Use the last approved or delivered order placed before
+   this one." Turned down: "Just before, within 365 days": "The 'held' line's
+   current meaning." and "Most recent of any age": "The approval check's current
+   meaning; it can include a later order."
+
+**A premise in question 8 is wrong.** Its chosen option says "the same way an
+untestable rule is handled today", and this ADR's tech-debt entry said the same
+("as an untestable rule already does"). Neither is true at c4731a3cb. An
+untestable rule does not park anything. `decideApproval` puts it in
+`untestable` and leaves `requiredRole` alone (`settings/approval-thresholds.ts:154-157`
+for `manager_ceiling`, `:169-172` for `new_vendor`). The gate then seals on
+`if (!decision.requiredRole) return;` (`procurement.service.ts:4453`). A spec
+pins that: "a first-order count that ERRORS is not read as 'first order'"
+(`order-approval-gate.spec.ts:414-428`) expects `APPROVED`. The ruling's outcome
+is clear: park, not refuse. What it means for the two rules that already go
+untested is open, and is listed for the founder in the tech-debt entry. The
+follow-up PR must not decide it.
 
 ## Options considered
 
@@ -66,13 +123,14 @@ defined twice:
 - **A reason is a word.** No amount, percent or count travels with it, so the
   flag holds for a viewer who is not shown money.
 
-"Focus on this" is read as the mark itself: the card prints **Focus on this**
+"Focus on this" is the mark itself, and the mark comes only from the house's
+rules; there is no hand flag (answer 6). The card prints **Focus on this**
 beside the reasons in words ("price jumped", "needs a signature", "large
-order", "running out").
+order", "running out"). Every reason that fired is listed, so a large order
+that also needs a signature shows both (answer 7).
 
-**Unknown is said, not dropped.** The brief allowed two answers to a read that
-fails: mark the reason unknown, or fail the read. This branch marks unknown
-and never fails the queue over a flag. Unknown covers: the rules could not be
+**Unknown is said, not dropped** (answer 5). A failed read marks the reason
+unknown and never fails the queue over a flag. Unknown covers: the rules could not be
 read (or the rules service is not wired), the last-price read failed, the
 order has no total, the first-order-to-vendor count failed, or the item's
 stock was not read. `flagged` is true only on a reason actually found; a row
@@ -98,18 +156,23 @@ twice a minute per tab. A failed read is still a 503 there, never `{ count: 0 }`
   which also runs its retrospective), plus two small reads per pending order
   when a rule is on. The pending list is short by its status filter. A
   rules-only read is a possible later saving.
-- **Found, not fixed here:** the approve gate treats a FAILED last-price read
-  as "no earlier price" and lets the seal through. The queue now tells the two
-  apart (`readPricePremium` returns `unread`), but the gate still ignores it, to
-  keep this branch's behaviour change to the queue. Recorded in
-  `tech-debt.d/2026-10-01-fix-waiting-on-you-oldest-first-flagged.md`.
-- **Found, not fixed here:** two readings of "the last price" disagree. The
-  gate (and so this flag) compares with the most recently requested OTHER
-  order for the item, any status, any age, even one requested after this one.
-  `approvalGate` (`GET /procurement/order-approval-gate`, which DASH-W21's card
-  reads for "held") compares with the order just before it, inside a 365-day
-  window, as the settings retrospective does. On such an order the card's
-  "held" line and this flag can disagree. Same register entry.
+- **Ruled 2026-10-01, not built here (answer 8):** the approve gate treats a
+  FAILED last-price read as "no earlier price" and lets the seal through. The
+  ruling is to park the order for the `price_jump` rule's role instead. The
+  queue already tells the two apart (`readPricePremium` returns `unread`), but
+  the gate still ignores it, because a change to the gate is a separate
+  operation. The follow-up PR, and the open question the wrong premise left, are
+  in `tech-debt.d/2026-10-01-fix-waiting-on-you-oldest-first-flagged.md`.
+- **Ruled 2026-10-01, not built here (answer 9):** two readings of "the last
+  price" disagree. The gate (and so this flag) compares with the most recently
+  requested OTHER order for the item, any status, any age, even one requested
+  after this one. `approvalGate` (`GET /procurement/order-approval-gate`, which
+  DASH-W21's card reads for "held") compares with the order just before it,
+  inside a 365-day window, as the settings retrospective does. On such an order
+  the card's "held" line and this flag can disagree. The ruling is one meaning
+  everywhere: the last approved or delivered order placed before this one. The
+  flag reads the gate's facts through `orderUnderTest`, so it follows the gate
+  with no change of its own. Same register.
 - The dashboard tour in PR #571 says only "Orders waiting for your approval"
   for this card, and its header-comment hunk on `WaitingOnYou.tsx` calls the
   queue newest first. After this lands, step 2 can say "flagged first, then
@@ -123,3 +186,4 @@ twice a minute per tab. A failed read is still a 503 there, never `{ count: 0 }`
 | Date | Reviewer | Outcome |
 |---|---|---|
 | 2026-10-01 | — | Created, Locked on the founder's four answers |
+| 2026-10-01 | — | Round 2 recorded: answers 5-7 confirm the build; 8-9 ruled for the gate, not built here; question 8's premise found wrong and its consequence filed open |
