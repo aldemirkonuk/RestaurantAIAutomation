@@ -1031,7 +1031,6 @@ export function InventoryCommandPage() {
       {/* KPI strip */}
       <div
         className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2.5 mb-3.5"
-        data-tour="inventory-low-stock"
       >
         <Kpi
           label="On hand"
@@ -1070,6 +1069,7 @@ export function InventoryCommandPage() {
           sub={figuresUnknown ? UNKNOWN : `${stats.critical} critical`}
           tone="amber"
           active={activeFlag === "low"}
+          tour="inventory-below-par"
           onClick={() => setActiveFlag(activeFlag === "low" ? null : "low")}
         />
         <Kpi
