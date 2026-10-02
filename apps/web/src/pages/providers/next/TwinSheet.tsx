@@ -15,10 +15,12 @@
  *
  * ── Third pass: terms on the vendor's own row ─────────────────────────────
  * The founder's decision of 2026-09-04: the terms register (cutoffs, delivery
- * days, minimums, payment terms) is reachable here, not only in /settings. The
- * facts above are the vendor's own RECORD; `TermsSection` below is what this
- * HOUSE knows about dealing with them, each term showing its source, editable
- * in place through the same route the settings register writes.
+ * days, minimums, payment terms) is reachable here, not only in /settings.
+ * `TermsSection` below is what this HOUSE knows about dealing with them, each
+ * term showing its source, editable in place through the same route the
+ * settings register writes. Since VEN-W24 (2026-10-01) the lead-time, payment
+ * and minimum facts at the top read that same terms answer (`TopTermsFacts`),
+ * naming the vendor's record only when the house has stated nothing.
  *
  * ── Fourth pass: branches (2026-09-26) ────────────────────────────────────
  * `BranchesSection` carries the vendor's offices, warehouses and stores —
@@ -27,8 +29,10 @@
 
 import type { Provider } from '../../../services/api/providers';
 import { Sheet } from '../../../components/mudavym/Sheet';
-import { EM, MONO, SANS, fmtDays, fmtLastContact, visibleRegions } from './pv-format';
+import { EM, MONO, SANS, fmtLastContact, visibleRegions } from './pv-format';
 import { TermsSection } from './TermsSection';
+import { useProviderTerms } from './useProviderTerms';
+import { topTerms } from './TopTermsFacts';
 import { UsualCurrencySection } from './UsualCurrencySection';
 import { ContactsSection } from './ContactsSection';
 import { BranchesSection } from './BranchesSection';
@@ -92,6 +96,11 @@ export function TwinSheet({ provider, onClose, focusUsualCurrency, onProviderSav
   const { user, activeRole } = useAuth();
   const role = activeRole ?? user?.role ?? null;
   const readsMail = role === 'owner' || role === 'manager';
+  // One read of the terms register for the whole sheet (VEN-W24): the top
+  // facts and the Terms section render the same cells, so a save in Terms
+  // moves the top too, and `/vendor-terms` is fetched once, not twice.
+  const terms = useProviderTerms(provider.id);
+  const top = topTerms(terms, provider);
 
   return (
     <Sheet
@@ -107,12 +116,11 @@ export function TwinSheet({ provider, onClose, focusUsualCurrency, onProviderSav
         {/* plain facts, EM for absences */}
         <FactRow label="Email" value={provider.email || EM} href={provider.email ? `mailto:${provider.email}` : undefined} />
         <FactRow label="Phone" value={provider.phone || EM} href={provider.phone ? `tel:${provider.phone.replace(/[^\d+]/g, '')}` : undefined} />
-        <FactRow label="Lead time" value={fmtDays(provider.leadTimeDays)} />
-        <FactRow label="Payment terms" value={provider.paymentTerms || EM} />
-        <FactRow
-          label="Minimum order"
-          value={typeof provider.minimumOrder === 'number' ? `${provider.minimumOrder.toLocaleString('en-US')} (currency not recorded)` : EM}
-        />
+        {/* what the HOUSE recorded, else the vendor's record, labelled —
+            the same cells as Terms below (VEN-W24, "One source") */}
+        <FactRow label="Lead time" value={top.leadTime} />
+        <FactRow label="Payment terms" value={top.paymentTerms} />
+        <FactRow label="Minimum order" value={top.minimumOrder} />
         <FactRow label="Regions" value={regions.length ? regions.join(', ') : EM} />
         <FactRow label="Last contact" value={fmtLastContact(provider.lastContactDate)} />
       </div>
@@ -130,7 +138,7 @@ export function TwinSheet({ provider, onClose, focusUsualCurrency, onProviderSav
       {/* what this house knows about dealing with them — same register as
           /settings, read on open, one row of it */}
       <div className="px-4 pb-2" style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
-        <TermsSection providerId={provider.id} providerName={provider.name} />
+        <TermsSection providerId={provider.id} providerName={provider.name} terms={terms} />
       </div>
 
       {/* the numbers, and whether a text can reach any of them — ADR 0121 P0

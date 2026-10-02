@@ -35,7 +35,6 @@ import {
   SOURCE_LABEL,
   WEEKDAY_INITIALS,
   fmtCutoff,
-  fmtMoney,
   fmtWeekdays,
   fmtWhen,
   type TermSource,
@@ -46,7 +45,9 @@ import type {
   VendorTermsRow,
 } from '../../settings/next/useSettingsNextData';
 import { MONO, SANS } from './pv-format';
-import { useProviderTerms } from './useProviderTerms';
+import { useProviderTerms, type ProviderTermsState } from './useProviderTerms';
+
+import { fmtLeadTime, fmtMinimumCell } from './TopTermsFacts';
 
 const SOURCE_TONE: Record<TermSource, string> = {
   stated: 'var(--seal-deep, #14515C)',
@@ -426,8 +427,24 @@ function Words({ children, alert }: { children: React.ReactNode; alert?: boolean
   );
 }
 
-export function TermsSection({ providerId, providerName }: { providerId: string; providerName: string }) {
-  const terms = useProviderTerms(providerId);
+export function TermsSection({
+  providerId,
+  providerName,
+  terms: lifted,
+}: {
+  providerId: string;
+  providerName: string;
+  /**
+   * The read, when the parent already holds it. The vendor sheet lifts it
+   * (VEN-W24) so its top facts and this section are ONE read: a save here
+   * replaces the register both render from, and `/vendor-terms` is fetched
+   * once per open, not twice. Without it the section reads for itself.
+   */
+  terms?: ProviderTermsState;
+}) {
+  // `null` turns the hook's fetch off when the parent supplies the read.
+  const own = useProviderTerms(lifted ? null : providerId);
+  const terms = lifted ?? own;
   const [editing, setEditing] = useState(false);
   const reg = terms.register;
   const row = terms.row;
@@ -527,16 +544,12 @@ export function TermsSection({ providerId, providerName }: { providerId: string;
             <Cell
               label="Will not go below"
               cell={row.minimumOrder}
-              render={(m) =>
-                row.minimumOrder.source === 'inferred'
-                  ? `≤ ${fmtMoney(m, currency)}`
-                  : fmtMoney(m, currency)
-              }
+              render={() => fmtMinimumCell(row.minimumOrder, currency)}
             />
             <Cell
               label="Lead time"
               cell={row.leadTimeDays}
-              render={(d) => (d === 0 ? 'same day' : `${d} day${d === 1 ? '' : 's'}`)}
+              render={(d) => fmtLeadTime(d)}
             />
             <Cell label="Payment" cell={row.paymentTerms} render={(t) => t} />
           </div>
