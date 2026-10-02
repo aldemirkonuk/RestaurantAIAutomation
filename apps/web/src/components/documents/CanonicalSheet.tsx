@@ -30,6 +30,7 @@ import type {
   FieldEnvelope,
   VendorResolutionView,
 } from '../../services/api/canonical'
+import { BrandMark } from '../brand/BrandMark'
 import { ProvenanceHover } from './ProvenanceHover'
 import { RememberedShelf } from './RememberedShelf'
 import {
@@ -43,6 +44,9 @@ import {
   fmtReceived,
   showsClaimBlock,
   showsMoney,
+  printedVintageOf,
+  nameCarriesYear,
+  unitWord,
 } from './canonical-format'
 
 const KICK: React.CSSProperties = {
@@ -235,6 +239,8 @@ export interface CanonicalSheetProps {
   ) => Promise<void>
   onChooseItem?: (lineId: string) => void
   itemName?: (inventoryId: string) => string | null
+  /** An item's vintage, for the shelf proposal's mismatch note (W8). */
+  itemVintage?: (inventoryId: string) => number | null
 }
 
 export function CanonicalSheet({
@@ -247,6 +253,7 @@ export function CanonicalSheet({
   onLinkItem,
   onChooseItem,
   itemName,
+  itemVintage,
 }: CanonicalSheetProps) {
   const l1 = doc.layer1
   const currency = l1.currency.value
@@ -358,12 +365,19 @@ export function CanonicalSheet({
       data-ground="paper"
       data-doc-type={doc.docType}
       aria-label={`${DOC_TYPE_LABELS[doc.docType] ?? 'Document'} ${l1.documentNumber.value ?? ''}`}
+      /* THE LETTERHEAD (walk-through RECEIPTS-W45, 2026-10-01, frame A picked
+         over a stamp and a band): a thin edge at a control's 3:1 rather than
+         paper-2's near-invisible one, nearly square corners like a sheet of
+         paper, and the Mudavym mark at top right — so the page says it is
+         OUR layout of the vendor's paper, not the paper itself. The edge
+         stays `--line-control` with its stand-in until the token exists
+         (shared queue, W39). */
       style={{
         background: 'var(--paper-0, #FFFDF8)',
         color: 'var(--ink-1, #211C16)',
-        border: '1px solid var(--paper-2, #EAE4D8)',
-        borderRadius: 12,
-        padding: '14px 18px',
+        border: '1px solid var(--line-control, #8F8674)',
+        borderRadius: 4,
+        padding: '18px 22px',
       }}
     >
       {/* ── header: what this document is ─────────────────────────────── */}
@@ -389,18 +403,25 @@ export function CanonicalSheet({
           >
             {l1.seller.name.value ?? 'The seller is not named on this document'}
           </h1>
-          <span style={{ fontFamily: MONO, fontSize: 12, fontWeight: 600 }}>
+          {/* Never broken at its hyphen: "SYN-TR-" over "0001" on a phone read
+              as two numbers (walk-through RECEIPTS-W45, SELF). */}
+          <span style={{ fontFamily: MONO, fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>
             {l1.documentNumber.value ?? EM}
           </span>
         </div>
-        {doc.direction === 'issued_by_us' && (
-          <span
-            data-testid="direction-ours"
-            style={{ fontFamily: MONO, fontSize: 9, color: 'var(--seal-deep, #14515C)' }}
-          >
-            ISSUED BY US — the reverse of a vendor document
-          </span>
-        )}
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginLeft: 'auto' }}>
+          {doc.direction === 'issued_by_us' && (
+            <span
+              data-testid="direction-ours"
+              style={{ fontFamily: MONO, fontSize: 9, color: 'var(--seal-deep, #14515C)' }}
+            >
+              ISSUED BY US — the reverse of a vendor document
+            </span>
+          )}
+          {/* 21 sets the mark at 24px tall, the brand minimum (ADR 0047).
+              'paper': the sheet stays light in a charcoal theme too. */}
+          <BrandMark size={21} tone="paper" />
+        </div>
       </header>
 
       {/* ── parties and references (EN 16931 order) ───────────────────── */}
@@ -519,7 +540,14 @@ export function CanonicalSheet({
 
       {/* ── the four-way line table ───────────────────────────────────── */}
       {!nothingRead && (
-      <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 8 }}>
+      <table
+        className="cd-lines"
+        // Roles spelled out: on a phone the rows become blocks (W35,
+        // canonical-document.css), and a table whose display changes loses
+        // its implicit roles in some screen readers.
+        role="table"
+        style={{ width: '100%', borderCollapse: 'collapse', marginTop: 8 }}
+      >
         {/*
           `display: table-caption`, spelled out, because KICK sets
           `display: block`.
@@ -543,37 +571,37 @@ export function CanonicalSheet({
           {l1.lines.length} {l1.lines.length === 1 ? 'line' : 'lines'} · each
           quantity column comes from a different document
         </caption>
-        <thead>
-          <tr>
-            <th scope="col" style={{ ...TH, width: 22 }}>
+        <thead role="rowgroup">
+          <tr role="row">
+            <th scope="col" role="columnheader" style={{ ...TH, width: 22 }}>
               #
             </th>
-            <th scope="col" style={TH}>
+            <th scope="col" role="columnheader" style={TH}>
               Item
             </th>
-            <th scope="col" style={{ ...TH, textAlign: 'right' }}>
+            <th scope="col" role="columnheader" style={{ ...TH, textAlign: 'right' }}>
               Ordered
             </th>
-            <th scope="col" style={{ ...TH, textAlign: 'right' }}>
+            <th scope="col" role="columnheader" style={{ ...TH, textAlign: 'right' }}>
               Shipped
             </th>
-            <th scope="col" style={{ ...TH, textAlign: 'right' }}>
+            <th scope="col" role="columnheader" style={{ ...TH, textAlign: 'right' }}>
               Received
             </th>
-            <th scope="col" style={{ ...TH, textAlign: 'right' }}>
+            <th scope="col" role="columnheader" style={{ ...TH, textAlign: 'right' }}>
               Billed
             </th>
-            <th scope="col" style={{ ...TH, textAlign: 'right' }}>
+            <th scope="col" role="columnheader" style={{ ...TH, textAlign: 'right' }}>
               Unit
             </th>
             {money && (
-              <th scope="col" style={{ ...TH, textAlign: 'right' }}>
+              <th scope="col" role="columnheader" style={{ ...TH, textAlign: 'right' }}>
                 Line
               </th>
             )}
           </tr>
         </thead>
-        <tbody>
+        <tbody role="rowgroup">
           {l1.lines.map((line, i) => {
             const adj = adjudicated.get(i)
             const base = line.priceBaseQuantity
@@ -586,6 +614,7 @@ export function CanonicalSheet({
             return (
               <tr
                 key={i}
+                role="row"
                 data-testid="sheet-line"
                 data-selected={selectedLine === i ? 'true' : 'false'}
                 onClick={() => onSelectLine?.(i)}
@@ -595,10 +624,10 @@ export function CanonicalSheet({
                     adj && adj.verdict !== 'ok' ? 'rgba(148,102,26,.07)' : undefined,
                 }}
               >
-                <td style={{ ...TD, textAlign: 'left', color: 'var(--ink-4, #665D50)' }}>
+                <td role="cell" data-cell="n" style={{ ...TD, textAlign: 'left', color: 'var(--ink-4, #665D50)' }}>
                   {i + 1}
                 </td>
-                <td style={{ ...TD, fontFamily: 'inherit', textAlign: 'left', fontSize: 11.5 }}>
+                <td role="cell" data-cell="item" style={{ ...TD, fontFamily: 'inherit', textAlign: 'left', fontSize: 11.5 }}>
                   {line.description.as_printed != null ? (
                     <ProvenanceHover
                       label={`Item, line ${i + 1}`}
@@ -611,21 +640,31 @@ export function CanonicalSheet({
                   ) : (
                     (line.description.value ?? EM)
                   )}
-                  {line.vintage.value != null && (
-                    <span style={{ color: 'var(--ink-4, #665D50)' }}> · {line.vintage.value}</span>
-                  )}
+                  {line.vintage.value != null &&
+                    !nameCarriesYear(line.description.value, line.vintage.value) && (
+                      <span style={{ color: 'var(--ink-4, #665D50)' }}> · {line.vintage.value}</span>
+                    )}
                   {onLinkItem && resolvedByIndex.get(i) && (
                     <RememberedShelf
                       line={resolvedByIndex.get(i)!}
                       itemName={itemName ?? (() => null)}
                       onLink={onLinkItem}
                       onChoose={onChooseItem}
+                      printedVintage={printedVintageOf(line.vintage.value, line.description.value)}
+                      itemVintage={itemVintage}
                     />
                   )}
                 </td>
-                <td style={TD}>{fmtQty(adj?.ordered ?? null, currency)}</td>
-                <td style={TD}>{fmtQty(adj?.shipped ?? null, currency)}</td>
+                <td role="cell" data-cell="ordered" data-label="Ordered" style={TD}>
+                  {fmtQty(adj?.ordered ?? null, currency)}
+                </td>
+                <td role="cell" data-cell="shipped" data-label="Shipped" style={TD}>
+                  {fmtQty(adj?.shipped ?? null, currency)}
+                </td>
                 <td
+                  role="cell"
+                  data-cell="received"
+                  data-label="Received"
                   style={{
                     ...TD,
                     fontFamily:
@@ -644,7 +683,7 @@ export function CanonicalSheet({
                     person corrects here is the INVOICED QUANTITY the paper
                     printed — not the converted number. The hover carries the
                     quantity's own envelope for exactly that reason. */}
-                <td style={TD}>
+                <td role="cell" data-cell="billed" data-label="Billed" style={TD}>
                   <ProvenanceHover
                     label={`Quantity, line ${i + 1}`}
                     envelope={line.quantity}
@@ -653,8 +692,17 @@ export function CanonicalSheet({
                   >
                     {fmtQty(adj?.billed ?? null, currency)}
                   </ProvenanceHover>
+                  {/* THE UNIT BESIDE THE COUNT (walk-through RECEIPTS-W41,
+                      2026-10-01): "12" alone was twelve of nothing. The word is
+                      added only when the billed count IS the printed quantity —
+                      a case turned into bottle-equivalents is not "12 cases",
+                      so a converted count stays a bare number rather than
+                      borrow the wrong unit. */}
+                  {adj?.billed != null && line.unit.value && adj.billed === line.quantity.value
+                    ? ` ${unitWord(line.unit.value, adj.billed)}`
+                    : null}
                 </td>
-                <td style={TD}>
+                <td role="cell" data-cell="unit" data-label="Unit" style={TD}>
                   {money ? (
                     <>
                       <ProvenanceHover
@@ -675,7 +723,7 @@ export function CanonicalSheet({
                           }}
                         >
                           per {fmtQty(base.value, currency)}{' '}
-                          {line.priceBaseUnit.value ?? line.unit.value ?? ''}
+                          {unitWord(line.priceBaseUnit.value ?? line.unit.value ?? '', base.value)}
                         </span>
                       )}
                     </>
@@ -684,7 +732,7 @@ export function CanonicalSheet({
                   )}
                 </td>
                 {money && (
-                  <td style={TD}>
+                  <td role="cell" data-cell="line" data-label="Line" style={TD}>
                     <ProvenanceHover
                       label={`Line total, line ${i + 1}`}
                       envelope={line.netAmount}
@@ -734,14 +782,10 @@ export function CanonicalSheet({
                   >
                     <span>
                       {/* The reason NAME, not only its code: a returnable
-                          deposit and freight are different things to argue. */}
-                      {ac.reason.value ?? 'reason not stated'}
-                      {ac.reasonCode.value && (
-                        <span style={{ color: 'var(--ink-4, #665D50)' }}>
-                          {' '}
-                          · {ac.reasonCode.value}
-                        </span>
-                      )}
+                          deposit and freight are different things to argue.
+                          The code itself (UNCL 7161) is only printed when no
+                          name came with it (walk-through W22, 2026-10-01). */}
+                      {ac.reason.value ?? (ac.reasonCode.value ? `reason code ${ac.reasonCode.value}` : 'reason not stated')}
                     </span>
                     <span style={{ fontFamily: MONO }}>
                       {ac.isCharge.value === false ? '− ' : '+ '}
@@ -755,7 +799,15 @@ export function CanonicalSheet({
             <span style={{ ...KICK, marginTop: 6 }}>VAT breakdown</span>
             {l1.vatBreakdown.length === 0 ? (
               <p style={{ margin: 0, fontSize: 10.5, color: 'var(--ink-4, #665D50)' }}>
-                The document states no VAT breakdown.
+                {/* WHAT WE READ, NOT WHAT THE PAPER SAID (walk-through
+                    RECEIPTS-W41, 2026-10-01). "The document states no VAT
+                    breakdown" sat under a paper that printed "KDV %20" on
+                    9.172,00: the reader kept the tax but not its rate or base.
+                    An empty breakdown is a fact about our reading, so the
+                    sentence says so and names the tax it did keep. */}
+                {typeof l1.totals.taxAmount.value === 'number' && l1.totals.taxAmount.value !== 0
+                  ? `Tax of ${fmtMoney(l1.totals.taxAmount.value, currency)} was read, but not its rate or what it was charged on.`
+                  : 'No VAT breakdown was read from this document.'}
               </p>
             ) : (
               <ul style={{ margin: 0, padding: 0, listStyle: 'none' }}>
