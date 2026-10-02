@@ -34,7 +34,7 @@ export const dashboardTour: TourDefinition = {
       element: '[data-testid="one-tap-open-sheet"]',
       title: 'Leave yourself a one-tap action',
       description:
-        'Write a piece of work with a next step, and it waits here until someone does it.',
+        'Write down a piece of work, and it waits here until someone does it.',
     },
   ],
 }

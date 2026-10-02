@@ -6,7 +6,7 @@ import type { TourDefinition } from '../tours/registry'
 export const communicationsTip = {
   pageId: 'communications' as const,
   title: 'Communications',
-  body: 'Every letter with your vendors in one book, and the replies drafted for you.',
+  body: 'Your latest letters with vendors, and the letters drafted for you.',
 }
 
 export const communicationsTour: TourDefinition = {
@@ -16,13 +16,13 @@ export const communicationsTour: TourDefinition = {
       element: 'section[aria-label="Conversation book"]',
       title: 'Read the book',
       description:
-        'Every conversation with your vendors, in one place.',
+        'The latest letters between you and your vendors.',
     },
     {
       element: 'section[aria-label="Drafts waiting"]',
       title: 'Answer what is drafted',
       description:
-        'Replies drafted for you. Read one, change it if you need to, and send it.',
+        'Letters drafted for you. Read one and change it if you need to, then hold to send it, or to ask a manager to send it.',
     },
     {
       element: '[data-tour="comms-write"]',
@@ -34,7 +34,7 @@ export const communicationsTour: TourDefinition = {
       element: 'section[aria-label="Who is writing"]',
       title: 'Know who is writing',
       description:
-        'People who wrote to the house. Trust one, or add them as a vendor.',
+        'People who wrote to the house. An owner or a manager can trust one, or add them as a vendor.',
     },
   ],
 }
