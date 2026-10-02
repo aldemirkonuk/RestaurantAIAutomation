@@ -67,6 +67,9 @@ describe("DashboardController", () => {
         todayProcurementSpend: 1250.5,
         weekProcurementSpend: 8750.0,
         monthProcurementSpend: 35000.0,
+        todayDeliveries: 2,
+        monthBottlesIn: 48,
+        timezone: "America/Chicago",
       };
 
       mockDashboardService.getStats.mockResolvedValue(expectedResponse);
