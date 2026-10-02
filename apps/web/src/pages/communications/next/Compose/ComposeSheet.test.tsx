@@ -19,6 +19,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 
 const mockData = vi.hoisted(() => ({ current: {} as Record<string, unknown> }));
 const mockPost = vi.hoisted(() => vi.fn());
@@ -26,6 +27,15 @@ const mockPost = vi.hoisted(() => vi.fn());
 vi.mock('./useComposeData', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./useComposeData')>()),
   useComposeData: () => mockData.current,
+  useLetterSenderStanding: () => ({
+    restaurantId: 'r1',
+    canRelease: false,
+    noMailbox: true,
+    basis: 'owner',
+    checking: false,
+    checkedAt: 0,
+    recheck: () => {},
+  }),
 }));
 
 vi.mock('../../../../services/api/client', () => ({
@@ -122,7 +132,11 @@ const base = {
 };
 
 function open() {
-  return render(<ComposeSheet open onClose={() => {}} />);
+  return render(
+    <MemoryRouter initialEntries={['/communications']}>
+      <ComposeSheet open onClose={() => {}} />
+    </MemoryRouter>,
+  );
 }
 
 /** Choose the one book entry, so the send control's other precondition is met. */
@@ -143,24 +157,30 @@ describe('the house composer', () => {
     pickRecipient();
     const send = screen.getByTestId('letter-send');
     expect(send).toBeDisabled();
-    expect(screen.getByText(/Send is disabled: No house sender/)).toBeInTheDocument();
-    // and it names what it is REFUSING, not merely what it lacks
-    expect(screen.getByText(/Not notifications@mudavym\.com/)).toBeInTheDocument();
+    expect(
+      screen.getByText('Send is disabled until this house has a mailbox to send from.'),
+    ).toBeInTheDocument();
   });
 
-  it('says the paid tier in words and never a price', () => {
+  it("with no mailbox, says it in the house's words with the same checklist and chooser as a waiting letter (COMMS-W20)", () => {
     open();
-    // Said twice on purpose: once as the reason Send is disabled, once as the
-    // subdomain row's own standing.
-    expect(screen.getAllByText(/paid-tier option/).length).toBeGreaterThan(0);
-    expect(document.body.textContent ?? '').not.toMatch(/[$€£₺]\s?\d/);
+    const ready = screen.getByTestId('sender-readiness');
+    expect(ready).toHaveTextContent('Before it can leave');
+    expect(ready).toHaveTextContent('This house has no mailbox to send from.');
+    expect(screen.getByRole('button', { name: 'Connect a mailbox' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Check again' })).toBeInTheDocument();
+    // no internal address, DNS record, permission URL, route or tier
+    const text = document.body.textContent ?? '';
+    expect(text).not.toMatch(/notifications@mudavym\.com|DKIM|DMARC|gmail\.send|\/connections|paid-tier|deployment/);
+    expect(text).not.toMatch(/[$€£₺]\s?\d/);
   });
 
   it('a failed sender read is a failure, not "no mailbox"', () => {
     mockData.current = { ...base, sender: null, senderFailed: true, senderError: 'ECONNREFUSED' };
     open();
     expect(screen.getByText(/could not be read \(ECONNREFUSED\)/)).toBeInTheDocument();
-    expect(screen.getByText(/failed read, not an empty answer/)).toBeInTheDocument();
+    expect(screen.getByText(/No letter may be queued until it can be\.$/)).toBeInTheDocument();
+    expect(screen.queryByText(/failed read/)).toBeNull();
     expect(screen.getByTestId('letter-send')).toBeDisabled();
   });
 
@@ -271,10 +291,13 @@ describe('the house composer', () => {
     open();
     fireEvent.click(screen.getByText('Wednesday came in 38% under its own average.'));
     const chip = screen.getByTestId('provenance-chip');
-    expect(chip).toHaveTextContent('weekday.baseline.wednesday');
+    // COMMS-W27: where the sentence came from, in words; never its internal key.
+    expect(chip).toHaveTextContent(/^Noticed/);
+    expect(chip).not.toHaveTextContent('weekday.baseline.wednesday');
+    expect(chip.getAttribute('title') ?? '').not.toMatch(/weekday|Rule/);
     // `Sep`/`Sept` differ by ICU build; the assertion is on the DATE, not on
     // which abbreviation this Node ships.
-    expect(chip).toHaveTextContent(/computed 1 Sept? 2026/);
+    expect(chip).toHaveTextContent(/worked out 1 Sept? 2026/);
     expect((screen.getByLabelText('The letter') as HTMLTextAreaElement).value).toContain(
       'Wednesday came in 38% under its own average.',
     );
@@ -282,11 +305,12 @@ describe('the house composer', () => {
     expect(screen.queryByLabelText(/insert a figure/i)).toBeNull();
   });
 
-  it('says a withheld engine as an answer, not as a gap to fill by hand', () => {
+  it("says an empty insight list in the house's words, with no field to type one in (COMMS-W21)", () => {
     mockData.current = { ...base, sender: HOUSE_MAILBOX, insights: [] };
     open();
-    expect(screen.getByText(/holding no sentence for this house/)).toBeInTheDocument();
-    expect(screen.getByText(/no field here for typing one in/)).toBeInTheDocument();
+    expect(screen.getByText('Nothing the house noticed is waiting to be written about.')).toBeInTheDocument();
+    expect(screen.queryByText(/engine/i)).toBeNull();
+    expect(screen.queryByLabelText(/insert a figure/i)).toBeNull();
   });
 
   it('an unreadable book refuses every recipient in words', () => {
@@ -496,5 +520,120 @@ describe('a drafted letter (ADR 0230)', () => {
     fireEvent.click(screen.getByTestId('letter-send'));
     await waitFor(() => expect(mockPost).toHaveBeenCalled());
     expect(mockPost.mock.calls[0][1].draftId).toBeUndefined();
+  });
+});
+
+describe('leaving with changed words keeps them (COMMS-W34)', () => {
+  const DRAFT = {
+    draftId: 'D1',
+    providerId: 'p1',
+    to: 'fikri@fikritarim.com',
+    subject: 'Credit request — invoice INV-77',
+    body: 'We are asking for a credit of 84.50 EUR.',
+  };
+
+  it('Escape on a typed letter hands its words to the page, then closes', async () => {
+    const onHold = vi.fn();
+    const onClose = vi.fn();
+    render(
+      <MemoryRouter>
+        <ComposeSheet open onClose={onClose} onHold={onHold} />
+      </MemoryRouter>,
+    );
+    fireEvent.change(screen.getByLabelText('Subject'), { target: { value: 'Standing order' } });
+    fireEvent.keyDown(window, { key: 'Escape' });
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(onHold).toHaveBeenCalledWith(
+      expect.objectContaining({ to: null, subject: 'Standing order', body: '', insights: [], templateId: '' }),
+    );
+  });
+
+  it('an untouched letter leaves with nothing held', async () => {
+    const onHold = vi.fn();
+    const onClose = vi.fn();
+    render(
+      <MemoryRouter>
+        <ComposeSheet open onClose={onClose} onHold={onHold} />
+      </MemoryRouter>,
+    );
+    fireEvent.keyDown(window, { key: 'Escape' });
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(onHold).not.toHaveBeenCalled();
+  });
+
+  it('a drafted letter holds only changes made to it, measured against the draft', async () => {
+    mockData.current = { ...base, sender: HOUSE_MAILBOX };
+    const onHold = vi.fn();
+    const { unmount } = render(<ComposeSheet open onClose={() => {}} onHold={onHold} prefill={DRAFT} />);
+    await waitFor(() => expect(screen.getByTestId('letter-send')).not.toBeDisabled());
+    fireEvent.click(screen.getByText('Close'));
+    expect(onHold).not.toHaveBeenCalled();
+    unmount();
+
+    render(<ComposeSheet open onClose={() => {}} onHold={onHold} prefill={DRAFT} />);
+    await waitFor(() => expect(screen.getByTestId('letter-send')).not.toBeDisabled());
+    fireEvent.change(screen.getByLabelText('The letter'), { target: { value: 'We ask for 84.50 EUR back.' } });
+    fireEvent.click(screen.getByText('Close'));
+    expect(onHold).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: 'We ask for 84.50 EUR back.',
+        subject: 'Credit request — invoice INV-77',
+        to: expect.objectContaining({ providerId: 'p1', email: 'fikri@fikritarim.com' }),
+      }),
+    );
+  });
+
+  it('reopened with held words, it is still measured against the draft, not against them', async () => {
+    mockData.current = { ...base, sender: HOUSE_MAILBOX };
+    const onHold = vi.fn();
+    render(
+      <ComposeSheet
+        open
+        onClose={() => {}}
+        onHold={onHold}
+        prefill={{ ...DRAFT, body: 'We ask for 84.50 EUR back.', baseline: { subject: DRAFT.subject, body: DRAFT.body, to: DRAFT.to } }}
+      />,
+    );
+    expect(screen.getByLabelText('The letter')).toHaveValue('We ask for 84.50 EUR back.');
+    fireEvent.click(screen.getByText('Close'));
+    expect(onHold).toHaveBeenCalledWith(expect.objectContaining({ body: 'We ask for 84.50 EUR back.' }));
+  });
+
+  it('reopened from a hold, the chosen sentences and template come back and are held again', () => {
+    const insight = {
+      candidateKey: 'weekday.baseline.wednesday',
+      category: 'sales',
+      sentence: 'Wednesday came in 38% under its own average.',
+      periodStart: '2026-08-01',
+      periodEnd: '2026-08-28',
+      computedAt: '2026-09-01T06:00:00Z',
+    };
+    mockData.current = { ...base, sender: HOUSE_MAILBOX, insights: [insight] };
+    const onHold = vi.fn();
+    render(
+      <MemoryRouter>
+        <ComposeSheet
+          open
+          onClose={() => {}}
+          onHold={onHold}
+          prefill={{ subject: 'Standing order', body: 'Merhaba,', insights: [insight], templateId: 't1' }}
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.getByTestId('provenance-chip')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Close'));
+    expect(onHold).toHaveBeenCalledWith(expect.objectContaining({ insights: [insight], templateId: 't1' }));
+  });
+
+  it('a discarded draft holds nothing when it is closed', async () => {
+    mockData.current = { ...base, sender: HOUSE_MAILBOX };
+    mockPost.mockResolvedValue({ data: { says: 'Discarded. It was never sent.' } });
+    const onHold = vi.fn();
+    render(<ComposeSheet open onClose={() => {}} onHold={onHold} prefill={DRAFT} />);
+    fireEvent.change(screen.getByLabelText('The letter'), { target: { value: 'Changed.' } });
+    fireEvent.click(screen.getByTestId('letter-discard'));
+    await waitFor(() => expect(screen.getByTestId('letter-draft-note')).toHaveTextContent('never sent'));
+    fireEvent.click(screen.getByText('Close'));
+    expect(onHold).not.toHaveBeenCalled();
   });
 });

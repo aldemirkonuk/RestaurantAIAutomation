@@ -61,6 +61,10 @@ export type TemplateChannel = 'letters';
 
 interface Props {
   onClose: () => void;
+  /** A template a person left half-written (COMMS-W34), opened again as it was left. */
+  held?: HeldTemplate | null;
+  /** Called as the sheet leaves holding a template that is not saved. */
+  onHold?: (held: HeldTemplate) => void;
 }
 
 type SaveState =
@@ -69,7 +73,7 @@ type SaveState =
   | { kind: 'stored'; name: string }
   | { kind: 'failed'; message: string };
 
-interface Draft {
+export interface Draft {
   id?: string;
   name: string;
   category: string;
@@ -80,10 +84,33 @@ interface Draft {
 
 const BLANK: Draft = { name: '', category: 'price_query', subject: '', body: '' };
 
-export function TemplateSheet({ onClose }: Props) {
+/** The form as it was left, and as it was opened — so it reopens still unsaved. */
+export interface HeldTemplate {
+  draft: Draft;
+  opened: Draft;
+}
+
+export function TemplateSheet({ onClose, held = null, onHold }: Props) {
   const data = useComposeData();
-  const [draft, setDraft] = useState<Draft | null>(null);
+  const [draft, setDraft] = useState<Draft | null>(held?.draft ?? null);
+  // The draft as it was opened. Typing makes it differ, and while it differs no
+  // other template may be opened over it (COMMS-W28): every way in used to
+  // replace the open form, wiping what had been typed without a word.
+  const [opened, setOpened] = useState<Draft | null>(held?.opened ?? null);
   const [save, setSave] = useState<SaveState>({ kind: 'idle' });
+  const unsaved =
+    draft !== null &&
+    opened !== null &&
+    (draft.name !== opened.name ||
+      draft.category !== opened.category ||
+      draft.subject !== opened.subject ||
+      draft.body !== opened.body);
+  const openDraft = (d: Draft | null) => {
+    setDraft(d);
+    setOpened(d);
+  };
+  const lockedLook = unsaved ? { opacity: 0.5, cursor: 'not-allowed' } : null;
+  const noLetter = draft !== null && draft.body.trim().length === 0;
 
   const categories = data.sender?.categories ?? [
     'order_confirmation',
@@ -94,6 +121,13 @@ export function TemplateSheet({ onClose }: Props) {
   ];
 
   const templates = data.templates;
+
+  // COMMS-W34: Escape, a click outside or Close used to throw an unsaved
+  // template away without a word. Now the page keeps it on a stub.
+  const leave = () => {
+    if (unsaved && draft && opened) onHold?.({ draft, opened });
+    onClose();
+  };
 
   const store = useCallback(async () => {
     if (!draft) return;
@@ -108,6 +142,7 @@ export function TemplateSheet({ onClose }: Props) {
       });
       setSave({ kind: 'stored', name: draft.name.trim() || 'Untitled letter' });
       setDraft(null);
+      setOpened(null);
       data.refetchQueued();
     } catch (e) {
       // A failed save must NOT close the editor: the author's work is still in
@@ -131,7 +166,8 @@ export function TemplateSheet({ onClose }: Props) {
   return (
     <Sheet
       open
-      onClose={onClose}
+      onClose={leave}
+      dirty={unsaved}
       wide
       label="The house's letter templates"
       eyebrow="House letters"
@@ -139,14 +175,13 @@ export function TemplateSheet({ onClose }: Props) {
     >
       <div className="grid gap-4" style={{ fontFamily: SANS }}>
         <p style={{ margin: 0, fontSize: 12, lineHeight: 1.5, color: 'var(--ink-2, #4F473C)' }}>
-          A template is a letter this house has already written twice. Each one belongs to a vendor
-          purpose and declares the fields it merges. A staff broadcast is not one of them — the
-          composer writes to the vendor book, and crew messages stay on /team.
+          A template is a letter the house writes again and again, kept for one vendor purpose.
+          Letters to the team are sent from the Team page.
         </p>
 
         {save.kind === 'stored' && (
           <p role="status" style={{ margin: 0, fontSize: 12, color: 'var(--seal-deep, #14515C)' }}>
-            Stored on the server as “{save.name}”. Sending still happens from the composer, never
+            Saved as “{save.name}”. Sending still happens from the composer, never
             from here.
           </p>
         )}
@@ -160,7 +195,7 @@ export function TemplateSheet({ onClose }: Props) {
         {/* ── the library ────────────────────────────────────────────────── */}
         {data.templatesFailed ? (
           <p role="alert" style={{ margin: 0, fontSize: 12, color: 'var(--alarm-deep, #8C3322)' }}>
-            {data.templatesError} This is a failed read — the library is unknown, not empty.
+            {data.templatesError} That does not mean the house has none.
           </p>
         ) : templates === null ? (
           <p style={{ margin: 0, fontSize: 12, color: 'var(--ink-4, #665D50)' }}>
@@ -168,9 +203,7 @@ export function TemplateSheet({ onClose }: Props) {
           </p>
         ) : templates.length === 0 ? (
           <p style={{ margin: 0, fontSize: 12, color: 'var(--ink-4, #665D50)' }}>
-            This house has written no template yet. That is the honest state, not an empty shelf to
-            be filled with guesses: seven templates written before anyone has sent a letter are
-            seven guesses about what this house wants to say.
+            No templates yet. Write one below, or start from something the house noticed.
           </p>
         ) : (
           <div style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
@@ -195,8 +228,9 @@ export function TemplateSheet({ onClose }: Props) {
                       <button
                         type="button"
                         className="cmp-pick w-full text-left"
+                        disabled={unsaved}
                         onClick={() =>
-                          setDraft({
+                          openDraft({
                             id: t.id,
                             name: t.name,
                             category: t.category ?? 'price_query',
@@ -210,6 +244,7 @@ export function TemplateSheet({ onClose }: Props) {
                           border: '1px solid var(--paper-2, #EAE4D8)',
                           background: 'var(--paper-0, #FAF7F1)',
                           cursor: 'pointer',
+                          ...lockedLook,
                         }}
                       >
                         <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ink-1, #211C16)' }}>
@@ -244,27 +279,37 @@ export function TemplateSheet({ onClose }: Props) {
           </div>
         )}
 
-        <button
-          type="button"
-          onClick={() => {
-            setDraft({ ...BLANK });
-            setSave({ kind: 'idle' });
-          }}
-          className="inline-flex items-center gap-1.5 self-start"
-          style={{
-            fontSize: 11.5,
-            fontWeight: 600,
-            padding: '5px 11px',
-            borderRadius: 8,
-            border: '1px solid var(--seal-ring, rgba(26,94,107,.32))',
-            background: 'transparent',
-            color: 'var(--seal-deep, #14515C)',
-            cursor: 'pointer',
-          }}
-        >
-          <FilePlus2 {...ICON} aria-hidden />
-          Write a new template
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            disabled={unsaved}
+            aria-describedby={unsaved ? 'tpl-unsaved' : undefined}
+            onClick={() => {
+              openDraft({ ...BLANK });
+              setSave({ kind: 'idle' });
+            }}
+            className="inline-flex items-center gap-1.5 self-start"
+            style={{
+              fontSize: 11.5,
+              fontWeight: 600,
+              padding: '5px 11px',
+              borderRadius: 8,
+              border: '1px solid var(--seal-ring, rgba(26,94,107,.32))',
+              background: 'transparent',
+              color: 'var(--seal-deep, #14515C)',
+              cursor: 'pointer',
+              ...lockedLook,
+            }}
+          >
+            <FilePlus2 {...ICON} aria-hidden />
+            Write a new template
+          </button>
+          {unsaved && (
+            <span id="tpl-unsaved" data-testid="tpl-unsaved" style={{ fontSize: 11, color: 'var(--ink-4, #665D50)' }}>
+              Save or discard the template below to start another.
+            </span>
+          )}
+        </div>
 
         {/* ── start from an insight ──────────────────────────────────────── */}
         <div>
@@ -283,13 +328,13 @@ export function TemplateSheet({ onClose }: Props) {
           </h3>
           {data.insightsFailed ? (
             <p role="alert" style={{ margin: 0, fontSize: 11.5, color: 'var(--alarm-deep, #8C3322)' }}>
-              The engine's sentences could not be read ({data.insightsError}).
+              What the house noticed could not be read ({data.insightsError}).
             </p>
           ) : data.insights === null ? (
             <p style={{ margin: 0, fontSize: 11.5, color: 'var(--ink-4, #665D50)' }}>Reading…</p>
           ) : data.insights.length === 0 ? (
             <p style={{ margin: 0, fontSize: 11.5, color: 'var(--ink-4, #665D50)' }}>
-              The engine is holding no sentence for this house right now.
+              Nothing the house noticed is waiting to be written about.
             </p>
           ) : (
             <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 2 }}>
@@ -298,8 +343,9 @@ export function TemplateSheet({ onClose }: Props) {
                   <button
                     type="button"
                     className="cmp-pick w-full text-left"
+                    disabled={unsaved}
                     onClick={() => {
-                      setDraft({
+                      openDraft({
                         ...BLANK,
                         name: '',
                         body: i.sentence,
@@ -316,6 +362,7 @@ export function TemplateSheet({ onClose }: Props) {
                       lineHeight: 1.4,
                       color: 'var(--ink-1, #211C16)',
                       cursor: 'pointer',
+                      ...lockedLook,
                     }}
                   >
                     <Quote {...ICON} aria-hidden style={{ verticalAlign: '-2px', marginRight: 5, color: 'var(--seal-deep, #14515C)' }} />
@@ -335,7 +382,7 @@ export function TemplateSheet({ onClose }: Props) {
           >
             {draft.from && (
               <p style={{ margin: '0 0 8px', fontFamily: MONO, fontSize: 9.5, color: 'var(--seal-deep, #14515C)' }}>
-                from {draft.from.candidateKey} · computed {fmtDay(draft.from.computedAt)}
+                From something the house noticed · worked out {fmtDay(draft.from.computedAt)}
               </p>
             )}
             <label htmlFor="tpl-name" style={{ fontSize: 11, color: 'var(--ink-4, #665D50)' }}>
@@ -391,15 +438,14 @@ export function TemplateSheet({ onClose }: Props) {
               style={{ ...fieldStyle, resize: 'vertical', lineHeight: 1.55 }}
             />
             <p style={{ margin: '6px 0 0', fontSize: 10.5, color: 'var(--ink-4, #665D50)' }}>
-              A field written as {'{{name}}'} is declared as a merge field. The composer refuses to
-              send a letter that still contains one unfilled — a raw placeholder in a vendor's inbox
-              says a figure exists when none was found.
+              Write a field as {'{{name}}'}. A letter is never sent with a field left empty.
             </p>
             <div className="mt-3 flex items-center gap-2">
               <button
                 type="button"
                 onClick={store}
-                disabled={save.kind === 'saving' || draft.body.trim().length === 0}
+                disabled={save.kind === 'saving' || noLetter}
+                aria-describedby={noLetter ? 'tpl-no-letter' : undefined}
                 style={{
                   fontSize: 12,
                   fontWeight: 600,
@@ -408,14 +454,15 @@ export function TemplateSheet({ onClose }: Props) {
                   border: '1px solid var(--seal-ring, rgba(26,94,107,.32))',
                   background: 'var(--seal-tint, rgba(26,94,107,.10))',
                   color: 'var(--seal-deep, #14515C)',
-                  cursor: save.kind === 'saving' ? 'progress' : 'pointer',
+                  cursor: save.kind === 'saving' ? 'progress' : noLetter ? 'not-allowed' : 'pointer',
+                  opacity: noLetter ? 0.5 : 1,
                 }}
               >
                 {save.kind === 'saving' ? 'Saving…' : 'Save the template'}
               </button>
               <button
                 type="button"
-                onClick={() => setDraft(null)}
+                onClick={() => openDraft(null)}
                 style={{
                   fontSize: 12,
                   padding: '6px 13px',
@@ -428,6 +475,11 @@ export function TemplateSheet({ onClose }: Props) {
               >
                 Discard
               </button>
+              {noLetter && (
+                <span id="tpl-no-letter" data-testid="tpl-no-letter" style={{ fontSize: 11, color: 'var(--ink-4, #665D50)' }}>
+                  Write the letter first.
+                </span>
+              )}
             </div>
           </div>
         )}
