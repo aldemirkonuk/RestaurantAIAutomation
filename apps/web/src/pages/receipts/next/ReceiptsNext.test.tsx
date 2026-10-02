@@ -25,6 +25,8 @@ const api = vi.hoisted(() => ({
   listFails: null as unknown,
   /** Holds the clean-papers read (`status = received`) open forever when set (W48). */
   cleanPending: false,
+  /** Holds the door-count read open forever when set (W50b). */
+  doorPending: false,
   /** Rejects only the clean-papers read when set (W49). */
   cleanFails: null as unknown,
   /** Rejects only the verified-book read when set (W49). */
@@ -98,7 +100,11 @@ vi.mock('../../../services/api/documents', async (importOriginal) => {
 vi.mock('../../../services/api/receiving', () => ({
   receivingApi: {
     listUnverified: () =>
-      api.unverifiedFails ? Promise.reject(api.unverifiedFails) : Promise.resolve(api.unverified),
+      api.doorPending
+        ? new Promise(() => {})
+        : api.unverifiedFails
+          ? Promise.reject(api.unverifiedFails)
+          : Promise.resolve(api.unverified),
   },
 }));
 vi.mock('../../../services/api/canonical', () => ({
@@ -222,6 +228,7 @@ beforeEach(() => {
   api.unverifiedFails = null;
   api.listFails = null;
   api.cleanPending = false;
+  api.doorPending = false;
   api.cleanFails = null;
   api.verifiedFails = null;
   api.restaurantId = 'rest-A';
@@ -836,6 +843,18 @@ describe('ReceiptsNext — papers that read cleanly reach a swipe (W44)', () => 
     expect(screen.queryByText('Nothing needs a look.')).toBeNull();
   });
 
+  it('says "Reading…", not "caught up", while the door count is still being read (W50b)', async () => {
+    api.queue = [];
+    api.clean = [];
+    api.doorPending = true;
+    const { container } = render(<ReceiptsNext />, { wrapper });
+    expect(await screen.findByText(/Deliveries counted at the door: unknown/)).toBeTruthy();
+    expect(await screen.findByText('Reading…')).toBeTruthy();
+    // The door's own line says "not claiming the door is caught up"; the
+    // queue's sentence must not claim the paper trail is.
+    expect(container.textContent).not.toMatch(/paper trail is caught up/);
+  });
+
   it('says "caught up" once the clean read lands empty (W48)', async () => {
     api.queue = [];
     api.clean = [];
@@ -1056,6 +1075,14 @@ describe('ReceiptsNext — a failed read in words (W26)', () => {
     await waitFor(() =>
       expect(alert.textContent).toContain('Could not read the verified book (no answer came back) — nothing is claimed about it.'),
     );
+  });
+
+  it('says a linked document cannot be opened when a list it searches never answered (W50c)', async () => {
+    api.verifiedFails = noAnswer();
+    render(<ReceiptsNext />, { wrapper: wrapperAt('/receipts?doc=elsewhere') });
+    expect(await screen.findByText('Could not open the linked document: see the note above.')).toBeTruthy();
+    expect(screen.queryByText('Opening the linked document…')).toBeNull();
+    expect(screen.queryByTestId('doc-not-here')).toBeNull();
   });
 
   it('keeps "the last answer" for a read that answered before and then failed (W49)', async () => {

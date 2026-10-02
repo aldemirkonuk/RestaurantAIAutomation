@@ -31,7 +31,7 @@
  * decides that from the role IN THIS HOUSE and never mounts this for staff.
  */
 
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
+import { useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Sheet } from '@/components/mudavym/Sheet';
 import { useAuth } from '@/contexts/AuthContext';
@@ -856,9 +856,14 @@ export function ReceiptsCredits() {
     Object.keys(data.stats.byCurrency).length === 0;
   // A linked claim that is already closed lives in the folded list: unfold it.
   const selectedClosed = selected !== null && !CHASED_STATES.includes(selected.state);
-  useEffect(() => {
+  // In the same render, not an effect: an effect lands after the sheet's first
+  // paint, so the list showed folded for a frame and then jumped open, and a
+  // check could land in that frame (audit of #586, walk-through RECEIPTS-W50).
+  const [unfoldedFor, setUnfoldedFor] = useState(false);
+  if (selectedClosed !== unfoldedFor) {
+    setUnfoldedFor(selectedClosed);
     if (selectedClosed) setShowClosed(true);
-  }, [selectedClosed]);
+  }
 
   if (data.noRestaurant) {
     return (
@@ -959,7 +964,13 @@ export function ReceiptsCredits() {
                 : 'Reading the claims…'}
             </p>
           ) : chased.length === 0 ? (
-            <p style={NOTE}>No claim is being chased right now.</p>
+            // An empty last answer is not a present "none" while its refresh
+            // is failing (audit of #586, walk-through RECEIPTS-W50b).
+            <p style={NOTE}>
+              {data.failures.some((f) => f.startsWith('the claims'))
+                ? 'Not read: see the note above.'
+                : 'No claim is being chased right now.'}
+            </p>
           ) : (
             <div style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
               {chased.map((c) => (

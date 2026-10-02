@@ -90,6 +90,9 @@ The founder's words, verbatim, per item:
 | RECEIPTS-W48, "caught up" before the clean read lands (found by #586's audit gate) | "\"Reading…\" first (Recommended)" |
 | RECEIPTS-W48b, a document with no stored lines on the list (found by #586's audit gate) | "Keep it, record it (Recommended)" |
 | RECEIPTS-W49, the failure alert for a read that never answered (found by #586's round-2 audit plan) | "Say it per lane (Recommended)" |
+| RECEIPTS-W50, the Closed list unfolded a frame late under a linked closed claim (found by #586's round-3 audit gate, red CI) | "Unfold in the same render (Recommended)" |
+| RECEIPTS-W50b, "caught up" while the door read is in flight, and "No claim is being chased" while the claims refresh fails (the same audit) | "Fix both here (Recommended)" |
+| RECEIPTS-W50c, "Opening the linked document…" forever when a list it searches never answered (the same audit) | "Say it can't open (Recommended)" |
 
 The founder's W9 clause stands for the whole page: each region reads on its own and is clearly divided from the next.
 
@@ -131,8 +134,11 @@ The list and the URL:
 - W8-A: each row leads with its vendor.
 - W19: a `?doc=` this house does not hold says so, with "Show the queue".
 - W20: `?credit=` opens that claim on the Credits tab; one not in the ledger says so.
+- W50: a linked claim that is already closed opens with the Closed list unfolded on the first paint, set in the same render rather than an effect. The list no longer shows folded for a frame and then jumps; the toggle works as before.
 - W44: papers that read cleanly are listed after those that need a look, under "Read cleanly · not yet confirmed", counted on their own. The house's own papers are left out.
 - W48: with the review queue empty, the page says "Reading…" until the clean papers' read lands, then "caught up" or "Nothing needs a look." It no longer calls an unread lane caught up.
+- W50b: "caught up" also waits for the door's count; until it lands the page says "Reading…". On Credits, while the claims refresh is failing, an empty list says "Not read: see the note above." instead of "No claim is being chased right now."
+- W50c: when a list a `?doc=` link searches never answered, the page says "Could not open the linked document: see the note above." instead of "Opening the linked document…" forever.
 
 Words:
 

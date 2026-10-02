@@ -10,8 +10,8 @@ Filed from the founder's /receipts walk-through of 2026-10-01 (session R3, branc
 - The unit is stored normalised ("bottle"), and the paper's own word ("şişe") is not kept as printed.
 
 **Words still wrong on the page.**
-- Documents & Reports' provenance strip says "read automatically" (`pages/documents/next/CanonicalDocumentPage.tsx:736`) for a document a person read and entered through the stand-in route.
-- A delivery-note row in the list reads "— · no stated total" (`pages/receipts/next/ReceiptsNext.tsx:1678`): a despatch advice has no total by nature, so the clause says nothing.
+- Documents & Reports' provenance strip says "read automatically" (`pages/documents/next/CanonicalDocumentPage.tsx:749`) for a document a person read and entered through the stand-in route.
+- A delivery-note row in the list reads "— · no stated total" (`pages/receipts/next/ReceiptsNext.tsx:1679`): a despatch advice has no total by nature, so the clause says nothing.
 - The verdict pairs each count with the printed unit (`components/documents/VerdictBlock.tsx:66-67`). A case converted to bottles would read "12 cases": the same hazard W41 guarded against in the Billed cell, not guarded here.
 - The order's name reaches the page as the field `wineName` (the order mapper, `api-gateway/src/procurement/procurement.service.ts:7316`, after merging main again on 2026-10-02 with #581) for any item.
 
@@ -37,6 +37,13 @@ Filed from the founder's /receipts walk-through of 2026-10-01 (session R3, branc
 
 **Found by #586's audit gate (2026-10-02, RECEIPTS-W48/W48b).** The audit blocked on one defect, fixed in W48. These were left open:
 - A document with a total and no stored lines reads "does not tie out" on the list and on its sheet (`procurement/documents/documents.controller.ts`, `tieOutsAsRuledNow`; `parsed-document.ts`, `applyTieOut`). Its lines may have failed to save at intake (`document-intake.service.ts`, "stored but its lines failed"). Kept by the founder's W48b ruling, "Keep it, record it". The follow-up is a "lines not read — not compared" state on both the list and the sheet.
-- The providers read on the list (`vendorNamesFor`) and on the canonical sheet (`canonical/canonical-document.service.ts:588-600`, which also returns `tax_id`) is by id with no house filter. Nothing checks that a caller-supplied `providerId` on upload belongs to the house (`document-intake.service.ts:352`). A caller who knows another house's provider UUID could see its name on their own list. That widens an existing gap; this PR did not open it.
+- The providers read on the list (`vendorNamesFor`) and on the canonical sheet (`canonical/canonical-document.service.ts:588-600`, which also returns `tax_id`) is by id with no house filter. Nothing checks that a caller-supplied `providerId` on upload belongs to the house (`persist` in `document-intake.service.ts:1027` and `:1098`; the door count at `:352` takes the same unchecked id). A caller who knows another house's provider UUID could see its name on their own list. That widens an existing gap; this PR did not open it.
 - `failureReason` (`pages/receipts/next/rc2-format.ts:151-162`) prints the gateway's message, and the list's 500 carries PostgREST's text. A failed queue read can put database wording on screen.
 - The line paging in `tieOutsAsRuledNow` has no test for a failure on a later page, or for a list over one page. It runs one page after another on every list call, with no limit, so a large list can be slow. It is unmeasured against production volumes. Production's PostgREST `max_rows` is unverified: only `supabase/config.toml` (1000, equal to the page size) was read. If production were lower, a short page would read as the last one.
+
+## Found by #586's round-3 audit gate (2026-10-02, RECEIPTS-W50)
+
+- The recovery figures keep their last answer when a refresh fails: the four tiles and "No credit claim has been opened at this house." (`ReceiptsCredits.tsx`, `Figures`) stay on screen under the "could not read the recovery figures … unknown, not empty" banner, as if present. W50b fixed only the claims list's "No claim is being chased right now."; the figures were not in that ruling.
+- With an empty queue and no clean papers, "Nothing awaits review — the paper trail is caught up." still shows once the door has answered WITH deliveries that have no paperwork, beside the "Counted at the door, no paperwork yet" strip. W50b holds the sentence only while the door read is in flight. Found while building W50b; not asked.
+- Pre-existing, outside #586's diff: the proposal thread shows "Positions on the record · 0" while proposals are still loading (`components/documents/ProposalThread.tsx:141`).
+

@@ -111,6 +111,12 @@ export interface ReceiptsNextData {
   failuresUnread: string[];
   /** "them" rather than "it" for the unread ones: more than one, or a plural read. */
   failuresUnreadPlural: boolean;
+  /**
+   * A list `?doc=` searches (the queue, the clean papers, the verified book)
+   * failed without ever answering, so a linked document cannot be found or
+   * ruled out: "Opening…" would never finish (RECEIPTS-W50c).
+   */
+  documentsUnread: boolean;
   /** No restaurant resolved: the tenant-scoped endpoints were never asked. */
   noRestaurant: boolean;
   refetch: () => void;
@@ -233,6 +239,7 @@ export function useReceiptsNextData(): ReceiptsNextData {
     failuresStale: failed.filter((f) => f.read).map((f) => f.sentence),
     failuresUnread: unread.map((f) => f.sentence),
     failuresUnreadPlural: unread.length > 1 || unread.some((f) => f.plural),
+    documentsUnread: [queueQ, cleanQ, verifiedQ].some((q) => q.isError && q.data === undefined),
     noRestaurant: !enabled,
     refetch: () => {
       void queueQ.refetch();

@@ -269,6 +269,19 @@ describe('figures', () => {
     expect(screen.getByText('Not read: see the note above.')).toBeTruthy();
   });
 
+  it('does not say "none" from an empty last answer while the claims refresh fails (W50b)', async () => {
+    api.claims = [claim({ state: 'written_off' })];
+    api.statsFail = new Error('first');
+    renderAt('/receipts?tab=credits');
+    expect(await screen.findByText('No claim is being chased right now.')).toBeTruthy();
+    api.statsFail = null;
+    api.claimsFail = new Error('boom');
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(await screen.findByText(/Could not read the claims/)).toBeTruthy();
+    expect(screen.queryByText('No claim is being chased right now.')).toBeNull();
+    expect(screen.getByText('Not read: see the note above.')).toBeTruthy();
+  });
+
   it('marks the list a floor when it filled the server window', async () => {
     api.claims = Array.from({ length: 200 }, (_, i) => claim({ id: `c${i}` }));
     renderAt('/receipts?tab=credits');
@@ -470,6 +483,33 @@ describe('a link opens one claim (walk-through W20)', () => {
     renderAt('/receipts?tab=credits&credit=c1');
     expect(await screen.findByRole('dialog')).toBeTruthy();
     expect(screen.getByRole('button', { name: /^Closed/ }).getAttribute('aria-expanded')).toBe('true');
+  });
+
+  // An effect unfolded it after the sheet's first paint: folded for a frame,
+  // then a jump, and CI could check inside that frame (RECEIPTS-W50). Any
+  // aria-expanded flip from "false" on the Closed button is that frame.
+  it('never shows the closed list folded under a linked closed claim, not even for a frame (W50)', async () => {
+    api.claims = [claim({ state: 'written_off' })];
+    const flips: (string | null)[] = [];
+    const seen = (records: MutationRecord[]) =>
+      records.forEach((r) => {
+        if ((r.target as HTMLElement).textContent?.startsWith('Closed')) flips.push(r.oldValue);
+      });
+    const watch = new MutationObserver(seen);
+    watch.observe(document.body, {
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['aria-expanded'],
+      attributeOldValue: true,
+    });
+    renderAt('/receipts?tab=credits&credit=c1');
+    expect(await screen.findByRole('dialog')).toBeTruthy();
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /^Closed/ }).getAttribute('aria-expanded')).toBe('true'),
+    );
+    seen(watch.takeRecords());
+    watch.disconnect();
+    expect(flips).toEqual([]);
   });
 
   it('says so when the linked claim is not in this ledger, and clears the link', async () => {
