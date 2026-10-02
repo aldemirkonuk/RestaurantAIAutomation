@@ -95,6 +95,12 @@ The founder's words, verbatim, per item (one-word "Approve" items grouped):
 
 **Own branches, not built here:** W10's phases (the classified book, phase 1 first), W10f (Jev on outside mail; per-vendor autonomy switch), W10i (the Crew Line, its own product ADR), W12a–W12d (rich letters, superseding ADR 0174 D1/D2/D4 and 0180 D5/D6 as ruled), W13b's gateway part, W17 (a refused Gmail renewal is recorded and said), W18b (Outlook sending), W20c (the "Sent via Mudavym" line), W24's server half, W25 (the template words /inventory raised).
 
+**Follow-up rulings, 2026-10-02, after the PR opened** (founder's AskUserQuestion answers, for the own branches above):
+- Order: W25 first (with the sim's F-106 fix), then W17, then W13b's gateway part ("a, b, c").
+- F-106: approving can leave two pending drafts for one order, and `approveDraft`'s `.single()` (`procurement.service.ts:7770` at 3973374cd) then fails although the rail shows one (`getPendingDraft`, `:9999-10000`). The W25 branch stops the second write. Where two already exist, the newest (the one the rail shows and the owner held) survives and the older is discarded with a recorded reason ("Newest, as shown").
+- W17: the /connections reconnect banner (today only for mail reading, `ConnectionsNext.tsx:341`) also comes up when Gmail sending lost its grant, one banner naming what is down ("Widen to sending").
+- W13b's gateway part ships off behind its flag. The flag goes on only after F-049 (the /connections "Connect yours" button has no action) and F-050 (Google refuses the per-house redirect; a Railway variable plus the client's URI) are fixed and one house has connected its own Gmail end to end ("After F-049, F-050"). The flip stays the founder's keystroke. F-ids are the owner-quarter sim's ledger.
+
 **Shared queue** (`review-shared-queue.md`, R2 rows): W26; the Stub's focus on Discard (W34); back closes the topmost sheet (W35); `globals.css` `.dark` outranking the house reset (W36).
 
 ## Consequences
@@ -113,3 +119,4 @@ The founder's words, verbatim, per item (one-word "Approve" items grouped):
 |---|---|---|
 | 2026-10-01 | — | Created, session R2, branch fix/review-communications |
 | 2026-10-02 | — | W38 added (the tour, ruled when main was merged in); numbered 0260 at push |
+| 2026-10-02 | — | Follow-up rulings added (order a-b-c, F-106 survivor, W17 banner, W13b flag timing), asked while #587's CI ran |
