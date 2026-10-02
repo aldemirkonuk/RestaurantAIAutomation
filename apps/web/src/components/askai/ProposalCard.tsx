@@ -112,6 +112,14 @@ interface Props {
    * read-only fallback rather than an empty dropdown.
    */
   candidates?: AskAiCandidates | null
+  /**
+   * Called once the card is done: applied, discarded, already handled, or
+   * failed. The Ask panel's session drops it at the next close, so a reopen
+   * never draws it as a card to seal again. Called from the handler, not an
+   * effect, so it still arrives when the panel closed before the gateway
+   * answered.
+   */
+  onSettled?: (actionId: string) => void
 }
 
 type Phase = 'editing' | 'working' | 'executed' | 'discarded' | 'gone' | 'failed'
@@ -264,7 +272,7 @@ function useCardGround(): 'paper' | 'charcoal' {
   return ground
 }
 
-export function ProposalCard({ proposal, candidates }: Props) {
+export function ProposalCard({ proposal, candidates, onSettled }: Props) {
   const isReorder = proposal.action.actionType === 'reorder'
   const original = proposal.action.payload
 
@@ -367,6 +375,12 @@ export function ProposalCard({ proposal, candidates }: Props) {
     return 'The draft needs an instruction.'
   }, [edited, isReorder, inventoryId, providerId, orderId])
 
+  /** A terminal phase: the card is done, and says so to whoever holds the list. */
+  function finish(p: 'executed' | 'discarded' | 'gone' | 'failed') {
+    setPhase(p)
+    onSettled?.(proposal.actionId)
+  }
+
   const busy = phase === 'working'
   const settled =
     phase === 'executed' || phase === 'discarded' || phase === 'gone' || phase === 'failed'
@@ -388,7 +402,7 @@ export function ProposalCard({ proposal, candidates }: Props) {
       heldRef.current = null
       const err = error as AskAiActionError
       if (err?.kind === 'gone') {
-        setPhase('gone')
+        finish('gone')
         setNotice(err.message)
         return null
       }
@@ -423,7 +437,7 @@ export function ProposalCard({ proposal, candidates }: Props) {
       const result = await applyProposalSealed(proposal.actionId, challenge, held.payload)
       setWasEdited(result.edited)
       setExecutionRef(result.executionRef || null)
-      setPhase('executed')
+      finish('executed')
       return result
     } catch (error) {
       const err = error as AskAiActionError
@@ -436,11 +450,11 @@ export function ProposalCard({ proposal, candidates }: Props) {
         throw err
       }
       if (err?.kind === 'gone') {
-        setPhase('gone')
+        finish('gone')
         setNotice(err.message)
         throw err
       }
-      setPhase('failed')
+      finish('failed')
       setNotice(err?.message ?? 'That action could not be executed.')
       throw err
     }
@@ -453,11 +467,11 @@ export function ProposalCard({ proposal, candidates }: Props) {
     setNotice(null)
     try {
       await discardAction(proposal.actionId)
-      setPhase('discarded')
+      finish('discarded')
     } catch (error) {
       const err = error as AskAiActionError
       if (err?.kind === 'gone') {
-        setPhase('gone')
+        finish('gone')
         setNotice(err.message)
         return
       }

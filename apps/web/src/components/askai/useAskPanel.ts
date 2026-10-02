@@ -7,7 +7,8 @@
  * asking" all dispatch `ASK_AI_OPEN_EVENT`, and this hook listens.
  */
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useContext, useEffect, useState } from 'react'
+import { AuthContext } from '../../contexts/AuthContext'
 import { ASK_AI_OPEN_EVENT, type AskOpenDetail } from './events'
 import { useAskSession, type AskSession } from './useAskSession'
 
@@ -22,9 +23,15 @@ export interface AskPanelState {
 }
 
 export function useAskPanel(): AskPanelState {
+  const auth = useContext(AuthContext)
+  const userId = auth?.user?.userId ?? null
+  const houseId = auth?.activeRestaurantId ?? null
+  // One person's sitting in one house, keyed as "the house said" is: a
+  // branch switch or a new person on a shared till starts the session again.
+  const scope = userId && houseId ? `${userId}@${houseId}` : null
   const [open, setOpen] = useState(false)
   const [followUp, setFollowUp] = useState<AskOpenDetail['followUp'] | null>(null)
-  const session = useAskSession()
+  const session = useAskSession(scope, open)
 
   useEffect(() => {
     const onOpen = (e: Event) => {
@@ -43,6 +50,12 @@ export function useAskPanel(): AskPanelState {
   useEffect(() => {
     if (!open) setFollowUp(null)
   }, [open])
+
+  // A follow-up names a folio in the house it came from; it does not carry
+  // into another.
+  useEffect(() => {
+    setFollowUp(null)
+  }, [scope])
 
   const close = useCallback(() => setOpen(false), [])
   const dropFollowUp = useCallback(() => setFollowUp(null), [])

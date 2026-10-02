@@ -20,7 +20,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { act, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { AskPanel, STAFF_PROPOSE_LINE, type AskPanelProps } from './AskPanel'
@@ -137,7 +137,7 @@ function folio(over: Partial<AskFolio>): AskFolio {
 
 /** The panel's session belongs to its owner (`useAskPanel`); here the test is the owner. */
 function OwnedPanel(props: Omit<AskPanelProps, 'session'>) {
-  const session = useAskSession()
+  const session = useAskSession(null, props.open)
   return <AskPanel {...props} session={session} />
 }
 
@@ -668,34 +668,42 @@ describe('closing keeps the question in flight (ADR 0145, 2026-10-01)', () => {
       />
     )
   }
-  function renderOwner() {
-    render(
-      <AuthContext.Provider value={{ activeRole: 'owner', activeRestaurantId: 'r-1' } as never}>
-        <MemoryRouter initialEntries={['/inventory']}>
-          <Owner />
-        </MemoryRouter>
-      </AuthContext.Provider>,
-    )
+  type Who = { userId: string; house: string }
+  const tree = (who: Who | null) => (
+    <AuthContext.Provider
+      value={{ activeRole: 'owner', activeRestaurantId: who?.house ?? 'r-1', user: who ? { userId: who.userId } : null } as never}
+    >
+      <MemoryRouter initialEntries={['/inventory']}>
+        <Owner />
+      </MemoryRouter>
+    </AuthContext.Provider>
+  )
+  /** Renders the owner signed in as `who` and opens the panel; `switchTo` changes the person or the house in place. */
+  function renderOwner(who: Who | null = null) {
+    const view = render(tree(who))
     act(() => openAskAi())
-  }
-  function deferred<T>() {
-    let resolve!: (v: T) => void
-    let reject!: (e: unknown) => void
-    const promise = new Promise<T>((res, rej) => {
-      resolve = res
-      reject = rej
-    })
-    return { promise, resolve, reject }
+    return { switchTo: (next: Who) => view.rerender(tree(next)) }
   }
   const panel = () => screen.queryByRole('complementary', { name: 'Ask Mudavym' })
   const box = () => screen.getByLabelText(/your question for the books/i)
   const QUESTION = 'how much house red is left?'
   const TWELVE = { kind: 'model_knowledge', sourceLabel: 'Not from the books', text: 'Twelve.' } as AskFolio['answer']
+  const close = (user: ReturnType<typeof userEvent.setup>) => user.click(screen.getByRole('button', { name: 'Close' }))
+  const reopen = () => act(() => openAskAi())
+  const examples = () => screen.queryByRole('button', { name: /how much of the house red do we have/i })
+  async function httpError(status: number, message: string) {
+    const { AxiosError } = await import('axios')
+    return new AxiosError(String(status), 'ERR_BAD_RESPONSE', undefined, undefined, { status, data: { message } } as never)
+  }
+  async function timeoutError() {
+    const { AxiosError } = await import('axios')
+    return new AxiosError('timeout of 60000ms exceeded', 'ECONNABORTED')
+  }
 
   async function askThenClose(user: ReturnType<typeof userEvent.setup>) {
     await user.type(box(), `${QUESTION}{Enter}`)
     expect(await screen.findByTestId('askpanel-pending')).toHaveTextContent(`Still answering “${QUESTION}”`)
-    await user.click(screen.getByRole('button', { name: 'Close' }))
+    await close(user)
     expect(panel()).toBeNull()
   }
 
@@ -707,7 +715,7 @@ describe('closing keeps the question in flight (ADR 0145, 2026-10-01)', () => {
     await askThenClose(user)
 
     await act(async () => answer.resolve(folio({ utterance: QUESTION, answer: TWELVE })))
-    act(() => openAskAi())
+    reopen()
 
     expect(await screen.findByTestId('askpanel-folio')).toHaveTextContent('Twelve.')
     expect(screen.queryByTestId('askpanel-pending')).toBeNull()
@@ -722,7 +730,7 @@ describe('closing keeps the question in flight (ADR 0145, 2026-10-01)', () => {
     renderOwner()
     await askThenClose(user)
 
-    act(() => openAskAi())
+    reopen()
     expect(screen.getByTestId('askpanel-pending')).toHaveTextContent(`Still answering “${QUESTION}”`)
     expect(box()).toBeDisabled()
 
@@ -734,19 +742,20 @@ describe('closing keeps the question in flight (ADR 0145, 2026-10-01)', () => {
 
   it('a question that timed out while closed offers "Check again", which re-sends the same request id', async () => {
     const user = userEvent.setup()
-    const { AxiosError } = await import('axios')
     const answer = deferred<AskFolio>()
     api.submit.mockReturnValueOnce(answer.promise).mockResolvedValueOnce(folio({ utterance: QUESTION, answer: TWELVE }))
     renderOwner()
     await askThenClose(user)
 
-    await act(async () => answer.reject(new AxiosError('timeout of 60000ms exceeded', 'ECONNABORTED')))
-    act(() => openAskAi())
+    const timedOut = await timeoutError()
+    await act(async () => answer.reject(timedOut))
+    reopen()
     const failure = await screen.findByTestId('askpanel-failure')
     expect(failure).toHaveAttribute('data-kind', 'timeout')
 
     await user.click(screen.getByRole('button', { name: /check again/i }))
     expect(await screen.findByTestId('askpanel-folio')).toHaveTextContent('Twelve.')
+    expect(screen.queryByTestId('askpanel-failure')).toBeNull()
     expect(api.submit).toHaveBeenCalledTimes(2)
     expect(api.submit.mock.calls[1][0].requestId).toBe(api.submit.mock.calls[0][0].requestId)
   })
@@ -773,9 +782,9 @@ describe('closing keeps the question in flight (ADR 0145, 2026-10-01)', () => {
     await user.click(modeRadio(/propose an action/i))
     await user.type(screen.getByLabelText(/the action to propose/i), 'reorder 6 bottles of the Barolo{Enter}')
     expect(await screen.findByTestId('askpanel-pending')).toHaveTextContent('Still drafting “reorder 6 bottles of the Barolo”')
-    await user.click(screen.getByRole('button', { name: 'Close' }))
+    await close(user)
 
-    act(() => openAskAi())
+    reopen()
     await waitFor(() => expect(api.list).toHaveBeenCalledTimes(2))
     expect(screen.getByTestId('askpanel-pending')).toHaveAttribute('data-kind', 'propose')
     expect(screen.getByRole('textbox')).toBeDisabled()
@@ -785,19 +794,407 @@ describe('closing keeps the question in flight (ADR 0145, 2026-10-01)', () => {
     expect(api.propose).toHaveBeenCalledTimes(1)
   })
 
-  it('the session itself refuses a second send while one is in flight', async () => {
+  describe('what a close does not keep', () => {
+    it('a failure with nothing to retry is dropped at the close, and the examples come back', async () => {
+      const user = userEvent.setup()
+      api.submit.mockRejectedValue(await httpError(429, 'Slow down.'))
+      renderOwner()
+      await user.type(box(), `${QUESTION}{Enter}`)
+      expect(await screen.findByTestId('askpanel-failure')).toHaveAttribute('data-kind', 'too_fast')
+      expect(screen.queryByRole('button', { name: /check again/i })).toBeNull()
+      expect(examples()).toBeNull()
+
+      await close(user)
+      reopen()
+      expect(screen.queryByTestId('askpanel-failure')).toBeNull()
+      expect(examples()).toBeInTheDocument()
+    })
+
+    it('a failure that offers "Check again" is kept across a close', async () => {
+      const user = userEvent.setup()
+      api.submit.mockRejectedValue(await timeoutError())
+      renderOwner()
+      await user.type(box(), `${QUESTION}{Enter}`)
+      expect(await screen.findByTestId('askpanel-failure')).toHaveAttribute('data-kind', 'timeout')
+
+      await close(user)
+      reopen()
+      expect(screen.getByTestId('askpanel-failure')).toHaveAttribute('data-kind', 'timeout')
+      expect(screen.getByRole('button', { name: /check again/i })).toBeEnabled()
+    })
+
+    it('a failure with nothing to retry that lands while closed is said once on reopening, then dropped at that close', async () => {
+      const user = userEvent.setup()
+      const answer = deferred<AskFolio>()
+      api.submit.mockReturnValue(answer.promise)
+      renderOwner()
+      await askThenClose(user)
+
+      const tooFast = await httpError(429, 'Slow down.')
+      await act(async () => answer.reject(tooFast))
+      reopen()
+      expect(screen.getByTestId('askpanel-failure')).toHaveAttribute('data-kind', 'too_fast')
+
+      await close(user)
+      reopen()
+      expect(screen.queryByTestId('askpanel-failure')).toBeNull()
+    })
+
+    it('the proposer’s transport error is dropped at the close', async () => {
+      const user = userEvent.setup()
+      api.propose.mockRejectedValue(new Error('Network Error'))
+      renderOwner()
+      await user.click(modeRadio(/propose an action/i))
+      await user.type(screen.getByLabelText(/the action to propose/i), 'reorder the Barolo{Enter}')
+      expect(await screen.findByTestId('askai-error')).toHaveTextContent('Network Error')
+
+      await close(user)
+      prefsState.preferences = { askLastMode: 'propose' }
+      reopen()
+      expect(modeRadio(/propose an action/i)).toHaveAttribute('aria-checked', 'true')
+      expect(screen.queryByTestId('askai-error')).toBeNull()
+    })
+
+    it('the refusal of a drafted action is kept across a close, with the words it declined', async () => {
+      const user = userEvent.setup()
+      api.propose.mockResolvedValue({ proposed: false, reason: 'Could not resolve which vendor to order from.' })
+      renderOwner()
+      await user.click(modeRadio(/propose an action/i))
+      await user.type(screen.getByLabelText(/the action to propose/i), 'reorder the Barolo{Enter}')
+      expect(await screen.findByTestId('askai-refusal')).toHaveTextContent('Could not resolve which vendor')
+
+      await close(user)
+      prefsState.preferences = { askLastMode: 'propose' }
+      reopen()
+      expect(screen.getByTestId('askai-refusal')).toHaveTextContent('Could not resolve which vendor')
+      api.submit.mockResolvedValue(folio({ utterance: 'reorder the Barolo' }))
+      await user.click(screen.getByTestId('askpanel-offer-ask'))
+      await waitFor(() => expect(api.submit).toHaveBeenCalledTimes(1))
+      expect(api.submit.mock.calls[0][0].utterance).toBe('reorder the Barolo')
+    })
+
+    // A card that is done must not come back as a card to seal, even when the
+    // on-open re-read fails and the list is all the panel has.
+    type Card = ReturnType<typeof within>
+    const settle: Array<[string, (user: ReturnType<typeof userEvent.setup>, card: Card) => Promise<void>, RegExp]> = [
+      [
+        'applied',
+        async (_user, card) => {
+          api.apply.mockResolvedValue({ executed: true, actionId: reorder.actionId, executionRef: 'order-99', edited: false })
+          completeHold(card.getByRole('button', { name: /^hold to apply$/i }))
+        },
+        /nothing has been sent/i,
+      ],
+      [
+        'already handled',
+        async (_user, card) => {
+          api.apply.mockRejectedValue(new AskAiActionError('gone', 'That action is no longer waiting for confirmation.'))
+          completeHold(card.getByRole('button', { name: /^hold to apply$/i }))
+        },
+        /nothing ran twice/i,
+      ],
+      [
+        'discarded',
+        async (user, card) => {
+          api.discard.mockResolvedValue(undefined)
+          await user.click(card.getByRole('button', { name: /discard/i }))
+        },
+        /discarded\. nothing ran/i,
+      ],
+    ]
+    it.each(settle)('a proposal %s before the close does not come back as a card to seal', async (_, act_, said) => {
+      const user = userEvent.setup()
+      api.list.mockResolvedValueOnce([reorder, vendorDraft]).mockRejectedValue(new Error('The gateway did not answer.'))
+      renderOwner()
+      const card = within((await screen.findByText(reorder.summary)).closest('[data-testid="askai-proposal-card"]') as HTMLElement)
+      await act_(user, card)
+      expect(await screen.findByText(said)).toBeInTheDocument()
+
+      await close(user)
+      reopen()
+      await screen.findByTestId('askpanel-proposals-unread')
+      expect(screen.queryByText(reorder.summary)).toBeNull()
+      // The one still waiting stays: a close drops only what is done.
+      expect(screen.getByText(vendorDraft.summary)).toBeInTheDocument()
+    })
+
+    it('a proposal discarded after the close, its card already gone, does not come back either', async () => {
+      const user = userEvent.setup()
+      const discarding = deferred<undefined>()
+      api.list.mockResolvedValueOnce([reorder]).mockRejectedValue(new Error('The gateway did not answer.'))
+      api.discard.mockReturnValue(discarding.promise as never)
+      renderOwner()
+      await screen.findByText(reorder.summary)
+      await user.click(screen.getByRole('button', { name: /discard/i }))
+      await close(user)
+
+      await act(async () => discarding.resolve(undefined))
+      reopen()
+      await screen.findByTestId('askpanel-proposals-unread')
+      expect(screen.queryByText(reorder.summary)).toBeNull()
+    })
+  })
+
+  // The shell is mounted once and a branch switch happens in place
+  // (`RestaurantBranchSwitcher` → `AuthContext.setActiveRestaurantId`). The
+  // once-per-id key includes the house, so house A's id re-sent in house B is
+  // a new paid call.
+  describe('one person in one house: a switch starts the session again', () => {
+    const A = { userId: 'u-1', house: 'r-1' }
+    const B = { userId: 'u-1', house: 'r-2' }
+
+    it('switched mid-answer: the panel is not busy, and the old answer lands nowhere', async () => {
+      const user = userEvent.setup()
+      const old = deferred<AskFolio>()
+      api.submit.mockReturnValue(old.promise)
+      const { switchTo } = renderOwner(A)
+      await user.type(box(), `${QUESTION}{Enter}`)
+      expect(await screen.findByTestId('askpanel-pending')).toBeInTheDocument()
+
+      switchTo(B)
+      expect(screen.queryByTestId('askpanel-pending')).toBeNull()
+      expect(box()).toBeEnabled()
+
+      await act(async () => old.resolve(folio({ utterance: QUESTION, answer: TWELVE })))
+      expect(screen.queryByTestId('askpanel-folio')).toBeNull()
+      expect(api.submit).toHaveBeenCalledTimes(1)
+    })
+
+    it('the old answer landing does not let go of the new house’s question in flight', async () => {
+      const user = userEvent.setup()
+      const old = deferred<AskFolio>()
+      const fresh = deferred<AskFolio>()
+      api.submit.mockReturnValueOnce(old.promise).mockReturnValueOnce(fresh.promise)
+      const { switchTo } = renderOwner(A)
+      await user.type(box(), `${QUESTION}{Enter}`)
+      await screen.findByTestId('askpanel-pending')
+      switchTo(B)
+      await user.type(box(), 'what arrives today?{Enter}')
+      expect(await screen.findByTestId('askpanel-pending')).toHaveTextContent('Still answering “what arrives today?”')
+
+      await act(async () => old.resolve(folio({ utterance: QUESTION, answer: TWELVE })))
+      expect(screen.getByTestId('askpanel-pending')).toHaveTextContent('Still answering “what arrives today?”')
+      expect(box()).toBeDisabled()
+
+      await act(async () => fresh.resolve(folio({ id: 'f-2', utterance: 'what arrives today?', answer: TWELVE })))
+      expect(await screen.findByTestId('askpanel-folio')).toHaveTextContent('what arrives today?')
+      expect(screen.getAllByTestId('askpanel-folio')).toHaveLength(1)
+    })
+
+    it('"Check again" is not offered in the new house for the old house’s request id', async () => {
+      const user = userEvent.setup()
+      api.submit.mockRejectedValue(await timeoutError())
+      const { switchTo } = renderOwner(A)
+      await user.type(box(), `${QUESTION}{Enter}`)
+      expect(await screen.findByRole('button', { name: /check again/i })).toBeInTheDocument()
+
+      switchTo(B)
+      expect(screen.queryByTestId('askpanel-failure')).toBeNull()
+      expect(screen.queryByRole('button', { name: /check again/i })).toBeNull()
+    })
+
+    it('a failure from the old house that lands after the switch is not shown', async () => {
+      const user = userEvent.setup()
+      const old = deferred<AskFolio>()
+      api.submit.mockReturnValue(old.promise)
+      const { switchTo } = renderOwner(A)
+      await user.type(box(), `${QUESTION}{Enter}`)
+      await screen.findByTestId('askpanel-pending')
+      switchTo(B)
+
+      const timedOut = await timeoutError()
+      await act(async () => old.reject(timedOut))
+      expect(screen.queryByTestId('askpanel-failure')).toBeNull()
+      expect(screen.queryByRole('button', { name: /check again/i })).toBeNull()
+    })
+
+    type Drafted = ReturnType<typeof deferred<Awaited<ReturnType<typeof proposeAction>>>>
+    it.each([
+      ['a proposal', (old: Drafted) => old.resolve({ proposed: true, proposal: reorder }), () => screen.queryByText(reorder.summary)],
+      [
+        'a refusal',
+        (old: Drafted) => old.resolve({ proposed: false, reason: 'Could not resolve which vendor to order from.' }),
+        () => screen.queryByTestId('askai-refusal'),
+      ],
+      ['an error', (old: Drafted) => old.reject(new Error('Network Error')), () => screen.queryByTestId('askai-error')],
+    ] as const)('%s drafted in the old house does not land in the new one', async (_, land, shown) => {
+      const user = userEvent.setup()
+      const old = deferred<Awaited<ReturnType<typeof proposeAction>>>()
+      api.propose.mockReturnValue(old.promise)
+      const { switchTo } = renderOwner(A)
+      await user.click(modeRadio(/propose an action/i))
+      await user.type(screen.getByLabelText(/the action to propose/i), 'reorder the Barolo{Enter}')
+      await screen.findByTestId('askpanel-pending')
+      switchTo(B)
+      await user.click(modeRadio(/propose an action/i))
+
+      await act(async () => land(old))
+      expect(shown()).toBeNull()
+      expect(screen.getByLabelText(/the action to propose/i)).toBeEnabled()
+    })
+
+    it('a folio re-read from the old house that fails after the switch is not shown', async () => {
+      const user = userEvent.setup()
+      const reread = deferred<AskFolio>()
+      api.submit.mockResolvedValue(folio({ utterance: QUESTION }))
+      api.folio.mockReturnValue(reread.promise)
+      const { switchTo } = renderOwner(A)
+      await user.type(box(), `${QUESTION}{Enter}`)
+      await user.click(await screen.findByRole('button', { name: /check again/i }))
+      expect(box()).toBeDisabled()
+      switchTo(B)
+      expect(box()).toBeEnabled()
+
+      const timedOut = await timeoutError()
+      await act(async () => reread.reject(timedOut))
+      expect(screen.queryByTestId('askpanel-failure')).toBeNull()
+    })
+
+    it('a new person on the same till starts it again too', async () => {
+      const user = userEvent.setup()
+      api.submit.mockResolvedValue(folio({ utterance: QUESTION, answer: TWELVE }))
+      const { switchTo } = renderOwner(A)
+      await user.type(box(), `${QUESTION}{Enter}`)
+      await screen.findByTestId('askpanel-folio')
+
+      switchTo({ userId: 'u-2', house: 'r-1' })
+      expect(screen.queryByTestId('askpanel-folio')).toBeNull()
+    })
+
+    it('the first naming of the sitting keeps what was asked, as "the house said" does', async () => {
+      const user = userEvent.setup()
+      api.submit.mockResolvedValue(folio({ utterance: QUESTION, answer: TWELVE }))
+      const { switchTo } = renderOwner(null)
+      await user.type(box(), `${QUESTION}{Enter}`)
+      await screen.findByTestId('askpanel-folio')
+
+      switchTo(A)
+      expect(screen.getByTestId('askpanel-folio')).toHaveTextContent('Twelve.')
+    })
+
+    it('with the panel open, the switch re-reads the new house’s waiting proposals', async () => {
+      api.list.mockResolvedValueOnce([reorder]).mockResolvedValueOnce([vendorDraft])
+      const { switchTo } = renderOwner(A)
+      await screen.findByText(reorder.summary)
+
+      switchTo(B)
+      expect(await screen.findByText(vendorDraft.summary)).toBeInTheDocument()
+      expect(screen.queryByText(reorder.summary)).toBeNull()
+      expect(api.list).toHaveBeenCalledTimes(2)
+    })
+
+    it('a follow-up does not carry into another house', () => {
+      const { switchTo } = renderOwner(A)
+      act(() => openAskAi({ followUp: { folioId: 'f-9', utterance: 'what arrived on Monday' } }))
+      expect(screen.getByTestId('askpanel-followup')).toBeInTheDocument()
+
+      switchTo(B)
+      expect(screen.queryByTestId('askpanel-followup')).toBeNull()
+    })
+  })
+})
+
+describe('the session’s own gates', () => {
+  it('refuses a second ask while one is in flight', async () => {
     const answer = deferred<AskFolio>()
     api.submit.mockReturnValue(answer.promise)
-    const { result } = renderHook(() => useAskSession())
+    const { result } = renderHook(() => useAskSession(null, true))
     let first!: Promise<boolean>
     let second!: Promise<boolean>
     act(() => {
-      first = result.current.sendAsk({ requestId: 'r-1', utterance: QUESTION })
-      second = result.current.sendAsk({ requestId: 'r-2', utterance: QUESTION })
+      first = result.current.sendAsk({ requestId: 'r-1', utterance: 'how much house red is left?' })
+      second = result.current.sendAsk({ requestId: 'r-2', utterance: 'how much house red is left?' })
     })
     expect(await second).toBe(false)
-    await act(async () => answer.resolve(folio({ utterance: QUESTION })))
+    await act(async () => answer.resolve(folio({})))
     expect(await first).toBe(true)
     expect(api.submit).toHaveBeenCalledTimes(1)
   })
+
+  it('refuses a second draft while one is in flight', async () => {
+    const drafted = deferred<Awaited<ReturnType<typeof proposeAction>>>()
+    api.propose.mockReturnValue(drafted.promise)
+    const { result } = renderHook(() => useAskSession(null, true))
+    let first!: Promise<boolean>
+    let second!: Promise<boolean>
+    act(() => {
+      first = result.current.sendPropose('reorder the Barolo', 'reorder the Barolo')
+      second = result.current.sendPropose('reorder the Barolo', 'reorder the Barolo')
+    })
+    expect(await second).toBe(false)
+    await act(async () => drafted.resolve({ proposed: true, proposal: reorder }))
+    expect(await first).toBe(true)
+    expect(api.propose).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the request only while its failure offers "Check again"', async () => {
+    const { AxiosError } = await import('axios')
+    api.submit
+      .mockRejectedValueOnce(new AxiosError('timeout of 60000ms exceeded', 'ECONNABORTED'))
+      .mockRejectedValueOnce(new AxiosError('429', 'ERR_BAD_REQUEST', undefined, undefined, { status: 429, data: {} } as never))
+    const { result } = renderHook(() => useAskSession(null, true))
+    await act(() => result.current.sendAsk({ requestId: 'r-1', utterance: 'how much house red is left?' }))
+    expect(result.current.lastRequest?.requestId).toBe('r-1')
+    await act(() => result.current.sendAsk({ requestId: 'r-2', utterance: 'and the white?' }))
+    expect(result.current.failure?.kind).toBe('too_fast')
+    expect(result.current.lastRequest).toBeNull()
+  })
+
+  it('does not re-read a folio while a question is in flight', async () => {
+    const answer = deferred<AskFolio>()
+    api.submit.mockReturnValue(answer.promise)
+    const { result } = renderHook(() => useAskSession(null, true))
+    let asking!: Promise<boolean>
+    act(() => {
+      asking = result.current.sendAsk({ requestId: 'r-1', utterance: 'how much house red is left?' })
+    })
+    await act(() => result.current.checkFolio(folio({})))
+    expect(api.folio).not.toHaveBeenCalled()
+    await act(async () => answer.resolve(folio({})))
+    await asking
+  })
 })
+
+describe('what the panel says while it works', () => {
+  it('a folio re-read is busy but silent: no "Still answering" line', async () => {
+    const user = userEvent.setup()
+    const reread = deferred<AskFolio>()
+    api.submit.mockResolvedValue(folio({ utterance: 'what arrives today?' }))
+    api.folio.mockReturnValue(reread.promise)
+    renderPanel()
+    await user.type(screen.getByLabelText(/your question for the books/i), 'what arrives today?{Enter}')
+    await user.click(await screen.findByRole('button', { name: /check again/i }))
+
+    expect(screen.getByLabelText(/your question for the books/i)).toBeDisabled()
+    expect(screen.queryByTestId('askpanel-pending')).toBeNull()
+    await act(async () => reread.resolve(folio({ utterance: 'what arrives today?', answer: { kind: 'model_knowledge', sourceLabel: 'Not from the books', text: 'Two cases.' } as AskFolio['answer'] })))
+    expect(await screen.findByTestId('askpanel-folio')).toHaveTextContent('Two cases.')
+  })
+
+  it('a new draft clears the last refusal the moment it starts', async () => {
+    const user = userEvent.setup()
+    const second = deferred<Awaited<ReturnType<typeof proposeAction>>>()
+    api.propose.mockResolvedValueOnce({ proposed: false, reason: 'Could not resolve which vendor to order from.' }).mockReturnValueOnce(second.promise)
+    renderPanel()
+    await user.click(modeRadio(/propose an action/i))
+    const input = screen.getByLabelText(/the action to propose/i)
+    await user.type(input, 'reorder the Barolo{Enter}')
+    expect(await screen.findByTestId('askai-refusal')).toBeInTheDocument()
+
+    await user.type(input, ' from Acme{Enter}')
+    expect(await screen.findByTestId('askpanel-pending')).toHaveAttribute('data-kind', 'propose')
+    expect(screen.queryByTestId('askai-refusal')).toBeNull()
+    await act(async () => second.resolve({ proposed: true, proposal: reorder }))
+    expect(await screen.findByText(reorder.summary)).toBeInTheDocument()
+  })
+})
+
+function deferred<T>() {
+  let resolve!: (v: T) => void
+  let reject!: (e: unknown) => void
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
+}

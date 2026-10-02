@@ -107,7 +107,7 @@ const BRANCHES = [
 /* The Ask panel's session belongs to its owner (`useAskPanel`); here the test
    is the owner. */
 function OwnedAskPanel(props: Omit<AskPanelProps, 'session'>) {
-  const session = useAskSession();
+  const session = useAskSession(null, props.open);
   return <AskPanel {...props} session={session} />;
 }
 

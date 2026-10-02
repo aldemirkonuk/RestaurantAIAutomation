@@ -32,13 +32,15 @@
  * holds, so the ordinary case (nobody has ever switched away from Ask) never
  * spends a write. See the `hydratedMode` / `baselineModeRef` block below.
  *
- * WHAT A CLOSE KEEPS. Everything that was asked. Closing unmounts this body,
- * so the question in flight, its request id, the answers and the proposals
- * live in `useAskSession`, owned by `useAskPanel` (ADR 0145, founder,
- * 2026-10-01: "Keep answering (Recommended)"). Reopened mid-answer, the panel
- * says it is still answering and stays busy, so asking again cannot buy a
- * second answer. "Check again" re-sends the same id, which the gateway never
- * charges twice.
+ * WHAT A CLOSE KEEPS. Closing unmounts this body, so the question in flight,
+ * its request id, the answers and the proposals live in `useAskSession`,
+ * owned by `useAskPanel` (ADR 0145, founder, 2026-10-01: "Keep answering
+ * (Recommended)"; the session's own note lists exactly what a close keeps).
+ * While a question is in flight the panel says so and stays busy, so asking
+ * again cannot buy a second answer, reopened or not. "Check again" re-sends
+ * the same id, which the gateway never charges twice. The session is one
+ * person's in one house: a branch switch starts it again, and this body with
+ * it (it is keyed by the session's scope).
  *
  * WHERE IT SITS (ADR 0145, 2026-09-21 layout and 2026-09-25 fork 3):
  *   docked   at ≥ ~1280 px, in the counter's slot beside a live page; the
@@ -187,7 +189,12 @@ function AskPanelBody({
   // the session, which outlives this body; a close unmounts the body.
   const { folios, failure, lastRequest, refusal, error, proposals, pending, setProposals, clearRefusal } = session
   const busy = pending !== null
-  /** A send that finishes after a close must not clear a later open's typing or follow-up. */
+  /**
+   * An answer that lands after a close must not drop the follow-up a later
+   * open carried in: that is the owner's state, not this body's. Clearing
+   * `text` needs no such guard, since it is this body's own state and a close
+   * discards it.
+   */
   const mountedRef = useRef(true)
   useEffect(() => {
     mountedRef.current = true
@@ -292,10 +299,9 @@ function AskPanelBody({
   const sendAsk = useCallback(
     async (req: AskSubmit) => {
       const answered = await sessionAsk(req)
-      if (answered && mountedRef.current) {
-        setText('')
-        onDropFollowUp?.()
-      }
+      if (!answered) return
+      setText('')
+      if (mountedRef.current) onDropFollowUp?.()
     },
     [onDropFollowUp, sessionAsk],
   )
@@ -303,7 +309,7 @@ function AskPanelBody({
   const sendPropose = useCallback(
     async (words: string) => {
       const proposed = await sessionPropose(words, composeUtterance(words, sendContext ? pageContext : null))
-      if (proposed && mountedRef.current) setText('')
+      if (proposed) setText('')
     },
     [pageContext, sendContext, sessionPropose],
   )
@@ -489,7 +495,7 @@ function AskPanelBody({
           <section aria-label="Proposals waiting for a seal" className="mdv-askp__proposals">
             <p className="mdv-askp__eyebrow">Mudavym proposes · waiting for a seal</p>
             {proposals.map((p) => (
-              <ProposalCard key={p.actionId} proposal={p} candidates={candidates} />
+              <ProposalCard key={p.actionId} proposal={p} candidates={candidates} onSettled={session.settleProposal} />
             ))}
           </section>
         )}
@@ -545,7 +551,11 @@ const LABEL =
 
 export function AskPanel({ placement, open, onClose, followUp = null, onDropFollowUp, session }: AskPanelProps) {
   if (!open) return null
-  const body = <AskPanelBody open={open} followUp={followUp} onDropFollowUp={onDropFollowUp} session={session} />
+  // Keyed by whose sitting it is: a branch switch with the panel open starts
+  // a fresh body, which re-reads that house's proposals and pickers.
+  const body = (
+    <AskPanelBody key={session.scope ?? ''} open={open} followUp={followUp} onDropFollowUp={onDropFollowUp} session={session} />
+  )
 
   if (placement === 'overlay') {
     return (

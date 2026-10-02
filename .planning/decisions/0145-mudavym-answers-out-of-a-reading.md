@@ -2007,11 +2007,19 @@ duplicate paid work for one request id"). So the fix is client-side only.
   in flight. `useAskPanel` owns it, so it lives as long as the shell, or the
   legacy layout's `AskAiSurface`, not the panel's body. `AskPanel` takes it
   as a required `session` prop, so a new owner cannot forget it.
-- Reopened mid-answer, the panel says "Still answering “…”" (or "Still
-  drafting “…”") and stays busy, so the box cannot send a second question.
-  The session also refuses a second send while one is in flight.
-- An answer that lands after a close does not clear a later open's typing or
-  the follow-up it carried in.
+- From the moment a question or a draft is sent until it comes back, the
+  panel says "Still answering “…”. Closing the panel keeps it." (or "Still
+  drafting “…”") and stays busy. The line shows on every send, not only after
+  a reopen; reopened mid-answer, it is still there and the box is still
+  disabled, so the box cannot send a second question. The session also
+  refuses a second send while one is in flight. [Corrected in round 1: this
+  bullet said the line showed on reopening; it shows on every send. A folio
+  re-read ("Check again" on a pending folio) keeps the panel busy and shows
+  no line.]
+- An answer that lands after a close does not drop the follow-up a later
+  open carried in. [Corrected in round 1: this said it also did not clear a
+  later open's typing. That half was never at risk: the old body's `setText`
+  acts on its own unmounted state, and the box is disabled while busy.]
 - A reload still starts blank. The second option, which would have listed
   recent answers from the server on every open, was not chosen.
 - The same rule now covers the header's Counter button too (PR #575, merged
@@ -2028,8 +2036,73 @@ duplicate paid work for one request id"). So the fix is client-side only.
 - Pre-existing and unchanged: when the panel opens, the waiting proposals
   are re-read and replace the list. A proposal that lands while that read is
   still in flight can be dropped from view until the next open. The server
-  still holds it.
+  still holds it. [Round 1: this note left out that holding the proposals in
+  the session made a sealed or discarded card come back on reopening as a
+  live card to seal, until the re-read replaced the list, and for good when
+  the re-read failed. That was new with this branch, not pre-existing, and
+  round 1 fixed it (below).]
 - No browser render; vitest only.
+
+### Round 1, 2026-10-01 -- the session is one person's in one house
+
+A Sonnet verify of the first build returned FIX.
+
+**The house-switch defect (blocker, found and fixed).** The session took no
+person or house. The shell is mounted once by the layout route and a branch
+switch happens in place, so house A's answers, failure and kept request
+showed in house B. "Check again" then re-sent house A's request id in house
+B, and since the once-per-id key includes the house, that was a new paid
+call. A house-A answer in flight landed in house B's list. Before this
+branch a close had cleared all of it. Now `useAskPanel` keys the session by
+`<person>@<house>`, the key "the house said" uses (`houseSaid.ts`), and a
+change starts the session again. As there, the first naming (no one yet,
+then someone) keeps what is there, since it is the same sitting. An epoch
+guards every answer, refusal, proposal and failure: one begun under the old
+key lands nowhere, and its end does not let go of a newer request's gate.
+The answer itself is still in that house's book at /ask. With the panel
+open, a switch also starts a fresh panel body, which re-reads the new
+house's waiting proposals and pickers. The follow-up "Keep asking" carried
+in is dropped, since it names a folio in the other house.
+
+**What a close keeps, exactly.** The ruling keeps the question in flight and
+its answer. The session keeps:
+
+- the question in flight, its request id and the answers (the last five);
+- a failure that offers "Check again" (a timeout, no reply, or a 503 other
+  than "not open yet"), with the request it re-sends;
+- the proposer's refusal of a drafted action, with the words it declined,
+  until the next draft or "Ask the books this instead" ("an action being
+  drafted is kept the same way");
+- the proposals still waiting for a seal.
+
+A close drops a failure with nothing to retry (429 "10 a minute", "not open
+yet", refused, rejected, any other failed request) and the proposer's
+transport error, so they no longer come back hours later or hide the
+examples. One that lands while the panel is closed is the outcome of the
+question in flight, so it is shown on the next open and dropped at that
+close. A proposal that was applied, discarded, already handled or failed
+leaves the list at the close, or at once if it settled while the panel was
+closed (the card reports it from its handler, so a reply that arrives after
+the close still counts). A reopen never shows it as a card to seal, even
+when the re-read fails. While the panel stays open, a done card keeps
+showing its outcome, as before.
+
+**Guards pinned.** The verify's mutations M1-M6 had all stayed green: no
+in-flight gate in `sendPropose` (M1) or `checkFolio` (M4), the pending line
+also shown for a re-read (M3), the refusal not cleared when a draft starts
+(M5), the failure not cleared on "Check again" (M6). Each now has a test
+that turns red. M2, the mounted guard on clearing the box after a draft, is
+removed rather than pinned: it guarded the body's own state, which a close
+discards. Every guard this round added is mutated too (listed in the review
+trail). One, an epoch check on a folio re-read's answer, survived as an
+equivalent mutant and is removed: a scope change empties the answers, and a
+re-read only replaces an answer already in the list.
+
+**Corrected claims.** The first commit and the tech-debt fragment said six
+tests render the real owner; five did, and the sixth calls `useAskSession`
+through `renderHook`. They said each guard was mutation-tested; M1-M6
+survived. Both are corrected here and in the fragment; the first commit is
+not rewritten.
 
 ## Review trail
 
@@ -2055,4 +2128,5 @@ duplicate paid work for one request id"). So the fix is client-side only.
 | 2026-09-22 | Aldemir (founder), round 6z, relayed by the orchestrating session (recorded 2026-09-28 from preserved snapshot `2f9a1e0d3`) | His picks, verbatim: "/ask waits for new Settings (Recommended)" (Settings reach); "Leave it out (Recommended)" (labels given while opted out); "Add a plain line now (Recommended)" (the AI model provider, over the lawyer-review default). See the round-6z amendment. |
 | 2026-09-28 | `fix/ask-round-6z` lane (build, against `main` 0d7af2975) | Answer 1 met by #419, nothing built for it; the snapshot's 503 gate is not carried. Answer 2 built as `20261203100000`, with the backfill changed so it cannot export an opted-out label now that production may hold labels (PGlite 17/17 on the five ask migrations over stubs; mutations listed in the amendment). Answer 3 built in both copies (vitest 7/7). The label-disclosure gap filed as OD-182, open. |
 | 2026-10-01 | Aldemir (founder), `AskUserQuestion` "If someone closes the Ask panel while it is still answering, what should happen to that question?" | His pick, verbatim: "Keep answering (Recommended)" (rejected: "Keep, plus recent answers", "Cancel on close", "Ask before closing"). See "Amendment, 2026-10-01". |
-| 2026-10-01 | `fix/ask-close-no-second-spend` lane (build, against `main` 5a330a88e) | Built `useAskSession`, owned by `useAskPanel`. `AskPanel.test.tsx` gained 6 tests rendering the real owner; the affected suites ran 8 files / 126 tests green. Six mutations each turned at least one new test red: the body owning a fresh session (5 red), no in-flight gate (1), "Check again" minting a new id (1), no mounted guard (1), no pending line (5), and the body not busy from the session (2). Files restored byte-identically. Web eslint clean on the 7 changed files. Web `tsc` is clean apart from `passkeys.ts`'s missing `@simplewebauthn/browser`, which this worktree's symlinked `node_modules` lacks; this diff does not touch that file. |
+| 2026-10-01 | `fix/ask-close-no-second-spend` lane (build, against `main` 5a330a88e) | Built `useAskSession`, owned by `useAskPanel`. `AskPanel.test.tsx` gained 6 tests rendering the real owner [corrected in round 1: five render the real owner, the sixth calls `useAskSession` through `renderHook`]; the affected suites ran 8 files / 126 tests green. Six mutations each turned at least one new test red: the body owning a fresh session (5 red), no in-flight gate (1), "Check again" minting a new id (1), no mounted guard (1), no pending line (5), and the body not busy from the session (2). Files restored byte-identically. Web eslint clean on the 7 changed files. Web `tsc` is clean apart from `passkeys.ts`'s missing `@simplewebauthn/browser`, which this worktree's symlinked `node_modules` lacks; this diff does not touch that file. |
+| 2026-10-01 | `fix/ask-close-no-second-spend` round 1 (fix, after a Sonnet verify returned FIX) | The house-switch defect found and fixed: the session is keyed `<person>@<house>`, with an epoch guard, the open body keyed by the same scope, and the follow-up dropped on a switch. What a close keeps narrowed, and settled proposals leave at the close through `ProposalCard`'s `onSettled` (see "Round 1"). `AskPanel.test.tsx` went from 42 to 68 tests; round 0's 8 files ran 152 tests green, and 12 files with every other suite that mounts the shell or `ProposalCard` ran 210 green. 32 mutations, each red, each file restored byte-identically: round 0's six re-run (12, 1, 1, 1, 14 and 5 red); the verify's M1 and M3-M6 (1 each); eleven on the scope and epoch (B1-B11: 9, 2, 1, 1, 2, 1, 1, 1, 2, 1, 1); ten on what a close keeps (C1-C10: 2, 1, 1, 1, 3, 3, 1, 4, 4, 1). M2's guard removed; an epoch check on a re-read's answer survived a first pass as an equivalent mutant and was removed. Web eslint 0 errors on the 8 touched source and test files (one `ProposalCard` warning, also on `main`). Web `tsc`: only the pre-existing `passkeys.ts` error. Decision claims 813/813. No browser render. |
