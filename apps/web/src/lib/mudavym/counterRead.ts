@@ -67,6 +67,8 @@ export interface CounterThreadRow {
   intent: string | null;
   aiGenerated: boolean;
   createdAt: string | null;
+  /** The order the thread is about — the key Communications opens a reply by. */
+  orderId: string | null;
 }
 
 export interface CounterIdentityRow {
@@ -191,6 +193,36 @@ export const REGISTER_ROOM: Record<CounterRegisterKey, { name: string; path: str
   invitations: { name: 'Team', path: '/team' },
   proposals: null,
 };
+
+/**
+ * The room for ONE act, deep-linked to the record the act names. Why:
+ * "Open in <Room>" landed on the bare room, so a reply waiting opened
+ * /communications with no thread chosen (DASH-W16e, founder-approved page
+ * walk-through 2026-10-01). `null` exactly where REGISTER_ROOM is null. The
+ * "N more on <Room>" line lists the whole register and stays on REGISTER_ROOM.
+ */
+export function roomForAct(
+  key: CounterRegisterKey,
+  row: CounterRowByKey[CounterRegisterKey],
+): { name: string; path: string } | null {
+  const room = REGISTER_ROOM[key];
+  if (!room) return null;
+  const q = encodeURIComponent;
+  switch (key) {
+    case 'orders':
+      return { ...room, path: `/orders?order=${q((row as CounterOrderRow).id)}` };
+    case 'deliveries':
+      return { ...room, path: `/receiving?order=${q((row as CounterDeliveryRow).orderId)}` };
+    case 'credits':
+      return { ...room, path: `/receipts?tab=credits&credit=${q((row as CounterCreditRow).id)}` };
+    case 'threads': {
+      const orderId = (row as CounterThreadRow).orderId;
+      return orderId ? { ...room, path: `/communications?reply=${q(orderId)}` } : room;
+    }
+    default:
+      return room;
+  }
+}
 
 /**
  * The counter's head, computed from the registers actually returned and their

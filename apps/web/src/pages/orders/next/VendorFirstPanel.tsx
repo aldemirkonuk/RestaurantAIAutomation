@@ -63,8 +63,8 @@ export function VendorFirstPanel({ open, onClose, reason }: VendorFirstPanelProp
       <div style={{ fontFamily: SANS, fontSize: 13, lineHeight: 1.55, color: 'var(--ink-2, #4F473C)' }}>
         <p data-testid="vendor-first-reason">
           {reason === 'refused'
-            ? 'The order was not placed. The gateway refused it because this house has no active vendor — the one it was addressed to may have been deactivated since this page loaded. Nothing was written and the lines you wrote are still here.'
-            : 'An order needs someone to send it to, and there is no vendor in the book yet. Add at least one distributor or supplier before writing an order.'}
+            ? 'The order was not placed. Mudavym refused it because this house has no active vendor — the one it was addressed to may have been deactivated since this page loaded. Nothing was written and the lines you wrote are still here.'
+            : 'An order needs someone to send it to, and there is no vendor in the book yet. Add at least one vendor before writing an order.'}
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
           <button

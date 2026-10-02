@@ -227,6 +227,12 @@ export interface OrdersNextData {
    * context) — never "no orders". The page must not claim an empty book on it.
    */
   hasData: boolean;
+  /**
+   * When the rows on screen were last read (ms epoch), or null before the
+   * first read. A re-read that fails keeps the last rows — the page says how
+   * old they are instead of calling them unknown (ORD-W15).
+   */
+  dataUpdatedAt: number | null;
   isLoading: boolean;
   isError: boolean;
   errorMessage: string | null;
@@ -333,7 +339,9 @@ export function toRow(o: OrderWire, providerNameById: Map<string, string>): Orde
    *
    *   providerName  the vendor was ALREADY resolved from `providerId` through
    *                 the providers query, so the page was right by accident —
-   *                 `rawProvider` never once won that `??`.
+   *                 `rawProvider` never once won that `??`. [changed
+   *                 2026-10-01, ORD-W4: the route now joins `providers` and
+   *                 sends `providerName`; it is read first, below.]
    *   producer      always null, so the row's producer line never rendered.
    *   notes         always null, so the note clause never rendered.
    *
@@ -356,7 +364,15 @@ export function toRow(o: OrderWire, providerNameById: Map<string, string>): Orde
     orderNumber: o.orderNumber ?? null,
     wineName: o.wineName && !isUuid(o.wineName) ? o.wineName : null,
     producer: null,
-    providerName: providerNameById.get(o.providerId) ?? null,
+    // The route's own join first (ORD-W4, 2026-10-01): `GET /procurement/orders`
+    // now sends `providerName`, and a vendor with no house of its own is absent
+    // from the house's providers list, so the list alone printed "—" for a
+    // vendor the order names. The list stays as the fallback for a route that
+    // did not join (the key absent).
+    providerName:
+      (typeof o.providerName === 'string' && o.providerName.trim() ? o.providerName : null) ??
+      providerNameById.get(o.providerId) ??
+      null,
     quantity,
     unitPrice,
     bottlesTotal,
@@ -487,10 +503,11 @@ export function useOrdersNextData(): OrdersNextData {
       cancelledCount,
       month,
       hasData: known,
+      dataUpdatedAt: known && ordersQuery.dataUpdatedAt ? ordersQuery.dataUpdatedAt : null,
       isLoading: ordersQuery.isLoading,
       isError: ordersQuery.isError,
       errorMessage: ordersQuery.isError ? err?.message ?? 'request failed' : null,
       refetch: () => void ordersQuery.refetch(),
     };
-  }, [ordersQuery.data, ordersQuery.isLoading, ordersQuery.isError, ordersQuery.error, ordersQuery.refetch, providerNameById, gateQuery.data, gateQuery.isError, gateQuery.error]);
+  }, [ordersQuery.data, ordersQuery.isLoading, ordersQuery.isError, ordersQuery.error, ordersQuery.refetch, ordersQuery.dataUpdatedAt, providerNameById, gateQuery.data, gateQuery.isError, gateQuery.error]);
 }

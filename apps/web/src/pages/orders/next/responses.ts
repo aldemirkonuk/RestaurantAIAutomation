@@ -260,7 +260,7 @@ export function stepLabel(index: number, total: number): string {
  * is a decision nobody can audit, and the vendor gets told nothing.
  */
 export const REJECT_NEEDS_A_REASON =
-  'A rejection needs a reason in words. The gateway will accept one without it, ' +
+  'A rejection needs a reason in words. Mudavym would take one without it, ' +
   'and the order then carries no record of why it was refused — so this sheet ' +
   'will not send one.';
 

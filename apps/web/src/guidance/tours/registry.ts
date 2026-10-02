@@ -62,6 +62,6 @@ export const TOUR_LABELS: Record<PageTourId, string> = {
   communications: 'Communications',
   reports: 'Reports dashboard',
   sommelier: 'Sommelier AI',
-  'settings-services': 'Services & permissions',
+  'settings-services': 'Connections',
   calendar: 'Calendar',
 }
