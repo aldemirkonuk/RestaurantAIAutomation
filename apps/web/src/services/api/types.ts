@@ -349,6 +349,23 @@ export interface ShelfReceived {
   backorderBottles?: number | null;
 }
 
+/**
+ * A pending order's flag reasons, as the gateway names them (ADR 0256):
+ * the house's `price_jump` rule fired; it needs a signature (parked in
+ * APPROVAL_NEEDED, or any approval rule fired); over the house's
+ * `manager_ceiling`; the item is below its minimum or out of stock.
+ */
+export type PendingFlagReason = 'price_jump' | 'needs_signature' | 'manager_ceiling' | 'running_out';
+
+export interface PendingOrderPriority {
+  /** At least one reason held. */
+  flagged: boolean;
+  /** The reasons that held, in the founder's order. */
+  reasons: PendingFlagReason[];
+  /** Reasons the gateway could not check (a read failed) — never "no". */
+  unknown: PendingFlagReason[];
+}
+
 export interface Order {
   id: string;
   orderNumber: string;
@@ -373,6 +390,14 @@ export interface Order {
   completedAt?: string;
   isEmergency?: boolean;
   priorityLevel?: number;
+  /**
+   * Why this order should be looked at first — ADR 0256 (founder,
+   * 2026-10-01). Sent only by `GET /procurement/orders/pending`, which also
+   * puts flagged orders first, then the rest, each group oldest first. KEY
+   * ABSENT = this route does not compute it. Words, never figures, so it holds
+   * for a role that does not see money. Unrelated to `priorityLevel`.
+   */
+  priority?: PendingOrderPriority;
   /** Joined from `inventory.wine_name`. There is no producer on the wire. */
   wineName?: string;
   /**
