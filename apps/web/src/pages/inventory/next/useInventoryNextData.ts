@@ -393,11 +393,24 @@ export function chipMatch(row: InvRow, chip: ChipId, now = Date.now()): boolean 
 
 /* ── zone and type filters ───────────────────────────────────────────────── */
 
-/** `''` = every zone; `'none'` = rows with no bottle in any zone. */
+/** INV-W34: what a title that no zone holds a bottle of reads. A stock of 0
+ *  is nothing on hand, not a zone; stock above 0 is bottles outside every
+ *  zone; an unread stock cannot say which, so the caller shows —. */
+export function noZoneWord(stock: number | null): string | null {
+  if (stock === null) return null;
+  return stock > 0 ? 'Unassigned' : 'none on hand';
+}
+
+/** `''` = every zone; `'none'` = rows with bottles outside every named zone
+ *  (INV-W34): lots with no location, or read stock that no lot holds. A title
+ *  with nothing on hand is in no filter but "every zone". */
 export function inZone(row: InvRow, zone: string): boolean {
   if (zone === '') return true;
   if (row.zones === null) return false;
-  if (zone === 'none') return !row.zones.some((z) => z.locationId !== null && z.qty > 0);
+  if (zone === 'none') {
+    if (row.zones.some((z) => z.locationId === null && z.qty > 0)) return true;
+    return !row.zones.some((z) => z.qty > 0) && noZoneWord(row.stock) === 'Unassigned';
+  }
   return row.zones.some((z) => z.locationId === zone && z.qty > 0);
 }
 

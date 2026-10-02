@@ -314,12 +314,64 @@ describe('RowDropdown counts read with grouped digits, as money does (INV-W33)',
       renderDrop();
       const drop = screen.getByTestId('row-dropdown');
       expect(drop.querySelector('td[data-label="At the door"]')!.textContent).toBe('1,240');
-      expect(drop.querySelector('.iv-bars i')!.getAttribute('title')).toBe('2026-09-29: 1,240');
+      expect(drop.querySelector('.iv-bars i')!.getAttribute('title')).toBe('29 Sept 2026: 1,240');
       const heat = [...drop.querySelectorAll('.iv-heat-c')].map((c) => c.getAttribute('title') ?? '');
       expect(heat.filter((t) => t.endsWith(' — 1,240'))).toHaveLength(1);
       expect(drop.textContent).toContain('1,000 lots, the latest sold');
     } finally {
       reads.detail = {};
+      reads.record = {};
+    }
+  });
+});
+
+describe('RowDropdown says what a title no zone holds reads (INV-W34)', () => {
+  const where = () => {
+    const dt = within(screen.getByTestId('row-dropdown')).getByText('Where');
+    return dt.nextElementSibling!.textContent;
+  };
+
+  it('reads "none on hand" for a stock of 0, not a zone', () => {
+    renderDrop({ row: row({ stock: 0, zones: [] }) });
+    expect(where()).toBe('none on hand');
+  });
+
+  it('reads "Unassigned" for bottles on hand that no zone holds', () => {
+    renderDrop({ row: row({ stock: 4, zones: [{ locationId: 'z1', qty: 0 }] }) });
+    expect(where()).toBe('Unassigned');
+  });
+
+  it('shows — when the stock itself was not read, since it cannot say which', () => {
+    renderDrop({ row: row({ stock: null, zones: [] }) });
+    expect(where()).toBe('—');
+  });
+});
+
+describe('RowDropdown day bars read dates the way the rest of the page does (INV-W35)', () => {
+  it('writes the scale, the chart label and each bar title as "29 Sept 2026", not ISO', () => {
+    reads.record = {
+      data: {
+        books: [
+          {
+            book: 'pos',
+            readable: true,
+            ledger: [
+              { at: '2026-09-29T19:00:00Z', qty: 2, unitPrice: 10 },
+              { at: '2026-09-30T20:00:00Z', qty: 3, unitPrice: 10 },
+            ],
+          },
+        ],
+      },
+    };
+    try {
+      renderDrop();
+      const drop = screen.getByTestId('row-dropdown');
+      const bars = drop.querySelector('.iv-bars')!;
+      expect(bars.getAttribute('aria-label')).toBe('Sold per day from 29 Sept 2026 to 30 Sept 2026');
+      expect([...bars.querySelectorAll('i')].map((i) => i.getAttribute('title'))).toEqual(['29 Sept 2026: 2', '30 Sept 2026: 3']);
+      expect(drop.querySelector('.iv-barscale')!.textContent).toBe('29 Sept 202630 Sept 2026');
+      expect(drop.textContent).not.toMatch(/\d{4}-\d{2}-\d{2}/);
+    } finally {
       reads.record = {};
     }
   });

@@ -43,6 +43,7 @@ import {
   EM,
   inZone,
   latestCount,
+  noZoneWord,
   matchesSearch,
   ofType,
   ALL_WINE,
@@ -299,7 +300,9 @@ export default function InventoryNext() {
           value: (r) => {
             if (r.zones === null) return '';
             const first = r.zones.find((z) => z.locationId !== null && z.qty > 0);
-            return first ? zoneName(first.locationId) : 'Unassigned';
+            if (first) return zoneName(first.locationId);
+            if (r.zones.some((z) => z.qty > 0)) return 'Unassigned';
+            return noZoneWord(r.stock) ?? '';
           },
         },
         { header: 'Title', value: (r) => r.name ?? '' },

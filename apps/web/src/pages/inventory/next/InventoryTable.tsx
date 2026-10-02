@@ -18,7 +18,7 @@
 import { Fragment } from 'react';
 import { HousePriceCell, type AdviceLoad } from '../command/HousePriceCell';
 import RowDropdown, { type RowDropdownProps } from './RowDropdown';
-import { cellMoney, EM, fmtCount, fmtPace, SEVERITY_GROUP, severity, typeLabel, type InvRow } from './useInventoryNextData';
+import { cellMoney, EM, fmtCount, fmtPace, noZoneWord, SEVERITY_GROUP, severity, typeLabel, type InvRow } from './useInventoryNextData';
 
 export interface InventoryTableProps extends Omit<RowDropdownProps, 'row'> {
   rows: InvRow[];
@@ -64,7 +64,7 @@ function ParBar({ row }: { row: InvRow }) {
 function zoneCell(row: InvRow, zoneName: (id: string | null) => string, unavailable: boolean): string {
   if (row.zones === null || unavailable) return EM;
   const held = row.zones.filter((z) => z.qty > 0);
-  if (held.length === 0) return 'in no zone';
+  if (held.length === 0) return noZoneWord(row.stock) ?? EM;
   return held.map((z) => zoneName(z.locationId)).join(' · ');
 }
 

@@ -33,6 +33,7 @@ import {
   EM,
   fmtCount,
   fmtPace,
+  noZoneWord,
   sold30,
   suggestedToPar,
   useRowDetail,
@@ -239,7 +240,7 @@ function WhereTheCountComesFrom({
           {zones === null
             ? 'could not be read'
             : zones.length === 0
-              ? 'in no zone'
+              ? (noZoneWord(row.stock) ?? EM)
               : zones.map((z) => `${zoneName(z.locationId)} ${fmtCount(z.qty)}`).join(' · ')}
         </KV>
         <KV k="Last counted">{row.lastCountedAt ? fmtWhen(row.lastCountedAt) : 'never counted'}</KV>
@@ -297,19 +298,19 @@ function HowFastItPours({ row }: { row: InvRow }) {
         </p>
       ) : (
         <>
-          <div className="iv-bars" role="img" aria-label={`Sold per day from ${vel.from} to ${vel.to}`}>
+          <div className="iv-bars" role="img" aria-label={`Sold per day from ${shortDate(vel.from)} to ${shortDate(vel.to)}`}>
             {vel.days.map((d) => (
               <i
                 key={d.date}
-                title={`${d.date}: ${fmtCount(d.qty)}`}
+                title={`${shortDate(d.date)}: ${fmtCount(d.qty)}`}
                 data-peak={d.qty >= maxDay * 0.75 ? 'true' : undefined}
                 style={{ height: `${Math.max((d.qty / maxDay) * 100, 4)}%` }}
               />
             ))}
           </div>
           <div className="iv-barscale">
-            <span>{vel.from}</span>
-            <span>{vel.to}</span>
+            <span>{shortDate(vel.from)}</span>
+            <span>{shortDate(vel.to)}</span>
           </div>
           <p className="iv-note">
             {vel.days.length} day{vel.days.length === 1 ? '' : 's'} of evidence{vel.clipped ? ', capped at the last 14' : ''}.

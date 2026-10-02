@@ -835,3 +835,52 @@ describe('counts read with grouped digits, as money does (INV-W33)', () => {
     ok.mockRestore();
   }, 20000);
 });
+
+describe('a title no zone holds reads "none on hand" or "Unassigned" (INV-W34)', () => {
+  const rowsOf = () => [
+    row({ id: 'cave', name: 'Alpha', stock: 5, zones: [{ locationId: 'z1', qty: 5 }] }),
+    row({ id: 'loose', name: 'Beta', stock: 2, zones: [{ locationId: null, qty: 2 }] }),
+    row({ id: 'split', name: 'Gamma', stock: 5, zones: [{ locationId: 'z1', qty: 3 }, { locationId: null, qty: 2 }] }),
+    row({ id: 'nolots', name: 'Delta', stock: 4, zones: [] }),
+    row({ id: 'empty', name: 'Epsilon', stock: 0, standing: 'out', zones: [] }),
+    row({ id: 'unread', name: 'Zeta', stock: null, standing: 'unknown', zones: [] }),
+    row({ id: 'unreadloose', name: 'Eta', stock: null, standing: 'unknown', zones: [{ locationId: null, qty: 3 }] }),
+  ];
+  const zoneOf = (id: string) => screen.getByTestId(`inv-row-${id}`).querySelector('td[data-label="Zone"]')!.textContent;
+  const shown = () =>
+    [...screen.getByTestId('inventory-table').querySelectorAll('tbody tr[data-testid^="inv-row-"]')]
+      .map((tr) => tr.getAttribute('data-testid')!.replace('inv-row-', ''))
+      .sort();
+
+  it('names nothing on hand as such, and bottles outside every zone as Unassigned', () => {
+    mock.data = data({ rows: rowsOf() });
+    renderPage();
+    expect(zoneOf('cave')).toBe('Cave');
+    expect(zoneOf('loose')).toBe('Unassigned');
+    expect(zoneOf('nolots')).toBe('Unassigned');
+    expect(zoneOf('empty')).toBe('none on hand');
+    expect(zoneOf('unread')).toBe('—');
+    expect(zoneOf('unreadloose')).toBe('Unassigned');
+    expect(screen.getByTestId('inventory-table').textContent).not.toContain('in no zone');
+  });
+
+  it('filters Unassigned to titles with bottles outside a zone, never to empty ones', () => {
+    mock.data = data({ rows: rowsOf() });
+    renderPage();
+    fireEvent.change(screen.getByRole('combobox', { name: 'Zone' }), { target: { value: 'none' } });
+    expect(shown()).toEqual(['loose', 'nolots', 'split', 'unreadloose']);
+  });
+
+  it('writes the same words in the count sheet export', async () => {
+    exportSpy.mockClear();
+    mock.data = data({ rows: rowsOf() });
+    renderPage();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Export count sheet' }));
+    });
+    const file = exportSpy.mock.calls[0][0] as { rows: InvRow[]; columns: { header: string; value: (r: InvRow) => unknown }[] };
+    const loc = file.columns.find((c) => c.header === 'Location')!;
+    const byId = Object.fromEntries(file.rows.map((r) => [r.id, loc.value(r)]));
+    expect(byId).toEqual({ cave: 'Cave', loose: 'Unassigned', split: 'Cave', nolots: 'Unassigned', empty: 'none on hand', unread: '', unreadloose: 'Unassigned' });
+  });
+});
