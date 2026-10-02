@@ -1,9 +1,12 @@
 import type { TourDefinition } from '../tours/registry'
 
+// Steps follow the job, not the screen (ADR 0251 D3). Each element must exist
+// on the live page; a step whose element is missing is left out by TourEngine.
+
 export const inventoryTip = {
   pageId: 'inventory' as const,
-  title: 'Inventory Command',
-  body: 'Read cellar health, clear the attention queue, then act from the toolbar.',
+  title: 'Inventory',
+  body: 'What is on hand, what is running low, and what needs a look before service.',
 }
 
 export const inventoryTour: TourDefinition = {
@@ -11,27 +14,27 @@ export const inventoryTour: TourDefinition = {
   steps: [
     {
       element: '[data-tour="inventory-filters"]',
-      title: 'Inventory overview',
+      title: 'Know what you hold',
       description:
-        'See total wines and bottles on hand before you dig into filters or the table.',
+        'How many wines and bottles the house holds right now.',
     },
     {
-      element: '[data-tour="inventory-low-stock"]',
-      title: 'Health signals',
+      element: '[data-tour="inventory-below-par"]',
+      title: 'Find what is running low',
       description:
-        'Tap Below par or Runway alerts to spotlight stockouts before service.',
+        'Tap Below par to show only the wines under their par, so you can order before service.',
     },
     {
       element: '[data-tour="inventory-attention"]',
-      title: 'Needs attention',
+      title: 'Clear what needs attention',
       description:
-        'Match invoices and jump filters for reconcile / low / critical work without leaving the page.',
+        'Invoices to match and POS lines moving no stock show here when there are any. Each chip after them shows only the wines it names.',
     },
     {
       element: '[data-tour="inventory-actions"]',
-      title: 'Take action',
+      title: 'Count the cellar or add a wine',
       description:
-        'Switch Table vs Cellar Map, export count sheets, manage locations, or add a wine.',
+        'Switch between the table and the cellar map, print a count sheet, or add a wine.',
     },
   ],
 }
