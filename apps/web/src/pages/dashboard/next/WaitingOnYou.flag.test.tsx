@@ -3,7 +3,8 @@
  *
  * The gateway decides the order and the flags; the card must neither re-sort
  * the rows nor invent a flag, and it must say a reason in WORDS — never a
- * figure — so the line holds for a role that does not see money (DASH-W22).
+ * figure — so the line holds for a role that does not see money (DASH-W22,
+ * recorded on `origin/fix/review-dashboard`, not yet on main).
  */
 
 import { describe, expect, it, vi } from 'vitest';
@@ -93,6 +94,25 @@ describe('WaitingFlag on a row', () => {
     ]);
     expect(screen.queryByText('Focus on this')).toBeNull();
     expect(screen.queryByText(/Couldn’t check/)).toBeNull();
+  });
+
+  it('shows a flagged row a reason or no mark, never the mark alone', () => {
+    // Unreachable from the gateway (flagged means a reason was found), pinned
+    // so a drift there cannot print "Focus on this" with nothing after it.
+    mount([
+      order('a', 'Amarone', { priority: { flagged: true, reasons: [], unknown: [] } }),
+      order('b', 'Barolo', {
+        priority: { flagged: true, reasons: ['toString' as never], unknown: [] },
+      }),
+      order('c', 'Chianti', {
+        priority: { flagged: true, reasons: ['not_a_reason' as never, 'running_out'], unknown: [] },
+      }),
+    ]);
+    expect(screen.getByRole('button', { name: /Amarone/ })).not.toHaveTextContent('Focus on this');
+    expect(screen.getByRole('button', { name: /Barolo/ })).not.toHaveTextContent('Focus on this');
+    const chianti = screen.getByRole('button', { name: /Chianti/ });
+    expect(chianti).toHaveTextContent('Focus on this');
+    expect(screen.getByText('running out').textContent).toBe('running out');
   });
 
   it('says what it could not check, and does not mark the row for it', () => {

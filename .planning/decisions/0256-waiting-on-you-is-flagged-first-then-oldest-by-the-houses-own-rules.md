@@ -8,7 +8,8 @@
 
 ## Context
 
-Line numbers are at c14aeca03, this branch's base.
+Line numbers in this section are at 5a330a88e, this branch's merge-base with
+main. Elsewhere they are as this branch leaves the files.
 
 `GET /procurement/orders/pending` read the queue **newest first**
 (`procurement.service.ts:7089`, `.order("created_at", { ascending: false })`),
@@ -32,7 +33,7 @@ holds the seal (`assertApprovalAllowed`, `procurement.service.ts:4374`), and its
 
 ### Round 2: the build's forks, 2026-10-01
 
-Asked after the first build (c4731a3cb). Each question, the answer chosen, and
+Asked after this branch's first build. Each question, the answer chosen, and
 the options he turned down are quoted as they were put to him. Answers 5-7
 confirm what was built. Answers 8-11 are about the approve gate; 10 and 11 were
 asked after 8 and 9, to correct one premise and settle one detail.
@@ -75,8 +76,9 @@ asked after 8 and 9, to correct one premise and settle one detail.
 
 **Correction: answer 8's chosen option rested on a false premise.** It says
 "the same way an untestable rule is handled today", and this ADR's tech-debt
-entry said the same ("as an untestable rule already does"). Neither was true at
-c4731a3cb. A rule that cannot be tested holds nothing: `decideApproval` puts it
+entry said the same ("as an untestable rule already does"). Neither was true
+then, and this branch does not change the gate. A rule that cannot be tested
+holds nothing: `decideApproval` puts it
 in `untestable` and leaves `requiredRole` alone
 (`settings/approval-thresholds.ts:154-157` for `manager_ceiling`, `:169-172`
 for `new_vendor`), and the gate seals on `if (!decision.requiredRole) return;`
@@ -110,7 +112,8 @@ answer 9 counts.
    likely to be holding something up, and the card's own comment already
    promised the opposite.
 2. **Most money first** — rejected. It ranks by a figure a staff viewer is not
-   shown (DASH-W22), and an expensive routine order would sit above a cheap one
+   shown (DASH-W22, recorded on `origin/fix/review-dashboard`, not yet on
+   main), and an expensive routine order would sit above a cheap one
    whose item is out.
 3. **Large amount gets its own setting** — rejected. The house already states
    its large-amount line as `manager_ceiling`; a second number would be a
@@ -168,13 +171,25 @@ twice a minute per tab. A failed read is still a 503 there, never `{ count: 0 }`
   slices `listPendingOrders`), the phone's Supply "Open" list
   (`apps/mobile/app/(tabs)/supply/index.tsx`), and the approval cards the
   legacy `OneTapActionCenter` derives. The phone feed (`mobile.service.ts`
-  `getFeed`) re-sorts by its own score and is unchanged. The `priority` key is
-  additive; no consumer reads it except the card. The phone does not show the
-  flag yet.
+  `getFeed`) re-sorts by its own score, and that score caps age at 48 hours
+  (`private score(`, `mobile.service.ts:262-287`, `Math.min(ageHours, 48)` at
+  `:286`). Among approvals of the same feed priority, those younger than that
+  still sort by age, oldest first, as before. Those 48 hours old or more all
+  score the same, and the stable
+  sort (`:164`) keeps them in the order the queue sent: now oldest first, where
+  it was newest first. The flag does not enter that score. The `priority` key
+  is additive; no consumer reads it except the card. The phone does not show
+  the flag yet.
 - The queue now costs one rules read per call (`ApprovalThresholdsService.read`,
   which also runs its retrospective), plus two small reads per pending order
   when a rule is on. The pending list is short by its status filter. A
   rules-only read is a possible later saving.
+- Two callers pay that cost without reading the flag: the phone feed
+  (`getFeed`, `mobile.service.ts:34`) and the house counter, which takes the
+  first five (`house-counter.service.ts:175`). `readPendingOrderRows` has no
+  row limit, so both pay the per-order reads for every pending order. Left as
+  is on this branch; a flag-free read for those two callers is the fix if the
+  cost shows.
 - **Ruled 2026-10-01, not built here (answers 8 and 10):** the approve gate
   lets the seal through whenever an enabled rule cannot be tested: a FAILED
   last-price read reads as "no earlier price", and a missing total or a failed
@@ -189,7 +204,8 @@ twice a minute per tab. A failed read is still a 503 there, never `{ count: 0 }`
   price" disagree. The gate (and so this flag) compares with the most recently
   requested OTHER order for the item, any status, any age, even one requested
   after this one. `approvalGate` (`GET /procurement/order-approval-gate`, which
-  DASH-W21's card reads for "held") compares with the order just before it,
+  DASH-W21's card reads for "held"; DASH-W21 is recorded on
+  `origin/fix/review-dashboard`, not yet on main) compares with the order just before it,
   inside a 365-day window, as the settings retrospective does. On such an order
   the card's "held" line and this flag can disagree. The ruling is one meaning
   everywhere: the last order placed before this one that went ahead, meaning
@@ -213,3 +229,4 @@ twice a minute per tab. A failed read is still a 503 there, never `{ count: 0 }`
 | 2026-10-01 | — | Created, Locked on the founder's four answers |
 | 2026-10-01 | — | Round 2 recorded: answers 5-7 confirm the build; 8-9 ruled for the gate, not built here; question 8's premise found wrong and its consequence filed open |
 | 2026-10-01 | — | Answers 10-11 recorded: the corrected question makes any untestable rule park for its role; "went ahead" states fixed for the last price. Both ruled, not built here |
+| 2026-10-01 | Sonnet verify | FIX-NEEDED. The `id` tie-break was pinned by nothing: the first build's "27 mutations all turned red" held for those 27, none of which touched it. Now pinned by a tied-`created_at` spec and the claim, each mutation-tested. The tech-debt entries' own proposals are marked "proposed, not ruled". Merge-base, phone-feed and DASH citations corrected |

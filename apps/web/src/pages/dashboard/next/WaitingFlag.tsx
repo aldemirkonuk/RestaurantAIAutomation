@@ -5,7 +5,8 @@
  *
  * The gateway decides the flags and the order; this only says them. It prints
  * the reasons as WORDS and never a figure, so the same line holds for a role
- * that does not see money (DASH-W22). A reason the gateway could not check is
+ * that does not see money (DASH-W22, recorded on `origin/fix/review-dashboard`,
+ * not yet on main). A reason the gateway could not check is
  * said as such — it is not a quiet "no" (ADR 0020).
  *
  * Spans only: it renders inside the row's button.
@@ -37,7 +38,13 @@ function list(words: string[]): string {
 
 export function WaitingFlag({ priority }: { priority?: PendingOrderPriority }) {
   if (!priority) return null;
-  const reasons = priority.flagged ? priority.reasons : [];
+  // The gateway sets `flagged` only when it found at least one reason, and
+  // every reason is one of FLAG_WORDS' keys (`pendingOrderPriority`,
+  // api-gateway pending-order-priority.ts). If that ever fails, the card shows
+  // a reason or no mark at all, never "Focus on this" with nothing after it.
+  const reasons = priority.flagged
+    ? priority.reasons.filter((r) => Object.prototype.hasOwnProperty.call(FLAG_WORDS, r))
+    : [];
   const unknown = priority.unknown ?? [];
   if (reasons.length === 0 && unknown.length === 0) return null;
 

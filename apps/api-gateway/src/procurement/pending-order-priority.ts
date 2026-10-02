@@ -2,12 +2,17 @@
  * Which orders in "Waiting on you" are flagged, and the order the queue is in
  * (ADR 0256, founder 2026-10-01).
  *
- * THE RULINGS, VERBATIM
- *   order:     "oldest first, flag priority ones"
- *   flags:     "focus on this, money issue, order approval, large amount of
- *               order, item running out"
- *   mapping:   "Yes, use the house rules (Recommended)" — no new settings
- *   placement: "Flagged first, then oldest (Recommended)"
+ * THE RULINGS THIS FILE RELIES ON, VERBATIM (ADR 0256 answers 1-7)
+ *   1 order:        "oldest first, flag priority ones"
+ *   2 flags:        "focus on this, money issue, order approval, large amount
+ *                    of order, item running out"
+ *   3 mapping:      "Yes, use the house rules (Recommended)" — no new settings
+ *   4 placement:    "Flagged first, then oldest (Recommended)"
+ *   5 unknown-only: "With unflagged, say so (Recommended)"
+ *   6 the mark:     "Yes, the house-rules mark (Recommended)" — no hand flag
+ *   7 two reasons:  "Show every reason (Recommended)"
+ * Answers 8-11 rule the approve gate, not this file, and are not built here
+ * (ADR 0256 Consequences).
  *
  * NO SECOND DEFINITION. Every reason is an answer the house already computes
  * somewhere else, called here rather than restated:
@@ -62,7 +67,11 @@ export const PENDING_FLAG_REASONS: readonly PendingFlagReason[] = [
 ];
 
 export interface PendingOrderPriority {
-  /** True when at least one reason was FOUND. Never true on an unknown alone. */
+  /**
+   * True when at least one reason was FOUND. Never true on an unknown alone.
+   * Guaranteed: `flagged` implies `reasons.length > 0` (it is computed as
+   * exactly that). The web card relies on it to never print the mark bare.
+   */
   flagged: boolean;
   /** The reasons found, in `PENDING_FLAG_REASONS` order. */
   reasons: PendingFlagReason[];
@@ -171,7 +180,7 @@ export function pendingOrderPriority(
 
 /**
  * Flagged first, then the rest — each group in the order it arrived, which the
- * read makes oldest first (`created_at` ascending). Stable: `Array.prototype.sort`
+ * read makes oldest first (`created_at`, then `id`, ascending). Stable: `Array.prototype.sort`
  * is stable, and the comparator never reorders two rows of the same group.
  */
 export function flaggedFirst<T extends { priority?: PendingOrderPriority }>(

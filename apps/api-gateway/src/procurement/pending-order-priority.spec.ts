@@ -236,6 +236,20 @@ describe("the pending queue is oldest first, flagged first", () => {
     expect(out.every((o) => o.priority.flagged === false)).toBe(true);
   });
 
+  it("breaks a tie in created_at by id, ascending", async () => {
+    // Rows written in one transaction share `now()`. Sent out of id order so
+    // that dropping the tie-break (arrival order: b, c, a) or reversing it
+    // (c, b, a) each gives a different answer from the read's own.
+    const { out, log } = await list({
+      pending: [row("b", 7), row("c", 7), row("a", 7)],
+    });
+    expect(log.listOrder).toEqual([
+      ["created_at", { ascending: true }],
+      ["id", { ascending: true }],
+    ]);
+    expect(out.map((o) => o.id)).toEqual(["a", "b", "c"]);
+  });
+
   it("puts flagged rows first, oldest first among them, then the rest oldest first", async () => {
     const { out } = await list(
       {
