@@ -16,9 +16,9 @@ is decided, marks research proposals he has not confirmed as **proposed**, and e
 answers still leave open.
 
 **Where the sources are.** ADRs 0252 and 0253 and OD-208 to OD-217 are on PR #566 (open), not on
-`main`; this sketch was checked against its head `21e87278a`, which records round 12 in ADR 0253
-("Answered 2026-10-02 (round 12)"). Round 12's picks, verbatim: *"Yes, per action (Recommended)"*,
-*"Owner sets the cap (Recommended)"* (OD-209), *"No amount of its own (Recommended)"* (OD-210 path B)
+`main`; this sketch was checked against its head `475ac5cd8`, which records rounds 12 and 13 in ADR
+0253 ("Answered 2026-10-02 (round 12)" and "Answered 2026-10-02 (round 13), verbatim"). Round 12's
+picks, verbatim: *"Yes, per action (Recommended)"*, *"Owner sets the cap (Recommended)"* (OD-209), *"No amount of its own (Recommended)"* (OD-210 path B)
 and *"As F3 said (Recommended)"* (OD-217 path A). Round 13 is cited as ADR 0253 round 13, on PR #566.
 Its picks, all recommended, verbatim: *"When the job closes (Recommended)"* (OD-211), *"Fix holes
 first, then close (Recommended)"* (OD-213), *"Full pre-ticks, you adjust (Recommended)"* and *"One
@@ -102,7 +102,7 @@ Each is also listed at the foot of its page.
 
 ## Research and checks
 
-No new research. The frames rest on ADR 0252 and ADR 0253 at PR #566's head `21e87278a` (open),
-round 12 included; on ADR 0253 round 13, on PR #566; and on the jobs-and-labels research that ADR
-0253 cites (outside the repo, so not re-checkable from it). Render was proved by the page beacon in Safari on 2026-10-01 (no images
+No new research. The frames rest on ADR 0252 and ADR 0253 at PR #566's head `475ac5cd8` (open),
+rounds 12 and 13 included, and on the jobs-and-labels research that ADR 0253 cites (outside the
+repo, so not re-checkable from it). Render was proved by the page beacon in Safari on 2026-10-01 (no images
 on any page, so the beacon proves load only).
