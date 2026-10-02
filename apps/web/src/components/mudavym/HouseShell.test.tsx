@@ -3,8 +3,11 @@
  * the width rule, the phone's four doors, and what the shell must NOT carry.
  *
  * The network is mocked at its seams — the counter's one read, the flag API —
- * and the header's own popovers (bell, account, theme) are markers, because
- * their suites are theirs. Nothing the shell itself renders is mocked.
+ * and the header's own popovers (bell, account) are markers, because their
+ * suites are theirs. Nothing the shell itself renders is mocked. There is no
+ * theme popover to mock: the header's theme control was removed on
+ * 2026-10-01 (founder, page walk-through DASH-W23) and the person's ground is
+ * chosen on /profile — the case below holds that.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -22,7 +25,6 @@ vi.mock('../../services/api/settings', () => ({
 }));
 vi.mock('./HouseBell', () => ({ HouseBell: () => <span data-testid="bell" /> }));
 vi.mock('./HouseUserMenu', () => ({ HouseUserMenu: () => <span data-testid="account" /> }));
-vi.mock('../layout/ThemeMenu', () => ({ ThemeMenu: () => null }));
 vi.mock('../command/CommandProvider', () => ({
   CommandProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
@@ -122,6 +124,17 @@ describe('the shell at 1440', () => {
     expect(screen.getByRole('button', { name: /Ask Mudavym\./ })).toBeTruthy();
     expect(within(screen.getByRole('banner')).getByRole('button', { name: /^Ask Mudavym/ })).toBeTruthy();
     expect(screen.queryByRole('complementary', { name: 'Ask Mudavym' })).toBeNull();
+  });
+
+  it('the one header carries no theme control — the ground is chosen on /profile (DASH-W23)', () => {
+    mount('/orders');
+    const banner = screen.getByRole('banner');
+    const names = within(banner)
+      .queryAllByRole('button')
+      .map((b) => `${b.getAttribute('aria-label') ?? ''} ${b.getAttribute('title') ?? ''} ${b.textContent ?? ''}`);
+    expect(names.length).toBeGreaterThan(0);
+    expect(names.filter((n) => /theme|ground|paper|charcoal|light|dark/i.test(n))).toEqual([]);
+    expect(banner.querySelector('.mdv-hdr__theme')).toBeNull();
   });
 
   it("names the page by its room in the one header", () => {
