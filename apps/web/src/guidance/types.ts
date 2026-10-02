@@ -99,8 +99,13 @@ export const PAGE_TOUR_IDS: PageTourId[] = [
 
 /**
  * Routes that map 1:1 to a page tour via exact pathname match.
- * `settings-services` (query-param tab) and `orders-create` (in-page modal,
- * no dedicated route) are resolved separately — see `resolveGuidancePageId`.
+ * `orders-create` (in-page modal, no dedicated route) has none.
+ *
+ * `settings-services` is the Connections page now: Settings → Services moved
+ * to `/connections`, and `/settings?tab=services` redirects there (the old
+ * query-param branch in `resolveGuidancePageId` stays for that redirect's
+ * first render). `sommelier` has no route: `/sommelier` only redirects to
+ * `/ask` (ADR 0145), so its tour can no longer be reached and is not offered.
  */
 export const ROUTE_TO_PAGE_TOUR: Record<string, PageTourId> = {
   '/': 'dashboard',
@@ -109,8 +114,8 @@ export const ROUTE_TO_PAGE_TOUR: Record<string, PageTourId> = {
   '/vendors': 'providers',
   '/communications': 'communications',
   '/reports': 'reports',
-  '/sommelier': 'sommelier',
   '/calendar': 'calendar',
+  '/connections': 'settings-services',
 }
 
 /**
@@ -126,9 +131,8 @@ export const PAGE_TOUR_ROUTES: Partial<Record<PageTourId, string>> = {
   providers: '/vendors',
   communications: '/communications',
   reports: '/reports',
-  sommelier: '/sommelier',
   calendar: '/calendar',
-  'settings-services': '/settings?tab=services',
+  'settings-services': '/connections',
 }
 
 /**
