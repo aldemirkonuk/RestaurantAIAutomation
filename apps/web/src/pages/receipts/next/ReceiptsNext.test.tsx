@@ -15,12 +15,19 @@ import type { ProcurementDocument } from '../../../services/api/documents';
 const api = vi.hoisted(() => ({
   queue: [] as ProcurementDocument[],
   verified: [] as ProcurementDocument[],
+  /** Papers that read cleanly, `status = received` (W44). */
+  clean: [] as ProcurementDocument[],
   unverified: { items: [] as unknown[] },
   detail: { document: {}, lines: [] as unknown[], links: [] },
   detailFails: null as unknown,
   unverifiedFails: null as unknown,
+  /** Rejects both list reads (queue and verified book) when set. */
+  listFails: null as unknown,
   editLine: vi.fn(),
   linkLine: vi.fn(() => Promise.resolve()),
+  /** W37: rejects the order read when set; `orderOver` overrides its fields. */
+  orderFails: null as unknown,
+  orderOver: {} as Record<string, unknown>,
   verify: vi.fn(() => Promise.resolve()),
   restaurantId: 'rest-A' as string | null,
   /** The sheet's recomputed verdict; `null` leaves the canonical read pending. */
@@ -43,7 +50,8 @@ vi.mock('@/contexts/AuthContext', () => ({
   // `useMudavymDesign` reads the CONTEXT OBJECT directly (not the hook), so a
   // mock that exports only `useAuth` makes any gated affordance on this page
   // throw at render. DocView gained one with ADR 0104 slice 2's
-  // "Open as the canonical document" link.
+  // "Open this document on its own page" link (named "Open as the canonical
+  // document" until walk-through W23).
   AuthContext: createContext<{ activeRestaurantId: string | null } | null>(null),
 }));
 
@@ -54,7 +62,15 @@ vi.mock('../../../services/api/documents', async (importOriginal) => {
     documentsApi: {
       ...mod.documentsApi,
       list: (opts: { status?: string }) =>
-        Promise.resolve(opts.status === 'verified' ? api.verified : api.queue),
+        api.listFails
+          ? Promise.reject(api.listFails)
+          : Promise.resolve(
+              opts.status === 'verified'
+                ? api.verified
+                : opts.status === 'received'
+                  ? api.clean
+                  : api.queue,
+            ),
       detail: () => (api.detailFails ? Promise.reject(api.detailFails) : Promise.resolve(api.detail)),
       editLine: api.editLine,
       verify: api.verify,
@@ -89,13 +105,16 @@ vi.mock('../../documents/next/CanonicalDocumentPage', () => ({
 
 vi.mock('../../../services/api/orders', () => ({
   getOrder: () =>
-    Promise.resolve({
-      id: 'o1',
-      orderNumber: 'PO-14',
-      providerName: 'Bodega Álvaro',
-      wineName: 'Albariño',
-      quantity: 12,
-    }),
+    api.orderFails
+      ? Promise.reject(api.orderFails)
+      : Promise.resolve({
+          id: 'o1',
+          orderNumber: 'PO-14',
+          providerName: 'Bodega Álvaro',
+          wineName: 'Albariño',
+          quantity: 12,
+          ...api.orderOver,
+        }),
 }));
 
 import ReceiptsNext, { PaperPane } from './ReceiptsNext';
@@ -182,10 +201,14 @@ function wrapperAt(entry: string) {
 beforeEach(() => {
   api.queue = [doc({})];
   api.verified = [];
+  api.clean = [];
   api.unverified = { items: [] };
   api.detail = { document: doc({}), lines: [line], links: [] };
   api.detailFails = null;
+  api.orderFails = null;
+  api.orderOver = {};
   api.unverifiedFails = null;
+  api.listFails = null;
   api.restaurantId = 'rest-A';
   api.sheetLayer3 = null;
   api.linkLine.mockClear();
@@ -276,15 +299,25 @@ describe('ReceiptsNext', () => {
     };
     render(<ReceiptsNext />, { wrapper });
     expect(await screen.findByText(/Counted at the door, no paperwork yet/)).toBeInTheDocument();
-    expect(screen.getByText(/PO-9 · 24 btl · 5h ago/)).toBeInTheDocument();
+    expect(screen.getByText(/PO-9 · 24 counted · 5h ago/)).toBeInTheDocument();
+  });
+
+  it('the door strip says neither "btl" nor a slice of the order id (W38)', async () => {
+    api.unverified = {
+      items: [{ orderId: 'o9abcdef-1234', orderNumber: null, countedQtyBottles: 6, countedAt: '', ageHours: 2, severity: 'fresh' }],
+    };
+    const { container } = render(<ReceiptsNext />, { wrapper });
+    expect(await screen.findByText(/an order with no number · 6 counted · 2h ago/)).toBeInTheDocument();
+    expect(container.textContent).not.toContain('btl');
+    expect(container.textContent).not.toContain('o9abcdef');
   });
 
   it('a null tie-out is untestable, never a pass or a fail', async () => {
     const { container } = render(<ReceiptsNext />, { wrapper });
     await screen.findByLabelText('Awaiting review');
-    await waitFor(() => expect(container.textContent).toContain('tie-out —'));
+    await waitFor(() => expect(container.textContent).toContain('no stated total'));
     await openFirstDoc();
-    expect(container.textContent).toContain('no stated total to test against');
+    expect(container.textContent).toContain('No stated total to test the lines against.');
   });
 
   /* ─── R1 — the page must show the paper it asks a human to certify ─────── */
@@ -424,6 +457,19 @@ describe('ReceiptsNext', () => {
     expect(container.textContent).not.toContain('No lines were extracted');
   });
 
+  it('no confirm over unread lines: a failed detail disables the swipe and says why (W18)', async () => {
+    api.detailFails = Object.assign(new Error('Request failed with status code 503'), {
+      response: { status: 503, data: { message: 'documents backend is down' } },
+    });
+    const { container } = render(<ReceiptsNext />, { wrapper });
+    fireEvent.click(
+      await screen.findByText((_, el) => el?.tagName === 'SPAN' && /Invoice · INV-88/.test(el.textContent ?? '')),
+    );
+    await waitFor(() => expect(container.textContent).toContain('documents backend is down'));
+    expect(screen.getByRole('button', { name: /Swipe up to confirm/ })).toBeDisabled();
+    expect(screen.getByTestId('confirm-waits')).toHaveTextContent('They could not be read');
+  });
+
   it('a failed uncounted-deliveries query is surfaced, not read as a caught-up door', async () => {
     api.unverifiedFails = new Error('receiving endpoint 500');
     const { container } = render(<ReceiptsNext />, { wrapper });
@@ -435,17 +481,17 @@ describe('ReceiptsNext', () => {
 
   /* ─── R4 — the confidence the screen asks trust in ────────────────────── */
 
-  it('shows document extraction confidence, and an em dash when none was recorded', async () => {
+  it('says how sure the reader was, and says so when nothing was recorded (W23)', async () => {
     api.detail = { document: doc({ extraction_confidence: 0.82 }), lines: [line], links: [] };
     const view = render(<ReceiptsNext />, { wrapper });
     await openFirstDoc();
-    expect(await screen.findByText(/extraction confidence 82%/)).toBeInTheDocument();
+    expect(await screen.findByText('The reader was 82% sure of what it read.')).toBeInTheDocument();
     view.unmount();
 
     api.detail = { document: doc({ extraction_confidence: null }), lines: [line], links: [] };
     render(<ReceiptsNext />, { wrapper });
     await openFirstDoc();
-    expect(await screen.findByText(/extraction confidence —/)).toBeInTheDocument();
+    expect(await screen.findByText('The reader recorded no confidence for this document.')).toBeInTheDocument();
   });
 
   /* ─── R5 — an auto-applied pairing is inspectable and undoable ─────────── */
@@ -459,14 +505,56 @@ describe('ReceiptsNext', () => {
     const { container } = render(<ReceiptsNext />, { wrapper });
     await openFirstDoc();
     await waitFor(() => expect(container.textContent).toContain('Albariño'));
-    expect(container.textContent).toContain('order line #ol-abcde');
-    expect(container.textContent).toContain('confidence 97%');
+    // W37 (2026-10-01): no database id, no wine word, certainty as a sentence.
+    const cell = container.querySelector('td[data-cell="order"]')!;
+    expect(cell.textContent).toContain("Albariño · 12 ordered · matched by the supplier's code · 97% sure of the match");
+    expect(cell.textContent).not.toContain('ol-abcde');
+    expect(cell.textContent).not.toContain('confidence');
     // W6 (2026-10-01): the method in words, the column named for what it holds.
     expect(container.textContent).toContain("matched by the supplier's code");
     expect(container.textContent).not.toContain('vendor_sku');
     expect(screen.getByRole('columnheader', { name: 'Order line' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Unlink' }));
+    // W37: each Unlink names its line, and sits on its own line under the sentence.
+    const unlink = screen.getByRole('button', { name: 'Unlink line 1 from the order' });
+    expect(unlink.textContent).toBe('Unlink');
+    expect(unlink.style.display).toBe('block');
+    fireEvent.click(unlink);
     await waitFor(() => expect(api.linkLine).toHaveBeenCalledWith('d1', 'l1', null));
+  });
+
+  it('a paired line whose order cannot be read says so, naming no wine and no id (W37)', async () => {
+    api.orderFails = new Error('500');
+    api.detail = {
+      document: doc({}),
+      lines: [{ ...line, order_line_id: 'ol-abcdef12-9', match_method: 'description', match_confidence: 0.94 }],
+      links: [],
+    };
+    const { container } = render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    const cell = () => container.querySelector('td[data-cell="order"]')!;
+    await waitFor(() =>
+      expect(cell().textContent).toContain(
+        'paired with the order, which could not be read to name the item · matched by the description · 94% sure of the match',
+      ),
+    );
+    expect(cell().textContent).not.toMatch(/wine|ol-abcde/);
+  });
+
+  it('a paired line with no recorded method, certainty or item name says each in words (W37)', async () => {
+    api.orderOver = { wineName: undefined, quantity: undefined };
+    api.detail = {
+      document: doc({}),
+      lines: [{ ...line, order_line_id: 'ol-abcdef12-9', match_method: null, match_confidence: null }],
+      links: [],
+    };
+    const { container } = render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    const cell = () => container.querySelector('td[data-cell="order"]')!;
+    await waitFor(() =>
+      expect(cell().textContent).toContain(
+        'the order does not name the item · — ordered · how it was matched is not recorded · certainty not recorded',
+      ),
+    );
   });
 
   it('an unpaired line says it has no order line yet, not a bare dash', async () => {
@@ -530,7 +618,7 @@ describe('ReceiptsNext — what money this invoice is in', () => {
     api.detail = { document: api.queue[0], lines: [line], links: [] };
     const { container } = render(<ReceiptsNext />, { wrapper });
     await openFirstDoc();
-    expect(container.textContent).toContain('filed in TRY - Turkish lira');
+    expect(container.textContent).toContain('filed in Turkish lira (TRY)');
     expect(container.textContent).not.toContain('$412.50');
   });
 
@@ -605,7 +693,7 @@ describe('ReceiptsNext — what money this invoice is in', () => {
     render(<ReceiptsNext />, { wrapper });
     await openFirstDoc();
     expect(screen.getByLabelText('What money this invoice is in')).toHaveTextContent(
-      "This invoice’s money is filed in TRY - Turkish lira.",
+      "This invoice’s money is filed in Turkish lira (TRY).",
     );
     expect(screen.queryByLabelText('Currency this invoice is denominated in')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Change the currency' }));
@@ -687,6 +775,58 @@ describe('ReceiptsNext — ?doc=<id> opens that document', () => {
   });
 });
 
+/* ─── walk-through RECEIPTS-W44 — papers that read cleanly ─────────────── */
+
+describe('ReceiptsNext — papers that read cleanly reach a swipe (W44)', () => {
+  const row = (re: RegExp) => (_: string, el: Element | null) =>
+    el?.tagName === 'SPAN' && re.test(el.textContent ?? '');
+
+  it('lists them after the papers that need a look, under their own heading, and counts them apart', async () => {
+    api.clean = [doc({ id: 'c1', doc_number: 'INV-CLEAN', status: 'received' })];
+    const { container } = render(<ReceiptsNext />, { wrapper });
+    const heading = await screen.findByRole('heading', { name: /Read cleanly · not yet confirmed · 1/ });
+    const needsLook = await screen.findByText(row(/Invoice · INV-88/));
+    const clean = screen.getByText(row(/Invoice · INV-CLEAN/));
+    // Order on the page: the paper that needs a look, then the heading, then the clean one.
+    expect(needsLook.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(heading.compareDocumentPosition(clean) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(container.textContent).toMatch(/1 awaiting review · 1 read cleanly · /);
+  });
+
+  it("leaves out the house's own papers: a door count is not a vendor's paper", async () => {
+    api.clean = [
+      { ...doc({ id: 'c1', doc_number: 'INV-CLEAN', status: 'received' }), direction: 'issued_by_vendor' } as ProcurementDocument,
+      { ...doc({ id: 'c2', doc_number: 'DOOR-COUNT', status: 'received' }), direction: 'issued_by_us' } as ProcurementDocument,
+    ];
+    const { container } = render(<ReceiptsNext />, { wrapper });
+    await screen.findByRole('heading', { name: /Read cleanly · not yet confirmed · 1$/ });
+    expect(container.textContent).not.toContain('DOOR-COUNT');
+  });
+
+  it('does not say "caught up" while clean papers still wait for a swipe', async () => {
+    api.queue = [];
+    api.clean = [doc({ id: 'c1', doc_number: 'INV-CLEAN', status: 'received' })];
+    const { container } = render(<ReceiptsNext />, { wrapper });
+    expect(await screen.findByText('Nothing needs a look.')).toBeTruthy();
+    expect(container.textContent).not.toMatch(/caught up/);
+  });
+
+  it('opens a clean paper like any other, by click and by link', async () => {
+    api.queue = [];
+    api.clean = [doc({ id: 'c1', doc_number: 'INV-CLEAN', status: 'received' })];
+    render(<ReceiptsNext />, { wrapper: wrapperAt('/receipts?doc=c1') });
+    // The line editor renders only for an OPEN document (status received is editable).
+    expect(await screen.findByLabelText('Quantity, line 1')).toBeTruthy();
+    expect(screen.queryByText(/not in this house/)).toBeNull();
+  });
+
+  it('draws no heading when nothing read cleanly', async () => {
+    render(<ReceiptsNext />, { wrapper });
+    await screen.findByText(row(/Invoice · INV-88/));
+    expect(screen.queryByRole('heading', { name: /Read cleanly/ })).toBeNull();
+  });
+});
+
 /* ─── 2026-10-01 walk-through — the order and the sheet ─────────────────── */
 
 describe('ReceiptsNext — the linked order comes from the links, not the row', () => {
@@ -709,14 +849,43 @@ describe('ReceiptsNext — the linked order comes from the links, not the row', 
     expect(screen.getByRole('button', { name: 'Check line pairing' })).toBeEnabled();
   });
 
+  it('an order with no number says so, never a slice of its id (W37)', async () => {
+    api.orderOver = { orderNumber: null };
+    api.queue = [unpaired()];
+    api.detail = {
+      document: unpaired(),
+      lines: [line],
+      links: [{ id: 'k1', document_id: 'd1', order_id: 'o1abcdef-77' }] as never[],
+    };
+    const { container } = render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    expect(await screen.findByText(/Against an order with no number/)).toBeInTheDocument();
+    expect(container.textContent).not.toContain('o1abcdef');
+  });
+
   it('says no order is linked only once the links are read and empty', async () => {
     api.queue = [unpaired()];
     api.detail = { document: unpaired(), lines: [line], links: [] };
     render(<ReceiptsNext />, { wrapper });
     await openFirstDoc();
-    expect(await screen.findByText(/No order is linked to this document yet/)).toBeInTheDocument();
+    expect(
+      await screen.findByText('No order is linked to this document, so its lines have nothing to be checked against.'),
+    ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Check line pairing' })).toBeDisabled();
     expect(screen.getByText('needs a linked order first')).toBeInTheDocument();
+  });
+
+  it('says why the pairing check is off while the link could not be read (W18)', async () => {
+    api.queue = [unpaired()];
+    api.detailFails = Object.assign(new Error('Request failed with status code 503'), {
+      response: { status: 503, data: { message: 'documents backend is down' } },
+    });
+    render(<ReceiptsNext />, { wrapper });
+    fireEvent.click(
+      await screen.findByText((_, el) => el?.tagName === 'SPAN' && /Invoice · INV-88/.test(el.textContent ?? '')),
+    );
+    expect(await screen.findByText('needs the order link, which could not be read')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Check line pairing' })).toBeDisabled();
   });
 });
 
@@ -757,6 +926,23 @@ describe('ReceiptsNext — the open document lives in the URL (ADR 0160)', () =>
     await waitFor(() => expect(screen.getByTestId('where').textContent).toBe(''));
     expect(screen.queryByLabelText('Quantity, line 1')).toBeNull();
   });
+
+  it('a link to a document this house does not hold says so, and clears (W19)', async () => {
+    render(
+      <>
+        <ReceiptsNext />
+        <Where />
+      </>,
+      { wrapper: wrapperAt('/receipts?doc=elsewhere') },
+    );
+    expect(await screen.findByTestId('doc-not-here')).toHaveTextContent(
+      "not in this house's review queue or its verified book",
+    );
+    expect(screen.queryByText(/Choose a document from the queue/)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Show the queue' }));
+    await waitFor(() => expect(screen.getByTestId('where').textContent).toBe(''));
+    expect(screen.getByText(/Choose a document from the queue/)).toBeInTheDocument();
+  });
 });
 
 describe("ReceiptsNext — the card shows the sheet's verdict, not the saved one", () => {
@@ -768,7 +954,7 @@ describe("ReceiptsNext — the card shows the sheet's verdict, not the saved one
     api.sheetLayer3 = { tiesOut: true, tieOutDeltaCents: 0 };
     const { container } = render(<ReceiptsNext />, { wrapper });
     await openFirstDoc();
-    await waitFor(() => expect(container.textContent).toContain('ties out within tolerance'));
+    await waitFor(() => expect(container.textContent).toContain('The lines add up to the stated total.'));
     expect(container.textContent).not.toContain('off by $43.47');
   });
 });
@@ -784,5 +970,139 @@ describe('ReceiptsNext — a list row names who sent it (walk-through W8)', () =
     expect(named.querySelector('span')).toHaveTextContent('SYNTHETIC VENDOR CO.');
     const unnamed = screen.getByRole('button', { name: /^Invoice · INV-2/ });
     expect(unnamed.querySelector('span')).toHaveTextContent('Invoice · INV-2');
+  });
+});
+
+/* A year said once (walk-through W22, 2026-10-01): "Albariño 2022 · 2022". */
+describe('ReceiptsNext — THE LINES say a year once (W22)', () => {
+  it('adds the vintage only when the name does not print it', async () => {
+    api.detail = { document: doc({}), lines: [line, { ...line, id: 'l2', line_no: 2, description: 'Godello' }], links: [] };
+    const { container } = render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    expect(container.textContent).toContain('Albariño 2022');
+    expect(container.textContent).not.toContain('Albariño 2022 · 2022');
+    expect(container.textContent).toContain('Godello · 2022');
+  });
+});
+
+/* The queue in words (walk-through W26, 2026-10-01). */
+describe('ReceiptsNext — a failed read in words (W26)', () => {
+  it('names what was not read and why, never "(Network Error)" or "gateway"', async () => {
+    api.listFails = Object.assign(new Error('Network Error'), { request: {}, code: 'ERR_NETWORK' });
+    render(<ReceiptsNext />, { wrapper });
+    const alert = await screen.findByText(/^Could not read the review queue/);
+    expect(alert.textContent).toBe(
+      // W44: the clean papers are a third read, and their failure is named too.
+      'Could not read the review queue (no answer came back); the verified book (no answer came back); the papers that read cleanly (no answer came back). The paper trail is unknown — nothing below is claimed.',
+    );
+    expect(document.body.textContent).not.toMatch(/Network Error|gateway/);
+  });
+
+  it('stops saying "Reading the queue…" once the read has failed', async () => {
+    api.listFails = Object.assign(new Error('Network Error'), { request: {}, code: 'ERR_NETWORK' });
+    render(<ReceiptsNext />, { wrapper });
+    expect(await screen.findByText('queue not read · verified not read')).toBeTruthy();
+    expect(screen.queryByText(/Reading the queue/)).toBeNull();
+  });
+
+  it('says a row adds up, does not add up, or states no total', async () => {
+    api.queue = [
+      doc({ id: 'a', doc_number: 'INV-A', ties_out: true }),
+      doc({ id: 'b', doc_number: 'INV-B', ties_out: false }),
+    ];
+    const { container } = render(<ReceiptsNext />, { wrapper });
+    await waitFor(() => expect(container.textContent).toContain('does not add up'));
+    expect(container.textContent).toMatch(/· adds up/);
+    expect(container.textContent).not.toMatch(/tie out|tie-out/);
+  });
+});
+
+/*
+ * PHONE WIDTH (walk-through P7, 2026-10-01). jsdom applies no media query and
+ * lays nothing out, so these pin the parts that made the phone measurements
+ * pass: the grid's one column is a track that cannot grow past the screen
+ * (W34), and the card's line table names each figure, keeps its roles, and
+ * carries the phone rules that stack it (W35).
+ */
+describe('ReceiptsNext — at phone width', () => {
+  it('the page grid names its one column in both states, so the open document cannot widen it (W34)', async () => {
+    const { container } = render(<ReceiptsNext />, { wrapper });
+    const grid = () => container.querySelector('[class*="320px_minmax(0,1fr)"]') as HTMLElement;
+    await screen.findByText((_, el) => el?.tagName === 'SPAN' && /Invoice · INV-88/.test(el.textContent ?? ''));
+    expect(grid().className.split(' ')).toContain('grid-cols-1');
+    await openFirstDoc();
+    expect(grid().className.split(' ')).toContain('grid-cols-1');
+    expect(grid().className).toContain('2xl:grid-cols-[320px_minmax(0,1fr)]');
+  });
+
+  it("the card's lines name each figure, keep the table's roles, and stack below 640px (W35)", async () => {
+    const { container } = render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    const table = container.querySelector('table.rc-lines') as HTMLTableElement;
+    expect(table.getAttribute('role')).toBe('table');
+    const row = table.querySelector('tbody tr') as HTMLTableRowElement;
+    expect(row.getAttribute('role')).toBe('row');
+    const cells = [...row.querySelectorAll('td')];
+    expect(cells.every((td) => td.getAttribute('role') === 'cell')).toBe(true);
+    expect(cells.map((td) => td.dataset.cell)).toEqual(['line', 'qty', 'unit_price', 'line_total', 'order']);
+    expect(cells.filter((td) => td.dataset.label).map((td) => td.dataset.label)).toEqual([
+      'Qty',
+      'Unit',
+      'Total',
+      'Order line',
+    ]);
+    const css = [...container.querySelectorAll('style')].map((s) => s.textContent).join('\n');
+    const phone = css.slice(css.indexOf('@media screen and (max-width: 639px)'));
+    expect(phone).toMatch(/\.rc-lines thead \{ display: none \}/);
+    expect(phone).toMatch(/\.rc-lines tr \{ display: grid; grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/);
+    expect(phone).toMatch(/\.rc-lines td\[data-label\]::before \{ content: attr\(data-label\)/);
+  });
+});
+
+describe('ReceiptsNext — edges you can see and a way past the sheet (P8)', () => {
+  const EDGE = 'var(--line-control, #8F8674)';
+
+  it('every box and picker on the card has an edge at 3:1, not paper-2 (W39)', async () => {
+    render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    expect(screen.getByLabelText('Quantity, line 1').getAttribute('style')).toContain(EDGE);
+    fireEvent.click(screen.getByRole('button', { name: 'Change the currency' }));
+    expect(screen.getByLabelText('Currency this invoice is denominated in').getAttribute('style')).toContain(EDGE);
+    expect(screen.getByLabelText("Why this invoice's currency is being changed").getAttribute('style')).toContain(EDGE);
+  });
+
+  it('a skip link before the sheet moves focus to the card and writes nothing to the address (W40)', async () => {
+    const { container } = render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    const skip = screen.getByRole('link', { name: 'Skip to the review card' });
+    const sheet = container.querySelector('[aria-label="Formatted document"]')!;
+    expect(skip.compareDocumentPosition(sheet) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // `false` means the click's default (a `#` in the address) was prevented.
+    expect(fireEvent.click(skip)).toBe(false);
+    expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Check and correct' }));
+    const css = [...container.querySelectorAll('style')].map((x) => x.textContent).join('');
+    expect(css).toContain('.rc-skip:not(:focus) { position: absolute');
+  });
+});
+
+describe('ReceiptsNext — every paper type in words (W44)', () => {
+  it('names an irsaliye "Delivery note", never its stored code', async () => {
+    api.clean = [
+      { ...doc({ id: 'c1', doc_number: 'SYN-IRS-0001', status: 'received' }), doc_type: 'delivery_note' } as unknown as ProcurementDocument,
+    ];
+    const { container } = render(<ReceiptsNext />, { wrapper });
+    expect(
+      await screen.findByText((_, el) => el?.tagName === 'SPAN' && /^Delivery note · SYN-IRS-0001$/.test(el.textContent ?? '')),
+    ).toBeTruthy();
+    expect(container.textContent).not.toContain('delivery_note');
+  });
+
+  it('says "Document" for a type it has no word for', async () => {
+    api.clean = [
+      { ...doc({ id: 'c1', doc_number: 'SYN-X-1', status: 'received' }), doc_type: 'a_new_kind' } as unknown as ProcurementDocument,
+    ];
+    const { container } = render(<ReceiptsNext />, { wrapper });
+    await screen.findByText((_, el) => el?.tagName === 'SPAN' && /^Document · SYN-X-1$/.test(el.textContent ?? ''));
+    expect(container.textContent).not.toContain('a_new_kind');
   });
 });

@@ -30,6 +30,11 @@ import {
   type CreditStats,
   type ProcurementCredit,
 } from '../../../services/api/credits';
+import { failureReason } from './rc2-format';
+
+// Failures in the house's words, never the client library's (walk-through W26).
+// Module scope, so the hooks' memo dependencies need not list it.
+const msg = failureReason;
 
 /**
  * The caps the GATEWAY imposes on what this page can see. Each entry cites the
@@ -73,6 +78,18 @@ export interface ReceiptsNextData {
   queueKnown: boolean;
   /** True when the queue filled its window, so `queue.length` is a floor. */
   queueCapped: boolean;
+  /**
+   * Vendor paper that READ CLEANLY and nobody has confirmed yet (walk-through
+   * RECEIPTS-W44, 2026-10-01). Intake files a paper that adds up with no
+   * warning as `received`, and this page listed only `needs_review` and
+   * `verified` — so a clean paper never reached a person's swipe here and was
+   * visible only on Documents & Reports. The house's OWN papers (a door count
+   * is a receiving advice, `direction = issued_by_us`) are left out: nobody
+   * confirms their own count as if a vendor had sent it.
+   */
+  clean: ProcurementDocument[];
+  cleanKnown: boolean;
+  cleanCapped: boolean;
   verified: ProcurementDocument[];
   verifiedKnown: boolean;
   verifiedCount: number | null;
@@ -125,6 +142,13 @@ export function useReceiptsNextData(): ReceiptsNextData {
     enabled,
     staleTime: 60_000,
   });
+  const cleanQ = useQuery<ProcurementDocument[]>({
+    queryKey: ['receipts-next', 'clean', rid],
+    queryFn: () =>
+      documentsApi.list({ status: 'received', limit: RECEIPTS_SERVER_WINDOWS.QUEUE_ITEMS }),
+    enabled,
+    staleTime: 30_000,
+  });
   const unverifiedQ = useQuery<{ items: UnverifiedDelivery[] }>({
     queryKey: ['receipts-next', 'unverified-deliveries', rid],
     queryFn: () => receivingApi.listUnverified(),
@@ -132,7 +156,6 @@ export function useReceiptsNextData(): ReceiptsNextData {
     staleTime: 30_000,
   });
 
-  const msg = (e: unknown) => (e instanceof Error ? e.message : 'unknown error');
 
   /**
    * All three failures are surfaced. Before, `isError` was `queueQ.isError`
@@ -143,18 +166,38 @@ export function useReceiptsNextData(): ReceiptsNextData {
     const out: string[] = [];
     if (queueQ.isError) out.push(`the review queue (${msg(queueQ.error)})`);
     if (verifiedQ.isError) out.push(`the verified book (${msg(verifiedQ.error)})`);
+    if (cleanQ.isError) out.push(`the papers that read cleanly (${msg(cleanQ.error)})`);
     if (unverifiedQ.isError)
       out.push(`the deliveries counted at the door (${msg(unverifiedQ.error)})`);
     return out;
-  }, [queueQ.isError, queueQ.error, verifiedQ.isError, verifiedQ.error, unverifiedQ.isError, unverifiedQ.error]);
+  }, [
+    queueQ.isError,
+    queueQ.error,
+    verifiedQ.isError,
+    verifiedQ.error,
+    cleanQ.isError,
+    cleanQ.error,
+    unverifiedQ.isError,
+    unverifiedQ.error,
+  ]);
 
   const queue = queueQ.data ?? [];
   const verified = verifiedQ.data ?? [];
+  // `direction` comes back from the list's `select("*")` but is not on the
+  // shared client type, so it is read here rather than widened there (W44).
+  const cleanRows = cleanQ.data ?? [];
+  const clean = cleanRows.filter(
+    (d) => (d as { direction?: string | null }).direction !== 'issued_by_us',
+  );
 
   return {
     queue,
     queueKnown: queueQ.data !== undefined,
     queueCapped: queue.length >= RECEIPTS_SERVER_WINDOWS.QUEUE_ITEMS,
+    clean,
+    cleanKnown: cleanQ.data !== undefined,
+    // Capped on what the SERVER sent, before our own rows were taken out.
+    cleanCapped: cleanRows.length >= RECEIPTS_SERVER_WINDOWS.QUEUE_ITEMS,
     verified,
     verifiedKnown: verifiedQ.data !== undefined,
     verifiedCount: verifiedQ.data === undefined ? null : verifiedQ.data.length,
@@ -168,6 +211,7 @@ export function useReceiptsNextData(): ReceiptsNextData {
     refetch: () => {
       void queueQ.refetch();
       void verifiedQ.refetch();
+      void cleanQ.refetch();
       void unverifiedQ.refetch();
     },
   };
@@ -247,7 +291,6 @@ export function useReceiptsCreditsData(enabled: boolean): ReceiptsCreditsData {
     staleTime: 60_000,
   });
 
-  const msg = (e: unknown) => (e instanceof Error ? e.message : 'unknown error');
   const refused = [claimsQ.error, statsQ.error].some((e) => httpStatus(e) === 403);
 
   const failures = useMemo(() => {

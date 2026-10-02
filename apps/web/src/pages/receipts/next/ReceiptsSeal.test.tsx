@@ -54,7 +54,8 @@ vi.mock('../../../services/api/documents', async (importOriginal) => {
     documentsApi: {
       ...mod.documentsApi,
       list: (opts: { status?: string }) =>
-        Promise.resolve(opts.status === 'verified' ? [] : api.queue),
+        // Only the review queue is filled here; the clean list (W44) is empty.
+        Promise.resolve(opts.status === 'needs_review' ? api.queue : []),
       detail: () => Promise.resolve(api.detail),
       match: vi.fn(),
       linkLine: vi.fn(() => Promise.resolve()),
@@ -228,7 +229,7 @@ describe('the sealed page still prints the document\'s own money', () => {
     // be a premise nobody reads.
     const { container } = render(<ReceiptsNext />, { wrapper });
     await openFirstDoc();
-    expect(container.textContent).toContain('filed in EUR - Euro');
+    expect(container.textContent).toContain('filed in Euro (EUR)');
     expect(container.textContent).not.toContain('$412.50');
   });
 });
@@ -385,6 +386,55 @@ describe('SwipeToConfirm carries the same onChallenge contract as HoldToApprove'
       key: ' ',
     });
     await waitFor(() => expect(onConfirm).toHaveBeenCalledWith(null), { timeout: 3000 });
+  });
+});
+
+/* The motion signature (walk-through W21, founder 2026-10-01: "seal lands + a
+ * loading sign"). The seal marks the GESTURE, the sign marks the wait, and
+ * neither ever claims the verification succeeded. */
+describe('completing the swipe lands the seal and then a quiet loading sign', () => {
+  it('lands the seal, waits 400ms before the sign, and never says Verified', async () => {
+    const onConfirm = vi.fn();
+    render(
+      <SwipeToConfirm
+        label="Swipe up to confirm"
+        assertion="Confirms the transcription."
+        onConfirm={onConfirm}
+      />,
+    );
+    fireEvent.keyDown(screen.getByRole('button', { name: /Swipe up to confirm/ }), {
+      key: ' ',
+    });
+    await waitFor(() => expect(onConfirm).toHaveBeenCalledWith(null), { timeout: 3000 });
+    expect(screen.getByTestId('swipe-seal')).toBeInTheDocument();
+    expect(screen.getByText('Confirming…')).toBeInTheDocument();
+    // The house loader's ladder: a confirm faster than 400ms shows no sign.
+    expect(screen.queryByTestId('swipe-waiting')).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByTestId('swipe-waiting')).toBeInTheDocument(), {
+      timeout: 2000,
+    });
+    expect(screen.queryByText(/Verified/)).not.toBeInTheDocument();
+  });
+
+  it('shows neither seal nor sign when the mint refuses', async () => {
+    const onConfirm = vi.fn();
+    render(
+      <SwipeToConfirm
+        label="Swipe up to confirm"
+        assertion="Confirms the transcription."
+        onChallenge={() => Promise.reject(new Error('refused'))}
+        onConfirm={onConfirm}
+      />,
+    );
+    fireEvent.keyDown(screen.getByRole('button', { name: /Swipe up to confirm/ }), {
+      key: ' ',
+    });
+    await screen.findByRole('alert', {}, { timeout: 3000 });
+    await new Promise((r) => setTimeout(r, 600));
+    expect(onConfirm).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('swipe-seal')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('swipe-waiting')).not.toBeInTheDocument();
+    expect(screen.queryByText('Confirming…')).not.toBeInTheDocument();
   });
 });
 

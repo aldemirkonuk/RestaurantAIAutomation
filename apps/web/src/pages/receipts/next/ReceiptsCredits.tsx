@@ -31,8 +31,8 @@
  * decides that from the role IN THIS HOUSE and never mounts this for staff.
  */
 
-import { useMemo, useState, type CSSProperties, type ReactNode } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Sheet } from '@/components/mudavym/Sheet';
 import { useAuth } from '@/contexts/AuthContext';
 import { useProviders } from '@/hooks/queries/useProviderQueries';
@@ -45,7 +45,7 @@ import type {
   RecoveryFigures,
 } from '../../../services/api/credits';
 import type { ProcurementDocument } from '../../../services/api/documents';
-import { EM, GE, MONO, SANS, SERIF, fmtDate, fmtMoney, serverMessage } from './rc2-format';
+import { EM, GE, MONO, SANS, SERIF, fmtDate, fmtMoney, sentence, serverMessage } from './rc2-format';
 import {
   CHASED_STATES,
   CREDIT_MOVES,
@@ -281,8 +281,8 @@ function Figures({ data }: { data: ReceiptsCreditsData }) {
       {data.statsFloor && (
         <p style={NOTE}>
           {stats.capped
-            ? `These figures were computed from the first ${RECEIPTS_SERVER_WINDOWS.RECOVERY_STATS.toLocaleString()} claims the gateway read, so each one is a floor (${GE}).`
-            : `The gateway did not say whether it read every claim (it reads at most ${RECEIPTS_SERVER_WINDOWS.RECOVERY_STATS.toLocaleString()}), so each figure is shown as a floor (${GE}).`}
+            ? `These figures come from the first ${RECEIPTS_SERVER_WINDOWS.RECOVERY_STATS.toLocaleString()} claims only, so each one is a floor (${GE}).`
+            : `Mudavym did not say whether it read every claim (it reads at most ${RECEIPTS_SERVER_WINDOWS.RECOVERY_STATS.toLocaleString()}), so each figure is shown as a floor (${GE}).`}
         </p>
       )}
       {groups === null ? (
@@ -461,7 +461,7 @@ function SettleForm({
           <p style={NOTE}>
             {memosFailed
               ? 'The credit memos on file could not be read, so none can be chosen. Try again from the ledger.'
-              : 'Reaching the gateway for the credit memos on file…'}
+              : 'Reading the credit memos on file…'}
           </p>
         ) : ordered.length === 0 ? (
           <p style={NOTE}>
@@ -530,7 +530,7 @@ function SettleForm({
             fontSize: 13,
             padding: '6px 8px',
             borderRadius: 8,
-            border: '1px solid var(--paper-2, #EAE4D8)',
+            border: '1px solid var(--line-control, #8F8674)', // W39: a control's edge at 3:1
             background: 'var(--paper-0, #FFFDF8)',
             color: 'var(--ink-1, #211C16)',
             maxWidth: 200,
@@ -621,8 +621,8 @@ function ClaimLetter({ claim, outcome }: { claim: ProcurementCredit; outcome: Cr
   if (claim.letters === null) {
     return (
       <span>
-        Unknown — this claim’s letters could not be confirmed. Either the read failed, or the gateway’s
-        read of at most {RECEIPTS_SERVER_WINDOWS.CREDIT_LETTERS} letters across these claims left this
+        Unknown — this claim’s letters could not be confirmed. Either the read failed, or Mudavym, which
+        reads at most {RECEIPTS_SERVER_WINDOWS.CREDIT_LETTERS} letters across these claims, left this
         one out; whether one was drafted is not known either way.
       </span>
     );
@@ -683,7 +683,7 @@ function ClaimSheet({
         },
         onError: (e) =>
           setRefusal(
-            `${serverMessage(e, 'The gateway did not record it')} — the claim is unchanged.`,
+            `${sentence(serverMessage(e, 'Nothing was recorded.'))} The claim is unchanged.`,
           ),
       },
     );
@@ -702,7 +702,8 @@ function ClaimSheet({
         <Fact label="Vendor">{vendor}</Fact>
         <Fact label="Claimed">
           {fmtMoney(claim.claimed_amount, claim.currency)}
-          {claim.claimed_qty != null ? ` · ${claim.claimed_qty} btl` : ''}
+          {/* "btl" was a wine word; a claim can be for anything the house buys (W38). */}
+          {claim.claimed_qty != null ? ` · quantity ${claim.claimed_qty}` : ''}
         </Fact>
         <Fact label="What happened">{claim.summary?.trim() || EM}</Fact>
         <Fact label="State">{STATE_WORDS[claim.state] ?? claim.state}</Fact>
@@ -824,7 +825,21 @@ export function ReceiptsCredits() {
   const data = useReceiptsCreditsData(true);
   const names = useVendorNames();
   const { activeRole, user } = useAuth();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  /*
+   * THE URL IS THE SELECTION, as `?doc=` is on Receipts (walk-through W20,
+   * 2026-10-01). The house counter's "Credits promised" act links here as
+   * `?tab=credits&credit=<procurement_credits id>` (DASH-W16e); until now the
+   * id was ignored and the reader landed on the list with nothing chosen.
+   * Opening a claim writes `credit`; closing its sheet removes it.
+   */
+  const [searchParams, setSearchParams] = useSearchParams();
+  const selectedId = searchParams.get('credit');
+  const setSelectedId = (id: string | null) => {
+    const params = new URLSearchParams(searchParams);
+    if (id) params.set('credit', id);
+    else params.delete('credit');
+    setSearchParams(params);
+  };
   const [showClosed, setShowClosed] = useState(false);
   // One clock per render of the list, so every row ages against the same now.
   const now = Date.now();
@@ -833,6 +848,17 @@ export function ReceiptsCredits() {
   const closed = (data.claims ?? []).filter((c) => !CHASED_STATES.includes(c.state));
   const selected = data.claims?.find((c) => c.id === selectedId) ?? null;
   const listFloor = data.claimsCapped ? GE : '';
+  // Exactly when <Figures> prints "No credit claim has been opened at this house."
+  const saidNoClaim =
+    data.claims !== null &&
+    data.claims.length === 0 &&
+    data.stats?.byCurrency != null &&
+    Object.keys(data.stats.byCurrency).length === 0;
+  // A linked claim that is already closed lives in the folded list: unfold it.
+  const selectedClosed = selected !== null && !CHASED_STATES.includes(selected.state);
+  useEffect(() => {
+    if (selectedClosed) setShowClosed(true);
+  }, [selectedClosed]);
 
   if (data.noRestaurant) {
     return (
@@ -847,7 +873,7 @@ export function ReceiptsCredits() {
     const role = activeRole ?? user?.role ?? null;
     return (
       <p role="alert" style={{ ...NOTE, color: 'var(--ink-2, #4F473C)' }}>
-        The credit ledger is kept for the owner and managers of this house, and the gateway refused
+        The credit ledger is kept for the owner and managers of this house, and Mudavym refused
         it to this session
         {role ? ` (signed in as ${role} here)` : ''}. Nothing below is claimed.
       </p>
@@ -878,50 +904,78 @@ export function ReceiptsCredits() {
       )}
 
       {data.stats === null && !data.failures.some((f) => f.startsWith('the recovery')) && (
-        <p style={NOTE}>Reaching the gateway for the recovery figures…</p>
+        <p style={NOTE}>Reading the recovery figures…</p>
       )}
       <Figures data={data} />
 
-      <section aria-label="Claims being chased">
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 6 }}>
-          <h2 style={{ fontFamily: SERIF, fontSize: 17, fontWeight: 600, margin: 0, color: 'var(--ink-1, #211C16)' }}>
-            Being chased
-          </h2>
-          {data.claims !== null && (
-            <span style={CAP}>
-              {listFloor}
-              {chased.length} · oldest first
-            </span>
-          )}
-        </div>
-        {data.claimsCapped && (
-          <p style={{ ...NOTE, marginBottom: 6 }}>
-            The gateway returns the oldest {RECEIPTS_SERVER_WINDOWS.CREDITS_LIST} claims, and this
-            list is full — newer claims exist that are not shown here, and every count is a floor (
-            {GE}).
+      {selectedId && data.claims !== null && !selected && (
+        <div
+          data-testid="credit-not-here"
+          className="rounded-xl px-4 py-3"
+          style={{ fontFamily: SANS, border: '1px solid var(--paper-2, #EAE4D8)', background: 'var(--paper-1, #F3EFE6)' }}
+        >
+          <p style={{ fontSize: 12.5, color: 'var(--ink-2, #4F473C)', margin: '0 0 6px' }}>
+            The link asked for a credit claim that is not in this house&apos;s ledger. It may belong to
+            another house
+            {data.claimsCapped
+              ? `, or be newer than the oldest ${RECEIPTS_SERVER_WINDOWS.CREDITS_LIST} claims shown here`
+              : ''}
+            .
           </p>
-        )}
-        {data.claims === null ? (
-          !data.failures.some((f) => f.startsWith('the claims')) && (
-            <p style={NOTE}>Reaching the gateway for the claims…</p>
-          )
-        ) : chased.length === 0 ? (
-          <p style={NOTE}>No claim is being chased right now.</p>
-        ) : (
-          <div style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
-            {chased.map((c) => (
-              <ClaimRow
-                key={c.id}
-                claim={c}
-                vendor={vendorOf(c, names)}
-                now={now}
-                selected={c.id === selectedId}
-                onOpen={() => setSelectedId(c.id)}
-              />
-            ))}
+          <button type="button" onClick={() => setSelectedId(null)} style={LINK_BUTTON}>
+            Clear the link
+          </button>
+        </div>
+      )}
+
+      {/* SAID ONCE (walk-through W24, 2026-10-01): when the figures above
+          already say no claim was ever opened, an empty "Being chased"
+          section only says it again. */}
+      {!saidNoClaim && (
+        <section aria-label="Claims being chased">
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 6 }}>
+            <h2 style={{ fontFamily: SERIF, fontSize: 17, fontWeight: 600, margin: 0, color: 'var(--ink-1, #211C16)' }}>
+              Being chased
+            </h2>
+            {data.claims !== null && (
+              <span style={CAP}>
+                {listFloor}
+                {chased.length} · oldest first
+              </span>
+            )}
           </div>
-        )}
-      </section>
+          {data.claimsCapped && (
+            <p style={{ ...NOTE, marginBottom: 6 }}>
+              Mudavym shows the oldest {RECEIPTS_SERVER_WINDOWS.CREDITS_LIST} claims, and this
+              list is full — newer claims exist that are not shown here, and every count is a floor (
+              {GE}).
+            </p>
+          )}
+          {data.claims === null ? (
+            // Never an empty heading (walk-through W26): a failed read says so here too.
+            <p style={NOTE}>
+              {data.failures.some((f) => f.startsWith('the claims'))
+                ? 'Not read: see the note above.'
+                : 'Reading the claims…'}
+            </p>
+          ) : chased.length === 0 ? (
+            <p style={NOTE}>No claim is being chased right now.</p>
+          ) : (
+            <div style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
+              {chased.map((c) => (
+                <ClaimRow
+                  key={c.id}
+                  claim={c}
+                  vendor={vendorOf(c, names)}
+                  now={now}
+                  selected={c.id === selectedId}
+                  onOpen={() => setSelectedId(c.id)}
+                />
+              ))}
+            </div>
+          )}
+        </section>
+      )}
 
       {data.claims !== null && closed.length > 0 && (
         <section aria-label="Closed claims">
