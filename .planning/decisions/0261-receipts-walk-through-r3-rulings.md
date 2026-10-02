@@ -34,7 +34,7 @@ For each item: build it as sketched (Approve), leave the page as it is (Deny), o
 18. **W49, the alert for a read that never answered.** Say it per lane, or leave it for the audit to judge. The founder chose per lane. Rejected: leaving it.
 19. **W50, the Closed list a frame late.** Unfold in the same render, keep it open whenever a closed claim is selected, fix the test only, or re-run CI and change nothing. The founder chose the same render. Rejected: always open (the toggle could not fold it), test only (the one-frame jump stays), re-run (the race stays).
 20. **W50b, two smaller absences shown as health.** Fix both here, or file both. The founder chose to fix both. Rejected: filing.
-21. **W50c and W51, a `?doc=` link that can never open.** For a list that failed without answering (W50c), and for no house selected (W51): say it cannot open, or narrow the records and file it. The founder chose to say it, both times. Rejected: filing.
+21. **W50c and W51, a `?doc=` link that can never open.** For a list that failed without answering (W50c): say it cannot open, or file it as tech debt. For no house selected (W51): say it cannot open, or narrow the records and file it. The founder chose to say it, both times. Rejected: filing (W50c), and narrowing the records and filing (W51).
 
 ## Decision
 
@@ -144,7 +144,7 @@ The list and the URL:
 - W50: a linked claim that is already closed opens with the Closed list unfolded on the first paint, set in the same render rather than an effect. The list no longer shows folded for a frame and then jumps; the toggle works as before.
 - W44: papers that read cleanly are listed after those that need a look, under "Read cleanly · not yet confirmed", counted on their own. The house's own papers are left out.
 - W48: with the review queue empty, the page says "Reading…" until the clean papers' read lands, then "caught up" or "Nothing needs a look." It no longer calls an unread lane caught up.
-- W50b: "caught up" also waits for the door's count; until it lands the page says "Reading…". On Credits, while the claims read is failing, the "Being chased" section, when it is drawn and has no claim to list, says "Not read: see the note above." instead of "No claim is being chased right now." (When freshly read figures already say no claim was ever opened, W24 does not draw that section.)
+- W50b: "caught up" also waits for the door's count; until it lands the page says "Reading…". On Credits, while the claims read is failing, the "Being chased" section, when it is drawn and has no claim to list, says "Not read: see the note above." instead of "No claim is being chased right now." (When the figures say no claim was ever opened, W24 does not draw that section. Those figures can be their last answer while their own refresh fails; that is filed, not built.)
 - W50c, W51: when a list a `?doc=` link searches failed without ever answering, or no house is selected so none was asked, the page says "Could not open the linked document: see the note above." instead of "Opening the linked document…" forever. A list that answered before and then failed still holds its last answer, so while another list is being read the link still says "Opening…".
 
 Words:
