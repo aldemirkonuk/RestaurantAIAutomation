@@ -82,7 +82,7 @@ holds nothing: `decideApproval` puts it
 in `untestable` and leaves `requiredRole` alone
 (`settings/approval-thresholds.ts:154-157` for `manager_ceiling`, `:169-172`
 for `new_vendor`), and the gate seals on `if (!decision.requiredRole) return;`
-(`procurement.service.ts:4453`). A spec pins that: "a first-order count that
+(`procurement.service.ts:4454`). A spec pins that: "a first-order count that
 ERRORS is not read as 'first order'" (`order-approval-gate.spec.ts:414-428`)
 expects `APPROVED`. The founder was asked again with the premise corrected.
 Answer 10 is that question, and it settles which rules park; answer 8 still
