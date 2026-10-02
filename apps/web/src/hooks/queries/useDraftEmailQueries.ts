@@ -81,8 +81,23 @@ export interface DraftSendRequestView {
   ccEmails: string[];
 }
 
+/**
+ * What the gateway's send would do with a draft's template blanks (ORD-W7,
+ * founder 2026-10-01: "Only unfillable"): the ones it fills, and with what,
+ * and the ones that would reach the vendor as written.
+ */
+export interface DraftBlanksAtSend {
+  unfillable: string[];
+  fills: { slot: string; value: string }[];
+}
+
 export interface DraftStandingDto {
-  draft: ({ id: string; content: string | null; send_request: DraftSendRequestView | null } & Record<string, unknown>) | null;
+  draft: ({
+    id: string;
+    content: string | null;
+    send_request: DraftSendRequestView | null;
+    at_send?: DraftBlanksAtSend | null;
+  } & Record<string, unknown>) | null;
   sendOrAsk: SendOrAskDto;
 }
 

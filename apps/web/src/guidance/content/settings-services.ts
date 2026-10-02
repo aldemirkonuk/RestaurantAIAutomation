@@ -18,7 +18,7 @@ export const settingsServicesTour: TourDefinition = {
       element: 'section#attached',
       title: 'What the house has attached',
       description:
-        'The till, email and other services that belong to the house. They stay when the person who connected them leaves.',
+        'The till, the payment provider and the other services attached here, each saying whose it is. What belongs to the house stays when the person who connected it leaves.',
     },
     {
       element: 'section#payment',

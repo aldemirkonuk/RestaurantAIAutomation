@@ -30,7 +30,10 @@ export function StageSpine({ counts, recurringCount, active, onSelect }: StageSp
     <div
       role="tablist"
       aria-label="Order stages"
-      className="relative flex items-stretch"
+      // Under 640px the five stations sit 3 + 2: five equal cells cannot hold
+      // "DELIVERED" and "RECURRING" in a 390px phone, and the strip pushed the
+      // page sideways (ORD-W18). From sm up, one row as before.
+      className="relative grid grid-cols-3 items-stretch sm:flex"
       style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)', borderBottom: '1px solid var(--paper-2, #EAE4D8)' }}
     >
       {STATIONS.map((station, i) => {
@@ -38,7 +41,7 @@ export function StageSpine({ counts, recurringCount, active, onSelect }: StageSp
         const value = station === 'recurring' ? recurringCount : counts[station];
         const style: CSSProperties = {
           fontFamily: SANS,
-          borderLeft: i === 0 ? 'none' : '1px solid var(--paper-2, #EAE4D8)',
+          borderColor: 'var(--paper-2, #EAE4D8)',
           background: isActive ? 'var(--seal-tint, rgba(26,94,107,.10))' : 'transparent',
           transition: `background ${ink.ms}ms ${ink.easing}`,
           cursor: 'pointer',
@@ -51,7 +54,11 @@ export function StageSpine({ counts, recurringCount, active, onSelect }: StageSp
             aria-selected={isActive}
             data-tour={`orders-stage-${station}`}
             onClick={() => onSelect(isActive ? null : station)}
-            className="group relative flex-1 px-3 py-3 text-left"
+            // Dividers by class, not inline, so the 3 + 2 grid can drop the
+            // left rule that opens its second row and rule that row's top.
+            className={`group relative min-w-0 flex-1 px-3 py-3 text-left ${
+              i === 0 ? '' : 'border-l'
+            } ${i === 3 ? 'max-sm:border-l-0' : ''} ${i >= 3 ? 'max-sm:border-t' : ''}`}
             style={style}
           >
             <Tally
