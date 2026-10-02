@@ -431,6 +431,10 @@ export class ProvidersController {
       code: stated.code,
       setAt: stated.setAt,
       setByName: stated.setByName,
+      // VEN-W23 (founder, 2026-10-01): the house's zone, so the sheet's
+      // "stated on" chip reads the same calendar day as the sentence below.
+      // NULL means none is known; the day is then read in UTC and says so.
+      houseZone: stated.houseZone ?? null,
       // VEN-W13 (founder, 2026-10-01): where the code came from and what the
       // vendor's invoices say now, so the sheet can show one of its five
       // states. `evidence` is NULL when the invoices could not be read, and
@@ -455,6 +459,7 @@ export class ProvidersController {
         source: stated.source,
         invoiceCount: stated.invoiceCount,
         decision: d,
+        houseZone: stated.houseZone ?? null,
       }),
     };
   }

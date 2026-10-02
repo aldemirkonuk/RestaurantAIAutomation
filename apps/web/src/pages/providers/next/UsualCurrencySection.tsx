@@ -44,6 +44,7 @@ import { AlertTriangle } from 'lucide-react';
 import { useAuth } from '../../../contexts/AuthContext';
 import { apiClient } from '../../../services/api/client';
 import { CURRENCY_CODES, currencyLabel } from '../../../lib/currency';
+import { houseDay } from './house-day';
 import { EM, MONO, SANS } from './pv-format';
 
 type SheetState = 'A' | 'B' | 'C' | 'D' | 'E' | 'stated';
@@ -65,6 +66,12 @@ interface UsualCurrency {
     needed: number;
   } | null;
   evidenceUnreadable?: string | null;
+  /**
+   * VEN-W23: the house's IANA zone, so "stated on" is the house's calendar
+   * day. Null (or absent, from an older gateway): the day is read in UTC and
+   * the chip says "(UTC)".
+   */
+  houseZone?: string | null;
   sentence: string;
 }
 
@@ -309,7 +316,11 @@ export function UsualCurrencySection({
             }}
           >
             stated by {stated.data.setByName}
-            {stated.data.setAt ? ` on ${stated.data.setAt.slice(0, 10)}` : ''}
+            {/* The HOUSE's day in words (VEN-W23) — never the UTC date sliced
+                off the timestamp, which turned a Chicago evening into tomorrow. */}
+            {stated.data.setAt && houseDay(stated.data.setAt, stated.data.houseZone)
+              ? ` on ${houseDay(stated.data.setAt, stated.data.houseZone)}`
+              : ''}
           </span>
         ) : null}
       </div>

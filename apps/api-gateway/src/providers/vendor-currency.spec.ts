@@ -98,7 +98,8 @@ describe("vendorCurrencySentence — the profile says what it is FOR", () => {
     });
     expect(s).toContain("usually invoices in TRY");
     expect(s).toContain("Aslı");
-    expect(s).toContain("2026-09-06");
+    // VEN-W23: the day in words; no zone given, so it is read in UTC and says so.
+    expect(s).toContain("on Sep 6, 2026 (UTC)");
     // THE LOAD-BEARING CLAUSE.
     expect(s).toContain("NEVER FILES AN INVOICE");
   });
@@ -319,5 +320,22 @@ describe("ProvidersController — the vendor's usual currency", () => {
     const res = await controller.getUsualCurrency("p1", user);
     expect(res.code).toBe("TRY");
     expect(res.sentence).toContain("NEVER FILES AN INVOICE");
+  });
+
+  it("the GET reads 'stated on' in the house's zone and hands the zone to the sheet (VEN-W23)", async () => {
+    const { controller } = build({
+      role: "manager",
+      stated: {
+        code: "USD",
+        // 9:20 pm on Oct 1 in Chicago.
+        setAt: "2026-10-02T02:20:00.000Z",
+        setByName: "Aldemir Konuk",
+        vendorName: "Sysco",
+        houseZone: "America/Chicago",
+      },
+    });
+    const res = await controller.getUsualCurrency("p1", user);
+    expect(res.houseZone).toBe("America/Chicago");
+    expect(res.sentence).toContain("Stated by Aldemir Konuk on Oct 1, 2026.");
   });
 });

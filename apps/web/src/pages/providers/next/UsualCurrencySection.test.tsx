@@ -48,8 +48,9 @@ const STATED = {
   code: 'TRY',
   setAt: '2026-09-06T09:00:00.000Z',
   setByName: 'Aslı',
+  houseZone: 'Europe/Istanbul',
   sentence:
-    'Bir Dagitim usually invoices in TRY. Stated by Aslı on 2026-09-06. This is offered as the starting currency when an order is placed with them, and it can be changed there. IT NEVER FILES AN INVOICE: an invoice takes the currency printed on it, then the currency of the order it is matched to.',
+    'Bir Dagitim usually invoices in TRY. Stated by Aslı on Sep 6, 2026. This is offered as the starting currency when an order is placed with them, and it can be changed there. IT NEVER FILES AN INVOICE: an invoice takes the currency printed on it, then the currency of the order it is matched to.',
 };
 
 const UNSTATED = {
@@ -130,9 +131,28 @@ describe('UsualCurrencySection', () => {
     expect(await screen.findByTestId('vendor-usual-currency-code')).toHaveTextContent(
       'TRY',
     );
-    expect(screen.getByText(/stated by Aslı on 2026-09-06/)).toBeInTheDocument();
+    expect(screen.getByText(/stated by Aslı on Sep 6, 2026/)).toBeInTheDocument();
     // The load-bearing clause, rendered verbatim rather than paraphrased.
     expect(screen.getByText(/NEVER FILES AN INVOICE/)).toBeInTheDocument();
+  });
+
+  // VEN-W23 (founder, 2026-10-01): 9:20 pm on Oct 1 in Chicago is 02:20 UTC on
+  // Oct 2. The chip used to slice the UTC timestamp and said "2026-10-02".
+  it('reads “stated on” as the HOUSE’s calendar day, in words', async () => {
+    api.get.mockResolvedValue({
+      data: { ...STATED, code: 'USD', setAt: '2026-10-02T02:20:00.000Z', houseZone: 'America/Chicago' },
+    });
+    renderIt();
+    expect(await screen.findByText(/stated by Aslı on Oct 1, 2026$/)).toBeInTheDocument();
+    expect(screen.queryByText(/2026-10-02/)).toBeNull();
+  });
+
+  it('with no house zone reads UTC and says so, never the reader’s clock', async () => {
+    api.get.mockResolvedValue({
+      data: { ...STATED, code: 'USD', setAt: '2026-10-02T02:20:00.000Z', houseZone: null },
+    });
+    renderIt();
+    expect(await screen.findByText(/stated by Aslı on Oct 2, 2026 \(UTC\)/)).toBeInTheDocument();
   });
 
   it('a vendor nobody has asked gets an em dash and a sentence, never an empty box', async () => {

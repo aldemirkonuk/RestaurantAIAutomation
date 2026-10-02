@@ -32,6 +32,7 @@ import { RetroactiveOrderDto } from "./dto/retroactive-order.dto";
 import { ProcurementService } from "../procurement/procurement.service";
 import { resolveOrderUnits } from "../procurement/order-units";
 import { isIso4217 } from "../common/iso-4217";
+import { houseFrame } from "../common/house-frame";
 import {
   decideUsualCurrency,
   readInvoiceCurrencyEvidence,
@@ -1705,6 +1706,12 @@ export class ProvidersService {
      */
     decision: UsualCurrencyDecision | null;
     evidenceUnreadable: string | null;
+    /**
+     * VEN-W23: the house's IANA zone, so "stated on" is the house's calendar
+     * day. NULL when the house names none or its row could not be read — the
+     * day is then read in UTC and says so; it is never guessed.
+     */
+    houseZone: string | null;
   }> {
     const client = this.databaseService.supabase;
     const read = (cols: string) =>
@@ -1795,10 +1802,32 @@ export class ProvidersService {
       else setByName = ((person as { name?: string | null })?.name ?? null) || null;
     }
 
+    // The house's clock (VEN-W23), read by the token's house id only and NEVER
+    // load-bearing: a failed read leaves the day in UTC, labelled as UTC,
+    // rather than suppressing the currency. Asked only when there is a day to
+    // print.
+    let houseZone: string | null = null;
+    if (row.usual_currency_set_at) {
+      const { data: house, error: houseError } = await client
+        .from("restaurants")
+        .select("timezone, country")
+        .eq("id", restaurantId)
+        .maybeSingle();
+      if (houseError)
+        this.logger.warn(
+          `This house's time zone could not be read (${houseError.message}); the day ${providerId}'s usual currency was stated is shown in UTC.`,
+        );
+      else
+        houseZone = houseFrame(
+          house as { timezone?: string; country?: string } | null,
+        ).zone;
+    }
+
     return {
       code: row.usual_currency ?? null,
       setAt: row.usual_currency_set_at ?? null,
       setByName,
+      houseZone,
       vendorName: row.name ?? null,
       source,
       invoiceCount,

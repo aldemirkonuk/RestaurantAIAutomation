@@ -209,7 +209,7 @@ function Line({ m, f, onRows }: { m: MeasureResult; f: Formats; onRows: (k: Meas
 }
 
 function Body({ card, onRows }: { card: VendorScorecard; onRows: (k: MeasureKey) => void }) {
-  const f = formatsOf(card.house);
+  const f = formatsOf(card.house, card.window.to);
   if (card.quiet) {
     return (
       <p

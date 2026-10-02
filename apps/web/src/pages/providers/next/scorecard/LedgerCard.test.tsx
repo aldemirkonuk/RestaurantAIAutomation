@@ -201,6 +201,10 @@ describe('the ledger card', () => {
     expect(claims).toHaveLength(3);
     expect(claims[0]).toHaveTextContent('Claim c3 · qty short — Promised, 39 days ago');
     expect(claims[1]).toHaveTextContent('Credited $103.50 of $118.00 asked.');
+    // VEN-W23: each claim's day in words, the year left off because the window
+    // heading already names it — never "08/09".
+    expect(claims[0]).toHaveTextContent(/^Aug 9Claim c3/);
+    expect(claims[0]).not.toHaveTextContent('08/09');
     // No list under any other refusal: only claims are listed on the card.
     expect(
       within(screen.getByTestId('ledger-line-linesAsOrdered')).queryByTestId('ledger-listed-claims'),
@@ -244,7 +248,7 @@ describe('the ledger card', () => {
     expect(fig).not.toHaveTextContent('$');
   });
 
-  it('formats money and dates in the house’s locale from the gateway, never a pinned one (question 7)', async () => {
+  it('formats money in the house’s locale and dates as words on the house’s clock (question 7, VEN-W23)', async () => {
     const tr = { ...card().house, zone: 'Europe/Istanbul', locale: 'tr-TR', deadline: 'Istanbul midnight.' };
     // 22:30 UTC is already the next day in Istanbul: the label must be read on the house's clock.
     const c = card({
@@ -275,13 +279,10 @@ describe('the ledger card', () => {
       maximumFractionDigits: 2,
     }).format(1234.5);
     expect(fig).toHaveTextContent(`%100${lira} of ${lira}`);
-    const day = (iso: string) =>
-      new Intl.DateTimeFormat('tr-TR', { day: '2-digit', month: '2-digit', timeZone: 'Europe/Istanbul' }).format(
-        new Date(iso),
-      );
-    expect(screen.getByTestId('ledger-card')).toHaveTextContent(
-      `${day('2026-06-19T22:30:00.000Z')} – ${day('2026-09-17T22:30:00.000Z')}`,
-    );
+    // VEN-W23 (founder, 2026-10-01): dates are English words whatever the
+    // locale — never "20.06" — and still read on the house's clock.
+    expect(screen.getByTestId('ledger-card')).toHaveTextContent('Jun 20 – Sep 18, 2026');
+    expect(screen.getByTestId('ledger-card')).not.toHaveTextContent('20.06');
     fireEvent.click(screen.getByText('How this is scored'));
     expect(screen.getByTestId('ledger-deadline')).toHaveTextContent('Istanbul midnight.');
   });
@@ -315,7 +316,7 @@ describe('the Docket, opened from a line', () => {
                   hit: false,
                   open: true,
                   daysLate: 4,
-                  detail: 'Expected by 09/13/2026; 4 days past it and not landed — counted as late.',
+                  detail: 'Expected by Sep 13, 2026; 4 days past it and not landed — counted as late.',
                 }),
               ],
             }

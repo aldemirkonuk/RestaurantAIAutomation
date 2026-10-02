@@ -439,7 +439,7 @@ describe("on time — before the house's midnight, with its denominator", () => 
       ),
     ).toBe(true);
     expect(open[1].detail).toBe(
-      "Expected by 2026-09-06; 11 days past it and not landed. Someone here said not yet on 2026-09-08 — counted as late.",
+      "Expected by Sep 6, 2026; 11 days past it and not landed. Someone here said not yet on Sep 8, 2026 — counted as late.",
     );
   });
 
@@ -504,7 +504,7 @@ describe("on time — before the house's midnight, with its denominator", () => 
     const e = built.entries.find((x) => x.id === `onTime:${lateAcross.id}`);
     expect(e).toMatchObject({ window: "prior", hit: false, daysLate: 15 });
     expect(e?.detail).toBe(
-      "Landed on 2026-06-25, 15 days after the expected date (2026-06-10) — late, in the window its date fell in.",
+      "Landed on Jun 25, 2026, 15 days after the expected date (Jun 10, 2026) — late, in the window its date fell in.",
     );
   });
 
@@ -1135,14 +1135,8 @@ describe("the deadline is the house's own midnight (question 6)", () => {
     expect(late?.at).toBe("2026-09-10T21:00:00.000Z");
     expect(late?.daysLate).toBe(1);
     // 22:30Z is 01:30 on the 11th in Istanbul: the landing's day is the house's.
-    expect(late?.detail).toContain(
-      `Landed on ${new Intl.DateTimeFormat(istanbul.locale as string, {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-        timeZone: "UTC",
-      }).format(new Date("2026-09-11T00:00:00Z"))},`,
-    );
+    // VEN-W23: written out in English whatever the house's locale.
+    expect(late?.detail).toContain("Landed on Sep 11, 2026,");
     // The same rows under the retired rule (23:59:59 UTC) read 5 of 5.
     expect(onTimeOf(rows, UTC_HOUSE).hits).toBe(5);
   });
@@ -1219,7 +1213,7 @@ describe("the deadline is the house's own midnight (question 6)", () => {
 });
 
 describe("percent with count, in the house's formats (questions 3 and 7)", () => {
-  it("prints the fact and the prior window with the house's own percent and date formats", () => {
+  it("prints the fact and the prior window with the house's own percent format and dates in words (VEN-W23)", () => {
     const tr = houseFrame({ timezone: "Europe/Istanbul", country: "Türkiye" });
     expect(tr.locale).toBe(
       `${new Intl.Locale("und", { region: "TR" }).maximize().language}-TR`,
@@ -1237,15 +1231,10 @@ describe("percent with count, in the house's formats (questions 3 and 7)", () =>
     }).format(0.83);
     expect(built.card.fact.text).toBe(`${pct} on time · 5 of 6`);
     const late = built.entries.find((e) => e.hit === false);
-    const trDate = (d: string) =>
-      new Intl.DateTimeFormat(tr.locale as string, {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-        timeZone: "UTC",
-      }).format(new Date(`${d}T00:00:00Z`));
+    // VEN-W23 (founder, 2026-10-01): the percent keeps the house's format,
+    // the dates are English words — never "08.09.2026".
     expect(late?.detail).toBe(
-      `Landed on ${trDate("2026-09-08")}, 2 days after the expected date (${trDate("2026-09-06")}) — late, in the window its date fell in.`,
+      "Landed on Sep 8, 2026, 2 days after the expected date (Sep 6, 2026) — late, in the window its date fell in.",
     );
     expect(built.card.house.locale).toBe(tr.locale);
   });

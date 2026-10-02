@@ -1,4 +1,5 @@
 import { isIso4217, notACurrencyBecause } from "../common/iso-4217";
+import { houseDayWords } from "./house-day";
 import {
   INVOICES_TO_WRITE,
   type UsualCurrencyDecision,
@@ -122,6 +123,12 @@ export function vendorCurrencySentence(args: {
   source?: UsualCurrencySource | null;
   invoiceCount?: number | null;
   decision?: UsualCurrencyDecision | null;
+  /**
+   * VEN-W23 (founder, 2026-10-01). The house's IANA zone, so "stated on" is
+   * the house's own calendar day in words. Null or absent: the day is read in
+   * UTC and the sentence says "(UTC)".
+   */
+  houseZone?: string | null;
 }): string {
   const who = args.vendorName?.trim() || "This vendor";
   const code = (args.code ?? "").trim().toUpperCase();
@@ -145,10 +152,12 @@ export function vendorCurrencySentence(args: {
     );
 
   const name = args.setByName?.trim();
-  const when = args.setAt?.trim();
+  // The HOUSE's calendar day, in words (VEN-W23) — never the UTC date sliced
+  // off the timestamp, which an evening in Chicago turned into tomorrow.
+  const when = houseDayWords(args.setAt, args.houseZone);
   const attribution =
     name && when
-      ? ` Stated by ${name} on ${when.slice(0, 10)}.`
+      ? ` Stated by ${name} on ${when}.`
       : name
         ? ` Stated by ${name}.`
         : "";
