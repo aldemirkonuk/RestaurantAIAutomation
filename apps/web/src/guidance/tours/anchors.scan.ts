@@ -8,23 +8,35 @@
  * in `App.tsx` whose `path` is the tour's route. The scan follows that JSX
  * through every component defined under `src` (props, `children`, `.map`
  * over a constant array, local constants and imports are resolved; a
- * component from a package is opaque). The app shell around the route is not
- * part of it.
+ * `Fragment`, a `Suspense` and a context's `Provider` draw their children in
+ * place). The app shell around the route is not part of it.
+ *
+ * Unseen: a component from a package, and a call the scan does not know
+ * (anything but `.map`, `.flatMap`, `createPortal`, `useMemo`, a function
+ * written in place and called at once, or a function under `src` called by
+ * its name and not already being drawn), decide whether and where the JSX
+ * handed to them is drawn: a closed dialog's children, a tooltip's `content`,
+ * a `render` prop. Every element written there is unseen. It can make a step
+ * `cannot-check`, never `rings`, and anything may sit above it.
  *
  * Three answers:
- *  - `rings`: one element meets the tag, id, classes and attributes, each from
- *    a value the scan resolved, and (for a descendant selector) an element the
- *    scan placed above it meets the ancestor part;
+ *  - `rings`: one element that is not unseen meets the tag, id, classes and
+ *    attributes, each from a value the scan resolved, and (for a descendant
+ *    selector) an element the scan placed above it meets the ancestor part;
  *  - `missing`: no element can;
  *  - `cannot-check`: none is proved, and at least one element might, because
- *    a value it needed could not be resolved or the element is drawn by a
- *    package component.
+ *    a value it needed could not be resolved, the element is a package
+ *    component, or the element is unseen.
  *
- * What it counts as drawn: every branch of `? :`, the right side of `&&`, both
- * sides of `||` and `??`, each item of a `.map` over an array it can read, and
- * JSX anywhere in the arguments of a call it does not know (placed under no
- * ancestor). Conditions are not evaluated, so each attribute's branches are
- * taken independently.
+ * What it counts as drawn: both branches of `? :`, the right side of `&&`,
+ * both sides of `||` and `??`, every `return` of a function, and each item of
+ * a `.map` over an array it can read (plus one pass with the item unknown
+ * when it cannot read them all). The literals `true` and `false` are the
+ * only conditions it reads: `false && x`, the dead branch of `true ? a : b` /
+ * `false ? a : b`, and the dead branch of `if (true)` / `if (false)` are not
+ * drawn. Every other condition is not evaluated, so each attribute's branches
+ * are taken independently, and a `return` after an always-taken one is still
+ * read.
  */
 import ts from 'typescript'
 import { dirname, join, relative } from 'node:path'
@@ -98,13 +110,29 @@ interface Ctx {
   locals: Map<ts.Node, Ref>
 }
 
+/**
+ * What sits above an element: the element that draws it, `null` for nothing
+ * (the page's root, or a portal), or `UNSEEN` inside something the scan cannot
+ * see into, where anything may sit above it.
+ */
+type Above = Inst | typeof UNSEEN | null
+const UNSEEN = 'unseen'
+
 /** One element the page draws. `tag` is null for a component the scan cannot see into. */
 interface Inst {
   tag: string | null
   site: ts.JsxOpeningLikeElement
   ctx: Ctx
-  parent: Inst | null
+  parent: Above
+  /**
+   * Written inside a package component (its children or a prop) or in the
+   * arguments of a call the scan does not know. That code decides whether and
+   * where it is drawn, so this element can never prove a step.
+   */
+  unseen: boolean
 }
+
+const isUnseen = (a: Above): boolean => a === UNSEEN || (a !== null && a.unseen)
 
 const OPEN: Vals = { vals: [], open: true }
 const UNKNOWN: Ref = { kind: 'unknown' }
@@ -267,6 +295,13 @@ export function createAnchorScanner(opts: {
     const visit = (n: ts.Node): void => {
       if (ts.isFunctionLike(n)) return
       if (ts.isReturnStatement(n) && n.expression) out.push(n.expression)
+      // `if (true)` / `if (false)`: only the branch that runs. Code after an
+      // always-taken return is still read.
+      if (ts.isIfStatement(n)) {
+        const c = literalBool(n.expression)
+        if (c === true) return visit(n.thenStatement)
+        if (c === false) return n.elseStatement ? visit(n.elseStatement) : undefined
+      }
       ts.forEachChild(n, visit)
     }
     ts.forEachChild(body, visit)
@@ -583,7 +618,7 @@ export function createAnchorScanner(opts: {
     return out
   }
 
-  function renderRef(r: Ref, parent: Inst | null, depth: number): void {
+  function renderRef(r: Ref, parent: Above, depth: number): void {
     if (r.kind === 'expr') render(r.expr, r.ctx, parent, depth + 1)
     else if (r.kind === 'children') renderChildren(r.nodes, r.ctx, parent, depth + 1)
     else if (r.kind === 'default') {
@@ -592,7 +627,7 @@ export function createAnchorScanner(opts: {
     }
   }
 
-  function renderChildren(nodes: ts.NodeArray<ts.JsxChild>, ctx: Ctx, parent: Inst | null, depth: number): void {
+  function renderChildren(nodes: ts.NodeArray<ts.JsxChild>, ctx: Ctx, parent: Above, depth: number): void {
     for (const n of nodes) {
       if (ts.isJsxText(n)) continue
       if (ts.isJsxExpression(n)) {
@@ -601,11 +636,11 @@ export function createAnchorScanner(opts: {
     }
   }
 
-  function renderFnReturns(fn: ts.SignatureDeclaration, ctx: Ctx, parent: Inst | null, depth: number): void {
+  function renderFnReturns(fn: ts.SignatureDeclaration, ctx: Ctx, parent: Above, depth: number): void {
     for (const r of returns(fn)) render(r, ctx, parent, depth + 1)
   }
 
-  function render(node: ts.Node, ctx: Ctx, parent: Inst | null, depth: number): void {
+  function render(node: ts.Node, ctx: Ctx, parent: Above, depth: number): void {
     if (depth > MAX_DEPTH) throw new Error(`render depth over ${MAX_DEPTH} at ${where(node)}`)
     if (insts.length > MAX_INSTANCES) throw new Error(`more than ${MAX_INSTANCES} elements on one page`)
     const e = ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node) || ts.isJsxFragment(node) ? node : unwrapNode(node)
@@ -617,14 +652,16 @@ export function createAnchorScanner(opts: {
       return
     }
     if (ts.isConditionalExpression(e)) {
-      render(e.whenTrue, ctx, parent, depth + 1)
-      render(e.whenFalse, ctx, parent, depth + 1)
+      const c = literalBool(e.condition)
+      if (c !== false) render(e.whenTrue, ctx, parent, depth + 1)
+      if (c !== true) render(e.whenFalse, ctx, parent, depth + 1)
       return
     }
     if (ts.isBinaryExpression(e)) {
       const op = e.operatorToken.kind
-      if (op === ts.SyntaxKind.AmpersandAmpersandToken) render(e.right, ctx, parent, depth + 1)
-      else if (op === ts.SyntaxKind.BarBarToken || op === ts.SyntaxKind.QuestionQuestionToken) {
+      if (op === ts.SyntaxKind.AmpersandAmpersandToken) {
+        if (literalBool(e.left) !== false) render(e.right, ctx, parent, depth + 1)
+      } else if (op === ts.SyntaxKind.BarBarToken || op === ts.SyntaxKind.QuestionQuestionToken) {
         render(e.left, ctx, parent, depth + 1)
         render(e.right, ctx, parent, depth + 1)
       }
@@ -646,7 +683,13 @@ export function createAnchorScanner(opts: {
     return ts.isExpression(n) ? unwrap(n) : n
   }
 
-  function renderCall(e: ts.CallExpression, ctx: Ctx, parent: Inst | null, depth: number): void {
+  /** `true` or `false` when the expression is that literal; otherwise null. */
+  function literalBool(x: ts.Expression): boolean | null {
+    const u = unwrap(x)
+    return u.kind === ts.SyntaxKind.TrueKeyword ? true : u.kind === ts.SyntaxKind.FalseKeyword ? false : null
+  }
+
+  function renderCall(e: ts.CallExpression, ctx: Ctx, parent: Above, depth: number): void {
     const callee = unwrap(e.expression)
     const name = ts.isIdentifier(callee) ? callee.text : ts.isPropertyAccessExpression(callee) ? callee.name.text : ''
     const fnArg = (i: number) => {
@@ -664,9 +707,14 @@ export function createAnchorScanner(opts: {
       }
       return
     }
-    // A portal draws outside every ancestor here.
+    // A portal draws outside every ancestor here (and stays unseen if its call site is).
     if (name === 'createPortal') {
-      if (e.arguments[0]) render(e.arguments[0], ctx, null, depth + 1)
+      if (e.arguments[0]) render(e.arguments[0], ctx, isUnseen(parent) ? UNSEEN : null, depth + 1)
+      return
+    }
+    // (() => <div />)(): what the function returns, where it is called.
+    if (ts.isArrowFunction(callee) || ts.isFunctionExpression(callee)) {
+      renderFnReturns(callee, ctx, parent, depth + 1)
       return
     }
     if (name === 'useMemo') {
@@ -685,26 +733,36 @@ export function createAnchorScanner(opts: {
       renderFnReturns(helper, { fn: helper, binding: null, caller: ctx, locals }, parent, depth + 1)
       return
     }
-    // Anything else: JSX in its arguments counts as drawn, under no ancestor.
+    // Anything else decides whether and where JSX in its arguments is drawn: unseen.
     e.arguments.forEach((a, i) => {
       const f = fnArg(i)
-      if (f) renderFnReturns(f, ctx, null, depth + 1)
-      else render(a, ctx, null, depth + 1)
+      if (f) renderFnReturns(f, ctx, UNSEEN, depth + 1)
+      else render(a, ctx, UNSEEN, depth + 1)
     })
   }
 
   const TRANSPARENT = new Set(['Fragment', 'React.Fragment', 'Suspense', 'React.Suspense'])
 
+  /** `<X.Provider>` (or `<X>`) where `X = createContext(…)`: draws its children in place. */
+  function isContextProvider(tag: ts.JsxTagNameExpression): boolean {
+    const base = ts.isPropertyAccessExpression(tag) && tag.name.text === 'Provider' ? tag.expression : tag
+    if (!ts.isIdentifier(base)) return false
+    const d = declOf(checker.getSymbolAtLocation(base))
+    if (!d || !ts.isVariableDeclaration(d) || !d.initializer) return false
+    const init = unwrap(d.initializer)
+    return ts.isCallExpression(init) && /^(React\.)?createContext$/.test(init.expression.getText())
+  }
+
   function renderElement(
     site: ts.JsxOpeningLikeElement,
     children: ts.NodeArray<ts.JsxChild> | undefined,
     ctx: Ctx,
-    parent: Inst | null,
+    parent: Above,
     depth: number,
   ): void {
     const tag = site.tagName
     if ((ts.isIdentifier(tag) && /^[a-z]/.test(tag.text)) || ts.isJsxNamespacedName(tag)) {
-      const inst: Inst = { tag: tag.getText(), site, ctx, parent }
+      const inst: Inst = { tag: tag.getText(), site, ctx, parent, unseen: isUnseen(parent) }
       insts.push(inst)
       if (children) renderChildren(children, ctx, inst, depth + 1)
       return
@@ -717,20 +775,21 @@ export function createAnchorScanner(opts: {
       renderFnReturns(fn, { fn, binding, caller: ctx, locals: new Map() }, parent, depth + 1)
       return
     }
-    if (TRANSPARENT.has(text)) {
+    if (TRANSPARENT.has(text) || isContextProvider(tag)) {
       if (children) renderChildren(children, ctx, parent, depth + 1)
       return
     }
-    // A component from a package: the scan cannot see what it draws, or where.
-    insts.push({ tag: null, site, ctx, parent })
-    if (children) renderChildren(children, ctx, null, depth + 1)
+    // A component from a package: the scan cannot see what it draws, or where,
+    // so its children and the JSX in its props are unseen.
+    insts.push({ tag: null, site, ctx, parent, unseen: isUnseen(parent) })
+    if (children) renderChildren(children, ctx, UNSEEN, depth + 1)
     for (const a of site.attributes.properties) {
       if (!ts.isJsxAttribute(a) || !a.initializer || ts.isStringLiteral(a.initializer)) continue
       const x = ts.isJsxExpression(a.initializer) ? a.initializer.expression : a.initializer
       if (!x) continue
       const u = unwrap(x as ts.Expression)
-      if (ts.isArrowFunction(u) || ts.isFunctionExpression(u)) renderFnReturns(u, ctx, null, depth + 1)
-      else render(u, ctx, null, depth + 1)
+      if (ts.isArrowFunction(u) || ts.isFunctionExpression(u)) renderFnReturns(u, ctx, UNSEEN, depth + 1)
+      else render(u, ctx, UNSEEN, depth + 1)
     }
   }
 
@@ -851,7 +910,10 @@ export function createAnchorScanner(opts: {
     const s = matchCompound(inst, comps[i])
     if (s === NO || i === 0) return s
     let best: Tri = NO
-    for (let a = inst.parent; a && best !== YES; a = a.parent) best = Math.max(best, matchChain(a, comps, i - 1)) as Tri
+    let a = inst.parent
+    for (; a !== null && a !== UNSEEN && best !== YES; a = a.parent) best = Math.max(best, matchChain(a, comps, i - 1)) as Tri
+    // Past an unseen boundary anything may sit above it.
+    if (a === UNSEEN && best === NO) best = MAYBE
     return Math.min(s, best) as Tri
   }
 
@@ -898,7 +960,8 @@ export function createAnchorScanner(opts: {
           const last = comps.length - 1
           const maybe: string[] = []
           for (const inst of drawn) {
-            const s = matchChain(inst, comps, last)
+            const m = matchChain(inst, comps, last)
+            const s = m === YES && inst.unseen ? MAYBE : m
             if (s === YES) return { status: 'rings', at: [where(inst.site)] }
             if (s === MAYBE && maybe.length < 5) maybe.push(where(inst.site))
           }
