@@ -14,41 +14,50 @@
 # role at the database layer; this catches it for application code running
 # as service_role, which bypasses RLS/grants entirely.
 #
-#   ./scripts/check_no_direct_type_attributes_access.sh
+#   ./scripts/check_no_direct_type_attributes_access.sh              # the check
+#   ./scripts/check_no_direct_type_attributes_access.sh --self-test  # proves it can fail
 #
 # Exits 1 and prints offending lines if a new direct reference appears.
-# Migrations and the view definitions themselves are the only allowed home.
+# Exits 2 (CANNOT CHECK) if it could not search: until ADR 0259 it ran `rg`,
+# which the CI runner does not have, and printed PASS over nothing.
+# Comment lines are skipped (a comment is never access, founder 2026-10-02).
 
-set -euo pipefail
+set -uo pipefail
 
-cd "$(dirname "$0")/.."
+here="${BASH_SOURCE[0]}"; [[ "$here" == */* ]] && lib="${here%/*}/lib" || lib=lib
+# shellcheck source=lib/app_code_grep.sh
+source "$lib/app_code_grep.sh" 2>/dev/null \
+  || { echo "CANNOT CHECK — ${lib}/app_code_grep.sh is missing."; exit 2; }
+acg_enter_repo
 
 PATTERN='type_attributes'
 
-# file:line pairs already audited as NOT a violation:
+# File and exact trimmed line, audited as NOT a violation. Keyed on content so
+# an exemption never drifts onto a different line.
 ALLOWLIST=(
+  # Prose on /cellar's hidden-columns list: a measurement of the JSONB over all
+  # 609 beverages rows, which naming the beer view would change (founder,
+  # 2026-10-02, ADR 0259).
+  "apps/web/src/pages/cellar/next/cellar-columns.ts|fill: 'type_attributes is {} on all 609 rows, so 0 of 57 beers carry a style.',"
+  "apps/web/src/pages/cellar/next/cellar-columns.ts|'The column exists (type_attributes is JSONB and needs no migration) and has never been written to. It is the single highest-value writer this register is waiting on — a beer register without a style is a list of brand names.',"
 )
 
-is_allowlisted() {
-  local hit="$1"
-  local file_line="${hit%%:*}:$(echo "$hit" | cut -d: -f2)"
-  for entry in "${ALLOWLIST[@]}"; do
-    local entry_prefix="${entry%%:*}:$(echo "$entry" | cut -d: -f2)"
-    if [[ "$file_line" == "$entry_prefix" ]]; then
-      return 0
-    fi
-  done
-  return 1
-}
+if [[ "${1:-}" == "--self-test" ]]; then
+  acg_self_test scripts/check_no_direct_type_attributes_access.sh \
+    "const style = row.type_attributes?.style;" \
+    "style = row['type_attributes']['style']"
+  exit $?
+fi
 
-matches="$(rg -n -P "$PATTERN" --type ts --type py -g '!*.spec.ts' -g '!*.test.ts' \
-  apps/ services/ scripts/ 2>/dev/null || true)"
+acg_measure_corpus
+matches="$(acg_search "$PATTERN")" || exit $?
 
 fail=0
 offenders=()
 while IFS= read -r line; do
   [[ -z "$line" ]] && continue
-  if ! is_allowlisted "$line"; then
+  acg_is_comment_line "$line" && continue
+  if ! acg_is_allowlisted "$line" "${ALLOWLIST[@]}"; then
     offenders+=("$line")
     fail=1
   fi
@@ -65,3 +74,4 @@ if [[ $fail -eq 1 ]]; then
 fi
 
 echo "PASS — no direct type_attributes access outside migrations."
+echo "  searched ${ACG_CORPUS_COUNT} files (${ACG_TSX_COUNT} .tsx, ${ACG_PY_COUNT} .py) under apps/, services/ and scripts/."

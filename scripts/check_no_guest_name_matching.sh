@@ -20,43 +20,46 @@
 # Identity resolution has exactly one legal home: guest_link_identifier(),
 # which decides by exact hashed-verified-channel equality inside the database.
 #
-#   ./scripts/check_no_guest_name_matching.sh
+#   ./scripts/check_no_guest_name_matching.sh              # the check
+#   ./scripts/check_no_guest_name_matching.sh --self-test  # proves it can fail
 #
 # Exits 1 if application code appears to match on a guest's display label.
+# Exits 2 (CANNOT CHECK) if it could not search: until ADR 0259 it ran `rg`,
+# which the CI runner does not have, and printed PASS over nothing.
 
-set -euo pipefail
+set -uo pipefail
 
-cd "$(dirname "$0")/.."
+here="${BASH_SOURCE[0]}"; [[ "$here" == */* ]] && lib="${here%/*}/lib" || lib=lib
+# shellcheck source=lib/app_code_grep.sh
+source "$lib/app_code_grep.sh" 2>/dev/null \
+  || { echo "CANNOT CHECK — ${lib}/app_code_grep.sh is missing."; exit 2; }
+acg_enter_repo
 
 # display_label appearing near a comparison, similarity call, or lookup.
 # Deliberately broad: a false positive is one line in the allowlist below,
 # a false negative is a disclosure.
 PATTERN='display_label\s*(===|==|!=|!==|\.localeCompare|\.includes|\.startsWith|ilike|similar|~\*)|(similarity|levenshtein|fuzzy|soundex|metaphone)\s*\([^)]*display_label|display_label[^)\n]*\b(similarity|levenshtein|fuzzy)\b'
 
-# file:line pairs already audited as NOT a violation:
+# File and exact trimmed line, audited as NOT a violation (keyed on content,
+# so an exemption never drifts onto a different line):
 ALLOWLIST=(
 )
 
-is_allowlisted() {
-  local hit="$1"
-  local file_line="${hit%%:*}:$(echo "$hit" | cut -d: -f2)"
-  for entry in "${ALLOWLIST[@]}"; do
-    local entry_prefix="${entry%%:*}:$(echo "$entry" | cut -d: -f2)"
-    if [[ "$file_line" == "$entry_prefix" ]]; then
-      return 0
-    fi
-  done
-  return 1
-}
+if [[ "${1:-}" == "--self-test" ]]; then
+  acg_self_test scripts/check_no_guest_name_matching.sh \
+    "if (guest.display_label === other.display_label) mergeGuests(guest, other);" \
+    "if guest.display_label == other.display_label:"
+  exit $?
+fi
 
-matches="$(rg -n -P "$PATTERN" --type ts --type py -g '!*.spec.ts' -g '!*.test.ts' \
-  apps/ services/ scripts/ 2>/dev/null || true)"
+acg_measure_corpus
+matches="$(acg_search "$PATTERN")" || exit $?
 
 fail=0
 offenders=()
 while IFS= read -r line; do
   [[ -z "$line" ]] && continue
-  if ! is_allowlisted "$line"; then
+  if ! acg_is_allowlisted "$line" "${ALLOWLIST[@]}"; then
     offenders+=("$line")
     fail=1
   fi
@@ -75,3 +78,4 @@ if [[ $fail -eq 1 ]]; then
 fi
 
 echo "PASS — no guest display_label matching in application code."
+echo "  searched ${ACG_CORPUS_COUNT} files (${ACG_TSX_COUNT} .tsx, ${ACG_PY_COUNT} .py) under apps/, services/ and scripts/."

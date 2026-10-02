@@ -372,7 +372,7 @@ const STYLE_BEER: CellarColumn = {
   label: 'Style',
   kind: 'word',
   side: 'catalogue',
-  source: 'beverages.type_attributes ->> style',
+  source: 'beer.style',
   meaning:
     'Pilsner, IPA, Gose. The founder’s first beer column, and the field agrees: Untappd makes Style one of only three REQUIRED fields on a menu beer.',
   fill: 'type_attributes is {} on all 609 rows, so 0 of 57 beers carry a style.',
@@ -387,7 +387,7 @@ const IBU: CellarColumn = {
   label: 'IBU',
   kind: 'figure',
   side: 'catalogue',
-  source: 'beverages.type_attributes ->> ibu',
+  source: 'beer.ibu',
   meaning:
     'Bitterness. One of the five numbers BJCP puts in a style’s Vital Statistics (IBU · SRM · OG · FG · ABV).',
   fill: '0 of 57 beers.',

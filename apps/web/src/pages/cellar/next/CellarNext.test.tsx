@@ -1576,7 +1576,7 @@ describe('the expanded row — the /inventory dropdown, in the cellar', () => {
     expect(withheld.length).toBe(3);
     expect(withheld[0]).toHaveAttribute(
       'title',
-      expect.stringContaining('beverages.type_attributes'),
+      expect.stringContaining('beer.style'),
     );
     expect(strip).toHaveTextContent('never counted');
   });

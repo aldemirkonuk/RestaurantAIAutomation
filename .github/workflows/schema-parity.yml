@@ -526,7 +526,13 @@ jobs:
           ./scripts/check_db_reachable.sh
           python3 scripts/eval_guest_merge_policies.py
 
+      # ADR 0259: these used to run `rg`, which the runner does not have, and
+      # passed having searched nothing. The self-tests prove they can fail.
+      # They need no database, so a failed DB step above does not skip them.
       - name: Guest identity guards
+        if: ${{ !cancelled() }}
         run: |
+          ./scripts/check_no_guest_name_matching.sh --self-test
+          ./scripts/check_no_raw_guest_channels.sh --self-test
           ./scripts/check_no_guest_name_matching.sh
           ./scripts/check_no_raw_guest_channels.sh

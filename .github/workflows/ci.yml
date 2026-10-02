@@ -1244,7 +1244,17 @@ jobs:
         if: ${{ !cancelled() }}
         run: ./scripts/check_lot_cost_provenance.py
 
+      # ADR 0259. Until 2026-10-02 this guard ran `rg`, which this runner does
+      # not have; `2>/dev/null || true` swallowed "command not found" and it
+      # printed PASS over a tree with eight matching lines. It now searches with
+      # `git grep`, exits 2 when it cannot search, and the self-test proves it
+      # reaches .tsx and .py files and fires on a seeded line.
+      - name: The type_attributes guard proves it can fail
+        if: ${{ !cancelled() }}
+        run: ./scripts/check_no_direct_type_attributes_access.sh --self-test
+
       - name: Guard against direct beverages.type_attributes access
+        if: ${{ !cancelled() }}
         run: ./scripts/check_no_direct_type_attributes_access.sh
 
   # ADR 0078. A count that AGREED with the books used to write nothing at all:

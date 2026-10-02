@@ -138,8 +138,8 @@ const unwritten = (label: string, source: string): Fact => ({
 
 const KIND_FIELDS: Partial<Record<RegisterId, Fact[]>> = {
   beer: [
-    unwritten('Style', 'beverages.type_attributes → style'),
-    unwritten('IBU', 'beverages.type_attributes → ibu'),
+    unwritten('Style', 'beer.style'),
+    unwritten('IBU', 'beer.ibu'),
     abv,
     format,
     origin,

@@ -23,42 +23,45 @@
 # string perfectly happily, and the API runs as service_role, which bypasses
 # every RLS and grant that would otherwise stop it.
 #
-#   ./scripts/check_no_raw_guest_channels.sh
+#   ./scripts/check_no_raw_guest_channels.sh              # the check
+#   ./scripts/check_no_raw_guest_channels.sh --self-test  # proves it can fail
 #
 # Exits 1 if a guest channel value appears to be written into a payload.
+# Exits 2 (CANNOT CHECK) if it could not search: until ADR 0259 it ran `rg`,
+# which the CI runner does not have, and printed PASS over nothing.
 
-set -euo pipefail
+set -uo pipefail
 
-cd "$(dirname "$0")/.."
+here="${BASH_SOURCE[0]}"; [[ "$here" == */* ]] && lib="${here%/*}/lib" || lib=lib
+# shellcheck source=lib/app_code_grep.sh
+source "$lib/app_code_grep.sh" 2>/dev/null \
+  || { echo "CANNOT CHECK — ${lib}/app_code_grep.sh is missing."; exit 2; }
+acg_enter_repo
 
 # A guest channel field name being assigned into one of the jsonb sinks, or
 # a guest_identifiers write that is not the function call.
 PATTERN='guest_identifiers\s*[).]|(from|into|table)\(\s*.guest_identifiers.|guest_(phone|email|card_fingerprint|loyalty)\w*\s*[:=]'
 
-# file:line pairs already audited as NOT a violation:
+# File and exact trimmed line, audited as NOT a violation (keyed on content,
+# so an exemption never drifts onto a different line):
 ALLOWLIST=(
 )
 
-is_allowlisted() {
-  local hit="$1"
-  local file_line="${hit%%:*}:$(echo "$hit" | cut -d: -f2)"
-  for entry in "${ALLOWLIST[@]}"; do
-    local entry_prefix="${entry%%:*}:$(echo "$entry" | cut -d: -f2)"
-    if [[ "$file_line" == "$entry_prefix" ]]; then
-      return 0
-    fi
-  done
-  return 1
-}
+if [[ "${1:-}" == "--self-test" ]]; then
+  acg_self_test scripts/check_no_raw_guest_channels.sh \
+    "const payload = { guest_phone: rawPhone };" \
+    "guest_email = raw_value"
+  exit $?
+fi
 
-matches="$(rg -n -P "$PATTERN" --type ts --type py -g '!*.spec.ts' -g '!*.test.ts' \
-  apps/ services/ scripts/ 2>/dev/null || true)"
+acg_measure_corpus
+matches="$(acg_search "$PATTERN")" || exit $?
 
 fail=0
 offenders=()
 while IFS= read -r line; do
   [[ -z "$line" ]] && continue
-  if ! is_allowlisted "$line"; then
+  if ! acg_is_allowlisted "$line" "${ALLOWLIST[@]}"; then
     offenders+=("$line")
     fail=1
   fi
@@ -78,3 +81,4 @@ if [[ $fail -eq 1 ]]; then
 fi
 
 echo "PASS — guest contact channels confined to guest_link_identifier()."
+echo "  searched ${ACG_CORPUS_COUNT} files (${ACG_TSX_COUNT} .tsx, ${ACG_PY_COUNT} .py) under apps/, services/ and scripts/."
