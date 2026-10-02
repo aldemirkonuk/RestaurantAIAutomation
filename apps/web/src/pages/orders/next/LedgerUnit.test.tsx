@@ -227,3 +227,41 @@ describe('an uncountable pairing is refused in words', () => {
     );
   });
 });
+
+/*
+ * ORD-W4, 2026-10-01. The list route joins `providers` and sends the vendor's
+ * name; a vendor with no house id is absent from the house's providers list,
+ * so reading the list alone printed an em dash for a vendor the order names.
+ */
+describe('the ledger row names the vendor the route sends', () => {
+  it('prefers the route’s providerName over the house’s providers list', () => {
+    const row = toRow(wire({ providerName: 'Aldemir Distribution' }), NO_PROVIDERS);
+    expect(row.providerName).toBe('Aldemir Distribution');
+  });
+
+  it('falls back to the providers list when the route did not join', () => {
+    const row = toRow(wire(), new Map([['p-1', 'Listed Vendor']]));
+    expect(row.providerName).toBe('Listed Vendor');
+  });
+
+  it('a blank or null name from the route is not a name', () => {
+    expect(toRow(wire({ providerName: '  ' }), NO_PROVIDERS).providerName).toBeNull();
+    expect(toRow(wire({ providerName: null }), new Map([['p-1', 'Listed Vendor']])).providerName).toBe(
+      'Listed Vendor',
+    );
+  });
+});
+
+describe('a count is said in words (ORD-W17)', () => {
+  it('says "5 cases", never "case(s)"', () => {
+    mount({ priceUom: null, pricePackSize: null });
+    const said = screen.getByTestId('row-no-working').textContent ?? '';
+    expect(said).toContain('5 cases —');
+    expect(said).not.toContain('(s)');
+  });
+
+  it('says one of a unit in the singular, and a split case as two words', () => {
+    mount({ priceUom: null, pricePackSize: null, quantity: 1, unitType: 'split_case' });
+    expect(screen.getByTestId('row-no-working').textContent).toContain('1 split case —');
+  });
+});
