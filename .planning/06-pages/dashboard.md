@@ -680,7 +680,7 @@ the two or three actions worth doing before service, each of which actually happ
 - **Next for this page:**
   - (a) Rebase onto `origin/main` before the PR. The base is `1c1a676f8`; live is `5a330a88e`, with #563, #568 and #575 in the shell and schedules, none of them on the dashboard.
   - (b) PR #565 rebases on this one; it overlaps `DashboardNext.test.tsx`, `DayDetail.tsx`, `RailPanels.tsx`, `SalesCalendar.tsx` and `useDashboardNextData.ts`.
-  - (c) The oldest-first, flagged *Waiting on you* (founder ruling relayed 2026-10-01) is being built on `fix/waiting-on-you-oldest-first-flagged` by the multi-restaurant session; whichever lands second rebases.
+  - (c) The oldest-first, flagged *Waiting on you* (founder ruling relayed 2026-10-01) is being built on `fix/waiting-on-you-oldest-first-flagged` by the multi-restaurant session; whichever lands second rebases. **[2026-10-02: it landed first as PR #581 (ADR 0256), merged into this branch with main.]**
   - (d) Compare production's page in Chrome once it is connected (P10 was partial).
   - (e) A test for the day panel's "Unnamed item".
 - **Owned elsewhere:** see §9's dated note.

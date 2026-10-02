@@ -112,7 +112,7 @@ These were built as approved. *What follows is my synthesis, proposed. It is not
   - TenantGuard log noise and the socket greeting's old brand;
   - no CORS `maxAge`;
   - "items" on every other page.
-- **Overlaps.** PR #565 rebases on this branch. The oldest-first, flagged *Waiting on you* work (`fix/waiting-on-you-oldest-first-flagged`) overlaps `WaitingOnYou.tsx`; whichever lands second rebases.
+- **Overlaps.** PR #565 rebases on this branch. The oldest-first, flagged *Waiting on you* work (`fix/waiting-on-you-oldest-first-flagged`) overlaps `WaitingOnYou.tsx`; it landed first as PR #581 (ADR 0256) and is merged into this branch with main, without conflict.
 - **"Bottles" and "In the cellar" stay** until food lands; the founder is to be asked again then (W37).
 - **What the PR #579 audit found.** The open entries are in `.planning/tech-debt.d/2026-10-01-fix-review-dashboard.md`:
   - the two order routes that still send prices to staff;
