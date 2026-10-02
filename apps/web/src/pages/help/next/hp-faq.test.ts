@@ -4,6 +4,8 @@ import { describe, expect, it } from 'vitest';
 import { FAQ_ENTRIES, findFaq } from './hp-faq';
 
 const APP_TSX = readFileSync(resolve(__dirname, '../../../App.tsx'), 'utf8');
+const HELP_TSX = readFileSync(resolve(__dirname, 'HelpNext.tsx'), 'utf8');
+const TIP_TSX = readFileSync(resolve(__dirname, '../../../guidance/components/PageTipStrip.tsx'), 'utf8');
 
 describe('FAQ entries — re-checkable claims', () => {
   it('every slug is unique and URL-safe', () => {
@@ -47,6 +49,19 @@ describe('FAQ entries — re-checkable claims', () => {
     expect(a).toMatch(/time off, a different role and a week over 45 hours are shown as warnings/);
     expect(a).toMatch(/goes back to the open pool/);
     expect(a).toMatch(/past shifts stay in the owner’s former-staff history/);
+  });
+  it('sends people for tours and tips to what the house shell draws, by the words it draws', () => {
+    const a = findFaq('page-tours')!.answer;
+    // The legacy sidebar's "Learn & Help" is not in the house shell.
+    expect(a).not.toMatch(/Learn & Help|sidebar/i);
+    for (const label of ['Turn tips back on', 'Ways back in']) {
+      expect(a, label).toContain(label);
+      expect(HELP_TSX, `HelpNext.tsx draws "${label}"`).toContain(label);
+    }
+    for (const label of ['Show me', "Don't show tips again"]) {
+      expect(a, label).toContain(label);
+      expect(TIP_TSX, `PageTipStrip.tsx draws "${label}"`).toContain(label);
+    }
   });
 });
 

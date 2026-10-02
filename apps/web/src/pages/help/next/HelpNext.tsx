@@ -116,9 +116,12 @@ function Eyebrow({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * The one place page tips come back from. "Don't show tips again" on any tip
- * turns them all off and they stay off until the person turns them on here
- * (founder, 2026-10-01). Outside the guidance provider it draws nothing.
+ * Where page tips come back from in the house shell. "Don't show tips again"
+ * on any tip turns them all off, and they stay off until the person turns
+ * them back on here (founder, 2026-10-01). The legacy sidebar's LearnPanel
+ * also has a "Reset page tips" button, but that sidebar is drawn only when a
+ * browser override turns the house shell off (`useMudavymDesign('shell')`,
+ * DashboardLayout.tsx). Outside the guidance provider this draws nothing.
  */
 function PageTipsSwitch() {
   const guidance = useGuidanceOptional();

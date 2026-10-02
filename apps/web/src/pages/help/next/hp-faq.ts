@@ -72,12 +72,17 @@ export const FAQ_ENTRIES: readonly FaqEntry[] = [
       'By email, in "Reach a person" below on this page. If that section says no address was configured, none was set for this build; there is no default one and no other channel.',
   },
   {
-    // guidance/components/LearnPanel.tsx (startPageTour/resetTips);
-    // components/layout/Sidebar.tsx — "Learn & Help" entry at the bottom.
+    // components/mudavym/HouseShell.tsx mounts PageTipStrip above the page.
+    // guidance/components/PageTipStrip.tsx offers "Show me" only when the
+    // tour's own stepsOnPage (tours/TourEngine.tsx) finds a step on the page.
+    // "Turn tips back on" is PageTipsSwitch in this page's "Ways back in"; it
+    // calls GuidanceProvider's resetTips, which sets every page's tip back to
+    // unseen. The legacy sidebar's "Learn & Help" (LearnPanel) is drawn only
+    // when a browser override turns the house shell off, so it is not named.
     slug: 'page-tours',
     question: 'Where are the page tours and the tips?',
     answer:
-      'Learn & Help, at the bottom of the sidebar. From there you can replay any page’s tour or bring back the tips you dismissed.',
+      'Some pages open with a one-line tip at the top. Its "Show me" walks you through that page step by step, and is offered only when the page has steps to show. "Don\'t show tips again" turns every page’s tip off. To bring them back, use "Turn tips back on" under Ways back in, on this page: every page’s tip returns, including ones you closed, so you can take a tour again from its tip.',
   },
   {
     // settings/next/st-format.ts SECTION_IDS/COLLAPSED_SECTIONS: `services`
