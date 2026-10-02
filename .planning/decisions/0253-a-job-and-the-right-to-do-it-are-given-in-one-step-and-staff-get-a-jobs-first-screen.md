@@ -142,6 +142,31 @@ Asked by `AskUserQuestion` after the phone-feed fix (#582) was opened. Its open 
     - whether an owner can turn it off for another owner;
     - how it reads beside round 8's packages (Standard and Light show no profit or pay);
     - whether round 9's "what they can approve" stays a separate, narrower view for grantees.
+  - [Answered 2026-10-01 in round 11 below: F1, F2 and F3.]
+
+## Answered 2026-10-01 (round 11) — the money right's design forks, verbatim
+
+The design is in `p4-scratch/money-right-2026-10-01/README.md` and its forks in `forks.md` there (a workflow: finders, attackers and a judge, who picked the minimal design over the structural register and grafted six parts from it; nothing was run and production was not read). Asked by `AskUserQuestion` in five batches. Every answer was the recommended option except F4 and F8.
+
+- **F0. Where the right lives:** *"Row now, fold later (Recommended)"*. A third switch on the membership row, beside pay and zone setup. It folds into the rights register when that is built.
+- **F1. An owner turning it off for another owner:** *"No, owners always see it (Recommended)"*. Round 10's first open point.
+- **F2. Beside the packages:** *"Every package turns it on (Recommended)"*, Light included. Light's "no money" is read as "gives no money rights". An owner can take the right from a person, and /team then shows the package as adjusted. Sketch 126's Light card text changes. Round 10's second open point.
+- **F3. Round 9's narrower view:** *"Keep the narrow view (Recommended)"*. Someone without the right still sees amounts on the orders they may approve or place, and their own limit. Until ADR 0175 D7 is built, approve cards follow the role. Round 10's third open point.
+- **F4. Who may give or take it:** *"Owners + allowed Full managers"*, **not** the recommended "Owners only". As in round 6, a Full-package manager may give it only where an owner allowed them, so that allowance is built with the packages first.
+- **F5. What a notice may still say to someone without it:** *"No figures; neutral titles (Recommended)"*. Counts, names and state stay ("3 bottles short"). Amounts, prices, percentages, totals, credit, unit cost and other people's limits do not. A title that can carry a figure is replaced by a neutral one.
+- **F6. How far it reaches:** *"Everywhere (Recommended)"*: notices, round 9's three (Supply amounts, cellar value, delivery credit), the dashboard, Insights sentences, emails and live order events.
+- **F7. Vendor and market prices:** *"No, by role (Recommended)"*. They stay with owners and managers by role.
+- **F8. Menu prices:** *"Yes"*, **not** the recommended "No, staff need them". Menu prices are the house's money, so someone without the right loses them on Cellar and Insights.
+- **F9. A role change:** *"Resets to the new role (Recommended)"*.
+- **F10. A manager undoing an owner's "take it away":** *"Close both (Recommended)"*. A manager cannot remove someone whose money an owner took. Someone without the right may invite or add staff only. This changes ADR 0162 for those cases.
+- **F11. Who is told:** *"The person and every owner (Recommended)"*, as for grants (ADR 0175).
+- **F12. Old notices:** *"Old notices follow (Recommended)"*, both ways.
+- **F13. Vendor mail and AI summaries:** *"Mail kept, AI summaries neutral (Recommended)"*.
+- **F14. Profit:** *"Needs money and pay (Recommended)"*.
+- **F15. Others' limits in the grants register:** *"Limits hidden (Recommended)"*. Names and scope stay.
+- **F16. The money emails:** *"Right-holders; staff no value (Recommended)"*. Owners start receiving the weekly report.
+
+**What it means for the build.** The design's PR plan (13 PRs, 14 with the migration split) stacks after #582 and #583. F4's answer makes the allowance part of the packages build, and F8's adds the menu-price readers to the design's reader list. Neither is in that plan yet. Nothing is built.
 
 ## Open — the founder's to decide (sketch 125 forks 9–12, 14)
 
@@ -191,3 +216,4 @@ Research on these runs as parallel agents, not a Workflow fan-out. The first fin
 | 2026-10-01 | Aldemir (founder, `AskUserQuestion`, round 9) + Claude (Opus 5.5) | Answered — vendor reply cards stay for staff; someone given a right sees what they can approve; the Supply tab's order amounts, the cellar value and delivery-difference money close to staff, server first [row added late, with the next one: round 9 had none] |
 | 2026-10-01 | Aldemir (founder, `AskUserQuestion`, fix rounds of the phone-feed fix) + Claude (Opus 5.5; `fix/phone-feed-no-money-for-staff` at 7fdf4f95f, PR #582, and `fix/phone-feed-own-grant-limit` at e68bd3cdf, PR #583, neither merged) | Answered — the wage notice gets its own type; a grantee sees their own grant limit on the Today feed, by recording the grantee on new notices; read beside round 9 as their own right's bound, not the house's money |
 | 2026-10-01 | Aldemir (founder, `AskUserQuestion`, round 10) + Claude (Opus 5.5) | Answered — owners and managers see the house's money in notices by default; a new right, "Sees the house's money", lets an owner give it to staff or take it from a manager; anyone without it gets the title and no figures, in every reader; not built |
+| 2026-10-01 | Aldemir (founder, `AskUserQuestion`, round 11) + Claude (Opus 5.5) | Answered — the money right's 17 design forks: a membership-row switch, owners always see it, every package turns it on, everywhere; F4 owners plus allowed Full managers and F8 menu prices are money (both not the recommended option); not built |
