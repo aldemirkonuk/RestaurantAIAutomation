@@ -1,6 +1,6 @@
 # 0256 — "Waiting on you" is flagged first, then oldest, by the house's own rules
 
-- **Status:** Locked 2026-10-01 by the founder. His nine answers, in two rounds, are quoted verbatim under Founder answers. Answers 8 and 9 change the approve gate and are ruled, not built here (see Consequences).
+- **Status:** Locked 2026-10-01 by the founder. His eleven answers, in two rounds, are quoted verbatim under Founder answers. Answers 8-11 change the approve gate and are ruled, not built here (see Consequences). Answer 10 corrects a false premise in answer 8's option text.
 - **Date:** 2026-10-01
 - **Decider:** Aldemir (founder), 2026-10-01, through AskUserQuestion, relayed by the lane coordinator.
 - **Keywords:** Waiting on you, pending orders, listPendingOrders, GET /procurement/orders/pending, oldest first, flagged first, priority, price_jump, manager_ceiling, needs_signature, running_out, decideApproval, orderUnderTest, isBelowPar, unknown, WaitingFlag, readPricePremium, untestable, last price, approvalGate
@@ -34,7 +34,8 @@ holds the seal (`assertApprovalAllowed`, `procurement.service.ts:4374`), and its
 
 Asked after the first build (c4731a3cb). Each question, the answer chosen, and
 the options he turned down are quoted as they were put to him. Answers 5-7
-confirm what was built. Answers 8 and 9 are about the approve gate.
+confirm what was built. Answers 8-11 are about the approve gate; 10 and 11 were
+asked after 8 and 9, to correct one premise and settle one detail.
 
 5. Unknown-only rows. Asked: "In 'Waiting on you', where should an order sort
    when none of its flags could be checked (e.g. the rules read failed)?"
@@ -72,18 +73,36 @@ confirm what was built. Answers 8 and 9 are about the approve gate.
    current meaning." and "Most recent of any age": "The approval check's current
    meaning; it can include a later order."
 
-**A premise in question 8 is wrong.** Its chosen option says "the same way an
-untestable rule is handled today", and this ADR's tech-debt entry said the same
-("as an untestable rule already does"). Neither is true at c4731a3cb. An
-untestable rule does not park anything. `decideApproval` puts it in
-`untestable` and leaves `requiredRole` alone (`settings/approval-thresholds.ts:154-157`
-for `manager_ceiling`, `:169-172` for `new_vendor`). The gate then seals on
-`if (!decision.requiredRole) return;` (`procurement.service.ts:4453`). A spec
-pins that: "a first-order count that ERRORS is not read as 'first order'"
-(`order-approval-gate.spec.ts:414-428`) expects `APPROVED`. The ruling's outcome
-is clear: park, not refuse. What it means for the two rules that already go
-untested is open, and is listed for the founder in the tech-debt entry. The
-follow-up PR must not decide it.
+**Correction: answer 8's chosen option rested on a false premise.** It says
+"the same way an untestable rule is handled today", and this ADR's tech-debt
+entry said the same ("as an untestable rule already does"). Neither was true at
+c4731a3cb. A rule that cannot be tested holds nothing: `decideApproval` puts it
+in `untestable` and leaves `requiredRole` alone
+(`settings/approval-thresholds.ts:154-157` for `manager_ceiling`, `:169-172`
+for `new_vendor`), and the gate seals on `if (!decision.requiredRole) return;`
+(`procurement.service.ts:4453`). A spec pins that: "a first-order count that
+ERRORS is not read as 'first order'" (`order-approval-gate.spec.ts:414-428`)
+expects `APPROVED`. The founder was asked again with the premise corrected.
+Answer 10 is that question, and it settles which rules park; answer 8 still
+stands for its outcome (park, not refuse). Answer 11 settles which order states
+answer 9 counts.
+
+10. Which rules park. Asked: "Correction: I told you an order whose rule can't
+    be checked is held today. It isn't: when the new-vendor or large-order rule
+    can't be checked, the approval goes through. You chose 'park' for a failed
+    last-price read. Which rules should park the order for the rule's role when
+    they can't be checked?" Chosen: **"Any rule that can't check
+    (Recommended)"**: "Price jump, new vendor and large order all park for that
+    rule's role when unreadable. Consistent, and follows ADR 0020. While a read
+    is down, orders wait for someone holding that role." Turned down: "Only the
+    last-price read": "Smallest change. New-vendor and large-order checks keep
+    letting the approval through when unreadable, so 'couldn't check' is handled
+    two ways."
+11. Which states count. Asked: "'Last approved or delivered order before this
+    one': which order states count?" Chosen: **"Any order that went ahead
+    (Recommended)"**: "Approved, confirmed, in transit, delivered, partly
+    received or completed." Turned down: "Only approved and delivered": "Read
+    literally. A completed order, whose goods did arrive, would not count."
 
 ## Options considered
 
@@ -156,23 +175,29 @@ twice a minute per tab. A failed read is still a 503 there, never `{ count: 0 }`
   which also runs its retrospective), plus two small reads per pending order
   when a rule is on. The pending list is short by its status filter. A
   rules-only read is a possible later saving.
-- **Ruled 2026-10-01, not built here (answer 8):** the approve gate treats a
-  FAILED last-price read as "no earlier price" and lets the seal through. The
-  ruling is to park the order for the `price_jump` rule's role instead. The
-  queue already tells the two apart (`readPricePremium` returns `unread`), but
-  the gate still ignores it, because a change to the gate is a separate
-  operation. The follow-up PR, and the open question the wrong premise left, are
-  in `tech-debt.d/2026-10-01-fix-waiting-on-you-oldest-first-flagged.md`.
-- **Ruled 2026-10-01, not built here (answer 9):** two readings of "the last
+- **Ruled 2026-10-01, not built here (answers 8 and 10):** the approve gate
+  lets the seal through whenever an enabled rule cannot be tested: a FAILED
+  last-price read reads as "no earlier price", and a missing total or a failed
+  first-order count goes to `untestable` and holds nothing. The ruling is that
+  any rule that cannot be tested parks the order for that rule's role, and
+  `order-approval-gate.spec.ts:414-428` flips with it. The queue already tells a
+  failed price read from no earlier price (`readPricePremium` returns
+  `unread`), but the gate still ignores it, because a change to the gate is a
+  separate operation. The follow-up PR is in
+  `tech-debt.d/2026-10-01-fix-waiting-on-you-oldest-first-flagged.md`.
+- **Ruled 2026-10-01, not built here (answers 9 and 11):** two readings of "the last
   price" disagree. The gate (and so this flag) compares with the most recently
   requested OTHER order for the item, any status, any age, even one requested
   after this one. `approvalGate` (`GET /procurement/order-approval-gate`, which
   DASH-W21's card reads for "held") compares with the order just before it,
   inside a 365-day window, as the settings retrospective does. On such an order
   the card's "held" line and this flag can disagree. The ruling is one meaning
-  everywhere: the last approved or delivered order placed before this one. The
-  flag reads the gate's facts through `orderUnderTest`, so it follows the gate
-  with no change of its own. Same register.
+  everywhere: the last order placed before this one that went ahead, meaning
+  `APPROVED`, `CONFIRMED`, `IN_TRANSIT`, `DELIVERED`, `PARTIALLY_RECEIVED` or
+  `COMPLETED` (states from
+  `supabase/migrations/20260905230000_an_order_changes_state_by_the_table.sql:103-116`).
+  The flag reads the gate's facts through `orderUnderTest`, so it follows the
+  gate with no change of its own. Same register.
 - The dashboard tour in PR #571 says only "Orders waiting for your approval"
   for this card, and its header-comment hunk on `WaitingOnYou.tsx` calls the
   queue newest first. After this lands, step 2 can say "flagged first, then
@@ -187,3 +212,4 @@ twice a minute per tab. A failed read is still a 503 there, never `{ count: 0 }`
 |---|---|---|
 | 2026-10-01 | — | Created, Locked on the founder's four answers |
 | 2026-10-01 | — | Round 2 recorded: answers 5-7 confirm the build; 8-9 ruled for the gate, not built here; question 8's premise found wrong and its consequence filed open |
+| 2026-10-01 | — | Answers 10-11 recorded: the corrected question makes any untestable rule park for its role; "went ahead" states fixed for the last price. Both ruled, not built here |
