@@ -316,6 +316,13 @@ describe("DashboardService — the founder walk-through, 2026-10-01", () => {
           quantity: 1,
         }),
       ).toEqual({ title: "Chablis", description: "3 → 1 bottle" });
+      expect(
+        eventSentence("inventory_change", { type: "add", wineName: "Barolo", quantity: 6 }),
+      ).toEqual({ title: "Barolo", description: "added, 6 bottles" });
+      // An add with no count (PR #579 review): "added", never "added, ".
+      expect(
+        eventSentence("inventory_change", { type: "add", wineName: "Barolo" }),
+      ).toEqual({ title: "Barolo", description: "added" });
       expect(eventSentence("calendar_event", { title: "Tasting" })).toEqual({
         title: "Tasting",
         description: "",

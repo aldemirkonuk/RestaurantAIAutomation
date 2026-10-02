@@ -33,6 +33,9 @@ Items that were rejected, reworked or decided as a fork:
 4. **W25, "· before service".** The fork was: (A) drop the phrase guessed from the hour, (B) state open, before or closed from the house's hours, or keep it. The founder chose A.
 5. **W9 and W15, findings on other pages.** W9 was left as it is; W15 was queued for /orders.
 6. **W37, the word for what the house holds.** The options were "items", "drinks", or hold for a product-wide pass. The founder chose "items".
+7. **G1, vendor names in "Lately" for staff.** Found by the PR #579 audit: the /ask table withholds vendor names from staff, and this page shows them. The options were keep them, or withhold them for staff. The founder chose keep.
+8. **G2, a house with no time zone.** Found by the same audit: the dashboard reads a missing zone as UTC, against the rule that an unset value reads as unknown. The options were: follow the rule in a follow-up PR, follow it in this PR, or keep UTC. The founder chose a follow-up PR.
+9. **G3, the audit's fix round.** The options were approve it (commit, push, re-run the full audit) or hold it. The founder approved.
 
 ## Decision
 
@@ -58,16 +61,22 @@ The founder's words, verbatim, per item:
 | DASH-W29 | "Approve, replace (Recommended)" |
 | DASH-W30 – W36 | "Approve (Recommended)" |
 | DASH-W37 | "\"items\" (Recommended)", then the built result "Approve (Recommended)" |
+| DASH-G1 | "Keep (Recommended)" |
+| DASH-G2 | "Follow rule, follow-up PR (Recommended)" |
+| DASH-G3 | "Approve (Recommended)" |
 
 These were built as approved. *What follows is my synthesis, proposed. It is not the founder's words.*
 
 - **The house's clock and honest reads.**
   - Every figure, "today", the greeting and the calendar are bucketed on the house's zone (W2, W20).
-  - A read that fails says so in the house's words and offers "Try again", never a zero (W3, W11, W19).
+  - On the gateway, a read that fails fails the call instead of answering empty (W3, W6, W11). On the page, a failed read is said in the house's words with "Try again" (W19).
+  - Not yet everywhere: the shared web client still turns a failed alerts or activity read into an empty list, and a failed stats read into counts taken from the inventory summary (shared code, queued).
   - The unused read is gone (W8), and the cellar tile reads the low-stock view rather than every row (W10).
 - **Roles.**
-  - Staff see counts, never money. The gateway withholds the amounts and says `amounts: "withheld"`, so a withheld figure never reads as a failed one (W22).
+  - On the dashboard's own routes, staff see counts, never money. The gateway withholds the amounts there and says `amounts: "withheld"`, so a withheld figure never reads as a failed one (W22).
+  - Not yet everywhere: the page also reads `/procurement/orders/pending` and `/procurement/orders/history`, which still send prices to staff. The page hides them; the server does not yet. This is queued with the /orders session.
   - The approval hold is offered only to a role that may approve (W21).
+  - Staff do see vendor names in "Lately" here, unlike /ask's table (G1).
 - **The calendar.**
   - The month and the open day live in the address (W29, `replace` so Back leaves the page).
   - A future day with an event opens (W13), and past days fade (W17).
@@ -94,6 +103,14 @@ These were built as approved. *What follows is my synthesis, proposed. It is not
   - "items" on every other page.
 - **Overlaps.** PR #565 rebases on this branch. The oldest-first, flagged *Waiting on you* work (`fix/waiting-on-you-oldest-first-flagged`) overlaps `WaitingOnYou.tsx`; whichever lands second rebases.
 - **"Bottles" and "In the cellar" stay** until food lands; the founder is to be asked again then (W37).
+- **What the PR #579 audit found.** The open entries are in `.planning/tech-debt.d/2026-10-01-fix-review-dashboard.md`:
+  - the two order routes that still send prices to staff;
+  - the shared client's empty-list fallback for alerts and activity;
+  - read errors reaching the client with table names and PostgREST text, through `HttpException(error.message)`.
+- **Fixed in the same round.**
+  - `seesHouseAmounts` now reads the /ask table through `policyFor`, as /ask does: it ignores case, and `admin` reads the owner row.
+  - An add with no count reads "added", not "added, ".
+- **A house with no time zone (G2)** still reads as UTC on this branch. The fix, "—" and a line saying the zone is not set, is a follow-up PR, sketched first. It is tracked as an open claim and debt entry.
 - **Not verified:**
   - real touch;
   - a real screen reader;

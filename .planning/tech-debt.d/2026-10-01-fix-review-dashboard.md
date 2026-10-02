@@ -41,3 +41,50 @@ Found in the dashboard walk-through, P9 and P10.
 - The dashboard is done. Other pages still print wine-only words such as "Unnamed wine".
 - `/inventory?wine=<name>` is a link contract between the dashboard (`RailPanels.tsx:183`) and /inventory, and must be renamed on both sides at once.
 - "Bottles" and "In the cellar" are kept until food lands.
+
+## Two order routes the dashboard reads still send prices to staff — OPEN — 2026-10-01
+
+Found by the PR #579 audit (both reviewers). Line citations are at `6806498668cb`.
+
+**What.**
+- DASH-W22 withholds money from staff on the dashboard's own routes (`apps/api-gateway/src/dashboard/amounts-for-role.ts`).
+- The page also reads `GET /procurement/orders/pending` and `GET /procurement/orders/history` (`apps/web/src/pages/dashboard/next/useDashboardNextData.ts:138,315`). Those routes carry only the class-level `JwtAuthGuard` (`apps/api-gateway/src/procurement/procurement.controller.ts:119,201,217`) and answer `totalCost` and `finalPrice` to any role.
+- The page hides those prices from staff (`WaitingOnYou.tsx`, `DayDetail.tsx`); the server does not. The founder's reason for W22 was that hiding money only on the page "would not keep them private".
+- This exposure is not new: staff could always reach those routes. W22's §14 row records it as not covered, and it is queued for the /orders session (`p4-scratch/review-shared-queue.md`, R1b line).
+
+**Fix.** Withhold the price fields for a role that does not see `money`, read through `seesHouseAmounts`, on both routes, with the same `amounts` flag the dashboard routes return.
+
+## The shared web client turns a failed alerts or activity read into an empty list — OPEN — 2026-10-01
+
+Found by the PR #579 audit.
+
+**What.**
+- DASH-W3 and W11 made the gateway fail the call when a read fails.
+- `getRecentActivity` and `getAlerts` in `apps/web/src/services/api/dashboard.ts:81-82,96-97` catch the failure and return `[]`, so the page still shows "no alerts" when the alert read failed. That is absence reported as health.
+- A failed `/stats` falls back to counts built from the inventory summary (`:25-46`). It carries no money and no time zone.
+- `services/api/` is a shared part, so it is not changed from a page branch. Both catches are queued in `p4-scratch/review-shared-queue.md` (R1 lines).
+
+**Fix.** Let the failure reach the page, which already has the "couldn't be reached" line and "Try again" (W19; the lines themselves land with PR #565).
+
+## Read errors reach the client with table names and PostgREST text — OPEN — 2026-10-01
+
+Found by the PR #579 audit.
+
+**What.**
+- The dashboard controller passes `error.message` into `HttpException` (`apps/api-gateway/src/dashboard/dashboard.controller.ts:108-109,160-161,191-192,227-228`).
+- The service's new throws put the table and the PostgREST message in that text (`dashboard.service.ts:40,181,587,606`), for example `procurement_orders read failed: <message>`.
+- Only an authenticated caller of their own house sees it, and the pass-through predates PR #579. The table names are new.
+
+**Fix.** Log the detail and answer a fixed sentence.
+
+## A house with no time zone is read as UTC on the dashboard — OPEN — 2026-10-01
+
+Found by the PR #579 audit; the founder ruled on it as DASH-G2.
+
+**What.**
+- `houseZone` returns `"UTC"` when `restaurants.timezone` is null (`apps/api-gateway/src/dashboard/dashboard.service.ts:175-183`). So "today", the week, the month and the calendar are quietly bucketed on UTC for that house.
+- The founder's rule of 2026-09-03 is that an unset value reads as unknown (`supabase/migrations/20260903170000_a_default_is_not_an_answer.sql:4`). That migration dropped the column's default and set the defaulted rows back to null.
+- A malformed zone name makes `Intl` throw a `RangeError`, so stats and the calendar answer 500.
+- ALDEMIR has its zone set (America/Chicago).
+
+**Ruling (DASH-G2, 2026-10-01).** "Follow rule, follow-up PR (Recommended)": those figures show "—" and the page says the house has no time zone set, sketched before it is built.

@@ -9,16 +9,17 @@
  *
  * One test, read from the /ask role table, so "which role sees money" is
  * decided in one place: a role whose row sees the `money` class sees amounts
- * here. No role (a session in no house) sees none.
+ * here. The row is found through `policyFor`, as /ask finds it — case-blind,
+ * `admin` reads the owner row, anything unknown reads the staff row. No role
+ * (a session in no house) sees none.
  */
 
 import { ForbiddenException } from "@nestjs/common";
-import { ROLE_POLICY } from "../ask-readings/reading-data-classes";
+import { policyFor } from "../ask-readings/reading-data-classes";
 
 export function seesHouseAmounts(role: string | null | undefined): boolean {
   if (!role) return false;
-  const policy = (ROLE_POLICY as Record<string, { sees: readonly string[] } | undefined>)[role];
-  return policy?.sees.includes("money") === true;
+  return policyFor(role).sees.includes("money");
 }
 
 /** The one line a refused role reads (the /ask refusals are one line too). */

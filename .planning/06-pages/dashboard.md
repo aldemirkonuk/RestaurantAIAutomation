@@ -216,11 +216,11 @@ while the flag is off — `apps/web/src/pages/dashboard/next/`):
 
 - **Decided 2026-09-21, built 2026-09-21 (reduced scope, stated):** sketch 119 direction E's *day line* is a PAGE element on this page's own first line, not chrome (the founder's shell pick, ADR 0160 review trail of that date) — `DayLine.tsx`, mounted above the KPI row, self-gated on the `shell` flag. Ships THREE of the sketch's six registers this session (deliveries that arrived, today's calendar, today's reminders — one shared `GET /house/day` read, `house-day.service.ts`), and draws a wrapping row of tick chips rather than the sketch's pixel-timed band with DOM-measured no-overlap labels. Not built, each its own reason (`house-day.types.ts`'s doc comment has the full one): `deliveryExpected` (the sketch's own README: "capturing the vendor's promised window is new work this sketch has not costed" — a data-capture decision of its own), `shifts` (real schema, but a correct read needs the house's local "today" to pick the right ISO week and a role-based choice between `getWeek`/`getMyWeek` — a bounded follow-up, not a one-line addition), `market` (the standing no-placeholder-row rule, same as the counter's Judge row). Honesty rules built: hours unset says so in words and the ticks still draw; offline holds the last read and marks it stale, never live; a register that did not answer is named with "Read again", never silently shorter; "N of 3", never a bigger denominator for a register this build does not read. The shell itself is D, the counter; its feature list is in `DESIGN-FOUNDATION.md` §3 item 2.
 
-- **[changed 2026-10-01: founder walk-through, §14 rows DASH-W1 to W37, uncommitted on `fix/review-dashboard`]** What the redesign now does:
+- **[changed 2026-10-01: founder walk-through, §14 rows DASH-W1 to W37, PR #579 on `fix/review-dashboard`]** What the redesign now does:
   - **Figures.**
     - Every figure, "today", the greeting and the calendar are on the house's clock (W2, W20).
-    - A read that fails says so and offers "Try again", never a zero (W3, W11, W19).
-    - Staff see counts and never money, and the gateway stops sending the amounts to them (W22).
+    - On the gateway, a read that fails fails the call instead of answering empty (W3, W6, W11). On the page, a failed read is said with "Try again" (W19). Not yet: the shared client still turns a failed alerts or activity read into an empty list (queued).
+    - On the dashboard's own routes, staff see counts and never money, and the gateway stops sending them the amounts (W22). Not yet: `/procurement/orders/pending` and `/history`, which the page also reads, still send prices to staff (queued with /orders).
     - Waiting on you offers the hold only to a role that may approve (W21).
   - **Calendar.**
     - A future day with an event opens (W13), and past days fade (W17).
@@ -395,9 +395,9 @@ Page tree: **0** user-visible strings. Reachable-but-shared:
 ## 9. Gaps
 
 **[changed 2026-10-01: founder walk-through (§14).]**
-- **Closed in the gateway** (uncommitted):
+- **Closed in the gateway** (PR #579):
   - The tiles and the calendar counted the same money two ways (W2).
-  - A failed read showed as zero (W3, W11).
+  - A failed read showed as zero (W3, W11), in the gateway; the shared client's empty-list fallback for alerts and activity is still open.
   - Lately printed internal codes (W4).
   - The calendar's spend query asked for a column `procurement_orders` does not have (W6).
   - An unused `wine_consumption_log` read ran on every load (W8).
@@ -412,6 +412,10 @@ Page tree: **0** user-visible strings. Reachable-but-shared:
   - `/auth/me` read twice a load against a 10-a-minute auth bucket (429s seen live).
   - TenantGuard log noise; the old brand in the socket greeting; no CORS `maxAge` (production pays a preflight per call).
   - "items" on every other page.
+- **Still open, found by the PR #579 audit** (`.planning/tech-debt.d/2026-10-01-fix-review-dashboard.md`):
+  - `/procurement/orders/pending` and `/history` still send prices to staff (the server half of W22).
+  - The shared client turns a failed alerts or activity read into an empty list (the web half of W11).
+  - Read errors reach the client with table names and PostgREST text.
 - **Not verified:**
   - Real touch and the day-tape drag on a phone.
   - A real screen reader, and reduced motion live.
@@ -669,7 +673,7 @@ the two or three actions worth doing before service, each of which actually happ
 ## 13. Roadmap
 
 **[changed 2026-10-01: founder walk-through (§14).]**
-- **Delivered on `fix/review-dashboard`:** the approved rows W1 to W37 (uncommitted at the time of writing; the commit and PR follow the founder's yes).
+- **Delivered on `fix/review-dashboard`:** the approved rows W1 to W37, in PR #579.
 - **Next for this page:**
   - (a) Rebase onto `origin/main` before the PR. The base is `1c1a676f8`; live is `5a330a88e`, with #563, #568 and #575 in the shell and schedules, none of them on the dashboard.
   - (b) PR #565 rebases on this one; it overlaps `DashboardNext.test.tsx`, `DayDetail.tsx`, `RailPanels.tsx`, `SalesCalendar.tsx` and `useDashboardNextData.ts`.
@@ -929,6 +933,8 @@ the house's Gmail grant. Being built; producers stay off until armed.
 
 Session R1 (wt-review-1b, web :5311, gateway :4111 as the founder's own account, house ALDEMIR, production data, timers off). Rows are added when proposed; rulings go to this page's walk-through ADR.
 
+**[changed 2026-10-01: every row below tagged "(uncommitted)" was committed and opened as PR #579; the tag records the state when the row was written.]**
+
 | id | what | evidence | ask | founder's words | status |
 |---|---|---|---|---|---|
 | DASH-W0a | SELF (setup, before the no-solo rule): moved the old wt-review-1 to main's tip (a docs-only diff), cleared the Sim sign-in token on :5301, and recreated wt-review-1b after the disk cleanup removed it | session transcript | — | — | SELF, shown 2026-10-01 |
@@ -971,6 +977,9 @@ Session R1 (wt-review-1b, web :5311, gateway :4111 as the founder's own account,
 | DASH-W35 | P8: each calendar square's accessible name was ISO and terse — "2026-10-01: $50, 0 events" — and nothing said which day was open or which was today | live `aria-label`s | the day in words, what it holds, `aria-pressed` for the open day, `aria-current="date"` for today | Approve (Recommended) | approved 2026-10-01 (sketch `DASH-W33.html`) (uncommitted). Now "Thursday, October 1, today: $50 paid to vendors, nothing on the calendar"; staff hear "2 deliveries", never money (W22 test updated to the new name). 11 test name matchers moved from ISO to words; new test; 5 mutations caught (ISO back, no "today", bare money, no `aria-pressed`, no `aria-current`) |
 | DASH-W36 | P9: my W29 change exported `readCalendarParams` from `SalesCalendar.tsx`, and Vite then said "Could not Fast Refresh ('readCalendarParams' export is incompatible)" on every save, so the dev page reloaded whole each time (dev only; production unaffected) | Vite log | not exported (it has no importer outside the file) | Approve (Recommended) | approved 2026-10-01 (sketch `DASH-W36.html`) (uncommitted). After: a save logs only `hmr update …SalesCalendar.tsx`, and `/?day=2026-10-01` still opens Thursday, October 1. dashboard vitest 121/121 |
 | DASH-W37 | P10 (from the founder's news, relayed 2026-10-01: Mudavym carries every drink, then food): the page counted "wines" — "across 81 wines", "wines below minimum", "N low-stock wines", "No wine is running low.", "Unnamed wine" ×2 — against ADR 0115 (one house item id across all beverages) and ADR 0186 (every drink classified) | `KpiRow.tsx:109,117`, `DashboardNext.tsx:119,128`, `WaitingOnYou.tsx:163`, `DayDetail.tsx:287` | the word: "items" / "drinks" / hold for a product-wide pass | "\"items\" (Recommended)", then built: Approve (Recommended) | approved 2026-10-01 (sketch `DASH-W37.html`, `W37-before/after.jpg`) (uncommitted). Live in ALDEMIR: "1 low-stock item is waiting on you." · "across 1 item". "Bottles" and "In the cellar" kept (the ask said so; to be asked again when food lands). New test "counts items, never wines" plus a W7 assert; 5 mutations, all caught. `DayDetail`'s "Unnamed item" has no test. Left as is: the `/inventory?wine=` link parameter (the /inventory page reads it) and every other page (queued, R1b line). dashboard vitest 122/122 |
+| DASH-G1 | PR #579 audit (both reviewers): Lately names vendors to staff ("from <vendor>", vendor-added events) while the /ask role table withholds `suppliers` from staff. No money is shown. | `dashboard.service.ts` eventSentence; `ask-readings/reading-data-classes.ts:182` | keep, or hide vendor names from staff | "Keep (Recommended)" | decided 2026-10-01: staff see vendor names on this page, as on the delivery row (W30) and in Waiting on you; ADR 0257 records the difference from /ask |
+| DASH-G2 | PR #579 audit: a house with no time zone is read as UTC (`houseZone`), against the founder's 2026-09-03 rule that an unset value reads as unknown (migration `20260903170000_a_default_is_not_an_answer.sql:4`); a malformed zone answers 500. ALDEMIR has its zone set. | `dashboard.service.ts:175-183` | follow the rule in a follow-up PR / in #579 / keep UTC | "Follow rule, follow-up PR (Recommended)" | decided 2026-10-01: follow-up PR, sketch first; open debt entry and open claim `TD-2026-10-01-DASHBOARD-NO-ZONE-READS-UTC` |
+| DASH-G3 | PR #579 audit fix round: `seesHouseAmounts` read the /ask table raw (case-sensitive, no `admin` alias); "added, " for an add with no count; ADR 0257 and §1a claimed more than ships (order routes still send prices to staff; the shared client still empties a failed alerts read) | `amounts-for-role.ts`; `dashboard.service.ts` eventSentence; ADR 0257 synthesis | read through `policyFor`; "added"; qualify the prose; 3 debt entries + 1 open claim | "Approve (Recommended)" | approved 2026-10-01; gateway jest 56/56, both mutants caught; the audit re-runs on the new head |
 
 **Passes**
 

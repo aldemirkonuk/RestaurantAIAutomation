@@ -127,7 +127,8 @@ export function eventSentence(
       if (p.type === "add") {
         return {
           title: p.wineName,
-          description: `added, ${bottles(p.quantity)}`,
+          // An add with no count reads "added", never "added, ".
+          description: ["added", bottles(p.quantity)].filter(Boolean).join(", "),
         };
       }
       if (typeof p.quantity !== "number") return null;

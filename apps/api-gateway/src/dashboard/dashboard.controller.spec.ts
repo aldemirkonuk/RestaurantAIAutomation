@@ -353,8 +353,17 @@ describe("DashboardController", () => {
       expect(result.totalBottles).toBe(40);
     });
 
+    it.each([["Staff"], ["bogus"]])("withholds the spend for role %p, read as /ask reads it", async (role) => {
+      mockDashboardService.getStats.mockResolvedValue({ ...stats });
+      const result: any = await controller.getStats(restaurantId, { role });
+      expect(result.monthProcurementSpend).toBeNull();
+      expect(result.amounts).toBe("withheld");
+    });
+
+    // The /ask table is read through policyFor: case-blind, and `admin` reads
+    // the owner row, as RolesGuard lets it through every owner gate.
     it("keeps the spend for an owner and a manager", async () => {
-      for (const role of ["owner", "manager"]) {
+      for (const role of ["owner", "manager", "Owner", "admin"]) {
         mockDashboardService.getStats.mockResolvedValue({ ...stats });
         const result: any = await controller.getStats(restaurantId, { role });
         expect(result.monthProcurementSpend).toBe(4210);
