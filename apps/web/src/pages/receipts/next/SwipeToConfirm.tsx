@@ -20,11 +20,13 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowUp, Check } from 'lucide-react';
-import { pour, tuck, useReducedMotion } from '../../../lib/mudavym/motion';
+import { ArrowUp } from 'lucide-react';
+import { animate, pour, stamp, tuck, useReducedMotion } from '../../../lib/mudavym/motion';
+import { Seal } from '../../../components/mudavym/Seal';
 import { MONO, SANS } from './rc2-format';
 
 const TRAVEL = 96; // px of upward drag that constitutes the gesture
+const WAIT_SIGN_AFTER_MS = 400; // the house loader's ladder: nothing shows sooner
 
 interface Props {
   label: string;
@@ -58,6 +60,11 @@ export function SwipeToConfirm({
   const holdStart = useRef(0);
   /** The in-flight mint, started when the gesture began. */
   const challengeRef = useRef<Promise<string | null> | null>(null);
+  /** The pressed seal that lands in the handle when the gesture completes. */
+  const sealRef = useRef<HTMLSpanElement | null>(null);
+  /** The loading sign under "Confirming…", once confirming outlasts a glance. */
+  const waitRef = useRef<HTMLSpanElement | null>(null);
+  const [waiting, setWaiting] = useState(false);
 
   /** Begin minting the proof, once per gesture. */
   const beginChallenge = useCallback(() => {
@@ -163,6 +170,55 @@ export function SwipeToConfirm({
 
   const done = doneRef.current;
 
+  /*
+   * THE MOTION SIGNATURE (walk-through W21, 2026-10-01: "add a motion
+   * signature to … swipe up to confirm"). Completing the travel lands the
+   * house's pressed Seal in the handle on `stamp`, the one motion allowed to
+   * overshoot, exactly as HoldToApprove lands its seal: one signature for every
+   * consent gesture in the house. It marks the GESTURE completing, never the
+   * verification succeeding (the label stays "Confirming…"), and it does not
+   * delay `onConfirm`. Under reduced motion nothing is scheduled; the seal is
+   * simply there.
+   */
+  useEffect(() => {
+    if (done && sealRef.current && !reduced) {
+      animate(
+        sealRef.current,
+        [
+          { transform: 'scale(0.8)', opacity: 0.3 },
+          { transform: 'scale(1)', opacity: 1 },
+        ],
+        stamp,
+      );
+    }
+  }, [done, reduced]);
+
+  /*
+   * THE LOADING SIGN (W21 rework, founder: "seal lands + a loading sign").
+   * The house loader's ladder: nothing under 400ms, so a quick confirmation
+   * never flickers a sign; after that a thin seal line breathes under
+   * "Confirming…" at the house skeleton's pulse (1.6s, opacity only). Nothing
+   * spins or counts. Under reduced motion the line is simply there.
+   */
+  useEffect(() => {
+    if (!done) return;
+    const t = window.setTimeout(() => setWaiting(true), WAIT_SIGN_AFTER_MS);
+    return () => {
+      window.clearTimeout(t);
+      setWaiting(false);
+    };
+  }, [done]);
+  useEffect(() => {
+    const el = waitRef.current;
+    if (!waiting || !el || reduced || typeof el.animate !== 'function') return;
+    const pulse = el.animate([{ opacity: 0.3 }, { opacity: 0.9 }, { opacity: 0.3 }], {
+      duration: 1600,
+      easing: 'ease-in-out',
+      iterations: Infinity,
+    });
+    return () => pulse.cancel();
+  }, [waiting, reduced]);
+
   return (
     <div style={{ fontFamily: SANS }}>
       <div
@@ -175,7 +231,7 @@ export function SwipeToConfirm({
           background: 'var(--paper-1, #F3EFE6)',
           border: '1px solid var(--paper-2, #EAE4D8)',
           overflow: 'hidden',
-          opacity: disabled ? 0.5 : 1,
+          opacity: disabled && !done ? 0.5 : 1,
         }}
       >
         {/* fill rises with the gesture */}
@@ -215,8 +271,11 @@ export function SwipeToConfirm({
             height: 40,
             borderRadius: 20,
             border: '1px solid var(--seal-ring, rgba(26,94,107,.32))',
-            background: done ? 'var(--seal, #1A5E6B)' : 'var(--paper-0, #FAF7F1)',
-            color: done ? 'var(--paper-0, #FAF7F1)' : 'var(--seal-deep, #14515C)',
+            background: 'var(--paper-0, #FAF7F1)',
+            color: 'var(--seal-deep, #14515C)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
             cursor: disabled || done ? 'default' : 'grab',
             touchAction: 'none',
             transition: settling && !reduced ? `bottom ${tuck.ms}ms ${tuck.easing}` : 'none',
@@ -228,7 +287,9 @@ export function SwipeToConfirm({
               button's own aria-label already says what the gesture asserts,
               so the mark itself is decorative. */}
           {done ? (
-            <Check size={16} strokeWidth={2} aria-hidden="true" />
+            <span ref={sealRef} data-testid="swipe-seal" style={{ display: 'flex' }}>
+              <Seal size={26} pressed aria-hidden="true" />
+            </span>
           ) : (
             <ArrowUp size={16} strokeWidth={2} aria-hidden="true" />
           )}
@@ -251,6 +312,21 @@ export function SwipeToConfirm({
             (receipts-audit.md, BLOCKER 2). */}
         {done ? 'Confirming…' : label}
       </p>
+      {/* The slot is always there, so the sign appearing moves nothing. */}
+      <span
+        ref={waitRef}
+        data-testid={waiting ? 'swipe-waiting' : undefined}
+        aria-hidden="true"
+        style={{
+          display: 'block',
+          width: 28,
+          height: 2,
+          borderRadius: 1,
+          margin: '4px auto 0',
+          background: 'var(--seal, #1A5E6B)',
+          opacity: waiting ? (reduced ? 0.7 : 0.3) : 0,
+        }}
+      />
       <p style={{ textAlign: 'center', fontSize: 10.5, color: 'var(--ink-4, #665D50)', margin: '2px 0 0', maxWidth: 220, marginLeft: 'auto', marginRight: 'auto' }}>
         {assertion}
       </p>

@@ -17,10 +17,13 @@ import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
 import {
   GROUND_CHOICE_ATTR,
+  GROUND_OPTIONS,
   applyAccountGround,
   getGroundChoice,
   getGroundState,
+  groundIsKnown,
   groundMirrorKey,
+  groundNote,
   registerGroundWriter,
   reportGroundReadFailure,
   resetGroundChoiceForTests,
@@ -28,6 +31,7 @@ import {
   setGroundOwner,
   useGroundChoice,
   useGroundState,
+  type GroundState,
 } from './groundChoice';
 
 const ALICE = 'user-alice';
@@ -368,5 +372,99 @@ describe('ADR 0169 — a save that failed is never reported as saved', () => {
     expect(getGroundChoice()).toBe('charcoal');
     expect(getGroundState().writeError).toContain('no one is signed in');
     expect(window.localStorage.getItem(groundMirrorKey(ALICE))).toBeNull();
+  });
+});
+
+/**
+ * What a control says — `groundIsKnown` / `groundNote` / `GROUND_OPTIONS`.
+ * These moved here from the deleted header `ThemeMenu` when the control moved
+ * to `/profile` (founder, 2026-10-01, page walk-through DASH-W23); the
+ * assertions are ported from `ThemeMenu.test.tsx`'s ground branch, with the
+ * note texts pinned EXACTLY rather than by a fragment.
+ */
+describe('ADR 0169 — what the ground control says', () => {
+  const state = (over: Partial<GroundState>): GroundState => ({
+    choice: 'paper',
+    source: 'default',
+    readFailed: false,
+    writeError: null,
+    detail: null,
+    ...over,
+  });
+
+  it('offers exactly Paper and Charcoal, in that order — no "System"', () => {
+    expect(GROUND_OPTIONS.map((o) => o.value)).toEqual(['paper', 'charcoal']);
+    expect(GROUND_OPTIONS.map((o) => o.label)).toEqual(['Paper', 'Charcoal']);
+  });
+
+  it('counts nothing as chosen under `unknown` and `unreadable`', () => {
+    expect(groundIsKnown(state({ source: 'unknown' }))).toBe(false);
+    expect(groundIsKnown(state({ source: 'unreadable', readFailed: true, detail: 'x' }))).toBe(false);
+  });
+
+  it('counts paper-by-default (`default`) as a real, known answer — and `account` and `device-cache` too', () => {
+    expect(groundIsKnown(state({ source: 'default' }))).toBe(true);
+    expect(groundIsKnown(state({ source: 'account', choice: 'charcoal' }))).toBe(true);
+    expect(groundIsKnown(state({ source: 'device-cache', choice: 'charcoal' }))).toBe(true);
+  });
+
+  it('says nothing for a confirmed answer', () => {
+    expect(groundNote(state({ source: 'default' }))).toBeNull();
+    expect(groundNote(state({ source: 'account', choice: 'charcoal' }))).toBeNull();
+  });
+
+  it('says it is still reading under `unknown`', () => {
+    expect(groundNote(state({ source: 'unknown' }))).toBe(
+      'Reading the ground you saved to your account. Paper until it answers.',
+    );
+  });
+
+  it('says the saved ground could not be read under `unreadable`, with and without a reason', () => {
+    expect(groundNote(state({ source: 'unreadable', readFailed: true, detail: 'Network Error' }))).toBe(
+      'The ground you saved could not be read (Network Error). Paper until it can be.',
+    );
+    expect(groundNote(state({ source: 'unreadable', readFailed: true, detail: null }))).toBe(
+      'The ground you saved could not be read (unknown reason). Paper until it can be.',
+    );
+    expect(groundNote(state({ source: 'unreadable', readFailed: false }))).toBe(
+      'The ground you saved could not be read. Paper until it can be.',
+    );
+  });
+
+  it("names this device's copy under `device-cache`, and says whether the account was reached", () => {
+    expect(
+      groundNote(state({ source: 'device-cache', choice: 'charcoal', readFailed: true, detail: 'Network Error' })),
+    ).toBe(
+      'Your account could not be reached (Network Error). This is the last ground this device saw you choose.',
+    );
+    expect(groundNote(state({ source: 'device-cache', choice: 'charcoal', readFailed: true }))).toBe(
+      'Your account could not be reached (unknown reason). This is the last ground this device saw you choose.',
+    );
+    expect(groundNote(state({ source: 'device-cache', choice: 'charcoal' }))).toBe(
+      'This is the last ground this device saw you choose, while your account answers.',
+    );
+  });
+
+  it('a write error outranks a read error — it is the thing that just happened', () => {
+    const writeError = 'This ground is not saved to your account (503). It will go back on your next visit.';
+    expect(
+      groundNote(state({ source: 'unreadable', readFailed: true, detail: 'Network Error', writeError })),
+    ).toBe(writeError);
+    expect(groundNote(state({ source: 'device-cache', readFailed: true, detail: 'x', writeError }))).toBe(
+      writeError,
+    );
+    expect(groundNote(state({ source: 'account', writeError }))).toBe(writeError);
+  });
+
+  it('the store\'s own failed save reaches the note word for word', async () => {
+    setGroundOwner(ALICE);
+    applyAccountGround(undefined);
+    refusingWriter('Request failed with status code 503');
+    setGroundChoice('charcoal');
+    await settle();
+    expect(groundNote(getGroundState())).toBe(
+      'This ground is not saved to your account (Request failed with status code 503). It will go back on your next visit.',
+    );
+    expect(groundIsKnown(getGroundState())).toBe(true);
   });
 });

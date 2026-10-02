@@ -124,7 +124,10 @@ import sys
 import tempfile
 from collections import defaultdict
 
-ADR_RE = re.compile(r"^\.planning/decisions/(\d{4})-([a-z0-9-]+)\.md$")
+# Letter case ignored (founder, chat, 2026-10-01, verbatim: "Close it
+# (Recommended)"): `0097-X.md` was invisible here, so a look-alike could reuse a
+# number -- a gate decision's included -- with no collision reported.
+ADR_RE = re.compile(r"^\.planning/decisions/(\d{4})-([a-z0-9-]+)\.md$", re.IGNORECASE)
 DECISIONS_DIR = ".planning/decisions"
 MAIN_REF = "origin/main"
 
@@ -253,29 +256,34 @@ def all_refs() -> list[str]:
     return refs
 
 
-def adrs_at(ref: str) -> dict[str, str]:
-    """number -> slug, for one ref."""
+def parse_adrs(lines) -> dict[str, set[str]]:
+    """number -> EVERY slug wearing it, for one tree.
+
+    A set, not one slug: until 2026-10-01 this kept the last slug per number, so
+    `0097-X.md` (or `0097-a.md`) beside `0097-the-gateway-...md` in ONE tree was
+    overwritten by its neighbour and never reported (#559's final audit; the
+    founder, chat, 2026-10-01, verbatim: "Close it (Recommended)").
+    """
+    found: dict[str, set[str]] = defaultdict(set)
+    for line in lines:
+        m = ADR_RE.match(line.strip())
+        if m:
+            found[m.group(1)].add(m.group(2))
+    return dict(found)
+
+
+def adrs_at(ref: str) -> dict[str, set[str]]:
+    """number -> slugs, for one ref."""
     try:
         raw = git("ls-tree", "-r", "--name-only", ref, DECISIONS_DIR)
     except CannotCheck:
         return {}
-    found: dict[str, str] = {}
-    for line in raw.splitlines():
-        m = ADR_RE.match(line.strip())
-        if m:
-            found[m.group(1)] = m.group(2)
-    return found
+    return parse_adrs(raw.splitlines())
 
 
-def adrs_here() -> dict[str, str]:
-    """number -> slug, for the working tree (what this ref actually has)."""
-    raw = git("ls-files", DECISIONS_DIR)
-    found: dict[str, str] = {}
-    for line in raw.splitlines():
-        m = ADR_RE.match(line.strip())
-        if m:
-            found[m.group(1)] = m.group(2)
-    return found
+def adrs_here() -> dict[str, set[str]]:
+    """number -> slugs, for the working tree (what this ref actually has)."""
+    return parse_adrs(git("ls-files", DECISIONS_DIR).splitlines())
 
 
 # Frozen snapshots of unfinished local work (`.planning/handoff/preserve-local-work.sh`
@@ -319,9 +327,10 @@ def collect(refs: list[str]) -> tuple[dict[str, set[str]], dict[tuple[str, str],
     by_number: dict[str, set[str]] = defaultdict(set)
     where: dict[tuple[str, str], list[str]] = defaultdict(list)
     for ref in refs:
-        for number, slug in adrs_at(ref).items():
-            by_number[number].add(slug)
-            where[(number, slug)].append(ref)
+        for number, slugs in adrs_at(ref).items():
+            for slug in slugs:
+                by_number[number].add(slug)
+                where[(number, slug)].append(ref)
     if not by_number:
         raise CannotCheck(
             f"no ADR files matched {ADR_RE.pattern!r} on any ref. Either the "
@@ -365,15 +374,18 @@ def run_default() -> int:
     mine = adrs_here()
     on_main = adrs_at(MAIN_REF)
 
-    introduced = {n: s for n, s in mine.items() if on_main.get(n) != s}
+    # (number, slug) pairs this ref wears that main does not.
+    introduced = sorted((n, s) for n, slugs in mine.items()
+                        for s in slugs - on_main.get(n, set()))
     if not introduced:
         print("No ADR numbers introduced by this ref. Nothing to check.")
         print(f"Next free number, swept across {len(refs)} refs: {next_free(by_number_all)}")
         return 0
 
     failed = False
-    for number, slug in sorted(introduced.items()):
-        others = {s for s in by_number.get(number, set()) if s != slug}
+    for number, slug in introduced:
+        # A sibling in this very tree counts as much as one on another ref.
+        others = (by_number.get(number, set()) | mine[number]) - {slug}
         if others:
             report_collision(number, slug, others, where, by_number_all)
             failed = True
@@ -381,7 +393,7 @@ def run_default() -> int:
     if failed:
         return 1
 
-    listed = ", ".join(f"{n} ({s})" for n, s in sorted(introduced.items()))
+    listed = ", ".join(f"{n} ({s})" for n, s in introduced)
     print(f"OK -- introduced by this ref: {listed}")
     print(f"Checked against {len(refs)} refs. No number wears two slugs.")
     return 0
@@ -724,6 +736,28 @@ def _snapshot_fixture() -> str | None:
         if "every ref: 9007" not in out:
             return ("next-free dropped a number only a snapshot wears, want 9007: "
                     f"{out.strip()[:300]}")
+        # 2026-10-01: a second slug for a number main already has, in the SAME tree,
+        # sorted before main's (capital letter, or a lowercase slug like "a").
+        for name in ("9001-X.md", "9001-a.md"):
+            p = introduce(name)
+            out = p.stdout + p.stderr
+            if p.returncode != 1 or "COLLISION: ADR 9001" not in out:
+                return (f"{name} beside 9001-synthetic-base.md in one tree did not fail "
+                        f"(exit {p.returncode}), want 1 and COLLISION: {out.strip()[:300]}")
+        # Two new slugs for one new number, staged in this tree only: no ref holds
+        # either, so only the same-tree check (`| mine[number]`) can see them.
+        run("checkout", "--quiet", "-B", "mine", "origin/main", cwd=clone)
+        for name in ("9005-a.md", "9005-B.md"):
+            with open(os.path.join(clone, DECISIONS_DIR, name), "w", encoding="utf-8") as fh:
+                fh.write(f"# {name}\n")
+        run("add", "-A", cwd=clone)
+        p = guard_run()
+        out = p.stdout + p.stderr
+        run("reset", "--quiet", "--hard", "origin/main", cwd=clone)
+        if p.returncode != 1 or "COLLISION: ADR 9005" not in out:
+            return ("9005-a.md and 9005-B.md, staged in one tree and on no ref, did not fail "
+                    f"(exit {p.returncode}), want 1 and COLLISION: {out.strip()[:300]}")
+        p = introduce("9004-my-other-decision.md")
         # The branch `mine` now wears 9004 against docs/real: the audit must fail, and
         # its next-free print must still count the snapshot.
         p = guard_run("--audit")
@@ -761,6 +795,15 @@ def run_self_test() -> int:
         failures.append("README.md was parsed as an ADR")
     if not ADR_RE.match(".planning/decisions/0049-ecosystem-division-layer.md"):
         failures.append("a real ADR filename did not parse")
+    for slug in ("X", "a"):
+        tree = parse_adrs([f"{DECISIONS_DIR}/0097-{slug}.md",
+                           f"{DECISIONS_DIR}/0097-the-gateway-says-which-build-it-is.md"])
+        if tree.get("0097") != {slug, "the-gateway-says-which-build-it-is"}:
+            failures.append(f"0097-{slug}.md beside 0097-the-gateway-... in one tree was "
+                            f"overwritten: got {tree.get('0097')}")
+    for name in ("0097-X.md", "0231-Model-dispatch.md", "0237-EFFORT.MD"):
+        if not ADR_RE.match(f".planning/decisions/{name}"):
+            failures.append(f"{name} did not parse: letter case must not hide a number")
 
     # Snapshots: skipped for collisions, and ONLY snapshots. A prefix that also
     # matched ordinary wip/ branches, or a branch merely containing the word, would
@@ -792,7 +835,8 @@ def run_self_test() -> int:
             print(f"SELF-TEST FAILED: {f}")
         return 1
     print("SELF-TEST OK -- collision detected, non-collision not flagged, "
-          "next-free swept across refs, README not parsed as an ADR, a snapshot "
+          "next-free swept across refs, README not parsed as an ADR, a capital-letter "
+          "slug still parsed, a same-tree second slug caught (committed or only staged), a snapshot "
           "draft skipped while a real collision still fails, a "
           "concurrent push re-fetched and passed, a branch the fetch cannot "
           "resolve still exit 2.")
