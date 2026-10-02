@@ -6,7 +6,7 @@ import type { TourDefinition } from '../tours/registry'
 export const ordersTip = {
   pageId: 'orders' as const,
   title: 'Orders',
-  body: 'Write an order, approve it, follow it, and check it in when it arrives.',
+  body: 'Write an order, approve it, follow it, and mark it delivered when it arrives.',
 }
 
 export const ordersTour: TourDefinition = {
@@ -16,25 +16,25 @@ export const ordersTour: TourDefinition = {
       element: '[data-testid="write-order"]',
       title: 'Write an order',
       description:
-        'Choose a vendor and the wines. The order waits as a draft until it is approved.',
+        'Add what you need from the shelf and name a vendor for each line. Each line becomes a pending order waiting for approval; nothing is sent to a vendor yet.',
     },
     {
       element: '[data-tour="orders-stage-pending"]',
       title: 'Approve it',
       description:
-        'Drafts wait here. Open one and hold to approve it.',
+        'Orders waiting for approval. Open one and hold to approve it. If it needs a manager or an owner, the hold stays shut and says who it is waiting on.',
     },
     {
       element: '[data-tour="orders-stage-ordered"]',
       title: 'Follow it',
       description:
-        'Sent orders wait here until they arrive. Open one and mark it delivered.',
+        'Orders placed with the vendor stay here until they arrive. When one is at the door, open it and mark it delivered.',
     },
     {
       element: '[data-tour="orders-stage-delivered"]',
       title: 'Check what arrived',
       description:
-        'Orders that arrived, each with what came and its receipt.',
+        'Orders that arrived. Open one to see its receipt; if none has been attached yet, it says so.',
     },
   ],
 }

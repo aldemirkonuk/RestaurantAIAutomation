@@ -28,11 +28,11 @@ export const inventoryTour: TourDefinition = {
       element: '[data-tour="inventory-attention"]',
       title: 'Clear what needs attention',
       description:
-        'Invoices to match and wines to check, one tap each.',
+        'Invoices to match and POS lines moving no stock show here when there are any. Each chip after them shows only the wines it names.',
     },
     {
       element: '[data-tour="inventory-actions"]',
-      title: 'Count, move or add',
+      title: 'Count the cellar or add a wine',
       description:
         'Switch between the table and the cellar map, print a count sheet, or add a wine.',
     },

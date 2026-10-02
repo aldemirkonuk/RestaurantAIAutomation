@@ -6,7 +6,7 @@ import type { TourDefinition } from '../tours/registry'
 export const reportsTip = {
   pageId: 'reports' as const,
   title: 'Reports',
-  body: 'Sales, costs and stock on one sheet. Ask it a question, or arrange it your way.',
+  body: 'Sales, costs, stock and more on one sheet. Search what the engine has already said, or arrange the sheet your way.',
 }
 
 export const reportsTour: TourDefinition = {
@@ -16,25 +16,25 @@ export const reportsTour: TourDefinition = {
       element: '.rp-sheet',
       title: 'Read the sheet',
       description:
-        'Sales, costs and stock for the period. A figure that could not be worked out says so; it is never shown as 0.',
+        'Sales, costs, stock and more, each over the window printed under its title. A figure the engine could not work out prints as a dash.',
     },
     {
       element: '[data-tour="reports-ask"]',
       title: 'Ask the book',
       description:
-        'Ask a question in plain words. ⌘K opens it too.',
+        'Search what the engine has already said from your own rows. It does not answer free-text questions. ⌘K opens it too.',
     },
     {
       element: '[data-tour="reports-arrange"]',
       title: 'Arrange it your way',
       description:
-        'Move and hide parts of the sheet, then rule it off. Put it all back undoes it.',
+        'Move, resize, swap or take off parts of the sheet, then rule it off to keep it as yours. Put it all back starts again from the default sheet.',
     },
     {
       element: '#rp-exports',
       title: 'Take it with you',
       description:
-        'Write the sheet up as a CSV, or as a page laid out for print.',
+        'Owners and managers pick a part of the sheet and write it up as a CSV and a page laid out for print.',
     },
   ],
 }
