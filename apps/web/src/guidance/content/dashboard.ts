@@ -28,13 +28,13 @@ export const dashboardTour: TourDefinition = {
       element: 'section[aria-label="Running low"]',
       title: 'See what is running low',
       description:
-        'Wines below their minimum, the furthest below first. Inventory opens the full list.',
+        'Wines below their minimum, the furthest below first. The Inventory link opens the inventory page, not a list of only these.',
     },
     {
       element: '[data-testid="one-tap-open-sheet"]',
       title: 'Leave yourself a one-tap action',
       description:
-        'Write down a piece of work, and it waits here until someone does it.',
+        'Write down a piece of work, and it waits here until someone marks it done or rules it out.',
     },
   ],
 }
