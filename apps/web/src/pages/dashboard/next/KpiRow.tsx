@@ -103,7 +103,7 @@ export function KpiRow({ stats, pendingCount, lowStockCount, seesAmounts = true 
   // DASH-W37: "items", never "wines" — the house holds every drink (ADR 0115,
   // ADR 0186), and the founder chose the word that still holds when food lands.
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5" data-tour="dashboard-kpis">
       <KpiTile
         label="In the cellar"
         value={bottles}
