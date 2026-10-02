@@ -138,6 +138,7 @@ import {
   decideApproval,
   type ApprovalDecision,
   type OrderUnderTest,
+  type ThresholdRow,
 } from "../settings/approval-thresholds";
 import { OrganizationsService } from "../organizations/organizations.service";
 import {
@@ -146,6 +147,11 @@ import {
   refusalSentence,
   roleSatisfies,
 } from "./order-approval-gate";
+import {
+  flaggedFirst,
+  pendingOrderPriority,
+  type PendingOrderPriority,
+} from "./pending-order-priority";
 import { SealChallengeService } from "../common/seal/seal-challenge.service";
 import { escapeHtml, textToEmailHtml } from "../common/html/escape-html";
 import {
@@ -251,6 +257,17 @@ const PENDING_APPROVAL_STATUSES = new Set<string>([
  * judged over a different one would make that number a different question.
  */
 const APPROVAL_GATE_WINDOW_DAYS = 365;
+
+/**
+ * The facts handed to `decideApproval` when the house has no rule switched on:
+ * nothing is tested, so nothing is read. Every field is "unknown", and with no
+ * enabled rule `decideApproval` neither fires nor reports anything untestable.
+ */
+const NO_RULE_FACTS: OrderUnderTest = {
+  total: null,
+  isFirstOrderToVendor: null,
+  pricePremiumPct: null,
+};
 
 /**
  * `numeric` comes back from PostgREST as a string. A value that is not a finite
@@ -4425,20 +4442,13 @@ export class ProcurementService {
       status: string | null;
     };
 
-    const order: OrderUnderTest = {
-      total: toFiniteNumber(row.total_cost),
-      isFirstOrderToVendor: await this.isFirstOrderToVendor(
-        restaurantId,
-        orderId,
-        row.provider_id,
-      ),
-      pricePremiumPct: await this.pricePremiumPct(
-        restaurantId,
-        orderId,
-        row.inventory_id,
-        toFiniteNumber(row.final_price),
-      ),
-    };
+    // The same facts "Waiting on you" flags from (ADR 0256): one builder, so
+    // the flag and the gate cannot learn two different answers.
+    const { test: order } = await this.orderUnderTest(
+      restaurantId,
+      orderId,
+      row,
+    );
 
     const decision = decideApproval(readout.thresholds, order);
     if (!decision.requiredRole) return; // No rule fired — seal as before.
@@ -4665,18 +4675,64 @@ export class ProcurementService {
   }
 
   /**
+   * The facts the house's rules test for ONE order — the approve gate's and
+   * "Waiting on you"'s, from this one builder (ADR 0256).
+   *
+   * `priceUnread` is the one thing the gate does not use: it says the last-price
+   * read FAILED, where `pricePremiumPct: null` alone cannot tell that from
+   * "there is no earlier price". The gate keeps its pre-existing reading (both
+   * are `null`, and `price_jump` does not fire); the flag reports the first as
+   * unknown. Awaited in the gate's original order.
+   */
+  private async orderUnderTest(
+    restaurantId: string,
+    orderId: string,
+    row: {
+      total_cost: string | number | null;
+      provider_id: string | null;
+      inventory_id: string | null;
+      final_price: string | number | null;
+    },
+  ): Promise<{ test: OrderUnderTest; priceUnread: boolean }> {
+    const isFirstOrderToVendor = await this.isFirstOrderToVendor(
+      restaurantId,
+      orderId,
+      row.provider_id,
+    );
+    const premium = await this.readPricePremium(
+      restaurantId,
+      orderId,
+      row.inventory_id,
+      toFiniteNumber(row.final_price),
+    );
+    return {
+      test: {
+        total: toFiniteNumber(row.total_cost),
+        isFirstOrderToVendor,
+        pricePremiumPct: premium.pct,
+      },
+      priceUnread: premium.unread,
+    };
+  }
+
+  /**
    * How far above the last unit price this house paid for the same item.
    *
-   * `null` when there is no earlier price — a first purchase has no premium, it
-   * has no comparison at all, and `new_vendor` is the rule that covers it.
+   * `pct: null` when there is no earlier price — a first purchase has no
+   * premium, it has no comparison at all, and `new_vendor` is the rule that
+   * covers it. `unread: true` when the read itself failed, which is a different
+   * fact and is kept apart (the arithmetic is unchanged from the gate's
+   * original `pricePremiumPct`).
    */
-  private async pricePremiumPct(
+  private async readPricePremium(
     restaurantId: string,
     orderId: string,
     inventoryId: string | null,
     unitPrice: number | null,
-  ): Promise<number | null> {
-    if (!inventoryId || unitPrice === null || unitPrice <= 0) return null;
+  ): Promise<{ pct: number | null; unread: boolean }> {
+    if (!inventoryId || unitPrice === null || unitPrice <= 0) {
+      return { pct: null, unread: false };
+    }
     try {
       const { data, error } = await this.databaseService.supabase
         .from("procurement_orders")
@@ -4686,15 +4742,15 @@ export class ProcurementService {
         .neq("id", orderId)
         .order("requested_at", { ascending: false })
         .limit(1);
-      if (error) return null;
+      if (error) return { pct: null, unread: true };
       const prior = toFiniteNumber(
         (data as Array<{ final_price: string | number | null }> | null)?.[0]
           ?.final_price ?? null,
       );
-      if (prior === null || prior <= 0) return null;
-      return ((unitPrice - prior) / prior) * 100;
+      if (prior === null || prior <= 0) return { pct: null, unread: false };
+      return { pct: ((unitPrice - prior) / prior) * 100, unread: false };
     } catch {
-      return null;
+      return { pct: null, unread: true };
     }
   }
 
@@ -7075,19 +7131,100 @@ export class ProcurementService {
    * panel a manager approves money from, and it named the wine and the total
    * without ever naming who was being paid. The status filter caps the page,
    * so the to-one join is over a handful of rows.
+   *
+   * ORDER (ADR 0256, founder 2026-10-01: "oldest first, flag priority ones";
+   * "Flagged first, then oldest"). Read oldest first, then flagged rows moved
+   * to the top without reordering either group. Every row carries `priority`
+   * — the reasons as words, and the checks that could not be made — built by
+   * `pendingOrderPriority` from the approve gate's own facts and the house's
+   * own stock predicate. A flag that cannot be computed is reported as
+   * `unknown`; it never fails the queue and never reads as "not flagged".
    */
   async listPendingOrders(restaurantId: string): Promise<OrderResponseDto[]> {
+    const rows = await this.readPendingOrderRows(restaurantId);
+    const policy = await this.pendingFlagPolicy(restaurantId);
+
+    const flagged: Array<
+      OrderResponseDto & { priority: PendingOrderPriority }
+    > = [];
+    // With no rule switched on there is nothing for the facts to decide, so
+    // the per-order reads are skipped; `decideApproval` fires nothing either way.
+    const anyRuleOn = Boolean(policy?.some((p) => p.enabled));
+    for (const row of rows) {
+      const facts = anyRuleOn
+        ? await this.orderUnderTest(restaurantId, row.id, row)
+        : { test: NO_RULE_FACTS, priceUnread: false };
+      const inventory = Array.isArray(row.inventory)
+        ? row.inventory[0]
+        : row.inventory;
+      flagged.push({
+        ...this.mapPendingRow(row),
+        priority: pendingOrderPriority({
+          parked:
+            (row.status ?? "").toUpperCase() ===
+            ProcurementOrderStatus.APPROVAL_NEEDED,
+          policy,
+          test: facts.test,
+          priceUnread: facts.priceUnread,
+          // The item as the SAME read joined it. No item, or no stock on it,
+          // is a check not made — `itemRunningOut` answers null for it.
+          stock: inventory
+            ? {
+                stockLive: inventory.stock_live,
+                parLevel: inventory.threshold_min,
+              }
+            : null,
+        }),
+      });
+    }
+    return flaggedFirst(flagged);
+  }
+
+  /**
+   * `GET /procurement/orders/pending/count` — the sidebar badge, polled every
+   * 30 s on every page. The same read as the queue, without the flags: a count
+   * does not need the house's rules, and asking them twice a minute per tab to
+   * produce a number that ignores them would be waste. A failed read is still
+   * a 503, never `{ count: 0 }`.
+   */
+  async countPendingOrders(restaurantId: string): Promise<number> {
+    return (await this.readPendingOrderRows(restaurantId)).length;
+  }
+
+  /**
+   * The house's rules as the approve gate reads them, or `null` when they
+   * could not be read — so every rule-based flag becomes unknown rather than
+   * absent. Never throws: the queue is still the queue without its flags.
+   */
+  private async pendingFlagPolicy(
+    restaurantId: string,
+  ): Promise<ThresholdRow[] | null> {
+    if (!this.approvalThresholds) return null;
+    try {
+      const readout = await this.approvalThresholds.read(restaurantId);
+      return readout.readable ? readout.thresholds : null;
+    } catch (err: any) {
+      this.logger.warn(
+        `pending-order flags: approval rules unreadable for ${restaurantId}: ${err?.message}`,
+      );
+      return null;
+    }
+  }
+
+  /** The pending rows, oldest first. A failed read is a 503, never `[]`. */
+  private async readPendingOrderRows(restaurantId: string): Promise<any[]> {
     const { data, error } = await this.databaseService.supabase
       .from("procurement_orders")
       .select(
-        "*, inventory:inventory_id(wine_name), provider:provider_id(name)",
+        "*, inventory:inventory_id(wine_name, stock_live, threshold_min), provider:provider_id(name)",
       )
       .eq("restaurant_id", restaurantId)
       .in("status", [
         ProcurementOrderStatus.PENDING,
         ProcurementOrderStatus.APPROVAL_NEEDED,
       ])
-      .order("created_at", { ascending: false });
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true });
 
     if (error) {
       this.logger.error("Failed to list pending orders", {
@@ -7100,17 +7237,18 @@ export class ProcurementService {
       throw new ServiceUnavailableException("Could not read pending orders");
     }
 
-    return (data || []).map((row: any) => {
-      const orderRow: ProcurementOrderRow = {
-        ...row,
-        wine_name:
-          row.inventory?.wine_name ||
-          (row.inventory as any)?.wine?.name ||
-          null,
-        provider_name: embeddedProviderName(row.provider),
-      };
-      return this.mapOrderRow(orderRow);
-    });
+    return data || [];
+  }
+
+  /** One pending row as the API states it — the stock join is not sent. */
+  private mapPendingRow(row: any): OrderResponseDto {
+    const orderRow: ProcurementOrderRow = {
+      ...row,
+      wine_name:
+        row.inventory?.wine_name || (row.inventory as any)?.wine?.name || null,
+      provider_name: embeddedProviderName(row.provider),
+    };
+    return this.mapOrderRow(orderRow);
   }
 
   /**
