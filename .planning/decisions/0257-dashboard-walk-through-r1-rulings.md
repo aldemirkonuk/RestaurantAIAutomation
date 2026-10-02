@@ -57,7 +57,7 @@ The founder's words, verbatim, per item:
 | DASH-W15 | "Queue it (Recommended)" |
 | DASH-W16 | (a) "The /orders session"; (b) "the one wehre you can communicate with the vendor about a certain order", then "Approve (Recommended)" |
 | DASH-W17 | "A: numbers fade" |
-| DASH-W19 and W23 | "approve + remove the system theme from top bar into settings" (W23, the theme control, is shell work: queued) |
+| DASH-W19 and W23 | "approve + remove the system theme from top bar into settings" (W23, the theme control, is shell work: queued, then shipped in PR #576) |
 | DASH-W22 | "A: hide amounts for staff (Recommended)", then the built result "Approve (Recommended)" |
 | DASH-W24, W26, W27, W28 | "Approve (Recommended)" |
 | DASH-W24b | "Remove them (Recommended)" |
@@ -104,7 +104,7 @@ These were built as approved. *What follows is my synthesis, proposed. It is not
 
 - **Branch.** `fix/review-dashboard` carries the page and gateway changes and the §14 record.
 - **Shared parts**, which are never committed from a page branch, are queued in `p4-scratch/review-shared-queue.md` (R1b lines):
-  - the theme control's move (W23);
+  - the theme control's move (W23), since shipped in PR #576;
   - the /logs half of W5;
   - the shell focus ring and skip link;
   - ink-3 elsewhere and the DayLine font;
