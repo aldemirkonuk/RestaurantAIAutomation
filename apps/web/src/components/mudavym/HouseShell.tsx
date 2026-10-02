@@ -161,6 +161,12 @@ export function HouseShell({ children }: { children?: ReactNode } = {}) {
       return next;
     });
   }, [width, userId]);
+  // While Ask holds the counter's slot, the counter shows tucked and its
+  // control gives the slot back; it never rewrites the person's choice. The
+  // header's Counter button and the counter's own control say the same thing.
+  const askHoldsSlot = ask.open && askDocks;
+  const shownWidth = askHoldsSlot ? 'tucked' : width;
+  const onCounterToggle = askHoldsSlot ? ask.close : toggleCounter;
 
   const toggleRail = useCallback(() => {
     setPrefs((p) => {
@@ -213,8 +219,8 @@ export function HouseShell({ children }: { children?: ReactNode } = {}) {
     <button
       type="button"
       className="mdv-hdr__counter"
-      onClick={phone ? () => setPhoneCounter((o) => !o) : toggleCounter}
-      aria-pressed={phone ? phoneCounter : width === 'open'}
+      onClick={phone ? () => setPhoneCounter((o) => !o) : onCounterToggle}
+      aria-pressed={phone ? phoneCounter : shownWidth === 'open'}
       aria-label={
         waiting === true
           ? 'The counter — acts wait on you'
@@ -299,8 +305,8 @@ export function HouseShell({ children }: { children?: ReactNode } = {}) {
                 <HouseCounter
                   state={counter}
                   onOpen={openAct}
-                  width={ask.open && askDocks ? 'tucked' : width}
-                  onToggle={ask.open && askDocks ? ask.close : toggleCounter}
+                  width={shownWidth}
+                  onToggle={onCounterToggle}
                 />
               )}
             </div>

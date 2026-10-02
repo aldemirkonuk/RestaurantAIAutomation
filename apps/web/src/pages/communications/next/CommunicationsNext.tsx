@@ -609,7 +609,7 @@ export default function CommunicationsNext() {
                 recorded so far is email. The composer writes letters, not messages.
               </p>
               <div className="flex flex-col gap-2">
-                <button type="button" onClick={() => setCompose(true)} className="cm-row cm-card flex items-center gap-2 rounded-lg px-3 py-2 text-left"
+                <button type="button" data-tour="comms-write" onClick={() => setCompose(true)} className="cm-row cm-card flex items-center gap-2 rounded-lg px-3 py-2 text-left"
                   style={{ border: '1px solid var(--seal-ring, rgba(26,94,107,.32))', fontSize: 12.5, fontWeight: 600, color: 'var(--seal-deep, #14515C)', cursor: 'pointer' }}>
                   <PenLine size={13} strokeWidth={1.75} aria-hidden />
                   Write a letter
