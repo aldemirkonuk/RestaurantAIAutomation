@@ -15,6 +15,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { RememberedShelf } from '../RememberedShelf'
+import { printedVintageOf } from '../canonical-format'
 import type { ResolvedLine } from '../../../services/api/canonical'
 
 const line = (over: Partial<ResolvedLine>): ResolvedLine => ({
@@ -144,5 +145,57 @@ describe('RememberedShelf', () => {
       />,
     )
     expect(screen.queryByTestId('shelf-proposed')).toBeNull()
+  })
+})
+
+describe('RememberedShelf — a remembered item of another vintage (walk-through W8)', () => {
+  const proposed = line({ proposedInventoryId: 'item-A', proposedSentence: 'Remembered from 1 earlier document.' })
+
+  it('says the years differ beside the tick, and keeps the tick', () => {
+    render(
+      <RememberedShelf
+        line={proposed}
+        itemName={itemName}
+        onLink={vi.fn()}
+        printedVintage={2023}
+        itemVintage={() => 2022}
+      />,
+    )
+    expect(screen.getByTestId('shelf-vintage-differs')).toHaveTextContent(
+      'This line prints 2023; that item is the 2022.',
+    )
+    expect(screen.getByTestId('shelf-accept')).toBeEnabled()
+  })
+
+  it('says nothing when the years agree or either one is unknown', () => {
+    const { rerender } = render(
+      <RememberedShelf line={proposed} itemName={itemName} onLink={vi.fn()} printedVintage={2021} itemVintage={() => 2021} />,
+    )
+    expect(screen.queryByTestId('shelf-vintage-differs')).toBeNull()
+    rerender(<RememberedShelf line={proposed} itemName={itemName} onLink={vi.fn()} printedVintage={null} itemVintage={() => 2022} />)
+    expect(screen.queryByTestId('shelf-vintage-differs')).toBeNull()
+    rerender(<RememberedShelf line={proposed} itemName={itemName} onLink={vi.fn()} printedVintage={2023} itemVintage={() => null} />)
+    expect(screen.queryByTestId('shelf-vintage-differs')).toBeNull()
+  })
+
+  it('keeps saying so after the tick, beside the linked item (W15)', () => {
+    // Pressing the tick on SYN-US-0114 (2026-10-01) made the note vanish, so a
+    // wrong-year link read as settled.
+    const linked = line({ inventoryId: 'item-A', inventoryIdSource: 'line' })
+    const { rerender } = render(
+      <RememberedShelf line={linked} itemName={itemName} onLink={vi.fn()} printedVintage={2023} itemVintage={() => 2022} />,
+    )
+    expect(screen.getByTestId('shelf-linked')).toHaveTextContent('This line prints 2023; that item is the 2022.')
+    rerender(<RememberedShelf line={linked} itemName={itemName} onLink={vi.fn()} printedVintage={2022} itemVintage={() => 2022} />)
+    expect(screen.queryByTestId('shelf-vintage-differs')).toBeNull()
+  })
+
+  it('reads a year from the printed name only when exactly one is there', () => {
+    expect(printedVintageOf(2019, 'SYNTHETIC Sancerre 2023')).toBe(2019)
+    expect(printedVintageOf(null, 'SYNTHETIC Sancerre 2023 · 750 ml')).toBe(2023)
+    expect(printedVintageOf(null, '2022 Scribe Estate, Sonoma Valley')).toBe(2022)
+    expect(printedVintageOf(null, 'SYNTHETIC Rioja 2015 / 2016')).toBeNull()
+    expect(printedVintageOf(null, 'SYNTHETIC Champagne NV · 750 ml')).toBeNull()
+    expect(printedVintageOf(null, null)).toBeNull()
   })
 })

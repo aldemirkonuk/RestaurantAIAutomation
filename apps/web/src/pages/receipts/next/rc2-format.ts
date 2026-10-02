@@ -3,7 +3,7 @@
  * tri-state null (a check that could not run) is never rendered as a pass.
  */
 
-import { formatMoney } from '@/lib/currency';
+import { currencyLabel, formatMoney } from '@/lib/currency';
 
 export const EM = '—';
 
@@ -36,7 +36,43 @@ export function fmtMoney(
   currency: string | null | undefined,
 ): string {
   if (n == null || !Number.isFinite(Number(n))) return EM;
-  return formatMoney(Number(n), currency);
+  const said = formatMoney(Number(n), currency);
+  // THE SIGN, WHERE THE MONEY HAS ONE OF ITS OWN (walk-through W25,
+  // 2026-10-01): the queue printed "$547.47" beside "TRY 11,186.40". When the
+  // default display fell back to the bare code, ask for the narrow sign, and
+  // use it only when it is one character from Unicode's currency-symbol block
+  // (₺ ₽ ₴ ₸ …). A narrow "$", "kr" or "£" is shared by several monies, so
+  // ARS or SEK keep their code; a money already shown with a sign (CA$) is
+  // never touched.
+  if (currency && /^[A-Z]{3}$/.test(currency) && said.includes(currency)) {
+    try {
+      const glyph = new Intl.NumberFormat(undefined, {
+        style: 'currency',
+        currency,
+        currencyDisplay: 'narrowSymbol',
+      })
+        .formatToParts(0)
+        .find((x) => x.type === 'currency')?.value;
+      if (glyph && /^[\u20A0-\u20CF]$/.test(glyph))
+        return said.replace(currency, glyph).replace(/^(\D*?[^\d\s-])\s+(?=\d)/, '$1');
+    } catch {
+      // An engine without narrowSymbol keeps the code, which is still honest.
+    }
+  }
+  return said;
+}
+
+/** A server's sentence may come without its full stop; the next one needs it. */
+export function sentence(t: string): string {
+  const s = t.trim();
+  return /[.!?…]$/.test(s) ? s : `${s}.`;
+}
+
+/** "Turkish lira (TRY)": the money's name first, its code after (W23). */
+export function moneyName(code: string): string {
+  const label = currencyLabel(code);
+  const prefix = `${code} - `;
+  return label.startsWith(prefix) ? `${label.slice(prefix.length)} (${code})` : code;
 }
 
 /**
@@ -95,10 +131,34 @@ export function serverMessage(e: unknown, fallback: string): string {
   const body = r?.data as { message?: unknown; error?: unknown } | undefined;
   const raw = body?.message ?? body?.error;
   const text = Array.isArray(raw) ? raw.join('; ') : typeof raw === 'string' ? raw : null;
-  if (text && text.trim()) return r?.status ? `${text.trim()} (HTTP ${r.status})` : text.trim();
-  if (r?.status) return `The gateway refused it with HTTP ${r.status} and no message.`;
+  // In the house's words (walk-through W24, 2026-10-01): no "(HTTP 409)"
+  // after the server's own sentence, no "(Network Error)" after ours.
+  if (text && text.trim()) return text.trim();
+  if (r?.status) return 'Mudavym refused it and gave no reason.';
+  const transport = e as { request?: unknown; code?: unknown } | null;
+  if (transport?.request != null || transport?.code === 'ERR_NETWORK' || transport?.code === 'ECONNABORTED')
+    return `${fallback.replace(/\.$/, '')}: no answer came back. Check the connection, then try again.`;
   if (e instanceof Error && e.message) return `${fallback} (${e.message})`;
   return fallback;
+}
+
+/**
+ * Why a read failed, as the clause inside "Could not read the claims (…)".
+ * The same three cases `serverMessage` tells apart, and never the client
+ * library's own words (walk-through W26, 2026-10-01): "(Network Error)" and
+ * "(Request failed with status code 500)" are not sentences a manager can act on.
+ */
+export function failureReason(e: unknown): string {
+  const r = (e as { response?: { data?: unknown; status?: number } } | null)?.response;
+  const body = r?.data as { message?: unknown; error?: unknown } | undefined;
+  const raw = body?.message ?? body?.error;
+  const text = Array.isArray(raw) ? raw.join('; ') : typeof raw === 'string' ? raw : null;
+  if (text && text.trim()) return text.trim().replace(/\.$/, '');
+  if (r?.status) return 'refused, with no reason given';
+  const transport = e as { request?: unknown; code?: unknown } | null;
+  if (transport?.request != null || transport?.code === 'ERR_NETWORK' || transport?.code === 'ECONNABORTED')
+    return 'no answer came back';
+  return 'the reason is not known';
 }
 
 /**

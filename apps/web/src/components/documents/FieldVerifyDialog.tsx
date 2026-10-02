@@ -30,11 +30,15 @@
  * extracted number, now with a name against it.
  */
 
-import { useEffect, useLayoutEffect, useRef } from 'react'
 import { HoldToApprove } from '../mudavym/HoldToApprove'
-import { MONO, SERIF } from './canonical-format'
+import { Panel } from '../mudavym/Sheet'
+import { MONO } from './canonical-format'
 
 export interface FieldVerifyDialogProps {
+  /**
+   * The field's key. Not shown: "seller.name" is the house's plumbing, not its
+   * words (walk-through RECEIPTS-W33) — the label already names the field.
+   */
   path: string
   label: string
   /**
@@ -53,7 +57,6 @@ export interface FieldVerifyDialogProps {
 }
 
 export function FieldVerifyDialog({
-  path,
   label,
   envelope,
   error,
@@ -63,106 +66,44 @@ export function FieldVerifyDialog({
   onConfirm,
 }: FieldVerifyDialogProps) {
   const current = envelope?.value ?? null
-  const panelRef = useRef<HTMLDivElement>(null)
 
   /*
-   * FOCUS AND ESCAPE ARE `Sheet`'s, NOT `CorrectionDialog`'s (auditor,
-   * 2026-09-11).
+   * THE HOUSE'S CENTRED PANEL (ADR 0112; walk-through RECEIPTS-W32, 2026-10-01).
    *
-   * This dialog shipped with `role="dialog" aria-modal="true"` and an `Escape`
-   * handler on its own container, and focused nothing — and it is opened from a
-   * button inside `ProvenanceHover`, which then unmounts. Focus fell to
-   * `<body>`, the keydown never reached the container, and Escape did nothing
-   * at all. `CorrectionDialog` has the same container-scoped handler and works
-   * only because it happens to focus its first input on mount, which is the
-   * accident rather than the design.
-   *
-   * `Sheet` (components/mudavym/Sheet.tsx) is the house's answer and says why in
-   * its own words: *"an overlay whose Esc only works while focus is inside is an
-   * overlay you can get stuck behind"*. Its three parts are mirrored here —
-   * remember the opener before focus moves in, put focus on the first operable
-   * control, listen for Escape on the WINDOW — rather than inventing a third
-   * pattern. The full Sheet is not used because this dialog predates that
-   * migration; moving it wholesale is a rebuild, not a defect fix.
+   * This dialog shipped on 2026-09-11 with `role="dialog" aria-modal="true"`, an
+   * Escape handler on its own container, and no focus at all; the auditor gave
+   * it Sheet's three parts by hand. Measured on 2026-10-01 it still let Tab out
+   * at the second press and the page scroll behind the dim. `Panel` is the one
+   * place focus, Tab, Escape, scroll lock, ground and motion live, so it now
+   * carries all of them, and focus lands on Cancel — the control that writes
+   * nothing — rather than on the hold that records a name for good.
    */
-  useLayoutEffect(() => {
-    const opener = (document.activeElement as HTMLElement | null) ?? null
-    return () => {
-      // A page that navigated away no longer holds the opener; focusing a
-      // detached node silently sends focus to <body>, so check first.
-      if (opener && document.contains(opener)) opener.focus()
-    }
-  }, [])
-
-  useEffect(() => {
-    const panel = panelRef.current
-    if (!panel) return
-    const first = panel.querySelector<HTMLElement>(
-      'button:not([disabled]), [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
-    )
-    ;(first ?? panel).focus()
-  }, [])
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation()
-        onCancel()
-      }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onCancel])
-
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label={`Confirm ${label}`}
-      data-testid="field-verify-dialog"
+    <Panel
+      open
+      onClose={onCancel}
+      label={`Confirm ${label}: holding records that you read it and stand behind it, permanently; leaving writes nothing.`}
+      contract="This changes nothing about the value or where it came from. It records that you read it and stand behind it, permanently — which is why it takes a hold rather than a click."
+      eyebrow="Stand behind one field"
+      title={label}
+      closeLabel="Cancel"
       className="cd-no-print"
-      style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 60,
-        display: 'grid',
-        placeItems: 'center',
-        background: 'rgba(33,28,22,.34)',
-        padding: 16,
-      }}
+      footer={
+        <div data-testid="field-verify-submit">
+          <HoldToApprove
+            label={`Hold to stand behind ${label}`}
+            approvedLabel={busy ? 'Recording…' : 'Checked'}
+            disabled={!!busy}
+            onChallenge={onChallenge}
+            onApprove={(challenge) => onConfirm(challenge)}
+          />
+        </div>
+      }
     >
-      <div
-        ref={panelRef}
-        tabIndex={-1}
-        style={{
-          width: 380,
-          maxWidth: '100%',
-          background: 'var(--paper-0, #FFFDF8)',
-          border: '1px solid var(--paper-2, #EAE4D8)',
-          borderRadius: 14,
-          padding: '14px 16px',
-          boxShadow: '0 18px 50px rgba(33,28,22,.22)',
-        }}
-      >
-        <span
-          style={{
-            fontFamily: MONO,
-            fontSize: 8,
-            fontWeight: 600,
-            letterSpacing: '.12em',
-            textTransform: 'uppercase',
-            color: 'var(--ink-4, #665D50)',
-          }}
-        >
-          Stand behind one field
-        </span>
-        <h2 style={{ margin: '2px 0 6px', fontFamily: SERIF, fontSize: 16, fontWeight: 600 }}>
-          {label}
-        </h2>
-
+      <div data-testid="field-verify-dialog" style={{ padding: '12px 16px 14px' }}>
         <p
           data-testid="field-verify-value"
-          style={{ margin: '0 0 8px', fontSize: 13, color: 'var(--ink-1, #211C16)' }}
+          style={{ margin: 0, fontSize: 13, color: 'var(--ink-1, #211C16)' }}
         >
           {current == null ? (
             'This field records nothing.'
@@ -180,10 +121,6 @@ export function FieldVerifyDialog({
           )}
         </p>
 
-        <p style={{ margin: '0 0 8px', fontSize: 10.5, color: 'var(--ink-4, #665D50)' }}>
-          {path}
-        </p>
-
         {error && (
           <p
             data-testid="field-verify-error"
@@ -193,43 +130,8 @@ export function FieldVerifyDialog({
             {error}
           </p>
         )}
-
-        <p style={{ margin: '8px 0 0', fontSize: 10, color: 'var(--ink-4, #665D50)' }}>
-          This changes nothing about the value or where it came from. It records that you
-          read it and stand behind it, permanently — which is why it takes a hold rather
-          than a click.
-        </p>
-
-        <div style={{ marginTop: 10 }} data-testid="field-verify-submit">
-          <HoldToApprove
-            label={`Hold to stand behind ${label}`}
-            approvedLabel={busy ? 'Recording…' : 'Checked'}
-            disabled={!!busy}
-            onChallenge={onChallenge}
-            onApprove={(challenge) => onConfirm(challenge)}
-          />
-        </div>
-
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
-          <button
-            type="button"
-            onClick={onCancel}
-            style={{
-              fontSize: 12,
-              fontWeight: 600,
-              padding: '5px 11px',
-              borderRadius: 8,
-              border: '1px solid var(--paper-2, #EAE4D8)',
-              background: 'transparent',
-              color: 'var(--ink-2, #4F473C)',
-              cursor: 'pointer',
-            }}
-          >
-            Cancel
-          </button>
-        </div>
       </div>
-    </div>
+    </Panel>
   )
 }
 

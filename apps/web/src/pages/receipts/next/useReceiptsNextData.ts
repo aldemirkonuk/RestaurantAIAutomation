@@ -30,6 +30,11 @@ import {
   type CreditStats,
   type ProcurementCredit,
 } from '../../../services/api/credits';
+import { failureReason } from './rc2-format';
+
+// Failures in the house's words, never the client library's (walk-through W26).
+// Module scope, so the hooks' memo dependencies need not list it.
+const msg = failureReason;
 
 /**
  * The caps the GATEWAY imposes on what this page can see. Each entry cites the
@@ -73,6 +78,18 @@ export interface ReceiptsNextData {
   queueKnown: boolean;
   /** True when the queue filled its window, so `queue.length` is a floor. */
   queueCapped: boolean;
+  /**
+   * Vendor paper that READ CLEANLY and nobody has confirmed yet (walk-through
+   * RECEIPTS-W44, 2026-10-01). Intake files a paper that adds up with no
+   * warning as `received`, and this page listed only `needs_review` and
+   * `verified` — so a clean paper never reached a person's swipe here and was
+   * visible only on Documents & Reports. The house's OWN papers (a door count
+   * is a receiving advice, `direction = issued_by_us`) are left out: nobody
+   * confirms their own count as if a vendor had sent it.
+   */
+  clean: ProcurementDocument[];
+  cleanKnown: boolean;
+  cleanCapped: boolean;
   verified: ProcurementDocument[];
   verifiedKnown: boolean;
   verifiedCount: number | null;
@@ -84,6 +101,22 @@ export interface ReceiptsNextData {
   /** One sentence per query that failed, so a dead endpoint is never silent. */
   failures: string[];
   errorMessage: string;
+  /**
+   * The failures split by whether that read had answered before (walk-through
+   * RECEIPTS-W49). A read that answered before still shows its last answer; a
+   * read that never answered shows nothing, so calling what is below "the last
+   * answer" would claim one that never came.
+   */
+  failuresStale: string[];
+  failuresUnread: string[];
+  /** "them" rather than "it" for the unread ones: more than one, or a plural read. */
+  failuresUnreadPlural: boolean;
+  /**
+   * A list `?doc=` searches (the queue, the clean papers, the verified book)
+   * failed without ever answering, so a linked document cannot be found or
+   * ruled out: "Opening…" would never finish (RECEIPTS-W50c).
+   */
+  documentsUnread: boolean;
   /** No restaurant resolved: the tenant-scoped endpoints were never asked. */
   noRestaurant: boolean;
   refetch: () => void;
@@ -125,6 +158,13 @@ export function useReceiptsNextData(): ReceiptsNextData {
     enabled,
     staleTime: 60_000,
   });
+  const cleanQ = useQuery<ProcurementDocument[]>({
+    queryKey: ['receipts-next', 'clean', rid],
+    queryFn: () =>
+      documentsApi.list({ status: 'received', limit: RECEIPTS_SERVER_WINDOWS.QUEUE_ITEMS }),
+    enabled,
+    staleTime: 30_000,
+  });
   const unverifiedQ = useQuery<{ items: UnverifiedDelivery[] }>({
     queryKey: ['receipts-next', 'unverified-deliveries', rid],
     queryFn: () => receivingApi.listUnverified(),
@@ -132,29 +172,61 @@ export function useReceiptsNextData(): ReceiptsNextData {
     staleTime: 30_000,
   });
 
-  const msg = (e: unknown) => (e instanceof Error ? e.message : 'unknown error');
 
   /**
    * All three failures are surfaced. Before, `isError` was `queueQ.isError`
    * alone, so a dead uncounted-deliveries endpoint rendered exactly like a
    * caught-up door — absence reported as health.
    */
-  const failures = useMemo(() => {
-    const out: string[] = [];
-    if (queueQ.isError) out.push(`the review queue (${msg(queueQ.error)})`);
-    if (verifiedQ.isError) out.push(`the verified book (${msg(verifiedQ.error)})`);
+  const failed = useMemo(() => {
+    const out: { sentence: string; read: boolean; plural: boolean }[] = [];
+    if (queueQ.isError)
+      out.push({ sentence: `the review queue (${msg(queueQ.error)})`, read: queueQ.data !== undefined, plural: false });
+    if (verifiedQ.isError)
+      out.push({ sentence: `the verified book (${msg(verifiedQ.error)})`, read: verifiedQ.data !== undefined, plural: false });
+    if (cleanQ.isError)
+      out.push({ sentence: `the papers that read cleanly (${msg(cleanQ.error)})`, read: cleanQ.data !== undefined, plural: true });
     if (unverifiedQ.isError)
-      out.push(`the deliveries counted at the door (${msg(unverifiedQ.error)})`);
+      out.push({
+        sentence: `the deliveries counted at the door (${msg(unverifiedQ.error)})`,
+        read: unverifiedQ.data !== undefined,
+        plural: true,
+      });
     return out;
-  }, [queueQ.isError, queueQ.error, verifiedQ.isError, verifiedQ.error, unverifiedQ.isError, unverifiedQ.error]);
+  }, [
+    queueQ.isError,
+    queueQ.error,
+    queueQ.data,
+    verifiedQ.isError,
+    verifiedQ.error,
+    verifiedQ.data,
+    cleanQ.isError,
+    cleanQ.error,
+    cleanQ.data,
+    unverifiedQ.isError,
+    unverifiedQ.error,
+    unverifiedQ.data,
+  ]);
+  const failures = failed.map((f) => f.sentence);
+  const unread = failed.filter((f) => !f.read);
 
   const queue = queueQ.data ?? [];
   const verified = verifiedQ.data ?? [];
+  // `direction` comes back from the list's `select("*")` but is not on the
+  // shared client type, so it is read here rather than widened there (W44).
+  const cleanRows = cleanQ.data ?? [];
+  const clean = cleanRows.filter(
+    (d) => (d as { direction?: string | null }).direction !== 'issued_by_us',
+  );
 
   return {
     queue,
     queueKnown: queueQ.data !== undefined,
     queueCapped: queue.length >= RECEIPTS_SERVER_WINDOWS.QUEUE_ITEMS,
+    clean,
+    cleanKnown: cleanQ.data !== undefined,
+    // Capped on what the SERVER sent, before our own rows were taken out.
+    cleanCapped: cleanRows.length >= RECEIPTS_SERVER_WINDOWS.QUEUE_ITEMS,
     verified,
     verifiedKnown: verifiedQ.data !== undefined,
     verifiedCount: verifiedQ.data === undefined ? null : verifiedQ.data.length,
@@ -164,10 +236,15 @@ export function useReceiptsNextData(): ReceiptsNextData {
     isError: failures.length > 0,
     failures,
     errorMessage: failures.join('; ') || 'unknown error',
+    failuresStale: failed.filter((f) => f.read).map((f) => f.sentence),
+    failuresUnread: unread.map((f) => f.sentence),
+    failuresUnreadPlural: unread.length > 1 || unread.some((f) => f.plural),
+    documentsUnread: [queueQ, cleanQ, verifiedQ].some((q) => q.isError && q.data === undefined),
     noRestaurant: !enabled,
     refetch: () => {
       void queueQ.refetch();
       void verifiedQ.refetch();
+      void cleanQ.refetch();
       void unverifiedQ.refetch();
     },
   };
@@ -247,7 +324,6 @@ export function useReceiptsCreditsData(enabled: boolean): ReceiptsCreditsData {
     staleTime: 60_000,
   });
 
-  const msg = (e: unknown) => (e instanceof Error ? e.message : 'unknown error');
   const refused = [claimsQ.error, statsQ.error].some((e) => httpStatus(e) === 403);
 
   const failures = useMemo(() => {

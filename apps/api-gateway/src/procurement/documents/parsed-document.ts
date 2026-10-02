@@ -456,6 +456,27 @@ function lineContribution(
   return Number.isFinite(lt) ? lt : 0;
 }
 
+/**
+ * The tax a document STATES, for the tie-out.
+ *
+ * `tax` when it was read. When it was not, the printed VAT breakdown's own
+ * amounts — a document that prints `Sales tax 8.625% on 504.00 = 43.47` and no
+ * separate tax line has stated its tax exactly once, in the breakdown. Leaving
+ * it out made every such invoice "off by" precisely its tax (founder
+ * walk-through, 2026-10-01, RECEIPTS-W5: 6 of 8 documents in a Sim house).
+ *
+ * Only when EVERY row carries an amount: a breakdown with a row whose amount
+ * was not read is a partial figure, and a partial tax would turn an honest
+ * "does not tie out" into a wrong one. Nothing is derived from a rate.
+ */
+export function statedTax(doc: ParsedDocument): number {
+  if (doc.tax != null) return doc.tax;
+  const rows = doc.taxBreakdown ?? [];
+  if (!rows.length) return 0;
+  if (!rows.every((r) => r.amount != null && Number.isFinite(r.amount))) return 0;
+  return rows.reduce((acc, r) => acc + (r.amount as number), 0);
+}
+
 /** Fill in computedLinesTotal / tieOutDelta / tiesOut. */
 export function applyTieOut(doc: ParsedDocument): ParsedDocument {
   const priceBaseProblems: string[] = [];
@@ -489,7 +510,7 @@ export function applyTieOut(doc: ParsedDocument): ParsedDocument {
     (doc.splitCaseFee ?? 0) +
     (doc.deliveryFee ?? 0) +
     (doc.depositTotal ?? depositLinesTotal) +
-    (doc.tax ?? 0) +
+    statedTax(doc) +
     (doc.otherCharges ?? 0) -
     (doc.discountTotal ?? 0);
 
