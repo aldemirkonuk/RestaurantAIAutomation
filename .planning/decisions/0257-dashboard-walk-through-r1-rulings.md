@@ -1,4 +1,4 @@
-# 0256 — Dashboard: the walk-through rulings of 2026-10-01 (R1)
+# 0257 — Dashboard: the walk-through rulings of 2026-10-01 (R1)
 
 - **Status:** Locked
 - **Date:** 2026-10-01

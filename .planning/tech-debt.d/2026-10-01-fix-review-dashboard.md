@@ -37,7 +37,7 @@ Found in the dashboard walk-through, P9 and P10.
 ## Wine-only words outside the dashboard — OPEN — 2026-10-01
 
 **What.**
-- The founder chose "items" over "wines" for counts and fallbacks (DASH-W37, ADR 0256), because the house holds every drink (ADR 0115, ADR 0186).
+- The founder chose "items" over "wines" for counts and fallbacks (DASH-W37, ADR 0257), because the house holds every drink (ADR 0115, ADR 0186).
 - The dashboard is done. Other pages still print wine-only words such as "Unnamed wine".
 - `/inventory?wine=<name>` is a link contract between the dashboard (`RailPanels.tsx:183`) and /inventory, and must be renamed on both sides at once.
 - "Bottles" and "In the cellar" are kept until food lands.
