@@ -14,8 +14,14 @@ interface BrandMarkProps {
    *              compact headers).
    */
   variant?: 'lockup' | 'wordmark' | 'mark'
-  /** 'ink' (default) or 'seal' — İznik-coloured wordmark text. */
-  tone?: 'ink' | 'seal'
+  /**
+   * 'ink' (default) or 'seal' — İznik-coloured wordmark text.
+   * 'paper' — for a surface that stays light BY DECISION (`data-ground="paper"`,
+   * the canonical sheet): colours come from that ground's tokens, never the
+   * app theme's `dark:` classes, which would turn the wordmark near-white on a
+   * light sheet whenever the person chose charcoal (walk-through RECEIPTS-W45).
+   */
+  tone?: 'ink' | 'seal' | 'paper'
   /**
    * Mark colouring. 'color' wears the İznik seal (ADR 0042 values, ground-
    * aware via the wine scale) — the mark is monochrome by design (ADR 0047;
@@ -49,13 +55,14 @@ const AM_PATHS = [
   'M383 430H404V470Z',
 ]
 
-function AMInterlock({ size, mono }: { size: number; mono: boolean }) {
+function AMInterlock({ size, mono, color }: { size: number; mono: boolean; color?: string }) {
   return (
     <svg
       width={Math.round((size * 483) / 574)}
       height={size}
       viewBox="0 0 483 574"
       aria-hidden="true"
+      style={color ? { color } : undefined}
       className={cn(
         'flex-shrink-0 select-none',
         mono ? undefined : 'text-wine-600 dark:text-wine-400',
@@ -84,10 +91,17 @@ export function BrandMark({
   className,
   alt = 'Mudavym',
 }: BrandMarkProps) {
-  const toneClass =
-    tone === 'seal'
+  const onPaper = tone === 'paper'
+  const toneClass = onPaper
+    ? undefined
+    : tone === 'seal'
       ? 'text-wine-600 dark:text-wine-400'
       : 'text-[#211C16] dark:text-[#EFE7D9]'
+  // The paper ground's own pair (styles/mudavym.css `[data-ground="paper"]`),
+  // with the light values as fallbacks off that ground.
+  const paperInk = 'var(--ink-1, #211C16)'
+  const paperSeal = 'var(--seal, #1A5E6B)'
+  const sealOnPaper = onPaper && mark === 'color' ? paperSeal : undefined
 
   if (variant === 'mark') {
     return (
@@ -96,8 +110,9 @@ export function BrandMark({
         aria-label={alt || undefined}
         aria-hidden={alt ? undefined : true}
         className={cn('inline-flex select-none', toneClass, className)}
+        style={onPaper ? { color: paperInk } : undefined}
       >
-        <AMInterlock size={size} mono={mark === 'mono'} />
+        <AMInterlock size={size} mono={mark === 'mono' || onPaper} color={sealOnPaper} />
       </span>
     )
   }
@@ -112,12 +127,24 @@ export function BrandMark({
         toneClass,
         className,
       )}
-      style={{ fontSize: size, letterSpacing: '-0.02em', gap: Math.round(size * 0.32) }}
+      style={{
+        fontSize: size,
+        letterSpacing: '-0.02em',
+        gap: Math.round(size * 0.32),
+        ...(onPaper ? { color: paperInk } : null),
+      }}
     >
-      {variant === 'lockup' && <AMInterlock size={Math.round(size * 1.15)} mono={mark === 'mono'} />}
+      {variant === 'lockup' && (
+        <AMInterlock size={Math.round(size * 1.15)} mono={mark === 'mono' || onPaper} color={sealOnPaper} />
+      )}
       <span>
         Mudavym
-        <span className="text-wine-600 dark:text-wine-400">.</span>
+        <span
+          className={onPaper ? undefined : 'text-wine-600 dark:text-wine-400'}
+          style={onPaper ? { color: paperSeal } : undefined}
+        >
+          .
+        </span>
       </span>
     </span>
   )

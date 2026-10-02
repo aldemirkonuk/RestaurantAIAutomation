@@ -43,6 +43,7 @@ vi.mock('../../../services/api/canonical', () => ({
   },
 }))
 
+import { AuthContext } from '@/contexts/AuthContext'
 import { CanonicalDocumentPage } from './CanonicalDocumentPage'
 
 const env = (value: unknown, extra: Record<string, unknown> = {}) => ({
@@ -203,6 +204,31 @@ describe('CanonicalDocumentPage', () => {
     expect(container.querySelector('.cd-page')?.getAttribute('data-embedded')).toBe('true')
   })
 
+  it('keys every read by the house, so a house switch reads afresh (ADR 0051, RECEIPTS-W47)', async () => {
+    documentMock.mockResolvedValue(response())
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    // Only the house fields are read; the rest of the auth value is not.
+    const tree = (rid: string) => (
+      <AuthContext.Provider value={{ activeRestaurantId: rid, user: null } as never}>
+        <QueryClientProvider client={qc}>
+          <MemoryRouter initialEntries={['/orders']}>
+            <CanonicalDocumentPage documentId="doc-syn" embedded />
+          </MemoryRouter>
+        </QueryClientProvider>
+      </AuthContext.Provider>
+    )
+    const { rerender } = render(tree('rest-A'))
+    await waitFor(() => expect(screen.getByTestId('received-cell')).toBeTruthy())
+    for (const k of ['canonical-document', 'canonical-document-items', 'canonical-document-mappings']) {
+      expect(qc.getQueryCache().find({ queryKey: [k, 'rest-A', 'doc-syn'], exact: true })).toBeTruthy()
+    }
+    expect(documentMock).toHaveBeenCalledTimes(1)
+    // Within the 30s stale window a house-less key would answer from the cache.
+    rerender(tree('rest-B'))
+    await waitFor(() => expect(documentMock).toHaveBeenCalledTimes(2))
+    expect(qc.getQueryCache().find({ queryKey: ['canonical-document', 'rest-B', 'doc-syn'], exact: true })).toBeTruthy()
+  })
+
   it('renders the verdict, the sheet and the not-counted words', async () => {
     documentMock.mockResolvedValue(response())
     const { container } = mount()
@@ -211,6 +237,26 @@ describe('CanonicalDocumentPage', () => {
     expect(container.textContent).toMatch(/Nothing on this document differs/)
     // The spine is absent — this document is on no delivery.
     expect(screen.queryByTestId('spine')).toBeNull()
+  })
+
+  it('says where the paper came from in the house’s words, with the model on hover', async () => {
+    const r = response({ intake: { ...response().intake, extractionModel: 'model-syn-1' } })
+    ;(r.canonical as { jurisdiction: string | null }).jurisdiction = null
+    documentMock.mockResolvedValue(r)
+    const { container } = mount()
+    await waitFor(() => expect(screen.getByTestId('received-cell')).toBeTruthy())
+    const read = screen.getByText('read automatically')
+    expect(read.getAttribute('title')).toBe('model-syn-1')
+    expect(container.textContent).toMatch(/file fingerprint abc123/)
+    expect(container.textContent).not.toMatch(/sha256|read by|jurisdiction not set/)
+  })
+
+  it('names the jurisdiction only when one is set', async () => {
+    documentMock.mockResolvedValue(response())
+    const { container } = mount()
+    await waitFor(() => expect(screen.getByTestId('received-cell')).toBeTruthy())
+    expect(container.textContent).toMatch(/file fingerprint abc123… · TR/)
+    expect(container.textContent).toMatch(/no record of how it was read/)
   })
 
   it('renders an ERROR, not an empty sheet, when the read fails', async () => {

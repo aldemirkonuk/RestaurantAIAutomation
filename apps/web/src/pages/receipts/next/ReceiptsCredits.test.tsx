@@ -13,7 +13,7 @@ import { resolve } from 'node:path';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import { createContext } from 'react';
 import type { ProcurementCredit, CreditStats } from '../../../services/api/credits';
 import type { ProcurementDocument } from '../../../services/api/documents';
@@ -134,12 +134,17 @@ function memo(over: Partial<ProcurementDocument> = {}): ProcurementDocument {
   } as ProcurementDocument;
 }
 
+function Where() {
+  return <output data-testid="where">{useLocation().search}</output>;
+}
+
 function renderAt(url: string) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
       <MemoryRouter initialEntries={[url]}>
         <ReceiptsNext />
+        <Where />
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -201,7 +206,7 @@ describe('who is offered the ledger (ADR 0167)', () => {
     api.claimsFail = Object.assign(new Error('Forbidden'), { response: { status: 403 } });
     api.statsFail = api.claimsFail;
     renderAt('/receipts?tab=credits');
-    expect(await screen.findByText(/the gateway refused it to this session/i)).toBeTruthy();
+    expect(await screen.findByText(/Mudavym refused it to this session/i)).toBeTruthy();
     expect(screen.queryByText(/No claim is being chased/i)).toBeNull();
   });
 });
@@ -238,17 +243,43 @@ describe('figures', () => {
     expect(within(region).queryByText(/≥/)).toBeNull();
   });
 
-  it('says an empty ledger is empty only once the gateway has answered', async () => {
+  it('says an empty ledger is empty only once the gateway has answered, and only once (W24)', async () => {
     renderAt('/receipts?tab=credits');
     expect(await screen.findByText(/No credit claim has been opened at this house/)).toBeTruthy();
+    await waitFor(() => expect(screen.queryByRole('heading', { name: 'Being chased' })).toBeNull());
+    expect(screen.queryByText(/No claim is being chased right now/)).toBeNull();
+  });
+
+  it('keeps "Being chased" when the house has claims but none is open (W24)', async () => {
+    api.claims = [claim({ state: 'written_off' })];
+    api.stats = stats({ byCurrency: { TRY: figures({ openClaims: 0 }) } });
+    renderAt('/receipts?tab=credits');
     expect(await screen.findByText(/No claim is being chased right now/)).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Being chased' })).toBeTruthy();
   });
 
   it('names a failed list instead of rendering it as no claims', async () => {
     api.claimsFail = new Error('boom');
     renderAt('/receipts?tab=credits');
-    expect(await screen.findByText(/Could not read the claims \(boom\)/)).toBeTruthy();
+    // A plain Error carries the client's words, not a reason (walk-through W26).
+    expect(await screen.findByText(/Could not read the claims \(the reason is not known\)/)).toBeTruthy();
+    expect(screen.queryByText(/boom/)).toBeNull();
     expect(screen.queryByText(/No claim is being chased/)).toBeNull();
+    // Never an empty heading: the section says it was not read.
+    expect(screen.getByText('Not read: see the note above.')).toBeTruthy();
+  });
+
+  it('does not say "none" from an empty last answer while the claims refresh fails (W50b)', async () => {
+    api.claims = [claim({ state: 'written_off' })];
+    api.statsFail = new Error('first');
+    renderAt('/receipts?tab=credits');
+    expect(await screen.findByText('No claim is being chased right now.')).toBeTruthy();
+    api.statsFail = null;
+    api.claimsFail = new Error('boom');
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(await screen.findByText(/Could not read the claims/)).toBeTruthy();
+    expect(screen.queryByText('No claim is being chased right now.')).toBeNull();
+    expect(screen.getByText('Not read: see the note above.')).toBeTruthy();
   });
 
   it('marks the list a floor when it filled the server window', async () => {
@@ -260,6 +291,15 @@ describe('figures', () => {
 });
 
 describe('moves', () => {
+  it('a claimed quantity is a quantity, not "btl" — a claim can be for anything the house buys (W38)', async () => {
+    api.claims = [claim({ claimed_qty: 2 })];
+    renderAt('/receipts?tab=credits');
+    fireEvent.click(await screen.findByText('Billed for more than arrived'));
+    const sheet = await screen.findByRole('dialog');
+    expect(sheet.textContent).toContain('· quantity 2');
+    expect(sheet.textContent).not.toContain('btl');
+  });
+
   it('"Ask the vendor" says it drafts and sends nothing, then links the drafted letter', async () => {
     api.claims = [claim()];
     api.transition.mockResolvedValue({
@@ -364,7 +404,7 @@ describe('moves', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Write it off' }));
     fireEvent.click(screen.getByRole('button', { name: /Record: write it off/i }));
     expect(
-      await screen.findByText(/Cannot move a claim from open to promised\. \(HTTP 422\) — the claim is unchanged\./),
+      await screen.findByText(/^Cannot move a claim from open to promised\. The claim is unchanged\.$/),
     ).toBeTruthy();
   });
 
@@ -384,6 +424,8 @@ describe('moves', () => {
     expect(screen.getByText(/Enter the amount the vendor allowed/)).toBeTruthy();
     expect(api.transition).not.toHaveBeenCalled();
 
+    // W39: the amount box has an edge at 3:1, not paper-2.
+    expect(screen.getByPlaceholderText(/claimed/).getAttribute('style')).toContain('var(--line-control, #8F8674)');
     fireEvent.change(screen.getByPlaceholderText(/claimed/), { target: { value: '100' } });
     fireEvent.click(screen.getByRole('button', { name: 'Record the settlement' }));
     await waitFor(() =>
@@ -422,6 +464,64 @@ describe('moves', () => {
     fireEvent.click(await screen.findByText(/Closed ·/));
     fireEvent.click(await screen.findByText('Billed for more than arrived'));
     expect(await screen.findByRole('button', { name: 'Ask the vendor again' })).toBeTruthy();
+  });
+});
+
+describe('a link opens one claim (walk-through W20)', () => {
+  it('opens the claim the link names, and closing it drops the id', async () => {
+    api.claims = [claim({ state: 'requested' })];
+    renderAt('/receipts?tab=credits&credit=c1');
+    const sheet = await screen.findByRole('dialog');
+    expect(within(sheet).getByText('Billed for more than arrived')).toBeTruthy();
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Close' }));
+    await waitFor(() => expect(screen.getByTestId('where').textContent).toBe('?tab=credits'));
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('unfolds the closed list when the linked claim is closed', async () => {
+    api.claims = [claim({ state: 'written_off' })];
+    renderAt('/receipts?tab=credits&credit=c1');
+    expect(await screen.findByRole('dialog')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^Closed/ }).getAttribute('aria-expanded')).toBe('true');
+  });
+
+  // An effect unfolded it after the sheet's first paint: folded for a frame,
+  // then a jump, and CI could check inside that frame (RECEIPTS-W50). Any
+  // aria-expanded flip from "false" on the Closed button is that frame.
+  it('never shows the closed list folded under a linked closed claim, not even for a frame (W50)', async () => {
+    api.claims = [claim({ state: 'written_off' })];
+    const flips: (string | null)[] = [];
+    const seen = (records: MutationRecord[]) =>
+      records.forEach((r) => {
+        if ((r.target as HTMLElement).textContent?.startsWith('Closed')) flips.push(r.oldValue);
+      });
+    const watch = new MutationObserver(seen);
+    watch.observe(document.body, {
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['aria-expanded'],
+      attributeOldValue: true,
+    });
+    renderAt('/receipts?tab=credits&credit=c1');
+    expect(await screen.findByRole('dialog')).toBeTruthy();
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /^Closed/ }).getAttribute('aria-expanded')).toBe('true'),
+    );
+    seen(watch.takeRecords());
+    watch.disconnect();
+    expect(flips).toEqual([]);
+  });
+
+  it('says so when the linked claim is not in this ledger, and clears the link', async () => {
+    api.claims = [claim()];
+    renderAt('/receipts?tab=credits&credit=elsewhere');
+    expect(await screen.findByTestId('credit-not-here')).toHaveTextContent(
+      "not in this house's ledger. It may belong to another house.",
+    );
+    expect(screen.queryByRole('dialog')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Clear the link' }));
+    await waitFor(() => expect(screen.getByTestId('where').textContent).toBe('?tab=credits'));
+    expect(screen.queryByTestId('credit-not-here')).toBeNull();
   });
 });
 
