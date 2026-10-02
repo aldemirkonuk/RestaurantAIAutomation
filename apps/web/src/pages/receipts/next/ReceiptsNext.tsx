@@ -1770,10 +1770,12 @@ export default function ReceiptsNext() {
             */}
             {/* A failed read is not a read in progress (walk-through W26): the
                 alert below names the failure, so the header stops saying
-                "Reading the queue…" beside it. */}
+                "Reading the queue…" beside it. With no house selected no
+                read is asked at all, so it says "not read" too, under the
+                "No restaurant is selected" alert (RECEIPTS-W52). */}
             {data.queueKnown
               ? `${data.queueCapped ? GE : ''}${data.queue.length} awaiting review`
-              : data.failures.some((f) => f.startsWith('the review queue'))
+              : data.noRestaurant || data.failures.some((f) => f.startsWith('the review queue'))
                 ? 'queue not read'
                 : 'Reading the queue…'}
             {/* W44: the clean papers are counted apart, never folded into
@@ -1784,7 +1786,7 @@ export default function ReceiptsNext() {
             {' · '}
             {data.verifiedCount !== null
               ? `${data.verifiedCapped ? GE : ''}${data.verifiedCount} verified`
-              : data.failures.some((f) => f.startsWith('the verified book'))
+              : data.noRestaurant || data.failures.some((f) => f.startsWith('the verified book'))
                 ? 'verified not read'
                 : EM}
           </span>

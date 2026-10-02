@@ -35,6 +35,7 @@ For each item: build it as sketched (Approve), leave the page as it is (Deny), o
 19. **W50, the Closed list a frame late.** Unfold in the same render, keep it open whenever a closed claim is selected, fix the test only, or re-run CI and change nothing. The founder chose the same render. Rejected: always open (the toggle could not fold it), test only (the one-frame jump stays), re-run (the race stays).
 20. **W50b, two smaller absences shown as health.** Fix both here, or file both. The founder chose to fix both. Rejected: filing.
 21. **W50c and W51, a `?doc=` link that can never open.** For a list that failed without answering (W50c): say it cannot open, or file it as tech debt. For no house selected (W51): say it cannot open, or narrow the records and file it. The founder chose to say it, both times. Rejected: filing (W50c), and narrowing the records and filing (W51).
+22. **W52, the header with no house selected.** Say "not read", hide the counts with no house, file it in this PR, or file it on a later branch. The founder chose "not read". Rejected: hiding the counts (the header would lose the shape a failed read has), and filing it here or later (the header would keep saying a read is happening when none is).
 
 ## Decision
 
@@ -100,6 +101,7 @@ The founder's words, verbatim, per item:
 | RECEIPTS-W50b, "caught up" while the door read is in flight, and "No claim is being chased" while the claims refresh fails (the same audit) | "Fix both here (Recommended)" |
 | RECEIPTS-W50c, "Opening the linked document…" forever when a list it searches never answered (the same audit) | "Say it can't open (Recommended)" |
 | RECEIPTS-W51, the same line forever with no house selected (found by #586's round-4 audit, final Opus call) | "Say it can't open (Recommended)" |
+| RECEIPTS-W52, "Reading the queue… · —" in the header forever with no house selected (found by #586's round-5 audit, both Sonnet reviewers) | "Say \"not read\" (Recommended)" |
 
 The founder's W9 clause stands for the whole page: each region reads on its own and is clearly divided from the next.
 
@@ -144,8 +146,9 @@ The list and the URL:
 - W50: a linked claim that is already closed opens with the Closed list unfolded on the first paint, set in the same render rather than an effect. The list no longer shows folded for a frame and then jumps; the toggle works as before.
 - W44: papers that read cleanly are listed after those that need a look, under "Read cleanly · not yet confirmed", counted on their own. The house's own papers are left out.
 - W48: with the review queue empty, the page says "Reading…" until the clean papers' read lands, then "caught up" or "Nothing needs a look." It no longer calls an unread lane caught up.
-- W50b: "caught up" also waits for the door's count; until it lands the page says "Reading…". On Credits, while the claims read is failing, the "Being chased" section, when it is drawn and has no claim to list, says "Not read: see the note above." instead of "No claim is being chased right now." (When the figures say no claim was ever opened, W24 does not draw that section. Those figures can be their last answer while their own refresh fails; that is filed, not built.)
+- W50b: "caught up" also waits for the door's count; until it lands the page says "Reading…". On Credits, while the claims read is failing, the "Being chased" section, when it is drawn and has no claim to list, says "Not read: see the note above." instead of "No claim is being chased right now." (When the claims' last answer is empty and the figures say no claim was ever opened, W24 does not draw that section. Those figures can be their last answer too while their own refresh fails; that is filed, not built.)
 - W50c, W51: when a list a `?doc=` link searches failed without ever answering, or no house is selected so none was asked, the page says "Could not open the linked document: see the note above." instead of "Opening the linked document…" forever. A list that answered before and then failed still holds its last answer, so while another list is being read the link still says "Opening…".
+- W52: with no house selected, the header says "queue not read · verified not read", W29's words for a read with no answer, instead of "Reading the queue… · —" forever.
 
 Words:
 

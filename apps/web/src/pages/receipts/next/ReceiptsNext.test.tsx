@@ -1136,6 +1136,14 @@ describe('ReceiptsNext — a failed read in words (W26)', () => {
     expect(screen.queryByText(/Reading the queue/)).toBeNull();
   });
 
+  it('says "not read" in the header when no house is selected, so no read was asked (W52)', async () => {
+    api.restaurantId = null;
+    render(<ReceiptsNext />, { wrapper });
+    expect(await screen.findByText(/No restaurant is selected/)).toBeTruthy();
+    expect(screen.getByText('queue not read · verified not read')).toBeTruthy();
+    expect(screen.queryByText(/Reading the queue/)).toBeNull();
+  });
+
   it('says a row adds up, does not add up, or states no total', async () => {
     api.queue = [
       doc({ id: 'a', doc_number: 'INV-A', ties_out: true }),
