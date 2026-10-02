@@ -169,6 +169,8 @@ export function UsualCurrencySection({
       void stated.refetch();
       // The order sheet offers this code; its cached answer is now stale.
       void qc.invalidateQueries({ queryKey: ['agreement-currency'] });
+      // So is the page's "N of your vendors have a usual currency" panel.
+      void qc.invalidateQueries({ queryKey: ['vendor-usual-currency-coverage'] });
     },
     onError: (e) => {
       setSaved(null);

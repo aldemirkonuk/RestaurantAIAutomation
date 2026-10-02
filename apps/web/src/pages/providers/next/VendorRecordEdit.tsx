@@ -71,7 +71,13 @@ export function VendorRecordEdit({
       });
       setSays('Saved.');
       setEditing(false);
-      onSaved({ ...provider, ...updated });
+      // The gateway drops a cleared type from its reply (`?? undefined`), so a
+      // spread alone kept the old type on the sheet after "Not stated" was saved.
+      onSaved({
+        ...provider,
+        ...updated,
+        ...(typeChanged ? { primaryBusinessType: updated.primaryBusinessType ?? (type || undefined) } : {}),
+      });
     } catch (e) {
       setProblem(`Nothing was changed (${getErrorMessage(e)}). What you typed is still here.`);
     } finally {

@@ -87,6 +87,15 @@ describe('ContactsSection', () => {
     expect(select.value).toBe('');
   });
 
+  it('a contact with no number says so, with no line type and no sentence about a number', async () => {
+    api.get.mockResolvedValue({ data: [{ ...DEFAULTED, id: 'c3', name: 'Aldemir Konuk', phone: '' }] });
+    render(<ContactsSection providerId="p1" providerName="Sheena Wines" />);
+    expect(await screen.findByText('No phone number on file for this contact.')).toBeInTheDocument();
+    expect(screen.queryByText(/Nobody has said what kind of number/)).not.toBeInTheDocument();
+    expect(screen.queryByText('Not stated')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Type of line for Aldemir Konuk')).not.toBeInTheDocument();
+  });
+
   it('a failed read is words, never an empty book', async () => {
     api.get.mockRejectedValue(new Error('timeout'));
     render(<ContactsSection providerId="p1" providerName="Sheena Wines" />);

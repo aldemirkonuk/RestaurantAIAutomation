@@ -58,6 +58,17 @@ describe('the vendor record, edited in the rebuilt sheet', () => {
     await waitFor(() => expect(api.update).toHaveBeenCalledWith({ id: 'p1', primaryBusinessType: '' }));
   });
 
+  it('after "Not stated" is saved the sheet stops showing the old type, though the reply leaves the field out', async () => {
+    api.update.mockResolvedValue({ id: 'p1', name: 'Fikri Tarım' });
+    const onSaved = vi.fn();
+    render(<VendorRecordEdit provider={provider({ primaryBusinessType: 'Distributor' })} onSaved={onSaved} />);
+    fireEvent.click(screen.getByTestId('vendor-record-edit'));
+    fireEvent.click(screen.getByLabelText('Not stated'));
+    fireEvent.click(screen.getByTestId('vendor-record-save'));
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    expect(onSaved.mock.calls[0][0].primaryBusinessType).toBeUndefined();
+  });
+
   it("a type outside the three is listed as itself, and editing the name alone does not touch it", async () => {
     api.update.mockResolvedValue({ id: 'p1', name: 'Fikri Tarım Gıda' });
     render(<VendorRecordEdit provider={provider({ primaryBusinessType: 'winery_direct' })} onSaved={vi.fn()} />);

@@ -185,6 +185,23 @@ describe('UsualCurrencySection', () => {
     expect(await screen.findByText(/It files no invoice/)).toBeInTheDocument();
   });
 
+  it('a saved code marks the page’s coverage panel stale, so it stops saying none are on file', async () => {
+    api.get.mockResolvedValue({ data: UNSTATED });
+    api.patch.mockResolvedValue({ data: { sentence: 'Stated as EUR.' } });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const spy = vi.spyOn(client, 'invalidateQueries');
+    render(
+      <QueryClientProvider client={client}>
+        <UsualCurrencySection providerId="p1" providerName="Bir Dagitim" />
+      </QueryClientProvider>,
+    );
+    fireEvent.change(await screen.findByTestId('vendor-usual-currency-select'), { target: { value: 'EUR' } });
+    fireEvent.click(screen.getByTestId('vendor-usual-currency-save'));
+    await waitFor(() =>
+      expect(spy).toHaveBeenCalledWith({ queryKey: ['vendor-usual-currency-coverage'] }),
+    );
+  });
+
   it('shows staff the control DISABLED with the reason, never hidden', async () => {
     auth.role = 'staff';
     api.get.mockResolvedValue({ data: UNSTATED });

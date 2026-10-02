@@ -76,7 +76,9 @@ export function UsualCurrencyCoveragePanel({
   onOpenVendor: (providerId: string) => void;
 }) {
   const coverage = useQuery({
-    queryKey: ['vendor-usual-currency-coverage'],
+    // Keyed on the book's size too: a vendor added or retired on this page
+    // changes the denominator ("1 of your 3"), and nothing else would refetch it.
+    queryKey: ['vendor-usual-currency-coverage', knownIds.size],
     queryFn: async () => {
       const { data } = await apiClient.get<UsualCurrencyCoverage>(
         '/providers/usual-currency/coverage',

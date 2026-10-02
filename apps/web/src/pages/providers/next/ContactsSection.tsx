@@ -233,11 +233,19 @@ export function ContactsList({
                   {c.name}
                   {c.phone ? ` · ${c.phone}` : ''}
                 </span>
-                <ReachChip reach={c.reach} stated={c.phoneTypeStated} reduced={reduced} />
+                {c.phone && <ReachChip reach={c.reach} stated={c.phoneTypeStated} reduced={reduced} />}
               </div>
 
+              {/* A contact with no number has no line to classify: the
+                  server's sentence would describe a number that is not there. */}
+              {!c.phone && (
+                <p style={{ ...BODY, fontSize: 11.5, color: 'var(--ink-4, #665D50)', margin: '2px 0 0' }}>
+                  No phone number on file for this contact.
+                </p>
+              )}
+
               {/* The server's own sentence. Never re-worded here. */}
-              {c.reachSays && (
+              {c.phone && c.reachSays && (
                 <p style={{ ...BODY, fontSize: 11.5, color: 'var(--ink-4, #665D50)', margin: '2px 0 0' }}>
                   {c.reachSays}
                 </p>

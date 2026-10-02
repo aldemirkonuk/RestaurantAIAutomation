@@ -71,6 +71,23 @@ describe('the usual-currency coverage panel', () => {
     expect(opened).toEqual(['b']);
   });
 
+  it('counts again when a vendor joins the book, so "of your 3" does not outlive a fourth', async () => {
+    api.get
+      .mockResolvedValueOnce({ data: { stated: 1, total: 3, unstated: [], sentence: '1 of your 3 vendors has one.' } })
+      .mockResolvedValueOnce({ data: { stated: 1, total: 4, unstated: [], sentence: '1 of your 4 vendors has one.' } });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const panel = (ids: string[]) => (
+      <QueryClientProvider client={client}>
+        <UsualCurrencyCoveragePanel knownIds={new Set(ids)} onOpenVendor={() => {}} />
+      </QueryClientProvider>
+    );
+    const { rerender } = render(panel(['a', 'b', 'c']));
+    expect(await screen.findByText('1 of your 3 vendors has one.')).toBeInTheDocument();
+    rerender(panel(['a', 'b', 'c', 'd']));
+    expect(await screen.findByText('1 of your 4 vendors has one.')).toBeInTheDocument();
+    expect(api.get).toHaveBeenCalledTimes(2);
+  });
+
   it('says NONE of them in words rather than rendering an empty panel', async () => {
     // A panel that draws nothing when the answer is "none of them" cannot be
     // told apart from one that failed to load.
