@@ -16,7 +16,7 @@ export const providersTour: TourDefinition = {
       element: '[data-testid="scope-menu"]',
       title: 'Start with your menu',
       description:
-        'The vendors behind the wines on your menu: the ones you order from.',
+        'Vendors with a recent price, an order or a stock line for a wine on your current menu.',
     },
     {
       element: '[data-testid="pv-view-toggle"]',
@@ -28,7 +28,7 @@ export const providersTour: TourDefinition = {
       element: '[data-testid="scope-find"]',
       title: 'Find someone new',
       description:
-        'Search vendors you do not buy from yet, by wine or by country.',
+        'Search the curated catalogue by country, region or vendor name. A vendor you already have says "In your vendors".',
     },
     {
       element: '[data-testid="add-vendor"]',

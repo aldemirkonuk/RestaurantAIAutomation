@@ -28,7 +28,7 @@ export const dashboardTour: TourDefinition = {
       element: 'section[aria-label="Running low"]',
       title: 'See what is running low',
       description:
-        'Wines below their par, the lowest first. Inventory opens the full list.',
+        'Wines below their minimum, the furthest below first. Inventory opens the full list.',
     },
     {
       element: '[data-testid="one-tap-open-sheet"]',
