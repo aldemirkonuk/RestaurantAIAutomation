@@ -21,28 +21,12 @@ import type {
   AdjudicatedLine,
   CanonicalDocument,
 } from '../../services/api/canonical'
-import { EM, MONO, SERIF, fmtMoney, fmtQty, fmtReceived } from './canonical-format'
+import { EM, MONO, SERIF, fmtMoney, fmtQty, fmtReceived, unitWord } from './canonical-format'
 
-/**
- * "6 bottles", "1 bottle", "2 split cases" (founder walk-through, 2026-10-01,
- * W6). The sentence printed the stored unit code as-is, so every quantity
- * other than one read "6 bottle" and a split case read "split_case". A unit
- * outside the gateway's `UOMS` list is printed as it came.
- */
-const UNIT_WORDS: Record<string, readonly [string, string]> = {
-  bottle: ['bottle', 'bottles'],
-  case: ['case', 'cases'],
-  keg: ['keg', 'kegs'],
-  pack: ['pack', 'packs'],
-  split_case: ['split case', 'split cases'],
-  each: ['each', 'each'],
-  liter: ['liter', 'liters'],
-}
+/** The unit words live in canonical-format (moved at W22, one source). */
 function unitSuffix(unit: string, qty: unknown): string {
   if (!unit) return ''
-  const words = UNIT_WORDS[unit]
-  if (!words) return ` ${unit}`
-  return ` ${typeof qty === 'number' && qty === 1 ? words[0] : words[1]}`
+  return ` ${unitWord(unit, qty)}`
 }
 
 /**
@@ -69,6 +53,8 @@ export function exceptionSentences(doc: CanonicalDocument): {
   sentence: string
   money: number | null
   compared: boolean
+  /** Our own door count on a line nothing else speaks for: the card is the only place that says "counted". */
+  counted?: boolean
 }[] {
   const currency = doc.layer1.currency.value
   return doc.layer3.lines
@@ -101,6 +87,7 @@ export function exceptionSentences(doc: CanonicalDocument): {
               : `${name} — billed ${fmtQty(l.billed, currency)}${billedUnit}. Nothing was ordered, despatched or counted against it, so nothing was compared.`,
           money: null,
           compared: false,
+          counted: l.billed == null && l.received !== 'not_counted',
         }
       let sentence: string
       switch (l.verdict) {
@@ -250,11 +237,11 @@ export function VerdictBlock({ doc, states = [] }: VerdictBlockProps) {
           data-testid="not-compared-note"
           style={{ margin: '3px 0 0', fontSize: 11.5, lineHeight: 1.35 }}
         >
-          This document was <strong>read</strong> but not{' '}
-          <strong>compared</strong>. It sits on no order line, no despatch line
-          and no door count, so there is nothing to check its quantities
-          against — that is a missing counterpart, not a discrepancy, and no
-          amount is being claimed or ruled out.
+          {/* Said once (walk-through W26, 2026-10-01): the heading names the
+              absence, this line says what it is not, and the money line and
+              the per-line cards no longer repeat either. */}
+          That is not a discrepancy: no amount is claimed, and none is ruled
+          out.
         </p>
       )}
 
@@ -276,14 +263,8 @@ export function VerdictBlock({ doc, states = [] }: VerdictBlockProps) {
             {' · '}
           </>
         )}
-        {nothingCompared && (
-          <>
-            {/* Not "0.00 at risk". Nothing was compared, so no amount is being
-                claimed and none is being ruled out either. */}
-            <span data-testid="money-at-risk">nothing is being claimed</span>
-            {' · '}
-          </>
-        )}
+        {/* Not "0.00 at risk", and not "nothing is being claimed" either: the
+            note above already says no amount is claimed (W26). */}
         <span>
           billed {fmtMoney(doc.layer1.totals.taxInclusiveAmount.value, currency)}
         </span>
@@ -313,7 +294,11 @@ export function VerdictBlock({ doc, states = [] }: VerdictBlockProps) {
                 : `The lines do not add up to the stated total (off by ${fmtMoney((doc.layer3.tieOutDeltaCents ?? 0) / 100, currency)}).`}
       </p>
 
-      {exceptions.length > 0 && (
+      {/* With no line compared, a card per line would say the heading again
+          once per line (W26); the four-way table already shows each billed
+          quantity. A MIXED document keeps its not-compared cards, and so does
+          our own door count, whose card is the only place that says "counted". */}
+      {exceptions.length > 0 && (!nothingCompared || exceptions.some((e) => e.counted)) && (
         <ul
           style={{
             display: 'grid',

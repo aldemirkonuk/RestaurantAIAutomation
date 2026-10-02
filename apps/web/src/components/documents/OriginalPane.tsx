@@ -24,6 +24,18 @@ import type { ProcurementDocument } from '../../services/api/documents'
 import type { FieldEnvelope } from '../../services/api/canonical'
 import { MONO } from './canonical-format'
 
+/**
+ * The stored file in words, not as a MIME type (walk-through W22,
+ * 2026-10-01: "application/pdf — fetched only when you ask" read as machine
+ * output).
+ */
+function fileKind(contentType: string | null | undefined): string {
+  if (!contentType) return 'The stored file'
+  if (contentType === 'application/pdf') return 'A PDF'
+  if (contentType.startsWith('image/')) return 'A photo'
+  return 'The stored file'
+}
+
 export interface OriginalPaneProps {
   documentId: string
   imageUrl: string | null
@@ -160,8 +172,7 @@ export function OriginalPane({
             Bring the original
           </button>
           <span style={{ fontSize: 10.5, color: 'var(--ink-4, #665D50)' }}>
-            {reason ??
-              `${contentType ?? 'the stored file'} — fetched only when you ask, through a one-hour link.`}
+            {reason ?? `${fileKind(contentType)}, fetched only when you ask, through a link that lasts one hour.`}
           </span>
         </div>
       </Frame>

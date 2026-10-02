@@ -319,3 +319,35 @@ export function printedVintageOf(vintage: number | null, description: string | n
   const years = new Set((description ?? '').match(/\b(?:19[5-9]\d|20[0-4]\d)\b/g) ?? [])
   return years.size === 1 ? Number([...years][0]) : null
 }
+
+/**
+ * "6 bottles", "1 bottle", "2 split cases" (founder walk-through, 2026-10-01,
+ * W6). The sentence printed the stored unit code as-is, so every quantity
+ * other than one read "6 bottle" and a split case read "split_case". A unit
+ * outside the gateway's `UOMS` list is printed as it came. Moved here from
+ * VerdictBlock at W22 so the sheet's "per 12 bottles" uses the same words.
+ */
+const UNIT_WORDS: Record<string, readonly [string, string]> = {
+  bottle: ['bottle', 'bottles'],
+  case: ['case', 'cases'],
+  keg: ['keg', 'kegs'],
+  pack: ['pack', 'packs'],
+  split_case: ['split case', 'split cases'],
+  each: ['each', 'each'],
+  liter: ['liter', 'liters'],
+}
+export function unitWord(unit: string, qty: unknown): string {
+  const words = UNIT_WORDS[unit]
+  if (!words) return unit
+  return typeof qty === 'number' && qty === 1 ? words[0] : words[1]
+}
+
+/**
+ * Whether a line's printed name already carries its vintage (walk-through
+ * W22, 2026-10-01): "Öküzgözü 2021 · 750 ml" then "· 2021" said the year
+ * twice. The year is added only when the name does not print it.
+ */
+export function nameCarriesYear(description: string | null, vintage: number | null): boolean {
+  if (vintage == null || !description) return false
+  return new RegExp(`\\b${vintage}\\b`).test(description)
+}

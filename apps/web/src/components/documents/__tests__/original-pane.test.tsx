@@ -68,3 +68,19 @@ describe('OriginalPane — nothing to bring', () => {
     expect(screen.getByRole('region', { name: 'The original' })).toContainElement(screen.getByTestId('open-original'))
   })
 })
+
+describe('OriginalPane — the stored file in words (W22)', () => {
+  it('says "A PDF" or "A photo", never the MIME type', () => {
+    const link = { imageUrl: 'https://example.test/synthetic', filename: 'synthetic', storagePath: 'synthetic' }
+    const pdf = render(<OriginalPane {...props({ ...link, contentType: 'application/pdf' })} />)
+    expect(pdf.container.textContent).toContain(
+      'A PDF, fetched only when you ask, through a link that lasts one hour.',
+    )
+    expect(pdf.container.textContent).not.toContain('application/pdf')
+    pdf.unmount()
+    const { container } = render(<OriginalPane {...props({ ...link, contentType: 'image/jpeg' })} />)
+    expect(container.textContent).toContain('A photo, fetched only when you ask')
+    expect(container.textContent).not.toContain('image/jpeg')
+  })
+})
+
