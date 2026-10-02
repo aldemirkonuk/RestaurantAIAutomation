@@ -42,6 +42,12 @@ function rowsOrThrow(result: PromiseSettledResult<any>, table: string): any[] {
   return result.value.data || [];
 }
 
+/** The value of a settled call that is not a Supabase read, or its throw. */
+function valueOrThrow<T>(result: PromiseSettledResult<T>): T {
+  if (result.status === "rejected") throw result.reason;
+  return result.value;
+}
+
 /** An embedded PostgREST relation arrives as an object or a one-row array. */
 function one<T>(rel: T | T[] | null | undefined): T | undefined {
   return Array.isArray(rel) ? rel[0] : (rel ?? undefined);
@@ -687,8 +693,7 @@ export class DashboardService {
       const inventory = rowsOrThrow(inventoryResult, "restaurant_inventory");
       const lowStock = rowsOrThrow(lowStockResult, "v_low_stock_items");
       const orders = rowsOrThrow(ordersResult, "procurement_orders");
-      if (zoneResult.status === "rejected") throw zoneResult.reason;
-      const zone = zoneResult.value;
+      const zone = valueOrThrow(zoneResult);
       const totalWines = inventory.length;
       const totalBottles = inventory.reduce(
         (sum, i) => sum + (i.stock_live || 0),
