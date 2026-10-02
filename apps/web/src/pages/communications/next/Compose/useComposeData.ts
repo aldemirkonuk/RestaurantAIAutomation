@@ -183,12 +183,7 @@ export function useComposeData() {
 
   const queuedQ = useQuery<QueuedLetter[]>({
     queryKey: ['house-letter-queued', restaurantId],
-    queryFn: async () => {
-      const { data } = await apiClient.get<{ queued: QueuedLetter[] }>(
-        '/communications/letters/queued',
-      );
-      return data.queued;
-    },
+    queryFn: readQueued,
     staleTime: 15_000,
   });
 
@@ -271,7 +266,20 @@ export function useComposeData() {
  * requests panel offers a release exactly when the composer would offer a
  * send. `restaurantId` is the key both share.
  */
-export function useLetterSenderStanding(): { restaurantId: string; canRelease: boolean } {
+export function useLetterSenderStanding(): {
+  restaurantId: string;
+  canRelease: boolean;
+  /** This person may send, but the house has no mailbox to send from (COMMS-W11). */
+  noMailbox: boolean;
+  /** Why this person may send: owner, manager or a grant (COMMS-W11b). */
+  basis: 'owner' | 'manager' | 'grant' | null;
+  /** The mailbox is being read again right now. */
+  checking: boolean;
+  /** When the mailbox was last read (ms), 0 when it never was. */
+  checkedAt: number;
+  /** Read the mailbox again, so a mailbox connected elsewhere unlocks the send here. */
+  recheck: () => void;
+} {
   const { user, activeRestaurantId } = useAuth();
   const restaurantId = activeRestaurantId ?? user?.restaurantId ?? '';
   const senderQ = useQuery<SenderIdentity>({
@@ -287,7 +295,38 @@ export function useLetterSenderStanding(): { restaurantId: string; canRelease: b
   return {
     restaurantId,
     canRelease: Boolean(senderQ.data?.sendable && standing?.readable && standing.maySend),
+    noMailbox: Boolean(senderQ.data && !senderQ.data.sendable && standing?.readable && standing.maySend),
+    basis: standing?.readable ? standing.basis : null,
+    checking: senderQ.isFetching,
+    checkedAt: senderQ.dataUpdatedAt,
+    recheck: () => void senderQ.refetch(),
   };
+}
+
+async function readQueued(): Promise<QueuedLetter[]> {
+  const { data } = await apiClient.get<{ queued: QueuedLetter[] }>('/communications/letters/queued');
+  return data.queued;
+}
+
+/**
+ * The letters still inside their undo window, read by the conversation book
+ * so a queued row can be pulled back after the sheet is closed (COMMS-W23).
+ * Same cache entry as the composer's read: one request serves both.
+ */
+export function useQueuedLetters(): {
+  restaurantId: string;
+  queued: QueuedLetter[] | null;
+  failed: boolean;
+} {
+  const { user, activeRestaurantId } = useAuth();
+  const restaurantId = activeRestaurantId ?? user?.restaurantId ?? '';
+  const queuedQ = useQuery<QueuedLetter[]>({
+    queryKey: ['house-letter-queued', restaurantId],
+    queryFn: readQueued,
+    staleTime: 15_000,
+    enabled: Boolean(restaurantId),
+  });
+  return { restaurantId, queued: queuedQ.data ?? null, failed: queuedQ.isError };
 }
 
 /** The waiting letters' query key, shared by the composer and the requests panel. */
