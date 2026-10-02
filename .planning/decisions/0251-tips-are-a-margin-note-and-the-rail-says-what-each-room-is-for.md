@@ -36,9 +36,9 @@ Measured on `fix/closed-stays-closed` (base `059169a59`), 2026-10-01:
 **D1 — The tip is a margin note.** `PageTipStrip.tsx` draws one line with a seal rule on its left, in the serif italic, and three verbs: **Show me — N steps**, **Not now** and **Don't show tips again**. The region keeps the name "Page tip". It is drawn at the top of the page column (the shell mounts it, `HouseShell.tsx`). The sketch drew it under the page title. Moving it there would need every page to mount it, and is not done.
 
 **D2 — What each verb does.**
-- **Not now** hides the tip at once. It may come back on a later visit. The existing rule is a four-hour snooze, and each tip is offered once per browser session.
+- **Not now** hides the tip at once. It may come back on a later visit. The existing rule is a four-hour snooze, and each tip is offered once per browser session. [Corrected 2026-10-02: a tip is not limited to once per session. `offeredPageIds` only keeps the `tip_shown` event and the announcement from repeating (`GuidanceProvider.tsx:322-335` on PR #570). A tip nobody answered shows on every visit, and a snoozed one comes back after four hours even in the same session (`:311-315`). What stops tips within a session is two tips turned away in it (`:304`). Found by #570's audit fix round; the code was not changed to match the old sentence.]
 - **Don't show tips again** turns **every** page's tip off (`global.hide_all_tips`), at once and on this device too, until the person turns tips back on in Help → Ways back in → Page tips.
-- A tour the person starts on purpose (Show me, or Help) always plays.
+- A tour the person starts on purpose (Show me, or Help) always plays. [Corrected 2026-10-02: Help has no live tour starter. No page or component outside `guidance/` calls a tour start (PR #570 at `2f068d31a`), so a tour starts only from the tip's Show me.]
 
 **D3 — The tour rings the real thing.**
 - No veil: `overlayOpacity: 0`. A click elsewhere still ends the tour.
@@ -52,13 +52,18 @@ Measured on `fix/closed-stays-closed` (base `059169a59`), 2026-10-01:
 **D4 — The rail says what each room is for.** Every room in `rooms.ts` carries a required one-line `description`. A test holds each line to 64 characters or less, ending in a full stop, with no two alike. The Dashboard's is the founder's own: *"The overall look, in one glance."*
 - **When it shows:** after the pointer rests on a room for 320 ms, or at once when the keyboard lands on it.
 - **When it doesn't:** never on a touch screen (`hover: none`), where a tap also fires mouseenter.
-- **How it goes away:** when the pointer leaves, on Escape, or on any scroll.
+- **How it goes away:** when the pointer leaves, on Escape, or on any scroll. [Amended 2026-10-02, answer 4 below: the scroll that a keyboard landing itself causes does not dismiss the hint.]
 - **For screen readers:** the same line is each link's accessible description, and the drawn hint is `aria-hidden`.
 
 **Answered 2026-10-01** (sketch 125 forks 18–20, `AskUserQuestion`):
 1. **"Don't show tips again" means all tips:** *"All tips (Recommended)"*. This is how it is built.
 2. **A tip per page:** *"One per page (Recommended)"*. There is no getting-started path across pages.
 3. **When a step ticks:** moot. Nothing ticks without a path, and a tour step is read, not done.
+
+**Answered 2026-10-02** (PR #569's review, `AskUserQuestion`):
+4. **Keyboard landing against "any scroll":** *"Keyboard landing wins (Recommended)"*. Tabbing to a room below the fold scrolls the rail, and that scroll dismissed the hint at once, so keyboard users never saw it there (confirmed in Chromium at `168ad3217`, `HouseRail.tsx:144-158`). The scroll the focus itself causes is ignored; any other scroll still dismisses. Built in a follow-up to #569, with a real-browser test.
+5. **Whose part of the room a line describes:** *"True for everyone (Recommended)"*. A line holds for every role that sees the room, with no role logic. Receipts & Credits ("credits to chase": the credit lane is owners and managers only) and Receiving ("decide on the short ones": staff record at the door) are reworded in the same follow-up.
+6. **Merging #569:** *"Right after #566 (Recommended)"*. The gate owns #569 (a `CLAIMS.jsonl` row it edits names the gate), so it merges on this word, after this ADR is on main.
 
 ## Consequences
 
@@ -76,3 +81,4 @@ Measured on `fix/closed-stays-closed` (base `059169a59`), 2026-10-01:
 | 2026-10-01 | Aldemir (founder, `AskUserQuestion`) | Forks answered: all tips off, a tip per page; the tick fork is moot |
 | 2026-10-01 | Claude (Opus 5.5; browser check on Sim Meyhouse, preview :5320) | Seen in the browser: the margin note, the tour card (no veil, ring on the real control, Step N of M, Try it / Back / Next / Stop), "Don't show tips again" turning every page's tip off, and Help's "Turn tips back on". Found: "Try it" put focus on the page when a step rang a group, and the inventory step "Tap Below par" rang the whole figures strip. Fixed: the step rings the Below par figure, and a ringed group takes focus; new spec, red on revert. Only the inventory tour was walked |
 | 2026-10-01 | Claude (Opus 5.5; the coordinating session) | D3 corrected in place, in brackets: the sixth anchor `inventory-below-par`, and the anchor guard as PR #572 rebuilds it. PR #572's gate (comment 5945141030) found both lines stale. No decision changed. |
+| 2026-10-02 | Aldemir (founder, `AskUserQuestion`) + Claude (Opus 5.5; the coordinating session) | Answers 4–6 recorded from PR #569's review. D2 corrected in brackets: the once-per-session sentence and the Help tour starter, both found by #570's audit fix round. D4's scroll rule amended by answer 4. |
