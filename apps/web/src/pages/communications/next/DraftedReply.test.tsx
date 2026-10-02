@@ -18,8 +18,27 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MemoryRouter } from 'react-router-dom';
 
 const api = vi.hoisted(() => ({ post: vi.fn(), get: vi.fn() }));
+
+/** The house's mailbox as the sender readout reports it (COMMS-W13b). */
+const house = vi.hoisted(() => ({
+  noMailbox: false,
+  basis: 'manager' as 'owner' | 'manager' | 'grant' | null,
+}));
+vi.mock('./Compose/useComposeData', async (orig) => ({
+  ...(await orig<typeof import('./Compose/useComposeData')>()),
+  useLetterSenderStanding: () => ({
+    restaurantId: 'r1',
+    canRelease: !house.noMailbox,
+    noMailbox: house.noMailbox,
+    basis: house.basis,
+    checking: false,
+    checkedAt: Date.parse('2026-10-01T09:00:00Z'),
+    recheck: () => {},
+  }),
+}));
 
 vi.mock('@/services/api/client', () => ({
   apiClient: {
@@ -88,14 +107,16 @@ function draw(over: Partial<React.ComponentProps<typeof DraftedReplyPanel>> = {}
   const onDiscarded = vi.fn();
   render(
     <QueryClientProvider client={qc}>
-      <DraftedReplyPanel
-        open
-        reply={REPLY}
-        onClose={() => {}}
-        onSent={onSent}
-        onDiscarded={onDiscarded}
-        {...over}
-      />
+      <MemoryRouter>
+        <DraftedReplyPanel
+          open
+          reply={REPLY}
+          onClose={() => {}}
+          onSent={onSent}
+          onDiscarded={onDiscarded}
+          {...over}
+        />
+      </MemoryRouter>
     </QueryClientProvider>,
   );
   return { onSent, onDiscarded };
@@ -112,6 +133,8 @@ async function hold() {
 }
 
 beforeEach(() => {
+  house.noMailbox = false;
+  house.basis = 'manager';
   api.get.mockReset();
   standing(AS_MANAGER);
   api.post.mockReset();
@@ -227,13 +250,45 @@ describe('the seal — mint, then spend', () => {
   });
 });
 
+// COMMS-W13b (founder, 2026-10-01): with no house mailbox a reply has nowhere
+// to leave from, so a draft already waiting stays, locked, with the same
+// checklist as a waiting letter, and nothing is minted or sent.
+describe('a draft in a house with no mailbox', () => {
+  it('stays here, locked, and says which step is missing', async () => {
+    house.noMailbox = true;
+    house.basis = 'owner';
+    draw();
+    const steps = await screen.findByTestId('draft-readiness');
+    expect(steps).toHaveTextContent('You may send for this house as the owner.');
+    expect(steps).toHaveTextContent('This house has no mailbox to send from.');
+    expect(steps).toHaveTextContent('The vendor’s address is on file.');
+    expect(screen.getByTestId('letter-request-connect')).toHaveTextContent('Connect a mailbox');
+    // Locked by the mailbox, not by the standing read: wait until a manager's
+    // "send" has been read, then the hold must still not be pressable.
+    expect(screen.getByText(/Reading whether your hold sends/)).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText(/Reading whether your hold sends/)).toBeNull());
+    expect(screen.getByRole('button', { name: /Hold to send it/ })).toBeDisabled();
+    expect(screen.getByTestId('draft-seal')).toHaveTextContent('The draft stays here, unsent.');
+    expect(api.post).not.toHaveBeenCalled();
+  });
+
+  it('shows no mailbox checklist when the house has one', async () => {
+    draw();
+    await screen.findByRole('button', { name: /Hold to send it/ });
+    expect(screen.queryByTestId('draft-readiness')).toBeNull();
+  });
+});
+
 describe('a draft never looks sent', () => {
   it('renders the engine’s words grey and a person’s edit as ink', () => {
     draw();
     const body = screen.getByTestId('draft-body');
     expect(body).toHaveAttribute('data-ink', 'engine');
+    // COMMS-W27: who wrote it, in the house's words.
+    expect(screen.getByText(/The letter · as Mudavym drafted it/)).toBeInTheDocument();
     fireEvent.change(body, { target: { value: 'We can take five cases at 2,300.' } });
     expect(screen.getByTestId('draft-body')).toHaveAttribute('data-ink', 'person');
+    expect(screen.getByText(/The letter · edited by you/)).toBeInTheDocument();
   });
 
   it('substitutes the manager’s name into the engine’s placeholder', () => {
@@ -306,13 +361,18 @@ describe('throwing it away', () => {
 
 describe('the words', () => {
   it('says what kind of letter this is, and shows an unmapped kind as itself', () => {
-    expect(kindWords('COUNTER_OFFER')).toBe('a counter-offer');
+    // COMMS-W27: each kind is read after "the house is", so it must finish that sentence.
+    expect(kindWords('COUNTER_OFFER')).toBe('making a counter-offer');
+    expect(kindWords('MANUAL_REPLY')).toBe('replying in a person’s own words');
     expect(kindWords('SOMETHING_NEW')).toBe('something new');
   });
 
   it('shows the real subject the gateway will send, not a re-derived guess', () => {
     draw();
     expect(screen.getByTestId('draft-subject')).toHaveTextContent(REPLY.subject);
+    // COMMS-W30: a long address or subject wraps inside the sheet instead of running past it.
+    expect(screen.getByTestId('draft-subject').style.overflowWrap).toBe('anywhere');
+    expect(screen.getByTestId('draft-to').style.overflowWrap).toBe('anywhere');
   });
 
   it('says when there is no address on file rather than leaving it blank', () => {
@@ -420,5 +480,63 @@ describe('send or ask — the founder\u2019s answer of 2026-09-21', () => {
     draw();
     await waitFor(() => expect(screen.getByTestId('draft-standing')).toHaveTextContent(/network down/));
     expect(screen.getByRole('button', { name: /Hold to send it/ })).toBeDisabled();
+  });
+
+  it("a reason that is already a sentence is said whole, not bracketed inside ours (COMMS-W14)", async () => {
+    api.get.mockRejectedValue(new Error('The pending draft could not be read. Nothing was sent.'));
+    draw();
+    await waitFor(() =>
+      expect(screen.getByTestId('draft-standing')).toHaveTextContent(
+        'The pending draft could not be read. Nothing was sent. Nothing can be held until it can be read.',
+      ),
+    );
+    expect(screen.getByTestId('draft-standing')).not.toHaveTextContent(/\(/);
+    expect(screen.getByRole('button', { name: /Hold to send it/ })).toBeDisabled();
+  });
+});
+
+// COMMS-W36 (founder: "Page + queue shared"): the old Dark theme puts
+// `.dark` on <html> (a browser that saved it keeps it; #576 took its control
+// off /profile), and its `p` rule outranks the house's reset, so a
+// paragraph that only inherited the sheet's ink turned pale on the paper
+// ground (the first line measured 1.70:1). Each paragraph names the ink itself.
+describe('the ink under the account’s dark theme (COMMS-W36)', () => {
+  const INK2 = 'var(--ink-2, #4F473C)';
+
+  it('the first line and the empty-letter line name the sheet’s ink', () => {
+    draw({ reply: { ...REPLY, draftContent: '' } });
+    expect(screen.getByText(/— the house is making a counter-offer/).style.color).toBe(INK2);
+    expect(screen.getByTestId('draft-empty').style.color).toBe(INK2);
+  });
+
+  it('a refused copy and a failed send name it too', async () => {
+    api.post.mockImplementation((path: string) =>
+      String(path).endsWith('/draft-seal-challenge')
+        ? Promise.resolve({ data: { challenge: 'tok-1' } })
+        : Promise.reject(Object.assign(new Error('Refused.'), { response: { status: 403 } })),
+    );
+    draw();
+    fireEvent.change(screen.getByTestId('draft-cc-input'), { target: { value: 'not-an-email' } });
+    fireEvent.click(screen.getByTestId('draft-cc-add'));
+    expect(screen.getByTestId('draft-cc-problem').style.color).toBe(INK2);
+    await hold();
+    expect((await screen.findByTestId('draft-failure')).style.color).toBe(INK2);
+  });
+
+  it('a sent letter’s line names it', async () => {
+    draw();
+    await hold();
+    expect((await screen.findByTestId('draft-sent')).style.color).toBe(INK2);
+  });
+
+  it('a staff member’s asked line names it', async () => {
+    standing(AS_STAFF);
+    api.post.mockResolvedValue({ data: { conversationId: 'conv-1', requestedAt: 't', told: 1, says: 'Asked.' } });
+    draw();
+    const die = await screen.findByRole('button', { name: /Hold to ask a manager to send it/ });
+    await waitFor(() => expect(die).not.toBeDisabled());
+    fireEvent.keyDown(die, { key: 'Enter' });
+    fireEvent.keyDown(die, { key: 'Enter' });
+    expect((await screen.findByTestId('draft-asked')).style.color).toBe(INK2);
   });
 });
