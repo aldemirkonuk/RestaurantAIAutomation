@@ -62,6 +62,8 @@ import {
 } from '@/hooks/queries/useDraftEmailQueries';
 import { SendStandingNote, holdAct } from '@/components/orders/SendStanding';
 import { MONO, SANS, SERIF } from './cm-format';
+import { useLetterSenderStanding } from './Compose/useComposeData';
+import { Check, ConnectLink, Recheck } from './LetterRequestsPanel';
 
 export interface ConstraintWarning {
   code: string;
@@ -99,12 +101,12 @@ const KINDS: Record<string, string> = {
   DEMAND_OFFER: 'asking for an offer',
   PROMO_INQUIRY: 'asking about a promotion',
   WINE_INQUIRY: 'asking about a wine',
-  COUNTER_OFFER: 'a counter-offer',
+  COUNTER_OFFER: 'making a counter-offer',
   CLARIFICATION: 'asking them to be clearer',
   ACCEPTANCE_CONFIRM_REQUEST: 'accepting, and asking them to confirm',
   ESCALATION: 'escalating',
   ORDER_CONFIRMATION: 'confirming the order',
-  MANUAL_REPLY: 'a reply written by a person',
+  MANUAL_REPLY: 'replying in a person’s own words',
 };
 
 export function kindWords(emailType: string): string {
@@ -135,6 +137,8 @@ export function warningsOf(flags: unknown): ConstraintWarning[] {
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+/** The sheet body's ink, named on each paragraph (COMMS-W36). */
+const INK2 = 'var(--ink-2, #4F473C)';
 
 const field: React.CSSProperties = {
   width: '100%',
@@ -198,6 +202,11 @@ export function DraftedReplyPanel({
   const sendOrAsk = standingQuery.data?.sendOrAsk ?? null;
   const request = standingQuery.data?.draft?.send_request ?? null;
   const act = holdAct(sendOrAsk);
+  // COMMS-W13 (founder, 2026-10-01): with no house mailbox there is nowhere
+  // for a reply to leave from, so a draft already waiting stays here, locked,
+  // with the same checklist as a waiting letter (COMMS-W11c).
+  const mailbox = useLetterSenderStanding();
+  const noMailbox = mailbox.noMailbox;
 
   const engineWords = useMemo(() => {
     const raw = reply?.draftContent ?? '';
@@ -301,7 +310,7 @@ export function DraftedReplyPanel({
       setSent(
         data?.sentAt
           ? `Sent to ${reply.providerEmail ?? 'the vendor'} at ${new Date(data.sentAt).toLocaleString()}.`
-          : `Sent to ${reply.providerEmail ?? 'the vendor'}. The gateway did not say when.`,
+          : `Sent to ${reply.providerEmail ?? 'the vendor'}. No sending time came back with it.`,
       );
       await queryClient.invalidateQueries({ queryKey: queryKeys.orders.all });
       onSent?.();
@@ -401,18 +410,21 @@ export function DraftedReplyPanel({
         </div>
       }
     >
+      {/* COMMS-W36: each paragraph below names the body's ink itself; the
+          account's dark theme gives a bare `p` its own pale colour. */}
       <div style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-2, #4F473C)' }}>
-        <p style={{ margin: 0 }}>
+        <p style={{ margin: 0, color: INK2 }}>
           <span style={{ fontFamily: SERIF, fontSize: 15, color: 'var(--ink-1, #211C16)' }}>
             {reply.wineName ?? 'This order'}
           </span>{' '}
           — the house is {kindWords(reply.emailType)}.
         </p>
-        <p style={{ margin: '3px 0 0', fontSize: 11.5, color: 'var(--ink-4, #665D50)' }} data-testid="draft-to">
+        {/* COMMS-W30: a long address wraps instead of running out of the sheet. */}
+        <p style={{ margin: '3px 0 0', fontSize: 11.5, color: 'var(--ink-4, #665D50)', overflowWrap: 'anywhere' }} data-testid="draft-to">
           To {reply.providerName ?? 'the vendor'}
           {reply.providerEmail ? ` · ${reply.providerEmail}` : ' · no address on file'}
         </p>
-        <p style={{ margin: '2px 0 0', fontSize: 11.5, color: 'var(--ink-4, #665D50)' }} data-testid="draft-subject">
+        <p style={{ margin: '2px 0 0', fontSize: 11.5, color: 'var(--ink-4, #665D50)', overflowWrap: 'anywhere' }} data-testid="draft-subject">
           Subject: {reply.subject}
         </p>
 
@@ -444,7 +456,7 @@ export function DraftedReplyPanel({
 
         {/* ── the letter ───────────────────────────────────────────────── */}
         <label style={{ ...legend, marginTop: 12 }} htmlFor="draft-body">
-          The letter {edited ? '· edited by you' : '· the engine’s words'}
+          The letter {edited ? '· edited by you' : '· as Mudavym drafted it'}
         </label>
         <textarea
           id="draft-body"
@@ -463,7 +475,7 @@ export function DraftedReplyPanel({
           }}
         />
         {empty && (
-          <p role="status" data-testid="draft-empty" style={{ margin: '3px 0 0', fontSize: 11 }}>
+          <p role="status" data-testid="draft-empty" style={{ margin: '3px 0 0', fontSize: 11, color: INK2 }}>
             An empty letter cannot be sent.
           </p>
         )}
@@ -507,7 +519,7 @@ export function DraftedReplyPanel({
           </button>
         </div>
         {ccProblem && (
-          <p role="status" data-testid="draft-cc-problem" style={{ margin: '3px 0 0', fontSize: 11 }}>
+          <p role="status" data-testid="draft-cc-problem" style={{ margin: '3px 0 0', fontSize: 11, color: INK2 }}>
             {ccProblem}
           </p>
         )}
@@ -550,6 +562,38 @@ export function DraftedReplyPanel({
 
         {/* ── the seal: send, or ask a manager ───────────────────────────── */}
         <div className="mt-4" data-testid="draft-seal">
+          {noMailbox && (
+            <div
+              data-testid="draft-readiness"
+              style={{
+                margin: '0 0 10px',
+                padding: '8px 10px',
+                borderRadius: 8,
+                border: '1px solid var(--paper-2, #EAE4D8)',
+                background: 'var(--paper-1, #F3EFE6)',
+              }}
+            >
+              <p style={{ margin: 0, fontSize: 11, fontWeight: 600, color: 'var(--ink-2, #4F473C)' }}>
+                Before it can leave
+              </p>
+              <ul style={{ listStyle: 'none', margin: '6px 0 0', padding: 0, display: 'grid', gap: 4 }}>
+                <Check ok>
+                  You may send for this house
+                  {mailbox.basis === 'owner' ? ' as the owner' : mailbox.basis === 'manager' ? ' as a manager' : mailbox.basis === 'grant' ? ' under a send grant' : ''}.
+                </Check>
+                <Check ok={false}>
+                  This house has no mailbox to send from.
+                  <span style={{ display: 'block', marginTop: 6 }}>
+                    <ConnectLink />
+                  </span>
+                </Check>
+                <Check ok={Boolean(reply.providerEmail)}>
+                  {reply.providerEmail ? 'The vendor’s address is on file.' : 'No address is on file for this vendor.'}
+                </Check>
+              </ul>
+              <Recheck mailbox={mailbox} />
+            </div>
+          )}
           {act === 'ask' ? (
             <HoldToApprove
               key={`ask-${attempt}`}
@@ -563,7 +607,7 @@ export function DraftedReplyPanel({
               key={attempt}
               label={`Hold to send it to ${reply.providerName ?? 'the vendor'}`}
               approvedLabel="Sent"
-              disabled={busy || empty || !reply.providerEmail || act !== 'send'}
+              disabled={busy || empty || !reply.providerEmail || act !== 'send' || noMailbox}
               onChallenge={mint}
               onApprove={send}
             />
@@ -578,25 +622,27 @@ export function DraftedReplyPanel({
           <p style={{ margin: '5px 0 0', fontSize: 11, color: 'var(--ink-4, #665D50)' }}>
             {!reply.providerEmail
               ? 'No address is on file for this vendor, so there is nowhere to send it. Nothing can be held.'
-              : act === 'ask'
+              : noMailbox
+                ? 'Nothing can leave until the house has its own mailbox. The draft stays here, unsent.'
+                : act === 'ask'
                 ? 'Nothing leaves the house from your hold. A manager reads your version and sends it with their own hold.'
                 : 'The seal is minted when the hold begins, over this letter, this recipient and these copies. Change any of them after the hold and the send is refused rather than posted.'}
           </p>
         </div>
 
         {asked && (
-          <p role="status" data-testid="draft-asked" style={{ margin: '10px 0 0', fontSize: 11.5 }}>
+          <p role="status" data-testid="draft-asked" style={{ margin: '10px 0 0', fontSize: 11.5, color: INK2 }}>
             {asked}
           </p>
         )}
 
         {sent && (
-          <p role="status" data-testid="draft-sent" style={{ margin: '10px 0 0', fontSize: 11.5 }}>
+          <p role="status" data-testid="draft-sent" style={{ margin: '10px 0 0', fontSize: 11.5, color: INK2 }}>
             {sent}
           </p>
         )}
         {failure && (
-          <p role="status" data-testid="draft-failure" style={{ margin: '10px 0 0', fontSize: 11.5 }}>
+          <p role="status" data-testid="draft-failure" style={{ margin: '10px 0 0', fontSize: 11.5, color: INK2 }}>
             {failure}
           </p>
         )}
