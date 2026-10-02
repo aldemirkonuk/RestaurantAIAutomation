@@ -38,6 +38,14 @@ export interface RememberedShelfProps {
   /** Opens the picker for a line with no proposal. Optional. */
   onChoose?: (lineId: string) => void
   busy?: boolean
+  /**
+   * The vintage this line prints, and the vintage of an item (walk-through W8,
+   * 2026-10-01). When both are known and differ, the proposal says so beside
+   * the tick: a remembered pairing keyed without a vintage can offer last
+   * year's wine for this year's line, and a person ticking it should see that.
+   */
+  printedVintage?: number | null
+  itemVintage?: (id: string) => number | null
 }
 
 const ROW: React.CSSProperties = {
@@ -66,6 +74,8 @@ export function RememberedShelf({
   onLink,
   onChoose,
   busy,
+  printedVintage = null,
+  itemVintage,
 }: RememberedShelfProps) {
   const [working, setWorking] = useState(false)
   const disabled = busy || working || !line.lineId
@@ -80,6 +90,19 @@ export function RememberedShelf({
     }
   }
 
+  /* The year note, for whichever item the line names or is offered. It stays
+     after the tick (walk-through W15, 2026-10-01): pressing the tick on
+     SYN-US-0114 made the note vanish, so a wrong-year link read as settled. */
+  const vintageNote = (id: string) => {
+    const theirs = itemVintage?.(id) ?? null
+    if (printedVintage == null || theirs == null || printedVintage === theirs) return null
+    return (
+      <span style={{ color: 'var(--warn, #946A1A)' }} data-testid="shelf-vintage-differs">
+        {' '}This line prints {printedVintage}; that item is the {theirs}.
+      </span>
+    )
+  }
+
   // 1. Already linked.
   if (line.inventoryId) {
     const name = itemName(line.inventoryId)
@@ -92,6 +115,7 @@ export function RememberedShelf({
           <strong style={{ color: 'var(--ink-1, #2B2721)', fontWeight: 500 }}>
             {name ?? line.inventoryId}
           </strong>
+          {vintageNote(line.inventoryId)}
         </span>
         <button
           type="button"
@@ -135,7 +159,10 @@ export function RememberedShelf({
         >
           ✓ {name ?? line.proposedInventoryId}
         </button>
-        <span>{line.proposedSentence}</span>
+        <span>
+          {line.proposedSentence}
+          {vintageNote(line.proposedInventoryId)}
+        </span>
       </div>
     )
   }
