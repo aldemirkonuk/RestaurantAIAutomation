@@ -623,3 +623,156 @@ describe("DocumentsController.restateCurrency — the deliberate change", () => 
       });
   });
 });
+
+/** A list() controller over a thenable fake db, one canned result per table; records writes. */
+function listControllerWith(results: Record<string, { data: unknown; error: unknown }>) {
+  const writes: string[] = [];
+  const builder = () => {
+    const b: any = {};
+    for (const m of ["select", "eq", "order", "limit", "in", "range"]) b[m] = jest.fn(() => b);
+    for (const m of ["insert", "update", "upsert", "delete"])
+      b[m] = jest.fn(() => {
+        writes.push(m);
+        return b;
+      });
+    return b;
+  };
+  const db = {
+    getClient: () => ({
+      from: (table: string) => {
+        const b = builder();
+        b.then = (res: any, rej: any) => Promise.resolve(results[table]).then(res, rej);
+        return b;
+      },
+    }),
+  };
+  const controller = new DocumentsController(
+    {} as any,
+    db as any,
+    {} as any,
+    {} as any,
+    {} as any,
+    {} as any,
+    {} as any,
+    {} as any,
+    {} as any,
+    {} as any,
+    {} as any,
+  );
+  return { controller, writes };
+}
+
+describe("DocumentsController.list — the verdict as the rule gives it now (walk-through W7, 2026-10-01)", () => {
+  /**
+   * A stored row read before the tie-out rule counted a tax stated only in the
+   * VAT breakdown: its columns say "off by 8.63". The sheet recomputes and says
+   * it adds up; the list must say the same, and write nothing.
+   */
+  const storedRow = {
+    id: "d1",
+    restaurant_id: "rest-1",
+    doc_type: "invoice",
+    status: "needs_review",
+    subtotal: 100,
+    tax: null,
+    total: 108.63,
+    ties_out: false,
+    tie_out_delta: 8.63,
+    computed_lines_total: 100,
+    extracted: { taxBreakdown: [{ rate: 8.625, taxableBase: 100, amount: 8.63 }] },
+  };
+  const lineRow = {
+    document_id: "d1",
+    line_no: 1,
+    description: "synthetic line",
+    qty: 1,
+    uom: "bottle",
+    pack_size: 1,
+    qty_bottles: 1,
+    unit_price: 100,
+    line_total: 100,
+  };
+
+  it("recomputes a stale stored verdict with the sheet's rule, and writes nothing", async () => {
+    const { controller, writes } = listControllerWith({
+      procurement_documents: { data: [storedRow], error: null },
+      procurement_document_lines: { data: [lineRow], error: null },
+    });
+    const out = await controller.list({ userId: "u1", restaurantId: "rest-1" } as any, "needs_review");
+    const item = out.items[0] as Record<string, unknown>;
+    expect(item.ties_out).toBe(true);
+    expect(item.tie_out_delta).toBe(0);
+    expect(writes).toEqual([]);
+  });
+
+  it("keeps the stored verdict when the lines cannot be read, never a verdict from no lines", async () => {
+    const { controller } = listControllerWith({
+      procurement_documents: { data: [storedRow], error: null },
+      procurement_document_lines: { data: null, error: { message: "boom" } },
+    });
+    const out = await controller.list({ userId: "u1", restaurantId: "rest-1" } as any, "needs_review");
+    const item = out.items[0] as Record<string, unknown>;
+    expect(item.ties_out).toBe(false);
+    expect(item.tie_out_delta).toBe(8.63);
+  });
+});
+
+describe("DocumentsController.list — who sent it (walk-through W8, 2026-10-01)", () => {
+  const row = (over: Record<string, unknown>) => ({
+    id: "d1",
+    restaurant_id: "rest-1",
+    doc_type: "invoice",
+    status: "needs_review",
+    provider_id: null,
+    extracted: null,
+    ...over,
+  });
+  const base = { procurement_document_lines: { data: [], error: null } };
+
+  it("names the linked vendor as the sheet does: company name, else name", async () => {
+    const { controller, writes } = listControllerWith({
+      ...base,
+      procurement_documents: {
+        data: [
+          row({ id: "d1", provider_id: "p1", extracted: { vendorName: "PAPER NAME" } }),
+          row({ id: "d2", provider_id: "p2" }),
+        ],
+        error: null,
+      },
+      providers: {
+        data: [
+          { id: "p1", name: "Short", company_name: "SYNTHETIC VENDOR CO." },
+          { id: "p2", name: "SYNTHETIC SHORT NAME", company_name: null },
+        ],
+        error: null,
+      },
+    });
+    const out = await controller.list({ userId: "u1", restaurantId: "rest-1" } as any);
+    expect(out.items.map((i: any) => i.vendorName)).toEqual([
+      "SYNTHETIC VENDOR CO.",
+      "SYNTHETIC SHORT NAME",
+    ]);
+    expect(writes).toEqual([]);
+  });
+
+  it("falls back to the paper's name when no vendor is linked or the vendor read fails, and to null when neither exists", async () => {
+    const { controller } = listControllerWith({
+      ...base,
+      procurement_documents: {
+        data: [
+          row({ id: "d1", extracted: { vendorName: "SYNTHETIC PAPER NAME" } }),
+          row({ id: "d2", provider_id: "p1", extracted: { vendorName: "SYNTHETIC PAPER TWO" } }),
+          row({ id: "d3" }),
+        ],
+        error: null,
+      },
+      providers: { data: null, error: { message: "boom" } },
+    });
+    const out = await controller.list({ userId: "u1", restaurantId: "rest-1" } as any);
+    expect(out.items.map((i: any) => i.vendorName)).toEqual([
+      "SYNTHETIC PAPER NAME",
+      "SYNTHETIC PAPER TWO",
+      null,
+    ]);
+  });
+});
