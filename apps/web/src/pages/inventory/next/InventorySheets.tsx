@@ -151,7 +151,7 @@ export function CountSheet({ row, onClose }: SheetProps) {
         busy: false,
         note:
           estimate.suggestedQty !== null
-            ? `The photo suggests ${estimate.suggestedQty} (${estimate.confidence} confidence). It only fills the field — check it before you seal. ${estimate.note}`
+            ? `The photo suggests ${fmtCount(estimate.suggestedQty)} (${estimate.confidence} confidence). It only fills the field — check it before you seal. ${estimate.note}`
             : `The photo gave no confident count. ${estimate.note}`,
       });
     } catch (e) {
@@ -376,7 +376,7 @@ export function TransferSheet({
           : n === null || n < 1
             ? 'Move at least one whole bottle.'
             : held !== null && n > held
-              ? `That zone holds ${held}.`
+              ? `That zone holds ${fmtCount(held)}.`
               : null;
 
   return (
@@ -704,7 +704,7 @@ export function OrderSheet({
         )}
         {!blocked && !order.isSuccess ? (
           <p className="iv-note" style={{ marginTop: 6 }}>
-            If {vendorName} already has an open order for this title, that order is changed to {n}, not added to.
+            If {vendorName} already has an open order for this title, that order is changed to {nText}, not added to.
           </p>
         ) : null}
       </div>

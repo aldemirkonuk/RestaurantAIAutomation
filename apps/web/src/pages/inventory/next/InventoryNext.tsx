@@ -110,7 +110,7 @@ function QuietLine({
   if (invoices.n !== null && invoices.n > 0) {
     bits.push(
       <span key="inv">
-        {invoices.capped ? `${invoices.n} or more` : invoices.n} invoice{invoices.n === 1 ? '' : 's'}{' '}
+        {invoices.capped ? `${fmtCount(invoices.n)} or more` : fmtCount(invoices.n)} invoice{invoices.n === 1 ? '' : 's'}{' '}
         {invoices.n === 1 ? 'waits' : 'wait'} for a match ·{' '}
         <Link to="/receipts" className="iv-linkish iv-focus">
           Open in Receipts

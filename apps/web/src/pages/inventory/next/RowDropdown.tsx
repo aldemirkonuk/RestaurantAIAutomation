@@ -334,7 +334,7 @@ function HowFastItPours({ row }: { row: InvRow }) {
                       <span
                         key={`${dow}-${h}`}
                         className="iv-heat-c"
-                        title={`${label} ${h}:00 — ${b?.qty ?? 0}`}
+                        title={`${label} ${h}:00 — ${fmtCount(b?.qty ?? 0)}`}
                         style={{ opacity: b ? 0.18 + (b.qty / maxHour) * 0.82 : 0 }}
                       />
                     );
@@ -420,7 +420,7 @@ function WhatItHasCost({
               ? EM
               : detail.lots.length === 0
                 ? 'none'
-                : `${detail.lots.length} lot${detail.lots.length === 1 ? '' : 's'}, the latest sold ${shortDate(
+                : `${fmtCount(detail.lots.length)} lot${detail.lots.length === 1 ? '' : 's'}, the latest sold ${shortDate(
                     detail.lots.map((l) => l.saleDate).sort().at(-1) ?? null,
                   )}`}
         </KV>

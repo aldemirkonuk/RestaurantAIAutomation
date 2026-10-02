@@ -499,6 +499,7 @@ describe('counts read with grouped digits, as money does (INV-W33)', () => {
     expect((screen.getByRole('textbox', { name: 'Bottles' }) as HTMLInputElement).value).toBe('1200');
     expect(document.body.textContent).toContain('1,200 bring it back to par (1,200).');
     expect(screen.getByRole('button', { name: 'Hold to place 1,200 with Enoteca Rossi' })).toBeTruthy();
+    expect(document.body.textContent).toContain('that order is changed to 1,200, not added to.');
   });
 
   it('groups the count sheet\'s hold', () => {
@@ -531,6 +532,17 @@ describe('counts read with grouped digits, as money does (INV-W33)', () => {
     fireEvent.change(screen.getByRole('combobox', { name: 'To' }), { target: { value: 'z2' } });
     fireEvent.change(screen.getByRole('textbox', { name: 'Bottles' }), { target: { value: '1200' } });
     expect(screen.getByRole('button', { name: 'Hold to move 1,200' })).toBeTruthy();
+    fireEvent.change(screen.getByRole('textbox', { name: 'Bottles' }), { target: { value: '1300' } });
+    expect(document.body.textContent).toContain('That zone holds 1,240.');
+  });
+
+  it('groups what a shelf photo suggests, and fills the box bare', async () => {
+    api.photo.mockResolvedValue({ suggestedQty: 1240, confidence: 'high', note: 'Two rows were hidden.' });
+    mount(<CountSheet row={row()} onClose={() => {}} />);
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [new File(['x'], 'shelf.jpg', { type: 'image/jpeg' })] } });
+    await waitFor(() => expect(document.body.textContent).toContain('The photo suggests 1,240 (high confidence).'));
+    expect((screen.getByRole('textbox', { name: 'Bottles counted' }) as HTMLInputElement).value).toBe('1240');
   });
 
   it('groups the count held on this device and what its seal bound', async () => {

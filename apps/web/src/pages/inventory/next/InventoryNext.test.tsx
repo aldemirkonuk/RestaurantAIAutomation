@@ -756,6 +756,22 @@ describe('a side read that did not answer is named, never read as health (INV-W2
 });
 
 describe('counts read with grouped digits, as money does (INV-W33)', () => {
+  it('groups the invoices waiting in the quiet line, capped or not', () => {
+    mock.data = data({
+      rows: [],
+      waiting: { invoices: { n: 1240, failed: false }, deliveries: { n: 0, failed: false }, outbox: { n: 0, failed: false } },
+    });
+    const { unmount } = renderPage();
+    expect(screen.getByTestId('inventory-quiet-line').textContent).toContain('1,240 invoices wait for a match');
+    unmount();
+    mock.data = data({
+      rows: [],
+      waiting: { invoices: { n: 1000, capped: true, failed: false }, deliveries: { n: 0, failed: false }, outbox: { n: 0, failed: false } },
+    });
+    renderPage();
+    expect(screen.getByTestId('inventory-quiet-line').textContent).toContain('1,000 or more invoices wait for a match');
+  });
+
   it('groups every count in the read sentence', () => {
     const many = Array.from({ length: 1001 }, (_, i) => row({ id: `r${i}`, stock: i === 0 ? 1240 : 0, standing: 'below', value: 10, zones: null }));
     const s = readSentence(many, { state: 'recorded', code: 'EUR' }, true);

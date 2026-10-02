@@ -303,14 +303,21 @@ describe('RowDropdown counts read with grouped digits, as money does (INV-W33)',
     expect(t).toContain('it lasts 1,500 days');
   });
 
-  it('groups a purchase line\'s bottles and a day bar\'s sales', () => {
-    reads.detail = { purchases: [{ id: 'l1', at: '2026-09-20T10:00:00Z', qty: 1240, unitCost: 9, orderId: null }], purchasesTotal: 1 };
+  it('groups a purchase line\'s bottles, a day bar\'s and an hour\'s sales, and the lots', () => {
+    reads.detail = {
+      purchases: [{ id: 'l1', at: '2026-09-20T10:00:00Z', qty: 1240, unitCost: 9, orderId: null }],
+      purchasesTotal: 1,
+      lots: Array.from({ length: 1000 }, (_, i) => ({ id: `lot${i}`, saleDate: '2026-09-01' })),
+    };
     reads.record = { data: { books: [{ book: 'pos', readable: true, ledger: [{ at: '2026-09-29T19:00:00Z', qty: 1240, unitPrice: 10 }] }] } };
     try {
       renderDrop();
       const drop = screen.getByTestId('row-dropdown');
       expect(drop.querySelector('td[data-label="At the door"]')!.textContent).toBe('1,240');
       expect(drop.querySelector('.iv-bars i')!.getAttribute('title')).toBe('2026-09-29: 1,240');
+      const heat = [...drop.querySelectorAll('.iv-heat-c')].map((c) => c.getAttribute('title') ?? '');
+      expect(heat.filter((t) => t.endsWith(' — 1,240'))).toHaveLength(1);
+      expect(drop.textContent).toContain('1,000 lots, the latest sold');
     } finally {
       reads.detail = {};
       reads.record = {};
