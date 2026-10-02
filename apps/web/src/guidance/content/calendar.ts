@@ -28,13 +28,13 @@ export const calendarTour: TourDefinition = {
       element: '[aria-label="Search the entries in this period"]',
       title: 'Find an entry',
       description:
-        'Search everything booked in the period you are looking at.',
+        'Search the entries loaded for this period, by title, description or vendor. A period too full to load at once says so on the page.',
     },
     {
       element: '[data-tour="calendar-connect"]',
       title: 'See it on your own calendar',
       description:
-        'Get your own link, and the entries show up in the calendar app on your phone.',
+        'Get your own link, and the calendar app on your phone shows only the entries your role lets you see.',
     },
   ],
 }
