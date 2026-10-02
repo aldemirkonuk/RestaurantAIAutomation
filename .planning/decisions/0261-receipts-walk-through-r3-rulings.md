@@ -1,4 +1,4 @@
-# 0259 — Receipts: the walk-through rulings of 2026-10-01 (R3)
+# 0261 — Receipts: the walk-through rulings of 2026-10-01 (R3)
 
 - **Status:** Locked
 - **Date:** 2026-10-01
@@ -14,11 +14,11 @@ The founder walked `/receipts` (ReceiptsNext, flag `mudavym_design_receipts`, wi
 
 For each item: build it as sketched (Approve), leave the page as it is (Deny), or change the proposal (Rework or a fork). Those rejected, reworked or forked:
 
-1. **W2, the document drawn twice.** Keep both, the sheet on demand, or the sheet first with the card trimmed to its acts. The founder chose the sheet first. The read and edit copies of the lines remain (OD-TBD-R3-1).
+1. **W2, the document drawn twice.** Keep both, the sheet on demand, or the sheet first with the card trimmed to its acts. The founder chose the sheet first. The read and edit copies of the lines remain (OD-205).
 2. **W4, "Approve + show me".** Built. The "show me" half did not happen: the house that would show it was not in the Sim owner's switcher.
 3. **W5, the VAT tie-out.** Fix the rule, and decide what to do with the stored verdicts. The founder chose to fix the rule and leave the rows. Rejected: rewriting the stored verdicts.
 4. **W6-A, built before asking.** The founder asked for visual diffs and a real-life scenario instead of a ruling. It was re-asked as W7 under the new before/after rule, and approved with W7.
-5. **W14, the engine's 30 checks.** Record an open decision, show hand-picked reasons now, or leave it. The founder chose the open decision (OD-TBD-R3-3). Rejected: hand-picked reasons now.
+5. **W14, the engine's 30 checks.** Record an open decision, show hand-picked reasons now, or leave it. The founder chose the open decision (OD-207). Rejected: hand-picked reasons now.
 6. **W16, the wrong-year shelf link.** Unlink with "Not this one", or leave it. Left linked, as a live example.
 7. **W21, the swipe's motion.** A closing seal motion, then A (the seal lands) or B (the seal lands and the track gives), then a rework. The founder chose A plus a loading sign. Rejected: B.
 8. **W26 and W28.** Variant A was built and B drawn. The founder chose A both times.
@@ -173,23 +173,23 @@ Each is built later, on its own branch.
 
 ## Open
 
-Deferred forks, as §14 writes them. None is in `OPEN-DECISIONS.md` yet; this ADR does not file them.
+Deferred forks, as §14 writes them. Filed in `OPEN-DECISIONS.md` as one block, "Open — filed 2026-10-02 from fix/review-receipts".
 
-- **OD-TBD-R3-1** (W2): "Lines still appear twice (read vs edit)".
-- **OD-TBD-R3-2** (W4): "No route links a document to an order after intake (`link()` is called only from intake, `document-intake.service.ts:1369,2072`) while the card says "pair it"". W23 has since changed the card's sentence. (proposed) W42's "Ask a person" may answer part of this; the founder has not said so.
-- **OD-TBD-R3-3** (W14): "which engine checks a person sees, and in which words".
+- **OD-205** (W2): "Lines still appear twice (read vs edit)".
+- **OD-206** (W4): "No route links a document to an order after intake (`link()` is called only from intake, `document-intake.service.ts:1369,2072`) while the card says "pair it"" (`:1370,2073` at this branch's head). W23 has since changed the card's sentence. (proposed) W42's "Ask a person" may answer part of this; the founder has not said so.
+- **OD-207** (W14): "which engine checks a person sees, and in which words".
 
 ## Consequences
 
 - Easier: the list, the card and the sheet give one verdict for a document. A paper that read cleanly now reaches a person's swipe. The card reads as five named parts. The page fits a phone, and a keyboard reaches the swipe through a skip link and 15 Tabs.
 - Also on Documents & Reports and in print: the sheet's parts are shared, so W11, W15, W22, W26, W30–W33, W35, W36, W41 and W45c also change `/documents/:id`. W39's edge reaches its correction form. W45c's letterhead also prints. W35 changes the screen only: print keeps the table.
-- Given up: rewriting the stored verdicts (W5); unlinking the wrong-year item (W16); hand-picked engine reasons until OD-TBD-R3-3 is answered (W14); pictures inside an email's text (W43); the page's own dialog helper (W31).
+- Given up: rewriting the stored verdicts (W5); unlinking the wrong-year item (W16); hand-picked engine reasons until OD-207 is answered (W14); pictures inside an email's text (W43); the page's own dialog helper (W31).
 - Left open, recorded elsewhere:
-  - The three OD-TBD forks above.
+  - The three forks above, OD-205 to OD-207.
   - W42, W43 and W45, each on its own branch.
   - In `tech-debt.d/2026-10-02-fix-review-receipts.md`: W41's (a), (d), (e), (f); the order name read from `wineName` (W37); the stored verdicts left as they were (W5); the deposit counted twice and the 360 check it brings back on papers read before line kinds existed (W14); about twelve earlier test papers now under "Read cleanly" (W44); the sheet going pale under a stray "Dark" (P8).
   - The shared-queue rows above.
-- Revisit when: the founder answers an OD-TBD fork; a W42, W43 or W45 branch lands; or the `--line-control` token lands in the house colours.
+- Revisit when: the founder answers OD-205, OD-206 or OD-207; a W42, W43 or W45 branch lands; or the `--line-control` token lands in the house colours.
 
 ## Review trail
 
