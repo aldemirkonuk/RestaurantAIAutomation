@@ -168,6 +168,7 @@ spectrum, not a shape (see Consequences).
 | 2026-09-19 | founder | **Amended by 0176:** phone swipe as the intent gesture; tap-to-seal-sheet and the Phase 2 in-shade hold (ADR 0175). |
 | 2026-09-25 | Aldemir (founder, round 5, sketch 122 Q2) + lane W3-recs (Opus 5.5) | **Amended F10** — snooze, pin and "Mark as briefed" on a recommendation join the undo-after list ("Add all three (Recommended)"); a hand-off that only opens another page records nothing. Money, sends, ledger rows and a recommendation's order keep the seal before. |
 | 2026-10-02 | Claude (Opus 5.5; PR #566 gate round, audit at `dde13f0de`) | **F12 ruling 2 bracketed** for ADR 0253 rounds 5–6: a manager may authorize where an owner allowed it (ADR 0253's reading, unconfirmed). Not built. |
+| 2026-10-02 | Claude (Opus 5.5; PR #566 gate round 2, audit at `65ddb2cd2`) | **F12 ruling 2's bracket confirmed**: the founder confirmed ADR 0253's reading per action in its round 12, and the owner sets how much a manager may give. Not built. |
 
 ## Founder answers (2026-09-04)
 
@@ -365,6 +366,11 @@ with three amendments, verbatim where it matters:
    owner accpeted to give access for those actions"*. ADR 0253 reads this as: a manager may also
    authorize, where an owner allowed it. He has not confirmed that reading. How much is
    OD-209 (OPEN-DECISIONS.md:285). Not built.]**
+   **[Confirmed 2026-10-02 by ADR 0253 round 12: the founder confirmed that reading, per action.
+   He picked *"Yes, per action (Recommended)"*: "The owner allows each action separately, e.g.
+   'may give Place orders' yes, 'may give Send to vendor' no." How much a manager may give is
+   the owner's to set with the allowance, and it may be higher than the manager's own limit:
+   OD-209 (OPEN-DECISIONS.md:285), answered. Not built.]**
 3. *"check for any security changes"* — a security change is always told to every owner: a bank
    detail, an authority grant or revocation, a passcode reset, a limit change, a device added to
    the house. A producer, not a ceremony.
