@@ -15,10 +15,10 @@ is decided, marks research proposals he has not confirmed as **proposed**, and e
 answers still leave open.
 
 **Where the sources are.** ADRs 0252 and 0253 and OD-208 to OD-217 are on PR #566 (open), not on
-`main`; this sketch was checked against its head `65ddb2cd2`. Round 12 (2026-10-02, `AskUserQuestion`)
-is not in that head; it is being added to ADR 0253 on #566. Its picks, verbatim: *"Yes, per action
-(Recommended)"*, *"Owner sets the cap (Recommended)"* (OD-209), *"No amount of its own (Recommended)"*
-(OD-210 path B) and *"As F3 said (Recommended)"* (OD-217 path A).
+`main`; this sketch was checked against its head `21e87278a`, which records round 12 in ADR 0253
+("Answered 2026-10-02 (round 12)"). Round 12's picks, verbatim: *"Yes, per action (Recommended)"*,
+*"Owner sets the cap (Recommended)"* (OD-209), *"No amount of its own (Recommended)"* (OD-210 path B)
+and *"As F3 said (Recommended)"* (OD-217 path A). OD-208 and OD-211 to OD-216 stay open there.
 
 Open `index.html`. Each page is one self-contained file: inline CSS, Google Fonts only (Fraunces, DM
 Sans, JetBrains Mono, falling back to Georgia and system faces), no images, no scripts but the render
@@ -97,7 +97,7 @@ Each is also listed at the foot of its page.
 
 ## Research and checks
 
-No new research. The frames rest on ADR 0252 and ADR 0253 at PR #566's head `65ddb2cd2` (open), on
-round 12's answers (above), and on the jobs-and-labels research that ADR 0253 cites (outside the repo,
+No new research. The frames rest on ADR 0252 and ADR 0253 at PR #566's head `21e87278a` (open),
+round 12 included, and on the jobs-and-labels research that ADR 0253 cites (outside the repo,
 so not re-checkable from it). Render was proved by the page beacon in Safari on 2026-10-01 (no images
 on any page, so the beacon proves load only).
