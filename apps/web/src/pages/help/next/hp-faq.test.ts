@@ -63,6 +63,14 @@ describe('FAQ entries — re-checkable claims', () => {
       expect(TIP_TSX, `PageTipStrip.tsx draws "${label}"`).toContain(label);
     }
   });
+  it('says tips come back in the browser that turned them back on, not in every browser', () => {
+    // The gateway deep-merges the save, so another browser keeps a page's
+    // "Not now" snooze (tech-debt fragment 2026-10-02-feat-tips-margin-note-and-tour-card).
+    const a = findFaq('page-tours')!.answer;
+    expect(a).toMatch(/In this browser every page’s tip returns/);
+    expect(a).toMatch(/In another browser, a tip you put off with "Not now" can stay hidden for up to four hours/);
+    expect(a).not.toMatch(/: every page’s tip returns/);
+  });
 });
 
 describe('findFaq', () => {

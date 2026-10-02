@@ -79,10 +79,14 @@ export const FAQ_ENTRIES: readonly FaqEntry[] = [
     // calls GuidanceProvider's resetTips, which sets every page's tip back to
     // unseen. The legacy sidebar's "Learn & Help" (LearnPanel) is drawn only
     // when a browser override turns the house shell off, so it is not named.
+    // "In this browser": resetTips drops each page's snooze_until, but the
+    // gateway deep-merges the save, so the account keeps a "Not now" snooze
+    // and another browser that loads it hides that tip until the snooze runs
+    // out (OPEN in .planning/tech-debt.d/2026-10-02-feat-tips-margin-note-and-tour-card.md).
     slug: 'page-tours',
     question: 'Where are the page tours and the tips?',
     answer:
-      'Some pages open with a one-line tip at the top. Its "Show me" walks you through that page step by step, and is offered only when the page has steps to show. "Don\'t show tips again" turns every page’s tip off. To bring them back, use "Turn tips back on" under Ways back in, on this page: every page’s tip returns, including ones you closed, so you can take a tour again from its tip.',
+      'Some pages open with a one-line tip at the top. Its "Show me" walks you through that page step by step, and is offered only when the page has steps to show. "Don\'t show tips again" turns every page’s tip off. To bring them back, use "Turn tips back on" under Ways back in, on this page. In this browser every page’s tip returns, including ones you closed, so you can take a tour again from its tip. In another browser, a tip you put off with "Not now" can stay hidden for up to four hours.',
   },
   {
     // settings/next/st-format.ts SECTION_IDS/COLLAPSED_SECTIONS: `services`

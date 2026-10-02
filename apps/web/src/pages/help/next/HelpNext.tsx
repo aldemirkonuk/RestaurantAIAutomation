@@ -122,10 +122,26 @@ function Eyebrow({ children }: { children: React.ReactNode }) {
  * also has a "Reset page tips" button, but that sidebar is drawn only when a
  * browser override turns the house shell off (`useMudavymDesign('shell')`,
  * DashboardLayout.tsx). Outside the guidance provider this draws nothing.
+ *
+ * Until the account's copy of the tips setting answers, `guidance.state` is
+ * this browser's copy laid over an empty stand-in. It can say "on" to someone
+ * who turned tips off in another browser, and a click would save that
+ * stand-in, setup-nudge counts included, over the account's copy. So while
+ * `accountCopyPending` is true the card says only that it is checking: no
+ * on/off and no button.
  */
 function PageTipsSwitch() {
   const guidance = useGuidanceOptional();
   if (!guidance) return null;
+  if (guidance.accountCopyPending) {
+    return (
+      <div className="hp-card" data-testid="hp-page-tips" aria-busy="true">
+        <p role="status" style={{ fontFamily: SANS, fontSize: 13.5, color: 'var(--ink-4)', margin: 0 }}>
+          Checking your tip setting…
+        </p>
+      </div>
+    );
+  }
   const off = guidance.state.global.hide_all_tips;
   return (
     <div className="hp-card" data-testid="hp-page-tips">
@@ -135,7 +151,7 @@ function PageTipsSwitch() {
       <Prose muted>
         {off
           ? 'You turned them off. They stay off until you turn them back on here.'
-          : 'A short tip the first time you open a page. "Don\'t show tips again" on any tip turns them all off.'}
+          : 'A short tip on a page you haven\'t answered yet. "Don\'t show tips again" on any tip turns them all off.'}
       </Prose>
       <button
         type="button"
@@ -612,7 +628,7 @@ export default function HelpNext({ ground }: HelpNextProps) {
           <div className="hp-grid2">
             <a className="hp-card hp-ink hp-focus" style={{ textDecoration: 'none', display: 'block' }} href="/get-started?tab=use">
               <p style={{ fontFamily: SANS, fontSize: 13.5, fontWeight: 600, color: 'var(--ink-1)', margin: 0 }}>The app guide</p>
-              <Prose muted>The tours and the getting-started walkthrough, from the top.</Prose>
+              <Prose muted>The getting-started walkthrough, from the top.</Prose>
             </a>
             <a className="hp-card hp-ink hp-focus" style={{ textDecoration: 'none', display: 'block' }} href="/ask">
               <p style={{ fontFamily: SANS, fontSize: 13.5, fontWeight: 600, color: 'var(--ink-1)', margin: 0 }}>Ask</p>

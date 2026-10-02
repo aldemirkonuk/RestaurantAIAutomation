@@ -29,6 +29,13 @@ import { TIP_REGISTRY } from './tours/registry'
 
 interface GuidanceContextValue {
   state: GuidanceState
+  /**
+   * Signed in, and the account's copy of guidance has not answered yet, so
+   * `state` is this browser's copy over an empty stand-in. Anything that
+   * shows the tips setting or saves it waits while this is true: a save
+   * built from the stand-in would be written over the account's copy.
+   */
+  accountCopyPending: boolean
   tipVisibleFor: PageTourId | null
   isTourRunning: boolean
   startTour: (pageId: PageTourId) => void
@@ -470,6 +477,7 @@ export function GuidanceProvider({ children }: { children: ReactNode }) {
 
   const value: GuidanceContextValue = {
     state,
+    accountCopyPending,
     tipVisibleFor,
     isTourRunning: tourRunning,
     startTour,

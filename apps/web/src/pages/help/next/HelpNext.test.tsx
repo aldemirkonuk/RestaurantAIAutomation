@@ -8,17 +8,34 @@
  * directory tests the pure `hp-*.ts` modules it composes, so this file's
  * job is only the wiring: does the rail render, separately, always; does
  * "Write to support" open the panel instead of navigating.
+ *
+ * The "Page tips" switch is tested inside the real GuidanceProvider, with
+ * only the account's copy (`useUserPreferences`) and the signed-in person
+ * stood in, so the test sees what the provider itself says while that copy
+ * is still loading.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { Fetched } from './hp-readiness';
 import type { ServiceState } from './hp-service';
 
 vi.mock('./useHelpNextData', () => ({ useHelpNextData: vi.fn() }));
+const updatePreferences = vi.fn();
+// The account's copy of guidance: empty, and whether it has answered yet.
+let account = { preferences: {}, isPlaceholderData: false };
+vi.mock('../../../hooks/useUserPreferences', () => ({
+  useUserPreferences: () => ({ ...account, updatePreferences }),
+}));
+vi.mock('../../../stores', () => ({
+  useAuthStore: (sel: (s: { user: { userId: string } }) => unknown) => sel({ user: { userId: 'u-1' } }),
+}));
+vi.mock('driver.js', () => ({ driver: () => ({ drive: vi.fn(), destroy: vi.fn() }) }));
 import { useHelpNextData } from './useHelpNextData';
 import HelpNext from './HelpNext';
+import { GuidanceProvider } from '../../../guidance/GuidanceProvider';
 
 const NOW_ISO = '2026-09-19T12:00:00.000Z';
 const ok = <T,>(data: T): Fetched<T> => ({ status: 'ok', data });
@@ -155,5 +172,46 @@ describe('"Write to support" opens the centred panel — never a bare mailto nav
     fireEvent.click(screen.getAllByRole('button', { name: 'Write to support' })[0]);
     const dialog = screen.getByRole('dialog', { name: 'Write to support with these readings' });
     expect(dialog).toHaveTextContent('No support address was configured for this build.');
+  });
+});
+
+describe('"Page tips" waits for the account\'s copy of the setting', () => {
+  function renderWithGuidance() {
+    vi.mocked(useHelpNextData).mockReturnValue(clearData() as ReturnType<typeof useHelpNextData>);
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter initialEntries={['/help']}>
+          <GuidanceProvider>
+            <HelpNext />
+          </GuidanceProvider>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    return screen.getByTestId('hp-page-tips');
+  }
+  beforeEach(() => {
+    window.localStorage.clear();
+    window.sessionStorage.clear();
+    updatePreferences.mockReset();
+    account = { preferences: {}, isPlaceholderData: false };
+  });
+
+  it('while it loads, says it is checking, with no on/off and no button to press', () => {
+    account.isPlaceholderData = true;
+    const card = renderWithGuidance();
+    expect(card).toHaveTextContent('Checking your tip setting…');
+    expect(card).not.toHaveTextContent(/Page tips are (on|off)/);
+    expect(within(card).queryByRole('button')).toBeNull();
+    expect(updatePreferences).not.toHaveBeenCalled();
+  });
+
+  it('once it answers, shows the setting and a button that saves it', () => {
+    const card = renderWithGuidance();
+    expect(card).toHaveTextContent('Page tips are on');
+    expect(card).toHaveTextContent("A short tip on a page you haven't answered yet.");
+    fireEvent.click(within(card).getByRole('button', { name: 'Turn tips off' }));
+    expect(updatePreferences).toHaveBeenCalledWith({
+      guidance: expect.objectContaining({ global: expect.objectContaining({ hide_all_tips: true }) }),
+    });
   });
 });

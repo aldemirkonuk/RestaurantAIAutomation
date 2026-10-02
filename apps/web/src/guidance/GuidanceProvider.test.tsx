@@ -55,6 +55,7 @@ function TipsSwitch() {
         {g.state.global.hide_all_tips ? 'tips off' : 'tips on'}
       </button>
       <span data-testid="nudge-due">{String(g.isSetupNudgeDue)}</span>
+      <span data-testid="copy-pending">{String(g.accountCopyPending)}</span>
     </>
   );
 }
@@ -256,5 +257,15 @@ describe('before the account\'s copy answers', () => {
     mount('/calendar');
     expect(tip()).toBeTruthy();
     expect(screen.getByTestId('nudge-due')).toHaveTextContent('true');
+  });
+  it('tells the rest of the app the account copy is still pending, and when it has answered', () => {
+    // Help's "Page tips" switch reads this to hold its on/off and its button.
+    account.isPlaceholderData = true;
+    const first = mount('/help');
+    expect(screen.getByTestId('copy-pending')).toHaveTextContent('true');
+    first.unmount();
+    account.isPlaceholderData = false;
+    mount('/help');
+    expect(screen.getByTestId('copy-pending')).toHaveTextContent('false');
   });
 });
