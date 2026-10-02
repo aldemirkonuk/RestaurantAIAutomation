@@ -97,9 +97,9 @@ is chrome you look at, and the bar's job is to be looked *past*.
 
 | id | token | curve / ms | fires |
 |---|---|---|---|
-| `mdv-hdr-ink` | `ink` | `cubic-bezier(0.16, 1, 0.3, 1)`, 160ms | hover on the mark, the search trigger, any of the four right-hand controls — background and border only, no movement. |
+| `mdv-hdr-ink` | `ink` | `cubic-bezier(0.16, 1, 0.3, 1)`, 160ms | hover on the mark, the search trigger, any of the ~~four~~ three right-hand controls **[2026-10-01: the theme menu left the header — founder, page walk-through DASH-W23]** — background and border only, no movement. |
 | `mdv-hdr-hairline` | `ink` | `cubic-bezier(0.16, 1, 0.3, 1)`, 160ms | the bottom hairline appears once the page has scrolled more than 4px under it. It is a fact (there is something above), not a flourish, and it is the bar's only state. |
-| the four popovers | `ink` | (the primitive's) | the bell, the branch switcher, the theme menu and the account menu all open the house `Popover`, so they inherit `mdv-popover-ink` above rather than defining anything. |
+| the ~~four~~ three popovers | `ink` | (the primitive's) | the bell, the branch switcher~~, the theme menu~~ and the account menu all open the house `Popover`, so they inherit `mdv-popover-ink` above rather than defining anything. **[2026-10-01: the theme menu was deleted; the ground is chosen on `/profile` — founder, page walk-through DASH-W23.]** |
 
 Deliberate non-motions:
 

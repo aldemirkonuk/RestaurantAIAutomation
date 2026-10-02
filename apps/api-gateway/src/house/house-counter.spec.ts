@@ -122,7 +122,11 @@ function sources(over: Partial<Record<string, jest.Mock>> = {}) {
           {
             id: "c-1",
             providers: { name: "Revel Wine" },
-            procurement_orders: { order_number: "ORD-3", negotiated_price: 41 },
+            procurement_orders: {
+              id: "o-3",
+              order_number: "ORD-3",
+              negotiated_price: 41,
+            },
             message_text: "We can do $41.00 a bottle",
             channel: "email",
             detected_intent: "price_offer",
@@ -542,5 +546,11 @@ describe("the controller takes the house and the role from the token only", () =
     const ctl = new HouseCounterController({ read } as any);
     await ctl.read({ userId: USER, restaurantId: HOUSE, role: "staff" });
     expect(read).toHaveBeenCalledWith(HOUSE, USER, "staff");
+  });
+
+  it("names the order a waiting reply is about, so the counter can open it (DASH-W16e)", async () => {
+    const { svc } = build();
+    const threads = reg(await svc.read(HOUSE, USER, "owner"), "threads") as any;
+    expect(threads.rows[0]).toMatchObject({ id: "c-1", orderId: "o-3" });
   });
 });
