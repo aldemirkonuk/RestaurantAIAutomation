@@ -40,6 +40,12 @@ Items that were rejected, reworked or decided as a fork:
 11. **G5, a role the page has not read.** When both the role read and the stats read fail, the page treated the person as one who sees money. The options were hide money while the role is unknown, in this PR, or record it as debt. The founder chose to hide it in this PR.
 12. **G6, free text and staff.** An event's description is free text and reaches staff on the calendar and in Lately; it can hold a figure. The options were narrow the claim and record debt, withhold descriptions for staff (sketch first), or leave it and fix only the sentence. The founder chose to narrow the claim, and added a direction for later (below).
 13. **G7, the gateway's alert text.** An alert said "A wine with no name". The options were change it to "An item with no name" in this PR, or queue it with the other pages' "items" pass. The founder chose this PR.
+14. **G8, the third audit's fix round.** The third audit (on c7b6909) returned BLOCK. The W37 claim row said its check caught the wine-only phrases "quoted or as bare JSX text", but only "Unnamed wine" was matched bare. The W22 row named `calendarForRole`'s branch, which its check did not test. The page itself was right. The options were tighten the checks to match the words, or narrow the words to match the checks. The founder chose to tighten the checks.
+15. **G9, two role gaps in the shared auth context.** Found by the third audit, in `contexts/AuthContext.tsx`, a shared part:
+    - after a house switch, the old role is kept until the new one is read;
+    - a role spelled "Owner" or `admin` reads as no role on the page, while the gateway's `policyFor` shows it money. This fails closed.
+    The options were queue both for the shared batch, queue only the house-switch reset, or leave them in the audit report. The founder chose to queue both.
+16. **G10, the local audit reports.** The gate writes an untracked local copy of each report, and posts the full text as a PR comment. The options were drop the local copies and cite the comment, or commit them in a docs PR. The founder chose to drop them.
 
 ## Decision
 
@@ -72,6 +78,9 @@ The founder's words, verbatim, per item:
 | DASH-G5 | "Hide money, this PR (Recommended)" |
 | DASH-G6 | "narrow claim,. + but keep in my mind when we integrate the POS and when system start to work we're going to using floor coverage software we're going save the stats of each waiter, and they'll be able to see table invoices." |
 | DASH-G7 | "Yes, this PR (Recommended)" |
+| DASH-G8 | "Tighten checks (Recommended)" |
+| DASH-G9 | "Queue both (Recommended)" |
+| DASH-G10 | "Drop them (Recommended)" |
 
 These were built as approved. *What follows is my synthesis, proposed. It is not the founder's words.*
 
@@ -111,6 +120,7 @@ These were built as approved. *What follows is my synthesis, proposed. It is not
   - `/auth/me` read twice a load against a 10-a-minute auth bucket;
   - TenantGuard log noise and the socket greeting's old brand;
   - no CORS `maxAge`;
+  - the role kept across a house switch, and "Owner" or `admin` read as no role (`AuthContext.tsx`, G9);
   - "items" on every other page.
 - **Overlaps.** PR #565 rebases on this branch. The oldest-first, flagged *Waiting on you* work (`fix/waiting-on-you-oldest-first-flagged`) overlaps `WaitingOnYou.tsx`; it landed first as PR #581 (ADR 0256) and is merged into this branch with main, without conflict.
 - **"Bottles" and "In the cellar" stay** until food lands; the founder is to be asked again then (W37).
@@ -123,9 +133,16 @@ These were built as approved. *What follows is my synthesis, proposed. It is not
   - `seesHouseAmounts` now reads the /ask table through `policyFor`, as /ask does: it ignores case, and `admin` reads the owner row.
   - An add with no count reads "added", not "added, ".
 - **Fixed in the second audit's round (G4, G5, G7).**
-  - Running low and the gateway's alert say "Unnamed item" and "An item with no name" (W37, G7), and the W37 claim now sees bare text.
+  - Running low and the gateway's alert say "Unnamed item" and "An item with no name" (W37, G7), and the W37 claim now sees bare text. [2026-10-02: it saw only a bare "Unnamed wine"; the other phrases still needed quotes. The third audit found this, and G8 widened the check.]
   - The page shows no amounts while the role is unknown (G5).
   - Three claims were tightened so that a comment, a one-route fix or `return true` no longer satisfies them.
+- **Fixed in the third audit's round (G8).** No page or gateway code changed; three checks now test what their rows say. On scratch copies, 31 cases (28 mutations and 3 unmutated controls) all land as expected.
+  - W37: every phrase is caught bare and in any letter case, the plural in any quote style, "A wine with no name" in the web files too, and `.ts` files are read.
+  - W22: each money-bearing handler must pass `user?.role` from `@CurrentUser`. The guarded routes must call the guard as their first statement. `statsForRole` and `calendarForRole` are pinned whole.
+  - The order-routes check (open) strips trailing comments and needs a call, not a bare word.
+  - Not changed: the open zone check can still be closed by moving the `"UTC"` literal out of `houseZone`. Closing it needs a person to flip its status.
+- **Queued for the shared batch (G9).** Clear the role on a house switch, and read roles as the gateway does (any case, `admin` as owner).
+- **Audit reports (G10).** The local copies are dropped. The record cites the PR comments: round 2 https://github.com/aldemirkonuk/RestaurantAIAutomation/pull/579#issuecomment-5945095412, round 3 https://github.com/aldemirkonuk/RestaurantAIAutomation/pull/579#issuecomment-5962344610.
 - **Free text and staff (G6).** The claim is narrowed to the amount fields; descriptions still reach staff, as before this PR. This is recorded here, not as a debt entry, because the founder named only the claim and gave a direction that redraws the line: once the POS is integrated and floor-coverage software runs, each waiter's stats are saved and waiters will be able to see table invoices. The staff-and-money line (W22) is to be redrawn then, not hardened now.
 - **A house with no time zone (G2)** still reads as UTC on this branch. The fix, "—" and a line saying the zone is not set, is a follow-up PR, sketched first. It is tracked as an open claim and debt entry.
 - **Not verified:**
