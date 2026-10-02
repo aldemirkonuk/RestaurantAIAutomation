@@ -119,7 +119,8 @@ export function useReportExports({ queryRoot }: { queryRoot: string }): ExportDe
   const readOnlyReason = canExport
     ? null
     : activeRole == null
-      ? 'Your role at this restaurant is not known yet, so exports are not offered until it is.'
+      ? 'Your role at this restaurant is not confirmed here, so exports are not offered. ' +
+        'Ask a manager or an owner to write one up.'
       : 'Exports are written for owners and managers. Every figure is still on the sheet above.';
 
   const key = [queryRoot, 'exports', activeRestaurantId, page];
