@@ -22,6 +22,10 @@ import { receivingPriceNeedsACurrency } from "../price-currency";
 import { Type } from "class-transformer";
 import { ORDER_UNIT_TYPES } from "../order-units";
 import { PRICE_UOM_TYPES } from "../agreed-price";
+import {
+  PENDING_FLAG_REASONS,
+  type PendingFlagReason,
+} from "../pending-order-priority";
 
 /**
  * A UNIT PRICE ON A RECEIPT STATES ITS CURRENCY, ON THE WIRE.
@@ -947,6 +951,35 @@ export class ShelfReceivedDto {
   backorderBottles!: number | null;
 }
 
+/**
+ * Why an order in "Waiting on you" is flagged — ADR 0256. Words only: no
+ * amount, percent or count travels with a reason, so the flag holds for a
+ * viewer who is not shown money. See `pending-order-priority.ts`.
+ */
+export class PendingOrderPriorityDto {
+  @ApiProperty({
+    description:
+      "true when at least one reason was found. Never true on an unknown alone.",
+  })
+  flagged!: boolean;
+
+  @ApiProperty({
+    enum: PENDING_FLAG_REASONS,
+    isArray: true,
+    description:
+      "price_jump = the house's price_jump rule fired; needs_signature = parked APPROVAL_NEEDED or any house rule fired; manager_ceiling = the house's manager_ceiling rule fired; running_out = out of stock or below its minimum.",
+  })
+  reasons!: PendingFlagReason[];
+
+  @ApiProperty({
+    enum: PENDING_FLAG_REASONS,
+    isArray: true,
+    description:
+      "Checks that could not be made (a rule, price or stock read failed, or the order has no total or no item). Never folded into 'not flagged'.",
+  })
+  unknown!: PendingFlagReason[];
+}
+
 export class OrderResponseDto {
   @ApiProperty()
   id: string;
@@ -1055,6 +1088,19 @@ export class OrderResponseDto {
       "What this order received, from the stock ledger (ADR 0192). Key ABSENT = this route did not read the ledger; readable:false = a read failed and why says which.",
   })
   received?: ShelfReceivedDto;
+
+  /**
+   * "Waiting on you"'s flag (ADR 0256). Sent by `GET /procurement/orders/pending`
+   * only, which also returns the queue flagged first, then oldest. The key
+   * ABSENT means this route does not compute it — not "not flagged". Unrelated
+   * to `priorityLevel` (a stored column) and `isEmergency`.
+   */
+  @ApiPropertyOptional({
+    type: () => PendingOrderPriorityDto,
+    description:
+      "Why this waiting order is flagged, in words (ADR 0256). Key ABSENT = this route does not compute it.",
+  })
+  priority?: PendingOrderPriorityDto;
 
   /**
    * The unit the agreed price is stated in — ADR 0119, read from the LINE.
