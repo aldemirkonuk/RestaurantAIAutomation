@@ -14,9 +14,10 @@ const updatePreferences = vi.fn();
 // What the account's copy says, and whether it has answered yet. By default it
 // is empty and has answered, so anything that leaves the screen does so on
 // the provider's own local read.
-let account: { preferences: Record<string, unknown>; isPlaceholderData: boolean } = {
+let account: { preferences: Record<string, unknown>; isPlaceholderData: boolean; error: Error | null } = {
   preferences: {},
   isPlaceholderData: false,
+  error: null,
 };
 vi.mock('../hooks/useUserPreferences', () => ({
   useUserPreferences: () => ({ ...account, updatePreferences }),
@@ -55,7 +56,13 @@ function TipsSwitch() {
         {g.state.global.hide_all_tips ? 'tips off' : 'tips on'}
       </button>
       <span data-testid="nudge-due">{String(g.isSetupNudgeDue)}</span>
-      <span data-testid="copy-pending">{String(g.accountCopyPending)}</span>
+      <span data-testid="account-copy">{g.accountCopy}</span>
+      <button type="button" onClick={() => g.markSetupNudgeShown()}>
+        nudge shown
+      </button>
+      <button type="button" onClick={() => g.hideAllTips()}>
+        hide all
+      </button>
     </>
   );
 }
@@ -91,7 +98,7 @@ beforeEach(() => {
   window.localStorage.clear();
   window.sessionStorage.clear();
   updatePreferences.mockReset();
-  account = { preferences: {}, isPlaceholderData: false };
+  account = { preferences: {}, isPlaceholderData: false, error: null };
 });
 afterEach(() => vi.restoreAllMocks());
 
@@ -258,14 +265,50 @@ describe('before the account\'s copy answers', () => {
     expect(tip()).toBeTruthy();
     expect(screen.getByTestId('nudge-due')).toHaveTextContent('true');
   });
-  it('tells the rest of the app the account copy is still pending, and when it has answered', () => {
+  it('tells the rest of the app whether the account copy is loading, failed or read', () => {
     // Help's "Page tips" switch reads this to hold its on/off and its button.
     account.isPlaceholderData = true;
     const first = mount('/help');
-    expect(screen.getByTestId('copy-pending')).toHaveTextContent('true');
+    expect(screen.getByTestId('account-copy')).toHaveTextContent('loading');
     first.unmount();
-    account.isPlaceholderData = false;
+    account = { preferences: {}, isPlaceholderData: false, error: new Error('read failed') };
+    const second = mount('/help');
+    expect(screen.getByTestId('account-copy')).toHaveTextContent('failed');
+    second.unmount();
+    account = { preferences: {}, isPlaceholderData: false, error: null };
     mount('/help');
-    expect(screen.getByTestId('copy-pending')).toHaveTextContent('false');
+    expect(screen.getByTestId('account-copy')).toHaveTextContent('read');
+  });
+});
+
+describe('when the account\'s copy could not be read', () => {
+  // What TanStack hands back after the read and its one retry fail: no
+  // placeholder any more, `preferences` falls back to {}, and an error.
+  beforeEach(() => {
+    account = { preferences: {}, isPlaceholderData: false, error: new Error('read failed') };
+  });
+
+  it('shows no tip and holds the setup nudge', () => {
+    mount('/calendar');
+    expect(tip()).toBeNull();
+    expect(screen.getByTestId('nudge-due')).toHaveTextContent('false');
+  });
+
+  it('saves nothing, here or to the account, from the stand-in', () => {
+    mount('/calendar');
+    fireEvent.click(screen.getByRole('button', { name: 'nudge shown' }));
+    fireEvent.click(screen.getByRole('button', { name: 'hide all' }));
+    fireEvent.click(screen.getByRole('button', { name: /^tips (on|off)$/ }));
+    expect(updatePreferences).not.toHaveBeenCalled();
+    expect(window.localStorage.getItem(LOCAL_KEY)).toBeNull();
+  });
+
+  it('saves again once a read succeeds', () => {
+    const first = mount('/calendar');
+    first.unmount();
+    account = { preferences: {}, isPlaceholderData: false, error: null };
+    mount('/calendar');
+    fireEvent.click(screen.getByRole('button', { name: 'nudge shown' }));
+    expect(updatePreferences).toHaveBeenCalledTimes(1);
   });
 });

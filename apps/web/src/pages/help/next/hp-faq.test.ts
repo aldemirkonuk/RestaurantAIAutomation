@@ -6,6 +6,7 @@ import { FAQ_ENTRIES, findFaq } from './hp-faq';
 const APP_TSX = readFileSync(resolve(__dirname, '../../../App.tsx'), 'utf8');
 const HELP_TSX = readFileSync(resolve(__dirname, 'HelpNext.tsx'), 'utf8');
 const TIP_TSX = readFileSync(resolve(__dirname, '../../../guidance/components/PageTipStrip.tsx'), 'utf8');
+const PROVIDER_TSX = readFileSync(resolve(__dirname, '../../../guidance/GuidanceProvider.tsx'), 'utf8');
 
 describe('FAQ entries — re-checkable claims', () => {
   it('every slug is unique and URL-safe', () => {
@@ -63,13 +64,21 @@ describe('FAQ entries — re-checkable claims', () => {
       expect(TIP_TSX, `PageTipStrip.tsx draws "${label}"`).toContain(label);
     }
   });
-  it('says tips come back in the browser that turned them back on, not in every browser', () => {
+  it('says tips come back in the tab that turned them back on, not in every browser or tab', () => {
     // The gateway deep-merges the save, so another browser keeps a page's
-    // "Not now" snooze (tech-debt fragment 2026-10-02-feat-tips-margin-note-and-tour-card).
+    // "Not now" snooze (tech-debt fragment 2026-10-02-feat-tips-margin-note-and-tour-card),
+    // and the two-turned-away limit is counted per tab, in sessionStorage.
     const a = findFaq('page-tours')!.answer;
-    expect(a).toMatch(/In this browser every page’s tip returns/);
+    expect(a).toMatch(/Every page’s tip then comes back in this tab/);
     expect(a).toMatch(/In another browser, a tip you put off with "Not now" can stay hidden for up to four hours/);
-    expect(a).not.toMatch(/: every page’s tip returns/);
+    expect(a).toMatch(/two tips or tours in one tab, that tab shows no more tips until it is closed/);
+    expect(a).not.toMatch(/: every page’s tip returns|In this browser every page’s tip returns/);
+  });
+  it('states the numbers the provider uses: four hours for "Not now", two turned away per tab', () => {
+    const a = findFaq('page-tours')!.answer;
+    expect(a).toContain('"Not now" puts that tip off for four hours');
+    expect(PROVIDER_TSX).toContain('const until = new Date(Date.now() + 4 * 60 * 60 * 1000)');
+    expect(PROVIDER_TSX).toContain('if (sessionRef.current.skips >= 2) return null');
   });
 });
 

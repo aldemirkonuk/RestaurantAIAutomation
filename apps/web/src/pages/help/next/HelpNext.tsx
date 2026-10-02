@@ -123,21 +123,23 @@ function Eyebrow({ children }: { children: React.ReactNode }) {
  * browser override turns the house shell off (`useMudavymDesign('shell')`,
  * DashboardLayout.tsx). Outside the guidance provider this draws nothing.
  *
- * Until the account's copy of the tips setting answers, `guidance.state` is
- * this browser's copy laid over an empty stand-in. It can say "on" to someone
- * who turned tips off in another browser, and a click would save that
- * stand-in, setup-nudge counts included, over the account's copy. So while
- * `accountCopyPending` is true the card says only that it is checking: no
- * on/off and no button.
+ * Until the account's copy of the tips setting has been read, `guidance.state`
+ * is this browser's copy laid over an empty stand-in. It can say "on" to
+ * someone who turned tips off in another browser. So while
+ * `guidance.accountCopy` is not `'read'` the card shows one line, checking or
+ * not loaded, and no on/off and no button. (The provider also drops any save
+ * made then.) Offline, the read waits rather than fails, so the card says it
+ * is checking until the connection comes back.
  */
 function PageTipsSwitch() {
   const guidance = useGuidanceOptional();
   if (!guidance) return null;
-  if (guidance.accountCopyPending) {
+  if (guidance.accountCopy !== 'read') {
+    const loading = guidance.accountCopy === 'loading';
     return (
-      <div className="hp-card" data-testid="hp-page-tips" aria-busy="true">
+      <div className="hp-card" data-testid="hp-page-tips" aria-busy={loading}>
         <p role="status" style={{ fontFamily: SANS, fontSize: 13.5, color: 'var(--ink-4)', margin: 0 }}>
-          Checking your tip setting…
+          {loading ? 'Checking your tip setting…' : "Couldn't load your tip setting."}
         </p>
       </div>
     );
@@ -151,7 +153,7 @@ function PageTipsSwitch() {
       <Prose muted>
         {off
           ? 'You turned them off. They stay off until you turn them back on here.'
-          : 'A short tip on a page you haven\'t answered yet. "Don\'t show tips again" on any tip turns them all off.'}
+          : 'Some pages open with a short tip. "Not now" puts it off for four hours; "Don\'t show tips again" turns them all off.'}
       </Prose>
       <button
         type="button"

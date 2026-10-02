@@ -9,33 +9,37 @@
  * job is only the wiring: does the rail render, separately, always; does
  * "Write to support" open the panel instead of navigating.
  *
- * The "Page tips" switch is tested inside the real GuidanceProvider, with
- * only the account's copy (`useUserPreferences`) and the signed-in person
- * stood in, so the test sees what the provider itself says while that copy
- * is still loading.
+ * The "Page tips" switch is tested inside the real GuidanceProvider and the
+ * real `useUserPreferences` query, with the preferences request itself
+ * (`apiClient.get` / `.patch`) and the signed-in person stood in. So the test
+ * sees what TanStack really hands the provider while the read is loading,
+ * after it fails (the read and its one retry), and once it answers. The
+ * real setup-nudge banner is drawn beside the page, as the house shell
+ * draws it, because showing it saves.
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { Fetched } from './hp-readiness';
 import type { ServiceState } from './hp-service';
 
 vi.mock('./useHelpNextData', () => ({ useHelpNextData: vi.fn() }));
-const updatePreferences = vi.fn();
-// The account's copy of guidance: empty, and whether it has answered yet.
-let account = { preferences: {}, isPlaceholderData: false };
-vi.mock('../../../hooks/useUserPreferences', () => ({
-  useUserPreferences: () => ({ ...account, updatePreferences }),
-}));
 vi.mock('../../../stores', () => ({
   useAuthStore: (sel: (s: { user: { userId: string } }) => unknown) => sel({ user: { userId: 'u-1' } }),
 }));
 vi.mock('driver.js', () => ({ driver: () => ({ drive: vi.fn(), destroy: vi.fn() }) }));
+// What the setup-nudge banner asks before it shows: an owner, not yet set up.
+vi.mock('../../../hooks/queries/useOnboardingProgress', () => ({
+  useOnboardingProgress: () => ({ progress: { activated: false } }),
+}));
+vi.mock('../../../contexts/AuthContext', () => ({ useAuth: () => ({ user: { role: 'owner' } }) }));
 import { useHelpNextData } from './useHelpNextData';
 import HelpNext from './HelpNext';
 import { GuidanceProvider } from '../../../guidance/GuidanceProvider';
+import { SetupNudgeBanner } from '../../../guidance/components/SetupNudgeBanner';
+import { apiClient } from '../../../services/api/client';
 
 const NOW_ISO = '2026-09-19T12:00:00.000Z';
 const ok = <T,>(data: T): Fetched<T> => ({ status: 'ok', data });
@@ -176,12 +180,19 @@ describe('"Write to support" opens the centred panel — never a bare mailto nav
 });
 
 describe('"Page tips" waits for the account\'s copy of the setting', () => {
+  const PREFS_URL = '/users/u-1/preferences';
+  let get: MockInstance<typeof apiClient.get>;
+  let patch: MockInstance<typeof apiClient.patch>;
+
   function renderWithGuidance() {
     vi.mocked(useHelpNextData).mockReturnValue(clearData() as ReturnType<typeof useHelpNextData>);
+    // No wait before the hook's one retry, so a failed read settles at once.
+    const client = new QueryClient({ defaultOptions: { queries: { retryDelay: 0 } } });
     render(
-      <QueryClientProvider client={new QueryClient()}>
+      <QueryClientProvider client={client}>
         <MemoryRouter initialEntries={['/help']}>
           <GuidanceProvider>
+            <SetupNudgeBanner />
             <HelpNext />
           </GuidanceProvider>
         </MemoryRouter>
@@ -189,29 +200,65 @@ describe('"Page tips" waits for the account\'s copy of the setting', () => {
     );
     return screen.getByTestId('hp-page-tips');
   }
+  const nudge = () => screen.queryByText('Finish setting up Mudavym.');
+
   beforeEach(() => {
     window.localStorage.clear();
     window.sessionStorage.clear();
-    updatePreferences.mockReset();
-    account = { preferences: {}, isPlaceholderData: false };
+    get = vi.spyOn(apiClient, 'get');
+    patch = vi.spyOn(apiClient, 'patch').mockResolvedValue({ data: { preferences: {} } });
+  });
+  afterEach(() => {
+    get.mockRestore();
+    patch.mockRestore();
   });
 
-  it('while it loads, says it is checking, with no on/off and no button to press', () => {
-    account.isPlaceholderData = true;
+  it('while it loads, says it is checking, with no on/off, no button, and no nudge', () => {
+    get.mockReturnValue(new Promise(() => {}));
     const card = renderWithGuidance();
     expect(card).toHaveTextContent('Checking your tip setting…');
     expect(card).not.toHaveTextContent(/Page tips are (on|off)/);
     expect(within(card).queryByRole('button')).toBeNull();
-    expect(updatePreferences).not.toHaveBeenCalled();
+    expect(nudge()).toBeNull();
+    expect(patch).not.toHaveBeenCalled();
   });
 
-  it('once it answers, shows the setting and a button that saves it', () => {
-    const card = renderWithGuidance();
-    expect(card).toHaveTextContent('Page tips are on');
-    expect(card).toHaveTextContent("A short tip on a page you haven't answered yet.");
+  it('when the read and its retry both fail, says so, and nothing is shown or saved from the stand-in', async () => {
+    get.mockRejectedValue(new Error('read failed'));
+    renderWithGuidance();
+    const card = await screen.findByText("Couldn't load your tip setting.");
+    expect(get).toHaveBeenCalledTimes(2);
+    expect(get).toHaveBeenNthCalledWith(2, PREFS_URL);
+    const tips = screen.getByTestId('hp-page-tips');
+    expect(tips).toContainElement(card);
+    expect(tips).not.toHaveTextContent(/Page tips are (on|off)|Checking/);
+    expect(within(tips).queryByRole('button')).toBeNull();
+    // The setup nudge would save the whole stand-in copy just by showing.
+    expect(nudge()).toBeNull();
+    expect(patch).not.toHaveBeenCalled();
+    expect(window.localStorage.getItem('wineops_guidance_v1')).toBeNull();
+  });
+
+  it('once it answers, shows the setting and a button that saves it, and the nudge may show', async () => {
+    get.mockResolvedValue({ data: { preferences: {} } });
+    renderWithGuidance();
+    await screen.findByText('Page tips are on');
+    const card = screen.getByTestId('hp-page-tips');
+    expect(card).toHaveTextContent(
+      'Some pages open with a short tip. "Not now" puts it off for four hours; "Don\'t show tips again" turns them all off.',
+    );
+    // Showing the nudge saves (`markSetupNudgeShown`): the gate is open.
+    expect(nudge()).toBeTruthy();
+    await waitFor(() =>
+      expect(patch).toHaveBeenCalledWith(PREFS_URL, {
+        preferences: { guidance: expect.objectContaining({ setup_nudge: expect.objectContaining({ session_count: 1 }) }) },
+      }),
+    );
     fireEvent.click(within(card).getByRole('button', { name: 'Turn tips off' }));
-    expect(updatePreferences).toHaveBeenCalledWith({
-      guidance: expect.objectContaining({ global: expect.objectContaining({ hide_all_tips: true }) }),
-    });
+    await waitFor(() =>
+      expect(patch).toHaveBeenCalledWith(PREFS_URL, {
+        preferences: { guidance: expect.objectContaining({ global: expect.objectContaining({ hide_all_tips: true }) }) },
+      }),
+    );
   });
 });

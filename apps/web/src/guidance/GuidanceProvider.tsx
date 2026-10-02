@@ -27,15 +27,23 @@ import { trackGuidance } from './analytics'
 import { announceGuidance, focusTourHelpButton } from './announce'
 import { TIP_REGISTRY } from './tours/registry'
 
+/**
+ * Where the signed-in person's account copy of guidance stands, read from the
+ * preferences query: `'failed'` when it holds an error, `'loading'` while it
+ * still shows the empty placeholder, `'read'` otherwise. Signed out, it is
+ * `'read'`: there is no account copy to wait for.
+ */
+export type AccountCopy = 'loading' | 'failed' | 'read'
+
 interface GuidanceContextValue {
   state: GuidanceState
   /**
-   * Signed in, and the account's copy of guidance has not answered yet, so
-   * `state` is this browser's copy over an empty stand-in. Anything that
-   * shows the tips setting or saves it waits while this is true: a save
-   * built from the stand-in would be written over the account's copy.
+   * Until this is `'read'`, `state` is this browser's copy over an empty
+   * stand-in. While it is not, no tip shows, the setup nudge is not due, and
+   * every guidance save is dropped (`persistGuidance`), here and to the
+   * account. Help's "Page tips" card reads it to hold its on/off and button.
    */
-  accountCopyPending: boolean
+  accountCopy: AccountCopy
   tipVisibleFor: PageTourId | null
   isTourRunning: boolean
   startTour: (pageId: PageTourId) => void
@@ -190,14 +198,24 @@ export function GuidanceProvider({ children }: { children: ReactNode }) {
   const location = useLocation()
   const queryClient = useQueryClient()
   const userId = useAuthStore((s) => s.user?.userId) ?? null
-  const { preferences, isPlaceholderData, updatePreferences } = useUserPreferences()
-  // Signed in, but the account's copy has not answered yet. Until it does,
-  // `preferences` is an empty stand-in, so this browser would decide from its
-  // own copy alone (or from nothing) and could flash a tip the person turned
-  // off in another browser. Tips wait for the answer, and so does the setup
-  // nudge: showing it saves the whole guidance copy (`markSetupNudgeShown`),
-  // which would write that stand-in over the account's copy.
-  const accountCopyPending = !!userId && !!isPlaceholderData
+  const { preferences, isPlaceholderData, error, updatePreferences } = useUserPreferences()
+  // Signed in, and the account's copy has not been read: still loading, or
+  // the read failed. Either way `preferences` is an empty stand-in (TanStack
+  // shows the placeholder only while the query is pending; after a failed
+  // read `preferences` falls back to `{}`), so this browser would decide from
+  // its own copy alone and could flash a tip the person turned off in another
+  // browser. Tips wait, the setup nudge waits (showing it saves), and no save
+  // is made: one built from the stand-in, setup-nudge counts included, would
+  // be deep-merged over the account's copy. `error` is checked first, as
+  // GroundChoiceSync does.
+  const accountCopy: AccountCopy = !userId
+    ? 'read'
+    : error
+      ? 'failed'
+      : isPlaceholderData
+        ? 'loading'
+        : 'read'
+  const accountCopyRead = accountCopy === 'read'
   // `localTick` re-reads the local mirror after every write, so a tip the
   // person dismissed leaves at once even when the server copy has not come
   // back (or there is no person id to cache it under) — "make sure they
@@ -236,13 +254,16 @@ export function GuidanceProvider({ children }: { children: ReactNode }) {
   /** Read the latest guidance from cache + local overlay — avoids stale closure overwrites. */
   const persistGuidance = useCallback(
     (updater: (prev: GuidanceState) => GuidanceState) => {
+      // Nothing is saved, in this browser or to the account, until the
+      // account's copy has been read (see `accountCopy`).
+      if (!accountCopyRead) return
       const cached = userId
         ? queryClient.getQueryData<UserPreferences>(queryKeys.user.preferences(userId))
         : undefined
       const prev = mergeGuidance(cached?.guidance ?? preferences.guidance)
       persist(updater(prev))
     },
-    [persist, preferences.guidance, queryClient, userId],
+    [accountCopyRead, persist, preferences.guidance, queryClient, userId],
   )
 
   const patchPage = useCallback(
@@ -297,7 +318,7 @@ export function GuidanceProvider({ children }: { children: ReactNode }) {
   )
 
   const tipVisibleFor = useMemo((): PageTourId | null => {
-    if (accountCopyPending) return null
+    if (!accountCopyRead) return null
     if (state.global.hide_all_tips) return null
     if (tourRunning) return null
 
@@ -324,7 +345,7 @@ export function GuidanceProvider({ children }: { children: ReactNode }) {
     return pageId
     // sessionTick forces recompute after skip/offer mutations
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accountCopyPending, state, tourRunning, location.pathname, location.search, sessionTick])
+  }, [accountCopyRead, state, tourRunning, location.pathname, location.search, sessionTick])
 
   useEffect(() => {
     if (!tipVisibleFor) return
@@ -477,7 +498,7 @@ export function GuidanceProvider({ children }: { children: ReactNode }) {
 
   const value: GuidanceContextValue = {
     state,
-    accountCopyPending,
+    accountCopy,
     tipVisibleFor,
     isTourRunning: tourRunning,
     startTour,
@@ -488,7 +509,7 @@ export function GuidanceProvider({ children }: { children: ReactNode }) {
     resetTips,
     markUseCardSeen,
     resolvePageId,
-    isSetupNudgeDue: !accountCopyPending && isSetupNudgeDue(state.setup_nudge),
+    isSetupNudgeDue: accountCopyRead && isSetupNudgeDue(state.setup_nudge),
     setupNudgeDismissedThisSession: nudgeDismissedThisSession,
     markSetupNudgeShown,
     snoozeSetupNudge,
