@@ -20,9 +20,11 @@
  * offers "Check again" (the same-id retry) with the request it re-sends; and
  * the proposer's refusal of a drafted action, with the words it declined. A
  * failure with nothing to retry ("10 a minute", "not open yet", or a folio
- * re-read that timed out, which has no request behind it and whose folio
- * keeps its own "Check again") and the proposer's transport error are
- * dropped at the close. One that lands while
+ * re-read that timed out while no earlier question's request is held; its
+ * folio keeps its own "Check again") and the proposer's transport error are
+ * dropped at the close. A re-read that timed out while an earlier failed
+ * question's request is still held offers "Check again" for that question,
+ * so it is kept like any other retryable failure. One that lands while
  * the panel is closed is the in-flight question's outcome, so it is shown on
  * the next open and dropped at that close. A proposal that was applied,
  * discarded, already handled or failed leaves the list at the close (at once,
@@ -139,7 +141,8 @@ export function useAskSession(scope: string | null, open: boolean): AskSession {
   // The close: drop what the ruling does not keep (see WHAT A CLOSE KEEPS).
   // A failure stays only when its alert offers "Check again", the panel's own
   // test: `checkAgain` alone is not enough, since a folio re-read that timed
-  // out says it and has no request to re-send.
+  // out says it, and has a request to re-send only when an earlier failed
+  // question's request is still held.
   useEffect(() => {
     isOpen.current = open
     if (open) return
