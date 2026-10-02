@@ -311,3 +311,10 @@ describe('the arithmetic', () => {
     );
   });
 });
+
+describe('words that hold for any item, not only wine (ORD-W20)', () => {
+  it('the unread-fees sentence names the item, not wine', () => {
+    expect(ROW_FEES_NOT_READ).toContain('outside the item’s price');
+    expect(ROW_FEES_NOT_READ).not.toMatch(/wine/i);
+  });
+});

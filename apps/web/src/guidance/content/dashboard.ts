@@ -1,9 +1,12 @@
 import type { TourDefinition } from '../tours/registry'
 
+// Steps follow the job, not the screen (ADR 0251 D3). Each element must exist
+// on the live page; a step whose element is missing is left out by TourEngine.
+
 export const dashboardTip = {
   pageId: 'dashboard' as const,
   title: 'Dashboard',
-  body: "Start with KPIs, clear today's actions, then jump from low-stock alerts or recent orders.",
+  body: 'The day in one glance: what the cellar holds, what is running low, and what waits on you.',
 }
 
 export const dashboardTour: TourDefinition = {
@@ -11,27 +14,27 @@ export const dashboardTour: TourDefinition = {
   steps: [
     {
       element: '[data-tour="dashboard-kpis"]',
-      title: 'At a glance',
+      title: 'Read the day',
       description:
-        'Tap a KPI card for details. Double-click jumps straight to that surface (inventory, orders, or alerts).',
+        'What the cellar holds, what is running low, what waits on you, and what you have paid vendors. Each figure opens its page.',
     },
     {
-      element: '[data-tour="dashboard-actions"]',
-      title: "Clear today's work",
+      element: 'section[aria-label="Waiting on you"]',
+      title: 'Approve what waits on you',
       description:
-        'One-tap and quick actions handle the next job without hunting the sidebar.',
+        'Orders waiting for your approval. Open one and hold to approve it.',
     },
     {
-      element: '[data-tour="dashboard-alerts"]',
-      title: 'Act on low stock',
+      element: 'section[aria-label="Running low"]',
+      title: 'See what is running low',
       description:
-        'Open Inventory from an alert. Double-click starts a reorder draft with a suggested quantity.',
+        'Wines below their minimum, the furthest below first. Inventory opens the full list.',
     },
     {
-      element: '[data-tour="dashboard-orders"]',
-      title: 'Follow recent orders',
+      element: '[data-testid="one-tap-open-sheet"]',
+      title: 'Leave yourself a one-tap action',
       description:
-        'Open an order to check status or jump into its thread. View all opens the full Orders list.',
+        'Write down a piece of work, and it waits here until someone does it.',
     },
   ],
 }

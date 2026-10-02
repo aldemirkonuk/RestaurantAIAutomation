@@ -191,6 +191,7 @@ import {
   verdictFor as cancelReasonVerdictFor,
 } from "./cancel-reason";
 import { deadlineOf } from "./delivery-deadline";
+import { type BlanksAtSend, signatureSlotRe, unfilledSlotsRefusal, unfilledTemplateSlots } from "./unfilled-slots";
 import { houseFrame } from "../common/house-frame";
 import {
   DELIVERY_REFUSED_ALREADY_ARRIVED,
@@ -7421,7 +7422,7 @@ export class ProcurementService {
 
     const { data: pending, error } = await this.databaseService.supabase
       .from("procurement_conversations")
-      .select("id, content, providers!inner(contact_email, restaurant_id)")
+      .select("id, content, providers!inner(contact_email, restaurant_id, name, contact_first_name, primary_contact)")
       .eq("restaurant_id", restaurantId)
       .eq("order_id", orderId)
       .eq("status", "PENDING_APPROVAL")
@@ -7447,6 +7448,10 @@ export class ProcurementService {
       throw new BadRequestException("The vendor address changed or could not be confirmed. Review the draft before holding again.");
     }
     if (!letter.body?.trim()) throw new BadRequestException("An empty letter cannot be sent.");
+    // ORD-W7: a template blank the send cannot fill is refused before a seal
+    // is issued over it, the same as an empty letter.
+    const blanks = (await this.draftBlanksAtSend(restaurantId, letter.body, provider)).unfillable;
+    if (blanks.length) throw new BadRequestException(unfilledSlotsRefusal(blanks, "No seal was issued and nothing was sent."));
     const issued = await this.sealChallenges.issue({
       restaurantId,
       actorUserId: userId,
@@ -7564,7 +7569,7 @@ export class ProcurementService {
 
     const { data: pending, error: pendingError } = await this.databaseService.supabase
       .from("procurement_conversations")
-      .select("id, providers!left(name, restaurant_id)")
+      .select("id, providers!left(name, restaurant_id, contact_first_name, primary_contact)")
       .eq("restaurant_id", restaurantId)
       .eq("order_id", orderId)
       .eq("status", "PENDING_APPROVAL")
@@ -7574,10 +7579,17 @@ export class ProcurementService {
         `Whether a draft is waiting on this order could not be read (${pendingError.message}), so nothing was asked.`,
       );
     }
+    // ORD-W7: the letter a manager would release, checked as approveDraft
+    // will send it — a blank the send cannot fill is not asked for.
+    const refuseBlanks = async (provider: any) => {
+      const blanks = (await this.draftBlanksAtSend(restaurantId, content, provider)).unfillable;
+      if (blanks.length) throw new BadRequestException(unfilledSlotsRefusal(blanks, "Nothing was asked."));
+    };
 
     let conversationId: string;
     let vendorName: string | null;
     if (pending) {
+      await refuseBlanks(Array.isArray((pending as any).providers) ? (pending as any).providers[0] : (pending as any).providers);
       const { data: saved, error: saveError } = await this.databaseService.supabase
         .from("procurement_conversations")
         .update({
@@ -7613,7 +7625,7 @@ export class ProcurementService {
       // row the release will send, threaded the way manualReply threads.
       const { data: order, error: orderError } = await this.databaseService.supabase
         .from("procurement_orders")
-        .select("id, provider_id, providers!left(name, contact_email, restaurant_id), restaurant_inventory:inventory_id(wine_name)")
+        .select("id, provider_id, providers!left(name, contact_email, restaurant_id, contact_first_name, primary_contact), restaurant_inventory:inventory_id(wine_name)")
         .eq("id", orderId)
         .eq("restaurant_id", restaurantId)
         .maybeSingle();
@@ -7624,6 +7636,7 @@ export class ProcurementService {
       if (!(order as any).providers?.contact_email) {
         throw new BadRequestException("This vendor has no email address on file, so there is nowhere to send. Nothing was asked.");
       }
+      await refuseBlanks((order as any).providers);
       const { data: lastInbound, error: inboundError } = await this.databaseService.supabase
         .from("procurement_conversations")
         .select("gmail_thread_id, message_id, email_headers")
@@ -7780,6 +7793,10 @@ export class ProcurementService {
     }
 
     const rawEmailBody = dto.modifiedContent ?? (conv as any).content ?? "";
+    // ORD-W7: the last door before the mail leaves. Checked before the seal is
+    // spent, so a refusal here leaves the hold unspent and nothing sent.
+    const blanks = (await this.draftBlanksAtSend(restaurantId, rawEmailBody, (conv as any).providers)).unfillable;
+    if (blanks.length) throw new BadRequestException(unfilledSlotsRefusal(blanks, "Nothing was sent."));
     const providerEmail = (conv as any).providers?.contact_email ?? null;
     const rawOrder = (conv as any).procurement_orders;
     const wineName =
@@ -8236,10 +8253,52 @@ export class ProcurementService {
     const sig = escapeHtml((senderName || "").trim());
     // Replace any leftover [Manager Name] / [Your Name] / [Name] / [Signature] placeholder.
     out = out.replace(
-      /\[\s*(manager\s*name|your\s*name|name|signature|manager)\s*\]/gi,
+      signatureSlotRe(),
       () => sig,
     );
     return out;
+  }
+
+  /**
+   * ORD-W7, reworked (founder, 2026-10-01: "Only unfillable"). The send fills
+   * the greeting with the vendor's first name and the signature with the
+   * house's sender name, so a blank is refused only when it would still stand
+   * in the letter as sent. The letter is rendered here the way
+   * `sendProviderEmail` renders it and read back; each caller passes exactly
+   * the first name and sender name its own send passes.
+   */
+  private blanksAtSend(
+    body: string,
+    fill: { firstName?: string; senderName?: string },
+  ): BlanksAtSend {
+    // escapeHtml leaves "[" and "]" alone; only an apostrophe inside a slot changes.
+    const readBack = (html: string) => unfilledTemplateSlots(html.replace(/&#39;/g, "'"));
+    const greeted = this.personalizeGreeting(this.buildEmailHtml(body), fill.firstName);
+    const sender = (fill.senderName ?? "").trim();
+    // An empty sender name turns a signature blank into nothing at all. That
+    // is not a fill, so the blank stays standing and is refused.
+    const sent = sender ? greeted.replace(signatureSlotRe(), () => escapeHtml(sender)) : greeted;
+    const unfillable = readBack(sent);
+    const afterGreeting = readBack(greeted);
+    const fills = unfilledTemplateSlots(body)
+      .filter((slot) => !unfillable.includes(slot))
+      .map((slot) => ({
+        slot,
+        value: afterGreeting.includes(slot) ? sender : (fill.firstName ?? "").trim(),
+      }));
+    return { unfillable, fills };
+  }
+
+  /** The blanks of the draft waiting on an order, as approveDraft would send it. */
+  private async draftBlanksAtSend(
+    restaurantId: string,
+    body: string,
+    provider: any,
+  ): Promise<BlanksAtSend> {
+    return this.blanksAtSend(body, {
+      firstName: this.resolveFirstName(provider),
+      senderName: await this.resolveSenderName(restaurantId),
+    });
   }
 
   /**
@@ -8529,17 +8588,58 @@ export class ProcurementService {
           continue;
         }
 
+        // ORD-W7 (founder, 2026-10-01: "Add sweep + manual"): a blank the
+        // send cannot fill holds the letter unsent and back on the card, and
+        // the house is told which blanks — the same rule as a held approval.
+        const sweepBody = row.content ?? row.message_text ?? "";
+        const sweepFirstName = this.resolveFirstName((order as any)?.providers);
+        const sweepSender = await this.resolveSenderName(row.restaurant_id);
+        const sweepBlanks = this.blanksAtSend(sweepBody, {
+          firstName: sweepFirstName,
+          senderName: sweepSender,
+        }).unfillable;
+        if (sweepBlanks.length) {
+          await this.revertScheduledToDraft(row.id, `unfilled blanks: ${sweepBlanks.join(", ")}`);
+          const held = unfilledSlotsRefusal(sweepBlanks, "Mudavym held it unsent; fill the blanks on the order's card, then approve it.");
+          try {
+            this.websocketGateway?.emitRestaurantNotification(row.restaurant_id, {
+              id: row.id,
+              title: "A scheduled reply was held — it still has blanks",
+              message: held,
+              type: "warning",
+              action_url: `/orders?order=${row.order_id}`,
+            });
+            void this.inboundResponder?.persistManagerNotification(row.restaurant_id, {
+              type: "vendor_reply",
+              title: "A scheduled reply was held — it still has blanks",
+              message: held,
+              priority: "high",
+              actionUrl: `/orders?order=${row.order_id}`,
+              metadata: {
+                order_id: row.order_id,
+                draft_id: row.id,
+                provider_id: row.provider_id,
+                reason: "unfilled_blanks",
+              },
+            });
+          } catch {
+            /* best-effort */
+          }
+          this.emitConvUpdate(row.restaurant_id, row.order_id, row.provider_id, row.id);
+          continue;
+        }
+
         const headers = (row.email_headers ?? {}) as Record<string, any>;
         const ids = await this.sendProviderEmail({
           to: providerEmail,
           subject: headers.subject || `Re: Order Request: ${wineName}`,
-          html: this.buildEmailHtml(row.content ?? row.message_text ?? ""),
+          html: this.buildEmailHtml(sweepBody),
           restaurantId: row.restaurant_id,
           threadId: row.gmail_thread_id || undefined,
           inReplyTo: headers.in_reply_to || undefined,
           references: headers.references || undefined,
-          recipientFirstName: this.resolveFirstName((order as any)?.providers),
-          senderName: await this.resolveSenderName(row.restaurant_id),
+          recipientFirstName: sweepFirstName,
+          senderName: sweepSender,
         });
 
         await this.databaseService.supabase
@@ -8700,6 +8800,16 @@ export class ProcurementService {
   }
 
   /**
+   * ORD-W7 on the hand-written door. Its send passes no first name and no
+   * sender name (see `manualReply`), so it fills no greeting, and a signature
+   * blank would go out empty: every blank is unfillable here.
+   */
+  private refuseManualReplyBlanks(content: string, nothing: string): void {
+    const blanks = this.blanksAtSend(content, {}).unfillable;
+    if (blanks.length) throw new BadRequestException(unfilledSlotsRefusal(blanks, nothing));
+  }
+
+  /**
    * Mint the seal a hand-written reply must carry back (ADR 0175 D9, the
    * `manual-reply` door). Same shape as the drafted-reply mint: WHO first, then
    * the vendor's address on file, then a seal over the words, that address and
@@ -8713,6 +8823,8 @@ export class ProcurementService {
   ): Promise<{ challenge: string; expiresAt: string; act: string }> {
     await this.requireSendAuthority(userId, restaurantId, "send this letter", { canAsk: true });
     if (!letter.content?.trim()) throw new BadRequestException("An empty letter cannot be sent.");
+    // ORD-W7 (founder, 2026-10-01: "Add sweep + manual").
+    this.refuseManualReplyBlanks(letter.content, "No seal was issued and nothing was sent.");
     if (!this.sealChallenges) {
       throw new InternalServerErrorException(
         "The seal could not be issued (the seal service is not wired into procurement), so nothing can be sent.",
@@ -8756,6 +8868,8 @@ export class ProcurementService {
     const standing = await this.requireSendAuthority(userId, restaurantId, "send this letter", {
       canAsk: true,
     });
+    // Before the seal is spent, so a refusal leaves it unspent and nothing sent.
+    this.refuseManualReplyBlanks(content, "Nothing was sent.");
 
     const { order, providerEmail, wineName } = await this.manualReplyTarget(restaurantId, orderId);
     if ((order as any)?.providers?.restaurant_id && (order as any).providers.restaurant_id !== restaurantId) {
@@ -9871,7 +9985,7 @@ export class ProcurementService {
         `
         id, content, message_text, outbound_email_type, constraint_flags, round_count, created_at,
         send_requested_by, send_requested_at, send_requested_sha256, send_requested_cc,
-        providers!left(name, contact_email),
+        providers!left(name, contact_email, contact_first_name, primary_contact),
         procurement_orders!inner(
           order_number,
           inventory:inventory_id(wine_name)
@@ -9900,8 +10014,12 @@ export class ProcurementService {
       send_requested_cc: _cc,
       ...rest
     } = row;
+    // The first-name columns are read for `at_send` only; the page gets the
+    // vendor's name and address as before, never its whole primary_contact.
+    const { contact_first_name: _first, primary_contact: _contact, ...vendor } = row.providers ?? {};
     return {
       ...rest,
+      providers: row.providers ? vendor : row.providers,
       content,
       provider_name: row.providers?.name ?? null,
       provider_email: row.providers?.contact_email ?? null,
@@ -9909,6 +10027,9 @@ export class ProcurementService {
       order_number: row.procurement_orders?.order_number ?? null,
       // A staff member's request on this draft (founder, 2026-09-21), or null.
       send_request: request,
+      // ORD-W7: which blanks the send fills (and with what) and which it
+      // cannot, so the card refuses only those (founder, 2026-10-01).
+      at_send: await this.draftBlanksAtSend(restaurantId, content ?? "", row.providers),
     };
   }
 

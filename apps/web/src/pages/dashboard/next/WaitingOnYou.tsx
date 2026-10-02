@@ -1,11 +1,12 @@
 /**
  * "Waiting on you" — the pending-approvals queue (Federation's panel, the
  * founder-liked block). Every order the gateway says needs approval, in the
- * gateway's order — flagged first, then the rest, each oldest first (ADR 0256;
- * not re-sorted here) — with `WaitingFlag` saying why a row is flagged. A row
- * expands (settle 0fr→1fr) into the real hold ceremony, which calls the real
- * approve endpoint — no fabricated success: the seal only stays if the server
- * said yes.
+ * gateway's order — flagged first, then the rest, each oldest first
+ * (procurement.service.ts listPendingOrders, ADR 0256; this panel does not
+ * re-sort) — with `WaitingFlag` saying why a row is flagged. A row expands
+ * (settle 0fr→1fr) into the real hold ceremony, which calls the real approve
+ * endpoint — no fabricated success: the seal only stays if the server said
+ * yes.
  *
  * THE SEAL IS REDEEMED, NOT ASSERTED (founder, 2026-09-04; ADR 0116 addendum).
  * This card used to call `ordersApi.approveOrder(order.id)` with an id alone,

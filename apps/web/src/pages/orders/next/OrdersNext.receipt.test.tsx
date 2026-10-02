@@ -103,6 +103,7 @@ function ordersData(rows: OrderRowVM[]): OrdersNextData {
     approvalByOrder: new Map(),
     approvalGateError: null,
     approvalPolicyNote: null,
+    dataUpdatedAt: null,
   };
 }
 
