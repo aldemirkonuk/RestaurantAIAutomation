@@ -34,6 +34,7 @@ import { useWinesByIds } from '../../../hooks/queries/useWineQueries';
 import { useProviders } from '../../../hooks/queries/useProviderQueries';
 import { useStorageLocations, type StorageLocation } from '../../../hooks/useStorageLocations';
 import { apiClient, getErrorMessage } from '../../../services/api/client';
+import { failureReason } from './iv-failure';
 import { settingsApi } from '../../../services/api/settings';
 import { documentsApi, type ProcurementDocument } from '../../../services/api/documents';
 import { fetchDeliveriesToName } from '../../../services/api/orders';
@@ -46,6 +47,8 @@ import { fmtMoney } from '../../../lib/mudavym/format';
 import { queryKeys } from '../../../lib/query-keys';
 import { pendingSpotCountCount, watchSpotCountOutbox } from '../../../lib/spotCountOutbox';
 import { num, text } from '../../cellar/next/cellar-format';
+import type { MapTone } from '../command/CellarMapView';
+import type { InventoryItem as LegacyItem } from '../useInventoryPage';
 import { COUNT_DUE_DAYS } from '../command/bits';
 import type { AdviceLoad } from '../command/HousePriceCell';
 
@@ -74,8 +77,22 @@ export interface InvRow {
   /** The library's name, only when it differs from the house's. */
   libraryName: string | null;
   producer: string | null;
-  /** The library's own category word, lower-cased; null = not recorded. */
+  /**
+   * What the Type column says (INV-W30): a wine's style, folded so "Rosé" and
+   * "rose" are one ("red", "rose"); "wine" for a wine with no style; the
+   * drink's kind for anything else ("beer", "spirit", "non_alcoholic");
+   * "unclassified" when the library's classifier could not tell. null = no
+   * library row to read it from, i.e. not recorded.
+   */
   type: string | null;
+  /**
+   * The library's beverage kind (`master_wine_library.beverage_kind`, one of
+   * wine / beer / spirit / sake / cider / cocktail / non_alcoholic / unknown,
+   * migration 20260817060000_beverage_kind_classification.sql). Inferred as
+   * "wine" from a style when the library row did not carry the column; null
+   * when there is nothing to read it from.
+   */
+  kind: string | null;
   vintage: number | null;
   grape: string | null;
   bottleSizeMl: number | null;
@@ -115,7 +132,65 @@ export function standingOf(stock: number | null, par: number | null): Standing {
   return 'above';
 }
 
+/** The map's legend in this page's words: the chips say Out / Below par / Reconcile (INV-W19). */
+export const MAP_WORDS: Record<MapTone, string> = {
+  green: 'At or above par',
+  amber: 'Below par',
+  rose: 'Out',
+  violet: 'Reconcile',
+  neutral: 'Not read, or no par set',
+};
+
+/** A map tile's tint by the same standing the table and chips use. */
+export function mapTone(item: LegacyItem): MapTone {
+  if ((item.shadowStock ?? 0) > 0) return 'violet';
+  switch (standingOf(item.liveStock ?? null, item.threshold ?? null)) {
+    case 'out':
+      return 'rose';
+    case 'below':
+      return 'amber';
+    case 'at':
+    case 'above':
+      return 'green';
+    default:
+      return 'neutral';
+  }
+}
+
 type Raw = Record<string, unknown>;
+
+/**
+ * INV-W30: the page holds every drink the library holds, not only wine. The
+ * kind is read raw, not through `text()`, because `text()` turns the
+ * classifier's own "unknown" verdict into null, and "the classifier could not
+ * tell" is a different sentence from "nothing was recorded". `category` is the
+ * library's `primary_type` (wines.service.ts:188), a wine style.
+ */
+export function typeOf(category: unknown, beverageKind: unknown): { type: string | null; kind: string | null } {
+  const style = text(category);
+  const styleKey = style === null ? null : fold(style);
+  const k = typeof beverageKind === 'string' && beverageKind.trim() !== '' ? beverageKind.trim().toLowerCase() : null;
+  if (k === null || k === 'unknown') {
+    if (styleKey !== null) return { type: styleKey, kind: 'wine' };
+    return k === null ? { type: null, kind: null } : { type: 'unclassified', kind: 'unknown' };
+  }
+  if (k === 'wine') return { type: styleKey ?? 'wine', kind: 'wine' };
+  return { type: k, kind: k };
+}
+
+const TYPE_WORDS: Record<string, string> = {
+  rose: 'Rosé',
+  non_alcoholic: 'Non-alcoholic',
+  unclassified: 'not classified',
+};
+
+/** The house's word for a `type` key: never the key itself ("non_alcoholic"). */
+export function typeLabel(key: string): string {
+  return TYPE_WORDS[key] ?? key.charAt(0).toUpperCase() + key.slice(1);
+}
+
+/** The Type filter's value for every wine at once, shown only when the house holds other drinks too. */
+export const ALL_WINE = 'kind:wine';
 
 /** One gateway row (already through `normalizeInventoryItem`) and its library wine. */
 export function toRow(item: ApiItem, wine?: ApiWine | null): InvRow {
@@ -145,7 +220,7 @@ export function toRow(item: ApiItem, wine?: ApiWine | null): InvRow {
     name,
     libraryName: library && library !== name ? library : null,
     producer: text(r.wineProducer) ?? text(w?.producer),
-    type: text(w?.category)?.toLowerCase() ?? null,
+    ...typeOf(w?.category, w?.beverageKind),
     vintage: num(r.wineVintage) ?? num(w?.vintage),
     grape: text(w?.grapeVariety),
     bottleSizeMl: num(r.bottleSizeMl) ?? num(w?.bottleSizeMl),
@@ -208,6 +283,20 @@ export function needsYouFirst(a: InvRow, b: InvRow): number {
 
 export type SortId = 'needs' | 'name' | 'value';
 
+export const SORT_LABEL: Record<SortId, string> = { needs: 'Needs you first', name: 'Name', value: 'Value at cost' };
+
+/**
+ * How the list is ordered, said truthfully (INV-W23). With no cost on any
+ * listed title the value sort has nothing to sort by and falls back to Needs
+ * you first (sortRows below); the line says so instead of going quiet.
+ */
+export function sortWords(sort: SortId, rows: InvRow[]): string {
+  if (sort === 'value' && rows.length > 0 && rows.every((r) => r.value === null)) {
+    return 'sorted Value at cost, though no title listed has a cost yet, so they stay in Needs you first order';
+  }
+  return `sorted ${SORT_LABEL[sort]}`;
+}
+
 export function sortRows(rows: InvRow[], sort: SortId): InvRow[] {
   const out = [...rows];
   if (sort === 'needs') return out.sort(needsYouFirst);
@@ -246,7 +335,8 @@ export function matchesSearch(row: InvRow, query: string, zoneName: (id: string 
     row.libraryName,
     row.producer,
     row.grape,
-    row.type,
+    row.type === null ? null : typeLabel(row.type),
+    row.kind === 'wine' ? 'wine' : null,
     row.vintage === null ? null : String(row.vintage),
     ...(row.zones ?? []).map((z) => zoneName(z.locationId)),
   ]
@@ -315,6 +405,7 @@ export function inZone(row: InvRow, zone: string): boolean {
 export function ofType(row: InvRow, type: string): boolean {
   if (type === '') return true;
   if (type === 'none') return row.type === null;
+  if (type === ALL_WINE) return row.kind === 'wine';
   return row.type === type;
 }
 
@@ -332,6 +423,22 @@ export type HouseCurrency =
  * currency or it could not be read — the header says which, once, rather than
  * every cell repeating "(currency not recorded)". Never `$`.
  */
+/**
+ * A selling pace a manager can tell apart. The view stores sold_30d / 30,
+ * rounded to three places (inventory_analytics), so one bottle in a month is
+ * 0.033 a day. One decimal drew that as "0.0", the same as a title that never
+ * sold. Below 0.1 a day, show two places; a true zero is "0".
+ */
+export function fmtPace(v: number): string {
+  if (v === 0) return '0';
+  return v < 0.1 ? v.toFixed(2) : v.toFixed(1);
+}
+
+/** Bottles sold in the last 30 days, recovered from the stored pace (sold_30d / 30). */
+export function sold30(v: number): number {
+  return Math.round(v * 30);
+}
+
 export function cellMoney(v: number | null, currency: HouseCurrency): string {
   if (v === null || !Number.isFinite(v)) return EM;
   if (currency.state === 'reading') return EM;
@@ -341,8 +448,17 @@ export function cellMoney(v: number | null, currency: HouseCurrency): string {
 
 /* ── the read sentence ───────────────────────────────────────────────────── */
 
+/**
+ * A count of bottles or titles, grouped the way money on this page is
+ * (1,240), so the two read alike (INV-W33). Exports and input boxes keep
+ * the bare number.
+ */
+export function fmtCount(n: number): string {
+  return n.toLocaleString('en-GB', { maximumFractionDigits: 1 });
+}
+
 function plural(n: number, one: string, many: string): string {
-  return `${n} ${n === 1 ? one : many}`;
+  return `${fmtCount(n)} ${n === 1 ? one : many}`;
 }
 
 /** Bottles at 1.5 days of cover or less that are not already out. */
@@ -366,7 +482,7 @@ export function readSentence(rows: InvRow[], currency: HouseCurrency, zonesReada
     read.length === 0
       ? `${plural(n, 'title', 'titles')}; no title's stock could be read, so the bottle count is unknown`
       : read.length < n
-        ? `${plural(n, 'title', 'titles')}, ${plural(bottles, 'bottle', 'bottles')} on the ${read.length} whose stock was read (${n - read.length} could not be read)`
+        ? `${plural(n, 'title', 'titles')}, ${plural(bottles, 'bottle', 'bottles')} on the ${fmtCount(read.length)} whose stock was read (${fmtCount(n - read.length)} could not be read)`
         : `${plural(n, 'title', 'titles')}, ${plural(bottles, 'bottle', 'bottles')}`;
   if (zonesReadable && zoneIds.size > 0) first += ` across ${plural(zoneIds.size, 'zone', 'zones')}`;
   parts.push(`${first}.`);
@@ -378,13 +494,13 @@ export function readSentence(rows: InvRow[], currency: HouseCurrency, zonesReada
   if (read.length === 0) {
     // No stock was read, so nothing can be said to be out or fine.
   } else if (out === 0 && below === 0) {
-    parts.push(dry === 0 ? `${lead} is out or below par.` : `${lead} is out or below par, but ${dry === 1 ? 'one runs' : `${dry} run`} dry tomorrow.`);
+    parts.push(dry === 0 ? `${lead} is out or below par.` : `${lead} is out or below par, but ${dry === 1 ? 'one runs' : `${fmtCount(dry)} run`} dry tomorrow.`);
   } else {
     let s =
       out === 0
-        ? `None is out; ${below} ${below === 1 ? 'is' : 'are'} below par`
-        : `${out} ${out === 1 ? 'is' : 'are'} out${below > 0 ? `, and ${below} more ${below === 1 ? 'is' : 'are'} below par` : ''}`;
-    if (dry > 0) s += `; ${dry === 1 ? 'one runs' : `${dry} run`} dry tomorrow`;
+        ? `None is out; ${fmtCount(below)} ${below === 1 ? 'is' : 'are'} below par`
+        : `${fmtCount(out)} ${out === 1 ? 'is' : 'are'} out${below > 0 ? `, and ${fmtCount(below)} more ${below === 1 ? 'is' : 'are'} below par` : ''}`;
+    if (dry > 0) s += `; ${dry === 1 ? 'one runs' : `${fmtCount(dry)} run`} dry tomorrow`;
     parts.push(`${s}.`);
   }
 
@@ -395,12 +511,14 @@ export function readSentence(rows: InvRow[], currency: HouseCurrency, zonesReada
     const total = priced.reduce((sum, r) => sum + (r.value ?? 0), 0);
     const missing = n - priced.length;
     parts.push(
-      `At cost the cellar holds ${cellMoney(total, currency)}, with ${priced.length} of ${n} titles priced${
-        missing > 0 ? `; the ${missing} without a cost show —, never 0` : ''
+      `At cost the cellar holds ${cellMoney(total, currency)}, with ${fmtCount(priced.length)} of ${fmtCount(n)} titles priced${
+        missing > 0 ? `; the ${fmtCount(missing)} without a cost show —, never 0` : ''
       }.`,
     );
   }
-  parts.push('No title has a market price yet, so the market reads unknown, not zero.');
+  // No market figure is read at all (`retail_price_avg` is not selected), so
+  // this is said as the page's limit, never as the house having none (INV-W28).
+  parts.push('This page does not read a market price yet, so the market reads unknown, not zero.');
   if (currency.state === 'not_recorded') parts.push('The house has no currency recorded, so money shows as bare numbers.');
   if (currency.state === 'unreadable') parts.push('The house’s currency could not be read, so money shows as bare numbers.');
   return parts.join(' ');
@@ -487,7 +605,8 @@ export function useInventoryNextData() {
   });
   const advice: AdviceLoad = useMemo(() => {
     if (adviceQ.isError)
-      return { status: 'error', message: getErrorMessage(adviceQ.error) || 'the price advice could not be read' };
+      // The table shows this as the hover on "advice unavailable" (INV-W31).
+      return { status: 'error', message: `the price advice could not be read — ${failureReason(adviceQ.error)}` };
     if (!adviceQ.data) return { status: 'loading' };
     if (!Array.isArray(adviceQ.data.wines) || !adviceQ.data.target)
       return { status: 'error', message: 'the price advice came back in a shape this page cannot read' };
@@ -546,6 +665,44 @@ export function useInventoryNextData() {
     outbox: { n: typeof outboxQ.data === 'number' ? outboxQ.data : null, failed: outboxQ.isError } as Waiting,
   };
 
+  // INV-W28: every side read that did not answer, in the page's words, so the
+  // footer never says "every figure was read" over one that failed, and one
+  // control reads them all again. The zones key is useStorageLocations.ts:75,131.
+  const unread: string[] = [];
+  // INV-W29: the selling-pace join rides on the stock read; when it fails the
+  // gateway sends analyticsReadable: false and deadStock: false on every row
+  // (inventory.service.ts:163,265), so "Dead stock 0" would read a failure as health.
+  const paceUnread = (rows ?? []).some((r) => !r.analyticsReadable);
+  if (paceUnread) unread.push('the selling pace, so pace, runway and dead stock show —');
+  if (wines.isError) unread.push('the wine library, so type shows —, the type filter is off, and grapes are left out of details and search');
+  if (storage.locationsUnavailable) unread.push('the storage locations, so zones show — and the zone filter is off');
+  if (currency.state === 'unreadable') unread.push('the house’s currency');
+  if (advice.status === 'error') unread.push('the price advice');
+  if (invoicesQ.isError) unread.push('the invoices waiting for a match');
+  if (deliveriesQ.isError) unread.push('the delivered lines waiting for their item');
+  // A read still in flight is not an answer either: until the library answers,
+  // a blank type is unknown, not "not recorded", and the footer may not say
+  // every figure was read. A query with nothing to ask (no wine ids) never runs.
+  const libraryAnswered = wineIds.length === 0 || wines.isSuccess;
+  const pending: string[] = [];
+  if (wineIds.length > 0 && wines.isPending) pending.push('the wine library');
+  if (storage.locationsLoading) pending.push('the storage locations');
+  if (currency.state === 'reading') pending.push('the house’s currency');
+  // The advice is only asked for owners and managers (enabled above); for anyone
+  // else it never runs, so it is not "still reading".
+  if (canManage && advice.status === 'loading') pending.push('the price advice');
+  if (invoicesQ.isPending) pending.push('the invoices waiting for a match');
+  if (deliveriesQ.isPending) pending.push('the delivered lines waiting for their item');
+  const rereadUnread = () => {
+    if (paceUnread) void list.refetch();
+    if (wines.isError) void wines.refetch();
+    if (storage.locationsUnavailable) void queryClient.invalidateQueries({ queryKey: ['storageLocations', rid] });
+    if (currency.state === 'unreadable') void currencyQ.refetch();
+    if (advice.status === 'error') void adviceQ.refetch();
+    if (invoicesQ.isError) void invoicesQ.refetch();
+    if (deliveriesQ.isError) void deliveriesQ.refetch();
+  };
+
   // No house is not an empty house: with no active restaurant the stock is
   // never asked for, so the page says which building is missing instead of
   // waiting on a read that will not start.
@@ -565,6 +722,10 @@ export function useInventoryNextData() {
     rawItems: items ?? [],
     /** The library read failed: type, grape and the library name are unread, not absent. */
     libraryUnread: wines.isError,
+    /** The library has answered (or there was nothing to ask it): only then is a blank type "not recorded". */
+    libraryAnswered,
+    /** The selling-pace join failed for this read: pace, runway and dead stock are unread, not zero (INV-W29). */
+    paceUnread,
     currency,
     locations: {
       list: storage.locations as StorageLocation[],
@@ -574,11 +735,17 @@ export function useInventoryNextData() {
     },
     providers: {
       list: (providersQ.data ?? null) as Provider[] | null,
-      error: providersQ.isError ? getErrorMessage(providersQ.error) : null,
+      // Shown inside a sentence, so in the house's words (INV-W31).
+      error: providersQ.isError ? failureReason(providersQ.error) : null,
     },
     advice,
     refetchAdvice: () => void adviceQ.refetch(),
     waiting,
+    /** Side reads that did not answer, each with what it leaves unread (INV-W28). */
+    unread,
+    rereadUnread,
+    /** Side reads that have not answered yet, neither data nor failure (INV-W28). */
+    pending,
   };
 }
 
@@ -615,13 +782,16 @@ export function useRowDetail(inventoryId: string) {
   const purchasesQ = useQuery({
     queryKey: ['inventory-next', 'purchases', activeRestaurantId, inventoryId],
     queryFn: async () => {
+      // No `limit` param: the gateway's query DTO has no number transform, so
+      // any limit arrives as a string and is refused with a 400. The route
+      // answers newest first (50 by default); the page keeps the first three.
       const r = await apiClient.get('/inventory-ledger/transactions', {
-        params: { inventoryId, transactionType: 'purchase', limit: PAPERWORK_LINES },
+        params: { inventoryId, transactionType: 'purchase' },
       });
       const body = r.data as { transactions?: Raw[]; total?: unknown };
       if (!Array.isArray(body?.transactions)) throw new Error('the ledger answered in a shape this page cannot read');
       return {
-        lines: body.transactions.map(
+        lines: body.transactions.slice(0, PAPERWORK_LINES).map(
           (t): PurchaseLine => ({
             id: String(t.id),
             at: text(t.transactionDate) ?? text(t.createdAt),
@@ -668,8 +838,10 @@ export function useRowDetail(inventoryId: string) {
     purchases: purchasesQ.data?.lines ?? null,
     purchasesTotal: purchasesQ.data?.total ?? null,
     purchasesError: purchasesQ.isError ? getErrorMessage(purchasesQ.error) : null,
+    rereadPurchases: () => void purchasesQ.refetch(),
     paper,
     lots: lotsQ.data ?? null,
     lotsError: lotsQ.isError ? getErrorMessage(lotsQ.error) : null,
+    rereadLots: () => void lotsQ.refetch(),
   };
 }

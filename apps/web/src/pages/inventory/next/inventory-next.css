@@ -76,7 +76,8 @@
   line-height: 1.5;
   color: var(--ink-4);
 }
-.iv-said {
+.iv-said,
+.iv-sheet-body .cl-said {
   margin: 0;
   font-size: 12.5px;
   line-height: 1.55;
@@ -112,12 +113,18 @@
 }
 
 /* ── focus: always on a paper gap, never on the seal fill ──────────────── */
-.iv-focus:focus-visible {
+.iv-focus:focus-visible,
+.iv-sheet-body .cl-focus:focus-visible {
   outline: 2px solid var(--seal);
   outline-offset: 2px;
 }
 
 /* ── controls ──────────────────────────────────────────────────────────── */
+/* The Order sheet borrows /cellar's OrderCeremony (INV-W26), whose ask row and
+   failure line carry cellar-next.css classes. This page never loads that
+   sheet, so on a fresh visit they drew as bare browser text (INV-W32). Inside
+   a sheet they take this page's own rules: .cl-btn as .iv-btn, .cl-said as
+   .iv-said, and the failure line as .iv-said-alarm. */
 .iv-chips {
   display: flex;
   flex-wrap: wrap;
@@ -193,7 +200,29 @@
 .iv-field:hover {
   border-color: var(--seal-ring);
 }
-.iv-btn {
+/* The shared sheet stylesheet styles a bare `.mdv-select` as a full-width
+   input box (mudavym/sheet.css), and <Select> puts the same class on its
+   wrapper span. Once any sheet has loaded, every toolbar picker became a
+   boxed, full-width row. Undone here for the toolbar only; the shared
+   collision itself is queued for the coordinator. */
+.iv-toolbar .mdv-select {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 3px;
+  width: auto;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+}
+.iv-toolbar .mdv-select__control {
+  min-width: 150px;
+  height: 32px;
+  padding: 0 9px;
+  font-size: 12.5px;
+}
+.iv-btn,
+.iv-sheet-body .cl-btn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -210,7 +239,8 @@
   white-space: nowrap;
   cursor: pointer;
 }
-.iv-btn:hover:not(:disabled) {
+.iv-btn:hover:not(:disabled),
+.iv-sheet-body .cl-btn:hover:not(:disabled) {
   border-color: var(--seal-ring);
   color: var(--seal-deep);
 }
@@ -219,17 +249,20 @@
   background: var(--seal-tint);
   color: var(--seal-deep);
 }
-.iv-btn[data-seal='true'] {
+.iv-btn[data-seal='true'],
+.iv-sheet-body .cl-btn[data-seal='true'] {
   border-color: var(--seal);
   background: var(--seal);
   color: var(--paper-0);
 }
-.iv-btn[data-seal='true']:hover:not(:disabled) {
+.iv-btn[data-seal='true']:hover:not(:disabled),
+.iv-sheet-body .cl-btn[data-seal='true']:hover:not(:disabled) {
   background: var(--seal-deep);
   border-color: var(--seal-deep);
   color: var(--paper-0);
 }
-.iv-btn:disabled {
+.iv-btn:disabled,
+.iv-sheet-body .cl-btn:disabled {
   cursor: not-allowed;
   opacity: 0.55;
 }
@@ -689,4 +722,112 @@
     transition: none !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* ── the email to the vendor, inline in the Order sheet (INV-W26) ───────── */
+.iv-letter {
+  margin-top: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--paper-2);
+  border-radius: 10px;
+  background: var(--paper-0);
+}
+.iv-letter-hint {
+  margin: 0 0 6px;
+}
+.iv-letter-text {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--paper-2);
+  border-radius: 8px;
+  background: var(--paper-1);
+  color: var(--ink-1);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  resize: vertical;
+}
+
+/* ── the sheets, in the house's overlay format (founder 2026-10-01: "match
+   our format") ─────────────────────────────────────────────────────────────
+   `.mdv-ovl__body` carries no padding of its own; every page insets its own
+   sheet content (admin-desk.css:61, team's `.tm-form`). These are the same
+   numbers as sheet.css's `.mdv-form`: 12px 16px 14px, mono capital labels,
+   full-width fields on the overlay's own ground. */
+.iv-sheet-body {
+  padding: 12px 16px 16px;
+}
+.iv-sheet-body .iv-sheet-fields {
+  margin-top: 12px;
+}
+.iv-sheet-body .iv-sec {
+  font-family: var(--mdv-mono, 'JetBrains Mono', ui-monospace, monospace);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+}
+/* <Select> and <CountInput> wrap their control in a span named `.mdv-select` /
+   `.mdv-count`; sheet.css styles a bare `.mdv-select` as a boxed input and
+   forces its fill with `!important` inside an overlay, so the vendor picker
+   was a box inside a box. Undone for these sheets only; the shared collision
+   is on the coordinator's queue (see `.iv-toolbar .mdv-select` above). */
+html .mdv-ovl .iv-sheet-body .mdv-select,
+html .mdv-ovl .iv-sheet-body .mdv-count {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background-color: transparent !important;
+}
+.iv-sheet-body .mdv-select__label,
+.iv-sheet-body .mdv-count__label,
+.iv-letter-label {
+  display: block;
+  margin: 0 0 4px;
+  font-family: var(--mdv-mono, 'JetBrains Mono', ui-monospace, monospace);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+}
+html .mdv-ovl .iv-sheet-body .mdv-select__control {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  padding: 7px 10px;
+  border: 1px solid var(--paper-2);
+  border-radius: 8px;
+  background-color: var(--paper-0) !important;
+  color: var(--ink-1) !important;
+  -webkit-text-fill-color: var(--ink-1) !important;
+  color-scheme: inherit !important;
+  font-size: 13px;
+}
+.iv-sheet-body .mdv-count__control {
+  align-self: flex-start;
+  background: var(--paper-0);
+}
+/* A refusal or a failure: ink and a rule, never red — the house has one
+   chromatic colour and it is the seal (ADR 0042; sheet.css `.mdv-alert`). */
+.iv-said-alarm,
+.iv-sheet-body .cl-note[role='alert'] {
+  padding: 9px 12px;
+  border: 1px solid var(--paper-2);
+  border-left: 2px solid var(--ink-2);
+  border-radius: 10px;
+  background: var(--paper-1);
+  color: var(--ink-1);
+}
+/* OrderCeremony's failure line has no .iv-said under it, so it takes its size here. */
+.iv-sheet-body .cl-note[role='alert'] {
+  font-size: 12.5px;
+  line-height: 1.55;
 }

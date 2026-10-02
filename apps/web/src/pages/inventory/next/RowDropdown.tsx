@@ -31,6 +31,9 @@ import { CountSheet, OrderSheet, PourSheet, TransferSheet, WriteOffSheet } from 
 import {
   cellMoney,
   EM,
+  fmtCount,
+  fmtPace,
+  sold30,
   suggestedToPar,
   useRowDetail,
   type HouseCurrency,
@@ -65,7 +68,7 @@ function KV({ k, children, testId }: { k: string; children: ReactNode; testId?: 
 }
 
 function figure(v: number | null): string {
-  return v === null ? EM : v.toLocaleString('en-GB', { maximumFractionDigits: 1 });
+  return v === null ? EM : fmtCount(v);
 }
 
 /** The invoice among an order's paper, else whatever was filed first. */
@@ -86,7 +89,9 @@ export default function RowDropdown(props: RowDropdownProps) {
   if (row.grape) head.push({ k: 'Grape', v: row.grape });
   if (row.bottleSizeMl !== null) head.push({ k: 'Format', v: volume(row.bottleSizeMl) });
   if (row.vintage !== null) head.push({ k: 'Vintage', v: String(row.vintage) });
-  if (row.openMl !== null && row.openMl > 0) head.push({ k: 'Open bottle', v: `${row.openMl} ml poured from` });
+  // open_ml is what is LEFT in the open bottle: each pour subtracts from it
+  // (inventory_lots.open_bottle_ml), as the legacy row says ("ml left").
+  if (row.openMl !== null && row.openMl > 0) head.push({ k: 'Open bottle', v: `${fmtCount(row.openMl)} ml left` });
 
   return (
     <div className="iv-drop" data-testid="row-dropdown" aria-label={`${row.name ?? 'This title'}, opened`}>
@@ -213,18 +218,29 @@ function WhereTheCountComesFrom({
         </KV>
         <KV k="Par · reorder point">
           <span className="iv-num">
-            {row.par === null ? EM : row.par === 0 ? 'none set' : row.par} · {figure(row.reorderPoint)}
+            {row.par === null ? EM : row.par === 0 ? 'none set' : fmtCount(row.par)} · {figure(row.reorderPoint)}
           </span>
         </KV>
         <KV k="Suggested to par">
-          <span className="iv-num">{toPar === null ? EM : toPar}</span>
+          {/* — is kept for a figure that could not be read (the footer's
+              promise). A title at or above par, or with no par, is read and
+              says so. */}
+          {toPar !== null ? (
+            <span className="iv-num">{fmtCount(toPar)}</span>
+          ) : row.stock === null ? (
+            <span className="iv-num">{EM}</span>
+          ) : row.par === null || row.par <= 0 ? (
+            'no par set'
+          ) : (
+            'none, at or above par'
+          )}
         </KV>
         <KV k="Where">
           {zones === null
             ? 'could not be read'
             : zones.length === 0
               ? 'in no zone'
-              : zones.map((z) => `${zoneName(z.locationId)} ${z.qty}`).join(' · ')}
+              : zones.map((z) => `${zoneName(z.locationId)} ${fmtCount(z.qty)}`).join(' · ')}
         </KV>
         <KV k="Last counted">{row.lastCountedAt ? fmtWhen(row.lastCountedAt) : 'never counted'}</KV>
       </dl>
@@ -250,12 +266,12 @@ function HowFastItPours({ row }: { row: InvRow }) {
   const maxHour = Math.max(1, ...hours.buckets.map((b) => b.qty));
 
   const sentence = !row.analyticsReadable
-    ? 'Selling pace could not be read — the analytics join failed for this read. This is a read error, not a title with nothing sold.'
+    ? 'Selling pace could not be read — the sales figures did not answer for this read. This is a read error, not a title with nothing sold.'
     : row.velocity === null
       ? 'Selling pace: unmeasured — the analytics have nothing for this title yet.'
       : row.velocity === 0
         ? 'Nothing sold lately, so there is no runway to give.'
-        : `About ${row.velocity.toFixed(1)} a day${row.runway === null ? '.' : `; at that pace it lasts ${Math.round(row.runway)} day${Math.round(row.runway) === 1 ? '' : 's'}.`}`;
+        : `About ${fmtPace(row.velocity)} a day (${fmtCount(sold30(row.velocity))} sold in the last 30 days)${row.runway === null ? '.' : `; at that pace it lasts ${fmtCount(Math.round(row.runway))} day${Math.round(row.runway) === 1 ? '' : 's'}.`}`;
 
   return (
     <section className="iv-col">
@@ -264,12 +280,20 @@ function HowFastItPours({ row }: { row: InvRow }) {
       {record.loading ? (
         <p className="iv-note">Reading the till…</p>
       ) : record.error ? (
-        <p className="iv-note">The till could not be read ({record.error}). This is unread, not a quiet night.</p>
+        <p className="iv-note">The till could not be read. This is unread, not a quiet night.</p>
       ) : vel.days.length === 0 ? (
         <p className="iv-note" data-testid="velocity-none">
+          {/* The pace above is the ledger's live sales over 30 days
+              (inventory_analytics). The day chart reads the till book, which
+              holds only wine lines the till could not match, so an empty chart
+              never means "never sold". Say what each one is, never "none". */}
           {pos?.readable === false
-            ? `The till could not be read (${pos.reason ?? 'no reason given'}). This is unread, not a quiet night.`
-            : 'The till has never rung this up, so there is no rate to draw. Not zero a day — none recorded.'}
+            ? 'The till could not be read. This is unread, not a quiet night.'
+            : row.velocity !== null && row.velocity > 0
+              ? 'That pace is the last 30 days of sales on the books. The day-by-day chart is not drawn for this title yet.'
+              : row.velocity === 0
+                ? 'No day-by-day chart either: no sales on the books in the last 30 days.'
+                : 'No day-by-day chart either.'}
         </p>
       ) : (
         <>
@@ -277,7 +301,7 @@ function HowFastItPours({ row }: { row: InvRow }) {
             {vel.days.map((d) => (
               <i
                 key={d.date}
-                title={`${d.date}: ${d.qty}`}
+                title={`${d.date}: ${fmtCount(d.qty)}`}
                 data-peak={d.qty >= maxDay * 0.75 ? 'true' : undefined}
                 style={{ height: `${Math.max((d.qty / maxDay) * 100, 4)}%` }}
               />
@@ -385,9 +409,14 @@ function WhatItHasCost({
           {EM} <span className="iv-dim">no market price is read</span>
         </KV>
         <KV k="Auction lots">
-          {detail.lotsError
-            ? `could not be read (${detail.lotsError})`
-            : detail.lots === null
+          {detail.lotsError ? (
+            <>
+              could not be read{' '}
+              <button type="button" className="iv-linkish iv-focus" onClick={detail.rereadLots}>
+                Read again
+              </button>
+            </>
+          ) : detail.lots === null
               ? EM
               : detail.lots.length === 0
                 ? 'none'
@@ -405,7 +434,7 @@ function WhatItHasCost({
 function PaperActions({ line, paper }: { line: PurchaseLine; paper: PaperRead | undefined }) {
   if (!line.orderId) return <span className="iv-dim">Not tied to an order, so there is no paper to find.</span>;
   if (!paper || (paper.docs === null && paper.failed === null)) return <span className="iv-dim">Reading the paper…</span>;
-  if (paper.failed) return <span className="iv-dim">The paper could not be read ({paper.failed}).</span>;
+  if (paper.failed) return <span className="iv-dim">The paper could not be read.</span>;
   const doc = invoiceOf(paper.docs ?? []);
   if (!doc) return <span className="iv-dim">No invoice filed for this delivery.</span>;
   return (
@@ -446,7 +475,12 @@ function Paperwork({
     <section className="iv-paperwork">
       <h4 className="iv-sec">Paperwork</h4>
       {detail.purchasesError ? (
-        <p className="iv-note">The receipts could not be read ({detail.purchasesError}). This is unread, not a title never bought.</p>
+        <p className="iv-note">
+          The receipts could not be read. This is unread, not a title never bought.{' '}
+          <button type="button" className="iv-linkish iv-focus" onClick={detail.rereadPurchases}>
+            Read again
+          </button>
+        </p>
       ) : detail.purchases === null ? (
         <p className="iv-note">Reading the receipts…</p>
       ) : detail.purchases.length === 0 ? (
@@ -485,7 +519,7 @@ function Paperwork({
                       )}
                     </td>
                     <td data-label="At the door" className="iv-num">
-                      {line.qty === null ? EM : line.qty}
+                      {line.qty === null ? EM : fmtCount(line.qty)}
                     </td>
                     <td data-label="Unit" className="iv-num">
                       {cellMoney(line.unitCost, currency)}

@@ -33,10 +33,10 @@ import { summarizeMenuScanPersist } from '../../../lib/menuScannerPersistence';
 import { exportTable, type TableExportColumn } from '../../../lib/tableExport';
 import { fmtWhen } from '../../../lib/mudavym/format';
 import { queryKeys } from '../../../lib/query-keys';
-import { getInventory } from '../../../services/api/inventory';
 import { CellarMapView } from '../command/CellarMapView';
 import type { InventoryItem as LegacyItem } from '../useInventoryPage';
 import InventoryTable from './InventoryTable';
+import { plainText } from './iv-failure';
 import {
   CHIPS,
   chipMatch,
@@ -45,9 +45,14 @@ import {
   latestCount,
   matchesSearch,
   ofType,
+  ALL_WINE,
+  typeLabel,
   readSentence,
+  MAP_WORDS,
+  mapTone,
   sortRows,
-  toRow,
+  sortWords,
+  fmtCount,
   useInventoryNextData,
   type ChipId,
   type InvRow,
@@ -163,9 +168,10 @@ function today(): string {
 async function runExport<T>(rows: T[], columns: TableExportColumn<T>[], filename: string, title: string) {
   try {
     await exportTable({ format: 'csv', rows, columns, filename, title });
-    toast.success(`Exported ${rows.length} rows`);
+    toast.success(`Exported ${fmtCount(rows.length)} rows`);
   } catch (err) {
-    toast.error(err instanceof Error ? err.message : 'The export failed');
+    // Only a sentence written for a person is shown (INV-W31).
+    toast.error(err instanceof Error && plainText(err.message) ? err.message : 'The export could not be made.');
   }
 }
 
@@ -191,7 +197,8 @@ export default function InventoryNext() {
   const locs = data.locations;
   const zoneName = (id: string | null): string => {
     if (id === null) return 'Unassigned';
-    if (locs.unavailable) return 'a zone (names unread)';
+    // Failed or still reading: either way the names are unread, so "not on the list" would be a guess.
+    if (locs.unavailable || locs.loading) return 'a zone (names unread)';
     return locs.list.find((l) => l.id === id)?.name ?? 'a zone not on the list';
   };
 
@@ -209,19 +216,44 @@ export default function InventoryNext() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
+  // A chip whose count could not be read cannot hold the list (INV-W29).
+  const activeChip: ChipId = chip === 'dead' && data.paceUnread ? 'all' : chip;
   const chipCounts = useMemo(() => {
     const now = Date.now();
     const m = new Map<ChipId, number>();
     for (const c of CHIPS) m.set(c.id, (rows ?? []).filter((r) => chipMatch(r, c.id, now)).length);
     return m;
   }, [rows]);
+  const chipCount = (id: ChipId) => {
+    const k = chipCounts.get(id);
+    return k === undefined ? EM : fmtCount(k);
+  };
 
+  // INV-W30: wines first by style, then every other drink by its kind. The
+  // shared Select has no option groups, so when the house holds more than
+  // wine the group is said in the label ("Wine · Red") and one "All wine"
+  // choice leads it; a house of wine alone keeps the plain style words.
   const typeOptions = useMemo(() => {
-    const types = [...new Set((rows ?? []).map((r) => r.type).filter((t): t is string => t !== null))].sort();
-    const opts = types.map((t) => ({ value: t, label: t.charAt(0).toUpperCase() + t.slice(1) }));
-    if ((rows ?? []).some((r) => r.type === null)) opts.push({ value: 'none', label: 'Type not recorded' });
+    const all = rows ?? [];
+    const keys = (wine: boolean) =>
+      [...new Set(all.filter((r) => (r.kind === 'wine') === wine).map((r) => r.type))]
+        .filter((t): t is string => t !== null && t !== 'unclassified')
+        .sort(); // keys are folded and lower-case, so key order is label order
+    const wines = keys(true);
+    const others = keys(false);
+    const mixed = wines.length > 0 && others.length > 0;
+    const wineWord = (t: string) =>
+      t === 'wine' ? (mixed ? 'Wine · style not recorded' : 'Wine, style not recorded') : mixed ? `Wine · ${typeLabel(t)}` : typeLabel(t);
+    const opts = [
+      ...(mixed ? [{ value: ALL_WINE, label: 'All wine' }] : []),
+      ...wines.map((t) => ({ value: t, label: wineWord(t) })),
+      ...others.map((t) => ({ value: t, label: typeLabel(t) })),
+    ];
+    if (all.some((r) => r.type === 'unclassified')) opts.push({ value: 'unclassified', label: 'Not classified' });
+    // With the library unread a missing type is unknown, not "not recorded" (INV-W28).
+    if (data.libraryAnswered && all.some((r) => r.type === null)) opts.push({ value: 'none', label: 'Type not recorded' });
     return opts;
-  }, [rows]);
+  }, [rows, data.libraryAnswered]);
 
   const visible = useMemo(() => {
     if (!rows) return [];
@@ -229,14 +261,23 @@ export default function InventoryNext() {
     const zn = (id: string | null) => (id === null ? 'Unassigned' : (locs.list.find((l) => l.id === id)?.name ?? null));
     return sortRows(
       rows.filter(
-        (r) => chipMatch(r, chip, now) && inZone(r, zone) && ofType(r, type) && matchesSearch(r, query, zn),
+        (r) => chipMatch(r, activeChip, now) && inZone(r, zone) && ofType(r, type) && matchesSearch(r, query, zn),
       ),
       sort,
     );
-  }, [rows, chip, zone, type, query, sort, locs.list]);
+  }, [rows, activeChip, zone, type, query, sort, locs.list]);
 
   const zoneUnread = zone !== '' ? (rows ?? []).filter((r) => r.zones === null).length : 0;
-  const filtered = chip !== 'all' || zone !== '' || type !== '' || query.trim() !== '';
+  const filtered = activeChip !== 'all' || zone !== '' || type !== '' || query.trim() !== '';
+  /** The filters in force, named in the footer beside a way out (INV-W25). */
+  const filterWords = [
+    activeChip !== 'all' ? (CHIPS.find((c) => c.id === activeChip)?.label ?? null) : null,
+    zone !== '' ? (zone === 'none' ? 'Unassigned' : (locs.list.find((l) => l.id === zone)?.name ?? 'a zone')) : null,
+    type !== '' ? (typeOptions.find((o) => o.value === type)?.label ?? type) : null,
+    query.trim() !== '' ? `“${query.trim()}”` : null,
+  ]
+    .filter((w): w is string => w !== null)
+    .join(' · ');
 
   const clearFilters = () => {
     setChip('all');
@@ -261,10 +302,10 @@ export default function InventoryNext() {
             return first ? zoneName(first.locationId) : 'Unassigned';
           },
         },
-        { header: 'Wine', value: (r) => r.name ?? '' },
+        { header: 'Title', value: (r) => r.name ?? '' },
         { header: 'Producer', value: (r) => r.producer ?? '' },
         { header: 'Vintage', value: (r) => blank(r.vintage) },
-        { header: 'Type', value: (r) => r.type ?? '' },
+        { header: 'Type', value: (r) => (r.type === null ? '' : typeLabel(r.type)) },
         { header: 'Bottle size (ml)', value: (r) => blank(r.bottleSizeMl) },
         { header: 'System qty (live)', value: (r) => blank(r.stock) },
         { header: 'System qty (shadow)', value: (r) => blank(r.shadow) },
@@ -278,9 +319,9 @@ export default function InventoryNext() {
     );
 
   const valuationColumns: TableExportColumn<InvRow>[] = [
-    { header: 'Wine', value: (r) => r.name ?? '' },
+    { header: 'Title', value: (r) => r.name ?? '' },
     { header: 'Producer', value: (r) => r.producer ?? '' },
-    { header: 'Type', value: (r) => r.type ?? '' },
+    { header: 'Type', value: (r) => (r.type === null ? '' : typeLabel(r.type)) },
     { header: 'Live', value: (r) => blank(r.stock) },
     { header: 'Shadow', value: (r) => blank(r.shadow) },
     { header: 'Par', value: (r) => blank(r.par) },
@@ -295,29 +336,6 @@ export default function InventoryNext() {
 
   const exportValuation = () =>
     runExport(visible, valuationColumns, `inventory-valuation-${today()}`, 'Inventory valuation');
-
-  const exportAllLocations = async () => {
-    try {
-      const merged: { branch: string; row: InvRow }[] = [];
-      for (const branch of data.branches) {
-        const items = await getInventory(branch.id);
-        for (const item of items) merged.push({ branch: branch.name, row: toRow(item) });
-      }
-      await exportTable({
-        format: 'csv',
-        rows: merged,
-        columns: [
-          { header: 'Location', value: (m) => m.branch },
-          ...valuationColumns.map((c) => ({ header: c.header, value: (m: { row: InvRow }) => c.value(m.row) })),
-        ],
-        filename: `inventory-all-locations-${today()}`,
-        title: 'Inventory valuation — all locations',
-      });
-      toast.success(`Exported ${merged.length} rows across ${data.branches.length} locations`);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'The export failed');
-    }
-  };
 
   const showTools = () => toolsRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
 
@@ -356,7 +374,6 @@ export default function InventoryNext() {
             <p className="iv-lead">The stock could not be read.</p>
             <p className="iv-said">
               The stock list did not answer, so this page claims nothing: not zero titles, and not an empty cellar.
-              {data.error ? ` (${data.error})` : ''}
             </p>
             <button type="button" className="iv-btn iv-focus" style={{ marginTop: 10 }} onClick={data.refetch}>
               Read again
@@ -394,21 +411,21 @@ export default function InventoryNext() {
               <section className="iv-card">
                 <h3 className="iv-h3">Add one bottle</h3>
                 <p className="iv-said">
-                  Carry one title into the book with its first count. It is the cellar’s own “Bring into the cellar”,
-                  and it makes one write.
+                  Carry one wine into the book with its first count. It is the wine register’s own “Bring into the
+                  cellar”, and it makes one write. Other drinks come in from a scanned menu.
                 </p>
                 <Link to="/wines" className="iv-btn iv-focus">
                   Add a bottle
                 </Link>
               </section>
               <section className="iv-card">
-                <h3 className="iv-h3">Scan your wine list</h3>
+                <h3 className="iv-h3">Scan your menu</h3>
                 <p className="iv-said">
-                  Read your list into the book. Each title comes in with no count until someone counts it. It is never
+                  Read your menu into the book. Each title comes in with no count until someone counts it. It is never
                   set to zero.
                 </p>
                 <button type="button" className="iv-btn iv-focus" onClick={() => setPanel('scanner')}>
-                  Scan your wine list
+                  Scan your menu
                 </button>
               </section>
             </div>
@@ -437,7 +454,17 @@ export default function InventoryNext() {
 
             <div className="iv-chips" role="group" aria-label="Show only" data-testid="inventory-chips">
               {CHIPS.map((c) =>
-                c.id === 'price' ? (
+                c.id === 'dead' && data.paceUnread ? (
+                  <button
+                    key={c.id}
+                    type="button"
+                    className="iv-chip"
+                    disabled
+                    title="Whether a title is dead stock could not be read: the selling pace did not answer"
+                  >
+                    {c.label} <span className="iv-num">{EM}</span>
+                  </button>
+                ) : c.id === 'price' ? (
                   <button
                     key={c.id}
                     type="button"
@@ -452,11 +479,11 @@ export default function InventoryNext() {
                     key={c.id}
                     type="button"
                     className="iv-chip iv-focus"
-                    aria-pressed={chip === c.id}
-                    data-on={chip === c.id}
+                    aria-pressed={activeChip === c.id}
+                    data-on={activeChip === c.id}
                     onClick={() => setChip(c.id)}
                   >
-                    {c.label} <span className="iv-num">{chipCounts.get(c.id) ?? EM}</span>
+                    {c.label} <span className="iv-num">{chipCount(c.id)}</span>
                   </button>
                 ),
               )}
@@ -486,7 +513,14 @@ export default function InventoryNext() {
                   { value: 'none', label: 'Unassigned' },
                 ]}
               />
-              <Select label="Type" value={type} onChange={setType} placeholder="All" options={typeOptions} />
+              <Select
+                label="Type"
+                value={type}
+                onChange={setType}
+                placeholder="All"
+                disabled={!data.libraryAnswered}
+                options={typeOptions}
+              />
               <Select
                 label="Sort"
                 value={sort}
@@ -508,12 +542,18 @@ export default function InventoryNext() {
               <button type="button" className="iv-btn iv-focus" onClick={showTools}>
                 Tools
               </button>
-              <Link to="/wines" className="iv-btn iv-focus" data-seal="true" title="Opens the wine register, where a bottle is brought into the cellar">
+              <Link to="/wines" className="iv-btn iv-focus" data-seal="true" title="Opens the wine register, where a wine is brought into the cellar. Other drinks come in from a scanned menu.">
                 Add a bottle
               </Link>
             </div>
-            {locs.unavailable ? (
-              <p className="iv-note">The storage locations could not be read, so zones show — and the zone filter is off.</p>
+            {data.unread.length > 0 ? (
+              <p className="iv-note" data-testid="inv-unread">
+                {data.unread.length === 1 ? 'One read did not answer: ' : 'Some reads did not answer: '}
+                {data.unread.join('; ')}.{' '}
+                <button type="button" className="iv-linkish iv-focus" onClick={data.rereadUnread}>
+                  Read again
+                </button>
+              </p>
             ) : null}
 
             <QuietLine {...data.waiting} naming={naming} onName={() => setNaming((v) => !v)} />
@@ -541,12 +581,14 @@ export default function InventoryNext() {
                     setView('table');
                   }}
                   onManageLocations={() => setPanel('locations')}
+                  toneOf={mapTone}
+                  toneWords={MAP_WORDS}
                 />
               </div>
             ) : visible.length === 0 ? (
               <div className="iv-none" data-testid="inventory-none-match">
                 <p className="iv-said">
-                  No title matches {filtered ? 'this search and these filters' : 'here'}; {rows.length}{' '}
+                  No title matches {filtered ? 'this search and these filters' : 'here'}; {fmtCount(rows.length)}{' '}
                   {rows.length === 1 ? 'title is' : 'titles are'} on the books.
                 </p>
                 {filtered ? (
@@ -558,6 +600,7 @@ export default function InventoryNext() {
             ) : (
               <InventoryTable
                 rows={visible}
+                libraryUnread={!data.libraryAnswered}
                 grouped={sort === 'needs'}
                 openId={openId}
                 onToggle={(id) => setOpenId((cur) => (cur === id ? null : id))}
@@ -590,7 +633,7 @@ export default function InventoryNext() {
               </h2>
               <div className="iv-row-controls">
                 <button type="button" className="iv-btn iv-focus" onClick={() => setPanel('scanner')}>
-                  Scan a wine list
+                  Scan a menu
                 </button>
                 <button type="button" className="iv-btn iv-focus" onClick={() => setPanel('locations')}>
                   Storage locations
@@ -604,11 +647,9 @@ export default function InventoryNext() {
                 <button type="button" className="iv-btn iv-focus" onClick={() => void exportValuation()}>
                   Export valuation
                 </button>
-                {data.branches.length > 1 ? (
-                  <button type="button" className="iv-btn iv-focus" onClick={() => void exportAllLocations()}>
-                    Export all locations
-                  </button>
-                ) : null}
+                {/* INV-W18: "Export all locations" read every house from this one session; since
+                    ADR 0164 a session reads only its own house, so it failed on the first other
+                    house every time. A cross-house export is gateway work (F-10). */}
               </div>
               <p className="iv-note">
                 Exports are CSV of the titles listed above. A figure that could not be read is left blank in the file,
@@ -617,11 +658,25 @@ export default function InventoryNext() {
             </section>
 
             <p className="iv-footer" data-testid="inventory-footer">
-              {visible.length === rows.length ? `All ${rows.length}` : `${visible.length}`} of {rows.length} titles are
-              listed{sort === 'needs' ? ', sorted Needs you first' : ''}.
+              {visible.length === rows.length ? `All ${fmtCount(rows.length)}` : fmtCount(visible.length)} of {fmtCount(rows.length)} titles are
+              listed{filterWords ? ` (${filterWords})` : ''}, {sortWords(sort, visible)}.
+              {filtered && visible.length > 0 ? (
+                <>
+                  {' '}
+                  <button type="button" className="iv-linkish iv-focus" onClick={clearFilters}>
+                    Clear the filters
+                  </button>
+                  <br />
+                </>
+              ) : null}
               {data.currency.state === 'recorded' ? ` Money is shown in the house’s currency, ${data.currency.code}.` : ''}{' '}
-              Market reads — on every line because no title here has a market price yet. Every figure on this page was
-              read. A figure the house could not read is —, never 0, and nothing on this page is a default.
+              Market reads — in every title's details because this page does not read a market price yet.
+              {data.unread.length > 0 || data.stale
+                ? ' Not every read answered; each one that did not is named above the table.'
+                : data.pending.length > 0
+                  ? ` Still reading: ${data.pending.join(', ')}.`
+                  : ' Every figure on this page was read.'}{' '}
+              A figure the house could not read is —, never 0, and nothing on this page is a default.
             </p>
           </>
         ) : null}

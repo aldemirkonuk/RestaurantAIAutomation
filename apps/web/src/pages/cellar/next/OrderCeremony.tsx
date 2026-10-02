@@ -77,6 +77,15 @@ export interface OrderCeremonyProps {
   /** Non-null when the last attempt failed; lets the person try again. */
   errorMessage?: string | null;
   disabled?: boolean;
+  /**
+   * The ask step's words, for a caller whose write does not send anything
+   * (/inventory's Order more only places a pending order; INV-W20). Defaults
+   * are the cellar's own: "Send it?", "Yes, order", "Sending…". `after` ends
+   * the failure note (default "Try again when ready."); /inventory replaces it
+   * when the order's outcome is unknown, since "try again" is the wrong advice
+   * before the person has looked on Orders (INV-W31).
+   */
+  words?: { ask?: string; yes?: string; busy?: string; nothingSent?: string; failedLead?: string; after?: string };
 }
 
 /** `hold`'s own extra step, shown on `HoldToApprove`'s own (inert) face. */
@@ -95,7 +104,12 @@ export default function OrderCeremony({
   sent,
   errorMessage = null,
   disabled = false,
+  words = {},
 }: OrderCeremonyProps) {
+  const askWord = words.ask ?? 'Send it?';
+  const yesWord = words.yes ?? 'Yes, order';
+  const busyWord = words.busy ?? SENDING_COPY;
+  const nothingSentWord = words.nothingSent ?? NOTHING_SENT_COPY;
   // `hold`'s own extra step: true from the moment the hold completes until
   // the person answers "Send it?", or the gesture is remounted away.
   const [asking, setAsking] = useState(false);
@@ -145,7 +159,7 @@ export default function OrderCeremony({
 
   const errorNote = errorMessage ? (
     <p role="alert" className="cl-note" style={{ margin: '6px 0 0' }} data-testid="order-ceremony-error">
-      Nothing was sent — {errorMessage}. Try again when ready.
+      {words.failedLead ?? 'Nothing was sent'} — {errorMessage}. {words.after ?? 'Try again when ready.'}
     </p>
   ) : null;
 
@@ -228,8 +242,8 @@ export default function OrderCeremony({
           approvedLabel={approvedLabel}
           onApprove={holdCommitted}
           copy={{
-            pending: confirmSending ? SENDING_COPY : ASK_PENDING_COPY,
-            unconfirmed: NOTHING_SENT_COPY,
+            pending: confirmSending ? busyWord : ASK_PENDING_COPY,
+            unconfirmed: nothingSentWord,
           }}
           disabled={disabled || pending || asking}
         />
@@ -239,7 +253,7 @@ export default function OrderCeremony({
             data-testid="order-ceremony-asking"
           >
             <span className="cl-said" style={{ fontSize: 12.5 }} role="status">
-              Send it?
+              {askWord}
             </span>
             <button
               ref={yesRef}
@@ -250,7 +264,7 @@ export default function OrderCeremony({
               onClick={handleYes}
               data-testid="order-ceremony-confirm-yes"
             >
-              {confirmSending ? 'Sending…' : 'Yes, order'}
+              {confirmSending ? busyWord : yesWord}
             </button>
             <button type="button" className="cl-btn cl-focus" disabled={confirmSending} onClick={handleCancel}>
               Cancel

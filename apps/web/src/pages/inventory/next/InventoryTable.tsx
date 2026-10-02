@@ -18,10 +18,12 @@
 import { Fragment } from 'react';
 import { HousePriceCell, type AdviceLoad } from '../command/HousePriceCell';
 import RowDropdown, { type RowDropdownProps } from './RowDropdown';
-import { cellMoney, EM, SEVERITY_GROUP, severity, type InvRow } from './useInventoryNextData';
+import { cellMoney, EM, fmtCount, fmtPace, SEVERITY_GROUP, severity, typeLabel, type InvRow } from './useInventoryNextData';
 
 export interface InventoryTableProps extends Omit<RowDropdownProps, 'row'> {
   rows: InvRow[];
+  /** The wine library did not answer: a missing type is unknown, not "not recorded" (INV-W28). */
+  libraryUnread?: boolean;
   /** Head the rows by severity (the "Needs you first" sort). */
   grouped: boolean;
   openId: string | null;
@@ -31,10 +33,6 @@ export interface InventoryTableProps extends Omit<RowDropdownProps, 'row'> {
 }
 
 const COLUMNS = ['Title', 'Type', 'Zone', 'Live / shadow · par', 'Vel/day', 'Runway', 'Your price', 'Value', 'Status'];
-
-function cap(s: string): string {
-  return s.charAt(0).toUpperCase() + s.slice(1);
-}
 
 /** The status word, never a colour alone. */
 function statusWord(row: InvRow): string {
@@ -108,7 +106,7 @@ export default function InventoryTable(props: InventoryTableProps) {
                   <tr className="iv-group">
                     <td colSpan={COLUMNS.length}>
                       {SEVERITY_GROUP[sev]}
-                      {sev < 2 ? <span className="iv-num"> {counts[sev]}</span> : null}
+                      {sev < 2 ? <span className="iv-num"> {fmtCount(counts[sev])}</span> : null}
                     </td>
                   </tr>
                 ) : null}
@@ -135,24 +133,24 @@ export default function InventoryTable(props: InventoryTableProps) {
                       </span>
                     </button>
                   </td>
-                  <td data-label="Type" className={row.type ? undefined : 'iv-dim'}>
-                    {row.type ? cap(row.type) : 'not recorded'}
+                  <td data-label="Type" className={row.type && row.type !== 'unclassified' ? undefined : 'iv-dim'}>
+                    {row.type ? typeLabel(row.type) : props.libraryUnread ? EM : 'not recorded'}
                   </td>
                   <td data-label="Zone">{zoneCell(row, zoneName, props.locationsUnavailable)}</td>
                   <td data-label="Live / shadow · par" className="iv-r iv-num">
                     <span>
-                      {row.stock === null ? EM : row.stock}
-                      <span className="iv-dim"> / {row.shadow === null ? EM : row.shadow}</span>
+                      {row.stock === null ? EM : fmtCount(row.stock)}
+                      <span className="iv-dim"> / {row.shadow === null ? EM : fmtCount(row.shadow)}</span>
                       {' · '}
-                      {row.par === null ? EM : row.par}
+                      {row.par === null ? EM : fmtCount(row.par)}
                     </span>
                     <ParBar row={row} />
                   </td>
                   <td data-label="Vel/day" className="iv-r iv-num">
-                    {row.velocity === null ? EM : row.velocity.toFixed(1)}
+                    {row.velocity === null ? EM : fmtPace(row.velocity)}
                   </td>
                   <td data-label="Runway" className="iv-r iv-num">
-                    {row.runway === null ? EM : `${Math.round(row.runway)}d`}
+                    {row.runway === null ? EM : `${fmtCount(Math.round(row.runway))}d`}
                   </td>
                   <td data-label="Your price" className="iv-r iv-num" onClick={(e) => e.stopPropagation()}>
                     {canManage ? (
@@ -164,6 +162,7 @@ export default function InventoryTable(props: InventoryTableProps) {
                         advice={advice}
                         canEdit
                         onChanged={onPriceChanged}
+                        money={(n) => cellMoney(n, currency)}
                       />
                     ) : (
                       <>
