@@ -141,6 +141,7 @@ vi.mock('./WhoIsWriting', () => ({
 
 import CommunicationsNext from './CommunicationsNext';
 import { communicationsTour } from '../../../guidance/content/communications';
+import { roomForAct } from '../../../lib/mudavym/counterRead';
 
 // The template sheet persists through `useTemplates` (P1), so the page tree now
 // needs a query client. A fresh one per render keeps the tests independent.
@@ -663,6 +664,21 @@ describe('the counter link to a waiting reply', () => {
   it('opens that order\'s drafted reply, as clicking its row does', () => {
     mockData.current = { ...base, drafts: [waiting] };
     render(<CommunicationsNext />, '/communications?reply=o1');
+    expect(screen.getByText("The house's reply, drafted")).toBeInTheDocument();
+    expect(screen.queryByTestId('reply-link-missing')).toBeNull();
+  });
+
+  // #567 audit note 2: the reader must match the link the counter builds, so
+  // this one renders roomForAct's own path, with an id that needs encoding.
+  it('opens the reply from the link the counter itself builds (roomForAct)', () => {
+    const orderId = 'o 1/é';
+    mockData.current = { ...base, drafts: [{ ...waiting, orderId }] };
+    const room = roomForAct('threads', {
+      id: 't1', vendor: null, orderNumber: null, channel: null, intent: null,
+      aiGenerated: true, createdAt: null, orderId,
+    });
+    expect(room?.path).toBe(`/communications?reply=${encodeURIComponent(orderId)}`);
+    render(<CommunicationsNext />, room?.path ?? '');
     expect(screen.getByText("The house's reply, drafted")).toBeInTheDocument();
     expect(screen.queryByTestId('reply-link-missing')).toBeNull();
   });
