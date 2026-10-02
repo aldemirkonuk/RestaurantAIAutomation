@@ -28,7 +28,7 @@ export const providersTour: TourDefinition = {
       element: '[data-testid="scope-find"]',
       title: 'Find someone new',
       description:
-        'Search the curated catalogue by country, region or vendor name. A vendor you already have says "In your vendors".',
+        'Pick a country, then search the curated catalogue by a vendor’s name or its specialty, like Burgundy. A vendor you already have says "In your vendors".',
     },
     {
       element: '[data-testid="add-vendor"]',
