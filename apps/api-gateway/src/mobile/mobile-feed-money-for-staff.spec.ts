@@ -383,7 +383,7 @@ const FUTURE_TYPE = {
 };
 
 /**
- * Money-free from both of its writers: `notifications.service.ts:418-431` and
+ * Money-free from both of its writers: `notifications.service.ts:437-450` and
  * `delivery-recorded.producer.ts:154-190`.
  */
 const DELIVERY_ARRIVED = {
@@ -593,6 +593,106 @@ describe("GET /mobile/feed — notification cards carry no money to staff (ADR 0
     expect(service.persistForRestaurant.mock.calls[0][1].type).toBe(
       "system_alert",
     );
+  });
+
+  /**
+   * Moving the wage notice and the system alert off `system` must not take
+   * them out of the web inbox's System chip, which asks the server for
+   * `type=system` (`nt-book.ts` TYPE_CHOICES). Kept in this file, beside the
+   * two moves it follows from, because the branch is at its 15-file cap.
+   */
+  it("the web inbox's System chip (`type=system`) gets every type the inbox files under System, and no other", async () => {
+    const rows = [
+      { id: "n-system", type: "system" },
+      { id: "n-alert", type: "system_alert" },
+      { id: "n-wage", type: OWN_WAGE_ACTION },
+      { id: "n-goal", type: "goal_reached" },
+      { id: "n-delivery", type: "order_delivered" },
+    ].map((r, i) => ({
+      ...r,
+      user_id: "owner-1",
+      restaurant_id: HOUSE,
+      title: r.id,
+      created_at: `2026-10-01T0${i}:00:00.000Z`,
+    }));
+    // A query that applies the filters it is given to the rows above.
+    const query = (keep: (r: any) => boolean): any => ({
+      eq: (col: string, v: unknown) => query((r) => keep(r) && r[col] === v),
+      in: (col: string, vs: unknown[]) =>
+        query((r) => keep(r) && vs.includes(r[col])),
+      order: () => query(keep),
+      range: async (from: number, to: number) => {
+        const hit = rows.filter(keep);
+        return {
+          data: hit.slice(from, to + 1),
+          error: null,
+          count: hit.length,
+        };
+      },
+    });
+    const service = Object.create(NotificationsService.prototype) as any;
+    service.logger = new Logger("spec");
+    service.databaseService = {
+      supabase: { from: () => ({ select: () => query(() => true) }) },
+    };
+    const ids = async (type: string) =>
+      (
+        await service.getNotifications({
+          userId: "owner-1",
+          restaurantId: HOUSE,
+          type,
+        })
+      ).data
+        .map((n: { id: string }) => n.id)
+        .sort();
+
+    expect(await ids("system")).toEqual(["n-alert", "n-system", "n-wage"]);
+    // Any other type is still matched exactly.
+    expect(await ids("system_alert")).toEqual(["n-alert"]);
+    expect(await ids("goal_reached")).toEqual(["n-goal"]);
+  });
+
+  /**
+   * `amount` is the money key the feed's own approve cards use, so it is the
+   * one a writer is likeliest to copy into a notification's metadata. No
+   * writer does today; this row is what one would look like, under a type on
+   * the money-free list so only the metadata cut stands between the figure
+   * and staff.
+   */
+  it("cuts an `amount` from a money-free notification's metadata for every role that does not see money", async () => {
+    const PENDING_WITH_AMOUNT = {
+      id: "notif-amount",
+      type: "order_pending",
+      title: "Order PO-1002 is waiting for approval",
+      message: "Barolo 2019, 6 bottles, from Cave Vendor.",
+      priority: "high",
+      metadata: { orderId: "order-2", orderNumber: "PO-1002", amount: 8642.75 },
+      createdAt: "2026-10-01T09:45:00.000Z",
+    };
+    expect(MONEY_FREE_NOTIFICATION_TYPES.has(PENDING_WITH_AMOUNT.type)).toBe(
+      true,
+    );
+    for (const [label, role] of NOT_MONEY_ROLES) {
+      const { controller } = build([PENDING_WITH_AMOUNT]);
+      const feed = await controller.getFeed(caller(role));
+      const card = feed.items.find(
+        (i) => i.notificationId === PENDING_WITH_AMOUNT.id,
+      )!;
+      expect({ label, meta: card.meta }).toEqual({
+        label,
+        meta: { orderId: "order-2", orderNumber: "PO-1002" },
+      });
+      expect({ label, wire: wire(feed).includes("8642") }).toEqual({
+        label,
+        wire: false,
+      });
+    }
+    // An owner still gets the row's whole metadata, amount included.
+    const { controller } = build([PENDING_WITH_AMOUNT]);
+    const feed = await controller.getFeed(caller("owner"));
+    expect(
+      feed.items.find((i) => i.notificationId === PENDING_WITH_AMOUNT.id)!.meta,
+    ).toBe(PENDING_WITH_AMOUNT.metadata);
   });
 
   describe.each(["owner", "manager"])("a %s", (role) => {

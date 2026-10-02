@@ -62,7 +62,19 @@ export function seesHouseMoney(role: string | null | undefined): boolean {
  * (the founder, 2026-10-01: "Give wages its own type (Recommended)"). Every
  * writer of `system` was re-read that day and none puts money in the
  * sentence; a row stored as `system` before the move is still kept quiet by
- * `isOwnWageNotice`.
+ * `isOwnWageNotice`. Three `system` writers do carry a team member's typed
+ * words (a team broadcast, a note, a held team message), so staff read those
+ * on the feed as they already did on the Notifications screen.
+ *
+ * `unknown_sender` is on the list although its sentence quotes up to 80
+ * characters of an incoming email's subject (`_notify_unknown_sender` in the
+ * agent orchestrator's `email_intel_agent.py`): an outsider's text, which can
+ * name a price. The free-text rule above does not decide it. Incoming mail
+ * follows ADR 0253 round 11 F13 (on PR #566), *"Mail kept, AI summaries
+ * neutral (Recommended)"*, under which a vendor mail's subject and text reach
+ * staff. F13 says vendor mail, and this sender is not yet in the providers
+ * list; counting it as vendor mail is this branch's reading, filed as open in
+ * the tech-debt entry named at the top of this comment.
  */
 export const MONEY_FREE_NOTIFICATION_TYPES: ReadonlySet<string> = new Set([
   // Deliveries and stock.

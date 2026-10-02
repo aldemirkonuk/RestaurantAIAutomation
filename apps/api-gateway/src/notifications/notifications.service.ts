@@ -18,6 +18,25 @@ import { AreaRoutingService } from "../areas/area-routing.service";
 import { type AreaLabel, readAreaLabel } from "../areas/area-label";
 import type { RouteStep } from "../areas/area-routing";
 import type { DeliveryMode, DigestFrequency } from "./dto/notifications.dto";
+import { OWN_WAGE_ACTION } from "../team/own-wage-notice";
+
+/**
+ * The types the web inbox files under System (`KIND_BY_TYPE` in
+ * `apps/web/src/pages/notifications/next/nt-format.ts`): `system`,
+ * `system_alert` and the own-wage notice's `team_member_own_wage_set`.
+ *
+ * The inbox's System chip asks for `type=system` (`TYPE_CHOICES` in
+ * `nt-book.ts`), so `getNotifications` answers that one value with all three.
+ * Matched exactly, the chip missed every `system_alert` row and, since the
+ * own-wage notice left `system` on 2026-10-01 (`team/own-wage-notice.ts`),
+ * every wage notice; both still showed under All. Any other `type` is still
+ * matched exactly.
+ */
+export const SYSTEM_CHIP_TYPES: readonly string[] = [
+  "system",
+  "system_alert",
+  OWN_WAGE_ACTION,
+];
 
 /**
  * How a broadcast was routed (ADR 0218), returned so a caller and a spec can
@@ -889,7 +908,10 @@ export class NotificationsService {
     if (params.restaurantId) {
       query = query.eq("restaurant_id", params.restaurantId);
     }
-    if (params.type) {
+    if (params.type === "system") {
+      // The web inbox's System chip: every type it files under System.
+      query = query.in("type", [...SYSTEM_CHIP_TYPES]);
+    } else if (params.type) {
       query = query.eq("type", params.type);
     }
     if (params.status) {
