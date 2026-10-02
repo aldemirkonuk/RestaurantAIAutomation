@@ -601,16 +601,19 @@ function LetterPaper({ r, open, long }: { r: LetterRequest; open: boolean; long:
    account"; W20b: both paths, the Mudavym address "Not yet" until the
    created-mailbox build (COMMS-W13b) lands. */
 type MailboxId = 'gmail_send' | 'outlook' | 'icloud' | 'mudavym';
-const MAILBOXES: { id: MailboxId; name: string; ready: boolean; words: string; why?: string }[] = [
-  { id: 'gmail_send', name: 'Gmail', ready: true, words: 'Sending only' },
-  { id: 'outlook', name: 'Outlook', ready: false, words: 'Not yet' },
-  { id: 'icloud', name: 'iCloud Mail', ready: false, words: 'Not yet' },
+/* The chooser's options: what Mudavym can connect today, not anything about a
+   house (ADR 0051's descriptor vocabulary). `disabled` is a mailbox Mudavym
+   cannot send from yet, `hint` the words beside its name, `description` why. */
+const MAILBOXES: { id: MailboxId; name: string; disabled: boolean; hint: string; description?: string }[] = [
+  { id: 'gmail_send', name: 'Gmail', disabled: false, hint: 'Sending only' },
+  { id: 'outlook', name: 'Outlook', disabled: true, hint: 'Not yet' },
+  { id: 'icloud', name: 'iCloud Mail', disabled: true, hint: 'Not yet' },
   {
     id: 'mudavym',
     name: '@mudavym.com',
-    ready: false,
-    words: 'Not yet',
-    why: 'A name@mudavym.com address for this house cannot be given yet; Gmail is the only way to send today.',
+    disabled: true,
+    hint: 'Not yet',
+    description: 'A name@mudavym.com address for this house cannot be given yet; Gmail is the only way to send today.',
   },
 ];
 
@@ -741,7 +744,7 @@ export function ConnectLink() {
                 // the house's own mailbox above, an address Mudavym gives below
                 <div role="separator" style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)', margin: '3px 0' }} />
               )}
-              {m.ready ? (
+              {!m.disabled ? (
                 <Link
                   to={`/authorize/${m.id}?returnPath=${back}`}
                   className="mdv-item"
@@ -750,7 +753,7 @@ export function ConnectLink() {
                 >
                   <MailIcon id={m.id} />
                   <span className="mdv-item__text">{m.name}</span>
-                  <span style={{ fontSize: 10.5, color: 'var(--ink-4, #665D50)' }}>{m.words}</span>
+                  <span style={{ fontSize: 10.5, color: 'var(--ink-4, #665D50)' }}>{m.hint}</span>
                 </Link>
               ) : (
                 <button
@@ -758,14 +761,14 @@ export function ConnectLink() {
                   className="mdv-item"
                   disabled
                   data-testid={`mailbox-${m.id}`}
-                  title={m.why ?? `${m.name} cannot be connected yet; Gmail is the only mailbox Mudavym can send from today.`}
+                  title={m.description ?? `${m.name} cannot be connected yet; Gmail is the only mailbox Mudavym can send from today.`}
                   style={{ ...barStyle, cursor: 'not-allowed', color: 'var(--ink-4, #665D50)' }}
                 >
                   <span style={{ opacity: 0.55, display: 'flex' }}>
                     <MailIcon id={m.id} />
                   </span>
                   <span className="mdv-item__text">{m.name}</span>
-                  <span style={{ fontSize: 10.5 }}>{m.words}</span>
+                  <span style={{ fontSize: 10.5 }}>{m.hint}</span>
                 </button>
               )}
             </Fragment>

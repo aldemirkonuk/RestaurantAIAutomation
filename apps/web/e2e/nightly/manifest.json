@@ -127,8 +127,7 @@
         "no vendor exchanges yet"
       ],
       "failed_read": [
-        "The conversation book could not be refreshed",
-        "The conversation book could not be reached"
+        "The conversation book could not be read"
       ]
     },
     {
