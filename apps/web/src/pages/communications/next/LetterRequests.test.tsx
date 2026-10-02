@@ -7,8 +7,9 @@
  * and that a failed read is never "nothing waiting".
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MemoryRouter } from 'react-router-dom';
 
 const api = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }));
 vi.mock('../../../services/api/client', () => ({
@@ -31,11 +32,13 @@ const REQ: LetterRequest = {
   state: 'waiting',
 };
 
-function draw(canRelease: boolean) {
+function draw(canRelease: boolean, more: Partial<Parameters<typeof LetterRequestsPanel>[0]> = {}) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={qc}>
-      <LetterRequestsPanel restaurantId="r1" canRelease={canRelease} />
+      <MemoryRouter>
+        <LetterRequestsPanel restaurantId="r1" canRelease={canRelease} {...more} />
+      </MemoryRouter>
     </QueryClientProvider>,
   );
 }
@@ -53,7 +56,14 @@ describe('letters waiting for a manager', () => {
     );
     draw(true);
     const die = await screen.findByRole('button', { name: /Hold to send it as written/ });
-    expect(screen.getByTestId('letter-requests')).toHaveTextContent('Ayşe asked for this letter to fikri@fikritarim.com to be sent');
+    expect(screen.getByTestId('letter-requests')).toHaveTextContent('Ayşe asked to send a letter');
+    expect(screen.getByTestId('letter-request-paper')).toHaveTextContent(/To\s*fikri@fikritarim\.com/);
+    // COMMS-W30: the card hides overflow, so a long address or subject must wrap or it is cut off.
+    const head = [...screen.getByTestId('letter-request-paper').querySelectorAll('span')];
+    for (const said of ['fikri@fikritarim.com', 'Standing order']) {
+      expect(head.find((s) => s.textContent === said)?.style.overflowWrap).toBe('anywhere');
+    }
+    expect(screen.getByTestId('letter-request-state')).toHaveTextContent('Ready to send');
     fireEvent.keyDown(die, { key: 'Enter' });
     fireEvent.keyDown(die, { key: 'Enter' });
     const body = releaseBody(REQ);
@@ -154,6 +164,7 @@ describe('letters waiting for a manager', () => {
     api.get.mockRejectedValue(new Error('permission denied'));
     draw(true);
     await waitFor(() => expect(screen.getByTestId('letter-requests-unread')).toHaveTextContent(/could not be read/));
+    expect(screen.getByTestId('letter-requests-unread')).toHaveTextContent(/That does not mean none are waiting\.$/);
   });
 });
 
@@ -181,5 +192,145 @@ describe('a released letter that could not be sent', () => {
     draw(false);
     await screen.findByTestId('letter-requests');
     expect(screen.queryByTestId('letter-request-send-failed')).toBeNull();
+  });
+});
+
+// COMMS-W11 / W11c (walk-through 2026-10-01): an owner in a house with no
+// mailbox was told to "wait for an owner or a manager". The card now says
+// which step is missing, keeps the hold visible but locked, and reads the
+// mailbox again on request; the letter shows as a letter, with nothing added.
+describe('a waiting letter in a house with no mailbox', () => {
+  const LETTER: LetterRequest = {
+    ...REQ,
+    payload: { ...REQ.payload, body: 'Hello,\n\nOne case was missing.\nPlease send it Friday.\n\nThanks' },
+  };
+  const mailbox = { basis: 'owner' as const, checking: false, checkedAt: Date.parse('2026-10-01T09:00:00Z'), recheck: vi.fn() };
+
+  it('tells an owner which step is missing, links to it, and offers no working send', async () => {
+    api.get.mockResolvedValue({ data: { requests: [LETTER] } });
+    draw(false, { noMailbox: true, mailbox });
+    const steps = await screen.findByTestId('letter-request-readiness');
+    expect(steps).toHaveTextContent('You may send for this house as the owner.');
+    expect(steps).toHaveTextContent('Not yet: This house has no mailbox to send from.');
+    expect(screen.getByTestId('letter-request-connect')).toHaveTextContent('Connect a mailbox');
+    expect(screen.getByTestId('letter-request-state')).toHaveTextContent('Can’t send yet');
+    expect(screen.getByRole('button', { name: /Hold to send it as written/ })).toBeDisabled();
+    expect(screen.queryByText(/Waiting for an owner or a manager/)).toBeNull();
+    expect(api.post).not.toHaveBeenCalled();
+  });
+
+  // COMMS-W16 (founder, 2026-10-01): the connect button opens a small chooser.
+  // Only Gmail sending exists, so Outlook and iCloud Mail cannot be pressed.
+  it('opens a mailbox chooser: Gmail goes to Google and back, Outlook and iCloud say not yet', async () => {
+    api.get.mockResolvedValue({ data: { requests: [LETTER] } });
+    draw(false, { noMailbox: true, mailbox });
+    fireEvent.click(await screen.findByTestId('letter-request-connect'));
+    expect(await screen.findByTestId('mailbox-gmail_send')).toHaveAttribute(
+      'href',
+      '/authorize/gmail_send?returnPath=%2F',
+    );
+    expect(screen.getByTestId('mailbox-outlook')).toBeDisabled();
+    expect(screen.getByTestId('mailbox-icloud')).toBeDisabled();
+    // COMMS-W20b: the house's own mailbox, or an address Mudavym gives (not yet)
+    expect(screen.getByTestId('mailbox-mudavym')).toBeDisabled();
+    expect(screen.getByTestId('mailbox-mudavym')).toHaveTextContent('@mudavym.comNot yet');
+    expect(screen.getByTestId('mailbox-mudavym')).toHaveAttribute('title', expect.stringContaining('name@mudavym.com'));
+    expect(screen.getByTestId('mailbox-more')).toHaveAttribute('href', '/connections#sender');
+    // No company has granted its app icon yet (COMMS-W16c), so each bar carries the
+    // mark that company publishes for sign-in: Google's G, Microsoft's four squares.
+    const fills = (id: string) =>
+      [...screen.getByTestId(id).querySelectorAll('[fill]')].map((n) => n.getAttribute('fill'));
+    expect(fills('mailbox-gmail_send')).toContain('#EA4335');
+    expect(fills('mailbox-gmail_send')).not.toContain('#C5221F');
+    expect(fills('mailbox-outlook')).toContain('#F25022');
+    expect(fills('mailbox-outlook')).not.toContain('#0078D4');
+    expect(api.post).not.toHaveBeenCalled();
+  });
+
+  it('reads the mailbox again when asked', async () => {
+    api.get.mockResolvedValue({ data: { requests: [LETTER] } });
+    const recheck = vi.fn();
+    draw(false, { noMailbox: true, mailbox: { ...mailbox, recheck } });
+    fireEvent.click(await screen.findByRole('button', { name: 'Check again' }));
+    expect(recheck).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows the letter in the paragraphs and lines it was written in, adding nothing', async () => {
+    api.get.mockResolvedValue({ data: { requests: [LETTER] } });
+    draw(false, { noMailbox: true, mailbox });
+    const paper = await screen.findByTestId('letter-request-paper');
+    const paras = [...paper.querySelectorAll('p')].map((p) => p.textContent);
+    expect(paras).toEqual(['Hello,', 'One case was missing.\nPlease send it Friday.', 'Thanks']);
+    // COMMS-W30: the card hides overflow, so an unbroken run must wrap or it is cut off.
+    expect([...paper.querySelectorAll('p')].every((p) => p.style.overflowWrap === 'anywhere')).toBe(true);
+  });
+});
+
+// COMMS-W33 (founder: "A: keep, say when"): a refresh that fails keeps the
+// letters already read; they used to vanish while the page still counted them.
+describe('when the letters cannot be read again', () => {
+  it('keeps the letters it read, under a line saying when', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    let fail = false;
+    api.get.mockImplementation(async () => {
+      if (fail) throw { response: { status: 500, data: { message: 'Internal server error.' } } };
+      return { data: { requests: [REQ] } };
+    });
+    render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter>
+          <LetterRequestsPanel restaurantId="r1" canRelease />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    await screen.findByText('Letters waiting for a manager · 1');
+    fail = true;
+    await act(async () => {
+      await qc.refetchQueries();
+    });
+    expect(screen.getByText('Letters waiting for a manager · 1')).toBeInTheDocument();
+    expect(await screen.findByTestId('letter-requests-stale')).toHaveTextContent(
+      /^Could not be read again \(Internal server error\)\. This is as it was at \d\d:\d\d; there may be more or fewer now\.$/,
+    );
+    expect(screen.queryByTestId('letter-requests-unread')).toBeNull();
+  });
+});
+
+// COMMS-W36 (founder: "Page + queue shared"): the old Dark theme puts
+// `.dark` on <html> (a browser that saved it keeps it; #576 took its control
+// off /profile), and its `p` rule outranks the house's reset, so a
+// paragraph that only inherited its ink turned pale on the paper ground (the
+// letter's words measured 1.70:1). Each names the ink it already had. And the
+// panel sits under "Waiting on you", so its heading is one level below it.
+describe('the ink and the outline (COMMS-W36)', () => {
+  const INK1 = 'var(--ink-1, #211C16)';
+
+  it('its heading is a level below "Waiting on you", and the letter’s words name their ink', async () => {
+    api.get.mockResolvedValue({ data: { requests: [{ ...REQ, payload: { ...REQ.payload, body: 'Hello,\n\nOne case.' } }] } });
+    draw(false);
+    const heading = await screen.findByRole('heading', { level: 3, name: 'Letters waiting for a manager · 1' });
+    // Only its level changed: the line it had as an h2 is kept, so nothing below it moves.
+    expect(heading.style.lineHeight).toBe('2rem');
+    expect(heading.style.letterSpacing).toBe('-0.02em');
+    expect(screen.queryByRole('heading', { level: 2 })).toBeNull();
+    const paras = [...screen.getByTestId('letter-request-paper').querySelectorAll('p')];
+    expect(paras.map((p) => p.textContent)).toEqual(['Hello,', 'One case.']);
+    expect(paras.every((p) => p.style.color === INK1)).toBe(true);
+  });
+
+  it('what a hold says, and what went wrong, name their ink', async () => {
+    api.get.mockResolvedValue({ data: { requests: [REQ], viewer: { userId: 'u-manager', mayDecline: true } } });
+    api.post.mockImplementation(async (path: string) => {
+      if (path.endsWith('seal-challenge')) return { data: { challenge: 'seal-1' } };
+      if (path.endsWith('/cancel')) throw new Error('It left a moment ago');
+      return { data: { id: 'letter-9', says: 'Queued to leave.', dispatchAt: new Date(Date.now() + 120_000).toISOString(), undoMs: 120_000 } };
+    });
+    draw(true);
+    const die = await screen.findByRole('button', { name: /Hold to send it as written/ });
+    fireEvent.keyDown(die, { key: 'Enter' });
+    fireEvent.keyDown(die, { key: 'Enter' });
+    expect((await screen.findByTestId('letter-requests-says')).style.color).toBe(INK1);
+    fireEvent.click(await screen.findByRole('button', { name: 'Pull it back' }));
+    expect((await screen.findByTestId('letter-requests-problem')).style.color).toBe(INK1);
   });
 });

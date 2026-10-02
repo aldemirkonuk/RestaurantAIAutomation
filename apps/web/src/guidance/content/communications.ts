@@ -19,10 +19,14 @@ export const communicationsTour: TourDefinition = {
         'The latest letters between you and your vendors.',
     },
     {
-      element: 'section[aria-label="Drafts waiting"]',
-      title: 'Answer what is drafted',
+      // COMMS-W38 (founder: "#571's order, step 2 widened"): the whole waiting
+      // region, which is always drawn; "Drafts waiting" is drawn only while a
+      // drafted reply waits, and letters staff asked a manager to send sit
+      // beside it.
+      element: 'section[aria-label="Waiting on you"]',
+      title: 'Answer what waits',
       description:
-        'Letters drafted for you. Read one and change it if you need to, then hold to send it, or to ask a manager to send it.',
+        'Letters your staff asked you to send and replies drafted for you. Read one, change it if you need to, then hold to send it, or to ask a manager to send it.',
     },
     {
       element: '[data-tour="comms-write"]',

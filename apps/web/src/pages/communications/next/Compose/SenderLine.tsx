@@ -17,10 +17,17 @@
  *   none               — sends nothing; the control is disabled with the reason
  *   unknown            — the read FAILED; that is not "no mailbox", and saying
  *                        so is the whole of ADR 0051 clause 3
+ *
+ * COMMS-W20 (walk-through 2026-10-01): with no mailbox this line is the same
+ * "Before it can leave" checklist and mailbox chooser as a waiting letter and a
+ * drafted reply (COMMS-W11c, W13, W16c). The gateway's paragraphs about the
+ * shared mailbox, the sending domain and the Google permission are not shown:
+ * they named an internal address, DNS records, a permission URL and routes.
  */
 
 import { Ban, KeyRound, Mail, ShieldQuestion } from 'lucide-react';
-import type { SenderIdentity } from './useComposeData';
+import { useLetterSenderStanding, type SenderIdentity } from './useComposeData';
+import { Check, ConnectLink, Recheck } from '../LetterRequestsPanel';
 import { EM, MONO, SANS, fmtWindowLength } from './compose-format';
 
 const ICON = { size: 13, strokeWidth: 1.75 } as const;
@@ -34,6 +41,7 @@ export function SenderLine({
   failed: boolean;
   error: string | null;
 }) {
+  const mailbox = useLetterSenderStanding();
   // A failed fetch and an unanswered one are not the same thing, and neither is
   // "no sender". The banner names which one this is before anything else.
   const kind = failed ? 'unknown' : (sender?.kind ?? null);
@@ -49,7 +57,7 @@ export function SenderLine({
 
   const address = failed ? null : (sender?.address ?? null);
   const words = failed
-    ? `Which mailbox this house sends from could not be read (${error ?? 'unknown error'}). No letter may be queued until it can be. This is a failed read, not an empty answer.`
+    ? `Which mailbox this house sends from could not be read (${error ?? 'unknown error'}). No letter may be queued until it can be.`
     : kind === null
       ? 'Reading which mailbox this house sends from…'
       : sender!.words;
@@ -99,21 +107,23 @@ export function SenderLine({
           {address ?? EM}
         </span>
       </div>
-      <p style={{ margin: '5px 0 0', fontSize: 11.5, lineHeight: 1.45, color: tone }}>{words}</p>
-
-      {/* What is NOT used, said out loud. The shared deployment mailbox is the
-          address every letter uses today, and the reader deserves to know the
-          composer is refusing it rather than failing to find it. */}
-      {sender && !failed && (
-        <p style={{ margin: '5px 0 0', fontSize: 11, lineHeight: 1.45, color: 'var(--ink-4, #665D50)' }}>
-          Not {sender.deployment.address}: {sender.deployment.refusedBecause}
-        </p>
-      )}
-
-      {sender && !failed && !sender.subdomain.provisioned && (
-        <p style={{ margin: '5px 0 0', fontSize: 11, lineHeight: 1.45, color: 'var(--ink-4, #665D50)' }}>
-          {sender.subdomain.words}
-        </p>
+      {kind === 'none' ? (
+        <div data-testid="sender-readiness" style={{ marginTop: 6 }}>
+          <p style={{ margin: 0, fontSize: 11, fontWeight: 600, color: 'var(--ink-2, #4F473C)' }}>
+            Before it can leave
+          </p>
+          <ul style={{ listStyle: 'none', margin: '6px 0 0', padding: 0, display: 'grid', gap: 4 }}>
+            <Check ok={false}>
+              This house has no mailbox to send from.
+              <span style={{ display: 'block', marginTop: 6 }}>
+                <ConnectLink />
+              </span>
+            </Check>
+          </ul>
+          <Recheck mailbox={mailbox} />
+        </div>
+      ) : (
+        <p style={{ margin: '5px 0 0', fontSize: 11.5, lineHeight: 1.45, color: tone }}>{words}</p>
       )}
 
       {sender && sender.ceremony === 'undo' && (
@@ -123,15 +133,6 @@ export function SenderLine({
         </p>
       )}
 
-      {sender && sender.missing.length > 0 && (
-        <ul style={{ margin: '6px 0 0', padding: 0, listStyle: 'none', display: 'grid', gap: 4 }}>
-          {sender.missing.map((line) => (
-            <li key={line} style={{ fontSize: 10.5, lineHeight: 1.45, color: 'var(--ink-4, #665D50)' }}>
-              {line}
-            </li>
-          ))}
-        </ul>
-      )}
     </div>
   );
 }
