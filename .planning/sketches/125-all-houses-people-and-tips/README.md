@@ -2,7 +2,7 @@
 sketch: 125
 name: all-houses-people-and-tips
 question: "How does an owner see every house as one, with goals and decisions for the group; how do owners and managers give people jobs and the rights to do them, with a screen per role; and what replaces the old tips?"
-winner: "Houses: A (One Total), sales first, with B (Ledger) one tap away. People: jobs and rights in one step. Tips: A (margin note). Picked 2026-10-01; later rounds to 2026-10-02 answered most forks. Still open: OD-208 and OD-211 to OD-216."
+winner: "Houses: A (One Total), sales first, with B (Ledger) one tap away. People: jobs and rights in one step. Tips: A (margin note). Picked 2026-10-01; later rounds to 2026-10-02 answered most forks. Still open: OD-208 (the rest of the rights list), OD-212 and OD-214 to OD-216."
 tags: [all-houses, group, consolidation, goals, group-decisions, roles, rights, jobs, staff-screen, guidance, tips, tours, sketch-only]
 ---
 
@@ -23,7 +23,9 @@ built in code the same day and needs no drawing. The other three are drawn here.
 - **Tips.** "Change them … they are old garbage tutorial designs." "Don't show again" must mean never,
   "until I press or check for it". The behaviour is built on PR #570 (open); the design is drawn here.
 
-The decisions are ADRs 0251, 0252 and 0253, on PR #566 (open; its head carries round 12 of 0253).
+The decisions are ADRs 0251, 0252 and 0253, on PR #566 (open; its head `21e87278a` carries round 12 of 0253).
+Round 13 (2026-10-02) is cited as "ADR 0253 round 13, on PR #566"; it was not yet on `21e87278a` when
+this was written, and is being added to that PR.
 Until #566 merges, those three ADRs are only on that branch.
 
 Open `index.html`; every frame links from it. Each page is self-contained: inline CSS, and one network
@@ -49,7 +51,7 @@ generator was outside the repo and is not committed; the HTML is the record.
 | `houses-b-the-ledger.html` | **B · The Ledger — the second view, one tap from A.** A totals row, then one row per house, sorted by sales. Goals and decisions as house-by-house grids. |
 | `houses-c-the-letter.html` | **C · The Letter — not taken.** A written morning briefing and a figure strip that opens the ledger, redrawn so nothing on it contradicts his picks. |
 | `houses-frames.html` | Shared by A, B and C. **Entry**: "All houses" tops the chooser and the house switch. **Goal sheet**: each house its own target, linked. **Group decision sheet**: copied once into the chosen houses; each house then shows as copied, changed since, or didn't save. **Honesty states**: "from 3 of 4", a house not set up, two currencies through the popover at ECB rates. |
-| `people-jobs-and-rights.html` | **Give a job**, granting the missing right in the same step: "just for this job" or "from now on". **Who may do what**, per house: staff closed until given, "listed" or "this job" per right. Manager Ayla gives Deniz "orders up to $500" under the owner's allowance, inside a $750 cap the owner set. One person across houses. **Jobs you gave**, and the job on the person's phone. |
+| `people-jobs-and-rights.html` | **Give a job**, granting the missing right in the same step: "just for this job" or "from now on". **Who may do what**, per house: staff closed until given, "listed" or "this job" per right. Manager Ayla, on Full, gives Deniz Place orders with a $500 amount under the owner's allowance, inside a $750 cap the owner set. One person across houses. **Jobs you gave**, and the job on the person's phone. |
 | `people-role-screens.html` | The same Friday morning as **owner**, **manager (Full)** and two **staff**. Staff get a different, phone-first "today's jobs" screen. Mert's screen shows the three rights the grid gives him. **Deniz after a new right** shows the screen growing by exactly one tile. A table maps each right to what appears for it. |
 | `tips-a-margin-note.html` | **A — his pick.** The tip is one line, drawn under the title; it is built at the top of the page column (ADR 0251 D1). "Show me" rings the real button. No dark veil. The steps are the built Orders tour. |
 | `tips-b-in-the-counter.html` | **B — not taken.** Tips live as a quiet card in the counter. When the counter is tucked, a tip is only a count on its button. |
@@ -83,8 +85,15 @@ ADR 0149.]
   permanent or for this job (ADR 0253 round 2).
 - **Closed until given.** What staff do today (receive, count, create orders) is closed until
   someone gives it (round 2, *"Closed until given"*). Being listed on /team's Jobs is the right from
-  now on (round 7, *"Listed means allowed (Recommended)"*).
-- **Packages.** Managers get Full, Standard or Light (round 8, *"Yes, as drawn (Recommended)"*).
+  now on (round 7, *"Listed means allowed (Recommended)"*). Place orders too, from day one: the two
+  order holes are fixed before rights ship (round 13, *"Fix holes first, then close (Recommended)"*;
+  rejected *"Stay open until fixed"*, OD-213).
+- **This job.** A right given for this job ends when the job is done, cancelled or moved to someone
+  else, when what it was about is gone, or when the person leaves; never at the due time, and late is a
+  notice (round 13, *"When the job closes (Recommended)"*, OD-211).
+- **Packages.** Managers get Full, Standard or Light (round 8, *"Yes, as drawn (Recommended)"*). Full
+  comes with "may give" ticked for each money and send action, with the owner's cap; the owner can
+  untick any one (round 13, *"Full pre-ticks, you adjust (Recommended)"*). Ayla is drawn as Full.
 - **Zones.** Owners, managers "+ the people they assign" (ADR 0238, built).
 - **Pay.** Pay is the owner's. An owner switches it on for a manager (ADR 0215), and only for
   someone who sees the house's money; profit needs both (ADR 0253 F14, *"Needs money and pay
@@ -97,6 +106,12 @@ ADR 0149.]
   on 2026-10-02 (round 12): *"Yes, per action (Recommended)"*, and on the amount, *"Owner sets the cap
   (Recommended)"*, a cap that may sit above the manager's own limit. That is why Ayla's grant to Deniz
   is drawn under the owner's allowance, with the owner's $750 cap.
+- **One order right.** There is one Place orders right. Each person's amount lives in the house's
+  approval rule: under it goes through, over it waits. Until approvals are built, every order waits for
+  an owner or a manager (round 13, *"One right, amount in approvals (Recommended)"*; rejected *"Two
+  rights"*). Deniz's $500 is an approval-rule amount, not a second right. The sketch reads the money
+  action a manager "may give" as setting someone's amount; giving Place orders with no amount is
+  not money (round 12).
 - **Granting.** Managers grant manager or staff (ADR 0162). Area leads act on cards only (ADR 0218).
 - **One register.** ADR 0238's Consequences say a capabilities register starts paying for itself at
   the second per-person right. There are two today, `team_pay_access` and `zone_setup_access`. The
@@ -135,18 +150,18 @@ ADR 0149.]
 
 ### People (ADR 0253)
 
-9. **The rights list.** The seven drawn, more, or fewer. **Open: OD-208.** Round 10 added a right, "Sees the house's money".
-10. **"Just for this job".** **Answered in part.** Round 2 is his free text (verbatim in ADR 0253), read there as: the giver selects permanent or for this job, and /team gets a jobs-or-labels section. Round 7: *"Listed means allowed (Recommended)"*. When a for-this-job right ends is **open: OD-211**. The research proposes "when the job is done, cancelled or moved, loses its object, or the person leaves; never at the due time", and the sheet draws only "ends with this job". [Corrected 2026-10-02: this item said the right "ends with the job, never at due", as answered.]
-11. **Order limits.** **Answered.** Who gives: round 6 (free text), confirmed in round 12 as *"Yes, per action (Recommended)"*. How much: round 5's *"Yes, any amount"*, then round 12's *"Owner sets the cap (Recommended)"* (OD-209, resolved). Standard's order right: *"No amount of its own (Recommended)"*. The house's approval rule decides every amount, and until approvals are built such orders wait for an owner or manager (OD-210, resolved). Whether that makes one order right or two is part of OD-208. [Corrected 2026-10-02: this item said "the amount goes with the packages".]
+9. **The rights list.** The seven drawn, more, or fewer. **Open: OD-208.** Round 10 added a right, "Sees the house's money". Round 13 settled one part: Place orders is one right, with the amount in the approval rule (11).
+10. **"Just for this job".** **Answered in part.** Round 2 is his free text (verbatim in ADR 0253), read there as: the giver selects permanent or for this job, and /team gets a jobs-or-labels section. Round 7: *"Listed means allowed (Recommended)"*. When a for-this-job right ends: **answered 2026-10-02 (round 13):** *"When the job closes (Recommended)"*: done, cancelled or moved to someone else, its object gone, or the person leaves; never at the due time (OD-211). [Corrected 2026-10-02: this item said the right "ends with the job, never at due", as answered, before he had picked; it was then marked open until round 13.]
+11. **Order limits.** **Answered.** Who gives: round 6 (free text), confirmed in round 12 as *"Yes, per action (Recommended)"*. How much: round 5's *"Yes, any amount"*, then round 12's *"Owner sets the cap (Recommended)"* (OD-209, resolved). Standard's order right: *"No amount of its own (Recommended)"*. The house's approval rule decides every amount, and until approvals are built such orders wait for an owner or manager (OD-210, resolved). One right or two: *"One right, amount in approvals (Recommended)"* (round 13): one Place orders right, each person's amount in the approval rule; rejected *"Two rights"*. [Corrected 2026-10-02: this item said "the amount goes with the packages", and then that one right or two was part of OD-208.]
 12. **Late jobs.** ~~Who is told when a job is late?~~ **Answered 2026-10-01:** *"Person, then giver (Recommended)"* — a reminder before due, the giver told once when late, the area lead only if the giver is away; never locked.
 13. **Where staff work.** ~~Phone app and web, or phone only.~~ **Answered 2026-10-01:** *"Phone app and web (Recommended)"*.
 14. **Staff and other rooms.** ~~Do staff see rooms outside their jobs?~~ **Answered 2026-10-01:** *"Only what rights open (Recommended)"*.
 15. **Managers and profit.** **Answered 2026-10-01:** *"Only with pay access"* (ADR 0252 round 4), amended by ADR 0253 F14 to *"Needs money and pay (Recommended)"*. Owners' wages stay hidden from managers (ADR 0215).
 16. **"All houses" for managers.** **Answered 2026-10-01:** yes, with profit if authorized, and access packages (ADR 0252 round 5, verbatim there). Round 8 gives it to Full and Standard, not Light.
-21. **Acts staff do today** (receive, count, create orders). **Answered 2026-10-01:** *"Closed until given"* — against the recommendation; every staff member loses them on the day rights ship until someone gives them back.
+21. **Acts staff do today** (receive, count, create orders). **Answered 2026-10-01:** *"Closed until given"* — against the recommendation; every staff member loses them on the day rights ship until someone gives them back. Place orders included, from day one (round 13, OD-213).
 22. **Money on the phone for staff.** **Answered 2026-10-01:** *"Close it to staff (Recommended)"*.
 23. **What someone allowed to order sees.** **Answered 2026-10-02 (round 12):** *"As F3 said (Recommended)"*: amounts on the orders they may place or approve, plus their own limit (OD-217, resolved).
-24. **The research's other proposals.** **Open: OD-212 to OD-216.** Receive is the door count only (OD-212). Place orders stays open until two money holes are fixed (OD-213). A receive job covers one vendor's delivery on one day (OD-214). A job may name a backup (OD-215). Only the giver, an owner or a manager moves or cancels a job (OD-216).
+24. **The research's other proposals.** **Open: OD-212 and OD-214 to OD-216.** Receive is the door count only (OD-212). A receive job covers one vendor's delivery on one day (OD-214). A job may name a backup (OD-215). Only the giver, an owner or a manager moves or cancels a job (OD-216). The research's proposal that Place orders stay open until two money holes are fixed (OD-213) was **rejected 2026-10-02 (round 13)**: *"Fix holes first, then close (Recommended)"*.
 
 ### Tips (ADR 0251)
 
