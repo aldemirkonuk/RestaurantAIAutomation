@@ -153,6 +153,78 @@ describe('the room hint', () => {
     expect(hint()).toHaveAttribute('aria-hidden', 'true');
   });
 
+  it("keeps the keyboard's hint when the pointer leaves another room", () => {
+    renderRail();
+    keyboardLands(textLink('Receiving'));
+    const vendors = textLink('Vendors');
+    const receivingLine = 'Check deliveries in at the door, and decide on the short ones.';
+    expect(hint()).toHaveTextContent(receivingLine);
+
+    // The pointer only passes through Vendors: Receiving's hint never moves.
+    fireEvent.mouseEnter(vendors);
+    act(() => vi.advanceTimersByTime(150));
+    fireEvent.mouseLeave(vendors);
+    expect(hint()).toHaveTextContent(receivingLine);
+
+    // The pointer rests on Vendors long enough to take the hint, then leaves.
+    // The keyboard still holds Receiving, so its hint comes back.
+    fireEvent.mouseEnter(vendors);
+    act(() => vi.advanceTimersByTime(320));
+    expect(hint()).toHaveTextContent('The people you buy from, and how to reach them.');
+    fireEvent.mouseLeave(vendors);
+    expect(hint()).toHaveTextContent(receivingLine);
+  });
+
+  it('stays dismissed: Escape cancels a pending hint, and leaving a room brings nothing back', () => {
+    renderRail();
+    keyboardLands(textLink('Receiving'));
+    const vendors = textLink('Vendors');
+    fireEvent.mouseEnter(vendors); // Vendors' hint is on its delay
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(hint()).toBeNull();
+    act(() => vi.advanceTimersByTime(500));
+    expect(hint()).toBeNull(); // the pending one went too
+    fireEvent.mouseLeave(vendors);
+    expect(hint()).toBeNull(); // the keyboard still holds Receiving, but it was dismissed
+  });
+
+  it("keeps the pointer's hint waiting out its delay when the keyboard leaves first", () => {
+    renderRail();
+    const receiving = textLink('Receiving');
+    keyboardLands(receiving);
+    fireEvent.mouseEnter(textLink('Vendors')); // Vendors' hint is on its delay
+    act(() => vi.advanceTimersByTime(100));
+    act(() => receiving.blur());
+    expect(hint()).toBeNull(); // not drawn early because the keyboard let go
+    act(() => vi.advanceTimersByTime(220));
+    expect(hint()).toHaveTextContent('The people you buy from, and how to reach them.');
+  });
+
+  it('goes with a room that leaves the rail under the pointer', () => {
+    const rail = (connections: boolean) => (
+      <MemoryRouter initialEntries={['/orders']}>
+        <RoomsList role="owner" flags={{ connections }} />
+      </MemoryRouter>
+    );
+    const { rerender } = render(rail(true));
+
+    // The hint is showing when the room goes.
+    fireEvent.mouseEnter(textLink('Connections'));
+    act(() => vi.advanceTimersByTime(320));
+    expect(hint()).toHaveTextContent('The till, payments, mail and other services that act here.');
+    rerender(rail(false));
+    expect(screen.queryByText('Connections', { selector: 'a' })).toBeNull();
+    expect(hint()).toBeNull();
+
+    // The hint is still on its delay when the room goes.
+    rerender(rail(true));
+    fireEvent.mouseEnter(textLink('Connections'));
+    act(() => vi.advanceTimersByTime(150));
+    rerender(rail(false));
+    act(() => vi.advanceTimersByTime(500));
+    expect(hint()).toBeNull();
+  });
+
   it('is not drawn on a touch screen, where a tap fires mouseenter too', () => {
     const mm = window.matchMedia;
     window.matchMedia = ((q: string) => ({ ...mm(q), matches: q === '(hover: none)' })) as typeof window.matchMedia;
