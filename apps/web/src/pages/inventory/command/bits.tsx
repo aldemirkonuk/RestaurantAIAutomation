@@ -184,7 +184,7 @@ export function TypeChip({ type }: { type?: string }) {
 
 // ── KPI cell ─────────────────────────────────────────────────────────────────
 
-export function Kpi({ label, value, sub, tone, onClick, active }: { label: string; value: string | number; sub?: string; tone?: 'blue' | 'violet' | 'green' | 'amber' | 'red'; onClick?: () => void; active?: boolean }) {
+export function Kpi({ label, value, sub, tone, onClick, active, tour }: { label: string; value: string | number; sub?: string; tone?: 'blue' | 'violet' | 'green' | 'amber' | 'red'; onClick?: () => void; active?: boolean; tour?: string }) {
   const tones = { blue: 'text-blue-600', violet: 'text-violet-600', green: 'text-emerald-600', amber: 'text-amber-600', red: 'text-rose-600' }
   const inner = (
     <>
@@ -198,6 +198,7 @@ export function Kpi({ label, value, sub, tone, onClick, active }: { label: strin
       <button
         onClick={onClick}
         aria-pressed={active}
+        data-tour={tour}
         className={cn(
           'bg-white border rounded-xl px-3.5 py-3 text-left transition-colors hover:border-gray-300',
           active ? 'border-wine-500 ring-1 ring-wine-200' : 'border-gray-100',
@@ -207,5 +208,5 @@ export function Kpi({ label, value, sub, tone, onClick, active }: { label: strin
       </button>
     )
   }
-  return <div className="bg-white border border-gray-100 rounded-xl px-3.5 py-3">{inner}</div>
+  return <div data-tour={tour} className="bg-white border border-gray-100 rounded-xl px-3.5 py-3">{inner}</div>
 }
