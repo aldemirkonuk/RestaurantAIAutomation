@@ -20,7 +20,15 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 const THEME_STORAGE_KEY = 'wineops-theme';
 // Bumped when the product default changes; browsers that stored a theme under
 // the old default (system/dark) are reset to light exactly once.
-const THEME_MIGRATION_KEY = 'wineops-theme-v2';
+//
+// v3 (2026-10-01, ADR 0169 amendment batch 4 — founder: "Reset once, Mudavym
+// only"): PR #576 (DASH-W23) removed the last control that could set this
+// theme — the /profile Theme row now drives the Mudavym ground instead — so a
+// browser that had stored dark or system here would keep a dark `html.dark`
+// for the legacy pages with no way left to undo it. Every browser is reset to
+// light once more. The person's ground choice (Paper / Charcoal / System,
+// `lib/mudavym/groundChoice.ts`) never drives this context or `html.dark`.
+const THEME_MIGRATION_KEY = 'wineops-theme-v3';
 
 /**
  * Get the system theme preference
