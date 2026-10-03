@@ -3,8 +3,9 @@
 Filed from branch `docs/adr-0115-drinks-lock`, which locks
 [ADR 0115](../decisions/0115-the-house-item-is-the-ledgers-key.md) as amended by
 its §2026-10-02 (the founder's drinks rulings) and §Build order. Each item below
-is owed work, not an open fork. Open forks are OD-218 to OD-222 in
-`OPEN-DECISIONS.md`. Line numbers are at `a823ef32d`, this branch's base.
+is owed work, not an open fork. The forks were filed as OD-218 to OD-222 in
+`OPEN-DECISIONS.md`. Round 15 resolved OD-219 to OD-222, and only OD-218's four
+never-asked sub-parts are still open. Line numbers are at `a823ef32d`, this branch's base.
 
 **1. Rename `wine_consumption_log` (R20, "Widen now, rename owed (Recommended)").**
 - D2 widens the table to point at any kind. Renaming it is owed, in its own PR,
@@ -28,6 +29,8 @@ is owed work, not an open fork. Open forks are OD-218 to OD-222 in
 - It is Mudavym's own cited market-default research, written as rows of
   `serve_size_defaults`. It is not the per-item research queue that R93 makes
   wine-only. See ADR 0115 §2026-10-02, "R31 and R93 name different research".
+  The founder confirmed that reading in round 15: *"Yes, different research
+  (Recommended)"*.
 
 **3. Make the research queue refuse every non-wine item (R93, "Wine-only for both (team draft)").**
 R93 covers only the product's per-house ML extraction and its per-item research
@@ -81,7 +84,8 @@ The labels are at:
 - `apps/web/src/pages/cellar/next/registerShapes.ts:97` (the register's one-line
   description).
 
-Renaming the `/spirits` route is a separate question (OD-222).
+The `/spirits` route is not renamed: OD-222, *"Keep /spirits (Recommended)"*. Only the
+visible labels change.
 
 **10. Stale prose inside applied migrations (lock review C1, C24, LRV:356).**
 - `20260905235000_an_index_series_is_not_a_price.sql:400` calls the 0115
@@ -93,3 +97,21 @@ Renaming the `/spirits` route is a separate question (OD-222).
 
 Applied files are not edited. ADR 0115's Status and rollback brackets are the
 correction.
+
+**11. Design and attack three kind tables (OD-219, "Design + attack first (Recommended)").**
+- No kind team designed `non_alcoholic`, `food` or `supply` (DR:142-146).
+- Three more kind teams design them, and each design is attacked before any K-PR
+  merges. The founder's option put the cost at "about 3 team passes and 2-3 PRs".
+- Units keep `mg` and `kg`.
+
+**12. Check sake F8's caveat before the sake K-PR (FK:2365).**
+The approved pick refuses a Japanese label whose polishing contradicts its NTA
+grade. Its caveat says the grade rules come from a 2011 source, and nobody has
+checked the 2022 amendment's effect on grades.
+
+**13. Count the call sites behind wine F14's column drops (FK:2358).**
+The approved pick drops the `restaurant_inventory` columns marked DROP, "gated on
+the per-call-site count", and nobody has taken that count. Two of the columns
+record what a person did (`glasses_per_bottle_override` and the
+`last_manual_edit_*` trio). ADR 0115 §2026-10-02 "Left open inside answered
+rulings" lists whether the never-delete rule reaches them.

@@ -8,9 +8,12 @@
   his drinks rulings of 2026-10-01 and 2026-10-02. §Build order is the plan that option
   asked for. Of its ordering, only "lots first" and "tenths of a ml before recipes" are
   his words. The rest of the sequence, the gates and the PR sizing are this record's
-  proposal, and he can change them. The lock does **not** cover the forks §2026-10-02
-  lists as still open (OD-218 to OD-222, and the sub-points under "Left open inside
-  answered rulings"). The lock is written the
+  proposal, and he can change them. After the lock, his round-15 answers
+  (§2026-10-02, "Round 15") settled OD-219 to OD-222, the reading of R31 against R93,
+  and OD-218 apart from four sub-parts. Those answers rest on their own picks, quoted
+  there, not on the lock pick. Neither covers what §2026-10-02 still lists as open:
+  OD-218's four never-asked sub-parts, and the details under "Left open inside
+  answered rulings". The lock is written the
   way his 2026-10-01 pick *"Lock + reopen wrong bits (Recommended)"* asked ("Mark it
   Locked and record the 2026-09-12 apply. The four claims the evidence overturned are
   reopened as the questions that follow. Docs only."): the four overturned claims are
@@ -42,7 +45,8 @@
   (f) **there is no phase-3 rename** — the `house_items` view settles the noun.
   **Every question on this ADR is now closed.** [CORRECTED 2026-10-02: it was not. The
   lock review found 13 open forks (claim C2). The founder answered them on 2026-10-01 and
-  2026-10-02 (§2026-10-02). The forks filed there as OD-218 to OD-222 are still open.] See §Retirement, §Coming into being,
+  2026-10-02 (§2026-10-02). The forks filed there as OD-218 to OD-222 were put to him in round 15, and only
+  four sub-parts of OD-218 are still open.] See §Retirement, §Coming into being,
   phase 2 items 3a and 6–7, and §Questions 2 and 4 for the reasoning on (e) and (f).
 - **Date:** 2026-09-03 (sub-decisions 2026-09-04; drinks rulings and lock 2026-10-01 to 2026-10-02)
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
@@ -807,8 +811,9 @@ Every answer below is kept as it was given; see §2026-10-02.]
 ## 2026-10-02 — every fork put to the founder answered; shape locked
 
 The founder answered every drinks fork put to him on 2026-10-01 and 2026-10-02.
-Forks that were never put to him stay open (OD-218 to OD-222, under "Still open"
-below).
+Forks that were not put to him then were filed as OD-218 to OD-222. He answered
+them in round 15, later on 2026-10-02 ("Round 15" below), except four sub-parts of
+OD-218 that were never asked. Those stay open ("Still open" below).
 This section is the in-repo record of those answers. Each row gives his pick
 verbatim, what it means in one line, what he did not pick, and where it is
 written down. Picks are quoted byte for byte from the primary record, so his
@@ -828,6 +833,8 @@ typos are kept.
 - **DR**: `/Users/aldemirkonuk/Projects/p4-scratch/drink-tables-2026-10-01/README.md`.
 - **AR**: `/Users/aldemirkonuk/Projects/p4-scratch/drink-tables-2026-10-01/architecture.md`.
 - **LRV**: `/Users/aldemirkonuk/Projects/p4-scratch/adr-0115-lock-review-2026-10-01.md`.
+- **R15**: `/Users/aldemirkonuk/Projects/p4-scratch/founder-answers-2026-10-02-round15.md`,
+  the round-15 picks. It shortens some question text with "..."; TX holds it whole.
 
 **Dates.**
 - The picks called "2026-10-01" ran from 2026-10-01T23:01Z to 2026-10-02T04:10Z.
@@ -867,9 +874,9 @@ Both rows are marked.
 | Scope | "it won't just handle wines, it will handle all beverages and then foods. only the wine items are extracted for ML, but all drinks are extraccted if they have the spot, + the beer whiskey and beverage filters must be live as well?" | Mudavym covers every drink, then food. ML stays wine-only (see group 9). | — (his own words, typed into an answer about order priority) | TX 2026-10-01T23:01Z. SC:12-14 has the same words with "extraccted" corrected. |
 | Table shape | "A separate table per kind" | Each kind gets its own item table, and `restaurant_inventory` becomes the wine table. | "One id + per-kind tables (Recommended)", "One table, kind columns" | TX 23:47Z; MEM:18 |
 | Library kind (lock review C22) | "Library kind + menu section (Recommended)" | A library-linked item takes the library's kind, or else the menu section's; it is no longer stamped `wine`. | "Library kind only", "Leave as is" | TX 23:44Z; MEM:15 |
-| The spot (lock review C3) | "menu carries everydrink create the right databases for those with their indexes configured" | Every drink on a current menu gets an item, in the right table. "Indexes configured" is still open as OD-220. | "Wine auto, rest bulk-carry (Recommended)", "Menu carries every drink", "A register the house turns on" | TX 23:44Z; MEM:16 |
+| The spot (lock review C3) | "menu carries everydrink create the right databases for those with their indexes configured" | Every drink on a current menu gets an item, in the right table. "Indexes configured" was filed as OD-220, and round 15 answered it: both kinds. | "Wine auto, rest bulk-carry (Recommended)", "Menu carries every drink", "A register the house turns on" | TX 23:44Z; MEM:16 |
 | X14 | "Menu creates them (Recommended)" | Making a menu current creates the items. This reverses settled sub-decision (b). | "Menu proposes only" | TX 03:24Z; MEM:57 |
-| Food | "Now, receive + count (Recommended)" | Food can be carried now: the option text said "'Carry this' offers all 13 kinds now". Food is only received and counted, and recipes and depletion come later. No food table is built yet, and its design is OD-219. | "Beverages only now" | TX 23:44Z; MEM:17 |
+| Food | "Now, receive + count (Recommended)" | Food can be carried now: the option text said "'Carry this' offers all 13 kinds now". Food is only received and counted, and recipes and depletion come later. No food table is built yet. Its design was filed as OD-219, and round 15 answered it: design and attack first. | "Beverages only now" | TX 23:44Z; MEM:17 |
 | R1 | "Yes, 14 kinds (Recommended)" | The thirteen kinds plus `hot_drink`, each with a table. Whiskey stays separate. | "Fold whiskey into liquor" | RV:98 |
 | X1 | "Own kind (Recommended)" | Hot drinks (coffee, tea, sahlep) are kind `hot_drink` and have their own table. | "Fold into soft drinks", "Ingredients are food" | TX 03:17Z; MEM:52 |
 | X3 | "raki is alcohol", then "spirits is sounded soft drinks not as hard alcohol, see how industry do", then "Rakı chip, "Hard liquor" (Recommended)" | Rakı is a family in the `spirit` table, with ouzo and arak beside it. People see a "Rakı" chip first. "Hard liquor" appears only where one word must cover everything, and the internal kind does not change. | "Spirit family + own chip (Recommended)" and "Its own kind and table" (first round); "Yes, with spirits (Recommended)" and "Its own alcohol kind" (second round); "Rakı chip, "Liquor"" and "Rakı its own kind and table" (third round) | TX 03:17Z, 03:18Z, 03:50Z; MEM:51, :71; RN |
@@ -1016,9 +1023,12 @@ Both rows are marked.
 The ML half restates his scope words in group 1 ("only the wine items are
 extracted for ML"). The research half is new with R93.
 
-**R31 and R93 name different research** [Reading, 2026-10-02 — put to the founder
-in the lock PR]. A peer session read the two as a conflict. This record reads them
-as two separate pieces of research:
+**R31 and R93 name different research** [Answered 2026-10-02, round 15. This was
+a reading, put to him in the lock PR. He picked *"Yes, different research (Recommended)"*:
+"R93 keeps the per-house queue and ML wine-only. Mudavym still researches cited market defaults for every kind, and until they land, those three kinds have no default."
+He did not pick "No, both wine-only" (R15:25-27; TX 03:29Z).] A peer session read
+the two as a conflict. This record read them as two separate pieces of research,
+and he confirmed that reading:
 - **R31's owed research** is Mudavym's own market-default research, with a cited
   source for each default.
   - It is written as rows of `serve_size_defaults`. That table is owned by
@@ -1048,23 +1058,97 @@ have no default (R31).
 | R20 | "Widen now, rename owed (Recommended)" | `wine_consumption_log` is widened to point at any kind. Renaming it is owed, in its own PR. | "Widen and rename now", "New kind-neutral log" | RV:211 |
 | R24 | *bulk* | The guard blocks PRs on a fresh database build and runs nightly against production as an advisory, once invariant 4 is fixed. G1's kind-table guard blocks and is mutation-tested. | Blocking on production | RV:232; BA:153 |
 
+### Round 15: the lock PR's forks answered
+
+After the lock, the forks this record filed as OD-218 to OD-222, and its reading of
+R31 against R93, were put to him in two batches. R15 quotes his picks, and TX is the
+primary record.
+- Batch 1 was asked at 2026-10-03T00:05Z and answered at 03:01Z: OD-218 to OD-221.
+- Batch 2 was asked at 03:02Z and answered at 03:29Z: OD-222, R31 against R93, wine
+  F4 and cider F10.
+- In his time zone (UTC-4) that is 20:05 to 23:29 on 2026-10-02.
+
+| # | Pick (verbatim) | What it means | Rejected | Source |
+|---|---|---|---|---|
+| OD-218 | "Approve teams, ask 2 (Recommended)" | Each kind team's pick in FK:2357-2376 is approved; the table below lists them. Three are not the team's pick. Wine F4 and cider F10 were asked on their own (rows below). Cocktails F4 "is recorded as answered by your R81 (tenths of a ml), because the team's pick would round to whole ml". Four sub-parts were never asked, and they stay open ("Still open" below). | "Ask each one", "Leave open until each kind's PR" | R15:5-7; TX 03:01Z |
+| OD-219 | "Design + attack first (Recommended)" | Three more kind teams design `non_alcoholic`, `food` and `supply`, and each design is attacked "before any kind PR merges". It costs "about 3 team passes and 2-3 PRs". "Units keep mg and kg", so AR:238's sketch, which kept only g, ml and each, does not stand. | "Thin tables now" | R15:9-11; TX 03:01Z |
+| OD-220 | "Both kinds (lean)" | "Indexes configured" means both kinds. One is the per-house filter indexes that every read uses. The other is the uniqueness rules: one row per library item, one per declared item, and the low-stock partial uniques. This was this record's lean, not a team recommendation; the team gave none because these were his words. | "Uniqueness rules only" | R15:13-15; TX 03:01Z |
+| OD-221 | "Server looks it up (Recommended)" | A count queued offline with a bare id reaches its table because the server finds that id across the kind tables. This covers counts already queued and old phone builds. It relies on ids being unique across kinds, which uuids are. | "App adds the kind" | R15:17-19; TX 03:01Z |
+| OD-222 | "Keep /spirits (Recommended)" | Under X3 only the visible labels change. The `/spirits` address (`apps/web/src/App.tsx:415`) stays. | "Rename + redirect", "Rename, no redirect" | R15:22-24; TX 03:29Z |
+| R31 vs R93 | "Yes, different research (Recommended)" | He confirmed the reading in the R93 row above. The per-house queue and the ML stay wine-only, while Mudavym researches cited market defaults for every kind. Until those land, liqueur/vermouth, sake and soft drinks by the glass have no default. | "No, both wine-only" | R15:25-27; TX 03:29Z |
+| Wine F4 | "Item has vintage (Recommended)" | As today, the wine item is the library row, wine plus vintage, so a new vintage is a new item. Each lot records the vintage it arrived with, and the door flags a mismatch. This is the kind team's option 1. | "Vintage only on the lot", "Item + substitution rules" | R15:28-30; TX 03:29Z; FK:2357 |
+| Cider F10 | "A list of bases (Recommended)" | Each cider, mead or seltzer item lists 1 to 4 alcohol bases from a fixed set, so a pyment (honey plus grape) fits. This is the kind team's (b), a `text[]` with an element CHECK. | "One base, combos added", "Drop it" | R15:31-33; TX 03:29Z; FK:2364 |
+
+**The twenty kind-local forks.** "Approved" means the kind team's pick, quoted from
+FK. Each fork's options are in section 6 of its kind file, under
+`/Users/aldemirkonuk/Projects/p4-scratch/drink-tables-2026-10-01/kinds/`.
+
+| Kind | Fork | Answer | What it means | FK |
+|---|---|---|---|---|
+| Wine | F4: is vintage part of the item or of the lot? | Asked on its own; see "Wine F4" above | — | 2357 |
+| Wine | F14: the `restaurant_inventory` columns marked DROP | Approved: "Option 2, gated on the per-call-site count. The POS id columns move to pos_item_mappings with the shared team." | The columns are dropped and their values derived, but only after each call site is rewritten. Nobody has counted those call sites yet (`wine.md:1157-1167`). | 2358 |
+| Wine | F15: the wine-only satellites | Approved: "Option 2. The retirement is a separate decision." | The satellites with readers (`wine_consumption_log`, `auction_lot_records`, `house_item_research`) are repointed. The three with no reader are not retired by this. | 2359 |
+| Wine | F23: should future sealed documents carry the container size? | Approved: "Option 1, consistent with the founder's 'sealed documents unchanged'." | No. Seals do not change, and the size lives on the posting record. | 2360 |
+| Beer | F-MATCH: the receiving matcher cannot read cl or lt | Approved: "(a). '33 cl' and '1 LT' are how the real Turkish price list writes sizes." | The matcher's size regexes learn cl, lt and the decimal comma, plus a can-or-bottle word. A regression pack over wine fixtures and Efes strings comes with it. | 2361 |
+| Draft | F-D3: build `house_tap_lines` now? | Approved: "(a). (c) can follow without a schema change." | Yes, minimal: label, coupler, line volume, connected keg, last cleaned, and the house's cleaning interval. | 2362 |
+| Draft | F-D5: how foam and yield loss enter stock | Approved: "(a)." | A pour depletes its nominal serve. Loss shows as count variance, and yield is used only in reports. | 2363 |
+| Cider | F10: the alcohol-base shape | Asked on its own; see "Cider F10" above | — | 2364 |
+| Sake | F8: refuse a JP label whose polishing contradicts its NTA grade? | Approved: "A. Caveat: the 2011 source; the 2022 amendment's effect on grades was not checked." | Yes, for Japanese origin only. The caveat stands: nobody has checked the 2022 amendment. | 2365 |
+| Rakı | F9: Turkish fiscal tracking | Approved: "A now, B with the first Turkish house." | None now. A bandrol yes/no at the door comes with the first Turkish house. | 2366 |
+| Rakı | F12: what '½ btl' is, and the smallest container | Approved: "C, with no default; the importer creates no row either way. (b): the 20 ml floor stays until he names the smallest bottle." | Each house is asked at the confirm step, and either a smaller bottle or a half pour is allowed. The importer creates no row. The 20 ml floor stays until he names the house's smallest bottle. | 2367 |
+| Cocktails | F1: where a house's cocktail stock lives | Approved: "(a)." | In its own table with child tables. `public.cocktails` stays the reference recipe book. See the readings below. | 2368 |
+| Cocktails | F4: how fractional spec ml become ledger quantities | Answered by R81, not by the team's pick | Spec ml book in tenths of a ml (R81). The team's cumulative rounding to whole ml is not adopted. | 2369 |
+| Cocktails | F9: should the menu propose a spec? | Approved: "(a) now, (b) next." | Not now: staff type a spec or copy it from the recipe book. Proposing a draft spec from the menu comes next. | 2370 |
+| Cocktails | F11: pour cost's price basis and target | Approved: "(c). The 18-24% band was not confirmed for cocktails in its cited source (review fix 14)." | Pour cost uses the price without KDV, taken from dated KDV bands. There is no default target until the house sets one. | 2371 |
+| Cocktails | F12: how long spec versions are kept | Approved: "(a). It is now load-bearing: as-of-closedAt resolution (F23) and audits need retired versions." | Forever; versions are write-once. | 2372 |
+| Cocktails | F17: what happens to `public.cocktails` | Approved: "(a). The standing founder rule (memory mudavym-finish-goal-2026-09-16) is never to delete tables or rows, so (b)'s retirement conflicts with it. (c) double-counts." | It stays as a read-only reference to copy from. Writes to /cocktails, `countCocktails` and the catalogue union move to the house table. | 2373 |
+| Cocktails | F23: which spec version a late sale uses | Approved: "(a). It matches what the bartender poured, and it needs F12 (a)." | The version that was active when the check closed. | 2374 |
+| Soft drinks | SD22: may a made-in-house drink carry a carafe price basis? | Approved: "A." | No. A made-in-house drink is never unit-confirmed by a menu basis, so a carafe price is just a price. | 2375 |
+| Hot drinks | HD-13: doses that are not whole grams (phase 2) | Approved: "A while phase 1 has no depletion. Revisit B only if HD-3 widens and variance shows it matters." | A draw is whole grams, so a person picks 7 or 8 for a 7.5 g coffee. | 2376 |
+
+**Three overlaps, read in plain words.** These are this record's readings, not his
+answers. In each, the approved team pick fits an earlier ruling of his.
+- **Cocktails F1 and R61 name one table.** F1 gives a house's cocktail stock its own
+  table and keeps `public.cocktails` as the recipe book. The kind team called that
+  table `house_cocktails`; under R13 it is `cocktail_items`, and DR:51 maps one name
+  to the other. R61 puts batches and preps in that same table, as forms `batch` and
+  `prep` under the "House prep" label (RV:435-437).
+- **Cocktails F11 sets the price basis, and R82 sets the target.** F11 says pour cost
+  uses the price without KDV, and that Mudavym gives no default target. R82 lets a
+  house set an optional cocktail target, and uses the house's pour target until it
+  does (RV:533-536). That pour target is the house's own setting, with "no default,
+  no backfill" (`serve-prices.md:469`). So a cocktail is judged only once the house
+  has set one of the two, which is what F11 asks. R82 states a target as a margin and
+  F11 as a pour cost; on the same price, each is 100% minus the other.
+- **Beer F-MATCH and R52 change two different parsers.** R52 widens `parseVolumes` in
+  `apps/api-gateway/src/vendor-intel/bottle-size.ts` (`MAX_BOTTLE_ML` at :154) for
+  kegs, the `-lik` form and kind-gated bare numerals (RV:386-389). F-MATCH widens the
+  receiving matcher's own regexes at
+  `apps/api-gateway/src/procurement/documents/line-matcher.ts:121-125`. Those read `ml`
+  and `l`, `ltr`, `liter` or `litre`, so "33 cl" and "1 LT" never match there. Both
+  rulings stand. Whether the matcher calls `parseVolumes` instead of keeping its own
+  regexes is a code choice for that PR.
+
 ### Still open — not decided by any of the above
 
-Each of these is filed in `OPEN-DECISIONS.md` and is outside the lock.
+These are filed in `OPEN-DECISIONS.md` as OD-218, which round 15 narrowed to four
+sub-parts of answered forks. None of them was asked on its own, and his OD-218 pick
+says they are "drafted and asked later". They are outside the lock.
+- **X1's HD-12** (FK:775, FK:797-803): what defines the hot-drink kind, temperature
+  or ingredient, and where iced and liqueur coffee go.
+- **X13's register list** (FK:1661): which registers exist beyond today's seven
+  (`apps/api-gateway/src/cellar/cellar-registers.ts:13-21`).
+  - Sake F7 (FK:1756-1762) and cider F3 (FK:1732-1738) are unanswered.
+  - Liqueurs were answered by the X3 follow-up, "Liqueurs get their own (Recommended)".
+- **Wine F21b** (FK:1693-1699): whether in-transit stock counts toward low stock.
+- **X19's POS shapes** (FK:2106): flights, the Toast idempotency key, Coravin,
+  buckets, glass sales from packaged beer, modifiers, and the cider and sake ship
+  order.
+  - R46 (b) already maps doubles and sizes sent as modifiers (RV:354-358).
+  - The other modifiers in cocktails F6, such as premium gin and pitcher, are not
+    answered.
 
-- **OD-218**: the twenty kind-local forks at FK:2357-2376, which were never put to
-  him. It also covers three sub-parts that were never asked on their own:
-  - X1's HD-12;
-  - X13's register list and wine F21b;
-  - X19's POS shapes (FK:2104).
-- **OD-219**: `non_alcoholic`, `food` and `supply` have no table design (DR:142-146,
-  DR's fork C1).
-- **OD-220**: "indexes configured" in his spot answer has two readings
-  (DR:179-181, DR's fork C2).
-- **OD-221**: the web offline count queue sends a bare `itemId` with no kind
-  (`apps/web/src/lib/spotCountOutbox.ts:36`; DR:204, DR's fork C3).
-- **OD-222**: whether the `/spirits` route is renamed (RN:136-137;
-  `apps/web/src/App.tsx:415`).
+OD-219 to OD-222 were filed here too, and round 15 answered them.
 
 ### Left open inside answered rulings
 
@@ -1094,6 +1178,25 @@ settle, and each detail is settled before the build step that needs it.
     - R64 makes house juices preps, with a sold lemonade a soft drink that uses the prep. RV:454 records that "the soft-drinks team has not agreed".
     - No ruling says where a bought-in juice ends and a house-made juice begins. It is settled before K1-K6 draws the soft-drink and prep boundaries.
   - R49: the waste mark comes later (BA:26).
+- **Details inside round 15's approvals:**
+  - Cocktails F4 under R81: a drop is less than a tenth of a ml. The team's rider,
+    "with dashes and drops cost_only per (b)", was not asked on its own. How a
+    quantity below a tenth books is settled before the cocktail K-PR (FK:2369).
+  - Cocktails F9's "(b) next" reads the menu's description and ingredients to propose
+    a draft spec. Whether that is the per-house ML extraction R93 keeps wine-only is
+    settled before (b) is built.
+  - Rakı F12 (b): the house's smallest bottle is a fact he gives, and the 20 ml floor
+    stays until he does (FK:2367).
+  - Wine F14:
+    - the per-call-site count that gates the drops has not been taken;
+    - two of the columns record what a person did (`glasses_per_bottle_override` and
+      the `last_manual_edit_*` trio), and the standing rule never to delete tables or
+      rows does not name columns.
+    Both are settled before the F14 PR.
+  - Wine F15: retiring the three satellites with no reader is a separate decision.
+    The standing rule is never to delete tables.
+  - Sake F8's caveat: the 2022 amendment's effect on grades is checked before the
+    sake K-PR (FK:2365).
 
 ## Build order (2026-10-02), migrations first
 
@@ -1121,18 +1224,18 @@ before D1, the gates, and the PR sizing. The step names follow AR §5 and §6.
 | M3 | **Tenths of a ml.** The volume base unit becomes a tenth of a ml: "a finer base unit", so quantities stay integers under ADR 0070, which asks for a vocabulary "fine enough at the outset" (`0070-…:157-158`). It comes before D1, so the generated kind tables carry the unit from the start, and before any recipe explosion. | R81; R48 rides on it | M2 | D1; any recipe explosion; R48's multiplication at the till |
 | PR-00 | **Embed hints.** This is a gateway PR with no migration. Every `restaurant_inventory` embed names its constraint, and a CI grep enforces it. It must be live in production before D2. | R17 | none | D2 |
 | D0 | **Tenant keys are never null.** Backfill `restaurant_id` and set NOT NULL, lock-safe. Rows that cannot be backfilled are flagged; their treatment is still open. | R15 | step 0's count | D1 |
-| D1 | **One table per kind.** This adds:<br>• the registry and the kind derivation function (G1, G6);<br>• generated `<kind>_items` tables, with one Turkish fold and `deleted_at`;<br>• the `kind` CHECK widened to fourteen values (`hot_drink`).<br>Rakı is a family in `spirit`, not a table. An item whose kind nobody can tell is held for a person. G1's guard blocks and is mutation-tested. | R1, R13, R2, X1, X3, A12, R24 (the G1 half) | D0, M3 | D2 |
+| D1 | **One table per kind.** This adds:<br>• the registry and the kind derivation function (G1, G6);<br>• generated `<kind>_items` tables, with one Turkish fold and `deleted_at`;<br>• the `kind` CHECK widened to fourteen values (`hot_drink`);<br>• on every kind table, the OD-220 indexes: per-house filter indexes, and the uniqueness rules (one row per library item, one per declared item, and the low-stock partial uniques);<br>• a unit vocabulary that keeps `mg` and `kg` (OD-219).<br>Rakı is a family in `spirit`, not a table. An item whose kind nobody can tell is held for a person. G1's guard blocks and is mutation-tested. | R1, R13, R2, X1, X3, A12, R24 (the G1 half), OD-219 (units), OD-220 | D0, M3 | D2 |
 | D2 | **Every reference names its kind.** This adds:<br>• 32 arcs;<br>• `ON DELETE RESTRICT` FKs, with the wine arm NOT VALID until the orphan count;<br>• tenant composite FKs;<br>• generated `(item_kind, item_id)`.<br>The insert benchmark on the hot ledgers comes first. `wine_consumption_log` gets its arc columns here. | A1, R14, R15, R16, R18, R20 | D1; PR-00 live in production | D3; the formats step |
 | F | **Formats.** This adds:<br>• `house_item_formats` and `format_identity_links`;<br>• library ids on the format;<br>• `house_item_size_proposals`;<br>• the kind-aware size parser and the ı fold.<br>`format_id` becomes NOT NULL for new lots only once the legacy-wine marker is designed. | Bottle sizes, R3, R4, R5, R21, R22, R35-R42, R51, R52, R59 | M1, D2 | D3's per-format posting; serves and prices; R7's conversion |
 | D3 | **The ledger takes a kind.** One stock book, with these rules:<br>• R19's four fixes;<br>• short stock goes to zero and the gap is named;<br>• counts post per format, as of `counted_at`, through a count RPC that accepts open ml;<br>• a void returns volume to its lot, capped (this supersedes B19);<br>• the keg-kicked action and the line-cleaning tap. | A2, R19, R26, R28, R29, R56, Draft, X2, R49, R50, R86 | D2, M1, F | D3b; D4 |
 | D3b | **The door reads every unit.** `can` and `bag_in_box` become container types, pieces count as `each`, and the door converts g, kg and ml. The door asks before booking an item whose unit is unconfirmed, and `oz` is split. | Count unit, R55, A7, R58 | D3 | the carry PRs |
 | S | **Serves and prices.** This step adds:<br>• serve rows stamped with ml and `item_sale_prices`, where legacy wine prices rule until a wine is sized;<br>• locks re-keyed, with a skip-and-report list, and price versions widened after the reader sweep;<br>• per-kind default sets, with the market taken from the country. When a kind is switched on, the house confirms or edits its set, and until then those sales wait in the queue (R25);<br>• no default for liqueur/vermouth, sake and soft drinks by the glass. R31's research is owed, but it is not a gate: S ships without it, and those three kinds stay without a default until it lands. | Glass sizes, Serve price, R9-R11, R23, R25, R30-R33, R43-R47, R53, R54, R82, R85, R87, R89 | F, D3; step 0 (R30); the ADRs amending 0186 and 0193 (below) | till PRs (X19) |
 | D4 | **Prices, research and lookups take a kind.** D4 builds the R93 refusal: `claim_house_item_research` must refuse every non-wine item. It has no kind filter at `a823ef32d`. | R93 | D3 | the orchestrator PR |
-| D5 | **Views read every kind.** `house_items` becomes a UNION ALL. `v_low_stock_items` is rebuilt with a LEFT JOIN, gated on a confirmed unit and a stated par. | Alerts (lock review C16), R34 | D4 | none |
+| D5 | **Views read every kind.** `house_items` becomes a UNION ALL. `v_low_stock_items` is rebuilt with a LEFT JOIN, gated on a confirmed unit and a stated par. | Alerts (lock review C16), R34 | D4; wine F21b (OD-218) for whether in-transit stock counts | none |
 | D6 | **Kind tables keep house rules.** This adds the unit freeze once stock exists, and `move_house_item_kind` with its audit table. It lands before any carry PR. | Count unit (freeze), A14 | D5 | every gateway carry PR |
-| K1-K6 | **Typed DDL per kind.** This covers:<br>• the kind boundaries;<br>• the beer style table, with only `other` until BJCP permission;<br>• allergens, after the G5 Annex II PR;<br>• life values typed by a person;<br>• cocktail forms `batch` and `prep`, which cannot change once used. | R88, R90, R79, R91, R65, R70, R61, R67 | D6; OD-218 to OD-220 for the parts they touch | the gateway PRs; batches |
+| K1-K6 | **Typed DDL per kind.** This covers:<br>• the kind boundaries;<br>• the beer style table, with only `other` until BJCP permission;<br>• allergens, after the G5 Annex II PR;<br>• life values typed by a person;<br>• cocktail forms `batch` and `prep`, which cannot change once used;<br>• each kind's approved kind-local picks (round 15), including wine F4's vintage on the item with lot vintage flagged at the door, and cider F10's list of bases. | R88, R90, R79, R91, R65, R70, R61, R67, OD-218 (approved picks), OD-219, OD-220 | D6; the three OD-219 designs, each attacked, before any of these merges; HD-12 (OD-218) for the hot-drink PR | the gateway PRs; batches |
 | B | **Batches, record-only.** A run records its inputs, yield, cost and use-by, and moves no stock until he switches it on. | A11, R60, R62-R64, R66, R68, R69, R71-R80 | K (cocktails) | runs that move stock: a follow-on choice of his |
-| G, W, Mo, Or | **App PRs.** Gateway (ledger callers, POS, receiving, carry, menu carry, procurement, pricing, analytics), web, mobile and orchestrator. | X14, Menu unit, R41, R42, X19, A8, R25, R46, R92 | K1-K6; the X14 amendment (this ADR) | wine to ml; D7 |
+| G, W, Mo, Or | **App PRs.** Gateway (ledger callers, POS, receiving, carry, menu carry, procurement, pricing, analytics), web, mobile and orchestrator. The gateway finds a bare item id across the kind tables, so counts queued offline still land (OD-221). The web changes only the visible "Spirits" labels and keeps `/spirits` (OD-222). | X14, Menu unit, R41, R42, X19, A8, R25, R46, R92, OD-221, OD-222 | K1-K6; the X14 amendment (this ADR); OD-218's X19 POS shapes for the till PRs, and its register list for the register PRs | wine to ml; D7 |
 | Wine | **Wine moves to ml one wine at a time.** Each wine converts once it is sized, with the 750/150 interim. After a production count, unsized wine queues instead. | R7, R34, R12 | M2, F, step 0 | D7 |
 | D7 | **Misfiled rows move once, last.** The guard is lifted only inside this migration. Rows it cannot move go to a review table. | A5, R12 | every app PR live; step 0 measured | D8 |
 | D8 | **VALIDATE** the wine-only CHECK at a measured zero. | — | D7's review table at zero | none |
@@ -1144,7 +1247,10 @@ before D1, the gates, and the PR sizing. The step names follow AR §5 and §6.
 - An ADR amending 0193 for serve-level prices and locks (Serve price, R10,
   R11), before S. AR §6 names this amendment.
 - The library-kind mapping that R2 says is "recorded in an ADR", before D1.
-- An OPEN-DECISIONS entry for every fork still open: OD-218 to OD-222.
+- An OPEN-DECISIONS entry for every fork still open: OD-218, narrowed in round 15
+  to four sub-parts. OD-219 to OD-222 are marked resolved in place.
+- The three designs OD-219 asks for (`non_alcoholic`, `food`, `supply`), each
+  attacked, before any K-PR merges.
 
 **Not in the order.**
 - The `wine_consumption_log` rename (R20) is owed as its own PR, any time after
@@ -1174,3 +1280,5 @@ before D1, the gates, and the PR sizing. The step names follow AR §5 and §6.
 | 2026-10-01 | Aldemir (founder) | "Lock + reopen wrong bits (Recommended)", then "A separate table per kind" and the other picks recorded in §2026-10-02 (UTC 2026-10-01T23:01Z to 2026-10-02T04:10Z) |
 | 2026-10-02 | Aldemir (founder) | R1-R93 answered in eleven batches. Batch 11, "Approve all as recommended (Recommended)", locks this ADR as amended (see Status). R48 differs from the written recommendation, and R93 from the live "(Recommended)" label (see §2026-10-02, Bulk) |
 | 2026-10-02 | Amendment, branch `docs/adr-0115-drinks-lock` | §2026-10-02 and §Build order added; conflicting older text bracketed in place and dated, not rewritten; OD-113 marked resolved; OD-218 to OD-222 filed; owed work in `.planning/tech-debt.d/2026-10-02-docs-adr-0115-drinks-lock.md` |
+| 2026-10-02 | Aldemir (founder) | Round 15 (UTC 2026-10-03T00:05Z to 03:29Z) answered the lock PR's forks. OD-218 "Approve teams, ask 2 (Recommended)"; OD-219 "Design + attack first (Recommended)"; OD-220 "Both kinds (lean)"; OD-221 "Server looks it up (Recommended)"; OD-222 "Keep /spirits (Recommended)"; R31 vs R93 "Yes, different research (Recommended)"; wine F4 "Item has vintage (Recommended)"; cider F10 "A list of bases (Recommended)" |
+| 2026-10-02 | Amendment, same branch | §2026-10-02 "Round 15" added; the R31/R93 reading marker turned into his answer; OD-219 to OD-222 marked resolved in place; OD-218 narrowed in place to four sub-parts |
