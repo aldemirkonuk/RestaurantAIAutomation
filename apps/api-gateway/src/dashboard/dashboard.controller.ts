@@ -24,6 +24,15 @@ import {
   InventoryBreakdownDto,
 } from "./dto/dashboard-summary.dto";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { CurrentUser } from "../auth/decorators/current-user.decorator";
+import {
+  assertSeesHouseAmounts,
+  calendarForRole,
+  statsForRole,
+} from "./amounts-for-role";
+
+/** The caller's role IN THE HOUSE THE TOKEN NAMES (jwt.strategy.ts). */
+type Caller = { role?: string | null } | undefined;
 
 /**
  * Dashboard Controller - Aggregated API endpoints
@@ -89,7 +98,10 @@ export class DashboardController {
   })
   async getDashboardSummary(
     @Param("restaurantId") restaurantId: string,
+    @CurrentUser() user?: Caller,
   ): Promise<DashboardSummaryDto> {
+    // DASH-W22: the summary carries vendor spend and whole order rows.
+    assertSeesHouseAmounts(user?.role);
     try {
       return await this.dashboardService.getDashboardSummary(restaurantId);
     } catch (error) {
@@ -133,15 +145,16 @@ export class DashboardController {
     @Param("restaurantId") restaurantId: string,
     @Query("year") yearStr?: string,
     @Query("month") monthStr?: string,
+    @CurrentUser() user?: Caller,
   ) {
     try {
       const now = new Date();
       const year = yearStr ? parseInt(yearStr) : now.getFullYear();
       const month = monthStr ? parseInt(monthStr) : now.getMonth() + 1;
-      return await this.dashboardService.getCalendarRevenue(
-        restaurantId,
-        year,
-        month,
+      // DASH-W22: staff keep the days, deliveries and bottles, not the spend.
+      return calendarForRole(
+        await this.dashboardService.getCalendarRevenue(restaurantId, year, month),
+        user?.role,
       );
     } catch (error) {
       throw new HttpException(
@@ -169,9 +182,11 @@ export class DashboardController {
   })
   async getStats(
     @Param("restaurantId") restaurantId: string,
+    @CurrentUser() user?: Caller,
   ): Promise<DashboardStatsDto> {
     try {
-      return await this.dashboardService.getStats(restaurantId);
+      // DASH-W22: staff keep the counts, not the spend.
+      return statsForRole(await this.dashboardService.getStats(restaurantId), user?.role);
     } catch (error) {
       throw new HttpException(
         error.message || "Failed to fetch dashboard stats",
@@ -265,7 +280,10 @@ export class DashboardController {
   async getSalesChart(
     @Param("restaurantId") restaurantId: string,
     @Query("period") period?: "day" | "week" | "month" | "year",
+    @CurrentUser() user?: Caller,
   ): Promise<SalesChartPointDto[]> {
+    // DASH-W22: a vendor-spend series is nothing but money.
+    assertSeesHouseAmounts(user?.role);
     try {
       return await this.dashboardService.getSalesChart(
         restaurantId,
@@ -295,7 +313,10 @@ export class DashboardController {
   })
   async getInventoryBreakdown(
     @Param("restaurantId") restaurantId: string,
+    @CurrentUser() user?: Caller,
   ): Promise<InventoryBreakdownDto> {
+    // DASH-W22: its per-type value is menu price times stock.
+    assertSeesHouseAmounts(user?.role);
     try {
       return await this.dashboardService.getInventoryBreakdown(restaurantId);
     } catch (error) {

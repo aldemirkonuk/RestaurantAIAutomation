@@ -28,6 +28,7 @@ import type {
   InventoryItem,
   Order,
 } from "@/services/api/types";
+import { dateIn } from "./format";
 
 /* ── Gateway DTO shapes (dashboard.service.ts) ──────────────────────────── */
 
@@ -76,6 +77,11 @@ export interface MonthLedger {
   daily: DayLedger[];
   monthlySpend: number;
   monthlyBottles: number;
+  /**
+   * DASH-W22: 'withheld' when the gateway stripped the money for the caller's
+   * role. The spend fields then read 0 here and must not be drawn as money.
+   */
+  amounts: "shown" | "withheld";
 }
 
 /* ── The spine: stats · approvals · low stock · activity · alerts ───────── */
@@ -95,6 +101,16 @@ async function settle<T>(p: Promise<T>): Promise<T | null> {
   } catch {
     return null;
   }
+}
+
+/**
+ * DASH-W20: the zone the gateway bucketed the figures in (`stats.timezone`),
+ * or null until the stats answer. Read here rather than added to the shared
+ * `DashboardStats` type, which this page branch does not own.
+ */
+export function houseZoneOf(stats: DashboardStats | null | undefined): string | null {
+  const z = (stats as { timezone?: unknown } | null | undefined)?.timezone;
+  return typeof z === "string" && z.length > 0 ? z : null;
 }
 
 export function useDashboardSpine(restaurantId: string | null): DashboardSpine {
@@ -215,7 +231,7 @@ export function useMonthLedger(
             order_count: raw.order_count ?? 0,
           };
         });
-        const legacyTotals = res as unknown as { monthly_total?: number };
+        const legacyTotals = res as unknown as { monthly_total?: number; amounts?: string };
         const ledger: MonthLedger = {
           year: res.year,
           month: res.month,
@@ -225,6 +241,7 @@ export function useMonthLedger(
             legacyTotals.monthly_total ??
             daily.reduce((sum, d) => sum + d.procurement_spend, 0),
           monthlyBottles: res.monthly_bottles ?? 0,
+          amounts: legacyTotals.amounts === "withheld" ? "withheld" : "shown",
         };
         cache.current.set(key, ledger);
         setState({ state: "ready", ledger });
@@ -273,6 +290,7 @@ export type DayOrdersState =
 export function useDayOrders(
   restaurantId: string | null,
   date: string | null,
+  zone: string | null = null,
 ): DayOrdersState {
   const [state, setState] = useState<DayOrdersState>({ state: "idle" });
   const seq = useRef(0);
@@ -305,16 +323,21 @@ export function useDayOrders(
       })
       .then((res) => {
         if (mySeq !== seq.current) return;
-        const orders = (res.data ?? []).filter(
-          (o) => o.deliveredAt && o.deliveredAt.startsWith(date),
-        );
+        // DASH-W20: `deliveredAt` is a UTC instant; the day is the house's.
+        // `startsWith(date)` put a Chicago delivery after 7pm on the next
+        // day's panel while the calendar (DASH-W2) put it on its own day.
+        const orders = (res.data ?? []).filter((o) => {
+          if (!o.deliveredAt) return false;
+          const t = new Date(o.deliveredAt);
+          return !Number.isNaN(t.getTime()) && dateIn(t, zone) === date;
+        });
         setState({ state: "ready", orders });
       })
       .catch(() => {
         if (mySeq !== seq.current) return;
         setState({ state: "unknown" });
       });
-  }, [restaurantId, date]);
+  }, [restaurantId, date, zone]);
 
   return state;
 }
