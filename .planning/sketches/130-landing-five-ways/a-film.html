@@ -1,0 +1,1200 @@
+<!--
+  CONCEPT A — "Service."  A film in one night.
+  Idea: the landing page is a short prestige film, scrubbed by scroll — one night (16:00 → 00:40) in a
+        house where the back office runs itself; it ends in rolling credits and a "Get started" card.
+  Motion techniques: 2.39:1 letterbox framing · canvas film grain + vignette · title-sequence assembly of
+        the A+M mark's 11 paths · burned-in timecode + scene slate advancing with scroll · film subtitles ·
+        SC1 slow push-in + self-drawing storyboard line art + scan sweep · SC2 dolly-zoom parallax across
+        three depth layers + rack focus (blur shifts between layers) + live OCR boxes, shutter flash,
+        decode-and-settle fields · SC3 montage with whip-pan cuts (directional SVG motion blur) +
+        odometer digits · SC4 extreme close-up pull-back, letterbox opens to full frame, scrubbed typing,
+        cursor hover + press on Confirm · SC5 lights dim one by one, fade to black · scroll-driven
+        end-credit roll · optional WebAudio room tone (off by default, never autoplays).
+  Vanilla JS, no libraries. Reduced motion: no scrubbing/pinning — scenes stack as stills with subtitles.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mudavym — The Film</title>
+<meta name="description" content="Service. One night in a house where the back office runs itself.">
+<meta name="color-scheme" content="dark">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT,WONK@0,9..144,100..900,0..100,0..1;1,9..144,100..900,0..100,0..1&family=DM+Sans:ital,opsz,wght@0,9..40,300..700;1,9..40,300..700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+<noscript><link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT,WONK@0,9..144,100..900,0..100,0..1;1,9..144,100..900,0..100,0..1&family=DM+Sans:ital,opsz,wght@0,9..40,300..700;1,9..40,300..700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"></noscript>
+<style>
+:root{
+  --seal:#5FB0BC; --seal-600:#1A5E6B; --seal-700:#14515C; --seal-950:#08262C; --seal-300:#8FC4CD;
+  --c0:#15130F; --c1:#1D1813; --c2:#262019; --black:#0B0A08; --bar-c:#050403;
+  --ink:#EFE7D9; --ink2:#C0B6A5; --ink3:#ABA294; --ink4:#7A7062;
+  --paper:#FAF7F1; --paper2:#F3EFE6; --pink:#211C16; --pink2:#4F473C; --pink3:#665D50;
+  --amber:#E0A458; --wine:#6B1F2A;
+  --bar:149px; --navh:149px;
+  --serif:'Fraunces', Georgia, 'Times New Roman', serif;
+  --sans:'DM Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mono:'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){ --c0:#15130F; } }
+:root[data-theme="dark"]{ --c0:#15130F; }
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+html{background:var(--c0)}
+body{background:var(--c0);color:var(--ink);font-family:var(--sans);overflow-x:hidden;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+a{color:inherit}
+.sr{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+:focus-visible{outline:2px solid var(--seal);outline-offset:3px;border-radius:6px}
+.mono{font-family:var(--mono)}
+.serif{font-family:var(--serif)}
+
+/* ---------- fixed chrome ---------- */
+.nav{position:fixed;left:0;right:0;top:0;height:var(--navh);z-index:70;display:flex;align-items:center;justify-content:space-between;padding:0 clamp(16px,3vw,40px);pointer-events:none;transition:height .5s ease, background .5s ease}
+.nav > *{pointer-events:auto}
+.nav.past{--navh:72px;background:linear-gradient(var(--black) 30%,rgba(11,10,8,0))}
+.nav-l,.nav-r{display:flex;align-items:center;gap:22px}
+.back{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink3);text-decoration:none;opacity:.8}
+.back:hover{opacity:1;color:var(--ink)}
+.wm{font-family:var(--serif);font-weight:600;font-size:21px;letter-spacing:-.01em;text-decoration:none;color:var(--ink);font-variation-settings:"opsz" 36,"SOFT" 30}
+.wm i{font-style:normal;color:var(--seal)}
+.signin{font-size:14px;color:var(--ink2);text-decoration:none}
+.signin:hover{color:var(--ink)}
+.btn-seal{display:inline-flex;align-items:center;gap:8px;background:var(--seal);color:var(--seal-950);font-weight:600;font-size:14px;text-decoration:none;padding:10px 18px;border-radius:999px;transition:background .2s ease, transform .2s ease;white-space:nowrap}
+.btn-seal:hover{background:#7cc2cc}
+.btn-seal:active{transform:scale(.97)}
+
+#grain{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:65;opacity:.075;mix-blend-mode:screen}
+.vig{position:fixed;inset:0;pointer-events:none;z-index:64;background:radial-gradient(120% 95% at 50% 50%,rgba(0,0,0,0) 55%,rgba(0,0,0,.5) 100%)}
+
+/* ---------- the film ---------- */
+.track{position:relative;height:1460vh}
+.stage{position:sticky;top:0;height:100vh;overflow:hidden;background:var(--c0)}
+.scene{position:absolute;inset:0;visibility:hidden;opacity:0;overflow:hidden}
+.scene.on{visibility:visible}
+.safe{position:absolute;left:0;right:0;top:var(--bar);bottom:var(--bar)}
+.bar{position:absolute;left:0;right:0;height:var(--bar);background:var(--bar-c);z-index:20;will-change:transform}
+.bar.t{top:0}.bar.b{bottom:0}
+.ended > .bar{background:var(--black)}
+.ended > .hud,.ended > .sound,.ended > .subs{opacity:0;visibility:hidden}
+.hud,.sound{transition:opacity .4s ease, visibility .4s}
+.flash{position:absolute;inset:0;background:#fffaf0;opacity:0;z-index:15;pointer-events:none}
+
+.hud{position:absolute;z-index:30;left:clamp(16px,3vw,40px);bottom:calc(var(--bar) / 2);transform:translateY(50%);font-family:var(--mono);line-height:1.5}
+.tc{font-size:12px;letter-spacing:.14em;color:var(--ink2);font-variant-numeric:tabular-nums}
+.tc b{display:inline-block;width:7px;height:7px;border-radius:50%;background:#c4483e;margin-right:10px;vertical-align:1px;box-shadow:0 0 8px rgba(196,72,62,.7)}
+.slate{font-size:10.5px;letter-spacing:.2em;color:var(--ink4);text-transform:uppercase}
+.sound{position:absolute;z-index:31;right:clamp(16px,3vw,40px);bottom:calc(var(--bar) / 2);transform:translateY(50%);background:none;border:1px solid rgba(239,231,217,.16);color:var(--ink3);font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;padding:8px 12px;border-radius:999px;cursor:pointer;display:flex;align-items:center;gap:8px}
+.sound:hover{color:var(--ink);border-color:rgba(239,231,217,.35)}
+.sound .wv{display:inline-flex;gap:2px;align-items:center;height:10px}
+.sound .wv i{display:block;width:2px;height:3px;background:currentColor;border-radius:1px;transition:height .3s}
+.sound[aria-pressed="true"] .wv i:nth-child(1){height:6px}.sound[aria-pressed="true"] .wv i:nth-child(2){height:10px}.sound[aria-pressed="true"] .wv i:nth-child(3){height:5px}.sound[aria-pressed="true"] .wv i:nth-child(4){height:8px}
+.sound[aria-pressed="true"]{color:var(--seal);border-color:rgba(95,176,188,.45)}
+.subs{position:absolute;z-index:30;left:50%;bottom:calc(var(--bar) / 2);transform:translate(-50%,50%);width:min(760px,calc(100% - 420px));text-align:center;font-family:var(--sans);font-size:19px;line-height:1.45;color:var(--ink);letter-spacing:.005em;text-shadow:0 1px 2px rgba(0,0,0,.9),0 0 18px rgba(0,0,0,.6);min-height:1.45em}
+.subs span{display:inline-block;transition:opacity .35s ease, transform .35s ease}
+.subs span.out{opacity:0;transform:translateY(6px)}
+
+/* storyboard line art */
+svg.art, svg.layer{position:absolute;inset:0;width:100%;height:100%;display:block;overflow:hidden}
+.ln{fill:none;stroke:var(--ink);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.ln2{fill:none;stroke:#7a7062;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.lnS{fill:none;stroke:var(--seal);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.d{stroke-dasharray:1.1 2;stroke-dashoffset:var(--d,0)}
+.g2 .d{stroke-dashoffset:var(--d2,0)}
+.fills{opacity:var(--f,1)}
+.stencil{font-family:var(--mono);font-size:17px;letter-spacing:4px;fill:var(--ink2);text-anchor:middle}
+.stencil.sm{font-size:11px;letter-spacing:3px;fill:#8d8373}
+
+/* cards */
+.card{position:absolute;right:max(32px,6vw);top:50%;width:min(390px,31vw);transform:translateY(-50%);background:rgba(21,19,15,.78);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);border:1px solid rgba(239,231,217,.12);border-radius:16px;padding:22px 24px 20px;box-shadow:0 30px 80px rgba(0,0,0,.45)}
+.eyebrow{font-family:var(--mono);font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--ink3);margin:0 0 8px}
+.card h3{font-family:var(--serif);font-weight:400;font-size:24px;line-height:1.15;margin:0 0 16px;font-variation-settings:"opsz" 72,"SOFT" 40;letter-spacing:-.01em}
+.rows{list-style:none;margin:0;padding:0}
+.rows li{display:grid;grid-template-columns:22px 1fr auto;align-items:center;gap:10px;padding:9px 0;border-top:1px solid rgba(239,231,217,.08);font-size:15px;color:var(--ink2);opacity:var(--o,.4)}
+.rows li .q{font-family:var(--mono);font-size:12.5px;color:var(--ink3);font-variant-numeric:tabular-nums}
+.tick{width:20px;height:20px}
+.tick circle{fill:none;stroke:rgba(239,231,217,.2);stroke-width:1.5}
+.tick path{fill:none;stroke:var(--seal);stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:1.1 2;stroke-dashoffset:var(--k,1.1)}
+.rows li.short .tick path{stroke:var(--amber)}
+.rows li.short .q{color:var(--amber)}
+.note{margin:12px 0 0;font-family:var(--mono);font-size:11.5px;letter-spacing:.04em;color:var(--amber);opacity:0}
+
+/* SC0 */
+.s0 .studio, .s0 .titles{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:0 16px}
+.studio .mk{width:clamp(72px,8vw,104px);height:auto;overflow:visible}
+.studio .mk rect{transform-box:fill-box;transform-origin:50% 50%;transform:scale(.6);opacity:0;transition:transform 1s cubic-bezier(.2,.8,.2,1),opacity .7s ease}
+.studio .mk path{transform-box:fill-box;transform-origin:50% 50%;opacity:0;transform:translate(var(--x),var(--y)) rotate(var(--r)) scale(.4);transition:transform 1.15s cubic-bezier(.16,.84,.24,1) var(--dl),opacity .5s ease var(--dl)}
+.go1 .studio .mk rect{transform:none;opacity:1}
+.go1 .studio .mk path{transform:none;opacity:1}
+.studio-t{margin:26px 0 0;font-family:var(--serif);font-style:italic;font-size:clamp(16px,1.6vw,21px);letter-spacing:.06em;color:var(--ink2);opacity:0;transform:translateY(8px);transition:opacity 1s ease 1.1s, transform 1.2s ease 1.1s;font-variation-settings:"opsz" 24,"SOFT" 60}
+.go1 .studio-t{opacity:1;transform:none}
+.studio{transition:opacity .7s ease, filter .7s ease}
+.go2 .studio{opacity:0;filter:blur(6px)}
+.titles{pointer-events:none}
+.title{margin:0;font-family:var(--serif);font-weight:300;font-size:clamp(80px,24vw,236px);line-height:.9;letter-spacing:-.035em;font-variation-settings:"opsz" 144,"SOFT" 30,"WONK" 0;color:var(--ink)}
+.title .ch{display:inline-block;opacity:0;transform:translateY(.18em);filter:blur(10px);transition:opacity 1.1s ease, transform 1.4s cubic-bezier(.16,.84,.24,1), filter 1.1s ease;transition-delay:calc(var(--i) * 70ms + 300ms)}
+.title .dot{color:var(--seal);display:inline-block;opacity:0;transform:scale(2.2);transition:opacity .4s ease 1.05s, transform .55s cubic-bezier(.3,1.6,.5,1) 1.05s}
+.go2 .title .ch{opacity:1;transform:none;filter:none}
+.go2 .title .dot{opacity:1;transform:none}
+.logline{margin:28px 0 0;max-width:30ch;font-family:var(--serif);font-style:italic;font-weight:300;font-size:clamp(18px,1.9vw,26px);line-height:1.35;color:var(--ink2);font-variation-settings:"opsz" 36,"SOFT" 80;opacity:0;transition:opacity 1.2s ease 1.5s}
+.tagline{margin:18px 0 0;font-family:var(--mono);font-size:10.5px;letter-spacing:.24em;text-transform:uppercase;color:var(--ink4);opacity:0;transition:opacity 1.2s ease 1.9s}
+.go2 .logline,.go2 .tagline{opacity:1}
+.cue{position:absolute;left:50%;bottom:calc(var(--bar) + 26px);transform:translateX(-50%);font-family:var(--mono);font-size:10.5px;letter-spacing:.22em;text-transform:uppercase;color:var(--ink3);display:flex;flex-direction:column;align-items:center;gap:10px;opacity:0;transition:opacity 1s ease 2.4s}
+.go2 .cue{opacity:1}
+.cue i{display:block;width:1px;height:34px;background:linear-gradient(var(--ink3),transparent);animation:cue 2.2s ease-in-out infinite;transform-origin:top}
+@keyframes cue{0%{transform:scaleY(0)}50%{transform:scaleY(1)}100%{transform:scaleY(1);opacity:0}}
+
+/* SC1 */
+.s1 .art{transform-origin:46% 60%;will-change:transform}
+
+/* SC2 */
+.s2 .layer{will-change:transform, filter;transform-origin:50% 52%}
+.fields{margin:0;display:grid;gap:0}
+.fields > div{display:grid;grid-template-columns:92px 1fr;gap:12px;align-items:baseline;padding:10px 0;border-top:1px solid rgba(239,231,217,.08)}
+.fields dt{font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink4)}
+.fields dd{margin:0;font-family:var(--serif);font-size:19px;color:var(--ink);font-variation-settings:"opsz" 36,"SOFT" 40;min-height:1.25em;white-space:nowrap;overflow:hidden;text-overflow:clip}
+.fields dd.scr{color:var(--seal);font-family:var(--mono);font-size:15px}
+.loc{margin:14px 0 0;padding-top:12px;border-top:1px solid rgba(239,231,217,.08);display:flex;justify-content:space-between;gap:10px;font-family:var(--mono);font-size:11.5px;letter-spacing:.06em;color:var(--ink2)}
+.loc b{color:var(--seal);font-weight:500}
+
+/* SC3 */
+.strip{position:absolute;inset:0;will-change:transform}
+.panel{position:absolute;top:0;bottom:0;width:100%}
+.panel.p1{left:0}.panel.p2{left:100%}.panel.p3{left:200%}
+.streak{position:absolute;inset:0;z-index:4;opacity:0;pointer-events:none;background:repeating-linear-gradient(180deg,rgba(239,231,217,0) 0 7px,rgba(239,231,217,.05) 7px 8px,rgba(239,231,217,0) 8px 19px),linear-gradient(90deg,rgba(224,164,88,0),rgba(224,164,88,.08),rgba(224,164,88,0))}
+.mini{position:absolute;z-index:5;right:max(32px,6vw);top:calc(var(--bar) + 28px);display:flex;align-items:center;gap:14px;padding:10px 14px 10px 16px;border-radius:12px;background:rgba(21,19,15,.7);border:1px solid rgba(239,231,217,.12);font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink3)}
+.odo{display:inline-flex;font-family:var(--mono);font-variant-numeric:tabular-nums;line-height:1;color:var(--ink)}
+.odo .dg{display:block;height:1em;overflow:hidden;width:.62em;text-align:center}
+.odo .col{display:block;will-change:transform}
+.odo .col span{display:block;height:1em}
+.mini .odo{font-size:22px}
+.board{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(620px,calc(100% - 32px))}
+.board h3{font-family:var(--serif);font-weight:300;font-size:clamp(30px,3.4vw,46px);margin:0 0 22px;letter-spacing:-.02em;font-variation-settings:"opsz" 144,"SOFT" 30}
+.board ul{list-style:none;margin:0;padding:0}
+.board li{display:grid;grid-template-columns:1fr auto auto;gap:22px;align-items:center;padding:16px 0;border-top:1px solid rgba(239,231,217,.1)}
+.board li:last-child{border-bottom:1px solid rgba(239,231,217,.1)}
+.board .nm{font-family:var(--serif);font-size:clamp(19px,1.7vw,24px);font-variation-settings:"opsz" 36,"SOFT" 40}
+.board .lc{font-family:var(--mono);font-size:11px;letter-spacing:.14em;color:var(--ink4)}
+.board .odo{font-size:clamp(30px,3vw,42px)}
+.board li.low .nm,.board li.low .odo{color:var(--amber)}
+.board li .flag{font-family:var(--mono);font-size:10px;letter-spacing:.16em;color:var(--amber);margin-left:12px;opacity:0;vertical-align:3px}
+.board li.low .flag{opacity:1}
+
+/* SC4 */
+.big2{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none}
+.big2 .n{font-family:var(--serif);font-weight:200;font-style:italic;font-size:min(78vh,62vw);line-height:.8;color:var(--amber);font-variation-settings:"opsz" 144,"SOFT" 100,"WONK" 1;text-shadow:0 0 120px rgba(224,164,88,.25)}
+.big2 .c{font-family:var(--mono);font-size:12px;letter-spacing:.3em;text-transform:uppercase;color:var(--ink2);margin-top:2vh}
+.s4wrap{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:100px clamp(16px,6vw,96px) 128px}
+.s4wrap h2{font-family:var(--serif);font-weight:300;font-size:clamp(30px,4.2vw,60px);line-height:1;margin:0 0 26px;letter-spacing:-.025em;font-variation-settings:"opsz" 144,"SOFT" 30;text-align:center}
+.s4wrap h2 em{font-style:italic;color:var(--amber)}
+.s4grid{display:grid;grid-template-columns:1fr 1.2fr;gap:18px;width:min(940px,100%)}
+.doc{background:var(--paper);color:var(--pink);border-radius:14px;padding:20px 22px;box-shadow:0 24px 70px rgba(0,0,0,.5);position:relative;overflow:hidden}
+.doc header{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px}
+.doc .k{font-family:var(--serif);font-size:20px;font-weight:500;font-variation-settings:"opsz" 36,"SOFT" 30}
+.chip{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;padding:5px 9px;border-radius:999px;background:#EAE4D8;color:var(--pink2);white-space:nowrap;transition:background .3s,color .3s}
+.chip.sent{background:var(--seal-600);color:var(--paper)}
+.doc .meta{font-family:var(--mono);font-size:11px;letter-spacing:.06em;color:var(--pink3);margin:0 0 12px}
+.po-line{display:flex;justify-content:space-between;gap:12px;padding:11px 0;border-top:1px solid #E3DCCD;border-bottom:1px solid #E3DCCD;font-size:15px}
+.po-line .w{font-family:var(--serif);font-size:17px}
+.po-line .w small{display:block;font-family:var(--sans);font-size:12px;color:var(--pink3);margin-top:2px}
+.po-line .n{font-family:var(--mono);font-size:14px;white-space:nowrap}
+.why{margin:12px 0 0;font-size:12.5px;line-height:1.5;color:var(--pink2)}
+.why b{font-weight:600;color:var(--pink)}
+.mail .subj{font-family:var(--mono);font-size:11.5px;color:var(--pink2);margin:0 0 10px;letter-spacing:.02em}
+.mail .body{font-family:var(--serif);font-size:16px;line-height:1.5;margin:0;color:var(--pink);font-variation-settings:"opsz" 18,"SOFT" 40}
+.ty .rest{color:transparent}
+.att{margin:12px 0 0;font-family:var(--mono);font-size:11px;color:var(--pink3);letter-spacing:.04em}
+.pt .att{display:none}
+.ty .car{display:inline-block;width:2px;height:1em;background:var(--seal-600);vertical-align:-2px;margin:0 -1px;opacity:0}
+.ty.typing .car{opacity:1}
+.approve{display:flex;align-items:center;justify-content:flex-end;gap:14px;width:min(940px,100%);margin-top:18px}
+.approve .who{margin-right:auto;font-family:var(--mono);font-size:11.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink3)}
+.approve .who.ok{color:var(--seal)}
+.fbtn{display:inline-flex;align-items:center;gap:8px;border-radius:999px;padding:12px 20px;font-size:15px;font-weight:600;position:relative;user-select:none;transition:background .25s,box-shadow .25s,transform .12s}
+.fbtn.ghost{border:1px solid rgba(239,231,217,.2);color:var(--ink2);font-weight:500}
+.fbtn.cfm{background:var(--seal);color:var(--seal-950)}
+.fbtn.cfm.hover{background:#86c9d2;box-shadow:0 0 0 6px rgba(95,176,188,.18)}
+.fbtn.cfm.press{transform:scale(.94)}
+.fbtn.cfm.done{background:var(--seal-600);color:var(--paper);box-shadow:none}
+.cur{position:absolute;left:58%;top:58%;width:26px;height:30px;pointer-events:none;filter:drop-shadow(0 4px 8px rgba(0,0,0,.5));z-index:3}
+.fine{margin:14px 0 0;font-family:var(--serif);font-style:italic;font-size:15px;color:var(--ink2);font-variation-settings:"opsz" 18,"SOFT" 80}
+
+/* SC5 */
+.s5 .dim{position:absolute;inset:0;background:#000;opacity:0;pointer-events:none}
+.s5 .end{position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);text-align:center;padding:0 16px;pointer-events:none}
+.s5 .end p{margin:0;font-family:var(--serif);font-weight:300;font-size:clamp(38px,5.6vw,84px);letter-spacing:-.02em;line-height:1.05;font-variation-settings:"opsz" 144,"SOFT" 50;color:var(--ink)}
+.s5 .end p i{font-style:normal;color:var(--seal)}
+.s5 .black{position:absolute;inset:0;background:var(--black);opacity:0;pointer-events:none}
+
+/* ---------- credits + CTA ---------- */
+.credits{position:relative;background:var(--black);padding:34vh 16px 10vh;text-align:center}
+.credits .ct{font-family:var(--serif);font-weight:300;font-size:clamp(44px,6vw,80px);margin:0;letter-spacing:-.03em;font-variation-settings:"opsz" 144,"SOFT" 30}
+.credits .ct i{font-style:normal;color:var(--seal)}
+.credits .cs{font-family:var(--mono);font-size:11px;letter-spacing:.26em;text-transform:uppercase;color:var(--ink4);margin:14px 0 18vh}
+.credits h2{font-family:var(--mono);font-weight:400;font-size:11px;letter-spacing:.3em;text-transform:uppercase;color:var(--ink4);margin:0 0 40px}
+.cr{list-style:none;margin:0 auto 20vh;padding:0;max-width:820px}
+.cr li{display:grid;grid-template-columns:1fr 1fr;gap:36px;align-items:baseline;margin:0 0 26px}
+.cr .r{text-align:right;font-family:var(--serif);font-variant:small-caps;font-size:23px;letter-spacing:.06em;color:var(--ink2);font-variation-settings:"opsz" 36,"SOFT" 40}
+.cr .n{text-align:left;font-family:var(--mono);font-size:13px;letter-spacing:.05em;color:var(--ink)}
+.cr .n em{font-style:normal;color:var(--seal)}
+.soon{margin:0 auto 20vh}
+.soon p{margin:0 0 10px;font-family:var(--serif);font-style:italic;font-weight:300;font-size:clamp(26px,3vw,38px);color:var(--ink2);font-variation-settings:"opsz" 72,"SOFT" 80}
+.soon .now{font-family:var(--mono);font-style:normal;font-size:11px;letter-spacing:.26em;text-transform:uppercase;color:var(--seal);margin:0 0 28px}
+.disc{font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink4);margin:0}
+.cta{min-height:100vh;background:var(--black);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:96px 16px 64px}
+.cta svg{width:56px;height:56px;margin-bottom:34px}
+.cta h2{font-family:var(--serif);font-weight:300;font-size:clamp(44px,6.4vw,92px);line-height:1;margin:0;letter-spacing:-.03em;font-variation-settings:"opsz" 144,"SOFT" 30}
+.cta h2 i{font-style:normal;color:var(--seal)}
+.cta p{font-family:var(--serif);font-style:italic;font-weight:300;font-size:clamp(18px,1.7vw,22px);color:var(--ink2);margin:22px 0 40px;max-width:40ch;line-height:1.45;font-variation-settings:"opsz" 24,"SOFT" 80}
+.cta .acts{display:flex;align-items:center;gap:26px;flex-wrap:wrap;justify-content:center}
+.cta .btn-seal{font-size:16px;padding:15px 28px}
+.cta .signin{font-size:15px;border-bottom:1px solid rgba(239,231,217,.25);padding-bottom:2px}
+.foot{position:relative;background:var(--black);text-align:center;padding:0 16px 36px;font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink4)}
+
+/* ---------- portrait / phone ---------- */
+.pt .wm{display:none}
+.pt .nav-r{gap:14px}
+.pt .nav .btn-seal{padding:8px 14px;font-size:13px}
+.pt .signin{font-size:13px}
+.pt .subs{width:calc(100% - 32px);bottom:calc(var(--bar) + 12px);transform:translateX(-50%);font-size:15.5px;line-height:1.4}
+.pt .hud{bottom:calc(var(--bar) / 2);left:16px}
+.pt .tc{font-size:10.5px;letter-spacing:.1em}
+.pt .tc b{width:6px;height:6px;margin-right:7px}
+.pt .slate{font-size:9px;letter-spacing:.14em}
+.pt .sound{right:16px;padding:6px 10px;font-size:9.5px}
+.pt .cue{bottom:calc(var(--bar) + 84px)}
+.pt .scene .art,.pt .s2 .layer{top:var(--bar);height:calc((100% - 2 * var(--bar)) * .5);bottom:auto}
+.pt .s1 .art{height:calc((100% - 2 * var(--bar)) * .5)}
+.pt .card{left:16px;right:16px;width:auto;top:auto;bottom:calc(var(--bar) + 78px);transform:none;padding:16px 18px 14px;border-radius:14px}
+.pt .card h3{font-size:19px;margin-bottom:10px}
+.pt .rows li{padding:6px 0;font-size:13.5px}
+.pt .fields > div{padding:6px 0;grid-template-columns:80px 1fr}
+.pt .fields dd{font-size:16px}
+.pt .loc{margin-top:8px;padding-top:8px;font-size:10.5px}
+.pt .s3 .art{top:var(--bar);bottom:auto;height:calc(100% - 2 * var(--bar) - 70px)}
+.pt .mini{right:16px;top:calc(var(--bar) + 14px);padding:8px 10px 8px 12px;font-size:9.5px;gap:10px}
+.pt .mini .odo{font-size:18px}
+.pt .board li{gap:12px;padding:12px 0}
+.pt .board li .lc{display:none}
+.pt .s4wrap{padding:calc(var(--bar) + 12px) 16px calc(var(--bar) + 70px);justify-content:center}
+.pt .s4wrap h2{font-size:30px;margin-bottom:16px}
+.pt .s4grid{grid-template-columns:1fr;gap:10px}
+.pt .doc{padding:14px 16px;border-radius:12px}
+.pt .doc header{margin-bottom:6px}
+.pt .doc .k{font-size:17px}
+.pt .doc .meta{margin-bottom:8px;font-size:10px}
+.pt .po-line{padding:8px 0;font-size:14px}
+.pt .po-line .w{font-size:15px}
+.pt .why{display:none}
+.pt .mail .body{font-size:14px;line-height:1.45}
+.pt .mail .subj{font-size:10.5px;margin-bottom:6px}
+.pt .approve{margin-top:14px;gap:10px}
+.pt .approve .who{font-size:10px;letter-spacing:.06em}
+.pt .fbtn{padding:10px 16px;font-size:14px}
+.pt .fbtn.ghost{display:none}
+.pt .fine{font-size:14px;margin-top:10px}
+.pt .s5 .art{bottom:auto;height:calc(100% - 2 * var(--bar))}
+.pt .scene .art,.pt .s2 .layer{-webkit-mask-image:linear-gradient(#000 82%,transparent);mask-image:linear-gradient(#000 82%,transparent)}
+.pt .s3 .art,.pt .s5 .art{-webkit-mask-image:none;mask-image:none}
+.pt .s3 #s3pr{transform:translate(-640px,520px)}
+.pt .s3 #s3rk{transform:translate(-700px,430px)}
+@media (max-width:640px){
+  .cr li{grid-template-columns:1fr;gap:4px;margin-bottom:28px}
+  .cr .r,.cr .n{text-align:center}
+  .cr .r{font-size:20px}
+}
+
+/* ---------- reduced motion: stills ---------- */
+.rm .track{height:auto!important}
+.rm .stage{position:relative;height:auto;overflow:visible;background:var(--black)}
+.rm .stage > .bar,.rm .stage > .hud,.rm .stage > .subs,.rm .stage > .sound,.rm .flash,.rm .cue,.rm .streak{display:none}
+.rm .scene{position:relative;inset:auto;visibility:visible;opacity:1!important;height:max(560px,100vh);border-top:var(--bar) solid var(--bar-c);border-bottom:var(--bar) solid var(--bar-c)}
+.rm .scene .safe{top:0;bottom:0}
+.rm .s4{height:max(760px,100vh)}
+.rm .pt .scene, .pt.rm .scene{border-top-width:var(--bar);border-bottom-width:var(--bar)}
+.still{background:var(--black);text-align:center;padding:22px 16px 46px}
+.still .tcs{font-family:var(--mono);font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--ink4);margin:0 0 10px}
+.still p{margin:0 auto 6px;max-width:640px;font-size:17px;color:var(--ink)}
+.rm .studio{display:none}
+.rm .title .ch,.rm .title .dot,.rm .logline,.rm .tagline{opacity:1;transform:none;filter:none;transition:none}
+.rm .nav{transition:none}
+@media (prefers-reduced-motion: reduce){ *{scroll-behavior:auto!important} }
+</style>
+</head>
+<body>
+<a class="sr" href="#cta">Skip the film</a>
+
+<header class="nav" id="nav">
+  <div class="nav-l">
+    <a class="back" href="./index.html">← All five</a>
+    <a class="wm" href="https://mudavym.com/" aria-label="Mudavym home">Mudavym<i>.</i></a>
+  </div>
+  <nav class="nav-r" aria-label="Account">
+    <a class="signin" href="https://mudavym.com/login">Sign in</a>
+    <a class="btn-seal" href="https://mudavym.com/get-started">Get started</a>
+  </nav>
+</header>
+
+<!-- shared defs -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <filter id="whip" x="-20%" y="0" width="140%" height="100%" color-interpolation-filters="sRGB"><feGaussianBlur id="whipB" stdDeviation="0 0"/></filter>
+    <radialGradient id="gAmber"><stop offset="0" stop-color="#E0A458" stop-opacity=".55"/><stop offset=".35" stop-color="#E0A458" stop-opacity=".18"/><stop offset="1" stop-color="#E0A458" stop-opacity="0"/></radialGradient>
+    <radialGradient id="gAmberHot"><stop offset="0" stop-color="#FFE2B0" stop-opacity=".95"/><stop offset=".25" stop-color="#E0A458" stop-opacity=".45"/><stop offset="1" stop-color="#E0A458" stop-opacity="0"/></radialGradient>
+    <linearGradient id="gCone" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#E0A458" stop-opacity=".22"/><stop offset="1" stop-color="#E0A458" stop-opacity="0"/></linearGradient>
+    <radialGradient id="gShadow"><stop offset="0" stop-color="#000" stop-opacity=".7"/><stop offset="1" stop-color="#000" stop-opacity="0"/></radialGradient>
+    <path id="btl" d="M596 170H644V300Q644 350 690 390Q730 420 730 470V738Q730 748 720 748H520Q510 748 510 738V470Q510 420 550 390Q596 350 596 300Z"/>
+    <g id="flame"><path d="M0 -34C7 -22 11 -12 11 -4C11 4 6 9 0 9C-6 9 -11 4 -11 -4C-11 -12 -7 -22 0 -34Z" fill="#E0A458"/><path d="M0 -18C3 -12 5 -7 5 -3C5 1 3 4 0 4C-3 4 -5 1 -5 -3C-5 -7 -3 -12 0 -18Z" fill="#FFE9C2"/></g>
+  </defs>
+</svg>
+
+<main>
+  <h1 class="sr">Mudavym — the autonomous back office for restaurants. A film in one night.</h1>
+  <ol class="sr" id="story" aria-label="The story, scene by scene"></ol>
+
+  <div class="track" id="track">
+    <div class="stage" id="stage" aria-hidden="false">
+
+      <!-- SC0 — titles -->
+      <section class="scene s0" id="s0" aria-label="Title">
+        <div class="studio" aria-hidden="true">
+          <svg class="mk" viewBox="0 0 100 100" id="mk"><rect width="100" height="100" rx="22" fill="#1A5E6B"/><g transform="translate(22.2,17) scale(0.115)" fill="#FAF7F1"><path d="M0 38H72V540H0Z"/><path d="M15 38H96L460 574H379Z"/><path d="M0 346H305L353 416H0Z"/><path d="M0 470H137V540H0Z"/><path d="M99 0H151L278.7 187.8L284.8 273Z"/><path d="M389.5 40H460.9L284.8 273L251.4 224Z"/><path d="M412 40H483V574H412Z"/><path d="M80 150V192H108Z"/><path d="M142 346H206L174 292Z"/><path d="M404 138L376 157L404 176Z"/><path d="M383 430H404V470Z"/></g></svg>
+          <p class="studio-t">A Mudavym picture</p>
+        </div>
+        <div class="titles" id="titles">
+          <p class="title" aria-label="Service."><span class="ch" style="--i:0">S</span><span class="ch" style="--i:1">e</span><span class="ch" style="--i:2">r</span><span class="ch" style="--i:3">v</span><span class="ch" style="--i:4">i</span><span class="ch" style="--i:5">c</span><span class="ch" style="--i:6">e</span><span class="dot">.</span></p>
+          <p class="logline">One night in a house where the back office runs itself.</p>
+          <p class="tagline">Mudavym · the autonomous back office for restaurants</p>
+        </div>
+        <div class="cue" aria-hidden="true">Scroll to roll<i></i></div>
+      </section>
+
+      <!-- SC1 — 16:10 the delivery -->
+      <section class="scene s1" id="s1" aria-label="16:10, the delivery">
+        <svg class="art" data-vb="0 0 1600 900" data-pvb="190 140 820 660" aria-hidden="true">
+          <defs>
+            <pattern id="s1brick" width="84" height="72" patternUnits="userSpaceOnUse"><path d="M0 0H84M0 36H84M42 0V36M0 36V72M84 36V72" fill="none" stroke="#2c251e" stroke-width="1.3"/></pattern>
+            <linearGradient id="s1out" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F1C88A"/><stop offset=".55" stop-color="#E0A458"/><stop offset="1" stop-color="#9c6a35"/></linearGradient>
+            <linearGradient id="s1spill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#E0A458" stop-opacity=".34"/><stop offset="1" stop-color="#E0A458" stop-opacity="0"/></linearGradient>
+            <radialGradient id="s1wall" cx=".3" cy=".45" r=".9"><stop offset="0" stop-color="#15130F" stop-opacity="0"/><stop offset="1" stop-color="#0b0a08" stop-opacity=".92"/></radialGradient>
+            <linearGradient id="s1scan" x1="0" x2="1"><stop offset="0" stop-color="#5FB0BC" stop-opacity="0"/><stop offset="1" stop-color="#5FB0BC" stop-opacity=".28"/></linearGradient>
+          </defs>
+          <rect width="1600" height="900" fill="#17140f"/>
+          <rect width="1600" height="742" fill="url(#s1brick)" opacity=".9"/>
+          <rect x="0" y="742" width="1600" height="158" fill="#1b1712"/>
+          <!-- doorway: late light outside -->
+          <g class="fills">
+            <rect x="270" y="230" width="280" height="512" fill="url(#s1out)" opacity=".82"/>
+            <path d="M270 520H550" stroke="#9c6a35" stroke-width="2" opacity=".6"/>
+            <rect x="292" y="470" width="236" height="272" fill="#3a2a1b" opacity=".85"/>
+            <path d="M410 470V742M292 520H528" stroke="#1d150e" stroke-width="3" opacity=".8"/>
+            <polygon points="270,742 550,742 800,900 120,900" fill="url(#s1spill)"/>
+            <circle cx="410" cy="196" r="150" fill="url(#gAmber)"/>
+          </g>
+          <rect width="1600" height="900" fill="url(#s1wall)"/>
+          <g>
+            <path class="d ln" pathLength="1" d="M250 742V210H570V742"/>
+            <path class="d ln2" pathLength="1" d="M270 742V230H550V742"/>
+            <path class="d ln" pathLength="1" d="M270 230L192 204V772L270 742"/>
+            <path class="d ln2" pathLength="1" d="M60 742H1540"/>
+            <path class="d ln2" pathLength="1" d="M410 120V182"/>
+            <circle class="d ln" pathLength="1" cx="410" cy="194" r="12"/>
+            <circle class="d ln2" pathLength="1" cx="208" cy="490" r="6"/>
+          </g>
+          <!-- figure, backlit -->
+          <g class="fills">
+            <g fill="#0f0d0a" stroke="#6e665a" stroke-width="1.5" stroke-linejoin="round">
+              <path d="M454 452L440 468L434 586L449 589L458 482Z"/><path d="M538 452L552 468L558 586L543 589L534 482Z"/>
+              <path d="M462 588L466 742H490L494 612H498L502 742H526L530 588Z"/>
+              <path d="M484 430H508V448H484Z"/>
+              <path d="M460 448Q496 436 532 448L540 472L533 592H459L452 472Z"/>
+              <circle cx="496" cy="412" r="23"/>
+              <path d="M471 404Q496 380 521 404L534 409H471Z"/>
+            </g>
+          </g>
+          <g class="g2">
+            <!-- hand truck -->
+            <path class="d ln" pathLength="1" d="M652 318V732M634 312Q652 302 670 312M652 742H962"/>
+            <circle class="d ln" pathLength="1" cx="664" cy="722" r="22"/>
+            <g id="s1cr"></g>
+          </g>
+          <!-- scan -->
+          <g id="s1scan" opacity="0"><rect x="-120" y="330" width="120" height="420" fill="url(#s1scan)"/><rect x="-2" y="330" width="3" height="420" fill="#5FB0BC"/></g>
+        </svg>
+        <div class="safe">
+          <div class="card" id="s1card">
+            <p class="eyebrow">Receiving · back door · 16:10</p>
+            <h3>Checked against PO-0412</h3>
+            <ul class="rows" id="s1rows">
+              <li><svg class="tick" viewBox="0 0 20 20"><circle cx="10" cy="10" r="9"/><path pathLength="1" d="M5.5 10.3L8.6 13.2L14.6 7"/></svg><span>Barolo 2019</span><span class="q">6 / 6</span></li>
+              <li><svg class="tick" viewBox="0 0 20 20"><circle cx="10" cy="10" r="9"/><path pathLength="1" d="M5.5 10.3L8.6 13.2L14.6 7"/></svg><span>Etna Rosso 2021</span><span class="q">12 / 12</span></li>
+              <li><svg class="tick" viewBox="0 0 20 20"><circle cx="10" cy="10" r="9"/><path pathLength="1" d="M5.5 10.3L8.6 13.2L14.6 7"/></svg><span>Sancerre 2022</span><span class="q">24 / 24</span></li>
+              <li class="short"><svg class="tick" viewBox="0 0 20 20"><circle cx="10" cy="10" r="9"/><path pathLength="1" d="M10 5.5V11.2M10 14.4V14.6"/></svg><span>Champagne NV</span><span class="q">5 / 6</span></li>
+            </ul>
+            <p class="note" id="s1note">One short — noted on Vendor 03’s score.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- SC2 — 17:30 the cellar -->
+      <section class="scene s2" id="s2" aria-label="17:30, the cellar">
+        <svg class="layer far" id="s2far" data-vb="0 0 1600 900" data-pvb="300 150 640 660" aria-hidden="true">
+          <rect x="-400" y="-300" width="2400" height="1500" fill="#110f0c"/>
+          <circle cx="800" cy="300" r="420" fill="url(#gAmber)" opacity=".55"/>
+          <g id="s2vault"></g>
+          <g id="s2back"></g>
+        </svg>
+        <svg class="layer mid" id="s2mid" data-vb="0 0 1600 900" data-pvb="300 150 640 660" aria-hidden="true">
+          <g id="s2racks"></g>
+        </svg>
+        <svg class="layer near" id="s2near" data-vb="0 0 1600 900" data-pvb="300 150 640 660" aria-hidden="true">
+          <defs>
+            <linearGradient id="s2glass" x1="0" x2="1"><stop offset="0" stop-color="#2c1518"/><stop offset=".4" stop-color="#1b0f11"/><stop offset="1" stop-color="#0f0809"/></linearGradient>
+          </defs>
+          <ellipse cx="620" cy="752" rx="190" ry="20" fill="url(#gShadow)"/>
+          <use href="#btl" fill="url(#s2glass)" stroke="#EFE7D9" stroke-width="2"/>
+          <rect x="590" y="160" width="60" height="12" rx="3" fill="#6B1F2A" stroke="#EFE7D9" stroke-width="2"/>
+          <path d="M595 172H645V292H595Z" fill="#5a1a23" stroke="#EFE7D9" stroke-width="2"/>
+          <path d="M534 470V720" stroke="#EFE7D9" stroke-opacity=".16" stroke-width="10" stroke-linecap="round"/>
+          <path d="M606 190V284" stroke="#EFE7D9" stroke-opacity=".2" stroke-width="4" stroke-linecap="round"/>
+          <rect x="528" y="512" width="184" height="196" rx="3" fill="#EDE4D3"/>
+          <rect x="536" y="520" width="168" height="180" rx="2" fill="none" stroke="#211C16" stroke-opacity=".45"/>
+          <g fill="#211C16" text-anchor="middle">
+            <text x="620" y="550" font-family="Fraunces, Georgia, serif" font-size="11" font-weight="600" letter-spacing="1.6">CASCINA ESEMPIO</text>
+            <path d="M584 562H612M628 562H656" stroke="#211C16" stroke-opacity=".6"/><path d="M620 557L625 562L620 567L615 562Z"/>
+            <text x="620" y="612" font-family="Fraunces, Georgia, serif" font-style="italic" font-size="44" font-weight="400">Barolo</text>
+            <text x="620" y="649" font-family="Fraunces, Georgia, serif" font-size="24" letter-spacing="3">2019</text>
+            <text x="620" y="677" font-family="JetBrains Mono, monospace" font-size="9" letter-spacing="1.5">DOCG · PIEMONTE</text>
+            <text x="620" y="692" font-family="JetBrains Mono, monospace" font-size="9" letter-spacing="1.5">NEBBIOLO</text>
+          </g>
+          <g id="s2vf" class="ln" style="stroke-width:2.5"><path d="M498 516V490H524M716 490H742V516M742 704V730H716M524 730H498V704"/></g>
+          <g id="s2boxes" opacity="0"></g>
+        </svg>
+        <div class="safe">
+          <div class="card" id="s2card">
+            <p class="eyebrow" id="s2eye">Camera · reading the label</p>
+            <h3>Barolo, filed in a breath</h3>
+            <dl class="fields" id="s2fields">
+              <div><dt>Producer</dt><dd data-v="Cascina Esempio"></dd></div>
+              <div><dt>Vintage</dt><dd data-v="2019"></dd></div>
+              <div><dt>Region</dt><dd data-v="Barolo DOCG, Piemonte"></dd></div>
+              <div><dt>Grape</dt><dd data-v="Nebbiolo"></dd></div>
+            </dl>
+            <p class="loc" id="s2loc"><span>Rack C · bin 4</span><span><b>6</b> bottles · at cost</span></p>
+          </div>
+        </div>
+      </section>
+
+      <!-- SC3 — 20:14 service -->
+      <section class="scene s3" id="s3" aria-label="20:14, service">
+        <div class="strip" id="s3strip">
+          <div class="panel p1">
+            <svg class="art" data-vb="0 0 1600 900" data-pvb="170 130 880 1130" aria-hidden="true">
+              <defs><clipPath id="s3clip"><rect x="1080" y="398" width="340" height="900"/></clipPath></defs>
+              <rect x="-1000" y="-600" width="3600" height="2200" fill="#16130f"/>
+              <path class="ln2" d="M-400 562H2000"/>
+              <g id="s3lamps"></g>
+              <path d="M200 640H1000L1030 770H170Z" fill="#221c16" stroke="#EFE7D9" stroke-width="2" stroke-linejoin="round"/>
+              <circle cx="770" cy="600" r="120" fill="url(#gAmberHot)" opacity=".55"/>
+              <rect x="762" y="592" width="16" height="48" rx="2" fill="#D9CFBF"/>
+              <use href="#flame" x="770" y="584"/>
+              <use href="#btl" transform="translate(470 470) scale(.29) translate(-620 -170)" fill="#1b0f11" stroke="#EFE7D9" stroke-width="6"/>
+              <g class="ln"><path d="M396 560Q396 602 420 606Q444 602 444 560Z" fill="#1b1511"/><path d="M420 606V636M402 638H438"/><path d="M640 566Q640 604 662 608Q684 604 684 566Z" fill="#1b1511"/><path d="M662 608V636M645 638H679"/></g>
+              <path d="M399 586Q420 592 441 586Q438 602 420 604Q402 602 399 586Z" fill="#6B1F2A"/>
+              <path d="M643 590Q662 595 681 590Q678 604 662 606Q646 604 643 590Z" fill="#6B1F2A"/>
+              <g id="s3pr">
+                <rect x="1100" y="290" width="300" height="110" rx="12" fill="#221c16" stroke="#EFE7D9" stroke-width="2"/>
+                <path class="ln2" d="M1136 400H1364"/>
+                <circle cx="1372" cy="316" r="5" fill="#5FB0BC"/>
+                <path class="ln2" d="M1124 320H1220"/>
+                <g clip-path="url(#s3clip)"><g id="s3tk">
+                  <path d="M1150 170H1350V452L1336 462L1322 452L1308 462L1294 452L1280 462L1266 452L1252 462L1238 452L1224 462L1210 452L1196 462L1182 452L1168 462L1150 452Z" fill="#EDE4D3"/>
+                  <g font-family="JetBrains Mono, monospace" fill="#211C16">
+                    <text x="1172" y="214" font-size="21" font-weight="500" letter-spacing="2">TABLE 12</text>
+                    <text x="1172" y="242" font-size="13" letter-spacing="1" fill="#665D50">20:14 · 4 COVERS</text>
+                    <path d="M1172 262H1328" stroke="#211C16" stroke-dasharray="4 4"/>
+                    <text x="1172" y="296" font-size="15">1  BAROLO 2019</text>
+                    <text x="1172" y="324" font-size="15">2  SANCERRE GL</text>
+                    <text x="1172" y="352" font-size="15">1  ETNA ROSSO GL</text>
+                    <path d="M1172 372H1328" stroke="#211C16" stroke-dasharray="4 4"/>
+                    <text x="1172" y="404" font-size="12" fill="#1A5E6B" letter-spacing="1">→ BACK TO THE COUNTS</text>
+                  </g>
+                </g></g>
+              </g>
+            </svg>
+          </div>
+          <div class="panel p2">
+            <svg class="art" data-vb="0 0 1600 900" data-pvb="190 240 700 860" aria-hidden="true">
+              <rect x="-1000" y="-600" width="3600" height="2200" fill="#14120e"/>
+              <g>
+                <rect x="300" y="330" width="340" height="230" rx="18" fill="#221c16" stroke="#EFE7D9" stroke-width="2"/>
+                <rect x="316" y="346" width="308" height="198" rx="8" fill="#191511"/>
+                <g id="s3keys"></g>
+                <path class="ln" d="M446 560L428 640H512L494 560" fill="#1d1813"/>
+                <text x="470" y="676" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="13" letter-spacing="3" fill="#ABA294">POS · TOAST</text>
+              </g>
+              <g id="s3rk">
+                <rect x="1120" y="330" width="240" height="262" rx="6" fill="#1b1612" stroke="#EFE7D9" stroke-width="2"/>
+                <g id="s3cells"></g>
+                <text x="1240" y="630" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="13" letter-spacing="3" fill="#ABA294">THE CELLAR</text>
+              </g>
+              <path id="s3curve" d="M650 440C820 300 930 600 1110 450" fill="none" stroke="#5a5247" stroke-width="2" stroke-dasharray="3 9" stroke-linecap="round"/>
+              <g id="s3dots"></g>
+              <g id="s3tag" opacity="0"><rect x="-86" y="-46" width="172" height="28" rx="14" fill="#08262C" stroke="#5FB0BC"/><text x="0" y="-27" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="13" fill="#8FC4CD" letter-spacing="1">−1 · BAROLO 2019</text></g>
+            </svg>
+          </div>
+          <div class="panel p3">
+            <div class="board">
+              <p class="eyebrow">Tonight · live from the POS</p>
+              <h3>The cellar counts itself.</h3>
+              <ul id="board"></ul>
+            </div>
+          </div>
+        </div>
+        <div class="streak" id="s3streak"></div>
+        <div class="mini" id="s3mini" aria-hidden="true">Barolo 2019 <span class="odo" data-odo="mini"></span></div>
+      </section>
+
+      <!-- SC4 — 21:52 two left -->
+      <section class="scene s4" id="s4" aria-label="21:52, two left">
+        <div class="big2" id="big2" aria-hidden="true"><span class="n">2</span><span class="c">Barolo 2019 · bottles left</span></div>
+        <div class="s4wrap" id="s4wrap">
+          <p class="eyebrow">21:52 · Low stock · Rack C, bin 4</p>
+          <h2>Barolo 2019 · <em>2 left.</em></h2>
+          <div class="s4grid">
+            <article class="doc">
+              <header><span class="k">Purchase order</span><span class="chip" id="poChip">Draft</span></header>
+              <p class="meta ty" data-a=".27" data-b=".33">PO-0413 · Vendor 03 · for the house</p>
+              <div class="po-line"><span class="w">Barolo 2019<small>Cascina Esempio · 75 cl</small></span><span class="n ty" data-a=".31" data-b=".35">12 bottles</span></div>
+              <p class="why ty" data-a=".34" data-b=".42"><b>Why:</b> 2 left; about 4 go on a Friday. Vendor 03 delivers in two days.</p>
+            </article>
+            <article class="doc mail">
+              <header><span class="k">Email to Vendor 03</span><span class="chip" id="mailChip">Draft</span></header>
+              <p class="subj ty" data-a=".38" data-b=".42">Subject: PO-0413 · Barolo 2019 × 12</p>
+              <p class="body ty" data-a=".41" data-b=".55">Hello — please send twelve bottles of Barolo 2019 against PO-0413, to the back door, this week. Thank you. — The house</p>
+              <p class="att ty" data-a=".54" data-b=".56">Attached · PO-0413.pdf</p>
+            </article>
+          </div>
+          <div class="approve">
+            <span class="who" id="who">Waiting for you</span>
+            <span class="fbtn ghost" aria-hidden="true">Edit</span>
+            <span class="fbtn cfm" id="cfm"><span id="cfmT">Confirm &amp; send</span>
+              <svg class="cur" id="cur" viewBox="0 0 26 30" aria-hidden="true"><path d="M2 2L2 24L8 18.5L12.5 28L16.5 26.2L12 17L20 17Z" fill="#FAF7F1" stroke="#15130F" stroke-width="1.6" stroke-linejoin="round"/></svg>
+            </span>
+          </div>
+          <p class="fine">Nothing is sent until a person confirms.</p>
+        </div>
+      </section>
+
+      <!-- SC5 — 00:40 close -->
+      <section class="scene s5" id="s5" aria-label="00:40, close">
+        <svg class="art" id="s5art" data-vb="0 0 1600 900" data-pvb="540 130 520 760" aria-hidden="true">
+          <defs><linearGradient id="s5night" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0d1a20"/><stop offset="1" stop-color="#16262c"/></linearGradient></defs>
+          <rect x="-800" y="-400" width="3200" height="1700" fill="#15120e"/>
+          <path d="M680 560V300Q800 180 920 300V560Z" fill="url(#s5night)" stroke="#EFE7D9" stroke-width="2"/>
+          <path class="ln2" d="M800 241V560M680 410H920"/>
+          <circle cx="862" cy="290" r="20" fill="#C0B6A5"/><circle cx="872" cy="284" r="18" fill="#122228"/>
+          <path class="ln2" d="M-400 600H2000M-400 742H2000"/>
+          <g id="s5lamps"></g>
+          <g id="s5tables"></g>
+          <circle id="s5glow" cx="800" cy="600" r="150" fill="url(#gAmberHot)" opacity=".6"/>
+          <ellipse id="s5floor" cx="800" cy="760" rx="220" ry="26" fill="url(#gAmber)" opacity=".5"/>
+          <rect x="792" y="598" width="16" height="42" rx="2" fill="#D9CFBF"/>
+          <use href="#flame" id="s5flame" x="800" y="590"/>
+        </svg>
+        <div class="dim" id="s5dim"></div>
+        <div class="end" id="s5end"><p>The house is counted<i>.</i></p></div>
+        <div class="black" id="s5black"></div>
+      </section>
+
+      <div class="flash" id="flash"></div>
+      <div class="bar t" id="barT"></div>
+      <div class="bar b" id="barB"></div>
+      <div class="hud" aria-hidden="true"><div class="tc" id="tc"><b></b>16:00:00:00</div><div class="slate" id="slate">SC 00 · TITLES</div></div>
+      <div class="subs" id="subs" aria-hidden="true"><span id="subT"></span></div>
+      <button class="sound" id="sound" type="button" aria-pressed="false" aria-label="Sound, off"><span class="wv" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span id="soundT">Sound off</span></button>
+    </div>
+  </div>
+
+  <section class="credits" aria-labelledby="crh">
+    <p class="ct" aria-hidden="true">Service<i>.</i></p>
+    <p class="cs">A film in one night</p>
+    <h2 id="crh">In order of appearance</h2>
+    <ul class="cr">
+      <li><span class="r">The delivery</span><span class="n">checked line by line by <em>Mudavym</em></span></li>
+      <li><span class="r">The cellar</span><span class="n">counted, rack and bin, by <em>Mudavym</em></span></li>
+      <li><span class="r">The label</span><span class="n">read by <em>Mudavym</em>, through your phone</span></li>
+      <li><span class="r">Tonight’s sales</span><span class="n">flowing in from the POS (Toast)</span></li>
+      <li><span class="r">Purchase orders</span><span class="n">drafted by <em>Mudavym</em>, signed by you</span></li>
+      <li><span class="r">Vendor emails</span><span class="n">written by <em>Mudavym</em>, sent by you</span></li>
+      <li><span class="r">The vendors</span><span class="n">scored on what they delivered</span></li>
+      <li><span class="r">Every decision</span><span class="n">logged, and explained</span></li>
+      <li><span class="r">The final say</span><span class="n">you</span></li>
+    </ul>
+    <div class="soon">
+      <p class="now">Now showing · Wine</p>
+      <h2>Coming soon</h2>
+      <p>All beverages</p>
+      <p>The bakery</p>
+      <p>The rest of the kitchen</p>
+    </div>
+    <p class="disc">No bottles were harmed in the making of this film.</p>
+  </section>
+
+  <section class="cta" id="cta" aria-labelledby="ctah">
+    <svg viewBox="0 0 100 100" aria-hidden="true"><rect width="100" height="100" rx="22" fill="#1A5E6B"/><g transform="translate(22.2,17) scale(0.115)" fill="#FAF7F1"><path d="M0 38H72V540H0Z"/><path d="M15 38H96L460 574H379Z"/><path d="M0 346H305L353 416H0Z"/><path d="M0 470H137V540H0Z"/><path d="M99 0H151L278.7 187.8L284.8 273Z"/><path d="M389.5 40H460.9L284.8 273L251.4 224Z"/><path d="M412 40H483V574H412Z"/><path d="M80 150V192H108Z"/><path d="M142 346H206L174 292Z"/><path d="M404 138L376 157L404 176Z"/><path d="M383 430H404V470Z"/></g></svg>
+    <h2 id="ctah">Set up your house<i>.</i></h2>
+    <p>Start with the cellar. The rest of the back office follows.</p>
+    <div class="acts">
+      <a class="btn-seal" href="https://mudavym.com/get-started">Get started</a>
+      <a class="signin" href="https://mudavym.com/login">Sign in</a>
+    </div>
+  </section>
+</main>
+<footer class="foot">Mudavym · the autonomous back office for restaurants</footer>
+
+<canvas id="grain" aria-hidden="true"></canvas>
+<div class="vig" aria-hidden="true"></div>
+
+<script>
+(() => {
+'use strict';
+const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const root = document.documentElement;
+if (RM) root.classList.add('rm');
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+const lerp = (a, b, t) => a + (b - a) * t;
+const ss = (a, b, v) => { const t = clamp((v - a) / (b - a)); return t * t * (3 - 2 * t); };
+const eio = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+const NS = 'http://www.w3.org/2000/svg';
+let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+
+/* ---------- scene table ---------- */
+const SC = [
+  { id: 's0', a: 0,    b: 1.0,  h: 16, m: 0,  span: 2, slate: 'SC 00 · Titles' },
+  { id: 's1', a: 1.0,  b: 3.4,  h: 16, m: 10, span: 6, slate: 'SC 01 · The back door' },
+  { id: 's2', a: 3.4,  b: 6.2,  h: 17, m: 30, span: 6, slate: 'SC 02 · The cellar' },
+  { id: 's3', a: 6.2,  b: 8.8,  h: 20, m: 14, span: 9, slate: 'SC 03 · Service' },
+  { id: 's4', a: 8.8,  b: 11.8, h: 21, m: 52, span: 2, slate: 'SC 04 · Two left' },
+  { id: 's5', a: 11.8, b: 13.6, h: 24, m: 40, span: 3, slate: 'SC 05 · Close' },
+];
+const TOTAL = 13.6;
+const SUBS = [
+  [1.12, 1.9, '16:10. The wine comes in at the back door.', 1],
+  [1.9, 2.7, 'Every line is checked against the order.', 1],
+  [2.7, 3.32, 'One short. Noted against the vendor.', 1],
+  [3.52, 4.3, '17:30. The cellar, before service.', 2],
+  [4.3, 5.2, 'A phone reads the label.', 2],
+  [5.2, 6.1, 'Producer, vintage, region, grape. Filed, and counted.', 2],
+  [6.3, 7.02, '20:14. Service.', 3],
+  [7.02, 7.95, 'What sells at the POS flows back into the counts.', 3],
+  [7.95, 8.72, 'The cellar counts itself down.', 3],
+  [8.92, 9.6, '21:52. Two left.', 4],
+  [9.6, 10.45, 'Mudavym drafts the order, and the email to the vendor.', 4],
+  [10.45, 11.2, 'Nothing is sent until you confirm.', 4],
+  [11.2, 11.74, 'Confirmed by you. Sent.', 4],
+  [11.92, 12.66, '00:40. The last table has gone home.', 5],
+];
+const STILL_P = { s0: 0, s1: .97, s2: .97, s3: 1, s4: 1, s5: .62 };
+
+/* screen-reader story */
+{ const ol = $('#story'); let cur = null;
+  SUBS.forEach(s => { const li = document.createElement('li'); li.textContent = s[2]; ol.appendChild(li); });
+  const li = document.createElement('li'); li.textContent = 'The house is counted.'; ol.appendChild(li); }
+
+/* ---------- build generated art ---------- */
+function crate(x, y, w, h, label, sub) {
+  return `<rect class="fills" x="${x}" y="${y}" width="${w}" height="${h}" rx="3" fill="#241d16"/>
+  <rect class="d ln" pathLength="1" x="${x}" y="${y}" width="${w}" height="${h}" rx="3"/>
+  <path class="d ln2" pathLength="1" d="M${x + 14} ${y + 4}V${y + h - 4}M${x + w - 14} ${y + 4}V${y + h - 4}M${x + 14} ${y + h * .33}H${x + w - 14}M${x + 14} ${y + h * .69}H${x + w - 14}"/>
+  <g class="fills"><text class="stencil" x="${x + w / 2}" y="${y + h * .57}">${label}</text><text class="stencil sm" x="${x + w / 2}" y="${y + h * .88}">${sub}</text></g>`;
+}
+{
+  let s = '';
+  // bottle necks in the open top crate
+  for (let i = 0; i < 6; i++) {
+    const x = 700 + i * 40, wine = i % 2 === 0;
+    s += `<rect class="fills" x="${x}" y="${350 + (i % 3) * 6}" width="15" height="${56 - (i % 3) * 6}" rx="4" fill="${wine ? '#6B1F2A' : '#3a332b'}" stroke="#EFE7D9" stroke-width="1.6"/>`;
+  }
+  s += crate(678, 404, 262, 112, 'BAROLO 2019', '6 × 75 CL');
+  s += crate(690, 516, 262, 112, 'ETNA ROSSO 2021', '12 × 75 CL');
+  s += crate(680, 628, 262, 112, 'SANCERRE 2022', '24 × 75 CL');
+  $('#s1cr').innerHTML = s;
+}
+/* cellar vault + back rack */
+{
+  let v = '';
+  [[1, .28], [.8, .24], [.64, .2], [.5, .16], [.39, .13]].forEach(([k, o]) => {
+    const w = 820 * k, h = 470 * k, yb = 470 + 230 * k;
+    v += `<path d="M${800 - w} ${yb}V${yb - h * .42}A${w} ${h * .9} 0 0 1 ${800 + w} ${yb - h * .42}V${yb}" fill="none" stroke="#EFE7D9" stroke-opacity="${o}" stroke-width="2"/>`;
+  });
+  [[-300, 900], [300, 900], [1300, 900], [1900, 900], [-400, 700], [2000, 700]].forEach(([x, y]) => v += `<path d="M800 470L${x} ${y}" stroke="#EFE7D9" stroke-opacity=".08" stroke-width="2"/>`);
+  $('#s2vault').innerHTML = v;
+  let b = ''; seed = 11;
+  for (let r = 0; r < 9; r++) for (let c = 0; c < 21; c++) {
+    const x = 540 + c * 26, y = 384 + r * 26, w = rnd() < .22;
+    b += `<circle cx="${x}" cy="${y}" r="10" fill="${w ? '#3d151b' : '#241d17'}" stroke="${w ? '#7d2a35' : '#4a4035'}" stroke-width="1.4"/>`;
+  }
+  b += `<rect x="527" y="371" width="546" height="234" fill="none" stroke="#EFE7D9" stroke-opacity=".35" stroke-width="2"/>`;
+  $('#s2back').innerHTML = b;
+  let m = ''; seed = 29;
+  const rack = (x0, label, lx) => {
+    m += `<rect x="${x0 - 30}" y="140" width="400" height="640" fill="#120f0c" stroke="#EFE7D9" stroke-width="2.5"/>`;
+    for (let r = 0; r < 11; r++) for (let c = 0; c < 7; c++) {
+      const x = x0 + c * 56, y = 172 + r * 56, w = rnd() < .3, e = rnd() < .07;
+      if (e) { m += `<circle cx="${x}" cy="${y}" r="22" fill="#0a0807" stroke="#2e271f" stroke-width="1.5"/>`; continue; }
+      m += `<circle cx="${x}" cy="${y}" r="22" fill="${w ? '#34121a' : '#1f1914'}" stroke="${w ? '#8a2f3c' : '#4a4035'}" stroke-width="2"/><circle cx="${x - 3}" cy="${y - 3}" r="8" fill="#0c0908"/><path d="M${x - 14} ${y - 8}A16 16 0 0 1 ${x - 6} ${y - 15}" stroke="#EFE7D9" stroke-opacity=".25" stroke-width="2" fill="none" stroke-linecap="round"/>`;
+    }
+    m += `<rect x="${lx - 44}" y="110" width="88" height="26" rx="3" fill="#EDE4D3"/><text x="${lx}" y="128" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="12" letter-spacing="2" fill="#211C16">${label}</text>`;
+  };
+  rack(70, 'RACK B', 240); rack(1194, 'RACK C', 1364);
+  $('#s2racks').innerHTML = m;
+  // OCR boxes
+  const BX = [[540, 535, 160, 22, 'PRODUCER'], [560, 576, 120, 46, 'WINE'], [586, 627, 68, 28, 'VINTAGE'], [556, 664, 128, 36, 'REGION · GRAPE']];
+  let o = '';
+  BX.forEach((q, i) => {
+    o += `<g class="bx" data-i="${i}"><rect x="${q[0]}" y="${q[1]}" width="${q[2]}" height="${q[3]}" rx="4" fill="#5FB0BC" fill-opacity=".1" stroke="#5FB0BC" stroke-width="2.2" stroke-dasharray="7 5"/>
+      <g class="tg" opacity="0"><path d="M${q[0] + q[2] + 2} ${q[1] + q[3] / 2}H${772}" stroke="#5FB0BC" stroke-width="1.4"/><circle cx="772" cy="${q[1] + q[3] / 2}" r="3" fill="#5FB0BC"/><text x="782" y="${q[1] + q[3] / 2 + 4}" font-family="JetBrains Mono, monospace" font-size="12" letter-spacing="2" fill="#8FC4CD">${q[4]}</text></g></g>`;
+  });
+  $('#s2boxes').innerHTML = o;
+}
+/* service: lamps, keys, cells, dots */
+function lamps(xs, glowId) {
+  return xs.map((x, i) => `<g class="lamp" data-i="${i}"><polygon class="cone" points="${x - 44},302 ${x + 44},302 ${x + 190},660 ${x - 190},660" fill="url(#gCone)"/><circle class="glow" cx="${x}" cy="300" r="120" fill="url(#gAmber)"/><path class="ln2" d="M${x} -200V262"/><path d="M${x - 46} 302L${x - 16} 262H${x + 16}L${x + 46} 302Z" fill="#262019" stroke="#EFE7D9" stroke-width="2" stroke-linejoin="round"/><ellipse class="bulb" cx="${x}" cy="304" rx="16" ry="5" fill="#FFE2B0"/></g>`).join('');
+}
+$('#s3lamps').innerHTML = lamps([330, 600, 870]);
+{
+  let k = '';
+  for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) {
+    const x = 328 + c * 100, y = 360 + r * 60, hot = r === 0 && c === 0;
+    k += `<rect class="${hot ? 'hotkey' : ''}" x="${x}" y="${y}" width="88" height="48" rx="6" fill="${hot ? '#1A5E6B' : '#211c17'}" stroke="${hot ? '#5FB0BC' : '#3d352c'}" stroke-width="1.5"/>`;
+    k += hot ? `<text x="${x + 44}" y="${y + 29}" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="11" fill="#FAF7F1" letter-spacing="1">BAROLO 19</text>` : `<path d="M${x + 16} ${y + 24}H${x + 16 + 26 + ((r * 3 + c) * 13) % 30}" stroke="#4f473c" stroke-width="3" stroke-linecap="round"/>`;
+  }
+  $('#s3keys').innerHTML = k;
+  let c2 = ''; seed = 5;
+  for (let r = 0; r < 4; r++) for (let c = 0; c < 4; c++) {
+    const x = 1150 + c * 60, y = 362 + r * 62, w = rnd() < .5;
+    c2 += `<circle ${r === 1 && c === 2 ? 'id="s3gone"' : ''} cx="${x}" cy="${y}" r="21" fill="${w ? '#34121a' : '#1f1914'}" stroke="${w ? '#8a2f3c' : '#4a4035'}" stroke-width="2"/>`;
+  }
+  $('#s3cells').innerHTML = c2;
+  $('#s3dots').innerHTML = [0, 1, 2].map(() => `<g><circle r="16" fill="#5FB0BC" opacity=".18"/><circle r="6" fill="#5FB0BC"/></g>`).join('');
+}
+/* close: lamps + tables with chairs up */
+$('#s5lamps').innerHTML = lamps([330, 1270]);
+{
+  let t = '';
+  [400, 800, 1200].forEach(x => {
+    t += `<path d="M${x - 140} 640H${x + 140}" class="ln"/><path class="ln2" d="M${x - 110} 640V742M${x + 110} 640V742"/>`;
+    [-1, 1].forEach(sgn => {
+      const e = x + sgn * 132, i = x + sgn * 62;
+      t += `<path class="ln" d="M${e} 634H${i}M${e - sgn * 6} 634V544M${i + sgn * 6} 634V544M${e - sgn * 6} 584H${i + sgn * 6}M${e} 634L${e + sgn * 4} 716M${e + sgn * 2} 676H${e + sgn * 4 - sgn * 0}"/>`;
+    });
+  });
+  $('#s5tables').innerHTML = t;
+}
+/* odometers */
+function makeOdo(el, digits) {
+  el.innerHTML = '';
+  const cols = [];
+  for (let d = 0; d < digits; d++) {
+    const dg = document.createElement('span'); dg.className = 'dg';
+    const col = document.createElement('span'); col.className = 'col';
+    col.innerHTML = '0123456789'.split('').concat('0').map(n => `<span>${n}</span>`).join('');
+    dg.appendChild(col); el.appendChild(dg); cols.push(col);
+  }
+  return cols;
+}
+function setOdo(cols, v) {
+  const o = ((v % 10) + 10) % 10;
+  const t = Math.floor(v / 10) + Math.max(0, o - 9);
+  cols[1].style.transform = `translateY(${-o}em)`;
+  cols[0].style.transform = `translateY(${-(t % 10)}em)`;
+}
+const BOARD = [
+  { k: 'barolo', nm: 'Barolo 2019', lc: 'C · 4', v0: 6, ev: [.14, .44, .76, .9] },
+  { k: 'sancerre', nm: 'Sancerre 2022', lc: 'A · 2', v0: 24, ev: [.08, .3, .52, .7, .86] },
+  { k: 'etna', nm: 'Etna Rosso 2021', lc: 'B · 7', v0: 12, ev: [.22, .58, .84] },
+  { k: 'champ', nm: 'Champagne NV', lc: 'A · 9', v0: 5, ev: [.62] },
+];
+$('#board').innerHTML = BOARD.map(b => `<li id="bd-${b.k}"><span class="nm">${b.nm}<span class="flag">Low</span></span><span class="lc">${b.lc}</span><span class="odo" data-odo="${b.k}"></span></li>`).join('');
+BOARD.forEach(b => b.cols = makeOdo($(`[data-odo="${b.k}"]`), 2));
+const miniCols = makeOdo($('[data-odo="mini"]'), 2);
+const odoVal = (b, p) => b.v0 - b.ev.reduce((s, e) => s + ss(e - .025, e + .025, p), 0);
+
+/* typing targets */
+const TY = $$('#s4 .ty').map(el => {
+  const full = el.innerHTML;
+  const txt = el.textContent;
+  el.innerHTML = '<span class="typed"></span><span class="car"></span><span class="rest"></span>';
+  const bold = /^<b>Why:<\/b>/.test(full);
+  return { el, txt, bold, a: +el.dataset.a, b: +el.dataset.b, typed: el.children[0], rest: el.children[2], n: -1 };
+});
+function setTyped(o, n) {
+  if (n === o.n) return; o.n = n;
+  const done = o.txt.slice(0, n), rest = o.txt.slice(n);
+  if (o.bold) { o.typed.innerHTML = done.length > 4 ? `<b>Why:</b>${done.slice(4)}` : `<b>${done}</b>`; }
+  else o.typed.textContent = done;
+  o.rest.textContent = rest;
+  o.el.classList.toggle('typing', n > 0 && n < o.txt.length);
+}
+/* decode fields */
+const FIELDS = $$('#s2fields dd').map(dd => ({ dd, v: dd.dataset.v, s: '' }));
+const GLY = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789·/';
+function decode(f, k, salt) {
+  let out = '';
+  const n = f.v.length, fixed = Math.floor(k * n);
+  if (k <= 0) out = '';
+  else if (k >= 1) out = f.v;
+  else {
+    out = f.v.slice(0, fixed);
+    const tail = Math.min(n - fixed, 6);
+    for (let i = 0; i < tail; i++) out += f.v[fixed + i] === ' ' ? ' ' : GLY[(Math.floor(salt * 37) + i * 7 + fixed * 3) % GLY.length];
+  }
+  if (out !== f.s) { f.s = out; f.dd.textContent = out; f.dd.classList.toggle('scr', k > 0 && k < 1); }
+}
+
+/* ---------- layout ---------- */
+let VH = innerHeight, VW = innerWidth, PT = false, BAR = 149, trackTop = 0, built = false;
+const track = $('#track'), stage = $('#stage');
+const scenes = SC.map(s => Object.assign(s, { el: $('#' + s.id), on: false }));
+const curve = $('#s3curve');
+let curveLen = 1;
+function layout() {
+  VH = innerHeight; VW = innerWidth;
+  PT = VW / VH < .9;
+  root.classList.toggle('pt', PT);
+  BAR = PT ? Math.round(clamp(VH * .062, 44, 58)) : Math.round(clamp((VH - VW / 2.39) / 2, 46, VH * .17));
+  root.style.setProperty('--bar', BAR + 'px');
+  root.style.setProperty('--navh', BAR + 'px');
+  $$('svg[data-vb]').forEach(s => {
+    const p = PT && s.dataset.pvb;
+    s.setAttribute('viewBox', p || s.dataset.vb);
+    s.setAttribute('preserveAspectRatio', p ? 'xMidYMid meet' : 'xMidYMid slice');
+  });
+  curve.setAttribute('d', PT ? 'M560 600C760 650 820 760 600 796' : 'M650 440C820 300 930 600 1110 450');
+  curveLen = curve.getTotalLength();
+  if (!RM) track.style.height = (TOTAL + 1) * VH + 'px';
+  trackTop = track.getBoundingClientRect().top + scrollY;
+  sizeGrain();
+}
+
+/* ---------- scene renderers ---------- */
+const R = {};
+const s0t = $('#titles'), cue = $('.cue');
+R.s0 = p => {
+  const k = ss(.3, .95, p);
+  s0t.style.opacity = 1 - k;
+  s0t.style.transform = `scale(${1 + .07 * p}) translateY(${-k * 30}px)`;
+  s0t.style.filter = k > .01 ? `blur(${k * 6}px)` : '';
+  cue.style.visibility = p > .2 ? 'hidden' : '';
+};
+const s1art = $('#s1 .art'), s1rows = $$('#s1rows li'), s1note = $('#s1note'), s1card = $('#s1card'), s1scan = $('#s1scan');
+R.s1 = p => {
+  s1art.style.transform = `scale(${1 + (PT ? .07 : .17) * eio(clamp(p))})`;
+  s1art.style.setProperty('--d', (1.1 * (1 - ss(0, .26, p))).toFixed(3));
+  s1art.style.setProperty('--d2', (1.1 * (1 - ss(.08, .34, p))).toFixed(3));
+  s1art.style.setProperty('--f', ss(.12, .34, p).toFixed(3));
+  const c = ss(.22, .32, p);
+  s1card.style.opacity = c;
+  s1card.style.transform = PT ? `translateY(${(1 - c) * 18}px)` : `translateY(calc(-50% + ${(1 - c) * 18}px))`;
+  [.38, .48, .58, .7].forEach((t, i) => {
+    const k = ss(t, t + .05, p);
+    s1rows[i].style.setProperty('--k', (1.1 * (1 - k)).toFixed(3));
+    s1rows[i].style.setProperty('--o', (.38 + .62 * k).toFixed(3));
+  });
+  s1note.style.opacity = ss(.74, .8, p);
+  const sc = ss(.34, .8, p);
+  s1scan.setAttribute('opacity', (Math.sin(Math.PI * sc) * .95).toFixed(3));
+  s1scan.setAttribute('transform', `translate(${lerp(680, 950, sc)} 0)`);
+};
+const far = $('#s2far'), mid = $('#s2mid'), near = $('#s2near'), s2card = $('#s2card'), s2boxes = $('#s2boxes'), flash = $('#flash'), s2eye = $('#s2eye'), s2loc = $('#s2loc'), s2vf = $('#s2vf');
+const bxs = $$('.bx', s2boxes);
+R.s2 = p => {
+  const dz = eio(ss(0, .55, p));
+  far.style.transform = `scale(${1 + .5 * dz})`;
+  mid.style.transform = `scale(${1 + .2 * dz}) translateX(${(PT ? 0 : 1) * -dz * 10}px)`;
+  near.style.transform = `scale(${1.1 - .1 * dz}) translateX(${(1 - ss(0, .3, p)) * 50}px)`;
+  const rf = ss(.14, .34, p); // rack focus: far -> near
+  far.style.filter = `blur(${(rf * 7).toFixed(2)}px) brightness(${1 - rf * .35})`;
+  mid.style.filter = `blur(${(rf * 3.5).toFixed(2)}px) brightness(${1 - rf * .2})`;
+  near.style.filter = rf < .99 ? `blur(${((1 - rf) * 9).toFixed(2)}px)` : 'none';
+  const bo = ss(.34, .42, p);
+  s2boxes.setAttribute('opacity', bo.toFixed(3));
+  const lock = ss(.5, .62, p), shot = ss(.64, .66, p);
+  bxs.forEach((g, i) => {
+    const j = (1 - lock) * 5;
+    g.setAttribute('transform', `translate(${(Math.sin(p * 140 + i * 2) * j).toFixed(2)} ${(Math.cos(p * 110 + i * 3) * j).toFixed(2)})`);
+    const r = g.firstElementChild;
+    r.setAttribute('stroke-dashoffset', (p * 300).toFixed(1));
+    r.setAttribute('stroke-dasharray', shot > .5 ? 'none' : '7 5');
+    g.lastElementChild.setAttribute('opacity', ss(.68 + i * .03, .72 + i * .03, p).toFixed(3));
+  });
+  s2vf.style.opacity = (1 - ss(.86, .95, p) * .6).toFixed(3);
+  flash.style.opacity = (Math.max(0, 1 - Math.abs(p - .65) / .018) * .85).toFixed(3);
+  const c = ss(.56, .64, p);
+  s2card.style.opacity = c;
+  s2card.style.transform = PT ? `translateY(${(1 - c) * 18}px)` : `translateY(calc(-50% + ${(1 - c) * 18}px))`;
+  s2eye.textContent = p < .65 ? 'Camera · reading the label' : 'Read · 17:31 · saved to the ledger';
+  FIELDS.forEach((f, i) => decode(f, ss(.67 + i * .045, .77 + i * .045, p), p * 60));
+  s2loc.style.opacity = ss(.88, .93, p);
+};
+const strip = $('#s3strip'), whipB = $('#whipB'), streak = $('#s3streak'), s3mini = $('#s3mini'), s3tk = $('#s3tk'), s3tag = $('#s3tag'), s3gone = $('#s3gone'), hotkey = $('.hotkey');
+const dots = $$('#s3dots > g');
+const s3cur = { pos: -1, blur: -1 };
+R.s3 = p => {
+  const w1 = ss(.3, .36, p), w2 = ss(.62, .68, p);
+  const pos = eio(w1) + eio(w2);
+  const v = Math.sin(Math.PI * w1) + Math.sin(Math.PI * w2);
+  if (pos !== s3cur.pos) { strip.style.transform = `translate3d(${-pos * 100}%,0,0)`; s3cur.pos = pos; }
+  const bl = Math.round(v * 70);
+  if (bl !== s3cur.blur) {
+    s3cur.blur = bl;
+    whipB.setAttribute('stdDeviation', `${bl} 0`);
+    strip.style.filter = bl > 1 ? 'url(#whip)' : 'none';
+  }
+  streak.style.opacity = (v * .9).toFixed(3);
+  // ticket
+  const tl = ss(.03, .24, p) * 292;
+  s3tk.setAttribute('transform', `translate(0 ${(tl - 292 + 230).toFixed(1)})`);
+  // flow
+  const fp = ss(.36, .6, p);
+  dots.forEach((g, j) => {
+    const u = ((fp * 1.6 + j / 3) % 1);
+    const pt = curve.getPointAtLength(u * curveLen);
+    g.setAttribute('transform', `translate(${pt.x.toFixed(1)} ${pt.y.toFixed(1)})`);
+    g.setAttribute('opacity', (fp > 0 && fp < 1 ? Math.sin(Math.PI * u) : 0).toFixed(3));
+  });
+  const tu = ss(.39, .54, p), tp = curve.getPointAtLength(tu * curveLen);
+  s3tag.setAttribute('transform', `translate(${tp.x.toFixed(1)} ${tp.y.toFixed(1)})`);
+  s3tag.setAttribute('opacity', (Math.sin(Math.PI * tu)).toFixed(3));
+  s3gone.setAttribute('opacity', (1 - ss(.52, .56, p)).toFixed(3));
+  hotkey.setAttribute('fill', p > .38 && p < .44 ? '#3D8794' : '#1A5E6B');
+  // counts
+  BOARD.forEach(b => {
+    const val = odoVal(b, p);
+    setOdo(b.cols, val);
+    if (b.k === 'barolo') { setOdo(miniCols, val); $('#bd-barolo').classList.toggle('low', val < 2.5); }
+  });
+  s3mini.style.opacity = (1 - ss(.6, .66, p)).toFixed(3);
+};
+const big2 = $('#big2'), s4wrap = $('#s4wrap'), cfm = $('#cfm'), cfmT = $('#cfmT'), cur = $('#cur'), who = $('#who'), poChip = $('#poChip'), mailChip = $('#mailChip');
+let s4state = '';
+R.s4 = p => {
+  const bIn = ss(0, .05, p), bOut = ss(.17, .25, p);
+  big2.style.opacity = (bIn * (1 - bOut)).toFixed(3);
+  big2.style.transform = `scale(${(lerp(1.22, 1, ss(0, .2, p)) - bOut * .5).toFixed(4)})`;
+  big2.style.filter = bOut > .01 ? `blur(${bOut * 14}px)` : '';
+  const c = ss(.2, .28, p);
+  s4wrap.style.opacity = c.toFixed(3);
+  s4wrap.style.transform = `scale(${(1.04 - .04 * c).toFixed(4)})`;
+  s4wrap.style.visibility = c > 0 ? 'visible' : 'hidden';
+  TY.forEach(o => setTyped(o, Math.round(o.txt.length * ss(o.a, o.b, p))));
+  const m = eio(ss(.58, .74, p));
+  const sx = PT ? -150 : -280, sy = PT ? -170 : -210;
+  const press = p > .8 && p < .835;
+  cur.style.transform = `translate(${(sx * (1 - m)).toFixed(1)}px,${(sy * (1 - m) + Math.sin(m * Math.PI) * -30).toFixed(1)}px) scale(${press ? .9 : 1})`;
+  cur.style.opacity = (ss(.55, .6, p) * (1 - ss(.9, .96, p))).toFixed(3);
+  const st = p > .82 ? 'done' : press ? 'press' : p > .74 ? 'hover' : '';
+  if (st !== s4state) {
+    s4state = st;
+    cfm.classList.toggle('hover', st === 'hover' || st === 'press');
+    cfm.classList.toggle('press', st === 'press');
+    cfm.classList.toggle('done', st === 'done');
+    cfmT.textContent = st === 'done' ? 'Sent ✓' : 'Confirm & send';
+    who.textContent = st === 'done' ? 'Confirmed by you · 21:53' : 'Waiting for you';
+    who.classList.toggle('ok', st === 'done');
+    poChip.textContent = st === 'done' ? 'Sent · 21:53' : 'Draft';
+    mailChip.textContent = st === 'done' ? 'Sent by you' : 'Draft';
+    poChip.classList.toggle('sent', st === 'done'); mailChip.classList.toggle('sent', st === 'done');
+    if (st === 'press') Sound.click();
+  }
+};
+const s5art = $('#s5art'), s5lamps = $$('#s5lamps .lamp'), s5glow = $('#s5glow'), s5floor = $('#s5floor'), s5flame = $('#s5flame'), s5dim = $('#s5dim'), s5end = $('#s5end'), s5black = $('#s5black');
+R.s5 = p => {
+  s5lamps.forEach((g, i) => {
+    const t = .1 + i * .1, k = ss(t, t + .05, p);
+    const fl = k > 0 && k < 1 ? (Math.sin(p * 900 + i) > 0 ? .4 : 0) : 0;
+    g.querySelector('.glow').setAttribute('opacity', clamp(1 - k - fl).toFixed(3));
+    g.querySelector('.cone').setAttribute('opacity', clamp(1 - k - fl).toFixed(3));
+    g.querySelector('.bulb').setAttribute('fill', k > .5 ? '#4f473c' : '#FFE2B0');
+  });
+  const cd = 1 - .55 * ss(.3, .8, p);
+  s5glow.setAttribute('opacity', (.6 * cd).toFixed(3));
+  s5floor.setAttribute('opacity', (.5 * cd).toFixed(3));
+  s5flame.setAttribute('transform', `translate(800 590) scale(${(1 + Math.sin(p * 260) * .06).toFixed(3)} ${(1 + Math.cos(p * 310) * .1).toFixed(3)}) translate(-800 -590)`);
+  s5art.style.transform = `scale(${1.06 - .06 * p})`;
+  s5dim.style.opacity = (.55 * ss(.05, .5, p)).toFixed(3);
+  const e = ss(.42, .56, p);
+  s5end.style.opacity = e.toFixed(3);
+  s5end.style.letterSpacing = `${((1 - e) * .08).toFixed(3)}em`;
+  s5black.style.opacity = ss(.8, 1, p).toFixed(3);
+};
+
+/* ---------- HUD, subs, bars ---------- */
+const tcEl = $('#tc'), slate = $('#slate'), subT = $('#subT'), barT = $('#barT'), barB = $('#barB'), nav = $('#nav');
+let curSub = null, curSlate = '', curScene = -1;
+function pad(n) { return String(n).padStart(2, '0'); }
+function hud(t) {
+  let i = 0; for (let k = 0; k < SC.length; k++) if (t >= SC[k].a) i = k;
+  const s = SC[i], p = clamp((t - s.a) / (s.b - s.a));
+  const mins = s.h * 60 + s.m + p * s.span;
+  const hh = Math.floor(mins / 60) % 24, mm = Math.floor(mins % 60), sec = (mins % 1) * 60;
+  const ff = Math.floor((t * 240) % 24);
+  tcEl.lastChild.nodeValue = `${pad(hh)}:${pad(mm)}:${pad(Math.floor(sec))}:${pad(ff)}`;
+  if (curSlate !== s.slate) { curSlate = s.slate; slate.textContent = s.slate; }
+  if (i !== curScene) { if (curScene !== -1) Sound.note(i); curScene = i; }
+  const sub = SUBS.find(x => t >= x[0] && t < x[1]);
+  const txt = sub ? sub[2] : '';
+  if (txt !== curSub) {
+    curSub = txt;
+    subT.classList.add('out');
+    clearTimeout(hud.to);
+    hud.to = setTimeout(() => { subT.textContent = txt; if (txt) subT.classList.remove('out'); }, curSub === txt && subT.textContent ? 180 : 160);
+  }
+}
+function bars(t) {
+  const s = SC[4], p = (t - s.a) / (s.b - s.a);
+  const open = ss(0, .1, p) * (1 - ss(.92, 1, p));
+  barT.style.transform = `translate3d(0,${(-open * 100).toFixed(2)}%,0)`;
+  barB.style.transform = `translate3d(0,${(open * 100).toFixed(2)}%,0)`;
+}
+
+/* ---------- render ---------- */
+function render(t) {
+  scenes.forEach(s => {
+    const span = s.b - s.a;
+    const fi = s.a === 0 ? 1 : ss(s.a, s.a + .12, t);
+    const fo = s.id === 's5' ? 1 : 1 - ss(s.b - .12, s.b, t);
+    const o = t < s.a - .001 || t > s.b + .001 ? 0 : fi * fo;
+    const vis = o > 0.001;
+    if (vis !== s.on) { s.on = vis; s.el.classList.toggle('on', vis); }
+    if (vis) { s.el.style.opacity = o.toFixed(3); R[s.id](clamp((t - s.a) / span)); }
+    else s.el.style.opacity = 0;
+  });
+  // keep the final black frame after the film
+  if (t >= TOTAL) { const s5 = scenes[5]; if (!s5.on) { s5.on = true; s5.el.classList.add('on'); } s5.el.style.opacity = 1; R.s5(1); }
+  hud(t); bars(t);
+  stage.classList.toggle('ended', t > TOTAL - .04);
+  nav.classList.toggle('past', t > TOTAL + .35);
+}
+
+/* ---------- reduced motion: stills ---------- */
+function buildStills() {
+  scenes.forEach((s, i) => {
+    s.el.classList.add('on');
+    R[s.id](STILL_P[s.id]);
+    if (i === 0) return;
+    const d = document.createElement('div'); d.className = 'still';
+    const tc = `${pad(s.h % 24)}:${pad(s.m)} · ${s.slate}`;
+    d.innerHTML = `<p class="tcs">${tc}</p>` + SUBS.filter(x => x[3] === i).map(x => `<p>${x[2]}</p>`).join('');
+    s.el.after(d);
+  });
+  $('#s5black').style.opacity = 0;
+  $('#s3mini').style.display = 'none';
+}
+
+/* ---------- grain ---------- */
+const grain = $('#grain'), gx = grain.getContext('2d');
+const tiles = [];
+for (let k = 0; k < 4; k++) {
+  const c = document.createElement('canvas'); c.width = c.height = 180;
+  const x = c.getContext('2d'), id = x.createImageData(180, 180);
+  for (let i = 0; i < id.data.length; i += 4) { const v = Math.random() < .5 ? 0 : (Math.random() * 255) | 0; id.data[i] = id.data[i + 1] = id.data[i + 2] = v; id.data[i + 3] = 255; }
+  x.putImageData(id, 0, 0); tiles.push(gx.createPattern(c, 'repeat'));
+}
+function sizeGrain() { grain.width = Math.ceil(innerWidth / 1); grain.height = Math.ceil(innerHeight / 1); drawGrain(); }
+let gk = 0, glast = 0, graf = 0;
+function drawGrain() {
+  gk = (gk + 1) % tiles.length;
+  const ox = (Math.random() * 180) | 0, oy = (Math.random() * 180) | 0;
+  gx.setTransform(1, 0, 0, 1, -ox, -oy); gx.fillStyle = tiles[gk]; gx.fillRect(ox, oy, grain.width, grain.height);
+}
+function grainTick(ts) { graf = requestAnimationFrame(grainTick); if (ts - glast < 41) return; glast = ts; drawGrain(); }
+function grainRun(on) { cancelAnimationFrame(graf); graf = 0; if (on && !RM) graf = requestAnimationFrame(grainTick); }
+
+/* ---------- sound (off by default) ---------- */
+const Sound = (() => {
+  let ac = null, master = null, on = false, bed = null;
+  const SCALE = [146.83, 220, 196, 246.94, 174.61, 130.81];
+  function init() {
+    ac = new (window.AudioContext || window.webkitAudioContext)();
+    master = ac.createGain(); master.gain.value = 0; master.connect(ac.destination);
+    const len = ac.sampleRate * 4, buf = ac.createBuffer(1, len, ac.sampleRate), d = buf.getChannelData(0);
+    let last = 0; for (let i = 0; i < len; i++) { const w = Math.random() * 2 - 1; last = (last + .02 * w) / 1.02; d[i] = last * 3.2; }
+    const src = ac.createBufferSource(); src.buffer = buf; src.loop = true;
+    const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 380;
+    const g = ac.createGain(); g.gain.value = .5;
+    src.connect(lp); lp.connect(g); g.connect(master); src.start();
+    [55, 82.41].forEach(f => { const o = ac.createOscillator(); o.frequency.value = f; const og = ac.createGain(); og.gain.value = .018; o.connect(og); og.connect(master); o.start(); });
+    const dl = ac.createDelay(); dl.delayTime.value = .38; const fb = ac.createGain(); fb.gain.value = .35;
+    dl.connect(fb); fb.connect(dl); dl.connect(master); bed = dl;
+  }
+  function tone(f, at = 0, dur = 2.6, vol = .07) {
+    if (!on) return; const t = ac.currentTime + at;
+    [1, 2.005].forEach((m, i) => {
+      const o = ac.createOscillator(); o.type = i ? 'sine' : 'triangle'; o.frequency.value = f * m;
+      const g = ac.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol / (i + 1), t + .03); g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+      o.connect(g); g.connect(master); g.connect(bed); o.start(t); o.stop(t + dur + .1);
+    });
+  }
+  return {
+    toggle() {
+      on = !on;
+      if (on) { if (!ac) init(); ac.resume(); master.gain.cancelScheduledValues(ac.currentTime); master.gain.linearRampToValueAtTime(.9, ac.currentTime + 1.2); tone(SCALE[0]); tone(SCALE[0] * 1.5, .35); }
+      else if (ac) { master.gain.cancelScheduledValues(ac.currentTime); master.gain.linearRampToValueAtTime(0, ac.currentTime + .4); setTimeout(() => !on && ac.suspend(), 500); }
+      return on;
+    },
+    note(i) { if (on) { tone(SCALE[i % SCALE.length]); tone(SCALE[i % SCALE.length] * 1.5, .22, 2.2, .04); } },
+    click() { if (on) { tone(880, 0, .25, .05); tone(587.33, .12, 2.4, .06); } },
+  };
+})();
+const sbtn = $('#sound'), sT = $('#soundT');
+sbtn.addEventListener('click', () => { const on = Sound.toggle(); sbtn.setAttribute('aria-pressed', on); sbtn.setAttribute('aria-label', on ? 'Sound, on' : 'Sound, off'); sT.textContent = on ? 'Sound on' : 'Sound off'; });
+
+/* ---------- mark assembly ---------- */
+$$('#mk g path').forEach((p, i) => {
+  const a = (i / 11) * Math.PI * 2 + .6;
+  p.style.setProperty('--x', `${Math.cos(a) * 520}px`);
+  p.style.setProperty('--y', `${Math.sin(a) * 520}px`);
+  p.style.setProperty('--r', `${(i % 2 ? 1 : -1) * (40 + i * 9)}deg`);
+  p.style.setProperty('--dl', `${200 + i * 70}ms`);
+});
+
+/* ---------- loop ---------- */
+let tTarget = 0, tNow = 0, raf = 0;
+function readT() { return (scrollY - trackTop) / VH; }
+function tick() {
+  raf = 0;
+  const d = tTarget - tNow;
+  tNow = Math.abs(d) < .0006 ? tTarget : tNow + d * .16;
+  render(tNow);
+  if (tNow !== tTarget) raf = requestAnimationFrame(tick);
+}
+function onScroll() {
+  tTarget = readT();
+  if (tTarget > .04) root.classList.add('go1', 'go2');
+  if (!raf) raf = requestAnimationFrame(tick);
+}
+
+layout();
+if (RM) {
+  root.classList.add('go1', 'go2');
+  buildStills();
+  drawGrain();
+} else {
+  tTarget = tNow = readT();
+  render(tNow);
+  addEventListener('scroll', onScroll, { passive: true });
+  setTimeout(() => root.classList.add('go1'), 120);
+  setTimeout(() => root.classList.add('go2'), 2500);
+  grainRun(true);
+  document.addEventListener('visibilitychange', () => grainRun(!document.hidden));
+}
+let rz = 0;
+addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => { layout(); if (RM) return; tTarget = tNow = readT(); render(tNow); }, 120); });
+})();
+</script>
+</body>
+</html>
