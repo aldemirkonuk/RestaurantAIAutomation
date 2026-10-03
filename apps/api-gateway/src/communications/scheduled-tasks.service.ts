@@ -784,13 +784,14 @@ export class ScheduledTasksService implements OnModuleInit {
    * Event Preparation Check — daily at 08:00 America/New_York. Mails one
    * reminder per `calendar_events` row dated two days out.
    *
-   * OFF BY DEFAULT — this path emails real tenants (F-154). It reads every
+   * OFF BY DEFAULT — this path emails real tenants. Armed, it reads every
    * calendar row for the day with no `event_type` filter and no per-run cap,
    * deliveries included, and sends one mail per row through the shared Gmail
-   * sender (F-136). The whole job is gated on EVENT_PREP_REMINDERS_ENABLED and
-   * returns before it enumerates a house, reads a row, resolves a recipient or
-   * sends anything while that is unset. ADR 0131's 2026-10-02 amendment records
-   * what must be decided before it is flipped; flipping it is the founder's call.
+   * sender that every house's account mail also uses. The whole job is gated on
+   * EVENT_PREP_REMINDERS_ENABLED and returns before it enumerates a house,
+   * reads a row, resolves a recipient or sends anything while that is unset —
+   * for DEFAULT_RESTAURANT_ID too. ADR 0264 records what must be decided before
+   * it is flipped; flipping it is the founder's call.
    */
   @Cron("0 8 * * *", {
     name: "event-prep-check",

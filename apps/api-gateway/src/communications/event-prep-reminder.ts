@@ -3,27 +3,28 @@
  * kept pure so it can be tested without NestJS DI, a database, or a mail
  * client.
  *
- * WHY THIS JOB IS OFF BY DEFAULT (F-154, 2026-10-02)
- * --------------------------------------------------
- * `event-prep-check` (08:00 America/New_York, every day) read every
+ * WHY THIS JOB IS OFF BY DEFAULT (ADR 0264)
+ * ----------------------------------------
+ * Armed, `event-prep-check` (08:00 America/New_York, every day) reads every
  * `calendar_events` row dated two days out for each house the scheduler
- * serves, and sent one "event prep" email per row to the managers and staff who
- * take calendar reminders, through the shared Gmail sender every house's mail
- * goes out on. It had no arming flag, no `event_type` filter and no per-run
- * cap. A delivery is a calendar row, so a house with N deliveries due in two
- * days got N "Upcoming Event" mails.
+ * serves, and sends one "event prep" email per row to the managers and staff
+ * who take calendar reminders, through the shared Gmail sender every house's
+ * mail goes out on. It has no `event_type` filter and no per-run cap. A
+ * delivery is a calendar row (procurement writes one per order, titled
+ * `Delivery: <order number>`), so a house with N deliveries due in two days
+ * gets N "Event Prep - Delivery: ..." mails.
  *
- * The owner-quarter sim house (Tuzlu Rüzgar) holds roughly 500 delivery rows
- * dated 2026-10-09. It is NOT served today — it has no
- * `scheduled_communications` row in `restaurant_feature_flags` (ADR 0022) — so
- * the 2026-10-07 run cannot reach it. Adding that one row would have meant
- * ~500 sends in one run, from the sender that ~500 purchase-order letters had
- * already pushed into Gmail's user-rate limit on 2026-10-02, taking every
- * house's verification, invite and reset mail down with it (F-136).
+ * A house is served when it is `DEFAULT_RESTAURANT_ID` or has an enabled
+ * `scheduled_communications` row in `restaurant_feature_flags` (ADR 0022). One
+ * such row on a house holding hundreds of deliveries for one day means hundreds
+ * of sends in one run, from the one sender whose rate limit, once hit, stops
+ * every house's verification, invite and reset mail with it.
  *
- * Which entry types count as an event, how many mails one run may send, and
- * who receives them are open founder questions. They are settled before this
- * is armed, not defaulted here. See the 2026-10-02 amendment to ADR 0131.
+ * Which entry types count as an event, how many mails one run may send, who
+ * receives them, and when this job moves off the shared sender are open
+ * founder questions. They are settled before this is armed, not defaulted
+ * here. ADR 0264 records them, the default house's loss of the job while it
+ * is off, and the one variable that arms it.
  */
 
 /**

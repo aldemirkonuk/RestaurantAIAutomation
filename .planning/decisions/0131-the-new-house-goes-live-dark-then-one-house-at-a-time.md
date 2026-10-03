@@ -96,8 +96,6 @@ inbox and phone — ADR 0109 kept it off for exactly this call), `PRICE_INDEX_FE
 path exists, pricing is OD-23); on the web project (Vercel): `VITE_STRIPE_PUBLISHABLE_KEY`.
 **The founder sets these himself** — the Vercel CLI token on this machine is dead and no
 session holds Railway credentials; a secret never passes through a chat.
-**[2026-10-02: a further gateway switch, `EVENT_PREP_REMINDERS_ENABLED`, joins this list
-OFF — see the amendment below. Nothing above is rewritten.]**
 
 **Stream D — the demo house.** "All demo data to be deleted." `scripts/delete_demo_house.py`
 fingerprints the seeded house as the whole tuple (id `550e8400-e29b-41d4-a716-446655440000`,
@@ -177,82 +175,6 @@ decides next: the four flags and the two environment switches stay OFF until his
 `.planning/BUILDPROMPT.md` the founder pasted is not committed: its canonical home is
 `.planning/sketches/102-modal-census/BUILD-PROMPT.md`, generated from `census.py`.
 
-## Amendment, 2026-10-02 — `EVENT_PREP_REMINDERS_ENABLED` joins Stream C's switches, default OFF (F-154)
-
-**What changed.** The daily `event-prep-check` job (`scheduled-tasks.service.ts:795-799`,
-`@Cron("0 8 * * *")`, America/New_York) now returns at `:800-806`, before
-`runPerTenant` and before any read, unless `EVENT_PREP_REMINDERS_ENABLED` is set. The
-flag and its parse live in `communications/event-prep-reminder.ts`. The parse is the
-same allow-list as `RECURRING_ORDER_REMINDERS_ENABLED`: only `true` or `1`, trimmed and
-lower-cased, arm it. The manual `triggerEventPrepReminders` (`:1178`) calls the same
-method, so it hits the same guard. Pinned by `event-prep-reminder.spec.ts` and
-`claims.d/fix-event-prep-mail-arming-f154.jsonl:1`.
-
-**Why OFF.** The founder staffed the mail lane on 2026-10-02 ("3 urgent now") with the
-F-154 flag due before the 2026-10-07 08:00 ET run. Before this change the job read every
-`calendar_events` row dated two days out for each house the scheduler serves:
-`DEFAULT_RESTAURANT_ID` plus every house with a `scheduled_communications` row (ADR
-0022). It had no `event_type` filter and no per-run cap. It sent one mail per row,
-addressed to the managers and staff who take calendar reminders, through the shared
-Gmail sender.
-
-- **Deliveries are calendar rows** (F-152). A house with N deliveries due in two days
-  got N "Upcoming Event" mails.
-- **The sender is shared.** On 2026-10-02, about 500 purchase-order letters in one day
-  hit Gmail's user-rate limit. That took every house's verification, invite and reset
-  mail down with it (F-136).
-- **The owner-quarter sim house holds about 500 delivery rows dated 2026-10-09.** It is
-  not served today; per the sim ledger's 2026-10-03 correction, its reminder status
-  reads `served:false` (`p4-scratch/sim-ledger.md`, F-154; outside the repo, not
-  re-measured here). So the 2026-10-07 run could not reach it. One opt-in row would
-  have changed that.
-
-**What arming still needs.** These are open founder questions, not defaulted here:
-
-1. Which entry types count as an event (deliveries? orders? tastings?).
-2. A per-run cap, or a digest instead of one mail per row.
-3. Who receives the mail. Today it goes to manager and staff, under the
-   `calendar_reminders` preference.
-4. The sender. ADR 0174 D4's `notifications@mudavym.com`, not the shared Gmail account,
-   so one house's volume cannot silence another's account mail.
-
-**To arm it, the founder sets on Railway (gateway service):**
-`EVENT_PREP_REMINDERS_ENABLED=true`. `1` also arms it. Any other value, a typo
-included, leaves it off.
-
-**Rejected.**
-
-- **Ship the type filter and a cap now, with interim values.** That records founder
-  calls before he has made them (CLAUDE.md §0.1). With the flag off, they would change
-  nothing anyway.
-- **Retire the job.** Whether it should exist at all is itself an open founder question.
-  A flag is undone by one variable; a deletion needs a code change and a deploy.
-- **A per-house flag row instead of an env variable.** Every job-arming switch beside
-  it is one global env variable: `RECURRING_ORDER_REMINDERS_ENABLED`,
-  `CALENDAR_REMINDERS_ENABLED` and `DIGEST_SEND_ENABLED`. Per-house opt-in already
-  exists as the `scheduled_communications` row. A second per-house row would be a
-  second opt-in for the same thing.
-
-**Exposure: the other outbound jobs, measured at this branch (not fixed here).** Every
-outbound job in `scheduled-tasks.service.ts` serves only `DEFAULT_RESTAURANT_ID` plus
-opted-in houses (`runPerTenant`).
-
-| Job (cron) | Line | Arming flag | Other gate | Per-run bound, per house |
-|---|---|---|---|---|
-| `daily-sms-summary` (09:00) | `:272` | none | manager phones (legacy house: `MANAGER_PHONE`) | one SMS per manager phone, not per row |
-| `weekly-email-report` (Mon 08:00) | `:307` | none | `reports` category mode | one report email to the manager list |
-| `recurring-order-reminder` (08:00) | `:496` | `RECURRING_ORDER_REMINDERS_ENABLED` | `orders` category mode; refuses undescribable rows | one email per schedule due, unbounded |
-| `delivery-eta-notification` (17:00) | `:617` | **none** | `orders` category mode | **one email per in-flight order due tomorrow, no `.limit`**: the same per-row shape as F-154 |
-| `inventory-audit-reminder` (Mon 07:00) | `:732` | none | recipients under `calendar_reminders` | one reminder email to the recipient list |
-| `event-prep-check` (08:00) | `:795` | `EVENT_PREP_REMINDERS_ENABLED` (this amendment) | recipients under `calendar_reminders` | one email per calendar row, unbounded |
-| `custom-reminders-check` (every 15 min) | `:871` | none | active rows due now; recipients from the row or its roles | `.limit(20)` rows (`:897`), at most one email each |
-
-Outside this file, `calendar/calendar-reminders.service.ts:577-588` (the
-`CALENDAR_REMINDERS_ENABLED` sweep) also has **no `event_type` filter**. It sends no mail
-(inbox and push only) and is capped at `CANDIDATE_CAP = 500` rows per house per run
-(`:113`), every 15 minutes. That matters before Stream C's
-`CALENDAR_REMINDERS_ENABLED=true` is ever set on a house with hundreds of delivery rows.
-
 ## Review trail
 
 | When | Who | What |
@@ -263,4 +185,3 @@ Outside this file, `calendar/calendar-reminders.service.ts:577-588` (the
 | 2026-09-06 15:25Z | parent session | **Stream B dry run (production, read-only):** all 19 pages for ALDEMIR + 4 sim houses → REFUSED naming the eight columns the branch's migration has not yet added (reports, notifications, recommendations, calendar, settings, profile, cellar, connections) — the refusal path holds; the eleven existing columns → five houses, no `restaurant_settings` row on any, eleven columns each would move false→true, actor `fb003eaa-…`. **Stream D dry run:** fingerprint holds (name, 2026-02-08, the three seeded members); keyless 190+50+11+10+10+4+3+2+1+1 rows, `system_audit_log` 5 (the one NO ACTION blocker), SET NULL users 3 / contacts 3 / decision_log 2, cascade sample notifications 462 · recommendation_impressions 227 · pos_checks 66 · restaurant_inventory 50 · pos_unresolved_lines 39 · events 23 · calendar_events 12. Nothing written. Both scripts needed certifi's CA bundle on this machine (python.org 3.11 ships none); they now set `SSL_CERT_FILE` themselves. |
 | 2026-09-16 | founder, in session (ADR 0149) | **Per-house rollout superseded by ADR 0149; the dark-merge half stands.** Deleting legacy removes the only design a house could be rolled back to, so one house at a time cannot stand beside that goal (0149 §Context). Rollback after cutover is a revert of the cutover merge plus a redeploy. This row changes no text above. |
 | 2026-09-17 | Aldemir (founder), in session | ADR 0149 row 36: sixteen locked pages resolve to Mudavym in code for every house before the cutover; the other four gated pages keep following their flags |
-| 2026-10-02 | mail lane (wt-review-10), on the founder's staffing answer | **F-154: `EVENT_PREP_REMINDERS_ENABLED` added to Stream C's switches, default OFF.** `event-prep-check` returns before it reads or sends unless armed; see the 2026-10-02 amendment above for why, what arming still needs, the rejected alternatives and the exposure table. Arming is the founder's keystroke: `EVENT_PREP_REMINDERS_ENABLED=true` on the gateway. |

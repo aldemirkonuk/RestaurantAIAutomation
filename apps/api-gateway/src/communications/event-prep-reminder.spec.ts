@@ -6,7 +6,7 @@ import {
 import { recurringRemindersEnabled } from "./recurring-order-reminder";
 
 /**
- * Event-prep reminder — F-154, ADR 0131's 2026-10-02 amendment.
+ * Event-prep reminder — ADR 0264.
  *
  * `event-prep-check` mailed one email per `calendar_events` row two days out,
  * deliveries included, through the shared Gmail sender, with no arming flag.
