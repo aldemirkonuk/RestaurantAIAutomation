@@ -26,8 +26,8 @@ export function useAskPanel(): AskPanelState {
   const auth = useContext(AuthContext)
   const userId = auth?.user?.userId ?? null
   const houseId = auth?.activeRestaurantId ?? null
-  // One person's sitting in one house, keyed as "the house said" is: a
-  // branch switch or a new person on a shared till starts the session again.
+  // One person's sitting in one house, keyed as "the house said" is: a branch
+  // switch in this tab or a new person on a shared till starts it again.
   const scope = userId && houseId ? `${userId}@${houseId}` : null
   const [open, setOpen] = useState(false)
   const [followUp, setFollowUp] = useState<AskOpenDetail['followUp'] | null>(null)

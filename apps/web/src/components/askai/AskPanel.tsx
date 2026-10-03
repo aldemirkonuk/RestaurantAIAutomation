@@ -38,9 +38,9 @@
  * (Recommended)"; the session's own note lists exactly what a close keeps).
  * While a question is in flight the panel says so and stays busy, so asking
  * again cannot buy a second answer, reopened or not. "Check again" re-sends
- * the same id, which the gateway never charges twice. The session is one
- * person's in one house: a branch switch starts it again, and this body with
- * it (it is keyed by the session's scope).
+ * the same id, which the gateway never charges twice for one person in one
+ * house. The session is one person's in one house: a branch switch in this
+ * tab starts it again, and this body with it (keyed by the session's scope).
  *
  * WHERE IT SITS (ADR 0145, 2026-09-21 layout and 2026-09-25 fork 3):
  *   docked   at ≥ ~1280 px, in the counter's slot beside a live page; the
@@ -551,8 +551,8 @@ const LABEL =
 
 export function AskPanel({ placement, open, onClose, followUp = null, onDropFollowUp, session }: AskPanelProps) {
   if (!open) return null
-  // Keyed by whose sitting it is: a branch switch with the panel open starts
-  // a fresh body, which re-reads that house's proposals and pickers.
+  // Keyed by whose sitting it is: a branch switch in this tab with the panel
+  // open starts a fresh body, which re-reads that house's proposals and pickers.
   const body = (
     <AskPanelBody key={session.scope ?? ''} open={open} followUp={followUp} onDropFollowUp={onDropFollowUp} session={session} />
   )

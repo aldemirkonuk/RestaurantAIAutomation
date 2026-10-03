@@ -1998,7 +1998,11 @@ gateway still answered and saved the folio, which was paid for. The panel
 reopened blank, and asking again minted a new request id, so the house paid a
 second time. The gateway already charges once per request id: a repeated id
 returns the saved folio, pending or finished (`bound-ask.service.ts`, "never
-duplicate paid work for one request id"). So the fix is client-side only.
+duplicate paid work for one request id"). [Gate round 2: once per request id
+for one person in one house. The key is unique on house, person and id
+(`supabase/migrations/20260922220000_mudavym_bound_reading_folios.sql:26`),
+so the same id sent with another house's token is a new call; see "Gate
+round 2".] So the fix is client-side only.
 
 ### Built (branch `fix/ask-close-no-second-spend`, against `main` 5a330a88e)
 
@@ -2062,7 +2066,17 @@ key lands nowhere, and its end does not let go of a newer request's gate.
 The answer itself is still in that house's book at /ask. With the panel
 open, a switch also starts a fresh panel body, which re-reads the new
 house's waiting proposals and pickers. The follow-up "Keep asking" carried
-in is dropped, since it names a folio in the other house.
+in is dropped, since it names a folio in the other house. [Gate round 2:
+fixed for a switch made in place in the same tab. Two routes still let a
+request carry another house's token while the session holds the old house,
+and are filed OPEN in the tech-debt fragment. One is a house switch made in
+another tab: the tabs share `localStorage`, the request interceptor reads the
+token from it on every call (`services/api/client.ts:74-84`), and nothing in
+the web app moves a tab's house on a `storage` event. "Check again" in the
+first tab can then be a new paid call in the other house, and its answer
+lands under the first house. That route was already on `main`. The other is
+the interval in the same tab between `storeSession` and the render that
+moves the scope (`AuthContext.tsx:625-633`). See "Gate round 2".]
 
 **What a close keeps, exactly.** The ruling keeps the question in flight and
 its answer. The session keeps:
@@ -2214,7 +2228,7 @@ drops anything begun under the old key. A folio re-read's answer has no
 epoch check, by design (E7 above). The note now says that every answer,
 refusal, proposal and failure begun under the old scope lands nowhere, and
 that a re-read's answer is dropped because the switch emptied the list
-(`useAskSession.ts:39-48`). The `epoch` ref's own one-line note said the
+(`useAskSession.ts:40-49`). The `epoch` ref's own one-line note said the
 same broad thing and is narrowed with it.
 
 **Fixed (finding 2).** The reset runs in an effect, after the render in
@@ -2222,25 +2236,103 @@ which the scope changed, so that one render still carried the old scope's
 sitting: a reviewer recorded the passes `A@h2:1`, then `A@h2:0`. The gate
 found it could not cross persons, since a person change unmounts the shell.
 The hook now records the scope its state belongs to (`owner`, set by the
-reset at `:138`), and until the reset has run it gives none of the old
-answers, failure, request, refusal, error, proposals or pending (`:245-258`).
+reset at `:152`), and until the reset has run it gives none of the old
+answers, failure, request, refusal, error, proposals or pending (`:259-272`).
 A first naming is not masked, since it keeps what is there. The follow-up
 "Keep asking" carried in had the same one-render pass under the new house
-(`useAskPanel.ts`, its scope effect); it is masked the same way. Pinned by
+(`useAskPanel.ts`, its scope effect); it is masked the same way. [Gate
+round 2: at a switch. At a first naming the follow-up is dropped instead
+(`useAskPanel.ts:59-62`), while the session keeps its state.] Pinned by
 four tests in `AskPanel.test.tsx` (85 to 89): the switch render is empty,
 with a refusal and with a transport error; the first-naming render keeps
 the answer; the switch render carries no follow-up, and one carried in
 after the switch shows. 12 mutations, each from a `cp -p` snapshot and
 restored byte-identical (`cmp`), all red: the mask off, the first-naming
 clause dropped, `setOwner` dropped, each of the seven fields unmasked, the
-follow-up mask off and its scope never moved on. Not checked: a browser
-paint of either pass.
+follow-up mask off and its scope never moved on. [Gate round 2: a
+thirteenth, `setOwner` moved below the first-naming return, stayed green at
+89/89. A fifth test now pins it (89 to 90); see "Gate round 2".] Not
+checked: a browser paint of either pass.
 
 **Narrowed (finding 3).** The PR body said a close keeps the waiting
 proposals. That holds for the gateway's rows. On screen, the next open's
 re-read replaces the list (`AskPanel.tsx:273`), so a proposal that lands
 during that read can be dropped from view until the next open, as recorded
 under "Not built, not verified" above.
+
+### Gate round 2, 2026-10-02 -- the switch after a first naming, and two routes still open
+
+The ADR 0090 gate at 55a52ad05 returned BLOCK, with no code defect
+(`.planning/07-reference/pr-audits/584-55a52ad05.md`). Both reviewers
+approved; the planner overturned. Merged with `main` e25ebf537 first, with no
+conflict.
+
+**Pinned (finding 1, a surviving mutant).** With `setOwner` moved below the
+first-naming return (`useAskSession.ts:152-153`), all 89 tests stayed green.
+Under that mutation a sitting first named after it began never records its
+owner, so the next switch's render carries the old house's state. The house starts null
+(`AuthContext.tsx:323-325`) and `ProtectedRoute` checks `user.restaurantId`
+(`ProtectedRoute.tsx:59`), so the shell can mount before the house is named,
+and a first naming followed by a switch is the usual path. That reading is
+the planner's, from the code; it was not run in a browser. A new test pins
+it: scope null, then `u-1@r-1`, an answer lands, then `u-1@r-2`, and every
+render pass under `u-1@r-2` is empty. `AskPanel.test.tsx` 89 to 90. The
+mutation, applied to a file snapshotted with `cp -p`: 1 test red, 89 passed.
+Restored with `cp -p`, `cmp` identical, then 90/90.
+
+**Narrowed and filed (finding 2, CLOSED claimed more than the code).** The
+tech-debt entry for the house-switch defect stays CLOSED, now for a switch
+made in place in the same tab. Two routes let a request carry another
+house's token while the session holds the old house. They are filed as a new
+OPEN entry in the same fragment, with two possible fixes, neither built:
+
+- a house switch in another tab. The tabs share `localStorage`, the request
+  interceptor reads the token on every call (`client.ts:74-84`), and nothing
+  in the web app moves a tab's house on a `storage` event. The only `storage`
+  listeners are `lib/sessionRenewed.ts:57` and `lib/mudavym/groundChoice.ts:433`.
+  This route was already on `main`.
+- the interval in the same tab between `storeSession` and the render that
+  moves the scope (`AuthContext.tsx:625-633`).
+
+The fixes named are: store the token only once the scope has moved; or check,
+before a send, that the token's house matches the scope. The entry says what
+each one leaves.
+
+**Narrowed (finding 3).** "The gateway never charges twice" for a re-sent id
+(in the hook's `lastRequest` note, "never pays twice") now says "never
+charges twice ... for one person in one house" (`AskPanel.tsx:41-42`,
+`useAskSession.ts:88`, the fragment's first Fix line). The key is unique on
+house, person and id (`...bound_reading_folios.sql:26`). The audit asked for
+"in one house"; the person is named too because the key includes it. The
+same narrowing is applied to "charges once per request id" in three places:
+the hook's opening note (`useAskSession.ts:9-10`), "The defect it closes"
+above (bracketed), and the PR body.
+
+**Disclosed (finding 4).** The two routes are named in three places where the
+switch fix is described:
+- the PR body's "One person in one house";
+- "The house-switch defect" above (bracketed);
+- the hook's note (`useAskSession.ts:51-62`).
+
+Three comments that said "a branch switch" now say "a branch switch in this
+tab": `AskPanel.tsx:42-43`, the body's key note (`AskPanel.tsx:554-555`) and
+`useAskPanel.ts:29-30`.
+
+**Narrowed (same push).** "Gate round 1" said the follow-up "is masked the
+same way". That holds at a switch. At a first naming the follow-up is dropped
+(`useAskPanel.ts:59-62`), while the session keeps its state. This is
+bracketed above.
+
+**Re-pointed.** Gate round 1's line cites into `useAskSession.ts` moved with
+the note above them, and now point at this round's head.
+
+**Not verified.** Neither route was run in a browser. Whether a click can land
+in the same-tab interval is inferred from how React 18 schedules updates; it
+was not measured. Gate round 1's other twelve mutations were not re-run at
+this head. This round's own edits to the PR's source files are comments
+only, and it adds one test, so a mutant that was red stays red. The merge
+with `main` changed no file under `src/components/askai`. Reviewer A re-ran
+all twelve at 55a52ad05.
 
 ## Review trail
 
@@ -2269,4 +2361,5 @@ under "Not built, not verified" above.
 | 2026-10-01 | `fix/ask-close-no-second-spend` lane (build, against `main` 5a330a88e) | Built `useAskSession`, owned by `useAskPanel`. `AskPanel.test.tsx` gained 6 tests rendering the real owner [corrected in round 1: five render the real owner, the sixth calls `useAskSession` through `renderHook`]; the affected suites ran 8 files / 126 tests green. Six mutations each turned at least one new test red: the body owning a fresh session (5 red), no in-flight gate (1), "Check again" minting a new id (1), no mounted guard (1), no pending line (5), and the body not busy from the session (2). Files restored byte-identically. Web eslint clean on the 7 changed files. Web `tsc` is clean apart from `passkeys.ts`'s missing `@simplewebauthn/browser`, which this worktree's symlinked `node_modules` lacks; this diff does not touch that file. |
 | 2026-10-01 | `fix/ask-close-no-second-spend` round 1 (fix, after a Sonnet verify returned FIX) | The house-switch defect found and fixed: the session is keyed `<person>@<house>`, with an epoch guard, the open body keyed by the same scope, and the follow-up dropped on a switch. What a close keeps narrowed, and settled proposals leave at the close through `ProposalCard`'s `onSettled` (see "Round 1"). `AskPanel.test.tsx` went from 42 to 68 tests; round 0's 8 files ran 152 tests green, and 12 files with every other suite that mounts the shell or `ProposalCard` ran 210 green. 32 mutations, each red, each file restored byte-identically: round 0's six re-run (12, 1, 1, 1, 14 and 5 red); the verify's M1 and M3-M6 (1 each); eleven on the scope and epoch (B1-B11: 9, 2, 1, 1, 2, 1, 1, 1, 2, 1, 1); ten on what a close keeps (C1-C10: 2, 1, 1, 1, 3, 3, 1, 4, 4, 1). M2's guard removed; an epoch check on a re-read's answer survived a first pass as an equivalent mutant and was removed. Web eslint 0 errors on the 8 touched source and test files (one `ProposalCard` warning, also on `main`). Web `tsc`: only the pre-existing `passkeys.ts` error. Decision claims 813/813. No browser render. |
 | 2026-10-01 | `fix/ask-close-no-second-spend` round 2 (fix, after a Sonnet verify of round 1 returned FIX, no blocker) | The failure with nothing to retry fixed: a close keeps a failure only when its alert offers "Check again" (a retryable kind and the request it re-sends). The apply in flight across a close checked on the gateway (`ask-ai.service.ts` at 5a330a88e, this branch's base): a second apply for one action id is refused, at the seal or at the claim's compare-and-swap, so the card is not held busy; the panel's honest answer is pinned. `AskPanel.test.tsx` went from 68 to 85 tests (see "Round 2"). 12 files with every suite that mounts the shell or `ProposalCard` ran 227 green; `src/components/askai` and `src/components/mudavym` ran 32 files / 486 green. 64 mutations on `AskPanel.test.tsx`: 61 red, 3 equivalent (E7, S4, S7), each file restored byte-identically. Web eslint 0 errors on the 8 touched source and test files (the one `ProposalCard` warning, also on `main`). Web `tsc`: only the pre-existing `passkeys.ts` error. Decision claims 813/813. No browser render; no gateway test run (the gateway is unchanged, and its behaviour is cited from the code). |
-| 2026-10-02 | `fix/ask-close-no-second-spend` gate round 1 (fix, after the ADR 0090 gate at 5ab269ccc returned BLOCK) | The epoch sentence narrowed in the hook's note, the `epoch` ref's note and the PR body: a folio re-read's answer is dropped because the switch emptied the list, not by the epoch. The switch render fixed rather than filed: `useAskSession` gives none of the old scope's state until the reset has run, and `useAskPanel` gives no old follow-up; a first naming is not masked. "A close keeps the waiting proposals" narrowed in the PR body to the gateway's rows. `AskPanel.test.tsx` 85 to 89; 12 mutations, all red, each restored byte-identical (see "Gate round 1"). On the tree merged with `main` a823ef32d: `src/components/askai` + `src/components/mudavym` 32 files / 492 passed; web eslint on the 8 touched source and test files 0 errors, 1 warning (`ProposalCard.tsx:268`, also on `main` at `:260`); web `tsc` only the pre-existing `passkeys.ts` error; decision claims 830/830; citation-pairing and conflict-marker guards pass. No browser render. |
+| 2026-10-02 | `fix/ask-close-no-second-spend` gate round 1 (fix, after the ADR 0090 gate at 5ab269ccc returned BLOCK) | The epoch sentence narrowed in the hook's note, the `epoch` ref's note and the PR body: a folio re-read's answer is dropped because the switch emptied the list, not by the epoch. The switch render fixed rather than filed: `useAskSession` gives none of the old scope's state until the reset has run, and `useAskPanel` gives no old follow-up; a first naming is not masked. "A close keeps the waiting proposals" narrowed in the PR body to the gateway's rows. `AskPanel.test.tsx` 85 to 89; 12 mutations, all red, each restored byte-identical (see "Gate round 1") [gate round 2: a thirteenth, `setOwner` moved below the first-naming return, stayed green; see "Gate round 2"]. On the tree merged with `main` a823ef32d: `src/components/askai` + `src/components/mudavym` 32 files / 492 passed; web eslint on the 8 touched source and test files 0 errors, 1 warning (`ProposalCard.tsx:268`, also on `main` at `:260`); web `tsc` only the pre-existing `passkeys.ts` error; decision claims 830/830; citation-pairing and conflict-marker guards pass. No browser render. |
+| 2026-10-02 | `fix/ask-close-no-second-spend` gate round 2 (fix, after the ADR 0090 gate at 55a52ad05 returned BLOCK) | Merged `main` e25ebf537, no conflict. The switch after a first naming pinned by a new test; the surviving mutant (`setOwner` below the first-naming return) now turns it red, 1 test, restored from a `cp -p` snapshot and checked with `cmp`. `AskPanel.test.tsx` 89 to 90. The house-switch entry kept CLOSED for a switch in the same tab; a switch in another tab and the same-tab interval before the render filed as a new OPEN entry, with two possible fixes, neither built. "Never charges twice" narrowed to one person in one house; the two routes disclosed in the PR body, this ADR and the hook's note; "masked the same way" narrowed for a first naming (see "Gate round 2"). On this round's head: `src/components/askai` + `src/components/mudavym` 32 files / 493 passed; web eslint on the 8 touched source and test files 0 errors, 1 warning (`ProposalCard.tsx:268`, also on `main` at `:260`); web `tsc` only the pre-existing `passkeys.ts` error; decision claims 835/835; citation-pairing and conflict-marker guards pass. No browser render. |

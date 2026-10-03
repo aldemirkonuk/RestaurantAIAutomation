@@ -6,9 +6,10 @@
  * the question in flight lived in that body, closing mid-answer dropped it.
  * The gateway still answered and saved it, but the panel reopened blank, and
  * asking again minted a new request id, so the house paid twice (PR #575
- * audit). The gateway already charges once per request id: a repeated id
- * returns the saved folio, pending or finished (`bound-ask.service.ts`). So
- * all the client owes is to keep the question, its id and its outcome alive.
+ * audit). The gateway already charges once per request id for one person in
+ * one house (the key is all three): a repeated id returns the saved folio,
+ * pending or finished (`bound-ask.service.ts`). So all the client owes is to
+ * keep the question, its id and its outcome alive.
  * Founder, 2026-10-01: "Keep answering (Recommended)" (ADR 0145, amendment
  * of that date).
  *
@@ -46,6 +47,19 @@
  * still in that house's book at /ask. The reset runs after the render in
  * which the scope changed; that render is already given none of the old
  * scope's answers, failure, request, refusal, error, proposals or pending.
+ *
+ * NOT COVERED: two routes still reach the wrong house, filed OPEN in
+ * `.planning/tech-debt.d/2026-10-01-fix-ask-close-no-second-spend.md`. The
+ * scope follows this tab's React state, but each request the panel sends
+ * carries the token `localStorage` holds at that moment (`client.ts`, its
+ * request interceptor). (a) A house switch in another tab moves that token
+ * and not this scope: a send from this tab then goes to the other house and
+ * its answer lands here, under this house, and "Check again" re-sends this
+ * house's request id there, which can be a new paid call. (b) In this tab,
+ * the branch switch stores the new house's token before the render that
+ * moves the scope (`AuthContext.tsx`, `setActiveRestaurantId`), so a send in
+ * that interval goes out with the new token under the old scope. Whether a
+ * click can land in it is not measured.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -71,7 +85,7 @@ export interface AskSession {
   scope: string | null
   folios: AskFolio[]
   failure: AskFailure | null
-  /** Set by an ask whose failure offers "Check again", which re-sends this SAME request id (the gateway never pays twice for it); cleared by its answer, or when an ask fails with nothing to retry. */
+  /** Set by an ask whose failure offers "Check again", which re-sends this SAME request id (the gateway never charges twice for it for one person in one house); cleared by its answer, or when an ask fails with nothing to retry. */
   lastRequest: AskSubmit | null
   /** The gateway's reason for declining, with the words it declined. Always rendered when present. */
   refusal: { reason: string; utterance: string } | null

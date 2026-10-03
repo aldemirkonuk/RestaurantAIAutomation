@@ -1439,6 +1439,22 @@ describe('the session’s own gates', () => {
     expect(named.length).toBeGreaterThan(0)
     expect(named.filter((p) => !p.startsWith('u-1@r-1|1|'))).toEqual([])
   })
+
+  // PR #584 gate, round 2: the house starts null (`AuthContext`), so a sitting
+  // is usually named after the shell mounts. The switch after that first
+  // naming is the one production takes, and its render must be empty too.
+  it('after a first naming, the render in which the scope changes is given none of the old sitting', async () => {
+    api.submit.mockResolvedValueOnce(folio({}))
+    const { passes, result, rerender } = renderPasses(null)
+    rerender({ scope: 'u-1@r-1' })
+    await act(() => result.current.sendAsk({ requestId: 'r-1', utterance: 'how much house red is left?' }))
+    expect(passes.at(-1)).toBe('u-1@r-1|1|0|0|0|0|0|0')
+
+    rerender({ scope: 'u-1@r-2' })
+    const underB = passes.filter((p) => p.startsWith('u-1@r-2|'))
+    expect(underB.length).toBeGreaterThan(0)
+    expect(new Set(underB)).toEqual(new Set(['u-1@r-2|0|0|0|0|0|0|0']))
+  })
 })
 
 describe('what the panel says while it works', () => {
