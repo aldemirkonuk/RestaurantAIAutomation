@@ -27,6 +27,8 @@
  * the send gate, not by this feed.
  */
 
+import { readFileSync } from "fs";
+import { resolve } from "path";
 import { Logger } from "@nestjs/common";
 import { MobileController } from "./mobile.controller";
 import {
@@ -34,7 +36,10 @@ import {
   MONEY_FREE_NOTIFICATION_TYPES,
   NON_MONEY_META_KEYS,
 } from "./mobile.service";
-import { NotificationsService } from "../notifications/notifications.service";
+import {
+  NotificationsService,
+  SYSTEM_CHIP_TYPES,
+} from "../notifications/notifications.service";
 import { OWN_WAGE_ACTION, recordOwnWageChange } from "../team/own-wage-notice";
 
 const HOUSE = "house-1";
@@ -596,26 +601,11 @@ describe("GET /mobile/feed — notification cards carry no money to staff (ADR 0
   });
 
   /**
-   * Moving the wage notice and the system alert off `system` must not take
-   * them out of the web inbox's System chip, which asks the server for
-   * `type=system` (`nt-book.ts` TYPE_CHOICES). Kept in this file, beside the
-   * two moves it follows from, because the branch is at its 15-file cap.
+   * A `NotificationsService` whose database answers `getNotifications` from
+   * `rows`, applying every `eq` and `in` filter it is handed. A filter the
+   * service drops therefore shows up as rows it should not have returned.
    */
-  it("the web inbox's System chip (`type=system`) gets every type the inbox files under System, and no other", async () => {
-    const rows = [
-      { id: "n-system", type: "system" },
-      { id: "n-alert", type: "system_alert" },
-      { id: "n-wage", type: OWN_WAGE_ACTION },
-      { id: "n-goal", type: "goal_reached" },
-      { id: "n-delivery", type: "order_delivered" },
-    ].map((r, i) => ({
-      ...r,
-      user_id: "owner-1",
-      restaurant_id: HOUSE,
-      title: r.id,
-      created_at: `2026-10-01T0${i}:00:00.000Z`,
-    }));
-    // A query that applies the filters it is given to the rows above.
+  const notificationsOver = (rows: Array<Record<string, unknown>>) => {
     const query = (keep: (r: any) => boolean): any => ({
       eq: (col: string, v: unknown) => query((r) => keep(r) && r[col] === v),
       in: (col: string, vs: unknown[]) =>
@@ -635,6 +625,30 @@ describe("GET /mobile/feed — notification cards carry no money to staff (ADR 0
     service.databaseService = {
       supabase: { from: () => ({ select: () => query(() => true) }) },
     };
+    return service;
+  };
+
+  /**
+   * Moving the wage notice and the system alert off `system` must not take
+   * them out of the web inbox's System chip, which asks the server for
+   * `type=system` (`nt-book.ts` TYPE_CHOICES). Kept in this file, beside the
+   * two moves it follows from, because the branch is at its 15-file cap.
+   */
+  it("the web inbox's System chip (`type=system`) gets every type the inbox files under System, and no other", async () => {
+    const rows = [
+      { id: "n-system", type: "system" },
+      { id: "n-alert", type: "system_alert" },
+      { id: "n-wage", type: OWN_WAGE_ACTION },
+      { id: "n-goal", type: "goal_reached" },
+      { id: "n-delivery", type: "order_delivered" },
+    ].map((r, i) => ({
+      ...r,
+      user_id: "owner-1",
+      restaurant_id: HOUSE,
+      title: r.id,
+      created_at: `2026-10-01T0${i}:00:00.000Z`,
+    }));
+    const service = notificationsOver(rows);
     const ids = async (type: string) =>
       (
         await service.getNotifications({
@@ -650,6 +664,112 @@ describe("GET /mobile/feed — notification cards carry no money to staff (ADR 0
     // Any other type is still matched exactly.
     expect(await ids("system_alert")).toEqual(["n-alert"]);
     expect(await ids("goal_reached")).toEqual(["n-goal"]);
+  });
+
+  /**
+   * The System chip widens the type, never the reader: `getNotifications`
+   * binds `user_id` before any type branch. Two members of one house hold
+   * rows of the same types here, so a dropped or loosened `user_id` filter
+   * hands one member the other's rows, and their count.
+   */
+  it("`getNotifications` returns and counts only the caller's own rows, under every type filter", async () => {
+    const rows = [
+      { id: "own-system", user_id: "owner-1", type: "system" },
+      { id: "own-wage", user_id: "owner-1", type: OWN_WAGE_ACTION },
+      { id: "own-goal", user_id: "owner-1", type: "goal_reached" },
+      { id: "other-system", user_id: "staff-1", type: "system" },
+      { id: "other-alert", user_id: "staff-1", type: "system_alert" },
+      { id: "other-goal", user_id: "staff-1", type: "goal_reached" },
+    ].map((r, i) => ({
+      ...r,
+      restaurant_id: HOUSE,
+      title: r.id,
+      created_at: `2026-10-01T0${i}:00:00.000Z`,
+    }));
+    const service = notificationsOver(rows);
+    const read = async (userId: string, type?: string) => {
+      const page = await service.getNotifications({
+        userId,
+        restaurantId: HOUSE,
+        type,
+      });
+      return {
+        ids: page.data.map((n: { id: string }) => n.id).sort(),
+        total: page.total,
+      };
+    };
+
+    expect(await read("owner-1")).toEqual({
+      ids: ["own-goal", "own-system", "own-wage"],
+      total: 3,
+    });
+    expect(await read("owner-1", "system")).toEqual({
+      ids: ["own-system", "own-wage"],
+      total: 2,
+    });
+    expect(await read("owner-1", "goal_reached")).toEqual({
+      ids: ["own-goal"],
+      total: 1,
+    });
+    expect(await read("staff-1")).toEqual({
+      ids: ["other-alert", "other-goal", "other-system"],
+      total: 3,
+    });
+    expect(await read("staff-1", "system")).toEqual({
+      ids: ["other-alert", "other-system"],
+      total: 2,
+    });
+    expect(await read("staff-1", "goal_reached")).toEqual({
+      ids: ["other-goal"],
+      total: 1,
+    });
+  });
+
+  /**
+   * `SYSTEM_CHIP_TYPES` is a copy of the types the web's `KIND_BY_TYPE`
+   * (`apps/web/src/pages/notifications/next/nt-format.ts`) files under
+   * System. A type the web files there that the chip does not ask for shows
+   * under All and silently misses the chip. This reads the web file AS TEXT,
+   * as `common/iso-4217.spec.ts` reads the web's currency table: the two apps
+   * are separate builds, and an import would pull the browser bundle
+   * (`lucide-react`, the web's `@/` alias) into the gateway's compile.
+   */
+  it("asks for exactly the types the web inbox files under System, in both directions", () => {
+    const source = readFileSync(
+      resolve(
+        __dirname,
+        "../../../../apps/web/src/pages/notifications/next/nt-format.ts",
+      ),
+      "utf8",
+    );
+    // Anchored on the declaration and closed on the first bare `};`, so a
+    // later object in the file cannot leak types in.
+    const start = source.indexOf("const KIND_BY_TYPE");
+    expect(start).toBeGreaterThan(-1);
+    const end = source.indexOf("\n};", start);
+    expect(end).toBeGreaterThan(start);
+    const lines = source
+      .slice(source.indexOf("\n", start) + 1, end)
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l !== "" && !l.startsWith("//"));
+    const entries = lines.map((l) =>
+      /^['"]?([\w.-]+)['"]?\s*:\s*['"]([^'"]+)['"],?$/.exec(l),
+    );
+    // A line this cannot read fails here instead of being skipped, so a
+    // System entry written another way cannot pass unseen.
+    expect(lines.filter((_, i) => entries[i] === null)).toEqual([]);
+    expect(entries.length).toBeGreaterThan(10);
+
+    const web = entries
+      .filter((m) => m![2] === "System")
+      .map((m) => m![1])
+      .sort();
+    const gateway = [...SYSTEM_CHIP_TYPES].sort();
+    expect({
+      onlyInWeb: web.filter((t) => !gateway.includes(t)),
+      onlyInGateway: gateway.filter((t) => !web.includes(t)),
+    }).toEqual({ onlyInWeb: [], onlyInGateway: [] });
   });
 
   /**
