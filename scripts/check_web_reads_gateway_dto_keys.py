@@ -146,6 +146,20 @@ MIRRORS: tuple[Mirror, ...] = (
         ),
     ),
     Mirror(
+        label="web OrderListPage",
+        client_file="apps/web/src/services/api/order-book.ts",
+        client_type="OrderListPage",
+        dto_file=DTO,
+        dto_class="OrderListResponseDto",
+        why=(
+            "F-140 / ADR 0269 (2026-10-03): the page envelope the order-book "
+            "reader pages through on GET /procurement/orders/history. Its loop "
+            "ends on `hasMore` and checks `total`, `page` and `limit`; a key "
+            "spelled differently would read as undefined, and the reader would "
+            "refuse every page as the wrong shape rather than read the book."
+        ),
+    ),
+    Mirror(
         label="mobile ProcurementOrder",
         client_file="apps/mobile/src/api/types.ts",
         client_type="ProcurementOrder",
