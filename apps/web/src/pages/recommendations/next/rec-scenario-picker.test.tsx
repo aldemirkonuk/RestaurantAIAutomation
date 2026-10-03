@@ -186,6 +186,7 @@ function renderSheet(
       scenarios={scenarios}
       onWantGoals={vi.fn()}
       onMakeGoal={onMakeGoal}
+      goalRoleReason={null}
       onSeeInReports={vi.fn()}
     />,
   );

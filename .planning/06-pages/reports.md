@@ -203,7 +203,7 @@ is what it still cannot do, and why.
 - **Enforce the goals-desk role gate server-side.** The analytics routes carry
   `JwtAuthGuard` at class level and no role guard; the desk hides its controls
   from a role that is not owner or manager, which is a courtesy, not an
-  enforcement (§9.8).
+  enforcement (§9.8). **[2026-10-01, ADR 0250 — done since; closed on `fix/goal-writes-need-a-manager`: create, edit, status and "Ask the book" now carry `RolesGuard` with `@Roles("owner", "manager")`; staff get 403 and the desk's line is now enforced. The `EngineInsightsPanel` this passage names no longer exists in `apps/web/src`; the door it stood for is `/recommendations`' goal sheet, which now draws "Make this a goal" and "Set a goal →" disabled with a reason for anyone else. The founder's rule also admits "authorized personnel" (the term ADR 0112 records); whether they reach goal writes is OPEN and owned by another session.]**
 - **Write a report.** `POST /reports/generate` still files a `pending` row that
   nothing fills (OD-81). The button is off, with the reason.
 - **Show two cuttings of the same register.** Deliberate: a duplicate is not a
@@ -695,7 +695,7 @@ between the two copies surfaces as a sentence, never as a blank square.
    `activeRole`, which is a courtesy. Adding `RolesGuard` to the analytics
    controller would gate `EngineInsightsPanel`'s existing goal POST on the
    shipping page too — a behaviour change to a surface this pass does not own.
-   Filed as §9.8 and §13.17.
+   Filed as §9.8 and §13.17. **[2026-10-01, ADR 0250 — closed on `fix/goal-writes-need-a-manager`: create, edit, status and "Ask the book" now carry `RolesGuard` with `@Roles("owner", "manager")`; staff get 403 and the desk's line is now enforced. The `EngineInsightsPanel` this passage names no longer exists in `apps/web/src`; the door it stood for is `/recommendations`' goal sheet, which now draws "Make this a goal" and "Set a goal →" disabled with a reason for anyone else. The founder's rule also admits "authorized personnel" (the term ADR 0112 records); whether they reach goal writes is OPEN and owned by another session.]**
 
 **Substituted or left out, and why.** (a) The goals desk lives on the **Table**
 drawing, because it is a list of records with a form, and a form is not a
@@ -970,7 +970,7 @@ drift chips, S02/S03 Plus scorecards, S10 Plus days-of-cover. Pro depth (forecas
   `RolesGuard`, so a `staff` token could still POST a goal by hand. **Not
   fixed here**: adding a role guard to the analytics controller would also gate
   `EngineInsightsPanel`'s existing goal POST on the shipping page, which is a
-  behaviour change to a surface this pass does not own. §13.17.
+  behaviour change to a surface this pass does not own. §13.17. **[2026-10-01, ADR 0250 — closed on `fix/goal-writes-need-a-manager`: create, edit, status and "Ask the book" now carry `RolesGuard` with `@Roles("owner", "manager")`; staff get 403 and the desk's line is now enforced. The `EngineInsightsPanel` this passage names no longer exists in `apps/web/src`; the door it stood for is `/recommendations`' goal sheet, which now draws "Make this a goal" and "Set a goal →" disabled with a reason for anyone else. The founder's rule also admits "authorized personnel" (the term ADR 0112 records); whether they reach goal writes is OPEN and owned by another session.]**
 - **`cashflow.spendLast30d` / `spendPrev30d` are unconditional sums, and a
   failed loader degrades to `[]`.** Measured live on the dev tenant on
   2026-09-03: both windows came back `0` while `openOrderCount` was `0` too, so
@@ -1045,7 +1045,7 @@ verified live with curl.
 **Why not "complete":** the report writer is still absent (§13.2); two real
 endpoints are catalogued nowhere (§9); no endpoint has hour grain, so the
 weekday × hour heat map the founder named first cannot be drawn (§9.5); the
-goals-desk role gate is client-side only (§9.8); and there is no peer benchmark,
+goals-desk role gate is client-side only (§9.8) **[server-side since 2026-10-01, ADR 0250]**; and there is no peer benchmark,
 because there is no peer data (§13.16). The shipping page keeps its monthly reconciliation and data-tables
 sections, which the redesign deliberately does not carry (§1b).
 
@@ -1263,6 +1263,7 @@ about it, with a visible line back to the data.
     `PATCH …/:goalId` and `PUT …/status` should be owner/manager-only server
     side. The guard exists (`auth/guards/roles.guard.ts`); applying it touches
     the shipping page's existing goal POST, so it is a decision, not a patch.
+    **[2026-10-01: decided and built — ADR 0250. The founder chose owners and managers for create, edit and status, the same rule for `cutting-spec` ("Same rule as writes"), and `created_by` from the token; reads and scenario requests stay open. Whether "authorized personnel" (ADR 0112) reach goal writes is OPEN, owned by another session.]**
 19. **`getCashflow` must distinguish "no delivered order" from "the read did not
     answer"** (§9). Shape: count the rows the loader actually returned, publish
     it in `basis`, and return `null` for `spendLast30d`/`spendPrev30d` when the

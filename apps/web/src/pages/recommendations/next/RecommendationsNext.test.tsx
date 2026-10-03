@@ -230,6 +230,8 @@ const base = {
   // The person's role in this house, as the shell reads it (normalRole).
   // Founder item 87: a Promotions hand is theirs only as owner or manager.
   role: 'manager',
+  // ADR 0250: why this person may not set a goal; null when they may (a manager).
+  goalRoleReason: null as string | null,
   hiddenForYou: 0,
   personalSnoozesReadable: true,
   personalProblem: null,
@@ -2130,5 +2132,70 @@ describe('founder item 87 — a Promotions hand is a manager’s for staff (OD-1
     await waitFor(() =>
       expect(navigate).toHaveBeenCalledWith(expect.stringContaining('/orders?rec=stockout_imminent')),
     );
+  });
+});
+
+/**
+ * ADR 0250 (the founder, 2026-10-01: "Disabled with a reason"). The gateway
+ * refuses goal writes to anyone but an owner or a manager of the house, so
+ * both goal doors on this page are drawn dark with the reason the data hook
+ * derives from `activeRole` (`goalRoleReasonFor`), never a sheet that would be
+ * refused. The words are pinned literally: they are what a person reads.
+ */
+describe('goal writes are an owner’s or a manager’s (ADR 0250)', () => {
+  const STAFF_REASON = 'Goals are set by owners and managers.';
+  const UNCONFIRMED_REASON =
+    'Your role at this restaurant is not confirmed here, so setting a goal is not offered. ' +
+    'Ask a manager or an owner to set one.';
+  const asStaff = {
+    ...base,
+    role: 'staff',
+    canActRuleWide: false,
+    canSnoozeForEveryone: false,
+    goalRoleReason: STAFF_REASON,
+  };
+
+  it('[REVERT-FAILS] staff: "Make this a goal" is a disabled control carrying the reason, and opens no sheet', () => {
+    mockData.current = { ...asStaff, entries: [weekdayEntry()] };
+    draw();
+    const row = screen.getAllByTestId('rc-entry')[0];
+    const dark = within(row).getByTestId('rc-goal-role');
+    expect(dark).toBeDisabled();
+    expect(dark).toHaveTextContent('Make this a goal');
+    expect(dark).toHaveAttribute('title', STAFF_REASON);
+    fireEvent.click(dark);
+    expect(screen.queryByRole('group', { name: 'Make this a goal' })).not.toBeInTheDocument();
+    expect(loadGoals).not.toHaveBeenCalled();
+    expect(createGoal).not.toHaveBeenCalled();
+  });
+
+  it('[REVERT-FAILS] staff: the margin’s "Set a goal →" is disabled, and the reason replaces "the target is yours to type"', () => {
+    mockData.current = { ...asStaff, entries: [weekdayEntry()], goals: [] };
+    draw();
+    const suggest = screen.getByTestId('rc-mgoal-suggest');
+    const dark = within(suggest).getByTestId('rc-mgoal-suggest-role');
+    expect(dark).toBeDisabled();
+    expect(dark).toHaveAttribute('title', STAFF_REASON);
+    expect(suggest).toHaveTextContent(STAFF_REASON);
+    expect(suggest).not.toHaveTextContent('The target is yours to type.');
+    fireEvent.click(dark);
+    expect(screen.queryByRole('group', { name: 'Make this a goal' })).not.toBeInTheDocument();
+  });
+
+  it('[REVERT-FAILS] a role that is not confirmed here reads as not offered, never as permission', () => {
+    mockData.current = { ...base, role: null, entries: [weekdayEntry()], goals: [], goalRoleReason: UNCONFIRMED_REASON };
+    draw();
+    const row = screen.getAllByTestId('rc-entry')[0];
+    expect(within(row).getByTestId('rc-goal-role')).toHaveAttribute('title', UNCONFIRMED_REASON);
+    expect(within(screen.getByTestId('rc-mgoal-suggest')).getByTestId('rc-mgoal-suggest-role')).toBeDisabled();
+  });
+
+  it('an owner or a manager still gets both live controls', () => {
+    mockData.current = { ...base, entries: [weekdayEntry()], goals: [] };
+    draw();
+    expect(screen.queryByTestId('rc-goal-role')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('rc-mgoal-suggest-role')).not.toBeInTheDocument();
+    fireEvent.click(within(screen.getAllByTestId('rc-entry')[0]).getByText('Make this a goal'));
+    expect(screen.getByRole('group', { name: 'Make this a goal' })).toBeInTheDocument();
   });
 });
