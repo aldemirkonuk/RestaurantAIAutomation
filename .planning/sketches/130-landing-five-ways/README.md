@@ -57,3 +57,15 @@ metrics or prices are claimed. The only integration named is Toast.
 
 This README is the sketch's own index entry, the same shape as sketches 119–124; it retires
 nothing. The landing decision itself is OD-214.
+
+## Round 3 (2026-10-03): B3, The House, drawn
+
+The founder on B2: copy it *"as a new version where the figures, human figures, and etc. are
+more like drawings … lines, … paper, … modernistic … more simplistic … less like a game but
+more like an experience"*. [`b3-house-drawn.html`](b3-house-drawn.html) is B2's story, camera
+path and interactions re-rendered as ink on tracing paper: a screen-space ink-line shader with
+weight variation and slight wobble, inverted-hull outlines, flat paper fills, lines that draw in
+per room, faceless drawn figures on billboards with idle loops, teal only for what Mudavym does.
+Checked like the others (1440×900, 390×844, reduced motion, no-WebGL fallback, hover/tap and
+free roam scripted); real-GPU frame rate and real touch not verified. F2 (the analytics ending
+for F) was built in its own thread and lands through its own PR into this branch.
