@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mudavym Landing, Five Ways</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT,WONK@0,9..144,100..900,0..100,0..1;1,9..144,100..900,0..100,0..1&family=DM+Sans:ital,opsz,wght@0,9..40,300..700;1,9..40,300..700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* Layout: a single column of nine "reels" on Warm Charcoal, each with a live miniature of its motion technique. Dark-first by choice (ADR 0042 Warm Charcoal ground). */
+:root{
+  --ground:#15130F; --ground-1:#1D1813; --ground-2:#262019;
+  --ink-1:#EFE7D9; --ink-2:#C0B6A5; --ink-4:#ABA294;
+  --seal:#5FB0BC; --seal-deep:#1A5E6B; --seal-tint:rgba(95,176,188,.14);
+  --paper:#FAF7F1; --wine:#6B1F2A; --amber:#E0A458;
+  --display:"Fraunces", Georgia, "Times New Roman", serif;
+  --body:"DM Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono:"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--ground);color:var(--ink-1);font-family:var(--body);font-size:16px;line-height:1.55;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1180px;margin:0 auto;padding-inline:clamp(16px,4vw,48px);padding-block:clamp(40px,7vw,88px) 64px}
+header{display:grid;gap:18px;margin-bottom:clamp(40px,6vw,72px)}
+.brand{display:flex;align-items:center;gap:12px;font-family:var(--display);font-weight:600;font-size:22px;letter-spacing:-.01em}
+.brand svg{width:34px;height:34px;flex:none}
+.brand .dot{color:var(--seal)}
+.eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-4)}
+h1{font-family:var(--display);font-weight:400;font-variation-settings:"opsz" 144,"SOFT" 50;font-size:clamp(44px,8vw,104px);line-height:.95;letter-spacing:-.03em;margin:0;text-wrap:balance}
+h1 em{font-style:italic;color:var(--seal)}
+.lede{max-width:56ch;color:var(--ink-2);margin:0;font-size:clamp(16px,1.6vw,19px)}
+.reels{display:grid;gap:clamp(16px,2.4vw,28px)}
+.reel{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:clamp(18px,3vw,40px);align-items:center;padding:clamp(14px,2vw,22px);border-radius:20px;background:var(--ground-1);text-decoration:none;color:inherit;border:1px solid rgba(239,231,217,.06);transition:transform .5s cubic-bezier(.2,.8,.2,1),border-color .4s,background .4s}
+.reel:hover{transform:translateY(-4px);border-color:rgba(95,176,188,.4);background:#211b15}
+.reel:focus-visible{outline:2px solid var(--seal);outline-offset:4px}
+.reel:nth-child(even){grid-template-columns:minmax(0,1fr) minmax(0,1.1fr)}
+.reel:nth-child(even) .stage{order:2}
+.stage{position:relative;aspect-ratio:16/10;max-width:100%;border-radius:12px;overflow:hidden;background:#0d0b09}
+.meta{display:grid;gap:12px;min-width:0;padding:6px 4px}
+.num{font-family:var(--mono);font-size:12px;color:var(--seal);letter-spacing:.12em}
+.meta h2{font-family:var(--display);font-weight:500;font-size:clamp(30px,3.6vw,46px);line-height:1;margin:0;letter-spacing:-.02em}
+.meta p{margin:0;color:var(--ink-2);max-width:46ch}
+.tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
+.tags span{font-family:var(--mono);font-size:11px;letter-spacing:.04em;padding:5px 9px;border-radius:999px;background:var(--seal-tint);color:var(--ink-1)}
+.open{font-family:var(--mono);font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--seal);margin-top:6px}
+.reel:hover .open{text-decoration:underline;text-underline-offset:4px}
+footer{margin-top:56px;color:var(--ink-4);font-size:14px;display:flex;flex-wrap:wrap;gap:8px 24px;justify-content:space-between}
+footer a{color:var(--ink-2)}
+@media (max-width:760px){
+  .reel,.reel:nth-child(even){grid-template-columns:minmax(0,1fr)}
+  .reel:nth-child(even) .stage{order:0}
+}
+
+/* ── A · film: letterbox, grain, timecode, title card ── */
+.film{background:#0a0907}
+.film .bar{position:absolute;left:0;right:0;height:13%;background:#000;z-index:3}
+.film .bar.t{top:0}.film .bar.b{bottom:0}
+.film .title{position:absolute;inset:0;display:grid;place-items:center;font-family:var(--display);font-weight:500;font-size:clamp(36px,6vw,64px);letter-spacing:-.02em;color:var(--ink-1);animation:fadeTitle 6s infinite}
+.film .title b{color:var(--seal);font-weight:600}
+.film .sub{position:absolute;bottom:17%;left:0;right:0;text-align:center;font-size:12px;color:var(--ink-2);animation:fadeSub 6s infinite;z-index:2}
+.film .tc{position:absolute;top:15%;right:4%;font-family:var(--mono);font-size:10px;color:var(--amber);z-index:4;opacity:.85}
+.film .grain{position:absolute;inset:-50%;background-image:radial-gradient(rgba(255,255,255,.07) 1px,transparent 1px);background-size:3px 3px;animation:grain .4s steps(3) infinite;z-index:2;pointer-events:none}
+.film .vig{position:absolute;inset:0;background:radial-gradient(ellipse at center,transparent 45%,rgba(0,0,0,.75));z-index:2}
+@keyframes fadeTitle{0%,8%{opacity:0;transform:scale(1.06)}25%,70%{opacity:1;transform:scale(1)}90%,100%{opacity:0}}
+@keyframes fadeSub{0%,35%{opacity:0}45%,75%{opacity:1}90%,100%{opacity:0}}
+@keyframes grain{0%{transform:translate(0,0)}33%{transform:translate(-3%,2%)}66%{transform:translate(2%,-3%)}100%{transform:translate(0,0)}}
+
+/* ── B · cellar: CSS-3D corridor of bottle racks ── */
+.cellar{background:radial-gradient(ellipse at 50% 60%,#2a1d12,#0d0b09 70%);perspective:420px}
+.cellar .tunnel{position:absolute;inset:0;transform-style:preserve-3d;animation:dolly 7s ease-in-out infinite alternate}
+.cellar .wall{position:absolute;top:10%;height:80%;width:220%;transform-style:preserve-3d;background:
+  repeating-linear-gradient(90deg,transparent 0 10px,rgba(224,164,88,.06) 10px 11px),
+  repeating-radial-gradient(circle at 6px 6px,#3a1820 0 4px,#120d0a 4.5px 12px);background-size:auto,12px 12px}
+.cellar .wall.l{left:-60%;transform:rotateY(78deg) translateZ(-40px)}
+.cellar .wall.r{right:-60%;transform:rotateY(-78deg) translateZ(-40px)}
+.cellar .scan{position:absolute;top:8%;bottom:8%;width:3px;left:50%;background:var(--seal);box-shadow:0 0 18px 4px rgba(95,176,188,.55);animation:scan 3.5s ease-in-out infinite}
+.cellar .glow{position:absolute;left:50%;top:55%;width:40%;height:40%;transform:translate(-50%,-50%);background:radial-gradient(circle,rgba(224,164,88,.35),transparent 70%)}
+.cellar .label{position:absolute;left:8%;bottom:9%;font-family:var(--mono);font-size:10px;color:var(--ink-1);background:rgba(21,19,15,.8);border:1px solid rgba(95,176,188,.5);padding:4px 7px;border-radius:4px}
+@keyframes dolly{from{transform:translateZ(0)}to{transform:translateZ(120px)}}
+@keyframes scan{0%,100%{left:12%;opacity:0}20%{opacity:1}50%{left:86%;opacity:1}70%{opacity:0}}
+
+/* ── C · type: variable-axis letters on paper ── */
+.type{background:var(--paper);display:grid;place-items:center;color:#211C16}
+.type .word{font-family:var(--display);font-size:clamp(44px,8vw,92px);letter-spacing:-.03em;display:flex}
+.type .word span{display:inline-block;animation:axis 3.2s ease-in-out infinite;font-variation-settings:"wght" 300,"SOFT" 0,"opsz" 144}
+.type .word span:last-child{color:var(--seal-deep)}
+.type .rule{position:absolute;left:8%;right:8%;bottom:22%;height:1px;background:rgba(33,28,22,.25)}
+.type .folio{position:absolute;right:8%;bottom:12%;font-family:var(--mono);font-size:10px;color:#665D50}
+@keyframes axis{0%,100%{font-variation-settings:"wght" 250,"SOFT" 0,"WONK" 0,"opsz" 144;transform:translateY(0)}50%{font-variation-settings:"wght" 900,"SOFT" 100,"WONK" 1,"opsz" 144;transform:translateY(-4%)}}
+
+/* ── D · pass: falling tickets onto a steel rail ── */
+.pass{background:linear-gradient(180deg,#d9d6cf,#a9a7a1 55%,#8d8b86)}
+.pass .rail{position:absolute;left:6%;right:6%;top:22%;height:10px;border-radius:6px;background:linear-gradient(180deg,#f2f2f0,#9a9a96 60%,#6f6f6b);box-shadow:0 3px 8px rgba(0,0,0,.25)}
+.pass .tix{position:absolute;top:24%;width:22%;height:46%;background:var(--paper);border-radius:3px;box-shadow:0 6px 14px rgba(0,0,0,.25);font-family:var(--mono);font-size:9px;color:#211C16;padding:8px;line-height:1.4;animation:drop 4.5s cubic-bezier(.3,1.4,.5,1) infinite;transform-origin:50% 0}
+.pass .tix b{display:block;font-size:10px;margin-bottom:4px}
+.pass .tix i{position:absolute;right:8px;bottom:8px;width:34px;height:34px;border:2px solid var(--seal-deep);border-radius:50%;color:var(--seal-deep);font-style:normal;font-size:8px;display:grid;place-items:center;transform:rotate(-14deg);opacity:0;animation:stamp 4.5s infinite}
+.pass .tix:nth-child(2){left:12%;animation-delay:0s}.pass .tix:nth-child(2) i{animation-delay:.6s}
+.pass .tix:nth-child(3){left:39%;animation-delay:.35s}.pass .tix:nth-child(3) i{animation-delay:.95s}
+.pass .tix:nth-child(4){left:66%;animation-delay:.7s}.pass .tix:nth-child(4) i{animation-delay:1.3s}
+@keyframes drop{0%{transform:translateY(-160%) rotate(-12deg)}18%{transform:translateY(0) rotate(4deg)}26%{transform:rotate(-2deg)}34%,88%{transform:rotate(0)}100%{transform:translateY(0)}}
+@keyframes stamp{0%,40%{opacity:0;transform:rotate(-14deg) scale(1.8)}48%,90%{opacity:1;transform:rotate(-14deg) scale(1)}100%{opacity:0}}
+
+/* ── E · ask: glaze field + self-typing input ── */
+.ask{background:#0c1416}
+.ask .glaze{position:absolute;inset:-30%;background:
+  radial-gradient(circle at 30% 40%,rgba(26,94,107,.85),transparent 40%),
+  radial-gradient(circle at 70% 60%,rgba(47,88,224,.45),transparent 42%),
+  radial-gradient(circle at 50% 80%,rgba(95,176,188,.4),transparent 38%);filter:blur(18px);animation:swirl 12s linear infinite}
+.ask .box{position:absolute;left:10%;right:10%;top:50%;transform:translateY(-50%);padding:14px 16px;border-radius:14px;background:rgba(21,19,15,.72);border:1px solid rgba(95,176,188,.45);font-size:clamp(13px,1.6vw,17px);color:var(--ink-1);backdrop-filter:blur(6px)}
+.ask .typed{display:inline-block;overflow:hidden;white-space:nowrap;vertical-align:bottom;max-width:100%;animation:typing 5s steps(28) infinite}
+.ask .caret{display:inline-block;width:2px;height:1.1em;background:var(--seal);vertical-align:-.15em;animation:blink 1s steps(1) infinite}
+.ask .chips{position:absolute;left:10%;right:10%;top:72%;display:flex;gap:6px;flex-wrap:wrap}
+.ask .chips span{font-size:10px;padding:4px 8px;border-radius:999px;border:1px solid rgba(239,231,217,.25);color:var(--ink-2)}
+@keyframes swirl{to{transform:rotate(360deg)}}
+@keyframes typing{0%{width:0}55%,85%{width:28ch}100%{width:0}}
+@keyframes blink{50%{opacity:0}}
+
+
+/* ── F · book: a page turning ── */
+.book{background:#EFE9DD;perspective:900px;display:grid;place-items:center}
+.book .cover{position:relative;width:62%;height:76%;transform-style:preserve-3d}
+.book .pg{position:absolute;top:0;bottom:0;width:50%;background:#FAF7F1;border:1px solid rgba(33,28,22,.12);box-shadow:0 10px 24px rgba(33,28,22,.18)}
+.book .pg.l{left:0;border-radius:4px 0 0 4px}.book .pg.r{right:0;border-radius:0 4px 4px 0;padding:12% 9%;display:grid;align-content:start;gap:8px;font-family:var(--display);color:#211C16;font-size:clamp(14px,2vw,20px)}
+.book .pg.r i{display:block;height:2px;background:rgba(33,28,22,.2);border-radius:2px}
+.book .pg.r b{display:block;height:14px;margin-top:6px;border-radius:3px;background:var(--seal-deep)}
+.book .leaf{position:absolute;right:0;top:0;bottom:0;width:50%;background:repeating-linear-gradient(180deg,transparent 0 13px,rgba(33,28,22,.10) 13px 14px),linear-gradient(90deg,#e9e1d1,#FAF7F1);transform-origin:left center;border-radius:0 4px 4px 0;animation:turn 3.6s cubic-bezier(.6,0,.3,1) infinite;opacity:.97;box-shadow:0 0 18px rgba(33,28,22,.15)}
+.book .leaf:nth-child(4){animation-delay:1.2s}
+@keyframes turn{0%{transform:rotateY(-2deg)}55%,100%{transform:rotateY(-178deg)}}
+
+/* ── B3 · drawn house: ink lines on paper ── */
+.drawn{background:#F3EFE6}
+.drawn svg{position:absolute;inset:0;width:100%;height:100%}
+.drawn .ink{fill:none;stroke:#211C16;stroke-width:1.4;stroke-linecap:round;stroke-dasharray:600;stroke-dashoffset:600;animation:draw 6s ease-in-out infinite}
+.drawn .teal{fill:none;stroke:#1A5E6B;stroke-width:2;stroke-dasharray:300;stroke-dashoffset:300;animation:draw 6s ease-in-out infinite;animation-delay:1.2s}
+@keyframes draw{0%{stroke-dashoffset:600}45%,85%{stroke-dashoffset:0}100%{stroke-dashoffset:0;opacity:0}}
+/* ── F2 · read back: a chart drawing itself ── */
+.readback{background:#FAF7F1}
+.readback svg{position:absolute;inset:0;width:100%;height:100%}
+.readback .ln{fill:none;stroke:#1A5E6B;stroke-width:2.2;stroke-dasharray:500;stroke-dashoffset:500;animation:draw 5s ease-out infinite}
+.readback .ax{stroke:rgba(33,28,22,.25);stroke-width:1}
+.readback .goal{stroke:#211C16;stroke-width:1;stroke-dasharray:4 4}
+.readback .tag{position:absolute;right:8%;top:14%;font-family:var(--mono);font-size:10px;color:#211C16;border:1px solid rgba(26,94,107,.5);background:#fff;padding:5px 8px;border-radius:999px}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important}
+  .film .title,.film .sub,.cellar .scan,.pass .tix i{opacity:1}
+  .ask .typed{width:28ch}
+  .drawn .ink,.drawn .teal,.readback .ln{stroke-dashoffset:0}
+}
+</style>
+</head>
+<body>
+<main class="wrap">
+  <header>
+    <div class="brand">
+      <svg viewBox="0 0 100 100" aria-hidden="true"><rect width="100" height="100" rx="22" fill="#1A5E6B"/><g transform="translate(22.2,17) scale(0.115)" fill="#FAF7F1"><path d="M0 38H72V540H0Z"/><path d="M15 38H96L460 574H379Z"/><path d="M0 346H305L353 416H0Z"/><path d="M0 470H137V540H0Z"/><path d="M99 0H151L278.7 187.8L284.8 273Z"/><path d="M389.5 40H460.9L284.8 273L251.4 224Z"/><path d="M412 40H483V574H412Z"/><path d="M80 150V192H108Z"/><path d="M142 346H206L174 292Z"/><path d="M404 138L376 157L404 176Z"/><path d="M383 430H404V470Z"/></g></svg>
+      <span>Mudavym<span class="dot">.</span></span>
+    </div>
+    <p class="eyebrow">Sketch 130 · mudavym.com · rounds 2–3 added B2, B3, F and F2; none chosen yet</p>
+    <h1>The landing page, <em>nine ways.</em></h1>
+    <p class="lede">Same product, same brand, different ways of moving. Round 2 put the Cellar inside a whole restaurant (B2) and added a day in the life of the house (F). Round 3 redrew the House as line art (B3) and gave the day an analytics ending (F2). Open each one, scroll it, play with it, and pick the one that feels like the house.</p>
+  </header>
+
+  <nav class="reels" aria-label="Five landing concepts">
+    <a class="reel" href="./a-film.html">
+      <div class="stage film" aria-hidden="true">
+        <div class="bar t"></div><div class="bar b"></div><div class="grain"></div><div class="vig"></div>
+        <div class="tc">21:52:08:14 · SC 04</div>
+        <div class="title"><span>Service<b>.</b></span></div>
+        <div class="sub">One night in a house where the back office runs itself.</div>
+      </div>
+      <div class="meta">
+        <span class="num">A</span>
+        <h2>The Film</h2>
+        <p>The page is a short movie of one night of service, from the delivery at four to the last count after midnight. You scroll, the film plays.</p>
+        <div class="tags"><span>scroll-scrubbed scenes</span><span>letterbox</span><span>film grain</span><span>rack focus</span><span>end credits</span></div>
+        <span class="open">Watch it →</span>
+      </div>
+    </a>
+
+    <a class="reel" href="./b-cellar.html">
+      <div class="stage cellar" aria-hidden="true">
+        <div class="glow"></div>
+        <div class="tunnel"><div class="wall l"></div><div class="wall r"></div></div>
+        <div class="scan"></div>
+        <div class="label">Barolo 2019 · Rack C · Bin 4 · 6</div>
+      </div>
+      <div class="meta">
+        <span class="num">B</span>
+        <h2>The Cellar</h2>
+        <p>A real-time 3D descent into a candlelit cellar. Every bottle gets counted as you pass, then they lift off the racks and become the ledger.</p>
+        <div class="tags"><span>WebGL · three.js</span><span>instanced bottles</span><span>camera path</span><span>morphing data</span></div>
+        <span class="open">Descend →</span>
+      </div>
+    </a>
+
+    <a class="reel" href="./c-type.html">
+      <div class="stage type" aria-hidden="true">
+        <div class="word"><span>C</span><span style="animation-delay:.12s">o</span><span style="animation-delay:.24s">u</span><span style="animation-delay:.36s">n</span><span style="animation-delay:.48s">t</span><span style="animation-delay:.6s">.</span></div>
+        <div class="rule"></div><div class="folio">fol. 130</div>
+      </div>
+      <div class="meta">
+        <span class="num">C</span>
+        <h2>The Ledger</h2>
+        <p>Kinetic typography on paper. The letters swell under your cursor like ink, a wine list breaks apart into clean columns, and the seal stamps the order.</p>
+        <div class="tags"><span>variable-font axes</span><span>split-text reveals</span><span>FLIP tokens</span><span>velocity marquee</span></div>
+        <span class="open">Read it →</span>
+      </div>
+    </a>
+
+    <a class="reel" href="./d-pass.html">
+      <div class="stage pass" aria-hidden="true">
+        <div class="rail"></div>
+        <div class="tix"><b>COUNT</b>Barolo 2019<br>Rack C<i>DONE</i></div>
+        <div class="tix"><b>DRAFT</b>PO · 6 btl<br>Vendor 3<i>DONE</i></div>
+        <div class="tix"><b>CHECK</b>Delivery<br>12 lines<i>DONE</i></div>
+      </div>
+      <div class="meta">
+        <span class="num">D</span>
+        <h2>The Pass</h2>
+        <p>Tactile and playful. The jobs Mudavym does fall onto the kitchen pass as tickets you can grab and throw, then fire down the rail and get stamped.</p>
+        <div class="tags"><span>2D rigid-body physics</span><span>drag &amp; toss</span><span>spring snaps</span><span>slide to confirm</span></div>
+        <span class="open">Play with it →</span>
+      </div>
+    </a>
+
+    <a class="reel" href="./e-ask.html">
+      <div class="stage ask" aria-hidden="true">
+        <div class="glaze"></div>
+        <div class="box"><span class="typed">How much Barolo do we have?</span><span class="caret"></span></div>
+        <div class="chips"><span>Read this wine list</span><span>We're low on Sancerre</span><span>What sold tonight?</span></div>
+      </div>
+      <div class="meta">
+        <span class="num">E</span>
+        <h2>Ask</h2>
+        <p>The page is a conversation. Ask your house a question and the answer builds its own interface in front of you, over a living İznik glaze.</p>
+        <div class="tags"><span>WebGL shader</span><span>streaming answers</span><span>generative UI</span><span>layout morphing</span></div>
+        <span class="open">Ask it →</span>
+      </div>
+    </a>
+    <a class="reel" href="./b2-house-cellar.html">
+      <div class="stage cellar" aria-hidden="true">
+        <div class="glow" style="top:40%;background:radial-gradient(circle,rgba(224,164,88,.45),transparent 70%)"></div>
+        <div class="tunnel"><div class="wall l"></div><div class="wall r"></div></div>
+        <div class="scan"></div>
+        <div class="label">Toast · Table 12 · Barolo 2019 · 5 → 4</div>
+      </div>
+      <div class="meta">
+        <span class="num">B2 · round 2</span>
+        <h2>The House</h2>
+        <p>The Cellar, now inside a whole restaurant. Walk in from the street, past the dining room and the bar, down to the cellar, then see the whole house at once. Hover any bottle, drag to look around, walk the cellar yourself.</p>
+        <div class="tags"><span>WebGL · three.js</span><span>tap any bottle</span><span>free roam</span><span>cutaway finale</span></div>
+        <span class="open">Walk in →</span>
+      </div>
+    </a>
+
+    <a class="reel" href="./f-day.html">
+      <div class="stage book" aria-hidden="true">
+        <div class="cover"><div class="pg l"></div><div class="pg r">Welcome back<span style="color:var(--seal-deep)">.</span><i></i><i></i><b></b></div><div class="leaf"></div><div class="leaf"></div></div>
+      </div>
+      <div class="meta">
+        <span class="num">F · round 2</span>
+        <h2>A Day in the Life</h2>
+        <p>It opens as the sign-in book, its pages turn, and the drawing of a restaurant comes alive: the menu goes digital, POS sales and the delivery update the house website, and the camera reads a bottle.</p>
+        <div class="tags"><span>3D page turns</span><span>self-drawing line art</span><span>live website panel</span><span>scroll story</span></div>
+        <span class="open">Open the book →</span>
+      </div>
+    </a>
+    <a class="reel" href="./b3-house-drawn.html">
+      <div class="stage drawn" aria-hidden="true">
+        <svg viewBox="0 0 320 200" preserveAspectRatio="xMidYMid meet">
+          <path class="ink" d="M40 160 L40 70 L160 40 L280 70 L280 160 Z M40 110 L280 110 M100 160 L100 125 L130 125 L130 160 M180 95 l0 -20 m40 20 l0 -20"/>
+          <path class="ink" d="M190 160 c0-20 6-30 12-30 c6 0 12 10 12 30 M202 122 a6 6 0 1 0 0.1 0 M60 160 c0-16 5-24 10-24 c5 0 10 8 10 24 M70 130 a5 5 0 1 0 0.1 0"/>
+          <path class="teal" d="M150 150 C 170 120, 200 130, 240 100 S 270 80, 262 70"/>
+        </svg>
+      </div>
+      <div class="meta">
+        <span class="num">B3 · round 3</span>
+        <h2>The House, drawn</h2>
+        <p>The House as ink on tracing paper. The same walk through the restaurant, with drawn people, calm camera moves and lines that draw themselves in, and teal only where Mudavym is at work.</p>
+        <div class="tags"><span>WebGL ink shader</span><span>drawn figures</span><span>self-drawing lines</span><span>tap any bottle</span></div>
+        <span class="open">Walk in →</span>
+      </div>
+    </a>
+
+    <a class="reel" href="./f2-day-analytics.html">
+      <div class="stage readback" aria-hidden="true">
+        <svg viewBox="0 0 320 200" preserveAspectRatio="xMidYMid meet">
+          <line class="ax" x1="30" y1="170" x2="300" y2="170"/><line class="ax" x1="30" y1="30" x2="30" y2="170"/>
+          <line class="goal" x1="30" y1="70" x2="300" y2="70"/>
+          <path class="ln" d="M30 160 L70 150 L110 120 L150 132 L190 96 L230 104 L270 78 L300 72"/>
+        </svg>
+        <div class="tag">Tomorrow's focus · set</div>
+      </div>
+      <div class="meta">
+        <span class="num">F2 · round 3</span>
+        <h2>A Day, read back</h2>
+        <p>A Day in the Life with an analytics ending. When the day is done, its results become a ledger with recommendations, you set tomorrow's goal, and the focus moves there.</p>
+        <div class="tags"><span>F's engine</span><span>self-drawing charts</span><span>recommendations</span><span>set your goal</span></div>
+        <span class="open">Read it back →</span>
+      </div>
+    </a>
+  </nav>
+
+  <footer>
+    <span>All nine run on sample data from a demo house. Nothing here is a live claim.</span>
+    <span><a href="https://mudavym.com/get-started">Get started</a> · <a href="https://mudavym.com/login">Sign in</a></span>
+  </footer>
+</main>
+</body>
+</html>
