@@ -22,6 +22,11 @@
  *      against a seeded `localStorage`. A regex over the source cannot tell
  *      you that a shared terminal shows paper to the second person; running
  *      it can.
+ *
+ * [2026-10-01, ADR 0169 amendment batch 4: a mirror may now hold `system`
+ * ("Paper / Charcoal / System"), which the script resolves through
+ * `prefers-color-scheme` before paint. That is the ONLY branch allowed to read
+ * the device; the cases below hold it to that.]
  */
 
 import { readFileSync } from 'node:fs';
@@ -128,12 +133,14 @@ describe('ADR 0169 — the pre-paint script is shaped to avoid a flash', () => {
     expect(body).toMatch(/catch/);
   });
 
-  it('never consults the device\'s light/dark setting', () => {
-    // The founder's answer is paper on a first visit, full stop — not the OS
-    // preference, and there is no third "match my device" option to serve.
-    const body = scriptBody();
-    expect(body).not.toMatch(/matchMedia/);
-    expect(body).not.toMatch(/prefers-color-scheme/);
+  it('consults the device\'s light/dark setting only on the System branch', () => {
+    // Paper on a first visit, full stop — not the OS preference. The device is
+    // read for one person only: the one whose mirror says they chose System.
+    const lines = scriptBody()
+      .split('\n')
+      .filter((l) => /matchMedia|prefers-color-scheme/.test(l));
+    expect(lines.length).toBeGreaterThan(0);
+    for (const line of lines) expect(line).toContain("=== 'system'");
   });
 });
 
@@ -190,7 +197,7 @@ describe('ADR 0169 — the pre-paint script, executed', () => {
     }
   });
 
-  it('never paints a ground on a dark-mode machine that a paper person did not choose', () => {
+  it('never paints a ground on a dark-mode machine that a person who never chose did not choose', () => {
     const original = window.matchMedia;
     window.matchMedia = ((query: string) =>
       ({ matches: true, media: query }) as unknown as MediaQueryList) as typeof window.matchMedia;
@@ -200,5 +207,81 @@ describe('ADR 0169 — the pre-paint script, executed', () => {
     } finally {
       window.matchMedia = original;
     }
+  });
+
+  describe('a person who chose System (2026-10-01, batch 4)', () => {
+    /** A device whose light/dark is fixed, recording every query asked. */
+    function device(dark: boolean) {
+      const original = window.matchMedia;
+      const asked: string[] = [];
+      window.matchMedia = ((query: string) => {
+        asked.push(query);
+        return { matches: dark, media: query } as unknown as MediaQueryList;
+      }) as typeof window.matchMedia;
+      return { asked, restore: () => (window.matchMedia = original) };
+    }
+
+    it('paints charcoal before first paint on a dark device', () => {
+      const d = device(true);
+      try {
+        window.localStorage.setItem('accessToken', tokenFor('user-alice'));
+        window.localStorage.setItem(groundMirrorKey('user-alice'), 'system');
+        expect(runPrePaintScript()).toBe('charcoal');
+        expect(d.asked).toEqual(['(prefers-color-scheme: dark)']);
+      } finally {
+        d.restore();
+      }
+    });
+
+    it('paints paper on a light device', () => {
+      const d = device(false);
+      try {
+        window.localStorage.setItem('accessToken', tokenFor('user-alice'));
+        window.localStorage.setItem(groundMirrorKey('user-alice'), 'system');
+        expect(runPrePaintScript()).toBe('paper');
+      } finally {
+        d.restore();
+      }
+    });
+
+    it('never asks the device for a Paper, Charcoal, unknown or absent mirror, or for no session', () => {
+      const d = device(true);
+      try {
+        expect(runPrePaintScript()).toBe('paper');
+        window.localStorage.setItem('accessToken', tokenFor('user-alice'));
+        expect(runPrePaintScript()).toBe('paper');
+        for (const mirrored of ['paper', 'charcoal', 'sepia']) {
+          window.localStorage.setItem(groundMirrorKey('user-alice'), mirrored);
+          runPrePaintScript();
+        }
+        expect(d.asked).toEqual([]);
+      } finally {
+        d.restore();
+      }
+    });
+
+    it('paints paper, without throwing, where the browser has no media queries', () => {
+      const original = window.matchMedia;
+      (window as unknown as { matchMedia: unknown }).matchMedia = undefined;
+      try {
+        window.localStorage.setItem('accessToken', tokenFor('user-alice'));
+        window.localStorage.setItem(groundMirrorKey('user-alice'), 'system');
+        expect(runPrePaintScript()).toBe('paper');
+      } finally {
+        window.matchMedia = original;
+      }
+    });
+
+    it('a System person\'s mirror never reaches the next person on a shared terminal', () => {
+      const d = device(true);
+      try {
+        window.localStorage.setItem(groundMirrorKey('user-alice'), 'system');
+        window.localStorage.setItem('accessToken', tokenFor('user-bob'));
+        expect(runPrePaintScript()).toBe('paper');
+        expect(d.asked).toEqual([]);
+      } finally {
+        d.restore();
+      }
+    });
   });
 });
