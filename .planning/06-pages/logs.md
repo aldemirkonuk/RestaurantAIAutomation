@@ -64,6 +64,7 @@ Two faces, one route, one flag (`mudavym_design_logs`, OFF by default —
 - **(next)** A failure is struck, not dimmed: the band that names an unreadable register precedes the strip it explains, the failed cells carry the same double rule, and the register tally names them by name
 - **(next)** A register still being asked draws a waiting bar, never the em dash — the dash is kept for "asked, and there is no answer"
 - **(next)** Sticky day headings, so a timestamp forty rows down still has a date
+- **(next)** The page foot carries the note-control experiment's standing count (`noteCloseReportLine` / `useNoteCloseReport`, unchanged), on its own row under the signature. It moved here from the dashboard footer (founder, 2026-10-01, page walk-through DASH-W5; ADR 0127 amendment of that date)
 - 🚧 The register choice is a sieve over the loaded page, not a scoped read — see §9
 
 ## 1b. Motions used — Mudavym redesign (flag `mudavym_design_logs`)
