@@ -393,13 +393,18 @@ keep it true — count what drifted, verify what arrived.
 
 OD-113 is decided (founder, 2026-09-03): **one house item id across all
 beverages.** [[0115-the-house-item-is-the-ledgers-key]] — *Proposed*, the founder
-locks — makes the house item `restaurant_inventory.id`, the row this page is
+locks [CORRECTED 2026-10-02: locked by the founder on 2026-10-02] — makes the house item `restaurant_inventory.id`, the row this page is
 built on. The row stops being a wine: `master_wine_id` becomes a nullable
 attribute and the row gains `kind`, `uom`, `display_name`, `beverage_id` and
 `identity_provenance`. Migration
 `supabase/migrations/20260903171000_the_house_item_is_the_ledgers_key.sql` is
-written and **NOT applied**; `scripts/check_house_item_invariants.py` holds the
+written and **NOT applied** [CORRECTED 2026-10-02: applied with PR #289 on 2026-09-12]; `scripts/check_house_item_invariants.py` holds the
 invariants the database cannot.
+[AMENDED 2026-10-02: the lock changed the shape. Under it, each kind will have its
+own table and every reference will reach it through an exclusive arc.
+`restaurant_inventory` becomes the wine table rather than the row for every
+beverage. None of those tables exists yet; they come in §Build order, D1 and D2.
+Only phase 1's columns are applied. See ADR 0115 §2026-10-02 and §Build order.]
 
 **This page is the one that changes most, and one line of it is a blocker.**
 
@@ -411,6 +416,9 @@ invariants the database cannot.
    fabricated number in the read path every inventory surface uses (ADR 0020 /
    ADR 0051). It becomes an em dash. This is why the migration is gated rather
    than merely staged, and it is item 1 of the ADR's phase 2.
+   [CORRECTED 2026-10-02: the migration was applied on 2026-09-12 (PR #289) without
+   this fix. The line is now `inventory.service.ts:80` (ADR 0115 lock review C14);
+   ADR 0115 §Build order step M2 adds a CLAIMS guard on it.]
 2. **`database.service.ts:46`** embeds `master_wine_library(...)` as a LEFT join,
    so a non-wine row returns `master_wine_library: null` rather than
    disappearing. Measured: there are **zero** `master_wine_library!inner` embeds
@@ -430,10 +438,17 @@ invariants the database cannot.
    are unaffected — the FK it rests on
    (`20260902130000_capture_pos_inventory_fks.sql:65`) points at
    `restaurant_inventory(id)` and that target does not move.
+   [AMENDED 2026-10-02: under "A separate table per kind" and A1's exclusive
+   arc, `pos_item_mappings` gains one nullable link per kind table (D2 in ADR 0115
+   §Build order). Wine mappings keep `inventory_id`. A keg line resolves to its
+   beer item (X2), not to a `restaurant_inventory` row.]
 5. **Low-stock alerts need no new producer.**
    `notifications/low-stock-alerts.service.ts:683-690` reads `stock_live` and
    `threshold_min` off whatever row it is handed and keys on `inventoryId`, so a
    keg with a par is alerted the day it has a row.
+   [CORRECTED 2026-10-02 (ADR 0115 lock review C16): wrong. The service reads only
+   `v_low_stock_items`, which inner-joins the wine library, so a keg never alerts.
+   D5 in ADR 0115 §Build order rebuilds the view.]
 6. **`INVENTORY_SOTA_PLAN.md:352`'s identity paragraph is superseded** by the ADR
    (retire-to-write; that file gets no edit). `kind` is the one axis, on the row,
    CHECK-constrained — there is no `domain`/`subsection`/`subtype` triple and no
@@ -462,8 +477,17 @@ invariants the database cannot.
    never mint an inventory row to make a document reconcile. That is the same rule
    `ReceiptDepth`'s §9 gap already follows by accident ("deliberately not faked
    with description matching"); it is now a decision rather than a restraint.
+   [AMENDED 2026-10-02: the first rule is reversed. X14, "Menu creates them
+   (Recommended)", makes a current menu create its drinks' house items. No
+   2026-10-02 ruling lets the receiving paths create a row, so the rest of this
+   item is unchanged.]
 
 *Blocker on all eight: the founder locks ADR 0115. Nothing here is built.*
+[CORRECTED 2026-10-02: the founder locked ADR 0115 on 2026-10-02, so the lock half of
+this blocker is met. Phase 1's migration is applied (PR #289, 2026-09-12). None of
+the eight items is built. Item 1's `?? 750` is still in the code, now at
+`inventory.service.ts:80`. See the brackets on items 1, 4, 5 and 8 and ADR 0115
+§Build order.]
 
 ### Filed separately — the price register, and why receiving is the thing that fills it
 
