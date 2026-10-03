@@ -368,3 +368,52 @@ describe('OrderLetter — failures in the house\u2019s words (INV-W31)', () => {
     expect(text()).not.toContain('Network Error');
   });
 });
+
+describe('OrderLetter — a closed letter is not the order\'s letter (INV-W37, F-106)', () => {
+  const kept = () => draft({ id: 'c1', createdAt: '2026-10-01T12:00:05Z', draftContent: 'Dear Enoteca Rossi, please send 4 bottles of Barolo.' });
+  const newer = (status: string) =>
+    draft({ id: 'c2', status, createdAt: '2026-10-01T12:03:00Z', draftContent: 'Dear [Your Name], an order is attached.' });
+
+  for (const status of ['DISCARDED', 'CANCELLED']) {
+    it(`shows the kept pending letter, not a newer ${status} one`, async () => {
+      m.conversations = { data: [kept(), newer(status)], isPending: false, isError: false };
+      mount();
+      const box = screen.getByRole('textbox', { name: 'Draft' }) as HTMLTextAreaElement;
+      expect(box.value).toBe('Dear Enoteca Rossi, please send 4 bottles of Barolo.');
+      expect(text()).not.toContain(status.toLowerCase());
+      expect(text()).not.toContain('[Your Name]');
+      // The closed letter is not counted as another draft waiting.
+      expect(text()).not.toMatch(/other drafts?|Another draft/);
+      await screen.findByRole('button', { name: 'Hold to approve and send to Enoteca Rossi' });
+    });
+  }
+
+  it('a newer letter that is still open is still the one shown', () => {
+    m.conversations = { data: [kept(), newer('PENDING_APPROVAL')], isPending: false, isError: false };
+    mount();
+    expect((screen.getByRole('textbox', { name: 'Draft' }) as HTMLTextAreaElement).value).toBe('Dear [Your Name], an order is attached.');
+    expect(text()).toContain('Another draft to Enoteca Rossi is waiting on this order.');
+  });
+
+  it('a newer refused letter is still said as refused: only closed letters are skipped', () => {
+    m.conversations = {
+      data: [kept(), draft({ id: 'c2', status: 'SEND_REFUSED', createdAt: '2026-10-01T12:03:00Z', refusalReason: 'the mailbox rejected the address' })],
+      isPending: false,
+      isError: false,
+    };
+    mount();
+    expect(screen.queryByRole('textbox', { name: 'Draft' })).toBeNull();
+    expect(text()).toContain('not sent');
+  });
+
+  it('when every letter is closed, it says so instead of waiting for a draft', () => {
+    m.conversations = {
+      data: [draft({ id: 'c1', status: 'DISCARDED' }), draft({ id: 'c2', status: 'DISCARDED', createdAt: '2026-10-01T12:03:00Z' })],
+      isPending: false,
+      isError: false,
+    };
+    mount();
+    expect(text()).toContain('The email to Enoteca Rossi reads “discarded” on Orders.');
+    expect(text()).not.toMatch(/Waiting|writing/i);
+  });
+});

@@ -66,9 +66,18 @@ function newest(rows: OrderConversationDto[]): OrderConversationDto | null {
   return rows.reduce((a, b) => (new Date(b.createdAt).getTime() > new Date(a.createdAt).getTime() ? b : a));
 }
 
-/** The newest email this house wrote to the vendor about this order. */
-export function latestOutbound(rows: OrderConversationDto[] | undefined): OrderConversationDto | null {
-  return newest((rows ?? []).filter((r) => r.direction === 'OUTBOUND'));
+/** Letters that are no longer the order's letter. F-106 (ADR 0266): where an
+ *  order held two pending drafts, the first-written one is kept and the newer
+ *  one is DISCARDED with its createdAt unchanged, so "newest" alone would pick
+ *  the closed letter while approve-by-order sends the kept one. */
+const CLOSED = new Set(['DISCARDED', 'CANCELLED']);
+
+/** The order's letter (INV-W37): the newest email this house wrote to the
+ *  vendor that is not closed. When every one is closed, the newest of them, so
+ *  the panel can say so rather than wait for a draft that is not coming. */
+function latestOutbound(rows: OrderConversationDto[] | undefined): OrderConversationDto | null {
+  const outbound = (rows ?? []).filter((r) => r.direction === 'OUTBOUND');
+  return newest(outbound.filter((r) => !CLOSED.has(r.status))) ?? newest(outbound);
 }
 
 function OnOrders({ children }: { children: string }) {
@@ -114,7 +123,7 @@ export default function OrderLetter({
 
   const outbound = (conversations.data ?? []).filter((r) => r.direction === 'OUTBOUND');
   const sentRow = sentId ? (outbound.find((r) => r.id === sentId) ?? null) : null;
-  const row = sentRow ?? newest(outbound);
+  const row = sentRow ?? latestOutbound(outbound);
   const status = sentId && !sentRow ? 'SENDING' : (row?.status ?? null);
   const otherDrafts = outbound.filter((r) => r.id !== row?.id && r.status === 'PENDING_APPROVAL');
   const approving = needsApproval && !approvedHere;
