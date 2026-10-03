@@ -7,6 +7,7 @@ import {
 } from "./order-recurrence.service";
 import { DatabaseService } from "../database/database.service";
 import { ProcurementService } from "./procurement.service";
+import { OrganizationsService } from "../organizations/organizations.service";
 
 /**
  * Recurrence ON THE ORDER — the writes.
@@ -129,6 +130,7 @@ function makeDb(opts: {
           if (col === "recurrence_next_due_on") sawNextDueEq = true;
           return q;
         },
+        is: () => q,
         lte: () => q,
         order: () => q,
         limit: () => q,
@@ -179,9 +181,13 @@ function makeService(
       );
     },
   };
+  // Lets every role through: who may change a rule is pinned against the real
+  // role check in order-recurrence-needs-a-manager.http.spec.ts (ADR 0247).
+  const organizations = { assertCanManageRestaurant: async () => undefined };
   const service = new OrderRecurrenceService(
     { supabase } as unknown as DatabaseService,
     procurement as unknown as ProcurementService,
+    organizations as unknown as OrganizationsService,
   );
   return { service, calls, procurement };
 }
