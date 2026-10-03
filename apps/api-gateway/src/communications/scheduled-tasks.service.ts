@@ -26,6 +26,10 @@ import {
   describeRecurringOrder,
   recurringRemindersEnabled,
 } from "./recurring-order-reminder";
+import {
+  EVENT_PREP_REMINDER_FLAG,
+  eventPrepRemindersEnabled,
+} from "./event-prep-reminder";
 import { interpretRead, interpretWrite } from "./scheduled-db";
 import type { ReadEnvelope, ReadOutcome, WriteEnvelope } from "./scheduled-db";
 
@@ -777,14 +781,30 @@ export class ScheduledTasksService implements OnModuleInit {
   }
 
   /**
-   * Event Preparation Check - Runs daily at 8:00 AM
-   * Checks for events happening in 2 days
+   * Event Preparation Check — daily at 08:00 America/New_York. Mails one
+   * reminder per `calendar_events` row dated two days out.
+   *
+   * OFF BY DEFAULT — this path emails real tenants (F-154). It reads every
+   * calendar row for the day with no `event_type` filter and no per-run cap,
+   * deliveries included, and sends one mail per row through the shared Gmail
+   * sender (F-136). The whole job is gated on EVENT_PREP_REMINDERS_ENABLED and
+   * returns before it enumerates a house, reads a row, resolves a recipient or
+   * sends anything while that is unset. ADR 0131's 2026-10-02 amendment records
+   * what must be decided before it is flipped; flipping it is the founder's call.
    */
   @Cron("0 8 * * *", {
     name: "event-prep-check",
     timeZone: "America/New_York",
   })
   async sendEventPrepReminders() {
+    if (!this.eventPrepArmed()) {
+      this.logger.log(
+        `event-prep-check skipped — ${EVENT_PREP_REMINDER_FLAG} is not set; ` +
+          "this job is off by default and sends nothing until it is armed",
+      );
+      return;
+    }
+
     await this.tenants.runPerTenant("event-prep-check", async (tenant) => {
       const client = this.databaseService.getClient();
       const twoDaysFromNow = new Date();
@@ -827,6 +847,18 @@ export class ScheduledTasksService implements OnModuleInit {
         });
       }
     });
+  }
+
+  /**
+   * Read the event-prep arming flag. ConfigService first, `process.env`
+   * second — the same order as `recurringRemindersArmed`, so a Railway-set
+   * variable and a `.env`-set one behave identically.
+   */
+  private eventPrepArmed(): boolean {
+    return eventPrepRemindersEnabled(
+      this.configService.get<string>(EVENT_PREP_REMINDER_FLAG) ??
+        process.env[EVENT_PREP_REMINDER_FLAG],
+    );
   }
 
   /**
