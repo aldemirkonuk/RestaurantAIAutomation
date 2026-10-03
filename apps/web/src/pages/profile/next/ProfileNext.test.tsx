@@ -85,7 +85,7 @@ vi.mock('../../../lib/mudavym/groundChoice', async (orig) => {
   const real = await orig<typeof import('../../../lib/mudavym/groundChoice')>();
   return {
     ...real,
-    setGroundChoice: (choice: 'paper' | 'charcoal') => {
+    setGroundChoice: (choice: 'paper' | 'charcoal' | 'system') => {
       groundSpy.set(choice);
       real.setGroundChoice(choice);
     },
@@ -1505,6 +1505,11 @@ describe('the collapse — /profile becomes personal', () => {
  * answered; a failed read or a failed save is said, never called an answer.
  * The popover-only cases (it closes on a choice; the trigger's title) have no
  * counterpart here — there is no popover and no trigger.
+ *
+ * [2026-10-01, ADR 0169 amendment batch 4: "two options, never three" is
+ * reversed — the founder's "Paper / Charcoal / System". A button is pressed by
+ * the person's STORED setting, so System stays System whatever the device
+ * resolves it to.]
  */
 describe('ProfileNext — the Theme row is the ground, saved to the account', () => {
   const ALICE = 'user-alice';
@@ -1512,7 +1517,7 @@ describe('ProfileNext — the Theme row is the ground, saved to the account', ()
   function themeGroup(): HTMLElement {
     return screen.getByRole('group', { name: 'Theme' });
   }
-  function option(name: 'Paper' | 'Charcoal'): HTMLElement {
+  function option(name: 'Paper' | 'Charcoal' | 'System'): HTMLElement {
     return within(themeGroup()).getByRole('button', { name });
   }
   function groundNoteEl(): Element | null {
@@ -1550,19 +1555,24 @@ describe('ProfileNext — the Theme row is the ground, saved to the account', ()
     resetGroundChoiceForTests();
   });
 
-  it('offers Paper and Charcoal — not Light / Dark / System — and says where it is kept', () => {
+  it('offers Paper, Charcoal and System — not Light / Dark — and says where it is kept', () => {
     signedInAndAnswered();
     draw();
     expect(within(themeGroup()).getAllByRole('button').map((b) => b.textContent)).toEqual([
       'Paper',
       'Charcoal',
+      'System',
     ]);
-    for (const gone of [/^light$/i, /^dark$/i, /^system$/i]) {
+    for (const gone of [/^light$/i, /^dark$/i]) {
       expect(within(themeGroup()).queryByRole('button', { name: gone })).toBeNull();
     }
+    // System says what it does, in plain words, and that sentence describes the button.
+    expect(option('System')).toHaveAccessibleDescription(
+      'System: Follows this device’s light or dark setting.',
+    );
+    expect(option('Paper')).not.toHaveAttribute('aria-describedby');
     expect(screen.getByText(/Saved to your account/)).toBeInTheDocument();
     expect(screen.queryByText(/Kept in this browser/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/follows your device/)).not.toBeInTheDocument();
   });
 
   it('presses Paper for a person whose account says they never chose, and adds no caveat', () => {
@@ -1570,7 +1580,63 @@ describe('ProfileNext — the Theme row is the ground, saved to the account', ()
     draw();
     expect(option('Paper')).toHaveAttribute('aria-pressed', 'true');
     expect(option('Charcoal')).toHaveAttribute('aria-pressed', 'false');
+    expect(option('System')).toHaveAttribute('aria-pressed', 'false');
     expect(groundNoteEl()).toBeNull();
+  });
+
+  /** A device whose light/dark is fixed — `__tests__/setup.ts` makes
+   *  `window.matchMedia` writable, so it is replaced, then put back. */
+  function onDevice(dark: boolean): () => void {
+    const original = window.matchMedia;
+    window.matchMedia = ((query: string) =>
+      ({
+        matches: dark,
+        media: query,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      }) as unknown as MediaQueryList) as typeof window.matchMedia;
+    return () => {
+      window.matchMedia = original;
+    };
+  }
+
+  it('a System click saves "system", presses System, and paints what the device says', async () => {
+    const restore = onDevice(true);
+    try {
+      signedInAndAnswered();
+      const saved = acceptingWriter();
+      draw();
+      fireEvent.click(option('System'));
+      await settle();
+
+      expect(groundSpy.set).toHaveBeenCalledTimes(1);
+      expect(groundSpy.set).toHaveBeenCalledWith('system');
+      expect(saved).toEqual(['system']);
+      expect(window.localStorage.getItem(groundMirrorKey(ALICE))).toBe('system');
+      // A dark device: charcoal on screen, and the attribute is a ground, never "system".
+      expect(getGroundChoice()).toBe('charcoal');
+      expect(document.documentElement.getAttribute(GROUND_CHOICE_ATTR)).toBe('charcoal');
+      expect(option('System')).toHaveAttribute('aria-pressed', 'true');
+      expect(option('Charcoal')).toHaveAttribute('aria-pressed', 'false');
+      expect(option('Paper')).toHaveAttribute('aria-pressed', 'false');
+    } finally {
+      restore();
+    }
+  });
+
+  it('presses System — not Paper — for a System person on a light device', () => {
+    const restore = onDevice(false);
+    try {
+      setGroundOwner(ALICE);
+      applyAccountGround('system');
+      draw();
+      expect(getGroundChoice()).toBe('paper');
+      expect(option('System')).toHaveAttribute('aria-pressed', 'true');
+      expect(option('Paper')).toHaveAttribute('aria-pressed', 'false');
+      expect(groundNoteEl()).toBeNull();
+    } finally {
+      restore();
+    }
   });
 
   it('a click calls setGroundChoice with that value, paints it and saves it to the account', async () => {
@@ -1621,6 +1687,7 @@ describe('ProfileNext — the Theme row is the ground, saved to the account', ()
     draw();
     expect(option('Paper')).toHaveAttribute('aria-pressed', 'false');
     expect(option('Charcoal')).toHaveAttribute('aria-pressed', 'false');
+    expect(option('System')).toHaveAttribute('aria-pressed', 'false');
     expect(groundNoteEl()).toHaveTextContent(
       'Reading the ground you saved to your account. Paper until it answers.',
     );
@@ -1632,6 +1699,7 @@ describe('ProfileNext — the Theme row is the ground, saved to the account', ()
     draw();
     expect(option('Paper')).toHaveAttribute('aria-pressed', 'false');
     expect(option('Charcoal')).toHaveAttribute('aria-pressed', 'false');
+    expect(option('System')).toHaveAttribute('aria-pressed', 'false');
     expect(groundNoteEl()).toHaveTextContent(
       'The ground you saved could not be read (Network Error). Paper until it can be.',
     );
