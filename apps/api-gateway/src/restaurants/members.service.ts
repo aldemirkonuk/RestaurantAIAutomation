@@ -16,6 +16,7 @@ import { grantRefusal } from "../auth/role-grant";
 import { stopCalendarLinksOnLeaving } from "../calendar/stop-links-on-leaving";
 import { cancelPendingInvitesFrom } from "../auth/cancel-house-invites";
 import { markMembershipLeft } from "../auth/membership-ended";
+import { isLiveMembership } from "../common/tenant/live-membership";
 import {
   ORG_ROW_INSERT_ONLY,
   orgRoleForHouseGrant,
@@ -45,24 +46,55 @@ export class MembersService {
    * reuses it for the operating-hours endpoints rather than writing a second
    * one). Two membership checks in the same module is how a role gate ends up
    * enforced on one route and not the next.
+   *
+   * THE SAME THREE RULES AS `lookupRestaurantRole` (founder, 2026-10-01: "Fold
+   * into #561 (Recommended)" and "Close both in #561", ADR 0248). It stays its
+   * own copy because its contract differs: a `users` row with no role reads as
+   * `staff`, and the answer is a 403 rather than a `null`.
+   *   - An access read that ERRORS gives no role: 403, and the `users` row is
+   *     not read.
+   *   - A row that EXISTS decides alone. It gives its role only while
+   *     `isLiveMembership` holds; a row that is inactive, whose `valid_from`
+   *     is more than 120 s ahead of the gateway's clock, or whose
+   *     `valid_until` has passed gives no role.
+   *   - Only a read that succeeded and found NO row for this person here falls
+   *     back to the `users` row, unchanged.
+   *
+   * `opts.removingSelf` is passed by `removeMember` alone, when a person removes
+   * THEMSELF (the leave route, and account deletion, which removes the person
+   * from each house). Then a row that exists admits them whether or not it is
+   * live, at its role or `staff` when it has none, so nobody is ever kept in a
+   * house because their own row lapsed (founder, 2026-10-01: "Let leaving and
+   * deletion through (Recommended)", ADR 0248). An access read that errors
+   * still gives no role, and every other caller keeps the window.
    */
   async assertMembership(
     actorUserId: string,
     restaurantId: string,
     requiredRole?: "owner" | "manager" | "owner|manager",
+    opts: { removingSelf?: boolean } = {},
   ): Promise<{ role: string }> {
     let accessRole: string | null = null;
 
-    const { data: access } = await this.databaseService.supabase
-      .from("user_restaurant_access")
-      .select("role")
-      .eq("user_id", actorUserId)
-      .eq("restaurant_id", restaurantId)
-      .eq("is_active", true)
-      .maybeSingle();
+    const { data: access, error: accessError } =
+      await this.databaseService.supabase
+        .from("user_restaurant_access")
+        .select("role, is_active, valid_from, valid_until")
+        .eq("user_id", actorUserId)
+        .eq("restaurant_id", restaurantId)
+        .maybeSingle();
 
-    if (access) {
-      accessRole = access.role;
+    if (accessError) {
+      this.logger.error(
+        `assertMembership could not read ${actorUserId}'s access row in ` +
+          `${restaurantId}: ${accessError.message}`,
+      );
+    } else if (access) {
+      accessRole = opts.removingSelf
+        ? access.role || "staff"
+        : isLiveMembership(access)
+          ? access.role
+          : null;
     } else {
       const { data: user } = await this.databaseService.supabase
         .from("users")
@@ -334,8 +366,13 @@ export class MembersService {
   ): Promise<void> {
     const selfLeave = actorUserId === targetUserId;
 
+    // Removing oneself needs only a row that exists, live or not (ADR 0248,
+    // "Let leaving and deletion through"); removing someone else still needs a
+    // live owner or manager row.
     const actor = selfLeave
-      ? await this.assertMembership(actorUserId, restaurantId)
+      ? await this.assertMembership(actorUserId, restaurantId, undefined, {
+          removingSelf: true,
+        })
       : await this.assertMembership(actorUserId, restaurantId, "owner|manager");
 
     // Both target reads bind their errors. `maybeSingle()` answers `data: null`

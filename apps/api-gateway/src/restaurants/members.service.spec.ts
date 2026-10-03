@@ -736,12 +736,22 @@ describe("MembersService.updateMemberRole — a role changes in this house only"
 
   it("answers 500 and writes nothing when the target's access row cannot be read", async () => {
     const db = seedScope();
-    db.errors["user_restaurant_access:select"] = {
-      message: "connection reset",
-    };
+    // Only the SECOND access read fails: the first is the actor's own
+    // (`assertMembership`), which admits the owner by their live row. Since
+    // ADR 0248 an actor whose own access read fails is refused with 403, so a
+    // table-wide error would test that refusal instead of the target read.
+    let accessReads = 0;
+    const forced = db.errors;
+    db.errors = new Proxy(forced, {
+      get(target, key: string) {
+        if (key === "user_restaurant_access:select") {
+          accessReads += 1;
+          return accessReads >= 2 ? { message: "connection reset" } : undefined;
+        }
+        return target[key];
+      },
+    });
 
-    // `assertMembership` discards this error and admits the owner through
-    // their users row; the target read does not discard it.
     await expect(
       service(db).updateMemberRole(OWNER, RID, SAM, "manager"),
     ).rejects.toBeInstanceOf(InternalServerErrorException);
@@ -771,5 +781,128 @@ describe("MembersService.updateMemberRole — a role changes in this house only"
       service(db).updateMemberRole(OWNER, RID, LEGACY, "staff"),
     ).rejects.toBeInstanceOf(InternalServerErrorException);
     expect(db.tables.system_audit_log).toEqual([]);
+  });
+});
+
+/**
+ * `assertMembership` keeps the same three rules as `lookupRestaurantRole`
+ * (ADR 0248; the founder, 2026-10-01: "Fold into #561 (Recommended)" and
+ * "Close both in #561"):
+ *   - an access read that ERRORS gives no role, so 403, and `users` is not read;
+ *   - a row that EXISTS decides alone, and only while `isLiveMembership` holds;
+ *   - only a read that found NO row falls back to `users.role || "staff"`.
+ * Cases marked [REVERT-FAILS] fail on 2019ae7f6.
+ *
+ * These cases call the service directly, so `AuthService.validateJwtPayload`
+ * never runs. The members and operating-hours routes take the house from a
+ * tenant-compared `:restaurantId`, so over HTTP the JWT step reads the same
+ * table for that house first: an access-read error there answers 503, and an
+ * inactive row or no row answers 401. The error, inactive and no-row cases
+ * below therefore measure the helper; the expired and not-yet-valid cases pass
+ * the JWT step. ADR 0248, "Reachability end to end".
+ */
+describe("MembersService.assertMembership — the access row decides, and an unreadable one is no role", () => {
+  const ACTOR = "user-actor";
+  const PAST = "2000-01-01T00:00:00.000Z";
+  const FUTURE = "2999-01-01T00:00:00.000Z";
+
+  function seedActor(
+    access: Record<string, unknown> | null,
+    users: { role: string | null; restaurant_id: string } = { role: "owner", restaurant_id: RID },
+  ): StubDb {
+    return makeStubDb({
+      user_restaurant_access: access
+        ? [{ id: "x1", user_id: ACTOR, restaurant_id: RID, ...access }]
+        : [],
+      users: [{ user_id: ACTOR, email: "actor@example.test", ...users }],
+      notifications: [],
+      system_audit_log: [],
+    });
+  }
+
+  it("[REVERT-FAILS] an access read that errors refuses a users row saying owner, with 403, and reads no users row", async () => {
+    const db = seedActor(null);
+    db.errors["user_restaurant_access:select"] = { message: "connection reset" };
+
+    await expect(
+      service(db).assertMembership(ACTOR, RID, "owner|manager"),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(db.opsOn("users", "select")).toEqual([]);
+  });
+
+  it("[REVERT-FAILS] an access read that errors refuses a route that writes, and nothing is written", async () => {
+    const db = seedActor(null);
+    db.tables.user_restaurant_access.push({
+      id: "x2",
+      user_id: SAM,
+      restaurant_id: RID,
+      role: "staff",
+      is_active: true,
+    });
+    db.errors["user_restaurant_access:select"] = { message: "connection reset" };
+
+    await expect(
+      service(db).updateMemberRole(ACTOR, RID, SAM, "manager"),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(db.opsOn("user_restaurant_access", "update")).toEqual([]);
+    expect(db.opsOn("users", "update")).toEqual([]);
+  });
+
+  it.each([
+    ["an INACTIVE row", { role: "owner", is_active: false }],
+    ["an EXPIRED row (valid_until in the past)", { role: "manager", is_active: true, valid_until: PAST }],
+    ["a NOT-YET-VALID row (valid_from years ahead, past the two-minute tolerance)", { role: "manager", is_active: true, valid_from: FUTURE }],
+  ])(
+    "[REVERT-FAILS] %s plus a users row saying owner of this house is refused with 403",
+    async (_label, row) => {
+      const db = seedActor(row);
+
+      await expect(service(db).assertMembership(ACTOR, RID)).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
+      expect(db.opsOn("users", "select")).toEqual([]);
+    },
+  );
+
+  it("NO row at all: a users row naming this house as manager is still a manager", async () => {
+    const db = seedActor(null, { role: "manager", restaurant_id: RID });
+
+    await expect(
+      service(db).assertMembership(ACTOR, RID, "owner|manager"),
+    ).resolves.toEqual({ role: "manager" });
+  });
+
+  it("NO row at all: a users row naming this house with no role is still staff", async () => {
+    const db = seedActor(null, { role: null, restaurant_id: RID });
+
+    await expect(service(db).assertMembership(ACTOR, RID)).resolves.toEqual({
+      role: "staff",
+    });
+  });
+
+  it("[REVERT-FAILS] a just-created manager row stamped 1 s ahead of the gateway's clock is a manager (the valid_from tolerance)", async () => {
+    const db = seedActor(
+      { role: "manager", is_active: true, valid_from: new Date(Date.now() + 1_000).toISOString() },
+      { role: "staff", restaurant_id: RID },
+    );
+
+    await expect(
+      service(db).assertMembership(ACTOR, RID, "owner|manager"),
+    ).resolves.toEqual({ role: "manager" });
+  });
+
+  it("a live row inside its window decides, whatever the users row says", async () => {
+    const manager = seedActor(
+      { role: "manager", is_active: true, valid_from: PAST, valid_until: FUTURE },
+      { role: "staff", restaurant_id: RID },
+    );
+    await expect(
+      service(manager).assertMembership(ACTOR, RID, "owner|manager"),
+    ).resolves.toEqual({ role: "manager" });
+
+    const staff = seedActor({ role: "staff", is_active: true }, { role: "owner", restaurant_id: RID });
+    await expect(
+      service(staff).assertMembership(ACTOR, RID, "owner|manager"),
+    ).rejects.toBeInstanceOf(ForbiddenException);
   });
 });

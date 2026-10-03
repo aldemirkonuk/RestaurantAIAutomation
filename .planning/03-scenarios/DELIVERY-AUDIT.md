@@ -132,6 +132,8 @@ reads as *"nothing to report"* forever.
 | Fixed on `fix/swallowed-read-errors-and-guard` | 8 | 5 |
 | **Remaining, baselined and non-growing** | **191 of 215** | 42 |
 
+> **150 as of 2026-10-01, on `fix/role-read-error-means-no-role` (origin/main `2019ae7f6` + ADR 0248)** (`check_read_errors_not_swallowed.py` on that tree: 1703 files scanned, 150 sites, 150 baselined, 0 allowlisted). `MembersService.assertMembership` now binds its access read's error and answers 403 on it, so `members.service.ts::user_restaurant_access::access` is retired. Re-measure before citing.
+
 > **151 as of 2026-09-28, on `feat/cutover-manifest-trial` (origin/main `c8bbf95de` + #487 `d3bfacb82` + the ADR 0149 trial cutover)** (`check_read_errors_not_swallowed.py` on that tree: 1698 files scanned, 151 sites, 151 baselined, 0 allowlisted). The legacy `/reports` page's `SeatingDensityPanel.tsx` (a detector false match) is deleted with its manifest group; the baseline had also drifted, recording 159 while its rows summed to 152 on the pre-cutover tree. Holds only if the founder approves group `reports` ([cutover manifest](../07-reference/deploy/CUTOVER-MANIFEST-2026-09-28.md)). Re-measure before citing.
 
 > **159 as of 2026-09-27, on #440 (`fix/team-pay-defects`) merged onto `origin/main` 4b2a8e389 (#438)** (`check_read_errors_not_swallowed.py` on that tree: 1789 files scanned, 159 sites, 159 baselined, 0 allowlisted): #438 retired `calendar.service.ts` calendar_recurrence_rules/rules and ADR 0215 retires `schedule.service.ts` team_members/m. Re-measure before citing.

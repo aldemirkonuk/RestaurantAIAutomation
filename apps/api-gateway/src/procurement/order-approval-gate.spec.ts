@@ -1,11 +1,18 @@
-import { ForbiddenException, NotFoundException } from "@nestjs/common";
+import {
+  ForbiddenException,
+  InternalServerErrorException,
+  NotFoundException,
+} from "@nestjs/common";
 import { ProcurementService } from "./procurement.service";
 import { SealChallengeService } from "../common/seal/seal-challenge.service";
 import { DatabaseService } from "../database/database.service";
 import { EventsService } from "../events/events.service";
 import { InventoryLedgerService } from "../inventory-ledger/inventory-ledger.service";
 import { ApprovalThresholdsService } from "../settings/approval-thresholds.service";
-import { OrganizationsService } from "../organizations/organizations.service";
+import {
+  OrganizationsService,
+  RestaurantRoleUnreadableError,
+} from "../organizations/organizations.service";
 import { roleSatisfies, refusalSentence, policyNote } from "./order-approval-gate";
 import type { ThresholdRow } from "../settings/approval-thresholds";
 
@@ -252,8 +259,13 @@ function thresholdsStub(
   } as unknown as ApprovalThresholdsService;
 }
 
+/**
+ * The role, as both readings return it. The seal (`assertApprovalAllowed`)
+ * reads it strictly (ADR 0248); the page's read (`approvalGate`) does not.
+ */
 function orgsStub(role: string | null): OrganizationsService {
   return {
+    readRestaurantRole: jest.fn().mockResolvedValue(role),
     resolveRestaurantRole: jest.fn().mockResolvedValue(role),
   } as unknown as OrganizationsService;
 }
@@ -527,6 +539,123 @@ describe("approveOrder — the refusal is filed", () => {
     await expect(svc.approveOrder(REST, ORDER, USER)).rejects.toBeInstanceOf(
       ForbiddenException,
     );
+  });
+});
+
+/**
+ * A role that cannot be read is not a person with no role (ADR 0248; the
+ * founder, 2026-10-01: "Strict for the order seal (Recommended)"). The seal
+ * answers 500 before it parks the order or files a refusal, and the person
+ * tries again. Cases marked [REVERT-FAILS] fail on main 2019ae7f6: there the
+ * seal read the role non-strictly, and an access-read error fell back to
+ * `users.role`.
+ *
+ * These cases call the service directly. Over HTTP (`POST
+ * /procurement/orders/:id/approve`, house from the token) the JWT step reads
+ * the same table first and answers 503 when its own read errors, so the seal's
+ * 500 shows there only when that read succeeded and the seal's own read
+ * errors. The recurring-orders cron calls `approveOrder` with no JWT step
+ * (`recurring-orders.service.ts:956`). ADR 0248, "Reachability end to end".
+ */
+describe("approveOrder — a role that cannot be read", () => {
+  /**
+   * The REAL role lookup over a database whose access register read errors,
+   * with a users row naming this house — the hole ADR 0248 closes.
+   */
+  function orgsWithAccessOutage(legacyRole: string): OrganizationsService {
+    const query = (table: string) => {
+      const b: any = {
+        select: () => b,
+        eq: () => b,
+        maybeSingle: async () =>
+          table === "user_restaurant_access"
+            ? { data: null, error: { message: "connection reset" } }
+            : table === "users"
+              ? { data: { role: legacyRole, restaurant_id: REST }, error: null }
+              : { data: null, error: null },
+      };
+      return b;
+    };
+    return new OrganizationsService({
+      supabase: { from: (t: string) => query(t) },
+    } as unknown as DatabaseService);
+  }
+
+  it("[REVERT-FAILS] an unreadable role is a 500: nothing is parked and no refusal is filed", async () => {
+    const { db, calls } = makeDb({ order: { ...ORDER_ROW, total_cost: 7500 } });
+    const orgs = {
+      readRestaurantRole: jest
+        .fn()
+        .mockRejectedValue(
+          new RestaurantRoleUnreadableError(
+            "this house's access register could not be read (connection reset)",
+          ),
+        ),
+      // The non-strict reading answers null for the same outage.
+      resolveRestaurantRole: jest.fn().mockResolvedValue(null),
+    } as unknown as OrganizationsService;
+    const svc = service(db, thresholdsStub([ceiling(1000)]), orgs);
+
+    const attempt = svc.approveOrder(REST, ORDER, USER);
+    await expect(attempt).rejects.toBeInstanceOf(InternalServerErrorException);
+    await expect(svc.approveOrder(REST, ORDER, USER)).rejects.toThrow(
+      "could not be read (this house's access register could not be read (connection reset))",
+    );
+
+    expect(calls.orderUpdates.some((u) => u.status === "APPROVAL_NEEDED")).toBe(false);
+    expect(calls.orderUpdates.some((u) => u.status === "APPROVED")).toBe(false);
+    expect(calls.auditInserts).toHaveLength(0);
+  });
+
+  it("[REVERT-FAILS] an access outage with a users row saying 'owner' does not seal an order over the owner's ceiling", async () => {
+    const { db, calls } = makeDb({ order: { ...ORDER_ROW, total_cost: 7500 } });
+    const svc = service(db, thresholdsStub([ceiling(1000, "owner")]), orgsWithAccessOutage("owner"));
+
+    await expect(sealedApprove(svc)).rejects.toBeInstanceOf(InternalServerErrorException);
+
+    expect(calls.orderUpdates.some((u) => u.status === "APPROVED")).toBe(false);
+    expect(calls.orderUpdates.some((u) => u.status === "APPROVAL_NEEDED")).toBe(false);
+    expect(calls.auditInserts).toHaveLength(0);
+  });
+
+  it("[REVERT-FAILS] an access outage with a users row saying 'manager' parks nothing and files nothing", async () => {
+    const { db, calls } = makeDb({ order: { ...ORDER_ROW, total_cost: 7500 } });
+    const svc = service(db, thresholdsStub([ceiling(1000, "owner")]), orgsWithAccessOutage("manager"));
+
+    await expect(svc.approveOrder(REST, ORDER, USER)).rejects.toBeInstanceOf(
+      InternalServerErrorException,
+    );
+
+    expect(calls.orderUpdates.some((u) => u.status === "APPROVAL_NEEDED")).toBe(false);
+    expect(calls.orderUpdates).toHaveLength(0);
+    expect(calls.auditInserts).toHaveLength(0);
+  });
+
+  it("a role read that fails is never reached when no rule fires", async () => {
+    const { db, calls } = makeDb({ order: { ...ORDER_ROW, total_cost: 900 } });
+    const svc = service(db, thresholdsStub([ceiling(1000)]), orgsWithAccessOutage("staff"));
+
+    await sealedApprove(svc);
+
+    expect(calls.orderUpdates.some((u) => u.status === "APPROVED")).toBe(true);
+    expect(calls.auditInserts).toHaveLength(0);
+  });
+
+  it("[REVERT-FAILS] the page's read keeps the non-strict reading: an unreadable role reads as no role", async () => {
+    const { db } = makeDb({
+      ledgerRows: [
+        { id: "o-big", status: "PENDING", provider_id: "p1", inventory_id: null, total_cost: 9000, final_price: null },
+      ],
+    });
+    const svc = service(db, thresholdsStub([ceiling(1000)]), orgsWithAccessOutage("owner"));
+
+    const gate = await svc.approvalGate(REST, USER);
+
+    expect(gate.readable).toBe(true);
+    expect(gate.callerRole).toBeNull();
+    expect(gate.orders).toHaveLength(1);
+    expect(gate.orders[0].mayApprove).toBe(false);
+    expect(gate.orders[0].sentence).toContain("could not be shown to hold any role");
   });
 });
 
