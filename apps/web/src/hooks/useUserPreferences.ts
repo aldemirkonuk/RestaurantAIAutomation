@@ -78,8 +78,12 @@ export interface UserPreferences {
    * above states. `lib/mudavym/GroundChoiceSync.tsx` is the only reader and
    * writer; do not set it from anywhere else, or the device mirror it keeps
    * can go out of step with the account.
+   *
+   * [2026-10-01, ADR 0169 amendment batch 4: `'system'` added — the person
+   * follows their device's light/dark setting. Absent is still paper, never
+   * system.]
    */
-  ground?: 'paper' | 'charcoal'
+  ground?: 'paper' | 'charcoal' | 'system'
   /**
    * The Ask panel's LAST USED mode — founder, 2026-09-26 round 7 (ADR 0145,
    * `AskUserQuestion` "/ask panel: which mode does it open in?", his pick
