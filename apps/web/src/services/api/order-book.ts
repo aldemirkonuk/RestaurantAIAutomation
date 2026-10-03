@@ -85,8 +85,11 @@ export const ORDER_WIRE_STATUSES: readonly OrderWireStatus[] = [
  * `cancelled` (`canonicalStatus`, lib/mudavym/status.ts:18), so it is closed
  * too. Everything else is open, including `delivered` ("Not counted yet") and
  * `partially_received`, and including a status this app cannot read, which
- * `normalizeOrderStatus` files as `pending`: an order is never hidden because
- * its status is new.
+ * `normalizeOrderStatus` files as `pending`. A whole read lists such an order
+ * with the open ones. The open sweep cannot ask for a status it cannot name,
+ * so a degraded read keeps such an order only as the unfiltered pages it read
+ * showed it, and reports the rest as `unclassifiedCount` with `openComplete`
+ * false.
  */
 const CLOSED_STAGES: ReadonlySet<OrderStatus> = new Set<OrderStatus>([
   'completed',
@@ -172,11 +175,23 @@ export class RateLimitedError extends Error {
   }
 }
 
-/** The session's house is not the house this read was for, or a row belongs to another house. */
+/** The session's token names another house than the one this read was for. */
 export class HouseChangedError extends Error {
   constructor(message = 'The house changed while its order book was being read.') {
     super(message)
     this.name = 'HouseChangedError'
+  }
+}
+
+/**
+ * A row on a page belongs to another house while the token still names this
+ * one: the gateway answered for a house this read did not ask for. Unlike a
+ * `HouseChangedError`, this is a failed read of this house.
+ */
+export class ForeignRowError extends Error {
+  constructor() {
+    super('A row on the order book page belongs to another house.')
+    this.name = 'ForeignRowError'
   }
 }
 
@@ -217,7 +232,13 @@ export interface OrderBook {
   rows: Order[]
   /** The gateway's count of every order in the house, from the last page read. */
   total: number
-  /** Every order of an open status is in `rows`. Always true for a whole book. */
+  /**
+   * Every open order is in `rows`. Always true for a whole book. A degraded
+   * book sets it only when every open sweep held still and `unclassifiedCount`
+   * is 0: a status no sweep can ask for may hold open orders the unfiltered
+   * pages did not show, and the reader cannot tell, so it is false even when
+   * they showed all of them.
+   */
   openComplete: boolean
   /** Per wire status, the gateway's count. Read only when the book is not whole. */
   statusTotals: Partial<Record<OrderWireStatus, number>> | null
@@ -319,7 +340,7 @@ function readPage(data: unknown, req: PageRequest, house: string): OrderListPage
     if (ids.has(row.id)) throw new BookShapeError(`order ${row.id} appears twice on one page`)
     ids.add(row.id)
     if (row.restaurantId !== house) {
-      throw new HouseChangedError('A row on the order book page belongs to another house.')
+      throw new ForeignRowError()
     }
     if (req.status && row.status !== req.status) {
       throw new BookShapeError(`asked for ${req.status}, got a ${String(row.status)} row`)
@@ -419,22 +440,25 @@ async function degrade(
     const one = await session.page({ page: 1, limit: 1, status })
     statusTotals[status] = one.total
   }
-  // The open set is exactly the sweep: a prefix row that was open when the
-  // prefix was read and is not in the sweep has since closed, and its old
-  // status would be a lie. Closed rows come from the prefix.
+  // A prefix row of a swept status comes from the sweep: if the sweep does not
+  // have it, it has left that status since the prefix was read, and its old
+  // status would be a lie. Closed rows come from the prefix, and so do rows of
+  // a status no sweep can ask for: open (isOpenOrderStatus), as last read.
+  const swept = new Set<string>(OPEN_WIRE_STATUSES)
   const rows = new Map<string, Order>()
-  for (const row of prefix.values()) if (!isOpenOrderStatus(row.status)) rows.set(row.id, row)
+  for (const row of prefix.values()) if (!swept.has(row.status)) rows.set(row.id, row)
   for (const row of open.values()) rows.set(row.id, row)
   const counted = Object.values(statusTotals).reduce((sum, n) => sum + (n ?? 0), 0)
+  const unclassifiedCount = Math.max(0, total - counted)
   return {
     house,
     mode: reason === 'ceiling' ? 'capped' : 'partial',
     reason,
     rows: [...rows.values()],
     total,
-    openComplete,
+    openComplete: openComplete && unclassifiedCount === 0,
     statusTotals,
-    unclassifiedCount: Math.max(0, total - counted),
+    unclassifiedCount,
     nextClosedPage: reason === 'ceiling' ? CEILING_PAGES + 1 : null,
     readStartedAt,
     readFinishedAt: now(),

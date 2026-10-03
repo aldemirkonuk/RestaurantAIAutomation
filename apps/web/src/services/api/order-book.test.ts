@@ -14,7 +14,9 @@ import {
   BookShapeError,
   CLOSED_WIRE_STATUSES,
   fetchOrderBook,
+  fetchOrderBookPage,
   fetchOrderById,
+  ForeignRowError,
   HouseChangedError,
   isOpenOrderStatus,
   markFor,
@@ -98,21 +100,21 @@ describe('fetchOrderBook: paging', () => {
 })
 
 describe('fetchOrderBook: the house', () => {
-  it('throws when a row belongs to another house', async () => {
+  it('throws ForeignRowError when a row belongs to another house', async () => {
     const rows = makeOrders(HOUSE_A, 150)
     rows[120] = { ...rows[120], restaurantId: HOUSE_B }
     install(rows)
-    await expect(fetchOrderBook(HOUSE_A, signal())).rejects.toBeInstanceOf(HouseChangedError)
+    await expect(fetchOrderBook(HOUSE_A, signal())).rejects.toBeInstanceOf(ForeignRowError)
   })
 
-  it('throws when the token changes to another house between pages (checked after a page)', async () => {
+  it('throws when the token changes to another house during the last page (only the check after a page sees it)', async () => {
     install(makeOrders(HOUSE_A, 250))
     gw.before = (_call, index) => {
-      if (index === 1) signInAs(HOUSE_B)
+      if (index === 2) signInAs(HOUSE_B)
       return undefined
     }
     await expect(fetchOrderBook(HOUSE_A, signal())).rejects.toBeInstanceOf(HouseChangedError)
-    expect(gw.listCalls()).toHaveLength(2)
+    expect(gw.listCalls()).toHaveLength(3)
   })
 
   it('throws before asking when the token changed between pages (checked before a page)', async () => {
@@ -184,6 +186,73 @@ describe('fetchOrderBook: a read that does not hold still', () => {
     expect(book.statusTotals?.IN_TRANSIT).toBe(openIds.length)
     expect(book.statusTotals?.COMPLETED).toBe(150 - openIds.length)
     expect(book.unclassifiedCount).toBe(0)
+  })
+
+  it('keeps a row of a status it cannot name, and says the open set may not be complete', async () => {
+    const rows = makeOrders(HOUSE_A, 150, (i) =>
+      i === 10 ? ('ARCHIVED' as OrderWireStatus) : statusFor(i),
+    )
+    install(rows)
+    gw.before = (call) =>
+      call.params.page === 2 && !call.params.status ? shifted(rows) : undefined
+    const book = await fetchOrderBook(HOUSE_A, signal())
+
+    expect(book.mode).toBe('partial')
+    expect(isOpenOrderStatus('ARCHIVED')).toBe(true)
+    expect(book.rows.find((r) => r.id === 'o-00010')?.status).toBe('ARCHIVED')
+    expect(book.unclassifiedCount).toBe(1)
+    expect(book.openComplete).toBe(false)
+  })
+
+  it('does not list a row as open once the sweep no longer finds it open', async () => {
+    const rows = makeOrders(HOUSE_A, 150, statusFor)
+    install(rows)
+    gw.before = (call) => {
+      if (call.params.page === 2 && !call.params.status) return shifted(rows)
+      // #3 was IN_TRANSIT on page 1, and is completed before the sweep asks.
+      if (call.params.status && gw.rows[3].status === 'IN_TRANSIT') {
+        gw.rows[3] = { ...gw.rows[3], status: 'COMPLETED' }
+      }
+      return undefined
+    }
+    const book = await fetchOrderBook(HOUSE_A, signal())
+
+    expect(book.mode).toBe('partial')
+    expect(book.rows.some((r) => r.id === 'o-00003' && r.status === 'IN_TRANSIT')).toBe(false)
+    expect(book.rows.filter((r) => r.status === 'IN_TRANSIT')).toHaveLength(
+      book.statusTotals?.IN_TRANSIT ?? -1,
+    )
+  })
+
+  it('says the open set is not complete when an open sweep does not hold still either', async () => {
+    const rows = makeOrders(HOUSE_A, 150, () => 'IN_TRANSIT')
+    install(rows)
+    gw.before = (call) =>
+      call.params.page === 2 && (!call.params.status || call.params.status === 'IN_TRANSIT')
+        ? shifted(rows)
+        : undefined
+    const book = await fetchOrderBook(HOUSE_A, signal())
+
+    const transit = gw.listCalls().filter((c) => c.params.status === 'IN_TRANSIT')
+    expect(transit.map((c) => c.params.page)).toEqual([1, 2, 1, 2])
+    expect(book.mode).toBe('partial')
+    expect(book.statusTotals?.IN_TRANSIT).toBe(150)
+    expect(book.openComplete).toBe(false)
+  })
+
+  it('refuses a swept page that holds a row of another status', async () => {
+    const rows = makeOrders(HOUSE_A, 150, statusFor)
+    install(rows)
+    gw.before = (call) => {
+      if (call.params.page === 2 && !call.params.status) return shifted(rows)
+      if (call.params.status === 'IN_TRANSIT') {
+        return { data: { orders: [rows[1]], total: 1, page: 1, limit: 100, hasMore: false } }
+      }
+      return undefined
+    }
+    await expect(fetchOrderBook(HOUSE_A, signal())).rejects.toThrow(
+      /asked for IN_TRANSIT, got a COMPLETED row/,
+    )
   })
 })
 
@@ -262,6 +331,42 @@ describe('fetchOrderBook: past the ceiling', () => {
     expect(book.statusTotals?.PARTIALLY_RECEIVED).toBe(1)
     expect(book.unclassifiedCount).toBe(0)
   })
+
+  it('keeps a row of a status it cannot name from the first pages, and says the open set may not be complete', async () => {
+    const rows = makeOrders(HOUSE_A, 3001, (i) =>
+      i === 5 ? ('ON_HOLD' as OrderWireStatus) : 'COMPLETED',
+    )
+    install(rows)
+    const book = await fetchOrderBook(HOUSE_A, signal())
+
+    expect(book.mode).toBe('capped')
+    expect(book.rows.find((r) => r.id === 'o-00005')?.status).toBe('ON_HOLD')
+    expect(book.unclassifiedCount).toBe(1)
+    expect(book.openComplete).toBe(false)
+    expect(book.requests).toBe(42)
+  })
+})
+
+describe('fetchOrderBookPage', () => {
+  it('reads one page past the cap on /history at limit 100', async () => {
+    install(makeOrders(HOUSE_A, 3001))
+    const page = await fetchOrderBookPage(HOUSE_A, 31, signal())
+
+    expect(gw.listCalls().map((c) => [c.url, c.params.page, c.params.limit])).toEqual([
+      ['/procurement/orders/history', 31, 100],
+    ])
+    expect(page).toMatchObject({ page: 31, limit: 100, total: 3001, hasMore: false })
+    expect(page.orders.map((r) => r.id)).toEqual(['o-03000'])
+  })
+
+  it('makes the same checks as a page of the book', async () => {
+    const rows = makeOrders(HOUSE_A, 3001)
+    rows[3000] = { ...rows[3000], restaurantId: HOUSE_B }
+    install(rows)
+    await expect(fetchOrderBookPage(HOUSE_A, 31, signal())).rejects.toBeInstanceOf(
+      ForeignRowError,
+    )
+  })
 })
 
 describe('fetchOrderBook: page shape', () => {
@@ -280,15 +385,30 @@ describe('fetchOrderBook: page shape', () => {
       : undefined
 
   it.each([
-    ['a page number that is not the one asked for', { page: 2 }],
-    ['a limit that is not the one asked for', { limit: 50 }],
-    ['hasMore that disagrees with total', { hasMore: true }],
-    ['a body with no orders list', { orders: undefined }],
-    ['an order twice on one page', { orders: [...makeOrders(HOUSE_A, 2), makeOrders(HOUSE_A, 1)[0]] }],
-  ])('refuses %s', async (_name, over) => {
+    ['a page number that is not the one asked for', { page: 2 }, /asked for page 1, got 2/],
+    ['a limit that is not the one asked for', { limit: 50 }, /asked for 100 a page, got 50/],
+    ['hasMore that disagrees with total', { hasMore: true }, /hasMore is true with 3 rows of 3/],
+    ['hasMore that is not a boolean', { hasMore: 'false' }, /hasMore is not true or false/],
+    ['a total that is a string', { total: '3' }, /total is not a count/],
+    ['a negative total', { total: -1 }, /total is not a count/],
+    ['a body with no orders list', { orders: undefined }, /orders is not a list/],
+    [
+      'an order twice on one page',
+      { orders: [...makeOrders(HOUSE_A, 2), makeOrders(HOUSE_A, 1)[0]] },
+      /appears twice on one page/,
+    ],
+    [
+      'more rows than the limit, with a hasMore that agrees with total',
+      { orders: makeOrders(HOUSE_A, 101), total: 101 },
+      /101 rows on a page of 100/,
+    ],
+  ])('refuses %s, on the page that has it', async (_name, over, message) => {
     install([])
     gw.before = page1(over)
-    await expect(fetchOrderBook(HOUSE_A, signal())).rejects.toBeInstanceOf(BookShapeError)
+    const read = fetchOrderBook(HOUSE_A, signal())
+    await expect(read).rejects.toBeInstanceOf(BookShapeError)
+    await expect(read).rejects.toThrow(message)
+    expect(gw.listCalls()).toHaveLength(1)
   })
 })
 
@@ -396,6 +516,13 @@ describe('fetchOrderById', () => {
     ],
     ['an empty body', () => { install(makeOrders(HOUSE_A, 1)); gw.before = () => ({ data: null }) }],
     [
+      'a row whose id is not the one asked for',
+      () => {
+        install(makeOrders(HOUSE_A, 2))
+        gw.before = () => ({ data: makeOrders(HOUSE_A, 2)[1] })
+      },
+    ],
+    [
       'a token for another house',
       () => {
         install(makeOrders(HOUSE_A, 1))
@@ -407,5 +534,14 @@ describe('fetchOrderById', () => {
     await expect(fetchOrderById(HOUSE_A, 'o-00000', signal())).resolves.toEqual({
       state: 'unreadable',
     })
+  })
+
+  it('asks nothing when the token already names another house', async () => {
+    install(makeOrders(HOUSE_A, 1))
+    signInAs(HOUSE_B)
+    await expect(fetchOrderById(HOUSE_A, 'o-00000', signal())).resolves.toEqual({
+      state: 'unreadable',
+    })
+    expect(gw.calls).toHaveLength(0)
   })
 })

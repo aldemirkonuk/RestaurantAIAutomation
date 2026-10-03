@@ -1,11 +1,12 @@
 /**
  * useOrderBook: the house's whole order book in the query cache (F-140, ADR 0269).
  *
- * A book read is up to ~45 GET requests, against a gateway that allows 100 per
- * 60 s per client IP and route (`rate-limit.guard.ts:28`, `:294-295`). So the
- * reads do not go straight from TanStack Query to the gateway. They go through
- * one runner per house, held at module level so every screen in the tab shares
- * it:
+ * A whole read is one GET per 100 orders. A capped read is at least 42 (30
+ * pages, 8 open sweeps, 4 closed counts), and a read that does not hold still
+ * reads its pages twice before it degrades. The gateway allows 100 per 60 s
+ * per client IP and route (`rate-limit.guard.ts:28`, `:294-295`). So the reads
+ * do not go straight from TanStack Query to the gateway. They go through one
+ * runner per house, held at module level so every screen in the tab shares it:
  *
  * - ONE READ AT A TIME per house. A request that arrives mid-read waits for one
  *   trailing read, because whatever asked for it may have changed after the
@@ -38,6 +39,7 @@ import {
   abortableSleep,
   BookShapeError,
   fetchOrderBook,
+  ForeignRowError,
   HouseChangedError,
   RateLimitedError,
   type OrderBook,
@@ -77,7 +79,11 @@ interface InFlight {
 }
 
 export interface BookFreshness {
-  /** When the book in the cache was read (its readStartedAt); null before the first read. */
+  /**
+   * When the book in the cache was read (its readStartedAt). Null means the
+   * book has not been read yet, NOT that it is fresh: `failing` and `stale`
+   * are both false then and say nothing, so a screen reads `asOf` first.
+   */
   asOf: number | null
   /** The last refresh failed. */
   failing: boolean
@@ -185,12 +191,8 @@ function schedule(run: HouseRun): void {
     batch.timer = null
   }
   let startAt = batch.notBefore
-  if (!batch.urgent) {
-    // A background read in a hidden tab waits for the tab to be seen.
-    if (tabHidden()) return
-    if (run.lastFinishedAt !== null) {
-      startAt = Math.max(startAt, run.lastFinishedAt + BOOK_BACKGROUND_GAP_MS)
-    }
+  if (!batch.urgent && run.lastFinishedAt !== null) {
+    startAt = Math.max(startAt, run.lastFinishedAt + BOOK_BACKGROUND_GAP_MS)
   }
   batch.timer = setTimeout(() => start(run), Math.max(0, startAt - Date.now()))
 }
@@ -198,8 +200,12 @@ function schedule(run: HouseRun): void {
 function start(run: HouseRun): void {
   const batch = run.next
   if (!batch || run.inFlight) return
-  run.next = null
   batch.timer = null
+  // A background read in a hidden tab waits, still queued, for the tab to be
+  // seen: the visibility handler times it again. This is checked when the
+  // timer fires, not when it is set, since the tab may hide in between.
+  if (!batch.urgent && tabHidden()) return
+  run.next = null
   const waiting = [...batch.waiters].filter((w) => !w.done)
   // Everyone who asked has gone (a cancelled query); nothing to read for.
   if (!batch.fromRunner && waiting.length === 0) return
@@ -234,7 +240,8 @@ function finish(run: HouseRun, flight: InFlight, book: OrderBook | null, error: 
     return
   }
   if (!book) {
-    // A house change is not a failed refresh of this house.
+    // A token that now names another house is not a failed refresh of this
+    // house. A row of another house on a page (ForeignRowError) is.
     if (!(error instanceof HouseChangedError)) {
       setFreshness(run, { asOf: run.freshness.asOf, failing: true })
     }
@@ -250,11 +257,15 @@ function finish(run: HouseRun, flight: InFlight, book: OrderBook | null, error: 
     settle((w) => batch.waiters.add(w))
     return
   }
-  run.client?.setQueryData<OrderBook>(queryKeys.orders.book(run.house), (old) =>
-    old && old.readStartedAt > book.readStartedAt ? old : book,
-  )
-  setFreshness(run, { asOf: book.readStartedAt, failing: false })
-  settle((w) => w.resolve(book))
+  // A book read later than this one stays in the cache. Its callers get the
+  // kept book too, since TanStack writes whatever the query function returns.
+  let kept = book
+  run.client?.setQueryData<OrderBook>(queryKeys.orders.book(run.house), (old) => {
+    kept = old && old.readStartedAt > book.readStartedAt ? old : book
+    return kept
+  })
+  setFreshness(run, { asOf: kept.readStartedAt, failing: false })
+  settle((w) => w.resolve(kept))
   schedule(run)
 }
 
@@ -378,12 +389,14 @@ export function subscribeOrderBook(house: string, client: QueryClient): () => vo
 /**
  * TanStack's retry, overriding the app default of one retry (App.tsx:156): a
  * 429 was already waited out inside the read, and a retry would start again
- * at page 1; a house change or a page of the wrong shape will not mend itself.
+ * at page 1; a house change, a row of another house or a page of the wrong
+ * shape will not mend itself.
  */
 export function retryOrderBook(failureCount: number, error: unknown): boolean {
   if (
     error instanceof RateLimitedError ||
     error instanceof HouseChangedError ||
+    error instanceof ForeignRowError ||
     error instanceof BookShapeError
   ) {
     return false

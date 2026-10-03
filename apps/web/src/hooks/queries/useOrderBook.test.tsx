@@ -18,6 +18,7 @@ import { apiClient } from '../../services/api/client'
 import { queryKeys } from '../../lib/query-keys'
 import {
   BookShapeError,
+  ForeignRowError,
   HouseChangedError,
   RateLimitedError,
   type OrderBook,
@@ -80,10 +81,20 @@ const advance = (ms: number) =>
 /** Page reads so far (one per page of the book). */
 const reads = () => gw.listCalls().length
 
+/** As a browser does: the event bubbles to window, where TanStack's focus manager listens. */
 function setVisibility(next: DocumentVisibilityState) {
   visibility = next
-  document.dispatchEvent(new Event('visibilitychange'))
+  document.dispatchEvent(new Event('visibilitychange', { bubbles: true }))
 }
+
+/** Marks the book stale without reading it, so a TanStack focus or reconnect refetch would read. */
+const staleWithoutReading = (client: QueryClient) =>
+  act(async () => {
+    void client.invalidateQueries({
+      queryKey: queryKeys.orders.book(HOUSE_A),
+      refetchType: 'none',
+    })
+  })
 
 beforeEach(() => {
   vi.useFakeTimers()
@@ -139,6 +150,48 @@ describe('useOrderBook: reading', () => {
     })
     await advance(2_000)
     expect(reads()).toBe(4)
+  })
+
+  it('a read nobody waits for any more is not started', async () => {
+    const { client } = mount(HOUSE_A)
+    await advance(500)
+    await act(async () => {
+      void client.invalidateQueries({ queryKey: ['orders'] })
+    })
+    await act(async () => {
+      await client.cancelQueries({ queryKey: queryKeys.orders.book(HOUSE_A) })
+    })
+    await advance(1_000)
+    expect(reads()).toBe(2)
+  })
+
+  it('a book read later than the one finishing stays in the cache, and the query gets it', async () => {
+    const client = appClient()
+    const later: OrderBook = {
+      house: HOUSE_A,
+      mode: 'whole',
+      reason: null,
+      rows: [],
+      total: 0,
+      openComplete: true,
+      statusTotals: null,
+      unclassifiedCount: null,
+      nextClosedPage: null,
+      readStartedAt: Date.now() + 3_600_000,
+      readFinishedAt: Date.now() + 3_600_000,
+      requests: 0,
+    }
+    client.setQueryData(queryKeys.orders.book(HOUSE_A), later)
+    const { hook } = mount(HOUSE_A, client)
+    await advance(500)
+    expect(reads()).toBe(0)
+    await act(async () => {
+      void client.invalidateQueries({ queryKey: ['orders'] })
+    })
+    await advance(500)
+    expect(reads()).toBe(2)
+    expect(client.getQueryData(queryKeys.orders.book(HOUSE_A))).toBe(later)
+    expect(hook.result.current.book.data).toBe(later)
   })
 
   it('one read at a time: requests during a read wait for ONE trailing read', async () => {
@@ -225,11 +278,102 @@ describe('useOrderBook: urgent and background', () => {
     expect(reads()).toBe(4)
   })
 
+  it('a background read already timed does not start if the tab is hidden before it fires', async () => {
+    const { client } = mount(HOUSE_A)
+    await advance(500)
+    await act(async () => {
+      markBackground(HOUSE_A)
+      void client.invalidateQueries({ queryKey: ['orders'] })
+    })
+    await advance(5_000)
+    setVisibility('hidden')
+    await advance(BOOK_BACKGROUND_GAP_MS)
+    expect(reads()).toBe(2)
+    await act(async () => {
+      setVisibility('visible')
+    })
+    await advance(1_000)
+    expect(reads()).toBe(4)
+  })
+
+  it('a mark lasts one tick: the next refresh of the house is urgent again', async () => {
+    const { client } = mount(HOUSE_A)
+    await advance(500)
+    await act(async () => {
+      markBackground(HOUSE_A)
+      void client.invalidateQueries({ queryKey: ['orders'] })
+    })
+    await advance(1_000)
+    expect(reads()).toBe(2)
+    await act(async () => {
+      void client.invalidateQueries({ queryKey: ['orders'] })
+    })
+    await advance(1_000)
+    expect(reads()).toBe(4)
+  })
+
   it("the runner's own interval is a background read", async () => {
     mount(HOUSE_A)
     await advance(500)
     await advance(BOOK_INTERVAL_MS)
     expect(reads()).toBe(4)
+  })
+
+  it('a focus is a background read: it waits out the gap, where a TanStack focus refetch would not', async () => {
+    const { client } = mount(HOUSE_A)
+    await advance(500)
+    await staleWithoutReading(client)
+    await act(async () => {
+      setVisibility('hidden')
+      setVisibility('visible')
+    })
+    await advance(5_000)
+    expect(reads()).toBe(2)
+    await advance(BOOK_BACKGROUND_GAP_MS)
+    expect(reads()).toBe(4)
+  })
+
+  it('a reconnect makes no read of its own; the interval reads', async () => {
+    const { client } = mount(HOUSE_A)
+    await advance(500)
+    await staleWithoutReading(client)
+    await act(async () => {
+      window.dispatchEvent(new Event('offline'))
+      window.dispatchEvent(new Event('online'))
+    })
+    await advance(5_000)
+    expect(reads()).toBe(2)
+  })
+})
+
+describe('useOrderBook: 429', () => {
+  it('a read that gave up on 429s is not retried by the query, and the next read waits out retryAfter', async () => {
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0)
+    try {
+      let limited = 3
+      gw.before = (call) => {
+        if (call.params.page !== 1 || limited === 0) return undefined
+        limited--
+        return { status: 429, data: { statusCode: 429, retryAfter: 10 } }
+      }
+      const { client, hook } = mount(HOUSE_A)
+      // 429s at 0.4 s, 10.4 s and 20.4 s; the reader gives up after the third.
+      await advance(20_500)
+      expect(reads()).toBe(3)
+      expect(hook.result.current.book.status).toBe('error')
+      expect(hook.result.current.book.error).toBeInstanceOf(RateLimitedError)
+
+      // The third 429 asked for 10 s, so no request goes out before 30.4 s.
+      await act(async () => {
+        void client.invalidateQueries({ queryKey: ['orders'] })
+      })
+      await advance(8_000)
+      expect(reads()).toBe(3)
+      await advance(3_000)
+      expect(reads()).toBe(5)
+    } finally {
+      random.mockRestore()
+    }
   })
 })
 
@@ -247,6 +391,8 @@ describe('useOrderBook: houses', () => {
     await advance(1_000)
 
     expect(gw.calls[0].signal?.aborted).toBe(true)
+    // The stopped read is not a failed refresh of A.
+    expect(hook.result.current.fresh.failing).toBe(false)
     expect(gw.calls.slice(1).every((c) => c.house === HOUSE_B)).toBe(true)
     expect(client.getQueryData(queryKeys.orders.book(HOUSE_A))).toBeUndefined()
     const bookB = client.getQueryData<OrderBook>(queryKeys.orders.book(HOUSE_B))
@@ -258,7 +404,7 @@ describe('useOrderBook: houses', () => {
 
 describe('useOrderBook: the fence', () => {
   it('a read that started before a local write is not written; a fresh read replaces it', async () => {
-    const { client } = mount(HOUSE_A)
+    const { client, hook } = mount(HOUSE_A)
     await advance(500)
     const before = client.getQueryData<OrderBook>(queryKeys.orders.book(HOUSE_A))
     expect(before).toBeDefined()
@@ -266,8 +412,11 @@ describe('useOrderBook: the fence', () => {
     let release!: () => void
     const held = new Promise<void>((r) => (release = r))
     gw.before = (call) => (call.params.page === 1 ? { wait: held } : undefined)
+    let settled = false
     await act(async () => {
-      void client.invalidateQueries({ queryKey: ['orders'] })
+      void client.invalidateQueries({ queryKey: ['orders'] }).then(() => {
+        settled = true
+      })
     })
     await advance(500)
     const wroteAt = Date.now()
@@ -281,6 +430,10 @@ describe('useOrderBook: the fence', () => {
     const after = client.getQueryData<OrderBook>(queryKeys.orders.book(HOUSE_A))
     expect(after).not.toBe(before)
     expect(after!.readStartedAt).toBeGreaterThanOrEqual(wroteAt)
+    // The query that asked for the fenced read is answered by the read that replaced it.
+    expect(settled).toBe(true)
+    expect(hook.result.current.book.isFetching).toBe(false)
+    expect(hook.result.current.book.data).toBe(after)
   })
 })
 
@@ -299,6 +452,44 @@ describe('useOrderBookFreshness', () => {
     expect(hook.result.current.fresh).toMatchObject({ failing: true, stale: true })
   })
 
+  it('a row of another house on a page is a failed refresh', async () => {
+    const { client, hook } = mount(HOUSE_A)
+    await advance(500)
+    gw.before = (call) =>
+      call.params.page === 1
+        ? {
+            data: {
+              orders: makeOrders(HOUSE_B, 1, undefined, 'b'),
+              total: 1,
+              page: 1,
+              limit: 100,
+              hasMore: false,
+            },
+          }
+        : undefined
+    await act(async () => {
+      void client.invalidateQueries({ queryKey: ['orders'] })
+    })
+    await advance(500)
+    expect(hook.result.current.book.error).toBeInstanceOf(ForeignRowError)
+    expect(hook.result.current.fresh).toMatchObject({ failing: true, stale: true })
+  })
+
+  it('a token that names another house mid-read is not a failed refresh of this house', async () => {
+    const { client, hook } = mount(HOUSE_A)
+    await advance(500)
+    gw.before = (call) => {
+      if (call.params.page === 2) signInAs(HOUSE_B)
+      return undefined
+    }
+    await act(async () => {
+      void client.invalidateQueries({ queryKey: ['orders'] })
+    })
+    await advance(500)
+    expect(hook.result.current.book.error).toBeInstanceOf(HouseChangedError)
+    expect(hook.result.current.fresh).toMatchObject({ failing: false, stale: false })
+  })
+
   it('goes stale past twice the interval with no read', async () => {
     const { hook } = mount(HOUSE_A)
     await advance(500)
@@ -311,9 +502,10 @@ describe('useOrderBookFreshness', () => {
 })
 
 describe('retryOrderBook', () => {
-  it('does not retry a 429, a house change or a bad page; retries anything else once', () => {
+  it('does not retry a 429, a house change, a row of another house or a bad page; retries anything else once', () => {
     expect(retryOrderBook(0, new RateLimitedError(1_000))).toBe(false)
     expect(retryOrderBook(0, new HouseChangedError())).toBe(false)
+    expect(retryOrderBook(0, new ForeignRowError())).toBe(false)
     expect(retryOrderBook(0, new BookShapeError('x'))).toBe(false)
     expect(retryOrderBook(0, new Error('500'))).toBe(true)
     expect(retryOrderBook(1, new Error('500'))).toBe(false)

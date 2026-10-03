@@ -1,4 +1,4 @@
-# 0269 — /orders reads the whole order book, page by page, and never hides an open order
+# 0269 — /orders reads the whole order book, page by page, and lists every open order or says it could not
 
 - **Status:** Proposed
 - **Date:** 2026-10-03
@@ -10,7 +10,7 @@
 
 The /orders page lists only the house's newest 50 orders, and counts only them too.
 
-- `useOrdersNextData.ts:401` reads `useOrders()`. That calls `getOrders` (`services/api/orders.ts:47-59`), which sends no `page` and no `limit`, and turns any other body into `?? []` (`:58`).
+- `useOrdersNextData.ts:401` reads `useOrders()`. That calls `getOrders` (`services/api/orders.ts:47-59`), which sends no `page` and no `limit`. A body with no `.orders` is returned as it is, cast to `Order[]`; only a missing body (null or undefined) becomes `[]` (`:58`).
 - The gateway's `listOrders` then answers its default page: `const limit = query.limit ?? 50` (`procurement.service.ts:3048`).
 - It orders by `created_at` alone (`:3100`), counts exactly, and reports `hasMore: fromIndex + orders.length < total` (`:3162`).
 - `OrderFilterDto.limit` is `@Max(100)` (`procurement.dto.ts:839`).
@@ -42,18 +42,17 @@ Facts that shaped the design:
   - So it means counted-not-checked, checked-in-full-awaiting-the-invoice, or checked-and-short.
 - **`getOrder` uses `.single()`** (`procurement.service.ts:3166-3190`), so an id that does not exist comes back as a 500, not a 404.
 
-## The founder's rulings (verbatim)
+## The founder's rulings (option labels quoted; the rest paraphrased)
 
-Asked by the lane coordinator through AskUserQuestion. These are quoted from the coordinator's record (project memory `founder-answers-2026-10-02-sim-share-out.md`); this session did not see the exchange itself.
+Asked by the lane coordinator through AskUserQuestion. The labels in quotes are verbatim from the coordinator's record (project memory `founder-answers-2026-10-02-sim-share-out.md`, "Lane forks, answered 2026-10-02 evening" and "F-140 re-asked, 2026-10-03"). The bullets under them paraphrase that record; the four mark texts are quoted from it. This session did not see the exchange itself.
 
 **2026-10-02:**
 
 - **List:** "Open always, older on tap (Recommended)".
   - Every open order is always listed. Closed orders sit behind 'Show older', 50 per tap.
   - Counts and month figures cover the whole book.
-- **Partly received:** "Open, marked backorder (Recommended)". **Superseded on 2026-10-03.**
-  - The question's premise was wrong: it said `PARTIALLY_RECEIVED` meant short.
-  - The status covers the three states above, so "marked backorder" would have labelled every door-counted order and every order awaiting its invoice as a backorder.
+- **Partly received:** "Open, marked backorder (Recommended)". It counts as open everywhere and is listed with the open orders. **Superseded on 2026-10-03.**
+  - The record says the question's premise was wrong: it said `PARTIALLY_RECEIVED` meant short.
 
 **2026-10-03 (re-asked):**
 
@@ -64,9 +63,11 @@ Asked by the lane coordinator through AskUserQuestion. These are quoted from the
   - 'Receipt could not be read' when `received.readable` is false.
 - **Delivered:** "Open, 'Not counted yet' (Recommended)".
   - An order the vendor reports delivered, but nobody has counted at the door, is listed as open on /orders.
-  - Today it is filed closed.
+  - Today it is filed closed, and /receiving does not list it either.
 - **Scope:** "/orders now, hand off rest (Recommended)".
   - This covers the web and phone /orders only. Everything else gets a written handover (below).
+
+Why the superseded answer could not stand (this session's reading, not in the record): `PARTIALLY_RECEIVED` covers the three states listed under Context, so "marked backorder" would have labelled every door-counted order and every order awaiting its invoice as a backorder.
 
 ## Options considered
 
@@ -81,8 +82,9 @@ Asked by the lane coordinator through AskUserQuestion. These are quoted from the
    - The client reader is the part that has to exist either way: it is the reader such a route would be swapped in under.
 3. **Cross-tab leader election** (one tab reads, and the others listen over BroadcastChannel). Rejected.
    - Each tab caps itself at 40 of the 100-per-60s bucket instead.
-   - Leader hand-off on tab close and sleep is a failure mode of its own, for a gain only a three-tab user sees.
-   - Revisit if 429s are seen from one browser.
+   - Leader hand-off on tab close and sleep is a failure mode of its own.
+   - It would cover only the tabs of one browser. The guard keys on the client IP (its own comment says it always does in practice, `rate-limit.guard.ts:246-251`), so tabs and devices behind one address, such as a restaurant's network, share one bucket. Only a server-side summary (option 2) lowers their total.
+   - Revisit if 429s are seen from one address.
 4. **A runtime kill switch** (a flag that falls back to the 50-row read). Rejected.
    - The fallback is the defect.
    - PR-A has no consumer, and PR-B is the switch: it moves /orders onto the book, and reverting it is the off switch.
@@ -95,46 +97,47 @@ Asked by the lane coordinator through AskUserQuestion. These are quoted from the
 **The reader** is `fetchOrderBook` in `apps/web/src/services/api/order-book.ts`.
 
 - **Requests:** it pages `GET /procurement/orders/history?page=p&limit=100` until `hasMore` is false. `/history` keeps book reads out of the bucket `POST /orders` lives in.
-- **Page checks:** every page is compared with what was asked. A page that differs is a `BookShapeError`, never an empty book.
+- **Page checks:** every page is compared with what was asked. A page that differs is an error (a `BookShapeError`, or a `ForeignRowError` for a row of another house), never an empty book.
   - `page` and `limit` must echo the request;
   - there are no more rows than `limit`;
   - no id appears twice on one page;
-  - every row's `restaurantId` equals the house (a `HouseChangedError` if not);
+  - every row's `restaurantId` equals the house (a `ForeignRowError` if not, which the runner counts as a failed refresh);
   - `hasMore` agrees with `total`.
-- **The house:** the token's house is compared with the house asked for before and after every page.
+- **The house:** the token's house is compared with the house asked for before and after every page (a `HouseChangedError`, which is not a failed refresh of the house).
 - **Completeness:** a read is called whole only when the distinct ids equal `total`.
   - Otherwise it reads once more.
   - Then it **degrades**: every open status is swept on its own, and every closed status is counted with a `limit=1` read.
   - The result is marked `partial`, with the reason `unstable`.
-  - Open orders are never dropped. A status this client cannot read is filed open.
+  - A status this client cannot read is filed open, and a whole read lists it with the open orders. The sweep cannot ask for a status it cannot name, so a degraded read keeps such an order only as the unfiltered pages it read showed it, counts the rest in `unclassifiedCount`, and sets `openComplete` false whenever that count is above 0.
+  - `openComplete` is also false when an open sweep does not hold still after two tries.
 - **The ceiling** is 30 pages (3,000 orders). Past it the result is `capped`. It holds:
   - the 3,000-row prefix;
-  - the complete open sweep;
+  - the open sweep (complete only when `openComplete` is true);
   - per-status totals;
   - `nextClosedPage: 31`, for Show older through `fetchOrderBookPage`.
 - **429:** the reader waits the body's `retryAfter` plus a uniform 0 to 30 s of jitter, then asks for the **same** page again. It gives up with `RateLimitedError` after the third 429 on one page.
 - **`fetchOrderById`** confirms one order before a screen says it is not in the book. Every failure reads as "could not be read", never as "does not exist".
 - **Open and closed:** closed is COMPLETED, VERIFIED, CANCELLED, REJECTED, and FAILED (which `canonicalStatus` reads as cancelled, `lib/mudavym/status.ts:18`). Everything else is open, including DELIVERED and PARTIALLY_RECEIVED.
-- **`markFor(row)`** returns the ruling's marks. It never reads the mark from the status alone.
+- **`markFor(row)`** returns the ruling's marks. For `PARTIALLY_RECEIVED` it reads the mark from the row's `received` block, never from the status alone.
 
 **The runner** lives in `apps/web/src/hooks/queries/useOrderBook.ts`, at module level, one per house.
 
 - **One read at a time.** Requests that arrive during a read wait for one trailing read.
 - **A 400 ms settle** absorbs the double invalidation.
 - **A per-tab window** of 40 list requests per 60 s.
-- **After a 429**, no request is sent until `retryAfter` has passed.
+- **After a 429**, no request is sent from the tab until `retryAfter` has passed.
 - **Urgent by default.** A read is background only when `markBackground(house)` is called in the same tick. The runner owns its 60 s interval and the tab-visibility refresh, and treats both as background.
   - Only background reads wait out the 30 s gap after the last read.
-  - Background reads wait while the tab is hidden.
+  - Background reads wait while the tab is hidden, including one that was timed before the tab was hidden.
   - This PR wires no outside caller to `markBackground`, so every websocket-triggered read is urgent until PR-B.
 - **The fence.** `noteLocalWrite(house)` bumps the house's write epoch. A read that started before the bump is not written to the cache; an urgent read replaces it.
 - **A house switch** aborts the other house's read. A book is only written under `orders.book(<the house it read>)`.
-- **`useOrderBookFreshness(house)`** returns `{asOf, failing, stale}`. `stale` means older than twice the interval, or failing.
-- **Retries.** `retryOrderBook` turns off TanStack's retry for 429s, house changes and bad pages.
+- **`useOrderBookFreshness(house)`** returns `{asOf, failing, stale}`. `stale` means older than twice the interval, or failing. `asOf` null means the book has not been read yet, not that it is fresh.
+- **Retries.** `retryOrderBook` turns off TanStack's retry for 429s, house changes, rows of another house and bad pages.
 - **The approve write stays where it is.** The optimistic approve write on `orders.list` (`useOrderQueries.ts:147-182`) is unchanged.
 - **The key** is `queryKeys.orders.book(house)`. It sits under `['orders']`, so every existing invalidation reaches it.
 
-**Tests and mutation proof.** `order-book.test.ts` (33 tests) and `useOrderBook.test.tsx` (14 tests) use a fake gateway that pages as `listOrders` does (`__tests__/utils/fakeOrderGateway.ts`). Six mutations each failed at least one test and passed again when restored:
+**Tests and mutation proof.** `order-book.test.ts` (46 tests) and `useOrderBook.test.tsx` (23 tests) use a fake gateway that pages as `listOrders` does (`__tests__/utils/fakeOrderGateway.ts`). Six mutations each failed at least one test and passed again when restored:
 
 - dropping the paging loop;
 - dropping the `restaurantId` check;
@@ -142,6 +145,8 @@ Asked by the lane coordinator through AskUserQuestion. These are quoted from the
 - removing the fence;
 - making background the default;
 - restarting from page 1 on a 429.
+
+An audit of the first commit reported 17 of 31 further mutations surviving. The second commit adds tests and re-runs 33 mutations: the six above and 27 more. 32 of them each fail at least one test and pass again when restored. One survives: removing `run.next = null` from `stopOtherHouses`, so the house switched away from keeps its queued read. The commit body lists every mutation and says why that one gets no test.
 
 ## Consequences
 
@@ -156,14 +161,15 @@ Asked by the lane coordinator through AskUserQuestion. These are quoted from the
     - A row deleted mid-read shifts the later pages up and skips one row, while the stale deleted row is still counted, so distinct = total and the read is accepted.
     - What was checked:
       - `DELETE orders/:id`, the only `@Delete("orders` route in `apps/api-gateway/src`, is documented as a cancel (`procurement.controller.ts:307-310`); its service body was not read;
-      - a grep of `.from("procurement_orders")` call sites in `apps/api-gateway/src` and `services/` found no `.delete(` within three lines.
+      - a grep of `.from("procurement_orders")` call sites in `apps/api-gateway/src` and `services/` found one `.delete(` within three lines, in an e2e test's cleanup (`communications/tests/email-convo-flow.e2e.spec.ts:129`), and none outside spec files.
     - That is evidence, not proof. SQL functions and crons were not swept.
   - **Mobile shares the bucket.** The phone reads `/history` too (`apps/mobile/src/api/queries.ts:111`). A phone behind the same network address shares the bucket.
   - **The dashboard shares the bucket.** The dashboard reads `/history` (`useDashboardNextData.ts:265-299`, `useOrderQueries.ts:93`) from the same browser, outside this runner's window.
   - **The window does not cover them.** The 40-per-tab window counts only book reads, so book reads, dashboard reads and a second tab can still reach 100 together. The 429 path absorbs that; it does not prevent it.
-  - **Request cost.** A capped read costs at least 42 requests: 30 pages, 8 open sweeps and 4 counts. Under the 40-per-60s window it spans more than a minute.
+  - **Request cost.** A capped read costs at least 42 requests: 30 pages, 8 open sweeps and 4 counts. Under the 40-per-60s window it spans more than a minute. A read that does not hold still reads its pages twice and then degrades: at least 2 × its pages + 12.
+  - **A status this client cannot name, in a degraded read.** Such an order is kept only as the unfiltered pages the read went through showed it. One those pages did not show (past the ceiling, or skipped by a read that did not hold still) is not listed at all, and the book says so (`unclassifiedCount`, `openComplete` false). The gateway references only the twelve enum members (a grep of `ProcurementOrderStatus.` in `apps/api-gateway/src`); string-literal and SQL writers were not swept.
 - **Revisit when:**
-  - 429s are observed from one browser (reconsider option 3);
+  - 429s are observed from one address (reconsider options 2 and 3);
   - a house's book is routinely `partial` (G2 is late, or the insert-only assumption is wrong);
   - a gateway book route lands (option 2): swap it in under `fetchOrderBook`.
 
