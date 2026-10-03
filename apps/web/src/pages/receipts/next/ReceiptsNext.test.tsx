@@ -1416,3 +1416,105 @@ describe('ReceiptsNext — checked deliveries with no invoice filed (RECEIPTS-W5
     expect(await screen.findByText('0 awaiting review · 1 paper verified')).toBeTruthy();
   });
 });
+
+/* ─── follow-ups owed from #586 (founder: "A later branch (Recommended)") ─── */
+
+describe('ReceiptsNext — a failed confirm can be tried again (#586 follow-up 1)', () => {
+  it('keeps "Confirming…" while a second swipe is in flight, then offers a third after it fails', async () => {
+    const refused = (m: string) => ({ response: { status: 500, data: { message: m } } });
+    let rejectSecond: (e: unknown) => void = () => {};
+    api.verify
+      .mockImplementationOnce(() => Promise.reject(refused('the first confirmation failed')))
+      .mockImplementationOnce(() => new Promise((_, reject) => { rejectSecond = reject; }));
+    const { container } = render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    const swipe = () => fireEvent.keyDown(screen.getByRole('button', { name: /Swipe up to confirm/ }), { key: ' ' });
+
+    swipe();
+    await waitFor(() => expect(container.textContent).toContain('The document is still unverified.'), { timeout: 3000 });
+    await waitFor(() => expect(screen.getByRole('button', { name: /Swipe up to confirm/ })).toBeEnabled());
+
+    // The second swipe. While its confirmation is in flight the control stays
+    // where the gesture left it: a key read from `failureCount` went back to 0
+    // here and remounted it mid-swipe, under a confirmation still on its way.
+    swipe();
+    await waitFor(() => expect(api.verify).toHaveBeenCalledTimes(2), { timeout: 3000 });
+    expect(screen.getByText('Confirming…')).toBeTruthy();
+
+    rejectSecond(refused('the second confirmation failed'));
+    await waitFor(() => expect(container.textContent).toContain('the second confirmation failed'));
+    // Not left at "Confirming…": the control is fresh and a third swipe goes out.
+    await waitFor(() => expect(screen.getByRole('button', { name: /Swipe up to confirm/ })).toBeEnabled());
+    expect(screen.queryByText('Confirming…')).toBeNull();
+    swipe();
+    await waitFor(() => expect(api.verify).toHaveBeenCalledTimes(3), { timeout: 3000 });
+  });
+});
+
+describe('ReceiptsNext — a failed correction can be sealed again (#586 follow-up 1, the sibling hold)', () => {
+  it('keeps the hold sealed while a second correction is in flight, then offers it fresh after it fails', async () => {
+    const refused = (m: string) => ({ response: { status: 500, data: { message: m } } });
+    let rejectSecond: (e: unknown) => void = () => {};
+    api.editLine
+      .mockImplementationOnce(() => Promise.reject(refused('the first correction failed')))
+      .mockImplementationOnce(() => new Promise((_, reject) => { rejectSecond = reject; }));
+    const { container } = render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    const qty = screen.getByLabelText('Quantity, line 1');
+    fireEvent.change(qty, { target: { value: '11' } });
+    fireEvent.blur(qty);
+
+    holdToApprove(/Hold to seal this correction/);
+    await waitFor(() => expect(container.textContent).toContain('the first correction failed'));
+    await waitFor(() => expect(screen.getByRole('button', { name: /Hold to seal this correction/ })).toBeEnabled());
+
+    holdToApprove(/Hold to seal this correction/);
+    await waitFor(() => expect(api.editLine).toHaveBeenCalledTimes(2));
+    // Still sealed while the write is on its way, not remounted to its resting label.
+    expect(screen.getByText('Correction sealed')).toBeTruthy();
+
+    rejectSecond(refused('the second correction failed'));
+    await waitFor(() => expect(container.textContent).toContain('the second correction failed'));
+    await waitFor(() => expect(screen.getByRole('button', { name: /Hold to seal this correction/ })).toBeEnabled());
+    expect(screen.queryByText('Correction sealed')).toBeNull();
+  });
+});
+
+describe('ReceiptsNext — no house, no document to choose (#586 follow-up 2)', () => {
+  it('says there is no document to show, and does not invite a choice from a queue never asked for', async () => {
+    api.restaurantId = null;
+    render(<ReceiptsNext />, { wrapper });
+    expect(await screen.findByText(/No restaurant is selected/)).toBeTruthy();
+    expect(screen.getByText('No house is selected, so there is no document to show.')).toBeTruthy();
+    expect(screen.queryByText(/Choose a document from the queue/)).toBeNull();
+  });
+});
+
+describe('ReceiptsNext — a failed restatement can be sealed again (#586 follow-up 1, the other sibling)', () => {
+  it('keeps the hold sealed while a second restatement is in flight, then offers it fresh after it fails', async () => {
+    const refused = (m: string) => ({ response: { status: 500, data: { message: m } } });
+    let rejectSecond: (e: unknown) => void = () => {};
+    api.restateCurrency
+      .mockImplementationOnce(() => Promise.reject(refused('the first restatement failed')))
+      .mockImplementationOnce(() => new Promise((_, reject) => { rejectSecond = reject; }));
+    const { container } = render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    fireEvent.click(screen.getByRole('button', { name: 'Change the currency' }));
+    fireEvent.change(screen.getByLabelText('Currency this invoice is denominated in'), {
+      target: { value: 'EUR' },
+    });
+
+    holdToApprove(/Hold to file this invoice in EUR/);
+    await waitFor(() => expect(container.textContent).toContain('the first restatement failed'));
+    await waitFor(() => expect(screen.getByRole('button', { name: /Hold to file this invoice in EUR/ })).toBeEnabled());
+
+    holdToApprove(/Hold to file this invoice in EUR/);
+    await waitFor(() => expect(api.restateCurrency).toHaveBeenCalledTimes(2));
+    expect(screen.getByText('Sealed')).toBeTruthy();
+
+    rejectSecond(refused('the second restatement failed'));
+    await waitFor(() => expect(container.textContent).toContain('the second restatement failed'));
+    await waitFor(() => expect(screen.getByRole('button', { name: /Hold to file this invoice in EUR/ })).toBeEnabled());
+    expect(screen.queryByText('Sealed')).toBeNull();
+  });
+});

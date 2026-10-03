@@ -205,6 +205,15 @@ function CurrencyBlock({
     else changeRef.current?.focus();
   }, [open]);
 
+  /*
+   * A FRESH CONTROL AFTER EACH FAILURE, AND ONLY THEN (#586 follow-up 1). The
+   * hold below was keyed by `restate.failureCount`, which React Query sets
+   * back to 0 the moment the next attempt goes pending: the control remounted
+   * mid-gesture, under a write still on its way, and when the pending and the
+   * refusal land in one batched render the key never moves and the control
+   * stays sealed. This counter only ever goes up, once per failure.
+   */
+  const [restateAttempt, setRestateAttempt] = useState(0);
   const restate = useMutation({
     /**
      * The restatement carries the seal minted when the hold began (founder,
@@ -229,6 +238,7 @@ function CurrencyBlock({
     onError: (e) => {
       setMoved(null);
       setError(serverMessage(e, 'The currency was not changed.'));
+      setRestateAttempt((n) => n + 1);
     },
   });
 
@@ -376,7 +386,7 @@ function CurrencyBlock({
       */}
       <div style={{ maxWidth: 300, marginTop: 8 }}>
         <HoldToApprove
-          key={`restate-${choice}-${restate.failureCount}`}
+          key={`restate-${choice}-${restateAttempt}`}
           label={
             choice
               ? `Hold to file this invoice in ${choice}`
@@ -913,6 +923,8 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
   // can never disagree about who may see it.
   const canonicalOn = useMudavymDesign('document');
 
+  // One fresh hold per failed correction; see `restateAttempt` (#586 follow-up 1).
+  const [editAttempt, setEditAttempt] = useState(0);
   const edit = useMutation({
     /**
      * The correction carries the seal minted when the hold began (founder,
@@ -962,7 +974,10 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
       );
       refreshSheet();
     },
-    onError: (e) => setEditError(serverMessage(e, 'The correction did not save.')),
+    onError: (e) => {
+      setEditError(serverMessage(e, 'The correction did not save.'));
+      setEditAttempt((n) => n + 1);
+    },
   });
 
   /**
@@ -1021,6 +1036,10 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
     onError: (e) => setEditError(serverMessage(e, 'The pairing change did not save.')),
   });
 
+  // One fresh swipe per failed confirmation; see `restateAttempt` (#586
+  // follow-up 1). Keyed by `failureCount`, the swipe remounted to its resting
+  // label while the second attempt was still in flight.
+  const [verifyAttempt, setVerifyAttempt] = useState(0);
   const verify = useMutation({
     /**
      * The seal is REDEEMED, not asserted (founder, 2026-09-06, batch 64).
@@ -1035,6 +1054,7 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
       void qc.invalidateQueries({ queryKey: ['receipts-next'] });
       onVerified();
     },
+    onError: () => setVerifyAttempt((n) => n + 1),
   });
 
   /**
@@ -1485,7 +1505,7 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
               <div className="flex flex-wrap items-center gap-3">
                 <div style={{ minWidth: 220, flex: '1 1 220px' }}>
                   <HoldToApprove
-                    key={`edit-${pending.lineId}-${pending.field}-${edit.failureCount}`}
+                    key={`edit-${pending.lineId}-${pending.field}-${editAttempt}`}
                     label="Hold to seal this correction"
                     approvedLabel="Correction sealed"
                     disabled={edit.isPending}
@@ -1559,7 +1579,7 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
               </p>
             )}
             <SwipeToConfirm
-              key={`swipe-${verify.failureCount}`}
+              key={`swipe-${verifyAttempt}`}
               label="Swipe up to confirm"
               assertion="Confirms this transcription matches the paper. It does not accept charges or touch stock. A one-time seal is taken when the gesture starts."
               disabled={verify.isPending || lines === undefined}
@@ -2216,12 +2236,16 @@ export default function ReceiptsNext() {
                 {/* A list it searches never answered, or with no house none was
                     asked: the link can be neither opened nor ruled out, so
                     "Opening…" would never finish (audit of #586, walk-through
-                    RECEIPTS-W50c; the no-house case RECEIPTS-W51). */}
+                    RECEIPTS-W50c; the no-house case RECEIPTS-W51). With no house
+                    and no link, there is no queue to choose from, so it does
+                    not invite a choice (#586 follow-up 2). */}
                 {selectedId
                   ? data.documentsUnread || data.noRestaurant
                     ? 'Could not open the linked document: see the note above.'
                     : 'Opening the linked document…'
-                  : 'Choose a document from the queue to see its lines and its order, and to confirm it.'}
+                  : data.noRestaurant
+                    ? 'No house is selected, so there is no document to show.'
+                    : 'Choose a document from the queue to see its lines and its order, and to confirm it.'}
               </p>
             )}
           </section>
