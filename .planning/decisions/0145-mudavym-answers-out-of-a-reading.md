@@ -1993,7 +1993,8 @@ charge).
 
 ### The defect it closes
 
-Found by the audit of PR #575 at a83e5cb78 (PR #575 comment 5942484816). `AskPanel` returns null when closed, in both placements, so its body
+Found by the audit of PR #575 at a83e5cb78 (PR #575 comment 5942484816).
+`AskPanel` returns null when closed, in both placements, so its body
 unmounts. The body held the question in flight, its request id and the
 answers. Closing mid-answer (the panel's Close, Escape, ⌘⇧K, the counter strip's
 control, or since #575 the header's Counter button) dropped them. The
@@ -2418,20 +2419,24 @@ cites. This round changes no source file.
   none, or of several with no recent hint for one of them on that device
   (`house-choice.ts:104-115`). Then a request to a house-bound route is
   refused 403 `HOUSE_REQUIRED` and the tab is sent to the chooser. With an
-  unverified B, a request through `apiClient` sends the tab to
-  `/verify-email`. A refresh answered
+  unverified B, a request through `apiClient` to a route that does not opt
+  out sends the tab to `/verify-email`. A refresh answered
   `houseAccessEnded` sends the tab to the chooser, and a stale chunk or a
   service-worker update reloads it, independently of the switch. None of
-  these is a paid call: both 403s are raised in `JwtAuthGuard`
-  (`jwt-auth.guard.ts:84`, `:94`), and neither Ask controller opts out of
-  either check. The sentence is now conditional in the OPEN entry, which
+  these is a paid call. On a route that does not opt out, both 403s are
+  raised in `JwtAuthGuard` before the handler runs (`jwt-auth.guard.ts:84`,
+  `:94`), and neither Ask controller opts out of either check. After a
+  refresh answered `houseAccessEnded`, the request that drew the 401 is not
+  retried (`client.ts:138-140`, `AuthContext.tsx:270-279`), and a reload
+  sends no request. The sentence is now conditional in the OPEN entry, which
   carries the trace and its cites, in "Second push" above, in the review
   trail (bracketed) and in the PR body. "The only redirect to `/login`
   follows a refused refresh" is scoped to the two response interceptors;
   `authStore.ts:296`, in `loadUser`, which runs once when that module
   loads, is another.
 - **Audit records cited by their posted comments.** The audit files this ADR
-  and the fragment cited were never committed. The cites now name the
+  and the fragment cited are in no commit (`git log --all` finds none). The
+  cites now name the
   comments: #575 5942484816 (a83e5cb78); #584 5961672868 (5ab269ccc); #584
   5963268424, and the escalation 5962056098 (55a52ad05).
 - **Smaller fixes.** The fragment's first Fix line quotes the OPEN entry's
@@ -2473,3 +2478,4 @@ cites. This round changes no source file.
 | 2026-10-02 | `fix/ask-close-no-second-spend` gate round 1 (fix, after the ADR 0090 gate at 5ab269ccc returned BLOCK) | The epoch sentence narrowed in the hook's note, the `epoch` ref's note and the PR body: a folio re-read's answer is dropped because the switch emptied the list, not by the epoch. The switch render fixed rather than filed: `useAskSession` gives none of the old scope's state until the reset has run, and `useAskPanel` gives no old follow-up; a first naming is not masked. "A close keeps the waiting proposals" narrowed in the PR body to the gateway's rows. `AskPanel.test.tsx` 85 to 89; 12 mutations, all red, each restored byte-identical (see "Gate round 1") [gate round 2: a thirteenth, `setOwner` moved below the first-naming return, stayed green; see "Gate round 2"]. On the tree merged with `main` a823ef32d: `src/components/askai` + `src/components/mudavym` 32 files / 492 passed; web eslint on the 8 touched source and test files 0 errors, 1 warning (`ProposalCard.tsx:268`, also on `main` at `:260`); web `tsc` only the pre-existing `passkeys.ts` error; decision claims 830/830; citation-pairing and conflict-marker guards pass. No browser render. |
 | 2026-10-02 | `fix/ask-close-no-second-spend` gate round 2 (fix, after the ADR 0090 gate at 55a52ad05 returned BLOCK) | Merged `main` e25ebf537, no conflict. The switch after a first naming pinned by a new test; the surviving mutant (`setOwner` below the first-naming return) now turns it red, 1 test, restored from a `cp -p` snapshot and checked with `cmp`. `AskPanel.test.tsx` 89 to 90. The house-switch entry kept CLOSED for a switch in the same tab; a switch in another tab and the same-tab interval before the render filed as a new OPEN entry, with two possible fixes, neither built. "Never charges twice" narrowed to one person in one house; the two routes disclosed in the PR body, this ADR and the hook's note; "masked the same way" narrowed for a first naming (see "Gate round 2"). At d0e4d6185, this round's first push: `src/components/askai` + `src/components/mudavym` 32 files / 493 passed; web eslint on the 8 touched source and test files 0 errors, 1 warning (`ProposalCard.tsx:268`, also on `main` at `:260`); web `tsc` only the pre-existing `passkeys.ts` error; decision claims 835/835; citation-pairing and conflict-marker guards pass. No browser render. |
 | 2026-10-03 | `fix/ask-close-no-second-spend` gate round 2, second push (fix, after the gate's plan at d0e4d6185 named a person switch in another tab) | Merged `main` 661068ab3 in 6e22589da, no conflict. Route (a) widened to a house or person switch in another tab, traced in the code: a sign-out and a sign-in as another person in another tab reach this tab with no 401, refresh, redirect or reload. [Gate round 3: that holds only when the person signed in is verified and their pair names a house, and a stale chunk or a service-worker update can still reload the tab; see "Gate round 3".] Still two routes. The token check now names the person; the first fix's "closes (b) only" and "moves the window" corrected; one phrasing, "for one person in one house", and the PR title now names the request id (see "Gate round 2", "Second push"). At 1879ed9d8: `src/components/askai` + `src/components/mudavym` 33 files / 515 passed; `AskPanel.test.tsx` 90/90; the `setOwner` mutation 1 failed / 89 passed, restored from a `cp -p` snapshot, `cmp` identical; web eslint on the 8 touched source and test files 0 errors, 1 warning (`ProposalCard.tsx:268`, also on `main` at `:260`); web `tsc` only the pre-existing `passkeys.ts` error; decision claims 835/835; citation-pairing and conflict-marker guards pass. No browser render. |
+| 2026-10-03 | `fix/ask-close-no-second-spend` gate round 3 (fix, after the ADR 0090 gate at 3d847e44f returned BLOCK) | 3d847e44f merged `main` ba9704b59 (#588), which changes no file this PR cites. The person-switch trace made conditional: it holds only when the person signed in is verified and their pair names a house; otherwise the tab is sent to `/verify-email` or the chooser, with no paid call, and a stale chunk or a service-worker update can reload it at any point. The `/login` sentence scoped to the two response interceptors. Audit cites now name the posted PR comments; the fragment's quoted title aligned; the second-push row names 1879ed9d8 (see "Gate round 3"). At a41149395, which changes no source file: `src/components/askai` + `src/components/mudavym` 33 files / 515 passed; `AskPanel.test.tsx` 90/90; the `setOwner` mutation 1 failed / 89 passed, restored from a `cp -p` snapshot, `cmp` identical, then 90/90; web eslint on the 8 touched source and test files 0 errors, 1 warning (`ProposalCard.tsx:268`; the same hook is at `:260` on `main`); web `tsc` only the pre-existing `passkeys.ts` error; decision claims 835/835; citation-pairing and conflict-marker guards pass. No browser render, no gateway run. |
