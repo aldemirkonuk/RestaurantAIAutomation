@@ -195,7 +195,7 @@
 | [0179](0179-unmounted-python-http-is-deleted-not-mounted.md) | Unmounted Python HTTP is deleted, not mounted; `router_preview` stays authed | 2026-09-20 |
 | [0180](0180-house-mail-is-a-composition-grammar.md) | House mail is a typed composition grammar (amends 0173 D2) | 2026-09-20 |
 | [0181](0181-guests-are-reserved-in-the-tree-not-built.md) | Guests / reservations / waitlist are reserved in the tree, not built; U10 first | 2026-09-20 |
-| [0264](0264-event-prep-mail-is-off-until-the-founder-arms-it.md) | **Event-prep mail is off until the founder arms it** (Proposed — built, OFF behind `EVENT_PREP_REMINDERS_ENABLED`; `event-prep-check` returns before it reads or sends. Deploying it also stops the job for `DEFAULT_RESTAURANT_ID` until the variable is set. Four founder questions stand before arming: entry types, a cap, recipients, and when it moves to the 0174 D4 sender) | 2026-10-02 |
+| [0264](0264-event-prep-mail-is-off-until-the-founder-arms-it.md) | **Event-prep mail is off until the founder arms it** (Proposed — built, OFF behind `EVENT_PREP_REMINDERS_ENABLED`; `event-prep-check` returns before it reads or sends. Deploying it also stops the job for `DEFAULT_RESTAURANT_ID` until the variable is set. The founder answered on 2026-10-02: guest events only, capped per house, each entry's `reminder_enabled` honoured; built in the next PR. Open before arming: the cap size, recipients, and when it moves to the 0174 D4 sender) | 2026-10-02 |
 
 ## Locked — recorded elsewhere (pre-log)
 

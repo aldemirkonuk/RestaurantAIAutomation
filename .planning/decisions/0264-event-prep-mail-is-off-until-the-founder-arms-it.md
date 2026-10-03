@@ -1,6 +1,6 @@
 # 0264 — Event-prep mail is off until the founder arms it
 
-- **Status:** Proposed 2026-10-02 — built, OFF by default. Not locked. The authority is the founder's 2026-10-02 staffing answer, relayed by the lane coordinator: of the "3 urgent now" lanes he opened, the account and operational mail lane's first job is the "F-154 flag before Oct 7 08:00 ET". That answer staffs the flag and sets its deadline. The OFF default, the parse and everything below are this lane's build, awaiting his lock.
+- **Status:** Proposed 2026-10-02 — built, OFF by default. Not locked. The authority is the founder's 2026-10-02 staffing answer, relayed by the lane coordinator: of the "3 urgent now" lanes he opened, the account and operational mail lane's first job is the "F-154 flag before Oct 7 08:00 ET". That answer staffs the flag and sets its deadline. His 2026-10-02 answer on the job's future, "Guest events only (Recommended)", also set this PR's scope: the deadline PR is flag-only and OFF by default (see "Answered" below). The parse, the guard's placement and the wording below are this lane's build, awaiting his lock.
 - **Date:** 2026-10-02
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent. Written by the mail lane, a session; the founder has not yet reviewed this record.
 - **Keywords:** event-prep-check, EVENT_PREP_REMINDERS_ENABLED, arming flag, off by default, shared Gmail sender, calendar_events, deliveries, per-run cap, sendEventPrepReminders, eventPrepArmed, F-154, F-152, F-136
@@ -37,12 +37,14 @@ would change it.
 1. **Ship only the arming flag, OFF by default.** The job returns before it reads or
    sends unless the founder arms it. It records no answer to any open question, and
    one variable undoes it.
-2. **Ship an entry-type filter and a per-run cap now, with interim values.** That
-   records founder calls before he has made them (CLAUDE.md §0.1). With the flag off
-   they would change nothing anyway.
-3. **Retire the job.** Whether it should exist at all is itself an open founder
-   question. A flag is undone by one variable; a deletion needs a code change and a
-   deploy.
+2. **Ship an entry-type filter and a per-run cap now, with interim values.** The
+   entry types were answered on 2026-10-02 (guest events only), but the cap size was
+   not, and an interim size would record a founder call before he has made it
+   (CLAUDE.md §0.1). His answer also made the deadline PR flag-only. With the flag off
+   the filter would change nothing anyway; it lands in the next PR.
+3. **Retire the job.** The founder's 2026-10-02 answer keeps it for guest events, so
+   this is rejected by that answer. A flag is also undone by one variable; a deletion
+   needs a code change and a deploy.
 4. **A per-house flag row instead of an environment variable.** Every job-arming
    switch beside it is one global environment allow-list:
    `RECURRING_ORDER_REMINDERS_ENABLED`, `CALENDAR_REMINDERS_ENABLED`,
@@ -62,8 +64,9 @@ it is unarmed it logs one line and sends nothing. The flag and its parse live in
 `RECURRING_ORDER_REMINDERS_ENABLED`: only `true` or `1`, trimmed and lower-cased, arm
 it. Any other value, a typo included, reads as off, so a typo means silence, not a
 live mailer. `eventPrepArmed` reads `ConfigService` first and `process.env` second,
-like `recurringRemindersArmed`. The manual `triggerEventPrepReminders` calls
-`sendEventPrepReminders`, so it hits the same guard.
+like `recurringRemindersArmed`. The method `triggerEventPrepReminders` calls
+`sendEventPrepReminders`, so it hits the same guard; nothing outside the spec calls it
+today.
 
 **What deploying this stops.** This removes a behaviour as well as closing a risk.
 `DEFAULT_RESTAURANT_ID` is always served, so before this change the job ran for that
@@ -77,15 +80,27 @@ Railway credentials.
 **To arm it, the founder sets on Railway (gateway service):**
 `EVENT_PREP_REMINDERS_ENABLED=true`. `1` also arms it.
 
+## Answered — 2026-10-02, the founder via AskUserQuestion
+
+"Guest events only (Recommended)". Recorded by the lane coordinator the same day:
+
+- An event is a guest event: `tasting`, `private_event`, `wine_dinner`, `corporate`
+  and `custom`. Never deliveries or orders.
+- The job is capped per house, and it honours each entry's `reminder_enabled`.
+- The cap size and the recipients get asked when the job is armed.
+- The deadline PR (this one) is flag-only, OFF by default.
+
+The filter, the `reminder_enabled` check and the cap are built in the next PR. This
+PR implements none of them and contradicts none of them.
+
 ## Open — what arming still needs
 
-These are the founder's questions. None of them is defaulted here.
+These are the founder's questions that remain open. None of them is defaulted here.
 
-1. Which entry types count as an event: deliveries, orders, tastings?
-2. A per-run cap, or a digest instead of one mail per row.
-3. Who receives the mail. Today it goes to managers and staff under the
+1. The cap's size, per house.
+2. Who receives the mail. Today it goes to managers and staff under the
    `calendar_reminders` preference.
-4. When this job moves to the sender ADR 0174 D4 already locked
+3. When this job moves to the sender ADR 0174 D4 already locked
    (`notifications@mudavym.com`), off the shared Gmail account, so one house's volume
    cannot silence another's account mail. D4 is not reopened here. What is open is
    the build: when event-prep mail is sent from it.
@@ -101,11 +116,11 @@ decides whether to file them. Until then this section is their record.
 ## Consequences
 
 - The job cannot send by accident. Arming is one variable, and so is disarming.
-- Arming without answers to the four questions brings F-154 back unchanged. The
-  filter, the cap, the recipients and the sender land in a later PR, after the
-  answers, and before he arms it.
-- Revisit when the founder answers any of the four questions, or when a house's
-  event-prep mail is missed and someone asks why.
+- Arming before the next PR lands brings F-154 back unchanged. The guest-events
+  filter, `reminder_enabled` and the cap land in that PR; the cap size and the
+  recipients are asked when he arms it; the sender move follows its own answer.
+- Revisit when the founder answers any of the three open questions, or when a
+  house's event-prep mail is missed and someone asks why.
 
 **Exposure: the other outbound jobs in `scheduled-tasks.service.ts`, read at this
 branch and not changed here.** Each row is found with `grep -n 'name: "<job>"'`. Every
@@ -142,3 +157,4 @@ one record §5 requires, and it retires no document.
 |---|---|---|
 | 2026-10-02 | mail lane (session), on the founder's staffing answer | Created as an amendment to ADR 0131 (commit `10e603430`) |
 | 2026-10-02 | lane review of commit `10e603430` | Moved out of ADR 0131 into this Proposed record. Authority restated as the staffing answer; the default house's loss of the job and the D4 sender question stated plainly; line numbers replaced by symbol and job names |
+| 2026-10-03 | PR audit gate (ADR 0090) at `8cd2ead37`, BLOCK on the record | Code held. The founder's 2026-10-02 "Guest events only" answer was recorded as open here; now under "Answered". Entry types and a per-house cap are decided; cap size, recipients and the D4 sender move stay open. The manual trigger is noted as having no caller |
