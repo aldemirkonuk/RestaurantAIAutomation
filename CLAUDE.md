@@ -218,6 +218,11 @@ Project memory: `~/.claude/projects/-Users-aldemirkonuk-Projects-restaurant-ai-a
 - Commit only when asked. Atomic commits with a real message body explaining *why*.
 - Co-author trailer: `Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>`
 - Before deleting or overwriting anything, read it first.
+- **Nothing you need tomorrow lives in `/private/tmp`** ([ADR 0268](.planning/decisions/0268-nothing-you-need-tomorrow-lives-in-tmp.md)).
+  macOS empties it at every boot, and every session scratchpad is under it. Worktrees go under
+  `~/Projects/` (`wt-*` for lanes, `.scratch/<session8>/` for audit and fixer copies); plans,
+  audit bundles, handoffs and PR-body drafts go to `~/Projects/p4-scratch/<lane>/` when written.
+  The scratchpad is for throwaway logs only. Never leave a commit on a detached HEAD there.
 - `.planning/` changes are committed alongside the code they describe.
 
 ---
