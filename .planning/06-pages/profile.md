@@ -53,6 +53,14 @@ Personal account page for every role: Account (name/phone; email read-only), Sec
   can reach it. The old row drove `ThemeContext`, which no Mudavym page follows (ADR 0138
   D1), so it changed nothing on screen. The header's theme button is deleted with
   `ThemeMenu.tsx`; this row is the one control. ADR 0169 §Amendment 2026-10-01.]**
+  **[2026-10-01 (batch 4) — "Paper or Charcoal" and "the two buttons" are no longer true:
+  the row has three buttons, **Paper / Charcoal / System** — founder, 2026-10-01: "Paper /
+  Charcoal / System". System follows this device's light or dark setting live, and says so in
+  a note under the row (also the button's accessible description); it is pressed for a System
+  person whatever colour the device paints. Paper stays the default for anyone who never chose
+  ("paper at first always , then they can select is what i meant at onboarding"), and a
+  one-time sheet asks that person on their first signed-in page (`GroundFirstChoice`). ADR 0169
+  §Amendment 2026-10-01 (batch 4).]**
 - Managers/owners additionally: Restaurant details (name/city/billing contact), Payment, Memberships
 - Danger zone: leave the active restaurant; delete your account behind a type-DELETE confirmation
 
@@ -1171,6 +1179,11 @@ Core, every role. No `S..` touches it directly (OD-48).
   person's ground — `lib/mudavym/groundChoice.ts` (`useGroundState`, `setGroundChoice`,
   `groundIsKnown`, `groundNote`), saved to `user_preferences.preferences.ground` by
   `GroundChoiceSync`. `useProfileNextData` no longer carries `theme` / `setTheme`.]**
+  **[2026-10-01 (batch 4): the row now lists `GROUND_OPTIONS`' three values; pressed compares
+  `ground.setting` (what was saved, which may be `'system'`), not `ground.choice` (what paints);
+  System's note is `pf-ground-hint-system`. Tests: `ProfileNext.test.tsx`'s Theme block — the
+  three buttons and System's description, a System click saving `"system"` and painting what
+  the device says, System pressed on a light device.]**
 - **Stripe (third pass, ADR 0110) — three variables in two processes.**
   `STRIPE_SECRET_KEY` (gateway) mints the SetupIntent and reads instruments
   back; `STRIPE_WEBHOOK_SECRET` (gateway) authenticates deliveries and, when

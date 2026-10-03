@@ -5,6 +5,9 @@
  * **"Always paper, follows account."** Part one (first visit is paper, never
  * the device's light/dark setting) was already built. Part two is this file:
  * the choice is no longer a property of the browser it was made in.
+ * [2026-10-01, batch 4: the stored value may now also be `system` — Paper /
+ * Charcoal / System, founder's pick. It rides the same `ground` key; a person
+ * who never chose is still paper, and this file still never reads the device.]
  *
  * WHAT THIS IS, AND WHY IT IS A COMPONENT
  * ---------------------------------------
@@ -57,7 +60,7 @@ import {
   registerGroundWriter,
   reportGroundReadFailure,
   setGroundOwner,
-  type GroundChoice,
+  type GroundSetting,
 } from './groundChoice';
 
 export function GroundChoiceSync(): null {
@@ -80,7 +83,7 @@ export function GroundChoiceSync(): null {
       registerGroundWriter(null);
       return;
     }
-    const write = (choice: GroundChoice) => updatePreferencesAsync({ ground: choice });
+    const write = (setting: GroundSetting) => updatePreferencesAsync({ ground: setting });
     registerGroundWriter(write);
     return () => registerGroundWriter(null);
   }, [userId, updatePreferencesAsync]);
