@@ -1,6 +1,6 @@
 # 0266 — An order's vendor letter is staged once, and a replaced draft stays closed
 
-- **Status:** Locked on the founder's rulings of 2026-10-02 (F0, F2, F4, F5, F6, F7, below). The mechanism is built in PR-1 and reviewed at that PR's gate. F3, F8 and F9 are open.
+- **Status:** Locked on the founder's rulings of 2026-10-02 (F0, F2, F4, F5, F6, F7) and 2026-10-03 (the sent-letter block), below. The mechanism is built in PR-1 and reviewed at that PR's gate. F3, F8 and F9 are open.
 - **Date:** 2026-10-02
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** F-106, COMMS-W25, COMMS-W24, one letter per order, stage_order_letter, discard_reason, DISCARDED, pending draft, order_inquiry, approval-time letter, create-time letter, order request, owner-quarter sim
@@ -35,6 +35,7 @@ A draft seal is issued only while exactly one row waits (`:7429`), so the row an
 - **F2, how much of the order letter the AI writes (PR-4b):** "One courtesy line (Recommended)", with no figures; the line is dropped if it holds a digit, currency sign, date or bracket. Rejected: the AI writes the whole body and a validator checks every fact.
 - **F4, the Mudavym line on order letters:** "Keep today's line (Recommended)", "drafted by Mudavym on behalf of {house}", until W20c lands. Letters still leave from the shared mailbox (F-046). Rejected: dropping it now (0174 D4); adopting W20c's words now.
 - **F5, may the house edit the order-request template:** **"Editable now"**, against the recommendation (read-only until 0173 D2's slot editor). The order request becomes a sixth `LETTER_CATEGORIES` purpose (`house-letters.service.ts:157-163`). Template writes get an owner/manager guard and 0173 D2's guardrails. This widens PR-4a.
+- **Whether a letter already SENT blocks the approval-time letter (PR-1, until PR-4b):** "Keep: one letter (Recommended)". Any live outbound letter, sent or waiting, blocks it. Asked 2026-10-02; that ask was cut off by the 01:37 restart and answered on 2026-10-03. Rejected: only a waiting letter blocks. That would keep drafting today's post-approval `order_inquiry` after a sent price inquiry, the letter F-099 calls a price inquiry written after the order is sealed.
 
 ## Decision
 
@@ -52,7 +53,7 @@ The order's letter is decided in the database. Both agents stage it through `pub
   - "Replaced by a newer draft for this order (<id>)."
   - "A newer draft for this order was already waiting (<id>)." This is the release and revert path.
   - Either reason gains "The send request on it no longer applies." when a staff request was on it.
-  - No writer meets an error. An edit to a row that is already waiting is not a new draft. Pairs that already exist are left for PR-3.
+  - No writer meets an error. An edit to a row that is already waiting is not a new draft. Pairs that already exist are left for PR-3, unless a member cycles. If a row leaves `PENDING_APPROVAL` and comes back to it (a claim, then a release or revert), the trigger settles that pair newest-wins by `created_at`, not F0's first-written. PR-3's dry-run counts the pairs settled this way. (Corrected at the #591 gate: the first text said the trigger never touches an existing pair.)
 - **Closed drafts.** `DISCARDED` and `CANCELLED` join the agent's `_CLAIM_REFUSED_STATUSES`, which covers the send claim and the hold-return. `POST /conversations/:id/approve` refuses both before any dispatch.
 
 **Choices made while building, recorded for the gate:**
@@ -66,7 +67,7 @@ The order's letter is decided in the database. Both agents stage it through `pub
 - One letter per order from the agents, and one waiting draft per order from any writer. The pair that broke `approveDraft` cannot form again.
 - A replaced or cancelled draft cannot be sent by the route or the agent, even with a stale approval.
 - **The trigger is a write its callers do not see.** A release or revert can end in `DISCARDED`. The gateway still says "It is back in your queue for one-tap approval" (`procurement.service.ts:8702`, `:8712`) until PR-5a.
-- **Until PR-4b narrows the door with `p_kind = 'ORDER_REQUEST'`, any live outbound letter blocks the approval-time letter.** That includes an earlier price inquiry that was sent. A negotiated order therefore gets no post-approval inquiry, which F-099 calls wrong anyway.
+- **Until PR-4b narrows the door with `p_kind = 'ORDER_REQUEST'`, any live outbound letter blocks the approval-time letter.** That includes an earlier price inquiry that was sent. A negotiated order therefore gets no post-approval inquiry, which F-099 calls wrong anyway. Founder ruling of 2026-10-03, above.
 - **Pairs already in production stay until PR-3.** R4's `OrderLetter` must skip `DISCARDED` rows before PR-3 lands.
 - Evidence:
   - PostgreSQL 17, built from all 283 migrations at e25ebf537 plus this one (applied twice): 20/20 checks pass. A two-session race stages once.

@@ -50,8 +50,10 @@
 -- keep failing on them until the reconcile migration (PR-3, after a read-only
 -- dry-run) discards the later one per the founder's F0 answer (2026-10-02:
 -- the first-written survives) and adds the unique index as a backstop. The
--- trigger fires only when a row BECOMES PENDING_APPROVAL, so it never touches
--- an existing pair on its own.
+-- trigger fires only when a row BECOMES PENDING_APPROVAL. It leaves an existing
+-- pair alone until a row of it cycles: claimed, then released or reverted back
+-- to PENDING_APPROVAL. It then settles that pair newest-wins by created_at, not
+-- F0's first-written. PR-3's dry-run counts the pairs settled this way.
 --
 -- Additive: one nullable column, one CHECK over a column that starts NULL on
 -- every existing row, one trigger, two functions. Nothing is deleted.
