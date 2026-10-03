@@ -11,9 +11,10 @@
   proposal, and he can change them. After the lock, his round-15 answers
   (§2026-10-02, "Round 15") settled OD-219 to OD-222, the reading of R31 against R93,
   and OD-218 apart from four sub-parts. His round-17 answers (2026-10-03,
-  §2026-10-02, "Round 17") settled those four, so OD-218 is resolved too. Those
+  §2026-10-02, "Round 17") settled those four, so OD-218 is resolved too. His round-17b
+  answers (§2026-10-02, "Round 17b") settled five details round 17 left. Those
   answers rest on their own picks, quoted there, not on the lock pick. None of them
-  covers the details under "Left open inside answered rulings". The lock is written the
+  covers the details still under "Left open inside answered rulings". The lock is written the
   way his 2026-10-01 pick *"Lock + reopen wrong bits (Recommended)"* asked ("Mark it
   Locked and record the 2026-09-12 apply. The four claims the evidence overturned are
   reopened as the questions that follow. Docs only."): the four overturned claims are
@@ -815,7 +816,8 @@ The founder answered every drinks fork put to him on 2026-10-01 and 2026-10-02.
 Forks that were not put to him then were filed as OD-218 to OD-222. He answered
 them in round 15, later on 2026-10-02 ("Round 15" below), except four sub-parts of
 OD-218 that were never asked. He answered those in round 17, on 2026-10-03
-("Round 17" below).
+("Round 17" below), and the details they left in round 17b the same day
+("Round 17b" below).
 This section is the in-repo record of those answers. Each row gives his pick
 verbatim, what it means in one line, what he did not pick, and where it is
 written down. Picks are quoted byte for byte from the primary record, so his
@@ -840,8 +842,8 @@ typos are kept.
   [Note 2026-10-03: a cite with a line number, such as R15:5-7, is this file. A bare
   R15 is the group 10 ruling on tenant-scoped FKs.]
 - **RQ17**: `/Users/aldemirkonuk/Projects/p4-scratch/founder-answers-2026-10-03-round17-od218.md`,
-  the round-17 picks. It is not named R17, because R17 is the group 10 ruling on
-  embed hints. TX holds each option's full text.
+  the round-17 picks, with round 17b at its end (RQ17:39-56). It is not named R17,
+  because R17 is the group 10 ruling on embed hints. TX holds each option's full text.
 
 **Dates.**
 - The picks called "2026-10-01" ran from 2026-10-01T23:01Z to 2026-10-02T04:10Z.
@@ -1147,13 +1149,14 @@ which is quoted below.
 - The clarifier was asked at 14:58Z and answered at 20:15Z.
 - In his time zone (UTC-4) that is 10:27 to 16:15 on 2026-10-03. RQ17:3 says
   "about 10:50" for the asking; the times here are TX's.
+- Round 17b, on the details round 17 left, followed at 20:33Z ("Round 17b" below).
 
 | # | Pick (verbatim) | What it means | Rejected | Source |
 |---|---|---|---|---|
 | HD-12, first answer | Free text: "by ingrident type I mean it has ice then its cold no? option 2 is better demonstration or just keep it Drinks" | Not settled; it picked no option. The clarifier below put his two ideas, temperature ("option 2" was "By temperature") and one "Drinks" kind, against stocking by ingredient. | — | RQ17:5-11; TX 14:56Z |
 | HD-12 | "Stock by ingredient, menu Hot/Cold (Recommended)" | The option read: "Coffee, tea, cocoa, salep and herbal are stocked in one kind, so the beans are one item. On the menu and the till, every served drink shows as Hot or Cold, and anything with ice is Cold. Iced latte shows Cold and uses the same beans." So the hot-drink kind is defined by ingredient, and an iced coffee draws from it. Hot or Cold is a serve attribute, not a kind. | "By temperature everywhere", "One 'Drinks' kind" | RQ17:33-37; TX 20:15Z; FK:797-803 |
 | X13 register list | "Sake register, cider chip (Recommended)" | The option read: "Sake gets its own register, switched on once stock exists. Cost: one migration and one card. Cider/mead/seltzer starts as a filter chip and gets a register once a house carries more than a handful. The chip ships with cider's base list so it is never empty." Liqueurs already have the eighth register (the X3 follow-up), so sake's is the ninth. | "Both get registers now", "One shared 'other drinks'", "Chips only for both" | RQ17:13-15; TX 14:56Z; FK:1732-1762 |
-| Wine F21b | "Keep today: not counted (Recommended)" | The option read: "A low-stock alert means 'low on the shelf'. Cost: an ordered wine keeps alerting until it arrives, so people may wonder why something already ordered still shows." Stock that is ordered but not delivered stays out of low stock, as `v_low_stock_items` keeps it out today (baseline :6048). | "Count what is on order" | RQ17:17-19; TX 14:56Z; FK:1693-1699 |
+| Wine F21b | "Keep today: not counted (Recommended)" | The option read: "A low-stock alert means 'low on the shelf'. Cost: an ordered wine keeps alerting until it arrives, so people may wonder why something already ordered still shows." Stock that is ordered but not delivered stays out of low stock, as `v_low_stock_items` keeps it out in the baseline (:6048), the only migration that defines the view at `8c673db4b`. | "Count what is on order" | RQ17:17-19; TX 14:56Z; FK:1693-1699 |
 | X19 POS shapes | "Approve all; R46 covers mods (Recommended)" | The option read: "Take the eight team picks: flights queued for now; Toast line id in the duplicate-sale key; Coravin counted as an open bottle; mixed buckets queued; a glass from a packaged beer queued; cider table shipped dark first; sake behind a shared resolver first. Cocktail modifiers use the same R46 mapping, so the till has one modifier mechanism, not two." It says eight and lists seven. The eighth shape, modifiers, takes R46's mapping, not the cocktail team's pick. The table below gives each shape. | "Approve all; cocktails buttons-only", "Ask me each case", "Decide at each till PR" | RQ17:21-31; TX 14:56Z; FK:2106 |
 
 **X19's eight shapes.** "Approved" quotes the kind team's pick from FK.
@@ -1161,40 +1164,76 @@ which is quoted below.
 | Shape | Fork | Answer | What it means | FK |
 |---|---|---|---|---|
 | Flights | Wine F16 | Approved: "Option 1 now, and option 2 if the house sells flights." | A flight or multi-wine line queues with the reason `multi_component` and depletes nothing. A child table of mapping components waits until the house is known to sell flights, which nobody has checked. | 2116-2122 |
-| Toast duplicate-sale key | Wine F17 | Approved: "Option 1." | The Toast line guid (or index) joins the idempotency key, and `toast_item_guid` moves into `pos_item_mappings` with a backfill. Two lines of one wine on a check stop collapsing into one depletion. At this branch's head three app files name `toast_item_guid`: `apps/api-gateway/src/inventory/inventory.service.ts`, `apps/api-gateway/src/toast/toast.service.ts` and `apps/web/src/services/api/inventory.ts`. | 2124-2129 |
+| Toast duplicate-sale key | Wine F17 | Approved: "Option 1." | The Toast line guid (or index) joins the idempotency key, and `toast_item_guid` moves into `pos_item_mappings` with a backfill. Two lines of one wine on a check stop collapsing into one depletion. At `8c673db4b` three app files name `toast_item_guid`: `apps/api-gateway/src/inventory/inventory.service.ts`, `apps/api-gateway/src/toast/toast.service.ts` and `apps/web/src/services/api/inventory.ts`. | 2124-2129 |
 | Coravin | Wine F18 | Approved: "Option 1 until the house is known to use Coravin." | A Coravin pour books from an ordinary open lot. Open-life alerts may fire early on an argon-protected bottle. | 2131-2136 |
 | Buckets | Beer F-BUCKET | Approved: "(a) at launch, then (b) if the house sells mixed buckets." | A single-beer bucket depletes by `units_per_sale` on its mapping. A mixed bucket goes to the unresolved queue and is handled by hand. | 2138-2143 |
 | A glass from packaged beer | Beer F6 | Approved: "(a)." | The till queues it as unresolved, and the menu line stays carried and unconfirmed. Nothing on the menu is refused. | 2145-2150 |
 | Cider ship order | Cider F12 | Approved: "(b)." The team marked it "Founder call", and this pick is his call. | The cider table ships dark first, and no FK path reaches it. G1-G7 follow, and the first stock-holding row waits for them. | 2152-2158 |
 | Sake till rollout | Sake F15 | Approved: "A." | A shared resolver and queue for pos-hub, Toast and manual pours come first, then the database backstop, then sake POS mappings. No sake POS depletion happens until all three land. Whether the live house uses Toast is not checked. | 2160-2166 |
-| Modifiers | Cocktails F6 | Answered by R46, not by the team's pick | The team's pick was "(c), building only (a) now", one POS button per variant. His pick maps cocktail modifiers, such as premium gin and pitcher, the way R46 maps doubles and sizes: a person maps each modifier once, and lines with unmapped modifiers queue. No POS adapter delivers modifiers at this branch's head: `apps/api-gateway/src/pos-hub/pos-types.ts` has no modifier field, and no file under `pos-hub` or `toast` names one. | 2176-2182 |
+| Modifiers | Cocktails F6 | Answered by R46, not by the team's pick | The team's pick was "(c), building only (a) now", one POS button per variant. His pick maps cocktail modifiers, such as premium gin and pitcher, the way R46 maps doubles and sizes: a person maps each modifier once, and lines with unmapped modifiers queue. No POS adapter delivered modifiers at `8c673db4b`: `apps/api-gateway/src/pos-hub/pos-types.ts` has no modifier field there, and no file under `pos-hub` or `toast` names one. | 2176-2182 |
 
 **Round 17, read in plain words.** These are this record's readings, not his
 answers.
 - **The hot-drink kind keeps R1's code value.** R1 and X1 named the kind
   `hot_drink`. His round-17 pick says what the kind holds and says nothing about
-  that value, so `hot_drink` stands. The kind's visible name is not settled (see
-  "Left open").
-- **Iced coffee lines are no longer held.** HD-12's team wrote "Until decided, iced
-  and liqueur lines are held (routing step 5)". An iced coffee now routes to this
-  kind as a Cold serve. Liqueur coffee lines stay held, because their menu home is
-  still open (see "Left open").
-- **The cider chip's condition.** His option said the chip "ships with cider's base
-  list so it is never empty". The kind team's condition at FK:1738 is cider F4:
-  "Either way it ships with F4, or the chip is empty (review probe G)". F4 is the
-  ADR 0186 vocabulary amendment. It teaches the classifier 'ciders', 'mead',
-  'hard seltzer' and 'elma şarabı', which classify as unknown today. It is not cider
-  F10's list of bases (round 15), which does not change what the classifier finds.
-  This record reads his pick by its stated purpose, a chip that is never empty: the
-  chip ships with F4's members, inside the ADR amending 0186 (§Build order, "Records
-  owed"). The wording he saw named a different fork, so this reading is listed under
-  "Left open" to be confirmed with him.
+  that value, so `hot_drink` stands. Round 17b named what people see: "Coffee & tea".
+- **Iced and liqueur coffee lines are no longer held.** HD-12's team wrote "Until
+  decided, iced and liqueur lines are held (routing step 5)". An iced coffee now
+  routes to this kind as a Cold serve. Round 17b made a liqueur coffee a cocktail, so
+  it routes as one.
+- **The cider chip's condition.** His round-17 option said the chip "ships with
+  cider's base list so it is never empty". That wording was the asker's error, and
+  round 17b corrected it: the condition is cider F4, not cider F10's list of bases
+  (FK:1738). See "Round 17b".
+
+### Round 17b: the details round 17 left, answered
+
+The asker listed the details his round-17 picks left open and put them to him
+on 2026-10-03. RQ17:39-56 quotes his picks. TX is the primary record and holds
+each option's full text, which is quoted below.
+- Round 17b was asked at 2026-10-03T20:33:52Z and answered at 20:40:33Z.
+- In his time zone (UTC-4) that is 16:33 to 16:40. RQ17:39 says "about 13:00" for
+  the asking; the times here are TX's.
+
+| # | Pick (verbatim) | What it means | Rejected | Source |
+|---|---|---|---|---|
+| Q-a, the kind's name | "Coffee & tea (Recommended)" | The option read: "The kind team's name. It says what is stocked, and iced latte still fits under it." The kind's chip and register read "Coffee & tea". It is HD-12 option B's name (FK:800). | "Hot drinks" ("A familiar menu word, but iced latte and cold brew sit under 'Hot drinks' on the stock side."); "Coffee, tea & more" ("Makes room for cocoa, salep and herbal, but it is longer on a chip.") | RQ17:41-43; TX 20:40Z; FK:800 |
+| Q-b, Hot/Cold reach | "Coffee & tea serves only (Recommended)" | The option read: "Only this kind's serves get Hot or Cold, where it is the useful split (latte vs iced latte). Wine, beer and spirits don't carry it." | "Every drink on the menu" ("Every served drink shows Hot or Cold. Cost: nearly everything else is Cold, so the mark tells guests little there.") | RQ17:45-47; TX 20:40Z |
+| Q-c, liqueur coffee | "A cocktail, drawing both (Recommended)" | The option read: "The kind team's pick. It is a cocktail recipe that draws the coffee from Coffee & tea and the whiskey or liqueur from its own register, so each stock count stays true." This is HD-12 option B's routing: "Liqueur coffee is a cocktail drawing across kinds" (FK:800). | "A Coffee & tea serve" ("It sits with the coffees on the menu. Cost: the spirit it pours has to be drawn from another kind's register anyway.") | RQ17:49-51; TX 20:40Z; FK:800 |
+| Q-d, the cider register | "When the owner switches it on (Recommended)" | The option read: "The chip ships with F4. The cider register is built dark and each house's owner turns it on, the same per-house, per-kind switch as X19." So no count turns the register on. X19's switch is his group-5 pick "Per house, per kind (Recommended)": "The till starts taking stock one house and one kind at a time." | "Automatically at 10 items" ("The chip ships with F4, and the register appears by itself once a house stocks 10 cider/mead/seltzer items.") | RQ17:53-56; TX 20:40Z; FK:1732-1738 |
+
+**The asker's correction.** Q-d opened with a correction, and the error it
+corrects is the asker's, not his: "Correction: last time I wrote that the cider
+chip 'ships with cider's base list'. The real condition is the vocabulary change
+(cider F4, which you approved in round 15), so cider, mead and 'elma şarabı' are
+recognised and the chip isn't empty." RQ17:56 records it in the asker's words:
+"Q2's earlier wording "ships with cider's base list" was my error; base list is
+cider F10. The condition is F4 (forks.md:1738)." The X13 row above keeps the
+round-17 option text as he saw it.
+
+**Round 17b, read in plain words.** These are this record's readings, not his
+answers.
+- **Cider F4 was not approved in round 15.** Q-d says F4 is one "which you
+  approved in round 15". Round 15 approved the kind teams' picks listed at
+  FK:2357-2376, and cider's only row there is F10. F4 is filed at FK:1097-1103 and sits under X6 (FK:1071), and
+  R54's pick, "Each item's category (Recommended)", answered only what "menu
+  section" means. So F4 is approved by this round's pick, whose option text begins
+  "The chip ships with F4". Q-d names cider, mead and 'elma şarabı' as recognised,
+  and of F4's options only the team's pick, (a), adds mead and 'elma şarabı'
+  (FK:1099-1103). This record reads "F4" as (a). How much of (a) the amendment
+  carries is listed under "Left open".
+- **A liqueur coffee carries no Hot or Cold mark.** It is a cocktail (Q-c), and only
+  Coffee & tea serves carry the mark (Q-b).
+- **The "more than a handful" count is gone.** Round 17's option gave cider a register "once a
+  house carries more than a handful". Round 17b replaced that with the owner's
+  switch and rejected a count of 10.
 
 ### Still open — not decided by any of the above
 
 Nothing this record filed is still open. OD-219 to OD-222 were answered in round 15,
 and OD-218's last four sub-parts in round 17. All five are marked resolved in place
-in `OPEN-DECISIONS.md`. The details under "Left open inside answered rulings" are
+in `OPEN-DECISIONS.md`. Round 17b settled five details round 17 left. The details
+still under "Left open inside answered rulings" are
 not new forks, and each is settled before the build step that needs it.
 
 ### Left open inside answered rulings
@@ -1244,27 +1283,18 @@ settle, and each detail is settled before the build step that needs it.
     The standing rule is never to delete tables.
   - Sake F8's caveat: the 2022 amendment's effect on grades is checked before the
     sake K-PR (FK:2365).
-- **Details inside round 17's answers:**
-  - HD-12, the kind's visible name. The option he picked names no label. The
-    first-round option that would have made the chip read 'Coffee & tea' was not
-    the one he picked, and "One 'Drinks' kind" was rejected. Settled before the
-    hot-drink K-PR.
-  - HD-12, liqueur coffee's menu home. Its stock follows the ingredient either way:
-    beans from this kind, liqueur from liqueurs. HD-12's option B made it a cocktail,
-    and the option he picked does not say. Its lines stay held until this is
-    settled, before the hot-drink K-PR.
-  - HD-12, how far Hot and Cold reach. His option says "every served drink shows as
-    Hot or Cold", and the question was about coffee and tea. Whether a beer or a wine
-    serve carries the mark is settled before step S adds the attribute.
-  - The register list:
-    - the cider chip's condition, read above as cider F4's vocabulary, is confirmed
-      with him;
-    - "more than a handful", the point where cider gets its register, has no number
-      and no one named to call it.
-    Both are settled before cider's register PR.
+- **Details inside rounds 17 and 17b:**
+  - Round 17b settled five details that were listed here: the kind's visible name,
+    liqueur coffee's menu home, how far Hot and Cold reach, the cider chip's
+    condition, and when cider gets its register ("Round 17b").
+  - Cider F4's reach. His round-17b pick names F4, read above as the team's pick,
+    (a). Q-d named only cider, mead and 'elma şarabı'. Option (a) also adds perry,
+    hard seltzer, fruit wine and kombucha, `serve_format` and the printed size, and
+    tells the extractor to keep non-wine drinks (FK:1099). How much of (a) the ADR
+    amending 0186 carries is confirmed with him before that ADR is written.
   - X19's modifiers: R46's three unsettled points (above) now cover cocktail
-    modifiers too. No adapter delivers modifiers yet, so R46's mapping has nothing to
-    read until one does. That adapter work is owed
+    modifiers too. No adapter delivered modifiers at `8c673db4b`, so R46's mapping
+    has nothing to read until one does. That adapter work is owed
     (`.planning/tech-debt.d/2026-10-02-docs-adr-0115-drinks-lock.md` item 14).
 
 ## Build order (2026-10-02), migrations first
@@ -1288,7 +1318,7 @@ before D1, the gates, and the PR sizing. The step names follow AR §5 and §6.
 | Step | What it does | Rulings | Gated on | Unblocks |
 |---|---|---|---|---|
 | 0 | **Production counts.** This is a query step, not a migration. It runs:<br>• the lock review's §7 queries (LRV:358-366) and AR's step 0;<br>• the number of wines with no size (R7);<br>• rows that cannot be backfilled (R15);<br>• the size of the misfiled-row repair (R12, A5);<br>• the `restaurants.country` values (R30);<br>• production's Postgres and PostgREST versions. R16's generated columns need `SET EXPRESSION` (PG17+), and R17's PGRST201 behaviour comes from the PostgREST docs and was not run (BA:133-134).<br>None of these has been run. | R7, R12, R15, R16, R17, R30, A5 | Supabase access, which this session did not have | R7's second half; the D0 flag list; the R30 defaults; D7 and D8 |
-| M1 | **Drained lots are kept** (own PR). The shared write path stops deleting a used-up lot (`20260912163000_a_stock_write_names_its_house.sql:240-244`). The lot stays at 0 with a depleted status, and pour and ledger rows carry `lot_id` with a real FK. RV:138 recommends it "as its own PR in D3 before any format or batch PR". It comes first here because his lock pick says "lots first" and because it touches only tables that exist today. **Size:** RV:137 says it "sweeps 41 non-migration files and 21 migrations that mention `inventory_lots`". So M1 is likely several PRs, kept apart from every other step. | R6; R19 and R49 depend on it | none | every format PR; every batch PR; R39; R49's void to the sale's lot; D3 |
+| M1 | **Drained lots are kept** (own PR). The shared write path stops deleting a used-up lot (`20260912163000_a_stock_write_names_its_house.sql:240-244`). The lot stays at 0 with a depleted status, and pour and ledger rows carry `lot_id` with a real FK. RV:138 recommends it "as its own PR in D3 before any format or batch PR". It comes first here because his lock pick says "lots first" and because it touches only tables that exist at `8c673db4b`. **Size:** RV:137 says it "sweeps 41 non-migration files and 21 migrations that mention `inventory_lots`". So M1 is likely several PRs, kept apart from every other step. | R6; R19 and R49 depend on it | none | every format PR; every batch PR; R39; R49's void to the sale's lot; D3 |
 | M2 | **Ledger rows state their unit.** This ships ADR 0070's `uom NOT NULL` on every ledger row (`0070-a-quantity-states-its-own-unit.md:76-78`). It is **not shipped**: the only `uom` column added so far is the item-level one (`20260903171000_the_house_item_is_the_ledgers_key.sql:277`), and `inventory_lots`, `inventory_transactions` and `pour_events` have none. The same step adds R7's CLAIMS grep guard on `stock_live` and on `?? 750` (now at `inventory.service.ts:80`). | ADR 0070; R7 (first half) | none | M3; R7's per-wine conversion; R34 |
 | M3 | **Tenths of a ml.** The volume base unit becomes a tenth of a ml: "a finer base unit", so quantities stay integers under ADR 0070, which asks for a vocabulary "fine enough at the outset" (`0070-…:157-158`). It comes before D1, so the generated kind tables carry the unit from the start, and before any recipe explosion. | R81; R48 rides on it | M2 | D1; any recipe explosion; R48's multiplication at the till |
 | PR-00 | **Embed hints.** This is a gateway PR with no migration. Every `restaurant_inventory` embed names its constraint, and a CI grep enforces it. It must be live in production before D2. | R17 | none | D2 |
@@ -1298,13 +1328,13 @@ before D1, the gates, and the PR sizing. The step names follow AR §5 and §6.
 | F | **Formats.** This adds:<br>• `house_item_formats` and `format_identity_links`;<br>• library ids on the format;<br>• `house_item_size_proposals`;<br>• the kind-aware size parser and the ı fold.<br>`format_id` becomes NOT NULL for new lots only once the legacy-wine marker is designed. | Bottle sizes, R3, R4, R5, R21, R22, R35-R42, R51, R52, R59 | M1, D2 | D3's per-format posting; serves and prices; R7's conversion |
 | D3 | **The ledger takes a kind.** One stock book, with these rules:<br>• R19's four fixes;<br>• short stock goes to zero and the gap is named;<br>• counts post per format, as of `counted_at`, through a count RPC that accepts open ml;<br>• a void returns volume to its lot, capped (this supersedes B19);<br>• the keg-kicked action and the line-cleaning tap. | A2, R19, R26, R28, R29, R56, Draft, X2, R49, R50, R86 | D2, M1, F | D3b; D4 |
 | D3b | **The door reads every unit.** `can` and `bag_in_box` become container types, pieces count as `each`, and the door converts g, kg and ml. The door asks before booking an item whose unit is unconfirmed, and `oz` is split. | Count unit, R55, A7, R58 | D3 | the carry PRs |
-| S | **Serves and prices.** This step adds:<br>• serve rows stamped with ml and `item_sale_prices`, where legacy wine prices rule until a wine is sized;<br>• locks re-keyed, with a skip-and-report list, and price versions widened after the reader sweep;<br>• per-kind default sets, with the market taken from the country. When a kind is switched on, the house confirms or edits its set, and until then those sales wait in the queue (R25);<br>• no default for liqueur/vermouth, sake and soft drinks by the glass. R31's research is owed, but it is not a gate: S ships without it, and those three kinds stay without a default until it lands;<br>• a Hot or Cold mark on serves, where anything with ice is Cold (HD-12, round 17). How far the mark reaches beyond coffee and tea is settled first (§2026-10-02, "Left open"). | Glass sizes, Serve price, R9-R11, R23, R25, R30-R33, R43-R47, R53, R54, R82, R85, R87, R89, HD-12 | F, D3; step 0 (R30); the ADRs amending 0186 and 0193 (below) | till PRs (X19) |
+| S | **Serves and prices.** This step adds:<br>• serve rows stamped with ml and `item_sale_prices`, where legacy wine prices rule until a wine is sized;<br>• locks re-keyed, with a skip-and-report list, and price versions widened after the reader sweep;<br>• per-kind default sets, with the market taken from the country. When a kind is switched on, the house confirms or edits its set, and until then those sales wait in the queue (R25);<br>• no default for liqueur/vermouth, sake and soft drinks by the glass. R31's research is owed, but it is not a gate: S ships without it, and those three kinds stay without a default until it lands;<br>• a Hot or Cold mark on Coffee & tea serves only, where anything with ice is Cold (HD-12, rounds 17 and 17b). Wine, beer and spirit serves carry none, and neither does a liqueur coffee, which is a cocktail. | Glass sizes, Serve price, R9-R11, R23, R25, R30-R33, R43-R47, R53, R54, R82, R85, R87, R89, HD-12 | F, D3; step 0 (R30); the ADRs amending 0186 and 0193 (below) | till PRs (X19) |
 | D4 | **Prices, research and lookups take a kind.** D4 builds the R93 refusal: `claim_house_item_research` must refuse every non-wine item. It has no kind filter at `a823ef32d`. | R93 | D3 | the orchestrator PR |
-| D5 | **Views read every kind.** `house_items` becomes a UNION ALL. `v_low_stock_items` is rebuilt with a LEFT JOIN, gated on a confirmed unit and a stated par. Stock in transit stays out of low stock, as today (wine F21b, round 17). | Alerts (lock review C16), R34, wine F21b | D4 | none |
+| D5 | **Views read every kind.** `house_items` becomes a UNION ALL. `v_low_stock_items` is rebuilt with a LEFT JOIN, gated on a confirmed unit and a stated par. Stock in transit stays out of low stock, as in the baseline view (wine F21b, round 17). | Alerts (lock review C16), R34, wine F21b | D4 | none |
 | D6 | **Kind tables keep house rules.** This adds the unit freeze once stock exists, and `move_house_item_kind` with its audit table. It lands before any carry PR. | Count unit (freeze), A14 | D5 | every gateway carry PR |
-| K1-K6 | **Typed DDL per kind.** This covers:<br>• the kind boundaries;<br>• the beer style table, with only `other` until BJCP permission;<br>• allergens, after the G5 Annex II PR;<br>• life values typed by a person;<br>• cocktail forms `batch` and `prep`, which cannot change once used;<br>• each kind's approved kind-local picks (round 15), including wine F4's vintage on the item with lot vintage flagged at the door, and cider F10's list of bases;<br>• the hot-drink kind by ingredient: coffee, tea, cocoa, salep and herbal, with iced serves drawing from it (HD-12, round 17);<br>• the cider table shipping dark first; its first stock-holding row waits for G1-G7 (cider F12 (b), round 17). | R88, R90, R79, R91, R65, R70, R61, R67, OD-218 (approved picks; HD-12 and cider F12, round 17), OD-219, OD-220 | D6; the three OD-219 designs, each attacked, before any of these merges; for the hot-drink PR, the kind's visible name and liqueur coffee's menu home (§2026-10-02, "Left open") | the gateway PRs; batches |
+| K1-K6 | **Typed DDL per kind.** This covers:<br>• the kind boundaries;<br>• the beer style table, with only `other` until BJCP permission;<br>• allergens, after the G5 Annex II PR;<br>• life values typed by a person;<br>• cocktail forms `batch` and `prep`, which cannot change once used;<br>• each kind's approved kind-local picks (round 15), including wine F4's vintage on the item with lot vintage flagged at the door, and cider F10's list of bases;<br>• the hot-drink kind by ingredient: coffee, tea, cocoa, salep and herbal, with iced serves drawing from it (HD-12, round 17). Its chip and register read "Coffee & tea", and its code value stays `hot_drink` (round 17b);<br>• liqueur coffee as a cocktail recipe that draws the coffee from Coffee & tea and the whiskey or liqueur from its own register (round 17b);<br>• the cider table shipping dark first; its first stock-holding row waits for G1-G7 (cider F12 (b), round 17). | R88, R90, R79, R91, R65, R70, R61, R67, OD-218 (approved picks; HD-12 and cider F12, rounds 17 and 17b), OD-219, OD-220 | D6; the three OD-219 designs, each attacked, before any of these merges | the gateway PRs; batches |
 | B | **Batches, record-only.** A run records its inputs, yield, cost and use-by, and moves no stock until he switches it on. | A11, R60, R62-R64, R66, R68, R69, R71-R80 | K (cocktails) | runs that move stock: a follow-on choice of his |
-| G, W, Mo, Or | **App PRs.** Gateway (ledger callers, POS, receiving, carry, menu carry, procurement, pricing, analytics), web, mobile and orchestrator. The gateway finds a bare item id across the kind tables, so counts queued offline still land (OD-221). The web changes only the visible "Spirits" labels and keeps `/spirits` (OD-222). Round 17 sets the rest:<br>• the till PRs carry X19's approved shapes. Flights, mixed buckets and a glass from packaged beer queue. The Toast line guid joins the idempotency key, and `toast_item_guid` moves into `pos_item_mappings`. A Coravin pour books from an open lot. Cocktail modifiers use R46's mapping, which needs an adapter that delivers modifiers;<br>• sake's till path lands as shared resolver, then database backstop, then sake mappings (sake F15 A);<br>• the web adds a ninth register, sake, switched on once a house has sake stock, and a cider chip that ships with cider's vocabulary (F4, in the ADR amending 0186). | X14, Menu unit, R41, R42, X19, A8, R25, R46, R92, OD-221, OD-222, OD-218 (round 17) | K1-K6; the X14 amendment (this ADR); for the cider chip, the ADR amending 0186 and the confirmation listed under "Left open" | wine to ml; D7 |
+| G, W, Mo, Or | **App PRs.** Gateway (ledger callers, POS, receiving, carry, menu carry, procurement, pricing, analytics), web, mobile and orchestrator. The gateway finds a bare item id across the kind tables, so counts queued offline still land (OD-221). The web changes only the visible "Spirits" labels and keeps `/spirits` (OD-222). Rounds 17 and 17b set the rest:<br>• the till PRs carry X19's approved shapes. Flights, mixed buckets and a glass from packaged beer queue. The Toast line guid joins the idempotency key, and `toast_item_guid` moves into `pos_item_mappings`. A Coravin pour books from an open lot. Cocktail modifiers use R46's mapping, which needs an adapter that delivers modifiers;<br>• sake's till path lands as shared resolver, then database backstop, then sake mappings (sake F15 A);<br>• the web adds a ninth register, sake, switched on once a house has sake stock, and a cider chip that ships with cider F4's vocabulary (in the ADR amending 0186);<br>• the cider register, built dark. Each house's owner switches it on, per house and per kind, the same switch as X19 (round 17b). | X14, Menu unit, R41, R42, X19, A8, R25, R46, R92, OD-221, OD-222, OD-218 (rounds 17 and 17b) | K1-K6; the X14 amendment (this ADR); for the cider chip, the ADR amending 0186 (cider F4) | wine to ml; D7 |
 | Wine | **Wine moves to ml one wine at a time.** Each wine converts once it is sized, with the 750/150 interim. After a production count, unsized wine queues instead. | R7, R34, R12 | M2, F, step 0 | D7 |
 | D7 | **Misfiled rows move once, last.** The guard is lifted only inside this migration. Rows it cannot move go to a review table. | A5, R12 | every app PR live; step 0 measured | D8 |
 | D8 | **VALIDATE** the wine-only CHECK at a measured zero. | — | D7's review table at zero | none |
@@ -1313,7 +1343,8 @@ before D1, the gates, and the PR sizing. The step names follow AR §5 and §6.
 - This ADR is the amendment for the per-kind ruling, the A forks and X14.
 - An ADR amending 0186 for the menu vocabulary and one row per printed price
   (R53, R54), before S. Its vocabulary includes cider F4's members, which the
-  cider chip needs (round 17).
+  cider chip needs (rounds 17 and 17b). How much of F4 (a) it carries is confirmed
+  with him before it is written (§2026-10-02, "Left open").
 - An ADR amending 0193 for serve-level prices and locks (Serve price, R10,
   R11), before S. AR §6 names this amendment.
 - The library-kind mapping that R2 says is "recorded in an ADR", before D1.
@@ -1354,3 +1385,5 @@ before D1, the gates, and the PR sizing. The step names follow AR §5 and §6.
 | 2026-10-02 | Amendment, same branch | §2026-10-02 "Round 15" added; the R31/R93 reading marker turned into his answer; OD-219 to OD-222 marked resolved in place; OD-218 narrowed in place to four sub-parts |
 | 2026-10-03 | Aldemir (founder) | Round 17 (UTC 2026-10-03T14:27Z to 20:15Z) answered OD-218's four sub-parts. HD-12 "Stock by ingredient, menu Hot/Cold (Recommended)", after a free-text first answer and a clarifier; register list "Sake register, cider chip (Recommended)"; wine F21b "Keep today: not counted (Recommended)"; X19's POS shapes "Approve all; R46 covers mods (Recommended)" |
 | 2026-10-03 | Amendment, same branch | §2026-10-02 "Round 17" added, with its readings; "Still open" emptied; round-17 details added to "Left open"; OD-218 marked resolved in place; §Build order's OD-218 gates replaced by the answers (S, D5, K1-K6, G/W) |
+| 2026-10-03 | Aldemir (founder) | Round 17b (UTC 2026-10-03T20:33Z to 20:40Z) settled details round 17 left. The kind's name "Coffee & tea (Recommended)"; Hot/Cold "Coffee & tea serves only (Recommended)"; liqueur coffee "A cocktail, drawing both (Recommended)"; the cider register "When the owner switches it on (Recommended)". Q-d opened with the asker's correction of round 17's cider-chip wording (RQ17:56). |
+| 2026-10-03 | Amendment, same branch | §2026-10-02 "Round 17b" added, with the asker's correction and its readings; round 17's readings updated; five settled details removed from "Left open" and cider F4's reach added; §Build order's S, K1-K6, G/W and "Records owed" updated, and the gates that waited on "Left open" removed; OD-218's row gains round 17b; moving-head wording replaced by `8c673db4b` |

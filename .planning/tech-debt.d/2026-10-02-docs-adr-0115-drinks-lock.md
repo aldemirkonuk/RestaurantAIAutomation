@@ -5,8 +5,8 @@ Filed from branch `docs/adr-0115-drinks-lock`, which locks
 its §2026-10-02 (the founder's drinks rulings) and §Build order. Each item below
 is owed work, not an open fork. The forks were filed as OD-218 to OD-222 in
 `OPEN-DECISIONS.md`. Round 15 resolved OD-219 to OD-222, and round 17 (2026-10-03)
-resolved OD-218. Line numbers are at `a823ef32d`, this branch's base; item 14 was
-measured at `ba9704b59`, the main this branch last merged.
+resolved OD-218. Line numbers were measured at `a823ef32d`, and item 14 at
+`8c673db4b`.
 
 **1. Rename `wine_consumption_log` (R20, "Widen now, rename owed (Recommended)").**
 - D2 widens the table to point at any kind. Renaming it is owed, in its own PR,
@@ -121,9 +121,9 @@ rulings" lists whether the never-delete rule reaches them.
 - R46 maps each POS modifier once and queues lines whose modifiers are unmapped.
   Round 17 puts cocktail modifiers, such as premium gin and pitcher, on the same
   mapping.
-- No adapter delivers modifiers today:
-  - `apps/api-gateway/src/pos-hub/pos-types.ts` has no modifier field;
-  - `git grep -il modifier` finds no file under `apps/api-gateway/src/pos-hub` or
+- No adapter delivered modifiers at `8c673db4b`:
+  - `apps/api-gateway/src/pos-hub/pos-types.ts` had no modifier field;
+  - `git grep -il modifier` found no file under `apps/api-gateway/src/pos-hub` or
     `apps/api-gateway/src/toast`.
 - Until one does, R46's mapping has nothing to read. Which upstream POS APIs expose
   modifiers is not checked (cocktails F6, FK:2182).
