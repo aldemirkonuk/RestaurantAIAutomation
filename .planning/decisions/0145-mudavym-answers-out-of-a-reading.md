@@ -2334,12 +2334,12 @@ same way". That holds at a switch. At a first naming the follow-up is dropped
 bracketed above.
 
 **Re-pointed.** Gate round 1's line cites into `useAskSession.ts` moved with
-the note above them, and now point at this round's head.
+the note above them, and now point at this round's head, d0e4d6185.
 
 **Not verified.** Neither route was run in a browser. Whether a click can land
 in the same-tab interval is inferred from how React 18 schedules updates; it
 was not measured. Gate round 1's other twelve mutations were not re-run at
-this head. This round's own edits to the PR's source files are comments
+this head, d0e4d6185. This round's own edits to the PR's source files are comments
 only, and it adds one test, so a mutant that was red stays red. The merge
 with `main` changed no file under `src/components/askai`. Reviewer A re-ran
 all twelve at 55a52ad05.
@@ -2364,9 +2364,12 @@ conflict. It changed no file under `src/components/askai`. It moved the
   `/verify-email` (`client.ts:147-155`) or to the chooser
   (`client.ts:158-164`). A refresh answered
   `houseAccessEnded` also sends it to the chooser (`client.ts:48-49`), and a
-  stale chunk or a service-worker update reloads it (`App.tsx:36`,
-  `register-sw.ts:20`). None of these is a paid call, and each empties the
-  session. When B is verified and B's pair names a house, neither 403
+  stale chunk or a service-worker update can reload it (`App.tsx:36`,
+  `register-sw.ts:20`). None of these is a paid call, and each that runs
+  empties the session. [Gate at 4867c4a37: this said a stale chunk or a
+  service-worker update reloads it, and that each empties the session.
+  Each reload runs only under a condition, and each redirect is skipped on
+  some routes; see "Gate round 3 at 4867c4a37" below.] When B is verified and B's pair names a house, neither 403
   applies. Between the sign-out and the sign-in, a 401 with no refresh
   token is rejected without navigating (`client.ts:107-108`). After the
   sign-in B's token is valid, so no 401 comes back until it expires. In the
@@ -2408,6 +2411,10 @@ conflict. It changed no file under `src/components/askai`. It moved the
 
 ### Gate round 3, 2026-10-03 -- the person-switch trace, made conditional
 
+[Gate at 4867c4a37: this is the round after the audit at 3d847e44f. The
+gate's comment 5973720893 gives the number 3 to the audit at 4867c4a37,
+recorded below as "Gate round 3 at 4867c4a37".]
+
 The ADR 0090 gate at 3d847e44f returned BLOCK on measured sentences, with no
 code defect (PR #584 comment 5973211787). 3d847e44f merges `main` ba9704b59
 (#588), which adds ADR 0262 and its README row and changes no file this PR
@@ -2422,13 +2429,16 @@ cites. This round changes no source file.
   unverified B, a request through `apiClient` to a route that does not opt
   out sends the tab to `/verify-email`. A refresh answered
   `houseAccessEnded` sends the tab to the chooser, and a stale chunk or a
-  service-worker update reloads it, independently of the switch. None of
+  service-worker update can reload it, independently of the switch, each
+  under a condition. [Gate at 4867c4a37: this said they reload it, without
+  the conditions; see "Gate round 3 at 4867c4a37" below.] None of
   these is a paid call. On a route that does not opt out, both 403s are
   raised in `JwtAuthGuard` before the handler runs (`jwt-auth.guard.ts:84`,
   `:94`), and neither Ask controller opts out of either check. After a
   refresh answered `houseAccessEnded`, the request that drew the 401 is not
   retried (`client.ts:138-140`, `AuthContext.tsx:270-279`), and a reload
-  sends no request. The sentence is now conditional in the OPEN entry, which
+  re-sends nothing from the session it empties. [Gate at 4867c4a37: this
+  said a reload sends no request; the page it loads sends its own.] The sentence is now conditional in the OPEN entry, which
   carries the trace and its cites, in "Second push" above, in the review
   trail (bracketed) and in the PR body. "The only redirect to `/login`
   follows a refused refresh" is scoped to the two response interceptors;
@@ -2447,6 +2457,54 @@ cites. This round changes no source file.
   run; the trace is read from the code. Gate round 1's twelve mutations were
   not re-run: the PR's own source changes since d0e4d6185 are one comment
   hunk. The figures are in the review trail.
+
+### Gate round 3 at 4867c4a37, 2026-10-03 -- the reload conditions
+
+The gate's comment numbers this audit gate round 3 (PR #584 comment
+5973720893); "Gate round 3" above is the round after the audit at
+3d847e44f. 4867c4a37 is a GitHub update-branch merge of `main` 8c673db4b
+(#593) onto a79664ea7, made by the gate session; it changes no file under
+`apps/` or `services/`. Before the reviewers ran, the planner held the gate
+on one PR-body sentence, which said #593 was not merged here. It was
+bracket-corrected in the body alone, before any audit marker existed at
+4867c4a37. Reviewer A approved, with no wrong measured sentence. Reviewer B
+blocked on two sentences broader than the code, with no code or security
+defect, so the verdict is BLOCK. This round changes no source file.
+
+- **Each reload has a condition.** A stale-chunk error reloads the tab only
+  while its `sessionStorage` holds no `chunk_reload` flag, and the reload
+  sets the flag (`App.tsx:34-36`, `ErrorBoundary.tsx:87-89`); only a later
+  successful lazy load clears it (`App.tsx:30`). With the flag set, the
+  error is shown by the nearest error boundary instead. A service-worker
+  update reloads the tab only if a service worker controlled the page when
+  it loaded (`register-sw.ts:15`, called from `main.tsx:26`), and at most
+  once per page load (`register-sw.ts:16-20`).
+- **Not every redirect or reload runs.** The redirect to the chooser is
+  skipped on `/choose-house`, `/no-access` and `/login`
+  (`houseMemory.ts:335-337`), and the one to `/verify-email` on
+  `/verify-email` (`client.ts:152`). Those routes render outside
+  `DashboardLayout` (`App.tsx:192-199`), the only place the Ask session is
+  mounted (`HouseShell.tsx:138`, `AskAiSurface.tsx:32`), so there is no
+  session to send from. A reload that does not run leaves the tab in
+  whichever case B puts it; for a verified B whose pair names a house, that
+  is the case already disclosed. Under the shell, a stale-chunk error that
+  does not reload is shown by the boundary around the routed page
+  (`HouseShell.tsx:290`), which keeps the session; in the legacy layout the
+  root boundary (`App.tsx:167`) shows it, which unmounts the session.
+- **Where.** The OPEN entry carries the conditions and their cites. "Second
+  push" and "Gate round 3" above are bracketed, and the PR body says the
+  same.
+- **Swept.** "A reload sends no request", in the OPEN entry, "Gate round 3"
+  above and the body, now says a reload re-sends nothing from the session
+  it empties: the page it loads sends its own requests. In "Gate round 2",
+  "this round's head" and "at this head" (Reviewer A's notes) now name
+  d0e4d6185, which wrote them; the cites the first describes hold at
+  d0e4d6185 and at 4867c4a37. The OPEN entry's note on line numbers named only
+  `useAskPanel.ts`, "at this branch's head"; it now names 4867c4a37, and the
+  two other files this branch changes that the entry now cites.
+- **Not verified.** Nothing was run in a browser, and the gateway was not
+  run; the conditions are read from the code. The figures are in the
+  review trail.
 
 ## Review trail
 
@@ -2479,3 +2537,4 @@ cites. This round changes no source file.
 | 2026-10-02 | `fix/ask-close-no-second-spend` gate round 2 (fix, after the ADR 0090 gate at 55a52ad05 returned BLOCK) | Merged `main` e25ebf537, no conflict. The switch after a first naming pinned by a new test; the surviving mutant (`setOwner` below the first-naming return) now turns it red, 1 test, restored from a `cp -p` snapshot and checked with `cmp`. `AskPanel.test.tsx` 89 to 90. The house-switch entry kept CLOSED for a switch in the same tab; a switch in another tab and the same-tab interval before the render filed as a new OPEN entry, with two possible fixes, neither built. "Never charges twice" narrowed to one person in one house; the two routes disclosed in the PR body, this ADR and the hook's note; "masked the same way" narrowed for a first naming (see "Gate round 2"). At d0e4d6185, this round's first push: `src/components/askai` + `src/components/mudavym` 32 files / 493 passed; web eslint on the 8 touched source and test files 0 errors, 1 warning (`ProposalCard.tsx:268`, also on `main` at `:260`); web `tsc` only the pre-existing `passkeys.ts` error; decision claims 835/835; citation-pairing and conflict-marker guards pass. No browser render. |
 | 2026-10-03 | `fix/ask-close-no-second-spend` gate round 2, second push (fix, after the gate's plan at d0e4d6185 named a person switch in another tab) | Merged `main` 661068ab3 in 6e22589da, no conflict. Route (a) widened to a house or person switch in another tab, traced in the code: a sign-out and a sign-in as another person in another tab reach this tab with no 401, refresh, redirect or reload. [Gate round 3: that holds only when the person signed in is verified and their pair names a house, and a stale chunk or a service-worker update can still reload the tab; see "Gate round 3".] Still two routes. The token check now names the person; the first fix's "closes (b) only" and "moves the window" corrected; one phrasing, "for one person in one house", and the PR title now names the request id (see "Gate round 2", "Second push"). At 1879ed9d8: `src/components/askai` + `src/components/mudavym` 33 files / 515 passed; `AskPanel.test.tsx` 90/90; the `setOwner` mutation 1 failed / 89 passed, restored from a `cp -p` snapshot, `cmp` identical; web eslint on the 8 touched source and test files 0 errors, 1 warning (`ProposalCard.tsx:268`, also on `main` at `:260`); web `tsc` only the pre-existing `passkeys.ts` error; decision claims 835/835; citation-pairing and conflict-marker guards pass. No browser render. |
 | 2026-10-03 | `fix/ask-close-no-second-spend` gate round 3 (fix, after the ADR 0090 gate at 3d847e44f returned BLOCK) | 3d847e44f merged `main` ba9704b59 (#588), which changes no file this PR cites. The person-switch trace made conditional: it holds only when the person signed in is verified and their pair names a house; otherwise the tab is sent to `/verify-email` or the chooser, with no paid call, and a stale chunk or a service-worker update can reload it at any point. The `/login` sentence scoped to the two response interceptors. Audit cites now name the posted PR comments; the fragment's quoted title aligned; the second-push row names 1879ed9d8 (see "Gate round 3"). At a41149395, which changes no source file: `src/components/askai` + `src/components/mudavym` 33 files / 515 passed; `AskPanel.test.tsx` 90/90; the `setOwner` mutation 1 failed / 89 passed, restored from a `cp -p` snapshot, `cmp` identical, then 90/90; web eslint on the 8 touched source and test files 0 errors, 1 warning (`ProposalCard.tsx:268`; the same hook is at `:260` on `main`); web `tsc` only the pre-existing `passkeys.ts` error; decision claims 835/835; citation-pairing and conflict-marker guards pass. No browser render, no gateway run. |
+| 2026-10-03 | `fix/ask-close-no-second-spend` gate round 3 at 4867c4a37 (fix, after the ADR 0090 gate there returned BLOCK, PR #584 comment 5973720893) | The planner's hold on one PR-body sentence (#593 "is not merged here") was fixed in the body alone, before any marker. Reviewer A approved; Reviewer B blocked on two reload sentences, with no code or security defect. The stale-chunk and service-worker reloads now carry their conditions, and the sentence that each redirect or reload loads the page again now says which do not run, and that one that does not run leaves no session to send from or the tab in B's case (see "Gate round 3 at 4867c4a37"). Swept: "a reload sends no request" narrowed; "this round's head" and "at this head" in "Gate round 2" name d0e4d6185; the OPEN entry's line-number note names 4867c4a37. The fix changes only this ADR and the OPEN entry's fragment. At 4867c4a37: `src/components/askai` + `src/components/mudavym` 33 files / 515 passed; `AskPanel.test.tsx` 90/90; web eslint on the 8 touched source and test files 0 errors, 1 warning (`ProposalCard.tsx:268`; the same hook is at `:260` on `main` 8c673db4b); web `tsc` only the pre-existing `passkeys.ts` error; decision claims 836/836; citation-pairing and conflict-marker guards pass. The `setOwner` mutation was not re-run. No browser render, no gateway run. |
