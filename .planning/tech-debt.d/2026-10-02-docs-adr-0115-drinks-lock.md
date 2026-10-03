@@ -4,8 +4,9 @@ Filed from branch `docs/adr-0115-drinks-lock`, which locks
 [ADR 0115](../decisions/0115-the-house-item-is-the-ledgers-key.md) as amended by
 its §2026-10-02 (the founder's drinks rulings) and §Build order. Each item below
 is owed work, not an open fork. The forks were filed as OD-218 to OD-222 in
-`OPEN-DECISIONS.md`. Round 15 resolved OD-219 to OD-222, and only OD-218's four
-never-asked sub-parts are still open. Line numbers are at `a823ef32d`, this branch's base.
+`OPEN-DECISIONS.md`. Round 15 resolved OD-219 to OD-222, and round 17 (2026-10-03)
+resolved OD-218. Line numbers are at `a823ef32d`, this branch's base; item 14 was
+measured at `ba9704b59`, the main this branch last merged.
 
 **1. Rename `wine_consumption_log` (R20, "Widen now, rename owed (Recommended)").**
 - D2 widens the table to point at any kind. Renaming it is owed, in its own PR,
@@ -115,3 +116,14 @@ the per-call-site count", and nobody has taken that count. Two of the columns
 record what a person did (`glasses_per_bottle_override` and the
 `last_manual_edit_*` trio). ADR 0115 §2026-10-02 "Left open inside answered
 rulings" lists whether the never-delete rule reaches them.
+
+**14. Teach a POS adapter to deliver modifiers (R46; round 17, "Approve all; R46 covers mods (Recommended)").**
+- R46 maps each POS modifier once and queues lines whose modifiers are unmapped.
+  Round 17 puts cocktail modifiers, such as premium gin and pitcher, on the same
+  mapping.
+- No adapter delivers modifiers today:
+  - `apps/api-gateway/src/pos-hub/pos-types.ts` has no modifier field;
+  - `git grep -il modifier` finds no file under `apps/api-gateway/src/pos-hub` or
+    `apps/api-gateway/src/toast`.
+- Until one does, R46's mapping has nothing to read. Which upstream POS APIs expose
+  modifiers is not checked (cocktails F6, FK:2182).
