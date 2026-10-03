@@ -556,10 +556,15 @@
   gap: 8px;
   margin-top: 16px;
 }
+/* INV-W36: the popover's body scrolls (overflow: auto) with no padding, so the
+   focus ring — 2px out at a 2px offset — was cut off at the menu's edges and
+   showed only as a line between the items. 4px all round and between items
+   keeps the whole ring on paper. */
 .iv-menu {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
+  padding: 4px;
 }
 .iv-menu-item {
   display: block;

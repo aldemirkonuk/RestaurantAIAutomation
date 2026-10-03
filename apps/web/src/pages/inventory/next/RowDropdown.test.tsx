@@ -6,7 +6,7 @@
  * stubbed; the sheets and the ceremony stub are real mounts.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { InvRow } from './useInventoryNextData';
@@ -375,4 +375,72 @@ describe('RowDropdown day bars read dates the way the rest of the page does (INV
       reads.record = {};
     }
   });
+});
+
+describe('INV-W36: the More menu keeps the menu keys', () => {
+  async function openMore() {
+    renderDrop();
+    const more = screen.getByRole('button', { name: 'More' });
+    more.focus();
+    fireEvent.click(more);
+    const menu = await screen.findByRole('menu');
+    const items = within(menu).getAllByRole('menuitem');
+    // Wait for the Popover to place focus on the first item (it does so once positioned).
+    await act(async () => {
+      for (let n = 0; n < 20 && document.activeElement !== items[0]; n += 1) await new Promise((r) => setTimeout(r, 10));
+    });
+    return { more, menu, items };
+  }
+
+  it('ArrowDown and ArrowUp step through the items and wrap', async () => {
+    const { items } = await openMore();
+    expect(document.activeElement).toBe(items[0]);
+    // fireEvent returns false when the handler cancelled the key: an arrow that
+    // moved focus must not also scroll the page.
+    expect(fireEvent.keyDown(document.activeElement!, { key: 'ArrowDown' })).toBe(false);
+    expect(document.activeElement).toBe(items[1]);
+    fireEvent.keyDown(document.activeElement!, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(items[0]);
+    expect(fireEvent.keyDown(document.activeElement!, { key: 'ArrowUp' })).toBe(false);
+    expect(document.activeElement).toBe(items[1]);
+    fireEvent.keyDown(document.activeElement!, { key: 'ArrowUp' });
+    expect(document.activeElement).toBe(items[0]);
+  });
+
+  it('Home and End jump to the first and last item', async () => {
+    const { items } = await openMore();
+    fireEvent.keyDown(document.activeElement!, { key: 'End' });
+    expect(document.activeElement).toBe(items[items.length - 1]);
+    fireEvent.keyDown(document.activeElement!, { key: 'Home' });
+    expect(document.activeElement).toBe(items[0]);
+  });
+
+  it('a key the menu does not use is left alone', async () => {
+    const { items } = await openMore();
+    const ev = new KeyboardEvent('keydown', { key: 'a', bubbles: true, cancelable: true });
+    document.activeElement!.dispatchEvent(ev);
+    expect(ev.defaultPrevented).toBe(false);
+    expect(document.activeElement).toBe(items[0]);
+  });
+
+  // The browser's own Tab is not run by jsdom, so these pin what the browser
+  // starts from: focus is on More when the keydown returns, and the event is not
+  // cancelled. Where the browser then lands was checked live (P6).
+  for (const shiftKey of [false, true]) {
+    it(`${shiftKey ? 'Shift+Tab' : 'Tab'} hands focus to More before the browser moves it, and closes the menu`, async () => {
+      const { more, items } = await openMore();
+      const ev = new KeyboardEvent('keydown', { key: 'Tab', shiftKey, bubbles: true, cancelable: true });
+      let focusWhenTheKeyReturns: Element | null = null;
+      await act(async () => {
+        // Read inside act, before React re-renders: the Popover's own restore on
+        // close would put focus on More anyway, and hide a handler that did not.
+        items[0].dispatchEvent(ev);
+        focusWhenTheKeyReturns = document.activeElement;
+      });
+      expect(focusWhenTheKeyReturns).toBe(more);
+      expect(ev.defaultPrevented).toBe(false);
+      expect(screen.queryByRole('menu')).toBeNull();
+      expect(more.getAttribute('aria-expanded')).toBe('false');
+    });
+  }
 });

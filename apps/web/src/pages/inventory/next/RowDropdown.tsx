@@ -17,7 +17,7 @@
  * `?order=` (OrdersNext.tsx:132). Receipts has no link to one LINE of an
  * invoice and no filter by title, and the copy says so instead of pretending.
  */
-import { useMemo, useRef, useState, type ReactNode } from 'react';
+import { useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { Popover } from '@/components/mudavym';
 import type { ProcurementDocument } from '../../../services/api/documents';
@@ -73,6 +73,32 @@ function figure(v: number | null): string {
 }
 
 /** The invoice among an order's paper, else whatever was filed first. */
+/** INV-W36: `role="menu"` promises the menu keys, so the More menu keeps that
+ *  promise. ArrowDown and ArrowUp step through the items and wrap; Home and End
+ *  jump to the first and last. Tab leaves the menu: focus goes back to More
+ *  first, the menu closes, and the browser's own Tab then moves on from More.
+ *  Without that, focus left a menu that stayed open, and because the menu is
+ *  drawn at the end of the page, Tab jumped to the top of it. */
+function onMenuKeys(e: KeyboardEvent<HTMLElement>, opener: HTMLElement | null, close: () => void): void {
+  if (e.key === 'Tab') {
+    opener?.focus();
+    close();
+    return;
+  }
+  const items = Array.from(e.currentTarget.querySelectorAll<HTMLElement>('[role="menuitem"]'));
+  if (items.length === 0) return;
+  const at = items.indexOf(document.activeElement as HTMLElement);
+  const last = items.length - 1;
+  let next: HTMLElement;
+  if (e.key === 'ArrowDown') next = items[at === last ? 0 : at + 1];
+  else if (e.key === 'ArrowUp') next = items[at <= 0 ? last : at - 1];
+  else if (e.key === 'Home') next = items[0];
+  else if (e.key === 'End') next = items[last];
+  else return;
+  e.preventDefault();
+  next.focus();
+}
+
 function invoiceOf(docs: ProcurementDocument[]): ProcurementDocument | null {
   return docs.find((d) => d.doc_type === 'invoice') ?? docs[0] ?? null;
 }
@@ -143,7 +169,7 @@ export default function RowDropdown(props: RowDropdownProps) {
           width={220}
           label="More things to do with this title: move bottles between zones, or record a pour by hand"
         >
-          <div className="iv-menu" role="menu">
+          <div className="iv-menu" role="menu" onKeyDown={(e) => onMenuKeys(e, moreRef.current, () => setMoreOpen(false))}>
             <button
               type="button"
               role="menuitem"
