@@ -193,6 +193,21 @@ describe('the bar', () => {
     expect(bar.getAttribute('data-ground')).toBe('charcoal');
   });
 
+  it('carries no theme control — the ground is chosen on /profile (founder, 2026-10-01, DASH-W23)', () => {
+    const { container } = mount(<HouseHeader page="providers" />);
+    const bar = container.querySelector('.mdv-hdr') as HTMLElement;
+    expect(bar).not.toBeNull();
+    expect(screen.queryByRole('button', { name: /theme|ground/i })).toBeNull();
+    expect(screen.queryByTitle(/theme|ground/i)).toBeNull();
+    expect(bar.querySelector('.mdv-hdr__theme')).toBeNull();
+    // The right-hand cluster is the house, the bell and the account — nothing else.
+    const right = bar.querySelector('.mdv-hdr__right') as HTMLElement;
+    const named = Array.from(right.querySelectorAll('button')).map(
+      (b) => b.getAttribute('aria-label') ?? b.textContent ?? '',
+    );
+    expect(named.filter((n) => /theme|ground|paper|charcoal|light|dark/i.test(n))).toEqual([]);
+  });
+
   it('opens the command palette with the event the provider already listens for', () => {
     const heard = vi.fn();
     window.addEventListener('wineops:command-open', heard);

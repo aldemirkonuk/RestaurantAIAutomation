@@ -16,6 +16,8 @@ import { DatabaseService } from "../database/database.service";
 import { ProcurementService, asUuid } from "./procurement.service";
 import { OrchestratorService } from "../common/orchestrator/orchestrator.service";
 import { resolveOrderUnits } from "./order-units";
+import { assertInventoryBelongsToRestaurant } from "../common/tenant/assert-inventory-belongs-to-restaurant";
+import { assertProviderBelongsToRestaurant } from "../common/tenant/assert-provider-belongs-to-restaurant";
 
 /**
  * The five schedule shapes `recurring_orders_frequency_check` accepts.
@@ -392,6 +394,21 @@ export class RecurringOrdersService {
       });
     }
 
+    // THE ITEM AND THE VENDOR ARE THIS HOUSE'S, BEFORE THE SCHEDULE EXISTS
+    // (ADR 0249). Both ids come from the body. Unchecked, another house's id
+    // was stored, the schedule's GET named that house's wine or vendor, and
+    // the calendar rows written below carried that house's wine name or
+    // vendor id. Both checks run before the insert, so a refusal writes
+    // nothing.
+    await this.assertIdsAreThisHouses(
+      restaurantId,
+      {
+        inventory_id: template.inventory_id,
+        provider_id: template.provider_id,
+      },
+      "createRecurringOrder",
+    );
+
     const { data, error } = await this.databaseService.supabase
       .from("recurring_orders")
       .insert({
@@ -558,6 +575,15 @@ export class RecurringOrdersService {
       });
     }
 
+    // A NEW item or vendor is this house's, before the schedule is read or
+    // written (ADR 0249). Only an id the body sends is checked; an edit that
+    // leaves both out reads neither table.
+    await this.assertIdsAreThisHouses(
+      restaurantId,
+      patch,
+      "updateRecurringOrder",
+    );
+
     // Units are re-resolved whenever any of the three inputs moves.
     //
     // A CHANGED unit does not inherit the stored pack size. `resolveOrderUnits`
@@ -611,6 +637,48 @@ export class RecurringOrdersService {
     }
 
     return projectRow(data);
+  }
+
+  /**
+   * The schedule's item and vendor belong to the caller's house (ADR 0249).
+   *
+   * The same two checks `ProcurementService.createOrder` runs before it writes
+   * an order, so a schedule is not given an item or vendor that the 08:00
+   * run would refuse as another house's:
+   *   - the item: `assertInventoryBelongsToRestaurant` (ADR 0141). Another
+   *     house's item or a missing one is 403; a failed read is 422.
+   *   - the vendor: `assertProviderBelongsToRestaurant` (ADR 0147, ADR 0221).
+   *     Another house's vendor, a vendor row with no house or a missing one is
+   *     404 "Vendor not found"; a failed read is 503.
+   *
+   * A key the object holds is checked, whatever its value; a key it does not
+   * hold is not. Create passes both keys, so both are always checked. Update
+   * passes `patch`, which holds only the allow-listed fields the body sent.
+   */
+  private async assertIdsAreThisHouses(
+    restaurantId: string,
+    ids: { inventory_id?: string; provider_id?: string },
+    context: string,
+  ): Promise<void> {
+    if ("inventory_id" in ids) {
+      await assertInventoryBelongsToRestaurant(
+        this.databaseService.supabase,
+        restaurantId,
+        ids.inventory_id as string,
+        context,
+        this.logger,
+      );
+    }
+    if ("provider_id" in ids) {
+      await assertProviderBelongsToRestaurant(
+        this.databaseService.supabase,
+        restaurantId,
+        ids.provider_id as string,
+        context,
+        "the schedule was not saved",
+        this.logger,
+      );
+    }
   }
 
   async deleteRecurringOrder(restaurantId: string, id: string) {

@@ -8,12 +8,23 @@
   **follows the person, not the browser** — it lives on their account and loads on sign-in on
   any device (Fork B: Option 1 superseded). See **§The founder's answer, 2026-09-21** below;
   **Still open** is now empty.**]
-- **Date:** 2026-09-19 · amended 2026-09-21 (the two open forks, answered)
+  **[2026-10-01 (batch 4) — the "no third option" half of Fork A2 is REVERSED by the founder:
+  "Paper / Charcoal / System". The other half stands: a person who has never chosen still opens
+  on paper, never on the device's setting ("paper at first always , then they can select is
+  what i meant at onboarding"). System is a choice a person makes, never a default; a one-time
+  sheet at first sign-in asks for it. See §Amendment 2026-10-01 (batch 4). ~~**Still open** holds
+  one fork again — what closing that sheet without saving should do.~~ [2026-10-01: answered —
+  "Ask again next load (Recommended)"; **Still open** is empty again.]]**
+- **Date:** 2026-09-19 · amended 2026-09-21 (the two open forks, answered) · amended 2026-10-01
+  (DASH-W23: the control moved from the header to `/profile` — see §Amendment 2026-10-01) ·
+  amended 2026-10-01 (batch 4: System as a third choice, and a first-sign-in ask — see
+  §Amendment 2026-10-01 (batch 4))
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** ground, paper, charcoal, theme, ThemeMenu, ThemeContext, data-ground,
   data-mudavym-ground, groundChoice, GroundChoiceSync, per-device, per-account,
   user_preferences, useUserPreferences, device mirror, groundMirrorKey, accessToken sub,
-  FOUC, flash, contrast, prefers-color-scheme
+  FOUC, flash, contrast, prefers-color-scheme, System, deviceQueryFor, GroundFirstChoice,
+  first sign-in, wineops-theme-v3
 - **Links:** revises row 6 of [[0149-mudavym-is-the-only-design-finish-every-page-then-delete-legacy-once]]
   (`ADR 0149`) · narrows [[0138-the-mudavym-ground-is-not-a-theme-and-the-rollout-starts-at-one-house]]
   (`ADR 0138` D1 — the MECHANISM it built is unchanged, only which column is the default and who
@@ -96,8 +107,19 @@ The published guidance cited above was heard and overruled by the person whose p
 Mechanically enforced — `groundChoiceNoFlash.test.ts` executes the shipped pre-paint script
 against a `matchMedia` that reports a dark machine and asserts paper, `groundChoice.test.ts`
 asserts the store never calls `matchMedia` at all, `ThemeMenu.test.tsx` asserts no third
-option, and the `ADR-0169-GROUND-FOLLOWS-ACCOUNT` claim fails the build if `matchMedia` or
+option [2026-10-01: that file is deleted with the header control; `groundChoice.test.ts`
+(`GROUND_OPTIONS`) and `ProfileNext.test.tsx` (the Theme row's two buttons) assert it now —
+§Amendment 2026-10-01], and the `ADR-0169-GROUND-FOLLOWS-ACCOUNT` claim fails the build if `matchMedia` or
 `prefers-color-scheme` appears anywhere on the path.**]
+**[2026-10-01 (batch 4) — half of this is reversed by the founder: "Paper / Charcoal / System".
+There IS a "System" choice now (on `/profile` and on the first-sign-in sheet), and the ground
+path reads `matchMedia` — in exactly two places, both reachable only for a person whose saved
+setting is System: the store's `deviceQueryFor`, whose first line returns nothing unless the
+setting is `'system'`, and one pre-paint line guarded by `mirrored === 'system'`. Option 2 — the
+device as the DEFAULT — stays rejected: a person who never chose still paints paper on a dark
+machine, and `groundChoiceNoFlash.test.ts` still proves it. The claim now fails the build if
+`matchMedia` or `prefers-color-scheme` appears anywhere on the path OUTSIDE that System branch.
+§Amendment 2026-10-01 (batch 4).]**
 
 ### Fork B — where does the choice live: this device, or the account?
 
@@ -218,7 +240,10 @@ receiving door's charcoal (`DoorNext`) — still outranks both, unchanged, becau
   clause is the whole guarantee that a declared surface is never moved by a general preference.
 - `apps/web/src/lib/mudavym/groundChoice.ts` (new) — `'paper' | 'charcoal'`, ~~`localStorage`
   key `mudavym.ground`~~ **[2026-09-21: see §The founder's answer — the single device-wide key
-  is gone; the store now carries a five-valued `source` and a per-person mirror key]**, a
+  is gone; the store now carries a five-valued `source` and a per-person mirror key]**
+  **[2026-10-01 (batch 4): what is STORED is now `'paper' | 'charcoal' | 'system'`
+  (`GroundSetting`, `GroundState.setting`); what PAINTS is still only `'paper' | 'charcoal'`
+  (`GroundState.choice`), System being resolved on each device]**, a
   `useSyncExternalStore` hook for React, cross-tab sync via the `storage` event, and every
   `localStorage` call wrapped so a blocked store (private windows) degrades to the decided
   default rather than throwing.
@@ -234,7 +259,9 @@ receiving door's charcoal (`DoorNext`) — still outranks both, unchanged, becau
   Paper and Charcoal, persisted immediately. Off a Mudavym page it is byte-for-byte unchanged —
   still the legacy Light/Dark/System menu against `ThemeContext`, which this record does not
   touch. No new UI surface was added; the one that was already on every page's header, already
-  labelled "Theme," was wired to something real instead of duplicated.
+  labelled "Theme," was wired to something real instead of duplicated. **[2026-10-01: this
+  file is deleted. The control moved to `/profile`'s Preferences card and the legacy menu went
+  with it — §Amendment 2026-10-01 (DASH-W23).]**
 - `apps/web/src/pages/receiving/next/DoorNext.tsx` — comment corrected in place (its
   `data-ground="charcoal"` used to merely CONFIRM the default; it now FORCES it, unchanged in
   effect either way).
@@ -327,7 +354,15 @@ does not read it. The pre-paint script's every failure path assigns `'paper'`, t
 suites now hold that shut mechanically rather than by reading: `groundChoiceNoFlash.test.ts`
 *executes the shipped script out of `index.html`* against a seeded store and a `matchMedia` that
 reports a dark machine, `groundChoice.test.ts` asserts the store never calls `matchMedia`, and
-`ThemeMenu.test.tsx` asserts there is no third option.
+`ThemeMenu.test.tsx` asserts there is no third option. **[2026-10-01: `GROUND_OPTIONS` now
+lives in `groundChoice.ts`, and both `ThemeMenu` files are deleted — the no-third-option
+assertion moved to `groundChoice.test.ts` and `ProfileNext.test.tsx`. §Amendment 2026-10-01.]**
+**[2026-10-01 (batch 4): no longer true as written. `GROUND_OPTIONS` has three entries
+(Paper, Charcoal, System); the grep now also returns `deviceQueryFor` in `groundChoice.ts` and
+one `mirrored === 'system'` line in `index.html`; and `groundChoice.test.ts` asserts the store
+never calls `matchMedia` for a person whose setting is not System (default, unknown,
+unreadable, paper, charcoal) instead of never at all. This part's own title still holds: a
+first visit is paper, not the device's setting. §Amendment 2026-10-01 (batch 4).]**
 
 ### Part 2 — the choice lives on the account
 
@@ -387,6 +422,10 @@ different situations into the word "paper". `GroundState.source` keeps them apar
 | `unknown` | signed in, no answer yet, no mirror | **marks nothing**, says it is still reading |
 | `unreadable` | the read failed, or the account holds a value this app does not know, and there is no mirror | **marks nothing**, says it could not be read, and names the reason |
 
+**[2026-10-01: "the header menu" in this table is now the Theme row on `/profile` — same
+five rows, `aria-pressed` in place of a checkmark, `groundNote` under the two buttons in place
+of the menu note. There is no trigger tooltip any more. §Amendment 2026-10-01.]**
+
 So a failed preferences read is never "paper by default": the trigger's tooltip reads
 `Ground: not read yet`, no option carries a checkmark, and the menu carries the reason.
 Symmetrically, a failed **save** does not report success — the chosen ground stays on screen
@@ -404,16 +443,22 @@ after the menu said so.
 - `apps/web/src/lib/mudavym/GroundChoiceSync.tsx` (new) — the only thing that talks to the
   account. Mounted once in `App.tsx` inside the `QueryClientProvider`; renders nothing.
 - `apps/web/index.html` — the pre-paint script now resolves the person before the mirror.
-- `apps/web/src/hooks/useUserPreferences.ts` — `ground?: 'paper' | 'charcoal'` on the interface,
+- `apps/web/src/hooks/useUserPreferences.ts` — `ground?: 'paper' | 'charcoal'` **[2026-10-01
+  (batch 4): `| 'system'`]** on the interface,
   plus `updatePreferencesAsync` and `isPlaceholderData` (both additive; the existing
   fire-and-forget `updatePreferences` is untouched, and no existing call site changes). The new
   flags exist because `placeholderData: {}` puts this query into `success` immediately, so
   `isLoading` cannot tell "the account answered with nothing" from "the account has not
   answered".
 - `apps/web/src/components/layout/ThemeMenu.tsx` + `components/mudavym/sheet.css` — the menu
-  reports the state above instead of always checkmarking something.
+  reports the state above instead of always checkmarking something. **[2026-10-01: both
+  `ThemeMenu` files and sheet.css's `.mdv-menu-note` are deleted; `groundNote` /
+  `groundIsKnown` live in `groundChoice.ts` and the Theme row on `/profile` reports the state —
+  §Amendment 2026-10-01.]**
 - Suites: `groundChoice.test.ts` (24), `GroundChoiceSync.test.tsx` (13, new file),
-  `groundChoiceNoFlash.test.ts` (17), `ThemeMenu.test.tsx` (14).
+  `groundChoiceNoFlash.test.ts` (17), `ThemeMenu.test.tsx` (14). **[2026-10-01:
+  `ThemeMenu.test.tsx` deleted, its ground cases ported to `groundChoice.test.ts` (33) and
+  `ProfileNext.test.tsx`'s Theme-row block (10).]**
 
 ### Measured, 2026-09-21 (round 6)
 
@@ -453,7 +498,12 @@ pass remains the outstanding item.
   ~~the founder saying the header control should also offer "System" as a persistent third
   option, not only as this record's undecided default-source question.~~ **[2026-09-21: asked
   and answered — no "System". Reopening this would mean reversing "Always paper", so it needs a
-  superseding record, not a quiet addition.]**
+  superseding record, not a quiet addition.]** **[2026-10-01 (batch 4): reopened by the founder
+  and answered "Paper / Charcoal / System". The premise above was wrong: System as a CHOICE does
+  not reverse "Always paper", because nobody gets System without picking it — the default is
+  untouched. It is recorded as a dated amendment of this record rather than a new number (the
+  batch-4 brief: no new ADR number), and every line it falsifies is bracketed, so it is not a
+  quiet addition. §Amendment 2026-10-01 (batch 4).]**
 - **Guard.** `CLAIMS.jsonl` id `ADR-0138` is corrected in place (not superseded by a new id, since
   it is the same underlying CSS mechanism, revised) to assert the new shape mechanically: the bare
   `.mudavym` selector is paper, `.mudavym[data-ground="charcoal"]` is still charcoal, a rule
@@ -470,9 +520,213 @@ pass remains the outstanding item.
   writes `preferences.ground` and reports a failed read, that the pre-paint script takes the
   person from the session token's `sub`, and that nothing on the whole path mentions
   `matchMedia` or `prefers-color-scheme`. Static (grep/python only) and mutation-tested against
-  five independent breaks — see §The founder's answer.]**
+  five independent breaks — see §The founder's answer.]** **[2026-10-01 (batch 4): that last
+  clause is rewritten in place, same id — the device may be read only inside the System branch.
+  §Amendment 2026-10-01 (batch 4), "Guard".]**
+
+## Amendment 2026-10-01 (DASH-W23) — the control moves from the header to `/profile`
+
+**The founder, 2026-10-01, page walk-through DASH-W23:** *"approve + remove the system theme
+from top bar into settings".* Asked where the control should go, he picked **"/profile
+(Recommended)"**.
+
+**What changed.** The header's theme button is gone from both headers — `HouseHeader.tsx`
+(the shell's) and the legacy `Header.tsx` (which only runs with the shell off) — and
+`components/layout/ThemeMenu.tsx` + its test are deleted. The one control is now the
+**Theme** row of `/profile`'s Preferences card (`pages/profile/next/IdentityRegister.tsx`,
+Register I): **Paper** and **Charcoal** **[2026-10-01 (batch 4): and **System** —
+§Amendment 2026-10-01 (batch 4)]**, driven by the same store this record built
+(`useGroundState` / `setGroundChoice`) and saved to the person's account exactly as before.
+Every rule in §A read that failed is not an answer carries over unchanged: a button is
+`aria-pressed` only when the ground is known AND matches (`groundIsKnown` — nothing pressed
+under `unknown` / `unreadable`), and whatever stands between the screen and a confirmed
+answer is said under the buttons (`groundNote`; a failed save outranks a failed read). The
+two helpers and `GROUND_OPTIONS` moved out of `ThemeMenu.tsx` into `lib/mudavym/groundChoice.ts`.
+The card's lead, which said "Kept in this browser.", now says the choice is saved to the
+account.
+
+**Why `/profile` had a dead row first.** Its old Theme row offered Light / Dark / System
+against `ThemeContext`. Verified live on 2026-10-01 by the coordinating session: clicking
+"dark" there set `<html class="dark">`, and the `.mudavym` page background stayed paper —
+Mudavym pages ignore the app theme by design (ADR 0138 D1). It was the same defect this
+record opened on (§Context), surviving on a second surface. It is replaced, not kept beside
+the real control.
+
+**Alternatives rejected.**
+
+1. **`/settings`, for every role.** `/settings` is staff-gated today (a staff member gets
+   `StaffAskManager` instead of the page, `pages/settings/next/SettingsNext.tsx:186`), so this
+   would mean opening that page to staff — a larger change than the move it serves, made only to host
+   one personal control.
+2. **`/settings`, for managers and owners only.** Staff would lose the control altogether;
+   the ground is a per-person choice and every person must be able to make it.
+3. **Keep it in the header.** Ruled out by the founder's words.
+
+`/profile` is reachable by every role, and it makes the ground one control in one place.
+
+**Given up, stated plainly.** The legacy Light / Dark / System app-theme menu went with
+`ThemeMenu.tsx`, and nothing replaces it (the ruling was to remove it, not move it). After this
+change no rendered control sets `ThemeContext` (`components/layout/ThemeToggle.tsx` exists but
+has no importer). A browser that had stored `dark` or `system` under `wineops-theme` keeps
+that class on `<html>` with no control to clear it. Mudavym pages ignore it (ADR 0138 D1); only
+a surface that still uses Tailwind `dark:` utilities could show it. **[2026-10-02: the last
+sentence names the wrong mechanism — #576's audit, note 2. `html.dark` has more readers than
+Tailwind `dark:` (10 component files under `darkMode: ['class']`). By grep at #580's head
+(`git grep -n "contains('dark')"` and `\.dark` selectors in `src/**/*.css`) they are:
+`styles/globals.css`, which repaints legacy pages under `.dark` (54 selector lines, from `:63`);
+`components/mudavym/sheet.css:34-37`, a heavier scrim under every `.dark .mdv-ovl` /
+`.mdv-scrim`, inside `.mudavym` too; `components/orders/useStandaloneGround.ts:55-56`, which
+turns the sealed approve / reject dies charcoal outside `.mudavym`; and
+`components/askai/ProposalCard.tsx:256`, which turns its seal track charcoal wherever the card
+is mounted, the house `Panel` included. So the exposure was wider than the sentence said, not
+just differently caused. Two writers set the class: `ThemeContext` and the legacy `uiStore`
+(`stores/uiStore.ts`, persisted as `ui-storage`, re-applied on every load). The v3 reset below,
+together with `ui-storage`'s version-2 reset added in the same PR, clears both.]**
+**[2026-10-01 (batch 4):
+closed — the founder, "Reset once, Mudavym only (Recommended)". `THEME_MIGRATION_KEY` in
+`contexts/ThemeContext.tsx` is now `wineops-theme-v3`, so every browser, including one that
+already ran the v2 reset, goes back to light exactly once. §Amendment 2026-10-01 (batch 4).]**
+
+**Tests.** `ThemeMenu.test.tsx`'s ground-branch assertions are ported, not dropped: the
+helpers and the exact note texts to `lib/mudavym/groundChoice.test.ts`, and the rendered
+behaviour (two options **[2026-10-01 (batch 4): three]**, nothing pressed under `unknown` / `unreadable` with the note shown,
+a click calls `setGroundChoice` with its value and saves it, a failed save is said) to
+`pages/profile/next/ProfileNext.test.tsx`. Its two popover-only cases (closes on a choice;
+the trigger's title) have no counterpart, because there is no popover and no trigger.
+`HouseHeader.test.tsx`, `HouseShell.test.tsx` and `shellOverlays.test.tsx` now assert that
+neither header carries a theme control.
+
+## Amendment 2026-10-01 (batch 4) — System as a third choice, and a one-time ask at first sign-in
+
+**The founder, 2026-10-01**, asked in two rounds by the coordinating session. Verbatim:
+
+- *How should System work?* (offered: "Reverse it: 3 choices (Recommended)", "System = read
+  device once", "Two choices only"). He did not pick an option; he answered in his own words:
+  **"paper at first always , then they can select is what i meant at onboarding"**.
+- Asked again, *which choices does that sheet (and /profile) offer?* (offered: "Paper /
+  Charcoal (Recommended)", "Paper / Charcoal / System"): **"Paper / Charcoal / System"**. That
+  option's text as offered: System "follows the device's light/dark live. This reverses ADR
+  0169's "no match my device" (Fork A2)."
+- *Who gets the question, and where?*: **"First sign-in, never chosen (Recommended)"**.
+- *Should the old app theme be reset to light once, with the onboarding answer driving only
+  Mudavym pages?*: **"Reset once, Mudavym only (Recommended)"**.
+- *When?*: **"Batch 4, now (Recommended)"**.
+
+**What is reversed, and why.** Fork A2 had two halves, both answered "no" on 2026-09-21
+(§Still open item 1): (a) the device's setting as the DEFAULT for someone who never chose, and
+(b) "System" as a third choice. His first answer restates (a) — paper is where everyone starts
+— and says the choosing comes after; his second picks (b) over the two-choice option the
+session recommended. So (b) is reversed and (a) stands. The 2026-09-21 record's reason against
+(b) — "Reopening this would mean reversing 'Always paper'" (§Consequences) — was wrong: a
+System that only exists when a person picks it leaves the default untouched. The decider
+weighed it and chose it; that is the whole of the "why".
+
+**Rejected — the alternatives he was offered and did not choose.**
+
+1. **"System = read device once"** — offer System, but save Paper or Charcoal from the device
+   at that moment and never follow it again. Not chosen: the option he picked says System
+   follows the device live.
+2. **"Two choices only"** — Paper or Charcoal, no System; offered again in round two as
+   **"Paper / Charcoal (Recommended)"**, the session's recommendation, which would have left this
+   record unchanged. Rejected both times.
+3. **"New people only"** — ask inside `/get-started` and the invite landing; existing accounts
+   never asked.
+4. **"/get-started only"** — owners setting up a house only; invited staff never asked.
+5. **"One setting for all"** — the onboarding answer also turns the old-design pages and the
+   stand-alone seals dark. Its cost, stated to him: old pages have never been reviewed in dark.
+6. **"Park it"** — leave it an open queue row until after the page walk-throughs.
+
+**What was built** (branch `fix/review-shared-batch-4`, PR #580, built on #576's branch):
+
+1. **The store** (`lib/mudavym/groundChoice.ts`). `GroundSetting = 'paper' | 'charcoal' |
+   'system'` is what the account and the per-person mirror hold (`GroundState.setting`);
+   `GroundState.choice` is what paints, still only paper or charcoal. The device is read in one
+   function, `deviceQueryFor(setting)`, whose first line returns `null` for every setting but
+   `'system'`. While the setting is System the store listens to the `(prefers-color-scheme:
+   dark)` query's `change` event (`addListener` for older Safari) and repaints live; choosing
+   away, or a different person signing in (`setGroundOwner`), removes the listener. The account
+   stores `preferences.ground: 'system'` and each device resolves it. `saveGroundSetting` reports
+   whether the account accepted the save (the sheet needs that); `setGroundChoice` is unchanged
+   for its callers apart from accepting `'system'`. No gateway change: the preferences blob is open JSONB.
+2. **The pre-paint** (`index.html`). One new line: a mirror of `'system'` resolves through
+   `matchMedia` before paint, so a System person on a dark machine does not flash paper. No
+   session, no mirror, an unreadable store or any other value still paints paper.
+3. **`/profile`.** The Theme row has three buttons. System carries the note "Follows this
+   device's light or dark setting." (under the row and as the button's `aria-describedby`).
+   Pressed follows the saved setting, not the painted colour, so a System person on a light
+   device sees System pressed, not Paper.
+4. **The first-sign-in sheet** (`components/mudavym/GroundFirstChoice.tsx`). ADR 0112's
+   `Panel` — centered, with a scrim — mounted once in `components/layout/DashboardLayout.tsx`
+   beside `DataTermsSignInGate`. It shows only when someone is signed in and the store's source
+   is `default`, the account having answered that this person never chose. Never for `unknown`
+   (not answered yet), `unreadable`, `device-cache` or `account`. Paper is pre-selected. It
+   waits while an owner's data-terms sheet is up, or while that read is still in flight
+   (`useDataTermsSignInBusy`, `hooks/queries/useDataTerms.ts`, mirroring the gate's own
+   conditions; the gate file is untouched), so the two sheets never stack. The panel previews
+   the option picked (its own `data-ground`) while the page behind stays paper until Save. Save
+   writes to the account; a failed save keeps the sheet open and says so. It adds no motion —
+   it arrives and leaves on `Panel`'s `settle` — so `MOTIONS.md` is unchanged. Pages outside
+   `DashboardLayout` (`/get-started`, `/house`, `/authorize`, the door) never ask; a person who
+   first signs in there is asked on their next `DashboardLayout` page.
+5. **The old app theme.** `THEME_MIGRATION_KEY` is `wineops-theme-v3` (`contexts/ThemeContext.tsx`,
+   with a comment naming #576), so every browser goes back to light once more — this closes the
+   DASH-W23 amendment's "Given up" paragraph. **[2026-10-02, found by #580's audit plan: the
+   legacy `uiStore` also writes `html.dark`, from its persisted `ui-storage` theme on every load
+   (and follows the device when that says `system`); its v1 reset ran on 2026-07-26 and no
+   rendered control has called its `setTheme` since, so the risk was small but unproven.
+   `ui-storage` is now version 2 with the same light reset, so "every browser goes back to light
+   once" holds for both writers. This applies the founder's "Reset once, Mudavym only" ruling to
+   the second writer; it is not a new choice.]** The ground choice never drives `ThemeContext` or
+   `html.dark`: none of the ground files, the sheet or the `/profile` Theme row imports
+   `ThemeContext`.
+
+**[2026-10-01: DECIDED — the founder, after the batch-4 Safari sketch: "Ask again next load
+(Recommended)". As built stands; the alternative below is rejected.]** ~~**Open — the founder's
+call, built one way and not decided here.**~~ Closing the sheet without
+saving ("Not now", Escape, or a click outside). **As built:** it writes nothing, so the account
+still says "never chosen" and the next page load — on any device — asks again. **The
+alternative:** closing saves Paper, so it never asks again. Cost of as built: someone who keeps
+closing it is asked on every load until they save. Cost of the alternative: a dismissal becomes
+a saved choice the person never made, and `/profile` then shows Paper as theirs. The session's
+recommendation is as built, since a close is not an answer (§A read that failed is not an
+answer applies the same rule to reads); the call is his. See §Still open item 3.
+
+**Guard.** `CLAIMS.jsonl` id `ADR-0169-GROUND-FOLLOWS-ACCOUNT` is rewritten in place, same id,
+still static (python only, comments stripped). Everything it held about the account and the
+per-person mirror is kept. The blanket "nothing mentions `matchMedia`" is replaced by checks
+that fail the build when: the store default is not paper; `deviceQueryFor`'s body does not
+start with the `setting !== 'system'` → `return null` guard; `matchMedia` or
+`prefers-color-scheme` appears anywhere else in `groundChoice.ts`; `deviceQueryFor` is called
+with a literal setting; `GroundChoiceSync.tsx` reads the device at all; the pre-paint script
+does not start from paper; or any pre-paint line that reads the device lacks `mirrored ===
+'system'`. It exits 2 (cannot check), not 0, if `deviceQueryFor` is gone or no longer reads
+the device. Mutation-tested, each on a snapshot restored byte-identical: `matchMedia` outside
+`deviceQueryFor`; the guard removed; the guard weakened to `!== 'unknown'`; a fixed-setting
+call; the default set to charcoal; a `matchMedia` read in `GroundChoiceSync`; `GroundChoiceSync`
+no longer writing the ground; an unguarded pre-paint device line; the pre-paint default set to
+charcoal; an extra unguarded pre-paint line. All ten fail the row (exit 1); the restored tree
+prints OK. Before the rewrite, the OLD row failed on this branch, as it should have.
+
+**Measured, 2026-10-01.** `groundChoice.test.ts` 42, `groundChoiceNoFlash.test.ts` 22,
+`GroundChoiceSync.test.tsx` 13, `GroundFirstChoice.test.tsx` 22 (new), `ProfileNext.test.tsx`
+82, `ThemeContext.test.tsx` 7 — all pass. Test mutations, each failing its suite and restored
+byte-identical: the sheet asking for `source !== 'unknown'` (3 fail), for any source (5),
+without waiting for the terms (3); the store reading the device for a non-System setting (5);
+a System click doing nothing (1); the theme key back at v2 (2); pressed by colour instead of
+setting (2); the pre-paint's System guard removed (4); closing saves Paper (3).
+
+**Not handled, stated plainly.** The sheet's System preview reads the device when System is
+picked and does not follow it while the sheet is open. Only the data-terms sheet is waited
+for; an overlay a deep link opens at the same moment is not. `Panel` can force charcoal but not
+paper, so after a failed Charcoal save (which leaves this page view charcoal) a Paper preview
+shows charcoal. Pre-existing, not changed here: `useUserPreferences`'s optimistic update puts
+the new value in the query cache before the PATCH answers, so `GroundChoiceSync` mirrors it as
+an account answer early — against rule 2 of §The flash; not verified in a browser.
 
 ## Still open — nothing
+
+**[2026-10-01 (batch 4): one fork was open again — item 3 — and was answered the same day.
+Nothing is open.]**
 
 **[2026-09-21.]** Both sub-questions this record left open were put to the founder and both are
 answered; they are kept below, struck through, because the reasoning that was wrong about them
@@ -483,6 +737,8 @@ is more useful than a deleted paragraph. His words: **"Always paper, follows acc
    paper, unconditionally — and revisit only if he asks. A related, smaller question folds in
    here: should "System" also become a third, persistent option in the header menu.~~
    **Answered: no, and no.** Always paper; no third option. The recommendation held.
+   **[2026-10-01 (batch 4): the second "no" is reversed — "Paper / Charcoal / System". The
+   first stands: the default is still paper, never the device.]**
 2. ~~**Should the choice eventually be per-account rather than per-device?** Recommendation:
    leave it per-device unless a person reports the "wrong ground on my other device" experience
    as a real annoyance — building the account column, the read path, and the anonymous-visitor
@@ -496,6 +752,14 @@ is more useful than a deleted paragraph. His words: **"Always paper, follows acc
    The real cost was one component and a change of storage key, not a schema decision. **The
    lesson, not the outcome, is what belongs here: an estimate inside a recommendation is a claim,
    and a claim nobody re-measures rots exactly like any other.**
+3. ~~**[2026-10-01 (batch 4), open.] What should closing the first-sign-in sheet without saving
+   do?** Built: nothing is written and the next load asks again. Alternative: save Paper, so it
+   never asks again. Recommendation: as built. The trade-off is in §Amendment 2026-10-01
+   (batch 4); it is the founder's call.~~
+   **Answered 2026-10-01: "Ask again next load (Recommended)".** Closing writes nothing; the
+   next page load asks again until the person saves. Rejected: "Save Paper, never ask" (records
+   a choice nobody made) and "Ask again next sign-in" (one more piece of state for no gain he
+   asked for). The recommendation held.
 
 ## Review trail
 
@@ -507,3 +771,5 @@ is more useful than a deleted paragraph. His words: **"Always paper, follows acc
 | 2026-09-21 | — (round 5) | Both must-fix items closed: merged current `origin/main` (8 commits by then; one genuine conflict on ADR 0138's status line, resolved by keeping both dated brackets) and reran claims (370/370) and the full suite (green) on the merged tree; fixed `PageGate.tsx` and `shellGround.ts` per the Mechanism note above, with a new regression suite that fails pre-fix and passes post-fix, mutation-tested against each half of the fix independently |
 | 2026-09-21 | Aldemir (founder), answering this record's two open forks | **"Always paper, follows account."** Fork A2 rejected (no OS preference, no third option); Fork B reversed (per account, not per device) |
 | 2026-09-21 | — (round 6) | Built: the device-wide key replaced by a per-person mirror of the account value, `GroundChoiceSync` joining the store to `/users/:userId/preferences`, the pre-paint script taking the person from the session token, and the header menu reporting a pending/failed read instead of checkmarking Paper. No migration — see Fork B's 2026-09-21 bracket. `apps/web`: 200 files, 2902 passed, 14 skipped; `tsc --noEmit` 0 errors |
+| 2026-10-01 | Aldemir (founder), page walk-through DASH-W23 | **"approve + remove the system theme from top bar into settings"**, and asked where, **"/profile (Recommended)"**. The header control and `ThemeMenu.tsx` are deleted; the ground is chosen on `/profile`'s Preferences card. See §Amendment 2026-10-01 |
+| 2026-10-01 | Aldemir (founder), asked in two rounds | **"paper at first always , then they can select is what i meant at onboarding"**, then **"Paper / Charcoal / System"**, **"First sign-in, never chosen (Recommended)"**, **"Reset once, Mudavym only (Recommended)"**, **"Batch 4, now (Recommended)"**. Fork A2's third-option half reversed; the paper default stands. Built in batch 4 (`fix/review-shared-batch-4`); the claim rewritten in place; closing the sheet without saving left open for him. See §Amendment 2026-10-01 (batch 4) |

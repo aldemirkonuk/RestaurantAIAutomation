@@ -87,7 +87,7 @@ export function KpiRow({ stats, pendingCount, lowStockCount }: KpiRowProps) {
     : null;
 
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5" data-tour="dashboard-kpis">
       <KpiTile
         label="In the cellar"
         value={bottles}

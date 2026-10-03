@@ -18,11 +18,23 @@
  * a fabricated citation of the paper.
  */
 
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { PaperPane } from '../../pages/receipts/next/ReceiptsNext'
 import type { ProcurementDocument } from '../../services/api/documents'
 import type { FieldEnvelope } from '../../services/api/canonical'
 import { MONO } from './canonical-format'
+
+/**
+ * The stored file in words, not as a MIME type (walk-through W22,
+ * 2026-10-01: "application/pdf — fetched only when you ask" read as machine
+ * output).
+ */
+function fileKind(contentType: string | null | undefined): string {
+  if (!contentType) return 'The stored file'
+  if (contentType === 'application/pdf') return 'A PDF'
+  if (contentType.startsWith('image/')) return 'A photo'
+  return 'The stored file'
+}
 
 export interface OriginalPaneProps {
   documentId: string
@@ -40,6 +52,40 @@ export interface OriginalPaneProps {
   /** The envelope of the line the sheet has selected, for the bbox note. */
   selectedEnvelope?: FieldEnvelope<unknown> | null
   selectedLabel?: string | null
+}
+
+/** The gateway's reason when no file was ever stored (`signOriginal`). */
+const NOTHING_STORED = /^no original was stored/i
+
+/**
+ * A NAMED BOX, LIKE THE PROVENANCE UNDER IT (walk-through W11, 2026-10-01).
+ * The founder: "every component and detail can be read easily … clear
+ * divisions". Closed, the original was a loose sentence between the sheet and
+ * the provenance box; it now carries the same border and label.
+ */
+function Frame({ children }: { children: ReactNode }) {
+  return (
+    <section
+      aria-label="The original"
+      style={{ border: '1px solid var(--paper-2, #EAE4D8)', borderRadius: 10, padding: '8px 11px' }}
+    >
+      <span
+        style={{
+          display: 'block',
+          fontFamily: MONO,
+          fontSize: 8,
+          fontWeight: 600,
+          letterSpacing: '.12em',
+          textTransform: 'uppercase',
+          color: 'var(--ink-4, #665D50)',
+          marginBottom: 4,
+        }}
+      >
+        The original
+      </span>
+      {children}
+    </section>
+  )
 }
 
 export function OriginalPane({
@@ -68,31 +114,68 @@ export function OriginalPane({
     source_channel: sourceChannel ?? '',
   } as unknown as ProcurementDocument
 
+  // NOTHING TO BRING (walk-through W8, 2026-10-01). With no signed link the
+  // button opened a pane that always said "No file was stored", even when a
+  // file exists and only its link failed. So no button: the gateway's own
+  // reason is the sentence, and a failure that may pass offers "Try again".
+  if (!open && !imageUrl) {
+    const why = reason ?? 'the original cannot be shown here'
+    return (
+      <Frame>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }} data-testid="original-unavailable">
+          <span style={{ fontSize: 10.5, color: 'var(--ink-4, #665D50)' }}>
+            {why.charAt(0).toUpperCase() + why.slice(1)}.
+          </span>
+          {!NOTHING_STORED.test(why) && (
+            <button
+              type="button"
+              onClick={onRefresh}
+              disabled={refreshing}
+              style={{
+                fontSize: 11.5,
+                fontWeight: 600,
+                padding: '4px 11px',
+                borderRadius: 7,
+                border: '1px solid var(--seal-ring, rgba(26,94,107,.32))',
+                background: 'transparent',
+                color: 'var(--seal-deep, #14515C)',
+                cursor: refreshing ? 'progress' : 'pointer',
+              }}
+            >
+              {refreshing ? 'Asking again…' : 'Try again'}
+            </button>
+          )}
+        </div>
+      </Frame>
+    )
+  }
+
   if (!open)
     return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <button
-          type="button"
-          data-testid="open-original"
-          onClick={() => setOpen(true)}
-          style={{
-            fontSize: 11.5,
-            fontWeight: 600,
-            padding: '4px 11px',
-            borderRadius: 7,
-            border: '1px solid var(--seal-ring, rgba(26,94,107,.32))',
-            background: 'transparent',
-            color: 'var(--seal-deep, #14515C)',
-            cursor: 'pointer',
-          }}
-        >
-          Bring the original
-        </button>
-        <span style={{ fontSize: 10.5, color: 'var(--ink-4, #665D50)' }}>
-          {reason ??
-            `${contentType ?? 'the stored file'} — fetched only when you ask, through a one-hour link.`}
-        </span>
-      </div>
+      <Frame>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <button
+            type="button"
+            data-testid="open-original"
+            onClick={() => setOpen(true)}
+            style={{
+              fontSize: 11.5,
+              fontWeight: 600,
+              padding: '4px 11px',
+              borderRadius: 7,
+              border: '1px solid var(--seal-ring, rgba(26,94,107,.32))',
+              background: 'transparent',
+              color: 'var(--seal-deep, #14515C)',
+              cursor: 'pointer',
+            }}
+          >
+            Bring the original
+          </button>
+          <span style={{ fontSize: 10.5, color: 'var(--ink-4, #665D50)' }}>
+            {reason ?? `${fileKind(contentType)}, fetched only when you ask, through a link that lasts one hour.`}
+          </span>
+        </div>
+      </Frame>
     )
 
   return (

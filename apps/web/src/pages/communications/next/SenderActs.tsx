@@ -95,7 +95,7 @@ export function TrustPanel({ sender, houseName, onClose, onTrust }: TrustPanelPr
       open
       onClose={onClose}
       closeLabel="Close"
-      label={`Trust ${sender.domain} — future mail from this domain skips the spoof quarantine for ${house}. Holding writes the trust to the sender register; leaving writes nothing.`}
+      label={`Trust ${sender.domain} — Mudavym may answer their mail for ${house} even when it cannot prove it came from them. Holding saves it; leaving changes nothing.`}
       eyebrow={`Trust a sender · ${house}`}
       title={`Trust ${sender.domain}?`}
       footer={
@@ -104,7 +104,7 @@ export function TrustPanel({ sender, houseName, onClose, onTrust }: TrustPanelPr
             label="Hold to trust"
             approvedLabel="Trusted"
             holdMs={620}
-            copy={{ unconfirmed: 'Not saved — the register did not show this domain as trusted. Nothing changed.' }}
+            copy={{ unconfirmed: 'Not saved — it did not read back as trusted. Nothing changed.' }}
             disabled={landed}
             onApprove={async () => {
               setFailure(null);
@@ -118,16 +118,18 @@ export function TrustPanel({ sender, houseName, onClose, onTrust }: TrustPanelPr
             }}
           />
           <span style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-4, #665D50)' }}>
-            Reversible from the same row; the register keeps when.
+            You can undo it from the same row; the date is kept.
           </span>
         </div>
       }
     >
       <div style={BODY}>
       <p style={NOTE}>
-        Future mail from this domain skips the spoof quarantine for {house}. Mail already quarantined stays where it is.
-        Trust lifts that one gate and nothing else — every other guardrail still applies, and trust suspends itself on an
-        injection attempt or sustained spam.
+        {/* COMMS-W32: the "spoof quarantine" is the hold on answering mail that cannot prove its sender. */}
+        When mail from {sender.domain} cannot prove it came from them, Mudavym will no longer wait for a person before
+        answering it for {house}. Replies already waiting for a person stay waiting. Nothing else changes — every other
+        hold still applies, and trust is suspended on its own if their mail tries to give Mudavym instructions or keeps
+        looking like spam.
       </p>
       {state.tone === 'suspended' && (
         <p style={NOTE}>
@@ -136,19 +138,18 @@ export function TrustPanel({ sender, houseName, onClose, onTrust }: TrustPanelPr
       )}
       <Kv
         rows={[
-          ['completed_orders', fmtCount(sender.completed_orders)],
-          ['injection_signals', fmtCount(sender.injection_signals)],
-          ['spam_signals', fmtCount(sender.spam_signals)],
-          ['updated_at', fmtDay(sender.updated_at)],
+          ['Completed orders', fmtCount(sender.completed_orders)],
+          ['With hidden instructions', fmtCount(sender.injection_signals)],
+          ['Looked like spam', fmtCount(sender.spam_signals)],
+          ['Last changed', fmtDay(sender.updated_at)],
         ]}
       />
       <p style={{ ...NOTE, fontSize: 11.5, color: 'var(--ink-4, #665D50)' }}>
-        Written to the sender register for this house, then read back. A write that did not land is reported as not
-        saved.
+        Saved for this house, then read back. If it does not read back, it says not saved.
       </p>
       {landed && (
         <p role="status" style={{ ...NOTE, color: 'var(--seal-deep, #14515C)', margin: '10px 0 0' }}>
-          {sender.domain} is trusted — the register now reads it back as trusted.
+          {sender.domain} is trusted — it reads back as trusted.
         </p>
       )}
       {failure && (
@@ -202,7 +203,7 @@ export function AddVendorPanel({ prospect, houseName, onClose, onAdd }: AddVendo
       open
       onClose={onClose}
       closeLabel="Close"
-      label={`Add ${who} as a vendor — creates a vendor row for ${house} from the sender's own header fields and trusts nothing. Leaving writes nothing.`}
+      label={`Add ${who} as a vendor of ${house}, from the name and address on their mail. It trusts nothing. Leaving changes nothing.`}
       eyebrow={`Add a vendor · from a stranger's mail · ${house} only`}
       title={`Add ${who} as a vendor?`}
       footer={
@@ -223,9 +224,9 @@ export function AddVendorPanel({ prospect, houseName, onClose, onAdd }: AddVendo
       {field('Domain', prospect.domain)}
       {field('Contact', prospect.sender_email)}
       <p style={{ ...NOTE, marginTop: 10 }}>
-        Creates a vendor row for {house} from the sender's own header fields — for this house only, even when Strangers is
-        read across every house. It trusts nothing: their mail stays under the spoof check until the domain is trusted, and
-        their offers read “cannot be graded” until an invoice from them is accepted.
+        Makes them a vendor of {house} only — even when Strangers shows every house — from the name and address on their
+        mail. It trusts nothing: Mudavym still waits for a person when their mail cannot prove it came from them, until you
+        trust them, and their offers read “cannot be graded” until an invoice from them is accepted.
       </p>
       {outcome && (
         <p role="status" style={{ ...NOTE, color: outcome.kind === 'not-added' ? 'var(--alarm-deep, #8C3322)' : 'var(--seal-deep, #14515C)' }}>

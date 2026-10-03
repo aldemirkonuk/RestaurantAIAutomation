@@ -391,7 +391,10 @@ PAGES = (
             # surface, so four figures rendered a failure as the em dash the ADR
             # reserves for "has not answered". Since the ADR 0083 amendment of
             # 2026-09-25 it owns three; the schedules figure left with its card.
-            "CommsGlance": ["threads", "draftsPending", "sentLast30"],
+            # 2026-10-01 (walk-through COMMS-W3): the threads figure counted a
+            # list the page never showed and left with its read; the replies
+            # figure is drawn from the same book as the sent one.
+            "CommsGlance": ["draftsPending", "sentLast30", "repliesLast30"],
         },
         tenant_tokens=("rid", "restaurantId"),
         tenant_keyed=True,
@@ -399,7 +402,6 @@ PAGES = (
             # The conversation book — the page's largest bucket, and the one W6
             # structurally cannot see because it lives in a shared file.
             (_QUERY_HOOKS, "useProcurementConversationHistory"),
-            (_QUERY_HOOKS, "useConversationThreads"),
             (_DRAFT_HOOKS, "useActiveConversations"),
             # ADR 0160 open item 3 (2026-09-25) / PR #470 audit: useSendersDeskData.ts
             # is the page's OWN file (not a shared hook outside the tree), but its
@@ -1283,18 +1285,17 @@ export const COMMS_SERVER_WINDOWS = {
 } as const;
 
 export interface CommsGlance {
-  threads: number | null;
   draftsPending: number | null;
   sentLast30: number | null;
+  repliesLast30: number | null;
   sentLast30Truncated: boolean;
 }
 
 export function useCommsNextData() {
   const historyQ = useProcurementConversationHistory();
-  const threadsQ = useConversationThreads();
   const activeQ = useActiveConversations();
   const truncated = (historyQ.data?.length ?? 0) >= COMMS_SERVER_WINDOWS.HISTORY_ROWS;
-  return { truncated, historyQ, threadsQ, activeQ };
+  return { truncated, historyQ, activeQ };
 }
 """
 
@@ -2239,7 +2240,7 @@ def self_test() -> int:
     case(
         "W4 a comms glance figure widened away from | null",
         lambda t: (t / _CMS.hooks).write_text(
-            CLEAN_COMMS_HOOKS.replace("threads: number | null;", "threads: number;"),
+            CLEAN_COMMS_HOOKS.replace("repliesLast30: number | null;", "repliesLast30: number;"),
             encoding="utf-8",
         ),
         "violation",

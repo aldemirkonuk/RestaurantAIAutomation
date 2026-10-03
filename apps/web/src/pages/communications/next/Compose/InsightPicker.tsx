@@ -36,7 +36,7 @@ export function ProvenanceChip({ insight }: { insight: InsightSentence }) {
   return (
     <span
       data-testid="provenance-chip"
-      title={`Rule ${insight.candidateKey} · window ${fmtWindow(insight.periodStart, insight.periodEnd)} · computed ${fmtDay(insight.computedAt)}`}
+      title={`Something the house noticed over ${fmtWindow(insight.periodStart, insight.periodEnd)}, worked out ${fmtDay(insight.computedAt)}`}
       style={{
         display: 'inline-flex',
         alignItems: 'center',
@@ -53,9 +53,9 @@ export function ProvenanceChip({ insight }: { insight: InsightSentence }) {
       }}
     >
       <Quote {...ICON} aria-hidden />
-      {insight.candidateKey}
+      Noticed
       <span style={{ fontWeight: 500, opacity: 0.85 }}>
-        {fmtWindow(insight.periodStart, insight.periodEnd)} · computed {fmtDay(insight.computedAt)}
+        {fmtWindow(insight.periodStart, insight.periodEnd)} · worked out {fmtDay(insight.computedAt)}
       </span>
     </span>
   );
@@ -101,7 +101,7 @@ export function InsightPicker({
           What the house knows
         </span>
         <span style={{ fontSize: 10.5, color: 'var(--ink-4, #665D50)' }}>
-          whole sentences, with their provenance
+          whole sentences, each saying where it came from
         </span>
       </div>
 
@@ -143,8 +143,8 @@ export function InsightPicker({
       {failed ? (
         <p role="alert" style={{ fontSize: 11.5, color: 'var(--alarm-deep, #8C3322)', margin: '8px 0 0' }}>
           The house's own sentences could not be read ({error ?? 'unknown error'}). Nothing may be
-          merged into this letter until they can be — a figure typed by hand carries no provenance,
-          and this composer will not pretend it does.
+          merged into this letter until they can be — a figure typed by hand cannot say where it came
+          from, and this letter will not pretend it can.
         </p>
       ) : insights === null ? (
         <p style={{ fontSize: 11.5, color: 'var(--ink-4, #665D50)', margin: '8px 0 0' }}>
@@ -152,9 +152,7 @@ export function InsightPicker({
         </p>
       ) : insights.length === 0 ? (
         <p style={{ fontSize: 11.5, color: 'var(--ink-4, #665D50)', margin: '8px 0 0' }}>
-          The engine is holding no sentence for this house right now. That is an answer, not a
-          gap: a figure it withheld has no sentence, and there is deliberately no field here for
-          typing one in.
+          Nothing the house noticed is waiting to be written about.
         </p>
       ) : (
         <>
@@ -208,7 +206,7 @@ export function InsightPicker({
                         marginTop: 2,
                       }}
                     >
-                      {i.candidateKey} · {fmtWindow(i.periodStart, i.periodEnd)}
+                      Noticed {fmtWindow(i.periodStart, i.periodEnd)}
                     </span>
                   </button>
                 </li>

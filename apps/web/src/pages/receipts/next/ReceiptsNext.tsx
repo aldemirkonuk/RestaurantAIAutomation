@@ -30,7 +30,7 @@
  * tuck on early release); row settle for the doc open; ink micro-states.
  */
 
-import { lazy, Suspense, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useMudavymDesign } from '../../../lib/mudavym/useMudavymDesign';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -42,6 +42,7 @@ import {
   type ProcurementDocumentLine,
 } from '../../../services/api/documents';
 import { getOrder } from '../../../services/api/orders';
+import { canonicalApi } from '../../../services/api/canonical';
 import { useAuth } from '@/contexts/AuthContext';
 // The ONE ISO 4217 list, shared with the sign-up currency step. A second list
 // here is how `TL` becomes a fourth kind of lira.
@@ -62,9 +63,12 @@ import {
   fmtDate,
   fmtMoney,
   isSignedUrlExpired,
+  moneyName,
   parseCell,
+  sentence,
   serverMessage,
 } from './rc2-format';
+import { DOC_TYPE_LABELS, nameCarriesYear } from '../../../components/documents/canonical-format';
 import { SwipeToConfirm } from './SwipeToConfirm';
 import {
   RECEIPTS_SERVER_WINDOWS,
@@ -109,32 +113,33 @@ const CanonicalDocumentPage = lazy(() =>
   })),
 );
 
-const TYPE_LABELS: Record<string, string> = {
-  invoice: 'Invoice',
-  packing_slip: 'Packing slip',
-  delivery_receipt: 'Delivery receipt',
-  credit_memo: 'Credit memo',
-  purchase_order: 'Purchase order',
-  statement: 'Statement',
-  unknown: 'Document',
-};
+/*
+ * ONE WORD MAP, THE SHEET'S (walk-through RECEIPTS-W44, 2026-10-01). This page
+ * kept its own copy with seven of the twelve types, so an irsaliye listed
+ * among the clean papers read "delivery_note". A type outside the map is
+ * "Document", never its stored code.
+ */
+const TYPE_LABELS: Record<string, string> = DOC_TYPE_LABELS;
+const typeLabel = (t: string) => TYPE_LABELS[t] ?? TYPE_LABELS.unknown;
 
 function TieOutLine({ doc }: { doc: ProcurementDocument }) {
+  // In words, not as a meter reading (walk-through W23, 2026-10-01).
   if (doc.ties_out === null)
     return (
-      <span style={{ fontFamily: MONO, fontSize: 11, color: 'var(--ink-4, #665D50)' }}>
-        tie-out {EM} (no stated total to test against)
+      <span style={{ fontSize: 12, color: 'var(--ink-4, #665D50)' }}>
+        No stated total to test the lines against.
       </span>
     );
   if (doc.ties_out)
     return (
-      <span style={{ fontFamily: MONO, fontSize: 11, color: 'var(--seal-deep, #14515C)' }}>
-        ties out within tolerance
+      <span style={{ fontSize: 12, color: 'var(--seal-deep, #14515C)' }}>
+        The lines add up to the stated total.
       </span>
     );
   return (
-    <span style={{ fontFamily: MONO, fontSize: 11, fontWeight: 600, color: 'var(--ink-1, #211C16)' }}>
-      off by {doc.tie_out_delta == null ? EM : fmtMoney(Math.abs(doc.tie_out_delta), doc.currency)}
+    <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink-1, #211C16)' }}>
+      The total is off by{' '}
+      {doc.tie_out_delta == null ? EM : fmtMoney(Math.abs(doc.tie_out_delta), doc.currency)} from the lines.
     </span>
   );
 }
@@ -179,6 +184,25 @@ function CurrencyBlock({
   const [reason, setReason] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [moved, setMoved] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
+
+  /*
+   * FOCUS FOLLOWS THE FOLD (walk-through W12, 2026-10-01). Opening or keeping
+   * removes the button that was pressed, so focus fell to the page body and a
+   * keyboard reader lost their place. Opening now lands on the currency
+   * picker (or "Keep" when the role cannot pick); keeping lands back on
+   * "Change the currency". Only a press moves focus, never the first render.
+   */
+  const changeRef = useRef<HTMLButtonElement>(null);
+  const pickRef = useRef<HTMLSelectElement>(null);
+  const keepRef = useRef<HTMLButtonElement>(null);
+  const pressed = useRef(false);
+  useEffect(() => {
+    if (!pressed.current) return;
+    pressed.current = false;
+    if (open) (pickRef.current && !pickRef.current.disabled ? pickRef.current : keepRef.current)?.focus();
+    else changeRef.current?.focus();
+  }, [open]);
 
   const restate = useMutation({
     /**
@@ -216,6 +240,46 @@ function CurrencyBlock({
 
   const filed = doc.currency && /^[A-Z]{3}$/.test(doc.currency) ? doc.currency : null;
 
+  /*
+   * SETTLED MONEY IS ONE LINE (walk-through W9, 2026-10-01). A filed currency
+   * with no hold is the usual case, and the full changer sat between the
+   * verdict and the lines on every review. It folds to a sentence and a
+   * "Change the currency" button, which every role sees, so the act is never
+   * hidden. A hold, a result or an error always opens it.
+   */
+  const settled = !!filed && held.length === 0 && !moved && !error && !restate.isPending;
+  if (settled && !open)
+    return (
+      <p
+        aria-label="What money this invoice is in"
+        style={{ fontSize: 12, color: 'var(--ink-2, #4F473C)', margin: 0 }}
+      >
+        This invoice&rsquo;s money is filed in {moneyName(filed)}.{' '}
+        <button
+          ref={changeRef}
+          type="button"
+          onClick={() => {
+            pressed.current = true;
+            setOpen(true);
+          }}
+          aria-expanded={false}
+          className="rc-ink"
+          style={{
+            fontSize: 11.5,
+            fontWeight: 600,
+            border: 'none',
+            background: 'transparent',
+            padding: 0,
+            color: 'var(--seal-deep, #14515C)',
+            textDecoration: 'underline',
+            cursor: 'pointer',
+          }}
+        >
+          Change the currency
+        </button>
+      </p>
+    );
+
   return (
     <section
       aria-label="What money this invoice is in"
@@ -223,16 +287,14 @@ function CurrencyBlock({
         border: '1px solid var(--paper-2, #EAE4D8)',
         borderRadius: 10,
         padding: '10px 12px',
-        marginBottom: 14,
         background: held.length ? 'var(--paper-2, #EAE4D8)' : undefined,
       }}
     >
-      <p style={{ fontFamily: MONO, fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--ink-4, #665D50)', margin: 0 }}>
-        this invoice&rsquo;s money
-      </p>
-      <p style={{ fontSize: 12.5, color: 'var(--ink-1, #211C16)', margin: '3px 0 0' }}>
+      {/* W10: the card names this part "The money", so the box no longer
+          repeats it as a label of its own. */}
+      <p style={{ fontSize: 12.5, color: 'var(--ink-1, #211C16)', margin: 0 }}>
         {filed
-          ? `Filed in ${currencyLabel(filed)}.`
+          ? `Filed in ${moneyName(filed)}.`
           : `${CURRENCY_NOT_RECORDED} — nothing on this document is priced.`}
       </p>
 
@@ -261,6 +323,7 @@ function CurrencyBlock({
         <label style={{ fontSize: 11.5, color: 'var(--ink-2, #4F473C)' }}>
           Change it to{' '}
           <select
+            ref={pickRef}
             value={choice}
             onChange={(e) => setChoice(e.target.value)}
             disabled={!canManage || restate.isPending}
@@ -269,7 +332,7 @@ function CurrencyBlock({
               fontSize: 11.5,
               padding: '3px 6px',
               borderRadius: 6,
-              border: '1px solid var(--seal-ring, rgba(26,94,107,.32))',
+              border: '1px solid var(--line-control, #8F8674)', // W39: a control's edge at 3:1
               background: 'var(--paper-0, #FBF8F1)',
             }}
           >
@@ -292,7 +355,7 @@ function CurrencyBlock({
             fontSize: 11.5,
             padding: '3px 6px',
             borderRadius: 6,
-            border: '1px solid var(--paper-2, #EAE4D8)',
+            border: '1px solid var(--line-control, #8F8674)', // W39: a control's edge at 3:1
             background: 'var(--paper-0, #FBF8F1)',
             minWidth: 180,
           }}
@@ -345,6 +408,32 @@ function CurrencyBlock({
         figures stay as they are and only the money they are stated in changes. Who changed it,
         when, and what it was before are recorded.
       </p>
+      {settled && (
+        <button
+          ref={keepRef}
+          type="button"
+          onClick={() => {
+            pressed.current = true;
+            setOpen(false);
+            setChoice('');
+            setReason('');
+          }}
+          aria-expanded
+          className="rc-ink"
+          style={{
+            fontSize: 11.5,
+            fontWeight: 600,
+            border: 'none',
+            background: 'transparent',
+            padding: 0,
+            marginTop: 6,
+            color: 'var(--seal-deep, #14515C)',
+            cursor: 'pointer',
+          }}
+        >
+          Keep {filed}
+        </button>
+      )}
     </section>
   );
 }
@@ -415,9 +504,18 @@ function EditCell({
         textAlign: 'right',
         padding: '3px 6px',
         borderRadius: 6,
+        /*
+         * AN EDGE YOU CAN SEE (walk-through RECEIPTS-W39, 2026-10-01). The box
+         * was edged in paper-2: 1.3:1 against its own white and 1.1:1 against
+         * the card, where a control's edge needs 3:1. `--line-control` is the
+         * house-wide colour COLOR-CONTRAST-REPORT B2 proposes; it does not
+         * exist yet (shared queue), so its stand-in #8F8674 applies until it
+         * lands: 3.6:1 / 3.1:1 on paper, 5.2:1 on charcoal. The same holds for
+         * every other box and picker on this page and its correction form.
+         */
         border: bad
           ? '1px solid var(--ink-1, #211C16)'
-          : '1px solid var(--paper-2, #EAE4D8)',
+          : '1px solid var(--line-control, #8F8674)',
         background: locked ? 'transparent' : 'var(--paper-0, #FAF7F1)',
         color: 'var(--ink-1, #211C16)',
       }}
@@ -612,12 +710,19 @@ export function PaperPane({
 
 /** Money/number fields the editor can move, and how they are labelled. */
 const EDITABLE_FIELDS = [
-  { key: 'qty', patch: 'qty', label: 'Quantity', nullable: false },
-  { key: 'unit_price', patch: 'unitPrice', label: 'Unit price', nullable: true },
-  { key: 'line_total', patch: 'lineTotal', label: 'Line total', nullable: true },
+  // `head` is the column's word, which a phone prints above each figure (W35).
+  { key: 'qty', patch: 'qty', label: 'Quantity', head: 'Qty', nullable: false },
+  { key: 'unit_price', patch: 'unitPrice', label: 'Unit price', head: 'Unit', nullable: true },
+  { key: 'line_total', patch: 'lineTotal', label: 'Line total', head: 'Total', nullable: true },
 ] as const;
 
 type EditableKey = (typeof EDITABLE_FIELDS)[number]['key'];
+
+/** The vendor the list endpoint names for a row (walk-through W8), if any. */
+function vendorOf(d: ProcurementDocument): string | null {
+  const name = (d as ProcurementDocument & { vendorName?: string | null }).vendorName;
+  return name?.trim() ? name.trim() : null;
+}
 
 /**
  * What the pairing badge means.
@@ -633,7 +738,21 @@ type EditableKey = (typeof EDITABLE_FIELDS)[number]['key'];
  * ordered wine, the ordered quantity, and the order-line reference — not an
  * invented line description. When the order query has not answered, the badge
  * says the target is unread rather than naming nothing.
+ *
+ * Walk-through W6 (2026-10-01): the sheet above pairs a line with a SHELF; this
+ * card pairs it with an ORDER LINE. Both said "paired", so the column now names
+ * what it holds, and the method reads as a sentence, not the stored code. The
+ * words cover every value `procurement_document_lines_match_method_check`
+ * allows (baseline migration); an unknown code is printed as-is, never hidden.
  */
+const MATCH_METHOD_WORDS: Record<string, string> = {
+  vendor_sku: "matched by the supplier's code",
+  description: 'matched by the description',
+  qty_price: 'matched by quantity and price',
+  manual: 'confirmed by hand',
+  edi_reference: "matched by the supplier's reference",
+};
+
 function PairedCell({
   line,
   order,
@@ -646,21 +765,65 @@ function PairedCell({
   if (!line.order_line_id)
     return (
       <span style={{ color: 'var(--ink-4, #665D50)' }}>
-        not paired
+        no order line yet
       </span>
     );
-  const ref = `#${line.order_line_id.slice(0, 8)}`;
+  /*
+   * IN THE HOUSE'S WORDS, FOR ANY ITEM (walk-through RECEIPTS-W37, 2026-10-01).
+   * This said "the wine is unnamed" — the house buys every drink and then food —
+   * printed the first eight characters of the order line's database id, and a
+   * bare "confidence 94%". The id is gone (the order's own number already heads
+   * the card), the item is just "the item", and the certainty reads as a
+   * sentence, as the reader's does since W23. `wineName` is the gateway's
+   * field name, not a word on screen.
+   */
   const conf = fmtConfidence(line.match_confidence);
-  const how = line.match_method === 'manual' ? 'confirmed by hand' : line.match_method ?? 'unrecorded method';
+  const how = line.match_method
+    ? MATCH_METHOD_WORDS[line.match_method] ?? line.match_method
+    : 'how it was matched is not recorded';
+  const sure = conf === EM ? 'certainty not recorded' : `${conf} sure of the match`;
   return (
     <span style={{ color: 'var(--seal-deep, #14515C)' }}>
       {orderUnread
-        ? `paired → order line ${ref} (the order could not be read, so the wine is unnamed)`
-        : `paired → ${order?.wineName ?? 'the ordered wine is unnamed'} · ${
+        ? 'paired with the order, which could not be read to name the item'
+        : `${order?.wineName ?? 'the order does not name the item'} · ${
             order?.quantity == null ? EM : order.quantity
-          } ordered · order line ${ref}`}
-      {` · ${how} · confidence ${conf}`}
+          } ordered`}
+      {` · ${how} · ${sure}`}
     </span>
+  );
+}
+
+/**
+ * ONE PART OF THE CARD, NAMED (walk-through W10, 2026-10-01). The founder:
+ * "every component and detail can be read easily … clear divisions". The card
+ * stacked the verdict, the order, the money, the lines and the confirm with no
+ * line between them; each now sits under its own label and a rule.
+ */
+function CardPart({ label, first = false, children }: { label: string; first?: boolean; children: ReactNode }) {
+  return (
+    <div
+      style={{
+        borderTop: first ? 'none' : '1px solid var(--paper-2, #EAE4D8)',
+        marginTop: first ? 0 : 14,
+        paddingTop: first ? 0 : 12,
+      }}
+    >
+      <h3
+        style={{
+          fontFamily: MONO,
+          fontSize: 8.5,
+          fontWeight: 600,
+          letterSpacing: '0.13em',
+          textTransform: 'uppercase',
+          color: 'var(--ink-4, #665D50)',
+          margin: '0 0 6px',
+        }}
+      >
+        {label}
+      </h3>
+      {children}
+    </div>
   );
 }
 
@@ -668,15 +831,42 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
   const qc = useQueryClient();
   const rid = useActiveRestaurantId();
   const detailKey = ['receipts-next', 'doc', rid, doc.id];
+  /**
+   * The formatted sheet above this card reads the same rows under its own keys
+   * (founder walk-through, 2026-10-01, W2). A correction or a pairing saved
+   * here left it showing the old figures until a reload — two faces of one
+   * document disagreeing on screen. Every write that touches lines refreshes it.
+   */
+  const refreshSheet = () => {
+    for (const k of ['canonical-document', 'canonical-document-items', 'canonical-document-mappings']) {
+      void qc.invalidateQueries({ queryKey: [k, rid, doc.id] });
+    }
+  };
   const detailQ = useQuery({
     queryKey: detailKey,
     queryFn: () => documentsApi.detail(doc.id),
     staleTime: 30_000,
   });
+  /**
+   * THE LINKED ORDER COMES FROM THE LINKS, NOT THE ROW (walk-through W4,
+   * 2026-10-01). `procurement_documents` has no `order_id` column — a document
+   * pairs with its orders through `procurement_document_links`, many-to-many,
+   * and the matcher reads exactly that table. This card read `doc.order_id`,
+   * which the gateway can never send, so every document said "No order is
+   * linked" and the pairing check was disabled for good. `undefined` while the
+   * detail is still loading: an unread link is not an absent one.
+   */
+  const linkedOrderIds: string[] | undefined = useMemo(() => {
+    if (doc.order_id) return [doc.order_id];
+    const links = detailQ.data?.links as Array<{ order_id?: string | null }> | undefined;
+    if (!links) return undefined;
+    return [...new Set(links.map((l) => l.order_id).filter((x): x is string => !!x))];
+  }, [doc.order_id, detailQ.data]);
+  const orderId = linkedOrderIds?.[0] ?? null;
   const orderQ = useQuery({
-    queryKey: ['receipts-next', 'order', rid, doc.order_id],
-    queryFn: () => getOrder(doc.order_id!),
-    enabled: !!doc.order_id,
+    queryKey: ['receipts-next', 'order', rid, orderId],
+    queryFn: () => getOrder(orderId!),
+    enabled: !!orderId,
     staleTime: 60_000,
   });
   const [matchResult, setMatchResult] = useState<Awaited<ReturnType<typeof documentsApi.match>> | null>(null);
@@ -769,6 +959,7 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
             ? { ...cur, lines: cur.lines.map((l) => (l.id === res.line.id ? { ...l, ...res.line } : l)) }
             : cur,
       );
+      refreshSheet();
     },
     onError: (e) => setEditError(serverMessage(e, 'The correction did not save.')),
   });
@@ -806,6 +997,7 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
       setMatchResult(res);
       // `applied` was WRITTEN by that call. The rows on screen are now stale.
       void qc.invalidateQueries({ queryKey: detailKey });
+      refreshSheet();
     },
   });
 
@@ -823,6 +1015,7 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
           : cur,
       );
       void qc.invalidateQueries({ queryKey: detailKey });
+      refreshSheet();
     },
     onError: (e) => setEditError(serverMessage(e, 'The pairing change did not save.')),
   });
@@ -843,11 +1036,33 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
     },
   });
 
+  /**
+   * ONE VERDICT ON ONE SCREEN (walk-through W6, 2026-10-01). The sheet above
+   * recomputes the tie-out from the rows on every read; this card printed the
+   * verdict SAVED at intake. Once the VAT-breakdown rule was fixed (W5) the two
+   * disagreed a few centimetres apart — "adds up" over "off by $43.47". The
+   * card now shows the sheet's verdict: the same query key and fetch the sheet
+   * uses, so React Query shares the one request. A correction made here still
+   * wins, because its response is newer than either. The key names the house,
+   * as the sheet's does (ADR 0051, walk-through W47).
+   */
+  const sheetQ = useQuery({
+    queryKey: ['canonical-document', rid, doc.id],
+    queryFn: () => canonicalApi.document(doc.id),
+    staleTime: 30_000,
+  });
+  const sheetVerdict = sheetQ.data?.canonical.layer3;
   const shownTieOut: ProcurementDocument = tieOut
     ? { ...shownDoc, ties_out: tieOut.tiesOut, tie_out_delta: tieOut.tieOutDelta }
-    : shownDoc;
+    : sheetVerdict
+      ? {
+          ...shownDoc,
+          ties_out: sheetVerdict.tiesOut,
+          tie_out_delta: sheetVerdict.tieOutDeltaCents == null ? null : sheetVerdict.tieOutDeltaCents / 100,
+        }
+      : shownDoc;
 
-  const orderUnread = !!doc.order_id && orderQ.data === undefined;
+  const orderUnread = !!orderId && orderQ.data === undefined;
 
   const appliedByLine = useMemo(() => {
     const m = new Map<string, DocumentLineMatch>();
@@ -866,120 +1081,218 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
         fontFamily: SANS,
       }}
     >
-      {/* the right invoice: what was ordered, above what the paper says */}
+      {/*
+        THE ACTS, NOT A SECOND HEADER (founder walk-through, 2026-10-01, W2:
+        "Sheet first, card trimmed"). The formatted sheet above already states
+        the type, number, date, total and the paper itself; this card used to
+        restate all of it. It now opens on what only it does — check, correct,
+        pair, confirm — and keeps the tie-out because a correction here moves it.
+      */}
       <header className="mb-3 flex flex-wrap items-baseline justify-between gap-3">
-        <div>
-          <span
-            style={{
-              fontFamily: MONO,
-              fontSize: 9,
-              fontWeight: 600,
-              letterSpacing: '0.14em',
-              textTransform: 'uppercase',
-              color: 'var(--seal-deep, #14515C)',
-            }}
-          >
-            {TYPE_LABELS[shownDoc.doc_type] ?? shownDoc.doc_type} · {shownDoc.doc_number || EM} ·{' '}
-            {fmtDate(shownDoc.doc_date)}
-          </span>
-          <h2 style={{ fontFamily: SERIF, fontSize: 19, fontWeight: 600, margin: '2px 0 0' }}>
-            {shownDoc.total == null ? 'No stated total' : fmtMoney(shownDoc.total, shownDoc.currency)}
-            <span style={{ fontSize: 12, fontWeight: 400, color: 'var(--ink-4, #665D50)', marginLeft: 10 }}>
-              <TieOutLine doc={shownTieOut} />
-            </span>
-          </h2>
-          {/*
-            HOW GOOD THE READING IS, stated. This screen asks for trust in a
-            transcription; hiding the model's own confidence in it made that
-            an unqualified ask. `—` when the record holds no score: an
-            unrecorded confidence is not a low one, and not a high one either.
-          */}
-          <p style={{ fontFamily: MONO, fontSize: 10.5, color: 'var(--ink-4, #665D50)', margin: '3px 0 0' }}>
-            extraction confidence {fmtConfidence(shownDoc.extraction_confidence)}
-            {shownDoc.extraction_confidence == null ? ' (none recorded for this document)' : ''}
+        <h2
+          id="rc-check"
+          tabIndex={-1}
+          style={{
+            fontFamily: MONO,
+            fontSize: 9,
+            fontWeight: 600,
+            letterSpacing: '0.14em',
+            textTransform: 'uppercase',
+            color: 'var(--seal-deep, #14515C)',
+            margin: 0,
+          }}
+        >
+          Check and correct
+        </h2>
+        {/*
+          ADR 0104 D12 slice 2. The canonical view is the SECOND FACE of this
+          page, not a replacement for it — so the way in is one link, and it
+          exists only where the `document` gate is on. A tenant with the gate
+          off sees this page byte-for-byte as it was: no link, and the route
+          itself redirects back here.
+        */}
+        {canonicalOn && (
+          <p style={{ margin: 0 }}>
+            <Link
+              to={`/documents/${doc.id}`}
+              style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--seal-deep, #14515C)' }}
+            >
+              Open this document on its own page →
+            </Link>
           </p>
-          {/*
-            ADR 0104 D12 slice 2. The canonical view is the SECOND FACE of this
-            page, not a replacement for it — so the way in is one link, and it
-            exists only where the `document` gate is on. A tenant with the gate
-            off sees this page byte-for-byte as it was: no link, and the route
-            itself redirects back here.
-          */}
-          {canonicalOn && (
-            <p style={{ margin: '4px 0 0' }}>
-              <Link
-                to={`/documents/${doc.id}`}
-                style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--seal-deep, #14515C)' }}
-              >
-                Open as the canonical document →
-              </Link>
-            </p>
-          )}
-          {doc.order_id ? (
-            orderQ.data ? (
-              <p style={{ fontSize: 12, color: 'var(--ink-2, #4F473C)', margin: '4px 0 0' }}>
-                {/*
-                  `totalCost` is OrderResponseDto's own key. The cast that stood
-                  here read `totalPrice`, which the route has never sent, so the
-                  typeof guard was always false and the "ordered $X" clause
-                  silently vanished from every receipt — the route HAD the
-                  figure and this line dropped it.
-
-                  The vendor clause is back and REAL: `GET
-                  /procurement/orders/:id` joins `providers` since 2026-09-05.
-                  `vendorClause` prints nothing when there is no name — this is
-                  a running sentence with no slot to leave empty, and "Vendor
-                  not named" appended to every row of a receipts feed is news
-                  about the query, not about the pairing. `vendor.ts` argues
-                  that choice against the list rows, which do say the words.
-                */}
-                Against order {orderQ.data.orderNumber ?? doc.order_id.slice(0, 8)}
-                {vendorClause(orderQ.data)}
-                {/*
-                  THE ORDER'S OWN CURRENCY, WHICH DOES NOT EXIST. Neither
-                  `procurement_orders` nor `procurement_order_items` has a
-                  currency column (measured 2026-09-05,
-                  `procurement/price-currency.ts`'s `agreementCurrencyClaim`),
-                  so `null` is passed deliberately and this figure prints
-                  "(currency not recorded)". Borrowing the DOCUMENT's currency
-                  would state that the order was agreed in the money the vendor
-                  happened to bill in — a claim nobody made, and exactly wrong
-                  on a cross-currency order.
-                */}
-                {typeof orderQ.data.totalCost === 'number'
-                  ? ` · ordered ${fmtMoney(orderQ.data.totalCost, null)}`
-                  : ''}
-              </p>
-            ) : orderQ.isError ? (
-              <p style={{ fontSize: 12, color: 'var(--ink-2, #4F473C)', margin: '4px 0 0' }}>
-                The linked order could not be read — the pairing is unverified, not wrong.
-              </p>
-            ) : (
-              <p style={{ fontSize: 12, color: 'var(--ink-4, #665D50)', margin: '4px 0 0' }}>
-                Reading the linked order…
-              </p>
-            )
-          ) : (
-            <p style={{ fontSize: 12, color: 'var(--ink-2, #4F473C)', margin: '4px 0 0' }}>
-              No order is linked to this document yet — pair it before trusting any line.
-            </p>
-          )}
-        </div>
+        )}
       </header>
 
+      <CardPart label="The reading" first>
+        <p style={{ fontSize: 12, color: 'var(--ink-4, #665D50)', margin: 0 }}>
+          <TieOutLine doc={shownTieOut} />
+        </p>
+        {/*
+          HOW GOOD THE READING IS, stated. This screen asks for trust in a
+          transcription; hiding the model's own confidence in it made that
+          an unqualified ask. `—` when the record holds no score: an
+          unrecorded confidence is not a low one, and not a high one either.
+        */}
+        <p style={{ fontSize: 11.5, color: 'var(--ink-4, #665D50)', margin: '3px 0 0' }}>
+          {fmtConfidence(shownDoc.extraction_confidence) === EM
+            ? 'The reader recorded no confidence for this document.'
+            : `The reader was ${fmtConfidence(shownDoc.extraction_confidence)} sure of what it read.`}
+        </p>
+      </CardPart>
+
+      <CardPart label="The order">
+        {orderId ? (
+          orderQ.data ? (
+            <p style={{ fontSize: 12, color: 'var(--ink-2, #4F473C)', margin: '4px 0 0' }}>
+              {/*
+                `totalCost` is OrderResponseDto's own key. The cast that stood
+                here read `totalPrice`, which the route has never sent, so the
+                typeof guard was always false and the "ordered $X" clause
+                silently vanished from every receipt — the route HAD the
+                figure and this line dropped it.
+
+                The vendor clause is back and REAL: `GET
+                /procurement/orders/:id` joins `providers` since 2026-09-05.
+                `vendorClause` prints nothing when there is no name — this is
+                a running sentence with no slot to leave empty, and "Vendor
+                not named" appended to every row of a receipts feed is news
+                about the query, not about the pairing. `vendor.ts` argues
+                that choice against the list rows, which do say the words.
+              */}
+              {/* No number says so, rather than a slice of the database id (W37). */}
+              {orderQ.data.orderNumber ? `Against order ${orderQ.data.orderNumber}` : 'Against an order with no number'}
+              {vendorClause(orderQ.data)}
+              {/*
+                THE ORDER'S OWN CURRENCY, WHICH DOES NOT EXIST. Neither
+                `procurement_orders` nor `procurement_order_items` has a
+                currency column (measured 2026-09-05,
+                `procurement/price-currency.ts`'s `agreementCurrencyClaim`),
+                so `null` is passed deliberately and this figure prints
+                "(currency not recorded)". Borrowing the DOCUMENT's currency
+                would state that the order was agreed in the money the vendor
+                happened to bill in — a claim nobody made, and exactly wrong
+                on a cross-currency order.
+              */}
+              {typeof orderQ.data.totalCost === 'number'
+                ? ` · ordered ${fmtMoney(orderQ.data.totalCost, null)}`
+                : ''}
+              {(linkedOrderIds?.length ?? 0) > 1
+                ? ` · and ${linkedOrderIds!.length - 1} more order${linkedOrderIds!.length - 1 === 1 ? '' : 's'}`
+                : ''}
+            </p>
+          ) : orderQ.isError ? (
+            <p style={{ fontSize: 12, color: 'var(--ink-2, #4F473C)', margin: '4px 0 0' }}>
+              The linked order could not be read — the pairing is unverified, not wrong.
+            </p>
+          ) : (
+            <p style={{ fontSize: 12, color: 'var(--ink-4, #665D50)', margin: '4px 0 0' }}>
+              Reading the linked order…
+            </p>
+          )
+        ) : linkedOrderIds === undefined ? (
+          <p style={{ fontSize: 12, color: 'var(--ink-4, #665D50)', margin: '4px 0 0' }}>
+            {detailQ.isError
+              ? 'Whether an order is linked could not be read.'
+              : 'Reading which order this pairs with…'}
+          </p>
+        ) : (
+          <p style={{ fontSize: 12, color: 'var(--ink-2, #4F473C)', margin: '4px 0 0' }}>
+            No order is linked to this document, so its lines have nothing to be checked against.
+          </p>
+        )}
+        {/* the pairing check — the matcher WRITES its certain half, so say so */}
+        <div className="mt-2 flex flex-wrap items-start gap-3">
+          <button
+            type="button"
+            onClick={() => runMatch.mutate()}
+            disabled={runMatch.isPending || !orderId}
+            className="rc-ink"
+            style={{
+              fontSize: 12,
+              fontWeight: 600,
+              padding: '5px 12px',
+              borderRadius: 8,
+              border: '1px solid var(--seal-ring, rgba(26,94,107,.32))',
+              color: orderId ? 'var(--seal-deep, #14515C)' : 'var(--ink-4, #665D50)',
+              cursor: orderId ? 'pointer' : 'not-allowed',
+            }}
+          >
+            {runMatch.isPending ? 'Checking the pairing…' : 'Check line pairing'}
+          </button>
+          {linkedOrderIds?.length === 0 && (
+            <span style={{ fontSize: 11, color: 'var(--ink-4, #665D50)', alignSelf: 'center' }}>
+              needs a linked order first
+            </span>
+          )}
+          {/* W18-B: disabled while the link is unread, so it says why too */}
+          {linkedOrderIds === undefined && (
+            <span style={{ fontSize: 11, color: 'var(--ink-4, #665D50)', alignSelf: 'center' }}>
+              {detailQ.isError ? 'needs the order link, which could not be read' : 'waits for the order link'}
+            </span>
+          )}
+          {runMatch.isError && (
+            <span role="alert" style={{ fontSize: 11.5, color: 'var(--ink-1, #211C16)', flexBasis: '100%' }}>
+              {serverMessage(runMatch.error, 'The pairing check did not run.')}
+            </span>
+          )}
+          {matchResult && (
+            <div style={{ flexBasis: '100%', fontSize: 12 }}>
+              <p style={{ color: 'var(--ink-2, #4F473C)', margin: '2px 0 6px' }}>
+                {matchResult.applied.length} written to the record by this check ·{' '}
+                {matchResult.suggested.length} awaiting your confirmation ·{' '}
+                {matchResult.unmatchedDocumentLineIds.length} on the paper with no order line
+              </p>
+              {matchResult.applied.length > 0 && (
+                <p style={{ color: 'var(--ink-2, #4F473C)', margin: '0 0 6px' }}>
+                  The {matchResult.applied.length} above were saved without asking — the matcher
+                  writes an unambiguous vendor-SKU pairing. They are marked in the table and each
+                  one can be unlinked there.
+                </p>
+              )}
+              {matchResult.suggested.map((s) => (
+                <div key={s.documentLineId} className="flex flex-wrap items-center gap-2 py-1" style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
+                  <span style={{ color: 'var(--ink-2, #4F473C)' }}>
+                    {s.reason}
+                    {s.substitution ? ' — a substitution; accept it knowingly' : ''}
+                  </span>
+                  <span style={{ fontFamily: MONO, fontSize: 10.5, color: 'var(--ink-4, #665D50)' }}>
+                    confidence {fmtConfidence(s.confidence)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => link.mutate({ lineId: s.documentLineId, orderLineId: s.orderLineId })}
+                    disabled={link.isPending}
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 600,
+                      padding: '3px 9px',
+                      borderRadius: 6,
+                      border: '1px solid var(--seal-ring, rgba(26,94,107,.32))',
+                      background: 'transparent',
+                      color: 'var(--seal-deep, #14515C)',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Confirm pairing
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </CardPart>
+
       {/* RULE 3 — the house's deliberate restatement of this invoice's money */}
-      <CurrencyBlock doc={shownDoc} onChanged={() => void detailQ.refetch()} />
+      <CardPart label="The money">
+        <CurrencyBlock doc={shownDoc} onChanged={() => void detailQ.refetch()} />
+      </CardPart>
 
-      {/* the paper beside the lines — the adjudication this page exists for */}
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,0.85fr)_minmax(0,1fr)]">
-        <PaperPane
-          doc={shownDoc}
-          detailKnown={detailQ.data !== undefined}
-          fetchedAt={detailQ.dataUpdatedAt}
-          onRefresh={() => void detailQ.refetch()}
-          refreshing={detailQ.isFetching}
-        />
-
+      {/*
+        The paper is no longer beside these lines: the sheet above brings it on
+        demand ("Bring the original"), and a second copy here pushed the lines
+        into half the width (W2). `PaperPane` lives on as that on-demand pane.
+      */}
+      <CardPart label="The lines">
         <div>
           {/* the lines — editable in place while the document awaits review */}
           {detailQ.isError ? (
@@ -990,8 +1303,8 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
             */
             <div role="alert">
               <p style={{ fontSize: 12, color: 'var(--ink-1, #211C16)', margin: 0 }}>
-                {serverMessage(detailQ.error, 'This document could not be read.')} — its lines are
-                unknown, not empty. Nothing here is claimed.
+                {sentence(serverMessage(detailQ.error, 'This document could not be read.'))} Its lines
+                are unknown, not empty. Nothing here is claimed.
               </p>
               <button
                 type="button"
@@ -1020,29 +1333,32 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
             </p>
           ) : (
             <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-                <thead>
-                  <tr style={{ fontFamily: MONO, fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--ink-4, #665D50)' }}>
-                    <th style={{ textAlign: 'left', padding: '4px 6px' }}>Line</th>
-                    <th style={{ textAlign: 'right', padding: '4px 6px' }}>Qty</th>
-                    <th style={{ textAlign: 'right', padding: '4px 6px' }}>Unit</th>
-                    <th style={{ textAlign: 'right', padding: '4px 6px' }}>Total</th>
-                    <th style={{ textAlign: 'left', padding: '4px 6px' }}>Paired with</th>
+              {/* Roles spelled out: on a phone the rows become blocks (W35, the
+                  `.rc-lines` rules above), and a table whose display changes
+                  loses its implicit roles in some screen readers. */}
+              <table className="rc-lines" role="table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                <thead role="rowgroup">
+                  <tr role="row" style={{ fontFamily: MONO, fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--ink-4, #665D50)' }}>
+                    <th role="columnheader" style={{ textAlign: 'left', padding: '4px 6px' }}>Line</th>
+                    <th role="columnheader" style={{ textAlign: 'right', padding: '4px 6px' }}>Qty</th>
+                    <th role="columnheader" style={{ textAlign: 'right', padding: '4px 6px' }}>Unit</th>
+                    <th role="columnheader" style={{ textAlign: 'right', padding: '4px 6px' }}>Total</th>
+                    <th role="columnheader" style={{ textAlign: 'left', padding: '4px 6px' }}>Order line</th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody role="rowgroup">
                   {lines.map((l) => (
-                    <tr key={l.id} style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
-                      <td style={{ padding: '5px 6px', color: 'var(--ink-1, #211C16)', maxWidth: 260 }}>
+                    <tr key={l.id} role="row" style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
+                      <td role="cell" data-cell="line" style={{ padding: '5px 6px', color: 'var(--ink-1, #211C16)', maxWidth: 260 }}>
                         {l.description || EM}
-                        {l.vintage ? ` · ${l.vintage}` : ''}
+                        {l.vintage && !nameCarriesYear(l.description, l.vintage) ? ` · ${l.vintage}` : ''}
                       </td>
                       {EDITABLE_FIELDS.map((f) => {
                         const k = `${l.id}:${f.key}`;
                         const was = k in originals ? originals[k] : undefined;
                         const changed = was !== undefined && was !== l[f.key];
                         return (
-                          <td key={f.key} style={{ textAlign: 'right', padding: '5px 6px' }}>
+                          <td key={f.key} role="cell" data-cell={f.key} data-label={f.head} style={{ textAlign: 'right', padding: '5px 6px' }}>
                             <EditCell
                               value={l[f.key]}
                               ariaLabel={`${f.label}, line ${l.line_no}`}
@@ -1082,7 +1398,7 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
                           </td>
                         );
                       })}
-                      <td style={{ padding: '5px 6px', fontFamily: MONO, fontSize: 10 }}>
+                      <td role="cell" data-cell="order" data-label="Order line" style={{ padding: '5px 6px', fontFamily: MONO, fontSize: 10 }}>
                         <PairedCell
                           line={l}
                           order={orderQ.data as { wineName?: string; quantity?: number } | undefined}
@@ -1098,7 +1414,12 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
                             type="button"
                             onClick={() => link.mutate({ lineId: l.id, orderLineId: null })}
                             disabled={link.isPending}
+                            /* Its own line and its own name (W37): it ran on as
+                               "…of the matchUnlink", and every row's said only
+                               "Unlink" to a screen reader. */
+                            aria-label={`Unlink line ${l.line_no} from the order`}
                             style={{
+                              display: 'block',
                               marginTop: 2,
                               border: 'none',
                               background: 'transparent',
@@ -1211,105 +1532,48 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
             </p>
           )}
 
-          {/* the pairing check — the matcher WRITES its certain half, so say so */}
-          <div className="mt-3 flex flex-wrap items-start gap-3">
-            <button
-              type="button"
-              onClick={() => runMatch.mutate()}
-              disabled={runMatch.isPending || !doc.order_id}
-              className="rc-ink"
-              style={{
-                fontSize: 12,
-                fontWeight: 600,
-                padding: '5px 12px',
-                borderRadius: 8,
-                border: '1px solid var(--seal-ring, rgba(26,94,107,.32))',
-                color: doc.order_id ? 'var(--seal-deep, #14515C)' : 'var(--ink-4, #665D50)',
-                cursor: doc.order_id ? 'pointer' : 'not-allowed',
-              }}
-            >
-              {runMatch.isPending ? 'Checking the pairing…' : 'Check line pairing'}
-            </button>
-            {!doc.order_id && (
-              <span style={{ fontSize: 11, color: 'var(--ink-4, #665D50)', alignSelf: 'center' }}>
-                needs a linked order first
-              </span>
+        </div>
+      </CardPart>
+
+      {/* the ceremony — verify asserts the transcription, nothing more */}
+      {editable && (
+        <CardPart label="Confirm">
+          <div className="mt-2">
+            {/*
+              NO CONFIRM OVER UNREAD LINES (walk-through W18, 2026-10-01). The
+              swipe asserts "this transcription matches the paper"; while the
+              lines are still loading, or could not be read at all, nobody has
+              seen what it would vouch for. Found in P4 with the detail fetch
+              failing on SYN-US-0112: the lines said "unknown, not empty" and
+              the swipe under them still worked.
+            */}
+            {lines === undefined && (
+              <p
+                data-testid="confirm-waits"
+                style={{ textAlign: 'center', fontSize: 11.5, color: 'var(--ink-2, #4F473C)', margin: '0 0 8px' }}
+              >
+                {detailQ.isError
+                  ? 'Confirm waits for the lines. They could not be read, so there is nothing yet to check against the paper.'
+                  : 'Confirm opens once the lines are read.'}
+              </p>
             )}
-            {runMatch.isError && (
-              <span role="alert" style={{ fontSize: 11.5, color: 'var(--ink-1, #211C16)', flexBasis: '100%' }}>
-                {serverMessage(runMatch.error, 'The pairing check did not run.')}
-              </span>
-            )}
-            {matchResult && (
-              <div style={{ flexBasis: '100%', fontSize: 12 }}>
-                <p style={{ color: 'var(--ink-2, #4F473C)', margin: '2px 0 6px' }}>
-                  {matchResult.applied.length} written to the record by this check ·{' '}
-                  {matchResult.suggested.length} awaiting your confirmation ·{' '}
-                  {matchResult.unmatchedDocumentLineIds.length} on the paper with no order line
-                </p>
-                {matchResult.applied.length > 0 && (
-                  <p style={{ color: 'var(--ink-2, #4F473C)', margin: '0 0 6px' }}>
-                    The {matchResult.applied.length} above were saved without asking — the matcher
-                    writes an unambiguous vendor-SKU pairing. They are marked in the table and each
-                    one can be unlinked there.
-                  </p>
-                )}
-                {matchResult.suggested.map((s) => (
-                  <div key={s.documentLineId} className="flex flex-wrap items-center gap-2 py-1" style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
-                    <span style={{ color: 'var(--ink-2, #4F473C)' }}>
-                      {s.reason}
-                      {s.substitution ? ' — a substitution; accept it knowingly' : ''}
-                    </span>
-                    <span style={{ fontFamily: MONO, fontSize: 10.5, color: 'var(--ink-4, #665D50)' }}>
-                      confidence {fmtConfidence(s.confidence)}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => link.mutate({ lineId: s.documentLineId, orderLineId: s.orderLineId })}
-                      disabled={link.isPending}
-                      style={{
-                        fontSize: 11,
-                        fontWeight: 600,
-                        padding: '3px 9px',
-                        borderRadius: 6,
-                        border: '1px solid var(--seal-ring, rgba(26,94,107,.32))',
-                        background: 'transparent',
-                        color: 'var(--seal-deep, #14515C)',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      Confirm pairing
-                    </button>
-                  </div>
-                ))}
-              </div>
+            <SwipeToConfirm
+              key={`swipe-${verify.failureCount}`}
+              label="Swipe up to confirm"
+              assertion="Confirms this transcription matches the paper. It does not accept charges or touch stock. A one-time seal is taken when the gesture starts."
+              disabled={verify.isPending || lines === undefined}
+              onChallenge={() => documentsApi.mintVerifySeal(doc.id)}
+              onConfirm={(challenge) => verify.mutate(challenge)}
+            />
+            {verify.isError && (
+              <p role="alert" style={{ textAlign: 'center', fontSize: 11.5, color: 'var(--ink-1, #211C16)', margin: '6px 0 0' }}>
+                {sentence(serverMessage(verify.error, 'The confirmation did not go through.'))}{' '}
+                The document is still unverified.
+              </p>
             )}
           </div>
-
-          {/* the ceremony — verify asserts the transcription, nothing more */}
-          {editable && (
-            <div className="mt-5">
-              <SwipeToConfirm
-                key={`swipe-${verify.failureCount}`}
-                label="Swipe up to confirm"
-                assertion="Confirms this transcription matches the paper. It does not accept charges or touch stock. A one-time seal is taken when the gesture starts."
-                disabled={verify.isPending}
-                onChallenge={() => documentsApi.mintVerifySeal(doc.id)}
-                onConfirm={(challenge) => verify.mutate(challenge)}
-              />
-              {verify.isError && (
-                <p role="alert" style={{ textAlign: 'center', fontSize: 11.5, color: 'var(--ink-1, #211C16)', margin: '6px 0 0' }}>
-                  {serverMessage(
-                    verify.error,
-                    'The confirmation did not reach the gateway.',
-                  )}{' '}
-                  The document is still unverified.
-                </p>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
+        </CardPart>
+      )}
     </div>
   );
 }
@@ -1328,24 +1592,94 @@ export default function ReceiptsNext() {
     if (next === 'credits') params.set('tab', 'credits');
     else params.delete('tab');
     params.delete('doc');
+    params.delete('credit');
     setSearchParams(params);
   };
   /*
    * `?doc=<id>` opens that document straight away. The receiving workspace links
    * here when it refuses a unit price for an invoice whose money is held
    * (founder, 2026-09-06 batch 64), and a link that lands on the queue without
-   * opening the document names an act the reader then has to go and find. Seeded
-   * once from the URL rather than synced to it: a person who clicks another row
-   * has chosen it, and re-selecting from the query string would fight them.
+   * opening the document names an act the reader then has to go and find.
+   *
+   * THE URL IS THE SELECTION (ADR 0160; walk-through W3, 2026-10-01). It was
+   * seeded once and then held in memory, so a reload, a shared link or the
+   * browser's Back lost the open document. A click now writes `?doc=`, which
+   * is also why it cannot fight the reader: the click and the query string
+   * are the same act.
    */
-  const [selectedId, setSelectedId] = useState<string | null>(
-    () => searchParams.get('doc'),
-  );
+  const selectedId = searchParams.get('doc');
+  const select = (id: string | null) => {
+    const params = new URLSearchParams(searchParams);
+    if (id) params.set('doc', id);
+    else params.delete('doc');
+    setSearchParams(params);
+  };
   const [showVerified, setShowVerified] = useState(false);
   const selected =
     data.queue.find((d) => d.id === selectedId) ??
+    data.clean.find((d) => d.id === selectedId) ??
     data.verified.find((d) => d.id === selectedId) ??
     null;
+
+  /*
+   * ONE ROW, TWO GROUPS (walk-through RECEIPTS-W44, 2026-10-01). The papers
+   * that need a look and the papers that read cleanly are drawn by the same
+   * row, so the two groups differ only by the heading between them.
+   */
+  const queueRow = (d: ProcurementDocument) => (
+    <button
+      key={d.id}
+      type="button"
+      onClick={() => select(d.id)}
+      aria-pressed={selectedId === d.id}
+      className="rc-row block w-full text-left"
+      style={{
+        padding: '9px 8px',
+        // shorthand first: 'border: none' would clobber a
+        // longhand declared before it (receipts-audit.md)
+        border: 'none',
+        borderBottom: '1px solid var(--paper-2, #EAE4D8)',
+        borderLeft: selectedId === d.id ? '3px solid var(--seal, #1A5E6B)' : '3px solid transparent',
+        background: selectedId === d.id ? 'var(--paper-1, #F3EFE6)' : undefined,
+        cursor: 'pointer',
+        fontFamily: SANS,
+      }}
+    >
+      {/* W8 (2026-10-01): who sent it comes first. Six invoices
+          from one day read alike until the vendor is named;
+          a row without one keeps the number as its title. */}
+      {vendorOf(d) && (
+        <span
+          title={vendorOf(d) ?? undefined}
+          style={{
+            display: 'block',
+            fontSize: 12.5,
+            fontWeight: 600,
+            color: 'var(--ink-1, #211C16)',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {vendorOf(d)}
+        </span>
+      )}
+      <span
+        style={
+          vendorOf(d)
+            ? { display: 'block', fontSize: 11.5, color: 'var(--ink-2, #4F473C)' }
+            : { display: 'block', fontSize: 12.5, fontWeight: 600, color: 'var(--ink-1, #211C16)' }
+        }
+      >
+        {typeLabel(d.doc_type)} · {d.doc_number || EM}
+      </span>
+      <span style={{ display: 'block', fontSize: 11, color: 'var(--ink-4, #665D50)' }}>
+        {fmtDate(d.doc_date)} · {fmtMoney(d.total, d.currency)} ·{' '}
+        {/* The reading's own words (W23), short (walk-through W26). */}
+        {d.ties_out === null ? 'no stated total' : d.ties_out ? 'adds up' : 'does not add up'}
+      </span>
+    </button>
+  );
 
   return (
     <div
@@ -1358,8 +1692,23 @@ export default function ReceiptsNext() {
         .rc-ink:hover:not(:disabled) { background: var(--seal-tint, rgba(26,94,107,.10)) }
         .rc-ink:focus-visible { outline: 2px solid var(--seal, #1A5E6B); outline-offset: 2px }
         .rc-row:hover { background: var(--paper-1, #F3EFE6) }
+        /* W40: the skip link is out of sight until a keyboard reaches it. */
+        .rc-skip { display: inline-block; margin-bottom: 8px; font-family: ${SANS}; font-size: 12px; font-weight: 600; color: var(--seal-deep, #14515C); text-decoration: underline }
+        .rc-skip:not(:focus) { position: absolute; width: 1px; height: 1px; margin: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap }
         .rc-row:focus-visible { outline: 2px solid var(--seal, #1A5E6B); outline-offset: -2px }
         @media (prefers-reduced-motion: reduce) { .rc-row, [style*="rc-settle"] { animation: none !important; transition: none !important } }
+        /* W35: on a phone each line of THE LINES is a short block: the name, then
+           Qty, Unit and Total side by side under their own words, then the order
+           line, so the total is never past the edge. Screen only. */
+        @media screen and (max-width: 639px) {
+          .rc-lines, .rc-lines tbody { display: block; width: 100% }
+          .rc-lines thead { display: none }
+          .rc-lines tr { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: 8px; row-gap: 6px; padding: 8px 0 }
+          .rc-lines td { display: block; min-width: 0; max-width: none !important; padding: 0 !important; text-align: left !important }
+          .rc-lines td[data-cell="line"], .rc-lines td[data-cell="order"] { grid-column: 1 / -1 }
+          .rc-lines td[data-label]::before { content: attr(data-label); display: block; margin-bottom: 2px; font-family: ${MONO}; font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-4, #665D50) }
+          .rc-lines input { max-width: 100% }
+        }
       `}</style>
       <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
         <header className="mb-5 flex flex-wrap items-end justify-between gap-4">
@@ -1408,7 +1757,7 @@ export default function ReceiptsNext() {
             style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-4, #665D50)' }}
             title={
               data.queueCapped || data.verifiedCapped
-                ? `The gateway returns at most ${RECEIPTS_SERVER_WINDOWS.QUEUE_ITEMS} documents per list, so a count marked ${GE} is a floor.`
+                ? `Mudavym lists at most ${RECEIPTS_SERVER_WINDOWS.QUEUE_ITEMS} documents at a time, so a count marked ${GE} is a floor.`
                 : undefined
             }
           >
@@ -1419,11 +1768,27 @@ export default function ReceiptsNext() {
               carry the `≥`, exactly as the verified count already did. ADR
               0051 clause 2.
             */}
+            {/* A failed read is not a read in progress (walk-through W26): the
+                alert below names the failure, so the header stops saying
+                "Reading the queue…" beside it. With no house selected no
+                read is asked at all, so it says "not read" too, under the
+                "No restaurant is selected" alert (RECEIPTS-W52). */}
             {data.queueKnown
               ? `${data.queueCapped ? GE : ''}${data.queue.length} awaiting review`
-              : 'Reaching the gateway…'}
+              : data.noRestaurant || data.failures.some((f) => f.startsWith('the review queue'))
+                ? 'queue not read'
+                : 'Reading the queue…'}
+            {/* W44: the clean papers are counted apart, never folded into
+                "awaiting review" — they passed every check. */}
+            {data.cleanKnown && data.clean.length > 0
+              ? ` · ${data.cleanCapped ? GE : ''}${data.clean.length} read cleanly`
+              : ''}
             {' · '}
-            {data.verifiedCount === null ? EM : `${data.verifiedCapped ? GE : ''}${data.verifiedCount} verified`}
+            {data.verifiedCount !== null
+              ? `${data.verifiedCapped ? GE : ''}${data.verifiedCount} verified`
+              : data.noRestaurant || data.failures.some((f) => f.startsWith('the verified book'))
+                ? 'verified not read'
+                : EM}
           </span>
           )}
         </header>
@@ -1458,8 +1823,8 @@ export default function ReceiptsNext() {
             className="mb-4 rounded-xl px-4 py-3"
             style={{ fontFamily: SANS, border: '1px solid var(--paper-2, #EAE4D8)', background: 'var(--paper-1, #F3EFE6)', fontSize: 12.5, color: 'var(--ink-2, #4F473C)' }}
           >
-            No restaurant is selected, so the tenant-scoped paper trail was never requested. Nothing
-            below is claimed — this is not an empty queue.
+            No restaurant is selected, so no paper trail was asked for. Nothing below is claimed —
+            this is not an empty queue.
           </div>
         )}
 
@@ -1470,9 +1835,19 @@ export default function ReceiptsNext() {
             style={{ fontFamily: SANS, border: '1px solid var(--paper-2, #EAE4D8)', background: 'var(--paper-1, #F3EFE6)' }}
           >
             <span style={{ fontSize: 12.5, color: 'var(--ink-2, #4F473C)' }}>
+              {/* Said per read once the queue is in (walk-through RECEIPTS-W49): a
+                  read that answered before is "the last answer"; one that never
+                  answered has no last answer, so nothing about it is claimed. */}
               {data.queueKnown
-                ? `The paper trail could not be refreshed (${data.errorMessage}) — what is below is the last answer, not the present.`
-                : `The gateway could not be reached (${data.errorMessage}). The paper trail is unknown — nothing below is claimed.`}
+                ? [
+                    data.failuresStale.length > 0 &&
+                      `Could not refresh ${data.failuresStale.join('; ')}. What is below is the last answer, not the present.`,
+                    data.failuresUnread.length > 0 &&
+                      `Could not read ${data.failuresUnread.join('; ')} — nothing is claimed about ${data.failuresUnreadPlural ? 'them' : 'it'}.`,
+                  ]
+                    .filter(Boolean)
+                    .join(' ')
+                : `Could not read ${data.errorMessage}. The paper trail is unknown — nothing below is claimed.`}
             </span>
             <button
               type="button"
@@ -1511,7 +1886,8 @@ export default function ReceiptsNext() {
             <div style={{ fontSize: 12, color: 'var(--ink-2, #4F473C)', marginTop: 4 }}>
               {(data.deliveriesWithoutPaper ?? []).map((d) => (
                 <span key={d.orderId} style={{ marginRight: 16 }}>
-                  {d.orderNumber ?? d.orderId.slice(0, 8)} · {d.countedQtyBottles} btl ·{' '}
+                  {/* "btl" was a wine word; the count is of whatever came in (W38). */}
+                  {d.orderNumber ?? 'an order with no number'} · {d.countedQtyBottles} counted ·{' '}
                   {Math.round(d.ageHours)}h ago
                 </span>
               ))}
@@ -1519,43 +1895,76 @@ export default function ReceiptsNext() {
           </div>
         )}
 
-        <div className="grid gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
+        {/*
+          AN OPEN DOCUMENT TAKES THE WIDTH (walk-through W3, 2026-10-01). Beside
+          a 320px queue and the counter, the document got 336px at 1280 — the
+          sheet's table needs ~450 and the lines table ~380, so both scrolled
+          sideways. Below 1536px the queue folds behind a back link while a
+          document is open; at 1536px and up they sit side by side as before.
+
+          ONE COLUMN IS STILL A TEMPLATE (walk-through RECEIPTS-W34). With no
+          columns named below the breakpoint, the grid's one implicit column is
+          `auto`, which grows to the widest thing inside — the sheet's line
+          table — so on a 375px phone the open document was 44px wider than the
+          screen and its right edge was cut off. `grid-cols-1` is
+          `minmax(0, 1fr)`: the column is the screen's width, and the table
+          scrolls inside its own box as the sheet intends.
+        */}
+        <div
+          className={
+            selected
+              ? 'grid grid-cols-1 gap-6 2xl:grid-cols-[320px_minmax(0,1fr)]'
+              : 'grid grid-cols-1 gap-6 lg:grid-cols-[320px_minmax(0,1fr)]'
+          }
+        >
           {/* the queue */}
-          <section aria-label="Awaiting review">
+          <section aria-label="Awaiting review" className={selected ? 'hidden 2xl:block' : undefined}>
             {data.queueKnown && data.queue.length === 0 && !data.isError && !data.noRestaurant ? (
               <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-2, #4F473C)' }}>
-                Nothing awaits review — the paper trail is caught up.
+                {/* Not "caught up" while clean papers still wait for a swipe (W44),
+                    nor before their read has landed: an unread lane is not an
+                    empty one (audit of #586, walk-through RECEIPTS-W48). Nor
+                    while the door's count is still being read, which its own
+                    line calls unknown (RECEIPTS-W50b). */}
+                {!data.cleanKnown
+                  ? 'Reading…'
+                  : data.clean.length > 0
+                    ? 'Nothing needs a look.'
+                    : !data.deliveriesKnown
+                      ? 'Reading…'
+                      : 'Nothing awaits review — the paper trail is caught up.'}
               </p>
             ) : (
               <div style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
-                {data.queue.map((d) => (
-                  <button
-                    key={d.id}
-                    type="button"
-                    onClick={() => setSelectedId(d.id)}
-                    aria-pressed={selectedId === d.id}
-                    className="rc-row block w-full text-left"
-                    style={{
-                      padding: '9px 8px',
-                      // shorthand first: 'border: none' would clobber a
-                      // longhand declared before it (receipts-audit.md)
-                      border: 'none',
-                      borderBottom: '1px solid var(--paper-2, #EAE4D8)',
-                      borderLeft: selectedId === d.id ? '3px solid var(--seal, #1A5E6B)' : '3px solid transparent',
-                      background: selectedId === d.id ? 'var(--paper-1, #F3EFE6)' : undefined,
-                      cursor: 'pointer',
-                      fontFamily: SANS,
-                    }}
-                  >
-                    <span style={{ display: 'block', fontSize: 12.5, fontWeight: 600, color: 'var(--ink-1, #211C16)' }}>
-                      {TYPE_LABELS[d.doc_type] ?? d.doc_type} · {d.doc_number || EM}
-                    </span>
-                    <span style={{ display: 'block', fontSize: 11, color: 'var(--ink-4, #665D50)' }}>
-                      {fmtDate(d.doc_date)} · {fmtMoney(d.total, d.currency)} ·{' '}
-                      {d.ties_out === null ? `tie-out ${EM}` : d.ties_out ? 'ties out' : 'does not tie out'}
-                    </span>
-                  </button>
-                ))}
+                {data.queue.map(queueRow)}
+              </div>
+            )}
+
+            {/* READ CLEANLY, NOT YET CONFIRMED (walk-through RECEIPTS-W44,
+                2026-10-01). A paper that adds up with no warning was filed
+                as `received` and never listed here, so nobody stood behind
+                it. Listed after the papers that need a look, under their own
+                heading, so every vendor paper reaches a person's swipe. */}
+            {data.cleanKnown && data.clean.length > 0 && (
+              <div style={{ marginTop: 16 }}>
+                <h3
+                  style={{
+                    margin: 0,
+                    padding: '4px 0',
+                    fontFamily: MONO,
+                    fontSize: 9.5,
+                    fontWeight: 600,
+                    letterSpacing: '0.14em',
+                    textTransform: 'uppercase',
+                    color: 'var(--ink-4, #665D50)',
+                  }}
+                >
+                  Read cleanly · not yet confirmed · {data.cleanCapped ? GE : ''}
+                  {data.clean.length}
+                </h3>
+                <div style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
+                  {data.clean.map(queueRow)}
+                </div>
               </div>
             )}
 
@@ -1589,7 +1998,7 @@ export default function ReceiptsNext() {
                       <button
                         key={d.id}
                         type="button"
-                        onClick={() => setSelectedId(d.id)}
+                        onClick={() => select(d.id)}
                         aria-pressed={selectedId === d.id}
                         className="rc-row block w-full text-left"
                         style={{
@@ -1603,7 +2012,7 @@ export default function ReceiptsNext() {
                         }}
                       >
                         <span style={{ display: 'block', fontSize: 12, color: 'var(--ink-2, #4F473C)' }}>
-                          {TYPE_LABELS[d.doc_type] ?? d.doc_type} · {d.doc_number || EM} · {fmtDate(d.doc_date)} · {fmtMoney(d.total, d.currency)}
+                          {typeLabel(d.doc_type)} · {d.doc_number || EM} · {fmtDate(d.doc_date)} · {fmtMoney(d.total, d.currency)}
                         </span>
                       </button>
                     ))}
@@ -1617,17 +2026,95 @@ export default function ReceiptsNext() {
           <section aria-label="Document detail">
             {selected ? (
               <>
+                <button
+                  type="button"
+                  onClick={() => select(null)}
+                  className="rc-ink mb-3 2xl:hidden"
+                  style={{
+                    fontFamily: SANS,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: 'var(--seal-deep, #14515C)',
+                    border: 'none',
+                    background: 'transparent',
+                    padding: '2px 0',
+                    cursor: 'pointer',
+                  }}
+                >
+                  ← All receipts · {data.queueCapped ? GE : ''}{data.queue.length} awaiting review
+                </button>
+                {/*
+                  SKIP PAST THE SHEET (walk-through RECEIPTS-W40, 2026-10-01).
+                  Every figure on the sheet is three Tab stops — the figure,
+                  "Correct this", "I have checked this" (W30) — so reaching the
+                  card's swipe on SYN-TR-0001 took about 94 presses. This link
+                  is the first stop of the document, shows itself only when
+                  focused, and moves focus to the card's heading. W30 is
+                  unchanged. No `#` is written to the address: `?doc=` is the
+                  page's state and a fragment would add a history step.
+                */}
+                <a
+                  href="#rc-check"
+                  className="rc-skip"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    document.getElementById('rc-check')?.focus();
+                  }}
+                >
+                  Skip to the review card
+                </a>
                 <div aria-label="Formatted document" className="mb-6">
                   <Suspense fallback={null}>
                     <CanonicalDocumentPage documentId={selected.id} embedded />
                   </Suspense>
                 </div>
-                <DocView key={selected.id} doc={selected} onVerified={() => setSelectedId(null)} />
+                <DocView key={selected.id} doc={selected} onVerified={() => select(null)} />
               </>
+            ) : selectedId && data.queueKnown && data.cleanKnown && data.verifiedKnown ? (
+              /*
+               * A LINK THAT OPENS NOTHING SAYS SO (walk-through W19, 2026-10-01).
+               * `?doc=` only opens a document this page already holds: the
+               * review queue or the verified book. Anything else (another
+               * house's document, one still being read, one set aside, one
+               * older than the verified window) fell through to "Choose a
+               * document", as if no link had been followed. Found in P4 as the
+               * Sim manager opening a Sim Meyhouse link from Sim Bistro.
+               */
+              <div data-testid="doc-not-here" style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-2, #4F473C)' }}>
+                <p style={{ margin: '0 0 6px' }}>
+                  The link asked for a document that is not in this house&apos;s review queue
+                  {data.verifiedCapped ? ' or its latest verified documents' : ' or its verified book'}.
+                  It may belong to another house, still be reading, or have been set aside.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => select(null)}
+                  className="rc-ink"
+                  style={{
+                    fontFamily: SANS,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: 'var(--seal-deep, #14515C)',
+                    border: 'none',
+                    background: 'transparent',
+                    padding: '2px 0',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Show the queue
+                </button>
+              </div>
             ) : (
               <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-4, #665D50)' }}>
-                Choose a document from the queue — its lines, its order, and the confirm ceremony
-                live here.
+                {/* A list it searches never answered, or with no house none was
+                    asked: the link can be neither opened nor ruled out, so
+                    "Opening…" would never finish (audit of #586, walk-through
+                    RECEIPTS-W50c; the no-house case RECEIPTS-W51). */}
+                {selectedId
+                  ? data.documentsUnread || data.noRestaurant
+                    ? 'Could not open the linked document: see the note above.'
+                    : 'Opening the linked document…'
+                  : 'Choose a document from the queue to see its lines and its order, and to confirm it.'}
               </p>
             )}
           </section>

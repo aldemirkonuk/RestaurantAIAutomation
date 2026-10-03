@@ -112,7 +112,6 @@
 import { useCallback, useMemo } from 'react';
 import { useQuery, type UseQueryResult } from '@tanstack/react-query';
 import { useAuth, type RestaurantBranch, type User } from '../../../contexts/AuthContext';
-import { useTheme } from '../../../contexts/ThemeContext';
 import { apiClient } from '../../../services/api/client';
 import { profileApi, type LinkedProviders } from '../../../services/api/profile';
 import {
@@ -379,7 +378,6 @@ export function useProfileNextData() {
     refreshBranches,
     logout,
   } = useAuth();
-  const { theme, setTheme } = useTheme();
 
   /**
    * Recomputed on every render rather than memoised: `exp` is a countdown and a
@@ -977,10 +975,6 @@ export function useProfileNextData() {
     activeRestaurantId,
     memberships: availableRestaurants as RestaurantBranch[],
     switchRestaurant: setActiveRestaurantId,
-
-    /* preferences */
-    theme,
-    setTheme,
 
     /* read 1 */
     meState: readState(meQ, !!uid),

@@ -11,12 +11,13 @@
  * server's own sentence, or answered — zero included.
  */
 
+import { useRef, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { FileText } from 'lucide-react';
 import { useAuth } from '../../../../contexts/AuthContext';
 import { apiClient } from '../../../../services/api/client';
 import { MONO, fmtDay } from './compose-format';
-import { errText } from './useComposeData';
+import { failedReadWords, managesHouse, readAgainFailed } from '../cm-format';
 
 export interface HouseDraft {
   id: string;
@@ -36,22 +37,35 @@ export function houseDraftsKey(restaurantId: string) {
 }
 
 export function useHouseDrafts() {
-  const { user, activeRestaurantId } = useAuth();
+  const { user, activeRestaurantId, activeRole } = useAuth();
   const restaurantId = activeRestaurantId ?? user?.restaurantId ?? '';
   const qc = useQueryClient();
+  // COMMS-W31: the gateway lists these for an owner or manager only. A staff
+  // member's page used to ask anyway, and every visit drew "Forbidden
+  // resource." in red and left "Waiting on you" unknowable. Now staff are not
+  // asked about letters that are not theirs to open: nothing here waits on
+  // them. A refusal that still comes back (a role changed mid-visit) is the
+  // same fact, said the same way, never a failure.
+  const manages = managesHouse(activeRole, user?.role);
   const q = useQuery<HouseDraft[]>({
     queryKey: houseDraftsKey(restaurantId),
     queryFn: async () => {
       const { data } = await apiClient.get<{ drafts: HouseDraft[] }>('/communications/letters/drafts');
       return data.drafts ?? [];
     },
-    enabled: !!restaurantId,
+    enabled: !!restaurantId && manages,
     staleTime: 15_000,
   });
+  const refused = (q.error as { response?: { status?: number } } | null)?.response?.status === 403;
+  const withheld = !manages || refused;
   return {
-    drafts: q.data ?? null,
-    failed: q.isError,
-    error: q.isError ? errText(q.error) : null,
+    drafts: withheld ? [] : q.data ?? null,
+    /** True when these letters are an owner's or manager's to open, not this person's. */
+    withheld,
+    failed: q.isError && !refused,
+    error: q.isError && !refused ? failedReadWords(q.error) : null,
+    /** When the drafts last answered (0 = never); said when a later read fails (COMMS-W33). */
+    at: q.dataUpdatedAt,
     refetch: () => void qc.invalidateQueries({ queryKey: houseDraftsKey(restaurantId) }),
   };
 }
@@ -60,13 +74,26 @@ export function HouseDrafts({
   drafts,
   failed,
   error,
+  at = 0,
   onOpen,
+  below,
 }: {
   drafts: HouseDraft[] | null;
   failed: boolean;
   error: string | null;
+  /** When `drafts` was read (`dataUpdatedAt`); said when a later read failed. */
+  at?: number;
   onOpen: (d: HouseDraft) => void;
+  /** Drawn under a letter's row — the stub holding a person's changes to it (COMMS-W34).
+   *  `focusRow` moves focus to the letter's own button, so a sheet opened from
+   *  the stub returns focus there rather than to a stub that has gone. */
+  below?: (d: HouseDraft, focusRow: () => void) => ReactNode;
 }) {
+  const rows = useRef(new Map<string, HTMLButtonElement>());
+  // COMMS-W33 (founder: "A: keep, say when"): a read that failed after
+  // answering keeps its letters and says when they are from; one that never
+  // answered says so in the page's words, not "Internal server error. … unknown, not none".
+  const stale = failed && drafts !== null;
   return (
     <section aria-label="Drafted letters, not sent" style={{ marginTop: 12 }}>
       <h3
@@ -82,9 +109,13 @@ export function HouseDrafts({
       >
         Drafted, not sent
       </h3>
-      {failed ? (
+      {failed && !stale ? (
         <p role="alert" style={{ fontSize: 11.5, color: 'var(--alarm-deep, #8C3322)', margin: 0 }}>
-          {error} Whether any letter is waiting is unknown, not none.
+          The drafted letters could not be read ({error}). That does not mean none are waiting.
+        </p>
+      ) : stale && drafts?.length === 0 ? (
+        <p role="status" style={{ fontSize: 11.5, color: 'var(--ink-2, #4F473C)', margin: 0 }}>
+          {readAgainFailed(error ?? '', at, true)}
         </p>
       ) : drafts === null ? (
         <p style={{ fontSize: 11.5, color: 'var(--ink-4, #665D50)', margin: 0 }}>The drafts haven’t answered yet.</p>
@@ -96,6 +127,10 @@ export function HouseDrafts({
             <li key={d.id}>
               <button
                 type="button"
+                ref={(el) => {
+                  if (el) rows.current.set(d.id, el);
+                  else rows.current.delete(d.id);
+                }}
                 onClick={() => onOpen(d)}
                 className="cm-row cm-card flex w-full items-start gap-2 rounded-lg px-3 py-2 text-left"
                 style={{ border: '1px dashed var(--paper-2, #EAE4D8)', cursor: 'pointer' }}
@@ -112,9 +147,15 @@ export function HouseDrafts({
                   </span>
                 </span>
               </button>
+              {below?.(d, () => rows.current.get(d.id)?.focus())}
             </li>
           ))}
         </ul>
+      )}
+      {stale && (drafts?.length ?? 0) > 0 && (
+        <p role="status" style={{ fontSize: 11, color: 'var(--ink-2, #4F473C)', margin: '6px 0 0' }}>
+          {readAgainFailed(error ?? '', at, false)}
+        </p>
       )}
     </section>
   );

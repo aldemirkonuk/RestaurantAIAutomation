@@ -120,8 +120,7 @@ describe('useCommsNextData — every cache bucket names the tenant (P2)', () => 
 
 const LABELS = {
   history: 'the conversation book',
-  threads: 'the thread index',
-  drafts: 'the drafts awaiting action',
+  drafts: 'the replies the house has written',
 } as const;
 
 /** Route each owned source to its own client so one can fail alone. */
@@ -129,11 +128,6 @@ function sources(fail: Partial<Record<keyof typeof LABELS, boolean>>) {
   mockAxiosGet.mockImplementation((url: string) => {
     if (url === '/api/v1/procurement/conversations/history') {
       return fail.history ? Promise.reject(new Error('history 500')) : Promise.resolve({ data: [] });
-    }
-    if (url.includes('/conversations/threads')) {
-      return fail.threads
-        ? Promise.reject(new Error('threads 500'))
-        : Promise.resolve({ data: { threads: [], total: 0 } });
     }
     return Promise.resolve({ data: [] });
   });
@@ -145,27 +139,30 @@ function sources(fail: Partial<Record<keyof typeof LABELS, boolean>>) {
   });
 }
 
-describe('useCommsNextData — ADR 0083 amended 2026-09-25: three owned sources', () => {
-  it('never asks for the report schedules or the Gmail watch status', async () => {
+describe('useCommsNextData — ADR 0083 amended 2026-09-25 and 2026-10-01: two owned sources', () => {
+  it('never asks for the report schedules, the Gmail watch status or the thread index', async () => {
     auth('active-rest-B');
     sources({});
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const { result } = renderHook(() => useCommsNextData(), { wrapper: wrapper(qc) });
 
     await waitFor(() => expect(result.current.glance.draftsPending).toBe(0));
-    await waitFor(() => expect(result.current.glance.threads).toBe(0));
     await waitFor(() => expect(result.current.hasData).toBe(true));
+    expect(result.current.glance.repliesLast30).toBe(0);
 
     expect(mockListSchedules).not.toHaveBeenCalled();
     const urls = [...mockAxiosGet.mock.calls, ...mockApiGet.mock.calls].map((c) => String(c[0]));
     expect(urls.some((u) => u.includes('/reports/schedules'))).toBe(false);
     expect(urls.some((u) => u.includes('/webhooks/gmail/status'))).toBe(false);
+    // COMMS-W3 (2026-10-01): the Threads figure counted a list this page never
+    // showed, so the read left with the figure.
+    expect(urls.some((u) => u.includes('/conversations/threads'))).toBe(false);
     expect(keys(qc).some((k) => k.includes('report-schedules') || k.includes('gmail'))).toBe(false);
     // healthy owned sources: nothing for the banner to say
     expect(result.current.failedSources).toEqual([]);
   });
 
-  for (const source of ['history', 'threads', 'drafts'] as const) {
+  for (const source of ['history', 'drafts'] as const) {
     it(`a real failure of ${LABELS[source]} alone is still named (ADR 0051: never swallowed)`, async () => {
       auth('active-rest-B');
       sources({ [source]: true });
@@ -174,7 +171,7 @@ describe('useCommsNextData — ADR 0083 amended 2026-09-25: three owned sources'
 
       await waitFor(() => expect(result.current.failed[source]).toBe(true));
       expect(result.current.failedSources).toEqual([LABELS[source]]);
-      // failed is not unanswered: the other two answered and are not named
+      // failed is not unanswered: the other one answered and is not named
       for (const other of Object.keys(LABELS) as Array<keyof typeof LABELS>) {
         if (other !== source) expect(result.current.failed[other]).toBe(false);
       }
@@ -189,25 +186,83 @@ describe('useCommsNextData — ADR 0083 amended 2026-09-25: three owned sources'
     const { result } = renderHook(() => useCommsNextData(), { wrapper: wrapper(qc) });
 
     await waitFor(() => expect(keys(qc).length).toBeGreaterThan(0));
-    expect(result.current.glance.threads).toBeNull();
+    expect(result.current.glance.repliesLast30).toBeNull();
     expect(result.current.glance.draftsPending).toBeNull();
     expect(result.current.failedSources).toEqual([]);
   });
 
-  it('exposes a failed state for every one of the three owned queries (P4)', async () => {
+  it('exposes a failed state for every one of the two owned queries (P4)', async () => {
     auth('active-rest-B');
-    sources({ history: true, threads: true, drafts: true });
+    sources({ history: true, drafts: true });
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const { result } = renderHook(() => useCommsNextData(), { wrapper: wrapper(qc) });
 
     await waitFor(() => expect(result.current.failed.history).toBe(true));
-    await waitFor(() => expect(result.current.failed.threads).toBe(true));
     await waitFor(() => expect(result.current.failed.drafts).toBe(true));
-    expect(result.current.failedSources).toEqual([
-      LABELS.history,
-      LABELS.threads,
-      LABELS.drafts,
+    expect(result.current.failedSources).toEqual([LABELS.history, LABELS.drafts]);
+    expect(Object.keys(result.current.failed).sort()).toEqual(['drafts', 'history']);
+  });
+});
+
+describe('useCommsNextData — the two 30-day figures split the book by direction (COMMS-W3)', () => {
+  const row = (over: Record<string, unknown>) => ({
+    id: String(Math.random()),
+    direction: 'OUTBOUND',
+    status: 'SENT',
+    createdAt: new Date().toISOString(),
+    sentAt: new Date().toISOString(),
+    ...over,
+  });
+
+  it('counts vendor replies as replies and never as sent', async () => {
+    auth('active-rest-B');
+    const old = new Date(Date.now() - 40 * 86_400_000).toISOString();
+    mockAxiosGet.mockImplementation((url: string) =>
+      url === '/api/v1/procurement/conversations/history'
+        ? Promise.resolve({
+            data: [
+              row({}),
+              row({ direction: 'INBOUND', status: 'DRAFT' }),
+              row({ direction: 'INBOUND', status: 'DELIVERED' }),
+              row({ direction: 'INBOUND', status: 'DRAFT', sentAt: old, createdAt: old }),
+            ],
+          })
+        : Promise.resolve({ data: [] }),
+    );
+    mockApiGet.mockResolvedValue({ data: [] });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { result } = renderHook(() => useCommsNextData(), { wrapper: wrapper(qc) });
+
+    await waitFor(() => expect(result.current.hasData).toBe(true));
+    expect(result.current.glance.sentLast30).toBe(1);
+    expect(result.current.glance.repliesLast30).toBe(2);
+  });
+});
+
+describe('useCommsNextData — one waiting draft per order (COMMS-W24)', () => {
+  const draft = (id: string, orderId: string, createdAt: string) => ({ id, orderId, createdAt });
+
+  it('keeps the newest draft of an order, counts what it replaces, and counts orders', async () => {
+    auth('active-rest-B');
+    mockApiGet.mockImplementation((url: string) =>
+      url === '/procurement/conversations/active'
+        ? Promise.resolve({
+            data: [
+              draft('old', 'o1', '2026-10-01T08:00:00Z'),
+              draft('other', 'o2', '2026-10-01T09:00:00Z'),
+              draft('new', 'o1', '2026-10-01T10:00:00Z'),
+            ],
+          })
+        : Promise.resolve({ data: [] }),
+    );
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { result } = renderHook(() => useCommsNextData(), { wrapper: wrapper(qc) });
+
+    await waitFor(() => expect(result.current.draftsKnown).toBe(true));
+    expect(result.current.drafts.map((d) => [d.id, d.replaces])).toEqual([
+      ['new', 1],
+      ['other', 0],
     ]);
-    expect(Object.keys(result.current.failed).sort()).toEqual(['drafts', 'history', 'threads']);
+    expect(result.current.glance.draftsPending).toBe(2);
   });
 });

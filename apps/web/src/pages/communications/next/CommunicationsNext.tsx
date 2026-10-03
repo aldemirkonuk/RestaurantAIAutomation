@@ -27,10 +27,11 @@
  * them any more.
  */
 
-import { useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { Link, useSearchParams } from 'react-router-dom';
 import { PenLine, Library } from 'lucide-react';
-import { Wordmark } from '@/components/mudavym';
+import { Stub, Wordmark } from '@/components/mudavym';
 import type { ProcurementHistoryItem } from '../../../hooks/queries/useConversationQueries';
 import { ink, settle } from '../../../lib/mudavym/motion';
 import {
@@ -40,15 +41,22 @@ import {
   SANS,
   SERIF,
   draftChipText,
+  failedReadsSentence,
+  fmtAsOf,
   fmtWhen,
+  heldBecause,
+  readAgainFailed,
   sendState,
   typeLabel,
+  type FailedRead,
 } from './cm-format';
-import { TemplateSheet } from './TemplateSheet';
+import { TemplateSheet, type HeldTemplate } from './TemplateSheet';
+import { changedLine, heldLine, useHeldWords } from './held-words';
 import WhoIsWriting from './WhoIsWriting';
-import { ComposeSheet } from './Compose/ComposeSheet';
+import { ComposeSheet, type HeldLetter } from './Compose/ComposeSheet';
 import { DraftedReplyPanel, type DraftedReply } from './DraftedReplyPanel';
-import { LetterRequestsPanel } from './LetterRequestsPanel';
+import { QueuedPullBack } from './QueuedPullBack';
+import { LetterRequestsPanel, PILL, useLetterRequests } from './LetterRequestsPanel';
 import { useLetterSenderStanding } from './Compose/useComposeData';
 import { HouseDrafts, useHouseDrafts, type HouseDraft } from './Compose/HouseDrafts';
 import { COMMS_SERVER_WINDOWS, useCommsNextData } from './useCommsNextData';
@@ -74,9 +82,12 @@ function GlanceFigure({
   floor = false,
   failed = false,
   floorNote,
+  at = 0,
 }: {
   label: string;
   value: number | null;
+  /** When the figure's reads last answered (`dataUpdatedAt`); said when a later read failed. */
+  at?: number;
   /** Says, on hover, WHY the figure is a floor — the cap and where it comes from. */
   floorNote?: string;
   /** True when the figure is a floor (its source window was truncated). */
@@ -93,6 +104,17 @@ function GlanceFigure({
   failed?: boolean;
 }) {
   const unknown = value === null;
+  // COMMS-W33 (founder: "A: keep, say when"): a figure whose read failed after
+  // answering keeps its number, and says when it is from. It used to show 4 in
+  // red while its accessible name said only "could not be loaded" and the
+  // banner said it showed an em dash.
+  const said = failed
+    ? unknown
+      ? `${label}: could not be read`
+      : `${label}: ${floor ? GE : ''}${value} as it was ${fmtAsOf(at)}. It could not be read again.`
+    : unknown
+      ? `${label}: has not answered yet`
+      : undefined;
   return (
     <div style={{ minWidth: 96 }}>
       <span
@@ -110,14 +132,8 @@ function GlanceFigure({
       </span>
       <span
         data-state={failed ? 'failed' : unknown ? 'unanswered' : 'measured'}
-        aria-label={
-          failed
-            ? `${label}: could not be loaded`
-            : unknown
-              ? `${label}: has not answered yet`
-              : undefined
-        }
-        title={failed ? `${label}: could not be loaded` : floor ? floorNote : undefined}
+        aria-label={said}
+        title={failed ? said : floor ? floorNote : undefined}
         style={{
           fontFamily: MONO,
           fontSize: 22,
@@ -276,6 +292,8 @@ function LedgerRow({ item }: { item: ProcurementHistoryItem }) {
         <span className="ml-auto" />
         <StateChip status={item.status} direction={item.direction} reason={item.relayRefusalReason} />
       </button>
+      {/* COMMS-W23: a queued letter can be pulled back from the book, not only from the open sheet. */}
+      {item.direction !== 'INBOUND' && sendState(item.status) === 'queued' && <QueuedPullBack id={item.id} />}
       {open && (
         <div
           className="pb-3 pl-14 pr-2"
@@ -294,6 +312,9 @@ function LedgerRow({ item }: { item: ProcurementHistoryItem }) {
               fontSize: 12,
               color: 'var(--ink-2, #4F473C)',
               whiteSpace: 'pre-wrap',
+              // COMMS-W30: a pasted link or any unbroken run wraps inside the row
+              // instead of pushing the whole page sideways.
+              overflowWrap: 'anywhere',
               maxWidth: '68ch',
               maxHeight: 220,
               overflowY: 'auto',
@@ -314,17 +335,30 @@ function LedgerRow({ item }: { item: ProcurementHistoryItem }) {
           {item.direction !== 'INBOUND' && item.status === 'RELAY_REFUSED' && (
             // ADR 0099, founder 2026-09-21: the draft closed, not retried, and
             // the manager sees why — the gateway's own sentence, verbatim.
-            <p style={{ fontSize: 12, color: 'var(--alarm-deep, #8C3322)', maxWidth: '68ch', margin: '6px 0 0' }}>
-              Not sent — the relay refused it: {item.relayRefusalReason || 'no reason was recorded with this refusal.'}
+            <p style={{ fontSize: 12, color: 'var(--alarm-deep, #8C3322)', maxWidth: '68ch', margin: '6px 0 0', overflowWrap: 'anywhere' }}>
+              Not sent — it was refused on the way out: {item.relayRefusalReason || 'no reason was recorded with this refusal.'}
             </p>
           )}
           {item.constraintFlags && item.constraintFlags.hard.length > 0 && (
             <p style={{ fontSize: 11, color: 'var(--ink-4, #665D50)', margin: '6px 0 0' }}>
-              Held by rule: {item.constraintFlags.hard.join(', ')}
+              {heldBecause(item.constraintFlags.hard)}
             </p>
           )}
           <p style={{ fontFamily: MONO, fontSize: 9.5, color: 'var(--ink-4, #665D50)', margin: '6px 0 0' }}>
-            {item.orderNumber ? `order ${item.orderNumber} · ` : ''}round {item.roundCount}
+            {/* COMMS-W22: a letter about an order opens that order. */}
+            {item.orderNumber && item.orderId ? (
+              <>
+                <Link to={`/orders/${item.orderId}`} style={{ color: 'var(--seal-deep, #14515C)' }}>
+                  order {item.orderNumber}
+                </Link>
+                {' · '}
+              </>
+            ) : item.orderNumber ? (
+              `order ${item.orderNumber} · `
+            ) : (
+              ''
+            )}
+            round {item.roundCount}
           </p>
         </div>
       )}
@@ -347,12 +381,48 @@ export default function CommunicationsNext() {
   const houseDrafts = useHouseDrafts();
   const [params, setParams] = useSearchParams();
   const [draft, setDraft] = useState<HouseDraft | null>(null);
+  // COMMS-W34: words a person left a sheet with stay on a stub where it was
+  // opened — "new" for Write a letter, a drafted letter by its id, "t" for the
+  // templates. Opening the sheet again hands them back and takes the stub away.
+  const letters = useHeldWords<HeldLetter>();
+  const templatesHeld = useHeldWords<HeldTemplate>();
+  const [draftFrom, setDraftFrom] = useState<HeldLetter | null>(null);
+  const [composeKey, setComposeKey] = useState(0);
+  const [composeFrom, setComposeFrom] = useState<HeldLetter | null>(null);
+  const [templateFrom, setTemplateFrom] = useState<HeldTemplate | null>(null);
+  // Resume takes its own stub away, and the button with it. Focus moves to the
+  // row's own opener first, so the sheet hands focus back there when it closes
+  // instead of dropping it on the page (ADR 0112: focus returns to the opener).
+  const writeRef = useRef<HTMLButtonElement>(null);
+  const libraryRef = useRef<HTMLButtonElement>(null);
+  const openDraft = (d: HouseDraft) => {
+    setDraftFrom(letters.words(d.id));
+    letters.drop(d.id);
+    setDraft(d);
+    // COMMS-W35 (founder: "A: page + queue back"): an opened letter is in the
+    // address its links already use, so a refresh reopens it. In place, not a
+    // new step back.
+    if (params.get('draft') !== d.id) {
+      params.set('draft', d.id);
+      setParams(params, { replace: true });
+    }
+  };
+  const openCompose = () => {
+    // The composer stays mounted, so a held letter is still in it.
+    letters.drop('new');
+    setCompose(true);
+  };
+  const openLibrary = () => {
+    setTemplateFrom(templatesHeld.words('t'));
+    templatesHeld.drop('t');
+    setLibrary(true);
+  };
   const linked = params.get('draft');
   useEffect(() => {
     if (!linked || !houseDrafts.drafts) return;
     const hit = houseDrafts.drafts.find((d) => d.id === linked);
-    if (hit) setDraft(hit);
-  }, [linked, houseDrafts.drafts]);
+    if (hit && draft?.id !== hit.id) openDraft(hit);
+  }, [linked, houseDrafts.drafts]); // eslint-disable-line react-hooks/exhaustive-deps
   const closeDraft = () => {
     setDraft(null);
     houseDrafts.refetch();
@@ -360,6 +430,76 @@ export default function CommunicationsNext() {
       params.delete('draft');
       setParams(params, { replace: true });
     }
+  };
+
+  /* `?reply=<orderId>` is the house counter's "Replies waiting" link (COMMS-W19,
+     shared batch 2 / DASH-W16e). Once the drafts read has answered it opens that
+     order's drafted reply, as clicking its row does; when no draft matches, the
+     page says so rather than opening nothing. The param goes when the panel or
+     the note closes. */
+  const replyLinked = params.get('reply');
+  const replyHit = !!replyLinked && data.drafts.some((d) => d.orderId === replyLinked);
+  // The draft the link already opened: once it is sent from the panel it leaves
+  // the list, and that is not a link that found nothing.
+  const [replyOpened, setReplyOpened] = useState<string | null>(null);
+  useEffect(() => {
+    if (!replyLinked || !replyHit) return;
+    setDraftOpen(replyLinked);
+    setReplyOpened(replyLinked);
+  }, [replyLinked, replyHit]);
+  const dropReply = () => {
+    if (!params.has('reply')) return;
+    params.delete('reply');
+    setParams(params, { replace: true });
+  };
+  // A reply opened from its row writes the same link (COMMS-W35); the effect
+  // above then counts it as opened here, so sending it is not later called a
+  // link that found nothing.
+  const openReply = (orderId: string) => {
+    setDraftOpen(orderId);
+    params.set('reply', orderId);
+    setParams(params, { replace: true });
+  };
+
+  /* Everything waiting on a person, from the three reads that list it: letters
+     staff asked a manager to send, replies the house drafted on orders, and the
+     house's own drafted letters. The count is null until all three have
+     answered, so it can never undercount a list still in flight. */
+  const letterQ = useLetterRequests(letterStanding.restaurantId);
+  const waitingParts = [
+    letterStanding.restaurantId ? letterQ.data?.requests.length ?? null : 0,
+    data.draftsKnown ? data.drafts.length : null,
+    houseDrafts.drafts ? houseDrafts.drafts.length : null,
+  ];
+  const waitingCount = waitingParts.some((n) => n === null)
+    ? null
+    : waitingParts.reduce<number>((a, n) => a + (n ?? 0), 0);
+  const waitingFailed = letterQ.isError || data.failed.drafts || houseDrafts.failed;
+  // COMMS-W33: every read on the page that could not be read, for the banner.
+  // Each part of the page says its own reason and when its rows are from.
+  const failedReads: FailedRead[] = [
+    ...(data.failed.history ? [{ name: 'the conversation book', stale: data.hasData, at: data.historyAt ?? 0 }] : []),
+    ...(data.failed.drafts
+      ? [{ name: 'the replies the house has written', stale: data.draftsKnown, at: data.draftsAt ?? 0 }]
+      : []),
+    ...(letterQ.isError
+      ? [{ name: 'the letters waiting for a manager', stale: letterQ.data !== undefined, at: letterQ.dataUpdatedAt ?? 0 }]
+      : []),
+    ...(houseDrafts.failed
+      ? [{ name: 'the drafted letters', stale: houseDrafts.drafts !== null, at: houseDrafts.at ?? 0 }]
+      : []),
+  ];
+  const waitingAt = Math.min(
+    ...failedReads.filter((r) => r.name !== 'the conversation book' && r.stale).map((r) => r.at),
+  );
+  // "Try again" re-reads everything on the page; it used to re-read two of six.
+  const queryClient = useQueryClient();
+  const readAgain = () => {
+    data.refetch();
+    void letterQ.refetch();
+    houseDrafts.refetch();
+    for (const key of ['comms-senders', 'comms-strangers', 'house-letter-queued'])
+      void queryClient.invalidateQueries({ queryKey: [key] });
   };
 
   return (
@@ -391,6 +531,10 @@ export default function CommunicationsNext() {
                 letterSpacing: '-0.015em',
                 lineHeight: 1.1,
                 margin: '4px 0 0',
+                // COMMS-W36: its own ink, so the old Dark theme a browser may still
+                // keep (`html.dark`; #576 took its control off /profile) cannot
+                // turn it pale on the paper ground.
+                color: 'var(--ink-1, #211C16)',
               }}
             >
               Communications
@@ -398,18 +542,27 @@ export default function CommunicationsNext() {
           </div>
           {/* the at-a-glance strip the old page earned its keep with */}
           <div className="flex flex-wrap gap-6">
-            <GlanceFigure label="Threads" value={data.glance.threads} failed={data.failed.threads} />
             <GlanceFigure
-              label="Drafts waiting"
-              value={data.glance.draftsPending}
-              failed={data.failed.drafts}
+              label="Waiting on you"
+              value={waitingCount}
+              failed={waitingFailed}
+              at={Number.isFinite(waitingAt) ? waitingAt : 0}
             />
             <GlanceFigure
               label="Sent · 30 days"
               value={data.glance.sentLast30}
               floor={data.glance.sentLast30Truncated}
-              floorNote={`At least this many: the history endpoint serves at most ${COMMS_SERVER_WINDOWS.HISTORY_ROWS} rows, and that window is full.`}
+              floorNote={`At least this many: the book holds only the latest ${COMMS_SERVER_WINDOWS.HISTORY_ROWS} letters, and it is full.`}
               failed={data.failed.history}
+              at={data.historyAt}
+            />
+            <GlanceFigure
+              label="Replies · 30 days"
+              value={data.glance.repliesLast30}
+              floor={data.glance.sentLast30Truncated}
+              floorNote={`At least this many: the book holds only the latest ${COMMS_SERVER_WINDOWS.HISTORY_ROWS} letters, and it is full.`}
+              failed={data.failed.history}
+              at={data.historyAt}
             />
           </div>
         </header>
@@ -429,7 +582,12 @@ export default function CommunicationsNext() {
             every house on every visit, and the second is deployment plumbing
             that now reads on the admin desk. A real failure of any of the
             three owned sources still raises this banner. */}
-        {data.failedSources.length > 0 && (
+        {/* COMMS-W33: the banner now names every read on the page that failed
+            and says when what is on screen is from (`failedReadsSentence`). It
+            said "Request failed with status code 500" and "those figures show —
+            because they failed, not because they are still in flight" over
+            figures that showed 4, 3 and 3. */}
+        {failedReads.length > 0 && (
           <div
             role="alert"
             className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl px-4 py-3"
@@ -439,25 +597,10 @@ export default function CommunicationsNext() {
               background: 'var(--paper-1, #F3EFE6)',
             }}
           >
-            <span style={{ fontSize: 12.5, color: 'var(--ink-2, #4F473C)' }}>
-              {data.failed.history
-                ? data.hasData
-                  ? `The conversation book could not be refreshed (${data.errorMessage}) — its rows and figures show the last answer, not the present.`
-                  : `The conversation book could not be reached (${data.errorMessage}) — its figures show ${EM}.`
-                : null}
-              {data.failed.history && data.failedSources.length > 1 ? ' ' : null}
-              {data.failedSources.length > (data.failed.history ? 1 : 0) ? (
-                <>
-                  {data.failed.history ? 'These also failed' : 'Could not be loaded'}:{' '}
-                  {data.failedSources.filter((s) => s !== 'the conversation book').join(', ')} — those
-                  figures show {EM} because they failed, not because they are still in flight. Any
-                  figure that did answer keeps its answer.
-                </>
-              ) : null}
-            </span>
+            <span style={{ fontSize: 12.5, color: 'var(--ink-2, #4F473C)' }}>{failedReadsSentence(failedReads)}</span>
             <button
               type="button"
-              onClick={data.refetch}
+              onClick={readAgain}
               style={{
                 fontSize: 12,
                 fontWeight: 600,
@@ -474,23 +617,214 @@ export default function CommunicationsNext() {
           </div>
         )}
 
-        {letterStanding.restaurantId && (
-          <LetterRequestsPanel
-            restaurantId={letterStanding.restaurantId}
-            canRelease={letterStanding.canRelease}
-          />
-        )}
-
-        {/* ── the drafts waiting, which the strip could only count ────
-            The act the census calls owed: a letter the house drafted, read and
-            sent by a person's hold (ADR 0118). The list and the strip's figure
-            come from the SAME read, so they cannot disagree. */}
-        {data.draftsKnown && data.drafts.length > 0 && (
-          <section
-            aria-label="Drafts waiting"
-            className="mb-6 rounded-xl p-4"
-            style={{ fontFamily: SANS, border: '1px solid var(--paper-2, #EAE4D8)', background: 'var(--paper-1, #F3EFE6)' }}
+        <section aria-label="Waiting on you" className="mb-6">
+          <h2
+            style={{
+              fontFamily: MONO,
+              fontSize: 11,
+              fontWeight: 600,
+              letterSpacing: '0.14em',
+              textTransform: 'uppercase',
+              color: 'var(--ink-2, #4F473C)',
+              margin: '0 0 10px',
+            }}
           >
+            Waiting on you · {waitingCount ?? EM}
+          </h2>
+          {replyLinked && !replyHit && replyOpened !== replyLinked && (data.draftsKnown || data.failed.drafts) && (
+            <p
+              role="status"
+              data-testid="reply-link-missing"
+              className="mb-3 flex flex-wrap items-baseline gap-2"
+              style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-2, #4F473C)', margin: '0 0 12px' }}
+            >
+              {data.draftsKnown && !data.failed.drafts
+                ? 'That reply is no longer waiting.'
+                : 'That reply could not be looked up: the replies the house has written could not be read.'}
+              <button
+                type="button"
+                onClick={dropReply}
+                style={{ fontSize: 12, color: 'var(--seal-deep, #14515C)', fontWeight: 600, background: 'none', border: 0, padding: 0, cursor: 'pointer' }}
+              >
+                Dismiss
+              </button>
+            </p>
+          )}
+          {/* COMMS-W33: a zero from a read that then failed is not "nothing waiting"; the failed part says it. */}
+          {waitingCount === 0 && !waitingFailed && (
+            <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-4, #665D50)', margin: 0 }}>
+              Nothing is waiting on you.
+            </p>
+          )}
+          {letterStanding.restaurantId && (
+            <LetterRequestsPanel
+              restaurantId={letterStanding.restaurantId}
+              canRelease={letterStanding.canRelease}
+              noMailbox={letterStanding.noMailbox}
+              mailbox={letterStanding}
+            />
+          )}
+
+          {/* ── the drafts waiting, which the strip could only count ────
+              The act the census calls owed: a letter the house drafted, read and
+              sent by a person's hold (ADR 0118). The list and the strip's figure
+              come from the SAME read, so they cannot disagree. */}
+          {data.draftsKnown && data.drafts.length > 0 && (
+            <section
+              aria-label="Drafts waiting"
+              className="mb-6 rounded-xl p-4"
+              style={{ fontFamily: SANS, border: '1px solid var(--paper-2, #EAE4D8)', background: 'var(--paper-1, #F3EFE6)' }}
+            >
+              {/* COMMS-W36: under "Waiting on you", so one level below it; the
+                  line it had as an h2 is kept, so only its level changed. */}
+              <h3
+                style={{
+                  fontFamily: MONO,
+                  fontSize: 9.5,
+                  fontWeight: 600,
+                  lineHeight: '2rem',
+                  letterSpacing: '0.14em',
+                  textTransform: 'uppercase',
+                  color: 'var(--ink-4, #665D50)',
+                  margin: '0 0 8px',
+                }}
+              >
+                The house has written · {data.drafts.length} waiting
+              </h3>
+              <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+                {data.drafts.map((d) => (
+                  <li key={d.id} className="flex flex-wrap items-baseline justify-between gap-2 py-1">
+                    <span style={{ fontSize: 12.5, color: 'var(--ink-2, #4F473C)' }}>
+                      {d.wineName ?? 'An order'}
+                      {d.providerName ? ` · ${d.providerName}` : ''}
+                      {d.orderNumber ? ` · ${d.orderNumber}` : ''}
+                    </span>
+                    {/* COMMS-W24: one row per order; the older drafts it stands in front of are said, not hidden. */}
+                    {d.replaces > 0 && (
+                      <span
+                        data-testid="draft-replaces"
+                        style={{ order: 3, flexBasis: '100%', fontSize: 11, color: 'var(--ink-4, #665D50)' }}
+                      >
+                        {d.replaces === 1
+                          ? 'An earlier draft for this order was replaced by this one.'
+                          : `${d.replaces} earlier drafts for this order were replaced by this one.`}
+                      </span>
+                    )}
+                    {/* COMMS-W13: a draft in a house with no mailbox cannot leave. */}
+                    {letterStanding.noMailbox && (
+                      <span
+                        data-testid="draft-row-blocked"
+                        style={{
+                          marginLeft: 'auto',
+                          fontSize: 11,
+                          fontWeight: 600,
+                          padding: '2px 8px',
+                          borderRadius: 999,
+                          whiteSpace: 'nowrap',
+                          background: PILL.blocked.bg,
+                          color: PILL.blocked.fg,
+                        }}
+                      >
+                        {PILL.blocked.words}
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      data-testid="open-drafted-reply"
+                      onClick={() => openReply(d.orderId)}
+                      style={{
+                        fontSize: 11.5,
+                        fontWeight: 600,
+                        padding: '4px 10px',
+                        borderRadius: 3,
+                        border: '1px solid var(--seal-ring, rgba(26,94,107,.32))',
+                        background: 'transparent',
+                        color: 'var(--seal-deep, #14515C)',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Read it
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <p style={{ fontSize: 11, color: 'var(--ink-4, #665D50)', margin: '8px 0 0' }}>
+                Nothing here has been sent. A letter reaches a vendor only when a person holds the
+                seal on it.
+                {letterStanding.noMailbox &&
+                  ' This house has no mailbox to send from yet, so none of these can leave.'}
+              </p>
+              {/* COMMS-W33: the rows above stay openable; this says when they are from. It used
+                  to say "none can be opened from here" under rows that could be. */}
+              {data.failed.drafts && (
+                <p role="status" data-testid="drafts-stale" style={{ fontSize: 11, color: 'var(--ink-2, #4F473C)', margin: '6px 0 0' }}>
+                  {readAgainFailed(data.draftsError ?? '', data.draftsAt ?? 0, false)}
+                </p>
+              )}
+            </section>
+          )}
+          {data.failed.drafts && !(data.draftsKnown && data.drafts.length > 0) && (
+            <p
+              role="status"
+              data-testid="drafts-unread"
+              className="mb-6"
+              style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-2, #4F473C)' }}
+            >
+              {data.draftsKnown
+                ? readAgainFailed(data.draftsError ?? '', data.draftsAt ?? 0, true, 'the replies the house has written')
+                : `The replies the house has written could not be read (${data.draftsError ?? ''}). That does not mean none are waiting.`}
+            </p>
+          )}
+          {(houseDrafts.failed || (houseDrafts.drafts?.length ?? 0) > 0) && (
+            <div
+              className="rounded-xl p-4"
+              style={{ fontFamily: SANS, border: '1px solid var(--paper-2, #EAE4D8)', background: 'var(--paper-1, #F3EFE6)' }}
+            >
+              <HouseDrafts
+                drafts={houseDrafts.drafts}
+                failed={houseDrafts.failed}
+                error={houseDrafts.error}
+                at={houseDrafts.at}
+                onOpen={openDraft}
+                below={(d, focusRow) => {
+                  const h = letters.get(d.id);
+                  return h ? (
+                    <Stub
+                      key={h.n}
+                      words={changedLine(h.words, { subject: d.subject ?? '', body: d.body })}
+                      onResume={() => {
+                        focusRow();
+                        openDraft(d);
+                      }}
+                      onDiscard={() => letters.discard(d.id)}
+                      onRestore={() => letters.restore(d.id)}
+                      discardLabel="Discard my changes"
+                      footer="The drafted letter itself stays as it was; only your changes are held here, until you leave this page."
+                    />
+                  ) : null;
+                }}
+              />
+            </div>
+          )}
+          {/* Not while that letter is open here: one sent from its sheet leaves the
+              list before the sheet closes, and the address goes with the sheet. */}
+          {linked && draft?.id !== linked && houseDrafts.drafts && !houseDrafts.drafts.some((d) => d.id === linked) && (
+            <p role="status" style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-2, #4F473C)', margin: '8px 0 0' }}>
+              {/* COMMS-W31: for staff the letter may well still be a draft — it is just not theirs to open. */}
+              {houseDrafts.withheld
+                ? 'The letter this link points to is opened by an owner or manager of this house.'
+                : 'The letter this link points to is no longer a draft — it was sent or discarded. The conversation book says which.'}
+            </p>
+          )}
+        </section>
+
+        <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_300px]">
+          {/* ── the conversation book ─────────────────────────────────── */}
+          <section
+            aria-label="Conversation book"
+          >
+            {/* COMMS-W36 (founder: "Visible label"): the book was the one region a
+                heading list skipped. The house's small mono label, as the rail's. */}
             <h2
               style={{
                 fontFamily: MONO,
@@ -502,59 +836,24 @@ export default function CommunicationsNext() {
                 margin: '0 0 8px',
               }}
             >
-              The house has written · {data.drafts.length} waiting
+              The conversation book
             </h2>
-            <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-              {data.drafts.map((d) => (
-                <li key={d.id} className="flex flex-wrap items-baseline justify-between gap-2 py-1">
-                  <span style={{ fontSize: 12.5, color: 'var(--ink-2, #4F473C)' }}>
-                    {d.wineName ?? 'An order'}
-                    {d.providerName ? ` · ${d.providerName}` : ''}
-                    {d.orderNumber ? ` · ${d.orderNumber}` : ''}
-                  </span>
-                  <button
-                    type="button"
-                    data-testid="open-drafted-reply"
-                    onClick={() => setDraftOpen(d.orderId)}
-                    style={{
-                      fontSize: 11.5,
-                      fontWeight: 600,
-                      padding: '4px 10px',
-                      borderRadius: 3,
-                      border: '1px solid var(--seal-ring, rgba(26,94,107,.32))',
-                      background: 'transparent',
-                      color: 'var(--seal-deep, #14515C)',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    Read it
-                  </button>
-                </li>
-              ))}
-            </ul>
-            <p style={{ fontSize: 11, color: 'var(--ink-4, #665D50)', margin: '8px 0 0' }}>
-              Nothing here has been sent. A letter reaches a vendor only when a person holds the
-              seal on it.
-            </p>
-          </section>
-        )}
-        {data.failed.drafts && (
-          <p
-            role="status"
-            className="mb-6"
-            style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-2, #4F473C)' }}
-          >
-            The drafts register could not be read, so no letter can be opened from here. That is a
-            failed read, not an empty desk.
-          </p>
-        )}
-
-        <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_300px]">
-          {/* ── the conversation book ─────────────────────────────────── */}
-          <section aria-label="Conversation book">
+            {/* COMMS-W33: the book says its own failure where its rows are; it used to leave an
+                empty ruled box, with the reason only in the banner, as "status code 500". */}
+            {data.isError && (
+              <p
+                role="status"
+                data-testid="book-unread"
+                style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-2, #4F473C)', margin: '0 0 8px' }}
+              >
+                {data.hasData
+                  ? readAgainFailed(data.errorMessage, data.historyAt ?? 0, data.rows.length === 0, 'the conversation book')
+                  : `The conversation book could not be read (${data.errorMessage}). That does not mean nothing was written.`}
+              </p>
+            )}
             {!data.hasData && !data.isError ? (
               <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-4, #665D50)' }}>
-                Reaching the gateway…
+                Reading the conversation book…
               </p>
             ) : data.rows.length === 0 && !data.isError ? (
               <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-4, #665D50)' }}>
@@ -586,7 +885,7 @@ export default function CommunicationsNext() {
                   margin: '0 0 8px',
                 }}
               >
-                Channels & templates
+                Write to a vendor
               </h2>
               {/* The Gmail inbound-watch line moved to the admin desk on
                   2026-09-25 (ADR 0083 amendment; ADR 0143 §2 made /admin the
@@ -604,34 +903,59 @@ export default function CommunicationsNext() {
                   writes email only. A free-text SMS composer would re-open
                   exactly what that deletion closed — it is a founder question,
                   filed in §13, not a gap to fill quietly. */}
-              <p style={{ fontSize: 11.5, color: 'var(--ink-2, #4F473C)', margin: '0 0 10px' }}>
-                SMS: no SMS sender is reachable from anywhere in the app, and every conversation
-                recorded so far is email. The composer writes letters, not messages.
-              </p>
               <div className="flex flex-col gap-2">
-                <button type="button" onClick={() => setCompose(true)} className="cm-row cm-card flex items-center gap-2 rounded-lg px-3 py-2 text-left"
+                <button type="button" ref={writeRef} data-tour="comms-write" onClick={openCompose} className="cm-row cm-card flex items-center gap-2 rounded-lg px-3 py-2 text-left"
                   style={{ border: '1px solid var(--seal-ring, rgba(26,94,107,.32))', fontSize: 12.5, fontWeight: 600, color: 'var(--seal-deep, #14515C)', cursor: 'pointer' }}>
                   <PenLine size={13} strokeWidth={1.75} aria-hidden />
                   Write a letter
                 </button>
-                <button type="button" onClick={() => setLibrary(true)} className="cm-row cm-card flex items-center gap-2 rounded-lg px-3 py-2 text-left"
+                {(() => {
+                  const h = letters.get('new');
+                  return h ? (
+                    <Stub
+                      key={`new-${h.n}`}
+                      words={heldLine(h.words.subject, h.words.body)}
+                      onResume={() => {
+                        writeRef.current?.focus();
+                        openCompose();
+                      }}
+                      onDiscard={() => {
+                        // The composer is emptied by mounting a fresh one; Put it back mounts it with these words.
+                        letters.discard('new');
+                        setComposeFrom(null);
+                        setComposeKey((k) => k + 1);
+                      }}
+                      onRestore={() => {
+                        letters.restore('new');
+                        setComposeFrom(h.words);
+                        setComposeKey((k) => k + 1);
+                      }}
+                      footer={`${h.words.to ? `To ${h.words.to.providerName}. ` : ''}Not sent. Kept on this page until you leave it.`}
+                    />
+                  ) : null;
+                })()}
+                <button type="button" ref={libraryRef} onClick={openLibrary} className="cm-row cm-card flex items-center gap-2 rounded-lg px-3 py-2 text-left"
                   style={{ border: '1px solid var(--paper-2, #EAE4D8)', fontSize: 12.5, fontWeight: 600, color: 'var(--ink-1, #211C16)', cursor: 'pointer' }}>
                   <Library size={13} strokeWidth={1.75} aria-hidden />
                   The house's letter templates
                 </button>
+                {(() => {
+                  const h = templatesHeld.get('t');
+                  return h ? (
+                    <Stub
+                      key={`t-${h.n}`}
+                      words={heldLine(h.words.draft.name || 'A new template', h.words.draft.body)}
+                      onResume={() => {
+                        libraryRef.current?.focus();
+                        openLibrary();
+                      }}
+                      onDiscard={() => templatesHeld.discard('t')}
+                      onRestore={() => templatesHeld.restore('t')}
+                      footer="Not saved. Kept on this page until you leave it."
+                    />
+                  ) : null;
+                })()}
               </div>
-              <HouseDrafts
-                drafts={houseDrafts.drafts}
-                failed={houseDrafts.failed}
-                error={houseDrafts.error}
-                onOpen={setDraft}
-              />
-              {linked && houseDrafts.drafts && !houseDrafts.drafts.some((d) => d.id === linked) && (
-                <p role="status" style={{ fontSize: 11.5, color: 'var(--ink-2, #4F473C)', margin: '8px 0 0' }}>
-                  The letter this link points to is no longer a draft — it was sent or discarded. The
-                  conversation book says which.
-                </p>
-              )}
             </div>
 
             {/* The "Scheduled reports" card left this page on 2026-09-25 (ADR
@@ -650,30 +974,56 @@ export default function CommunicationsNext() {
         <WhoIsWriting />
       </div>
 
-      <ComposeSheet open={compose} onClose={() => setCompose(false)} />
+      <ComposeSheet
+        key={composeKey}
+        open={compose}
+        onClose={() => setCompose(false)}
+        onHold={(w) => letters.hold('new', w)}
+        prefill={
+          composeFrom
+            ? {
+                providerId: composeFrom.to?.providerId,
+                to: composeFrom.to?.email ?? null,
+                subject: composeFrom.subject,
+                body: composeFrom.body,
+                insights: composeFrom.insights,
+                templateId: composeFrom.templateId,
+              }
+            : null
+        }
+      />
       {draft && (
         <ComposeSheet
           key={draft.id}
           open
           onClose={closeDraft}
+          onHold={(w) => letters.hold(draft.id, w)}
           onDiscarded={houseDrafts.refetch}
           prefill={{
             draftId: draft.id,
-            providerId: draft.providerId,
-            to: draft.to,
-            subject: draft.subject ?? '',
-            body: draft.body,
+            providerId: draftFrom?.to?.providerId ?? draft.providerId,
+            to: draftFrom?.to?.email ?? draft.to,
+            subject: draftFrom?.subject ?? draft.subject ?? '',
+            body: draftFrom?.body ?? draft.body,
+            insights: draftFrom?.insights,
+            templateId: draftFrom?.templateId,
+            baseline: { subject: draft.subject ?? '', body: draft.body, to: draft.to },
           }}
         />
       )}
-      {library && <TemplateSheet onClose={() => setLibrary(false)} />}
+      {library && (
+        <TemplateSheet held={templateFrom} onHold={(h) => templatesHeld.hold('t', h)} onClose={() => setLibrary(false)} />
+      )}
 
       <DraftedReplyPanel
         open={draftOpen !== null}
         reply={
           (data.drafts.find((d) => d.orderId === draftOpen) as DraftedReply | undefined) ?? null
         }
-        onClose={() => setDraftOpen(null)}
+        onClose={() => {
+          setDraftOpen(null);
+          dropReply();
+        }}
         onSent={() => data.refetch()}
         onDiscarded={() => data.refetch()}
       />
