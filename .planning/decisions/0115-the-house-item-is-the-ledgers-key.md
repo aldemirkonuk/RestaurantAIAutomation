@@ -1149,8 +1149,9 @@ which is quoted below.
   the register list, wine F21b and the POS shapes. His HD-12 answer was free text
   and picked no option, so a clarifier followed.
 - The clarifier was asked at 14:58Z and answered at 20:15Z.
-- In his time zone (UTC-4) that is 10:27 to 16:15 on 2026-10-03. RQ17:3 says
-  "about 10:50" for the asking; the times here are TX's.
+- In his time zone (UTC-4) that is 10:27 to 16:15 on 2026-10-03. RQ17:3 gave
+  ~~"about 10:50"~~ [asked 10:27 EDT, answered 10:56 EDT, from the transcript;
+  RQ17:3 is bracket-corrected to match] for the asking; the times here are TX's.
 - Round 17b, on the details round 17 left, followed at 20:33Z ("Round 17b" below).
 
 | # | Pick (verbatim) | What it means | Rejected | Source |
@@ -1194,8 +1195,9 @@ The asker listed the details his round-17 picks left open and put them to him
 on 2026-10-03. RQ17:39-56 quotes his picks. TX is the primary record and holds
 each option's full text, which is quoted below.
 - Round 17b was asked at 2026-10-03T20:33:52Z and answered at 20:40:33Z.
-- In his time zone (UTC-4) that is 16:33 to 16:40. RQ17:39 says "about 13:00" for
-  the asking; the times here are TX's.
+- In his time zone (UTC-4) that is 16:33 to 16:40. RQ17:39 gave ~~"about 13:00"~~
+  [asked 16:33 EDT, answered 16:40 EDT, from the transcript; RQ17:39 is
+  bracket-corrected to match] for the asking; the times here are TX's.
 
 | # | Pick (verbatim) | What it means | Rejected | Source |
 |---|---|---|---|---|
@@ -1238,8 +1240,9 @@ Round 17b's reading found that cider F4 had not been approved in round 15. The
 asker put that to him on 2026-10-03, with the "Left open" item on how much of F4
 the 0186 amendment carries. RQ17:58-63 quotes his pick. TX is the primary record.
 - Round 17c was asked at 2026-10-03T21:08:39Z and answered at 21:21:44Z.
-- In his time zone (UTC-4) that is 17:08 to 17:21. RQ17:58 says "about 17:20" for
-  the asking; the times here are TX's.
+- In his time zone (UTC-4) that is 17:08 to 17:21. RQ17:58 gave ~~"about 17:20"~~
+  [asked 17:08 EDT, answered 17:21 EDT, from the transcript; RQ17:58 is
+  bracket-corrected to match] for the asking; the times here are TX's.
 
 The question, verbatim, opened with the asker's correction: "I got something wrong last round. I said you had already approved cider F4, the change to which drink names the menu reader recognises, back in round 15. You hadn't: round 15 approved only cider F10. So the only approval of F4 is your 17b answer, "The chip ships with F4". When I described F4, I named only cider, mead and 'elma şarabı'. The kind team's version also adds perry, hard seltzer, fruit wine and kombucha, Turkish and plural forms (armut/bal şarabı, ciders), a serve format and printed size, and an instruction that the menu reader keep non-wine drinks. Today it is told it is "a wine expert". How much of that should the 0186 amendment carry?"
 
@@ -1426,3 +1429,4 @@ before D1, the gates, and the PR sizing. The step names follow AR §5 and §6.
 | 2026-10-03 | Amendment, same branch | §2026-10-02 "Round 17b" added, with the asker's correction and its readings; round 17's readings updated; five settled details removed from "Left open" and cider F4's reach added; §Build order's S, K1-K6, G/W and "Records owed" updated, and the gates that waited on "Left open" removed; OD-218's row gains round 17b; moving-head wording replaced by `8c673db4b` |
 | 2026-10-03 | Aldemir (founder) | Round 17c (UTC 2026-10-03T21:08Z to 21:21Z) settled cider F4's reach: "The team's full list (Recommended)", option (a) in full, carried by one ADR amending 0186. The question opened with the asker's correction of its round-17b wording, "which you approved in round 15" (RQ17:58). |
 | 2026-10-03 | Amendment, same branch | §2026-10-02 "Round 17c" added, with its reading on which menu readers the premise fits at `8c673db4b`; round 17b's F4 reading now cites his pick; the asker's second error recorded; cider F4's reach removed from "Left open"; §Build order's G/W row and "Records owed" carry F4 (a) in full; OD-218's row gains round 17c |
+| 2026-10-03 | Amendment, same branch | The three RQ17 clock times quoted under "Round 17", "Round 17b" and "Round 17c" struck in place, each bracketed with the transcript's EDT times; RQ17 itself was bracket-corrected the same day, and its round-17b time was wrong by more than three hours |
