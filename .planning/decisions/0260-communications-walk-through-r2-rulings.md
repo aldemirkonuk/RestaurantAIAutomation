@@ -101,6 +101,9 @@ The founder's words, verbatim, per item (one-word "Approve" items grouped):
 - W17: the /connections reconnect banner (today only for mail reading, `ConnectionsNext.tsx:341`) also comes up when Gmail sending lost its grant, one banner naming what is down ("Widen to sending").
 - W13b's gateway part ships off behind its flag. The flag goes on only after F-049 (the /connections "Connect yours" button has no action) and F-050 (Google refuses the per-house redirect; a Railway variable plus the client's URI) are fixed and one house has connected its own Gmail end to end ("After F-049, F-050"). The flip stays the founder's keystroke. F-ids are the owner-quarter sim's ledger.
 
+**Follow-up ruling, 2026-10-03** (founder's AskUserQuestion answer, "No clock time (Recommended)"; branch `fix/f126-cap-notice-once-a-day`):
+- F-126, the bell's "Draft limit reached" flood. Past the house's AI pre-draft cap, every order posted its own HIGH notice saying "Drafts frozen until tomorrow". That was false twice: the pause ends 24 hours after the increment that reached the cap (each increment renews the counter's expiry, and none follows the cap), and an approved order still gets its vendor letter from the approval-time writer. Now one notice per pause per house, still HIGH, worded: title "AI pre-drafts paused"; body "This house reached its limit of 50 AI pre-drafts. They resume 24 hours after the 50th. Orders you approve still get a vendor letter to review." Both numbers follow `NEGOTIATION_DRAFT_DAILY_CAP`. No clock time is shown, because the house timezone was never read and defaults to America/Los_Angeles. Rejected: a clock time in the house's timezone; keeping the old words and only firing them once. The cap (50) is untouched until the houses' F-084/F-089 change lands (sim share-out O1). Its future (keep, raise or remove) is a later question that the coordinator relays.
+
 **Shared queue** (`review-shared-queue.md`, R2 rows): W26; the Stub's focus on Discard (W34); back closes the topmost sheet (W35); `globals.css` `.dark` outranking the house reset (W36).
 
 ## Consequences
@@ -120,3 +123,4 @@ The founder's words, verbatim, per item (one-word "Approve" items grouped):
 | 2026-10-01 | — | Created, session R2, branch fix/review-communications |
 | 2026-10-02 | — | W38 added (the tour, ruled when main was merged in); numbered 0260 at push |
 | 2026-10-02 | — | Follow-up rulings added (order a-b-c, F-106 survivor, W17 banner, W13b flag timing), asked while #587's CI ran |
+| 2026-10-03 | — | Follow-up ruling added: F-126 cap notice once per pause, its words (branch fix/f126-cap-notice-once-a-day) |
