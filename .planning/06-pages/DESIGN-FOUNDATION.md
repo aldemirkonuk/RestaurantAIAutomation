@@ -223,7 +223,13 @@ studio — plus deliberate chrome-free escapes (door receipt, SimPOS terminal,
    top bar into settings". `ThemeMenu.tsx` is deleted, and with it the legacy
    Light/Dark/System app-theme menu; the person's ground (Paper / Charcoal, ADR
    0169) is chosen in `/profile`'s Preferences card, which every role can reach.
-   ADR 0169 §Amendment 2026-10-01.]**
+   ADR 0169 §Amendment 2026-10-01.]** **[2026-10-01 (batch 4): "Paper / Charcoal" is now
+   Paper / Charcoal / System — founder, 2026-10-01: "Paper / Charcoal / System". System
+   follows the device live; paper stays the default for anyone who never chose, and a
+   one-time `Panel` sheet asks them at first sign-in, mounted once in `DashboardLayout`
+   and never over the data-terms sheet. The old app theme is reset to light once more
+   (`wineops-theme-v3`); the ground choice never drives it. ADR 0169 §Amendment
+   2026-10-01 (batch 4).]**
 
    - **The chrome-free list is now two, and both are decided, not accidental:**
      `receiving_door` (routed outside `DashboardLayout` on purpose — "used at a
