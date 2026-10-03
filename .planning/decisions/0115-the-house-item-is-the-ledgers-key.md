@@ -12,7 +12,8 @@
   (§2026-10-02, "Round 15") settled OD-219 to OD-222, the reading of R31 against R93,
   and OD-218 apart from four sub-parts. His round-17 answers (2026-10-03,
   §2026-10-02, "Round 17") settled those four, so OD-218 is resolved too. His round-17b
-  answers (§2026-10-02, "Round 17b") settled five details round 17 left. Those
+  answers (§2026-10-02, "Round 17b") settled five details round 17 left, and his
+  round-17c answer settled how much of cider F4 the 0186 amendment carries. Those
   answers rest on their own picks, quoted there, not on the lock pick. None of them
   covers the details still under "Left open inside answered rulings". The lock is written the
   way his 2026-10-01 pick *"Lock + reopen wrong bits (Recommended)"* asked ("Mark it
@@ -817,7 +818,8 @@ Forks that were not put to him then were filed as OD-218 to OD-222. He answered
 them in round 15, later on 2026-10-02 ("Round 15" below), except four sub-parts of
 OD-218 that were never asked. He answered those in round 17, on 2026-10-03
 ("Round 17" below), and the details they left in round 17b the same day
-("Round 17b" below).
+("Round 17b" below). Round 17c settled the one detail round 17b left ("Round 17c"
+below).
 This section is the in-repo record of those answers. Each row gives his pick
 verbatim, what it means in one line, what he did not pick, and where it is
 written down. Picks are quoted byte for byte from the primary record, so his
@@ -842,7 +844,7 @@ typos are kept.
   [Note 2026-10-03: a cite with a line number, such as R15:5-7, is this file. A bare
   R15 is the group 10 ruling on tenant-scoped FKs.]
 - **RQ17**: `/Users/aldemirkonuk/Projects/p4-scratch/founder-answers-2026-10-03-round17-od218.md`,
-  the round-17 picks, with round 17b at its end (RQ17:39-56). It is not named R17,
+  the round-17 picks, with rounds 17b and 17c at its end (RQ17:39-63). It is not named R17,
   because R17 is the group 10 ruling on embed hints. TX holds each option's full text.
 
 **Dates.**
@@ -1209,7 +1211,9 @@ chip 'ships with cider's base list'. The real condition is the vocabulary change
 recognised and the chip isn't empty." RQ17:56 records it in the asker's words:
 "Q2's earlier wording "ships with cider's base list" was my error; base list is
 cider F10. The condition is F4 (forks.md:1738)." The X13 row above keeps the
-round-17 option text as he saw it.
+round-17 option text as he saw it. Q-d's own wording, "which you approved in round
+15", was a second error of the asker's. The asker corrected it to him in round 17c
+(RQ17:58).
 
 **Round 17b, read in plain words.** These are this record's readings, not his
 answers.
@@ -1220,19 +1224,51 @@ answers.
   section" means. So F4 is approved by this round's pick, whose option text begins
   "The chip ships with F4". Q-d names cider, mead and 'elma şarabı' as recognised,
   and of F4's options only the team's pick, (a), adds mead and 'elma şarabı'
-  (FK:1099-1103). This record reads "F4" as (a). How much of (a) the amendment
-  carries is listed under "Left open".
+  (FK:1099-1103). This record read "F4" as (a). His round-17c pick, "The team's
+  full list (Recommended)", settled it: F4 is (a) in full ("Round 17c").
 - **A liqueur coffee carries no Hot or Cold mark.** It is a cocktail (Q-c), and only
   Coffee & tea serves carry the mark (Q-b).
 - **The "more than a handful" count is gone.** Round 17's option gave cider a register "once a
   house carries more than a handful". Round 17b replaced that with the owner's
   switch and rejected a count of 10.
 
+### Round 17c: how much of cider F4 the 0186 amendment carries
+
+Round 17b's reading found that cider F4 had not been approved in round 15. The
+asker put that to him on 2026-10-03, with the "Left open" item on how much of F4
+the 0186 amendment carries. RQ17:58-63 quotes his pick. TX is the primary record.
+- Round 17c was asked at 2026-10-03T21:08:39Z and answered at 21:21:44Z.
+- In his time zone (UTC-4) that is 17:08 to 17:21. RQ17:58 says "about 17:20" for
+  the asking; the times here are TX's.
+
+The question, verbatim, opened with the asker's correction: "I got something wrong last round. I said you had already approved cider F4, the change to which drink names the menu reader recognises, back in round 15. You hadn't: round 15 approved only cider F10. So the only approval of F4 is your 17b answer, "The chip ships with F4". When I described F4, I named only cider, mead and 'elma şarabı'. The kind team's version also adds perry, hard seltzer, fruit wine and kombucha, Turkish and plural forms (armut/bal şarabı, ciders), a serve format and printed size, and an instruction that the menu reader keep non-wine drinks. Today it is told it is "a wine expert". How much of that should the 0186 amendment carry?"
+
+| # | Pick (verbatim) | What it means | Rejected | Source |
+|---|---|---|---|---|
+| Cider F4's reach | "The team's full list (Recommended)" | The option read: "Everything above goes into one amendment to ADR 0186: the names, the Turkish forms, serve format and printed size, and the reader keeping non-wine drinks. Without the Turkish forms, 'elma şarabı' and Şirince fruit wines file as wine. Cost: one ADR plus updates to the matching tests." So cider F4 is the kind team's option (a) in full (FK:1099), carried by one ADR amending 0186. | "Only the three I named" ("Just cider, mead and 'elma şarabı'. Cost: perry, hard seltzer, fruit wine and kombucha stay unrecognised and file as unknown or wine. The reader is still told it is a wine expert, so other non-wine drinks can still be dropped."); "Names now, the rest later" ("All the names and Turkish forms now, with serve format and printed size in a later amendment. Cost: a second amendment to the same locked ADR, and the chip can't yet tell a can from a keg.") | RQ17:60-63; TX 21:21Z; FK:1097-1103 |
+
+**Round 17c, read in plain words.** This is this record's reading, not his answer.
+- **Which menu reader is "told it is "a wine expert"".** At `8c673db4b` the
+  question's premise holds for some readers and not for others:
+  - the gateway's menu scan prompt, which ADR 0186 changed, already says "Extract
+    EVERY drink listed, not only the wines"
+    (`apps/api-gateway/src/menus/parsers/scan-parser.service.ts:78-79`);
+  - "You are a wine expert" is at
+    `services/agent-orchestrator/services/haiku_enrichment_service.py:182`, the line
+    the cider team cited. That service enriches a wine from its name and vintage;
+    it does not read menus;
+  - the orchestrator's own menu prompts still read only wine:
+    `services/agent-orchestrator/services/claude_vision_extractor.py:62` says
+    "Extract ALL wines from this menu image", and `vlm_extraction_service.py:60` and
+    `wine_field_parser.py:187` open as wine experts.
+  So the amendment names which readers it changes (§Build order, "Records owed").
+
 ### Still open — not decided by any of the above
 
 Nothing this record filed is still open. OD-219 to OD-222 were answered in round 15,
 and OD-218's last four sub-parts in round 17. All five are marked resolved in place
-in `OPEN-DECISIONS.md`. Round 17b settled five details round 17 left. The details
+in `OPEN-DECISIONS.md`. Round 17b settled five details round 17 left, and round 17c
+the one it left. The details
 still under "Left open inside answered rulings" are
 not new forks, and each is settled before the build step that needs it.
 
@@ -1283,15 +1319,12 @@ settle, and each detail is settled before the build step that needs it.
     The standing rule is never to delete tables.
   - Sake F8's caveat: the 2022 amendment's effect on grades is checked before the
     sake K-PR (FK:2365).
-- **Details inside rounds 17 and 17b:**
+- **Details inside rounds 17 to 17c:**
   - Round 17b settled five details that were listed here: the kind's visible name,
     liqueur coffee's menu home, how far Hot and Cold reach, the cider chip's
     condition, and when cider gets its register ("Round 17b").
-  - Cider F4's reach. His round-17b pick names F4, read above as the team's pick,
-    (a). Q-d named only cider, mead and 'elma şarabı'. Option (a) also adds perry,
-    hard seltzer, fruit wine and kombucha, `serve_format` and the printed size, and
-    tells the extractor to keep non-wine drinks (FK:1099). How much of (a) the ADR
-    amending 0186 carries is confirmed with him before that ADR is written.
+  - Round 17c settled the sixth, cider F4's reach: "The team's full list
+    (Recommended)", option (a) in full ("Round 17c").
   - X19's modifiers: R46's three unsettled points (above) now cover cocktail
     modifiers too. No adapter delivered modifiers at `8c673db4b`, so R46's mapping
     has nothing to read until one does. That adapter work is owed
@@ -1334,7 +1367,7 @@ before D1, the gates, and the PR sizing. The step names follow AR §5 and §6.
 | D6 | **Kind tables keep house rules.** This adds the unit freeze once stock exists, and `move_house_item_kind` with its audit table. It lands before any carry PR. | Count unit (freeze), A14 | D5 | every gateway carry PR |
 | K1-K6 | **Typed DDL per kind.** This covers:<br>• the kind boundaries;<br>• the beer style table, with only `other` until BJCP permission;<br>• allergens, after the G5 Annex II PR;<br>• life values typed by a person;<br>• cocktail forms `batch` and `prep`, which cannot change once used;<br>• each kind's approved kind-local picks (round 15), including wine F4's vintage on the item with lot vintage flagged at the door, and cider F10's list of bases;<br>• the hot-drink kind by ingredient: coffee, tea, cocoa, salep and herbal, with iced serves drawing from it (HD-12, round 17). Its chip and register read "Coffee & tea", and its code value stays `hot_drink` (round 17b);<br>• liqueur coffee as a cocktail recipe that draws the coffee from Coffee & tea and the whiskey or liqueur from its own register (round 17b);<br>• the cider table shipping dark first; its first stock-holding row waits for G1-G7 (cider F12 (b), round 17). | R88, R90, R79, R91, R65, R70, R61, R67, OD-218 (approved picks; HD-12 and cider F12, rounds 17 and 17b), OD-219, OD-220 | D6; the three OD-219 designs, each attacked, before any of these merges | the gateway PRs; batches |
 | B | **Batches, record-only.** A run records its inputs, yield, cost and use-by, and moves no stock until he switches it on. | A11, R60, R62-R64, R66, R68, R69, R71-R80 | K (cocktails) | runs that move stock: a follow-on choice of his |
-| G, W, Mo, Or | **App PRs.** Gateway (ledger callers, POS, receiving, carry, menu carry, procurement, pricing, analytics), web, mobile and orchestrator. The gateway finds a bare item id across the kind tables, so counts queued offline still land (OD-221). The web changes only the visible "Spirits" labels and keeps `/spirits` (OD-222). Rounds 17 and 17b set the rest:<br>• the till PRs carry X19's approved shapes. Flights, mixed buckets and a glass from packaged beer queue. The Toast line guid joins the idempotency key, and `toast_item_guid` moves into `pos_item_mappings`. A Coravin pour books from an open lot. Cocktail modifiers use R46's mapping, which needs an adapter that delivers modifiers;<br>• sake's till path lands as shared resolver, then database backstop, then sake mappings (sake F15 A);<br>• the web adds a ninth register, sake, switched on once a house has sake stock, and a cider chip that ships with cider F4's vocabulary (in the ADR amending 0186);<br>• the cider register, built dark. Each house's owner switches it on, per house and per kind, the same switch as X19 (round 17b). | X14, Menu unit, R41, R42, X19, A8, R25, R46, R92, OD-221, OD-222, OD-218 (rounds 17 and 17b) | K1-K6; the X14 amendment (this ADR); for the cider chip, the ADR amending 0186 (cider F4) | wine to ml; D7 |
+| G, W, Mo, Or | **App PRs.** Gateway (ledger callers, POS, receiving, carry, menu carry, procurement, pricing, analytics), web, mobile and orchestrator. The gateway finds a bare item id across the kind tables, so counts queued offline still land (OD-221). The web changes only the visible "Spirits" labels and keeps `/spirits` (OD-222). Rounds 17 and 17b set the rest:<br>• the till PRs carry X19's approved shapes. Flights, mixed buckets and a glass from packaged beer queue. The Toast line guid joins the idempotency key, and `toast_item_guid` moves into `pos_item_mappings`. A Coravin pour books from an open lot. Cocktail modifiers use R46's mapping, which needs an adapter that delivers modifiers;<br>• sake's till path lands as shared resolver, then database backstop, then sake mappings (sake F15 A);<br>• the web adds a ninth register, sake, switched on once a house has sake stock, and a cider chip that ships with cider F4's vocabulary, option (a) in full (round 17c), in the ADR amending 0186;<br>• the cider register, built dark. Each house's owner switches it on, per house and per kind, the same switch as X19 (round 17b). | X14, Menu unit, R41, R42, X19, A8, R25, R46, R92, OD-221, OD-222, OD-218 (rounds 17 to 17c) | K1-K6; the X14 amendment (this ADR); for the cider chip, the ADR amending 0186 (cider F4) | wine to ml; D7 |
 | Wine | **Wine moves to ml one wine at a time.** Each wine converts once it is sized, with the 750/150 interim. After a production count, unsized wine queues instead. | R7, R34, R12 | M2, F, step 0 | D7 |
 | D7 | **Misfiled rows move once, last.** The guard is lifted only inside this migration. Rows it cannot move go to a review table. | A5, R12 | every app PR live; step 0 measured | D8 |
 | D8 | **VALIDATE** the wine-only CHECK at a measured zero. | — | D7's review table at zero | none |
@@ -1343,8 +1376,12 @@ before D1, the gates, and the PR sizing. The step names follow AR §5 and §6.
 - This ADR is the amendment for the per-kind ruling, the A forks and X14.
 - An ADR amending 0186 for the menu vocabulary and one row per printed price
   (R53, R54), before S. Its vocabulary includes cider F4's members, which the
-  cider chip needs (rounds 17 and 17b). How much of F4 (a) it carries is confirmed
-  with him before it is written (§2026-10-02, "Left open").
+  cider chip needs (rounds 17 and 17b). It carries F4 (a) in full (round 17c, "The
+  team's full list (Recommended)"): perry, mead, hard seltzer, fruit wine and
+  kombucha with their Turkish and plural forms, serve format and printed size, and
+  the reader keeping non-wine drinks. It names which menu readers it changes,
+  because at `8c673db4b` the gateway's scan prompt already keeps every drink and
+  the orchestrator's menu prompts do not (§2026-10-02, "Round 17c").
 - An ADR amending 0193 for serve-level prices and locks (Serve price, R10,
   R11), before S. AR §6 names this amendment.
 - The library-kind mapping that R2 says is "recorded in an ADR", before D1.
@@ -1387,3 +1424,5 @@ before D1, the gates, and the PR sizing. The step names follow AR §5 and §6.
 | 2026-10-03 | Amendment, same branch | §2026-10-02 "Round 17" added, with its readings; "Still open" emptied; round-17 details added to "Left open"; OD-218 marked resolved in place; §Build order's OD-218 gates replaced by the answers (S, D5, K1-K6, G/W) |
 | 2026-10-03 | Aldemir (founder) | Round 17b (UTC 2026-10-03T20:33Z to 20:40Z) settled details round 17 left. The kind's name "Coffee & tea (Recommended)"; Hot/Cold "Coffee & tea serves only (Recommended)"; liqueur coffee "A cocktail, drawing both (Recommended)"; the cider register "When the owner switches it on (Recommended)". Q-d opened with the asker's correction of round 17's cider-chip wording (RQ17:56). |
 | 2026-10-03 | Amendment, same branch | §2026-10-02 "Round 17b" added, with the asker's correction and its readings; round 17's readings updated; five settled details removed from "Left open" and cider F4's reach added; §Build order's S, K1-K6, G/W and "Records owed" updated, and the gates that waited on "Left open" removed; OD-218's row gains round 17b; moving-head wording replaced by `8c673db4b` |
+| 2026-10-03 | Aldemir (founder) | Round 17c (UTC 2026-10-03T21:08Z to 21:21Z) settled cider F4's reach: "The team's full list (Recommended)", option (a) in full, carried by one ADR amending 0186. The question opened with the asker's correction of its round-17b wording, "which you approved in round 15" (RQ17:58). |
+| 2026-10-03 | Amendment, same branch | §2026-10-02 "Round 17c" added, with its reading on which menu readers the premise fits at `8c673db4b`; round 17b's F4 reading now cites his pick; the asker's second error recorded; cider F4's reach removed from "Left open"; §Build order's G/W row and "Records owed" carry F4 (a) in full; OD-218's row gains round 17c |
