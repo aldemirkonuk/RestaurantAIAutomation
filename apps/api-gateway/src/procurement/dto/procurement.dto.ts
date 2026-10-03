@@ -498,8 +498,11 @@ export class VerifyReceiptDto {
 
   @ApiPropertyOptional({
     description:
-      "Unit price the vendor invoice bills, PER BOTTLE. It is compared directly against the agreed " +
-      "price, which the order line derives per bottle (line_total = final_unit_price * total_bottles). " +
+      "Unit price the vendor invoice bills, AS PRINTED, in invoicePriceUom. Absent invoicePriceUom = " +
+      "PER BOTTLE, which is what this field always meant, so a client that never sends the unit is " +
+      "unchanged. The gateway converts it to per bottle once and compares it with the agreed price " +
+      "(line_total = final_unit_price * total_bottles) in the invoice's own unit (founder, 2026-10-02, " +
+      "RECEIPTS-W56; ADR 0119). " +
       "REQUIRES `invoiceCurrency` (2026-09-06): a price with no currency is refused before anything is " +
       "written, and the receipt still records its count without one.",
   })
@@ -508,6 +511,29 @@ export class VerifyReceiptDto {
   @PriceStatesItsCurrency()
   @IsOptional()
   invoiceUnitPrice?: number;
+
+  @ApiPropertyOptional({
+    description:
+      "The unit invoiceUnitPrice is printed in — the agreed price's own vocabulary (ADR 0119 price_uom): " +
+      "bottle, case, pack, split_case, each. Must be sent together with invoicePricePackSize; half a " +
+      "statement, an unknown word, or a keg/litre price is refused with a 400. Absent = per bottle. " +
+      "Independent of invoiceUom, which is the unit the invoice COUNTS in.",
+    enum: PRICE_UOM_TYPES as unknown as string[],
+  })
+  @IsString()
+  @IsOptional()
+  invoicePriceUom?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "Bottles in one invoicePriceUom (ADR 0119 price_pack_size). Exactly 1 for a unit that holds one " +
+      "(bottle/each); the real pack for case/pack/split_case. Required whenever invoicePriceUom is sent.",
+    minimum: 1,
+  })
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  invoicePricePackSize?: number;
 
   @ApiPropertyOptional({
     description:

@@ -59,6 +59,7 @@ import {
   isDiscrepancy,
   MatchResult,
   MatchUnitError,
+  pricePer,
   toBottleOperands,
 } from "./invoice-match";
 import { readAliasedQuantity } from "./quantity-aliases";
@@ -6413,7 +6414,12 @@ export class ProcurementService {
       invoiceQtyInInvoiceUom: invoiceQuantity ?? null,
       invoiceUom: body.invoiceUom ?? null,
       invoiceBottlesPerUnit: body.invoiceBottlesPerUnit ?? null,
+      // As printed, in its own unit (absent = per bottle). `computeMatch`
+      // converts it once; every write below reads `match.invoicePrice`, never
+      // `body.invoiceUnitPrice`, so nothing downstream can convert it twice.
       invoiceUnitPrice: body.invoiceUnitPrice ?? null,
+      invoicePriceUom: body.invoicePriceUom ?? null,
+      invoicePricePackSize: body.invoicePricePackSize ?? null,
       acceptedQtyInCountedUom: acceptedQuantity ?? null,
       rejectedQtyInCountedUom: rejectedQuantity ?? 0,
       freeGoodsQtyInCountedUom: freeGoodsQuantity ?? 0,
@@ -6770,7 +6776,13 @@ export class ProcurementService {
       // `reconciled` event above and the ledger, in bottles.
       Object.assign(update, {
         rejected_reason: body.rejectedReason ?? null,
-        invoice_unit_price: body.invoiceUnitPrice ?? null,
+        // PER BOTTLE, as the column has always been read (the vendor
+        // scorecard's price-as-agreed measure). A desk that keys the invoice's
+        // case price states its unit, and `computeMatch` has already converted
+        // it once; writing the printed case figure here would put $44.00 in a
+        // per-bottle column. The printed figure and its unit go to the price
+        // register's sighting below, which keeps the operands.
+        invoice_unit_price: match.invoicePrice?.perBottle ?? null,
         match_status: match.verdict,
         // NULL, not false, when there was no invoice to verify against: "we
         // checked and it did not match" and "nobody has checked" are different
@@ -6850,7 +6862,10 @@ export class ProcurementService {
         orderId,
         providerId: (orderRow as any).provider_id ?? null,
         masterWineId: shelfItem.masterWineId,
-        price: match.effectiveUnitCost ?? body.invoiceUnitPrice,
+        // Landed and per bottle; failing that, the invoice price per bottle —
+        // never the printed figure, which on a case-priced invoice is 24
+        // bottles' worth of money in a per-bottle series.
+        price: match.effectiveUnitCost ?? match.invoicePrice?.perBottle ?? null,
         source: "receipt_verified",
         provenance: receiptPaper,
         // BOTTLES. It used to be the raw invoice number: on an order billed in
@@ -6859,7 +6874,16 @@ export class ProcurementService {
         // was written beside it. Both are genuinely per bottle since the units
         // reached `computeMatch`.
         quantity: bottles?.invoiceQty ?? null,
-        notes: `Verified against the invoice: ${match.verdict}.`,
+        notes:
+          `Verified against the invoice: ${match.verdict}.` +
+          // The one conversion, with both operands, so the per-bottle figure
+          // in this row can be traced back to the number on the paper.
+          (match.invoicePrice?.stated && match.invoicePrice.packSize > 1
+            ? ` Invoice price $${match.invoicePrice.asPrinted.toFixed(2)} ${pricePer(
+                match.invoicePrice.uom,
+                match.invoicePrice.packSize,
+              )}, read per bottle.`
+            : ""),
         // ADR 0119 Q4: this path's unit is not a convention and not the
         // agreement's — it is a measured property of `computeMatch`, which
         // converts all four documents to bottle-equivalents and REFUSES a unit
@@ -6872,15 +6896,22 @@ export class ProcurementService {
           because:
             "computeMatch converted every document to bottle-equivalents before landing this cost, and refuses a unit it cannot read.",
         },
-        // The register row, in the INVOICE's own unit — the whole point of ADR
-        // 0117's class A. `bottles.units.invoice` is the unit `toBottleOperands`
-        // already resolved and already refused if it could not read
-        // (`invoice-match.ts:438`), so the pack size here is the one the verdict
-        // itself was computed from rather than a second reading of the same
-        // document. `body.invoiceUnitPrice` is the number PRINTED on the paper;
-        // `effectiveUnitCost` above is that number landed and per-bottle, and
+        // The register row, in the unit the invoice PRINTS ITS PRICE IN — the
+        // whole point of ADR 0117's class A. `match.invoicePrice` is the reading
+        // the verdict itself was computed from: the printed figure, its own unit
+        // and its own pack (bottle / 1 when the desk named no unit, which is
+        // what the field has always meant). `normalizeUnitPrice` divides by that
+        // pack once, at read time.
+        //
+        // NOT the invoice's QUANTITY unit (`bottles.units.invoice`), which is
+        // what this used to label the price with. An invoice that counts in
+        // cases of 12 while the desk keyed a per-bottle price produced a sighting
+        // saying "$1.83 a case of 12" — divided by twelve again at the register,
+        // a price a twelfth of the real one (F-103). The two units are
+        // independent facts about the paper; only the price's unit labels the
+        // price. `effectiveUnitCost` above is the landed per-bottle figure, and
         // putting a converted figure on a sighting is exactly what the register
-        // must not hold — `normalizeUnitPrice` converts, once, at read time.
+        // must not hold.
         // ADR 0117 Q25. The invoice is the one document in this system that
         // already carries a real non-USD currency, so this path is the one that
         // can state one — when the desk keys it in. When it does not, the claim
@@ -6894,9 +6925,9 @@ export class ProcurementService {
         sighting: {
           vendorName: null,
           productName: shelfItem.wineName,
-          unitPrice: body.invoiceUnitPrice ?? null,
-          unitLabel: bottles?.units.invoice.uom ?? null,
-          packSize: bottles?.units.invoice.bottlesPerUnit ?? null,
+          unitPrice: match.invoicePrice?.asPrinted ?? null,
+          unitLabel: match.invoicePrice?.uom ?? null,
+          packSize: match.invoicePrice?.packSize ?? null,
           unitVolumeMl: shelfItem.bottleSizeMl,
           // The DOCUMENT's own money, off the same paper as the price beside
           // it — never `restaurants.currency`, which is what the house REPORTS
