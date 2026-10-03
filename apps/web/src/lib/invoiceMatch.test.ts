@@ -131,6 +131,14 @@ describe('invoiceMatch parity with the API engine', () => {
     ['free goods, real transit loss', { orderedQty: 10, poUnitPrice: 22, shippedQty: 11, invoiceQty: 10, invoiceUnitPrice: 22, acceptedQty: 10, freeGoodsQty: 1 }],
     ['free goods and damage under a slip', { orderedQty: 10, poUnitPrice: 22, shippedQty: 11, invoiceQty: 10, invoiceUnitPrice: 22, acceptedQty: 10, rejectedQty: 1, freeGoodsQty: 1 }],
     ['free goods and a real short ship', { orderedQty: 24, poUnitPrice: 22, shippedQty: 24, invoiceQty: 21, invoiceUnitPrice: 22, acceptedQty: 22, freeGoodsQty: 1 }],
+    // Price as printed (founder, 2026-10-02, RECEIPTS-W56). The invoice price in its own unit,
+    // converted once; compared in that unit to the cent. Agreed $44.00 a case of 24 = $1.8333.
+    ['case price, unit stated, matches', { ...base, poUnitPrice: 1.8333, invoiceUnitPrice: 44, invoicePriceUom: 'case', invoicePricePackSize: 24 }],
+    ['case price, no unit: per bottle, variance', { ...base, poUnitPrice: 1.8333, invoiceUnitPrice: 44 }],
+    ['case price over agreed, unit stated', { ...base, poUnitPrice: 1.8333, invoiceUnitPrice: 46, invoicePriceUom: 'case', invoicePricePackSize: 24 }],
+    ['ten cents over a case is not a per-bottle rounding match', { ...base, poUnitPrice: 1.8333, invoiceUnitPrice: 43.9, invoicePriceUom: 'case', invoicePricePackSize: 24 }],
+    ['case price overridden, short and damaged', { ...base, poUnitPrice: 1.8333, invoiceUnitPrice: 48, invoicePriceUom: 'case', invoicePricePackSize: 24, acceptedQty: 20, rejectedQty: 2, priceOverrideReason: 'list rose' }],
+    ['bottle stated explicitly', { ...base, invoiceUnitPrice: 24, invoicePriceUom: 'bottle', invoicePricePackSize: 1 }],
   ]
 
   it.each(cases)('agrees with the backend: %s', (_label, input) => {
