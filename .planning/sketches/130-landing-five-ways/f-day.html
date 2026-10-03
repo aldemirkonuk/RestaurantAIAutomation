@@ -1,0 +1,1752 @@
+<!--
+  CONCEPT F — "A Day in the Life."
+  Idea: the site opens as the house's book. Its cover turns, the first leaf is the /login flyleaf, the pages
+        turn, and the camera dives into the last page, where one day of a demo house draws itself in ink.
+        Morning menu photo, lunch on the POS, the afternoon delivery, the wine camera at dusk, night.
+        Beside the drawing, the house's public website updates itself after every beat. Teal is Mudavym.
+  Motion techniques: CSS-3D book (cloth cover with blind-stamped A+M, 10-segment curling leaves with
+        per-segment lighting, cast shadows, page-block thickness) · scripted sign-in on the flyleaf ·
+        camera dive through the page into the world · self-drawing line art (stroke-dashoffset) on a
+        dollhouse cut-away · scroll-scrubbed camera (viewBox) between rooms · walking figures, a truck
+        that drives in, a roll-up door · time-of-day palette morph from paper to Warm Charcoal ·
+        projected world→screen teal "connection" lines with travelling pulses and labelled chips flying
+        into a live website mock · phone viewfinder with live detection boxes, shutter flash,
+        decode-and-settle fields · lights going out one by one · the book closing.
+  Vanilla JS, no libraries. Reduced motion: the book lies open at the sign-in spread with a button to
+  enter; each chapter is a still drawing with its caption; the website is shown in its final state.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mudavym — A Day</title>
+<meta name="description" content="A day in the life of a house: photograph your menu and invoices, connect your POS, and your house and its website keep themselves up to date.">
+<meta name="color-scheme" content="light">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT,WONK@0,9..144,100..900,0..100,0..1;1,9..144,100..900,0..100,0..1&family=DM+Sans:ital,opsz,wght@0,9..40,300..700;1,9..40,300..700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --seal:#1A5E6B; --seal-l:#5FB0BC; --seal-50:#F1F7F8; --seal-100:#E0EFF1; --seal-200:#BEDDE2; --seal-300:#8FC4CD; --seal-500:#3D8794; --seal-700:#14515C; --seal-950:#08262C;
+  --p0:#FAF7F1; --p1:#F3EFE6; --p2:#EAE4D8;
+  --i1:#211C16; --i2:#4F473C; --i3:#665D50; --i4:#857B6C;
+  --c0:#15130F; --c1:#1D1813; --c2:#262019; --d1:#EFE7D9; --d2:#C0B6A5; --d3:#ABA294;
+  --amber:#E0A458; --wine:#6B1F2A; --ok:#3B7A4B; --flag:#A4621A; --rust:#9A3B2E;
+  /* world palette — morphed by script from day paper to night charcoal */
+  --w0:#FAF7F1; --w1:#F3EFE6; --w2:#EAE4D8; --wi:#211C16; --wi2:#7C7365; --wt:#1A5E6B; --wwin:#F4E3BF; --sbg:#F3EFE6;
+  --serif:'Fraunces', Georgia, 'Times New Roman', serif;
+  --sans:'DM Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mono:'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --navh:64px;
+  color-scheme: light;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+html{background:var(--p1)}
+body{background:var(--p1);color:var(--i1);font-family:var(--sans);overflow-x:hidden;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+a{color:inherit}
+button{font:inherit;color:inherit}
+.sr{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.skip:focus{position:fixed!important;left:16px;top:70px;width:auto;height:auto;clip:auto;z-index:200;background:var(--p0);padding:10px 14px;border-radius:8px}
+:focus-visible{outline:2px solid var(--seal);outline-offset:3px;border-radius:6px}
+
+/* ---------- nav ---------- */
+.nav{position:fixed;left:0;right:0;top:0;height:var(--navh);z-index:90;display:flex;align-items:center;justify-content:space-between;padding:0 clamp(16px,2.4vw,32px);transition:color .5s ease}
+.nav::before{content:"";position:absolute;inset:0;background:linear-gradient(var(--sbg) 35%,transparent);opacity:.92;pointer-events:none;transition:background .5s}
+.nav > *{position:relative}
+.nav-l,.nav-r{display:flex;align-items:center;gap:20px}
+.back{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--i3);text-decoration:none}
+.back:hover{color:var(--i1)}
+.wm{font-family:var(--serif);font-weight:600;font-size:21px;letter-spacing:-.01em;text-decoration:none;color:var(--i1);font-variation-settings:"opsz" 36,"SOFT" 30}
+.wm i{font-style:normal;color:var(--seal)}
+.signin{font-size:14px;color:var(--i2);text-decoration:none}
+.signin:hover{color:var(--i1);text-decoration:underline;text-underline-offset:4px}
+.btn-seal{display:inline-flex;align-items:center;gap:8px;background:var(--seal);color:var(--p0);font-weight:600;font-size:14px;text-decoration:none;padding:10px 18px;border-radius:999px;white-space:nowrap;transition:background .2s,transform .2s}
+.btn-seal:hover{background:var(--seal-700)}
+.btn-seal:active{transform:scale(.97)}
+.dark .nav{color:var(--d1)}
+.dark .back{color:var(--d3)} .dark .wm{color:var(--d1)} .dark .wm i{color:var(--seal-l)} .dark .signin{color:var(--d2)}
+.dark .btn-seal{background:var(--seal-l);color:var(--seal-950)}
+
+/* ---------- stage ---------- */
+.track{position:relative}
+.stage{position:sticky;top:0;height:100vh;overflow:hidden;background:var(--sbg);perspective:1800px}
+
+/* hero copy */
+.hero{position:absolute;left:clamp(24px,6.5vw,104px);top:50%;transform:translateY(-50%);width:min(470px,36vw);z-index:6}
+.hero .k{font-family:var(--mono);font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--i3);margin:0}
+.hero h1{font-family:var(--serif);font-weight:300;font-size:clamp(44px,4.7vw,70px);line-height:1.02;letter-spacing:-.028em;margin:16px 0 20px;font-variation-settings:"opsz" 144,"SOFT" 30}
+.hero h1 i{font-style:normal;color:var(--seal)}
+.hero p.l{font-size:17px;line-height:1.55;color:var(--i2);margin:0;max-width:36ch}
+.hero .cue{margin:34px 0 0;font-family:var(--mono);font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--i3);display:flex;align-items:center;gap:12px}
+.hero .cue i{display:block;width:34px;height:1px;background:var(--i3);transform-origin:left;animation:cue 2.2s ease-in-out infinite}
+@keyframes cue{0%{transform:scaleX(0)}50%{transform:scaleX(1)}100%{transform:scaleX(1);opacity:0}}
+
+/* ---------- the book ---------- */
+.bookL{position:absolute;inset:0;z-index:3;pointer-events:none}
+.bookcam{position:absolute;left:50%;top:50%;width:800px;height:540px;margin:-270px 0 0 -400px;transform-origin:50% 50%;will-change:transform}
+.book{position:absolute;inset:0;perspective:2600px;perspective-origin:50% 42%}
+.bshadow{position:absolute;top:26px;height:540px;border-radius:24px;background:rgba(33,28,22,.3);filter:blur(30px);z-index:0}
+.baseR,.baseL{position:absolute;top:0;width:400px;height:540px;z-index:1}
+.baseR{left:400px;box-shadow:1px 1px 0 #E6DECD,2px 2px 0 #F7F2E8,3px 3px 0 #E2D9C6,4px 4px 0 #F5EFE4,5px 5px 0 #DDD3BF,6px 6px 0 #F3EDE1,8px 8px 0 #14515C,9px 9px 0 #0f424b}
+.baseL{left:0;box-shadow:-1px 1px 0 #E6DECD,-2px 2px 0 #F7F2E8,-3px 3px 0 #E2D9C6,-5px 5px 0 #14515C,-6px 6px 0 #0f424b;opacity:0;background:var(--p1)}
+.leaf{position:absolute;left:400px;top:0;width:400px;height:540px;transform-style:preserve-3d}
+.seg{position:absolute;top:0;height:540px;transform-origin:0 50%;transform-style:preserve-3d}
+.face{position:absolute;top:0;left:0;height:100%;overflow:hidden;backface-visibility:hidden;-webkit-backface-visibility:hidden}
+.face.b{transform:rotateY(180deg)}
+.cnt{position:absolute;top:0;width:400px;height:540px}
+.lit{position:absolute;inset:0;background:#0d0b08;opacity:0;pointer-events:none}
+.pg{position:absolute;inset:0;background:var(--p0);overflow:hidden;color:var(--i1)}
+.pgR::before{content:"";position:absolute;left:0;top:0;bottom:0;width:46px;background:linear-gradient(90deg,rgba(60,48,32,.16),rgba(60,48,32,0));z-index:3;pointer-events:none}
+.pgL::after{content:"";position:absolute;right:0;top:0;bottom:0;width:46px;background:linear-gradient(270deg,rgba(60,48,32,.16),rgba(60,48,32,0));z-index:3;pointer-events:none}
+.lcR{position:absolute;left:0;top:0;width:400px;height:540px;transform:translateZ(.6px);background:linear-gradient(90deg,rgba(20,16,10,.5),rgba(20,16,10,.12) 45%,rgba(20,16,10,0) 80%);opacity:var(--shR,0);pointer-events:none}
+.lcL{position:absolute;left:-400px;top:0;width:400px;height:540px;transform:translateZ(.6px);background:linear-gradient(270deg,rgba(20,16,10,.5),rgba(20,16,10,.12) 45%,rgba(20,16,10,0) 80%);opacity:var(--shL,0);pointer-events:none}
+.castR{position:absolute;inset:0;background:linear-gradient(90deg,rgba(20,16,10,.5),rgba(20,16,10,.12) 45%,rgba(20,16,10,0) 80%);opacity:var(--shR,0);z-index:4;pointer-events:none}
+.castL{position:absolute;inset:0;background:linear-gradient(270deg,rgba(20,16,10,.5),rgba(20,16,10,.12) 45%,rgba(20,16,10,0) 80%);opacity:var(--shL,0);z-index:4;pointer-events:none}
+
+/* cover: cloth + blind stamp */
+.cv{border-radius:2px 8px 8px 2px;background-color:#14515C;
+  background-image:
+    linear-gradient(90deg,rgba(0,0,0,.34),rgba(0,0,0,0) 5%,rgba(255,255,255,.07) 6.6%,rgba(0,0,0,.12) 7.6%,rgba(0,0,0,0) 9%),
+    radial-gradient(130% 90% at 28% 18%,rgba(255,255,255,.09),rgba(255,255,255,0) 60%),
+    radial-gradient(90% 80% at 80% 100%,rgba(0,0,0,.22),rgba(0,0,0,0) 70%),
+    repeating-linear-gradient(0deg,rgba(255,255,255,.035) 0 1px,rgba(255,255,255,0) 1px 3px),
+    repeating-linear-gradient(90deg,rgba(0,0,0,.07) 0 1px,rgba(0,0,0,0) 1px 3px);
+  box-shadow:inset -2px 0 0 rgba(255,255,255,.06),inset 0 -2px 0 rgba(0,0,0,.2)}
+.cv .fr{position:absolute;inset:24px 24px 24px 40px;border-radius:5px;box-shadow:inset 1.5px 1.5px 0 rgba(0,0,0,.3),inset -1px -1px 0 rgba(255,255,255,.09),1px 1px 0 rgba(255,255,255,.08),-1px -1px 0 rgba(0,0,0,.25)}
+.cv .stamp{position:absolute;left:50%;top:38%;width:128px;height:128px;margin:-64px 0 0 -56px}
+.cv .ctt{position:absolute;left:16px;right:0;bottom:84px;margin:0;text-align:center;font-family:var(--serif);font-weight:600;font-size:30px;letter-spacing:-.005em;color:#12474F;text-shadow:1px 1px 0 rgba(255,255,255,.13),-1px -1px 0 rgba(0,0,0,.42);font-variation-settings:"opsz" 48,"SOFT" 30}
+.cv .cst{position:absolute;left:16px;right:0;bottom:60px;margin:0;text-align:center;font-family:var(--mono);font-size:9.5px;letter-spacing:.34em;text-transform:uppercase;color:#12474F;text-shadow:1px 1px 0 rgba(255,255,255,.12),-1px -1px 0 rgba(0,0,0,.4)}
+.cvb{background:#1a5560;background-image:repeating-linear-gradient(0deg,rgba(255,255,255,.03) 0 1px,transparent 1px 3px)}
+
+/* endpaper */
+.endp{background:var(--p1);display:flex;flex-direction:column;justify-content:space-between;padding:42px 38px 44px}
+.endp svg.tile{position:absolute;inset:0;width:100%;height:100%}
+.endp .ept,.endp .epb{position:relative;z-index:1;display:flex;flex-direction:column;gap:4px}
+.endp .kicker{font:500 10px var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--i3)}
+.endp .mk{font:600 28px var(--serif);letter-spacing:-.01em;color:var(--i1)}
+.endp .mk i{font-style:normal;color:var(--seal)}
+.endp .house{font:italic 400 22px/1.3 var(--serif);color:var(--i2)}
+.endp .tag{font-size:13px;line-height:20px;color:var(--i3);max-width:250px;margin-top:6px}
+
+/* login leaf — sketch 118 direction B */
+.lg{padding:46px 44px 34px 52px;background-color:var(--p0);background-image:repeating-linear-gradient(to bottom,transparent 0 26px,#ECE6DA 26px 27px);background-position:0 18px}
+.lg::after{content:"";position:absolute;top:0;bottom:0;left:38px;border-left:1px solid #C9A9A0;opacity:.55}
+.folio{position:absolute;top:18px;right:24px;font:500 9.5px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--i3)}
+.lg h2{font:600 27px/1.15 var(--serif);letter-spacing:-.01em;margin:0 0 6px}
+.lg h2 i{font-style:normal;color:var(--seal)}
+.lg .lede2{font:italic 400 14.5px/24px var(--serif);color:var(--i2);margin:0 0 22px}
+.lg .lb{display:block;font:500 10.5px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--i3);margin:0 0 6px}
+.lg .fld{height:30px;border-bottom:1px solid var(--i3);font:500 15px/28px var(--sans);color:var(--i1);margin:0 0 18px;white-space:nowrap;overflow:hidden;display:flex;align-items:center}
+.lg .fld.on{border-bottom-color:var(--seal);box-shadow:0 1px 0 var(--seal)}
+.lg .car{display:inline-block;width:1.5px;height:17px;background:var(--seal);margin-left:1px;opacity:0}
+.lg .fld.on .car{opacity:1}
+.lg .rb{display:flex;justify-content:flex-end;margin:-8px 0 16px}
+.word{font:500 13px var(--sans);color:var(--seal);text-decoration:underline;text-underline-offset:4px}
+.lg .bt{display:flex;align-items:center;justify-content:center;gap:9px;height:46px;border-radius:2px;background:var(--seal);color:var(--p0);font:600 14px var(--sans);transition:background .15s,transform .12s}
+.lg .bt.hv{background:var(--seal-700)}
+.lg .bt.pr{transform:scale(.97);background:var(--seal-700)}
+.lg .bt .spin{width:15px;height:15px;border:2px solid var(--p0);border-top-color:transparent;border-radius:50%;display:none}
+.lg .bt.ld .spin{display:block}
+.lg .dv{display:flex;align-items:center;gap:12px;margin:16px 0;color:var(--i3);font:500 10.5px var(--mono);letter-spacing:.1em;text-transform:uppercase}
+.lg .dv span{flex:1;height:1px;background:var(--p2)}
+.lg .gb{display:flex;align-items:center;justify-content:center;gap:10px;height:44px;border:1px solid var(--i3);border-radius:2px;font:500 14px var(--sans);background:var(--p0)}
+.lg .gb svg{width:17px;height:17px}
+.lg .ft{margin:18px 0 0;padding-top:14px;border-top:1px solid var(--p2);font-size:13px;color:var(--i3);text-align:center}
+
+/* contents / plates */
+.ct{padding:50px 40px 40px 42px}
+.ct h3{font:400 26px/1.15 var(--serif);margin:0 0 4px;letter-spacing:-.01em;font-variation-settings:"opsz" 72,"SOFT" 40}
+.ct .sub{font:italic 400 14px var(--serif);color:var(--i3);margin:0 0 26px}
+.ct ol{list-style:none;margin:0;padding:0}
+.ct li{display:flex;align-items:baseline;gap:8px;padding:9px 0;border-top:1px solid var(--p2);font:400 15.5px var(--serif)}
+.ct li b{font:500 10px var(--mono);letter-spacing:.1em;color:var(--i3);width:52px;flex:none}
+.ct li em{flex:1;border-bottom:1px dotted #CFC6B6;transform:translateY(-4px)}
+.ct li span:last-child{font:500 10px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--i3)}
+.ct .note{position:absolute;left:42px;right:40px;bottom:32px;font:500 9.5px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--i4)}
+.ht{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:40px}
+.ht svg{width:46px;height:46px;margin-bottom:26px}
+.ht h3{font:300 40px/1.05 var(--serif);letter-spacing:-.02em;margin:0;font-variation-settings:"opsz" 144,"SOFT" 40}
+.ht p{font:italic 400 16px var(--serif);color:var(--i2);margin:12px 0 0}
+.ht .orn{width:120px;height:1px;background:var(--i3);opacity:.5;margin:26px 0}
+.ht small{font:500 9.5px var(--mono);letter-spacing:.2em;text-transform:uppercase;color:var(--i3)}
+.ep{display:flex;align-items:center;justify-content:center;padding:60px 54px;text-align:left}
+.ep blockquote{margin:0;font:italic 300 24px/1.35 var(--serif);color:var(--i2);font-variation-settings:"opsz" 72,"SOFT" 80}
+.ep blockquote span{display:block;margin-top:18px;font:500 9.5px var(--mono);font-style:normal;letter-spacing:.18em;text-transform:uppercase;color:var(--i3)}
+.plate{background:var(--w0)}
+.plate svg.sk{position:absolute;inset:0;width:100%;height:100%}
+.plate .pt{position:absolute;left:0;right:0;top:44px;text-align:center;z-index:2}
+.plate .pt b{display:block;font:500 9.5px var(--mono);letter-spacing:.24em;text-transform:uppercase;color:var(--wi2)}
+.plate .pt span{display:block;margin-top:8px;font:300 30px var(--serif);color:var(--wi);letter-spacing:-.015em;font-variation-settings:"opsz" 96,"SOFT" 40}
+.plate .pb{position:absolute;left:0;right:0;bottom:30px;text-align:center;font:italic 400 13.5px var(--serif);color:var(--wi2);z-index:2}
+
+/* ---------- the world ---------- */
+.worldL{position:absolute;inset:0;z-index:2;opacity:0;visibility:hidden}
+.area{position:absolute;background:var(--w0);border-radius:10px;overflow:hidden;box-shadow:0 0 0 1px rgba(33,28,22,.07),0 34px 70px -46px rgba(33,28,22,.5)}
+#world{position:absolute;inset:0;width:100%;height:100%;display:block}
+
+.ws .k{fill:none;stroke:var(--wi);stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round}
+.ws .kk{fill:none;stroke:var(--wi);stroke-width:5;stroke-linecap:round}
+.ws .k2{fill:none;stroke:var(--wi2);stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.d{stroke-dasharray:1.1 2;stroke-dashoffset:var(--d,0)}
+.fl{opacity:var(--f,1)}
+.ws .fig path,.ws .fig circle,.ws .fig rect{stroke:var(--wi);stroke-width:2.3;stroke-linejoin:round;stroke-linecap:round}
+.ws .fig .ln{fill:none}
+.ws text{font-family:var(--mono)}
+.wl{font-size:14px;letter-spacing:3px;fill:var(--wi2);text-anchor:middle}
+.wls{font-size:11px;letter-spacing:2px;fill:var(--wi2);text-anchor:middle}
+.flow-g{fill:none;stroke:var(--wt);stroke-width:12;stroke-linecap:round;stroke-linejoin:round;opacity:.16}
+.flow-c{fill:none;stroke:var(--wt);stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round}
+.flow-d{fill:none;stroke:var(--w0);stroke-width:2.8;stroke-linecap:round;stroke-dasharray:3 22}
+
+.tcard{position:absolute;left:30px;top:24px;right:30px;z-index:4;pointer-events:none;opacity:0}
+.tcard::before{content:"";position:absolute;left:-60px;top:-60px;width:min(760px,90%);height:calc(100% + 110px);background:radial-gradient(closest-side,var(--w0) 55%,color-mix(in srgb,var(--w0) 0%,transparent));transform:scaleX(1.4);transform-origin:left;z-index:-1}
+.tcard .tk{margin:0;font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--wi2)}
+.tcard .tt{margin:8px 0 0;font-family:var(--serif);font-weight:300;font-size:clamp(30px,3vw,46px);line-height:1.04;letter-spacing:-.022em;color:var(--wi);font-variation-settings:"opsz" 144,"SOFT" 30;max-width:16ch}
+.tcard .tt i{font-style:normal;color:var(--wt)}
+.legend{position:absolute;left:22px;bottom:18px;z-index:4;display:flex;align-items:center;gap:9px;padding:7px 12px 7px 10px;border-radius:999px;background:color-mix(in srgb,var(--w0) 86%,transparent);box-shadow:0 0 0 1px color-mix(in srgb,var(--wi) 10%,transparent);font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;color:var(--wi2);opacity:0}
+.legend b{width:9px;height:9px;border-radius:50%;background:var(--wt);box-shadow:0 0 0 4px color-mix(in srgb,var(--wt) 22%,transparent)}
+.scrim{position:absolute;inset:0;z-index:3;background:color-mix(in srgb,var(--w0) 74%,transparent);opacity:0;pointer-events:none}
+.aflash{position:absolute;inset:0;z-index:8;background:#FFFDF8;opacity:0;pointer-events:none}
+
+/* subtitles */
+.subs{position:absolute;z-index:9;margin:0;text-align:center;font-family:var(--sans);font-size:19px;line-height:1.45;color:var(--wi);pointer-events:none;text-wrap:balance}
+.subs span{display:inline-block;padding:4px 14px;border-radius:10px;background:color-mix(in srgb,var(--w0) 82%,transparent);transition:opacity .3s ease,transform .3s ease}
+.subs span:empty{display:none}
+.subs span.out{opacity:0;transform:translateY(6px)}
+
+/* the phone */
+.phone{position:absolute;z-index:5;left:0;top:0;width:250px;height:510px;transform-origin:0 0;border-radius:40px;background:#0E0C0A;padding:8px;box-shadow:inset 0 0 0 1.5px #3a332b,0 46px 80px -34px rgba(20,14,8,.6),0 0 0 1px rgba(0,0,0,.35);opacity:0;visibility:hidden}
+.phone .scr{position:relative;width:100%;height:100%;border-radius:33px;overflow:hidden;background:radial-gradient(120% 80% at 50% 40%,#3a3027,#17130f)}
+.phone .notch{position:absolute;top:9px;left:50%;width:76px;height:21px;margin-left:-38px;border-radius:12px;background:#0E0C0A;z-index:12}
+.phone .pbar{position:absolute;top:38px;left:0;right:0;z-index:11;display:flex;justify-content:center;align-items:center;gap:7px;font-family:var(--mono);font-size:8.5px;letter-spacing:.18em;text-transform:uppercase;color:#C0B6A5}
+.phone .pbar b{width:6px;height:6px;border-radius:50%;background:var(--seal-l);box-shadow:0 0 6px var(--seal-l)}
+.phone .vf{position:absolute;left:12px;right:12px;top:58px;bottom:100px;z-index:6}
+.phone .vf i{position:absolute;width:20px;height:20px;border:2px solid rgba(239,231,217,.85)}
+.phone .vf i:nth-child(1){left:0;top:0;border-right:0;border-bottom:0;border-radius:6px 0 0 0}
+.phone .vf i:nth-child(2){right:0;top:0;border-left:0;border-bottom:0;border-radius:0 6px 0 0}
+.phone .vf i:nth-child(3){left:0;bottom:0;border-right:0;border-top:0;border-radius:0 0 0 6px}
+.phone .vf i:nth-child(4){right:0;bottom:0;border-left:0;border-top:0;border-radius:0 0 6px 0}
+.phone .scan{position:absolute;left:14px;right:14px;height:2px;top:60px;z-index:7;background:var(--seal-l);box-shadow:0 0 14px 3px rgba(95,176,188,.55);opacity:0}
+.phone .shut{position:absolute;z-index:11;bottom:24px;left:50%;width:58px;height:58px;margin-left:-29px;border-radius:50%;border:3px solid #EFE7D9}
+.phone .shut::after{content:"";position:absolute;inset:4px;border-radius:50%;background:#EFE7D9;transition:transform .1s}
+.phone .shut.pr::after{transform:scale(.8);background:#fff}
+.phone .phint{position:absolute;z-index:11;bottom:34px;left:18px;font-family:var(--mono);font-size:8.5px;letter-spacing:.14em;text-transform:uppercase;color:#ABA294;width:60px;line-height:1.3}
+.phone .pread{position:absolute;z-index:11;bottom:34px;right:16px;font-family:var(--mono);font-size:8.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--seal-l);width:66px;text-align:right;line-height:1.3;opacity:0}
+.phone .pfl{position:absolute;inset:0;z-index:13;background:#fff;opacity:0;pointer-events:none}
+.phone .sc{position:absolute;left:0;right:0;top:56px;bottom:96px;opacity:0}
+.pm{position:absolute;left:9%;right:9%;top:4%;bottom:4%;background:#F7F1E3;border-radius:3px;padding:16px 14px 12px;transform:rotate(-1.6deg);box-shadow:0 20px 34px -14px rgba(0,0,0,.7);color:#211C16}
+.pm .h{font:500 7px var(--mono);letter-spacing:.32em;text-align:center;color:#4F473C;margin:0}
+.pm .t{font:italic 400 24px var(--serif);text-align:center;margin:2px 0 8px;font-variation-settings:"opsz" 48,"SOFT" 60}
+.pm .t::after{content:"";display:block;width:34px;height:1px;background:#4F473C;margin:6px auto 0;opacity:.6}
+.pm .ln{position:relative;padding:5px 3px;font:400 11.5px/1.25 var(--serif)}
+.pm .ln small{display:block;font:400 8.5px var(--sans);color:#665D50;margin-top:1px}
+.det{position:absolute;inset:0 -4px;border:1.5px dashed #2E8C99;border-radius:4px;background:rgba(95,176,188,.1);opacity:0}
+.det.lk{border-style:solid;border-color:#1A5E6B;background:rgba(95,176,188,.16)}
+.det.go{background:rgba(26,94,107,.22)}
+.inv .h{text-align:left;font-size:7.5px;letter-spacing:.2em}
+.inv .t{text-align:left;font-style:normal;font-size:16px;margin:2px 0 10px}
+.inv .t::after{display:none}
+.inv .ln{display:flex;justify-content:space-between;gap:6px;font:400 10px/1.2 var(--mono);padding:6px 3px;border-top:1px dashed #D5CBB8}
+.inv .tot{display:flex;justify-content:space-between;font:500 9px var(--mono);letter-spacing:.08em;margin-top:8px;color:#4F473C}
+.bottle{position:absolute;inset:0;width:100%;height:100%}
+
+/* doc cards (invoice, dossier) */
+.doc{position:absolute;z-index:6;left:0;top:0;width:420px;background:var(--p0);color:var(--i1);border-radius:14px;padding:20px 22px 18px;box-shadow:0 34px 70px -34px rgba(33,28,22,.5),0 0 0 1px rgba(33,28,22,.07);opacity:0;visibility:hidden}
+.doc .ey{margin:0 0 6px;font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--i3);display:flex;justify-content:space-between;gap:10px}
+.doc .ey .tg{padding:2px 8px;border-radius:999px;background:var(--p2);color:var(--i2);letter-spacing:.12em}
+.doc h3{margin:0 0 4px;font-family:var(--serif);font-weight:400;font-size:23px;line-height:1.15;letter-spacing:-.01em;font-variation-settings:"opsz" 72,"SOFT" 40}
+.doc .ag{margin:0 0 12px;font-family:var(--mono);font-size:11px;letter-spacing:.04em;color:var(--seal);display:flex;align-items:center;gap:7px}
+.doc .ag b{width:7px;height:7px;border-radius:50%;background:var(--seal)}
+.ir{list-style:none;margin:0;padding:0}
+.ir li{display:grid;grid-template-columns:22px 1fr auto;gap:10px;align-items:center;padding:8px 0;border-top:1px solid var(--p2);font-size:14.5px;color:var(--i2)}
+.ir li .q{font-family:var(--mono);font-size:11.5px;color:var(--i3);white-space:nowrap}
+.tick{width:20px;height:20px}
+.tick circle{fill:none;stroke:#D8D0C1;stroke-width:1.5;transition:fill .3s,stroke .3s}
+.tick path{fill:none;stroke:#fff;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:1.1 2;stroke-dashoffset:var(--k,1.1)}
+.ir li.ok .tick circle{fill:var(--ok);stroke:var(--ok)}
+.ir li.ok{color:var(--i1)}
+.ir li.fl .tick circle{fill:var(--flag);stroke:var(--flag)}
+.ir li.fl{color:var(--i1);background:linear-gradient(90deg,rgba(164,98,26,.09),rgba(164,98,26,0))}
+.ir li.fl .q{color:var(--flag);font-weight:500}
+.inote{margin:10px 0 0;font-family:var(--mono);font-size:11px;line-height:1.5;letter-spacing:.02em;color:var(--flag);opacity:0}
+.cfr{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:14px;padding-top:12px;border-top:1px solid var(--p2)}
+.cfr .who{font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--i3)}
+.cfr .who.ok{color:var(--seal)}
+.cbtn{position:relative;display:inline-flex;align-items:center;gap:8px;padding:10px 18px;border-radius:999px;background:var(--seal);color:var(--p0);font-weight:600;font-size:14px;transition:background .2s,transform .12s,box-shadow .2s}
+.cbtn.hv{background:var(--seal-700);box-shadow:0 0 0 6px rgba(26,94,107,.14)}
+.cbtn.pr{transform:scale(.94)}
+.cbtn.dn{background:var(--seal-700);box-shadow:none}
+.finger{position:absolute;right:-6px;bottom:-30px;width:34px;height:34px;border-radius:50%;background:rgba(33,28,22,.18);box-shadow:0 0 0 2px rgba(255,255,255,.7);opacity:0;pointer-events:none}
+.fx{margin:6px 0 0;display:grid;grid-template-columns:1fr 1fr;gap:0 18px}
+.fx > div{padding:7px 0;border-top:1px solid var(--p2);min-width:0}
+.fx > div.w{grid-column:1 / -1}
+.fx dt{font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--i3)}
+.fx dd{margin:2px 0 0;font-family:var(--serif);font-size:15.5px;line-height:1.25;color:var(--i1);min-height:1.25em;font-variation-settings:"opsz" 24,"SOFT" 40}
+.fx dd.scr{font-family:var(--mono);font-size:13px;color:var(--seal)}
+.fx dd.pair{color:var(--seal)}
+
+/* ---------- the house website ---------- */
+.site{position:absolute;z-index:4;background:var(--p0);border-radius:14px;overflow:hidden;box-shadow:0 34px 80px -44px rgba(33,28,22,.55),0 0 0 1px rgba(33,28,22,.09);display:flex;flex-direction:column;color:var(--i1)}
+.chrome{flex:none;height:38px;display:flex;align-items:center;gap:6px;padding:0 12px;background:var(--p1);border-bottom:1px solid var(--p2)}
+.chrome > i{width:9px;height:9px;border-radius:50%;background:#DCD3C3;flex:none}
+.url{flex:1;margin:0 8px;height:24px;border-radius:7px;background:var(--p0);display:flex;align-items:center;justify-content:center;gap:6px;font-family:var(--mono);font-size:11px;color:var(--i3);min-width:0;white-space:nowrap;overflow:hidden}
+.url svg{width:10px;height:10px;flex:none}
+.live{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--seal);flex:none}
+.live b{width:7px;height:7px;border-radius:50%;background:var(--seal);animation:pulse 1.8s ease-in-out infinite}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(26,94,107,.4)}50%{box-shadow:0 0 0 5px rgba(26,94,107,0)}}
+.sbody{flex:1;min-height:0;overflow:hidden;padding:16px 20px 12px;display:flex;flex-direction:column}
+.shead{text-align:center;padding-bottom:12px;border-bottom:1px solid var(--p2)}
+.sname{margin:0;font-family:var(--serif);font-weight:500;font-size:28px;letter-spacing:-.01em;font-variation-settings:"opsz" 72,"SOFT" 30}
+.sstat{margin:4px 0 8px;font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--i3);transition:color .4s}
+.sstat.hot{color:var(--seal)}
+.snav{display:flex;justify-content:center;gap:16px;font-size:12px;color:var(--i2)}
+.snav span:first-child{color:var(--i1);text-decoration:underline;text-underline-offset:4px}
+.fd{margin:12px 0 2px}
+.sb h4,.fd h4{margin:0 0 5px;font-family:var(--mono);font-weight:500;font-size:9.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--i3);display:flex;justify-content:space-between}
+#feed{list-style:none;margin:0;padding:0;min-height:84px}
+#feed li{display:flex;justify-content:space-between;gap:10px;align-items:baseline;padding:5px 8px;border-radius:7px;font-size:13px;line-height:1.35;color:var(--i3)}
+#feed li .fm{font-family:var(--mono);font-size:9.5px;color:var(--i4);white-space:nowrap}
+#feed li.new{background:var(--seal-50);color:var(--i1);box-shadow:inset 2px 0 0 var(--seal);animation:slin .45s cubic-bezier(.2,.8,.2,1)}
+#feed li.new .fm{color:var(--seal)}
+#feed li.empty{color:var(--i4);font-style:italic;font-family:var(--serif)}
+@keyframes slin{from{transform:translateY(-8px);opacity:0}to{transform:none;opacity:1}}
+.sb{margin-top:10px}
+.sb ul{list-style:none;margin:0;padding:0}
+.row{position:relative;display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;padding:5px 8px;border-radius:7px;min-height:40px;transition:background .5s,box-shadow .5s}
+.row .nm b{display:block;font-family:var(--serif);font-weight:400;font-size:15px;line-height:1.2;font-variation-settings:"opsz" 24,"SOFT" 40}
+.row .nm small{display:block;font-size:11px;color:var(--i3);margin-top:1px}
+.row .rc{display:flex;flex-direction:column;align-items:flex-end;gap:1px}
+.row .st{font-family:var(--mono);font-size:10.5px;color:var(--i2);white-space:nowrap}
+.row .just{font-family:var(--mono);font-style:normal;font-size:8.5px;letter-spacing:.06em;color:var(--seal);opacity:0;white-space:nowrap}
+.row .skb{position:absolute;left:8px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:6px;opacity:0;transition:opacity .3s}
+.row .skb i{display:block;height:9px;width:150px;border-radius:5px;background:var(--p2)}
+.row .skb i+i{width:92px;height:7px}
+.row .nm,.row .rc{transition:opacity .35s}
+.row.sk .nm,.row.sk .rc{opacity:0}
+.row.sk .skb{opacity:1}
+.row.in{animation:rowin .5s cubic-bezier(.2,.8,.2,1)}
+@keyframes rowin{from{transform:translateX(10px)}to{transform:none}}
+.row.so .nm b{text-decoration:line-through;color:var(--i3)}
+.row.so .st{color:var(--rust)}
+.row.hot{background:var(--seal-50);box-shadow:inset 2px 0 0 var(--seal)}
+.row.hot .st{color:var(--seal)}
+.row.hot .just{opacity:1}
+.row.late{max-height:0;min-height:0;padding-top:0;padding-bottom:0;overflow:hidden;opacity:0;transition:max-height .5s,opacity .5s,padding .5s,background .5s}
+.row.late.shown{max-height:60px;min-height:40px;padding-top:5px;padding-bottom:5px;opacity:1}
+.sfoot{margin:auto 0 0;padding-top:8px;font-family:var(--mono);font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--i4);text-align:center}
+
+/* phone dock */
+.dock{position:absolute;z-index:7;left:12px;right:12px;bottom:12px;height:62px;display:none;align-items:center;gap:12px;padding:0 14px;border-radius:16px;background:var(--p0);border:0;box-shadow:0 0 0 1px rgba(33,28,22,.1),0 18px 40px -22px rgba(33,28,22,.5);text-align:left;cursor:pointer;transition:box-shadow .3s}
+.dock.ping{box-shadow:0 0 0 2px var(--seal),0 18px 40px -22px rgba(33,28,22,.5)}
+.dock .ic{width:34px;height:34px;border-radius:9px;background:var(--p1);display:grid;place-items:center;flex:none}
+.dock .tx{flex:1;min-width:0}
+.dock .t1{display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--i3)}
+.dock .t1 b{width:6px;height:6px;border-radius:50%;background:var(--seal)}
+.dock .t2{margin-top:3px;font-size:14px;font-weight:500;color:var(--i1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dock .t2.new{color:var(--seal)}
+.dock .chev{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--seal);flex:none}
+
+/* overlay links + chips */
+#links{position:absolute;inset:0;width:100%;height:100%;z-index:5;pointer-events:none;overflow:visible}
+#links .g{fill:none;stroke:var(--wt);stroke-width:10;stroke-linecap:round;opacity:.14}
+#links .c{fill:none;stroke:var(--wt);stroke-width:2;stroke-linecap:round}
+#links .f{fill:none;stroke:var(--w0);stroke-width:2.4;stroke-linecap:round;stroke-dasharray:2 16}
+.chips{position:absolute;inset:0;z-index:8;pointer-events:none}
+.chip{position:absolute;left:0;top:0;margin-left:0;translate:-50% 0;display:flex;align-items:center;gap:7px;white-space:nowrap;padding:5px 11px 5px 8px;border-radius:999px;background:var(--p0);box-shadow:0 0 0 1.5px var(--seal),0 10px 24px -10px rgba(8,38,44,.5);font-family:var(--mono);font-size:11px;letter-spacing:.02em;color:var(--seal-700);opacity:0;will-change:transform}
+.chip b{width:7px;height:7px;border-radius:50%;background:var(--seal)}
+
+/* ---------- CTA ---------- */
+.cta{position:relative;min-height:100vh;background:var(--c0);color:var(--d1);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:110px 16px 72px}
+.cta .mk{width:56px;height:56px;margin-bottom:30px}
+.cta h2{margin:0;font-family:var(--serif);font-weight:300;font-size:clamp(42px,6vw,88px);line-height:1;letter-spacing:-.03em;font-variation-settings:"opsz" 144,"SOFT" 30}
+.cta h2 i{font-style:normal;color:var(--seal-l)}
+.steps{list-style:none;margin:38px auto 40px;padding:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;max-width:880px;width:100%;text-align:left}
+.steps li{border-top:1px solid rgba(239,231,217,.16);padding-top:14px}
+.steps b{display:block;font-family:var(--mono);font-weight:500;font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--seal-l);margin-bottom:8px}
+.steps span{font-family:var(--serif);font-size:19px;line-height:1.3;color:var(--d1);font-variation-settings:"opsz" 36,"SOFT" 40}
+.cta .after{margin:0 0 36px;font-family:var(--serif);font-style:italic;font-weight:300;font-size:clamp(18px,1.8vw,23px);color:var(--d2);max-width:42ch;line-height:1.45;font-variation-settings:"opsz" 24,"SOFT" 80}
+.cta .acts{display:flex;align-items:center;gap:26px;flex-wrap:wrap;justify-content:center}
+.cta .btn-seal{font-size:16px;padding:15px 28px;background:var(--seal-l);color:var(--seal-950)}
+.cta .btn-seal:hover{background:#7cc2cc}
+.cta .signin{color:var(--d2);font-size:15px;border-bottom:1px solid rgba(239,231,217,.25);padding-bottom:2px}
+.cta .signin:hover{color:var(--d1);text-decoration:none}
+.cta .disc{margin:44px 0 0;font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:#7A7062}
+.foot{background:var(--c0);text-align:center;padding:0 16px 34px;font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:#8d8373}
+
+/* ---------- narrow (phone) ---------- */
+.nar{--navh:54px}
+.nar .wm{display:none}
+.nar .nav-l,.nar .nav-r{gap:14px}
+.nar .nav .btn-seal{padding:8px 14px;font-size:13px}
+.nar .signin{font-size:13px}
+.nar .hero{left:16px;right:16px;top:calc(var(--navh) + 14px);transform:none;width:auto;text-align:center}
+.nar .hero h1{font-size:36px;margin:10px 0 10px}
+.nar .hero p.l{font-size:14.5px;margin:0 auto}
+.nar .hero .cue{display:none}
+.nar .dock{display:flex}
+.nar .site{opacity:0;visibility:hidden;transform:translateY(14px);transition:opacity .3s,transform .3s,visibility .3s}
+.nar.siteOpen .site{opacity:1;visibility:visible;transform:none}
+.nar .sbody{overflow:auto}
+.nar .subs{font-size:15.5px;line-height:1.4}
+.nar .subs span{padding:3px 10px}
+.nar .tcard{left:16px;top:14px;right:16px}
+.nar .tcard .tk{font-size:9.5px}
+.nar .tcard .tt{font-size:25px;margin-top:5px}
+.nar .legend{left:12px;bottom:10px;font-size:9.5px;padding:5px 10px 5px 8px}
+.nar .doc{padding:14px 16px 12px;border-radius:12px}
+.nar .doc h3{font-size:19px}
+.nar .ir li{padding:6px 0;font-size:13px}
+.nar .fx{gap:0 12px}
+.nar .fx > div{padding:4px 0}
+.nar .fx dd{font-size:13px}
+.nar .fx dt{font-size:8.5px}
+.nar .cfr{margin-top:10px;padding-top:9px}
+.nar .cbtn{padding:8px 14px;font-size:13px}
+@media (max-width:760px){
+  .steps{grid-template-columns:1fr;gap:14px;max-width:420px}
+}
+
+/* ---------- reduced motion ---------- */
+.rmday{display:none}
+.rm .rmday{display:block;background:var(--p1);padding:72px 16px 40px}
+.rm .track{height:auto!important}
+.rm .stage{position:relative;height:max(640px,100vh)}
+.rm .worldL,.rm .subs,.rm #links,.rm .chips{display:none}
+.rm .hero .cue{display:none}
+.rm:not(.nar) .hero{width:min(430px,34vw)}
+.rm .hero .k{white-space:normal}
+.enter{display:none}
+.rm .enter{display:inline-flex;margin-top:28px;align-items:center;gap:10px;background:var(--seal);color:var(--p0);padding:13px 22px;border-radius:999px;font-weight:600;text-decoration:none}
+.rmwrap{max-width:1180px;margin:0 auto}
+.rmwrap > h2{font-family:var(--serif);font-weight:300;font-size:clamp(34px,4vw,54px);letter-spacing:-.02em;margin:0 0 6px}
+.rmwrap > p.lede{color:var(--i2);margin:0 0 44px;font-size:17px}
+.rmgrid{display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:32px;align-items:start}
+.rmch{margin:0 0 46px}
+.rmch .fig{position:relative;border-radius:10px;overflow:hidden;background:var(--p0);box-shadow:0 0 0 1px rgba(33,28,22,.07);aspect-ratio:16/10}
+.rmch .fig svg{position:absolute;inset:0;width:100%;height:100%}
+.rmch h3{margin:16px 0 4px;font-family:var(--serif);font-weight:400;font-size:26px;letter-spacing:-.01em}
+.rmch h3 small{display:block;font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--i3);margin-bottom:6px}
+.rmch p{margin:0 0 4px;color:var(--i2);font-size:16px;line-height:1.5}
+.rmch .doc{position:relative;opacity:1;visibility:visible;left:auto;top:auto;width:auto;max-width:460px;margin-top:16px}
+.siteOpen #links,.siteOpen .chips,.siteOpen .subs{visibility:hidden!important}
+.rmside{position:sticky;top:76px}
+.rmch .doc .finger{display:none}
+.rmch .doc p.inote{font-size:11px;line-height:1.5;color:var(--flag);margin:10px 0 0;opacity:1}
+.rm .site{position:relative!important;left:auto!important;top:auto!important;width:100%!important;height:auto!important;opacity:1!important;visibility:visible!important;transform:none!important}
+.rm .sbody{overflow:visible}
+@media (max-width:860px){.rmgrid{grid-template-columns:1fr}.rmside{position:relative;top:auto}}
+</style>
+</head>
+<body>
+<a class="sr skip" href="#cta">Skip to get started</a>
+
+<header class="nav" id="nav">
+  <div class="nav-l">
+    <a class="back" href="./index.html">← All five</a>
+    <a class="wm" href="https://mudavym.com/" aria-label="Mudavym home">Mudavym<i>.</i></a>
+  </div>
+  <nav class="nav-r" aria-label="Account">
+    <a class="signin" href="https://mudavym.com/login">Sign in</a>
+    <a class="btn-seal" href="https://mudavym.com/get-started">Get started</a>
+  </nav>
+</header>
+
+<!-- shared defs -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <g id="mkp"><path d="M0 38H72V540H0Z"/><path d="M15 38H96L460 574H379Z"/><path d="M0 346H305L353 416H0Z"/><path d="M0 470H137V540H0Z"/><path d="M99 0H151L278.7 187.8L284.8 273Z"/><path d="M389.5 40H460.9L284.8 273L251.4 224Z"/><path d="M412 40H483V574H412Z"/><path d="M80 150V192H108Z"/><path d="M142 346H206L174 292Z"/><path d="M404 138L376 157L404 176Z"/><path d="M383 430H404V470Z"/></g>
+    <pattern id="sealTile" width="64" height="64" patternUnits="userSpaceOnUse" patternTransform="rotate(8)">
+      <g transform="translate(18 16) scale(.052)" fill="#1A5E6B" opacity=".13"><use href="#mkp"/></g>
+    </pattern>
+    <pattern id="hatch" width="14" height="14" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <path d="M0 0V14" stroke="var(--wi2)" stroke-width="1.2" opacity=".35"/>
+    </pattern>
+    <radialGradient id="gAmb"><stop offset="0" stop-color="#E0A458" stop-opacity=".7"/><stop offset=".35" stop-color="#E0A458" stop-opacity=".22"/><stop offset="1" stop-color="#E0A458" stop-opacity="0"/></radialGradient>
+    <linearGradient id="gCone" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#E0A458" stop-opacity=".38"/><stop offset="1" stop-color="#E0A458" stop-opacity="0"/></linearGradient>
+    <radialGradient id="gTeal"><stop offset="0" stop-color="#5FB0BC" stop-opacity=".55"/><stop offset="1" stop-color="#5FB0BC" stop-opacity="0"/></radialGradient>
+  </defs>
+</svg>
+
+<main>
+  <ol class="sr" id="story" aria-label="The story, beat by beat"></ol>
+
+  <div class="track" id="track">
+    <div class="stage" id="stage">
+
+      <div class="hero" id="hero">
+        <p class="k">Mudavym · the autonomous back office for restaurants</p>
+        <h1>A day in the life of a house<i>.</i></h1>
+        <p class="l">Connect your POS. Photograph your menu and your invoices. Your house, and its website, keep themselves up to date.</p>
+        <p class="cue" aria-hidden="true"><i></i>Scroll to open the book</p>
+        <a class="enter" href="#day">Enter the house ↓</a>
+      </div>
+
+      <div class="bookL" id="bookL" aria-hidden="true">
+        <div class="bookcam" id="bookcam"><div class="book" id="book">
+          <div class="bshadow" id="bshadow"></div>
+          <div class="baseL" id="baseL"></div>
+          <div class="baseR" id="baseR"></div>
+        </div></div>
+      </div>
+
+      <div class="worldL" id="worldL">
+        <div class="area" id="area">
+          <svg id="world" class="ws" aria-hidden="true" preserveAspectRatio="xMidYMid slice"></svg>
+          <div class="tcard" id="tcard" aria-hidden="true"><p class="tk" id="tk"></p><p class="tt" id="tt"></p></div>
+          <div class="legend" id="legend" aria-hidden="true"><b></b>Teal is Mudavym, working on its own</div>
+          <div class="scrim" id="scrim"></div>
+
+          <div class="phone" id="phone" aria-hidden="true">
+            <div class="scr">
+              <div class="notch"></div>
+              <div class="pbar"><b></b><span id="pbarT">Mudavym · camera</span></div>
+              <!-- menu -->
+              <div class="sc" id="scMenu"><div class="pm">
+                <p class="h">DEMO HOUSE</p><p class="t">Menu</p>
+                <div class="ln" data-line="m1">Burrata, blood orange<small>Olive oil, basil</small><i class="det"></i></div>
+                <div class="ln" data-line="m2">Sea bass, beurre blanc<small>Line-caught, leeks</small><i class="det"></i></div>
+                <div class="ln" data-line="m3">Lamb shank, polenta<small>Slow-braised, gremolata</small><i class="det"></i></div>
+                <div class="ln" data-line="m4">Wild mushroom risotto<small>Aged parmesan</small><i class="det"></i></div>
+                <div class="ln" data-line="m5">Tarte tatin<small>Crème fraîche</small><i class="det"></i></div>
+              </div></div>
+              <!-- wine list -->
+              <div class="sc" id="scWine"><div class="pm" style="transform:rotate(1.4deg)">
+                <p class="h">DEMO HOUSE</p><p class="t">Wine</p>
+                <div class="ln" data-line="w1">Barolo 2019<small>Piemonte · Nebbiolo</small><i class="det"></i></div>
+                <div class="ln" data-line="w2">Etna Rosso 2021<small>Sicilia · Nerello Mascalese</small><i class="det"></i></div>
+                <div class="ln" data-line="w3">Champagne NV<small>Brut</small><i class="det"></i></div>
+                <div class="ln" data-line="w4">Chablis 1er Cru 2021<small>Burgundy · Chardonnay</small><i class="det"></i></div>
+              </div></div>
+              <!-- invoice -->
+              <div class="sc" id="scInv"><div class="pm inv" style="transform:rotate(-1deg)">
+                <p class="h">VENDOR 03 · INVOICE</p><p class="t">INV-2231</p>
+                <div class="ln"><span>Sea bass, whole</span><span>6 kg</span><i class="det"></i></div>
+                <div class="ln"><span>Lemons</span><span>3 kg</span><i class="det"></i></div>
+                <div class="ln"><span>Sancerre 2022</span><span>12 btl</span><i class="det"></i></div>
+                <div class="ln"><span>Barolo 2019</span><span>8 btl</span><i class="det"></i></div>
+                <div class="ln"><span>Burrata</span><span>10 pc</span><i class="det"></i></div>
+                <p class="tot"><span>5 LINES</span><span>DEMO</span></p>
+              </div></div>
+              <!-- bottle -->
+              <div class="sc" id="scBot"><svg class="bottle" id="botSvg" viewBox="0 0 230 330" preserveAspectRatio="xMidYMid slice"></svg></div>
+              <div class="vf" id="vf"><i></i><i></i><i></i><i></i></div>
+              <div class="scan" id="scan"></div>
+              <p class="phint" id="phint">Photo · menu</p>
+              <p class="pread" id="pread">Read ✓</p>
+              <div class="shut" id="shut"></div>
+              <div class="pfl" id="pfl"></div>
+            </div>
+          </div>
+
+          <article class="doc" id="inv" aria-label="Invoice check (demo)">
+            <p class="ey"><span>Receiving · back door · 15:12</span><span class="tg">Demo data</span></p>
+            <h3>Invoice INV-2231 · Vendor 03</h3>
+            <p class="ag"><b></b>Already checked against PO-0418</p>
+            <ul class="ir" id="irows">
+              <li><svg class="tick" viewBox="0 0 20 20"><circle cx="10" cy="10" r="9"/><path pathLength="1" d="M5.5 10.3L8.6 13.2L14.6 7"/></svg><span>Sea bass, whole</span><span class="q">6 kg · as ordered</span></li>
+              <li><svg class="tick" viewBox="0 0 20 20"><circle cx="10" cy="10" r="9"/><path pathLength="1" d="M5.5 10.3L8.6 13.2L14.6 7"/></svg><span>Lemons</span><span class="q">3 kg · as ordered</span></li>
+              <li><svg class="tick" viewBox="0 0 20 20"><circle cx="10" cy="10" r="9"/><path pathLength="1" d="M5.5 10.3L8.6 13.2L14.6 7"/></svg><span>Sancerre 2022</span><span class="q">12 btl · as ordered</span></li>
+              <li class="flagme"><svg class="tick" viewBox="0 0 20 20"><circle cx="10" cy="10" r="9"/><path pathLength="1" d="M10 5.5V11.2M10 14.3V14.5"/></svg><span>Barolo 2019</span><span class="q">8 billed · 6 ordered</span></li>
+              <li><svg class="tick" viewBox="0 0 20 20"><circle cx="10" cy="10" r="9"/><path pathLength="1" d="M5.5 10.3L8.6 13.2L14.6 7"/></svg><span>Burrata</span><span class="q">10 pc · as ordered</span></li>
+            </ul>
+            <p class="inote" id="inote">Flagged: two Barolo billed that were never ordered. Held for Vendor 03.</p>
+            <div class="cfr"><span class="who" id="iwho">Waiting for you</span><span class="cbtn" id="icbtn"><span id="icbT">Confirm delivery</span><i class="finger" id="ifng"></i></span></div>
+          </article>
+
+          <article class="doc" id="doss" aria-label="Wine read by the camera (demo)">
+            <p class="ey"><span id="dey">Camera · reading the label</span><span class="tg">Demo data</span></p>
+            <h3>Chablis Premier Cru 2021</h3>
+            <dl class="fx" id="dfx">
+              <div><dt>Producer</dt><dd data-v="Domaine Exemple"></dd></div>
+              <div><dt>Vintage</dt><dd data-v="2021"></dd></div>
+              <div><dt>Region</dt><dd data-v="Burgundy, France"></dd></div>
+              <div><dt>Grape</dt><dd data-v="Chardonnay"></dd></div>
+              <div class="w"><dt>Appellation</dt><dd data-v="Chablis Premier Cru AOC"></dd></div>
+              <div class="w"><dt>Style</dt><dd data-v="Dry white · mineral, unoaked"></dd></div>
+              <div><dt>In the cellar</dt><dd data-v="7 bottles · Rack C, bin 3"></dd></div>
+              <div><dt>Cost</dt><dd data-v="€18.40 a bottle"></dd></div>
+              <div class="w"><dt>Pairs with, tonight</dt><dd class="pair" data-v="Sea bass, beurre blanc"></dd></div>
+            </dl>
+          </article>
+
+          <div class="aflash" id="aflash"></div>
+        </div>
+
+        <aside class="site" id="site" aria-label="Demo House website, a live mock">
+          <div class="chrome" aria-hidden="true"><i></i><i></i><i></i><span class="url"><svg viewBox="0 0 10 10"><rect x="1.5" y="4.5" width="7" height="5" rx="1" fill="#857B6C"/><path d="M3 4.5V3a2 2 0 0 1 4 0v1.5" fill="none" stroke="#857B6C" stroke-width="1.2"/></svg>demohouse.example</span><span class="live"><b></b>Live</span></div>
+          <div class="sbody" id="sbody">
+            <header class="shead"><p class="sname">Demo House</p><p class="sstat" id="sstat">Open today · 12:00–23:00</p><div class="snav" aria-hidden="true"><span>Menu</span><span>Wine</span><span>Visit</span></div></header>
+            <section class="fd" aria-label="Latest updates"><h4><span>Updates</span><span>auto</span></h4><ol id="feed"></ol></section>
+            <section class="sb" aria-label="Menu"><h4><span>Menu</span><span id="mcount"></span></h4><ul id="menuRows"></ul></section>
+            <section class="sb" aria-label="Wine"><h4><span>Wine</span><span id="wcount"></span></h4><ul id="wineRows"></ul></section>
+            <p class="sfoot">A demo house · illustrative data</p>
+          </div>
+        </aside>
+
+        <button class="dock" id="dock" type="button" aria-expanded="false" aria-controls="site">
+          <span class="ic" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 18 18"><rect x="1.5" y="2.5" width="15" height="13" rx="2.5" fill="none" stroke="#4F473C" stroke-width="1.4"/><path d="M1.5 6.5H16.5" stroke="#4F473C" stroke-width="1.4"/></svg></span>
+          <span class="tx"><span class="t1"><b></b>Demo House website · live</span><span class="t2" id="dockT">Waiting for the menu…</span></span>
+          <span class="chev" id="dockC">Open</span>
+        </button>
+      </div>
+
+      <svg id="links" aria-hidden="true"></svg>
+      <div class="chips" id="chips" aria-hidden="true"></div>
+      <p class="subs" id="subs" aria-hidden="true"><span id="subT"></span></p>
+    </div>
+  </div>
+
+  <section class="rmday" id="day" aria-label="A day at Demo House">
+    <div class="rmwrap">
+      <h2>A day at Demo House.</h2>
+      <p class="lede">A demo house, drawn as it happens. Teal is Mudavym, working on its own.</p>
+      <div class="rmgrid"><div id="rmChapters"></div><div class="rmside" id="rmSide"></div></div>
+    </div>
+  </section>
+
+  <section class="cta" id="cta" aria-labelledby="ctah">
+    <svg class="mk" viewBox="0 0 100 100" aria-hidden="true"><rect width="100" height="100" rx="22" fill="#1A5E6B"/><g transform="translate(22.2,17) scale(0.115)" fill="#FAF7F1"><use href="#mkp"/></g></svg>
+    <h2 id="ctah">Set up your house<i>.</i></h2>
+    <ol class="steps">
+      <li><b>1 · Connect</b><span>Your POS. Toast is the first one.</span></li>
+      <li><b>2 · Photograph</b><span>Your menu and your wine list, once.</span></li>
+      <li><b>3 · Keep going</b><span>Photograph invoices as deliveries arrive.</span></li>
+    </ol>
+    <p class="after">The house and its website keep themselves up to date. You confirm anything that matters.</p>
+    <div class="acts">
+      <a class="btn-seal" href="https://mudavym.com/get-started">Get started</a>
+      <a class="signin" href="https://mudavym.com/login">Sign in</a>
+    </div>
+    <p class="disc">Demo House and every number on this page are illustrative.</p>
+  </section>
+</main>
+<footer class="foot">Mudavym · the autonomous back office for restaurants</footer>
+
+<script>
+(() => {
+'use strict';
+const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const root = document.documentElement;
+if (RM) root.classList.add('rm');
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+const lerp = (a, b, t) => a + (b - a) * t;
+const ss = (a, b, v) => { const t = clamp((v - a) / (b - a)); return t * t * (3 - 2 * t); };
+const eio = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+const eo = t => 1 - Math.pow(1 - clamp(t), 3);
+const win = (a, b, v, f = .12) => ss(a, a + f, v) * (1 - ss(b - f, b, v));
+const fx = n => n.toFixed(2);
+
+/* ================================================================
+   TIMELINE (units = viewport heights of scroll)
+   ================================================================ */
+const T = {
+  coverA: .35, coverB: 1.25,
+  emA: 1.3, emB: 1.56, pwA: 1.6, pwB: 1.76, hover: 1.82, press: 1.88, load: 1.93,
+  l1A: 2.06, l1B: 2.76, l2A: 2.88, l2B: 3.46,
+  diveA: 3.5, diveB: 4.25, worldA: 3.92, worldB: 4.25,
+  A: 5.0, B: 7.6, C: 10.2, D: 13.4, E: 15.0, F: 17.6,
+  backA: 18.72, backB: 19.22, closeA: 19.3, closeB: 19.85,
+  END: 19.9,
+};
+const TOTAL = T.END;
+
+const CHAP = [
+  { a: 4.25, b: 5.0, tk: '07:30 · Demo House', tt: 'A day in the life<i>.</i>' },
+  { a: T.A, b: T.B, tk: '08:10 · Morning, the menu', tt: 'Photograph the menu<i>.</i>' },
+  { a: T.B, b: T.C, tk: '12:40 · Service, the POS', tt: 'Connect the POS<i>.</i>' },
+  { a: T.C, b: T.D, tk: '15:10 · The delivery', tt: 'Photograph the invoice<i>.</i>' },
+  { a: T.D, b: T.E, tk: 'All day · the stream', tt: 'Food comes in. Wine comes in<i>.</i>' },
+  { a: T.E, b: T.F, tk: '18:05 · The cellar', tt: 'Point at any bottle<i>.</i>' },
+  { a: T.F, b: 18.75, tk: '23:40 · Night', tt: 'The house kept up<i>.</i>' },
+];
+
+const SUBS = [
+  [.42, 1.22, 'Every house keeps a book.', 0],
+  [1.26, 2.02, 'Yours opens with a sign-in.', 0],
+  [2.06, 3.42, 'Turn the page, and the day begins.', 0],
+  [3.5, 4.2, 'Step inside.', 0],
+  [4.3, 4.98, 'Demo House, drawn as it happens. Teal is Mudavym.', 1],
+  [5.02, 5.5, '08:10. Before the doors open, a photo of the menu.', 2],
+  [5.5, 6.25, 'Every dish is read, line by line.', 2],
+  [6.25, 6.75, 'Then the wine list.', 2],
+  [6.75, 7.55, 'Everything you have is now digital, and on your website.', 2],
+  [7.62, 8.2, '12:40. Lunch. Orders go through the POS, Toast.', 3],
+  [8.2, 9.0, 'Each sale flows to the stock, and to the website.', 3],
+  [9.0, 9.72, 'Sea bass, three left. The lamb shank, sold out.', 3],
+  [9.72, 10.18, 'Nobody typed a thing.', 3],
+  [10.22, 10.95, '15:10. The delivery reaches the back door.', 4],
+  [10.95, 11.78, 'Food and wine come in. The driver hands over the invoice.', 4],
+  [11.78, 12.42, 'One photo. It is already checked against the order.', 4],
+  [12.42, 12.86, 'Every line matches but one, and that one is flagged.', 4],
+  [12.86, 13.38, 'You confirm. The stock and the website already know.', 4],
+  [13.42, 14.2, 'Food comes in. Wine comes in.', 5],
+  [14.2, 14.98, 'All day, every change finds its way to the website.', 5],
+  [15.02, 15.6, '18:05. A bottle for tonight, from the cellar.', 6],
+  [15.6, 16.08, 'Point the phone. Press the shutter.', 6],
+  [16.08, 16.95, 'Everything there is to know about it, in one breath.', 6],
+  [16.95, 17.58, 'And the website pours it by the glass tonight.', 6],
+  [17.62, 18.28, '23:40. The last table goes home.', 7],
+  [18.28, 18.9, 'The house kept itself up to date, all day.', 7],
+  [19.0, 19.86, 'Tomorrow, the book opens again.', 7],
+];
+
+/* ================================================================
+   SITE DATA + EVENTS
+   ================================================================ */
+const MENU = [
+  { id: 'm1', n: 'Burrata, blood orange', d: 'Olive oil, basil' },
+  { id: 'm2', n: 'Sea bass, beurre blanc', d: 'Line-caught, leeks' },
+  { id: 'm3', n: 'Lamb shank, polenta', d: 'Slow-braised, gremolata' },
+  { id: 'm4', n: 'Wild mushroom risotto', d: 'Aged parmesan' },
+  { id: 'm5', n: 'Tarte tatin', d: 'Crème fraîche' },
+];
+const WINE = [
+  { id: 'w1', n: 'Barolo 2019', d: 'Piemonte · Nebbiolo' },
+  { id: 'w2', n: 'Etna Rosso 2021', d: 'Sicilia · Nerello Mascalese' },
+  { id: 'w3', n: 'Champagne NV', d: 'Brut' },
+  { id: 'w4', n: 'Chablis 1er Cru 2021', d: 'Burgundy · Chardonnay' },
+  { id: 'w5', n: 'Sancerre 2022', d: 'Loire · Sauvignon Blanc', late: true },
+];
+// t, row, {appear, st, so}, feed, clock, src, chip
+const EV = [];
+const ev = (t, row, o, feed, clock, src, chip) => EV.push({ t, row, o: o || {}, feed, clock, src, chip });
+MENU.forEach((m, i) => ev(6.08 + i * .09, m.id, { appear: 1 }, i === 4 ? 'Menu is online · 5 dishes' : null, '08:12', 'line:' + m.id, m.n));
+WINE.slice(0, 4).forEach((w, i) => ev(7.02 + i * .08, w.id, { appear: 1 }, i === 3 ? 'Wine list is online · 4 wines' : null, '08:14', 'line:' + w.id, w.n));
+ev(8.3, 'm2', { st: '6 left' }, 'Sea bass: 6 left', '12:44', 'pos', '−1 · Sea bass');
+ev(8.62, 'w1', { st: 'By the glass tonight' }, 'Tonight: Barolo by the glass', '12:51', 'pos', 'Barolo · by the glass');
+ev(8.94, 'm3', { st: '2 left' }, 'Lamb shank: 2 left', '13:02', 'pos', '−1 · Lamb shank');
+ev(9.24, 'm2', { st: '3 left' }, 'Sea bass: 3 left', '13:10', 'pos', '−3 · Sea bass');
+ev(9.54, 'm3', { st: 'Sold out', so: 1 }, 'Sold out: lamb shank', '13:18', 'pos', 'Sold out · Lamb shank');
+ev(9.84, 'w3', { st: '4 left' }, 'Champagne NV: 4 left', '13:31', 'pos', '−1 · Champagne NV');
+ev(13.1, 'w5', { appear: 1, st: 'New in' }, 'Wine in: Sancerre 2022', '15:14', 'door', 'Wine in · Sancerre 2022');
+ev(13.19, 'm2', { st: 'Fresh today' }, 'Food in: fresh sea bass', '15:14', 'door', 'Food in · sea bass');
+ev(13.28, 'w1', { st: '+6 · back in' }, 'Wine in: Barolo 2019 × 6', '15:15', 'door', 'Wine in · Barolo × 6');
+ev(13.62, 'm1', { st: 'Fresh today' }, 'Food in: burrata', '15:20', 'cold', 'Food in · burrata');
+ev(13.8, 'w2', { st: '9 left' }, 'Etna Rosso: 9 left', '16:02', 'pos', 'Sold · Etna Rosso');
+ev(13.98, null, {}, 'Food in: lemons, herbs', '16:10', 'cold', 'Food in · lemons');
+ev(14.16, 'm4', { st: '4 left' }, 'Risotto: 4 left', '16:40', 'kitchen', 'Risotto · 4 left');
+ev(14.34, 'm3', { st: 'Back tomorrow', so: 0 }, 'Lamb shank: back tomorrow', '17:05', 'kitchen', 'Lamb · back tomorrow');
+ev(14.52, 'w3', { st: '3 left' }, 'Champagne NV: 3 left', '17:22', 'cellar', 'Champagne · 3 left');
+ev(14.7, 'm5', { st: 'Warm, tonight' }, 'Tonight: tarte tatin, warm', '17:40', 'kitchen', 'Tarte tatin · tonight');
+ev(16.98, 'w4', { st: 'By the glass tonight' }, 'Tonight: Chablis by the glass', '18:07', 'phoneE', 'Chablis · by the glass');
+ev(17.1, 'm2', { st: 'Pairs with Chablis' }, 'Sea bass now pairs with Chablis', '18:07', 'phoneE', 'Pairing · sea bass');
+ev(18.32, 'stat', { st: 'Closed now · open tomorrow at 12:00' }, 'Closed for the night', '23:41', 'front', 'Closed · see you tomorrow');
+EV.sort((a, b) => a.t - b.t);
+
+/* ================================================================
+   WORLD ART — a dollhouse cut-away, ink on paper
+   ================================================================ */
+const P = (d, c = 'k') => `<path class="d ${c}" pathLength="1" d="${d}"/>`;
+const C = (cx, cy, r, c = 'k') => `<circle class="d ${c}" pathLength="1" cx="${cx}" cy="${cy}" r="${r}"/>`;
+const INK = 'var(--wi)', PAPER = 'var(--w0)';
+
+function fig(o) {
+  const { id, kind = 'staff', pose = 'stand', x = 0, y = 900, f = 1, s = 1, crate = '', op = 0 } = o;
+  const seated = pose.startsWith('sit');
+  const dy = seated ? 38 : 0;
+  let tf = PAPER, hf = PAPER;
+  if (kind === 'owner') { tf = INK; hf = INK; }
+  if (kind === 'driver') tf = '#E0A458';
+  if (kind === 'guestA') tf = 'var(--w2)';
+  if (kind === 'guestB') tf = '#D9C7A8';
+  if (kind === 'guestC') tf = 'var(--wi2)';
+  let g = `<g id="${id}" class="fig" opacity="${op}" transform="translate(${x} ${y}) scale(${f * s} ${s})">`;
+  // legs
+  if (seated) {
+    g += `<path class="ln" d="M-4 -46H28L30 0H40"/><path class="ln" d="M2 -50H34L36 -2"/>`;
+  } else {
+    const top = kind === 'owner' ? -44 : -84;
+    g += `<path class="ln lg1" d="M-6 ${top}L-8 0H0"/><path class="ln lg2" d="M6 ${top}L8 0H16"/>`;
+  }
+  g += `<g transform="translate(0 ${dy})" class="ub">`;
+  // torso
+  const coat = kind === 'owner' && !seated;
+  g += `<path fill="${tf}" d="${coat ? 'M-14 -142Q0 -148 14 -142L23 -42Q0 -36 -23 -42Z' : 'M-14 -142Q0 -148 14 -142L19 -84Q0 -79 -19 -84Z'}"/>`;
+  if (kind === 'staff' || kind === 'chef') g += `<path fill="var(--w2)" style="stroke-width:1.6" d="M-11 -122H11L14 -${seated ? 60 : 68}H-14Z"/>`;
+  if (kind === 'owner') g += `<path fill="#6B1F2A" style="stroke:none" d="M-11 -145Q0 -139 11 -145L12 -133Q0 -128 -12 -133Z"/>`;
+  // neck + head
+  g += `<path class="ln" d="M0 -148V-142"/><circle cx="0" cy="-160" r="12" fill="${hf}"/>`;
+  if (kind === 'owner') g += `<circle cx="-10" cy="-170" r="6" fill="${INK}"/>`;
+  if (kind === 'chef') g += `<path fill="${PAPER}" d="M-10 -168Q-17 -184 -6 -186Q0 -197 6 -186Q17 -184 10 -168Z"/>`;
+  if (kind === 'driver') g += `<path fill="${INK}" d="M-12 -164Q0 -180 12 -164ZM10 -165L23 -163"/>`;
+  if (kind === 'guestB') g += `<path fill="${INK}" style="stroke:none" d="M-12 -164Q-2 -180 12 -166Q4 -172 -12 -160Z"/>`;
+  if (kind === 'guestC') g += `<path class="ln" d="M-8 -150L-14 -128"/>`;
+  // arms
+  const A = {
+    stand: ['M-13 -138Q-21 -112 -20 -88', 'M13 -138Q21 -112 20 -88'],
+    carry: ['M-12 -138L8 -116L30 -118', 'M13 -138L30 -114L46 -118'],
+    phone: ['M-13 -138Q-21 -112 -20 -88', 'M13 -138L32 -152L38 -168'],
+    hand: ['M-13 -138Q-21 -112 -20 -88', 'M13 -138L34 -118L52 -116'],
+    point: ['M-13 -138Q-21 -112 -20 -88', 'M13 -138L32 -116L48 -112'],
+    sit: ['M-12 -136L6 -112L26 -114', 'M13 -138L28 -112L44 -114'],
+    sitphone: ['M-12 -136L6 -116L22 -128', 'M13 -138L30 -152L36 -166'],
+    sitwine: ['M-12 -136L6 -112L26 -114', 'M13 -138L30 -124L40 -132'],
+  }[pose] || ['M-13 -138Q-21 -112 -20 -88', 'M13 -138Q21 -112 20 -88'];
+  g += `<path class="ln" d="${A[0]}"/><path class="ln" d="${A[1]}"/>`;
+  if (pose === 'phone' || pose === 'sitphone') {
+    const px = pose === 'phone' ? 32 : 30, py = pose === 'phone' ? -192 : -190;
+    g += `<rect x="${px}" y="${py}" width="13" height="24" rx="3" fill="${INK}"/><rect x="${px + 2.5}" y="${py + 3}" width="8" height="17" rx="1.5" fill="var(--wt)" style="stroke:none"/>`;
+  }
+  if (pose === 'sitwine') g += `<path fill="none" d="M36 -146Q36 -134 41 -133Q46 -134 46 -146ZM41 -133V-124"/><path fill="#6B1F2A" style="stroke:none" d="M37 -140Q41 -137 45 -140Q44 -134 41 -134Q38 -134 37 -140Z"/>`;
+  if (crate) g += `<g transform="translate(14 -148)"><rect x="0" y="0" width="50" height="38" rx="2" fill="var(--w2)"/><path class="ln" style="stroke-width:1.4" d="M0 13H50M0 26H50"/><text x="25" y="23" font-size="9" letter-spacing="1" text-anchor="middle" fill="var(--wi)" style="stroke:none;font-weight:500">${crate}</text></g>`;
+  g += `</g></g>`;
+  return g;
+}
+
+function bottleRow(x0, x1, y, step, seed) {
+  let s = '', k = seed;
+  for (let x = x0; x <= x1; x += step) {
+    k = (k * 16807) % 2147483647; const r = k / 2147483647;
+    const fill = r < .45 ? '#6B1F2A' : r < .7 ? '#C9B26A' : 'var(--w2)';
+    const h = r < .7 ? 0 : -6;
+    s += `<path fill="${fill}" stroke="var(--wi)" stroke-width="1.5" d="M${x - 6} ${y}V${y - 32 - h}Q${x - 6} ${y - 40 - h} ${x - 2} ${y - 44 - h}V${y - 56 - h}H${x + 2}V${y - 44 - h}Q${x + 6} ${y - 40 - h} ${x + 6} ${y - 32 - h}V${y}Z"/>`;
+  }
+  return s;
+}
+function rack(x0, x1, y0, y1, cols, rows, seed, id) {
+  let s = '', k = seed;
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+    k = (k * 16807) % 2147483647; const q = k / 2147483647;
+    const x = x0 + 24 + c * 34, y = y0 + 30 + r * 34;
+    const fill = q < .5 ? '#6B1F2A' : q < .78 ? '#D8C27A' : 'var(--w0)';
+    s += `<circle cx="${x}" cy="${y}" r="12" fill="${fill}" stroke="var(--wi)" stroke-width="1.5" ${id && r === 2 && c === 3 ? `id="${id}"` : ''}/>`;
+  }
+  return s;
+}
+
+function buildWorld() {
+  let s = '';
+  // sky (sun, moon, clouds)
+  s += `<g id="sky">
+    <g id="sun"><circle r="66" fill="#E0A458" opacity=".85"/><circle cx="9" cy="-7" r="66" fill="none" stroke="var(--wi)" stroke-width="2"/></g>
+    <g id="moon" opacity="0"><path d="M0 -58A58 58 0 1 0 40 42A46 46 0 1 1 0 -58Z" fill="#EFE7D9" opacity=".92"/></g>
+    <g class="dg" id="g-sky">${P('M260 250H420Q440 214 476 236Q500 214 520 250H600', 'k2')}${P('M1820 190H1940Q1960 158 1992 178Q2014 156 2036 190H2120', 'k2')}${P('M1120 300l14 10l14 -10M1166 284l12 8l12 -8', 'k2')}</g>
+    <g id="stars" opacity="0">${[[300, 180], [520, 120], [880, 220], [1260, 140], [1700, 230], [1980, 110], [2560, 170], [120, 300]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="3" fill="#EFE7D9"/>`).join('')}</g>
+  </g>`;
+  // earth + basement cut
+  s += `<g class="fl" id="f-earth"><rect x="-1400" y="900" width="5200" height="1600" fill="var(--w1)"/><rect x="-1400" y="900" width="5200" height="1600" fill="url(#hatch)"/>
+    <rect x="700" y="920" width="1600" height="380" fill="var(--w0)"/><rect x="700" y="420" width="1600" height="480" fill="var(--w0)"/></g>`;
+  // window glass (morphs with time) + flat Bass shapes
+  s += `<g class="fl" id="f-flat">
+    <path d="M1960 720V560A60 60 0 0 1 2080 560V720Z" fill="var(--wwin)"/>
+    <rect x="884" y="822" width="200" height="88" fill="var(--w2)"/>
+    <rect x="1290" y="802" width="440" height="108" fill="var(--w2)"/>
+    <path d="M2300 642L2458 688V712H2300Z" fill="#6B1F2A" opacity=".88"/>
+    <circle cx="2418" cy="790" r="34" fill="var(--w2)"/>
+    <rect x="1550" y="960" width="280" height="350" fill="var(--w2)" opacity=".7"/>
+  </g>`;
+  // structure
+  s += `<g class="dg" id="g-struct">
+    ${P('M-1400 900H700M2300 900H3800')}
+    ${P('M700 700V420H2300V700')}${P('M700 900V1320H2300V900')}
+    ${P('M680 404H2320V420H680Z')}
+    ${P('M700 900H1100M1240 900H2300')}${P('M700 920H1100M1240 920H2300', 'k2')}
+    ${P('M700 1300H2300', 'k2')}
+    ${P('M700 700L654 716V902', 'k2')}${P('M2300 700L2344 716V902', 'k2')}
+    ${P('M1744 420V900M1756 420V900', 'k2')}
+    ${P('M1250 420V600M1250 740V900')}${P('M1226 740H1274')}
+    ${P('M1100 920L1240 1300', 'k2')}${P(Array.from({ length: 8 }, (_, i) => { const x = 1100 + i * 17.5, y = 920 + i * 47.5; return `M${x} ${y}H${x + 17.5}V${y + 47.5}`; }).join(''), 'k2')}
+    ${P('M1100 860H1240M1100 860V900M1240 860V900', 'k2')}
+    ${P('M-1400 912H700M2300 912H3800', 'k2')}
+  </g>`;
+  // kitchen
+  s += `<g class="dg" id="g-kitchen">
+    ${P('M850 560H1090L1060 612H880Z')}${P('M940 560V420M1000 560V420', 'k2')}${P('M926 420V378H1014V420M916 378H1024')}
+    ${P('M950 360q-12 -16 0 -32t0 -32M988 360q-12 -16 0 -32t0 -32', 'k2')}
+    ${P('M870 810H1070V900H870Z')}${P('M896 830H1044V888H896Z', 'k2')}${P('M912 842H1028')}
+    ${P('M890 810V774H952V810M884 774H958')}${P('M986 810V764H1056V810M980 764H1062')}
+    ${P('M918 752q-9 -14 0 -28t0 -28M1020 742q-9 -14 0 -28t0 -28', 'k2')}
+    ${P('M720 600H840M720 640H840', 'k2')}
+    ${P('M1100 640H1220M1124 640V690M1160 640V696M1196 640V684', 'k2')}${C(1160, 710, 14, 'k2')}${C(1124, 698, 8, 'k2')}
+  </g>`;
+  s += `<g class="fl" id="f-kitchen">${bottleRow(732, 830, 600, 22, 3).replace(/#6B1F2A|#C9B26A/g, 'var(--w2)')}<rect x="730" y="612" width="24" height="28" fill="var(--w2)" stroke="var(--wi)" stroke-width="1.5"/><rect x="766" y="618" width="30" height="22" fill="var(--w2)" stroke="var(--wi)" stroke-width="1.5"/>
+    <g id="newCrates" opacity="0"><rect x="720" y="852" width="58" height="48" rx="2" fill="var(--w2)" stroke="var(--wi)" stroke-width="2"/><rect x="784" y="864" width="58" height="36" rx="2" fill="var(--w2)" stroke="var(--wi)" stroke-width="2"/><text x="749" y="882" class="wls" style="fill:var(--wi)">FISH</text><text x="813" y="888" class="wls" style="fill:var(--wi)">WINE</text></g></g>`;
+  // bar
+  s += `<g class="dg" id="g-bar">${P('M1290 540H1710M1290 620H1710')}${P('M1310 470H1690', 'k2')}</g>`;
+  s += `<g class="fl" id="f-bar">${bottleRow(1306, 1700, 540, 30, 7)}${bottleRow(1312, 1700, 620, 34, 19)}</g>`;
+  s += fig({ id: 'fBart', kind: 'staff', x: 1440, f: 1 });
+  s += `<g class="dg" id="g-counter">${P('M1278 790H1722V806H1278Z')}${P('M1290 806V900M1710 806V900')}${P('M1360 816V890M1430 816V890M1500 816V890M1570 816V890M1640 816V890', 'k2')}${P('M1296 884H1704', 'k2')}
+    ${P('M1648 790L1654 768')}${P('M1614 770L1680 758L1676 724L1610 736Z')}</g>`;
+  s += `<g class="fl" id="f-pos"><path id="posScr" d="M1618 765L1675 755L1672 729L1615 739Z" fill="var(--w1)"/><path id="posGlow" d="M1618 765L1675 755L1672 729L1615 739Z" fill="var(--wt)" opacity="0"/>
+    <text x="1500" y="862" class="wl">POS · TOAST</text></g>`;
+  s += fig({ id: 'fServer', kind: 'staff', pose: 'point', x: 1706, f: -1 });
+  // dining
+  s += `<g class="dg" id="g-dining">
+    ${P('M1960 720V560A60 60 0 0 1 2080 560V720Z')}${P('M2020 500V720M1960 620H2080', 'k2')}${P('M1946 720H2094')}
+    ${P('M1794 826H1930', 'kk')}${P('M1862 826V900M1832 900H1892')}
+    ${P('M2102 826H2238', 'kk')}${P('M2170 826V900M2140 900H2200')}
+    ${P('M1748 780V900M1748 854H1790V900', 'k2')}${P('M1976 780V900M1976 854H1934V900', 'k2')}
+    ${P('M2058 780V900M2058 854H2100V900', 'k2')}${P('M2282 780V900M2282 854H2240V900', 'k2')}
+    ${P('M1790 520H1880V600H1790Z', 'k2')}${P('M1800 590L1824 562L1840 578L1862 552L1872 590', 'k2')}
+  </g>`;
+  // lamps (glows animated)
+  const lamp = (x, id) => `<g id="${id}"><polygon class="cone" points="${x - 28},548 ${x + 28},548 ${x + 120},826 ${x - 120},826" fill="url(#gCone)" opacity="0"/><circle class="glow" cx="${x}" cy="552" r="110" fill="url(#gAmb)" opacity="0"/>${P(`M${x} 420V520`, 'k2')}<path d="M${x - 30} 548L${x - 12} 520H${x + 12}L${x + 30} 548Z" fill="var(--wi)" stroke="var(--wi)" stroke-width="2"/><ellipse class="bulb" cx="${x}" cy="550" rx="12" ry="4" fill="#4f473c"/></g>`;
+  s += `<g id="lamps">${lamp(1862, 'lp1')}${lamp(2170, 'lp2')}${lamp(1500, 'lp3')}</g>`;
+  // tables props (menu card on table2, glasses)
+  s += `<g class="fl" id="f-props"><g id="menuCard"><path d="M2124 826L2134 784H2164L2170 826Z" fill="#F7F1E3" stroke="var(--wi)" stroke-width="2"/><path d="M2138 796H2160M2138 804H2158M2138 812H2162" stroke="var(--wi2)" stroke-width="1.5"/><rect x="2178" y="806" width="36" height="20" fill="#F7F1E3" stroke="var(--wi)" stroke-width="2"/></g>
+    <g id="glasses" opacity="0"><path d="M1830 806Q1830 820 1836 822Q1842 820 1842 806ZM1836 822V826M1886 806Q1886 820 1892 822Q1898 820 1898 806ZM1892 822V826M2140 806Q2140 820 2146 822Q2152 820 2152 806ZM2146 822V826M2200 806Q2200 820 2206 822Q2212 820 2212 806ZM2206 822V826" fill="var(--w0)" stroke="var(--wi)" stroke-width="1.6"/><path d="M1831 812H1841M1887 812H1897M2141 812H2151" stroke="#6B1F2A" stroke-width="5"/></g></g>`;
+  // guests + owner at table
+  s += fig({ id: 'fOwnT', kind: 'owner', pose: 'sit', x: 2072, f: 1 });
+  s += fig({ id: 'fOwnTP', kind: 'owner', pose: 'sitphone', x: 2072, f: 1 });
+  s += fig({ id: 'g1', kind: 'guestA', pose: 'sitwine', x: 1762, f: 1 });
+  s += fig({ id: 'g2', kind: 'guestB', pose: 'sit', x: 1962, f: -1 });
+  s += fig({ id: 'g3', kind: 'guestC', pose: 'sit', x: 2072, f: 1 });
+  s += fig({ id: 'g4', kind: 'guestA', pose: 'sitwine', x: 2268, f: -1 });
+  s += fig({ id: 'fChef', kind: 'chef', pose: 'point', x: 1086, f: -1 });
+  // facade
+  s += `<g class="dg" id="g-facade">
+    ${P('M2300 642L2458 688V712')}${P('M2458 712q-13 14 -26 0q-13 14 -26 0q-13 14 -26 0q-13 14 -26 0q-13 14 -26 0q-13 14 -26 0', 'k2')}
+    ${P('M2300 548H2486M2300 530L2346 548')}${P('M2346 548V564M2456 548V564', 'k2')}${P('M2318 564H2482V622H2318Z')}
+    ${P('M2394 860H2442L2436 900H2400Z')}${P('M2418 860V820', 'k2')}${C(2418, 790, 34, 'k2')}
+    ${P('M2640 900V600M2640 600Q2640 574 2668 574H2680')}${P('M2668 574L2658 592H2700L2690 574Z')}
+  </g>`;
+  s += `<g class="fl" id="f-facade"><text x="2400" y="601" text-anchor="middle" style="font-family:Fraunces,Georgia,serif;font-size:23px;letter-spacing:3px;font-weight:500" fill="var(--wi)">DEMO HOUSE</text>
+    <circle id="stGlow" cx="2679" cy="600" r="120" fill="url(#gAmb)" opacity="0"/></g>`;
+  // alley
+  s += `<g class="dg" id="g-alley">
+    ${P('M-1400 900V520H-200V900', 'k2')}${P('M-1100 600H-980V700H-1100ZM-860 600H-740V700H-860ZM-620 600H-500V700H-620ZM-380 600H-260V700H-380Z', 'k2')}
+    ${P('M700 674H680V686M672 686H688', 'k2')}${P('M590 630H684V656H590Z', 'k2')}
+    ${P('M-60 900V838H10V900M-60 852H10', 'k2')}
+  </g>`;
+  s += `<g class="fl" id="f-alley"><text x="637" y="648" class="wls" style="font-size:10px;letter-spacing:1.5px">DELIVERIES</text><circle id="doorGlow" cx="680" cy="690" r="90" fill="url(#gAmb)" opacity="0"/></g>`;
+  // cellar
+  s += `<g class="dg" id="g-cellar">${P('M760 960H1080V1296H760Z')}${P('M1270 960H1510V1296H1270Z')}${P('M1180 920V990', 'k2')}</g>`;
+  s += `<g class="fl" id="f-cellar">${rack(760, 1080, 960, 1296, 9, 9, 13, '')}${rack(1270, 1510, 960, 1296, 7, 9, 29, 'chablisSlot')}
+    <text x="920" y="950" class="wl" style="font-size:13px">RACK A</text><text x="1390" y="950" class="wl" style="font-size:13px">RACK C</text>
+    <circle id="cbGlow" cx="1180" cy="1000" r="110" fill="url(#gAmb)" opacity=".55"/><circle cx="1180" cy="1000" r="9" fill="#E0A458" stroke="var(--wi)" stroke-width="1.5"/>
+    <g id="newWine" opacity="0">${[0, 1, 2, 3, 4, 5].map(i => `<circle cx="${784 + (3 + i) * 34}" cy="${990 + 8 * 34}" r="15" fill="none" stroke="var(--wt)" stroke-width="3"/>`).join('')}</g>
+    <circle id="slotRing" cx="1396" cy="1058" r="18" fill="none" stroke="var(--wt)" stroke-width="3" opacity="0"/></g>`;
+  // stock
+  s += `<g class="dg" id="g-stock">${P('M1540 950H1830V1300H1540Z')}${P('M1580 990H1790V1300', 'k2')}${P('M1770 1130V1170')}
+    ${P('M1870 1040H2270M1870 1140H2270M1870 1240H2270M1880 960V1300M2260 960V1300', 'k2')}</g>`;
+  s += `<g class="fl" id="f-stock"><text x="1685" y="976" class="wl" style="font-size:12px">COLD ROOM</text>
+    <rect x="1900" y="1004" width="64" height="36" fill="var(--w2)" stroke="var(--wi)" stroke-width="1.6"/><rect x="1976" y="996" width="50" height="44" fill="var(--w2)" stroke="var(--wi)" stroke-width="1.6"/><rect x="2100" y="1100" width="70" height="40" fill="var(--w2)" stroke="var(--wi)" stroke-width="1.6"/><rect x="1910" y="1200" width="80" height="40" fill="var(--w2)" stroke="var(--wi)" stroke-width="1.6"/>
+    <text x="1932" y="1027" class="wls" style="font-size:9px">DRY</text><text x="2135" y="1124" class="wls" style="font-size:9px">OIL</text><text x="1950" y="1224" class="wls" style="font-size:9px">FLOUR</text>
+    <g id="newStock" opacity="0"><rect x="2050" y="1192" width="80" height="48" fill="var(--w0)" stroke="var(--wt)" stroke-width="2.5"/><text x="2090" y="1221" class="wls" style="font-size:9px;fill:var(--wt)">PRODUCE</text></g></g>`;
+  // owner in cellar, at door, at night
+  s += fig({ id: 'fOwnC', kind: 'owner', pose: 'phone', x: 1238, y: 1300, f: 1 });
+  // truck
+  s += `<g id="truck" transform="translate(-900 0)">
+    <rect x="12" y="672" width="340" height="200" fill="var(--w2)"/>
+    <path d="M0 660H340V862H0Z" fill="var(--w0)" stroke="var(--wi)" stroke-width="2.6" stroke-linejoin="round"/>
+    <rect x="60" y="684" width="220" height="168" fill="var(--wi)" opacity=".86"/>
+    <g fill="var(--w2)" stroke="var(--wi)" stroke-width="1.6"><rect x="74" y="800" width="54" height="52"/><rect x="134" y="808" width="54" height="44"/><rect x="194" y="796" width="54" height="56"/><rect x="88" y="756" width="54" height="44"/><rect x="160" y="760" width="54" height="40"/></g>
+    <g id="rdoor"><rect x="60" y="684" width="220" height="168" fill="var(--w0)" stroke="var(--wi)" stroke-width="2"/><path d="M60 712H280M60 740H280M60 768H280M60 796H280M60 824H280" stroke="var(--wi2)" stroke-width="1.4"/><text x="170" y="762" class="wl" style="font-size:15px;fill:var(--wi)">VENDOR 03</text></g>
+    <path d="M340 862V700H420L462 772H480V862Z" fill="#E0A458" stroke="var(--wi)" stroke-width="2.6" stroke-linejoin="round"/>
+    <path d="M352 714H414L446 768H352Z" fill="var(--w0)" stroke="var(--wi)" stroke-width="2"/>
+    <path d="M356 784V846M480 830H492M470 790H480" stroke="var(--wi)" stroke-width="2" fill="none"/>
+    <g id="wh1" transform="translate(86 870)"><circle r="31" fill="var(--wi)"/><circle r="12" fill="var(--w0)"/><path class="spk" d="M-20 0H20M0 -20V20" stroke="var(--w0)" stroke-width="3"/></g>
+    <g id="wh2" transform="translate(408 870)"><circle r="31" fill="var(--wi)"/><circle r="12" fill="var(--w0)"/><path class="spk" d="M-20 0H20M0 -20V20" stroke="var(--w0)" stroke-width="3"/></g>
+  </g>`;
+  s += fig({ id: 'fCar1', kind: 'staff', pose: 'carry', x: 300, f: 1, crate: 'FISH' });
+  s += fig({ id: 'fCar2', kind: 'staff', pose: 'carry', x: 300, f: 1, crate: 'WINE' });
+  s += fig({ id: 'fDrv', kind: 'driver', pose: 'stand', x: 600, f: 1 });
+  s += fig({ id: 'fDrvH', kind: 'driver', pose: 'hand', x: 600, f: 1 });
+  s += fig({ id: 'fOwnD', kind: 'owner', pose: 'stand', x: 676, f: -1 });
+  s += fig({ id: 'fOwnDP', kind: 'owner', pose: 'phone', x: 676, f: -1 });
+  s += `<rect id="invPaper" x="0" y="0" width="16" height="21" fill="#FFFDF7" stroke="var(--wi)" stroke-width="1.6" opacity="0"/>`;
+  s += fig({ id: 'fOwnN', kind: 'owner', pose: 'stand', x: 2330, f: 1 });
+  // teal flows inside the world
+  const flow = (id, d) => `<g id="${id}" opacity="0"><path class="flow-g" d="${d}"/><path class="flow-c" d="${d}"/><path class="flow-d" d="${d}"/></g>`;
+  s += flow('flowPos', 'M1646 770C1650 820 1700 860 1700 900V1000M1700 930C1620 940 1560 960 1500 990M1700 930C1800 940 1900 970 1990 1000');
+  s += flow('flowDoor', 'M700 840H1100L1170 1110C1120 1150 1080 1220 1060 1250M1100 840C1300 880 1520 900 1690 990');
+  s += flow('flowCam', 'M1266 1124C1300 1100 1350 1070 1382 1062');
+  return s;
+}
+
+/* ================================================================
+   BOOK
+   ================================================================ */
+const PW = 400, PH = 540, CURL = 36;
+const MARK_STAMP = `<svg class="stamp" viewBox="-4 -4 108 108" aria-hidden="true">
+  ${['translate(-1.3,-1.3)|rgba(0,0,0,.42)', 'translate(1.2,1.2)|rgba(255,255,255,.13)', 'translate(0,0)|#124a54'].map(v => { const [t, c] = v.split('|'); return `<g transform="${t}"><rect x="1.5" y="1.5" width="97" height="97" rx="22" fill="none" stroke="${c}" stroke-width="3"/><g transform="translate(22.2,17) scale(0.115)" fill="${c}"><use href="#mkp"/></g></g>`; }).join('')}
+</svg>`;
+const G_LOGO = `<svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>`;
+const PAGES = {
+  coverF: `<div class="pg cv"><div class="fr"></div>${MARK_STAMP}<p class="ctt">Mudavym.</p><p class="cst">The house book</p></div>`,
+  coverB: `<div class="pg pgL endp"><svg class="tile" aria-hidden="true"><rect width="100%" height="100%" fill="url(#sealTile)"/></svg>
+    <div class="ept"><span class="kicker">The house</span><span class="mk">Mudavym<i>.</i></span></div>
+    <div class="epb"><span class="house">Kept, page by page.</span><span class="tag">Every house’s book looks the same on the inside. This is where yours opens.</span></div></div>`,
+  login: `<div class="pg pgR lg"><span class="folio">Sign in</span>
+    <h2>Welcome back<i>.</i></h2><p class="lede2">Your house keeps its book here.</p>
+    <span class="lb">Email address</span><div class="fld" data-b="emf"><span data-b="em"></span><i class="car"></i></div>
+    <span class="lb">Password</span><div class="fld" data-b="pwf"><span data-b="pw"></span><i class="car"></i></div>
+    <div class="rb"><span class="word">Forgot password?</span></div>
+    <div class="bt" data-b="bt"><span class="spin"></span><span data-b="btT">Sign in</span></div>
+    <div class="dv"><span></span>or<span></span></div>
+    <div class="gb">${G_LOGO}Sign in with Google</div>
+    <p class="ft">Don’t have an account? <span class="word">Create one now</span></p></div>`,
+  contents: `<div class="pg pgL ct"><span class="folio" style="left:24px;right:auto">Contents</span>
+    <h3>A day at Demo House</h3><p class="sub">drawn as it happens</p>
+    <ol>
+      <li><b>08:10</b><span>Morning, the menu</span><em></em><span>I</span></li>
+      <li><b>12:40</b><span>Service, the POS</span><em></em><span>II</span></li>
+      <li><b>15:10</b><span>The delivery</span><em></em><span>III</span></li>
+      <li><b>All day</b><span>What comes in</span><em></em><span>IV</span></li>
+      <li><b>18:05</b><span>One bottle</span><em></em><span>V</span></li>
+      <li><b>23:40</b><span>Night</span><em></em><span>VI</span></li>
+    </ol><p class="note">A demo house · every number illustrative</p></div>`,
+  half: `<div class="pg pgR ht"><svg viewBox="0 0 100 100" aria-hidden="true"><rect width="100" height="100" rx="22" fill="#1A5E6B"/><g transform="translate(22.2,17) scale(0.115)" fill="#FAF7F1"><use href="#mkp"/></g></svg>
+    <h3>Demo House</h3><p>a day in the life</p><span class="orn"></span><small>Opened by Mudavym</small></div>`,
+  epi: `<div class="pg pgL ep"><blockquote>A house is busy all day. Its book, and its website, should keep up without being asked.<span>The idea</span></blockquote></div>`,
+};
+
+function buildLeaf(k, front, back, N) {
+  const el = document.createElement('div'); el.className = 'leaf';
+  const sw = PW / N; let parent = el; const segs = [], lits = [];
+  for (let i = 0; i < N; i++) {
+    const seg = document.createElement('div'); seg.className = 'seg';
+    seg.style.left = (i === 0 ? 0 : sw) + 'px'; seg.style.width = sw + 'px';
+    const fw = sw + (i < N - 1 ? 1.5 : 0);
+    seg.innerHTML = `<div class="face f" style="width:${fw}px"><div class="cnt" style="left:${-i * sw}px">${front}</div><i class="lit"></i></div><div class="face b" style="width:${fw}px"><div class="cnt" style="left:${-(PW - i * sw - fw)}px">${back}</div><i class="lit"></i></div>`;
+    parent.appendChild(seg); parent = seg; segs.push(seg);
+    lits.push([seg.children[0].lastElementChild, seg.children[1].lastElementChild]);
+  }
+  const cr = document.createElement('i'); cr.className = 'lcR'; el.appendChild(cr);
+  const cl = document.createElement('i'); cl.className = 'lcL'; el.appendChild(cl);
+  return { k, el, segs, lits, N, th: -1 };
+}
+function setLeaf(L, th) {
+  th = clamp(th, 0, 180);
+  if (Math.abs(th - L.th) < .02) return; L.th = th;
+  const r = Math.PI / 180, c = L.N > 1 ? Math.sin(th * r) * CURL : 0;
+  let prev = 0;
+  for (let i = 0; i < L.N; i++) {
+    const phi = Math.min(180, th + c * Math.pow(i / Math.max(1, L.N - 1), 1.5));
+    const a = phi - prev; prev = phi;
+    L.segs[i].style.transform = `rotateY(${(-a).toFixed(2)}deg)`;
+    const sh = Math.sin(phi * r);
+    L.lits[i][0].style.opacity = (phi < 90 ? sh * .26 : 0).toFixed(3);
+    L.lits[i][1].style.opacity = (phi > 90 ? sh * .34 : 0).toFixed(3);
+  }
+  L.el.style.zIndex = th < 90 ? 20 - L.k : 20 + L.k;
+}
+
+const book = $('#book'), bookcam = $('#bookcam'), bshadow = $('#bshadow'), baseR = $('#baseR'), baseL = $('#baseL');
+const LEAVES = [
+  buildLeaf(0, PAGES.coverF, PAGES.coverB, 1),
+  buildLeaf(1, PAGES.login, PAGES.contents, 10),
+  buildLeaf(2, PAGES.half, PAGES.epi, 10),
+];
+LEAVES.forEach(L => book.appendChild(L.el));
+
+/* ================================================================
+   WORLD BUILD
+   ================================================================ */
+const world = $('#world');
+world.innerHTML = buildWorld();
+// the plate on the last page: same drawing, already inked
+const SKVB = { cx: 1350, cy: 860, w: 2200 };
+baseR.innerHTML = `<div class="pg pgR plate"><svg class="sk ws" viewBox="${SKVB.cx - SKVB.w / 2} ${SKVB.cy - SKVB.w * PH / PW / 2} ${SKVB.w} ${SKVB.w * PH / PW}" aria-hidden="true">${world.innerHTML.replace(/ id="[^"]*"/g, '').replace(/opacity="0"/g, 'opacity="0" data-x="1"')}</svg><div class="pt"><b>I · The day</b><span>Demo House</span></div><p class="pb">Fig. I · the house, cut away</p><i class="castR"></i></div>`;
+// strip figures & flows out of the plate (keep only the drawing)
+$$('.plate .fig, .plate [data-x]').forEach(n => n.remove());
+
+const $w = id => world.getElementById ? world.getElementById(id) : $('#' + id);
+const W = {};
+['sun', 'moon', 'stars', 'g-sky', 'g-struct', 'g-kitchen', 'g-bar', 'g-counter', 'g-dining', 'g-facade', 'g-alley', 'g-cellar', 'g-stock',
+  'f-earth', 'f-flat', 'f-kitchen', 'f-bar', 'f-pos', 'f-props', 'f-facade', 'f-alley', 'f-cellar', 'f-stock',
+  'fBart', 'fServer', 'fOwnT', 'fOwnTP', 'g1', 'g2', 'g3', 'g4', 'fChef', 'fOwnC', 'truck', 'rdoor', 'wh1', 'wh2', 'fCar1', 'fCar2', 'fDrv', 'fDrvH', 'fOwnD', 'fOwnDP', 'invPaper', 'fOwnN',
+  'flowPos', 'flowDoor', 'flowCam', 'posGlow', 'newCrates', 'newWine', 'newStock', 'slotRing', 'glasses', 'menuCard', 'stGlow', 'doorGlow', 'cbGlow', 'lp1', 'lp2', 'lp3'
+].forEach(id => W[id] = world.querySelector('#' + id));
+const legsOf = g => [g.querySelector('.lg1'), g.querySelector('.lg2')];
+W.car1L = legsOf(W.fCar1); W.car2L = legsOf(W.fCar2); W.drvL = legsOf(W.fDrv); W.ownNL = legsOf(W.fOwnN);
+const flowDash = $$('.flow-d', world);
+
+/* bottle in the phone */
+$('#botSvg').innerHTML = `
+  <defs><radialGradient id="bk" cx=".5" cy=".4" r=".8"><stop offset="0" stop-color="#3b3128"/><stop offset="1" stop-color="#120f0c"/></radialGradient>
+  <linearGradient id="gl" x1="0" x2="1"><stop offset="0" stop-color="#5d6a3c"/><stop offset=".35" stop-color="#7c8a52"/><stop offset=".6" stop-color="#55623a"/><stop offset="1" stop-color="#3a4428"/></linearGradient></defs>
+  <rect width="230" height="330" fill="url(#bk)"/>
+  ${Array.from({ length: 30 }, (_, i) => { const c = i % 6, r = (i / 6) | 0; return `<circle cx="${12 + c * 42}" cy="${16 + r * 70}" r="16" fill="${(i * 7) % 3 ? '#2a221c' : '#3a1a1f'}" stroke="#4a4035" stroke-width="1.5" opacity=".6"/>`; }).join('')}
+  <path d="M100 34H130V92Q130 116 150 136Q166 152 166 176V318H64V176Q64 152 80 136Q100 116 100 92Z" fill="url(#gl)" stroke="#EFE7D9" stroke-opacity=".5" stroke-width="1.5"/>
+  <rect x="98" y="26" width="34" height="18" rx="2" fill="#C9B26A"/>
+  <path d="M78 176V300" stroke="#EFE7D9" stroke-opacity=".22" stroke-width="7" stroke-linecap="round"/>
+  <rect x="72" y="196" width="86" height="96" rx="2" fill="#F4EEDD"/>
+  <g font-family="Fraunces, Georgia, serif" fill="#211C16" text-anchor="middle">
+    <text x="115" y="214" font-size="6.6" font-weight="600" letter-spacing="1.2">DOMAINE EXEMPLE</text>
+    <text x="115" y="240" font-size="21" font-style="italic">Chablis</text>
+    <text x="115" y="252" font-size="7.5" letter-spacing="1.6">PREMIER CRU</text>
+    <text x="115" y="272" font-size="13" letter-spacing="2">2021</text>
+    <text x="115" y="285" font-size="4.6" font-family="JetBrains Mono, monospace" letter-spacing=".5">APPELLATION CHABLIS 1ER CRU CONTRÔLÉE</text>
+  </g>
+  <g id="bboxes" opacity="0">
+    ${[[76, 205, 78, 12, 'PRODUCER'], [86, 222, 58, 34, 'WINE'], [96, 259, 38, 17, 'VINTAGE'], [74, 279, 82, 9, 'AOC']].map((q, i) => `<g class="bx"><rect x="${q[0]}" y="${q[1]}" width="${q[2]}" height="${q[3]}" rx="2.5" fill="rgba(95,176,188,.14)" stroke="#5FB0BC" stroke-width="1.4" stroke-dasharray="4 3"/><text class="bxt" x="${q[0] + q[2] + 4}" y="${q[1] + q[3] / 2 + 2.5}" font-family="JetBrains Mono, monospace" font-size="6.5" fill="#8FC4CD" letter-spacing=".6" opacity="0">${q[4]}</text></g>`).join('')}
+  </g>`;
+
+/* ================================================================
+   SITE BUILD
+   ================================================================ */
+const rowHTML = r => `<li class="row sk${r.late ? ' late' : ''}" id="r-${r.id}"><span class="nm"><b>${r.n}</b><small>${r.d}</small></span><span class="rc"><span class="st"></span><em class="just">updated just now</em></span><span class="skb" aria-hidden="true"><i></i><i></i></span></li>`;
+$('#menuRows').innerHTML = MENU.map(rowHTML).join('');
+$('#wineRows').innerHTML = WINE.map(rowHTML).join('');
+const ROWS = {};
+[...MENU, ...WINE].forEach(r => { const el = $('#r-' + r.id); ROWS[r.id] = { el, st: el.querySelector('.st'), key: '' }; });
+const sstat = $('#sstat'), feedEl = $('#feed'), dockT = $('#dockT'), dock = $('#dock'), mcount = $('#mcount'), wcount = $('#wcount');
+
+/* story for screen readers */
+{ const ol = $('#story'); SUBS.forEach(s => { const li = document.createElement('li'); li.textContent = s[2]; ol.appendChild(li); }); }
+
+/* ================================================================
+   LAYOUT
+   ================================================================ */
+let VW = innerWidth, VH = innerHeight, NAR = false, NAVH = 64;
+const track = $('#track'), stage = $('#stage'), area = $('#area'), site = $('#site'), hero = $('#hero'), bookL = $('#bookL'), worldL = $('#worldL');
+const subs = $('#subs'), subT = $('#subT'), tcard = $('#tcard'), tk = $('#tk'), tt = $('#tt'), legend = $('#legend'), scrim = $('#scrim'), aflash = $('#aflash');
+const phone = $('#phone'), invC = $('#inv'), doss = $('#doss');
+const AR = { x: 0, y: 0, w: 1, h: 1 };   // area rect (stage coords)
+const SR = { x: 0, y: 0, w: 1, h: 1 };   // site rect
+let PH_S = 1;                            // phone scale
+const ROWPT = {};                        // row targets (stage coords)
+let FEEDPT = { x: 0, y: 0 }, DOCKPT = { x: 0, y: 0 };
+let CAMS = {};
+
+function layout() {
+  VW = innerWidth; VH = innerHeight;
+  NAR = VW < 760;
+  root.classList.toggle('nar', NAR);
+  NAVH = NAR ? 54 : 64;
+  const g = NAR ? 12 : 24;
+  if (NAR) {
+    Object.assign(AR, { x: g, y: NAVH + 6, w: VW - 2 * g, h: Math.round(Math.max(360, VH - NAVH - 6 - 84 - 76)) });
+    Object.assign(SR, { x: g, y: NAVH + 6, w: VW - 2 * g, h: VH - NAVH - 6 - 86 });
+  } else {
+    const sw = Math.round(clamp(VW * .3, 340, 440));
+    Object.assign(SR, { x: VW - g - sw, y: NAVH + 8, w: sw, h: VH - NAVH - 8 - g });
+    Object.assign(AR, { x: g, y: NAVH + 8, w: VW - sw - 3 * g, h: VH - NAVH - 8 - g });
+  }
+  Object.assign(area.style, { left: AR.x + 'px', top: AR.y + 'px', width: AR.w + 'px', height: AR.h + 'px' });
+  Object.assign(site.style, { left: SR.x + 'px', top: SR.y + 'px', width: SR.w + 'px', height: SR.h + 'px' });
+  // phone size
+  PH_S = NAR ? Math.min(.8, (AR.h - 118) / 510) : Math.min(1, (AR.h - 190) / 510);
+  // doc cards
+  const dw = NAR ? AR.w - 20 : Math.min(430, AR.w * .5);
+  [invC, doss].forEach(d => d.style.width = dw + 'px');
+  // site row targets (desktop), measured with every row shown
+  const late = ROWS.w5.el; late.classList.add('shown');
+  const sr = stage.getBoundingClientRect();
+  for (const id in ROWS) { const r = ROWS[id].el.getBoundingClientRect(); ROWPT[id] = { x: r.left - sr.left + r.width / 2, y: r.top - sr.top + r.height / 2 }; }
+  late.classList.remove('shown');
+  const fr = feedEl.getBoundingClientRect(); FEEDPT = { x: fr.left - sr.left + fr.width / 2, y: fr.top - sr.top + 14 };
+  ROWPT.stat = { x: SR.x + SR.w / 2, y: sstat.getBoundingClientRect().top - sr.top + 8 };
+  DOCKPT = { x: VW / 2, y: VH - 12 - 31 };
+  // book cameras
+  const fit = Math.min((VW - 90) / 800, (VH - NAVH - 120) / 540, 1.3);
+  const ac = { x: AR.x + AR.w / 2, y: AR.y + AR.h / 2 };
+  const diveS = (AR.w / PW) * 1.55;
+  if (NAR) {
+    const cs = Math.min((VW - 110) / 400, (VH * .4) / 540);
+    CAMS = {
+      closed: { fx: 600, fy: 270, sx: VW / 2, sy: VH - 30 - 270 * cs, s: cs, rx: 26, rz: -5 },
+      right: { fx: 600, fy: 270, sx: VW / 2, sy: NAVH + (VH - NAVH) / 2 - 10, s: Math.min((VW - 22) / 400, (VH - NAVH - 120) / 540), rx: 4, rz: 0 },
+      mid: { fx: 400, fy: 270, sx: VW / 2, sy: NAVH + (VH - NAVH) / 2 - 10, s: (VW + 70) / 800, rx: 5, rz: 0 },
+      dive: { fx: 600, fy: 300, sx: ac.x, sy: ac.y, s: diveS, rx: 0, rz: 0 },
+      end: { fx: 600, fy: 270, sx: VW / 2, sy: VH / 2 + 10, s: Math.min((VW - 90) / 400, (VH * .5) / 540), rx: 18, rz: -4 },
+    };
+  } else {
+    const cs = Math.min((VH * .66) / 540, (VW * .34) / 400);
+    CAMS = {
+      closed: { fx: 600, fy: 270, sx: VW * .7, sy: VH * .54, s: cs, rx: 26, rz: -7 },
+      spread: { fx: 400, fy: 270, sx: VW / 2, sy: NAVH + (VH - NAVH) / 2 - 18, s: fit, rx: 7, rz: 0 },
+      dive: { fx: 600, fy: 300, sx: ac.x, sy: ac.y, s: diveS, rx: 0, rz: 0 },
+      end: { fx: 600, fy: 270, sx: VW / 2, sy: VH / 2 + 8, s: Math.min(fit * 1.05, (VH * .6) / 540), rx: 20, rz: -5 },
+    };
+  }
+  // phone + card positions (in area coords)
+  if (!RM) track.style.height = (TOTAL + 1) * VH + 'px';
+  bookcam.dataset.k = '';
+}
+
+/* ================================================================
+   RENDER: BOOK
+   ================================================================ */
+const bind = k => $$(`[data-b="${k}"]`, book);
+const B = { em: bind('em'), pw: bind('pw'), emf: bind('emf'), pwf: bind('pwf'), bt: bind('bt'), btT: bind('btT') };
+const EMAIL = 'owner@demohouse.example';
+let bkKey = '';
+function camLerp(a, b, k) {
+  const e = eio(clamp(k));
+  return { fx: lerp(a.fx, b.fx, e), fy: lerp(a.fy, b.fy, e), sx: lerp(a.sx, b.sx, e), sy: lerp(a.sy, b.sy, e), s: Math.exp(lerp(Math.log(a.s), Math.log(b.s), e)), rx: lerp(a.rx, b.rx, e), rz: lerp(a.rz, b.rz, e) };
+}
+function bookCam(t) {
+  const c = CAMS;
+  if (NAR) {
+    if (t < T.coverA) return c.closed;
+    if (t < T.coverB) return camLerp(c.closed, c.right, (t - T.coverA) / (T.coverB - T.coverA));
+    if (t < T.l1A - .1) return c.right;
+    if (t < T.l1A + .2) return camLerp(c.right, c.mid, (t - T.l1A + .1) / .3);
+    if (t < T.diveA) return c.mid;
+    if (t < T.backA) return camLerp(c.mid, c.dive, (t - T.diveA) / (T.diveB - T.diveA));
+    if (t < T.backB) return camLerp(c.dive, c.mid, (t - T.backA) / (T.backB - T.backA));
+    if (t < T.closeA) return c.mid;
+    return camLerp(c.mid, c.end, (t - T.closeA) / (T.closeB - T.closeA));
+  }
+  if (t < T.coverA) return c.closed;
+  if (t < T.coverB) return camLerp(c.closed, c.spread, (t - T.coverA) / (T.coverB - T.coverA));
+  if (t < T.diveA) return c.spread;
+  if (t < T.backA) return camLerp(c.spread, c.dive, (t - T.diveA) / (T.diveB - T.diveA));
+  if (t < T.backB) return camLerp(c.dive, c.spread, (t - T.backA) / (T.backB - T.backA));
+  if (t < T.closeA) return c.spread;
+  return camLerp(c.spread, c.end, (t - T.closeA) / (T.closeB - T.closeA));
+}
+let lastEm = -1, lastPw = -1, lastBt = '';
+function renderBook(t) {
+  const cam = bookCam(t);
+  const tx = cam.sx - VW / 2 - cam.s * (cam.fx - 400), ty = cam.sy - VH / 2 - cam.s * (cam.fy - 270);
+  const key = `${fx(tx)},${fx(ty)},${cam.s.toFixed(4)},${fx(cam.rx)},${fx(cam.rz)}`;
+  if (key !== bkKey) { bkKey = key; bookcam.style.transform = `translate3d(${fx(tx)}px,${fx(ty)}px,0) scale(${cam.s.toFixed(4)}) rotateX(${fx(cam.rx)}deg) rotateZ(${fx(cam.rz)}deg)`; }
+  // leaves
+  let th0 = 180 * eio(ss(T.coverA, T.coverB, t) ? clamp((t - T.coverA) / (T.coverB - T.coverA)) : 0);
+  let th1 = 180 * eio(clamp((t - T.l1A) / (T.l1B - T.l1A)));
+  let th2 = 180 * eio(clamp((t - T.l2A) / (T.l2B - T.l2A)));
+  if (t > T.closeA) {
+    const k = eio(clamp((t - T.closeA) / (T.closeB - T.closeA - .05)));
+    th2 = 180 * (1 - eio(clamp(k * 1.08)));
+    th1 = 180 * (1 - eio(clamp(k * 1.04)));
+    th0 = 180 * (1 - k);
+  }
+  setLeaf(LEAVES[0], th0); setLeaf(LEAVES[1], th1); setLeaf(LEAVES[2], th2);
+  const r = Math.PI / 180;
+  const shR = th => th > 0 && th < 180 ? Math.sin(th * r) * Math.pow(1 - th / 180, .6) * .95 : 0;
+  const shL = th => th > 0 && th < 180 ? Math.sin(th * r) * Math.pow(th / 180, .6) * .95 : 0;
+  LEAVES[1].el.style.setProperty('--shR', fx(shR(th0)));
+  LEAVES[2].el.style.setProperty('--shR', fx(shR(th1)));
+  baseR.style.setProperty('--shR', fx(shR(th2)));
+  LEAVES[0].el.style.setProperty('--shL', fx(shL(th1)));
+  LEAVES[1].el.style.setProperty('--shL', fx(shL(th2)));
+  baseL.style.opacity = fx(ss(172, 180, th0));
+  // desk shadow follows the block
+  const open = ss(150, 180, th0);
+  bshadow.style.left = fx(400 - 400 * open + 10) + 'px';
+  bshadow.style.width = fx(400 + 400 * open - 20) + 'px';
+  // sign-in act
+  const ne = Math.round(EMAIL.length * ss(T.emA, T.emB, t));
+  if (ne !== lastEm) { lastEm = ne; B.em.forEach(e => e.textContent = EMAIL.slice(0, ne)); }
+  const np = Math.round(10 * ss(T.pwA, T.pwB, t));
+  if (np !== lastPw) { lastPw = np; B.pw.forEach(e => e.textContent = '•'.repeat(np)); }
+  const emOn = t > T.emA - .04 && t < T.pwA, pwOn = t >= T.pwA && t < T.hover;
+  const bst = t > T.load ? 'ld' : t > T.press ? 'pr' : t > T.hover ? 'hv' : '';
+  const bk = `${emOn}${pwOn}${bst}`;
+  if (bk !== lastBt) {
+    lastBt = bk;
+    B.emf.forEach(e => e.classList.toggle('on', emOn));
+    B.pwf.forEach(e => e.classList.toggle('on', pwOn));
+    B.bt.forEach(e => { e.classList.toggle('hv', bst === 'hv'); e.classList.toggle('pr', bst === 'pr'); e.classList.toggle('ld', bst === 'ld'); });
+    B.btT.forEach(e => e.textContent = bst === 'ld' ? 'Signing in…' : 'Sign in');
+  }
+}
+
+/* ================================================================
+   RENDER: WORLD
+   ================================================================ */
+const CAM = [
+  [3.95, 1350, 860, 1420, 1100],
+  [4.6, 1560, 860, 2400, 1500],
+  [5.0, 1560, 860, 2400, 1500],
+  [5.42, 2290, 740, 1000, 660],
+  [7.55, 2290, 740, 1000, 660],
+  [7.98, 1640, 870, 1480, 940],
+  [10.12, 1640, 870, 1480, 940],
+  [10.56, 500, 760, 1260, 860],
+  [13.32, 500, 760, 1260, 860],
+  [13.78, 1560, 860, 2400, 1500],
+  [14.92, 1560, 860, 2400, 1500],
+  [15.36, 1250, 1080, 940, 640],
+  [17.5, 1250, 1080, 940, 640],
+  [17.96, 1640, 840, 2400, 1500],
+  [18.62, 1640, 840, 2400, 1500],
+  [19.05, 1350, 860, 1420, 1100],
+];
+const NAR_CX = { 1: 1360, 2: 1360, 3: 2080, 4: 2080, 5: 1630, 6: 1630, 7: 560, 8: 560, 9: 1360, 10: 1360, 11: 1300, 12: 1300, 13: 2000, 14: 2000 };
+function worldCam(t) {
+  let i = 0; while (i < CAM.length - 1 && t >= CAM[i + 1][0]) i++;
+  const a = CAM[i], b = CAM[Math.min(i + 1, CAM.length - 1)];
+  const k = b === a ? 0 : eio(clamp((t - a[0]) / (b[0] - a[0])));
+  const ax = NAR && NAR_CX[i] ? NAR_CX[i] : a[1], bx = NAR && NAR_CX[i + 1] ? NAR_CX[i + 1] : b[1];
+  const aw = NAR ? a[4] : a[3], bw = NAR ? b[4] : b[3];
+  return { cx: lerp(ax, bx, k), cy: lerp(a[2], b[2], k), w: Math.exp(lerp(Math.log(aw), Math.log(bw), k)) };
+}
+const hx = h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+const mixc = (a, b, t) => { const A = hx(a), Bb = hx(b); return '#' + A.map((v, i) => Math.round(v + (Bb[i] - v) * t).toString(16).padStart(2, '0')).join(''); };
+const PAL = { '--w0': ['#FAF7F1', '#1D1813'], '--w1': ['#F3EFE6', '#262019'], '--w2': ['#EAE4D8', '#322A22'], '--wi': ['#211C16', '#EFE7D9'], '--wi2': ['#7C7365', '#ABA294'], '--wt': ['#1A5E6B', '#5FB0BC'], '--sbg': ['#F3EFE6', '#15130F'] };
+let palN = -1;
+function palette(n) {
+  const q = Math.round(n * 50) / 50; if (q === palN) return; palN = q;
+  for (const k in PAL) root.style.setProperty(k, mixc(PAL[k][0], PAL[k][1], q));
+  root.classList.toggle('dark', q > .5);
+}
+let winKey = '';
+function windowTint(t) {
+  const dusk = ss(15.0, 17.0, t), night = ss(17.6, 18.1, t);
+  const c = night > 0 ? mixc('#E8B97A', '#13303A', night) : mixc('#F4E3BF', '#E8B97A', dusk);
+  if (c !== winKey) { winKey = c; root.style.setProperty('--wwin', c); }
+}
+const op = (el, v) => { const s = v < .005 ? '0' : v > .995 ? '1' : v.toFixed(3); if (el.__o !== s) { el.__o = s; el.setAttribute('opacity', s); } };
+const tr = (el, s) => { if (el.__t !== s) { el.__t = s; el.setAttribute('transform', s); } };
+const setVar = (el, k, v) => { const s = v.toFixed(3); if (el['__' + k] !== s) { el['__' + k] = s; el.style.setProperty(k, s); } };
+let vbKey = '';
+function walk(g, legs, x, y, f, phase, moving) {
+  tr(g, `translate(${x.toFixed(1)} ${y}) scale(${f} 1)`);
+  const a = moving ? Math.sin(phase) * 22 : 0;
+  legs[0].setAttribute('transform', `rotate(${a.toFixed(1)} 0 -84)`);
+  legs[1].setAttribute('transform', `rotate(${(-a).toFixed(1)} 0 -84)`);
+}
+function renderWorld(t) {
+  // camera
+  const c = worldCam(t), asp = AR.w / AR.h, h = c.w / asp;
+  const vb = `${(c.cx - c.w / 2).toFixed(1)} ${(c.cy - h / 2).toFixed(1)} ${c.w.toFixed(1)} ${h.toFixed(1)}`;
+  if (vb !== vbKey) { vbKey = vb; world.setAttribute('viewBox', vb); }
+  // drawing on
+  const DR = [['g-struct', 3.7, 4.5], ['g-sky', 4.2, 4.9], ['g-kitchen', 4.1, 4.75], ['g-bar', 4.15, 4.8], ['g-counter', 4.2, 4.85], ['g-dining', 4.05, 4.7], ['g-facade', 4.0, 4.65], ['g-alley', 4.3, 4.95], ['g-cellar', 4.3, 4.95], ['g-stock', 4.35, 5.0]];
+  DR.forEach(([id, a, b]) => setVar(W[id], '--d', 1.1 * (1 - ss(a, b, t))));
+  ['f-earth', 'f-flat', 'f-kitchen', 'f-bar', 'f-pos', 'f-props', 'f-facade', 'f-alley', 'f-cellar', 'f-stock'].forEach((id, i) => setVar(W[id], '--f', ss(4.25 + i * .04, 4.75 + i * .04, t)));
+  // time of day
+  const night = ss(17.72, 17.98, t);
+  palette(night);
+  windowTint(t);
+  const day = clamp((t - 4.2) / (17.4 - 4.2));
+  const sx = lerp(2600, 160, day), sy = 300 - Math.sin(day * Math.PI) * 170;
+  tr(W.sun, `translate(${sx.toFixed(0)} ${sy.toFixed(0)})`);
+  op(W.sun, (1 - ss(17.2, 17.8, t)) * ss(3.9, 4.4, t));
+  tr(W.moon, `translate(2250 ${lerp(320, 230, ss(17.6, 18.6, t)).toFixed(0)})`);
+  op(W.moon, ss(17.7, 18.2, t)); op(W.stars, ss(17.8, 18.3, t));
+  // lamps: on at dusk, off one by one at night
+  const lampOn = (i) => ss(15.2, 16.0, t) * (1 - ss(18.1 + i * .12, 18.16 + i * .12, t)) + win(7.6, 10.2, t, .3) * .5;
+  [W.lp1, W.lp2, W.lp3].forEach((g, i) => {
+    const v = lampOn(i);
+    op(g.querySelector('.glow'), v); op(g.querySelector('.cone'), v * .9);
+    g.querySelector('.bulb').setAttribute('fill', v > .3 ? '#FFE2B0' : '#4f473c');
+  });
+  op(W.stGlow, ss(17.4, 17.9, t) * (1 - ss(18.5, 18.56, t)) + ss(18.56, 18.62, t) * .6);
+  op(W.doorGlow, ss(15.4, 16.0, t) * (1 - ss(18.44, 18.5, t)));
+  op(W.cbGlow, .5 * (1 - ss(18.3, 18.36, t)) + .3 * ss(15.0, 15.4, t) * (1 - ss(17.6, 17.8, t)));
+  // figures (a: owner at table)
+  const ownTable = win(4.3, T.B + .05, t, .25);
+  const shooting = win(5.32, 7.3, t, .06);
+  op(W.fOwnT, ownTable * (1 - shooting)); op(W.fOwnTP, ownTable * shooting);
+  op(W.menuCard, 1 - ss(T.B - .2, T.B, t));
+  op(W.fChef, ss(4.4, 4.8, t) * (1 - ss(18.0, 18.3, t)));
+  op(W.fBart, ss(4.5, 4.9, t) * (1 - ss(18.0, 18.3, t)));
+  op(W.fServer, ss(4.5, 4.9, t) * (1 - ss(17.7, 18.0, t)));
+  const guests = win(T.B - .1, T.C, t, .2) + win(T.E + .1, 17.95, t, .25);
+  [W.g1, W.g2, W.g3, W.g4].forEach((g, i) => op(g, i === 2 ? win(T.B + .1, T.C, t, .2) : guests));
+  op(W.glasses, guests);
+  // b: POS
+  const sale = EV.filter(e => e.src === 'pos').some(e => t > e.t - .3 && t < e.t - .2);
+  op(W.posGlow, sale ? .85 : (win(T.B, T.C, t, .2) * .25 + win(T.D, T.E, t, .2) * .25));
+  op(W.flowPos, win(8.0, 10.15, t, .2) + win(13.45, 14.95, t, .15));
+  flowDash.forEach(p => p.style.strokeDashoffset = (-t * 260).toFixed(1));
+  // c: truck
+  const arr = eo(clamp((t - 10.42) / .6));
+  const tx = lerp(-1100, 90, arr);
+  tr(W.truck, `translate(${tx.toFixed(1)} 0)`);
+  const rot = (tx / 31) * 57.3;
+  [W.wh1, W.wh2].forEach(w => w.querySelector('.spk').setAttribute('transform', `rotate(${rot.toFixed(1)})`));
+  const doorOpen = ss(10.95, 11.15, t) * (1 - ss(13.25, 13.35, t));
+  tr(W.rdoor, `translate(0 684) scale(1 ${(1 - doorOpen * .92).toFixed(3)}) translate(0 -684)`);
+  op(W.truck, t > 10.3 && t < 13.45 ? 1 : 0);
+  // carriers
+  const carrying = (g, legs, ph) => {
+    const u = clamp((t - 11.05 - ph) / .62);
+    const vis = t > 11.0 + ph && t < 11.05 + ph + .62 && t < 12.95;
+    const u2 = clamp((t - 11.7 - ph) / .62), vis2 = t > 11.7 + ph && t < 12.32 + ph;
+    const uu = vis2 ? u2 : u;
+    const x = lerp(250, 1120, uu);
+    walk(g, legs, x, 900, 1, x / 13, true);
+    op(g, (vis || vis2) ? Math.min(1, uu * 12, (1 - uu) * 10) : 0);
+  };
+  carrying(W.fCar1, W.car1L, 0); carrying(W.fCar2, W.car2L, .3);
+  // driver + handover
+  const dvis = ss(10.95, 11.05, t) * (1 - ss(13.25, 13.35, t));
+  const dx = lerp(520, 598, ss(11.0, 11.3, t));
+  const handing = t > 11.32 && t < 11.72;
+  walk(W.fDrv, W.drvL, dx, 900, 1, dx / 12, t > 11.0 && t < 11.3);
+  op(W.fDrv, handing ? 0 : dvis); op(W.fDrvH, handing ? dvis : 0);
+  const ownD = win(10.6, T.D, t, .2);
+  const ownPhone = t > 11.78 && t < 12.4;
+  op(W.fOwnD, ownPhone ? 0 : ownD); op(W.fOwnDP, ownPhone ? ownD : 0);
+  const pk = ss(11.4, 11.66, t);
+  const ipx = lerp(598 + 48, 676 - 52, pk), ipy = lerp(900 - 126, 900 - 128, pk) - Math.sin(pk * Math.PI) * 10;
+  tr(W.invPaper, `translate(${ipx.toFixed(1)} ${ipy.toFixed(1)})`);
+  op(W.invPaper, win(11.3, 11.8, t, .05));
+  op(W.flowDoor, win(12.98, 13.38, t, .08) + win(13.45, 14.95, t, .15) * .7);
+  op(W.newCrates, ss(11.6, 11.9, t));
+  op(W.newWine, win(13.0, 13.6, t, .08));
+  op(W.newStock, ss(13.05, 13.2, t));
+  // e: cellar
+  op(W.fOwnC, win(T.E - .1, T.F, t, .25));
+  op(W.flowCam, win(15.55, 15.95, t, .06));
+  op(W.slotRing, win(15.5, 16.9, t, .08));
+  // f: owner leaves at night
+  const nx = lerp(2300, 2540, ss(18.2, 18.7, t));
+  walk(W.fOwnN, W.ownNL, nx, 900, 1, nx / 12, t > 18.2 && t < 18.7);
+  op(W.fOwnN, win(18.0, 18.8, t, .1));
+}
+
+/* ================================================================
+   RENDER: OVERLAYS (phone, cards, site, links, chips)
+   ================================================================ */
+const scMenu = $('#scMenu'), scWine = $('#scWine'), scInv = $('#scInv'), scBot = $('#scBot');
+const shut = $('#shut'), pfl = $('#pfl'), scan = $('#scan'), phint = $('#phint'), pread = $('#pread'), pbarT = $('#pbarT');
+const detM = $$('.det', scMenu), detW = $$('.det', scWine), detI = $$('.det', scInv);
+const bboxes = $('#bboxes'), bxs = $$('#bboxes .bx'), bxt = $$('#bboxes .bxt');
+const irows = $$('#irows li'), inote = $('#inote'), iwho = $('#iwho'), icbtn = $('#icbtn'), icbT = $('#icbT'), ifng = $('#ifng');
+const dey = $('#dey');
+const FIELDS = $$('#dfx dd').map(dd => ({ dd, v: dd.dataset.v, s: '' }));
+const GLY = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789·/';
+function decode(f, k, salt) {
+  let out = '';
+  const n = f.v.length, fixed = Math.floor(k * n);
+  if (k >= 1) out = f.v; else if (k > 0) { out = f.v.slice(0, fixed); const tail = Math.min(n - fixed, 6); for (let i = 0; i < tail; i++) out += f.v[fixed + i] === ' ' ? ' ' : GLY[(Math.floor(salt * 37) + i * 7 + fixed * 3) % GLY.length]; }
+  if (out !== f.s) { f.s = out; f.dd.textContent = out; f.dd.classList.toggle('scr', k > 0 && k < 1); }
+}
+const sty = (el, prop, v) => { if (el['_' + prop] !== v) { el['_' + prop] = v; el.style[prop] = v; } };
+const vis = (el, o) => { sty(el, 'opacity', o < .005 ? '0' : o > .995 ? '1' : o.toFixed(3)); sty(el, 'visibility', o > .005 ? 'visible' : 'hidden'); };
+const cls = (el, c, on) => { const k = '__c' + c; if (el[k] !== on) { el[k] = on; el.classList.toggle(c, on); } };
+
+function phoneState(t) {
+  // which beat is the phone in?
+  const A = win(5.34, 7.36, t, .14), Cc = win(11.84, 13.04, t, .1), E = win(15.44, 17.42, t, .12);
+  let o = Math.max(A, Cc, E);
+  let mode = A > 0 ? 'menu' : Cc > 0 ? 'inv' : E > 0 ? 'bot' : '';
+  // where is it (area coords)
+  let cxp = NAR ? AR.w * .5 : AR.w * .68;
+  if (!NAR && mode === 'inv') cxp = AR.w * .26;
+  if (!NAR && mode === 'bot') cxp = AR.w * .25;
+  let dimP = 1;
+  if (NAR && mode === 'inv') dimP = 1 - ss(12.14, 12.26, t);
+  if (NAR && mode === 'bot') dimP = 1 - ss(16.04, 16.16, t);
+  o *= dimP;
+  const pw = 250 * PH_S, phh = 510 * PH_S;
+  const topY = NAR ? Math.max(100, 100 + (AR.h - 100 - phh) / 2 - 10) : Math.max(118, (AR.h - phh) / 2 + 30);
+  const lift = (1 - Math.max(A, Cc, E)) * 40;
+  sty(phone, 'transform', `translate(${fx(cxp - pw / 2)}px,${fx(topY + lift)}px) scale(${(PH_S * (1 - (1 - Math.max(A, Cc, E)) * .06)).toFixed(3)})`);
+  vis(phone, clamp(o * 1.8));
+  vis(scrim, Math.max(A, Cc, E) * .92);
+  return mode;
+}
+function renderOverlays(t) {
+  const mode = phoneState(t);
+  // screens
+  const menuSc = 1 - ss(6.5, 6.6, t), wineSc = ss(6.5, 6.6, t);
+  vis(scMenu, mode === 'menu' ? menuSc : 0); vis(scWine, mode === 'menu' ? wineSc : 0);
+  vis(scInv, mode === 'inv' ? 1 : 0); vis(scBot, mode === 'bot' ? 1 : 0);
+  // scan, shutter, flash per beat
+  let scanA = 0, scanB = 0, shot = 99, hint = '';
+  if (mode === 'menu') { if (t < 6.5) { scanA = 5.5; scanB = 5.74; shot = 5.8; hint = 'Photo · menu'; } else { scanA = 6.6; scanB = 6.76; shot = 6.8; hint = 'Photo · wine list'; } }
+  if (mode === 'inv') { scanA = 11.92; scanB = 12.04; shot = 12.08; hint = 'Photo · invoice'; }
+  if (mode === 'bot') { scanA = 15.58; scanB = 15.84; shot = 15.9; hint = 'Photo · label'; }
+  const sp = clamp((t - scanA) / (scanB - scanA));
+  sty(scan, 'opacity', (sp > 0 && sp < 1 ? Math.sin(sp * Math.PI) : 0).toFixed(3));
+  sty(scan, 'transform', `translateY(${fx(sp * 270 * 1)}px)`);
+  const fl = Math.max(0, 1 - Math.abs(t - shot) / .03);
+  sty(pfl, 'opacity', (fl * .95).toFixed(3));
+  sty(aflash, 'opacity', (fl * .35).toFixed(3));
+  cls(shut, 'pr', Math.abs(t - shot) < .02);
+  if (phint.textContent !== hint) phint.textContent = hint;
+  sty(pread, 'opacity', (t > shot + .03 && mode ? 1 : 0).toString());
+  const pb = mode === 'bot' && t > shot ? 'Read · saved to the cellar' : mode === 'inv' && t > shot ? 'Read · checking the order' : 'Mudavym · camera';
+  if (pbarT.textContent !== pb) pbarT.textContent = pb;
+  // menu + wine detection boxes
+  const boxes = (dets, a, lockT, flyT0) => dets.forEach((d, i) => {
+    sty(d.parentNode, 'color', `rgba(33,28,22,${(1 - .8 * ss(flyT0 + i * .09 - .02, flyT0 + i * .09 + .12, t)).toFixed(3)})`);
+    const appear = ss(a + i * .03, a + i * .03 + .05, t);
+    sty(d, 'opacity', (appear * (1 - ss(flyT0 + i * .09 + .05, flyT0 + i * .09 + .12, t))).toFixed(3));
+    cls(d, 'lk', t > lockT); cls(d, 'go', t > flyT0 + i * .09 - .02);
+  });
+  boxes(detM, 5.54, 5.79, 5.82);
+  boxes(detW, 6.64, 6.79, 6.76);
+  detI.forEach((d, i) => { sty(d, 'opacity', (ss(11.94 + i * .02, 11.98 + i * .02, t) * (1 - ss(12.2, 12.3, t))).toFixed(3)); cls(d, 'lk', t > 12.07); });
+  // invoice card
+  const invO = win(12.1, 13.04, t, .1);
+  const icx = NAR ? 10 : AR.w * .47, icy = NAR ? Math.max(96, 96 + (AR.h - 96 - invC.offsetHeight) / 2) : Math.max(118, (AR.h - invC.offsetHeight) / 2 + 30);
+  sty(invC, 'transform', `translate(${fx(icx)}px,${fx(icy + (1 - invO) * 18)}px)`);
+  vis(invC, invO);
+  [12.22, 12.31, 12.4, 12.56, 12.48].forEach((tt0, i) => {
+    const k = ss(tt0, tt0 + .05, t), li = irows[i];
+    li.querySelector('.tick path').style.setProperty('--k', (1.1 * (1 - k)).toFixed(3));
+    cls(li, i === 3 ? 'fl' : 'ok', k > .5);
+  });
+  sty(inote, 'opacity', ss(12.6, 12.66, t).toFixed(3));
+  const cst = t > 12.92 ? 'dn' : t > 12.86 ? 'pr' : t > 12.74 ? 'hv' : '';
+  cls(icbtn, 'hv', cst === 'hv' || cst === 'pr'); cls(icbtn, 'pr', cst === 'pr'); cls(icbtn, 'dn', cst === 'dn');
+  const ict = cst === 'dn' ? 'Confirmed ✓' : 'Confirm delivery';
+  if (icbT.textContent !== ict) icbT.textContent = ict;
+  const iw = cst === 'dn' ? 'Confirmed by you · 15:14' : 'Waiting for you';
+  if (iwho.textContent !== iw) { iwho.textContent = iw; cls(iwho, 'ok', cst === 'dn'); }
+  sty(ifng, 'opacity', (win(12.74, 12.98, t, .04)).toFixed(3));
+  sty(ifng, 'transform', `scale(${cst === 'pr' ? .8 : 1})`);
+  // wine bottle boxes + dossier
+  const bo = ss(15.6, 15.66, t);
+  bboxes.setAttribute('opacity', bo.toFixed(3));
+  const lock = ss(15.76, 15.86, t);
+  bxs.forEach((g, i) => {
+    const j = (1 - lock) * 3.5;
+    g.setAttribute('transform', `translate(${(Math.sin(t * 160 + i * 2) * j).toFixed(2)} ${(Math.cos(t * 130 + i * 3) * j).toFixed(2)})`);
+    const r = g.firstElementChild; r.setAttribute('stroke-dasharray', t > 15.88 ? 'none' : '4 3'); r.setAttribute('stroke-dashoffset', (t * 90).toFixed(1));
+    bxt[i].setAttribute('opacity', ss(15.92 + i * .03, 15.96 + i * .03, t).toFixed(3));
+  });
+  const dO = win(16.0, 17.42, t, .12);
+  const dcx = NAR ? 10 : AR.w * .47, dcy = NAR ? Math.max(90, 90 + (AR.h - 90 - doss.offsetHeight) / 2) : Math.max(118, (AR.h - doss.offsetHeight) / 2 + 30);
+  sty(doss, 'transform', `translate(${fx(dcx)}px,${fx(dcy + (1 - dO) * 18)}px)`);
+  vis(doss, dO);
+  const de = t > 16.1 ? 'Read · 18:06 · saved to the cellar' : 'Camera · reading the label';
+  if (dey.textContent !== de) dey.textContent = de;
+  FIELDS.forEach((f, i) => decode(f, ss(16.1 + i * .06, 16.2 + i * .06, t), t * 40));
+}
+
+/* ---------- site state ---------- */
+let feedKey = '', dockKey = '';
+function renderSite(t) {
+  const st = {};
+  let last = null; const feed = [];
+  for (const e of EV) {
+    if (e.t > t) break;
+    if (e.row) {
+      const s = st[e.row] || (st[e.row] = { ap: 0, st: '', so: 0, hot: -9 });
+      if (e.o.appear) s.ap = 1;
+      if (e.o.st !== undefined) s.st = e.o.st;
+      if (e.o.so !== undefined) s.so = e.o.so;
+      s.hot = e.t;
+    }
+    if (e.feed) feed.unshift(e);
+    last = e;
+  }
+  const hotWin = .34;
+  let nm = 0, nw = 0;
+  for (const id in ROWS) {
+    const R = ROWS[id], s = st[id] || { ap: 0, st: '', so: 0, hot: -9 };
+    const hot = t - s.hot < hotWin;
+    if (s.ap) id[0] === 'm' ? nm++ : nw++;
+    const key = `${s.ap}|${s.st}|${s.so}|${hot}`;
+    if (key !== R.key) {
+      const wasSk = R.el.classList.contains('sk');
+      R.key = key;
+      R.el.classList.toggle('sk', !s.ap);
+      if (wasSk && s.ap) { R.el.classList.remove('in'); void R.el.offsetWidth; R.el.classList.add('in'); }
+      R.el.classList.toggle('so', !!s.so);
+      R.el.classList.toggle('hot', hot);
+      if (R.el.classList.contains('late')) R.el.classList.toggle('shown', !!s.ap);
+      R.st.textContent = s.st;
+    }
+  }
+  const mc = nm ? `${nm} dishes` : '', wc = nw ? `${nw} wines` : '';
+  if (mcount.textContent !== mc) mcount.textContent = mc;
+  if (wcount.textContent !== wc) wcount.textContent = wc;
+  const ss0 = st.stat ? st.stat.st : 'Open today · 12:00–23:00';
+  if (sstat.textContent !== ss0) sstat.textContent = ss0;
+  cls(sstat, 'hot', !!st.stat && t - st.stat.hot < hotWin);
+  // feed (latest 3)
+  const top = feed.slice(0, 3);
+  const fk = top.map(e => e.t).join(',') + '|' + (top[0] && t - top[0].t < hotWin);
+  if (fk !== feedKey) {
+    feedKey = fk;
+    feedEl.innerHTML = top.length ? top.map((e, i) => `<li class="${i === 0 && t - e.t < hotWin * 1.6 ? 'new' : ''}"><span>${e.feed}</span><span class="fm">${e.clock}${i === 0 && t - e.t < hotWin * 1.6 ? ' · just now' : ''}</span></li>`).join('') : '<li class="empty">Nothing yet. The menu is still on paper.</li>';
+  }
+  // dock (narrow)
+  const dk = top[0] ? top[0].feed : 'Nothing yet. The menu is still on paper.';
+  const fresh = top[0] && t - top[0].t < hotWin;
+  const dkk = dk + fresh;
+  if (dkk !== dockKey) { dockKey = dkk; dockT.textContent = dk + (fresh ? ' · just now' : ''); cls(dockT, 'new', !!fresh); cls(dock, 'ping', !!fresh); }
+}
+
+/* ---------- links + chips ---------- */
+const links = $('#links'), chipsEl = $('#chips');
+const SRC = { pos: [1646, 748], door: [700, 820], cold: [1690, 1060], kitchen: [990, 760], cellar: [930, 1100], phoneE: [1276, 1112], front: [2330, 760] };
+const LINKSRC = ['pos', 'door', 'cold', 'kitchen', 'cellar', 'phoneE', 'front'];
+links.innerHTML = LINKSRC.map(k => `<g data-k="${k}" opacity="0"><path class="g"/><path class="c"/><path class="f"/>${'<circle r="4.5" fill="var(--wt)"/>'.repeat(4)}</g>`).join('');
+const LG = {}; $$('#links > g').forEach(g => LG[g.dataset.k] = { g, p: $$('path', g), dots: $$('circle', g), key: '' });
+const CHIPN = 6; chipsEl.innerHTML = '<span class="chip"><b></b><span></span></span>'.repeat(CHIPN);
+const CHIPS = $$('.chip', chipsEl).map(el => ({ el, tx: el.lastElementChild, txt: '' }));
+const bez = (p0, p1, p2, p3, u) => { const v = 1 - u; return [v * v * v * p0[0] + 3 * v * v * u * p1[0] + 3 * v * u * u * p2[0] + u * u * u * p3[0], v * v * v * p0[1] + 3 * v * v * u * p1[1] + 3 * v * u * u * p2[1] + u * u * u * p3[1]]; };
+function curve(S, E) {
+  const dx = E[0] - S[0], dy = E[1] - S[1];
+  if (NAR) return [S, [S[0], S[1] + dy * .45], [E[0], E[1] - Math.max(60, dy * .5)], E];
+  return [S, [S[0] + dx * .35, S[1] - 70], [E[0] - Math.max(80, dx * .35), E[1]], E];
+}
+function targetOf(e) {
+  if (NAR) return [DOCKPT.x, DOCKPT.y - 36];
+  const p = e.row ? ROWPT[e.row] : FEEDPT; return [p.x, p.y];
+}
+function renderLinks(t) {
+  const M = world.getScreenCTM(); if (!M) return;
+  const sr = stage.getBoundingClientRect();
+  const toScr = ([x, y]) => [M.a * x + M.c * y + M.e - sr.left, M.b * x + M.d * y + M.f - sr.top];
+  // the cellar read leaves from the card's edge, so its line never crosses the dossier
+  const srcPt = k => { if (k === 'phoneE' && !NAR) { const r = doss.getBoundingClientRect(); if (r.width) return [r.right - sr.left - 4, r.top - sr.top + 44]; } return toScr(SRC[k]); };
+  const show = {
+    pos: win(8.0, 10.15, t, .2) + win(13.45, 14.95, t, .15),
+    door: win(12.98, 13.38, t, .08) + win(13.45, 14.95, t, .15),
+    cold: win(13.45, 14.95, t, .15), kitchen: win(13.45, 14.95, t, .15), cellar: win(13.45, 14.95, t, .15),
+    phoneE: NAR ? 0 : win(16.9, 17.25, t, .06), front: win(18.25, 18.5, t, .05),
+  };
+  const ends = {};
+  for (const k of LINKSRC) {
+    const L = LG[k], o = clamp(show[k]);
+    if (L.g.__o !== o.toFixed(2)) { L.g.__o = o.toFixed(2); L.g.setAttribute('opacity', o.toFixed(2)); }
+    if (o <= 0) continue;
+    const S = srcPt(k);
+    const E = NAR ? [VW / 2 + (LINKSRC.indexOf(k) - 2) * 16, AR.y + AR.h - 44] : [SR.x - 2, SR.y + 150 + LINKSRC.indexOf(k) * 26];
+    const cv = curve(S, E); ends[k] = cv;
+    const d = `M${fx(cv[0][0])} ${fx(cv[0][1])}C${fx(cv[1][0])} ${fx(cv[1][1])} ${fx(cv[2][0])} ${fx(cv[2][1])} ${fx(cv[3][0])} ${fx(cv[3][1])}`;
+    if (d !== L.key) { L.key = d; L.p.forEach(p => p.setAttribute('d', d)); }
+    L.p[2].style.strokeDashoffset = (-t * 300).toFixed(1);
+    L.dots.forEach((c, j) => { const u = ((t * 1.6 + j / 4) % 1); const pt = bez(...cv, u); c.setAttribute('cx', fx(pt[0])); c.setAttribute('cy', fx(pt[1])); c.setAttribute('opacity', Math.sin(u * Math.PI).toFixed(2)); });
+  }
+  // chips: events in flight
+  const active = EV.filter(e => t > e.t - .28 && t < e.t + .015 && e.src).slice(-CHIPN);
+  CHIPS.forEach((c, i) => {
+    const e = active[i];
+    if (!e) { sty(c.el, 'opacity', '0'); return; }
+    let S;
+    if (e.src.startsWith('line:')) {
+      const ln = $(`[data-line="${e.src.slice(5)}"]`); const r = ln.getBoundingClientRect();
+      S = [r.left - sr.left + 10, r.top - sr.top + r.height / 2];
+    } else S = srcPt(e.src);
+    const E = targetOf(e);
+    const u = eio(clamp((t - (e.t - .28)) / .28));
+    const cv = NAR ? [S, [VW - 84, S[1] + 20], [VW - 84, E[1] - 60], E] : e.src.startsWith('line:') ? [S, [S[0] + 60, S[1] - 90], [E[0] - 120, E[1] - 30], E] : curve(S, E);
+    const p = bez(...cv, u);
+    if (c.txt !== e.chip) { c.txt = e.chip; c.tx.textContent = e.chip; }
+    sty(c.el, 'transform', `translate(${fx(p[0])}px,${fx(p[1] - 13)}px) scale(${(.9 + .1 * Math.sin(u * Math.PI)).toFixed(3)})`);
+    sty(c.el, 'opacity', Math.min(1, u * 8, (1 - u) * 14 + .15).toFixed(3));
+  });
+}
+
+/* ================================================================
+   MASTER RENDER
+   ================================================================ */
+let curSub = null, curCh = -1;
+function render(t) {
+  // hero
+  const hO = 1 - ss(.12, .5, t);
+  sty(hero, 'opacity', hO.toFixed(3)); sty(hero, 'visibility', hO > .01 ? 'visible' : 'hidden');
+  // book layer
+  const bookO = (1 - ss(4.02, 4.3, t)) + ss(T.backA - .05, T.backA + .2, t);
+  vis(bookL, clamp(bookO));
+  if (bookO > .005) renderBook(t);
+  // world layer
+  const wO = ss(T.worldA, T.worldB, t) * (1 - ss(T.backA + .02, T.backA + .3, t));
+  vis(worldL, wO);
+  // world camera continues the dive: area scales up from the page
+  const pre = 1 - ss(T.worldA, T.worldB + .1, t), post = ss(T.backA, T.backA + .3, t);
+  sty(worldL, 'transform', pre > .001 || post > .001 ? `scale(${(1 + pre * .06 + post * .04).toFixed(4)})` : 'none');
+  const siteO = ss(4.05, 4.45, t) * (1 - ss(T.backA, T.backA + .2, t));
+  if (!NAR) { sty(site, 'transform', `translateX(${fx((1 - siteO) * 60)}px)`); sty(site, 'opacity', siteO.toFixed(3)); }
+  sty(dock, 'opacity', siteO.toFixed(3)); sty(dock, 'visibility', siteO > .01 ? 'visible' : 'hidden');
+  if (wO > .005) { renderWorld(t); renderOverlays(t); renderSite(t); renderLinks(t); }
+  else { palette(t > 15 ? 1 : 0); CHIPS.forEach(c => sty(c.el, 'opacity', '0')); }
+  // title card + legend
+  let ch = -1; CHAP.forEach((c, i) => { if (t >= c.a && t < c.b) ch = i; });
+  if (ch !== curCh) { curCh = ch; if (ch >= 0) { tk.textContent = CHAP[ch].tk; tt.innerHTML = CHAP[ch].tt; } }
+  const tcO = ch >= 0 ? win(CHAP[ch].a, CHAP[ch].b, t, .14) : 0;
+  sty(tcard, 'opacity', tcO.toFixed(3));
+  sty(tcard, 'transform', `translateY(${fx((1 - tcO) * -8)}px)`);
+  sty(legend, 'opacity', (ss(4.3, 4.7, t) * (1 - ss(18.6, 18.8, t))).toFixed(3));
+  // subtitles: in the book they sit low on the stage, in the world under/inside the area
+  const inBook = t < 4.25 || t > T.backA + .2;
+  const sm = inBook ? 'b' : NAR ? 'n' : 'w';
+  if (sm !== subs.__m || render.__vw !== VW + 'x' + VH) {
+    subs.__m = sm; render.__vw = VW + 'x' + VH;
+    const st = subs.style;
+    if (sm === 'b') { st.left = '16px'; st.width = (VW - 32) + 'px'; st.top = 'auto'; st.bottom = (NAR ? 22 : 26) + 'px'; }
+    else if (sm === 'n') { st.left = '16px'; st.width = (VW - 32) + 'px'; st.top = (AR.y + AR.h + 14) + 'px'; st.bottom = 'auto'; }
+    else { st.left = (AR.x + 30) + 'px'; st.width = (AR.w - 60) + 'px'; st.top = 'auto'; st.bottom = (VH - AR.y - AR.h + 64) + 'px'; }
+  }
+  const sub = SUBS.find(x => t >= x[0] && t < x[1]);
+  const txt = sub ? sub[2] : '';
+  if (txt !== curSub) {
+    curSub = txt; subT.classList.add('out');
+    clearTimeout(render.to);
+    render.to = setTimeout(() => { subT.textContent = txt; if (txt) subT.classList.remove('out'); }, 170);
+  }
+  // nav: dark at night and on the closing book
+  if (wO <= .005) palette(t > 18 ? 1 : 0);
+}
+
+/* ================================================================
+   REDUCED MOTION — stills
+   ================================================================ */
+function buildStills() {
+  // book open at the sign-in spread
+  renderBook(1.8); setLeaf(LEAVES[0], 180); setLeaf(LEAVES[1], 0); setLeaf(LEAVES[2], 0);
+  const c = CAMS.spread || CAMS.right;
+  const tx = c.sx - VW / 2 - c.s * (c.fx - 400), ty = c.sy - VH / 2 - c.s * (c.fy - 270);
+  bookcam.style.transform = `translate(${tx}px,${ty}px) scale(${c.s}) rotateX(6deg)`;
+  if (!NAR) { bookcam.style.transform = `translate(${tx + VW * .17}px,${ty + 10}px) scale(${c.s * .7}) rotateX(6deg)`; }
+  else { hero.style.top = '64px'; bookcam.style.transform = `translate(${tx}px,${ty + 150}px) scale(${c.s * .9}) rotateX(6deg)`; }
+  vis(bookL, 1); vis(hero, 1); bshadow.style.left = '10px'; bshadow.style.width = '780px';
+  // chapters: render the world at a representative moment, clone the drawing
+  worldL.style.visibility = 'visible'; worldL.style.opacity = '0';
+  const STILLS = [
+    { t: 5.2, h: 'Photograph the menu.', k: '08:10 · Morning', p: ['Before the doors open, the owner photographs the paper menu and the wine list.', 'Every dish and every bottle is read into place, and the website menu fills in. Everything you have is now digital.'], cam: [2030, 740, 1150] },
+    { t: 9.6, h: 'Connect the POS.', k: '12:40 · Service', p: ['Orders go through the POS (Toast). Each sale flows to the stock and to the website.', '“Sea bass: 3 left.” “Sold out: lamb shank.” “Tonight: Barolo by the glass.” Nobody typed a thing.'], cam: [1640, 870, 1500] },
+    { t: 11.5, h: 'Photograph the invoice.', k: '15:10 · The delivery', p: ['The truck reaches the back door; food and wine come in. The driver hands over the invoice, and one photo of it is already checked against the order.', 'Every line matches but one, and that one is flagged. You confirm; the stock and the website already know: “Wine in: Sancerre 2022.” “Food in: fresh sea bass.”'], cam: [470, 790, 1450], card: invC, ct: 12.95 },
+    { t: 14.4, h: 'Food comes in. Wine comes in.', k: 'All day', p: ['From the back door, the cold room, the kitchen, the cellar and the POS, every change finds its way to the website.'], cam: [1360, 840, 2700] },
+    { t: 15.3, h: 'Point at any bottle.', k: '18:05 · The cellar', p: ['The owner points the phone at a bottle. Boxes find the label; the shutter reads it.', 'Producer, wine, vintage, region, appellation, grape, style, how many are in the cellar and where, the cost, and a pairing from tonight’s menu. The website pours it by the glass tonight.'], cam: [1250, 1080, 1000], card: doss, ct: 17.2 },
+    { t: 18.15, h: 'The house kept up.', k: '23:40 · Night', p: ['The last table goes home and the lights go out one by one. The house kept itself, and its website, up to date all day.'], cam: [1500, 820, 2700] },
+  ];
+  const host = $('#rmChapters');
+  AR.w = 1600; AR.h = 1000;
+  STILLS.forEach(S => {
+    renderWorld(S.t);
+    const cl = world.cloneNode(true); cl.removeAttribute('id');
+    cl.querySelectorAll('[id]').forEach(n => n.removeAttribute('id'));
+    const w = S.cam[2], h = w / 1.6; cl.setAttribute('viewBox', `${S.cam[0] - w / 2} ${S.cam[1] - h / 2} ${w} ${h}`);
+    cl.style.cssText = getComputedStyle(root).cssText ? '' : '';
+    ['--w0', '--w1', '--w2', '--wi', '--wi2', '--wt', '--wwin'].forEach(k => cl.style.setProperty(k, getComputedStyle(root).getPropertyValue(k)));
+    const sec = document.createElement('article'); sec.className = 'rmch';
+    sec.innerHTML = `<div class="fig"></div><h3><small>${S.k}</small>${S.h}</h3>${S.p.map(x => `<p>${x}</p>`).join('')}`;
+    sec.firstElementChild.appendChild(cl);
+    if (S.card) { renderOverlays(S.ct); const cc = S.card.cloneNode(true); cc.removeAttribute('id'); cc.querySelectorAll('[id]').forEach(n => n.removeAttribute('id')); cc.style.transform = 'none'; cc.style.opacity = '1'; cc.style.visibility = 'visible'; sec.appendChild(cc); }
+    host.appendChild(sec);
+  });
+  palette(0); root.style.setProperty('--wwin', '#F4E3BF');
+  ['--w0', '--w1', '--w2', '--wi', '--wi2', '--wt', '--sbg'].forEach(k => root.style.removeProperty(k));
+  root.classList.remove('dark');
+  // final website, in the flow
+  renderSite(TOTAL);
+  $$('.row.hot').forEach(r => r.classList.remove('hot'));
+  $$('#feed li.new').forEach(r => r.classList.remove('new'));
+  $('#rmSide').appendChild(site);
+}
+
+/* ================================================================
+   LOOP
+   ================================================================ */
+let tTarget = 0, tNow = 0, raf = 0, trackTop = 0;
+function readT() { return (scrollY - trackTop) / VH; }
+function tick() {
+  raf = 0;
+  const d = tTarget - tNow;
+  tNow = Math.abs(d) < .0006 ? tTarget : tNow + d * .17;
+  render(tNow);
+  if (tNow !== tTarget) raf = requestAnimationFrame(tick);
+}
+function onScroll() { tTarget = readT(); if (!raf) raf = requestAnimationFrame(tick); }
+dock.addEventListener('click', () => {
+  const on = !root.classList.contains('siteOpen');
+  root.classList.toggle('siteOpen', on);
+  dock.setAttribute('aria-expanded', on);
+  $('#dockC').textContent = on ? 'Close' : 'Open';
+});
+
+layout();
+trackTop = track.getBoundingClientRect().top + scrollY;
+if (RM) {
+  buildStills();
+} else {
+  tTarget = tNow = readT();
+  render(tNow);
+  addEventListener('scroll', onScroll, { passive: true });
+}
+let rz = 0;
+addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => { if (RM) return; layout(); trackTop = track.getBoundingClientRect().top + scrollY; vbKey = ''; bkKey = ''; LEAVES.forEach(L => L.th = -1); tTarget = tNow = readT(); render(tNow); }, 140); });
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { if (RM) return; layout(); trackTop = track.getBoundingClientRect().top + scrollY; render(tNow); });
+})();
+</script>
+</body>
+</html>

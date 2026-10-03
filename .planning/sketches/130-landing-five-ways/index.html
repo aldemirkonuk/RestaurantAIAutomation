@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT,WONK@0,9..144,100..900,0..100,0..1;1,9..144,100..900,0..100,0..1&family=DM+Sans:ital,opsz,wght@0,9..40,300..700;1,9..40,300..700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-/* Layout: a single column of five "reels" on Warm Charcoal, each with a live miniature of its motion technique. Dark-first by choice (ADR 0042 Warm Charcoal ground). */
+/* Layout: a single column of seven "reels" on Warm Charcoal, each with a live miniature of its motion technique. Dark-first by choice (ADR 0042 Warm Charcoal ground). */
 :root{
   --ground:#15130F; --ground-1:#1D1813; --ground-2:#262019;
   --ink-1:#EFE7D9; --ink-2:#C0B6A5; --ink-4:#ABA294;
@@ -117,6 +117,17 @@ footer a{color:var(--ink-2)}
 @keyframes typing{0%{width:0}55%,85%{width:28ch}100%{width:0}}
 @keyframes blink{50%{opacity:0}}
 
+
+/* ── F · book: a page turning ── */
+.book{background:#EFE9DD;perspective:900px;display:grid;place-items:center}
+.book .cover{position:relative;width:62%;height:76%;transform-style:preserve-3d}
+.book .pg{position:absolute;top:0;bottom:0;width:50%;background:#FAF7F1;border:1px solid rgba(33,28,22,.12);box-shadow:0 10px 24px rgba(33,28,22,.18)}
+.book .pg.l{left:0;border-radius:4px 0 0 4px}.book .pg.r{right:0;border-radius:0 4px 4px 0;padding:12% 9%;display:grid;align-content:start;gap:8px;font-family:var(--display);color:#211C16;font-size:clamp(14px,2vw,20px)}
+.book .pg.r i{display:block;height:2px;background:rgba(33,28,22,.2);border-radius:2px}
+.book .pg.r b{display:block;height:14px;margin-top:6px;border-radius:3px;background:var(--seal-deep)}
+.book .leaf{position:absolute;right:0;top:0;bottom:0;width:50%;background:repeating-linear-gradient(180deg,transparent 0 13px,rgba(33,28,22,.10) 13px 14px),linear-gradient(90deg,#e9e1d1,#FAF7F1);transform-origin:left center;border-radius:0 4px 4px 0;animation:turn 3.6s cubic-bezier(.6,0,.3,1) infinite;opacity:.97;box-shadow:0 0 18px rgba(33,28,22,.15)}
+.book .leaf:nth-child(4){animation-delay:1.2s}
+@keyframes turn{0%{transform:rotateY(-2deg)}55%,100%{transform:rotateY(-178deg)}}
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{animation:none!important;transition:none!important}
   .film .title,.film .sub,.cellar .scan,.pass .tix i{opacity:1}
@@ -131,9 +142,9 @@ footer a{color:var(--ink-2)}
       <svg viewBox="0 0 100 100" aria-hidden="true"><rect width="100" height="100" rx="22" fill="#1A5E6B"/><g transform="translate(22.2,17) scale(0.115)" fill="#FAF7F1"><path d="M0 38H72V540H0Z"/><path d="M15 38H96L460 574H379Z"/><path d="M0 346H305L353 416H0Z"/><path d="M0 470H137V540H0Z"/><path d="M99 0H151L278.7 187.8L284.8 273Z"/><path d="M389.5 40H460.9L284.8 273L251.4 224Z"/><path d="M412 40H483V574H412Z"/><path d="M80 150V192H108Z"/><path d="M142 346H206L174 292Z"/><path d="M404 138L376 157L404 176Z"/><path d="M383 430H404V470Z"/></g></svg>
       <span>Mudavym<span class="dot">.</span></span>
     </div>
-    <p class="eyebrow">Sketch 130 · mudavym.com · five directions, none chosen yet</p>
-    <h1>The landing page, <em>five ways.</em></h1>
-    <p class="lede">Same product, same brand, five different ways of moving. Open each one, scroll it, play with it, and pick the one that feels like the house.</p>
+    <p class="eyebrow">Sketch 130 · mudavym.com · round 2 added B2 and F, none chosen yet</p>
+    <h1>The landing page, <em>seven ways.</em></h1>
+    <p class="lede">Same product, same brand, different ways of moving. Round 2 put the Cellar inside a whole restaurant (B2) and added a day in the life of the house (F). Open each one, scroll it, play with it, and pick the one that feels like the house.</p>
   </header>
 
   <nav class="reels" aria-label="Five landing concepts">
@@ -213,10 +224,38 @@ footer a{color:var(--ink-2)}
         <span class="open">Ask it →</span>
       </div>
     </a>
+    <a class="reel" href="./b2-house-cellar.html">
+      <div class="stage cellar" aria-hidden="true">
+        <div class="glow" style="top:40%;background:radial-gradient(circle,rgba(224,164,88,.45),transparent 70%)"></div>
+        <div class="tunnel"><div class="wall l"></div><div class="wall r"></div></div>
+        <div class="scan"></div>
+        <div class="label">Toast · Table 12 · Barolo 2019 · 5 → 4</div>
+      </div>
+      <div class="meta">
+        <span class="num">B2 · round 2</span>
+        <h2>The House</h2>
+        <p>The Cellar, now inside a whole restaurant. Walk in from the street, past the dining room and the bar, down to the cellar, then see the whole house at once. Hover any bottle, drag to look around, walk the cellar yourself.</p>
+        <div class="tags"><span>WebGL · three.js</span><span>tap any bottle</span><span>free roam</span><span>cutaway finale</span></div>
+        <span class="open">Walk in →</span>
+      </div>
+    </a>
+
+    <a class="reel" href="./f-day.html">
+      <div class="stage book" aria-hidden="true">
+        <div class="cover"><div class="pg l"></div><div class="pg r">Welcome back<span style="color:var(--seal-deep)">.</span><i></i><i></i><b></b></div><div class="leaf"></div><div class="leaf"></div></div>
+      </div>
+      <div class="meta">
+        <span class="num">F · round 2</span>
+        <h2>A Day in the Life</h2>
+        <p>It opens as the sign-in book, its pages turn, and the drawing of a restaurant comes alive: the menu goes digital, POS sales and the delivery update the house website, and the camera reads a bottle.</p>
+        <div class="tags"><span>3D page turns</span><span>self-drawing line art</span><span>live website panel</span><span>scroll story</span></div>
+        <span class="open">Open the book →</span>
+      </div>
+    </a>
   </nav>
 
   <footer>
-    <span>All five run on sample data from a demo house. Nothing here is a live claim.</span>
+    <span>All seven run on sample data from a demo house. Nothing here is a live claim.</span>
     <span><a href="https://mudavym.com/get-started">Get started</a> · <a href="https://mudavym.com/login">Sign in</a></span>
   </footer>
 </main>
