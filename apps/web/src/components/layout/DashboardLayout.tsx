@@ -15,6 +15,7 @@ import { useMudavymShell } from '../../lib/mudavym/shellGround'
 import { useMudavymDesign } from '../../lib/mudavym/useMudavymDesign'
 import { HouseShell } from '../mudavym/HouseShell'
 import { DataTermsSignInGate } from '../settings/DataTermsSignInGate'
+import { GroundFirstChoice } from '../mudavym/GroundFirstChoice'
 import '../mudavym/sheet.css'
 
 interface DashboardLayoutProps {
@@ -46,6 +47,16 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
           both carry it; the sheet is portalled (Panel), so its position is
           only about mounting once per authenticated layout. */}
       <DataTermsSignInGate />
+      {/* ADR 0169 amendment 2026-10-01 (batch 4) — the one-time theme
+          question for a signed-in person whose account says they never
+          chose. Here, beside the terms gate, because: this layout renders
+          once for every signed-in in-app route under either shell, so it is
+          met wherever the person lands; it stays off the public pages, the
+          sign-in screens and /get-started, which render outside this layout,
+          so it never interrupts onboarding; and it sits next to the one sheet
+          it must yield to (it waits while the terms sheet is up). Routes
+          outside this layout (/house, /authorize, the door) never ask. */}
+      <GroundFirstChoice />
     </>
   )
 }
