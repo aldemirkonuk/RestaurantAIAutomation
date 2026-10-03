@@ -48,18 +48,18 @@
  * which the scope changed; that render is already given none of the old
  * scope's answers, failure, request, refusal, error, proposals or pending.
  *
- * NOT COVERED: two routes still reach the wrong house, filed OPEN in
+ * NOT COVERED: two routes still reach the wrong house or person, filed OPEN in
  * `.planning/tech-debt.d/2026-10-01-fix-ask-close-no-second-spend.md`. The
  * scope follows this tab's React state, but each request the panel sends
  * carries the token `localStorage` holds at that moment (`client.ts`, its
- * request interceptor). (a) A house switch in another tab moves that token
- * and not this scope: a send from this tab then goes to the other house and
- * its answer lands here, under this house, and "Check again" re-sends this
- * house's request id there, which can be a new paid call. (b) In this tab,
- * the branch switch stores the new house's token before the render that
- * moves the scope (`AuthContext.tsx`, `setActiveRestaurantId`), so a send in
- * that interval goes out with the new token under the old scope. Whether a
- * click can land in it is not measured.
+ * request interceptor). (a) A house or person switch in another tab moves
+ * that token and not this scope: a send from this tab then goes out with the
+ * other house's or person's token, its answer lands here under this scope,
+ * and "Check again" re-sends this sitting's request id with that token,
+ * which can be a new paid call. (b) In this tab, the branch switch stores the
+ * new house's token before the render that moves the scope (`AuthContext.tsx`,
+ * `setActiveRestaurantId`), so a send in that interval goes out with the new
+ * token under the old scope. Whether a click can land in it is not measured.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'

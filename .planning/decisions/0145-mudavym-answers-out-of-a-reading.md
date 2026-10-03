@@ -298,7 +298,9 @@ panel are the two doors."*
 - **Build task 6, the folio table.** `ask_reading_folios`
   (migration `20260922220000`): a personal (`user_id ON DELETE CASCADE`),
   house-scoped (`restaurant_id`) record, written BEFORE the model call so a
-  resubmitted request id replays rather than paying twice; RLS,
+  resubmitted request id replays rather than paying twice [gate round 2 of
+  `fix/ask-close-no-second-spend`: for one person in one house; the key is
+  unique on house, person and id, line 26 of that migration]; RLS,
   `service_role` only. `ai_proposed_actions` gained `reading_folio_id` with an
   explicit `ON DELETE SET NULL` on the pointer column only, so deleting a
   person never fails 23503 on a proposal their Reading backed.
@@ -1980,7 +1982,9 @@ while it is still answering, what should happen to that question?" His pick,
 verbatim: "Keep answering (Recommended)". The option as offered: closing
 never drops the question; reopened, the panel shows "still answering" or the
 answer; "Check again" reuses the same id, so nothing is paid twice; an action
-being drafted is kept the same way. Rejected: "Keep, plus recent answers"
+being drafted is kept the same way. [Gate round 2: the option's words. The
+gateway's key makes "nothing is paid twice" hold for one id, for one person
+in one house; see "The defect it closes".] Rejected: "Keep, plus recent answers"
 (also list the person's latest panel answers from the server on every open),
 "Cancel on close" (the server has already started, so the first answer is
 still paid, and asking again still pays a second time) and "Ask before
@@ -2001,7 +2005,8 @@ returns the saved folio, pending or finished (`bound-ask.service.ts`, "never
 duplicate paid work for one request id"). [Gate round 2: once per request id
 for one person in one house. The key is unique on house, person and id
 (`supabase/migrations/20260922220000_mudavym_bound_reading_folios.sql:26`),
-so the same id sent with another house's token is a new call; see "Gate
+so the same id sent with another house's or person's token is a new call;
+see "Gate
 round 2".] So the fix is client-side only.
 
 ### Built (branch `fix/ask-close-no-second-spend`, against `main` 5a330a88e)
@@ -2068,13 +2073,14 @@ open, a switch also starts a fresh panel body, which re-reads the new
 house's waiting proposals and pickers. The follow-up "Keep asking" carried
 in is dropped, since it names a folio in the other house. [Gate round 2:
 fixed for a switch made in place in the same tab. Two routes still let a
-request carry another house's token while the session holds the old house,
-and are filed OPEN in the tech-debt fragment. One is a house switch made in
-another tab: the tabs share `localStorage`, the request interceptor reads the
-token from it on every call (`services/api/client.ts:74-84`), and nothing in
-the web app moves a tab's house on a `storage` event. "Check again" in the
-first tab can then be a new paid call in the other house, and its answer
-lands under the first house. That route was already on `main`. The other is
+request carry another house's or person's token while the session holds the
+old scope, and are filed OPEN in the tech-debt fragment. One is a house or
+person switch made in another tab: the tabs share `localStorage`, the
+request interceptor reads the token from it on every call
+(`services/api/client.ts:74-84`), and nothing in the web app moves a tab's
+house or person on a `storage` event. "Check again" in the first tab can
+then be a new paid call in the other house or under the other person, and
+its answer lands under the first tab's scope. That route was already on `main`. The other is
 the interval in the same tab between `storeSession` and the render that
 moves the scope (`AuthContext.tsx:625-633`). See "Gate round 2".]
 
@@ -2283,20 +2289,23 @@ Restored with `cp -p`, `cmp` identical, then 90/90.
 **Narrowed and filed (finding 2, CLOSED claimed more than the code).** The
 tech-debt entry for the house-switch defect stays CLOSED, now for a switch
 made in place in the same tab. Two routes let a request carry another
-house's token while the session holds the old house. They are filed as a new
-OPEN entry in the same fragment, with two possible fixes, neither built:
+house's or person's token while the session holds the old scope. They are
+filed as a new OPEN entry in the same fragment, with two possible fixes,
+neither built:
 
-- a house switch in another tab. The tabs share `localStorage`, the request
+- a house or person switch in another tab (the person added in this round's
+  second push, below). The tabs share `localStorage`, the request
   interceptor reads the token on every call (`client.ts:74-84`), and nothing
-  in the web app moves a tab's house on a `storage` event. The only `storage`
-  listeners are `lib/sessionRenewed.ts:57` and `lib/mudavym/groundChoice.ts:433`.
-  This route was already on `main`.
+  in the web app moves a tab's house or person on a `storage` event. The only
+  `storage` listeners are `lib/sessionRenewed.ts:57` and
+  `lib/mudavym/groundChoice.ts:559` (at `main` 661068ab3; `:433` at
+  e25ebf537). This route was already on `main`.
 - the interval in the same tab between `storeSession` and the render that
   moves the scope (`AuthContext.tsx:625-633`).
 
 The fixes named are: store the token only once the scope has moved; or check,
-before a send, that the token's house matches the scope. The entry says what
-each one leaves.
+before a send, that the token's person and house match the scope. The entry
+says what each one leaves.
 
 **Narrowed (finding 3).** "The gateway never charges twice" for a re-sent id
 (in the hook's `lastRequest` note, "never pays twice") now says "never
@@ -2334,6 +2343,56 @@ only, and it adds one test, so a mutant that was red stays red. The merge
 with `main` changed no file under `src/components/askai`. Reviewer A re-ran
 all twelve at 55a52ad05.
 
+**Second push, 2026-10-03 -- `main` 661068ab3, and a person switch in
+another tab.** Merged `main` 661068ab3 (#580) in 6e22589da, with no
+conflict. It changed no file under `src/components/askai`. It moved the
+`groundChoice.ts` listener cited above from `:433` to `:559`.
+
+- **Route (a) widened to a house or person switch in another tab.** Traced
+  in the code, not run in a browser. Another tab signs out (the pair is
+  removed, `AuthContext.tsx:964-965`) and signs in as another person
+  (`storeSession`, for example `:671`). This tab is not told. Its `storage`
+  listeners act only on the session-renewed key (`sessionRenewed.ts:54`),
+  written only by a password change, and on the ground setting
+  (`groundChoice.ts:548-557`). Its person is set only by its own
+  `AuthContext`'s `setUser` calls. Between the sign-out and the sign-in, a
+  401 with no refresh token is rejected without navigating
+  (`client.ts:107-108`). After the sign-in the other person's token is
+  valid, so no 401, refresh or redirect follows; the only redirect to
+  `/login` follows a refused refresh (`:120-123`). This tab keeps person A's
+  scope while its requests carry person B's token, and "Check again"
+  re-sends A's request id under B. The key is unique on house, person and
+  id, so this can be a new paid call. It is still two routes. The widening
+  is in the hook's note (`useAskSession.ts:51-62`), the OPEN entry (which
+  carries the trace), the bracket in "The house-switch defect", "Gate round
+  2" above and the PR body.
+- **The token check names the person too.** The second fix now checks the
+  token's person (`sub`) as well as its house. A house check alone would
+  miss a person switch within one house.
+- **The first fix's two sentences corrected.** "This closes (b) only" said
+  more than the fix does. It addresses only (b)'s interval, and (b)'s `:627`
+  case only if a token naming another house is not stored at all. "It also
+  moves the window" now says it reverses it: between the commit that moves
+  the scope and the store, a send would carry house A's token under house
+  B's scope. Whether a send can be made then depends on where the store is
+  done; that was not measured.
+- **One phrasing.** Where the gateway's once-per-id guarantee is stated, it
+  says "for one person in one house": the PR title, the hook's notes
+  (`useAskSession.ts:9-10`, `:88`), `AskPanel.tsx:41-42`, the fragment's
+  first Fix line, the PR body, and two brackets added here, in "Build task
+  6" and "The founder's answer". The title said "asking again never pays
+  twice in one house". Each ask mints a new id (`AskPanel.tsx:320`), so a
+  question asked again is paid again. The title now names the id: "closing
+  the Ask panel keeps the question and its request id, which is never
+  charged twice for one person in one house".
+- **Re-measured.** `src/components/askai` + `src/components/mudavym`: 33
+  files / 515 passed, against 32 / 493 at d0e4d6185. The difference is
+  `GroundFirstChoice.test.tsx` (22 tests), which the merge brought.
+  `AskPanel.test.tsx` 90/90. The `setOwner` mutation (finding 1) re-run on
+  this push's source: 1 failed, 89 passed, the new test; restored from a
+  `cp -p` snapshot, `cmp` identical. The other checks are in the review
+  trail.
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
@@ -2362,4 +2421,5 @@ all twelve at 55a52ad05.
 | 2026-10-01 | `fix/ask-close-no-second-spend` round 1 (fix, after a Sonnet verify returned FIX) | The house-switch defect found and fixed: the session is keyed `<person>@<house>`, with an epoch guard, the open body keyed by the same scope, and the follow-up dropped on a switch. What a close keeps narrowed, and settled proposals leave at the close through `ProposalCard`'s `onSettled` (see "Round 1"). `AskPanel.test.tsx` went from 42 to 68 tests; round 0's 8 files ran 152 tests green, and 12 files with every other suite that mounts the shell or `ProposalCard` ran 210 green. 32 mutations, each red, each file restored byte-identically: round 0's six re-run (12, 1, 1, 1, 14 and 5 red); the verify's M1 and M3-M6 (1 each); eleven on the scope and epoch (B1-B11: 9, 2, 1, 1, 2, 1, 1, 1, 2, 1, 1); ten on what a close keeps (C1-C10: 2, 1, 1, 1, 3, 3, 1, 4, 4, 1). M2's guard removed; an epoch check on a re-read's answer survived a first pass as an equivalent mutant and was removed. Web eslint 0 errors on the 8 touched source and test files (one `ProposalCard` warning, also on `main`). Web `tsc`: only the pre-existing `passkeys.ts` error. Decision claims 813/813. No browser render. |
 | 2026-10-01 | `fix/ask-close-no-second-spend` round 2 (fix, after a Sonnet verify of round 1 returned FIX, no blocker) | The failure with nothing to retry fixed: a close keeps a failure only when its alert offers "Check again" (a retryable kind and the request it re-sends). The apply in flight across a close checked on the gateway (`ask-ai.service.ts` at 5a330a88e, this branch's base): a second apply for one action id is refused, at the seal or at the claim's compare-and-swap, so the card is not held busy; the panel's honest answer is pinned. `AskPanel.test.tsx` went from 68 to 85 tests (see "Round 2"). 12 files with every suite that mounts the shell or `ProposalCard` ran 227 green; `src/components/askai` and `src/components/mudavym` ran 32 files / 486 green. 64 mutations on `AskPanel.test.tsx`: 61 red, 3 equivalent (E7, S4, S7), each file restored byte-identically. Web eslint 0 errors on the 8 touched source and test files (the one `ProposalCard` warning, also on `main`). Web `tsc`: only the pre-existing `passkeys.ts` error. Decision claims 813/813. No browser render; no gateway test run (the gateway is unchanged, and its behaviour is cited from the code). |
 | 2026-10-02 | `fix/ask-close-no-second-spend` gate round 1 (fix, after the ADR 0090 gate at 5ab269ccc returned BLOCK) | The epoch sentence narrowed in the hook's note, the `epoch` ref's note and the PR body: a folio re-read's answer is dropped because the switch emptied the list, not by the epoch. The switch render fixed rather than filed: `useAskSession` gives none of the old scope's state until the reset has run, and `useAskPanel` gives no old follow-up; a first naming is not masked. "A close keeps the waiting proposals" narrowed in the PR body to the gateway's rows. `AskPanel.test.tsx` 85 to 89; 12 mutations, all red, each restored byte-identical (see "Gate round 1") [gate round 2: a thirteenth, `setOwner` moved below the first-naming return, stayed green; see "Gate round 2"]. On the tree merged with `main` a823ef32d: `src/components/askai` + `src/components/mudavym` 32 files / 492 passed; web eslint on the 8 touched source and test files 0 errors, 1 warning (`ProposalCard.tsx:268`, also on `main` at `:260`); web `tsc` only the pre-existing `passkeys.ts` error; decision claims 830/830; citation-pairing and conflict-marker guards pass. No browser render. |
-| 2026-10-02 | `fix/ask-close-no-second-spend` gate round 2 (fix, after the ADR 0090 gate at 55a52ad05 returned BLOCK) | Merged `main` e25ebf537, no conflict. The switch after a first naming pinned by a new test; the surviving mutant (`setOwner` below the first-naming return) now turns it red, 1 test, restored from a `cp -p` snapshot and checked with `cmp`. `AskPanel.test.tsx` 89 to 90. The house-switch entry kept CLOSED for a switch in the same tab; a switch in another tab and the same-tab interval before the render filed as a new OPEN entry, with two possible fixes, neither built. "Never charges twice" narrowed to one person in one house; the two routes disclosed in the PR body, this ADR and the hook's note; "masked the same way" narrowed for a first naming (see "Gate round 2"). On this round's head: `src/components/askai` + `src/components/mudavym` 32 files / 493 passed; web eslint on the 8 touched source and test files 0 errors, 1 warning (`ProposalCard.tsx:268`, also on `main` at `:260`); web `tsc` only the pre-existing `passkeys.ts` error; decision claims 835/835; citation-pairing and conflict-marker guards pass. No browser render. |
+| 2026-10-02 | `fix/ask-close-no-second-spend` gate round 2 (fix, after the ADR 0090 gate at 55a52ad05 returned BLOCK) | Merged `main` e25ebf537, no conflict. The switch after a first naming pinned by a new test; the surviving mutant (`setOwner` below the first-naming return) now turns it red, 1 test, restored from a `cp -p` snapshot and checked with `cmp`. `AskPanel.test.tsx` 89 to 90. The house-switch entry kept CLOSED for a switch in the same tab; a switch in another tab and the same-tab interval before the render filed as a new OPEN entry, with two possible fixes, neither built. "Never charges twice" narrowed to one person in one house; the two routes disclosed in the PR body, this ADR and the hook's note; "masked the same way" narrowed for a first naming (see "Gate round 2"). At d0e4d6185, this round's first push: `src/components/askai` + `src/components/mudavym` 32 files / 493 passed; web eslint on the 8 touched source and test files 0 errors, 1 warning (`ProposalCard.tsx:268`, also on `main` at `:260`); web `tsc` only the pre-existing `passkeys.ts` error; decision claims 835/835; citation-pairing and conflict-marker guards pass. No browser render. |
+| 2026-10-03 | `fix/ask-close-no-second-spend` gate round 2, second push (fix, after the gate's plan at d0e4d6185 named a person switch in another tab) | Merged `main` 661068ab3 in 6e22589da, no conflict. Route (a) widened to a house or person switch in another tab, traced in the code: a sign-out and a sign-in as another person in another tab reach this tab with no 401, refresh, redirect or reload. Still two routes. The token check now names the person; the first fix's "closes (b) only" and "moves the window" corrected; one phrasing, "for one person in one house", and the PR title now names the request id (see "Gate round 2", "Second push"). On this push's head: `src/components/askai` + `src/components/mudavym` 33 files / 515 passed; `AskPanel.test.tsx` 90/90; the `setOwner` mutation 1 failed / 89 passed, restored from a `cp -p` snapshot, `cmp` identical; web eslint on the 8 touched source and test files 0 errors, 1 warning (`ProposalCard.tsx:268`, also on `main` at `:260`); web `tsc` only the pre-existing `passkeys.ts` error; decision claims 835/835; citation-pairing and conflict-marker guards pass. No browser render. |
