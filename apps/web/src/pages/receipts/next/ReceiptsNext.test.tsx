@@ -51,7 +51,43 @@ const api = vi.hoisted(() => ({
   mintVerifySeal: vi.fn(() => Promise.resolve('seal-verify' as string | null)),
   mintLineEditSeal: vi.fn(() => Promise.resolve('seal-edit' as string | null)),
   mintCurrencySeal: vi.fn(() => Promise.resolve('seal-currency' as string | null)),
+  /**
+   * `GET /procurement/receiving/paper-owed` (RECEIPTS-W53): the checked
+   * deliveries with no invoice filed. `paperOwedGets` counts the asks, so a
+   * staff session can be shown never to spend one.
+   */
+  paperOwed: null as unknown,
+  paperOwedFails: null as unknown,
+  paperOwedPending: false,
+  paperOwedGets: 0,
 }));
+
+/** A count of zero, read whole: the only answer that may say "caught up". */
+const NONE_OWED = {
+  count: 0,
+  complete: true,
+  checkedRead: 0,
+  oldestAt: null,
+  items: [],
+  listMax: 20,
+  vendorNamesUnavailable: false,
+};
+
+// The paper-owed read goes through the shared client (the page's hook asks it
+// directly). Every other read keeps the real client, as before this mock.
+vi.mock('../../../services/api/client', async (importOriginal) => {
+  const mod = await importOriginal<typeof import('../../../services/api/client')>();
+  const get = ((url: string, ...rest: unknown[]) => {
+    if (url !== '/procurement/receiving/paper-owed')
+      return (mod.apiClient.get as (...a: unknown[]) => unknown)(url, ...rest);
+    api.paperOwedGets += 1;
+    if (api.paperOwedPending) return new Promise(() => {});
+    if (api.paperOwedFails) return Promise.reject(api.paperOwedFails);
+    return Promise.resolve({ data: api.paperOwed });
+  }) as typeof mod.apiClient.get;
+  const apiClient = Object.assign(Object.create(mod.apiClient), mod.apiClient, { get });
+  return { ...mod, apiClient, default: apiClient };
+});
 
 vi.mock('@/contexts/AuthContext', () => ({
   useAuth: () => ({ activeRestaurantId: api.restaurantId, activeRole: api.role, user: null }),
@@ -136,7 +172,7 @@ vi.mock('../../../services/api/orders', () => ({
 }));
 
 import ReceiptsNext, { PaperPane } from './ReceiptsNext';
-import { isSignedUrlExpired } from './rc2-format';
+import { fmtDate, isSignedUrlExpired } from './rc2-format';
 
 function doc(over: Partial<ProcurementDocument>): ProcurementDocument {
   return {
@@ -231,6 +267,10 @@ beforeEach(() => {
   api.doorPending = false;
   api.cleanFails = null;
   api.verifiedFails = null;
+  api.paperOwed = NONE_OWED;
+  api.paperOwedFails = null;
+  api.paperOwedPending = false;
+  api.paperOwedGets = 0;
   api.restaurantId = 'rest-A';
   api.sheetLayer3 = null;
   api.linkLine.mockClear();
@@ -315,12 +355,14 @@ describe('ReceiptsNext', () => {
     });
   });
 
-  it('deliveries without paperwork share the surface', async () => {
+  it('deliveries counted by the case share the surface, labelled as what they are (RECEIPTS-W53)', async () => {
     api.unverified = {
       items: [{ orderId: 'o9', orderNumber: 'PO-9', countedQtyBottles: 24, countedAt: '', ageHours: 5, severity: 'fresh' }],
     };
-    render(<ReceiptsNext />, { wrapper });
-    expect(await screen.findByText(/Counted at the door, no paperwork yet/)).toBeInTheDocument();
+    const { container } = render(<ReceiptsNext />, { wrapper });
+    expect(await screen.findByText('Counted by the case, not yet by bottle')).toBeInTheDocument();
+    // Counted by the case is not "no paperwork": they may well have paper.
+    expect(container.textContent).not.toMatch(/no paperwork yet/);
     expect(screen.getByText(/PO-9 · 24 counted · 5h ago/)).toBeInTheDocument();
   });
 
@@ -1243,5 +1285,134 @@ describe('ReceiptsNext — every paper type in words (W44)', () => {
     const { container } = render(<ReceiptsNext />, { wrapper });
     await screen.findByText((_, el) => el?.tagName === 'SPAN' && /^Document · SYN-X-1$/.test(el.textContent ?? ''));
     expect(container.textContent).not.toContain('a_new_kind');
+  });
+});
+
+/* ─── F-160 / RECEIPTS-W53 — the paper owed, where "caught up" stood ──────── */
+
+describe('ReceiptsNext — checked deliveries with no invoice filed (RECEIPTS-W53)', () => {
+  const owed = (over: Record<string, unknown> = {}) => ({
+    ...NONE_OWED,
+    count: 543,
+    checkedRead: 600,
+    oldestAt: '2026-07-06T09:00:00.000Z',
+    items: [
+      { orderId: 'o1', orderNumber: 'PO-1', vendorName: 'Bodega Álvaro', deliveredAt: '2026-07-06T09:00:00.000Z', checkedAt: '2026-07-07T09:00:00.000Z' },
+      { orderId: 'o2', orderNumber: null, vendorName: null, deliveredAt: null, checkedAt: '2026-07-09T09:00:00.000Z' },
+    ],
+    ...over,
+  });
+  const empty = () => {
+    api.queue = [];
+    api.clean = [];
+  };
+
+  it('says the count in place of "caught up" when checked deliveries have no invoice filed', async () => {
+    empty();
+    api.paperOwed = owed();
+    const { container } = render(<ReceiptsNext />, { wrapper });
+    const line = await screen.findByTestId('paper-owed');
+    expect(line.textContent).toBe(
+      `543 checked deliveries have no invoice filed · oldest ${fmtDate('2026-07-06T09:00:00.000Z')}`,
+    );
+    expect(
+      screen.getByText(
+        'Checked against a typed price, but no paper is linked to the order. A vendor who bills weekly still owes it.',
+      ),
+    ).toBeTruthy();
+    expect(container.textContent).not.toMatch(/caught up/);
+  });
+
+  it('keeps "caught up" when the count, read whole, is zero', async () => {
+    empty();
+    render(<ReceiptsNext />, { wrapper });
+    expect(await screen.findByText('Nothing awaits review — the paper trail is caught up.')).toBeTruthy();
+    expect(api.paperOwedGets).toBeGreaterThan(0);
+  });
+
+  it('never says "caught up" from a failed read: it says the count was not read', async () => {
+    empty();
+    api.paperOwedFails = Object.assign(new Error('Network Error'), { request: {}, code: 'ERR_NETWORK' });
+    const { container } = render(<ReceiptsNext />, { wrapper });
+    expect(
+      await screen.findByText(
+        /^Nothing awaits review\. The checked deliveries’ invoices were not read, so this page is\s+not claiming the paper trail is caught up\.$/,
+      ),
+    ).toBeTruthy();
+    expect(screen.getByRole('alert').textContent).toContain(
+      'Could not read the checked deliveries with no invoice filed (no answer came back) — nothing is claimed about them.',
+    );
+    // Its own sentence names "caught up" only to disclaim it.
+    expect(screen.queryByText('Nothing awaits review — the paper trail is caught up.')).toBeNull();
+    expect(container.textContent).not.toMatch(/review — the paper trail is caught up/);
+  });
+
+  it('says "Reading…", not "caught up", while the count is still being read', async () => {
+    empty();
+    api.paperOwedPending = true;
+    const { container } = render(<ReceiptsNext />, { wrapper });
+    expect(await screen.findByText('Reading…')).toBeTruthy();
+    expect(container.textContent).not.toMatch(/caught up/);
+  });
+
+  it('opens the list in place, says "first N of M" when it is cut, and folds it again', async () => {
+    empty();
+    api.paperOwed = owed();
+    render(<ReceiptsNext />, { wrapper });
+    const toggle = await screen.findByRole('button', { name: 'See them' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('list', { name: 'Checked deliveries with no invoice filed' })).toBeNull();
+    fireEvent.click(toggle);
+    const list = screen.getByRole('list', { name: 'Checked deliveries with no invoice filed' });
+    const rows = [...list.querySelectorAll('li')].map((li) => li.textContent);
+    expect(rows).toEqual([
+      `Bodega Álvaro · PO-1 · ${fmtDate('2026-07-06T09:00:00.000Z')}`,
+      // No delivery date: dated by the check. No name: said, never guessed.
+      `a vendor not named · an order with no number · ${fmtDate('2026-07-09T09:00:00.000Z')}`,
+    ]);
+    expect(screen.getByText('First 2 of 543, oldest first.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Hide them' }));
+    expect(screen.getByRole('button', { name: 'See them' })).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('list', { name: 'Checked deliveries with no invoice filed' })).toBeNull();
+  });
+
+  it('marks a count the gateway stopped at its ceiling as a floor, in the line and in the list', async () => {
+    empty();
+    api.paperOwed = owed({ count: 3000, complete: false, checkedRead: 3000 });
+    render(<ReceiptsNext />, { wrapper });
+    expect((await screen.findByTestId('paper-owed')).textContent).toMatch(
+      /^≥3000 checked deliveries have no invoice filed/,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'See them' }));
+    expect(screen.getByText('First 2 of ≥3000, oldest first.')).toBeTruthy();
+  });
+
+  it('says no "first N of M" when the list holds every one', async () => {
+    empty();
+    api.paperOwed = owed({ count: 1, items: [owed().items[0]] });
+    render(<ReceiptsNext />, { wrapper });
+    expect((await screen.findByTestId('paper-owed')).textContent).toMatch(/^1 checked delivery has no invoice filed/);
+    fireEvent.click(screen.getByRole('button', { name: 'See them' }));
+    expect(screen.queryByText(/^First /)).toBeNull();
+  });
+
+  it('never asks for a staff session, and tells staff why instead of "caught up"', async () => {
+    empty();
+    api.role = 'staff';
+    const { container } = render(<ReceiptsNext />, { wrapper });
+    expect(await screen.findByText(/kept for the\s+owner and managers of this house/)).toBeTruthy();
+    expect(api.paperOwedGets).toBe(0);
+    expect(container.textContent).not.toMatch(/caught up/);
+  });
+
+  it('heads the counts with "papers verified": it counts papers, not deliveries', async () => {
+    empty();
+    const view = render(<ReceiptsNext />, { wrapper });
+    expect(await screen.findByText('0 awaiting review · 0 papers verified')).toBeTruthy();
+    view.unmount();
+
+    api.verified = [doc({ id: 'v1', status: 'verified' as ProcurementDocument['status'] })];
+    render(<ReceiptsNext />, { wrapper });
+    expect(await screen.findByText('0 awaiting review · 1 paper verified')).toBeTruthy();
   });
 });
