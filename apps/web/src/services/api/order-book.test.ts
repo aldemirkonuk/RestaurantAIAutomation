@@ -157,7 +157,7 @@ describe('fetchOrderBook: a read that does not hold still', () => {
     expect(book.rows).toHaveLength(150)
   })
 
-  it('falls back to the open sweep after the second read also fails, and hides no open order', async () => {
+  it('falls back to the open sweep after the second read also fails; with every status one it can name, it lists every open order', async () => {
     const rows = makeOrders(HOUSE_A, 150, statusFor)
     install(rows)
     gw.before = (call) =>
@@ -307,7 +307,7 @@ describe('fetchOrderBook: 429', () => {
 })
 
 describe('fetchOrderBook: past the ceiling', () => {
-  it('reads 30 pages of 3,001 orders, then every open order and the per-status counts', async () => {
+  it('reads 30 pages of 3,001 orders, then sweeps the open statuses and counts the closed ones; with every status one it can name, it lists every open order', async () => {
     // The oldest order (#3000) is open and past page 30.
     const statusFor = (i: number): OrderWireStatus =>
       i === 3000 ? 'PARTIALLY_RECEIVED' : i % 500 === 0 ? 'DELIVERED' : 'COMPLETED'
@@ -534,6 +534,20 @@ describe('fetchOrderById', () => {
     await expect(fetchOrderById(HOUSE_A, 'o-00000', signal())).resolves.toEqual({
       state: 'unreadable',
     })
+  })
+
+  it('reads as unreadable when the token changes to another house during the GET (only the check after the GET sees it)', async () => {
+    install(makeOrders(HOUSE_A, 1))
+    gw.before = () => {
+      signInAs(HOUSE_B)
+      return undefined
+    }
+    await expect(fetchOrderById(HOUSE_A, 'o-00000', signal())).resolves.toEqual({
+      state: 'unreadable',
+    })
+    // The GET went out under house A, and the fake answered house A's own row.
+    expect(gw.calls).toHaveLength(1)
+    expect(gw.calls[0].house).toBe(HOUSE_A)
   })
 
   it('asks nothing when the token already names another house', async () => {

@@ -106,7 +106,7 @@ Why the superseded answer could not stand (this session's reading, not in the re
 - **The house:** the token's house is compared with the house asked for before and after every page (a `HouseChangedError`, which is not a failed refresh of the house).
 - **Completeness:** a read is called whole only when the distinct ids equal `total`.
   - Otherwise it reads once more.
-  - Then it **degrades**: every open status is swept on its own, and every closed status is counted with a `limit=1` read.
+  - Then it **degrades**: every open status this client can name is swept on its own, and every closed status is counted with a `limit=1` read.
   - The result is marked `partial`, with the reason `unstable`.
   - A status this client cannot read is filed open, and a whole read lists it with the open orders. The sweep cannot ask for a status it cannot name, so a degraded read keeps such an order only as the unfiltered pages it read showed it, counts the rest in `unclassifiedCount`, and sets `openComplete` false whenever that count is above 0.
   - `openComplete` is also false when an open sweep does not hold still after two tries.
@@ -137,21 +137,18 @@ Why the superseded answer could not stand (this session's reading, not in the re
 - **The approve write stays where it is.** The optimistic approve write on `orders.list` (`useOrderQueries.ts:147-182`) is unchanged.
 - **The key** is `queryKeys.orders.book(house)`. It sits under `['orders']`, so every existing invalidation reaches it.
 
-**Tests and mutation proof.** `order-book.test.ts` (46 tests) and `useOrderBook.test.tsx` (23 tests) use a fake gateway that pages as `listOrders` does (`__tests__/utils/fakeOrderGateway.ts`). Six mutations each failed at least one test and passed again when restored:
+**Tests and mutation proof.** `order-book.test.ts` (47 tests) and `useOrderBook.test.tsx` (24 tests) use a fake gateway that pages as `listOrders` does (`__tests__/utils/fakeOrderGateway.ts`). Mutations were run from `cp -p` snapshots, never `git stash`, and every restore was compared byte for byte. 36 were run; 35 each failed at least one test and passed again when restored:
 
-- dropping the paging loop;
-- dropping the `restaurantId` check;
-- pointing the reader at `/procurement/orders`;
-- removing the fence;
-- making background the default;
-- restarting from page 1 on a 429.
+- the six the design rests on: dropping the paging loop; dropping the `restaurantId` check; pointing the reader at `/procurement/orders`; removing the fence; making background the default; restarting from page 1 on a 429;
+- 14 more in the reader: no house check after a page; no rows-over-limit, total-is-a-count, `hasMore`-is-boolean or status-echo check; `sweepStatus` always complete, or one attempt; `degrade` keeping every prefix row, or dropping prefix rows of a status it cannot name; `openComplete` ignoring `unclassifiedCount`; a row of another house read as `HouseChangedError`; `fetchOrderById` without its id check, its house check before the GET, or its house check after it;
+- 15 more in the runner: no 429 gate; a background mark that never clears; a fence that does not move its waiters; the aborted branch off; `HouseChangedError` counted as failing; no staleness guard; callers resolved with the book read instead of the book kept; freshness dated from the book read instead of the book kept; a read nobody waits for started anyway; `retry: 1`, `refetchOnWindowFocus: true` or the default `refetchOnReconnect` in `useQuery`; `start()` ignoring a hidden tab; a hidden tab deferring an urgent read too; `retryOrderBook` retrying `ForeignRowError`.
 
-An audit of the first commit reported 17 of 31 further mutations surviving. The second commit adds tests and re-runs 33 mutations: the six above and 27 more. 32 of them each fail at least one test and pass again when restored. One survives: removing `run.next = null` from `stopOtherHouses`, so the house switched away from keeps its queued read. The commit body lists every mutation and says why that one gets no test.
+One survives, re-run against the final tests: removing `run.next = null` from `stopOtherHouses`, so the house switched away from keeps its queued read. It gets no test. In the app the token is stored before the house changes (`AuthContext.tsx:625` before `:630`, `:835` before `:839`), and `assertHouse` runs before every GET, so that queued read sends nothing for the old house; its cost is one window slot and a swallowed `HouseChangedError`.
 
 ## Consequences
 
 - **Easier.**
-  - PR-B can show every open order and whole-book counts from one cached value.
+  - PR-B can show every open order, when `openComplete` is true, and whole-book counts from one cached value; when it is false, the book says the open list may be short.
   - Every later screen that needs the whole book has a reader with a 429 path, a house check and a completeness check, instead of `?? []`.
 - **Weaknesses, stated.**
   - **`created_at` ties.** Until G2 adds `.order('id')` as a tiebreak, two orders with one `created_at` can swap across a page boundary.

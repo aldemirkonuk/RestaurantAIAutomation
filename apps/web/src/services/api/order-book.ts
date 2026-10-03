@@ -20,7 +20,8 @@
  * WHAT THE READER WILL NOT DO
  * - It never calls a read whole on trust: the count of distinct ids must equal
  *   the gateway's `total`. Otherwise it reads again once, and then falls back to
- *   reading every open status on its own, marked `partial`.
+ *   reading every open status it can name on its own, marked `partial`, with
+ *   `openComplete` saying whether that found every open order.
  * - It never returns a row from another house. The token's house is checked
  *   before and after every page, and every row's `restaurantId` is compared
  *   with the house asked for.
@@ -224,8 +225,11 @@ export interface OrderBook {
   /**
    * whole: every order was read and the distinct ids matched the total.
    * capped: the house has more than CEILING_PAGES pages; `rows` are the newest
-   * 3,000 plus every open order. partial: the read did not hold still after one
-   * more try; `rows` are the closed rows it saw plus every open order.
+   * 3,000 plus the open orders its sweeps found. partial: the read did not hold
+   * still after one more try; `rows` are the closed rows it saw, and any of a
+   * status no sweep can ask for, plus the open orders its sweeps found. In both,
+   * `openComplete` says whether that is every open order: a status no sweep can
+   * ask for, or a sweep that did not hold still, can leave some out.
    */
   mode: 'whole' | 'capped' | 'partial'
   reason: 'ceiling' | 'unstable' | null
@@ -233,11 +237,11 @@ export interface OrderBook {
   /** The gateway's count of every order in the house, from the last page read. */
   total: number
   /**
-   * Every open order is in `rows`. Always true for a whole book. A degraded
-   * book sets it only when every open sweep held still and `unclassifiedCount`
-   * is 0: a status no sweep can ask for may hold open orders the unfiltered
-   * pages did not show, and the reader cannot tell, so it is false even when
-   * they showed all of them.
+   * True when every open order is in `rows`. Always true for a whole book. A
+   * degraded book sets it only when every open sweep held still and
+   * `unclassifiedCount` is 0: a status no sweep can ask for may hold open orders
+   * the unfiltered pages did not show, and the reader cannot tell, so it is
+   * false even when they showed all of them.
    */
   openComplete: boolean
   /** Per wire status, the gateway's count. Read only when the book is not whole. */
@@ -394,7 +398,10 @@ function openSession(house: string, signal: AbortSignal, opts: OrderBookOptions)
 type Session = ReturnType<typeof openSession>
 
 // ---------------------------------------------------------------------------
-// The open sweep: the fallback that never hides an open order
+// The open sweep: the fallback that reads each open status this client can
+// name on its own, twice at most, and says whether each held still
+// (`openComplete` false when one did not, or when some rows have a status no
+// sweep can ask for)
 // ---------------------------------------------------------------------------
 
 async function sweepStatus(
@@ -472,7 +479,9 @@ async function degrade(
 
 /**
  * Read every order in `house`, PAGE_LIMIT at a time, until the gateway says
- * there are no more. See the file header for what it refuses.
+ * there are no more; past the ceiling, or when the read does not hold still,
+ * fall back to the open sweep (`OrderBook.mode`, `openComplete`). See the file
+ * header for what it refuses.
  */
 export async function fetchOrderBook(
   house: string,

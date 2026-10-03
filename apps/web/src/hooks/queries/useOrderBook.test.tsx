@@ -192,6 +192,8 @@ describe('useOrderBook: reading', () => {
     expect(reads()).toBe(2)
     expect(client.getQueryData(queryKeys.orders.book(HOUSE_A))).toBe(later)
     expect(hook.result.current.book.data).toBe(later)
+    // Freshness dates the book the cache kept, not the read that just finished.
+    expect(hook.result.current.fresh.asOf).toBe(later.readStartedAt)
   })
 
   it('one read at a time: requests during a read wait for ONE trailing read', async () => {
@@ -243,6 +245,20 @@ describe('useOrderBook: urgent and background', () => {
       void client.invalidateQueries({ queryKey: ['orders'] })
     })
     await advance(500)
+    expect(reads()).toBe(4)
+  })
+
+  it('an urgent read (the default) is not deferred by a hidden tab: it runs after the settle', async () => {
+    const { client } = mount(HOUSE_A)
+    await advance(500)
+    expect(reads()).toBe(2)
+    setVisibility('hidden')
+    await act(async () => {
+      void client.invalidateQueries({ queryKey: ['orders'] })
+    })
+    await advance(399)
+    expect(reads()).toBe(2)
+    await advance(10)
     expect(reads()).toBe(4)
   })
 
