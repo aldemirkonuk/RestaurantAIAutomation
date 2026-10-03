@@ -183,6 +183,7 @@ import {
   decideTransition,
   readOrderStatus,
   refuseUnreadableStatus,
+  statusInWords,
 } from "./order-transitions";
 import { toPostgrestInList } from "./order-status";
 import {
@@ -562,6 +563,215 @@ export class SendRefusedBeforeSendError extends BadRequestException {
  * 2026-09-21; 20261116100800).
  */
 export const DRAFT_SEND_REFUSED = "draft_send_refused";
+
+/**
+ * The fields of `PATCH orders/:id` that are the order's money (ADR 0244 D2):
+ * the figures the approval rules test and the approval seal is taken over,
+ * and `price_verified`, the receipt verification's recorded verdict. Only a
+ * manager or an owner changes them (`updateOrder`).
+ */
+export const ORDER_MONEY_FIELDS = [
+  "quotedPrice",
+  "negotiatedPrice",
+  "finalPrice",
+  "totalCost",
+  "priceVerified",
+] as const satisfies ReadonlyArray<keyof UpdateOrderDto>;
+
+/** The columns those fields write — what `order_price_changed` names. */
+const ORDER_MONEY_COLUMNS = [
+  "quoted_price",
+  "negotiated_price",
+  "final_price",
+  "total_cost",
+  "price_verified",
+] as const;
+
+/** An order's money as it stood before a price edit (ADR 0244). */
+type OrderMoneyBefore = {
+  status: string | null;
+} & Record<
+  (typeof ORDER_MONEY_COLUMNS)[number],
+  string | number | boolean | null
+>;
+
+/**
+ * What `createOrder`'s dedup merge rewrites on an open order that moves its
+ * money (ADR 0244 D2). Quantity is money here: the approval rules test the
+ * order's total, and the merge recomputes that total from the quantity.
+ */
+const MERGE_MONEY_COLUMNS = [
+  "quantity",
+  "unit_type",
+  "bottles_total",
+  "quoted_price",
+  "negotiated_price",
+  "final_price",
+  "total_cost",
+] as const;
+
+/** Figures compared as they are, never as numbers. */
+const TEXT_FIGURES = new Set([
+  "price_verified",
+  "unit_type",
+  "price_uom",
+  "currency",
+  "vendor_sku",
+]);
+
+/**
+ * The order LINE's money, as a fold would write it (ADR 0244 D2, round 3).
+ * `upsertOrderLine` deletes and rewrites the whole line on a fold, and
+ * `readAgreedLine`, `verifyReceipt` and the delivery comparison read these
+ * columns: the unit pair and the fees decide the per-bottle agreed price an
+ * invoice is held against, and `vendor_sku` decides which invoice line is
+ * paired with this one. So a change to any of them is a change to the money.
+ */
+const LINE_MONEY_COLUMNS = [
+  "quantity",
+  "unit_type",
+  "bottles_per_unit",
+  "quoted_unit_price",
+  "negotiated_unit_price",
+  "final_unit_price",
+  "price_uom",
+  "price_pack_size",
+  "currency",
+  "allowance",
+  "deposit",
+  "freight",
+  "line_total",
+  "vendor_sku",
+] as const;
+
+type LineMoney = Record<
+  (typeof LINE_MONEY_COLUMNS)[number],
+  string | number | null
+>;
+
+/**
+ * What a line write would put in the money columns — ONE builder, used both
+ * to decide whether a fold moves the line and by `upsertOrderLine` to write
+ * it, so the two can never disagree.
+ *
+ * `held` is the line the order already carries (a fold), or nothing (a new
+ * order, which is byte-for-byte today's write). Four columns are CARRIED
+ * FORWARD when the request says nothing about them, so an omission never
+ * wipes a held value: the quoted and negotiated unit prices (the header
+ * already carries its own two forward), the currency (the fold never
+ * rewrites the header's), and the vendor SKU. The unit pair and the three
+ * fees are NOT carried: the header's total is worked out from the request's
+ * unit and fees, so carrying them would make the line and the header
+ * disagree, and carrying a unit would re-read the request's price. For those
+ * an omission is a change, decided like any other.
+ */
+function lineMoneyFor(args: {
+  dto: CreateOrderDto;
+  units: {
+    unitType: Uom;
+    bottlesPerUnit: number;
+    bottlesTotal: number;
+    opaque?: boolean;
+  };
+  finalPrice: number;
+  statedPriceUnit: StatedPriceUnit | null;
+  fees: AgreementFees;
+  held?: Record<string, any> | null;
+}): LineMoney {
+  const { dto, units, finalPrice, statedPriceUnit, fees } = args;
+  const held = args.held ?? null;
+  // Worked out from the price's own unit when the row states one, and from
+  // the historical per-bottle convention when it does not (ADR 0119). A
+  // refusal cannot happen here — `createOrder` already refused the one
+  // incomputable shape — but it is handled rather than cast away, because an
+  // unreachable branch that silently returns a number is how a wrong total
+  // gets written the day it becomes reachable.
+  const lineTotalResolution = Number.isFinite(finalPrice)
+    ? agreementLineTotal({
+        price: finalPrice,
+        stated: statedPriceUnit,
+        bottlesTotal: units.bottlesTotal,
+        quantity: dto.quantity,
+        unitType: units.unitType,
+        opaque: units.opaque === true,
+        fees,
+      })
+    : null;
+  const lineTotal =
+    lineTotalResolution && lineTotalResolution.ok
+      ? Math.round(lineTotalResolution.total * 100) / 100
+      : null;
+  return {
+    quantity: dto.quantity,
+    unit_type: units.unitType,
+    bottles_per_unit: units.bottlesPerUnit,
+    quoted_unit_price: dto.quotedPrice ?? held?.quoted_unit_price ?? null,
+    negotiated_unit_price:
+      dto.negotiatedPrice ?? held?.negotiated_unit_price ?? null,
+    final_unit_price: finalPrice || null,
+    price_uom: statedPriceUnit?.priceUom ?? null,
+    price_pack_size: statedPriceUnit?.pricePackSize ?? null,
+    // MEMBERSHIP, NOT SHAPE (2026-09-06), and no default: a stated code the
+    // registry does not know is NULL. Only an ABSENT currency is carried.
+    currency:
+      dto.currency !== undefined
+        ? currencyCode(dto.currency)
+        : (held?.currency ?? null),
+    allowance: fees.allowance,
+    deposit: fees.deposit,
+    freight: fees.freight,
+    line_total: lineTotal,
+    vendor_sku: dto.vendorSku ?? held?.vendor_sku ?? null,
+  };
+}
+
+/**
+ * The columns whose value differs between two readings of one order, each
+ * with its from and to. Numbers compare as numbers (a stored "300.00" and a
+ * sent 300 are the same price); `unit_type` and `price_verified` compare as
+ * they are.
+ */
+function movedOrderFigures(
+  before: Record<string, unknown> | null | undefined,
+  after: Record<string, unknown> | null | undefined,
+  columns: readonly string[],
+): Record<string, { from: unknown; to: unknown }> {
+  const fields: Record<string, { from: unknown; to: unknown }> = {};
+  for (const column of columns) {
+    const from = before?.[column] ?? null;
+    const to = after?.[column] ?? null;
+    const same = TEXT_FIGURES.has(column)
+      ? from === to
+      : toFiniteNumber(from as string | number | null) ===
+        toFiniteNumber(to as string | number | null);
+    if (!same) fields[column] = { from, to };
+  }
+  return fields;
+}
+
+/**
+ * Where a move to `to` is actually made — the first half of the sentence
+ * `PATCH orders/:id` refuses a status with, so the caller learns the door and
+ * not only the wall. CANCELLED keeps its own, older refusal in `updateOrder`.
+ */
+export function whereThisMoveIsMade(to: ProcurementOrderStatus): string {
+  switch (to) {
+    case ProcurementOrderStatus.APPROVED:
+      return "An order is approved by holding to approve, which checks this house's approval rules and records who sealed it";
+    case ProcurementOrderStatus.DELIVERED:
+    case ProcurementOrderStatus.PARTIALLY_RECEIVED:
+    case ProcurementOrderStatus.COMPLETED:
+      return "What an order received is recorded where the wine is counted: at the receiving door, by marking it delivered, or by verifying the receipt";
+    case ProcurementOrderStatus.REJECTED:
+    case ProcurementOrderStatus.FAILED:
+    case ProcurementOrderStatus.CANCELLED:
+      return "An order is ended through its own act, which asks whose failure it was and is held to confirm";
+    case ProcurementOrderStatus.CONFIRMED:
+      return "An order is placed with its vendor when the vendor's own confirmation matches its terms";
+    default:
+      return "An order moves through the act that moves it (approval, cancellation, the vendor's confirmation, the receiving door)";
+  }
+}
 
 /**
  * The result of the founder's box on a never-arrived cancel (ADR 0207 round
@@ -1139,27 +1349,135 @@ export class ProcurementService {
     }
 
     if (existing && dto.providerId) {
-      const { data: updated, error: updateError } =
-        await this.databaseService.supabase
-          .from("procurement_orders")
-          .update({
-            quantity: dto.quantity,
-            unit_type: units.unitType,
-            bottles_total: bottlesTotal,
-            quoted_price: dto.quotedPrice ?? existing.quoted_price ?? null,
-            negotiated_price:
-              dto.negotiatedPrice ?? existing.negotiated_price ?? null,
-            final_price: finalPrice,
-            total_cost: totalCost,
-            is_emergency: dto.isEmergency ?? existing.is_emergency,
-            priority_level: dto.priorityLevel ?? existing.priority_level,
-            manager_notes: dto.managerNotes ?? existing.manager_notes,
-            expected_delivery_date:
-              dto.expectedDeliveryDate ?? existing.expected_delivery_date,
-          })
-          .eq("id", existing.id)
-          .select("*, inventory:inventory_id(wine_name)")
-          .single();
+      // ADR 0244 D2 — the merge is the second door to an open order's money.
+      // What it is about to write, compared with what the order holds, BEFORE
+      // anything is written: a fold that moves nothing is a harmless re-post;
+      // one that moves the quantity or a price on an order past PENDING needs
+      // a manager or an owner.
+      const mergeMoves = movedOrderFigures(
+        existing,
+        {
+          quantity: dto.quantity,
+          unit_type: units.unitType,
+          bottles_total: bottlesTotal,
+          quoted_price: dto.quotedPrice ?? existing.quoted_price ?? null,
+          negotiated_price:
+            dto.negotiatedPrice ?? existing.negotiated_price ?? null,
+          final_price: finalPrice,
+          total_cost: totalCost,
+        },
+        MERGE_MONEY_COLUMNS,
+      );
+
+      // ROUND 3 — THE LINE IS HELD TO THE SAME RULE (founder, 2026-09-30:
+      // "Third round: gate the line"). The fold rewrites the order's line, and
+      // the line carries money the header does not: the unit pair, the fees,
+      // the currency, the unit prices and the SKU the invoice is paired on. So
+      // the line it would write is compared with the line it holds, through
+      // the SAME builder `upsertOrderLine` writes with. More than one held line
+      // is refused as a change (the fold would collapse them into one); no
+      // held line makes every stated column a change.
+      const heldLines = await this.readHeldOrderLines(
+        restaurantId,
+        existing.id,
+      );
+      const heldLine = heldLines.length === 1 ? heldLines[0] : null;
+      const lineMoves = movedOrderFigures(
+        heldLine,
+        lineMoneyFor({
+          dto,
+          units,
+          finalPrice,
+          statedPriceUnit,
+          fees,
+          held: heldLine,
+        }),
+        LINE_MONEY_COLUMNS,
+      );
+      if (heldLines.length > 1) {
+        lineMoves.line_count = { from: heldLines.length, to: 1 };
+      }
+      const moneyMoves: Record<string, { from: unknown; to: unknown }> = {
+        ...mergeMoves,
+      };
+      for (const [column, move] of Object.entries(lineMoves)) {
+        moneyMoves[`line.${column}`] = move;
+      }
+      const moneyMoved = Object.keys(moneyMoves).length > 0;
+
+      const nextNotes: Record<string, unknown> = {
+        is_emergency: dto.isEmergency ?? existing.is_emergency,
+        priority_level: dto.priorityLevel ?? existing.priority_level,
+        manager_notes: dto.managerNotes ?? existing.manager_notes,
+        expected_delivery_date:
+          dto.expectedDeliveryDate ?? existing.expected_delivery_date,
+      };
+      const notesMoved = Object.entries(nextNotes).some(
+        ([column, value]) => (existing[column] ?? null) !== (value ?? null),
+      );
+
+      // A re-post that changes nothing writes nothing: no header, no line, no
+      // paper (the founder's round-3 pick: "A re-post that changes nothing
+      // skips the line rewrite").
+      if (!moneyMoved && !notesMoved) {
+        return this.mapOrderRow({
+          ...existing,
+          wine_name:
+            existing.inventory?.wine_name ||
+            (existing.inventory as any)?.wine?.name ||
+            null,
+        });
+      }
+
+      const existingStatus = readOrderStatus(existing.status);
+      if (moneyMoved && existingStatus !== ProcurementOrderStatus.PENDING) {
+        await this.assertMayMergeMoneyInto(
+          restaurantId,
+          userId,
+          existing,
+          existingStatus,
+        );
+      }
+
+      // The write is CONDITIONAL on the order still being what the gate read
+      // (ADR 0244 D2, found by the audit's planner at d033412f5). The gate
+      // above decided on the status and figures of the lookup; without these
+      // filters, an order approved between the lookup and this write took a
+      // staff fold's prices as if it were still PENDING, and a price another
+      // person set in between was overwritten by a stale re-post.
+      // `updated_at` is on the list too (round 3): the table's own trigger
+      // stamps it on EVERY update, and a line price written by confirm-deal
+      // or the vendor's acceptance reaches the header through the echo
+      // trigger, so a line that moved since the read makes this match nothing.
+      let mergeWrite = this.databaseService.supabase
+        .from("procurement_orders")
+        .update({
+          quantity: dto.quantity,
+          unit_type: units.unitType,
+          bottles_total: bottlesTotal,
+          quoted_price: dto.quotedPrice ?? existing.quoted_price ?? null,
+          negotiated_price:
+            dto.negotiatedPrice ?? existing.negotiated_price ?? null,
+          final_price: finalPrice,
+          total_cost: totalCost,
+          is_emergency: dto.isEmergency ?? existing.is_emergency,
+          priority_level: dto.priorityLevel ?? existing.priority_level,
+          manager_notes: dto.managerNotes ?? existing.manager_notes,
+          expected_delivery_date:
+            dto.expectedDeliveryDate ?? existing.expected_delivery_date,
+        })
+        .eq("id", existing.id)
+        .eq("restaurant_id", restaurantId);
+      for (const column of ["status", "updated_at", ...MERGE_MONEY_COLUMNS]) {
+        const held = existing[column] ?? null;
+        mergeWrite =
+          held === null
+            ? mergeWrite.is(column, null)
+            : mergeWrite.eq(column, held);
+      }
+      const { data: updated, error: updateError } = await mergeWrite
+        .select("*, inventory:inventory_id(wine_name)")
+        .maybeSingle();
 
       if (updateError) {
         this.logger.error("Failed to update existing procurement order", {
@@ -1169,6 +1487,46 @@ export class ProcurementService {
         });
         throw updateError;
       }
+      if (!updated) {
+        // Nothing matched: the order moved between the lookup and the write.
+        // Refused whole, before the line or the paper — nothing was changed,
+        // and a person reading it again decides whether to post again.
+        const which = existing.order_number
+          ? ` (${existing.order_number})`
+          : "";
+        throw new ConflictException({
+          reason: "merge_target_changed",
+          message:
+            `The open order for this wine from this vendor${which} changed while this one was ` +
+            "being folded into it, so nothing was changed. Look at that order again, and place " +
+            "this one again if it is still needed.",
+        });
+      }
+
+      // The paper right after the header write and BEFORE the line: if the
+      // line write below throws, the header has already moved, and the log
+      // must say so (the planner's ordering finding at d033412f5). The line's
+      // columns are named as `line.<column>`, with the value about to be
+      // written as `to`.
+      const updatedRow = updated as any;
+      if (moneyMoved) {
+        const fields = movedOrderFigures(
+          existing,
+          updatedRow,
+          MERGE_MONEY_COLUMNS,
+        );
+        for (const [column, move] of Object.entries(lineMoves)) {
+          fields[`line.${column}`] = move;
+        }
+        await this.recordOrderPriceChanged({
+          restaurantId,
+          orderId: existing.id,
+          actorUserId: userId,
+          door: "merge",
+          status: updatedRow?.status ?? existing.status ?? null,
+          fields,
+        });
+      }
 
       this.logger.log("Merged order request into existing open order", {
         restaurantId,
@@ -1177,21 +1535,23 @@ export class ProcurementService {
         providerId: dto.providerId,
       });
 
-      // The line has to move with the header. A merge that left the old line
-      // behind would produce an order whose header says 5 cases and whose only
-      // line says 2 — and the invoice matcher reads the LINE, so the discrepancy
-      // would surface as a vendor overage rather than as our own stale row.
-      await this.upsertOrderLine({
-        restaurantId,
-        orderId: existing.id,
-        dto,
-        units,
-        finalPrice,
-        statedPriceUnit,
-        fees,
-      });
+      // The line moves with the header, and ONLY when its money moves (round
+      // 3). A merge that left a stale line behind would give the invoice
+      // matcher a quantity nobody ordered; a merge that rewrote an unchanged
+      // line would wipe what the request did not restate.
+      if (Object.keys(lineMoves).length > 0) {
+        await this.upsertOrderLine({
+          restaurantId,
+          orderId: existing.id,
+          dto,
+          units,
+          finalPrice,
+          statedPriceUnit,
+          fees,
+          held: heldLine,
+        });
+      }
 
-      const updatedRow = updated as any;
       const mergedRow: ProcurementOrderRow = {
         ...updatedRow,
         wine_name:
@@ -1470,6 +1830,12 @@ export class ProcurementService {
      * distinguishable for the whole life of the row.
      */
     fees?: AgreementFees;
+    /**
+     * The line the order already carries, on a fold (ADR 0244 D2, round 3).
+     * `lineMoneyFor` carries four of its columns forward when the request
+     * says nothing about them; absent on a new order.
+     */
+    held?: Record<string, any> | null;
   }): Promise<void> {
     const { restaurantId, orderId, dto, units, finalPrice } = args;
     const statedPriceUnit = args.statedPriceUnit ?? null;
@@ -1514,27 +1880,16 @@ export class ProcurementService {
       });
     }
 
-    // Worked out from the price's own unit when the row states one, and from
-    // the historical per-bottle convention when it does not (ADR 0119). A
-    // refusal cannot happen here — `createOrder` already refused the one
-    // incomputable shape before reaching this method — but it is handled rather
-    // than cast away, because an unreachable branch that silently returns a
-    // number is how a wrong total gets written the day it becomes reachable.
-    const lineTotalResolution = Number.isFinite(finalPrice)
-      ? agreementLineTotal({
-          price: finalPrice,
-          stated: statedPriceUnit,
-          bottlesTotal: units.bottlesTotal,
-          quantity: dto.quantity,
-          unitType: units.unitType,
-          opaque: units.opaque === true,
-          fees,
-        })
-      : null;
-    const lineTotal =
-      lineTotalResolution && lineTotalResolution.ok
-        ? Math.round(lineTotalResolution.total * 100) / 100
-        : null;
+    // The money columns come from the ONE builder the fold's gate also uses
+    // (ADR 0244 D2, round 3), so what was decided is what is written.
+    const money = lineMoneyFor({
+      dto,
+      units,
+      finalPrice,
+      statedPriceUnit,
+      fees,
+      held: args.held ?? null,
+    });
 
     const line = {
       order_id: orderId,
@@ -1548,14 +1903,14 @@ export class ProcurementService {
       producer,
       vintage,
       sku,
-      vendor_sku: dto.vendorSku ?? null,
-      quantity: dto.quantity,
-      unit_type: units.unitType,
-      bottles_per_unit: units.bottlesPerUnit,
+      vendor_sku: money.vendor_sku,
+      quantity: money.quantity,
+      unit_type: money.unit_type,
+      bottles_per_unit: money.bottles_per_unit,
       // total_bottles is GENERATED — writing it raises 428C9.
-      quoted_unit_price: dto.quotedPrice ?? null,
-      negotiated_unit_price: dto.negotiatedPrice ?? null,
-      final_unit_price: finalPrice || null,
+      quoted_unit_price: money.quoted_unit_price,
+      negotiated_unit_price: money.negotiated_unit_price,
+      final_unit_price: money.final_unit_price,
       // ADR 0119: the price states its own unit, the same way the quantity two
       // columns up already does. Written as two EXPLICIT keys rather than a
       // conditional spread — `check_order_capture_contract.py` reads write
@@ -1563,8 +1918,8 @@ export class ProcurementService {
       // set it counts as unreadable. Both keys are always present; NULL is the
       // honest value for an agreement that stated no unit, and the database
       // CHECK `..._price_unit_pair_check` refuses either half alone.
-      price_uom: statedPriceUnit?.priceUom ?? null,
-      price_pack_size: statedPriceUnit?.pricePackSize ?? null,
+      price_uom: money.price_uom,
+      price_pack_size: money.price_pack_size,
       // ADR 0117 Q31: the money all seven amounts on this line are in, stated
       // rather than assumed. One EXPLICIT key, for the same capture-guard reason
       // as the pair above, and `?? null` rather than a fallback: there is no
@@ -1577,7 +1932,7 @@ export class ProcurementService {
       // MEMBERSHIP, NOT SHAPE (2026-09-06): `/^[A-Z]{3}$/` admitted `ZZZ` onto
       // an agreement line, which the invoice-versus-agreement check then reads
       // as the money the vendor agreed to.
-      currency: currencyCode(dto.currency),
+      currency: money.currency,
       // ADR 0119 Q3: the money outside the price of the wine, named rather than
       // folded into `final_unit_price`. Three EXPLICIT keys for the same reason
       // the pair above is two — the capture guard reads this literal without
@@ -1585,10 +1940,10 @@ export class ProcurementService {
       // because "no deposit was agreed" and "a deposit of zero was agreed" are
       // different sentences and the invoice will be checked against whichever
       // one this row holds.
-      allowance: fees.allowance,
-      deposit: fees.deposit,
-      freight: fees.freight,
-      line_total: lineTotal,
+      allowance: money.allowance,
+      deposit: money.deposit,
+      freight: money.freight,
+      line_total: money.line_total,
       line_no: 1,
     };
 
@@ -3278,6 +3633,12 @@ export class ProcurementService {
      * change, and there is exactly one such caller, named here.
      */
     opts?: {
+      /**
+       * The person asking — the JWT's user, passed by `PATCH orders/:id`.
+       * Required for a change to the order's money (2026-09-29): a price
+       * change that names nobody is refused, never let through.
+       */
+      actorUserId?: string;
       statusTransitionAlreadyChecked?: boolean;
       /**
        * ADR 0207 round 4. Set only by `cancelOrder`, which has already run
@@ -3326,8 +3687,53 @@ export class ProcurementService {
           "An order is cancelled through its own act, which asks whose failure it was and is held to confirm — not by editing its status. Nothing was changed.",
       });
     }
+    // ADR 0244 D1 (founder, 2026-09-29) — NO status moves through here.
+    // Until this, any status the transition table permitted was written for
+    // any member of the house: PENDING -> APPROVED with no seal, no approval
+    // rule, no `approved_by` and no stock reservation, and REJECTED, FAILED,
+    // DELIVERED, CONFIRMED, COMPLETED the same way. Every one of those moves
+    // has its own act that checks more than the table (approve, cancel, the
+    // receiving door, verifying the receipt, the vendor's confirmation), and
+    // no client sends a status here any more (the legacy desk's "Mark as
+    // Ordered" went with #494). The one caller that writes a status through
+    // this method is `cancelOrder`, which has already run the transition, the
+    // category, the role and the seal, and says so through `opts`.
     if (dto.status !== undefined && !opts?.statusTransitionAlreadyChecked) {
-      await this.assertStatusTransition(restaurantId, orderId, dto.status);
+      throw new UnprocessableEntityException({
+        reason: "status_through_its_act",
+        to: dto.status,
+        message: `${whereThisMoveIsMade(dto.status)} — not by editing its status. Nothing was changed.`,
+      });
+    }
+
+    // The order's money is a manager's or an owner's to change (ADR 0244 D2).
+    // These are the figures the approval rules test and the approval seal is
+    // taken over (`order-seal.ts`), and `price_verified` is the verification's
+    // recorded verdict the vendor scorecard reads; any member could rewrite
+    // them here. The SAME helper cancel and the settings registers use.
+    // Refused BEFORE anything is read or written, and fails closed: an
+    // unwired helper or an unnamed actor refuses rather than writes.
+    // The figures as they stood, read once before the write, so the paper
+    // below can say what each price was changed FROM (ADR 0244).
+    let moneyBefore: OrderMoneyBefore | null = null;
+    if (ORDER_MONEY_FIELDS.some((field) => dto[field] != null)) {
+      if (!this.organizations) {
+        throw new InternalServerErrorException(
+          "Who may change an order's price could not be established (the organizations service is not " +
+            "wired into procurement), so nothing was changed. This is a gateway fault, not a decision about this order.",
+        );
+      }
+      if (!opts?.actorUserId) {
+        throw new ForbiddenException(
+          "Who is changing this order's price was not established, so it was not changed.",
+        );
+      }
+      await this.organizations.assertCanManageRestaurant(
+        opts.actorUserId,
+        restaurantId,
+        "change an order's price",
+      );
+      moneyBefore = await this.readOrderMoneyBefore(restaurantId, orderId);
     }
 
     // D-06: Block location assignment while order is in a pending state.
@@ -3406,7 +3812,183 @@ export class ProcurementService {
         row.inventory?.wine_name || (row.inventory as any)?.wine?.name || null,
     };
 
+    if (moneyBefore && opts?.actorUserId) {
+      await this.recordOrderPriceChanged({
+        restaurantId,
+        orderId,
+        actorUserId: opts.actorUserId,
+        door: "patch",
+        status: row?.status ?? moneyBefore.status ?? null,
+        fields: movedOrderFigures(moneyBefore, row, ORDER_MONEY_COLUMNS),
+      });
+    }
+
     return this.mapOrderRow(orderRow);
+  }
+
+  /**
+   * An order's money as it stands, read before a price edit. A failed read or
+   * a missing order refuses the edit: the paper has to be able to say what a
+   * price was changed from, and a gone row has nothing to change.
+   */
+  private async readOrderMoneyBefore(
+    restaurantId: string,
+    orderId: string,
+  ): Promise<OrderMoneyBefore> {
+    const { data, error } = await this.databaseService.supabase
+      .from("procurement_orders")
+      .select(
+        "status, quoted_price, negotiated_price, final_price, total_cost, price_verified",
+      )
+      .eq("restaurant_id", restaurantId)
+      .eq("id", orderId)
+      .maybeSingle();
+    if (error) {
+      throw new InternalServerErrorException(
+        `This order's current figures could not be read (${error.message}), so its price was not changed.`,
+      );
+    }
+    if (!data) {
+      throw new NotFoundException(
+        "No order with that id belongs to this restaurant, so there was nothing to change.",
+      );
+    }
+    return data as OrderMoneyBefore;
+  }
+
+  /**
+   * File `order_price_changed` in `system_audit_log`: who changed which of
+   * the order's figures, through which door, from what, to what (ADR 0244
+   * D2). The two doors are `PATCH orders/:id` and `createOrder`'s dedup merge.
+   * An edit that moved nothing files nothing. Best-effort, like
+   * `order_cancelled`: it never throws, because the change has already
+   * happened and a 500 because the log failed would say otherwise, and a
+   * failed write is logged loudly instead.
+   */
+  private async recordOrderPriceChanged(record: {
+    restaurantId: string;
+    orderId: string;
+    actorUserId: string;
+    door: "patch" | "merge";
+    status: string | null;
+    fields: Record<string, { from: unknown; to: unknown }>;
+  }): Promise<void> {
+    if (Object.keys(record.fields).length === 0) return;
+    const actor = asUuid(record.actorUserId);
+    try {
+      const { error } = await this.databaseService.supabase
+        .from("system_audit_log")
+        .insert({
+          actor_type: actor ? "user" : "system",
+          actor_id: actor,
+          action: "order_price_changed",
+          entity_type: "procurement_order",
+          entity_id: record.orderId,
+          changes: {
+            register: "orders",
+            subject: record.orderId,
+            status: record.status,
+            door: record.door,
+            fields: record.fields,
+          },
+          restaurant_id: record.restaurantId,
+          reason:
+            record.door === "patch"
+              ? "A manager or an owner changed this order's price by editing it."
+              : "A new order for the same wine and vendor was folded into this open order, changing its figures.",
+        });
+      if (error) {
+        this.logger.error(
+          `order_price_changed happened but the audit row failed to write: ${error.message}. ` +
+            `Order ${record.orderId}'s figures ARE changed and the log does not say so.`,
+        );
+      }
+    } catch (err: any) {
+      this.logger.error(
+        `order_price_changed happened but the audit row threw: ${err?.message}. ` +
+          `Order ${record.orderId}'s figures ARE changed and the log does not say so.`,
+      );
+    }
+  }
+
+  /**
+   * The line(s) an open order carries, read before a fold decides whether it
+   * moves them (ADR 0244 D2, round 3). A failed read refuses the fold: not
+   * knowing what the line holds is not knowing whether the money moves.
+   */
+  private async readHeldOrderLines(
+    restaurantId: string,
+    orderId: string,
+  ): Promise<Array<Record<string, any>>> {
+    const { data, error } = await this.databaseService.supabase
+      .from("procurement_order_items")
+      // A literal, not a join over LINE_MONEY_COLUMNS: the column guards read
+      // select strings without executing them.
+      .select(
+        "id, quantity, unit_type, bottles_per_unit, quoted_unit_price, negotiated_unit_price, " +
+          "final_unit_price, price_uom, price_pack_size, currency, allowance, deposit, freight, " +
+          "line_total, vendor_sku",
+      )
+      .eq("restaurant_id", restaurantId)
+      .eq("order_id", orderId);
+    if (error) {
+      throw new InternalServerErrorException(
+        `The open order's line could not be read (${error.message}), so whether this order ` +
+          "would change its money could not be decided, and nothing was changed.",
+      );
+    }
+    return (data ?? []) as Array<Record<string, any>>;
+  }
+
+  /**
+   * May this person fold a new order into an open one past PENDING, when the
+   * fold would move its money (ADR 0244 D2)?
+   *
+   * The dedup merge in `createOrder` is the second door to an open order's
+   * figures, beside `PATCH orders/:id`. `POST /procurement/orders` checks no
+   * role, so without this a member of staff re-posting the same wine and
+   * vendor rewrote an APPROVED order's quantity and prices, with no role and
+   * no paper. The same helper, the same action words and the same 403 as the
+   * PATCH: a manager making the same request succeeds, so this is a refusal
+   * of authority (403), not of the order's state (409). A PENDING order keeps
+   * today's re-quote behaviour; nobody has approved it yet. Approving it tests
+   * only the total, the vendor and the price premium, and a fold inside the
+   * approve step is not closed here (ADR 0244 D2, interleaving (iv)).
+   */
+  private async assertMayMergeMoneyInto(
+    restaurantId: string,
+    userId: string,
+    existing: { order_number?: string | null },
+    status: ProcurementOrderStatus | null,
+  ): Promise<void> {
+    if (!this.organizations) {
+      throw new InternalServerErrorException(
+        "Who may change an order's price could not be established (the organizations service is not " +
+          "wired into procurement), so nothing was changed. This is a gateway fault, not a decision about this order.",
+      );
+    }
+    try {
+      await this.organizations.assertCanManageRestaurant(
+        userId,
+        restaurantId,
+        "change an order's price",
+      );
+    } catch (err) {
+      if (err instanceof ForbiddenException) {
+        const which = existing.order_number
+          ? ` (${existing.order_number})`
+          : "";
+        const where = status ? statusInWords(status) : "past pending";
+        throw new ForbiddenException({
+          reason: "merge_would_change_price",
+          message:
+            `An open order for this wine from this vendor${which} is already ${where}. ` +
+            "This one would be folded into it and change its quantity or price, and only " +
+            "managers and owners can change an order's price. Nothing was changed.",
+        });
+      }
+      throw err;
+    }
   }
 
   /**
