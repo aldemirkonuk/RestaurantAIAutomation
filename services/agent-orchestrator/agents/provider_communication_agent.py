@@ -874,7 +874,9 @@ class ProviderCommunicationAgent(BaseAgent):
         renews it, so the fence copies its TTL (+60 s, so it cannot re-arm just
         before the counter clears). A TTL Redis cannot give (no key, no expiry)
         holds the fence a day. A failed read or SET sends nothing: a missed
-        notice beats a flood.
+        notice beats a flood. A notice that does not land (no member to tell,
+        or the insert failed) lifts the fence again, so the next order over the
+        cap retries it instead of the pause passing in silence.
         """
         cap = self.settings.negotiation_draft_daily_cap
         fence_key = f"prov_comm:cap_notice:{restaurant_id}"
@@ -888,7 +890,7 @@ class ProviderCommunicationAgent(BaseAgent):
         if not first:
             return
         # Words ruled by the founder, 2026-10-03 (ADR 0260, follow-up rulings).
-        await self._notify(
+        delivered = await self._notify(
             restaurant_id=restaurant_id,
             notification_type="rate_limit_reached",
             title="AI pre-drafts paused",
@@ -901,6 +903,14 @@ class ProviderCommunicationAgent(BaseAgent):
             action_url="/orders",
             group_key="rate_limit_reached",
         )
+        if delivered:
+            return
+        try:
+            await self.redis.delete(fence_key)
+        except Exception as exc:
+            self.logger.error(
+                f"Cap notice did not land and its fence was not lifted: {exc}"
+            )
 
     async def _acquire_draft_lock(self, key: str, px: int = 30_000) -> bool:
         """
@@ -1011,15 +1021,16 @@ class ProviderCommunicationAgent(BaseAgent):
         action_url: str = "/orders",
         metadata: Optional[Dict[str, Any]] = None,
         group_key: Optional[str] = None,
-    ) -> None:
+    ) -> bool:
         """
         Insert in-app notification directly to Supabase notifications table (D-03).
         Uses status='unread' (VERIFIED_NOTIFICATION_FIELD from Plan 32-01).
         NOT an HTTP call to NestJS — direct DB insert per RESEARCH.md Q2.
         user_id is resolved from user_restaurant_access so the bell icon picks it up.
+        Returns whether any row landed, so a caller holding a fence can lift it.
         """
         if not restaurant_id:
-            return
+            return False
 
         # Routed through core.notifications so both runtimes write the same shape.
         # This insert previously omitted recipient_id, notification_type and
@@ -1043,6 +1054,7 @@ class ProviderCommunicationAgent(BaseAgent):
                 "provider notification not delivered",
                 extra={"restaurant_id": restaurant_id, "type": notification_type},
             )
+        return bool(inserted)
 
     # =========================================================================
     # DYNAMIC PROFILE EXTRACTION (D-32-10 / PROVINT-03)

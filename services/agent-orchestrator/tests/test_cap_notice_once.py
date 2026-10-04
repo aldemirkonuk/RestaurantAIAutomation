@@ -30,7 +30,7 @@ DAY = 86400
 
 
 class _FakeRedis:
-    """get / set(nx, ex, px) / ttl / pipeline(incr, expire) with a movable clock."""
+    """get / set(nx, ex, px) / ttl / delete / pipeline(incr, expire), movable clock."""
 
     def __init__(self) -> None:
         self.now = 0.0
@@ -68,6 +68,9 @@ class _FakeRedis:
         if entry[1] is None:
             return -1
         return int(entry[1] - self.now)
+
+    async def delete(self, key):
+        return 1 if self.store.pop(key, None) is not None else 0
 
     def pipeline(self):
         return _FakePipeline(self)
@@ -111,7 +114,7 @@ def _agent(redis) -> ProviderCommunicationAgent:
     a.settings.negotiation_draft_daily_cap = 50
     a._check_idempotency = AsyncMock(return_value=False)
     a._mark_processed = AsyncMock()
-    a._notify = AsyncMock()
+    a._notify = AsyncMock(return_value=True)
     return a
 
 
@@ -203,6 +206,39 @@ class TestOneNoticePerPause:
         await agent._handle_order_created(_order(1))
 
         assert _cap_notices(agent) == []
+        agent.logger.error.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_a_notice_that_does_not_land_is_tried_again(self):
+        redis = _FakeRedis()
+        _at_cap(redis)
+        agent = _agent(redis)
+        agent._notify = AsyncMock(side_effect=[False, True])
+
+        for n in range(3):
+            await agent._handle_order_created(_order(n))
+
+        # The first notice did not land, so the fence came down and the next
+        # order over the cap tried again; that one landed and held the fence.
+        assert len(_cap_notices(agent)) == 2
+        assert await redis.ttl(FENCE_KEY) == DAY + 60
+
+    @pytest.mark.asyncio
+    async def test_a_fence_that_cannot_be_lifted_is_logged_and_holds(self):
+        redis = _FakeRedis()
+        _at_cap(redis)
+
+        async def delete_fails(key):
+            raise ConnectionError("redis went away")
+
+        redis.delete = delete_fails
+        agent = _agent(redis)
+        agent._notify = AsyncMock(return_value=False)
+
+        await agent._handle_order_created(_order(1))
+        await agent._handle_order_created(_order(2))
+
+        assert len(_cap_notices(agent)) == 1, "a stuck fence still stops a flood"
         agent.logger.error.assert_called()
 
     @pytest.mark.asyncio
@@ -299,3 +335,46 @@ class TestGroupKeyReachesTheBell:
             )
 
         assert notify.await_args.kwargs["group_key"] == "rate_limit_reached"
+
+
+class TestNotifySaysWhetherItLanded:
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("inserted, landed", [(1, True), (3, True), (0, False)])
+    async def test_notify_returns_whether_a_row_landed(self, inserted, landed):
+        agent = ProviderCommunicationAgent(
+            message_bus=AsyncMock(), database=MagicMock(), redis_client=None
+        )
+        agent.logger = MagicMock()
+        with patch(
+            "agents.provider_communication_agent.notify_restaurant",
+            new_callable=AsyncMock,
+            return_value=inserted,
+        ):
+            got = await agent._notify(
+                restaurant_id=HOUSE,
+                notification_type="rate_limit_reached",
+                title="t",
+                message="m",
+            )
+
+        assert got is landed
+
+    @pytest.mark.asyncio
+    async def test_notify_without_a_house_lands_nothing(self):
+        agent = ProviderCommunicationAgent(
+            message_bus=AsyncMock(), database=MagicMock(), redis_client=None
+        )
+        agent.logger = MagicMock()
+        with patch(
+            "agents.provider_communication_agent.notify_restaurant",
+            new_callable=AsyncMock,
+        ) as notify:
+            got = await agent._notify(
+                restaurant_id="",
+                notification_type="rate_limit_reached",
+                title="t",
+                message="m",
+            )
+
+        assert got is False
+        notify.assert_not_awaited()
