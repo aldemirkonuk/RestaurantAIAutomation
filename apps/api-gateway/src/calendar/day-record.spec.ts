@@ -6,7 +6,9 @@ import {
   reconciliationLine,
   scoreForecast,
   toCelsius,
+  withholdHouseMoney,
 } from "./day-record.service";
+import { CalendarController } from "./calendar.controller";
 import {
   RecordedDaysService,
   checkBusinessDate,
@@ -302,6 +304,9 @@ function makeService(opts: {
 
 const YESTERDAY = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
 
+/** An owner's view (a manager's is the same): the house's money included (ADR 0287 F1). */
+const OWNER = { seesHouseMoney: true } as const;
+
 const WEATHER = (over = {}) => ({
   refusal: null,
   observationRefusal: null,
@@ -350,7 +355,7 @@ describe("DayRecordService", () => {
   it("pairs the record with the forecast that stood before the day", async () => {
     const { service } = makeService({ recorded: LEDGER(), weather: WEATHER() });
 
-    const out = await service.windowFor("r1", YESTERDAY, YESTERDAY);
+    const out = await service.windowFor("r1", YESTERDAY, YESTERDAY, OWNER);
 
     expect(out.days).toHaveLength(1);
     expect(out.days[0].recorded?.covers).toBe(41);
@@ -366,7 +371,7 @@ describe("DayRecordService", () => {
       weather: WEATHER(),
     });
 
-    const out = await service.windowFor("r1", YESTERDAY, YESTERDAY);
+    const out = await service.windowFor("r1", YESTERDAY, YESTERDAY, OWNER);
 
     expect(out.pairsWritten).toBe(1);
     const row = inserted[0][0];
@@ -388,7 +393,7 @@ describe("DayRecordService", () => {
       existingOutcomes: [{ context: { businessDate: YESTERDAY } }],
     });
 
-    const out = await service.windowFor("r1", YESTERDAY, YESTERDAY);
+    const out = await service.windowFor("r1", YESTERDAY, YESTERDAY, OWNER);
     expect(out.pairsWritten).toBe(0);
     expect(inserted).toHaveLength(0);
   });
@@ -400,7 +405,7 @@ describe("DayRecordService", () => {
       outcomeReadError: { message: "connection reset" },
     });
 
-    const out = await service.windowFor("r1", YESTERDAY, YESTERDAY);
+    const out = await service.windowFor("r1", YESTERDAY, YESTERDAY, OWNER);
     expect(out.pairsWritten).toBe(0);
     expect(inserted).toHaveLength(0);
   });
@@ -423,7 +428,7 @@ describe("DayRecordService", () => {
       weather: WEATHER(),
     });
 
-    const out = await service.windowFor("r1", YESTERDAY, YESTERDAY);
+    const out = await service.windowFor("r1", YESTERDAY, YESTERDAY, OWNER);
     expect(inserted).toHaveLength(0);
     expect(out.days[0].line).toContain("Closed — Closed for a private event");
   });
@@ -437,7 +442,7 @@ describe("DayRecordService", () => {
       }),
     });
 
-    const out = await service.windowFor("r1", YESTERDAY, YESTERDAY);
+    const out = await service.windowFor("r1", YESTERDAY, YESTERDAY, OWNER);
     expect(out.recordedRefusal).toContain("sales register");
     expect(out.weatherRefusal).toContain("No location is set");
   });
@@ -461,7 +466,7 @@ describe("DayRecordService", () => {
       weather: WEATHER({ forecastInAdvance: [] }),
     });
 
-    const out = await service.windowFor("r1", today, today);
+    const out = await service.windowFor("r1", today, today, OWNER);
     expect(out.days).toHaveLength(0);
   });
 });
@@ -571,7 +576,7 @@ describe("DayRecordService — writing the first real accuracy_score", () => {
       weather: WEATHER({ observations: [OBSERVED] }),
     });
 
-    const out = await service.windowFor("r1", YESTERDAY, YESTERDAY);
+    const out = await service.windowFor("r1", YESTERDAY, YESTERDAY, OWNER);
 
     expect(out.pairsWritten).toBe(1);
     const row = inserted[0][0];
@@ -593,7 +598,7 @@ describe("DayRecordService — writing the first real accuracy_score", () => {
       weather: WEATHER({ observations: [OBSERVED] }),
     });
 
-    const out = await service.windowFor("r1", YESTERDAY, YESTERDAY);
+    const out = await service.windowFor("r1", YESTERDAY, YESTERDAY, OWNER);
     expect(out.days[0].forecastErrorC).toBeCloseTo(1.11, 2);
     expect(out.days[0].scoreWithheld).toBeNull();
     expect(out.days[0].observed?.stationId).toBe("KPAO");
@@ -606,7 +611,7 @@ describe("DayRecordService — writing the first real accuracy_score", () => {
       weather: WEATHER(),
     });
 
-    const out = await service.windowFor("r1", YESTERDAY, YESTERDAY);
+    const out = await service.windowFor("r1", YESTERDAY, YESTERDAY, OWNER);
 
     expect(out.days[0].forecastErrorC).toBeNull();
     expect(out.days[0].scoreWithheld).toBe("no station observed a high for this day");
@@ -623,7 +628,7 @@ describe("DayRecordService — writing the first real accuracy_score", () => {
       weather: WEATHER({ forecastInAdvance: [], observations: [OBSERVED] }),
     });
 
-    const out = await service.windowFor("r1", YESTERDAY, YESTERDAY);
+    const out = await service.windowFor("r1", YESTERDAY, YESTERDAY, OWNER);
     expect(out.days[0].forecastErrorC).toBeNull();
     expect(out.days[0].scoreWithheld).toBe("no forecast high stood before this day");
     // and nothing is written: a forecast is the thing being scored.
@@ -638,7 +643,7 @@ describe("DayRecordService — writing the first real accuracy_score", () => {
       weather: WEATHER({ observations: [OBSERVED] }),
     });
 
-    const out = await service.windowFor("r1", YESTERDAY, YESTERDAY);
+    const out = await service.windowFor("r1", YESTERDAY, YESTERDAY, OWNER);
     expect(out.pairsWritten).toBe(1);
     expect(inserted[0][0].actual_value.covers).toBeNull();
     expect(inserted[0][0].actual_value.checkCount).toBe(0);
@@ -663,7 +668,7 @@ describe("DayRecordService — writing the first real accuracy_score", () => {
       weather: WEATHER({ observations: [OBSERVED] }),
     });
 
-    const out = await service.windowFor("r1", YESTERDAY, YESTERDAY);
+    const out = await service.windowFor("r1", YESTERDAY, YESTERDAY, OWNER);
     // The observation still makes it pairable, but the LINE leads with the
     // closure — a closed day must never read as a quiet one.
     expect(out.days[0].line).toContain("Closed — Closed for a private event");
@@ -743,7 +748,7 @@ describe("DayRecordService — net takings and the house currency", () => {
       weather: WEATHER(),
     });
 
-    const out = await service.windowFor("r1", YESTERDAY, YESTERDAY);
+    const out = await service.windowFor("r1", YESTERDAY, YESTERDAY, OWNER);
     expect(out.days[0].recorded).toMatchObject({
       netSales: 1234.5,
       netSalesCheckCount: 3,
@@ -754,7 +759,7 @@ describe("DayRecordService — net takings and the house currency", () => {
 
   it("sends the house's currency with its money", async () => {
     const { service } = makeService({ recorded: LEDGER(), weather: WEATHER() });
-    const out = await service.windowFor("r1", YESTERDAY, YESTERDAY);
+    const out = await service.windowFor("r1", YESTERDAY, YESTERDAY, OWNER);
     expect(out.currency).toEqual({ code: "USD", readable: true });
   });
 
@@ -764,7 +769,7 @@ describe("DayRecordService — net takings and the house currency", () => {
       weather: WEATHER(),
       currency: null,
     });
-    const out = await service.windowFor("r1", YESTERDAY, YESTERDAY);
+    const out = await service.windowFor("r1", YESTERDAY, YESTERDAY, OWNER);
     expect(out.currency).toEqual({ code: null, readable: true });
   });
 
@@ -774,7 +779,7 @@ describe("DayRecordService — net takings and the house currency", () => {
       weather: WEATHER(),
       currencyReadError: { message: "connection reset" },
     });
-    const out = await service.windowFor("r1", YESTERDAY, YESTERDAY);
+    const out = await service.windowFor("r1", YESTERDAY, YESTERDAY, OWNER);
     expect(out.currency).toEqual({ code: null, readable: false });
     // The day itself still comes back: a currency read is not the ledger.
     expect(out.days[0].recorded?.netSales).toBe(3400);
@@ -786,7 +791,7 @@ describe("DayRecordService — net takings and the house currency", () => {
       weather: WEATHER(),
     });
 
-    await service.windowFor("r1", YESTERDAY, YESTERDAY);
+    await service.windowFor("r1", YESTERDAY, YESTERDAY, OWNER);
     const actual = inserted[0][0].actual_value;
     expect(actual.netSales).toBe(3400);
     expect(actual.netSalesCheckCount).toBe(12);
@@ -794,5 +799,105 @@ describe("DayRecordService — net takings and the house currency", () => {
     // Rows written before ADR 0287 carry `sales`, which was GROSS. A new row
     // must never write that key, or the two bases would read as one series.
     expect(actual).not.toHaveProperty("sales");
+  });
+});
+
+/* ── who sees the takings (ADR 0287 F1) ─────────────────────────────────────── */
+
+/**
+ * The founder, 2026-10-04 ~02:10Z: *"everyone owners and managers, authorized
+ * ones see everything others only see actions, goals dedicated to them"*.
+ * Owners and managers get the day's net takings and the currency; every other
+ * role, and a session holding no role in the house, gets the days with those
+ * keys LEFT OUT. The controller is driven over the real service, so the payload asserted
+ * is the one the route returns, not a mock's.
+ */
+describe("GET /calendar/day-record — the takings are an owner's and a manager's", () => {
+  function routeAs(role: string | null | undefined) {
+    const { service, inserted } = makeService({
+      recorded: LEDGER(),
+      weather: WEATHER(),
+    });
+    const controller = new CalendarController(
+      {} as never,
+      {} as never,
+      {} as never,
+      service,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+    const read = () =>
+      controller.getDayRecord({ from: YESTERDAY, to: YESTERDAY } as never, {
+        userId: "u1",
+        restaurantId: "r1",
+        role,
+      });
+    return { read, inserted };
+  }
+
+  it.each(["owner", "manager"])(
+    "%s sees the net takings and the currency",
+    async (role) => {
+      const out = await routeAs(role).read();
+      expect(out).not.toHaveProperty("takingsWithheld");
+      expect(out).toHaveProperty("currency", { code: "USD", readable: true });
+      expect(out.days[0].recorded).toMatchObject({
+        netSales: 3400,
+        netSalesCheckCount: 12,
+        covers: 41,
+      });
+    },
+  );
+
+  it.each([["staff"], ["host"], [null], [undefined]])(
+    "role %p gets the days with the money keys LEFT OUT, never zeroed",
+    async (role) => {
+      const out = await routeAs(role).read();
+      expect(out).toHaveProperty("takingsWithheld", true);
+      expect(out).not.toHaveProperty("currency");
+      const recorded = out.days[0].recorded;
+      expect(recorded).not.toHaveProperty("netSales");
+      expect(recorded).not.toHaveProperty("netSalesCheckCount");
+      expect(recorded).not.toHaveProperty("sales");
+      // Covers are not money: the day still says what it held.
+      expect(recorded).toMatchObject({ covers: 41, checkCount: 12 });
+      expect(out.days[0].line).toEqual(expect.any(String));
+    },
+  );
+
+  it("still writes the house's evidence pair in full when staff opened the page", async () => {
+    const { read, inserted } = routeAs("staff");
+    await read();
+    const actual = inserted[0][0].actual_value;
+    expect(actual.netSales).toBe(3400);
+    expect(actual.netSalesCheckCount).toBe(12);
+    expect(actual.netSalesCurrency).toEqual({ code: "USD", readable: true });
+  });
+});
+
+describe("withholdHouseMoney", () => {
+  it("keeps everything but the money, and says the money was withheld", async () => {
+    const { service } = makeService({ recorded: LEDGER(), weather: WEATHER() });
+    const full = await service.windowFor("r1", YESTERDAY, YESTERDAY, OWNER);
+    const out = withholdHouseMoney(full);
+
+    expect(Object.keys(out).sort()).toEqual(
+      Object.keys(full)
+        .filter((k) => k !== "currency")
+        .concat("takingsWithheld")
+        .sort(),
+    );
+    expect(Object.keys(out.days[0].recorded!).sort()).toEqual([
+      "checkCount",
+      "covers",
+      "excluded",
+      "exclusionReason",
+    ]);
+    const { recorded: _fullRecorded, ...fullRest } = full.days[0];
+    const { recorded: _outRecorded, ...outRest } = out.days[0];
+    expect(outRest).toEqual(fullRest);
+    // No money anywhere in what staff receive, at any depth.
+    expect(JSON.stringify(out)).not.toMatch(/netSales|"currency"|3400/);
   });
 });

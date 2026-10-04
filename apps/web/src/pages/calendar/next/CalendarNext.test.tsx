@@ -1165,6 +1165,42 @@ describe('CalendarNext — the opened day shows what it took, net', () => {
     draw();
     expect(openDay().querySelector('[data-takings]')).toBeNull();
   });
+
+  // ADR 0287 F1, the founder 2026-10-04 ~02:10Z: owners and managers see the
+  // house's takings; every other role gets the days with `netSales`,
+  // `netSalesCheckCount` and `currency` LEFT OUT, and `takingsWithheld: true`.
+  it('draws no takings for a viewer the house money is withheld from, and keeps the covers', () => {
+    const data = mkData({
+      record: recordWindow({
+        days: [
+          reconciled({
+            recorded: { covers: 41, checkCount: 12, excluded: false, exclusionReason: null },
+          }),
+        ],
+        window: { takingsWithheld: true },
+      }),
+    });
+    delete (data.record.window as unknown as Record<string, unknown>).currency;
+    state.current = data;
+    draw();
+    const panel = openDay();
+    expect(panel.querySelector('[data-takings]')).toBeNull();
+    expect(panel.textContent).not.toMatch(/net sales|currency/);
+    expect(within(panel).getByText('covers · recorded')).toBeInTheDocument();
+  });
+
+  it('draws no takings from a withheld window even if a figure reached it', () => {
+    state.current = withRecorded({}, { takingsWithheld: true });
+    draw();
+    const panel = openDay();
+    expect(panel.querySelector('[data-takings]')).toBeNull();
+    expect(panel.textContent).not.toContain(NET());
+    // and the Day view agrees
+    fireEvent.click(screen.getByRole('button', { name: 'Day' }));
+    expect(screen.getByRole('button', { name: 'Day' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByText(NET())).toBeNull();
+    expect(document.querySelector('[data-takings]')).toBeNull();
+  });
 });
 
 /* ── the day-book hand-over: `?new=` from /recommendations ────────────────── */

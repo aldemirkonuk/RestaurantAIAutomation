@@ -136,6 +136,80 @@ export interface DayRecordWindow {
   pairsWritten: number;
 }
 
+/**
+ * Who is asking, as far as the house's money goes (ADR 0287 F1).
+ *
+ * The founder, 2026-10-04 ~02:10Z: *"everyone owners and managers, authorized
+ * ones see everything others only see actions, goals dedicated to them"*.
+ * Owners and managers see the day's takings; every other role, and a session
+ * holding no role in this house, does not.
+ */
+export interface DayRecordViewer {
+  seesHouseMoney: boolean;
+}
+
+/** A passed day with the house's money left out: covers, count, closure, line. */
+export interface WithheldDay extends Omit<ReconciledDay, "recorded"> {
+  recorded: Omit<
+    NonNullable<ReconciledDay["recorded"]>,
+    "netSales" | "netSalesCheckCount"
+  > | null;
+}
+
+/**
+ * The window a viewer who does not see house money receives.
+ *
+ * `netSales`, `netSalesCheckCount` and `currency` are LEFT OUT, never set to
+ * null or 0: null already means "no check carried a net figure", and 0 would be
+ * a quiet day. `takingsWithheld` says so outright, so the absence is never read
+ * as a gateway from before ADR 0287 or as a register that is empty.
+ */
+export interface WithheldDayRecordWindow extends Omit<
+  DayRecordWindow,
+  "days" | "currency"
+> {
+  days: WithheldDay[];
+  takingsWithheld: true;
+}
+
+/**
+ * Strip the house's money from a window (ADR 0287 F1).
+ *
+ * Built as an allowlist, not by deleting the money keys: a field added to a
+ * day later stays out of a staff payload until someone decides it belongs
+ * there, which is the safe way for that mistake to fail. `line` stays: it is
+ * built by `reconciliationLine`, which never names money.
+ */
+export function withholdHouseMoney(
+  window: DayRecordWindow,
+): WithheldDayRecordWindow {
+  return {
+    from: window.from,
+    to: window.to,
+    days: window.days.map((day) => ({
+      businessDate: day.businessDate,
+      recorded: day.recorded
+        ? {
+            covers: day.recorded.covers,
+            checkCount: day.recorded.checkCount,
+            excluded: day.recorded.excluded,
+            exclusionReason: day.recorded.exclusionReason,
+          }
+        : null,
+      forecastInAdvance: day.forecastInAdvance,
+      observed: day.observed,
+      forecastErrorC: day.forecastErrorC,
+      scoreWithheld: day.scoreWithheld,
+      line: day.line,
+    })),
+    posConnected: window.posConnected,
+    recordedRefusal: window.recordedRefusal,
+    weatherRefusal: window.weatherRefusal,
+    pairsWritten: window.pairsWritten,
+    takingsWithheld: true,
+  };
+}
+
 /** Fahrenheit → Celsius. The only unit conversion in this module. */
 export function toCelsius(value: number, unit: "C" | "F"): number {
   return unit === "C" ? value : ((value - 32) * 5) / 9;
@@ -241,7 +315,37 @@ export class DayRecordService {
     private readonly weather: WeatherService,
   ) {}
 
+  /**
+   * The passed days in a window, for one viewer.
+   *
+   * The viewer is a required argument so no caller can get the house's money
+   * by forgetting to say who is asking. The evidence pairs are written in full
+   * either way, currency included: they are the house's record, not the
+   * viewer's, and a pair must not depend on who happened to open the page.
+   */
+  windowFor(
+    restaurantId: string,
+    from: string,
+    to: string,
+    viewer: { seesHouseMoney: true },
+  ): Promise<DayRecordWindow>;
+  windowFor(
+    restaurantId: string,
+    from: string,
+    to: string,
+    viewer: DayRecordViewer,
+  ): Promise<DayRecordWindow | WithheldDayRecordWindow>;
   async windowFor(
+    restaurantId: string,
+    from: string,
+    to: string,
+    viewer: DayRecordViewer,
+  ): Promise<DayRecordWindow | WithheldDayRecordWindow> {
+    const window = await this.fullWindow(restaurantId, from, to);
+    return viewer.seesHouseMoney === true ? window : withholdHouseMoney(window);
+  }
+
+  private async fullWindow(
     restaurantId: string,
     from: string,
     to: string,

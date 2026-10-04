@@ -161,7 +161,13 @@ export function DayLedger({
         ) : (
           <SkyMark reading={sky} />
         )}
-        {record && <TakingsMark day={record} currency={data.record.window?.currency} />}
+        {record && (
+          <TakingsMark
+            day={record}
+            currency={data.record.window?.currency}
+            withheld={data.record.window?.takingsWithheld === true}
+          />
+        )}
         {sky && record && <SkyMark reading={sky} />}
       </div>
       {record && (

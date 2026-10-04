@@ -180,7 +180,7 @@ export function DayRecordMark({ day }: { day: ReconciledDay }) {
 /**
  * What a passed day TOOK, net — ADR 0287. Drawn in the day panel only.
  *
- * The founder's two answers, 2026-10-04: AW22 *"Day panel only
+ * The founder's answers, 2026-10-04 (UTC): AW22 *"Day panel only
  * (Recommended)"*, so the month cell stays covers-only (ADR 0111 §2b) and this
  * mark lives beside `DayRecordMark` in `DayLedger` and nowhere else; and AW17
  * *"Net sales (Recommended)"*, so the figure is the sum of the checks'
@@ -192,18 +192,28 @@ export function DayRecordMark({ day }: { day: ReconciledDay }) {
  *              day took MORE than this, and the title says why.
  *   none     — no check carried one: the em dash, "net sales not recorded".
  *
- * It draws nothing for a day with no checks (the record mark already says
- * so), and nothing when the payload carries no net figure at all: a gateway
+ * It draws nothing for a day with no checks (the record mark beside it reads
+ * "covers not recorded" and the line under it "Nothing was recorded on this
+ * day."), and nothing when the payload carries no net figure at all: a gateway
  * from before ADR 0287 sent no such key, and "not recorded" would then be a
  * claim about a question nobody asked.
+ *
+ * And it draws nothing when the window says `takingsWithheld`: owners and
+ * managers see the house's takings, nobody else does (ADR 0287 F1; the
+ * founder, 2026-10-04 ~02:10Z: "authorized ones see everything others only
+ * see actions"). The gateway already leaves the figure out; the flag is checked
+ * here too, so a figure that reached this viewer anyway is still not drawn.
  */
 export function TakingsMark({
   day,
   currency,
+  withheld = false,
 }: {
   day: ReconciledDay;
   currency: HouseCurrency | null | undefined;
+  withheld?: boolean;
 }) {
+  if (withheld) return null;
   const record = day.recorded;
   if (!record || record.checkCount <= 0) return null;
   const { netSales, netSalesCheckCount: carried, checkCount } = record;

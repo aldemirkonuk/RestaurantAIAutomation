@@ -257,6 +257,13 @@ export interface DayRecordWindow {
    * house that never recorded one; `readable: false` is a read that failed.
    */
   currency?: { code: string | null; readable: boolean };
+  /**
+   * Set when this viewer does not see the house's money (ADR 0287 F1: owners
+   * and managers do; every other role does not). The gateway then leaves
+   * `netSales`, `netSalesCheckCount` and `currency` out, and the page draws no
+   * takings at all, not "not recorded".
+   */
+  takingsWithheld?: true;
   posConnected: boolean;
   recordedRefusal: string | null;
   weatherRefusal: string | null;

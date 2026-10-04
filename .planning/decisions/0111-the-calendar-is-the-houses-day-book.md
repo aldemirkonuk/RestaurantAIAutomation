@@ -307,7 +307,8 @@ impact saturating past a point
   **[2026-10-03, [ADR 0287](0287-a-passed-days-panel-shows-its-net-takings-the-cell-stays-covers.md):
   the cell stays covers-only, as drawn here (founder, AW22: *"Day panel only
   (Recommended)"*). A passed day's NET takings are drawn in the opened day's panel
-  beside its covers, never in the cell or its hover title. This ADR still governs the
+  beside its covers, for owners and managers only (0287 F1), never in the cell or its
+  hover title. This ADR still governs the
   cell; 0287 governs the panel.]**
 
 #### 2c. Price — a trend, never a quote
