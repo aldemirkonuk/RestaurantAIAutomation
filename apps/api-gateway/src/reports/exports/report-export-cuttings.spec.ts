@@ -98,8 +98,22 @@ describe("a figure the engine did not compute is written as withheld, never as 0
       ...(PAYLOADS.ledger as Record<string, unknown>),
       revenue: 5400,
       shelfValueAtMenuPrice: 7200,
-      cogsCoverage: { total: 2, priced: 1, unpriced: 1, complete: false, bottlesSold: 30, bottlesCosted: 18 },
-      salesCoverage: { checks: 40, lines: 90, unmappedLines: 3, unmappedSales: 120, unreadableLines: 0, itemsSoldWithoutStockMove: 1 },
+      cogsCoverage: {
+        total: 2,
+        priced: 1,
+        unpriced: 1,
+        complete: false,
+        bottlesSold: 30,
+        bottlesCosted: 18,
+      },
+      salesCoverage: {
+        checks: 40,
+        lines: 90,
+        unmappedLines: 3,
+        unmappedSales: 120,
+        unreadableLines: 0,
+        itemsSoldWithoutStockMove: 1,
+      },
     };
     const doc = EXPORT_CUTTINGS.ledger.write(ledger, { days: null });
     for (const label of [
@@ -121,6 +135,40 @@ describe("a figure the engine did not compute is written as withheld, never as 0
     expect(notes).toContain("3 POS lines name no stock item");
     expect(notes).toContain("1 item sold at the till but moved no stock");
     expect(countWithheld(doc)).toBe(8);
+  });
+
+  it("figures of record: a till that sold stock but moved none withholds cost of goods, and says so", () => {
+    const doc = EXPORT_CUTTINGS.ledger.write(
+      {
+        ...(PAYLOADS.ledger as Record<string, unknown>),
+        cogs: null,
+        revenue: 500,
+        cogsCoverage: {
+          total: 0,
+          priced: 0,
+          unpriced: 0,
+          complete: false,
+          bottlesSold: 0,
+          bottlesCosted: 0,
+        },
+        salesCoverage: {
+          checks: 5,
+          lines: 5,
+          unmappedLines: 0,
+          unmappedSales: 0,
+          unreadableLines: 0,
+          itemsSoldWithoutStockMove: 1,
+        },
+      },
+      { days: null },
+    );
+    expect(isWithheld(figure(doc, "Cost of goods (365d)"))).toBe(true);
+    const notes = doc.notes.join(" ");
+    expect(notes).toContain(
+      "1 item sold at the till, but no item moved stock in the window",
+    );
+    expect(notes).toContain("withheld rather than $0");
+    expect(notes).not.toContain("adds sales and no cost");
   });
 
   it("figures of record: cost of goods and sales print when the till and its costs are whole", () => {
@@ -146,7 +194,9 @@ describe("a figure the engine did not compute is written as withheld, never as 0
       { ...(PAYLOADS.ledger as Record<string, unknown>), revenue: null },
       { days: null },
     );
-    expect(isWithheld(figure(doc, "Sales of stocked items, net (365d)"))).toBe(true);
+    expect(isWithheld(figure(doc, "Sales of stocked items, net (365d)"))).toBe(
+      true,
+    );
     expect(figure(doc, "Sales of stocked items, net (365d)")).not.toBe(0);
   });
 

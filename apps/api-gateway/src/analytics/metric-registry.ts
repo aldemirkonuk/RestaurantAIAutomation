@@ -70,7 +70,7 @@ export const METRIC_REGISTRY: MetricDefinition[] = [
     description:
       "Cost of the stock items the till sold, as a share of what the till took for them (365d, net of tax and surcharge).",
     formula:
-      "Σ(POS bottles out × recorded unit cost) ÷ Σ(POS line price × qty); null unless every item that sold carries a recorded cost",
+      "Σ(POS bottles out × recorded unit cost) ÷ Σ(POS line price × qty); null unless the POS moved stock and every item that moved it carries a recorded cost",
     unit: "percent",
     engineFns: ["finance.cogsRatio"],
     personas: ["manager", "private_equity"],
@@ -306,7 +306,7 @@ export const METRIC_REGISTRY: MetricDefinition[] = [
     description:
       "Inequality of POS sales across stock items over 90 days — how few items carry the till.",
     formula:
-      "Gini of POS line sales per stock item, 90d, every active item included (0 when it sold nothing)",
+      "Gini of POS line sales per stock item, 90d, over the items the till can sell: every active item a POS mapping points at (0 when it sold nothing) and every item that sold; an active item no mapping points at is left out",
     theorem: "Gini coefficient",
     unit: "index",
     engineFns: ["risk.giniCoefficient"],
@@ -320,7 +320,7 @@ export const METRIC_REGISTRY: MetricDefinition[] = [
     name: "Demand Value-at-Risk",
     domain: "risk",
     description:
-      "Worst plausible day-on-day drop in bottles out at 95% confidence (historical & parametric), 90d of consumption.",
+      "Worst plausible day-on-day drop in units out (wine_consumption_log quantity: a glass or a bottle, as logged) at 95% confidence (historical & parametric), 90d.",
     formula: "VaR = −quantile_{1−c}(returns); CVaR = E[loss | loss ≥ VaR]",
     theorem: "Value at Risk / Expected Shortfall",
     unit: "percent",
@@ -339,7 +339,7 @@ export const METRIC_REGISTRY: MetricDefinition[] = [
     name: "Demand Sharpe Ratio",
     domain: "risk",
     description:
-      "Consistency of day-on-day change in bottles out (mean change ÷ volatility), 90d of consumption; not money.",
+      "Consistency of day-on-day change in units out (wine_consumption_log quantity: a glass or a bottle, as logged; mean change ÷ volatility), 90d; not money.",
     formula: "(mean return − rf) ÷ stdev(return)",
     theorem: "Sharpe ratio",
     unit: "ratio",

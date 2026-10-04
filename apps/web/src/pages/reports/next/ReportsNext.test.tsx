@@ -888,6 +888,39 @@ describe('ReportsNext — the three gateway shapes fixed on 2026-09-03', () => {
     expect(within(ledger).getByText(/1 item sold at the till but moved no stock/)).toBeInTheDocument();
   });
 
+  it('prints an em dash, never $0, for the cost of a till that sold stock but moved none', () => {
+    hook.current = withRegister(
+      'ledger',
+      ok({
+        basis: {
+          cogs: 'POS bottles out × recorded unit cost — null: 1 item sold at the till but the POS moved no stock for any item',
+        },
+        costCoverage: { total: 1, priced: 1, unpriced: 0, complete: true },
+        cogsCoverage: { total: 0, priced: 0, unpriced: 0, complete: false },
+        salesCoverage: { unmappedLines: 0, itemsSoldWithoutStockMove: 1 },
+        inventoryValue: 100,
+        cogs: null,
+        revenue: 500,
+        shelfValueAtMenuPrice: 300,
+        grossMargin: null,
+        cogsRatio: null,
+        inventoryTurnover: null,
+        daysInventoryOutstanding: null,
+        gmroi: null,
+        deadStockCapital: null,
+      }),
+    );
+    paint();
+    const ledger = screen.getByRole('region', { name: 'Figures of record' });
+    const at = (label: string) => within(ledger).getByText(label).closest('.rp-fig') as HTMLElement;
+    expect(within(at('Cost of goods (365d)')).getByText('—')).toBeInTheDocument();
+    expect(within(at('Gross margin')).getByText('—')).toBeInTheDocument();
+    expect(
+      within(ledger).getByText(/1 item sold at the till, but no item moved stock in the window/),
+    ).toBeInTheDocument();
+    expect(within(ledger).queryByText(/it adds sales and no cost/)).not.toBeInTheDocument();
+  });
+
   it('claims no forecast total when the server reports no model fitted', () => {
     hook.current = withRegister(
       'ahead',

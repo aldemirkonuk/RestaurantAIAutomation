@@ -135,12 +135,14 @@ describe("ReportExportsService — a report export is written, or says why not (
 
     const cogs = csv.split("\r\n").find((l) => l.startsWith("Cost of goods (365d),"));
     expect(cogs).toBe(
-      "Cost of goods (365d),withheld,TRY,\"Not every item that sold carries a recorded cost, or the POS recorded no sale, or the read failed\"",
+      'Cost of goods (365d),withheld,TRY,"Not every item that sold carries a recorded cost, the POS moved no stock, or the read failed"',
     );
     expect(csv).not.toMatch(/^Cost of goods \(365d\),0,/m);
     expect(csv).toContain("House,Meyhouse");
     expect(html).toContain(`<dt>Cost of goods (365d)</dt><dd><span class="withheld">withheld</span>`);
-    expect(html).toContain("9 figures marked &quot;withheld&quot; are one the engine could not compute");
+    expect(html).toContain(
+      "9 figures marked &quot;withheld&quot; are one the engine could not compute",
+    );
   });
 
   it("a house with no stated currency gets no invented one", async () => {

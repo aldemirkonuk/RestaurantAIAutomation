@@ -98,7 +98,14 @@ const till = (over: Record<string, unknown> = {}) => ({
 /** The till sold 3 bottles of STOCKED for 180 over 60 days. */
 const SOLD_THREE = till({
   items: [
-    { inventory_id: "inv-1", sales: 180, units: 3, lines: 2, bottles_out: 3 },
+    {
+      inventory_id: "inv-1",
+      sales: 180,
+      units: 3,
+      lines: 2,
+      bottles_out: 3,
+      mapped: true,
+    },
   ],
   checks: 2,
   lines: 3,
@@ -168,7 +175,19 @@ describe("financial never reports an empty result set as $0", () => {
   });
 
   it("reads a thrown call or a payload of the wrong shape as a failed read", async () => {
-    for (const rpc of [{ throws: true }, { data: { items: "x" } }, {}]) {
+    // The last: an item with no `mapped` flag is not the function's shape.
+    const noFlag = till({
+      ...SOLD_THREE.data,
+      items: [
+        { inventory_id: "inv-1", sales: 1, units: 1, lines: 1, bottles_out: 1 },
+      ],
+    });
+    for (const rpc of [
+      { throws: true },
+      { data: { items: "x" } },
+      {},
+      noFlag,
+    ]) {
       const out: any = await analytics(
         { restaurant_inventory: [STOCKED] },
         rpc,
@@ -260,6 +279,85 @@ describe("financial never reports an empty result set as $0", () => {
     expect(out.revenue).toBeNull();
     expect(out.basis.revenue).toContain("cannot be read");
     expect(out.cogsRatio).toBeNull();
+  });
+
+  it("withholds cost of goods when the till sold stock but moved none", async () => {
+    // The verifier's case: five checks, one item sold for 500, no bottle out
+    // (a mapped line flagged not-stock, or a sale the ledger refused). The
+    // sum over no rows is 0, which printed a 100% margin and a GMROI of 30.
+    const out: any = await analytics(
+      { restaurant_inventory: [STOCKED] },
+      till({
+        items: [
+          {
+            inventory_id: "inv-1",
+            sales: 500,
+            units: 5,
+            lines: 5,
+            bottles_out: 0,
+            mapped: true,
+          },
+        ],
+        checks: 5,
+        lines: 5,
+        first_sale_at: daysAgo(60),
+      }),
+    ).getFinancialSummary(RESTAURANT);
+    expect(out.cogs).toBeNull();
+    expect(out.cogs).not.toBe(0);
+    expect(out.revenue).toBe(500);
+    for (const k of [
+      "grossMarginDollars",
+      "grossMargin",
+      "cogsRatio",
+      "primeCostRatio",
+      "inventoryTurnover",
+      "daysInventoryOutstanding",
+      "gmroi",
+    ])
+      expect(out[k]).toBeNull();
+    expect(out.basis.cogs).toContain(
+      "1 item sold at the till but the POS moved no stock for any item",
+    );
+    expect(out.salesCoverage.itemsSoldWithoutStockMove).toBe(1);
+  });
+
+  it("withholds cost of goods when no line sold a stock item and nothing moved", async () => {
+    const out: any = await analytics(
+      { restaurant_inventory: [STOCKED] },
+      till({ checks: 4, lines: 6, unmapped_lines: 6, unmapped_sales: 90 }),
+    ).getFinancialSummary(RESTAURANT);
+    expect(out.cogs).toBeNull();
+    expect(out.inventoryTurnover).toBeNull();
+    expect(out.gmroi).toBeNull();
+    expect(out.basis.cogs).toContain(
+      "4 closed checks, but no line sold a stock item and the POS moved no stock",
+    );
+  });
+
+  it("keeps cost of goods when one item moved stock, and names the one that did not", async () => {
+    const out: any = await analytics(
+      { restaurant_inventory: [STOCKED] },
+      till({
+        ...SOLD_THREE.data,
+        items: [
+          ...(SOLD_THREE.data.items as object[]),
+          {
+            inventory_id: "inv-glass",
+            sales: 30,
+            units: 3,
+            lines: 3,
+            bottles_out: 0,
+            mapped: true,
+          },
+        ],
+      }),
+    ).getFinancialSummary(RESTAURANT);
+    expect(out.cogs).toBe(60);
+    expect(out.basis.cogs).toContain(
+      "1 item sold without moving stock, and its cost is not in it",
+    );
+    expect(out.salesCoverage.itemsSoldWithoutStockMove).toBe(1);
   });
 
   it("annualises turns, DIO and GMROI from the span the till observed", async () => {
@@ -437,14 +535,16 @@ describe("revenue concentration weighs what each item sold, not its shelf value"
     { id: "i4", stock_live: 1, menu_price_current: 10 },
     { id: "i5", stock_live: 1, menu_price_current: 10 },
   ].map((r) => ({ ...r, wine_name: r.id, last_purchase_price: 5 }));
-  const sold = (sales: Record<string, number>) =>
+  /** Sales per item; every item named is mapped unless listed in `unmapped`. */
+  const sold = (sales: Record<string, number>, unmapped: string[] = []) =>
     till({
       items: Object.entries(sales).map(([id, v]) => ({
         inventory_id: id,
         sales: v,
-        units: 1,
-        lines: 1,
-        bottles_out: 1,
+        units: v > 0 ? 1 : 0,
+        lines: v > 0 ? 1 : 0,
+        bottles_out: v > 0 ? 1 : 0,
+        mapped: !unmapped.includes(id),
       })),
       checks: 9,
       first_sale_at: daysAgo(80),
@@ -476,19 +576,96 @@ describe("revenue concentration weighs what each item sold, not its shelf value"
     );
   });
 
-  it("weighs an active item that sold nothing as 0, and keeps a sold inactive one", async () => {
+  it("weighs a mapped item that sold nothing as 0, and keeps a sold inactive one", async () => {
+    // pos_item_sales lists the mapped, silent i2-i5 with zeros; "gone" sold
+    // but is no longer active and no mapping points at it now.
     const out: any = await analytics(
       { restaurant_inventory: SHELF },
-      sold({ i1: 500, gone: 100 }),
+      sold({ i1: 500, i2: 0, i3: 0, i4: 0, i5: 0, gone: 100 }, ["gone"]),
     ).getRiskProfile(RESTAURANT);
     // Weights: 500, 0, 0, 0, 0 for the active items, plus 100 for "gone".
     expect(out.revenueConcentration.gini).toBeCloseTo(
       E.risk.giniCoefficient([500, 0, 0, 0, 0, 100]) as number,
       10,
     );
+    expect(out.revenueConcentration.itemsWeighed).toBe(6);
     expect(out.revenueConcentration.itemsWithSales).toBe(2);
     expect(out.revenueConcentration.interpretation).toBe(
       "revenue rides on very few SKUs",
+    );
+  });
+
+  it("leaves out an active row no mapping points at: the till cannot sell it (A-013)", async () => {
+    // Tuzlu's shape: the imported rows are mapped and sell, and extra menu
+    // rows (tea, ayran, cocktails) are active with no mapping. Weighing them
+    // as 0 adds k zeros, G' = (nG + k)/(n + k), and here that alone crosses
+    // the rule's 0.6 line.
+    const sales = { i1: 300, i2: 100, i3: 60, i4: 40, i5: 20 };
+    const menuRows = ["m1", "m2", "m3", "m4"].map((id) => ({
+      id,
+      wine_name: id,
+      stock_live: 0,
+      menu_price_current: 5,
+      last_purchase_price: null,
+    }));
+    const tillGini = E.risk.giniCoefficient(Object.values(sales)) as number;
+    const withZeros = E.risk.giniCoefficient([
+      ...Object.values(sales),
+      0,
+      0,
+      0,
+      0,
+    ]) as number;
+    expect(tillGini).toBeLessThan(0.6);
+    expect(withZeros).toBeGreaterThan(0.6);
+    expect(withZeros).toBeCloseTo((5 * tillGini + 4) / 9, 10);
+
+    const out: any = await analytics(
+      { restaurant_inventory: [...SHELF, ...menuRows] },
+      sold(sales),
+    ).getRiskProfile(RESTAURANT);
+    expect(out.revenueConcentration.gini).toBeCloseTo(tillGini, 10);
+    expect(out.revenueConcentration.gini).toBeLessThan(0.6);
+    expect(out.revenueConcentration.itemsWeighed).toBe(5);
+    expect(out.revenueConcentration.activeItemsNotWeighed).toBe(4);
+    expect(out.revenueConcentration.basis).toContain(
+      "4 active items no mapping points at and that sold nothing are left out",
+    );
+  });
+
+  it("does not weigh a void-only or an inactive mapped item that sold nothing", async () => {
+    const sales = { i1: 100, i2: 90, i3: 80, i4: 110, i5: 100 };
+    const out: any = await analytics(
+      { restaurant_inventory: SHELF },
+      till({
+        ...sold(sales).data,
+        items: [
+          ...(sold(sales).data.items as object[]),
+          // ADR 0011 B19: a void with no sale in the window, not active.
+          {
+            inventory_id: "void-only",
+            sales: 0,
+            units: 0,
+            lines: 0,
+            bottles_out: -2,
+            mapped: false,
+          },
+          // A mapping still points at a row that is no longer active.
+          {
+            inventory_id: "retired",
+            sales: 0,
+            units: 0,
+            lines: 0,
+            bottles_out: 0,
+            mapped: true,
+          },
+        ],
+      }),
+    ).getRiskProfile(RESTAURANT);
+    expect(out.revenueConcentration.itemsWeighed).toBe(5);
+    expect(out.revenueConcentration.gini).toBeCloseTo(
+      E.risk.giniCoefficient(Object.values(sales)) as number,
+      10,
     );
   });
 
@@ -497,6 +674,8 @@ describe("revenue concentration weighs what each item sold, not its shelf value"
       { error: { message: "timeout" } },
       till(),
       till({ checks: 4 }),
+      // Mapped items listed with zeros are still no sale.
+      sold({ i1: 0, i2: 0 }),
     ]) {
       const out: any = await analytics(
         { restaurant_inventory: SHELF },

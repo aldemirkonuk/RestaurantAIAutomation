@@ -30,6 +30,7 @@ declare
   c uuid := 'c0980000-0000-4000-8000-0000000002c0';
   d uuid := 'c0980000-0000-4000-8000-0000000002d0';
   e uuid := 'c0980000-0000-4000-8000-0000000002e0';
+  f uuid := 'c0980000-0000-4000-8000-0000000002f0';
 begin
   insert into public.restaurants (id, name, slug) values
     (h1, 'CG test house 1', 'cg-test-house-1'),
@@ -39,13 +40,26 @@ begin
     ('c0980000-0000-4000-8000-0000000001b0', 'CG-TEST-B', 'CG test wine B', 'red'),
     ('c0980000-0000-4000-8000-0000000001c0', 'CG-TEST-C', 'CG test wine C', 'red'),
     ('c0980000-0000-4000-8000-0000000001d0', 'CG-TEST-D', 'CG test wine D', 'red'),
-    ('c0980000-0000-4000-8000-0000000001e0', 'CG-TEST-E', 'CG test wine E', 'red');
+    ('c0980000-0000-4000-8000-0000000001e0', 'CG-TEST-E', 'CG test wine E', 'red'),
+    ('c0980000-0000-4000-8000-0000000001f0', 'CG-TEST-F', 'CG test wine F', 'red');
   insert into public.restaurant_inventory (id, restaurant_id, master_wine_id, bottle_size_ml, pour_size_ml) values
     (a, h1, 'c0980000-0000-4000-8000-0000000001a0', 750, 150),
     (b, h1, 'c0980000-0000-4000-8000-0000000001b0', 750, 150),
     (c, h1, 'c0980000-0000-4000-8000-0000000001c0', 750, 150),
     (d, h2, 'c0980000-0000-4000-8000-0000000001d0', 750, 150),
-    (e, h1, 'c0980000-0000-4000-8000-0000000001e0', 750, 150);
+    (e, h1, 'c0980000-0000-4000-8000-0000000001e0', 750, 150),
+    (f, h1, 'c0980000-0000-4000-8000-0000000001f0', 750, 150);
+
+  -- POS mappings. A twice (two sources) and F (never sold) are this house's
+  -- and point at its own items. The rest must not mark anything: a mapping
+  -- with no inventory_id, h1's mapping at h2's item D, and h2's at h1's C.
+  insert into public.pos_item_mappings (restaurant_id, source, external_item_id, item_name, is_wine, inventory_id) values
+    (h1, 'cg_test', 'x-a', 'A', true, a),
+    (h1, '*', 'x-a', 'A', true, a),
+    (h1, 'cg_test', 'x-f', 'F', true, f),
+    (h1, 'cg_test', 'x-tea', 'Tea', false, null),
+    (h1, 'cg_test', 'x-d', 'D', true, d),
+    (h2, 'cg_test', 'x-c', 'C', true, c);
 
   -- Stock in, through the real write path (a purchase is not a sale).
   perform public.apply_stock_movement(a, 'live', 10, 'purchase', 'order', null, 'cg test', 10, null, null, 'cg-test:in-a', 'invoice');
@@ -157,7 +171,7 @@ begin
   -- A void with no sale in the window is reported as it is, not clamped here.
   assert ie is not null and (ie ->> 'bottles_out')::numeric = -3 and (ie ->> 'sales')::numeric = 0,
     format('T5 FAIL item E is %s, expected bottles_out -3 and sales 0', ie);
-  assert jsonb_array_length(r -> 'items') = 3, format('T5 FAIL %s items, expected A, B and E', jsonb_array_length(r -> 'items'));
+  assert jsonb_array_length(r -> 'items') = 4, format('T5 FAIL %s items, expected A, B, E and the mapped F', jsonb_array_length(r -> 'items'));
 end $$;
 
 -- T6 first_sale_at is the earliest closed check or POS ledger row in the
@@ -186,6 +200,37 @@ begin
   assert not has_function_privilege('anon', f, 'EXECUTE'), 'T7 FAIL anon may execute pos_item_sales';
   assert not has_function_privilege('authenticated', f, 'EXECUTE'), 'T7 FAIL authenticated may execute pos_item_sales';
   assert has_function_privilege('service_role', f, 'EXECUTE'), 'T7 FAIL service_role may not execute pos_item_sales';
+end $$;
+
+-- T9 mapped: an item this house's mappings point at is flagged, and listed
+-- with zeros when it neither sold nor moved (F); an item that sold but no
+-- mapping points at is not flagged (B, E); a null mapping, a mapping at
+-- another house's item, and another house's mapping flag nothing.
+do $$
+declare
+  r jsonb := pg_temp.cg_read('c0980000-0000-4000-8000-000000000001');
+  ia jsonb := pg_temp.cg_item(r, 'c0980000-0000-4000-8000-0000000002a0');
+  ib jsonb := pg_temp.cg_item(r, 'c0980000-0000-4000-8000-0000000002b0');
+  ie jsonb := pg_temp.cg_item(r, 'c0980000-0000-4000-8000-0000000002e0');
+  i_f jsonb := pg_temp.cg_item(r, 'c0980000-0000-4000-8000-0000000002f0');
+  r2 jsonb := pg_temp.cg_read('c0980000-0000-4000-8000-000000000002');
+begin
+  assert i_f is not null, format('T9 FAIL the mapped, never-sold item F is missing from %s', r);
+  assert (i_f -> 'mapped') = 'true'::jsonb and (i_f ->> 'sales')::numeric = 0
+     and (i_f ->> 'bottles_out')::numeric = 0 and (i_f ->> 'lines')::int = 0,
+    format('T9 FAIL item F is %s, expected mapped, sales 0, bottles_out 0, lines 0', i_f);
+  assert (ia -> 'mapped') = 'true'::jsonb, format('T9 FAIL item A is %s, expected mapped (two mapping rows, one item)', ia);
+  assert (ib -> 'mapped') = 'false'::jsonb and (ie -> 'mapped') = 'false'::jsonb,
+    format('T9 FAIL B %s and E %s should not be mapped', ib, ie);
+  assert (select count(*) from jsonb_array_elements(r -> 'items') x
+           where (x ->> 'inventory_id')::uuid = 'c0980000-0000-4000-8000-0000000002a0') = 1,
+    'T9 FAIL item A is listed more than once';
+  assert pg_temp.cg_item(r, 'c0980000-0000-4000-8000-0000000002d0') is null,
+    format('T9 FAIL h1''s mapping at h2''s item D lists D for h1: %s', r);
+  assert pg_temp.cg_item(r2, 'c0980000-0000-4000-8000-0000000002c0') is null,
+    format('T9 FAIL h2''s mapping at h1''s item C lists C for h2: %s', r2);
+  assert (pg_temp.cg_item(r2, 'c0980000-0000-4000-8000-0000000002d0') -> 'mapped') = 'false'::jsonb,
+    format('T9 FAIL h2''s item D is flagged mapped by h1''s mapping: %s', r2);
 end $$;
 
 -- T8 the closed-check window has its index.

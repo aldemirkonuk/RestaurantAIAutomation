@@ -225,7 +225,7 @@ const ledger = analysis<LedgerRegister>({
       {
         label: 'Cost of goods (365d)',
         value: money(f.cogs),
-        note: 'Not every item that sold carries a recorded cost, or the POS recorded no sale, or the read failed',
+        note: 'Not every item that sold carries a recorded cost, the POS moved no stock, or the read failed',
       },
       {
         label: 'Sell-price valuation',
@@ -264,7 +264,9 @@ const ledger = analysis<LedgerRegister>({
       );
     if (sc && sc.itemsSoldWithoutStockMove > 0)
       notes.push(
-        `${countOf(sc.itemsSoldWithoutStockMove, 'item', 'items')} sold at the till but moved no stock in the window, so ${sc.itemsSoldWithoutStockMove === 1 ? 'it adds' : 'they add'} sales and no cost.`,
+        f.cogs == null && gc != null && gc.total === 0
+          ? `${countOf(sc.itemsSoldWithoutStockMove, 'item', 'items')} sold at the till, but no item moved stock in the window, so cost of goods and the ratios built on it read ${EM} rather than $0.`
+          : `${countOf(sc.itemsSoldWithoutStockMove, 'item', 'items')} sold at the till but moved no stock in the window, so ${sc.itemsSoldWithoutStockMove === 1 ? 'it adds' : 'they add'} sales and no cost.`,
       );
     return {
       // The "table" of this register IS its figures — one label, one figure of

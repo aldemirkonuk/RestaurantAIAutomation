@@ -9,10 +9,12 @@
 -- The owner-quarter sim's analytics walk (2026-10-03, read-only) measured
 -- Tuzlu Ruzgar: purchases of $39,302 shown as cost of goods against about
 -- $47,914 of goods that sold in Jul-Aug, $28,889 of shelf value shown as
--- revenue, and a Gini of 0.78 where the till's per-item sales give 0.5651.
+-- revenue, and a Gini of 0.78 where the walk's own Gini of till sales over
+-- the 116 imported rows (Jul 1-Aug 30, from its truth data) is 0.5651.
 --
 -- WHAT THIS FILE ADDS. One read, public.pos_item_sales(house, since), that
--- returns one jsonb value with two independent measures per stock item:
+-- returns one jsonb value with two independent measures and a flag per stock
+-- item:
 --
 --   sales, units, lines  from pos_checks.items: the lines that name a stock
 --                        item (inventory_id, stamped at ingest), on this
@@ -27,6 +29,13 @@
 --                        'sale' of -bottles_opened. Manual, count, waste,
 --                        purchase and system rows are excluded on purpose:
 --                        this is the stock the till moved.
+--   mapped               true when a pos_item_mappings row of this house points
+--                        at the item and the item is this house's: the till can
+--                        name it on a line. A mapped item that neither sold nor
+--                        moved in the window is listed too, with zeros, so a
+--                        reader can weigh "could sell, sold nothing" as 0
+--                        without weighing a row the till can never sell (a menu
+--                        row no mapping points at, analytics walk A-013).
 --
 -- plus the counts a reader needs to say what it could not read: checks,
 -- lines, unmapped_lines and unmapped_sales (lines naming no stock item; the
@@ -115,14 +124,32 @@ AS $$
        AND t.stock_type = 'live'
      GROUP BY t.inventory_id
   ),
+  mp AS (
+    SELECT DISTINCT m.inventory_id
+      FROM public.pos_item_mappings m
+      JOIN public.restaurant_inventory ri
+        ON ri.id = m.inventory_id
+       AND ri.restaurant_id = p_restaurant_id
+     WHERE m.restaurant_id = p_restaurant_id
+  ),
+  ids AS (
+    SELECT inventory_id FROM sold
+    UNION
+    SELECT inventory_id FROM moved
+    UNION
+    SELECT inventory_id FROM mp
+  ),
   per_item AS (
-    SELECT coalesce(s.inventory_id, m.inventory_id) AS inventory_id,
+    SELECT i.inventory_id,
            coalesce(s.sales, 0) AS sales,
            coalesce(s.units, 0) AS units,
            coalesce(s.lines, 0) AS lines,
-           coalesce(m.bottles_out, 0) AS bottles_out
-      FROM sold s
-      FULL JOIN moved m ON m.inventory_id = s.inventory_id
+           coalesce(mv.bottles_out, 0) AS bottles_out,
+           (k.inventory_id IS NOT NULL) AS mapped
+      FROM ids i
+      LEFT JOIN sold s ON s.inventory_id = i.inventory_id
+      LEFT JOIN moved mv ON mv.inventory_id = i.inventory_id
+      LEFT JOIN mp k ON k.inventory_id = i.inventory_id
   )
   SELECT jsonb_build_object(
     'items', coalesce(
@@ -131,7 +158,8 @@ AS $$
                 'sales', p.sales,
                 'units', p.units,
                 'lines', p.lines,
-                'bottles_out', p.bottles_out) ORDER BY p.inventory_id)
+                'bottles_out', p.bottles_out,
+                'mapped', p.mapped) ORDER BY p.inventory_id)
          FROM per_item p),
       '[]'::jsonb),
     'checks', (SELECT count(*) FROM chk),
@@ -147,7 +175,9 @@ $$;
 COMMENT ON FUNCTION public.pos_item_sales(uuid, timestamptz) IS
   'ADR 0298. Per stock item since p_since: till sales (price x qty of lines '
   'naming the item on closed, non-voided checks) and bottles the POS moved '
-  '(-sum of source pos sale/return ledger rows). One jsonb value; never raises '
+  '(-sum of source pos sale/return ledger rows), and whether a mapping of this '
+  'house points at it (mapped items that did neither are listed with zeros). '
+  'One jsonb value; never raises '
   'on a malformed line, counts it. Read by AnalyticsService (cost of goods, '
   'sales, revenue concentration). A second per-item till reader should call '
   'this rather than aggregate pos_checks.items again.';

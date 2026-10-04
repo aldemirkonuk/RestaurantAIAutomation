@@ -104,6 +104,7 @@ const till = (sold: Record<string, [number, number]>) => ({
       units: bottles,
       lines: 1,
       bottles_out: bottles,
+      mapped: true,
     })),
     checks: 4,
     lines: Object.keys(sold).length,

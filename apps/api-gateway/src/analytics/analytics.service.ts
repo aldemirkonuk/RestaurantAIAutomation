@@ -64,6 +64,11 @@ interface PosItemSales {
   lines: number;
   /** −Σ POS sale/return ledger rows. Negative when voids outweigh sales. */
   bottlesOut: number;
+  /**
+   * A POS mapping of this house points at the item, so the till can name it.
+   * Mapped items that neither sold nor moved are listed too, with zeros.
+   */
+  mapped: boolean;
 }
 
 interface PosSales {
@@ -459,6 +464,7 @@ export class AnalyticsService {
             units: Number(i?.units),
             lines: Number(i?.lines),
             bottlesOut: Number(i?.bottles_out),
+            mapped: i?.mapped,
           }))
         : [];
       const counts = [
@@ -474,7 +480,8 @@ export class AnalyticsService {
         items.some(
           (i) =>
             !i.inventoryId ||
-            ![i.sales, i.units, i.lines, i.bottlesOut].every(Number.isFinite),
+            ![i.sales, i.units, i.lines, i.bottlesOut].every(Number.isFinite) ||
+            typeof i.mapped !== "boolean",
         );
       if (malformed) {
         this.logQueryFailure("pos_item_sales", {
@@ -577,12 +584,21 @@ export class AnalyticsService {
         .length,
     };
     const posTraded = pos != null && (pos.checks > 0 || soldRows.length > 0);
+    // Items the till took money for that moved no stock in the window: a
+    // glass from a bottle opened before it, a mapped line flagged not-stock
+    // (pos-hub skips its depletion), or a sale the ledger refused (ADR 0285).
+    const soldWithoutMove = (pos?.items ?? []).filter(
+      (s) => s.sales > 0 && s.bottlesOut <= 0,
+    ).length;
     // Founder fork, 2026-10-04: "Withhold, say N of M (Recommended)". A total
     // over the items that happen to carry a cost is a floor wearing a
     // total's label (ADR 0053), so one uncosted item withholds it, and
     // `cogsCoverage` says how many of the items that sold are costed.
+    // A till that traded but moved no stock at all has no cost to read:
+    // `E.stats.sum([])` is 0, and $0 there would print an unknown cost as
+    // nothing and a 100% margin (ADR 0051).
     const cogs =
-      !posTraded || soldCoverage.unpriced > 0
+      !posTraded || soldRows.length === 0 || soldCoverage.unpriced > 0
         ? null
         : E.stats.sum(
             soldRows.map((r) => r.bottlesOut * (r.unitCost as number)),
@@ -607,9 +623,7 @@ export class AnalyticsService {
             unmappedLines: pos.unmappedLines,
             unmappedSales: pos.unmappedSales,
             unreadableLines: pos.unreadableLines,
-            itemsSoldWithoutStockMove: pos.items.filter(
-              (s) => s.sales > 0 && s.bottlesOut <= 0,
-            ).length,
+            itemsSoldWithoutStockMove: soldWithoutMove,
           };
 
     // ---- The span the year is read from. ----
@@ -749,9 +763,13 @@ export class AnalyticsService {
         ? `${cogsHead} — null: the POS sales read failed, and $0 would claim nothing sold`
         : !posTraded
           ? `${cogsHead} — null: the POS recorded no closed check and moved no stock in the window, which is either no till feed or no trading`
-          : cogs == null
-            ? `${cogsHead} — null: ${soldCoverage.priced} of ${soldCoverage.total} items that sold carry a recorded cost, so a total would be a floor (ADR 0053). ${costBasisSentence(soldCoverage)}`
-            : `${cogsHead} — ${plural(soldCoverage.total, "item", "items")}, ${plural(cogsCoverage.bottlesSold, "bottle", "bottles")} out; ${costBasisSentence(soldCoverage)}`;
+          : soldRows.length === 0
+            ? soldWithoutMove > 0
+              ? `${cogsHead} — null: ${plural(soldWithoutMove, "item", "items")} sold at the till but the POS moved no stock for any item, so the cost of what sold is unknown, and $0 would print it as nothing`
+              : `${cogsHead} — null: ${plural(pos.checks, "closed check", "closed checks")}, but no line sold a stock item and the POS moved no stock, which is either no stocked item sold or no POS mapping resolving one`
+            : cogs == null
+              ? `${cogsHead} — null: ${soldCoverage.priced} of ${soldCoverage.total} items that sold carry a recorded cost, so a total would be a floor (ADR 0053). ${costBasisSentence(soldCoverage)}`
+              : `${cogsHead} — ${plural(soldCoverage.total, "item", "items")}, ${plural(cogsCoverage.bottlesSold, "bottle", "bottles")} out; ${costBasisSentence(soldCoverage)}${soldWithoutMove > 0 ? `; ${plural(soldWithoutMove, "item", "items")} sold without moving stock, and ${soldWithoutMove === 1 ? "its" : "their"} cost is not in it` : ""}`;
     const salesHead = `POS line price × qty for lines naming a stock item, on closed, non-voided checks (trailing ${COGS_WINDOW_DAYS}d; net: before tax and surcharge, check discounts not apportioned)`;
     const revenueBasis =
       pos == null
@@ -979,25 +997,28 @@ export class AnalyticsService {
     // Revenue concentration across stock items: what the till sold of each
     // over 90 days (ADR 0298). It was menu price × bottles on hand, which
     // measures where the shelf value sits, not where the sales come from.
-    // Every active item is a weight, with 0 for one that sold nothing, so a
-    // list where few items sell reads as concentrated; an item that sold but
-    // is no longer active still counts. No till read, no closed check, or no
-    // line naming a stock item is no answer rather than a perfectly even house
-    // (all-zero weights give a Gini of 0, "well-distributed").
-    const posSalesById = new Map(
-      (pos?.items ?? []).map((s) => [s.inventoryId, s.sales]),
-    );
+    // The weights are the items the till can sell: every active item a POS
+    // mapping points at, with 0 when it sold nothing, plus any item that
+    // sold (active or not, mapped now or not). An active row no mapping
+    // points at is left out: the till cannot name it, so its 0 is not a
+    // sales fact, and each such row would push the Gini up by itself
+    // (G' = (nG + k)/(n + k) for k zeros: Tuzlu's 18 unmapped menu rows,
+    // A-013, would lift 0.565 to about 0.62, over the rule's 0.6 line).
+    // No till read, no closed check, or no line naming a stock item is no
+    // answer rather than a perfectly even house (all-zero weights give 0).
     const activeIds = new Set(inventory.map((i) => i.id));
-    const anyItemSale = (pos?.items ?? []).some((s) => s.sales > 0);
+    const weighed = (pos?.items ?? []).filter(
+      (s) => s.sales > 0 || (s.mapped && activeIds.has(s.inventoryId)),
+    );
+    const weighedIds = new Set(weighed.map((s) => s.inventoryId));
+    const activeNotWeighed = inventory.filter(
+      (i) => !weighedIds.has(i.id),
+    ).length;
+    const anyItemSale = weighed.some((s) => s.sales > 0);
     const skuRevenue =
       pos == null || pos.checks === 0 || !anyItemSale
         ? null
-        : [
-            ...inventory.map((i) => posSalesById.get(i.id) ?? 0),
-            ...pos.items
-              .filter((s) => !activeIds.has(s.inventoryId))
-              .map((s) => s.sales),
-          ];
+        : weighed.map((s) => s.sales);
     const gini = skuRevenue == null ? null : E.risk.giniCoefficient(skuRevenue);
     const skuHhi =
       skuRevenue == null ? null : E.finance.herfindahlIndex(skuRevenue);
@@ -1010,12 +1031,12 @@ export class AnalyticsService {
           ? `POS line sales per stock item over ${CONCENTRATION_WINDOW_DAYS}d — null: no closed POS check in the window`
           : !anyItemSale
             ? `POS line sales per stock item over ${CONCENTRATION_WINDOW_DAYS}d — null: ${pos.checks} closed ${pos.checks === 1 ? "check" : "checks"}, but no line sold a stock item`
-            : `POS line sales per stock item over ${CONCENTRATION_WINDOW_DAYS}d — ${skuRevenue?.length ?? 0} items weighed, ${itemsWithSales ?? 0} with a sale; an active item that sold nothing weighs 0`;
+            : `POS line sales per stock item over ${CONCENTRATION_WINDOW_DAYS}d — ${skuRevenue?.length ?? 0} items weighed, ${itemsWithSales ?? 0} with a sale; an active item a POS mapping points at weighs 0 when it sold nothing, and ${activeNotWeighed} active ${activeNotWeighed === 1 ? "item" : "items"} no mapping points at and that sold nothing ${activeNotWeighed === 1 ? "is" : "are"} left out, since the till cannot sell ${activeNotWeighed === 1 ? "it" : "them"}`;
 
     // Daily revenue series → returns → VaR / Sharpe / drawdown.
     const revRows = consumption.map((c) => ({
       date: c.date,
-      value: c.qty, // bottles/day as the "return-generating" flow
+      value: c.qty, // units/day (a glass or a bottle, as logged) as the flow
     }));
     const { values: dailyDemand } = this.toDailySeries(revRows, 90);
     const returns: number[] = [];
@@ -1051,7 +1072,9 @@ export class AnalyticsService {
       revenueConcentration: {
         gini,
         hhi: skuHhi,
+        itemsWeighed: skuRevenue == null ? null : skuRevenue.length,
         itemsWithSales,
+        activeItemsNotWeighed: skuRevenue == null ? null : activeNotWeighed,
         basis: concentrationBasis,
         interpretation:
           gini === null

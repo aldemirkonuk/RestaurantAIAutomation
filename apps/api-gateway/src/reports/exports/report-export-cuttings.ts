@@ -546,14 +546,15 @@ function writeLedger(payload: unknown): ExportDoc {
   // sales are the till's. The margin ratios need both; turns, days and GMROI
   // also divide by the cellar at cost and annualise the till's span.
   const soldBasis = "Needs the cost of every item that sold and the POS sales";
-  const turnsBasis = "Needs a complete cost basis and at least 28 days of POS sales";
+  const turnsBasis =
+    "Needs a complete cost basis and at least 28 days of POS sales";
   const unmapped = num(sc?.unmappedLines) ?? 0;
   const noStockMove = num(sc?.itemsSoldWithoutStockMove) ?? 0;
   return doc({
     figures: [
       f("Cellar at cost", figure(d.inventoryValue, "Not every on-hand row carries a recorded cost"), "money"),
       f("Sales of stocked items, net (365d)", figure(d.revenue, "No POS sale could be read: no closed check, a line that cannot be read, or a read that failed"), "money"),
-      f("Cost of goods (365d)", figure(d.cogs, "Not every item that sold carries a recorded cost, or the POS recorded no sale, or the read failed"), "money"),
+      f("Cost of goods (365d)", figure(d.cogs, "Not every item that sold carries a recorded cost, the POS moved no stock, or the read failed"), "money"),
       f("Sell-price valuation", figure(d.shelfValueAtMenuPrice, "No inventory row came back"), "money"),
       f("Gross margin", figure(d.grossMargin, soldBasis), "ratio"),
       f("COGS ratio", figure(d.cogsRatio, soldBasis), "ratio"),
@@ -575,7 +576,9 @@ function writeLedger(payload: unknown): ExportDoc {
         ? `${nounCount(unmapped, "POS line names", "POS lines name")} no stock item (a dish, or a drink not linked to one), and ${unmapped === 1 ? "it is" : "they are"} left out of sales and cost of goods.`
         : "",
       noStockMove > 0
-        ? `${nounCount(noStockMove, "item", "items")} sold at the till but moved no stock in the window, so ${noStockMove === 1 ? "it adds" : "they add"} sales and no cost.`
+        ? num(d.cogs) == null && gc != null && num(gc.total) === 0
+          ? `${nounCount(noStockMove, "item", "items")} sold at the till, but no item moved stock in the window, so cost of goods and the ratios built on it are withheld rather than $0.`
+          : `${nounCount(noStockMove, "item", "items")} sold at the till but moved no stock in the window, so ${noStockMove === 1 ? "it adds" : "they add"} sales and no cost.`
         : "",
     ],
     basis: sentences(b.revenue, b.cogs, b.shelfValueAtMenuPrice, b.inventoryValue, b.deadStock, b.costDerived),
