@@ -434,6 +434,15 @@ describe('LogsNext — reading back from a day', () => {
     expect(empty).not.toHaveTextContent('No entries.');
   });
 
+  it('says no entry was READ on or before the day when a register failed, never that nothing is recorded', () => {
+    mockData.current = ready({ events: [], hasMore: false, failedSources: ['pos_checks'] });
+    renderAt('/logs?date=2026-07-22');
+    const empty = screen.getByRole('status');
+    expect(empty).toHaveTextContent(`No entry read on or before ${DAY.heading}.`);
+    expect(empty).not.toHaveTextContent('Nothing is recorded');
+    expect(empty).toHaveTextContent('the ones that failed are named above');
+  });
+
   it('reads a thread whole from a named day, hides the field, and returns to the day on leaving', () => {
     mockData.current = ready({ events: [ev({ id: 'x', correlationId: 'corr-9' })] });
     renderAt('/logs?date=2026-07-22');

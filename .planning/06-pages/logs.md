@@ -114,7 +114,7 @@ Sidebar "Logs" entry (`Sidebar.tsx:136-141`) — **[PAGE_MAP](../foundation/PAGE
   - `apps/web/src/pages/logs/next/useLogsNextData.ts` — the walked read: `LOGS_SERVER_WINDOWS`, the three states, the de-duplicating cursor walk, the stall
   - `apps/web/src/pages/logs/next/lg-format.ts` — the pure vocabulary: `EM`, `GE`, the register names, the time words, the way out
   - `apps/web/src/pages/logs/next/MOTIONS.md` — canonical motions; §1b mirrors it
-  - tests: `LogsNext.test.tsx` (45), `useLogsNextData.test.tsx` (12), `lg-format.test.ts` (16) — **73** (measured 2026-10-03 on `fix/logs-jump-to-a-date`, fix round 1)
+  - tests: `LogsNext.test.tsx` (46), `useLogsNextData.test.tsx` (12), `lg-format.test.ts` (16) — **74** (measured 2026-10-04 on `fix/logs-jump-to-a-date`, settle pass)
   - guard: registered as `/logs` in `scripts/check_windowed_figures.py` (§9)
 - **Legacy face:** `apps/web/src/pages/LogsTimelinePage.tsx` (390 lines, self-contained)
 - `apps/web/src/pages/LogsTimelinePage.test.tsx` — the honesty contracts of
