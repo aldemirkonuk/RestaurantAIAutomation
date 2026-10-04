@@ -43,7 +43,7 @@ const toBool = ({ value }: { value: unknown }): unknown =>
 export class ListSaleUnitReviewQueryDto {
   @ApiPropertyOptional({
     description:
-      "Include mappings that already have a sale_unit, so an existing answer can be audited or corrected. Default false — only rows still missing a unit are returned.",
+      "Include every mapping, so an existing answer can be audited or corrected. Default false — only mappings whose sale volume the import cannot resolve now are returned: no usable sale_volume_ml, and no sale_unit the linked inventory row can turn into one (a row labelled glass whose inventory row has no pour size is one of them).",
     default: false,
   })
   @IsOptional()
