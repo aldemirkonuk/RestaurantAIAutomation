@@ -1567,6 +1567,55 @@ describe('ReportsNext — the restock bars keep their ties (A-070, ADR 0272)', (
   });
 });
 
+describe('ReportsNext — a stockout risk needs a measured history (AW29, ADR 0299)', () => {
+  /**
+   * A reorder row as the gateway sends it after ADR 0299: a wine sold on fewer
+   * than 14 days keeps its days of cover and has no risk, reorder point or
+   * safety stock.
+   */
+  const row = (id: string, p: number | null, cover: number | null) => ({
+    id,
+    name: `Wine ${id}`,
+    onHand: 0.5,
+    daysOfCover: cover,
+    reorderPoint: p == null ? null : 4,
+    safetyStock: p == null ? null : 2,
+    stockoutProbability: p,
+  });
+  const viewOf = (list: ReturnType<typeof row>[], reorderCount = list.length) => {
+    const spec = CATALOGUE.restock;
+    const data = spec.select({
+      params: { serviceLevel: 0.95, leadTimeDays: 7, demandWindowDays: 90, minDemandDays: 14 },
+      skuCount: 60,
+      reorderCount,
+      reorderList: list,
+    });
+    return spec.view(data, { days: 30 });
+  };
+  const notesOf = (v: ReturnType<typeof viewOf>) => v.notes.map(String).join(' ');
+
+  it('draws no bars when no listed wine has a measured risk, and says why the risk is a dash', () => {
+    // Tuzlu's list after the fix: every wine sold on one import day.
+    const v = viewOf([row('a', null, 0), row('b', null, 0.9), row('c', null, 2.31)]);
+    expect(v.cats).toBeUndefined();
+    expect(v.table!.rows[0].cells[4]).toBe('—');
+    expect(notesOf(v)).toContain('fewer than 14 days');
+  });
+
+  it('draws the measured risks, leaves the rest as gaps, and says how a mixed list is ordered', () => {
+    const v = viewOf([row('m', 0.52, 3), row('a', null, 0), row('b', null, 0.9)], 30);
+    expect(v.cats!.data.map((d) => d.value)).toEqual([0.52, null, null]);
+    expect(v.table!.more).toContain('30 wines are below their reorder point');
+    expect(v.table!.more).toContain('highest measured risk first, then the fewest days of cover');
+  });
+
+  it('keeps the sentence it had when every listed risk is measured (control)', () => {
+    const v = viewOf([row('m', 0.52, 3), row('n', 0.4, 5)], 30);
+    expect(v.table!.more).toBe('30 wines are below their reorder point; the 2 at the highest risk are listed.');
+    expect(notesOf(v)).not.toContain('fewer than');
+  });
+});
+
 /**
  * A-020 (analytics walk, 2026-10-03): the engine's pace and trend are 0–1
  * fractions, and the page printed them as if already in percent — a measured
