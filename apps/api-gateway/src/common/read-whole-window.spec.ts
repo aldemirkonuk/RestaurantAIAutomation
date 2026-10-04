@@ -666,6 +666,57 @@ describe("AnalyticsService — the till list sums every consumption line", () =>
   });
 });
 
+describe("AnalyticsService — loadConsumption reads every line, or degrades to [] (fork 3)", () => {
+  // Feeds Wine 360's forecast14d (getDemandForecast), the financial summary,
+  // risk and inventory science. Measured RED against origin/main e2cbe426a's
+  // analytics.service.ts: it read 1,000 of these 1,500 lines.
+  const lines = spread(1500, 20, 1, (_i, daysAgo) => ({
+    restaurant_id: "r1",
+    inventory_id: "inv-1",
+    quantity: 1,
+    volume_ml: null,
+    created_at: at(daysAgo),
+    restaurant_inventory: { master_wine_id: "M1" },
+  }));
+  const consumptionRequests = (requests: Request[]) =>
+    requests.filter((r) => r.table === "wine_consumption_log");
+
+  it("reads all 1,500 lines in 2 requests", async () => {
+    const { db, requests } = cappedDb({ wine_consumption_log: lines });
+    const out = await (new AnalyticsService(db) as any).loadConsumption(
+      "r1",
+      90,
+    );
+    expect(out).toHaveLength(1500);
+    expect(sum(out.map((c: any) => c.qty))).toBe(1500);
+    expect(out.every((c: any) => c.masterWineId === "M1")).toBe(true);
+    expect(consumptionRequests(requests)).toHaveLength(2);
+  });
+
+  it("getDemandForecast's history holds all 1,500 units", async () => {
+    const { db } = cappedDb({ wine_consumption_log: lines });
+    const out: any = await new AnalyticsService(db).getDemandForecast("r1");
+    expect(sum(out.history.values)).toBe(1500);
+  });
+
+  it("a refused page 2 degrades to [] with a loud log, never 1,000 lines", async () => {
+    const { db, requests } = cappedDb(
+      { wine_consumption_log: lines },
+      { wine_consumption_log: { failOn: [2] } },
+    );
+    const svc = new AnalyticsService(db) as any;
+    const logged = jest
+      .spyOn(svc.logger, "error")
+      .mockImplementation(() => undefined);
+    const out = await svc.loadConsumption("r1", 90);
+    expect(out).toEqual([]);
+    expect(consumptionRequests(requests)).toHaveLength(2);
+    expect(logged).toHaveBeenCalledWith(
+      expect.stringContaining("wine_consumption_log"),
+    );
+  });
+});
+
 describe("RecordedDaysService — a /calendar month reads every check", () => {
   it("windowFor over 2,121 checks draws every trading day", async () => {
     const from = at(40).slice(0, 10);
