@@ -21,7 +21,9 @@
  * (Recommended)"). Until then nothing a person could reach wrote either column
  * on a house that already existed, while the market index told a United States
  * house with no state to "Set the state in Settings". The pair scopes the
- * market index, the commodity and distributor panels and mail retention, so:
+ * market index, the commodity and distributor panels and the statute the
+ * mail-retention notice names (never how long mail is kept: that window is
+ * the house's longest dispute plus a margin, ADR 0289 R7), so:
  *   - only an owner of THIS house may change it — the gateway refuses anyone
  *     else whole, and this sheet shows a manager the values read-only, saying
  *     why, rather than a control that would only be refused;
@@ -329,8 +331,8 @@ export function EditLocationChainDialog({
         </div>
         {placeDirty ? (
           <p className="mdv-consequence">
-            This re-scopes the market index, the commodity and distributor panels and how long
-            vendor mail is kept, and the settings log records who changed it.
+            This re-scopes the market index, the commodity and distributor panels and the statute
+            named in the mail-retention notice, and the settings log records who changed it.
           </p>
         ) : null}
       </>

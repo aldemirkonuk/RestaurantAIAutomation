@@ -423,6 +423,11 @@ export class OrganizationsService {
       callerRole = role ? role.trim().toLowerCase() : null;
     } catch (err) {
       if (!(err instanceof RestaurantRoleUnreadableError)) throw err;
+      // The person is told (the editor says the role could not be confirmed
+      // and offers no control); the operator is told here.
+      this.logger.warn(
+        `getLocation could not read ${userId}'s role at ${restaurantId}; callerRole is null: ${err.message}`,
+      );
       callerRole = null;
     }
 
@@ -443,9 +448,9 @@ export class OrganizationsService {
    * The owner gate for a house's state and country (ADR 0289 R1): the
    * caller's role in the TARGET house, read strictly — a failed read is a 503
    * that says so, never a 403 that blames the person. The house role, the
-   * same reading `authority-grants.service.ts` `assertOwner` and the web's
-   * `isOwner` use; not the organisation role that gates opening a location
-   * (ADR 0164), which awaits the founder's confirmation in ADR 0289.
+   * same reader `authority-grants.service.ts` `assertOwner` uses; not the
+   * organisation role that gates opening a location (ADR 0164). The founder
+   * chose this reading, 2026-10-04: "The house's owner (Recommended)".
    */
   private async assertHouseOwnerForPlace(
     userId: string,

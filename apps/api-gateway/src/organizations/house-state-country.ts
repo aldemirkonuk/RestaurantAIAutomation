@@ -17,12 +17,14 @@ import { countryOf } from "../price-index/jurisdiction";
  *
  * WHY THE STATE IS CHECKED AGAINST THE COUNTRY, AND NOT ONLY ON ITS OWN
  * ---------------------------------------------------------------------
- * Every reader of the pair is REGION FIRST: `PriceIndexService.forHouse`,
+ * The market readers of the pair are REGION FIRST: `PriceIndexService.forHouse`,
  * `PriceIndexReviewService.jurisdictionOfHouse` and `admittersFor`, the
  * commodity and distributor panels all resolve `state_province` through
  * `normalizeJurisdiction` and fall back to the country only when the state
- * does not resolve. So a state that resolves to ANOTHER country moves the
- * house there: "GA" (Goa) on an Indian house reads as US-GA, "WA" (Western
+ * does not resolve. (Retention's `resolveJurisdiction` is country first and
+ * reads the state only for California; the country-only readers never read
+ * it.) So for the market readers a state that resolves to ANOTHER country
+ * moves the house there: "GA" (Goa) on an Indian house reads as US-GA, "WA" (Western
  * Australia) as US-WA, "England" on a Turkish house as GB-ENG. Those are
  * refused here, with the way out named (write the name in full, or leave it
  * blank), because accepting them would scope the house to a market it is not
@@ -395,7 +397,7 @@ export function checkStateFor(
         ? `reads as the United States state ${j}`
         : `reads as a place in ${nameOfCode(elsewhere)} (${j})`;
     return {
-      refused: `"${v}" ${reads}, and this house is in ${country}. Every reader takes the state before the country, so it would place the house there. Write the name out in full, or leave the state blank. ${NOTHING}`,
+      refused: `"${v}" ${reads}, and this house is in ${country}. The market index and the commodity and distributor panels read the state before the country, so they would place the house there. Write the name out in full, or leave the state blank. ${NOTHING}`,
     };
   }
 

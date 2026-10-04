@@ -194,7 +194,7 @@ describe("the pair rule (ADR 0289 R3)", () => {
     expect(refusal("USA", "Muğla")).toContain("is not a United States state");
   });
 
-  it("refuses a state that resolves to another country — every reader is region first", () => {
+  it("refuses a state that resolves to another country — the market readers are region first", () => {
     expect(refusal("Turkey", "England")).toContain(
       "reads as a place in United Kingdom (GB-ENG)",
     );
@@ -640,16 +640,23 @@ describe("OrganizationsService.getLocation — the editor's read", () => {
     });
   });
 
-  it("returns null, not a guess, when the role read failed", async () => {
+  it("returns null, not a guess, when the role read failed — and tells the operator", async () => {
     const { service } = makeService({
       accessError: { message: "connection reset" },
       user: { role: "owner", restaurant_id: "r1" },
       restaurant: RECORD,
     });
+    const warn = jest.spyOn(Logger.prototype, "warn");
+    warn.mockClear();
     await expect(service.getLocation("u-owner", "r1")).resolves.toMatchObject({
       callerRole: null,
       country: "US",
     });
+    expect(
+      warn.mock.calls.some(([m]) =>
+        String(m).includes("getLocation could not read u-owner's role at r1"),
+      ),
+    ).toBe(true);
   });
 });
 

@@ -1,9 +1,9 @@
 # 0289 — An owner sets the house's state and country in the location editor
 
-- **Status:** Locked — the choice of (a) is the founder's, 2026-10-04 ~00:30Z. Two
-  of the rules below are this lane's readings of his words and **await his
-  confirmation**: R1's "owner" as *an owner of this house*, and R3's "a United
-  States house needs its state". Both are marked where they appear.
+- **Status:** Locked. The choice of (a) is the founder's, 2026-10-04 ~00:30Z. The two
+  forks it left open were his too, answered 2026-10-04 ~02:10Z and quoted where they
+  apply: R1's owner is *the house's owner*, and R3's United States house *must record
+  its state*.
 - **Date:** 2026-10-04
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** state, country, state_province, jurisdiction, location editor, owner only, settings log, market index, retention, A-052, AW26
@@ -55,11 +55,19 @@ picked read: *"Add state and country to the location editor, changed by owners o
 recorded in the log. This also re-scopes mail retention and the commodity/distributor
 panels, which read the state."* The rules that carry it out:
 
-**R1. Who may change it: an owner of this house.** *(Awaiting his confirmation that
-"owners" means this.)*
+**R1. Who may change it: an owner of this house.** The founder, 2026-10-04 ~02:10Z,
+verbatim pick: *"The house's owner (Recommended)"*. The rejected readings were the
+organisation's owner (the ADR 0164 gate on opening a location) and either one.
 
 - The role is read strictly, per restaurant, through the same reader the rest of the
-  service uses (`readRestaurantRole`).
+  service uses (`readRestaurantRole`). The question put to him named the source as
+  `restaurant_members`. No table of that name exists: it has no hits in `supabase/` or
+  `apps/api-gateway/src`. The house role lives in `user_restaurant_access`, with the
+  legacy `users.role` as the fallback, both read by `lookupRestaurantRole`
+  (`organizations.service.ts:44`). `authority-grants.service.ts` `assertOwner` reads the
+  role through the same function. The web's `isOwner` (`useSettingsNextData.ts:1028`)
+  means the same house role, but takes it from the session's active house, which is why
+  the editor asks the gateway for `callerRole` instead (R8).
 - A manager or staff member is refused with 403. A PATCH that mixes a rename with the
   pair is refused **whole**: the gate runs before any write, so nothing half-lands.
 - A role that cannot be read is 503 ("…could not be read… Nothing was changed"), never
@@ -74,12 +82,19 @@ panels, which read the state."* The rules that carry it out:
 - `null` is a real answer for the state ("none"). The country cannot be cleared.
 
 **R3. The state is checked against the country**, using the one country table the
-onboarding path uses (`apps/web/src/lib/countries.ts`, ADR 0117 Q33). Every reader is
-**region first**: a state that resolves wins over the country. That makes a mismatched
-pair worse than a missing one. `GA` on an Indian house reads as Georgia, `WA` on an
-Australian house reads as Washington, and `England` on a Turkish house reads as GB-ENG.
+onboarding path uses (`apps/web/src/lib/countries.ts`, ADR 0117 Q33). The market index,
+the price-book review, and the commodity and distributor panels are **region first**: a
+state that resolves wins over the country (`price-index.service.ts:256-275`,
+`price-index-review.service.ts:390-405`, `commodity.service.ts:214-236`,
+`distributor-feed.service.ts:115-146`). For those
+readers a mismatched pair is worse than a missing one. `GA` on an Indian house reads as
+Georgia, `WA` on an Australian house reads as Washington, and `England` on a Turkish
+house reads as GB-ENG. Retention's `resolveJurisdiction` is country first and reads the
+state only for California, and the country-only readers of R6 never read the state.
 
-- **United States:** the state is required *(awaiting his confirmation)*. It must resolve to
+- **United States:** the state is required. The founder, 2026-10-04 ~02:10Z, verbatim
+  pick: *"Required for US (Recommended)"*; the rejected option kept it optional, as the
+  Add-location dialog's free-text State is at creation. It must resolve to
   a US state (`CA`, `California` and `US-CA` all do) and is written as the two-letter code.
   The two-letter code is what retention's `resolveJurisdiction` (`retention-rules.ts:282-313`)
   matches; it matches `CA` and `CALIFORNIA`, never `US-CA`.
@@ -139,8 +154,8 @@ moves what they show or keep.
 
 *Country only:*
 
-- **The house's currency default:** `house-currency.service.ts:249`.
-- **The house's time-zone default:** `house-time-zone.service.ts:194`.
+- **The currency the Settings page offers first:** `house-currency.service.ts:249`.
+- **The time zones the Settings page offers first:** `house-time-zone.service.ts:194`.
 - **Vendor scorecard:** `providers/scorecard/vendor-scorecard.service.ts:190`.
 - **Team:** `team.service.ts:1600` and `:1911`.
 - **Schedule:** `schedule.service.ts:206`.
@@ -151,9 +166,12 @@ moves what they show or keep.
 - **Web:** `pages/team/next/tm-format.ts` and `pages/providers/next/vendor-scope.ts`.
 - **SQL:** the territory gate's `normalize_country_code`.
 
-A moved country can change a house's **default** currency and time zone where none is
-stated. The sheet tells the owner the pair re-scopes the market index, the panels and
-mail retention, before Save.
+A moved country changes which currency and which time zones the Settings page **offers
+first**. It never sets either one: both services return the country verbatim as a
+suggestion and write only a value that arrives in the request ("never derived from the
+country, never defaulted", `house-time-zone.service.ts:26`; `house-currency.service.ts:42-43`).
+Before Save, the sheet tells the owner the pair re-scopes the market index, the commodity
+and distributor panels, and the statute named in the mail-retention notice (R7).
 
 **R7. Retention moves, but deletes nothing sooner.**
 
@@ -206,7 +224,6 @@ mail retention, before Save.
   - The creation writers in `auth.service.ts`, which set the pair when a house is born.
   - The deferred PR-B forks.
 - **Revisit when:**
-  - the founder answers R1 or R3's US rule differently;
   - a second surface (mobile, a legacy Settings) needs the control;
   - the gateway gains a workspace package the country table can live in, which retires
     the mirror.
@@ -216,3 +233,4 @@ mail retention, before Save.
 | Date | Reviewer | Outcome |
 |---|---|---|
 | 2026-10-04 | — | Created on `feat/house-state-in-location-editor` (lane `stateeditor`, A-052/AW26) |
+| 2026-10-04 | Independent verifier, round 1 | The founder's 02:10Z answers quoted and R1/R3 locked; the region-first claim scoped to the market readers; the retention sentence and the currency/time-zone line narrowed to what the code moves |

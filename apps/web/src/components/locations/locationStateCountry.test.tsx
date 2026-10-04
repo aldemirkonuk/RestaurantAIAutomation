@@ -90,7 +90,12 @@ describe('an owner sets the state the market index asks for', () => {
     patch.mockResolvedValueOnce({ data: { stateAndCountry: 'changed', audited: true, auditReason: null } });
     const onSaved = open();
     fireEvent.change(await screen.findByLabelText('State or province'), { target: { value: 'CA' } });
-    expect(screen.getByText(/re-scopes the market index/)).toBeInTheDocument();
+    // The consequence names what moves: the retention notice's statute, never
+    // how long mail is kept (ADR 0289 R7; the window is disputes plus a margin).
+    expect(screen.getByText(/re-scopes the market index/)).toHaveTextContent(
+      'the statute named in the mail-retention notice',
+    );
+    expect(screen.queryByText(/how long/)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
     await waitFor(() => expect(patch).toHaveBeenCalledTimes(1));
