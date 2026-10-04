@@ -403,7 +403,7 @@ invariants the database cannot.
 [AMENDED 2026-10-02: the lock changed the shape. Under it, each kind will have its
 own table and every reference will reach it through an exclusive arc.
 `restaurant_inventory` becomes the wine table rather than the row for every
-beverage. None of those tables exists yet; they come in §Build order, D1 and D2.
+beverage. No other kind's item table exists at `8c673db4b`; they come in §Build order, D1 and D2.
 Only phase 1's columns are applied. See ADR 0115 §2026-10-02 and §Build order.]
 
 **This page is the one that changes most, and one line of it is a blocker.**
@@ -417,7 +417,7 @@ Only phase 1's columns are applied. See ADR 0115 §2026-10-02 and §Build order.
    ADR 0051). It becomes an em dash. This is why the migration is gated rather
    than merely staged, and it is item 1 of the ADR's phase 2.
    [CORRECTED 2026-10-02: the migration was applied on 2026-09-12 (PR #289) without
-   this fix. The line is now `inventory.service.ts:80` (ADR 0115 lock review C14);
+   this fix. At `8c673db4b` the line is `inventory.service.ts:80` (ADR 0115 lock review C14);
    ADR 0115 §Build order step M2 adds a CLAIMS guard on it.]
 2. **`database.service.ts:46`** embeds `master_wine_library(...)` as a LEFT join,
    so a non-wine row returns `master_wine_library: null` rather than
@@ -485,7 +485,7 @@ Only phase 1's columns are applied. See ADR 0115 §2026-10-02 and §Build order.
 *Blocker on all eight: the founder locks ADR 0115. Nothing here is built.*
 [CORRECTED 2026-10-02: the founder locked ADR 0115 on 2026-10-02, so the lock half of
 this blocker is met. Phase 1's migration is applied (PR #289, 2026-09-12). None of
-the eight items is built. Item 1's `?? 750` is still in the code, now at
+the eight items is built. At `8c673db4b`, item 1's `?? 750` is still in the code, at
 `inventory.service.ts:80`. See the brackets on items 1, 4, 5 and 8 and ADR 0115
 §Build order.]
 
