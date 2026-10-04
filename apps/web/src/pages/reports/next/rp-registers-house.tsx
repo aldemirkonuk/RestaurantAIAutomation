@@ -580,6 +580,35 @@ export interface RestockRegister {
   }>;
 }
 
+/**
+ * The first `n` bars, extended through every row tied with bar `n` (ADR 0272).
+ *
+ * The register arrives highest risk first, and a plain `slice(0, 14)` drew
+ * some wines of a tie and dropped the rest by row order — a ranking the data
+ * did not make. A tie is the same computed risk, to within floating-point
+ * noise (one part in a billion, the gateway's own `sameValue`); two risks that
+ * merely PRINT alike (26.8% and 26.9%, both "27%") are not tied.
+ *
+ * A tie at 0% is never extended, as on the gateway's cut: it is the wines with
+ * no demand and nothing on hand, a group with no risk to rank and no height to
+ * draw, and extending through it drew every one of them.
+ */
+function barsKeepingTies(
+  rows: RestockRegister['reorderList'],
+  n: number,
+): RestockRegister['reorderList'] {
+  if (rows.length <= n) return rows;
+  const same = (a: number | null, b: number | null) =>
+    a == null || b == null
+      ? a == null && b == null
+      : Math.abs(a - b) <= 1e-9 * Math.max(1, Math.abs(a), Math.abs(b));
+  const edge = rows[n - 1].stockoutProbability;
+  if (edge == null || edge <= 0 || same(edge, 0)) return rows.slice(0, n);
+  let end = n;
+  while (end < rows.length && same(rows[end].stockoutProbability, edge)) end++;
+  return rows.slice(0, end);
+}
+
 const restock = analysis<RestockRegister>({
   title: 'What to buy back',
   register: 'reorder register',
@@ -636,7 +665,7 @@ const restock = analysis<RestockRegister>({
       };
     return {
       cats: {
-        data: r.reorderList.slice(0, 14).map((s) => ({
+        data: barsKeepingTies(r.reorderList, 14).map((s) => ({
           label: s.name.length > 12 ? `${s.name.slice(0, 11)}…` : s.name,
           value: s.stockoutProbability,
           full: `${s.name} · ${figure(s.onHand)} on hand`,

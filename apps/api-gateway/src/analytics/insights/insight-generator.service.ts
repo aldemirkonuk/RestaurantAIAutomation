@@ -116,6 +116,26 @@ export const MAX_PERIOD_OBSERVED_GAP = 1;
 export const MIN_TREND_OBSERVED = 14;
 
 /**
+ * A ranking or a pairing is printed only when the data can tell it apart
+ * (ADR 0272). On Tuzlu Rüzgar — servers and tables dealt uniformly, baskets
+ * dealt round-robin, so there is nothing to find — this generator named a
+ * "#1 server" on a 1.0% gap (A-003) and a pairing "6.3× more than chance" on
+ * three co-occurrences that fired on 200 of 200 shuffled copies of the data
+ * (A-002). These are the four numbers the gates below share.
+ *
+ *  - SIGNIFICANCE_ALPHA: the family-wise error a printed #1 or pairing may
+ *    carry, after the correction for having picked it out of many.
+ *  - MIN_RANK_N: checks a server or table needs before it is ranked at all.
+ *  - BASKET_MIN_COUNT: checks a pair must share before it is tested; it also
+ *    sizes the multiple-comparison family (items on at least this many).
+ *  - BASKET_MIN_LIFT: the smallest affinity worth a sentence, however sure.
+ */
+export const SIGNIFICANCE_ALPHA = 0.05;
+export const MIN_RANK_N = 30;
+export const BASKET_MIN_COUNT = 5;
+export const BASKET_MIN_LIFT = 1.3;
+
+/**
  * The version of the arithmetic behind a stored sentence.
  *
  * `analytics_insights` is a write-through cache, and `getStored()` is preferred
@@ -153,18 +173,27 @@ export const MIN_TREND_OBSERVED = 14;
  *       served: `main` is at 2): a type that names no subject and no period
  *       stores the week it fired in as its `period_key` ("Each firing is one
  *       card").
- *   4 — 2026-10-04 (ADR 0292): the bundle reads `pos_checks` and
+ *   4 — 2026-10-03 (ADR 0272): a ranking or a pairing is printed only when
+ *       the data can tell it apart. The waiter and table "#1" pass a tie
+ *       check and a Bonferroni test against the rest (a waiter's lead must
+ *       also survive table adjustment); the basket pairing passes an exact
+ *       test corrected over every pair; a tied stockout #1 is withheld and no
+ *       longer carries a hard-coded z of 2. A version-3 row may hold any of
+ *       those sentences, so it is recomputed, not served.
+ *   5 — lane rec's (ADR 0291, PR #607), set to land before ADR 0292's
+ *       change; its own history line lands with it.
+ *   6 — 2026-10-04 (ADR 0292): the bundle reads `pos_checks` and
  *       `wine_consumption_log` whole (`readWholeWindow`), where it used to
  *       read the first 1,000 rows PostgREST returned and name them a window.
- *       A version-3 row may hold a sentence computed from that slice: the
+ *       A row below 6 may hold a sentence computed from that slice: the
  *       sim's Saturday 2026-08-15 read "97% lower ($274 vs $10.8k)" where the
  *       whole window says about 14.6% lower. Those rows are refused and
  *       recomputed, not served until their category's cadence comes round.
- *       Lanes rec (ADR 0291) and sig (ADR 0272) also take 4 on their own
- *       branches: whichever of the three lands later takes the next number,
- *       since a row written by the earlier one predates the later change.
+ *       Lane cap first took 4 on its branch; sig (ADR 0272) landed 4 first
+ *       and rec (ADR 0291) takes 5, so this change is 6: a row written by
+ *       either earlier change predates it.
  */
-export const INSIGHT_GENERATOR_VERSION = 4;
+export const INSIGHT_GENERATOR_VERSION = 6;
 
 /**
  * InsightGeneratorService — executes the insight candidate space.
@@ -1023,7 +1052,19 @@ export class InsightGeneratorService {
       byWine.set(c.wineId, arr);
     }
 
-    let worst: { name: string; prob: number; onHand: number } | null = null;
+    // Every wine the risk could be computed for, not just a running maximum:
+    // the strict `prob > worst.prob` kept whichever wine of a tie came first
+    // in inventory order and printed it as "#1" (Jameson, for an 8-way tie at
+    // 61% on Tuzlu). A #1 that shares its value is not a finding — the same
+    // rule as the weekday tie at advanced-analytics.service.ts (ADR 0272).
+    const ranked: Array<{
+      id: string;
+      name: string;
+      stockoutProbability: number;
+      daysOfCover: number | null;
+      onHand: number;
+      rows: number;
+    }> = [];
     for (const item of bundle.inventory) {
       const qtys = byWine.get(item.master_wine_id) || [];
       if (qtys.length < 5) continue;
@@ -1043,29 +1084,42 @@ export class InsightGeneratorService {
         demandStdev: profile.stdev,
         leadTime: 7,
       });
-      if (prob !== null && (!worst || prob > worst.prob) && dailyMean > 0.05) {
-        worst = {
+      if (prob !== null && dailyMean > 0.05) {
+        const onHand = item.stock_live || 0;
+        ranked.push({
+          id: String(item.id ?? item.master_wine_id),
           name: item.wine_name || item.master_wine_id,
-          prob,
-          onHand: item.stock_live || 0,
-        };
+          stockoutProbability: prob,
+          daysOfCover: E.daysOfCover(onHand, profile.mean),
+          onHand,
+          rows: qtys.length,
+        });
       }
     }
-    if (worst && worst.prob > 0.25) {
+    ranked.sort(E.byStockoutRisk);
+    const worst = ranked[0];
+    const tiedAtTop =
+      ranked.length > 1 &&
+      E.sameValue(ranked[1].stockoutProbability, worst.stockoutProbability);
+    if (worst && worst.stockoutProbability > 0.25 && !tiedAtTop) {
       const ev: InsightEvidence = {
         entity: worst.name,
         measureLabel: "stockout risk",
         unit: "percent",
-        value: worst.prob,
+        value: worst.stockoutProbability,
         rank: 1,
-        peerCount: bundle.inventory.length,
+        // The wines actually ranked — not every active inventory row, most of
+        // which had too little demand to be given a risk at all.
+        peerCount: ranked.length,
         attributeReading: `Only ${worst.onHand} bottles on hand vs its demand pattern — reorder before the next delivery window.`,
       };
       push(
         this.record("wine.stockout_risk.peer_rank", "risk", "peer", ev, {
-          effectPct: worst.prob,
-          z: 2,
-          n: 30,
+          effectPct: worst.stockoutProbability,
+          // A probability has no test statistic. This was a hard-coded 2 on a
+          // hard-coded n of 30 — significance and support nobody measured.
+          z: null,
+          n: worst.rows,
           boost: 1.5,
         }),
       );
@@ -1105,10 +1159,14 @@ export class InsightGeneratorService {
     const tableById = new Map(bundle.tables.map((t: any) => [t.id, t]));
 
     // ---- per-table aggregates --------------------------------------------
+    // `sumSq` is the sum of squared check totals: with `revenue` and
+    // `checks` it gives each group's variance, which the ranking gates need
+    // (ADR 0272) — O(N), no per-check arrays kept.
     const byTable = new Map<
       string,
       {
         revenue: number;
+        sumSq: number;
         checks: number;
         covers: number;
         wineChecks: number;
@@ -1119,6 +1177,7 @@ export class InsightGeneratorService {
       string,
       {
         revenue: number;
+        sumSq: number;
         checks: number;
         covers: number;
         wineChecks: number;
@@ -1143,12 +1202,14 @@ export class InsightGeneratorService {
       if (c.table_id) {
         const t = byTable.get(c.table_id) || {
           revenue: 0,
+          sumSq: 0,
           checks: 0,
           covers: 0,
           wineChecks: 0,
           tips: 0,
         };
         t.revenue += c.total || 0;
+        t.sumSq += (c.total || 0) ** 2;
         t.checks += 1;
         t.covers += c.covers || 0;
         t.wineChecks += hasWine ? 1 : 0;
@@ -1159,12 +1220,14 @@ export class InsightGeneratorService {
       if (server) {
         const w = byWaiter.get(server) || {
           revenue: 0,
+          sumSq: 0,
           checks: 0,
           covers: 0,
           wineChecks: 0,
           tips: 0,
         };
         w.revenue += c.total || 0;
+        w.sumSq += (c.total || 0) ** 2;
         w.checks += 1;
         w.covers += c.covers || 0;
         w.wineChecks += hasWine ? 1 : 0;
@@ -1187,9 +1250,12 @@ export class InsightGeneratorService {
           value: v.revenue / v.checks,
         }));
       if (entries.length >= 3) {
-        const standings = E.peerComparison(entries);
-        const top = standings[0];
-        const t: any = tableById.get(top.entity);
+        // "#1 of N" only when the data can tell the leader apart (ADR 0272).
+        const lead = E.leaderTest(momentsOf(byTable), {
+          alpha: SIGNIFICANCE_ALPHA,
+          minN: MIN_RANK_N,
+          minGroups: 3,
+        });
         let attributeReading: string | undefined;
         // correlate avg check with distances across tables
         const withAttrs = entries
@@ -1202,21 +1268,36 @@ export class InsightGeneratorService {
             { name: "distance to pool", key: "distance_to_pool_m" },
             { name: "seat count", key: "seats" },
           ];
-          let best: { name: string; r: number } | null = null;
+          let best: { name: string; r: number; n: number } | null = null;
+          // Every attribute the strongest one was picked from: the pick is
+          // corrected for all of them (Bonferroni), not tested as if alone.
+          let tested = 0;
           for (const a of attrs) {
             const xs = withAttrs.map((x) => Number(x.t[a.key] ?? NaN));
             const pairs = withAttrs
               .map((x, i) => ({ x: xs[i], y: x.v }))
               .filter((p) => Number.isFinite(p.x));
             if (pairs.length < 4) continue;
+            tested++;
             const r = E.pearson(
               pairs.map((p) => p.x),
               pairs.map((p) => p.y),
             );
             if (r !== null && (!best || Math.abs(r) > Math.abs(best.r)))
-              best = { name: a.name, r };
+              best = { name: a.name, r, n: pairs.length };
           }
-          if (best && Math.abs(best.r) >= 0.35) {
+          // |r| ≥ 0.35 alone fired on noise: with 24 tables and four
+          // attributes, the strongest of four null correlations clears 0.35
+          // far more often than one time in twenty. Fisher's z decides.
+          const corr = best
+            ? E.correlationSignificance(best.r, best.n, tested)
+            : null;
+          if (
+            best &&
+            corr &&
+            Math.abs(best.r) >= 0.35 &&
+            corr.pAdjusted <= SIGNIFICANCE_ALPHA
+          ) {
             attributeReading = tableAttributeReading(best.name, best.r);
             const evc: InsightEvidence = {
               entity: "tables",
@@ -1233,8 +1314,8 @@ export class InsightGeneratorService {
                 evc,
                 {
                   effectPct: best.r / 2,
-                  z: Math.abs(best.r) * Math.sqrt(withAttrs.length),
-                  n: withAttrs.length,
+                  z: Math.abs(corr.z),
+                  n: best.n,
                 },
               ),
             );
@@ -1283,76 +1364,108 @@ export class InsightGeneratorService {
             );
           }
         }
-        const ev: InsightEvidence = {
-          entity: t?.label ? `Table ${t.label}` : "Top table",
-          measureLabel: "average check",
-          unit: "currency",
-          value: top.value,
-          rank: 1,
-          peerCount: standings.length,
-          deltaPct: top.pctVsMean,
-          attributeReading,
-        };
-        push(
-          this.record("table.avg_check.peer_rank", "tables", "peer", ev, {
-            effectPct: top.pctVsMean,
-            z: top.z,
-            n: byTable.get(top.entity)?.checks ?? 0,
-          }),
-        );
+        if (lead.separable) {
+          const standings = E.peerComparison(
+            lead.ranked.map((g) => ({ entity: g.entity, value: g.mean })),
+          );
+          const top = standings[0];
+          const t: any = tableById.get(top.entity);
+          const ev: InsightEvidence = {
+            entity: t?.label ? `Table ${t.label}` : "Top table",
+            measureLabel: "average check",
+            unit: "currency",
+            value: top.value,
+            rank: 1,
+            peerCount: standings.length,
+            deltaPct: top.pctVsMean,
+            attributeReading,
+          };
+          push(
+            this.record("table.avg_check.peer_rank", "tables", "peer", ev, {
+              effectPct: top.pctVsMean,
+              z: lead.zVsRest,
+              n: lead.ranked[0].n,
+            }),
+          );
+        }
       }
     }
 
     // Waiter peer + adjusted effects.
     if (byWaiter.size >= 2) {
-      const entries = Array.from(byWaiter.entries())
-        .filter(([, v]) => v.checks >= 3)
-        .map(([name, v]) => ({ entity: name, value: v.revenue / v.checks }));
-      if (entries.length >= 2) {
-        const standings = E.peerComparison(entries);
+      // "#1 of N" only when the data can tell the leader apart (ADR 0272).
+      const lead = E.leaderTest(momentsOf(byWaiter), {
+        alpha: SIGNIFICANCE_ALPHA,
+        minN: MIN_RANK_N,
+        minGroups: 2,
+      });
+      if (lead.separable) {
+        const standings = E.peerComparison(
+          lead.ranked.map((g) => ({ entity: g.entity, value: g.mean })),
+        );
         const top = standings[0];
+        const eligible = new Set(lead.ranked.map((g) => g.entity));
         let attributeReading: string | undefined;
+        // A lead that belongs to the tables, not the server: when the
+        // table-adjusted fit puts someone else on top, the raw lead is table
+        // assignment and nothing is printed. This replaces "X actually adds
+        // the most per check" — a second ranking claim no test stood behind.
+        let survivesTables = true;
         if (waiterObs.y.length >= 10 && new Set(waiterObs.table).size >= 2) {
           const adj = E.adjustedGroupEffects({
             y: waiterObs.y,
             target: waiterObs.waiter,
             controls: [waiterObs.table],
           });
-          if (adj) {
-            const adjTop = adj.effects[0];
-            attributeReading =
-              adjTop.group === top.entity
-                ? `Still #1 after adjusting for which tables they worked.`
-                : `After adjusting for table assignments, ${adjTop.group} actually adds the most per check.`;
+          const adjTop = adj?.effects.find((e) => eligible.has(e.group));
+          if (adjTop) {
+            if (adjTop.group === top.entity)
+              attributeReading = `Still #1 after adjusting for which tables they worked.`;
+            else survivesTables = false;
           }
         }
-        const ev: InsightEvidence = {
-          entity: top.entity,
-          measureLabel: "average check",
-          unit: "currency",
-          value: top.value,
-          rank: 1,
-          peerCount: standings.length,
-          deltaPct: top.pctVsMean,
-          attributeReading,
-        };
-        push(
-          this.record("waiter.avg_check.peer_rank", "staff", "peer", ev, {
-            effectPct: top.pctVsMean,
-            z: top.z,
-            n: byWaiter.get(top.entity)?.checks ?? 0,
-          }),
-        );
+        if (survivesTables) {
+          const ev: InsightEvidence = {
+            entity: top.entity,
+            measureLabel: "average check",
+            unit: "currency",
+            value: top.value,
+            rank: 1,
+            peerCount: standings.length,
+            deltaPct: top.pctVsMean,
+            attributeReading,
+          };
+          push(
+            this.record("waiter.avg_check.peer_rank", "staff", "peer", ev, {
+              effectPct: top.pctVsMean,
+              z: lead.zVsRest,
+              n: lead.ranked[0].n,
+            }),
+          );
+        }
       }
     }
 
-    // Basket affinity.
+    // Basket affinity. Every pair seen on BASKET_MIN_COUNT checks is tested
+    // exactly and corrected for the whole family it was picked from; the old
+    // pick — top 3 of ~7,000 pairs by lift, then the first with a χ² p under
+    // 0.1 — chose the rarest pairs and an approximation invalid on them, and
+    // fired on 200 of 200 shuffled copies of Tuzlu's data (A-002, ADR 0272).
     if (transactions.length >= 10) {
       const pairs = E.pairAssociations(transactions, {
-        minCount: 3,
-        maxPairs: 3,
+        minCount: BASKET_MIN_COUNT,
       });
-      const best = pairs.find((p) => p.lift > 1.3 && p.pValue < 0.1);
+      const best = pairs
+        .filter(
+          (p) => p.lift >= BASKET_MIN_LIFT && p.pAdjusted <= SIGNIFICANCE_ALPHA,
+        )
+        .sort(
+          (x, y) =>
+            x.pUpper - y.pUpper ||
+            y.count - x.count ||
+            byCodeUnits(x.a, y.a) ||
+            byCodeUnits(x.b, y.b),
+        )[0];
       if (best) {
         const ev: InsightEvidence = {
           measureLabel: "orders",
@@ -1364,7 +1477,7 @@ export class InsightGeneratorService {
         push(
           this.record("wine.bottles.basket_affinity", "basket", "basket", ev, {
             effectPct: (best.lift - 1) / 2,
-            z: Math.sqrt(best.chi2),
+            z: zOfUpperTail(best.pUpper),
             n: best.count,
           }),
         );
@@ -1732,6 +1845,31 @@ export class InsightGeneratorService {
 // ---------------------------------------------------------------------------
 
 type Push = (r: InsightRecord | null) => void;
+
+/** Each group's count, mean and variance of check totals, for leaderTest. */
+function momentsOf(
+  groups: Map<string, { revenue: number; sumSq: number; checks: number }>,
+): E.GroupMoments<string>[] {
+  return Array.from(groups.entries()).map(([entity, g]) =>
+    E.momentsFromSums(entity, g.checks, g.revenue, g.sumSq),
+  );
+}
+
+/** Plain code-unit order: deterministic, whatever the server's locale. */
+const byCodeUnits = (a: string, b: string): number =>
+  a < b ? -1 : a > b ? 1 : 0;
+
+/**
+ * The z whose upper tail is p — the significance the score weighs for an
+ * exact test that has no z of its own. Capped: past 8σ the score's own cap
+ * (3σ) has long since applied, and an exact p can underflow to 0.
+ */
+function zOfUpperTail(p: number): number {
+  const Z_CAP = 8;
+  if (!(p > 0)) return Z_CAP;
+  const z = E.normalInv(Math.min(p, 0.5));
+  return z === null ? Z_CAP : Math.min(Z_CAP, -z);
+}
 
 export interface InsightRecord {
   candidateKey: string;
