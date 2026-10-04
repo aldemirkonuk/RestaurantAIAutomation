@@ -1,9 +1,13 @@
 # 0289 — An owner sets the house's state and country in the location editor
 
-- **Status:** Locked. The choice of (a) is the founder's, 2026-10-04 ~00:30Z. The two
-  forks it left open were his too, answered 2026-10-04 ~02:10Z and quoted where they
-  apply: R1's owner is *the house's owner*, and R3's United States house *must record
-  its state*.
+- **Status:** Locked for the ruling, and Proposed for the method. The ruling is the
+  founder's, in three answers, each quoted where it applies: the choice of (a),
+  2026-10-04 ~00:30Z, *"Add it to the editor (Recommended)"*; and the two forks it left
+  open, answered 2026-10-04 ~02:10Z: R1's owner, *"The house's owner (Recommended)"*, and
+  R3's United States rule, *"Required for US (Recommended)"*. Everything else below is
+  lane stateeditor's design, built for his review: among it R2, R3's rules for the
+  United Kingdom, Turkey, every other country and a state that resolves to another
+  country, R4's receipt, R5 and R8.
 - **Date:** 2026-10-04
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** state, country, state_province, jurisdiction, location editor, owner only, settings log, market index, retention, A-052, AW26
@@ -53,7 +57,8 @@ All three say "Set the address in Settings".
 **(a)**, in the founder's words: *"Add it to the editor (Recommended)"*. The option he
 picked read: *"Add state and country to the location editor, changed by owners only and
 recorded in the log. This also re-scopes mail retention and the commodity/distributor
-panels, which read the state."* The rules that carry it out:
+panels, which read the state."* The rules that carry it out are the lane's method,
+proposed for his review, except the two answers quoted in R1 and R3:
 
 **R1. Who may change it: an owner of this house.** The founder, 2026-10-04 ~02:10Z,
 verbatim pick: *"The house's owner (Recommended)"*. The rejected readings were the
@@ -205,8 +210,8 @@ and distributor panels, and the statute named in the mail-retention notice (R7).
   `apps/web`, so `organizations/house-state-country.ts` mirrors its 194 rows (code, name,
   aliases; currency dropped). `house-state-country.spec.ts` reads the web file **as text**
   and fails on any row that differs, as `common/iso-4217.spec.ts` does for currencies. The
-  web file stays the source. A country added there fails the gateway's build until it is
-  copied.
+  web file stays the source. A country added there fails that jest parity spec, and so
+  CI, until it is copied.
 - **Corrected in the design, not in the brief:**
   - The service takes the settings log through `@Optional()`. `CommunicationsModule`
     provides `OrganizationsService` by class (`communications.module.ts:138`) for its
@@ -217,6 +222,13 @@ and distributor panels, and the statute named in the mail-retention notice (R7).
 - **Left stale, named rather than fixed (file budget):**
   - The comments that say OrganizationsModule imports only Database and Auth:
     `inventory.module.ts:14`, `procurement.module.ts:65` and `settings.module.ts:36`.
+  - `communications.module.ts:42`, which says `organizations.service.ts` imports only
+    DatabaseService. It now also imports `SettingsAuditService` and the country check
+    (`house-state-country.ts`), beside `org-role` and `sign-up-timezone`, which it
+    imported on `origin/main` already.
+  - `settings-audit.module.ts:14`, which calls `SettingsModule` the module's only
+    consumer. `pricing.module.ts` and `vendor-terms.module.ts` imported it on
+    `origin/main` already, and `OrganizationsModule` now does too.
   - `LedgerSection`'s "not yet filed" list still names Locations & chains whole. Its name,
     city and chain still file nothing; the state and country now do. Its label for the
     new action is the generic fallback, "house state country changed".
@@ -234,3 +246,4 @@ and distributor panels, and the statute named in the mail-retention notice (R7).
 |---|---|---|
 | 2026-10-04 | — | Created on `feat/house-state-in-location-editor` (lane `stateeditor`, A-052/AW26) |
 | 2026-10-04 | Independent verifier, round 1 | The founder's 02:10Z answers quoted and R1/R3 locked; the region-first claim scoped to the market readers; the retention sentence and the currency/time-zone line narrowed to what the code moves |
+| 2026-10-04 | Final reviewer, HOLD | Status split into Locked for the ruling and Proposed for the method (ADR 0285's pattern), and the index row moved to the Proposed table; the Locations note scoped to the section's own edits, since currency, time zone, carrying cost, tone scoring, data terms and target margin also write the row and file settings-log rows; two more stale comments named |
