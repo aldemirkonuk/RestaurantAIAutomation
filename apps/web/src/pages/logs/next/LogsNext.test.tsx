@@ -12,15 +12,22 @@
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import type { LogsNextData } from './useLogsNextData';
-import type { TimelineEvent } from './lg-format';
+import { parseDay, type TimelineEvent } from './lg-format';
 
-const mockData = vi.hoisted(() => ({ current: {} as Partial<LogsNextData> }));
+/** `calls` records what the page asked the hook for, render by render. */
+const mockData = vi.hoisted(() => ({ current: {} as Partial<LogsNextData>, calls: [] as unknown[][] }));
 
 vi.mock('./useLogsNextData', async () => {
   const real = await vi.importActual<typeof import('./useLogsNextData')>('./useLogsNextData');
-  return { ...real, useLogsNextData: () => mockData.current };
+  return {
+    ...real,
+    useLogsNextData: (...args: unknown[]) => {
+      mockData.calls.push(args);
+      return mockData.current;
+    },
+  };
 });
 
 vi.mock('@/contexts/AuthContext', () => ({
@@ -49,6 +56,7 @@ vi.mock('@/lib/mudavym/useMudavymDesign', async () => {
 import LogsNext from './LogsNext';
 import { settle, turn } from '@/lib/mudavym/motion';
 import { PageGate } from '@/components/mudavym/PageGate';
+import { localToday } from '@/components/mudavym';
 
 const SIX = [
   'pos_checks',
@@ -114,6 +122,7 @@ beforeEach(() => {
   flags.on = false;
   motion.animate.mockClear();
   mockData.current = ready();
+  mockData.calls = [];
 });
 
 describe('LogsNext — states', () => {
@@ -329,6 +338,138 @@ describe('LogsNext — the window is marked', () => {
     renderPage();
     expect(screen.getByText(/cannot walk past this point/)).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Read older entries' })).toBeNull();
+  });
+});
+
+/**
+ * AW06 / A-039: a day months back took at least 28 presses of "Read older
+ * entries". The page now names a day and reads back from its end, through the
+ * address, and every sentence it prints stays true for a reading that does not
+ * start at the newest entry.
+ */
+describe('LogsNext — reading back from a day', () => {
+  const DAY = parseDay('2026-07-22')!;
+  const lastCall = () => mockData.calls[mockData.calls.length - 1];
+  const tokens = () => motion.animate.mock.calls.map((c) => c[2]);
+  const turns = () => tokens().filter((t) => t === turn).length;
+
+  /** The page, plus where the router says it is. */
+  function renderAt(path: string) {
+    function Where() {
+      const loc = useLocation();
+      return <span data-testid="where">{loc.search}</span>;
+    }
+    return render(
+      <MemoryRouter initialEntries={[path]}>
+        <Routes>
+          <Route
+            path="/logs"
+            element={
+              <>
+                <LogsNext />
+                <Where />
+              </>
+            }
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+  }
+  const where = () => new URLSearchParams(screen.getByTestId('where').textContent ?? '');
+
+  it('offers a day field up to today, and reads back from the end of the day submitted', () => {
+    mockData.current = ready({ events: [ev({})] });
+    renderAt('/logs');
+    expect(lastCall()).toEqual([null, null]);
+    const field = screen.getByLabelText('Read back from a day') as HTMLInputElement;
+    expect(field.type).toBe('date');
+    expect(field.max).toBe(localToday());
+
+    fireEvent.change(field, { target: { value: '2026-07-22' } });
+    // A change is not a read: a year being typed fires one for every digit.
+    expect(lastCall()).toEqual([null, null]);
+    expect(where().get('date')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Read back' }));
+    expect(lastCall()).toEqual([null, DAY.end]);
+    expect(where().get('date')).toBe('2026-07-22');
+    expect(turns()).toBe(1);
+  });
+
+  it('arrives on a named day from the address, without turning, and turns once going back to the newest', () => {
+    mockData.current = ready({ events: [ev({})], hasMore: true });
+    renderAt('/logs?date=2026-07-22');
+    expect(lastCall()).toEqual([null, DAY.end]);
+    expect(turns()).toBe(0);
+    expect((screen.getByLabelText('Read back from a day') as HTMLInputElement).value).toBe('2026-07-22');
+    expect(screen.getByText(`Entries on and before ${DAY.heading}.`)).toBeTruthy();
+    expect(
+      screen.getByText(new RegExp(`Showing 1 entries back from the end of ${DAY.heading} · older entries exist`)),
+    ).toBeTruthy();
+    expect(screen.queryByText(/Showing the first/)).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Back to the newest' }));
+    expect(lastCall()).toEqual([null, null]);
+    expect(where().get('date')).toBeNull();
+    expect(turns()).toBe(1);
+    expect(screen.queryByRole('button', { name: 'Back to the newest' })).toBeNull();
+  });
+
+  it('floors every count and never says "the registers hold" once read back from a day', () => {
+    mockData.current = ready({ events: [ev({ id: 'a', source: 'pos_checks' })], hasMore: false });
+    renderAt('/logs?date=2026-07-22');
+    expect(cell('Till')).toHaveTextContent('≥ 1');
+    expect(screen.queryByText(/the registers hold are on the page/)).toBeNull();
+    expect(
+      screen.getByText(`All 1 entries up to the end of ${DAY.heading} are on the page; entries after it are not read here.`),
+    ).toBeTruthy();
+  });
+
+  it('says nothing is recorded on or before the day, never that the house holds nothing', () => {
+    mockData.current = ready({ events: [], hasMore: false });
+    renderAt('/logs?date=2026-07-22');
+    const empty = screen.getByRole('status');
+    expect(empty).toHaveTextContent(`Nothing is recorded on or before ${DAY.heading}.`);
+    expect(empty).not.toHaveTextContent('hold nothing for this house yet');
+    expect(empty).not.toHaveTextContent('No entries.');
+  });
+
+  it('reads a thread whole from a named day, hides the field, and returns to the day on leaving', () => {
+    mockData.current = ready({ events: [ev({ id: 'x', correlationId: 'corr-9' })] });
+    renderAt('/logs?date=2026-07-22');
+    fireEvent.click(screen.getByRole('button', { name: 'Follow thread corr-9' }));
+    expect(lastCall()).toEqual(['corr-9', null]);
+    expect(where().get('date')).toBe('2026-07-22');
+    expect(screen.queryByLabelText('Read back from a day')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Back to the newest' })).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Leave the thread' }));
+    expect(lastCall()).toEqual([null, DAY.end]);
+    expect(screen.getByLabelText('Read back from a day')).toBeTruthy();
+  });
+
+  it('reads a thread whole when the address names both a thread and a day', () => {
+    mockData.current = ready({ events: [ev({ id: 'x', correlationId: 'corr-9' })] });
+    renderAt('/logs?correlationId=corr-9&date=2026-07-22');
+    expect(lastCall()).toEqual(['corr-9', null]);
+    expect(screen.getByRole('main', { name: 'One thread' })).toBeTruthy();
+  });
+
+  it('says so in words when the address names a day it cannot read, and reads from the newest', () => {
+    mockData.current = ready({ events: [ev({})] });
+    renderAt('/logs?date=2026-02-30');
+    expect(lastCall()).toEqual([null, null]);
+    expect(screen.getByRole('status')).toHaveTextContent('The address names a day this page cannot read (2026-02-30)');
+    expect(screen.queryByRole('button', { name: 'Back to the newest' })).toBeNull();
+  });
+
+  it('never walks the rows while the reader is typing a day', () => {
+    mockData.current = ready({ events: [ev({ id: 'a' }), ev({ id: 'b' })] });
+    const { container } = renderAt('/logs');
+    const field = screen.getByLabelText('Read back from a day');
+    fireEvent.keyDown(field, { key: 'j' });
+    fireEvent.keyDown(field, { key: 'k' });
+    expect(container.querySelector('.lg-row[data-cursor="true"]')).toBeNull();
   });
 });
 

@@ -226,6 +226,57 @@ export function threadSpan(events: readonly TimelineEvent[]): ThreadSpan {
   };
 }
 
+/* ── a day the reader names ───────────────────────────────────────────────── */
+
+/** A day named in the address (`?date=YYYY-MM-DD`), read as a place to read back from. */
+export interface DayJump {
+  /** `YYYY-MM-DD`, exactly as named. */
+  key: string;
+  /**
+   * The instant the day ENDS — the start of the next day — as ISO-8601. The
+   * gateway's `before` cursor is inclusive (`<=`), so seeding it here drops
+   * nothing recorded on the day, and a row stamped exactly at the next
+   * midnight is still read and shows under its own heading. A seed of
+   * 23:59:59.999 would silently drop whatever falls in the last millisecond.
+   */
+  end: string;
+  /** The day heading's own words for it (`fmtDay`). */
+  heading: string;
+}
+
+const DAY_SHAPE = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+/**
+ * Read a named day, or `null` when the value is not one.
+ *
+ * Strict on purpose: only `YYYY-MM-DD`, and only a date that survives a
+ * calendar round trip, so `2026-02-30` (which `Date` would quietly roll into
+ * March), `2026-7-22` and a value with spaces around it are all `null`. A
+ * day this page cannot read must be said, never guessed at.
+ *
+ * THE ZONE IS `dayKeyOf`'s. The day ends where the day headings say it ends,
+ * computed with the same local calendar, and `lg-format.test.ts` pins the
+ * pair: `dayKeyOf(end - 1ms)` is the day and `dayKeyOf(end)` the next one.
+ * If either side moves to another clock (the house's zone, A-056) without the
+ * other, that test fails — a jump that disagreed with the headings would land
+ * the reader on a page whose first heading is not the day they asked for.
+ */
+export function parseDay(raw: string | null | undefined): DayJump | null {
+  if (typeof raw !== 'string') return null;
+  const m = DAY_SHAPE.exec(raw);
+  if (!m) return null;
+  const y = Number(m[1]);
+  const mo = Number(m[2]) - 1;
+  const d = Number(m[3]);
+  // Noon, not midnight: a zone whose clocks jump AT midnight has no 00:00 on
+  // that day, and noon is inside every day everywhere.
+  const noon = new Date(y, mo, d, 12);
+  if (noon.getFullYear() !== y || noon.getMonth() !== mo || noon.getDate() !== d) return null;
+  const end = new Date(y, mo, d + 1);
+  if (Number.isNaN(end.getTime())) return null;
+  return { key: raw, end: end.toISOString(), heading: fmtDay(noon.toISOString()) };
+}
+
 /* ── counts ───────────────────────────────────────────────────────────────── */
 
 export function countBySource(events: readonly TimelineEvent[]): Partial<Record<string, number>> {
