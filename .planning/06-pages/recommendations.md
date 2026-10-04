@@ -493,8 +493,8 @@ so any figure scraped back out of it would be invented.
 
 | rule | metric | direction | why that metric |
 |---|---|---|---|
-| `sales_below_weekday_baseline` | `wine_revenue` | at least | the rule compares a day's wine sales with the same weekday's baseline |
-| `weekly_demand_slide` | `wine_revenue` | at least | the same quantity at a longer grain |
+| `sales_below_weekday_baseline` | `wine_revenue` | at least | ~~the rule compares a day's wine sales with the same weekday's baseline~~ **[Corrected 2026-10-03 (ADR 0291, AW20): the rule fires on whole-check sales through the till (`pos_checks.total`, every item on the check), or on bottles where only the cellar log is kept, never on wine sales. The goal sits on wine revenue because the prescription (top-margin picks, one by-the-glass feature) moves it, and the basis now says so. The default name is "<day> wine revenue, after a soft <day>", not "… back to baseline". Whether a sales dip should suggest this goal at all is fork F2 in ADR 0291.]** |
+| `weekly_demand_slide` | `wine_revenue` | at least | ~~the same quantity at a longer grain~~ **[Corrected 2026-10-03 (ADR 0291, AW20): the rule fires on a week-over-week fall in whole-check sales, in bottles, or in one wine's bottles, not on wine revenue. The goal sits on wine revenue because the prescription (a staff tasting, a pairing prompt) moves it, and the basis now says so; the default name is "Wine revenue, after a soft week". Fork F2 in ADR 0291.]** |
 | `weekday_gap` | `wine_revenue` | at least | it prescribes an offer on the weakest weekday |
 | `dead_stock_capital` | `bottles_sold` | at least | the act is bottles leaving the shelf; the capital figure is not a supported metric |
 | `plowhorse_repricing` | `wine_revenue` | at least | a price rise at constant volume lands in revenue |
@@ -688,7 +688,7 @@ on each entry:
 | `staff_spread` | stays *Brief the floor* | "Have the top seller run a 15-minute pre-shift" — a pre-shift IS the briefing. Arranging one is not the act; delivering it is. |
 | `puzzle_activation` | stays *Move stock* | "rotate weekly" is a cadence attached to an act of moving stock. |
 | `dead_stock_capital` | stays *Move stock* | "if untouched after two weeks, discount to cost" is a review date attached to an act of moving stock. Real, named on the entry, and not the act. |
-| `sales_below_weekday_baseline` | stays *Brief the floor* | "Tonight: brief the floor…" names a time; nothing in it goes on a day-book. |
+| `sales_below_weekday_baseline` | stays *Brief the floor* | "Tonight: brief the floor…" names a time; nothing in it goes on a day-book. **[2026-10-03 (ADR 0291, AW01): only a dip whose day is 0–1 days old still opens "Tonight:"; an older one opens "Before the next <weekday>:" and names the day, its date and its age. The register in code is unchanged; whether that dated deadline makes this entry *Schedule it* was not re-read by that change.]** |
 
 Each entry there carries **Put it on the day-book** (`rec-daybook.ts`). It prints the
 drafted line in full — title, date, type, note naming the rule — and then opens
