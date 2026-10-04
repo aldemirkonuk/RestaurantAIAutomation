@@ -170,7 +170,7 @@ describe("a figure the engine did not compute is written as withheld, never as 0
 
   it("against ourselves: a lens that did not answer inside the overview is withheld by name", () => {
     const doc = EXPORT_CUTTINGS.bench.write(PAYLOADS.bench, { days: null });
-    const week = figure(doc, "The week's trend");
+    const week = figure(doc, "Trend per day, last 28 days");
     expect(isWithheld(week)).toBe(true);
     expect((week as { why: string }).why).toBe("the weekday lens did not answer inside the overview call");
     expect(figure(doc, "Bought, the last 30 days")).toBe(1200);
@@ -199,5 +199,118 @@ describe("a figure the engine did not compute is written as withheld, never as 0
         if (f.unit === "money")
           expect([id, f.label, f.value]).toEqual([id, f.label, expect.objectContaining({ withheld: true })]);
     }
+  });
+});
+
+/**
+ * A-020 (analytics walk, 2026-10-03). The engine returns pace and trend as 0–1
+ * fractions — (current − previous) ÷ |previous|, and OLS slope ÷ |mean| — and
+ * the export tagged them `percent` ("already in percent") as they came, so a
+ * 33% rise was written 0.33 and printed "0.3%". The fixtures are fractions now
+ * (1200 against 900 is 0.3333); each figure below is that fraction × 100.
+ */
+describe("a signed change is written in percent, from the engine's 0–1 fraction (A-020)", () => {
+  it("spend pacing: 1200 against 900 is a pace of +33.33%", () => {
+    const doc = EXPORT_CUTTINGS.pacing.write(PAYLOADS.pacing, { days: null });
+    const pace = doc.figures.find((x) => x.label === "Pace")!;
+    expect(pace.unit).toBe("percent");
+    expect(pace.value).toBeCloseTo(33.33, 6);
+  });
+
+  it("the week's shape: a -0.004 trend is -0.4% a day", () => {
+    const doc = EXPORT_CUTTINGS.week.write(PAYLOADS.week, { days: null });
+    const trend = doc.figures.find((x) => x.label === "28-day trend, per day")!;
+    expect(trend.unit).toBe("percent");
+    expect(trend.value).toBeCloseTo(-0.4, 6);
+  });
+
+  it("against ourselves: the pace figure, the pace cell and the trend cell are all in percent", () => {
+    const doc = EXPORT_CUTTINGS.bench.write(
+      {
+        ...(PAYLOADS.bench as object),
+        seasonality: { tie: false, bestDay: "Friday", worstDay: "Monday", trendPerDayPct: 0.20689655, weekdayProfile: [] },
+      },
+      { days: null },
+    );
+    expect(figure(doc, "Pace against last month")).toBeCloseTo(33.33, 6);
+    expect(figure(doc, "Trend per day, last 28 days")).toBeCloseTo(20.689655, 6);
+    const [buying, week] = doc.tables[0].rows;
+    expect(buying[3]).toEqual({ n: expect.closeTo(33.33, 6), unit: "percent" });
+    expect(week[0]).toBe("The week's own extremes (busiest, quietest, trend per day)");
+    expect(week[3]).toEqual({ n: expect.closeTo(20.689655, 6), unit: "percent" });
+  });
+
+  it("an unknown change stays withheld, never 0%", () => {
+    const doc = EXPORT_CUTTINGS.pacing.write({ ...(PAYLOADS.pacing as object), paceDeltaPct: null }, { days: null });
+    expect(isWithheld(figure(doc, "Pace"))).toBe(true);
+  });
+});
+
+/**
+ * A-040 (analytics walk, 2026-10-03). The room and who served it said "an
+ * absent attribution" / "an absent field on the POS feed" whenever no check in
+ * the 90-day window named a table or a server — including when the window held
+ * no check at all because the feed stopped. The gateway now sends
+ * `checksInWindow` and `latestCheckAt`; the export says which fact it is.
+ */
+describe("an empty POS window is not an absent field (A-040)", () => {
+  const latest = "2026-08-30T19:00:00.000Z";
+  const service = (extra: Record<string, unknown>) =>
+    EXPORT_CUTTINGS.service.write({ sinceDays: 90, dataStatus: "x", adjusted: null, waiters: [], ...extra }, { days: null });
+  const seats = (extra: Record<string, unknown>) =>
+    EXPORT_CUTTINGS.seats.write(
+      {
+        sinceDays: 90,
+        dataStatus: "x",
+        tables: [{ tableId: "t1", label: "T1", zone: null, seats: 4, checks: 0, revenue: 0, covers: 0, avgCheck: null, wineAttachRate: null }],
+        ...extra,
+      },
+      { days: null },
+    );
+
+  it("who served it: no check in the window, older ones on record — names the window and the latest day, blames no field", () => {
+    const say = service({ checksInWindow: 0, latestCheckAt: latest }).say!;
+    expect(say).toBe(
+      "No POS check was opened in the last 90 days — the latest this house has was opened 2026-08-30 (UTC). The window is empty; no field is missing.",
+    );
+  });
+
+  it("who served it: no check ever — says none has reached Mudavym", () => {
+    const say = service({ checksInWindow: 0, latestCheckAt: null }).say!;
+    expect(say).toContain("No POS check has reached Mudavym for this house yet");
+    expect(say).not.toContain("absent field");
+  });
+
+  it("who served it: checks in the window, none naming a server — the absent field, with the count", () => {
+    expect(service({ checksInWindow: 7, latestCheckAt: latest }).say).toBe(
+      "None of the 7 checks in the last 90 days carries a server name, so nothing can be attributed to anyone. That is an absent field on the POS feed, not a shift nobody worked.",
+    );
+    expect(service({ checksInWindow: 1, latestCheckAt: latest }).say).toMatch(
+      /^The one check in the last 90 days carries no server name, .* absent field on the POS feed/,
+    );
+  });
+
+  it("who served it: an older gateway that sends no count — asserts neither cause", () => {
+    const say = service({}).say!;
+    expect(say).toContain("does not say whether the window held any check");
+    expect(say).not.toContain("absent field");
+  });
+
+  it("the room: the same three facts, and 'absent attribution' only when checks exist", () => {
+    expect(seats({ checksInWindow: 0, latestCheckAt: latest }).say).toBe(
+      "1 table is mapped. No POS check was opened in the last 90 days — the latest this house has was opened 2026-08-30 (UTC). The window is empty; no field is missing.",
+    );
+    expect(seats({ checksInWindow: 0, latestCheckAt: null }).say).toContain("No POS check has reached Mudavym");
+    expect(seats({ checksInWindow: 5, latestCheckAt: latest }).say).toBe(
+      "1 table is mapped, and not one of the 5 checks in the last 90 days was attributed to any of them — an absent attribution, not an empty room.",
+    );
+    const old = seats({}).say!;
+    expect(old).toContain("does not say whether the window held any check");
+    expect(old).not.toContain("absent attribution");
+  });
+
+  it("a live window with attributed checks says nothing instead of drawing", () => {
+    expect(EXPORT_CUTTINGS.seats.write(PAYLOADS.seats, { days: null }).say).toBeNull();
+    expect(EXPORT_CUTTINGS.service.write(PAYLOADS.service, { days: null }).say).toBeNull();
   });
 });
