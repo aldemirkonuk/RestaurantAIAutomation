@@ -63,7 +63,7 @@ Placement and basis are the founder's (above). The options below are the method 
 - **Given up.** A one-glance month of takings on /calendar. The dashboard's sales calendar (lane dash, AW21) is the place for that.
 - **Given up, by F1.** Staff no longer receive the day's takings from this route, which they did (gross and undrawn) before this record. What staff see in its place, the actions and goals assigned to them, is his direction and is not built here.
 - **Revisit when** lane netsales lands an adapter fix or a different partial-day rule, lane tz lands the house-local business day, or a house-wide rule on who sees house money supersedes F1 (OD-180 fork 3).
-- **Merge order.** After lane cap. ADR 0090's audit before merging.
+- **Merge order.** After lane cap.
 
 ## Forks
 
