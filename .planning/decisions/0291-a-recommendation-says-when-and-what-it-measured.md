@@ -18,14 +18,14 @@ On 2026-10-03 the analytics walk on Tuzlu Rüzgar found three places where /reco
 
 **AW20: a goal basis that is false.**
 - `RULE_GOAL` in `apps/web/src/pages/recommendations/next/rec-forward.ts` pairs both sales rules with a `wine_revenue` goal. It says "The rule compares a day's wine sales" and names the goal "<day> wine revenue back to baseline".
-- The trigger is actually whole-check sales: `pos_checks.total`, which covers food, drink and tax (`insight-generator.service.ts:1070`). In a house that keeps only the cellar log, the trigger is bottles instead.
+- The trigger is actually whole-check sales: `pos_checks.total`, which covers food, drink and tax (`insight-generator.service.ts:1070`), or bottles sold from the cellar log (`overall.bottles`). The generator computes the two families independently, each gated on its own source (`computeConsumptionFamily`, `:777-778`; `computeChecksFamily`, `:1063-1064`), so any house that keeps a cellar log can fire on bottles, till or no till.
 - The goal measures `is_wine` items honestly (`apps/api-gateway/src/analytics/goals.service.ts:935-950`). The false part is the basis sentence, not the goal.
 
 **AW23: the catalogue reads "Nothing live" for a type that is live.**
 - The generator recorded `vendor.purchase_spend.concentration` under `risk`.
 - `categorize()` files any vendor dimension under `purchasing` (`apps/api-gateway/src/analytics/insights/insight-catalog.ts:486-490`) before its concentration→risk branch (`:493`).
 - The catalogue asks under `purchasing`. The generator filters by category before it filters by key (`insight-generator.service.ts:268-270`). So the narrowed read returned nothing even though the insight fired.
-- This was the only one of the 15 `record()` calls that disagreed with `categorize()`, and nothing checked them.
+- This was the only one of the 16 `this.record(` call sites that disagreed with `categorize()` (re-measured at HEAD; the new spec's own count reads 16), and nothing checked them.
 
 ## Options considered
 
@@ -42,18 +42,25 @@ On 2026-10-03 the analytics walk on Tuzlu Rüzgar found three places where /reco
      | 2–`SALES_DIP_WEEK_DAYS` (7) days | `this_week` | The same weekday comes round again within the week. |
      | More than 7 days, or an age that cannot be read or is in the future | `this_month` | — |
 
-   - Only `now` keeps the "Tonight:" text, word for word. Every other band opens "Before the next <weekday>:" and names the day, its date and its age (`salesDipAdvice`, `:121`).
+   - Only `now` keeps the "Tonight:" text, word for word. Every other band opens "Before the next <weekday>:" and names the day, its date and its age (`salesDipAdvice`). When the day is a whole number of weeks old, today is that weekday, and "the next Saturday" said on a Saturday could mean tonight or a week out. That copy opens "Before today's <weekday> service:" instead. The 2026-08-15 card read on 2026-10-03 (49 days, both Saturdays) is that case.
 3. **Pass a clock seam in from the digest, so the age is counted on the house's send time.** Rejected. It would thread a parameter through `generate()` and `getRecommendations()` for one rule. The series is built on the real clock anyway, so counting the age on the same clock is the consistent reading. The day boundary is UTC, the same as the series, until C02 (the business date) lands.
 
 **AW01: which insight may raise the sales card**
 
-4. **Pin the rule to `overall.revenue.vs_same_weekday`.** Rejected: a house with only the cellar log would lose the card, since its dip is `overall.bottles.vs_same_weekday`.
+4. **Pin the rule to `overall.revenue.vs_same_weekday`.** Rejected: a house with only the cellar log would lose the card, since its dip is `overall.bottles.vs_same_weekday`, and a house with both would lose its bottles dips.
 5. **Require `category === "sales"` in the finder (chosen).** A purchasing dip raises nothing, and a purchasing dip ranked first no longer hides the sales dip behind it.
+
+**AW01: which sales dip the card restates, when two stand**
+
+A house with a till and a cellar log can carry two sales dips, `overall.revenue` and `overall.bottles`, each ending on its own newest observed day.
+
+5a. **The first-ranked dip (the finder before this ADR).** Rejected. Ranked by score alone, a weeks-old dip on one series can outrank yesterday's on the other, so the card would read `this_month` while a dip that earns `now` sat hidden behind it. That undoes the point of the bands.
+5b. **The dip about the newest day (chosen).** `freshestSalesDip` (`recommendations.service.ts`) takes the dip with the smallest readable age. A tie, or no readable age at all, keeps the generator's rank. A dated dip beats an undated or future-dated one wherever it ranks. This is the build's reading. Whether an old newest day should say "the sales read is stale" instead is F1(c).
 
 **AW20: the basis a suggested goal states**
 
 6. **Rewrite the basis and the default names to say what fired (chosen).**
-   - Each basis says what fired: whole-check sales through the till, or bottles sold. For the weekly slide it can also be one wine's bottles. The entry's own sentence says which.
+   - Each basis says what fired: whole-check sales through the till, or bottles sold from the cellar log in any house that keeps one. For the weekly slide it can also be one wine's bottles. The entry's own sentence says which.
    - It says why the goal still sits on wine revenue: a goal cannot be held on whole-check sales, and the prescription (top-margin picks, a by-the-glass feature, a staff tasting, a pairing prompt) moves wine revenue.
    - It says the goal records part of what fell, not all of it.
    - The names become "<day> wine revenue, after a soft <day>" and "Wine revenue, after a soft week". They no longer claim that wine revenue is what fell.
@@ -73,7 +80,7 @@ On 2026-10-03 the analytics walk on Tuzlu Rüzgar found three places where /reco
 
 ## Decision
 
-A sales-dip entry takes its urgency from the age of the day it is about. Only a sales-category dip raises it. The two sales rules' goal bases say what the rule measured and why the goal sits on wine revenue. Every `record()` files its type under the category `categorize()` gives it, and a spec checks that.
+A sales-dip entry takes its urgency from the age of the day it is about. Only a sales-category dip raises it, and where two stand, the one about the newer day. The two sales rules' goal bases say what the rule measured and why the goal sits on wine revenue. Every `record()` files its type under the category `categorize()` gives it, and a spec checks that.
 
 Reasoning:
 - "Tonight" is a claim that the day is recent, so only a recent day earns it.
@@ -123,3 +130,4 @@ Reasoning:
 | Date | Reviewer | Outcome |
 |---|---|---|
 | 2026-10-03 | Build (lane `rec`, analytics-walk fixes) | Created, Proposed; F1 and F2 put to the founder |
+| 2026-10-03 | Independent verifier, round 1 | One major, two minors. The basis said bottles fire only "where only the cellar log is kept", which is false, because the two families are gated independently; it now says "in any house that keeps one" in rec-forward, the service comment, this ADR and the page note. The `record()` count was 15 copied forward, and is 16 when re-measured. The finder took the first-ranked dip, so a stale one could hide a fresh one; it now takes the newest day (5b). The copy at a whole number of weeks now says "today's <weekday> service". The rec-docket comment that quoted "Tonight" now names the bands. The bodies of commits 426658e36 (the "only the cellar log" basis) and 9dc518115 ("15 `record()` calls") keep the old wording; the branch history is not rewritten, so this row is their correction. |
