@@ -102,12 +102,11 @@ const CATALOGUE_COLUMNS =
  * inlined at the call site is a read nobody is checking. The menu book's
  * columns are `CURRENT_MENU_LINE_COLUMNS`, beside the one current-menu read
  * (`menus/current-menu-lines.ts`).
- */
-/**
- * The vendor is embedded through a NAMED foreign key, and the name is
- * load-bearing. `procurement_documents` and `providers` are joined by two
- * foreign keys: `procurement_documents.provider_id -> providers`
- * (`procurement_documents_provider_id_fkey`, the baseline) and
+ *
+ * The invoice book (below). Its vendor is embedded through a NAMED foreign
+ * key, and the name is load-bearing. `procurement_documents` and `providers`
+ * are joined by two foreign keys: `procurement_documents.provider_id ->
+ * providers` (`procurement_documents_provider_id_fkey`, the baseline) and
  * `providers.created_from_document_id -> procurement_documents` (migration
  * a_vendor_is_resolved_by_identity, the document a provider was born from).
  * With two paths a bare `providers(name)` makes PostgREST refuse the whole

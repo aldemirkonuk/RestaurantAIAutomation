@@ -483,6 +483,15 @@ export class CellarRegistersService {
    * of the `status = 'active'` menus only, without discarded lines, paged
    * whole and in id order, so the list is stable between requests. A failed
    * read is an error here, never a shorter menu.
+   *
+   * What follows for a house whose only menu is a draft (ADR 0193: a draft is
+   * read and kept, never chosen), stated so nobody mistakes it for a defect:
+   * it has no current menu, so its unplaced-lines card says so, its ledger
+   * rows lose `onMenu`, and a register that only the menu supported (cocktails
+   * or non-alcoholic, say, with nothing of the kind counted in the cellar)
+   * now infers `carried: false` with the basis "nothing on this menu", where
+   * it used to infer `carried: true` from the draft's lines. /vendors and
+   * price locks already read the current menu the same way.
    */
   private async readMenuRows(restaurantId: string): Promise<{
     rows: MenuItemRow[];
