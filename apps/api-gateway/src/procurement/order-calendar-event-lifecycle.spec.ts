@@ -1,42 +1,47 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { Test, TestingModule } from "@nestjs/testing";
-import { ProcurementService } from "./procurement.service";
-import { DatabaseService } from "../database/database.service";
-import { EventsService } from "../events/events.service";
-import { InventoryLedgerService } from "../inventory-ledger/inventory-ledger.service";
-import { OrchestratorService } from "../common/orchestrator/orchestrator.service";
-import { alterTableColumnClauses } from "../common/testing/migration-alter-clauses";
+import {
+  alterTableColumnClauses,
+  blankSqlComments,
+} from "../common/testing/migration-alter-clauses";
 import {
   CalendarEventStatus,
   CalendarEventType,
 } from "../calendar/dto/calendar.dto";
+import {
+  ORDER_GOODS_ARRIVED_STATUSES,
+  ORDER_TERMINAL_STATUSES,
+} from "./order-transitions";
 
 /**
- * The two functions that CLOSE the lifecycle of the delivery event that
- * `createCalendarEventForOrder` opens — `cancelCalendarEventForOrder` and
- * `updateCalendarEventForDelivery`. See ADR 0066 for the writer; this file
- * covers the reader/updater counterparts, which were broken the same two ways:
+ * What CLOSES the delivery event that `createCalendarEventForOrder` opens.
  *
- *  1. They located the event with `.select("id, tags")` and JSON-parsed `tags`
- *     for an `order_id`. `calendar_events` has no `tags` column. PostgREST
- *     answers 42703 — and the destructure took only `data`, so the error was
- *     never read: `events` was `undefined`, `(events || [])` was empty, and the
- *     function returned having done nothing, indistinguishable from a run that
- *     legitimately found no event.
- *  2. They wrote and filtered on uppercase `COMPLETED`/`CANCELLED`. The column
- *     carries no CHECK, so the write would have succeeded and produced a row no
- *     reader recognises, while the filters matched nothing.
+ * ADR 0073 gave the gateway two closers, `cancelCalendarEventForOrder` and
+ * `updateCalendarEventForDelivery`, called from `cancelOrder` and
+ * `markDelivered`. Those were the only two doors that closed an event, while
+ * orders also arrive through the receiving door, the order edit, the agents
+ * and the console, and the delivered close never moved the date. On Tuzlu
+ * Rüzgar 534 of 534 October events stayed pending on 9 October although every
+ * one of the 87 whose orders were read had COMPLETED (F-152).
+ *
+ * ADR 0284 moves the closing to the table: migration
+ * `a_delivery_event_follows_its_order` puts an AFTER trigger on
+ * `procurement_orders` and one on `calendar_events`. The behaviour is proved
+ * against a real Postgres by
+ * `supabase/tests/<version>_a_delivery_event_follows_its_order_test.sql`; this
+ * file pins what a gateway test CAN pin without a database: the SQL names only
+ * columns the table has, writes the calendar's own vocabulary, uses the
+ * order-status sets generated from `order-transitions.ts` character for
+ * character, keeps the two date pairs written together, and the gateway no
+ * longer writes the close itself.
  *
  * As in `order-calendar-event.spec.ts`, the column list is DERIVED from
- * `supabase/migrations/` and the derivation fails loudly rather than asserting
- * against an empty set. (That file's derivation is not exported and it sits on
- * an open PR, so this one is deliberately kept separate and compact rather than
- * extracted mid-flight.)
+ * `supabase/migrations/` and every derivation fails loudly rather than
+ * asserting against an empty set.
  */
 
 // ---------------------------------------------------------------------------
-// Derive the real shape of public.calendar_events from the migrations on disk.
+// The corpus on disk.
 // ---------------------------------------------------------------------------
 
 function repoRoot(): string {
@@ -54,21 +59,22 @@ function repoRoot(): string {
   );
 }
 
+const MIGRATIONS_DIR = path.join(repoRoot(), "supabase", "migrations");
+
 function calendarEventColumns(): Set<string> {
-  const migrationsDir = path.join(repoRoot(), "supabase", "migrations");
   const files = fs
-    .readdirSync(migrationsDir)
+    .readdirSync(MIGRATIONS_DIR)
     .filter((f) => f.endsWith(".sql"))
     .sort();
   if (files.length === 0) {
     throw new Error(
-      `No .sql files in ${migrationsDir} — cannot derive a column contract.`,
+      `No .sql files in ${MIGRATIONS_DIR} — cannot derive a column contract.`,
     );
   }
 
   const columns = new Set<string>();
   for (const file of files) {
-    const sql = fs.readFileSync(path.join(migrationsDir, file), "utf8");
+    const sql = fs.readFileSync(path.join(MIGRATIONS_DIR, file), "utf8");
     const create =
       /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:public\.)?calendar_events\s*\(([\s\S]*?)\n\);/i.exec(
         sql,
@@ -99,21 +105,13 @@ function calendarEventColumns(): Set<string> {
     }
   }
 
-  // Prove presence before interpreting the set: a parser that matched nothing
-  // would make every assertion below vacuously true.
   if (columns.size === 0) {
     throw new Error(
       `Parsed 0 columns for public.calendar_events out of ${files.length} ` +
         "migration file(s). The parser, not the table, is broken.",
     );
   }
-  for (const anchor of [
-    "id",
-    "restaurant_id",
-    "event_type",
-    "status",
-    "order_id",
-  ]) {
+  for (const anchor of ["id", "restaurant_id", "event_type", "status"]) {
     if (!columns.has(anchor)) {
       throw new Error(
         `Derived column set for calendar_events is missing "${anchor}". ` +
@@ -124,321 +122,250 @@ function calendarEventColumns(): Set<string> {
   return columns;
 }
 
+/** Cited by slug, never by version: the version is assigned at merge. */
+const MIGRATION_SLUG = "_a_delivery_event_follows_its_order.sql";
+
+function readTheMigration(): { file: string; text: string } {
+  const hits = fs
+    .readdirSync(MIGRATIONS_DIR)
+    .filter((f) => f.endsWith(MIGRATION_SLUG));
+  if (hits.length !== 1) {
+    throw new Error(
+      `Expected exactly one migration ending ${MIGRATION_SLUG} in ` +
+        `${MIGRATIONS_DIR}, found ${hits.length}. Without it nothing closes a ` +
+        "delivery event (ADR 0284).",
+    );
+  }
+  const sql = fs.readFileSync(path.join(MIGRATIONS_DIR, hits[0]), "utf8");
+  // Comments blanked, so prose in the header cannot satisfy an assertion that
+  // is about the SQL.
+  const text = blankSqlComments(sql);
+  if (text.trim().length === 0) {
+    throw new Error(`${hits[0]} is empty once its comments are blanked.`);
+  }
+  return { file: hits[0], text };
+}
+
 const COLUMNS = calendarEventColumns();
+const { text: SQL } = readTheMigration();
+
+interface CalendarUpdate {
+  set: string;
+  where: string;
+  /** Column names assigned in SET, in order. */
+  assigned: string[];
+  /** Every `status = '...'` literal written in SET. */
+  statuses: string[];
+}
 
 /**
- * Values `public.calendar_events.status` has actually held, measured against
- * project `exzueerziesmczwlhomd` on 2026-09-02 (19 rows, ADR 0066). The column
- * has no CHECK constraint, so a wrong value inserts happily and is then read by
- * nothing — which is why this list is measured rather than taken from the enum.
+ * Every `UPDATE public.calendar_events e SET ... WHERE ...;` in the file.
+ * Each assignment starts its own line in the migration, which is what makes a
+ * line-start match enough here; a SET that cannot be read throws.
  */
-const STATUSES_PRODUCTION_HOLDS = ["active", "completed", "pending"];
-
-/**
- * Lowercase values `calendar.service.ts` itself writes or branches on:
- * `.update({ status: "cancelled" })` at :612, and the `generateICal` mapping at
- * :1275 (`cancelled`/`dismissed` → CANCELLED, `pending` → TENTATIVE).
- *
- * `cancelled` needs this second list because it has **zero** production rows —
- * and the reason it has zero is the defect under test: nothing has ever
- * successfully cancelled a delivery event. Asserting it against production
- * alone would demand that the bug still be present.
- */
-const STATUSES_THE_CALENDAR_HANDLES = ["cancelled", "dismissed", "pending"];
-
-/** The casings that were being written and filtered on, and never matched. */
-const UPPERCASE_VOCABULARY = /\b(COMPLETED|CANCELLED|SCHEDULED)\b/;
-
-const REST_ID = "rest-1";
-const ORDER_ID = "11111111-1111-4111-8111-111111111111";
-
-// ---------------------------------------------------------------------------
-// Harness. The builder is thenable so it can stand in for BOTH shapes: the
-// pre-fix select-then-update pair and a single update-returning statement.
-// ---------------------------------------------------------------------------
-
-describe("delivery calendar event — closing the lifecycle ADR 0066 opened", () => {
-  let service: ProcurementService;
-  let builder: any;
-  let supabase: any;
-  let result: { data: any; error: any };
-  let loggerErrorSpy: jest.SpyInstance;
-  let loggerWarnSpy: jest.SpyInstance;
-  let loggerLogSpy: jest.SpyInstance;
-
-  // Deliberately a CASE order of a twelve-pack, not a bottle order. The
-  // delivered description read `(${order.quantity} bottles)` unconditionally,
-  // and a fixture stated in bottles cannot fail that — pack size 1 makes the
-  // wrong unit and the right one the same word, which is the same trap ADR
-  // 0062 recorded for `countedUom: "bottle"`.
-  const order = {
-    id: ORDER_ID,
-    orderNumber: "ORD-9001",
-    quantity: 5,
-    unitType: "case",
-    deliveredAt: "2026-09-02T10:00:00.000Z",
-  } as any;
-
-  beforeEach(async () => {
-    jest.clearAllMocks();
-    result = { data: [{ id: "cal-event-1" }], error: null };
-
-    builder = {
-      select: jest.fn(() => builder),
-      update: jest.fn(() => builder),
-      insert: jest.fn(() => builder),
-      eq: jest.fn(() => builder),
-      neq: jest.fn(() => builder),
-      not: jest.fn(() => builder),
-      in: jest.fn(() => builder),
-      limit: jest.fn(() => builder),
-      single: jest.fn(() => Promise.resolve(result)),
-      maybeSingle: jest.fn(() => Promise.resolve(result)),
-      then: (res: any, rej: any) => Promise.resolve(result).then(res, rej),
-    };
-    supabase = { from: jest.fn(() => builder) };
-
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        ProcurementService,
-        {
-          provide: DatabaseService,
-          useValue: { supabase, getClient: jest.fn(() => supabase) },
-        },
-        { provide: EventsService, useValue: { createEvent: jest.fn() } },
-        {
-          provide: InventoryLedgerService,
-          useValue: { recordTransaction: jest.fn() },
-        },
-        {
-          provide: OrchestratorService,
-          useValue: { publishEvent: jest.fn(), triggerDraftHttp: jest.fn() },
-        },
-      ],
-    }).compile();
-
-    service = module.get<ProcurementService>(ProcurementService);
-    loggerErrorSpy = jest
-      .spyOn((service as any).logger, "error")
-      .mockImplementation(() => {});
-    loggerWarnSpy = jest
-      .spyOn((service as any).logger, "warn")
-      .mockImplementation(() => {});
-    loggerLogSpy = jest
-      .spyOn((service as any).logger, "log")
-      .mockImplementation(() => {});
-  });
-
-  /** Every string that reached the query builder, across every call. */
-  const builderStrings = (): string[] => {
-    const out: string[] = [];
-    for (const fn of ["select", "update", "eq", "neq", "not", "in", "limit"]) {
-      for (const call of (builder[fn] as jest.Mock).mock.calls) {
-        for (const arg of call) {
-          out.push(typeof arg === "string" ? arg : JSON.stringify(arg ?? null));
-        }
-      }
+function calendarUpdates(): CalendarUpdate[] {
+  const re =
+    /UPDATE\s+public\.calendar_events\s+e\s+SET\s+([\s\S]*?)\s+WHERE\s+([\s\S]*?);/gi;
+  const out: CalendarUpdate[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(SQL))) {
+    const set = m[1];
+    const assigned = Array.from(set.matchAll(/^\s*([a-z_]+)\s*=(?!=)/gim)).map(
+      (a) => a[1].toLowerCase(),
+    );
+    const statuses = Array.from(set.matchAll(/\bstatus\s*=\s*'([^']*)'/gi)).map(
+      (a) => a[1],
+    );
+    if (assigned.length === 0) {
+      throw new Error(`Read no assignment out of SET:\n${set}`);
     }
-    return out;
-  };
+    out.push({ set, where: m[2], assigned, statuses });
+  }
+  return out;
+}
 
-  const updatePayload = (): Record<string, unknown> => {
-    expect(builder.update).toHaveBeenCalledTimes(1);
-    return builder.update.mock.calls[0][0] as Record<string, unknown>;
-  };
+const UPDATES = calendarUpdates();
 
-  const eqPairs = (): [string, unknown][] =>
-    builder.eq.mock.calls.map((c: any[]) => [c[0], c[1]] as [string, unknown]);
+/** How the migration declares a text[] of order statuses. */
+function renderSqlArray(values: readonly string[]): string {
+  return `ARRAY[${[...values]
+    .sort()
+    .map((v) => `'${v}'`)
+    .join(", ")}]`;
+}
 
-  // Each case is run against both functions: they are the same defect twice.
-  const CASES: {
-    name: string;
-    call: () => Promise<void>;
-    status: CalendarEventStatus;
-    /** The measured list that carries this value, and why it is that one. */
-    recognisedBy: string[];
-    /** Statuses this transition must LEAVE ALONE — the deliberate asymmetry. */
-    leavesAlone: CalendarEventStatus[];
-    descriptionContains: string;
-  }[] = [
-    {
-      name: "cancelCalendarEventForOrder",
-      call: () =>
-        (service as any).cancelCalendarEventForOrder(REST_ID, ORDER_ID, order),
-      status: CalendarEventStatus.CANCELLED,
-      recognisedBy: STATUSES_THE_CALENDAR_HANDLES,
-      // A recorded delivery is a physical fact; a later administrative
-      // cancellation must not erase it.
-      leavesAlone: [
-        CalendarEventStatus.COMPLETED,
-        CalendarEventStatus.CANCELLED,
-      ],
-      descriptionContains: "cancelled",
-    },
-    {
-      name: "updateCalendarEventForDelivery",
-      call: () =>
-        (service as any).updateCalendarEventForDelivery(
-          REST_ID,
-          ORDER_ID,
-          order,
-        ),
-      status: CalendarEventStatus.COMPLETED,
-      recognisedBy: STATUSES_PRODUCTION_HOLDS,
-      // Deliberately NOT symmetric: an arrival outranks an earlier
-      // cancellation, so a `cancelled` event is still eligible to be closed.
-      leavesAlone: [CalendarEventStatus.COMPLETED],
-      descriptionContains: "Delivered",
-    },
-  ];
+/** The body of one plpgsql function in the file, by name. */
+function functionBody(name: string): string {
+  const re = new RegExp(
+    `CREATE\\s+OR\\s+REPLACE\\s+FUNCTION\\s+public\\.${name}\\s*\\([\\s\\S]*?\\$fn\\$([\\s\\S]*?)\\$fn\\$`,
+    "i",
+  );
+  const m = re.exec(SQL);
+  if (!m) throw new Error(`function public.${name} is not declared`);
+  return m[1];
+}
 
+// ---------------------------------------------------------------------------
+
+describe("delivery calendar event — closed by the table (ADR 0284)", () => {
   it("derives a plausible calendar_events shape from the migrations", () => {
     expect(COLUMNS.size).toBeGreaterThan(10);
-    expect(COLUMNS.has("order_id")).toBe(true);
-    // The column both functions were scanning does not exist.
+    for (const c of [
+      "order_id",
+      "event_date",
+      "event_time",
+      "start_date",
+      "start_time",
+      "reminder_enabled",
+    ]) {
+      expect(COLUMNS.has(c)).toBe(true);
+    }
+    // The column ADR 0073's closers were scanning does not exist.
     expect(COLUMNS.has("tags")).toBe(false);
   });
 
-  it("has non-empty, all-lowercase vocabularies to assert against", () => {
-    // Guards the guard: an empty list would make the status assertions below
-    // pass against anything.
-    for (const list of [
-      STATUSES_PRODUCTION_HOLDS,
-      STATUSES_THE_CALENDAR_HANDLES,
-    ]) {
-      expect(list.length).toBeGreaterThan(0);
-      expect(list.filter((s) => s !== s.toLowerCase())).toEqual([]);
-      expect(
-        list.filter(
-          (s) =>
-            !Object.values(CalendarEventStatus).includes(
-              s as CalendarEventStatus,
-            ),
-        ).length,
-      ).toBeLessThan(list.length);
+  it("reads all three calendar writes out of the migration", () => {
+    // Guards the guard: fewer would make every per-update assertion below
+    // vacuous for the one that went missing.
+    expect(UPDATES).toHaveLength(3);
+  });
+
+  it("names only columns calendar_events actually has", () => {
+    const unknown = UPDATES.flatMap((u) =>
+      u.assigned.filter((c) => !COLUMNS.has(c)),
+    );
+    expect(unknown).toEqual([]);
+  });
+
+  it("writes the calendar's own lowercase vocabulary: completed and cancelled", () => {
+    const written = new Set(UPDATES.flatMap((u) => u.statuses));
+    expect([...written].sort()).toEqual([
+      CalendarEventStatus.CANCELLED,
+      CalendarEventStatus.COMPLETED,
+    ]);
+    for (const u of UPDATES) {
+      expect(u.statuses).toHaveLength(1);
+      expect(u.assigned).toContain("status");
     }
   });
 
-  for (const c of CASES) {
-    describe(c.name, () => {
-      it("finds the event by order_id, never by a tags scan", async () => {
-        await c.call();
+  it("switches the reminder off on every close", () => {
+    // The reminder sweep does not skip a completed event, so a closed event
+    // with its reminder on is still announced.
+    for (const u of UPDATES) {
+      expect(u.set).toMatch(/\breminder_enabled\s*=\s*false\b/i);
+    }
+  });
 
-        expect(supabase.from).toHaveBeenCalledWith("calendar_events");
-        expect(eqPairs()).toContainEqual(["order_id", ORDER_ID]);
-        expect(eqPairs()).toContainEqual(["restaurant_id", REST_ID]);
-        expect(eqPairs()).toContainEqual([
-          "event_type",
-          CalendarEventType.DELIVERY,
-        ]);
-        // `tags` is not a column; asking for it is a 42703 for the whole query.
-        const mentionsTags = builderStrings().filter((s) => /\btags\b/.test(s));
-        expect(mentionsTags).toEqual([]);
-      });
+  // sync_calendar_dates_trigger copies a non-null start_time over event_time on
+  // every UPDATE, so writing event_time alone is silently reverted.
+  it("writes start_date with event_date and start_time with event_time", () => {
+    const pairs: Array<[string, string]> = [
+      ["event_date", "start_date"],
+      ["event_time", "start_time"],
+    ];
+    let moved = 0;
+    for (const u of UPDATES) {
+      for (const [a, b] of pairs) {
+        expect(u.assigned.includes(a)).toBe(u.assigned.includes(b));
+      }
+      if (u.assigned.includes("event_date")) moved += 1;
+    }
+    // Exactly the arrival-with-a-time write moves the event.
+    expect(moved).toBe(1);
+  });
 
-      it("writes only columns calendar_events actually has", async () => {
-        await c.call();
-        const unknown = Object.keys(updatePayload()).filter(
-          (k) => !COLUMNS.has(k.toLowerCase()),
-        );
-        expect(unknown).toEqual([]);
-      });
+  it("finds the order's events by order_id, in the order's house, never through tags", () => {
+    for (const u of UPDATES) {
+      expect(u.where).toMatch(/\be\.order_id\s*=\s*p_order_id\b/);
+      expect(u.where).toMatch(/\be\.restaurant_id\s*=\s*p_restaurant_id\b/);
+      expect(u.where).toContain(
+        `e.event_type = '${CalendarEventType.DELIVERY}'`,
+      );
+    }
+    expect(SQL).not.toMatch(/\btags\b/i);
+    // The order is read in the same house as the event.
+    expect(functionBody("delivery_event_follows_its_order")).toMatch(
+      /o\.id\s*=\s*p_order_id\s+AND\s+o\.restaurant_id\s*=\s*p_restaurant_id/i,
+    );
+  });
 
-      it("writes the lowercase status the calendar can read", async () => {
-        await c.call();
-        const p = updatePayload();
-        expect(p.status).toBe(c.status);
-        expect(Object.values(CalendarEventStatus)).toContain(p.status);
-        expect(c.recognisedBy).toContain(p.status);
-        expect(String(p.status)).toBe(String(p.status).toLowerCase());
-        expect(String(p.description)).toContain(c.descriptionContains);
-      });
+  it("uses the arrived and not-coming sets generated from order-transitions.ts", () => {
+    const arrived = [...ORDER_GOODS_ARRIVED_STATUSES];
+    const notComing = ORDER_TERMINAL_STATUSES.filter(
+      (s) => !ORDER_GOODS_ARRIVED_STATUSES.includes(s),
+    );
+    expect(arrived.length).toBeGreaterThan(0);
+    expect(notComing.length).toBeGreaterThan(0);
+    expect(SQL).toContain(`arrived    text[] := ${renderSqlArray(arrived)};`);
+    expect(SQL).toContain(`not_coming text[] := ${renderSqlArray(notComing)};`);
+  });
 
-      // ADR 0062: a quantity that reaches a human states the unit it is in.
-      // `procurement_orders.quantity` is in the order's own `unit_type`, so
-      // the delivered description's `(${order.quantity} bottles)` announced
-      // "5 bottles" for a sixty-bottle delivery — the reader's only summary of
-      // what turned up, off by the pack size.
-      it("never states a quantity in a unit the order was not placed in", async () => {
-        await c.call();
-        const d = String(updatePayload().description ?? "");
-        expect(d).not.toContain("bottles");
-        // Not merely "the wrong word is gone" — the right one is present.
-        if (d.includes(String(order.quantity))) expect(d).toContain("5 cases");
-      });
+  it("never cancels an event whose delivery was recorded", () => {
+    const cancel = UPDATES.filter((u) => u.statuses.includes("cancelled"));
+    expect(cancel).toHaveLength(1);
+    expect(cancel[0].where).toMatch(
+      /NOT\s+IN\s*\(\s*'completed'\s*,\s*'cancelled'\s*\)/i,
+    );
+  });
 
-      it("never sends an uppercase status to the database, in a payload or a filter", async () => {
-        await c.call();
-        const shouty = builderStrings().filter((s) =>
-          UPPERCASE_VOCABULARY.test(s),
-        );
-        expect(shouty).toEqual([]);
-      });
+  it("declares both triggers and the index the lookup uses", () => {
+    expect(SQL).toMatch(
+      /CREATE\s+TRIGGER\s+trg_procurement_order_moves_its_delivery_event\s+AFTER\s+UPDATE\s+OF\s+status\s*,\s*delivered_at\s+ON\s+public\.procurement_orders\s+FOR\s+EACH\s+ROW\b/i,
+    );
+    expect(SQL).toMatch(
+      /CREATE\s+TRIGGER\s+trg_delivery_event_is_born_matching_its_order\s+AFTER\s+INSERT\s+ON\s+public\.calendar_events\s+FOR\s+EACH\s+ROW\b/i,
+    );
+    expect(SQL).toMatch(
+      /CREATE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+idx_calendar_events_order_delivery\s+ON\s+public\.calendar_events\s*\(\s*order_id\s*\)/i,
+    );
+  });
 
-      it("leaves exactly the statuses this direction must not reopen", async () => {
-        await c.call();
+  it("never fails the write a trigger rides on", () => {
+    for (const name of [
+      "procurement_order_moves_its_delivery_event",
+      "delivery_event_is_born_matching_its_order",
+    ]) {
+      const body = functionBody(name);
+      expect(body).toMatch(
+        /EXCEPTION\s+WHEN\s+OTHERS\s+THEN\s+RAISE\s+WARNING/i,
+      );
+      expect(body).toMatch(/RETURN\s+NULL\s*;/i);
+    }
+  });
 
-        // Both directions go through one shared body, so the ONLY thing that
-        // legitimately differs between them is this filter. Pinned, because it
-        // is a decision now and not the accident it used to be: written twice,
-        // the two had drifted to `.not(...in...)` and `.neq(...)` for no
-        // recorded reason.
-        expect(builder.not).toHaveBeenCalledTimes(1);
-        const [column, operator, value] = builder.not.mock.calls[0];
-        expect(column).toBe("status");
-        expect(operator).toBe("in");
-        for (const s of c.leavesAlone)
-          expect(String(value)).toContain(`"${s}"`);
-        const excluded = Object.values(CalendarEventStatus).filter((s) =>
-          String(value).includes(`"${s}"`),
-        );
-        expect(excluded.sort()).toEqual([...c.leavesAlone].sort());
-      });
+  it("runs with the writer's rights, never as definer", () => {
+    expect(SQL).not.toMatch(/SECURITY\s+DEFINER/i);
+    // Declared on each of the three functions, as a clause on its own line.
+    expect(SQL.match(/^SECURITY\s+INVOKER$/gim) ?? []).toHaveLength(3);
+  });
 
-      it("reads the rows back rather than trusting a bare update", async () => {
-        await c.call();
-        expect(builder.select).toHaveBeenCalledWith("id");
-        expect(loggerLogSpy).toHaveBeenCalledTimes(1);
-        expect(String(loggerLogSpy.mock.calls[0][0])).toContain("cal-event-1");
-      });
+  it("changes no existing row when it is applied", () => {
+    // Outside function and DO bodies, no statement writes a row. The backfill
+    // of events already stale is a founder fork (ADR 0284), not this file.
+    const outside = SQL.replace(/\$(\w*)\$[\s\S]*?\$\1\$/g, " ");
+    const writes = outside
+      .split(";")
+      .map((s) => s.trim())
+      .filter((s) => /^(UPDATE|INSERT|DELETE|TRUNCATE|MERGE)\b/i.test(s));
+    expect(writes).toEqual([]);
+  });
 
-      it("READS THE ERROR: a failed query is reported, not swallowed", async () => {
-        // The real pre-fix failure: PostgREST 42703 on the absent `tags`
-        // column, destructured away and never looked at.
-        result = {
-          data: null,
-          error: {
-            code: "42703",
-            message: "column calendar_events.tags does not exist",
-          },
-        };
-
-        await expect(c.call()).resolves.toBeUndefined();
-        expect(loggerErrorSpy).toHaveBeenCalledTimes(1);
-        expect(loggerLogSpy).not.toHaveBeenCalled();
-        const [, ctx] = loggerErrorSpy.mock.calls[0];
-        expect(ctx).toMatchObject({ orderId: ORDER_ID, code: "42703" });
-      });
-
-      it("states that nothing matched instead of looking like success", async () => {
-        result = { data: [], error: null };
-
-        await c.call();
-        expect(loggerErrorSpy).not.toHaveBeenCalled();
-        expect(loggerLogSpy).not.toHaveBeenCalled();
-        expect(loggerWarnSpy).toHaveBeenCalledTimes(1);
-        expect(String(loggerWarnSpy.mock.calls[0][0])).toMatch(
-          /nothing was (cancelled|completed)/i,
-        );
-      });
-
-      it("does not throw when the client itself blows up", async () => {
-        builder.then = (_res: any, rej: any) =>
-          Promise.reject(new Error("socket hang up")).catch(rej);
-
-        await expect(c.call()).resolves.toBeUndefined();
-        expect(loggerErrorSpy).toHaveBeenCalledTimes(1);
-      });
-    });
-  }
+  it("leaves no delivery-event close in the gateway", () => {
+    const service = fs.readFileSync(
+      path.join(__dirname, "procurement.service.ts"),
+      "utf8",
+    );
+    expect(service).not.toMatch(
+      /\b(closeDeliveryCalendarEvent|cancelCalendarEventForOrder|updateCalendarEventForDelivery)\b/,
+    );
+    expect(service).not.toMatch(
+      /\.from\(\s*["']calendar_events["']\s*\)\s*\.update\(/,
+    );
+    // Where the two calls were, a pointer to what replaced them.
+    expect(
+      (service.match(/migration `a_delivery_event_follows_its_order`/g) ?? [])
+        .length,
+    ).toBeGreaterThanOrEqual(2);
+  });
 });
