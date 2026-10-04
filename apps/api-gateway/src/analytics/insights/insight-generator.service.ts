@@ -153,8 +153,18 @@ export const MIN_TREND_OBSERVED = 14;
  *       served: `main` is at 2): a type that names no subject and no period
  *       stores the week it fired in as its `period_key` ("Each firing is one
  *       card").
+ *   4 — 2026-10-04 (ADR 0292): the bundle reads `pos_checks` and
+ *       `wine_consumption_log` whole (`readWholeWindow`), where it used to
+ *       read the first 1,000 rows PostgREST returned and name them a window.
+ *       A version-3 row may hold a sentence computed from that slice: the
+ *       sim's Saturday 2026-08-15 read "97% lower ($274 vs $10.8k)" where the
+ *       whole window says about 14.6% lower. Those rows are refused and
+ *       recomputed, not served until their category's cadence comes round.
+ *       Lanes rec (ADR 0291) and sig (ADR 0272) also take 4 on their own
+ *       branches: whichever of the three lands later takes the next number,
+ *       since a row written by the earlier one predates the later change.
  */
-export const INSIGHT_GENERATOR_VERSION = 3;
+export const INSIGHT_GENERATOR_VERSION = 4;
 
 /**
  * InsightGeneratorService — executes the insight candidate space.
