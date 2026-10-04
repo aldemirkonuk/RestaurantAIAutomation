@@ -23,7 +23,7 @@ Both are "silent rather than wrong", but silent. If either should fail its whole
 - AW01: the /recommendations "Tonight" card now lands on the true last day and stays urgent (lane rec).
 - AW02: menu engineering counts a glass as a bottle, and its 90-day divisor is a separate defect.
 - C02 / F-129: the one-Friday bar, from UTC-day bucketing.
-- AW24: booth checks now count in server stats, because the whole window includes them.
+- AW24: booth checks were already counted in server stats through the old 1,000-row sample. What is new is the booth checks past the cap, which the whole window now includes (lane booth owns AW24). [Corrected 2026-10-04, last call: this first said booth checks "now" count, as if the old sample held none.]
 - AW27: the /cellar library tile is the same cap in web code (lane cellar).
 - `insights/insight-generator.service.ts` `staleVersionCategories`: `.limit(5000)` on `analytics_insights`, above the 1,000 cap, so past 1,000 stale rows one sweep sees only some (restaurant, category) pairs. It heals over later sweeps, and readers refuse stale rows anyway. The guard does not scan this table.
 
