@@ -288,15 +288,30 @@ export function sameValue(
  * 25 at the highest risk are listed" printed a ranking the data did not make
  * (A-070). Trimming the tie group off instead would return nothing at all when
  * the top group is larger than the cut, so the cut grows instead.
+ *
+ * `extendOnlyAbove` bounds that growth. A tie at or below it is not a ranking
+ * the cut could split — the restock cut passes 0, because a 0% stockout risk
+ * is no risk at all: every wine with no demand in the window and nothing on
+ * hand sits "below" a reorder point of 0 at exactly 0%, and extending through
+ * that group listed the whole of it (5 wines with demand and 40 without gave
+ * 45 rows; 11 and 400 gave 411). Above the floor the group is bounded by the
+ * wines that share the edge's risk, each of which sold in the window.
  */
 export function cutKeepingTies<R>(
   rows: R[],
   n: number,
   key: (row: R) => number | null | undefined,
+  opts: { extendOnlyAbove?: number } = {},
 ): R[] {
   if (n <= 0) return [];
   if (rows.length <= n) return rows.slice();
   const edge = key(rows[n - 1]);
+  const floor = opts.extendOnlyAbove;
+  if (
+    floor != null &&
+    !(edge != null && edge > floor && !sameValue(edge, floor))
+  )
+    return rows.slice(0, n);
   let end = n;
   while (end < rows.length && sameValue(key(rows[end]), edge)) end++;
   return rows.slice(0, end);

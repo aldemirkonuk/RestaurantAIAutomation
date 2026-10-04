@@ -516,6 +516,10 @@ export interface RestockRegister {
  * did not make. A tie is the same computed risk, to within floating-point
  * noise (one part in a billion, the gateway's own `sameValue`); two risks that
  * merely PRINT alike (26.8% and 26.9%, both "27%") are not tied.
+ *
+ * A tie at 0% is never extended, as on the gateway's cut: it is the wines with
+ * no demand and nothing on hand, a group with no risk to rank and no height to
+ * draw, and extending through it drew every one of them.
  */
 function barsKeepingTies(
   rows: RestockRegister['reorderList'],
@@ -527,6 +531,7 @@ function barsKeepingTies(
       ? a == null && b == null
       : Math.abs(a - b) <= 1e-9 * Math.max(1, Math.abs(a), Math.abs(b));
   const edge = rows[n - 1].stockoutProbability;
+  if (edge == null || edge <= 0 || same(edge, 0)) return rows.slice(0, n);
   let end = n;
   while (end < rows.length && same(rows[end].stockoutProbability, edge)) end++;
   return rows.slice(0, end);

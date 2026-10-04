@@ -688,10 +688,14 @@ export class AnalyticsService {
       reorderCount: reorderList.length,
       // 25, extended through any tie at row 25 — "the N at the highest risk"
       // is only true when no row tied with the last one listed was left out.
+      // Never through a tie at 0%: that group is every wine with no demand
+      // and nothing on hand, it carries no risk to rank, and extending
+      // through it listed all of them (ADR 0272, fork 3 bound).
       reorderList: E.cutKeepingTies(
         reorderList,
         25,
         (s) => s.stockoutProbability,
+        { extendOnlyAbove: 0 },
       ),
       skus: skus
         // Unpriced rows sort last instead of turning the comparator into NaN.

@@ -1548,4 +1548,15 @@ describe('ReportsNext — the restock bars keep their ties (A-070, ADR 0272)', (
     ];
     expect(drawn(list)).toHaveLength(14);
   });
+
+  it('does not draw the whole 0% group when bar 14 falls in it (fork 3 bound)', () => {
+    // 5 risks, then 20 wines with no demand and nothing on hand at exactly 0%.
+    const list = [
+      ...Array.from({ length: 5 }, (_, i) => row(`a${i}`, 0.6 - i * 0.05)),
+      ...Array.from({ length: 20 }, (_, i) => row(`z${String(i).padStart(2, '0')}`, 0)),
+    ];
+    const bars = drawn(list);
+    expect(bars).toHaveLength(14);
+    for (let i = 0; i < 5; i++) expect(bars).toContain(`Wine a${i} · 1 on hand`);
+  });
 });

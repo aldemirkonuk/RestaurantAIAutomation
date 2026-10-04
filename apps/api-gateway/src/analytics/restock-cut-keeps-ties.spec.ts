@@ -64,12 +64,15 @@ async function reorderList(skus: Sku[]) {
     })),
   );
   jest.spyOn(service as any, "loadConsumption").mockResolvedValue(
-    skus.map((s) => ({
-      masterWineId: `m-${s.id}`,
-      inventoryId: s.id,
-      qty: s.sold,
-      date: dayBack(30),
-    })),
+    // A wine that sold nothing has no consumption row at all.
+    skus
+      .filter((s) => s.sold > 0)
+      .map((s) => ({
+        masterWineId: `m-${s.id}`,
+        inventoryId: s.id,
+        qty: s.sold,
+        date: dayBack(30),
+      })),
   );
   return service.getInventoryScience("r1");
 }
@@ -98,5 +101,54 @@ describe("the restock cut keeps its ties (A-070, ADR 0272)", () => {
       (s: any) => s.id,
     );
     expect(back).toEqual(forward);
+  });
+
+  it("does not list the whole 0% group when the 25th row falls in it (fork 3 bound)", async () => {
+    // The lane verifier's probe: 5 wines with demand below their reorder
+    // point, and 40 that sold nothing and hold nothing, "below" a reorder
+    // point of 0 at exactly 0% risk. Extending the cut through that tie
+    // listed all 45; the code before ADR 0272 listed 25.
+    const withDemand = [0, 1, 2, 3, 4].map((cover, i) => ({
+      id: `d${i}`,
+      sold: 9,
+      cover,
+    }));
+    const none = Array.from({ length: 40 }, (_, i) => ({
+      id: `z${String(i).padStart(2, "0")}`,
+      sold: 0,
+      cover: 0,
+    }));
+    const out = await reorderList([...none, ...withDemand]);
+    expect(out.reorderCount).toBe(45);
+    const ids = out.reorderList.map((s: any) => s.id);
+    expect(ids).toHaveLength(25);
+    // Every wine at risk is listed, first; the 0% fill is in name order,
+    // whatever order the database returned.
+    expect(ids.slice(0, 5)).toEqual(["d0", "d1", "d2", "d3", "d4"]);
+    expect(ids.slice(5)).toEqual(none.slice(0, 20).map((s) => s.id));
+    const reversed = await reorderList([...withDemand, ...none].reverse());
+    expect(reversed.reorderList.map((s: any) => s.id)).toEqual(ids);
+  });
+
+  it("does not call two risks that merely print alike a tie (control: passes before ADR 0272 too)", async () => {
+    // 24 distinct risks, then two wines whose risks differ in the fourth
+    // decimal and print as the same whole percent, straddling row 25.
+    const distinct = Array.from({ length: 24 }, (_, i) => ({
+      id: `d${String(i).padStart(2, "0")}`,
+      sold: 9,
+      cover: i,
+    }));
+    const near = [
+      { id: "pa", sold: 9, cover: 24 },
+      { id: "pb", sold: 9, cover: 24.05 },
+    ];
+    const out = await reorderList([...distinct, ...near]);
+    const risk = (id: string) =>
+      out.skus.find((s: any) => s.id === id)!.stockoutProbability as number;
+    expect(Math.round(risk("pa") * 100)).toBe(Math.round(risk("pb") * 100));
+    expect(risk("pa")).not.toBe(risk("pb"));
+    const ids = out.reorderList.map((s: any) => s.id);
+    expect(ids).toHaveLength(25);
+    expect(ids[24]).toBe("pa");
   });
 });
