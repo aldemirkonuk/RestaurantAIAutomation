@@ -20,7 +20,7 @@ import { useState } from 'react';
 import { Seal } from '../../../components/mudavym';
 import { EM, clock, longDay, sinceOrUntil, span } from './cal-format';
 import { isDelivery, type CalEvent, type CalendarData } from './useCalendarNextData';
-import { DayRecordMark, SkyMark } from './SkyMark';
+import { DayRecordMark, SkyMark, TakingsMark } from './SkyMark';
 import { addDays, dayKey, parseDayKey, startOfWeek } from './cal-format';
 
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -152,13 +152,16 @@ export function DayLedger({
       </div>
 
       {/* The sky over this day, or the record it holds — whichever side of
-          today it falls on. Attribution travels with the mark (ADR 0111 §2). */}
+          today it falls on. Attribution travels with the mark (ADR 0111 §2).
+          A passed day's net takings sit beside its covers HERE, in the opened
+          day only; the month cell stays covers-only (ADR 0287). */}
       <div className="cn-row" style={{ gap: 12, marginBottom: 6 }}>
         {record ? (
           <DayRecordMark day={record} />
         ) : (
           <SkyMark reading={sky} />
         )}
+        {record && <TakingsMark day={record} currency={data.record.window?.currency} />}
         {sky && record && <SkyMark reading={sky} />}
       </div>
       {record && (

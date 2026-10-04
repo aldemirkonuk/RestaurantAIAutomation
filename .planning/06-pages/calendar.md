@@ -171,6 +171,11 @@ unchanged with the flag off):
   was forecast *before* the day" recoverable later
 - **A passed day holds the record.** Covers and sales from `pos_checks` beside the forecast
   that stood before the day began, with its lead time in days
+  **[CORRECTED 2026-10-03, [ADR 0287](../decisions/0287-a-passed-days-panel-shows-its-net-takings-the-cell-stays-covers.md):
+  until then the page drew covers only, and the "sales" the gateway sent was the gross
+  `total`, read by nothing. Now: covers in the cell; NET takings (the sum of
+  `pos_checks.subtotal`) in the opened day's panel, with their currency, and a partial
+  figure says "from N of M checks". Who sees the figure is fork F1 of 0287, open.]**
 - **A passed day states the forecast's error, from 2026-09-04.** The nearest reporting
   station's observations are recorded beside the forecast, so `prediction_outcomes` now
   receives the **first real `accuracy_score` this product has ever produced**: the absolute
@@ -418,7 +423,7 @@ and never pooled**, and the Google app **goes for verification now**.
 |---|---|---|
 | 1 — the coordinate | The Google Places selection's point captured at sign-up and written with the restaurant; a backfill script for the 13 existing rows with a dry run, keyed on `google_place_id` | `apps/web/src/pages/Register.tsx`, `components/ui/PlacesAutocomplete.tsx`, `contexts/AuthContext.tsx`, `apps/api-gateway/src/auth/auth.service.ts` `coordinateColumns`, `auth/dto/register-restaurant.dto.ts`, `scripts/backfill_restaurant_coordinates.py` |
 | 2 — the weather overlay | `WeatherProvider` interface + `NwsWeatherProvider` (points → gridpoint → forecast, cached point resolution, descriptive User-Agent, `/alerts/active`), `weather_readings`, `GET /calendar/weather`, and the cell mark | `apps/api-gateway/src/weather/`, `supabase/migrations/20260903162000_a_forecast_names_its_issuer.sql`, `pages/calendar/next/SkyMark.tsx` |
-| 3 — the passed day | Covers/sales per day from `pos_checks` with closures hatched, paired with the forecast that stood *before* the day, written to `prediction_outcomes` with a NULL score | `apps/api-gateway/src/calendar/recorded-days.service.ts`, `day-record.service.ts`, `GET /calendar/day-record` |
+| 3 — the passed day | Covers/sales per day from `pos_checks` **[2026-10-03, ADR 0287: covers in the cell; net takings in the day panel]** with closures hatched, paired with the forecast that stood *before* the day, written to `prediction_outcomes` with a NULL score | `apps/api-gateway/src/calendar/recorded-days.service.ts`, `day-record.service.ts`, `GET /calendar/day-record` |
 | — the iCal one-liners | `inline` not `attachment`; the restaurant's IANA zone not the server's; `X-PUBLISHED-TTL`/`REFRESH-INTERVAL`; absolute + `webcal://` URL | `calendar.controller.ts`, `calendar.service.ts`, `calendar/zoned-time.ts` |
 
 **The structural idea, and why it is not the veto DESIGN-FOUNDATION §6 wrote.** §6 forbids

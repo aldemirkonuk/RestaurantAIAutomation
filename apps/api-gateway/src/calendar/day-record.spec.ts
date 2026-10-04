@@ -34,7 +34,7 @@ describe("checkBusinessDate", () => {
       checkBusinessDate({
         opened_at: "2026-09-02T23:40:00Z",
         closed_at: "2026-09-03T00:20:00Z",
-        total: 10,
+        subtotal: 10,
         covers: 2,
       }),
     ).toBe("2026-09-03");
@@ -45,7 +45,7 @@ describe("checkBusinessDate", () => {
       checkBusinessDate({
         opened_at: "2026-09-02T19:00:00Z",
         closed_at: null,
-        total: 10,
+        subtotal: 10,
         covers: 2,
       }),
     ).toBe("2026-09-02");
@@ -53,15 +53,101 @@ describe("checkBusinessDate", () => {
 });
 
 describe("foldChecksToDays", () => {
-  it("sums totals and covers per day", () => {
+  it("sums net takings and covers per day", () => {
     const days = foldChecksToDays([
-      { opened_at: "2026-09-02T19:00:00Z", closed_at: null, total: "40.50", covers: 2 },
-      { opened_at: "2026-09-02T20:00:00Z", closed_at: null, total: "59.50", covers: 4 },
+      {
+        opened_at: "2026-09-02T19:00:00Z",
+        closed_at: null,
+        subtotal: "40.50",
+        covers: 2,
+      },
+      {
+        opened_at: "2026-09-02T20:00:00Z",
+        closed_at: null,
+        subtotal: "59.50",
+        covers: 4,
+      },
     ]);
     const day = days.get("2026-09-02")!;
     expect(day.checkCount).toBe(2);
-    expect(day.sales).toBe(100);
+    expect(day.netSales).toBe(100);
+    expect(day.netSalesCheckCount).toBe(2);
     expect(day.covers).toBe(6);
+  });
+
+  it("sums the NET subtotal and never the gross total (ADR 0287)", () => {
+    // Two checks shaped like the walk's: total = net + 8.63% tax + 4%
+    // surcharge. The day took 200 net; 225.26 is what it took with the tax
+    // the house hands on, which is not the house's money.
+    const rows = [
+      {
+        opened_at: "2026-09-02T19:00:00Z",
+        closed_at: null,
+        subtotal: "100.00",
+        total: "112.63",
+        covers: 2,
+      },
+      {
+        opened_at: "2026-09-02T20:00:00Z",
+        closed_at: null,
+        subtotal: "100.00",
+        total: "112.63",
+        covers: 2,
+      },
+    ];
+    const day = foldChecksToDays(rows).get("2026-09-02")!;
+    expect(day.netSales).toBe(200);
+    expect(day.netSales).not.toBeCloseTo(225.26, 2);
+    expect(day).not.toHaveProperty("sales");
+  });
+
+  it("leaves net takings NULL, never 0 and never the gross, when no check carried a subtotal", () => {
+    const rows = [
+      {
+        opened_at: "2026-09-02T19:00:00Z",
+        closed_at: null,
+        subtotal: null,
+        total: "112.63",
+        covers: 2,
+      },
+      {
+        opened_at: "2026-09-02T20:00:00Z",
+        closed_at: null,
+        subtotal: null,
+        total: "56.31",
+        covers: 1,
+      },
+    ];
+    const day = foldChecksToDays(rows).get("2026-09-02")!;
+    expect(day.checkCount).toBe(2);
+    expect(day.netSales).toBeNull();
+    expect(day.netSalesCheckCount).toBe(0);
+  });
+
+  it("counts the checks a partial net figure came from", () => {
+    // One check carried a subtotal, one did not. The figure is that one
+    // subtotal -- not topped up with the other's total -- and the count says
+    // it is one of two, so the page can say the day took more than this.
+    const rows = [
+      {
+        opened_at: "2026-09-02T19:00:00Z",
+        closed_at: null,
+        subtotal: "80.00",
+        total: "90.10",
+        covers: 2,
+      },
+      {
+        opened_at: "2026-09-02T20:00:00Z",
+        closed_at: null,
+        subtotal: null,
+        total: "45.05",
+        covers: 1,
+      },
+    ];
+    const day = foldChecksToDays(rows).get("2026-09-02")!;
+    expect(day.checkCount).toBe(2);
+    expect(day.netSalesCheckCount).toBe(1);
+    expect(day.netSales).toBe(80);
   });
 
   it("leaves covers NULL when no check on the day carried one", () => {
@@ -70,18 +156,33 @@ describe("foldChecksToDays", () => {
     // the absence-reported-as-health fault in the column the covers model will
     // one day be built on.
     const days = foldChecksToDays([
-      { opened_at: "2026-09-02T19:00:00Z", closed_at: null, total: "40.50", covers: null },
+      {
+        opened_at: "2026-09-02T19:00:00Z",
+        closed_at: null,
+        subtotal: "40.50",
+        covers: null,
+      },
     ]);
     const day = days.get("2026-09-02")!;
     expect(day.checkCount).toBe(1);
-    expect(day.sales).toBe(40.5);
+    expect(day.netSales).toBe(40.5);
     expect(day.covers).toBeNull();
   });
 
   it("counts a check that carried covers even when a sibling did not", () => {
     const days = foldChecksToDays([
-      { opened_at: "2026-09-02T19:00:00Z", closed_at: null, total: "10", covers: null },
-      { opened_at: "2026-09-02T20:00:00Z", closed_at: null, total: "10", covers: 3 },
+      {
+        opened_at: "2026-09-02T19:00:00Z",
+        closed_at: null,
+        subtotal: "10",
+        covers: null,
+      },
+      {
+        opened_at: "2026-09-02T20:00:00Z",
+        closed_at: null,
+        subtotal: "10",
+        covers: 3,
+      },
     ]);
     expect(days.get("2026-09-02")!.covers).toBe(3);
   });
@@ -98,7 +199,8 @@ describe("reconciliationLine", () => {
   const day = (over = {}) => ({
     businessDate: "2026-09-02",
     checkCount: 3,
-    sales: 300,
+    netSales: 300,
+    netSalesCheckCount: 3,
     covers: 12,
     excluded: false,
     exclusionReason: null,
@@ -142,8 +244,32 @@ function makeService(opts: {
   weather: any;
   existingOutcomes?: any[];
   outcomeReadError?: { message: string };
+  /** `restaurants.currency` as stored; `undefined` means the row says USD. */
+  currency?: string | null;
+  currencyReadError?: { message: string };
 }) {
   const inserted: any[][] = [];
+
+  // `restaurants` answers the one-row currency read; every other table is the
+  // outcome ledger, as before.
+  const restaurantsChain = (): any => {
+    const c: any = {
+      select: () => c,
+      eq: () => c,
+      maybeSingle: () =>
+        Promise.resolve(
+          opts.currencyReadError
+            ? { data: null, error: opts.currencyReadError }
+            : {
+                data: {
+                  currency: opts.currency === undefined ? "USD" : opts.currency,
+                },
+                error: null,
+              },
+        ),
+    };
+    return c;
+  };
 
   const outcomesChain = (): any => {
     const c: any = {
@@ -162,7 +288,12 @@ function makeService(opts: {
     return c;
   };
 
-  const db = { supabase: { from: () => outcomesChain() } } as never;
+  const db = {
+    supabase: {
+      from: (table: string) =>
+        table === "restaurants" ? restaurantsChain() : outcomesChain(),
+    },
+  } as never;
   const recorded = { windowFor: async () => opts.recorded } as never;
   const weather = { windowFor: async () => opts.weather } as never;
 
@@ -205,7 +336,8 @@ const LEDGER = (over = {}) => ({
     {
       businessDate: YESTERDAY,
       checkCount: 12,
-      sales: 3400,
+      netSales: 3400,
+      netSalesCheckCount: 12,
       covers: 41,
       excluded: false,
       exclusionReason: null,
@@ -280,7 +412,8 @@ describe("DayRecordService", () => {
           {
             businessDate: YESTERDAY,
             checkCount: 0,
-            sales: null,
+            netSales: null,
+            netSalesCheckCount: 0,
             covers: null,
             excluded: true,
             exclusionReason: "Closed for a private event",
@@ -317,7 +450,8 @@ describe("DayRecordService", () => {
           {
             businessDate: today,
             checkCount: 3,
-            sales: 100,
+            netSales: 100,
+            netSalesCheckCount: 3,
             covers: 6,
             excluded: false,
             exclusionReason: null,
@@ -384,7 +518,8 @@ describe("reconciliationLine — the weather half", () => {
   const day = {
     businessDate: "2026-09-02",
     checkCount: 3,
-    sales: 300,
+    netSales: 300,
+    netSalesCheckCount: 3,
     covers: 12,
     excluded: false,
     exclusionReason: null,
@@ -517,7 +652,8 @@ describe("DayRecordService — writing the first real accuracy_score", () => {
           {
             businessDate: YESTERDAY,
             checkCount: 0,
-            sales: null,
+            netSales: null,
+            netSalesCheckCount: 0,
             covers: null,
             excluded: true,
             exclusionReason: "Closed for a private event",
@@ -532,5 +668,131 @@ describe("DayRecordService — writing the first real accuracy_score", () => {
     // closure — a closed day must never read as a quiet one.
     expect(out.days[0].line).toContain("Closed — Closed for a private event");
     expect(inserted.length <= 1).toBe(true);
+  });
+});
+
+/* ── the day's takings are NET, and travel with their currency (ADR 0287) ─── */
+
+describe("RecordedDaysService — reads the net column", () => {
+  function fakeDb(checks: any[]) {
+    const selects: Array<{ table: string; columns: string }> = [];
+    const from = (table: string) => {
+      const c: any = {
+        select: (columns: string) => {
+          selects.push({ table, columns });
+          return c;
+        },
+        eq: () => c,
+        gte: () => c,
+        lt: () => c,
+        lte: () => c,
+        limit: () => c,
+        then: (resolve: (v: unknown) => unknown) =>
+          Promise.resolve({
+            data: table === "pos_checks" ? checks : [],
+            error: null,
+          }).then(resolve),
+      };
+      return c;
+    };
+    return { db: { supabase: { from } } as never, selects };
+  }
+
+  it("selects pos_checks.subtotal, not the gross total, and folds it as netSales", async () => {
+    const { db, selects } = fakeDb([
+      {
+        opened_at: "2026-09-02T19:00:00Z",
+        closed_at: null,
+        subtotal: "100.00",
+        covers: 2,
+      },
+    ]);
+    const out = await new RecordedDaysService(db).windowFor(
+      "r1",
+      "2026-09-02",
+      "2026-09-02",
+    );
+
+    const checkRead = selects.find(
+      (s) => s.table === "pos_checks" && s.columns !== "id",
+    )!;
+    const columns = checkRead.columns.split(",").map((c) => c.trim());
+    expect(columns).toContain("subtotal");
+    expect(columns).not.toContain("total");
+    expect(out.days[0].netSales).toBe(100);
+    expect(out.days[0].netSalesCheckCount).toBe(1);
+  });
+});
+
+describe("DayRecordService — net takings and the house currency", () => {
+  it("passes the day's net takings through, with the count they came from", async () => {
+    const { service } = makeService({
+      recorded: LEDGER({
+        days: [
+          {
+            businessDate: YESTERDAY,
+            checkCount: 5,
+            netSales: 1234.5,
+            netSalesCheckCount: 3,
+            covers: 20,
+            excluded: false,
+            exclusionReason: null,
+          },
+        ],
+      }),
+      weather: WEATHER(),
+    });
+
+    const out = await service.windowFor("r1", YESTERDAY, YESTERDAY);
+    expect(out.days[0].recorded).toMatchObject({
+      netSales: 1234.5,
+      netSalesCheckCount: 3,
+      checkCount: 5,
+    });
+    expect(out.days[0].recorded).not.toHaveProperty("sales");
+  });
+
+  it("sends the house's currency with its money", async () => {
+    const { service } = makeService({ recorded: LEDGER(), weather: WEATHER() });
+    const out = await service.windowFor("r1", YESTERDAY, YESTERDAY);
+    expect(out.currency).toEqual({ code: "USD", readable: true });
+  });
+
+  it("says a house never recorded a currency -- null, never dollars", async () => {
+    const { service } = makeService({
+      recorded: LEDGER(),
+      weather: WEATHER(),
+      currency: null,
+    });
+    const out = await service.windowFor("r1", YESTERDAY, YESTERDAY);
+    expect(out.currency).toEqual({ code: null, readable: true });
+  });
+
+  it("keeps an unreadable currency apart from one never recorded", async () => {
+    const { service } = makeService({
+      recorded: LEDGER(),
+      weather: WEATHER(),
+      currencyReadError: { message: "connection reset" },
+    });
+    const out = await service.windowFor("r1", YESTERDAY, YESTERDAY);
+    expect(out.currency).toEqual({ code: null, readable: false });
+    // The day itself still comes back: a currency read is not the ledger.
+    expect(out.days[0].recorded?.netSales).toBe(3400);
+  });
+
+  it("keeps the pair's takings under a key that names their basis", async () => {
+    const { service, inserted } = makeService({
+      recorded: LEDGER(),
+      weather: WEATHER(),
+    });
+
+    await service.windowFor("r1", YESTERDAY, YESTERDAY);
+    const actual = inserted[0][0].actual_value;
+    expect(actual.netSales).toBe(3400);
+    expect(actual.netSalesCheckCount).toBe(12);
+    expect(actual.netSalesCurrency).toEqual({ code: "USD", readable: true });
+    // Rows written before ADR 0287 carry `sales`, which was GROSS. A new row
+    // must never write that key, or the two bases would read as one series.
+    expect(actual).not.toHaveProperty("sales");
   });
 });

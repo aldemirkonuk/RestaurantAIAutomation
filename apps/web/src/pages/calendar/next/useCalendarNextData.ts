@@ -192,12 +192,20 @@ export interface WeatherWindow {
  * cover count: a POS that does not send them and a night nobody came are
  * different facts. `line` is the sentence the cell prints, built by the
  * gateway so the page cannot soften it.
+ *
+ * `recorded.netSales` is the day's NET takings, the sum of `pos_checks.subtotal`
+ * before tax and surcharge (ADR 0287), drawn in the day panel and never in the
+ * cell. `null` when no check carried a subtotal; `netSalesCheckCount` below
+ * `checkCount` means a partial sum. Both keys are optional on purpose: a
+ * payload without them (a gateway from before ADR 0287) draws no takings at
+ * all, rather than "net sales not recorded" for a figure that was never asked.
  */
 export interface ReconciledDay {
   businessDate: string;
   recorded: {
     covers: number | null;
-    sales: number | null;
+    netSales?: number | null;
+    netSalesCheckCount?: number;
     checkCount: number;
     excluded: boolean;
     exclusionReason: string | null;
@@ -244,6 +252,11 @@ export interface DayRecordWindow {
   from: string;
   to: string;
   days: ReconciledDay[];
+  /**
+   * The currency every `netSales` is in (ADR 0117 Q25). `code: null` is a
+   * house that never recorded one; `readable: false` is a read that failed.
+   */
+  currency?: { code: string | null; readable: boolean };
   posConnected: boolean;
   recordedRefusal: string | null;
   weatherRefusal: string | null;

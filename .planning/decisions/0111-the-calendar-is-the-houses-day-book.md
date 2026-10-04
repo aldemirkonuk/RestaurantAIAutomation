@@ -304,6 +304,11 @@ impact saturating past a point
   cannot beat `seasonalNaive` on RMSSE is not shown at all.
 - **Day cell.** `96 ±21 · covers · forecast` in tabular mono, ink-2. Past days show
   `131 · covers · recorded` in ink-1 with `forecast said 124 · out by +7` beneath.
+  **[2026-10-03, [ADR 0287](0287-a-passed-days-panel-shows-its-net-takings-the-cell-stays-covers.md):
+  the cell stays covers-only, as drawn here (founder, AW22: *"Day panel only
+  (Recommended)"*). A passed day's NET takings are drawn in the opened day's panel
+  beside its covers, never in the cell or its hover title. This ADR still governs the
+  cell; 0287 governs the panel.]**
 
 #### 2c. Price — a trend, never a quote
 

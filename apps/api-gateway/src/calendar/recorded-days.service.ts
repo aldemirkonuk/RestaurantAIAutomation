@@ -12,6 +12,18 @@ import { DatabaseService } from "../database/database.service";
  * deliberately the dullest code in the calendar: it sums two columns and counts
  * rows. There is no model here, no fill, no smoothing.
  *
+ * THE MONEY IS NET (ADR 0287)
+ * ---------------------------
+ * The money column summed is `pos_checks.subtotal`, before tax and surcharge,
+ * and never `total`: the founder's AW17 answer, *"Net sales (Recommended)"*,
+ * and the figure the day panel prints as "net sales". Before ADR 0287 this
+ * file summed `total` under the name `sales`, and nothing drew it; `total` is
+ * gross (the analytics walk measured it as net + 8.63% tax + 4% surcharge,
+ * AW17). A check that came with no subtotal adds nothing to the day's net and
+ * is COUNTED as missing (`netSalesCheckCount`), so a partial figure says it is
+ * partial. It never falls back to that check's `total`, because a sum of net
+ * and gross is neither.
+ *
  * WHY IT IS NOT `GET /analytics/pos-revenue`
  * ------------------------------------------
  * That endpoint answers a WINDOW — one revenue figure and a sparse
@@ -45,8 +57,18 @@ export interface RecordedDay {
   businessDate: string;
   /** Non-voided checks that closed on this day. */
   checkCount: number;
-  /** Sum of `pos_checks.total`. Null only when no check carried a total. */
-  sales: number | null;
+  /**
+   * The day's NET takings: the sum of `pos_checks.subtotal` (before tax and
+   * surcharge) over the checks that carried one. NULL when no check on the day
+   * carried a subtotal: never 0, and never the gross `total` in its place
+   * (ADR 0287).
+   */
+  netSales: number | null;
+  /**
+   * How many of `checkCount` carried a subtotal. Below `checkCount`, `netSales`
+   * is a partial sum and the page says "from N of M checks".
+   */
+  netSalesCheckCount: number;
   /** Sum of `pos_checks.covers`. NULL when no check on the day carried one. */
   covers: number | null;
   /** True when a human ruled this day out of the baselines. */
@@ -75,7 +97,8 @@ export interface RecordedWindow {
 interface CheckRow {
   opened_at: string | null;
   closed_at: string | null;
-  total: string | number | null;
+  /** Net of tax and surcharge. `total` is deliberately not read (ADR 0287). */
+  subtotal: string | number | null;
   covers: number | null;
 }
 
@@ -118,7 +141,8 @@ export function foldChecksToDays(rows: CheckRow[]): Map<string, RecordedDay> {
     const day = days.get(date) ?? {
       businessDate: date,
       checkCount: 0,
-      sales: null,
+      netSales: null,
+      netSalesCheckCount: 0,
       covers: null,
       excluded: false,
       exclusionReason: null,
@@ -126,8 +150,14 @@ export function foldChecksToDays(rows: CheckRow[]): Map<string, RecordedDay> {
 
     day.checkCount += 1;
 
-    const total = num(row.total);
-    if (total !== null) day.sales = (day.sales ?? 0) + total;
+    // Net only. A check with no subtotal stays out of the sum and out of the
+    // carried count, so the page can say the figure is partial. It is never
+    // replaced by its `total`: that is gross, and a sum of the two is neither.
+    const subtotal = num(row.subtotal);
+    if (subtotal !== null) {
+      day.netSales = (day.netSales ?? 0) + subtotal;
+      day.netSalesCheckCount += 1;
+    }
 
     // Null covers stay null. A POS that does not send cover counts must not
     // produce a day reading "0 covers" beside a day of real trading.
@@ -162,7 +192,7 @@ export class RecordedDaysService {
 
     const { data: checks, error: checksError } = await client
       .from("pos_checks")
-      .select("opened_at, closed_at, total, covers")
+      .select("opened_at, closed_at, subtotal, covers")
       .eq("restaurant_id", restaurantId)
       // Voided checks are not trading. The same filter goal progress applies
       // (goals.service.ts:740), so the two readers cannot drift.
@@ -234,7 +264,8 @@ export class RecordedDaysService {
       const day = days.get(date) ?? {
         businessDate: date,
         checkCount: 0,
-        sales: null,
+        netSales: null,
+        netSalesCheckCount: 0,
         covers: null,
         excluded: false,
         exclusionReason: null,

@@ -38,7 +38,7 @@ import {
   Sun,
   Wind,
 } from 'lucide-react';
-import { EM } from './cal-format';
+import { EM, takings, type HouseCurrency } from './cal-format';
 import type { ReconciledDay, WeatherReading } from './useCalendarNextData';
 
 /**
@@ -173,6 +173,72 @@ export function DayRecordMark({ day }: { day: ReconciledDay }) {
           {advance.leadDays > 0 ? `, ${advance.leadDays}d ahead` : ', same day'}
         </span>
       )}
+    </span>
+  );
+}
+
+/**
+ * What a passed day TOOK, net — ADR 0287. Drawn in the day panel only.
+ *
+ * The founder's two answers, 2026-10-04: AW22 *"Day panel only
+ * (Recommended)"*, so the month cell stays covers-only (ADR 0111 §2b) and this
+ * mark lives beside `DayRecordMark` in `DayLedger` and nowhere else; and AW17
+ * *"Net sales (Recommended)"*, so the figure is the sum of the checks'
+ * subtotals, before tax and surcharge, and it says "net".
+ *
+ * Three states, none of them a zero:
+ *   complete — every check carried a net figure: the amount, "net sales · recorded".
+ *   partial  — some did not: the amount, "net sales · from N of M checks". The
+ *              day took MORE than this, and the title says why.
+ *   none     — no check carried one: the em dash, "net sales not recorded".
+ *
+ * It draws nothing for a day with no checks (the record mark already says
+ * so), and nothing when the payload carries no net figure at all: a gateway
+ * from before ADR 0287 sent no such key, and "not recorded" would then be a
+ * claim about a question nobody asked.
+ */
+export function TakingsMark({
+  day,
+  currency,
+}: {
+  day: ReconciledDay;
+  currency: HouseCurrency | null | undefined;
+}) {
+  const record = day.recorded;
+  if (!record || record.checkCount <= 0) return null;
+  const { netSales, netSalesCheckCount: carried, checkCount } = record;
+  if (netSales === undefined || typeof carried !== 'number') return null;
+
+  const checks = (n: number) => `${n} check${n === 1 ? '' : 's'}`;
+
+  if (netSales === null) {
+    return (
+      <span
+        className="cn-record"
+        data-takings="none"
+        title={`None of this day's ${checks(checkCount)} came from the register with a net figure (before tax and surcharge), so the day's net sales are unknown.`}
+      >
+        <span className="cn-record-figure">{EM}</span>
+        <span className="cn-record-tag">net sales not recorded</span>
+      </span>
+    );
+  }
+
+  const partial = carried < checkCount;
+  return (
+    <span
+      className="cn-record"
+      data-takings={partial ? 'partial' : 'complete'}
+      title={
+        partial
+          ? `Net sales, before tax and surcharge, from ${carried} of this day's ${checks(checkCount)}. The other ${checks(checkCount - carried)} came from the register with no net figure, so the day took more than this.`
+          : `Net sales, before tax and surcharge, from all ${checks(checkCount)} on this day.`
+      }
+    >
+      <span className="cn-record-figure">{takings(netSales, currency)}</span>
+      <span className="cn-record-tag">
+        {partial ? `net sales · from ${carried} of ${checkCount} checks` : 'net sales · recorded'}
+      </span>
     </span>
   );
 }
