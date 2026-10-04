@@ -9,7 +9,8 @@
 -- error itself), so `psql -v ON_ERROR_STOP=1 -f` or the PGlite harness stops
 -- at the first one. Run it on a database built from supabase/migrations. It
 -- must FAIL on a build without that migration (T1: neither function has
--- p_occurred_at) and PASS with it. One transaction, rolled back: it leaves
+-- p_occurred_at) and PASS with it. T6 also pins that the record_glass_pour
+-- it defines is a_short_pour_opens_the_next_bottle's (ADR 0285), dated. One transaction, rolled back: it leaves
 -- nothing behind. All fixtures are SYNTHETIC, keyed by fresh uuids, so a
 -- populated database cannot collide with them.
 --
@@ -21,7 +22,8 @@ begin;
 create temporary table t_fx (k text primary key, v uuid) on commit drop;
 insert into t_fx values
   ('house', gen_random_uuid()), ('other_house', gen_random_uuid()),
-  ('wine', gen_random_uuid()), ('item', gen_random_uuid());
+  ('wine', gen_random_uuid()), ('item', gen_random_uuid()),
+  ('wine2', gen_random_uuid()), ('item2', gen_random_uuid());
 
 insert into public.restaurants (id, name, slug)
 select v, 'SYNTHETIC postime house', 'syn-postime-' || left(replace(v::text, '-', ''), 16)
@@ -29,11 +31,12 @@ select v, 'SYNTHETIC postime house', 'syn-postime-' || left(replace(v::text, '-'
 
 insert into public.master_wine_library (id, wine_id, name, primary_type)
 select v, 'SYN-PT-' || left(replace(v::text, '-', ''), 12), 'SYNTHETIC Kalecik Karası', 'red'
-  from t_fx where k = 'wine';
+  from t_fx where k in ('wine', 'wine2');
 
 insert into public.restaurant_inventory (id, restaurant_id, master_wine_id, bottle_size_ml, pour_size_ml)
-select (select v from t_fx where k = 'item'), (select v from t_fx where k = 'house'),
-       (select v from t_fx where k = 'wine'), 750, 150;
+select (select v from t_fx where k = i), (select v from t_fx where k = 'house'),
+       (select v from t_fx where k = w), 750, 150
+  from (values ('item', 'wine'), ('item2', 'wine2')) as x(i, w);
 
 -- T1 exactly one of each function, each with p_occurred_at defaulting to NULL.
 do $$
@@ -188,6 +191,65 @@ begin
   select count(*) into v_after from public.inventory_transactions where inventory_id = v_item;
   assert v_state = '42501' and v_after = v_before,
     format('T5 FAIL refusal state %s, ledger rows %s -> %s', v_state, v_before, v_after);
+end $$;
+
+-- T6 ADR 0285's draw, dated (a_short_pour_opens_the_next_bottle merged first;
+-- this migration carries its body). A stranded lot (0 sealed + 25 ml) beside a
+-- newer lot of 3 sealed: the pour finishes the 25 ml and opens the next bottle
+-- from the OTHER lot, and that ledger row is dated by the sale. Then a 1500 ml
+-- pour opens two bottles at once; it writes ONE ledger row of -2, dated by its
+-- own sale. pour_events.created_at stays entry time (nothing reads it as the
+-- time of the pour; ADR 0281).
+do $$
+declare
+  v_item uuid := (select v from t_fx where k = 'item2');
+  v_past timestamptz := now() - interval '9 days 4 hours';
+  v_past2 timestamptz := now() - interval '2 days 1 hour';
+  v_res jsonb;
+  v_state text;
+  v_rows_before integer;
+  v_rows_after integer;
+  r record;
+begin
+  insert into public.inventory_lots
+    (restaurant_id, inventory_id, master_wine_id, qty, open_bottle_ml, received_at)
+  select ri.restaurant_id, ri.id, ri.master_wine_id, x.q, x.o, now() - make_interval(days => x.d)
+    from public.restaurant_inventory ri, (values (0, 25, 10), (3, 0, 5)) as x(q, o, d)
+   where ri.id = v_item;
+
+  v_res := public.record_glass_pour(
+    p_inventory_id => v_item, p_pours => 1, p_pour_ml => 150,
+    p_source => 'pos', p_reason => 'SYNTHETIC stranded',
+    p_idempotency_key => 'postime-t6-stranded-' || v_item::text,
+    p_occurred_at => v_past);
+  select string_agg(qty || '+' || open_bottle_ml, ' | ' order by received_at, created_at, id) into v_state
+    from public.inventory_lots where inventory_id = v_item and stock_state = 'live';
+  assert (v_res->>'bottles_opened')::int = 1 and v_state = '0+0 | 2+625',
+    format('T6 FAIL the stranded pour did not open the next lot''s bottle: %s, lots %s', v_res, v_state);
+  select transaction_date, created_at, quantity_change into r
+    from public.inventory_transactions where id = (v_res->>'txn')::uuid;
+  assert r.transaction_date = v_past and r.created_at = now() and r.quantity_change = -1,
+    format('T6 FAIL the bottle opened from the next lot is dated %s (created %s, change %s), expected %s',
+           r.transaction_date, r.created_at, r.quantity_change, v_past);
+  select created_at into r from public.pour_events
+   where idempotency_key = 'postime-t6-stranded-' || v_item::text;
+  assert r.created_at = now(), format('T6 FAIL pour_events.created_at %s is not entry time', r.created_at);
+
+  select count(*) into v_rows_before from public.inventory_transactions where inventory_id = v_item;
+  v_res := public.record_glass_pour(
+    p_inventory_id => v_item, p_pours => 1, p_pour_ml => 1500,
+    p_source => 'manual', p_reason => 'SYNTHETIC large',
+    p_idempotency_key => 'postime-t6-large-' || v_item::text,
+    p_occurred_at => v_past2);
+  select count(*) into v_rows_after from public.inventory_transactions where inventory_id = v_item;
+  select string_agg(qty || '+' || open_bottle_ml, ' | ' order by received_at, created_at, id) into v_state
+    from public.inventory_lots where inventory_id = v_item and stock_state = 'live';
+  assert (v_res->>'bottles_opened')::int = 2 and v_rows_after = v_rows_before + 1 and v_state = '0+0 | 0+625',
+    format('T6 FAIL the 1500 ml pour: %s, ledger rows %s -> %s, lots %s', v_res, v_rows_before, v_rows_after, v_state);
+  select transaction_date, quantity_change into r
+    from public.inventory_transactions where id = (v_res->>'txn')::uuid;
+  assert r.transaction_date = v_past2 and r.quantity_change = -2,
+    format('T6 FAIL the two bottles are dated %s (change %s), expected %s', r.transaction_date, r.quantity_change, v_past2);
 end $$;
 
 rollback;
