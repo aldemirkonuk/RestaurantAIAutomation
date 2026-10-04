@@ -155,10 +155,13 @@ export const cloverAdapter: PosAdapter = {
               : null
             : null,
         // An order type ("Dine In", "To Go", a house's own "Street Fair") is
-        // not a table, and Orders v3 carries no table. Which order types are
-        // booth or event checks is the owner's to map once a Clover house
-        // connects (ADR 0302, fork AW24-b: "Wait, then owner maps"), so the
-        // channel stays null and the order type stays in `raw`.
+        // not a table. Clover's order object has no table field (its field
+        // list at docs.clover.com/dev/reference/ordercreateorder, read
+        // 2026-10-04); `title` and `note` are free text, and reading either
+        // as a table would be a guess. Which order types are booth or event
+        // checks is the owner's to map once a Clover house connects (ADR
+        // 0302, fork AW24-b: "Wait, then owner maps"), so the channel stays
+        // null and the order type stays in `raw`.
         tableRef: null,
         channel: null,
         serverExternalId: o.employee?.id ?? null,

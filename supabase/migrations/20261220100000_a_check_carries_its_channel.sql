@@ -32,15 +32,24 @@
 -- NO INDEX. Readers fold the channel in memory from the window they already
 -- select; nothing filters on it in SQL.
 --
--- LOCK. ADD COLUMN with no default is a catalogue-only change under a brief
--- ACCESS EXCLUSIVE lock. The CHECK is added NOT VALID (no scan under that
--- lock) and then validated, which scans pos_checks under SHARE UPDATE
--- EXCLUSIVE and so does not block reads or writes; every existing value is
--- null, so it cannot fail. statement_timeout follows the repo's ALTER TABLE
--- precedent (a_google_place_id_is_as_long_as_google_makes_it). Re-runnable:
--- the column and the constraint are each added only if absent. No explicit
--- BEGIN/COMMIT: the Supabase CLI wraps each file in a transaction. The closing
--- DO block reads the catalogue only; it writes no row.
+-- LOCK. ADD COLUMN with no default changes only the catalogue, but it takes
+-- an ACCESS EXCLUSIVE lock on pos_checks, and the Supabase CLI runs this file
+-- as one transaction, so that lock is held until the file commits. The CHECK
+-- is therefore added validated in one step: it reads pos_checks once, under
+-- the lock the file already holds, and blocks reads and writes for that read.
+-- Adding it NOT VALID and validating it in the same file would buy nothing,
+-- since the validating scan would run under the same held lock (measured
+-- 2026-10-04 on local Postgres 17, in one rolled-back transaction: pg_locks
+-- held AccessExclusiveLock beside ShareUpdateExclusiveLock after VALIDATE,
+-- and AccessExclusiveLock alone for this one-step form, the constraint
+-- already convalidated). Every existing value is the new column's
+-- null, so the read cannot fail. Its length is one pass over pos_checks; NOT
+-- measured against production's row count (no production reads from this
+-- lane). statement_timeout follows the repo's ALTER TABLE precedent
+-- (a_google_place_id_is_as_long_as_google_makes_it). Re-runnable: the column
+-- and the constraint are each added only if absent. No explicit BEGIN/COMMIT,
+-- for the CLI's transaction above. The closing DO block reads the catalogue
+-- only; it writes no row.
 
 SET local statement_timeout = '120s';
 
@@ -56,11 +65,9 @@ BEGIN
   ) THEN
     ALTER TABLE public.pos_checks
       ADD CONSTRAINT pos_checks_channel_known
-      CHECK (channel IS NULL OR channel IN ('table', 'booth_event')) NOT VALID;
+      CHECK (channel IS NULL OR channel IN ('table', 'booth_event'));
   END IF;
 END $$;
-
-ALTER TABLE public.pos_checks VALIDATE CONSTRAINT pos_checks_channel_known;
 
 COMMENT ON COLUMN public.pos_checks.channel IS
   'How the POS rang the check up (ADR 0302). booth_event = a booth, fair or event check: its own row (''Booth & events'') in staff and table figures, still in takings. table or null = table service; null means the POS named no channel. Written by the POS hub only when the feed names one.';
