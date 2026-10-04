@@ -182,9 +182,12 @@ export class OrganizationsService {
    * `CommunicationsModule` provides this class directly
    * (`communications/communications.module.ts`, ADR 0149 #19) for
    * `resolveRestaurantRole` alone, and it cannot import `SettingsAuditModule`
-   * — that module imports `AuthModule`, which closes the load-time ring
-   * auth → communications → settings-audit → auth that module's own comment
-   * describes. `OrganizationsModule` imports `SettingsAuditModule`, so the
+   * — that module imports `AuthModule`, so the import would close the
+   * load-time ring auth → communications → settings-audit → auth. It is the
+   * same shape as the ring `communications.module.ts` names for
+   * `OrganizationsModule` (auth → communications → organizations → auth), the
+   * reason it provides this class by its service file. `OrganizationsModule`
+   * imports `SettingsAuditModule`, so the
    * instance behind the route always has it (`check_gateway_boots.sh` builds
    * the real graph). An instance without it never claims a record: the
    * receipt says `audited: false` and names why.
