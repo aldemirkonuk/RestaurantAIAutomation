@@ -42,8 +42,9 @@
 --     opened becomes that lot's open bottle. A pour larger than a bottle opens
 --     as many bottles as it needs. The old body subtracted it from a single
 --     opened bottle, and the inventory_lots_open_bottle_ml_check CHECK refused
---     that as 23514. The gateway still queues such a sale (ADR 0011 1b), so
---     only the manual route can reach this.
+--     that as 23514. The POS hub still queues such a sale (ADR 0011 1b). The
+--     manual route can send one, and Toast can only if an item's pour_size_ml
+--     exceeds its bottle_size_ml (it passes p_pour_ml null), a data error.
 --  4. Location: with p_location_id set, the lots at that location are drawn
 --     first (open, then sealed), then every other lot. This keeps the old
 --     "prefer the location, else any" order.
@@ -204,8 +205,15 @@ BEGIN
   SELECT count(*), min(p.oid) INTO v_n, v_oid
     FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
    WHERE n.nspname = 'public' AND p.proname = 'record_glass_pour';
+  -- Fatal on purpose. A second overload that also accepts the gateway's named
+  -- arguments (a 9th parameter with a DEFAULT, say) makes the call ambiguous
+  -- to PostgREST, so glass pours would fail and only be logged: AW08's own
+  -- shape. The message names what it found, so a halted apply is diagnosable.
   IF v_n <> 1 THEN
-    RAISE EXCEPTION 'expected exactly one public.record_glass_pour, found %', v_n;
+    RAISE EXCEPTION 'expected exactly one public.record_glass_pour, found %: %', v_n,
+      (SELECT string_agg('(' || pg_get_function_identity_arguments(p.oid) || ')', '; ')
+         FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE n.nspname = 'public' AND p.proname = 'record_glass_pour');
   END IF;
   IF pg_get_function_identity_arguments(v_oid) IS DISTINCT FROM
      'p_inventory_id uuid, p_pours integer, p_pour_ml integer, p_location_id uuid, p_source text, p_performed_by uuid, p_reason text, p_idempotency_key text' THEN

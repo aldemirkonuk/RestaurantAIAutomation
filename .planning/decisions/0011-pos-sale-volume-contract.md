@@ -118,11 +118,14 @@ Two guards were added beyond the brief, and both are load-bearing:
   It did raise. The CHECK `inventory_lots_open_bottle_ml_check`
   (`open_bottle_ml >= 0`, `baseline:3189`) refused the write as 23514. That
   was measured on a PGlite build of every migration at `8c673db4b`: a 1000ml
-  pour against two 750ml bottles failed, and nothing moved. No lot was
-  corrupted this way. The queue still stands, because such a line usually
-  means the mapping points at the wrong row. Since migration
+  pour against two 750ml bottles failed, and nothing moved. Wherever that
+  CHECK held, the CHECK would have refused such a write; no production rows
+  were read to confirm it. The queue still stands, because such a line
+  usually means the mapping points at the wrong row. Since migration
   `a_short_pour_opens_the_next_bottle`, the RPC opens as many bottles as a
-  larger pour needs. Only the manual route can reach that.**]**
+  larger pour needs. The POS hub queues such a line, so it reaches the RPC
+  from the manual route, or from Toast only when an item's `pour_size_ml`
+  exceeds its `bottle_size_ml`.**]**
 - **A plausibility band of 10–30 000 ml on `sale_volume_ml`.** A bare `> 0`
   check accepts `1.5` from someone who meant 1.5 **litres**, and the item then
   pours 1.5ml per sale forever — the same silent-wrong-number failure this ADR
