@@ -1,6 +1,6 @@
 # 0073 — A delivery event is closed by its order id, in the calendar's own words, once
 
-- **Status:** Proposed
+- **Status:** Proposed. **Superseded in part by [0284](0284-a-delivery-event-follows-its-order.md) (2026-10-03): closing moved to the table.** Its `order_id` match, lowercase vocabulary and asymmetry are kept and now live in migration `a_delivery_event_follows_its_order`; the two TypeScript closers and their shared `closeDeliveryCalendarEvent` are removed.
 - **Date:** 2026-09-02
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** calendar_events, cancelCalendarEventForOrder, updateCalendarEventForDelivery, closeDeliveryCalendarEvent, order_id, 42703, tags, CalendarEventStatus, absence reported as health, silent failure, duplicate implementation, procurement
