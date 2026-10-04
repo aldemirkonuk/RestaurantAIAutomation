@@ -204,8 +204,10 @@ export function DayDetail({
       />
 
       {/* Figures snap with the tape head — per-day samples, never interpolated.
-          Net sales are check subtotals before tax and surcharge, voided left
-          out (AW17); vendor money is money out, never sales. */}
+          Net sales add up each check's stated subtotal, voided left out
+          (AW17); it is before tax and surcharge only where the POS adapter
+          sends it so (Square maps net_amounts.total_money, Clover writes
+          null; pos-adapters.ts). Vendor money is money out, never sales. */}
       <div
         className={`mt-1 grid grid-cols-2 gap-4 ${salesShown ? 'sm:grid-cols-3 lg:grid-cols-6' : 'sm:grid-cols-4'}`}
       >

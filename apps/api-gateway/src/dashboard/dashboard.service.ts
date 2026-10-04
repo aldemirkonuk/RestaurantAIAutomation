@@ -112,8 +112,11 @@ function amountOf(v: unknown): number | null {
  * - A check belongs to the day it CLOSED on, else the day it opened — the rule
  *   `goals.service.ts` and `recorded-days.service.ts` apply — read on the
  *   house's wall clock in `zone`.
- * - Net is `subtotal` (before tax and surcharge). `total` and `tip` are never
- *   read: the founder's AW17 ruling.
+ * - Net is `subtotal`. `total` and `tip` are never read: the founder's AW17
+ *   ruling. `subtotal` is before tax and surcharge only where the POS adapter
+ *   writes it so: generic/CSV pass it through, Square maps
+ *   `net_amounts.total_money`, Toast `amount`, Clover null (pos-adapters.ts).
+ *   Lane netsales owns the adapters' basis.
  * - A day where any check states no subtotal has an unknown net (null), not
  *   the sum of the others: a partial sum would print as the day's net sales.
  * - The rows are expected to be non-voided already; the read filters them.

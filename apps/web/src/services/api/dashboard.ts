@@ -265,7 +265,8 @@ export interface CalendarMonthDay {
  *    delivered `procurement_orders` — vendor SPEND, never sales; `bottles_sold`
  *    counts bottles DELIVERED by vendors, for the same reason.
  *  - `net_sales` / `monthly_net_sales` are the register's takings: the sum of
- *    `pos_checks.subtotal` (before tax and surcharge), voided checks left
+ *    `pos_checks.subtotal` (before tax and surcharge where the POS adapter
+ *    sends it so; Square maps net_amounts.total_money), voided checks left
  *    out. Only an owner or manager gets them; for anyone else
  *    `sales_withheld` is true and they are null.
  *  - Every day is the HOUSE's day, in `timezone`. With no zone set,

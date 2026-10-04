@@ -9,8 +9,9 @@
  *    `today` (the house's clock), not the browser's; the browser date is a
  *    fallback only for a gateway older than ADR 0290.
  *  - With net sales shown (an owner or manager, a register connected), each
- *    cell headlines the day's NET sales — check subtotals before tax and
- *    surcharge, voided left out — and is shaded by them; the delivery mark
+ *    cell headlines the day's NET sales — the checks' stated subtotals,
+ *    voided left out (before tax and surcharge where the POS adapter sends
+ *    it so; ADR 0290 §8) — and is shaded by them; the delivery mark
  *    stays. Otherwise the cell carries money paid to vendors, labelled so.
  *    The cell layout is fork F2 in ADR 0290, built on its recommendation.
  *  - A quiet day is a quiet blank ('·'), not "$0 of results"; an unknown day
