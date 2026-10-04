@@ -16,6 +16,8 @@ import {
   useTodayPulse,
 } from "@/api/queries";
 import type { InventoryItem } from "@/api/types";
+import { drawSalesCard } from "@/components/today/pulseStripView";
+import { useSession } from "@/state/session";
 
 const WEB_URL = process.env.EXPO_PUBLIC_WEB_URL;
 
@@ -43,6 +45,7 @@ const CATEGORY_LABEL: Record<string, string> = {
 export default function InsightsScreen() {
   const router = useRouter();
   const pulse = useTodayPulse();
+  const role = useSession((s) => s.user?.role);
   const inventory = useInventory();
   const summary = useInventorySummary();
   const insights = useInsightFeed();
@@ -191,49 +194,55 @@ export default function InsightsScreen() {
           )}
         </Card>
 
-        {/* Sales */}
-        <Card style={{ gap: space.md }}>
-          <AppText variant="caption" tone="tertiary">
-            Sales tonight
-          </AppText>
-          {pulse.isLoading && !pulse.data ? (
-            <Skeleton width={170} height={26} />
-          ) : pulse.data?.revenueToday != null ? (
-            <View style={{ flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between" }}>
-              <View>
-                <AppText variant="display">{money(pulse.data.revenueToday)}</AppText>
-                <AppText variant="footnote" tone="secondary">
-                  {pulse.data.checksToday != null ? `${pulse.data.checksToday} checks` : ""}
-                </AppText>
-              </View>
-              {pulse.data.deltaPct != null ? (
-                <View
-                  style={{
-                    backgroundColor:
-                      pulse.data.deltaPct >= 0 ? color.successTint : color.dangerTint,
-                    paddingHorizontal: space.md,
-                    paddingVertical: space.xs,
-                    borderRadius: 999,
-                  }}
-                >
-                  <AppText
-                    variant="caption"
-                    style={{
-                      color: pulse.data.deltaPct >= 0 ? color.success : color.danger,
-                    }}
-                  >
-                    {pulse.data.deltaPct >= 0 ? "+" : ""}
-                    {pulse.data.deltaPct}% vs last week
+        {/* Sales — owners and managers only (ADR 0253 round 2): when the
+            gateway leaves the figures out for this role, or the request failed
+            and the session's role is not owner or manager, the card is not
+            drawn at all, so staff never read the "Connect Toast" line as a
+            fact (`drawSalesCard`). */}
+        {!drawSalesCard(pulse.data, role) ? null : (
+          <Card style={{ gap: space.md }}>
+            <AppText variant="caption" tone="tertiary">
+              Sales tonight
+            </AppText>
+            {pulse.isLoading && !pulse.data ? (
+              <Skeleton width={170} height={26} />
+            ) : pulse.data?.revenueToday != null ? (
+              <View style={{ flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between" }}>
+                <View>
+                  <AppText variant="display">{money(pulse.data.revenueToday)}</AppText>
+                  <AppText variant="footnote" tone="secondary">
+                    {pulse.data.checksToday != null ? `${pulse.data.checksToday} checks` : ""}
                   </AppText>
                 </View>
-              ) : null}
-            </View>
-          ) : (
-            <AppText variant="footnote" tone="tertiary">
-              Connect Toast on the web dashboard to see live sales here.
-            </AppText>
-          )}
-        </Card>
+                {pulse.data.deltaPct != null ? (
+                  <View
+                    style={{
+                      backgroundColor:
+                        pulse.data.deltaPct >= 0 ? color.successTint : color.dangerTint,
+                      paddingHorizontal: space.md,
+                      paddingVertical: space.xs,
+                      borderRadius: 999,
+                    }}
+                  >
+                    <AppText
+                      variant="caption"
+                      style={{
+                        color: pulse.data.deltaPct >= 0 ? color.success : color.danger,
+                      }}
+                    >
+                      {pulse.data.deltaPct >= 0 ? "+" : ""}
+                      {pulse.data.deltaPct}% vs last week
+                    </AppText>
+                  </View>
+                ) : null}
+              </View>
+            ) : (
+              <AppText variant="footnote" tone="tertiary">
+                Connect Toast on the web dashboard to see live sales here.
+              </AppText>
+            )}
+          </Card>
+        )}
 
         {/* Cellar value */}
         {summary.data ? (

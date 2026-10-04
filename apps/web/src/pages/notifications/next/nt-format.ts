@@ -116,6 +116,10 @@ const KIND_BY_TYPE: Record<string, string> = {
   payment_due: 'Payments',
   system: 'System',
   system_alert: 'System',
+  // A manager set their own wage (api-gateway team/own-wage-notice.ts). It was
+  // a `system` row until 2026-10-01, when it got a type of its own so the
+  // phone feed could show staff `system` sentences; it stays under System.
+  team_member_own_wage_set: 'System',
 };
 
 export function kindOf(type: string | null | undefined): string {

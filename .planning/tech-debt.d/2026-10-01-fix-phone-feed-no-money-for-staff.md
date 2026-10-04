@@ -1,0 +1,446 @@
+## The phone's Today screen served staff order amounts, approve cards and revenue — ~~OPEN~~ FIXED by `fix/phone-feed-no-money-for-staff` — 2026-10-01
+
+Filed by `fix/phone-feed-no-money-for-staff`. Found by the people research recorded in ADR 0253 (`0253-a-job-and-the-right-to-do-it-are-given-in-one-step-and-staff-get-a-jobs-first-screen.md`, "Second finding"; on #566's branch `docs/houses-decisions-0251-0253` and on `fix/closed-stays-closed`, not yet on `main` [gate round 5: at 513e65aa5 and cc06e8b86, not at 8c673db4b, per the last bracket on this line]). Ruled the same day in ADR 0253's "Answered 2026-10-01 (round 2)", which is on #566's branch only [gate round 5: at 513e65aa5, not at cc06e8b86 or 8c673db4b, per the last bracket on this line]. Under "Money on the phone for staff" the founder answered *"Close it to staff (Recommended)"*, and the ADR records the effect: `GET /mobile/feed` stops serving order amounts, approve cards and revenue to staff. [Corrected at gate round 2: this line quoted the question he was asked as if from ADR 0253, but the ADR records only his answer, so the question is no longer quoted.] [Dated at gate round 4: checked at 2026-10-03 21:18Z, #566 was OPEN with head 513e65aa5, and `fix/closed-stays-closed` was at cc06e8b86. ADR 0253's file is at both commits and not on `main` at 8c673db4b. "Second finding" occurs in it at both; "Answered 2026-10-01 (round 2)" occurs at 513e65aa5 and not at cc06e8b86.]
+
+**Where line numbers are measured** (rewritten at gate round 2; this line used to say `origin/main` 4bd11a00e, which was false for lines re-cited later). Every line number is at this branch's head, the commit that carries this text, unless its sentence names another commit. The **What** paragraph below describes the code before the fix, so its line numbers are at 4bd11a00e. Every cited file that this PR does not change is byte-identical at this head and at `origin/main` e25ebf537 (`git diff --quiet`, file by file), so those cites hold on `main` too. [Gate round 3: they are also byte-identical at `origin/main` ba9704b59. Which files count, and how many, is under "Gate round 3" below.] [Gate round 4: and at `origin/main` 8c673db4b.]
+
+**What.** `GET /mobile/feed` and `GET /mobile/today-pulse` had no role logic. The controller passed only `userId` and `restaurantId` (`mobile.controller.ts:37-40`, `:52-62`). Every member got an order-approval card for each pending order, with the amount in `amount` (`mobile.service.ts:64-69`, `:80`) and again in the subtitle (`:301-306`), and `counts.orderApprovals`. The pulse read Toast for every member and returned `revenueToday`, `checksToday`, `revenueLastWeek` and `deltaPct` (`:198-219`).
+
+**Fix.** The controller now passes `req.user.role` to both reads. That is the caller's role in the token's house, which `JwtStrategy.validate` re-reads from `user_restaurant_access` on every request (ADR 0162). `seesHouseMoney(role)` decides who sees money, using the order-approval gate's existing rank rule `roleSatisfies(role, "manager")`. Only owners and managers pass. A null, absent, empty or unknown role gets the staff view. Anyone else gets:
+- no order-approval cards;
+- no `amount` key on any card;
+- no `counts.orderApprovals`;
+- no Toast read and none of the four sales keys.
+
+The figures are left out, not sent as `null` or `0`, because a withheld figure is not "no amount" (ADR 0016, ADR 0020).
+
+On the phone, `amount`, `orderApprovals` and the four sales figures are now optional types. `salesWithheld` reads a missing `revenueToday` key as "not yours to see", so a staff member does not get the "Connect Toast" line. The pulse strip draws no revenue and hides itself when nothing is left to say. The Insights tab does not draw its "Sales tonight" card.
+
+A staff member who holds a live `vendor_send` grant still gets the staff view. The feed does not read grants.
+
+**Fix round 1: notification cards.** Found by the branch's verifier: the feed also turns the caller's unread notifications into `alert` and `receipt_verification` cards, with the row's `message` as the subtitle and its whole `metadata` as `meta` (`mobile.service.ts:162-199` at 6a714f2a4). Several writers put money there and write to every member, staff included, so `getFeed(…, "staff")` returned `subtitle: "62 checks, $4,210.00."` and `meta.revenue: 4210` off a sale record. For a caller who does not see money, the feed now:
+- uses the message as the subtitle only when the type is on `MONEY_FREE_NOTIFICATION_TYPES`; any other type, including one nobody writes yet, gets the card's neutral line (`""` for an alert, "Confirm the physical count against the invoice." for a receipt card);
+- cuts `meta` to `NON_MONEY_META_KEYS` (`orderId`, `orderNumber`, `wineName`, `quantity`); the phone reads no `meta` key (grep of `apps/mobile`).
+
+Text is never scrubbed. Owner and manager output is byte-identical to 6a714f2a4 and to 4bd11a00e: a one-off comparison under a fixed clock, over producer-shaped rows with null messages, null metadata and the `meta` alias, matched byte for byte. That comparison was a scratch spec and is not committed. [Gate round 3: it ran in fix round 1 and was not re-run at this head. Since b02d931cd, `mobile.controller.ts` is unchanged, and the only code changes in `mobile.service.ts` are the wage guard's import, `system` on the list, the guard itself, and `sayMessage` split over three lines with the guard added after `money ||` (`:295-297`). Outside the spec, that is the only place the list and the guard are read, and for an owner or manager `money ||` decides it first. Code outside these two files that the feed calls has changed on `main` since [gate round 4: between 4bd11a00e, the `main` that b02d931cd carries, and 8c673db4b], for example `listPendingOrders` (`procurement.service.ts:7143`), so this head's owner output is not shown byte-identical to 4bd11a00e.]
+
+The list comes from a census of every writer of `notifications` on 2026-10-01, which found ~~50 types and~~ one writer that takes its type from the request body (`POST /notifications`, the caller's own rows). [Corrected at gate round 1 (audit at 74d837c70): "50 types" was wrong here, in the PR body and in b02d931cd's commit message, which is left as written. Measured at gate round 1, the lists name 56 types: `MONEY_FREE_NOTIFICATION_TYPES` holds 40 (`mobile.service.ts:79-128`), and the comment above it names 16 left off (`:53-59`), the 16 listed below. At b02d931cd they named 55: 39 on the list and 16 left off.] One read-only pass covered the writers outside `notifications/producers/`; I read the producers and re-read about 15 of the other writers' templates. Left off the list, because at least one writer puts money or another person's words in the sentence:
+- `service_closed`: `sale-record.producer.ts:167-190`, revenue and best-seller revenue, to the whole house.
+- `invoice_received`:
+  - `invoice-confirmed.producer.ts:149-185`, the total and tie-out delta, to the whole house;
+  - `procurement.service.ts:6923-6945`, a price-variance sentence (`invoice-match.ts:809-812`) plus `effectiveUnitCost` and `creditDue`, to the whole house.
+- `goal_reached`: `goal-reached.producer.ts:187`, `ceiling-held.producer.ts:199`; a currency goal's figures.
+- `price_change`: `market-price.producer.ts:241`.
+- `price_index_upload`: price-move percentages.
+- `promo_digest`: `promotion-extractor.service.ts:245` (cited as `:242`, the call two lines up, until gate round 2).
+- `delivery_proposal`: `delivery.service.ts:598`, "Money at risk".
+- `authority_grant_issued` and `authority_grant_reapproved`: the grant's limit, `authority-grants.service.ts:535-567`.
+- ~~`system`: the own-wage notice shares it, `own-wage-notice.ts:115-140`.~~ Fix round 2 moved the wage notice to its own type, `team_member_own_wage_set`, which is left off instead, and put `system` back on the list. See "Fix round 2" below.
+- `system_alert`: `sendSystemAlert` takes any text.
+- `deal`, `order_verification` and `vendor_reply`: an LLM summary of a negotiation, `inbound-responder.service.ts:398-402`, `:610` (cited as `:401`, the `order_verification` arm alone, until gate round 2).
+- `vendor_deal_declined` and `vendor_letter_declined`: the decliner's typed reason, `vendor-send-requests.service.ts:703`.
+
+What this costs staff, on the feed card only:
+- ~~schedule, broadcast, note, Away and access rows (`system`) show their title without the sentence;~~ no longer, since fix round 2: these show their sentence again;
+- the verify-delivery `invoice_received` row (`procurement.service.ts:5655`) loses its bottle count.
+
+Titles are not gated. ~~No writer puts an amount into a title. The two that carry figures are:~~ [Corrected at gate round 1 (audit at 74d837c70): the struck sentence contradicted the list under it. Titles can carry figures, and this branch leaves every title as written; filed as Open item 4 below.] Titles that can carry a figure include:
+- `price_change`, a percentage (`market-price.producer.ts:245`), written to owners and managers only (`:139-140`);
+- `goal_reached`, whose title is the goal's own typed name (`goal-reached.producer.ts:162`, `:190`; `ceiling-held.producer.ts:185`, `:200`), written to the whole house.
+
+The `@ApiOperation` text now describes all of this.
+
+On the phone, when the pulse request fails and there is no body to read the withholding from, `drawSalesCard` draws the Insights "Sales tonight" card only for a session role of `owner` or `manager`, the role `/auth/me` gave the phone (`state/session.ts:28-29`). A staff member's failed request no longer reads "Connect Toast on the web dashboard". An owner whose role the phone does not know, and whose request failed, now sees no card instead of that line. Once there is a body, the gateway's answer decides.
+
+Tests that pin it [gate round 3: every count in this list except the first item's opening sentences is from round 0 (6a714f2a4) or round 1 (b02d931cd), and was not re-run at this head. Re-run at gate round 3, the spec has 22 cases at 6a714f2a4 and 43 at b02d931cd]:
+- `mobile/mobile-feed-money-for-staff.spec.ts` enters at the controller. It has 56 cases at this head. [Corrected at gate round 2: this line said "It has 43 cases", the count after rounds 0 and 1.] Rounds 0 and 1 added 43; fix round 2 added 9 (52), gate round 1 added 2 (54) and gate round 2 added 2 (56):
+  - Round 0: 22 cases, 18 of which fail on 4bd11a00e. Four source mutations each failed it: every role sees money, any role but `staff` sees money, the controller drops the role, and a full revert.
+  - Round 1: 21 cases built from producer-shaped rows. Restoring round 0's notification handling fails 18 of the 43. Of 12 further mutations, each failed it, from 2 to 13 cases each:
+    - the message goes to everyone;
+    - the whole metadata goes to everyone;
+    - a denylist replaces the allowlist;
+    - `service_closed` or `system` is called money-free;
+    - `creditDue` is called non-money;
+    - owners lose the message;
+    - owners get the cut metadata;
+    - `order_delivered` is dropped from the list;
+    - the meta is cut to nothing;
+    - the receipt card says the raw message;
+    - the alert card carries the whole metadata.
+- `pulseStripView.test.ts`:
+  - Round 0 added 3 cases. All 3 fail when `salesWithheld` returns false.
+  - Round 1 added 3 `drawSalesCard` cases. Each of 3 mutations failed one: the fallback always draws, the fallback fails open, and the body is ignored for an owner.
+- The claim in `claims.d/fix-phone-feed-no-money-for-staff.jsonl` kills 21 of 21 mutations, run on scratch copies of the two files. They include `const money = true` and `role !== "staff"` in either read, which round 0's verify missed. The claim fails on 4bd11a00e and on 6a714f2a4. Fix round 2 replaced this claim; see below.
+
+**Fix round 2: the founder's two answers (2026-10-01, AskUserQuestion).**
+
+1. **Own limit: *"Show their own limit (Recommended)"*. Not built; stopped and reported.** The instruction was: gate on recipient == grantee if the row carries the grantee, otherwise stop. The row does not carry the grantee.
+   - **The only writer.** `authority_grant_issued` and `authority_grant_reapproved` come from `AuthorityGrantsService.tell()` alone (`authority-grants.service.ts:514-584`, `type: authority_grant_${what}` at `:570`). The one SQL writer, `authority_tell_owners`, is called only with `authority_grant_suspended` (`20261116100600_a_grant_waits_for_an_owner_when_its_voucher_goes.sql:145-151`, `:214`).
+   - **Who receives it.** Every owner, plus the grantee (`:566`, `owners` from `ownersAndManagers(...).owners` at `:527`; this said `:526`, which is the `try {` above it, until gate round 2).
+   - **What it says.** Every copy carries the same sentence, naming the grantee's limit (`:536`, `:541`, `:549`). So each owner's copy is about someone else's grant.
+   - **What the row stores.** Metadata is `{ grantId, change }` (`:579`) and `user_id` is the recipient. Nothing on the row says whether the recipient is the grantee.
+   - **Who could leak.** The feed's non-money caller holding such a row is either the grantee (their own limit, which the founder wants shown) or an owner who was later demoted in the same house (someone else's limit, which must stay quiet). The feed cannot tell them apart from the row.
+   - **What stays.** Both types stay off `MONEY_FREE_NOTIFICATION_TYPES`, as in round 1. A staff grantee's card shows the title without the limit. The claim fails if either type is added to the list.
+   - **Options for the founder:**
+     - (a) **Recommended.** Stamp `granteeUserId` into `tell()`'s metadata. The feed then shows the sentence only when `meta.granteeUserId === userId`. Rows written before the change carry no stamp and stay quiet. Cost: one line in `tell()`, one comparison in the feed, a CLAIMS row. Old rows never gain the limit.
+     - (b) Look up each grant row's grantee by `grantId` at feed time. Old rows are covered too, but every feed read touches the grants table, and a deleted grant reads as "not yours".
+     - (c) Leave it as is. The limit stays on the Notifications screen, which shows every row in full (Open item 2 below).
+   - **Answered 2026-10-01 (AskUserQuestion, relayed by the coordinator).** The founder: *"Record the grantee (Recommended)"*. That is option (a): write the grantee's id on new notices and show the limit only to that person; older notices never show the limit. Rejected: "Look it up each load" and "Leave it".
+   - **Built on a stacked branch, not here.** The build needs `authority-grants.service.ts`, a 16th file against this branch's 15-file cap, so the coordinator put it on `fix/phone-feed-own-grant-limit`, cut from this branch's ebd69b364. There `tell()` records the grantee as `metadata.granteeUserId`. The feed then says an issued or re-approved grant notice to a reader who does not see money only when that reader is the recorded grantee. Older rows, someone else's grant and a caller with no id keep the neutral line, and the card's `meta` stays cut. That branch's own entry and claim (`ADR-0253-PHONE-FEED-OWN-GRANT-LIMIT`) record it. **On this branch alone**, both grant types stay off the list and every reader who does not see money gets the neutral line.
+2. **Staff notices: *"Give wages its own type (Recommended)"*. Built.**
+   - **The type.** The own-wage notice (`team/own-wage-notice.ts`, `recordOwnWageChange`, owners only) is now stored with `type` and `notification_type` set to `team_member_own_wage_set`. That is the action name it already wrote to `system_audit_log` and to its own metadata (`OWN_WAGE_ACTION`). It follows the `team_member_*` audit-action naming that the notice was already read by.
+   - **No migration.** `notifications.type` is `varchar(100) DEFAULT 'system'` with no CHECK constraint and no enum. The table is `20260805000000_baseline_from_production.sql:3952-3982`, and its only table constraints are the primary key (`:7223-7224`) and the restaurant foreign key (`:12805-12806`). Several columns are NOT NULL, among them `notification_type` (`:3956`) and `type` (`:3975`). No later migration adds a constraint: a scan of every `ALTER TABLE … notifications …;` statement in `supabase/migrations` for `CONSTRAINT`, `CHECK` or `ALTER COLUMN type` finds only the primary key and the foreign key.
+   - **The web inbox** files the new type under System (`nt-format.ts:122`), as it did for `system`. [Gate round 1 (audit at 74d837c70): that was true of the label only. The System chip got an exact `type = 'system'` match from the server, so wage notices showed under All but not under System. `getNotifications` now answers `type=system` with every type the inbox files under System; see "The web inbox's System filter chip" under Disclosed limits.]
+   - **`system` is back on `MONEY_FREE_NOTIFICATION_TYPES`.** First, every writer of `system` was re-read. The gateway has eight literal sites, and none puts money in the sentence:
+     - `passkeys.service.ts:1051`: a passkey added or removed, with its nickname, sent to the person themselves.
+     - `access-audit.ts:129` (`recordAccessChange`, sent to the person it happened to):
+       - role changed (`members.service.ts:307-310`);
+       - pay access on and off: "you now see wages…", with no figure (`team.service.ts:720-729`);
+       - removed from the team (`team.service.ts:1366-1376`);
+       - zone setup (`storage-locations.service.ts:388-397`);
+       - area lead and Away set or ended (`house-areas.service.ts:431`, `:647`, `:725`). The other three `audit` calls there (`:348`, `:402`, `:484`) send no notice.
+     - `access-audit.ts:197` (`noticeToHouseLeads`): a self-leave, sent to owners and managers, with shift counts only (`team.service.ts:1386-1402`).
+     - `away-release.service.ts:231`: a held team message, in its author's words.
+     - `schedule.service.ts:550`: schedule published, with the week date.
+     - `schedule.service.ts:955`: a call-out, with role, date and times.
+     - `team.controller.ts:621`: a team broadcast, in its author's words.
+     - `notes.service.ts:471`: a note, in its author's words.
+
+     Writers whose type is a variable never produce `system`:
+     - `inbound-responder` `n.type`;
+     - scheduled-tasks `payload.type`;
+     - vendor-send-requests `notice.type`;
+     - producer-ledger `event.payload.type`;
+     - `POST /notifications`, which writes the caller's own rows only (`notifications.controller.ts:258-259`; cited as `:257-258` until gate round 2). A body without a type never defaults to `system`: `CreateNotificationDto.type` is a required `@IsString()` (`notifications.controller.ts:70-72`), and past that, the insert copies the type into `notification_type` (`notifications.service.ts:575`), which is NOT NULL.
+
+     `git log -S'type: "system"' -- apps services supabase` finds two writers removed, both on this branch. ffa94a26b moved the wage notice (`team/own-wage-notice.ts`) to `team_member_own_wage_set`, and moved `sendSystemAlert` (`notifications.service.ts`) to `system_alert`. The search's only other removal is 941d9cb40's re-indent of the `team.controller.ts` writer, which is still there (`:621`). [Corrected at gate round 2: this said the search "shows no removed writer".]
+   - **`sendSystemAlert` now stores `system_alert`** (`notifications.service.ts:528`; was `:509` before gate round 1 added lines above it), not `system`. It writes any caller's words to every member. It has no caller outside the specs at this head: its route was closed under ADR 0149. [Gate round 5: this said "It has no caller today", written in fix round 2. `git grep sendSystemAlert -- apps services` finds two specs and its definition.]
+   - **Old wage rows: the guard is kept.** Rows written as `system` by the wage notice from #440 (0c16f8434, 2026-09-28) until this deploys may exist. Production was **not queried**, so whether any exist is unverified. `isOwnWageNotice(meta)` (`mobile.service.ts:137-140`; was `:125-128` before gate round 1 added comment lines above it) blanks a row whose metadata `action` is `team_member_own_wage_set`, under any type. It compares against the writer's imported constant. The wage writer always stamped that action (0c16f8434), so every old row is recognised.
+     - Such a row reaches a non-money caller only as an owner later demoted in the same house: the notice goes to owners only.
+     - The guard was chosen over a backfill because it needs no production write and also covers rows written by old code between merge and deploy.
+   - **Tests.** `mobile/mobile-feed-money-for-staff.spec.ts` had 52 cases at ffa94a26b, this round's commit, up from 43 at b02d931cd. It has 56 at this head. [Corrected at gate round 3: this said "has 52 cases, up from 43", in the present tense with no commit named. All three counts were re-run at gate round 3. The mutation table below is from this round and was not re-run.] They cover:
+     - the wage writer's type, run through `recordOwnWageChange` itself;
+     - `sendSystemAlert` storing `system_alert`;
+     - `system` on the list and the wage type off it;
+     - three `system` notices (schedule, team message, role change) giving staff their sentence and no metadata;
+     - an old `system`-typed wage row and a grant notice giving staff `""`.
+
+     Each of these mutations failed the spec:
+
+     | Mutation | Cases failed |
+     |---|---|
+     | Wage type back to `system` (`type`, `notification_type`, or both) | 1 each |
+     | Guard removed, never matching, always matching, or reading the type | 12 each |
+     | `system` dropped from the list | 7 |
+     | Wage type called money-free | 2 |
+     | `authority_grant_issued` called money-free | 13 |
+     | `sendSystemAlert` back to `system` | 1 |
+     | Round-1 sources (b02d931cd) | 9 |
+     | Round-0 behaviour | 24 |
+     | Round 1's eleven, re-anchored | 2 to 18 each |
+
+     `nt-format.test.ts` is 13 of 13. Dropping the wage mapping fails 1.
+   - **The claim** now also pins:
+     - the wage type at the writer;
+     - its metadata marker;
+     - `system` on the list, with the wage, grant and `system_alert` types off it;
+     - the guard: imported, reading metadata, joined with `&&`;
+     - the exact set of literal `type: "system"` writers in the gateway, so a new one fails the build until it is read;
+     - the web mapping.
+
+     It kills 41 of 41 mutations, run on a scratch copy of the gateway src. That is round 1's twenty-one, less "system called money-free", which is now the opposite, plus twenty-one new. It fails on 4bd11a00e, 6a714f2a4, b02d931cd and on `origin/main` 5a330a88e. [Gate round 3: the 41 ran in this round and were not re-run at this head. The verify is the same string at ffa94a26b, 7fdf4f95f and this head. Re-run at gate round 3, it passes at this head and fails on those four commits and on `origin/main` ba9704b59.]
+
+**Fix round 3 (docs only, 2026-10-01): from the Sonnet verify** (`p4-scratch/phone-feed-verify.md`, findings A1-A4).
+- **Push and the live event** are added as Open item 3. They were missing from the list.
+- **The claim's first sentence** now names the ruled exception: staff keep vendor-draft cards with their text (ADR 0253 round 9).
+- **"Not settled by the ruling"** items 1-3 now carry the round-9 answers. Fix round 2, item 1 now says what the stacked branch builds.
+- **The decision record.** The fix-round answers (*"Give wages its own type (Recommended)"*, *"Show their own limit (Recommended)"*, *"Record the grantee (Recommended)"*) were recorded only in tech-debt entries. They go into ADR 0253 as a dated amendment, which the coordinator applies on #566's branch [gate round 5: present there at 4a23f659c and 513e65aa5, per the bracket below]. This branch does not edit the ADR. [Gate round 4: applied. Each of the three occurs once in ADR 0253 at 4a23f659c and at 513e65aa5.]
+- **Test counts that reproduce.** ffa94a26b's message says "gateway mobile + team-pay + notifications 541/541". That is `src/mobile`, `src/notifications` and `src/team/team-pay-round4.spec.ts` only; all of `team-pay*` gives a different total. Measured again at 7fdf4f95f, this round's commit (node_modules linked), from `apps/api-gateway` unless named:
+
+  | Command | Result |
+  |---|---|
+  | `npx jest src/mobile/mobile-feed-money-for-staff.spec.ts` | 52/52 |
+  | `npx jest src/mobile src/notifications src/team/team-pay-round4.spec.ts` | 541/541, 30 suites |
+  | `npx jest src/mobile src/team src/notifications src/organizations` | 976/976, 50 suites |
+  | phone suite, `apps/mobile/src/**/__tests__/*.test.ts` through api-gateway's ts-jest (diagnostics off; the linked phone node_modules has no `jest`) | 285/285, 21 suites |
+  | `apps/web`: `npx vitest run src/pages/notifications/next/nt-format.test.ts` | 13/13 |
+  | `bash scripts/check_decision_claims.sh` | 814/814 holding |
+
+**Gate round 1 (2026-10-02): fixes for the ADR 0090 audit at 74d837c70** (BLOCK; PR #582 comment 5961672605). `origin/main` a823ef32d was merged in first, with no conflicts.
+1. **The type count.** "50 types" is corrected in place above and in the PR body: the lists name 56, 40 on the list and 16 left off. b02d931cd's commit message keeps its 50; this entry is the correction.
+2. **Titles.** The contradictory sentence is struck above. Titles are Open item 4, citing ADR 0253 round 11 F5 on #566 [gate round 5: at 21e87278a and 513e65aa5], with the line on round 10's money right.
+3. **The cached feed.** "Can draw once" is narrowed under Disclosed limits.
+4. **The System chip.** Fixed in `getNotifications`; see Disclosed limits, "The web inbox's System filter chip". The same one-type gap on seven other chips is filed there.
+5. **`amount` in `NON_MONEY_META_KEYS`.** A spec case feeds an `order_pending` row (a money-free type) whose metadata carries `amount: 8642.75` to each of the six roles that do not see money. It checks that `meta` is cut to `orderId` and `orderNumber` and that `8642` is not on the wire, and that an owner still gets the whole metadata. Adding `amount` to the list failed that case and no other (1 of 54). The file was copied with `cp -p`, mutated, run, restored and compared with `cmp`.
+6. **The `system` default.** Open item 5.
+7. **`unknown_sender`.** The list's comment now says F13, not the free-text rule, decides it. Whether F13 covers a sender who is not in the providers list is Open item 6.
+
+Measured at gate round 1, from `apps/api-gateway` unless named:
+
+| Command | Result |
+|---|---|
+| `npx jest src/mobile/mobile-feed-money-for-staff.spec.ts` | 54/54 |
+| `npx jest src/mobile src/notifications src/team src/organizations` | 978/978, 50 suites |
+| eslint on the 6 touched gateway `.ts` files | 0 errors; 12 warnings, all in `notifications.service.ts`, none on a line this round added |
+| `npx tsc --noEmit` | 2 errors, both in `passkeys/passkeys.service.ts` (`@simplewebauthn/server` is not in the linked node_modules); not touched |
+| `bash scripts/check_decision_claims.sh` (repo root) | 831/831 holding |
+| `python3 scripts/check_citation_pairing.py` (repo root) | pass: 218 register citations against 174 rows |
+
+The phone and web suites were not re-run. This round's edits touch no file under `apps/mobile` or `apps/web`; the merge brought `main`'s changes to `apps/web` documents, receipts, brand and nightly-e2e files, none of which this PR touches.
+
+**Gate round 2 (2026-10-02): fixes for the ADR 0090 audit at 899893a6e** (BLOCK; PR #582 comment 5963233967). Reviewer A blocked on four sentences in this entry and found the code sound; Reviewer B approved. `origin/main` had moved to e25ebf537 (#587). That commit changes no file this entry cites. It is merged in with this round (1f4a348ac, no conflicts), because `main` is strict and a head behind it cannot merge.
+
+The four blocks:
+1. **`authority-grants.service.ts:526`** is corrected to `:527` in place (fix round 2, item 1).
+2. **One base for line numbers.** The paragraph under the title now says where line numbers are measured: this head, unless a sentence names a commit, and the **What** paragraph at 4bd11a00e. The procurement cites that #578 and #581 moved are re-measured:
+   - the discrepancy writer, `procurement.service.ts:6866-6886`, is now `:6923-6945`;
+   - the verify-delivery writer, `:5598`, is now `:5655`;
+   - the Supply routes, `procurement.controller.ts:201` and `:217`, are now `:203` and `:219`, and `:236` is added for `/:id`.
+
+   Open item 3 no longer says "re-read at this head" over a stale cite, and fix round 3's table names 7fdf4f95f instead of "this head".
+3. **The MMKV sentence** now says only a query that succeeded with data is written (`queryClient.ts:55`).
+4. **The spec count** is 56 at this head; it said 43.
+
+The notes:
+5. **`notifications.controller.ts:257-258`** is corrected to `:258-259`. The sentence now also names the DTO's required `type` (`notifications.controller.ts:70-72`).
+6. **`SYSTEM_CHIP_TYPES` and `KIND_BY_TYPE`** are tied by a spec case (Disclosed limits, the System chip).
+7. **`getNotifications` and `user_id`.** A spec case seeds rows for two members of one house. It checks that each member gets only their own rows and count, with no type, with `type=system` and with an exact type.
+8. **Filed as OPEN:** Open item 7 (`GetNotificationsQueryDto.type`) and Open item 8 (`GET /dashboard/summary/:restaurantId`). Both were read at this head.
+9. **Numbering.** A cross-reference table under the Open items maps the PR body's Still open list to this entry.
+
+Every other file:line in this entry was re-measured too. Seven sentences were tightened along the way:
+- **ADR 0253's location** names #566's branch [gate round 5: line 3 dates it, with 513e65aa5 and cc06e8b86].
+- **The `notifications` baseline** has its key and foreign key cited by line (`:7223-7224`, `:12805-12806`).
+- **The push line** names routed writes and `skipMobilePush`.
+- **`invoice-match.ts:809`** is now `:809-812`, the whole sentence.
+- **The cellar route** is `GET /inventory/:restaurantId/summary`.
+- **Open item 2's old cite** `:845-858` is placed at 4bd11a00e.
+- **The `POST /notifications` sentence** names the DTO.
+
+An independent Sonnet check of every cite in this entry ran before this round's commit. It found one wrong sentence and seven imprecise ones, and all eight are fixed here:
+- **Wrong: item 7 above.** It said the two-member case reads each member with an exact type, but only the owner was read that way. The spec now reads `staff-1` with `goal_reached` too.
+- **The writer search** (fix round 2, item 2) said `git log -S` shows no removed writer. It shows two, both this branch's own, and the sentence now names them.
+- **Two cites:** `inbound-responder.service.ts:401` is now `:398-402`, and `promotion-extractor.service.ts:242` is now `:245`.
+- **The `notifications` baseline** now names its NOT NULL `notification_type` and `type` columns (`:3956`, `:3975`).
+- **The cross-reference table's rows 11 and 12** point at body items that the PR body gains in this round's edit.
+- **Line 3** no longer quotes the question asked in round 2, because ADR 0253 records only the answer.
+- **The `restaurant_id` swap** in the mutation table now names the exact replacement.
+
+Each mutation below ran from a `cp -p` snapshot. The file was restored afterwards, and `cmp` matched the snapshot.
+
+| Mutation | Spec cases failed (of 56) |
+|---|---|
+| `user_id` filter dropped from `getNotifications` (`notifications.service.ts:906`) | 1, the two-member case; across the four suites, 1 of 980 |
+| `.eq("user_id", params.userId)` (`:906`) swapped for `.eq("restaurant_id", params.restaurantId)` | 1, the two-member case |
+| The web files `goal_reached` under System | 1, the tie case |
+| `system_alert` dropped from `SYSTEM_CHIP_TYPES` | 3: the chip case, the two-member case and the tie case |
+| A web System entry written as `['system']: 'System'` | 1, the tie case (the line it cannot read) |
+| `KIND_BY_TYPE` renamed | 1, the tie case (the table not found) |
+
+Measured at gate round 2 on the merged tree, from `apps/api-gateway` unless named:
+
+| Command | Result |
+|---|---|
+| `npx jest src/mobile/mobile-feed-money-for-staff.spec.ts` | 56/56 |
+| `npx jest src/mobile src/notifications src/team src/organizations` | 980/980, 50 suites |
+| `apps/web`: `npx vitest run src/pages/notifications/next/nt-format.test.ts` | 13/13 |
+| eslint on the 6 touched gateway `.ts` files | 0 errors; 12 warnings, all in `notifications.service.ts`, which this round does not change |
+| `bash scripts/check_decision_claims.sh` (repo root) | 836/836 holding (831 before the merge; #587 adds 5) |
+| `python3 scripts/check_citation_pairing.py` (repo root) | pass: 220 register citations against 174 rows |
+| `git diff --check` | clean |
+
+The phone suite was not re-run, because this round changes no file under `apps/mobile`.
+
+**Gate round 3 (2026-10-03): fixes for the ADR 0090 audit at f6b22b375** (BLOCK; PR #582 comment 5970330967). Reviewer A blocked on two counts in the written record; Reviewer B approved. `origin/main` ba9704b59 (#588) is merged in first, with no conflicts. It changes two files, ADR 0262 and the decision index, and this entry cites neither. This round changes no code.
+
+The two blocks:
+1. **Fix round 2's spec count** said "has 52 cases, up from 43", with no commit named. It is corrected in place and now names its commits. Re-run at gate round 3, the spec has 22 cases at 6a714f2a4, 43 at b02d931cd, 52 at ffa94a26b and at 7fdf4f95f, and 56 at this head.
+2. **The cited-file count.** The PR body said "The 53 cited files that this PR does not change" and gave no counting rule; the audit counted 54 by adding `main.ts` to it. Counted at this head, by two stated rules, where a file is a name with a file extension (bare module names such as `inbound-responder` in fix round 2 are not counted):
+   - **Cited with a line number:** 56 files. Each `file:line` resolves to one path in the tree. `main.ts:52-58` (Open item 7) is `apps/api-gateway/src/main.ts`, the only tracked `main.ts` that sets up a `ValidationPipe`. This PR changes 5 of the 56, which leaves **51** that it does not change.
+   - **Named in any form:** the 51, plus four paths named without a line number (`common/iso-4217.spec.ts`, `src/team/team-pay-round4.spec.ts`, `scripts/check_citation_pairing.py` and `scripts/check_decision_claims.sh`). That makes **55** that this PR does not change; with this PR's own 9, the entry names 64 tracked paths. Two names are not in the tree: ADR 0253's file (on #566 [gate round 5: at 513e65aa5, not at 8c673db4b]) and `p4-scratch/phone-feed-verify.md`. [Gate round 4: the glob `apps/mobile/src/**/__tests__/*.test.ts` in fix round 3's table is a pattern, not a file name, so neither rule counts it. It matches 21 tracked files at 4c07a5c0f and at this head.]
+   - All 55 are byte-identical at this head and at `origin/main` ba9704b59, 661068ab3 and e25ebf537 (`git diff --quiet`, file by file).
+
+The sweep for other present-tense counts that this head does not bear out:
+3. **Dated in place, not re-run:**
+   - the counts under "Tests that pin it", other than the first item's opening sentences (rounds 0 and 1);
+   - fix round 1's owner and manager comparison;
+   - fix round 2's mutation table and its 41 claim mutations.
+
+   The claim row's text says the same: "killed … in fix round 2 (not re-run since)", and the owner and manager comparison is now "in fix round 1, not re-run since". Its `verify` is unchanged, and `verified` is 2026-10-03.
+4. **Re-run at gate round 3, and still true:**
+   - The lists name 56 types: 40 on the list and 16 left off.
+   - `nt-format.test.ts` is 13 of 13, and dropping the wage mapping fails 1.
+   - Adding `amount` to `NON_MONEY_META_KEYS` fails only the `amount` case: 1 of 56 (1 of 54 at gate round 1). The file was copied with `cp -p`, mutated, run, restored and compared with `cmp`.
+   - The claim passes at this head. It fails on 4bd11a00e, 6a714f2a4, b02d931cd, 5a330a88e and ba9704b59.
+   - `CLAIMS` `ADR-0175-APPROVE-ORDER-ALWAYS-NEEDS-AUTHORITY` is still open, and `sendSystemAlert` still has no caller outside the specs.
+   - e25ebf537, 661068ab3 and ba9704b59 each change none of the 64 tracked paths this entry names, this PR's own 9 among them.
+5. **Found by an independent Sonnet check before this round's commit:**
+   - **Wrong, from before this PR's gate rounds:** "the first 110 characters" of a vendor draft as its card's subtitle, in "Not settled", item 1, and in the claim row. `truncate` keeps the first 109 characters, trailing space trimmed, and adds "…" when the collapsed draft is longer than 110. Both are corrected.
+   - **Imprecise:** fix round 1's comparison is dated, but code outside `mobile.*` that the feed calls has changed on `main` since [gate round 5: `procurement.service.ts` differs between 4bd11a00e and ba9704b59, gate round 3's `main`]. The bracket there now says so.
+
+Measured at gate round 3 on the merged tree, from `apps/api-gateway` unless named:
+
+| Command | Result |
+|---|---|
+| `npx jest src/mobile/mobile-feed-money-for-staff.spec.ts` | 56/56 |
+| `npx jest src/mobile src/notifications src/team src/organizations` | 980/980, 50 suites |
+| `apps/web`: `npx vitest run src/pages/notifications/next/nt-format.test.ts` | 13/13 |
+| `bash scripts/check_decision_claims.sh` (repo root) | 836/836 holding |
+| `python3 scripts/check_citation_pairing.py` (repo root) | pass: 220 register citations against 174 rows |
+| `git diff --check origin/main...HEAD` | clean |
+
+The phone suite was not re-run. No file under `apps/mobile` has changed since 7fdf4f95f.
+
+**Gate round 4 (2026-10-03): the audit at 4c07a5c0f** (BLOCK; PR #582 comment 5973212069). Reviewer B approved, and the audit found this entry and the claim row sound. Reviewer A blocked on one sentence of the PR body, not of this entry. The body this branch published at 4c07a5c0f said the three fix-round answers "are present at #566's head 4a23f659c", itself a present-tense moving head. A bracket was added to that sentence at the audited SHA: each quote occurs once in ADR 0253 "at #566's head 7dabb9de8". #566's head moved to c89554b2b about 48 seconds after that was written (the report), and Reviewer A blocked on it. [Gate round 5: GitHub's edit history of the body (`userContentEdits`) dates that edit 20:22:02Z. The 48 seconds run to c89554b2b's commit time, 20:22:50Z. The push that moved #566's head from 7dabb9de8 to c89554b2b is dated 20:22:54Z, 52 seconds after the edit (GitHub's repository activity for #566's branch).] By the gate session's account, it wrote that bracket, then made two more body edits at the same SHA, and Reviewer A re-ruled APPROVE on both [gate round 5: the edit history dates each one below, against the BLOCK marker, comment 5973212069, created at 20:31:05Z]:
+- (a) "at 7dabb9de8, which was #566's head when measured …; #566's later commits are descendants of it" [gate round 5: edited at 20:25:22Z, before the marker; item 2 below names two of those later commits, c89554b2b and 513e65aa5];
+- (b) a clause saying the glob `apps/mobile/src/**/__tests__/*.test.ts` is a pattern, not a counted name, and matches 21 tracked files [gate round 5: edited at 20:31:21Z, after the marker].
+
+Also by its account, the Opus final overturned that, because body edits at an audited SHA are not tied to a commit, and a BLOCK marker at a SHA is never cleared. [Gate round 5: these are the reasons this record names. By the same account, the final gave three; the third is not recorded here.] So this round makes a new SHA. It changes no code.
+
+1. **Merge.** `origin/main` 8c673db4b (#593: ADR 0265, a migration and its test) is merged in first (83d031818, no conflicts). It changes 6 files, none of them among the 64 paths this entry names.
+2. **The two body edits, taken over and re-verified:**
+   - **(a)** Each of the three quotes occurs once in ADR 0253 at 4a23f659c, 7dabb9de8 and c89554b2b (`git show <sha>:<0253 file> | grep -c`). They also occur once at 513e65aa5. Each of 4a23f659c, 7dabb9de8, c89554b2b and 513e65aa5 is an ancestor of the next (`git merge-base --is-ancestor`). Checked at 2026-10-03 21:18Z, #566 was OPEN with head 513e65aa5; the file is not on `main` at 8c673db4b. This round's update of the PR body, made with this push, says that, with the commits named and the state given with the time it was checked, instead of "#566's later commits are descendants of it" and "#566 is still OPEN". [Gate round 5: GitHub dates that update 21:28:59Z, after 1a7f93c8c was pushed.]
+   - **(b)** The glob matches 21 tracked files at 4c07a5c0f and at this head (`git ls-tree -r --name-only <sha> -- apps/mobile/src | grep -E '/__tests__/[^/]+\.test\.ts$' | wc -l`). It is in this entry too, in fix round 3's table, so gate round 3's item 2 above now says neither rule counts it.
+3. **Present-tense moving state, dated.** ~~Each sentence that gave a PR's state, another branch's contents or `main` without a commit or date now names one, in place, with a bracket:~~ [Gate round 5: struck, because it was false at 1a7f93c8c; see "Gate round 5" below. What gate round 4 dated, in place, with a bracket:]
+   - in this entry: line 3, line 5, fix round 1's comparison ("changed on `main` since"), fix round 3's decision record, the F5 ruling under Open item 4, Open item 8's "Today", the Python writers' "today", the System chip's `experiment-ended.producer.ts:274` and the other chips (both "on `main`" [gate round 5: both name 8c673db4b]), the round-9 answers, and their item 2's stacked branch and amendment;
+   - in the body: ADR 0253's place under the summary, #583's base (Still open 5), F5 (Still open 7), the other chips (Still open 10), `GET /dashboard/summary` (Still open 12), the `origin/main` the claim failed on at 7fdf4f95f, fix round 1's comparison (gate round 3, item 3), and the decision record.
+
+   The claim row names no PR state, branch head or bare `main`, so it is unchanged.
+
+Measured at gate round 4 on the merged tree, from `apps/api-gateway` unless named:
+
+| Command | Result |
+|---|---|
+| `npx jest src/mobile/mobile-feed-money-for-staff.spec.ts` | 56/56 |
+| `npx jest src/mobile src/notifications src/team src/organizations` | 980/980, 50 suites |
+| `apps/web`: `npx vitest run src/pages/notifications/next/nt-format.test.ts` | 13/13 |
+| `bash scripts/check_decision_claims.sh` (repo root) | 837/837 holding (836 before the merge; #593 adds 1) |
+| `python3 scripts/check_citation_pairing.py` (repo root) | pass: 220 register citations against 174 rows |
+| the 55 cited files this PR does not change, `git diff --quiet <base> HEAD -- <file>` | 0 differ at 8c673db4b, ba9704b59, 661068ab3 or e25ebf537 |
+| `git diff --check origin/main...HEAD` | clean |
+
+The phone suite was not re-run. No file under `apps/mobile` has changed since 7fdf4f95f.
+
+**Gate round 5 (2026-10-03): a pre-check at 1a7f93c8c, before the audit.** By the gate session's account, its round-5 planner at 1a7f93c8c said READY but expected a BLOCK on two counts: gate round 4's item 3 was false, and its record of that round was imprecise. The reviewers were held, and no marker was posted at that SHA. Item 3 said each sentence that gave a PR's state, another branch's contents or `main` without a commit or date now named one. Some did not: the PR body at 1a7f93c8c still had "ADR 0253 round 11 F13 ("Mail kept", on #566)", for example. Item 3's sentence is struck above, and the body strikes its own. Past 1a7f93c8c, this round changes this entry only. It changes no code and not the claim row.
+
+1. **A count by command, in place of "each".** The command below splits a text into sentences after a full stop, a semicolon or a closing bracket. A bracket that follows a sentence is read with that sentence, and a bracket is read whole. It prints each sentence that matches the pattern and names neither a 9-character hexadecimal id, such as a commit id, nor "checked at 2026". The square brackets inside the pattern keep it from matching its own text. It is run by hand; no guard runs it.
+
+   ~~~
+   python3 -c 'import re,sys
+   o=""
+   for s in re.split(r"(?<=[.;\x5d])\s+(?!\x5b)",sys.stdin.read()):
+    o+=s+" "
+    if o.count(chr(91))>o.count(chr(93)):continue
+    if re.search(sys.argv[1],o) and not re.search(r"\b[0-9a-f]{9}\b|checked at 202[6]",o):print(" ".join(o.split())[:150])
+    o=""' '#56[6]|#58[3]|on #[0-9]|on PR [#]|on .mai[n]|is OPE[N]|not yet o[n]' < .planning/tech-debt.d/2026-10-01-fix-phone-feed-no-money-for-staff.md
+   ~~~
+
+   - On this entry at 1a7f93c8c (`git show 1a7f93c8c:<this file>` as its input), it prints 13 sentences. At this head it prints none.
+   - On the PR body as GitHub dates it at 2026-10-03 21:28:59Z, the body published with 1a7f93c8c, it printed 9. The body published with this head records its own run, with `gh pr view 582 --json body --jq .body` as the input.
+   - Those 22 sentences carry a gate-round-5 bracket naming a commit or a check time. With the gate-round-5 brackets taken out, the command prints 13 and 9 again; in order, each shares at least its first 28 characters with one it printed at 1a7f93c8c or on the body published with it. So the brackets are what make them pass. To take them out, pipe the text through the first line below before the command above, in place of its `<` file. The second line counts the brackets:
+
+     ~~~
+     python3 -c 'import re,sys;sys.stdout.write(re.sub(r"\x5b[Gg]ate round 5:[^\x5d]*\x5d","",sys.stdin.read()))'
+     python3 -c 'import sys;print(sys.stdin.read().lower().count(chr(91)+"gate round 5:"))'
+     ~~~
+
+   - The count is 22 in this entry and 14 in the body, one bracket per sentence. In this entry, 13 are on the sentences above and nine are on others. Two of the nine name the commits for their own claim: ADR 0253's file in gate round 3's counts, and the round-9 answers. Four date gate round 4's account of its body edits: one its timing, two the order against the BLOCK marker, and one the overturn reasons (item 3 below). Two correct "no caller": fix round 2's `sendSystemAlert` line and the System chip (item 2 below). One marks the struck sentence in gate round 4's item 3. In the body, 9 are on the sentences above and five are on others. Two of those five name the commits for their own claim: F5 under Still open 7, and ADR 0253's file in gate round 3's counts. Two date gate round 4's account of its body edits, and one marks its struck item 2.
+   - What the command proves: every sentence it matches names a commit or a check time. It does not prove that the commit named is the right one. Those were checked by hand: ADR 0253's quotes with `git show <sha>:<0253 file> | grep -c` at 21e87278a, 4a23f659c and 513e65aa5; #578 as 255151bc2 and #581 as ddf8ee3e1, both ancestors of 8c673db4b, by `git log --grep` and `git merge-base --is-ancestor`; and #583 by `gh pr view`, OPEN at e68bd3cdf with this branch as its base, checked at 2026-10-04 00:02Z. Nor does it see moving state phrased without the pattern's words.
+2. **The words the pattern leaves out, read by hand.** With the pattern `'(?i)\b(stil[l]|no[w]|hea[d]|toda[y])\b'`, the same command prints 68 sentences of this entry at this head. Read one by one, none was found to give another branch's contents, a PR's state or `main`'s. They describe this head under line 5's rule, a round's own edits to this entry, its spec or the claim row, the Today screen, or the body's "Still open" list. One was changed before that count: fix round 2's "It has no caller today" now says "at this head", with the grep that shows it. The same claim under the System chip, "which has no caller", now says "outside the specs" too. This is a reading, not a proof: the command lists the sentences, not the verdict.
+3. **Gate round 4's record, made precise.** Its section above now carries gate-round-5 brackets:
+   - The 48 seconds run to c89554b2b's commit time, 20:22:50Z. The push that moved #566's head from 7dabb9de8 to c89554b2b is dated 20:22:54Z, 52 seconds after the body edit at 20:22:02Z.
+   - The reword (a) is dated 20:25:22Z, before the BLOCK marker at 20:31:05Z. The glob clause (b) is dated 20:31:21Z, after it.
+   - The overturn reasons it gives are the ones this record names. By the gate session's account, the final gave three.
+   - Sources: GitHub's edit history of the PR body (`userContentEdits`), the comment's `created_at`, and the repository activity API for the push from 7dabb9de8 to c89554b2b (`gh api 'repos/<owner>/<repo>/activity?ref=refs/heads/docs/houses-decisions-0251-0253'`).
+
+Measured at gate round 5 at this head, from `apps/api-gateway` unless named:
+
+| Command | Result |
+|---|---|
+| `npx jest src/mobile/mobile-feed-money-for-staff.spec.ts` | 56/56 |
+| `npx jest src/mobile src/notifications src/team src/organizations` | 980/980, 50 suites |
+| `apps/web`: `npx vitest run src/pages/notifications/next/nt-format.test.ts` | 13/13 |
+| `bash scripts/check_decision_claims.sh` (repo root) | 837/837 holding |
+| `python3 scripts/check_citation_pairing.py` (repo root) | pass: 220 register citations against 174 rows |
+| the claim's `verify`, each run in its `git archive` | passes at this head; fails at 5a330a88e and 8c673db4b |
+| the cited-file counts, by the same rules as gate round 3 | 56 with a line number, 51 of them not changed by this PR; 55 named in any form; 64 paths with this PR's own 9; the 55 byte-identical at 8c673db4b, ba9704b59, 661068ab3 and e25ebf537 |
+| `git diff --check origin/main...HEAD` (`origin/main` at 8c673db4b) | clean |
+
+The phone suite was not re-run. No file under `apps/mobile` has changed since 7fdf4f95f.
+
+**Open, not fixed here (pre-existing, same class of leak).**
+1. **WebSocket order events go to the whole house.** `order:created` and `order:status_changed` are emitted to the `restaurant:<id>` room (`websocket.gateway.ts:622-645`), which every socket with a house joins, staff included (`:342-345`). `rabbitmq-bridge.service.ts:489-496` puts `target_price` in the `order:created` payload, then sends the whole payload again as `order_change` (`:498`). — OPEN.
+2. **The same notification rows reach staff in full through the inbox.** `GET /notifications` returns `message` and `metadata` as written (`mapNotificationRow`, `notifications.service.ts:870-887`, used by `getNotifications` at `:937`; controller `:272`, no `@Roles`) [re-cited at gate round 1: it read `:845-858`, where the function began at 4bd11a00e, and lines added above it since moved it]. The phone's Notifications screen draws `item.message` (`apps/mobile/app/notifications.tsx:102`), and so does the web inbox (`apps/web/src/pages/notifications/next/BookRow.tsx:132`, `:182`). This round closes the feed only. The writers that send money to every member are the root: `sale-record.producer.ts`, `invoice-confirmed.producer.ts`, the goal producers, and `procurement.service.ts:6923-6945` (cited as `:6866` until gate round 2; #578 and #581 on `main` moved it [gate round 5: merged as 255151bc2 and ddf8ee3e1]). — OPEN.
+3. **Push and the live event carry the same rows to staff.** Found by the Sonnet verify of 2026-10-01. Every line number in this item was re-measured at gate round 2.
+   - **Push.** `persistForRestaurant` pushes every row it writes, at any priority but `low`, to everyone the row went to; a routed write (ADR 0218) pushes only to the people routing alerted, and a caller can opt out with `skipMobilePush` (`notifications.service.ts:822-845`, `:828`, `:831`). The push carries the title, `body: payload.message` (`:837`) and the whole metadata in `data`. `ExpoPushService.sendToUsers` reads device tokens for the ids it is handed and checks no role (`push/expo-push.service.ts:126-172`).
+   - **Live event.** The same funnel emits `notification:new` with `message` and `metadata`, at any priority, to the house room for a write addressed to everyone (`notifications.service.ts:789-820`). [Push and live-event lines re-measured at gate round 1; they read `:803-826`, `:818` and `:770-801` before this round's added lines moved them.] Every socket with a house joins that room, staff included (`websocket.gateway.ts:343`).
+   - **Money that reaches staff this way:**
+     - the delivery-discrepancy notice (`invoice_received`, `critical`): `match.summary` as the message, `creditDue` and `effectiveUnitCost` in the metadata (`procurement.service.ts:6923-6945`);
+     - the certified-invoice notice (`invoice_received`, `medium`): the invoice total in the sentence (`invoice-confirmed.producer.ts:153-166`);
+     - goal notices (`goal_reached`, `medium`, `goal-reached.producer.ts:192`, `ceiling-held.producer.ts:212`): a currency goal's figures;
+     - the closed-service notice (`service_closed`): its revenue goes out on the live event only, since it is `low` and so is not pushed (`sale-record.producer.ts:173`).
+   - **What the ruling says.** ADR 0253 round 9 closes the credit due and unit cost on delivery-difference notices to staff, "server first, as its own fix", but names no channel. This branch closes the Today feed only. — OPEN.
+4. **Titles reach staff as written.** Filed at gate round 1 (audit at 74d837c70). The feed gates a notification card's subtitle and `meta`, never its title (`mobile.service.ts:305`, `:329`).
+   - **`goal_reached`.** Both writers make the goal's typed name the title (`goal-reached.producer.ts:162`, `:190`; `ceiling-held.producer.ts:185`, `:200`). Both hand `ledger.emit` the audience they are given, unnarrowed (`goal-reached.producer.ts:177`, `ceiling-held.producer.ts:188`). That audience is `audienceFor`'s, built from every member of the house (`notification-producers.service.ts:259`, `:266`, `:272`; `producer-ledger.service.ts:197-198`), less anyone Away that day. A goal named "Reach $50k week" puts that figure on a staff member's card.
+   - **What the ruling says.** ADR 0253 round 11 F5, *"No figures; neutral titles (Recommended)"* (on PR #566 at 21e87278a, not on `main` at 8c673db4b [dated at gate round 4]): for anyone without the money right, "A title that can carry a figure is replaced by a neutral one." This branch replaces no title. — OPEN.
+   - **The role test stands in.** `seesHouseMoney(role)` decides who sees money here only until the money right exists. ADR 0253 round 10 (on PR #566 [gate round 5: at 21e87278a and 513e65aa5]) makes "Sees the house's money" a right of its own, with the role setting only its default, and says that right replaces #582's role test.
+5. **`notifications.type` defaults to `system`.** Filed at gate round 1. The column is `type character varying(100) DEFAULT 'system'::character varying NOT NULL` (`20260805000000_baseline_from_production.sql:3975`); `notification_type` is NOT NULL with no default (`:3956`). An insert that sets `notification_type` but omits `type` is stored as `system`, which is on `MONEY_FREE_NOTIFICATION_TYPES`, so its sentence would reach staff on the feed. The audit at 74d837c70 found no writer that omits it; this branch did not sweep for one. Nothing guards it: the claim counts only literal `type: "system"` writers (Disclosed limits, "What the `system` writer pin cannot see"). — OPEN.
+6. **`unknown_sender` carries an outsider's email subject.** Filed at gate round 1. Its one literal writer (grep of `apps`, `services` and `supabase/migrations`) is `_notify_unknown_sender` (`services/agent-orchestrator/agents/email_intel_agent.py:980`). It puts up to 80 characters of the incoming email's subject in the sentence (`:984`) and writes one row per member of the house (`core/notifications.py:84`, `:99`). The audit cited `:979`; the lines above are measured at gate round 1.
+   - **The type is on `MONEY_FREE_NOTIFICATION_TYPES`,** so a subject that names a price reaches staff on the feed.
+   - **Which rule applies.** The comment on that list withholds a type when a writer puts another person's free text in its sentence. It now says that rule does not decide `unknown_sender`. Incoming mail follows ADR 0253 round 11 F13, *"Mail kept, AI summaries neutral (Recommended)"* (on PR #566 at 21e87278a), whose option text keeps a vendor mail's subject and text for staff.
+   - **Open: whether F13 covers this sender.** F13 says vendor mail, and an `unknown_sender` row is mail from an address that is not in the providers list. Counting it as vendor mail is this branch's reading, not the founder's. If it is not vendor mail, the type comes off the list. — OPEN.
+7. **`GET /notifications` does not validate `type`.** Filed at gate round 2 (audit at 899893a6e, Reviewer B). This is robustness, not a leak.
+   - **The gap.** `GetNotificationsQueryDto.type` carries `@IsOptional()` and no `@IsString()` (`notifications/dto/notifications.dto.ts:95-97`). Its `@ApiPropertyOptional({ enum: NotificationType })` documents the field and validates nothing.
+   - **What gets through.** The global `ValidationPipe` sets `whitelist`, `forbidNonWhitelisted` and `transform`, and not `enableImplicitConversion` (`main.ts:52-58`). Express 4.22.1's `qs` parser reads `?type=system&type=x` and `?type[]=system` as arrays.
+   - **Where it lands.** An array fails `params.type === "system"` (`notifications.service.ts:911`) and goes to `.eq("type", …)` as an array (`:914-915`). `user_id` binds first (`:906`), so the answer can only narrow, never widen. This is reasoned from the code and was not run against PostgREST.
+   - **The fix.** One `@IsString()`, in a file this branch does not touch (15-file cap). — OPEN.
+8. **`GET /dashboard/summary/:restaurantId` hands any member of the house up to five notification rows whole, whoever they were addressed to.** Filed at gate round 2 (audit at 899893a6e, Reviewer A). This is the same class of leak as item 2.
+   - **The read.** `getNotificationsSummary` reads `notifications` with `select("*")`, filtered only by `restaurant_id`, and returns the rows as read under `recent` (`dashboard.service.ts:166-203`; the query is `:174-179`, the return `:192-195`). The query orders by `sent_at` descending with `limit(5)`. Postgres sorts NULLs first in a descending order, and no gateway writer of `notifications` sets `sent_at` (grep of `apps/api-gateway/src`), so the five are not the newest by any guarantee.
+   - **Who can call it.** The route has the class's `JwtAuthGuard` and no `@Roles` (`dashboard.controller.ts:51`, `:70-101`). The path's house must be the token's house: `JwtAuthGuard` runs `assertTenantMatch` (`auth/guards/jwt-auth.guard.ts:74`; `common/tenant/assert-tenant-match.ts:93-98`, `:136-138`). So any member of that house can call it, staff included, and no member of another house can.
+   - **What leaks.** Each row comes whole, so any money in its message or metadata comes with it. With no per-user filter, a member also gets rows addressed only to others, such as the own-wage notice, which is written to owners only (`team/own-wage-notice.ts:99-127`).
+   - **Who calls it.** The web wraps the route (`apps/web/src/services/api/dashboard.ts:53-64`), and grep of `apps/web/src` finds no caller of that wrapper. The phone does not call it. At this head it answers only a direct request made with a member's token [gate round 4: this said "Today"; the grep is re-run at this head]. — OPEN.
+
+**Where the PR body's "Still open" items are filed** (added at gate round 2; the two lists number differently, and their numbers are kept because audit reports cite both). The body's items 11 and 12 were added to it at gate round 2, with this table:
+
+| PR body, Still open | This entry |
+|---|---|
+| 1. WebSocket order events | Open item 1 |
+| 2. Both Notifications screens | Open item 2 |
+| 3. Push and the live event | Open item 3 |
+| 4. Supply tab amounts, Insights cellar value | "Not settled by the round-2 ruling", item 3 |
+| 5. A grantee's own grant limit | Fix round 2, item 1 (built on #583 [gate round 5: at e68bd3cdf]) |
+| 6. Older phone builds | "Not settled by the round-2 ruling", item 4 |
+| 7. Titles | Open item 4 |
+| 8. `notifications.type` defaults to `system` | Open item 5 |
+| 9. `unknown_sender` | Open item 6 |
+| 10. Seven other inbox chips | Disclosed limits, "The web inbox's System filter chip", "Not fixed: the other chips" |
+| 11. `GetNotificationsQueryDto.type` | Open item 7 |
+| 12. `GET /dashboard/summary/:restaurantId` | Open item 8 |
+
+**Disclosed limits.**
+- ~~**A same-house demotion can render once from cache.**~~ **A same-house demotion keeps drawing cached money until a refetch succeeds.** [Narrowed at gate round 1 (audit at 74d837c70): "once" was broader than the code.] The phone writes a query to MMKV only when it has succeeded with data (`apps/mobile/src/lib/queryClient.ts:51-69`): `:55` returns early unless `status === "success"` and `data` is defined, so a failed refetch never replaces the last good record. [Corrected at gate round 2: this said "every settled query", which was broader than `:55`.] Those records have no expiry: each boot rehydrates them and drops one only on a version mismatch or a parse failure (`:30-49`). `refreshUser` does not clear them (`apps/mobile/src/state/session.ts:278-283`); sign-in, a house switch (`adoptTokens`) and sign-out do (`:253`, `:271`, `:326`; `app/settings.tsx:28`). So after an owner or manager is demoted in the same house, the last feed and pulse they were served, with money, keep drawing until a refetch succeeds. That lasts for as long as refetches fail, for example while the phone is offline.
+- **The type list is only as good as its census.** A future writer that reuses a listed type with money in its sentence would pass. The comment on `MONEY_FREE_NOTIFICATION_TYPES` says to read every writer before adding a type, and the claim fails if a known money type is ever added.
+- **What the `system` writer pin cannot see (fix round 2).** The claim counts only literal `type: "system"` or `type: 'system'` in the gateway's non-spec `.ts` files, with comments stripped. It does not see:
+  - a type built in a variable;
+  - an existing writer whose sentence gains a figure;
+  - the Python writers (`services/agent-orchestrator`). None writes `system` at this head [gate round 4: this said "today"]. `email_intel_agent.py:913` and `research_tasks.py:933` set their own types and omit NOT NULL columns, so they always fail.
+
+  Rows written by code older than this repo cannot be enumerated without a production query, and none was run.
+- ~~**The web inbox's System filter chip misses the new type (fix round 2).**~~ **The web inbox's System filter chip: fixed at gate round 1.**
+  - **What it was.** The chip sends `type=system` (`nt-book.ts:253`, `useNotificationsNextData.ts:255`), and `getNotifications` matched it exactly. An owner who filtered by System did not see a wage notice written after this fix, or any `system_alert` row: `experiment-ended.producer.ts:274` writes that type on `main` (8c673db4b, dated at gate round 4), and so does `sendSystemAlert` since fix round 2, which has no caller outside the specs [gate round 5: this said "which has no caller"; see fix round 2's `sendSystemAlert` line]. Both still showed under All, filed under System (`nt-format.ts:117-118`, `:122`).
+  - **The fix.** `getNotifications` answers `type=system` with `in("type", SYSTEM_CHIP_TYPES)`: `system`, `system_alert` and `team_member_own_wage_set`, the three types `nt-format.ts` files under System (`notifications.service.ts:35-39`, `:911-916`). Any other type is still matched exactly. The phone's inbox sends no type (`apps/mobile/src/api/queries.ts:216-219`), and grep of `apps/web/src` finds no other code that sends `type=system`. `mobile/mobile-feed-money-for-staff.spec.ts` pins it; four mutations each failed that case (exact match restored, the wage type dropped, `system_alert` dropped, the set used for every type). It stays in that spec, beside the two type moves it follows from, because the branch is at its 15-file cap.
+  - **The two copies are tied (gate round 2).** `SYSTEM_CHIP_TYPES` is a copy of the types `KIND_BY_TYPE` files under System (`nt-format.ts:80-123`). A spec case in the same file reads `nt-format.ts` as text and fails if either side has a type the other lacks. It reads the file the way `common/iso-4217.spec.ts` reads the web's currency table, because an import would pull the browser bundle (`lucide-react`, the web's `@/` alias) into the gateway's compile. The case also fails if the table is not found or holds a line it cannot read.
+  - **Not fixed: the other chips.** Seven other chips each name one type of a register that `KIND_BY_TYPE` gives two to five types: Stock, Orders, Deliveries, Vendor mail, Calendar, Reports and Advice. They still match that one type exactly. This is on `main` already (8c673db4b, dated at gate round 4); whether each gap is meant was not checked (the comment above `TYPE_CHOICES` gives a reason for Advice's). — OPEN.
+- **Words typed by a person (fix round 2).** Three `system` writers carry a person's typed text to the people it was sent to: a team broadcast, a note, and a held team message. Staff now see that text on the feed card, as they already did on the Notifications screen. If an author types a price, it shows. No writer adds the house's money to these sentences.
+
+**Not settled by the round-2 ruling: answered 2026-10-01 (ADR 0253 round 9).** Items 1-3 were put to the founder after the build; item 4 is a limit, not a question. His answers are recorded in ADR 0253 "Answered 2026-10-01 (round 9)", which is on `docs/houses-decisions-0251-0253` (#566), not yet on `main` [gate round 5: at 513e65aa5, not at 8c673db4b, per the bracket that follows]. [Dated at gate round 4: checked at 2026-10-03 21:18Z, #566 was OPEN with head 513e65aa5, where "Answered 2026-10-01 (round 9)" occurs once; ADR 0253 is not on `main` at 8c673db4b.]
+1. ~~**Vendor reply cards.** Whether staff's `draft_approval` cards count as approve cards is open.~~ **Answered:** *"Keep them (Recommended)"*. Staff keep the cards for a drafted letter to a vendor, though the text may name a price; ADR 0175 D10 lets staff hold a letter as a request. A card's subtitle is ~~the first 110 characters of the draft~~ the draft with its whitespace collapsed, cut when longer than 110 characters to its first 109, trailing space trimmed, plus "…" (`mobile.service.ts:267-268`, `truncate` at `:540-541`), and `draftContent` holds the full text [corrected at gate round 3: "the first 110 characters" was not what `truncate` does] (`mobile.service.ts:256-278`; was `:244-266` before gate round 1 added comment lines above it). Nothing changes; the claim names this exception.
+2. ~~**Money right.** Whether a grantee should see approve cards and amounts is open.~~ **Answered:** *"What they can approve (Recommended)"*. A send right alone shows no money. Once ADR 0175 D7 lets someone given the right approve orders, they see approve cards and amounts only for the orders their right covers. D7 approval is unbuilt (CLAIMS `ADR-0175-APPROVE-ORDER-ALWAYS-NEEDS-AUTHORITY` is open), so there is nothing to show yet, and a grantee keeps the staff view here.
+   The grant's own limit is a separate answer, given in fix round 2: *"Show their own limit (Recommended)"*, then *"Record the grantee (Recommended)"*. It is built on the stacked branch `fix/phone-feed-own-grant-limit` (fix round 2, item 1, above) [gate round 4: that branch is #583's head; checked at 2026-10-03 21:18Z, #583 was OPEN with this branch as its base]. How it reads beside "a send right alone shows no money" goes into ADR 0253 as an amendment, which the coordinator applies to #566 [gate round 4: applied; ADR 0253 has "How this fits round 9's" once at 4a23f659c and at 513e65aa5].
+3. **Other phone screens: answered, not built here.** The founder: *"Close all three (Recommended)"*. The Supply tab's order amounts, the Insights tab's cellar value, and the credit due and unit cost on delivery-difference notices close to staff too, "server first, as its own fix". None of it is done on this branch. The phone still shows staff money from:
+   - the Supply tab: order amounts from `GET /procurement/orders/pending`, `/history` and `/:id`;
+   - the Insights tab: cellar value from `GET /inventory/:restaurantId/summary`;
+   - the Notifications screen: every notification's full message and metadata (Open item 2 above). Fix round 1 closed this for the feed's cards only.
+
+   None of these endpoints carries `@Roles` (`procurement.controller.ts:203`, `:219`, `:236`; `inventory.controller.ts:290`; read, not run). [Re-cited at gate round 2: this said `:201` and `:217`, the routes' place before #581 on `main` moved them, and named no line for `/:id`.] [Gate round 5: #581 merged as ddf8ee3e1.] The round-2 ruling named only `GET /mobile/feed`; round 9 rules the first two and the delivery-difference figures for their own fix (Open item 3 above for the push path). — OPEN.
+4. **Older phone builds.** A phone build from before this fix still shows staff the "Connect Toast on the web dashboard" line. It reads the missing revenue as unavailable. Only an app update clears it.
