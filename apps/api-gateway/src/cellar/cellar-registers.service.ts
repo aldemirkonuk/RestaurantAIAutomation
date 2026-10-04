@@ -1,6 +1,7 @@
 import { restoreArrivalEntry } from "../arrival/restore-entry";
 import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
+import { readCurrentMenuLines } from "../menus/current-menu-lines";
 import {
   applyAnswers,
   inferRegisters,
@@ -11,9 +12,9 @@ import {
   registersForLabel,
   tallyMenuLines,
   unplacedMenuLines,
+  type CurrentMenuLineTally,
   type DecidedBy,
   type InferenceInput,
-  type MenuLineTally,
   type RegisterId,
   type RegisterReadout,
   type StoredAnswer,
@@ -63,9 +64,10 @@ export interface CellarRegistersReadout {
    * register-by-register readout cannot express (see `MenuLineTally`).
    *
    * `null` when the menu could not be read at all, which is not the same
-   * sentence as "no lines".
+   * sentence as "no lines". `currentMenus: 0` is a house with no current
+   * menu (ADR 0193), which is not the same sentence as an empty one either.
    */
-  menuLines: MenuLineTally | null;
+  menuLines: CurrentMenuLineTally | null;
   /** Every register the house is known to carry, in vocabulary order. */
   carried: RegisterId[];
   /**
@@ -148,10 +150,14 @@ export interface UnplacedMenuLine {
  * `read` is the same denominator the readout prints, from the same query, so
  * the page can say "17 of the 240 lines read" without a second request. There
  * is no `null` form: a menu that could not be read is an error response, never
- * an empty list — an empty list here means the reader placed every line.
+ * an empty list. An empty list means the reader placed every line on the
+ * current menu, or, with `currentMenus: 0`, that no menu is current and there
+ * was nothing to place.
  */
 export interface UnplacedMenuLinesReadout {
   restaurantId: string;
+  /** Menus current at this read (ADR 0193 `status = 'active'`). */
+  currentMenus: number;
   read: number;
   lines: UnplacedMenuLine[];
 }
@@ -453,12 +459,13 @@ export class CellarRegistersService {
    * reader placed every line" about a menu nobody could open.
    */
   async readUnplaced(restaurantId: string): Promise<UnplacedMenuLinesReadout> {
-    const { rows, error } = await this.readMenuRows(restaurantId);
+    const { rows, currentMenus, error } = await this.readMenuRows(restaurantId);
     if (error) {
       throw new Error(`The menu could not be read, so the lines it could not place are unknown: ${error}`);
     }
     return {
       restaurantId,
+      currentMenus,
       read: rows.length,
       lines: unplacedMenuLines(rows).map(({ id, category, name }) => ({ id, category, name })),
     };
@@ -466,31 +473,47 @@ export class CellarRegistersService {
 
   /**
    * The one read of this house's menu lines, shared by the readout's tally and
-   * the unplaced list so the two can only ever see the same rows. Ordered by
-   * id so the list is stable between requests; the tally does not care.
+   * the unplaced list so the two can only ever see the same rows.
+   *
+   * ONLY THE CURRENT MENU. A house keeps every menu it reads (ADR 0193), and
+   * each kept version keeps its own `menu_items` lines. This used to read
+   * every line of the house, so an archived copy of the current menu counted
+   * every line twice: 267 lines read for a 134-line menu, and each register's
+   * `menuRows` doubled (A-028, F-148). `readCurrentMenuLines` reads the lines
+   * of the `status = 'active'` menus only, without discarded lines, paged
+   * whole and in id order, so the list is stable between requests. A failed
+   * read is an error here, never a shorter menu.
    */
-  private async readMenuRows(
-    restaurantId: string,
-  ): Promise<{ rows: MenuItemRow[]; error: string | null }> {
-    const { data, error } = await this.dbService
-      .getClient()
-      .from("menu_items")
-      .select("id, category, name")
-      .eq("restaurant_id", restaurantId)
-      // A discarded line is off the menu; it should not still infer a
-      // register carried (migration 20260922230200, ADR 0160 sec110 item 7).
-      .neq("status", "discarded")
-      .order("id", { ascending: true });
-    if (error) return { rows: [], error: error.message };
-    return { rows: (data ?? []) as MenuItemRow[], error: null };
+  private async readMenuRows(restaurantId: string): Promise<{
+    rows: MenuItemRow[];
+    currentMenus: number;
+    error: string | null;
+  }> {
+    try {
+      const current = await readCurrentMenuLines(
+        this.dbService.getClient(),
+        restaurantId,
+      );
+      return {
+        rows: current.rows as unknown as MenuItemRow[],
+        currentMenus: current.currentMenus,
+        error: null,
+      };
+    } catch (e) {
+      return {
+        rows: [],
+        currentMenus: 0,
+        error: e instanceof Error ? e.message : String(e),
+      };
+    }
   }
 
   private async readMenuLabels(restaurantId: string): Promise<{
     status: SourceStatus;
     counts: Map<RegisterId, number> | null;
-    lines: MenuLineTally | null;
+    lines: CurrentMenuLineTally | null;
   }> {
-    const { rows, error } = await this.readMenuRows(restaurantId);
+    const { rows, currentMenus, error } = await this.readMenuRows(restaurantId);
 
     if (error) {
       return {
@@ -515,8 +538,9 @@ export class CellarRegistersService {
       counts,
       // Same rows, same pass, same placement rule as the counts above. The
       // tally is not a second reading of the menu — it is the first one,
-      // counted per line instead of per register.
-      lines: tallyMenuLines(rows),
+      // counted per line instead of per register. `currentMenus` says
+      // whether there was a current menu to read at all (ADR 0193).
+      lines: { ...tallyMenuLines(rows), currentMenus },
     };
   }
 

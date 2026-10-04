@@ -24,6 +24,10 @@ import {
   type LedgerEntry,
   type RowRecord,
 } from "./row-record";
+import {
+  readCurrentMenuLines,
+  type CurrentMenuLines,
+} from "../menus/current-menu-lines";
 import type {
   CreateCocktailDto,
   SetCocktailIngredientsDto,
@@ -95,12 +99,27 @@ const CATALOGUE_COLUMNS =
  * Each is a module-level const for the same reason CATALOGUE_COLUMNS is:
  * `scripts/check_read_columns_exist.py` resolves a module-level const and
  * checks every column against the migrations. A read whose column list is
- * inlined at the call site is a read nobody is checking.
+ * inlined at the call site is a read nobody is checking. The menu book's
+ * columns are `CURRENT_MENU_LINE_COLUMNS`, beside the one current-menu read
+ * (`menus/current-menu-lines.ts`).
  */
-const MENU_LINE_COLUMNS =
-  "id, name, producer, category, bottle_price, by_glass_price, created_at";
+/**
+ * The vendor is embedded through a NAMED foreign key, and the name is
+ * load-bearing. `procurement_documents` and `providers` are joined by two
+ * foreign keys: `procurement_documents.provider_id -> providers`
+ * (`procurement_documents_provider_id_fkey`, the baseline) and
+ * `providers.created_from_document_id -> procurement_documents` (migration
+ * a_vendor_is_resolved_by_identity, the document a provider was born from).
+ * With two paths a bare `providers(name)` makes PostgREST refuse the whole
+ * read ("more than one relationship was found"), and every row record's
+ * invoice book said "invoices unread" (2026-10-03 analytics walk, A-043). The
+ * hint picks the vendor who billed us; the JSON key stays `providers`.
+ *
+ * `doc_number` is read because the ledger prints it as the line's note — the
+ * invoice the line came from (A-044). Without it every note was null.
+ */
 const INVOICE_LINE_COLUMNS =
-  "id, description, unit_price, line_total, qty_bottles, created_at, procurement_documents!inner(id, doc_type, doc_date, restaurant_id, providers(name))";
+  "id, description, unit_price, line_total, qty_bottles, created_at, procurement_documents!inner(id, doc_type, doc_date, doc_number, restaurant_id, providers!procurement_documents_provider_id_fkey(name))";
 const ORDER_LINE_COLUMNS =
   "id, wine_name, producer, quantity, quoted_unit_price, negotiated_unit_price, final_unit_price, procurement_orders!inner(id, requested_at, restaurant_id, providers(name))";
 /**
@@ -763,25 +782,43 @@ export class BeveragesService {
     );
   }
 
+  /**
+   * The menu book reads the CURRENT menu only (ADR 0193: `restaurant_menus`
+   * `status = 'active'`), through the one read the cellar's registers use.
+   * A house keeps every menu it reads, so a read of every `menu_items` row
+   * counted the archived copy of the same menu too and printed each line
+   * twice (A-028). The read is paged whole, so the old unordered 400-line
+   * slice is gone from this book. A discarded line stays out (ADR 0160
+   * sec110 item 7).
+   */
   private async readMenuLines(
     restaurantId: string,
     label: string,
   ): Promise<BookRecord> {
     const source = "menu_items";
-    const { data, error } = await this.dbService
-      .getClient()
-      .from("menu_items")
-      .select(MENU_LINE_COLUMNS)
-      .eq("restaurant_id", restaurantId)
-      // A discarded line was removed from what guests see; it should not
-      // still surface in this row's own "on the menu" record (migration
-      // 20260922230200, ADR 0160 sec110 item 7).
-      .neq("status", "discarded")
-      .limit(ROW_RECORD_LINE_LIMIT);
-    if (error) return this.failed("menu", source, error);
+    let current: CurrentMenuLines;
+    try {
+      current = await readCurrentMenuLines(
+        this.dbService.getClient(),
+        restaurantId,
+      );
+    } catch (e) {
+      return this.failed("menu", source, {
+        message: e instanceof Error ? e.message : String(e),
+      });
+    }
+    if (current.currentMenus === 0) {
+      return composeBook({
+        book: "menu",
+        source,
+        ledger: [],
+        emptyReason:
+          "This house has no current menu, so no line is on it. A menu that was read but never made current is kept, not listed here.",
+      });
+    }
 
     const ledger: LedgerEntry[] = [];
-    for (const r of (data ?? []) as Record<string, unknown>[]) {
+    for (const r of current.rows) {
       const line = [seriesStr(r.producer), seriesStr(r.name)]
         .filter(Boolean)
         .join(" ");
