@@ -669,11 +669,13 @@ export class AnalyticsService {
       for (const s of skus) s.abcClass = abcByItem.get(s.id) || "C";
     }
 
+    // Highest risk first, and within a tie the order is the data's, never the
+    // database's: sorted by probability alone, a tie kept whatever order
+    // loadInventory returned, so the cut below listed two of Tuzlu's five
+    // wines tied at 27% under "the 25 at the highest risk" (A-070, ADR 0272).
     const reorderList = skus
       .filter((s) => s.needsReorder)
-      .sort(
-        (a, b) => (b.stockoutProbability ?? 0) - (a.stockoutProbability ?? 0),
-      );
+      .sort(E.byStockoutRisk);
 
     return {
       params: {
@@ -693,7 +695,17 @@ export class AnalyticsService {
       costCoverage,
       skuCount: skus.length,
       reorderCount: reorderList.length,
-      reorderList: reorderList.slice(0, 25),
+      // 25, extended through any tie at row 25 — "the N at the highest risk"
+      // is only true when no row tied with the last one listed was left out.
+      // Never through a tie at 0%: that group is every wine with no demand
+      // and nothing on hand, it carries no risk to rank, and extending
+      // through it listed all of them (ADR 0272, fork 3 bound).
+      reorderList: E.cutKeepingTies(
+        reorderList,
+        25,
+        (s) => s.stockoutProbability,
+        { extendOnlyAbove: 0 },
+      ),
       skus: skus
         // Unpriced rows sort last instead of turning the comparator into NaN.
         .sort((a, b) =>
