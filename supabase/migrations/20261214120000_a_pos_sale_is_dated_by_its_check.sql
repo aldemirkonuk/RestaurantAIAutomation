@@ -49,9 +49,12 @@
 -- gives PostgREST, which resolves by argument NAME, two candidates for every
 -- call that omits p_occurred_at, and it refuses them as ambiguous. Each old
 -- signature is dropped first and the block at the end asserts that exactly one
--- of each function survives. No ACL is lost: no migration GRANTs or REVOKEs
--- either function (grep -rn over supabase/migrations/), so each carries only
--- the default EXECUTE, which the new one also gets.
+-- of each function survives. No migration GRANTs or REVOKEs either function
+-- (grep -rn over supabase/migrations/; the baseline dump carries no GRANT at
+-- all), so as far as the migrations record, each carries only the default
+-- EXECUTE, which the new one also gets. Production's ACL on the two functions
+-- was not read (ADR 0141 dropped and re-created apply_stock_movement the same
+-- way).
 --
 -- POSITIONAL SQL CALLERS still resolve: set_stock_absolute
 -- (stock_race_and_pour_idempotency) and record_stock_count
