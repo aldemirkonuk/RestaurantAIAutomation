@@ -3,7 +3,8 @@
 -- Run against a database built from supabase/migrations (PGlite over the whole
 -- corpus, or the Docker recipe). Every row it writes is inside one transaction
 -- that is ROLLED BACK at the end, so it leaves nothing behind. It prints one
--- row per test: id, ok, detail. Every "ok" must be true.
+-- row per test (id, ok, detail), then RAISES unless all fifteen ran and every
+-- "ok" is true, so a failure stops the run instead of waiting to be read.
 --
 -- The control: against the corpus WITHOUT migration
 -- a_delivery_event_follows_its_order, T1-T9 and T11-T13 must come out false
@@ -258,5 +259,20 @@ end $$;
 drop trigger t0284_refuse on public.calendar_events;
 
 select id, ok, detail from _t order by length(id), id;
+
+-- The verdict. A row that says false is easy to scroll past, so the run itself
+-- fails unless all fifteen tests ran and every one came out true.
+do $$
+declare
+  n   integer;
+  bad text;
+begin
+  select count(*), string_agg(id, ', ' order by length(id), id) filter (where ok is not true)
+    into n, bad
+    from _t;
+  if n <> 15 or bad is not null then
+    raise exception 'ADR 0284 test FAILED: % of 15 tests ran; not true: %', n, coalesce(bad, 'none');
+  end if;
+end $$;
 
 rollback;
