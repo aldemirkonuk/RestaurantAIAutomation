@@ -63,8 +63,9 @@ export function inventoryVolumesFromRow(row: {
 /**
  * A sale older than this when it reaches the hub is counted as back-dated in
  * the import result (`stock.backdatedOver72h`). It is still dated by its
- * check: whether a POS check older than this needs a manager, as C02 rules
- * for door receipts, counts and orders, is founder fork F1 in ADR 0281.
+ * check, at any age: the founder ruled that C02's "older needs a manager",
+ * which holds for door receipts, counts and orders, does not hold for a POS
+ * check ("No: trust the till", ADR 0281, fork F1).
  */
 export const BACKDATED_AFTER_MS = 72 * 60 * 60 * 1000;
 
@@ -121,13 +122,18 @@ export function saleInstant(closedAt: unknown, nowMs: number): SaleInstant {
 
 /**
  * What one import did to stock, line by line (ADR 0281). The counters
- * partition `lines`: every line on a closed check lands in exactly one of
+ * partition `lines`: every line counted there lands in exactly one of
  * notStock, booked, alreadyBooked, queued.* or failed.
  * `consumptionNotWritten`, `backdatedOver72h` and `datedAtImportTime` are
  * sub-counts of the lines that moved stock.
  */
 export interface StockTally {
-  /** Every line on the closed checks of this import. */
+  /**
+   * Every line on a closed check this import stored. A check whose
+   * pos_checks upsert failed (or whose stock step threw before reading its
+   * lines) moves no stock and is not counted here; its own errors[] line
+   * names it.
+   */
   lines: number;
   /**
    * Lines with nothing to move by design: not a stock line (kept on
@@ -988,9 +994,11 @@ export class PosHubService {
     const tally = report.tally;
 
     // ADR 0281: the stock and the consumption of this check are dated by when
-    // it closed, not by when it reached the hub. A sale void is dated by the
-    // same closed_at. An unreadable closed_at falls back to import time and is
-    // reported, never silent.
+    // it closed, not by when it reached the hub. A void is dated by the
+    // closed_at the voided check carries: the sale's own instant only when
+    // the till re-sends it, a later one when the till stamps the void itself.
+    // An unreadable closed_at falls back to import time and is reported,
+    // never silent.
     const when = saleInstant(check.closedAt, Date.now());
     let fallbackNoted = false;
     const booked = () => {
@@ -1161,8 +1169,10 @@ export class PosHubService {
             // here, and a mis-seeded mapping used to move another house's
             // shelf on every sale.
             p_restaurant_id: restaurantId,
-            // ADR 0281: a sale and its void are both dated by the check's
-            // closed_at, so a void lands on the day of the sale it cancels.
+            // ADR 0281: a sale and its void are both dated by the closed_at
+            // their check carries. A void lands on the sale's day only when
+            // the till re-sends the sale's closed_at on it; a till that
+            // stamps the void with its own time dates the return then.
             p_occurred_at: when.at,
           }));
         }

@@ -20,7 +20,8 @@ import { SaleUnit, SaleUnitAnswerDto } from "./dto/pos-mapping-review.dto";
  * stock therefore reads HIGH, not low. "Unanswered" means what the import
  * means by it (ADR 0281): `resolveSaleVolume` reads `sale_volume_ml` first,
  * so a row with a volume and no unit label is answered, and a row labelled
- * 'glass' whose inventory carries no pour size is not. The column cannot be backfilled by this service or any other:
+ * 'glass' whose inventory carries no pour size is not. The column cannot be
+ * backfilled by this service or any other:
  * "BORDEAUX BLEND" and "NERELLO MASCALESE MORETTO" do not say glass or
  * bottle, and B36 exists precisely because guessing from the name is worse
  * than an honest queue — a wrong unit looks answered.
@@ -145,6 +146,10 @@ export interface SaleUnitReviewResponse {
      * Mappings whose sale volume the import cannot resolve from what is known
      * now (`resolveSaleVolume` returns unresolved): no usable
      * `sale_volume_ml`, and no unit the inventory row can turn into one.
+     * A row already labelled `glass` is counted here while the inventory row
+     * it reaches has no usable `pour_size_ml`: answering the unit again cannot
+     * clear it. The pour size (on the inventory row) or a `sale_volume_ml`
+     * (on the mapping) does, and the row's `next_sale.reason` names the gap.
      */
     needing_unit: number;
     returned: number;
@@ -211,6 +216,14 @@ export interface UnresolvedLinesResponse {
 
 const DEFAULT_CHECK_LIMIT = 500;
 const UNRESOLVED_LINE_LIMIT = 2000;
+/**
+ * Inventory ids per `.in()` read. Since ADR 0281 the review reads the
+ * inventory of every mapping, not only the unanswered ones, so the id list
+ * grows with the house's menu. Chunked so a large menu neither outgrows the
+ * request URL nor meets the API's row cap in one read (the same bound as
+ * procurement/overdue-order-reads.ts).
+ */
+const INVENTORY_IN_CHUNK = 150;
 
 interface PriceAccumulator {
   line_count: number;
@@ -434,25 +447,27 @@ export class PosMappingReviewService {
     const byId = new Map<string, InventoryEvidence>();
     if (ids.length === 0) return byId;
 
-    const { data, error } = await this.dbService
-      .getClient()
-      .from("restaurant_inventory")
-      .select(
-        "id, wine_name, bottle_size_ml, pour_size_ml, menu_price_current, menu_price_glass",
-      )
-      .eq("restaurant_id", restaurantId)
-      .in("id", ids);
-    if (error) throw new Error(error.message);
+    for (let i = 0; i < ids.length; i += INVENTORY_IN_CHUNK) {
+      const { data, error } = await this.dbService
+        .getClient()
+        .from("restaurant_inventory")
+        .select(
+          "id, wine_name, bottle_size_ml, pour_size_ml, menu_price_current, menu_price_glass",
+        )
+        .eq("restaurant_id", restaurantId)
+        .in("id", ids.slice(i, i + INVENTORY_IN_CHUNK));
+      if (error) throw new Error(error.message);
 
-    for (const row of data || []) {
-      byId.set(row.id, {
-        id: row.id,
-        wine_name: row.wine_name ?? null,
-        bottle_size_ml: toNumberOrNull(row.bottle_size_ml),
-        pour_size_ml: toNumberOrNull(row.pour_size_ml),
-        menu_price_current: toNumberOrNull(row.menu_price_current),
-        menu_price_glass: toNumberOrNull(row.menu_price_glass),
-      });
+      for (const row of data || []) {
+        byId.set(row.id, {
+          id: row.id,
+          wine_name: row.wine_name ?? null,
+          bottle_size_ml: toNumberOrNull(row.bottle_size_ml),
+          pour_size_ml: toNumberOrNull(row.pour_size_ml),
+          menu_price_current: toNumberOrNull(row.menu_price_current),
+          menu_price_glass: toNumberOrNull(row.menu_price_glass),
+        });
+      }
     }
     return byId;
   }

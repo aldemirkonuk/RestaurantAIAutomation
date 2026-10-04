@@ -445,6 +445,37 @@ describe("PosMappingReviewService.listNeedingSaleUnit — read shape", () => {
     expect(calls.inQueries).toEqual([["inv-1"]]);
   });
 
+  // ADR 0281 reads every mapping's inventory, so the id list grows with the
+  // menu: it is read in bounded chunks, and no row is lost between them.
+  it("reads a large menu's inventory in bounded chunks", async () => {
+    const n = 320;
+    const ids = Array.from({ length: n }, (_, i) => `inv-${i}`);
+    const { service, calls } = makeService({
+      mappings: ids.map((id, i) =>
+        mapping({
+          id: `map-${i}`,
+          external_item_id: `ext-${i}`,
+          inventory_id: id,
+        }),
+      ),
+      inventory: ids.map((id) => ({
+        id,
+        restaurant_id: RESTAURANT,
+        bottle_size_ml: 750,
+      })),
+    });
+
+    const res = await service.listNeedingSaleUnit(RESTAURANT, {
+      includeAnswered: true,
+    });
+
+    expect(calls.inQueries.map((q: string[]) => q.length)).toEqual([
+      150, 150, 20,
+    ]);
+    expect(res.summary.dangling_inventory).toBe(0);
+    expect(res.items.every((r) => r.inventory_link === "ok")).toBe(true);
+  });
+
   // A-041 (ADR 0281): the review read the mapping without sale_volume_ml and
   // called every unlabelled row unanswered and depleting nothing, while the
   // import reads the volume first and pours it. 57 glass, single and carafe
@@ -534,10 +565,7 @@ const HOUSE_ITEMS: Row[] = [{ id: "inv-1", restaurant_id: RESTAURANT }];
 
 describe("PosMappingReviewService.setSaleUnit — write validation", () => {
   it("writes the unit the human sent, and only that column", async () => {
-    const { service, calls } = makeService({
-      inventory: HOUSE_ITEMS,
-      mappings: [mapping()],
-    });
+    const { service, calls } = makeService({ inventory: HOUSE_ITEMS, mappings: [mapping()] });
 
     const result = await service.setSaleUnit(RESTAURANT, "map-1", "glass");
 
@@ -572,10 +600,7 @@ describe("PosMappingReviewService.setSaleUnit — write validation", () => {
   // rejected is input that is malformed rather than merely unusual — a blank
   // label renders as "mapped" in this very UI while meaning nothing.
   it("accepts an open label, and still rejects a malformed one", async () => {
-    const { service, calls } = makeService({
-      inventory: HOUSE_ITEMS,
-      mappings: [mapping()],
-    });
+    const { service, calls } = makeService({ inventory: HOUSE_ITEMS, mappings: [mapping()] });
 
     await expect(
       service.setSaleUnit(RESTAURANT, "map-1", "half_bottle" as any),
@@ -604,10 +629,7 @@ describe("PosMappingReviewService.setSaleUnit — write validation", () => {
   });
 
   it("refuses an unknown mapping id instead of creating a row", async () => {
-    const { service, calls } = makeService({
-      inventory: HOUSE_ITEMS,
-      mappings: [mapping()],
-    });
+    const { service, calls } = makeService({ inventory: HOUSE_ITEMS, mappings: [mapping()] });
 
     await expect(
       service.setSaleUnit(RESTAURANT, "map-missing", "bottle"),

@@ -1,6 +1,6 @@
 # 0281 — A POS sale is dated by its check, and the import says what it did
 
-- **Status:** Proposed 2026-10-03 (lane `postime`, branch `fix/pos-sales-dated-at-sale-time`). The build follows the coordinator's plan. Three forks wait on the founder and are **not** decided here: F1 (how old a closed_at the server trusts), F2 (repairing rows already written) and F3 (which lane owns the two RPC signatures).
+- **Status:** Proposed 2026-10-03 (lane `postime`, branch `fix/pos-sales-dated-at-sale-time`). The build follows the coordinator's plan. Fork F1 (how old a closed_at the server trusts) is **ruled by the founder**: trust the till, at any age (quoted under "Founder ruling"). Two forks are still open and are **not** decided here: F2 (repairing rows already written) and F3 (which lane owns the two RPC signatures).
 - **Date:** 2026-10-03
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** closed_at, p_occurred_at, transaction_date, apply_stock_movement, record_glass_pour, wine_consumption_log, recorded_at, created_at, back-fill, late webhook, saleInstant, backdatedOver72h, datedAtImportTime, stock tally, errors[], pos_unresolved_lines, sale-unit review, sale_volume_ml, next_sale, effect_if_unanswered, queue_on_next_sale, A-007, A-009, A-029, A-041, AW03, AW08, AW11, C02, F-088
@@ -34,6 +34,10 @@ The same mis-dating happens in a real house whenever a webhook arrives late or i
 
 **What the review reports.** A per-row `next_sale`, computed by the import's own `resolveSaleVolume` and the shared `inventoryVolumesFromRow` over the same columns, replaces the hard-coded constant.
 
+## Founder ruling
+
+- **F1. Does C02's 72-hour rule ("older needs a manager", ruled for door receipts, counts and orders) also hold for a POS check's closed_at when it dates stock and consumption?** The founder's pick, verbatim (AskUserQuestion, recorded in the lane brief as 2026-10-04 ~02:10Z): **"No: trust the till (Recommended)"**. A closed_at is trusted at any age, and the lines this import books more than 72 hours after their check closed are counted as back-dated in the import result (`stock.backdatedOver72h`). The reason given with the recommendation: revenue has read `pos_checks.closed_at` at any age since launch, so a bound on stock alone would date a sale's stock and its revenue on different days, which is the A-009 defect in a new place; and a till's close time is written by a machine, not claimed by a person about the past, which is what C02 guards. The rejected options were (b) C02 literally, with a closed_at older than 72 hours dating the row only on an owner or manager import and server time otherwise, and (c) trust at any age with no back-dated count.
+
 ## Decision
 
 A POS sale's stock movement and its consumption row are dated by the check's `closed_at`, never later than now, and the import result counts and names every line that moved no stock. What carried it: the database already held the true time on `pos_checks`, so the only honest date for what the import derives from a check is that one. A count that partitions every line is the only shape in which "nothing failed" can be checked rather than assumed (the absence-reported-as-health failure A-029 measured).
@@ -42,7 +46,7 @@ How it is built:
 
 - **Migration `a_pos_sale_is_dated_by_its_check`.** It gives `apply_stock_movement` (now 19 arguments) and `record_glass_pour` (now 9) a last argument, `p_occurred_at timestamptz DEFAULT NULL`, and dates the ledger row by `LEAST(COALESCE(p_occurred_at, now()), now())`. ADR 0141's house refusal and the pour's stranded-lot refusals are copied unchanged, and the migration asserts they are still in the bodies. AW08's stranded-lot behaviour is not changed here; its failures are now counted and said.
 - **`saleInstant(closedAt, nowMs)`** (`pos-hub.service.ts`, exported, pure). It is read once per check. A readable closed_at that is not in the future is passed through as the string the till sent, so Postgres reads it exactly as it read `pos_checks.closed_at`, and a sale's stock and its revenue cannot land on different days. A future one is clamped to now. An unreadable one falls back to import time and is counted (`datedAtImportTime`) and said in `errors[]`.
-- **Voids.** A void is dated by the voided check's `closed_at` too, the same instant as the sale it cancels.
+- **Voids.** A void is dated by the `closed_at` the voided check carries. That is the sale's own instant only when the till re-sends the original close time on the void. Only the generic adapter marks a void today (`pos-adapters.ts:60`, `voided`), and it passes the payload's `closed_at` through as sent; Square reads `closed_at ?? updated_at` and Clover `modifiedTime`. A till that stamps the void with its own time therefore dates the return at that later instant: the sale's day keeps the depletion and the void's day gets the return.
 - **`recordConsumption`** takes the instant, writes `recorded_at` and `created_at` from it, and returns `logged`, `already` (a 23505 replay) or `failed`. The one `logger.error` on failure is kept.
 - **`queueUnresolvedLine`** returns ok or failed. A 23505 means already queued and counts as queued. Any other error counts as failed, because a line that moved no stock and is not in the queue is lost from every list a person reads. The three queue call sites are left as they were, because the `iswine` lane edits that branch. The queue counts its own outcome into the check's report.
 - **`ingest()`** returns `stock` and appends the grouped stock lines to `errors[]`.
@@ -58,7 +62,8 @@ How it is built:
 
 ## Forks left to the founder
 
-- **F1. How old a closed_at the server trusts.** As built, option (a): any past closed_at is trusted, however old, and `stock.backdatedOver72h` counts the lines this import booked more than 72 hours after their check closed. The alternatives are (b) refusing or queueing a check older than a bound until a manager confirms it, which the sim triage's C02 asks of door receipts, counts and orders, or (c) a per-house setting. Changing it later is one branch in `saleInstant` plus a queue reason.
+F1 is ruled (above). Two remain open.
+
 - **F2. Repairing rows already written.** The ledger rows and consumption rows already written by back-fills and late webhooks keep their import-day dates. A repair would re-date `inventory_transactions` rows whose `idempotency_key` starts with `pos:` from their `pos_checks.closed_at`, and `wine_consumption_log` rows whose `notes` key does the same. It writes production rows, so the founder runs it. Nothing is written by this branch.
 - **F3. Which lane owns the two RPC signatures.** The recommendation is (a): this lane owns `p_occurred_at`, and any other lane that redefines either function starts from this migration's body. **This has a live consequence.** The `glasspour` lane (ADR 0285, migration `a_short_pour_opens_the_next_bottle`, read 2026-10-03 in its worktree) redefines `record_glass_pour` with `CREATE OR REPLACE` and the 8-argument signature. Whichever of the two lands second must carry the other's change, or the result is wrong:
   - If `glasspour` lands after this migration, its 8-argument `CREATE OR REPLACE` adds a second overload instead of replacing the 9-argument one. The gateway's 9-argument call keeps the old pour body, and an 8-argument named call becomes ambiguous.
@@ -68,20 +73,25 @@ How it is built:
 
 ## Consequences
 
-- **Easier.** A late webhook, a replay and a back-fill all land on the day the check closed, in the ledger and in the demand series. Velocity, runway, the week shape and the forecast read the true days without any reader changing. An import that moved no stock says so, with counts that add up to the lines it received. The review's "does nothing" now means what the import does.
+- **Easier.** From this change forward, a late webhook, a replay and a back-fill all land on the day the check closed, in the ledger and in the demand series. Rows written before it keep their import-day dates until F2 is ruled; the July–August back-fill on Tuzlu Rüzgar is one of them, and it keeps inflating velocity until it ages out of the 30-day window or is repaired. Velocity, runway, the week shape and the forecast read the true days without any reader changing. An import that moved no stock says so, with counts that add up to the lines it received. The review's "does nothing" now means what the import does.
 - **Harder or given up.**
   - `wine_consumption_log.created_at` no longer means entry time for POS rows until the cap lane moves the readers to `recorded_at`.
   - Both RPCs gained an argument, and any lane redefining them now has to carry it (F3).
   - `stock.booked` is read from the consumption row on a sale, so a line whose consumption write failed on its first import counts as booked again when it is replayed. A replayed void always counts as booked, because the RPC answers a known key exactly as it answers a new one.
   - A check that arrives already voided still adds stock it never took (`tech-debt.d/2026-10-03-fix-pos-sales-dated-at-sale-time.md`). It is now dated and counted, but it is not fixed.
   - The Toast door still dates its stock at arrival (same fragment).
+  - **Deploy order: the migration first, then the gateway.** The new gateway passes `p_occurred_at` to both RPCs. Against the old functions that call fails, so a gateway that lands first counts every line that reaches either RPC as `failed` and names it in `errors[]` (none is silently mis-dated) until the migration applies. This is the order ADR 0141 relies on: migrations apply when the PR merges, and the gateway deploys after. The old gateway against the new functions keeps working, because the argument defaults to NULL.
+  - The sale-unit review now reads the inventory of every mapping, not only the unanswered ones, so its inventory read grows with the menu. It is read in chunks of 150 ids (the bound `procurement/overdue-order-reads.ts` uses), so a large menu neither outgrows the request URL nor meets the API's row cap in one read.
+  - A mapping labelled `glass` whose inventory row has no pour size counts in `needing_unit`, and answering the unit alone cannot clear it: the reviewer has to give the pour size on the inventory row, or a `sale_volume_ml` on the mapping. The row's `next_sale.reason` names the gap, and the response type's `needing_unit` comment says so; no web screen reads this route today.
 - **Assumptions, not verified.**
   - The gateway runs in UTC, and the database session time zone is UTC. JavaScript reads a closed_at with no zone as local time while Postgres reads it in the session zone. Because the string itself is passed through, both stored dates match `pos_checks.closed_at` whatever the zones are. Only the 72-hour count and the future clamp use JavaScript's reading.
   - The SQL test ran in PGlite on a build of every migration, not in Postgres 15 on Supabase.
-- **Revisit when** F1 is ruled, when the cap lane moves the consumption readers, or when a second writer of either RPC appears (the Toast door is the known one).
+- **Revisit when** F2 or F3 is ruled, when the cap lane moves the consumption readers, or when a second writer of either RPC appears (the Toast door is the known one).
 
 ## Review trail
 
 | Date | Reviewer | Outcome |
 |---|---|---|
 | 2026-10-03 | — | Created (lane `postime`, local commit, not pushed) |
+| 2026-10-04 | Founder (AskUserQuestion, relayed by the lane brief) | F1 ruled: "No: trust the till (Recommended)". Quoted under "Founder ruling"; the build already did this, so no code changed for it |
+| 2026-10-04 | Fix round 1, answering the independent verify (1 major, 9 minor) | F1 quoted and the README line matched; "from this change forward" added; the void date qualified; deploy order said; the review's inventory read chunked; the `needing_unit` gap said on the response type; the review spec's unrelated reflow undone; `08-softwares/pos-bridge.md`'s `effect_if_unanswered` mention bracketed |
