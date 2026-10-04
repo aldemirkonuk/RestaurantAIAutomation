@@ -1,0 +1,71 @@
+# 0290 — The dashboard tells the house's day true
+
+- **Status:** Proposed — built on `fix/dashboard-tells-the-day-true` (PR-1). The founder's rulings it rests on are quoted below; the lock is his. PR-2 (AW04) amends this ADR.
+- **Date:** 2026-10-03
+- **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
+- **Keywords:** dashboard, calendar-revenue, net sales, pos_checks.subtotal, house time zone, DASH-G2, AW17, C18, AW12, AW21, keyset paging, role gate, sales
+- **Links:** [[0016-ledgers-must-express-unknown]] (null is "not known"), [[0020-no-fabricated-answers]], [[0044-mudavym-implementation-kickoff]] (the TradeZella-style sales calendar, :26-27), [[0067-a-failed-read-is-never-an-empty-one]] (the baseline this lowers), #579 (`fix/review-dashboard`, paused; draft ADR 0257 holds DASH-G2), analytics walk findings `p4-scratch/sim-run/analytics/FINDINGS.md` (A-036/C18, A-042/AW12, A-023/AW21), lane brief `p4-scratch/sim-run/fixes/briefs/dash.md`
+
+## Context
+
+The owner-quarter analytics walk (Tuzlu Rüzgar, 2026-10-03) found the dashboard month — `GET /dashboard/calendar-revenue/:id`, drawn by `SalesCalendar` — wrong in three ways at once:
+
+- **C18.** The deliveries read selected `procurement_orders.wine_name`, a column the table has never had (`check_read_columns_exist.py` carries it on the debt list). PostgREST refused the whole read, the method did not read `error`, and every day showed $0 paid to vendors — Oct 2 drew $0 against $39,302.50 delivered.
+- **AW12.** The events read was `select('*')` with no paging. PostgREST answers at most 1,000 rows (`supabase/config.toml:18`, `max_rows = 1000`), so a busy month lost its last days without a word, and the page received columns it never draws.
+- **AW21.** The page is titled a *sales* calendar and had no sales source: every figure was vendor spend. The founder's AW17 ruling (below) fixes what "sales" means here.
+
+Underneath all three, days were cut on the UTC prefix of a timestamp (`startsWith(dateStr)`), not on the house's clock (F-086): a delivery at 20:00 in Los Angeles landed on the next day's square.
+
+## Rulings this rests on (verbatim)
+
+- **DASH-G2** (founder, R1b /dashboard walk-through; recorded so far only in #579's draft ADR 0257 and in memory): *"Follow rule, follow-up PR (Recommended)"* — no zone reads as unknown, never UTC, built as its own PR, sketched first. The rule it follows is the founder's 2026-09-03 call written into `supabase/migrations/20260903170000_a_default_is_not_an_answer.sql:4` — *"an unset value reads as unknown"* — which cleared `restaurants.timezone`'s old `America/Los_Angeles` default. (The lane plan cited ADR 0207 for "null is not stated"; that phrase is not in 0207. The citation is corrected to the migration and ADR 0016.)
+- **AW17, sales basis** (founder, 2026-10-04 ~00:15Z): *"Net sales (Recommended)"* — the subtotal before tax and surcharge, as /team uses it, labelled "net".
+- **F2, the cell** (founder, 2026-10-04 ~02:10Z): *"Sales in the cell (Recommended)"* — the cell headlines net sales; vendor spend goes to the header line and the day detail.
+- **F5, the spend tiles** (same ask): *"Keep out, say so (Recommended)"* — tiles labelled "settled deliveries" plus "N part-delivered orders not counted yet". Not built here (see F4).
+- Every other plan fork (F1, F3, F4) proceeds on its plan's recommendation (the founder, same ask: forks not put to him proceed on the recommendation).
+
+## Decision
+
+The dashboard month is filed on the house's own days, reads every row it needs or fails, and carries net sales — to the people who see sales.
+
+1. **The house's day.** Every figure is bucketed with `localDateIn(instant, zone)` in the zone `resolveZone(restaurants.timezone)` returns, and the month is the window `[localMidnight(first), localMidnight(first of next month))`. A house with **no zone** (null, blank, or a name the server cannot read) gets every day row with every figure `null`, events kept (`event_date` is already a house date), `zone_unset: true`, `timezone: null`, `today: null` — and neither deliveries nor checks are read, since nothing could be filed. The page draws "—" and one line, *"This house's time zone isn't set, so no day's figures can be filed yet"*, linking `/settings?tab=time-zone`. (F1 (a).)
+2. **Net sales** per day are the sum of `pos_checks.subtotal` over checks with `voided = false`; `total` and `tip` are never read. A day on which any check states no subtotal has net `null` (not the sum of the others), and so does the month.
+3. **The business day of a check** is the day it closed, else the day it opened — the rule `analytics/goals.service.ts:915` and `calendar/recorded-days.service.ts:91-99` apply — taken in the house zone. The read starts 24 h before the month (`CHECK_LOOKBACK_MS`) so a check opened late on the last night of the previous month and closed after midnight is found and filed on the 1st.
+4. **No register is not zero.** If the window holds no check, one probe asks whether this house has *ever* had a check land. Never: `pos_connected: false`, net and checks `null`, and DayDetail says "No register connected". Connected: a quiet day is a measured `0`.
+5. **Who sees sales.** The controller passes `withSales = policyFor(role).sees.includes("sales")`, the ask-readings `ROLE_POLICY` (`reading-data-classes.ts:179-182`: owner and manager see `sales`, staff do not; `admin` reads the owner row; anything else reads the staff row). The role is the role in the token's house (`jwt.strategy.ts:68`). For anyone else `pos_checks` is **not read at all**; the payload says `sales_withheld: true` and the page draws no sales line. Gating *vendor spend* for staff stays with #579 (its W22 `calendarForRole`).
+6. **Complete or a 500.** Deliveries, events and checks are read through the keyset pager `readAll` (`providers/vendor-menu-supply.ts`, ordered by `id`, 1,000 per page, throws on error); the zone read and the register probe throw on error. Events name their five drawn columns (`id, title, event_type, event_date, event_time`) — `status`, `description` and `color` are no longer sent — and every status is still kept. A failed read is a 500, never a month of zeros (ADR 0020). A malformed `year`/`month` is a 400.
+7. **Vendor spend is unchanged in method:** `ORDER_SPEND_STATUSES` (`order-status.ts:69-72`, DELIVERED and COMPLETED, its docblock's "understating is the safer error"), `total_cost` else `final_price`, `bottles_total` else `quantity` — now filed on the house's day and stated `null` with no zone.
+8. **The cell (F2).** With net sales shown, each cell headlines the day's net sales and is shaded by them; the "N orders" delivery mark stays; the header reads "net sales $X · paid to vendors $Y · N bottles in"; DayDetail shows Net sales and Checks beside Paid to vendors. Withheld or no register: the cell carries vendor spend as before, labelled so. "Today" and "future" are the house's (`today` in the payload); the browser date is used only by a gateway older than this ADR. The footer no longer says every figure is procurement.
+
+The payload change is additive: `daily[].net_sales`, `daily[].checks`, `monthly_net_sales`, `monthly_checks`, `timezone`, `zone_unset`, `today`, `pos_connected`, `sales_withheld`. The frozen route and its legacy keys stay; legacy figures become `null` where unknown instead of `0`.
+
+## Options considered (rejected)
+
+1. **#579's silent UTC fallback** (`houseZone || "UTC"`). Files every figure on a clock the house never stated, and says nothing. DASH-G2 rules against it.
+2. **Bucket in UTC, labelled "days in UTC"** (F1 (b)). True, but useless to a house in UTC-7 and still against G2's "unknown".
+3. **A SECURITY INVOKER SQL function per house-day.** A second fold rule in SQL drifting from recorded-days' TypeScript fold; applies to production on merge with no CI job that runs SQL; over the 15-file budget.
+4. **Reuse `RecordedDaysService`.** It folds gross `total` on the UTC date, and is owned by the caltakings/cap lanes.
+5. **Sum the known subtotals on a day with a missing one** (as recorded-days sums what it has). Prints a partial figure as the day's net sales. Rejected for "unknown taints the day"; the cost is that a Clover house, whose adapter writes `subtotal: null` (`pos-hub/pos-adapters.ts:159`), reads "—" until its adapter states a subtotal — which is the true answer.
+6. **Cap events at 5 plus a count.** Needs an "N more" UI that paging makes unnecessary.
+7. **Show sales to staff, or a figure-less line.** The ROLE_POLICY table already says staff do not see `sales`; reading `pos_checks` for them at all would put the figure on the wire.
+
+## Consequences
+
+- The real tenant's zone was cleared on 2026-09-03, so its whole calendar shows "—" and the zone line until the owner sets a zone. That is the ruled behaviour; the F1 sketch (a render of this state) is owed before PR-1 merges.
+- A check open longer than 24 h before the 1st is not found. Stated, not hidden; widen `CHECK_LOOKBACK_MS` if a house runs such checks.
+- "Net" is only as true as each POS adapter's `subtotal` (Square maps `net_amounts.total_money`, `pos-adapters.ts:113`). The adapter basis belongs to lane netsales (AW17), not here.
+- Two fold rules now exist — the dashboard's (net, zoned) and recorded-days' (gross, UTC). `netSalesByHouseDay(rows, zone)` is exported so whichever of caltakings/netsales lands next converges on one.
+- `read_error_baseline.json` drops the two `dashboard.service.ts` rows (151 → 149 sites, 37 → 36 files).
+- Revisit when: the founder signs off or rejects the F1 sketch; netsales lands a shared fold; a house reports a check open past a day.
+
+## Owed
+
+- **PR-2** (`fix/dashboard-alert-says-when-it-went-low`, AW04): `inventory_alert_state.low_since` with its trigger, F3 (a) null backfill, `getAlerts` reading it; it amends this ADR. It also carries `check_read_columns_exist.py`'s reason-text update for `procurement_orders.wine_name` (the entry stays: `communications.controller.ts` still reads the column) and the `DELIVERY-AUDIT.md` §6 denominator line (149), both moved out of PR-1 to keep it at 15 files.
+- **F4 (a):** AW19's remainder (the unbounded stats read, the no-zone rule on the tiles, F5's tile label) and C13 stay with #579, to land as a follow-up commit when it unpauses. #579 must rebase onto this PR (getCalendarRevenue, the controller's calendar handler, SalesCalendar, DayDetail, DashboardNext and its test).
+- **Convergence** of the two net-sales folds with lanes caltakings/netsales.
+
+## Review trail
+
+| Date | Reviewer | Outcome |
+|---|---|---|
+| 2026-10-03 | — | Created with PR-1 (`fix/dashboard-tells-the-day-true`) |

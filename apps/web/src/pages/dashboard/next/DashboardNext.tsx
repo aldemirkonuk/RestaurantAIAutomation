@@ -176,8 +176,13 @@ export default function DashboardNext({ ground }: DashboardNextProps) {
         <footer className="mt-10 border-t border-paper-2 pt-4">
           <div className="flex items-baseline justify-between">
             <Wordmark size={14} />
-            <p className="text-[11px] text-inkm-3">
-              Figures on this page are procurement — money paid to vendors — not sales.
+            {/* Sales arrived on the calendar (ADR 0290), so the old blanket
+                line — every figure is procurement — stopped being true. What
+                stays true: vendor money is money out, and net sales are a
+                stated measure. */}
+            <p className="text-[11px] text-inkm-3" data-testid="dn-figures-note">
+              Paid to vendors is money out, not sales. Net sales are register check subtotals
+              before tax and surcharge; voided checks are left out.
             </p>
           </div>
           {/* The note-control experiment's standing count.

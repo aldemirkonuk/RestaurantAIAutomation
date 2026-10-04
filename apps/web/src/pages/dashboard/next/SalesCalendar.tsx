@@ -4,12 +4,19 @@
  * and clicking a day opens everything that happened on it (DayDetail, inside
  * the settle 0fr→1fr expansion).
  *
- * Honesty rules encoded here:
- *  - The per-day figure is procurement SPEND — money paid to vendors — from
- *    the frozen `calendar-revenue` endpoint. The header says so; nothing on
- *    this surface is labelled "sales" or "revenue".
- *  - A past day with no deliveries is a quiet blank, not "$0 of results";
- *    a FUTURE day carries no figure at all (its result does not exist yet).
+ * Honesty rules encoded here (ADR 0290):
+ *  - Days are the HOUSE's days. "Today" and "future" come from the gateway's
+ *    `today` (the house's clock), not the browser's; the browser date is a
+ *    fallback only for a gateway older than ADR 0290.
+ *  - With net sales shown (an owner or manager, a register connected), each
+ *    cell headlines the day's NET sales — check subtotals before tax and
+ *    surcharge, voided left out — and is shaded by them; the delivery mark
+ *    stays. Otherwise the cell carries money paid to vendors, labelled so.
+ *    The cell layout is fork F2 in ADR 0290, built on its recommendation.
+ *  - A quiet day is a quiet blank ('·'), not "$0 of results"; an unknown day
+ *    is the em dash; a FUTURE day carries no figure at all.
+ *  - A house with no time zone gets em dashes and one line saying so, with
+ *    the way to set it (DASH-G2) — never a UTC guess.
  *  - When the endpoint is unreachable the grid keeps its day numbers and the
  *    figures are skeletons/em dashes — never fabricated zeros.
  *
@@ -19,11 +26,11 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { animate, settle } from '@/lib/mudavym';
-import { formatMoney, formatNumber } from '@/lib/utils';
 import type { ActivityItem, AlertItem } from './useDashboardNextData';
 import { useDayOrders, useMonthLedger, type DayLedger } from './useDashboardNextData';
-import { DASH, localDateStr, monthName } from './format';
+import { DASH, figure, localDateStr, money, monthName } from './format';
 import { SERIF } from './fonts';
 import DayDetail from './DayDetail';
 
@@ -35,22 +42,81 @@ export interface SalesCalendarProps {
   activity: ActivityItem[] | undefined;
 }
 
+const MONO_FIG = { fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontVariantNumeric: 'tabular-nums' } as const;
+
+/** What a cell says. `salesShown` picks the headline (F2, ADR 0290). */
+function cellFigure(day: DayLedger | undefined, salesShown: boolean, zoneUnset: boolean): string {
+  if (!day || zoneUnset) return DASH;
+  if (salesShown) {
+    if (day.checks === 0) return '·';
+    return day.net_sales == null ? DASH : money(day.net_sales, 'compact');
+  }
+  if (day.procurement_spend == null) return DASH;
+  return day.procurement_spend > 0 ? money(day.procurement_spend, 'compact') : '·';
+}
+
+function cellLabel(dateStr: string, day: DayLedger | undefined, salesShown: boolean, zoneUnset: boolean): string {
+  if (!day) return dateStr;
+  const parts: string[] = [];
+  if (zoneUnset) parts.push('figures unknown, the house time zone is not set');
+  else {
+    if (salesShown) {
+      parts.push(day.checks === 0 ? 'no sales' : `net sales ${money(day.net_sales)}`);
+    }
+    parts.push(
+      day.procurement_spend == null
+        ? 'paid to vendors unknown'
+        : day.procurement_spend > 0
+          ? `paid to vendors ${money(day.procurement_spend)}`
+          : 'no deliveries',
+    );
+  }
+  parts.push(`${day.events.length} events`);
+  return `${dateStr}: ${parts.join(', ')}`;
+}
+
 export function SalesCalendar({ restaurantId, alerts, activity }: SalesCalendarProps) {
   const now = new Date();
+  const browserToday = localDateStr(now);
   const [cursor, setCursor] = useState({ year: now.getFullYear(), month: now.getMonth() + 1 });
   const [selected, setSelected] = useState<string | null>(null);
   const { month } = useMonthLedger(restaurantId, cursor.year, cursor.month);
-  const dayOrders = useDayOrders(restaurantId, selected);
+  const ledger = month.state === 'ready' ? month.ledger : null;
+  const dayOrders = useDayOrders(restaurantId, selected, ledger?.timezone);
   const gridRef = useRef<HTMLDivElement | null>(null);
 
-  const todayStr = localDateStr(now);
-  const monthKey = `${cursor.year}-${cursor.month}`;
-  const isCurrentMonth = cursor.year === now.getFullYear() && cursor.month === now.getMonth() + 1;
+  // The house's today, once the gateway has said it: a string, null (no zone),
+  // or undefined (not said yet / an older gateway). Kept across months.
+  const [houseToday, setHouseToday] = useState<string | null | undefined>(undefined);
+  const landed = useRef(false);
+  useEffect(() => {
+    if (!ledger || ledger.today === undefined) return;
+    setHouseToday(ledger.today);
+    // Open on the house's month, once, unless the reader has already moved.
+    if (!landed.current && ledger.today) {
+      const [y, m] = ledger.today.split('-').map(Number);
+      if (y !== cursor.year || m !== cursor.month) setCursor({ year: y, month: m });
+    }
+    landed.current = true;
+  }, [ledger, cursor.year, cursor.month]);
 
-  const daily: DayLedger[] = month.state === 'ready' ? month.ledger.daily : [];
-  const maxSpend = useMemo(
-    () => Math.max(1, ...daily.map((d) => d.procurement_spend)),
-    [daily],
+  // Which days are past is the house's call; with no zone the browser date
+  // only greys out the future (every figure is a dash anyway). The today mark
+  // is drawn only when the house has a today.
+  const futureFrom = houseToday ?? browserToday;
+  const todayMark = houseToday === undefined ? browserToday : houseToday;
+  const monthKey = `${cursor.year}-${cursor.month}`;
+  const [todayY, todayM] = futureFrom.split('-').map(Number);
+  const isCurrentMonth = cursor.year === todayY && cursor.month === todayM;
+
+  const daily: DayLedger[] = useMemo(() => ledger?.daily ?? [], [ledger]);
+  const salesShown = ledger?.sales === 'shown';
+  const zoneUnset = ledger?.zoneUnset === true;
+  const headline = (d: DayLedger | undefined): number | null =>
+    d ? (salesShown ? d.net_sales : d.procurement_spend) : null;
+  const maxHead = useMemo(
+    () => Math.max(1, ...daily.map((d) => (salesShown ? d.net_sales : d.procurement_spend) ?? 0)),
+    [daily, salesShown],
   );
 
   // Monday-first leading blanks.
@@ -81,6 +147,7 @@ export function SalesCalendar({ restaurantId, alerts, activity }: SalesCalendarP
   }, [month.state, monthKey]);
 
   const nav = (delta: number) => {
+    landed.current = true;
     setSelected(null);
     setCursor((c) => {
       const d = new Date(c.year, c.month - 1 + delta, 1);
@@ -93,7 +160,7 @@ export function SalesCalendar({ restaurantId, alerts, activity }: SalesCalendarP
   return (
     <section
       className="rounded-lg border border-paper-2 bg-paper-0"
-      aria-label="Sales calendar — one result per day"
+      aria-label={salesShown ? 'Sales calendar — net sales per day' : 'Month calendar — paid to vendors per day'}
     >
       {/* header */}
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-4 pt-4 sm:px-5">
@@ -109,7 +176,7 @@ export function SalesCalendar({ restaurantId, alerts, activity }: SalesCalendarP
             </button>
             {!isCurrentMonth && (
               <button type="button"
-                onClick={() => { setSelected(null); setCursor({ year: now.getFullYear(), month: now.getMonth() + 1 }); }}
+                onClick={() => { landed.current = true; setSelected(null); setCursor({ year: todayY, month: todayM }); }}
                 className="dn-ink rounded px-2 py-0.5 text-[11px] uppercase tracking-[0.1em] text-inkm-3 hover:bg-paper-1 hover:text-inkm-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-seal">
                 Today
               </button>
@@ -120,24 +187,39 @@ export function SalesCalendar({ restaurantId, alerts, activity }: SalesCalendarP
             </button>
           </div>
         </div>
-        <p className="text-[12px] text-inkm-3">
+        <p className="text-[12px] text-inkm-3" data-testid="dn-month-totals">
+          {salesShown && (
+            <>
+              net sales{' '}
+              <span className="text-inkm-1" style={MONO_FIG}>
+                {money(ledger?.monthlyNetSales)}
+              </span>
+              {' · '}
+            </>
+          )}
           paid to vendors{' '}
-          <span
-            className="text-inkm-1"
-            style={{ fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontVariantNumeric: 'tabular-nums' }}
-          >
-            {month.state === 'ready' ? formatMoney(month.ledger.monthlySpend, 'full') : DASH}
+          <span className="text-inkm-1" style={MONO_FIG}>
+            {money(ledger?.monthlySpend)}
           </span>
           {' · '}
-          <span
-            className="text-inkm-1"
-            style={{ fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontVariantNumeric: 'tabular-nums' }}
-          >
-            {month.state === 'ready' ? formatNumber(month.ledger.monthlyBottles) : DASH}
+          <span className="text-inkm-1" style={MONO_FIG}>
+            {figure(ledger?.monthlyBottles)}
           </span>{' '}
           bottles in
         </p>
       </div>
+
+      {zoneUnset && (
+        <p className="px-4 pt-2 text-[12px] italic text-inkm-3 sm:px-5" data-testid="dn-zone-unset">
+          {DASH} This house’s time zone isn’t set, so no day’s figures can be filed yet.{' '}
+          <Link
+            to="/settings?tab=time-zone"
+            className="not-italic text-inkm-1 underline underline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-seal"
+          >
+            Set the time zone
+          </Link>
+        </p>
+      )}
 
       {/* weekday header */}
       <div className="dn-cal-grid px-4 pt-3 sm:px-5" aria-hidden>
@@ -157,10 +239,10 @@ export function SalesCalendar({ restaurantId, alerts, activity }: SalesCalendarP
           const dayNum = i + 1;
           const dateStr = `${cursor.year}-${String(cursor.month).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
           const day = daily.find((d) => d.date === dateStr);
-          const isFuture = dateStr > todayStr;
-          const isToday = dateStr === todayStr;
-          const spend = day?.procurement_spend ?? 0;
-          const heat = day && spend > 0 ? 0.06 + 0.3 * (spend / maxSpend) : 0;
+          const isFuture = dateStr > futureFrom;
+          const isToday = todayMark !== null && dateStr === todayMark;
+          const head = zoneUnset ? null : headline(day);
+          const heat = head != null && head > 0 ? 0.06 + 0.3 * (head / maxHead) : 0;
           return (
             <button
               key={dateStr}
@@ -171,11 +253,7 @@ export function SalesCalendar({ restaurantId, alerts, activity }: SalesCalendarP
               data-future={isFuture}
               disabled={isFuture}
               onClick={() => pick(dateStr)}
-              aria-label={
-                day
-                  ? `${dateStr}: ${spend > 0 ? formatMoney(spend, 'full') : 'no deliveries'}, ${day.events.length} events`
-                  : dateStr
-              }
+              aria-label={cellLabel(dateStr, day, salesShown, zoneUnset)}
               // color-mix keeps the heat on the seal TOKEN, so both grounds
               // (İznik on paper, lifted teal on charcoal) resolve correctly;
               // browsers without color-mix quietly keep the paper-1 ground.
@@ -188,7 +266,7 @@ export function SalesCalendar({ restaurantId, alerts, activity }: SalesCalendarP
               <span className="dn-cell-num">{dayNum}</span>
               <span className="dn-cell-marks">
                 {day && day.events.length > 0 && <span className="dn-dot" aria-hidden />}
-                {day && day.order_count > 0 && (
+                {day && day.order_count != null && day.order_count > 0 && (
                   <span className="text-[9px] text-inkm-3" style={{ fontVariantNumeric: 'tabular-nums' }}>
                     {day.order_count} {day.order_count === 1 ? 'order' : 'orders'}
                   </span>
@@ -198,7 +276,7 @@ export function SalesCalendar({ restaurantId, alerts, activity }: SalesCalendarP
                 <span className="dn-skel h-3 w-8" aria-hidden />
               ) : (
                 <span className="dn-cell-fig">
-                  {isFuture ? '' : day ? (spend > 0 ? formatMoney(spend, 'compact') : '·') : DASH}
+                  {isFuture ? '' : cellFigure(day, salesShown, zoneUnset)}
                 </span>
               )}
             </button>
@@ -219,6 +297,8 @@ export function SalesCalendar({ restaurantId, alerts, activity }: SalesCalendarP
           <DayDetail
             day={selectedDay}
             daily={daily}
+            zone={ledger?.timezone}
+            sales={ledger?.sales}
             dayOrders={dayOrders}
             alerts={alerts}
             activity={activity}

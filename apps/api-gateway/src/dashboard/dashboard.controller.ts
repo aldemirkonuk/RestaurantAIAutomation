@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Controller,
   Get,
   Param,
@@ -24,6 +25,38 @@ import {
   InventoryBreakdownDto,
 } from "./dto/dashboard-summary.dto";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { CurrentUser } from "../auth/decorators/current-user.decorator";
+import { policyFor } from "../ask-readings/reading-data-classes";
+
+/** The caller's role IN THE HOUSE THE TOKEN NAMES (jwt.strategy.ts). */
+type Caller = { role?: string | null } | undefined;
+
+/**
+ * Does this role see the house's sales? Read from the /ask role table, so
+ * "who sees sales" is decided in one place (ROLE_POLICY: owner and manager
+ * see `sales`, staff do not). `policyFor` reads an unknown or missing role as
+ * staff, so a caller whose role cannot be told sees no sales (ADR 0290 §5).
+ */
+export function seesHouseSales(role: string | null | undefined): boolean {
+  return policyFor(role).sees.includes("sales");
+}
+
+/** A `year` / `month` query value: absent is null, anything else must be whole and in range. */
+function calendarPart(
+  raw: string | undefined,
+  name: string,
+  min: number,
+  max: number,
+): number | null {
+  if (raw === undefined || raw === "") return null;
+  const n = /^\d{1,4}$/.test(raw) ? Number(raw) : NaN;
+  if (!Number.isInteger(n) || n < min || n > max) {
+    throw new BadRequestException(
+      `${name} must be a whole number from ${min} to ${max}`,
+    );
+  }
+  return n;
+}
 
 /**
  * Dashboard Controller - Aggregated API endpoints
@@ -101,47 +134,49 @@ export class DashboardController {
   }
 
   /**
-   * Per-day procurement figures for a specific month.
+   * The month calendar, filed on the house's own days (ADR 0290).
    *
-   * The route name `calendar-revenue` is frozen, but nothing here is revenue:
-   * `daily[].procurement_spend` and `monthly_procurement_spend` are sums of
-   * delivered `procurement_orders` — money paid to vendors. Joined with
-   * calendar events for the day overlays.
+   * The route name `calendar-revenue` is frozen. `procurement_spend` is money
+   * paid to vendors; `net_sales` is the register's net takings, sent only to
+   * a role that sees sales (staff get `sales_withheld: true` and the register
+   * is not read). With no year or month the house's own month is shown.
    */
   @Get("calendar-revenue/:restaurantId")
   @ApiOperation({
-    summary: "Get per-day vendor spend and calendar events for a given month",
+    summary:
+      "Get per-day net sales, vendor spend and calendar events for a month",
     description:
-      "Returns per-day vendor SPEND (`procurement_spend`, summed from delivered procurement orders — money out, not sales revenue) plus calendar events for the requested month. The `calendar-revenue` path name is a legacy misnomer kept for compatibility.",
+      "Returns, per house day: `net_sales` and `checks` (sum of `pos_checks.subtotal` over checks not voided; only for roles that see sales), vendor SPEND (`procurement_spend`, delivered procurement orders — money out, not sales), and calendar events. Days are filed in `restaurants.timezone`; a house with none gets null day figures and `zone_unset: true`. The `calendar-revenue` path name is a legacy misnomer kept for compatibility.",
   })
   @ApiParam({ name: "restaurantId", description: "Restaurant UUID" })
   @ApiQuery({
     name: "year",
     required: false,
-    description: "Year (defaults to current)",
+    description: "Year (defaults to the house's current year)",
   })
   @ApiQuery({
     name: "month",
     required: false,
-    description: "Month 1-12 (defaults to current)",
+    description: "Month 1-12 (defaults to the house's current month)",
   })
   @ApiResponse({
     status: 200,
-    description: "Per-day vendor spend and calendar events",
+    description: "Per-day net sales, vendor spend and calendar events",
   })
   async getCalendarRevenue(
     @Param("restaurantId") restaurantId: string,
     @Query("year") yearStr?: string,
     @Query("month") monthStr?: string,
+    @CurrentUser() user?: Caller,
   ) {
+    const year = calendarPart(yearStr, "year", 1970, 9999);
+    const month = calendarPart(monthStr, "month", 1, 12);
     try {
-      const now = new Date();
-      const year = yearStr ? parseInt(yearStr) : now.getFullYear();
-      const month = monthStr ? parseInt(monthStr) : now.getMonth() + 1;
       return await this.dashboardService.getCalendarRevenue(
         restaurantId,
         year,
         month,
+        { withSales: seesHouseSales(user?.role) },
       );
     } catch (error) {
       throw new HttpException(
