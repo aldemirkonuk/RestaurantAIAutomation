@@ -3,18 +3,19 @@
 -- Run against a database built from supabase/migrations (PGlite over the whole
 -- corpus, or the Docker recipe). Every row it writes is inside one transaction
 -- that is ROLLED BACK at the end, so it leaves nothing behind. It prints one
--- row per test (id, ok, detail), then RAISES unless all fifteen ran and every
+-- row per test (id, ok, detail), then RAISES unless all sixteen ran and every
 -- "ok" is true, so a failure stops the run instead of waiting to be read.
 --
 -- The control: against the corpus WITHOUT migration
--- a_delivery_event_follows_its_order, T1-T9 and T11-T13 must come out false
+-- a_delivery_event_follows_its_order, T1-T9, T11-T13 and T16 must come out false
 -- (no trigger closes or moves anything). T10 (other rows untouched), T14 (an
 -- open order's event stays) and T15 (the order write survives a failing
 -- calendar write) hold on the control too: they pin what the fix must NOT do,
 -- and a build without it cannot break them.
 --
--- Fixtures are synthetic: three houses (Europe/Istanbul, another house, and a
--- zone Postgres cannot read), one vendor and one item each, and orders written
+-- Fixtures are synthetic: four houses (Europe/Istanbul, another house, a zone
+-- Postgres cannot read, and one with no zone set), one vendor and one item
+-- each, and orders written
 -- APPROVED (or already closed) with a pending delivery event on 9 October at
 -- 10:00, the shape approveDraft writes.
 
@@ -25,9 +26,9 @@ create temp table _fx (k text primary key, v uuid) on commit drop;
 
 do $$
 declare
-  hi uuid; hb uuid; hz uuid;
-  pi uuid; pb uuid; pz uuid;
-  ii uuid; ib uuid; iz uuid;
+  hi uuid; hb uuid; hz uuid; hn uuid;
+  pi uuid; pb uuid; pz uuid; pn uuid;
+  ii uuid; ib uuid; iz uuid; inn uuid;
   o uuid;
   nm text;
 begin
@@ -37,16 +38,21 @@ begin
     values ('T0284 Other', 't0284-b-' || left(gen_random_uuid()::text, 8), 'Europe/Istanbul') returning id into hb;
   insert into public.restaurants (name, slug, timezone)
     values ('T0284 No zone', 't0284-z-' || left(gen_random_uuid()::text, 8), 'Mars/Olympus') returning id into hz;
+  insert into public.restaurants (name, slug, timezone)
+    values ('T0284 Zone not set', 't0284-n-' || left(gen_random_uuid()::text, 8), null) returning id into hn;
   insert into public.providers (name, primary_contact, restaurant_id) values ('T0284 Vendor I', '{}'::jsonb, hi) returning id into pi;
   insert into public.providers (name, primary_contact, restaurant_id) values ('T0284 Vendor B', '{}'::jsonb, hb) returning id into pb;
   insert into public.providers (name, primary_contact, restaurant_id) values ('T0284 Vendor Z', '{}'::jsonb, hz) returning id into pz;
+  insert into public.providers (name, primary_contact, restaurant_id) values ('T0284 Vendor N', '{}'::jsonb, hn) returning id into pn;
   insert into public.restaurant_inventory (restaurant_id, kind, uom, display_name, identity_provenance)
     values (hi, 'wine', 'bottle', 'T0284 Wine I', 'house_declared') returning id into ii;
   insert into public.restaurant_inventory (restaurant_id, kind, uom, display_name, identity_provenance)
     values (hb, 'wine', 'bottle', 'T0284 Wine B', 'house_declared') returning id into ib;
   insert into public.restaurant_inventory (restaurant_id, kind, uom, display_name, identity_provenance)
     values (hz, 'wine', 'bottle', 'T0284 Wine Z', 'house_declared') returning id into iz;
-  insert into _fx values ('hi', hi), ('hb', hb), ('hz', hz);
+  insert into public.restaurant_inventory (restaurant_id, kind, uom, display_name, identity_provenance)
+    values (hn, 'wine', 'bottle', 'T0284 Wine N', 'house_declared') returning id into inn;
+  insert into _fx values ('hi', hi), ('hb', hb), ('hz', hz), ('hn', hn);
 
   -- Open orders in the Istanbul house, each with a pending delivery event.
   foreach nm in array array['o1','o2','o3','o4','o5','o8','o9','o10','o11'] loop
@@ -69,6 +75,16 @@ begin
       values (hz, o, pz, 'Delivery: T-0284-o7', 'delivery', '2026-10-09', '10:00', false, 'system_generated', 'pending', true)
       returning id)
   insert into _fx select 'e_o7', id from x;
+
+  -- The house with no zone set.
+  insert into public.procurement_orders (order_number, restaurant_id, inventory_id, provider_id, quantity, bottles_total, final_price, total_cost, status)
+    values ('T-0284-o13', hn, inn, pn, 12, 12, 10, 120, 'APPROVED') returning id into o;
+  insert into _fx values ('o13', o);
+  with x as (
+    insert into public.calendar_events (restaurant_id, order_id, provider_id, title, event_type, event_date, event_time, all_day, source, status, reminder_enabled)
+      values (hn, o, pn, 'Delivery: T-0284-o13', 'delivery', '2026-10-09', '10:00', false, 'system_generated', 'pending', true)
+      returning id)
+  insert into _fx select 'e_o13', id from x;
 
   -- Rows that must not move when o1 arrives or o2 is cancelled: another
   -- house's delivery event naming o1, a non-delivery event on o1, and a
@@ -258,10 +274,22 @@ do $$ declare o uuid := (select v from _fx where k = 'o8'); st text; msg text; o
 end $$;
 drop trigger t0284_refuse on public.calendar_events;
 
+-- T16 a house with no zone set lands on UTC and the text says the zone is not
+-- set, rather than a bare "UTC" that reads as a choice somebody made.
+do $$ declare o uuid := (select v from _fx where k = 'o13'); r record; z text; begin
+  select timezone into z from public.restaurants where id = (select v from _fx where k = 'hn');
+  update public.procurement_orders set status = 'PARTIALLY_RECEIVED', delivered_at = '2026-10-02T21:30:00Z' where id = o;
+  select * into r from public.calendar_events where id = (select v from _fx where k = 'e_o13');
+  insert into _t values ('T16',
+    z is null and r.status = 'completed' and r.event_date = date '2026-10-02' and r.event_time = time '21:30'
+      and r.description = 'Delivered: T-0284-o13, arrived 2026-10-02 21:30 (UTC; the house has no time zone set).',
+    format('zone=%s status=%s date=%s %s text=%s', coalesce(z, '<null>'), r.status, r.event_date, r.event_time, r.description));
+end $$;
+
 select id, ok, detail from _t order by length(id), id;
 
 -- The verdict. A row that says false is easy to scroll past, so the run itself
--- fails unless all fifteen tests ran and every one came out true.
+-- fails unless all sixteen tests ran and every one came out true.
 do $$
 declare
   n   integer;
@@ -270,8 +298,8 @@ begin
   select count(*), string_agg(id, ', ' order by length(id), id) filter (where ok is not true)
     into n, bad
     from _t;
-  if n <> 15 or bad is not null then
-    raise exception 'ADR 0284 test FAILED: % of 15 tests ran; not true: %', n, coalesce(bad, 'none');
+  if n <> 16 or bad is not null then
+    raise exception 'ADR 0284 test FAILED: % of 16 tests ran; not true: %', n, coalesce(bad, 'none');
   end if;
 end $$;
 

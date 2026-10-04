@@ -123,15 +123,23 @@ BEGIN
       RETURN v_n;
     END IF;
 
-    -- The house's own clock. An unreadable zone falls back to UTC and says so
-    -- in the text; it never fails the order.
+    -- The house's own clock. A house with no zone set, or one Postgres cannot
+    -- read, falls back to UTC and the text says which; it never fails the
+    -- order. "Not set" is said, not hidden behind a bare "UTC": the founder's
+    -- ruling for a house with no zone is "UTC, said on the page" (ADR 0149,
+    -- 2026-09-27, item 61), and since ADR 0116 a null zone means nobody
+    -- stated one.
     SELECT NULLIF(btrim(r.timezone::text), '')
       INTO v_zone
       FROM public.restaurants r
      WHERE r.id = p_restaurant_id;
     BEGIN
-      v_local := date_trunc('minute', v_delivered_at AT TIME ZONE COALESCE(v_zone, 'UTC'));
-      v_zone := COALESCE(v_zone, 'UTC');
+      IF v_zone IS NULL THEN
+        v_local := date_trunc('minute', v_delivered_at AT TIME ZONE 'UTC');
+        v_zone := 'UTC; the house has no time zone set';
+      ELSE
+        v_local := date_trunc('minute', v_delivered_at AT TIME ZONE v_zone);
+      END IF;
     EXCEPTION WHEN OTHERS THEN
       v_local := date_trunc('minute', v_delivered_at AT TIME ZONE 'UTC');
       v_zone := 'UTC; the house''s time zone could not be read';

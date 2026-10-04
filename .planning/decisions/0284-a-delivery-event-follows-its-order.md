@@ -70,7 +70,7 @@ The rule, in `public.delivery_event_follows_its_order(order, house)`:
 | The order is | The event becomes |
 |---|---|
 | open (any non-terminal state before the goods arrive) | untouched: `pending` where it was placed |
-| arrived — `DELIVERED`, `PARTIALLY_RECEIVED`, `COMPLETED`, with `delivered_at` | `completed`, moved to the arrival's house-local date and time (minute), reminder off |
+| arrived — `DELIVERED`, `PARTIALLY_RECEIVED`, `COMPLETED`, with `delivered_at` | `completed`, moved to the arrival's house-local date and time (minute), reminder off; a house with no zone set, or one Postgres cannot read, lands on UTC and the text says which |
 | arrived, `delivered_at` empty | `completed`, date kept, and the text says the order does not record when it arrived |
 | not coming — `CANCELLED`, `FAILED`, `REJECTED` | `cancelled`, date kept, reminder off; a `completed` event is never cancelled |
 
@@ -113,8 +113,12 @@ Reasoning that carried it:
   `delivered_at` writes nothing; a `delivered_at` correction moves the event.
 - **Invoker rights**, `search_path = public, pg_temp`, execute granted only to
   `service_role`, the repo's function pattern. The house's zone is read from
-  `restaurants.timezone`; an unreadable zone falls back to UTC and the event
-  text says so.
+  `restaurants.timezone`. A zone that is not set (null since ADR 0116) or that
+  Postgres cannot read falls back to UTC, and the event text says which:
+  "(UTC; the house has no time zone set)" or "(UTC; the house's time zone could
+  not be read)". This follows the founder's ruling for a house with no zone,
+  "UTC, said on the page (Recommended)" (ADR 0149, 2026-09-27, item 61), rather
+  than a bare "(UTC)" that reads as a zone somebody chose.
 
 The gateway's `closeDeliveryCalendarEvent`, `cancelCalendarEventForOrder`,
 `updateCalendarEventForDelivery` and `TERMINAL_CALENDAR_STATUSES` are removed
@@ -178,12 +182,16 @@ out-of-stock message no longer says the delivery was "removed from calendar"
 ## Verification
 
 - `supabase/tests/<version>_a_delivery_event_follows_its_order_test.sql`, run on
-  a full-corpus PGlite build (every migration on the branch, 284 files): the
-  control without the migration passes 3 of 15 (T10, T14, T15 hold by
-  construction); with it, 15 of 15, and the migration re-applies cleanly. Six
-  mutations of the migration are each caught (no INSERT trigger; `event_time`
-  without `start_time`; no not-coming branch; the trigger's catch removed; no
-  zone fallback; house scope dropped).
+  a full-corpus PGlite build (every migration on the branch, 285 files). The
+  test ends in a verdict that raises unless all 16 cases ran and every one is
+  true. The control without the migration (284 files) passes 3 of 16 (T10,
+  T14, T15 hold by construction), and its verdict raises. With the migration,
+  16 of 16 pass, and the migration re-applies cleanly. Eight mutations of the
+  migration are each caught: no INSERT trigger (by the in-file assertion, at
+  build), `event_time` without `start_time`, no not-coming branch, the
+  trigger's catch removed, no zone fallback, house scope dropped, a no-zone
+  house labelled a bare "UTC" (T16), and a cancellation that overwrites a
+  completed event (T8). Re-run 2026-10-04 at 0844786f0 plus the no-zone change.
 - `order-calendar-event-lifecycle.spec.ts` (14) pins the SQL; ten mutations of
   the migration are each caught by exactly one case, and the file fails to load
   without the migration.
