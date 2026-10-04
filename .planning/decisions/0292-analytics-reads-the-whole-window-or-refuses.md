@@ -1,14 +1,14 @@
 # 0292 — Analytics reads the whole window, page by page, or refuses
 
-- **Status:** Proposed
+- **Status:** Proposed (forks 1–4 are built as the plan's recommendations; none is founder-ratified, see Open forks)
 - **Date:** 2026-10-03
 - **Decider:** Aldemir (founder). Decisions are locked by the founder, never by an agent.
 - **Keywords:** F-131, C15, A-004, A-005, A-006, A-031, A-032, A-033, max_rows, PostgREST cap, 1000 rows, pos_checks, wine_consumption_log, keyset paging, exact count, WholeReadError, readWholeWindow, row ceiling, analytics, till, who served it, menu engineering, seasonality, calendar
-- **Links:** [[0020-no-fabricated-answers]] (the rule this enforces), [[0067-a-failed-read-is-never-an-empty-one]], [[0207-a-vendor-is-scored-on-what-it-did-from-the-houses-own-records]] (`:38`, "refuses to score a register larger than it can read whole"), [[0191-the-recommendations-catalogue-is-actionable-not-a-read-only-leaf]] (`:693`, `:809`), ADR 0269 "/orders reads the whole order book, page by page" (the page-check idiom; PR #598, not on main at 8c673db4b); `apps/api-gateway/src/procurement/vendor-menu-supply.ts` `readAll` / `TooManyRowsError` (the refusal shape); branch `fix/analytics-reads-past-row-cap`; claims in `claims.d/fix-analytics-reads-past-row-cap.jsonl`; residuals in `tech-debt.d/2026-10-03-fix-analytics-reads-past-row-cap.md`
+- **Links:** [[0020-no-fabricated-answers]] (the rule this enforces), [[0067-a-failed-read-is-never-an-empty-one]], [[0207-a-vendor-is-scored-on-what-it-did-from-the-houses-own-records]] (`:38`, "refuses to score a register larger than it can read whole"), [[0191-the-recommendations-catalogue-is-actionable-not-a-read-only-leaf]] (`:693`, `:809`), ADR 0269 "/orders reads the whole order book, page by page" (the page-check idiom; PR #598, not on main at 8c673db4b); `apps/api-gateway/src/providers/vendor-menu-supply.ts` `readAll` / `TooManyRowsError` (the refusal shape) [path corrected 2026-10-04, verify round 2: it first said `src/procurement/`, which does not exist]; branch `fix/analytics-reads-past-row-cap`; claims in `claims.d/fix-analytics-reads-past-row-cap.jsonl`; residuals in `tech-debt.d/2026-10-03-fix-analytics-reads-past-row-cap.md`
 
 ## Context
 
-PostgREST stops every response at `max_rows = 1000` (`supabase/config.toml:18`) and says nothing: the answer is a 200 holding a thousand rows. Every unranged `.select()` over `pos_checks` or `wine_consumption_log` was therefore a sample named as a total. The owner-quarter sim (F-131, register cluster C15) measured it on the one real house at origin/main 8c673db4b:
+PostgREST stops every response at `max_rows = 1000` (`supabase/config.toml:18`) and says nothing: the answer is a 200 holding a thousand rows. Every unranged `.select()` over `pos_checks` or `wine_consumption_log` whose window held more than 1,000 rows was therefore a sample named as a total. The owner-quarter sim (F-131, register cluster C15) measured it on the one real house at origin/main 8c673db4b:
 
 - **A-005.** The 90-day till on /reports counted 1,000 of 3,313 checks: $187,474 against $625,944, with no day after Aug 15 and no notice.
 - **A-006.** "Who served it" ranked the floor on 1,000 of 3,341 checks (29.6% of takings) and put Maya first, though she was last.
@@ -31,7 +31,7 @@ Volume, measured on the same house: about 58 checks and 131 consumption lines a 
 
 ## Decision
 
-Every analytics read of `pos_checks` or `wine_consumption_log` returns the whole window, or refuses with a typed `WholeReadError`. It never returns a prefix.
+The reads of `pos_checks` and `wine_consumption_log` named in the readers table below return the whole window, or refuse with a typed `WholeReadError`; none of them answers from a prefix. Two of them turn a refusal into a documented degrade rather than an error (fork 3): `analytics.service.ts` `loadConsumption` returns `[]` with a loud log, and the insight bundle leaves the refused family silent. Seven other reads of these tables are still capped and are not made whole here: the guard holds them in a shrink-only baseline, and the tech-debt note lists them. [Narrowed 2026-10-04, verify round 2: this first said every analytics read returns the whole window and never a prefix, which is broader than the code.]
 
 **The helper**, `apps/api-gateway/src/common/read-whole-window.ts`:
 
@@ -83,23 +83,34 @@ Every analytics read of `pos_checks` or `wine_consumption_log` returns the whole
 
 ## Consequences
 
-- **Easier.** Every figure on /reports, /calendar, /recommendations and the dashboard chart is now either the whole window or an explicit "could not be read". The next reader of these tables cannot go back to the unranged select without CI saying so.
+- **Easier.** The figures the readers above feed on /reports, /calendar, /recommendations and the dashboard sales chart are drawn from the whole window or say they could not be read, with the fork 3 exceptions: when `analytics.service.ts` `loadConsumption` is refused, the financial summary, risk, inventory science and the 120-day forecast see no consumption, and a refused insight-bundle read leaves its family silent. The seven baselined reads are still capped. The next reader of these tables cannot go back to the unranged select without CI saying so. [Narrowed 2026-10-04, verify round 2: this first said every figure on those pages was whole or refused.]
 - **Harder.**
   - A long window can now error where it used to under-report. That is the point, but a slow page or a statement timeout on page 17 of a 365-day read now shows as a refusal.
   - Latency was estimated, not measured: for 365 days, about 22 check pages and 48 consumption pages at about 60 ms each, roughly 4 s in sequence (fork 2).
   - **The overview fans out.** `GET /analytics/overview` (`advanced-analytics.service.ts` `getOverview`) runs five lenses that each read their own 90-day consumption window: financial summary, risk and inventory science (`analytics.service.ts` `loadConsumption`), menu engineering and seasonality (`advanced-analytics.service.ts` `loadConsumption`). At about 131 lines a day that is five whole reads of about 12 pages each, each page with an exact count: about 60 requests in five parallel chains of 12, where it used to be five capped requests. Nothing is shared between the lenses. It is bounded (no N+1, the ceiling still refuses), and it was not measured. Sharing one read across the lenses is a cache with a lifetime, which is a decision of its own and not this ADR's.
+  - **/recommendations fans out further.** `RecommendationsService` (`recommendations.service.ts:187`, one `Promise.allSettled`) runs the same five lenses and a live `generate()`, whose bundle reads its own 90-day consumption and check windows. That is six whole consumption reads of about 12 pages each and one check read of about 4 to 6 pages: roughly 78 page requests in seven parallel chains, the longest about 12 pages. Its latency is not measured either; no local or production timing was taken for either route. [Added 2026-10-04, verify round 2.]
 - **Stored insights are recomputed once.** `INSIGHT_GENERATOR_VERSION` goes from 3 to 4, because a version-3 `analytics_insights` row may hold a sentence computed from a 1,000-row slice (A-004's "97% lower"). Without the bump those rows stay `source: "stored"` for every reader that prefers the cache (`GET /analytics/insights/:id`, the overview, goal suggestions, the report exports' `report-cutting-reader.service.ts`, the MCP tool reader) until their category's cadence comes round: a day at daily, a week at weekly, never at manual. With it, every reader refuses them at once and the hourly sweep's stale-version scan replaces them. Until that sweep runs, the overview's insight strip is empty, since `getOverview` does not fall through to a fresh compute. /recommendations was never affected: it calls `generate()` live. Lanes rec (ADR 0291) and sig (ADR 0272) also bump to 4 on their own branches; whichever lands later takes the next number.
 - **Two claims corrected in place.** `ADR-0191-ONE-SHARED-ITEM-STATE` (`CLAIMS.jsonl:597`) pinned the literal `INSIGHT_GENERATOR_VERSION = 3;`. It now holds the version at 3 or above, with the same verify ADR 0291's branch wrote. `REPORTS-2026-10-03-POS-CHECK-READ-FAILURE-IS-NOT-EMPTY` (`claims.d/fix-reports-fractions-and-empty-register.jsonl`, #599) read `loadChecks`'s old `if (error) {` branch; it now reads the `WholeReadError` catch that throws the same 503. Both were mutation-tested in scratch trees: each fails when its throw or its version is taken away.
+- **Figures that move because the window is whole.** [Moved out of the claim-corrections list 2026-10-04, verify round 2.]
   - Booth checks now enter server stats, because the whole window includes them (AW24).
   - The Tonight card moves to the true last day and stays urgent (AW01, lane rec).
 - **Guard's discoveries.**
   - The guard's census found one read the plan's grep census missed: grep reads `pos-mapping-review.service.ts` as binary. Its `limit(checkLimit)` takes a DTO value of up to 2,000, above the cap, and it is baselined.
-  - Two baselined limits sit above the cap and are latent defects, unreachable at current volume: `sale-record.producer.ts`'s `CHECK_CAP = 2000`, and the `checkLimit` above.
+  - Two baselined limits sit above the cap. `sale-record.producer.ts`'s `CHECK_CAP = 2000` is latent: it reads one day, which holds far under 1,000 checks today, so its `truncated` branch cannot fire yet. The `checkLimit` above is reachable now: a caller asking for 1,001 to 2,000 checks gets the latest 1,000. Its `checks_scanned` says 1,000 (`pos-mapping-review.service.ts:448`), so the count is honest, but nothing says the request was clipped. [Corrected 2026-10-04, verify round 2: this first called both limits unreachable at current volume.]
 - **Revisit when:**
   - the 365-day ribbon's measured latency passes about 3 s (move that window to an RPC that returns jsonb);
   - a window passes 50k rows (half the ceiling);
   - `max_rows` changes, which the guard turns into exit 2;
   - a baselined read is touched.
+
+## Open forks
+
+The lane brief carries no founder answer, so each fork below is built as the plan's recommendation and waits on the founder's word before this ADR is Accepted. Fork 3 matters most, because it decides what a page shows when a read is refused.
+
+1. **Past the ceiling** (100,000 rows): refuse with `row_ceiling` (built), or return a labelled partial prefix.
+2. **Long windows:** keep keyset paging and measure the latency (built), or build jsonb RPC aggregates now.
+3. **A refused read in `analytics.service.ts` `loadConsumption` and the insight bundle:** keep the documented degrade, `[]` with a loud log and a silent family (built), or let the refusal fail the whole surface.
+4. **A stale baseline row:** fail CI, so the PR that removes a baselined read deletes its row (built), or warn only.
 
 ## Review trail
 
@@ -108,3 +119,4 @@ Every analytics read of `pos_checks` or `wine_consumption_log` returns the whole
 | 2026-10-03 | — | Created (lane `cap`, Proposed; forks 1–4 recorded as the plan's recommendations, not as rulings) |
 | 2026-10-04 | lane settle round (no independent verify finished) | No decision changed; still Proposed, and the lane brief carries no founder answer for forks 1–4. `getSalesChart` now tests `status !== "fulfilled"`, because `check_order_status_literals.py` read the `"rejected"` literal as an order status and failed CI. The tech-debt line on the /reports refusal state is corrected: the page prints axios's status line, not this ADR's sentence. Lane fmt's `loadChecks` (branch `fix/reports-fractions-and-empty-register` at f74f156f2) throws the same 503 sentence as this branch, so the two merge on wording [corrected 2026-10-04, verify round 1: they do not. #599 landed lane fmt's `loadChecks` on main as c3b1a227e, and the two hunks conflict textually though the 503 sentence is the same; see the next row] |
 | 2026-10-04 | independent lane verifier, round 1 | One major, two minors; no decision changed, still Proposed. **Major:** the bundle's sentences change, so `INSIGHT_GENERATOR_VERSION` goes to 4 (Consequences). **Minor:** origin/main moved to c3b1a227e (#599); merged into the branch (not rebased), taking this branch's `loadChecks` and main's `feedStatus`, and #599's `loadChecks` claim re-pointed at the new catch. The verifier's own resolution passed the guard and the specs but not `check_decision_claims.sh`, which caught that claim. **Minor:** the overview's five-way consumption fan-out is now stated (Consequences). The bump and the two claim corrections take the PR from 15 files to 17 |
+| 2026-10-04 | independent lane verifier, round 2 | One major, six minors; no decision changed, still Proposed. **Major, not acted on here:** the PR is 17 files against the 15-file cap. The two over are the `CLAIMS.jsonl` row (forced by the generator bump) and #599's claims file (forced by the merge). Whether to split the bump and its row into a follow-up PR, or take main's row if lane rec or sig lands the same bump first, is the coordinator's pick, so this branch still carries both. **Minors fixed:** the Decision and Consequences sentences narrowed to the readers named here, the fork 3 degrades and the shrink-only baseline; `checkLimit` called reachable now; the `vendor-menu-supply.ts` path corrected to `src/providers/`; two stale cites in the tech-debt note re-pinned; the two AW bullets moved out of the claim-corrections list; the /recommendations fan-out stated as unmeasured. **Minor, open:** forks 1–4 have no founder answer (see Open forks). origin/main fb862aa57 (#600) merged, both README rows kept |
