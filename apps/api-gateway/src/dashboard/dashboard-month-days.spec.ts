@@ -336,7 +336,10 @@ describe("AW21 — net sales on the house's day", () => {
     // A connected register's quiet day is a measured zero.
     expect(day(month, "2026-10-30")).toMatchObject({ checks: 0, net_sales: 0 });
 
-    const reads = db.calls.filter((c) => c.table === "pos_checks");
+    // The takings pages; the one-row first-check probe is asserted on its own.
+    const reads = db.calls.filter(
+      (c) => c.table === "pos_checks" && c.select !== "opened_at",
+    );
     for (const r of reads) {
       expect(r.select).toBe("id, subtotal, opened_at, closed_at");
       expect(r.filters).toContainEqual(["eq", "voided", false]);
@@ -385,6 +388,9 @@ describe("AW21 — net sales on the house's day", () => {
     const db = fakeDb({
       restaurants: house(LA),
       pos_checks: [
+        // The register was already sending in August, so every October day
+        // is one it was there for.
+        check(0, "2026-08-10T20:00:00Z", "2026-08-10T21:00:00Z", 30),
         check(1, "2026-10-06T20:00:00Z", "2026-10-06T21:00:00Z", 50),
         check(2, "2026-10-06T22:00:00Z", "2026-10-06T23:00:00Z", null),
       ],
@@ -429,10 +435,90 @@ describe("AW21 — net sales on the house's day", () => {
     expect(day(month, "2026-10-15")).toMatchObject({ checks: 0, net_sales: 0 });
   });
 
-  it("fails the month when the register's existence cannot be read", async () => {
+  it("reads the days before the register's first check as unknown, not as quiet zeros", async () => {
+    // The register's first check ever: 12:00 on Oct 10 in Los Angeles.
+    const db = fakeDb({
+      restaurants: house(LA),
+      pos_checks: [
+        check(1, "2026-10-10T19:00:00Z", "2026-10-10T19:40:00Z", 60),
+        check(2, "2026-10-12T19:00:00Z", "2026-10-12T19:40:00Z", 40),
+      ],
+    });
+    const month = await serviceOver(db).getCalendarRevenue(HOUSE, 2026, 10, {
+      withSales: true,
+    });
+
+    expect(month.pos_connected).toBe(true);
+    for (const date of ["2026-10-01", "2026-10-05", "2026-10-09"]) {
+      expect(day(month, date)).toMatchObject({ net_sales: null, checks: null });
+    }
+    expect(day(month, "2026-10-10")).toMatchObject({
+      net_sales: 60,
+      checks: 1,
+    });
+    // On or after the first check, a day without one is a measured zero.
+    expect(day(month, "2026-10-11")).toMatchObject({ net_sales: 0, checks: 0 });
+    expect(day(month, "2026-10-12")).toMatchObject({
+      net_sales: 40,
+      checks: 1,
+    });
+    // Nine unknown days leave the month unknown, never the sum of the rest.
+    expect(month.monthly_net_sales).toBeNull();
+    expect(month.monthly_checks).toBeNull();
+
+    // A whole month before the register began is unknown on every day.
+    const september = await serviceOver(db).getCalendarRevenue(HOUSE, 2026, 9, {
+      withSales: true,
+    });
+    expect(september.pos_connected).toBe(true);
+    expect(
+      september.daily.every((d) => d.net_sales === null && d.checks === null),
+    ).toBe(true);
+    expect(september.monthly_net_sales).toBeNull();
+
+    // The first check is asked of every check the house ever sent, in order.
+    const probe = db.calls.find(
+      (c) => c.table === "pos_checks" && c.select === "opened_at",
+    );
+    expect(probe).toMatchObject({
+      orderBy: ["opened_at", true],
+      limit: 1,
+    });
+    expect(probe!.filters).not.toContainEqual(["eq", "voided", false]);
+  });
+
+  it("dates the register's beginning from a voided first check too", async () => {
+    // A voided check still means the register was sending that day.
+    const db = fakeDb({
+      restaurants: house(LA),
+      pos_checks: [
+        check(1, "2026-10-02T19:00:00Z", "2026-10-02T19:40:00Z", 70, {
+          voided: true,
+        }),
+      ],
+    });
+    const month = await serviceOver(db).getCalendarRevenue(HOUSE, 2026, 10, {
+      withSales: true,
+    });
+    expect(day(month, "2026-10-01")).toMatchObject({
+      net_sales: null,
+      checks: null,
+    });
+    expect(day(month, "2026-10-02")).toMatchObject({ net_sales: 0, checks: 0 });
+  });
+
+  it("fails the month when the register's first check cannot be read", async () => {
     const db = fakeDb(
-      { restaurants: house(LA), pos_checks: [] },
-      { pos_checks: (c) => (c.select === "id" ? "connection reset" : null) },
+      {
+        restaurants: house(LA),
+        pos_checks: [
+          check(1, "2026-10-02T20:00:00Z", "2026-10-02T21:00:00Z", 10),
+        ],
+      },
+      {
+        pos_checks: (c) =>
+          c.select === "opened_at" ? "connection reset" : null,
+      },
     );
     await expect(
       serviceOver(db).getCalendarRevenue(HOUSE, 2026, 10, { withSales: true }),
@@ -540,7 +626,11 @@ describe("who sees sales — through the controller", () => {
   }
   const tables = () => ({
     restaurants: house(LA),
-    pos_checks: [check(1, "2026-10-02T20:00:00Z", "2026-10-02T21:00:00Z", 10)],
+    pos_checks: [
+      // The register began in September, so all of October is counted.
+      check(0, "2026-09-15T20:00:00Z", "2026-09-15T21:00:00Z", 5),
+      check(1, "2026-10-02T20:00:00Z", "2026-10-02T21:00:00Z", 10),
+    ],
   });
 
   it.each([

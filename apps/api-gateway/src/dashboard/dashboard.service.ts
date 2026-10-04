@@ -202,8 +202,11 @@ async function readMonthEvents(
 
 /**
  * The register's takings for the month, by house day, or a throw.
- * `connected` is whether this house has EVER had a check land: a quiet month
- * at a trading house is zeros, and a house with no register is not.
+ *
+ * `since` is the house day the register sent its FIRST check (voided or not),
+ * or null when it never has. A day before it is not a quiet day — the register
+ * was not there to count it — so it is unknown, not zero; a day on or after it
+ * with no check is a measured zero. `connected` is `since !== null`.
  */
 async function readMonthTakings(
   client: any,
@@ -211,30 +214,48 @@ async function readMonthTakings(
   start: Date,
   end: Date,
   zone: string,
-): Promise<{ connected: boolean; days: Map<string, HouseDaySales> }> {
+): Promise<{
+  connected: boolean;
+  since: string | null;
+  days: Map<string, HouseDaySales>;
+}> {
   const from = new Date(start.getTime() - CHECK_LOOKBACK_MS);
-  const rows = await readAll("The month's checks", (after) => {
-    let q = client
+  const [rows, first] = await Promise.all([
+    readAll("The month's checks", (after) => {
+      let q = client
+        .from("pos_checks")
+        .select("id, subtotal, opened_at, closed_at")
+        .eq("restaurant_id", restaurantId)
+        .eq("voided", false)
+        .gte("opened_at", from.toISOString())
+        .lt("opened_at", end.toISOString());
+      if (after) q = q.gt("id", after);
+      return q;
+    }),
+    // One row, on the (restaurant_id, opened_at) index: when did this house's
+    // register first send anything? Asked every time, because a month can
+    // hold checks and still begin before the register did.
+    client
       .from("pos_checks")
-      .select("id, subtotal, opened_at, closed_at")
+      .select("opened_at")
       .eq("restaurant_id", restaurantId)
-      .eq("voided", false)
-      .gte("opened_at", from.toISOString())
-      .lt("opened_at", end.toISOString());
-    if (after) q = q.gt("id", after);
-    return q;
-  });
-  let connected = rows.length > 0;
-  if (!connected) {
-    const { data, error } = await client
-      .from("pos_checks")
-      .select("id")
-      .eq("restaurant_id", restaurantId)
-      .limit(1);
-    if (error) throw new Error(`pos_checks read failed: ${error.message}`);
-    connected = (data ?? []).length > 0;
+      .order("opened_at", { ascending: true })
+      .limit(1),
+  ]);
+  if (first.error) {
+    throw new Error(`pos_checks read failed: ${first.error.message}`);
   }
-  return { connected, days: netSalesByHouseDay(rows, zone) };
+  const firstAt = first.data?.[0]?.opened_at;
+  const firstInstant = firstAt ? new Date(String(firstAt)) : null;
+  const since =
+    firstInstant && !Number.isNaN(firstInstant.getTime())
+      ? localDateIn(firstInstant, zone)
+      : null;
+  return {
+    connected: since !== null,
+    since,
+    days: netSalesByHouseDay(rows, zone),
+  };
 }
 
 /**
@@ -745,27 +766,36 @@ export class DashboardService {
       }
 
       const connected = takings?.connected ?? null;
+      const since = takings?.since ?? null;
       const daily: CalendarDay[] = dates.map((date) => {
         const s = spend.get(date);
         const sold = takings?.days.get(date);
+        // A day the register was there for: on or after its first check's
+        // house day. Its quiet day is a measured zero. A register that never
+        // sent a check, or a day before it began, says nothing (unknown).
+        const counted = since !== null && date >= since;
         return {
           date,
           procurement_spend: cents(s?.spend ?? 0),
           bottles_sold: s?.bottles ?? 0,
           order_count: s?.count ?? 0,
-          // A connected register's quiet day is a measured zero; a register
-          // that never sent a check is no register, and says nothing.
-          net_sales: connected ? (sold ? sold.net_sales : 0) : null,
-          checks: connected ? (sold ? sold.checks : 0) : null,
+          net_sales: counted ? (sold ? sold.net_sales : 0) : null,
+          checks: counted ? (sold ? sold.checks : 0) : null,
           events: eventsByDay.get(date) ?? [],
         };
       });
 
-      const monthlyNet = connected
-        ? daily.some((d) => d.net_sales === null)
-          ? null
-          : cents(daily.reduce((sum, d) => sum + (d.net_sales ?? 0), 0))
-        : null;
+      // The month's figure is known only when every day of it is: one
+      // unknown day (an unstated subtotal, or a day before the register
+      // began) leaves the month unknown, never a partial sum.
+      const monthlyNet =
+        connected && daily.every((d) => d.net_sales !== null)
+          ? cents(daily.reduce((sum, d) => sum + (d.net_sales ?? 0), 0))
+          : null;
+      const monthlyChecks =
+        connected && daily.every((d) => d.checks !== null)
+          ? daily.reduce((sum, d) => sum + (d.checks ?? 0), 0)
+          : null;
 
       return {
         year: y,
@@ -783,9 +813,7 @@ export class DashboardService {
           0,
         ),
         monthly_net_sales: monthlyNet,
-        monthly_checks: connected
-          ? daily.reduce((sum, d) => sum + (d.checks ?? 0), 0)
-          : null,
+        monthly_checks: monthlyChecks,
         pos_connected: connected,
         sales_withheld: !withSales,
       };
