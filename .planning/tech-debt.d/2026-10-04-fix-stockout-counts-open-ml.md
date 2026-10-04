@@ -18,3 +18,7 @@ Branch `fix/stockout-counts-open-ml`, [ADR 0299](../decisions/0299-stockout-risk
 ## The insight's sealed count is not the register's — OPEN — 2026-10-04
 
 The stockout #1 insight takes sealed bottles from `restaurant_inventory.stock_live` (`insight-generator.service.ts`, `computeInventoryFamily`). The reorder register takes `inventory_lot_rollup.live_qty` first and falls back to `stock_live` (`analytics.service.ts`, `loadInventory`). When the lots and `stock_live` disagree, the two can rank the same wine on different counts. ADR 0299 kept each site's sealed source and added the same open ml to both; unifying the sealed source is a separate change.
+
+## A failed rollup read degrades two sites and silences the third — OPEN — 2026-10-04
+
+When the `inventory_lot_rollup` read fails, the reorder register (`analytics.service.ts`, `loadInventory`) and Wine-360 (`advanced-analytics.service.ts`) log it and fall back to `stock_live` with no open ml, so for that read their on hand carries the open-bottle gap that ADR 0299 closed. The stockout #1 insight is silent instead (`readOpenMl` returns null). The fallback was already there for the sealed count; ADR 0299 records the asymmetry and does not unify it.
