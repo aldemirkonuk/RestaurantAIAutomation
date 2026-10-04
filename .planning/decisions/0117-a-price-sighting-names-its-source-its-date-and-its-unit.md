@@ -1519,7 +1519,7 @@ its own row, holding two `TRY` invoices.
 2. **Every recorded price carries ITS OWN currency**, the vendor's, off the vendor's paper.
    Never the house's by inheritance.
 3. **Nothing converts.** There is no exchange rate anywhere in this system. A reader that would
-   compare or sum figures in different currencies refuses in words instead.
+   compare or sum figures in different currencies refuses in words instead. **[2026-10-01: superseded for display figures on "All houses" by ADR 0252 round 6 — the founder chose the ECB daily reference rate, each day at its own rate, every converted figure naming its source and dates, a typed rate winning. A recorded price still carries its own currency and is never rewritten. This rule was already contradicted by the per-lot stated rate of ADR 0083's second addendum.]**
 
 ### What was built
 
@@ -1571,7 +1571,7 @@ its own row, holding two `TRY` invoices.
 - **Inheriting the house's currency onto a price when the paper states none.** This is the defect
   wearing a helpful face. On the Fethiye house it would have written USD.
 - **A currency-conversion rate, anywhere.** No source, no date, no issuer — every requirement
-  this ADR puts on a price, a rate fails.
+  this ADR puts on a price, a rate fails. **[2026-10-01: a named issuer (ECB) and a date per figure answer this objection for display; see rule 3's bracket and ADR 0252.]**
 - **A country-to-currency table in the gateway as well as the web.** Two tables of the same fact
   rot apart. The gateway validates SHAPE only (`/^[A-Z]{3}$/`); the codes a manager can choose
   come from the one table, in a select, so "TL" and "$" cannot be typed in.
