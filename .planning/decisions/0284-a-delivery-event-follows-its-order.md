@@ -173,8 +173,9 @@ out-of-stock message no longer says the delivery was "removed from calendar"
   mail off) before merging." Built so: the door-path close is the
   `PARTIALLY_RECEIVED` arm of the trigger, and this branch edits no receiving
   file, so R3's door-release PR rebases on it without a conflict. #592 merged
-  as 619a068a9 on 2026-10-04, so the merge-order condition is met; the branch
-  is cut at 8c673db4b and still has to take main before it merges.
+  as 619a068a9 on 2026-10-04, so the merge-order condition is met; the branch,
+  cut at 8c673db4b, took main at fb862aa57 on 2026-10-04 (merge 9d57e0b7e),
+  so #592 is in it.
 - **Door versus verify (2026-10-02, AskUserQuestion, recorded in memory
   `founder-answers-2026-10-02-sim-share-out` and in ADR 0267 ruling 1 on
   wt-review-3, not on main).** Picked: **"At the door (Recommended)"**. It is
@@ -232,6 +233,12 @@ out-of-stock message no longer says the delivery was "removed from calendar"
   trigger's catch removed, no zone fallback, house scope dropped, a no-zone
   house labelled a bare "UTC" (T16), and a cancellation that overwrites a
   completed event (T8). Re-run 2026-10-04 at 0844786f0 plus the no-zone change.
+  Those file counts are from before the branch took main.
+- After taking main (fb862aa57) and renumbering to 20261218150000, the same
+  test ran on Docker PostgreSQL 17 (`pgtest.sh lane`: a template of main's 285
+  migrations, plus this one): **16 of 16 with the migration**; the control
+  without it raises with 13 of 16 not true (T1-T9, T11-T13, T16), as above.
+  The renamed files are byte-identical to the ones tested before.
 - `order-calendar-event-lifecycle.spec.ts` (14) pins the SQL; ten mutations of
   the migration are each caught by exactly one case, and the file fails to load
   without the migration.
@@ -241,12 +248,14 @@ out-of-stock message no longer says the delivery was "removed from calendar"
   case fail (18 of the three files' 110) and every pre-existing case passes.
 - `tests/test_procurement_agent_vendor_decline.py` pins that the agent no
   longer touches `calendar_events`; it fails against `origin/main`'s agent.
-- PGlite is PostgreSQL 18 as superuser with the Supabase platform stubbed; no
-  production database was read or written.
+- PGlite is PostgreSQL 18 as superuser with the Supabase platform stubbed, and
+  the Docker run is a local container on synthetic fixtures; no production
+  database was read or written.
 
 ## Review trail
 
 | Date | Reviewer | Outcome |
 |---|---|---|
+| 2026-10-04 | update pass (lane `events`) | Took `origin/main` fb862aa57 (#592, #599, #600) in merge 9d57e0b7e; two row conflicts (decisions `README.md`, `sql_outside_migrations.txt`), both sides kept, the inventory regenerated with `--update`. Migration and test renamed from 20261216140500 to **20261218150000** (1243da5a5, same slug, byte-identical): #600 put 20261217112500 on main, ADR 0212 requires a new version to sort after main, and the open postime lane holds 20261218101500 (wt-fix-cellar holds 20261219104500, which sorts after this one; if it merges first, this renumbers again). No function body carried forward: none of this migration's objects exist on main. `check_adr_numbers_unique.py`: 0284 OK across 1665 refs. SQL test 16/16 on Docker PG 17 (Verification). |
 | 2026-10-04 | settle pass (lane `events`) | No independent verify had run; a re-run of the build agent was interrupted with one uncommitted edit, the SQL test's verdict block, which was checked on PGlite and kept (0844786f0). Added: a house with no zone set is labelled "UTC; the house has no time zone set" (ADR 0149 item 61) with test T16; the founder answers above, quoted verbatim, including the 2026-10-04 door split. `check_adr_numbers_unique.py` re-run before commit. |
 | 2026-10-03 | — | Created on `fix/delivery-events-follow-the-order` (lane `events`). Numbered 0284, a gap, after three collisions with parallel lanes: the lane plan's 0271 went to `logs`, 0289 was held in wt-fix-stateeditor, and 0290 then appeared in wt-fix-dash (the plan's number for that lane). At the last check (origin/main 619a068a9) `check_adr_numbers_unique.py` gave next free 0292 across 1648 refs, worktrees held 0270-0273, 0277, 0281 and 0285-0292, and 0284 was on no ref, in none of 212 worktrees, and cited nowhere on origin/main, in a wt-fix-* decisions folder or in the lane plan. The migration version moved likewise from 20261215100000, which two other lanes hold. Re-check both at merge. |
