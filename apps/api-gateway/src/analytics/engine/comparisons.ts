@@ -13,9 +13,12 @@
  *                          tables, waiter A vs all waiters)
  *   • contributionToChange — which components drove a total's delta
  *   • dayOfWeekProfile   — per-weekday summary (best/worst days)
+ *   • leaderTest         — whether a #1 can be told apart from the rest
+ *                          (ADR 0272), before any "ranks #1" is printed
+ *   • cutKeepingTies     — a top-N cut that never splits a tie group
  */
 
-import { mean, stdev, median, zScore } from "./statistics";
+import { mean, stdev, median, zScore, normalCdf } from "./statistics";
 
 export interface BaselineComparison {
   value: number;
@@ -245,3 +248,266 @@ export const WEEKDAY_NAMES = [
   "Friday",
   "Saturday",
 ] as const;
+
+// ---------------------------------------------------------------------------
+// Rankings that can be told apart (ADR 0272)
+// ---------------------------------------------------------------------------
+
+/**
+ * Two computed values are the same value — a tie.
+ *
+ * A tie is equality of the COMPUTED value, never of its printed rounding:
+ * 26.8% and 26.9% both print "27%", and they are not tied. But "computed" has
+ * to mean the arithmetic, not its last bit. On Tuzlu every SKU's demand was
+ * dated to one import day, so five wines at 22.5 days of cover share one
+ * stockout probability in exact arithmetic — and in floating point they came
+ * back as 0.26844096449466426, …370 and …437, depending only on how many
+ * bottles each sold. Strict equality would have called that group five
+ * different risks and ranked them by rounding error. So: equal to within one
+ * part in a billion of the larger magnitude (absolute below 1). That is nine
+ * orders below anything this product prints and seven above double rounding.
+ */
+export const TIE_TOLERANCE = 1e-9;
+
+export function sameValue(
+  a: number | null | undefined,
+  b: number | null | undefined,
+): boolean {
+  if (a == null || b == null) return a == null && b == null;
+  if (a === b) return true;
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return false;
+  return (
+    Math.abs(a - b) <= TIE_TOLERANCE * Math.max(1, Math.abs(a), Math.abs(b))
+  );
+}
+
+/**
+ * The first `n` rows of an already-sorted list, extended through every row
+ * whose `key` ties row `n`'s. A cut that kept two of five rows tied at 27% —
+ * chosen by the order the database happened to return them in — under "the
+ * 25 at the highest risk are listed" printed a ranking the data did not make
+ * (A-070). Trimming the tie group off instead would return nothing at all when
+ * the top group is larger than the cut, so the cut grows instead.
+ */
+export function cutKeepingTies<R>(
+  rows: R[],
+  n: number,
+  key: (row: R) => number | null | undefined,
+): R[] {
+  if (n <= 0) return [];
+  if (rows.length <= n) return rows.slice();
+  const edge = key(rows[n - 1]);
+  let end = n;
+  while (end < rows.length && sameValue(key(rows[end]), edge)) end++;
+  return rows.slice(0, end);
+}
+
+const byCodeUnits = (a: string, b: string): number =>
+  a < b ? -1 : a > b ? 1 : 0;
+
+/**
+ * The one order of "at risk of running out" rows: highest stockout
+ * probability first; within a tie, the fewest days of cover (unmeasured last),
+ * then the fewest bottles, then the name and the id. The database's row order
+ * never decides — it decided which two of Tuzlu's five tied wines were listed.
+ */
+export function byStockoutRisk(
+  a: {
+    stockoutProbability: number | null;
+    daysOfCover: number | null;
+    onHand: number;
+    name: string;
+    id: string;
+  },
+  b: {
+    stockoutProbability: number | null;
+    daysOfCover: number | null;
+    onHand: number;
+    name: string;
+    id: string;
+  },
+): number {
+  const pa = a.stockoutProbability;
+  const pb = b.stockoutProbability;
+  if (!sameValue(pa, pb)) return pa == null ? 1 : pb == null ? -1 : pb - pa;
+  const ca = a.daysOfCover;
+  const cb = b.daysOfCover;
+  if (!sameValue(ca, cb)) return ca == null ? 1 : cb == null ? -1 : ca - cb;
+  if (!sameValue(a.onHand, b.onHand)) return a.onHand - b.onHand;
+  return byCodeUnits(a.name, b.name) || byCodeUnits(a.id, b.id);
+}
+
+/** One group's observations, summarised: count, mean, sample variance. */
+export interface GroupMoments<T> {
+  entity: T;
+  n: number;
+  mean: number;
+  /** Sample (n − 1) variance of the group's observations. */
+  variance: number;
+}
+
+/** Count, mean and sample variance from a running sum and sum of squares. */
+export function momentsFromSums<T>(
+  entity: T,
+  n: number,
+  sum: number,
+  sumSq: number,
+): GroupMoments<T> {
+  const m = n > 0 ? sum / n : 0;
+  const variance = n > 1 ? Math.max(0, (sumSq - n * m * m) / (n - 1)) : 0;
+  return { entity, n, mean: m, variance };
+}
+
+export interface LeaderTestResult<T> {
+  /** True only when the leader is apart from BOTH the runner-up and the rest. */
+  separable: boolean;
+  reason:
+    | "separable"
+    | "too_few_groups"
+    | "tied_with_runner_up"
+    | "not_apart_from_the_rest";
+  /** Eligible groups (n ≥ minN), highest mean first, ties by entity. */
+  ranked: GroupMoments<T>[];
+  leader: T | null;
+  runnerUp: T | null;
+  /** One-sided Welch z and p of the leader against the runner-up. */
+  zVsRunnerUp: number | null;
+  pVsRunnerUp: number | null;
+  /** One-sided Welch z and p of the leader against everyone else pooled. */
+  zVsRest: number | null;
+  pVsRest: number | null;
+  /** `pVsRest` × the number of eligible groups (Bonferroni), capped at 1. */
+  pVsRestAdjusted: number | null;
+}
+
+/** Upper-tail p of a z: P(Z ≥ z). Written so it never subtracts from 1. */
+const upperTail = (z: number): number => normalCdf(-z);
+
+function welchZ(
+  m1: number,
+  v1: number,
+  n1: number,
+  m2: number,
+  v2: number,
+  n2: number,
+): number {
+  const d = m1 - m2;
+  const se = Math.sqrt(v1 / n1 + v2 / n2);
+  if (!(se > 0)) return d > 0 ? Number.POSITIVE_INFINITY : 0;
+  return d / se;
+}
+
+/**
+ * May the top group be printed as "#1"?
+ *
+ * `peerComparison` ranks k means and calls the largest #1 whatever the gap.
+ * On Tuzlu, where servers were dealt uniformly, it named Lucas #1 of 5 on a
+ * 1.0% lead (A-003) — and the largest of k noisy means is always ahead of
+ * something. The leader is printable only when both hold, at `alpha`:
+ *
+ *  (i)  a one-sided Welch test of the leader against the RUNNER-UP rejects —
+ *       the tie check: a #1 indistinguishable from #2 is not a #1;
+ *  (ii) a one-sided Welch test of the leader against the POOLED REST rejects
+ *       after multiplying its p by k (Bonferroni) — because the leader was
+ *       chosen as the maximum of k, and under "nobody differs" the chance
+ *       that SOME group clears an uncorrected test is near k × alpha.
+ *
+ * Groups under `minN` observations are not ranked at all (normal theory needs
+ * the numbers, and a mean over a dozen checks is a coincidence). The pooled
+ * rest is rebuilt from each group's n, mean and variance, so one group's
+ * outliers — two $3,400 booth checks — inflate that group's variance and
+ * shrink its z instead of crowning it.
+ */
+export function leaderTest<T>(
+  groups: GroupMoments<T>[],
+  opts: { alpha?: number; minN?: number; minGroups?: number } = {},
+): LeaderTestResult<T> {
+  const alpha = opts.alpha ?? 0.05;
+  const minN = opts.minN ?? 30;
+  const minGroups = Math.max(2, opts.minGroups ?? 2);
+  const ranked = groups
+    .filter((g) => g.n >= minN && Number.isFinite(g.mean))
+    .sort(
+      (a, b) =>
+        b.mean - a.mean || byCodeUnits(String(a.entity), String(b.entity)),
+    );
+  const empty: LeaderTestResult<T> = {
+    separable: false,
+    reason: "too_few_groups",
+    ranked,
+    leader: ranked[0]?.entity ?? null,
+    runnerUp: ranked[1]?.entity ?? null,
+    zVsRunnerUp: null,
+    pVsRunnerUp: null,
+    zVsRest: null,
+    pVsRest: null,
+    pVsRestAdjusted: null,
+  };
+  if (ranked.length < minGroups) return empty;
+
+  const [lead, second] = ranked;
+  const zVsRunnerUp = welchZ(
+    lead.mean,
+    lead.variance,
+    lead.n,
+    second.mean,
+    second.variance,
+    second.n,
+  );
+  const pVsRunnerUp = upperTail(zVsRunnerUp);
+
+  let restN = 0;
+  let restSum = 0;
+  let restSumSq = 0;
+  for (const g of ranked.slice(1)) {
+    restN += g.n;
+    restSum += g.n * g.mean;
+    restSumSq += (g.n - 1) * g.variance + g.n * g.mean * g.mean;
+  }
+  const rest = momentsFromSums(null, restN, restSum, restSumSq);
+  const zVsRest = welchZ(
+    lead.mean,
+    lead.variance,
+    lead.n,
+    rest.mean,
+    rest.variance,
+    rest.n,
+  );
+  const pVsRest = upperTail(zVsRest);
+  const pVsRestAdjusted = Math.min(1, ranked.length * pVsRest);
+
+  const tied = !(pVsRunnerUp <= alpha);
+  const apart = pVsRestAdjusted <= alpha;
+  return {
+    ...empty,
+    separable: !tied && apart,
+    reason: tied
+      ? "tied_with_runner_up"
+      : apart
+        ? "separable"
+        : "not_apart_from_the_rest",
+    zVsRunnerUp,
+    pVsRunnerUp,
+    zVsRest,
+    pVsRest,
+    pVsRestAdjusted,
+  };
+}
+
+/**
+ * Is a Pearson r over n points distinguishable from no correlation?
+ * Fisher's z = atanh(r)·√(n − 3), two-sided. `tests` is how many correlations
+ * the caller looked at before picking this one (Bonferroni). Returns the z
+ * the score uses and the adjusted p.
+ */
+export function correlationSignificance(
+  r: number,
+  n: number,
+  tests = 1,
+): { z: number; p: number; pAdjusted: number } | null {
+  if (!Number.isFinite(r) || n < 4) return null;
+  const rc = Math.max(-1 + 1e-12, Math.min(1 - 1e-12, r));
+  const z = Math.atanh(rc) * Math.sqrt(n - 3);
+  const p = Math.min(1, 2 * upperTail(Math.abs(z)));
+  return { z, p, pAdjusted: Math.min(1, Math.max(1, tests) * p) };
+}

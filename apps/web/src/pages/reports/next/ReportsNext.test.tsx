@@ -1500,3 +1500,52 @@ describe('ReportsNext — written up (OD-81)', () => {
     expect(screen.queryByRole('region', { name: 'Written up' })).toBeNull();
   });
 });
+
+describe('ReportsNext — the restock bars keep their ties (A-070, ADR 0272)', () => {
+  /** A reorder row as the gateway sends it, highest risk first. */
+  const row = (id: string, p: number) => ({
+    id,
+    name: `Wine ${id}`,
+    onHand: 1,
+    daysOfCover: 3,
+    reorderPoint: 4,
+    safetyStock: 2,
+    stockoutProbability: p,
+  });
+  const drawn = (list: ReturnType<typeof row>[]) => {
+    const spec = CATALOGUE.restock;
+    const data = spec.select({
+      params: { serviceLevel: 0.95, leadTimeDays: 7, demandWindowDays: 90 },
+      skuCount: 60,
+      reorderCount: list.length,
+      reorderList: list,
+    });
+    return spec.view(data, { days: 30 }).cats!.data.map((d) => d.full);
+  };
+
+  it('draws every wine tied with the 14th bar, not the first of them by row order', () => {
+    const list = [
+      ...Array.from({ length: 12 }, (_, i) => row(`a${i}`, 0.9 - i * 0.02)),
+      // One risk — 26.84% — in the bit patterns the gateway really returns.
+      row('t0', 0.26844096449466426),
+      row('t1', 0.2684409644946637),
+      row('t2', 0.26844096449466437),
+      row('t3', 0.26844096449466415),
+      row('t4', 0.26844096449466381),
+      row('z0', 0.2),
+    ];
+    const bars = drawn(list);
+    expect(bars).toHaveLength(17);
+    for (const t of ['t0', 't1', 't2', 't3', 't4']) expect(bars).toContain(`Wine ${t} · 1 on hand`);
+    expect(bars).not.toContain('Wine z0 · 1 on hand');
+  });
+
+  it('does not call two risks that merely print alike a tie', () => {
+    const list = [
+      ...Array.from({ length: 13 }, (_, i) => row(`a${i}`, 0.9 - i * 0.02)),
+      row('p0', 0.2689), // prints "27%"
+      row('p1', 0.2684), // also prints "27%" — a different risk
+    ];
+    expect(drawn(list)).toHaveLength(14);
+  });
+});
