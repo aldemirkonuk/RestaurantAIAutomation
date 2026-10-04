@@ -12,7 +12,9 @@ Filed by `fix/door-keeps-the-arrival-time` (ADR 0286, follow-up 1). It did not f
 
 **What.** `POST /procurement/documents/door-count` passes `body.countedAt` straight through, both as the document's count time (`apps/api-gateway/src/procurement/documents/documents.controller.ts:862`) and as the delivery's `deliveredAt` (`:916`). The DTO checks it only as a string of at most 40 characters (`apps/api-gateway/src/procurement/dto/deliveries.dto.ts:163-169`), not as an instant. Any role can therefore date a counted delivery at any time, past or future. The founder's ruling (C02, 2026-10-04) covers counts: a sent time older than 72 hours stands only from an owner or a manager, and is marked back-dated.
 
-**Fix.** Pass `countedAt` through `resolveFactTime` with the token's role, before both uses. Validate it as ISO 8601, and record which clock dated it. Pinned by the open row `ADR-0286-DOOR-COUNT-ROUTE-USES-THE-RULE` in `claims.d/fix-door-keeps-the-arrival-time.jsonl`, which flips to resolved when the fix lands.
+**The same sink, a second route** (added at the lane's last call). `POST /procurement/deliveries` takes `deliveredAt` under the same string-only check (`apps/api-gateway/src/procurement/dto/deliveries.dto.ts:69-73`) from any signed-in role, and passes it on (`apps/api-gateway/src/procurement/deliveries.controller.ts:102`) to the same `deliveries.delivered_at` (`apps/api-gateway/src/procurement/canonical/delivery.service.ts:296`). No web or mobile client sends `countedAt` or `deliveredAt` today; the web only reads `/procurement/deliveries`.
+
+**Fix.** Pass `countedAt`, and the create route's `deliveredAt`, through `resolveFactTime` with the token's role, before each use. Validate both as ISO 8601, and record which clock dated each. Pinned by the open rows `ADR-0286-DOOR-COUNT-ROUTE-USES-THE-RULE` and `ADR-0286-DELIVERY-CREATE-USES-THE-RULE` in `claims.d/fix-door-keeps-the-arrival-time.jsonl`, each of which flips to resolved when its fix lands.
 
 ## The door's stock movement is dated at entry — OPEN — 2026-10-04
 
