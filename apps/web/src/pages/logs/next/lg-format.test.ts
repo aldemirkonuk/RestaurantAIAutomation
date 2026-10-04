@@ -5,6 +5,7 @@ import {
   dayKeyOf,
   displaySources,
   fmtClock,
+  fmtDay,
   fmtStamp,
   groupByDay,
   labelOf,
@@ -13,6 +14,7 @@ import {
   nameOf,
   noLinkReason,
   orderForThread,
+  parseDay,
   payloadLines,
   threadSpan,
   word,
@@ -164,5 +166,67 @@ describe('lg-format — the payload', () => {
       { key: 'e', value: '{\n  "k": 1\n}' },
     ]);
     expect(payloadLines(null)).toEqual([]);
+  });
+});
+
+/**
+ * A day the reader names is read back from its END, in the same clock the day
+ * headings use. The second case is the coupling with the headings: if the day
+ * headings move to the house's zone (A-056) and the jump does not, or the
+ * other way round, it fails — and the reader would land on a page whose first
+ * heading is not the day they asked for. The suite runs in America/New_York
+ * (`src/__tests__/setup.ts:12`), whose clocks change on 2026-03-08 and
+ * 2026-11-01; the European change days are kept so the case still means
+ * something if that pin moves. Measured outside the pin on 2026-10-03: every
+ * day of 2026 holds the pair in nine zones, Havana and Beirut (which change
+ * AT midnight) included.
+ */
+describe('lg-format — a day to read back from', () => {
+  it('reads a strict YYYY-MM-DD and names it in the day heading’s own words', () => {
+    const d = parseDay('2026-07-22');
+    expect(d).not.toBeNull();
+    expect(d!.key).toBe('2026-07-22');
+    expect(d!.heading).toBe(fmtDay(new Date(2026, 6, 22, 12).toISOString()));
+    expect(d!.heading).toMatch(/22/);
+    expect(d!.heading).toMatch(/Jul/);
+  });
+
+  /** The calendar day after `key`, by arithmetic that no zone can move. */
+  const dayAfter = (key: string) => {
+    const [y, m, d] = key.split('-').map(Number);
+    return new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10);
+  };
+
+  it('ends the day where the day headings end it, DST days included', () => {
+    for (const key of ['2026-07-22', '2026-03-08', '2026-11-01', '2026-03-29', '2026-10-25', '2026-12-31']) {
+      const end = Date.parse(parseDay(key)!.end);
+      // The last millisecond before the cursor is still the day …
+      expect(dayKeyOf(new Date(end - 1).toISOString())).toBe(key);
+      // … and the cursor itself is already the next one: nothing in between.
+      expect(dayKeyOf(new Date(end).toISOString())).toBe(dayAfter(key));
+    }
+  });
+
+  it('refuses anything that is not a real calendar day, rather than guessing', () => {
+    for (const raw of ['2026-02-30', '2026-13-01', '2026-7-22', '22/07/2026', '', ' 2026-07-22', '2026-07-22 ', 'foo', '0099-01-01']) {
+      expect(parseDay(raw)).toBeNull();
+    }
+    expect(parseDay(null)).toBeNull();
+    expect(parseDay(undefined)).toBeNull();
+    expect(parseDay('2028-02-29')).not.toBeNull();
+  });
+
+  it('never seeds an expanded-year instant, which a hand-typed 9999-12-31 would make', () => {
+    // Where the day after 9999-12-31 starts past 9999 in UTC (every zone west
+    // of Greenwich, the suite's New York pin included) the raw end would be
+    // `+010000-01-01T…`; east of it the end is still 9999-12-31 in UTC and is
+    // an ordinary seed. Either way the cursor keeps the four-digit shape.
+    const expanded = new Date(9999, 11, 32).getUTCFullYear() > 9999;
+    if (expanded) expect(parseDay('9999-12-31')).toBeNull();
+    for (const key of ['9999-12-31', '9999-12-30', '0100-01-01', '2026-07-22']) {
+      const d = parseDay(key);
+      if (d) expect(d.end).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+    }
+    expect(parseDay('9999-12-30')).not.toBeNull();
   });
 });
