@@ -144,17 +144,17 @@ function savedAt(copy: Partial<GuidanceState> | null | undefined): number | null
 /**
  * The account's copy (`raw`) and this browser's own copy, made into one.
  *
- * When the account's copy was saved later than this browser's, another
- * browser wrote it, and it stands alone: "Turn tips back on" there is not
- * undone by an older "Don't show tips again" kept here. Otherwise this
- * browser's copy is laid over the account's, as before, so a save that has
- * not reached the account (a failed or still-running request) keeps its
- * effect here. That includes a tie, which is normally this browser's own save
- * come back: the gateway deep-merges a save into what it holds, so the
- * account's copy can still carry a key this save took away (a page's old
+ * The account's copy stands alone when this browser holds no readable copy,
+ * or when the account's stamp is readable and this browser's is not, or is
+ * earlier: "Turn tips back on" saved later elsewhere is not undone by an
+ * older "Don't show tips again" kept here. Otherwise this browser's `global`,
+ * `pages` and `setup_nudge` are laid over the account's, as before, so a save
+ * that has not reached the account (a failed or still-running request) keeps
+ * its effect here. That includes a tie, normally this browser's own save come
+ * back: the gateway deep-merges a save into what it holds, so the account's
+ * copy can still carry a key this save took away (a page's old
  * `snooze_until`), and this browser's copy is the exact one. The phone app
- * sets no time, so a save made there does not by itself win over a browser's
- * own copy.
+ * sets no time, so a save made there does not by itself win over this copy.
  */
 function mergeGuidance(raw: unknown): GuidanceState {
   const g = (raw && typeof raw === 'object' ? raw : {}) as Partial<GuidanceState>
