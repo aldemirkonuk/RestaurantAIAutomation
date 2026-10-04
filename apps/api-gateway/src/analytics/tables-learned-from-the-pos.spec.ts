@@ -6,7 +6,7 @@ import {
 import { DatabaseService } from "../database/database.service";
 import { RolesGuard } from "../auth/guards/roles.guard";
 import { ROLES_KEY } from "../auth/decorators/roles.decorator";
-import { PosHubService, tableRefOf } from "../pos-hub/pos-hub.service";
+import { PosHubService } from "../pos-hub/pos-hub.service";
 import { EXPORT_CUTTINGS } from "../reports/exports/report-export-cuttings";
 import { AnalyticsController } from "./analytics.controller";
 import { TableAnalyticsService } from "./table-analytics.service";
@@ -22,10 +22,12 @@ import { TableAnalyticsService } from "./table-analytics.service";
  * or seat count entered the geometry model as a measured 0; and no route
  * could rename or hide a table.
  *
- * After: pos_checks.table_ref keeps the word (the database learns the table
- * from it, supabase/tests/20261220110000_tables_learned_from_the_pos_test.sql);
- * checks without a table and checks at hidden tables are counted; hidden
- * tables leave every per-table figure; an unrecorded value is absent; and
+ * After: the database reads the word out of `raw` into pos_checks.table_ref
+ * and learns the table from it (supabase/tests/20261220110000_tables_learned_
+ * from_the_pos_test.sql), so pos-hub writes no new column; checks without a
+ * table and checks at hidden tables are counted; hidden tables leave the room,
+ * its export and the hot list (the insight generator's part is owed, ADR 0303
+ * residual 1); an unrecorded value is absent; and
  * PATCH /analytics/tables/:rid/:tableId renames or hides, owner or manager
  * only.
  */
@@ -113,7 +115,7 @@ const check = (over: Row = {}): Row => ({
   ...over,
 });
 
-/* ── pos-hub keeps the till's word ─────────────────────────────────────── */
+/* ── pos-hub keeps the till's payload; the database reads the word ───── */
 
 function makeHub(tables: Row[]) {
   const checkRows: Row[] = [];
@@ -157,58 +159,29 @@ const generic = (externalCheckId: string, tableRef: unknown) => ({
   items: [],
 });
 
-describe("pos-hub keeps the till's table word on the check (ADR 0303)", () => {
-  it("writes table_ref beside the in-memory resolve, trimmed, and numbers as text", async () => {
+describe("pos-hub keeps the till's payload and writes no new column (ADR 0303)", () => {
+  // The database reads the table word out of `raw` (pos_checks_find_or_learn_table),
+  // so the gateway names no column the migration adds. Deploying the gateway
+  // before or after the migration therefore stores every check either way.
+  it("keeps the table word inside raw as the till sent it, and names no table_ref", async () => {
     const { hub, checkRows } = makeHub([
       { id: "tab-7", label: "7", pos_refs: {} },
     ]);
     await (hub as any).ingest("r-1", "csv_import", [
       generic("k1", "T7"),
-      generic("k2", "  T8 "),
+      generic("k2", "table 7"),
       generic("k3", 14),
-      generic("k4", "table 7"),
-      generic("k5", "   "),
-      generic("k6", null),
     ]);
     const byId = Object.fromEntries(
       checkRows.map((r) => [r.external_check_id, r]),
     );
-    expect(byId.k1.table_ref).toBe("T7");
+    expect(Object.keys(byId).sort()).toEqual(["k1", "k2", "k3"]);
+    expect(byId.k1.raw).toMatchObject({ tableRef: "T7" });
+    expect(byId.k3.raw).toMatchObject({ tableRef: 14 });
+    // The in-memory resolve still links what it can.
     expect(byId.k1.table_id).toBeNull();
-    expect(byId.k2.table_ref).toBe("T8");
-    expect(byId.k3.table_ref).toBe("14");
-    // The fast path still resolves what it can; the word is kept either way.
-    expect(byId.k4.table_id).toBe("tab-7");
-    expect(byId.k4.table_ref).toBe("table 7");
-    expect(byId.k5.table_ref).toBeNull();
-    expect(byId.k6.table_ref).toBeNull();
-  });
-
-  it("never keeps Clover's order type as a table word (AW24: it is a channel)", async () => {
-    const { hub, checkRows } = makeHub([]);
-    await (hub as any).ingest("r-1", "clover", {
-      elements: [
-        {
-          id: "o-1",
-          createdTime: 1759600000000,
-          orderType: { label: "Dine In" },
-          total: 1200,
-        },
-      ],
-    });
-    expect(checkRows).toHaveLength(1);
-    expect(checkRows[0].table_ref).toBeNull();
-  });
-
-  it("tableRefOf mirrors the SQL reader pos_table_ref_from_raw", () => {
-    expect(tableRefOf("csv_import", " T1 ")).toBe("T1");
-    expect(tableRefOf("generic_webhook", 3)).toBe("3");
-    expect(tableRefOf("generic_webhook", Number.NaN)).toBeNull();
-    expect(tableRefOf("square", "Bar 2")).toBe("Bar 2");
-    expect(tableRefOf("toast", { guid: "g" })).toBeNull();
-    expect(tableRefOf("clover", "Dine In")).toBeNull();
-    expect(tableRefOf("csv_import", "")).toBeNull();
-    expect(tableRefOf("csv_import", undefined)).toBeNull();
+    expect(byId.k2.table_id).toBe("tab-7");
+    for (const row of checkRows) expect(row).not.toHaveProperty("table_ref");
   });
 });
 
@@ -373,7 +346,7 @@ describe("renameOrHideTable (ADR 0303)", () => {
   const patchOf = (calls: Array<{ method: string; args: unknown[] }>) =>
     calls.find((c) => c.method === "update")?.args[0] as Row | undefined;
 
-  it.each([
+  it.each<[unknown, string]>([
     [{}, "an empty body"],
     [{ label: "" }, "a blank name"],
     [{ label: "   " }, "a name of spaces"],

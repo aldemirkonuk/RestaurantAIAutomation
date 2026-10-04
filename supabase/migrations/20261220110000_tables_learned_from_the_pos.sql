@@ -23,18 +23,25 @@
 --
 -- THE METHOD (the lane's proposal under that ruling, in ADR 0303):
 --  1. pos_checks.table_ref keeps the till's own word for where the check was,
---     NULL when it sent none. pos-hub writes it; pos_table_ref_from_raw reads
---     it back out of `raw` for history, mirroring the adapters: Clover's
---     orderType is a channel, never a table (AW24, ruling "Own row, POS
---     field"), so Clover gives NULL.
+--     NULL when it sent none. The database reads it out of `raw` with
+--     pos_table_ref_from_raw, mirroring the adapters, whenever a check is
+--     inserted or its raw is written (step 3), and for history (step 6).
+--     pos-hub writes no new column, so the gateway and this migration deploy
+--     in either order. Clover's orderType is a channel, never a table (AW24,
+--     ruling "Own row, POS field"), so Clover gives NULL.
 --  2. restaurant_tables gains learned_at (set only by learning; NULL means a
 --     person added the row) and hidden_at (NULL means shown). seats and
 --     is_outdoor become nullable, and a learned row writes NULL to both: the
 --     till does not say how many seats a table has or whether it is outside.
 --     Their DEFAULTs stay for the existing POST path.
---  3. A BEFORE trigger on pos_checks resolves the till's word to a table with
---     the same precedence as resolveTable (pos ref of that source, then the
---     label, then "table <label>"), case- and space-insensitive, over active
+--  3. A BEFORE trigger on pos_checks first sets table_ref from raw: on an
+--     insert, and on an update that writes raw (an upsert re-send). A word
+--     raw carries wins; when raw carries none, a writer's own table_ref
+--     stands, and a word that came from the old raw goes with it. A changed
+--     word drops a link the statement did not set itself. It then
+--     resolves the word to a table with the same precedence as resolveTable
+--     (pos ref of that source, then the label, then "table <label>"),
+--     case- and space-insensitive, over active
 --     tables, hidden ones included. When nothing answers and no RETIRED
 --     (is_active = false) table answers either, it LEARNS the table. Learning
 --     runs inside its own exception block: a failure is a WARNING and the
@@ -84,7 +91,7 @@ SET local statement_timeout = '120s';
 
 ALTER TABLE public.pos_checks ADD COLUMN IF NOT EXISTS table_ref text;
 COMMENT ON COLUMN public.pos_checks.table_ref IS
-  'The till''s own word for where this check was (ADR 0303), as sent; NULL when it sent none. Clover''s order type is a channel, not a table, and is never stored here.';
+  'The till''s own word for where this check was (ADR 0303), read out of raw by pos_checks_find_or_learn_table on insert and whenever raw is written; a writer''s own value stands only when raw carries none. NULL when the till sent none. Clover''s order type is a channel, not a table, and is never stored here.';
 
 ALTER TABLE public.restaurant_tables ALTER COLUMN seats DROP NOT NULL;
 ALTER TABLE public.restaurant_tables ALTER COLUMN is_outdoor DROP NOT NULL;
@@ -97,7 +104,7 @@ COMMENT ON COLUMN public.restaurant_tables.is_outdoor IS
 COMMENT ON COLUMN public.restaurant_tables.learned_at IS
   'When this table was learned from a till word on a check (ADR 0303). NULL means a person added it.';
 COMMENT ON COLUMN public.restaurant_tables.hidden_at IS
-  'When an owner or manager hid this table (ADR 0303). A hidden table still catches its checks; its checks stay in takings and leave every per-table figure. NULL means shown.';
+  'When an owner or manager hid this table (ADR 0303). A hidden table still catches its checks, and they stay in takings. Each per-table reader that honours it leaves the table out; ADR 0303 names which readers do. NULL means shown.';
 
 CREATE INDEX IF NOT EXISTS idx_pos_checks_unlinked_ref
   ON public.pos_checks (restaurant_id)
@@ -184,9 +191,32 @@ RETURNS trigger
 LANGUAGE plpgsql
 AS $$
 DECLARE
-  v_ref text := NULLIF(btrim(NEW.table_ref), '');
+  v_word text;
+  v_ref text;
   v_id uuid;
 BEGIN
+  -- The till's word follows raw. On an upsert re-send the UPDATE names raw but
+  -- not table_ref, so NEW.table_ref is still OLD's: a word that came from the
+  -- old raw goes when the new raw names no table, and a word a writer set
+  -- itself (raw carrying none) stands.
+  IF TG_OP = 'INSERT' THEN
+    NEW.table_ref := coalesce(public.pos_table_ref_from_raw(NEW.source, NEW.raw), NEW.table_ref);
+  ELSIF NEW.raw IS DISTINCT FROM OLD.raw THEN
+    v_word := public.pos_table_ref_from_raw(NEW.source, NEW.raw);
+    IF v_word IS NOT NULL THEN
+      NEW.table_ref := v_word;
+    ELSIF NEW.table_ref IS NOT DISTINCT FROM OLD.table_ref
+          AND OLD.table_ref IS NOT DISTINCT FROM public.pos_table_ref_from_raw(OLD.source, OLD.raw) THEN
+      NEW.table_ref := NULL;
+    END IF;
+    -- A changed word re-resolves a link this statement did not set itself.
+    IF lower(btrim(coalesce(NEW.table_ref, ''))) <> lower(btrim(coalesce(OLD.table_ref, '')))
+       AND NEW.table_id IS NOT DISTINCT FROM OLD.table_id THEN
+      NEW.table_id := NULL;
+    END IF;
+  END IF;
+
+  v_ref := NULLIF(btrim(NEW.table_ref), '');
   IF NEW.table_id IS NOT NULL OR v_ref IS NULL THEN
     RETURN NEW;
   END IF;
@@ -224,13 +254,16 @@ BEGIN
 END
 $$;
 COMMENT ON FUNCTION public.pos_checks_find_or_learn_table() IS
-  'BEFORE trigger on pos_checks (ADR 0303): resolves table_ref to a table, or learns one. Never refuses a check.';
+  'BEFORE trigger on pos_checks (ADR 0303): reads table_ref out of raw, then resolves it to a table, or learns one. Never refuses a check.';
 
 DROP TRIGGER IF EXISTS pos_checks_find_or_learn_table ON public.pos_checks;
+-- No WHEN clause: the word is read from raw inside the function, after a
+-- WHEN would already have been evaluated, and a trigger on INSERT OR UPDATE
+-- cannot compare OLD.raw in one. The function returns at once when there is
+-- nothing to resolve.
 CREATE TRIGGER pos_checks_find_or_learn_table
-  BEFORE INSERT OR UPDATE OF table_id, table_ref ON public.pos_checks
+  BEFORE INSERT OR UPDATE OF raw, table_id, table_ref ON public.pos_checks
   FOR EACH ROW
-  WHEN (NEW.table_id IS NULL AND NEW.table_ref IS NOT NULL)
   EXECUTE FUNCTION public.pos_checks_find_or_learn_table();
 
 -- ---------------------------------------------------------------------------

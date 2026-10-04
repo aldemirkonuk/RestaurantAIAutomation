@@ -145,21 +145,6 @@ export interface ResolvedWebhookSecret {
   envVar: string;
 }
 
-/**
- * The till's own word for where a check was, as pos_checks.table_ref keeps it
- * (ADR 0303). It mirrors the SQL reader pos_table_ref_from_raw: a string is
- * trimmed (blank is null), a finite number is its decimal text, anything else
- * is null. Clover's `tableRef` is its order type ("Dine In", "To Go"), which is
- * a channel and never a table (AW24), so Clover gives null.
- */
-export function tableRefOf(providerKey: string, ref: unknown): string | null {
-  if (providerKey === "clover") return null;
-  if (typeof ref === "number") return Number.isFinite(ref) ? String(ref) : null;
-  if (typeof ref !== "string") return null;
-  const word = ref.trim();
-  return word === "" ? null : word;
-}
-
 /** Env-var-safe token: `generic_webhook` -> `GENERIC_WEBHOOK`. */
 function envToken(raw: string): string {
   return raw
@@ -523,10 +508,6 @@ export class PosHubService {
           source: providerKey,
           external_check_id: check.externalCheckId,
           table_id: this.resolveTable(check.tableRef, providerKey, tables),
-          // The till's own word for the table (ADR 0303). When the in-memory
-          // resolve above finds nothing, the database trigger
-          // pos_checks_find_or_learn_table resolves it or learns the table.
-          table_ref: tableRefOf(providerKey, check.tableRef),
           server_external_id: check.serverExternalId ?? null,
           server_name: check.serverName ?? null,
           opened_at: check.openedAt,

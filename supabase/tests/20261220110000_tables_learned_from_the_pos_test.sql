@@ -1,9 +1,10 @@
 -- AW25 + AW30 (analytics walk, 2026-10-03; A-051, A-055): a house whose till
 -- names its tables had no restaurant_tables row, so every check stayed
 -- unattributed and the till's word was lost inside `raw`. Migration
--- tables_learned_from_the_pos (ADR 0303) keeps the word on pos_checks.table_ref,
--- learns a table the first time the till names it, re-links past checks when
--- a table is added or changed, and backfills history.
+-- tables_learned_from_the_pos (ADR 0303) reads the word out of `raw` into
+-- pos_checks.table_ref (so pos-hub writes no new column), learns a table the
+-- first time the till names it, re-links past checks when a table is added or
+-- changed, and backfills history.
 --
 -- Self-asserting: every block raises on a failure (assert -> P0004, or a
 -- RAISE naming the test), so `psql -v ON_ERROR_STOP=1 -f` stops at the first
@@ -323,6 +324,85 @@ begin
   set constraints public.restaurant_tables_relink_on_learn immediate;
   assert pg_temp.tl_link('c16a') = v, 'T16 FAIL: the deferred re-link did not reach the earlier Mezz check';
   set constraints public.restaurant_tables_relink_on_learn deferred;
+end $$;
+
+-- pos-hub's write, as it reaches the database: the row names raw and table_id
+-- (its in-memory resolve) but never table_ref, and an upsert sets every column
+-- the row names.
+create function pg_temp.tl_hub(p_ext text, p_raw jsonb, p_source text default 'csv_import', p_table uuid default null)
+returns uuid language sql as $$
+  insert into public.pos_checks (restaurant_id, source, external_check_id, opened_at, table_id, raw)
+  values (pg_temp.tl_house(), p_source, p_ext, now(), p_table, p_raw)
+  on conflict (restaurant_id, source, external_check_id)
+  do update set table_id = excluded.table_id, raw = excluded.raw, opened_at = excluded.opened_at
+  returning table_id
+$$;
+create function pg_temp.tl_ref(p_ext text) returns text language sql as $$
+  select table_ref from public.pos_checks
+   where restaurant_id = pg_temp.tl_house() and external_check_id = p_ext
+$$;
+
+-- T17: a check written as pos-hub writes it gets its word from raw and learns
+-- its table; the word is kept beside the gateway's own resolve; Clover's order
+-- type is never a word; and a word raw carries beats a table_ref given with it.
+do $$
+declare
+  n bigint;
+begin
+  assert pg_temp.tl_hub('c17a', '{"tableRef": " Terrace "}') = pg_temp.tl_id('Terrace'),
+    'T17 FAIL: a check written as pos-hub writes it did not learn Terrace from raw';
+  assert pg_temp.tl_ref('c17a') = 'Terrace',
+    'T17 FAIL: table_ref was not read from raw: ' || coalesce(pg_temp.tl_ref('c17a'), 'NULL');
+  assert pg_temp.tl_hub('c17b', '{"table": "terrace"}') = pg_temp.tl_id('Terrace'),
+    'T17 FAIL: the same word under another key did not reach Terrace';
+  assert pg_temp.tl_hub('c17e', '{"tableRef": "table 5"}', 'csv_import', pg_temp.tl_id('5')) = pg_temp.tl_id('5')
+     and pg_temp.tl_ref('c17e') = 'table 5',
+    'T17 FAIL: the word was not kept beside the gateway''s own resolve';
+  n := pg_temp.tl_tables();
+  assert pg_temp.tl_hub('c17c', '{"orderType": {"label": "Dine In"}, "tableRef": "Dine In"}', 'clover') is null,
+    'T17 FAIL: a Clover order type found a table';
+  assert pg_temp.tl_ref('c17c') is null, 'T17 FAIL: a Clover order type became a table word';
+  assert pg_temp.tl_tables() = n, 'T17 FAIL: a Clover order type learned a table';
+  insert into public.pos_checks (restaurant_id, source, external_check_id, opened_at, table_ref, raw)
+  values (pg_temp.tl_house(), 'csv_import', 'c17d', now(), 'Nook', '{"tableRef": "Terrace"}');
+  assert pg_temp.tl_ref('c17d') = 'Terrace' and pg_temp.tl_link('c17d') = pg_temp.tl_id('Terrace'),
+    'T17 FAIL: a given table_ref beat the word raw carries';
+  assert pg_temp.tl_tables('Nook') = 0, 'T17 FAIL: the overridden word learned a table';
+end $$;
+
+-- T18: the word follows the till on a re-send. The same payload keeps word and
+-- link; a payload naming Snug moves both; a payload naming no table clears
+-- both; an update writing only raw re-resolves a changed word; and a word a
+-- writer set itself stands when raw, carrying none, is written again.
+do $$
+declare
+  terrace uuid := pg_temp.tl_id('Terrace');
+  n bigint := pg_temp.tl_tables();
+begin
+  assert pg_temp.tl_hub('c17a', '{"tableRef": " Terrace "}') = terrace and pg_temp.tl_ref('c17a') = 'Terrace',
+    'T18 FAIL: an unchanged re-send moved the check or its word';
+  assert pg_temp.tl_tables() = n, 'T18 FAIL: an unchanged re-send learned a table';
+
+  assert pg_temp.tl_hub('c17a', '{"tableRef": "Snug", "closed": true}') = pg_temp.tl_id('Snug'),
+    'T18 FAIL: a re-send naming Snug did not move the check there';
+  assert pg_temp.tl_ref('c17a') = 'Snug', 'T18 FAIL: table_ref did not follow raw to Snug';
+
+  assert pg_temp.tl_hub('c17a', '{"closed": true}') is null,
+    'T18 FAIL: a re-send naming no table kept a table';
+  assert pg_temp.tl_ref('c17a') is null,
+    'T18 FAIL: a re-send naming no table kept the old word ' || coalesce(pg_temp.tl_ref('c17a'), '');
+
+  update public.pos_checks set raw = '{"tableRef": "Snug"}'
+   where restaurant_id = pg_temp.tl_house() and external_check_id = 'c17b';
+  assert pg_temp.tl_ref('c17b') = 'Snug' and pg_temp.tl_link('c17b') = pg_temp.tl_id('Snug'),
+    'T18 FAIL: an update writing only raw left the link on the old word''s table';
+
+  insert into public.pos_checks (restaurant_id, source, external_check_id, opened_at, table_ref, raw)
+  values (pg_temp.tl_house(), 'csv_import', 'c18', now(), 'Terrace', '{"note": 1}');
+  update public.pos_checks set raw = '{"note": 2}'
+   where restaurant_id = pg_temp.tl_house() and external_check_id = 'c18';
+  assert pg_temp.tl_ref('c18') = 'Terrace' and pg_temp.tl_link('c18') = terrace,
+    'T18 FAIL: a writer''s own word went when raw, naming none, was written again';
 end $$;
 
 rollback;

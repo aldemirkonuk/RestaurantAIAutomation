@@ -84,8 +84,9 @@ export class TableAnalyticsService {
    * A name is 1-60 characters after trimming, and no other table of the house
    * (retired ones included) may answer to it in any case: two tables with one
    * name would split the till's checks between them. `hidden` true hides the
-   * table from every figure while it still catches its checks (founder fork
-   * F2); false shows it again. Merging two till names into one table is not
+   * table from the room, its export and the hot list while it still catches
+   * its checks (founder fork F2; the insight generator's part is owed, ADR
+   * 0303 residual 1); false shows it again. Merging two till names into one table is not
    * offered (ADR 0303 residual).
    */
   async renameOrHideTable(
@@ -315,8 +316,9 @@ export class TableAnalyticsService {
     ]);
 
     // ADR 0303. A hidden table still catches its checks, so they stay in
-    // takings, but it leaves every per-table figure (founder fork F2: "Out of
-    // every figure"). A retired table (is_active false) is not listed at all;
+    // takings, but it leaves every figure this register computes (founder
+    // fork F2: "Out of every figure"; the insight generator's part is owed,
+    // ADR 0303 residual 1). A retired table (is_active false) is not listed at all;
     // its checks are counted with the hidden ones. A check the till sent
     // without a table is counted, not dropped: the register says how many.
     const shown = tables.filter((t: any) => !t.hidden_at);
@@ -692,7 +694,7 @@ export class TableAnalyticsService {
     const checks = await this.loadChecks(restaurantId, sinceDays);
     const tables = await this.listTables(restaurantId);
     const tableById = new Map(tables.map((t: any) => [t.id, t]));
-    // A hidden table leaves every figure (ADR 0303): its open checks are
+    // A hidden table leaves the hot list too (ADR 0303): its open checks are
     // counted, not watched.
     const hidden = new Set(
       tables.filter((t: any) => t.hidden_at).map((t: any) => t.id),
