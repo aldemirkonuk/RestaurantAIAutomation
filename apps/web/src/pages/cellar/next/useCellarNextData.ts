@@ -351,11 +351,19 @@ export interface CellarRegistersVM {
   menuLines?: MenuLineTallyVM | null;
 }
 
-/** Mirrors the gateway's `MenuLineTally` (cellar/cellar-registers.ts). */
+/** Mirrors the gateway's `CurrentMenuLineTally` (cellar/cellar-registers.ts). */
 export interface MenuLineTallyVM {
   read: number;
   placed: number;
   notPlaced: number;
+  /**
+   * Menus current at this read (`restaurant_menus.status = 'active'`, ADR
+   * 0193); the lines above are theirs only, never a kept draft or archived
+   * copy. `0` is "no current menu", a different sentence from an empty one.
+   * Optional only because a readout from before the field existed does not
+   * carry it.
+   */
+  currentMenus?: number;
 }
 
 /**
