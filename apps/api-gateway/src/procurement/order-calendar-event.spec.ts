@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { Test, TestingModule } from "@nestjs/testing";
-import { ProcurementService } from "./procurement.service";
+import { ProcurementService, statedDeliveryDayOf } from "./procurement.service";
 import { DatabaseService } from "../database/database.service";
 import { EventsService } from "../events/events.service";
 import { InventoryLedgerService } from "../inventory-ledger/inventory-ledger.service";
@@ -210,8 +210,17 @@ describe("ProcurementService.createCalendarEventForOrder — writes a row the ta
       .mockImplementation(() => {});
   });
 
-  const call = (o: any = order, trigger: "approved" | "created" = "approved") =>
-    (service as any).createCalendarEventForOrder("rest-1", o, trigger);
+  const call = (
+    o: any = order,
+    trigger: "approved" | "created" = "approved",
+    statedDeliveryDate: string | null = null,
+  ) =>
+    (service as any).createCalendarEventForOrder(
+      "rest-1",
+      o,
+      trigger,
+      statedDeliveryDate,
+    );
 
   const payload = (): Record<string, unknown> => {
     expect(insertSpy).toHaveBeenCalledTimes(1);
@@ -364,5 +373,75 @@ describe("ProcurementService.createCalendarEventForOrder — writes a row the ta
 
     await expect(call()).resolves.toBeNull();
     expect(loggerErrorSpy).toHaveBeenCalledTimes(1);
+  });
+
+  // ADR 0284. The event went to approval + 7 days whatever the order said, so
+  // a whole month of Tuzlu Rüzgar's deliveries sat on one day (F-152).
+  describe("where the event goes (ADR 0284)", () => {
+    const sevenDaysOut = (): string => {
+      const d = new Date();
+      d.setDate(d.getDate() + 7);
+      return d.toISOString().split("T")[0];
+    };
+
+    it("goes on the date the order states, and says so", async () => {
+      await call(order, "approved", "2026-10-21");
+      const p = payload();
+      expect(p.event_date).toBe("2026-10-21");
+      expect(String(p.description)).toContain("on the date the order states");
+      expect(String(p.description)).not.toMatch(/estimated/i);
+    });
+
+    it("keeps the seven-day estimate when the order states no date, and labels it", async () => {
+      await call(order, "approved", null);
+      const p = payload();
+      expect(p.event_date).toBe(sevenDaysOut());
+      expect(String(p.description)).toContain(
+        "estimated 7 days after approval; the order states no date",
+      );
+    });
+
+    it("cuts a timestamp-shaped date to its day", async () => {
+      await call(order, "approved", "2026-11-03T00:00:00+00:00");
+      expect(payload().event_date).toBe("2026-11-03");
+    });
+
+    it("treats a value that is not a day as no date, not as a day", async () => {
+      await call(order, "approved", "2026-02-30");
+      const p = payload();
+      expect(p.event_date).toBe(sevenDaysOut());
+      expect(String(p.description)).toContain("the order states no date");
+    });
+
+    it("still states the order's unit beside the placement", async () => {
+      await call(
+        { ...order, quantity: 5, unitType: "case" },
+        "approved",
+        "2026-10-21",
+      );
+      expect(String(payload().description)).toBe(
+        "Expected delivery for order ORD-9001 (5 cases), on the date the " +
+          "order states. Created on order approved.",
+      );
+    });
+  });
+});
+
+describe("statedDeliveryDayOf", () => {
+  it.each([
+    ["2026-10-21", "2026-10-21"],
+    [" 2026-10-21 ", "2026-10-21"],
+    ["2026-10-21T23:30:00Z", "2026-10-21"],
+    ["2024-02-29", "2024-02-29"],
+    ["2026-02-30", null],
+    ["2026-13-01", null],
+    ["21/10/2026", null],
+    ["", null],
+    [null, null],
+    [undefined, null],
+  ])("%p -> %p", (input, expected) => {
+    expect(statedDeliveryDayOf(input as string | null | undefined)).toBe(
+      expected,
+    );
   });
 });
