@@ -91,7 +91,7 @@ export interface StakeFiling {
  * `rec-docket.ts` `RULE_ACT` does for acts.
  *
  * The category is NOT changed in the engine: it feeds the goal levers
- * (`rec-daybook.ts`), the insight scheduler and the reports pill.
+ * (`rec-daybook.ts`) and the hand's category fallback (`handOf`, below).
  */
 const RULE_STAKE: Record<string, { stake: StakeId; why: string }> = {
   plowhorse_repricing: {

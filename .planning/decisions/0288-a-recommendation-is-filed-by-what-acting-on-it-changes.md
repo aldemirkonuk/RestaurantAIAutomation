@@ -17,9 +17,9 @@ Rows on the Snoozed, Dismissed and History leaves come from `recommendation_acti
 ## Options considered
 
 1. **File by rule where the prescription says so, otherwise by category, and say which** — a `RULE_STAKE` table in `rec-format.ts`, shaped like `rec-docket.ts` `RULE_ACT`, with each row quoting the rule's own sentence. **Chosen.** It touches only the web page, and each filing can be checked.
-2. *Change the engine's category* (efficiency → pricing / inventory). Rejected. The category feeds other things: the goal levers (`goals.service.ts:85,105,110`; `rec-daybook.ts:167-172`), the insight scheduler and the reports pill (`rp-format.ts:80`). The register's question is not the engine's question.
+2. *Change the engine's category* (efficiency → pricing / inventory). Rejected. The category feeds other things: the goal levers (`goals.service.ts:85,105,110`; `rec-daybook.ts:167-172`, matched against the standing entries' categories at `:231`), the hand's category fallback (`rec-format.ts` `handOf`) and the category each entry prints. The register's question is not the engine's question.
 3. *Derive the register from the act.* Rejected. The axes disagree on purpose (`06-pages/recommendations.md:585-593`), and *Order it* alone spans three registers: its four rules file as stockout_imminent → Stock, revenue_concentration → Stock, margin_advice_blind → Money and spend_acceleration → Vendors (`rec-docket.ts` `RULE_ACT`; `RULE_STAKE`; `CATEGORY_STAKE` for `inventory`, `pricing`, `purchasing`). The founder's pairing (*Price it → Money, Move stock → Stock*) is kept as a **test invariant** instead (`rec-format.test.ts`, "every Price it rule is Money and every Move stock rule is Stock").
-4. *Re-key all 17 rules by name.* Rejected for now. Four rules are filed by name, each on the founder's word. The other thirteen keep their category filing, and a full table would restate it with nothing new behind it.
+4. *Re-key all 18 engine rules by name.* Rejected for now. Four rules are filed by name, each on the founder's word. The other fourteen keep their category filing, and a full table would restate it with nothing new behind it.
 5. *Doing nothing.* A pressed register keeps hiding a price change from Money while the head reads as the whole act.
 
 ## Decision
@@ -37,7 +37,7 @@ The register files an entry **by its rule where the rule's prescription says wha
 ## Consequences
 
 - With Money pressed, Price it holds every price change. With Stock pressed, Move stock holds the by-the-glass move, and Order it holds the top sellers' buffer beside the stockout. With The floor pressed, Schedule it holds the weekday move.
-- The gateway is unchanged. Goals, levers, the scheduler and the reports pill still read `efficiency`, `risk` and `sales`. A goal's levers are named by category, so `weekday_gap` still appears among the `sales` levers.
+- The gateway is unchanged. The goal levers and the hand's fallback still read `efficiency`, `risk` and `sales`. A goal's levers are named by category, so `weekday_gap` still appears among the `sales` levers.
 - A new rule with a category no register knows shows as Unfiled. The claim row `ADR-0288-PRICE-AND-STOCK-FILED-BY-WHAT-THEY-CHANGE` re-reads `recommendations.service.ts` and fails CI when an engine rule has neither a rule row nor a mapped category.
 - **Revisit when** a rule's prescription changes what it moves, or a new engine rule lands. Its register is then a deliberate row, not a fall-through.
 
@@ -63,3 +63,4 @@ Retires nothing. It amends the page note's register paragraph and axis-table row
 |---|---|---|
 | 2026-10-04 | lane `recregisters` (fix/recommendations-file-by-what-changes) | Created; built with tests (10 new, each shown failing at 8c673db4b) |
 | 2026-10-04 | lane `recregisters`, after an independent verify | Verify findings fixed: the *Order it* count, the category list, the price-change wording ("the pass"), the F3 citation (dropped: both forks are answered), and the section head at 600px dockets. The founder's F1/F2 picks built (2 new tests, each shown failing with its rows removed); the claim row checks both rows |
+| 2026-10-04 | lane `recregisters`, last call | Three sentences corrected, no behaviour changed: the engine has 18 rules, not 17 (fourteen file by category); the category does not feed the insight scheduler or the reports pill, which read the insight feed's own categories (`insight-scheduler.service.ts`, `rp-registers-trade.tsx` `/analytics/insights`), so option 2 now names what does read it (the goal levers, the hand's fallback, the printed category). The same correction in the `RULE_STAKE` comment |
