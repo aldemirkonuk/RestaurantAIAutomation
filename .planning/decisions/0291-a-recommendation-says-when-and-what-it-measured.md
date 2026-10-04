@@ -73,9 +73,9 @@ A house with a till and a cellar log can carry two sales dips, `overall.revenue`
 9. **Reorder `categorize()` so concentration→risk wins.** Rejected. It moves 10 of the 573 catalogue types (measured by compiling the catalogue and diffing the two orders), including both order-count concentrations and six inventory concentrations, to fix one call site.
 10. **Derive the category inside `record()` from `categorize()`.** Rejected. A future change to `categorize()` would then silently re-file stored rows without a version bump. A disagreement should be a review event, not a side effect.
 11. **The generator follows `categorize()`, and a static spec guards it (chosen).**
-    - The vendor-concentration `record()` files under `purchasing` (`insight-generator.service.ts:977-978`).
+    - The vendor-concentration `record()` files under `purchasing` (`insight-generator.service.ts:1006-1007`).
     - A spec parses every `this.record(` call and checks each against `categorize()`. It resolves the helper's `category` identifier through each time-series call site's literal, and fails on any call shape it cannot read (`apps/api-gateway/src/analytics/insights/insight-implementations.spec.ts:228`, `:308`).
-    - `INSIGHT_GENERATOR_VERSION` goes from 3 to 4 (`:161`). Version-3 rows are refused (`.gte`, `:476`) and recomputed on the hourly sweep (`staleVersionCategories`, `:507`).
+    - `INSIGHT_GENERATOR_VERSION` goes from 4 to 5 (`:190`). Version-4 and older rows are refused (`.gte`, `:505`) and recomputed on the hourly sweep (`staleVersionCategories`, `:536`). This was drafted as 3 to 4 on 2026-10-03; ADR 0272 (#602) reached `main` with 4 first, so this change takes 5 and no ADR 0291 row was ever written at 4.
 12. *(Doing nothing.)* The page keeps saying "Tonight" about old days, a basis sentence that is false, and "Nothing live" for a live type.
 
 ## Decision
@@ -115,9 +115,9 @@ Reasoning:
 - A future `record()` that disagrees with `categorize()` fails the spec, and so does any call shape the spec cannot parse.
 
 **What it costs**
-- The version bump makes every house's version-3 insight rows refused and recomputed once, across all categories, not only purchasing.
+- The version bump makes every house's version-4 (and older) insight rows refused and recomputed once, across all categories, not only purchasing. A house already recomputed at 4 for ADR 0272 recomputes once more.
 - A dip from 2 to 7 days ago drops from `now` to `this_week`. A dip older than a week drops to `this_month` and leaves the default digest.
-- The ADR 0191 claim `ADR-0191-ONE-SHARED-ITEM-STATE` (`CLAIMS.jsonl:597`) pinned `INSIGHT_GENERATOR_VERSION = 3`, and went red on the bump. It is corrected in place to hold the version at 3 or above, which is what it protects: a version-2 row is still refused. It holds at origin/main and here, and fails on version 2 or a renamed constant.
+- The ADR 0191 claim `ADR-0191-ONE-SHARED-ITEM-STATE` (`CLAIMS.jsonl:597`) pinned `INSIGHT_GENERATOR_VERSION = 3`, and went red on the bump. It is corrected in place to hold the version at 3 or above, which is what it protects: a version-2 row is still refused. ADR 0272 made the same correction on `main`; the merge keeps one row (main's verify, both notes). It holds at origin/main and here, and fails on version 2 or a renamed constant.
 
 **Revisit when**
 - C02 lands a business date (the age should then count house days, not UTC days);
