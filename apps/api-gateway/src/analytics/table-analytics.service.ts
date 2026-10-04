@@ -1,10 +1,18 @@
 import {
+  BadRequestException,
+  ConflictException,
   Injectable,
+  InternalServerErrorException,
   Logger,
+  NotFoundException,
   ServiceUnavailableException,
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import * as E from "./engine";
+
+/** A table's id as Postgres stores it; anything else cannot be one of the house's. */
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * TableAnalyticsService — floor-geometry & staff analytics over pos_checks.
@@ -64,6 +72,101 @@ export class TableAnalyticsService {
       .select()
       .single();
     if (error) throw new Error(error.message);
+    return data;
+  }
+
+  /**
+   * Rename or hide one table of the house (ADR 0303). The route admits an
+   * owner or a manager (founder fork F1) and pins :restaurantId to the
+   * caller's house; every read and write here is scoped to that house too, so
+   * another house's table id is a 404 and never a write.
+   *
+   * A name is 1-60 characters after trimming, and no other table of the house
+   * (retired ones included) may answer to it in any case: two tables with one
+   * name would split the till's checks between them. `hidden` true hides the
+   * table from every figure while it still catches its checks (founder fork
+   * F2); false shows it again. Merging two till names into one table is not
+   * offered (ADR 0303 residual).
+   */
+  async renameOrHideTable(
+    restaurantId: string,
+    tableId: string,
+    body: unknown,
+  ) {
+    const b =
+      body && typeof body === "object" ? (body as Record<string, unknown>) : {};
+    let label: string | undefined;
+    if (b.label !== undefined) {
+      if (typeof b.label !== "string")
+        throw new BadRequestException("A table's name is text.");
+      label = b.label.trim();
+      if (label.length < 1 || label.length > 60)
+        throw new BadRequestException("A table's name is 1 to 60 characters.");
+    }
+    if (b.hidden !== undefined && typeof b.hidden !== "boolean")
+      throw new BadRequestException("hidden is true or false.");
+    if (label === undefined && b.hidden === undefined)
+      throw new BadRequestException(
+        "Send a new name (label), or hidden: true or false.",
+      );
+    if (!UUID_RE.test(tableId))
+      throw new NotFoundException("This house has no such table.");
+
+    const client = this.dbService.getClient();
+    const { data: house, error: readError } = await client
+      .from("restaurant_tables")
+      .select("id, label, hidden_at, is_active")
+      .eq("restaurant_id", restaurantId);
+    if (readError) {
+      this.logger.warn(`renameOrHideTable read failed: ${readError.message}`);
+      throw new ServiceUnavailableException(
+        "The house's tables could not be read, so nothing was changed.",
+      );
+    }
+    const rows = (house ?? []) as Array<{
+      id: string;
+      label: string;
+      hidden_at: string | null;
+      is_active: boolean;
+    }>;
+    const current = rows.find((t) => t.id === tableId && t.is_active);
+    if (!current) throw new NotFoundException("This house has no such table.");
+
+    const patch: Record<string, unknown> = {
+      updated_at: new Date().toISOString(),
+    };
+    if (label !== undefined && label !== current.label) {
+      const wanted = label.toLowerCase();
+      const clash = rows.find(
+        (t) =>
+          t.id !== tableId && String(t.label).trim().toLowerCase() === wanted,
+      );
+      if (clash)
+        throw new ConflictException(
+          `Another table in this house is already called "${clash.label}".`,
+        );
+      patch.label = label;
+    }
+    if (b.hidden === true && !current.hidden_at)
+      patch.hidden_at = new Date().toISOString();
+    if (b.hidden === false && current.hidden_at) patch.hidden_at = null;
+
+    const { data, error } = await client
+      .from("restaurant_tables")
+      .update(patch)
+      .eq("restaurant_id", restaurantId)
+      .eq("id", tableId)
+      .select()
+      .maybeSingle();
+    if (error) {
+      if ((error as { code?: string }).code === "23505")
+        throw new ConflictException(
+          `Another table in this house is already called "${label}".`,
+        );
+      this.logger.error(`renameOrHideTable write failed: ${error.message}`);
+      throw new InternalServerErrorException("The table could not be changed.");
+    }
+    if (!data) throw new NotFoundException("This house has no such table.");
     return data;
   }
 
@@ -211,6 +314,17 @@ export class TableAnalyticsService {
       this.loadChecks(restaurantId, sinceDays),
     ]);
 
+    // ADR 0303. A hidden table still catches its checks, so they stay in
+    // takings, but it leaves every per-table figure (founder fork F2: "Out of
+    // every figure"). A retired table (is_active false) is not listed at all;
+    // its checks are counted with the hidden ones. A check the till sent
+    // without a table is counted, not dropped: the register says how many.
+    const shown = tables.filter((t: any) => !t.hidden_at);
+    const shownIds = new Set(shown.map((t: any) => t.id));
+    let checksWithoutTable = 0;
+    let checksAtHiddenTables = 0;
+    const hiddenWithChecks = new Set<string>();
+
     const agg = new Map<
       string,
       {
@@ -223,7 +337,15 @@ export class TableAnalyticsService {
       }
     >();
     for (const c of checks) {
-      if (!c.table_id) continue;
+      if (!c.table_id) {
+        checksWithoutTable++;
+        continue;
+      }
+      if (!shownIds.has(c.table_id)) {
+        checksAtHiddenTables++;
+        hiddenWithChecks.add(c.table_id);
+        continue;
+      }
       const a = agg.get(c.table_id) || {
         revenue: 0,
         checks: 0,
@@ -244,7 +366,7 @@ export class TableAnalyticsService {
       agg.set(c.table_id, a);
     }
 
-    const rows = tables.map((t: any) => {
+    const rows = shown.map((t: any) => {
       const a = agg.get(t.id);
       const avgCheck = a && a.checks > 0 ? a.revenue / a.checks : null;
       return {
@@ -307,11 +429,13 @@ export class TableAnalyticsService {
       { key: "tipPerSeat", label: "tips per seat" },
     ] as const;
 
+    // A value nobody recorded is absent, never 0: a learned table carries no
+    // seats and no distances (ADR 0303), and `Number(null)` is 0.
     const correlations: any[] = [];
     for (const m of measures) {
       for (const a of attrs) {
         const pairs = eligible
-          .map((r: any) => ({ x: Number(r[a.key]), y: Number(r[m.key]) }))
+          .map((r: any) => ({ x: recorded(r[a.key]), y: recorded(r[m.key]) }))
           .filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y));
         if (pairs.length < 4) continue;
         const xs = pairs.map((p) => p.x);
@@ -322,9 +446,9 @@ export class TableAnalyticsService {
         if (a.key !== "seats") {
           const seats = eligible
             .map((t: any) => ({
-              s: Number(t.seats),
-              x: Number(t[a.key]),
-              y: Number(t[m.key]),
+              s: recorded(t.seats),
+              x: recorded(t[a.key]),
+              y: recorded(t[m.key]),
             }))
             .filter(
               (p) =>
@@ -353,32 +477,53 @@ export class TableAnalyticsService {
 
     // Ridge driver weights for avg check from geometry (the "ML-adjusted
     // weights" — standardized betas learned from this restaurant's own data).
+    // Only a feature recorded on at least 5 eligible tables, and not the same
+    // on all of them, enters; the fit runs over the tables that carry every
+    // feature kept. It used to zero-fill a missing distance (`?? 0`) and read
+    // a missing outdoor flag as indoors, so a house with no geometry got a
+    // fitted model of zeros. With no feature kept, there is no model (null).
+    const features: Array<{ name: string; of: (r: any) => number }> = [
+      { name: "kitchen distance", of: (r) => recorded(r.distanceToKitchenM) },
+      { name: "bar distance", of: (r) => recorded(r.distanceToBarM) },
+      { name: "seats", of: (r) => recorded(r.seats) },
+      {
+        name: "outdoor",
+        of: (r) =>
+          typeof r.isOutdoor === "boolean" ? (r.isOutdoor ? 1 : 0) : NaN,
+      },
+    ];
+    const kept = features.filter((f) => {
+      const values = eligible.map(f.of).filter((v) => Number.isFinite(v));
+      return values.length >= 5 && new Set(values).size > 1;
+    });
     let drivers: any = null;
-    const featRows = eligible.map((r: any) => ({
-      x: [
-        Number(r.distanceToKitchenM ?? 0),
-        Number(r.distanceToBarM ?? 0),
-        Number(r.seats ?? 0),
-        r.isOutdoor ? 1 : 0,
-      ],
-      y: r.avgCheck as number,
-    }));
-    if (featRows.length >= 5) {
+    const featRows = eligible
+      .map((r: any) => ({
+        x: kept.map((f) => f.of(r)),
+        y: r.avgCheck as number,
+      }))
+      .filter((f) => f.x.every((v) => Number.isFinite(v)));
+    if (kept.length > 0 && featRows.length >= 5) {
       const reg = E.multipleRegression(
         featRows.map((f) => f.x),
         featRows.map((f) => f.y),
         { ridgeLambda: 0.1 },
       );
       if (reg) {
-        const names = ["kitchen distance", "bar distance", "seats", "outdoor"];
         drivers = {
           r2: reg.r2,
           weights: reg.standardizedBetas
-            .map((w, i) => ({ attribute: names[i], weight: w }))
+            .map((w, i) => ({ attribute: kept[i].name, weight: w }))
             .sort((x, y) => Math.abs(y.weight) - Math.abs(x.weight)),
         };
       }
     }
+    const geometryRecorded = shown.filter(
+      (t: any) =>
+        t.distance_to_kitchen_m != null ||
+        t.distance_to_bar_m != null ||
+        t.distance_to_pool_m != null,
+    ).length;
 
     return {
       sinceDays,
@@ -387,6 +532,16 @@ export class TableAnalyticsService {
       ),
       correlations,
       drivers,
+      /** Checks in the window the till sent without a table. In takings, in no table's figure. */
+      checksWithoutTable,
+      /** Checks in the window at a hidden (or retired) table. In takings, in no table's figure. */
+      checksAtHiddenTables,
+      /** How many hidden (or retired) tables those checks were at. */
+      hiddenTables: hiddenWithChecks.size,
+      /** Shown tables learned from the till (ADR 0303), as against added by hand. */
+      learnedTables: shown.filter((t: any) => t.learned_at != null).length,
+      /** Shown tables with at least one distance recorded. */
+      geometryRecorded,
       ...(await this.feedStatus(restaurantId, sinceDays, checks)),
       generatedAt: new Date().toISOString(),
     };
@@ -537,6 +692,12 @@ export class TableAnalyticsService {
     const checks = await this.loadChecks(restaurantId, sinceDays);
     const tables = await this.listTables(restaurantId);
     const tableById = new Map(tables.map((t: any) => [t.id, t]));
+    // A hidden table leaves every figure (ADR 0303): its open checks are
+    // counted, not watched.
+    const hidden = new Set(
+      tables.filter((t: any) => t.hidden_at).map((t: any) => t.id),
+    );
+    let openChecksAtHiddenTables = 0;
     const now = Date.now();
 
     const closedPace = new Map<string, number[]>();
@@ -557,6 +718,10 @@ export class TableAnalyticsService {
       if (c.closed_at || !c.opened_at) continue; // only open checks
       const minutes = (now - new Date(c.opened_at).getTime()) / 60000;
       if (minutes < 5 || minutes > 240) continue;
+      if (c.table_id && hidden.has(c.table_id)) {
+        openChecksAtHiddenTables++;
+        continue;
+      }
       const pace = (c.total || 0) / minutes;
       const hist = c.table_id ? closedPace.get(c.table_id) || [] : [];
       const z = hist.length >= 5 ? E.robustZScore(pace, hist) : null;
@@ -576,12 +741,22 @@ export class TableAnalyticsService {
     hot.sort((a, b) => (b.surgeZ ?? -99) - (a.surgeZ ?? -99));
     return {
       openChecks: hot.length,
+      openChecksAtHiddenTables,
       watchlist: hot.filter((h) => h.watch),
       all: hot,
       ...(await this.feedStatus(restaurantId, sinceDays, checks)),
       generatedAt: new Date().toISOString(),
     };
   }
+}
+
+/**
+ * A recorded number, or NaN when nothing was recorded. `Number(null)` is 0,
+ * which made an unrecorded distance or seat count read as a measured zero.
+ */
+function recorded(v: unknown): number {
+  if (v === null || v === undefined || v === "") return NaN;
+  return Number(v);
 }
 
 /**

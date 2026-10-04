@@ -570,7 +570,7 @@ function writeSeats(payload: unknown): ExportDoc {
   const s = obj(payload);
   const sinceDays = num(s.sinceDays) ?? 90;
   const basis = sentences(
-    `Non-voided pos_checks attributed to a table over the last ${sinceDays} days.`,
+    `Non-voided pos_checks the till attributed to a shown table over the last ${sinceDays} days.`,
     str(s.dataStatus) ? `Feed: ${str(s.dataStatus)}.` : null,
   );
   const tables = arr(s.tables).map((t) => ({
@@ -582,9 +582,24 @@ function writeSeats(payload: unknown): ExportDoc {
     avgCheck: num(t.avgCheck),
     wineAttach: num(t.wineAttachRate),
   }));
+  // ADR 0303: tables are learned from the till, so nothing is drawn. A check
+  // the till sent without a table, or one at a table the owner hid, is in
+  // takings and in no table's figure; the register says how many.
+  const withoutTable = num(s.checksWithoutTable) ?? 0;
+  const atHidden = num(s.checksAtHiddenTables) ?? 0;
+  const hiddenNote =
+    atHidden > 0
+      ? `${nounCount(atHidden, "check was", "checks were")} at ${nounCount(num(s.hiddenTables) ?? 0, "hidden table", "hidden tables")}: counted in takings, not shown here.`
+      : "";
   if (tables.length === 0)
     return doc({
-      say: "No table is mapped for this restaurant yet, so no check can be attributed to a seat. The room has to be drawn before it can be read.",
+      say:
+        withoutTable > 0
+          ? `${nounCount(withoutTable, "check", "checks")} in this window came from the till without a table, so none can be attributed to a seat. They are in takings.`
+          : atHidden > 0
+            ? "No shown table took a check in this window; show a table again under Settings → Point of sale."
+            : "The till has not named a table yet, so no check can be attributed to a seat. Tables appear here as checks arrive with one on them; rename or hide them under Settings → Point of sale.",
+      notes: [hiddenNote],
       basis,
     });
   const served = tables.filter((t) => t.checks > 0);
@@ -603,7 +618,9 @@ function writeSeats(payload: unknown): ExportDoc {
         : empty
           ? `${mapped}. ${empty}`
           : n !== null && n > 0
-            ? `${mapped}, and ${none} attributed to any of them — an absent attribution, not an empty room.`
+            ? atHidden > 0
+              ? `${mapped}, and ${none} attributed to any of them.`
+              : `${mapped}, and ${none} attributed to any of them — an absent attribution, not an empty room.`
             : `${mapped}, and no check in the last ${sinceDays} days was attributed to any of them. This register does not say whether the window held any check, so an empty window and checks that name no table cannot be told apart here.`,
     figures: [
       f("Tables in the room", tables.length, "count"),
@@ -632,6 +649,12 @@ function writeSeats(payload: unknown): ExportDoc {
           figure(t.wineAttach, noCheck),
         ]),
       },
+    ],
+    notes: [
+      withoutTable > 0
+        ? `${nounCount(withoutTable, "check", "checks")} came from the till without a table: counted in takings, not in the room.`
+        : "",
+      hiddenNote,
     ],
     basis,
   });

@@ -611,6 +611,28 @@ export class AnalyticsController {
     }
   }
 
+  /**
+   * Rename or hide one table the till has named (ADR 0303). Owner or manager
+   * only (founder fork F1, 2026-10-04); RolesGuard is exact, so admin is not
+   * admitted (ADR 0164). The class JwtAuthGuard pins :restaurantId to the
+   * caller's house, and the service scopes every read and write to it.
+   */
+  @Patch("tables/:restaurantId/:tableId")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
+  @ApiOperation({
+    summary: "Rename or hide a table",
+    description:
+      "Body: { label?: string (1-60 characters), hidden?: boolean }. 400 on a bad body, 404 for a table that is not this house's, 409 when another table of the house already has the name. A hidden table still catches its checks; its checks stay in takings and leave every per-table figure.",
+  })
+  async renameOrHideTable(
+    @Param("restaurantId") restaurantId: string,
+    @Param("tableId") tableId: string,
+    @Body() body: { label?: unknown; hidden?: unknown },
+  ) {
+    return this.tableAnalytics.renameOrHideTable(restaurantId, tableId, body);
+  }
+
   @Get("table-performance/:restaurantId")
   @ApiOperation({
     summary:
