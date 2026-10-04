@@ -21,6 +21,30 @@ export interface CanonicalItem {
   master_wine_id?: string | null;
 }
 
+/**
+ * How the POS rang a check up (ADR 0302). `booth_event` is a booth, fair or
+ * event check: its own row ("Booth & events") in staff and table figures, and
+ * still in takings. `table` is table service, said outright.
+ */
+export type CheckChannel = "table" | "booth_event";
+export const CHECK_CHANNELS: readonly CheckChannel[] = ["table", "booth_event"];
+
+/**
+ * A channel the feed named, read exactly: trimmed and lower-cased, then it must
+ * be one of CHECK_CHANNELS. Anything else is null, and nothing is guessed from
+ * it (a table called "BOOTH", an order type called "Street Fair"): which POS
+ * order types count as booth or event is the owner's to map (ADR 0302, fork
+ * AW24-b). The hub counts a named value this returns null for, so it is never
+ * folded into table service without being said.
+ */
+export function checkChannelOf(v: unknown): CheckChannel | null {
+  if (typeof v !== "string") return null;
+  const s = v.trim().toLowerCase();
+  return (CHECK_CHANNELS as readonly string[]).includes(s)
+    ? (s as CheckChannel)
+    : null;
+}
+
 export interface CanonicalCheck {
   /** Check/order id in the source POS — dedupe key with (restaurant, source). */
   externalCheckId: string;
@@ -33,6 +57,9 @@ export interface CanonicalCheck {
   /** Source POS table reference — resolved against restaurant_tables.pos_refs
    *  or label. */
   tableRef?: string | null;
+  /** How the POS rang it up (ADR 0302). null or absent = the POS named no
+   *  channel, which is table service. Never inferred from tableRef. */
+  channel?: CheckChannel | null;
   serverExternalId?: string | null;
   serverName?: string | null;
   covers?: number | null;

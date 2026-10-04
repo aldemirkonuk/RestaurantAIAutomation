@@ -9,7 +9,7 @@ import * as crypto from "crypto";
 import { DatabaseService } from "../database/database.service";
 import { assertInventoryBelongsToRestaurant } from "../common/tenant/assert-inventory-belongs-to-restaurant";
 import { LowStockAlertsService } from "../notifications/low-stock-alerts.service";
-import { CanonicalCheck } from "./pos-types";
+import { CanonicalCheck, CheckChannel } from "./pos-types";
 import { ADAPTERS } from "./pos-adapters";
 import {
   PROVIDER_BY_KEY,
@@ -192,6 +192,69 @@ function scopedSignedPayload(
 export interface WebhookContext {
   provider: string;
   restaurantId: string;
+}
+
+/**
+ * How many checks in one import named each channel (ADR 0302). The four
+ * counts partition `received`: `none` is a check whose feed named no channel
+ * (table service), `unrecognised` one that named a value outside the
+ * vocabulary, which is stored as table service too and therefore said.
+ */
+export type ChannelTally = Record<
+  CheckChannel | "none" | "unrecognised",
+  number
+>;
+
+/** At most this many distinct unrecognised names are quoted in errors[]. */
+const MAX_CHANNEL_NAMES_SAID = 5;
+
+/**
+ * Count the channels an import named, and say the ones this hub does not
+ * know. A name the adapter dropped is read back from the source row
+ * (`raw.channel`, which the canonical feed keeps verbatim): reading it as "no
+ * channel" would report an absence as health (ADR 0302).
+ */
+export function tallyChannels(checks: CanonicalCheck[]): {
+  tally: ChannelTally;
+  said: string | null;
+} {
+  const tally: ChannelTally = {
+    booth_event: 0,
+    table: 0,
+    none: 0,
+    unrecognised: 0,
+  };
+  const names = new Set<string>();
+  for (const c of checks) {
+    if (c.channel) {
+      tally[c.channel]++;
+      continue;
+    }
+    const named = (c.raw as { channel?: unknown } | null | undefined)?.channel;
+    if (named == null || (typeof named === "string" && named.trim() === "")) {
+      tally.none++;
+      continue;
+    }
+    tally.unrecognised++;
+    names.add(String(named).trim().slice(0, 40));
+  }
+  if (tally.unrecognised === 0) return { tally, said: null };
+  const n = tally.unrecognised;
+  const quoted = [...names]
+    .slice(0, MAX_CHANNEL_NAMES_SAID)
+    .map((v) => JSON.stringify(v))
+    .join(", ");
+  const more =
+    names.size > MAX_CHANNEL_NAMES_SAID
+      ? ` and ${names.size - MAX_CHANNEL_NAMES_SAID} more`
+      : "";
+  return {
+    tally,
+    said:
+      `channel: ${n} check${n === 1 ? "" : "s"} named a channel this hub does not know ` +
+      `(${quoted}${more}), so ${n === 1 ? "it was" : "they were"} stored as table service. ` +
+      `The known channels are "table" and "booth_event".`,
+  };
 }
 
 /**
@@ -443,6 +506,8 @@ export class PosHubService {
     provider: string;
     received: number;
     upserted: number;
+    /** Checks per channel this import named (ADR 0302). */
+    channels: ChannelTally;
     wineItemsDetected: number;
     errors: string[];
   }> {
@@ -461,6 +526,7 @@ export class PosHubService {
         provider: providerKey,
         received: 0,
         upserted: 0,
+        channels: tallyChannels([]).tally,
         wineItemsDetected: 0,
         errors: ["No recognizable checks in payload"],
       };
@@ -477,6 +543,10 @@ export class PosHubService {
     // through the same `errors` channel a failed check upsert uses, so the
     // ingest can no longer report a clean success over a lookup that failed.
     if (tableLookup.error) errors.push(tableLookup.error);
+    // ADR 0302: a channel the hub does not know is stored as table service,
+    // and said here rather than folded in silently.
+    const channels = tallyChannels(checks);
+    if (channels.said) errors.push(channels.said);
 
     let upserted = 0;
     let wineItems = 0;
@@ -508,6 +578,9 @@ export class PosHubService {
           source: providerKey,
           external_check_id: check.externalCheckId,
           table_id: this.resolveTable(check.tableRef, providerKey, tables),
+          // ADR 0302: written only when the feed names it, so a re-send that
+          // names none leaves a stored channel alone.
+          ...(check.channel ? { channel: check.channel } : {}),
           server_external_id: check.serverExternalId ?? null,
           server_name: check.serverName ?? null,
           opened_at: check.openedAt,
@@ -556,6 +629,7 @@ export class PosHubService {
       provider: providerKey,
       received: checks.length,
       upserted,
+      channels: channels.tally,
       wineItemsDetected: wineItems,
       errors,
     };
