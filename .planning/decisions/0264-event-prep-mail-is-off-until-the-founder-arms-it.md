@@ -157,4 +157,4 @@ one record §5 requires, and it retires no document.
 |---|---|---|
 | 2026-10-02 | mail lane (session), on the founder's staffing answer | Created as an amendment to ADR 0131 (commit `10e603430`) |
 | 2026-10-02 | lane review of commit `10e603430` | Moved out of ADR 0131 into this Proposed record. Authority restated as the staffing answer; the default house's loss of the job and the D4 sender question stated plainly; line numbers replaced by symbol and job names |
-| 2026-10-03 | PR audit gate (ADR 0090) at `8cd2ead37`, BLOCK on the record | Code held. The founder's 2026-10-02 "Guest events only" answer was recorded as open here; now under "Answered". Entry types and a per-house cap are decided; cap size, recipients and the D4 sender move stay open. The manual trigger is noted as having no caller |
+| 2026-10-03 | Record corrected after the PR #592 audit (ADR 0090), BLOCK at `8cd2ead37` | Code held. The founder's 2026-10-02 "Guest events only" answer was recorded as open here; now under "Answered". Entry types and a per-house cap are decided; cap size, recipients and the D4 sender move stay open. The manual trigger is noted as having no caller |
