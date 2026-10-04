@@ -41,8 +41,10 @@
 -- since the validating scan would run under the same held lock (measured
 -- 2026-10-04 on local Postgres 17, in one rolled-back transaction: pg_locks
 -- held AccessExclusiveLock beside ShareUpdateExclusiveLock after VALIDATE,
--- and AccessExclusiveLock alone for this one-step form, the constraint
--- already convalidated). Every existing value is the new column's
+-- and AccessExclusiveLock alone after this one-step form, the constraint
+-- already convalidated; the COMMENT below then adds a ShareUpdateExclusiveLock
+-- of its own, which blocks nothing the held lock does not already block).
+-- Every existing value is the new column's
 -- null, so the read cannot fail. Its length is one pass over pos_checks; NOT
 -- measured against production's row count (no production reads from this
 -- lane). statement_timeout follows the repo's ALTER TABLE precedent
