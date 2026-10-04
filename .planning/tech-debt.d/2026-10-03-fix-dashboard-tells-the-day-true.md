@@ -11,7 +11,7 @@ Checked by `claims.d/fix-dashboard-tells-the-day-true.jsonl` (eight resolved row
 
 ## What ADR 0290's first PR leaves owed on the dashboard — OPEN — 2026-10-03
 
-Line numbers are at this branch's head.
+Line numbers are at the head of `fix/dashboard-tells-the-day-true` (PR-1), re-measured in fix round 2 on 2026-10-04. The stacked PR-1b adds one import line near the top of `dashboard.service.ts` and 19 lines in `getStats`, so on that branch the `select('*')` cites sit one line lower and the `createdAt` cite 20 lines lower.
 
 - **AW04, PR-2** (`fix/dashboard-alert-says-when-it-went-low`). `getAlerts` stamps every low-stock alert with `new Date()` (`apps/api-gateway/src/dashboard/dashboard.service.ts:1139`), so each one reads "just now". The claim row `ADR-0290-AW04-LOW-SINCE-OPEN` is open and fails until that PR lands. OD-161 (an uncounted wine reads as out of stock) is a separate defect and is not touched here.
 - **Moved to PR-2 to keep PR-1 at 15 files:**
