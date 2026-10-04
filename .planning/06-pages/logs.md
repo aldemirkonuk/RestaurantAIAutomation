@@ -11,7 +11,7 @@ signals_today: none
 rebrand_strings: 0
 maturity: partial
 status: documented
-updated: 2026-09-12
+updated: 2026-10-03
 links: ["[[PAGE-CONTRACT]]", "[[simpos-order-log]]", "[[0086-a-count-confesses-what-it-could-not-count]]", "[[0112-one-modal-policy-three-shapes-one-primitive]]", "[[0133-the-public-door-has-one-switch]]"]
 ---
 
@@ -57,6 +57,7 @@ Two faces, one route, one flag (`mudavym_design_logs`, OFF by default —
 - States which registers were read at all, so a deliberate skip (`event_store` without a correlation id) is stated rather than inferred
 - Renders an undated event as "not recorded", never as "Invalid Date"
 - **(next)** The window is marked and walked: `LOGS_SERVER_WINDOWS.TIMELINE` cites the clamp that imposes it, every count carries `≥` while rows remain beyond it, and "Read older entries" walks the gateway's exact `hasMore`/`nextCursor` a page at a time. A page that cannot advance says so rather than looping
+- **(next)** Read back from a day (ADR 0271, 2026-10-03): a native date field, submitted and never read on change, puts `?date=YYYY-MM-DD` in the address and seeds the first `before` with the start of the next day, in the clock the day headings use. A thread still reads whole and keeps the day for the way back. A jumped view floors every count and names its edge in the foot, the empty state and a band carrying *Back to the newest*. An address naming a day the page cannot read says so and reads from the newest. Before this, a day months back took dozens of presses (AW06, A-039)
 - **(next)** The timeline has a way out: a row's register decides where it leads (document, receipts, stock ledger, till log, orders, reports, features, team); a register with no page of its own says so in a sentence, never as a dead control
 - **(next)** A thread reads like a ledger page — oldest first, numbered, ruled off under a double rule, with its span and register count stated
 - **(next)** An entry opens in a Sheet (ADR 0112, 440) carrying its facts and its raw payload, with **Earlier / Later** stepping that never leaves the sheet and says in words when it has reached the end of the page
@@ -77,7 +78,7 @@ Two faces, one route, one flag (`mudavym_design_logs`, OFF by default —
 | id | token | curve / ms | when it fires |
 |---|---|---|---|
 | `lg-arrive` | `settle` | HOUSE `cubic-bezier(.16,1,.3,1)` · 320ms | the opening, on mount, once — opacity + 6px rise |
-| `lg-turn` | `turn` | `cubic-bezier(.32,.72,0,1)` · 420ms | the ledger, when a thread is entered or left — **on the frame the new reading lands**, not on the frame the URL changed |
+| `lg-turn` | `turn` | `cubic-bezier(.32,.72,0,1)` · 420ms | the ledger, when a thread is entered or left, or the feed is read back from a day and returned to the newest — **on the frame the new reading lands**, not on the frame the URL changed |
 | `lg-ink` | `ink` | HOUSE · 160ms | hover/focus micro-states, and the keyboard cursor's rule and ground as the reader walks |
 | `lg-tally` | `tally` | sampled overdamped spring (120/26) · 840ms | the register counts, counting to each new figure as pages are read |
 | entry sheet | `tuck` | sampled spring (380/32) · 300ms | the primitive's own enter motion; this page adds nothing to it, and stepping inside the sheet never re-runs it |
@@ -103,7 +104,7 @@ The rule: an object gets a sheet, a question a panel, a choice a popover; the se
 Drawn in sketch 102 (`.planning/sketches/102-modal-census/index.html`); the policy is [[0112-one-modal-policy-three-shapes-one-primitive]].
 
 ## 2. Entry
-Sidebar "Logs" entry (`Sidebar.tsx:136-141`) — **[PAGE_MAP](../foundation/PAGE_MAP.md) lists `/logs` as having no inbound link; that is stale**, the sidebar link exists. Deep-linkable with `?correlationId=` (the intended cross-page pivot from notifications/documents).
+Sidebar "Logs" entry (`Sidebar.tsx:136-141`) — **[PAGE_MAP](../foundation/PAGE_MAP.md) lists `/logs` as having no inbound link; that is stale**, the sidebar link exists. Deep-linkable with `?correlationId=` (the intended cross-page pivot from notifications/documents) and, on the `next` face, with `?date=YYYY-MM-DD` to read back from a day (ADR 0271).
 
 ## 3. Files
 - Route binding: `apps/web/src/App.tsx:386` — `PageGate(page="logs", legacy=LogsTimelinePage, next=LogsNext)` (lazy, `App.tsx:118-119`)
@@ -113,7 +114,7 @@ Sidebar "Logs" entry (`Sidebar.tsx:136-141`) — **[PAGE_MAP](../foundation/PAGE
   - `apps/web/src/pages/logs/next/useLogsNextData.ts` — the walked read: `LOGS_SERVER_WINDOWS`, the three states, the de-duplicating cursor walk, the stall
   - `apps/web/src/pages/logs/next/lg-format.ts` — the pure vocabulary: `EM`, `GE`, the register names, the time words, the way out
   - `apps/web/src/pages/logs/next/MOTIONS.md` — canonical motions; §1b mirrors it
-  - tests: `LogsNext.test.tsx` (37), `useLogsNextData.test.tsx` (8), `lg-format.test.ts` (12) — **57**
+  - tests: `LogsNext.test.tsx` (45), `useLogsNextData.test.tsx` (12), `lg-format.test.ts` (15) — **72** (measured 2026-10-03 on `fix/logs-jump-to-a-date`)
   - guard: registered as `/logs` in `scripts/check_windowed_figures.py` (§9)
 - **Legacy face:** `apps/web/src/pages/LogsTimelinePage.tsx` (390 lines, self-contained)
 - `apps/web/src/pages/LogsTimelinePage.test.tsx` — the honesty contracts of
@@ -128,7 +129,7 @@ Sidebar "Logs" entry (`Sidebar.tsx:136-141`) — **[PAGE_MAP](../foundation/PAGE
 | Method | Path | Where called | Atlas |
 |---|---|---|---|
 | GET | `/logs/timeline/:restaurantId?correlationId=&limit=100` | `LogsTimelinePage.tsx:144-145` (legacy) | ENDPOINTS.md:276 |
-| GET | `/logs/timeline/:restaurantId?correlationId=&limit=100&before=<cursor>` | `useLogsNextData.ts` (`next`) — one request per page walked; the answer carries `window`, `hasMore` and `nextCursor` (`logs-timeline.service.ts:141-143`) | ENDPOINTS.md:276 |
+| GET | `/logs/timeline/:restaurantId?correlationId=&limit=100&before=<cursor>` | `useLogsNextData.ts` (`next`) — one request per page walked; the answer carries `window`, `hasMore` and `nextCursor` (`logs-timeline.service.ts:141-143`). The first `before` is the end of a named day when `?date=` is set (ADR 0271), and absent otherwise | ENDPOINTS.md:276 |
 
 The endpoint takes **no source parameter** (`logs.controller.ts:63-65`). That is
 why the register strip is a sieve and not a scope — §9.
@@ -425,6 +426,9 @@ the agent do that*, reachable in one click from the thing that surprised you.
 5b. **Scope the read by register** — accept `sources[]` on the endpoint and make
    the strip multi-select, so "show me the agents" can go deeper than the mixed
    page. Needs a gateway change and an ADR; see §9.
+5c. **Walk forward from a named day** — reading back from a day landed
+   2026-10-03 (ADR 0271); reading *newer* entries from there needs an `after`
+   cursor on the endpoint, its own ADR and PR (ADR 0271 fork 2, open).
 6. Take `restaurantId` from the JWT rather than the path, matching the rest of the
    gateway.
 7. Share the response type rather than restating it (§8). Until then the page and

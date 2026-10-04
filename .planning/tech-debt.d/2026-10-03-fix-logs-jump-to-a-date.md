@@ -1,0 +1,12 @@
+## The /logs till register is windowed on one instant and dated by another — OPEN — 2026-10-03
+
+Filed from fix/logs-jump-to-a-date (ADR 0271, findings AW06 and A-039). It was reasoned from code at 8c673db4b and **not measured**. The web-only lane that found it does not fix it.
+
+**What.** `fetchPosChecks` orders and windows `pos_checks` on `opened_at` (`apps/api-gateway/src/logs/logs-timeline.service.ts:225`, through `windowed` at `:578-584`). It dates each row by `closed_at || opened_at` (`:232`). The merged feed is then sorted by that date, and `nextCursor` is the last dated row's date (`:192`). A check's two instants can differ by hours, so the cursor compares `opened_at` against an instant read from `closed_at`. Three effects follow:
+- **Re-reads.** Every page reads again the checks opened at or before the cursor but already shown above it. The web de-duplicates them on `source:id` (`useLogsNextData.ts`, `dedupe`), so nothing shows twice. A page of 100 still brings fewer than 100 new rows. The 2026-10-03 walk on Tuzlu Rüzgar modelled 70-100 per page (A-039); that figure is a model, not a measurement.
+- **Out of order.** A check opened long before it closed is not among the newest 101 by `opened_at`, so it arrives on a later page. There it is dated by its recent `closed_at`, and lands above older rows from the page before. The page's day headings then repeat a day.
+- **A jumped day opens with the next day.** Seeded at the end of a day (ADR 0271), the read includes checks opened on that day and closed after it, dated after it. They show truthfully under their own day heading, above the day that was asked for.
+
+**Not affected.** As far as the code shows, no row is skipped. Each fetched check is dated at or after its own `opened_at`. When the till fills its 101-row fetch, the 100-row slice therefore ends at or above the lowest `opened_at` fetched. Every check opened after the next cursor was fetched, and it sorts into the slice. Every check left out of the slice is dated below the next cursor, so it was opened below it too, and the next page reads it. A check still open (`closed_at` null) is dated by `opened_at`, so its two instants agree.
+
+**Fix.** Window, order and date the register on one instant. For example, add a stored generated column `occurred_at = coalesce(closed_at, opened_at)` on `pos_checks` with an index on `(restaurant_id, occurred_at desc)`, and have `windowed` read it. This is a migration plus a gateway change, and needs its own lane and ADR.
