@@ -1,6 +1,6 @@
 # 0284 — A delivery event follows its order, and the table keeps it so
 
-- **Status:** Proposed (2026-10-03). The trigger-versus-gateway choice (fork 4) follows the founder's ADR 0125 Q2 answer and is recorded here as Proposed so he can overturn it; forks 1–3 are open and wait on him.
+- **Status:** Proposed (2026-10-03). The trigger-versus-gateway choice (fork 4) follows the founder's ADR 0125 Q2 answer and is recorded here as Proposed so he can overturn it; forks 1–3 are open and wait on him. Who builds the door-path close is answered (founder, 2026-10-04, quoted under "Founder answers this rests on").
 - **Date:** 2026-10-03
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** calendar_events, delivery event, procurement_orders, expected_delivery_date, delivered_at, trigger, AFTER UPDATE, AFTER INSERT, sync_calendar_dates_trigger, reminder_enabled, createCalendarEventForOrder, closeDeliveryCalendarEvent, F-152, A-034, C16, AW10, procurement_agent, tags
@@ -116,9 +116,11 @@ Reasoning that carried it:
   `restaurants.timezone`. A zone that is not set (null since ADR 0116) or that
   Postgres cannot read falls back to UTC, and the event text says which:
   "(UTC; the house has no time zone set)" or "(UTC; the house's time zone could
-  not be read)". This follows the founder's ruling for a house with no zone,
-  "UTC, said on the page (Recommended)" (ADR 0149, 2026-09-27, item 61), rather
-  than a bare "(UTC)" that reads as a zone somebody chose.
+  not be read)". This follows, as precedent, the founder's ruling on the
+  low-stock digest hour for a house with no zone, "UTC, said on the page
+  (Recommended)" (ADR 0149, 2026-09-27, item 61), rather than a bare "(UTC)"
+  that reads as a zone somebody chose. That ruling was given for the digest,
+  not for calendar events; this ADR applies it and does not widen it.
 
 The gateway's `closeDeliveryCalendarEvent`, `cancelCalendarEventForOrder`,
 `updateCalendarEventForDelivery` and `TERMINAL_CALENDAR_STATUSES` are removed
@@ -156,6 +158,44 @@ out-of-stock message no longer says the delivery was "removed from calendar"
   full row.
 - The canonical delivery path does not move the order itself; whatever moves
   the order moves the event.
+
+## Founder answers this rests on (verbatim)
+
+- **Who builds the door-path close (2026-10-04 01:56Z, AskUserQuestion,
+  session 05c659bb).** Asked: "[SPLIT] Two of my lanes touch the door, which
+  you gave to R3 on 10-02: 'doortime' (delivered_at keeps the arrival time,
+  your 72 h rule) and the door-path close in 'events' (a delivery's calendar
+  event closes when the door receipt is signed). R3 is offline and has no
+  door-release PR yet. Who builds them?" Picked: **"You build, R3 rebases
+  (Recommended)"**, whose option read: "I build both now, keep the edits
+  surgical, and merge after the audit. R3's later door-release PR (release and
+  close at the door) builds on top. 'events' still waits for #592 (event-prep
+  mail off) before merging." Built so: the door-path close is the
+  `PARTIALLY_RECEIVED` arm of the trigger, and this branch edits no receiving
+  file, so R3's door-release PR rebases on it without a conflict. #592 merged
+  as 619a068a9 on 2026-10-04, so the merge-order condition is met; the branch
+  is cut at 8c673db4b and still has to take main before it merges.
+- **Door versus verify (2026-10-02, AskUserQuestion, recorded in memory
+  `founder-answers-2026-10-02-sim-share-out` and in ADR 0267 ruling 1 on
+  wt-review-3, not on main).** Picked: **"At the door (Recommended)"**. It is
+  why `PARTIALLY_RECEIVED`, the status every door receipt writes, completes the
+  event.
+- **The Tuzlu repair precedent (2026-10-02, same record).** Picked: **"Yes,
+  dry-run first (Recommended)"**. It is the precedent behind fork 1's
+  recommendation.
+- **A house with no time zone (2026-09-27, ADR 0149 item 61, asked about the
+  low-stock digest hour).** Picked: **"UTC, said on the page (Recommended)"**.
+  Applied here as precedent: it is why the event text says when a house has no
+  zone set. Whether it binds calendar events was not asked.
+- **`DELIVERED` on `/orders` (2026-10-03, F-140 re-ask, same memory record).**
+  Picked: **"Open, 'Not counted yet' (Recommended)"**: an order the vendor
+  reports delivered, not yet counted at the door, is listed as open on
+  `/orders`. That ruling is about the order list, and this ADR does not change
+  it. The calendar event of a `DELIVERED` order was already completed by ADR
+  0073's `markDelivered` closer; here it is still completed, and now also
+  moved to `delivered_at`. If the founder reads "At the door" as "the calendar
+  event closes only at the door", `DELIVERED` leaves the arrived set; that has
+  not been asked.
 
 ## Open forks (the founder's)
 
@@ -208,4 +248,5 @@ out-of-stock message no longer says the delivery was "removed from calendar"
 
 | Date | Reviewer | Outcome |
 |---|---|---|
+| 2026-10-04 | settle pass (lane `events`) | No independent verify had run; a re-run of the build agent was interrupted with one uncommitted edit, the SQL test's verdict block, which was checked on PGlite and kept (0844786f0). Added: a house with no zone set is labelled "UTC; the house has no time zone set" (ADR 0149 item 61) with test T16; the founder answers above, quoted verbatim, including the 2026-10-04 door split. `check_adr_numbers_unique.py` re-run before commit. |
 | 2026-10-03 | — | Created on `fix/delivery-events-follow-the-order` (lane `events`). Numbered 0284, a gap, after three collisions with parallel lanes: the lane plan's 0271 went to `logs`, 0289 was held in wt-fix-stateeditor, and 0290 then appeared in wt-fix-dash (the plan's number for that lane). At the last check (origin/main 619a068a9) `check_adr_numbers_unique.py` gave next free 0292 across 1648 refs, worktrees held 0270-0273, 0277, 0281 and 0285-0292, and 0284 was on no ref, in none of 212 worktrees, and cited nowhere on origin/main, in a wt-fix-* decisions folder or in the lane plan. The migration version moved likewise from 20261215100000, which two other lanes hold. Re-check both at merge. |

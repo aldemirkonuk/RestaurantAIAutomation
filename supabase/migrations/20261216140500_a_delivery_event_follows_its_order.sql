@@ -125,10 +125,10 @@ BEGIN
 
     -- The house's own clock. A house with no zone set, or one Postgres cannot
     -- read, falls back to UTC and the text says which; it never fails the
-    -- order. "Not set" is said, not hidden behind a bare "UTC": the founder's
-    -- ruling for a house with no zone is "UTC, said on the page" (ADR 0149,
-    -- 2026-09-27, item 61), and since ADR 0116 a null zone means nobody
-    -- stated one.
+    -- order. "Not set" is said, not hidden behind a bare "UTC". This follows,
+    -- as precedent, the founder's ruling on the low-stock digest hour for a
+    -- house with no zone, "UTC, said on the page" (ADR 0149, 2026-09-27,
+    -- item 61); since ADR 0116 a null zone means nobody stated one.
     SELECT NULLIF(btrim(r.timezone::text), '')
       INTO v_zone
       FROM public.restaurants r
