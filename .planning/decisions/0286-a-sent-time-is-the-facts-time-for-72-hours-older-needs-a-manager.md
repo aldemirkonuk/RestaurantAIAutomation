@@ -1,0 +1,71 @@
+# 0286 — A sent time is the fact's time for 72 hours; older needs a manager
+
+- **Status:** **Locked** for the ruling (founder, 2026-10-04 ~00:15Z, AskUserQuestion, C02, verbatim pick: *"72 h; older needs a manager (Recommended)"*). The method choices below (where each time lives, the five-minute clock tolerance, retries never re-deciding, `delivered_at` moving only forward, the bell windowed on entry, a refused status write logged rather than retried) are **Proposed**: they are this lane's, not the founder's.
+- **Date:** 2026-10-04
+- **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
+- **Keywords:** clientCapturedAt, client_captured_at, occurred_at, occurred_at_basis, created_at, delivered_at, back-dated, back_dated, 72 hours, FACT_TIME_TRUST_HOURS, resolveFactTime, explainStoredFactTime, factTime, door receipt, recordDoorReceipt, offline outbox, house_role, C02, F-129, A-008, A-010, A-011, vendor scorecard, delivery_recorded
+- **Links:** `apps/api-gateway/src/common/fact-time.ts:84` (`resolveFactTime`), `:141` (`explainStoredFactTime`); `apps/api-gateway/src/procurement/receiving.service.ts:264` (the rule applied once), `:373-374` (the event's time and basis), `:433` and `:461` (a retry reads back), `:660` (a class-23 status refusal), `:689-692` (`delivered_at`, forward only), `:753` (`factTime` returned); `apps/api-gateway/src/procurement/receiving.controller.ts:294` (role from the token); `apps/api-gateway/src/notifications/producers/delivery-recorded.producer.ts:114`, `:317`; `apps/web/src/pages/receiving/next/DoorNext.tsx:95`, `:866`; migration `a_door_receipt_says_which_clock_dated_it` (cited by slug, [[0235-a-migration-is-numbered-at-merge-and-cited-by-its-slug]]); `claims.d/fix-door-keeps-the-arrival-time.jsonl`; `tech-debt.d/2026-10-04-fix-door-keeps-the-arrival-time.md`; [[0162]]/[[0164]] (the token's house role); [[0227]] (receipt events are append-only); [[0241-an-offline-change-belongs-to-its-person-and-house-and-is-never-dropped-for-failing]]; [[0262-a-toast-is-for-your-own-act-newest-on-top-on-the-house-settle]] (rest to the bell); [[0240-register-entries-are-fragments]]
+
+## Context
+
+The door works offline: the tap succeeds on the phone and the receipt syncs when the network returns ([[0241-an-offline-change-belongs-to-its-person-and-house-and-is-never-dropped-for-failing]]). The phone sends the moment of the tap as `clientCapturedAt` (`DoorNext.tsx`, `seal()`), and the controller has accepted it since it was added. Until now nothing used it. It was stored only on the receipt event's `client_captured_at`. The event's `occurred_at` took its `DEFAULT now()`, and `procurement_orders.delivered_at` took the gateway's `new Date()` (main at 8c673db4b, `apps/api-gateway/src/procurement/receiving.service.ts:566`). A receipt that synced late was therefore dated on the day it was entered.
+
+The owner-quarter sim (2026-10-02, findings A-008, A-010 and A-011) measured this. The 100 newest of its 549 door deliveries read 2 October, 31-44 days after the tap times their phones sent; that all 549 do is inferred. The vendor scorecard, which reads `delivered_at`, read 0 of 548 on time. `/reports` pacing put $39,302.50 of spend in the last 30 days against $0 before. A real house hits the same code whenever the outbox sends a receipt late.
+
+How old a sent time the server may trust was the C02 fork. The founder answered it on 2026-10-04: a sent time within 72 hours is kept as the fact's time. An older one is kept only from an owner or a manager and is marked back-dated. The ruling applies to door receipts, counts and orders. The read-side as-of control (choosing the date a report reads by) was not asked and stays open.
+
+## Options considered
+
+The ruling settled the threshold and who may go past it. These are the method choices made to apply it.
+
+1. **Where the fact's time lives.**
+   - (a) **Keep `occurred_at` as the entry time and add a `fact_at` column.** Every reader of door events (the scorecard's door register window, `arrivedToday` and the house counter, `listUnverified` ageing, line history, the latest-event pick in shelf-received) would then have to move to the new column, and any reader missed would keep the old meaning. Rejected.
+   - (b) **Chosen: `occurred_at` becomes the fact's time, written at insert.** `created_at` (baseline `DEFAULT now()`) is already the entry time beside it, and `client_captured_at` stays the phone's word, kept as evidence whether or not it was used. Every existing reader reads the right time with no change. The one thing the times alone cannot say, which clock dated the row, gets a new column, `occurred_at_basis` (`sent | back_dated | server`, NULL for rows from before this rule).
+2. **What "72 hours" is measured from.** The ruling says receipt by the server. The gateway measures it from the moment it receives the request, inclusive: exactly 72 h stands, 72 h plus 1 ms does not. It is decided once, at the top of `recordDoorReceipt`.
+3. **A clock ahead of the server.** No fact is in the future. Up to five minutes ahead is ordinary drift and is clamped to the receipt (basis `sent`). More than that is a wrong clock and is not trusted from anyone (basis `server`). Five minutes is this lane's number.
+4. **Whose word back-dates.** The role in the house the token names (`req.user.role`, [[0162]]/[[0164]]). It comes from the token, never the body. A session in no house has no role, and no role never back-dates.
+5. **A refused sent time.** (a) Refuse the receipt with a 4xx. That would park a real delivery as "Not sent" on the phone ([[0241-an-offline-change-belongs-to-its-person-and-house-and-is-never-dropped-for-failing]]) over a date, and the stock would never be booked. Rejected. (b) **Chosen: book it, dated by the server.** The phone's time is kept in `client_captured_at`, and the receipt carries `basis = 'server'`.
+6. **A time CHECK in the database.** A constraint comparing `occurred_at` with `created_at` would refuse honest rows over a few seconds of skew between the gateway's and the database's clocks. It also cannot see the role that decides the back-dated case. Rejected. The migration does carry two vocabulary CHECKs. The basis must be one of the three values or NULL. A `sent` or `back_dated` row must carry the `client_captured_at` it was dated by, so the mark is only ever set with its evidence beside it.
+7. **A retry.** A retry that reaches the server after the 72-hour line would, if it decided again, re-date a delivery that the first attempt already dated. **Chosen: a retry never decides again.** On the duplicate key (23505) the existing event's `occurred_at`, `occurred_at_basis` and `client_captured_at` are read back. The response's reason is derived from those stored values (`explainStoredFactTime`), not recomputed.
+8. **`procurement_orders.delivered_at` on a split delivery.** Writing "now" on every receipt always meant "the last landing". **Chosen: `delivered_at` takes the event's `occurred_at`, and only moves forward** (`.or(delivered_at.is.null,delivered_at.lt."<at>")`). Without the filter, a truck that synced late would pull a later truck's time back. A retry writes the same stored time, so it converges.
+9. **The order write's errors.** Main ignored them. The plan said both should become a retryable 503. **Changed in build:** a status write refused by the order's own rules (SQLSTATE class 23, such as the 23514 the transition trigger raises on a CANCELLED order) is permanent. A 503 would make the outbox re-send it forever, after the stock was already booked. So it is logged at error level, and the order and its `delivered_at` are left as they were, which is what main did, minus the silence. Any other status-write error, and any `delivered_at` write error, is a 503 (`order_write_failed`, `order_delivered_at_failed`) that the outbox retries.
+10. **The bell.** The `delivery_recorded` producer's 48-hour lookback was on `occurred_at`. A receipt dated 60 hours ago and entered an hour ago would fall outside it before any sweep saw it, a regression this change would cause. **Chosen: the window and its order are on `created_at`** (entry). The sentence keeps "Counted … on <the fact's day> at <the fact's clock>" and adds one sentence in the house's zone. A back-dated receipt says it was back-dated and when it was entered. A refused sent time says the phone's time and that it is dated when it arrived. A clock that ran ahead says so.
+11. **A per-house window.** The ruling names one number for every house. Rejected.
+
+## Decision
+
+The rule is one pure function, `resolveFactTime` in `apps/api-gateway/src/common/fact-time.ts`. It lives there rather than in the receiving module because the ruling also covers counts and orders. Its constants are exported (`FACT_TIME_TRUST_HOURS = 72`, `FACT_TIME_AHEAD_TOLERANCE_MS = 300000`, `BACK_DATING_ROLES = owner, manager`). It returns `{ at, basis, sentAt, reason }`.
+
+The door (`POST /procurement/receiving/orders/:id/door`) applies it:
+
+- The event writes `occurred_at` for `sent` and `back_dated`. For `server` it sends no `occurred_at`, so the database's own `now()` stamps it and it equals `created_at` exactly.
+- The event always writes `occurred_at_basis`.
+- The order's `delivered_at` follows the event, forward only.
+- The response carries `factTime`.
+- The door screen says one quiet sentence when the receipt sent while it was open and the phone's time did not stand, or stood only as back-dated. A receipt that sends later from the queue is said by the bell (option 10).
+
+What carried it: the founder's threshold, applied where every existing reader already looks, with the evidence and the mark kept on the row.
+
+**Not changed, on purpose.** `markDelivered` (`POST orders/:id/deliver`) accepts no sent time, so the server's time is correct there under the ruling. Also untouched: `pos-hub` and `apply_stock_movement`, which belong to the POS lane (`postime`).
+
+## Consequences
+
+- **Easier.** A receipt that syncs late lands on its real day, in the scorecard, `/reports` and the counter, with no change to those readers. What the phone said is always on the row. Which clock dated the row is a column, and a check can query it.
+- **Harder / given up.** Rows written before this rule are not re-dated (see the backfill fork below). The sim house's scorecard (0 of 548), pacing and sales chart stay wrong until the house is re-run or a backfill is chosen. A receipt older than 72 hours from staff is dated by the server even when the phone was right; that is the ruling's price, and the evidence is kept.
+- **Order of landing.** The `events` lane rewrites the same order-update block in `recordDoorReceipt`. It should rebase on this change and close its calendar event at the door's `delivered_at` (the fact's time), not at now.
+- **Revisit when:** a house shows receipts routinely refused as `too_old` by staff (the window is wrong for it), or the read-side as-of control is decided.
+
+### Follow-ups (each tracked; none is done here)
+
+1. **The door-count route.** `POST /procurement/documents/door-count` trusts any `countedAt` from any role and checks it only as a string (`apps/api-gateway/src/procurement/documents/documents.controller.ts:862`, `:916`; `apps/api-gateway/src/procurement/dto/deliveries.dto.ts:169`). The ruling covers it. It needs its own PR, which did not fit this one's 15 files. Open CLAIMS row and register entry.
+2. **The door's stock movement is dated at entry.** `apply_stock_movement` has no date parameter and stamps `transaction_date = now()`. Only one lane may add the parameter, or two migrations would overload the function. The `postime` lane adds it; this door then passes the fact's time. Open CLAIMS row and register entry.
+3. **Backfill (fork, recommended (a), not asked in this lane).** (a) Forward-only: correct receipts recorded from now on (what this change does). (b) A data migration re-dating `delivered_at` from the latest door event's `client_captured_at` where it is within 72 hours of that event's `occurred_at`. That fits the rule and needs no role, but it fixes nothing in the sim house, whose captures were 31-44 days old. (c) Option (b), plus re-dating older rows where the receiver is an owner or a manager today. That guesses the role at the time, and the append-only trigger ([[0227]]) refuses marking the event rows `back_dated`. Not recommended.
+4. **Late-sync surfaces (fork; (a) is built).** (a) The door screen when the receipt sends while it is open, plus the bell for every late-synced or back-dated receipt (this change). (b) A notice on the door screen built from each background sync result: one more file (`doorOutbox.test.ts`), a follow-up. (c) The receiving desk's line history showing "taken X, dated Y" per event: a follow-up.
+5. **The read-side as-of control** stays open. It was not asked, and a new register row would shift citations, so filing it is left to the orchestrator.
+
+## Review trail
+
+| Date | Reviewer | Outcome |
+|---|---|---|
+| 2026-10-04 | founder (AskUserQuestion, C02) | Ruling: "72 h; older needs a manager (Recommended)" |
+| 2026-10-04 | — | Created, lane `doortime`, branch `fix/door-keeps-the-arrival-time` |

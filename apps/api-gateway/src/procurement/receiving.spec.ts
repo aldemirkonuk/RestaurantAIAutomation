@@ -1,5 +1,12 @@
+import { ServiceUnavailableException } from "@nestjs/common";
 import { ReceivingService } from "./receiving.service";
+import { ReceivingController } from "./receiving.controller";
 import { DatabaseService } from "../database/database.service";
+import {
+  FACT_TIME_TRUST_MS,
+  explainStoredFactTime,
+  resolveFactTime,
+} from "../common/fact-time";
 
 /**
  * Door-stage receiving.
@@ -29,11 +36,24 @@ function makeDb(opts: {
   rpcError?: { message: string } | null;
   /** The order's house item, as `restaurant_inventory` answers a read by id. */
   item?: Row | null;
+  /**
+   * Refuse an order write, by its payload — to prove neither order write's
+   * error is swallowed any more (ADR 0286).
+   */
+  orderUpdateError?: (
+    payload: Row,
+  ) => { code?: string; message: string } | null;
 }) {
   const calls = {
     rpc: [] as any[],
     eventInserts: [] as any[],
     orderUpdates: [] as any[],
+    /** Each order write with its `.or()` filter and whether it was refused. */
+    orderWrites: [] as Array<{
+      payload: Row;
+      or: string | null;
+      refused: boolean;
+    }>,
     /** Every insert with its table (the research queue included). */
     tableInserts: [] as Array<{ table: string; payload: Row }>,
   };
@@ -46,6 +66,24 @@ function makeDb(opts: {
   }));
   let nextId = 1;
   let rpcError = opts.rpcError ?? null;
+  /**
+   * The order row's `delivered_at`, kept so the forward-only `.or()` filter is
+   * APPLIED rather than only looked at. Only the two clauses the service
+   * writes are modelled; anything else throws, so a filter this fake cannot
+   * read fails the test instead of matching.
+   */
+  const order: Row = { delivered_at: opts.order?.delivered_at ?? null };
+  const orFilterPasses = (expr: string): boolean =>
+    expr.split(",").some((clause) => {
+      if (clause === "delivered_at.is.null") return order.delivered_at === null;
+      const lt = /^delivered_at\.lt\."(.+)"$/.exec(clause);
+      if (lt)
+        return (
+          order.delivered_at !== null &&
+          new Date(order.delivered_at).getTime() < new Date(lt[1]).getTime()
+        );
+      throw new Error(`fake cannot model the or-clause "${clause}"`);
+    });
 
   const client: any = {
     from(tableName: string) {
@@ -119,10 +157,19 @@ function makeDb(opts: {
                   data: null,
                   error: { code: "23505", message: "duplicate key" },
                 };
-              const row = { id: `evt-${nextId++}`, ...payload };
+              // `occurred_at` as the column does it: the sent value, or
+              // DEFAULT now() when the service sends none (ADR 0286).
+              // `created_at` is always the database's own clock.
+              const nowIso = new Date().toISOString();
+              const row = {
+                id: `evt-${nextId++}`,
+                ...payload,
+                occurred_at: payload.occurred_at ?? nowIso,
+                created_at: nowIso,
+              };
               table.push(row);
               return {
-                data: { id: row.id, occurred_at: new Date().toISOString() },
+                data: { id: row.id, occurred_at: row.occurred_at },
                 error: null,
               };
             },
@@ -131,7 +178,25 @@ function makeDb(opts: {
         },
         update(payload: Row) {
           calls.orderUpdates.push(payload);
-          const chain: any = { eq: () => chain };
+          let orExpr: string | null = null;
+          const chain: any = {
+            eq: () => chain,
+            or: (expr: string) => {
+              orExpr = expr;
+              return chain;
+            },
+            then: (resolve: (v: any) => void) => {
+              if (tableName !== "procurement_orders")
+                return resolve({ data: null, error: null });
+              const error = opts.orderUpdateError?.(payload) ?? null;
+              calls.orderWrites.push({ payload, or: orExpr, refused: !!error });
+              if (!error && "delivered_at" in payload) {
+                if (orExpr === null || orFilterPasses(orExpr))
+                  order.delivered_at = payload.delivered_at;
+              }
+              resolve({ data: null, error });
+            },
+          };
           return chain;
         },
         then: undefined,
@@ -184,6 +249,8 @@ function makeDb(opts: {
     db: { getClient: () => client } as unknown as DatabaseService,
     calls,
     table,
+    /** The order row's state after the writes (only `delivered_at`). */
+    order,
     /** Clear or set the stock-movement fault mid-test, to model a transient one. */
     setRpcError: (e: { message: string } | null) => {
       rpcError = e;
@@ -531,7 +598,11 @@ describe("recordDoorReceipt", () => {
     expect(shared.calls.rpc[1].args.p_idempotency_key).not.toBe(
       shared.calls.rpc[0].args.p_idempotency_key,
     );
-    expect("quantity_received" in shared.calls.orderUpdates[1]).toBe(false);
+    // Every order write, both trucks' (two each since ADR 0286: the status,
+    // then the delivery time), not one picked by index.
+    expect(
+      shared.calls.orderUpdates.some((u: Row) => "quantity_received" in u),
+    ).toBe(false);
   });
 
   it("does not swallow a second truck that happens to bring the same count", async () => {
@@ -1290,5 +1361,398 @@ describe("arrivedToday", () => {
 
     expect(capped).toBe(false);
     expect(rows).toHaveLength(999);
+  });
+});
+
+// ============================================================================
+// ADR 0286 — whose clock dates a door receipt.
+//
+// The founder (2026-10-04, verbatim pick): "72 h; older needs a manager
+// (Recommended)". A sent time within 72 hours of the server's receipt is the
+// delivery's time; an older one stands only on an owner's or a manager's word
+// and is marked back-dated; otherwise the server's clock dates it. The order's
+// `delivered_at` used to be `new Date()` whatever the phone said, so in the
+// owner-quarter sim the 100 newest of 549 door deliveries read the day they
+// were entered, 31-44 days after their tap times.
+// ============================================================================
+
+const RECEIVED = new Date("2026-10-04T12:00:00.000Z");
+const hoursBefore = (h: number, from: Date = RECEIVED) =>
+  new Date(from.getTime() - h * 3_600_000).toISOString();
+
+describe("resolveFactTime (ADR 0286)", () => {
+  const at = (
+    sentAt: string | null | undefined,
+    role: string | null = "staff",
+  ) => resolveFactTime({ sentAt, receivedAt: RECEIVED, role });
+
+  it("dates by the server when nothing was sent", () => {
+    for (const sent of [undefined, null, ""]) {
+      const r = at(sent);
+      expect(r).toEqual({
+        at: RECEIVED,
+        basis: "server",
+        sentAt: null,
+        reason: "not_sent",
+      });
+    }
+  });
+
+  it("dates by the server when what was sent is not an instant", () => {
+    const r = at("yesterday-ish");
+    expect(r.basis).toBe("server");
+    expect(r.reason).toBe("unreadable");
+    expect(r.at).toEqual(RECEIVED);
+  });
+
+  it("keeps a sent time 2 hours old, from anyone", () => {
+    const r = at(hoursBefore(2));
+    expect(r.basis).toBe("sent");
+    expect(r.reason).toBe("within_window");
+    expect(r.at.toISOString()).toBe(hoursBefore(2));
+  });
+
+  it("keeps a sent time EXACTLY 72 hours old (the line is inclusive)", () => {
+    const r = at(
+      new Date(RECEIVED.getTime() - FACT_TIME_TRUST_MS).toISOString(),
+    );
+    expect(r.basis).toBe("sent");
+    expect(r.at.getTime()).toBe(RECEIVED.getTime() - FACT_TIME_TRUST_MS);
+  });
+
+  it("refuses a sent time one millisecond past 72 hours from staff, and keeps it as evidence", () => {
+    const sent = new Date(
+      RECEIVED.getTime() - FACT_TIME_TRUST_MS - 1,
+    ).toISOString();
+    const r = at(sent, "staff");
+    expect(r.basis).toBe("server");
+    expect(r.reason).toBe("too_old");
+    expect(r.at).toEqual(RECEIVED);
+    expect(r.sentAt?.toISOString()).toBe(sent);
+  });
+
+  it("refuses an old sent time from a session in no house (role null)", () => {
+    expect(at(hoursBefore(100), null).basis).toBe("server");
+  });
+
+  it("keeps an old sent time from an owner or a manager, marked back-dated", () => {
+    for (const role of ["owner", "manager"]) {
+      const r = at(hoursBefore(24 * 40), role);
+      expect(r.basis).toBe("back_dated");
+      expect(r.reason).toBe("back_dated");
+      expect(r.at.toISOString()).toBe(hoursBefore(24 * 40));
+    }
+  });
+
+  it("clamps a phone clock up to five minutes ahead to the receipt", () => {
+    const ahead = new Date(RECEIVED.getTime() + 4 * 60_000).toISOString();
+    const r = at(ahead);
+    expect(r.basis).toBe("sent");
+    expect(r.reason).toBe("clamped_ahead");
+    expect(r.at).toEqual(RECEIVED);
+  });
+
+  it("does not trust a phone clock more than five minutes ahead, whoever holds it", () => {
+    const ahead = new Date(RECEIVED.getTime() + 6 * 60_000).toISOString();
+    const r = at(ahead, "owner");
+    expect(r.basis).toBe("server");
+    expect(r.reason).toBe("ahead");
+    expect(r.at).toEqual(RECEIVED);
+  });
+});
+
+describe("explainStoredFactTime (ADR 0286)", () => {
+  it("reads each reason back from the stored row", () => {
+    const at = RECEIVED.toISOString();
+    expect(
+      explainStoredFactTime({
+        basis: "sent",
+        sentAt: hoursBefore(2),
+        at: hoursBefore(2),
+      }),
+    ).toBe("within_window");
+    expect(
+      explainStoredFactTime({
+        basis: "sent",
+        sentAt: new Date(RECEIVED.getTime() + 60_000).toISOString(),
+        at,
+      }),
+    ).toBe("clamped_ahead");
+    expect(
+      explainStoredFactTime({
+        basis: "back_dated",
+        sentAt: hoursBefore(900),
+        at: hoursBefore(900),
+      }),
+    ).toBe("back_dated");
+    expect(
+      explainStoredFactTime({ basis: "server", sentAt: hoursBefore(100), at }),
+    ).toBe("too_old");
+    expect(
+      explainStoredFactTime({
+        basis: "server",
+        sentAt: new Date(RECEIVED.getTime() + 3_600_000).toISOString(),
+        at,
+      }),
+    ).toBe("ahead");
+    expect(explainStoredFactTime({ basis: "server", sentAt: null, at })).toBe(
+      "not_sent",
+    );
+    expect(explainStoredFactTime({ basis: null, sentAt: null, at })).toBeNull();
+  });
+});
+
+describe("recordDoorReceipt — the delivery keeps the time it happened (ADR 0286)", () => {
+  const base = { restaurantId: "r1", orderId: "o1", userId: "u1" };
+  const order = {
+    id: "o1",
+    order_number: "PO-1",
+    inventory_id: "inv1",
+    quantity: 16,
+    bottles_total: 192,
+    unit_type: "case",
+    status: "SENT",
+    quantity_received: 0,
+  };
+
+  beforeEach(() => {
+    jest
+      .useFakeTimers({
+        doNotFake: ["nextTick", "setImmediate", "queueMicrotask"],
+      })
+      .setSystemTime(RECEIVED);
+  });
+  afterEach(() => jest.useRealTimers());
+
+  const lastDeliveredWrite = (calls: any) =>
+    calls.orderWrites.filter((w: any) => "delivered_at" in w.payload).pop();
+
+  it("[REVERT-FAILS] a staff tap 2 hours old dates the order by the tap, not the sync", async () => {
+    const { db, calls, order: row } = makeDb({ order });
+    const r = await new ReceivingService(db).recordDoorReceipt({
+      ...base,
+      countedQty: 2,
+      countedUom: "case",
+      clientCapturedAt: hoursBefore(2),
+      role: "staff",
+    });
+
+    expect(row.delivered_at).toBe(hoursBefore(2));
+    expect(calls.eventInserts[0].occurred_at).toBe(hoursBefore(2));
+    expect(calls.eventInserts[0].occurred_at_basis).toBe("sent");
+    expect(r.factTime).toEqual({
+      at: hoursBefore(2),
+      basis: "sent",
+      sentAt: hoursBefore(2),
+      reason: "within_window",
+    });
+  });
+
+  it("[REVERT-FAILS] a staff tap 5 days old is dated when it reached us, and the tap is kept as evidence", async () => {
+    const { db, calls, order: row } = makeDb({ order });
+    const r = await new ReceivingService(db).recordDoorReceipt({
+      ...base,
+      countedQty: 2,
+      countedUom: "case",
+      clientCapturedAt: hoursBefore(120),
+      role: "staff",
+    });
+
+    // No `occurred_at` sent: the column's DEFAULT now() dates it, and it then
+    // equals `created_at` exactly.
+    expect(calls.eventInserts[0].occurred_at).toBeUndefined();
+    expect(calls.eventInserts[0].occurred_at_basis).toBe("server");
+    expect(calls.eventInserts[0].client_captured_at).toBe(hoursBefore(120));
+    expect(row.delivered_at).toBe(RECEIVED.toISOString());
+    expect(r.factTime.basis).toBe("server");
+    expect(r.factTime.reason).toBe("too_old");
+  });
+
+  it("[REVERT-FAILS] a manager's tap 40 days old stands, marked back-dated", async () => {
+    const { db, calls, order: row } = makeDb({ order });
+    const r = await new ReceivingService(db).recordDoorReceipt({
+      ...base,
+      countedQty: 2,
+      countedUom: "case",
+      clientCapturedAt: hoursBefore(24 * 40),
+      role: "manager",
+    });
+
+    expect(calls.eventInserts[0].occurred_at).toBe(hoursBefore(24 * 40));
+    expect(calls.eventInserts[0].occurred_at_basis).toBe("back_dated");
+    expect(row.delivered_at).toBe(hoursBefore(24 * 40));
+    expect(r.factTime.basis).toBe("back_dated");
+  });
+
+  it("[REVERT-FAILS] a retry that arrives after the 72-hour line keeps the first attempt's date", async () => {
+    const shared = makeDb({
+      order,
+      rpcError: { message: "deadlock detected" },
+    });
+    const service = new ReceivingService(shared.db);
+    const tap = hoursBefore(2);
+    const send = () =>
+      service.recordDoorReceipt({
+        ...base,
+        countedQty: 2,
+        countedUom: "case",
+        clientCapturedAt: tap,
+        idempotencyKey: "tap-late",
+        role: "staff",
+      });
+
+    // Attempt one writes the event, dated by the tap, and fails the movement.
+    await expect(send()).rejects.toThrow(/shelf count could not be updated/);
+    expect(shared.table[0].occurred_at).toBe(tap);
+
+    // The phone is offline for four days; the retry is now 98 hours after the
+    // tap. Deciding again would call it too old and date it today.
+    shared.setRpcError(null);
+    jest.setSystemTime(new Date(RECEIVED.getTime() + 96 * 3_600_000));
+    const r = await send();
+
+    expect(r.alreadyRecorded).toBe(true);
+    expect(r.factTime).toEqual({
+      at: tap,
+      basis: "sent",
+      sentAt: tap,
+      reason: "within_window",
+    });
+    expect(shared.order.delivered_at).toBe(tap);
+  });
+
+  it("[REVERT-FAILS] a late-syncing earlier truck does not pull back a later truck's time", async () => {
+    // Truck two (later) synced first and set the order's time; truck one's
+    // receipt, taken earlier, arrives after it.
+    const {
+      db,
+      calls,
+      order: row,
+    } = makeDb({
+      order: { ...order, delivered_at: hoursBefore(1) },
+    });
+    await new ReceivingService(db).recordDoorReceipt({
+      ...base,
+      countedQty: 2,
+      countedUom: "case",
+      clientCapturedAt: hoursBefore(30),
+      role: "staff",
+    });
+
+    expect(lastDeliveredWrite(calls).or).toBe(
+      `delivered_at.is.null,delivered_at.lt."${hoursBefore(30)}"`,
+    );
+    expect(row.delivered_at).toBe(hoursBefore(1));
+  });
+
+  it("moves the order's time forward for a later truck", async () => {
+    const { db, order: row } = makeDb({
+      order: { ...order, delivered_at: hoursBefore(30) },
+    });
+    await new ReceivingService(db).recordDoorReceipt({
+      ...base,
+      countedQty: 2,
+      countedUom: "case",
+      clientCapturedAt: hoursBefore(1),
+      role: "staff",
+    });
+    expect(row.delivered_at).toBe(hoursBefore(1));
+  });
+
+  it("[REVERT-FAILS] a failed status write is a 503 the outbox retries, not a silent success", async () => {
+    const { db } = makeDb({
+      order,
+      orderUpdateError: (p) =>
+        "status" in p ? { code: "08006", message: "connection failure" } : null,
+    });
+    const attempt = new ReceivingService(db).recordDoorReceipt({
+      ...base,
+      countedQty: 2,
+      countedUom: "case",
+    });
+    await expect(attempt).rejects.toBeInstanceOf(ServiceUnavailableException);
+    await expect(attempt).rejects.toMatchObject({
+      response: { reason: "order_write_failed" },
+    });
+  });
+
+  it("[REVERT-FAILS] a failed delivery-time write is a 503 too", async () => {
+    const { db } = makeDb({
+      order,
+      orderUpdateError: (p) =>
+        "delivered_at" in p
+          ? { code: "57014", message: "statement timeout" }
+          : null,
+    });
+    await expect(
+      new ReceivingService(db).recordDoorReceipt({
+        ...base,
+        countedQty: 2,
+        countedUom: "case",
+      }),
+    ).rejects.toMatchObject({
+      response: { reason: "order_delivered_at_failed" },
+    });
+  });
+
+  it("an order whose own rules refuse the status (23514) keeps the receipt, the stock, and its old time", async () => {
+    // A permanent refusal: a 503 would make the outbox re-send it forever.
+    const {
+      db,
+      calls,
+      order: row,
+    } = makeDb({
+      order: { ...order, status: "CANCELLED", delivered_at: null },
+      orderUpdateError: (p) =>
+        "status" in p
+          ? {
+              code: "23514",
+              message: "illegal procurement_orders.status transition",
+            }
+          : null,
+    });
+    const r = await new ReceivingService(db).recordDoorReceipt({
+      ...base,
+      countedQty: 2,
+      countedUom: "case",
+      clientCapturedAt: hoursBefore(2),
+    });
+
+    expect(r.stockBooked).toBe(true);
+    expect(calls.orderWrites).toHaveLength(1);
+    expect(calls.orderWrites[0].refused).toBe(true);
+    expect(row.delivered_at).toBeNull();
+  });
+});
+
+describe("ReceivingController.door — the role comes from the token (ADR 0286)", () => {
+  const body = {
+    countedQty: 2,
+    countedUom: "case",
+    clientCapturedAt: hoursBefore(100),
+  };
+
+  it("[REVERT-FAILS] forwards the house role the token names", async () => {
+    const service = { recordDoorReceipt: jest.fn().mockResolvedValue({}) };
+    await new ReceivingController(service as any).door("o1", body as any, {
+      userId: "u1",
+      restaurantId: "r1",
+      role: "manager",
+    });
+    expect(service.recordDoorReceipt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        role: "manager",
+        clientCapturedAt: hoursBefore(100),
+      }),
+    );
+  });
+
+  it("forwards no role as null, which never back-dates", async () => {
+    const service = { recordDoorReceipt: jest.fn().mockResolvedValue({}) };
+    await new ReceivingController(service as any).door("o1", body as any, {
+      userId: "u1",
+      restaurantId: "r1",
+    });
+    expect(service.recordDoorReceipt.mock.calls[0][0].role).toBeNull();
   });
 });
