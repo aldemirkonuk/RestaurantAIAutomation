@@ -27,8 +27,34 @@ import { trackGuidance } from './analytics'
 import { announceGuidance, focusTourHelpButton } from './announce'
 import { TIP_REGISTRY } from './tours/registry'
 
+/**
+ * Where the signed-in person's account copy of guidance stands, read from the
+ * preferences query. `'read'` once a read of it has succeeded, and still
+ * `'read'` if a later refetch fails (the last good copy is kept). Before any
+ * read has succeeded: `'failed'` when the last one failed, `'loading'`
+ * otherwise (one under way, waiting for a connection, or held back until a
+ * preferences save settles). Signed out, it is `'read'`: there is no account
+ * copy to wait for.
+ */
+export type AccountCopy = 'loading' | 'failed' | 'read'
+
 interface GuidanceContextValue {
   state: GuidanceState
+  /**
+   * Until this is `'read'`, no read of the account's copy has succeeded and
+   * `state` is this browser's copy over an empty stand-in. Then no tip
+   * shows, the setup nudge is not due, and `persistGuidance` drops every
+   * guidance save, here and to the account. Help's "Page tips" card reads it
+   * to hold its on/off and button.
+   */
+  accountCopy: AccountCopy
+  /**
+   * Two tips or tours turned away in this tab (`snoozeTip`, `dismissTip`, a
+   * tour's `onSkipped`) stop tips in this tab until it is closed or
+   * `resetTips` runs. Help's "Page tips" card reads it to say so and offer
+   * "Turn tips back on".
+   */
+  tipsPausedInThisTab: boolean
   tipVisibleFor: PageTourId | null
   isTourRunning: boolean
   startTour: (pageId: PageTourId) => void
@@ -73,6 +99,7 @@ function writeLocalGuidance(state: GuidanceState) {
         },
         pages: state.pages,
         setup_nudge: state.setup_nudge,
+        saved_at: state.saved_at,
       }),
     )
   } catch {
@@ -109,6 +136,26 @@ function writeSession(s: SessionFatigue) {
   }
 }
 
+function savedAt(copy: Partial<GuidanceState> | null | undefined): number | null {
+  const t = typeof copy?.saved_at === 'string' ? Date.parse(copy.saved_at) : NaN
+  return Number.isFinite(t) ? t : null
+}
+
+/**
+ * The account's copy (`raw`) and this browser's own copy, made into one.
+ *
+ * The account's copy stands alone when this browser holds no readable copy,
+ * or when the account's stamp is readable and this browser's is not, or is
+ * earlier: "Turn tips back on" saved later elsewhere is not undone by an
+ * older "Don't show tips again" kept here. Otherwise this browser's `global`,
+ * `pages` and `setup_nudge` are laid over the account's, as before, so a save
+ * that has not reached the account (a failed or still-running request) keeps
+ * its effect here. That includes a tie, normally this browser's own save come
+ * back: the gateway deep-merges a save into what it holds, so the account's
+ * copy can still carry a key this save took away (a page's old
+ * `snooze_until`), and this browser's copy is the exact one. The phone app
+ * sets no time, so a save made there does not by itself win over this copy.
+ */
 function mergeGuidance(raw: unknown): GuidanceState {
   const g = (raw && typeof raw === 'object' ? raw : {}) as Partial<GuidanceState>
   const local = readLocalGuidance()
@@ -119,13 +166,18 @@ function mergeGuidance(raw: unknown): GuidanceState {
       use_cards_seen: g.guide?.use_cards_seen ?? [],
     },
     setup_nudge: { ...DEFAULT_SETUP_NUDGE, ...g.setup_nudge },
+    saved_at: g.saved_at,
   }
   if (!local) return base
+  const accountAt = savedAt(g)
+  const localAt = savedAt(local)
+  if (accountAt !== null && (localAt === null || accountAt > localAt)) return base
   return {
     ...base,
     global: { ...base.global, ...local.global },
     pages: { ...base.pages, ...local.pages },
     setup_nudge: { ...base.setup_nudge, ...local.setup_nudge },
+    saved_at: local.saved_at ?? base.saved_at,
   }
 }
 
@@ -157,10 +209,31 @@ export function GuidanceProvider({ children }: { children: ReactNode }) {
   const location = useLocation()
   const queryClient = useQueryClient()
   const userId = useAuthStore((s) => s.user?.userId) ?? null
-  const { preferences, updatePreferences } = useUserPreferences()
+  const { preferences, isAccountRead, error, updatePreferences } = useUserPreferences()
+  // Signed in, and no read of the account's copy has succeeded yet (the first
+  // is loading, or it failed): `preferences` is an empty stand-in, the
+  // placeholder or `{}`, so this browser would decide from its own copy
+  // alone and could flash a tip the person turned off in another browser.
+  // Tips wait, the setup nudge waits (showing it saves), and no save is made:
+  // one built from the stand-in, setup-nudge counts included, would be
+  // deep-merged over the account's copy. Once a read has succeeded, a failed
+  // refetch changes nothing here: TanStack keeps that copy beside the error,
+  // and guidance goes on from it.
+  const accountCopy: AccountCopy = !userId || isAccountRead
+    ? 'read'
+    : error
+      ? 'failed'
+      : 'loading'
+  const accountCopyRead = accountCopy === 'read'
+  // `localTick` re-reads the local mirror after every write, so a tip the
+  // person dismissed leaves at once even when the server copy has not come
+  // back (or there is no person id to cache it under) — "make sure they
+  // disappear every time" (founder, 2026-10-01).
+  const [localTick, setLocalTick] = useState(0)
   const state = useMemo(
     () => mergeGuidance(preferences.guidance),
-    [preferences.guidance],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [preferences.guidance, localTick],
   )
   const [tourRunning, setTourRunning] = useState(false)
   const sessionRef = useRef(readSession())
@@ -170,8 +243,12 @@ export function GuidanceProvider({ children }: { children: ReactNode }) {
   )
 
   const persist = useCallback(
-    (next: GuidanceState) => {
+    (unstamped: GuidanceState) => {
+      // Both copies carry the time of this save, so `mergeGuidance` can tell
+      // which is newer, in this browser and in any other.
+      const next: GuidanceState = { ...unstamped, saved_at: new Date(Date.now()).toISOString() }
       writeLocalGuidance(next)
+      setLocalTick((n) => n + 1)
       if (userId) {
         queryClient.setQueryData<UserPreferences>(
           queryKeys.user.preferences(userId),
@@ -186,13 +263,16 @@ export function GuidanceProvider({ children }: { children: ReactNode }) {
   /** Read the latest guidance from cache + local overlay — avoids stale closure overwrites. */
   const persistGuidance = useCallback(
     (updater: (prev: GuidanceState) => GuidanceState) => {
+      // Nothing is saved, in this browser or to the account, until the
+      // account's copy has been read (see `accountCopy`).
+      if (!accountCopyRead) return
       const cached = userId
         ? queryClient.getQueryData<UserPreferences>(queryKeys.user.preferences(userId))
         : undefined
       const prev = mergeGuidance(cached?.guidance ?? preferences.guidance)
       persist(updater(prev))
     },
-    [persist, preferences.guidance, queryClient, userId],
+    [accountCopyRead, persist, preferences.guidance, queryClient, userId],
   )
 
   const patchPage = useCallback(
@@ -246,7 +326,14 @@ export function GuidanceProvider({ children }: { children: ReactNode }) {
     [location.search],
   )
 
+  // Read from the ref on every render. Each skip also changes state, so the
+  // provider re-renders with the new count: `snoozeTip` and `dismissTip` bump
+  // `sessionTick`, and a tour's `onSkipped` ends `tourRunning`, which
+  // `startTour` set.
+  const tipsPausedInThisTab = sessionRef.current.skips >= 2
+
   const tipVisibleFor = useMemo((): PageTourId | null => {
+    if (!accountCopyRead) return null
     if (state.global.hide_all_tips) return null
     if (tourRunning) return null
 
@@ -257,13 +344,15 @@ export function GuidanceProvider({ children }: { children: ReactNode }) {
     // fatigue guard only kicks in once the user has actively snoozed/dismissed
     // a couple of tips this session — it does not cap the *number of distinct
     // pages* offered, only repeat nagging after explicit rejection.
-    if (sessionRef.current.skips >= 2) return null
+    if (tipsPausedInThisTab) return null
 
     const pageId = resolveGuidancePageId(location.pathname, location.search)
     if (!pageId) return null
 
     const page = state.pages[pageId] ?? defaultPageState()
-    if (page.tip !== 'unseen') return null
+    // "Not now" is a four-hour snooze, not a goodbye (ADR 0251 D2): a snoozed
+    // tip may come back on a later visit once its snooze has run out.
+    if (page.tip !== 'unseen' && page.tip !== 'snoozed') return null
     if (page.snooze_until && new Date(page.snooze_until).getTime() > Date.now()) {
       return null
     }
@@ -271,7 +360,7 @@ export function GuidanceProvider({ children }: { children: ReactNode }) {
     return pageId
     // sessionTick forces recompute after skip/offer mutations
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state, tourRunning, location.pathname, location.search, sessionTick])
+  }, [accountCopyRead, state, tipsPausedInThisTab, tourRunning, location.pathname, location.search, sessionTick])
 
   useEffect(() => {
     if (!tipVisibleFor) return
@@ -301,15 +390,27 @@ export function GuidanceProvider({ children }: { children: ReactNode }) {
     [patchPage],
   )
 
+  // "Don't show tips again" turns EVERY page's tip off, not this page's alone,
+  // until the person turns them back on (/help, "Page tips"). The founder,
+  // 2026-10-01: "if I say don't ever show again then I don't want to see it
+  // again until I press or check for it." A tour the person starts on
+  // purpose still plays; only the unasked strip stops.
   const dismissTip = useCallback(
     (pageId: PageTourId) => {
       sessionRef.current.skips += 1
       writeSession(sessionRef.current)
       setSessionTick((n) => n + 1)
       trackGuidance('tip_dismissed', { pageId })
-      patchPage(pageId, { tip: 'dismissed' })
+      persistGuidance((prev) => {
+        const pagePrev = prev.pages[pageId] ?? defaultPageState()
+        return {
+          ...prev,
+          global: { ...prev.global, hide_all_tips: true },
+          pages: { ...prev.pages, [pageId]: { ...pagePrev, tip: 'dismissed' } },
+        }
+      })
     },
-    [patchPage],
+    [persistGuidance],
   )
 
   const completeTipViaTour = useCallback(
@@ -412,6 +513,8 @@ export function GuidanceProvider({ children }: { children: ReactNode }) {
 
   const value: GuidanceContextValue = {
     state,
+    accountCopy,
+    tipsPausedInThisTab,
     tipVisibleFor,
     isTourRunning: tourRunning,
     startTour,
@@ -422,7 +525,7 @@ export function GuidanceProvider({ children }: { children: ReactNode }) {
     resetTips,
     markUseCardSeen,
     resolvePageId,
-    isSetupNudgeDue: isSetupNudgeDue(state.setup_nudge),
+    isSetupNudgeDue: accountCopyRead && isSetupNudgeDue(state.setup_nudge),
     setupNudgeDismissedThisSession: nudgeDismissedThisSession,
     markSetupNudgeShown,
     snoozeSetupNudge,
