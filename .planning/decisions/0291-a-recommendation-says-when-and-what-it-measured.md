@@ -110,6 +110,7 @@ Reasoning:
 **What it costs**
 - The version bump makes every house's version-3 insight rows refused and recomputed once, across all categories, not only purchasing.
 - A dip from 2 to 7 days ago drops from `now` to `this_week`. A dip older than a week drops to `this_month` and leaves the default digest.
+- The ADR 0191 claim `ADR-0191-ONE-SHARED-ITEM-STATE` (`CLAIMS.jsonl:597`) pinned `INSIGHT_GENERATOR_VERSION = 3`, and went red on the bump. It is corrected in place to hold the version at 3 or above, which is what it protects: a version-2 row is still refused. It holds at origin/main and here, and fails on version 2 or a renamed constant.
 
 **Revisit when**
 - C02 lands a business date (the age should then count house days, not UTC days);
