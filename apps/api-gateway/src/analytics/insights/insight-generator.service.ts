@@ -152,8 +152,13 @@ export const MIN_TREND_OBSERVED = 14;
  *       served: `main` is at 2): a type that names no subject and no period
  *       stores the week it fired in as its `period_key` ("Each firing is one
  *       card").
+ *   4 — 2026-10-03 (ADR 0291): vendor concentration is recorded under
+ *       `purchasing`, the category the catalogue files it under, not `risk`.
+ *       A version-3 row still sits under `risk`, where the catalogue's
+ *       narrowed read never looks and the purchasing+risk rails would show it
+ *       twice once the new row lands; it is refused and recomputed.
  */
-export const INSIGHT_GENERATOR_VERSION = 3;
+export const INSIGHT_GENERATOR_VERSION = 4;
 
 /**
  * InsightGeneratorService — executes the insight candidate space.
@@ -964,10 +969,13 @@ export class InsightGeneratorService {
         topCount: 1,
         hhi,
       };
+      // Filed where the catalogue files it (ADR 0291): `categorize()` sorts
+      // every vendor dimension into purchasing, and a type recorded under any
+      // other category is one the catalogue's narrowed read cannot find.
       push(
         this.record(
           "vendor.purchase_spend.concentration",
-          "risk",
+          "purchasing",
           "concentration",
           ev,
           {
