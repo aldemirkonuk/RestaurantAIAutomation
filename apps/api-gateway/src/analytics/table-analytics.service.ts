@@ -108,7 +108,9 @@ export class TableAnalyticsService {
    * "Who served it" ranked the floor on 1,000 of 3,341 checks (29.6% of the
    * takings) under "the last 90 days" and put last place first (A-006). A
    * failed or partial read now THROWS (ADR 0067): it used to log and return
-   * `[]`, which every caller reported as an empty feed.
+   * `[]`, and every caller then reported the failure as an empty feed: the
+   * waiter and table registers said "pos_checks is empty" over a read that
+   * never answered.
    */
   private async loadChecks(restaurantId: string, sinceDays = 90) {
     const since = new Date(Date.now() - sinceDays * 86400000).toISOString();
@@ -135,6 +137,78 @@ export class TableAnalyticsService {
         "The POS checks could not be read, so nothing about them is claimed.",
       );
     }
+  }
+
+  /**
+   * What the window holds, said as what it is (ADR 0020, ADR 0051).
+   *
+   * `dataStatus` used to say the pos_checks table was empty whenever the
+   * WINDOW held no check. /reports fixes the window at 90 days, so a house
+   * whose feed stopped a season ago was told it had no checks at all, and the
+   * server register then blamed "an absent field on the POS feed" (analytics
+   * walk 2026-10-03, A-040). Three different facts, now three different
+   * answers:
+   *
+   *   checks in the window   "live" (scenario-verify keys on that word), and
+   *                          `latestCheckAt` is the newest one among them;
+   *   none, but older ones   the window is empty, and the newest check's date;
+   *   none ever              no POS check is recorded for this restaurant.
+   *
+   * The probe runs ONLY when the window is empty — one row off
+   * idx_pos_checks_restaurant_opened (restaurant_id, opened_at DESC) — and is
+   * filtered on `voided` like the window, so the two can never disagree about
+   * which checks count. A failed probe throws: an unreadable history is not
+   * "no check ever" (ADR 0067).
+   */
+  private async feedStatus(
+    restaurantId: string,
+    sinceDays: number,
+    checks: Array<{ opened_at?: string | null }>,
+  ): Promise<{
+    dataStatus: string;
+    checksInWindow: number;
+    latestCheckAt: string | null;
+  }> {
+    if (checks.length > 0) {
+      let latest: string | null = null;
+      for (const c of checks)
+        if (c.opened_at && (latest === null || isoOf(c.opened_at) > latest))
+          latest = isoOf(c.opened_at);
+      return {
+        dataStatus: "live",
+        checksInWindow: checks.length,
+        latestCheckAt: latest,
+      };
+    }
+    const { data, error } = await this.dbService
+      .getClient()
+      .from("pos_checks")
+      .select("opened_at")
+      .eq("restaurant_id", restaurantId)
+      .eq("voided", false)
+      .order("opened_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) {
+      this.logger.warn(`latest POS check probe failed: ${error.message}`);
+      throw new ServiceUnavailableException(
+        "Whether this restaurant has any POS check could not be read, so nothing about its feed is claimed.",
+      );
+    }
+    const raw = (data as { opened_at?: string | null } | null)?.opened_at;
+    if (!raw)
+      return {
+        dataStatus:
+          "awaiting POS check feed — no POS check is recorded for this restaurant (voided checks are not counted)",
+        checksInWindow: 0,
+        latestCheckAt: null,
+      };
+    const latest = isoOf(raw);
+    return {
+      dataStatus: `no POS check opened in the last ${sinceDays} days — the latest was opened ${latest.slice(0, 10)} (UTC)`,
+      checksInWindow: 0,
+      latestCheckAt: latest,
+    };
   }
 
   // ==========================================================================
@@ -323,9 +397,7 @@ export class TableAnalyticsService {
       ),
       correlations,
       drivers,
-      dataStatus: checks.length
-        ? "live"
-        : "awaiting POS check feed (pos_checks is empty)",
+      ...(await this.feedStatus(restaurantId, sinceDays, checks)),
       generatedAt: new Date().toISOString(),
     };
   }
@@ -427,9 +499,7 @@ export class TableAnalyticsService {
         (a: any, b: any) => (b.revenue ?? 0) - (a.revenue ?? 0),
       ),
       adjusted,
-      dataStatus: checks.length
-        ? "live"
-        : "awaiting POS check feed (pos_checks is empty)",
+      ...(await this.feedStatus(restaurantId, sinceDays, checks)),
       generatedAt: new Date().toISOString(),
     };
   }
@@ -452,13 +522,18 @@ export class TableAnalyticsService {
       minCount: 3,
       maxPairs: 40,
     });
+    const feed = await this.feedStatus(restaurantId, sinceDays, checks);
     return {
       sinceDays,
       transactionCount: transactions.length,
       pairs,
-      dataStatus: transactions.length
-        ? "live"
-        : "awaiting POS check items (pos_checks.items is empty)",
+      ...feed,
+      // Checks in the window, none listing two named items, is a third fact:
+      // the feed is live and the checks are there, but there is no basket.
+      dataStatus:
+        feed.checksInWindow > 0 && transactions.length === 0
+          ? `${feed.checksInWindow} POS check${feed.checksInWindow === 1 ? "" : "s"} in the last ${sinceDays} days, none listing two or more named items`
+          : feed.dataStatus,
       generatedAt: new Date().toISOString(),
     };
   }
@@ -468,7 +543,8 @@ export class TableAnalyticsService {
   // ==========================================================================
 
   async getHotTables(restaurantId: string) {
-    const checks = await this.loadChecks(restaurantId, 90);
+    const sinceDays = 90;
+    const checks = await this.loadChecks(restaurantId, sinceDays);
     const tables = await this.listTables(restaurantId);
     const tableById = new Map(tables.map((t: any) => [t.id, t]));
     const now = Date.now();
@@ -512,10 +588,18 @@ export class TableAnalyticsService {
       openChecks: hot.length,
       watchlist: hot.filter((h) => h.watch),
       all: hot,
-      dataStatus: checks.length
-        ? "live"
-        : "awaiting POS check feed (pos_checks is empty)",
+      ...(await this.feedStatus(restaurantId, sinceDays, checks)),
       generatedAt: new Date().toISOString(),
     };
   }
+}
+
+/**
+ * A timestamptz as a UTC ISO string, so two of them compare as strings and a
+ * date can be sliced off the front. An unparseable value is returned as it
+ * came rather than replaced with a date nobody recorded.
+ */
+function isoOf(v: string): string {
+  const t = Date.parse(v);
+  return Number.isNaN(t) ? v : new Date(t).toISOString();
 }
