@@ -128,6 +128,12 @@ describe('rec-forward — the goal door', () => {
     expect(dip.plan.basis).toMatch(/bottles sold/);
     expect(dip.plan.basis).toMatch(/prescription/);
     expect(dip.plan.basis).not.toMatch(/wine sales/i);
+    // The bottles series is computed whenever a cellar log exists, till or
+    // not (insight-generator computeConsumptionFamily / computeChecksFamily
+    // are gated independently), so a basis limiting it to log-only houses
+    // would be a narrower false claim.
+    expect(dip.plan.basis).not.toMatch(/only the cellar log/);
+    expect(dip.plan.basis).toMatch(/in any house that keeps one/);
     expect(dip.plan.name).not.toMatch(/back to baseline/);
 
     const slide = goalOfferFor(e({ ruleKey: 'weekly_demand_slide' }));

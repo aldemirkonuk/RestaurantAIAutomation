@@ -138,7 +138,7 @@ const RULE_GOAL: Record<string, RuleGoal> = {
     direction: 'at_least',
     name: (s) => (s ? `${s} wine revenue, after a soft ${s}` : 'Wine revenue, after a soft day'),
     basis:
-      'The rule fires when one day’s sales fall below the same weekday’s baseline: whole-check sales through the till (every item on the check, not only wine), or bottles sold where only the cellar log is kept. The entry’s own sentence says which. A goal cannot be held on whole-check sales, so this one is held on wine revenue, the figure the prescription (top-margin picks, one by-the-glass feature) moves. It records part of what fell, not all of it.',
+      'The rule fires when one day’s sales fall below the same weekday’s baseline: whole-check sales through the till (every item on the check, not only wine), or bottles sold from the cellar log, in any house that keeps one. The entry’s own sentence says which. A goal cannot be held on whole-check sales, so this one is held on wine revenue, the figure the prescription (top-margin picks, one by-the-glass feature) moves. It records part of what fell, not all of it.',
   },
   weekly_demand_slide: {
     metricKey: 'wine_revenue',
