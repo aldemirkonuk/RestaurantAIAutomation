@@ -264,8 +264,8 @@ export const WEEKDAY_NAMES = [
  * back as 0.26844096449466426, …370 and …437, depending only on how many
  * bottles each sold. Strict equality would have called that group five
  * different risks and ranked them by rounding error. So: equal to within one
- * part in a billion of the larger magnitude (absolute below 1). That is nine
- * orders below anything this product prints and seven above double rounding.
+ * part in a billion of the larger magnitude (absolute below 1): six or more
+ * orders finer than a risk printed to 0.1%, about seven above double rounding.
  */
 export const TIE_TOLERANCE = 1e-9;
 

@@ -1,6 +1,6 @@
 # 0272 — A ranking or a pairing is printed only when the data can tell it apart
 
-- **Status:** Proposed 2026-10-03. This is a technical-approach choice made under the locked [[0020-no-fabricated-answers]]. The method, alpha 0.05, the 30-check floor, the 5-check pair floor, the 1.3 lift floor and the 1e-9 tie tolerance are the build's picks, **not founder answers**. Two product forks (below) stay open and are not taken here.
+- **Status:** Proposed 2026-10-03. This is a technical-approach choice made under the locked [[0020-no-fabricated-answers]]. The method, alpha 0.05, the 30-check floor, the 5-check pair floor, the 1.3 lift floor and the 1e-9 tie tolerance are the build's picks, **not founder answers**. Three forks (below) stay open and are not taken here. [2026-10-04, settle pass: this line said two; fork 3, the unbounded tie at the restock cut, was found after the record was written.]
 - **Date:** 2026-10-03
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** peer_rank, "#1 of N", leaderTest, Welch, Bonferroni, runner-up, pooled rest, adjustedGroupEffects, basket_affinity, pairAssociations, hypergeometric, Fisher exact, pUpper, pAdjusted, C(k,2), lift, chi-square, correlationSignificance, Fisher z, stockout_risk, tie, TIE_TOLERANCE, sameValue, cutKeepingTies, byStockoutRisk, reorderList, restock bars, INSIGHT_GENERATOR_VERSION 4, C14, A-002, A-003, A-070, F-132
@@ -19,7 +19,7 @@ On a fixture built to Tuzlu's shape (`insight-rankings-significance.spec.ts`, 3,
 ## Options considered
 
 1. **Permutation max-T (Westfall–Young).** Exact control of the selection, with no distributional assumption. It costs O(B·N) per generate, on a request path that `/recommendations` reaches on every cold read. Rejected for now. Revisit if the normal approximation is shown to mislead at n ≥ 30.
-2. **Benjamini–Hochberg FDR over the pairs.** One pairing is printed. For a single pick, BH at its first step, Holm and Bonferroni are the same threshold, so BH buys nothing. Rejected.
+2. **Benjamini–Hochberg FDR over the pairs.** BH is step-up: when many pairs carry moderate p-values it can admit the smallest-p pair at a threshold looser than α/C(k,2), so it would print more often. What it bounds is the expected share of false pairs among those it admits, not the chance that the one pair printed is noise. Bonferroni (the same as Holm at its first step) bounds that chance under any mix of real and null pairs, and that is the promise one printed sentence makes. On a house with nothing to find, both hold the error at α (BH needs the tests independent or positively dependent; Bonferroni needs nothing). Rejected for a single printed pick; revisit if more than one pairing is ever listed. [2026-10-03, last-call review: this option first said that for one pick BH "buys nothing". That holds for Holm, not for BH's step-up rule; corrected in place.]
 3. **χ² with Yates' correction.** It is still invalid at the expected counts the rare pairs have. Rejected; the exact test costs no more.
 4. **An effect-size floor alone** (lead ≥ x%, lift ≥ y). It does not control noise: the largest of k means and the rarest of 7,000 pairs clear any fixed floor by chance. Kept only as a second gate (the 1.3 lift floor), never as the test.
 5. **Mann–Whitney for the ranking.** It tests a shift in the distribution, not the mean that the sentence ("by average check") names. Rejected.
@@ -46,7 +46,7 @@ A "#1", a pairing or a list cut is printed only when the data separates it from 
    - The pick is the smallest `pUpper`, then the larger count, then code-unit order of the names. Picking one of several pairs that each passed is a choice of which true sentence to show, not a ranking claim, so a deterministic order is enough here.
    - The score's z is −Φ⁻¹(pUpper), capped at 8. χ² stays on the record as a description and is never a gate.
    - The descriptive `/analytics/basket` endpoint (`table-analytics.service.ts:430`) keeps its own floor and sort, and only gains the new fields.
-4. **Ties** (`sameValue`, `TIE_TOLERANCE = 1e-9`, `comparisons.ts:270`). Two computed values are tied when they are equal to within 1e-9 of the larger magnitude, or absolutely when below 1. That is nine orders of magnitude below anything this product prints and seven above double rounding. Ties are judged on the computed value, never on its printed rounding.
+4. **Ties** (`sameValue`, `TIE_TOLERANCE = 1e-9`, `comparisons.ts:270`). Two computed values are tied when they are equal to within 1e-9 of the larger magnitude, or absolutely when below 1. That is six or more orders of magnitude finer than the finest print of the values it compares (a stockout risk to a tenth of a percent), and about seven above double rounding. Ties are judged on the computed value, never on its printed rounding.
    - A tied #1 is withheld. This follows the weekday precedent at `advanced-analytics.service.ts:575-576`.
    - A list cut never splits a tie group (`cutKeepingTies`, `comparisons.ts:292`). The server's restock list (`analytics.service.ts:691`) grows past 25, and the web's 14 restock bars grow past 14 (`rp-registers-house.tsx:520`).
    - Order inside a group comes from the data, never from database order (`byStockoutRisk`, `comparisons.ts:314`): fewest days of cover, unmeasured last, then fewest bottles, then name, then id.
@@ -57,7 +57,7 @@ What carried it: every sentence above is a claim that one thing differs from oth
 
 ### Measured power and null rate
 
-Measured on the fixture's generator with seeded houses (a throwaway spec, not kept). Every time a planted effect fired, it named the planted entity.
+Measured on the fixture's generator with seeded houses (a throwaway spec, not kept, so this table cannot be re-run from the repo; the committed specs pin only the null-house silence and the planted cases). Every time a planted effect fired, it named the planted entity. The lane verifier's independent fixture agreed in direction, not in every figure: a ×1.08 server found in 219 of 300 runs (73%, against 84% here), a pair on 2% of checks in 60 of 60, and a null pairing in 2 of 300.
 
 | Case | Fired |
 |---|---|
@@ -73,8 +73,8 @@ A house of Tuzlu's size will therefore hear about a server whose checks run abou
 
 ## Consequences
 
-- **Easier.** On a null house the waiter, table and pairing records are silent (the 40-house spec allows at most 2 firings per rule). The stockout record no longer names one wine out of a tie. The restock list and bars no longer depend on database order.
-- **Given up.** Real but small leads go unsaid. Booth-sized outliers on a runner-up cut the waiter rule's power sharply (50/50 down to 15/50 in the table above), because they widen that server's variance. The restock list can run past 25 rows, and the bars past 14, when a tie straddles the cut.
+- **Easier.** On a null house the waiter, table and pairing records almost always stay silent: the measured rate is 0–1% per rule (table above), and the 40-house spec allows at most 2 firings per rule. The contract is a bounded error rate, not zero. The stockout record no longer names one wine out of a tie. The restock list and bars no longer depend on database order.
+- **Given up.** Real but small leads go unsaid. Booth-sized outliers on a runner-up cut the waiter rule's power sharply (50/50 down to 15/50 in the table above), because they widen that server's variance. The restock list can run past 25 rows, and the bars past 14, when a tie straddles the cut, and nothing bounds how far. The one large tie in practice is the 0% group (fork 3): a probe with 5 wines below their reorder point that have measured demand and 40 with none and nothing on hand listed all 45, where the code before this record listed 25. [2026-10-04, settle pass: the bound was missing here; added.]
 - **Cache.** Version-3 rows are recomputed on first read after deploy (ADR 0191). Lanes `cap` and `rec` also touch the generator. Whichever merges second rebases its version bump onto this one (5, not a second 4).
 - **The CLAIMS row `ADR-0191-ONE-SHARED-ITEM-STATE`** pinned `INSIGHT_GENERATOR_VERSION = 3;`. Its verify is amended in place to read a version of 3 or more, so ADR 0191's check outlives every later bump.
 - **Revisit when:** a founder or owner reports a withheld lead they could see on the floor (power too low), or a printed #1 or pairing fails a shuffled-data replay on a real house (the normal approximation misleads). Either one reopens Option 1.
@@ -91,11 +91,20 @@ A house of Tuzlu's size will therefore hear about a server whose checks run abou
 
 ## Forks (open, not taken here)
 
-- **Fork 1 — A-069, per-rule naming.** Should /recommendations name which rules could not be judged (ADR 0160 Q4's "field next"), or keep the corrected substitute sentence? Recommendation (a), the corrected sentence now, ships in PR-2. Answer (b) would need an ADR 0160 bracket.
+- **Fork 1 — A-069, per-rule naming.** Should /recommendations name which rules could not be judged (ADR 0160 Q4's "field next"), or keep the corrected substitute sentence? Recommendation (a), the corrected sentence now, is planned for PR-2 (branch `fix/all-clear-over-partial-reads`, not built when this record was written). Answer (b) would need an ADR 0160 bracket.
 - **Fork 2 — the "no separable leader" copy.** Should a withheld #1 say so ("no server stands apart yet") or stay silent? This record only withholds, which ADR 0020 already requires. Any wording is a product choice.
+- **Fork 3 — a long tie at the restock cut.** The cut grows through any tie at row 25 (bar 14), with no bound. A wine below its reorder point that has measured demand carries a risk of at least 1 − the service level (its on-hand is at most the reorder point), so the only large tie in practice is the 0% group: wines with no measured demand in the window and nothing on hand, below a reorder point of 0. When fewer than 25 wines below their reorder point have measured demand (fewer than 14 for the bars), the edge lands in that group and all of it joins the list and the bars. Before this record, 25 rows and 14 bars were shown and database order chose the extras. Options:
+  - (a) Keep it. The list is true, and the table, which is the register's first view, is read row by row.
+  - (b) Keep the table whole but leave the 0% group out of the bars. A 0% bar has no height and ranks nothing.
+  - (c) Stop the cut before an edge tie larger than the cut and print "and N more tied at P%". That is new copy.
+
+  Recommendation: (b). The table keeps the tie rule whole, and the chart stops filling with empty bars. This is a presentation choice, so it is not taken here; the build ships (a).
 
 ## Review trail
 
 | Date | Reviewer | Outcome |
 |---|---|---|
 | 2026-10-03 | — | Created, lane `sig` PR-1 (branch `fix/insights-significance-gates`) |
+| 2026-10-03 | Lane verifier | Pass at `ee14215d7`; minor prose points only |
+| 2026-10-03 | Last-call review | Four prose corrections in place: Option 2 (BH), Decision 4 (tolerance), Consequences (null rate) and Fork 1 (PR-2 not built). No rule changed |
+| 2026-10-04 | Settle pass | Kept the last-call corrections; added BH's dependence condition to Option 2, the unbounded restock tie to Given up, and fork 3. No rule changed |
