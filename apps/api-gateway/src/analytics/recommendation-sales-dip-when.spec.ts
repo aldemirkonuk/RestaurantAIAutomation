@@ -1,6 +1,7 @@
 import {
   RecommendationsService,
   SALES_DIP_WEEK_DAYS,
+  freshestSalesDip,
   salesDipAdvice,
   salesDipWhen,
 } from "./recommendations.service";
@@ -161,7 +162,9 @@ describe("only a sales dip raises the sales card", () => {
     expect(entry).toBeUndefined();
   });
 
-  it("a bottles-sold dip (a house with only the cellar log) still does", async () => {
+  // The bottles series is computed in any house with a cellar log, till or
+  // no till; this dip raises the card on its own.
+  it("a bottles-sold dip from the cellar log still does", async () => {
     const entry = await entryFor([
       dip({
         candidateKey: "overall.bottles.vs_same_weekday",
@@ -183,6 +186,54 @@ describe("only a sales dip raises the sales card", () => {
     ]);
     expect(entry?.urgency).toBe("now");
     expect(entry?.periodKey).toBe(`d:${dayBack(1)}`);
+  });
+});
+
+describe("where two sales dips stand, the card restates the newer day's", () => {
+  // A house with a till AND a cellar log carries overall.revenue and
+  // overall.bottles, each ending on its own newest observed day. Ranked by
+  // score alone, a weeks-old revenue dip could hide yesterday's bottles dip,
+  // and the card would read this_month while a `now` dip sat behind it.
+  const staleRevenue = () =>
+    dip({
+      candidateKey: "overall.revenue.vs_same_weekday",
+      sentence: "stale revenue dip",
+      periodKey: `d:${dayBack(30)}`,
+      subject: weekdayOf(dayBack(30)),
+      score: 9,
+    });
+  const freshBottles = () =>
+    dip({
+      candidateKey: "overall.bottles.vs_same_weekday",
+      sentence: "fresh bottles dip",
+      periodKey: `d:${dayBack(1)}`,
+      subject: weekdayOf(dayBack(1)),
+      score: 1,
+    });
+
+  it("a stale dip ranked first does not hide a fresh one ranked behind it", async () => {
+    const entry = await entryFor([staleRevenue(), freshBottles()]);
+    expect(entry?.urgency).toBe("now");
+    expect(entry?.observation).toBe("fresh bottles dip");
+    expect(entry?.periodKey).toBe(`d:${dayBack(1)}`);
+  });
+
+  it("two dips about the same day keep the generator's rank", () => {
+    const now = new Date("2026-10-03T12:00:00.000Z");
+    const a = { periodKey: "d:2026-10-02", id: "first" };
+    const b = { periodKey: "d:2026-10-02", id: "second" };
+    expect(freshestSalesDip([a, b], now)?.id).toBe("first");
+  });
+
+  it("a dated dip beats one whose day cannot be read, wherever it ranks", () => {
+    const now = new Date("2026-10-03T12:00:00.000Z");
+    const undated = { periodKey: null, id: "undated" };
+    const future = { periodKey: "d:2026-10-09", id: "future" };
+    const old = { periodKey: "d:2026-08-15", id: "old" };
+    expect(freshestSalesDip([undated, future, old], now)?.id).toBe("old");
+    // With nothing dated, rank decides.
+    expect(freshestSalesDip([undated, future], now)?.id).toBe("undated");
+    expect(freshestSalesDip([], now)).toBeUndefined();
   });
 });
 
@@ -228,6 +279,24 @@ describe("salesDipWhen — the bands", () => {
         date: null,
         ageDays: null,
       });
+  });
+
+  // 2026-10-03 is a Saturday. A day a whole number of weeks old falls on
+  // today's weekday, where "Before the next Saturday" could mean tonight or a
+  // week out.
+  it("a day a whole number of weeks old says today's service, not 'the next'", () => {
+    for (const [key, weekday] of [
+      ["d:2026-09-26", "Saturday"], // 7 days, this_week
+      ["d:2026-08-15", "Saturday"], // 49 days, this_month
+    ]) {
+      const text = salesDipAdvice(salesDipWhen(key, now), weekday);
+      expect(text).toMatch(new RegExp(`^Before today's ${weekday} service:`));
+      expect(text).not.toMatch(/the next/);
+      expect(text).not.toMatch(/tonight/i);
+    }
+    expect(salesDipAdvice(salesDipWhen("d:2026-09-25", now), "Friday")).toMatch(
+      /^Before the next Friday:/,
+    );
   });
 
   it("the copy for an undated day names the subject and says its age is unknown", () => {

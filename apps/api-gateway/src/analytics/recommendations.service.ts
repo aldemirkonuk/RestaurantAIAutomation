@@ -110,6 +110,34 @@ export function salesDipWhen(
   return { urgency: "this_month", date, ageDays };
 }
 
+/**
+ * Which sales dip the card restates (ADR 0291). A house with both a till and
+ * a cellar log can carry two: `overall.revenue` and `overall.bottles`, each
+ * ending on its own newest observed day. Ranked by score alone, a weeks-old
+ * dip on one series could outrank yesterday's on the other, and the card would
+ * read `this_month` while a dip that earns `now` sat hidden behind it. So the
+ * card takes the dip about the newest day. Among dips of the same age, or
+ * where no age can be read, the generator's rank decides, as it did before.
+ */
+export function freshestSalesDip<T extends { periodKey?: string | null }>(
+  dips: readonly T[],
+  now: Date = new Date(),
+): T | undefined {
+  let best: T | undefined;
+  let bestAge = Number.POSITIVE_INFINITY;
+  for (const dip of dips) {
+    const age =
+      salesDipWhen(dip.periodKey ?? null, now).ageDays ??
+      Number.POSITIVE_INFINITY;
+    // Strictly newer only: a tie keeps the higher-ranked dip.
+    if (best === undefined || age < bestAge) {
+      best = dip;
+      bestAge = age;
+    }
+  }
+  return best;
+}
+
 const SALES_DIP_LEVERS =
   "brief the floor on top-margin picks, run one by-the-glass feature, and pair your strongest server with the weakest section. A soft day is a staffing-and-suggestion problem before it's a demand problem.";
 
@@ -128,9 +156,16 @@ export function salesDipAdvice(
   const weekday = when.date
     ? WEEKDAY_NAMES[new Date(`${when.date}T00:00:00Z`).getUTCDay()]
     : subject || null;
-  const opener = weekday
-    ? `Before the next ${weekday}:`
-    : "Before that weekday comes round again:";
+  // A whole number of weeks old means today IS that weekday (the 49-day
+  // Saturday of 2026-10-03 was read on a Saturday), and "Before the next
+  // Saturday" said on a Saturday could mean tonight or a week out. Say which.
+  const todayIsThatDay =
+    when.date !== null && when.ageDays !== null && when.ageDays % 7 === 0;
+  const opener = !weekday
+    ? "Before that weekday comes round again:"
+    : todayIsThatDay
+      ? `Before today's ${weekday} service:`
+      : `Before the next ${weekday}:`;
   const age =
     when.date && when.ageDays !== null
       ? `the newest day this comparison could read is ${weekday} ${when.date}, ${when.ageDays} days ago.`
@@ -365,13 +400,17 @@ export class RecommendationsService {
     // A SALES dip only (ADR 0291): `overall.purchase_spend.vs_same_weekday`
     // (category purchasing) also carries the comparator's name, and a soft
     // purchasing day must not raise "brief the floor". What can fire here is
-    // whole-check sales from the till (`overall.revenue`) or, in a house with
-    // only the cellar log, bottles sold (`overall.bottles`).
-    const salesBaseline = ctx.insights.find(
-      (i: any) =>
-        i.candidateKey?.includes("vs_same_weekday") &&
-        i.category === "sales" &&
-        (i.effectPct ?? 0) < -0.08,
+    // whole-check sales from the till (`overall.revenue`) or bottles sold
+    // from the cellar log (`overall.bottles`), in any house that keeps one,
+    // till or no till: the generator computes the two families independently.
+    // Where both dipped, the card restates the one about the newer day.
+    const salesBaseline = freshestSalesDip<any>(
+      ctx.insights.filter(
+        (i: any) =>
+          i.candidateKey?.includes("vs_same_weekday") &&
+          i.category === "sales" &&
+          (i.effectPct ?? 0) < -0.08,
+      ),
     );
     // Urgent only when the day is recent: the comparison reads the newest day
     // it observed, which can be weeks old (ADR 0291).
