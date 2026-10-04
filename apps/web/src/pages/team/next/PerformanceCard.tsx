@@ -67,7 +67,7 @@ function coverLine(
   if (covered === 0) {
     return `None of these ${count(services, 'service')} records covers with its sales, so ${name} has no sales per cover to compare.`;
   }
-  return `Sales per cover counts the ${covered.toLocaleString()} of these ${count(services, 'service')} that record covers.`;
+  return `Sales per cover counts the ${covered.toLocaleString()} of these ${count(services, 'service')} that record covers with their sales.`;
 }
 
 function benchmarkLine(

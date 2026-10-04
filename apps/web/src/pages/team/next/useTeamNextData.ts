@@ -57,11 +57,16 @@ import { mondayOf, parsePeriod, resolveName } from './tm-format';
 /**
  * /team's server-side windows.
  *
- * There is exactly ONE: the per-member performance benchmark reads the most
- * recent 200 `server_sales` rows across the whole restaurant and renders a
- * median and an inter-quartile band from them. Every read this hook makes — the
- * week, the roster, the credential file, the coverage rules, the time-off file
- * — is uncapped, so the only windowed figure on either half is that benchmark.
+ * Two are declared here: the per-member performance benchmark reads the most
+ * recent 200 `server_sales` rows across the whole restaurant and takes a median
+ * and an inter-quartile band from them (`BENCHMARK_SERVICES`), and the settings
+ * trail is capped (`TRAIL_ROWS`). A third is not: the member's own performance
+ * read takes their last `limit = 6` services (`performance.service.ts:176`), a
+ * parameter rather than a literal, so the card prints the exact count it
+ * received instead (ADR 0294 M6; the gap is filed in
+ * `tech-debt.d/2026-10-04-fix-team-performance-units.md`). The other reads this
+ * hook makes — the week, the roster, the credential file, the coverage rules,
+ * the time-off file — are uncapped.
  *
  * It used to be reachable only from the legacy desk's inspector. Since the
  * parity build (2026-09-04) the redesigned half renders it too, in the roster

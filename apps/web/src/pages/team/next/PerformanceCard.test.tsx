@@ -176,7 +176,7 @@ describe('PerformanceCard — every figure has its unit (A-048)', () => {
 
   it("says which of the member's services the per-cover figure counts, when not all", async () => {
     const el = await card({ ...COMPUTED, metrics: { ...COMPUTED.metrics!, coverServices: 1 } });
-    expect(text(el)).toContain('Sales per cover counts the 1 of these 2 services that record covers.');
+    expect(text(el)).toContain('Sales per cover counts the 1 of these 2 services that record covers with their sales.');
   });
 
   it('says the currency is not recorded when the house states none', async () => {
