@@ -60,7 +60,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Wordmark } from '@/components/mudavym';
+import { Wordmark, localToday } from '@/components/mudavym';
 import { useAuth } from '@/contexts/AuthContext';
 import { animate, ink, settle, springs, tally, turn, useReducedMotion } from '@/lib/mudavym/motion';
 import { useMudavymDesign } from '@/lib/mudavym/useMudavymDesign';
@@ -81,6 +81,7 @@ import {
   listSources,
   nameOf,
   orderForThread,
+  parseDay,
   threadSpan,
   word,
   type LinkContext,
@@ -146,6 +147,11 @@ function Tally({ value, floor, pending }: { value: number | null; floor: boolean
   );
 }
 
+/** A value from the address, bounded before it is printed back. */
+function clip(raw: string, max = 40): string {
+  return raw.length > max ? `${raw.slice(0, max)}…` : raw;
+}
+
 /**
  * The page's only stylesheet. Durations and easings are interpolated FROM the
  * tokens, so what runs on screen is the token and not a copy of it.
@@ -207,6 +213,12 @@ const PAGE_CSS = `
 .mudavym .lg-input { flex: 1 1 auto; min-width: 0; height: 36px; padding: 0 11px; border: 1px solid var(--paper-2); border-radius: 8px; background: var(--paper-1); color: var(--ink-1); font-family: ${MONO}; font-size: 12px; }
 .mudavym .lg-input::placeholder { color: var(--ink-4); font-family: ${SANS}; }
 .mudavym .lg-input:hover { border-color: var(--seal-ring); }
+/* The day field: a native date input, so the browser's own picker opens and
+   the arrow keys step it one day at a time. It wraps under its label on a
+   phone rather than pushing the button off the edge. */
+.mudavym .lg-dayform { flex-wrap: wrap; align-items: center; }
+.mudavym .lg-dayform__label { font-size: 12px; color: var(--ink-2); white-space: nowrap; }
+.mudavym .lg-input--day { flex: 0 1 180px; }
 .mudavym .lg-btn { height: 36px; padding: 0 14px; border: 1px solid var(--paper-2); border-radius: 8px; background: var(--paper-1); color: var(--ink-1); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; white-space: nowrap; }
 .mudavym .lg-btn:hover { border-color: var(--seal-ring); background: var(--paper-2); }
 .mudavym .lg-btn--seal { background: var(--seal); border-color: var(--seal); color: var(--paper-0); }
@@ -362,16 +374,25 @@ interface StripProps {
   active: string | null;
   onToggle: (source: string) => void;
   threadOn: boolean;
+  /** The feed was read back from a day: everything after it is unread. */
+  jumped: boolean;
 }
 
-function RegisterStrip({ data, active, onToggle, threadOn }: StripProps) {
+function RegisterStrip({ data, active, onToggle, threadOn, jumped }: StripProps) {
   const sources = useMemo(() => displaySources(data.sourcesQueried), [data.sourcesQueried]);
   const requestFailed = data.state === 'unreadable';
   const loaded = data.events?.length ?? 0;
   // A floor while rows remain beyond the window, or while the gateway did not
-  // say and the window is full. Exact only when the gateway said "no more".
+  // say and the window is full. Exact only when the gateway said "no more" —
+  // and never when the feed was read back from a day, because then "no more"
+  // is about the entries BEFORE it: every entry after the day is unread, so
+  // the page cannot know whether a count here is all the register holds. It
+  // can be (a day named after the newest entry reads everything), but the
+  // page has no way to tell that case apart, so the count is a floor.
   const floor =
-    data.hasMore === true || (data.hasMore === null && loaded >= LOGS_SERVER_WINDOWS.TIMELINE);
+    jumped ||
+    data.hasMore === true ||
+    (data.hasMore === null && loaded >= LOGS_SERVER_WINDOWS.TIMELINE);
   const loading = data.state === 'loading';
   const failedList: string[] = data.failedSources ?? [];
   const readCount =
@@ -520,21 +541,35 @@ function Row({ e, index, link, onOpen, onFollow, showDate, cursor, rowRef }: Row
 
 /* ── the window, at the foot of the list ──────────────────────────────────── */
 
-function WindowFoot({ data, shown, threadOn }: { data: LogsNextData; shown: number; threadOn: boolean }) {
+interface FootProps {
+  data: LogsNextData;
+  shown: number;
+  threadOn: boolean;
+  /** The heading of the day the feed was read back from; null for the newest. */
+  from: string | null;
+}
+
+function WindowFoot({ data, shown, threadOn, from }: FootProps) {
   const loaded = data.events?.length ?? 0;
   const failed = data.failedSources ?? [];
   const what = threadOn ? 'this thread holds' : 'the registers hold';
+  // Read back from a day, "the first N" and "all N the registers hold" are
+  // both false: the page starts at the END OF THAT DAY, and nothing after it
+  // was asked for. Every sentence names where the reading starts instead.
+  const head = from ? `Showing ${loaded} entries back from the end of ${from}` : `Showing the first ${loaded} entries`;
   let sentence: string;
   if (data.stalled) {
     sentence = `Older entries exist, but the last page holds no dated entry to page from — the feed cannot walk past this point. ${loaded} entries are on the page.`;
   } else if (data.hasMore === true) {
-    sentence = `Showing the first ${loaded} entries · older entries exist${
+    sentence = `${head} · older entries exist${
       data.window !== null ? ` — the gateway reads ${data.window} at a time` : ''
     }.`;
   } else if (data.hasMore === false) {
-    sentence = `All ${loaded} entries ${what} are on the page.`;
+    sentence = from
+      ? `All ${loaded} entries up to the end of ${from} are on the page; entries after it are not read here.`
+      : `All ${loaded} entries ${what} are on the page.`;
   } else {
-    sentence = `Showing the first ${loaded} entries · whether older entries exist was not reported by this gateway.`;
+    sentence = `${head} · whether older entries exist was not reported by this gateway.`;
   }
   return (
     <div className="lg-foot" aria-live="polite">
@@ -577,19 +612,31 @@ export interface LogsNextProps {
 export default function LogsNext({ ground }: LogsNextProps) {
   const [searchParams, setSearchParams] = useSearchParams();
   const correlationId = searchParams.get('correlationId')?.trim() || null;
+  // A day to read back from, by the name /calendar already uses. Not trimmed:
+  // `parseDay` is strict, and a value it cannot read is SAID below rather than
+  // quietly read from the top.
+  const dateParam = searchParams.get('date') || null;
+  const day = useMemo(() => parseDay(dateParam), [dateParam]);
+  const dayUnreadable = dateParam !== null && day === null;
+  // A thread always reads whole: a date never cuts one short, so "Ruled off"
+  // stays true. The date stays in the address for the way back.
+  const jump = correlationId ? null : day;
+  /** The reading on screen — what `lg-turn` turns between. */
+  const reading = correlationId ? `thread:${correlationId}` : `feed:${jump?.key ?? ''}`;
   const [draft, setDraft] = useState(correlationId ?? '');
+  const [dayDraft, setDayDraft] = useState(day?.key ?? '');
   const [activeSource, setActiveSource] = useState<string | null>(null);
   const [open, setOpen] = useState<TimelineEvent | null>(null);
   const [cursor, setCursor] = useState<string | null>(null);
   const { activeRestaurantId } = useAuth();
   const documentPageOn = useMudavymDesign('document');
-  const data = useLogsNextData(correlationId);
+  const data = useLogsNextData(correlationId, jump?.end ?? null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const headRef = useRef<HTMLElement | null>(null);
   const ledgerRef = useRef<HTMLElement | null>(null);
   const rowRefs = useRef(new Map<string, HTMLLIElement>());
   /** The reading `lg-turn` last landed on. See the effect below. */
-  const turned = useRef<string | null>(correlationId);
+  const turned = useRef<string>(reading);
 
   // lg-arrive — the opening, once.
   useEffect(() => {
@@ -605,21 +652,27 @@ export default function LogsNext({ ground }: LogsNextProps) {
   // round trip `<main>` holds the loading band — and this effect used to
   // depend on `correlationId` alone, which meant the page's one signature
   // motion played on three skeleton bars while the thread it was written for
-  // appeared with no motion at all. The ref starts on the correlation the page
+  // appeared with no motion at all. The ref starts on the reading the page
   // mounted with, so the first landing is the arrival (`lg-arrive`) and not a
-  // turn; every later change of reading is a turn, in both directions.
+  // turn; every later change of reading is a turn, in both directions. A
+  // reading is a thread, or the feed read from the newest or back from a day,
+  // so reading back from a day turns the page and so does coming back.
   useEffect(() => {
     if (data.state !== 'ready') return;
-    if (turned.current === correlationId) return;
-    turned.current = correlationId;
+    if (turned.current === reading) return;
+    turned.current = reading;
     if (!ledgerRef.current) return;
     animate(ledgerRef.current, [{ opacity: 0, transform: 'translateY(5px)' }, { opacity: 1, transform: 'none' }], turn);
-  }, [correlationId, data.state]);
+  }, [reading, data.state]);
 
-  // The URL is the one source of truth for the thread; the input mirrors it.
+  // The URL is the one source of truth for the thread and the day; the inputs
+  // mirror it.
   useEffect(() => {
     setDraft(correlationId ?? '');
   }, [correlationId]);
+  useEffect(() => {
+    setDayDraft(day?.key ?? '');
+  }, [day?.key]);
 
   const follow = useCallback(
     (id: string) => {
@@ -635,6 +688,25 @@ export default function LogsNext({ ground }: LogsNextProps) {
   );
 
   const leave = useCallback(() => follow(''), [follow]);
+
+  /**
+   * Read back from a day, or (with '') from the newest. Like `follow`, it is a
+   * change of address — the back button undoes it — and a change of reading,
+   * so the open sheet and the register sieve go with the reading they were
+   * about.
+   */
+  const readFrom = useCallback(
+    (key: string) => {
+      const next = new URLSearchParams(searchParams);
+      if (key) next.set('date', key);
+      else next.delete('date');
+      if (next.toString() === searchParams.toString()) return;
+      setSearchParams(next);
+      setOpen(null);
+      setActiveSource(null);
+    },
+    [searchParams, setSearchParams],
+  );
 
   const link: LinkContext = useMemo(
     () => ({
@@ -878,6 +950,7 @@ export default function LogsNext({ ground }: LogsNextProps) {
             active={activeSource}
             onToggle={(s) => setActiveSource((cur) => (cur === s ? null : s))}
             threadOn={!!correlationId}
+            jumped={!!jump}
           />
 
           {/* ── The thread box ─────────────────────────────────────────── */}
@@ -913,6 +986,70 @@ export default function LogsNext({ ground }: LogsNextProps) {
             carries the id, the event store included.
           </p>
 
+          {/* ── A day to read back from ─────────────────────────────────
+              Submit only, never on change: a native date field fires a
+              change for every intermediate value while a year is typed, and
+              each would be a read. A thread reads whole, so there is no
+              field while one is on screen. */}
+          {!correlationId ? (
+            <>
+              <form
+                className="lg-search lg-dayform"
+                onSubmit={(ev) => {
+                  ev.preventDefault();
+                  readFrom(dayDraft);
+                }}
+              >
+                <label className="lg-dayform__label" htmlFor="lg-day">
+                  Read back from a day
+                </label>
+                <input
+                  id="lg-day"
+                  type="date"
+                  className="lg-input lg-input--day lg-ink"
+                  value={dayDraft}
+                  max={localToday()}
+                  onChange={(ev) => setDayDraft(ev.target.value)}
+                />
+                <button type="submit" className="lg-btn lg-ink">
+                  Read back
+                </button>
+              </form>
+              <p className="lg-hint">
+                The feed starts at the end of the day you name and walks older from there; entries after it are not
+                read.
+              </p>
+            </>
+          ) : null}
+
+          {/* ── Where this reading starts, when it is not the newest ──── */}
+          {!correlationId && dayUnreadable ? (
+            <p className="lg-band lg-band--quiet" role="status">
+              The address names a day this page cannot read (
+              <span style={{ fontFamily: MONO }}>{clip(dateParam ?? '')}</span>), so the feed starts at the newest
+              entry. A day is written <span style={{ fontFamily: MONO }}>YYYY-MM-DD</span>.
+            </p>
+          ) : null}
+          {jump ? (
+            <div className="lg-band lg-band--quiet">
+              <p className="lg-band__mark">Read back from a day</p>
+              <p>
+                <strong>Read back from the end of {jump.heading}.</strong>
+              </p>
+              <p>
+                The feed starts at the end of that day, newest first. Entries after it are not read here, so every
+                count is a floor. A row can still sit under a later heading (for example, a till check opened that day
+                and closed after it is dated by its close), and rows with no date recorded come last, under their own
+                heading.
+              </p>
+              <p>
+                <button type="button" className="lg-btn lg-ink" onClick={() => readFrom('')} style={{ marginTop: 6 }}>
+                  Back to the newest
+                </button>
+              </p>
+            </div>
+          ) : null}
+
           {/* ── The ledger ─────────────────────────────────────────────── */}
           <main ref={ledgerRef} key={correlationId ?? '__feed'} aria-label={correlationId ? 'One thread' : 'The feed'}>
             {data.state === 'loading' ? <Loading threadOn={!!correlationId} /> : null}
@@ -926,7 +1063,11 @@ export default function LogsNext({ ground }: LogsNextProps) {
                       ? 'No entry carries this correlation id.'
                       : activeSource
                         ? `Nothing from ${nameOf(activeSource)} on this page.`
-                        : 'No entries.'}
+                        : jump
+                          ? someFailed
+                            ? `No entry read on or before ${jump.heading}.`
+                            : `Nothing is recorded on or before ${jump.heading}.`
+                          : 'No entries.'}
                   </strong>
                 </p>
                 <p>
@@ -942,7 +1083,11 @@ export default function LogsNext({ ground }: LogsNextProps) {
                           // without saying "on this page, from this window" would be the
                           // page reporting a crowding-out as a quiet register.
                           'This is the page you have read, not the register itself: the gateway merges all six before it cuts the window, so a busy register can crowd this one off the page. Read older entries, or clear the choice.'
-                        : 'The registers answered and hold nothing for this house yet.'}
+                        : jump
+                          ? // NOT "nothing for this house yet": only the entries up
+                            // to the end of the day were asked for.
+                            'The registers answered for the entries up to the end of that day. Entries after it are not read here — name a later day, or go back to the newest.'
+                          : 'The registers answered and hold nothing for this house yet.'}
                 </p>
               </div>
             ) : null}
@@ -1005,7 +1150,12 @@ export default function LogsNext({ ground }: LogsNextProps) {
               : null}
 
             {data.state === 'ready' && events ? (
-              <WindowFoot data={data} shown={visible?.length ?? 0} threadOn={!!correlationId} />
+              <WindowFoot
+                data={data}
+                shown={visible?.length ?? 0}
+                threadOn={!!correlationId}
+                from={jump?.heading ?? null}
+              />
             ) : null}
           </main>
 

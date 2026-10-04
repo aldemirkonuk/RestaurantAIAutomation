@@ -141,7 +141,7 @@ export const bench = analysis<BenchRegister>({
       },
       { label: 'Committed, not yet delivered', value: money(b.committed) },
       {
-        label: 'The week’s trend',
+        label: 'Trend per day, last 28 days',
         value: b.trendPerDayPct === null ? EM : pct(b.trendPerDayPct),
       },
       { label: 'Goals running', value: figure(b.goals.length) },
@@ -180,7 +180,11 @@ export const bench = analysis<BenchRegister>({
         'The week’s own extremes',
         b.tie ? EM : (b.bestDay ?? EM),
         b.tie ? EM : (b.worstDay ?? EM),
-        b.tie ? 'shared — withheld' : b.trendPerDayPct === null ? EM : pct(b.trendPerDayPct),
+        b.tie
+          ? 'shared — withheld'
+          : b.trendPerDayPct === null
+            ? EM
+            : `${pct(b.trendPerDayPct)} a day`,
       ],
     });
     for (const w of b.weekdays)
