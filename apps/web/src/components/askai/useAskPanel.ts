@@ -7,8 +7,10 @@
  * asking" all dispatch `ASK_AI_OPEN_EVENT`, and this hook listens.
  */
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useContext, useEffect, useState } from 'react'
+import { AuthContext } from '../../contexts/AuthContext'
 import { ASK_AI_OPEN_EVENT, type AskOpenDetail } from './events'
+import { useAskSession, type AskSession } from './useAskSession'
 
 export interface AskPanelState {
   open: boolean
@@ -16,11 +18,22 @@ export interface AskPanelState {
   /** The folio "Keep asking" carried in, until the person drops it or the panel closes. */
   followUp: AskOpenDetail['followUp'] | null
   dropFollowUp: () => void
+  /** What has been asked this sitting, held here so a close never drops a question in flight. */
+  session: AskSession
 }
 
 export function useAskPanel(): AskPanelState {
+  const auth = useContext(AuthContext)
+  const userId = auth?.user?.userId ?? null
+  const houseId = auth?.activeRestaurantId ?? null
+  // One person's sitting in one house, keyed as "the house said" is: a branch
+  // switch in this tab or a new person on a shared till starts it again.
+  const scope = userId && houseId ? `${userId}@${houseId}` : null
   const [open, setOpen] = useState(false)
   const [followUp, setFollowUp] = useState<AskOpenDetail['followUp'] | null>(null)
+  /** The scope the follow-up was carried into. It trails `scope` by one render, as the session's state does. */
+  const [followUpScope, setFollowUpScope] = useState(scope)
+  const session = useAskSession(scope, open)
 
   useEffect(() => {
     const onOpen = (e: Event) => {
@@ -40,9 +53,17 @@ export function useAskPanel(): AskPanelState {
     if (!open) setFollowUp(null)
   }, [open])
 
+  // A follow-up names a folio in the house it came from; it does not carry
+  // into another. This runs after the render in which the scope changed, so
+  // that render is given no follow-up (`followUpScope`), not the old one.
+  useEffect(() => {
+    setFollowUp(null)
+    setFollowUpScope(scope)
+  }, [scope])
+
   const close = useCallback(() => setOpen(false), [])
   const dropFollowUp = useCallback(() => setFollowUp(null), [])
-  return { open, close, followUp, dropFollowUp }
+  return { open, close, followUp: followUpScope === scope ? followUp : null, dropFollowUp, session }
 }
 
 /**
