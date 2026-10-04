@@ -402,7 +402,7 @@ describe('LogsNext — reading back from a day', () => {
     expect(lastCall()).toEqual([null, DAY.end]);
     expect(turns()).toBe(0);
     expect((screen.getByLabelText('Read back from a day') as HTMLInputElement).value).toBe('2026-07-22');
-    expect(screen.getByText(`Entries on and before ${DAY.heading}.`)).toBeTruthy();
+    expect(screen.getByText(`Read back from the end of ${DAY.heading}.`)).toBeTruthy();
     expect(
       screen.getByText(new RegExp(`Showing 1 entries back from the end of ${DAY.heading} · older entries exist`)),
     ).toBeTruthy();

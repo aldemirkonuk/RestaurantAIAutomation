@@ -215,4 +215,18 @@ describe('lg-format — a day to read back from', () => {
     expect(parseDay(undefined)).toBeNull();
     expect(parseDay('2028-02-29')).not.toBeNull();
   });
+
+  it('never seeds an expanded-year instant, which a hand-typed 9999-12-31 would make', () => {
+    // Where the day after 9999-12-31 starts past 9999 in UTC (every zone west
+    // of Greenwich, the suite's New York pin included) the raw end would be
+    // `+010000-01-01T…`; east of it the end is still 9999-12-31 in UTC and is
+    // an ordinary seed. Either way the cursor keeps the four-digit shape.
+    const expanded = new Date(9999, 11, 32).getUTCFullYear() > 9999;
+    if (expanded) expect(parseDay('9999-12-31')).toBeNull();
+    for (const key of ['9999-12-31', '9999-12-30', '0100-01-01', '2026-07-22']) {
+      const d = parseDay(key);
+      if (d) expect(d.end).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+    }
+    expect(parseDay('9999-12-30')).not.toBeNull();
+  });
 });

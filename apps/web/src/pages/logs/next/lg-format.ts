@@ -245,6 +245,7 @@ export interface DayJump {
 }
 
 const DAY_SHAPE = /^(\d{4})-(\d{2})-(\d{2})$/;
+const ISO_FOUR_DIGIT_YEAR = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 
 /**
  * Read a named day, or `null` when the value is not one.
@@ -274,7 +275,18 @@ export function parseDay(raw: string | null | undefined): DayJump | null {
   if (noon.getFullYear() !== y || noon.getMonth() !== mo || noon.getDate() !== d) return null;
   const end = new Date(y, mo, d + 1);
   if (Number.isNaN(end.getTime())) return null;
-  return { key: raw, end: end.toISOString(), heading: fmtDay(noon.toISOString()) };
+  const endIso = end.toISOString();
+  // A day whose end falls past 9999 in UTC (9999-12-31 west of Greenwich)
+  // serialises with an expanded year, `+010000-01-01T…`. The gateway's
+  // parseCursor accepts it (Date.parse reads it, toISOString re-emits it) and
+  // splices it into a PostgREST `or=` filter, where its own comment says a
+  // `+` would be read as a space (logs-timeline.service.ts:553-555). What
+  // PostgREST then does was not checked. Only a hand-typed address reaches
+  // it, since the field's max is today, so the seed keeps the four-digit
+  // shape every other cursor has, and anything else is said to be unreadable
+  // like any other day this page cannot read.
+  if (!ISO_FOUR_DIGIT_YEAR.test(endIso)) return null;
+  return { key: raw, end: endIso, heading: fmtDay(noon.toISOString()) };
 }
 
 /* ── counts ───────────────────────────────────────────────────────────────── */

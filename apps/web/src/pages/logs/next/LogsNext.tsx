@@ -385,8 +385,10 @@ function RegisterStrip({ data, active, onToggle, threadOn, jumped }: StripProps)
   // A floor while rows remain beyond the window, or while the gateway did not
   // say and the window is full. Exact only when the gateway said "no more" —
   // and never when the feed was read back from a day, because then "no more"
-  // is about the entries BEFORE it: every entry after the day is unread, so a
-  // count here is at least what the register holds, never all of it.
+  // is about the entries BEFORE it: every entry after the day is unread, so
+  // the page cannot know whether a count here is all the register holds. It
+  // can be (a day named after the newest entry reads everything), but the
+  // page has no way to tell that case apart, so the count is a floor.
   const floor =
     jumped ||
     data.hasMore === true ||
@@ -1032,11 +1034,13 @@ export default function LogsNext({ ground }: LogsNextProps) {
             <div className="lg-band lg-band--quiet">
               <p className="lg-band__mark">Read back from a day</p>
               <p>
-                <strong>Entries on and before {jump.heading}.</strong>
+                <strong>Read back from the end of {jump.heading}.</strong>
               </p>
               <p>
                 The feed starts at the end of that day, newest first. Entries after it are not read here, so every
-                count is a floor.
+                count is a floor. A row can still sit under a later heading (for example, a till check opened that day
+                and closed after it is dated by its close), and rows with no date recorded come last, under their own
+                heading.
               </p>
               <p>
                 <button type="button" className="lg-btn lg-ink" onClick={() => readFrom('')} style={{ marginTop: 6 }}>
