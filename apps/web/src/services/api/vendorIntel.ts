@@ -75,6 +75,9 @@ export function comparisonClassLabel(cls: ComparisonClass): string {
  * legacy `/vendor-prices` page never reads `observations` at all, so nothing
  * here can break it.
  */
+/** ADR 0273 — `own-paper-sighting.ts` `SightingDateBasis`. */
+export type SightingDateBasis = 'invoice_issue_date' | 'invoice_issue_date_corrected' | 'verified_at'
+
 export interface VendorObservationRow {
   id: string
   vendorName: string | null
@@ -94,6 +97,18 @@ export interface VendorObservationRow {
   packSize: number
   unitVolumeMl: number | null
   observedAt: string
+  /** ADR 0273 — which date `observedAt` is on a verified receipt's row: the
+   * invoice's issue date (`invoice_issue_date`, or
+   * `invoice_issue_date_corrected` when a person corrected it), or the moment
+   * it was checked (`verified_at`). Null on rows written without one; optional
+   * because a gateway older than this field sends none. */
+  dateBasis?: SightingDateBasis | null
+  /** The writer's sentence saying why this date and not the other. */
+  dateSentence?: string | null
+  /** The calendar date the invoice states (YYYY-MM-DD), when one was read. */
+  issueDate?: string | null
+  /** When a person checked the receipt. */
+  verifiedAt?: string | null
   parseConfidence: number | null
   /** The STORED write-time verdict — never re-derived on the client, so the
    * ladder always agrees with `own-paper-sighting.ts` /
