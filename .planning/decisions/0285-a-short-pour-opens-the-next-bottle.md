@@ -39,7 +39,7 @@ What carried it: the founder's ruling settles *whether* to cross lots. The metho
 
 - **ADR 0115 (drinks lock, PR #589, unmerged).** R19 lists "the last ml below one measure" among D3's four ledger fixes. The founder's 2026-10-04 pick ships that item now. When #589 merges, its D3 row should mark R19's item as shipped by this ADR. `lot_id`, the decomposition record and per-lot idempotency keys stay with D3. There is no table-shape change here.
 - **ADR 0011.** 1b is unchanged, and its "does not raise" sentence is corrected in place. B19 (glass voids return whole bottles, OD-67) is untouched.
-- **Lane postime** (`fix/pos-sales-dated-at-sale-time`) will likely give this function a date. Whichever lane merges second rebuilds its `CREATE OR REPLACE` on the other's body. The migration's closing assertion fails on a second overload. The claims row fails CI if a later definition drops the cross-lot draw or the 0 ml guard.
+- **Lane postime** (`fix/pos-sales-dated-at-sale-time`, ADR 0281, local commit `589b3bc4d`, not pushed) redefines this function. Its migration `a_pos_sale_is_dated_by_its_check` drops the 8-argument form and creates a 9-argument one (`p_occurred_at`) from the **baseline** body. Measured on PGlite with both files in the tree, 2026-10-04: with postime's version sorting first, this migration halts on its closing assertion (*found 2*); with postime's sorting after (it would be renumbered at merge if this lane merged first), the build succeeds and the function silently loses the cross-lot draw. Only the claims row catches that order, and it does fail. So whichever lane merges second rebuilds on the other's body: postime keeps this draw and the guards under its `p_occurred_at`, or this lane becomes the 9-argument form and updates its identity assertion and T11.
 
 ## Consequences
 
@@ -54,3 +54,4 @@ What carried it: the founder's ruling settles *whether* to cross lots. The metho
 |---|---|---|
 | 2026-10-04 | Aldemir | Ruled: *"Finish it, open next (Recommended)"* |
 | 2026-10-04 | Claude (lane glasspour) | Built the method above. SQL test T1-T12 on PGlite (all migrations): T1-T5 and T12 fail without the migration and pass with it; the rest pass on both. The migration re-applies cleanly |
+| 2026-10-04 | Claude (lane glasspour, verification pass) | Re-ran the SQL test on PGlite (285 migrations): all pass, twice around a re-apply; on the control build T1-T5 and T12 fail. Re-ran the claim's three mutations (each fails it). Measured the collision with lane postime's migration in both orders and recorded it under Relations |
