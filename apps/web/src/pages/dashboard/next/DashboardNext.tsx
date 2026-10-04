@@ -178,11 +178,15 @@ export default function DashboardNext({ ground }: DashboardNextProps) {
             <Wordmark size={14} />
             {/* Sales arrived on the calendar (ADR 0290), so the old blanket
                 line — every figure is procurement — stopped being true. What
-                stays true: vendor money is money out, and net sales are a
-                stated measure. */}
+                stays true: vendor money is money out, and net sales add up the
+                subtotal each register check carries. The basis of that
+                subtotal is the adapter's, not ours: generic/CSV pass it
+                through, Square maps net_amounts.total_money, Toast `amount`,
+                Clover writes null (pos-adapters.ts). So "before tax and
+                surcharge" is said only as far as the register sends it so. */}
             <p className="text-[11px] text-inkm-3" data-testid="dn-figures-note">
-              Paid to vendors is money out, not sales. Net sales are register check subtotals
-              before tax and surcharge; voided checks are left out.
+              Paid to vendors is money out, not sales. Net sales add up the subtotal on each register
+              check, voided checks left out — before tax and surcharge when the register sends it that way.
             </p>
           </div>
           {/* The note-control experiment's standing count.

@@ -470,9 +470,12 @@ describe('DashboardNext — the month calendar (ADR 0290)', () => {
     routeMonth(() => houseMonth());
     mount();
 
-    expect(await screen.findByTestId('dn-figures-note')).toHaveTextContent(
-      'Net sales are register check subtotals before tax and surcharge',
-    );
+    const note = await screen.findByTestId('dn-figures-note');
+    expect(note).toHaveTextContent('Net sales add up the subtotal on each register check');
+    // The basis is the adapter's (Square maps net_amounts.total_money, Clover
+    // writes null), so the note never states "before tax" unconditionally.
+    expect(note).toHaveTextContent('before tax and surcharge when the register sends it that way');
+    expect(note).not.toHaveTextContent(/subtotals before tax and surcharge;/);
     expect(screen.queryByText(/Figures on this page are procurement/)).not.toBeInTheDocument();
   });
 });
