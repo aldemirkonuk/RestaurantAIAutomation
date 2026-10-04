@@ -2531,6 +2531,35 @@ defect, so the verdict is BLOCK. This round changes no source file.
   run; the conditions are read from the code. The figures are in the
   review trail.
 
+### Gate round 4 at 795803f42, 2026-10-03 -- two undated phrases in the PR body
+
+The ADR 0090 gate at 795803f42 returned BLOCK (PR #584 comment 5975574964).
+Reviewer A blocked on two phrases in the PR body that named no commit:
+"figures at the head are in gate round 3, below" and "Bracketed, with the
+figures at the head below". The gate's report adds that at 795803f42 the
+sentences were also wrong: the "Gate round 3" table holds 835/835 at
+a41149395, and 836/836 at 795803f42 is in the 4867c4a37 section. A lesser
+phrase, "Fixed in a79664ea7 or this edit", named no edit. Reviewer B
+approved, and the final was skipped. Reviewer A re-measured vitest 33 files
+/ 515, `AskPanel.test.tsx` 90/90 and claims 836/836, and re-ran the
+`setOwner` mutation (1 failed, 89 passed, restored from a `cp -p`
+snapshot). No code defect was found, and no source file changes.
+
+- **Fixed in the PR body,** bracketed in place. Each "the head" now names
+  the commits its figures belong to, and "this edit" names the body edit
+  posted after a79664ea7 was pushed and before 4867c4a37 existed. The
+  body's "One exception" sentence regains "which does not reload", as in
+  the OPEN entry and "Gate round 3 at 4867c4a37" above.
+- **Swept** the PR body, and the lines this PR adds here and in the OPEN
+  entry, for "the head", "this head", "this edit", "now" and "currently".
+  The other hits sit in sections dated by their round or commit, or quote
+  old wording. Every "now" left in the body sits in a section headed by its
+  round or commit, except "the person now signed in", which is a step in a
+  trace and names no state of the branch.
+- **Recorded** here, in the OPEN entry's header, in the review trail and in
+  the PR body. This round's commit changes only this ADR and the OPEN
+  entry's fragment.
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
@@ -2563,3 +2592,4 @@ defect, so the verdict is BLOCK. This round changes no source file.
 | 2026-10-03 | `fix/ask-close-no-second-spend` gate round 2, second push (fix, after the gate's plan at d0e4d6185 named a person switch in another tab) | Merged `main` 661068ab3 in 6e22589da, no conflict. Route (a) widened to a house or person switch in another tab, traced in the code: a sign-out and a sign-in as another person in another tab reach this tab with no 401, refresh, redirect or reload. [Gate round 3: that holds only when the person signed in is verified and their pair names a house, and a stale chunk or a service-worker update can still reload the tab; see "Gate round 3".] Still two routes. The token check now names the person; the first fix's "closes (b) only" and "moves the window" corrected; one phrasing, "for one person in one house", and the PR title now names the request id (see "Gate round 2", "Second push"). At 1879ed9d8: `src/components/askai` + `src/components/mudavym` 33 files / 515 passed; `AskPanel.test.tsx` 90/90; the `setOwner` mutation 1 failed / 89 passed, restored from a `cp -p` snapshot, `cmp` identical; web eslint on the 8 touched source and test files 0 errors, 1 warning (`ProposalCard.tsx:268`, also on `main` at `:260`); web `tsc` only the pre-existing `passkeys.ts` error; decision claims 835/835; citation-pairing and conflict-marker guards pass. No browser render. |
 | 2026-10-03 | `fix/ask-close-no-second-spend` gate round 3 (fix, after the ADR 0090 gate at 3d847e44f returned BLOCK) | 3d847e44f merged `main` ba9704b59 (#588), which changes no file this PR cites. The person-switch trace made conditional: it holds only when the person signed in is verified and their pair names a house; otherwise the tab is sent to `/verify-email` or the chooser, with no paid call, and a stale chunk or a service-worker update can reload it at any point. The `/login` sentence scoped to the two response interceptors. Audit cites now name the posted PR comments; the fragment's quoted title aligned; the second-push row names 1879ed9d8 (see "Gate round 3"). At a41149395, which changes no source file: `src/components/askai` + `src/components/mudavym` 33 files / 515 passed; `AskPanel.test.tsx` 90/90; the `setOwner` mutation 1 failed / 89 passed, restored from a `cp -p` snapshot, `cmp` identical, then 90/90; web eslint on the 8 touched source and test files 0 errors, 1 warning (`ProposalCard.tsx:268`; the same hook is at `:260` on `main`); web `tsc` only the pre-existing `passkeys.ts` error; decision claims 835/835; citation-pairing and conflict-marker guards pass. No browser render, no gateway run. |
 | 2026-10-03 | `fix/ask-close-no-second-spend` gate round 3 at 4867c4a37 (fix, after the ADR 0090 gate there returned BLOCK, PR #584 comment 5973720893) | The planner's hold on one PR-body sentence (#593 "is not merged here") was fixed in the body alone, before any marker. Reviewer A approved; Reviewer B blocked on two sentences in route (a), the reloads without their conditions and "Each redirect or reload above loads the page again", with no code or security defect. The stale-chunk and service-worker reloads now carry their conditions, and the sentence that each redirect or reload loads the page again now says which do not run, and that one that does not run leaves no session to send from or the tab in B's case (see "Gate round 3 at 4867c4a37"). Swept: "a reload sends no request" narrowed; "this round's head" and "at this head" in "Gate round 2" name d0e4d6185; the OPEN entry's line-number note names 4867c4a37. The fix changes only this ADR and the OPEN entry's fragment. At 4867c4a37: `src/components/askai` + `src/components/mudavym` 33 files / 515 passed; `AskPanel.test.tsx` 90/90; web eslint on the 8 touched source and test files 0 errors, 1 warning (`ProposalCard.tsx:268`; the same hook is at `:260` on `main` 8c673db4b); web `tsc` only the pre-existing `passkeys.ts` error; decision claims 836/836; citation-pairing and conflict-marker guards pass. The fixer did not re-run the `setOwner` mutation; the gate's comment records a run, 1 red, then 90/90. An independent Sonnet check of 13760f023 returned FIX; its narrowings were made before the push, and a second check of them returned HOLD (see "Gate round 3 at 4867c4a37"). No browser render, no gateway run. |
+| 2026-10-03 | `fix/ask-close-no-second-spend` gate round 4 at 795803f42 (fix, after the ADR 0090 gate there returned BLOCK, PR #584 comment 5975574964) | Reviewer A blocked on two PR-body phrases that named no commit ("figures at the head") and flagged a lesser "this edit"; Reviewer B approved; the final was skipped. Bracketed in the body with the commits their figures belong to; "this edit" named; "which does not reload" restored in the body's "One exception" sentence (see "Gate round 4 at 795803f42"). The commit that adds this row changes only this ADR and the OPEN entry's fragment, and no source file. Its figures are in the PR body's gate round 4 section. No browser render, no gateway run. |
