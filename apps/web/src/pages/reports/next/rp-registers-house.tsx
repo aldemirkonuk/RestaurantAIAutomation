@@ -250,10 +250,61 @@ const ledger = analysis<LedgerRegister>({
   },
 });
 
+/* ──────────────────────────── 8–9. what an empty POS window means ──── */
+
+/**
+ * The two POS registers below (the room, who served it) used to read "no check
+ * in the window names a table / a server" as a fault in the feed — "an absent
+ * field on the POS feed", "an absent attribution". The page is fixed at 90
+ * days, so a window that simply holds no check (the feed stopped, the house
+ * closed for a season) printed the same accusation. Analytics walk, 2026-10-03
+ * (A-040): a window starting after Aug 30 on Tuzlu Rüzgar holds 0 checks
+ * because the feed stops there, not because a field is missing.
+ *
+ * The gateway now says which it is (`table-analytics.service.ts` feedStatus):
+ * `checksInWindow` counts the non-voided checks it read, and `latestCheckAt`
+ * is the newest one this house has — null only when it has none at all. An
+ * older gateway sends neither, and then this page asserts neither cause.
+ */
+export interface PosWindow {
+  sinceDays: number;
+  /** null: the gateway did not say (it predates the field). */
+  checksInWindow: number | null;
+  /** The newest non-voided check's `opened_at`; null when none is on record. */
+  latestCheckAt: string | null;
+}
+
+function posWindowOf(d: Record<string, unknown>): PosWindow {
+  return {
+    sinceDays: num(d.sinceDays) ?? 90,
+    checksInWindow: num(d.checksInWindow),
+    latestCheckAt: typeof d.latestCheckAt === 'string' && d.latestCheckAt ? d.latestCheckAt : null,
+  };
+}
+
+/** "Aug 30, 2026" from an ISO timestamp, in the reader's own calendar. */
+function onDay(iso: string): string {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime())
+    ? iso
+    : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+/**
+ * The sentence for a window that holds NO check, or null when it holds some
+ * (or the gateway did not say). Only the caller's `checksInWindow > 0` branch
+ * may blame a missing field — there are checks, and none of them carries it.
+ */
+export function emptyWindowLine(w: PosWindow): string | null {
+  if (w.checksInWindow !== 0) return null;
+  return w.latestCheckAt
+    ? `No POS check was opened in the last ${w.sinceDays} days — the latest this house has is from ${onDay(w.latestCheckAt)}. The window is empty; no field is missing.`
+    : 'No POS check has reached Mudavym for this house yet (voided checks are not counted), so there is nothing to attribute.';
+}
+
 /* ──────────────────────────────────────────────────────── 8. the room ─── */
 
-export interface SeatsRegister {
-  sinceDays: number;
+export interface SeatsRegister extends PosWindow {
   dataStatus: string;
   tables: Array<{
     tableId: string;
@@ -282,7 +333,7 @@ const seats = analysis<SeatsRegister>({
   select: (raw) => {
     const d = obj(raw);
     return {
-      sinceDays: num(d.sinceDays) ?? 90,
+      ...posWindowOf(d),
       dataStatus: str(d.dataStatus),
       tables: arr(d.tables).map((t) => ({
         tableId: str(t.tableId),
@@ -321,13 +372,25 @@ const seats = analysis<SeatsRegister>({
         note: 'No check has been attributed to any table',
       },
     ];
-    if (served.length === 0)
+    if (served.length === 0) {
+      const mapped = `${countOf(s.tables.length, 'table is', 'tables are')} mapped`;
+      const empty = emptyWindowLine(s);
+      const n = s.checksInWindow;
+      const none =
+        n === 1
+          ? `the one check in the last ${s.sinceDays} days was not`
+          : `not one of the ${countOf(n, 'check', 'checks')} in the last ${s.sinceDays} days was`;
       return {
-        say: `${countOf(s.tables.length, 'table is', 'tables are')} mapped, and not one check in the last ${s.sinceDays} days was attributed to any of them — that is an absent attribution, not an empty room.`,
+        say: empty
+          ? `${mapped}. ${empty}`
+          : n !== null && n > 0
+            ? `${mapped}, and ${none} attributed to any of them — that is an absent attribution, not an empty room.`
+            : `${mapped}, and no check in the last ${s.sinceDays} days was attributed to any of them. This register does not say whether the window held any check, so an empty window and checks that name no table cannot be told apart here.`,
         figures,
         notes: [],
         basis,
       };
+    }
     const withCheck = served.filter((t) => t.avgCheck != null && t.seats != null);
     return {
       cats: {
@@ -387,8 +450,7 @@ const seats = analysis<SeatsRegister>({
 
 /* ────────────────────────────────────────────────── 9. who served it ──── */
 
-export interface ServiceRegister {
-  sinceDays: number;
+export interface ServiceRegister extends PosWindow {
   dataStatus: string;
   adjusted: { method?: string; r2?: number | null } | null;
   waiters: Array<{
@@ -415,7 +477,7 @@ const service = analysis<ServiceRegister>({
     const d = obj(raw);
     const adj = d.adjusted ? obj(d.adjusted) : null;
     return {
-      sinceDays: num(d.sinceDays) ?? 90,
+      ...posWindowOf(d),
       dataStatus: str(d.dataStatus),
       adjusted: adj ? { method: str(adj.method), r2: num(adj.r2) } : null,
       waiters: arr(d.waiters).map((w) => ({
@@ -443,13 +505,23 @@ const service = analysis<ServiceRegister>({
         note: 'Needs 10 checks across at least two tables before a server can be separated from their section',
       },
     ];
-    if (s.waiters.length === 0)
+    if (s.waiters.length === 0) {
+      const n = s.checksInWindow;
+      const none =
+        n === 1
+          ? `The one check in the last ${s.sinceDays} days carries no`
+          : `None of the ${countOf(n, 'check', 'checks')} in the last ${s.sinceDays} days carries a`;
       return {
-        say: 'No check in the window carries a server name, so nothing can be attributed to anyone. That is an absent field on the POS feed, not a shift nobody worked.',
+        say:
+          emptyWindowLine(s) ??
+          (n !== null && n > 0
+            ? `${none} server name, so nothing can be attributed to anyone. That is an absent field on the POS feed, not a shift nobody worked.`
+            : `No check in the last ${s.sinceDays} days names a server. This register does not say whether the window held any check, so an empty window and checks that carry no server name cannot be told apart here.`),
         figures,
         notes: [],
         basis,
       };
+    }
     return {
       cats: {
         data: s.waiters.slice(0, 14).map((w) => ({
