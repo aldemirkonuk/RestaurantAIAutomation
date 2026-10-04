@@ -4,7 +4,7 @@
 - **Date:** 2026-10-04
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** /team, PerformanceCard, performance.service, house median, benchmark, per cover, sales per cover, revenue per cover, wine share of sales, wine attach, average check, house currency, server_sales, A-048, AW18, Tuzlu Rüzgar
-- **Links:** `claims.d/fix-team-performance-units.jsonl`; `tech-debt.d/2026-10-04-fix-team-performance-units.md`; [[0215-money-on-team-is-the-owners-and-hours-are-worked-hours]] (residual (f) closed, bracket in place); [[0051-rebuilt-pages-show-live-data-only]] (unknown is the em dash; a windowed figure carries its mark); [[0067-a-failed-read-is-never-an-empty-one]]; [[0117-a-price-sighting-names-its-source-its-date-and-its-unit]] (Q25: "currency not recorded"); PR #599 (A-020/A-040, the other half of lane `fmt`)
+- **Links:** `claims.d/fix-team-performance-units.jsonl`; `tech-debt.d/2026-10-04-fix-team-performance-units.md`; [[0215-money-on-team-is-the-owners-and-hours-are-worked-hours]] (residual (f) closed here; ADR 0215's own text is not edited, because the audit gate owns that file and the founder chose on 2026-10-04 to drop the bracket from this PR); [[0051-rebuilt-pages-show-live-data-only]] (unknown is the em dash; a windowed figure carries its mark); [[0067-a-failed-read-is-never-an-empty-one]]; [[0117-a-price-sighting-names-its-source-its-date-and-its-unit]] (Q25: "currency not recorded"); PR #599 (A-020/A-040, the other half of lane `fmt`)
 
 ## Context
 
@@ -47,7 +47,7 @@ The card prints every figure with its unit, and its benchmark sentence says what
 
 ## Consequences
 
-- The literal `$` is gone from the card. Its row, and the row of the deleted legacy `PerformancePanel.tsx` (the guard had been printing it as "FIXED since the baseline — lower these rows"), leave `money_currency_baseline.json`. ADR 0215 residual (f) is closed; the bracket is in place there.
+- The literal `$` is gone from the card. Its row, and the row of the deleted legacy `PerformancePanel.tsx` (the guard had been printing it as "FIXED since the baseline — lower these rows"), leave `money_currency_baseline.json`. ADR 0215 residual (f) is closed by this record. ADR 0215's own text still lists (f) as open: it is a gate-owned file, and the founder chose on 2026-10-04 ("Drop the line (Recommended)") to keep this PR off it. Correcting it in place is owed to a separate PR on the founder's word.
 - The wire keeps the key `wineAttachPct` for the share, so a page on either side of the deploy reads it. The name is documented as a share of sales on both sides. Renaming the key is left for a change that can ship the two sides together.
 - **Deploy skew, named.** A page built before this change calls `avgCheck.toLocaleString()`. Against the new gateway, for a member none of whose last six services records a check, that throws until the page is reloaded. A second, narrower case: when those services record checks but their net sales sum to 0, `wineAttachPct` arrives as `null` and the old page prints *"null%"*. Those are the two breaks; the other new keys are additive, and a self-only median arrives as the `null` the old page already handled. No production read was made to count such members; by the walk, the sim house has logged no sales at all.
 - Revisit when `server_sales` can tell a blank from a zero (see the tech-debt entry). M1's predicate and M4's nulls are workarounds for that.

@@ -1094,12 +1094,7 @@ questions round 2 left open (see "Answered, 2026-09-22 (round 6y)" below):
   `PerformancePanel.tsx:217-218`) still print a literal `$`. They are sales,
   not pay, so this rule does not govern who sees them, and they stay on the
   money-currency baseline (4 sites) for a follow-up; the house currency is
-  sent only with the owner's money today. **[2026-10-04, ADR 0294: (f) is
-  closed. `PerformanceCard.tsx` prints these figures in the house's currency
-  through `tm-format`, and the performance route now sends the house's
-  currency and country with them, to whoever may read the card; a currency
-  code is not pay. `PerformancePanel.tsx` went with `pages/team/command/`
-  (ADR 0149 cutover). Both rows left the baseline.]** (g) The gateway now names
+  sent only with the owner's money today. (g) The gateway now names
   `shifts.recorded_break_min` in its shift reads: served before migration
   `20261201110100` has applied, those reads fail and answer a 500 in words,
   not a wrong figure. (h) Only the redesigned shift sheet has the break field;
