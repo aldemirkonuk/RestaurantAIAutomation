@@ -416,7 +416,7 @@ const week = analysis<WeekRegister>({
         value: ranked && w.worstDay ? w.worstDay : EM,
         note: 'More than one weekday shares the lowest mean',
       },
-      { label: '28-day trend', value: pct(w.trendPerDayPct, 2) },
+      { label: '28-day trend, per day', value: pct(w.trendPerDayPct) },
     ];
     const notes = ranked
       ? []

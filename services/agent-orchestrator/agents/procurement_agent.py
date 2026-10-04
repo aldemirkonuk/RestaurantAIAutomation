@@ -200,8 +200,9 @@ class ProcurementAgent(BaseAgent):
     event it consumes can start a purchase.
 
     The carve-out, stated plainly because a blanket claim here would be false:
-    ``_handle_intent_response`` still writes directly — order status, calendar
-    cancellation, shadow-stock release. That is bookkeeping on an order a human
+    ``_handle_intent_response`` still writes directly — order status and
+    shadow-stock release; the delivery calendar event follows the order by
+    itself (ADR 0284). That is bookkeeping on an order a human
     already created through the gateway, reacting to what a vendor said; it can
     only ever *unwind* or record a commitment, never form one. It is the same
     split ``drift_agent`` draws (``drift_agent.py:8-17``) and the same one
@@ -863,10 +864,13 @@ class ProcurementAgent(BaseAgent):
                     }
                 ).eq("id", order_id).execute()
 
-                # 2. Cancel the calendar delivery event for this order
-                await self._cancel_order_calendar_event(
-                    effective_restaurant_id, order_id
-                )
+                # 2. The order's delivery calendar event is cancelled by the
+                # table, in the same transaction as the write above: migration
+                # `a_delivery_event_follows_its_order` (ADR 0284). The helper
+                # that used to try it here looked for a `tags` column
+                # calendar_events does not have, filtered on uppercase statuses
+                # the table never holds, and swallowed the error, so it never
+                # cancelled anything.
 
                 # 3. Release shadow stock that was reserved for this order
                 if inventory_id and quantity:
@@ -896,7 +900,7 @@ class ProcurementAgent(BaseAgent):
                             "title": f"Out of stock: {wine_name}",
                             "message": (
                                 f"Provider reports {wine_name} is out of stock. "
-                                f"Order cancelled and delivery removed from calendar."
+                                f"Order cancelled."
                                 f"{alt_text}"
                             ),
                             "urgency": "high",
@@ -910,8 +914,8 @@ class ProcurementAgent(BaseAgent):
                     },
                 )
                 self.logger.info(
-                    f"Order {order_id} OOS: cancelled, calendar removed, "
-                    f"shadow stock released, manager notified"
+                    f"Order {order_id} OOS: cancelled (the table cancels its "
+                    f"delivery event), shadow stock released, manager notified"
                 )
             else:
                 self.logger.info(
@@ -924,42 +928,6 @@ class ProcurementAgent(BaseAgent):
     # =========================================================================
     # OOS HELPERS
     # =========================================================================
-
-    async def _cancel_order_calendar_event(
-        self, restaurant_id: str, order_id: str
-    ) -> None:
-        """Cancel the calendar delivery event that was linked to order_id."""
-        try:
-            result = (
-                self.database.supabase.table("calendar_events")
-                .select("id, tags")
-                .eq("restaurant_id", restaurant_id)
-                .eq("event_type", "delivery")
-                .not_("status", "in", '("COMPLETED","CANCELLED")')
-                .execute()
-            )
-            for event in result.data or []:
-                try:
-                    tags = event.get("tags", {})
-                    if isinstance(tags, str):
-                        import json as _json
-
-                        tags = _json.loads(tags)
-                    if isinstance(tags, dict) and tags.get("order_id") == order_id:
-                        self.database.supabase.table("calendar_events").update(
-                            {
-                                "status": "CANCELLED",
-                                "description": f"Order {order_id} cancelled (OOS).",
-                            }
-                        ).eq("id", event["id"]).execute()
-                        self.logger.info(
-                            f"Calendar event {event['id']} cancelled for OOS order {order_id}"
-                        )
-                        break
-                except Exception:
-                    pass
-        except Exception as e:
-            self.logger.warning(f"_cancel_order_calendar_event failed: {e}")
 
     async def _release_shadow_stock(
         self, restaurant_id: str, inventory_id: str, quantity: int
