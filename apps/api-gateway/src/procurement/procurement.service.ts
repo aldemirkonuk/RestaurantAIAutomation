@@ -1870,12 +1870,12 @@ export class ProcurementService {
           // The key is named explicitly even when the value is null so the
           // capture-contract guard can read what this write claims.
           currency: seriesCurrency.code,
-          // ADR 0273: the same day the sighting is dated by — the invoice's
-          // issue date when one was read, the check's day otherwise — so the
-          // two records of this one event agree, as the receipt path promises
-          // ("the price series and the cost of goods agree by construction").
-          // A confirmed order passes no dating and keeps today, which is the
-          // day it was confirmed.
+          // ADR 0273: the sighting's `effective_date` — the invoice's issue
+          // date when one was read, the check's UTC day otherwise — so this
+          // row and the sighting name one day for one event. A build-lane
+          // pick, not a founder answer: it moves what the two price_history
+          // readers return (ADR 0273, Consequences). A confirmed order passes
+          // no dating and keeps today, which is the day it was confirmed.
           effective_date:
             args.sighting?.dating?.effectiveDate ??
             new Date().toISOString().slice(0, 10),
