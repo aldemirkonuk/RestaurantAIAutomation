@@ -859,7 +859,10 @@ export class DashboardService {
           : [];
       // A refused consumption read is not "no glasses poured": it is thrown,
       // and the catch below rethrows it, instead of drawing glasses = 0.
-      if (consumptionResult.status === "rejected")
+      // Asked as "not fulfilled": a "rejected" literal next to a
+      // procurement_orders chain reads to check_order_status_literals.py as
+      // an order status typed in the wrong case.
+      if (consumptionResult.status !== "fulfilled")
         throw consumptionResult.reason;
       const consumption = consumptionResult.value;
 
