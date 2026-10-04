@@ -242,8 +242,9 @@ Seams:
 > `effect_if_unanswered: "depletes_nothing"`. [Superseded 2026-10-03 by
 > [ADR 0281](../decisions/0281-a-pos-sale-is-dated-by-its-check-and-the-import-says-what-it-did.md):
 > the constant is gone; each review row now carries `next_sale`, read by the import's own
-> `resolveSaleVolume`. The same ADR dates a POS sale's stock and consumption by the check's
-> `closed_at` instead of the import time.]
+> `resolveSaleVolume`. The same ADR dates a POS sale's stock and consumption by one reading of the check's
+> `closed_at`, the one `pos_checks` stores, instead of the import time (never later than now;
+> import time, counted and said, when the string cannot be read).]
 >
 > **Also closed 2026-09-05 (#310):** every SimPOS line arriving as wine, and the
 > Square day's `covers: null → 0`. The covers cause was a coercion, not the column:

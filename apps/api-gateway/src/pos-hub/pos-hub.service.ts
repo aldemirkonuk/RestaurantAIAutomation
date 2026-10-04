@@ -69,19 +69,35 @@ export function inventoryVolumesFromRow(row: {
  */
 export const BACKDATED_AFTER_MS = 72 * 60 * 60 * 1000;
 
-/** When one closed check's stock and consumption are dated (ADR 0281). */
+/**
+ * When one check is dated (ADR 0281): one reading of its closed_at, made
+ * before the check is stored, and every date the import writes for it.
+ */
 export interface SaleInstant {
   /**
-   * What `p_occurred_at`, `recorded_at` and `created_at` receive. When the
-   * check's closed_at reads and is not in the future, this is that string as
-   * the till sent it, so Postgres reads it exactly as it read
-   * `pos_checks.closed_at`, and a sale's stock and its revenue cannot land on
-   * different days. Otherwise it is import time, as an ISO string.
+   * What `pos_checks.closed_at` receives. When JavaScript's `Date.parse` reads
+   * the till's closed_at, this is that reading as an ISO-8601 UTC string, not
+   * clamped: a close time in the future stays on the check. When it cannot
+   * (or the check is open), it is the value exactly as the till sent it, or
+   * null when there is none.
+   */
+  closedAt: unknown;
+  /**
+   * What `p_occurred_at`, `recorded_at` and `created_at` receive, always an
+   * ISO-8601 UTC string: the same string as `closedAt` when that is a reading
+   * not in the future, otherwise import time. Postgres reads a UTC string as
+   * the same instant whatever its session's time zone, so when the two are
+   * the same string, the check and its consumption rows carry one instant.
+   * The ledger rows carry it too unless the database's clock runs behind the
+   * gateway's: they take the earlier of it and the database's now().
    */
   at: string;
-  /** closed_at could not be read, so `at` is import time. Never silent: the import says so. */
+  /**
+   * closed_at could not be read, so `at` is import time while `closedAt`
+   * keeps the till's value. Never silent: the import says so.
+   */
   fellBack: boolean;
-  /** closed_at was later than now, so `at` is now. */
+  /** closed_at was later than now, so `at` is now and `closedAt` is not. */
   clamped: boolean;
   /** closed_at is more than BACKDATED_AFTER_MS before now (exactly 72h is not). */
   backdatedOver72h: boolean;
@@ -90,30 +106,44 @@ export interface SaleInstant {
 /**
  * Date a closed check's stock by when it closed, not by when it arrived.
  *
+ * The string is parsed once, here, and only the result travels. Handing the
+ * till's string to Postgres instead would have it read a second time, and
+ * where the two readings differ (a zone-less string when the gateway's zone
+ * and the database session's differ, POSIX `UTC+3`, a two-digit year from 50
+ * to 69; measured in the ADR 0090 audit of PR #603) the ledger, the
+ * consumption row and the check could land on different days. So an ambiguous string is read JavaScript's way for all
+ * of them: a zone-less one in the gateway's own zone, "1/1/50" as 1950, and
+ * "UTC+3" as three hours ahead of UTC (ISO's sign, not POSIX's).
+ *
  * Pure, so the boundaries are tested without a database. `nowMs` is the
  * import's clock, read once per check.
  */
 export function saleInstant(closedAt: unknown, nowMs: number): SaleInstant {
   const raw = typeof closedAt === "string" ? closedAt.trim() : "";
   const parsed = raw ? Date.parse(raw) : NaN;
+  const importTime = new Date(nowMs).toISOString();
   if (!Number.isFinite(parsed)) {
     return {
-      at: new Date(nowMs).toISOString(),
+      closedAt: closedAt ?? null,
+      at: importTime,
       fellBack: true,
       clamped: false,
       backdatedOver72h: false,
     };
   }
+  const read = new Date(parsed).toISOString();
   if (parsed > nowMs) {
     return {
-      at: new Date(nowMs).toISOString(),
+      closedAt: read,
+      at: importTime,
       fellBack: false,
       clamped: true,
       backdatedOver72h: false,
     };
   }
   return {
-    at: raw,
+    closedAt: read,
+    at: read,
     fellBack: false,
     clamped: false,
     backdatedOver72h: nowMs - parsed > BACKDATED_AFTER_MS,
@@ -747,6 +777,11 @@ export class PosHubService {
 
     for (const check of checks) {
       try {
+        // ADR 0281: the one reading of this check's closed_at, taken before
+        // the check is stored. The check row and every stock and consumption
+        // row below are dated from it (see SaleInstant); only a closed_at it
+        // cannot read reaches pos_checks as the till sent it.
+        const when = saleInstant(check.closedAt, Date.now());
         const items = check.items.map((it) => {
           const mapped = this.resolveWine(it.name, it.externalItemId, mappings);
           const is_wine =
@@ -774,7 +809,7 @@ export class PosHubService {
           server_external_id: check.serverExternalId ?? null,
           server_name: check.serverName ?? null,
           opened_at: check.openedAt,
-          closed_at: check.closedAt ?? null,
+          closed_at: when.closedAt,
           covers: check.covers ?? null,
           subtotal: check.subtotal ?? null,
           total: check.total ?? null,
@@ -805,6 +840,7 @@ export class PosHubService {
               check,
               items,
               stock,
+              when,
             );
           }
         }
@@ -987,6 +1023,10 @@ export class PosHubService {
       sale_volume_ml: number | null;
     }>,
     report: StockReport = new StockReport(),
+    // ADR 0281: ingest() reads closed_at once, before it stores the check,
+    // and hands that reading here so the check and its stock carry one
+    // instant. The default serves the specs that call this method directly.
+    when: SaleInstant = saleInstant(check.closedAt, Date.now()),
   ): Promise<StockTally> {
     const db = this.dbService.getClient();
     const isVoid = check.voided === true;
@@ -999,7 +1039,6 @@ export class PosHubService {
     // the till re-sends it, a later one when the till stamps the void itself.
     // An unreadable closed_at falls back to import time and is reported,
     // never silent.
-    const when = saleInstant(check.closedAt, Date.now());
     let fallbackNoted = false;
     const booked = () => {
       tally.booked++;
