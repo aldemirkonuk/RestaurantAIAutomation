@@ -1040,7 +1040,9 @@ export class AnalyticsController {
       "Sum of non-voided `pos_checks.total` plus the per-wine bottle/glass breakdown for the same window. " +
       "`posConnected: false` means this restaurant has never had a POS check land — `revenue` and `checkCount` " +
       "are then `null`, NOT `0`, and every consumer must render an empty state rather than a figure. " +
-      "Reuses the same query goal progress runs on, so the two can never disagree.",
+      "Reuses the same query goal progress runs on, so the two can never disagree. " +
+      "Days are the house's days (ADR 0296): each check is filed on the date its house's clock read when it closed, " +
+      "else when it opened. A house with no time zone answers `zoneUnset: true` with `null` figures and `consumption: null`.",
   })
   @ApiQuery({
     name: "days",
@@ -1063,14 +1065,20 @@ export class AnalyticsController {
       );
       // Skipped entirely when no POS is wired: there is nothing to break down,
       // and issuing the query anyway would only make "no POS" cost two round
-      // trips to discover.
-      const consumption = window.posConnected
-        ? await this.analyticsService.getPosConsumptionBreakdown(
-            restaurantId,
-            window.from,
-            window.to,
-          )
-        : [];
+      // trips to discover. Skipped too when the house has no zone: its days
+      // cannot be filed (ADR 0296), so the breakdown is `null` — not known —
+      // rather than an empty list that would read as "sold no wine".
+      const { from, to, timezone } = window;
+      const consumption = !window.posConnected
+        ? []
+        : !window.zoneUnset && from && to && timezone
+          ? await this.analyticsService.getPosConsumptionBreakdown(
+              restaurantId,
+              from,
+              to,
+              timezone,
+            )
+          : null;
       return { ...window, consumption };
     } catch (error) {
       // Deliberately a 500 rather than an empty payload: "we could not load

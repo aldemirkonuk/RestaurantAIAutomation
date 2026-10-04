@@ -8,6 +8,7 @@ import {
   summarizeCostBasis,
 } from "./inventory-cost";
 import { ORDER_SPEND_STATUSES } from "../procurement/order-status";
+import { houseDayBounds } from "../common/house-day";
 
 /**
  * AnalyticsService — the quantitative heart of WineOps.
@@ -273,13 +274,21 @@ export class AnalyticsService {
    * Nulls are load-bearing. `bottleRevenue: null` means no line carried a price,
    * which is not the same as $0; `costPerBottle: null` means the margin column
    * cannot be computed at all, which is not the same as a 100% margin.
+   *
+   * `fromDate`/`toDate` are HOUSE dates and `zone` the house's zone — the same
+   * window the till beside it reads (ADR 0296) — so the range runs from the
+   * midnight that opens `fromDate` to the one that ends `toDate`, on the
+   * house's clock, never UTC's. The caller holds the zone; with none it does
+   * not ask.
    */
   async getPosConsumptionBreakdown(
     restaurantId: string,
     fromDate: string,
     toDate: string,
+    zone: string,
   ): Promise<PosConsumptionRow[]> {
     const client = this.dbService.getClient();
+    const { startIso, endIso } = houseDayBounds(fromDate, toDate, zone);
     // `created_at` (not `recorded_at`) is what pos-hub writes through and what
     // loadConsumption above already filters on — keep the two consistent.
     const { data, error } = await client
@@ -288,8 +297,8 @@ export class AnalyticsService {
         "inventory_id, wine_name, consumption_type, quantity, volume_ml, total_revenue, restaurant_inventory(wine_name, last_purchase_price)",
       )
       .eq("restaurant_id", restaurantId)
-      .gte("created_at", `${fromDate}T00:00:00Z`)
-      .lte("created_at", `${toDate}T23:59:59.999Z`);
+      .gte("created_at", startIso)
+      .lt("created_at", endIso);
     if (error) throw new Error(error.message);
 
     type Acc = PosConsumptionRow & {

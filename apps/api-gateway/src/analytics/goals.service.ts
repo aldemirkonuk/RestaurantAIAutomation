@@ -6,6 +6,17 @@ import * as E from "./engine";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
 import { ORDER_SPEND_STATUSES } from "../procurement/order-status";
 import {
+  HOUSE_ZONE_UNSET,
+  checkInstant,
+  houseDayBounds,
+  houseDayOf,
+  houseToday,
+  readHouseZone,
+  shiftHouseDay,
+  type HouseZone,
+} from "../common/house-day";
+import { localMidnight } from "../notifications/producers/service-day";
+import {
   ModelClientService,
   NfEventRef,
 } from "../common/model-client/model-client.service";
@@ -239,10 +250,15 @@ export class GoalsService {
         `Unknown recommendation rule '${sourceRuleKey}'. A goal's source must be a rule the engine evaluates: ${GoalsService.RECOMMENDATION_RULE_KEYS.join(", ")}, or goal_behind_<goal id>.`,
       );
     }
+    // The baseline window opens on the house's own date (ADR 0296). With no
+    // zone, a windowed metric refuses with the zone sentence rather than
+    // writing a baseline measured on UTC days.
+    const house = await readHouseZone(this.dbService.getClient(), restaurantId);
     const baseline = await this.computeMetric(
       restaurantId,
       input.metricKey,
-      this.periodStart(input.period),
+      house.zone ? this.periodStart(input.period, house.zone) : null,
+      house.zone,
     );
     const { data, error } = await this.dbService
       .getClient()
@@ -383,12 +399,18 @@ export class GoalsService {
    * it is looking at is partial.
    */
   async listGoalsWithProgress(restaurantId: string, status = "active") {
-    const goals = await this.listGoals(restaurantId, status);
+    // The house's zone is read once for every goal on the list (ADR 0296),
+    // alongside the list itself. A failed read throws: every goal would fail
+    // on it alike, and a list of six identical failures says less than one.
+    const [goals, house] = await Promise.all([
+      this.listGoals(restaurantId, status),
+      readHouseZone(this.dbService.getClient(), restaurantId),
+    ]);
     const computed = goals.slice(0, GoalsService.MAX_PROGRESS_GOALS);
     const progress = await Promise.all(
       computed.map(async (g: any) => {
         try {
-          return await this.getGoalProgress(restaurantId, g.id);
+          return await this.getGoalProgress(restaurantId, g.id, house);
         } catch (err: any) {
           // One goal whose metric query broke must not blank the other five.
           // `null` progress is rendered as "this goal could not be read",
@@ -422,23 +444,43 @@ export class GoalsService {
   /** Recomputing progress is several queries per goal; six is a screenful. */
   static readonly MAX_PROGRESS_GOALS = 6;
 
-  async getGoalProgress(restaurantId: string, goalId: string) {
-    const { data: goal, error } = await this.dbService
-      .getClient()
-      .from("analytics_goals")
-      .select("*")
-      .eq("restaurant_id", restaurantId)
-      .eq("id", goalId)
-      .single();
+  /**
+   * @param known the house's zone when the caller already read it
+   *   (`listGoalsWithProgress`); read here otherwise.
+   */
+  async getGoalProgress(
+    restaurantId: string,
+    goalId: string,
+    known?: HouseZone,
+  ) {
+    const [{ data: goal, error }, house] = await Promise.all([
+      this.dbService
+        .getClient()
+        .from("analytics_goals")
+        .select("*")
+        .eq("restaurant_id", restaurantId)
+        .eq("id", goalId)
+        .single(),
+      known
+        ? Promise.resolve(known)
+        : readHouseZone(this.dbService.getClient(), restaurantId),
+    ]);
     if (error || !goal) throw new Error(error?.message || "Goal not found");
 
     const spec = GoalsService.SUPPORTED_METRICS[goal.metric_key];
-    const periodStart =
-      goal.created_at?.substring(0, 10) ?? this.periodStart(goal.period);
+    // The goal's window opens on the house date it was created (ADR 0296),
+    // not the UTC date: a goal set at 22:00 in Los Angeles was set that day.
+    const zone = house.zone;
+    const periodStart = zone
+      ? (houseDayOf(goal.created_at, zone) ??
+        this.periodStart(goal.period, zone))
+      : null;
     const { current, dailySeries } = await this.computeMetricWithSeries(
       restaurantId,
       goal.metric_key,
       periodStart,
+      undefined,
+      zone,
     );
 
     // Refresh stored current_value (cheap side effect, keeps insights honest).
@@ -456,9 +498,16 @@ export class GoalsService {
     let expectedByNow: number | null = null;
     let onTrack: boolean | null = null;
     let projected: number | null = null;
-    if (goal.deadline) {
-      const start = new Date(periodStart).getTime();
-      const end = new Date(goal.deadline).getTime();
+    // The schedule runs from the midnight that opened the goal's first day to
+    // the midnight that opens its deadline day — both on the house's clock
+    // (ADR 0296), as both were on UTC's before. With no zone there is no
+    // schedule to hold it to, so the pace is not computed and the page says so.
+    if (goal.deadline && zone && periodStart) {
+      const start = localMidnight(periodStart, zone).getTime();
+      const end = localMidnight(
+        String(goal.deadline).slice(0, 10),
+        zone,
+      ).getTime();
       const totalDays = Math.max(1, (end - start) / 86400000);
       const elapsed = Math.min(
         totalDays,
@@ -759,52 +808,65 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
   // Metric computation (lean, per metric key)
   // ==========================================================================
 
-  private periodStart(period?: string): string {
-    const now = new Date();
-    const d = new Date(now);
+  /**
+   * The first house date of a goal's period, on the house's clock (ADR 0296).
+   * A week opens on Sunday, a quarter on its first month's 1st, and a custom
+   * goal looks back 30 days — the same periods as before, now counted on the
+   * house's calendar instead of the server's.
+   */
+  private periodStart(period: string | undefined, zone: string): string {
+    const today = houseToday(zone);
+    const [y, m, d] = today.split("-").map(Number);
+    const two = (n: number) => String(n).padStart(2, "0");
     switch (period) {
       case "day":
-        break;
+        return today;
       case "week":
-        d.setDate(d.getDate() - d.getDay());
-        break;
-      case "quarter": {
-        const qMonth = Math.floor(d.getMonth() / 3) * 3;
-        d.setMonth(qMonth, 1);
-        break;
-      }
+        return shiftHouseDay(
+          today,
+          -new Date(Date.UTC(y, m - 1, d)).getUTCDay(),
+        );
+      case "quarter":
+        return `${y}-${two(Math.floor((m - 1) / 3) * 3 + 1)}-01`;
       case "month":
-        d.setDate(1);
-        break;
+        return `${y}-${two(m)}-01`;
       default:
-        d.setDate(d.getDate() - 30); // custom default: trailing 30d
+        return shiftHouseDay(today, -30); // custom default: trailing 30d
     }
-    return d.toISOString().substring(0, 10);
   }
 
   private async computeMetric(
     restaurantId: string,
     metricKey: string,
-    sinceDate: string,
+    sinceDate: string | null,
+    zone: string | null,
   ): Promise<number> {
     const { current } = await this.computeMetricWithSeries(
       restaurantId,
       metricKey,
       sinceDate,
+      undefined,
+      zone,
     );
     return current;
   }
 
   /**
-   * @param untilDate optional inclusive end of the window (YYYY-MM-DD). Goal
-   *   progress leaves it off — a goal runs to "now" — but the POS revenue
-   *   endpoint needs a closed range so a chart's x-axis matches its total.
+   * @param sinceDate the window's first HOUSE date (YYYY-MM-DD); null only
+   *   when `zone` is null.
+   * @param untilDate optional inclusive last house date. Goal progress leaves
+   *   it off — a goal runs to "now" — but the POS revenue endpoint needs a
+   *   closed range so a chart's x-axis matches its total.
+   * @param zone the house's zone (`readHouseZone`). Every series below is
+   *   filed on the house's day (ADR 0296); with no zone a windowed metric
+   *   throws `HOUSE_ZONE_UNSET`.
    */
   private async computeMetricWithSeries(
     restaurantId: string,
     metricKey: string,
-    sinceDate: string,
-    untilDate?: string,
+    sinceDate: string | null,
+    untilDate: string | undefined,
+    zone: string | null,
   ): Promise<{
     current: number;
     dailySeries: number[];
@@ -832,6 +894,7 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
      * The window arguments are ignored on purpose and the caller is not misled
      * about it: a stock level is what is on the shelf NOW, not a total over a
      * period, and there is no historical series of it anywhere in this gateway.
+     * So it is also the one metric that needs no house zone.
      */
     if (metricKey === "days_of_inventory") {
       const financial: any = await this.analyticsService.getFinancialSummary(
@@ -846,14 +909,42 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
       return { current: dio, dailySeries: [], dailyDates: [], rowCount: 1 };
     }
 
+    // No zone, no house days: thrown HERE, outside the try below, whose catch
+    // would turn it into a sum of nothing — a house with no zone set is not a
+    // house that sold nothing (ADR 0296; ADR 0116).
+    if (!zone || !sinceDate) throw new Error(HOUSE_ZONE_UNSET);
+
     const client = this.dbService.getClient();
-    const sinceIso = `${sinceDate}T00:00:00Z`;
-    const untilIso = untilDate ? `${untilDate}T23:59:59.999Z` : null;
+    // Every series is read from 24 h before the window's first house midnight
+    // (a check opened the night before and closed after midnight is filed on
+    // the first day) up to the last instant of its last house day. `untilDate`
+    // is the house's today in every caller, so that end is still to come.
+    const bounds = houseDayBounds(sinceDate, untilDate ?? sinceDate, zone);
+    const sinceIso = bounds.readFromIso;
+    const untilIso = untilDate
+      ? new Date(Date.parse(bounds.endIso) - 1).toISOString()
+      : null;
+
+    // A row is filed on its house day, and a row whose day falls outside the
+    // window is dropped — so one day's figure is the same in every window that
+    // holds it (A-027).
+    const fileByHouseDay = <T>(
+      rows: T[],
+      instantOf: (row: T) => string | null | undefined,
+    ): Array<{ row: T; day: string }> => {
+      const out: Array<{ row: T; day: string }> = [];
+      for (const row of rows) {
+        const day = houseDayOf(instantOf(row), zone);
+        if (day === null || day < sinceDate) continue;
+        if (untilDate !== undefined && day > untilDate) continue;
+        out.push({ row, day });
+      }
+      return out;
+    };
 
     const daily = new Map<string, number>();
     let rowCount = 0;
     const add = (date: string, v: number) => {
-      if (!date) return;
       daily.set(date, (daily.get(date) || 0) + v);
     };
 
@@ -867,12 +958,13 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
           .gte("delivered_at", sinceIso);
         if (untilIso) q = q.lte("delivered_at", untilIso);
         const { data } = await q;
-        rowCount = (data || []).length;
-        for (const o of data || [])
-          add(
-            (o.delivered_at || o.created_at || "").substring(0, 10),
-            o.total_cost || o.final_price || 0,
-          );
+        const orders = fileByHouseDay(
+          (data || []) as any[],
+          (o) => o.delivered_at || o.created_at,
+        );
+        rowCount = orders.length;
+        for (const { row: o, day } of orders)
+          add(day, o.total_cost || o.final_price || 0);
       } else if (metricKey === "bottles_sold") {
         let q = client
           .from("wine_consumption_log")
@@ -881,12 +973,13 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
           .gte("created_at", sinceIso);
         if (untilIso) q = q.lte("created_at", untilIso);
         const { data } = await q;
-        rowCount = (data || []).length;
-        for (const c of data || [])
-          add(
-            (c.created_at || "").substring(0, 10),
-            c.quantity || (c.volume_ml ? c.volume_ml / 750 : 0),
-          );
+        const lines = fileByHouseDay(
+          (data || []) as any[],
+          (c) => c.created_at,
+        );
+        rowCount = lines.length;
+        for (const { row: c, day } of lines)
+          add(day, c.quantity || (c.volume_ml ? c.volume_ml / 750 : 0));
       } else {
         // Check-based metrics (pos_revenue, wine_revenue, checks, avg_check,
         // attach rate). One query serves all of them on purpose: OD-85 asked
@@ -904,23 +997,19 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
           .gte("opened_at", sinceIso);
         if (untilIso) q = q.lte("opened_at", untilIso);
         const { data } = await q;
-        const checks = data || [];
+        // Filed by when it closed, else when it opened (`checkInstant`).
+        const checks = fileByHouseDay((data || []) as any[], checkInstant);
         rowCount = checks.length;
         if (metricKey === "pos_revenue") {
           // The whole check total — the tender the restaurant actually booked,
           // which is the denominator a COGS ratio needs. `wine_revenue` below
           // deliberately sums only itemised wine lines and is NOT a substitute.
-          for (const c of checks)
-            add(
-              (c.closed_at || c.opened_at || "").substring(0, 10),
-              Number(c.total) || 0,
-            );
+          for (const { row: c, day } of checks) add(day, Number(c.total) || 0);
         } else if (metricKey === "checks") {
-          for (const c of checks)
-            add((c.closed_at || c.opened_at || "").substring(0, 10), 1);
+          for (const { day } of checks) add(day, 1);
         } else if (metricKey === "avg_check") {
           const total = checks.reduce(
-            (s: number, c: any) => s + (c.total || 0),
+            (s: number, { row: c }) => s + (c.total || 0),
             0,
           );
           return {
@@ -930,7 +1019,7 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
             rowCount: checks.length,
           };
         } else if (metricKey === "wine_attach_rate") {
-          const withWine = checks.filter((c: any) =>
+          const withWine = checks.filter(({ row: c }) =>
             (Array.isArray(c.items) ? c.items : []).some(
               (it: any) => it?.is_wine,
             ),
@@ -944,7 +1033,7 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
         } else {
           // wine_revenue: sum of wine items when itemized; whole check total
           // is NOT used so the number stays honest.
-          for (const c of checks) {
+          for (const { row: c, day } of checks) {
             const items: any[] = Array.isArray(c.items) ? c.items : [];
             const wine = items
               .filter((it) => it?.is_wine)
@@ -952,7 +1041,7 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
                 (s, it) => s + (Number(it.price) || 0) * (Number(it.qty) || 1),
                 0,
               );
-            add((c.closed_at || c.opened_at || "").substring(0, 10), wine);
+            add(day, wine);
           }
         }
       }
@@ -995,44 +1084,62 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
   }
 
   /**
-   * Sales revenue booked through the POS over a closed day range.
+   * Sales revenue booked through the POS over a closed range of HOUSE days.
    *
    * `revenue`/`checkCount` are `null` — never `0` — when no POS is connected.
    * Every consumer of this payload renders an empty state off `posConnected`,
    * because a zero here would be a claim about the restaurant's trading rather
    * than a statement about our data (ADR 0020).
+   *
+   * The window is the last `days` days on the house's clock, today included,
+   * and each check is filed on its house day (ADR 0296). A house with no zone
+   * answers `zoneUnset: true` with `null` figures and no window — not UTC
+   * days (ADR 0116) — and readers say so and point to Settings.
    */
   async getPosRevenueWindow(
     restaurantId: string,
     days = 30,
   ): Promise<PosRevenueWindow> {
     const span = Math.min(Math.max(Math.trunc(days) || 30, 1), 365);
-    const end = new Date();
-    const start = new Date(end.getTime() - (span - 1) * 86400000);
-    const from = start.toISOString().substring(0, 10);
-    const to = end.toISOString().substring(0, 10);
+    // Both reads are by key and independent; neither error is swallowed.
+    const [connected, house] = await Promise.all([
+      this.hasPosHistory(restaurantId),
+      readHouseZone(this.dbService.getClient(), restaurantId),
+    ]);
+    const zone = house.zone;
+    const to = zone ? houseToday(zone) : null;
+    const from = to ? shiftHouseDay(to, -(span - 1)) : null;
+    const unread = {
+      restaurantId,
+      from,
+      to,
+      days: span,
+      timezone: zone,
+      zoneUnset: zone === null,
+      revenue: null,
+      checkCount: null,
+      dailySeries: [],
+    };
 
-    if (!(await this.hasPosHistory(restaurantId))) {
-      return {
-        restaurantId,
-        from,
-        to,
-        days: span,
-        posConnected: false,
-        revenue: null,
-        checkCount: null,
-        dailySeries: [],
-      };
-    }
+    if (!connected) return { ...unread, posConnected: false };
+    if (!zone || !from || !to) return { ...unread, posConnected: true };
 
     const { current, dailySeries, dailyDates, rowCount } =
-      await this.computeMetricWithSeries(restaurantId, "pos_revenue", from, to);
+      await this.computeMetricWithSeries(
+        restaurantId,
+        "pos_revenue",
+        from,
+        to,
+        zone,
+      );
 
     return {
       restaurantId,
       from,
       to,
       days: span,
+      timezone: zone,
+      zoneUnset: false,
       posConnected: true,
       revenue: current,
       checkCount: rowCount,
@@ -1059,16 +1166,20 @@ export function stripFence(text: string): string {
 /** Sales revenue for one restaurant over one closed day range. */
 export interface PosRevenueWindow {
   restaurantId: string;
-  /** Inclusive first day of the window, YYYY-MM-DD. */
-  from: string;
-  /** Inclusive last day of the window, YYYY-MM-DD. */
-  to: string;
+  /** Inclusive first HOUSE day of the window, YYYY-MM-DD; null when `zoneUnset`. */
+  from: string | null;
+  /** Inclusive last house day (the house's today), YYYY-MM-DD; null when `zoneUnset`. */
+  to: string | null;
   days: number;
+  /** The IANA zone the days are filed in (ADR 0296); null when `zoneUnset`. */
+  timezone: string | null;
+  /** True when the house has no zone: no day can be filed, so no figure is stated. */
+  zoneUnset: boolean;
   /** False when this restaurant has never had a POS check. */
   posConnected: boolean;
-  /** Sum of non-voided `pos_checks.total`. `null` when `posConnected` is false. */
+  /** Sum of non-voided `pos_checks.total`. `null` when `posConnected` is false or `zoneUnset`. */
   revenue: number | null;
-  /** Non-voided checks in the window. `null` when `posConnected` is false. */
+  /** Non-voided checks filed in the window. `null` when `posConnected` is false or `zoneUnset`. */
   checkCount: number | null;
   /** Sparse — only days that actually had revenue appear. */
   dailySeries: Array<{ date: string; revenue: number }>;
