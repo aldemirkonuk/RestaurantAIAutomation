@@ -308,7 +308,22 @@ describe("AW12 — the month's calendar entries", () => {
   });
 });
 
+/** The two one-row register probes: its first check, and its latest. */
+const isFirstProbe = (c: Call) =>
+  c.table === "pos_checks" && c.select === "opened_at";
+const isLatestProbe = (c: Call) =>
+  c.table === "pos_checks" && c.select === "opened_at, closed_at";
+
+/**
+ * The house's clock for the sales blocks: mid-November 2026, so October is a
+ * month that has ended. The month's figure is over the days that have begun,
+ * so a test that left the real clock running would change with the date.
+ */
+const AFTER_OCTOBER = new Date("2026-11-15T20:00:00Z");
+
 describe("AW21 — net sales on the house's day", () => {
+  beforeEach(() => jest.useFakeTimers().setSystemTime(AFTER_OCTOBER));
+
   it("sums subtotal over checks that are not voided, never total or tip, across every page", async () => {
     // 2,500 checks: three pages at the 1,000-row ceiling.
     const checks = Array.from({ length: 2500 }, (_, i) => {
@@ -320,6 +335,9 @@ describe("AW21 — net sales on the house's day", () => {
       check(9001, "2026-10-05T20:00:00Z", "2026-10-05T20:30:00Z", 5000, {
         voided: true,
       }),
+      // The register kept sending into November, so all of October is a
+      // stretch it was there for.
+      check(9002, "2026-11-02T20:00:00Z", "2026-11-02T20:30:00Z", 7),
     );
     const db = fakeDb({ restaurants: house(LA), pos_checks: checks });
     const month = await serviceOver(db).getCalendarRevenue(HOUSE, 2026, 10, {
@@ -336,9 +354,9 @@ describe("AW21 — net sales on the house's day", () => {
     // A connected register's quiet day is a measured zero.
     expect(day(month, "2026-10-30")).toMatchObject({ checks: 0, net_sales: 0 });
 
-    // The takings pages; the one-row first-check probe is asserted on its own.
+    // The takings pages; the two one-row probes are asserted on their own.
     const reads = db.calls.filter(
-      (c) => c.table === "pos_checks" && c.select !== "opened_at",
+      (c) => c.table === "pos_checks" && !isFirstProbe(c) && !isLatestProbe(c),
     );
     for (const r of reads) {
       expect(r.select).toBe("id, subtotal, opened_at, closed_at");
@@ -393,6 +411,8 @@ describe("AW21 — net sales on the house's day", () => {
         check(0, "2026-08-10T20:00:00Z", "2026-08-10T21:00:00Z", 30),
         check(1, "2026-10-06T20:00:00Z", "2026-10-06T21:00:00Z", 50),
         check(2, "2026-10-06T22:00:00Z", "2026-10-06T23:00:00Z", null),
+        // ...and was still sending in November.
+        check(3, "2026-11-03T20:00:00Z", "2026-11-03T21:00:00Z", 20),
       ],
     });
     const month = await serviceOver(db).getCalendarRevenue(HOUSE, 2026, 10, {
@@ -420,11 +440,12 @@ describe("AW21 — net sales on the house's day", () => {
     }
   });
 
-  it("reads a connected house's quiet month as zeros", async () => {
+  it("reads a quiet month as zeros when the register sent checks before and after it", async () => {
     const db = fakeDb({
       restaurants: house(LA),
       pos_checks: [
         check(1, "2026-08-10T20:00:00Z", "2026-08-10T21:00:00Z", 30),
+        check(2, "2026-11-04T20:00:00Z", "2026-11-04T21:00:00Z", 30),
       ],
     });
     const month = await serviceOver(db).getCalendarRevenue(HOUSE, 2026, 10, {
@@ -432,7 +453,159 @@ describe("AW21 — net sales on the house's day", () => {
     });
     expect(month.pos_connected).toBe(true);
     expect(month.monthly_net_sales).toBe(0);
+    expect(month.monthly_checks).toBe(0);
     expect(day(month, "2026-10-15")).toMatchObject({ checks: 0, net_sales: 0 });
+  });
+
+  it("reads the days after the register's latest check as unknown, not as quiet zeros", async () => {
+    // Tuzlu Rüzgar's shape: the feed runs Jul 1 to Aug 30 and then stops.
+    jest.useFakeTimers().setSystemTime(new Date("2026-10-03T17:00:00Z"));
+    const db = fakeDb({
+      restaurants: house(LA),
+      pos_checks: [
+        check(1, "2026-07-01T19:00:00Z", "2026-07-01T20:00:00Z", 100),
+        check(2, "2026-07-20T19:00:00Z", "2026-07-20T20:00:00Z", 50),
+        // The last check ever: opened 23:30 on Aug 29 in Los Angeles and
+        // closed 00:15 on Aug 30, so Aug 30 is a day the register sent on.
+        check(3, "2026-08-30T06:30:00Z", "2026-08-30T07:15:00Z", 80),
+      ],
+    });
+    const service = serviceOver(db);
+
+    const august = await service.getCalendarRevenue(HOUSE, 2026, 8, {
+      withSales: true,
+    });
+    expect(day(august, "2026-08-30")).toMatchObject({
+      net_sales: 80,
+      checks: 1,
+    });
+    // Between the first and the last check, a day without one is measured.
+    expect(day(august, "2026-08-15")).toMatchObject({
+      net_sales: 0,
+      checks: 0,
+    });
+    // After the last one, it is not: no check came, and nothing says the
+    // register was still sending.
+    expect(day(august, "2026-08-31")).toMatchObject({
+      net_sales: null,
+      checks: null,
+    });
+    expect(august.monthly_net_sales).toBeNull();
+    expect(august.monthly_checks).toBeNull();
+
+    for (const [y, m] of [
+      [2026, 9],
+      [2026, 10],
+    ]) {
+      const later = await service.getCalendarRevenue(HOUSE, y, m, {
+        withSales: true,
+      });
+      expect(later.pos_connected).toBe(true);
+      expect(
+        later.daily.every((d) => d.net_sales === null && d.checks === null),
+      ).toBe(true);
+      expect(later.monthly_net_sales).toBeNull();
+      expect(later.monthly_checks).toBeNull();
+    }
+
+    // July lies wholly between the first and the last check: it is known.
+    const july = await service.getCalendarRevenue(HOUSE, 2026, 7, {
+      withSales: true,
+    });
+    expect(july.monthly_net_sales).toBe(150);
+    expect(july.monthly_checks).toBe(2);
+
+    // The latest check is asked of every check the house ever sent, newest
+    // first, voided or not.
+    const probe = db.calls.find(isLatestProbe);
+    expect(probe).toMatchObject({
+      orderBy: ["opened_at", false],
+      limit: 1,
+    });
+    expect(probe!.filters).not.toContainEqual(["eq", "voided", false]);
+  });
+
+  it("states the month so far when the register sent today, and leaves the days ahead unknown", async () => {
+    // 21:00 on Oct 14 in Los Angeles.
+    jest.useFakeTimers().setSystemTime(new Date("2026-10-15T04:00:00Z"));
+    const db = fakeDb({
+      restaurants: house(LA),
+      pos_checks: [
+        check(1, "2026-09-20T19:00:00Z", "2026-09-20T20:00:00Z", 10),
+        check(2, "2026-10-03T19:00:00Z", "2026-10-03T20:00:00Z", 30),
+        check(3, "2026-10-14T19:00:00Z", "2026-10-14T20:00:00Z", 45),
+      ],
+    });
+    const month = await serviceOver(db).getCalendarRevenue(HOUSE, 2026, 10, {
+      withSales: true,
+    });
+    expect(month.today).toBe("2026-10-14");
+    expect(day(month, "2026-10-14")).toMatchObject({
+      net_sales: 45,
+      checks: 1,
+    });
+    expect(day(month, "2026-10-15")).toMatchObject({
+      net_sales: null,
+      checks: null,
+    });
+    // The days ahead have not happened; the month so far is Oct 1-14.
+    expect(month.monthly_net_sales).toBe(75);
+    expect(month.monthly_checks).toBe(2);
+  });
+
+  it("reads today as unknown until its first check lands, and the month with it", async () => {
+    // 09:00 on Oct 14 in Los Angeles; the last check closed last night.
+    jest.useFakeTimers().setSystemTime(new Date("2026-10-14T16:00:00Z"));
+    const db = fakeDb({
+      restaurants: house(LA),
+      pos_checks: [
+        check(1, "2026-09-20T19:00:00Z", "2026-09-20T20:00:00Z", 10),
+        check(2, "2026-10-14T03:00:00Z", "2026-10-14T04:00:00Z", 30),
+      ],
+    });
+    const month = await serviceOver(db).getCalendarRevenue(HOUSE, 2026, 10, {
+      withSales: true,
+    });
+    expect(day(month, "2026-10-13")).toMatchObject({
+      net_sales: 30,
+      checks: 1,
+    });
+    // No heartbeat says the register is up, so "no sales yet" would be a
+    // guess; the cost of not guessing is that the month waits for today.
+    expect(day(month, "2026-10-14")).toMatchObject({
+      net_sales: null,
+      checks: null,
+    });
+    expect(month.monthly_net_sales).toBeNull();
+    expect(month.monthly_checks).toBeNull();
+  });
+
+  it("counts a day a month's check closed on, even past the latest-opened check's day", async () => {
+    // Check 1 opened first and closed last: 23:00 Oct 20 to 00:30 Oct 22 in
+    // Los Angeles. Check 2 opened later and closed the same evening.
+    const db = fakeDb({
+      restaurants: house(LA),
+      pos_checks: [
+        check(0, "2026-09-01T19:00:00Z", "2026-09-01T20:00:00Z", 5),
+        check(1, "2026-10-21T06:00:00Z", "2026-10-22T07:30:00Z", 90),
+        check(2, "2026-10-21T19:00:00Z", "2026-10-21T20:00:00Z", 10),
+      ],
+    });
+    const month = await serviceOver(db).getCalendarRevenue(HOUSE, 2026, 10, {
+      withSales: true,
+    });
+    expect(day(month, "2026-10-21")).toMatchObject({
+      net_sales: 10,
+      checks: 1,
+    });
+    expect(day(month, "2026-10-22")).toMatchObject({
+      net_sales: 90,
+      checks: 1,
+    });
+    expect(day(month, "2026-10-23")).toMatchObject({
+      net_sales: null,
+      checks: null,
+    });
   });
 
   it("reads the days before the register's first check as unknown, not as quiet zeros", async () => {
@@ -477,9 +650,7 @@ describe("AW21 — net sales on the house's day", () => {
     expect(september.monthly_net_sales).toBeNull();
 
     // The first check is asked of every check the house ever sent, in order.
-    const probe = db.calls.find(
-      (c) => c.table === "pos_checks" && c.select === "opened_at",
-    );
+    const probe = db.calls.find(isFirstProbe);
     expect(probe).toMatchObject({
       orderBy: ["opened_at", true],
       limit: 1,
@@ -507,23 +678,28 @@ describe("AW21 — net sales on the house's day", () => {
     expect(day(month, "2026-10-02")).toMatchObject({ net_sales: 0, checks: 0 });
   });
 
-  it("fails the month when the register's first check cannot be read", async () => {
-    const db = fakeDb(
-      {
-        restaurants: house(LA),
-        pos_checks: [
-          check(1, "2026-10-02T20:00:00Z", "2026-10-02T21:00:00Z", 10),
-        ],
-      },
-      {
-        pos_checks: (c) =>
-          c.select === "opened_at" ? "connection reset" : null,
-      },
-    );
-    await expect(
-      serviceOver(db).getCalendarRevenue(HOUSE, 2026, 10, { withSales: true }),
-    ).rejects.toThrow(/connection reset/);
-  });
+  it.each([
+    ["first", isFirstProbe],
+    ["latest", isLatestProbe],
+  ])(
+    "fails the month when the register's %s check cannot be read",
+    async (_which, probe) => {
+      const db = fakeDb(
+        {
+          restaurants: house(LA),
+          pos_checks: [
+            check(1, "2026-10-02T20:00:00Z", "2026-10-02T21:00:00Z", 10),
+          ],
+        },
+        { pos_checks: (c) => (probe(c) ? "connection reset" : null) },
+      );
+      await expect(
+        serviceOver(db).getCalendarRevenue(HOUSE, 2026, 10, {
+          withSales: true,
+        }),
+      ).rejects.toThrow(/connection reset/);
+    },
+  );
 
   it("folds subtotal per house day and ignores total and tip", () => {
     const days = netSalesByHouseDay(
@@ -624,12 +800,15 @@ describe("who sees sales — through the controller", () => {
   function controllerOver(db: ReturnType<typeof fakeDb>) {
     return new DashboardController(serviceOver(db));
   }
+  beforeEach(() => jest.useFakeTimers().setSystemTime(AFTER_OCTOBER));
   const tables = () => ({
     restaurants: house(LA),
     pos_checks: [
-      // The register began in September, so all of October is counted.
+      // The register began in September and was still sending in November,
+      // so all of October is counted.
       check(0, "2026-09-15T20:00:00Z", "2026-09-15T21:00:00Z", 5),
       check(1, "2026-10-02T20:00:00Z", "2026-10-02T21:00:00Z", 10),
+      check(2, "2026-11-02T20:00:00Z", "2026-11-02T21:00:00Z", 20),
     ],
   });
 

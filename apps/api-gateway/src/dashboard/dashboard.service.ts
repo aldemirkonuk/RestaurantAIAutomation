@@ -203,13 +203,31 @@ async function readMonthEvents(
   return byDay;
 }
 
+/** The house day of a timestamp column's value, or null when it states none. */
+function houseDayOf(v: unknown, zone: string): string | null {
+  if (typeof v !== "string" || !v) return null;
+  const at = new Date(v);
+  return Number.isNaN(at.getTime()) ? null : localDateIn(at, zone);
+}
+
 /**
  * The register's takings for the month, by house day, or a throw.
  *
- * `since` is the house day the register sent its FIRST check (voided or not),
- * or null when it never has. A day before it is not a quiet day — the register
- * was not there to count it — so it is unknown, not zero; a day on or after it
- * with no check is a measured zero. `connected` is `since !== null`.
+ * The register counted the days from `since` to `until`, and only those:
+ *
+ * - `since` is the house day the register sent its FIRST check (voided or
+ *   not), or null when it never has. A day before it is not a quiet day — the
+ *   register was not there to count it — so it is unknown, not zero.
+ * - `until` is the house day of the LATEST check it sent (voided or not; the
+ *   day the check closed, else opened, as the fold files it), or a later day
+ *   the month's own checks are filed on. A day after it is unknown too: no
+ *   check came, and nothing records that the register was still sending (no
+ *   table stamps a check feed's heartbeat), so a register gone dark and a
+ *   house that was closed read alike. Tuzlu Rüzgar's feed ends 2026-08-30;
+ *   with only `since`, its September and October drew "$0 · 0 checks".
+ * - A day from `since` to `until` with no check is a measured zero.
+ *
+ * `connected` is `since !== null`.
  */
 async function readMonthTakings(
   client: any,
@@ -220,10 +238,11 @@ async function readMonthTakings(
 ): Promise<{
   connected: boolean;
   since: string | null;
+  until: string | null;
   days: Map<string, HouseDaySales>;
 }> {
   const from = new Date(start.getTime() - CHECK_LOOKBACK_MS);
-  const [rows, first] = await Promise.all([
+  const [rows, first, latest] = await Promise.all([
     readAll("The month's checks", (after) => {
       let q = client
         .from("pos_checks")
@@ -244,9 +263,21 @@ async function readMonthTakings(
       .eq("restaurant_id", restaurantId)
       .order("opened_at", { ascending: true })
       .limit(1),
+    // The same index read backwards: when did it LAST send anything? Asked
+    // every time, because a month can hold checks and still run past the
+    // register's last one.
+    client
+      .from("pos_checks")
+      .select("opened_at, closed_at")
+      .eq("restaurant_id", restaurantId)
+      .order("opened_at", { ascending: false })
+      .limit(1),
   ]);
   if (first.error) {
     throw new Error(`pos_checks read failed: ${first.error.message}`);
+  }
+  if (latest.error) {
+    throw new Error(`pos_checks read failed: ${latest.error.message}`);
   }
   const firstAt = first.data?.[0]?.opened_at;
   const firstInstant = firstAt ? new Date(String(firstAt)) : null;
@@ -254,10 +285,25 @@ async function readMonthTakings(
     firstInstant && !Number.isNaN(firstInstant.getTime())
       ? localDateIn(firstInstant, zone)
       : null;
+  const days = netSalesByHouseDay(rows, zone);
+  const last = latest.data?.[0];
+  let until =
+    since === null
+      ? null
+      : (houseDayOf(last?.closed_at, zone) ??
+        houseDayOf(last?.opened_at, zone));
+  // A check opened before the latest one can close after it; the month's own
+  // checks are filed already, so a day one of them is filed on is counted.
+  if (since !== null) {
+    for (const date of days.keys()) {
+      if (until === null || date > until) until = date;
+    }
+  }
   return {
     connected: since !== null,
     since,
-    days: netSalesByHouseDay(rows, zone),
+    until,
+    days,
   };
 }
 
@@ -770,13 +816,17 @@ export class DashboardService {
 
       const connected = takings?.connected ?? null;
       const since = takings?.since ?? null;
+      const until = takings?.until ?? null;
       const daily: CalendarDay[] = dates.map((date) => {
         const s = spend.get(date);
         const sold = takings?.days.get(date);
-        // A day the register was there for: on or after its first check's
-        // house day. Its quiet day is a measured zero. A register that never
-        // sent a check, or a day before it began, says nothing (unknown).
-        const counted = since !== null && date >= since;
+        // A day the register was there for: from its first check's house day
+        // to its latest check's. A quiet day between them is a measured zero.
+        // A register that never sent a check, a day before it began, or a day
+        // after the last check it sent says nothing (unknown) — a day after
+        // includes today until its first check lands, and every day ahead.
+        const counted =
+          since !== null && until !== null && date >= since && date <= until;
         return {
           date,
           procurement_spend: cents(s?.spend ?? 0),
@@ -788,16 +838,21 @@ export class DashboardService {
         };
       });
 
-      // The month's figure is known only when every day of it is: one
-      // unknown day (an unstated subtotal, or a day before the register
-      // began) leaves the month unknown, never a partial sum.
+      // The month's figure is over the days of it that have begun on the
+      // house's clock (all of them, for a past month), and is known only when
+      // every one of those is: one unknown day (an unstated subtotal, a day
+      // before the register began or after its last check) leaves the month
+      // unknown, never a partial sum. A month not yet begun states none.
+      const begun = daily.filter((d) => today !== null && d.date <= today);
       const monthlyNet =
-        connected && daily.every((d) => d.net_sales !== null)
-          ? cents(daily.reduce((sum, d) => sum + (d.net_sales ?? 0), 0))
+        connected &&
+        begun.length > 0 &&
+        begun.every((d) => d.net_sales !== null)
+          ? cents(begun.reduce((sum, d) => sum + (d.net_sales ?? 0), 0))
           : null;
       const monthlyChecks =
-        connected && daily.every((d) => d.checks !== null)
-          ? daily.reduce((sum, d) => sum + (d.checks ?? 0), 0)
+        connected && begun.length > 0 && begun.every((d) => d.checks !== null)
+          ? begun.reduce((sum, d) => sum + (d.checks ?? 0), 0)
           : null;
 
       return {

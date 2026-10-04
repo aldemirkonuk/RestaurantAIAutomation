@@ -65,8 +65,9 @@ export interface RawDayEvent {
 
 /**
  * One house day. Every figure is `number | null`: null is "not known" (no
- * zone set, no register, a figure withheld) and renders as the em dash —
- * never as 0. A real 0 is a measured quiet day.
+ * zone set, no register, a day before the register's first check or after
+ * its latest, a figure withheld) and renders as the em dash — never as 0. A
+ * real 0 is a measured quiet day.
  */
 export interface DayLedger {
   date: string; // YYYY-MM-DD, the HOUSE's date

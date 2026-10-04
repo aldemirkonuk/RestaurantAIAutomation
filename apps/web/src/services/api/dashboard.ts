@@ -271,7 +271,9 @@ export interface CalendarMonthDay {
  *    `sales_withheld` is true and they are null.
  *  - Every day is the HOUSE's day, in `timezone`. With no zone set,
  *    `zone_unset` is true and every day figure is null — never a UTC guess.
- *  - Null is "not known", never zero. A connected register's quiet day is 0.
+ *  - Null is "not known", never zero. A quiet day between the register's
+ *    first and latest check is 0; a day before the first or after the latest
+ *    (today too, until its first check lands) is null.
  * The optional fields are optional because a gateway older than ADR 0290
  * does not send them. See `apps/api-gateway/src/dashboard/dashboard.service.ts`
  * `getCalendarRevenue`.
